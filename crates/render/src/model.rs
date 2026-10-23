@@ -318,6 +318,8 @@ pub struct Globals {
     /// are partially visible.
     pub fow_masked_terrain: [f32; 4],
     pub fow_masked_object: [f32; 4],
+    /// SetWaterBaseColor, multiplying the water's colors.
+    pub water_tint: [f32; 4],
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -1024,6 +1026,7 @@ pub fn default_globals(view_proj: Mat4, camera: Vec3) -> Globals {
         fow_object: [0.0; 4],
         fow_masked_terrain: [0.0, 0.0, 0.0, 1.0],
         fow_masked_object: [0.0, 0.0, 0.0, 1.0],
+        water_tint: [1.0; 4],
     }
 }
 

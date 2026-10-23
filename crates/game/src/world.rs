@@ -236,6 +236,9 @@ pub struct World {
     pub map_terrain_fog: Option<(i32, f32, f32, f32, [f32; 3])>,
     /// SetSkyModel's model, if any.
     pub sky_model: Option<String>,
+    /// SetWaterBaseColor: red, green, blue, and alpha multiplying the water's colors.
+    #[serde(default = "opaque_white")]
+    pub water_color: [u8; 4],
     /// Unit events raised where no VM is at hand, fired at the end of the tick: the
     /// unit, its player and unit event ids, and the context.
     pub queued_events: Vec<(u32, i32, i32, EventCtx)>,
@@ -420,6 +423,7 @@ impl World {
             terrain_fog: None,
             map_terrain_fog: None,
             sky_model: None,
+            water_color: [255; 4],
             queued_events: Vec::new(),
             cancelled_constructions: Vec::new(),
             persist: Default::default(),
@@ -1018,4 +1022,8 @@ impl World {
         let s = (rest - (m * 60) as f32) as i64;
         format!("{h:02}:{m:02}:{s:02}")
     }
+}
+
+fn opaque_white() -> [u8; 4] {
+    [255; 4]
 }

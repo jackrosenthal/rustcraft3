@@ -15,6 +15,7 @@ struct Globals {
     fow_object: vec4<f32>,
     fow_masked_terrain: vec4<f32>,
     fow_masked_object: vec4<f32>,
+    water_tint: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> globals: Globals;
@@ -93,6 +94,6 @@ fn fs_ground(in: VsOut) -> @location(0) vec4<f32> {
 
 @fragment
 fn fs_water(in: VsOut) -> @location(0) vec4<f32> {
-    let t = textureSample(tex, samp, in.uv) * in.color;
+    let t = textureSample(tex, samp, in.uv) * in.color * globals.water_tint;
     return vec4<f32>(fog(fow(t.rgb, in.world), in.world), t.a);
 }

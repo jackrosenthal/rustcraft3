@@ -2703,6 +2703,7 @@ impl Scene {
                 let dark = self.info.flags & 0x10 != 0;
                 globals.fow_masked_terrain = argb(if dark { "DarkMaskedTerrain" } else { "BlackMaskedTerrain" });
                 globals.fow_masked_object = argb(if dark { "DarkMaskedObject" } else { "BlackMaskedObject" });
+                globals.water_tint = g.world.water_color.map(|v| v as f32 / 255.0);
             }
         }
         for inst in &mut self.instances {

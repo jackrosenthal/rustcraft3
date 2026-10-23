@@ -172,6 +172,7 @@ impl World {
         if !self.ai_controlled(h) || self.unit(h).is_none_or(|u| u.dead || u.paused) {
             return;
         }
+        self.item_ai(h, enemy, victim);
         let abilities: Vec<(Id, i32)> = self.unit(h).map(|u| u.abilities.clone()).unwrap_or_default();
         for (a, lvl) in abilities {
             if lvl <= 0 {
@@ -1608,6 +1609,62 @@ impl World {
         let ((cx, cy), (ex, ey)) = (self.pos(h), self.pos(enemy));
         if (ex - cx).hypot(ey - cy) <= reach {
             self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Held items' AI (their abilities' vf64), each use queued for the next tick:
+    /// figurines with more than 2 seen enemies (any enemies for flyers) within 500 of
+    /// the victim and the caster's side not the larger; Web past the gate; dispel
+    /// wands on the victim, else on the enemy; the defense scroll against a
+    /// player's unit fighting another of the caster's units; the Moonstone by a night
+    /// elf by day.
+    fn item_ai(&mut self, h: u32, enemy: u32, victim: u32) {
+        let Some(u) = self.unit(h) else { return };
+        let owner = u.owner;
+        let slots: Vec<(usize, u32)> = u.inventory.iter().copied().enumerate().filter(|&(_, i)| i != 0).collect();
+        for (slot, item) in slots {
+            if self.ai_item_uses.iter().any(|q| q.0 == h) {
+                return;
+            }
+            let Some(t) = self.item(item).map(|i| i.type_id) else { continue };
+            for a in self.item_abilities(t) {
+                if self.unit(h).is_some_and(|u| u.cooldowns.get(&a).copied().unwrap_or(0.0) > 0.0) {
+                    continue;
+                }
+                let enemy_player = self.unit(enemy).is_some_and(|e| e.owner < PLAYER_NEUTRAL_AGGRESSIVE && !crate::natives::players::is_ally(self, owner, e.owner));
+                let target = match self.ability_code(a).as_str() {
+                    "AIfg" | "AIfu" | "AIfh" | "AIff" | "AIfd" | "AIfr" | "AIfs" if enemy_player && !self.ai_resting(h, a) => {
+                        self.ai_rest(h, a);
+                        let (x, y) = self.pos(victim);
+                        let c = self.census(h, x, y, 500.0, true);
+                        let flyer = self.ability_code(a) == "AIfd";
+                        let seen = if flyer { c.enemies } else { c.enemy_seen };
+                        (seen > 2 && c.allies <= c.enemies).then_some(0)
+                    }
+                    "AIwb" => (!self.ai_gate(h, a, enemy, victim, true, Some(enemy), None)).then_some(enemy),
+                    "AIdc" => {
+                        if !self.ai_gate(h, a, enemy, victim, true, Some(victim), None) {
+                            Some(victim)
+                        } else {
+                            (!self.ai_gate(h, a, enemy, victim, false, Some(enemy), None)).then_some(enemy)
+                        }
+                    }
+                    "AIda" => {
+                        let other = victim != h && self.unit(victim).zip(self.unit(enemy)).is_some_and(|(v, e)| !crate::natives::players::is_ally(self, v.owner, e.owner));
+                        (enemy_player && other).then_some(0)
+                    }
+                    "AIct" => {
+                        let elf = self.players.get(owner as usize).is_some_and(|p| p.race == 4);
+                        let day = (6.0..18.0).contains(&self.time_of_day);
+                        (enemy_player && elf && day && self.unit(victim).is_some_and(|v| crate::natives::players::is_ally(self, owner, v.owner))).then_some(0)
+                    }
+                    _ => None,
+                };
+                if let Some(target) = target {
+                    self.ai_item_uses.push((h, slot, target));
+                    return;
+                }
+            }
         }
     }
 }

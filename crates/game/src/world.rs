@@ -183,6 +183,9 @@ pub struct World {
     /// Volcanoes standing while their casters channel.
     #[serde(default)]
     pub volcanoes: Vec<crate::volcano::Volcano>,
+    /// Items the spell AI chose to use: the unit, slot, and target.
+    #[serde(default)]
+    pub ai_item_uses: Vec<(u32, usize, u32)>,
     /// Blighted terrain corners, and a count that changes when they do.
     pub blight: Vec<bool>,
     pub blight_serial: u32,
@@ -399,6 +402,7 @@ impl World {
             pending_entangles: Vec::new(),
             incinerations: Vec::new(),
             volcanoes: Vec::new(),
+            ai_item_uses: Vec::new(),
             blight: Vec::new(),
             blight_serial: 0,
             autocast_timer: 0.0,
@@ -799,6 +803,10 @@ impl World {
         prof!(self, "update_incinerations", self.update_incinerations(vm));
         prof!(self, "update_volcanoes", self.update_volcanoes(vm, dt));
         prof!(self, "update_spell_watch", self.update_spell_watch());
+        for (u, slot, target) in std::mem::take(&mut self.ai_item_uses) {
+            let (x, y) = self.widget_pos(target).unwrap_or((0.0, 0.0));
+            self.use_item(vm, u, slot, target, x, y);
+        }
         let now = self.time;
         let due: Vec<(f32, u32, u32)> = self.pending_entangles.iter().copied().filter(|e| e.0 <= now).collect();
         self.pending_entangles.retain(|e| e.0 > now);

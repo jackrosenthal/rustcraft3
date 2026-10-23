@@ -500,11 +500,28 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetTerrainType => |_, _, _| none(),
         GetTerrainType => |_, _, _| int(0),
         GetTerrainVariance => |_, _, _| int(0),
-        SetBlight => |_, _, _| none(),
-        SetBlightRect => |_, _, _| none(),
-        SetBlightPoint => |_, _, _| none(),
-        SetBlightLoc => |_, _, _| none(),
-        IsPointBlighted => |_, _, _| boolean(false),
+        SetBlight => |w, _, a| {
+            let (x, y, r, add) = (a.r(1), a.r(2), a.r(3), a.b(4));
+            w.set_blight(add, (x - r, y - r, x + r, y + r), |px, py| (px - x).hypot(py - y) <= r);
+            none()
+        },
+        SetBlightRect => |w, _, a| {
+            let Some(Obj::Rect(r)) = w.handles.get(a.h(1)).cloned() else { return none() };
+            w.set_blight(a.b(2), (r.min_x, r.min_y, r.max_x, r.max_y), |px, py| px >= r.min_x && px <= r.max_x && py >= r.min_y && py <= r.max_y);
+            none()
+        },
+        SetBlightPoint => |w, _, a| {
+            let (x, y, add) = (a.r(1), a.r(2), a.b(3));
+            w.set_blight(add, (x - 64.0, y - 64.0, x + 64.0, y + 64.0), |px, py| (px - x).abs() <= 64.0 && (py - y).abs() <= 64.0);
+            none()
+        },
+        SetBlightLoc => |w, _, a| {
+            let Some((x, y)) = w.location(a.h(1)) else { return none() };
+            let (r, add) = (a.r(2), a.b(3));
+            w.set_blight(add, (x - r, y - r, x + r, y + r), |px, py| (px - x).hypot(py - y) <= r);
+            none()
+        },
+        IsPointBlighted => |w, _, a| boolean(w.point_blighted(a.r(0), a.r(1))),
         SetWaterBaseColor => |_, _, _| none(),
         SetWaterDeforms => |_, _, _| none(),
         EnableOcclusion => |_, _, _| none(),

@@ -10,20 +10,28 @@ pub const BLIGHT_FLAG: u8 = 0x20;
 impl World {
     /// Blights the corners and pathing cells within `radius` of a point.
     pub fn blight_circle(&mut self, x: f32, y: f32, radius: f32) {
+        self.set_blight(true, (x - radius, y - radius, x + radius, y + radius), |px, py| (px - x).hypot(py - y) <= radius);
+    }
+
+    /// Blights or clears the corners and pathing cells inside `bounds` that `inside`
+    /// takes (SetBlight, SetBlightRect, SetBlightPoint).
+    pub fn set_blight(&mut self, add: bool, bounds: (f32, f32, f32, f32), inside: impl Fn(f32, f32) -> bool) {
         let mut changed = false;
         if let Some(t) = self.terrain_heights.as_ref() {
             let (w, h) = (t.width as i32, t.height as i32);
             let (ox, oy) = (t.offset[0], t.offset[1]);
-            let r = (radius / 128.0).ceil() as i32 + 1;
-            let (cx, cy) = (((x - ox) / 128.0).round() as i32, ((y - oy) / 128.0).round() as i32);
-            for j in (cy - r).max(0)..=(cy + r).min(h - 1) {
-                for i in (cx - r).max(0)..=(cx + r).min(w - 1) {
+            let i0 = (((bounds.0 - ox) / 128.0).floor() as i32 - 1).max(0);
+            let i1 = (((bounds.2 - ox) / 128.0).ceil() as i32 + 1).min(w - 1);
+            let j0 = (((bounds.1 - oy) / 128.0).floor() as i32 - 1).max(0);
+            let j1 = (((bounds.3 - oy) / 128.0).ceil() as i32 + 1).min(h - 1);
+            for j in j0..=j1 {
+                for i in i0..=i1 {
                     let (px, py) = (ox + i as f32 * 128.0, oy + j as f32 * 128.0);
-                    if (px - x).hypot(py - y) <= radius {
+                    if inside(px, py) {
                         let k = (j * w + i) as usize;
                         if let Some(b) = self.blight.get_mut(k) {
-                            if !*b {
-                                *b = true;
+                            if *b != add {
+                                *b = add;
                                 changed = true;
                             }
                         }
@@ -32,13 +40,12 @@ impl World {
             }
         }
         if let Some(p) = self.pathing.as_mut() {
-            let r = (radius / crate::pathing::CELL).ceil() as i32 + 1;
-            let c = p.cell_of(x, y);
-            for j in c.1 - r..=c.1 + r {
-                for i in c.0 - r..=c.0 + r {
+            let (c0, c1) = (p.cell_of(bounds.0, bounds.1), p.cell_of(bounds.2, bounds.3));
+            for j in c0.1 - 1..=c1.1 + 1 {
+                for i in c0.0 - 1..=c1.0 + 1 {
                     let (px, py) = p.center((i, j));
-                    if (px - x).hypot(py - y) <= radius {
-                        p.set_flags((i, j), BLIGHT_FLAG, true);
+                    if inside(px, py) {
+                        p.set_flags((i, j), BLIGHT_FLAG, add);
                     }
                 }
             }
@@ -46,6 +53,11 @@ impl World {
         if changed {
             self.blight_serial = self.blight_serial.wrapping_add(1);
         }
+    }
+
+    /// Whether the pathing cell at a point is blighted (IsPointBlighted).
+    pub fn point_blighted(&self, x: f32, y: f32) -> bool {
+        self.pathing.as_ref().is_some_and(|p| p.flags_at(p.cell_of(x, y)).is_some_and(|f| f & BLIGHT_FLAG != 0))
     }
 
     /// Whether every cell a structure would cover is blighted.

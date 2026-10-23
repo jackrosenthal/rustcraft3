@@ -1994,8 +1994,12 @@ impl Scene {
 
     pub fn update(&mut self, dt: f32) {
         self.time += dt;
-        // The game menu pauses a single-player game.
+        // The game menu pauses a single-player game; the game speed (slow, normal, fast:
+        // 3/5, 4/5, and 5/5 of real time in the original) scales the game and its
+        // animation.
         let paused = self.hud.as_ref().is_some_and(|h| h.menu.is_some());
+        let speed = self.game.as_ref().map_or(1.0, |g| [0.6, 0.8, 1.0][g.world.game_speed.clamp(0, 2) as usize]);
+        let gdt = if paused { 0.0 } else { dt * speed };
         // The selection: script changes come to the interface, the player's go to the
         // game (with its selection events).
         if let Some(g) = self.game.as_mut() {
@@ -2009,7 +2013,7 @@ impl Scene {
             }
         }
         if let Some(g) = self.game.as_mut().filter(|_| !paused) {
-            g.tick(dt);
+            g.tick(gdt);
         }
         self.apply_requests();
         let now = self.time;
@@ -2021,7 +2025,7 @@ impl Scene {
             self.pending_audio.retain(|r| matches!(r, w3_game::world::Request::PlayMusic(_) | w3_game::world::Request::StopMusic(_)));
         }
         for inst in &mut self.instances {
-            inst.advance(dt * 1000.0);
+            inst.advance(gdt * 1000.0);
         }
         for (h, v) in self.units.iter_mut() {
             let progress = self.game.as_ref().and_then(|g| g.world.unit(*h)).and_then(|u| u.constructing.map(|left| 1.0 - left / u.build_time.max(0.01)));
@@ -2031,29 +2035,29 @@ impl Scene {
                     if let Some(s) = v.inst.sequence.and_then(|s| v.inst.model.mdx.sequences.get(s)) {
                         v.inst.frame = (s.end - s.start) as f32 * p.clamp(0.0, 1.0);
                     }
-                    v.inst.global_time += dt * 1000.0;
+                    v.inst.global_time += gdt * 1000.0;
                 }
-                None => v.inst.advance(dt * 1000.0),
+                None => v.inst.advance(gdt * 1000.0),
             }
         }
         for (inst, _) in self.dests.values_mut() {
-            inst.advance(dt * 1000.0);
+            inst.advance(gdt * 1000.0);
         }
         for inst in self.items.values_mut() {
-            inst.advance(dt * 1000.0);
+            inst.advance(gdt * 1000.0);
         }
         for v in self.effects.values_mut() {
-            v.inst.advance(dt * 1000.0);
+            v.inst.advance(gdt * 1000.0);
         }
-        self.weather.advance(dt * 1000.0);
+        self.weather.advance(gdt * 1000.0);
         for fx in self.autocast_fx.values_mut() {
-            fx.advance(dt * 1000.0);
+            fx.advance(gdt * 1000.0);
         }
         if let Some((_, v)) = self.portrait.as_mut() {
-            v.inst.advance(dt * 1000.0);
+            v.inst.advance(gdt * 1000.0);
         }
         if let Some((_, v)) = self.cine_portrait.as_mut() {
-            v.inst.advance(dt * 1000.0);
+            v.inst.advance(gdt * 1000.0);
         }
         self.sync_camera();
     }

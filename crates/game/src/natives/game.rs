@@ -34,7 +34,13 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         IsMapFlagSet => |w, _, a| boolean(w.map_flags & a.h(0) as i32 != 0),
-        SetGameSpeed => |w, _, a| { w.game_speed = a.h(0) as i32; none() },
+        // Not while MAP_LOCK_SPEED is set; clamped to fast (as jass_SetGameSpeed).
+        SetGameSpeed => |w, _, a| {
+            if w.map_flags & 0x4000 == 0 {
+                w.game_speed = (a.h(0) as i32).clamp(0, 2);
+            }
+            none()
+        },
         GetGameSpeed => |w, _, _| int(w.game_speed),
         SetGameDifficulty => |w, _, a| { w.difficulty = a.h(0) as i32; none() },
         GetGameDifficulty => |w, _, _| int(w.difficulty),

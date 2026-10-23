@@ -96,6 +96,8 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         casting: None,
         timed_life: None,
         item_bonus: Default::default(),
+        revive: None,
+        reviving: false,
     };
     let path_tex = if unit.is_building { o.str("pathTex") } else { String::new() };
     let mut unit = unit;
@@ -693,6 +695,6 @@ fn dummy_unit() -> Unit {
         queue: vec![], queue_progress: 0.0, constructing: None, build_time: 0.0, building: 0,
         str_: 0.0, agi: 0.0, int: 0.0, skill_points: 0, regen_timer: 0.0,
         cooldowns: HashMap::new(), autocast: vec![], buffs: vec![], casting: None, timed_life: None,
-        item_bonus: Default::default(),
+        item_bonus: Default::default(), revive: None, reviving: false,
     }
 }

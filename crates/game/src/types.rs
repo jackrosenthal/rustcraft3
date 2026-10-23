@@ -209,6 +209,10 @@ pub struct Unit {
     pub timed_life: Option<f32>,
     /// What carried items add.
     pub item_bonus: ItemBonus,
+    /// An altar's revival: the hero, seconds done, and seconds needed.
+    pub revive: Option<(u32, f32, f32)>,
+    /// A dead hero being revived.
+    pub reviving: bool,
 }
 
 /// Bonuses from held items' abilities.

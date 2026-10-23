@@ -7,6 +7,7 @@ pub mod fog;
 pub mod handles;
 pub mod hero;
 pub mod items;
+pub mod shops;
 pub mod natives;
 pub mod objects;
 pub mod orders;
@@ -254,6 +255,18 @@ impl Game {
         if quit.is_some() {
             self.world.requests.push(world::Request::EndGame);
         }
+    }
+
+    pub fn buy_item(&mut self, player: u8, shop: u32, id: objects::Id) -> Result<(), &'static str> {
+        self.world.buy_item(&mut self.vm, player, shop, id)
+    }
+
+    pub fn hire_unit(&mut self, player: u8, shop: u32, id: objects::Id) -> Result<(), &'static str> {
+        self.world.hire_unit(&mut self.vm, player, shop, id)
+    }
+
+    pub fn start_revive(&mut self, altar: u32, hero: u32) -> Result<(), &'static str> {
+        self.world.start_revive(&mut self.vm, altar, hero)
     }
 
     /// The local player uses the item in a unit's inventory slot.

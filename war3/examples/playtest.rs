@@ -201,6 +201,14 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 4;
             }
+            "buy" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let r = g.buy_item(0, num(&a[i + 1]) as u32, w3_game::objects::id_from_str(&a[i + 2]));
+                    let (shop, id) = (num(&a[i + 1]) as u32, w3_game::objects::id_from_str(&a[i + 2]));
+                    eprintln!("buy: {r:?} gold {} stock {:?}", g.world.players[0].get_state(1), g.world.shops.stock.get(&(shop, id)));
+                }
+                i += 3;
+            }
             "selecth" => {
                 scene.selection = vec![num(&a[i + 1]) as u32];
                 i += 2;

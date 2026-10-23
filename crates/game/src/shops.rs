@@ -1,0 +1,278 @@
+//! Shops and hero revival: buying items and hiring units with ItemData and UnitData
+//! stock, the Aneu activation radius of neutral buildings, and reviving heroes at
+//! altars with the MiscGame revival factors.
+
+use std::collections::HashMap;
+
+use w3_jass::Vm;
+
+use crate::event_ids::*;
+use crate::objects::{Id, id_from_str};
+use crate::types::*;
+use crate::world::World;
+
+/// One shop's supply of one item or unit type.
+#[derive(Clone, Copy, Debug)]
+pub struct Stock {
+    pub count: i32,
+    pub max: i32,
+    /// Seconds until the next one is added.
+    pub timer: f32,
+    pub regen: f32,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Shops {
+    /// Supplies of a shop's own goods (Sellitems, Makeitems, Sellunits).
+    pub stock: HashMap<(u32, Id), Stock>,
+    /// Goods scripts added (AddItemToStock, AddUnitToStock), which RemoveItemFromStock
+    /// takes away again.
+    pub added: HashMap<(u32, Id), Stock>,
+}
+
+impl World {
+    /// Items (Sellitems, Makeitems) and units (Sellunits) a unit sells.
+    pub fn shop_goods(&self, shop: u32) -> (Vec<Id>, Vec<Id>) {
+        let Some(o) = self.unit(shop).and_then(|u| self.objects.units.get(u.type_id)) else { return (vec![], vec![]) };
+        let ids = |k: &str| o.list(k).iter().map(|s| id_from_str(s.trim())).filter(|i| i[0] != 0).collect::<Vec<_>>();
+        let mut items = ids("Sellitems");
+        items.extend(ids("Makeitems"));
+        let mut units = ids("Sellunits");
+        let mut added: Vec<Id> = self.shops.added.keys().filter(|(s, _)| *s == shop).map(|(_, id)| *id).collect();
+        added.sort();
+        for id in added {
+            if self.objects.items.get(id).is_some() {
+                items.push(id);
+            } else {
+                units.push(id);
+            }
+        }
+        (items, units)
+    }
+
+    fn stock_def(&self, id: Id) -> (i32, f32, f32) {
+        // ItemData or UnitBalance stockMax, stockRegen, and stockStart.
+        let o = self.objects.items.get(id).or_else(|| self.objects.units.get(id));
+        o.map_or((1, 0.0, 0.0), |o| (o.int("stockMax").max(1), o.real("stockRegen"), o.real("stockStart")))
+    }
+
+    /// The current stock of one good in a shop, created on first use.
+    pub fn stock(&mut self, shop: u32, id: Id) -> Stock {
+        if let Some(s) = self.shops.added.get(&(shop, id)) {
+            return *s;
+        }
+        if let Some(s) = self.shops.stock.get(&(shop, id)) {
+            return *s;
+        }
+        let (max, regen, start) = self.stock_def(id);
+        // A good with a start delay arrives after it; others start full.
+        let s = if start > 0.0 { Stock { count: 0, max, timer: start, regen } } else { Stock { count: max, max, timer: regen, regen } };
+        self.shops.stock.insert((shop, id), s);
+        s
+    }
+
+    /// How many of a good a shop has now, without starting its stock.
+    pub fn stock_count(&self, shop: u32, id: Id) -> i32 {
+        if let Some(s) = self.shops.added.get(&(shop, id)) {
+            return s.count;
+        }
+        match self.shops.stock.get(&(shop, id)) {
+            Some(s) => s.count,
+            None => {
+                let (max, _, start) = self.stock_def(id);
+                if start > 0.0 { 0 } else { max }
+            }
+        }
+    }
+
+    /// Replenishes stock over time.
+    pub fn update_shops(&mut self, dt: f32) {
+        for s in self.shops.stock.values_mut().chain(self.shops.added.values_mut()) {
+            if s.count >= s.max {
+                continue;
+            }
+            s.timer -= dt;
+            if s.timer <= 0.0 {
+                s.count += 1;
+                s.timer = s.regen.max(0.01);
+            }
+        }
+    }
+
+    fn take_stock(&mut self, shop: u32, id: Id) {
+        let s = match self.shops.added.get_mut(&(shop, id)) {
+            Some(s) => s,
+            None => match self.shops.stock.get_mut(&(shop, id)) {
+                Some(s) => s,
+                None => return,
+            },
+        };
+        // Restocking starts over when a full supply is bought from.
+        if s.count == s.max {
+            s.timer = s.regen;
+        }
+        s.count -= 1;
+    }
+
+    /// The unit that would receive a purchase for `player`: for a neutral building, the
+    /// player's nearest unit with an inventory inside its Aneu Activation Radius; for the
+    /// player's own shop, its nearest such unit as well.
+    pub fn shopper(&self, player: u8, shop: u32) -> Option<u32> {
+        let s = self.unit(shop)?;
+        let radius = self
+            .ability_with_code(shop, "Aneu")
+            .and_then(|(a, l)| self.objects.abilities.get(a).map(|o| o.level_real("DataA", l)))
+            .filter(|&r| r > 0.0)
+            .unwrap_or(500.0);
+        let (sx, sy) = (s.x, s.y);
+        self.unit_order
+            .iter()
+            .copied()
+            .filter(|&h| self.unit(h).is_some_and(|u| u.owner == player && !u.dead && (u.x - sx).hypot(u.y - sy) <= radius))
+            .filter(|&h| self.inventory_size(h) > 0)
+            .min_by(|&a, &b| {
+                let d = |h: u32| self.unit(h).map_or(f32::MAX, |u| (u.x - sx).hypot(u.y - sy));
+                d(a).total_cmp(&d(b))
+            })
+    }
+
+    /// Buys an item for a player from a shop.
+    pub fn buy_item(&mut self, vm: &mut Vm, player: u8, shop: u32, id: Id) -> Result<(), &'static str> {
+        let Some(buyer) = self.shopper(player, shop) else { return Err("Notinrange") };
+        if self.stock(shop, id).count <= 0 {
+            return Err("");
+        }
+        let (g, l) = self.objects.items.get(id).map_or((0, 0), |o| (o.int("goldcost"), o.int("lumbercost")));
+        let p = &self.players[player as usize];
+        if p.get_state(player_state::RESOURCE_GOLD) < g {
+            return Err("Nogold");
+        }
+        if p.get_state(player_state::RESOURCE_LUMBER) < l {
+            return Err("Nolumber");
+        }
+        let p = &mut self.players[player as usize];
+        *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) -= g;
+        *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) -= l;
+        self.take_stock(shop, id);
+        let (x, y) = self.unit(buyer).map_or((0.0, 0.0), |u| (u.x, u.y));
+        let item = crate::natives::objects::create_item(self, id, x, y);
+        // A full inventory leaves the item on the ground at the buyer.
+        let _ = self.give_item(vm, buyer, item, None);
+        let ctx = EventCtx { unit: shop, item, other_unit: buyer, ..Default::default() };
+        self.fire_unit_pair(vm, shop, EVENT_PLAYER_UNIT_SELL_ITEM, EVENT_UNIT_SELL_ITEM, ctx);
+        Ok(())
+    }
+
+    /// Hires a unit (a tavern hero or mercenary) for a player.
+    pub fn hire_unit(&mut self, vm: &mut Vm, player: u8, shop: u32, id: Id) -> Result<(), &'static str> {
+        if self.shopper(player, shop).is_none() && self.unit(shop).is_none_or(|u| u.owner != player) {
+            return Err("Notinrange");
+        }
+        if self.stock(shop, id).count <= 0 {
+            return Err("");
+        }
+        self.spend(player, id, true)?;
+        self.take_stock(shop, id);
+        let radius = self.objects.units.get(id).map_or(16.0, |o| o.real("collision"));
+        let (x, y) = self.spawn_point_pub(shop, radius);
+        let u = crate::natives::units::create_unit(self, player, id, x, y, 270.0);
+        let ctx = EventCtx { unit: shop, other_unit: u, ..Default::default() };
+        self.fire_unit_pair(vm, shop, EVENT_PLAYER_UNIT_SELL, EVENT_UNIT_SELL, ctx);
+        Ok(())
+    }
+
+    /// Gold, lumber, and seconds to revive a hero: its cost times ReviveBaseFactor plus
+    /// ReviveLevelFactor per level past the first, capped by ReviveMaxFactor and the
+    /// HeroMaxRevive* limits; time is its build time times level times ReviveTimeFactor.
+    pub fn revive_cost(&self, hero: u32) -> (i32, i32, f32) {
+        let Some(u) = self.unit(hero) else { return (0, 0, 0.0) };
+        let Some(o) = self.objects.units.get(u.type_id) else { return (0, 0, 0.0) };
+        let level = u.level.max(1) as f32;
+        let m = |k: &str, d: f32| self.misc_f32(k, d);
+        let max = m("ReviveMaxFactor", 4.0);
+        let gf = (m("ReviveBaseFactor", 0.4) + m("ReviveLevelFactor", 0.1) * (level - 1.0)).min(max);
+        let lf = (m("ReviveBaseLumberFactor", 0.0) + m("ReviveLumberLevelFactor", 0.0) * (level - 1.0)).min(max);
+        let gold = (o.real("goldcost") * gf).min(m("HeroMaxReviveCostGold", 700.0));
+        let lumber = (o.real("lumbercost") * lf).min(m("HeroMaxReviveCostLumber", 0.0).max(0.0));
+        let time = (o.real("bldtm") * level * m("ReviveTimeFactor", 0.65)).min(m("HeroMaxReviveTime", 150.0));
+        (gold as i32, lumber as i32, time)
+    }
+
+    /// Dead heroes an altar can bring back for its owner.
+    pub fn revivable(&self, altar: u32) -> Vec<u32> {
+        let Some(a) = self.unit(altar) else { return vec![] };
+        if self.ability_with_code(altar, "Arev").is_none() {
+            return vec![];
+        }
+        let owner = a.owner;
+        self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.is_hero && u.dead && u.owner == owner && !u.reviving)).collect()
+    }
+
+    pub fn start_revive(&mut self, vm: &mut Vm, altar: u32, hero: u32) -> Result<(), &'static str> {
+        if !self.revivable(altar).contains(&hero) {
+            return Err("");
+        }
+        if self.unit(altar).is_some_and(|a| a.revive.is_some() || !a.queue.is_empty()) {
+            return Err("");
+        }
+        let owner = self.unit(altar).unwrap().owner;
+        let (g, l, t) = self.revive_cost(hero);
+        let p = &self.players[owner as usize];
+        if p.get_state(player_state::RESOURCE_GOLD) < g {
+            return Err("Nogold");
+        }
+        if p.get_state(player_state::RESOURCE_LUMBER) < l {
+            return Err("Nolumber");
+        }
+        let p = &mut self.players[owner as usize];
+        *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) -= g;
+        *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) -= l;
+        self.unit_mut(altar).unwrap().revive = Some((hero, 0.0, t.max(0.01)));
+        self.unit_mut(hero).unwrap().reviving = true;
+        let ctx = EventCtx { unit: hero, ..Default::default() };
+        self.fire_unit_pair(vm, hero, EVENT_PLAYER_HERO_REVIVE_START, EVENT_PLAYER_HERO_REVIVE_START, ctx);
+        Ok(())
+    }
+
+    /// Advances an altar's revival; the hero returns beside it with HeroRevive* life
+    /// and mana.
+    pub fn update_revive(&mut self, vm: &mut Vm, altar: u32, dt: f32) {
+        let Some((hero, done, total)) = self.unit(altar).and_then(|a| a.revive) else { return };
+        let done = done + dt;
+        if done < total {
+            self.unit_mut(altar).unwrap().revive = Some((hero, done, total));
+            return;
+        }
+        self.unit_mut(altar).unwrap().revive = None;
+        let radius = self.unit(hero).map_or(16.0, |u| u.collision);
+        let (x, y) = self.spawn_point_pub(altar, radius);
+        self.revive_hero(hero, x, y);
+        let ctx = EventCtx { unit: hero, ..Default::default() };
+        self.fire_unit_pair(vm, hero, EVENT_PLAYER_HERO_REVIVE_FINISH, EVENT_PLAYER_HERO_REVIVE_FINISH, ctx);
+    }
+
+    /// Brings a dead hero back at a point (ReviveHero and altars).
+    pub fn revive_hero(&mut self, hero: u32, x: f32, y: f32) {
+        let life_f = self.misc_f32("HeroReviveLifeFactor", 1.0);
+        let mana_start = self.misc_f32("HeroReviveManaStart", 1.0);
+        let mana_f = self.misc_f32("HeroReviveManaFactor", 0.0);
+        let Some(u) = self.unit_mut(hero) else { return };
+        u.dead = false;
+        u.reviving = false;
+        u.hidden = false;
+        u.x = x;
+        u.y = y;
+        u.life = u.max_life * life_f;
+        // HeroReviveManaStart 1 restores the factor of maximum mana; else mana stays.
+        if mana_start != 0.0 {
+            u.mana = u.max_mana * mana_f;
+        }
+        u.action = Action::Idle;
+        u.anim = "stand".into();
+        u.anim_serial = u.anim_serial.wrapping_add(1);
+        if !self.unit_order.contains(&hero) {
+            self.unit_order.push(hero);
+        }
+        self.update_food();
+    }
+}

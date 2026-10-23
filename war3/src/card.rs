@@ -16,6 +16,12 @@ pub enum Action {
     Build(Id),
     LearnMenu,
     Learn(Id),
+    /// Buy an item from the selected shop.
+    Buy(Id),
+    /// Hire a unit from the selected shop.
+    Hire(Id),
+    /// Revive a dead hero at the selected altar.
+    Revive(u32),
     Cancel,
     CancelTrain,
 }
@@ -79,6 +85,31 @@ impl Commands {
             action,
             enabled,
         })
+    }
+
+    /// A shop's goods for the local player: items, hired units, and revivals.
+    pub fn shop_card(&self, w: &World, h: u32) -> Vec<Button> {
+        let local = w.local_player;
+        let (items, units) = w.shop_goods(h);
+        let has_shopper = w.shopper(local, h).is_some() || w.unit(h).is_some_and(|u| u.owner == local);
+        let mut out = Vec::new();
+        let gold = w.players[local as usize].get_state(1);
+        let lumber = w.players[local as usize].get_state(2);
+        for id in items {
+            let stock = w.stock_count(h, id);
+            let Some(o) = w.objects.items.get(id) else { continue };
+            let Some((x, y)) = parse_pos(&o.list("Buttonpos")) else { continue };
+            let ok = has_shopper && stock > 0 && gold >= o.int("goldcost") && lumber >= o.int("lumbercost");
+            out.push(Button { x, y, icon: o.str("Art"), hotkey: hotkey(&o.str("Hotkey")), action: Action::Buy(id), enabled: ok });
+        }
+        for id in units {
+            let stock = w.stock_count(h, id);
+            let Some(o) = w.objects.units.get(id) else { continue };
+            let Some((x, y)) = parse_pos(&o.list("Buttonpos")) else { continue };
+            let ok = has_shopper && stock > 0 && gold >= o.int("goldcost") && lumber >= o.int("lumbercost");
+            out.push(Button { x, y, icon: o.str("Art"), hotkey: hotkey(&o.str("Hotkey")), action: Action::Hire(id), enabled: ok });
+        }
+        out
     }
 
     /// Buttons for a unit owned by the local player.
@@ -184,7 +215,15 @@ impl Commands {
             let ready = order.is_empty() || w.can_cast(h, a).is_ok();
             out.push(Button { x, y, icon: ab.str("Art"), hotkey: hotkey(&ab.str("Hotkey")), action: Action::Order { order, targeted }, enabled: ready });
         }
-        if !u.queue.is_empty() {
+        // An altar offers its owner's dead heroes, where their train buttons would be.
+        for hero in w.revivable(h) {
+            let Some(hu) = w.unit(hero) else { continue };
+            let (g, l, _) = w.revive_cost(hero);
+            let p = &w.players[u.owner as usize];
+            let ok = p.get_state(1) >= g && p.get_state(2) >= l && u.revive.is_none();
+            out.extend(object_button(hu.type_id, Action::Revive(hero), ok));
+        }
+        if !u.queue.is_empty() || u.revive.is_some() {
             out.extend(self.command(db, "CmdCancelTrain", Action::CancelTrain, true));
         }
         // Later buttons with the same slot win, as the card fills in order.

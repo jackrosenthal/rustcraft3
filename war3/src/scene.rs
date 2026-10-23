@@ -782,6 +782,24 @@ impl Scene {
         let Some(g) = self.game.as_mut() else { return };
         let local = g.world.local_player;
         let mine: Vec<u32> = self.selection.iter().copied().filter(|&h| g.world.unit(h).is_some_and(|u| u.owner == local)).collect();
+        // Shops need not be the local player's own.
+        let first_any = self.selection.first().copied().unwrap_or(0);
+        if matches!(action, A::Buy(_) | A::Hire(_)) {
+            match action {
+                A::Buy(id) => {
+                    if let Err(e) = g.buy_item(local, first_any, id) {
+                        self.error(e);
+                    }
+                }
+                A::Hire(id) => {
+                    if let Err(e) = g.hire_unit(local, first_any, id) {
+                        self.error(e);
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
         let Some(&first) = mine.first() else { return };
         match action {
             A::Order { order, targeted: true } if !order.is_empty() => self.targeting = Some(order),
@@ -830,6 +848,23 @@ impl Scene {
                 }
             }
             A::CancelTrain => g.world.cancel_last(first),
+            A::Buy(id) => {
+                let local = g.world.local_player;
+                if let Err(e) = g.buy_item(local, first_any, id) {
+                    self.error(e);
+                }
+            }
+            A::Hire(id) => {
+                let local = g.world.local_player;
+                if let Err(e) = g.hire_unit(local, first_any, id) {
+                    self.error(e);
+                }
+            }
+            A::Revive(hero) => {
+                if let Err(e) = g.start_revive(first, hero) {
+                    self.error(e);
+                }
+            }
             A::Research(id) => {
                 if let Err(e) = g.world.research_at(first, id) {
                     self.error(e);
@@ -1146,7 +1181,15 @@ impl Scene {
                 hud.minimap_fog = true;
             }
             hud.card = match self.selection.first() {
-                Some(&h) if w.unit(h).is_some_and(|u| u.owner == w.local_player) => self.commands.card(&assets.frames, w, h, hud.page),
+                Some(&h) if w.unit(h).is_some_and(|u| u.owner == w.local_player) => {
+                    let mut card = self.commands.card(&assets.frames, w, h, hud.page);
+                    if hud.page == crate::card::Page::Main {
+                        card.extend(self.commands.shop_card(w, h));
+                    }
+                    card
+                }
+                // Neutral shops show their goods to everyone.
+                Some(&h) if w.ability_with_code(h, "Aneu").is_some() => self.commands.shop_card(w, h),
                 _ => Vec::new(),
             };
         }

@@ -353,7 +353,12 @@ impl World {
             if u.dead {
                 let decay = if u.is_building { self.misc_f32("StructureDecayTime", 30.0) } else { self.misc_f32("BoneDecayTime", 88.0) };
                 let t = self.time - u.death_time;
-                if t > decay {
+                // Dead heroes stay, out of sight, to be revived.
+                if u.is_hero {
+                    if t > decay && !u.hidden {
+                        self.unit_mut(h).unwrap().hidden = true;
+                    }
+                } else if t > decay {
                     crate::natives::units::remove_unit(self, h);
                 }
                 continue;
@@ -717,6 +722,10 @@ impl World {
     }
 
     /// A free spot near a structure for a new unit: the nearest walkable cell outside it.
+    pub fn spawn_point_pub(&self, h: u32, radius: f32) -> (f32, f32) {
+        self.spawn_point(h, radius)
+    }
+
     fn spawn_point(&self, h: u32, radius: f32) -> (f32, f32) {
         let u = self.unit(h).unwrap();
         let (x, y) = (u.x, u.y);
@@ -743,6 +752,7 @@ impl World {
     }
 
     fn update_structure(&mut self, vm: &mut Vm, h: u32, dt: f32) {
+        self.update_revive(vm, h, dt);
         // Construction.
         if let Some(left) = self.unit(h).and_then(|u| u.constructing) {
             let left = left - dt;

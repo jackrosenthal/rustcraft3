@@ -111,6 +111,7 @@ pub struct World {
     /// AI_DIFFICULTY_* per computer player.
     pub ai_difficulty: HashMap<u8, i32>,
     pub fog: Option<crate::fog::FogMap>,
+    pub shops: crate::shops::Shops,
 }
 
 /// Ground heights for GetLocationZ and unit placement.
@@ -233,6 +234,7 @@ impl World {
             ai_current: None,
             ai_difficulty: HashMap::new(),
             fog: None,
+            shops: Default::default(),
         }
     }
 
@@ -479,6 +481,7 @@ impl World {
         self.regenerate(dt);
         self.update_buffs(vm, dt);
         self.update_fog(dt);
+        self.update_shops(dt);
         self.update_ai(dt);
 
         // Timers.

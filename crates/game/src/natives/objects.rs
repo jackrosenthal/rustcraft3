@@ -97,6 +97,11 @@ pub fn create_item(w: &mut World, id: Id, x: f32, y: f32) -> u32 {
     h
 }
 
+fn add_stock(w: &mut World, shop: u32, id: Id, current: i32, max: i32) {
+    let regen = w.objects.items.get(id).or_else(|| w.objects.units.get(id)).map_or(0.0, |o| o.real("stockRegen"));
+    w.shops.added.insert((shop, id), crate::shops::Stock { count: current, max, timer: regen, regen });
+}
+
 /// A random item type of a level (and class: ITEM_TYPE_* from common.j), among those
 /// marked pickRandom in ItemData; -1 for any level.
 fn choose_random_item(w: &mut World, class: Option<i32>, level: i32) -> i32 {
@@ -243,6 +248,29 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetFilterDestructable => |w, _, _| handle(w.enum_ctx.filter_destructable),
         CreateItem => |w, _, a| handle(create_item(w, id_from_int(a.i(0)), a.r(1), a.r(2))),
         GetManipulatedItem => |w, _, _| handle(w.ctx.item),
+        GetSoldItem => |w, _, _| handle(w.ctx.item),
+        GetSoldUnit => |w, _, _| handle(w.ctx.other_unit),
+        GetBuyingUnit => |w, _, _| handle(w.ctx.other_unit),
+        GetSellingUnit => |w, _, _| handle(w.ctx.unit),
+        GetRevivingUnit => |w, _, _| handle(w.ctx.unit),
+        GetRevivableUnit => |w, _, _| handle(w.ctx.unit),
+        ReviveHero => |w, _, a| {
+            let (h, x, y) = (a.h(0), a.r(1), a.r(2));
+            let ok = w.unit(h).is_some_and(|u| u.is_hero && u.dead);
+            if ok { w.revive_hero(h, x, y); }
+            boolean(ok)
+        },
+        ReviveHeroLoc => |w, _, a| {
+            let h = a.h(0);
+            let Some((x, y)) = w.location(a.h(1)) else { return boolean(false) };
+            let ok = w.unit(h).is_some_and(|u| u.is_hero && u.dead);
+            if ok { w.revive_hero(h, x, y); }
+            boolean(ok)
+        },
+        AddItemToStock => |w, _, a| { add_stock(w, a.h(0), id_from_int(a.i(1)), a.i(2), a.i(3)); none() },
+        AddUnitToStock => |w, _, a| { add_stock(w, a.h(0), id_from_int(a.i(1)), a.i(2), a.i(3)); none() },
+        RemoveItemFromStock => |w, _, a| { w.shops.added.remove(&(a.h(0), id_from_int(a.i(1)))); none() },
+        RemoveUnitFromStock => |w, _, a| { w.shops.added.remove(&(a.h(0), id_from_int(a.i(1)))); none() },
         UnitInventorySize => |w, _, a| int(w.inventory_size(a.h(0)) as i32),
         UnitItemInSlot => |w, _, a| {
             let s = a.i(1);

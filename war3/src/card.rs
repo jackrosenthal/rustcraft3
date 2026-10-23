@@ -345,7 +345,7 @@ impl Commands {
             let uber = fill_placeholders(w, &level_entry(&ab.list(uber_key), level));
             let mana = ab.int(&format!("Cost{level}"));
             // An ability without an order string uses its code's built-in order.
-            let action = match w3_game::ability::intrinsic_order(&code) {
+            let action = match w.intrinsic_order_of(a) {
                 Some(id) if order.is_empty() && targeting != w3_game::ability::Targeting::Passive => Action::OrderId { order: id, targeted },
                 _ => Action::Order { order, targeted },
             };

@@ -25,6 +25,10 @@ impl World {
 
     /// Removes buffs a dispel takes: from an ally of the caster those its enemies cast,
     /// from an enemy those its allies cast.  Summoned units take `summon_damage`.
+    pub(crate) fn dispel_pub(&mut self, vm: &mut Vm, caster: u32, target: u32, summon_damage: f32) -> usize {
+        self.dispel(vm, caster, target, summon_damage)
+    }
+
     fn dispel(&mut self, vm: &mut Vm, caster: u32, target: u32, summon_damage: f32) -> usize {
         let Some(owner) = self.unit(caster).map(|u| u.owner) else { return 0 };
         let Some(tu) = self.unit(target) else { return 0 };

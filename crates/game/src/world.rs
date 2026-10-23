@@ -232,6 +232,9 @@ pub struct World {
     /// The last Spirit Link group made.
     #[serde(default)]
     pub next_link_group: u32,
+    /// Mana Flare: when each (flaring unit, caster) pair may next strike.
+    #[serde(skip)]
+    pub flare_cooldowns: std::collections::HashMap<(u32, u32), f32>,
     /// Areas revealing invisible units to a player until a game time (Reveal, Flare):
     /// player, x, y, radius, and the time.
     #[serde(default)]
@@ -401,6 +404,7 @@ impl World {
             timed_removals: Vec::new(),
             timed_activations: Vec::new(),
             next_link_group: 0,
+            flare_cooldowns: Default::default(),
             detect_areas: Vec::new(),
         }
     }

@@ -456,6 +456,36 @@ impl World {
                 self.begin_possession(h, a, lvl, target);
                 true
             }
+            "Acoi" => {
+                self.couple(h, a, lvl, target);
+                true
+            }
+            "Adec" => {
+                self.decouple(h, a, lvl);
+                true
+            }
+            "Adtn" => {
+                self.detonate(vm, h, a, lvl, x, y);
+                true
+            }
+            "Aeat" => {
+                self.eat_tree(vm, h, a, lvl, target);
+                true
+            }
+            "Avng" => {
+                self.vengeance(h, a, lvl, target);
+                true
+            }
+            // Mana Flare: the caster channels its flare for Dur.
+            "Amfl" => {
+                let duration = self.d(a, "Dur", lvl);
+                let buff = self.buff_of(a, lvl);
+                self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: duration, ..Default::default() });
+                if let Some(u) = self.unit_mut(h) {
+                    u.channel = Some(Channel { ability: a, level: lvl, target: 0, x, y, elapsed: 0.0, duration, interval: duration + 1.0, next: duration + 1.0, waves: 0, link: 0, held: [0; 4] });
+                }
+                true
+            }
             "AOre" | "AEev" | "AOcr" | "AHbh" | "AUts" | "AEah" | "AUav" => true,
             _ => false,
         }

@@ -304,6 +304,9 @@ pub struct UnitExtra {
     /// Units a Kodo has devoured.
     #[serde(default)]
     pub devoured: Vec<u32>,
+    /// The unit whose spell raised this one (Vengeance), for its limit.
+    #[serde(default)]
+    pub summoner: u32,
 }
 
 impl Default for UnitExtra {
@@ -343,6 +346,7 @@ impl Default for UnitExtra {
             morph_revert: None,
             last_attacked: -100.0,
             devoured: Vec::new(),
+            summoner: 0,
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,

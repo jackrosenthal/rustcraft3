@@ -38,12 +38,12 @@ pub fn intrinsic_order(code: &str) -> Option<i32> {
 
 /// Abilities whose code takes a point rather than a unit target.
 fn point_target(code: &str) -> bool {
-    matches!(code, "AIta" | "Afla" | "Aclf" | "AHbz" | "AHfs" | "AOsh" | "AUcs" | "AUim" | "ANrf" | "AEbl" | "AUin" | "AOeq" | "AOsw" | "AOfs" | "AUdd" | "AEfn" | "ANst" | "ANvc" | "Adro" | "Aroo" | "Adis" | "Advm" | "Ahwd" | "Aeye" | "Asta" | "ANbf" | "ANcs" | "ANdp" | "ANrc" | "ANhs" | "ANsi" | "ANto" | "ANdh")
+    matches!(code, "Adtn" | "AIta" | "Afla" | "Aclf" | "AHbz" | "AHfs" | "AOsh" | "AUcs" | "AUim" | "ANrf" | "AEbl" | "AUin" | "AOeq" | "AOsw" | "AOfs" | "AUdd" | "AEfn" | "ANst" | "ANvc" | "Adro" | "Aroo" | "Adis" | "Advm" | "Ahwd" | "Aeye" | "Asta" | "ANbf" | "ANcs" | "ANdp" | "ANrc" | "ANhs" | "ANsi" | "ANto" | "ANdh")
 }
 
 /// Abilities with no target (cast instantly around the caster).
 fn no_target(code: &str) -> bool {
-    matches!(code, "Amic" | "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "ANsy" | "Astd" | "Abtl" | "Arai" | "Aroa" | "Atau" | "Absk" | "ANef" | "ANht" | "ANms" | "ANlm" | "ANsg" | "ANsq" | "ANsw")
+    matches!(code, "Amic" | "Adec" | "Amfl" | "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "ANsy" | "Astd" | "Abtl" | "Arai" | "Aroa" | "Atau" | "Absk" | "ANef" | "ANht" | "ANms" | "ANlm" | "ANsg" | "ANsq" | "ANsw")
 }
 
 /// Passive abilities and auras.
@@ -115,7 +115,18 @@ impl World {
     /// The unit's ability with `order` built into its code.
     pub fn ability_for_intrinsic_order(&self, h: u32, order: i32) -> Option<Id> {
         let u = self.unit(h)?;
-        u.abilities.iter().map(|(a, _)| *a).find(|&a| intrinsic_order(&self.ability_code(a)) == Some(order))
+        u.abilities.iter().map(|(a, _)| *a).find(|&a| self.intrinsic_order_of(a) == Some(order))
+    }
+
+    /// An ability's built-in order: its code's, or for Mount Hippogryph (Acoi) the
+    /// archer's mounthippogryph (DataB 0, CAbilityCoupleArcher) or the hippogryph's
+    /// loadarcher (CAbilityCoupleHippogryph).
+    pub fn intrinsic_order_of(&self, a: Id) -> Option<i32> {
+        let code = self.ability_code(a);
+        if code == "Acoi" {
+            return Some(if self.data(a, "DataB", 1) == 0.0 { 852143 } else { 852142 });
+        }
+        intrinsic_order(&code)
     }
 
     /// Movement, attack-speed, armor, and damage factors from a unit's buffs.
@@ -365,11 +376,14 @@ impl World {
         let mult: f32 = self.misc.get_list("Misc", "DamageBonusSpells").get(col).and_then(|v| v.trim().parse().ok()).unwrap_or(1.0);
         // Ethereal units take EtherealDamageBonus's SPELLS factor.
         let ethereal: f32 = if self.is_ethereal(target) { self.misc.get_list("Misc", "EtherealDamageBonus").get(5).and_then(|v| v.trim().parse().ok()).unwrap_or(1.0) } else { 1.0 };
-        let dmg = amount * mult * ethereal;
+        let dmg = self.elunes_grace(target, "spells", amount * mult * ethereal);
         let owner = t.owner;
         self.wake(target);
         let linked_dead = self.take_life(target, dmg);
         let dead = self.unit(target).is_some_and(|t| t.life <= 0.405);
+        if !dead {
+            self.phase_shift(target);
+        }
         for d in linked_dead {
             crate::natives::units::kill_unit(self, vm, d, source);
         }
@@ -497,6 +511,9 @@ impl World {
             u.casting = Some((elapsed, true));
             let ctx = EventCtx { target_unit: target, spell_ability: crate::objects::id_to_int(a), order_x: goal.0, order_y: goal.1, ..Default::default() };
             self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_SPELL_EFFECT, EVENT_UNIT_SPELL_EFFECT, ctx);
+            if cost > 0.0 {
+                self.mana_flare(vm, h, cost);
+            }
             // CasterArt at the caster and TargetArt at the target, as the ability lists.
             let (cx, cy) = self.unit(h).map_or(goal, |u| (u.x, u.y));
             let caster_art = self.profile_art(a, "CasterArt");

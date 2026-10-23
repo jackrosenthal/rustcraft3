@@ -363,6 +363,12 @@ pub struct UnitExtra {
     /// Abilities whose AI rests until a time (spellai.rs).
     #[serde(default)]
     pub ai_rest: Vec<(Id, f32)>,
+    /// When the AI next looks about for its area spells (spellai.rs).
+    #[serde(default)]
+    pub ai_watch: f32,
+    /// The units each watching ability saw inside its range last time.
+    #[serde(default)]
+    pub ai_inside: Vec<(Id, Vec<u32>)>,
     /// Orders given with Shift, waiting for the ones before them: id, point, target.
     #[serde(default)]
     pub order_queue: std::collections::VecDeque<(i32, f32, f32, u32)>,
@@ -425,6 +431,8 @@ impl Default for UnitExtra {
             restore: None,
             swapped: Vec::new(),
             ai_rest: Vec::new(),
+            ai_watch: 0.0,
+            ai_inside: Vec::new(),
             order_queue: Default::default(),
             resume: None,
             repair_debt: (0.0, 0.0),
@@ -557,6 +565,9 @@ pub struct Channel {
     /// Stampede's lanes run (stampede.rs).
     #[serde(default)]
     pub lanes: u8,
+    /// A computer's channel: its AI's re-checks failed in a row (spellai.rs).
+    #[serde(default)]
+    pub ai_fails: u8,
     #[serde(default)]
     pub held: Id,
 }

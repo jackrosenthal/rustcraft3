@@ -861,4 +861,119 @@ impl World {
         }
         self.ai_carrion_swarm(h, a, lvl, enemy, victim);
     }
+
+    /// The area spells' watch (their vf50, FUN_6f05c020): every half second a
+    /// computer's or creep's unit with one of them looks at the units within the
+    /// spell's cast range (1000 for Death and Decay), and each enemy that has come
+    /// within it since lets the spell weigh it (their vf3 on the watch event).
+    pub(crate) fn update_spell_watch(&mut self) {
+        let now = self.time;
+        let casters: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.paused && u.extra.ai_watch <= now && u.abilities.iter().any(|&(a, l)| l > 0 && WATCHED.contains(&self.ability_code(a).as_str())))).collect();
+        for h in casters {
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.ai_watch = now + 0.5;
+            }
+            if !self.ai_controlled(h) || self.unit(h).is_some_and(|u| matches!(u.action, Action::Cast { .. })) {
+                continue;
+            }
+            let abilities: Vec<(Id, i32)> = self.unit(h).map(|u| u.abilities.clone()).unwrap_or_default();
+            for (a, lvl) in abilities {
+                let code = self.ability_code(a);
+                if lvl <= 0 || !WATCHED.contains(&code.as_str()) {
+                    continue;
+                }
+                let lvl = lvl as u32;
+                let radius = if code == "AUdd" { 1000.0 } else { self.data(a, "Rng", lvl) };
+                let (x, y, owner) = self.unit(h).map(|u| (u.x, u.y, u.owner)).unwrap();
+                let near: Vec<u32> = self.unit_order.iter().copied().filter(|&t| self.unit(t).is_some_and(|u| !u.dead && !u.hidden && (u.x - x).hypot(u.y - y) <= radius && !crate::natives::players::is_ally(self, owner, u.owner))).collect();
+                let before = self.unit(h).and_then(|u| u.extra.ai_inside.iter().find(|e| e.0 == a).map(|e| e.1.clone())).unwrap_or_default();
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.ai_inside.retain(|e| e.0 != a);
+                    u.extra.ai_inside.push((a, near.clone()));
+                }
+                for t in near.into_iter().filter(|t| !before.contains(t)) {
+                    match code.as_str() {
+                        "AHbz" | "ANrf" => self.ai_blizzard(h, a, lvl, t),
+                        "AUdd" => self.ai_death_and_decay(h, a, lvl, t),
+                        _ => {}
+                    }
+                    if self.unit(h).is_some_and(|u| matches!(u.action, Action::Cast { .. })) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /// FUN_6f603610 and the like: the census at the spell's point within its Area.
+    fn point_census(&self, h: u32, a: Id, lvl: u32, x: f32, y: f32) -> Census {
+        self.census(h, x, y, self.data(a, "Area", lvl), false)
+    }
+
+    /// Blizzard, Rain of Fire (FUN_6f604060): with its AI ready, on an enemy when
+    /// around it more than one enemy is on the ground and the enemies are at least
+    /// twice the caster's side (FUN_6f603610).
+    fn ai_blizzard(&mut self, h: u32, a: Id, lvl: u32, t: u32) {
+        if self.ai_resting(h, a) || self.can_cast(h, a).is_err() {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(t);
+        let c = self.point_census(h, a, lvl, x, y);
+        if c.enemies - c.enemy_flying > 1 && c.allies * 2 <= c.enemies {
+            self.ai_cast(h, a, t);
+        }
+    }
+
+    /// Death and Decay (FUN_6f6042d0, its vf267): on an armed enemy structure when at
+    /// least 2 structures stand within Area of it.
+    fn ai_death_and_decay(&mut self, h: u32, a: Id, lvl: u32, t: u32) {
+        if self.can_cast(h, a).is_err() {
+            return;
+        }
+        let Some(u) = self.unit(t) else { return };
+        if !u.is_building || crate::sim::unit_weapons(self, u).is_empty() {
+            return;
+        }
+        let (x, y) = (u.x, u.y);
+        if self.point_census(h, a, lvl, x, y).enemy_structures >= 2 {
+            self.ai_cast(h, a, t);
+        }
+    }
+
+    /// A computer's area channel re-checks its spot each tick (FUN_6f6109b0,
+    /// FUN_6f610a30): Blizzard and Rain of Fire while the enemies there outnumber the
+    /// caster's side; Death and Decay while structures there are not outnumbered by
+    /// its side, or, with none, enemies remain and none of its side.  After 3 failures
+    /// in a row it stops; returns whether it did.
+    pub(crate) fn ai_channel_recheck(&mut self, h: u32, c: &mut Channel) -> bool {
+        if !self.ai_controlled(h) {
+            return false;
+        }
+        let code = self.ability_code(c.ability);
+        let census = || self.point_census(h, c.ability, c.level, c.x, c.y);
+        let ok = match code.as_str() {
+            "AHbz" | "ANrf" => {
+                let n = census();
+                n.allies < n.enemies
+            }
+            "AUdd" => {
+                let n = census();
+                if n.enemy_structures == 0 { n.allies == 0 && n.enemies != 0 } else { n.enemies >= n.allies }
+            }
+            _ => return false,
+        };
+        c.ai_fails = if ok { 0 } else { c.ai_fails + 1 };
+        if c.ai_fails > 2 {
+            c.elapsed = c.duration + 1.0;
+            if let Some(u) = self.unit_mut(h) {
+                u.action = Action::Idle;
+            }
+            return true;
+        }
+        false
+    }
 }
+
+/// Abilities whose AI watches the units about the caster.
+const WATCHED: [&str; 3] = ["AHbz", "ANrf", "AUdd"];

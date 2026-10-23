@@ -400,8 +400,12 @@ impl World {
         self.leave_mine(h);
         if let Some(u) = self.unit_mut(h) {
             u.action = action;
-            // A new order cuts off a cast's backswing (and a channel, below).
+            // A new order cuts off an attack or a cast's swing (and a channel, below),
+            // unless it is the same attack.
             u.casting = None;
+            if !matches!((&u.action, &u.swing), (Action::Attack { target: t }, Some(s)) if *t == s.target) {
+                u.swing = None;
+            }
             u.path.clear();
             u.repath_timer = 0.0;
             u.order = Order { id: order, target_x: x, target_y: y, target };
@@ -583,7 +587,9 @@ impl World {
         self.fire(vm, ctx, |_, k| matches!(k, EventKind::Unit { unit, event } if *unit == target && *event == EVENT_UNIT_DAMAGED));
         if dead {
             kill_unit(self, vm, target, source);
-        } else if let Some(t) = self.unit(target) {
+        } else if self.unit(target).is_some() {
+            self.call_for_help(target, source);
+            let Some(t) = self.unit(target) else { return };
             // Retaliate when idle.
             if matches!(t.action, Action::Idle) && !unit_weapons(self, t).is_empty() && !t.is_building {
                 if let Some(s) = self.unit(source) {

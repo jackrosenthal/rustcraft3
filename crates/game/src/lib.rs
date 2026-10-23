@@ -13,6 +13,7 @@ pub mod handles;
 pub mod hero;
 pub mod humanspells;
 pub mod nightelfspells;
+pub mod guard;
 pub mod orcspells;
 pub mod undeadspells;
 pub mod herospells;

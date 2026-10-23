@@ -158,7 +158,32 @@ impl PathingMap {
         if self.line_clear_kind(from, to, radius, kind) {
             return vec![to];
         }
-        let start = self.cell_of(from.0, from.1);
+        let mut start = self.cell_of(from.0, from.1);
+        // A unit pushed onto ground it cannot stand on first steps off it to the
+        // nearest cell it fits.
+        let mut lead = None;
+        if !self.fits_kind(start, radius, kind) {
+            'ring: for r in 1..=16i32 {
+                for dy in -r..=r {
+                    for dx in -r..=r {
+                        if dx.abs() != r && dy.abs() != r {
+                            continue;
+                        }
+                        let c = (start.0 + dx, start.1 + dy);
+                        if self.index(c).is_some() && self.fits_kind(c, radius, kind) {
+                            start = c;
+                            lead = Some(self.center(c));
+                            break 'ring;
+                        }
+                    }
+                }
+            }
+            if let Some(p) = lead {
+                let mut rest = self.find_path_kind(p, to, radius, max_nodes, kind);
+                rest.insert(0, p);
+                return rest;
+            }
+        }
         let goal = self.cell_of(to.0, to.1);
         let n = (self.width * self.height) as usize;
         let mut g = vec![f32::INFINITY; n];

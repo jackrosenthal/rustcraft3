@@ -126,6 +126,11 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
             }
         }
     }
+    let mut unit = unit;
+    // Creeps keep to where they settle once made (NaN until the first update).
+    if owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !unit.is_building {
+        unit.extra.home = Some((f32::NAN, f32::NAN));
+    }
     let h = w.handles.insert(Obj::Unit(Box::new(unit)));
     if let Some(u) = w.unit_mut(h) {
         u.handle = h;

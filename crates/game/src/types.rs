@@ -313,6 +313,14 @@ pub struct UnitExtra {
     /// War Club: attacks left with the tree, and the ability.
     #[serde(default)]
     pub club: Option<(Id, i32)>,
+    /// A creep's camp, whether it is heading back to it, and since when it has been
+    /// beyond GuardDistance.
+    #[serde(default)]
+    pub home: Option<(f32, f32)>,
+    #[serde(default)]
+    pub returning: bool,
+    #[serde(default)]
+    pub strayed: Option<f32>,
 }
 
 impl Default for UnitExtra {
@@ -355,6 +363,9 @@ impl Default for UnitExtra {
             summoner: 0,
             corpses: Vec::new(),
             club: None,
+            home: None,
+            returning: false,
+            strayed: None,
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,

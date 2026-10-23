@@ -388,6 +388,24 @@ pub struct Effect {
     pub destroyed: bool,
 }
 
+/// A script dialog (DialogCreate): a message over a column of buttons.
+#[derive(Clone, Debug, Default)]
+pub struct Dialog {
+    pub message: String,
+    pub buttons: Vec<u32>,
+    /// Players it is shown to, as a bit mask.
+    pub shown: u32,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct DialogButton {
+    pub dialog: u32,
+    pub text: String,
+    pub hotkey: i32,
+    /// DialogAddQuitButton: clicking it ends the game, optionally to the score screen.
+    pub quit: Option<bool>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Sound {
     pub path: String,
@@ -549,6 +567,8 @@ pub enum Obj {
     GameCache(Box<GameCache>),
     CameraSetup(Box<CameraSetup>),
     FogModifier(crate::fog::FogModifier),
+    Dialog(Dialog),
+    DialogButton(DialogButton),
     /// Objects the simulation does not model yet; the handle stays valid.
     Opaque(&'static str),
 }

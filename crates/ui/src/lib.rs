@@ -207,6 +207,9 @@ pub struct Frame {
     pub items: Vec<String>,
     pub selected: usize,
     pub open: bool,
+    /// Which part of the frame its anchors fixed (0 left or bottom, 0.5 center, 1 right
+    /// or top); a text frame without a size grows from there to fit its text.
+    pub anchor: (f32, f32),
 }
 
 #[derive(Default)]
@@ -256,6 +259,7 @@ impl FrameTree {
             items: Vec::new(),
             selected: 0,
             open: false,
+            anchor: (0.0, 0.0),
         });
         t
     }
@@ -300,6 +304,7 @@ impl FrameTree {
             items: Vec::new(),
             selected: 0,
             open: false,
+            anchor: (0.0, 0.0),
         });
         if !name.is_empty() {
             self.by_name.insert(name, i);
@@ -389,6 +394,7 @@ impl FrameTree {
                 }
                 if let Some(r) = self.solve(i) {
                     self.frames[i].rect = Some(r);
+                    self.frames[i].anchor = self.anchor_of(i);
                     progress = true;
                 }
             }
@@ -396,6 +402,18 @@ impl FrameTree {
                 break;
             }
         }
+    }
+
+    /// The fraction of the frame its anchor points fix, per axis.
+    fn anchor_of(&self, i: usize) -> (f32, f32) {
+        let f = &self.frames[i];
+        let (mut ax, mut ay) = (None, None);
+        for p in &f.points {
+            let (px, py) = p.point.frac();
+            ax = Some(match ax { Some(a) if a != px => 0.0, _ => px });
+            ay = Some(match ay { Some(a) if a != py => 0.0, _ => py });
+        }
+        (ax.unwrap_or(0.0), ay.unwrap_or(1.0))
     }
 
     fn solve(&self, i: usize) -> Option<Rect> {
@@ -429,7 +447,14 @@ impl FrameTree {
             }
         }
         let w = f.width.unwrap_or(0.0);
-        let h = f.height.unwrap_or(0.0);
+        // A text frame without a height is one line of its font tall.
+        let h = f.height.unwrap_or_else(|| {
+            if f.def.kind == "TEXT" && f.text.as_deref().is_some_and(|t| !t.is_empty()) {
+                f.def.prop("FrameFont").or_else(|| f.def.prop("Font")).and_then(|p| p.args.get(1).map(Arg::num)).unwrap_or(0.0)
+            } else {
+                0.0
+            }
+        });
         let (x0, x1) = match (x0, x1, cx) {
             (Some(a), Some(b), _) => (a, b),
             (Some(a), None, _) => (a, a + w),
@@ -890,6 +915,21 @@ impl FrameTree {
                 };
                 // CTextFrame starts white (0xffffffff) until FontColor sets it.
                 let color = color_prop(d.prop(color_key).or_else(|| d.prop("FontColor")), [1.0; 4]);
+                // Without a size, the text sizes itself around the anchored point.
+                let (mut jh, mut jv) = (justify("FontJustificationH", Justify::Middle), justify("FontJustificationV", Justify::Middle));
+                let mut r = r;
+                if r.w() < 1e-6 {
+                    let (ax, x) = (f.anchor.0, r.x0);
+                    r.x0 = x - 2.0 * ax;
+                    r.x1 = x + 2.0 * (1.0 - ax);
+                    jh = if ax < 0.25 { Justify::Start } else if ax > 0.75 { Justify::End } else { Justify::Middle };
+                }
+                if r.h() < 1e-6 {
+                    let (ay, y) = (f.anchor.1, r.y0);
+                    r.y0 = y - 2.0 * ay;
+                    r.y1 = y + 2.0 * (1.0 - ay);
+                    jv = if ay > 0.75 { Justify::Start } else if ay < 0.25 { Justify::End } else { Justify::Middle };
+                }
                 // A pressed button moves its text by ButtonPushedTextOffset.
                 let r = match owner.filter(|o| o.pushed).and_then(|o| o.def.prop("ButtonPushedTextOffset")) {
                     Some(p) => {
@@ -908,8 +948,8 @@ impl FrameTree {
                     rect: r,
                     text: text.clone(),
                     color,
-                    justify_h: justify("FontJustificationH", Justify::Middle),
-                    justify_v: justify("FontJustificationV", Justify::Middle),
+                    justify_h: jh,
+                    justify_v: jv,
                     shadow,
                 });
             }
@@ -937,8 +977,11 @@ impl FrameTree {
         }
     }
 
-    fn draw_backdrop(&self, _db: &FrameDb, d: &Def, r: Rect, file: &dyn Fn(&str) -> String, out: &mut Vec<Draw>) {
+    fn draw_backdrop(&self, db: &FrameDb, d: &Def, r: Rect, owner_file: &dyn Fn(&str) -> String, out: &mut Vec<Draw>) {
         let color = [1.0; 4];
+        // A backdrop decorates its file names when it or its owner says so.
+        let own = |n: &str| db.decorate(n);
+        let file: &dyn Fn(&str) -> String = if d.has("DecorateFileNames") { &own } else { owner_file };
         let insets: Vec<f32> = d.prop("BackdropBackgroundInsets").map(|p| p.args.iter().map(Arg::num).collect()).unwrap_or_default();
         let ins = |i: usize| insets.get(i).copied().unwrap_or(0.0);
         if let Some(bg) = d.str("BackdropBackground") {
@@ -974,14 +1017,15 @@ impl FrameTree {
             let u = piece(1.0);
             push(Rect { x0: r.x1 - c, x1: r.x1, y0: r.y0 + c, y1: r.y1 - c }, [u[0], 0.0, u[2], vx], false);
         }
-        // Top and bottom pieces are stored rotated a quarter turn.
+        // Top and bottom pieces are stored rotated a quarter turn, their outer side at the
+        // piece's left for the top edge and its right for the bottom edge.
         if has("T") {
             let u = piece(2.0);
-            push(Rect { x0: r.x0 + c, x1: r.x1 - c, y0: r.y1 - c, y1: r.y1 }, [u[0], 0.0, u[2], vy], true);
+            push(Rect { x0: r.x0 + c, x1: r.x1 - c, y0: r.y1 - c, y1: r.y1 }, [u[2], 0.0, u[0], vy], true);
         }
         if has("B") {
             let u = piece(3.0);
-            push(Rect { x0: r.x0 + c, x1: r.x1 - c, y0: r.y0, y1: r.y0 + c }, [u[0], 0.0, u[2], vy], true);
+            push(Rect { x0: r.x0 + c, x1: r.x1 - c, y0: r.y0, y1: r.y0 + c }, [u[2], 0.0, u[0], vy], true);
         }
         if has("UL") {
             push(Rect { x0: r.x0, x1: r.x0 + c, y0: r.y1 - c, y1: r.y1 }, piece(4.0), false);

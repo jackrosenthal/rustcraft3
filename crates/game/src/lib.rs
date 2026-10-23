@@ -237,6 +237,29 @@ impl Game {
         Ok(())
     }
 
+    /// A player clicked a dialog button: the dialog closes for them, then the button's
+    /// and the dialog's click events fire (EVENT_DIALOG_BUTTON_CLICK, EVENT_DIALOG_CLICK).
+    pub fn click_dialog_button(&mut self, player: u8, button: u32) {
+        let Some(types::Obj::DialogButton(b)) = self.world.handles.get(button) else { return };
+        let (dialog, quit) = (b.dialog, b.quit);
+        if let Some(types::Obj::Dialog(d)) = self.world.handles.get_mut(dialog) {
+            d.shown &= !(1 << player);
+        }
+        use event_ids::*;
+        let ctx = types::EventCtx { dialog, button, player, has_player: true, event_id: EVENT_DIALOG_BUTTON_CLICK, ..Default::default() };
+        self.world.fire(&mut self.vm, ctx, move |_, k| matches!(k, types::EventKind::DialogButton(b) if *b == button));
+        let ctx = types::EventCtx { dialog, button, player, has_player: true, event_id: EVENT_DIALOG_CLICK, ..Default::default() };
+        self.world.fire(&mut self.vm, ctx, move |_, k| matches!(k, types::EventKind::Dialog(d) if *d == dialog));
+        if quit.is_some() {
+            self.world.requests.push(world::Request::EndGame);
+        }
+    }
+
+    /// Kills a unit (for tools and tests).
+    pub fn kill(&mut self, h: u32) {
+        natives::units::kill_unit(&mut self.world, &mut self.vm, h, 0);
+    }
+
     /// Advances the simulation.
     pub fn tick(&mut self, dt: f32) {
         self.world.tick(&mut self.vm, dt);

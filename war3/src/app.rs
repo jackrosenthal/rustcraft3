@@ -21,6 +21,8 @@ struct Running {
     scene: Option<Scene>,
     /// The menus, shown when no game is running.
     glue: Option<crate::glue::Glue>,
+    /// The menus kept while a game runs, to return to afterwards.
+    glue_saved: Option<crate::glue::Glue>,
     /// Sound output, handed to each game.
     audio: Option<w3_audio::Audio>,
     assets: Assets,
@@ -101,6 +103,7 @@ impl App {
             gpu,
             scene,
             glue,
+            glue_saved: None,
             audio,
             assets,
             last: Instant::now(),
@@ -242,6 +245,20 @@ impl ApplicationHandler for App {
                     scene.camera.target.y += d.y * speed;
                     scene.update(dt);
                     scene.update_audio(&r.assets);
+                    if scene.ended {
+                        // Back to the screen the game started from, with the glue music.
+                        let mut audio = scene.audio.take();
+                        if let (Some(a), Some(music)) = (audio.as_mut(), r.assets.frames.skin_value("GlueMusic")) {
+                            a.play_music(&music, false, 0);
+                        }
+                        r.audio = audio;
+                        r.scene = None;
+                        r.glue = r.glue_saved.take();
+                        if r.glue.is_none() {
+                            r.glue = Some(crate::glue::Glue::new(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets));
+                        }
+                        return;
+                    }
                     scene.sync_units(&r.gpu.device, &r.gpu.queue, &mut r.assets);
                     scene.sync_destructables(&r.gpu.device, &r.gpu.queue, &mut r.assets);
                 }
@@ -275,7 +292,7 @@ impl ApplicationHandler for App {
                                         s.audio = Some(a);
                                     }
                                     r.scene = Some(s);
-                                    r.glue = None;
+                                    r.glue_saved = r.glue.take();
                                 }
                                 Err(e) => log::error!("loading {}: {e:#}", path.display()),
                             }

@@ -43,6 +43,18 @@ fn set_fog_state(w: &mut World, player: u8, state: i32, shape: FogShape, _shared
     none()
 }
 
+fn add_dialog_button(w: &mut World, b: DialogButton) -> w3_jass::NativeResult {
+    let dialog = b.dialog;
+    if !matches!(w.handles.get(dialog), Some(Obj::Dialog(_))) {
+        return none();
+    }
+    let h = w.handles.insert(Obj::DialogButton(b));
+    if let Some(Obj::Dialog(d)) = w.handles.get_mut(dialog) {
+        d.buttons.push(h);
+    }
+    handle(h)
+}
+
 fn destroy_opaque(w: &mut World, h: u32) {
     if matches!(w.handles.get(h), Some(Obj::Opaque(_))) {
         w.handles.remove(h);
@@ -279,13 +291,46 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetTextTagAge => |w, _, a| { let v = a.r(1); if let Some(t) = tag_mut(w, a.h(0)) { t.age = v; } none() },
         SetTextTagLifespan => |w, _, a| { let v = a.r(1); if let Some(t) = tag_mut(w, a.h(0)) { t.lifespan = v; } none() },
         SetTextTagFadepoint => |w, _, a| { let v = a.r(1); if let Some(t) = tag_mut(w, a.h(0)) { t.fadepoint = v; } none() },
-        DialogCreate => |w, _, _| opaque(w, "dialog"),
-        DialogDestroy => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
-        DialogClear => |_, _, _| none(),
-        DialogSetMessage => |_, _, _| none(),
-        DialogAddButton => |w, _, _| opaque(w, "button"),
-        DialogAddQuitButton => |w, _, _| opaque(w, "button"),
-        DialogDisplay => |_, _, _| none(),
+        DialogCreate => |w, _, _| handle(w.handles.insert(Obj::Dialog(Dialog::default()))),
+        DialogDestroy => |w, _, a| {
+            if let Some(Obj::Dialog(d)) = w.handles.get(a.h(0)) {
+                for b in d.buttons.clone() {
+                    w.handles.remove(b);
+                }
+                w.handles.remove(a.h(0));
+            }
+            none()
+        },
+        DialogClear => |w, _, a| {
+            let buttons = match w.handles.get_mut(a.h(0)) {
+                Some(Obj::Dialog(d)) => { d.message.clear(); std::mem::take(&mut d.buttons) }
+                _ => Vec::new(),
+            };
+            for b in buttons {
+                w.handles.remove(b);
+            }
+            none()
+        },
+        DialogSetMessage => |w, _, a| {
+            let text = w.localized(&a.s(1));
+            if let Some(Obj::Dialog(d)) = w.handles.get_mut(a.h(0)) { d.message = text; }
+            none()
+        },
+        DialogAddButton => |w, _, a| {
+            let (dialog, text, hotkey) = (a.h(0), w.localized(&a.s(1)), a.i(2));
+            add_dialog_button(w, DialogButton { dialog, text, hotkey, quit: None })
+        },
+        DialogAddQuitButton => |w, _, a| {
+            let (dialog, score, text, hotkey) = (a.h(0), a.b(1), w.localized(&a.s(2)), a.i(3));
+            add_dialog_button(w, DialogButton { dialog, text, hotkey, quit: Some(score) })
+        },
+        DialogDisplay => |w, _, a| {
+            let (p, show) = (w.player_of(a.h(0)), a.b(2));
+            if let (Some(p), Some(Obj::Dialog(d))) = (p, w.handles.get_mut(a.h(1))) {
+                if show { d.shown |= 1 << p; } else { d.shown &= !(1 << p); }
+            }
+            none()
+        },
         CreateQuest => |w, _, _| opaque(w, "quest"),
         DestroyQuest => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
         QuestCreateItem => |w, _, _| opaque(w, "questitem"),

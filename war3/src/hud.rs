@@ -49,6 +49,15 @@ fn life_color(p: f32) -> [f32; 4] {
     }
 }
 
+/// A script dialog on screen: its handle, the message and button labels it was built
+/// from, its frames, and each button frame's handle.
+pub struct DialogView {
+    pub dialog: u32,
+    pub content: (String, Vec<String>),
+    pub tree: FrameTree,
+    pub buttons: Vec<(usize, u32)>,
+}
+
 /// Timed text in one of the world frame's message areas.
 #[derive(Clone, Debug)]
 pub struct Message {
@@ -67,6 +76,7 @@ pub struct Hud {
     pub unit_message_offset: (f32, f32),
     /// WorldFrameMessage: the error line above the console.
     pub error_message: Option<Message>,
+    pub dialog: Option<DialogView>,
     /// Text under the portrait: hit points (with color) and mana.
     pub portrait_stats: Option<(String, [f32; 4], Option<String>)>,
     info: Option<usize>,
@@ -142,6 +152,7 @@ impl Hud {
             unit_messages: Vec::new(),
             unit_message_offset: (0.0, 0.0),
             error_message: None,
+            dialog: None,
             camera_box: Vec::new(),
             card: Vec::new(),
             page: crate::card::Page::Main,
@@ -260,6 +271,71 @@ impl Hud {
         self.error_message = Some(Message { text: text.to_string(), until: self.now + 10.0 });
     }
 
+    /// Shows the first script dialog displayed to `player`, rebuilding its frames when it
+    /// changes, laid out as CScriptDialogWar3 does (FUN_6f3c9550, FUN_6f3aa500).
+    pub fn sync_dialog(&mut self, db: &FrameDb, w: &w3_game::World, player: u8, aspect: f32) {
+        use w3_game::types::Obj;
+        let shown = w.handles.iter().find_map(|(h, o)| match o {
+            Obj::Dialog(d) if d.shown & (1 << player) != 0 => Some((*h, d.clone())),
+            _ => None,
+        });
+        let Some((h, d)) = shown else {
+            self.dialog = None;
+            return;
+        };
+        let labels: Vec<String> = d.buttons.iter().filter_map(|b| match w.handles.get(*b) {
+            Some(Obj::DialogButton(b)) => Some(b.text.clone()),
+            _ => None,
+        }).collect();
+        let content = (d.message.clone(), labels.clone());
+        if self.dialog.as_ref().is_some_and(|v| v.dialog == h && v.content == content) {
+            return;
+        }
+        let mut tree = FrameTree::new(aspect);
+        let Some(root) = tree.create(db, "ScriptDialog", 0) else { return };
+        tree.set_text("ScriptDialogText", &d.message);
+        let mut buttons = Vec::new();
+        let mut prev: Option<String> = None;
+        for (k, (label, &b)) in labels.iter().zip(&d.buttons).enumerate() {
+            let scope = format!("#{k}");
+            let Some(i) = tree.create_scoped(db, "ScriptDialogButton", root, &scope) else { continue };
+            tree.set_text(&format!("ScriptDialogButtonText{scope}"), label);
+            let name = format!("ScriptDialogButton{scope}");
+            use w3_ui::FramePoint as P;
+            match &prev {
+                // Each button hangs 0.003 below the last; the first 0.011 below the
+                // message, or 0.027 below the top without one.
+                Some(p) => tree.set_point(&name, P::Top, p, P::Bottom, 0.0, -0.003),
+                None if d.message.is_empty() => tree.set_point(&name, P::Top, "ScriptDialog", P::Top, 0.0, -0.027),
+                None => tree.set_point(&name, P::Top, "ScriptDialogText", P::Bottom, 0.0, -0.011),
+            }
+            prev = Some(name);
+            buttons.push((i, b));
+        }
+        // Height: 0.03 margins around the message (plus 0.011 to the buttons) and the
+        // button stack, rounded up to 0.048 steps with at least 0.096; the message is
+        // centered in the extra space.
+        let text_h = 0.012;
+        let button_h = buttons.first().and_then(|&(i, _)| tree.frames[i].height).unwrap_or(0.035);
+        let title = if d.message.is_empty() { 0.03 } else { text_h + 0.008 + 0.003 + 0.03 };
+        let n = buttons.len() as f32;
+        let stack = if n > 0.0 { (button_h + 0.003) * n - 0.003 + 0.03 } else { 0.03 };
+        let total = title + stack;
+        let (height, top) = if total >= 0.096 {
+            let rem = total % 0.048;
+            let h = if rem != 0.0 { total - rem + 0.048 } else { total };
+            (h, -((h - (total - 0.03 - 0.03)) * 0.5))
+        } else {
+            (0.096, -0.03)
+        };
+        tree.set_size("ScriptDialog", None, Some(height));
+        tree.set_point("ScriptDialogText", w3_ui::FramePoint::Top, "ScriptDialog", w3_ui::FramePoint::Top, 0.0, top);
+        tree.set_point("ScriptDialog", w3_ui::FramePoint::Center, "", w3_ui::FramePoint::Center, 0.0, 0.0);
+        tree.bind_points();
+        tree.layout();
+        self.dialog = Some(DialogView { dialog: h, content, tree, buttons });
+    }
+
     /// Drops expired messages.
     pub fn tick(&mut self, now: f32) {
         self.now = now;
@@ -300,6 +376,9 @@ impl Hud {
     pub fn draws(&self, db: &FrameDb) -> Vec<Draw> {
         let mut out = self.tree.draw(db);
         self.message_draws(db, &mut out);
+        if let Some(d) = &self.dialog {
+            out.extend(d.tree.draw(db));
+        }
         if let Some((hp, color, mana)) = &self.portrait_stats {
             // Hit points and mana: 0.078125 x 0.011875 at (0.214375, 0.0283) and
             // (0.214375, 0.01375), MasterFont at [FontHeights] PortraitStats.

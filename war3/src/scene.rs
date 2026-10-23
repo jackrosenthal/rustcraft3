@@ -160,6 +160,8 @@ pub struct Scene {
     pending_audio: Vec<w3_game::world::Request>,
     /// Script sound handles to playing voices.
     voices: HashMap<u32, u64>,
+    /// The game has ended (EndGame); the application returns to the menus.
+    pub ended: bool,
     /// Acknowledgments: the unit last clicked, the consecutive "What" count (game.dll
     /// DAT_6fd707f0), and the playing line.
     ack_unit: u32,
@@ -326,7 +328,7 @@ impl Scene {
         let ui = w3_render::ui::UiRenderer::new(device, color_format);
         let portrait_renderer = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, portrait: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, portrait: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -364,6 +366,7 @@ impl Scene {
                         h.unit_messages.clear();
                     }
                 }
+                w3_game::world::Request::EndGame => self.ended = true,
                 r @ (w3_game::world::Request::PlaySound(_)
                 | w3_game::world::Request::UiSound { .. }
                 | w3_game::world::Request::WorldSound { .. }
@@ -842,6 +845,18 @@ impl Scene {
     /// Returns true when the click was consumed and should not start a selection drag.
     pub fn left_click(&mut self, sx: f32, sy: f32, size: (u32, u32)) -> bool {
         let (ux, uy) = self.to_ui(sx, sy, size);
+        // A dialog takes every click while it is up.
+        if let Some(d) = self.hud.as_mut().and_then(|h| h.dialog.as_mut()) {
+            d.tree.pointer_down(ux, uy);
+            if let Some(i) = d.tree.pointer_up(ux, uy) {
+                let button = d.buttons.iter().find(|b| b.0 == i).map(|b| b.1);
+                if let (Some(b), Some(g)) = (button, self.game.as_mut()) {
+                    let local = g.world.local_player;
+                    g.click_dialog_button(local, b);
+                }
+            }
+            return true;
+        }
         if let Some(b) = self.hud.as_ref().and_then(|h| h.button_at(ux, uy)).cloned() {
             if b.enabled {
                 self.ui_sound("InterfaceClick");
@@ -1247,6 +1262,8 @@ impl Scene {
         drop(pass);
         if let (Some(hud), Some(g)) = (self.hud.as_mut(), self.game.as_ref()) {
             hud.update(&assets.frames, &g.world);
+            let aspect = size.0 as f32 / size.1.max(1) as f32;
+            hud.sync_dialog(&assets.frames, &g.world, g.world.local_player, aspect);
             hud.show_unit(&assets.frames, &g.world, self.selection.first().copied());
             let draws = hud.draws(&assets.frames);
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

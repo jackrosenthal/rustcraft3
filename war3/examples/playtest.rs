@@ -182,6 +182,17 @@ fn main() -> anyhow::Result<()> {
                 if let Some(h) = scene.hud.as_mut() { h.unit_message(&a[i + 1], 0.0, 0.0, -1.0); }
                 i += 2;
             }
+            // killall <player>: kills every unit of a player.
+            "killall" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let p = num(&a[i + 1]) as u8;
+                    let hs: Vec<u32> = g.world.unit_order.iter().copied().filter(|&h| g.world.unit(h).is_some_and(|u| u.owner == p && !u.dead)).collect();
+                    for h in hs {
+                        g.kill(h);
+                    }
+                }
+                i += 2;
+            }
             "aidump" => {
                 if let Some(g) = &scene.game {
                     let w = &g.world;

@@ -77,6 +77,9 @@ pub struct Hud {
     /// WorldFrameMessage: the error line above the console.
     pub error_message: Option<Message>,
     pub dialog: Option<DialogView>,
+    /// The game menu (F10), built by CEscMenu: EscMenuBackdrop centered 0.06 above the
+    /// middle, holding EscMenuMainPanel.
+    pub menu: Option<FrameTree>,
     /// The selected unit's inventory: icon and charges per slot it has.
     pub inventory: Vec<Option<(String, i32)>>,
     /// Text under the portrait: hit points (with color) and mana.
@@ -155,6 +158,7 @@ impl Hud {
             unit_message_offset: (0.0, 0.0),
             error_message: None,
             dialog: None,
+            menu: None,
             inventory: Vec::new(),
             camera_box: Vec::new(),
             card: Vec::new(),
@@ -365,6 +369,27 @@ impl Hud {
         self.dialog = Some(DialogView { dialog: h, content, tree, buttons });
     }
 
+    pub fn open_menu(&mut self, db: &FrameDb, aspect: f32) {
+        let mut tree = FrameTree::new(aspect);
+        let Some(_) = tree.create(db, "EscMenuBackdrop", 0) else { return };
+        if let Some(b) = tree.get("EscMenuBackdrop") {
+            tree.create(db, "EscMenuMainPanel", b);
+        }
+        use w3_ui::FramePoint as P;
+        tree.set_point("EscMenuBackdrop", P::Center, "", P::Center, 0.0, 0.06);
+        Self::menu_panel(&mut tree, "MainPanel");
+        tree.bind_points();
+        tree.layout();
+        self.menu = Some(tree);
+    }
+
+    /// Shows one of the menu's panels.
+    pub fn menu_panel(tree: &mut FrameTree, panel: &str) {
+        for p in ["MainPanel", "EndGamePanel", "ConfirmQuitPanel", "HelpPanel", "TipsPanel", "EscMenuOptionsPanel", "EscMenuSaveGamePanel"] {
+            tree.set_visible(p, p == panel);
+        }
+    }
+
     /// Drops expired messages.
     pub fn tick(&mut self, now: f32) {
         self.now = now;
@@ -417,6 +442,9 @@ impl Hud {
         }
         if let Some(d) = &self.dialog {
             out.extend(d.tree.draw(db));
+        }
+        if let Some(m) = &self.menu {
+            out.extend(m.draw(db));
         }
         if let Some((hp, color, mana)) = &self.portrait_stats {
             // Hit points and mana: 0.078125 x 0.011875 at (0.214375, 0.0283) and

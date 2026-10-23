@@ -164,6 +164,9 @@ pub struct Scene {
     voices: HashMap<u32, u64>,
     /// The game has ended (EndGame); the application returns to the menus.
     pub ended: bool,
+    /// Exit Program was chosen.
+    pub exit: bool,
+    menu_requested: bool,
     /// Acknowledgments: the unit last clicked, the consecutive "What" count (game.dll
     /// DAT_6fd707f0), and the playing line.
     ack_unit: u32,
@@ -330,7 +333,7 @@ impl Scene {
         let ui = w3_render::ui::UiRenderer::new(device, color_format);
         let portrait_renderer = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, portrait: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, portrait: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -882,6 +885,24 @@ impl Scene {
     /// Returns true when the click was consumed and should not start a selection drag.
     pub fn left_click(&mut self, sx: f32, sy: f32, size: (u32, u32)) -> bool {
         let (ux, uy) = self.to_ui(sx, sy, size);
+        // The game menu takes every click while it is open.
+        if let Some(m) = self.hud.as_mut().and_then(|h| h.menu.as_mut()) {
+            m.pointer_down(ux, uy);
+            if let Some(i) = m.pointer_up(ux, uy) {
+                let name = m.frames[i].name.clone();
+                self.menu_button(&name);
+            }
+            return true;
+        }
+        // The upper buttons: Menu opens the game menu.
+        if let Some(h) = self.hud.as_mut() {
+            if let Some(i) = h.tree.control_at(ux, uy) {
+                if h.tree.frames[i].name == "UpperButtonBarMenuButton" {
+                    self.open_menu(size);
+                    return true;
+                }
+            }
+        }
         // A dialog takes every click while it is up.
         if let Some(d) = self.hud.as_mut().and_then(|h| h.dialog.as_mut()) {
             d.tree.pointer_down(ux, uy);
@@ -954,7 +975,37 @@ impl Scene {
     }
 
     /// A key press: command card hotkeys and Escape.
+    /// Opens the game menu (F10) on the next frame.
+    pub fn open_menu(&mut self, _size: (u32, u32)) {
+        self.menu_requested = true;
+    }
+
+    /// The game menu's buttons (CEscMenuMainPanel).
+    fn menu_button(&mut self, name: &str) {
+        let Some(h) = self.hud.as_mut() else { return };
+        let Some(m) = h.menu.as_mut() else { return };
+        match name {
+            "ReturnButton" => h.menu = None,
+            "EndGameButton" => crate::hud::Hud::menu_panel(m, "EndGamePanel"),
+            "PreviousButton" => crate::hud::Hud::menu_panel(m, "MainPanel"),
+            "QuitButton" => {
+                h.menu = None;
+                self.ended = true;
+            }
+            "ExitButton" => crate::hud::Hud::menu_panel(m, "ConfirmQuitPanel"),
+            "ConfirmQuitCancelButton" => crate::hud::Hud::menu_panel(m, "EndGamePanel"),
+            "ConfirmQuitQuitButton" => self.exit = true,
+            other => log::debug!("game menu button {other} has no handler yet"),
+        }
+    }
+
     pub fn key(&mut self, c: char) {
+        if c == '\u{1b}' {
+            if let Some(h) = self.hud.as_mut().filter(|h| h.menu.is_some()) {
+                h.menu = None;
+                return;
+            }
+        }
         if c == '\u{1b}' && (self.targeting.is_some() || self.placing.is_some()) {
             self.card_action(crate::card::Action::Cancel);
             return;
@@ -1230,7 +1281,9 @@ impl Scene {
 
     pub fn update(&mut self, dt: f32) {
         self.time += dt;
-        if let Some(g) = self.game.as_mut() {
+        // The game menu pauses a single-player game.
+        let paused = self.hud.as_ref().is_some_and(|h| h.menu.is_some());
+        if let Some(g) = self.game.as_mut().filter(|_| !paused) {
             g.tick(dt);
         }
         self.apply_requests();
@@ -1374,6 +1427,9 @@ impl Scene {
             hud.update(&assets.frames, &g.world);
             let aspect = size.0 as f32 / size.1.max(1) as f32;
             hud.sync_dialog(&assets.frames, &g.world, g.world.local_player, aspect);
+            if std::mem::take(&mut self.menu_requested) && hud.menu.is_none() {
+                hud.open_menu(&assets.frames, aspect);
+            }
             hud.show_unit(&assets.frames, &g.world, self.selection.first().copied());
             let draws = hud.draws(&assets.frames);
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

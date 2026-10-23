@@ -209,6 +209,10 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 3;
             }
+            "menu" => {
+                scene.open_menu((w as u32, h as u32));
+                i += 1;
+            }
             "selecth" => {
                 scene.selection = vec![num(&a[i + 1]) as u32];
                 i += 2;

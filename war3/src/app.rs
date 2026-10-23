@@ -144,6 +144,11 @@ impl ApplicationHandler for App {
                             scene.key('\u{1b}');
                         }
                     }
+                    if event.physical_key == PhysicalKey::Code(KeyCode::F10) {
+                        if let Some(scene) = r.scene.as_mut() {
+                            scene.open_menu((r.gpu.config.width, r.gpu.config.height));
+                        }
+                    }
                     if let Some(glue) = r.glue.as_mut().filter(|g| g.interactive()) {
                         if event.physical_key == PhysicalKey::Code(KeyCode::Escape) {
                             glue.key('\u{1b}', &mut r.assets);
@@ -248,6 +253,10 @@ impl ApplicationHandler for App {
                     scene.camera.target.y += d.y * speed;
                     scene.update(dt);
                     scene.update_audio(&r.assets);
+                    if scene.exit {
+                        el.exit();
+                        return;
+                    }
                     if scene.ended {
                         // Back to the screen the game started from, with the glue music.
                         let mut audio = scene.audio.take();

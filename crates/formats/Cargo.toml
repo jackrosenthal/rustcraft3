@@ -1,0 +1,16 @@
+[package]
+name = "w3-formats"
+description = "Parsers for Warcraft III asset and data formats"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+log.workspace = true
+jpeg-decoder = "0.3"
+image.workspace = true
+
+[dev-dependencies]
+w3-mpq.workspace = true
+image.workspace = true

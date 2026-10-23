@@ -1,0 +1,34 @@
+[workspace]
+resolver = "3"
+members = ["crates/mpq", "crates/formats"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+w3-mpq = { path = "crates/mpq" }
+w3-formats = { path = "crates/formats" }
+w3-jass = { path = "crates/jass" }
+w3-render = { path = "crates/render" }
+w3-game = { path = "crates/game" }
+w3-ui = { path = "crates/ui" }
+w3-audio = { path = "crates/audio" }
+anyhow = "1"
+thiserror = "2"
+log = "0.4"
+env_logger = "0.11"
+bytemuck = { version = "1", features = ["derive"] }
+glam = { version = "0.30", features = ["bytemuck"] }
+flate2 = "1"
+bzip2-rs = "0.1.2"
+implode = "0.1.1"
+clap = { version = "4.6", features = ["derive"] }
+wgpu = "27"
+winit = "0.30"
+pollster = "0.4"
+image = { version = "0.25", default-features = false, features = ["jpeg", "tga", "png"] }
+
+[profile.dev.package."*"]
+opt-level = 2

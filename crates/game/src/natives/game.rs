@@ -133,9 +133,18 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetCreepCampFilterState => |_, _, _| none(),
         GetCreepCampFilterState => |_, _, _| boolean(false),
         EnableMinimapFilterButtons => |_, _, _| none(),
-        EnableDragSelect => |_, _, _| none(),
-        EnablePreSelect => |_, _, _| none(),
-        EnableSelect => |_, _, _| none(),
+        EnableDragSelect => |w, _, a| { w.select_allowed.1 = a.b(0); none() },
+        EnablePreSelect => |w, _, a| { w.select_allowed.2 = a.b(1); none() },
+        // Turning selection off also clears the local player's (FUN_6f36c2f0).
+        EnableSelect => |w, _, a| {
+            w.select_allowed.0 = a.b(0);
+            if !a.b(0) {
+                let local = w.local_player;
+                w.selection.remove(&local);
+                w.selection_serial += 1;
+            }
+            none()
+        },
         IsFogEnabled => |w, _, _| boolean(w.fog_enabled),
         IsFogMaskEnabled => |w, _, _| boolean(w.fog_mask_enabled),
         FogEnable => |w, _, a| { w.fog_enabled = a.b(0); none() },

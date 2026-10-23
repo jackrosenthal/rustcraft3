@@ -1343,6 +1343,11 @@ impl Scene {
             return;
         }
         let Some(g) = self.game.as_ref() else { return };
+        // EnableSelect and EnableDragSelect.
+        let dragged = (a.0 - b.0).abs() >= 4.0 || (a.1 - b.1).abs() >= 4.0;
+        if !g.world.select_allowed.0 || dragged && !g.world.select_allowed.1 {
+            return;
+        }
         let local = g.world.local_player;
         let mut picked: Vec<u32> = Vec::new();
         if (a.0 - b.0).abs() < 4.0 && (a.1 - b.1).abs() < 4.0 {

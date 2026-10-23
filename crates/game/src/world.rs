@@ -163,6 +163,11 @@ pub struct World {
     pub selection: HashMap<u8, Vec<u32>>,
     /// Counts script changes to the selection, so the interface can follow them.
     pub selection_serial: u32,
+    /// Whether the player may select at all, with a drag, and see what is under the
+    /// cursor (EnableSelect, EnableDragSelect, EnablePreSelect: CGameUI +0x2a0, +0x290,
+    /// +0x298).
+    #[serde(default = "selection_allowed")]
+    pub select_allowed: (bool, bool, bool),
     /// The leaderboard each player is shown (PlayerSetLeaderboard).
     pub player_leaderboards: HashMap<u8, u32>,
     /// MultiboardSuppressDisplay.
@@ -325,6 +330,10 @@ impl TerrainHeights {
     }
 }
 
+fn selection_allowed() -> (bool, bool, bool) {
+    (true, true, true)
+}
+
 fn full_volume() -> [(f32, f32, f32); 8] {
     [(1.0, 1.0, 0.0); 8]
 }
@@ -400,6 +409,7 @@ impl World {
             time_of_day_scale: 1.0,
             time_of_day_suspended: false,
             volume_groups: full_volume(),
+            select_allowed: selection_allowed(),
             day_night_models: (String::new(), String::new()),
             fog_enabled: true,
             fog_mask_enabled: true,

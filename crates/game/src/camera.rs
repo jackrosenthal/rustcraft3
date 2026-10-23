@@ -55,6 +55,21 @@ pub struct GameCamera {
     /// A cinematic camera model and when it started (SetCinematicCamera).
     #[serde(default)]
     pub cinematic: Option<(String, f32)>,
+    /// CameraSetSmoothingFactor, 0 to 10 (the camera's +0x5bc).
+    #[serde(default)]
+    pub smoothing: f32,
+}
+
+/// How far the camera's target moves toward where it should be this frame
+/// (FUN_6f35f750): moves over 1000 at once; otherwise the share is the move (in
+/// thousands) to the smoothing factor's power times 0.8, plus 0.15, plus (10 / fps) to
+/// the 1.5 (1 under 10 frames a second), at most all of it.
+pub fn smoothing_share(factor: f32, distance: f32, fps: f32) -> f32 {
+    if distance > 1000.0 {
+        return 1.0;
+    }
+    let pace = if fps >= 10.0 { (10.0 / fps).powf(1.5) } else { 1.0 };
+    ((distance / 1000.0).powf(factor) * 0.8 + 0.15 + pace).min(1.0)
 }
 
 /// A camera noise's offset at time `t`: two sine waves per axis at the velocity's
@@ -79,7 +94,7 @@ impl GameCamera {
         defaults[FIELD_ROLL] = 0.0;
         defaults[FIELD_ROTATION] = first("Rotation", 90.0);
         defaults[FIELD_ZOFFSET] = first("Height", 0.0);
-        GameCamera { x: 0.0, y: 0.0, fields: defaults, defaults, pan: None, lerps: [None; FIELD_COUNT], follow: None, source_noise: (0.0, 0.0, false), target_noise: (0.0, 0.0, false), cinematic: None }
+        GameCamera { x: 0.0, y: 0.0, fields: defaults, defaults, pan: None, lerps: [None; FIELD_COUNT], follow: None, source_noise: (0.0, 0.0, false), target_noise: (0.0, 0.0, false), cinematic: None, smoothing: 0.0 }
     }
 
     /// Moves a field to `value` over `duration` seconds (at once when zero).

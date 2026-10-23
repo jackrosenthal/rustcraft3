@@ -212,7 +212,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             }
             none()
         },
-        CameraSetSmoothingFactor => |_, _, _| none(),
+        CameraSetSmoothingFactor => |w, _, a| {
+            let f = a.r(0);
+            w.camera.smoothing = if f > 0.0 && f < 10.0 { f } else if f > 0.0 { 10.0 } else { 0.0 };
+            none()
+        },
         CameraSetSourceNoise => |w, _, a| { w.camera.source_noise = (a.r(0), a.r(1), false); none() },
         CameraSetTargetNoise => |w, _, a| { w.camera.target_noise = (a.r(0), a.r(1), false); none() },
         CameraSetSourceNoiseEx => |w, _, a| { w.camera.source_noise = (a.r(0), a.r(1), a.b(2)); none() },

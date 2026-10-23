@@ -227,9 +227,10 @@ impl Commands {
             };
             let ready = order.is_empty() || w.can_cast(h, a).is_ok();
             out.push(Button { x, y, icon: art, hotkey: hotkey(&ab.str("Hotkey")), action: Action::Order { order, targeted }, enabled: ready });
-            // The ability's second button (Unbuttonpos, Unart, Unorder), as Call to Arms
-            // has Back to Work.
-            if let (Some((ux, uy)), unart) = (parse_pos(&ab.list("Unbuttonpos")), pick("Unart")) {
+            // Call to Arms shows its second button (Unbuttonpos, Unart, Unorder: Back to
+            // Work) beside it; other toggles show one button at a time.
+            let both = ab.str("code") == "Amic";
+            if let (true, Some((ux, uy)), unart) = (both, parse_pos(&ab.list("Unbuttonpos")), pick("Unart")) {
                 let unorder = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Unorder"))).unwrap_or("");
                 if !unart.is_empty() && !unorder.is_empty() {
                     out.push(Button { x: ux, y: uy, icon: unart, hotkey: hotkey(&ab.str("Unhotkey")), action: Action::Order { order: unorder, targeted: false }, enabled: true });

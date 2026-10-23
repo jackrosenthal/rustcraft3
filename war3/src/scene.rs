@@ -1431,6 +1431,7 @@ impl Scene {
                 hud.open_menu(&assets.frames, aspect);
             }
             hud.show_unit(&assets.frames, &g.world, self.selection.first().copied());
+            hud.show_group(&g.world, &self.selection);
             let draws = hud.draws(&assets.frames);
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("interface"),

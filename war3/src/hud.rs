@@ -62,6 +62,17 @@ fn life_color(p: f32) -> [f32; 4] {
     }
 }
 
+/// One unit in the group panel: its icon, life and mana fractions, and whether it is
+/// in the active subgroup.
+#[derive(Clone, Debug)]
+pub struct GroupSlot {
+    pub unit: u32,
+    pub icon: String,
+    pub life: f32,
+    pub mana: Option<f32>,
+    pub active: bool,
+}
+
 /// A script dialog on screen: its handle, the message and button labels it was built
 /// from, its frames, and each button frame's handle.
 pub struct DialogView {
@@ -106,6 +117,8 @@ pub struct Hud {
     /// produces, and what it is producing.
     building: Option<usize>,
     production: Option<w3_game::info::Production>,
+    /// CInfoPanelGroup: the selection when it has more than one unit.
+    pub group: Vec<GroupSlot>,
     pub minimap_area: Option<MinimapArea>,
     pub minimap_dots: Vec<(f32, f32, [f32; 4], f32)>,
     /// Whether the "@minimapfog" overlay texture is current.
@@ -215,6 +228,7 @@ impl Hud {
             buff_icons: None,
             building,
             production: None,
+            group: Vec::new(),
             camera_box: Vec::new(),
             card: Vec::new(),
             page: crate::card::Page::Main,
@@ -325,6 +339,86 @@ impl Hud {
 
     fn info_visible(&self) -> bool {
         [self.info, self.building].iter().flatten().any(|&i| self.tree.frames[i].visible)
+    }
+
+    /// CInfoPanelGroup for a selection of several units: up to twelve, subgroup by
+    /// subgroup (units of one type), the first subgroup active.  It replaces the unit
+    /// and building details.
+    pub fn show_group(&mut self, world: &World, selection: &[u32]) {
+        self.group.clear();
+        if selection.len() < 2 {
+            return;
+        }
+        let mut types: Vec<w3_game::objects::Id> = Vec::new();
+        for &h in selection {
+            if let Some(u) = world.unit(h) {
+                if !types.contains(&u.type_id) {
+                    types.push(u.type_id);
+                }
+            }
+        }
+        for (k, t) in types.iter().enumerate() {
+            for &h in selection {
+                let Some(u) = world.unit(h).filter(|u| u.type_id == *t) else { continue };
+                if self.group.len() >= 12 {
+                    break;
+                }
+                let icon = world.objects.units.get(u.type_id).map(|o| o.str("Art")).unwrap_or_default();
+                let mana = (u.max_mana > 0.0).then(|| u.mana / u.max_mana);
+                self.group.push(GroupSlot { unit: h, icon, life: u.life / u.max_life.max(1.0), mana, active: k == 0 });
+            }
+        }
+        for f in [self.info, self.building].into_iter().flatten() {
+            self.tree.frames[f].visible = false;
+        }
+        self.production = None;
+        self.buff_icons = None;
+        self.level_bar = None;
+    }
+
+    /// The group panel's buttons (CInfoPanelGroupButton): a 2 x 6 grid 0.185937 x
+    /// 0.101562 centered 0.001563 left of the panel's bottom; each 0.03125 x 0.046
+    /// button has its icon centered 0.016875 below its top and the life and mana bars
+    /// below it 0.0025 apart.  The active subgroup's icons are 0.028 with 0.00375 bars
+    /// under SelectedSubgroupHighlight (0.0375 wide, tinted 0xFFFFE400, added).
+    fn group_draws(&self, db: &FrameDb, out: &mut Vec<Draw>) {
+        if self.group.is_empty() {
+            return;
+        }
+        let root = self.tree.frames[0].rect.unwrap_or_default();
+        let (cx, y0) = (root.x0 + 0.309375 + 0.188125 / 2.0 - 0.001563, root.y0);
+        let (gw, gh) = (0.185937, 0.101562);
+        let (cw, ch) = (gw / 6.0, gh / 2.0);
+        let image = |texture: String, rect: w3_ui::Rect, color: [f32; 4], blend: w3_ui::Blend| Draw::Image { texture, rect, uv: [0.0, 0.0, 1.0, 1.0], color, blend, rotated: false };
+        let bar_tex = db.decorate("SimpleHpBarConsoleSmall");
+        let mana_tex = db.decorate("SimpleManaBarConsoleSmall");
+        for (k, s) in self.group.iter().enumerate() {
+            let (col, row) = ((k % 6) as f32, (k / 6) as f32);
+            let bx = cx - gw / 2.0 + cw * (col + 0.5);
+            let by = y0 + gh - ch * (row + 0.5);
+            let top = by + 0.046 / 2.0;
+            let (size, bar_h) = if s.active { (0.028, 0.00375) } else { (0.021875, 0.0025) };
+            if s.active {
+                let (hh, dy) = if s.mana.is_some() { (0.05225, 0.0) } else { (0.0466, 0.0025) };
+                let r = w3_ui::Rect { x0: bx - 0.01875, x1: bx + 0.01875, y0: by + dy - hh / 2.0, y1: by + dy + hh / 2.0 };
+                out.push(image(db.decorate("SelectedSubgroupHighlight"), r, [1.0, 0xe4 as f32 / 255.0, 0.0, 1.0], w3_ui::Blend::Add));
+            }
+            let icy = top - 0.016875;
+            let icon = w3_ui::Rect { x0: bx - size / 2.0, x1: bx + size / 2.0, y0: icy - size / 2.0, y1: icy + size / 2.0 };
+            out.push(image(s.icon.clone(), icon, [1.0; 4], w3_ui::Blend::Alpha));
+            let mut bar_top = icon.y0 - 0.0025;
+            let mut bar = |frac: f32, tex: &String, color: [f32; 4], out: &mut Vec<Draw>| {
+                let r = w3_ui::Rect { x0: icon.x0, x1: icon.x1, y0: bar_top - bar_h, y1: bar_top };
+                out.push(image(String::new(), r, [0.0, 0.0, 0.0, 1.0], w3_ui::Blend::Alpha));
+                let f = w3_ui::Rect { x1: r.x0 + (r.x1 - r.x0) * frac.clamp(0.0, 1.0), ..r };
+                out.push(image(tex.clone(), f, color, w3_ui::Blend::Alpha));
+                bar_top = r.y0 - 0.0025;
+            };
+            bar(s.life, &bar_tex, life_color(s.life), out);
+            if let Some(m) = s.mana {
+                bar(m, &mana_tex, [0.0, 0.0, 1.0, 1.0], out);
+            }
+        }
     }
 
     /// The building detail while a structure produces (FUN_6f3ccfd0's modes): the
@@ -709,6 +803,7 @@ impl Hud {
             }
         }
         self.production_draws(db, &mut out);
+        self.group_draws(db, &mut out);
         // CBuffBar: 0.12 x 0.015 with its lower right 0.003 left of and 0.005687 above
         // the unit detail's, eight 0.015 icons in a row, and COLON_STATUS 0.01 left of it
         // (InfoPanelTextFont 0.0085, white, shadowed).

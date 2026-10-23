@@ -551,6 +551,10 @@ impl World {
                     attack_type: String::new(),
                     start: (sx, sy),
                     spell: Some((a, lvl, dur, buff_id)),
+                    weapon: None,
+                    impact: None,
+                    bounces: 0,
+                    hit: Vec::new(),
                 });
             }
             // Thunder Clap: area damage (DataA) and slow (DataC movement, DataD attack).

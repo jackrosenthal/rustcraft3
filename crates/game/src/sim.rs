@@ -34,6 +34,12 @@ pub struct Missile {
     pub start: (f32, f32),
     /// A spell missile: ability, level, stun duration, and buff type.
     pub spell: Option<(Id, u32, f32, Id)>,
+    /// An attack's weapon, for its splash and spill, and where artillery lands.
+    pub weapon: Option<Weapon>,
+    pub impact: Option<(f32, f32)>,
+    /// A bouncing attack (mbounce): the bounces left and the units it has hit.
+    pub bounces: i32,
+    pub hit: Vec<u32>,
 }
 
 /// Weapon 1 of a unit type, from UnitWeapons.slk and the unit's profile.
@@ -52,6 +58,20 @@ pub struct Weapon {
     pub missile: String,
     pub missile_speed: f32,
     pub missile_arc: f32,
+    /// Splash: full damage within Farea, Hfact within Harea, Qfact within Qarea, to
+    /// what splashTargs allows.
+    pub full_area: f32,
+    pub half_area: f32,
+    pub quarter_area: f32,
+    pub half_factor: f32,
+    pub quarter_factor: f32,
+    pub splash_targets: String,
+    /// Line spill (mline, aline): damage less damageLoss to units within spillRadius
+    /// of the line spillDist past the target; bounces (mbounce) to targCount targets.
+    pub damage_loss: f32,
+    pub spill_dist: f32,
+    pub spill_radius: f32,
+    pub target_count: i32,
 }
 
 /// A unit type's first enabled weapon.
@@ -84,6 +104,16 @@ pub fn weapon_n(w: &World, type_id: Id, n: usize) -> Option<Weapon> {
         missile: pick("Missileart"),
         missile_speed: pick("Missilespeed").trim().parse().unwrap_or(0.0),
         missile_arc: pick("Missilearc").trim().parse().unwrap_or(0.0),
+        full_area: o.real(&f("Farea")),
+        half_area: o.real(&f("Harea")),
+        quarter_area: o.real(&f("Qarea")),
+        half_factor: o.real(&f("Hfact")),
+        quarter_factor: o.real(&f("Qfact")),
+        splash_targets: o.str(&f("splashTargs")).to_ascii_lowercase(),
+        damage_loss: o.real(&f("damageLoss")),
+        spill_dist: o.real(&f("spillDist")),
+        spill_radius: o.real(&f("spillRadius")),
+        target_count: o.int(&f("targCount")),
     })
 }
 
@@ -94,7 +124,13 @@ pub fn unit_weapons(w: &World, u: &Unit) -> Vec<(u8, Weapon)> {
     if u.extra.cargo.is_empty() && w.ability_with_code(u.handle, "Abun").is_some() {
         return Vec::new();
     }
-    let mask = u.extra.weapons.unwrap_or_else(|| w.objects.units.get(u.type_id).map_or(0, |o| o.int("weapsOn")));
+    let mut mask = u.extra.weapons.unwrap_or_else(|| w.objects.units.get(u.type_id).map_or(0, |o| o.int("weapsOn")));
+    // Research can switch weapons on (renw: Flying Machine Bombs, Vorpal Blades).
+    if u.extra.weapons.is_none() {
+        if let Some(m) = w.upgrade_bonus(u.owner, u.type_id).weapons {
+            mask = m;
+        }
+    }
     (1..=2u8).filter(|n| mask & (1 << (n - 1)) != 0).filter_map(|n| weapon_n(w, u.type_id, n as usize).map(|wp| (n, wp))).collect()
 }
 
@@ -618,6 +654,12 @@ impl World {
                                 attack_type: wp.attack_type.clone(),
                                 start: (src.x, src.y),
                                 spell: None,
+                                // Artillery lands where the target stood when it fired.
+                                impact: (wp.weapon_type == "artillery" || wp.weapon_type == "aline").then(|| self.widget_pos(s.target)).flatten(),
+                                weapon: Some(wp.clone()),
+                                // targCount targets, and more with Moon Glaive (ratc).
+                                bounces: if wp.weapon_type == "mbounce" { wp.target_count - 1 + self.upgrade_bonus(src.owner, src.type_id).targets } else { 0 },
+                                hit: Vec::new(),
                             });
                         }
                     } else {
@@ -632,7 +674,8 @@ impl World {
                                 self.requests.push(Request::WorldSound { label: format!("{weap}{armor}"), x, y, z });
                             }
                         }
-                        self.deal_damage(vm, h, s.target, raw, &wp.attack_type);
+                        let at = self.widget_pos(s.target).unwrap_or_default();
+                        self.attack_impact(vm, h, s.target, raw, &wp, at);
                     }
                 }
                 let Some(u) = self.unit_mut(h) else { continue };
@@ -1365,6 +1408,8 @@ impl World {
         let u = self.unit(h).unwrap();
         let gold_cap = self.ability_real(ahar, "DataB", lvl) as i32;
         let lumber_cap = if code == "Ahrl" { self.ability_real(ahar, "DataB", lvl) as i32 } else { self.ability_real(ahar, "DataC", lvl) as i32 };
+        // Improved Lumber Harvesting (rlum) adds to a trip.
+        let lumber_cap = lumber_cap + self.unit(h).map_or(0, |u| self.upgrade_bonus(u.owner, u.type_id).lumber);
         if (is_mine && u.carry_lumber > 0) || (is_tree && u.carry_gold > 0) || (is_tree && u.carry_lumber >= lumber_cap) {
             self.unit_mut(h).unwrap().action = Action::ReturnResources;
             return;
@@ -1667,8 +1712,201 @@ impl World {
                         self.apply_buff(m.target, Buff { id: buff, ability: a, level: lvl, caster: m.source, remaining: stun, stun: true, ..Default::default() });
                     }
                 }
-                None => self.deal_damage(vm, m.source, m.target, m.damage, &m.attack_type),
+                None => match &m.weapon {
+                    Some(wp) => {
+                        let at = m.impact.or_else(|| self.widget_pos(m.target)).unwrap_or((m.x, m.y));
+                        self.attack_impact(vm, m.source, m.target, m.damage, wp, at);
+                        // A bounce goes on to the nearest unit within Farea it may hit that it
+                        // has not (AllowMultiBounce 0), losing damageLoss (CMissileBounce).
+                        if m.bounces > 0 {
+                            let mut hit = m.hit.clone();
+                            hit.push(m.target);
+                            let owner = self.unit(m.source).map_or(0, |u| u.owner);
+                            let next = self
+                                .unit_order
+                                .iter()
+                                .copied()
+                                .filter(|u| !hit.contains(u))
+                                .filter(|&u| self.unit(u).is_some_and(|t| (t.x - at.0).hypot(t.y - at.1) <= wp.full_area && self.splash_allows(m.source, &wp.splash_targets, t) && self.unit_visible_to(u, owner)))
+                                .min_by(|&p, &q| {
+                                    let d = |u: u32| self.unit(u).map_or(f32::MAX, |t| (t.x - at.0).hypot(t.y - at.1));
+                                    d(p).total_cmp(&d(q))
+                                });
+                            if let Some(n) = next {
+                                let z = self.ground_z(at.0, at.1) + 60.0;
+                                self.missiles.push(Missile { target: n, x: at.0, y: at.1, z, start: at, damage: m.damage * (1.0 - wp.damage_loss), bounces: m.bounces - 1, hit, impact: None, ..m.clone() });
+                            }
+                        }
+                    }
+                    None => self.deal_damage(vm, m.source, m.target, m.damage, &m.attack_type),
+                },
             }
         }
+    }
+
+    /// An attack lands: the target takes the damage (artillery hits only what is
+    /// where it lands), then splash and line spill spread it.
+    fn attack_impact(&mut self, vm: &mut Vm, source: u32, target: u32, raw: f32, wp: &Weapon, at: (f32, f32)) {
+        let artillery = wp.weapon_type == "artillery" || wp.weapon_type == "aline";
+        if !artillery {
+            self.deal_damage(vm, source, target, raw, &wp.attack_type);
+        }
+        // A bouncing weapon's Farea is how far it looks for its next target, not splash.
+        let area = if wp.weapon_type == "mbounce" { 0.0 } else { wp.full_area.max(wp.half_area).max(wp.quarter_area) };
+        if area > 0.0 {
+            for u in self.units_in_pub(at.0, at.1, area + 64.0) {
+                if !artillery && u == target {
+                    continue;
+                }
+                let Some(t) = self.unit(u) else { continue };
+                if !self.splash_allows(source, &wp.splash_targets, t) {
+                    continue;
+                }
+                let d = ((t.x - at.0).hypot(t.y - at.1) - t.collision).max(0.0);
+                let f = if d <= wp.full_area {
+                    1.0
+                } else if d <= wp.half_area {
+                    wp.half_factor
+                } else if d <= wp.quarter_area {
+                    wp.quarter_factor
+                } else {
+                    0.0
+                };
+                if f > 0.0 {
+                    self.deal_damage(vm, source, u, raw * f, &wp.attack_type);
+                }
+            }
+            // Trees and other destructables the splash takes in (a catapult's).
+            let classes: Vec<&str> = wp.splash_targets.split(',').map(|s| s.trim()).collect();
+            if classes.iter().any(|c| matches!(*c, "tree" | "debris" | "wall")) {
+                let dests: Vec<(u32, f32)> = self
+                    .handles
+                    .iter()
+                    .filter_map(|(h, o)| match o {
+                        Obj::Destructable(d) if d.life > 0.0 && !d.invulnerable && d.visible => Some((h, (d.x - at.0).hypot(d.y - at.1), d.type_id)),
+                        _ => None,
+                    })
+                    .filter(|&(_, d, id)| {
+                        d <= area && {
+                            let t = self.objects.destructables.get(id).map(|o| o.str("targType").to_ascii_lowercase()).unwrap_or_default();
+                            t.split(',').any(|c| classes.contains(&c.trim()))
+                        }
+                    })
+                    .map(|(h, d, _)| (*h, d))
+                    .collect();
+                for (h, d) in dests {
+                    let f = if d <= wp.full_area {
+                        1.0
+                    } else if d <= wp.half_area {
+                        wp.half_factor
+                    } else if d <= wp.quarter_area {
+                        wp.quarter_factor
+                    } else {
+                        0.0
+                    };
+                    if f <= 0.0 {
+                        continue;
+                    }
+                    let dead = match self.handles.get_mut(h) {
+                        Some(Obj::Destructable(x)) => {
+                            x.life -= raw * f;
+                            x.life <= 0.0
+                        }
+                        _ => false,
+                    };
+                    if dead {
+                        crate::natives::objects::kill_destructable_pub(self, vm, h);
+                    }
+                }
+            }
+        }
+        // Flak Cannons and Fragmentation Shards: DataC damage within Area, DataD within
+        // DataA, and DataE within DataB, to what their targets allow.
+        for code in ["Aflk", "Afsh"] {
+            let Some((a, lvl)) = self.ability_with_code(source, code) else { continue };
+            let owner = self.unit(source).map_or(0, |u| u.owner);
+            if !self.ability_enabled(owner, a) {
+                continue;
+            }
+            let lvl = lvl.max(1) as u32;
+            let d = |k: &str| self.data(a, k, lvl);
+            let (full_r, mid_r, small_r, full, mid, small) = (d("Area"), d("DataA"), d("DataB"), d("DataC"), d("DataD"), d("DataE"));
+            let targs = self.objects.abilities.get(a).map(|o| o.level_str("targs", lvl).to_ascii_lowercase()).unwrap_or_default();
+            if !self.unit(target).is_some_and(|t| self.splash_allows(source, &targs, t)) && !artillery {
+                continue;
+            }
+            for u in self.units_in_pub(at.0, at.1, full_r.max(mid_r).max(small_r) + 64.0) {
+                let Some(t) = self.unit(u) else { continue };
+                if !self.splash_allows(source, &targs, t) {
+                    continue;
+                }
+                let dist = ((t.x - at.0).hypot(t.y - at.1) - t.collision).max(0.0);
+                let amount = if dist <= full_r {
+                    full
+                } else if dist <= mid_r {
+                    mid
+                } else if dist <= small_r {
+                    small
+                } else {
+                    0.0
+                };
+                if amount > 0.0 {
+                    self.deal_damage(vm, source, u, amount, &wp.attack_type);
+                }
+            }
+        }
+        // Line spill: on past the target (Storm Hammers' and Vorpal Blades' rasd).
+        let spill = wp.spill_dist + self.unit(source).map_or(0.0, |s| self.upgrade_bonus(s.owner, s.type_id).spill_dist);
+        if (wp.weapon_type == "mline" || wp.weapon_type == "aline") && spill > 0.0 {
+            let Some(from) = self.unit(source).map(|s| (s.x, s.y)) else { return };
+            let (dx, dy) = (at.0 - from.0, at.1 - from.1);
+            let len = dx.hypot(dy).max(1.0);
+            let dir = (dx / len, dy / len);
+            for u in self.units_in_pub(at.0 + dir.0 * spill / 2.0, at.1 + dir.1 * spill / 2.0, spill / 2.0 + wp.spill_radius + 64.0) {
+                if u == target {
+                    continue;
+                }
+                let Some(t) = self.unit(u) else { continue };
+                if !self.splash_allows(source, &wp.splash_targets, t) {
+                    continue;
+                }
+                let (rx, ry) = (t.x - at.0, t.y - at.1);
+                let along = rx * dir.0 + ry * dir.1;
+                let across = (rx * dir.1 - ry * dir.0).abs();
+                if along >= 0.0 && along <= spill && across <= wp.spill_radius + t.collision {
+                    self.deal_damage(vm, source, u, raw * (1.0 - wp.damage_loss), &wp.attack_type);
+                }
+            }
+        }
+    }
+
+    /// Whether a weapon's splashTargs take in a unit: its classes (ground, air,
+    /// structure) and, when any is named, its allegiance to the attacker.
+    fn splash_allows(&self, source: u32, targets: &str, t: &Unit) -> bool {
+        let flags: Vec<&str> = targets.split(',').map(|s| s.trim()).filter(|s| !s.is_empty() && *s != "_").collect();
+        if flags.is_empty() || t.dead || t.hidden {
+            return false;
+        }
+        let has = |f: &str| flags.contains(&f);
+        let air = self.objects.units.get(t.type_id).is_some_and(|o| o.str("movetp").eq_ignore_ascii_case("fly"));
+        let class_ok = if t.is_building { has("structure") } else if air { has("air") } else { has("ground") };
+        if !class_ok {
+            return false;
+        }
+        let Some(owner) = self.unit(source).map(|s| s.owner) else { return true };
+        let named = ["enemy", "friend", "ally", "player", "neutral", "self"].iter().any(|f| has(f));
+        if !named {
+            return true;
+        }
+        if t.owner == owner {
+            return has("player") || has("friend");
+        }
+        if crate::natives::players::is_ally(self, owner, t.owner) {
+            return has("ally") || has("friend");
+        }
+        if t.owner >= PLAYER_NEUTRAL_AGGRESSIVE {
+            return has("neutral") || has("enemy");
+        }
+        has("enemy")
     }
 }

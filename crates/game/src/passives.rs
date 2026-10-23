@@ -42,7 +42,7 @@ impl World {
 
     /// Ultravision (Ault): day sight at night.
     pub fn ultravision(&self, u: &Unit) -> bool {
-        u.abilities.iter().any(|(a, _)| self.ability_code(*a) == "Ault")
+        u.abilities.iter().any(|(a, _)| self.ability_code(*a) == "Ault") || self.upgrade_bonus(u.owner, u.type_id).ultravision
     }
 
     /// Hardened Skin (Assk): a DataA% chance to take DataC less damage, but at least

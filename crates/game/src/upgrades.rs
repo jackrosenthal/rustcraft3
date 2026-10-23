@@ -37,6 +37,16 @@ pub struct UpgradeBonus {
     pub sight: f32,
     /// rspi: damage Spiked Barricades deal to melee attackers.
     pub spikes: f32,
+    /// rasd: attack spill distance.
+    pub spill_dist: f32,
+    /// ratc: more attack targets (bounces).
+    pub targets: i32,
+    /// renw: the weapons enabled (weapsOn bits).
+    pub weapons: Option<i32>,
+    /// rlum: more lumber a trip.
+    pub lumber: i32,
+    /// rauv: ultravision.
+    pub ultravision: bool,
 }
 
 /// One upgrade's value at a level, or `None` when the effect gives no value ("-").
@@ -87,6 +97,11 @@ impl World {
                     "rats" => b.attack_speed += v.unwrap_or(0.0),
                     "rsig" => b.sight += v.unwrap_or(0.0),
                     "rspi" => b.spikes += v.unwrap_or(0.0),
+                    "rasd" => b.spill_dist += v.unwrap_or(0.0),
+                    "ratc" => b.targets += v.unwrap_or(0.0) as i32,
+                    "renw" => b.weapons = v.map(|m| m as i32),
+                    "rlum" => b.lumber += v.unwrap_or(0.0) as i32,
+                    "rauv" => b.ultravision = true,
                     _ => {}
                 }
             }

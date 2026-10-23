@@ -27,16 +27,93 @@ pub fn default_buff(code: &str) -> Option<&'static str> {
     }
 }
 
+/// The orders built into ability classes (each class's vf194, its code its vf7) whose
+/// abilities have no order string in their func data.
+const BUILT_IN_ORDERS: &[(&str, i32)] = &[
+    ("ACrn", 852251), // CAbilityCreepReincarnation
+    ("AEev", 852172), // CAbilityEvasion
+    ("AHca", 852244), // CAbilityColdArrows
+    ("AHdr", 852487), // CAbilityDrain
+    ("ANbs", 852577), // CAbilityBlackArrowSpell
+    ("ANca", 852582), // CAbilityCleavingAttack
+    ("ANdb", 852584), // CAbilityDrunkenBrawler
+    ("ANdp", 852229), // CAbilityDarkPortal
+    ("ANfb", 852231), // CAbilityFireBolt
+    ("ANfd", 852230), // CAbilityFingerOfDeath
+    ("ANfy", 852655), // CAbilityFactory
+    ("ANgl", 852233), // CAbilityNeutralG2L
+    ("ANlg", 852234), // CAbilityNeutralL2G
+    ("ANpi", 852236), // CAbilityPermImmolation
+    ("ANpr", 852568), // CAbilityPreservation
+    ("ANrc", 852237), // CAbilityRainOfChaos
+    ("ANsa", 852569), // CAbilitySanctuary
+    ("ANse", 852572), // CAbilitySpellShieldAoe
+    ("ANsp", 852235), // CAbilityNeutralSpies
+    ("ANss", 852571), // CAbilitySpellShield
+    ("ANsu", 852604), // CAbilitySubmerge
+    ("AOcr", 852120), // CAbilityCriticalStrike
+    ("AOre", 852124), // CAbilityReincarnation
+    ("AOwd", 852504), // CAbilityWard
+    ("AUds", 852220), // CAbilityDarkSummoning
+    ("AUts", 852559), // CAbilityThornyShield
+    ("Aami", 852186), // CAbilityAntiMagicShellInstant
+    ("Aast", 852490), // CAbilityAncestralSpirit
+    ("Abar", 852136), // CAbilityBarkskin
+    ("Abof", 852492), // CAbilityBallsOfFire
+    ("Achd", 852111), // CAbilityCargoHoldDeath
+    ("Acoa", 852143), // CAbilityCoupleArcher
+    ("Acoh", 852142), // CAbilityCoupleHippogryph
+    ("Acoi", 852508), // CAbilityCoupleInstant
+    ("Adch", 852495), // CAbilityDisenchant
+    ("Adta", 852015), // CAbilityDetectAoe
+    ("Adts", 852070), // CAbilityMagicSentry
+    ("Advm", 852536), // CAbilityDevourMagic
+    ("Aetl", 852510), // CAbilityEthereal
+    ("Aexh", 852538), // CAbilityExhume
+    ("Afak", 852540), // CAbilityFlamingAttack
+    ("Afbk", 852475), // CAbilityFeedback
+    ("Aflk", 852476), // CAbilityFlakCannon
+    ("Afsh", 852477), // CAbilityFragShards
+    ("Agyb", 852061), // CAbilityGyroBombs
+    ("Agyv", 852062), // CAbilityGyroVision
+    ("Aimp", 852152), // CAbilityImpalingBolt
+    ("Aliq", 852498), // CAbilityLiquidFire
+    ("Amec", 852564), // CAbilityMechanicalCritter
+    ("Amgl", 852154), // CAbilityMoonGlaive
+    ("Amim", 852153), // CAbilityMagicImmunity
+    ("Andt", 852023), // CAbilityNeutralDetectAoe
+    ("Anei", 852566), // CAbilityNeutralInteract
+    ("Aphx", 852482), // CAbilityPhoenix
+    ("Apig", 852567), // CAbilityPandaImmolation
+    ("Apo2", 852661), // CAbilityPoisonDamage
+    ("Apoi", 852016), // CAbilityPoisonAttack
+    ("Apts", 852194), // CAbilityPlagueToss
+    ("Apxf", 852481), // CAbilityPhoenixFire
+    ("Aret", 852471), // CAbilityRetrain
+    ("Arng", 852241), // CAbilityRevenge
+    ("Aroc", 852472), // CAbilityBarrage
+    ("Arsk", 852518), // CAbilityResistantSkin
+    ("Asal", 852112), // CAbilitySalvage
+    ("Ashs", 852570), // CAbilityShadowSight
+    ("Aspo", 852167), // CAbilitySlowPoison
+    ("Assk", 852519), // CAbilityStoneSkin
+    ("Aste", 852574), // CAbilitySteal
+    ("Asth", 852078), // CAbilityStormHammers
+    ("Atlp", 852080), // CAbilityTankLoadPilot
+    ("Atpi", 852081), // CAbilityTankPilot
+    ("Atru", 852208), // CAbilityTrueSight
+    ("Aven", 852115), // CAbilityVenomSpear
+    ("Awar", 852116), // CAbilityWarStomp
+];
+
 /// The orders abilities carry in their code rather than in an order string
-/// (CAbilityItemDetectAoe::vf194 for Reveal).
+/// (CAbilityItemDetectAoe::vf194 for Reveal, CAbilityMeatDrop's for Drop All Corpses,
+/// whose order string names no order, and the classes in BUILT_IN_ORDERS).
 pub fn intrinsic_order(code: &str) -> Option<i32> {
     match code {
         "AIta" => Some(852270),
-        // Drop All Corpses (CAbilityMeatDrop::vf194).
         "Amed" => Some(852054),
-        // Siphon Mana and Life Drain (CAbilityDrain::vf194: drain).
-        "AHdr" => Some(852487),
-        _ => None,
+        _ => BUILT_IN_ORDERS.iter().find(|(c, _)| *c == code).map(|(_, o)| *o),
     }
 }
 
@@ -151,15 +228,9 @@ impl World {
         u.abilities.iter().map(|(a, _)| *a).find(|&a| self.intrinsic_order_of(a) == Some(order))
     }
 
-    /// An ability's built-in order: its code's, or for Mount Hippogryph (Acoi) the
-    /// archer's mounthippogryph (DataB 0, CAbilityCoupleArcher) or the hippogryph's
-    /// loadarcher (CAbilityCoupleHippogryph).
+    /// An ability's built-in order.
     pub fn intrinsic_order_of(&self, a: Id) -> Option<i32> {
-        let code = self.ability_code(a);
-        if code == "Acoi" {
-            return Some(if self.data(a, "DataB", 1) == 0.0 { 852143 } else { 852142 });
-        }
-        intrinsic_order(&code)
+        intrinsic_order(&self.ability_code(a))
     }
 
     /// Movement, attack-speed, armor, and damage factors from a unit's buffs.

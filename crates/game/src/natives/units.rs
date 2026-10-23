@@ -159,8 +159,8 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
             u.pathing_cells = cells;
         }
     }
-    // Computer players' units start with their autocast on.
-    if w.players.get(owner as usize).is_some_and(|p| p.controller == map_control::COMPUTER) {
+    // Computer players' and creeps' units start with their autocast on.
+    if w.players.get(owner as usize).is_some_and(|p| p.controller == map_control::COMPUTER || p.controller == map_control::CREEP) {
         let auto: Vec<Id> = w.unit(h).map(|u| u.abilities.iter().map(|a| a.0).filter(|&a| w.objects.abilities.get(a).is_some_and(|o| !o.str("Orderon").is_empty())).collect()).unwrap_or_default();
         if let Some(u) = w.unit_mut(h) {
             u.autocast = auto;

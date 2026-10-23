@@ -45,7 +45,7 @@ fn point_target(code: &str) -> bool {
 
 /// Abilities with no target (cast instantly around the caster).
 fn no_target(code: &str) -> bool {
-    matches!(code, "Amed" | "Amic" | "Adec" | "Amfl" | "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "ANsy" | "Astd" | "Abtl" | "Arai" | "Aroa" | "Atau" | "Absk" | "ANef" | "ANht" | "ANms" | "ANlm" | "ANsg" | "ANsq" | "ANsw")
+    matches!(code, "Afzy" | "Amed" | "Amic" | "Adec" | "Amfl" | "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "ANsy" | "Astd" | "Abtl" | "Arai" | "Aroa" | "Atau" | "Absk" | "ANef" | "ANht" | "ANms" | "ANlm" | "ANsg" | "ANsq" | "ANsw")
 }
 
 /// Passive abilities and auras.
@@ -676,6 +676,8 @@ impl World {
             // Slow: movement (DataA) and attack speed (DataB) factors.
             "Aslo" => self.apply_buff(target, Buff { id: buff_id, ability: a, level: lvl, caster: h, remaining: dur, move_factor: -self.data(a, "DataA", lvl), attack_factor: -self.data(a, "DataB", lvl), ..Default::default() }),
             // Bloodlust: attack speed (DataA) and movement (DataB) factors.
+            // Frenzy: the caster attacks DataA faster for Dur.
+            "Afzy" => self.apply_buff(h, Buff { id: buff_id, ability: a, level: lvl, caster: h, remaining: dur.max(self.data(a, "Dur", lvl)), attack_factor: self.data(a, "DataA", lvl), ..Default::default() }),
             "Ablo" => self.apply_buff(target, Buff { id: buff_id, ability: a, level: lvl, caster: h, remaining: dur, attack_factor: self.data(a, "DataA", lvl), move_factor: self.data(a, "DataB", lvl), ..Default::default() }),
             // Inner Fire: damage factor (DataA) and armor (DataB).
             "Ainf" => self.apply_buff(target, Buff { id: buff_id, ability: a, level: lvl, caster: h, remaining: dur, damage_factor: self.data(a, "DataA", lvl), armor: self.data(a, "DataB", lvl), ..Default::default() }),

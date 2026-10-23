@@ -80,6 +80,8 @@ impl World {
                 .map(|t| t.handle),
             "Arai" => self.corpses_in(u.x, u.y, self.data(a, "Area", lvl)).first().map(|_| h),
             "Aadm" => units().find(|t| alive(t) && !ally(t) && near(t) && self.is_summoned(t.handle)).map(|t| t.handle),
+            // Frenzy: the caster itself, in a fight, without it.
+            "Afzy" => (self.in_combat(h) && !self.has_buff_of(h, a)).then_some(h),
             _ => None,
         }
     }

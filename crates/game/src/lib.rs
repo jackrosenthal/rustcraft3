@@ -273,10 +273,12 @@ impl Game {
                 }
             }
         }
-        // Neutral players always play.
+        // Neutral players always play, as creeps (MAP_CONTROL_CREEP, as game.dll sets
+        // all four).
         for i in types::PLAYER_NEUTRAL_AGGRESSIVE..types::PLAYER_COUNT as u8 {
             let p = &mut self.world.players[i as usize];
             p.slot_state = slot_state::PLAYING;
+            p.controller = map_control::CREEP;
         }
         self.call("main")
     }

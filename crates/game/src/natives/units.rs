@@ -525,7 +525,17 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetUnitAnimationByIndex => |_, _, _| none(),
         SetUnitAnimationWithRarity => |w, _, a| { let s = a.s(1); with_unit(w, a, |u| u.animation = Some(s)) },
         QueueUnitAnimation => |w, _, a| { let s = a.s(1); with_unit(w, a, |u| u.animation = Some(s)) },
-        AddUnitAnimationProperties => |_, _, _| none(),
+        AddUnitAnimationProperties => |w, _, a| {
+            let (props, add) = (a.s(1).to_ascii_lowercase(), a.b(2));
+            with_unit(w, a, |u| {
+                for p in props.split([',', ' ']).filter(|p| !p.is_empty()) {
+                    u.extra.anim_props.retain(|x| x != p);
+                    if add {
+                        u.extra.anim_props.push(p.to_string());
+                    }
+                }
+            })
+        },
         SetUnitBlendTime => |_, _, _| none(),
         SetUnitLookAt => |_, _, _| none(),
         ResetUnitLookAt => |_, _, _| none(),

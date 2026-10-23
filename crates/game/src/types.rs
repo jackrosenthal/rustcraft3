@@ -342,6 +342,9 @@ pub struct UnitExtra {
     /// When a tornado last let the unit down.
     #[serde(default)]
     pub spun_at: f32,
+    /// Animation properties scripts added (AddUnitAnimationProperties).
+    #[serde(default)]
+    pub anim_props: Vec<String>,
 }
 
 impl Default for UnitExtra {
@@ -394,6 +397,7 @@ impl Default for UnitExtra {
             swarm: None,
             art: Vec::new(),
             spun_at: -100.0,
+            anim_props: Vec::new(),
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,

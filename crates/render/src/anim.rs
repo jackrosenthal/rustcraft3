@@ -238,22 +238,24 @@ pub fn find_sequence(model: &Model, name: &str) -> Option<usize> {
         })
 }
 
-/// Every sequence whose first word matches `name` (for example "Attack - 1" and
-/// "Attack - 2" for "attack"), excluding those that carry extra qualifiers such as
-/// "Attack Slam" unless asked for.
+/// Every sequence whose words are `name`'s, in any order (for example "Attack - 1" and
+/// "Attack - 2" for "attack", "Stand Upgrade First" for "stand first upgrade"),
+/// excluding those that carry extra qualifiers such as "Attack Slam" unless asked for.
 pub fn sequences_named(model: &Model, name: &str) -> Vec<usize> {
-    let want: Vec<String> = name.split_whitespace().map(|w| w.to_ascii_lowercase()).collect();
+    let mut want: Vec<String> = name.split_whitespace().map(|w| w.to_ascii_lowercase()).collect();
+    want.sort();
     model
         .sequences
         .iter()
         .enumerate()
         .filter(|(_, s)| {
-            let words: Vec<String> = s
+            let mut words: Vec<String> = s
                 .name
                 .split(|c: char| c.is_whitespace() || c == '-')
                 .filter(|w| !w.is_empty() && !w.chars().all(|c| c.is_ascii_digit()))
                 .map(|w| w.to_ascii_lowercase())
                 .collect();
+            words.sort();
             words == want
         })
         .map(|(i, _)| i)

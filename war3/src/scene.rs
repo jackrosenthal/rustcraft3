@@ -2250,8 +2250,17 @@ impl Scene {
                 self.units.insert(h, view);
             }
             let view = self.units.get_mut(&h).unwrap();
-            // An uprooted ancient takes the alternate of each animation but its walk.
-            let anim = if u.extra.uprooted && !u.anim.starts_with("walk") && !u.anim.starts_with("morph") && !u.anim.contains("alternate") { format!("{} alternate", u.anim) } else { u.anim.clone() };
+            // An uprooted ancient takes the alternate of each animation but its walk; the
+            // type's Animprops ("upgrade,first" for a Keep on the Town Hall's model) and
+            // those scripts add qualify every animation.
+            let mut anim = if u.extra.uprooted && !u.anim.starts_with("walk") && !u.anim.starts_with("morph") && !u.anim.contains("alternate") { format!("{} alternate", u.anim) } else { u.anim.clone() };
+            let type_props = w.objects.units.get(u.type_id).map(|o| o.str("Animprops")).unwrap_or_default();
+            for p in type_props.split(',').map(|p| p.trim().to_ascii_lowercase()).chain(u.extra.anim_props.iter().cloned()) {
+                if !p.is_empty() && p != "_" && !anim.split_whitespace().any(|w| w == p) {
+                    anim.push(' ');
+                    anim.push_str(&p);
+                }
+            }
             view.update(&anim, u.anim_serial);
             // Structures under construction show their birth animation in step with progress.
             if let (Some(left), Some(seq)) = (u.constructing, view.inst.sequence.and_then(|s| view.inst.model.mdx.sequences.get(s))) {

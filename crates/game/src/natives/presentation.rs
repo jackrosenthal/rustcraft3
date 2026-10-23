@@ -1,0 +1,294 @@
+//! Text, sound, music, camera, and other presentation natives.  These record state or
+//! queue requests for the presentation layer; they do not affect the simulation.
+
+use std::collections::HashMap;
+
+use w3_jass::Value;
+
+use super::{Args, boolean, handle, int, none, real, reg};
+use crate::types::*;
+use crate::world::{NativeFn, Request, World};
+
+fn player_mask(w: &World, a: &[Value], n: usize) -> u32 {
+    w.player_of(a.h(n)).map_or(0, |p| 1 << p)
+}
+
+fn sound_mut(w: &mut World, h: u32) -> Option<&mut Sound> {
+    match w.handles.get_mut(h) {
+        Some(Obj::Sound(s)) => Some(s),
+        _ => None,
+    }
+}
+
+fn tag_mut(w: &mut World, h: u32) -> Option<&mut TextTag> {
+    match w.handles.get_mut(h) {
+        Some(Obj::TextTag(t)) => Some(t),
+        _ => None,
+    }
+}
+
+fn opaque(w: &mut World, kind: &'static str) -> w3_jass::NativeResult {
+    handle(w.handles.insert(Obj::Opaque(kind)))
+}
+
+fn destroy_opaque(w: &mut World, h: u32) {
+    if matches!(w.handles.get(h), Some(Obj::Opaque(_))) {
+        w.handles.remove(h);
+    }
+}
+
+pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
+    reg!(t,
+        DisplayTextToPlayer => |w, _, a| {
+            let (players, text) = (player_mask(w, a, 0), w.localized(&a.s(3)));
+            w.requests.push(Request::DisplayText { players, x: a.r(1), y: a.r(2), text, duration: -1.0 });
+            none()
+        },
+        DisplayTimedTextToPlayer => |w, _, a| {
+            let (players, text) = (player_mask(w, a, 0), w.localized(&a.s(4)));
+            w.requests.push(Request::DisplayText { players, x: a.r(1), y: a.r(2), text, duration: a.r(3) });
+            none()
+        },
+        DisplayTimedTextFromPlayer => |w, _, a| {
+            let players = 1 << w.local_player;
+            let name = w.player_of(a.h(0)).map(|p| w.players[p as usize].name.clone()).unwrap_or_default();
+            let text = w.localized(&a.s(4)).replace("%s", &name);
+            w.requests.push(Request::DisplayText { players, x: a.r(1), y: a.r(2), text, duration: a.r(3) });
+            none()
+        },
+        ClearTextMessages => |w, _, _| { w.requests.push(Request::ClearText { players: u32::MAX }); none() },
+        SetDayNightModels => |w, _, a| { w.day_night_models = (a.s(0), a.s(1)); none() },
+        SetTerrainFogEx => |_, _, _| none(),
+        ResetTerrainFog => |_, _, _| none(),
+        SetSkyModel => |_, _, _| none(),
+        NewSoundEnvironment => |_, _, _| none(),
+        SetMapMusic => |w, _, a| { w.requests.push(Request::PlayMusic(a.s(0))); none() },
+        PlayMusic => |w, _, a| { w.requests.push(Request::PlayMusic(a.s(0))); none() },
+        PlayMusicEx => |w, _, a| { w.requests.push(Request::PlayMusic(a.s(0))); none() },
+        PlayThematicMusic => |w, _, a| { w.requests.push(Request::PlayMusic(a.s(0))); none() },
+        PlayThematicMusicEx => |w, _, a| { w.requests.push(Request::PlayMusic(a.s(0))); none() },
+        StopMusic => |w, _, a| { w.requests.push(Request::StopMusic(a.b(0))); none() },
+        ClearMapMusic => |_, _, _| none(),
+        ResumeMusic => |_, _, _| none(),
+        EndThematicMusic => |_, _, _| none(),
+        SetMusicVolume => |_, _, _| none(),
+        SetMusicPlayPosition => |_, _, _| none(),
+        SetThematicMusicPlayPosition => |_, _, _| none(),
+        CreateSound => |w, _, a| {
+            let s = Sound { path: a.s(0), looping: a.b(1), is_3d: a.b(2), stop_when_out_of_range: a.b(3), fade_in: a.i(4), fade_out: a.i(5), eax: a.s(6), volume: 127, pitch: 1.0, ..Default::default() };
+            handle(w.handles.insert(Obj::Sound(Box::new(s))))
+        },
+        CreateSoundFilenameWithLabel => |w, _, a| {
+            let s = Sound { path: a.s(0), looping: a.b(1), is_3d: a.b(2), stop_when_out_of_range: a.b(3), fade_in: a.i(4), fade_out: a.i(5), label: Some(a.s(6)), volume: 127, pitch: 1.0, ..Default::default() };
+            handle(w.handles.insert(Obj::Sound(Box::new(s))))
+        },
+        CreateSoundFromLabel => |w, _, a| {
+            let s = Sound { label: Some(a.s(0)), looping: a.b(1), is_3d: a.b(2), stop_when_out_of_range: a.b(3), fade_in: a.i(4), fade_out: a.i(5), volume: 127, pitch: 1.0, ..Default::default() };
+            handle(w.handles.insert(Obj::Sound(Box::new(s))))
+        },
+        CreateMIDISound => |w, _, a| {
+            let s = Sound { label: Some(a.s(0)), fade_in: a.i(1), fade_out: a.i(2), volume: 127, pitch: 1.0, ..Default::default() };
+            handle(w.handles.insert(Obj::Sound(Box::new(s))))
+        },
+        SetSoundParamsFromLabel => |w, _, a| { let l = a.s(1); if let Some(s) = sound_mut(w, a.h(0)) { s.label = Some(l); } none() },
+        SetSoundDistanceCutoff => |w, _, a| { let v = a.r(1); if let Some(s) = sound_mut(w, a.h(0)) { s.cutoff = v; } none() },
+        SetSoundChannel => |w, _, a| { let v = a.i(1); if let Some(s) = sound_mut(w, a.h(0)) { s.channel = v; } none() },
+        SetSoundVolume => |w, _, a| { let v = a.i(1); if let Some(s) = sound_mut(w, a.h(0)) { s.volume = v; } none() },
+        SetSoundPitch => |w, _, a| { let v = a.r(1); if let Some(s) = sound_mut(w, a.h(0)) { s.pitch = v; } none() },
+        SetSoundDuration => |w, _, a| { let v = a.i(1); if let Some(s) = sound_mut(w, a.h(0)) { s.duration_ms = v; } none() },
+        GetSoundDuration => |w, _, a| int(sound_mut(w, a.h(0)).map_or(0, |s| s.duration_ms)),
+        GetSoundFileDuration => |_, _, _| int(0),
+        SetSoundDistances => |w, _, a| { let (lo, hi) = (a.r(1), a.r(2)); if let Some(s) = sound_mut(w, a.h(0)) { s.min_dist = lo; s.max_dist = hi; } none() },
+        SetSoundConeAngles => |_, _, _| none(),
+        SetSoundConeOrientation => |_, _, _| none(),
+        SetSoundPosition => |w, _, a| { let p = (a.r(1), a.r(2), a.r(3)); if let Some(s) = sound_mut(w, a.h(0)) { s.position = Some(p); } none() },
+        SetSoundVelocity => |_, _, _| none(),
+        AttachSoundToUnit => |w, _, a| {
+            let p = w.unit(a.h(1)).map(|u| (u.x, u.y, 0.0));
+            if let (Some(p), Some(s)) = (p, sound_mut(w, a.h(0))) { s.position = Some(p); }
+            none()
+        },
+        StartSound => |w, _, a| {
+            if let Some(s) = sound_mut(w, a.h(0)) { s.playing = true; }
+            w.requests.push(Request::PlaySound(a.h(0)));
+            none()
+        },
+        StopSound => |w, _, a| {
+            if let Some(s) = sound_mut(w, a.h(0)) { s.playing = false; }
+            w.requests.push(Request::StopSound { sound: a.h(0), fade: a.b(2) });
+            none()
+        },
+        KillSoundWhenDone => |_, _, _| none(),
+        GetSoundIsPlaying => |w, _, a| boolean(sound_mut(w, a.h(0)).is_some_and(|s| s.playing)),
+        GetSoundIsLoading => |_, _, _| boolean(false),
+        SetSoundPlayPosition => |_, _, _| none(),
+        RegisterStackedSound => |_, _, _| none(),
+        UnregisterStackedSound => |_, _, _| none(),
+        VolumeGroupSetVolume => |_, _, _| none(),
+        VolumeGroupReset => |_, _, _| none(),
+        SetAmbientDaySound => |_, _, _| none(),
+        SetAmbientNightSound => |_, _, _| none(),
+        SetCameraPosition => |w, _, a| {
+            let players = 1 << w.local_player;
+            w.requests.push(Request::SetCameraPosition { players, x: a.r(0), y: a.r(1) });
+            none()
+        },
+        SetCameraQuickPosition => |_, _, _| none(),
+        PanCameraTo => |w, _, a| { w.requests.push(Request::PanCamera { players: 1 << w.local_player, x: a.r(0), y: a.r(1), z: None, duration: 0.0 }); none() },
+        PanCameraToTimed => |w, _, a| { w.requests.push(Request::PanCamera { players: 1 << w.local_player, x: a.r(0), y: a.r(1), z: None, duration: a.r(2) }); none() },
+        PanCameraToWithZ => |w, _, a| { w.requests.push(Request::PanCamera { players: 1 << w.local_player, x: a.r(0), y: a.r(1), z: Some(a.r(2)), duration: 0.0 }); none() },
+        PanCameraToTimedWithZ => |w, _, a| { w.requests.push(Request::PanCamera { players: 1 << w.local_player, x: a.r(0), y: a.r(1), z: Some(a.r(2)), duration: a.r(3) }); none() },
+        SetCameraField => |w, _, a| { w.requests.push(Request::SetCameraField { players: 1 << w.local_player, field: a.h(0) as i32, value: a.r(1), duration: a.r(2) }); none() },
+        AdjustCameraField => |_, _, _| none(),
+        ResetToGameCamera => |w, _, a| { w.requests.push(Request::ResetCamera { players: 1 << w.local_player, duration: a.r(0) }); none() },
+        StopCamera => |_, _, _| none(),
+        SetCameraTargetController => |_, _, _| none(),
+        SetCameraOrientController => |_, _, _| none(),
+        SetCameraRotateMode => |_, _, _| none(),
+        SetCinematicCamera => |_, _, _| none(),
+        SetCameraBoundsToRect => |_, _, _| none(),
+        CameraSetSmoothingFactor => |_, _, _| none(),
+        CameraSetSourceNoise => |_, _, _| none(),
+        CameraSetTargetNoise => |_, _, _| none(),
+        CameraSetSourceNoiseEx => |_, _, _| none(),
+        CameraSetTargetNoiseEx => |_, _, _| none(),
+        GetCameraField => |_, _, _| real(0.0),
+        GetCameraTargetPositionX => |_, _, _| real(0.0),
+        GetCameraTargetPositionY => |_, _, _| real(0.0),
+        GetCameraTargetPositionZ => |_, _, _| real(0.0),
+        GetCameraEyePositionX => |_, _, _| real(0.0),
+        GetCameraEyePositionY => |_, _, _| real(0.0),
+        GetCameraEyePositionZ => |_, _, _| real(0.0),
+        CreateCameraSetup => |w, _, _| handle(w.handles.insert(Obj::CameraSetup(Box::default()))),
+        CameraSetupSetField => |w, _, a| {
+            if let Some(Obj::CameraSetup(c)) = w.handles.get_mut(a.h(0)) { c.fields.insert(a.h(1) as i32, a.r(2)); }
+            none()
+        },
+        CameraSetupGetField => |w, _, a| real(match w.handles.get(a.h(0)) {
+            Some(Obj::CameraSetup(c)) => c.fields.get(&(a.h(1) as i32)).copied().unwrap_or(0.0),
+            _ => 0.0,
+        }),
+        CameraSetupSetDestPosition => |w, _, a| {
+            if let Some(Obj::CameraSetup(c)) = w.handles.get_mut(a.h(0)) { c.x = a.r(1); c.y = a.r(2); }
+            none()
+        },
+        CameraSetupGetDestPositionX => |w, _, a| real(match w.handles.get(a.h(0)) { Some(Obj::CameraSetup(c)) => c.x, _ => 0.0 }),
+        CameraSetupGetDestPositionY => |w, _, a| real(match w.handles.get(a.h(0)) { Some(Obj::CameraSetup(c)) => c.y, _ => 0.0 }),
+        CameraSetupGetDestPositionLoc => |w, _, a| {
+            let (x, y) = match w.handles.get(a.h(0)) { Some(Obj::CameraSetup(c)) => (c.x, c.y), _ => (0.0, 0.0) };
+            handle(w.handles.insert(Obj::Location(x, y)))
+        },
+        CameraSetupApply => |_, _, _| none(),
+        CameraSetupApplyWithZ => |_, _, _| none(),
+        CameraSetupApplyForceDuration => |_, _, _| none(),
+        CameraSetupApplyForceDurationWithZ => |_, _, _| none(),
+        SetCinematicScene => |_, _, _| none(),
+        EndCinematicScene => |_, _, _| none(),
+        ForceCinematicSubtitles => |_, _, _| none(),
+        DisplayCineFilter => |_, _, _| none(),
+        IsCineFilterDisplayed => |_, _, _| boolean(false),
+        SetCineFilterTexture => |_, _, _| none(),
+        SetCineFilterBlendMode => |_, _, _| none(),
+        SetCineFilterTexMapFlags => |_, _, _| none(),
+        SetCineFilterStartUV => |_, _, _| none(),
+        SetCineFilterEndUV => |_, _, _| none(),
+        SetCineFilterStartColor => |_, _, _| none(),
+        SetCineFilterEndColor => |_, _, _| none(),
+        SetCineFilterDuration => |_, _, _| none(),
+        AddWeatherEffect => |w, _, _| opaque(w, "weathereffect"),
+        RemoveWeatherEffect => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
+        EnableWeatherEffect => |_, _, _| none(),
+        CreateFogModifierRect => |w, _, _| opaque(w, "fogmodifier"),
+        CreateFogModifierRadius => |w, _, _| opaque(w, "fogmodifier"),
+        CreateFogModifierRadiusLoc => |w, _, _| opaque(w, "fogmodifier"),
+        DestroyFogModifier => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
+        FogModifierStart => |_, _, _| none(),
+        FogModifierStop => |_, _, _| none(),
+        SetFogStateRect => |_, _, _| none(),
+        SetFogStateRadius => |_, _, _| none(),
+        SetFogStateRadiusLoc => |_, _, _| none(),
+        IsVisibleToPlayer => |_, _, _| boolean(true),
+        IsLocationVisibleToPlayer => |_, _, _| boolean(true),
+        IsFoggedToPlayer => |_, _, _| boolean(false),
+        IsLocationFoggedToPlayer => |_, _, _| boolean(false),
+        IsMaskedToPlayer => |_, _, _| boolean(false),
+        IsLocationMaskedToPlayer => |_, _, _| boolean(false),
+        IsUnitVisible => |_, _, _| boolean(true),
+        IsUnitFogged => |_, _, _| boolean(false),
+        IsUnitMasked => |_, _, _| boolean(false),
+        IsUnitDetected => |_, _, _| boolean(true),
+        IsUnitInvisible => |_, _, _| boolean(false),
+        CreateTextTag => |w, _, _| handle(w.handles.insert(Obj::TextTag(Box::new(TextTag { visible: true, color: [255; 4], permanent: true, ..Default::default() })))),
+        DestroyTextTag => |w, _, a| { if tag_mut(w, a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
+        SetTextTagText => |w, _, a| { let (s, h) = (w.localized(&a.s(1)), a.r(2)); if let Some(t) = tag_mut(w, a.h(0)) { t.text = s; t.height = h; } none() },
+        SetTextTagPos => |w, _, a| { let p = (a.r(1), a.r(2), a.r(3)); if let Some(t) = tag_mut(w, a.h(0)) { t.x = p.0; t.y = p.1; t.z = p.2; t.unit = None; } none() },
+        SetTextTagPosUnit => |w, _, a| { let (u, z) = (a.h(1), a.r(2)); if let Some(t) = tag_mut(w, a.h(0)) { t.unit = Some((u, z)); } none() },
+        SetTextTagColor => |w, _, a| { let c = [a.i(1) as u8, a.i(2) as u8, a.i(3) as u8, a.i(4) as u8]; if let Some(t) = tag_mut(w, a.h(0)) { t.color = c; } none() },
+        SetTextTagVelocity => |w, _, a| { let v = (a.r(1), a.r(2)); if let Some(t) = tag_mut(w, a.h(0)) { t.velocity = v; } none() },
+        SetTextTagVisibility => |w, _, a| { let v = a.b(1); if let Some(t) = tag_mut(w, a.h(0)) { t.visible = v; } none() },
+        SetTextTagSuspended => |w, _, a| { let v = a.b(1); if let Some(t) = tag_mut(w, a.h(0)) { t.suspended = v; } none() },
+        SetTextTagPermanent => |w, _, a| { let v = a.b(1); if let Some(t) = tag_mut(w, a.h(0)) { t.permanent = v; } none() },
+        SetTextTagAge => |w, _, a| { let v = a.r(1); if let Some(t) = tag_mut(w, a.h(0)) { t.age = v; } none() },
+        SetTextTagLifespan => |w, _, a| { let v = a.r(1); if let Some(t) = tag_mut(w, a.h(0)) { t.lifespan = v; } none() },
+        SetTextTagFadepoint => |w, _, a| { let v = a.r(1); if let Some(t) = tag_mut(w, a.h(0)) { t.fadepoint = v; } none() },
+        DialogCreate => |w, _, _| opaque(w, "dialog"),
+        DialogDestroy => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
+        DialogClear => |_, _, _| none(),
+        DialogSetMessage => |_, _, _| none(),
+        DialogAddButton => |w, _, _| opaque(w, "button"),
+        DialogAddQuitButton => |w, _, _| opaque(w, "button"),
+        DialogDisplay => |_, _, _| none(),
+        CreateQuest => |w, _, _| opaque(w, "quest"),
+        DestroyQuest => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
+        QuestCreateItem => |w, _, _| opaque(w, "questitem"),
+        CreateDefeatCondition => |w, _, _| opaque(w, "defeatcondition"),
+        DestroyDefeatCondition => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
+        CreateTimerDialog => |w, _, _| opaque(w, "timerdialog"),
+        DestroyTimerDialog => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
+        CreateLeaderboard => |w, _, _| opaque(w, "leaderboard"),
+        DestroyLeaderboard => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
+        CreateMultiboard => |w, _, _| opaque(w, "multiboard"),
+        DestroyMultiboard => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
+        MultiboardGetItem => |w, _, _| opaque(w, "multiboarditem"),
+        CreateTrackable => |w, _, _| opaque(w, "trackable"),
+        CreateImage => |w, _, _| opaque(w, "image"),
+        CreateUbersplat => |w, _, _| opaque(w, "ubersplat"),
+        AddLightning => |w, _, _| opaque(w, "lightning"),
+        AddLightningEx => |w, _, _| opaque(w, "lightning"),
+        DestroyLightning => |w, _, a| { destroy_opaque(w, a.h(0)); boolean(true) },
+        CreateUnitPool => |w, _, _| opaque(w, "unitpool"),
+        CreateItemPool => |w, _, _| opaque(w, "itempool"),
+        Preload => |_, _, _| none(),
+        PreloadEnd => |_, _, _| none(),
+        PreloadStart => |_, _, _| none(),
+        PreloadRefresh => |_, _, _| none(),
+        PreloadEndEx => |_, _, _| none(),
+        PreloadGenClear => |_, _, _| none(),
+        PreloadGenStart => |_, _, _| none(),
+        PreloadGenEnd => |_, _, _| none(),
+        Preloader => |_, _, _| none(),
+        PingMinimap => |_, _, _| none(),
+        PingMinimapEx => |_, _, _| none(),
+        SetDoodadAnimation => |_, _, _| none(),
+        SetDoodadAnimationRect => |_, _, _| none(),
+        SetTerrainType => |_, _, _| none(),
+        GetTerrainType => |_, _, _| int(0),
+        GetTerrainVariance => |_, _, _| int(0),
+        SetBlight => |_, _, _| none(),
+        SetBlightRect => |_, _, _| none(),
+        SetBlightPoint => |_, _, _| none(),
+        SetBlightLoc => |_, _, _| none(),
+        IsPointBlighted => |_, _, _| boolean(false),
+        SetWaterBaseColor => |_, _, _| none(),
+        SetWaterDeforms => |_, _, _| none(),
+        EnableOcclusion => |_, _, _| none(),
+        SetIntroShotText => |_, _, _| none(),
+        SetIntroShotModel => |_, _, _| none(),
+        EnableUserControl => |_, _, _| none(),
+        EnableUserUI => |_, _, _| none(),
+        ShowInterface => |_, _, _| none(),
+        PauseGame => |_, _, _| none(),
+        SetPortraitLight => |_, _, _| none(),
+        SetUnitFog => |_, _, _| none(),
+    );
+}

@@ -4,7 +4,7 @@
 use std::rc::Rc;
 
 use crate::compile::{Module, Op};
-use crate::value::{FuncId, Value};
+use crate::value::{BaseType, FuncId, Value};
 
 /// Size of a JASS array as allocated by the game.
 pub const ARRAY_SIZE: usize = 8192;
@@ -307,7 +307,16 @@ impl Vm {
                         abort!("uninitialized argument");
                     }
                     match host.call_native(self, n, &args) {
-                        NativeResult::Return(v) => t.stack.push(v),
+                        NativeResult::Return(v) => {
+                            // Hosts may return enumeration handles as plain integers.
+                            let v = match (self.module.natives[n as usize].ret_base, v) {
+                                (Some(BaseType::Handle), Value::Int(i)) => Value::Handle(i as u32),
+                                (Some(BaseType::Integer), Value::Handle(h)) => Value::Int(h as i32),
+                                (Some(BaseType::Real), Value::Int(i)) => Value::Real(i as f32),
+                                (_, v) => v,
+                            };
+                            t.stack.push(v)
+                        }
                         NativeResult::Sleep(secs) => {
                             t.stack.push(Value::Null);
                             if t.can_sleep {

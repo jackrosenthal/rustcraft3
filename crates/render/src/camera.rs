@@ -2,6 +2,9 @@
 
 use glam::{Mat4, Quat, Vec3};
 
+/// Vertical position of the camera target in normalized device coordinates.
+pub const TARGET_SCREEN_OFFSET: f32 = 0.085;
+
 #[derive(Clone, Copy, Debug)]
 pub struct Camera {
     pub target: Vec3,
@@ -10,8 +13,8 @@ pub struct Camera {
     /// Degrees around the z axis; 90 looks toward +y.
     pub rotation: f32,
     pub distance: f32,
-    /// Field of view in degrees, measured horizontally across a 4:3 screen.  Wider screens
-    /// keep the 4:3 vertical extent and see more to the sides.
+    /// Field of view in degrees, measured across the diagonal of a 4:3 screen.  Wider
+    /// screens keep the 4:3 vertical extent and see more to the sides.
     pub fov: f32,
     pub near: f32,
     pub far: f32,
@@ -50,12 +53,16 @@ impl Camera {
         Mat4::look_to_rh(self.eye(), dir, up)
     }
 
+    /// Measured against frames captured from the original 1.27b renderer at 4:3: the
+    /// vertical extent matches a 70 degree field of view across the
+    /// diagonal of a 4:3 screen, and the camera target projects 0.085 of the half-height
+    /// above the screen center.
     pub fn projection(&self, aspect: f32) -> Mat4 {
-        let half_h = (self.fov.to_radians() / 2.0).tan() * 0.75;
+        let half_h = (self.fov.to_radians() / 2.0).tan() * 0.6;
         let fov_y = 2.0 * half_h.atan();
         // Allow zooming out further than the default far plane without clipping the ground.
         let far = self.far.max(self.distance * 3.0);
-        Mat4::perspective_rh(fov_y, aspect, self.near, far)
+        Mat4::from_translation(Vec3::new(0.0, TARGET_SCREEN_OFFSET, 0.0)) * Mat4::perspective_rh(fov_y, aspect, self.near, far)
     }
 
     pub fn view_proj(&self, aspect: f32) -> Mat4 {

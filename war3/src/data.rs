@@ -87,13 +87,13 @@ impl GameData {
         // FUN_6f046800: the expansion is used when installed unless -classic is given.
         let version = if classic || war3x.is_none() { Version::ReignOfChaos } else { Version::FrozenThrone };
         let misc = Profile::parse(&chain.read_string("UI\\MiscData.txt").unwrap_or_default());
-        let mut data = GameData { dir: dir.to_path_buf(), version, chain, war3x, war3x_local, patch, misc };
+        let data = GameData { dir: dir.to_path_buf(), version, chain, war3x, war3x_local, patch, misc };
         data.select_data_set(DataSet::Melee);
         Ok(data)
     }
 
     /// Mounts the rule-set folders for a game (FUN_6f03e070).
-    pub fn select_data_set(&mut self, set: DataSet) {
+    pub fn select_data_set(&self, set: DataSet) {
         for p in PRIORITY_DATA_SET {
             self.chain.unmount(p);
         }

@@ -19,7 +19,7 @@ struct Running {
     window: Arc<Window>,
     gpu: w3_render::Gpu,
     scene: Option<Scene>,
-    _assets: Assets,
+    assets: Assets,
     last: Instant,
     keys: HashSet<KeyCode>,
     cursor: PhysicalPosition<f64>,
@@ -85,7 +85,7 @@ impl App {
             window,
             gpu,
             scene,
-            _assets: assets,
+            assets,
             last: Instant::now(),
             keys: HashSet::new(),
             cursor: PhysicalPosition::new(0.0, 0.0),
@@ -156,6 +156,7 @@ impl ApplicationHandler for App {
                     scene.camera.target.x += d.x * speed;
                     scene.camera.target.y += d.y * speed;
                     scene.update(dt);
+                    scene.sync_units(&r.gpu.device, &r.gpu.queue, &mut r.assets);
                 }
                 let frame = match r.gpu.surface.get_current_texture() {
                     wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,

@@ -31,6 +31,7 @@ struct Batch {
 
 pub struct TerrainRenderer {
     opaque: wgpu::RenderPipeline,
+    cliffs: wgpu::RenderPipeline,
     blended: wgpu::RenderPipeline,
     water_pipeline: wgpu::RenderPipeline,
     globals_bg: wgpu::BindGroup,
@@ -38,6 +39,8 @@ pub struct TerrainRenderer {
     indices: wgpu::Buffer,
     batches: Vec<Batch>,
     texture_bgs: Vec<wgpu::BindGroup>,
+    cliff_batches: Vec<Batch>,
+    cliff_bgs: Vec<wgpu::BindGroup>,
     water_textures: Vec<wgpu::BindGroup>,
     water_range: (u32, u32),
     water_rate: f32,
@@ -73,7 +76,9 @@ impl TerrainRenderer {
         terrain: &Terrain,
         terrain_slk: &Table,
         water_slk: &Table,
+        cliff_slk: &Table,
         misc: &Profile,
+        load_mdx: &mut dyn FnMut(&str) -> Option<w3_formats::mdx::Model>,
     ) -> Self {
         use wgpu::util::DeviceExt;
         let (w, h) = (terrain.width, terrain.height);
@@ -114,8 +119,31 @@ impl TerrainRenderer {
             let u = hat(x, y + 1);
             Vec3::new(l - r, d - u, 2.0 * TILE).normalize().to_array()
         };
+        let is_cliff = |x: u32, y: u32| {
+            let l = [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)].map(|(cx, cy)| terrain.corner(cx, cy).layer_height);
+            l.iter().any(|&v| v != l[0])
+        };
+        // Ground height without cliff layers, which cliff models are draped over.
+        let ground_only: Vec<f32> = terrain
+            .corners
+            .iter()
+            .map(|c| (c.ground_height as f32 - 8192.0) / 4.0)
+            .collect();
+        let ground_at = |fx: f32, fy: f32| -> f32 {
+            let fx = fx.clamp(0.0, (w - 1) as f32);
+            let fy = fy.clamp(0.0, (h - 1) as f32);
+            let (ix, iy) = (fx.floor() as u32, fy.floor() as u32);
+            let (tx, ty) = (fx - ix as f32, fy - iy as f32);
+            let at = |x: u32, y: u32| ground_only[(y.min(h - 1) * w + x.min(w - 1)) as usize];
+            let a = at(ix, iy) * (1.0 - tx) + at(ix + 1, iy) * tx;
+            let b = at(ix, iy + 1) * (1.0 - tx) + at(ix + 1, iy + 1) * tx;
+            a * (1.0 - ty) + b * ty
+        };
         for y in 0..h - 1 {
             for x in 0..w - 1 {
+                if is_cliff(x, y) {
+                    continue;
+                }
                 let bl = corner_tex(x, y);
                 let br = corner_tex(x + 1, y);
                 let tl = corner_tex(x, y + 1);
@@ -172,6 +200,78 @@ impl TerrainRenderer {
         for (t, list) in per_tex_overlay.iter().enumerate() {
             if !list.is_empty() {
                 batches.push(Batch { texture: t, first: indices.len() as u32, count: list.len() as u32, blended: true });
+                indices.extend(list);
+            }
+        }
+
+        // Cliffs: one model per tile whose corners sit on different cliff levels, named by
+        // each corner's level above the lowest (top-left, top-right, bottom-right,
+        // bottom-left), as game.dll builds them (FUN_6f744560).
+        let cliff_types: Vec<(String, Arc<Texture>)> = terrain
+            .cliff_tilesets
+            .iter()
+            .map(|id| {
+                let key = String::from_utf8_lossy(id).into_owned();
+                let dir = cliff_slk.get(&key, "cliffModelDir").map(|v| v.as_str()).unwrap_or_else(|| "Cliffs".into());
+                let tdir = cliff_slk.get(&key, "texDir").map(|v| v.as_str()).unwrap_or_default();
+                let tfile = cliff_slk.get(&key, "texFile").map(|v| v.as_str()).unwrap_or_default();
+                (dir, textures.get_or_white(device, queue, &format!("{tdir}\\{tfile}.blp")))
+            })
+            .collect();
+        let mut cliff_models: std::collections::HashMap<String, Option<w3_formats::mdx::Model>> = Default::default();
+        let mut per_cliff: Vec<Vec<u32>> = vec![Vec::new(); cliff_types.len().max(1)];
+        for y in 0..h - 1 {
+            for x in 0..w - 1 {
+                if !is_cliff(x, y) {
+                    continue;
+                }
+                let corners = [(x, y + 1), (x + 1, y + 1), (x + 1, y), (x, y)];
+                let layers = corners.map(|(cx, cy)| terrain.corner(cx, cy).layer_height);
+                let base = *layers.iter().min().unwrap();
+                if layers.iter().any(|&l| l - base > 2) {
+                    continue;
+                }
+                let letters: String = layers.iter().map(|&l| (b'A' + l - base) as char).collect();
+                let bl = terrain.corner(x, y);
+                let mut ct = bl.cliff_texture as usize;
+                if ct == 15 {
+                    ct = 0;
+                }
+                let Some((dir, _)) = cliff_types.get(ct) else { continue };
+                let mut model = None;
+                for var in [bl.cliff_variation as u32, 0] {
+                    let path = format!("Doodads\\Terrain\\{dir}\\{dir}{letters}{var}.mdx");
+                    let m = cliff_models.entry(path.clone()).or_insert_with(|| load_mdx(&path));
+                    if m.is_some() {
+                        model = Some(path);
+                        break;
+                    }
+                }
+                let Some(path) = model else { continue };
+                let m = cliff_models[&path].as_ref().unwrap();
+                let ox = terrain.offset[0] + x as f32 * TILE;
+                let oy = terrain.offset[1] + y as f32 * TILE;
+                let oz = (base as f32 - 2.0) * TILE;
+                for g in &m.geosets {
+                    let first = verts.len() as u32;
+                    for (vi, p) in g.vertices.iter().enumerate() {
+                        let (wx, wy) = (ox + p[0], oy + p[1]);
+                        let gz = ground_at((wx - terrain.offset[0]) / TILE, (wy - terrain.offset[1]) / TILE);
+                        verts.push(Vertex {
+                            pos: [wx, wy, oz + p[2] + gz],
+                            normal: g.normals.get(vi).copied().unwrap_or([0.0, 0.0, 1.0]),
+                            uv: g.uvs.first().and_then(|u| u.get(vi)).copied().unwrap_or([0.0; 2]),
+                            color: [1.0; 4],
+                        });
+                    }
+                    per_cliff[ct].extend(g.faces.chunks_exact(3).flat_map(|t| [first + t[0] as u32, first + t[1] as u32, first + t[2] as u32]));
+                }
+            }
+        }
+        let mut cliff_batches = Vec::new();
+        for (t, list) in per_cliff.iter().enumerate() {
+            if !list.is_empty() {
+                cliff_batches.push(Batch { texture: t, first: indices.len() as u32, count: list.len() as u32, blended: false });
                 indices.extend(list);
             }
         }
@@ -280,7 +380,7 @@ impl TerrainRenderer {
             immediate_size: 0,
         });
         let attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x4];
-        let make = |entry: &str, blend: Option<wgpu::BlendState>, depth_write: bool| {
+        let make = |entry: &str, blend: Option<wgpu::BlendState>, depth_write: bool, cull: Option<wgpu::Face>| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("terrain"),
                 layout: Some(&layout),
@@ -304,10 +404,7 @@ impl TerrainRenderer {
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
                 }),
-                primitive: wgpu::PrimitiveState {
-                    cull_mode: Some(wgpu::Face::Back),
-                    ..Default::default()
-                },
+                primitive: wgpu::PrimitiveState { cull_mode: cull, ..Default::default() },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: crate::gpu::DEPTH_FORMAT,
                     depth_write_enabled: Some(depth_write),
@@ -320,13 +417,16 @@ impl TerrainRenderer {
                 cache: None,
             })
         };
-        let opaque = make("fs_ground", None, true);
-        let blended = make("fs_ground", Some(wgpu::BlendState::ALPHA_BLENDING), false);
-        let water_pipeline = make("fs_water", Some(wgpu::BlendState::ALPHA_BLENDING), false);
+        let opaque = make("fs_ground", None, true, Some(wgpu::Face::Back));
+        // Cliff models wind their triangles the other way from the ground mesh.
+        let cliffs = make("fs_ground", None, true, None);
+        let blended = make("fs_ground", Some(wgpu::BlendState::ALPHA_BLENDING), false, Some(wgpu::Face::Back));
+        let water_pipeline = make("fs_water", Some(wgpu::BlendState::ALPHA_BLENDING), false, None);
 
         let clamp = make_sampler(device, false, false);
         let wrap = make_sampler(device, true, true);
         let texture_bgs = ground.iter().map(|(t, _)| texture_bind_group(device, &tex_layout, &t.view, &clamp)).collect();
+        let cliff_bgs = cliff_types.iter().map(|(_, t)| texture_bind_group(device, &tex_layout, &t.view, &wrap)).collect();
         let water_tex = water_slk
             .get(&water_id, "texFile")
             .map(|v| v.as_str())
@@ -340,6 +440,7 @@ impl TerrainRenderer {
             .collect();
         TerrainRenderer {
             opaque,
+            cliffs,
             blended,
             water_pipeline,
             globals_bg,
@@ -347,6 +448,8 @@ impl TerrainRenderer {
             indices: index_buf,
             batches,
             texture_bgs,
+            cliff_batches,
+            cliff_bgs,
             water_textures,
             water_range,
             water_rate: num("texRate").max(1.0),
@@ -376,6 +479,11 @@ impl TerrainRenderer {
         for b in &self.batches {
             pass.set_pipeline(if b.blended { &self.blended } else { &self.opaque });
             pass.set_bind_group(1, &self.texture_bgs[b.texture], &[]);
+            pass.draw_indexed(b.first..b.first + b.count, 0, 0..1);
+        }
+        pass.set_pipeline(&self.cliffs);
+        for b in &self.cliff_batches {
+            pass.set_bind_group(1, &self.cliff_bgs[b.texture], &[]);
             pass.draw_indexed(b.first..b.first + b.count, 0, 0..1);
         }
     }

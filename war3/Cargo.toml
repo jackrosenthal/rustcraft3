@@ -10,6 +10,7 @@ w3-mpq.workspace = true
 w3-formats.workspace = true
 w3-jass.workspace = true
 w3-render.workspace = true
+w3-game.workspace = true
 clap.workspace = true
 winit.workspace = true
 wgpu.workspace = true
@@ -22,3 +23,5 @@ bytemuck.workspace = true
 [dev-dependencies]
 pollster.workspace = true
 image.workspace = true
+w3-game.workspace = true
+w3-mpq.workspace = true

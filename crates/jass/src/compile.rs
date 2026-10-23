@@ -62,6 +62,7 @@ pub struct NativeDecl {
     pub name: Name,
     pub params: Vec<Name>,
     pub ret: Option<Name>,
+    pub ret_base: Option<BaseType>,
 }
 
 #[derive(Debug, Clone)]
@@ -147,6 +148,7 @@ impl Module {
                 name: n.name.clone(),
                 params: n.params.iter().map(|p| p.1.clone()).collect(),
                 ret: n.ret.clone(),
+                ret_base: n.ret.as_deref().map(|t| self.base_type(t)),
             });
             self.native_index.insert(n.name.clone(), id);
         }

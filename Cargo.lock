@@ -2256,6 +2256,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "w3-game"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "log",
+ "thiserror 2.0.21",
+ "w3-formats",
+ "w3-jass",
+ "w3-mpq",
+]
+
+[[package]]
 name = "w3-jass"
 version = "0.1.0"
 dependencies = [
@@ -2312,6 +2324,7 @@ dependencies = [
  "log",
  "pollster",
  "w3-formats",
+ "w3-game",
  "w3-jass",
  "w3-mpq",
  "w3-render",

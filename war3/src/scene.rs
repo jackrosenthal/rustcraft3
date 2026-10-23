@@ -12,7 +12,7 @@ use w3_render::model::{ModelGpu, ModelInstance, ModelRenderer, default_globals};
 use w3_render::terrain::TerrainRenderer;
 use w3_render::texture::TextureCache;
 
-use crate::data::{GameData, PRIORITY_MAP};
+use crate::data::{DataSet, GameData, PRIORITY_MAP};
 
 pub struct Assets {
     pub textures: TextureCache,
@@ -57,6 +57,9 @@ impl Assets {
 }
 
 pub struct Scene {
+    pub game: Option<w3_game::Game>,
+    /// Render instances for game units, by handle.
+    pub units: HashMap<u32, ModelInstance>,
     pub info: MapInfo,
     pub terrain: TerrainRenderer,
     pub models: ModelRenderer,
@@ -95,11 +98,16 @@ impl Scene {
         data.chain.mount(archive, None, PRIORITY_MAP);
         let chain = &data.chain;
         let info = MapInfo::parse(&chain.read("war3map.w3i")?).context("war3map.w3i")?;
+        // w3i flag 0x4 marks a melee map; others use the custom rule set.
+        data.select_data_set(if info.flags & 0x4 != 0 { DataSet::Melee } else { DataSet::Custom });
         let terrain = Terrain::parse(&chain.read("war3map.w3e")?).context("war3map.w3e")?;
 
         let models = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let terrain_slk = data.slk("TerrainArt\\Terrain.slk");
         let water_slk = data.slk("TerrainArt\\Water.slk");
+        let cliff_slk = data.slk("TerrainArt\\CliffTypes.slk");
+        let chain2 = data.chain.clone();
+        let mut load_mdx = |path: &str| chain2.read(path).ok().and_then(|b| w3_formats::mdx::Model::parse(&b).ok());
         let terrain_r = TerrainRenderer::new(
             device,
             queue,
@@ -109,7 +117,9 @@ impl Scene {
             &terrain,
             &terrain_slk,
             &water_slk,
+            &cliff_slk,
             &data.misc,
+            &mut load_mdx,
         );
 
         let mut instances = Vec::new();
@@ -156,6 +166,33 @@ impl Scene {
             }
         }
 
+        // Run the map script: config, then main with the local player in the first
+        // user slot.  Other slots stay empty until computer players are implemented.
+        let game = match w3_game::Game::load(data.chain.clone(), data.version as i32) {
+            Ok(mut g) => {
+                if let Err(e) = g.config() {
+                    log::error!("config: {e:#}");
+                }
+                let mut first = true;
+                let res = g.start(|_, controller| {
+                    if controller == w3_game::types::map_control::USER && first {
+                        first = false;
+                        w3_game::SlotFill::Local
+                    } else {
+                        w3_game::SlotFill::Empty
+                    }
+                });
+                if let Err(e) = res {
+                    log::error!("main: {e:#}");
+                }
+                Some(g)
+            }
+            Err(e) => {
+                log::error!("map script: {e:#}");
+                None
+            }
+        };
+
         let mut camera = Camera::default();
         let start = info
             .players
@@ -165,12 +202,69 @@ impl Scene {
         camera.target = Vec3::new(start[0], start[1], terrain_r.height_at(start[0], start[1]));
         let dir: Vec<f32> = data.misc.get_list("Light", "Direction").iter().filter_map(|v| v.trim().parse().ok()).collect();
         let light = if dir.len() == 3 { Vec3::new(dir[0], dir[1], dir[2]) } else { Vec3::new(0.3, 0.3, -0.25) };
-        Ok(Scene { info, terrain: terrain_r, models, instances, camera, time: 0.0, light })
+        let mut scene = Scene { game, units: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light };
+        scene.apply_requests();
+        Ok(scene)
+    }
+
+    /// Handles presentation requests from the game.
+    fn apply_requests(&mut self) {
+        let Some(g) = self.game.as_mut() else { return };
+        let local = 1u32 << g.world.local_player;
+        for r in std::mem::take(&mut g.world.requests) {
+            match r {
+                w3_game::world::Request::SetCameraPosition { players, x, y } if players & local != 0 => {
+                    self.camera.target.x = x;
+                    self.camera.target.y = y;
+                }
+                w3_game::world::Request::PanCamera { players, x, y, .. } if players & local != 0 => {
+                    self.camera.target.x = x;
+                    self.camera.target.y = y;
+                }
+                w3_game::world::Request::DisplayText { text, .. } => log::info!("[text] {text}"),
+                _ => {}
+            }
+        }
+    }
+
+    /// Creates, updates, and removes render instances to match the game's units.
+    pub fn sync_units(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) {
+        let Some(g) = self.game.as_ref() else { return };
+        let w = &g.world;
+        self.units.retain(|h, _| w.unit(*h).is_some());
+        for &h in &w.unit_order {
+            let Some(u) = w.unit(h) else { continue };
+            if !self.units.contains_key(&h) {
+                let Some(o) = w.objects.units.get(u.type_id) else { continue };
+                let file = o.str("file");
+                let Some(model) = assets.model(device, queue, &file) else { continue };
+                let mut inst = ModelInstance::new(model);
+                inst.play("Stand");
+                self.units.insert(h, inst);
+            }
+            let inst = self.units.get_mut(&h).unwrap();
+            let z = self.terrain.height_at(u.x, u.y) + u.fly_height;
+            inst.transform = Mat4::from_scale_rotation_translation(
+                Vec3::splat(u.scale),
+                Quat::from_rotation_z(u.facing.to_radians()),
+                Vec3::new(u.x, u.y, z),
+            );
+            inst.team = w.players.get(u.owner as usize).map_or(0, |p| p.color.clamp(0, 15) as u8);
+            inst.team = u.color.clamp(0, 15) as u8;
+            inst.visible = !u.hidden;
+        }
     }
 
     pub fn update(&mut self, dt: f32) {
         self.time += dt;
+        if let Some(g) = self.game.as_mut() {
+            g.tick(dt);
+        }
+        self.apply_requests();
         for inst in &mut self.instances {
+            inst.advance(dt * 1000.0);
+        }
+        for inst in self.units.values_mut() {
             inst.advance(dt * 1000.0);
         }
         self.camera.target.z = self.terrain.height_at(self.camera.target.x, self.camera.target.y);
@@ -197,6 +291,9 @@ impl Scene {
             if p.distance(self.camera.target) > self.camera.far * 1.5 {
                 continue;
             }
+            self.models.submit(inst, eye, rot);
+        }
+        for inst in self.units.values_mut() {
             self.models.submit(inst, eye, rot);
         }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

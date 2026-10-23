@@ -385,9 +385,22 @@ impl Game {
         }
     }
 
+    /// Whether an item may leave its carrier's hands (SetItemDroppable, the item's
+    /// droppable); if not, "Unable to drop this item." (error 0xd3, FUN_6f545dd0).
+    fn droppable(&mut self, item: u32) -> bool {
+        let ok = self.world.item(item).is_none_or(|i| i.droppable);
+        if !ok {
+            self.world.order_error = Some("Cantdropitem");
+        }
+        ok
+    }
+
     /// Orders a unit to drop the item in a slot at a point.
     pub fn drop_item_at(&mut self, unit: u32, slot: usize, x: f32, y: f32) {
         let Some(item) = self.world.unit(unit).and_then(|u| u.inventory.get(slot).copied()).filter(|&i| i != 0) else { return };
+        if !self.droppable(item) {
+            return;
+        }
         if let Some(u) = self.world.unit_mut(unit) {
             u.action = types::Action::DropItem { item, x, y };
             u.path.clear();
@@ -397,6 +410,9 @@ impl Game {
     /// Orders a unit to hand the item in a slot to another.
     pub fn give_item_to(&mut self, unit: u32, slot: usize, target: u32) {
         let Some(item) = self.world.unit(unit).and_then(|u| u.inventory.get(slot).copied()).filter(|&i| i != 0) else { return };
+        if !self.droppable(item) {
+            return;
+        }
         if let Some(u) = self.world.unit_mut(unit) {
             u.action = types::Action::GiveItem { item, target };
             u.path.clear();

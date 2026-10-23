@@ -317,6 +317,8 @@ pub struct Scene {
     menu_requested: bool,
     /// The quest log is to open (F9 or the Quests button).
     quests_requested: bool,
+    /// An item waiting for the click on its target: the unit and the slot.
+    item_target: Option<(u32, usize)>,
     /// The message log is to open (F12 or the Log button).
     log_requested: bool,
     /// Acknowledgments: the unit last clicked, the consecutive "What" count (game.dll
@@ -543,7 +545,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, log_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, item_target: None, log_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1541,7 +1543,12 @@ impl Scene {
         if let Some(slot) = self.hud.as_ref().and_then(|h| h.inventory_at(ux, uy)) {
             if let (Some(&u), Some(g)) = (self.selection.first(), self.game.as_mut()) {
                 if g.world.unit(u).is_some_and(|un| un.owner == g.world.local_player) {
-                    g.use_item(u, slot);
+                    // An item used on a unit or a point waits for the click on it.
+                    if g.world.item_targeting(u, slot) == w3_game::ability::Targeting::None {
+                        g.use_item(u, slot);
+                    } else {
+                        self.item_target = Some((u, slot));
+                    }
                 }
             }
             return true;
@@ -1562,6 +1569,16 @@ impl Scene {
             return true;
         }
         if self.over_console(sx, sy, size) {
+            return true;
+        }
+        if let Some((u, slot)) = self.item_target.take() {
+            let target = self.pick_unit(sx, sy, size).or_else(|| self.pick_destructable(sx, sy, size));
+            let point = self.ground_at(sx, sy, size);
+            if let Some(g) = self.game.as_mut() {
+                let point_only = g.world.item_targeting(u, slot) == w3_game::ability::Targeting::Point;
+                let (t, (x, y)) = if point_only { (0, point.unwrap_or_default()) } else { (target.unwrap_or(0), point.unwrap_or_default()) };
+                g.use_item_at(u, slot, t, x, y);
+            }
             return true;
         }
         if let Some(order) = self.targeting.take() {
@@ -1874,6 +1891,9 @@ impl Scene {
                 return;
             }
         }
+        if c == '\u{1b}' && self.item_target.take().is_some() {
+            return;
+        }
         if c == '\u{1b}' && (self.targeting.is_some() || self.placing.is_some()) {
             self.card_action(crate::card::Action::Cancel);
             return;
@@ -1901,7 +1921,7 @@ impl Scene {
         if !self.user_control() {
             return;
         }
-        if self.targeting.take().is_some() || self.placing.take().is_some() {
+        if self.targeting.take().is_some() || self.placing.take().is_some() || self.item_target.take().is_some() {
             return;
         }
         let (ux, uy) = self.to_ui(sx, sy, size);

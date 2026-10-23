@@ -141,6 +141,12 @@ impl World {
         }
     }
 
+    /// What the item in a slot is used on: its first ability's targeting.
+    pub fn item_targeting(&self, unit: u32, slot: usize) -> crate::ability::Targeting {
+        let t = self.unit(unit).and_then(|u| u.inventory.get(slot).copied()).and_then(|i| self.item(i)).map(|i| i.type_id);
+        t.and_then(|t| self.item_abilities(t).into_iter().next()).map_or(crate::ability::Targeting::None, |a| self.targeting(a))
+    }
+
     /// Uses the item in a slot: its ability's effect, then a charge if it has any.
     pub fn use_item(&mut self, vm: &mut Vm, unit: u32, slot: usize, target: u32, x: f32, y: f32) -> bool {
         let Some(item) = self.unit(unit).and_then(|u| u.inventory.get(slot).copied()).filter(|&i| i != 0) else { return false };

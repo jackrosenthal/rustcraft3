@@ -357,6 +357,11 @@ impl Game {
         self.world.use_item(&mut self.vm, unit, slot, 0, 0.0, 0.0)
     }
 
+    /// The local player uses the item in a slot on a target unit or point.
+    pub fn use_item_at(&mut self, unit: u32, slot: usize, target: u32, x: f32, y: f32) -> bool {
+        self.world.use_item(&mut self.vm, unit, slot, target, x, y)
+    }
+
     /// Kills a unit (for tools and tests).
     pub fn kill(&mut self, h: u32) {
         natives::units::kill_unit(&mut self.world, &mut self.vm, h, 0);

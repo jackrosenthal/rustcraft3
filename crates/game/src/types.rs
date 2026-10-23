@@ -286,6 +286,8 @@ pub struct UnitExtra {
     pub last_attacked: f32,
     /// The order an autocast interrupted, resumed after the cast.
     pub resume: Option<Action>,
+    /// Gold and lumber owed for repair or powerbuild, paid in whole units.
+    pub repair_debt: (f32, f32),
 }
 
 impl Default for UnitExtra {
@@ -325,6 +327,7 @@ impl Default for UnitExtra {
             morph_revert: None,
             last_attacked: -100.0,
             resume: None,
+            repair_debt: (0.0, 0.0),
         }
     }
 }
@@ -453,6 +456,8 @@ pub enum Action {
     Board { transport: u32 },
     /// A transport going to unload at a point.
     Unload { x: f32, y: f32 },
+    /// A worker repairing a structure or mechanical unit.
+    Repair { target: u32 },
 }
 
 /// An attack in progress: damage lands at the damage point, then the backswing plays.

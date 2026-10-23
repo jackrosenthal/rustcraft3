@@ -24,6 +24,7 @@ pub mod natives;
 pub mod objects;
 pub mod orders;
 pub mod pathing;
+pub mod repair;
 pub mod rng;
 pub mod sim;
 pub mod types;

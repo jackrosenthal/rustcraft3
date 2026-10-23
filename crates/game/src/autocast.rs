@@ -73,6 +73,11 @@ impl World {
                 .map(|t| t.handle);
         }
         match code.as_str() {
+            // Repair on autocast: the nearest damaged structure or machine in sight.
+            "Arep" | "Arst" | "Aren" => units()
+                .filter(|t| (t.x - u.x).hypot(t.y - u.y) <= u.acquire_range.max(500.0) && self.can_repair(h, t.handle))
+                .min_by(|x, y| (x.x - u.x).hypot(x.y - u.y).total_cmp(&(y.x - u.x).hypot(y.y - u.y)))
+                .map(|t| t.handle),
             "Arai" => self.corpses_in(u.x, u.y, self.data(a, "Area", lvl)).first().map(|_| h),
             "Aadm" => units().find(|t| alive(t) && !ally(t) && near(t) && self.is_summoned(t.handle)).map(|t| t.handle),
             _ => None,
@@ -94,6 +99,12 @@ impl World {
                     continue;
                 }
                 let Some(target) = self.autocast_target(h, a, lvl) else { continue };
+                if matches!(self.ability_code(a).as_str(), "Arep" | "Arst" | "Aren") {
+                    if matches!(self.unit(h).map(|u| &u.action), Some(Action::Idle)) {
+                        self.unit_mut(h).unwrap().action = Action::Repair { target };
+                    }
+                    break;
+                }
                 let target = if target == h && self.targeting(a) == crate::ability::Targeting::None { 0 } else { target };
                 let (x, y) = self.widget_pos(target).or_else(|| self.unit(h).map(|u| (u.x, u.y))).unwrap_or_default();
                 let u = self.unit_mut(h).unwrap();

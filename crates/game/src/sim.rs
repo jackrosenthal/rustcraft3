@@ -297,6 +297,11 @@ impl World {
         } else if order == patrol {
             let p = self.unit(h).map(|u| (u.x, u.y)).unwrap_or_default();
             Action::Patrol { a: p, b: (x, y) }
+        } else if (order == crate::natives::basic::order_id("repair") || order == smart) && target != 0 && self.unit(target).is_some_and(|t| t.extra.needs_builder && t.constructing.is_some()) && self.unit(h).is_some_and(|u| self.unit(target).is_some_and(|t| t.owner == u.owner)) && self.ability_with_code(h, "Arep").is_some() {
+            // A peasant helps build a peasant's structure.
+            Action::Construct { target }
+        } else if (order == crate::natives::basic::order_id("repair") || order == smart) && target != 0 && self.can_repair(h, target) {
+            Action::Repair { target }
         } else if order == smart && target != 0 && self.cargo_hold(target).is_some() && self.can_board(target, h) {
             Action::Board { transport: target }
         } else if (order == smart || order == crate::natives::basic::order_id("harvest")) && target != 0 && self.can_harvest(h, target) {
@@ -743,6 +748,7 @@ impl World {
                 Action::Load { target } => self.load_step(h, target, dt),
                 Action::Board { transport } => self.board_step(h, transport, dt),
                 Action::Unload { x, y } => self.unload_step(h, x, y, dt),
+                Action::Repair { target } => self.repair_step(h, target, dt),
                 Action::Patrol { a, b } => {
                     if self.unit(h).is_some_and(|u| u.path.is_empty()) {
                         self.path_to(h, b);
@@ -964,11 +970,17 @@ impl World {
         self.update_revive(vm, h, dt);
         // Construction.
         if let Some(left) = self.unit(h).and_then(|u| u.constructing) {
-            // A peasant's structure stands still without a builder at it.
+            // A peasant's structure stands still without a builder at it, and goes up
+            // faster with more (powerbuild), each extra builder costing its share.
             let needs = self.unit(h).is_some_and(|u| u.extra.needs_builder);
-            if needs && !self.unit_order.iter().any(|&o| self.unit(o).is_some_and(|w| !w.dead && matches!(w.action, Action::Construct { target } if target == h))) {
+            let speed = if needs { self.build_speed(h) } else { 1.0 };
+            if speed <= 0.0 {
                 return;
             }
+            if speed > 1.0 {
+                self.charge_powerbuild(h, dt);
+            }
+            let dt = dt * speed;
             let left = left - dt;
             let u = self.unit_mut(h).unwrap();
             let total = u.build_time.max(0.01);

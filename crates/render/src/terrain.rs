@@ -107,7 +107,14 @@ impl TerrainRenderer {
             })
             .collect();
         let blight_index = ground.len();
-        let blight_path = misc.get_str("Blight", "Texture").unwrap_or_default();
+        // The tileset's blight (WorldEditData [TileSets]: name, blight texture), else
+        // [Blight] Texture.
+        let blight_path = misc
+            .get_list("TileSets", &(terrain.tileset as char).to_string())
+            .get(1)
+            .map(|s| s.trim().to_string())
+            .or_else(|| misc.get_str("Blight", "Texture"))
+            .unwrap_or_default();
         let blight = textures.get_or_white(device, queue, &format!("{blight_path}.blp"));
         let blight_ext = blight.width > blight.height;
         ground.push((blight, blight_ext));

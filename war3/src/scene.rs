@@ -237,7 +237,17 @@ impl Scene {
             &terrain_slk,
             &water_slk,
             &cliff_slk,
-            &data.misc,
+            &{
+                // Light, blight, and other settings, with the tilesets' blight textures.
+                let mut p = data.misc.clone();
+                if let Ok(s) = chain.read_string("UI\\WorldEditData.txt") {
+                    let we = w3_formats::profile::Profile::parse(&s);
+                    if let Some(t) = we.sections.get("tilesets") {
+                        p.sections.insert("tilesets".into(), t.clone());
+                    }
+                }
+                p
+            },
             &mut load_mdx,
             chain.read("war3map.shd").ok().as_deref(),
         );

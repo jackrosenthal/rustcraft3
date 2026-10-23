@@ -12,10 +12,20 @@ use crate::types::*;
 
 pub type NativeFn = fn(&mut World, &mut Vm, &[Value]) -> NativeResult;
 
+/// Where a doodad animation applies.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub enum DoodadArea {
+    Circle { x: f32, y: f32, radius: f32, nearest: bool },
+    Rect { min_x: f32, min_y: f32, max_x: f32, max_y: f32 },
+}
+
 /// Messages for the presentation layer (renderer, audio, interface).
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Request {
     DisplayText { players: u32, x: f32, y: f32, text: String, duration: f32 },
+    /// Doodads of a type play an animation: those within a radius of a point (or only
+    /// the nearest), or inside a rect (SetDoodadAnimation, SetDoodadAnimationRect).
+    DoodadAnimation { id: crate::objects::Id, area: DoodadArea, anim: String, random: bool },
     ClearText { players: u32 },
     PlaySound(u32),
     StopSound { sound: u32, fade: bool },

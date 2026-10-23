@@ -472,8 +472,17 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         Preloader => |_, _, _| none(),
         PingMinimap => |_, _, _| none(),
         PingMinimapEx => |_, _, _| none(),
-        SetDoodadAnimation => |_, _, _| none(),
-        SetDoodadAnimationRect => |_, _, _| none(),
+        SetDoodadAnimation => |w, _, a| {
+            let area = crate::world::DoodadArea::Circle { x: a.r(0), y: a.r(1), radius: a.r(2), nearest: a.b(4) };
+            w.requests.push(Request::DoodadAnimation { id: crate::objects::id_from_int(a.i(3)), area, anim: a.s(5), random: a.b(6) });
+            none()
+        },
+        SetDoodadAnimationRect => |w, _, a| {
+            let Some(Obj::Rect(r)) = w.handles.get(a.h(0)).cloned() else { return none() };
+            let area = crate::world::DoodadArea::Rect { min_x: r.min_x, min_y: r.min_y, max_x: r.max_x, max_y: r.max_y };
+            w.requests.push(Request::DoodadAnimation { id: crate::objects::id_from_int(a.i(1)), area, anim: a.s(2), random: a.b(3) });
+            none()
+        },
         SetTerrainType => |_, _, _| none(),
         GetTerrainType => |_, _, _| int(0),
         GetTerrainVariance => |_, _, _| int(0),

@@ -265,6 +265,8 @@ pub struct Scene {
     pub terrain: TerrainRenderer,
     pub models: ModelRenderer,
     pub instances: Vec<ModelInstance>,
+    /// Each doodad instance's type.
+    doodad_ids: Vec<[u8; 4]>,
     pub camera: Camera,
     pub time: f32,
     /// Direction from the light toward the world (UI\MiscData.txt [Light] Direction).
@@ -393,6 +395,7 @@ impl Scene {
         );
 
         let mut instances = Vec::new();
+        let mut doodad_ids = Vec::new();
         let mut doodad_loops = Vec::new();
         if let Ok(bytes) = chain.read("war3map.doo") {
             let doodads = Doodads::parse(&bytes).context("war3map.doo")?;
@@ -434,6 +437,7 @@ impl Scene {
                 }
                 inst.play("Stand");
                 instances.push(inst);
+                doodad_ids.push(d.id);
                 let sound = text(table, &id, "soundLoop");
                 if !sound.is_empty() && sound != "_" && sound != "-" {
                     doodad_loops.push((sound, d.position));
@@ -535,7 +539,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, log_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, log_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -560,6 +564,7 @@ impl Scene {
                         }
                     }
                 }
+                w3_game::world::Request::DoodadAnimation { id, area, anim, random } => self.doodad_animation(id, &area, &anim, random),
                 w3_game::world::Request::ClearText { players } if players & local != 0 => {
                     if let Some(h) = self.hud.as_mut() {
                         h.unit_messages.clear();
@@ -2385,6 +2390,41 @@ impl Scene {
             self.camera.target.z = self.camera_ground(c.x, c.y) + c.fields[FIELD_ZOFFSET];
         } else {
             self.camera.target.z = self.camera_ground(self.camera.target.x, self.camera.target.y);
+        }
+    }
+
+    /// SetDoodadAnimation(Rect): the doodads of a type within the area (or only the
+    /// nearest) play the animation, a random variant of it when asked.
+    fn doodad_animation(&mut self, id: [u8; 4], area: &w3_game::world::DoodadArea, anim: &str, random: bool) {
+        use w3_game::world::DoodadArea as A;
+        let pos = |inst: &ModelInstance| (inst.transform.w_axis.x, inst.transform.w_axis.y);
+        let mut hits: Vec<(usize, f32)> = self
+            .instances
+            .iter()
+            .enumerate()
+            .filter(|(k, _)| self.doodad_ids.get(*k) == Some(&id))
+            .filter_map(|(k, inst)| {
+                let (x, y) = pos(inst);
+                match *area {
+                    A::Circle { x: cx, y: cy, radius, .. } => {
+                        let d = (x - cx).hypot(y - cy);
+                        (d <= radius).then_some((k, d))
+                    }
+                    A::Rect { min_x, min_y, max_x, max_y } => (x >= min_x && x <= max_x && y >= min_y && y <= max_y).then_some((k, 0.0)),
+                }
+            })
+            .collect();
+        if matches!(area, A::Circle { nearest: true, .. }) {
+            hits.sort_by(|a, b| a.1.total_cmp(&b.1));
+            hits.truncate(1);
+        }
+        for (k, _) in hits {
+            let inst = &mut self.instances[k];
+            let seqs = w3_render::anim::sequences_named(&inst.model.mdx, anim);
+            let s = if random && !seqs.is_empty() { seqs.get((self.time * 1000.0) as usize % seqs.len()).copied() } else { seqs.first().copied().or_else(|| w3_render::anim::find_sequence(&inst.model.mdx, anim)) };
+            if s.is_some() {
+                inst.set_sequence(s);
+            }
         }
     }
 

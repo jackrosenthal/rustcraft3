@@ -342,6 +342,16 @@ fn main() -> anyhow::Result<()> {
                 scene.selection = vec![num(&a[i + 1]) as u32];
                 i += 2;
             }
+            // useitemon <unit> <slot> <target>: uses an item on a unit.
+            "useitemon" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let t = num(&a[i + 3]) as u32;
+                    let (x, y) = g.world.widget_pos(t).unwrap_or((0.0, 0.0));
+                    let ok = g.use_item_at(num(&a[i + 1]) as u32, num(&a[i + 2]) as usize, t, x, y);
+                    eprintln!("used: {ok}");
+                }
+                i += 4;
+            }
             "useitem" => {
                 if let Some(g) = scene.game.as_mut() {
                     let ok = g.use_item(num(&a[i + 1]) as u32, num(&a[i + 2]) as usize);

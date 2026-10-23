@@ -286,6 +286,16 @@ impl World {
                     }
                     did = true;
                 }
+                // Soul Gem (CAbilitySoulTrap): on an enemy Hero, its Effectart there.
+                "AIso" => {
+                    if _target != 0 {
+                        let model = self.profile_art(a, "Effectart");
+                        if let Some((tx, ty)) = self.widget_pos(_target) {
+                            self.spawn_effect(&model, tx, ty);
+                        }
+                        did = true;
+                    }
+                }
                 // Moonstone: the time of day becomes DataA:DataB.
                 "AIct" => {
                     self.time_of_day = data(self, "DataA") + data(self, "DataB") / 60.0;

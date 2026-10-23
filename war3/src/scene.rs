@@ -1678,7 +1678,9 @@ impl Scene {
                 self.units.insert(h, view);
             }
             let view = self.units.get_mut(&h).unwrap();
-            view.update(&u.anim, u.anim_serial);
+            // An uprooted ancient takes the alternate of each animation but its walk.
+            let anim = if u.extra.uprooted && !u.anim.starts_with("walk") && !u.anim.starts_with("morph") && !u.anim.contains("alternate") { format!("{} alternate", u.anim) } else { u.anim.clone() };
+            view.update(&anim, u.anim_serial);
             // Structures under construction show their birth animation in step with progress.
             if let (Some(left), Some(seq)) = (u.constructing, view.inst.sequence.and_then(|s| view.inst.model.mdx.sequences.get(s))) {
                 let len = (seq.end - seq.start) as f32;

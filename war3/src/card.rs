@@ -245,26 +245,32 @@ impl Commands {
             };
             out.extend(self.command(db, cmd, Action::BuildMenu, true));
         }
-        for t in o.list("Trains") {
+        // An uprooted ancient produces nothing until it roots again.
+        let trains = if u.extra.uprooted { Vec::new() } else { o.list("Trains") };
+        let researches = if u.extra.uprooted { Vec::new() } else { o.list("Researches") };
+        let upgrades = if u.extra.uprooted { Vec::new() } else { o.list("Upgrade") };
+        for t in trains {
             let id = id_from_str(t.trim());
             let (g, l, _) = w.cost(id);
             let p = &w.players[u.owner as usize];
             let ok = p.get_state(1) >= g && p.get_state(2) >= l;
             out.extend(object_button(id, Action::Train(id), ok));
         }
-        for r in o.list("Researches") {
+        for r in researches {
             let id = id_from_str(r.trim());
             out.extend(object_button(id, Action::Research(id), true));
         }
         // A structure cannot upgrade while it produces.
-        for r in o.list("Upgrade") {
+        for r in upgrades {
             let id = id_from_str(r.trim());
             out.extend(object_button(id, Action::Upgrade(id), u.queue.is_empty()));
         }
         for &(a, _) in &u.abilities {
             let Some(ab) = w.objects.abilities.get(a) else { continue };
+            // Root (Aroo) shows Uproot (Unbuttonpos, Unart, Unorder) while rooted.
+            let unrooted_side = ab.str("code") == "Aroo" && !u.extra.uprooted;
             // Abilities with a button position appear on the card.
-            let Some((x, y)) = parse_pos(&ab.list("Buttonpos")) else { continue };
+            let Some((x, y)) = parse_pos(&ab.list(if unrooted_side { "Unbuttonpos" } else { "Buttonpos" })) else { continue };
             // Art may list one icon per race (Rally): human, orc, undead, night elf.
             let race_index = match o.str("race").to_ascii_lowercase().as_str() {
                 "orc" => 1,
@@ -276,7 +282,7 @@ impl Commands {
                 let arts = ab.list(key);
                 arts.get(race_index).or(arts.first()).map(|s| s.trim().to_string()).unwrap_or_default()
             };
-            let art = pick("Art");
+            let art = pick(if unrooted_side { "Unart" } else { "Art" });
             if art.is_empty() {
                 continue;
             }
@@ -285,15 +291,18 @@ impl Commands {
             let targeting = w.targeting(a);
             let (order, targeted) = match ab.str("code").as_str() {
                 "Ahar" | "Ahrl" => ("harvest", true),
+                "Aroo" if unrooted_side => ("unroot", false),
+                "Aroo" => ("root", true),
                 _ if targeting == w3_game::ability::Targeting::Passive => ("", false),
                 _ => (order, targeting != w3_game::ability::Targeting::None),
             };
             let ready = order.is_empty() || w.can_cast(h, a).is_ok();
             let level = w.ability_level(h, a).max(1);
-            let tip = level_entry(&ab.list("Tip"), level);
-            let uber = fill_placeholders(w, &level_entry(&ab.list("Ubertip"), level));
+            let (tip_key, uber_key, hot_key) = if unrooted_side { ("Untip", "Unubertip", "Unhotkey") } else { ("Tip", "Ubertip", "Hotkey") };
+            let tip = level_entry(&ab.list(tip_key), level);
+            let uber = fill_placeholders(w, &level_entry(&ab.list(uber_key), level));
             let mana = ab.int(&format!("Cost{level}"));
-            out.push(Button::new(x, y, art, hotkey(&ab.str("Hotkey")), Action::Order { order, targeted }, ready).with_tip(tip, uber, [mana, 0, 0, 0]));
+            out.push(Button::new(x, y, art, hotkey(&ab.str(hot_key)), Action::Order { order, targeted }, ready).with_tip(tip, uber, [mana, 0, 0, 0]));
             // Call to Arms shows its second button (Unbuttonpos, Unart, Unorder: Back to
             // Work) beside it; other toggles show one button at a time.
             let both = ab.str("code") == "Amic";

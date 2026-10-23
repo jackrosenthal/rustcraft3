@@ -6,6 +6,7 @@ pub mod blight;
 pub mod camera;
 pub mod event_ids;
 pub mod fog;
+pub mod forms;
 pub mod handles;
 pub mod hero;
 pub mod info;

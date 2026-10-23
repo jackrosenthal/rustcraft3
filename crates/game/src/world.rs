@@ -621,6 +621,7 @@ impl World {
         self.update_blight(dt);
         self.update_mines();
         self.update_moon_wells();
+        self.update_forms(dt);
         let now = self.time;
         let due: Vec<(f32, u32, u32)> = self.pending_entangles.iter().copied().filter(|e| e.0 <= now).collect();
         self.pending_entangles.retain(|e| e.0 > now);

@@ -54,28 +54,54 @@ pub struct Weapon {
     pub missile_arc: f32,
 }
 
+/// A unit type's first enabled weapon.
 pub fn weapon(w: &World, type_id: Id) -> Option<Weapon> {
     let o = w.objects.units.get(type_id)?;
-    // weapsOn: bit 0 enables weapon 1.
-    if o.int("weapsOn") & 1 == 0 {
-        return None;
-    }
-    let missile = o.list("Missileart").first().cloned().unwrap_or_default();
+    let mask = o.int("weapsOn");
+    (1..=2).find(|n| mask & (1 << (n - 1)) != 0).and_then(|n| weapon_n(w, type_id, n))
+}
+
+/// Weapon 1 or 2 of a unit type (UnitWeapons fields with the number; the missile art
+/// lists hold one entry per weapon).
+pub fn weapon_n(w: &World, type_id: Id, n: usize) -> Option<Weapon> {
+    let o = w.objects.units.get(type_id)?;
+    let f = |k: &str| format!("{k}{n}");
+    let pick = |k: &str| -> String {
+        let l = o.list(k);
+        l.get(n - 1).or_else(|| l.first()).cloned().unwrap_or_default()
+    };
     Some(Weapon {
-        range: o.real("rangeN1"),
-        cooldown: o.real("cool1"),
-        damage_point: o.real("dmgpt1"),
-        backswing: o.real("backSw1"),
-        dice: o.int("dice1"),
-        sides: o.int("sides1"),
-        base: o.real("dmgplus1"),
-        attack_type: o.str("atkType1").to_ascii_lowercase(),
-        weapon_type: o.str("weapTp1").to_ascii_lowercase(),
-        targets: o.str("targs1").to_ascii_lowercase(),
-        missile,
-        missile_speed: o.list("Missilespeed").first().and_then(|s| s.trim().parse().ok()).unwrap_or(0.0),
-        missile_arc: o.list("Missilearc").first().and_then(|s| s.trim().parse().ok()).unwrap_or(0.0),
+        range: o.real(&f("rangeN")),
+        cooldown: o.real(&f("cool")),
+        damage_point: o.real(&f("dmgpt")),
+        backswing: o.real(&f("backSw")),
+        dice: o.int(&f("dice")),
+        sides: o.int(&f("sides")),
+        base: o.real(&f("dmgplus")),
+        attack_type: o.str(&f("atkType")).to_ascii_lowercase(),
+        weapon_type: o.str(&f("weapTp")).to_ascii_lowercase(),
+        targets: o.str(&f("targs")).to_ascii_lowercase(),
+        missile: pick("Missileart"),
+        missile_speed: pick("Missilespeed").trim().parse().unwrap_or(0.0),
+        missile_arc: pick("Missilearc").trim().parse().unwrap_or(0.0),
     })
+}
+
+/// A unit's enabled weapons, numbered: its type's weapsOn bits, or the ones its form
+/// enables (rooted or uprooted ancients).
+pub fn unit_weapons(w: &World, u: &Unit) -> Vec<(u8, Weapon)> {
+    let mask = u.extra.weapons.unwrap_or_else(|| w.objects.units.get(u.type_id).map_or(0, |o| o.int("weapsOn")));
+    (1..=2u8).filter(|n| mask & (1 << (n - 1)) != 0).filter_map(|n| weapon_n(w, u.type_id, n as usize).map(|wp| (n, wp))).collect()
+}
+
+/// The first of a unit's weapons that can hit a target.
+pub fn weapon_for(w: &World, u: &Unit, t: &Unit) -> Option<(u8, Weapon)> {
+    unit_weapons(w, u).into_iter().find(|(_, wp)| can_target(w, wp, u, t))
+}
+
+/// The weapon a unit swings with.
+fn weapon_numbered(w: &World, u: &Unit, n: u8) -> Option<Weapon> {
+    unit_weapons(w, u).into_iter().find(|x| x.0 == n).map(|x| x.1).or_else(|| unit_weapons(w, u).into_iter().next().map(|x| x.1))
 }
 
 fn misc_list(w: &World, key: &str) -> Vec<f32> {
@@ -86,7 +112,7 @@ fn misc_list(w: &World, key: &str) -> Vec<f32> {
 /// DamageBonus* tables and DefenseArmor).
 pub fn final_damage(w: &World, raw: f32, attack_type: &str, target: &Unit) -> f32 {
     let o = w.objects.units.get(target.type_id);
-    let def_type = o.map(|o| o.str("defType").to_ascii_lowercase()).unwrap_or_default();
+    let def_type = target.extra.defense.clone().unwrap_or_else(|| o.map(|o| o.str("defType").to_ascii_lowercase()).unwrap_or_default());
     let armor = o.map_or(0.0, |o| o.real("def")) + w.buff_mods(target.handle).2;
     let key = match attack_type {
         "pierce" => "DamageBonusPierce",
@@ -182,6 +208,15 @@ impl World {
         let patrol = crate::natives::basic::order_id("patrol");
         let setrally = crate::natives::basic::order_id("setrally");
         let owner_of = |w: &World, t: u32| w.unit(t).map(|u| u.owner);
+        // Uprooting and rooting (Aroo).
+        if order == crate::natives::basic::order_id("unroot") {
+            self.uproot(h);
+            return;
+        }
+        if order == crate::natives::basic::order_id("root") {
+            self.root_at(h, x, y);
+            return;
+        }
         // entangleinstant: Entangle Gold Mine at once, without its casting time.
         if order == crate::natives::basic::order_id("entangleinstant") && self.ability_with_code(h, "Aent").is_some() {
             self.entangle(h, target);
@@ -304,11 +339,14 @@ impl World {
 
     fn find_target(&self, h: u32, range: f32) -> Option<u32> {
         let u = self.unit(h)?;
-        let wp = weapon(self, u.type_id)?;
+        let weapons = unit_weapons(self, u);
+        if weapons.is_empty() {
+            return None;
+        }
         let mut best: Option<(f32, u32)> = None;
         for &t in &self.unit_order {
             let Some(tu) = self.unit(t) else { continue };
-            if is_ally(self, u.owner, tu.owner) || !can_target(self, &wp, u, tu) {
+            if is_ally(self, u.owner, tu.owner) || !weapons.iter().any(|(_, wp)| can_target(self, wp, u, tu)) {
                 continue;
             }
             // Neutral passive units are never acquired automatically, nor are
@@ -363,7 +401,7 @@ impl World {
             }
         }
         // Thorns: melee attackers of a thorned unit take damage back.
-        let melee = self.unit(source).and_then(|u| weapon(self, u.type_id)).is_some_and(|w| w.range <= self.misc.get_str("InfoPanel", "MeleeRangeMax").and_then(|v| v.trim().parse().ok()).unwrap_or(128.0));
+        let melee = self.unit(source).and_then(|u| u.swing.as_ref().and_then(|s| weapon_numbered(self, u, s.weapon)).or_else(|| weapon(self, u.type_id))).is_some_and(|w| w.range <= self.misc.get_str("InfoPanel", "MeleeRangeMax").and_then(|v| v.trim().parse().ok()).unwrap_or(128.0));
         if melee {
             let thorns: Vec<(f32, bool)> = self.unit(target).map(|u| u.buffs.iter().filter(|b| b.return_damage > 0.0).map(|b| (b.return_damage, b.return_pct)).collect()).unwrap_or_default();
             for (v, pct) in thorns {
@@ -379,7 +417,7 @@ impl World {
             kill_unit(self, vm, target, source);
         } else if let Some(t) = self.unit(target) {
             // Retaliate when idle.
-            if matches!(t.action, Action::Idle) && weapon(self, t.type_id).is_some() && !t.is_building {
+            if matches!(t.action, Action::Idle) && !unit_weapons(self, t).is_empty() && !t.is_building {
                 if let Some(s) = self.unit(source) {
                     if !is_ally(self, t.owner, s.owner) {
                         self.unit_mut(target).unwrap().action = Action::Attack { target: source };
@@ -423,7 +461,7 @@ impl World {
                 continue;
             }
             let action = u.action.clone();
-            let wp = weapon(self, u.type_id);
+            let wp = u.swing.as_ref().and_then(|s| weapon_numbered(self, u, s.weapon)).or_else(|| unit_weapons(self, u).into_iter().next().map(|x| x.1));
             {
                 let u = self.unit_mut(h).unwrap();
                 u.cooldown = (u.cooldown - dt).max(0.0);
@@ -1285,6 +1323,9 @@ impl World {
             if b.dead || b.owner != u.owner {
                 continue;
             }
+            if b.extra.uprooted {
+                continue;
+            }
             let Some((a, l)) = self.ability_with_code(o, "Artn") else { continue };
             let accepts = (gold && self.ability_real(a, "DataA", l) != 0.0) || (lumber && self.ability_real(a, "DataB", l) != 0.0);
             if !accepts {
@@ -1370,7 +1411,7 @@ impl World {
     /// Moves into range of `target` and starts a swing when ready.
     fn try_attack(&mut self, h: u32, target: u32, dt: f32, stationary: bool) {
         let (Some(u), Some(t)) = (self.unit(h), self.unit(target)) else { return };
-        let Some(wp) = weapon(self, u.type_id) else { return };
+        let Some((wn, wp)) = weapon_for(self, u, t) else { return };
         let d = (t.x - u.x).hypot(t.y - u.y) - u.collision - self.reach_radius(target);
         let (tpos, upos) = ((t.x, t.y), (u.x, u.y));
         let ub = self.upgrade_bonus(u.owner, u.type_id);
@@ -1399,7 +1440,7 @@ impl World {
             let speed = if u.is_hero { 1.0 + (u.agi + u.item_bonus.agi).floor() * agi_bonus } else { 1.0 };
             let speed = (speed + u.item_bonus.attack_speed + ub.attack_speed) * buff_attack;
             u.cooldown = wp.cooldown / speed.max(0.01);
-            u.swing = Some(Swing { target, elapsed: 0.0, done: false });
+            u.swing = Some(Swing { target, elapsed: 0.0, done: false, weapon: wn });
             restart_anim(u, "attack");
             // The target is attacked (GetAttacker is the attacker).
             self.queue_unit_event(target, EVENT_PLAYER_UNIT_ATTACKED, EVENT_UNIT_ATTACKED, EventCtx { other_unit: h, ..Default::default() });

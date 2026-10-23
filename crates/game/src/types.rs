@@ -264,6 +264,16 @@ pub struct UnitExtra {
     pub slot_effects: Vec<u32>,
     /// A structure under construction that advances only while a worker builds it.
     pub needs_builder: bool,
+    /// Weapons enabled by the unit's form (weapsOn bits), when not its type's.
+    pub weapons: Option<i32>,
+    /// Uprooted (an ancient walking), using its alternate animations.
+    pub uprooted: bool,
+    /// A root or uproot under way: seconds left, and the spot to root at.
+    pub rooting: Option<(f32, Option<(f32, f32)>)>,
+    /// Where an uprooted ancient goes to root.
+    pub root_target: Option<(f32, f32)>,
+    /// A defense type the unit's form gives it (UnitBalance defType names).
+    pub defense: Option<String>,
 }
 
 impl Default for UnitExtra {
@@ -292,6 +302,11 @@ impl Default for UnitExtra {
             blight_timer: 0.0,
             slot_effects: Vec::new(),
             needs_builder: false,
+            weapons: None,
+            uprooted: false,
+            rooting: None,
+            root_target: None,
+            defense: None,
         }
     }
 }
@@ -413,6 +428,8 @@ pub struct Swing {
     pub target: u32,
     pub elapsed: f32,
     pub done: bool,
+    /// Weapon 1 or 2.
+    pub weapon: u8,
 }
 
 #[derive(Clone, Debug)]

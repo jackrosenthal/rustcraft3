@@ -132,6 +132,7 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         unit.extra.home = Some((f32::NAN, f32::NAN));
         unit.extra.can_sleep = true;
     }
+    unit.extra.born = w.time;
     let h = w.handles.insert(Obj::Unit(Box::new(unit)));
     if let Some(u) = w.unit_mut(h) {
         u.handle = h;
@@ -190,6 +191,7 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
         return;
     }
     if w.unit(h).is_some_and(|u| !u.dead) {
+        w.death_abilities(vm, h);
         w.on_death_buffs(h);
         w.drop_on_death(vm, h);
         w.leave_mine(h);

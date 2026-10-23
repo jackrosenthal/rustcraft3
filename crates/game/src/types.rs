@@ -327,6 +327,11 @@ pub struct UnitExtra {
     /// The waygate whose box the unit is in after coming through one.
     #[serde(default)]
     pub warp_inside: u32,
+    /// When the unit was made, and when a set-off land mine goes off.
+    #[serde(default)]
+    pub born: f32,
+    #[serde(default)]
+    pub mine_fuse: Option<f32>,
 }
 
 impl Default for UnitExtra {
@@ -374,6 +379,8 @@ impl Default for UnitExtra {
             strayed: None,
             sleep_effect: 0,
             warp_inside: 0,
+            born: 0.0,
+            mine_fuse: None,
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,

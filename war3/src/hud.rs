@@ -100,6 +100,8 @@ pub struct Hud {
     info: Option<usize>,
     /// The hero level bar's experience fraction within the level, when a hero is shown.
     level_bar: Option<f32>,
+    /// CBuffBar: the shown unit's buff icons (Buffart), when it has the bar.
+    buff_icons: Option<Vec<String>>,
     pub minimap_area: Option<MinimapArea>,
     pub minimap_dots: Vec<(f32, f32, [f32; 4], f32)>,
     /// Whether the "@minimapfog" overlay texture is current.
@@ -195,6 +197,7 @@ impl Hud {
             menu: None,
             inventory: Vec::new(),
             level_bar: None,
+            buff_icons: None,
             camera_box: Vec::new(),
             card: Vec::new(),
             page: crate::card::Page::Main,
@@ -346,6 +349,18 @@ impl Hud {
             String::new()
         };
         self.tree.set_text("SimpleClassValue", &class);
+        // Buff icons for units (structures have no status bar), at most the bar's eight.
+        self.buff_icons = (!u.is_building).then(|| {
+            let mut icons: Vec<String> = Vec::new();
+            for b in &u.buffs {
+                let art = world.objects.buffs.get(b.id).map(|o| o.str("Buffart")).unwrap_or_default();
+                if !art.is_empty() && !icons.contains(&art) {
+                    icons.push(art);
+                }
+            }
+            icons.truncate(8);
+            icons
+        });
         // The hero level bar: experience through the current level.
         self.level_bar = u.is_hero.then(|| {
             let (lo, hi) = (world.hero_xp_needed(u.level), world.hero_xp_needed(u.level + 1));
@@ -615,6 +630,19 @@ impl Hud {
                 let color = [0xfe as f32 / 255.0, 0xd3 as f32 / 255.0, 0x12 as f32 / 255.0, 1.0];
                 out.push(Draw::Text { font: db.decorate("MasterFont"), size, rect, text: db.string("INVENTORY"), color, justify_h: w3_ui::Justify::Middle, justify_v: w3_ui::Justify::Middle, shadow: Some(([0.0, 0.0, 0.0, 0xee as f32 / 255.0], 0.001, -0.001)) });
             }
+        }
+        // CBuffBar: 0.12 x 0.015 with its lower right 0.003 left of and 0.005687 above
+        // the unit detail's, eight 0.015 icons in a row, and COLON_STATUS 0.01 left of it
+        // (InfoPanelTextFont 0.0085, white, shadowed).
+        if let (Some(icons), Some(r)) = (&self.buff_icons, self.info.filter(|_| self.info_visible()).and_then(|i| self.tree.frames[i].rect)) {
+            let (x1, y0) = (r.x1 - 0.003, r.y0 + 0.005687);
+            let x0 = x1 - 0.12;
+            for (k, icon) in icons.iter().enumerate() {
+                let rect = w3_ui::Rect { x0: x0 + 0.015 * k as f32, x1: x0 + 0.015 * (k + 1) as f32, y0, y1: y0 + 0.015 };
+                out.push(Draw::Image { texture: icon.clone(), rect, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+            }
+            let rect = w3_ui::Rect { x0: x0 - 0.01 - 0.1, x1: x0 - 0.01, y0, y1: y0 + 0.015 };
+            out.push(Draw::Text { font: db.decorate("InfoPanelTextFont"), size: 0.0085, rect, text: db.string("COLON_STATUS"), color: [1.0; 4], justify_h: w3_ui::Justify::End, justify_v: w3_ui::Justify::Middle, shadow: Some(([0.0, 0.0, 0.0, 1.0], 0.002, -0.002)) });
         }
         for (s, slot) in self.inventory.iter().enumerate() {
             let Some((icon, charges)) = slot else { continue };

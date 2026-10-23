@@ -10,7 +10,7 @@ use crate::types::*;
 use crate::world::World;
 
 /// Ability codes with autocast, by what they look for.
-const HEAL: [&str; 1] = ["Ahea"];
+const HEAL: [&str; 2] = ["Ahea", "Anhe"];
 const ALLY_BUFF: [&str; 4] = ["Ainf", "Ablo", "AUfu", "AUfa"];
 const ENEMY_DEBUFF: [&str; 4] = ["Aslo", "Acrs", "Afae", "Aweb"];
 

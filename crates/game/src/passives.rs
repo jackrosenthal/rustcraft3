@@ -19,7 +19,8 @@ impl World {
 
     /// Permanent Invisibility (Apiv).
     pub fn permanently_invisible(&self, u: &Unit) -> bool {
-        u.abilities.iter().any(|(a, _)| self.ability_code(*a) == "Apiv")
+        // Permanent Invisibility, and the Shade's Ghost.
+        u.abilities.iter().any(|(a, _)| matches!(self.ability_code(*a).as_str(), "Apiv" | "Agho"))
     }
 
     /// Whether `player` (or a player sharing vision with it) has a detector in range of

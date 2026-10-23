@@ -629,7 +629,7 @@ impl World {
                 self.apply_buff(h, Buff { id: buff_id, ability: a, level: lvl, caster: h, remaining: d, invulnerable: true, ..Default::default() });
             }
             // Heal: restores DataA hit points.
-            "Ahea" => self.heal(target, self.data(a, "DataA", lvl)),
+            "Ahea" | "Anhe" => self.heal(target, self.data(a, "DataA", lvl)),
             // Death Coil: heals undead allies (DataA) or damages living enemies (half).
             "AUdc" => {
                 let amount = self.data(a, "DataA", lvl);

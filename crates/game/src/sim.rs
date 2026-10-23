@@ -1839,6 +1839,18 @@ impl World {
                 }
             }
         }
+        // Plague Toss: the shell leaves a Plague Ward (UnitID) for Dur.
+        if artillery {
+            if let Some((a, lvl)) = self.ability_with_code(source, "Apts") {
+                let owner = self.unit(source).map_or(0, |u| u.owner);
+                if self.ability_enabled(owner, a) {
+                    let lvl = lvl.max(1) as u32;
+                    let ward = crate::objects::id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
+                    let dur = self.data(a, "Dur", lvl);
+                    self.summon(source, owner, ward, 1, at.0, at.1, dur);
+                }
+            }
+        }
         // Burning Oil: the shell sets the ground alight for Dur.
         if artillery {
             if let Some((a, lvl)) = self.ability_with_code(source, "Abof") {

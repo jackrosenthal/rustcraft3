@@ -129,6 +129,24 @@ impl World {
 
     /// After research finishes: forget cached bonuses and bring every unit of the player
     /// to its new maximum life and mana.
+    /// What `owner`'s research adds to the most of `id` it may have (rtma).
+    pub fn research_tech_max(&self, owner: u8, id: Id) -> i32 {
+        let Some(p) = self.players.get(owner as usize) else { return 0 };
+        let mut sum = 0;
+        for (&up, &level) in &p.tech_researched {
+            if level <= 0 {
+                continue;
+            }
+            let Some(u) = self.objects.upgrades.get(up) else { continue };
+            for k in 1..=4 {
+                if u.str(&format!("effect{k}")) == "rtma" && id_from_str(u.str(&format!("code{k}")).trim()) == id {
+                    sum += value(&u.str(&format!("base{k}")), &u.str(&format!("mod{k}")), level).unwrap_or(0.0) as i32;
+                }
+            }
+        }
+        sum
+    }
+
     pub fn research_changed(&mut self, owner: u8) {
         self.upgrade_cache.borrow_mut().retain(|(p, _), _| *p != owner);
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.owner == owner)).collect();
@@ -145,6 +163,14 @@ impl World {
             self.apply_hero_stats(h, false);
             return;
         }
+        // Chaos (Acha): once its requirements are met, the unit becomes UnitID.
+        if let Some((a, lvl)) = self.ability_with_code(h, "Acha") {
+            let to = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl.max(1) as u32)).unwrap_or_default().trim());
+            if !u.dead && to != u.type_id && self.objects.units.get(to).is_some() && self.ability_enabled(u.owner, a) {
+                self.change_type(h, to);
+            }
+        }
+        let Some(u) = self.unit(h) else { return };
         let b = self.upgrade_bonus(u.owner, u.type_id);
         let Some(o) = self.objects.units.get(u.type_id) else { return };
         let (hp, mp) = (o.real("HP"), o.real("manaN"));

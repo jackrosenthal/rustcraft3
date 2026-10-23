@@ -92,9 +92,11 @@ impl World {
         self.objects.abilities.get(a).is_none_or(|o| o.list("Requires").is_empty()) || self.missing_requirements(owner, a, 1).is_empty()
     }
 
-    /// SetPlayerTechMaxAllowed's limit for `id`, if any (negative is none).
+    /// SetPlayerTechMaxAllowed's limit for `id` (unset is -1), plus what research adds
+    /// to it (CUpgradeAddTechMaxAllowed, rtma), if any (negative is none).
     fn tech_max(&self, owner: u8, id: Id) -> Option<i32> {
-        self.players.get(owner as usize)?.tech_max.get(&id).copied().filter(|&m| m >= 0)
+        let set = self.players.get(owner as usize)?.tech_max.get(&id).copied().unwrap_or(-1);
+        Some(set + self.research_tech_max(owner, id)).filter(|&m| m >= 0)
     }
 
     /// Whether `owner` may make another `id` (or research level `level` of it) under

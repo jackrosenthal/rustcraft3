@@ -187,6 +187,16 @@ impl World {
                 "AHhb" => self.ai_holy_light(h, a, lvl, enemy, victim),
                 "AUdc" => self.ai_death_coil(h, a, lvl, enemy, victim),
                 "AUsl" => self.ai_sleep(h, a, lvl, enemy, victim),
+                "AUfn" => self.ai_frost_nova(h, a, lvl, enemy, victim),
+                "AOcl" => self.ai_chain_lightning(h, a, lvl, enemy, victim),
+                "AOhw" => self.ai_healing_wave(h, a, victim),
+                "AUcs" => self.ai_carrion_swarm(h, a, lvl, enemy, victim),
+                "AOsh" => self.ai_shockwave(h, a, lvl, enemy, victim),
+                "AEer" => self.ai_entangling_roots(h, a, lvl, enemy, victim),
+                "AEmb" => self.ai_mana_burn(h, a, lvl, enemy, victim),
+                "AOhx" => self.ai_hex(h, a, enemy, victim),
+                "Aprg" => self.ai_purge(h, a, lvl, enemy, victim),
+                "Aply" => self.ai_polymorph(h, a, enemy, victim),
                 _ => {}
             }
         }
@@ -372,5 +382,207 @@ impl World {
         if c.enemy_fighters - c.enemy_disabled > 1 {
             self.ai_cast(h, a, enemy);
         }
+    }
+
+    /// The caster fighting for itself with less than 400 life asks less of a spell.
+    fn hard_pressed(&self, h: u32, victim: u32) -> bool {
+        victim == h && self.life(h) < 400.0
+    }
+
+    fn pos(&self, h: u32) -> (f32, f32) {
+        self.unit(h).map_or((0.0, 0.0), |u| (u.x, u.y))
+    }
+
+    /// Frost Nova (CAbilityFrostNova vf64): past the gate, at once on a Hero; else on
+    /// an enemy with at least DataA life when, within Area of it (no magic-immune units),
+    /// enemies able to fight less Heroes number 3 (1 when hard pressed).
+    fn ai_frost_nova(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
+            return;
+        }
+        if !self.unit(enemy).is_some_and(Self::real_hero) {
+            if self.life(enemy) < self.data(a, "DataA", lvl) {
+                return;
+            }
+            self.ai_rest(h, a);
+            let (x, y) = self.pos(enemy);
+            let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
+            let need = if self.hard_pressed(h, victim) { 1 } else { 3 };
+            if c.enemy_fighters - c.enemy_heroes < need {
+                return;
+            }
+        }
+        self.ai_cast(h, a, enemy);
+    }
+
+    /// Chain Lightning (CAbilityChainLightning vf64): past the gate, on an enemy with at
+    /// least DataA life when, within Area of it (no magic-immune units), there are as
+    /// many enemies as DataB targets (1 for a Hero or when hard pressed; at most 3, 4
+    /// above the first level).
+    fn ai_chain_lightning(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
+            return;
+        }
+        if self.life(enemy) < self.data(a, "DataA", lvl) {
+            return;
+        }
+        let mut need = self.data(a, "DataB", lvl) as i32;
+        if self.unit(enemy).is_some_and(Self::real_hero) || self.hard_pressed(h, victim) {
+            need = 1;
+        }
+        need = need.min(if lvl > 1 { 4 } else { 3 });
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(enemy);
+        let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
+        if need <= c.enemies {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Healing Wave (CAbilityHealingWave vf64): with its AI ready, on a friendly victim
+    /// it may target.
+    fn ai_healing_wave(&mut self, h: u32, a: Id, victim: u32) {
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
+        if victim == 0 || self.ai_resting(h, a) || self.can_cast(h, a).is_err() {
+            return;
+        }
+        if self.unit(victim).is_some_and(|v| crate::natives::players::is_ally(self, owner, v.owner)) && self.cast_target_error(h, a, victim).is_none() {
+            self.ai_cast(h, a, victim);
+        }
+    }
+
+    /// Carrion Swarm (CAbilityCarrionSwarm vf64): past the gate, at the enemy when,
+    /// within the wave's width where it reaches the enemy (Area widening to DataD over
+    /// DataC; no magic-immune units), enemies able to fight less Heroes number 3 (2
+    /// when hard pressed) and none is disabled.
+    fn ai_carrion_swarm(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
+            return;
+        }
+        let need = if self.hard_pressed(h, victim) { 2 } else { 3 };
+        self.ai_rest(h, a);
+        let ((cx, cy), (ex, ey)) = (self.pos(h), self.pos(enemy));
+        let along = (ex - cx).hypot(ey - cy) / self.data(a, "DataC", lvl).max(1.0);
+        let (start, end) = (self.data(a, "Area", lvl), self.data(a, "DataD", lvl));
+        let c = self.census(h, ex, ey, start + (end - start) * along, false);
+        if need <= c.enemy_fighters - c.enemy_heroes && c.enemy_disabled < 1 {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Shockwave (CAbilityShockwave vf64): past the gate, at the enemy when, within Area
+    /// of it (no magic-immune units), 3 enemies (2 when hard pressed) are not finished
+    /// structures.
+    fn ai_shockwave(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
+            return;
+        }
+        self.ai_rest(h, a);
+        let need = if self.hard_pressed(h, victim) { 2 } else { 3 };
+        let (x, y) = self.pos(enemy);
+        let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
+        if need <= c.enemy_mobile {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Entangling Roots (CAbilityEntanglingRoots vf64): able to cast, on an enemy not
+    /// already rooted (BEer); a structure at once, as when the caster fights for itself
+    /// with 200 life or less and a third of its life or less; else only an enemy with
+    /// between half and all of the roots' damage (DataA a second for Dur) as life.
+    fn ai_entangling_roots(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
+        let Some(e) = self.unit(enemy) else { return };
+        if self.can_cast(h, a).is_err() || crate::natives::players::is_ally(self, owner, e.owner) || e.buffs.iter().any(|b| b.id == *b"BEer") {
+            return;
+        }
+        let low = victim == h && self.life(h) <= 200.0 && self.unit(h).is_some_and(|u| u.max_life > 0.0 && u.life / u.max_life <= 1.0 / 3.0);
+        if !e.is_building && !low {
+            let dur = if self.hero_duration(enemy) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
+            let total = self.data(a, "DataA", lvl) * dur;
+            if e.life < total * 0.5 || total < e.life {
+                return;
+            }
+        }
+        self.ai_cast(h, a, enemy);
+    }
+
+    /// Mana Burn (CAbilityManaBurn vf64, FUN_6f608e10): able to cast, with the victim on
+    /// its side, at an enemy player's unit (no creep) with at least 50 mana for a Hero
+    /// or DataA for others.
+    fn ai_mana_burn(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
+        let Some(e) = self.unit(enemy) else { return };
+        if self.can_cast(h, a).is_err() || crate::natives::players::is_ally(self, owner, e.owner) {
+            return;
+        }
+        if self.unit(victim).is_none_or(|v| !crate::natives::players::is_ally(self, owner, v.owner)) {
+            return;
+        }
+        let need = if Self::real_hero(e) { 50.0 } else { self.data(a, "DataA", lvl) };
+        if e.owner < PLAYER_NEUTRAL_AGGRESSIVE && e.mana >= need {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Hex (CAbilityHex vf64): past the gate (no creeps), on a unit that is not a Hero
+    /// with more than 450 life.
+    fn ai_hex(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, false, Some(enemy), None) {
+            return;
+        }
+        if self.unit(enemy).is_some_and(|e| !Self::real_hero(e) && e.life > 450.0) {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Whether a unit bears a buff an enemy laid on it (UnitHasBuffsEx's negative
+    /// buffs, as Purge's AI asks).
+    fn has_hostile_buff(&self, h: u32) -> bool {
+        let Some(u) = self.unit(h) else { return false };
+        u.buffs.iter().any(|b| b.remaining > 0.5 && self.unit(b.caster).is_some_and(|c| !crate::natives::players::is_ally(self, u.owner, c.owner)))
+    }
+
+    /// Purge (FUN_6f60eb10): past the gate (no creeps): a summoned unit with at least
+    /// 0.6 × DataC life; another only when no enemy spell is on it already, it is not
+    /// purged (Bprg), and it attacks from closer than 200 or not at all.
+    fn ai_purge(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, false, Some(enemy), None) {
+            return;
+        }
+        let Some(e) = self.unit(enemy) else { return };
+        if self.is_classed(e, "summoned") {
+            if e.life < 0.6 * self.data(a, "DataC", lvl) {
+                return;
+            }
+        } else {
+            if self.has_hostile_buff(enemy) || e.buffs.iter().any(|b| b.id == *b"Bprg") {
+                return;
+            }
+            let reach = crate::sim::unit_weapons(self, e).iter().map(|w| w.1.range).fold(0.0f32, f32::max);
+            if reach >= 200.0 {
+                return;
+            }
+        }
+        self.ai_cast(h, a, enemy);
+    }
+
+    /// Polymorph (CAbilityPolymorph vf64): past the gate (no creeps), on a unit with at
+    /// least 100 mana; else only one with more than 450 life while the caster's mana
+    /// is full.
+    fn ai_polymorph(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, false, Some(enemy), None) {
+            return;
+        }
+        let Some(e) = self.unit(enemy) else { return };
+        if e.mana < 100.0 {
+            if e.life <= 450.0 {
+                return;
+            }
+            if self.unit(h).is_some_and(|u| u.mana != u.max_mana) {
+                return;
+            }
+        }
+        self.ai_cast(h, a, enemy);
     }
 }

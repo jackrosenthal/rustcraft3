@@ -9,7 +9,7 @@ use crate::world::World;
 
 /// Codes whose effect keeps the caster channeling.
 pub fn channeled(code: &str) -> bool {
-    matches!(code, "AHbz" | "ANrf" | "AEsf" | "AEtq" | "AUdd" | "AHdr" | "AOvd" | "AOeq")
+    matches!(code, "AHbz" | "ANrf" | "AEsf" | "AEtq" | "AUdd" | "AHdr" | "AOvd" | "AOeq" | "ANst")
 }
 
 impl World {
@@ -124,7 +124,7 @@ impl World {
         }
     }
 
-    fn art_at(&mut self, a: Id, key: &str, x: f32, y: f32) {
+    pub(crate) fn art_at(&mut self, a: Id, key: &str, x: f32, y: f32) {
         let m = self.profile_art(a, key);
         self.spawn_effect(&m, x, y);
     }
@@ -139,7 +139,7 @@ impl World {
         let (tx, ty) = self.widget_pos(target).unwrap_or((x, y));
         match code {
             // Channeled waves.
-            "AHbz" | "ANrf" | "AEsf" | "AEtq" | "AUdd" | "AHdr" | "AOvd" | "AOeq" => {
+            "AHbz" | "ANrf" | "AEsf" | "AEtq" | "AUdd" | "AHdr" | "AOvd" | "AOeq" | "ANst" => {
                 let waves = match code {
                     "AHbz" | "ANrf" => self.d(a, "DataA", lvl).max(1.0) as u32,
                     _ => 0,
@@ -152,6 +152,8 @@ impl World {
                     "AHbz" | "ANrf" => cast,
                     "AEsf" | "AEtq" => self.d(a, "DataB", lvl).max(0.1),
                     "AHdr" => self.d(a, "DataC", lvl).max(0.1),
+                    // Stampede: DataA beasts a second.
+                    "ANst" => 1.0 / self.d(a, "DataA", lvl).max(0.01),
                     _ => 1.0,
                 };
                 let (px, py) = if code == "AOvd" || code == "AEtq" || code == "AEsf" { (cx, cy) } else { (x, y) };
@@ -164,7 +166,7 @@ impl World {
                     0
                 };
                 if let Some(u) = self.unit_mut(h) {
-                    u.channel = Some(Channel { ability: a, level: lvl, target, x: px, y: py, elapsed: 0.0, duration, interval, next: 0.0, waves, link, held: [0; 4] });
+                    u.channel = Some(Channel { ability: a, level: lvl, target, x: px, y: py, elapsed: 0.0, duration, interval, next: 0.0, waves, link, held: [0; 4], lanes: 0 });
                 }
                 true
             }
@@ -174,7 +176,7 @@ impl World {
                 let duration = self.d(a, "Dur", lvl);
                 self.effect_at(a, lvl, x, y, duration);
                 if let Some(u) = self.unit_mut(h) {
-                    u.channel = Some(Channel { ability: a, level: lvl, target: 0, x, y, elapsed: 0.0, duration, interval: 0.25, next: 0.0, waves: 0, link: 0, held: [0; 4] });
+                    u.channel = Some(Channel { ability: a, level: lvl, target: 0, x, y, elapsed: 0.0, duration, interval: 0.25, next: 0.0, waves: 0, link: 0, held: [0; 4], lanes: 0 });
                 }
                 true
             }
@@ -192,7 +194,7 @@ impl World {
                 self.apply_buff(target, Buff { id: held, ability: a, level: lvl, caster: h, remaining: duration, stun: true, dps: self.d(a, "DataA", lvl), ..Default::default() });
                 let link = self.channel_link(a, h, target);
                 if let Some(u) = self.unit_mut(h) {
-                    u.channel = Some(Channel { ability: a, level: lvl, target, x, y, elapsed: 0.0, duration, interval: duration.max(0.1) + 1.0, next: duration.max(0.1) + 1.0, waves: 0, link, held });
+                    u.channel = Some(Channel { ability: a, level: lvl, target, x, y, elapsed: 0.0, duration, interval: duration.max(0.1) + 1.0, next: duration.max(0.1) + 1.0, waves: 0, link, held, lanes: 0 });
                 }
                 true
             }
@@ -542,7 +544,7 @@ impl World {
                 let buff = self.buff_of(a, lvl);
                 self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: duration, ..Default::default() });
                 if let Some(u) = self.unit_mut(h) {
-                    u.channel = Some(Channel { ability: a, level: lvl, target: 0, x, y, elapsed: 0.0, duration, interval: duration + 1.0, next: duration + 1.0, waves: 0, link: 0, held: [0; 4] });
+                    u.channel = Some(Channel { ability: a, level: lvl, target: 0, x, y, elapsed: 0.0, duration, interval: duration + 1.0, next: duration + 1.0, waves: 0, link: 0, held: [0; 4], lanes: 0 });
                 }
                 true
             }
@@ -578,7 +580,7 @@ impl World {
             c.elapsed += dt;
             c.next -= dt;
             while c.next <= 0.0 && c.elapsed <= c.duration + 1e-3 {
-                self.channel_tick(vm, h, &c);
+                self.channel_tick(vm, h, &mut c);
                 c.next += c.interval;
                 if c.waves > 0 {
                     c.waves -= 1;
@@ -610,12 +612,13 @@ impl World {
         }
     }
 
-    fn channel_tick(&mut self, vm: &mut Vm, h: u32, c: &Channel) {
+    fn channel_tick(&mut self, vm: &mut Vm, h: u32, c: &mut Channel) {
         let (a, lvl) = (c.ability, c.level);
         let code = self.ability_code(a);
         let owner = self.owner_of(h);
         let area = self.d(a, "Area", lvl);
         match code.as_str() {
+            "ANst" => self.stampede_beast(h, c),
             "Aclf" => {
                 let buff = self.buff_of(a, lvl);
                 let disarm = self.d(a, "DataA", lvl) as u8;

@@ -706,6 +706,7 @@ impl World {
                     impact: None,
                     bounces: 0,
                     hit: Vec::new(),
+                    stampede: None,
                 });
             }
             // Thunder Clap: area damage (DataA) and slow (DataC movement, DataD attack).

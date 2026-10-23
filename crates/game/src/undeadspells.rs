@@ -85,7 +85,7 @@ impl World {
         let invulnerable = self.data(a, "DataC", lvl) == 1.0;
         self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: h, remaining: dur, damage_taken: amp - 1.0, invulnerable, stun: true, ..Default::default() });
         if let Some(u) = self.unit_mut(h) {
-            u.channel = Some(Channel { ability: a, level: lvl, target, x: 0.0, y: 0.0, elapsed: 0.0, duration: dur, interval: dur + 1.0, next: dur + 1.0, waves: 0, link: 0, held: buffs.first().copied().unwrap_or_default() });
+            u.channel = Some(Channel { ability: a, level: lvl, target, x: 0.0, y: 0.0, elapsed: 0.0, duration: dur, interval: dur + 1.0, next: dur + 1.0, waves: 0, link: 0, held: buffs.first().copied().unwrap_or_default(), lanes: 0 });
         }
     }
 

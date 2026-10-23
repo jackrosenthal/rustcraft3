@@ -43,6 +43,10 @@ pub struct Missile {
     /// A bouncing attack (mbounce): the bounces left and the units it has hit.
     pub bounces: i32,
     pub hit: Vec<u32>,
+    /// A Stampede beast: its ability, level, and the time until it next looks for
+    /// something to strike (stampede.rs).
+    #[serde(default)]
+    pub stampede: Option<(Id, u32, f32)>,
 }
 
 /// Weapon 1 of a unit type, from UnitWeapons.slk and the unit's profile.
@@ -754,6 +758,7 @@ impl World {
                                 // targCount targets, and more with Moon Glaive (ratc).
                                 bounces: if wp.weapon_type == "mbounce" { wp.target_count - 1 + self.upgrade_bonus(src.owner, src.type_id).targets } else { 0 },
                                 hit: Vec::new(),
+                                stampede: None,
                             });
                         }
                     } else {
@@ -1820,10 +1825,15 @@ impl World {
             self.missile_serial += 1;
             m.id = self.missile_serial;
         }
+        self.update_stampede(vm, dt);
         let mut hits = Vec::new();
         let mut i = 0;
         while i < self.missiles.len() {
             let m = &mut self.missiles[i];
+            if m.stampede.is_some() {
+                i += 1;
+                continue;
+            }
             let target = match self.handles.get(m.target) {
                 Some(Obj::Unit(t)) => Some((t.x, t.y, t.dead)),
                 _ => None,

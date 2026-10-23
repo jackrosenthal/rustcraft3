@@ -513,6 +513,15 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // missiles: every missile in flight.
+            "missiles" => {
+                if let Some(g) = scene.game.as_ref() {
+                    for m in &g.world.missiles {
+                        eprintln!("missile {} {} at {:.0} {:.0} to {:?} target {} stampede {:?}", m.id, m.model, m.x, m.y, m.impact, m.target, m.stampede.map(|s| s.2));
+                    }
+                }
+                i += 1;
+            }
             // shift <0|1>: holds Shift (queued orders).
             "shift" => {
                 scene.shift_held = num(&a[i + 1]) != 0.0;

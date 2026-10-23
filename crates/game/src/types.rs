@@ -540,6 +540,9 @@ pub struct Channel {
     /// Shackles), and the buff it holds on the target.
     #[serde(default)]
     pub link: u32,
+    /// Stampede's lanes run (stampede.rs).
+    #[serde(default)]
+    pub lanes: u8,
     #[serde(default)]
     pub held: Id,
 }

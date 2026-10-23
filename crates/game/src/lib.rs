@@ -32,6 +32,7 @@ pub mod items;
 pub mod persist;
 pub mod shops;
 pub mod spells;
+pub mod stampede;
 pub mod unitspells;
 pub mod upgrades;
 pub mod natives;

@@ -895,7 +895,7 @@ impl World {
     /// within it since lets the spell weigh it (their vf3 on the watch event).
     pub(crate) fn update_spell_watch(&mut self) {
         let now = self.time;
-        let casters: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.paused && u.extra.ai_watch <= now && u.abilities.iter().any(|&(a, l)| l > 0 && WATCHED.contains(&self.ability_code(a).as_str())))).collect();
+        let casters: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.paused && u.extra.ai_watch <= now && u.abilities.iter().any(|&(a, l)| l > 0 && (WATCHED.contains(&self.ability_code(a).as_str()) || EVERY_2S.contains(&self.ability_code(a).as_str()))))).collect();
         for h in casters {
             if let Some(u) = self.unit_mut(h) {
                 u.extra.ai_watch = now + 0.5;
@@ -906,6 +906,17 @@ impl World {
             let abilities: Vec<(Id, i32)> = self.unit(h).map(|u| u.abilities.clone()).unwrap_or_default();
             for (a, lvl) in abilities {
                 let code = self.ability_code(a);
+                if lvl > 0 && EVERY_2S.contains(&code.as_str()) {
+                    let due = self.unit(h).is_some_and(|u| u.extra.ai_rest.iter().find(|e| e.0 == a).is_none_or(|e| e.1 <= now));
+                    if due {
+                        if let Some(u) = self.unit_mut(h) {
+                            u.extra.ai_rest.retain(|e| e.0 != a);
+                            u.extra.ai_rest.push((a, now + 2.0));
+                        }
+                        self.ai_raise_corpses(h, a, lvl as u32, code == "AHre");
+                    }
+                    continue;
+                }
                 if lvl <= 0 || !WATCHED.contains(&code.as_str()) {
                     continue;
                 }
@@ -922,6 +933,13 @@ impl World {
                     match code.as_str() {
                         "AHbz" | "ANrf" => self.ai_blizzard(h, a, lvl, t),
                         "AUdd" => self.ai_death_and_decay(h, a, lvl, t),
+                        // Finger of Death (its vf3 on the watch): at an enemy that is not
+                        // within 300 of the caster.
+                        "ANfd" => {
+                            if self.can_cast(h, a).is_ok() && (self.pos(t).0 - x).hypot(self.pos(t).1 - y) > 300.0 {
+                                self.ai_cast(h, a, t);
+                            }
+                        }
                         _ => {}
                     }
                     if self.unit(h).is_some_and(|u| matches!(u.action, Action::Cast { .. })) {
@@ -1300,7 +1318,38 @@ impl World {
             self.ai_cast(h, a, enemy);
         }
     }
+
+    /// Animate Dead, Resurrection (FUN_6f603f10, FUN_6f6052f0): every 2 seconds, able to
+    /// cast, it counts the corpses within Area that were not Heroes or workers (the
+    /// caster's side's for Resurrection), and those of units with more than 450 maximum
+    /// life (at least 450 for Resurrection): with 400 life or less one large corpse or
+    /// 2 corpses do; otherwise as many as it raises (DataA).
+    fn ai_raise_corpses(&mut self, h: u32, a: Id, lvl: u32, own: bool) {
+        if !self.ai_controlled(h) || self.can_cast(h, a).is_err() {
+            return;
+        }
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
+        let (x, y) = self.pos(h);
+        let (mut count, mut large) = (0, 0);
+        for c in self.corpses_in(x, y, self.data(a, "Area", lvl)) {
+            let Some(u) = self.unit(c) else { continue };
+            if u.is_hero || self.is_classed(u, "peon") || (own && !crate::natives::players::is_ally(self, owner, u.owner)) {
+                continue;
+            }
+            count += 1;
+            if if own { u.max_life >= 450.0 } else { u.max_life > 450.0 } {
+                large += 1;
+            }
+        }
+        let go = if self.life(h) <= 400.0 { large > 0 || count >= 2 } else { count >= self.data(a, "DataA", lvl) as i32 };
+        if go {
+            self.ai_cast(h, a, 0);
+        }
+    }
 }
 
 /// Abilities whose AI watches the units about the caster.
-const WATCHED: [&str; 3] = ["AHbz", "ANrf", "AUdd"];
+const WATCHED: [&str; 4] = ["AHbz", "ANrf", "AUdd", "ANfd"];
+
+/// Abilities whose AI looks every 2 seconds (their vf50 timer, 0x6fd6fbb0).
+const EVERY_2S: [&str; 2] = ["AUan", "AHre"];

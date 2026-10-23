@@ -12,11 +12,11 @@ use crate::data::{GameData, Version};
 use crate::scene::Assets;
 
 /// What the glue asks the application to do.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum GlueAction {
     Quit,
-    /// Start a game on a map file.
-    Play(std::path::PathBuf),
+    /// Start a game on a map file with the setup screen's choices.
+    Play(std::path::PathBuf, Vec<w3_game::LobbySlot>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -102,6 +102,8 @@ impl Glue {
         );
         let mut skirmish = crate::skirmish::Skirmish::new(&data.dir);
         skirmish.load_strings(&data.chain, data.version == Version::FrozenThrone);
+        // Without a profile the local player takes LOCAL_PLAYER, as game.dll does.
+        skirmish.player_name = assets.frames.string("LOCAL_PLAYER");
         let mut g = Glue {
             screen: Screen::MainMenu,
             tree: FrameTree::new(4.0 / 3.0),
@@ -165,7 +167,12 @@ impl Glue {
                 }
                 self.tree.set_visible("RealmSelect", false);
             }
-            Screen::SinglePlayer => {}
+            Screen::SinglePlayer => {
+                // CSinglePlayerMenu shows the profile panel only from its profile button.
+                self.tree.set_visible("ProfilePanel", false);
+                let name = self.skirmish.player_name.clone();
+                self.tree.set_text("ProfileNameText", &name);
+            }
             Screen::Skirmish => self.skirmish.attach(&mut self.tree, db),
         }
         self.tree.bind_points();
@@ -222,7 +229,7 @@ impl Glue {
             (Screen::Skirmish, "CancelButton") => self.show(Screen::SinglePlayer, assets),
             (Screen::Skirmish, "PlayGameButton") => {
                 if let Some(p) = self.skirmish.selected_map() {
-                    self.action = Some(GlueAction::Play(p));
+                    self.action = Some(GlueAction::Play(p, self.skirmish.lobby()));
                 }
             }
             (Screen::Skirmish, other) => self.skirmish.button(&mut self.tree, &assets.frames, other),
@@ -245,6 +252,10 @@ impl Glue {
         for l in &mut self.layers {
             l.advance(dt * 1000.0);
             done |= l.finished || l.looped;
+        }
+        if self.skirmish.rebuild && self.screen == Screen::Skirmish && self.phase == Phase::Stand {
+            self.skirmish.rebuild = false;
+            self.build(Screen::Skirmish, assets);
         }
         // Birth and Death sequences run once; then the screen stands or the next arrives.
         match self.phase {

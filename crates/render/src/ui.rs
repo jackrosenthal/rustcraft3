@@ -258,20 +258,26 @@ impl UiRenderer {
                 Draw::Text { font, size, rect, text, color, justify_h, justify_v, shadow } => {
                     let Some(fi) = self.font(textures, font) else { continue };
                     let px = (size * px_per_unit).round().max(1.0) as u32;
-                    // Measure.
-                    let lines: Vec<&str> = text.split('\n').collect();
-                    let line_h = px as f32 * 1.2;
-                    let mut widths = Vec::new();
-                    for line in &lines {
-                        let mut w = 0.0;
-                        for c in strip_colors(line).chars() {
-                            if let Some(g) = self.glyph(queue, fi, px, c) {
-                                w += g.advance;
+                    let to_px_x = |x: f32| x * sw / ui_width;
+                    // Break at newlines and |n, then wrap words to the frame's width.
+                    let max_w = to_px_x(rect.x1) - to_px_x(rect.x0);
+                    let text = text.replace("|n", "\n").replace("|N", "\n");
+                    let mut lines: Vec<String> = Vec::new();
+                    for para in text.split('\n') {
+                        let mut cur = String::new();
+                        for word in para.split(' ') {
+                            let cand = if cur.is_empty() { word.to_string() } else { format!("{cur} {word}") };
+                            if !cur.is_empty() && max_w > 1.0 && self.measure(queue, fi, px, &cand) > max_w {
+                                lines.push(std::mem::take(&mut cur));
+                                cur = word.to_string();
+                            } else {
+                                cur = cand;
                             }
                         }
-                        widths.push(w);
+                        lines.push(cur);
                     }
-                    let to_px_x = |x: f32| x * sw / ui_width;
+                    let line_h = px as f32 * 1.2;
+                    let widths: Vec<f32> = lines.iter().map(|l| self.measure(queue, fi, px, l)).collect();
                     let to_px_y = |y: f32| sh - y * px_per_unit;
                     let (rx0, rx1) = (to_px_x(rect.x0), to_px_x(rect.x1));
                     let (ry_top, ry_bottom) = (to_px_y(rect.y1), to_px_y(rect.y0));
@@ -351,6 +357,13 @@ impl UiRenderer {
             }
             pass.draw(b.first..b.first + b.count, 0..1);
         }
+    }
+}
+
+impl UiRenderer {
+    /// Width in pixels of a line without its color codes.
+    fn measure(&mut self, queue: &wgpu::Queue, font: usize, px: u32, line: &str) -> f32 {
+        strip_colors(line).chars().filter_map(|c| self.glyph(queue, font, px, c).map(|g| g.advance)).sum()
     }
 }
 

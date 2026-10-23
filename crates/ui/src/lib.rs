@@ -199,10 +199,22 @@ pub struct Frame {
     pub model: Option<String>,
     /// Checkbox state.
     pub checked: bool,
+    /// Appended to the names of frames made by one scoped instantiation, so a template
+    /// can be created several times (player slots); names inside resolve within it.
+    pub scope: String,
+    /// Popup menu entries (MenuItem lines of its MENU, or set by the screen), the chosen
+    /// one, and whether the list is open.
+    pub items: Vec<String>,
+    pub selected: usize,
+    pub open: bool,
 }
 
 #[derive(Default)]
 pub struct FrameTree {
+    /// A popup menu whose choice changed with the last press, reported on release.
+    pub popup_changed: Option<usize>,
+    /// The last pointer position, for highlighting list items.
+    pub pointer: (f32, f32),
     pub frames: Vec<Frame>,
     pub by_name: HashMap<String, usize>,
     /// Width of the interface space (0.8 at 4:3, wider on wide displays).
@@ -240,6 +252,10 @@ impl FrameTree {
             enabled: true,
             model: None,
             checked: false,
+            scope: String::new(),
+            items: Vec::new(),
+            selected: 0,
+            open: false,
         });
         t
     }
@@ -250,16 +266,22 @@ impl FrameTree {
 
     /// Instantiates a template (and its children) under `parent`.
     pub fn create(&mut self, db: &FrameDb, template: &str, parent: usize) -> Option<usize> {
-        let d = db.templates.get(template)?.clone();
-        Some(self.instantiate(db, &d, parent))
+        self.create_scoped(db, template, parent, "")
     }
 
-    fn instantiate(&mut self, db: &FrameDb, d: &Rc<Def>, parent: usize) -> usize {
+    /// Instantiates a template with `scope` appended to every frame name.
+    pub fn create_scoped(&mut self, db: &FrameDb, template: &str, parent: usize, scope: &str) -> Option<usize> {
+        let d = db.templates.get(template)?.clone();
+        Some(self.instantiate(db, &d, parent, scope))
+    }
+
+    fn instantiate(&mut self, db: &FrameDb, d: &Rc<Def>, parent: usize, scope: &str) -> usize {
         let d = db.resolve(d);
         let i = self.frames.len();
+        let name = if d.name.is_empty() { String::new() } else { format!("{}{scope}", d.name) };
         self.frames.push(Frame {
             def: d.clone(),
-            name: d.name.clone(),
+            name: name.clone(),
             parent: Some(parent),
             children: vec![],
             points: vec![],
@@ -274,15 +296,38 @@ impl FrameTree {
             enabled: true,
             model: d.str("BackgroundArt").map(|s| if d.has("DecorateFileNames") { db.decorate(s) } else { s.to_string() }),
             checked: false,
+            scope: scope.to_string(),
+            items: Vec::new(),
+            selected: 0,
+            open: false,
         });
-        if !d.name.is_empty() {
-            self.by_name.insert(d.name.clone(), i);
+        if !name.is_empty() {
+            self.by_name.insert(name, i);
         }
         self.frames[parent].children.push(i);
         for c in d.children.clone() {
-            self.instantiate(db, &c, i);
+            self.instantiate(db, &c, i, scope);
+        }
+        // A popup menu takes its entries from its MENU's MenuItem lines.
+        if d.kind == "POPUPMENU" || d.kind == "GLUEPOPUPMENU" {
+            let menu = d.str("PopupMenuFrame").and_then(|m| self.frames[i].children.iter().copied().find(|&c| self.frames[c].def.name == m));
+            if let Some(m) = menu {
+                let items: Vec<String> = self.frames[m].def.props.iter().filter(|p| p.key == "MenuItem").filter_map(|p| p.args.first().map(|a| db.string(a.as_str()))).collect();
+                self.frames[i].items = items;
+            }
         }
         i
+    }
+
+    /// Looks up a name as written inside frame `i`'s definition: within its scope first.
+    fn resolve_name(&self, i: usize, name: &str) -> Option<usize> {
+        let scope = &self.frames[i].scope;
+        if !scope.is_empty() {
+            if let Some(&j) = self.by_name.get(&format!("{name}{scope}")) {
+                return Some(j);
+            }
+        }
+        self.by_name.get(name).copied()
     }
 
     /// Reads SetPoint, SetAllPoints, and Anchor properties into points.  Run after every
@@ -304,7 +349,7 @@ impl FrameTree {
                         ) else {
                             continue;
                         };
-                        let rel = a.get(1).map(Arg::as_str).and_then(|n| self.by_name.get(n).copied());
+                        let rel = a.get(1).map(Arg::as_str).and_then(|n| self.resolve_name(i, n));
                         self.frames[i].points.push(Point {
                             point: pt,
                             relative: rel,
@@ -416,10 +461,52 @@ impl FrameTree {
 
     /// Frames that take mouse input.
     pub fn is_control(&self, i: usize) -> bool {
+        let kind = self.frames[i].def.kind.as_str();
+        // A popup menu's own title and arrow belong to it.
+        if let Some(p) = self.frames[i].parent {
+            if self.is_popup(p) {
+                return false;
+            }
+        }
         matches!(
-            self.frames[i].def.kind.as_str(),
-            "GLUETEXTBUTTON" | "GLUEBUTTON" | "TEXTBUTTON" | "BUTTON" | "SIMPLEBUTTON" | "GLUECHECKBOX" | "CHECKBOX" | "POPUPMENU" | "EDITBOX" | "SLIDER" | "LISTBOX"
+            kind,
+            "GLUETEXTBUTTON" | "GLUEBUTTON" | "TEXTBUTTON" | "BUTTON" | "SIMPLEBUTTON" | "GLUECHECKBOX" | "CHECKBOX" | "POPUPMENU" | "GLUEPOPUPMENU" | "EDITBOX" | "SLIDER" | "LISTBOX"
         )
+    }
+
+    pub fn is_popup(&self, i: usize) -> bool {
+        matches!(self.frames[i].def.kind.as_str(), "POPUPMENU" | "GLUEPOPUPMENU")
+    }
+
+    /// The open list of a popup menu: its rectangle, item height, and border
+    /// (MenuItemHeight and MenuBorder of its MENU).
+    pub fn popup_list(&self, i: usize) -> Option<(Rect, f32, f32)> {
+        let f = &self.frames[i];
+        let r = f.rect?;
+        let menu = f.def.str("PopupMenuFrame").and_then(|m| f.children.iter().copied().find(|&c| self.frames[c].def.name == m));
+        let md = menu.map(|m| self.frames[m].def.clone());
+        let item_h = md.as_ref().and_then(|d| d.num("MenuItemHeight")).unwrap_or(0.014);
+        let border = md.as_ref().and_then(|d| d.num("MenuBorder")).unwrap_or(0.009);
+        let h = f.items.len() as f32 * item_h + 2.0 * border;
+        Some((Rect { x0: r.x0, x1: r.x1, y1: r.y0, y0: r.y0 - h }, item_h, border))
+    }
+
+    /// The open popup menu, if any.
+    pub fn open_popup(&self) -> Option<usize> {
+        (1..self.frames.len()).find(|&i| self.frames[i].open)
+    }
+
+    pub fn set_items(&mut self, name: &str, items: Vec<String>, selected: usize) {
+        if let Some(i) = self.get(name) {
+            self.frames[i].items = items;
+            self.frames[i].selected = selected;
+        }
+    }
+
+    pub fn set_selected(&mut self, name: &str, selected: usize) {
+        if let Some(i) = self.get(name) {
+            self.frames[i].selected = selected;
+        }
     }
 
     /// The topmost visible, enabled control under a point.
@@ -431,6 +518,7 @@ impl FrameTree {
 
     /// Moves the pointer: updates which control is under it.
     pub fn pointer_move(&mut self, x: f32, y: f32) {
+        self.pointer = (x, y);
         let hit = self.control_at(x, y);
         for (i, f) in self.frames.iter_mut().enumerate() {
             f.hovered = Some(i) == hit;
@@ -439,6 +527,20 @@ impl FrameTree {
 
     /// Presses the pointer; returns the control pressed.
     pub fn pointer_down(&mut self, x: f32, y: f32) -> Option<usize> {
+        // An open list takes the click: an item chooses it, anywhere else closes it.
+        if let Some(p) = self.open_popup() {
+            self.frames[p].open = false;
+            if let Some((r, item_h, border)) = self.popup_list(p) {
+                if r.contains(x, y) {
+                    let k = ((r.y1 - border - y) / item_h).floor();
+                    if k >= 0.0 && (k as usize) < self.frames[p].items.len() {
+                        self.frames[p].selected = k as usize;
+                        self.popup_changed = Some(p);
+                    }
+                    return Some(p);
+                }
+            }
+        }
         let hit = self.control_at(x, y)?;
         self.frames[hit].pushed = true;
         Some(hit)
@@ -451,9 +553,16 @@ impl FrameTree {
         for f in &mut self.frames {
             f.pushed = false;
         }
+        if let Some(p) = self.popup_changed.take() {
+            return Some(p);
+        }
         let i = pressed.filter(|p| Some(*p) == hit)?;
         if matches!(self.frames[i].def.kind.as_str(), "GLUECHECKBOX" | "CHECKBOX") {
             self.frames[i].checked = !self.frames[i].checked;
+        }
+        if self.is_popup(i) && !self.frames[i].items.is_empty() {
+            self.frames[i].open = true;
+            return None;
         }
         Some(i)
     }
@@ -608,7 +717,84 @@ impl FrameTree {
     pub fn draw(&self, db: &FrameDb) -> Vec<Draw> {
         let mut out = Vec::new();
         self.draw_frame(db, 0, &mut out);
+        // An open popup list covers everything else.
+        if let Some(p) = self.open_popup() {
+            self.draw_popup_list(db, p, &mut out);
+        }
         out
+    }
+
+    /// The parts of a popup menu: its MENU frame, title text frame, and arrow frame.
+    fn popup_parts(&self, i: usize) -> (Option<usize>, Option<usize>, Option<usize>) {
+        let f = &self.frames[i];
+        let child = |key: &str| f.def.str(key).and_then(|n| f.children.iter().copied().find(|&c| self.frames[c].def.name == n));
+        (child("PopupMenuFrame"), child("PopupTitleFrame"), child("PopupArrowFrame"))
+    }
+
+    fn popup_font(&self, db: &FrameDb, d: &Def) -> (String, f32) {
+        match d.prop("FrameFont") {
+            Some(p) => (db.decorate(p.args.first().map(Arg::as_str).unwrap_or("MasterFont")), p.args.get(1).map_or(0.011, Arg::num)),
+            None => (db.decorate("MasterFont"), 0.011),
+        }
+    }
+
+    /// A closed popup menu: its backdrop, the chosen entry as its title, and its arrow
+    /// at the right inside PopupButtonInset.
+    fn draw_popup(&self, db: &FrameDb, i: usize, out: &mut Vec<Draw>) {
+        let f = &self.frames[i];
+        let Some(r) = f.rect else { return };
+        let d = f.def.clone();
+        let file = |n: &str| if d.has("DecorateFileNames") { db.decorate(n) } else { n.to_string() };
+        let key = if !f.enabled { "ControlDisabledBackdrop" } else if f.pushed || f.open { "ControlPushedBackdrop" } else { "ControlBackdrop" };
+        let name = d.str(key).or_else(|| d.str("ControlBackdrop"));
+        if let Some(bd) = name.and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
+            self.draw_backdrop(db, &bd.def, r, &file, out);
+        }
+        let (_, title, arrow) = self.popup_parts(i);
+        let text = f.items.get(f.selected).cloned().or_else(|| f.text.clone()).unwrap_or_default();
+        if let Some(t) = title {
+            let td = self.frames[t].def.clone();
+            let (font, size) = self.popup_font(db, &td);
+            // The title's text frame offsets it by FontJustificationOffset.
+            let text_def = td.str("ButtonText").and_then(|n| self.frames[t].children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)).map(|c| c.def.clone());
+            let off = text_def.as_ref().and_then(|d| d.prop("FontJustificationOffset")).and_then(|p| p.args.first().map(Arg::num)).unwrap_or(0.01);
+            let color = if f.enabled { [1.0; 4] } else { [0.5, 0.5, 0.5, 1.0] };
+            out.push(Draw::Text { font, size, rect: Rect { x0: r.x0 + off, ..r }, text, color, justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
+        }
+        if let Some(a) = arrow {
+            let ad = self.frames[a].def.clone();
+            let inset = d.num("PopupButtonInset").unwrap_or(0.01);
+            let (w, h) = (ad.num("Width").unwrap_or(0.011), ad.num("Height").unwrap_or(0.011));
+            let cy = (r.y0 + r.y1) / 2.0;
+            let ar = Rect { x0: r.x1 - inset - w, x1: r.x1 - inset, y0: cy - h / 2.0, y1: cy + h / 2.0 };
+            if let Some(bd) = ad.str("ControlBackdrop").and_then(|n| self.frames[a].children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
+                let afile = |n: &str| if bd.def.has("DecorateFileNames") { db.decorate(n) } else { n.to_string() };
+                self.draw_backdrop(db, &bd.def, ar, &afile, out);
+            }
+        }
+    }
+
+    fn draw_popup_list(&self, db: &FrameDb, p: usize, out: &mut Vec<Draw>) {
+        let Some((r, item_h, border)) = self.popup_list(p) else { return };
+        let (menu, _, _) = self.popup_parts(p);
+        let Some(m) = menu else { return };
+        let md = self.frames[m].def.clone();
+        let file = |n: &str| if md.has("DecorateFileNames") { db.decorate(n) } else { n.to_string() };
+        if let Some(bd) = md.str("ControlBackdrop").and_then(|n| self.frames[m].children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
+            self.draw_backdrop(db, &bd.def, r, &file, out);
+        }
+        let (font, size) = self.popup_font(db, &md);
+        let highlight = color_prop(md.prop("MenuTextHighlightColor"), [1.0, 0.8, 0.0, 1.0]);
+        for (k, item) in self.frames[p].items.iter().enumerate() {
+            let y1 = r.y1 - border - k as f32 * item_h;
+            let row = Rect { x0: r.x0 + border, x1: r.x1 - border, y0: y1 - item_h, y1 };
+            let color = if self.pointer_in(row) { highlight } else { [1.0; 4] };
+            out.push(Draw::Text { font: font.clone(), size, rect: row, text: item.clone(), color, justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
+        }
+    }
+
+    fn pointer_in(&self, r: Rect) -> bool {
+        r.contains(self.pointer.0, self.pointer.1)
     }
 
     fn draw_frame(&self, db: &FrameDb, i: usize, out: &mut Vec<Draw>) {
@@ -618,6 +804,10 @@ impl FrameTree {
         }
         if let Some(r) = f.rect {
             self.draw_self(db, f, r, out);
+        }
+        if self.is_popup(i) {
+            self.draw_popup(db, i, out);
+            return;
         }
         for &c in &f.children {
             // Control state backdrops are drawn by their owning control.
@@ -629,7 +819,7 @@ impl FrameTree {
     }
 
     fn is_state_backdrop(&self, owner: usize, child: usize) -> bool {
-        let name = &self.frames[child].name;
+        let name = &self.frames[child].def.name;
         let d = &self.frames[owner].def;
         ["ControlBackdrop", "ControlPushedBackdrop", "ControlDisabledBackdrop", "ControlDisabledPushedBackdrop", "ControlMouseOverHighlight", "ControlFocusHighlight"]
             .iter()
@@ -692,13 +882,14 @@ impl FrameTree {
                     None => def,
                 };
                 // Text owned by a button takes the button's state color.
-                let owner = f.parent.map(|p| &self.frames[p]).filter(|p| p.def.str("ButtonText") == Some(f.name.as_str()));
+                let owner = f.parent.map(|p| &self.frames[p]).filter(|p| p.def.str("ButtonText") == Some(f.def.name.as_str()));
                 let color_key = match owner {
                     Some(o) if !o.enabled => "FontDisabledColor",
                     Some(_) => "FontHighlightColor",
                     None => "FontColor",
                 };
-                let color = color_prop(d.prop(color_key).or_else(|| d.prop("FontColor")), [1.0, 0.8, 0.0, 1.0]);
+                // CTextFrame starts white (0xffffffff) until FontColor sets it.
+                let color = color_prop(d.prop(color_key).or_else(|| d.prop("FontColor")), [1.0; 4]);
                 // A pressed button moves its text by ButtonPushedTextOffset.
                 let r = match owner.filter(|o| o.pushed).and_then(|o| o.def.prop("ButtonPushedTextOffset")) {
                     Some(p) => {
@@ -722,7 +913,7 @@ impl FrameTree {
                     shadow,
                 });
             }
-            (_, "GLUETEXTBUTTON") | (_, "GLUEBUTTON") | (_, "TEXTBUTTON") | (_, "BUTTON") | (_, "GLUECHECKBOX") | (_, "POPUPMENU") => {
+            (_, "GLUETEXTBUTTON") | (_, "GLUEBUTTON") | (_, "TEXTBUTTON") | (_, "BUTTON") | (_, "GLUECHECKBOX") | (_, "CONTROL") => {
                 let key = if !f.enabled {
                     "ControlDisabledBackdrop"
                 } else if f.pushed {
@@ -731,11 +922,11 @@ impl FrameTree {
                     "ControlBackdrop"
                 };
                 let name = d.str(key).or_else(|| d.str("ControlBackdrop"));
-                if let Some(bd) = name.and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.name == n)) {
+                if let Some(bd) = name.and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
                     self.draw_backdrop(db, &bd.def, r, &file, out);
                 }
                 if f.hovered && f.enabled {
-                    if let Some(h) = d.str("ControlMouseOverHighlight").and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.name == n)) {
+                    if let Some(h) = d.str("ControlMouseOverHighlight").and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
                         if let Some(tex) = h.def.str("HighlightAlphaFile") {
                             out.push(Draw::Image { texture: tex.to_string(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: Blend::Add, rotated: false });
                         }

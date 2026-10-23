@@ -19,6 +19,10 @@ struct Running {
     window: Arc<Window>,
     gpu: w3_render::Gpu,
     scene: Option<Scene>,
+    /// The menus, shown when no game is running.
+    glue: Option<crate::glue::Glue>,
+    /// Sound output, handed to each game.
+    audio: Option<w3_audio::Audio>,
     assets: Assets,
     last: Instant,
     keys: HashSet<KeyCode>,
@@ -74,20 +78,30 @@ impl App {
         };
         let gpu = w3_render::Gpu::new(window.clone(), inner.width, inner.height, backends, !self.args.no_vsync)?;
         let mut assets = Assets::new(&gpu.device, &gpu.queue, &self.data);
+        let mut audio = Some(w3_audio::Audio::new(self.data.chain.clone()));
         let mut scene = match &self.args.loadfile {
-            Some(path) => Some(Scene::load(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets, path, inner.width as f32 / inner.height.max(1) as f32)?),
-            None => {
-                log::warn!("the glue screens are not implemented yet; pass --loadfile <map>");
+            Some(path) => Some(Scene::load(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets, path, inner.width as f32 / inner.height.max(1) as f32, None)?),
+            None => None,
+        };
+        let glue = match scene.as_mut() {
+            Some(s) => {
+                s.audio = audio.take();
                 None
             }
+            None => {
+                // The glue plays war3skins.txt GlueMusic_V<n>.
+                if let (Some(a), Some(music)) = (audio.as_mut(), assets.frames.skin_value("GlueMusic")) {
+                    a.play_music(&music, false, 0);
+                }
+                Some(crate::glue::Glue::new(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets))
+            }
         };
-        if let Some(s) = scene.as_mut() {
-            s.audio = Some(w3_audio::Audio::new(self.data.chain.clone()));
-        }
         self.running = Some(Running {
             window,
             gpu,
             scene,
+            glue,
+            audio,
             assets,
             last: Instant::now(),
             keys: HashSet::new(),
@@ -124,6 +138,15 @@ impl ApplicationHandler for App {
                             scene.key('\u{1b}');
                         }
                     }
+                    if let Some(glue) = r.glue.as_mut().filter(|g| g.interactive()) {
+                        if event.physical_key == PhysicalKey::Code(KeyCode::Escape) {
+                            glue.key('\u{1b}', &mut r.assets);
+                        } else if let Some(text) = event.text.as_ref() {
+                            for c in text.chars() {
+                                glue.key(c, &mut r.assets);
+                            }
+                        }
+                    }
                 }
                 if let PhysicalKey::Code(code) = event.physical_key {
                     match event.state {
@@ -138,6 +161,9 @@ impl ApplicationHandler for App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 r.cursor = position;
+                if let Some(glue) = r.glue.as_mut() {
+                    glue.pointer_move(position.x as f32, position.y as f32, (r.gpu.config.width, r.gpu.config.height));
+                }
                 if let Some(scene) = r.scene.as_mut() {
                     if let Some(d) = scene.drag.as_mut() {
                         d.1 = (position.x as f32, position.y as f32);
@@ -148,6 +174,22 @@ impl ApplicationHandler for App {
                 let size = (r.gpu.config.width, r.gpu.config.height);
                 let p = (r.cursor.x as f32, r.cursor.y as f32);
                 let shift = r.keys.contains(&KeyCode::ShiftLeft) || r.keys.contains(&KeyCode::ShiftRight);
+                if let Some(glue) = r.glue.as_mut().filter(|g| g.interactive()) {
+                    match (button, state) {
+                        (MouseButton::Left, ElementState::Pressed) => {
+                            glue.pointer_down(&mut r.assets);
+                        }
+                        (MouseButton::Left, ElementState::Released) => {
+                            if glue.pointer_up(&mut r.assets).is_some() {
+                                if let Some(a) = r.audio.as_mut() {
+                                    // UISounds GlueScreenClick on glue buttons.
+                                    a.play_label("GlueScreenClick", None);
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
                 if let Some(scene) = r.scene.as_mut() {
                     match (button, state) {
                         (MouseButton::Left, ElementState::Pressed) => {
@@ -213,7 +255,37 @@ impl ApplicationHandler for App {
                 let view = frame.texture.create_view(&Default::default());
                 let mut enc = r.gpu.device.create_command_encoder(&Default::default());
                 let size = (r.gpu.config.width, r.gpu.config.height);
-                if let Some(scene) = r.scene.as_mut() {
+                // The glue's requests: quitting or starting a game.
+                if let Some(glue) = r.glue.as_mut() {
+                    glue.update(dt, &mut r.assets);
+                    if let Some(a) = r.audio.as_mut() {
+                        a.update([0.0; 3]);
+                    }
+                    match glue.action.take() {
+                        Some(crate::glue::GlueAction::Quit) => {
+                            el.exit();
+                            return;
+                        }
+                        Some(crate::glue::GlueAction::Play(path, slots)) => {
+                            let aspect = size.0 as f32 / size.1.max(1) as f32;
+                            match Scene::load(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets, &path, aspect, Some(&slots)) {
+                                Ok(mut s) => {
+                                    if let Some(mut a) = r.audio.take() {
+                                        a.stop_music();
+                                        s.audio = Some(a);
+                                    }
+                                    r.scene = Some(s);
+                                    r.glue = None;
+                                }
+                                Err(e) => log::error!("loading {}: {e:#}", path.display()),
+                            }
+                        }
+                        None => {}
+                    }
+                }
+                if let Some(glue) = r.glue.as_mut() {
+                    glue.render(&r.gpu.device, &r.gpu.queue, &mut enc, &view, &r.gpu.depth, size, &mut r.assets);
+                } else if let Some(scene) = r.scene.as_mut() {
                     scene.render(&r.gpu.device, &r.gpu.queue, &mut enc, &view, &r.gpu.depth, size, &mut r.assets);
                 } else {
                     enc.begin_render_pass(&wgpu::RenderPassDescriptor {

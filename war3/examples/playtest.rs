@@ -21,7 +21,7 @@ fn main() -> anyhow::Result<()> {
     let (device, queue) = pollster::block_on(adapter.request_device(&Default::default()))?;
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let mut assets = Assets::new(&device, &queue, &data);
-    let mut scene = Scene::load(&device, &queue, format, &data, &mut assets, Path::new(&a[2]), w as f32 / h as f32)?;
+    let mut scene = Scene::load(&device, &queue, format, &data, &mut assets, Path::new(&a[2]), w as f32 / h as f32, None)?;
     scene.sync_units(&device, &queue, &mut assets);
     scene.sync_destructables(&device, &queue, &mut assets);
     let mut i = 6;

@@ -188,6 +188,7 @@ impl Scene {
         assets: &mut Assets,
         map_path: &std::path::Path,
         aspect: f32,
+        lobby: Option<&[w3_game::LobbySlot]>,
     ) -> anyhow::Result<Scene> {
         let archive = Arc::new(
             w3_mpq::Archive::open(map_path).with_context(|| format!("opening map {}", map_path.display()))?,
@@ -273,14 +274,19 @@ impl Scene {
                     log::error!("config: {e:#}");
                 }
                 let mut first = true;
-                let res = g.start(|_, controller| {
-                    if controller == w3_game::types::map_control::USER && first {
-                        first = false;
-                        w3_game::SlotFill::Local
-                    } else {
-                        w3_game::SlotFill::Computer
-                    }
-                });
+                let res = match lobby {
+                    Some(slots) => g.start_lobby(slots),
+                    // Without a setup screen: the local player in the first user slot and
+                    // computers in the rest.
+                    None => g.start(|_, controller| {
+                        if controller == w3_game::types::map_control::USER && first {
+                            first = false;
+                            w3_game::SlotFill::Local
+                        } else {
+                            w3_game::SlotFill::Computer
+                        }
+                    }),
+                };
                 if let Err(e) = res {
                     log::error!("main: {e:#}");
                 }

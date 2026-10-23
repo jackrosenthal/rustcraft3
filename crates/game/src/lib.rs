@@ -15,6 +15,7 @@ pub mod sim;
 pub mod types;
 pub mod world;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -39,6 +40,22 @@ pub enum SlotFill {
     Local,
     Computer,
     Empty,
+}
+
+/// One player's choices from the game setup screen.
+#[derive(Clone, Debug)]
+pub struct LobbySlot {
+    pub player: u8,
+    pub fill: SlotFill,
+    pub name: Option<String>,
+    /// RACE_HUMAN through RACE_NIGHTELF; `None` for random.
+    pub race: Option<i32>,
+    pub team: i32,
+    pub color: i32,
+    /// Hit point percentage (100 down to 50).
+    pub handicap: f32,
+    /// AI_DIFFICULTY_NEWBIE, _NORMAL, or _INSANE for computer players.
+    pub difficulty: i32,
 }
 
 fn read_script(chain: &Chain, names: &[&str]) -> anyhow::Result<String> {
@@ -132,6 +149,39 @@ impl Game {
         let w = &mut self.world;
         self.vm.init_globals(w).map_err(anyhow::Error::msg)?;
         self.call("config")
+    }
+
+    /// Applies the setup screen's choices, then runs the map's `main`.
+    pub fn start_lobby(&mut self, slots: &[LobbySlot]) -> anyhow::Result<()> {
+        // RACE_PREF_* bits from common.j.
+        const PREF_RANDOM: i32 = 32;
+        for s in slots {
+            let Some(p) = self.world.players.get_mut(s.player as usize) else { continue };
+            if let Some(n) = &s.name {
+                p.name = n.clone();
+            }
+            p.team = s.team;
+            p.color = s.color;
+            p.handicap = s.handicap / 100.0;
+            match s.race {
+                Some(r) => {
+                    p.race = r;
+                    p.race_preference = [0, 1, 2, 8, 4].get(r as usize).copied().unwrap_or(0);
+                }
+                None => {
+                    // A random race is drawn when the game starts.
+                    let r = self.world.rng.int(1, 4);
+                    let p = &mut self.world.players[s.player as usize];
+                    p.race = r;
+                    p.race_preference = PREF_RANDOM;
+                }
+            }
+            if matches!(s.fill, SlotFill::Computer) {
+                self.world.ai_difficulty.insert(s.player, s.difficulty);
+            }
+        }
+        let fills: HashMap<u8, SlotFill> = slots.iter().map(|s| (s.player, s.fill.clone())).collect();
+        self.start(|id, _| fills.get(&id).cloned().unwrap_or(SlotFill::Empty))
     }
 
     /// Fills player slots as the lobby would, then runs the map's `main`.

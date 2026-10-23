@@ -51,6 +51,15 @@ fn main() -> anyhow::Result<()> {
                 scene.camera.target.y = num(&a[i + 2]);
                 i += 3;
             }
+            // camstart <dx> <dy>: centers the camera near player 0's start.
+            "camstart" => {
+                if let Some(g) = scene.game.as_ref() {
+                    let (sx, sy) = g.world.start_of(0);
+                    scene.camera.target.x = sx + num(&a[i + 1]);
+                    scene.camera.target.y = sy + num(&a[i + 2]);
+                }
+                i += 3;
+            }
             "wait" => {
                 let mut t = num(&a[i + 1]);
                 while t > 0.0 {
@@ -180,6 +189,36 @@ fn main() -> anyhow::Result<()> {
             }
             "msg" => {
                 if let Some(h) = scene.hud.as_mut() { h.unit_message(&a[i + 1], 0.0, 0.0, -1.0); }
+                i += 2;
+            }
+            // item <type> <dx> <dy>: creates an item near player 0's start.
+            "item" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let (sx, sy) = g.world.start_of(0);
+                    let id = w3_game::objects::id_from_str(&a[i + 1]);
+                    let h = w3_game::natives::objects::create_item(&mut g.world, id, sx + num(&a[i + 2]), sy + num(&a[i + 3]));
+                    eprintln!("item {} = {h}", a[i + 1]);
+                }
+                i += 4;
+            }
+            "selecth" => {
+                scene.selection = vec![num(&a[i + 1]) as u32];
+                i += 2;
+            }
+            "useitem" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let ok = g.use_item(num(&a[i + 1]) as u32, num(&a[i + 2]) as usize);
+                    eprintln!("used: {ok}");
+                }
+                i += 3;
+            }
+            "inv" => {
+                if let Some(g) = scene.game.as_ref() {
+                    if let Some(u) = g.world.unit(num(&a[i + 1]) as u32) {
+                        let inv: Vec<String> = u.inventory.iter().map(|&it| g.world.item(it).map(|i| format!("{}x{}", w3_game::objects::id_str(i.type_id), i.charges)).unwrap_or("-".into())).collect();
+                        eprintln!("inventory {:?} life {}/{} armor+{} dmg+{}", inv, u.life, u.max_life, u.item_bonus.armor, u.item_bonus.damage);
+                    }
+                }
                 i += 2;
             }
             // killall <player>: kills every unit of a player.

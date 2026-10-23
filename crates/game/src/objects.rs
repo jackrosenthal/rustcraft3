@@ -129,6 +129,10 @@ impl ObjectTable {
         self.objects.get(&id)
     }
 
+    pub fn ids(&self) -> Vec<Id> {
+        self.objects.keys().copied().collect()
+    }
+
     fn merge_slk(&mut self, table: &Table) {
         for (key, row) in &table.rows {
             let id = id_from_str(key);

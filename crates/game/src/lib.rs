@@ -6,6 +6,7 @@ pub mod event_ids;
 pub mod fog;
 pub mod handles;
 pub mod hero;
+pub mod items;
 pub mod natives;
 pub mod objects;
 pub mod orders;
@@ -253,6 +254,11 @@ impl Game {
         if quit.is_some() {
             self.world.requests.push(world::Request::EndGame);
         }
+    }
+
+    /// The local player uses the item in a unit's inventory slot.
+    pub fn use_item(&mut self, unit: u32, slot: usize) -> bool {
+        self.world.use_item(&mut self.vm, unit, slot, 0, 0.0, 0.0)
     }
 
     /// Kills a unit (for tools and tests).

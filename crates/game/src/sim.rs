@@ -110,8 +110,9 @@ pub fn final_damage(w: &World, raw: f32, attack_type: &str, target: &Unit) -> f3
     };
     let mult = misc_list(w, key).get(col).copied().unwrap_or(1.0);
     // Heroes gain armor from agility (AgiDefenseBonus per point, plus AgiDefenseBase).
+    let armor = armor + target.item_bonus.armor;
     let armor = if target.is_hero {
-        armor + target.agi.floor() * w.misc_f32("AgiDefenseBonus", 0.3) + w.misc_f32("AgiDefenseBase", -2.0)
+        armor + (target.agi + target.item_bonus.agi).floor() * w.misc_f32("AgiDefenseBonus", 0.3) + w.misc_f32("AgiDefenseBase", -2.0)
     } else {
         armor
     };
@@ -206,6 +207,8 @@ impl World {
             Action::Harvest { target }
         } else if order == crate::natives::basic::order_id("returnresources") {
             Action::ReturnResources
+        } else if (order == smart || order == crate::natives::basic::order_id("getitem")) && self.item(target).is_some_and(|i| i.owner_unit == 0) && self.inventory_size(h) > 0 {
+            Action::PickUp { item: target }
         } else if (order == smart || order == mv) && target != 0 {
             match owner_of(self, target) {
                 Some(o) if !is_ally(self, me, o) && order == smart => Action::Attack { target },
@@ -268,7 +271,7 @@ impl World {
         if left.abs() > u.prop_window.max(1.0) {
             return false;
         }
-        let step = u.move_speed * dt;
+        let step = (u.move_speed + u.item_bonus.move_speed) * dt;
         let step = step * self.buff_mods(h).0;
         let Some(u) = self.unit_mut(h) else { return true };
         let (dx, dy) = (next.0 - u.x, next.1 - u.y);
@@ -383,7 +386,8 @@ impl World {
                 s.elapsed += dt;
                 if !s.done && s.elapsed >= wp.damage_point {
                     s.done = true;
-                    let raw = wp.base + (0..wp.dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>() + self.primary_attribute(h);
+                    let bonus = self.unit(h).map_or(0.0, |u| u.item_bonus.damage);
+                    let raw = wp.base + (0..wp.dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>() + self.primary_attribute(h) + bonus;
                     if wp.weapon_type == "missile" || wp.weapon_type == "artillery" || wp.weapon_type.starts_with("msplash") || wp.weapon_type == "mbounce" || wp.weapon_type == "mline" {
                         if let (Some(src), Some(_)) = (self.unit(h).cloned(), self.unit(s.target)) {
                             let launch_z = self.objects.units.get(src.type_id).map_or(60.0, |o| o.real("launchZ"));
@@ -428,6 +432,44 @@ impl World {
             }
             match action {
                 Action::Cast { ability, target, x, y } => self.cast_step(vm, h, ability, target, x, y, dt),
+                Action::PickUp { item } => {
+                    // Within PickupItemRange of a ground item, take it.
+                    let Some(pos) = self.item(item).filter(|i| i.owner_unit == 0 && i.visible).map(|i| (i.x, i.y)) else {
+                        self.unit_mut(h).unwrap().action = Action::Idle;
+                        continue;
+                    };
+                    let range = self.misc_f32("PickupItemRange", 150.0);
+                    let u = self.unit(h).unwrap();
+                    if (u.x - pos.0).hypot(u.y - pos.1) > range {
+                        if u.path.is_empty() || u.repath_timer <= 0.0 {
+                            self.path_to(h, pos);
+                        }
+                        self.walk(h, dt);
+                        continue;
+                    }
+                    self.unit_mut(h).unwrap().path.clear();
+                    self.give_item(vm, h, item, None);
+                    if let Some(u) = self.unit_mut(h) {
+                        u.action = Action::Idle;
+                        set_anim(u, "stand");
+                    }
+                }
+                Action::DropItem { item, x, y } => {
+                    let range = self.misc_f32("DropItemRange", 100.0);
+                    let u = self.unit(h).unwrap();
+                    if (u.x - x).hypot(u.y - y) > range {
+                        if u.path.is_empty() || u.repath_timer <= 0.0 {
+                            self.path_to(h, (x, y));
+                        }
+                        self.walk(h, dt);
+                        continue;
+                    }
+                    self.drop_item(vm, item, x, y);
+                    if let Some(u) = self.unit_mut(h) {
+                        u.action = Action::Idle;
+                        set_anim(u, "stand");
+                    }
+                }
                 Action::Idle | Action::Hold => {
                     if let Some(u) = self.unit_mut(h) {
                         if !u.path.is_empty() {
@@ -1127,10 +1169,11 @@ impl World {
         if !u.is_hero {
             return 0.0;
         }
+        let b = u.item_bonus;
         match self.objects.units.get(u.type_id).map(|o| o.str("Primary").to_ascii_uppercase()).as_deref() {
-            Some("STR") => u.str_.floor() * self.misc_f32("StrAttackBonus", 1.0),
-            Some("AGI") => u.agi.floor(),
-            Some("INT") => u.int.floor(),
+            Some("STR") => (u.str_ + b.str_).floor() * self.misc_f32("StrAttackBonus", 1.0),
+            Some("AGI") => (u.agi + b.agi).floor(),
+            Some("INT") => (u.int + b.int).floor(),
             _ => 0.0,
         }
     }
@@ -1163,8 +1206,8 @@ impl World {
         }
         if u.cooldown <= 0.0 {
             // Agility shortens a hero's attack cooldown (AgiAttackSpeedBonus per point).
-            let speed = if u.is_hero { 1.0 + u.agi.floor() * agi_bonus } else { 1.0 };
-            let speed = speed * buff_attack;
+            let speed = if u.is_hero { 1.0 + (u.agi + u.item_bonus.agi).floor() * agi_bonus } else { 1.0 };
+            let speed = (speed + u.item_bonus.attack_speed) * buff_attack;
             u.cooldown = wp.cooldown / speed.max(0.01);
             u.swing = Some(Swing { target, elapsed: 0.0, done: false });
             restart_anim(u, "attack");

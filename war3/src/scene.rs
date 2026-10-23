@@ -128,6 +128,8 @@ pub struct Scene {
     /// Render instances for game units, by handle.
     pub units: HashMap<u32, UnitView>,
     pub dests: HashMap<u32, (ModelInstance, bool)>,
+    /// Render instances for items lying on the ground.
+    pub items: HashMap<u32, ModelInstance>,
     pub selection: Vec<u32>,
     pub info: MapInfo,
     pub terrain: TerrainRenderer,
@@ -328,7 +330,7 @@ impl Scene {
         let ui = w3_render::ui::UiRenderer::new(device, color_format);
         let portrait_renderer = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, portrait: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, portrait: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -857,6 +859,15 @@ impl Scene {
             }
             return true;
         }
+        // Clicking an inventory item uses it.
+        if let Some(slot) = self.hud.as_ref().and_then(|h| h.inventory_at(ux, uy)) {
+            if let (Some(&u), Some(g)) = (self.selection.first(), self.game.as_mut()) {
+                if g.world.unit(u).is_some_and(|un| un.owner == g.world.local_player) {
+                    g.use_item(u, slot);
+                }
+            }
+            return true;
+        }
         if let Some(b) = self.hud.as_ref().and_then(|h| h.button_at(ux, uy)).cloned() {
             if b.enabled {
                 self.ui_sound("InterfaceClick");
@@ -941,7 +952,7 @@ impl Scene {
         if self.over_console(sx, sy, size) {
             return;
         }
-        let target = self.pick_unit(sx, sy, size).or_else(|| self.pick_destructable(sx, sy, size));
+        let target = self.pick_unit(sx, sy, size).or_else(|| self.pick_item(sx, sy, size)).or_else(|| self.pick_destructable(sx, sy, size));
         let point = self.ground_at(sx, sy, size);
         let Some(g) = self.game.as_mut() else { return };
         let local = g.world.local_player;
@@ -1013,6 +1024,56 @@ impl Scene {
                 inst.play("birth");
             }
         }
+    }
+
+    /// Shows items on the ground with their ItemData model and scale.
+    pub fn sync_items(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) {
+        let Some(g) = self.game.as_ref() else { return };
+        let w = &g.world;
+        let local = w.local_player;
+        self.items.retain(|h, _| w.item(*h).is_some_and(|i| i.owner_unit == 0 && i.visible));
+        for &h in &w.item_order {
+            let Some(it) = w.item(h) else { continue };
+            if it.owner_unit != 0 || !it.visible {
+                continue;
+            }
+            if !self.items.contains_key(&h) {
+                let Some(o) = w.objects.items.get(it.type_id) else { continue };
+                let Some(model) = assets.model(device, queue, &o.str("file")) else { continue };
+                let mut inst = ModelInstance::new(model);
+                inst.play("stand");
+                let scale = o.real("scale");
+                let z = self.terrain.height_at(it.x, it.y);
+                inst.transform = Mat4::from_scale_rotation_translation(Vec3::splat(if scale > 0.0 { scale } else { 1.0 }), Quat::IDENTITY, Vec3::new(it.x, it.y, z));
+                self.items.insert(h, inst);
+            }
+            let inst = self.items.get_mut(&h).unwrap();
+            let z = self.terrain.height_at(it.x, it.y);
+            let s = inst.transform.to_scale_rotation_translation().0;
+            inst.transform = Mat4::from_scale_rotation_translation(s, Quat::IDENTITY, Vec3::new(it.x, it.y, z));
+            inst.visible = w.fog_state(it.x, it.y, local) != w3_game::fog::FOG_MASKED;
+        }
+    }
+
+    /// The ground item under a screen point.
+    pub fn pick_item(&self, sx: f32, sy: f32, size: (u32, u32)) -> Option<u32> {
+        let g = self.game.as_ref()?;
+        let mut best: Option<(f32, u32)> = None;
+        for (&h, inst) in &self.items {
+            if !inst.visible {
+                continue;
+            }
+            let p = inst.transform.w_axis.truncate();
+            let Some(c) = self.project(p + Vec3::Z * 30.0, size) else { continue };
+            let Some(e) = self.project(p + Vec3::new(40.0, 0.0, 30.0), size) else { continue };
+            let r = (e.0 - c.0).abs().max(10.0);
+            let d = (c.0 - sx).hypot(c.1 - sy);
+            if d <= r && best.is_none_or(|b| d < b.0) {
+                best = Some((d, h));
+            }
+        }
+        let _ = g;
+        best.map(|b| b.1)
     }
 
     /// Creates, updates, and removes render instances to match the game's units.
@@ -1150,6 +1211,9 @@ impl Scene {
         for (inst, _) in self.dests.values_mut() {
             inst.advance(dt * 1000.0);
         }
+        for inst in self.items.values_mut() {
+            inst.advance(dt * 1000.0);
+        }
         if let Some((_, v)) = self.portrait.as_mut() {
             v.inst.advance(dt * 1000.0);
         }
@@ -1225,6 +1289,9 @@ impl Scene {
             if inst.transform.w_axis.truncate().distance(target) > far {
                 continue;
             }
+            self.models.submit(inst, eye, rot);
+        }
+        for inst in self.items.values_mut() {
             self.models.submit(inst, eye, rot);
         }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

@@ -50,11 +50,12 @@ impl World {
         let Some(u) = self.unit(h) else { return };
         let Some(o) = self.objects.units.get(u.type_id) else { return };
         let (base_hp, base_mana) = (o.real("HP"), o.real("manaN"));
-        let (str_, int) = (u.str_, u.int);
+        let b = u.item_bonus;
+        let (str_, int) = (u.str_ + b.str_, u.int + b.int);
         let u = self.unit_mut(h).unwrap();
         let (old_hp, old_mana) = (u.max_life, u.max_mana);
-        u.max_life = base_hp + str_.floor() * hp_per;
-        u.max_mana = base_mana + int.floor() * mana_per;
+        u.max_life = base_hp + str_.floor() * hp_per + b.life;
+        u.max_mana = base_mana + int.floor() * mana_per + b.mana;
         if fill {
             u.life = u.max_life;
             u.mana = u.max_mana;
@@ -158,9 +159,11 @@ impl World {
             if rt == "none" || (rt == "night" && day) || (rt == "day" && !day) {
                 hp = 0.0;
             }
+            // Mana regeneration items add a fraction of the normal rate.
+            mp *= 1.0 + u.item_bonus.mana_regen;
             if u.is_hero {
-                hp += u.str_.floor() * str_regen;
-                mp += u.int.floor() * int_regen;
+                hp += (u.str_ + u.item_bonus.str_).floor() * str_regen;
+                mp += (u.int + u.item_bonus.int).floor() * int_regen;
             }
             let u = self.unit_mut(h).unwrap();
             u.life = (u.life + hp * dt).min(u.max_life);

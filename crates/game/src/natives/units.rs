@@ -95,6 +95,7 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         buffs: Vec::new(),
         casting: None,
         timed_life: None,
+        item_bonus: Default::default(),
     };
     let path_tex = if unit.is_building { o.str("pathTex") } else { String::new() };
     let mut unit = unit;
@@ -131,6 +132,9 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
 pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     if w.unit(h).is_some_and(|u| !u.dead) && killer != 0 {
         w.grant_kill_xp(h, killer);
+    }
+    if w.unit(h).is_some_and(|u| !u.dead) {
+        w.drop_on_death(vm, h);
     }
     let Some(u) = w.unit_mut(h) else { return };
     if u.dead {
@@ -689,5 +693,6 @@ fn dummy_unit() -> Unit {
         queue: vec![], queue_progress: 0.0, constructing: None, build_time: 0.0, building: 0,
         str_: 0.0, agi: 0.0, int: 0.0, skill_points: 0, regen_timer: 0.0,
         cooldowns: HashMap::new(), autocast: vec![], buffs: vec![], casting: None, timed_life: None,
+        item_bonus: Default::default(),
     }
 }

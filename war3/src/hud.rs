@@ -77,6 +77,8 @@ pub struct Hud {
     /// WorldFrameMessage: the error line above the console.
     pub error_message: Option<Message>,
     pub dialog: Option<DialogView>,
+    /// The selected unit's inventory: icon and charges per slot it has.
+    pub inventory: Vec<Option<(String, i32)>>,
     /// Text under the portrait: hit points (with color) and mana.
     pub portrait_stats: Option<(String, [f32; 4], Option<String>)>,
     info: Option<usize>,
@@ -153,6 +155,7 @@ impl Hud {
             unit_message_offset: (0.0, 0.0),
             error_message: None,
             dialog: None,
+            inventory: Vec::new(),
             camera_box: Vec::new(),
             card: Vec::new(),
             page: crate::card::Page::Main,
@@ -165,8 +168,34 @@ impl Hud {
     }
 
     /// Shows the selected unit's name, class, and portrait statistics.
+    /// CInventoryBar's buttons: 0.03125 squares in two columns 0.04 apart and three rows
+    /// 0.038125 apart, from 0.01875 right of and 0.0021875 below CInfoBar's top right.
+    pub fn inventory_rect(&self, slot: usize) -> w3_ui::Rect {
+        let root = self.tree.frames[0].rect.unwrap_or_default();
+        let (ix, iy) = (root.x0 + 0.309375 + 0.188125, root.y0 + 0.114063);
+        let x0 = ix + 0.01875 + (slot & 1) as f32 * 0.04;
+        let y1 = iy - 0.0021875 - (slot >> 1) as f32 * 0.038125;
+        w3_ui::Rect { x0, x1: x0 + 0.03125, y0: y1 - 0.03125, y1 }
+    }
+
+    /// The inventory slot under an interface point.
+    pub fn inventory_at(&self, x: f32, y: f32) -> Option<usize> {
+        (0..self.inventory.len()).find(|&s| self.inventory_rect(s).contains(x, y))
+    }
+
     pub fn show_unit(&mut self, db: &FrameDb, world: &World, unit: Option<u32>) {
         let u = unit.and_then(|h| world.unit(h));
+        // Inventory icons (ItemFunc Art) and charges.
+        self.inventory = match (unit, u) {
+            (Some(h), Some(u)) => (0..world.inventory_size(h))
+                .map(|s| {
+                    let it = world.item(u.inventory[s])?;
+                    let art = world.objects.items.get(it.type_id).map(|o| o.str("Art")).unwrap_or_default();
+                    Some((art, it.charges))
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
         if let Some(i) = self.info {
             self.tree.frames[i].visible = u.is_some();
         }
@@ -376,6 +405,16 @@ impl Hud {
     pub fn draws(&self, db: &FrameDb) -> Vec<Draw> {
         let mut out = self.tree.draw(db);
         self.message_draws(db, &mut out);
+        for (s, slot) in self.inventory.iter().enumerate() {
+            let Some((icon, charges)) = slot else { continue };
+            let r = self.inventory_rect(s);
+            out.push(Draw::Image { texture: icon.clone(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+            if *charges > 0 {
+                let font = db.decorate("MasterFont");
+                let cr = w3_ui::Rect { x0: r.x1 - 0.012, x1: r.x1 - 0.001, y0: r.y0 + 0.001, y1: r.y0 + 0.011 };
+                out.push(Draw::Text { font, size: 0.009, rect: cr, text: charges.to_string(), color: [1.0; 4], justify_h: w3_ui::Justify::End, justify_v: w3_ui::Justify::End, shadow: Some(([0.0, 0.0, 0.0, 1.0], 0.0005, -0.0005)) });
+            }
+        }
         if let Some(d) = &self.dialog {
             out.extend(d.tree.draw(db));
         }

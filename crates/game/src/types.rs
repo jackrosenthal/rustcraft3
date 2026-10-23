@@ -207,6 +207,25 @@ pub struct Unit {
     pub casting: Option<(f32, bool)>,
     /// Summoned units expire when this reaches zero.
     pub timed_life: Option<f32>,
+    /// What carried items add.
+    pub item_bonus: ItemBonus,
+}
+
+/// Bonuses from held items' abilities.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ItemBonus {
+    pub damage: f32,
+    pub armor: f32,
+    pub move_speed: f32,
+    /// Fraction added to attack rate.
+    pub attack_speed: f32,
+    pub life: f32,
+    pub mana: f32,
+    /// Fraction of normal mana regeneration added.
+    pub mana_regen: f32,
+    pub str_: f32,
+    pub agi: f32,
+    pub int: f32,
 }
 
 /// An effect on a unit for a while: from spells, auras, and passives.
@@ -246,6 +265,10 @@ pub enum Action {
     ReturnResources,
     Build { id: Id, x: f32, y: f32 },
     Cast { ability: Id, target: u32, x: f32, y: f32 },
+    /// Walk to an item and pick it up.
+    PickUp { item: u32 },
+    /// Carry an item to a point and drop it there.
+    DropItem { item: u32, x: f32, y: f32 },
     /// A worker constructing a structure.
     Construct { target: u32 },
 }

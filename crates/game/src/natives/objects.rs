@@ -97,6 +97,32 @@ pub fn create_item(w: &mut World, id: Id, x: f32, y: f32) -> u32 {
     h
 }
 
+/// A random item type of a level (and class: ITEM_TYPE_* from common.j), among those
+/// marked pickRandom in ItemData; -1 for any level.
+fn choose_random_item(w: &mut World, class: Option<i32>, level: i32) -> i32 {
+    // ITEM_TYPE_PERMANENT, CHARGED, POWERUP, ARTIFACT, PURCHASABLE, CAMPAIGN, MISCELLANEOUS.
+    const CLASSES: [&str; 7] = ["permanent", "charged", "powerup", "artifact", "purchasable", "campaign", "miscellaneous"];
+    let mut ids: Vec<Id> = w
+        .objects
+        .items
+        .ids()
+        .into_iter()
+        .filter(|&id| {
+            w.objects.items.get(id).is_some_and(|o| {
+                o.bool("pickRandom")
+                    && (level < 0 || o.int("Level") == level)
+                    && class.is_none_or(|c| c == 8 || CLASSES.get(c as usize).is_some_and(|k| o.str("class").eq_ignore_ascii_case(k)))
+            })
+        })
+        .collect();
+    ids.sort();
+    if ids.is_empty() {
+        return 0;
+    }
+    let k = w.rng.int(0, ids.len() as i32 - 1) as usize;
+    id_to_int(ids[k])
+}
+
 fn item(w: &World, h: u32) -> Option<&Item> {
     match w.handles.get(h) {
         Some(Obj::Item(i)) => Some(i),
@@ -216,6 +242,89 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetEnumDestructable => |w, _, _| handle(w.enum_ctx.enum_destructable),
         GetFilterDestructable => |w, _, _| handle(w.enum_ctx.filter_destructable),
         CreateItem => |w, _, a| handle(create_item(w, id_from_int(a.i(0)), a.r(1), a.r(2))),
+        GetManipulatedItem => |w, _, _| handle(w.ctx.item),
+        UnitInventorySize => |w, _, a| int(w.inventory_size(a.h(0)) as i32),
+        UnitItemInSlot => |w, _, a| {
+            let s = a.i(1);
+            handle(w.unit(a.h(0)).and_then(|u| u.inventory.get(s as usize).copied()).filter(|_| s >= 0).unwrap_or(0))
+        },
+        UnitHasItem => |w, _, a| boolean(a.h(1) != 0 && w.unit(a.h(0)).is_some_and(|u| u.inventory.contains(&a.h(1)))),
+        UnitAddItem => |w, vm, a| boolean(w.give_item(vm, a.h(0), a.h(1), None)),
+        UnitAddItemById => |w, vm, a| {
+            let (u, id) = (a.h(0), id_from_int(a.i(1)));
+            let Some((x, y)) = w.unit(u).map(|u| (u.x, u.y)) else { return none() };
+            let it = create_item(w, id, x, y);
+            if !w.give_item(vm, u, it, None) {
+                // A full inventory leaves the item at the unit's feet.
+            }
+            handle(it)
+        },
+        UnitAddItemToSlotById => |w, vm, a| {
+            let (u, id, slot) = (a.h(0), id_from_int(a.i(1)), a.i(2));
+            let Some((x, y)) = w.unit(u).map(|u| (u.x, u.y)) else { return boolean(false) };
+            let it = create_item(w, id, x, y);
+            let ok = slot >= 0 && w.give_item(vm, u, it, Some(slot as usize));
+            if !ok {
+                w.remove_item(it);
+            }
+            boolean(ok)
+        },
+        UnitRemoveItem => |w, vm, a| {
+            let (u, it) = (a.h(0), a.h(1));
+            if let Some((x, y)) = w.unit(u).filter(|u| u.inventory.contains(&it)).map(|u| (u.x, u.y)) {
+                w.drop_item(vm, it, x, y);
+            }
+            none()
+        },
+        UnitRemoveItemFromSlot => |w, vm, a| {
+            let (u, s) = (a.h(0), a.i(1));
+            let Some((it, x, y)) = w.unit(u).and_then(|u| u.inventory.get(s as usize).map(|&i| (i, u.x, u.y))).filter(|t| t.0 != 0 && s >= 0) else { return none() };
+            w.drop_item(vm, it, x, y);
+            handle(it)
+        },
+        UnitDropItemPoint => |w, _, a| {
+            let (u, it, x, y) = (a.h(0), a.h(1), a.r(2), a.r(3));
+            let ok = w.unit(u).is_some_and(|u| u.inventory.contains(&it));
+            if ok {
+                if let Some(u) = w.unit_mut(u) { u.action = Action::DropItem { item: it, x, y }; u.path.clear(); }
+            }
+            boolean(ok)
+        },
+        UnitDropItemSlot => |w, _, a| {
+            // Moves an item between inventory slots.
+            let (u, it, slot) = (a.h(0), a.h(1), a.i(2));
+            let Some(un) = w.unit_mut(u) else { return boolean(false) };
+            let Some(from) = un.inventory.iter().position(|&i| i == it) else { return boolean(false) };
+            if slot < 0 || slot as usize >= 6 {
+                return boolean(false);
+            }
+            un.inventory.swap(from, slot as usize);
+            boolean(true)
+        },
+        UnitDropItemTarget => |w, vm, a| {
+            // Gives an item to another unit.
+            let (u, it, target) = (a.h(0), a.h(1), a.h(2));
+            let Some((x, y)) = w.unit(u).filter(|u| u.inventory.contains(&it)).map(|u| (u.x, u.y)) else { return boolean(false) };
+            w.drop_item(vm, it, x, y);
+            boolean(w.give_item(vm, target, it, None))
+        },
+        UnitUseItem => |w, vm, a| {
+            let (u, it) = (a.h(0), a.h(1));
+            let Some(slot) = w.unit(u).and_then(|un| un.inventory.iter().position(|&i| i == it)) else { return boolean(false) };
+            boolean(w.use_item(vm, u, slot, 0, 0.0, 0.0))
+        },
+        UnitUseItemPoint => |w, vm, a| {
+            let (u, it, x, y) = (a.h(0), a.h(1), a.r(2), a.r(3));
+            let Some(slot) = w.unit(u).and_then(|un| un.inventory.iter().position(|&i| i == it)) else { return boolean(false) };
+            boolean(w.use_item(vm, u, slot, 0, x, y))
+        },
+        UnitUseItemTarget => |w, vm, a| {
+            let (u, it, t) = (a.h(0), a.h(1), a.h(2));
+            let Some(slot) = w.unit(u).and_then(|un| un.inventory.iter().position(|&i| i == it)) else { return boolean(false) };
+            boolean(w.use_item(vm, u, slot, t, 0.0, 0.0))
+        },
+        ChooseRandomItem => |w, _, a| int(choose_random_item(w, None, a.i(0))),
+        ChooseRandomItemEx => |w, _, a| int(choose_random_item(w, Some(a.i(0)), a.i(1))),
         RemoveItem => |w, _, a| {
             let h = a.h(0);
             if item(w, h).is_some() { w.handles.remove(h); w.item_order.retain(|x| *x != h); }

@@ -63,6 +63,8 @@ impl World {
             "ACdv" => "Adev",
             "ACrn" => "AOre",
             "ACad" => "AUan",
+            // Akama's Shadow Meld.
+            "Ahid" => "Ashm",
             _ => return code,
         }
         .to_string()

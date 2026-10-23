@@ -288,6 +288,8 @@ pub struct Scene {
     pub drag: Option<((f32, f32), (f32, f32))>,
     /// A targeted order waiting for a world click.
     pub targeting: Option<i32>,
+    /// The model of the structure being placed, under the pointer (CConstructUI).
+    ghost: Option<(w3_game::objects::Id, ModelInstance)>,
     /// A structure waiting for a placement click.
     pub placing: Option<w3_game::objects::Id>,
     commands: crate::card::Commands,
@@ -562,7 +564,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1067,6 +1069,29 @@ impl Scene {
             });
         }
         out
+    }
+
+    /// A structure awaiting its placement: its footprint's cells under the pointer,
+    /// translucent green where it can be built and red where not (CPlacementBox,
+    /// 0x4000f000 and 0x40f00000).
+    fn placement_decals(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) -> Vec<w3_render::decal::Decal> {
+        let Some(id) = self.placing else { return Vec::new() };
+        let Some((x, y)) = self.ground_at(self.cursor.0, self.cursor.1, self.screen) else { return Vec::new() };
+        let Some(g) = self.game.as_mut() else { return Vec::new() };
+        let (x, y) = g.world.snap_placement(x, y);
+        let cells = g.world.placement_cells(id, x, y);
+        let texture = assets.textures.get_or_white(device, queue, "");
+        let argb = |c: u32| [((c >> 16) & 0xff) as f32 / 255.0, ((c >> 8) & 0xff) as f32 / 255.0, (c & 0xff) as f32 / 255.0, (c >> 24) as f32 / 255.0];
+        cells
+            .into_iter()
+            .map(|((cx, cy), ok)| w3_render::decal::Decal {
+                texture: texture.clone(),
+                center: [cx, cy, self.terrain.height_at(cx, cy)],
+                size: [32.0, 32.0],
+                color: argb(if ok { 0x4000f000 } else { 0x40f00000 }),
+                additive: false,
+            })
+            .collect()
     }
 
     /// While a spell with an area awaits its target, the race's PlacementCursor
@@ -1704,7 +1729,6 @@ impl Scene {
         false
     }
 
-    /// A key press: command card hotkeys and Escape.
     /// A digit key: with Ctrl the selection becomes control group `n`, with Shift it
     /// joins it; alone the group (its living units) is selected, and the camera goes
     /// to it when it is chosen again within half a second.
@@ -1959,6 +1983,7 @@ impl Scene {
         }
     }
 
+    /// A key press: command card hotkeys and Escape.
     pub fn key(&mut self, c: char) {
         // The save panel's edit box takes typing; Enter saves and Escape cancels.
         if let Some(p) = self.hud.as_mut().and_then(|h| h.save_panel.as_mut()) {
@@ -2883,6 +2908,31 @@ impl Scene {
         for inst in self.items.values_mut() {
             self.models.submit(inst, eye, rot);
         }
+        // The structure being placed, at the snapped point under the pointer.
+        match self.placing {
+            Some(id) => {
+                let spot = self.ground_at(self.cursor.0, self.cursor.1, self.screen);
+                if let (Some((x, y)), Some(g)) = (spot, self.game.as_ref()) {
+                    let (x, y) = g.world.snap_placement(x, y);
+                    if self.ghost.as_ref().is_none_or(|(k, _)| *k != id) {
+                        let file = g.world.objects.units.get(id).map(|o| o.str("file")).unwrap_or_default();
+                        self.ghost = assets.model(device, queue, &file).map(|m| {
+                            let mut i = ModelInstance::new(m);
+                            i.play("Stand");
+                            i.team = g.world.players.get(g.world.local_player as usize).map_or(0, |p| p.color as u8);
+                            (id, i)
+                        });
+                    }
+                    if let Some((_, inst)) = self.ghost.as_mut() {
+                        let scale = g.world.objects.units.get(id).map_or(1.0, |o| o.real("modelScale").max(0.01));
+                        let facing = g.world.misc_f32("BuildingAngle", 270.0).to_radians();
+                        inst.transform = Mat4::from_scale_rotation_translation(Vec3::splat(scale), Quat::from_rotation_z(facing), Vec3::new(x, y, self.terrain.height_at(x, y)));
+                        self.models.submit(inst, eye, rot);
+                    }
+                }
+            }
+            None => self.ghost = None,
+        }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("scene"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -2915,6 +2965,7 @@ impl Scene {
         decals.extend(self.shadow_decals(device, queue, assets));
         decals.extend(self.selection_decals(device, queue, assets));
         decals.extend(self.area_cursor_decal(device, queue, assets));
+        decals.extend(self.placement_decals(device, queue, assets));
         let terrain = &self.terrain;
         self.decals.render(device, queue, &mut pass, &decals, &|x, y| terrain.height_at(x, y));
         self.models.render(device, queue, &mut pass, &globals);

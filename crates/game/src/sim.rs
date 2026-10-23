@@ -1289,6 +1289,16 @@ impl World {
         cells.iter().all(|&c| p.buildable(c))
     }
 
+    /// The footprint's cells at a placement, each with whether it can be built on
+    /// (CPlacementBox's per-cell colors), and their size.
+    pub fn placement_cells(&mut self, id: Id, x: f32, y: f32) -> Vec<((f32, f32), bool)> {
+        let tex = self.objects.units.get(id).map(|o| o.str("pathTex")).unwrap_or_default();
+        let cells = self.pathing_cells(&tex, x, y, 0.0);
+        let whole = self.builds_on(id) && self.build_on_site(x, y).is_some();
+        let Some(p) = &self.pathing else { return Vec::new() };
+        cells.iter().map(|&c| (p.center(c), whole || p.buildable(c))).collect()
+    }
+
     /// Snaps a placement to the pathing grid the way structures align (to 64-unit marks
     /// for even-sized footprints).
     pub fn snap_placement(&self, x: f32, y: f32) -> (f32, f32) {

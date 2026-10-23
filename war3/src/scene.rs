@@ -277,7 +277,7 @@ pub struct Scene {
     decals: w3_render::decal::DecalRenderer,
     pub drag: Option<((f32, f32), (f32, f32))>,
     /// A targeted order waiting for a world click.
-    pub targeting: Option<&'static str>,
+    pub targeting: Option<i32>,
     /// A structure waiting for a placement click.
     pub placing: Option<w3_game::objects::Id>,
     commands: crate::card::Commands,
@@ -1306,11 +1306,18 @@ impl Scene {
         }
         let Some(&first) = mine.first() else { return };
         match action {
-            A::Order { order, targeted: true } if !order.is_empty() => self.targeting = Some(order),
+            A::Order { order, targeted: true } if !order.is_empty() => self.targeting = Some(w3_game::natives::basic::order_id(order)),
+            A::OrderId { order, targeted: true } => self.targeting = Some(order),
             A::Order { order, targeted: false } if !order.is_empty() => {
                 let id = w3_game::natives::basic::order_id(order);
                 for h in mine {
                     g.world.order_unit(h, id, 0.0, 0.0, 0);
+                }
+                self.order_ack();
+            }
+            A::OrderId { order, targeted: false } => {
+                for h in mine {
+                    g.world.order_unit(h, order, 0.0, 0.0, 0);
                 }
                 self.order_ack();
             }
@@ -1495,7 +1502,7 @@ impl Scene {
             let point = self.ground_at(sx, sy, size);
             let (mut ordered, mut error) = (false, None);
             if let Some(g) = self.game.as_mut() {
-                let id = w3_game::natives::basic::order_id(order);
+                let id = order;
                 for &h in &self.selection {
                     if g.world.unit(h).is_none_or(|u| u.owner != g.world.local_player) {
                         continue;

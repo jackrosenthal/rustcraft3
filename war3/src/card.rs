@@ -9,6 +9,8 @@ use w3_game::objects::{Id, id_from_str, id_str};
 pub enum Action {
     /// An order; `targeted` orders wait for a click on the world.
     Order { order: &'static str, targeted: bool },
+    /// An order without a name (an ability's built-in order).
+    OrderId { order: i32, targeted: bool },
     Train(Id),
     Research(Id),
     Upgrade(Id),
@@ -325,6 +327,8 @@ impl Commands {
             let targeting = w.targeting(a);
             let (order, targeted) = match ab.str("code").as_str() {
                 "Ahar" | "Ahrl" => ("harvest", true),
+                // Militia walk to their Town Hall themselves.
+                "Amil" => (order, false),
                 "Aroo" if unrooted_side => ("unroot", false),
                 "Aroo" => ("root", true),
                 c if MORPHS.contains(&c) => {
@@ -340,7 +344,13 @@ impl Commands {
             let tip = level_entry(&ab.list(tip_key), level);
             let uber = fill_placeholders(w, &level_entry(&ab.list(uber_key), level));
             let mana = ab.int(&format!("Cost{level}"));
-            let mut button = Button::new(x, y, art, hotkey(&ab.str(hot_key)), Action::Order { order, targeted }, ready).with_tip(tip, uber, [mana, 0, 0, 0]).with_requirements(db, w, u.owner, a, 1);
+            // An ability without an order string uses its code's built-in order.
+            let action = match w3_game::ability::intrinsic_order(&code) {
+                Some(id) if order.is_empty() && targeting != w3_game::ability::Targeting::Passive => Action::OrderId { order: id, targeted },
+                _ => Action::Order { order, targeted },
+            };
+            let ready = ready && (order.is_empty() || w.can_cast(h, a).is_ok()) && (!matches!(action, Action::OrderId { .. }) || w.can_cast(h, a).is_ok());
+            let mut button = Button::new(x, y, art, hotkey(&ab.str(hot_key)), action, ready).with_tip(tip, uber, [mana, 0, 0, 0]).with_requirements(db, w, u.owner, a, 1);
             // Autocast abilities toggle with their orderon and orderoff.
             let on = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Orderon")));
             let off = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Orderoff")));

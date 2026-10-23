@@ -335,6 +335,11 @@ impl World {
             }
         } else if order == smart || order == mv {
             Action::Move { x, y }
+        } else if let Some(action) = self.militia_order(h, order) {
+            match action {
+                Some(a) => a,
+                None => return,
+            }
         } else if let Some(a) = self.ability_for_order(h, order) {
             if self.targeting(a) == crate::ability::Targeting::Passive {
                 return;

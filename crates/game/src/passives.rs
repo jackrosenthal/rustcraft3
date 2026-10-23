@@ -26,6 +26,11 @@ impl World {
     /// unit `h`.
     pub fn detected_by(&self, h: u32, player: u8) -> bool {
         let Some(t) = self.unit(h) else { return false };
+        // Reveal and Flare areas.
+        let sees = |p: u8| p == player || self.players.get(p as usize).is_some_and(|o| o.alliances[player as usize % PLAYER_COUNT][crate::fog::ALLIANCE_SHARED_VISION]);
+        if self.detect_areas.iter().any(|&(p, x, y, r, until)| until > self.time && sees(p) && (t.x - x).hypot(t.y - y) <= r) {
+            return true;
+        }
         self.unit_order.iter().filter_map(|&d| self.unit(d)).any(|d| {
             if d.dead || d.hidden {
                 return false;

@@ -127,4 +127,84 @@ impl World {
         u.abilities = abilities;
         u.extra.weapons = None;
     }
+
+    /// Call to Arms (Amic) and Militia (Amil) orders: None when the order is none of
+    /// theirs, else the action (none when done at once or refused).
+    pub(crate) fn militia_order(&mut self, h: u32, order: i32) -> Option<Option<Action>> {
+        let name = crate::natives::basic::order_name(order)?;
+        let u = self.unit(h)?;
+        let (owner, ux, uy, type_id) = (u.owner, u.x, u.y, u.type_id);
+        match name {
+            // A peasant runs to the nearest Town Hall to take up arms.
+            "militia" => {
+                let (a, _) = self.ability_with_code(h, "Amil")?;
+                let normal = id_from_str(self.objects.abilities.get(a)?.level_str("DataA", 1).trim());
+                if type_id != normal {
+                    return Some(None);
+                }
+                let hall = self.nearest_hall(owner, ux, uy);
+                Some(hall.map(|t| Action::Cast { ability: a, target: t, x: 0.0, y: 0.0 }))
+            }
+            // Militia go back to work at once.
+            "militiaoff" => {
+                let (a, _) = self.ability_with_code(h, "Amil")?;
+                let o = self.objects.abilities.get(a)?;
+                let (normal, alternate) = (id_from_str(o.level_str("DataA", 1).trim()), id_from_str(o.level_str("DataB", 1).trim()));
+                if type_id == alternate {
+                    self.change_type(h, normal);
+                    if let Some(u) = self.unit_mut(h) {
+                        u.extra.morph_revert = None;
+                    }
+                }
+                Some(None)
+            }
+            // The Town Hall's bell calls the peasants within Area to arms, or sends its
+            // militia back to work.
+            "townbellon" | "townbelloff" => {
+                let (a, lvl) = self.ability_with_code(h, "Amic")?;
+                let area = self.data(a, "Area", lvl.max(1) as u32);
+                let sub = crate::natives::basic::order_id(if name == "townbellon" { "militia" } else { "militiaoff" });
+                let workers: Vec<u32> = self.units_in_pub(ux, uy, area).into_iter().filter(|&w| self.unit(w).is_some_and(|wu| wu.owner == owner && !wu.dead) && self.ability_with_code(w, "Amil").is_some()).collect();
+                for w in workers {
+                    self.order_unit(w, sub, 0.0, 0.0, 0);
+                }
+                if name == "townbellon" {
+                    let sound = self.objects.abilities.get(a).map(|o| o.str("Effectsound")).unwrap_or_default();
+                    if !sound.is_empty() {
+                        let z = self.ground_z(ux, uy);
+                        self.requests.push(crate::world::Request::WorldSound { label: sound, x: ux, y: uy, z });
+                    }
+                }
+                Some(None)
+            }
+            _ => None,
+        }
+    }
+
+    /// The player's nearest finished structure that rings Call to Arms (Amic).
+    fn nearest_hall(&self, owner: u8, x: f32, y: f32) -> Option<u32> {
+        self.unit_order
+            .iter()
+            .copied()
+            .filter(|&t| self.unit(t).is_some_and(|tu| tu.owner == owner && !tu.dead && tu.is_building && tu.constructing.is_none()) && self.ability_with_code(t, "Amic").is_some())
+            .min_by(|&p, &q| {
+                let d = |t: u32| self.unit(t).map_or(f32::MAX, |u| (u.x - x).hypot(u.y - y));
+                d(p).total_cmp(&d(q))
+            })
+    }
+
+    /// A peasant reaching its Town Hall becomes militia (Amil DataB) for Dur.
+    pub(crate) fn take_up_arms(&mut self, h: u32, a: Id, lvl: u32) {
+        let Some(o) = self.objects.abilities.get(a) else { return };
+        let (normal, alternate) = (id_from_str(o.level_str("DataA", lvl).trim()), id_from_str(o.level_str("DataB", lvl).trim()));
+        let dur = o.level_real("Dur", lvl);
+        if self.unit(h).is_none_or(|u| u.type_id != normal) {
+            return;
+        }
+        self.change_type(h, alternate);
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.morph_revert = (dur > 0.0).then_some((dur, normal));
+            u.action = Action::Idle;
+        }
+    }
 }

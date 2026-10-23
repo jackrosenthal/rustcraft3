@@ -18,14 +18,23 @@ pub enum Targeting {
     Passive,
 }
 
+/// The orders abilities carry in their code rather than in an order string
+/// (CAbilityItemDetectAoe::vf194 for Reveal).
+pub fn intrinsic_order(code: &str) -> Option<i32> {
+    match code {
+        "AIta" => Some(852270),
+        _ => None,
+    }
+}
+
 /// Abilities whose code takes a point rather than a unit target.
 fn point_target(code: &str) -> bool {
-    matches!(code, "AHbz" | "AHfs" | "AOsh" | "AUcs" | "AUim" | "ANrf" | "AEbl" | "AUin" | "AOeq" | "AOsw" | "AOfs" | "AUdd" | "AEfn" | "ANst" | "ANvc" | "Adro" | "Aroo" | "Adis" | "Advm" | "Ahwd" | "Aeye" | "Asta" | "ANbf" | "ANcs" | "ANdp" | "ANrc" | "ANhs" | "ANsi" | "ANto" | "ANdh")
+    matches!(code, "AIta" | "Afla" | "AHbz" | "AHfs" | "AOsh" | "AUcs" | "AUim" | "ANrf" | "AEbl" | "AUin" | "AOeq" | "AOsw" | "AOfs" | "AUdd" | "AEfn" | "ANst" | "ANvc" | "Adro" | "Aroo" | "Adis" | "Advm" | "Ahwd" | "Aeye" | "Asta" | "ANbf" | "ANcs" | "ANdp" | "ANrc" | "ANhs" | "ANsi" | "ANto" | "ANdh")
 }
 
 /// Abilities with no target (cast instantly around the caster).
 fn no_target(code: &str) -> bool {
-    matches!(code, "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "ANsy" | "Astd" | "Abtl" | "Arai" | "Aroa" | "Atau" | "Absk" | "ANef" | "ANht" | "ANms" | "ANlm" | "ANsg" | "ANsq" | "ANsw")
+    matches!(code, "Amic" | "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "ANsy" | "Astd" | "Abtl" | "Arai" | "Aroa" | "Atau" | "Absk" | "ANef" | "ANht" | "ANms" | "ANlm" | "ANsg" | "ANsq" | "ANsw")
 }
 
 /// Passive abilities and auras.
@@ -72,12 +81,32 @@ impl World {
 
     /// The unit's ability whose order string matches `order`.
     pub fn ability_for_order(&self, h: u32, order: i32) -> Option<Id> {
+        if let Some(a) = self.ability_for_intrinsic_order(h, order) {
+            return Some(a);
+        }
         let name = crate::natives::basic::order_name(order)?;
         let u = self.unit(h)?;
         // Gathering is an action of its own, never a cast.
         u.abilities.iter().map(|(a, _)| *a).find(|&a| {
             self.objects.abilities.get(a).is_some_and(|o| !matches!(o.str("code").as_str(), "Ahar" | "Ahrl" | "Aaha" | "Awha") && (o.str("Order").eq_ignore_ascii_case(name) || o.str("Orderon").eq_ignore_ascii_case(name)))
         })
+    }
+
+    /// How far a unit reaches from its center: its collision, or for a structure half
+    /// its pathing footprint (a PathTextures\\NxN image's N cells of 32) when larger.
+    pub fn unit_size(&self, u: &Unit) -> f32 {
+        if !u.is_building {
+            return u.collision;
+        }
+        let tex = self.objects.units.get(u.type_id).map(|o| o.str("pathTex")).unwrap_or_default();
+        let n = tex.rsplit('\\').next().and_then(|f| f.split('x').next()).and_then(|v| v.trim().parse::<f32>().ok()).unwrap_or(0.0);
+        u.collision.max(n * 16.0)
+    }
+
+    /// The unit's ability with `order` built into its code.
+    pub fn ability_for_intrinsic_order(&self, h: u32, order: i32) -> Option<Id> {
+        let u = self.unit(h)?;
+        u.abilities.iter().map(|(a, _)| *a).find(|&a| intrinsic_order(&self.ability_code(a)) == Some(order))
     }
 
     /// Movement, attack-speed, armor, and damage factors from a unit's buffs.
@@ -411,9 +440,11 @@ impl World {
             self.unit_mut(h).unwrap().action = Action::Idle;
             return;
         }
+        let target_size = if target != 0 { self.unit(target).map_or(0.0, |t| self.unit_size(t)) } else { 0.0 };
         let Some(u) = self.unit(h) else { return };
         if u.casting.is_none() {
-            let d = (goal.0 - u.x).hypot(goal.1 - u.y) - u.collision;
+            // Range runs between the caster's and the target unit's edges.
+            let d = (goal.0 - u.x).hypot(goal.1 - u.y) - u.collision - target_size;
             if self.targeting(a) != Targeting::None && d > range {
                 if u.path.is_empty() || u.repath_timer <= 0.0 {
                     self.path_to(h, goal);

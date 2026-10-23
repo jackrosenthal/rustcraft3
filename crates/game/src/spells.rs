@@ -385,6 +385,25 @@ impl World {
                 self.timed_removals.push((m, self.time + self.d(a, "Dur", lvl).max(1.0)));
                 true
             }
+            // Reveal (the Town Hall's, AIta): the area shows, and its invisible units, for
+            // Dur.
+            "AIta" => {
+                let dur = self.d(a, "Dur", lvl).max(0.1);
+                self.reveal_area(owner, x, y, area, dur, 0.0);
+                self.effect_at(a, lvl, x, y, dur);
+                true
+            }
+            // Flare: after DataB, the area shows, and its invisible units, for Dur.
+            "Afla" => {
+                let (dur, delay) = (self.d(a, "Dur", lvl).max(0.1), self.d(a, "DataB", lvl));
+                self.reveal_area(owner, x, y, area, dur, delay);
+                self.effect_at(a, lvl, x, y, dur + delay);
+                true
+            }
+            "Amil" => {
+                self.take_up_arms(h, a, lvl);
+                true
+            }
             "AOre" | "AEev" | "AOcr" | "AHbh" | "AUts" | "AEah" | "AUav" => true,
             _ => false,
         }
@@ -610,5 +629,34 @@ impl World {
         for h in expired {
             self.handles.remove(h);
         }
+        let due: Vec<u32> = self.timed_activations.iter().filter(|(_, t)| *t <= now).map(|(h, _)| *h).collect();
+        self.timed_activations.retain(|(_, t)| *t > now);
+        for h in due {
+            if let Some(Obj::FogModifier(m)) = self.handles.get_mut(h) {
+                m.active = true;
+            }
+        }
+        self.detect_areas.retain(|a| a.4 > now);
+    }
+
+    /// Shows a circle to a player, and the invisible units in it, `delay` from now for
+    /// `dur`.
+    fn reveal_area(&mut self, player: u8, x: f32, y: f32, r: f32, dur: f32, delay: f32) {
+        let modifier = crate::fog::FogModifier { player, state: crate::fog::FOG_VISIBLE, shape: crate::fog::FogShape::Circle(x, y, r), shared: true, after_units: false, active: delay <= 0.0 };
+        let m = self.handles.insert(Obj::FogModifier(modifier));
+        if delay > 0.0 {
+            self.timed_activations.push((m, self.time + delay));
+        }
+        self.timed_removals.push((m, self.time + delay + dur));
+        self.detect_areas.push((player, x, y, r, self.time + delay + dur));
+    }
+
+    /// The ability's EfctID effect (its Effectart) at a point for a while.
+    fn effect_at(&mut self, a: Id, lvl: u32, x: f32, y: f32, secs: f32) {
+        let Some(id) = self.objects.abilities.get(a).map(|o| o.level_str("EfctID", lvl)).filter(|s| !s.trim().is_empty() && s.trim() != "_") else { return };
+        let Some(model) = self.objects.buffs.get(crate::objects::id_from_str(id.trim())).and_then(|o| o.list("Effectart").first().cloned()).filter(|m| !m.is_empty()) else { return };
+        let z = self.ground_z(x, y);
+        let e = self.handles.insert(Obj::Effect(Effect { model, x, y, z, target: None, destroyed: false, facing: 0.0 }));
+        self.timed_removals.push((e, self.time + secs));
     }
 }

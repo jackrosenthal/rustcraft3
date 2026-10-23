@@ -226,6 +226,13 @@ pub struct World {
     pub persist: crate::persist::Persist,
     /// Handles removed at a game time (temporary fog modifiers).
     pub timed_removals: Vec<(u32, f32)>,
+    /// Fog modifiers that start at a game time (Flare's delay).
+    #[serde(default)]
+    pub timed_activations: Vec<(u32, f32)>,
+    /// Areas revealing invisible units to a player until a game time (Reveal, Flare):
+    /// player, x, y, radius, and the time.
+    #[serde(default)]
+    pub detect_areas: Vec<(u8, f32, f32, f32, f32)>,
 }
 
 /// Ground heights for GetLocationZ and unit placement.
@@ -389,6 +396,8 @@ impl World {
             cancelled_constructions: Vec::new(),
             persist: Default::default(),
             timed_removals: Vec::new(),
+            timed_activations: Vec::new(),
+            detect_areas: Vec::new(),
         }
     }
 

@@ -36,6 +36,8 @@ pub enum Screen {
     LoadSaved,
     /// The loading screen shown while a map loads.
     Loading,
+    /// CScoreScreen: the players' scores after a game.
+    Score,
 }
 
 impl Screen {
@@ -50,7 +52,7 @@ impl Screen {
             // these sequences (compared against a capture).
             Screen::LoadSaved => "BattlenetCustomCreate",
             Screen::Campaign => "Campaign",
-            Screen::Loading => "",
+            Screen::Loading | Screen::Score => "",
         }
     }
 
@@ -63,8 +65,23 @@ impl Screen {
             Screen::LoadSaved => "LoadSavedGameScreen",
             Screen::Campaign => "CampaignMenu",
             Screen::Loading => "Loading",
+            Screen::Score => "ScoreScreenFrame",
         }
     }
+}
+
+/// The score screen's state: the scores, the tab, each tab's sorting column, whether
+/// teams are grouped, the map that follows (ChangeLevel), and the rows' bar models after
+/// the first (whose bar is the FDF's ScoreScreenBarTop).
+pub struct ScoreState {
+    pub data: crate::scorescreen::ScoreData,
+    pub tab: usize,
+    pub sort: [usize; 4],
+    pub teams: bool,
+    pub next: Option<String>,
+    /// The screen to go back to.
+    prev: Screen,
+    bars: Vec<(String, ModelInstance)>,
 }
 
 /// Where a screen change is: the old screen's panels leave, then the new ones arrive.
@@ -106,6 +123,9 @@ pub struct Glue {
     loading_sequence: Option<usize>,
     /// Where saved games are kept.
     pub saves_dir: std::path::PathBuf,
+    pub score: Option<ScoreState>,
+    /// Sequences SPRITE and MODEL frames play in place of Birth and Stand, by frame name.
+    sprite_sequences: HashMap<String, String>,
 }
 
 impl Glue {
@@ -158,6 +178,8 @@ impl Glue {
             press_a_key: false,
             loading_sequence: None,
             saves_dir: crate::data::save_dir(data.version).unwrap_or_default(),
+            score: None,
+            sprite_sequences: HashMap::new(),
         };
         g.build(Screen::MainMenu, assets);
         g.play_layers(&format!("{} Birth", Screen::MainMenu.token()));
@@ -233,9 +255,139 @@ impl Glue {
                 self.tree.set_items("DifficultySelect", vec![db.string("NORMAL"), db.string("HARD")], hard as usize);
             }
             Screen::Loading => {}
+            Screen::Score => {
+                // No replays are kept: Save Replay stays disabled.
+                self.tree.set_enabled("ScoreScreenSaveReplayButton", false);
+                self.tree.set_visible("ScoreScreenReplaySavedButton", false);
+                self.sync_score(db);
+            }
+        }
+        self.tree.bind_points();
+        self.tree.fit_text_widths();
+        self.tree.layout();
+    }
+
+    /// Shows the score screen for a finished game; OK goes on to `next` (a ChangeLevel
+    /// map) or back to the menus.
+    pub fn show_score(&mut self, data: crate::scorescreen::ScoreData, next: Option<String>, assets: &mut Assets) {
+        let prev = if self.screen == Screen::Score { Screen::MainMenu } else { self.screen };
+        self.score = Some(ScoreState { data, tab: 0, sort: crate::scorescreen::DEFAULT_SORT, teams: false, next, prev, bars: Vec::new() });
+        self.build(Screen::Score, assets);
+        self.phase = Phase::Stand;
+    }
+
+    /// Puts the score screen's tab, columns, and art in place.
+    fn sync_score(&mut self, db: &w3_ui::FrameDb) {
+        use crate::scorescreen::*;
+        let Some(s) = self.score.as_ref() else { return };
+        let (tab, col) = (s.tab, s.sort[s.tab]);
+        let four = tab == 0;
+        self.tree.set_visible("ScoreScreen4ColumnFrame", four);
+        self.tree.set_visible("ScoreScreen5ColumnFrame", !four);
+        let n = if four { 4 } else { 5 };
+        for k in 0..n {
+            let prefix = if four { "ScoreScreen4Column" } else { "ScoreScreen5Column" };
+            let text = db.string(&format!("{}{k}", HEADERS[tab]));
+            self.tree.set_text(&format!("{prefix}Header{k}"), &text);
+            self.tree.set_checked(&format!("{prefix}Button{k}"), k == col);
+        }
+        self.tree.set_checked("ScoreScreenTeamsButton", s.teams);
+        // The chosen tab's name shows larger in its place (ScoreScreenTabTextSelected).
+        for k in 0..4 {
+            self.tree.set_visible(&format!("ScoreScreenTabText{k}"), k != tab);
+        }
+        let label = db.string(&format!("SCORESCREEN_TAB{tab}"));
+        self.tree.set_text("ScoreScreenTabTextSelected", &label);
+        let at = format!("ScoreScreenTabText{tab}");
+        self.tree.clear_points("ScoreScreenTabTextSelected");
+        self.tree.set_point("ScoreScreenTabTextSelected", w3_ui::FramePoint::Center, &at, w3_ui::FramePoint::Center, 0.0, 0.0);
+        self.tree.set_text("ScoreScreenElapsedTimeValue", &elapsed_text(s.data.elapsed));
+        // The race's victory art, or the defeat art (FUN_6f3024c0).
+        let art = if s.data.victory {
+            let race = race_skin(s.data.local_race);
+            db.skins.get_str(race, &format!("ScoreScreenVictory_V{}", db.version)).or_else(|| db.skins.get_str(race, "ScoreScreenVictory"))
+        } else {
+            db.skin_value("ScoreScreenDefeat")
+        };
+        if let Some(a) = art {
+            self.tree.set_model("ScoreScreenRaceArt", &a);
+        }
+        // The page's tab and column layout, and the first row's team color.
+        self.sprite_sequences.insert("ScoreScreenPageTab".into(), format!("Tab{}", tab + 1));
+        self.sprite_sequences.insert("ScoreScreenBackground".into(), if four { "Scorescreen-4Button".into() } else { "Scorescreen-5Button".into() });
+        let order = s.data.order(tab, col, s.teams);
+        // The bars' sequences are taken by the player's color index: their names do not
+        // follow the colors (sequence 0, "TeamColor02", is red).
+        if let Some(r) = order.first().map(|&k| &s.data.rows[k]) {
+            self.sprite_sequences.insert("ScoreScreenBarTop".into(), format!("#{}", r.color));
         }
         self.tree.bind_points();
         self.tree.layout();
+    }
+
+    /// The score screen's rows: banner, race icon, team number, name, and values.
+    fn score_draws(&self, db: &w3_ui::FrameDb, draws: &mut Vec<Draw>) {
+        use crate::scorescreen::*;
+        use w3_ui::{Blend, Justify, Rect};
+        let Some(s) = self.score.as_ref() else { return };
+        let root = self.tree.frames[0].rect.unwrap_or_default();
+        let (tab, col) = (s.tab, s.sort[s.tab]);
+        let order = s.data.order(tab, col, s.teams);
+        let bars = row_bars(order.len(), root.y1);
+        let font = db.decorate("MasterFont");
+        let shadow = Some(([0.0, 0.0, 0.0, 1.0], 0.002, -0.002));
+        let height = |k: &str, d: f32| db.misc_ui.get_str("FontHeights", k).and_then(|v| v.split("//").next().and_then(|v| v.trim().parse().ok())).unwrap_or(d);
+        let (normal, large, team_h) = (height("ScoreScreenNormal", 0.011), height("ScoreScreenLarge", 0.011), height("ScoreScreenTeam", 0.009));
+        let columns: Vec<f32> = if tab == 0 { COLUMNS_4.to_vec() } else { COLUMNS_5.to_vec() };
+        // The highest value of each column shows larger and gold.
+        let best: Vec<i32> = (0..columns.len()).map(|c| s.data.rows.iter().map(|r| r.values[tab][c]).max().unwrap_or(0)).collect();
+        let image = |texture: String, rect: Rect| Draw::Image { texture, rect, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: Blend::Alpha, rotated: false };
+        for (k, &ri) in order.iter().enumerate() {
+            let r = &s.data.rows[ri];
+            let (_, top, bottom) = bars[k];
+            let (x0, y) = (root.x0, (top + bottom) / 2.0 + row_offset(k, order.len()));
+            let banner = if r.won { "ScoreScreenBannerWin" } else { "ScoreScreenBannerLoss" };
+            if let Some(t) = db.skin_value(banner) {
+                draws.push(image(t, Rect { x0, x1: x0 + 0.2, y0: y - 0.025, y1: y + 0.025 }));
+            }
+            if let Some(t) = db.skin_value(&format!("ScoreScreenPlayer{}", race_word(r.race))) {
+                let cy = y + 0.0015;
+                draws.push(image(t, Rect { x0, x1: x0 + 0.03, y0: cy - 0.015, y1: cy + 0.015 }));
+            }
+            let text = |text: String, rect: Rect, size: f32, color: [f32; 4], jh: Justify| Draw::Text { font: font.clone(), size, rect, text, color, justify_h: jh, justify_v: Justify::Middle, shadow };
+            draws.push(text((r.team + 1).to_string(), Rect { x0: x0 + 0.005, x1: x0 + 0.025, y0: y - 0.01, y1: y + 0.01 }, team_h, [1.0; 4], Justify::End));
+            // Winners' names are gold, others white; names are cut to 0.11625.
+            let name_color = if r.won { [0xee as f32 / 255.0, 0xcc as f32 / 255.0, 0x48 as f32 / 255.0, 1.0] } else { [1.0; 4] };
+            let mut name = r.name.clone();
+            while name.len() > 1 && db.text_width(&font, normal, &name) > 0.11625 {
+                name.pop();
+            }
+            draws.push(text(name, Rect { x0: x0 + 0.03, x1: x0 + 0.03 + 0.11625, y0: y - 0.01, y1: y + 0.01 }, normal, name_color, Justify::Start));
+            for (c, &cx) in columns.iter().enumerate() {
+                let center = root.x0 + 0.4 + cx;
+                // The heroes column shows their icons and levels.
+                if tab == 2 && c == 0 {
+                    let xs: &[f32] = match r.heroes.len().min(3) {
+                        0 => &[],
+                        1 => &[0.2],
+                        2 => &[0.1825, 0.2175],
+                        _ => &[0.165, 0.2, 0.235],
+                    };
+                    for (h, &hx) in r.heroes.iter().zip(xs) {
+                        let ix = x0 + hx;
+                        let cy = y + 0.0015;
+                        draws.push(image(h.0.clone(), Rect { x0: ix, x1: ix + 0.03, y0: cy - 0.015, y1: cy + 0.015 }));
+                        draws.push(text(h.1.to_string(), Rect { x0: ix + 0.03 - 0.012, x1: ix + 0.06 - 0.012, y0: cy - 0.015, y1: cy + 0.015 }, normal, [1.0; 4], Justify::Start));
+                    }
+                    continue;
+                }
+                let v = r.values[tab][c];
+                let value = if tab == 3 && c == 2 { format!("{}/{}", r.traded.0, r.traded.1) } else { v.to_string() };
+                let top_value = best[c] != 0 && v == best[c] && !(tab == 3 && c == 2);
+                let (size, color) = if top_value { (large, [1.0, 0xdb as f32 / 255.0, 0x47 as f32 / 255.0, 1.0]) } else { (normal, [1.0; 4]) };
+                draws.push(text(value, Rect { x0: center - 0.05, x1: center + 0.05, y0: y - size / 2.0, y1: y + size / 2.0 }, size, color, Justify::Middle));
+            }
+        }
     }
 
     /// Loading is done (CLoading state 1): the bar asks for a key.
@@ -421,8 +573,34 @@ impl Glue {
                 let sel = self.tree.get("DifficultySelect").map_or(0, |i| self.tree.frames[i].selected);
                 self.persist.borrow_mut().difficulty = if sel == 1 { 2 } else { 1 };
             }
+            (Screen::Score, _) => self.score_button(name, assets),
             _ => log::debug!("glue button {name} has no handler yet"),
         }
+    }
+
+    fn score_button(&mut self, name: &str, assets: &mut Assets) {
+        let Some(s) = self.score.as_mut() else { return };
+        if let Some(k) = name.strip_prefix("ScoreScreenTabButton").and_then(|k| k.parse::<usize>().ok()) {
+            s.tab = k.min(3);
+        } else if let Some(k) = name.strip_prefix("ScoreScreen5ColumnButton").or_else(|| name.strip_prefix("ScoreScreen4ColumnButton")).and_then(|k| k.parse::<usize>().ok()) {
+            s.sort[s.tab] = k;
+        } else if name == "ScoreScreenTeamsButton" {
+            s.teams = !s.teams;
+        } else if name == "ScoreScreenOkButton" {
+            let (next, prev) = (s.next.take(), s.prev);
+            self.score = None;
+            self.sprite_sequences.clear();
+            match next {
+                Some(map) => self.action = Some(GlueAction::Campaign(map)),
+                None => {
+                    self.build(prev, assets);
+                    self.play_layers(&format!("{} Birth", prev.token()));
+                    self.phase = Phase::Birth;
+                }
+            }
+            return;
+        }
+        self.sync_score(&assets.frames);
     }
 
     fn to_ui(&self, x: f32, y: f32, size: (u32, u32)) -> (f32, f32) {
@@ -513,7 +691,7 @@ impl Glue {
         }
         // Background through the model's camera.
         let mut bg_globals = None;
-        let loading = self.screen == Screen::Loading;
+        let loading = matches!(self.screen, Screen::Loading | Screen::Score);
         if let Some((eye, target, roll, fov, near, far)) = self.background_camera().filter(|_| !loading) {
             let fwd = (target - eye).normalize_or_zero();
             let up = Quat::from_axis_angle(fwd, roll) * Vec3::Z;
@@ -605,7 +783,46 @@ impl Glue {
                         inst.looped = false;
                     }
                 }
+                // A sequence the screen chose for the frame (the score screen's tab,
+                // columns, and team colors).
+                if let Some(seq) = self.sprite_sequences.get(&self.tree.frames[*i].name) {
+                    // "#n" is the sequence at index n.
+                    let want = match seq.strip_prefix('#').and_then(|k| k.parse::<usize>().ok()) {
+                        Some(k) => (k < inst.model.mdx.sequences.len()).then_some(k),
+                        None => w3_render::anim::find_sequence(&inst.model.mdx, seq),
+                    };
+                    if want.is_some() && inst.sequence != want {
+                        inst.sequence = want;
+                        inst.frame = 0.0;
+                        inst.finished = false;
+                        inst.looped = false;
+                    }
+                }
                 inst.transform = Mat4::from_translation(Vec3::new(*x, *y, 0.0));
+                self.sprite_renderer.submit(inst, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
+            }
+        }
+        // The score screen's rows after the first: CenterBar and BottomBar models in each
+        // player's team color, their origin at the row's lower left.
+        if let Some(s) = self.score.as_mut().filter(|_| self.screen == Screen::Score) {
+            let root = self.tree.frames[0].rect.unwrap_or_default();
+            let order = s.data.order(s.tab, s.sort[s.tab], s.teams);
+            let bars = crate::scorescreen::row_bars(order.len(), root.y1);
+            s.bars.truncate(bars.len().saturating_sub(1));
+            for (k, &(path, _, bottom)) in bars.iter().enumerate().skip(1) {
+                if s.bars.get(k - 1).is_none_or(|b| b.0 != path) {
+                    let Some(m) = assets.model(device, queue, path) else { continue };
+                    s.bars.truncate(k - 1);
+                    s.bars.push((path.to_string(), ModelInstance::new(m)));
+                }
+                let color = s.data.rows[order[k]].color;
+                let inst = &mut s.bars[k - 1].1;
+                let want = usize::try_from(color).ok().filter(|&k| k < inst.model.mdx.sequences.len());
+                if inst.sequence != want {
+                    inst.sequence = want;
+                    inst.frame = 0.0;
+                }
+                inst.transform = Mat4::from_translation(Vec3::new(root.x0, bottom, 0.0));
                 self.sprite_renderer.submit(inst, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
             }
         }
@@ -661,6 +878,9 @@ impl Glue {
             if let Some(r) = self.tree.get("MinimapImage").filter(|&i| self.tree.is_visible(i)).and_then(|i| self.tree.frames[i].rect) {
                 draws.push(Draw::Image { texture: crate::skirmish::MAP_PREVIEW.into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
             }
+        }
+        if self.screen == Screen::Score {
+            self.score_draws(&assets.frames, &mut draws);
         }
         if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved) && self.phase == Phase::Stand {
             self.skirmish.draws(&self.tree, &assets.frames, &mut draws);

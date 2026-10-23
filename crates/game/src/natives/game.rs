@@ -104,7 +104,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         VersionGet => |w, _, _| int(w.version),
         VersionCompatible => |w, _, a| boolean(a.h(0) as i32 <= w.version),
         VersionSupported => |w, _, a| boolean(a.h(0) as i32 <= w.version),
-        EndGame => |w, _, _| { w.requests.push(crate::world::Request::EndGame); none() },
+        EndGame => |w, _, a| { w.requests.push(crate::world::Request::EndGame { score: a.b(0) }); none() },
         ChangeLevel => |w, _, a| { let map = a.s(0); w.requests.push(crate::world::Request::ChangeLevel { map, score: a.b(1) }); none() },
         SetMissionAvailable => |w, _, a| { w.persist.set_mission(a.i(0).max(0) as usize, a.i(1).max(0) as usize, a.b(2)); none() },
         SetCampaignAvailable => |w, _, a| { w.persist.campaign(a.i(0).max(0) as usize).available = a.b(1); none() },

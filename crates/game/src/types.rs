@@ -79,6 +79,9 @@ pub struct Player {
     pub tech_researched: HashMap<Id, i32>,
     /// Abilities SetPlayerAbilityAvailable turned off.
     pub abilities_unavailable: std::collections::HashSet<Id>,
+    /// What the score screen and GetPlayerScore report.
+    #[serde(default)]
+    pub score: crate::score::Score,
     pub tax_rates: HashMap<(u8, i32), i32>,
     pub ai_script: Option<String>,
 }
@@ -105,6 +108,7 @@ impl Player {
             tech_max: HashMap::new(),
             tech_researched: HashMap::new(),
             abilities_unavailable: Default::default(),
+            score: Default::default(),
             tax_rates: HashMap::new(),
             ai_script: None,
         }

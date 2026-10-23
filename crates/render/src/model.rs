@@ -579,9 +579,12 @@ impl ModelRenderer {
                 let (a, c) = anim::geoset_anim_state(&mdx.geoset_anims[ga], &time, globals);
                 ga_alpha = a;
                 if mdx.geoset_anims[ga].flags & 2 != 0 {
-                    // Red, green, blue: the main menu's tower glow (Blue_Glow2 under
-                    // 0, 0.07, 1) shows blue in the original.
-                    ga_color = c;
+                    // A static color is red, green, blue (the main menu's tower glow, a
+                    // Blue_Glow2 quad under 0, 0.07, 1, shows blue in the original); the
+                    // KGAC track's keys are blue, green, red (the score screen's bars then
+                    // show the player colors in order).
+                    let track = mdx.geoset_anims[ga].tracks.vec3(b"KGAC").is_some_and(|t| !t.keys.is_empty());
+                    ga_color = if track { [c[2], c[1], c[0]] } else { c };
                 }
             }
             if ga_alpha <= 0.0 {

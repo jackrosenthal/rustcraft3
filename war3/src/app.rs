@@ -316,6 +316,7 @@ impl ApplicationHandler for App {
                     }
                     // The game's profile changes (campaign progress, saved caches) are kept.
                     let change = scene.change_level.take();
+                    let mut scene_score = scene.final_score.take();
                     if scene.ended || change.is_some() {
                         if let Some(g) = scene.game.as_ref() {
                             *self.data.persist.borrow_mut() = g.world.persist.clone();
@@ -335,7 +336,11 @@ impl ApplicationHandler for App {
                             r.glue = Some(crate::glue::Glue::new(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets));
                         }
                         if let Some(glue) = r.glue.as_mut() {
-                            glue.action = Some(crate::glue::GlueAction::Campaign(map));
+                            // The score screen first when ChangeLevel asks for it.
+                            match scene_score.take() {
+                                Some(d) => glue.show_score(d, Some(map), &mut r.assets),
+                                None => glue.action = Some(crate::glue::GlueAction::Campaign(map)),
+                            }
                         }
                         return;
                     }
@@ -350,6 +355,9 @@ impl ApplicationHandler for App {
                         r.glue = r.glue_saved.take();
                         if r.glue.is_none() {
                             r.glue = Some(crate::glue::Glue::new(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets));
+                        }
+                        if let (Some(glue), Some(d)) = (r.glue.as_mut(), scene_score.take()) {
+                            glue.show_score(d, None, &mut r.assets);
                         }
                         return;
                     }

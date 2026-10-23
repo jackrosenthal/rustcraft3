@@ -33,6 +33,7 @@ pub mod orders;
 pub mod pathing;
 pub mod repair;
 pub mod rng;
+pub mod score;
 pub mod sim;
 pub mod types;
 pub mod world;
@@ -323,8 +324,9 @@ impl Game {
         self.world.fire(&mut self.vm, ctx, move |_, k| matches!(k, types::EventKind::DialogButton(b) if *b == button));
         let ctx = types::EventCtx { dialog, button, player, has_player: true, event_id: EVENT_DIALOG_CLICK, ..Default::default() };
         self.world.fire(&mut self.vm, ctx, move |_, k| matches!(k, types::EventKind::Dialog(d) if *d == dialog));
-        if quit.is_some() {
-            self.world.requests.push(world::Request::EndGame);
+        // DialogAddQuitButton: ends the game, with the score screen when it says so.
+        if let Some(score) = quit {
+            self.world.requests.push(world::Request::EndGame { score });
         }
     }
 

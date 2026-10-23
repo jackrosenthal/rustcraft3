@@ -82,6 +82,7 @@ impl World {
         *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) += kept_lumber;
         *p.state.entry(player_state::GOLD_GATHERED).or_insert(0) += gold;
         *p.state.entry(player_state::LUMBER_GATHERED).or_insert(0) += lumber;
+        self.score_gathered(owner, (kept_gold, gold - kept_gold), (kept_lumber, lumber - kept_lumber));
         if kept_gold > 0 {
             self.resource_text(at, kept_gold, ResourceText::Gold, z);
         }

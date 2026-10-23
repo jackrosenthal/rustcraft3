@@ -174,7 +174,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let (id, on) = (id_from_int(a.i(1)), a.b(2));
             with_player(w, a, |p| { if on { p.abilities_unavailable.remove(&id); } else { p.abilities_unavailable.insert(id); } })
         },
-        GetPlayerScore => |_, _, _| int(0),
+        GetPlayerScore => |w, _, a| int(player_arg(w, a, 0).map_or(0, |p| w.player_score(p, a.h(1) as i32))),
         CreateForce => |w, _, _| handle(w.handles.insert(Obj::Force(Force::default()))),
         DestroyForce => |w, _, a| { if w.force(a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
         ForceAddPlayer => |w, _, a| {

@@ -187,6 +187,9 @@ impl World {
         let radius = self.objects.units.get(id).map_or(16.0, |o| o.real("collision"));
         let (x, y) = self.spawn_point_pub(shop, radius);
         let u = crate::natives::units::create_unit(self, player, id, x, y, 270.0);
+        if !self.unit(u).is_some_and(|u| u.is_hero) {
+            self.score_mercenary(player);
+        }
         let ctx = EventCtx { unit: shop, other_unit: u, ..Default::default() };
         self.fire_unit_pair(vm, shop, EVENT_PLAYER_UNIT_SELL, EVENT_UNIT_SELL, ctx);
         Ok(())

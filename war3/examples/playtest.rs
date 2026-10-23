@@ -396,6 +396,18 @@ fn main() -> anyhow::Result<()> {
                 scene.command(num(&a[i + 1]), num(&a[i + 2]), (w, h));
                 i += 3;
             }
+            // scores: every player's GetPlayerScore values.
+            "scores" => {
+                if let Some(g) = &scene.game {
+                    for p in 0..2u8 {
+                        let pl = &g.world.players[p as usize];
+                        eprintln!("player {p} name {:?} race {} color {} team {}", pl.name, pl.race, pl.color, pl.team);
+                        let v: Vec<i32> = (0..25).map(|k| g.world.player_score(p, k)).collect();
+                        eprintln!("scores p{p} {:?}", v);
+                    }
+                }
+                i += 1;
+            }
             "alt" => {
                 scene.alt_held = true;
                 i += 1;

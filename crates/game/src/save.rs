@@ -9,7 +9,7 @@ use crate::Game;
 use crate::world::World;
 
 /// Bumped whenever the saved state's layout changes.
-const FORMAT: u32 = 1;
+const FORMAT: u32 = 2;
 
 type Variables = (Vec<Value>, Vec<Vec<Value>>);
 

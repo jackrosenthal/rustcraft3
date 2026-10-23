@@ -35,7 +35,8 @@ pub enum Request {
     /// ChangeLevel: the next map, and whether the score screen comes first.
     ChangeLevel { map: String, score: bool },
     Fade { players: u32, out: bool, duration: f32 },
-    EndGame,
+    /// EndGame: whether the score screen follows.
+    EndGame { score: bool },
     /// RestartGame: the map starts over.
     Restart,
     /// SaveGame and LoadGame: a saved game's name in the saved games folder.
@@ -877,6 +878,8 @@ impl World {
             let ceiling = p.get_state(player_state::FOOD_CAP_CEILING);
             let cap = if ceiling > 0 { made[i].min(ceiling) } else { made[i] };
             p.state.insert(player_state::RESOURCE_FOOD_CAP, cap);
+            p.score.food_max_used = p.score.food_max_used.max(used[i]);
+            p.score.food_max_made = p.score.food_max_made.max(cap);
         }
     }
 

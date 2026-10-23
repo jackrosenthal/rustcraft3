@@ -73,6 +73,8 @@ impl World {
             return;
         }
         u.hero_xp += xp;
+        let owner = u.owner;
+        self.score_experience(owner, xp);
         loop {
             let (level, xp) = (self.unit(h).unwrap().level, self.unit(h).unwrap().hero_xp);
             if level >= max_level || xp < self.hero_xp_needed(level + 1) {

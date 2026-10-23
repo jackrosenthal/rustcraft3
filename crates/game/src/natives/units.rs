@@ -141,6 +141,7 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         }
     }
     w.unit_order.push(h);
+    w.score_made(owner, type_id, h, is_hero);
     if !path_tex.is_empty() {
         // Structures are always placed facing BuildingAngle; their footprint does not turn.
         let cells = w.pathing_cells(&path_tex, x, y, 0.0);
@@ -194,8 +195,11 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     u.path.clear();
     u.anim = "death".into();
     u.anim_serial = u.anim_serial.wrapping_add(1);
-    let owner = u.owner;
+    let (owner, type_id, hero) = (u.owner, u.type_id, u.is_hero);
     w.unit_mut(h).unwrap().death_time = w.time;
+    if let Some(k) = w.unit(killer).map(|k| k.owner) {
+        w.score_killed(k, owner, type_id, hero);
+    }
     let ctx = EventCtx {
         unit: h,
         widget: h,

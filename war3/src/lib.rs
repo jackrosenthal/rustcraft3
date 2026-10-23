@@ -15,3 +15,4 @@ pub mod lightning;
 pub mod saveload;
 pub mod options;
 pub mod shadows;
+pub mod scorescreen;

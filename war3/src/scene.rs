@@ -303,6 +303,8 @@ pub struct Scene {
     voices: HashMap<u32, u64>,
     /// The game has ended (EndGame); the application returns to the menus.
     pub ended: bool,
+    /// The scores to show when the game ends with the score screen.
+    pub final_score: Option<crate::scorescreen::ScoreData>,
     /// Exit Program was chosen.
     pub exit: bool,
     menu_requested: bool,
@@ -528,7 +530,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -558,7 +560,12 @@ impl Scene {
                         h.unit_messages.clear();
                     }
                 }
-                w3_game::world::Request::EndGame => self.ended = true,
+                w3_game::world::Request::EndGame { score } => {
+                    self.ended = true;
+                    if score {
+                        self.final_score = self.game.as_ref().map(|g| crate::scorescreen::ScoreData::from_world(&g.world));
+                    }
+                }
                 w3_game::world::Request::Restart => self.restart_requested = true,
                 w3_game::world::Request::SaveGame(name) => {
                     if let Some(path) = self.game.as_ref().and_then(|g| g.world.save_path(&name)) {
@@ -568,7 +575,12 @@ impl Scene {
                 w3_game::world::Request::LoadGame(name) => {
                     self.load_requested = self.game.as_ref().and_then(|g| g.world.save_path(&name)).filter(|p| p.exists());
                 }
-                w3_game::world::Request::ChangeLevel { map, .. } => self.change_level = Some(map),
+                w3_game::world::Request::ChangeLevel { map, score } => {
+                    self.change_level = Some(map);
+                    if score {
+                        self.final_score = self.game.as_ref().map(|g| crate::scorescreen::ScoreData::from_world(&g.world));
+                    }
+                }
                 r @ (w3_game::world::Request::PlaySound(_)
                 | w3_game::world::Request::UiSound { .. }
                 | w3_game::world::Request::WorldSound { .. }

@@ -853,7 +853,7 @@ impl FrameTree {
     /// origin sits on (the frame's lower left; model units are interface units).
     pub fn sprites(&self) -> Vec<(usize, String, f32, f32)> {
         (1..self.frames.len())
-            .filter(|&i| self.frames[i].def.kind == "SPRITE" && self.is_visible(i))
+            .filter(|&i| matches!(self.frames[i].def.kind.as_str(), "SPRITE" | "MODEL") && self.is_visible(i))
             .filter_map(|i| {
                 let f = &self.frames[i];
                 let r = f.rect?;

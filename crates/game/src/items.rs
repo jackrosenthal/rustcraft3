@@ -55,6 +55,9 @@ impl World {
             return false;
         }
         let powerup = self.objects.items.get(type_id).is_some_and(|o| o.bool("powerup"));
+        if let Some(owner) = self.unit(unit).map(|u| u.owner) {
+            self.score_item(owner);
+        }
         if powerup {
             self.item_effect(vm, unit, item, type_id, 0, 0.0, 0.0);
             let ctx = EventCtx { item, ..Default::default() };

@@ -790,6 +790,11 @@ pub struct QuestItem {
 /// A handle-table entry.
 #[derive(Clone, Debug)]
 pub enum Obj {
+    TimerDialog(TimerDialog),
+    Leaderboard(Leaderboard),
+    Multiboard(Multiboard),
+    /// A multiboard cell handle: board, row, column.
+    MultiboardItem(u32, usize, usize),
     Quest(Quest),
     QuestItem(QuestItem),
     DefeatCondition(String),
@@ -819,4 +824,106 @@ pub enum Obj {
     DialogButton(DialogButton),
     /// Objects the simulation does not model yet; the handle stays valid.
     Opaque(&'static str),
+}
+
+/// A timer dialog (CTimerDialog): a title and its timer's remaining time.
+#[derive(Clone, Debug)]
+pub struct TimerDialog {
+    pub timer: u32,
+    /// None shows "DEFAULTTIMERDIALOGTEXT".
+    pub title: Option<String>,
+    pub title_color: Option<[u8; 4]>,
+    pub time_color: Option<[u8; 4]>,
+    pub speed: f32,
+    pub displayed: bool,
+    /// TimerDialogSetRealTimeRemaining: a countdown kept by the dialog itself.
+    pub real_time: Option<f32>,
+}
+
+impl Default for TimerDialog {
+    fn default() -> TimerDialog {
+        TimerDialog { timer: 0, title: None, title_color: None, time_color: None, speed: 1.0, displayed: false, real_time: None }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct LeaderboardItem {
+    pub label: String,
+    pub value: i32,
+    pub player: u8,
+    /// Show label, value, and icon.
+    pub style: [bool; 3],
+    /// None is the player's color.
+    pub label_color: Option<[u8; 4]>,
+    pub value_color: Option<[u8; 4]>,
+}
+
+impl Default for LeaderboardItem {
+    fn default() -> LeaderboardItem {
+        LeaderboardItem { label: String::new(), value: 0, player: 0, style: [true; 3], label_color: None, value_color: None }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Leaderboard {
+    pub label: String,
+    pub items: Vec<LeaderboardItem>,
+    /// Rows the board is sized for (LeaderboardSetSizeByItemCount).
+    pub size: usize,
+    pub displayed: bool,
+    /// Show the label, player names, values, and icons.
+    pub style: [bool; 4],
+}
+
+impl Default for Leaderboard {
+    fn default() -> Leaderboard {
+        Leaderboard { label: String::new(), items: Vec::new(), size: 0, displayed: false, style: [true; 4] }
+    }
+}
+
+/// A multiboard cell (CMultiboardElementData): white text, value and icon shown, 0.01 wide.
+#[derive(Clone, Debug)]
+pub struct MultiboardItem {
+    pub value: String,
+    pub icon: String,
+    pub color: [u8; 4],
+    pub show_value: bool,
+    pub show_icon: bool,
+    pub width: f32,
+}
+
+impl Default for MultiboardItem {
+    fn default() -> MultiboardItem {
+        MultiboardItem { value: String::new(), icon: String::new(), color: [255; 4], show_value: true, show_icon: true, width: 0.01 }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Multiboard {
+    pub title: String,
+    pub title_color: Option<[u8; 4]>,
+    pub rows: usize,
+    pub cols: usize,
+    pub items: Vec<Vec<MultiboardItem>>,
+    pub displayed: bool,
+    pub minimized: bool,
+}
+
+impl Multiboard {
+    pub fn resize(&mut self, rows: usize, cols: usize) {
+        self.rows = rows;
+        self.cols = cols;
+        self.items.resize_with(rows, Vec::new);
+        for r in &mut self.items {
+            r.resize_with(cols, MultiboardItem::default);
+        }
+    }
+
+    pub fn each(&mut self, mut f: impl FnMut(&mut MultiboardItem)) {
+        for r in &mut self.items {
+            for it in r {
+                f(it);
+            }
+        }
+    }
 }

@@ -55,6 +55,10 @@ impl<T> Handles<T> {
         self.objects.iter()
     }
 
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&u32, &mut T)> {
+        self.objects.iter_mut()
+    }
+
     pub fn ids(&self) -> Vec<u32> {
         let mut v: Vec<u32> = self.objects.keys().copied().collect();
         v.sort_unstable();

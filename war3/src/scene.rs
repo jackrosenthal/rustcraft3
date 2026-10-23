@@ -965,6 +965,13 @@ impl Scene {
             }
             return true;
         }
+        // The multiboard's minimize button.
+        if let Some(b) = self.hud.as_ref().and_then(|h| h.boards.as_ref()).and_then(|b| b.minimize_at(ux, uy)) {
+            if let Some(w3_game::types::Obj::Multiboard(m)) = self.game.as_mut().and_then(|g| g.world.handles.get_mut(b)) {
+                m.minimized = !m.minimized;
+            }
+            return true;
+        }
         // Clicking an inventory item uses it.
         if let Some(k) = self.hud.as_ref().and_then(|h| h.minimap_button_at(ux, uy)) {
             self.ui_sound("InterfaceClick");
@@ -1654,6 +1661,7 @@ impl Scene {
             hud.show_group(&g.world, &self.selection);
             hud.sync_cinematic(&assets.frames, &g.world, aspect);
             hud.sync_heroes(&g.world);
+            crate::boards::sync(&mut hud.boards, &assets.frames, &g.world, &self.team_rgb, aspect);
             let draws = hud.draws(&assets.frames);
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("interface"),

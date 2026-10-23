@@ -11,6 +11,7 @@ pub mod game;
 pub mod geometry;
 pub mod objects;
 pub mod players;
+pub mod boards;
 pub mod presentation;
 pub mod triggers;
 pub mod units;
@@ -18,6 +19,7 @@ pub mod units;
 pub fn table() -> HashMap<&'static str, NativeFn> {
     let mut t: HashMap<&'static str, NativeFn> = HashMap::new();
     basic::register(&mut t);
+    boards::register(&mut t);
     game::register(&mut t);
     geometry::register(&mut t);
     objects::register(&mut t);

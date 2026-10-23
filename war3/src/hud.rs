@@ -101,6 +101,8 @@ pub struct Hud {
     /// WorldFrameMessage: the error line above the console.
     pub error_message: Option<Message>,
     pub dialog: Option<DialogView>,
+    /// Timer dialogs, the multiboard, and the leaderboard.
+    pub boards: Option<crate::boards::BoardsView>,
     /// The game menu (F10), built by CEscMenu: EscMenuBackdrop centered 0.06 above the
     /// middle, holding EscMenuMainPanel.
     pub menu: Option<FrameTree>,
@@ -247,6 +249,7 @@ impl Hud {
             unit_message_offset: (0.0, 0.0),
             error_message: None,
             dialog: None,
+            boards: None,
             menu: None,
             inventory: Vec::new(),
             level_bar: None,
@@ -1120,6 +1123,9 @@ impl Hud {
                 let cr = w3_ui::Rect { x0: r.x1 - 0.012, x1: r.x1 - 0.001, y0: r.y0 + 0.001, y1: r.y0 + 0.011 };
                 out.push(Draw::Text { font, size: 0.009, rect: cr, text: charges.to_string(), color: [1.0; 4], justify_h: w3_ui::Justify::End, justify_v: w3_ui::Justify::End, shadow: Some(([0.0, 0.0, 0.0, 1.0], 0.0005, -0.0005)) });
             }
+        }
+        if let Some(b) = &self.boards {
+            b.draws(db, &mut out);
         }
         if let Some(d) = &self.dialog {
             out.extend(d.tree.draw(db));

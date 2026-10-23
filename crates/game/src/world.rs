@@ -100,6 +100,10 @@ pub struct World {
     pub selection: HashMap<u8, Vec<u32>>,
     /// Counts script changes to the selection, so the interface can follow them.
     pub selection_serial: u32,
+    /// The leaderboard each player is shown (PlayerSetLeaderboard).
+    pub player_leaderboards: HashMap<u8, u32>,
+    /// MultiboardSuppressDisplay.
+    pub multiboard_suppressed: bool,
     pub destructable_order: Vec<u32>,
     pub item_order: Vec<u32>,
     /// Effects destroyed by script, with the time they were destroyed; the presentation
@@ -254,6 +258,8 @@ impl World {
             unit_order: Vec::new(),
             selection: HashMap::new(),
             selection_serial: 0,
+            player_leaderboards: HashMap::new(),
+            multiboard_suppressed: false,
             destructable_order: Vec::new(),
             item_order: Vec::new(),
             dying_effects: Vec::new(),
@@ -566,6 +572,14 @@ impl World {
         let hours_per_second = day_hours / day_length * self.time_of_day_scale;
         self.time_of_day = (self.time_of_day + dt * hours_per_second) % day_hours;
         self.camera.update(dt);
+        // TimerDialogSetRealTimeRemaining counts down in the dialog itself.
+        for (_, o) in self.handles.iter_mut() {
+            if let Obj::TimerDialog(d) = o {
+                if let Some(t) = d.real_time.as_mut() {
+                    *t -= dt;
+                }
+            }
+        }
         if self.cinematic.scene.as_ref().is_some_and(|s| s.ends <= self.time) {
             self.cinematic.scene = None;
         }
@@ -749,4 +763,25 @@ impl Host for World {
 
 pub fn func_of(v: &Value) -> Option<FuncId> {
     v.code()
+}
+
+impl World {
+    /// The text a timer dialog shows: its timer's remaining time (or its own countdown)
+    /// times its speed, rounded to whole seconds, as hours:minutes:seconds; 00:00:00
+    /// once it reaches zero.
+    pub fn timer_dialog_text(&self, d: &TimerDialog) -> String {
+        let remaining = d.real_time.unwrap_or_else(|| match self.handles.get(d.timer) {
+            Some(Obj::Timer(t)) => t.remaining,
+            _ => 0.0,
+        });
+        if remaining <= 0.0 {
+            return "00:00:00".to_string();
+        }
+        let t = (d.speed * remaining + 0.5) as i64 as f32;
+        let h = (t / 3600.0) as i64;
+        let rest = t - (h * 3600) as f32;
+        let m = (rest / 60.0) as i64;
+        let s = (rest - (m * 60) as f32) as i64;
+        format!("{h:02}:{m:02}:{s:02}")
+    }
 }

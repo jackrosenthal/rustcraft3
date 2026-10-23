@@ -13,10 +13,10 @@
 //! An ability that weighs a cast rests its AI for half a second (FUN_6f432b20).  Many
 //! count the units around them (FUN_6f602e30 with FUN_6f602f70): wards, and unless
 //! asked magic-immune units, are not counted; of the caster's side, all, those with
-//! more than 20 mana, those not invisible, and those attacking from beyond
-//! 200; of its enemies, all, the disabled, the flying, the structures, those that can
-//! fight (armed, not workers), those with more than 20 mana, and those not unseen
-//! (invisible and undetected).  Constants are game.dll's static floats (400 at 0x6fd77f34, 450 at
+//! more than 20 mana, those on the ground, and those attacking from beyond
+//! 200; of its enemies, all, the disabled, those flying high, the structures, those
+//! that can fight (armed, not workers), those with more than 20 mana, and those on the
+//! ground (not air units).  Constants are game.dll's static floats (400 at 0x6fd77f34, 450 at
 //! 0x6fd77f38, 1000 at 0x6fd3c7f8, 9999 at 0x6fd3c804, and so on).
 
 use w3_jass::Vm;
@@ -28,20 +28,21 @@ use crate::world::World;
 /// The units around a point, as FUN_6f602f70 counts them.
 #[derive(Default, Debug, Clone, Copy)]
 pub(crate) struct Census {
-    /// The caster's side: all (0x18), ranged beyond 200 (0x1c), not invisible (0x3c),
+    /// The caster's side: all (0x18), ranged beyond 200 (0x1c), on the ground (0x3c),
     /// with more than 20 mana (0x44).
     pub allies: i32,
     pub ally_ranged: i32,
-    pub ally_seen: i32,
+    pub ally_ground: i32,
     pub ally_mana: i32,
-    /// Its enemies: all (0x20), flying (0x24), structures (0x28), able to fight (0x2c),
-    /// disabled (0x34), not unseen (0x38), with more than 20 mana (0x40).
+    /// Its enemies: all (0x20), flying high (0x24), structures (0x28), able to fight
+    /// (0x2c), disabled (0x34), on the ground (0x38; not air units: flag 0x20000000), with
+    /// more than 20 mana (0x40).
     pub enemies: i32,
     pub enemy_flying: i32,
     pub enemy_structures: i32,
     pub enemy_fighters: i32,
     pub enemy_disabled: i32,
-    pub enemy_seen: i32,
+    pub enemy_ground: i32,
     pub enemy_mana: i32,
 }
 
@@ -57,6 +58,11 @@ impl World {
 
     fn is_classed(&self, u: &Unit, class: &str) -> bool {
         self.objects.units.get(u.type_id).is_some_and(|o| o.str("type").to_ascii_lowercase().split(',').any(|c| c.trim() == class))
+    }
+
+    /// An air unit (movetp fly), which game.dll marks with flag 0x20000000.
+    fn is_air(&self, u: &Unit) -> bool {
+        self.objects.units.get(u.type_id).is_some_and(|o| o.str("movetp").eq_ignore_ascii_case("fly"))
     }
 
     fn real_hero(u: &Unit) -> bool {
@@ -85,7 +91,7 @@ impl World {
             if self.helps(owner, u.owner) {
                 c.allies += 1;
                 c.ally_mana += mana as i32;
-                c.ally_seen += !self.is_invisible(h) as i32;
+                c.ally_ground += !self.is_air(u) as i32;
                 if crate::sim::unit_weapons(self, u).iter().map(|w| w.1.range).fold(0.0f32, f32::max) > 200.0 {
                     c.ally_ranged += 1;
                 }
@@ -96,7 +102,7 @@ impl World {
                 c.enemy_fighters += (!crate::sim::unit_weapons(self, u).is_empty() && !self.is_classed(u, "peon")) as i32;
                 c.enemy_flying += (u.fly_height > 1.0) as i32;
                 c.enemy_mana += mana as i32;
-                c.enemy_seen += self.unit_visible_to(h, owner) as i32;
+                c.enemy_ground += !self.is_air(u) as i32;
             }
         }
         c
@@ -252,6 +258,7 @@ impl World {
                 "ANfl" => self.ai_forked_lightning(h, a, lvl, enemy, victim),
                 "Apos" | "Aps2" => self.ai_possession(h, a, enemy, victim),
                 "AEsh" => self.ai_lingering(h, a, lvl, enemy, victim, false),
+                "Auco" => self.ai_concoction(h, a, lvl, enemy, victim),
                 "ANso" => self.ai_lingering(h, a, lvl, enemy, victim, true),
                 "Aams" => {
                     if !self.ai_gate(h, a, enemy, victim, true, Some(victim), None) && self.unit(victim).is_some_and(Self::real_hero) {
@@ -284,10 +291,10 @@ impl World {
                         self.ai_cast(h, a, 0);
                     }
                 }
-                // FUN_6f6028d0: Feral Spirit against a seen enemy.
+                // FUN_6f6028d0: Feral Spirit against an enemy on the ground.
                 "AOsf" | "AIsh" => {
                     let owner = self.unit(h).map_or(0, |u| u.owner);
-                    let ok = self.unit(attacker).is_some_and(|e| !crate::natives::players::is_ally(self, owner, e.owner)) && self.unit_visible_to(attacker, owner);
+                    let ok = self.unit(attacker).is_some_and(|e| !crate::natives::players::is_ally(self, owner, e.owner) && !self.is_air(e));
                     if ok && self.can_cast(h, a).is_ok() {
                         self.ai_cast(h, a, 0);
                     }
@@ -377,7 +384,7 @@ impl World {
 
     /// Thunder Clap, War Stomp (FUN_6f60fca0, FUN_6f605650): with the victim on the
     /// caster's side and the AI ready, it counts within Area (no magic-immune units):
-    /// at least 3 seen enemies besides structures, and more enemies able to fight,
+    /// at least 3 ground enemies besides structures, and more enemies able to fight,
     /// besides structures, than units on its side.
     fn ai_thunder_clap(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
         let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
@@ -387,7 +394,7 @@ impl World {
         self.thunder_clap_test(h, a, lvl, false);
     }
 
-    /// FUN_6f605650: the census test; when hurt and below 400 life, 2 seen enemies
+    /// FUN_6f605650: the census test; when hurt and below 400 life, 2 ground enemies
     /// within Area suffice.
     fn thunder_clap_test(&mut self, h: u32, a: Id, lvl: u32, hurt: bool) {
         if self.ai_resting(h, a) || self.can_cast(h, a).is_err() {
@@ -397,10 +404,10 @@ impl World {
         let (x, y) = self.pos(h);
         let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
         if hurt && self.life(h) < 400.0 {
-            if c.enemy_seen < 2 {
+            if c.enemy_ground < 2 {
                 return;
             }
-        } else if c.enemy_seen - c.enemy_structures < 3 || c.enemy_fighters - c.enemy_structures <= c.allies {
+        } else if c.enemy_ground - c.enemy_structures < 3 || c.enemy_fighters - c.enemy_structures <= c.allies {
             return;
         }
         self.ai_cast(h, a, 0);
@@ -654,7 +661,7 @@ impl World {
     }
 
     /// Shockwave (CAbilityShockwave vf64): past the gate, at the enemy when, within Area
-    /// of it (no magic-immune units), 3 enemies (2 when hard pressed) are seen.
+    /// of it (no magic-immune units), 3 enemies (2 when hard pressed) are on the ground.
     fn ai_shockwave(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
         if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
             return;
@@ -663,7 +670,7 @@ impl World {
         let need = if self.hard_pressed(h, victim) { 2 } else { 3 };
         let (x, y) = self.pos(enemy);
         let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
-        if need <= c.enemy_seen {
+        if need <= c.enemy_ground {
             self.ai_cast(h, a, enemy);
         }
     }
@@ -792,7 +799,7 @@ impl World {
     }
 
     /// Impale (CAbilityImpale vf64): past the gate, at the enemy when within Area of it
-    /// (no magic-immune units) 3 enemies (2 when hard pressed) are seen.
+    /// (no magic-immune units) 3 enemies (2 when hard pressed) are on the ground.
     fn ai_impale(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
         if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
             return;
@@ -801,7 +808,7 @@ impl World {
         let need = if self.hard_pressed(h, victim) { 2 } else { 3 };
         let (x, y) = self.pos(enemy);
         let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
-        if need <= c.enemy_seen {
+        if need <= c.enemy_ground {
             self.ai_cast(h, a, enemy);
         }
     }
@@ -823,7 +830,7 @@ impl World {
 
     /// Doom (CAbilityDoom vf64): past the gate (no creeps, not on one doomed), at once
     /// when hard pressed; else on a unit with at least 400 maximum life and at most
-    /// 5 × DataA life, with at least 3 seen enemies within 800 of the caster.
+    /// 5 × DataA life, with at least 3 ground enemies within 800 of the caster.
     fn ai_doom(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
         let buff = self.buff_id(a, lvl);
         if self.ai_gate(h, a, enemy, victim, false, Some(enemy), buff) {
@@ -835,7 +842,7 @@ impl World {
                 return;
             }
             let (x, y) = self.pos(h);
-            if self.census(h, x, y, 800.0, true).enemy_seen < 3 {
+            if self.census(h, x, y, 800.0, true).enemy_ground < 3 {
                 return;
             }
         }
@@ -1075,7 +1082,7 @@ impl World {
     }
 
     /// Feral Spirit (FUN_6f60f690): with its AI ready, when within 500 of the victim
-    /// more than one enemy is seen and the caster's side is not the larger.
+    /// more than one enemy is on the ground and the caster's side is not the larger.
     fn ai_feral_spirit(&mut self, h: u32, a: Id, victim: u32) {
         if self.ai_resting(h, a) || self.can_cast(h, a).is_err() {
             return;
@@ -1083,7 +1090,7 @@ impl World {
         self.ai_rest(h, a);
         let (x, y) = self.pos(victim);
         let c = self.census(h, x, y, 500.0, true);
-        if c.enemy_seen > 1 && c.allies <= c.enemies {
+        if c.enemy_ground > 1 && c.allies <= c.enemies {
             self.ai_cast(h, a, 0);
         }
     }
@@ -1140,7 +1147,7 @@ impl World {
     }
 
     /// Howl of Terror (CAbilityHowlOfTerror vf64): past the gate (no creeps), at once
-    /// when hard pressed; else with 3 seen enemies besides structures within Area.
+    /// when hard pressed; else with 3 ground enemies besides structures within Area.
     fn ai_howl(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
         let buff = self.buff_id(a, lvl);
         if self.ai_gate(h, a, enemy, victim, false, None, buff) {
@@ -1150,7 +1157,7 @@ impl World {
             self.ai_rest(h, a);
             let (x, y) = self.pos(h);
             let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
-            if c.enemy_seen - c.enemy_structures < 3 {
+            if c.enemy_ground - c.enemy_structures < 3 {
                 return;
             }
         }
@@ -1190,7 +1197,7 @@ impl World {
         self.ai_cast(h, a, victim);
     }
 
-    /// FUN_6f604b80: Lightning Shield on `t` when within Area of it 3 enemies are seen
+    /// FUN_6f604b80: Lightning Shield on `t` when within Area of it 3 enemies are on the ground
     /// (2 when the caster has under 100 life) and the caster's side there numbers no
     /// more than `t` itself when a friend.
     fn lightning_shield_at(&mut self, h: u32, a: Id, lvl: u32, t: u32) -> bool {
@@ -1200,7 +1207,7 @@ impl World {
         let need = if self.life(h) < 100.0 { 2 } else { 3 };
         let owner = self.unit(h).map_or(0, |u| u.owner);
         let friend = self.unit(t).is_some_and(|u| crate::natives::players::is_ally(self, owner, u.owner)) as i32;
-        if need <= c.enemy_seen && c.allies <= friend {
+        if need <= c.enemy_ground && c.allies <= friend {
             self.ai_cast(h, a, t);
             return true;
         }
@@ -1260,15 +1267,14 @@ impl World {
         }
     }
 
-    /// Raise Dead, Carrion Scarabs, Vengeance (FUN_6f60ec20): past the gate, against a
-    /// seen enemy, a Hero raises at once when a corpse lies within the spell's reach;
+    /// Raise Dead, Carrion Scarabs, Vengeance (FUN_6f60ec20): past the gate, against an
+    /// enemy on the ground, a Hero raises at once when a corpse lies within its reach;
     /// other casters leave it to their autocast.
     fn ai_raise_dead(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
         if self.ai_gate(h, a, enemy, victim, true, None, None) {
             return;
         }
-        let owner = self.unit(h).map_or(0, |u| u.owner);
-        if !self.unit_visible_to(enemy, owner) || !self.unit(h).is_some_and(Self::real_hero) {
+        if self.unit(enemy).is_none_or(|e| self.is_air(e)) || !self.unit(h).is_some_and(Self::real_hero) {
             return;
         }
         self.ai_rest(h, a);
@@ -1280,7 +1286,7 @@ impl World {
     }
 
     /// Inferno (FUN_6f60dad0, FUN_6f607470): past the gate (no creeps), at an enemy
-    /// player's unit when more than one enemy on the ground is seen within Area of it.
+    /// player's unit when more than one enemy on the ground is on the ground within Area of it.
     fn ai_inferno(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
         if self.ai_gate(h, a, enemy, victim, false, None, None) || self.unit(enemy).is_none_or(|e| e.owner >= PLAYER_NEUTRAL_AGGRESSIVE) {
             return;
@@ -1288,7 +1294,7 @@ impl World {
         self.ai_rest(h, a);
         let (x, y) = self.pos(enemy);
         let c = self.census(h, x, y, self.data(a, "Area", lvl), true);
-        if c.enemy_seen - c.enemy_flying > 1 {
+        if c.enemy_ground - c.enemy_flying > 1 {
             self.ai_cast(h, a, enemy);
         }
     }
@@ -1319,7 +1325,7 @@ impl World {
     }
 
     /// Ensnare (CAbilityEnsnare vf64): past the gate, on a unit that is not a Hero or has
-    /// under 300 life; a seen one only of an enemy player, and with 700 life or less
+    /// under 300 life; one on the ground only of an enemy player, and with 700 life or less
     /// only at 200 or less and not attacking, or above 700 only attacking from 200 or
     /// closer.
     fn ai_ensnare(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
@@ -1330,8 +1336,7 @@ impl World {
         if Self::real_hero(e) && e.life >= 300.0 {
             return;
         }
-        let owner = self.unit(h).map_or(0, |u| u.owner);
-        if self.unit_visible_to(enemy, owner) {
+        if !self.is_air(e) {
             if e.owner >= PLAYER_NEUTRAL_AGGRESSIVE {
                 return;
             }
@@ -1487,7 +1492,7 @@ impl World {
     }
 
     /// Cluster Rockets (CAbilityClusterRockets vf64): past the gate, at the enemy when
-    /// within Area of it 3 enemies (2 when hard pressed) are seen.
+    /// within Area of it 3 enemies (2 when hard pressed) are on the ground.
     fn ai_cluster_rockets(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
         if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
             return;
@@ -1495,7 +1500,7 @@ impl World {
         self.ai_rest(h, a);
         let need = if self.hard_pressed(h, victim) { 2 } else { 3 };
         let (x, y) = self.pos(enemy);
-        if need <= self.census(h, x, y, self.data(a, "Area", lvl), false).enemy_seen {
+        if need <= self.census(h, x, y, self.data(a, "Area", lvl), false).enemy_ground {
             self.ai_cast(h, a, enemy);
         }
     }
@@ -1587,7 +1592,7 @@ impl World {
     /// over the spell's time (Shadow Strike DataA every Cast seconds plus DataE, Soul
     /// Burn DataA every DataB seconds; over HeroDur for Heroes) must leave the enemy
     /// between 0 and 2000 life (200 and 400 for Shadow Strike on others) unless it is
-    /// an unseen flyer, and it must be within the cast range plus 100 (200 for Shadow
+    /// an air unit aloft, and it must be within the cast range plus 100 (200 for Shadow
     /// Strike on others).
     fn ai_lingering(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32, soul_burn: bool) {
         let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
@@ -1607,8 +1612,7 @@ impl World {
         if soul_burn && !hero {
             return;
         }
-        let unseen_flyer = e.fly_height > 1.0 && !self.unit_visible_to(enemy, owner);
-        if !unseen_flyer {
+        if !(self.is_air(e) && e.fly_height > 1.0) {
             let dur = if self.hero_duration(enemy) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
             let every = if soul_burn { self.data(a, "DataB", lvl) } else { self.data(a, "Cast", lvl) };
             let ticks = if every > 0.0 { (dur / every) as i32 } else { 0 };
@@ -1629,7 +1633,7 @@ impl World {
     }
 
     /// Held items' AI (their abilities' vf64), each use queued for the next tick:
-    /// figurines with more than 2 seen enemies (any enemies for flyers) within 500 of
+    /// figurines with more than 2 ground enemies (any enemies for flyers) within 500 of
     /// the victim and the caster's side not the larger; Web past the gate; dispel
     /// wands on the victim, else on the enemy; the defense scroll against a
     /// player's unit fighting another of the caster's units; the Moonstone by a night
@@ -1654,7 +1658,7 @@ impl World {
                         let (x, y) = self.pos(victim);
                         let c = self.census(h, x, y, 500.0, true);
                         let flyer = self.ability_code(a) == "AIfd";
-                        let seen = if flyer { c.enemies } else { c.enemy_seen };
+                        let seen = if flyer { c.enemies } else { c.enemy_ground };
                         (seen > 2 && c.allies <= c.enemies).then_some(0)
                     }
                     "AIwb" => (!self.ai_gate(h, a, enemy, victim, true, Some(enemy), None)).then_some(enemy),
@@ -1681,6 +1685,20 @@ impl World {
                     return;
                 }
             }
+        }
+    }
+
+    /// Unstable Concoction (CAbilityUnstableConcoction vf64): past the gate (no creeps),
+    /// at the enemy when within Area of it fewer than 2 of the caster's side are air
+    /// units and either the caster has 200 life or less or more than 2 enemies are.
+    fn ai_concoction(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, false, None, None) {
+            return;
+        }
+        let (x, y) = self.pos(enemy);
+        let c = self.census(h, x, y, self.data(a, "Area", lvl), true);
+        if c.allies - c.ally_ground < 2 && (self.life(h) <= 200.0 || c.enemies - c.enemy_ground > 2) {
+            self.ai_cast(h, a, enemy);
         }
     }
 }

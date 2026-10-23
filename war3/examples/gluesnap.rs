@@ -1,7 +1,7 @@
 //! Renders the glue screens offscreen and writes PNGs.
 //!
 //! `gluesnap <datadir> <width> <height> <commands...>` with commands
-//! `wait <s>`, `click <px> <py>`, `key <c>`, and `shot <out.png>`.
+//! `wait <s>`, `click <px> <py>`, `type <text>`, and `shot <out.png>`.
 
 use std::path::Path;
 
@@ -56,6 +56,13 @@ fn main() -> anyhow::Result<()> {
                     _ => {}
                 }
                 i += 3;
+            }
+            // type <text>: types characters; "\n" in the text is Enter.
+            "type" => {
+                for c in a[i + 1].replace("\\n", "\r").chars() {
+                    glue.key(c, &mut assets);
+                }
+                i += 2;
             }
             "move" => {
                 glue.pointer_move(a[i + 1].parse()?, a[i + 2].parse()?, (w, h));

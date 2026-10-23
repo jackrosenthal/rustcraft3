@@ -149,6 +149,17 @@ pub struct Glue {
     chain: std::sync::Arc<w3_mpq::Chain>,
     /// The Campaigns folder.
     campaigns_dir: std::path::PathBuf,
+    /// The Single Player menu's profiles.
+    pub profile: crate::profiles::ProfilePanel,
+    /// What a DialogWar3 message's Yes does, while one shows.
+    dialog: Option<DialogAction>,
+    version: crate::data::Version,
+}
+
+/// What a glue message's Yes (or OK) does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DialogAction {
+    DeleteProfile,
 }
 
 impl Glue {
@@ -178,8 +189,10 @@ impl Glue {
         );
         let mut skirmish = crate::skirmish::Skirmish::new(&data.dir);
         skirmish.load_strings(&data.chain, data.version == Version::FrozenThrone);
-        // Without a profile the local player takes LOCAL_PLAYER, as game.dll does.
-        skirmish.player_name = assets.frames.string("LOCAL_PLAYER");
+        // The local player takes the profile's name (LOCAL_PLAYER without one).
+        let local = assets.frames.string("LOCAL_PLAYER");
+        let profile = crate::profiles::ProfilePanel::new(&local);
+        skirmish.player_name = profile.name().unwrap_or(local);
         let mut g = Glue {
             screen: Screen::MainMenu,
             tree: FrameTree::new(4.0 / 3.0),
@@ -210,6 +223,9 @@ impl Glue {
             display: (800, 600),
             chain: data.chain.clone(),
             campaigns_dir: data.dir.join("Campaigns"),
+            profile,
+            dialog: None,
+            version: data.version,
         };
         g.build(Screen::MainMenu, assets);
         g.play_layers(&format!("{} Birth", Screen::MainMenu.token()));
@@ -260,10 +276,14 @@ impl Glue {
                 self.tree.set_visible("RealmSelect", false);
             }
             Screen::SinglePlayer => {
-                // CSinglePlayerMenu shows the profile panel only from its profile button.
-                self.tree.set_visible("ProfilePanel", false);
-                let name = self.skirmish.player_name.clone();
-                self.tree.set_text("ProfileNameText", &name);
+                // CSinglePlayerMenu's vf55: Reign of Chaos has no custom campaigns, and
+                // Custom Game takes their place under View Replay.
+                if self.version == crate::data::Version::ReignOfChaos {
+                    self.tree.set_visible("CustomCampaignBackdrop", false);
+                    use w3_ui::FramePoint as P;
+                    self.tree.set_point("SkirmishBackdrop", P::TopRight, "ViewReplayBackdrop", P::BottomRight, 0.0, 0.014);
+                }
+                self.profile.attach(&mut self.tree, db);
             }
             Screen::Skirmish => {
                 self.skirmish.detach_saves();
@@ -537,6 +557,11 @@ impl Glue {
         if self.tree.pointer_down(x, y).is_some() {
             return true;
         }
+        if self.screen == Screen::SinglePlayer && self.dialog.is_none() {
+            if let Some(e) = self.profile.click(&mut self.tree, x, y) {
+                self.profile_event(e, assets);
+            }
+        }
         if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign) {
             self.skirmish.click(&mut self.tree, &assets.frames, x, y);
         }
@@ -565,6 +590,41 @@ impl Glue {
             }
         }
         false
+    }
+
+    /// The profile panel's requests: another profile chosen (its progress and saved
+    /// games become the game's), or Delete's confirmation.
+    fn profile_event(&mut self, e: crate::profiles::Event, assets: &mut Assets) {
+        match e {
+            crate::profiles::Event::Chosen => {
+                *self.persist.borrow_mut() = crate::data::load_persist(self.version);
+                self.saves_dir = crate::data::save_dir(self.version).unwrap_or_default();
+                self.skirmish.player_name = self.profile.name().unwrap_or_else(|| assets.frames.string("LOCAL_PLAYER"));
+            }
+            crate::profiles::Event::ConfirmDelete(name) => {
+                let text = assets.frames.string("DELETE_PROFILE_MESSAGE").replacen("%s", &name, 1);
+                self.show_dialog(&text, true, DialogAction::DeleteProfile, assets);
+            }
+        }
+    }
+
+    /// A DialogWar3 message over the screen (FUN_6f2bc510): OK, or Yes and No.
+    fn show_dialog(&mut self, text: &str, yes_no: bool, action: DialogAction, assets: &mut Assets) {
+        if self.tree.get("DialogWar3").is_none() {
+            self.tree.create(&assets.frames, "DialogWar3", 0);
+            self.tree.bind_points();
+        }
+        // CDialogWar3 sits in the middle of the screen.
+        use w3_ui::FramePoint as P;
+        self.tree.set_point("DialogWar3", P::Center, self.screen.frame(), P::Center, 0.0, 0.0);
+        self.tree.set_visible("DialogWar3", true);
+        self.tree.set_text("DialogText", text);
+        for (n, show) in [("DialogButtonOK", !yes_no), ("DialogButtonYes", yes_no), ("DialogButtonNo", yes_no)] {
+            self.tree.set_visible(&format!("{n}Backdrop"), show);
+            self.tree.set_visible(n, show);
+        }
+        self.tree.layout();
+        self.dialog = Some(action);
     }
 
     /// CCustomCampaignMenu's OK (FUN_6f2f7730): the chosen campaign's archive joins the
@@ -604,6 +664,14 @@ impl Glue {
 
     /// A key press: control shortcut keys and Escape for Cancel.
     pub fn key(&mut self, c: char, assets: &mut Assets) {
+        if self.screen == Screen::SinglePlayer && self.dialog.is_none() {
+            if let Some(e) = self.profile.key(c, &mut self.tree) {
+                if let Some(e) = e {
+                    self.profile_event(e, assets);
+                }
+                return;
+            }
+        }
         if c == '\u{1b}' {
             if let Some(i) = self.tree.get("CancelButton").filter(|&i| self.tree.is_visible(i)) {
                 let name = self.tree.frames[i].name.clone();
@@ -619,6 +687,23 @@ impl Glue {
 
     /// Button handlers, by frame name, following the glue classes.
     fn button(&mut self, name: &str, assets: &mut Assets) {
+        if let Some(action) = self.dialog {
+            if matches!(name, "DialogButtonYes" | "DialogButtonOK" | "DialogButtonNo") {
+                self.dialog = None;
+                self.tree.set_visible("DialogWar3", false);
+                if name != "DialogButtonNo" && action == DialogAction::DeleteProfile {
+                    let e = self.profile.delete(&mut self.tree);
+                    self.profile_event(e, assets);
+                }
+            }
+            return;
+        }
+        if self.screen == Screen::SinglePlayer {
+            if let Some(e) = self.profile.button(name, &mut self.tree) {
+                self.profile_event(e, assets);
+                return;
+            }
+        }
         match (self.screen, name) {
             (Screen::MainMenu, "SinglePlayerButton") => self.show(Screen::SinglePlayer, assets),
             (Screen::MainMenu, "ExitButton") => self.action = Some(GlueAction::Quit),
@@ -994,6 +1079,9 @@ impl Glue {
         }
         if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign) && self.phase == Phase::Stand {
             self.skirmish.draws(&self.tree, &assets.frames, &mut draws);
+        }
+        if self.screen == Screen::SinglePlayer && self.phase == Phase::Stand && self.dialog.is_none() {
+            self.profile.draws(&self.tree, &assets.frames, &mut draws);
         }
         if self.screen == Screen::Campaign && self.phase == Phase::Stand {
             let root = self.tree.frames[0].rect.unwrap_or_default();

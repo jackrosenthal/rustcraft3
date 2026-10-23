@@ -58,14 +58,118 @@ pub struct GameData {
     pub campaign_game: std::cell::Cell<bool>,
 }
 
-/// Where the profile lives: the user's data directory, one file per data version.
-pub fn profile_path(version: Version) -> Option<PathBuf> {
-    Some(dirs::data_dir()?.join("war3-remaster").join(format!("profile_v{}.json", version as u32)))
+/// The player profiles (the original keeps their names in the registry's userlocal
+/// list): each one's campaign progress and saved games live in its own folder.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct Profiles {
+    pub entries: Vec<ProfileEntry>,
+    /// The chosen profile, by position.
+    pub current: Option<usize>,
 }
 
-/// Where saved games live: the user's data directory, one folder per data version.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct ProfileEntry {
+    pub name: String,
+    /// Its folder under the user's data directory.
+    pub dir: String,
+}
+
+/// The longest profile name (NewProfileEditBox's limit, FUN_6f104350 with 15).
+pub const PROFILE_NAME_MAX: usize = 15;
+
+fn data_root() -> Option<PathBuf> {
+    Some(dirs::data_dir()?.join("war3-remaster"))
+}
+
+impl Profiles {
+    fn path() -> Option<PathBuf> {
+        Some(data_root()?.join("profiles.json"))
+    }
+
+    /// The profiles; before any were kept, progress from earlier versions of this port
+    /// (kept directly in the data directory) is the one profile, under `legacy_name`.
+    pub fn load(legacy_name: &str) -> Profiles {
+        if let Some(p) = Self::path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()) {
+            return p;
+        }
+        let root = data_root();
+        let legacy = root.as_ref().is_some_and(|r| ["profile_v0.json", "profile_v1.json", "Save"].iter().any(|f| r.join(f).exists()));
+        if legacy {
+            return Profiles { entries: vec![ProfileEntry { name: legacy_name.to_string(), dir: String::new() }], current: Some(0) };
+        }
+        Profiles::default()
+    }
+
+    pub fn store(&self) {
+        let Some(path) = Self::path() else { return };
+        if let Some(d) = path.parent() {
+            let _ = std::fs::create_dir_all(d);
+        }
+        if let Ok(b) = serde_json::to_vec_pretty(self) {
+            if let Err(e) = std::fs::write(&path, b) {
+                log::warn!("writing {}: {e}", path.display());
+            }
+        }
+    }
+
+    pub fn current(&self) -> Option<&ProfileEntry> {
+        self.entries.get(self.current?)
+    }
+
+    pub fn find(&self, name: &str) -> Option<usize> {
+        self.entries.iter().position(|e| e.name.eq_ignore_ascii_case(name))
+    }
+
+    /// Adds a profile in a folder of its own and chooses it.
+    pub fn add(&mut self, name: &str) -> usize {
+        let n = (1..).find(|n| !self.entries.iter().any(|e| e.dir == format!("Profiles\\Profile{n}"))).unwrap();
+        self.entries.push(ProfileEntry { name: name.to_string(), dir: format!("Profiles\\Profile{n}") });
+        self.current = Some(self.entries.len() - 1);
+        self.entries.len() - 1
+    }
+
+    /// Removes a profile and its folder's progress.
+    pub fn remove(&mut self, k: usize) {
+        if k >= self.entries.len() {
+            return;
+        }
+        let e = self.entries.remove(k);
+        if !e.dir.is_empty() {
+            if let Some(d) = data_root().map(|r| r.join(e.dir.replace('\\', "/"))) {
+                let _ = std::fs::remove_dir_all(d);
+            }
+        }
+        self.current = match self.current {
+            Some(c) if c == k => None,
+            Some(c) if c > k => Some(c - 1),
+            c => c,
+        };
+    }
+}
+
+/// The current profile's folder.
+fn profile_dir() -> Option<PathBuf> {
+    let p = Profiles::load("");
+    let dir = p.current()?.dir.clone();
+    Some(data_root()?.join(dir.replace('\\', "/")))
+}
+
+/// Where the current profile's progress lives, one file per data version.
+pub fn profile_path(version: Version) -> Option<PathBuf> {
+    Some(profile_dir()?.join(format!("profile_v{}.json", version as u32)))
+}
+
+/// Where the current profile's saved games live, one folder per data version.
 pub fn save_dir(version: Version) -> Option<PathBuf> {
-    Some(dirs::data_dir()?.join("war3-remaster").join("Save").join(format!("v{}", version as u32)))
+    Some(profile_dir()?.join("Save").join(format!("v{}", version as u32)))
+}
+
+/// The current profile's progress (a fresh one at Normal difficulty when it has none).
+pub fn load_persist(version: Version) -> w3_game::persist::Persist {
+    profile_path(version)
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| w3_game::persist::Persist { difficulty: 1, ..Default::default() })
 }
 
 fn open_optional(dir: &Path, name: &str) -> anyhow::Result<Option<Arc<Archive>>> {
@@ -104,10 +208,7 @@ impl GameData {
         // FUN_6f046800: the expansion is used when installed unless -classic is given.
         let version = if classic || war3x.is_none() { Version::ReignOfChaos } else { Version::FrozenThrone };
         let misc = Profile::parse(&chain.read_string("UI\\MiscData.txt").unwrap_or_default());
-        let persist = profile_path(version)
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_else(|| w3_game::persist::Persist { difficulty: 1, ..Default::default() });
+        let persist = load_persist(version);
         let data = GameData { dir: dir.to_path_buf(), version, chain, war3x, war3x_local, patch, misc, persist: std::rc::Rc::new(std::cell::RefCell::new(persist)), campaign_game: std::cell::Cell::new(false) };
         data.select_data_set(DataSet::Melee);
         Ok(data)

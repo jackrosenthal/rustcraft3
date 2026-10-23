@@ -246,6 +246,9 @@ pub struct Scene {
     /// A game menu slider being dragged; an options page to fill in.
     menu_drag: bool,
     options_fill: bool,
+    /// The pointer's screen position, and whether Alt is held (health bars show).
+    cursor: (f32, f32),
+    pub alt_held: bool,
     weather: crate::weather::WeatherView,
     lightning: crate::lightning::LightningView,
     /// Ambient loops of enabled weather effects the camera is inside, by weather handle.
@@ -523,7 +526,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -984,6 +987,60 @@ impl Scene {
         None
     }
 
+    /// Health bars over units (CPreselectUI's CStatBar): the unit under the pointer's,
+    /// or every visible unit's while Alt is held or the Always Show Health Bars option
+    /// is on.  A bar is UI\MiscData.txt [SelectionCircle] ScaleFactor times the unit's
+    /// scale times 0.0005 wide and 0.004 tall, on black 0.001 around it, its fill
+    /// (SimpleHpBarConsoleSmall) colored by life: green to yellow above 60%, then red
+    /// with less green (FUN_6f3daba0).  It sits on top of the unit's stand sequence's
+    /// extent (measured from the original).
+    fn health_bar_draws(&self, db: &w3_ui::FrameDb, size: (u32, u32)) -> Vec<w3_ui::Draw> {
+        let Some(g) = self.game.as_ref() else { return Vec::new() };
+        let w = &g.world;
+        if self.hud.as_ref().is_some_and(|h| h.cinematic) {
+            return Vec::new();
+        }
+        let all = self.alt_held || self.options.healthbars;
+        let hovered = if all { None } else { self.pick_unit(self.cursor.0, self.cursor.1, size) };
+        if !all && hovered.is_none() {
+            return Vec::new();
+        }
+        let width = w3_ui::UI_HEIGHT * (size.0 as f32 / size.1.max(1) as f32).max(4.0 / 3.0);
+        let factor = w.misc_f32("ScaleFactor", 72.0) * 0.0005;
+        let fill = db.decorate("SimpleHpBarConsoleSmall");
+        let mut out = Vec::new();
+        for (&h, v) in &self.units {
+            if hovered.is_some_and(|x| x != h) {
+                continue;
+            }
+            let Some(u) = w.unit(h) else { continue };
+            if !v.inst.visible || u.dead || u.hidden || w.is_locust(u) {
+                continue;
+            }
+            let Some(o) = w.objects.units.get(u.type_id) else { continue };
+            let mdx = &v.inst.model.mdx;
+            let top = w3_render::anim::sequences_named(mdx, "stand").first().and_then(|&s| mdx.sequences.get(s)).map_or(mdx.extent.max[2], |s| s.extent.max[2]);
+            let p = v.inst.transform.transform_point3(Vec3::new(0.0, 0.0, top));
+            let Some((px, py)) = self.project(p, size) else { continue };
+            let (cx, bottom) = (px / size.0 as f32 * width, (1.0 - py / size.1 as f32) * w3_ui::UI_HEIGHT);
+            let (bw, bh, border) = (factor * o.real("scale"), 0.004, 0.001);
+            let y0 = bottom + border;
+            let rect = w3_ui::Rect { x0: cx - bw / 2.0, x1: cx + bw / 2.0, y0, y1: y0 + bh };
+            let black = w3_ui::Rect { x0: rect.x0 - border, x1: rect.x1 + border, y0: rect.y0 - border, y1: rect.y1 + border };
+            out.push(w3_ui::Draw::Image { texture: String::new(), rect: black, uv: [0.0, 0.0, 1.0, 1.0], color: [0.0, 0.0, 0.0, 1.0], blend: w3_ui::Blend::Alpha, rotated: false });
+            let f = (u.life / u.max_life.max(1.0)).clamp(0.0, 1.0);
+            let color = if f > 0.6 {
+                [(255.0 - (f - 0.5) * 255.0 * 2.0).clamp(0.0, 255.0) / 255.0, 1.0, 0.0, 1.0]
+            } else {
+                let d = if f > 0.3 { 0.6 } else { 0.8 };
+                [1.0, (f / d).min(1.0), 0.0, 1.0]
+            };
+            let filled = w3_ui::Rect { x1: rect.x0 + bw * f, ..rect };
+            out.push(w3_ui::Draw::Image { texture: fill.clone(), rect: filled, uv: [0.0, 0.0, f, 1.0], color, blend: w3_ui::Blend::Alpha, rotated: false });
+        }
+        out
+    }
+
     /// Text tags (CTextTagManager, 0x6f9a1040): each at its projected world position plus
     /// velocity times age, left-aligned, with a black shadow, fading after the fade point.
     /// Their units span the 4:3 screen as 1 by 0.75, so one is 0.8 interface units
@@ -1026,7 +1083,7 @@ impl Scene {
         out
     }
 
-    fn project(&self, p: Vec3, size: (u32, u32)) -> Option<(f32, f32)> {
+    pub fn project(&self, p: Vec3, size: (u32, u32)) -> Option<(f32, f32)> {
         let aspect = size.0 as f32 / size.1 as f32;
         let c = self.camera.view_proj(aspect) * p.extend(1.0);
         if c.w <= 0.0 {
@@ -1578,6 +1635,7 @@ impl Scene {
     }
 
     pub fn hover(&mut self, sx: f32, sy: f32, size: (u32, u32)) {
+        self.cursor = (sx, sy);
         let p = self.to_ui(sx, sy, size);
         if let Some(h) = self.hud.as_mut() {
             h.pointer = p;
@@ -2372,7 +2430,8 @@ impl Scene {
         self.models.render(device, queue, &mut pass, &globals);
         self.terrain.render_water(&mut pass, self.time);
         drop(pass);
-        let tag_draws = self.text_tag_draws(&assets.frames, size);
+        let mut tag_draws = self.health_bar_draws(&assets.frames, size);
+        tag_draws.extend(self.text_tag_draws(&assets.frames, size));
         if let (Some(hud), Some(g)) = (self.hud.as_mut(), self.game.as_ref()) {
             hud.update(&assets.frames, &g.world);
             let aspect = size.0 as f32 / size.1.max(1) as f32;

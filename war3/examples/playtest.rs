@@ -358,6 +358,24 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 1;
             }
+            // proj: each unit's screen position at its origin and 50 to 300 above.
+            "proj" => {
+                scene.update(0.02);
+                if let Some(g) = &scene.game {
+                    let wo = &g.world;
+                    for &hd in &wo.unit_order {
+                        let Some(u) = wo.unit(hd) else { continue };
+                        let z = wo.ground_z(u.x, u.y) + u.fly_height;
+                        let pts: Vec<_> = [0.0, 50.0, 100.0, 150.0, 200.0, 250.0, 300.0].iter().filter_map(|dz| scene.project(glam::Vec3::new(u.x, u.y, z + dz), (w, h))).map(|(x, y)| (x.round(), y.round())).collect();
+                        eprintln!("proj {} {hd} {:?}", w3_game::objects::id_str(u.type_id), pts);
+                    }
+                }
+                i += 1;
+            }
+            "alt" => {
+                scene.alt_held = true;
+                i += 1;
+            }
             "state" => {
                 if let Some(g) = &scene.game {
                     let p = &g.world.players[g.world.local_player as usize];

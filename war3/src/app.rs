@@ -272,6 +272,7 @@ impl ApplicationHandler for App {
                 if let Some(scene) = r.scene.as_mut() {
                     // Keyboard and screen-edge scrolling (UI\MiscData.txt [CameraRates]), at
                     // the rates the options set; the options can turn edge scrolling off.
+                    scene.alt_held = r.keys.contains(&KeyCode::AltLeft) || r.keys.contains(&KeyCode::AltRight);
                     let (keys, mouse) = scene.options.scroll_factors();
                     let edges = !scene.options.mousescrolldisable;
                     let (w, h) = (r.gpu.config.width as f64, r.gpu.config.height as f64);

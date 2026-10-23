@@ -83,6 +83,8 @@ struct Voice {
     /// A fade: start, length, and the levels it runs between; a fade to zero stops the
     /// voice at its end.
     fade: Option<(std::time::Instant, f32, f32, f32)>,
+    /// The sound's channel (its SLK Channel), whose volume group scales it.
+    channel: usize,
 }
 
 impl Voice {
@@ -118,6 +120,8 @@ pub struct Audio {
     script_music_volume: f32,
     pub sound_volume: f32,
     pub music_volume: f32,
+    /// Each channel's volume group level (VolumeGroupSetVolume), music's channel 7.
+    channel_gain: [f32; 16],
     rng: u64,
     /// MIDISounds.slk: label to (MIDI file, DLS file, volume 0 to 127).
     midi_defs: HashMap<String, (String, String, f32)>,
@@ -179,6 +183,7 @@ impl Audio {
             before_thematic: None,
             stopped: None,
             script_music_volume: 1.0,
+            channel_gain: [1.0; 16],
             sound_volume: 1.0,
             music_volume: 1.0,
             rng: 0x2545_f491_4f6c_dd1d,
@@ -254,7 +259,8 @@ impl Audio {
     pub fn play_label_looping(&mut self, label: &str) -> Option<u64> {
         let def = self.def(label)?.clone();
         let file = def.files.first()?.clone();
-        self.play_file(&file, def.volume / 127.0, def.pitch, None, (def.min_distance, def.max_distance, def.cutoff), true)
+        let id = self.play_file(&file, def.volume / 127.0, def.pitch, None, (def.min_distance, def.max_distance, def.cutoff), true);
+        self.set_channel(id, def.channel)
     }
 
     /// Plays one of a label's files, looping, at `position` if the label is 3D.
@@ -265,7 +271,8 @@ impl Audio {
         }
         let file = def.files[(self.random() % def.files.len() as u64) as usize].clone();
         let pos = if def.has_flag("WANT3D") { position } else { None };
-        self.play_file(&file, def.volume / 127.0, def.pitch, pos, (def.min_distance, def.max_distance, def.cutoff), true)
+        let id = self.play_file(&file, def.volume / 127.0, def.pitch, pos, (def.min_distance, def.max_distance, def.cutoff), true);
+        self.set_channel(id, def.channel)
     }
 
     /// Plays one file of a label by index (for lines played in order).
@@ -279,7 +286,39 @@ impl Audio {
             def.pitch
         };
         let pos = if def.has_flag("WANT3D") { position } else { None };
-        self.play_file(&file, def.volume / 127.0, pitch, pos, (def.min_distance, def.max_distance, def.cutoff), def.has_flag("LOOPING"))
+        let id = self.play_file(&file, def.volume / 127.0, pitch, pos, (def.min_distance, def.max_distance, def.cutoff), def.has_flag("LOOPING"));
+        self.set_channel(id, def.channel)
+    }
+
+    /// Gives a voice its channel, at that channel's level.
+    pub fn set_channel(&mut self, id: Option<u64>, channel: i32) -> Option<u64> {
+        let id = id?;
+        let ch = channel.clamp(0, 15) as usize;
+        let level = self.channel_gain[ch];
+        let sound = self.sound_volume;
+        let gain = self.voices.iter().find(|v| v.id == id).map(|v| self.gain_at(v.position, v.distances)).unwrap_or(1.0);
+        if let Some(v) = self.voices.iter_mut().find(|v| v.id == id) {
+            v.channel = ch;
+            v.player.set_volume(v.volume * gain * v.fade_level() * sound * level);
+        }
+        Some(id)
+    }
+
+    /// Sets the channels' volume group levels (0 to 1), for what is playing too.
+    pub fn set_channel_gains(&mut self, gains: [f32; 16]) {
+        if gains == self.channel_gain {
+            return;
+        }
+        self.channel_gain = gains;
+        if let Some(m) = self.music.as_ref() {
+            m.set_volume(self.music_volume * self.script_music_volume * gains[7]);
+        }
+        for i in 0..self.voices.len() {
+            let v = &self.voices[i];
+            let g = if v.position.is_some() { self.gain_at(v.position, v.distances) } else { 1.0 };
+            let v = &self.voices[i];
+            v.player.set_volume(v.volume * g * v.fade_level() * self.sound_volume * gains[v.channel]);
+        }
     }
 
     /// Plays a MIDI file with a DLS bank, looping.
@@ -307,7 +346,7 @@ impl Audio {
         player.append(midi::Player::new(bank, song, 1.0));
         let id = self.next_id;
         self.next_id += 1;
-        self.voices.push(Voice { id, player, position: None, volume, distances: (0.0, 0.0, 0.0), fade: None });
+        self.voices.push(Voice { id, player, position: None, volume, distances: (0.0, 0.0, 0.0), fade: None, channel: 0 });
         Some(id)
     }
 
@@ -337,7 +376,7 @@ impl Audio {
         }
         let id = self.next_id;
         self.next_id += 1;
-        self.voices.push(Voice { id, player, position, volume, distances, fade: None });
+        self.voices.push(Voice { id, player, position, volume, distances, fade: None, channel: 0 });
         Some(id)
     }
 
@@ -474,7 +513,7 @@ impl Audio {
             let v = &self.voices[i];
             let g = if v.position.is_some() { self.gain_at(v.position, v.distances) } else { 1.0 };
             let v = &self.voices[i];
-            v.player.set_volume(v.volume * g * v.fade_level() * sound);
+            v.player.set_volume(v.volume * g * v.fade_level() * sound * self.channel_gain[v.channel.min(15)]);
         }
     }
 
@@ -487,7 +526,7 @@ impl Audio {
             if v.position.is_some() || v.fade.is_some() {
                 let g = self.gain_at(v.position, v.distances);
                 let v = &self.voices[i];
-                v.player.set_volume(v.volume * g * v.fade_level() * self.sound_volume);
+                v.player.set_volume(v.volume * g * v.fade_level() * self.sound_volume * self.channel_gain[v.channel.min(15)]);
             }
         }
         if self.music.as_ref().is_some_and(|m| m.empty()) && !self.playlist.is_empty() {

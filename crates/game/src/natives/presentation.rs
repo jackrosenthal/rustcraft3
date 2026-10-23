@@ -169,8 +169,27 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetSoundPlayPosition => |_, _, _| none(),
         RegisterStackedSound => |_, _, _| none(),
         UnregisterStackedSound => |_, _, _| none(),
-        VolumeGroupSetVolume => |_, _, _| none(),
-        VolumeGroupReset => |_, _, _| none(),
+        VolumeGroupSetVolume => |w, _, a| {
+            let g = a.i(0);
+            if (0..8).contains(&g) {
+                let now = w.time;
+                let level = w.volume_group(g as usize);
+                w.volume_groups[g as usize] = (level, a.r(1), now);
+            }
+            none()
+        },
+        // Each group not at full volume, or moving, goes back to it.
+        VolumeGroupReset => |w, _, _| {
+            let now = w.time;
+            for g in 0..8 {
+                let (from, to, start) = w.volume_groups[g];
+                if to != 1.0 || from != to && now - start < 1.0 {
+                    let level = w.volume_group(g);
+                    w.volume_groups[g] = (level, 1.0, now);
+                }
+            }
+            none()
+        },
         SetCameraPosition => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), 0.0); none() },
         SetCameraQuickPosition => |_, _, _| none(),
         PanCameraTo => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), 0.0); none() },

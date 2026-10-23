@@ -792,7 +792,9 @@ impl Scene {
                         _ => {
                             let def = s.label.as_deref().and_then(|l| audio.def(l)).cloned();
                             let d = def.map_or((s.min_dist, s.max_dist, s.cutoff), |d| (d.min_distance, d.max_distance, d.cutoff));
-                            audio.play_file(&s.path, s.volume.clamp(0, 127) as f32 / 127.0, s.pitch.max(0.01), pos, d, s.looping)
+                            let id = audio.play_file(&s.path, s.volume.clamp(0, 127) as f32 / 127.0, s.pitch.max(0.01), pos, d, s.looping);
+                            // Its channel (SetSoundChannel) puts it in a volume group.
+                            audio.set_channel(id, s.channel)
                         }
                     };
                     if let Some(id) = id {
@@ -947,6 +949,9 @@ impl Scene {
         }
         let (sound, music) = self.options.volumes();
         audio.set_volumes(sound, music);
+        if let Some(g) = self.game.as_ref() {
+            audio.set_channel_gains(g.world.channel_gains());
+        }
         audio.update([t.x, t.y, t.z]);
     }
 

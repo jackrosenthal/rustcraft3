@@ -135,6 +135,10 @@ pub struct World {
     /// SuspendTimeOfDay: the day's clock stands still.
     #[serde(default)]
     pub time_of_day_suspended: bool,
+    /// The volume groups (SOUND_VOLUMEGROUP_*): each ramps over a second from one level
+    /// to another, from a time (VolumeGroupSetVolume, FUN_6f35aa60).
+    #[serde(default = "full_volume")]
+    pub volume_groups: [(f32, f32, f32); 8],
     pub day_night_models: (String, String),
     pub fog_enabled: bool,
     pub fog_mask_enabled: bool,
@@ -321,6 +325,14 @@ impl TerrainHeights {
     }
 }
 
+fn full_volume() -> [(f32, f32, f32); 8] {
+    [(1.0, 1.0, 0.0); 8]
+}
+
+/// The sound channels each volume group holds (game.dll 0x6fce5560): unit movement,
+/// unit sounds, combat, spells, the interface, music, ambient sounds, and fire.
+pub const VOLUME_GROUP_CHANNELS: [u32; 8] = [0x200, 0x101e, 0x20, 0x800, 0x100, 0x80, 0x400, 0x4000];
+
 impl World {
     /// The race name used in sound labels (JobDoneSoundHuman).
     pub fn race_label(&self, player: u8) -> &'static str {
@@ -387,6 +399,7 @@ impl World {
             time_of_day: 8.0,
             time_of_day_scale: 1.0,
             time_of_day_suspended: false,
+            volume_groups: full_volume(),
             day_night_models: (String::new(), String::new()),
             fog_enabled: true,
             fog_mask_enabled: true,
@@ -489,6 +502,23 @@ impl World {
     }
 
     /// A gameplay constant from Units\\MiscData.txt or Units\\MiscGame.txt.
+    /// A volume group's level now.
+    pub fn volume_group(&self, g: usize) -> f32 {
+        let (from, to, start) = self.volume_groups[g];
+        from + (to - from) * (self.time - start).clamp(0.0, 1.0)
+    }
+
+    /// Each sound channel's level from its volume group (1 for channels in none).
+    pub fn channel_gains(&self) -> [f32; 16] {
+        let mut out = [1.0; 16];
+        for (ch, gain) in out.iter_mut().enumerate() {
+            if let Some(g) = VOLUME_GROUP_CHANNELS.iter().position(|m| m & (1 << ch) != 0) {
+                *gain = self.volume_group(g);
+            }
+        }
+        out
+    }
+
     pub fn misc_f32(&self, key: &str, default: f32) -> f32 {
         self.misc.get_str("Misc", key).and_then(|v| v.trim().parse().ok()).unwrap_or(default)
     }

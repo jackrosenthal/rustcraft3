@@ -34,8 +34,21 @@ impl MinimapArea {
     }
 }
 
+/// Hit point text color by life fraction (CPortraitButton, game.dll 0x6f3d8fd0).
+fn life_color(p: f32) -> [f32; 4] {
+    if p > 0.6 {
+        [(255.0 - (p - 0.5) * 255.0 * 2.0).clamp(0.0, 255.0) / 255.0, 1.0, 0.0, 1.0]
+    } else {
+        let scale = if p > 0.3 { 0.6 } else { 0.8 };
+        [1.0, ((p / scale) * 255.0).clamp(0.0, 255.0) / 255.0, 0.0, 1.0]
+    }
+}
+
 pub struct Hud {
     pub tree: FrameTree,
+    /// Text under the portrait: hit points (with color) and mana.
+    pub portrait_stats: Option<(String, [f32; 4], Option<String>)>,
+    info: Option<usize>,
     pub minimap_area: Option<MinimapArea>,
     pub minimap_dots: Vec<(f32, f32, [f32; 4], f32)>,
     pub camera_box: Vec<(f32, f32)>,
@@ -79,7 +92,26 @@ impl Hud {
         pin(&mut tree, bar, FramePoint::TopRight);
         pin(&mut tree, upper, FramePoint::TopLeft);
         tree.layout();
+        // The info panel's unit detail fills CInfoBar: 0.188125 x 0.114063 at (0.309375, 0).
+        let info = tree.create(db, "SimpleInfoPanelUnitDetail", 0);
+        if let Some(i) = info {
+            tree.frames[i].all_points = false;
+            tree.frames[i].width = Some(0.188125);
+            tree.frames[i].height = Some(0.114063);
+            tree.frames[i].points = vec![Point { point: FramePoint::BottomLeft, relative: None, relative_point: FramePoint::BottomLeft, x: 0.309375, y: 0.0 }];
+            tree.frames[i].visible = false;
+            // Parts shown only for heroes, timed units, and structures at work.
+            for name in ["SimpleBuildingActionLabel", "SimpleBuildTimeIndicator", "SimpleHeroLevelBar", "SimpleProgressIndicator"] {
+                if let Some(f) = tree.get(name) {
+                    tree.frames[f].visible = false;
+                }
+            }
+            tree.bind_points();
+            tree.layout();
+        }
         Hud {
+            portrait_stats: None,
+            info,
             minimap_area: None,
             minimap_dots: Vec::new(),
             camera_box: Vec::new(),
@@ -91,6 +123,27 @@ impl Hud {
             upkeep: tree.get("ResourceBarUpkeepText"),
             tree,
         }
+    }
+
+    /// Shows the selected unit's name, class, and portrait statistics.
+    pub fn show_unit(&mut self, db: &FrameDb, world: &World, unit: Option<u32>) {
+        let u = unit.and_then(|h| world.unit(h));
+        if let Some(i) = self.info {
+            self.tree.frames[i].visible = u.is_some();
+        }
+        let Some(u) = u else {
+            self.portrait_stats = None;
+            return;
+        };
+        let o = world.objects.units.get(u.type_id);
+        let name = world.localized(&o.map(|o| o.str("Name")).unwrap_or_default());
+        if let Some(f) = self.tree.get("SimpleNameValue") {
+            self.tree.frames[f].text = Some(name);
+        }
+        let hp = format!("{} / {}", u.life.ceil().max(0.0) as u32, u.max_life.ceil() as u32);
+        let mana = (u.max_mana > 0.0).then(|| format!("{} / {}", u.mana.floor().max(0.0) as u32, u.max_mana.floor() as u32));
+        self.portrait_stats = Some((hp, life_color(u.life / u.max_life.max(1.0)), mana));
+        let _ = db;
     }
 
     pub fn update(&mut self, db: &FrameDb, world: &World) {
@@ -142,6 +195,13 @@ impl Hud {
         Some((sx + (ux - r.x0) / r.w() * side, sy + (uy - r.y0) / r.h() * side))
     }
 
+    /// CPortraitButton (game.dll 0x6f3a0d40): 0.09 x 0.0856 at (0.2075, 0.030625).
+    pub fn portrait_rect(&self) -> w3_ui::Rect {
+        let root = self.tree.frames[0].rect.unwrap_or_default();
+        let (x0, y0) = (root.x0 + 0.2075, root.y0 + 0.030625);
+        w3_ui::Rect { x0, y0, x1: x0 + 0.09, y1: y0 + 0.0856 }
+    }
+
     /// Interface rectangle of a command card slot.
     pub fn slot_rect(&self, x: u32, y: u32) -> w3_ui::Rect {
         let root = self.tree.frames[0].rect.unwrap_or_default();
@@ -160,6 +220,21 @@ impl Hud {
 
     pub fn draws(&self, db: &FrameDb) -> Vec<Draw> {
         let mut out = self.tree.draw(db);
+        if let Some((hp, color, mana)) = &self.portrait_stats {
+            // Hit points and mana: 0.078125 x 0.011875 at (0.214375, 0.0283) and
+            // (0.214375, 0.01375), MasterFont at [FontHeights] PortraitStats.
+            let root = self.tree.frames[0].rect.unwrap_or_default();
+            let size = db.misc_ui.get_str("FontHeights", "PortraitStats").and_then(|v| v.trim().parse().ok()).unwrap_or(0.011);
+            let font = db.decorate("MasterFont");
+            let mut text = |t: &str, y: f32, c: [f32; 4]| {
+                let rect = w3_ui::Rect { x0: root.x0 + 0.214375, x1: root.x0 + 0.214375 + 0.078125, y1: root.y0 + y, y0: root.y0 + y - 0.011875 };
+                out.push(Draw::Text { font: font.clone(), size, rect, text: t.to_string(), color: c, justify_h: w3_ui::Justify::Middle, justify_v: w3_ui::Justify::Middle, shadow: Some(([0.0, 0.0, 0.0, 0.93], -0.001, -0.001)) });
+            };
+            text(hp, 0.0283, *color);
+            if let Some(m) = mana {
+                text(m, 0.01375, [1.0; 4]);
+            }
+        }
         if self.minimap_area.is_some() {
             let r = self.minimap_rect();
             out.push(Draw::Image { texture: "war3mapMap.blp".into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });

@@ -149,6 +149,8 @@ pub struct Scene {
     commands: crate::card::Commands,
     /// Player colors, read from the solid ReplaceableTextures\TeamColor images.
     team_rgb: [[f32; 3]; 16],
+    portrait_renderer: ModelRenderer,
+    portrait: Option<(u32, UnitView)>,
 }
 
 fn num(t: &Table, row: &str, col: &str) -> f64 {
@@ -302,8 +304,9 @@ impl Scene {
             });
         }
         let ui = w3_render::ui::UiRenderer::new(device, color_format);
+        let portrait_renderer = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain) };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, portrait: None };
         scene.apply_requests();
         Ok(scene)
     }
@@ -739,6 +742,27 @@ impl Scene {
         let w = &g.world;
         self.units.retain(|h, _| w.unit(*h).is_some());
         self.selection.retain(|h| w.unit(*h).is_some_and(|u| !u.dead));
+        // The portrait shows the first selected unit's portrait model.
+        let want = self.selection.first().copied();
+        if self.portrait.as_ref().map(|p| p.0) != want {
+            self.portrait = want.and_then(|h| {
+                let u = w.unit(h)?;
+                let o = w.objects.units.get(u.type_id)?;
+                let file = o.str("file");
+                let base = file.strip_suffix(".mdl").or_else(|| file.strip_suffix(".mdx")).unwrap_or(&file);
+                let model = assets.model(device, queue, &format!("{base}_Portrait")).or_else(|| assets.model(device, queue, &file))?;
+                let mut v = UnitView { inst: ModelInstance::new(model), serial: 0, requested: "portrait".into(), anim: String::new(), rng: h };
+                v.inst.team = u.color.clamp(0, 15) as u8;
+                v.pick("portrait");
+                Some((h, v))
+            });
+        }
+        if let Some((_, v)) = self.portrait.as_mut() {
+            if v.inst.looped || v.inst.finished {
+                v.inst.looped = false;
+                v.pick("portrait");
+            }
+        }
         let footprint = self.camera_footprint();
         let team_rgb = self.team_rgb;
         if let Some(hud) = self.hud.as_mut() {
@@ -806,6 +830,9 @@ impl Scene {
         }
         for (inst, _) in self.dests.values_mut() {
             inst.advance(dt * 1000.0);
+        }
+        if let Some((_, v)) = self.portrait.as_mut() {
+            v.inst.advance(dt * 1000.0);
         }
         self.camera.target.z = self.terrain.height_at(self.camera.target.x, self.camera.target.y);
     }
@@ -899,6 +926,7 @@ impl Scene {
         drop(pass);
         if let (Some(hud), Some(g)) = (self.hud.as_mut(), self.game.as_ref()) {
             hud.update(&assets.frames, &g.world);
+            hud.show_unit(&assets.frames, &g.world, self.selection.first().copied());
             let draws = hud.draws(&assets.frames);
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("interface"),
@@ -911,6 +939,53 @@ impl Scene {
                 ..Default::default()
             });
             self.ui.render(device, queue, &mut assets.textures, &mut pass, &draws, hud.tree.width, size);
+            drop(pass);
+            let rect = hud.portrait_rect();
+            self.render_portrait(device, queue, encoder, color, depth, size, rect);
         }
+    }
+
+    /// Draws the portrait model through its own camera in the console's portrait slot.
+    #[allow(clippy::too_many_arguments)]
+    fn render_portrait(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, encoder: &mut wgpu::CommandEncoder, color: &wgpu::TextureView, depth: &wgpu::TextureView, size: (u32, u32), rect: w3_ui::Rect) {
+        let Some((_, v)) = self.portrait.as_mut() else { return };
+        let Some(cam) = v.inst.model.mdx.cameras.first().cloned() else { return };
+        let width = self.hud.as_ref().map_or(w3_ui::UI_WIDTH, |h| h.tree.width);
+        let px = |x: f32| x / width * size.0 as f32;
+        let py = |y: f32| (1.0 - y / w3_ui::UI_HEIGHT) * size.1 as f32;
+        let (x0, x1, y0, y1) = (px(rect.x0), px(rect.x1), py(rect.y1), py(rect.y0));
+        if x1 <= x0 || y1 <= y0 {
+            return;
+        }
+        let eye = Vec3::from_array(cam.position);
+        let target = Vec3::from_array(cam.target);
+        let view = Mat4::look_at_rh(eye, target, Vec3::Z);
+        let aspect = (x1 - x0) / (y1 - y0);
+        // MDX camera field of view is the vertical angle in radians.
+        let proj = Mat4::perspective_rh(cam.fov, aspect, cam.near_clip.max(1.0), cam.far_clip.max(100.0));
+        let mut globals = default_globals(proj * view, eye);
+        globals.light_dir = [0.3, 0.3, -1.0, 0.0];
+        globals.ambient = [0.4, 0.4, 0.4, 1.0];
+        let rot = Quat::IDENTITY;
+        v.inst.transform = Mat4::IDENTITY;
+        self.portrait_renderer.submit(&mut v.inst, eye, rot);
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("portrait"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: color,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: depth,
+                depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        });
+        pass.set_viewport(x0, y0, x1 - x0, y1 - y0, 0.0, 1.0);
+        pass.set_scissor_rect(x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32);
+        self.portrait_renderer.render(device, queue, &mut pass, &globals);
     }
 }

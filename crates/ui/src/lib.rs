@@ -22,6 +22,8 @@ pub struct FrameDb {
     pub templates: HashMap<String, Rc<Def>>,
     pub strings: HashMap<String, String>,
     pub skins: Profile,
+    /// UI\MiscUI.txt: font heights and other interface constants.
+    pub misc_ui: Profile,
     /// war3skins.txt section consulted first when decorating file names.
     pub skin: String,
 }
@@ -31,6 +33,7 @@ impl FrameDb {
     pub fn load(chain: &Chain) -> FrameDb {
         let mut db = FrameDb { skin: "Default".into(), ..Default::default() };
         db.skins = Profile::parse(&chain.read_string("UI\\war3skins.txt").unwrap_or_default());
+        db.misc_ui = Profile::parse(&chain.read_string("UI\\MiscUI.txt").unwrap_or_default());
         let toc = chain.read_string("UI\\FrameDef\\FrameDef.toc").unwrap_or_default();
         let mut queue: Vec<String> = toc.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
         let mut seen = std::collections::HashSet::new();

@@ -13,3 +13,4 @@ pub mod scene;
 pub mod weather;
 pub mod lightning;
 pub mod saveload;
+pub mod options;

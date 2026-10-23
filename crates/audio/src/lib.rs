@@ -409,6 +409,24 @@ impl Audio {
         self.playlist.clear();
     }
 
+    /// Sets the sound effect and music volumes (0 to 1), for what is playing too.
+    pub fn set_volumes(&mut self, sound: f32, music: f32) {
+        if (sound, music) == (self.sound_volume, self.music_volume) {
+            return;
+        }
+        self.sound_volume = sound;
+        self.music_volume = music;
+        if let Some(m) = self.music.as_ref() {
+            m.set_volume(music);
+        }
+        for i in 0..self.voices.len() {
+            let v = &self.voices[i];
+            let g = if v.position.is_some() { self.gain_at(v.position, v.distances) } else { 1.0 };
+            let v = &self.voices[i];
+            v.player.set_volume(v.volume * g * v.fade_level() * sound);
+        }
+    }
+
     /// Moves the listener, updates 3D volumes, and advances the playlist.
     pub fn update(&mut self, listener: [f32; 3]) {
         self.listener = listener;

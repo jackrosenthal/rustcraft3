@@ -368,6 +368,7 @@ fn main() -> anyhow::Result<()> {
             other => panic!("unknown command {other}"),
         }
     }
+    scene.update_menu(&assets.frames, w as f32 / h as f32);
     scene.update(0.02);
     scene.sync_units(&device, &queue, &mut assets);
     scene.sync_destructables(&device, &queue, &mut assets);

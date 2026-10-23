@@ -1005,6 +1005,7 @@ impl Hud {
         use w3_ui::FramePoint as P;
         if let Some(b) = tree.get("EscMenuBackdrop") {
             tree.create(db, "EscMenuMainPanel", b);
+            tree.create(db, "EscMenuOptionsPanel", b);
             // The save and load panel, its file list's border (an edit box's), and the
             // name typed inside the edit box's border.
             if let Some(s) = tree.create(db, "EscMenuSaveGamePanel", b) {
@@ -1024,6 +1025,7 @@ impl Hud {
         Self::menu_panel(&mut tree, "MainPanel");
         self.save_panel = None;
         tree.bind_points();
+        tree.fit_text_widths();
         tree.layout();
         self.menu = Some(tree);
     }

@@ -246,6 +246,7 @@ impl ApplicationHandler for App {
                             }
                         }
                         (MouseButton::Left, ElementState::Released) => {
+                            scene.left_release(p.0, p.1, size);
                             if let Some((a, b)) = scene.drag.take() {
                                 scene.select(a, b, size, shift);
                             }
@@ -269,25 +270,23 @@ impl ApplicationHandler for App {
                 let dt = (now - r.last).as_secs_f32().min(0.25);
                 r.last = now;
                 if let Some(scene) = r.scene.as_mut() {
-                    // Keyboard and screen-edge scrolling (UI\MiscData.txt [CameraRates]).
-                    let speed = 3000.0 * dt;
+                    // Keyboard and screen-edge scrolling (UI\MiscData.txt [CameraRates]), at
+                    // the rates the options set; the options can turn edge scrolling off.
+                    let (keys, mouse) = scene.options.scroll_factors();
+                    let edges = !scene.options.mousescrolldisable;
                     let (w, h) = (r.gpu.config.width as f64, r.gpu.config.height as f64);
                     let edge = 2.0;
-                    let mut d = glam::Vec2::ZERO;
-                    if r.keys.contains(&KeyCode::ArrowLeft) || r.cursor.x <= edge {
-                        d.x -= 1.0;
+                    let (mut k, mut m) = (glam::Vec2::ZERO, glam::Vec2::ZERO);
+                    let key = |c: KeyCode| r.keys.contains(&c);
+                    k.x += key(KeyCode::ArrowRight) as i32 as f32 - key(KeyCode::ArrowLeft) as i32 as f32;
+                    k.y += key(KeyCode::ArrowUp) as i32 as f32 - key(KeyCode::ArrowDown) as i32 as f32;
+                    if edges {
+                        m.x += (r.cursor.x >= w - 1.0 - edge) as i32 as f32 - (r.cursor.x <= edge) as i32 as f32;
+                        m.y += (r.cursor.y <= edge) as i32 as f32 - (r.cursor.y >= h - 1.0 - edge) as i32 as f32;
                     }
-                    if r.keys.contains(&KeyCode::ArrowRight) || r.cursor.x >= w - 1.0 - edge {
-                        d.x += 1.0;
-                    }
-                    if r.keys.contains(&KeyCode::ArrowUp) || r.cursor.y <= edge {
-                        d.y += 1.0;
-                    }
-                    if r.keys.contains(&KeyCode::ArrowDown) || r.cursor.y >= h - 1.0 - edge {
-                        d.y -= 1.0;
-                    }
+                    let d = (k * keys + m * mouse) * 3000.0 * dt;
                     if d != glam::Vec2::ZERO {
-                        scene.scroll(d.x * speed, d.y * speed);
+                        scene.scroll(d.x, d.y);
                     }
                     scene.update(dt);
                     scene.update_audio(&r.assets);

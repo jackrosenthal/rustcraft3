@@ -244,6 +244,8 @@ pub struct Frame {
     pub model: Option<String>,
     /// Checkbox state.
     pub checked: bool,
+    /// A slider's value, between its SliderMinValue and SliderMaxValue.
+    pub value: f32,
     /// Appended to the names of frames made by one scoped instantiation, so a template
     /// can be created several times (player slots); names inside resolve within it.
     pub scope: String,
@@ -309,6 +311,7 @@ impl FrameTree {
             enabled: true,
             model: None,
             checked: false,
+            value: 0.0,
             scope: String::new(),
             items: Vec::new(),
             selected: 0,
@@ -333,11 +336,12 @@ impl FrameTree {
         let d = db.templates.get(template)?.clone();
         if self.fonts.is_empty() {
             self.fonts = db.fonts.clone();
+            // The skins profile keeps its section and key names in lowercase.
             for sec in [db.skin.as_str(), "Default"] {
-                if let Some(entries) = db.skins.sections.get(sec) {
+                if let Some(entries) = db.skins.sections.get(&sec.to_ascii_lowercase()) {
                     for (k, v) in entries {
                         if v.to_ascii_lowercase().ends_with(".ttf") {
-                            self.font_keys.entry(k.clone()).or_insert_with(|| v.clone());
+                            self.font_keys.entry(k.to_ascii_lowercase()).or_insert_with(|| v.clone());
                         }
                     }
                 }
@@ -367,6 +371,7 @@ impl FrameTree {
             enabled: true,
             model: d.str("BackgroundArt").map(|s| if d.has("DecorateFileNames") { db.decorate(s) } else { s.to_string() }),
             checked: false,
+            value: d.num("SliderInitialValue").unwrap_or(0.0),
             scope: scope.to_string(),
             items: Vec::new(),
             selected: 0,
@@ -394,7 +399,7 @@ impl FrameTree {
 
     /// The file a font skin key names.
     fn skin_font(&self, name: &str) -> String {
-        self.font_keys.get(name).cloned().unwrap_or_else(|| name.to_string())
+        self.font_keys.get(&name.to_ascii_lowercase()).cloned().unwrap_or_else(|| name.to_string())
     }
 
     /// Looks up a name as written inside frame `i`'s definition: within its scope first.
@@ -476,6 +481,29 @@ impl FrameTree {
             }
             if !progress {
                 break;
+            }
+        }
+    }
+
+    /// Gives text frames without a width, which other frames are placed against, the
+    /// width of their text (a text frame sizes itself to its text).
+    pub fn fit_text_widths(&mut self) {
+        let targets: std::collections::HashSet<usize> = self.frames.iter().flat_map(|f| f.points.iter().filter_map(|p| p.relative)).collect();
+        for i in targets {
+            let f = &self.frames[i];
+            if f.def.kind != "TEXT" || f.width.is_some() {
+                continue;
+            }
+            let Some(text) = f.text.as_ref() else { continue };
+            let Some(p) = f.def.prop("FrameFont").or_else(|| f.def.prop("Font")) else { continue };
+            let size = p.args.get(1).map_or(0.012, Arg::num);
+            let path = self.skin_font(p.args.first().map(Arg::as_str).unwrap_or("MasterFont"));
+            let Some(font) = self.fonts.get(&path.to_ascii_lowercase()) else { continue };
+            let w = strip_color_codes(text).chars().map(|c| font.metrics(c, 64.0).advance_width).sum::<f32>() * size / 64.0;
+            // As wide as the text, and a line tall.
+            self.frames[i].width = Some(w + 1e-4);
+            if self.frames[i].height.is_none() {
+                self.frames[i].height = Some(size);
             }
         }
     }
@@ -627,6 +655,10 @@ impl FrameTree {
     /// Moves the pointer: updates which control is under it.
     pub fn pointer_move(&mut self, x: f32, y: f32) {
         self.pointer = (x, y);
+        // A pressed slider follows the pointer.
+        if let Some(i) = self.frames.iter().position(|f| f.pushed && f.def.kind == "SLIDER") {
+            self.slide_to(i, x);
+        }
         let hit = self.control_at(x, y);
         for (i, f) in self.frames.iter_mut().enumerate() {
             f.hovered = Some(i) == hit;
@@ -651,7 +683,67 @@ impl FrameTree {
         }
         let hit = self.control_at(x, y)?;
         self.frames[hit].pushed = true;
+        if self.frames[hit].def.kind == "SLIDER" {
+            self.slide_to(hit, x);
+        }
         Some(hit)
+    }
+
+    /// A slider's SliderMinValue, SliderMaxValue, and SliderStepSize.
+    pub fn slider_range(&self, i: usize) -> (f32, f32, f32) {
+        let d = &self.frames[i].def;
+        (d.num("SliderMinValue").unwrap_or(0.0), d.num("SliderMaxValue").unwrap_or(1.0), d.num("SliderStepSize").unwrap_or(0.0))
+    }
+
+    /// A slider's thumb (its SliderThumbButtonFrame child).
+    fn slider_thumb(&self, i: usize) -> Option<usize> {
+        let name = self.frames[i].def.str("SliderThumbButtonFrame")?;
+        self.frames[i].children.iter().copied().find(|&c| self.frames[c].def.name == name)
+    }
+
+    /// Where a slider's thumb sits: its center travels the slider's width less its own.
+    fn thumb_rect(&self, i: usize) -> Option<Rect> {
+        let r = self.frames[i].rect?;
+        let t = self.slider_thumb(i)?;
+        let (tw, th) = (self.frames[t].def.num("Width").unwrap_or(0.016), self.frames[t].def.num("Height").unwrap_or(0.016));
+        let (min, max, _) = self.slider_range(i);
+        let k = if max > min { ((self.frames[i].value - min) / (max - min)).clamp(0.0, 1.0) } else { 0.0 };
+        let cx = r.x0 + tw / 2.0 + k * (r.w() - tw);
+        let cy = (r.y0 + r.y1) / 2.0;
+        Some(Rect { x0: cx - tw / 2.0, x1: cx + tw / 2.0, y0: cy - th / 2.0, y1: cy + th / 2.0 })
+    }
+
+    /// Moves a slider's thumb under `x`, in its steps.
+    fn slide_to(&mut self, i: usize, x: f32) {
+        let Some(r) = self.frames[i].rect else { return };
+        let tw = self.slider_thumb(i).and_then(|t| self.frames[t].def.num("Width")).unwrap_or(0.016);
+        let (min, max, step) = self.slider_range(i);
+        let k = ((x - r.x0 - tw / 2.0) / (r.w() - tw).max(1e-4)).clamp(0.0, 1.0);
+        let mut v = min + k * (max - min);
+        if step > 0.0 {
+            v = min + ((v - min) / step).round() * step;
+        }
+        self.frames[i].value = v.clamp(min.min(max), max.max(min));
+    }
+
+    pub fn set_value(&mut self, name: &str, v: f32) {
+        if let Some(i) = self.get(name) {
+            self.frames[i].value = v;
+        }
+    }
+
+    pub fn value(&self, name: &str) -> f32 {
+        self.get(name).map_or(0.0, |i| self.frames[i].value)
+    }
+
+    pub fn set_checked(&mut self, name: &str, v: bool) {
+        if let Some(i) = self.get(name) {
+            self.frames[i].checked = v;
+        }
+    }
+
+    pub fn checked(&self, name: &str) -> bool {
+        self.get(name).is_some_and(|i| self.frames[i].checked)
     }
 
     /// Releases the pointer; returns the control clicked (pressed and released over it).
@@ -662,6 +754,10 @@ impl FrameTree {
             f.pushed = false;
         }
         if let Some(p) = self.popup_changed.take() {
+            return Some(p);
+        }
+        // A slider reports its change wherever the pointer is let go.
+        if let Some(p) = pressed.filter(|&p| self.frames[p].def.kind == "SLIDER") {
             return Some(p);
         }
         let i = pressed.filter(|p| Some(*p) == hit)?;
@@ -928,7 +1024,7 @@ impl FrameTree {
             return;
         }
         if let Some(r) = f.rect {
-            self.draw_self(db, f, r, out);
+            self.draw_self(db, i, r, out);
         }
         if self.is_popup(i) {
             self.draw_popup(db, i, out);
@@ -946,12 +1042,23 @@ impl FrameTree {
     fn is_state_backdrop(&self, owner: usize, child: usize) -> bool {
         let name = &self.frames[child].def.name;
         let d = &self.frames[owner].def;
-        ["ControlBackdrop", "ControlPushedBackdrop", "ControlDisabledBackdrop", "ControlDisabledPushedBackdrop", "ControlMouseOverHighlight", "ControlFocusHighlight"]
-            .iter()
+        [
+            "ControlBackdrop",
+            "ControlPushedBackdrop",
+            "ControlDisabledBackdrop",
+            "ControlDisabledPushedBackdrop",
+            "ControlMouseOverHighlight",
+            "ControlFocusHighlight",
+            "SliderThumbButtonFrame",
+            "CheckBoxCheckHighlight",
+            "CheckBoxDisabledCheckHighlight",
+        ]
+        .iter()
             .any(|k| d.str(k).is_some_and(|n| n == name))
     }
 
-    fn draw_self(&self, db: &FrameDb, f: &Frame, r: Rect, out: &mut Vec<Draw>) {
+    fn draw_self(&self, db: &FrameDb, i: usize, r: Rect, out: &mut Vec<Draw>) {
+        let f = &self.frames[i];
         let d = &f.def;
         let decorate = d.has("DecorateFileNames");
         let file = |name: &str| if decorate { db.decorate(name) } else { name.to_string() };
@@ -1081,7 +1188,21 @@ impl FrameTree {
                     shadow,
                 });
             }
-            (_, "GLUETEXTBUTTON") | (_, "GLUEBUTTON") | (_, "TEXTBUTTON") | (_, "BUTTON") | (_, "GLUECHECKBOX") | (_, "CONTROL") | (_, "EDITBOX") | (_, "SCROLLBAR") => {
+            // A slider: its backdrop, then its thumb at its value.
+            (_, "SLIDER") => {
+                let key = if f.enabled { "ControlBackdrop" } else { "ControlDisabledBackdrop" };
+                if let Some(bd) = d.str(key).or_else(|| d.str("ControlBackdrop")).and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
+                    self.draw_backdrop(db, &bd.def, r, &file, out);
+                }
+                if let (Some(t), Some(tr)) = (self.slider_thumb(i), self.thumb_rect(i)) {
+                    let th = &self.frames[t];
+                    let key = if f.enabled { "ControlBackdrop" } else { "ControlDisabledBackdrop" };
+                    if let Some(bd) = th.def.str(key).or_else(|| th.def.str("ControlBackdrop")).and_then(|n| th.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
+                        self.draw_backdrop(db, &bd.def, tr, &file, out);
+                    }
+                }
+            }
+            (_, "GLUETEXTBUTTON") | (_, "GLUEBUTTON") | (_, "TEXTBUTTON") | (_, "BUTTON") | (_, "GLUECHECKBOX") | (_, "CHECKBOX") | (_, "CONTROL") | (_, "EDITBOX") | (_, "SCROLLBAR") => {
                 let key = if !f.enabled {
                     "ControlDisabledBackdrop"
                 } else if f.pushed {
@@ -1092,6 +1213,18 @@ impl FrameTree {
                 let name = d.str(key).or_else(|| d.str("ControlBackdrop"));
                 if let Some(bd) = name.and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
                     self.draw_backdrop(db, &bd.def, r, &file, out);
+                }
+                // A checked box shows its CheckBoxCheckHighlight (its disabled one when
+                // disabled).
+                if f.checked {
+                    let key = if f.enabled { "CheckBoxCheckHighlight" } else { "CheckBoxDisabledCheckHighlight" };
+                    if let Some(h) = d.str(key).and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
+                        if let Some(tex) = h.def.str("HighlightAlphaFile") {
+                            let texture = if h.def.has("DecorateFileNames") { db.decorate(tex) } else { file(tex) };
+                            let blend = if h.def.str("HighlightAlphaMode") == Some("ADD") { Blend::Add } else { Blend::Alpha };
+                            out.push(Draw::Image { texture, rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend, rotated: false });
+                        }
+                    }
                 }
                 if f.hovered && f.enabled {
                     if let Some(h) = d.str("ControlMouseOverHighlight").and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {

@@ -237,6 +237,15 @@ pub struct Scene {
     help_text: String,
     tips: Vec<String>,
     tip: usize,
+    /// The player's options, the options page open in the game menu, whether this is a
+    /// campaign mission (the options show its difficulty), and the window's size.
+    pub options: crate::options::Options,
+    options_page: &'static str,
+    campaign: bool,
+    screen: (u32, u32),
+    /// A game menu slider being dragged; an options page to fill in.
+    menu_drag: bool,
+    options_fill: bool,
     weather: crate::weather::WeatherView,
     lightning: crate::lightning::LightningView,
     /// Ambient loops of enabled weather effects the camera is inside, by weather handle.
@@ -514,7 +523,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -570,6 +579,10 @@ impl Scene {
     /// Plays a unit's acknowledgment line (UnitAckSounds `<unitSound><kind>`), replacing
     /// the one playing.  Returns whether a line started.
     fn ack(&mut self, h: u32, kind: &str, variant: Option<usize>) -> bool {
+        // The Unit Responses option.
+        if !self.options.unit {
+            return false;
+        }
         let Some(g) = &self.game else { return false };
         let Some(u) = g.world.unit(h) else { return false };
         let Some(sound) = g.world.objects.units.get(u.type_id).map(|o| o.str("unitSound")).filter(|s| !s.is_empty()) else { return false };
@@ -764,7 +777,7 @@ impl Scene {
             let fades = (o.real("LoopingSoundFadeIn"), o.real("LoopingSoundFadeOut"));
             let (key, label) = if u.constructing.is_some() {
                 (LoopKey::Building(h), o.str("BuildingSoundLabel"))
-            } else if u.anim.starts_with("walk") {
+            } else if u.anim.starts_with("walk") && self.options.movement {
                 (LoopKey::Moving(h), o.str("MovementSoundLabel"))
             } else {
                 continue;
@@ -773,8 +786,10 @@ impl Scene {
                 want.push((key, label, p, fades.0, fades.1));
             }
         }
+        // Doodads' and weather's ambient sounds go with the Ambient Sounds option.
+        let ambient = self.options.ambient;
         for (i, (label, p)) in self.doodad_loops.iter().enumerate() {
-            if in_range(audio, label, *p) {
+            if ambient && in_range(audio, label, *p) {
                 want.push((LoopKey::Doodad(i), label.clone(), *p, 0.0, 0.0));
             }
         }
@@ -803,7 +818,7 @@ impl Scene {
         for (&h, o) in g.world.handles.iter() {
             if let w3_game::types::Obj::Weather(w) = o {
                 let r = w.rect;
-                if w.enabled && (r.min_x..=r.max_x).contains(&t.x) && (r.min_y..=r.max_y).contains(&t.y) {
+                if ambient && w.enabled && (r.min_x..=r.max_x).contains(&t.x) && (r.min_y..=r.max_y).contains(&t.y) {
                     if let Some(label) = self.weather.ambient(w.id) {
                         want.push((h, label));
                     }
@@ -824,6 +839,8 @@ impl Scene {
                 }
             }
         }
+        let (sound, music) = self.options.volumes();
+        audio.set_volumes(sound, music);
         audio.update([t.x, t.y, t.z]);
     }
 
@@ -1271,8 +1288,13 @@ impl Scene {
                 return true;
             }
         }
+        self.screen = size;
         if let Some(m) = self.hud.as_mut().and_then(|h| h.menu.as_mut()) {
-            m.pointer_down(ux, uy);
+            // A slider follows the pointer until it is let go.
+            if m.pointer_down(ux, uy).is_some_and(|i| m.frames[i].def.kind == "SLIDER") {
+                self.menu_drag = true;
+                return true;
+            }
             if let Some(i) = m.pointer_up(ux, uy) {
                 let name = m.frames[i].name.clone();
                 self.menu_button(&name);
@@ -1425,6 +1447,35 @@ impl Scene {
                 m.set_selected("HelpTextArea", 0);
             }
             "HelpOKButton" | "TipsOKButton" => crate::hud::Hud::menu_panel(m, "MainPanel"),
+            "OptionsButton" => {
+                crate::hud::Hud::menu_panel(m, "EscMenuOptionsPanel");
+                self.options_page = "OptionsPanel";
+                crate::options::panel::show(m, "OptionsPanel");
+            }
+            "OptionsPreviousButton" => crate::hud::Hud::menu_panel(m, "MainPanel"),
+            "GameplayButton" | "VideoButton" | "SoundButton" => {
+                self.options_page = match name {
+                    "GameplayButton" => "GameplayPanel",
+                    "VideoButton" => "VideoPanel",
+                    _ => "SoundPanel",
+                };
+                self.options_fill = true;
+                crate::options::panel::show(m, self.options_page);
+            }
+            "OptionsOKButton" => {
+                let speed = crate::options::panel::read(m, self.options_page, &mut self.options);
+                if let (Some(s), Some(g)) = (speed, self.game.as_mut()) {
+                    g.world.game_speed = s.min(2) as i32;
+                }
+                self.options.store();
+                self.options_page = "OptionsPanel";
+                crate::options::panel::show(m, "OptionsPanel");
+            }
+            "OptionsCancelButton" => {
+                self.options_page = "OptionsPanel";
+                crate::options::panel::show(m, "OptionsPanel");
+            }
+            "SoundCheckBox" | "MusicCheckBox" | "MouseScrollDisable" => crate::options::panel::sync(m),
             "TipsButton" | "TipsBackButton" | "TipsNextButton" => {
                 let n = self.tips.len().max(1);
                 self.tip = match name {
@@ -1512,10 +1563,27 @@ impl Scene {
     }
 
     /// Pointer movement, for tooltips.
+    /// Lets go of the left button: ends dragging a game menu slider.
+    pub fn left_release(&mut self, sx: f32, sy: f32, size: (u32, u32)) {
+        if !std::mem::take(&mut self.menu_drag) {
+            return;
+        }
+        let (ux, uy) = self.to_ui(sx, sy, size);
+        if let Some(m) = self.hud.as_mut().and_then(|h| h.menu.as_mut()) {
+            if let Some(i) = m.pointer_up(ux, uy) {
+                let name = m.frames[i].name.clone();
+                self.menu_button(&name);
+            }
+        }
+    }
+
     pub fn hover(&mut self, sx: f32, sy: f32, size: (u32, u32)) {
         let p = self.to_ui(sx, sy, size);
         if let Some(h) = self.hud.as_mut() {
             h.pointer = p;
+            if let Some(m) = h.menu.as_mut().filter(|_| self.menu_drag) {
+                m.pointer_move(p.0, p.1);
+            }
             if let Some(s) = h.save_panel.as_mut() {
                 s.pointer_move(p.0, p.1);
             }
@@ -2089,6 +2157,21 @@ impl Scene {
             hud.open_menu(db, aspect);
         }
         hud.sync_save_panel(db);
+        let Some(m) = hud.menu.as_mut() else { return };
+        if std::mem::take(&mut self.options_fill) {
+            let g = self.game.as_ref();
+            let c = crate::options::panel::Context {
+                speed: g.map_or(2, |g| g.world.game_speed.clamp(0, 2) as usize),
+                difficulty: g.filter(|_| self.campaign).map(|g| g.world.difficulty),
+                resolution: self.screen,
+            };
+            crate::options::panel::fill(m, db, &self.options, &c);
+        }
+        // The game speed's name follows its slider.
+        if self.options_page == "GameplayPanel" {
+            let speed = m.value("GameSpeedSlider").round() as usize;
+            m.set_text("GameSpeedValue", &crate::options::panel::speed_name(db, speed));
+        }
     }
 
     /// The selected unit's command card, as the interface would show it.

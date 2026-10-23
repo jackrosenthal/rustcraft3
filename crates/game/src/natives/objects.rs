@@ -199,7 +199,7 @@ fn enum_items(w: &mut World, vm: &mut Vm, rect: u32, filter: u32, func: Option<w
 
 fn add_effect(w: &mut World, model: String, x: f32, y: f32, target: Option<(u32, String)>) -> NativeResult {
     let z = w.ground_z(x, y);
-    handle(w.handles.insert(Obj::Effect(Effect { model, x, y, z, target, destroyed: false })))
+    handle(w.handles.insert(Obj::Effect(Effect { model, x, y, z, target, destroyed: false, facing: 0.0 })))
 }
 
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {

@@ -104,6 +104,14 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 1;
             }
+            "res" => {
+                if let Some(g) = &scene.game {
+                    let p = &g.world.players[g.world.local_player as usize];
+                    let st = |k: i32| p.state.get(&k).copied().unwrap_or(0);
+                    eprintln!("t {:.1} gold {} lumber {}", g.world.time, st(w3_game::types::player_state::RESOURCE_GOLD), st(w3_game::types::player_state::RESOURCE_LUMBER));
+                }
+                i += 1;
+            }
             "dump" => {
                 if let Some(g) = &scene.game {
                     for &h in &scene.selection {

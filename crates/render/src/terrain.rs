@@ -40,6 +40,10 @@ pub struct TerrainRenderer {
     extent_buf: wgpu::Buffer,
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
+    /// The ground tiles, in their own buffers so blight can change them.
+    ground_vertices: wgpu::Buffer,
+    ground_indices: wgpu::Buffer,
+    ground: GroundSource,
     batches: Vec<Batch>,
     texture_bgs: Vec<wgpu::BindGroup>,
     cliff_batches: Vec<Batch>,
@@ -52,6 +56,104 @@ pub struct TerrainRenderer {
     pub height: u32,
     pub offset: [f32; 2],
     heights: Vec<f32>,
+}
+
+/// What the ground mesh is built from: each corner's ground texture and variation,
+/// which tiles are cliffs, and which textures are extended (32 cells).
+struct GroundSource {
+    width: u32,
+    height: u32,
+    offset: [f32; 2],
+    textures: Vec<u8>,
+    variations: Vec<u8>,
+    cliff_tiles: Vec<bool>,
+    extended: Vec<bool>,
+    blight_index: usize,
+}
+
+/// The ground tiles: per tile, the lowest texture index in full and every other texture
+/// over it by which corners have it (blighted corners take the blight texture).
+fn build_ground(src: &GroundSource, heights: &[f32], blight: &[bool]) -> (Vec<Vertex>, Vec<u32>, Vec<Batch>) {
+    let (w, h) = (src.width, src.height);
+    let idx = |x: u32, y: u32| (y.min(h - 1) * w + x.min(w - 1)) as usize;
+    let hat = |x: u32, y: u32| heights[idx(x, y)];
+    let corner_tex = |x: u32, y: u32| -> usize {
+        let i = idx(x, y);
+        if blight.get(i).copied().unwrap_or(false) { src.blight_index } else { src.textures[i] as usize }
+    };
+    let normal_at = |x: u32, y: u32| -> [f32; 3] {
+        let l = hat(x.saturating_sub(1), y);
+        let r = hat(x + 1, y);
+        let d = hat(x, y.saturating_sub(1));
+        let u = hat(x, y + 1);
+        Vec3::new(l - r, d - u, 2.0 * TILE).normalize().to_array()
+    };
+    let n = src.extended.len();
+    let mut verts: Vec<Vertex> = Vec::new();
+    let mut per_tex_base: Vec<Vec<u32>> = vec![Vec::new(); n];
+    let mut per_tex_overlay: Vec<Vec<u32>> = vec![Vec::new(); n];
+    for y in 0..h - 1 {
+        for x in 0..w - 1 {
+            if src.cliff_tiles[(y * (w - 1) + x) as usize] {
+                continue;
+            }
+            let bl = corner_tex(x, y);
+            let br = corner_tex(x + 1, y);
+            let tl = corner_tex(x, y + 1);
+            let tr = corner_tex(x + 1, y + 1);
+            let mut texs = vec![bl, br, tl, tr];
+            texs.sort_unstable();
+            texs.dedup();
+            let corners = [(x, y + 1), (x + 1, y + 1), (x, y), (x + 1, y)];
+            for (k, &t) in texs.iter().enumerate() {
+                let ext = src.extended.get(t).copied().unwrap_or(false);
+                let cell = if k == 0 {
+                    full_variation(ext, src.variations[idx(x, y)])
+                } else {
+                    (br == t) as u32 | ((bl == t) as u32) << 1 | ((tr == t) as u32) << 2 | ((tl == t) as u32) << 3
+                };
+                let cols = if ext { 8.0 } else { 4.0 };
+                let cx = (cell % 4 + (cell / 16) * 4) as f32;
+                let cy = ((cell % 16) / 4) as f32;
+                let (u0, v0) = (cx / cols, cy / 4.0);
+                let (du, dv) = (1.0 / cols, 0.25);
+                let base = verts.len() as u32;
+                // top-left, top-right, bottom-left, bottom-right
+                let uvs = [[u0, v0], [u0 + du, v0], [u0, v0 + dv], [u0 + du, v0 + dv]];
+                for (c, &(cx, cy)) in corners.iter().enumerate() {
+                    verts.push(Vertex {
+                        pos: [src.offset[0] + cx as f32 * TILE, src.offset[1] + cy as f32 * TILE, hat(cx, cy)],
+                        normal: normal_at(cx, cy),
+                        uv: uvs[c],
+                        color: [1.0; 4],
+                    });
+                }
+                let quad = [base + 2, base + 3, base + 1, base + 2, base + 1, base];
+                if k == 0 {
+                    per_tex_base[t].extend(quad);
+                } else {
+                    per_tex_overlay[t].extend(quad);
+                }
+            }
+        }
+    }
+    let mut indices: Vec<u32> = Vec::new();
+    let mut batches = Vec::new();
+    for (blended, lists) in [(false, &per_tex_base), (true, &per_tex_overlay)] {
+        for (t, list) in lists.iter().enumerate() {
+            if !list.is_empty() {
+                batches.push(Batch { texture: t, first: indices.len() as u32, count: list.len() as u32, blended });
+                indices.extend(list);
+            }
+        }
+    }
+    if verts.is_empty() {
+        verts.push(Vertex::zeroed());
+    }
+    if indices.is_empty() {
+        indices.push(0);
+    }
+    (verts, indices, batches)
 }
 
 /// Index of the tile cell in a ground texture for a full tile of the given variation.
@@ -119,21 +221,7 @@ impl TerrainRenderer {
         let blight_ext = blight.width > blight.height;
         ground.push((blight, blight_ext));
 
-        let corner_tex = |x: u32, y: u32| -> usize {
-            let c = terrain.corner(x, y);
-            if c.blight { blight_index } else { c.ground_texture as usize }
-        };
-
         let mut verts: Vec<Vertex> = Vec::new();
-        let mut per_tex_base: Vec<Vec<u32>> = vec![Vec::new(); ground.len()];
-        let mut per_tex_overlay: Vec<Vec<u32>> = vec![Vec::new(); ground.len()];
-        let normal_at = |x: u32, y: u32| -> [f32; 3] {
-            let l = hat(x.saturating_sub(1), y);
-            let r = hat(x + 1, y);
-            let d = hat(x, y.saturating_sub(1));
-            let u = hat(x, y + 1);
-            Vec3::new(l - r, d - u, 2.0 * TILE).normalize().to_array()
-        };
         // A tile on a ramp (any corner H, L, R, or S) is ground, not cliff.
         let on_ramp = |x: u32, y: u32| [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)].iter().any(|&(cx, cy)| matches!(letter(cx, cy), b'H' | b'L' | b'R' | b'S'));
         let is_cliff = |x: u32, y: u32| {
@@ -156,70 +244,29 @@ impl TerrainRenderer {
             let b = at(ix, iy + 1) * (1.0 - tx) + at(ix + 1, iy + 1) * tx;
             a * (1.0 - ty) + b * ty
         };
-        for y in 0..h - 1 {
-            for x in 0..w - 1 {
-                if is_cliff(x, y) {
-                    continue;
-                }
-                let bl = corner_tex(x, y);
-                let br = corner_tex(x + 1, y);
-                let tl = corner_tex(x, y + 1);
-                let tr = corner_tex(x + 1, y + 1);
-                let mut texs = vec![bl, br, tl, tr];
-                texs.sort_unstable();
-                texs.dedup();
-                let corners = [(x, y + 1), (x + 1, y + 1), (x, y), (x + 1, y)];
-                for (n, &t) in texs.iter().enumerate() {
-                    let ext = ground.get(t).map_or(false, |g| g.1);
-                    let cell = if n == 0 {
-                        full_variation(ext, terrain.corner(x, y).ground_variation)
-                    } else {
-                        (br == t) as u32 | ((bl == t) as u32) << 1 | ((tr == t) as u32) << 2 | ((tl == t) as u32) << 3
-                    };
-                    let cols = if ext { 8.0 } else { 4.0 };
-                    let cx = (cell % 4 + (cell / 16) * 4) as f32;
-                    let cy = ((cell % 16) / 4) as f32;
-                    let (u0, v0) = (cx / cols, cy / 4.0);
-                    let (du, dv) = (1.0 / cols, 0.25);
-                    let base = verts.len() as u32;
-                    // top-left, top-right, bottom-left, bottom-right
-                    let uvs = [[u0, v0], [u0 + du, v0], [u0, v0 + dv], [u0 + du, v0 + dv]];
-                    for (k, &(cx, cy)) in corners.iter().enumerate() {
-                        verts.push(Vertex {
-                            pos: [
-                                terrain.offset[0] + cx as f32 * TILE,
-                                terrain.offset[1] + cy as f32 * TILE,
-                                hat(cx, cy),
-                            ],
-                            normal: normal_at(cx, cy),
-                            uv: uvs[k],
-                            color: [1.0; 4],
-                        });
-                    }
-                    let quad = [base + 2, base + 3, base + 1, base + 2, base + 1, base];
-                    if n == 0 {
-                        per_tex_base[t].extend(quad);
-                    } else {
-                        per_tex_overlay[t].extend(quad);
-                    }
-                }
-            }
-        }
-
+        let ground_src = GroundSource {
+            width: w,
+            height: h,
+            offset: terrain.offset,
+            textures: terrain.corners.iter().map(|c| c.ground_texture).collect(),
+            variations: terrain.corners.iter().map(|c| c.ground_variation).collect(),
+            cliff_tiles: (0..h - 1).flat_map(|y| (0..w - 1).map(move |x| (x, y))).map(|(x, y)| is_cliff(x, y)).collect(),
+            extended: ground.iter().map(|g| g.1).collect(),
+            blight_index,
+        };
+        let blight: Vec<bool> = terrain.corners.iter().map(|c| c.blight).collect();
+        let (gverts, gindices, batches) = build_ground(&ground_src, &heights, &blight);
+        let ground_vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("ground vertices"),
+            contents: bytemuck::cast_slice(&gverts),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let ground_indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("ground indices"),
+            contents: bytemuck::cast_slice(&gindices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
         let mut indices: Vec<u32> = Vec::new();
-        let mut batches = Vec::new();
-        for (t, list) in per_tex_base.iter().enumerate() {
-            if !list.is_empty() {
-                batches.push(Batch { texture: t, first: indices.len() as u32, count: list.len() as u32, blended: false });
-                indices.extend(list);
-            }
-        }
-        for (t, list) in per_tex_overlay.iter().enumerate() {
-            if !list.is_empty() {
-                batches.push(Batch { texture: t, first: indices.len() as u32, count: list.len() as u32, blended: true });
-                indices.extend(list);
-            }
-        }
 
         // Cliffs: one model per tile whose corners sit on different cliff levels, named by
         // each corner's level above the lowest (top-left, top-right, bottom-right,
@@ -538,6 +585,9 @@ impl TerrainRenderer {
             extent_buf,
             vertices,
             indices: index_buf,
+            ground_vertices,
+            ground_indices,
+            ground: ground_src,
             batches,
             texture_bgs,
             cliff_batches,
@@ -551,6 +601,23 @@ impl TerrainRenderer {
             offset: terrain.offset,
             heights,
         }
+    }
+
+    /// Rebuilds the ground with a new set of blighted corners.
+    pub fn set_blight(&mut self, device: &wgpu::Device, blight: &[bool]) {
+        use wgpu::util::DeviceExt;
+        let (verts, indices, batches) = build_ground(&self.ground, &self.heights, blight);
+        self.ground_vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("ground vertices"),
+            contents: bytemuck::cast_slice(&verts),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        self.ground_indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("ground indices"),
+            contents: bytemuck::cast_slice(&indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        self.batches = batches;
     }
 
     /// Uses a fog-of-war texture (see `Globals::fow_extent`).
@@ -582,13 +649,15 @@ impl TerrainRenderer {
     pub fn render_ground(&self, pass: &mut wgpu::RenderPass) {
         pass.set_bind_group(0, &self.globals_bg, &[]);
         pass.set_bind_group(2, &self.shadow_bg, &[]);
-        pass.set_vertex_buffer(0, self.vertices.slice(..));
-        pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+        pass.set_vertex_buffer(0, self.ground_vertices.slice(..));
+        pass.set_index_buffer(self.ground_indices.slice(..), wgpu::IndexFormat::Uint32);
         for b in &self.batches {
             pass.set_pipeline(if b.blended { &self.blended } else { &self.opaque });
             pass.set_bind_group(1, &self.texture_bgs[b.texture], &[]);
             pass.draw_indexed(b.first..b.first + b.count, 0, 0..1);
         }
+        pass.set_vertex_buffer(0, self.vertices.slice(..));
+        pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
         pass.set_pipeline(&self.cliffs);
         for b in &self.cliff_batches {
             pass.set_bind_group(1, &self.cliff_bgs[b.texture], &[]);

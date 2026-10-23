@@ -2,12 +2,14 @@
 
 pub mod ability;
 pub mod ai;
+pub mod blight;
 pub mod camera;
 pub mod event_ids;
 pub mod fog;
 pub mod handles;
 pub mod hero;
 pub mod info;
+pub mod mining;
 pub mod items;
 pub mod persist;
 pub mod shops;
@@ -121,6 +123,7 @@ impl Game {
                 },
                 layers: t.corners.iter().map(|c| c.layer_height).collect(),
             });
+            world.blight = t.corners.iter().map(|c| c.blight).collect();
             let th = world.terrain_heights.as_ref().unwrap();
             world.fog = Some(fog::FogMap::new(world.map_bounds, |x, y| th.level_at(x, y)));
         }

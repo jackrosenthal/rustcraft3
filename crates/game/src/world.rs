@@ -130,6 +130,11 @@ pub struct World {
     pub model_cinematic: Option<String>,
     /// Running terrain deformations: handle, start time, and parameters.
     pub deformations: Vec<(u32, f32, crate::natives::visuals::Deform)>,
+    /// Entangle Gold Mine casts finishing: time, caster, and mine.
+    pub pending_entangles: Vec<(f32, u32, u32)>,
+    /// Blighted terrain corners, and a count that changes when they do.
+    pub blight: Vec<bool>,
+    pub blight_serial: u32,
     pub destructable_order: Vec<u32>,
     pub item_order: Vec<u32>,
     /// Effects destroyed by script, with the time they were destroyed; the presentation
@@ -219,7 +224,7 @@ impl World {
     pub fn new(chain: Arc<Chain>, objects: ObjectDb) -> World {
         let camera = crate::camera::GameCamera::new(&w3_formats::profile::Profile::parse(&chain.read_string("UI\\MiscData.txt").unwrap_or_default()));
         let mut misc = w3_formats::profile::Profile::default();
-        for f in ["UI\\MiscData.txt", "Units\\MiscData.txt", "Units\\MiscGame.txt"] {
+        for f in ["UI\\MiscData.txt", "UI\\MiscUI.txt", "Units\\MiscData.txt", "Units\\MiscGame.txt"] {
             if let Ok(s) = chain.read_string(f) {
                 misc.merge(&s);
             }
@@ -296,6 +301,9 @@ impl World {
             fog_boundary: true,
             model_cinematic: None,
             deformations: Vec::new(),
+            pending_entangles: Vec::new(),
+            blight: Vec::new(),
+            blight_serial: 0,
             destructable_order: Vec::new(),
             item_order: Vec::new(),
             dying_effects: Vec::new(),
@@ -597,6 +605,7 @@ impl World {
             self.fire_unit_pair(vm, unit, pe, ue, ctx);
         }
         for h in std::mem::take(&mut self.cancelled_constructions) {
+            self.uncover_mine(vm, h);
             crate::natives::units::remove_unit(self, h);
         }
     }
@@ -608,6 +617,15 @@ impl World {
         let hours_per_second = day_hours / day_length * self.time_of_day_scale;
         self.time_of_day = (self.time_of_day + dt * hours_per_second) % day_hours;
         self.camera.update(dt);
+        self.update_text_tags(dt);
+        self.update_blight(dt);
+        self.update_mines();
+        let now = self.time;
+        let due: Vec<(f32, u32, u32)> = self.pending_entangles.iter().copied().filter(|e| e.0 <= now).collect();
+        self.pending_entangles.retain(|e| e.0 > now);
+        for (_, caster, mine) in due {
+            self.entangle(caster, mine);
+        }
         // TimerDialogSetRealTimeRemaining counts down in the dialog itself.
         for (_, o) in self.handles.iter_mut() {
             if let Obj::TimerDialog(d) = o {

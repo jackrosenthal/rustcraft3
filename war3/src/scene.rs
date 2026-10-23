@@ -70,6 +70,38 @@ fn team_colors(chain: &w3_mpq::Chain) -> [[f32; 3]; 16] {
     out
 }
 
+/// A special effect's model: born, standing, and dying once destroyed.
+pub struct EffectView {
+    pub inst: ModelInstance,
+    /// Whether its destruction has been seen (its death playing).
+    dying: bool,
+    /// Finished and no longer drawn.
+    done: bool,
+}
+
+/// An attachment point of a model instance in world space: the attachment node whose
+/// name (less "Ref") has the same words as `name` ("hand,left" is "Hand Left Ref"), else
+/// one with all of them; the origin for "origin" or when none matches.
+pub fn attachment_point(inst: &ModelInstance, name: &str) -> Vec3 {
+    let origin = inst.transform.w_axis.truncate();
+    let want: Vec<String> = name.split([' ', ',']).filter(|s| !s.is_empty()).map(|s| s.to_ascii_lowercase()).collect();
+    let words = |n: &str| -> Vec<String> { n.split_whitespace().map(|s| s.to_ascii_lowercase()).filter(|s| s != "ref").collect() };
+    let mdx = &inst.model.mdx;
+    let same = |n: &str| {
+        let w = words(n);
+        w.len() == want.len() && want.iter().all(|x| w.contains(x))
+    };
+    let has = |n: &str| {
+        let w = words(n);
+        want.iter().all(|x| w.contains(x))
+    };
+    let Some(a) = mdx.attachments.iter().find(|a| same(&a.node.name)).or_else(|| mdx.attachments.iter().find(|a| has(&a.node.name))) else { return origin };
+    let id = a.node.object_id as usize;
+    let pivot = mdx.pivots.get(id).map_or(Vec3::ZERO, |p| Vec3::from_array(*p));
+    let local = inst.skeleton.world.get(id).copied().unwrap_or(Mat4::IDENTITY).transform_point3(pivot);
+    inst.transform.transform_point3(local)
+}
+
 pub struct UnitView {
     pub inst: ModelInstance,
     serial: u32,
@@ -106,15 +138,17 @@ impl UnitView {
             return;
         }
         if self.inst.finished {
+            // A stand of any kind ("stand work gold") plays again.
+            let again = self.requested.starts_with("stand").then(|| self.requested.clone());
             let next = match self.anim.as_str() {
-                "death" => Some("decay flesh"),
-                "decay flesh" => Some("decay bone"),
+                "death" => Some("decay flesh".to_string()),
+                "decay flesh" => Some("decay bone".to_string()),
                 "decay bone" => None,
-                _ => Some("stand"),
+                _ => Some(again.unwrap_or_else(|| "stand".to_string())),
             };
             if let Some(n) = next {
-                self.anim = n.to_string();
-                self.pick(n);
+                self.anim = n.clone();
+                self.pick(&n);
             }
         } else if self.inst.looped && self.anim == "stand" {
             self.inst.looped = false;
@@ -130,8 +164,12 @@ pub struct Scene {
     pub dests: HashMap<u32, (ModelInstance, bool)>,
     /// Render instances for items lying on the ground.
     pub items: HashMap<u32, ModelInstance>,
+    /// Special effects (AddSpecialEffect and ability art), by handle.
+    pub effects: HashMap<u32, EffectView>,
     pub selection: Vec<u32>,
     selection_serial: u32,
+    /// The world's blight count the ground was last built with.
+    blight_serial: u32,
     pub info: MapInfo,
     pub terrain: TerrainRenderer,
     pub models: ModelRenderer,
@@ -379,7 +417,7 @@ impl Scene {
         let portrait_renderer = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let hud_sprites = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), selection: Vec::new(), selection_serial: 0, info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -677,6 +715,48 @@ impl Scene {
             prev = p;
         }
         None
+    }
+
+    /// Text tags (CTextTagManager, 0x6f9a1040): each at its projected world position plus
+    /// velocity times age, left-aligned, with a black shadow, fading after the fade point.
+    /// Their units span the 4:3 screen as 1 by 0.75, so one is 0.8 interface units
+    /// (measured against the original's gold text).
+    fn text_tag_draws(&self, db: &w3_ui::FrameDb, size: (u32, u32)) -> Vec<w3_ui::Draw> {
+        let Some(g) = self.game.as_ref() else { return Vec::new() };
+        let w = &g.world;
+        if self.hud.as_ref().is_some_and(|h| h.cinematic) {
+            return Vec::new();
+        }
+        let width = w3_ui::UI_HEIGHT * (size.0 as f32 / size.1.max(1) as f32).max(4.0 / 3.0);
+        let font = db.decorate("MasterFont");
+        let mut out = Vec::new();
+        for (_, o) in w.handles.iter() {
+            let w3_game::types::Obj::TextTag(t) = o else { continue };
+            if !t.visible || t.text.is_empty() {
+                continue;
+            }
+            let (x, y, z) = match t.unit {
+                Some((u, dz)) => match w.unit(u) {
+                    Some(u) if !u.hidden => (u.x, u.y, w.ground_z(u.x, u.y) + dz),
+                    _ => continue,
+                },
+                None => (t.x, t.y, t.z),
+            };
+            let Some((px, py)) = self.project(Vec3::new(x, y, z), size) else { continue };
+            const UNIT: f32 = 0.8;
+            let ux = px / size.0 as f32 * width + t.velocity.0 * t.age * UNIT;
+            let uy = (1.0 - py / size.1 as f32) * w3_ui::UI_HEIGHT + t.velocity.1 * t.age * UNIT;
+            let mut alpha = t.color[3] as f32 / 255.0;
+            if !t.permanent && t.age > t.fadepoint && t.lifespan > t.fadepoint {
+                alpha *= (1.0 - (t.age - t.fadepoint) / (t.lifespan - t.fadepoint)).clamp(0.0, 1.0);
+            }
+            let em = t.height * UNIT;
+            let color = [t.color[0] as f32 / 255.0, t.color[1] as f32 / 255.0, t.color[2] as f32 / 255.0, alpha];
+            let tw = db.text_width(&font, em, &t.text);
+            let rect = w3_ui::Rect { x0: ux, x1: ux + tw + em, y0: uy, y1: uy + em * 1.2 };
+            out.push(w3_ui::Draw::Text { font: font.clone(), size: em, rect, text: t.text.clone(), color, justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow: Some(([0.0, 0.0, 0.0, alpha], 0.0015 * UNIT, -0.0015 * UNIT)) });
+        }
+        out
     }
 
     fn project(&self, p: Vec3, size: (u32, u32)) -> Option<(f32, f32)> {
@@ -1269,8 +1349,81 @@ impl Scene {
         best.map(|b| b.1)
     }
 
+    /// Creates, updates, and removes effect instances to match the game's effects: each
+    /// plays its birth then stand; a destroyed one plays its death (or finishes what it
+    /// plays when it has none) and is then dropped from the game.
+    pub fn sync_effects(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) {
+        let Some(g) = self.game.as_ref() else { return };
+        let w = &g.world;
+        let local = w.local_player;
+        self.effects.retain(|h, _| matches!(w.handles.get(*h), Some(w3_game::types::Obj::Effect(_))));
+        let mut finished = Vec::new();
+        for (&h, o) in w.handles.iter() {
+            let w3_game::types::Obj::Effect(e) = o else { continue };
+            if !self.effects.contains_key(&h) {
+                let Some(model) = (!e.model.is_empty()).then(|| assets.model(device, queue, &e.model)).flatten() else {
+                    if e.destroyed {
+                        finished.push(h);
+                    }
+                    continue;
+                };
+                let mut inst = ModelInstance::new(model);
+                let has = |i: &ModelInstance, n: &str| w3_render::anim::find_sequence(&i.model.mdx, n).is_some();
+                let first = if e.destroyed && has(&inst, "death") { "death" } else if has(&inst, "birth") { "birth" } else { "stand" };
+                inst.play(first);
+                self.effects.insert(h, EffectView { inst, dying: e.destroyed, done: false });
+            }
+            let v = self.effects.get_mut(&h).unwrap();
+            if e.destroyed && !v.dying {
+                v.dying = true;
+                if w3_render::anim::find_sequence(&v.inst.model.mdx, "death").is_some() {
+                    v.inst.play("death");
+                } else if !v.inst.model.mdx.sequences.get(v.inst.sequence.unwrap_or(usize::MAX)).is_some_and(|s| s.non_looping) {
+                    v.done = true;
+                }
+            }
+            if v.inst.finished || v.inst.looped {
+                if v.dying {
+                    v.done = true;
+                } else if v.inst.finished || v.inst.sequence == w3_render::anim::find_sequence(&v.inst.model.mdx, "birth") {
+                    v.inst.play("stand");
+                }
+                v.inst.looped = false;
+            }
+            if v.done {
+                finished.push(h);
+                v.inst.visible = false;
+                continue;
+            }
+            let pos = match &e.target {
+                Some((t, attach)) => match self.units.get(t) {
+                    Some(uv) if uv.inst.visible => Some(attachment_point(&uv.inst, attach)),
+                    Some(_) => None,
+                    None => w.widget_pos(*t).map(|(x, y)| Vec3::new(x, y, self.terrain.height_at(x, y))),
+                },
+                None => Some(Vec3::new(e.x, e.y, e.z)),
+            };
+            match pos {
+                Some(p) => {
+                    v.inst.transform = Mat4::from_rotation_translation(Quat::from_rotation_z(e.facing.to_radians()), p);
+                    v.inst.visible = w.fog_state(p.x, p.y, local) != w3_game::fog::FOG_MASKED;
+                }
+                None => v.inst.visible = false,
+            }
+        }
+        if let Some(g) = self.game.as_mut() {
+            for h in finished {
+                if matches!(g.world.handles.get(h), Some(w3_game::types::Obj::Effect(e)) if e.destroyed) {
+                    g.world.handles.remove(h);
+                    self.effects.remove(&h);
+                }
+            }
+        }
+    }
+
     /// Creates, updates, and removes render instances to match the game's units.
     pub fn sync_units(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) {
+        self.sync_effects(device, queue, assets);
         let Some(g) = self.game.as_ref() else { return };
         let w = &g.world;
         self.units.retain(|h, _| w.unit(*h).is_some());
@@ -1474,6 +1627,9 @@ impl Scene {
         for inst in self.items.values_mut() {
             inst.advance(dt * 1000.0);
         }
+        for v in self.effects.values_mut() {
+            v.inst.advance(dt * 1000.0);
+        }
         if let Some((_, v)) = self.portrait.as_mut() {
             v.inst.advance(dt * 1000.0);
         }
@@ -1551,6 +1707,10 @@ impl Scene {
         let light = self.light;
         globals.light_dir = [light.x, light.y, light.z, 0.0];
         if let Some(g) = &self.game {
+            if g.world.blight_serial != self.blight_serial {
+                self.blight_serial = g.world.blight_serial;
+                self.terrain.set_blight(device, &g.world.blight);
+            }
             let paths = g.world.day_night_models.clone();
             if paths != self.dnc_paths {
                 self.dnc = (Self::load_dnc(&g.world.chain, &paths.0), Self::load_dnc(&g.world.chain, &paths.1));
@@ -1613,6 +1773,9 @@ impl Scene {
             }
             self.models.submit(inst, eye, rot);
         }
+        for v in self.effects.values_mut().filter(|v| v.inst.visible) {
+            self.models.submit(&mut v.inst, eye, rot);
+        }
         for inst in self.items.values_mut() {
             self.models.submit(inst, eye, rot);
         }
@@ -1650,6 +1813,7 @@ impl Scene {
         self.models.render(device, queue, &mut pass, &globals);
         self.terrain.render_water(&mut pass, self.time);
         drop(pass);
+        let tag_draws = self.text_tag_draws(&assets.frames, size);
         if let (Some(hud), Some(g)) = (self.hud.as_mut(), self.game.as_ref()) {
             hud.update(&assets.frames, &g.world);
             let aspect = size.0 as f32 / size.1.max(1) as f32;
@@ -1662,7 +1826,9 @@ impl Scene {
             hud.sync_cinematic(&assets.frames, &g.world, aspect);
             hud.sync_heroes(&g.world);
             crate::boards::sync(&mut hud.boards, &assets.frames, &g.world, &self.team_rgb, aspect);
-            let draws = hud.draws(&assets.frames);
+            // Text tags lie under the interface.
+            let mut draws = tag_draws;
+            draws.extend(hud.draws(&assets.frames));
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("interface"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {

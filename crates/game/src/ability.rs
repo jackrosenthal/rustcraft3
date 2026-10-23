@@ -139,7 +139,7 @@ impl World {
         }
         if let Some((model, attach)) = art {
             if !model.is_empty() {
-                let e = self.handles.insert(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((target, attach)), destroyed: false }));
+                let e = self.handles.insert(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((target, attach)), destroyed: false, facing: 0.0 }));
                 b.effect = e;
             }
         }
@@ -315,7 +315,7 @@ impl World {
             return;
         }
         let z = self.ground_z(x, y);
-        let e = self.handles.insert(Obj::Effect(Effect { model: model.to_string(), x, y, z, target: None, destroyed: true }));
+        let e = self.handles.insert(Obj::Effect(Effect { model: model.to_string(), x, y, z, target: None, destroyed: true, facing: 0.0 }));
         self.dying_effects.push((e, self.time));
     }
 
@@ -454,6 +454,11 @@ impl World {
         let buff_id = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("BuffID", lvl)).unwrap_or_default().trim());
         let area = self.data(a, "Area", lvl);
         match code.as_str() {
+            // Entangle Gold Mine: the mine is entangled after the casting time.
+            "Aent" => {
+                let cast = self.data(a, "Cast", lvl);
+                self.pending_entangles.push((self.time + cast, h, target));
+            }
             // Storm Bolt: a missile that deals DataA damage and stuns.
             "AHtb" => {
                 let model = self.profile_art(a, "Missileart");

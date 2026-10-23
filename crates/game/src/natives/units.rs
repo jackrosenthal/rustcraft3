@@ -172,6 +172,8 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     }
     if w.unit(h).is_some_and(|u| !u.dead) {
         w.drop_on_death(vm, h);
+        w.leave_mine(h);
+        w.uncover_mine(vm, h);
     }
     let Some(u) = w.unit_mut(h) else { return };
     if u.dead {

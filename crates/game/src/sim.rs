@@ -136,7 +136,7 @@ fn can_target(w: &World, wp: &Weapon, attacker: &Unit, t: &Unit) -> bool {
     }
 }
 
-fn set_anim(u: &mut Unit, name: &str) {
+pub(crate) fn set_anim(u: &mut Unit, name: &str) {
     if u.anim != name {
         u.anim = name.to_string();
         u.anim_serial = u.anim_serial.wrapping_add(1);
@@ -193,6 +193,11 @@ impl World {
             }
             _ => return,
         };
+        // entangleinstant: Entangle Gold Mine at once, without its casting time.
+        if order == crate::natives::basic::order_id("entangleinstant") && self.ability_with_code(h, "Aent").is_some() {
+            self.entangle(h, target);
+            return;
+        }
         let action = if order == stop {
             Action::Idle
         } else if order == hold {
@@ -911,6 +916,12 @@ impl World {
 
     /// Whether a structure of type `id` can be placed centered at (x, y).
     pub fn can_place(&mut self, id: Id, x: f32, y: f32) -> bool {
+        if self.builds_on(id) {
+            return self.build_on_site(x, y).is_some();
+        }
+        if self.objects.units.get(id).is_some_and(|o| o.str("requirePlace").to_ascii_lowercase().contains("blighted")) && !self.footprint_blighted(id, x, y) {
+            return false;
+        }
         let tex = self.objects.units.get(id).map(|o| o.str("pathTex")).unwrap_or_default();
         let cells = self.pathing_cells(&tex, x, y, 0.0);
         let Some(p) = &self.pathing else { return true };
@@ -948,7 +959,13 @@ impl World {
             set_anim(u, "stand");
             return;
         }
+        // A structure built on another unit stands on it and takes it over.
+        let site = if self.builds_on(id) { self.build_on_site(x, y) } else { None };
+        let (x, y) = site.and_then(|s| self.unit(s).map(|m| (m.x, m.y))).unwrap_or((x, y));
         let b = crate::natives::units::create_unit(self, owner, id, x, y, self.misc_f32("BuildingAngle", 270.0));
+        if let Some(s) = site {
+            self.cover_mine(b, s);
+        }
         if let Some(bu) = self.unit_mut(b) {
             let t = bu.build_time;
             bu.constructing = Some(t);
@@ -993,15 +1010,17 @@ impl World {
     }
 
     fn is_mine(&self, h: u32) -> bool {
-        self.unit(h).is_some_and(|u| !u.dead) && self.ability_with_code(h, "Agld").is_some()
+        self.unit(h).is_some_and(|u| !u.dead && !u.hidden) && self.ability_with_code(h, "Agld").is_some()
     }
 
     pub fn can_harvest(&self, h: u32, target: u32) -> bool {
-        self.ability_with_code(h, "Ahar").is_some() && (self.is_mine(target) || self.is_tree(target))
+        self.can_mine_covered(h, target)
+            || self.ability_with_code(h, "Awha").is_some() && self.is_tree(target)
+            || self.ability_with_code(h, "Ahar").is_some() && (self.is_mine(target) || self.is_tree(target))
             || self.ability_with_code(h, "Ahrl").is_some() && self.is_tree(target)
     }
 
-    fn leave_mine(&mut self, h: u32) {
+    pub(crate) fn leave_mine(&mut self, h: u32) {
         let mine = self.unit(h).map_or(0, |u| u.inside);
         if mine == 0 {
             return;
@@ -1013,6 +1032,7 @@ impl World {
             u.inside = 0;
             u.hidden = false;
         }
+        self.mine_work_anim(mine);
     }
 
     fn carry_tag(u: &Unit) -> &'static str {
@@ -1067,7 +1087,7 @@ impl World {
     }
 
     /// Walks toward a widget until within `range` of its edge; true once there.
-    fn approach(&mut self, h: u32, target: u32, range: f32, dt: f32) -> bool {
+    pub(crate) fn approach(&mut self, h: u32, target: u32, range: f32, dt: f32) -> bool {
         let Some(tp) = self.widget_pos(target) else { return false };
         let u = self.unit(h).unwrap();
         let Some(edge) = self.edge_distance(target, u.x, u.y) else { return false };
@@ -1091,6 +1111,12 @@ impl World {
     }
 
     fn harvest(&mut self, vm: &mut Vm, h: u32, target: u32, dt: f32) {
+        if self.ability_with_code(h, "Aaha").is_some() {
+            return self.acolyte_harvest(vm, h, target, dt);
+        }
+        if self.ability_with_code(h, "Awha").is_some() {
+            return self.wisp_harvest(vm, h, target, dt);
+        }
         let Some((ahar, lvl)) = self.ability_with_code(h, "Ahar").or_else(|| self.ability_with_code(h, "Ahrl")) else {
             self.unit_mut(h).unwrap().action = Action::Idle;
             return;
@@ -1255,14 +1281,9 @@ impl World {
         u.carry_gold = 0;
         u.carry_lumber = 0;
         u.action = if src != 0 { Action::Harvest { target: src } } else { Action::Idle };
-        // Upkeep takes its share of what is returned.
-        let (gold_tax, lumber_tax) = self.upkeep_tax(owner);
-        let p = &mut self.players[owner as usize];
-        let (kept_gold, kept_lumber) = (gold * (100 - gold_tax) / 100, lumber * (100 - lumber_tax) / 100);
-        *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) += kept_gold;
-        *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) += kept_lumber;
-        *p.state.entry(player_state::GOLD_GATHERED).or_insert(0) += gold;
-        *p.state.entry(player_state::LUMBER_GATHERED).or_insert(0) += lumber;
+        // Upkeep takes its share of what is returned; the amount shows over the worker
+        // (0x6f40b150).
+        self.gather(owner, h, gold, lumber, 0.0);
     }
 
     /// The upkeep level from food used: how many of [Misc] UpkeepUsage's thresholds it is

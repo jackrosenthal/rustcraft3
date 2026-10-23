@@ -255,6 +255,13 @@ pub struct UnitExtra {
     pub alt_icon: bool,
     /// A haunted gold mine's gold mine underneath.
     pub mine: Option<u32>,
+    /// An acolyte's ring slot at the haunted mine it works.
+    pub mine_slot: Option<usize>,
+    /// Blight Growth's radius so far and time to its next step.
+    pub blight_radius: f32,
+    pub blight_timer: f32,
+    /// A haunted mine's slot markers.
+    pub slot_effects: Vec<u32>,
 }
 
 impl Default for UnitExtra {
@@ -278,6 +285,10 @@ impl Default for UnitExtra {
             drop_item: None,
             alt_icon: false,
             mine: None,
+            mine_slot: None,
+            blight_radius: 0.0,
+            blight_timer: 0.0,
+            slot_effects: Vec::new(),
         }
     }
 }
@@ -529,6 +540,8 @@ pub struct Effect {
     /// Attached to a unit or other widget at an attachment point.
     pub target: Option<(u32, String)>,
     pub destroyed: bool,
+    /// Degrees counterclockwise from east.
+    pub facing: f32,
 }
 
 /// A script dialog (DialogCreate): a message over a column of buttons.
@@ -586,6 +599,8 @@ pub struct TextTag {
     pub age: f32,
     pub lifespan: f32,
     pub fadepoint: f32,
+    /// An engine text tag, shown only to the local player.
+    pub local: bool,
 }
 
 /// What a trigger event registration listens for.

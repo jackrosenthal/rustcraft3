@@ -339,6 +339,9 @@ pub struct UnitExtra {
     /// Effects its abilities attach to it (Sphere, Tree of Life art).
     #[serde(default)]
     pub art: Vec<u32>,
+    /// When a tornado last let the unit down.
+    #[serde(default)]
+    pub spun_at: f32,
 }
 
 impl Default for UnitExtra {
@@ -390,6 +393,7 @@ impl Default for UnitExtra {
             mine_fuse: None,
             swarm: None,
             art: Vec::new(),
+            spun_at: -100.0,
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,

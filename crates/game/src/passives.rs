@@ -192,3 +192,66 @@ impl World {
         }
     }
 }
+
+impl World {
+    /// The tornado's own abilities.  Tornado Wander (Atwa): a new point within Area of
+    /// where it appeared every Dur.  Tornado Damage (Atdg): structures it allows take
+    /// DataA a second within Area, DataC within DataB, and DataE within DataD.  Tornado
+    /// Spin (Atsp): ground enemies within Area are thrown up for Dur (HeroDur on Heroes),
+    /// each at most once every DataB.
+    pub fn update_tornadoes(&mut self, vm: &mut Vm, dt: f32) {
+        let tornadoes: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead) && (self.ability_with_code(h, "Atwa").is_some() || self.ability_with_code(h, "Atdg").is_some() || self.ability_with_code(h, "Atsp").is_some())).collect();
+        for h in tornadoes {
+            let Some(u) = self.unit(h) else { continue };
+            let (x, y) = (u.x, u.y);
+            if u.extra.home.is_none() {
+                self.unit_mut(h).unwrap().extra.home = Some((x, y));
+            }
+            let (hx, hy) = self.unit(h).and_then(|u| u.extra.home).unwrap_or((x, y));
+            if let Some((a, lvl)) = self.ability_with_code(h, "Atwa") {
+                let lvl = lvl.max(1) as u32;
+                let left = self.unit(h).and_then(|u| u.cooldowns.get(&a).copied()).unwrap_or(0.0) - dt;
+                if left <= 0.0 {
+                    let r = self.data(a, "Area", lvl);
+                    let (ang, d) = (self.rng.real(0.0, std::f32::consts::TAU), self.rng.real(0.0, r));
+                    let every = self.data(a, "Dur", lvl).max(0.1);
+                    let u = self.unit_mut(h).unwrap();
+                    u.action = Action::Move { x: hx + d * ang.cos(), y: hy + d * ang.sin() };
+                    u.path.clear();
+                    u.cooldowns.insert(a, every);
+                } else {
+                    self.unit_mut(h).unwrap().cooldowns.insert(a, left);
+                }
+            }
+            if let Some((a, lvl)) = self.ability_with_code(h, "Atdg") {
+                let lvl = lvl.max(1) as u32;
+                let d = |k: &str| self.data(a, k, lvl);
+                let (area, dps, mid_r, mid, small_r, small) = (d("Area"), d("DataA"), d("DataB"), d("DataC"), d("DataD"), d("DataE"));
+                for t in self.units_in_pub(x, y, area) {
+                    if t == h || self.cast_target_error(h, a, t).is_some() {
+                        continue;
+                    }
+                    let dist = self.unit(t).map_or(f32::MAX, |u| (u.x - x).hypot(u.y - y));
+                    let rate = if small_r > 0.0 && dist <= small_r { small } else if dist <= mid_r { mid } else { dps };
+                    self.spell_damage(vm, h, t, rate * dt);
+                }
+            }
+            if let Some((a, lvl)) = self.ability_with_code(h, "Atsp") {
+                let lvl = lvl.max(1) as u32;
+                let (area, again) = (self.data(a, "Area", lvl), self.data(a, "DataB", lvl));
+                let buff = self.objects.abilities.get(a).map(|o| id_from_str(o.level_str("BuffID", lvl).split(',').next().unwrap_or("").trim())).unwrap_or([0; 4]);
+                let now = self.time;
+                for t in self.units_in_pub(x, y, area) {
+                    if t == h || self.cast_target_error(h, a, t).is_some() || self.unit(t).is_some_and(|u| u.is_building || u.extra.spun_at > now - again) {
+                        continue;
+                    }
+                    let dur = if self.hero_duration(t) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
+                    self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, stun: true, invulnerable: true, ..Default::default() });
+                    if let Some(u) = self.unit_mut(t) {
+                        u.extra.spun_at = now + dur;
+                    }
+                }
+            }
+        }
+    }
+}

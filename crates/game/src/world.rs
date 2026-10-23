@@ -750,6 +750,7 @@ impl World {
         prof!(self, "update_waygates", self.update_waygates());
         prof!(self, "update_mines_armed", self.update_mines_armed(vm));
         prof!(self, "update_swarms", self.update_swarms());
+        prof!(self, "update_tornadoes", self.update_tornadoes(vm, dt));
         let now = self.time;
         let due: Vec<(f32, u32, u32)> = self.pending_entangles.iter().copied().filter(|e| e.0 <= now).collect();
         self.pending_entangles.retain(|e| e.0 > now);

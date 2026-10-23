@@ -654,6 +654,18 @@ impl World {
                     }
                     if wp.weapon_type == "missile" || wp.weapon_type == "artillery" || wp.weapon_type.starts_with("msplash") || wp.weapon_type == "mbounce" || wp.weapon_type == "mline" {
                         if let (Some(src), Some(_)) = (self.unit(h).cloned(), self.unit(s.target)) {
+                            // Lightning Attack: a weapon firing the ability's missile also
+                            // strikes with its lightning, DataA after for DataB.
+                            if let Some((a, lvl)) = self.ability_with_code(h, "Alit") {
+                                let lvl = lvl.max(1) as u32;
+                                if self.profile_art(a, "Missileart").eq_ignore_ascii_case(&wp.missile) {
+                                    let (delay, life) = (self.data(a, "DataA", lvl), self.data(a, "DataB", lvl));
+                                    let codes = self.objects.abilities.get(a).map(|o| o.list("LightningEffect")).unwrap_or_default();
+                                    if let Some(code) = codes.first().map(|c| c.trim().to_string()).filter(|c| !c.is_empty()) {
+                                        self.timed_bolt(&code, h, s.target, delay, life.max(0.01));
+                                    }
+                                }
+                            }
                             let launch_z = self.objects.units.get(src.type_id).map_or(60.0, |o| o.real("launchZ"));
                             self.missiles.push(Missile {
                                 source: h,

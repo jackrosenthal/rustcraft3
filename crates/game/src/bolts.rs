@@ -24,6 +24,12 @@ pub struct Bolt {
     pub from: u32,
     pub to: u32,
     pub age: f32,
+    /// A timed bolt (Lightning Attack): hidden for `delay`, then shown for `life`;
+    /// zero life is a spell bolt's hold and fade.
+    #[serde(default)]
+    pub delay: f32,
+    #[serde(default)]
+    pub life: f32,
 }
 
 /// A jumping spell's next strike.
@@ -57,6 +63,11 @@ impl World {
 
     /// A bolt of lightning type `code` from unit `from` to unit `to`.
     pub fn spell_bolt(&mut self, code: &str, from: u32, to: u32) {
+        self.timed_bolt(code, from, to, 0.0, 0.0);
+    }
+
+    /// A bolt shown after `delay` for `life` (zero life: held, then faded).
+    pub fn timed_bolt(&mut self, code: &str, from: u32, to: u32, delay: f32, life: f32) {
         let Some((f, t)) = self.bolt_ends(from, to) else { return };
         let chain = self.chain.clone();
         let table = self.lightning_data.get_or_insert_with(|| chain.read_string("Splats\\LightningData.slk").map(|s| w3_formats::slk::Table::parse(&s)).unwrap_or_default());
@@ -64,9 +75,12 @@ impl World {
             return;
         }
         let n = |c: &str| table.get(code, c).map(|v| v.as_str()).unwrap_or_default().trim().parse::<f32>().unwrap_or(255.0) / 255.0;
-        let color = [n("R"), n("G"), n("B"), n("A")];
+        let mut color = [n("R"), n("G"), n("B"), n("A")];
+        if delay > 0.0 {
+            color[3] = 0.0;
+        }
         let h = self.handles.insert(Obj::Lightning(Lightning { code: code.to_string(), check_visibility: false, from: f, to: t, color }));
-        self.bolts.push(Bolt { lightning: h, from, to, age: 0.0 });
+        self.bolts.push(Bolt { lightning: h, from, to, age: 0.0, delay, life });
     }
 
     /// A bolt from the ability's LightningEffect (the first or a later one).
@@ -115,6 +129,16 @@ impl World {
             if let Some((f, t)) = ends {
                 l.from = f;
                 l.to = t;
+            }
+            if b.life > 0.0 {
+                if b.age >= b.delay + b.life {
+                    self.handles.remove(b.lightning);
+                    return false;
+                }
+                if b.age >= b.delay && l.color[3] == 0.0 {
+                    l.color[3] = 1.0;
+                }
+                return true;
             }
             if b.age >= BOLT_HOLD + BOLT_FADE {
                 self.handles.remove(b.lightning);

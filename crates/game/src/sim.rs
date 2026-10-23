@@ -174,6 +174,13 @@ impl World {
         let owner_of = |w: &World, t: u32| w.unit(t).map(|u| u.owner);
         let me = match self.unit(h) {
             Some(u) if !u.dead && !u.is_building => u.owner,
+            Some(u) if !u.dead && u.is_building && (order == smart) => {
+                // Structures take a smart order as their rally point.
+                let p = self.widget_pos(target).unwrap_or((x, y));
+                let _ = u;
+                self.unit_mut(h).unwrap().rally = Some(p);
+                return;
+            }
             _ => return,
         };
         let action = if order == stop {
@@ -328,7 +335,11 @@ impl World {
                 }
                 continue;
             }
-            if u.paused || u.is_building {
+            if u.paused {
+                continue;
+            }
+            if u.is_building {
+                self.update_structure(vm, h, dt);
                 continue;
             }
             let action = u.action.clone();
@@ -458,6 +469,18 @@ impl World {
                     }
                 }
                 Action::Harvest { target } => self.harvest(vm, h, target, dt),
+                Action::Build { id, x, y } => self.build(vm, h, id, x, y, dt),
+                Action::Construct { target } => {
+                    let done = self.unit(target).is_none_or(|b| b.constructing.is_none() || b.dead);
+                    let u = self.unit_mut(h).unwrap();
+                    if done {
+                        u.action = Action::Idle;
+                        u.building = 0;
+                        set_anim(u, "stand");
+                    } else {
+                        set_anim(u, "stand work");
+                    }
+                }
                 Action::ReturnResources => self.return_resources(h, dt),
                 Action::Patrol { a, b } => {
                     if self.unit(h).is_some_and(|u| u.path.is_empty()) {
@@ -471,6 +494,189 @@ impl World {
         }
         self.separate_units(dt);
         self.update_missiles(vm, dt);
+    }
+
+    /// Gold, lumber, and food a unit or structure type costs.
+    pub fn cost(&self, id: Id) -> (i32, i32, i32) {
+        self.objects.units.get(id).map_or((0, 0, 0), |o| (o.int("goldcost"), o.int("lumbercost"), o.int("fused")))
+    }
+
+    /// Checks and spends resources, returning the interface error string key on failure.
+    pub fn spend(&mut self, player: u8, id: Id, food: bool) -> Result<(), &'static str> {
+        let (g, l, f) = self.cost(id);
+        let p = &self.players[player as usize];
+        if p.get_state(player_state::RESOURCE_GOLD) < g {
+            return Err("NOGOLD");
+        }
+        if p.get_state(player_state::RESOURCE_LUMBER) < l {
+            return Err("NOLUMBER");
+        }
+        if food && f > 0 && p.get_state(player_state::RESOURCE_FOOD_USED) + f > p.get_state(player_state::RESOURCE_FOOD_CAP) {
+            return Err("NOFOOD");
+        }
+        let p = &mut self.players[player as usize];
+        *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) -= g;
+        *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) -= l;
+        Ok(())
+    }
+
+    pub fn refund(&mut self, player: u8, id: Id, rate: f32) {
+        let (g, l, _) = self.cost(id);
+        let p = &mut self.players[player as usize];
+        *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) += (g as f32 * rate) as i32;
+        *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) += (l as f32 * rate) as i32;
+    }
+
+    /// Queues a unit at a structure (a train order).
+    pub fn train(&mut self, h: u32, id: Id) -> Result<(), &'static str> {
+        let Some(u) = self.unit(h) else { return Err("") };
+        if u.dead || u.constructing.is_some() || u.queue.len() >= 7 {
+            return Err("");
+        }
+        let owner = u.owner;
+        self.spend(owner, id, true)?;
+        self.unit_mut(h).unwrap().queue.push(id);
+        Ok(())
+    }
+
+    /// Cancels the last queued item and refunds it (TrainRefundRate).
+    pub fn cancel_last(&mut self, h: u32) {
+        let Some(u) = self.unit_mut(h) else { return };
+        let Some(id) = u.queue.pop() else { return };
+        if u.queue.is_empty() {
+            u.queue_progress = 0.0;
+        }
+        let owner = u.owner;
+        let rate = self.misc_f32("TrainRefundRate", 1.0);
+        self.refund(owner, id, rate);
+    }
+
+    /// A free spot near a structure for a new unit: the nearest walkable cell outside it.
+    fn spawn_point(&self, h: u32, radius: f32) -> (f32, f32) {
+        let u = self.unit(h).unwrap();
+        let (x, y) = (u.x, u.y);
+        let Some(p) = &self.pathing else { return (x, y - self.reach_radius(h) - radius) };
+        let c = p.cell_of(x, y);
+        for r in 1..64 {
+            // Search rings starting south of the structure.
+            for k in 0..(8 * r) {
+                let side = k / (2 * r);
+                let t = (k % (2 * r)) as i32 - r;
+                let (dx, dy) = match side {
+                    0 => (t, -r),
+                    1 => (r, t),
+                    2 => (-t, r),
+                    _ => (-r, -t),
+                };
+                let cc = (c.0 + dx, c.1 + dy);
+                if p.fits(cc, radius * 0.5) {
+                    return p.center(cc);
+                }
+            }
+        }
+        (x, y)
+    }
+
+    fn update_structure(&mut self, vm: &mut Vm, h: u32, dt: f32) {
+        // Construction.
+        if let Some(left) = self.unit(h).and_then(|u| u.constructing) {
+            let left = left - dt;
+            let u = self.unit_mut(h).unwrap();
+            let total = u.build_time.max(0.01);
+            // Hit points rise with construction from 10% of maximum.
+            u.life = (u.life + u.max_life * 0.9 * dt / total).min(u.max_life);
+            if left <= 0.0 {
+                u.constructing = None;
+                restart_anim(u, "stand");
+                let owner = u.owner;
+                let ctx = EventCtx { unit: h, player: owner, has_player: true, event_id: EVENT_PLAYER_UNIT_CONSTRUCT_FINISH, ..Default::default() };
+                self.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event, .. } if *player == owner && *event == EVENT_PLAYER_UNIT_CONSTRUCT_FINISH));
+            } else {
+                u.constructing = Some(left);
+            }
+            return;
+        }
+        // Production.
+        let Some(&id) = self.unit(h).and_then(|u| u.queue.first()) else { return };
+        let build_time = self.objects.units.get(id).map_or(1.0, |o| o.real("bldtm")).max(0.01);
+        let u = self.unit_mut(h).unwrap();
+        u.queue_progress += dt;
+        if u.queue_progress < build_time {
+            return;
+        }
+        // Food must be available when the unit finishes.
+        let owner = u.owner;
+        u.queue_progress = 0.0;
+        u.queue.remove(0);
+        let radius = self.objects.units.get(id).map_or(16.0, |o| o.real("collision"));
+        let (x, y) = self.spawn_point(h, radius);
+        let new = crate::natives::units::create_unit(self, owner, id, x, y, 270.0);
+        let rally = self.unit(h).and_then(|u| u.rally);
+        if let (Some((rx, ry)), true) = (rally, new != 0) {
+            let smart = crate::natives::basic::order_id("smart");
+            self.order_unit(new, smart, rx, ry, 0);
+        }
+        let ctx = EventCtx { unit: h, target_unit: new, player: owner, has_player: true, train_unit_type: crate::objects::id_to_int(id), event_id: EVENT_PLAYER_UNIT_TRAIN_FINISH, ..Default::default() };
+        self.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event, .. } if *player == owner && *event == EVENT_PLAYER_UNIT_TRAIN_FINISH));
+    }
+
+    /// Whether a structure of type `id` can be placed centered at (x, y).
+    pub fn can_place(&mut self, id: Id, x: f32, y: f32) -> bool {
+        let tex = self.objects.units.get(id).map(|o| o.str("pathTex")).unwrap_or_default();
+        let cells = self.pathing_cells(&tex, x, y, 0.0);
+        let Some(p) = &self.pathing else { return true };
+        cells.iter().all(|&c| p.buildable(c))
+    }
+
+    /// Snaps a placement to the pathing grid the way structures align (to 64-unit marks
+    /// for even-sized footprints).
+    pub fn snap_placement(&self, x: f32, y: f32) -> (f32, f32) {
+        let s = |v: f32| (v / 64.0).round() * 64.0;
+        (s(x), s(y))
+    }
+
+    fn build(&mut self, vm: &mut Vm, h: u32, id: Id, x: f32, y: f32, dt: f32) {
+        let u = self.unit(h).unwrap();
+        let (d, need_path, owner) = ((u.x - x).hypot(u.y - y), u.path.is_empty() || u.repath_timer <= 0.0, u.owner);
+        if d > 96.0 {
+            if need_path {
+                self.path_to(h, (x, y));
+            }
+            // Stop walking at the end of the path even when the site itself is blocked.
+            if !self.walk(h, dt) {
+                return;
+            }
+        }
+        if !self.can_place(id, x, y) {
+            let u = self.unit_mut(h).unwrap();
+            u.action = Action::Idle;
+            set_anim(u, "stand");
+            return;
+        }
+        if self.spend(owner, id, false).is_err() {
+            let u = self.unit_mut(h).unwrap();
+            u.action = Action::Idle;
+            set_anim(u, "stand");
+            return;
+        }
+        let b = crate::natives::units::create_unit(self, owner, id, x, y, self.misc_f32("BuildingAngle", 270.0));
+        if let Some(bu) = self.unit_mut(b) {
+            let t = bu.build_time;
+            bu.constructing = Some(t);
+            bu.life = bu.max_life * 0.1;
+            restart_anim(bu, "birth");
+        }
+        // Move the worker out of the footprint.
+        let r = self.unit(h).map_or(16.0, |u| u.collision);
+        let (sx, sy) = self.spawn_point(b, r);
+        let u = self.unit_mut(h).unwrap();
+        u.x = sx;
+        u.y = sy;
+        u.path.clear();
+        u.building = b;
+        u.action = Action::Construct { target: b };
+        let ctx = EventCtx { unit: b, player: owner, has_player: true, event_id: EVENT_PLAYER_UNIT_CONSTRUCT_START, ..Default::default() };
+        self.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event, .. } if *player == owner && *event == EVENT_PLAYER_UNIT_CONSTRUCT_START));
     }
 
     /// The unit's ability with the given base code, with its level.

@@ -5,8 +5,18 @@ use w3_game::World;
 use w3_game::types::player_state;
 use w3_ui::{Draw, FrameDb, FramePoint, FrameTree, Point};
 
+/// CCommandBar (game.dll 0x6f39d410): a 0.1745 x 0.129 grid of 4 x 3 buttons of 0.038,
+/// anchored to the console's bottom right at (-0.007375, 0.002).
+const CARD_W: f32 = 0.1745;
+const CARD_H: f32 = 0.129;
+const CARD_RIGHT: f32 = 0.007375;
+const CARD_BOTTOM: f32 = 0.002;
+const BUTTON: f32 = 0.038;
+
 pub struct Hud {
     pub tree: FrameTree,
+    pub card: Vec<crate::card::Button>,
+    pub page: crate::card::Page,
     gold: Option<usize>,
     lumber: Option<usize>,
     supply: Option<usize>,
@@ -46,6 +56,8 @@ impl Hud {
         pin(&mut tree, upper, FramePoint::TopLeft);
         tree.layout();
         Hud {
+            card: Vec::new(),
+            page: crate::card::Page::Main,
             gold: tree.get("ResourceBarGoldText"),
             lumber: tree.get("ResourceBarLumberText"),
             supply: tree.get("ResourceBarSupplyText"),
@@ -79,7 +91,35 @@ impl Hud {
         set(&mut self.tree, self.upkeep, db.string(key));
     }
 
+    /// Interface rectangle of a command card slot.
+    pub fn slot_rect(&self, x: u32, y: u32) -> w3_ui::Rect {
+        let root = self.tree.frames[0].rect.unwrap_or_default();
+        let (x1, y0) = (root.x1 - CARD_RIGHT, root.y0 + CARD_BOTTOM);
+        let (x0, y1) = (x1 - CARD_W, y0 + CARD_H);
+        let (cw, ch) = (CARD_W / 4.0, CARD_H / 3.0);
+        let cx = x0 + cw * (x as f32 + 0.5);
+        let cy = y1 - ch * (y as f32 + 0.5);
+        w3_ui::Rect { x0: cx - BUTTON / 2.0, x1: cx + BUTTON / 2.0, y0: cy - BUTTON / 2.0, y1: cy + BUTTON / 2.0 }
+    }
+
+    /// The card button at an interface position.
+    pub fn button_at(&self, x: f32, y: f32) -> Option<&crate::card::Button> {
+        self.card.iter().find(|b| self.slot_rect(b.x, b.y).contains(x, y))
+    }
+
     pub fn draws(&self, db: &FrameDb) -> Vec<Draw> {
-        self.tree.draw(db)
+        let mut out = self.tree.draw(db);
+        for b in &self.card {
+            let icon = if b.enabled { b.icon.clone() } else { crate::card::disabled_icon(&b.icon) };
+            out.push(Draw::Image {
+                texture: icon,
+                rect: self.slot_rect(b.x, b.y),
+                uv: [0.0, 0.0, 1.0, 1.0],
+                color: [1.0; 4],
+                blend: w3_ui::Blend::Alpha,
+                rotated: false,
+            });
+        }
+        out
     }
 }

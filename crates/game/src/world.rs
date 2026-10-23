@@ -534,7 +534,13 @@ impl World {
             }
             if let Some(o) = self.objects.units.get(u.type_id) {
                 used[u.owner as usize % PLAYER_COUNT] += o.int("fused");
-                made[u.owner as usize % PLAYER_COUNT] += o.int("fmade");
+                if u.constructing.is_none() {
+                    made[u.owner as usize % PLAYER_COUNT] += o.int("fmade");
+                }
+                // Queued units hold their food while training.
+                for q in &u.queue {
+                    used[u.owner as usize % PLAYER_COUNT] += self.objects.units.get(*q).map_or(0, |o| o.int("fused"));
+                }
             }
         }
         for (i, p) in self.players.iter_mut().enumerate() {

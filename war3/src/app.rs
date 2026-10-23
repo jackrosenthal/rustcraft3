@@ -110,6 +110,18 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => el.exit(),
             WindowEvent::Resized(s) => r.gpu.resize(s.width, s.height),
             WindowEvent::KeyboardInput { event, .. } => {
+                if event.state == ElementState::Pressed {
+                    if let (Some(scene), Some(text)) = (r.scene.as_mut(), event.text.as_ref()) {
+                        for c in text.chars() {
+                            scene.key(c);
+                        }
+                    }
+                    if event.physical_key == PhysicalKey::Code(KeyCode::Escape) {
+                        if let Some(scene) = r.scene.as_mut() {
+                            scene.key('\u{1b}');
+                        }
+                    }
+                }
                 if let PhysicalKey::Code(code) = event.physical_key {
                     match event.state {
                         ElementState::Pressed => {
@@ -135,7 +147,11 @@ impl ApplicationHandler for App {
                 let shift = r.keys.contains(&KeyCode::ShiftLeft) || r.keys.contains(&KeyCode::ShiftRight);
                 if let Some(scene) = r.scene.as_mut() {
                     match (button, state) {
-                        (MouseButton::Left, ElementState::Pressed) => scene.drag = Some((p, p)),
+                        (MouseButton::Left, ElementState::Pressed) => {
+                            if !scene.left_click(p.0, p.1, size) {
+                                scene.drag = Some((p, p));
+                            }
+                        }
                         (MouseButton::Left, ElementState::Released) => {
                             if let Some((a, b)) = scene.drag.take() {
                                 scene.select(a, b, size, shift);

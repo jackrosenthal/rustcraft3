@@ -79,6 +79,11 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         work_timer: 0.0,
         harvest_source: 0,
         inside: 0,
+        queue: Vec::new(),
+        queue_progress: 0.0,
+        constructing: None,
+        build_time: o.real("bldtm"),
+        building: 0,
     };
     let path_tex = if unit.is_building { o.str("pathTex") } else { String::new() };
     let mut unit = unit;
@@ -639,5 +644,6 @@ fn dummy_unit() -> Unit {
         collision: 0.0, action: Action::Idle, path: vec![], repath_timer: 0.0, cooldown: 0.0, swing: None,
         acquire_timer: 0.0, anim: String::new(), anim_serial: 0, death_time: 0.0, pathing_cells: vec![],
         carry_gold: 0, carry_lumber: 0, work_timer: 0.0, harvest_source: 0, inside: 0,
+        queue: vec![], queue_progress: 0.0, constructing: None, build_time: 0.0, building: 0,
     }
 }

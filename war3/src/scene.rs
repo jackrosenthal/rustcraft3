@@ -131,6 +131,11 @@ pub struct Scene {
     ui: w3_render::ui::UiRenderer,
     decals: w3_render::decal::DecalRenderer,
     pub drag: Option<((f32, f32), (f32, f32))>,
+    /// A targeted order waiting for a world click.
+    pub targeting: Option<&'static str>,
+    /// A structure waiting for a placement click.
+    pub placing: Option<w3_game::objects::Id>,
+    commands: crate::card::Commands,
 }
 
 fn num(t: &Table, row: &str, col: &str) -> f64 {
@@ -273,7 +278,7 @@ impl Scene {
         });
         let ui = w3_render::ui::UiRenderer::new(device, color_format);
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain) };
         scene.apply_requests();
         Ok(scene)
     }
@@ -481,8 +486,131 @@ impl Scene {
         }
     }
 
+    /// Converts a screen position to interface coordinates.
+    pub fn to_ui(&self, sx: f32, sy: f32, size: (u32, u32)) -> (f32, f32) {
+        let width = self.hud.as_ref().map_or(w3_ui::UI_WIDTH, |h| h.tree.width);
+        (sx / size.0 as f32 * width, (1.0 - sy / size.1 as f32) * w3_ui::UI_HEIGHT)
+    }
+
+    /// Whether a screen position is over the console rather than the world.
+    pub fn over_console(&self, sx: f32, sy: f32, size: (u32, u32)) -> bool {
+        let (_, y) = self.to_ui(sx, sy, size);
+        self.hud.is_some() && !(0.13..=0.58).contains(&y)
+    }
+
+    /// Runs a command card action for the selection.
+    pub fn card_action(&mut self, action: crate::card::Action) {
+        use crate::card::Action as A;
+        let Some(g) = self.game.as_mut() else { return };
+        let local = g.world.local_player;
+        let mine: Vec<u32> = self.selection.iter().copied().filter(|&h| g.world.unit(h).is_some_and(|u| u.owner == local)).collect();
+        let Some(&first) = mine.first() else { return };
+        match action {
+            A::Order { order, targeted: true } if !order.is_empty() => self.targeting = Some(order),
+            A::Order { order, targeted: false } if !order.is_empty() => {
+                let id = w3_game::natives::basic::order_id(order);
+                for h in mine {
+                    g.world.order_unit(h, id, 0.0, 0.0, 0);
+                }
+            }
+            A::Order { .. } => {}
+            A::Train(id) => {
+                if let Err(e) = g.world.train(first, id) {
+                    log::info!("[error] {e}");
+                }
+            }
+            A::BuildMenu => {
+                if let Some(h) = self.hud.as_mut() {
+                    h.page = crate::card::Page::Build;
+                }
+            }
+            A::Build(id) => {
+                self.placing = Some(id);
+                if let Some(h) = self.hud.as_mut() {
+                    h.page = crate::card::Page::Main;
+                }
+            }
+            A::Cancel => {
+                self.targeting = None;
+                self.placing = None;
+                if let Some(h) = self.hud.as_mut() {
+                    h.page = crate::card::Page::Main;
+                }
+            }
+            A::CancelTrain => g.world.cancel_last(first),
+            A::Research(_) | A::Upgrade(_) => {}
+        }
+    }
+
+    /// Handles a left click: interface first, then targeting, placement, or selection start.
+    /// Returns true when the click was consumed and should not start a selection drag.
+    pub fn left_click(&mut self, sx: f32, sy: f32, size: (u32, u32)) -> bool {
+        let (ux, uy) = self.to_ui(sx, sy, size);
+        if let Some(b) = self.hud.as_ref().and_then(|h| h.button_at(ux, uy)).cloned() {
+            if b.enabled {
+                self.card_action(b.action);
+            }
+            return true;
+        }
+        if self.over_console(sx, sy, size) {
+            return true;
+        }
+        if let Some(order) = self.targeting.take() {
+            let target = self.pick_unit(sx, sy, size).or_else(|| self.pick_destructable(sx, sy, size));
+            let point = self.ground_at(sx, sy, size);
+            if let Some(g) = self.game.as_mut() {
+                let id = w3_game::natives::basic::order_id(order);
+                for &h in &self.selection {
+                    if g.world.unit(h).is_none_or(|u| u.owner != g.world.local_player) {
+                        continue;
+                    }
+                    match (target, point) {
+                        (Some(t), _) => g.world.order_unit(h, id, 0.0, 0.0, t),
+                        (None, Some((x, y))) => g.world.order_unit(h, id, x, y, 0),
+                        _ => {}
+                    }
+                }
+            }
+            return true;
+        }
+        if let Some(id) = self.placing.take() {
+            let Some((x, y)) = self.ground_at(sx, sy, size) else { return true };
+            if let Some(g) = self.game.as_mut() {
+                let (x, y) = g.world.snap_placement(x, y);
+                if let Some(&worker) = self.selection.first() {
+                    if let Some(u) = g.world.unit_mut(worker) {
+                        u.action = w3_game::types::Action::Build { id, x, y };
+                        u.path.clear();
+                    }
+                }
+            }
+            return true;
+        }
+        false
+    }
+
+    /// A key press: command card hotkeys and Escape.
+    pub fn key(&mut self, c: char) {
+        if c == '\u{1b}' && (self.targeting.is_some() || self.placing.is_some()) {
+            self.card_action(crate::card::Action::Cancel);
+            return;
+        }
+        let c = c.to_ascii_uppercase();
+        if let Some(b) = self.hud.as_ref().and_then(|h| h.card.iter().find(|b| b.hotkey.map(|k| k.to_ascii_uppercase()) == Some(c)).cloned()) {
+            if b.enabled {
+                self.card_action(b.action);
+            }
+        }
+    }
+
     /// Right-click: a smart order to every selected unit the local player owns.
     pub fn command(&mut self, sx: f32, sy: f32, size: (u32, u32)) {
+        if self.targeting.take().is_some() || self.placing.take().is_some() {
+            return;
+        }
+        if self.over_console(sx, sy, size) {
+            return;
+        }
         let target = self.pick_unit(sx, sy, size).or_else(|| self.pick_destructable(sx, sy, size));
         let point = self.ground_at(sx, sy, size);
         let Some(g) = self.game.as_mut() else { return };
@@ -552,6 +680,12 @@ impl Scene {
         let w = &g.world;
         self.units.retain(|h, _| w.unit(*h).is_some());
         self.selection.retain(|h| w.unit(*h).is_some_and(|u| !u.dead));
+        if let Some(hud) = self.hud.as_mut() {
+            hud.card = match self.selection.first() {
+                Some(&h) if w.unit(h).is_some_and(|u| u.owner == w.local_player) => self.commands.card(&assets.frames, w, h, hud.page),
+                _ => Vec::new(),
+            };
+        }
         for &h in &w.unit_order {
             let Some(u) = w.unit(h) else { continue };
             if !self.units.contains_key(&h) {
@@ -565,6 +699,11 @@ impl Scene {
             }
             let view = self.units.get_mut(&h).unwrap();
             view.update(&u.anim, u.anim_serial);
+            // Structures under construction show their birth animation in step with progress.
+            if let (Some(left), Some(seq)) = (u.constructing, view.inst.sequence.and_then(|s| view.inst.model.mdx.sequences.get(s))) {
+                let len = (seq.end - seq.start) as f32;
+                view.inst.frame = len * (1.0 - left / u.build_time.max(0.01)).clamp(0.0, 1.0);
+            }
             let inst = &mut view.inst;
             let z = self.terrain.height_at(u.x, u.y) + u.fly_height;
             inst.transform = Mat4::from_scale_rotation_translation(
@@ -587,8 +726,11 @@ impl Scene {
         for inst in &mut self.instances {
             inst.advance(dt * 1000.0);
         }
-        for v in self.units.values_mut() {
-            v.inst.advance(dt * 1000.0);
+        for (h, v) in self.units.iter_mut() {
+            let building = self.game.as_ref().and_then(|g| g.world.unit(*h)).is_some_and(|u| u.constructing.is_some());
+            if !building {
+                v.inst.advance(dt * 1000.0);
+            }
         }
         for (inst, _) in self.dests.values_mut() {
             inst.advance(dt * 1000.0);

@@ -33,6 +33,15 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("selected {:?}", scene.selection);
                 i += 5;
             }
+            "lclick" => {
+                let consumed = scene.left_click(num(&a[i + 1]), num(&a[i + 2]), (w, h));
+                eprintln!("left click consumed: {consumed}");
+                i += 3;
+            }
+            "key" => {
+                scene.key(a[i + 1].chars().next().unwrap());
+                i += 2;
+            }
             "click" => {
                 scene.command(num(&a[i + 1]), num(&a[i + 2]), (w, h));
                 i += 3;
@@ -51,6 +60,14 @@ fn main() -> anyhow::Result<()> {
                     t -= 0.02;
                 }
                 i += 2;
+            }
+            "card" => {
+                if let Some(hud) = &scene.hud {
+                    for b in &hud.card {
+                        eprintln!("card {:?} ({},{}) hotkey {:?} {}", b.action, b.x, b.y, b.hotkey, b.icon);
+                    }
+                }
+                i += 1;
             }
             "dump" => {
                 if let Some(g) = &scene.game {

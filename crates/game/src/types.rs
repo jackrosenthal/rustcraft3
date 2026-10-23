@@ -185,6 +185,14 @@ pub struct Unit {
     pub harvest_source: u32,
     /// Units inside a gold mine (for mines) or the mine a worker is inside.
     pub inside: u32,
+    /// Units, upgrades, or research queued at a structure, and progress on the first.
+    pub queue: Vec<Id>,
+    pub queue_progress: f32,
+    /// Seconds of construction remaining, while a structure is being built.
+    pub constructing: Option<f32>,
+    pub build_time: f32,
+    /// The structure a worker is building.
+    pub building: u32,
 }
 
 /// What a unit is doing.
@@ -200,6 +208,9 @@ pub enum Action {
     Follow { target: u32 },
     Harvest { target: u32 },
     ReturnResources,
+    Build { id: Id, x: f32, y: f32 },
+    /// A worker constructing a structure.
+    Construct { target: u32 },
 }
 
 /// An attack in progress: damage lands at the damage point, then the backswing plays.

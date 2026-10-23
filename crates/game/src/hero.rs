@@ -120,6 +120,15 @@ impl World {
     /// Whether a hero can learn the next level of an ability now.
     /// What stands for a hero skill now: the skill, or what Engineering Upgrade made
     /// of it.
+    /// Whether a skill is one of the hero's own (FUN_6f5294b0): its heroAbilList, where
+    /// AUfa also answers for AUfu, or a skill put in place of one of them.
+    fn in_hero_list(&self, h: u32, ability: Id) -> bool {
+        let Some(u) = self.unit(h) else { return false };
+        let list: Vec<Id> = self.objects.units.get(u.type_id).map(|o| o.list("heroAbilList")).unwrap_or_default().iter().map(|s| crate::objects::id_from_str(s.trim())).collect();
+        let listed = |a: Id| list.iter().any(|&x| x == a || (a == *b"AUfa" && x == *b"AUfu"));
+        listed(ability) || u.extra.swapped.iter().any(|s| s.1 == ability && listed(s.0))
+    }
+
     pub fn learned_id(&self, h: u32, ability: Id) -> Id {
         self.unit(h).and_then(|u| u.extra.swapped.iter().find(|s| s.0 == ability)).map_or(ability, |s| s.1)
     }
@@ -149,6 +158,9 @@ impl World {
     }
 
     pub fn can_learn(&self, h: u32, ability: Id) -> bool {
+        if !self.in_hero_list(h, ability) {
+            return false;
+        }
         let ability = self.learned_id(h, ability);
         let Some(u) = self.unit(h) else { return false };
         let current = u.abilities.iter().find(|(a, _)| *a == ability).map_or(0, |a| a.1);

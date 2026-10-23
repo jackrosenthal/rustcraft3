@@ -269,6 +269,7 @@ impl World {
                 "Abtl" => self.ai_battle_stations(h, a, enemy),
                 "Abrf" => self.ai_bear_form(h, a, enemy, victim),
                 "Aroa" => self.ai_roar(h, a, enemy, victim),
+                "ANhs" => self.ai_healing_spray(h, a, lvl, enemy),
                 "Aclf" => self.ai_cloud(h, a, enemy, victim),
                 "Acpf" => self.ai_corporeal_form(h, a, enemy, victim),
                 "Amfl" => {
@@ -648,6 +649,83 @@ impl World {
         if need <= c.enemies {
             self.ai_cast(h, a, enemy);
         }
+    }
+
+    /// Healing Spray (CAbilityHealingSpray vf64): with an enemy about and its AI ready,
+    /// it rests and sprays at the unit FUN_6f6037c0 picks around the caster.
+    fn ai_healing_spray(&mut self, h: u32, a: Id, lvl: u32, enemy: u32) {
+        if enemy == 0 || self.ai_resting(h, a) || self.can_cast(h, a).is_err() {
+            return;
+        }
+        self.ai_rest(h, a);
+        if let Some(t) = self.spray_target(h, a, lvl) {
+            self.ai_cast(h, a, t);
+        }
+    }
+
+    /// FUN_6f6037c0 with FUN_6f608aa0: of the units within Area of the caster that the
+    /// spell may target, enemies are counted; of the rest, illusions, summoned units,
+    /// units held in place, units with an attack target, and units already sprayed (BNhs)
+    /// are passed over.  One under 60% of its life is wounded, and the best of them
+    /// (Heroes first, then the least life) is the pick; a Hero under 80% may be picked
+    /// too.  Four wounded end the search, as does a Hero under 30% or missing at least
+    /// the spray's whole heal (DataA × (DataB × DataF + 0.01) / DataB).  The pick holds
+    /// when the wounded outnumber twice the enemies.
+    fn spray_target(&self, h: u32, a: Id, lvl: u32) -> Option<u32> {
+        const WANT: u32 = 4;
+        let owner = self.unit(h)?.owner;
+        let (x, y) = self.pos(h);
+        let radius = self.data(a, "Area", lvl);
+        let (b, f) = (self.data(a, "DataB", lvl), self.data(a, "DataF", lvl));
+        let scaled = b * f + 0.01;
+        let ratio = if scaled != b { scaled / b } else { 1.0 };
+        let heal = self.data(a, "DataA", lvl) * ratio;
+        let hero = |u: &Unit| u.is_hero && u.extra.illusion.is_none();
+        let better = |best: Option<u32>, c: &Unit, ch: u32| -> bool {
+            let Some(b) = best.and_then(|b| self.unit(b)) else { return true };
+            match (hero(b), hero(c)) {
+                (true, false) => false,
+                (false, true) => true,
+                _ => self.life_fraction(ch) < self.life_fraction(best.unwrap()),
+            }
+        };
+        let (mut wounded, mut enemies, mut best) = (0u32, 0u32, None);
+        for &u_h in &self.unit_order {
+            let Some(u) = self.unit(u_h) else { continue };
+            if u.dead || u.hidden || (u.x - x).hypot(u.y - y) > radius || self.cast_target_error(h, a, u_h).is_some() {
+                continue;
+            }
+            if !crate::natives::players::is_ally(self, owner, u.owner) {
+                enemies += 1;
+                continue;
+            }
+            let held = u.move_speed > 0.0 && (self.buff_mods(u_h).4 || self.current_move_speed(u_h) <= 0.0);
+            let attacking = matches!(u.action, Action::Attack { .. });
+            if u.extra.illusion.is_some() || u.timed_life.is_some() || held || attacking || u.buffs.iter().any(|x| x.id == *b"BNhs") {
+                continue;
+            }
+            let life = self.life_fraction(u_h);
+            if life < 0.6 {
+                if better(best, u, u_h) {
+                    best = Some(u_h);
+                }
+                wounded += 1;
+                if wounded >= WANT {
+                    break;
+                }
+            }
+            if hero(u) {
+                if life < 0.8 && better(best, u, u_h) {
+                    best = Some(u_h);
+                }
+                if life >= 0.3 && u.max_life - u.life < heal {
+                    continue;
+                }
+                wounded = WANT;
+                break;
+            }
+        }
+        best.filter(|_| enemies * 2 < wounded)
     }
 
     /// Healing Wave (CAbilityHealingWave vf64): with its AI ready, on a friendly victim

@@ -36,7 +36,9 @@ pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>
         d.handle = h;
     }
     w.destructable_order.push(h);
-    let cells = w.pathing_cells(&path_tex, x, y, facing);
+    // A pathing texture is drawn for the facing structures stand at (270, as
+    // BuildingAngle), and turns from there.
+    let cells = w.pathing_cells(&path_tex, x, y, facing - 270.0);
     if let Some(p) = w.pathing.as_mut() {
         p.stamp(&cells, 1);
     }

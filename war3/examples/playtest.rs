@@ -475,6 +475,44 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 4;
             }
+            // find <type> <player>: lists a player's units of a type with their handles,
+            // positions, and actions.
+            "find" => {
+                if let Some(g) = scene.game.as_ref() {
+                    let id = w3_game::objects::id_from_str(&a[i + 1]);
+                    let p = num(&a[i + 2]) as u8;
+                    for &h in &g.world.unit_order {
+                        if let Some(u) = g.world.unit(h).filter(|u| u.type_id == id && u.owner == p) {
+                            let seen: Vec<u8> = (0..12u8).filter(|&p| g.world.fog_state(u.x, u.y, p) == w3_game::fog::FOG_VISIBLE).collect();
+                            eprintln!("found {h} at {:.0} {:.0} dead {} paused {} {:?} seen by {:?}", u.x, u.y, u.dead, u.paused, u.action, seen);
+                        }
+                    }
+                }
+                i += 3;
+            }
+            // dests <x> <y> <r>: destructables near a world point, with life and pathing.
+            "dests" => {
+                if let Some(g) = scene.game.as_ref() {
+                    let (x, y, r) = (num(&a[i + 1]), num(&a[i + 2]), num(&a[i + 3]));
+                    for (h, o) in g.world.handles.iter() {
+                        if let w3_game::types::Obj::Destructable(d) = o {
+                            if (d.x - x).hypot(d.y - y) <= r {
+                                eprintln!("dest {h} {} at {:.0} {:.0} facing {:.0} life {} cells {}", w3_game::objects::id_str(d.type_id), d.x, d.y, d.facing, d.life, d.pathing_cells.len());
+                            }
+                        }
+                    }
+                }
+                i += 4;
+            }
+            // abils <handle>: a unit's abilities and levels.
+            "abils" => {
+                if let Some(g) = scene.game.as_ref() {
+                    if let Some(u) = g.world.unit(num(&a[i + 1]) as u32) {
+                        eprintln!("abils {:?}", u.abilities.iter().map(|(a, l)| format!("{}:{}", w3_game::objects::id_str(*a), l)).collect::<Vec<_>>());
+                    }
+                }
+                i += 2;
+            }
             // log: opens the message log (F12).
             "log" => {
                 scene.open_log();

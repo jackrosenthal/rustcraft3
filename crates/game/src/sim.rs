@@ -519,6 +519,10 @@ impl World {
                 continue;
             }
             let d = (tu.x - u.x).hypot(tu.y - u.y);
+            // Only what the owner can see (a cliff above, the fog) is acquired.
+            if d <= range && self.fog_state(tu.x, tu.y, u.owner) != crate::fog::FOG_VISIBLE {
+                continue;
+            }
             if d <= range && best.is_none_or(|b| d < b.0) {
                 best = Some((d, t));
             }

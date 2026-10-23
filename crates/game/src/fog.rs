@@ -75,6 +75,23 @@ impl FogMap {
         Some(cy as usize * self.width + cx as usize)
     }
 
+    /// Whether an occluded cell lies strictly between two cells (along the line between
+    /// their centers, sampled every half cell).
+    fn blocked(&self, from: usize, to: usize, occluded: &[bool]) -> bool {
+        let (fx, fy) = ((from % self.width) as f32, (from / self.width) as f32);
+        let (tx, ty) = ((to % self.width) as f32, (to / self.width) as f32);
+        let steps = ((tx - fx).abs().max((ty - fy).abs()) * 2.0) as usize;
+        for k in 1..steps {
+            let t = k as f32 / steps as f32;
+            let (cx, cy) = ((fx + (tx - fx) * t).round() as usize, (fy + (ty - fy) * t).round() as usize);
+            let c = cy * self.width + cx;
+            if c != from && c != to && occluded.get(c).copied().unwrap_or(false) {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Cells whose centers lie within `r` of (x, y).
     fn circle(&self, x: f32, y: f32, r: f32, mut f: impl FnMut(usize, usize)) {
         let x0 = (((x - r) - self.origin.0) / FOG_CELL).floor().max(0.0) as usize;
@@ -184,6 +201,21 @@ impl World {
                 }
             }
         }
+        // Standing destructables with an occlusion height (trees, line of sight
+        // blockers) hide what lies beyond them from the ground.
+        let (fw, fh) = { let f = self.fog.as_ref().unwrap(); (f.width, f.height) };
+        let mut occluded = vec![false; fw * fh];
+        for (_, o) in self.handles.iter() {
+            let Obj::Destructable(d) = o else { continue };
+            if d.life <= 0.0 {
+                continue;
+            }
+            if self.objects.destructables.get(d.type_id).is_some_and(|od| od.real("occH") > 0.0) {
+                if let Some(c) = self.fog.as_ref().unwrap().cell(d.x, d.y) {
+                    occluded[c] = true;
+                }
+            }
+        }
         let fog = self.fog.as_mut().unwrap();
         for v in fog.visible.iter_mut() {
             v.fill(false);
@@ -192,9 +224,13 @@ impl World {
         for (owner, x, y, r, lvl, flying, shared) in sources {
             let mut cells = Vec::new();
             fog.circle(x, y, r, |cx, cy| cells.push(cy * w + cx));
+            let from = fog.cell(x, y);
             for c in cells {
-                // Ground units do not see onto higher cliff levels.
+                // Ground units do not see onto higher cliff levels, nor past occluders.
                 if !flying && fog.level[c] > lvl {
+                    continue;
+                }
+                if !flying && from.is_some_and(|f| fog.blocked(f, c, &occluded)) {
                     continue;
                 }
                 for &p in &viewers[owner as usize % PLAYER_COUNT] {

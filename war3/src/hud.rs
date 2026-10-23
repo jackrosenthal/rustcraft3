@@ -108,6 +108,10 @@ pub struct Hud {
     pub menu: Option<FrameTree>,
     /// The quest log (F9), while open.
     pub quests: Option<crate::quests::QuestView>,
+    /// The message log (F12), while open, and its lines; the transmission last logged.
+    pub log_view: Option<crate::msglog::LogView>,
+    pub log: Vec<String>,
+    logged_scene: Option<(f32, String)>,
     /// The game menu's Save Game or Load Game panel, while shown.
     pub save_panel: Option<crate::saveload::SavePanel>,
     /// The selected unit's inventory: icon and charges per slot it has.
@@ -260,6 +264,9 @@ impl Hud {
             boards: None,
             menu: None,
             quests: None,
+            log_view: None,
+            log: Vec::new(),
+            logged_scene: None,
             save_panel: None,
             inventory: Vec::new(),
             level_bar: None,
@@ -425,6 +432,14 @@ impl Hud {
     /// transmission's speaker and text, and the cine filter's current look.
     pub fn sync_cinematic(&mut self, db: &FrameDb, world: &World, aspect: f32) {
         let c = &world.cinematic;
+        // Each transmission goes to the message log once.
+        if let Some(s) = &c.scene {
+            let key = (s.ends, s.speaker.clone());
+            if self.logged_scene.as_ref() != Some(&key) {
+                self.log.push(crate::msglog::transmission_line(&s.speaker, &s.text));
+                self.logged_scene = Some(key);
+            }
+        }
         self.cinematic = !c.interface;
         self.filter = c.filter.shown.and_then(|shown| {
             let f = &c.filter;
@@ -996,6 +1011,7 @@ impl Hud {
         let duration = if duration < 0.0 { 3.0 + 0.1 * text.len() as f32 } else { duration };
         self.unit_message_offset = (x.max(0.0), y.max(0.0));
         self.unit_messages.push(Message { text: text.to_string(), until: self.now + duration });
+        self.log.push(text.to_string());
     }
 
     /// Shows an error line for 10 seconds, replacing the previous one (FUN_6f36de80).
@@ -1269,6 +1285,9 @@ impl Hud {
         }
         if let Some(q) = &self.quests {
             out.extend(q.draws(db));
+        }
+        if let Some(l) = &self.log_view {
+            out.extend(l.draws(db));
         }
         if let Some(m) = &self.menu {
             out.extend(m.draw(db));

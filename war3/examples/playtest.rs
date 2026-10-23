@@ -444,6 +444,11 @@ fn main() -> anyhow::Result<()> {
                 scene.alt_held = true;
                 i += 1;
             }
+            // log: opens the message log (F12).
+            "log" => {
+                scene.open_log();
+                i += 1;
+            }
             // quests: opens the quest log (F9).
             "quests" => {
                 scene.open_quests();

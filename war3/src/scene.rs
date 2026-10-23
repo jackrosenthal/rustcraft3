@@ -310,6 +310,8 @@ pub struct Scene {
     menu_requested: bool,
     /// The quest log is to open (F9 or the Quests button).
     quests_requested: bool,
+    /// The message log is to open (F12 or the Log button).
+    log_requested: bool,
     /// Acknowledgments: the unit last clicked, the consecutive "What" count (game.dll
     /// DAT_6fd707f0), and the playing line.
     ack_unit: u32,
@@ -532,7 +534,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, log_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1417,6 +1419,15 @@ impl Scene {
             }
             return true;
         }
+        // The message log takes every click while it is open; OK closes it.
+        if let Some(h) = self.hud.as_mut() {
+            if let Some(l) = h.log_view.as_mut() {
+                if l.click(ux, uy) {
+                    h.log_view = None;
+                }
+                return true;
+            }
+        }
         // The quest log takes every click while it is open; Accept closes it.
         if let Some(h) = self.hud.as_mut() {
             if let Some(q) = h.quests.as_mut() {
@@ -1435,6 +1446,10 @@ impl Scene {
                 }
                 if h.tree.frames[i].name == "UpperButtonBarQuestsButton" && h.tree.frames[i].enabled {
                     self.open_quests();
+                    return true;
+                }
+                if h.tree.frames[i].name == "UpperButtonBarChatButton" && h.tree.frames[i].enabled {
+                    self.open_log();
                     return true;
                 }
             }
@@ -1587,6 +1602,13 @@ impl Scene {
     /// Opens the game menu (F10) on the next frame.
     pub fn open_menu(&mut self, _size: (u32, u32)) {
         self.menu_requested = true;
+    }
+
+    /// Opens the message log (F12) on the next frame.
+    pub fn open_log(&mut self) {
+        if self.hud.as_ref().is_some_and(|h| h.menu.is_none()) {
+            self.log_requested = true;
+        }
     }
 
     /// Opens the quest log (F9) on the next frame, when the map has quests.
@@ -1761,6 +1783,9 @@ impl Scene {
             if let Some(q) = h.quests.as_mut() {
                 q.pointer_move(p.0, p.1);
             }
+            if let Some(l) = h.log_view.as_mut() {
+                l.pointer_move(p.0, p.1);
+            }
         }
     }
 
@@ -1800,6 +1825,10 @@ impl Scene {
             }
             if let Some(h) = self.hud.as_mut().filter(|h| h.quests.is_some()) {
                 h.quests = None;
+                return;
+            }
+            if let Some(h) = self.hud.as_mut().filter(|h| h.log_view.is_some()) {
+                h.log_view = None;
                 return;
             }
         }
@@ -2243,7 +2272,7 @@ impl Scene {
         // The game menu pauses a single-player game; the game speed (slow, normal, fast:
         // 3/5, 4/5, and 5/5 of real time in the original) scales the game and its
         // animation.
-        let paused = self.hud.as_ref().is_some_and(|h| h.menu.is_some() || h.quests.is_some());
+        let paused = self.hud.as_ref().is_some_and(|h| h.menu.is_some() || h.quests.is_some() || h.log_view.is_some());
         let speed = self.game.as_ref().map_or(1.0, |g| [0.6, 0.8, 1.0][g.world.game_speed.clamp(0, 2) as usize]);
         let gdt = if paused { 0.0 } else { dt * speed };
         // The selection: script changes come to the interface, the player's go to the
@@ -2329,8 +2358,13 @@ impl Scene {
     }
 
     /// Opens a requested quest log and shows a changed choice in it.
-    fn update_quests(requested: &mut bool, hud: &mut crate::hud::Hud, db: &w3_ui::FrameDb, world: &w3_game::world::World, info: &MapInfo, aspect: f32) {
+    fn update_quests(requested: &mut bool, log: &mut bool, hud: &mut crate::hud::Hud, db: &w3_ui::FrameDb, world: &w3_game::world::World, info: &MapInfo, aspect: f32) {
+        if std::mem::take(log) && hud.menu.is_none() {
+            hud.quests = None;
+            hud.log_view = crate::msglog::LogView::open(db, aspect, &hud.log);
+        }
         if std::mem::take(requested) && hud.menu.is_none() {
+            hud.log_view = None;
             hud.quests = crate::quests::QuestView::open(db, aspect, world, (&info.loading_title, &info.loading_subtitle));
         }
         if let Some(q) = hud.quests.as_mut().filter(|q| q.dirty) {
@@ -2343,7 +2377,7 @@ impl Scene {
     pub fn update_menu(&mut self, db: &w3_ui::FrameDb, aspect: f32) {
         let Some(hud) = self.hud.as_mut() else { return };
         if let Some(g) = self.game.as_ref() {
-            Self::update_quests(&mut self.quests_requested, hud, db, &g.world, &self.info, aspect);
+            Self::update_quests(&mut self.quests_requested, &mut self.log_requested, hud, db, &g.world, &self.info, aspect);
         }
         if std::mem::take(&mut self.menu_requested) && hud.menu.is_none() {
             hud.open_menu(db, aspect);
@@ -2576,9 +2610,10 @@ impl Scene {
             hud.sync_dialog(&assets.frames, &g.world, g.world.local_player, aspect);
             if std::mem::take(&mut self.menu_requested) && hud.menu.is_none() {
                 hud.quests = None;
+                hud.log_view = None;
                 hud.open_menu(&assets.frames, aspect);
             }
-            Self::update_quests(&mut self.quests_requested, hud, &assets.frames, &g.world, &self.info, aspect);
+            Self::update_quests(&mut self.quests_requested, &mut self.log_requested, hud, &assets.frames, &g.world, &self.info, aspect);
             hud.sync_save_panel(&assets.frames);
             if let Some(m) = hud.menu.as_mut() {
                 m.set_enabled("RestartButton", !g.world.restart_disabled);

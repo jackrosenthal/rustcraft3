@@ -314,7 +314,8 @@ impl World {
         // Buff art attaches to the target (the buff's Targetart and Targetattach).
         let art = self.objects.buffs.get(b.id).map(|o| (o.list("Targetart").first().cloned().unwrap_or_default(), o.list("Targetattach").first().cloned().unwrap_or_default()));
         let u = self.unit_mut(target).unwrap();
-        if let Some(existing) = u.buffs.iter_mut().find(|x| x.id == b.id) {
+        // An effect without a buff type (a fountain's) is told apart by its ability.
+        if let Some(existing) = u.buffs.iter_mut().find(|x| x.id == b.id && (b.id != [0; 4] || x.ability == b.ability)) {
             existing.remaining = existing.remaining.max(b.remaining);
             existing.level = b.level;
             return;
@@ -355,7 +356,7 @@ impl World {
                 if b.dps != 0.0 {
                     dots.push((b.caster, h, b.dps * dt));
                 }
-                u.mana = (u.mana + b.mana_regen * dt).min(u.max_mana);
+                u.mana = (u.mana + (b.mana_regen + b.mana_regen_pct * u.max_mana) * dt).min(u.max_mana);
                 u.life = (u.life + (b.life_regen + b.life_regen_pct * u.max_life) * dt).min(u.max_life);
             }
             let mut lost_life = 0.0;
@@ -443,6 +444,15 @@ impl World {
                             b.life_regen = self.data(a, "DataA", lvl);
                         }
                     }
+                    // Neutral Regen (mana only, a fountain of mana): DataA mana a second, of
+                    // maximum mana when DataB.
+                    "Aarm" => {
+                        if self.data(a, "DataB", lvl) != 0.0 {
+                            b.mana_regen_pct = self.data(a, "DataA", lvl);
+                        } else {
+                            b.mana_regen = self.data(a, "DataA", lvl);
+                        }
+                    }
                     // War Drums and Command Aura: attack damage increase (DataA).
                     "Aakb" | "AOac" => b.damage_factor = self.data(a, "DataA", lvl),
                     // Slow Aura (a tornado): enemies move (DataA) and attack (DataB) slower.
@@ -453,17 +463,27 @@ impl World {
                     _ => continue,
                 }
                 let area = self.data(a, "Area", lvl);
-                let enemies = code == "Aasl";
-                grants.push((h, u.owner, u.x, u.y, area, b, enemies));
+                // Whom it reaches: enemies (a slow aura), allies, or, for a regeneration
+                // whose targets name no side (a fountain), everyone.
+                let targs = self.objects.abilities.get(a).map(|o| o.level_str("targs", lvl).to_ascii_lowercase()).unwrap_or_default();
+                let sided = ["friend", "allies", "player", "enemy", "neutral"].iter().any(|s| targs.split(',').any(|t| t.trim() == *s));
+                let reach = if code == "Aasl" {
+                    Some(true)
+                } else if matches!(code.as_str(), "Aoar" | "Aarm") && !sided {
+                    None
+                } else {
+                    Some(false)
+                };
+                grants.push((h, u.owner, u.x, u.y, area, b, reach));
             }
         }
-        for (src, owner, x, y, area, b, enemies) in grants {
+        for (src, owner, x, y, area, b, reach) in grants {
             let targets: Vec<u32> = self
                 .unit_order
                 .iter()
                 .copied()
                 .filter(|&t| {
-                    self.unit(t).is_some_and(|u| !u.dead && !u.is_building && (u.x - x).hypot(u.y - y) <= area && crate::natives::players::is_ally(self, owner, u.owner) != enemies)
+                    self.unit(t).is_some_and(|u| !u.dead && !u.is_building && (u.x - x).hypot(u.y - y) <= area && reach.is_none_or(|enemies| crate::natives::players::is_ally(self, owner, u.owner) != enemies))
                 })
                 .collect();
             for t in targets {

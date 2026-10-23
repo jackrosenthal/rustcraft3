@@ -505,6 +505,9 @@ pub struct Buff {
     pub no_repair: bool,
     /// Life regenerated a second as a fraction of maximum life (Healing Ward).
     pub life_regen_pct: f32,
+    /// Mana regained a second as a share of maximum mana (a fountain of mana).
+    #[serde(default)]
+    pub mana_regen_pct: f32,
     /// Fraction of piercing damage taken (Defend); zero when it does not apply.
     pub pierce_taken: f32,
     /// No spells (Silence, Doom, Soul Burn, Hex).

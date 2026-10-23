@@ -513,6 +513,15 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // life <unit> <amount>: sets a unit's life.
+            "life" => {
+                if let Some(g) = scene.game.as_mut() {
+                    if let Some(u) = g.world.unit_mut(num(&a[i + 1]) as u32) {
+                        u.life = num(&a[i + 2]).min(u.max_life);
+                    }
+                }
+                i += 3;
+            }
             // missiles: every missile in flight.
             "missiles" => {
                 if let Some(g) = scene.game.as_ref() {

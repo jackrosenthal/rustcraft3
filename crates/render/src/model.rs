@@ -162,6 +162,8 @@ pub struct ModelInstance {
     pub team: u8,
     pub tint: Vec4,
     pub visible: bool,
+    /// A bone turned to face a world point (SetUnitLookAt).
+    pub look_at: Option<(String, Vec3)>,
     /// Textures substituted for replaceable texture ids (trees, cliffs, ...).
     pub replaceable: HashMap<u32, Arc<Texture>>,
     pub skeleton: Skeleton,
@@ -187,6 +189,7 @@ impl ModelInstance {
             team: 0,
             tint: Vec4::ONE,
             visible: true,
+            look_at: None,
             replaceable: HashMap::new(),
             skeleton,
             finished: false,
@@ -545,6 +548,10 @@ impl ModelRenderer {
         let mdx = &model.mdx;
         let time = inst.time();
         let inv_rot = inst.transform.to_scale_rotation_translation().1.inverse() * camera_rot;
+        inst.skeleton.look = inst.look_at.as_ref().and_then(|(bone, target)| {
+            let i = mdx.nodes().iter().position(|n| n.is_some_and(|n| n.name.eq_ignore_ascii_case(bone)))?;
+            Some((i, inst.transform.inverse().transform_point3(*target)))
+        });
         inst.skeleton.update(mdx, &time, inv_rot);
         let bone_offset = self.bones.len() as u32;
         if inst.skeleton.world.is_empty() {

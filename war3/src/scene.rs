@@ -2300,6 +2300,12 @@ impl Scene {
                 let len = (seq.end - seq.start) as f32;
                 view.inst.frame = len * (1.0 - left / u.build_time.max(0.01)).clamp(0.0, 1.0);
             }
+            // SetUnitLookAt: the bone faces the target unit, offset.
+            view.inst.look_at = u.extra.look_at.as_ref().and_then(|(bone, t, off)| {
+                let tu = w.unit(*t)?;
+                let tz = self.terrain.height_at(tu.x, tu.y) + tu.fly_height;
+                Some((bone.clone(), Vec3::new(tu.x + off[0], tu.y + off[1], tz + off[2])))
+            });
             let inst = &mut view.inst;
             let z = self.terrain.height_at(u.x, u.y) + u.fly_height;
             inst.transform = Mat4::from_scale_rotation_translation(

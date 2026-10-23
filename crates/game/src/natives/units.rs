@@ -537,8 +537,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             })
         },
         SetUnitBlendTime => |_, _, _| none(),
-        SetUnitLookAt => |_, _, _| none(),
-        ResetUnitLookAt => |_, _, _| none(),
+        SetUnitLookAt => |w, _, a| {
+            let (bone, target, off) = (a.s(1), a.h(2), [a.r(3), a.r(4), a.r(5)]);
+            with_unit(w, a, |u| u.extra.look_at = Some((bone, target, off)))
+        },
+        ResetUnitLookAt => |w, _, a| with_unit(w, a, |u| u.extra.look_at = None),
         // The original grants and takes away the Invulnerable ability ('Avul').
         SetUnitInvulnerable => |w, _, a| {
             let v = a.b(1);

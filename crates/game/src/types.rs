@@ -345,6 +345,9 @@ pub struct UnitExtra {
     /// Animation properties scripts added (AddUnitAnimationProperties).
     #[serde(default)]
     pub anim_props: Vec<String>,
+    /// A bone turned toward a unit, offset from it (SetUnitLookAt).
+    #[serde(default)]
+    pub look_at: Option<(String, u32, [f32; 3])>,
 }
 
 impl Default for UnitExtra {
@@ -398,6 +401,7 @@ impl Default for UnitExtra {
             art: Vec::new(),
             spun_at: -100.0,
             anim_props: Vec::new(),
+            look_at: None,
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,

@@ -136,6 +136,9 @@ pub struct Skeleton {
     parents: Vec<Option<usize>>,
     flags: Vec<u32>,
     pivots: Vec<Vec3>,
+    /// A node turned to face a point in model space instead of animating its rotation
+    /// (SetUnitLookAt).
+    pub look: Option<(usize, Vec3)>,
 }
 
 impl Skeleton {
@@ -167,7 +170,7 @@ impl Skeleton {
         let pivots = (0..n)
             .map(|i| model.pivots.get(i).map_or(Vec3::ZERO, |p| Vec3::from_array(*p)))
             .collect();
-        Skeleton { world: vec![Mat4::IDENTITY; n], order, parents, flags, pivots }
+        Skeleton { world: vec![Mat4::IDENTITY; n], order, parents, flags, pivots, look: None }
     }
 
     /// `camera_rotation` is the inverse view rotation, used for billboarded nodes.
@@ -193,6 +196,15 @@ impl Skeleton {
             if flags & node_flags::BILLBOARDED != 0 {
                 // Face the camera regardless of the parent's rotation.
                 r = prot.inverse() * camera_rotation;
+            }
+            // A looking node's +x points at its target.
+            if let Some((node, target)) = self.look.filter(|l| l.0 == i) {
+                let at = pw.transform_point3(pivot + t);
+                let want = (target - at).normalize_or_zero();
+                if want != Vec3::ZERO {
+                    r = prot.inverse() * Quat::from_rotation_arc(Vec3::X, want);
+                }
+                let _ = node;
             }
             local_rot[i] = r;
             let mut parent_m = pw;

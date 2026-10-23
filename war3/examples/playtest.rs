@@ -112,10 +112,8 @@ fn main() -> anyhow::Result<()> {
                 i += 2;
             }
             "card" => {
-                if let Some(hud) = &scene.hud {
-                    for b in &hud.card {
-                        eprintln!("card {:?} ({},{}) hotkey {:?} {}", b.action, b.x, b.y, b.hotkey, b.icon);
-                    }
+                for b in scene.card_now(&assets.frames) {
+                    eprintln!("card {:?} ({},{}) enabled {} {} {}", b.action, b.x, b.y, b.enabled, b.tip, b.requires.replace('\n', " "));
                 }
                 i += 1;
             }

@@ -490,12 +490,15 @@ impl Hud {
         let (name_h, desc_h, cost_h) = (height("ToolTipName"), height("ToolTipDesc"), height("ToolTipCost"));
         let name_w = db.text_width(&font, name_h, &b.tip);
         let lines = if b.ubertip.is_empty() { Vec::new() } else { db.wrap(&font, desc_h, &b.ubertip, 0.21) };
+        // Unmet requirements come between the costs and the text.
+        let req_lines = if b.requires.is_empty() { Vec::new() } else { db.wrap(&font, desc_h, &b.requires, 0.21) };
         let line_h = desc_h;
         let costs: Vec<(usize, i32)> = b.costs.iter().copied().enumerate().filter(|&(_, c)| c != 0).collect();
         let cost_row = if costs.is_empty() { 0.0 } else { 0.013375 };
         let uber_h = if lines.is_empty() { 0.0 } else { lines.len() as f32 * line_h + 0.005 };
+        let req_h = if req_lines.is_empty() { 0.0 } else { req_lines.len() as f32 * line_h + 0.005 };
         let w = name_w.max(0.21) + 0.01;
-        let h = name_h + cost_row + uber_h + 0.01;
+        let h = name_h + cost_row + req_h + uber_h + 0.01;
         let r = w3_ui::Rect { x0: root.x1 - w, x1: root.x1, y0: root.y0 + 0.1625, y1: root.y0 + 0.1625 + h };
         let prop = |key: &str, args: Vec<Arg>| Prop { key: key.into(), args };
         let s = |v: &str| Arg::Str(v.into());
@@ -536,6 +539,11 @@ impl Hud {
                 x = tx + tw + 0.00625;
             }
             y -= cost_row;
+        }
+        if !req_lines.is_empty() {
+            y -= 0.005;
+            text(out, &req_lines.join("\n"), x0, y, desc_h, 0.21 + 0.005, [1.0; 4]);
+            y -= req_lines.len() as f32 * line_h;
         }
         if !lines.is_empty() {
             y -= 0.005;

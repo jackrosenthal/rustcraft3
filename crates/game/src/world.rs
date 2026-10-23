@@ -193,6 +193,9 @@ pub struct World {
     pub fog: Option<crate::fog::FogMap>,
     pub shops: crate::shops::Shops,
     pub upgrade_cache: crate::upgrades::UpgradeCache,
+    /// Tech requirements met, by player, requirement, and amount; cleared each tick.
+    #[serde(skip)]
+    pub tech_cache: std::cell::RefCell<HashMap<(u8, crate::objects::Id, i32), bool>>,
     pub ground_effects: Vec<GroundEffect>,
     /// Quests and defeat conditions in creation order, and whether the quest button
     /// should flash (FlashQuestDialogButton).
@@ -364,6 +367,7 @@ impl World {
             fog: None,
             shops: Default::default(),
             upgrade_cache: Default::default(),
+            tech_cache: Default::default(),
             ground_effects: Vec::new(),
             quests: Vec::new(),
             defeat_conditions: Vec::new(),
@@ -668,6 +672,7 @@ impl World {
     }
 
     pub fn tick(&mut self, vm: &mut Vm, dt: f32) {
+        self.tech_cache.borrow_mut().clear();
         // W3PROF: time per subsystem, printed every 60 game seconds.
         macro_rules! prof {
             ($w:expr, $name:expr, $e:expr) => {{

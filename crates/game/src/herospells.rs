@@ -23,8 +23,7 @@ impl World {
         let d = |w: &World, f: &str| w.data(a, f, lvl);
         let owner = self.unit(h).map_or(0, |u| u.owner);
         let buff = self.buff0(a, lvl);
-        let hero = self.unit(target).is_some_and(|t| t.is_hero);
-        let dur = if hero { d(self, "HeroDur") } else { d(self, "Dur") };
+        let dur = if self.hero_duration(target) { d(self, "HeroDur") } else { d(self, "Dur") };
         let (cx, cy) = self.unit(h).map(|u| (u.x, u.y)).unwrap_or((x, y));
         let (tx, ty) = self.widget_pos(target).unwrap_or((x, y));
         let area = d(self, "Area");
@@ -36,7 +35,7 @@ impl World {
                 for t in self.enemies_in(owner, tx, ty, area) {
                     let dps = if t == target { d(self, "DataD") } else { d(self, "DataE") } / every;
                     let armor = if t == target { -d(self, "DataC") } else { 0.0 };
-                    let dur = if self.unit(t).is_some_and(|u| u.is_hero) { d(self, "HeroDur") } else { d(self, "Dur") };
+                    let dur = if self.hero_duration(t) { d(self, "HeroDur") } else { d(self, "Dur") };
                     self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps, armor, ..Default::default() });
                 }
             }
@@ -79,14 +78,14 @@ impl World {
                 for t in self.enemies_in(owner, x, y, area) {
                     let f = if self.unit(t).is_some_and(|u| u.is_building) { d(self, "DataE") } else { 1.0 };
                     self.spell_damage(vm, h, t, each * f);
-                    let dur = if self.unit(t).is_some_and(|u| u.is_hero) { d(self, "HeroDur") } else { d(self, "Dur") };
+                    let dur = if self.hero_duration(t) { d(self, "HeroDur") } else { d(self, "Dur") };
                     self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, stun: true, ..Default::default() });
                 }
             }
             // Drunken Haze: within Area, DataB more misses and DataC slower movement.
             "ANdh" => {
                 for t in self.enemies_in(owner, tx, ty, area) {
-                    let dur = if self.unit(t).is_some_and(|u| u.is_hero) { d(self, "HeroDur") } else { d(self, "Dur") };
+                    let dur = if self.hero_duration(t) { d(self, "HeroDur") } else { d(self, "Dur") };
                     self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, miss_chance: d(self, "DataB"), move_factor: -d(self, "DataC"), attack_factor: -d(self, "DataD"), ..Default::default() });
                 }
             }
@@ -143,7 +142,7 @@ impl World {
             // Howl of Terror: enemies within Area deal DataA less damage.
             "ANht" => {
                 for t in self.enemies_in(owner, cx, cy, area) {
-                    let dur = if self.unit(t).is_some_and(|u| u.is_hero) { d(self, "HeroDur") } else { d(self, "Dur") };
+                    let dur = if self.hero_duration(t) { d(self, "HeroDur") } else { d(self, "Dur") };
                     self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, damage_factor: -d(self, "DataA"), ..Default::default() });
                 }
             }
@@ -178,7 +177,7 @@ impl World {
             // Silence: no spells within Area for Dur.
             "ANsi" => {
                 for t in self.enemies_in(owner, x, y, area) {
-                    let dur = if self.unit(t).is_some_and(|u| u.is_hero) { d(self, "HeroDur") } else { d(self, "Dur") };
+                    let dur = if self.hero_duration(t) { d(self, "HeroDur") } else { d(self, "Dur") };
                     self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, silence: true, ..Default::default() });
                 }
             }

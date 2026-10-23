@@ -12,7 +12,7 @@ pub const FOG_FOGGED: i32 = 2;
 pub const FOG_VISIBLE: i32 = 4;
 
 /// The shared-vision alliance flag (ALLIANCE_SHARED_VISION).
-const ALLIANCE_SHARED_VISION: usize = 5;
+pub(crate) const ALLIANCE_SHARED_VISION: usize = 5;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum FogShape {
@@ -153,7 +153,7 @@ impl World {
                 continue;
             }
             let Some(o) = self.objects.units.get(u.type_id) else { continue };
-            let r = if day { o.real("sight") } else { o.real("nsight") };
+            let r = if day || self.ultravision(u) { o.real("sight") } else { o.real("nsight") };
             if r <= 0.0 {
                 continue;
             }
@@ -260,8 +260,8 @@ impl World {
         if u.owner == player || self.players.get(u.owner as usize).is_some_and(|o| o.alliances[player as usize % PLAYER_COUNT][ALLIANCE_SHARED_VISION]) {
             return true;
         }
-        // Invisible units are hidden from others.
-        if self.is_invisible(h) {
+        // Invisible units are hidden from others without a detector near.
+        if self.is_invisible(h) && !self.detected_by(h, player) {
             return false;
         }
         self.fog_state(u.x, u.y, player) == FOG_VISIBLE

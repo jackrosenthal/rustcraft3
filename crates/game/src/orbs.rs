@@ -23,13 +23,17 @@ impl World {
         let target_hero = self.unit(target).is_some_and(|t| t.is_hero);
         let mut damage = damage;
         let mut mana_left = mana;
+        let owner = u.owner;
         for (a, lvl) in abilities {
+            if !self.ability_enabled(owner, a) {
+                continue;
+            }
             let lvl = lvl.max(1) as u32;
             let code = self.ability_code(a);
             let d = |w: &World, f: &str| w.data(a, f, lvl);
             let buffs = self.buff_ids(a, lvl);
             let hero = target_hero;
-            let dur = if hero { d(self, "HeroDur") } else { d(self, "Dur") };
+            let dur = if self.hero_duration(target) { d(self, "HeroDur") } else { d(self, "Dur") };
             match code.as_str() {
                 // Arrows with a mana cost per attack while autocast.
                 "AHfa" | "AHca" | "ANba" if autocast.contains(&a) && !target_building => {

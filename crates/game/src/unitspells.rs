@@ -65,8 +65,7 @@ impl World {
         let d = |w: &World, f: &str| w.data(a, f, lvl);
         let owner = self.unit(h).map_or(0, |u| u.owner);
         let buff = self.first_buff(a, lvl);
-        let hero = self.unit(target).is_some_and(|t| t.is_hero);
-        let dur = if hero { d(self, "HeroDur") } else { d(self, "Dur") };
+        let dur = if self.hero_duration(target) { d(self, "HeroDur") } else { d(self, "Dur") };
         let (tx, ty) = self.widget_pos(target).unwrap_or((x, y));
         match code {
             // Raise Dead: DataA units of DataC and DataB of DataD from the nearest corpse,
@@ -331,8 +330,7 @@ impl World {
             }
             let buff = self.first_buff(a, lvl);
             for t in self.enemies_in(owner, x, y, self.data(a, "DataC", lvl)) {
-                let hero = self.unit(t).is_some_and(|u| u.is_hero);
-                let dur = if hero { self.data(a, "HeroDur", lvl).min(self.data(a, "DataD", lvl)) } else { self.data(a, "DataD", lvl) };
+                let dur = if self.hero_duration(t) { self.data(a, "HeroDur", lvl).min(self.data(a, "DataD", lvl)) } else { self.data(a, "DataD", lvl) };
                 self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, stun: true, ..Default::default() });
             }
             crate::natives::units::kill_unit(self, vm, h, 0);

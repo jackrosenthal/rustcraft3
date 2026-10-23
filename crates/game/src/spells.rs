@@ -22,7 +22,7 @@ impl World {
     }
 
     fn duration_for(&self, a: Id, lvl: u32, target: u32) -> f32 {
-        if self.unit(target).is_some_and(|t| t.is_hero) { self.d(a, "HeroDur", lvl) } else { self.d(a, "Dur", lvl) }
+        if self.hero_duration(target) { self.d(a, "HeroDur", lvl) } else { self.d(a, "Dur", lvl) }
     }
 
     fn owner_of(&self, h: u32) -> u8 {

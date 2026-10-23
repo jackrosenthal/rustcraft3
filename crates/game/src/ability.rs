@@ -41,6 +41,10 @@ impl World {
     pub fn ability_level(&self, h: u32, id: Id) -> u32 {
         let Some(u) = self.unit(h) else { return 0 };
         let base = u.abilities.iter().find(|(a, _)| *a == id).map_or(0, |a| a.1.max(0) as u32);
+        // An ability whose research is not done does nothing yet.
+        if base > 0 && !self.ability_enabled(u.owner, id) {
+            return 0;
+        }
         // Research raises unit spells (rlev); hero skills level by learning.
         if base > 0 && !u.is_hero {
             let code = self.ability_code(id);
@@ -97,6 +101,12 @@ impl World {
         (mv.max(0.0), atk.max(0.0), armor, dmg, stun, inv)
     }
 
+    /// Whether spells last their Hero duration on a unit: Heroes, and units with
+    /// Resistant Skin (Arsk), which "reduces the duration of negative spells".
+    pub fn hero_duration(&self, h: u32) -> bool {
+        self.unit(h).is_some_and(|u| u.is_hero || u.abilities.iter().any(|(a, _)| self.ability_code(*a) == "Arsk"))
+    }
+
     /// Locust (Aloc): a unit nobody selects, targets, or finds in an area.
     pub fn is_locust(&self, u: &Unit) -> bool {
         u.abilities.iter().any(|(a, _)| self.ability_code(*a) == "Aloc")
@@ -121,7 +131,7 @@ impl World {
     }
 
     pub fn is_invisible(&self, h: u32) -> bool {
-        self.has_buff_flag(h, |b| b.invisible)
+        self.has_buff_flag(h, |b| b.invisible) || self.unit(h).is_some_and(|u| self.permanently_invisible(u))
     }
 
     pub fn is_ethereal(&self, h: u32) -> bool {
@@ -481,8 +491,7 @@ impl World {
     fn ability_effect(&mut self, vm: &mut Vm, h: u32, a: Id, lvl: u32, target: u32, (x, y): (f32, f32)) {
         let code = self.ability_code(a);
         let owner = self.unit(h).map_or(0, |u| u.owner);
-        let hero_target = self.unit(target).is_some_and(|t| t.is_hero);
-        let dur = if hero_target { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
+        let dur = if self.hero_duration(target) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
         let buff_id = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("BuffID", lvl)).unwrap_or_default().trim());
         let area = self.data(a, "Area", lvl);
         match code.as_str() {
@@ -519,8 +528,7 @@ impl World {
                 let dmg = self.data(a, "DataA", lvl);
                 for t in self.enemies_in(owner, cx, cy, area) {
                     self.spell_damage(vm, h, t, dmg);
-                    let hero = self.unit(t).is_some_and(|u| u.is_hero);
-                    let d = if hero { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
+                    let d = if self.hero_duration(t) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
                     let mut b = Buff { id: buff_id, ability: a, level: lvl, caster: h, remaining: d, ..Default::default() };
                     if code == "AOws" {
                         b.stun = true;
@@ -568,8 +576,7 @@ impl World {
                 self.spell_damage(vm, h, target, self.data(a, "DataB", lvl));
                 for t in self.enemies_in(owner, tx, ty, area) {
                     self.spell_damage(vm, h, t, self.data(a, "DataA", lvl));
-                    let hero = self.unit(t).is_some_and(|u| u.is_hero);
-                    let d = if hero { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
+                    let d = if self.hero_duration(t) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
                     self.apply_buff(t, Buff { id: buff_id, ability: a, level: lvl, caster: h, remaining: d, move_factor: -0.5, attack_factor: -0.25, ..Default::default() });
                 }
             }
@@ -607,8 +614,7 @@ impl World {
                 "AHbh" => {
                     if (self.rng.int(1, 100) as f32) <= self.data(a, "DataA", lvl) {
                         damage += self.data(a, "DataC", lvl);
-                        let hero = self.unit(target).is_some_and(|t| t.is_hero);
-                        let d = if hero { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
+                        let d = if self.hero_duration(target) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
                         let buff = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("BuffID", lvl)).unwrap_or_default().trim());
                         self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: attacker, remaining: d, stun: true, ..Default::default() });
                     }

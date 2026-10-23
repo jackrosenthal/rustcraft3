@@ -41,11 +41,33 @@ pub struct Button {
     pub costs: [i32; 4],
     /// An autocast ability's orderon and orderoff, and whether its autocast is on.
     pub autocast: Option<(&'static str, &'static str, bool)>,
+    /// REQUIRESTOOLTIP and the requirements, while some are not met.
+    pub requires: String,
 }
 
 impl Button {
     fn new(x: u32, y: u32, icon: String, hotkey: Option<char>, action: Action, enabled: bool) -> Button {
-        Button { x, y, icon, hotkey, action, enabled, tip: String::new(), ubertip: String::new(), costs: [0; 4], autocast: None }
+        Button { x, y, icon, hotkey, action, enabled, tip: String::new(), ubertip: String::new(), costs: [0; 4], autocast: None, requires: String::new() }
+    }
+
+    /// Disables the button and lists `id`'s requirements (at research level `level`)
+    /// when `owner` does not meet them all.
+    fn with_requirements(mut self, db: &w3_ui::FrameDb, w: &World, owner: u8, id: Id, level: u32) -> Button {
+        if w.missing_requirements(owner, id, level).is_empty() {
+            return self;
+        }
+        self.enabled = false;
+        let mut text = db.string("REQUIRESTOOLTIP");
+        for (r, amount) in w.requirements(id, level) {
+            // A research requirement names its level.
+            let name = match w.objects.upgrades.get(r) {
+                Some(o) => level_entry(&o.list("Name"), amount.max(1) as u32),
+                None => w.objects.units.get(r).map(|o| o.str("Name")).unwrap_or_default(),
+            };
+            text.push_str(&format!("\n - {name}"));
+        }
+        self.requires = text;
+        self
     }
 
     fn with_tip(mut self, tip: String, ubertip: String, costs: [i32; 4]) -> Button {
@@ -188,15 +210,14 @@ impl Commands {
             } else {
                 (ob.str("Tip"), ob.str("Ubertip"), ob.str("Art"), [0, ob.int("goldcost"), ob.int("lumbercost"), ob.int("fused")])
             };
-            Some(Button::new(x, y, icon, hotkey(&ob.str("Hotkey")), action, enabled).with_tip(tip, fill_placeholders(w, &uber), costs))
+            let level = w.players[u.owner as usize].tech_researched.get(&id).copied().unwrap_or(0) as u32 + 1;
+            Some(Button::new(x, y, icon, hotkey(&ob.str("Hotkey")), action, enabled).with_tip(tip, fill_placeholders(w, &uber), costs).with_requirements(db, w, u.owner, id, level))
         };
         if page == Page::Build {
+            // Gold and lumber are checked when the button is used (Nogold, Nolumber).
             for b in o.list("Builds") {
                 let id = id_from_str(b.trim());
-                let (g, l, _) = w.cost(id);
-                let p = &w.players[u.owner as usize];
-                let affordable = p.get_state(1) >= g && p.get_state(2) >= l;
-                if let Some(btn) = object_button(id, Action::Build(id), affordable) {
+                if let Some(btn) = object_button(id, Action::Build(id), true) {
                     out.push(btn);
                 }
             }
@@ -253,10 +274,7 @@ impl Commands {
         let upgrades = if u.extra.uprooted { Vec::new() } else { o.list("Upgrade") };
         for t in trains {
             let id = id_from_str(t.trim());
-            let (g, l, _) = w.cost(id);
-            let p = &w.players[u.owner as usize];
-            let ok = p.get_state(1) >= g && p.get_state(2) >= l;
-            out.extend(object_button(id, Action::Train(id), ok));
+            out.extend(object_button(id, Action::Train(id), true));
         }
         for r in researches {
             let id = id_from_str(r.trim());
@@ -312,7 +330,7 @@ impl Commands {
             let tip = level_entry(&ab.list(tip_key), level);
             let uber = fill_placeholders(w, &level_entry(&ab.list(uber_key), level));
             let mana = ab.int(&format!("Cost{level}"));
-            let mut button = Button::new(x, y, art, hotkey(&ab.str(hot_key)), Action::Order { order, targeted }, ready).with_tip(tip, uber, [mana, 0, 0, 0]);
+            let mut button = Button::new(x, y, art, hotkey(&ab.str(hot_key)), Action::Order { order, targeted }, ready).with_tip(tip, uber, [mana, 0, 0, 0]).with_requirements(db, w, u.owner, a, 1);
             // Autocast abilities toggle with their orderon and orderoff.
             let on = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Orderon")));
             let off = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Orderoff")));

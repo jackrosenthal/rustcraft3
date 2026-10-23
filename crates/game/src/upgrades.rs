@@ -35,6 +35,8 @@ pub struct UpgradeBonus {
     pub attack_speed: f32,
     /// rsig: sight range.
     pub sight: f32,
+    /// rspi: damage Spiked Barricades deal to melee attackers.
+    pub spikes: f32,
 }
 
 /// One upgrade's value at a level, or `None` when the effect gives no value ("-").
@@ -84,6 +86,7 @@ impl World {
                     "ratr" => b.range += v.unwrap_or(0.0),
                     "rats" => b.attack_speed += v.unwrap_or(0.0),
                     "rsig" => b.sight += v.unwrap_or(0.0),
+                    "rspi" => b.spikes += v.unwrap_or(0.0),
                     _ => {}
                 }
             }

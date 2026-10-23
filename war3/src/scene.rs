@@ -2056,6 +2056,12 @@ impl Scene {
         hud.sync_save_panel(db);
     }
 
+    /// The selected unit's command card, as the interface would show it.
+    pub fn card_now(&self, db: &w3_ui::FrameDb) -> Vec<crate::card::Button> {
+        let (Some(g), Some(&h)) = (self.game.as_ref(), self.selection.first()) else { return Vec::new() };
+        self.commands.card(db, &g.world, h, crate::card::Page::Main)
+    }
+
     /// The game as a saved game.
     pub fn save_game(&self) -> anyhow::Result<Vec<u8>> {
         let g = self.game.as_ref().context("no game")?;

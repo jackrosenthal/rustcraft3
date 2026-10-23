@@ -438,7 +438,7 @@ impl World {
             }
             // Neutral passive units are never acquired automatically, nor are
             // invisible or ethereal ones.
-            if tu.owner == PLAYER_NEUTRAL_PASSIVE || self.is_invisible(t) || self.is_ethereal(t) {
+            if tu.owner == PLAYER_NEUTRAL_PASSIVE || (self.is_invisible(t) && !self.detected_by(t, u.owner)) || self.is_ethereal(t) {
                 continue;
             }
             let d = (tu.x - u.x).hypot(tu.y - u.y);
@@ -492,6 +492,9 @@ impl World {
         }
         let Some(t) = self.unit(target) else { return };
         let dmg = final_damage(self, raw, attack_type, t);
+        let melee_hit = self.unit(source).and_then(|u| u.swing.as_ref().and_then(|s| weapon_numbered(self, u, s.weapon)).or_else(|| weapon(self, u.type_id))).is_some_and(|w| w.range <= self.misc.get_str("InfoPanel", "MeleeRangeMax").and_then(|v| v.trim().parse().ok()).unwrap_or(128.0));
+        let dmg = if attack_type == "spells" { dmg } else { self.hardened_skin(target, melee_hit, dmg) };
+        let Some(t) = self.unit(target) else { return };
         let owner = t.owner;
         self.wake(target);
         let t = self.unit_mut(target).unwrap();
@@ -512,6 +515,12 @@ impl World {
                 let back = if pct { dmg * v } else { v };
                 if let Some(u) = self.unit_mut(source) {
                     u.life -= back;
+                }
+            }
+            let spikes = self.spiked_barricades(target);
+            if spikes > 0.0 {
+                if let Some(u) = self.unit_mut(source) {
+                    u.life -= spikes;
                 }
             }
         }
@@ -584,6 +593,10 @@ impl World {
                     let dice = wp.dice + ub.dice;
                     let raw = wp.base + (0..dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>() + self.primary_attribute(h) + bonus;
                     let raw = self.attack_modifiers(vm, h, s.target, raw);
+                    self.attack_passives(vm, h, s.target);
+                    if self.unit(h).is_none_or(|u| u.dead) {
+                        continue;
+                    }
                     if wp.weapon_type == "missile" || wp.weapon_type == "artillery" || wp.weapon_type.starts_with("msplash") || wp.weapon_type == "mbounce" || wp.weapon_type == "mline" {
                         if let (Some(src), Some(_)) = (self.unit(h).cloned(), self.unit(s.target)) {
                             let launch_z = self.objects.units.get(src.type_id).map_or(60.0, |o| o.real("launchZ"));
@@ -835,6 +848,9 @@ impl World {
             return Err("");
         }
         let owner = u.owner;
+        if !self.missing_requirements(owner, id, 1).is_empty() {
+            return Err("");
+        }
         self.spend(owner, id, true)?;
         self.unit_mut(h).unwrap().queue.push(id);
         Ok(())
@@ -865,6 +881,9 @@ impl World {
             return Err("");
         }
         let owner = u.owner;
+        if !self.missing_requirements(owner, id, 1).is_empty() {
+            return Err("");
+        }
         self.spend(owner, id, false)?;
         self.unit_mut(h).unwrap().queue.push(id);
         Ok(())
@@ -893,7 +912,7 @@ impl World {
         let level = self.players[player as usize].tech_researched.get(&id).copied().unwrap_or(0);
         let queued = self.unit_order.iter().filter(|&&h| self.unit(h).is_some_and(|u| u.owner == player && u.queue.contains(&id))).count() as i32;
         let max = self.objects.upgrades.get(id).map_or(1, |o| o.int("maxlevel").max(1));
-        if level + queued >= max || u.queue.len() >= 7 {
+        if level + queued >= max || u.queue.len() >= 7 || !self.missing_requirements(player, id, (level + queued + 1) as u32).is_empty() {
             return Err("");
         }
         let (g, l) = self.upgrade_cost(id, level + queued);
@@ -1110,6 +1129,11 @@ impl World {
     fn build(&mut self, vm: &mut Vm, h: u32, id: Id, x: f32, y: f32, dt: f32) {
         let u = self.unit(h).unwrap();
         let (d, need_path, owner) = ((u.x - x).hypot(u.y - y), u.path.is_empty() || u.repath_timer <= 0.0, u.owner);
+        // Structures whose requirements are not met are not started.
+        if !self.missing_requirements(owner, id, 1).is_empty() {
+            self.unit_mut(h).unwrap().action = Action::Idle;
+            return;
+        }
         if d > 96.0 {
             if need_path {
                 self.path_to(h, (x, y));
@@ -1178,7 +1202,7 @@ impl World {
         let u = self.unit(h)?;
         u.abilities.iter().find_map(|&(id, lvl)| {
             let a = self.objects.abilities.get(id)?;
-            (a.str("code") == code).then_some((id, lvl.max(1) as u32))
+            (a.str("code") == code && self.ability_enabled(u.owner, id)).then_some((id, lvl.max(1) as u32))
         })
     }
 

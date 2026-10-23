@@ -59,6 +59,9 @@ impl World {
         if let Some(t) = self.unit_mut(transport) {
             t.extra.cargo.push(h);
         }
+        // EVENT_UNIT_LOADED, on the transport: the loaded unit and its transport.
+        let ctx = EventCtx { other_unit: transport, ..Default::default() };
+        self.queue_unit_event(h, crate::event_ids::EVENT_PLAYER_UNIT_LOADED, crate::event_ids::EVENT_UNIT_LOADED, ctx);
         true
     }
 

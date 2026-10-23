@@ -158,10 +158,19 @@ pub struct UnitView {
     requested: String,
     anim: String,
     rng: u32,
+    /// How many of QueueUnitAnimation's animations have played.
+    queued: usize,
 }
 
 impl UnitView {
     fn pick(&mut self, name: &str) {
+        // SetUnitAnimationByIndex: the model's sequence of that number.
+        if let Some(n) = name.strip_prefix('#').and_then(|n| n.parse::<usize>().ok()) {
+            if n < self.inst.model.mdx.sequences.len() {
+                self.inst.set_sequence(Some(n));
+                return;
+            }
+        }
         let seqs = w3_render::anim::sequences_named(&self.inst.model.mdx, name);
         if seqs.is_empty() {
             // Drop qualifiers ("walk gold" -> "walk") before falling back to stand.
@@ -179,15 +188,23 @@ impl UnitView {
 
     /// Follows the game's animation requests; returns to stand variants when a one-shot
     /// animation ends, and lets corpses decay.
-    fn update(&mut self, anim: &str, serial: u32) {
+    fn update(&mut self, anim: &str, serial: u32, queue: &[String]) {
         if serial != self.serial || anim != self.requested {
             self.serial = serial;
             self.requested = anim.to_string();
             self.anim = anim.to_string();
+            self.queued = 0;
             self.pick(anim);
             return;
         }
         if self.inst.finished {
+            // QueueUnitAnimation: the queued ones play in turn.
+            if let Some(next) = queue.get(self.queued) {
+                self.queued += 1;
+                self.anim = next.clone();
+                self.pick(next);
+                return;
+            }
             // A stand of any kind ("stand work gold") plays again.
             let again = self.requested.starts_with("stand").then(|| self.requested.clone());
             let next = match self.anim.as_str() {
@@ -212,6 +229,8 @@ pub struct Scene {
     /// Render instances for game units, by handle.
     pub units: HashMap<u32, UnitView>,
     pub dests: HashMap<u32, (ModelInstance, bool)>,
+    /// Each destructable's last script animation request and its speed.
+    dest_anims: HashMap<u32, (u32, f32)>,
     /// Render instances for items lying on the ground.
     pub items: HashMap<u32, ModelInstance>,
     /// Special effects (AddSpecialEffect and ability art), by handle.
@@ -570,7 +589,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -2174,6 +2193,14 @@ impl Scene {
                 *alive = true;
                 inst.play("birth");
             }
+            // A script's animation (SetDestructableAnimation), at its speed.
+            let seen = self.dest_anims.get(&h).map_or(0, |a| a.0);
+            if d.anim_serial != seen {
+                if let Some(name) = &d.animation {
+                    inst.play(name);
+                }
+            }
+            self.dest_anims.insert(h, (d.anim_serial, d.anim_speed));
         }
     }
 
@@ -2372,7 +2399,7 @@ impl Scene {
                 let file = o.str("file");
                 let base = file.strip_suffix(".mdl").or_else(|| file.strip_suffix(".mdx")).unwrap_or(&file);
                 let model = assets.model(device, queue, &format!("{base}_Portrait")).or_else(|| assets.model(device, queue, &file))?;
-                let mut v = UnitView { inst: ModelInstance::new(model), type_id: [0; 4], children: Vec::new(), serial: 0, requested: "portrait".into(), anim: String::new(), rng: h };
+                let mut v = UnitView { inst: ModelInstance::new(model), type_id: [0; 4], children: Vec::new(), serial: 0, requested: "portrait".into(), anim: String::new(), rng: h, queued: 0 };
                 v.inst.team = u.color.clamp(0, 15) as u8;
                 v.pick("portrait");
                 Some((h, v))
@@ -2392,7 +2419,7 @@ impl Scene {
                         let file = o.str("file");
                         let base = file.strip_suffix(".mdl").or_else(|| file.strip_suffix(".mdx")).unwrap_or(&file);
                         let model = assets.model(device, queue, &format!("{base}_Portrait")).or_else(|| assets.model(device, queue, &file))?;
-                        let mut v = UnitView { inst: ModelInstance::new(model), type_id: [0; 4], children: Vec::new(), serial: 0, requested: String::new(), anim: String::new(), rng: 1 };
+                        let mut v = UnitView { inst: ModelInstance::new(model), type_id: [0; 4], children: Vec::new(), serial: 0, requested: String::new(), anim: String::new(), rng: 1, queued: 0 };
                         v.inst.team = s.color.clamp(0, 15) as u8;
                         Some((s.unit_type, v))
                     });
@@ -2491,8 +2518,8 @@ impl Scene {
                     .filter_map(|(i, a)| assets.model(device, queue, &a.path).map(|m| (i, ModelInstance::new(m))))
                     .collect();
                 let inst = ModelInstance::new(model);
-                let mut view = UnitView { inst, type_id: u.type_id, children, serial: u32::MAX, requested: String::new(), anim: String::new(), rng: h };
-                view.update(&u.anim, u.anim_serial);
+                let mut view = UnitView { inst, type_id: u.type_id, children, serial: u32::MAX, requested: String::new(), anim: String::new(), rng: h, queued: 0 };
+                view.update(&u.anim, u.anim_serial, &u.extra.anim_queue);
                 self.units.insert(h, view);
             }
             let view = self.units.get_mut(&h).unwrap();
@@ -2511,7 +2538,7 @@ impl Scene {
                     anim.push_str(&p);
                 }
             }
-            view.update(&anim, u.anim_serial);
+            view.update(&anim, u.anim_serial, &u.extra.anim_queue);
             // Structures under construction show their birth animation in step with progress.
             if let (Some(left), Some(seq)) = (u.constructing, view.inst.sequence.and_then(|s| view.inst.model.mdx.sequences.get(s))) {
                 let len = (seq.end - seq.start) as f32;
@@ -2603,8 +2630,9 @@ impl Scene {
                 None => v.inst.advance(gdt * 1000.0),
             }
         }
-        for (inst, _) in self.dests.values_mut() {
-            inst.advance(gdt * 1000.0);
+        for (h, (inst, _)) in self.dests.iter_mut() {
+            let speed = self.dest_anims.get(h).map_or(1.0, |a| a.1);
+            inst.advance(gdt * 1000.0 * speed);
         }
         for inst in self.items.values_mut() {
             inst.advance(gdt * 1000.0);

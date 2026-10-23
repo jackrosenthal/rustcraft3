@@ -57,7 +57,6 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         resource: 0,
         abilities,
         order: Order::default(),
-        animation: None,
         time_scale: 1.0,
         inventory: [0; 6],
         rally: None,
@@ -316,6 +315,12 @@ fn issue_build(w: &mut World, h: u32, id: crate::objects::Id, x: f32, y: f32) ->
     boolean(true)
 }
 
+fn play_anim(u: &mut Unit, name: String) {
+    u.extra.anim_queue.clear();
+    u.anim = name;
+    u.anim_serial = u.anim_serial.wrapping_add(1);
+}
+
 fn with_unit(w: &mut World, a: &[Value], f: impl FnOnce(&mut Unit)) -> NativeResult {
     if let Some(u) = w.unit_mut(a.h(0)) {
         f(u);
@@ -532,10 +537,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             with_unit(w, a, |u| u.vertex_color = c)
         },
         SetUnitColor => |w, _, a| { let c = a.h(1) as i32; with_unit(w, a, |u| u.color = c) },
-        SetUnitAnimation => |w, _, a| { let s = a.s(1); with_unit(w, a, |u| u.animation = Some(s)) },
-        SetUnitAnimationByIndex => |_, _, _| none(),
-        SetUnitAnimationWithRarity => |w, _, a| { let s = a.s(1); with_unit(w, a, |u| u.animation = Some(s)) },
-        QueueUnitAnimation => |w, _, a| { let s = a.s(1); with_unit(w, a, |u| u.animation = Some(s)) },
+        // A script's animation plays once (the unit then stands); by index, the model's
+        // sequence of that number ("#n" to the presentation layer).
+        SetUnitAnimation => |w, _, a| { let s = a.s(1).to_ascii_lowercase(); with_unit(w, a, |u| play_anim(u, s)) },
+        SetUnitAnimationByIndex => |w, _, a| { let s = format!("#{}", a.i(1)); with_unit(w, a, |u| play_anim(u, s)) },
+        SetUnitAnimationWithRarity => |w, _, a| { let s = a.s(1).to_ascii_lowercase(); with_unit(w, a, |u| play_anim(u, s)) },
+        QueueUnitAnimation => |w, _, a| { let s = a.s(1).to_ascii_lowercase(); with_unit(w, a, |u| u.extra.anim_queue.push(s)) },
         AddUnitAnimationProperties => |w, _, a| {
             let (props, add) = (a.s(1).to_ascii_lowercase(), a.b(2));
             with_unit(w, a, |u| {
@@ -1006,7 +1013,7 @@ fn dummy_unit() -> Unit {
         handle: 0, type_id: [0; 4], owner: 0, x: 0.0, y: 0.0, fly_height: 0.0, facing: 0.0, life: 0.0, max_life: 0.0,
         mana: 0.0, max_mana: 0.0, color: 0, scale: 1.0, vertex_color: [255; 4], user_data: 0, acquire_range: 0.0,
         move_speed: 0.0, turn_speed: 0.0, prop_window: 0.0, paused: false, hidden: false, invulnerable: false,
-        dead: false, level: 0, hero_xp: 0, resource: 0, abilities: vec![], order: Order::default(), animation: None,
+        dead: false, level: 0, hero_xp: 0, resource: 0, abilities: vec![], order: Order::default(),
         time_scale: 1.0, inventory: [0; 6], rally: None, explode_on_death: false, is_building: false, is_hero: false,
         collision: 0.0, action: Action::Idle, path: vec![], repath_timer: 0.0, cooldown: 0.0, swing: None,
         acquire_timer: 0.0, anim: String::new(), anim_serial: 0, death_time: 0.0, pathing_cells: vec![],

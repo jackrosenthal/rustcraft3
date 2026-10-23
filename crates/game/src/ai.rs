@@ -90,6 +90,9 @@ pub struct AiState {
     /// The main town's center as ShiftTownSpot set it (FUN_6f9cbf00).
     #[serde(default)]
     pub town_shift: Option<(f32, f32)>,
+    /// PauseCompAI's count (CCompAI +0x1d8): the AI stands still while above 0.
+    #[serde(default)]
+    pub paused: i32,
 }
 
 /// Distance within which a town hall and a gold mine belong to the same town.
@@ -253,6 +256,9 @@ impl World {
     pub fn update_ai(&mut self, dt: f32) {
         let players: Vec<u8> = self.ai_vms.keys().copied().collect();
         for p in players {
+            if self.ai.get(&p).is_some_and(|s| s.paused > 0) {
+                continue;
+            }
             let Some(mut aivm) = self.ai_vms.remove(&p) else { continue };
             self.ai_current = Some(p);
             let now = self.time;
@@ -505,7 +511,10 @@ impl World {
         }
         st.harvest_timer = 1.0;
         let requests = st.harvest.clone();
-        let workers = self.workers(p);
+        // Units in a captain or at a guard post do not gather.
+        let mut held: Vec<u32> = st.attack.units.iter().chain(st.defense.units.iter()).copied().collect();
+        held.extend(self.guards(p));
+        let workers: Vec<u32> = self.workers(p).into_iter().filter(|h| !held.contains(h)).collect();
         let busy = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Build { .. } | Action::Construct { .. } | Action::Attack { .. } | Action::Move { .. }));
         let on_gold = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_gold > 0));
         let on_wood = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if !w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_lumber > 0));
@@ -578,7 +587,8 @@ impl World {
             }
             let attack = crate::natives::basic::order_id("attack");
             for h in units {
-                let idle = self.unit(h).is_some_and(|u| matches!(u.action, Action::Idle));
+                // Idle units, and gatherers the captain has taken, go.
+                let idle = self.unit(h).is_some_and(|u| matches!(u.action, Action::Idle | Action::Harvest { .. } | Action::ReturnResources));
                 if !idle {
                     continue;
                 }

@@ -86,3 +86,36 @@ impl World {
         self.ai.get(&p).map(|s| s.posts.iter().filter(|g| !self.post_empty(g)).map(|g| g.unit).collect()).unwrap_or_default()
     }
 }
+
+impl World {
+    /// RemoveGuardPosition (FUN_6f9be910, FUN_6f9c9b30): a computer player's unit
+    /// leaves its captain and stops, and its guard post is never filled again.
+    pub fn remove_guard_position(&mut self, h: u32) {
+        let Some(p) = self.unit(h).map(|u| u.owner) else { return };
+        let Some(st) = self.ai.get_mut(&p) else { return };
+        st.attack.units.retain(|&k| k != h);
+        st.defense.units.retain(|&k| k != h);
+        for g in st.posts.iter_mut().filter(|g| g.unit == h) {
+            g.unit = 0;
+            g.filled = 99999;
+        }
+        self.order_unit(h, crate::natives::basic::order_id("stop"), 0.0, 0.0, 0);
+    }
+
+    /// RecycleGuardPosition (FUN_6f9bde20): as RemoveGuardPosition, then the unit is
+    /// taken in afresh and may keep another post.
+    pub fn recycle_guard_position(&mut self, h: u32) {
+        self.remove_guard_position(h);
+        self.ai_new_unit(h);
+    }
+
+    /// RemoveAllGuardPositions (FUN_6f9c9a60): the computer player's guards leave
+    /// their captains and every post is gone.
+    pub fn remove_all_guard_positions(&mut self, p: u8) {
+        let Some(st) = self.ai.get_mut(&p) else { return };
+        let guards: Vec<u32> = st.posts.iter().map(|g| g.unit).filter(|&u| u != 0).collect();
+        st.attack.units.retain(|k| !guards.contains(k));
+        st.defense.units.retain(|k| !guards.contains(k));
+        st.posts.clear();
+    }
+}

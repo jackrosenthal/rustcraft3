@@ -165,7 +165,6 @@ pub struct Unit {
     pub resource: i32,
     pub abilities: Vec<(Id, i32)>,
     pub order: Order,
-    pub animation: Option<String>,
     pub time_scale: f32,
     pub inventory: [u32; 6],
     pub rally: Option<(f32, f32)>,
@@ -347,6 +346,9 @@ pub struct UnitExtra {
     /// Animation properties scripts added (AddUnitAnimationProperties).
     #[serde(default)]
     pub anim_props: Vec<String>,
+    /// Animations QueueUnitAnimation lined up after the one playing.
+    #[serde(default)]
+    pub anim_queue: Vec<String>,
     /// A bone turned toward a unit, offset from it (SetUnitLookAt).
     #[serde(default)]
     pub look_at: Option<(String, u32, [f32; 3])>,
@@ -434,6 +436,7 @@ impl Default for UnitExtra {
             art: Vec::new(),
             spun_at: -100.0,
             anim_props: Vec::new(),
+            anim_queue: Vec::new(),
             look_at: None,
             illusion: None,
             factory: None,
@@ -656,8 +659,18 @@ pub struct Destructable {
     pub max_life: f32,
     pub invulnerable: bool,
     pub visible: bool,
+    /// The animation a script asked for, changed with each request
+    /// (SetDestructableAnimation), and its speed (SetDestructableAnimationSpeed).
     pub animation: Option<String>,
+    #[serde(default)]
+    pub anim_serial: u32,
+    #[serde(default = "one")]
+    pub anim_speed: f32,
     pub pathing_cells: Vec<(i32, i32)>,
+}
+
+fn one() -> f32 {
+    1.0
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

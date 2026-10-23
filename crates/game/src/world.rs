@@ -132,6 +132,9 @@ pub struct World {
     pub map_bounds: Rect,
     pub time_of_day: f32,
     pub time_of_day_scale: f32,
+    /// SuspendTimeOfDay: the day's clock stands still.
+    #[serde(default)]
+    pub time_of_day_suspended: bool,
     pub day_night_models: (String, String),
     pub fog_enabled: bool,
     pub fog_mask_enabled: bool,
@@ -383,6 +386,7 @@ impl World {
             map_bounds: Rect::default(),
             time_of_day: 8.0,
             time_of_day_scale: 1.0,
+            time_of_day_suspended: false,
             day_night_models: (String::new(), String::new()),
             fog_enabled: true,
             fog_mask_enabled: true,
@@ -803,7 +807,9 @@ impl World {
         let day_hours = self.misc_f32("DayHours", 24.0);
         let day_length = self.misc_f32("DayLength", 480.0);
         let hours_per_second = day_hours / day_length * self.time_of_day_scale;
-        self.time_of_day = (self.time_of_day + dt * hours_per_second) % day_hours;
+        if !self.time_of_day_suspended {
+            self.time_of_day = (self.time_of_day + dt * hours_per_second) % day_hours;
+        }
         self.camera.update(dt);
         // A camera following a unit keeps its target on it.
         if let Some((u, ox, oy)) = self.camera.follow {

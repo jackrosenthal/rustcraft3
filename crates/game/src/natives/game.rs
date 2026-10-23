@@ -100,7 +100,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetIntegerGameState => |_, _, _| none(),
         SetTimeOfDayScale => |w, _, a| { w.time_of_day_scale = a.r(0); none() },
         GetTimeOfDayScale => |w, _, _| real(w.time_of_day_scale),
-        SuspendTimeOfDay => |_, _, _| none(),
+        SuspendTimeOfDay => |w, _, a| { w.time_of_day_suspended = a.b(0); none() },
         VersionGet => |w, _, _| int(w.version),
         VersionCompatible => |w, _, a| boolean(a.h(0) as i32 <= w.version),
         VersionSupported => |w, _, a| boolean(a.h(0) as i32 <= w.version),

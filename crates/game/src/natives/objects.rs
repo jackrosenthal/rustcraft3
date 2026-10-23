@@ -28,6 +28,8 @@ pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>
         invulnerable: false,
         visible: true,
         animation: None,
+        anim_serial: 0,
+        anim_speed: 1.0,
         pathing_cells: Vec::new(),
     };
     let path_tex = o.str("pathTex");
@@ -243,9 +245,29 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetDestructableOccluderHeight => |w, _, a| real(dest(w, a.h(0)).and_then(|d| w.objects.destructables.get(d.type_id)).map_or(0.0, |o| o.real("occH"))),
         SetDestructableOccluderHeight => |_, _, _| none(),
         ShowDestructable => |w, _, a| { let v = a.b(1); if let Some(d) = dest_mut(w, a.h(0)) { d.visible = v; } none() },
-        SetDestructableAnimation => |w, _, a| { let s = a.s(1); if let Some(d) = dest_mut(w, a.h(0)) { d.animation = Some(s); } none() },
-        QueueDestructableAnimation => |w, _, a| { let s = a.s(1); if let Some(d) = dest_mut(w, a.h(0)) { d.animation = Some(s); } none() },
-        SetDestructableAnimationSpeed => |_, _, _| none(),
+        SetDestructableAnimation => |w, _, a| {
+            let s = a.s(1).to_ascii_lowercase();
+            if let Some(d) = dest_mut(w, a.h(0)) {
+                d.animation = Some(s);
+                d.anim_serial = d.anim_serial.wrapping_add(1);
+            }
+            none()
+        },
+        QueueDestructableAnimation => |w, _, a| {
+            let s = a.s(1).to_ascii_lowercase();
+            if let Some(d) = dest_mut(w, a.h(0)) {
+                d.animation = Some(s);
+                d.anim_serial = d.anim_serial.wrapping_add(1);
+            }
+            none()
+        },
+        SetDestructableAnimationSpeed => |w, _, a| {
+            let speed = a.r(1);
+            if let Some(d) = dest_mut(w, a.h(0)) {
+                d.anim_speed = speed;
+            }
+            none()
+        },
         GetDestructableName => |w, _, a| {
             let n = dest(w, a.h(0)).and_then(|d| w.objects.destructables.get(d.type_id)).map(|o| o.str("Name")).unwrap_or_default();
             super::string(w.localized(&n))

@@ -213,11 +213,29 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             }
             none()
         },
-        PauseCompAI => |_, _, _| none(),
+        PauseCompAI => |w, _, a| {
+            if let Some(p) = w.player_of(a.h(0)) {
+                if let Some(s) = w.ai.get_mut(&p) {
+                    s.paused += if a.b(1) { 1 } else { -1 };
+                }
+            }
+            none()
+        },
         GetAIDifficulty => |w, _, a| int(w.player_of(a.h(0)).and_then(|p| w.ai_difficulty.get(&p).copied()).unwrap_or(0)),
-        RemoveGuardPosition => |_, _, _| none(),
-        RecycleGuardPosition => |_, _, _| none(),
-        RemoveAllGuardPositions => |_, _, _| none(),
+        RemoveGuardPosition => |w, _, a| {
+            w.remove_guard_position(a.h(0));
+            none()
+        },
+        RecycleGuardPosition => |w, _, a| {
+            w.recycle_guard_position(a.h(0));
+            none()
+        },
+        RemoveAllGuardPositions => |w, _, a| {
+            if let Some(p) = w.player_of(a.h(0)) {
+                w.remove_all_guard_positions(p);
+            }
+            none()
+        },
         GetEnumPlayer => |w, _, _| NativeResult::Return(w.player_handle(w.enum_ctx.enum_player)),
         GetFilterPlayer => |w, _, _| NativeResult::Return(w.player_handle(w.enum_ctx.filter_player)),
     );

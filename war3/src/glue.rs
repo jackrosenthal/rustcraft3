@@ -78,6 +78,7 @@ pub struct ScoreState {
     pub tab: usize,
     pub sort: [usize; 4],
     pub teams: bool,
+    pub ally_colors: bool,
     pub next: Option<String>,
     /// The screen to go back to.
     prev: Screen,
@@ -271,7 +272,7 @@ impl Glue {
     /// map) or back to the menus.
     pub fn show_score(&mut self, data: crate::scorescreen::ScoreData, next: Option<String>, assets: &mut Assets) {
         let prev = if self.screen == Screen::Score { Screen::MainMenu } else { self.screen };
-        self.score = Some(ScoreState { data, tab: 0, sort: crate::scorescreen::DEFAULT_SORT, teams: false, next, prev, bars: Vec::new() });
+        self.score = Some(ScoreState { data, tab: 0, sort: crate::scorescreen::DEFAULT_SORT, teams: false, ally_colors: false, next, prev, bars: Vec::new() });
         self.build(Screen::Score, assets);
         self.phase = Phase::Stand;
     }
@@ -292,6 +293,21 @@ impl Glue {
             self.tree.set_checked(&format!("{prefix}Button{k}"), k == col);
         }
         self.tree.set_checked("ScoreScreenTeamsButton", s.teams);
+        // The ally color button shows the minimap's ally button for its state
+        // (FUN_6f3075e0).
+        if let Some(b) = self.tree.get("ScoreScreenTeamColorButton") {
+            let state = if s.ally_colors { "Active" } else { "Inactive" };
+            let kids: Vec<usize> = self.tree.frames[b].children.clone();
+            for c in kids {
+                let key = match self.tree.frames[c].def.name.as_str() {
+                    "ScoreScreenButtonBackdrop" => "Enabled",
+                    "ScoreScreenButtonPushedBackdrop" => "Pushed",
+                    "ScoreScreenButtonDisabledBackdrop" => "Disabled",
+                    _ => continue,
+                };
+                self.tree.frames[c].texture = Some(db.decorate(&format!("MiniMapAllyButton{state}{key}")));
+            }
+        }
         // The chosen tab's name shows larger in its place (ScoreScreenTabTextSelected).
         for k in 0..4 {
             self.tree.set_visible(&format!("ScoreScreenTabText{k}"), k != tab);
@@ -319,7 +335,7 @@ impl Glue {
         // The bars' sequences are taken by the player's color index: their names do not
         // follow the colors (sequence 0, "TeamColor02", is red).
         if let Some(r) = order.first().map(|&k| &s.data.rows[k]) {
-            self.sprite_sequences.insert("ScoreScreenBarTop".into(), format!("#{}", r.color));
+            self.sprite_sequences.insert("ScoreScreenBarTop".into(), format!("#{}", r.bar_color(s.ally_colors)));
         }
         self.tree.bind_points();
         self.tree.layout();
@@ -586,6 +602,8 @@ impl Glue {
             s.sort[s.tab] = k;
         } else if name == "ScoreScreenTeamsButton" {
             s.teams = !s.teams;
+        } else if name == "ScoreScreenTeamColorButton" {
+            s.ally_colors = !s.ally_colors;
         } else if name == "ScoreScreenOkButton" {
             let (next, prev) = (s.next.take(), s.prev);
             self.score = None;
@@ -815,7 +833,7 @@ impl Glue {
                     s.bars.truncate(k - 1);
                     s.bars.push((path.to_string(), ModelInstance::new(m)));
                 }
-                let color = s.data.rows[order[k]].color;
+                let color = s.data.rows[order[k]].bar_color(s.ally_colors);
                 let inst = &mut s.bars[k - 1].1;
                 let want = usize::try_from(color).ok().filter(|&k| k < inst.model.mdx.sequences.len());
                 if inst.sequence != want {

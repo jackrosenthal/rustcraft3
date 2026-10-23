@@ -246,6 +246,8 @@ pub struct Frame {
     pub checked: bool,
     /// A slider's value, between its SliderMinValue and SliderMaxValue.
     pub value: f32,
+    /// A backdrop's background a screen sets in place of its BackdropBackground.
+    pub texture: Option<String>,
     /// Appended to the names of frames made by one scoped instantiation, so a template
     /// can be created several times (player slots); names inside resolve within it.
     pub scope: String,
@@ -312,6 +314,7 @@ impl FrameTree {
             model: None,
             checked: false,
             value: 0.0,
+            texture: None,
             scope: String::new(),
             items: Vec::new(),
             selected: 0,
@@ -372,6 +375,7 @@ impl FrameTree {
             model: d.str("BackgroundArt").map(|s| if d.has("DecorateFileNames") { db.decorate(s) } else { s.to_string() }),
             checked: false,
             value: d.num("SliderInitialValue").unwrap_or(0.0),
+            texture: None,
             scope: scope.to_string(),
             items: Vec::new(),
             selected: 0,
@@ -969,7 +973,7 @@ impl FrameTree {
         let key = if !f.enabled { "ControlDisabledBackdrop" } else if f.pushed || f.open { "ControlPushedBackdrop" } else { "ControlBackdrop" };
         let name = d.str(key).or_else(|| d.str("ControlBackdrop"));
         if let Some(bd) = name.and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
-            self.draw_backdrop(db, &bd.def, r, &file, out);
+            self.draw_backdrop_with(db, &bd.def, bd.texture.as_deref(), r, &file, out);
         }
         let (_, title, arrow) = self.popup_parts(i);
         let text = f.items.get(f.selected).cloned().or_else(|| f.text.clone()).unwrap_or_default();
@@ -990,7 +994,7 @@ impl FrameTree {
             let ar = Rect { x0: r.x1 - inset - w, x1: r.x1 - inset, y0: cy - h / 2.0, y1: cy + h / 2.0 };
             if let Some(bd) = ad.str("ControlBackdrop").and_then(|n| self.frames[a].children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
                 let afile = |n: &str| if bd.def.has("DecorateFileNames") { db.decorate(n) } else { n.to_string() };
-                self.draw_backdrop(db, &bd.def, ar, &afile, out);
+                self.draw_backdrop_with(db, &bd.def, bd.texture.as_deref(), ar, &afile, out);
             }
         }
     }
@@ -1002,7 +1006,7 @@ impl FrameTree {
         let md = self.frames[m].def.clone();
         let file = |n: &str| if md.has("DecorateFileNames") { db.decorate(n) } else { n.to_string() };
         if let Some(bd) = md.str("ControlBackdrop").and_then(|n| self.frames[m].children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
-            self.draw_backdrop(db, &bd.def, r, &file, out);
+            self.draw_backdrop_with(db, &bd.def, bd.texture.as_deref(), r, &file, out);
         }
         let (font, size) = self.popup_font(db, &md);
         let highlight = color_prop(md.prop("MenuTextHighlightColor"), [1.0, 0.8, 0.0, 1.0]);
@@ -1076,12 +1080,12 @@ impl FrameTree {
                 let path = if decorate || parent_decorates { db.decorate(name) } else { name.to_string() };
                 out.push(Draw::Image { texture: path, rect: r, uv, color: [1.0; 4], blend, rotated: false });
             }
-            (_, "BACKDROP") => self.draw_backdrop(db, d, r, &file, out),
+            (_, "BACKDROP") => self.draw_backdrop_with(db, d, f.texture.as_deref(), r, &file, out),
             // A text area: its ControlBackdrop, then its text wrapped inside
             // TextAreaInset, TextAreaLineHeight apart, from its scroll line down.
             (_, "TEXTAREA") => {
                 if let Some(bd) = d.str("ControlBackdrop").and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
-                    self.draw_backdrop(db, &bd.def, r, &file, out);
+                    self.draw_backdrop_with(db, &bd.def, bd.texture.as_deref(), r, &file, out);
                 }
                 let inset = d.prop("TextAreaInset").and_then(|p| p.args.first()).map_or(0.0, Arg::num);
                 let line_h = d.prop("TextAreaLineHeight").and_then(|p| p.args.first()).map_or(0.015, Arg::num);
@@ -1194,13 +1198,13 @@ impl FrameTree {
             (_, "SLIDER") => {
                 let key = if f.enabled { "ControlBackdrop" } else { "ControlDisabledBackdrop" };
                 if let Some(bd) = d.str(key).or_else(|| d.str("ControlBackdrop")).and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
-                    self.draw_backdrop(db, &bd.def, r, &file, out);
+                    self.draw_backdrop_with(db, &bd.def, bd.texture.as_deref(), r, &file, out);
                 }
                 if let (Some(t), Some(tr)) = (self.slider_thumb(i), self.thumb_rect(i)) {
                     let th = &self.frames[t];
                     let key = if f.enabled { "ControlBackdrop" } else { "ControlDisabledBackdrop" };
                     if let Some(bd) = th.def.str(key).or_else(|| th.def.str("ControlBackdrop")).and_then(|n| th.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
-                        self.draw_backdrop(db, &bd.def, tr, &file, out);
+                        self.draw_backdrop_with(db, &bd.def, bd.texture.as_deref(), tr, &file, out);
                     }
                 }
             }
@@ -1214,7 +1218,7 @@ impl FrameTree {
                 };
                 let name = d.str(key).or_else(|| d.str("ControlBackdrop"));
                 if let Some(bd) = name.and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
-                    self.draw_backdrop(db, &bd.def, r, &file, out);
+                    self.draw_backdrop_with(db, &bd.def, bd.texture.as_deref(), r, &file, out);
                 }
                 // A checked box shows its CheckBoxCheckHighlight (its disabled one when
                 // disabled).
@@ -1247,10 +1251,48 @@ impl FrameTree {
     }
 
     fn draw_backdrop(&self, db: &FrameDb, d: &Def, r: Rect, owner_file: &dyn Fn(&str) -> String, out: &mut Vec<Draw>) {
+        self.draw_backdrop_with(db, d, None, r, owner_file, out);
+    }
+
+    /// Sets a backdrop's background texture (a file name, decorated by the skin).
+    pub fn set_texture(&mut self, name: &str, texture: &str) {
+        if let Some(i) = self.get(name) {
+            self.frames[i].texture = Some(texture.to_string());
+        }
+    }
+
+    /// A backdrop, with `background` in place of its BackdropBackground.
+    fn draw_backdrop_with(&self, db: &FrameDb, d: &Def, background: Option<&str>, r: Rect, owner_file: &dyn Fn(&str) -> String, out: &mut Vec<Draw>) {
         let color = [1.0; 4];
         // A backdrop decorates its file names when it or its owner says so.
         let own = |n: &str| db.decorate(n);
         let file: &dyn Fn(&str) -> String = if d.has("DecorateFileNames") { &own } else { owner_file };
+        let insets: Vec<f32> = d.prop("BackdropBackgroundInsets").map(|p| p.args.iter().map(Arg::num).collect()).unwrap_or_default();
+        let ins = |i: usize| insets.get(i).copied().unwrap_or(0.0);
+        // The edge goes over the background, but under a texture a screen set (the score
+        // screen's ally color button, whose corners would cover it).
+        if background.is_none() {
+            self.draw_backdrop_edges_after(d, r, file, out);
+            return;
+        }
+        self.draw_backdrop_edges(d, r, file, out);
+        if let Some(bg) = background {
+            let inner = Rect { x0: r.x0 + ins(0), x1: r.x1 - ins(1), y1: r.y1 - ins(2), y0: r.y0 + ins(3) };
+            let mut uv = [0.0, 0.0, 1.0, 1.0];
+            // A texture set by a screen covers the backdrop rather than tiling.
+            if d.has("BackdropTileBackground") && background.is_none() {
+                let s = d.num("BackdropBackgroundSize").unwrap_or(inner.w()).max(1e-4);
+                uv = [0.0, 0.0, inner.w() / s, inner.h() / s];
+            }
+            if d.has("BackdropMirrored") {
+                uv = [uv[2], uv[1], uv[0], uv[3]];
+            }
+            out.push(Draw::Image { texture: file(bg), rect: inner, uv, color, blend: Blend::Alpha, rotated: false });
+        }
+    }
+
+    /// A backdrop's background, then its edge.
+    fn draw_backdrop_edges_after(&self, d: &Def, r: Rect, file: &dyn Fn(&str) -> String, out: &mut Vec<Draw>) {
         let insets: Vec<f32> = d.prop("BackdropBackgroundInsets").map(|p| p.args.iter().map(Arg::num).collect()).unwrap_or_default();
         let ins = |i: usize| insets.get(i).copied().unwrap_or(0.0);
         if let Some(bg) = d.str("BackdropBackground") {
@@ -1263,8 +1305,14 @@ impl FrameTree {
             if d.has("BackdropMirrored") {
                 uv = [uv[2], uv[1], uv[0], uv[3]];
             }
-            out.push(Draw::Image { texture: file(bg), rect: inner, uv, color, blend: Blend::Alpha, rotated: false });
+            out.push(Draw::Image { texture: file(bg), rect: inner, uv, color: [1.0; 4], blend: Blend::Alpha, rotated: false });
         }
+        self.draw_backdrop_edges(d, r, file, out);
+    }
+
+    /// A backdrop's edge: its corners and sides from BackdropEdgeFile.
+    fn draw_backdrop_edges(&self, d: &Def, r: Rect, file: &dyn Fn(&str) -> String, out: &mut Vec<Draw>) {
+        let color = [1.0; 4];
         let Some(edge) = d.str("BackdropEdgeFile") else { return };
         let edge = file(edge);
         let c = d.num("BackdropCornerSize").unwrap_or(0.0);

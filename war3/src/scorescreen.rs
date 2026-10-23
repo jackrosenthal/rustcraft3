@@ -17,6 +17,9 @@ pub struct Row {
     pub color: i32,
     pub team: i32,
     pub won: bool,
+    /// The local player's own row, and its allies'.
+    pub local: bool,
+    pub ally: bool,
     /// Per tab, the values (traded resources show as given/received).
     pub values: [[i32; 5]; 4],
     pub traded: (i32, i32),
@@ -63,6 +66,8 @@ impl ScoreData {
                 color: p.color,
                 team: p.team,
                 won: w.player_results.get(&player) == Some(&0),
+                local: player == w.local_player,
+                ally: player != w.local_player && w3_game::natives::players::is_ally(w, w.local_player, player),
                 values: [
                     [s(kind::UNIT_TOTAL), s(kind::HERO_TOTAL), s(kind::RESOURCE_TOTAL), s(kind::TOTAL), 0],
                     [s(kind::UNITS_TRAINED), s(kind::UNITS_KILLED), s(kind::STRUCT_BUILT), s(kind::STRUCT_RAZED), s(kind::FOOD_MAXUSED)],
@@ -92,6 +97,19 @@ impl ScoreData {
             team.then(rb.values[tab][column].cmp(&ra.values[tab][column])).then(ra.player.cmp(&rb.player))
         });
         idx
+    }
+}
+
+impl Row {
+    /// The bar's color: the player's, or with ally colors the local player's blue, its
+    /// allies' teal, and others' red (as captured from the original).
+    pub fn bar_color(&self, ally_colors: bool) -> i32 {
+        match (ally_colors, self.local, self.ally) {
+            (false, ..) => self.color,
+            (true, true, _) => 1,
+            (true, false, true) => 2,
+            _ => 0,
+        }
     }
 }
 

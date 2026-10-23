@@ -75,6 +75,13 @@ impl World {
                     }
                     damage += stacks as f32 * d(self, "DataA");
                 }
+                // Orb of Lightning (CAbilityLightningPurge, an arrow without cost): each
+                // hit purges what it may target.
+                "AIlp" if self.cast_target_error(attacker, a, target).is_none() => {
+                    if let Some(at) = self.widget_pos(target) {
+                        self.ability_effect_pub(vm, attacker, a, 1, target, at);
+                    }
+                }
                 // Poison and Venom: damage a second and slows for Dur.
                 "Apoi" | "Aven" | "Apo2" if !target_building => {
                     self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: dur, dps: d(self, "DataA"), attack_factor: -d(self, "DataB"), move_factor: -d(self, "DataC"), ..Default::default() });

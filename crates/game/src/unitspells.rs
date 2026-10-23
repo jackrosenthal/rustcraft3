@@ -118,7 +118,8 @@ impl World {
                 }
             }
             // Purge: dispels and stops the target, its speed returning over Dur.
-            "Aprg" => {
+            // The Orb of Lightning's purge (CAbilityLightningPurge) is Purge's.
+            "Aprg" | "AIlp" => {
                 self.dispel(vm, h, target, d(self, "DataC"));
                 self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, move_factor: -1.0, decaying: dur, ..Default::default() });
             }

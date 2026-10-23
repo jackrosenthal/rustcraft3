@@ -13,7 +13,7 @@ use crate::world::World;
 
 /// Engine text tags for gathered resources (UI\MiscData.txt Gold/LumberText*, heights
 /// from UI\MiscUI.txt): "+N" at the unit, rising.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub enum ResourceText {
     Gold,
     Lumber,

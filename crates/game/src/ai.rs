@@ -18,7 +18,7 @@ pub struct AiVm {
     pub sleepers: Vec<(f32, Thread)>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Captain {
     pub home: (f32, f32),
     pub units: Vec<u32>,
@@ -27,15 +27,19 @@ pub struct Captain {
     pub retreating: bool,
 }
 
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct AiState {
     pub player: u8,
+    /// The script running, to compile again when a saved game loads.
+    pub script: String,
+    #[serde(skip)]
     pub natives: Vec<Option<NativeFn>>,
+    #[serde(skip)]
     pub native_names: Vec<String>,
     /// Threads started with StartThread, run on the next AI update.
     pub spawned: Vec<Thread>,
     pub melee: bool,
-    pub flags: HashMap<&'static str, bool>,
+    pub flags: HashMap<String, bool>,
     /// Harvest requests in priority order: (gold?, town, workers).
     pub harvest: Vec<(bool, i32, i32)>,
     pub attack: Captain,
@@ -56,30 +60,39 @@ const TOWN_MINE_RADIUS: f32 = 1500.0;
 
 impl World {
     /// Starts a computer player's AI script (StartMeleeAI / StartCampaignAI).
-    pub fn start_ai(&mut self, player: u8, script: &str, melee: bool) {
+    /// Compiles an AI script; returns its machine and its natives' functions and names.
+    pub(crate) fn compile_ai(&self, script: &str) -> Option<(Vm, Vec<Option<NativeFn>>, Vec<String>)> {
         let read = |n: &str| self.chain.read_string(n).ok();
         // Melee scripts are named without their folder ("orc.ai").
         let src = read(script).or_else(|| read(&format!("Scripts\\{script}")));
         let (Some(common_j), Some(common_ai), Some(src)) = (read("Scripts\\common.j"), read("Scripts\\common.ai"), src) else {
             log::warn!("AI script {script} not found");
-            return;
+            return None;
         };
         let module = match w3_jass::compile([("common.j", &*common_j), ("common.ai", &*common_ai), (script, &*src)]) {
             Ok(m) => m,
             Err(e) => {
                 log::warn!("AI script {script}: {e}");
-                return;
+                return None;
             }
         };
-        let mut vm = Vm::new(module);
+        let vm = Vm::new(module);
         let mut table = crate::natives::table();
         for (k, v) in table_ai() {
             table.insert(k, v);
         }
+        let natives = vm.module.natives.iter().map(|n| table.get(&*n.name).copied()).collect();
+        let names = vm.module.natives.iter().map(|n| n.name.to_string()).collect();
+        Some((vm, natives, names))
+    }
+
+    pub fn start_ai(&mut self, player: u8, script: &str, melee: bool) {
+        let Some((mut vm, natives, native_names)) = self.compile_ai(script) else { return };
         let state = AiState {
             player,
-            natives: vm.module.natives.iter().map(|n| table.get(&*n.name).copied()).collect(),
-            native_names: vm.module.natives.iter().map(|n| n.name.to_string()).collect(),
+            script: script.to_string(),
+            natives,
+            native_names,
             melee,
             attack: Captain { home: self.start_of(player), ..Default::default() },
             defense: Captain { home: self.start_of(player), ..Default::default() },
@@ -513,7 +526,7 @@ fn upgrade_cost(w: &World, id: Id, gold: bool) -> i32 {
 
 fn set_flag(w: &mut World, key: &'static str, v: bool) -> NativeResult {
     if let Some(s) = w.ai_state() {
-        s.flags.insert(key, v);
+        s.flags.insert(key.to_string(), v);
     }
     none()
 }

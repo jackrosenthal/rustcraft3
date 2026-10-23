@@ -19,6 +19,8 @@ pub enum GlueAction {
     Play(std::path::PathBuf, Vec<w3_game::LobbySlot>),
     /// A campaign mission, by its path in the game's archives.
     Campaign(String),
+    /// A saved game file.
+    LoadSave(std::path::PathBuf),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

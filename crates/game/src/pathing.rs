@@ -14,7 +14,7 @@ pub const LAND: u8 = 0x40;
 
 /// How a unit moves (UnitData movetp): on foot (also horse and hover), flying, floating
 /// on water, or amphibious.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum Move {
     #[default]
     Foot,
@@ -34,6 +34,7 @@ impl Move {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct PathingMap {
     pub width: u32,
     pub height: u32,
@@ -167,7 +168,7 @@ impl PathingMap {
             let (dx, dy) = ((c.0 - goal.0).abs() as f32, (c.1 - goal.1).abs() as f32);
             dx.max(dy) + (std::f32::consts::SQRT_2 - 1.0) * dx.min(dy)
         };
-        #[derive(PartialEq)]
+        #[derive(PartialEq, serde::Serialize, serde::Deserialize)]
         struct Node(f32, u32);
         impl Eq for Node {}
         impl PartialOrd for Node {

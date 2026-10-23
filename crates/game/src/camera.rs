@@ -18,7 +18,7 @@ pub fn is_angle(field: usize) -> bool {
     matches!(field, FIELD_ANGLE_OF_ATTACK | FIELD_FIELD_OF_VIEW | FIELD_ROLL | FIELD_ROTATION)
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 struct Lerp {
     from: f32,
     to: f32,
@@ -33,7 +33,7 @@ impl Lerp {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct GameCamera {
     pub x: f32,
     pub y: f32,

@@ -12,6 +12,7 @@ pub mod forms;
 pub mod handles;
 pub mod hero;
 pub mod herospells;
+pub mod save;
 pub mod info;
 pub mod mining;
 pub mod morph;
@@ -52,7 +53,7 @@ pub struct Game {
 }
 
 /// How a player slot is filled when the game starts.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SlotFill {
     Local,
     Computer,
@@ -60,7 +61,7 @@ pub enum SlotFill {
 }
 
 /// One player's choices from the game setup screen.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct LobbySlot {
     pub player: u8,
     pub fill: SlotFill,

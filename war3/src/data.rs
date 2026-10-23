@@ -61,6 +61,11 @@ pub fn profile_path(version: Version) -> Option<PathBuf> {
     Some(dirs::data_dir()?.join("war3-remaster").join(format!("profile_v{}.json", version as u32)))
 }
 
+/// Where saved games live: the user's data directory, one folder per data version.
+pub fn save_dir(version: Version) -> Option<PathBuf> {
+    Some(dirs::data_dir()?.join("war3-remaster").join("Save").join(format!("v{}", version as u32)))
+}
+
 fn open_optional(dir: &Path, name: &str) -> anyhow::Result<Option<Arc<Archive>>> {
     // Archive names are matched case-insensitively, as on the original's file system.
     let Some(path) = std::fs::read_dir(dir)?

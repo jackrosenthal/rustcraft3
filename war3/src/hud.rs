@@ -106,6 +106,8 @@ pub struct Hud {
     /// The game menu (F10), built by CEscMenu: EscMenuBackdrop centered 0.06 above the
     /// middle, holding EscMenuMainPanel.
     pub menu: Option<FrameTree>,
+    /// The game menu's Save Game or Load Game panel, while shown.
+    pub save_panel: Option<crate::saveload::SavePanel>,
     /// The selected unit's inventory: icon and charges per slot it has.
     pub inventory: Vec<Option<(String, i32)>>,
     /// Text under the portrait: hit points (with color) and mana.
@@ -251,6 +253,7 @@ impl Hud {
             dialog: None,
             boards: None,
             menu: None,
+            save_panel: None,
             inventory: Vec::new(),
             level_bar: None,
             buff_icons: None,
@@ -985,22 +988,50 @@ impl Hud {
 
     pub fn open_menu(&mut self, db: &FrameDb, aspect: f32) {
         let mut tree = FrameTree::new(aspect);
+        tree.plain_button_text = true;
         let Some(_) = tree.create(db, "EscMenuBackdrop", 0) else { return };
+        use w3_ui::FramePoint as P;
         if let Some(b) = tree.get("EscMenuBackdrop") {
             tree.create(db, "EscMenuMainPanel", b);
+            // The save and load panel, its file list's border (an edit box's), and the
+            // name typed inside the edit box's border.
+            if let Some(s) = tree.create(db, "EscMenuSaveGamePanel", b) {
+                if tree.create(db, "EscMenuEditBoxBackdropTemplate", s).is_some() {
+                    tree.set_point("EscMenuEditBoxBackdropTemplate", P::TopLeft, "FileListFrame", P::TopLeft, 0.0, 0.0);
+                    tree.set_point("EscMenuEditBoxBackdropTemplate", P::BottomRight, "FileListFrame", P::BottomRight, 0.0, 0.0);
+                }
+                tree.set_point("SaveGameFileEditBoxText", P::TopLeft, "SaveGameFileEditBox", P::TopLeft, 0.009, -0.009);
+                tree.set_point("SaveGameFileEditBoxText", P::BottomRight, "SaveGameFileEditBox", P::BottomRight, -0.009, 0.009);
+            }
         }
-        use w3_ui::FramePoint as P;
         tree.set_point("EscMenuBackdrop", P::Center, "", P::Center, 0.0, 0.06);
+        // Pausing is for multiplayer games; single player games pause while the menu is
+        // open.
+        tree.set_visible("PauseButton", false);
         Self::menu_panel(&mut tree, "MainPanel");
+        self.save_panel = None;
         tree.bind_points();
         tree.layout();
         self.menu = Some(tree);
+    }
+
+    /// Shows the save panel's state in the menu.
+    pub fn sync_save_panel(&mut self, db: &FrameDb) {
+        if let (Some(p), Some(m)) = (self.save_panel.as_mut(), self.menu.as_mut()) {
+            p.sync(m, db);
+        }
     }
 
     /// Shows one of the menu's panels.
     pub fn menu_panel(tree: &mut FrameTree, panel: &str) {
         for p in ["MainPanel", "EndGamePanel", "ConfirmQuitPanel", "HelpPanel", "TipsPanel", "EscMenuOptionsPanel", "EscMenuSaveGamePanel"] {
             tree.set_visible(p, p == panel);
+        }
+        // EscMenuBackdrop's own size, except behind the save and load panel.
+        if panel != "EscMenuSaveGamePanel" {
+            tree.set_size("EscMenuBackdrop", Some(0.288), Some(0.384));
+            tree.bind_points();
+            tree.layout();
         }
     }
 
@@ -1053,7 +1084,14 @@ impl Hud {
             self.message_draws(db, &mut out);
             return out;
         }
-        let mut out = self.tree.draw(db);
+        let mut out = Vec::new();
+        // The game menu darkens the world to 0.4 (measured from the original), not the
+        // interface.
+        if self.menu.is_some() {
+            let rect = w3_ui::Rect { x0: 0.0, x1: self.tree.width, y0: 0.0, y1: w3_ui::UI_HEIGHT };
+            out.push(Draw::Image { texture: String::new(), rect, uv: [0.0, 0.0, 1.0, 1.0], color: [0.0, 0.0, 0.0, 0.6], blend: w3_ui::Blend::Alpha, rotated: false });
+        }
+        out.extend(self.tree.draw(db));
         self.filter_draws(&mut out);
         self.hero_bar_draws(db, &mut out);
         self.minimap_button_draws(db, &mut out);
@@ -1137,6 +1175,9 @@ impl Hud {
         }
         if let Some(m) = &self.menu {
             out.extend(m.draw(db));
+            if let Some(p) = &self.save_panel {
+                p.draws(db, &mut out);
+            }
         }
         if let Some((hp, color, mana)) = &self.portrait_stats {
             // Hit points and mana: 0.078125 x 0.011875 at (0.214375, 0.0283) and

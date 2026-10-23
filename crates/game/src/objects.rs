@@ -31,7 +31,7 @@ pub fn id_to_int(id: Id) -> i32 {
     u32::from_be_bytes(id) as i32
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Object {
     pub id: Id,
     /// The object this one was copied from, for custom objects.
@@ -97,7 +97,7 @@ impl Object {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Kind {
     Unit,
     Item,
@@ -108,14 +108,14 @@ pub enum Kind {
     Upgrade,
 }
 
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct ObjectTable {
     pub objects: HashMap<Id, Object>,
     /// Object-editor field id -> (field name, slk, index, repeat/data info).
     meta: HashMap<Id, Meta>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 struct Meta {
     field: String,
     slk: String,
@@ -261,7 +261,7 @@ impl ObjectTable {
 }
 
 /// All object tables for a game.
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct ObjectDb {
     pub units: ObjectTable,
     pub items: ObjectTable,

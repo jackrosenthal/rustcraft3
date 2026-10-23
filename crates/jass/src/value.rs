@@ -4,7 +4,7 @@ use std::rc::Rc;
 /// Index of a compiled JASS function.
 pub type FuncId = u32;
 
-#[derive(Clone, Default, PartialEq)]
+#[derive(Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Value {
     /// A scalar variable that was never assigned; reading it aborts the thread.
     #[default]

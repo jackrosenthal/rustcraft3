@@ -13,7 +13,7 @@ use crate::types::*;
 pub type NativeFn = fn(&mut World, &mut Vm, &[Value]) -> NativeResult;
 
 /// Messages for the presentation layer (renderer, audio, interface).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Request {
     DisplayText { players: u32, x: f32, y: f32, text: String, duration: f32 },
     ClearText { players: u32 },
@@ -36,6 +36,9 @@ pub enum Request {
     ChangeLevel { map: String, score: bool },
     Fade { players: u32, out: bool, duration: f32 },
     EndGame,
+    /// SaveGame and LoadGame: a saved game's name in the saved games folder.
+    SaveGame(String),
+    LoadGame(String),
     /// UnitAddIndicator and AddIndicator: a widget's indicator in a color.
     Indicator { widget: u32, color: [u8; 4] },
     /// PlayCinematic: a movie.
@@ -48,7 +51,7 @@ pub enum Request {
 }
 
 /// A Sentinel owl perched on a tree.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Sentinel {
     pub caster: u32,
     pub owner: u8,
@@ -58,20 +61,26 @@ pub struct Sentinel {
 }
 
 /// A suspended trigger thread and the event context it resumes with.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Sleeper {
     pub wake_at: f32,
     pub thread: Thread,
     pub ctx: EventCtx,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct World {
+    #[serde(skip)]
     pub chain: Arc<Chain>,
+    #[serde(skip)]
     pub objects: ObjectDb,
     pub handles: Handles<Obj>,
     pub players: Vec<Player>,
     pub start_locations: Vec<StartLocation>,
     pub events: Vec<u32>,
+    #[serde(skip)]
     pub natives: Vec<Option<NativeFn>>,
+    #[serde(skip)]
     pub native_names: Vec<String>,
     warned: HashSet<u32>,
     /// Game time in seconds.
@@ -82,6 +91,7 @@ pub struct World {
     /// Threads started by natives (TriggerExecute, ExecuteFunc) that must run once the
     /// current native returns.
     pub pending: Vec<(Thread, EventCtx)>,
+    #[serde(skip)]
     pub requests: Vec<Request>,
     pub map_name: String,
     pub map_description: String,
@@ -102,14 +112,18 @@ pub struct World {
     pub day_night_models: (String, String),
     pub fog_enabled: bool,
     pub fog_mask_enabled: bool,
+    #[serde(skip)]
     pub terrain_heights: Option<TerrainHeights>,
     pub global_variables_changed: HashMap<String, f32>,
     /// Units\\MiscData.txt merged with Units\\MiscGame.txt: gameplay constants.
+    #[serde(skip)]
     pub misc: w3_formats::profile::Profile,
     pub rng: crate::rng::Rng,
     /// `TRIGSTR_n` strings from war3map.wts.
+    #[serde(skip)]
     pub trigger_strings: HashMap<u32, String>,
     /// Localized interface strings (FDF StringList entries).
+    #[serde(skip)]
     pub strings: HashMap<String, String>,
     pub local_player: u8,
     /// VERSION_REIGN_OF_CHAOS (0) or VERSION_FROZEN_THRONE (1).
@@ -147,9 +161,14 @@ pub struct World {
     pub blight_serial: u32,
     pub autocast_timer: f32,
     pub sentinels: Vec<Sentinel>,
+    /// Where saved games are kept (set by the program running the game).
+    #[serde(skip)]
+    pub saves_dir: Option<std::path::PathBuf>,
     /// Splats\\LightningData.slk, read when first needed.
+    #[serde(skip)]
     pub lightning_data: Option<w3_formats::slk::Table>,
     /// W3PROF timings by subsystem.
+    #[serde(skip)]
     pub profile: Option<HashMap<&'static str, f64>>,
     pub destructable_order: Vec<u32>,
     pub item_order: Vec<u32>,
@@ -158,8 +177,11 @@ pub struct World {
     pub dying_effects: Vec<(u32, f32)>,
     pub pathing: Option<crate::pathing::PathingMap>,
     pub missiles: Vec<crate::sim::Missile>,
+    #[serde(skip)]
     pathing_textures: HashMap<String, Option<w3_formats::blp::Image>>,
     pub ai: HashMap<u8, crate::ai::AiState>,
+    /// Saved games keep their variables and threads apart (see save.rs).
+    #[serde(skip)]
     pub ai_vms: HashMap<u8, crate::ai::AiVm>,
     /// The computer player whose AI script is running, while one is.
     pub ai_current: Option<u8>,
@@ -324,6 +346,7 @@ impl World {
             sentinels: Vec::new(),
             profile: None,
             lightning_data: None,
+            saves_dir: None,
             destructable_order: Vec::new(),
             item_order: Vec::new(),
             dying_effects: Vec::new(),
@@ -355,6 +378,16 @@ impl World {
 
     /// Resolves `TRIGSTR_n` references and interface string keys; other text is returned
     /// unchanged.
+    /// A saved game's file from the name a script gives (".w3z" when it has no
+    /// extension).
+    pub fn save_path(&self, name: &str) -> Option<std::path::PathBuf> {
+        let dir = self.saves_dir.as_ref()?;
+        let name = name.replace('\\', "/");
+        let file = std::path::Path::new(&name).file_name()?.to_string_lossy().to_string();
+        let file = if file.contains('.') { file } else { format!("{file}.w3z") };
+        Some(dir.join(file))
+    }
+
     pub fn localized(&self, s: &str) -> String {
         if let Some(n) = s.strip_prefix("TRIGSTR_") {
             let digits: String = n.chars().take_while(|c| c.is_ascii_digit()).collect();

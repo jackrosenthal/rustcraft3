@@ -21,12 +21,27 @@ fn main() -> anyhow::Result<()> {
     let (device, queue) = pollster::block_on(adapter.request_device(&Default::default()))?;
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let mut assets = Assets::new(&device, &queue, &data);
-    let mut scene = Scene::load(&device, &queue, format, &data, &mut assets, Path::new(&a[2]), w as f32 / h as f32, None)?;
+    // A saved game (.w3z) starts its map with the saved state.
+    let (map, restore) = if a[2].to_ascii_lowercase().ends_with(".w3z") {
+        let save = w3_game::save::SaveGame::parse(&std::fs::read(&a[2])?)?;
+        (save.map.clone(), Some(save))
+    } else {
+        (a[2].clone(), None)
+    };
+    let mut scene = Scene::load(&device, &queue, format, &data, &mut assets, Path::new(&map), w as f32 / h as f32, None, restore)?;
     scene.sync_units(&device, &queue, &mut assets);
     scene.sync_destructables(&device, &queue, &mut assets);
+    // W3SAVES: where the game menu keeps saved games, for testing.
+    if let Ok(d) = std::env::var("W3SAVES") {
+        scene.saves_dir = d.clone().into();
+        if let Some(g) = scene.game.as_mut() {
+            g.world.saves_dir = Some(d.into());
+        }
+    }
     let mut i = 6;
     let num = |s: &str| s.parse::<f32>().unwrap();
     while i < a.len() {
+        scene.update_menu(&assets.frames, w as f32 / h as f32);
         match a[i].as_str() {
             "select" => {
                 scene.select((num(&a[i + 1]), num(&a[i + 2])), (num(&a[i + 3]), num(&a[i + 4])), (w, h), false);
@@ -115,6 +130,14 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
                 i += 1;
+            }
+            "loadreq" => {
+                eprintln!("load requested: {:?}", scene.load_requested);
+                i += 1;
+            }
+            "save" => {
+                std::fs::write(&a[i + 1], scene.save_game()?)?;
+                i += 2;
             }
             "res" => {
                 if let Some(g) = &scene.game {
@@ -267,6 +290,14 @@ fn main() -> anyhow::Result<()> {
             "menu" => {
                 scene.open_menu((w as u32, h as u32));
                 i += 1;
+            }
+            // type <text>: keys typed one by one; "\n" in it is Enter.
+            "type" => {
+                for c in a[i + 1].replace("\\n", "\n").chars() {
+                    scene.key(c);
+                    scene.update_menu(&assets.frames, w as f32 / h as f32);
+                }
+                i += 2;
             }
             // tech <upgrade> <level>: gives player 0 research.
             "tech" => {

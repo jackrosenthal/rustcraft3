@@ -56,7 +56,7 @@ pub mod slot_state {
 
 pub const ALLIANCE_TYPES: usize = 10;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Player {
     pub id: u8,
     pub handle: u32,
@@ -111,7 +111,7 @@ impl Player {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct StartLocation {
     pub x: f32,
     pub y: f32,
@@ -119,7 +119,7 @@ pub struct StartLocation {
     pub prios: HashMap<i32, (i32, i32)>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Order {
     pub id: i32,
     pub target_x: f32,
@@ -127,7 +127,7 @@ pub struct Order {
     pub target: u32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Unit {
     pub handle: u32,
     pub type_id: Id,
@@ -226,7 +226,7 @@ pub struct Unit {
 }
 
 /// Unit settings scripts change.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct UnitExtra {
     /// SetUnitRescuable: players (bits) who rescue the unit by coming near; the range.
     pub rescuable_by: u16,
@@ -342,7 +342,7 @@ impl Default for UnitExtra {
 }
 
 /// Bonuses from held items' abilities.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct ItemBonus {
     pub damage: f32,
     pub armor: f32,
@@ -359,7 +359,7 @@ pub struct ItemBonus {
 }
 
 /// An effect on a unit for a while: from spells, auras, and passives.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Buff {
     /// Buff type from AbilityBuffData (e.g. BHtb).
     pub id: Id,
@@ -417,7 +417,7 @@ pub struct Buff {
 }
 
 /// A spell kept up by its caster: it ends when the time runs out or the caster stops.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Channel {
     pub ability: Id,
     pub level: u32,
@@ -433,7 +433,7 @@ pub struct Channel {
 }
 
 /// A spell's lasting effect on the ground (Flame Strike, Earthquake).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct GroundEffect {
     pub caster: u32,
     pub owner: u8,
@@ -449,7 +449,7 @@ pub struct GroundEffect {
 }
 
 /// What a unit is doing.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Action {
     #[default]
     Idle,
@@ -480,7 +480,7 @@ pub enum Action {
 }
 
 /// An attack in progress: damage lands at the damage point, then the backswing plays.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Swing {
     pub target: u32,
     pub elapsed: f32,
@@ -489,7 +489,7 @@ pub struct Swing {
     pub weapon: u8,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Destructable {
     pub handle: u32,
     pub type_id: Id,
@@ -507,7 +507,7 @@ pub struct Destructable {
     pub pathing_cells: Vec<(i32, i32)>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Item {
     pub handle: u32,
     pub type_id: Id,
@@ -525,7 +525,7 @@ pub struct Item {
     pub droppable: bool,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Timer {
     pub remaining: f32,
     pub timeout: f32,
@@ -534,7 +534,7 @@ pub struct Timer {
     pub callback: Option<FuncId>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Trigger {
     pub enabled: bool,
     pub wait_on_sleeps: bool,
@@ -559,7 +559,7 @@ impl Default for Trigger {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum BoolExpr {
     Func(FuncId),
     And(u32, u32),
@@ -567,17 +567,17 @@ pub enum BoolExpr {
     Not(u32),
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Group {
     pub units: Vec<u32>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Force {
     pub players: u32,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Rect {
     pub min_x: f32,
     pub min_y: f32,
@@ -592,7 +592,7 @@ impl Rect {
 }
 
 /// Regions are sets of 32x32 cells.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Region {
     pub cells: HashSet<(i32, i32)>,
 }
@@ -608,7 +608,7 @@ impl Region {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Effect {
     pub model: String,
     pub x: f32,
@@ -622,7 +622,7 @@ pub struct Effect {
 }
 
 /// A script dialog (DialogCreate): a message over a column of buttons.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Dialog {
     pub message: String,
     pub buttons: Vec<u32>,
@@ -630,7 +630,7 @@ pub struct Dialog {
     pub shown: u32,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct DialogButton {
     pub dialog: u32,
     pub text: String,
@@ -639,7 +639,7 @@ pub struct DialogButton {
     pub quit: Option<bool>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Sound {
     pub path: String,
     pub looping: bool,
@@ -660,7 +660,7 @@ pub struct Sound {
     pub playing: bool,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct TextTag {
     pub text: String,
     pub height: f32,
@@ -681,7 +681,7 @@ pub struct TextTag {
 }
 
 /// What a trigger event registration listens for.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum EventKind {
     TimerExpire(u32),
     GameState { state: i32, op: i32, value: f32 },
@@ -703,14 +703,14 @@ pub enum EventKind {
     Filter { event: i32 },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct EventReg {
     pub trigger: u32,
     pub kind: EventKind,
 }
 
 /// Values the event-response natives (GetTriggerUnit and friends) read.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct EventCtx {
     pub trigger: u32,
     pub event_id: i32,
@@ -740,7 +740,7 @@ pub struct EventCtx {
 }
 
 /// Enumeration callback context (GetEnumUnit, GetFilterUnit, ...).
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct EnumCtx {
     pub enum_unit: u32,
     pub filter_unit: u32,
@@ -752,7 +752,7 @@ pub struct EnumCtx {
     pub filter_item: u32,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Hashtable {
     pub ints: HashMap<(i32, i32), i32>,
     pub reals: HashMap<(i32, i32), f32>,
@@ -761,7 +761,7 @@ pub struct Hashtable {
     pub handles: HashMap<(i32, i32), u32>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct GameCache {
     pub name: String,
     pub ints: HashMap<(String, String), i32>,
@@ -789,7 +789,7 @@ pub struct StoredUnit {
     pub items: Vec<Option<([u8; 4], i32)>>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct CameraSetup {
     pub fields: HashMap<i32, f32>,
     /// Each field's transition time (CameraSetupSetField's duration).
@@ -799,7 +799,7 @@ pub struct CameraSetup {
 }
 
 /// A transmission on the cinematic panel (SetCinematicScene).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct CineScene {
     pub unit_type: crate::objects::Id,
     pub color: i32,
@@ -811,7 +811,7 @@ pub struct CineScene {
 }
 
 /// A screen overlay that changes over time (the SetCineFilter natives).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct CineFilter {
     pub texture: String,
     pub blend: i32,
@@ -833,7 +833,7 @@ impl Default for CineFilter {
 }
 
 /// Cinematic presentation state for the local player.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Cinematic {
     /// ShowInterface: the console is shown (false shows the cinematic panel), and the
     /// time the last change started and how long it fades.
@@ -855,7 +855,7 @@ impl Default for Cinematic {
 
 /// A quest in the quest log (CreateQuest makes one required, discovered, and
 /// enabled).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Quest {
     pub title: String,
     pub description: String,
@@ -875,7 +875,7 @@ impl Default for Quest {
 }
 
 /// One requirement line of a quest.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct QuestItem {
     pub quest: u32,
     pub description: String,
@@ -883,7 +883,7 @@ pub struct QuestItem {
 }
 
 /// A handle-table entry.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Obj {
     Weather(Weather),
     Image(Image),
@@ -925,11 +925,11 @@ pub enum Obj {
     Dialog(Dialog),
     DialogButton(DialogButton),
     /// Objects the simulation does not model yet; the handle stays valid.
-    Opaque(&'static str),
+    Opaque(String),
 }
 
 /// A timer dialog (CTimerDialog): a title and its timer's remaining time.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TimerDialog {
     pub timer: u32,
     /// None shows "DEFAULTTIMERDIALOGTEXT".
@@ -948,7 +948,7 @@ impl Default for TimerDialog {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct LeaderboardItem {
     pub label: String,
     pub value: i32,
@@ -966,7 +966,7 @@ impl Default for LeaderboardItem {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Leaderboard {
     pub label: String,
     pub items: Vec<LeaderboardItem>,
@@ -984,7 +984,7 @@ impl Default for Leaderboard {
 }
 
 /// A multiboard cell (CMultiboardElementData): white text, value and icon shown, 0.01 wide.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct MultiboardItem {
     pub value: String,
     pub icon: String,
@@ -1000,7 +1000,7 @@ impl Default for MultiboardItem {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Multiboard {
     pub title: String,
     pub title_color: Option<[u8; 4]>,
@@ -1031,7 +1031,7 @@ impl Multiboard {
 }
 
 /// An image (CreateImage): a texture laid on the ground.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Image {
     pub file: String,
     pub size: [f32; 3],
@@ -1048,7 +1048,7 @@ pub struct Image {
 }
 
 /// An ubersplat (CreateUbersplat): a Splats\UberSplatData.slk ground texture.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Ubersplat {
     pub x: f32,
     pub y: f32,
@@ -1064,7 +1064,7 @@ pub struct Ubersplat {
 }
 
 /// A lightning effect between two points (AddLightning): a Splats\LightningData.slk type.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Lightning {
     pub code: String,
     pub check_visibility: bool,
@@ -1074,7 +1074,7 @@ pub struct Lightning {
 }
 
 /// A weather effect (AddWeatherEffect): a TerrainArt\\Weather.slk effect over a rect.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Weather {
     pub rect: Rect,
     pub id: crate::objects::Id,

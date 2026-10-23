@@ -24,7 +24,8 @@ struct Running {
     /// The menus kept while a game runs, to return to afterwards.
     glue_saved: Option<crate::glue::Glue>,
     /// A map to load once the loading screen has been drawn.
-    pending: Option<(std::path::PathBuf, Option<Vec<w3_game::LobbySlot>>)>,
+    /// The map to load next, with the setup screen's choices or a saved game's state.
+    pending: Option<(std::path::PathBuf, Option<Vec<w3_game::LobbySlot>>, Option<w3_game::save::SaveGame>)>,
     /// A loaded campaign mission waiting for a key on its loading screen.
     ready: Option<Scene>,
     /// Sound output, handed to each game.
@@ -103,7 +104,13 @@ impl App {
         let mut assets = Assets::new(&gpu.device, &gpu.queue, &self.data);
         let mut audio = Some(w3_audio::Audio::new(self.data.chain.clone()));
         let mut scene = match &self.args.loadfile {
-            Some(path) => Some(Scene::load(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets, path, inner.width as f32 / inner.height.max(1) as f32, None)?),
+            // A saved game starts its map with the saved state.
+            Some(path) if path.extension().is_some_and(|e| e.eq_ignore_ascii_case(crate::saveload::EXTENSION)) => {
+                let save = w3_game::save::SaveGame::parse(&std::fs::read(path)?)?;
+                let map = std::path::PathBuf::from(&save.map);
+                Some(Scene::load(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets, &map, inner.width as f32 / inner.height.max(1) as f32, None, Some(save))?)
+            }
+            Some(path) => Some(Scene::load(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets, path, inner.width as f32 / inner.height.max(1) as f32, None, None)?),
             None => None,
         };
         let glue = match scene.as_mut() {
@@ -288,6 +295,23 @@ impl ApplicationHandler for App {
                         el.exit();
                         return;
                     }
+                    // A saved game chosen in the game menu: its loading screen, then the game.
+                    if let Some(file) = scene.load_requested.take() {
+                        let mut audio = scene.audio.take();
+                        if let Some(a) = audio.as_mut() {
+                            a.stop_music();
+                        }
+                        r.audio = audio;
+                        r.scene = None;
+                        r.glue = r.glue_saved.take();
+                        if r.glue.is_none() {
+                            r.glue = Some(crate::glue::Glue::new(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets));
+                        }
+                        if let Some(glue) = r.glue.as_mut() {
+                            glue.action = Some(crate::glue::GlueAction::LoadSave(file));
+                        }
+                        return;
+                    }
                     // The game's profile changes (campaign progress, saved caches) are kept.
                     let change = scene.change_level.take();
                     if scene.ended || change.is_some() {
@@ -356,18 +380,31 @@ impl ApplicationHandler for App {
                             // Draw the loading screen first; the map loads next frame.
                             self.data.campaign_game.set(false);
                             glue.show_loading(&mut r.assets);
-                            r.pending = Some((path, Some(slots)));
+                            r.pending = Some((path, Some(slots), None));
                         }
                         Some(crate::glue::GlueAction::Campaign(map)) => {
                             self.data.campaign_game.set(true);
                             glue.skirmish.summary = crate::skirmish::summarize_from(&self.data.chain, &map);
                             glue.show_loading(&mut r.assets);
-                            r.pending = Some((std::path::PathBuf::from(map), None));
+                            r.pending = Some((std::path::PathBuf::from(map), None, None));
+                        }
+                        Some(crate::glue::GlueAction::LoadSave(file)) => {
+                            match std::fs::read(&file).map_err(anyhow::Error::from).and_then(|b| w3_game::save::SaveGame::parse(&b)) {
+                                Ok(save) => {
+                                    self.data.campaign_game.set(false);
+                                    let map = save.map.clone();
+                                    let path = std::path::PathBuf::from(&map);
+                                    glue.skirmish.summary = if path.is_file() { crate::skirmish::summarize_path(&path) } else { crate::skirmish::summarize_from(&self.data.chain, &map) };
+                                    glue.show_loading(&mut r.assets);
+                                    r.pending = Some((path, None, Some(save)));
+                                }
+                                Err(e) => log::error!("loading {}: {e:#}", file.display()),
+                            }
                         }
                         None if r.pending.is_some() => {
-                            let (path, slots) = r.pending.take().unwrap();
+                            let (path, slots, restore) = r.pending.take().unwrap();
                             let aspect = size.0 as f32 / size.1.max(1) as f32;
-                            match Scene::load(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets, &path, aspect, slots.as_deref()) {
+                            match Scene::load(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets, &path, aspect, slots.as_deref(), restore) {
                                 Ok(s) => {
                                     if self.data.campaign_game.get() {
                                         // Campaign missions wait on their loading screen for a

@@ -9,7 +9,7 @@ use crate::types::*;
 use crate::world::World;
 
 /// How an ability's order is aimed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Targeting {
     None,
     Unit,

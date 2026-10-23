@@ -439,6 +439,11 @@ pub fn summarize_from(chain: &w3_mpq::Chain, name: &str) -> Option<MapSummary> {
     summarize_archive(&ar, false)
 }
 
+/// A map file on disk, read for the loading screen.
+pub fn summarize_path(path: &Path) -> Option<MapSummary> {
+    summarize(path, false)
+}
+
 /// Reads a map's w3i, trigger strings, and optionally its preview image.
 fn summarize(path: &Path, preview: bool) -> Option<MapSummary> {
     let ar = w3_mpq::Archive::open(path).ok()?;

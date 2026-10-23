@@ -19,7 +19,7 @@ use crate::types::*;
 use crate::world::{Request, World};
 
 /// A projectile in flight.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Missile {
     pub source: u32,
     pub target: u32,
@@ -37,7 +37,7 @@ pub struct Missile {
 }
 
 /// Weapon 1 of a unit type, from UnitWeapons.slk and the unit's profile.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Weapon {
     pub range: f32,
     pub cooldown: f32,

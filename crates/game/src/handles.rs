@@ -5,6 +5,7 @@ use std::collections::{BTreeSet, HashMap};
 /// Handle ids start here, as GetHandleId shows in the original.
 pub const HANDLE_BASE: u32 = 0x10_0000;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Handles<T> {
     objects: HashMap<u32, T>,
     free: BTreeSet<u32>,

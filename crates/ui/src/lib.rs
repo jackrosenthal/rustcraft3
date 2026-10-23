@@ -273,6 +273,9 @@ pub struct FrameTree {
     pub fonts: HashMap<String, Rc<fontdue::Font>>,
     /// Font skin keys (MasterFont) and the files they name.
     pub font_keys: HashMap<String, String>,
+    /// Enabled buttons' text takes FontColor rather than FontHighlightColor (in-game
+    /// menus, as the original draws them; glue screens use the highlight color).
+    pub plain_button_text: bool,
 }
 
 impl FrameTree {
@@ -991,13 +994,15 @@ impl FrameTree {
                 let owner = f.parent.map(|p| &self.frames[p]).filter(|p| p.def.str("ButtonText") == Some(f.def.name.as_str()));
                 let color_key = match owner {
                     Some(o) if !o.enabled => "FontDisabledColor",
-                    Some(_) => "FontHighlightColor",
-                    None => "FontColor",
+                    Some(_) if !self.plain_button_text => "FontHighlightColor",
+                    _ => "FontColor",
                 };
                 // CTextFrame starts white (0xffffffff) until FontColor sets it.
                 let color = f.color.unwrap_or_else(|| color_prop(d.prop(color_key).or_else(|| d.prop("FontColor")), [1.0; 4]));
-                // Without a size, the text sizes itself around the anchored point.
-                let (mut jh, mut jv) = (justify("FontJustificationH", Justify::Middle), justify("FontJustificationV", Justify::Middle));
+                // Without a size, the text sizes itself around the anchored point.  An edit
+                // box's text runs from its left.
+                let edit_text = f.parent.is_some_and(|p| self.frames[p].def.str("EditTextFrame") == Some(f.def.name.as_str()));
+                let (mut jh, mut jv) = (justify("FontJustificationH", if edit_text { Justify::Start } else { Justify::Middle }), justify("FontJustificationV", Justify::Middle));
                 let mut r = r;
                 if r.w() < 1e-6 {
                     let (ax, x) = (f.anchor.0, r.x0);
@@ -1034,7 +1039,7 @@ impl FrameTree {
                     shadow,
                 });
             }
-            (_, "GLUETEXTBUTTON") | (_, "GLUEBUTTON") | (_, "TEXTBUTTON") | (_, "BUTTON") | (_, "GLUECHECKBOX") | (_, "CONTROL") => {
+            (_, "GLUETEXTBUTTON") | (_, "GLUEBUTTON") | (_, "TEXTBUTTON") | (_, "BUTTON") | (_, "GLUECHECKBOX") | (_, "CONTROL") | (_, "EDITBOX") => {
                 let key = if !f.enabled {
                     "ControlDisabledBackdrop"
                 } else if f.pushed {

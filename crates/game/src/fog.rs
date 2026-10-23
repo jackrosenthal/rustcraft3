@@ -14,13 +14,13 @@ pub const FOG_VISIBLE: i32 = 4;
 /// The shared-vision alliance flag (ALLIANCE_SHARED_VISION).
 const ALLIANCE_SHARED_VISION: usize = 5;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum FogShape {
     Rect(Rect),
     Circle(f32, f32, f32),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct FogModifier {
     pub player: u8,
     pub state: i32,
@@ -30,7 +30,7 @@ pub struct FogModifier {
     pub active: bool,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct FogMap {
     pub width: usize,
     pub height: usize,

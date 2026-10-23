@@ -223,6 +223,12 @@ pub struct Scene {
     /// Splats\UberSplatData.slk, and when each splat (by unit or ubersplat handle)
     /// was first drawn.
     uber_slk: w3_formats::slk::Table,
+    /// The map as the game was started with it, for saved games.
+    pub map_path: String,
+    /// Where saved games are kept.
+    pub saves_dir: std::path::PathBuf,
+    /// A saved game the player chose to load.
+    pub load_requested: Option<std::path::PathBuf>,
     weather: crate::weather::WeatherView,
     lightning: crate::lightning::LightningView,
     /// Ambient loops of enabled weather effects the camera is inside, by weather handle.
@@ -307,6 +313,7 @@ impl Scene {
         map_path: &std::path::Path,
         aspect: f32,
         lobby: Option<&[w3_game::LobbySlot]>,
+        restore: Option<w3_game::save::SaveGame>,
     ) -> anyhow::Result<Scene> {
         data.chain.unmount(PRIORITY_MAP);
         // A map on disk, or one inside the game's archives (the campaigns' maps).
@@ -408,7 +415,13 @@ impl Scene {
         // Run the map script: config, then main with the local player in the first
         // user slot.  Other slots stay empty until computer players are implemented.
         let mut game = match w3_game::Game::load(data.chain.clone(), data.version as i32) {
+            Ok(mut g) if restore.is_some() => {
+                g.restore(restore.unwrap())?;
+                g.world.saves_dir = crate::data::save_dir(data.version);
+                Some(g)
+            }
             Ok(mut g) => {
+                g.world.saves_dir = crate::data::save_dir(data.version);
                 // The profile comes in before the script runs (InitGameCache reads saved
                 // caches); campaign games take its difficulty.
                 g.world.persist = data.persist.borrow().clone();
@@ -493,7 +506,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -524,6 +537,14 @@ impl Scene {
                     }
                 }
                 w3_game::world::Request::EndGame => self.ended = true,
+                w3_game::world::Request::SaveGame(name) => {
+                    if let Some(path) = self.game.as_ref().and_then(|g| g.world.save_path(&name)) {
+                        self.write_save(&path);
+                    }
+                }
+                w3_game::world::Request::LoadGame(name) => {
+                    self.load_requested = self.game.as_ref().and_then(|g| g.world.save_path(&name)).filter(|p| p.exists());
+                }
                 w3_game::world::Request::ChangeLevel { map, .. } => self.change_level = Some(map),
                 r @ (w3_game::world::Request::PlaySound(_)
                 | w3_game::world::Request::UiSound { .. }
@@ -1236,6 +1257,11 @@ impl Scene {
             return true;
         }
         // The game menu takes every click while it is open.
+        if let Some(p) = self.hud.as_mut().and_then(|h| h.save_panel.as_mut()) {
+            if p.click(ux, uy) {
+                return true;
+            }
+        }
         if let Some(m) = self.hud.as_mut().and_then(|h| h.menu.as_mut()) {
             m.pointer_down(ux, uy);
             if let Some(i) = m.pointer_up(ux, uy) {
@@ -1371,7 +1397,73 @@ impl Scene {
             "ExitButton" => crate::hud::Hud::menu_panel(m, "ConfirmQuitPanel"),
             "ConfirmQuitCancelButton" => crate::hud::Hud::menu_panel(m, "EndGamePanel"),
             "ConfirmQuitQuitButton" => self.exit = true,
+            "SaveGameButton" | "LoadGameButton" => {
+                crate::hud::Hud::menu_panel(m, "EscMenuSaveGamePanel");
+                h.save_panel = Some(crate::saveload::SavePanel::new(name == "LoadGameButton", self.saves_dir.clone()));
+            }
+            "SaveGameCancelButton" | "LoadGameCancelButton" => {
+                h.save_panel = None;
+                crate::hud::Hud::menu_panel(m, "MainPanel");
+            }
+            "SaveGameSaveButton" => {
+                let Some(p) = h.save_panel.as_mut() else { return };
+                let Some(path) = p.target() else { return };
+                if path.exists() {
+                    p.confirm = Some(crate::saveload::Confirm::Overwrite(path));
+                } else {
+                    self.write_save(&path);
+                }
+            }
+            "OverwriteOverwriteButton" => {
+                if let Some(crate::saveload::Confirm::Overwrite(path)) = h.save_panel.as_mut().and_then(|p| p.confirm.take()) {
+                    self.write_save(&path);
+                }
+            }
+            "SaveGameDeleteButton" => {
+                if let Some(p) = h.save_panel.as_mut() {
+                    p.confirm = p.selected_path().map(crate::saveload::Confirm::Delete);
+                }
+            }
+            "DeleteDeleteButton" => {
+                if let Some(p) = h.save_panel.as_mut() {
+                    if let Some(crate::saveload::Confirm::Delete(path)) = p.confirm.take() {
+                        if let Err(e) = std::fs::remove_file(&path) {
+                            log::error!("deleting {}: {e}", path.display());
+                        }
+                        p.refresh();
+                    }
+                }
+            }
+            "OverwriteCancelButton" | "DeleteCancelButton" => {
+                if let Some(p) = h.save_panel.as_mut() {
+                    p.confirm = None;
+                }
+            }
+            "LoadGameLoadButton" => {
+                if let Some(path) = h.save_panel.as_ref().and_then(|p| p.selected_path()) {
+                    self.load_requested = Some(path);
+                    h.save_panel = None;
+                    h.menu = None;
+                }
+            }
             other => log::debug!("game menu button {other} has no handler yet"),
+        }
+    }
+
+    /// Writes the game to a saved game file and returns to the game.
+    fn write_save(&mut self, path: &std::path::Path) {
+        let res = self.save_game().and_then(|bytes| {
+            if let Some(d) = path.parent() {
+                std::fs::create_dir_all(d)?;
+            }
+            std::fs::write(path, bytes).map_err(Into::into)
+        });
+        if let Err(e) = res {
+            log::error!("saving {}: {e:#}", path.display());
+        }
+        if let Some(h) = self.hud.as_mut() {
+            h.save_panel = None;
+            h.menu = None;
         }
     }
 
@@ -1380,10 +1472,31 @@ impl Scene {
         let p = self.to_ui(sx, sy, size);
         if let Some(h) = self.hud.as_mut() {
             h.pointer = p;
+            if let Some(s) = h.save_panel.as_mut() {
+                s.pointer_move(p.0, p.1);
+            }
         }
     }
 
     pub fn key(&mut self, c: char) {
+        // The save panel's edit box takes typing; Enter saves and Escape cancels.
+        if let Some(p) = self.hud.as_mut().and_then(|h| h.save_panel.as_mut()) {
+            if p.confirm.is_none() {
+                let load = p.load;
+                match c {
+                    '\u{1b}' => return self.menu_button(if load { "LoadGameCancelButton" } else { "SaveGameCancelButton" }),
+                    '\r' | '\n' => return self.menu_button(if load { "LoadGameLoadButton" } else { "SaveGameSaveButton" }),
+                    '\u{8}' if !p.load => {
+                        p.text.pop();
+                    }
+                    c if !p.load && !c.is_control() && !"\\/:*?\"<>|".contains(c) => p.text.push(c),
+                    _ => {}
+                }
+            } else if c == '\u{1b}' {
+                p.confirm = None;
+            }
+            return;
+        }
         // Escape is the player's end-cinematic event (EVENT_PLAYER_END_CINEMATIC).
         if c == '\u{1b}' {
             if let Some(g) = self.game.as_mut() {
@@ -1921,6 +2034,21 @@ impl Scene {
         }
     }
 
+    /// Opens a requested game menu and updates its save panel (done each frame).
+    pub fn update_menu(&mut self, db: &w3_ui::FrameDb, aspect: f32) {
+        let Some(hud) = self.hud.as_mut() else { return };
+        if std::mem::take(&mut self.menu_requested) && hud.menu.is_none() {
+            hud.open_menu(db, aspect);
+        }
+        hud.sync_save_panel(db);
+    }
+
+    /// The game as a saved game.
+    pub fn save_game(&self) -> anyhow::Result<Vec<u8>> {
+        let g = self.game.as_ref().context("no game")?;
+        g.save(&self.map_path)
+    }
+
     /// The ground height the camera looks at: the terrain 500 units around the target
     /// on a 3 by 3 grid, weighted 2 at the corners and center and 3 at the edges.
     fn camera_ground(&self, x: f32, y: f32) -> f32 {
@@ -2104,6 +2232,7 @@ impl Scene {
             if std::mem::take(&mut self.menu_requested) && hud.menu.is_none() {
                 hud.open_menu(&assets.frames, aspect);
             }
+            hud.sync_save_panel(&assets.frames);
             hud.show_unit(&assets.frames, &g.world, self.selection.first().copied());
             hud.show_group(&g.world, &self.selection);
             hud.sync_cinematic(&assets.frames, &g.world, aspect);

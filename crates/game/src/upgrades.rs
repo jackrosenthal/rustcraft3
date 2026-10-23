@@ -8,7 +8,7 @@ use crate::objects::{Id, id_from_str};
 use crate::world::World;
 
 /// What a player's research adds to one unit type.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct UpgradeBonus {
     /// ratd: attack dice.
     pub dice: i32,

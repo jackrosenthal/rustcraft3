@@ -12,7 +12,7 @@ use crate::types::*;
 use crate::world::World;
 
 /// One shop's supply of one item or unit type.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Stock {
     pub count: i32,
     pub max: i32,
@@ -21,7 +21,7 @@ pub struct Stock {
     pub regen: f32,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Shops {
     /// Supplies of a shop's own goods (Sellitems, Makeitems, Sellunits).
     pub stock: HashMap<(u32, Id), Stock>,

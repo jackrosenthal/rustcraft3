@@ -7,7 +7,7 @@ use crate::sim::weapon;
 use crate::world::World;
 
 /// One attack's line: the white range and the colored bonus.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct AttackInfo {
     pub min: i32,
     pub max: i32,
@@ -18,7 +18,7 @@ pub struct AttackInfo {
     pub upgrade: Option<i32>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct ArmorInfo {
     pub armor: i32,
     pub bonus: f32,
@@ -28,7 +28,7 @@ pub struct ArmorInfo {
     pub invulnerable: bool,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct HeroInfo {
     /// Primary attribute: "STR", "AGI", or "INT".
     pub primary: String,
@@ -36,7 +36,7 @@ pub struct HeroInfo {
     pub attributes: [(i32, i32); 3],
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct InfoStats {
     pub attack: Option<AttackInfo>,
     pub armor: ArmorInfo,
@@ -101,7 +101,7 @@ impl World {
 }
 
 /// What a structure is producing, for CInfoPanelBuildingDetail's modes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ProductionKind {
     Training,
     /// A structure's own upgrade (FUN_6f3ccfd0 mode 2: TRAINING without the queue).
@@ -111,7 +111,7 @@ pub enum ProductionKind {
     Constructing,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Production {
     pub kind: ProductionKind,
     /// Icons of the queued items, the one in progress first.

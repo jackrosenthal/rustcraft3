@@ -66,7 +66,7 @@ fn move_lightning(w: &mut World, h: u32, check: bool, from: [f32; 3], to: [f32; 
 }
 
 /// A terrain deformation (TerrainDeform*): its kind and parameters, kept for drawing.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Deform {
     Crater { x: f32, y: f32, radius: f32, depth: f32, duration: f32, permanent: bool },
     Ripple { x: f32, y: f32, radius: f32, depth: f32, duration: f32, count: i32, space_wave: f32, time_wave: f32, radius_start_pct: f32, limit_neg: bool },
@@ -170,7 +170,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
 impl World {
     /// Starts a terrain deformation and returns its handle.
     pub fn add_deformation(&mut self, d: Deform) -> u32 {
-        let h = self.handles.insert(Obj::Opaque("terraindeformation"));
+        let h = self.handles.insert(Obj::Opaque("terraindeformation".to_string()));
         self.deformations.push((h, self.time, d));
         h
     }

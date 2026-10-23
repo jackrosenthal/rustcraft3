@@ -52,7 +52,7 @@ fn quest_get(w: &World, h: u32) -> Option<&Quest> {
 }
 
 fn opaque(w: &mut World, kind: &'static str) -> w3_jass::NativeResult {
-    handle(w.handles.insert(Obj::Opaque(kind)))
+    handle(w.handles.insert(Obj::Opaque(kind.to_string())))
 }
 
 fn fog_modifier(w: &mut World, player: u8, state: i32, shape: FogShape, shared: bool, after_units: bool) -> w3_jass::NativeResult {

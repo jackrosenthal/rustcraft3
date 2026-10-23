@@ -23,7 +23,7 @@ pub trait Host {
     fn call_native(&mut self, vm: &mut Vm, native: u32, args: &[Value]) -> NativeResult;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct Frame {
     func: FuncId,
     pc: usize,
@@ -33,7 +33,7 @@ struct Frame {
 }
 
 /// A suspendable JASS thread.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Thread {
     frames: Vec<Frame>,
     stack: Vec<Value>,
@@ -71,6 +71,19 @@ impl Vm {
             .map(|g| if g.array { vec![g.base.default_value(); 0] } else { Vec::new() })
             .collect();
         Vm { module, globals, global_arrays, op_limit: 300_000 }
+    }
+
+    /// The variables a saved game keeps: globals and global arrays.
+    pub fn variables(&self) -> (Vec<Value>, Vec<Vec<Value>>) {
+        (self.globals.clone(), self.global_arrays.clone())
+    }
+
+    /// Restores variables from [`Vm::variables`] of the same script.
+    pub fn set_variables(&mut self, (globals, arrays): (Vec<Value>, Vec<Vec<Value>>)) {
+        if globals.len() == self.globals.len() && arrays.len() == self.global_arrays.len() {
+            self.globals = globals;
+            self.global_arrays = arrays;
+        }
     }
 
     /// Runs every source file's global initializers.

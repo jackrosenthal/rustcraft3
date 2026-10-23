@@ -267,8 +267,12 @@ impl Commands {
         }
         for &(a, _) in &u.abilities {
             let Some(ab) = w.objects.abilities.get(a) else { continue };
-            // Root (Aroo) shows Uproot (Unbuttonpos, Unart, Unorder) while rooted.
-            let unrooted_side = ab.str("code") == "Aroo" && !u.extra.uprooted;
+            // Root (Aroo) shows Uproot (Unbuttonpos, Unart, Unorder) while rooted, and a
+            // morph its way back while in its other form (UnitID).
+            const MORPHS: [&str; 9] = ["Abrf", "Arav", "Astn", "Abur", "AEme", "ANcr", "ANrg", "Acpf", "Aetf"];
+            let code = ab.str("code");
+            let in_other_form = MORPHS.contains(&code.as_str()) && id_from_str(ab.level_str("UnitID", w.ability_level(h, a).max(1)).trim()) == u.type_id;
+            let unrooted_side = (code == "Aroo" && !u.extra.uprooted) || in_other_form;
             // Abilities with a button position appear on the card.
             let Some((x, y)) = parse_pos(&ab.list(if unrooted_side { "Unbuttonpos" } else { "Buttonpos" })) else { continue };
             // Art may list one icon per race (Rally): human, orc, undead, night elf.
@@ -293,6 +297,10 @@ impl Commands {
                 "Ahar" | "Ahrl" => ("harvest", true),
                 "Aroo" if unrooted_side => ("unroot", false),
                 "Aroo" => ("root", true),
+                c if MORPHS.contains(&c) => {
+                    let name = ab.str(if unrooted_side { "Unorder" } else { "Order" });
+                    (w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&name)).unwrap_or(""), false)
+                }
                 _ if targeting == w3_game::ability::Targeting::Passive => ("", false),
                 _ => (order, targeting != w3_game::ability::Targeting::None),
             };

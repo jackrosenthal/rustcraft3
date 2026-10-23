@@ -142,6 +142,8 @@ fn submit_children(models: &mut w3_render::model::ModelRenderer, v: &mut UnitVie
 
 pub struct UnitView {
     pub inst: ModelInstance,
+    /// The unit type the model is for (a morph changes it).
+    pub type_id: [u8; 4],
     /// Models on attachment nodes that name one (a structure's "BirthLink"), by
     /// attachment index.
     pub children: Vec<(usize, ModelInstance)>,
@@ -1546,7 +1548,7 @@ impl Scene {
                 let file = o.str("file");
                 let base = file.strip_suffix(".mdl").or_else(|| file.strip_suffix(".mdx")).unwrap_or(&file);
                 let model = assets.model(device, queue, &format!("{base}_Portrait")).or_else(|| assets.model(device, queue, &file))?;
-                let mut v = UnitView { inst: ModelInstance::new(model), children: Vec::new(), serial: 0, requested: "portrait".into(), anim: String::new(), rng: h };
+                let mut v = UnitView { inst: ModelInstance::new(model), type_id: [0; 4], children: Vec::new(), serial: 0, requested: "portrait".into(), anim: String::new(), rng: h };
                 v.inst.team = u.color.clamp(0, 15) as u8;
                 v.pick("portrait");
                 Some((h, v))
@@ -1566,7 +1568,7 @@ impl Scene {
                         let file = o.str("file");
                         let base = file.strip_suffix(".mdl").or_else(|| file.strip_suffix(".mdx")).unwrap_or(&file);
                         let model = assets.model(device, queue, &format!("{base}_Portrait")).or_else(|| assets.model(device, queue, &file))?;
-                        let mut v = UnitView { inst: ModelInstance::new(model), children: Vec::new(), serial: 0, requested: String::new(), anim: String::new(), rng: 1 };
+                        let mut v = UnitView { inst: ModelInstance::new(model), type_id: [0; 4], children: Vec::new(), serial: 0, requested: String::new(), anim: String::new(), rng: 1 };
                         v.inst.team = s.color.clamp(0, 15) as u8;
                         Some((s.unit_type, v))
                     });
@@ -1660,6 +1662,10 @@ impl Scene {
         }
         for &h in &w.unit_order {
             let Some(u) = w.unit(h) else { continue };
+            // A unit that changed type (a morph) takes its new model.
+            if self.units.get(&h).is_some_and(|v| v.type_id != u.type_id) {
+                self.units.remove(&h);
+            }
             if !self.units.contains_key(&h) {
                 let Some(o) = w.objects.units.get(u.type_id) else { continue };
                 let file = o.str("file");
@@ -1673,7 +1679,7 @@ impl Scene {
                     .filter_map(|(i, a)| assets.model(device, queue, &a.path).map(|m| (i, ModelInstance::new(m))))
                     .collect();
                 let inst = ModelInstance::new(model);
-                let mut view = UnitView { inst, children, serial: u32::MAX, requested: String::new(), anim: String::new(), rng: h };
+                let mut view = UnitView { inst, type_id: u.type_id, children, serial: u32::MAX, requested: String::new(), anim: String::new(), rng: h };
                 view.update(&u.anim, u.anim_serial);
                 self.units.insert(h, view);
             }

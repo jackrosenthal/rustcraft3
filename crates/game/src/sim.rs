@@ -280,6 +280,12 @@ impl World {
             }
             _ => return,
         };
+        // Morphs (Bear Form and the like) by their order or unorder.
+        if let Some(name) = crate::natives::basic::order_name(order) {
+            if self.morph_order(h, name) {
+                return;
+            }
+        }
         let action = if order == stop {
             Action::Idle
         } else if order == hold {

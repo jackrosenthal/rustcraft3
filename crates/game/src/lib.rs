@@ -12,6 +12,7 @@ pub mod handles;
 pub mod hero;
 pub mod info;
 pub mod mining;
+pub mod morph;
 pub mod items;
 pub mod persist;
 pub mod shops;

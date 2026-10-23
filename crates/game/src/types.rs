@@ -277,6 +277,11 @@ pub struct UnitExtra {
     /// Units aboard this transport, and the transport this unit rides.
     pub cargo: Vec<u32>,
     pub transport: u32,
+    /// A morph under way: seconds left, the type it becomes, and for a timed form how
+    /// long it lasts and the type it returns to.
+    pub morph: Option<(f32, crate::objects::Id, Option<(f32, crate::objects::Id)>)>,
+    /// A timed form's time left and the type it returns to.
+    pub morph_revert: Option<(f32, crate::objects::Id)>,
 }
 
 impl Default for UnitExtra {
@@ -312,6 +317,8 @@ impl Default for UnitExtra {
             defense: None,
             cargo: Vec::new(),
             transport: 0,
+            morph: None,
+            morph_revert: None,
         }
     }
 }

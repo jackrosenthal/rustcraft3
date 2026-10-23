@@ -262,6 +262,8 @@ pub struct UnitExtra {
     pub blight_timer: f32,
     /// A haunted mine's slot markers.
     pub slot_effects: Vec<u32>,
+    /// A structure under construction that advances only while a worker builds it.
+    pub needs_builder: bool,
 }
 
 impl Default for UnitExtra {
@@ -289,6 +291,7 @@ impl Default for UnitExtra {
             blight_radius: 0.0,
             blight_timer: 0.0,
             slot_effects: Vec::new(),
+            needs_builder: false,
         }
     }
 }

@@ -607,6 +607,18 @@ impl World {
                 Action::Build { id, x, y } => self.build(vm, h, id, x, y, dt),
                 Action::Construct { target } => {
                     let done = self.unit(target).is_none_or(|b| b.constructing.is_none() || b.dead);
+                    let inside = self.unit(h).is_some_and(|u| u.hidden);
+                    if done && inside {
+                        // Out of the finished (or lost) structure beside it.
+                        let r = self.unit(h).map_or(16.0, |u| u.collision);
+                        let p = if self.unit(target).is_some() { Some(self.spawn_point(target, r)) } else { None };
+                        let u = self.unit_mut(h).unwrap();
+                        if let Some((x, y)) = p {
+                            u.x = x;
+                            u.y = y;
+                        }
+                        u.hidden = false;
+                    }
                     let u = self.unit_mut(h).unwrap();
                     if done {
                         u.action = Action::Idle;
@@ -838,6 +850,11 @@ impl World {
         self.update_revive(vm, h, dt);
         // Construction.
         if let Some(left) = self.unit(h).and_then(|u| u.constructing) {
+            // A peasant's structure stands still without a builder at it.
+            let needs = self.unit(h).is_some_and(|u| u.extra.needs_builder);
+            if needs && !self.unit_order.iter().any(|&o| self.unit(o).is_some_and(|w| !w.dead && matches!(w.action, Action::Construct { target } if target == h))) {
+                return;
+            }
             let left = left - dt;
             let u = self.unit_mut(h).unwrap();
             let total = u.build_time.max(0.01);
@@ -977,12 +994,28 @@ impl World {
         // Move the worker out of the footprint.
         let r = self.unit(h).map_or(16.0, |u| u.collision);
         let (sx, sy) = self.spawn_point(b, r);
+        // As the original builds (observed): a peasant (AHbu) works on the structure,
+        // which advances only while one does; a peon or wisp (AObu, AEbu) goes inside
+        // until it is done; an acolyte (AUbu) summons it and is free at once.
+        // The engine gives builders their build ability by race.
+        let race = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map(|o| o.str("race").to_ascii_lowercase()).unwrap_or_default();
+        let enters = race == "orc" || race == "nightelf";
+        let summons = race == "undead";
+        if let Some(bu) = self.unit_mut(b) {
+            bu.extra.needs_builder = !enters && !summons;
+        }
         let u = self.unit_mut(h).unwrap();
         u.x = sx;
         u.y = sy;
         u.path.clear();
-        u.building = b;
-        u.action = Action::Construct { target: b };
+        if summons {
+            u.action = Action::Idle;
+            set_anim(u, "stand");
+        } else {
+            u.building = b;
+            u.action = Action::Construct { target: b };
+            u.hidden = enters;
+        }
         let ctx = EventCtx { unit: b, player: owner, has_player: true, event_id: EVENT_PLAYER_UNIT_CONSTRUCT_START, ..Default::default() };
         self.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event, .. } if *player == owner && *event == EVENT_PLAYER_UNIT_CONSTRUCT_START));
     }

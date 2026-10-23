@@ -102,8 +102,49 @@ pub fn attachment_point(inst: &ModelInstance, name: &str) -> Vec3 {
     inst.transform.transform_point3(local)
 }
 
+/// Draws the models on a view's attachment nodes: each shown while its attachment's
+/// visibility track (KATV) is on, at the node, playing the sequence named like the
+/// parent's at the same point.
+fn submit_children(models: &mut w3_render::model::ModelRenderer, v: &mut UnitView, eye: Vec3, rot: Quat) {
+    if v.children.is_empty() || !v.inst.visible {
+        return;
+    }
+    let parent = &v.inst;
+    let mdx = &parent.model.mdx;
+    let time = parent.time();
+    let seq = parent.sequence.and_then(|s| mdx.sequences.get(s));
+    for (ai, child) in &mut v.children {
+        let Some(a) = mdx.attachments.get(*ai) else { continue };
+        let shown = w3_render::anim::sample(a.tracks.f32(b"KATV"), &time, &mdx.global_sequences, 1.0) > 0.0;
+        child.visible = shown;
+        if !shown {
+            continue;
+        }
+        let id = a.node.object_id as usize;
+        let pivot = mdx.pivots.get(id).map_or(Vec3::ZERO, |p| Vec3::from_array(*p));
+        let node = parent.skeleton.world.get(id).copied().unwrap_or(Mat4::IDENTITY);
+        child.transform = parent.transform * node * Mat4::from_translation(pivot);
+        if let Some(s) = seq {
+            let name = s.name.split_whitespace().next().unwrap_or("stand").to_string();
+            let want = w3_render::anim::find_sequence(&child.model.mdx, &name);
+            if want.is_some() && child.sequence != want {
+                child.set_sequence(want);
+            }
+            if let Some(cs) = child.sequence.and_then(|c| child.model.mdx.sequences.get(c)) {
+                let plen = (s.end - s.start).max(1) as f32;
+                child.frame = parent.frame / plen * (cs.end - cs.start) as f32;
+            }
+        }
+        child.global_time = parent.global_time;
+        models.submit(child, eye, rot);
+    }
+}
+
 pub struct UnitView {
     pub inst: ModelInstance,
+    /// Models on attachment nodes that name one (a structure's "BirthLink"), by
+    /// attachment index.
+    pub children: Vec<(usize, ModelInstance)>,
     serial: u32,
     requested: String,
     anim: String,
@@ -1437,7 +1478,7 @@ impl Scene {
                 let file = o.str("file");
                 let base = file.strip_suffix(".mdl").or_else(|| file.strip_suffix(".mdx")).unwrap_or(&file);
                 let model = assets.model(device, queue, &format!("{base}_Portrait")).or_else(|| assets.model(device, queue, &file))?;
-                let mut v = UnitView { inst: ModelInstance::new(model), serial: 0, requested: "portrait".into(), anim: String::new(), rng: h };
+                let mut v = UnitView { inst: ModelInstance::new(model), children: Vec::new(), serial: 0, requested: "portrait".into(), anim: String::new(), rng: h };
                 v.inst.team = u.color.clamp(0, 15) as u8;
                 v.pick("portrait");
                 Some((h, v))
@@ -1457,7 +1498,7 @@ impl Scene {
                         let file = o.str("file");
                         let base = file.strip_suffix(".mdl").or_else(|| file.strip_suffix(".mdx")).unwrap_or(&file);
                         let model = assets.model(device, queue, &format!("{base}_Portrait")).or_else(|| assets.model(device, queue, &file))?;
-                        let mut v = UnitView { inst: ModelInstance::new(model), serial: 0, requested: String::new(), anim: String::new(), rng: 1 };
+                        let mut v = UnitView { inst: ModelInstance::new(model), children: Vec::new(), serial: 0, requested: String::new(), anim: String::new(), rng: 1 };
                         v.inst.team = s.color.clamp(0, 15) as u8;
                         Some((s.unit_type, v))
                     });
@@ -1555,8 +1596,16 @@ impl Scene {
                 let Some(o) = w.objects.units.get(u.type_id) else { continue };
                 let file = o.str("file");
                 let Some(model) = assets.model(device, queue, &file) else { continue };
+                let children = model
+                    .mdx
+                    .attachments
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, a)| !a.path.is_empty())
+                    .filter_map(|(i, a)| assets.model(device, queue, &a.path).map(|m| (i, ModelInstance::new(m))))
+                    .collect();
                 let inst = ModelInstance::new(model);
-                let mut view = UnitView { inst, serial: u32::MAX, requested: String::new(), anim: String::new(), rng: h };
+                let mut view = UnitView { inst, children, serial: u32::MAX, requested: String::new(), anim: String::new(), rng: h };
                 view.update(&u.anim, u.anim_serial);
                 self.units.insert(h, view);
             }
@@ -1616,9 +1665,16 @@ impl Scene {
             inst.advance(dt * 1000.0);
         }
         for (h, v) in self.units.iter_mut() {
-            let building = self.game.as_ref().and_then(|g| g.world.unit(*h)).is_some_and(|u| u.constructing.is_some());
-            if !building {
-                v.inst.advance(dt * 1000.0);
+            let progress = self.game.as_ref().and_then(|g| g.world.unit(*h)).and_then(|u| u.constructing.map(|left| 1.0 - left / u.build_time.max(0.01)));
+            match progress {
+                // A structure's birth plays along with its construction.
+                Some(p) => {
+                    if let Some(s) = v.inst.sequence.and_then(|s| v.inst.model.mdx.sequences.get(s)) {
+                        v.inst.frame = (s.end - s.start) as f32 * p.clamp(0.0, 1.0);
+                    }
+                    v.inst.global_time += dt * 1000.0;
+                }
+                None => v.inst.advance(dt * 1000.0),
             }
         }
         for (inst, _) in self.dests.values_mut() {
@@ -1764,6 +1820,7 @@ impl Scene {
         }
         for v in self.units.values_mut() {
             self.models.submit(&mut v.inst, eye, rot);
+            submit_children(&mut self.models, v, eye, rot);
         }
         let far = self.camera.far * 1.5;
         let target = self.camera.target;

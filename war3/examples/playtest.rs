@@ -109,7 +109,8 @@ fn main() -> anyhow::Result<()> {
                     let w = &g.world;
                     for &h in &w.unit_order {
                         if let Some(u) = w.unit(h).filter(|u| u.owner == w.local_player) {
-                            eprintln!("{h:#x} {} at ({:.0},{:.0}) {:?} anim {} hidden {} path {:?}", String::from_utf8_lossy(&u.type_id), u.x, u.y, u.action, u.anim, u.hidden, u.path.last());
+                            let v = scene.units.get(&h).map(|v| (v.inst.sequence, v.inst.frame as i32, v.inst.visible, v.inst.tint));
+                            eprintln!("{h:#x} {} at ({:.0},{:.0}) {:?} anim {} hidden {} path {:?} view {:?}", String::from_utf8_lossy(&u.type_id), u.x, u.y, u.action, u.anim, u.hidden, u.path.last(), v);
                         }
                     }
                 }

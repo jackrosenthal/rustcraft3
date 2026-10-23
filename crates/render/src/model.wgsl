@@ -68,8 +68,10 @@ fn vs_main(v: VsIn) -> VsOut {
 
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-    var c = textureSample(tex, samp, in.uv) * draw.color;
-    if ((draw.flags & 2u) != 0u && c.a < 0.75) {
+    let t = textureSample(tex, samp, in.uv);
+    var c = t * draw.color;
+    // Alpha testing looks at the texture; fading (geoset or instance alpha) blends.
+    if ((draw.flags & 2u) != 0u && t.a < 0.75) {
         discard;
     }
     if ((draw.flags & 1u) == 0u) {

@@ -600,9 +600,11 @@ impl ModelRenderer {
                 if layer.filter_mode == filter::MODULATE || layer.filter_mode == filter::MODULATE_2X {
                     flags |= FLAG_FOG_WHITE;
                 }
-                let blended = layer.filter_mode >= filter::BLEND;
+                // An opaque or alpha-tested layer that is fading draws blended.
+                let fading = alpha < 1.0 && layer.filter_mode <= filter::TRANSPARENT;
+                let blended = layer.filter_mode >= filter::BLEND || fading;
                 let key = PipelineKey {
-                    filter: layer.filter_mode.min(6),
+                    filter: if fading { filter::BLEND } else { layer.filter_mode.min(6) },
                     two_sided: layer.shading & shading::TWO_SIDED != 0,
                     depth_test: layer.shading & shading::NO_DEPTH_TEST == 0,
                     depth_write: layer.shading & shading::NO_DEPTH_SET == 0 && !blended,

@@ -7,5 +7,6 @@ pub mod gpu;
 pub mod model;
 pub mod terrain;
 pub mod texture;
+pub mod ui;
 
 pub use gpu::Gpu;

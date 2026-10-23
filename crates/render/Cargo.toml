@@ -14,3 +14,5 @@ bytemuck.workspace = true
 log.workspace = true
 anyhow.workspace = true
 pollster.workspace = true
+fontdue.workspace = true
+w3-ui = { path = "../ui" }

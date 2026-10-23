@@ -16,12 +16,13 @@ use crate::data::{DataSet, GameData, PRIORITY_MAP};
 
 pub struct Assets {
     pub textures: TextureCache,
+    pub frames: w3_ui::FrameDb,
     models: HashMap<String, Option<Arc<ModelGpu>>>,
 }
 
 impl Assets {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, data: &GameData) -> Self {
-        Assets { textures: TextureCache::new(device, queue, data.chain.clone()), models: HashMap::new() }
+        Assets { textures: TextureCache::new(device, queue, data.chain.clone()), frames: w3_ui::FrameDb::load(&data.chain), models: HashMap::new() }
     }
 
     /// Loads a model by path.  Model references often name `.mdl` files, which ship
@@ -71,6 +72,8 @@ pub struct Scene {
     /// Terrain and unit day/night models.
     pub dnc: (Option<w3_formats::mdx::Model>, Option<w3_formats::mdx::Model>),
     dnc_paths: (String, String),
+    pub hud: Option<crate::hud::Hud>,
+    ui: w3_render::ui::UiRenderer,
 }
 
 fn num(t: &Table, row: &str, col: &str) -> f64 {
@@ -93,6 +96,7 @@ impl Scene {
         data: &GameData,
         assets: &mut Assets,
         map_path: &std::path::Path,
+        aspect: f32,
     ) -> anyhow::Result<Scene> {
         let archive = Arc::new(
             w3_mpq::Archive::open(map_path).with_context(|| format!("opening map {}", map_path.display()))?,
@@ -206,7 +210,12 @@ impl Scene {
         camera.target = Vec3::new(start[0], start[1], terrain_r.height_at(start[0], start[1]));
         let dir: Vec<f32> = data.misc.get_list("Light", "Direction").iter().filter_map(|v| v.trim().parse().ok()).collect();
         let light = if dir.len() == 3 { Vec3::new(dir[0], dir[1], dir[2]) } else { Vec3::new(0.3, 0.3, -0.25) };
-        let mut scene = Scene { game, units: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default() };
+        let hud = game.as_ref().map(|g| {
+            let race = g.world.players[g.world.local_player as usize].race;
+            crate::hud::Hud::new(&mut assets.frames, aspect, race)
+        });
+        let ui = w3_render::ui::UiRenderer::new(device, color_format);
+        let mut scene = Scene { game, units: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui };
         scene.apply_requests();
         Ok(scene)
     }
@@ -279,6 +288,7 @@ impl Scene {
         self.camera.target.z = self.terrain.height_at(self.camera.target.x, self.camera.target.y);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
         device: &wgpu::Device,
@@ -286,8 +296,10 @@ impl Scene {
         encoder: &mut wgpu::CommandEncoder,
         color: &wgpu::TextureView,
         depth: &wgpu::TextureView,
-        aspect: f32,
+        size: (u32, u32),
+        assets: &mut Assets,
     ) {
+        let aspect = size.0 as f32 / size.1 as f32;
         let view_proj = self.camera.view_proj(aspect);
         let eye = self.camera.eye();
         let rot = self.camera.billboard_rotation();
@@ -341,8 +353,31 @@ impl Scene {
             ..Default::default()
         });
         queue.write_buffer(&self.models.globals_buf, 0, bytemuck::bytes_of(&globals));
+        if self.hud.is_some() {
+            // The world shows only inside the game interface's world frame, which CGameUI
+            // places from 0.13 to 0.58 of the 0.6-tall screen (game.dll 0x6f367710).
+            let top = ((0.6 - 0.58) / 0.6 * size.1 as f32) as u32;
+            let bottom = ((0.6 - 0.13) / 0.6 * size.1 as f32) as u32;
+            pass.set_scissor_rect(0, top, size.0, bottom - top);
+        }
         self.terrain.render_ground(&mut pass);
         self.models.render(device, queue, &mut pass, &globals);
         self.terrain.render_water(&mut pass, self.time);
+        drop(pass);
+        if let (Some(hud), Some(g)) = (self.hud.as_mut(), self.game.as_ref()) {
+            hud.update(&assets.frames, &g.world);
+            let draws = hud.draws(&assets.frames);
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("interface"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: color,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                })],
+                ..Default::default()
+            });
+            self.ui.render(device, queue, &mut assets.textures, &mut pass, &draws, hud.tree.width, size);
+        }
     }
 }

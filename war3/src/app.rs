@@ -75,7 +75,7 @@ impl App {
         let gpu = w3_render::Gpu::new(window.clone(), inner.width, inner.height, backends, !self.args.no_vsync)?;
         let mut assets = Assets::new(&gpu.device, &gpu.queue, &self.data);
         let scene = match &self.args.loadfile {
-            Some(path) => Some(Scene::load(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets, path)?),
+            Some(path) => Some(Scene::load(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets, path, inner.width as f32 / inner.height.max(1) as f32)?),
             None => {
                 log::warn!("the glue screens are not implemented yet; pass --loadfile <map>");
                 None
@@ -167,9 +167,9 @@ impl ApplicationHandler for App {
                 };
                 let view = frame.texture.create_view(&Default::default());
                 let mut enc = r.gpu.device.create_command_encoder(&Default::default());
-                let aspect = r.gpu.aspect();
+                let size = (r.gpu.config.width, r.gpu.config.height);
                 if let Some(scene) = r.scene.as_mut() {
-                    scene.render(&r.gpu.device, &r.gpu.queue, &mut enc, &view, &r.gpu.depth, aspect);
+                    scene.render(&r.gpu.device, &r.gpu.queue, &mut enc, &view, &r.gpu.depth, size, &mut r.assets);
                 } else {
                     enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("clear"),

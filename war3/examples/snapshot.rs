@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
     let (device, queue) = pollster::block_on(adapter.request_device(&Default::default()))?;
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let mut assets = Assets::new(&device, &queue, &data);
-    let mut scene = Scene::load(&device, &queue, format, &data, &mut assets, Path::new(&a[2]))?;
+    let mut scene = Scene::load(&device, &queue, format, &data, &mut assets, Path::new(&a[2]), w as f32 / h as f32)?;
     if a.len() > 7 {
         scene.camera.target.x = a[6].parse()?;
         scene.camera.target.y = a[7].parse()?;
@@ -54,7 +54,7 @@ fn main() -> anyhow::Result<()> {
     let cv = color.create_view(&Default::default());
     let dv = depth.create_view(&Default::default());
     let mut enc = device.create_command_encoder(&Default::default());
-    scene.render(&device, &queue, &mut enc, &cv, &dv, w as f32 / h as f32);
+    scene.render(&device, &queue, &mut enc, &cv, &dv, (w, h), &mut assets);
     let stride = (w * 4).div_ceil(256) * 256;
     let buf = device.create_buffer(&wgpu::BufferDescriptor {
         label: None,

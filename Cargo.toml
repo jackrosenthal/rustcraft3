@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/mpq", "crates/formats", "crates/jass", "crates/render", "crates/game", "war3"]
+members = ["crates/mpq", "crates/formats", "crates/jass", "crates/render", "crates/game", "crates/ui", "war3"]
 
 [workspace.package]
 version = "0.1.0"
@@ -29,6 +29,7 @@ wgpu = "30"
 winit = "0.30"
 pollster = "1"
 image = { version = "0.25", default-features = false, features = ["jpeg", "tga", "png"] }
+fontdue = "0.9"
 
 [profile.dev.package."*"]
 opt-level = 2

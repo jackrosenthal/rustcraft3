@@ -3,4 +3,5 @@
 pub mod app;
 pub mod cli;
 pub mod data;
+pub mod hud;
 pub mod scene;

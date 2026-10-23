@@ -429,6 +429,8 @@ impl World {
         let hours_per_second = day_hours / day_length * self.time_of_day_scale;
         self.time_of_day = (self.time_of_day + dt * hours_per_second) % day_hours;
 
+        self.update_food();
+
         // Timers.
         let mut expired = Vec::new();
         for id in self.handles.ids() {
@@ -475,6 +477,28 @@ impl World {
             EventKind::GameState { state: 2, op, value } => compare(*op, t, *value) && !compare(*op, t - dt, *value),
             _ => false,
         });
+    }
+
+    /// Recomputes each player's food used and food cap from their living units.
+    pub fn update_food(&mut self) {
+        let mut used = [0i32; PLAYER_COUNT];
+        let mut made = [0i32; PLAYER_COUNT];
+        for &h in &self.unit_order {
+            let Some(u) = self.unit(h) else { continue };
+            if u.dead {
+                continue;
+            }
+            if let Some(o) = self.objects.units.get(u.type_id) {
+                used[u.owner as usize % PLAYER_COUNT] += o.int("fused");
+                made[u.owner as usize % PLAYER_COUNT] += o.int("fmade");
+            }
+        }
+        for (i, p) in self.players.iter_mut().enumerate() {
+            p.state.insert(player_state::RESOURCE_FOOD_USED, used[i]);
+            let ceiling = p.get_state(player_state::FOOD_CAP_CEILING);
+            let cap = if ceiling > 0 { made[i].min(ceiling) } else { made[i] };
+            p.state.insert(player_state::RESOURCE_FOOD_CAP, cap);
+        }
     }
 
     pub fn warn_unimplemented(&mut self, native: u32) {

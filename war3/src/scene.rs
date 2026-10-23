@@ -292,6 +292,11 @@ pub struct Scene {
     hud_sprites: ModelRenderer,
     /// The autocast indicator on each card slot whose autocast is on.
     quest_fx: Option<ModelInstance>,
+    /// The race's cursor model, the sequence it plays, and the edge scroll direction the
+    /// app last moved the camera in (x, y each -1, 0, or 1).
+    cursor_model: Option<ModelInstance>,
+    cursor_sequence: String,
+    pub scroll_dir: (i32, i32),
     /// Minimap pings: where, until when, their color, and their model.
     pings: Vec<(f32, f32, f32, [f32; 4], Option<ModelInstance>)>,
     autocast_fx: HashMap<(u32, u32), ModelInstance>,
@@ -545,7 +550,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, item_target: None, log_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, item_target: None, log_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -2422,6 +2427,9 @@ impl Scene {
         if let Some(fx) = self.quest_fx.as_mut() {
             fx.advance(dt * 1000.0);
         }
+        if let Some(c) = self.cursor_model.as_mut() {
+            c.advance(dt * 1000.0);
+        }
         for p in self.pings.iter_mut() {
             if let Some(fx) = p.4.as_mut() {
                 fx.advance(dt * 1000.0);
@@ -2797,6 +2805,7 @@ impl Scene {
         drop(pass);
         let mut tag_draws = self.health_bar_draws(&assets.frames, size);
         tag_draws.extend(self.text_tag_draws(&assets.frames, size));
+        self.screen = size;
         self.sync_hud(&assets.frames, size.0 as f32 / size.1.max(1) as f32);
         if let (Some(hud), Some(_)) = (self.hud.as_mut(), self.game.as_ref()) {
             // Text tags lie under the interface.
@@ -2855,6 +2864,41 @@ impl Scene {
         globals.light_dir = [0.0, 0.0, -1.0, 0.0];
         globals.ambient = [1.0, 1.0, 1.0, 1.0];
         self.hud_sprites.submit(inst, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
+        // The cursor (war3skins Cursor): Scroll with the edge scrolling, Target while
+        // a target is awaited (TargetSelect over a unit), Select over a unit, Normal
+        // otherwise; its origin is the pointer.
+        let pointer = self.hud.as_ref().map(|h| h.pointer);
+        if let Some((px, py)) = pointer.filter(|p| p.0 >= 0.0) {
+            if self.cursor_model.is_none() {
+                let path = assets.frames.skin_value("Cursor").unwrap_or_default();
+                if let Some(m) = assets.model(device, queue, path.trim_matches('"')) {
+                    self.cursor_model = Some(ModelInstance::new(m));
+                }
+            }
+            let over_unit = self.screen.0 > 0 && self.pick_unit(self.cursor.0, self.cursor.1, self.screen).is_some();
+            let targeting = self.targeting.is_some() || self.item_target.is_some();
+            let seq = match self.scroll_dir {
+                (0, 1) => "Scroll Up",
+                (0, -1) => "Scroll Down",
+                (-1, 0) => "Scroll Left",
+                (1, 0) => "Scroll Right",
+                (-1, 1) => "Scroll Up Left",
+                (1, 1) => "Scroll Up Right",
+                (-1, -1) => "Scroll Down Left",
+                (1, -1) => "Scroll Down Right",
+                _ if targeting && over_unit => "TargetSelect",
+                _ if targeting => "Target",
+                _ if over_unit => "Select",
+                _ => "Normal",
+            };
+            if let Some(c) = self.cursor_model.as_mut() {
+                if self.cursor_sequence != seq {
+                    self.cursor_sequence = seq.to_string();
+                    c.play(seq);
+                }
+                c.transform = Mat4::from_translation(Vec3::new(px, py, 0.0));
+            }
+        }
         // Minimap pings: MinimapIndicator at each point on the minimap.
         let now = self.time;
         self.pings.retain(|p| p.2 > now);
@@ -2908,6 +2952,10 @@ impl Scene {
             let fx = self.autocast_fx.get_mut(&(sx, sy)).unwrap();
             fx.transform = Mat4::from_translation(Vec3::new(r.x0, r.y0, 0.0));
             self.hud_sprites.submit(fx, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
+        }
+        // The cursor over everything else.
+        if let Some(c) = self.cursor_model.as_mut() {
+            self.hud_sprites.submit(c, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
         }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("console sprites"),

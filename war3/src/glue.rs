@@ -104,6 +104,10 @@ pub struct Glue {
     fog: (f32, f32, [f32; 4]),
     background_renderer: ModelRenderer,
     sprite_renderer: ModelRenderer,
+    /// The cursor (war3skins Cursor), drawn over the interface.
+    cursor_renderer: ModelRenderer,
+    cursor: Option<ModelInstance>,
+    cursor_clock: std::time::Instant,
     /// Instances for SPRITE frames, with the model name each was made from.
     sprites: HashMap<usize, (String, ModelInstance)>,
     ui: w3_render::ui::UiRenderer,
@@ -167,6 +171,9 @@ impl Glue {
             fog,
             background_renderer: ModelRenderer::new(device, queue, &mut assets.textures, format),
             sprite_renderer: ModelRenderer::new(device, queue, &mut assets.textures, format),
+            cursor_renderer: ModelRenderer::new(device, queue, &mut assets.textures, format),
+            cursor: None,
+            cursor_clock: std::time::Instant::now(),
             sprites: HashMap::new(),
             ui: w3_render::ui::UiRenderer::new(device, format),
             action: None,
@@ -921,6 +928,39 @@ impl Glue {
             ..Default::default()
         });
         self.ui.render(device, queue, &mut assets.textures, &mut pass, &draws, self.tree.width, size);
+        drop(pass);
+        // The cursor's Normal sequence at the pointer, over everything.
+        if self.cursor.is_none() {
+            let path = assets.frames.skin_value("Cursor").unwrap_or_default();
+            if let Some(m) = assets.model(device, queue, path.trim_matches('"')) {
+                let mut c = ModelInstance::new(m);
+                c.play("Normal");
+                self.cursor = Some(c);
+            }
+        }
+        if let Some(c) = self.cursor.as_mut() {
+            let elapsed = self.cursor_clock.elapsed().as_secs_f32();
+            self.cursor_clock = std::time::Instant::now();
+            c.advance(elapsed * 1000.0);
+            c.transform = Mat4::from_translation(Vec3::new(self.pointer.0, self.pointer.1, 0.0));
+            self.cursor_renderer.submit(c, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("glue cursor"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: color,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth,
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                    stencil_ops: None,
+                }),
+                ..Default::default()
+            });
+            self.cursor_renderer.render(device, queue, &mut pass, &sprite_globals);
+        }
     }
 
     /// The build number at the lower right, as CMainMenu formats it ("%d.%d.%d.%d":

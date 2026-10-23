@@ -34,6 +34,8 @@ struct Running {
     last: Instant,
     keys: HashSet<KeyCode>,
     cursor: PhysicalPosition<f64>,
+    /// Whether the system cursor is hidden for the game's own.
+    cursor_hidden: bool,
 }
 
 impl Running {
@@ -139,6 +141,7 @@ impl App {
             last: Instant::now(),
             keys: HashSet::new(),
             cursor: PhysicalPosition::new(0.0, 0.0),
+            cursor_hidden: false,
         });
         Ok(())
     }
@@ -288,6 +291,12 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::RedrawRequested => {
+                // The game and the menus draw their own cursor.
+                let hide = r.scene.is_some() || r.glue.is_some();
+                if hide != r.cursor_hidden {
+                    r.window.set_cursor_visible(!hide);
+                    r.cursor_hidden = hide;
+                }
                 let now = Instant::now();
                 let dt = (now - r.last).as_secs_f32().min(0.25);
                 r.last = now;
@@ -307,6 +316,7 @@ impl ApplicationHandler for App {
                         m.x += (r.cursor.x >= w - 1.0 - edge) as i32 as f32 - (r.cursor.x <= edge) as i32 as f32;
                         m.y += (r.cursor.y <= edge) as i32 as f32 - (r.cursor.y >= h - 1.0 - edge) as i32 as f32;
                     }
+                    scene.scroll_dir = (m.x as i32, m.y as i32);
                     let d = (k * keys + m * mouse) * 3000.0 * dt;
                     if d != glam::Vec2::ZERO {
                         scene.scroll(d.x, d.y);

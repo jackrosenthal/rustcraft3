@@ -84,6 +84,11 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         constructing: None,
         build_time: o.real("bldtm"),
         building: 0,
+        str_: o.real("STR"),
+        agi: o.real("AGI"),
+        int: o.real("INT"),
+        skill_points: if is_hero { 1 } else { 0 },
+        regen_timer: 0.0,
     };
     let path_tex = if unit.is_building { o.str("pathTex") } else { String::new() };
     let mut unit = unit;
@@ -98,6 +103,9 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
     let h = w.handles.insert(Obj::Unit(Box::new(unit)));
     if let Some(u) = w.unit_mut(h) {
         u.handle = h;
+    }
+    if is_hero {
+        w.apply_hero_stats(h, true);
     }
     w.unit_order.push(h);
     if !path_tex.is_empty() {
@@ -115,6 +123,9 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
 
 /// Kills a unit and fires its death events.
 pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
+    if w.unit(h).is_some_and(|u| !u.dead) && killer != 0 {
+        w.grant_kill_xp(h, killer);
+    }
     let Some(u) = w.unit_mut(h) else { return };
     if u.dead {
         return;
@@ -402,6 +413,31 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetUnitLevel => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.level)),
         GetHeroLevel => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.level)),
         GetHeroXP => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.hero_xp)),
+        AddHeroXP => |w, _, a| { w.add_hero_xp(a.h(0), a.i(1)); none() },
+        SetHeroXP => |w, _, a| {
+            let cur = unit_arg(w, a, 0).map_or(0, |u| u.hero_xp);
+            if a.i(1) > cur { w.add_hero_xp(a.h(0), a.i(1) - cur); }
+            none()
+        },
+        SetHeroLevel => |w, _, a| {
+            let (h, l) = (a.h(0), a.i(1));
+            while w.unit(h).is_some_and(|u| u.is_hero && u.level < l) {
+                let need = w.hero_xp_needed(w.unit(h).unwrap().level + 1) - w.unit(h).unwrap().hero_xp;
+                w.add_hero_xp(h, need.max(1));
+            }
+            none()
+        },
+        GetHeroStr => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.str_ as i32)),
+        GetHeroAgi => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.agi as i32)),
+        GetHeroInt => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.int as i32)),
+        GetHeroSkillPoints => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.skill_points)),
+        UnitModifySkillPoints => |w, _, a| {
+            let d = a.i(1);
+            let Some(u) = w.unit_mut(a.h(0)) else { return boolean(false) };
+            u.skill_points = (u.skill_points + d).max(0);
+            boolean(true)
+        },
+        SelectHeroSkill => |w, _, a| { w.learn_skill(a.h(0), id_from_int(a.i(1))); none() },
         IsHeroUnitId => |_, _, a| boolean(id_from_int(a.i(0))[0].is_ascii_uppercase()),
         IsUnitIdType => |w, _, a| {
             let id = id_from_int(a.i(0));
@@ -645,5 +681,6 @@ fn dummy_unit() -> Unit {
         acquire_timer: 0.0, anim: String::new(), anim_serial: 0, death_time: 0.0, pathing_cells: vec![],
         carry_gold: 0, carry_lumber: 0, work_timer: 0.0, harvest_source: 0, inside: 0,
         queue: vec![], queue_progress: 0.0, constructing: None, build_time: 0.0, building: 0,
+        str_: 0.0, agi: 0.0, int: 0.0, skill_points: 0, regen_timer: 0.0,
     }
 }

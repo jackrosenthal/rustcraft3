@@ -193,6 +193,12 @@ pub struct Unit {
     pub build_time: f32,
     /// The structure a worker is building.
     pub building: u32,
+    /// Hero attributes (base plus per-level growth) and unspent skill points.
+    pub str_: f32,
+    pub agi: f32,
+    pub int: f32,
+    pub skill_points: i32,
+    pub regen_timer: f32,
 }
 
 /// What a unit is doing.

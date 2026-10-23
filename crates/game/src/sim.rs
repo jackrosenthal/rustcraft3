@@ -107,6 +107,12 @@ pub fn final_damage(w: &World, raw: f32, attack_type: &str, target: &Unit) -> f3
         _ => 7,
     };
     let mult = misc_list(w, key).get(col).copied().unwrap_or(1.0);
+    // Heroes gain armor from agility (AgiDefenseBonus per point, plus AgiDefenseBase).
+    let armor = if target.is_hero {
+        armor + target.agi.floor() * w.misc_f32("AgiDefenseBonus", 0.3) + w.misc_f32("AgiDefenseBase", -2.0)
+    } else {
+        armor
+    };
     let k = w.misc_f32("DefenseArmor", 0.06);
     let armor_factor = if armor >= 0.0 { 1.0 - (armor * k) / (1.0 + armor * k) } else { 2.0 - (1.0 - k).powf(-armor) };
     raw * mult * armor_factor
@@ -356,7 +362,7 @@ impl World {
                 s.elapsed += dt;
                 if !s.done && s.elapsed >= wp.damage_point {
                     s.done = true;
-                    let raw = wp.base + (0..wp.dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>();
+                    let raw = wp.base + (0..wp.dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>() + self.primary_attribute(h);
                     if wp.weapon_type == "missile" || wp.weapon_type == "artillery" || wp.weapon_type.starts_with("msplash") || wp.weapon_type == "mbounce" || wp.weapon_type == "mline" {
                         if let (Some(src), Some(_)) = (self.unit(h).cloned(), self.unit(s.target)) {
                             let launch_z = self.objects.units.get(src.type_id).map_or(60.0, |o| o.real("launchZ"));
@@ -982,6 +988,20 @@ impl World {
         *p.state.entry(player_state::LUMBER_GATHERED).or_insert(0) += lumber;
     }
 
+    /// A hero's primary attribute, which adds to its attack damage.
+    fn primary_attribute(&self, h: u32) -> f32 {
+        let Some(u) = self.unit(h) else { return 0.0 };
+        if !u.is_hero {
+            return 0.0;
+        }
+        match self.objects.units.get(u.type_id).map(|o| o.str("Primary").to_ascii_uppercase()).as_deref() {
+            Some("STR") => u.str_.floor() * self.misc_f32("StrAttackBonus", 1.0),
+            Some("AGI") => u.agi.floor(),
+            Some("INT") => u.int.floor(),
+            _ => 0.0,
+        }
+    }
+
     /// Moves into range of `target` and starts a swing when ready.
     fn try_attack(&mut self, h: u32, target: u32, dt: f32, stationary: bool) {
         let (Some(u), Some(t)) = (self.unit(h), self.unit(target)) else { return };
@@ -1007,7 +1027,9 @@ impl World {
             return;
         }
         if u.cooldown <= 0.0 {
-            u.cooldown = wp.cooldown;
+            // Agility shortens a hero's attack cooldown (AgiAttackSpeedBonus per point).
+            let speed = if u.is_hero { 1.0 + u.agi.floor() * 0.02 } else { 1.0 };
+            u.cooldown = wp.cooldown / speed;
             u.swing = Some(Swing { target, elapsed: 0.0, done: false });
             restart_anim(u, "attack");
         } else if u.anim == "walk" {

@@ -3,6 +3,7 @@
 pub mod ai;
 pub mod event_ids;
 pub mod handles;
+pub mod hero;
 pub mod natives;
 pub mod objects;
 pub mod orders;

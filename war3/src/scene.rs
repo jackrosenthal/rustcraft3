@@ -2483,6 +2483,14 @@ impl Scene {
                     (u.x, u.y, [c[0], c[1], c[2], 1.0], if u.is_building { 0.004 } else { 0.0025 })
                 })
                 .collect();
+            hud.alt_icon = w.alt_minimap_icon.clone();
+            hud.minimap_alt = w
+                .unit_order
+                .iter()
+                .filter_map(|&h| w.unit(h).map(|u| (h, u)))
+                .filter(|(h, u)| u.extra.alt_icon && !u.dead && !u.hidden && w.unit_visible_to(*h, w.local_player))
+                .map(|(_, u)| (u.x, u.y))
+                .collect();
             hud.camera_box = footprint;
             // The minimap's fog: black over the map image, leaving FogColorFogMaskAlpha of it
             // in fogged cells and FogColorBlackMaskAlpha (or FogColorDarkMaskAlpha where

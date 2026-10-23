@@ -153,6 +153,10 @@ pub struct Hud {
     filter: Option<(String, [f32; 4], [f32; 4], bool)>,
     pub minimap_area: Option<MinimapArea>,
     pub minimap_dots: Vec<(f32, f32, [f32; 4], f32)>,
+    /// Units using the alternate minimap icon (UnitSetUsesAltIcon), and that icon
+    /// (SetAltMinimapIcon).
+    pub minimap_alt: Vec<(f32, f32)>,
+    pub alt_icon: Option<String>,
     /// war3map.mmp: icons stamped on the minimap image (kind, x and y on its 256-pixel
     /// grid): 0 gold mine, 1 neutral building, 2 start location.
     pub minimap_icons: Vec<(i32, f32, f32)>,
@@ -266,6 +270,8 @@ impl Hud {
             info,
             minimap_area: None,
             minimap_dots: Vec::new(),
+            minimap_alt: Vec::new(),
+            alt_icon: None,
             minimap_fog: false,
             minimap_icons: Vec::new(),
             minimap_terrain: true,
@@ -1473,6 +1479,15 @@ impl Hud {
                 if let Some((ux, uy)) = self.world_to_minimap(x, y) {
                     let s = size / 2.0;
                     out.push(Draw::Image { texture: String::new(), rect: w3_ui::Rect { x0: ux - s, y0: uy - s, x1: ux + s, y1: uy + s }, uv: [0.0, 0.0, 1.0, 1.0], color, blend: w3_ui::Blend::Alpha, rotated: false });
+                }
+            }
+            // Units with the alternate icon show it, as large as the other icons.
+            if let Some(icon) = &self.alt_icon {
+                let (hw, hh) = (8.0 / 256.0 * (r.x1 - r.x0), 8.0 / 256.0 * (r.y1 - r.y0));
+                for &(x, y) in &self.minimap_alt {
+                    if let Some((ux, uy)) = self.world_to_minimap(x, y) {
+                        out.push(Draw::Image { texture: icon.clone(), rect: w3_ui::Rect { x0: ux - hw, x1: ux + hw, y0: uy - hh, y1: uy + hh }, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+                    }
                 }
             }
             // The camera's view on the ground, as an outline.

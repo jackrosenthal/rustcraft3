@@ -873,7 +873,7 @@ impl World {
 
     /// Shows a circle to a player, and the invisible units in it, `delay` from now for
     /// `dur`.
-    fn reveal_area(&mut self, player: u8, x: f32, y: f32, r: f32, dur: f32, delay: f32) {
+    pub(crate) fn reveal_area(&mut self, player: u8, x: f32, y: f32, r: f32, dur: f32, delay: f32) {
         let modifier = crate::fog::FogModifier { player, state: crate::fog::FOG_VISIBLE, shape: crate::fog::FogShape::Circle(x, y, r), shared: true, after_units: false, active: delay <= 0.0 };
         let m = self.handles.insert(Obj::FogModifier(modifier));
         if delay > 0.0 {

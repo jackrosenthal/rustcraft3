@@ -285,6 +285,65 @@ impl World {
                     self.time_of_day = data(self, "DataA") + data(self, "DataB") / 60.0;
                     did = true;
                 }
+                // Items that cast their spell's effect (see ability_code's aliases).
+                "Arai" | "AUan" | "AHre" | "Aweb" | "Afla" => {
+                    let t = if _target != 0 { _target } else { unit };
+                    let at = if _target != 0 { self.widget_pos(_target).unwrap_or((_x, _y)) } else if _x != 0.0 || _y != 0.0 { (_x, _y) } else { self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default() };
+                    self.ability_effect_pub(vm, unit, a, 1, t, at);
+                    did = true;
+                }
+                // Figurines: DataA of DataC and DataB of DataD for Dur beside the hero.
+                "AIfs" => {
+                    let (ux, uy) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
+                    let dur = data(self, "Dur");
+                    for (count, kind) in [("DataA", "DataC"), ("DataB", "DataD")] {
+                        let kind = crate::objects::id_from_str(self.objects.abilities.get(a).map(|o| o.level_str(kind, 1)).unwrap_or_default().trim());
+                        let n = data(self, count) as i32;
+                        if kind[0] != 0 && n > 0 {
+                            self.summon(unit, owner, kind, n, ux, uy, dur);
+                        }
+                    }
+                    did = true;
+                }
+                // Summon Headhunter (the Axe of the Headhunters' Berserkers): DataB of
+                // UnitID for Dur.
+                "AIsh" => {
+                    let (ux, uy) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
+                    let kind = crate::objects::id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", 1)).unwrap_or_default().trim());
+                    self.summon(unit, owner, kind, data(self, "DataB") as i32, ux, uy, data(self, "Dur"));
+                    did = true;
+                }
+                // Potion of Omniscience: the whole map shows for Dur.
+                "AIrv" => {
+                    let b = self.camera_bounds;
+                    let (x0, x1) = (b.iter().step_by(2).copied().fold(f32::INFINITY, f32::min), b.iter().step_by(2).copied().fold(f32::NEG_INFINITY, f32::max));
+                    let (y0, y1) = (b.iter().skip(1).step_by(2).copied().fold(f32::INFINITY, f32::min), b.iter().skip(1).step_by(2).copied().fold(f32::NEG_INFINITY, f32::max));
+                    let r = (x1 - x0).hypot(y1 - y0);
+                    self.reveal_area(owner, (x0 + x1) / 2.0, (y0 + y1) / 2.0, r, data(self, "Dur"), 0.0);
+                    did = true;
+                }
+                // Goblin Land Mines: a mine (UnitID) at the point.
+                "AIpm" => {
+                    let kind = crate::objects::id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", 1)).unwrap_or_default().trim());
+                    let (px, py) = if _x != 0.0 || _y != 0.0 { (_x, _y) } else { self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default() };
+                    crate::natives::units::create_unit(self, owner, kind, px, py, 270.0);
+                    did = true;
+                }
+                // Glyphs: a level of the research UnitID.
+                "AIgl" => {
+                    let up = crate::objects::id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", 1)).unwrap_or_default().trim());
+                    let n = data(self, "DataA").max(1.0) as i32;
+                    *self.players[owner as usize].tech_researched.entry(up).or_insert(0) += n;
+                    self.research_changed(owner);
+                    did = true;
+                }
+                // Potion of Vampirism: DataA more damage and DataB of it regained for Dur.
+                "AIpv" => {
+                    let id = self.first_buff(a, 1);
+                    let (bonus, steal, dur) = (data(self, "DataA"), data(self, "DataB"), data(self, "Dur"));
+                    self.apply_buff(unit, Buff { id, ability: a, level: 1, caster: unit, remaining: dur, damage_bonus: bonus, life_steal: steal, ..Default::default() });
+                    did = true;
+                }
                 // Wand of Illusion: an image of the target.
                 "AIil" => {
                     let t = if _target != 0 { _target } else { unit };

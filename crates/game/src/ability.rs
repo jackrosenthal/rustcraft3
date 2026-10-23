@@ -148,6 +148,13 @@ impl World {
             // fields.
             "ANin" => "AUin",
             "ANwm" => "AHwe",
+            // Items with their spells' fields: Rod of Necromancy, Scepter of the Dead
+            // (Animate Dead), Scroll of Resurrection, Spider Silk Broach, Flare Gun.
+            "AIrd" => "Arai",
+            "AIan" => "AUan",
+            "AIrs" => "AHre",
+            "AIwb" => "Aweb",
+            "AIfa" => "Afla",
             _ => return code,
         }
         .to_string()

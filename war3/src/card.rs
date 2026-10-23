@@ -48,6 +48,11 @@ pub struct Button {
 }
 
 impl Button {
+    /// A button standing only for its tooltip.
+    pub fn text_only(tip: String, ubertip: String) -> Button {
+        Button { tip, ubertip, ..Button::new(0, 0, String::new(), None, Action::Order { order: "", targeted: false }, true) }
+    }
+
     fn new(x: u32, y: u32, icon: String, hotkey: Option<char>, action: Action, enabled: bool) -> Button {
         Button { x, y, icon, hotkey, action, enabled, tip: String::new(), ubertip: String::new(), costs: [0; 4], autocast: None, requires: String::new() }
     }

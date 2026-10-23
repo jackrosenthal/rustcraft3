@@ -176,6 +176,11 @@ impl ApplicationHandler for App {
                             scene.key('\u{1b}');
                         }
                     }
+                    if event.physical_key == PhysicalKey::Code(KeyCode::F8) {
+                        if let Some(scene) = r.scene.as_mut() {
+                            scene.idle_worker_key();
+                        }
+                    }
                     if event.physical_key == PhysicalKey::Code(KeyCode::F10) {
                         if let Some(scene) = r.scene.as_mut() {
                             scene.open_menu((r.gpu.config.width, r.gpu.config.height));

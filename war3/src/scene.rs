@@ -1454,12 +1454,7 @@ impl Scene {
         // The idle worker button selects an idle worker and looks at it.
         let now = self.time;
         if let Some(worker) = self.hud.as_mut().and_then(|h| h.pick_idle_worker(ux, uy, now)) {
-            self.selection = vec![worker];
-            if let Some(g) = self.game.as_mut() {
-                if let Some((x, y)) = g.world.unit(worker).map(|u| (u.x, u.y)) {
-                    g.world.camera.pan_to(x, y, 0.0);
-                }
-            }
+            self.select_worker(worker);
             return true;
         }
         // A hero bar button selects the hero.
@@ -1546,6 +1541,23 @@ impl Scene {
     }
 
     /// A key press: command card hotkeys and Escape.
+    fn select_worker(&mut self, worker: u32) {
+        self.selection = vec![worker];
+        if let Some(g) = self.game.as_mut() {
+            if let Some((x, y)) = g.world.unit(worker).map(|u| (u.x, u.y)) {
+                g.world.camera.pan_to(x, y, 0.0);
+            }
+        }
+    }
+
+    /// The idle worker button's hotkey (F8, as IDLE_PEON shows it).
+    pub fn idle_worker_key(&mut self) {
+        let now = self.time;
+        if let Some(worker) = self.hud.as_mut().and_then(|h| h.next_idle_worker(now)) {
+            self.select_worker(worker);
+        }
+    }
+
     /// Opens the game menu (F10) on the next frame.
     pub fn open_menu(&mut self, _size: (u32, u32)) {
         self.menu_requested = true;

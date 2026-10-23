@@ -590,7 +590,15 @@ impl Hud {
     /// The idle worker its button chooses at `now`: the next after the last one chosen
     /// within a second, else the first (CPeonBar::vf3_6f3bd9c0).
     pub fn pick_idle_worker(&mut self, x: f32, y: f32, now: f32) -> Option<u32> {
-        if self.idle_workers.is_empty() || !self.idle_worker_rect().contains(x, y) {
+        if !self.idle_worker_rect().contains(x, y) {
+            return None;
+        }
+        self.next_idle_worker(now)
+    }
+
+    /// The idle worker the button (or its F8 hotkey) chooses at `now`.
+    pub fn next_idle_worker(&mut self, now: f32) -> Option<u32> {
+        if self.idle_workers.is_empty() {
             return None;
         }
         let k = if now < self.idle_pick.0 + 1.0 { (self.idle_pick.1 + 1) % self.idle_workers.len() } else { 0 };
@@ -1221,7 +1229,11 @@ impl Hud {
         }
         self.production_draws(db, &mut out);
         self.group_draws(db, &mut out);
-        let tip = self.button_at(self.pointer.0, self.pointer.1).filter(|b| !b.tip.is_empty()).cloned();
+        let mut tip = self.button_at(self.pointer.0, self.pointer.1).filter(|b| !b.tip.is_empty()).cloned();
+        // The idle worker button's tooltip (CPeonBar: IDLE_PEON and IDLE_PEON_DESC).
+        if tip.is_none() && !self.idle_workers.is_empty() && self.idle_worker_rect().contains(self.pointer.0, self.pointer.1) {
+            tip = Some(crate::card::Button::text_only(db.string("IDLE_PEON"), db.string("IDLE_PEON_DESC")));
+        }
         if let Some(b) = tip {
             self.tooltip_draws(db, &b, &mut out);
         }

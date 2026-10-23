@@ -69,8 +69,11 @@ impl UnitView {
     fn pick(&mut self, name: &str) {
         let seqs = w3_render::anim::sequences_named(&self.inst.model.mdx, name);
         if seqs.is_empty() {
-            if name != "stand" {
-                self.pick("stand");
+            // Drop qualifiers ("walk gold" -> "walk") before falling back to stand.
+            match name.rsplit_once(' ') {
+                Some((base, _)) => self.pick(base),
+                None if name != "stand" => self.pick("stand"),
+                None => {}
             }
             return;
         }
@@ -111,6 +114,7 @@ pub struct Scene {
     pub game: Option<w3_game::Game>,
     /// Render instances for game units, by handle.
     pub units: HashMap<u32, UnitView>,
+    pub dests: HashMap<u32, (ModelInstance, bool)>,
     pub selection: Vec<u32>,
     pub info: MapInfo,
     pub terrain: TerrainRenderer,
@@ -190,11 +194,11 @@ impl Scene {
             let dest_slk = data.slk("Units\\DestructableData.slk");
             for d in &doodads.doodads {
                 let id = fourcc_str(d.id);
-                let (table, is_dest) = if dest_slk.rows.contains_key(&id) {
-                    (&dest_slk, true)
-                } else {
-                    (&doodad_slk, false)
-                };
+                // Destructables are game objects; the scene draws them from the world.
+                if dest_slk.rows.contains_key(&id) {
+                    continue;
+                }
+                let (table, is_dest) = (&doodad_slk, false);
                 let file = text(table, &id, "file");
                 if file.is_empty() {
                     continue;
@@ -269,7 +273,7 @@ impl Scene {
         });
         let ui = w3_render::ui::UiRenderer::new(device, color_format);
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
-        let mut scene = Scene { game, units: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None };
         scene.apply_requests();
         Ok(scene)
     }
@@ -403,6 +407,36 @@ impl Scene {
         best.map(|b| b.1)
     }
 
+    /// The living destructable under a screen position, if any.
+    pub fn pick_destructable(&self, sx: f32, sy: f32, size: (u32, u32)) -> Option<u32> {
+        let g = self.game.as_ref()?;
+        let w = &g.world;
+        let mut best: Option<(f32, u32)> = None;
+        for &h in &w.destructable_order {
+            let Some(w3_game::types::Obj::Destructable(d)) = w.handles.get(h) else { continue };
+            if d.life <= 0.0 || !d.visible {
+                continue;
+            }
+            // Test against the model's bounds: its height, and a radius at the canopy.
+            let Some((inst, _)) = self.dests.get(&h) else { continue };
+            let ext = inst.model.mdx.extent;
+            let radius = ((ext.max[0] - ext.min[0]).max(ext.max[1] - ext.min[1]) * 0.35 * d.scale).max(24.0);
+            let height = ext.max[2] * d.scale * 0.8;
+            let Some(base) = self.project(Vec3::new(d.x, d.y, d.z), size) else { continue };
+            let Some(top) = self.project(Vec3::new(d.x, d.y, d.z + height), size) else { continue };
+            let Some(e) = self.project(Vec3::new(d.x + radius, d.y, d.z), size) else { continue };
+            let r = (e.0 - base.0).abs().max(8.0);
+            let (vx, vy) = (top.0 - base.0, top.1 - base.1);
+            let len2 = (vx * vx + vy * vy).max(1e-3);
+            let t = (((sx - base.0) * vx + (sy - base.1) * vy) / len2).clamp(0.0, 1.0);
+            let dd = (base.0 + vx * t - sx).hypot(base.1 + vy * t - sy);
+            if dd <= r && best.is_none_or(|b| dd < b.0) {
+                best = Some((dd, h));
+            }
+        }
+        best.map(|b| b.1)
+    }
+
     /// Selects with a click or a drag rectangle, the way the local player would.
     pub fn select(&mut self, a: (f32, f32), b: (f32, f32), size: (u32, u32), add: bool) {
         let Some(g) = self.game.as_ref() else { return };
@@ -449,7 +483,7 @@ impl Scene {
 
     /// Right-click: a smart order to every selected unit the local player owns.
     pub fn command(&mut self, sx: f32, sy: f32, size: (u32, u32)) {
-        let target = self.pick_unit(sx, sy, size);
+        let target = self.pick_unit(sx, sy, size).or_else(|| self.pick_destructable(sx, sy, size));
         let point = self.ground_at(sx, sy, size);
         let Some(g) = self.game.as_mut() else { return };
         let local = g.world.local_player;
@@ -462,6 +496,52 @@ impl Scene {
                 (Some(t), _) if t != h => g.world.order_unit(h, smart, 0.0, 0.0, t),
                 (_, Some((x, y))) => g.world.order_unit(h, smart, x, y, 0),
                 _ => {}
+            }
+        }
+    }
+
+    /// Creates and updates render instances for destructables.
+    pub fn sync_destructables(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) {
+        let Some(g) = self.game.as_ref() else { return };
+        let w = &g.world;
+        self.dests.retain(|h, _| matches!(w.handles.get(*h), Some(w3_game::types::Obj::Destructable(_))));
+        for &h in &w.destructable_order {
+            let Some(w3_game::types::Obj::Destructable(d)) = w.handles.get(h) else { continue };
+            if !self.dests.contains_key(&h) {
+                let Some(o) = w.objects.destructables.get(d.type_id) else { continue };
+                let file = o.str("file");
+                let model = assets
+                    .model(device, queue, &format!("{file}{}", d.variation))
+                    .or_else(|| assets.model(device, queue, &file));
+                let Some(model) = model else { continue };
+                let mut inst = ModelInstance::new(model);
+                inst.transform = Mat4::from_scale_rotation_translation(
+                    Vec3::splat(d.scale),
+                    Quat::from_rotation_z(d.facing.to_radians()),
+                    Vec3::new(d.x, d.y, d.z),
+                );
+                let tex_id = o.int("texID") as u32;
+                let tex_file = o.str("texFile");
+                if tex_id != 0 && !tex_file.is_empty() {
+                    let t = assets.textures.get_or_white(device, queue, &format!("{tex_file}.blp"));
+                    inst.replaceable.insert(tex_id, t);
+                }
+                let alive = d.life > 0.0;
+                inst.play(if alive { "stand" } else { "death" });
+                if !alive {
+                    // Already dead when placed: show the end of the death animation.
+                    inst.frame = f32::MAX / 4.0;
+                }
+                self.dests.insert(h, (inst, alive));
+            }
+            let (inst, alive) = self.dests.get_mut(&h).unwrap();
+            inst.visible = d.visible;
+            if *alive && d.life <= 0.0 {
+                *alive = false;
+                inst.play("death");
+            } else if !*alive && d.life > 0.0 {
+                *alive = true;
+                inst.play("birth");
             }
         }
     }
@@ -509,6 +589,9 @@ impl Scene {
         }
         for v in self.units.values_mut() {
             v.inst.advance(dt * 1000.0);
+        }
+        for (inst, _) in self.dests.values_mut() {
+            inst.advance(dt * 1000.0);
         }
         self.camera.target.z = self.terrain.height_at(self.camera.target.x, self.camera.target.y);
     }
@@ -558,6 +641,14 @@ impl Scene {
         }
         for v in self.units.values_mut() {
             self.models.submit(&mut v.inst, eye, rot);
+        }
+        let far = self.camera.far * 1.5;
+        let target = self.camera.target;
+        for (inst, _) in self.dests.values_mut() {
+            if inst.transform.w_axis.truncate().distance(target) > far {
+                continue;
+            }
+            self.models.submit(inst, eye, rot);
         }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("scene"),

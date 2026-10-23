@@ -28,8 +28,10 @@ fn main() -> anyhow::Result<()> {
         scene.camera.distance = a[8].parse()?;
     }
     scene.sync_units(&device, &queue, &mut assets);
+    scene.sync_destructables(&device, &queue, &mut assets);
     scene.update(0.5);
     scene.sync_units(&device, &queue, &mut assets);
+    scene.sync_destructables(&device, &queue, &mut assets);
     let size = wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 };
     let color = device.create_texture(&wgpu::TextureDescriptor {
         label: None,

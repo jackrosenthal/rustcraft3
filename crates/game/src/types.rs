@@ -178,6 +178,13 @@ pub struct Unit {
     pub anim_serial: u32,
     pub death_time: f32,
     pub pathing_cells: Vec<(i32, i32)>,
+    pub carry_gold: i32,
+    pub carry_lumber: i32,
+    pub work_timer: f32,
+    /// Resource (mine or tree) the unit last harvested, for resuming after a return.
+    pub harvest_source: u32,
+    /// Units inside a gold mine (for mines) or the mine a worker is inside.
+    pub inside: u32,
 }
 
 /// What a unit is doing.
@@ -191,6 +198,8 @@ pub enum Action {
     Hold,
     Patrol { a: (f32, f32), b: (f32, f32) },
     Follow { target: u32 },
+    Harvest { target: u32 },
+    ReturnResources,
 }
 
 /// An attack in progress: damage lands at the damage point, then the backswing plays.
@@ -216,6 +225,7 @@ pub struct Destructable {
     pub invulnerable: bool,
     pub visible: bool,
     pub animation: Option<String>,
+    pub pathing_cells: Vec<(i32, i32)>,
 }
 
 #[derive(Clone, Debug)]

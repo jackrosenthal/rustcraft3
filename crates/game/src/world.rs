@@ -97,6 +97,7 @@ pub struct World {
     pub dying_effects: Vec<(u32, f32)>,
     pub pathing: Option<crate::pathing::PathingMap>,
     pub missiles: Vec<crate::sim::Missile>,
+    pathing_textures: HashMap<String, Option<w3_formats::blp::Image>>,
 }
 
 /// Ground heights for GetLocationZ and unit placement.
@@ -192,6 +193,7 @@ impl World {
             dying_effects: Vec::new(),
             pathing: None,
             missiles: Vec::new(),
+            pathing_textures: HashMap::new(),
         }
     }
 
@@ -482,6 +484,43 @@ impl World {
             EventKind::GameState { state: 2, op, value } => compare(*op, t, *value) && !compare(*op, t - dt, *value),
             _ => false,
         });
+    }
+
+    /// Cells blocked by a pathing texture (PathTextures\\*.tga) centered at a position.
+    /// Red marks unwalkable cells; one texel is one 32x32 cell.  The texture turns with the
+    /// object in quarter turns.
+    pub fn pathing_cells(&mut self, path_tex: &str, x: f32, y: f32, facing_deg: f32) -> Vec<(i32, i32)> {
+        if path_tex.is_empty() || path_tex == "_" || path_tex.eq_ignore_ascii_case("none") {
+            return Vec::new();
+        }
+        let key = path_tex.to_ascii_lowercase();
+        if !self.pathing_textures.contains_key(&key) {
+            let img = self.chain.read(path_tex).ok().and_then(|b| w3_formats::blp::decode_texture(path_tex, &b).ok()).and_then(|v| v.into_iter().next());
+            self.pathing_textures.insert(key.clone(), img);
+        }
+        let (Some(Some(img)), Some(p)) = (self.pathing_textures.get(&key), self.pathing.as_ref()) else { return Vec::new() };
+        let (w, h) = (img.width as i32, img.height as i32);
+        let quarter = ((facing_deg / 90.0).round() as i32).rem_euclid(4);
+        let (cx, cy) = p.cell_of(x, y);
+        let mut out = Vec::new();
+        for ty in 0..h {
+            for tx in 0..w {
+                let i = ((ty * w + tx) * 4) as usize;
+                if img.rgba[i] == 0 {
+                    continue;
+                }
+                // Texel offsets from the center, with texture rows running north to south.
+                let (ox, oy) = (tx - w / 2, (h - 1 - ty) - h / 2);
+                let (rx, ry) = match quarter {
+                    0 => (ox, oy),
+                    1 => (-oy - 1, ox),
+                    2 => (-ox - 1, -oy - 1),
+                    _ => (oy, -ox - 1),
+                };
+                out.push((cx + rx, cy + ry));
+            }
+        }
+        out
     }
 
     /// Recomputes each player's food used and food cap from their living units.

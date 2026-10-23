@@ -23,6 +23,7 @@ fn main() -> anyhow::Result<()> {
     let mut assets = Assets::new(&device, &queue, &data);
     let mut scene = Scene::load(&device, &queue, format, &data, &mut assets, Path::new(&a[2]), w as f32 / h as f32)?;
     scene.sync_units(&device, &queue, &mut assets);
+    scene.sync_destructables(&device, &queue, &mut assets);
     let mut i = 6;
     let num = |s: &str| s.parse::<f32>().unwrap();
     while i < a.len() {
@@ -46,15 +47,56 @@ fn main() -> anyhow::Result<()> {
                 while t > 0.0 {
                     scene.update(0.02);
                     scene.sync_units(&device, &queue, &mut assets);
+    scene.sync_destructables(&device, &queue, &mut assets);
                     t -= 0.02;
                 }
                 i += 2;
+            }
+            "dump" => {
+                if let Some(g) = &scene.game {
+                    for &h in &scene.selection {
+                        if let Some(u) = g.world.unit(h) {
+                            eprintln!("{h:#x} at ({:.0},{:.0}) {:?} gold {} lumber {} anim {} path {:?}", u.x, u.y, u.action, u.carry_gold, u.carry_lumber, u.anim, u.path.len());
+                        }
+                    }
+                }
+                i += 1;
+            }
+            "pick" => {
+                let (x, y) = (num(&a[i + 1]), num(&a[i + 2]));
+                if let Some(g) = &scene.game {
+                    let wd = &g.world;
+                    eprintln!("{} destructables", wd.destructable_order.len());
+                    if let Some((gx, gy)) = scene.ground_at(x, y, (w, h)) {
+                        let mut best = (f32::MAX, 0u32);
+                        for &d in &wd.destructable_order {
+                            if let Some(w3_game::types::Obj::Destructable(dd)) = wd.handles.get(d) {
+                                let dist = (dd.x - gx).hypot(dd.y - gy);
+                                if dist < best.0 { best = (dist, d); }
+                            }
+                        }
+                        if let Some(w3_game::types::Obj::Destructable(dd)) = wd.handles.get(best.1) {
+                            let o = wd.objects.destructables.get(dd.type_id).unwrap();
+                            eprintln!("nearest dest {:.0} away at ({:.0},{:.0},{:.0}) life {} vis {} sel {} occH {}", best.0, dd.x, dd.y, dd.z, dd.life, dd.visible, o.str("selSize"), o.str("occH"));
+                        }
+                    }
+                }
+                eprintln!("unit {:?} dest {:?} ground {:?}", scene.pick_unit(x, y, (w, h)), scene.pick_destructable(x, y, (w, h)), scene.ground_at(x, y, (w, h)));
+                i += 3;
+            }
+            "state" => {
+                if let Some(g) = &scene.game {
+                    let p = &g.world.players[g.world.local_player as usize];
+                    eprintln!("gold {} lumber {}", p.get_state(1), p.get_state(2));
+                }
+                i += 1;
             }
             other => panic!("unknown command {other}"),
         }
     }
     scene.update(0.02);
     scene.sync_units(&device, &queue, &mut assets);
+    scene.sync_destructables(&device, &queue, &mut assets);
     let size = wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 };
     let color = device.create_texture(&wgpu::TextureDescriptor {
         label: None,

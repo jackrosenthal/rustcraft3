@@ -74,12 +74,37 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         anim_serial: 0,
         death_time: 0.0,
         pathing_cells: Vec::new(),
+        carry_gold: 0,
+        carry_lumber: 0,
+        work_timer: 0.0,
+        harvest_source: 0,
+        inside: 0,
     };
+    let path_tex = if unit.is_building { o.str("pathTex") } else { String::new() };
+    let mut unit = unit;
+    // Gold mines start with their ability's gold (Agld DataA).
+    for (a, _) in &unit.abilities {
+        if let Some(ab) = w.objects.abilities.get(*a) {
+            if ab.str("code") == "Agld" {
+                unit.resource = ab.int("DataA1");
+            }
+        }
+    }
     let h = w.handles.insert(Obj::Unit(Box::new(unit)));
     if let Some(u) = w.unit_mut(h) {
         u.handle = h;
     }
     w.unit_order.push(h);
+    if !path_tex.is_empty() {
+        // Structures are always placed facing BuildingAngle; their footprint does not turn.
+        let cells = w.pathing_cells(&path_tex, x, y, 0.0);
+        if let Some(p) = w.pathing.as_mut() {
+            p.stamp(&cells, 1);
+        }
+        if let Some(u) = w.unit_mut(h) {
+            u.pathing_cells = cells;
+        }
+    }
     h
 }
 
@@ -118,6 +143,11 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
 }
 
 pub fn remove_unit(w: &mut World, h: u32) {
+    if let Some(cells) = w.unit_mut(h).map(|u| std::mem::take(&mut u.pathing_cells)) {
+        if let Some(p) = w.pathing.as_mut() {
+            p.stamp(&cells, -1);
+        }
+    }
     if w.unit(h).is_some() {
         w.handles.remove(h);
         w.unit_order.retain(|x| *x != h);
@@ -608,5 +638,6 @@ fn dummy_unit() -> Unit {
         time_scale: 1.0, inventory: [0; 6], rally: None, explode_on_death: false, is_building: false, is_hero: false,
         collision: 0.0, action: Action::Idle, path: vec![], repath_timer: 0.0, cooldown: 0.0, swing: None,
         acquire_timer: 0.0, anim: String::new(), anim_serial: 0, death_time: 0.0, pathing_cells: vec![],
+        carry_gold: 0, carry_lumber: 0, work_timer: 0.0, harvest_source: 0, inside: 0,
     }
 }

@@ -5,6 +5,15 @@ use w3_jass::Vm;
 use crate::event_ids::*;
 use crate::natives::players::is_ally;
 use crate::natives::units::kill_unit;
+
+fn d_kill(w: &mut World, vm: &mut Vm, h: u32) {
+    if let Some(Obj::Destructable(d)) = w.handles.get_mut(h) {
+        d.life = 0.0;
+    }
+    crate::natives::objects::unstamp_destructable(w, h);
+    let ctx = EventCtx { destructable: h, widget: h, ..Default::default() };
+    w.fire(vm, ctx, |_, k| matches!(k, EventKind::Death(x) if *x == h));
+}
 use crate::objects::Id;
 use crate::types::*;
 use crate::world::World;
@@ -178,6 +187,10 @@ impl World {
         } else if order == patrol {
             let p = self.unit(h).map(|u| (u.x, u.y)).unwrap_or_default();
             Action::Patrol { a: p, b: (x, y) }
+        } else if (order == smart || order == crate::natives::basic::order_id("harvest")) && target != 0 && self.can_harvest(h, target) {
+            Action::Harvest { target }
+        } else if order == crate::natives::basic::order_id("returnresources") {
+            Action::ReturnResources
         } else if (order == smart || order == mv) && target != 0 {
             match owner_of(self, target) {
                 Some(o) if !is_ally(self, me, o) && order == smart => Action::Attack { target },
@@ -192,6 +205,7 @@ impl World {
         } else {
             return;
         };
+        self.leave_mine(h);
         if let Some(u) = self.unit_mut(h) {
             u.action = action;
             u.path.clear();
@@ -443,6 +457,8 @@ impl World {
                         self.unit_mut(h).unwrap().action = Action::Idle;
                     }
                 }
+                Action::Harvest { target } => self.harvest(vm, h, target, dt),
+                Action::ReturnResources => self.return_resources(h, dt),
                 Action::Patrol { a, b } => {
                     if self.unit(h).is_some_and(|u| u.path.is_empty()) {
                         self.path_to(h, b);
@@ -457,11 +473,277 @@ impl World {
         self.update_missiles(vm, dt);
     }
 
+    /// The unit's ability with the given base code, with its level.
+    pub fn ability_with_code(&self, h: u32, code: &str) -> Option<(Id, u32)> {
+        let u = self.unit(h)?;
+        u.abilities.iter().find_map(|&(id, lvl)| {
+            let a = self.objects.abilities.get(id)?;
+            (a.str("code") == code).then_some((id, lvl.max(1) as u32))
+        })
+    }
+
+    fn ability_real(&self, id: Id, field: &str, level: u32) -> f32 {
+        self.objects.abilities.get(id).map_or(0.0, |a| a.level_real(field, level))
+    }
+
+    fn is_tree(&self, h: u32) -> bool {
+        match self.handles.get(h) {
+            Some(Obj::Destructable(d)) => self.objects.destructables.get(d.type_id).is_some_and(|o| o.str("targType").to_ascii_lowercase().contains("tree")) && d.life > 0.0,
+            _ => false,
+        }
+    }
+
+    fn is_mine(&self, h: u32) -> bool {
+        self.unit(h).is_some_and(|u| !u.dead) && self.ability_with_code(h, "Agld").is_some()
+    }
+
+    pub fn can_harvest(&self, h: u32, target: u32) -> bool {
+        self.ability_with_code(h, "Ahar").is_some() && (self.is_mine(target) || self.is_tree(target))
+            || self.ability_with_code(h, "Ahrl").is_some() && self.is_tree(target)
+    }
+
+    fn leave_mine(&mut self, h: u32) {
+        let mine = self.unit(h).map_or(0, |u| u.inside);
+        if mine == 0 {
+            return;
+        }
+        if let Some(m) = self.unit_mut(mine) {
+            m.inside = m.inside.saturating_sub(1);
+        }
+        if let Some(u) = self.unit_mut(h) {
+            u.inside = 0;
+            u.hidden = false;
+        }
+    }
+
+    fn carry_tag(u: &Unit) -> &'static str {
+        if u.carry_gold > 0 {
+            " gold"
+        } else if u.carry_lumber > 0 {
+            " lumber"
+        } else {
+            ""
+        }
+    }
+
+    /// Radius used for reaching a unit: structures extend to their pathing footprint.
+    pub fn reach_radius(&self, h: u32) -> f32 {
+        let Some(u) = self.unit(h) else { return 16.0 };
+        if u.pathing_cells.is_empty() {
+            return u.collision;
+        }
+        let (mut x0, mut x1, mut y0, mut y1) = (i32::MAX, i32::MIN, i32::MAX, i32::MIN);
+        for &(x, y) in &u.pathing_cells {
+            x0 = x0.min(x);
+            x1 = x1.max(x);
+            y0 = y0.min(y);
+            y1 = y1.max(y);
+        }
+        let span = ((x1 - x0 + 1).max(y1 - y0 + 1)) as f32 * crate::pathing::CELL;
+        (span / 2.0).max(u.collision)
+    }
+
+    /// Walks toward a widget until within `range` of its edge; true once there.
+    fn approach(&mut self, h: u32, target: u32, range: f32, dt: f32) -> bool {
+        let Some(tp) = self.widget_pos(target) else { return false };
+        let tr = if self.unit(target).is_some() { self.reach_radius(target) } else { 16.0 };
+        let u = self.unit(h).unwrap();
+        let d = (tp.0 - u.x).hypot(tp.1 - u.y) - u.collision - tr;
+        if d <= range {
+            let u = self.unit_mut(h).unwrap();
+            u.path.clear();
+            return true;
+        }
+        if u.path.is_empty() || u.repath_timer <= 0.0 {
+            self.path_to(h, tp);
+        }
+        let tag = Self::carry_tag(self.unit(h).unwrap());
+        self.walk(h, dt);
+        if let Some(u) = self.unit_mut(h) {
+            if u.anim == "walk" && !tag.is_empty() {
+                set_anim(u, &format!("walk{tag}"));
+            }
+        }
+        false
+    }
+
+    fn harvest(&mut self, vm: &mut Vm, h: u32, target: u32, dt: f32) {
+        let Some((ahar, lvl)) = self.ability_with_code(h, "Ahar").or_else(|| self.ability_with_code(h, "Ahrl")) else {
+            self.unit_mut(h).unwrap().action = Action::Idle;
+            return;
+        };
+        let code = self.objects.abilities.get(ahar).map(|a| a.str("code")).unwrap_or_default();
+        let is_mine = self.is_mine(target);
+        let is_tree = self.is_tree(target);
+        if !is_mine && !is_tree {
+            // The source is gone: look for another tree nearby, else stop.
+            let was_tree = matches!(self.handles.get(target), Some(Obj::Destructable(_)));
+            let area = self.ability_real(ahar, "Area", lvl).max(0.0);
+            let next = if was_tree { self.nearest_tree(h, area) } else { None };
+            let u = self.unit_mut(h).unwrap();
+            match next {
+                Some(t) => u.action = Action::Harvest { target: t },
+                None if u.carry_gold > 0 || u.carry_lumber > 0 => u.action = Action::ReturnResources,
+                None => {
+                    u.action = Action::Idle;
+                    set_anim(u, "stand");
+                }
+            }
+            return;
+        }
+        if let Some(u) = self.unit_mut(h) {
+            u.harvest_source = target;
+        }
+        // Full: go home.
+        let u = self.unit(h).unwrap();
+        let gold_cap = self.ability_real(ahar, "DataB", lvl) as i32;
+        let lumber_cap = if code == "Ahrl" { self.ability_real(ahar, "DataB", lvl) as i32 } else { self.ability_real(ahar, "DataC", lvl) as i32 };
+        if (is_mine && u.carry_lumber > 0) || (is_tree && u.carry_gold > 0) || (is_tree && u.carry_lumber >= lumber_cap) {
+            self.unit_mut(h).unwrap().action = Action::ReturnResources;
+            return;
+        }
+        if is_mine {
+            if u.inside == target {
+                let u = self.unit_mut(h).unwrap();
+                u.work_timer -= dt;
+                if u.work_timer <= 0.0 {
+                    self.leave_mine(h);
+                    let take = gold_cap.min(self.unit(target).map_or(0, |m| m.resource));
+                    if let Some(m) = self.unit_mut(target) {
+                        m.resource -= take;
+                    }
+                    let u = self.unit_mut(h).unwrap();
+                    u.carry_gold = take;
+                    u.carry_lumber = 0;
+                    u.action = Action::ReturnResources;
+                    if self.unit(target).is_some_and(|m| m.resource <= 0) {
+                        kill_unit(self, vm, target, 0);
+                    }
+                }
+                return;
+            }
+            if !self.approach(h, target, 0.0 + 8.0, dt) {
+                return;
+            }
+            // Enter if the mine has room (Agld DataC: workers inside at once).
+            let (agld, mlvl) = self.ability_with_code(target, "Agld").unwrap();
+            let capacity = self.ability_real(agld, "DataC", mlvl).max(1.0) as u32;
+            let duration = self.ability_real(agld, "DataB", mlvl);
+            if self.unit(target).is_some_and(|m| m.inside < capacity) {
+                if let Some(m) = self.unit_mut(target) {
+                    m.inside += 1;
+                }
+                let u = self.unit_mut(h).unwrap();
+                u.inside = target;
+                u.hidden = true;
+                u.work_timer = duration;
+            } else if let Some(u) = self.unit_mut(h) {
+                set_anim(u, "stand");
+            }
+            return;
+        }
+        // Trees: Rng is the chopping range, Dur the time between swings, DataA lumber per
+        // swing; each swing damages the tree by one.
+        let range = self.ability_real(ahar, "Rng", lvl);
+        if !self.approach(h, target, range, dt) {
+            return;
+        }
+        let tp = self.widget_pos(target).unwrap();
+        let u = self.unit_mut(h).unwrap();
+        let left = turn(u, angle_to((u.x, u.y), tp), dt);
+        if left.abs() > 30.0 {
+            return;
+        }
+        u.work_timer -= dt;
+        if u.work_timer <= 0.0 {
+            let per = self.ability_real(ahar, "DataA", lvl) as i32;
+            let interval = self.ability_real(ahar, "Dur", lvl).max(0.1);
+            let u = self.unit_mut(h).unwrap();
+            u.work_timer = interval;
+            u.carry_gold = 0;
+            u.carry_lumber = (u.carry_lumber + per).min(lumber_cap.max(1));
+            restart_anim(u, "attack lumber");
+            let mut died = false;
+            if let Some(Obj::Destructable(d)) = self.handles.get_mut(target) {
+                d.life -= 1.0;
+                died = d.life <= 0.0;
+            }
+            if died {
+                d_kill(self, vm, target);
+            }
+        }
+    }
+
+    fn nearest_tree(&self, h: u32, radius: f32) -> Option<u32> {
+        let u = self.unit(h)?;
+        self.destructable_order
+            .iter()
+            .copied()
+            .filter(|&d| self.is_tree(d))
+            .filter_map(|d| self.widget_pos(d).map(|p| ((p.0 - u.x).hypot(p.1 - u.y), d)))
+            .filter(|(dist, _)| *dist <= radius)
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|x| x.1)
+    }
+
+    /// The closest friendly structure that accepts what the unit carries (Artn DataA gold,
+    /// DataB lumber).
+    fn drop_off(&self, h: u32) -> Option<u32> {
+        let u = self.unit(h)?;
+        let (gold, lumber) = (u.carry_gold > 0, u.carry_lumber > 0);
+        let mut best: Option<(f32, u32)> = None;
+        for &o in &self.unit_order {
+            let Some(b) = self.unit(o) else { continue };
+            if b.dead || b.owner != u.owner {
+                continue;
+            }
+            let Some((a, l)) = self.ability_with_code(o, "Artn") else { continue };
+            let accepts = (gold && self.ability_real(a, "DataA", l) != 0.0) || (lumber && self.ability_real(a, "DataB", l) != 0.0);
+            if !accepts {
+                continue;
+            }
+            let d = (b.x - u.x).hypot(b.y - u.y);
+            if best.is_none_or(|x| d < x.0) {
+                best = Some((d, o));
+            }
+        }
+        best.map(|b| b.1)
+    }
+
+    fn return_resources(&mut self, h: u32, dt: f32) {
+        let Some(u) = self.unit(h) else { return };
+        if u.carry_gold == 0 && u.carry_lumber == 0 {
+            let src = u.harvest_source;
+            let u = self.unit_mut(h).unwrap();
+            u.action = if src != 0 { Action::Harvest { target: src } } else { Action::Idle };
+            return;
+        }
+        let Some(hall) = self.drop_off(h) else {
+            let u = self.unit_mut(h).unwrap();
+            u.action = Action::Idle;
+            set_anim(u, "stand");
+            return;
+        };
+        if !self.approach(h, hall, 8.0, dt) {
+            return;
+        }
+        let u = self.unit_mut(h).unwrap();
+        let (gold, lumber, owner, src) = (u.carry_gold, u.carry_lumber, u.owner, u.harvest_source);
+        u.carry_gold = 0;
+        u.carry_lumber = 0;
+        u.action = if src != 0 { Action::Harvest { target: src } } else { Action::Idle };
+        let p = &mut self.players[owner as usize];
+        *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) += gold;
+        *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) += lumber;
+        *p.state.entry(player_state::GOLD_GATHERED).or_insert(0) += gold;
+        *p.state.entry(player_state::LUMBER_GATHERED).or_insert(0) += lumber;
+    }
+
     /// Moves into range of `target` and starts a swing when ready.
     fn try_attack(&mut self, h: u32, target: u32, dt: f32, stationary: bool) {
         let (Some(u), Some(t)) = (self.unit(h), self.unit(target)) else { return };
         let Some(wp) = weapon(self, u.type_id) else { return };
-        let d = (t.x - u.x).hypot(t.y - u.y) - u.collision - t.collision;
+        let d = (t.x - u.x).hypot(t.y - u.y) - u.collision - self.reach_radius(target);
         let (tpos, upos) = ((t.x, t.y), (u.x, u.y));
         if d > wp.range {
             if stationary {

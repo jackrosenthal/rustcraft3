@@ -28,13 +28,33 @@ pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>
         invulnerable: false,
         visible: true,
         animation: None,
+        pathing_cells: Vec::new(),
     };
+    let path_tex = o.str("pathTex");
     let h = w.handles.insert(Obj::Destructable(Box::new(d)));
     if let Some(Obj::Destructable(d)) = w.handles.get_mut(h) {
         d.handle = h;
     }
     w.destructable_order.push(h);
+    let cells = w.pathing_cells(&path_tex, x, y, facing);
+    if let Some(p) = w.pathing.as_mut() {
+        p.stamp(&cells, 1);
+    }
+    if let Some(Obj::Destructable(d)) = w.handles.get_mut(h) {
+        d.pathing_cells = cells;
+    }
     h
+}
+
+/// Clears a destructable's pathing blockers (on death or removal).
+pub fn unstamp_destructable(w: &mut World, h: u32) {
+    let cells = match w.handles.get_mut(h) {
+        Some(Obj::Destructable(d)) => std::mem::take(&mut d.pathing_cells),
+        _ => return,
+    };
+    if let Some(p) = w.pathing.as_mut() {
+        p.stamp(&cells, -1);
+    }
 }
 
 fn dest(w: &World, h: u32) -> Option<&Destructable> {
@@ -97,6 +117,7 @@ fn kill_destructable(w: &mut World, vm: &mut Vm, h: u32) {
         return;
     }
     d.life = 0.0;
+    unstamp_destructable(w, h);
     let ctx = EventCtx { destructable: h, widget: h, ..Default::default() };
     w.fire(vm, ctx, |_, k| matches!(k, EventKind::Death(x) if *x == h));
 }
@@ -162,6 +183,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         RemoveDestructable => |w, _, a| {
             let h = a.h(0);
+            unstamp_destructable(w, h);
             if dest(w, h).is_some() { w.handles.remove(h); w.destructable_order.retain(|x| *x != h); }
             none()
         },

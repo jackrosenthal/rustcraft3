@@ -82,6 +82,32 @@ impl Game {
         if let (Ok(wpm), Some(t)) = (chain.read("war3map.wpm"), world.terrain_heights.as_ref()) {
             world.pathing = pathing::PathingMap::parse(&wpm, t.offset);
         }
+        if let Ok(bytes) = chain.read("war3map.doo") {
+            match w3_formats::map::Doodads::parse(&bytes) {
+                Ok(doo) => {
+                    for d in &doo.doodads {
+                        if world.objects.destructables.get(d.id).is_none() {
+                            continue;
+                        }
+                        let h = natives::objects::create_destructable(
+                            &mut world,
+                            d.id,
+                            d.position[0],
+                            d.position[1],
+                            Some(d.position[2]),
+                            d.angle.to_degrees(),
+                            d.scale[0],
+                            d.variation,
+                        );
+                        // The placed life is a percentage of the type's maximum.
+                        if let Some(types::Obj::Destructable(x)) = world.handles.get_mut(h) {
+                            x.life = x.max_life * d.life as f32 / 100.0;
+                        }
+                    }
+                }
+                Err(e) => log::warn!("war3map.doo: {e}"),
+            }
+        }
         world.camera_bounds = info.camera_bounds;
         for (i, p) in info.players.iter().enumerate() {
             if let Some(pl) = world.players.get_mut(p.id as usize) {

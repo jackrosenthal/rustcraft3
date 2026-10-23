@@ -181,6 +181,7 @@ impl ApplicationHandler for App {
                     scene.camera.target.y += d.y * speed;
                     scene.update(dt);
                     scene.sync_units(&r.gpu.device, &r.gpu.queue, &mut r.assets);
+                    scene.sync_destructables(&r.gpu.device, &r.gpu.queue, &mut r.assets);
                 }
                 let frame = match r.gpu.surface.get_current_texture() {
                     wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,

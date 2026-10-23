@@ -183,6 +183,10 @@ pub struct World {
     /// Volcanoes standing while their casters channel.
     #[serde(default)]
     pub volcanoes: Vec<crate::volcano::Volcano>,
+    /// The creep camps the AI knows (each up to 12 hostile neutrals), and the creeps
+    /// placed in them.
+    #[serde(default)]
+    pub creep_camps: Vec<Vec<u32>>,
     /// Items the spell AI chose to use: the unit, slot, and target.
     #[serde(default)]
     pub ai_item_uses: Vec<(u32, usize, u32)>,
@@ -403,6 +407,7 @@ impl World {
             incinerations: Vec::new(),
             volcanoes: Vec::new(),
             ai_item_uses: Vec::new(),
+            creep_camps: Vec::new(),
             blight: Vec::new(),
             blight_serial: 0,
             autocast_timer: 0.0,

@@ -214,10 +214,11 @@ impl World {
         (gold as i32, lumber as i32, time)
     }
 
-    /// Dead heroes an altar can bring back for its owner.
+    /// Dead heroes an altar (a structure whose type has Revive) can bring back for its
+    /// owner.
     pub fn revivable(&self, altar: u32) -> Vec<u32> {
         let Some(a) = self.unit(altar) else { return vec![] };
-        if self.ability_with_code(altar, "Arev").is_none() {
+        if a.constructing.is_some() || !self.objects.units.get(a.type_id).is_some_and(|o| o.bool("Revive")) {
             return vec![];
         }
         let owner = a.owner;

@@ -59,6 +59,95 @@ pub struct AiState {
 const TOWN_MINE_RADIUS: f32 = 1500.0;
 
 impl World {
+    /// Places the hostile neutrals not yet in a camp (FUN_6f9b9230, FUN_6f9b7b30): each
+    /// joins the camp whose first living member is nearest within
+    /// CreepCampPathingCellDistance pathing cells (Misc) and has room for it (12), or
+    /// starts its own.
+    fn place_creeps(&mut self) {
+        let cells = self.misc_f32("CreepCampPathingCellDistance", 26.0);
+        let reach = cells * 32.0;
+        let placed: std::collections::HashSet<u32> = self.creep_camps.iter().flatten().copied().collect();
+        let new: Vec<u32> = self.unit_order.iter().copied().filter(|h| !placed.contains(h)).filter(|&h| self.unit(h).is_some_and(|u| u.owner == PLAYER_NEUTRAL_AGGRESSIVE && !u.dead && !self.is_summoned(h))).collect();
+        for h in new {
+            let Some((x, y)) = self.unit(h).map(|u| (u.x, u.y)) else { continue };
+            let mut best: Option<(usize, f32)> = None;
+            for (i, camp) in self.creep_camps.iter().enumerate() {
+                if camp.len() >= 12 {
+                    continue;
+                }
+                let Some(first) = camp.iter().filter_map(|&c| self.unit(c)).find(|u| !u.dead) else { continue };
+                let d = (first.x - x).hypot(first.y - y);
+                if d < reach && best.is_none_or(|b| d < b.1) {
+                    best = Some((i, d));
+                }
+            }
+            match best {
+                Some((i, _)) => self.creep_camps[i].push(h),
+                None => self.creep_camps.push(vec![h]),
+            }
+        }
+    }
+
+    /// The length of the ground path from `from` to `to`, and what is left from where it
+    /// ends when `to` cannot be reached.
+    fn walk_length(&self, from: (f32, f32), to: (f32, f32), radius: f32) -> f32 {
+        let Some(map) = &self.pathing else { return (to.0 - from.0).hypot(to.1 - from.1) };
+        let mut at = from;
+        let mut len = 0.0;
+        for p in map.find_path(from, to, radius, 200_000) {
+            len += (p.0 - at.0).hypot(p.1 - at.1);
+            at = p;
+        }
+        len + (to.0 - at.0).hypot(to.1 - at.1)
+    }
+
+    /// GetCreepCamp (FUN_6f9baa40): the nearest camp to the player's start whose
+    /// strength (its creeps' levels, air units counted twice) lies within min..max and
+    /// that has no air units unless they are allowed; a camp too strong (or with air
+    /// units not allowed) rules out those more than 200 farther away.  Failing that, the
+    /// nearest weaker camp.  Its first living creep.  A creep's strength is its level
+    /// (FUN_6f685150; a Hero's plus one).
+    pub(crate) fn creep_camp(&mut self, player: u8, min: i32, max: i32, flyers_ok: bool) -> u32 {
+        self.place_creeps();
+        let (sx, sy) = self.start_of(player);
+        let air = |w: &World, u: &Unit| w.objects.units.get(u.type_id).is_some_and(|o| o.str("movetp").eq_ignore_ascii_case("fly"));
+        let mut limit = 999_999.0f32;
+        let mut best: Option<(u32, f32)> = None;
+        let mut weak: Option<(u32, f32)> = None;
+        for camp in self.creep_camps.clone() {
+            let living: Vec<&Unit> = camp.iter().filter_map(|&c| self.unit(c)).filter(|u| !u.dead).collect();
+            let Some(first) = camp.iter().copied().find(|&c| self.unit(c).is_some_and(|u| !u.dead)) else { continue };
+            // The length of the walk from the start to the camp's first living creep.
+            let d = self.unit(first).map_or(f32::MAX, |u| self.walk_length((sx, sy), (u.x, u.y), u.collision));
+            if d > limit {
+                continue;
+            }
+            let strength: i32 = living.iter().map(|u| {
+                let s = if u.is_hero { u.level + 1 } else { u.level };
+                if air(self, u) { 2 * s } else { s }
+            }).sum();
+            let has_air = living.iter().any(|u| air(self, u));
+            if max < strength || (!flyers_ok && has_air) {
+                if d < limit - 200.0 {
+                    limit = d + 200.0;
+                }
+                if best.is_some_and(|b| limit < b.1) {
+                    best = None;
+                }
+                if weak.is_some_and(|b| limit < b.1) {
+                    weak = None;
+                }
+            } else if strength < min {
+                if weak.is_none_or(|b| d < b.1) {
+                    weak = Some((first, d));
+                }
+            } else if best.is_none_or(|b| d < b.1) {
+                best = Some((first, d));
+            }
+        }
+        best.or(weak).map_or(0, |b| b.0)
+    }
+
     /// Starts a computer player's AI script (StartMeleeAI / StartCampaignAI).
     /// Compiles an AI script; returns its machine and its natives' functions and names.
     pub(crate) fn compile_ai(&self, script: &str) -> Option<(Vm, Vec<Option<NativeFn>>, Vec<String>)> {
@@ -310,6 +399,25 @@ impl World {
     }
 
     /// Starts producing one unit, structure, or hero; returns whether it started.
+    /// A Hero type first (FUN_6f9caff0): an idle altar of the player revives a dead
+    /// Hero of that type; failing that, owning one (dead or alive) is enough.
+    fn ai_revive(&mut self, vm: &mut Vm, p: u8, id: Id) -> bool {
+        if !(b'A'..=b'Z').contains(&id[0]) {
+            return false;
+        }
+        let units = self.ai_units(p);
+        for altar in units {
+            if self.unit(altar).is_some_and(|a| a.revive.is_some() || !a.queue.is_empty()) {
+                continue;
+            }
+            if let Some(hero) = self.revivable(altar).into_iter().find(|&h| self.unit(h).is_some_and(|u| u.type_id == id)) {
+                let _ = self.start_revive(vm, altar, hero);
+                return true;
+            }
+        }
+        self.unit_order.iter().any(|&h| self.unit(h).is_some_and(|u| u.owner == p && u.is_hero && u.type_id == id))
+    }
+
     pub fn ai_produce(&mut self, p: u8, id: Id, town: i32) -> bool {
         let Some(o) = self.objects.units.get(id) else { return false };
         // Town hall tiers and other structure upgrades transform an existing structure.
@@ -600,12 +708,12 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         GetEnemyPower => |_, _, _| int(0),
         SetAllianceTarget => |_, _, _| none(),
         GetAllianceTarget => |_, _, _| none(),
-        SetProduce => |w, _, a| {
+        SetProduce => |w, vm, a| {
             let p = w.ai_player();
             let id = id_from_int(a.i(1));
             let mut ok = true;
             for _ in 0..a.i(0).max(0) {
-                if !w.ai_produce(p, id, a.i(2)) {
+                if !w.ai_revive(vm, p, id) && !w.ai_produce(p, id, a.i(2)) {
                     ok = false;
                     break;
                 }
@@ -656,16 +764,8 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             boolean(w.fill_captain(false, id, a.i(0)))
         },
         GetCreepCamp => |w, _, a| {
-            // The closest hostile neutral whose level fits the range.
             let p = w.ai_player();
-            let (sx, sy) = w.start_of(p);
-            let (lo, hi) = (a.i(0), a.i(1));
-            let best = w.unit_order.iter().copied()
-                .filter_map(|h| w.unit(h).map(|u| (h, u)))
-                .filter(|(_, u)| u.owner == PLAYER_NEUTRAL_AGGRESSIVE && !u.dead && (lo..=hi).contains(&u.level))
-                .map(|(h, u)| ((u.x - sx).hypot(u.y - sy), h))
-                .min_by(|a, b| a.0.total_cmp(&b.0)).map(|x| x.1);
-            handle(best.unwrap_or(0))
+            handle(w.creep_camp(p, a.i(0), a.i(1), a.b(2)))
         },
         StartGetEnemyBase => |w, _, _| {
             let p = w.ai_player();

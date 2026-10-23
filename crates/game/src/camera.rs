@@ -43,6 +43,26 @@ pub struct GameCamera {
     pub defaults: [f32; FIELD_COUNT],
     pan: Option<(Lerp, Lerp)>,
     lerps: [Option<Lerp>; FIELD_COUNT],
+    /// The unit the camera follows and the offset from it (SetCameraTargetController).
+    #[serde(default)]
+    pub follow: Option<(u32, f32, f32)>,
+    /// Shaking of the eye and of the target: magnitude, velocity, and whether only up
+    /// and down (CameraSetSourceNoise, CameraSetTargetNoise, and their Ex forms).
+    #[serde(default)]
+    pub source_noise: (f32, f32, bool),
+    #[serde(default)]
+    pub target_noise: (f32, f32, bool),
+}
+
+/// A camera noise's offset at time `t`: two sine waves per axis at the velocity's
+/// rate, scaled to the magnitude.
+pub fn noise_offset((mag, vel, vertical): (f32, f32, bool), t: f32) -> [f32; 3] {
+    if mag == 0.0 {
+        return [0.0; 3];
+    }
+    let w = vel.max(0.0) * 0.01;
+    let wave = |k: f32, p: f32| ((t * w * k + p).sin() * 0.6 + (t * w * k * 2.3 + p * 1.7).sin() * 0.4) * mag;
+    if vertical { [0.0, 0.0, wave(1.0, 0.3)] } else { [wave(1.0, 0.0), wave(1.13, 1.1), wave(0.91, 2.2)] }
 }
 
 impl GameCamera {
@@ -56,7 +76,7 @@ impl GameCamera {
         defaults[FIELD_ROLL] = 0.0;
         defaults[FIELD_ROTATION] = first("Rotation", 90.0);
         defaults[FIELD_ZOFFSET] = first("Height", 0.0);
-        GameCamera { x: 0.0, y: 0.0, fields: defaults, defaults, pan: None, lerps: [None; FIELD_COUNT] }
+        GameCamera { x: 0.0, y: 0.0, fields: defaults, defaults, pan: None, lerps: [None; FIELD_COUNT], follow: None, source_noise: (0.0, 0.0, false), target_noise: (0.0, 0.0, false) }
     }
 
     /// Moves a field to `value` over `duration` seconds (at once when zero).

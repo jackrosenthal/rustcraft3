@@ -183,6 +183,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         ResetToGameCamera => |w, _, a| {
             let d = a.r(0);
+            w.camera.follow = None;
             for f in 0..crate::camera::FIELD_COUNT {
                 let v = w.camera.defaults[f];
                 w.camera.set_field(f, v, d);
@@ -190,16 +191,20 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         StopCamera => |w, _, _| { w.camera.stop(); none() },
-        SetCameraTargetController => |_, _, _| none(),
+        SetCameraTargetController => |w, _, a| {
+            let u = a.h(0);
+            w.camera.follow = (u != 0).then(|| (u, a.r(1), a.r(2)));
+            none()
+        },
         SetCameraOrientController => |_, _, _| none(),
         SetCameraRotateMode => |_, _, _| none(),
         SetCinematicCamera => |_, _, _| none(),
         SetCameraBoundsToRect => |_, _, _| none(),
         CameraSetSmoothingFactor => |_, _, _| none(),
-        CameraSetSourceNoise => |_, _, _| none(),
-        CameraSetTargetNoise => |_, _, _| none(),
-        CameraSetSourceNoiseEx => |_, _, _| none(),
-        CameraSetTargetNoiseEx => |_, _, _| none(),
+        CameraSetSourceNoise => |w, _, a| { w.camera.source_noise = (a.r(0), a.r(1), false); none() },
+        CameraSetTargetNoise => |w, _, a| { w.camera.target_noise = (a.r(0), a.r(1), false); none() },
+        CameraSetSourceNoiseEx => |w, _, a| { w.camera.source_noise = (a.r(0), a.r(1), a.b(2)); none() },
+        CameraSetTargetNoiseEx => |w, _, a| { w.camera.target_noise = (a.r(0), a.r(1), a.b(2)); none() },
         GetCameraField => |w, _, a| {
             let f = a.h(0) as usize;
             let v = w.camera.fields.get(f).copied().unwrap_or(0.0);

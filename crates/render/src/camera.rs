@@ -20,6 +20,8 @@ pub struct Camera {
     pub near: f32,
     pub far: f32,
     pub roll: f32,
+    /// Where the eye is moved from its place behind the target (camera noise).
+    pub eye_offset: Vec3,
 }
 
 impl Default for Camera {
@@ -34,6 +36,7 @@ impl Default for Camera {
             near: 100.0,
             far: 5000.0,
             roll: 0.0,
+            eye_offset: Vec3::ZERO,
         }
     }
 }
@@ -45,11 +48,11 @@ impl Camera {
     }
 
     pub fn eye(&self) -> Vec3 {
-        self.target - self.direction() * self.distance
+        self.target - self.direction() * self.distance + self.eye_offset
     }
 
     pub fn view(&self) -> Mat4 {
-        let dir = self.direction();
+        let dir = (self.target - self.eye()).normalize_or(self.direction());
         let up = Quat::from_axis_angle(dir, self.roll.to_radians()) * Vec3::Z;
         Mat4::look_to_rh(self.eye(), dir, up)
     }

@@ -741,6 +741,17 @@ impl World {
         let hours_per_second = day_hours / day_length * self.time_of_day_scale;
         self.time_of_day = (self.time_of_day + dt * hours_per_second) % day_hours;
         self.camera.update(dt);
+        // A camera following a unit keeps its target on it.
+        if let Some((u, ox, oy)) = self.camera.follow {
+            match self.unit(u) {
+                Some(unit) => {
+                    let (x, y) = (unit.x + ox, unit.y + oy);
+                    self.camera.x = x;
+                    self.camera.y = y;
+                }
+                None => self.camera.follow = None,
+            }
+        }
         prof!(self, "update_text_tags", self.update_text_tags(dt));
         prof!(self, "update_blight", self.update_blight(dt));
         prof!(self, "update_mines", self.update_mines());

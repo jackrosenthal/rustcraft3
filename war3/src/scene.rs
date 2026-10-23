@@ -2388,6 +2388,10 @@ impl Scene {
             self.camera.roll = c.fields[FIELD_ROLL];
             self.camera.rotation = c.fields[FIELD_ROTATION];
             self.camera.target.z = self.camera_ground(c.x, c.y) + c.fields[FIELD_ZOFFSET];
+            // Camera noise shakes the target and the eye.
+            let t = noise_offset(c.target_noise, self.time);
+            self.camera.target += Vec3::from_array(t);
+            self.camera.eye_offset = Vec3::from_array(noise_offset(c.source_noise, self.time + 17.0));
         } else {
             self.camera.target.z = self.camera_ground(self.camera.target.x, self.camera.target.y);
         }

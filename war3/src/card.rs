@@ -201,7 +201,19 @@ impl Commands {
             let Some(ab) = w.objects.abilities.get(a) else { continue };
             // Abilities with a button position appear on the card.
             let Some((x, y)) = parse_pos(&ab.list("Buttonpos")) else { continue };
-            if ab.str("Art").is_empty() {
+            // Art may list one icon per race (Rally): human, orc, undead, night elf.
+            let race_index = match o.str("race").to_ascii_lowercase().as_str() {
+                "orc" => 1,
+                "undead" => 2,
+                "nightelf" => 3,
+                _ => 0,
+            };
+            let pick = |key: &str| {
+                let arts = ab.list(key);
+                arts.get(race_index).or(arts.first()).map(|s| s.trim().to_string()).unwrap_or_default()
+            };
+            let art = pick("Art");
+            if art.is_empty() {
                 continue;
             }
             // The ability's order string, as one of the game's order names.
@@ -213,7 +225,15 @@ impl Commands {
                 _ => (order, targeting != w3_game::ability::Targeting::None),
             };
             let ready = order.is_empty() || w.can_cast(h, a).is_ok();
-            out.push(Button { x, y, icon: ab.str("Art"), hotkey: hotkey(&ab.str("Hotkey")), action: Action::Order { order, targeted }, enabled: ready });
+            out.push(Button { x, y, icon: art, hotkey: hotkey(&ab.str("Hotkey")), action: Action::Order { order, targeted }, enabled: ready });
+            // The ability's second button (Unbuttonpos, Unart, Unorder), as Call to Arms
+            // has Back to Work.
+            if let (Some((ux, uy)), unart) = (parse_pos(&ab.list("Unbuttonpos")), pick("Unart")) {
+                let unorder = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Unorder"))).unwrap_or("");
+                if !unart.is_empty() && !unorder.is_empty() {
+                    out.push(Button { x: ux, y: uy, icon: unart, hotkey: hotkey(&ab.str("Unhotkey")), action: Action::Order { order: unorder, targeted: false }, enabled: true });
+                }
+            }
         }
         // An altar offers its owner's dead heroes, where their train buttons would be.
         for hero in w.revivable(h) {
@@ -222,6 +242,12 @@ impl Commands {
             let p = &w.players[u.owner as usize];
             let ok = p.get_state(1) >= g && p.get_state(2) >= l && u.revive.is_none();
             out.extend(object_button(hu.type_id, Action::Revive(hero), ok));
+        }
+        // Units that train units or revive heroes have rally (CUnit::vf107 adds
+        // CAbilityRally), shown as CmdRally.
+        let trains_units = o.list("Trains").iter().any(|t| w.objects.units.get(id_from_str(t.trim())).is_some());
+        if trains_units {
+            out.extend(self.command(db, "CmdRally", Action::Order { order: "setrally", targeted: true }, true));
         }
         if !u.queue.is_empty() || u.revive.is_some() {
             out.extend(self.command(db, "CmdCancelTrain", Action::CancelTrain, true));

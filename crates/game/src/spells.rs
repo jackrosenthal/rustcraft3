@@ -190,6 +190,15 @@ impl World {
             }
             // Flame Strike: DataA every DataB seconds for HeroDur, then DataC every DataD
             // seconds until Dur.
+            // Monsoon: DataA every DataB for Dur to what it allows within Area,
+            // structures taking DataC of it.
+            "ANmo" => {
+                let duration = self.d(a, "Dur", lvl);
+                let interval = self.d(a, "DataB", lvl).max(0.05);
+                self.ground_effects.push(GroundEffect { caster: h, owner, ability: a, level: lvl, x, y, elapsed: 0.0, duration, interval, next: 0.0, effect: 0 });
+                self.art_at(a, "EffectArt", x, y);
+                true
+            }
             "AHfs" => {
                 let duration = self.d(a, "Dur", lvl);
                 let interval = self.d(a, "DataB", lvl).max(0.05);
@@ -460,6 +469,13 @@ impl World {
                 self.drop_corpses(h);
                 true
             }
+            // Parasite: DataA a second for Dur, attacks DataB and moves DataC slower.
+            "ANpa" => {
+                let buff = self.buff_of(a, lvl);
+                let dur = self.duration_for(a, lvl, target);
+                self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: self.d(a, "DataA", lvl), attack_factor: -self.d(a, "DataB", lvl), move_factor: -self.d(a, "DataC", lvl), ..Default::default() });
+                true
+            }
             "AUls" => {
                 self.begin_swarm(h, a, lvl);
                 true
@@ -720,8 +736,9 @@ impl World {
                     }
                     // Burning Oil: DataA every DataB to what it allows within Area,
                         // structures taking DataE of it.
-                    "Abof" => {
-                        let (dmg, reduction) = (self.d(e.ability, "DataA", e.level), self.d(e.ability, "DataE", e.level));
+                    "Abof" | "ANmo" => {
+                        let reduction_key = if code == "ANmo" { "DataC" } else { "DataE" };
+                        let (dmg, reduction) = (self.d(e.ability, "DataA", e.level), self.d(e.ability, reduction_key, e.level));
                         for t in self.units_in(e.x, e.y, area) {
                             if self.cast_target_error(e.caster, e.ability, t).is_some() {
                                 continue;

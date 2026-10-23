@@ -27,6 +27,17 @@ impl World {
                 self.spell_damage(vm, h, t, amount);
             }
         }
+        // A unit dying with Parasite on it gives the parasite's caster DataE of UnitID
+        // for Cast seconds.
+        let parasite = self.unit(h).and_then(|u| u.buffs.iter().find(|b| self.ability_code(b.ability) == "ANpa").map(|b| (b.ability, b.level, b.caster)));
+        if let Some((a, lvl, caster)) = parasite {
+            let n = self.data(a, "DataE", lvl) as i32;
+            let t = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
+            let life = self.data(a, "Cast", lvl);
+            if let Some(o) = self.unit(caster).map(|c| c.owner) {
+                self.summon(caster, o, t, n, x, y, life);
+            }
+        }
         if let Some((a, lvl)) = self.ability_with_code(h, "Assp") {
             let lvl = lvl.max(1) as u32;
             let n = self.data(a, "DataA", lvl) as i32;

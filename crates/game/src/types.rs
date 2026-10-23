@@ -457,6 +457,9 @@ pub struct ItemBonus {
 pub struct Buff {
     /// Buff type from AbilityBuffData (e.g. BHtb).
     pub id: Id,
+    /// How many times it has been laid on (Incinerate).
+    #[serde(default)]
+    pub stacks: u32,
     pub ability: Id,
     pub level: u32,
     pub caster: u32,

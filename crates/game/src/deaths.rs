@@ -12,6 +12,26 @@ use crate::types::*;
 use crate::world::World;
 
 impl World {
+    /// Incinerated units bursting when their delay is up.
+    pub(crate) fn update_incinerations(&mut self, vm: &mut Vm) {
+        let now = self.time;
+        let due: Vec<_> = self.incinerations.iter().copied().filter(|e| e.0 <= now).collect();
+        self.incinerations.retain(|e| e.0 > now);
+        for (_, caster, a, lvl, buff, x, y) in due {
+            let art = self.objects.buffs.get(buff).map(|o| o.str("Specialart")).unwrap_or_default();
+            self.spawn_effect(&art, x, y);
+            let (full, full_r, half, half_r) = (self.data(a, "DataB", lvl), self.data(a, "DataC", lvl), self.data(a, "DataD", lvl), self.data(a, "DataE", lvl));
+            for t in self.units_in_pub(x, y, full_r.max(half_r)) {
+                if self.unit(t).is_none_or(|u| u.dead) || self.cast_target_error(caster, a, t).is_some() {
+                    continue;
+                }
+                let d = self.unit(t).map_or(f32::MAX, |u| (u.x - x).hypot(u.y - y));
+                let amount = if d <= full_r { full } else { half };
+                self.spell_damage(vm, caster, t, amount);
+            }
+        }
+    }
+
     /// Death abilities of `h`, which is dying (`killer` its killer).
     pub(crate) fn death_abilities(&mut self, vm: &mut Vm, h: u32) {
         let Some(u) = self.unit(h) else { return };
@@ -27,6 +47,13 @@ impl World {
                 let amount = if d <= full_r { full } else { part };
                 self.spell_damage(vm, h, t, amount);
             }
+        }
+        // A unit dying under Incinerate bursts DataF later: DataB to what the spell allows
+        // within DataC and DataD within DataE, with the buff's Specialart.
+        let incinerated = self.unit(h).and_then(|u| u.buffs.iter().find(|b| matches!(self.ability_code(b.ability).as_str(), "ANia" | "ANic")).map(|b| (b.ability, b.level, b.caster, b.id)));
+        if let Some((a, lvl, caster, buff)) = incinerated {
+            let delay = self.data(a, "DataF", lvl);
+            self.incinerations.push((self.time + delay, caster, a, lvl, buff, x, y));
         }
         // A unit dying with Parasite on it gives the parasite's caster DataE of UnitID
         // for Cast seconds.

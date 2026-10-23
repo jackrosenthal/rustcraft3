@@ -56,6 +56,25 @@ impl World {
                         self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: d(self, "Dur").max(0.5), ..Default::default() });
                     }
                 }
+                // Incinerate (CAbilityIncinerateArrow, CBuffIncinerate): while autocast
+                // and mana last, each hit on what it allows lays or renews its buff for
+                // Dur, one more time each hit, and deals that many times DataA more.
+                "ANia" | "ANic" if (code == "ANic" || autocast.contains(&a)) && self.cast_target_error(attacker, a, target).is_none() => {
+                    let cost = if code == "ANia" { d(self, "Cost") } else { 0.0 };
+                    if mana_left < cost {
+                        continue;
+                    }
+                    mana_left -= cost;
+                    let id = buffs.first().copied().unwrap_or_default();
+                    self.apply_buff(target, Buff { id, ability: a, level: lvl, caster: attacker, remaining: d(self, "Dur"), ..Default::default() });
+                    let mut stacks = 0;
+                    if let Some(b) = self.unit_mut(target).and_then(|t| t.buffs.iter_mut().find(|b| b.id == id && b.ability == a)) {
+                        b.stacks += 1;
+                        b.caster = attacker;
+                        stacks = b.stacks;
+                    }
+                    damage += stacks as f32 * d(self, "DataA");
+                }
                 // Poison and Venom: damage a second and slows for Dur.
                 "Apoi" | "Aven" | "Apo2" if !target_building => {
                     self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: dur, dps: d(self, "DataA"), attack_factor: -d(self, "DataB"), move_factor: -d(self, "DataC"), ..Default::default() });

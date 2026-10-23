@@ -85,7 +85,13 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if (globals.fog.z > 0.0) {
         let d = distance(in.world, globals.camera_pos.xyz);
         let f = clamp((d - globals.fog.x) / max(globals.fog.y - globals.fog.x, 1.0), 0.0, 1.0);
-        c = vec4<f32>(mix(c.rgb, globals.fog_color.rgb, f), c.a);
+        var fc = globals.fog_color.rgb;
+        if ((draw.flags & 4u) != 0u) {
+            fc = vec3<f32>(0.0);
+        } else if ((draw.flags & 8u) != 0u) {
+            fc = vec3<f32>(1.0);
+        }
+        c = vec4<f32>(mix(c.rgb, fc, f), c.a);
     }
     return c;
 }

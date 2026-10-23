@@ -274,6 +274,10 @@ struct DrawUniform {
 const DRAW_ALIGN: u64 = 256;
 const FLAG_UNSHADED: u32 = 1;
 const FLAG_ALPHA_TEST: u32 = 2;
+/// Fog takes additive layers toward black and modulating layers toward white, so they
+/// fade out rather than brighten or darken the scene.
+const FLAG_FOG_BLACK: u32 = 4;
+const FLAG_FOG_WHITE: u32 = 8;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -521,6 +525,12 @@ impl ModelRenderer {
                 if layer.filter_mode == filter::TRANSPARENT {
                     flags |= FLAG_ALPHA_TEST;
                 }
+                if layer.filter_mode == filter::ADDITIVE || layer.filter_mode == filter::ADD_ALPHA {
+                    flags |= FLAG_FOG_BLACK;
+                }
+                if layer.filter_mode == filter::MODULATE || layer.filter_mode == filter::MODULATE_2X {
+                    flags |= FLAG_FOG_WHITE;
+                }
                 let blended = layer.filter_mode >= filter::BLEND;
                 let key = PipelineKey {
                     filter: layer.filter_mode.min(6),
@@ -529,6 +539,12 @@ impl ModelRenderer {
                     depth_write: layer.shading & shading::NO_DEPTH_SET == 0 && !blended,
                 };
                 let tint = inst.tint;
+                // Texture animation: the translation track scrolls the coordinates.
+                let uv_offset = layer
+                    .texture_anim_id
+                    .and_then(|i| mdx.texture_anims.get(i as usize))
+                    .map(|ta| anim::sample(ta.vec3(b"KTAT"), &time, globals, [0.0; 3]))
+                    .map_or([0.0, 0.0], |t| [t[0], t[1]]);
                 self.draws.push(Draw {
                     model: model.clone(),
                     geoset: g.geoset,
@@ -537,7 +553,7 @@ impl ModelRenderer {
                     wrap: (t.flags & 1 != 0, t.flags & 2 != 0),
                     uniform: DrawUniform {
                         color: [ga_color[0] * tint.x, ga_color[1] * tint.y, ga_color[2] * tint.z, alpha],
-                        uv_offset: [0.0, 0.0],
+                        uv_offset,
                         bone_offset,
                         flags,
                         _pad: [0; 56],

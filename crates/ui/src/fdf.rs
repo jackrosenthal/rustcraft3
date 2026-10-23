@@ -19,7 +19,8 @@ impl Arg {
     pub fn num(&self) -> f32 {
         match self {
             Arg::Num(n) => *n,
-            Arg::Ident(s) | Arg::Str(s) => s.parse().unwrap_or(0.0),
+            // Numbers may carry a C float suffix ("-0.002f").
+            Arg::Ident(s) | Arg::Str(s) => s.trim_end_matches(['f', 'F']).parse().unwrap_or(0.0),
         }
     }
 }

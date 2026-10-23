@@ -4,5 +4,7 @@ pub mod app;
 pub mod card;
 pub mod cli;
 pub mod data;
+pub mod glue;
+pub mod skirmish;
 pub mod hud;
 pub mod scene;

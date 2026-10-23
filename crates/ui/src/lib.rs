@@ -195,6 +195,10 @@ pub struct Frame {
     pub pushed: bool,
     pub hovered: bool,
     pub enabled: bool,
+    /// The model a SPRITE frame shows (BackgroundArt, or set by the screen).
+    pub model: Option<String>,
+    /// Checkbox state.
+    pub checked: bool,
 }
 
 #[derive(Default)]
@@ -234,6 +238,8 @@ impl FrameTree {
             pushed: false,
             hovered: false,
             enabled: true,
+            model: None,
+            checked: false,
         });
         t
     }
@@ -266,6 +272,8 @@ impl FrameTree {
             pushed: false,
             hovered: false,
             enabled: true,
+            model: d.str("BackgroundArt").map(|s| if d.has("DecorateFileNames") { db.decorate(s) } else { s.to_string() }),
+            checked: false,
         });
         if !d.name.is_empty() {
             self.by_name.insert(d.name.clone(), i);
@@ -404,6 +412,124 @@ impl FrameTree {
             }
         };
         Some(Rect { x0, y0, x1, y1 })
+    }
+
+    /// Frames that take mouse input.
+    pub fn is_control(&self, i: usize) -> bool {
+        matches!(
+            self.frames[i].def.kind.as_str(),
+            "GLUETEXTBUTTON" | "GLUEBUTTON" | "TEXTBUTTON" | "BUTTON" | "SIMPLEBUTTON" | "GLUECHECKBOX" | "CHECKBOX" | "POPUPMENU" | "EDITBOX" | "SLIDER" | "LISTBOX"
+        )
+    }
+
+    /// The topmost visible, enabled control under a point.
+    pub fn control_at(&self, x: f32, y: f32) -> Option<usize> {
+        (1..self.frames.len())
+            .rev()
+            .find(|&i| self.is_control(i) && self.frames[i].enabled && self.frames[i].rect.is_some_and(|r| r.contains(x, y)) && self.is_visible(i))
+    }
+
+    /// Moves the pointer: updates which control is under it.
+    pub fn pointer_move(&mut self, x: f32, y: f32) {
+        let hit = self.control_at(x, y);
+        for (i, f) in self.frames.iter_mut().enumerate() {
+            f.hovered = Some(i) == hit;
+        }
+    }
+
+    /// Presses the pointer; returns the control pressed.
+    pub fn pointer_down(&mut self, x: f32, y: f32) -> Option<usize> {
+        let hit = self.control_at(x, y)?;
+        self.frames[hit].pushed = true;
+        Some(hit)
+    }
+
+    /// Releases the pointer; returns the control clicked (pressed and released over it).
+    pub fn pointer_up(&mut self, x: f32, y: f32) -> Option<usize> {
+        let hit = self.control_at(x, y);
+        let pressed = self.frames.iter().position(|f| f.pushed);
+        for f in &mut self.frames {
+            f.pushed = false;
+        }
+        let i = pressed.filter(|p| Some(*p) == hit)?;
+        if matches!(self.frames[i].def.kind.as_str(), "GLUECHECKBOX" | "CHECKBOX") {
+            self.frames[i].checked = !self.frames[i].checked;
+        }
+        Some(i)
+    }
+
+    /// The control whose ControlShortcutKey is `key`.
+    pub fn shortcut(&self, key: char) -> Option<usize> {
+        (1..self.frames.len()).find(|&i| {
+            self.frames[i].enabled
+                && self.is_visible(i)
+                && self.frames[i].def.str("ControlShortcutKey").and_then(|k| k.chars().next()).is_some_and(|k| k.eq_ignore_ascii_case(&key))
+        })
+    }
+
+    pub fn set_visible(&mut self, name: &str, v: bool) {
+        if let Some(i) = self.get(name) {
+            self.frames[i].visible = v;
+        }
+    }
+
+    pub fn set_enabled(&mut self, name: &str, v: bool) {
+        if let Some(i) = self.get(name) {
+            self.frames[i].enabled = v;
+        }
+    }
+
+    pub fn set_text(&mut self, name: &str, text: &str) {
+        if let Some(i) = self.get(name) {
+            self.frames[i].text = Some(text.to_string());
+        }
+    }
+
+    /// Replaces a frame's anchors with one point (FUN_6f111600 after clearing).
+    pub fn set_point(&mut self, name: &str, point: FramePoint, relative: &str, relative_point: FramePoint, x: f32, y: f32) {
+        let rel = self.get(relative);
+        if let Some(i) = self.get(name) {
+            self.frames[i].all_points = false;
+            self.frames[i].points.retain(|p| p.point != point);
+            self.frames[i].points.push(Point { point, relative: rel, relative_point, x, y });
+        }
+    }
+
+    pub fn clear_points(&mut self, name: &str) {
+        if let Some(i) = self.get(name) {
+            self.frames[i].points.clear();
+            self.frames[i].all_points = false;
+        }
+    }
+
+    pub fn set_size(&mut self, name: &str, w: Option<f32>, h: Option<f32>) {
+        if let Some(i) = self.get(name) {
+            if w.is_some() {
+                self.frames[i].width = w;
+            }
+            if h.is_some() {
+                self.frames[i].height = h;
+            }
+        }
+    }
+
+    pub fn set_model(&mut self, name: &str, model: &str) {
+        if let Some(i) = self.get(name) {
+            self.frames[i].model = Some(model.to_string());
+        }
+    }
+
+    /// Visible SPRITE frames with models, in drawing order, with the point their model
+    /// origin sits on (the frame's lower left; model units are interface units).
+    pub fn sprites(&self) -> Vec<(usize, String, f32, f32)> {
+        (1..self.frames.len())
+            .filter(|&i| self.frames[i].def.kind == "SPRITE" && self.is_visible(i))
+            .filter_map(|i| {
+                let f = &self.frames[i];
+                let r = f.rect?;
+                Some((i, f.model.clone()?, r.x0, r.y0))
+            })
+            .collect()
     }
 
     pub fn is_visible(&self, mut i: usize) -> bool {
@@ -573,6 +699,14 @@ impl FrameTree {
                     None => "FontColor",
                 };
                 let color = color_prop(d.prop(color_key).or_else(|| d.prop("FontColor")), [1.0, 0.8, 0.0, 1.0]);
+                // A pressed button moves its text by ButtonPushedTextOffset.
+                let r = match owner.filter(|o| o.pushed).and_then(|o| o.def.prop("ButtonPushedTextOffset")) {
+                    Some(p) => {
+                        let (dx, dy) = (p.args.first().map_or(0.0, Arg::num), p.args.get(1).map_or(0.0, Arg::num));
+                        Rect { x0: r.x0 + dx, x1: r.x1 + dx, y0: r.y0 + dy, y1: r.y1 + dy }
+                    }
+                    None => r,
+                };
                 let shadow = d.prop("FontShadowOffset").map(|p| {
                     let c = color_prop(d.prop("FontShadowColor"), [0.0, 0.0, 0.0, 1.0]);
                     (c, p.args.first().map_or(0.0, Arg::num), p.args.get(1).map_or(0.0, Arg::num))
@@ -588,7 +722,7 @@ impl FrameTree {
                     shadow,
                 });
             }
-            (_, "GLUETEXTBUTTON") | (_, "GLUEBUTTON") | (_, "BUTTON") | (_, "GLUECHECKBOX") | (_, "POPUPMENU") => {
+            (_, "GLUETEXTBUTTON") | (_, "GLUEBUTTON") | (_, "TEXTBUTTON") | (_, "BUTTON") | (_, "GLUECHECKBOX") | (_, "POPUPMENU") => {
                 let key = if !f.enabled {
                     "ControlDisabledBackdrop"
                 } else if f.pushed {

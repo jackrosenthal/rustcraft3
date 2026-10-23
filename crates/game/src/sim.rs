@@ -280,6 +280,20 @@ impl World {
             }
             _ => return,
         };
+        // Defend on and off; Sacrifice at a sacrificial pit.
+        if order == crate::natives::basic::order_id("defend") || order == crate::natives::basic::order_id("undefend") {
+            if self.defend_order(h, order == crate::natives::basic::order_id("defend")) {
+                return;
+            }
+        }
+        if order == crate::natives::basic::order_id("sacrifice") && target != 0 {
+            if self.ability_with_code(h, "Alam").is_some() && self.sacrifice(h, target) {
+                return;
+            }
+            if self.ability_with_code(h, "Asac").is_some() && self.sacrifice(target, h) {
+                return;
+            }
+        }
         // Autocast toggles, and morphs (Bear Form and the like) by their order or unorder.
         if let Some(name) = crate::natives::basic::order_name(order) {
             if self.autocast_order(h, name) || self.morph_order(h, name) {
@@ -453,8 +467,13 @@ impl World {
         if let Some(t) = self.unit_mut(target) {
             t.extra.last_attacked = now;
         }
-        // Berserk: the target takes more damage.
-        let taken = 1.0 + self.unit(target).map_or(0.0, |u| u.buffs.iter().map(|b| b.damage_taken).sum());
+        // Berserk: the target takes more damage; Defend: less from piercing attacks.
+        let mut taken = 1.0 + self.unit(target).map_or(0.0, |u| u.buffs.iter().map(|b| b.damage_taken).sum());
+        if attack_type == "pierce" {
+            if let Some(p) = self.unit(target).and_then(|u| u.buffs.iter().find(|b| b.pierce_taken > 0.0)).map(|b| b.pierce_taken) {
+                taken *= p;
+            }
+        }
         let raw = raw * taken;
         let mut raw = self.on_attack_passives(source, target, raw * self.buff_mods(source).3) + self.buff_damage_bonus(source);
         // Wind Walk: the first strike adds its backstab damage and ends the invisibility.
@@ -557,6 +576,7 @@ impl World {
                     let bonus = self.unit(h).map_or(0.0, |u| u.item_bonus.damage) + ub.damage;
                     let dice = wp.dice + ub.dice;
                     let raw = wp.base + (0..dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>() + self.primary_attribute(h) + bonus;
+                    let raw = self.attack_modifiers(vm, h, s.target, raw);
                     if wp.weapon_type == "missile" || wp.weapon_type == "artillery" || wp.weapon_type.starts_with("msplash") || wp.weapon_type == "mbounce" || wp.weapon_type == "mline" {
                         if let (Some(src), Some(_)) = (self.unit(h).cloned(), self.unit(s.target)) {
                             let launch_z = self.objects.units.get(src.type_id).map_or(60.0, |o| o.real("launchZ"));

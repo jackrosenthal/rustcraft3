@@ -216,10 +216,131 @@ impl World {
                     crate::sim::set_anim(u, "stand");
                 }
             }
+            // Wards: Healing Ward, Sentry Ward, and Stasis Trap place their UnitID at the
+            // point for Dur.
+            "Ahwd" | "Aeye" | "Asta" => {
+                let unit = id_from_str(&self.level_str(a, "UnitID", lvl));
+                let wards = self.summon(h, owner, unit, 1, x, y, d(self, "Dur"));
+                if code == "Asta" {
+                    let now = self.time;
+                    for w in wards {
+                        if let Some(u) = self.unit_mut(w) {
+                            u.extra.trap = Some((a, lvl, now));
+                        }
+                    }
+                }
+            }
+            // Unsummon: an owned structure is taken down, returning DataA of its cost.
+            "Auns" => {
+                let Some(t) = self.unit(target).filter(|t| t.is_building && t.owner == owner) else { return true };
+                let ratio = d(self, "DataA");
+                let frac = if t.max_life > 0.0 { t.life / t.max_life } else { 1.0 };
+                let (gold, lumber) = self.objects.units.get(t.type_id).map_or((0.0, 0.0), |o| (o.real("goldcost"), o.real("lumbercost")));
+                let p = &mut self.players[owner as usize];
+                *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) += (gold * ratio * frac) as i32;
+                *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) += (lumber * ratio * frac) as i32;
+                crate::natives::units::kill_unit(self, vm, target, 0);
+            }
+            // Cannibalize: a corpse within reach heals DataA a second, up to DataB.
+            "Acan" => {
+                let (cx, cy) = self.unit(h).map(|u| (u.x, u.y)).unwrap_or((x, y));
+                let Some(&corpse) = self.corpses_in(cx, cy, d(self, "Rng") + 64.0).first() else { return true };
+                crate::natives::units::remove_unit(self, corpse);
+                let rate = d(self, "DataA").max(0.01);
+                let missing = self.unit(h).map_or(0.0, |u| u.max_life - u.life);
+                let time = (missing.min(d(self, "DataB")) / rate).min(d(self, "Dur").max(0.0));
+                self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: time, life_regen: rate, ..Default::default() });
+                if let Some(u) = self.unit_mut(h) {
+                    crate::sim::set_anim(u, "stand channel");
+                }
+            }
             _ => return false,
         }
         let _ = (tx, ty);
         true
+    }
+
+    /// Sacrifice: an acolyte at a sacrificial pit (Asac) becomes a shade there.
+    pub fn sacrifice(&mut self, acolyte: u32, pit: u32) -> bool {
+        if self.ability_with_code(pit, "Asac").is_none() || self.unit(acolyte).is_none_or(|u| u.dead) {
+            return false;
+        }
+        let (owner, x, y) = self.unit(pit).map(|p| (p.owner, p.x, p.y)).unwrap();
+        if self.unit(acolyte).is_none_or(|u| u.owner != owner) {
+            return false;
+        }
+        crate::natives::units::remove_unit(self, acolyte);
+        let shade = crate::natives::units::create_unit(self, owner, *b"ushd", x, y, 270.0);
+        if shade != 0 {
+            let r = self.unit(shade).map_or(16.0, |u| u.collision);
+            let (sx, sy) = self.spawn_point_pub(pit, r);
+            if let Some(u) = self.unit_mut(shade) {
+                u.x = sx;
+                u.y = sy;
+            }
+        }
+        true
+    }
+
+    /// Defend (Adef): on, the unit takes DataA of piercing damage and moves at DataC
+    /// less speed.
+    pub fn defend_order(&mut self, h: u32, on: bool) -> bool {
+        let Some((a, lvl)) = self.ability_with_code(h, "Adef") else { return false };
+        let buff = self.first_buff(a, lvl);
+        if let Some(u) = self.unit_mut(h) {
+            u.buffs.retain(|b| b.ability != a);
+        }
+        if on {
+            let (taken, slow) = (self.data(a, "DataA", lvl), self.data(a, "DataC", lvl));
+            self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: f32::INFINITY, pierce_taken: taken, move_factor: -slow, ..Default::default() });
+        }
+        true
+    }
+
+    /// Stasis traps arm after DataA seconds; then an enemy within DataB sets them off,
+    /// stunning enemies within DataC for DataD.  Shadowmeld hides idle units at night.
+    pub fn update_traps(&mut self, vm: &mut Vm) {
+        let traps: Vec<(u32, Id, u32, f32)> = self.unit_order.iter().filter_map(|&h| self.unit(h).filter(|u| !u.dead).and_then(|u| u.extra.trap.map(|(a, l, t)| (h, a, l, t)))).collect();
+        for (h, a, lvl, placed) in traps {
+            if self.time - placed < self.data(a, "DataA", lvl) {
+                continue;
+            }
+            let (owner, x, y) = self.unit(h).map(|u| (u.owner, u.x, u.y)).unwrap();
+            if self.enemies_in(owner, x, y, self.data(a, "DataB", lvl)).is_empty() {
+                continue;
+            }
+            let buff = self.first_buff(a, lvl);
+            for t in self.enemies_in(owner, x, y, self.data(a, "DataC", lvl)) {
+                let hero = self.unit(t).is_some_and(|u| u.is_hero);
+                let dur = if hero { self.data(a, "HeroDur", lvl).min(self.data(a, "DataD", lvl)) } else { self.data(a, "DataD", lvl) };
+                self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, stun: true, ..Default::default() });
+            }
+            crate::natives::units::kill_unit(self, vm, h, 0);
+        }
+        // Shadowmeld (Ashm): at night, a unit that has stood still DataA seconds hides.
+        let night = !(6.0..18.0).contains(&self.time_of_day);
+        let melders: Vec<(u32, Id, u32)> = self.unit_order.iter().filter_map(|&h| self.ability_with_code(h, "Ashm").map(|(a, l)| (h, a, l))).collect();
+        for (h, a, lvl) in melders {
+            let Some(u) = self.unit(h) else { continue };
+            let idle = matches!(u.action, Action::Idle | Action::Hold) && u.swing.is_none() && u.casting.is_none();
+            let hidden = u.buffs.iter().any(|b| b.ability == a);
+            if night && idle {
+                let fade = self.data(a, "DataA", lvl);
+                let since = u.extra.still_since;
+                if !hidden && self.time - since >= fade {
+                    let buff = self.first_buff(a, lvl);
+                    self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: f32::INFINITY, invisible: true, ..Default::default() });
+                }
+            } else {
+                let now = self.time;
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.still_since = now;
+                    if hidden {
+                        u.buffs.retain(|b| b.ability != a);
+                    }
+                }
+            }
+        }
     }
 
     /// Area buffs: Lightning Shield's damage around the shielded unit, and Purge's slow

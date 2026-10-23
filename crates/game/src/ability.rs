@@ -20,7 +20,7 @@ pub enum Targeting {
 
 /// Abilities whose code takes a point rather than a unit target.
 fn point_target(code: &str) -> bool {
-    matches!(code, "AHbz" | "AHfs" | "AOsh" | "AUcs" | "AUim" | "ANrf" | "AEbl" | "AUin" | "AOeq" | "AOsw" | "AOfs" | "AUdd" | "AEfn" | "ANst" | "ANvc" | "Adro" | "Aroo" | "Adis" | "Advm")
+    matches!(code, "AHbz" | "AHfs" | "AOsh" | "AUcs" | "AUim" | "ANrf" | "AEbl" | "AUin" | "AOeq" | "AOsw" | "AOfs" | "AUdd" | "AEfn" | "ANst" | "ANvc" | "Adro" | "Aroo" | "Adis" | "Advm" | "Ahwd" | "Aeye" | "Asta")
 }
 
 /// Abilities with no target (cast instantly around the caster).
@@ -174,7 +174,7 @@ impl World {
                     dots.push((b.caster, h, b.dps * dt));
                 }
                 u.mana = (u.mana + b.mana_regen * dt).min(u.max_mana);
-                u.life = (u.life + b.life_regen * dt).min(u.max_life);
+                u.life = (u.life + (b.life_regen + b.life_regen_pct * u.max_life) * dt).min(u.max_life);
             }
             let mut lost_life = 0.0;
             u.buffs.retain(|b| {
@@ -252,19 +252,36 @@ impl World {
                         b.return_damage = self.data(a, "DataA", lvl);
                         b.return_pct = self.data(a, "DataB", lvl) != 0.0;
                     }
+                    // Regeneration (a healing ward): DataA life a second, of maximum life
+                    // when DataB.
+                    "Aoar" => {
+                        if self.data(a, "DataB", lvl) != 0.0 {
+                            b.life_regen_pct = self.data(a, "DataA", lvl);
+                        } else {
+                            b.life_regen = self.data(a, "DataA", lvl);
+                        }
+                    }
+                    // War Drums and Command Aura: attack damage increase (DataA).
+                    "Aakb" | "AOac" => b.damage_factor = self.data(a, "DataA", lvl),
+                    // Slow Aura (a tornado): enemies move (DataA) and attack (DataB) slower.
+                    "Aasl" => {
+                        b.move_factor = self.data(a, "DataA", lvl);
+                        b.attack_factor = self.data(a, "DataB", lvl);
+                    }
                     _ => continue,
                 }
                 let area = self.data(a, "Area", lvl);
-                grants.push((h, u.owner, u.x, u.y, area, b));
+                let enemies = code == "Aasl";
+                grants.push((h, u.owner, u.x, u.y, area, b, enemies));
             }
         }
-        for (src, owner, x, y, area, b) in grants {
+        for (src, owner, x, y, area, b, enemies) in grants {
             let targets: Vec<u32> = self
                 .unit_order
                 .iter()
                 .copied()
                 .filter(|&t| {
-                    self.unit(t).is_some_and(|u| !u.dead && !u.is_building && (u.x - x).hypot(u.y - y) <= area && crate::natives::players::is_ally(self, owner, u.owner))
+                    self.unit(t).is_some_and(|u| !u.dead && !u.is_building && (u.x - x).hypot(u.y - y) <= area && crate::natives::players::is_ally(self, owner, u.owner) != enemies)
                 })
                 .collect();
             for t in targets {

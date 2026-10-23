@@ -19,7 +19,7 @@ impl World {
     pub fn can_repair(&self, h: u32, target: u32) -> bool {
         let Some((a, _)) = self.repair_ability(h) else { return false };
         let (Some(u), Some(t)) = (self.unit(h), self.unit(target)) else { return false };
-        if t.dead || h == target || !crate::natives::players::is_ally(self, u.owner, t.owner) || t.life >= t.max_life || t.constructing.is_some() {
+        if t.dead || h == target || !crate::natives::players::is_ally(self, u.owner, t.owner) || t.life >= t.max_life || t.constructing.is_some() || t.buffs.iter().any(|b| b.no_repair) {
             return false;
         }
         let o = self.objects.units.get(t.type_id);

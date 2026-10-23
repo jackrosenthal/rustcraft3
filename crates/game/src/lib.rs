@@ -22,6 +22,7 @@ pub mod unitspells;
 pub mod upgrades;
 pub mod natives;
 pub mod objects;
+pub mod orbs;
 pub mod orders;
 pub mod pathing;
 pub mod repair;

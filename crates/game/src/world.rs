@@ -650,6 +650,7 @@ impl World {
         self.regenerate(dt);
         self.update_buffs(vm, dt);
         self.update_area_buffs(vm, dt);
+        self.update_traps(vm);
         self.update_channels(vm, dt);
         self.update_ground_effects(vm, dt);
         self.update_reincarnation(dt);

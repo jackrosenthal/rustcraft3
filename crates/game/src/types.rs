@@ -288,6 +288,10 @@ pub struct UnitExtra {
     pub resume: Option<Action>,
     /// Gold and lumber owed for repair or powerbuild, paid in whole units.
     pub repair_debt: (f32, f32),
+    /// A stasis trap: its ability, level, and when it was placed.
+    pub trap: Option<(crate::objects::Id, u32, f32)>,
+    /// Since when the unit has stood still (Shadowmeld).
+    pub still_since: f32,
 }
 
 impl Default for UnitExtra {
@@ -328,6 +332,8 @@ impl Default for UnitExtra {
             last_attacked: -100.0,
             resume: None,
             repair_debt: (0.0, 0.0),
+            trap: None,
+            still_since: 0.0,
         }
     }
 }
@@ -395,6 +401,12 @@ pub struct Buff {
     pub area: f32,
     /// A slow wearing off over this many seconds (Purge).
     pub decaying: f32,
+    /// The bearer cannot be repaired (Liquid Fire).
+    pub no_repair: bool,
+    /// Life regenerated a second as a fraction of maximum life (Healing Ward).
+    pub life_regen_pct: f32,
+    /// Fraction of piercing damage taken (Defend); zero when it does not apply.
+    pub pierce_taken: f32,
 }
 
 /// A spell kept up by its caster: it ends when the time runs out or the caster stops.

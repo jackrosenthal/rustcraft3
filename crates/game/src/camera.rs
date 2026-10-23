@@ -139,6 +139,19 @@ impl GameCamera {
 }
 
 impl World {
+    /// A camera target kept inside the camera bounds (SetCameraBounds: their corners'
+    /// box), for the player's scrolling.
+    pub fn clamp_to_camera_bounds(&self, x: f32, y: f32) -> (f32, f32) {
+        let b = &self.camera_bounds;
+        let (xs, ys) = ([b[0], b[2], b[4], b[6]], [b[1], b[3], b[5], b[7]]);
+        let (x0, x1) = (xs.iter().copied().fold(f32::INFINITY, f32::min), xs.iter().copied().fold(f32::NEG_INFINITY, f32::max));
+        let (y0, y1) = (ys.iter().copied().fold(f32::INFINITY, f32::min), ys.iter().copied().fold(f32::NEG_INFINITY, f32::max));
+        if x1 <= x0 || y1 <= y0 {
+            return (x, y);
+        }
+        (x.clamp(x0, x1), y.clamp(y0, y1))
+    }
+
     /// Applies a camera setup: its fields (each over its own duration, or `force`), and
     /// its destination when `pan` is set (over the longest field duration, or `force`;
     /// at once unless `timed`).

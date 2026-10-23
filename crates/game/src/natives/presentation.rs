@@ -204,7 +204,14 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             w.camera.cinematic = (!model.is_empty()).then(|| (model, w.time));
             none()
         },
-        SetCameraBoundsToRect => |_, _, _| none(),
+        // The rect's corners as SetCameraBounds takes them: lower left, upper right,
+        // upper left, lower right.
+        SetCameraBoundsToRect => |w, _, a| {
+            if let Some(Obj::Rect(r)) = w.handles.get(a.h(0)).cloned() {
+                w.camera_bounds = [r.min_x, r.min_y, r.max_x, r.max_y, r.min_x, r.max_y, r.max_x, r.min_y];
+            }
+            none()
+        },
         CameraSetSmoothingFactor => |_, _, _| none(),
         CameraSetSourceNoise => |w, _, a| { w.camera.source_noise = (a.r(0), a.r(1), false); none() },
         CameraSetTargetNoise => |w, _, a| { w.camera.target_noise = (a.r(0), a.r(1), false); none() },

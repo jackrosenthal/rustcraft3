@@ -1555,6 +1555,7 @@ impl Scene {
         }
         if let Some((wx, wy)) = self.hud.as_ref().and_then(|h| h.minimap_to_world(ux, uy)) {
             if let Some(g) = self.game.as_mut() {
+                let (wx, wy) = g.world.clamp_to_camera_bounds(wx, wy);
                 g.world.camera.pan_to(wx, wy, 0.0);
             }
             self.sync_camera();
@@ -2602,9 +2603,9 @@ impl Scene {
             return;
         }
         if let Some(g) = self.game.as_mut() {
-            let c = &mut g.world.camera;
-            let (x, y) = (c.x + dx, c.y + dy);
-            c.pan_to(x, y, 0.0);
+            let (x, y) = (g.world.camera.x + dx, g.world.camera.y + dy);
+            let (x, y) = g.world.clamp_to_camera_bounds(x, y);
+            g.world.camera.pan_to(x, y, 0.0);
         } else {
             self.camera.target.x += dx;
             self.camera.target.y += dy;

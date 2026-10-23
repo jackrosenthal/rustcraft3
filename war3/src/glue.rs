@@ -38,6 +38,8 @@ pub enum Screen {
     Loading,
     /// CScoreScreen: the players' scores after a game.
     Score,
+    /// COptionsMenu: the player's options.
+    Options,
 }
 
 impl Screen {
@@ -52,6 +54,7 @@ impl Screen {
             // these sequences (compared against a capture).
             Screen::LoadSaved => "BattlenetCustomCreate",
             Screen::Campaign => "Campaign",
+            Screen::Options => "Options",
             Screen::Loading | Screen::Score => "",
         }
     }
@@ -66,6 +69,7 @@ impl Screen {
             Screen::Campaign => "CampaignMenu",
             Screen::Loading => "Loading",
             Screen::Score => "ScoreScreenFrame",
+            Screen::Options => "OptionsMenu",
         }
     }
 }
@@ -131,6 +135,11 @@ pub struct Glue {
     pub score: Option<ScoreState>,
     /// Sequences SPRITE and MODEL frames play in place of Birth and Stand, by frame name.
     sprite_sequences: HashMap<String, String>,
+    /// The player's options, as the options screen shows them while it is open (its
+    /// sound settings take effect at once; Cancel puts back the stored ones).
+    pub options: crate::options::Options,
+    /// The display's size in pixels, which the options screen lists as its resolution.
+    pub display: (u32, u32),
 }
 
 impl Glue {
@@ -188,6 +197,8 @@ impl Glue {
             saves_dir: crate::data::save_dir(data.version).unwrap_or_default(),
             score: None,
             sprite_sequences: HashMap::new(),
+            options: crate::options::Options::load(),
+            display: (800, 600),
         };
         g.build(Screen::MainMenu, assets);
         g.play_layers(&format!("{} Birth", Screen::MainMenu.token()));
@@ -261,6 +272,10 @@ impl Glue {
                 // CCampaignMenu::vf55: Normal and Hard, from the profile's difficulty.
                 let hard = self.persist.borrow().difficulty == 2;
                 self.tree.set_items("DifficultySelect", vec![db.string("NORMAL"), db.string("HARD")], hard as usize);
+            }
+            Screen::Options => {
+                self.options = crate::options::Options::load();
+                crate::options::menu::fill(&mut self.tree, &self.options, self.display);
             }
             Screen::Loading => {}
             Screen::Score => {
@@ -570,6 +585,24 @@ impl Glue {
         match (self.screen, name) {
             (Screen::MainMenu, "SinglePlayerButton") => self.show(Screen::SinglePlayer, assets),
             (Screen::MainMenu, "ExitButton") => self.action = Some(GlueAction::Quit),
+            (Screen::MainMenu, "OptionsButton") => self.show(Screen::Options, assets),
+            (Screen::Options, "GameplayButton") => crate::options::menu::show(&mut self.tree, 0),
+            (Screen::Options, "VideoButton") => crate::options::menu::show(&mut self.tree, 1),
+            (Screen::Options, "SoundButton") => crate::options::menu::show(&mut self.tree, 2),
+            (Screen::Options, "OKButton") => {
+                crate::options::menu::read(&self.tree, &mut self.options);
+                self.options.store();
+                self.show(Screen::MainMenu, assets);
+            }
+            (Screen::Options, "CancelButton") => {
+                self.options = crate::options::Options::load();
+                self.show(Screen::MainMenu, assets);
+            }
+            (Screen::Options, _) => {
+                // The sound settings are heard at once (COptionsMenu vf3 cases 6 to 9).
+                crate::options::menu::sync(&mut self.tree);
+                crate::options::menu::read(&self.tree, &mut self.options);
+            }
             (Screen::SinglePlayer, "SkirmishButton") => self.show(Screen::Skirmish, assets),
             (Screen::SinglePlayer, "CancelButton") => self.show(Screen::MainMenu, assets),
             (Screen::Skirmish, "CancelButton") => self.show(Screen::SinglePlayer, assets),

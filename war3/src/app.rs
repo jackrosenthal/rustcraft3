@@ -420,8 +420,11 @@ impl ApplicationHandler for App {
                 let size = (r.gpu.config.width, r.gpu.config.height);
                 // The glue's requests: quitting or starting a game.
                 if let Some(glue) = r.glue.as_mut() {
+                    glue.display = size;
                     glue.update(dt, &mut r.assets);
                     if let Some(a) = r.audio.as_mut() {
+                        let (sound, music) = glue.options.volumes();
+                        a.set_volumes(sound, music);
                         a.update([0.0; 3]);
                     }
                     match glue.action.take() {

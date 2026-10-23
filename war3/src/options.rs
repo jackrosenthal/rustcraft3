@@ -232,3 +232,118 @@ pub mod panel {
         None
     }
 }
+
+/// The main menu's options (COptionsMenu, OptionsMenu.fdf): the Gameplay, Video, and
+/// Sound panels, chosen by their buttons, with OK and Cancel.
+pub mod menu {
+    use w3_ui::FrameTree;
+
+    use super::Options;
+
+    pub const PANELS: [&str; 3] = ["GameplayPanel", "VideoPanel", "SoundPanel"];
+
+    /// The video menus whose quality the renderer does not vary: shown at High.
+    const FIXED_HIGH: [&str; 4] = ["ModelDetailMenu", "AnimQualityMenu", "TextureQualityMenu", "SpellFilterMenu"];
+
+    /// Puts the options in the controls (FUN_6f2b2c50 and its kin).  No panel shows and
+    /// OK waits until a panel is chosen.
+    pub fn fill(tree: &mut FrameTree, o: &Options, resolution: (u32, u32)) {
+        for p in PANELS {
+            tree.set_visible(p, false);
+        }
+        tree.set_enabled("OKButton", false);
+        tree.set_visible("OptionsConfirmDialog", false);
+        // Chat support shows only with the ChatFonts registry key's ChatFontEnabled set.
+        for n in ["ChatSupportMenu", "ChatSupportInfoText", "ChatSupportLabel", "ChatSupportBackdrop"] {
+            tree.set_visible(n, false);
+        }
+        // Gameplay.
+        tree.set_value("MouseScrollSlider", o.mousescroll as f32);
+        tree.set_checked("MouseScrollDisableCheckBox", o.mousescrolldisable);
+        tree.set_value("KeyScrollSlider", o.keyscroll as f32);
+        tree.set_checked("TooltipsCheckBox", o.tooltips);
+        tree.set_checked("HealthBarsCheckBox", o.healthbars);
+        tree.set_checked("SubgroupCheckBox", o.subgrouporder);
+        tree.set_checked("FormationToggleCheckBox", o.formationtoggle);
+        tree.set_checked("CustomKeysCheckBox", o.customkeys);
+        tree.set_checked("AutosaveReplayCheckBox", o.autosave_replay);
+        tree.set_text("GamePortEditBox", &o.netgameport.to_string());
+        // Video: the display's one resolution (FUN_6f2ab650's "%dx%dx%d").
+        tree.set_value("GammaSlider", o.gamma as f32);
+        tree.set_items("ResolutionMenu", vec![format!("{}x{}x{}", resolution.0, resolution.1, 32)], 0);
+        tree.set_enabled("ResolutionMenu", false);
+        for n in FIXED_HIGH {
+            tree.set_selected(n, 2);
+            tree.set_enabled(n, false);
+        }
+        tree.set_selected("ParticlesMenu", o.particles as usize);
+        tree.set_selected("LightsMenu", o.lights as usize);
+        tree.set_selected("ShadowsMenu", o.unitshadows as usize);
+        tree.set_selected("OcclusionMenu", o.occlusion as usize);
+        // Sound.  There is one sound system, so no provider to choose.
+        tree.set_checked("SoundCheckBox", o.sfx);
+        tree.set_value("SoundVolumeSlider", o.sfxvolume as f32);
+        tree.set_checked("MusicCheckBox", o.music);
+        tree.set_value("MusicVolumeSlider", o.musicvolume as f32);
+        tree.set_checked("AmbientCheckBox", o.ambient);
+        tree.set_checked("MovementCheckBox", o.movement);
+        tree.set_checked("UnitCheckBox", o.unit);
+        tree.set_checked("SubtitlesCheckBox", o.subtitles);
+        tree.set_checked("EnviroCheckBox", o.environmental);
+        tree.set_checked("PositionalCheckBox", o.positional);
+        tree.set_enabled("ProviderMenu", false);
+        sync(tree);
+    }
+
+    /// Controls that follow others: the volume sliders their checkboxes (FUN_6f2b5e60,
+    /// FUN_6f2b62c0), the mouse scroll slider its disable box.
+    pub fn sync(tree: &mut FrameTree) {
+        let sfx = tree.checked("SoundCheckBox");
+        tree.set_enabled("SoundVolumeSlider", sfx);
+        let music = tree.checked("MusicCheckBox");
+        tree.set_enabled("MusicVolumeSlider", music);
+        let mouse = !tree.checked("MouseScrollDisableCheckBox");
+        tree.set_enabled("MouseScrollSlider", mouse);
+    }
+
+    /// Shows a panel; choosing one lets OK be pressed (COptionsMenu vf3 cases 0 to 2).
+    pub fn show(tree: &mut FrameTree, panel: usize) {
+        for (k, p) in PANELS.iter().enumerate() {
+            tree.set_visible(p, k == panel);
+        }
+        tree.set_enabled("OKButton", true);
+    }
+
+    /// The options as the controls show them.
+    pub fn read(tree: &FrameTree, o: &mut Options) {
+        let v = |n: &str| tree.value(n).round().max(0.0) as u32;
+        let sel = |n: &str| tree.get(n).map_or(0, |i| tree.frames[i].selected) as u32;
+        o.mousescroll = v("MouseScrollSlider");
+        o.mousescrolldisable = tree.checked("MouseScrollDisableCheckBox");
+        o.keyscroll = v("KeyScrollSlider");
+        o.tooltips = tree.checked("TooltipsCheckBox");
+        o.healthbars = tree.checked("HealthBarsCheckBox");
+        o.subgrouporder = tree.checked("SubgroupCheckBox");
+        o.formationtoggle = tree.checked("FormationToggleCheckBox");
+        o.customkeys = tree.checked("CustomKeysCheckBox");
+        o.autosave_replay = tree.checked("AutosaveReplayCheckBox");
+        if let Some(port) = tree.get("GamePortEditBox").and_then(|i| tree.frames[i].text.as_deref()?.trim().parse().ok()) {
+            o.netgameport = port;
+        }
+        o.gamma = v("GammaSlider");
+        o.particles = sel("ParticlesMenu");
+        o.lights = sel("LightsMenu");
+        o.unitshadows = sel("ShadowsMenu") != 0;
+        o.occlusion = sel("OcclusionMenu") != 0;
+        o.sfx = tree.checked("SoundCheckBox");
+        o.sfxvolume = v("SoundVolumeSlider");
+        o.music = tree.checked("MusicCheckBox");
+        o.musicvolume = v("MusicVolumeSlider");
+        o.ambient = tree.checked("AmbientCheckBox");
+        o.movement = tree.checked("MovementCheckBox");
+        o.unit = tree.checked("UnitCheckBox");
+        o.subtitles = tree.checked("SubtitlesCheckBox");
+        o.environmental = tree.checked("EnviroCheckBox");
+        o.positional = tree.checked("PositionalCheckBox");
+    }
+}

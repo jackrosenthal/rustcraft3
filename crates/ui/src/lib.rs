@@ -617,7 +617,7 @@ impl FrameTree {
         }
         matches!(
             kind,
-            "GLUETEXTBUTTON" | "GLUEBUTTON" | "TEXTBUTTON" | "BUTTON" | "SIMPLEBUTTON" | "GLUECHECKBOX" | "CHECKBOX" | "POPUPMENU" | "GLUEPOPUPMENU" | "EDITBOX" | "SLIDER" | "LISTBOX"
+            "GLUETEXTBUTTON" | "GLUEBUTTON" | "TEXTBUTTON" | "BUTTON" | "SIMPLEBUTTON" | "GLUECHECKBOX" | "CHECKBOX" | "POPUPMENU" | "GLUEPOPUPMENU" | "EDITBOX" | "GLUEEDITBOX" | "SLIDER" | "LISTBOX"
         )
     }
 
@@ -1219,7 +1219,7 @@ impl FrameTree {
                     }
                 }
             }
-            (_, "GLUETEXTBUTTON") | (_, "GLUEBUTTON") | (_, "TEXTBUTTON") | (_, "BUTTON") | (_, "GLUECHECKBOX") | (_, "CHECKBOX") | (_, "CONTROL") | (_, "EDITBOX") | (_, "SCROLLBAR") => {
+            (_, "GLUETEXTBUTTON") | (_, "GLUEBUTTON") | (_, "TEXTBUTTON") | (_, "BUTTON") | (_, "GLUECHECKBOX") | (_, "CHECKBOX") | (_, "CONTROL") | (_, "EDITBOX") | (_, "GLUEEDITBOX") | (_, "SCROLLBAR") => {
                 let key = match (f.enabled, f.pushed) {
                     (false, true) if d.str("ControlDisabledPushedBackdrop").is_some() => "ControlDisabledPushedBackdrop",
                     (false, _) => "ControlDisabledBackdrop",

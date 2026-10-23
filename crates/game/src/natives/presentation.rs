@@ -139,7 +139,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetSoundPitch => |w, _, a| { let v = a.r(1); if let Some(s) = sound_mut(w, a.h(0)) { s.pitch = v; } none() },
         SetSoundDuration => |w, _, a| { let v = a.i(1); if let Some(s) = sound_mut(w, a.h(0)) { s.duration_ms = v; } none() },
         GetSoundDuration => |w, _, a| int(sound_mut(w, a.h(0)).map_or(0, |s| s.duration_ms)),
-        GetSoundFileDuration => |_, _, _| int(0),
+        GetSoundFileDuration => |w, _, a| {
+            let path = a.s(0);
+            int(w.chain.read(&path).ok().and_then(|d| sound_file_ms(&d)).map_or(0, |ms| ms as i32))
+        },
         SetSoundDistances => |w, _, a| { let (lo, hi) = (a.r(1), a.r(2)); if let Some(s) = sound_mut(w, a.h(0)) { s.min_dist = lo; s.max_dist = hi; } none() },
         SetSoundConeAngles => |_, _, _| none(),
         SetSoundConeOrientation => |_, _, _| none(),
@@ -552,4 +555,58 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetPortraitLight => |_, _, _| none(),
         SetUnitFog => |_, _, _| none(),
     );
+}
+
+/// A sound file's length in milliseconds (GetSoundFileDuration): a WAV's data over its
+/// byte rate, or an MP3's frames counted from their headers.
+pub fn sound_file_ms(data: &[u8]) -> Option<u32> {
+    if data.len() > 12 && &data[0..4] == b"RIFF" && &data[8..12] == b"WAVE" {
+        let (mut at, mut rate, mut size) = (12usize, 0u32, 0u32);
+        while at + 8 <= data.len() {
+            let id = &data[at..at + 4];
+            let len = u32::from_le_bytes(data[at + 4..at + 8].try_into().ok()?) as usize;
+            if id == b"fmt " && at + 16 <= data.len() {
+                rate = u32::from_le_bytes(data[at + 16..at + 20].try_into().ok()?);
+            } else if id == b"data" {
+                size = len as u32;
+            }
+            at += 8 + len + (len & 1);
+        }
+        return (rate > 0).then(|| (size as u64 * 1000 / rate as u64) as u32);
+    }
+    // MP3: skip an ID3v2 tag, then walk the frames.
+    let mut at = 0usize;
+    if data.len() > 10 && &data[0..3] == b"ID3" {
+        let n = data[6..10].iter().fold(0usize, |acc, &b| (acc << 7) | (b & 0x7f) as usize);
+        at = 10 + n;
+    }
+    const RATES: [[u32; 3]; 4] = [[11025, 12000, 8000], [0, 0, 0], [22050, 24000, 16000], [44100, 48000, 32000]];
+    const KBPS_V1: [u32; 16] = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0];
+    const KBPS_V2: [u32; 16] = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0];
+    let (mut samples, mut rate) = (0u64, 0u32);
+    while at + 4 <= data.len() {
+        if data[at] != 0xff || data[at + 1] & 0xe0 != 0xe0 {
+            at += 1;
+            continue;
+        }
+        let version = (data[at + 1] >> 3) & 3;
+        let layer = (data[at + 1] >> 1) & 3;
+        let br = (data[at + 2] >> 4) as usize;
+        let sr = ((data[at + 2] >> 2) & 3) as usize;
+        let pad = ((data[at + 2] >> 1) & 1) as u32;
+        if version == 1 || layer != 1 || sr == 3 || br == 0 || br == 15 {
+            at += 1;
+            continue;
+        }
+        let r = RATES[version as usize][sr];
+        let (kbps, per) = if version == 3 { (KBPS_V1[br], 1152) } else { (KBPS_V2[br], 576) };
+        let len = (per / 8 * kbps * 1000 / r + pad) as usize;
+        if len < 4 {
+            break;
+        }
+        samples += per as u64;
+        rate = r;
+        at += len;
+    }
+    (rate > 0).then(|| (samples * 1000 / rate as u64) as u32)
 }

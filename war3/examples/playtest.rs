@@ -609,6 +609,14 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 3;
             }
+            // sounddur <path>: a sound file's length as GetSoundFileDuration measures it.
+            "sounddur" => {
+                if let Some(g) = scene.game.as_ref() {
+                    let ms = g.world.chain.read(&a[i + 1]).ok().and_then(|d| w3_game::natives::presentation::sound_file_ms(&d));
+                    eprintln!("sounddur {} {:?}", a[i + 1], ms);
+                }
+                i += 2;
+            }
             // info <unit>: a unit's type, owner, life, place, and action.
             "info" => {
                 if let Some(g) = scene.game.as_ref() {

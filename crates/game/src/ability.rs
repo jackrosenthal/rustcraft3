@@ -34,6 +34,8 @@ pub fn intrinsic_order(code: &str) -> Option<i32> {
         "AIta" => Some(852270),
         // Drop All Corpses (CAbilityMeatDrop::vf194).
         "Amed" => Some(852054),
+        // Siphon Mana and Life Drain (CAbilityDrain::vf194: drain).
+        "AHdr" => Some(852487),
         _ => None,
     }
 }

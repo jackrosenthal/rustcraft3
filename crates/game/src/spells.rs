@@ -155,8 +155,16 @@ impl World {
                     _ => 1.0,
                 };
                 let (px, py) = if code == "AOvd" || code == "AEtq" || code == "AEsf" { (cx, cy) } else { (x, y) };
+                // Drain: the lightning of what it takes (LightningEffect: both, life,
+                // mana).
+                let link = if code == "AHdr" {
+                    let (life, mana) = (self.d(a, "DataA", lvl) > 0.0, self.d(a, "DataB", lvl) > 0.0);
+                    self.channel_link_nth(a, if life && mana { 0 } else if life { 1 } else { 2 }, h, target)
+                } else {
+                    0
+                };
                 if let Some(u) = self.unit_mut(h) {
-                    u.channel = Some(Channel { ability: a, level: lvl, target, x: px, y: py, elapsed: 0.0, duration, interval, next: 0.0, waves, link: 0, held: [0; 4] });
+                    u.channel = Some(Channel { ability: a, level: lvl, target, x: px, y: py, elapsed: 0.0, duration, interval, next: 0.0, waves, link, held: [0; 4] });
                 }
                 true
             }
@@ -634,14 +642,24 @@ impl World {
                     self.spell_damage(vm, h, t, max * pct * c.interval);
                 }
             }
-            // Siphon Mana: mana from the target to the caster.
+            // Drain (Siphon Mana, Life Drain): each interval DataA life and DataB mana
+            // from the target to the caster.
             "AHdr" => {
-                let take = self.unit(c.target).map_or(0.0, |t| t.mana.min(self.d(a, "DataB", lvl) * c.interval));
+                let take = self.unit(c.target).map_or(0.0, |t| t.mana.min(self.d(a, "DataB", lvl)));
                 if let Some(t) = self.unit_mut(c.target) {
                     t.mana -= take;
                 }
                 if let Some(u) = self.unit_mut(h) {
                     u.mana = (u.mana + take).min(u.max_mana);
+                }
+                let life = self.d(a, "DataA", lvl);
+                if life > 0.0 {
+                    let before = self.unit(c.target).map_or(0.0, |t| t.life);
+                    self.spell_damage(vm, h, c.target, life);
+                    let taken = (before - self.unit(c.target).map_or(0.0, |t| t.life.max(0.0))).max(0.0);
+                    if let Some(u) = self.unit_mut(h) {
+                        u.life = (u.life + taken).min(u.max_life);
+                    }
                 }
             }
             // Big Bad Voodoo: allies around the caster cannot be hurt.
@@ -815,8 +833,14 @@ impl World {
 
     /// The ability's channel lightning (its LightningEffect) from caster to target.
     fn channel_link(&mut self, a: Id, from: u32, to: u32) -> u32 {
+        self.channel_link_nth(a, 0, from, to)
+    }
+
+    /// A lightning from `from` to `to` of the ability's `n`th LightningEffect.
+    fn channel_link_nth(&mut self, a: Id, n: usize, from: u32, to: u32) -> u32 {
         let code = self.objects.abilities.get(a).map(|o| o.str("LightningEffect")).unwrap_or_default();
-        let code = code.split(',').next().unwrap_or("").trim().to_string();
+        let codes: Vec<&str> = code.split(',').map(str::trim).collect();
+        let code = codes.get(n).or(codes.first()).copied().unwrap_or("").to_string();
         let Some((f, t)) = self.channel_link_ends(from, to) else { return 0 };
         if code.is_empty() {
             return 0;

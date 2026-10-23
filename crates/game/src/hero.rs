@@ -1,7 +1,7 @@
 //! Heroes: attributes, experience, levels, and skills, using the hero constants in
 //! Units\\MiscGame.txt.
 
-use crate::objects::Id;
+use crate::objects::{Id, id_from_str};
 use crate::types::EventCtx;
 
 use crate::world::World;
@@ -118,7 +118,38 @@ impl World {
     }
 
     /// Whether a hero can learn the next level of an ability now.
+    /// What stands for a hero skill now: the skill, or what Engineering Upgrade made
+    /// of it.
+    pub fn learned_id(&self, h: u32, ability: Id) -> Id {
+        self.unit(h).and_then(|u| u.extra.swapped.iter().find(|s| s.0 == ability)).map_or(ability, |s| s.1)
+    }
+
+    /// Engineering Upgrade (CAbilityEngineeringUpgrade) at `level`: each of its DataC to
+    /// DataF pairs ("old,new") puts the new ability in place of the old at the old's
+    /// level, now or when the old is learned later.
+    fn engineering_upgrade(&mut self, h: u32, a: Id, level: u32) {
+        for field in ["DataC", "DataD", "DataE", "DataF"] {
+            let pair = self.objects.abilities.get(a).map(|o| o.level_str(field, level)).unwrap_or_default();
+            let mut it = pair.split(',').map(|s| id_from_str(s.trim()));
+            let (Some(old), Some(new)) = (it.next(), it.next()) else { continue };
+            if old[0] == 0 || new[0] == 0 {
+                continue;
+            }
+            let Some(u) = self.unit_mut(h) else { return };
+            match u.extra.swapped.iter_mut().find(|s| s.1 == old) {
+                Some(s) => s.1 = new,
+                None => u.extra.swapped.push((old, new)),
+            }
+            if let Some(e) = u.abilities.iter_mut().find(|e| e.0 == old) {
+                e.0 = new;
+            }
+        }
+        self.detach_ability_art(h);
+        self.attach_ability_art(h);
+    }
+
     pub fn can_learn(&self, h: u32, ability: Id) -> bool {
+        let ability = self.learned_id(h, ability);
         let Some(u) = self.unit(h) else { return false };
         let current = u.abilities.iter().find(|(a, _)| *a == ability).map_or(0, |a| a.1);
         let ab = self.objects.abilities.get(ability);
@@ -133,6 +164,7 @@ impl World {
         if !self.can_learn(h, ability) {
             return false;
         }
+        let ability = self.learned_id(h, ability);
         let Some(u) = self.unit(h) else { return false };
         let _ = u;
         // Each ability level needs a hero level: reqLevel, then every levelSkip levels.
@@ -150,6 +182,9 @@ impl World {
         };
         if self.ability_code(ability) == "Aamk" {
             self.apply_item_bonuses(h);
+        }
+        if self.ability_code(ability) == "ANeg" {
+            self.engineering_upgrade(h, ability, level as u32);
         }
         use crate::event_ids::*;
         let ctx = EventCtx { spell_ability: crate::objects::id_to_int(ability), state: level, ..Default::default() };

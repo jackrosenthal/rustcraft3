@@ -103,6 +103,12 @@ impl World {
         let hero_abils: Vec<Id> = o.list("heroAbilList").iter().map(|s| id_from_str(s.trim())).filter(|i| i[0] != 0).collect();
         let (move_speed, turn, prop, coll, scale, height, acquire) = (o.real("spd"), o.real("turnRate"), o.real("propWin"), o.real("collision"), o.real("modelScale").max(0.0001), o.real("moveHeight"), o.real("acquire"));
         let old_hero: Vec<Id> = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map(|o| o.list("heroAbilList").iter().map(|s| id_from_str(s.trim())).collect()).unwrap_or_default();
+        // What Engineering Upgrade made of abilities stands for them in the new form too.
+        let swapped = self.unit(h).map(|u| u.extra.swapped.clone()).unwrap_or_default();
+        let now = |a: Id| swapped.iter().find(|s| s.0 == a).map_or(a, |s| s.1);
+        let new_abils: Vec<Id> = new_abils.into_iter().map(now).collect();
+        let hero_abils: Vec<Id> = hero_abils.into_iter().map(now).collect();
+        let old_hero: Vec<Id> = old_hero.into_iter().map(now).collect();
         let Some(u) = self.unit_mut(h) else { return };
         let life_frac = if u.max_life > 0.0 { u.life / u.max_life } else { 1.0 };
         let mana_frac = if u.max_mana > 0.0 { u.mana / u.max_mana } else { 1.0 };

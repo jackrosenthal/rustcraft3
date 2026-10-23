@@ -357,6 +357,9 @@ pub struct UnitExtra {
     /// The life and mana an ankh brings a hero back with (-1 mana keeps it).
     #[serde(default)]
     pub restore: Option<(f32, f32)>,
+    /// Abilities Engineering Upgrade replaced: each original and what stands for it now.
+    #[serde(default)]
+    pub swapped: Vec<(Id, Id)>,
     /// Orders given with Shift, waiting for the ones before them: id, point, target.
     #[serde(default)]
     pub order_queue: std::collections::VecDeque<(i32, f32, f32, u32)>,
@@ -417,6 +420,7 @@ impl Default for UnitExtra {
             illusion: None,
             factory: None,
             restore: None,
+            swapped: Vec::new(),
             order_queue: Default::default(),
             resume: None,
             repair_debt: (0.0, 0.0),

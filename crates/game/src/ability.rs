@@ -453,6 +453,12 @@ impl World {
                             b.mana_regen = self.data(a, "DataA", lvl);
                         }
                     }
+                    // Engineering Upgrade: its bearer moves DataA faster and deals DataB
+                    // more damage (BNeg, on itself only).
+                    "ANeg" => {
+                        b.move_factor = self.data(a, "DataA", lvl);
+                        b.damage_bonus = self.data(a, "DataB", lvl);
+                    }
                     // War Drums and Command Aura: attack damage increase (DataA).
                     "Aakb" | "AOac" => b.damage_factor = self.data(a, "DataA", lvl),
                     // Slow Aura (a tornado): enemies move (DataA) and attack (DataB) slower.
@@ -462,7 +468,7 @@ impl World {
                     }
                     _ => continue,
                 }
-                let area = self.data(a, "Area", lvl);
+                let area = if code == "ANeg" { 0.0 } else { self.data(a, "Area", lvl) };
                 // Whom it reaches: enemies (a slow aura), allies, or, for a regeneration
                 // whose targets name no side (a fountain), everyone.
                 let targs = self.objects.abilities.get(a).map(|o| o.level_str("targs", lvl).to_ascii_lowercase()).unwrap_or_default();
@@ -483,11 +489,11 @@ impl World {
                 .iter()
                 .copied()
                 .filter(|&t| {
-                    self.unit(t).is_some_and(|u| !u.dead && !u.is_building && (u.x - x).hypot(u.y - y) <= area && reach.is_none_or(|enemies| crate::natives::players::is_ally(self, owner, u.owner) != enemies))
+                    // Without an area (Engineering Upgrade) only the bearer.
+                    (area > 0.0 || t == src) && self.unit(t).is_some_and(|u| !u.dead && !u.is_building && (u.x - x).hypot(u.y - y) <= area && reach.is_none_or(|enemies| crate::natives::players::is_ally(self, owner, u.owner) != enemies))
                 })
                 .collect();
             for t in targets {
-                let _ = src;
                 self.apply_buff(t, b.clone());
             }
         }
@@ -811,7 +817,7 @@ impl World {
         }
     }
 
-    /// Passive attack modifiers: Bash and Critical Strike.  Returns the extra damage factor
+    /// Passive attack modifiers: Bash, Critical Strike, and Demolish.  Returns the extra damage factor
     /// and flat bonus for this hit, and applies stuns.
     pub fn on_attack_passives(&mut self, attacker: u32, target: u32, damage: f32) -> f32 {
         let Some(u) = self.unit(attacker) else { return damage };
@@ -833,6 +839,15 @@ impl World {
                 "ANdb" => {
                     if (self.rng.int(1, 100) as f32) <= self.data(a, "DataA", lvl) {
                         damage = damage * self.data(a, "DataB", lvl) + self.data(a, "DataC", lvl);
+                    }
+                }
+                // Demolish: on what it allows, a DataA% chance to deal DataB times damage
+                // to structures, DataC to units, and DataD to Heroes (none when zero).
+                "ANde" if self.cast_target_error(attacker, a, target).is_none() => {
+                    let (building, hero) = self.unit(target).map_or((false, false), |t| (t.is_building, t.is_hero));
+                    let factor = self.data(a, if building { "DataB" } else if hero { "DataD" } else { "DataC" }, lvl);
+                    if factor > 0.0 && (self.rng.int(1, 100) as f32) <= self.data(a, "DataA", lvl) {
+                        damage *= factor;
                     }
                 }
                 // Critical Strike: DataA% chance to deal DataB times damage.

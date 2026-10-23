@@ -239,7 +239,8 @@ impl Commands {
         }
         if page == Page::Learn {
             for b in o.list("heroAbilList") {
-                let id = id_from_str(b.trim());
+                // What Engineering Upgrade made of the skill, when it has.
+                let id = w.learned_id(h, id_from_str(b.trim()));
                 let Some(ab) = w.objects.abilities.get(id) else { continue };
                 let Some((x, y)) = parse_pos(&ab.list("Researchbuttonpos")) else { continue };
                 let icon = ab.str("Researchart");

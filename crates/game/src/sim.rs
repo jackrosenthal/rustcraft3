@@ -1858,18 +1858,23 @@ impl World {
         }
     }
 
-    /// Pushes overlapping ground units apart.
+    /// Pushes overlapping units apart, flyers among flyers and the rest among
+    /// themselves; units unseen, aboard, or with their pathing off take no part.
     fn separate_units(&mut self, _dt: f32) {
         let hs: Vec<u32> = self
             .unit_order
             .iter()
             .copied()
-            .filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.is_building && u.collision > 0.0))
+            .filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.is_building && u.collision > 0.0 && !u.extra.no_pathing))
             .collect();
         let pos: Vec<(f32, f32, f32)> = hs.iter().map(|&h| self.unit(h).map(|u| (u.x, u.y, u.collision)).unwrap()).collect();
+        let air: Vec<bool> = hs.iter().map(|&h| self.move_kind(h) == crate::pathing::Move::Fly).collect();
         let mut push = vec![(0.0f32, 0.0f32); hs.len()];
         for i in 0..hs.len() {
             for j in i + 1..hs.len() {
+                if air[i] != air[j] {
+                    continue;
+                }
                 let (a, b) = (pos[i], pos[j]);
                 let (dx, dy) = (b.0 - a.0, b.1 - a.1);
                 let d = (dx * dx + dy * dy).sqrt();
@@ -1888,7 +1893,8 @@ impl World {
             if px == 0.0 && py == 0.0 {
                 continue;
             }
-            let fits = |w: &World, x: f32, y: f32| w.pathing.as_ref().is_none_or(|p| p.walkable(p.cell_of(x, y)));
+            let kind = if air[i] { crate::pathing::Move::Fly } else { self.move_kind(h) };
+            let fits = |w: &World, x: f32, y: f32| w.pathing.as_ref().is_none_or(|p| p.passable(p.cell_of(x, y), kind));
             let (x, y) = self.unit(h).map(|u| (u.x + px, u.y + py)).unwrap();
             if fits(self, x, y) {
                 let u = self.unit_mut(h).unwrap();

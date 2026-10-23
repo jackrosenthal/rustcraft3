@@ -9,3 +9,4 @@ license.workspace = true
 w3-mpq.workspace = true
 w3-formats.workspace = true
 log.workspace = true
+fontdue.workspace = true

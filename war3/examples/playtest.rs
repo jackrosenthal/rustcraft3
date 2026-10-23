@@ -33,6 +33,11 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("selected {:?}", scene.selection);
                 i += 5;
             }
+            // hover <x> <y>: moves the pointer (screen pixels).
+            "hover" => {
+                scene.hover(num(&a[i + 1]), num(&a[i + 2]), (w, h));
+                i += 3;
+            }
             "lclick" => {
                 let consumed = scene.left_click(num(&a[i + 1]), num(&a[i + 2]), (w, h));
                 eprintln!("left click consumed: {consumed}");

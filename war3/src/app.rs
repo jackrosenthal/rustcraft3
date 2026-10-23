@@ -176,6 +176,7 @@ impl ApplicationHandler for App {
                     glue.pointer_move(position.x as f32, position.y as f32, (r.gpu.config.width, r.gpu.config.height));
                 }
                 if let Some(scene) = r.scene.as_mut() {
+                    scene.hover(position.x as f32, position.y as f32, (r.gpu.config.width, r.gpu.config.height));
                     if let Some(d) = scene.drag.as_mut() {
                         d.1 = (position.x as f32, position.y as f32);
                     }

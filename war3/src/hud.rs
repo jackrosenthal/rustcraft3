@@ -119,6 +119,8 @@ pub struct Hud {
     production: Option<w3_game::info::Production>,
     /// CInfoPanelGroup: the selection when it has more than one unit.
     pub group: Vec<GroupSlot>,
+    /// The pointer in interface units, for tooltips.
+    pub pointer: (f32, f32),
     pub minimap_area: Option<MinimapArea>,
     pub minimap_dots: Vec<(f32, f32, [f32; 4], f32)>,
     /// Whether the "@minimapfog" overlay texture is current.
@@ -229,6 +231,7 @@ impl Hud {
             building,
             production: None,
             group: Vec::new(),
+            pointer: (-1.0, -1.0),
             camera_box: Vec::new(),
             card: Vec::new(),
             page: crate::card::Page::Main,
@@ -374,6 +377,72 @@ impl Hud {
         self.production = None;
         self.buff_icons = None;
         self.level_bar = None;
+    }
+
+    /// CUberToolTipWar3 for a command button: its BOTTOMRIGHT 0.1625 above the
+    /// interface's, a ToolTipBorder/ToolTipBackground box (corners 0.01, insets 0.0019),
+    /// the name 0.005 in, the cost row (0.009375 icons with gold values, 0.004 below),
+    /// and the text wrapped at 0.21 another 0.005 below; the box is the name's width
+    /// (at least 0.21) plus 0.01 wide and as tall as its parts plus 0.01.
+    fn tooltip_draws(&self, db: &FrameDb, b: &crate::card::Button, out: &mut Vec<Draw>) {
+        use w3_ui::fdf::{Arg, Def, Prop};
+        let root = self.tree.frames[0].rect.unwrap_or_default();
+        let font = db.decorate("MasterFont");
+        let height = |key: &str| db.misc_ui.get_str("FontHeights", key).and_then(|v| v.trim().parse().ok()).unwrap_or(0.011f32);
+        let (name_h, desc_h, cost_h) = (height("ToolTipName"), height("ToolTipDesc"), height("ToolTipCost"));
+        let name_w = db.text_width(&font, name_h, &b.tip);
+        let lines = if b.ubertip.is_empty() { Vec::new() } else { db.wrap(&font, desc_h, &b.ubertip, 0.21) };
+        let line_h = desc_h * 1.2;
+        let costs: Vec<(usize, i32)> = b.costs.iter().copied().enumerate().filter(|&(_, c)| c != 0).collect();
+        let cost_row = if costs.is_empty() { 0.0 } else { 0.013375 };
+        let uber_h = if lines.is_empty() { 0.0 } else { lines.len() as f32 * line_h + 0.005 };
+        let w = name_w.max(0.21) + 0.01;
+        let h = name_h + cost_row + uber_h + 0.01;
+        let r = w3_ui::Rect { x0: root.x1 - w, x1: root.x1, y0: root.y0 + 0.1625, y1: root.y0 + 0.1625 + h };
+        let prop = |key: &str, args: Vec<Arg>| Prop { key: key.into(), args };
+        let s = |v: &str| Arg::Str(v.into());
+        let def = Def {
+            block: "Frame".into(),
+            kind: "BACKDROP".into(),
+            name: String::new(),
+            inherits: None,
+            with_children: false,
+            props: vec![
+                prop("BackdropBackground", vec![s("ToolTipBackground")]),
+                prop("BackdropCornerFlags", vec![s("UL|UR|BL|BR|T|L|B|R")]),
+                prop("BackdropCornerSize", vec![Arg::Num(0.01)]),
+                prop("BackdropBackgroundInsets", vec![Arg::Num(0.0019); 4]),
+                prop("BackdropEdgeFile", vec![s("ToolTipBorder")]),
+            ],
+            children: vec![],
+        };
+        self.tree.backdrop(db, &def, r, out);
+        let text = |out: &mut Vec<Draw>, t: &str, x0: f32, y1: f32, size: f32, w: f32, color: [f32; 4]| {
+            out.push(Draw::Text { font: font.clone(), size, rect: w3_ui::Rect { x0, x1: x0 + w, y0: y1 - size * 1.2, y1 }, text: t.to_string(), color, justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Start, shadow: None });
+        };
+        let (x0, mut y) = (r.x0 + 0.005, r.y1 - 0.005);
+        text(out, &b.tip, x0, y, name_h, name_w + 0.01, [1.0; 4]);
+        y -= name_h;
+        if !costs.is_empty() {
+            // ToolTipManaIcon, ToolTipGoldIcon, ToolTipLumberIcon, ToolTipSupplyIcon.
+            let keys = ["ToolTipManaIcon", "ToolTipGoldIcon", "ToolTipLumberIcon", "ToolTipSupplyIcon"];
+            let (mut x, top) = (x0, y - 0.004);
+            let gold = [0xfe as f32 / 255.0, 0xd3 as f32 / 255.0, 0x12 as f32 / 255.0, 1.0];
+            for (k, c) in costs {
+                let icon = w3_ui::Rect { x0: x, x1: x + 0.009375, y0: top - 0.009375, y1: top };
+                out.push(Draw::Image { texture: db.decorate(keys[k]), rect: icon, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+                let v = c.to_string();
+                let tw = db.text_width(&font, cost_h, &v);
+                let tx = icon.x1 + 0.003125;
+                out.push(Draw::Text { font: font.clone(), size: cost_h, rect: w3_ui::Rect { x0: tx, x1: tx + tw + 0.005, y0: icon.y0 - 0.003, y1: icon.y1 + 0.003 }, text: v, color: gold, justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Middle, shadow: None });
+                x = tx + tw + 0.00625;
+            }
+            y -= cost_row;
+        }
+        if !lines.is_empty() {
+            y -= 0.005;
+            text(out, &lines.join("\n"), x0, y, desc_h, 0.21 + 0.005, [1.0; 4]);
+        }
     }
 
     /// The center of group button `k`, in interface units.
@@ -815,6 +884,10 @@ impl Hud {
         }
         self.production_draws(db, &mut out);
         self.group_draws(db, &mut out);
+        let tip = self.button_at(self.pointer.0, self.pointer.1).filter(|b| !b.tip.is_empty()).cloned();
+        if let Some(b) = tip {
+            self.tooltip_draws(db, &b, &mut out);
+        }
         // CBuffBar: 0.12 x 0.015 with its lower right 0.003 left of and 0.005687 above
         // the unit detail's, eight 0.015 icons in a row, and COLON_STATUS 0.01 left of it
         // (InfoPanelTextFont 0.0085, white, shadowed).

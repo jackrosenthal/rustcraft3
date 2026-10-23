@@ -1004,6 +1004,14 @@ impl Scene {
         }
     }
 
+    /// Pointer movement, for tooltips.
+    pub fn hover(&mut self, sx: f32, sy: f32, size: (u32, u32)) {
+        let p = self.to_ui(sx, sy, size);
+        if let Some(h) = self.hud.as_mut() {
+            h.pointer = p;
+        }
+    }
+
     pub fn key(&mut self, c: char) {
         if c == '\u{1b}' {
             if let Some(h) = self.hud.as_mut().filter(|h| h.menu.is_some()) {

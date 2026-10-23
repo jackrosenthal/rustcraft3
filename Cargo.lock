@@ -2653,6 +2653,7 @@ dependencies = [
 name = "w3-ui"
 version = "0.1.0"
 dependencies = [
+ "fontdue",
  "log",
  "w3-formats",
  "w3-mpq",

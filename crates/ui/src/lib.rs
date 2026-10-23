@@ -29,6 +29,8 @@ pub struct FrameDb {
     /// Data version for `_V0`/`_V1` skin keys: 0 for Reign of Chaos, 1 for The Frozen
     /// Throne.
     pub version: u32,
+    /// The skins' TrueType fonts by lowercase path, for measuring text.
+    pub fonts: HashMap<String, Rc<fontdue::Font>>,
 }
 
 impl FrameDb {
@@ -37,6 +39,17 @@ impl FrameDb {
         let mut db = FrameDb { skin: "Default".into(), version: 1, ..Default::default() };
         db.skins = Profile::parse(&chain.read_string("UI\\war3skins.txt").unwrap_or_default());
         db.misc_ui = Profile::parse(&chain.read_string("UI\\MiscUI.txt").unwrap_or_default());
+        // Every font the skins name, so text can be measured.
+        let paths: Vec<String> = db.skins.sections.values().flat_map(|s| s.values().cloned()).collect();
+        for v in paths {
+            {
+                if v.to_ascii_lowercase().ends_with(".ttf") && !db.fonts.contains_key(&v.to_ascii_lowercase()) {
+                    if let Some(f) = chain.read(&v).ok().and_then(|b| fontdue::Font::from_bytes(b, fontdue::FontSettings::default()).ok()) {
+                        db.fonts.insert(v.to_ascii_lowercase(), Rc::new(f));
+                    }
+                }
+            }
+        }
         let toc = chain.read_string("UI\\FrameDef\\FrameDef.toc").unwrap_or_default();
         let mut queue: Vec<String> = toc.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
         let mut seen = std::collections::HashSet::new();
@@ -60,6 +73,33 @@ impl FrameDb {
             }
         }
         db
+    }
+
+    /// Width of a line in interface units, without color codes (as the renderer
+    /// measures it).
+    pub fn text_width(&self, font: &str, size: f32, line: &str) -> f32 {
+        let Some(f) = self.fonts.get(&font.to_ascii_lowercase()) else { return line.chars().count() as f32 * size * 0.5 };
+        strip_color_codes(line).chars().map(|c| f.metrics(c, 64.0).advance_width).sum::<f32>() * size / 64.0
+    }
+
+    /// Breaks text at newlines and |n, then words to `max_w` (as the renderer does).
+    pub fn wrap(&self, font: &str, size: f32, text: &str, max_w: f32) -> Vec<String> {
+        let text = text.replace("|n", "\n").replace("|N", "\n");
+        let mut lines = Vec::new();
+        for para in text.split('\n') {
+            let mut cur = String::new();
+            for word in para.split(' ') {
+                let cand = if cur.is_empty() { word.to_string() } else { format!("{cur} {word}") };
+                if !cur.is_empty() && max_w > 0.0 && self.text_width(font, size, &cand) > max_w {
+                    lines.push(std::mem::take(&mut cur));
+                    cur = word.to_string();
+                } else {
+                    cur = cand;
+                }
+            }
+            lines.push(cur);
+        }
+        lines
     }
 
     /// Resolves a string key from the interface string tables; unknown keys are returned
@@ -981,6 +1021,12 @@ impl FrameTree {
         }
     }
 
+    /// Draws a backdrop definition built by a screen (CToolTipWar3's box) over `r`.
+    pub fn backdrop(&self, db: &FrameDb, d: &Def, r: Rect, out: &mut Vec<Draw>) {
+        let file = |n: &str| db.decorate(n);
+        self.draw_backdrop(db, d, r, &file, out);
+    }
+
     fn draw_backdrop(&self, db: &FrameDb, d: &Def, r: Rect, owner_file: &dyn Fn(&str) -> String, out: &mut Vec<Draw>) {
         let color = [1.0; 4];
         // A backdrop decorates its file names when it or its owner says so.
@@ -1044,4 +1090,30 @@ impl FrameTree {
             push(Rect { x0: r.x1 - c, x1: r.x1, y0: r.y0, y1: r.y0 + c }, piece(7.0), false);
         }
     }
+}
+
+/// Text without |cAARRGGBB and |r color codes.
+pub fn strip_color_codes(s: &str) -> String {
+    let mut out = String::new();
+    let mut it = s.chars().peekable();
+    while let Some(c) = it.next() {
+        if c == '|' {
+            match it.peek() {
+                Some('c') | Some('C') => {
+                    it.next();
+                    for _ in 0..8 {
+                        it.next();
+                    }
+                    continue;
+                }
+                Some('r') | Some('R') => {
+                    it.next();
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        out.push(c);
+    }
+    out
 }

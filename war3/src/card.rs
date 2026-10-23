@@ -34,6 +34,66 @@ pub struct Button {
     pub hotkey: Option<char>,
     pub action: Action,
     pub enabled: bool,
+    /// Tooltip title and text (Tip and Ubertip, placeholders filled in).
+    pub tip: String,
+    pub ubertip: String,
+    /// Mana, gold, lumber, and food costs shown in the tooltip.
+    pub costs: [i32; 4],
+}
+
+impl Button {
+    fn new(x: u32, y: u32, icon: String, hotkey: Option<char>, action: Action, enabled: bool) -> Button {
+        Button { x, y, icon, hotkey, action, enabled, tip: String::new(), ubertip: String::new(), costs: [0; 4] }
+    }
+
+    fn with_tip(mut self, tip: String, ubertip: String, costs: [i32; 4]) -> Button {
+        self.tip = tip;
+        self.ubertip = ubertip;
+        self.costs = costs;
+        self
+    }
+}
+
+/// Fills a tooltip's `<ID,Field>` and `<ID,Field,%>` placeholders with the object's
+/// value (a percentage when marked), whole numbers without decimals.
+pub fn fill_placeholders(w: &World, s: &str) -> String {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(i) = rest.find('<') {
+        out.push_str(&rest[..i]);
+        let Some(j) = rest[i..].find('>') else {
+            out.push_str(&rest[i..]);
+            return out;
+        };
+        let inner = &rest[i + 1..i + j];
+        let parts: Vec<&str> = inner.split(',').collect();
+        let value = (parts.len() >= 2 && parts[0].len() == 4).then(|| {
+            let id = id_from_str(parts[0]);
+            let o = w.objects.abilities.get(id).or_else(|| w.objects.units.get(id)).or_else(|| w.objects.items.get(id)).or_else(|| w.objects.upgrades.get(id)).or_else(|| w.objects.buffs.get(id))?;
+            let v = o.str(parts[1]);
+            let pct = parts.get(2).is_some_and(|p| p.trim() == "%");
+            let n: Option<f32> = v.trim().parse().ok();
+            Some(match n {
+                Some(n) => {
+                    let n = if pct { n * 100.0 } else { n };
+                    if (n - n.round()).abs() < 1e-3 { format!("{}", n.round() as i64) } else { format!("{n}") }
+                }
+                None => v,
+            })
+        });
+        match value.flatten() {
+            Some(v) => out.push_str(&v),
+            None => out.push_str(&rest[i..i + j + 1]),
+        }
+        rest = &rest[i + j + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// An entry of a per-level list (Tip, Ubertip), the last when the list is shorter.
+fn level_entry(list: &[String], level: u32) -> String {
+    list.get(level.saturating_sub(1) as usize).or(list.last()).cloned().unwrap_or_default()
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -77,14 +137,9 @@ impl Commands {
     fn command(&self, db: &w3_ui::FrameDb, name: &str, action: Action, enabled: bool) -> Option<Button> {
         let (x, y) = parse_pos(&self.profile.get_list(name, "Buttonpos"))?;
         let art = self.profile.get_str(name, "Art")?;
-        Some(Button {
-            x,
-            y,
-            icon: db.decorate(&art),
-            hotkey: self.profile.get_str(name, "Hotkey").and_then(|h| hotkey(&h)),
-            action,
-            enabled,
-        })
+        let tip = self.profile.get_str(name, "Tip").unwrap_or_default();
+        let uber = self.profile.get_str(name, "Ubertip").unwrap_or_default();
+        Some(Button::new(x, y, db.decorate(&art), self.profile.get_str(name, "Hotkey").and_then(|h| hotkey(&h)), action, enabled).with_tip(tip, uber, [0; 4]))
     }
 
     /// A shop's goods for the local player: items, hired units, and revivals.
@@ -100,14 +155,16 @@ impl Commands {
             let Some(o) = w.objects.items.get(id) else { continue };
             let Some((x, y)) = parse_pos(&o.list("Buttonpos")) else { continue };
             let ok = has_shopper && stock > 0 && gold >= o.int("goldcost") && lumber >= o.int("lumbercost");
-            out.push(Button { x, y, icon: o.str("Art"), hotkey: hotkey(&o.str("Hotkey")), action: Action::Buy(id), enabled: ok });
+            let costs = [0, o.int("goldcost"), o.int("lumbercost"), 0];
+            out.push(Button::new(x, y, o.str("Art"), hotkey(&o.str("Hotkey")), Action::Buy(id), ok).with_tip(o.str("Tip"), fill_placeholders(w, &o.str("Ubertip")), costs));
         }
         for id in units {
             let stock = w.stock_count(h, id);
             let Some(o) = w.objects.units.get(id) else { continue };
             let Some((x, y)) = parse_pos(&o.list("Buttonpos")) else { continue };
             let ok = has_shopper && stock > 0 && gold >= o.int("goldcost") && lumber >= o.int("lumbercost");
-            out.push(Button { x, y, icon: o.str("Art"), hotkey: hotkey(&o.str("Hotkey")), action: Action::Hire(id), enabled: ok });
+            let costs = [0, o.int("goldcost"), o.int("lumbercost"), o.int("fused")];
+            out.push(Button::new(x, y, o.str("Art"), hotkey(&o.str("Hotkey")), Action::Hire(id), ok).with_tip(o.str("Tip"), fill_placeholders(w, &o.str("Ubertip")), costs));
         }
         out
     }
@@ -120,14 +177,16 @@ impl Commands {
         let object_button = |id: Id, action: Action, enabled: bool| -> Option<Button> {
             let ob = w.objects.units.get(id).or_else(|| w.objects.upgrades.get(id)).or_else(|| w.objects.abilities.get(id))?;
             let (x, y) = parse_pos(&ob.list("Buttonpos"))?;
-            Some(Button {
-                x,
-                y,
-                icon: ob.str("Art"),
-                hotkey: hotkey(&ob.str("Hotkey")),
-                action,
-                enabled,
-            })
+            // Research shows the next level's tip, art, and cost.
+            let (tip, uber, icon, costs) = if w.objects.upgrades.get(id).is_some() {
+                let level = w.players[u.owner as usize].tech_researched.get(&id).copied().unwrap_or(0) as u32;
+                let art = level_entry(&ob.list("Art"), level + 1);
+                let costs = [0, ob.int("goldbase") + ob.int("goldmod") * level as i32, ob.int("lumberbase") + ob.int("lumbermod") * level as i32, 0];
+                (level_entry(&ob.list("Tip"), level + 1), level_entry(&ob.list("Ubertip"), level + 1), art, costs)
+            } else {
+                (ob.str("Tip"), ob.str("Ubertip"), ob.str("Art"), [0, ob.int("goldcost"), ob.int("lumbercost"), ob.int("fused")])
+            };
+            Some(Button::new(x, y, icon, hotkey(&ob.str("Hotkey")), action, enabled).with_tip(tip, fill_placeholders(w, &uber), costs))
         };
         if page == Page::Build {
             for b in o.list("Builds") {
@@ -149,7 +208,11 @@ impl Commands {
                 let Some((x, y)) = parse_pos(&ab.list("Researchbuttonpos")) else { continue };
                 let icon = ab.str("Researchart");
                 let icon = if icon.is_empty() { ab.str("Art") } else { icon };
-                out.push(Button { x, y, icon, hotkey: hotkey(&ab.str("Researchhotkey")), action: Action::Learn(id), enabled: w.can_learn(h, id) });
+                // Learning shows the next level's Researchtip and Researchubertip.
+                let next = w.ability_level(h, id) + 1;
+                let tip = level_entry(&ab.list("Researchtip"), next).replace("%d", &next.to_string());
+                let uber = fill_placeholders(w, &ab.str("Researchubertip"));
+                out.push(Button::new(x, y, icon, hotkey(&ab.str("Researchhotkey")), Action::Learn(id), w.can_learn(h, id)).with_tip(tip, uber, [0; 4]));
             }
             out.extend(self.command(db, "CmdCancel", Action::Cancel, true));
             return out;
@@ -226,14 +289,20 @@ impl Commands {
                 _ => (order, targeting != w3_game::ability::Targeting::None),
             };
             let ready = order.is_empty() || w.can_cast(h, a).is_ok();
-            out.push(Button { x, y, icon: art, hotkey: hotkey(&ab.str("Hotkey")), action: Action::Order { order, targeted }, enabled: ready });
+            let level = w.ability_level(h, a).max(1);
+            let tip = level_entry(&ab.list("Tip"), level);
+            let uber = fill_placeholders(w, &level_entry(&ab.list("Ubertip"), level));
+            let mana = ab.int(&format!("Cost{level}"));
+            out.push(Button::new(x, y, art, hotkey(&ab.str("Hotkey")), Action::Order { order, targeted }, ready).with_tip(tip, uber, [mana, 0, 0, 0]));
             // Call to Arms shows its second button (Unbuttonpos, Unart, Unorder: Back to
             // Work) beside it; other toggles show one button at a time.
             let both = ab.str("code") == "Amic";
             if let (true, Some((ux, uy)), unart) = (both, parse_pos(&ab.list("Unbuttonpos")), pick("Unart")) {
                 let unorder = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Unorder"))).unwrap_or("");
                 if !unart.is_empty() && !unorder.is_empty() {
-                    out.push(Button { x: ux, y: uy, icon: unart, hotkey: hotkey(&ab.str("Unhotkey")), action: Action::Order { order: unorder, targeted: false }, enabled: true });
+                    let tip = level_entry(&ab.list("Untip"), level);
+                    let uber = fill_placeholders(w, &level_entry(&ab.list("Unubertip"), level));
+                    out.push(Button::new(ux, uy, unart, hotkey(&ab.str("Unhotkey")), Action::Order { order: unorder, targeted: false }, true).with_tip(tip, uber, [0; 4]));
                 }
             }
         }
@@ -243,7 +312,12 @@ impl Commands {
             let (g, l, _) = w.revive_cost(hero);
             let p = &w.players[u.owner as usize];
             let ok = p.get_state(1) >= g && p.get_state(2) >= l && u.revive.is_none();
-            out.extend(object_button(hu.type_id, Action::Revive(hero), ok));
+            // Revivetip with the hero's revival cost.
+            let tip = w.objects.units.get(hu.type_id).map(|o| o.str("Revivetip")).unwrap_or_default();
+            out.extend(object_button(hu.type_id, Action::Revive(hero), ok).map(|b| {
+                let uber = b.ubertip.clone();
+                b.with_tip(tip, uber, [0, g, l, 0])
+            }));
         }
         // Units that train units or revive heroes have rally (CUnit::vf107 adds
         // CAbilityRally), shown as CmdRally.

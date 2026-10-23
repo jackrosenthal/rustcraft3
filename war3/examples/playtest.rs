@@ -513,6 +513,11 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // shift <0|1>: holds Shift (queued orders).
+            "shift" => {
+                scene.shift_held = num(&a[i + 1]) != 0.0;
+                i += 2;
+            }
             // log: opens the message log (F12).
             "log" => {
                 scene.open_log();

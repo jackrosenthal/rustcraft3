@@ -245,6 +245,22 @@ pub(crate) fn turn(u: &mut Unit, target_deg: f32, dt: f32) -> f32 {
 
 impl World {
     /// Issues a unit order from a player or script, replacing the current one.
+    /// An order from the player: at once, or (`queue`, Shift held) after the orders
+    /// the unit is already carrying out.
+    pub fn issue_order(&mut self, h: u32, order: i32, x: f32, y: f32, target: u32, queue: bool) {
+        let busy = self.unit(h).is_some_and(|u| !matches!(u.action, Action::Idle) || !u.extra.order_queue.is_empty());
+        if queue && busy {
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.order_queue.push_back((order, x, y, target));
+            }
+            return;
+        }
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.order_queue.clear();
+        }
+        self.order_unit(h, order, x, y, target);
+    }
+
     pub fn order_unit(&mut self, h: u32, order: i32, x: f32, y: f32, target: u32) {
         let smart = crate::natives::basic::order_id("smart");
         let mv = crate::natives::basic::order_id("move");
@@ -667,6 +683,14 @@ impl World {
                 u.casting = None;
                 continue;
             }
+            // An idle unit takes its next queued order.
+            if matches!(u.action, Action::Idle) && !u.extra.order_queue.is_empty() {
+                let next = self.unit_mut(h).unwrap().extra.order_queue.pop_front();
+                if let Some((order, x, y, target)) = next {
+                    self.order_unit(h, order, x, y, target);
+                }
+            }
+            let Some(u) = self.unit(h) else { continue };
             let action = u.action.clone();
             let wp = u.swing.as_ref().and_then(|s| weapon_numbered(self, u, s.weapon)).or_else(|| unit_weapons(self, u).into_iter().next().map(|x| x.1));
             {

@@ -55,7 +55,18 @@ fn passive(code: &str) -> bool {
 
 impl World {
     pub fn ability_code(&self, id: Id) -> String {
-        self.objects.abilities.get(id).map(|a| a.str("code")).unwrap_or_default()
+        let code = self.objects.abilities.get(id).map(|a| a.str("code")).unwrap_or_default();
+        // Creep copies of hero and unit spells, with the same fields as the originals.
+        match code.as_str() {
+            "ACtc" => "AHtc",
+            "ACbf" => "ANbf",
+            "ACdv" => "Adev",
+            "ACrn" => "AOre",
+            "ACad" => "AUan",
+            "ACsp" => "AUsl",
+            _ => return code,
+        }
+        .to_string()
     }
 
     pub fn ability_level(&self, h: u32, id: Id) -> u32 {

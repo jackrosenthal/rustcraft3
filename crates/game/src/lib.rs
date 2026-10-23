@@ -88,6 +88,13 @@ impl Game {
         objects.apply_map(&chain);
         let mut world = World::new(chain.clone(), objects);
         world.version = version;
+        // w3i flag 0x2000: the map has terrain fog.
+        if info.flags & 0x2000 != 0 {
+            let c = info.fog_color;
+            let f = (info.fog_style as i32, info.fog_start, info.fog_end, info.fog_density, [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0]);
+            world.map_terrain_fog = Some(f);
+            world.terrain_fog = Some(f);
+        }
         world.bind_natives(&vm);
         // Interface strings (FDF StringList tables) resolve GetLocalizedString keys.
         world.strings = w3_ui::FrameDb::load(&chain).strings;

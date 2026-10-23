@@ -1547,6 +1547,12 @@ impl Scene {
                 globals.ambient = [l.ambient.x, l.ambient.y, l.ambient.z, 1.0];
             }
         }
+        // Terrain fog, from the camera's distance; the exponential styles' density
+        // scaling is not yet recovered, so every style uses the start and end range.
+        if let Some((_, start, end, _, color)) = self.game.as_ref().and_then(|g| g.world.terrain_fog) {
+            globals.fog = [start, end, 1.0, 0.0];
+            globals.fog_color = [color[0], color[1], color[2], 1.0];
+        }
         if let (Some(tex), Some(g)) = (&self.fog, &self.game) {
             let w = &g.world;
             // UI\MiscData.txt [FogOfWar]: alpha, red, green, blue.

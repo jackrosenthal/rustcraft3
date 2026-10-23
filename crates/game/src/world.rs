@@ -124,6 +124,12 @@ pub struct World {
     /// The local player's camera.
     pub camera: crate::camera::GameCamera,
     pub cinematic: Cinematic,
+    /// Terrain fog: style, start, end, density, and color (0 to 1), from the map (w3i
+    /// flag 0x2000) or SetTerrainFogEx; ResetTerrainFog returns to the map's.
+    pub terrain_fog: Option<(i32, f32, f32, f32, [f32; 3])>,
+    pub map_terrain_fog: Option<(i32, f32, f32, f32, [f32; 3])>,
+    /// SetSkyModel's model, if any.
+    pub sky_model: Option<String>,
     /// The player's profile: campaign progress and saved game caches.
     pub persist: crate::persist::Persist,
     /// Handles removed at a game time (temporary fog modifiers).
@@ -259,6 +265,9 @@ impl World {
             quest_flash: false,
             camera,
             cinematic: Cinematic::default(),
+            terrain_fog: None,
+            map_terrain_fog: None,
+            sky_model: None,
             persist: Default::default(),
             timed_removals: Vec::new(),
         }

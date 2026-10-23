@@ -28,6 +28,20 @@ fn tag_mut(w: &mut World, h: u32) -> Option<&mut TextTag> {
     }
 }
 
+fn quest(w: &mut World, h: u32, f: impl FnOnce(&mut Quest)) -> w3_jass::NativeResult {
+    if let Some(Obj::Quest(q)) = w.handles.get_mut(h) {
+        f(q);
+    }
+    none()
+}
+
+fn quest_get(w: &World, h: u32) -> Option<&Quest> {
+    match w.handles.get(h) {
+        Some(Obj::Quest(q)) => Some(q),
+        _ => None,
+    }
+}
+
 fn opaque(w: &mut World, kind: &'static str) -> w3_jass::NativeResult {
     handle(w.handles.insert(Obj::Opaque(kind)))
 }
@@ -331,11 +345,72 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             }
             none()
         },
-        CreateQuest => |w, _, _| opaque(w, "quest"),
-        DestroyQuest => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
-        QuestCreateItem => |w, _, _| opaque(w, "questitem"),
-        CreateDefeatCondition => |w, _, _| opaque(w, "defeatcondition"),
-        DestroyDefeatCondition => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
+        CreateQuest => |w, _, _| {
+            let q = w.handles.insert(Obj::Quest(Quest::default()));
+            w.quests.push(q);
+            handle(q)
+        },
+        DestroyQuest => |w, _, a| {
+            let q = a.h(0);
+            w.quests.retain(|&x| x != q);
+            if let Some(Obj::Quest(qu)) = w.handles.get(q) {
+                for i in qu.items.clone() {
+                    w.handles.remove(i);
+                }
+            }
+            w.handles.remove(q);
+            none()
+        },
+        QuestSetTitle => |w, _, a| { let t = w.localized(&a.s(1)); quest(w, a.h(0), |q| q.title = t) },
+        QuestSetDescription => |w, _, a| { let t = w.localized(&a.s(1)); quest(w, a.h(0), |q| q.description = t) },
+        QuestSetIconPath => |w, _, a| { let t = a.s(1); quest(w, a.h(0), |q| q.icon = t) },
+        QuestSetRequired => |w, _, a| { let v = a.b(1); quest(w, a.h(0), |q| q.required = v) },
+        QuestSetCompleted => |w, _, a| { let v = a.b(1); quest(w, a.h(0), |q| q.completed = v) },
+        QuestSetDiscovered => |w, _, a| { let v = a.b(1); quest(w, a.h(0), |q| q.discovered = v) },
+        QuestSetFailed => |w, _, a| { let v = a.b(1); quest(w, a.h(0), |q| q.failed = v) },
+        QuestSetEnabled => |w, _, a| { let v = a.b(1); quest(w, a.h(0), |q| q.enabled = v) },
+        IsQuestRequired => |w, _, a| boolean(quest_get(w, a.h(0)).is_some_and(|q| q.required)),
+        IsQuestCompleted => |w, _, a| boolean(quest_get(w, a.h(0)).is_some_and(|q| q.completed)),
+        IsQuestDiscovered => |w, _, a| boolean(quest_get(w, a.h(0)).is_some_and(|q| q.discovered)),
+        IsQuestFailed => |w, _, a| boolean(quest_get(w, a.h(0)).is_some_and(|q| q.failed)),
+        IsQuestEnabled => |w, _, a| boolean(quest_get(w, a.h(0)).is_some_and(|q| q.enabled)),
+        QuestCreateItem => |w, _, a| {
+            let q = a.h(0);
+            let i = w.handles.insert(Obj::QuestItem(QuestItem { quest: q, ..Default::default() }));
+            if let Some(Obj::Quest(qu)) = w.handles.get_mut(q) {
+                qu.items.push(i);
+            }
+            handle(i)
+        },
+        QuestItemSetDescription => |w, _, a| {
+            let t = w.localized(&a.s(1));
+            if let Some(Obj::QuestItem(i)) = w.handles.get_mut(a.h(0)) { i.description = t; }
+            none()
+        },
+        QuestItemSetCompleted => |w, _, a| {
+            let v = a.b(1);
+            if let Some(Obj::QuestItem(i)) = w.handles.get_mut(a.h(0)) { i.completed = v; }
+            none()
+        },
+        IsQuestItemCompleted => |w, _, a| boolean(matches!(w.handles.get(a.h(0)), Some(Obj::QuestItem(i)) if i.completed)),
+        CreateDefeatCondition => |w, _, _| {
+            let d = w.handles.insert(Obj::DefeatCondition(String::new()));
+            w.defeat_conditions.push(d);
+            handle(d)
+        },
+        DestroyDefeatCondition => |w, _, a| {
+            let d = a.h(0);
+            w.defeat_conditions.retain(|&x| x != d);
+            w.handles.remove(d);
+            none()
+        },
+        DefeatConditionSetDescription => |w, _, a| {
+            let t = w.localized(&a.s(1));
+            if let Some(Obj::DefeatCondition(s)) = w.handles.get_mut(a.h(0)) { *s = t; }
+            none()
+        },
+        FlashQuestDialogButton => |w, _, _| { w.quest_flash = true; none() },
+        ForceQuestDialogUpdate => |_, _, _| none(),
         CreateTimerDialog => |w, _, _| opaque(w, "timerdialog"),
         DestroyTimerDialog => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
         CreateLeaderboard => |w, _, _| opaque(w, "leaderboard"),

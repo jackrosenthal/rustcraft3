@@ -629,6 +629,15 @@ impl Hud {
     }
 
     pub fn update(&mut self, db: &FrameDb, world: &World) {
+        // CUpperButtonBar (vf9, FUN_6f3af910): Menu always; Allies only in network
+        // games; the F12 button is the message log outside them; Quests once a map has
+        // made a quest.
+        self.tree.set_enabled("UpperButtonBarMenuButton", true);
+        self.tree.set_enabled("UpperButtonBarAlliesButton", false);
+        self.tree.set_enabled("UpperButtonBarQuestsButton", !world.quests.is_empty());
+        if let Some(f) = self.tree.get("UpperButtonBarChatButton") {
+            self.tree.frames[f].text = Some(db.string("KEY_LOG"));
+        }
         let Some(p) = world.players.get(world.local_player as usize) else { return };
         let set = |tree: &mut FrameTree, f: Option<usize>, s: String| {
             if let Some(f) = f {

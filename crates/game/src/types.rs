@@ -623,9 +623,41 @@ pub struct CameraSetup {
     pub y: f32,
 }
 
+/// A quest in the quest log (CreateQuest makes one required, discovered, and
+/// enabled).
+#[derive(Clone, Debug)]
+pub struct Quest {
+    pub title: String,
+    pub description: String,
+    pub icon: String,
+    pub required: bool,
+    pub completed: bool,
+    pub failed: bool,
+    pub discovered: bool,
+    pub enabled: bool,
+    pub items: Vec<u32>,
+}
+
+impl Default for Quest {
+    fn default() -> Self {
+        Quest { title: String::new(), description: String::new(), icon: String::new(), required: true, completed: false, failed: false, discovered: true, enabled: true, items: Vec::new() }
+    }
+}
+
+/// One requirement line of a quest.
+#[derive(Clone, Debug, Default)]
+pub struct QuestItem {
+    pub quest: u32,
+    pub description: String,
+    pub completed: bool,
+}
+
 /// A handle-table entry.
 #[derive(Clone, Debug)]
 pub enum Obj {
+    Quest(Quest),
+    QuestItem(QuestItem),
+    DefeatCondition(String),
     Player(u8),
     Unit(Box<Unit>),
     Destructable(Box<Destructable>),

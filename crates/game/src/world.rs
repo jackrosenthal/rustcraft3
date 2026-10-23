@@ -114,6 +114,11 @@ pub struct World {
     pub shops: crate::shops::Shops,
     pub upgrade_cache: crate::upgrades::UpgradeCache,
     pub ground_effects: Vec<GroundEffect>,
+    /// Quests and defeat conditions in creation order, and whether the quest button
+    /// should flash (FlashQuestDialogButton).
+    pub quests: Vec<u32>,
+    pub defeat_conditions: Vec<u32>,
+    pub quest_flash: bool,
     /// Handles removed at a game time (temporary fog modifiers).
     pub timed_removals: Vec<(u32, f32)>,
 }
@@ -241,6 +246,9 @@ impl World {
             shops: Default::default(),
             upgrade_cache: Default::default(),
             ground_effects: Vec::new(),
+            quests: Vec::new(),
+            defeat_conditions: Vec::new(),
+            quest_flash: false,
             timed_removals: Vec::new(),
         }
     }

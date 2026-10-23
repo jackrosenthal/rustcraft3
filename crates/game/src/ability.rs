@@ -20,12 +20,12 @@ pub enum Targeting {
 
 /// Abilities whose code takes a point rather than a unit target.
 fn point_target(code: &str) -> bool {
-    matches!(code, "AHbz" | "AHfs" | "AOsh" | "AUcs" | "AUim" | "ANrf" | "AEbl" | "AUin" | "AOeq" | "AOsw" | "AOfs" | "AUdd" | "AEfn" | "ANst" | "ANvc" | "Adro" | "Aroo")
+    matches!(code, "AHbz" | "AHfs" | "AOsh" | "AUcs" | "AUim" | "ANrf" | "AEbl" | "AUin" | "AOeq" | "AOsw" | "AOfs" | "AUdd" | "AEfn" | "ANst" | "ANvc" | "Adro" | "Aroo" | "Adis" | "Advm")
 }
 
 /// Abilities with no target (cast instantly around the caster).
 fn no_target(code: &str) -> bool {
-    matches!(code, "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "ANsy" | "Astd" | "Abtl")
+    matches!(code, "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "ANsy" | "Astd" | "Abtl" | "Arai" | "Aroa" | "Atau" | "Absk")
 }
 
 /// Passive abilities and auras.
@@ -433,7 +433,8 @@ impl World {
         }
         if fired && elapsed >= castpt + backsw {
             u.casting = None;
-            u.action = Action::Idle;
+            // An autocast resumes what it interrupted.
+            u.action = u.extra.resume.take().unwrap_or(Action::Idle);
             let ctx = EventCtx { target_unit: target, spell_ability: crate::objects::id_to_int(a), order_x: goal.0, order_y: goal.1, ..Default::default() };
             self.queue_unit_event(h, EVENT_PLAYER_UNIT_SPELL_FINISH, EVENT_UNIT_SPELL_FINISH, ctx.clone());
             self.queue_unit_event(h, EVENT_PLAYER_UNIT_SPELL_ENDCAST, EVENT_UNIT_SPELL_ENDCAST, ctx);
@@ -555,7 +556,7 @@ impl World {
                 self.apply_buff(target, Buff { id: buff_id, ability: a, level: lvl, caster: h, remaining: dur, stun: true, ..Default::default() });
             }
             other => {
-                if !self.spell_effect(vm, h, a, lvl, other, target, (x, y)) {
+                if !self.unit_spell_effect(vm, h, a, lvl, other, target, (x, y)) && !self.spell_effect(vm, h, a, lvl, other, target, (x, y)) {
                     log::debug!("ability {other} has no effect yet");
                 }
             }

@@ -135,6 +135,7 @@ pub struct World {
     /// Blighted terrain corners, and a count that changes when they do.
     pub blight: Vec<bool>,
     pub blight_serial: u32,
+    pub autocast_timer: f32,
     pub destructable_order: Vec<u32>,
     pub item_order: Vec<u32>,
     /// Effects destroyed by script, with the time they were destroyed; the presentation
@@ -304,6 +305,7 @@ impl World {
             pending_entangles: Vec::new(),
             blight: Vec::new(),
             blight_serial: 0,
+            autocast_timer: 0.0,
             destructable_order: Vec::new(),
             item_order: Vec::new(),
             dying_effects: Vec::new(),
@@ -624,6 +626,7 @@ impl World {
         self.update_forms(dt);
         self.update_cargo(vm);
         self.update_morphs(dt);
+        self.update_autocast(dt);
         let now = self.time;
         let due: Vec<(f32, u32, u32)> = self.pending_entangles.iter().copied().filter(|e| e.0 <= now).collect();
         self.pending_entangles.retain(|e| e.0 > now);
@@ -646,6 +649,7 @@ impl World {
         self.update_units(vm, dt);
         self.regenerate(dt);
         self.update_buffs(vm, dt);
+        self.update_area_buffs(vm, dt);
         self.update_channels(vm, dt);
         self.update_ground_effects(vm, dt);
         self.update_reincarnation(dt);

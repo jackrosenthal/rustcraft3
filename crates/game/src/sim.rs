@@ -280,9 +280,9 @@ impl World {
             }
             _ => return,
         };
-        // Morphs (Bear Form and the like) by their order or unorder.
+        // Autocast toggles, and morphs (Bear Form and the like) by their order or unorder.
         if let Some(name) = crate::natives::basic::order_name(order) {
-            if self.morph_order(h, name) {
+            if self.autocast_order(h, name) || self.morph_order(h, name) {
                 return;
             }
         }
@@ -439,6 +439,18 @@ impl World {
         if self.evades(target) {
             return;
         }
+        // Curse: the attacker misses some of its attacks.
+        let miss = self.unit(source).map_or(0.0, |u| u.buffs.iter().map(|b| b.miss_chance).fold(0.0, f32::max));
+        if miss > 0.0 && attack_type != "spells" && (self.rng.int(1, 100) as f32) <= miss * 100.0 {
+            return;
+        }
+        let now = self.time;
+        if let Some(t) = self.unit_mut(target) {
+            t.extra.last_attacked = now;
+        }
+        // Berserk: the target takes more damage.
+        let taken = 1.0 + self.unit(target).map_or(0.0, |u| u.buffs.iter().map(|b| b.damage_taken).sum());
+        let raw = raw * taken;
         let mut raw = self.on_attack_passives(source, target, raw * self.buff_mods(source).3) + self.buff_damage_bonus(source);
         // Wind Walk: the first strike adds its backstab damage and ends the invisibility.
         if let Some(u) = self.unit_mut(source) {

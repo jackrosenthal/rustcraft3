@@ -282,6 +282,10 @@ pub struct UnitExtra {
     pub morph: Option<(f32, crate::objects::Id, Option<(f32, crate::objects::Id)>)>,
     /// A timed form's time left and the type it returns to.
     pub morph_revert: Option<(f32, crate::objects::Id)>,
+    /// When the unit was last attacked (game time), for autocast.
+    pub last_attacked: f32,
+    /// The order an autocast interrupted, resumed after the cast.
+    pub resume: Option<Action>,
 }
 
 impl Default for UnitExtra {
@@ -319,6 +323,8 @@ impl Default for UnitExtra {
             transport: 0,
             morph: None,
             morph_revert: None,
+            last_attacked: -100.0,
+            resume: None,
         }
     }
 }
@@ -377,6 +383,15 @@ pub struct Buff {
     pub return_pct: bool,
     /// Wind Walk's first strike bonus.
     pub backstab: f32,
+    /// Fraction of attacks that miss (Curse).
+    pub miss_chance: f32,
+    /// Fraction more damage taken (Berserk).
+    pub damage_taken: f32,
+    /// Damage a second to units within `area` of the bearer (Lightning Shield).
+    pub area_dps: f32,
+    pub area: f32,
+    /// A slow wearing off over this many seconds (Purge).
+    pub decaying: f32,
 }
 
 /// A spell kept up by its caster: it ends when the time runs out or the caster stops.

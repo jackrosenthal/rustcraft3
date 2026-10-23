@@ -39,11 +39,13 @@ pub struct Button {
     pub ubertip: String,
     /// Mana, gold, lumber, and food costs shown in the tooltip.
     pub costs: [i32; 4],
+    /// An autocast ability's orderon and orderoff, and whether its autocast is on.
+    pub autocast: Option<(&'static str, &'static str, bool)>,
 }
 
 impl Button {
     fn new(x: u32, y: u32, icon: String, hotkey: Option<char>, action: Action, enabled: bool) -> Button {
-        Button { x, y, icon, hotkey, action, enabled, tip: String::new(), ubertip: String::new(), costs: [0; 4] }
+        Button { x, y, icon, hotkey, action, enabled, tip: String::new(), ubertip: String::new(), costs: [0; 4], autocast: None }
     }
 
     fn with_tip(mut self, tip: String, ubertip: String, costs: [i32; 4]) -> Button {
@@ -310,7 +312,14 @@ impl Commands {
             let tip = level_entry(&ab.list(tip_key), level);
             let uber = fill_placeholders(w, &level_entry(&ab.list(uber_key), level));
             let mana = ab.int(&format!("Cost{level}"));
-            out.push(Button::new(x, y, art, hotkey(&ab.str(hot_key)), Action::Order { order, targeted }, ready).with_tip(tip, uber, [mana, 0, 0, 0]));
+            let mut button = Button::new(x, y, art, hotkey(&ab.str(hot_key)), Action::Order { order, targeted }, ready).with_tip(tip, uber, [mana, 0, 0, 0]);
+            // Autocast abilities toggle with their orderon and orderoff.
+            let on = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Orderon")));
+            let off = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Orderoff")));
+            if let (Some(on), Some(off)) = (on, off) {
+                button.autocast = Some((on, off, u.autocast.contains(&a)));
+            }
+            out.push(button);
             // Call to Arms shows its second button (Unbuttonpos, Unart, Unorder: Back to
             // Work) beside it; other toggles show one button at a time.
             let both = ab.str("code") == "Amic";

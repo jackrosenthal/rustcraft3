@@ -29,6 +29,14 @@ impl World {
         self.unit(h).map_or(0, |u| u.owner)
     }
 
+    pub(crate) fn units_in_pub(&self, x: f32, y: f32, r: f32) -> Vec<u32> {
+        self.units_in(x, y, r)
+    }
+
+    pub(crate) fn allies_in_pub(&self, owner: u8, x: f32, y: f32, r: f32) -> Vec<u32> {
+        self.allies_in(owner, x, y, r)
+    }
+
     fn units_in(&self, x: f32, y: f32, r: f32) -> Vec<u32> {
         self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && (u.x - x).hypot(u.y - y) <= r)).collect()
     }

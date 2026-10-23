@@ -895,6 +895,11 @@ impl Hud {
     }
 
     /// The card button at an interface position.
+    /// The card slots whose autocast is on.
+    pub fn autocast_slots(&self) -> Vec<(u32, u32, w3_ui::Rect)> {
+        self.card.iter().filter(|b| b.autocast.is_some_and(|a| a.2)).map(|b| (b.x, b.y, self.slot_rect(b.x, b.y))).collect()
+    }
+
     pub fn button_at(&self, x: f32, y: f32) -> Option<&crate::card::Button> {
         self.card.iter().find(|b| self.slot_rect(b.x, b.y).contains(x, y))
     }

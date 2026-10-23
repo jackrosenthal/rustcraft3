@@ -242,6 +242,8 @@ pub struct Scene {
     portrait_renderer: ModelRenderer,
     /// The console's SPRITE frames (CTimeOfDayIndicator) and their renderer.
     hud_sprites: ModelRenderer,
+    /// The autocast indicator on each card slot whose autocast is on.
+    autocast_fx: HashMap<(u32, u32), ModelInstance>,
     time_indicator: Option<ModelInstance>,
     portrait: Option<(u32, UnitView)>,
     /// ChangeLevel's next map, for the app to load.
@@ -464,7 +466,7 @@ impl Scene {
         let portrait_renderer = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let hud_sprites = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1333,6 +1335,19 @@ impl Scene {
             }
             return;
         }
+        // Right-clicking an autocast button toggles its autocast for the selection.
+        if let Some((on, off, state)) = self.hud.as_ref().and_then(|h| h.button_at(ux, uy)).and_then(|b| b.autocast) {
+            if let Some(g) = self.game.as_mut() {
+                let order = w3_game::natives::basic::order_id(if state { off } else { on });
+                let local = g.world.local_player;
+                for &h in &self.selection {
+                    if g.world.unit(h).is_some_and(|u| u.owner == local) {
+                        g.world.order_unit(h, order, 0.0, 0.0, 0);
+                    }
+                }
+            }
+            return;
+        }
         if self.over_console(sx, sy, size) {
             return;
         }
@@ -1762,6 +1777,9 @@ impl Scene {
         for v in self.effects.values_mut() {
             v.inst.advance(dt * 1000.0);
         }
+        for fx in self.autocast_fx.values_mut() {
+            fx.advance(dt * 1000.0);
+        }
         if let Some((_, v)) = self.portrait.as_mut() {
             v.inst.advance(dt * 1000.0);
         }
@@ -2016,6 +2034,21 @@ impl Scene {
         globals.light_dir = [0.0, 0.0, -1.0, 0.0];
         globals.ambient = [1.0, 1.0, 1.0, 1.0];
         self.hud_sprites.submit(inst, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
+        // CommandButtonAutocast over each button whose autocast is on, from its lower left.
+        let slots = self.hud.as_ref().map(|h| h.autocast_slots()).unwrap_or_default();
+        self.autocast_fx.retain(|k, _| slots.iter().any(|s| (s.0, s.1) == *k));
+        for (sx, sy, r) in slots {
+            if !self.autocast_fx.contains_key(&(sx, sy)) {
+                let path = assets.frames.skin_value("CommandButtonAutocast").unwrap_or_default();
+                let Some(m) = assets.model(device, queue, path.trim_matches('"')) else { continue };
+                let mut fx = ModelInstance::new(m);
+                fx.play("stand");
+                self.autocast_fx.insert((sx, sy), fx);
+            }
+            let fx = self.autocast_fx.get_mut(&(sx, sy)).unwrap();
+            fx.transform = Mat4::from_translation(Vec3::new(r.x0, r.y0, 0.0));
+            self.hud_sprites.submit(fx, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
+        }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("console sprites"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {

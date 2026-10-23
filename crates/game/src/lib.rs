@@ -2,6 +2,7 @@
 
 pub mod ability;
 pub mod ai;
+pub mod autocast;
 pub mod blight;
 pub mod camera;
 pub mod cargo;
@@ -17,6 +18,7 @@ pub mod items;
 pub mod persist;
 pub mod shops;
 pub mod spells;
+pub mod unitspells;
 pub mod upgrades;
 pub mod natives;
 pub mod objects;

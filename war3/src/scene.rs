@@ -1488,6 +1488,13 @@ impl Scene {
             self.select_worker(worker);
             return true;
         }
+        // A cargo slot unloads the unit in it.
+        if let Some(c) = self.hud.as_ref().and_then(|h| h.cargo_at(ux, uy)) {
+            if let (Some(&t), Some(g)) = (self.selection.first(), self.game.as_mut()) {
+                g.world.order_unit(t, w3_game::natives::basic::order_id("unload"), 0.0, 0.0, c);
+            }
+            return true;
+        }
         // A hero bar button selects the hero.
         if let Some(hero) = self.hud.as_ref().and_then(|h| h.hero_at(ux, uy)) {
             self.selection = vec![hero];

@@ -108,7 +108,7 @@ pub struct Hud {
     pub menu: Option<FrameTree>,
     /// A transport's cargo grid: rows, columns, and each aboard unit's icon, life, and
     /// the slots it takes.
-    pub cargo: Option<(usize, usize, Vec<(String, f32, usize)>)>,
+    pub cargo: Option<(usize, usize, Vec<(String, f32, usize, u32)>)>,
     /// The quest log (F9), while open.
     pub quests: Option<crate::quests::QuestView>,
     /// The message log (F12), while open, and its lines; the transmission last logged.
@@ -819,7 +819,7 @@ impl Hud {
             .filter_map(|&c| {
                 let cu = world.unit(c)?;
                 let icon = world.objects.units.get(cu.type_id).map(|o| o.str("Art")).unwrap_or_default();
-                Some((icon, cu.life / cu.max_life.max(1.0), world.cargo_size(c).max(1) as usize))
+                Some((icon, cu.life / cu.max_life.max(1.0), world.cargo_size(c).max(1) as usize, c))
             })
             .collect();
         self.cargo = Some((rows, cols, aboard));
@@ -836,27 +836,45 @@ impl Hud {
     /// middle, 0.036875 x 0.044375 slots 0.00125 apart, each over CargoBackdrop; a unit
     /// aboard shows its icon (0.02875, 0.005 below the slot's top) with its life under
     /// it, and fills as many slots as its cargoSize.
-    fn cargo_draws(&self, db: &FrameDb, out: &mut Vec<Draw>) {
-        let Some((rows, cols, aboard)) = &self.cargo else { return };
-        let Some(r) = self.tree.get("SimpleInfoPanelCargoDetailC").and_then(|i| self.tree.frames[i].rect) else { return };
+    fn cargo_slot(&self, k: usize) -> Option<w3_ui::Rect> {
+        let (rows, cols, _) = self.cargo.as_ref()?;
+        let r = self.tree.get("SimpleInfoPanelCargoDetailC").and_then(|i| self.tree.frames[i].rect)?;
         let (gap, sw, sh) = (0.00125, 0.036875, 0.044375);
         let (gw, gh) = ((*cols as f32 + 1.0) * gap + *cols as f32 * sw, (*rows as f32 + 1.0) * gap + *rows as f32 * sh);
         let (cx, cy) = ((r.x0 + r.x1) / 2.0, (r.y0 + r.y1) / 2.0 - 0.007);
         let (x0, y1) = (cx - gw / 2.0, cy + gh / 2.0);
+        let (row, col) = (k / (*cols).max(1), k % (*cols).max(1));
+        let left = x0 + gap + col as f32 * (sw + gap);
+        let top = y1 - (row as f32 + 1.0) * gap - row as f32 * sh;
+        Some(w3_ui::Rect { x0: left, x1: left + sw, y0: top - sh, y1: top })
+    }
+
+    /// The unit aboard whose cargo slot is under an interface point.
+    pub fn cargo_at(&self, x: f32, y: f32) -> Option<u32> {
+        let (_, _, aboard) = self.cargo.as_ref()?;
+        let mut k = 0;
+        for (_, _, size, h) in aboard {
+            for _ in 0..*size {
+                if self.cargo_slot(k).is_some_and(|r| r.contains(x, y)) {
+                    return Some(*h);
+                }
+                k += 1;
+            }
+        }
+        None
+    }
+
+    fn cargo_draws(&self, db: &FrameDb, out: &mut Vec<Draw>) {
+        let Some((rows, cols, aboard)) = &self.cargo else { return };
         let image = |texture: String, rect: w3_ui::Rect, color: [f32; 4]| Draw::Image { texture, rect, uv: [0.0, 0.0, 1.0, 1.0], color, blend: w3_ui::Blend::Alpha, rotated: false };
-        let slot = |k: usize| {
-            let (row, col) = (k / cols.max(&1), k % cols.max(&1));
-            let left = x0 + gap + col as f32 * (sw + gap);
-            let top = y1 - (row as f32 + 1.0) * gap - row as f32 * sh;
-            w3_ui::Rect { x0: left, x1: left + sw, y0: top - sh, y1: top }
-        };
+        let slot = |k: usize| self.cargo_slot(k).unwrap_or_default();
         let backdrop = db.decorate("CargoBackdrop");
         for k in 0..rows * cols {
             out.push(image(backdrop.clone(), slot(k), [1.0; 4]));
         }
         let bar_tex = db.decorate("SimpleHpBarConsoleSmall");
         let mut k = 0;
-        for (icon, life, size) in aboard {
+        for (icon, life, size, _) in aboard {
             for _ in 0..*size {
                 if k >= rows * cols {
                     return;

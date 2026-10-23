@@ -13,10 +13,10 @@
 //! An ability that weighs a cast rests its AI for half a second (FUN_6f432b20).  Many
 //! count the units around them (FUN_6f602e30 with FUN_6f602f70): wards, and unless
 //! asked magic-immune units, are not counted; of the caster's side, all, those with
-//! more than 20 mana, those not finished structures, and those attacking from beyond
-//! 200; of its enemies, all, the disabled, the flying, the Heroes, those that can
-//! fight (armed, not workers), those with more than 20 mana, and those not finished
-//! structures.  Constants are game.dll's static floats (400 at 0x6fd77f34, 450 at
+//! more than 20 mana, those not invisible, and those attacking from beyond
+//! 200; of its enemies, all, the disabled, the flying, the structures, those that can
+//! fight (armed, not workers), those with more than 20 mana, and those not unseen
+//! (invisible and undetected).  Constants are game.dll's static floats (400 at 0x6fd77f34, 450 at
 //! 0x6fd77f38, 1000 at 0x6fd3c7f8, 9999 at 0x6fd3c804, and so on).
 
 use crate::objects::{Id, id_from_str};
@@ -26,20 +26,20 @@ use crate::world::World;
 /// The units around a point, as FUN_6f602f70 counts them.
 #[derive(Default, Debug, Clone, Copy)]
 pub(crate) struct Census {
-    /// The caster's side: all (0x18), ranged beyond 200 (0x1c), not finished structures
-    /// (0x3c), with more than 20 mana (0x44).
+    /// The caster's side: all (0x18), ranged beyond 200 (0x1c), not invisible (0x3c),
+    /// with more than 20 mana (0x44).
     pub allies: i32,
     pub ally_ranged: i32,
-    pub ally_mobile: i32,
+    pub ally_seen: i32,
     pub ally_mana: i32,
-    /// Its enemies: all (0x20), flying (0x24), Heroes (0x28), able to fight (0x2c),
-    /// disabled (0x34), not finished structures (0x38), with more than 20 mana (0x40).
+    /// Its enemies: all (0x20), flying (0x24), structures (0x28), able to fight (0x2c),
+    /// disabled (0x34), not unseen (0x38), with more than 20 mana (0x40).
     pub enemies: i32,
     pub enemy_flying: i32,
-    pub enemy_heroes: i32,
+    pub enemy_structures: i32,
     pub enemy_fighters: i32,
     pub enemy_disabled: i32,
-    pub enemy_mobile: i32,
+    pub enemy_seen: i32,
     pub enemy_mana: i32,
 }
 
@@ -80,22 +80,21 @@ impl World {
                 continue;
             }
             let mana = u.mana > 20.0;
-            let mobile = !u.is_building || u.constructing.is_some();
             if self.helps(owner, u.owner) {
                 c.allies += 1;
                 c.ally_mana += mana as i32;
-                c.ally_mobile += mobile as i32;
+                c.ally_seen += !self.is_invisible(h) as i32;
                 if crate::sim::unit_weapons(self, u).iter().map(|w| w.1.range).fold(0.0f32, f32::max) > 200.0 {
                     c.ally_ranged += 1;
                 }
             } else if !crate::natives::players::is_ally(self, owner, u.owner) {
                 c.enemies += 1;
                 c.enemy_disabled += self.buff_mods(h).4 as i32;
-                c.enemy_heroes += Self::real_hero(u) as i32;
+                c.enemy_structures += u.is_building as i32;
                 c.enemy_fighters += (!crate::sim::unit_weapons(self, u).is_empty() && !self.is_classed(u, "peon")) as i32;
                 c.enemy_flying += (u.fly_height > 1.0) as i32;
                 c.enemy_mana += mana as i32;
-                c.enemy_mobile += mobile as i32;
+                c.enemy_seen += self.unit_visible_to(h, owner) as i32;
             }
         }
         c
@@ -197,6 +196,14 @@ impl World {
                 "AOhx" => self.ai_hex(h, a, enemy, victim),
                 "Aprg" => self.ai_purge(h, a, lvl, enemy, victim),
                 "Aply" => self.ai_polymorph(h, a, enemy, victim),
+                "ANsi" | "ANdh" => self.ai_silence(h, a, lvl, enemy, victim),
+                "AHbn" => self.ai_banish(h, a, enemy, victim),
+                "AUim" => self.ai_impale(h, a, lvl, enemy, victim),
+                "AHfs" => self.ai_flame_strike(h, a, lvl, enemy, victim),
+                "ANdo" => self.ai_doom(h, a, lvl, enemy, victim),
+                "Acri" => self.ai_cripple(h, a, enemy, victim),
+                "AEfk" => self.ai_fan_of_knives(h, a, lvl, enemy, victim),
+                "ANbf" | "ACbf" => self.ai_breath(h, a, lvl, enemy, victim),
                 _ => {}
             }
         }
@@ -204,8 +211,8 @@ impl World {
 
     /// Thunder Clap, War Stomp (FUN_6f60fca0, FUN_6f605650): with the victim on the
     /// caster's side and the AI ready, it counts within Area (no magic-immune units):
-    /// at least 3 enemies that are neither Heroes nor finished structures, and more
-    /// enemies able to fight, less Heroes, than units on its side.
+    /// at least 3 seen enemies besides structures, and more enemies able to fight,
+    /// besides structures, than units on its side.
     fn ai_thunder_clap(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
         let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
         if enemy == 0 || self.unit(victim).is_none_or(|v| !crate::natives::players::is_ally(self, owner, v.owner)) {
@@ -217,7 +224,7 @@ impl World {
         self.ai_rest(h, a);
         let (x, y) = self.unit(h).map(|u| (u.x, u.y)).unwrap();
         let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
-        if c.enemy_mobile - c.enemy_heroes < 3 || c.enemy_fighters - c.enemy_heroes <= c.allies {
+        if c.enemy_seen - c.enemy_structures < 3 || c.enemy_fighters - c.enemy_structures <= c.allies {
             return;
         }
         self.ai_cast(h, a, 0);
@@ -395,7 +402,7 @@ impl World {
 
     /// Frost Nova (CAbilityFrostNova vf64): past the gate, at once on a Hero; else on
     /// an enemy with at least DataA life when, within Area of it (no magic-immune units),
-    /// enemies able to fight less Heroes number 3 (1 when hard pressed).
+    /// enemies able to fight besides structures number 3 (1 when hard pressed).
     fn ai_frost_nova(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
         if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
             return;
@@ -408,7 +415,7 @@ impl World {
             let (x, y) = self.pos(enemy);
             let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
             let need = if self.hard_pressed(h, victim) { 1 } else { 3 };
-            if c.enemy_fighters - c.enemy_heroes < need {
+            if c.enemy_fighters - c.enemy_structures < need {
                 return;
             }
         }
@@ -453,8 +460,8 @@ impl World {
 
     /// Carrion Swarm (CAbilityCarrionSwarm vf64): past the gate, at the enemy when,
     /// within the wave's width where it reaches the enemy (Area widening to DataD over
-    /// DataC; no magic-immune units), enemies able to fight less Heroes number 3 (2
-    /// when hard pressed) and none is disabled.
+    /// DataC; no magic-immune units), enemies able to fight besides structures number 3
+    /// (2 when hard pressed) and none is disabled.
     fn ai_carrion_swarm(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
         if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
             return;
@@ -465,14 +472,13 @@ impl World {
         let along = (ex - cx).hypot(ey - cy) / self.data(a, "DataC", lvl).max(1.0);
         let (start, end) = (self.data(a, "Area", lvl), self.data(a, "DataD", lvl));
         let c = self.census(h, ex, ey, start + (end - start) * along, false);
-        if need <= c.enemy_fighters - c.enemy_heroes && c.enemy_disabled < 1 {
+        if need <= c.enemy_fighters - c.enemy_structures && c.enemy_disabled < 1 {
             self.ai_cast(h, a, enemy);
         }
     }
 
     /// Shockwave (CAbilityShockwave vf64): past the gate, at the enemy when, within Area
-    /// of it (no magic-immune units), 3 enemies (2 when hard pressed) are not finished
-    /// structures.
+    /// of it (no magic-immune units), 3 enemies (2 when hard pressed) are seen.
     fn ai_shockwave(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
         if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
             return;
@@ -481,7 +487,7 @@ impl World {
         let need = if self.hard_pressed(h, victim) { 2 } else { 3 };
         let (x, y) = self.pos(enemy);
         let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
-        if need <= c.enemy_mobile {
+        if need <= c.enemy_seen {
             self.ai_cast(h, a, enemy);
         }
     }
@@ -584,5 +590,151 @@ impl World {
             }
         }
         self.ai_cast(h, a, enemy);
+    }
+
+    /// Silence, Drunken Haze (FUN_6f60f1a0): past the gate (no creeps, not on one
+    /// bearing it), on a unit that is not a Hero with at least 75 mana and 100 life.
+    fn ai_silence(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        let buff = self.buff_id(a, lvl);
+        if self.ai_gate(h, a, enemy, victim, false, Some(enemy), buff) {
+            return;
+        }
+        if self.unit(enemy).is_some_and(|e| !Self::real_hero(e) && e.mana >= 75.0 && e.life >= 100.0) {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Banish (CAbilityBanish vf64): past the gate (no creeps), on a unit that is not a
+    /// Hero with more than 450 life.
+    fn ai_banish(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, false, Some(enemy), None) {
+            return;
+        }
+        if self.unit(enemy).is_some_and(|e| !Self::real_hero(e) && e.life > 450.0) {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Impale (CAbilityImpale vf64): past the gate, at the enemy when within Area of it
+    /// (no magic-immune units) 3 enemies (2 when hard pressed) are seen.
+    fn ai_impale(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
+            return;
+        }
+        self.ai_rest(h, a);
+        let need = if self.hard_pressed(h, victim) { 2 } else { 3 };
+        let (x, y) = self.pos(enemy);
+        let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
+        if need <= c.enemy_seen {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Flame Strike (CAbilityFlameStrike vf64): past the gate, at the enemy when within
+    /// Area of it (no magic-immune units) more than one enemy is on the ground and the
+    /// enemies are at least twice the caster's side.
+    fn ai_flame_strike(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(enemy);
+        let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
+        if c.enemies - c.enemy_flying > 1 && c.allies * 2 <= c.enemies {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Doom (CAbilityDoom vf64): past the gate (no creeps, not on one doomed), at once
+    /// when hard pressed; else on a unit with at least 400 maximum life and at most
+    /// 5 × DataA life, with at least 3 seen enemies within 800 of the caster.
+    fn ai_doom(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        let buff = self.buff_id(a, lvl);
+        if self.ai_gate(h, a, enemy, victim, false, Some(enemy), buff) {
+            return;
+        }
+        if !(victim == h && self.life(h) <= 400.0) {
+            let Some(e) = self.unit(enemy) else { return };
+            if e.max_life < 400.0 || self.data(a, "DataA", lvl) * 5.0 < e.life {
+                return;
+            }
+            let (x, y) = self.pos(h);
+            if self.census(h, x, y, 800.0, true).enemy_seen < 3 {
+                return;
+            }
+        }
+        self.ai_cast(h, a, enemy);
+    }
+
+    /// Cripple (CAbilityCripple vf64): past the gate (no creeps), on a Hero with 100 life
+    /// or less or another with more than 50, not crippled (Bcri), that deals at least
+    /// 14 damage a second (its average damage over its cooldown).
+    fn ai_cripple(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, false, Some(enemy), None) {
+            return;
+        }
+        let Some(e) = self.unit(enemy) else { return };
+        if if Self::real_hero(e) { e.life > 100.0 } else { e.life <= 50.0 } {
+            return;
+        }
+        if e.buffs.iter().any(|b| b.id == *b"Bcri") {
+            return;
+        }
+        let Some((_, w)) = crate::sim::unit_weapons(self, e).into_iter().next() else { return };
+        if w.cooldown <= 0.0 {
+            return;
+        }
+        let (min, max) = (w.base + w.dice as f32, w.base + (w.dice * w.sides) as f32);
+        if ((max - min) / 2.0 + min) / w.cooldown >= 14.0 {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Fan of Knives (CAbilityFanOfKnives vf64): with its AI ready, an enemy, and the
+    /// victim on its side: at once on a Hero with DataA life or less; else when within
+    /// Area of the caster (no magic-immune units) there are 3 enemies (1 when hard
+    /// pressed).
+    fn ai_fan_of_knives(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
+        let Some(e) = self.unit(enemy) else { return };
+        if self.ai_resting(h, a) || self.can_cast(h, a).is_err() || crate::natives::players::is_ally(self, owner, e.owner) {
+            return;
+        }
+        if self.unit(victim).is_none_or(|v| !crate::natives::players::is_ally(self, owner, v.owner)) {
+            return;
+        }
+        if !(Self::real_hero(e) && e.life <= self.data(a, "DataA", lvl)) {
+            self.ai_rest(h, a);
+            let (x, y) = self.pos(h);
+            let need = if self.hard_pressed(h, victim) { 1 } else { 3 };
+            if self.census(h, x, y, self.data(a, "Area", lvl), false).enemies < need {
+                return;
+            }
+        }
+        self.ai_cast(h, a, 0);
+    }
+
+    /// Breath of Fire, Breath of Frost (FUN_6f60ba10): with Drunken Haze too and mana
+    /// for both, the haze goes first on an enemy without it; otherwise as Carrion
+    /// Swarm.
+    fn ai_breath(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.can_cast(h, a).is_err() {
+            return;
+        }
+        if let Some((haze, hl)) = self.ability_with_code(h, "ANdh") {
+            let hl = hl.max(1) as u32;
+            let both = self.data(a, "Cost", lvl) + self.data(haze, "Cost", hl);
+            if self.unit(h).is_some_and(|u| u.mana < both) {
+                return;
+            }
+            let hazed = self.unit(enemy).is_some_and(|e| e.buffs.iter().any(|b| b.ability == haze));
+            if !hazed {
+                self.ai_silence(h, haze, hl, enemy, victim);
+                if self.unit(h).is_some_and(|u| matches!(u.action, Action::Cast { .. })) {
+                    return;
+                }
+            }
+        }
+        self.ai_carrion_swarm(h, a, lvl, enemy, victim);
     }
 }

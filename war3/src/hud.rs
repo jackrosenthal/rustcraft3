@@ -124,6 +124,9 @@ pub struct Hud {
     /// CinematicPanel while the interface is hidden (ShowInterface false), and the cine
     /// filter overlay: texture, texture coordinates, color, and additive blending.
     pub cine: Option<FrameTree>,
+    /// CHeroBar: the local player's heroes (unit, icon, life and mana fractions, and
+    /// whether it has skill points to spend).
+    pub heroes: Vec<(u32, String, f32, Option<f32>, bool)>,
     pub cinematic: bool,
     filter: Option<(String, [f32; 4], [f32; 4], bool)>,
     pub minimap_area: Option<MinimapArea>,
@@ -238,6 +241,7 @@ impl Hud {
             group: Vec::new(),
             pointer: (-1.0, -1.0),
             cine: None,
+            heroes: Vec::new(),
             cinematic: false,
             filter: None,
             camera_box: Vec::new(),
@@ -515,6 +519,56 @@ impl Hud {
         if !lines.is_empty() {
             y -= 0.005;
             text(out, &lines.join("\n"), x0, y, desc_h, 0.21 + 0.005, [1.0; 4]);
+        }
+    }
+
+    /// Follows the local player's heroes for the hero bar, in the order they came.
+    pub fn sync_heroes(&mut self, world: &World) {
+        self.heroes = world
+            .unit_order
+            .iter()
+            .filter_map(|&h| world.unit(h).map(|u| (h, u)))
+            .filter(|(_, u)| u.is_hero && u.owner == world.local_player && !u.hidden)
+            .take(7)
+            .map(|(h, u)| {
+                let icon = world.objects.units.get(u.type_id).map(|o| o.str("Art")).unwrap_or_default();
+                let icon = if u.dead { crate::card::disabled_icon(&icon) } else { icon };
+                (h, icon, if u.dead { 0.0 } else { u.life / u.max_life.max(1.0) }, (u.max_mana > 0.0).then(|| u.mana / u.max_mana), u.skill_points > 0)
+            })
+            .collect();
+    }
+
+    /// The hero bar's button `k`: CHeroBar's 7-row grid (0.038 x 0.35825) from 0.00375
+    /// right of and 0.02625 below the interface's top left.
+    pub fn hero_button_rect(&self, k: usize) -> w3_ui::Rect {
+        let root = self.tree.frames[0].rect.unwrap_or_default();
+        let cell = 0.35825 / 7.0;
+        let (x0, y1) = (root.x0 + 0.00375, root.y1 - 0.02625 - cell * k as f32);
+        w3_ui::Rect { x0, x1: x0 + 0.038, y0: y1 - 0.038, y1 }
+    }
+
+    pub fn hero_at(&self, x: f32, y: f32) -> Option<u32> {
+        (0..self.heroes.len()).find(|&k| self.hero_button_rect(k).contains(x, y)).map(|k| self.heroes[k].0)
+    }
+
+    /// Each hero's icon with its life and mana bars (CStatBar's small kinds, 0.003125
+    /// tall, 0.00125 apart).
+    fn hero_bar_draws(&self, db: &FrameDb, out: &mut Vec<Draw>) {
+        let image = |texture: String, rect: w3_ui::Rect, color: [f32; 4]| Draw::Image { texture, rect, uv: [0.0, 0.0, 1.0, 1.0], color, blend: w3_ui::Blend::Alpha, rotated: false };
+        for (k, (_, icon, life, mana, _)) in self.heroes.iter().enumerate() {
+            let r = self.hero_button_rect(k);
+            out.push(image(icon.clone(), r, [1.0; 4]));
+            let mut top = r.y0 - 0.00125;
+            let mut bar = |frac: f32, key: &str, color: [f32; 4], out: &mut Vec<Draw>| {
+                let b = w3_ui::Rect { x0: r.x0, x1: r.x1, y0: top - 0.003125, y1: top };
+                out.push(image(String::new(), w3_ui::Rect { x0: b.x0 - 0.001, x1: b.x1 + 0.001, y0: b.y0 - 0.001, y1: b.y1 + 0.001 }, [0.0, 0.0, 0.0, 1.0]));
+                out.push(image(db.decorate(key), w3_ui::Rect { x1: b.x0 + (b.x1 - b.x0) * frac.clamp(0.0, 1.0), ..b }, color));
+                top = b.y0 - 0.00125;
+            };
+            bar(*life, "SimpleHpBarConsoleSmall", life_color(*life), out);
+            if let Some(m) = mana {
+                bar(*m, "SimpleManaBarConsoleSmall", [0.0, 0.0, 1.0, 1.0], out);
+            }
         }
     }
 
@@ -939,6 +993,7 @@ impl Hud {
         }
         let mut out = self.tree.draw(db);
         self.filter_draws(&mut out);
+        self.hero_bar_draws(db, &mut out);
         // CStatBar of the experience kind: a black backdrop 0.001 outside, the
         // SimpleXpBarConsole fill tinted 0xFF8B0083, and the SimpleXpBarBorder.
         if let (Some(p), Some(f)) = (self.level_bar, self.tree.get("SimpleHeroLevelBar")) {

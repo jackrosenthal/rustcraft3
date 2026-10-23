@@ -940,6 +940,11 @@ impl Scene {
             return true;
         }
         // Clicking an inventory item uses it.
+        // A hero bar button selects the hero.
+        if let Some(hero) = self.hud.as_ref().and_then(|h| h.hero_at(ux, uy)) {
+            self.selection = vec![hero];
+            return true;
+        }
         // A group button selects its unit alone.
         if let Some(unit) = self.hud.as_ref().and_then(|h| h.group_at(ux, uy)) {
             self.selection = vec![unit];
@@ -1573,6 +1578,7 @@ impl Scene {
             hud.show_unit(&assets.frames, &g.world, self.selection.first().copied());
             hud.show_group(&g.world, &self.selection);
             hud.sync_cinematic(&assets.frames, &g.world, aspect);
+            hud.sync_heroes(&g.world);
             let draws = hud.draws(&assets.frames);
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("interface"),

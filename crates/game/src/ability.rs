@@ -657,6 +657,11 @@ impl World {
     }
 
     /// What each ability code does when cast.
+    /// An ability's effect without a cast (an orb's effect ability).
+    pub(crate) fn ability_effect_pub(&mut self, vm: &mut Vm, h: u32, a: Id, lvl: u32, target: u32, at: (f32, f32)) {
+        self.ability_effect(vm, h, a, lvl, target, at);
+    }
+
     fn ability_effect(&mut self, vm: &mut Vm, h: u32, a: Id, lvl: u32, target: u32, (x, y): (f32, f32)) {
         let code = self.ability_code(a);
         let owner = self.unit(h).map_or(0, |u| u.owner);

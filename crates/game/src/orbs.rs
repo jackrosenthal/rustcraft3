@@ -18,7 +18,13 @@ impl World {
     /// damage after them.
     pub fn attack_modifiers(&mut self, vm: &mut Vm, attacker: u32, target: u32, damage: f32) -> f32 {
         let Some(u) = self.unit(attacker) else { return damage };
-        let (abilities, autocast, mana) = (u.abilities.clone(), u.autocast.clone(), u.mana);
+        let (mut abilities, autocast, mana) = (u.abilities.clone(), u.autocast.clone(), u.mana);
+        // Held items' abilities modify attacks too (orbs, Orb of Venom's poison).
+        for item in u.inventory.clone() {
+            if let Some(t) = self.item(item).map(|i| i.type_id) {
+                abilities.extend(self.item_abilities(t).into_iter().map(|a| (a, 1)));
+            }
+        }
         let target_building = self.unit(target).is_some_and(|t| t.is_building);
         let target_hero = self.unit(target).is_some_and(|t| t.is_hero);
         let mut damage = damage;
@@ -89,7 +95,7 @@ impl World {
                 }
                 // Feedback: burns mana (DataA, DataC for heroes) and deals it as damage
                 // (DataB, DataD); summons take DataE.
-                "Afbk" | "AIfb" => {
+                "Afbk" => {
                     let (max, ratio) = if hero { (d(self, "DataC"), d(self, "DataD")) } else { (d(self, "DataA"), d(self, "DataB")) };
                     let burned = self.unit(target).map_or(0.0, |t| t.mana.min(max));
                     if let Some(t) = self.unit_mut(target) {
@@ -98,6 +104,43 @@ impl World {
                     damage += burned * ratio;
                     if self.is_summoned(target) {
                         damage += d(self, "DataE");
+                    }
+                }
+                // Orbs (CAbilityAttackMod): DataA more damage, and their own effects.
+                "AIob" | "AIcb" | "AIpb" | "AIlb" | "AIsb" | "AIfb" => {
+                    damage += d(self, "DataA");
+                    match code.as_str() {
+                        // Orb of Frost: the frost slow for Dur (HeroDur on Heroes).
+                        "AIob" if !target_building => {
+                            let (mv, at) = (self.misc_f32("FrostMoveSpeedDecrease", 0.5), self.misc_f32("FrostAttackSpeedDecrease", 0.25));
+                            self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: dur, move_factor: -mv, attack_factor: -at, ..Default::default() });
+                        }
+                        // Orb of Corruption: DataB less armor for Dur.
+                        "AIcb" => {
+                            self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: dur, armor: -d(self, "DataB"), ..Default::default() });
+                        }
+                        // Orb of Fire: the bonus burns others within Area too.
+                        "AIfb" => {
+                            let (tx, ty) = self.unit(target).map(|t| (t.x, t.y)).unwrap_or_default();
+                            for t in self.enemies_in(owner, tx, ty, d(self, "Area")) {
+                                if t != target {
+                                    self.spell_damage(vm, attacker, t, d(self, "DataA"));
+                                }
+                            }
+                        }
+                        // Orbs that cast: their effect ability (UnitID) with a chance of
+                        // DataB on units, DataC on Heroes, and DataD on summons.
+                        "AIsb" => {
+                            let chance = if target_hero { d(self, "DataC") } else if self.is_summoned(target) { d(self, "DataD") } else { d(self, "DataB") };
+                            if (self.rng.int(1, 100) as f32) <= chance {
+                                let effect = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
+                                if self.objects.abilities.get(effect).is_some() {
+                                    let pos = self.unit(target).map(|t| (t.x, t.y)).unwrap_or_default();
+                                    self.ability_effect_pub(vm, attacker, effect, 1, target, pos);
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 // Liquid Fire: burning structures take DataA a second and attack slower.

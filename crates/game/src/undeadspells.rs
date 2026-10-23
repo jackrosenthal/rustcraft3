@@ -195,8 +195,18 @@ impl World {
     pub fn update_permanent_immolation(&mut self, vm: &mut Vm, dt: f32) {
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden)).collect();
         for h in units {
-            for code in ["ANpi", "Apig"] {
-                let Some((a, lvl)) = self.ability_with_code(h, code) else { continue };
+            // The Cloak of Flames (AIcf) burns as Permanent Immolation does.
+            let cloak = self.unit(h).map(|u| u.inventory.clone()).unwrap_or_default().into_iter().filter_map(|i| self.item(i).map(|i| i.type_id)).flat_map(|t| self.item_abilities(t)).find(|&a| self.ability_code(a) == "AIcf");
+            for code in ["ANpi", "Apig", "AIcf"] {
+                let found = if code == "AIcf" { cloak.map(|a| (a, 1)) } else { self.ability_with_code(h, code) };
+                let Some((a, lvl)) = found else {
+                    // Without it (a cloak dropped), its flames go.
+                    let gone: Vec<Id> = self.unit(h).map(|u| u.buffs.iter().filter(|b| self.ability_code(b.ability) == code).map(|b| b.ability).collect()).unwrap_or_default();
+                    if !gone.is_empty() {
+                        self.unit_mut(h).unwrap().buffs.retain(|b| !gone.contains(&b.ability));
+                    }
+                    continue;
+                };
                 let lvl = lvl.max(1) as u32;
                 let Some(u) = self.unit(h) else { continue };
                 let (owner, x, y) = (u.owner, u.x, u.y);

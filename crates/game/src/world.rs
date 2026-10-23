@@ -448,6 +448,7 @@ impl World {
         self.update_food();
         self.update_units(vm, dt);
         self.regenerate(dt);
+        self.update_buffs(vm, dt);
         self.update_ai(dt);
 
         // Timers.

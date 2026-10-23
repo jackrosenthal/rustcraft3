@@ -14,6 +14,8 @@ pub enum Action {
     Upgrade(Id),
     BuildMenu,
     Build(Id),
+    LearnMenu,
+    Learn(Id),
     Cancel,
     CancelTrain,
 }
@@ -33,6 +35,7 @@ pub enum Page {
     #[default]
     Main,
     Build,
+    Learn,
 }
 
 pub struct Commands {
@@ -108,6 +111,18 @@ impl Commands {
             out.extend(self.command(db, "CmdCancel", Action::Cancel, true));
             return out;
         }
+        if page == Page::Learn {
+            for b in o.list("heroAbilList") {
+                let id = id_from_str(b.trim());
+                let Some(ab) = w.objects.abilities.get(id) else { continue };
+                let Some((x, y)) = parse_pos(&ab.list("Researchbuttonpos")) else { continue };
+                let icon = ab.str("Researchart");
+                let icon = if icon.is_empty() { ab.str("Art") } else { icon };
+                out.push(Button { x, y, icon, hotkey: hotkey(&ab.str("Researchhotkey")), action: Action::Learn(id), enabled: w.can_learn(h, id) });
+            }
+            out.extend(self.command(db, "CmdCancel", Action::Cancel, true));
+            return out;
+        }
         if u.constructing.is_some() {
             out.extend(self.command(db, "CmdCancelBuild", Action::CancelTrain, true));
             return out;
@@ -121,6 +136,9 @@ impl Commands {
                 out.extend(self.command(db, "CmdAttack", Action::Order { order: "attack", targeted: true }, true));
             }
             out.extend(self.command(db, "CmdPatrol", Action::Order { order: "patrol", targeted: true }, true));
+        }
+        if u.is_hero && u.skill_points > 0 {
+            out.extend(self.command(db, "CmdSelectSkill", Action::LearnMenu, true));
         }
         if !o.list("Builds").is_empty() {
             let race = o.str("race").to_ascii_lowercase();
@@ -155,16 +173,16 @@ impl Commands {
             if ab.str("Art").is_empty() {
                 continue;
             }
-            let order = match ab.str("code").as_str() {
-                "Ahar" | "Ahrl" => "harvest",
-                _ => "",
+            // The ability's order string, as one of the game's order names.
+            let order = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Order"))).unwrap_or("");
+            let targeting = w.targeting(a);
+            let (order, targeted) = match ab.str("code").as_str() {
+                "Ahar" | "Ahrl" => ("harvest", true),
+                _ if targeting == w3_game::ability::Targeting::Passive => ("", false),
+                _ => (order, targeting != w3_game::ability::Targeting::None),
             };
-            if order.is_empty() {
-                // Abilities without implemented behavior show for completeness.
-                out.push(Button { x, y, icon: ab.str("Art"), hotkey: hotkey(&ab.str("Hotkey")), action: Action::Order { order: "", targeted: false }, enabled: false });
-                continue;
-            }
-            out.push(Button { x, y, icon: ab.str("Art"), hotkey: hotkey(&ab.str("Hotkey")), action: Action::Order { order, targeted: true }, enabled: true });
+            let ready = order.is_empty() || w.can_cast(h, a).is_ok();
+            out.push(Button { x, y, icon: ab.str("Art"), hotkey: hotkey(&ab.str("Hotkey")), action: Action::Order { order, targeted }, enabled: ready });
         }
         if !u.queue.is_empty() {
             out.extend(self.command(db, "CmdCancelTrain", Action::CancelTrain, true));

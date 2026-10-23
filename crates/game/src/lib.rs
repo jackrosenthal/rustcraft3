@@ -1,5 +1,6 @@
 //! The game: object data, world state, and the JASS host that runs map scripts.
 
+pub mod ability;
 pub mod ai;
 pub mod event_ids;
 pub mod handles;

@@ -32,6 +32,8 @@ pub struct Missile {
     pub damage: f32,
     pub attack_type: String,
     pub start: (f32, f32),
+    /// A spell missile: ability, level, stun duration, and buff type.
+    pub spell: Option<(Id, u32, f32, Id)>,
 }
 
 /// Weapon 1 of a unit type, from UnitWeapons.slk and the unit's profile.
@@ -85,7 +87,7 @@ fn misc_list(w: &World, key: &str) -> Vec<f32> {
 pub fn final_damage(w: &World, raw: f32, attack_type: &str, target: &Unit) -> f32 {
     let o = w.objects.units.get(target.type_id);
     let def_type = o.map(|o| o.str("defType").to_ascii_lowercase()).unwrap_or_default();
-    let armor = o.map_or(0.0, |o| o.real("def"));
+    let armor = o.map_or(0.0, |o| o.real("def")) + w.buff_mods(target.handle).2;
     let key = match attack_type {
         "pierce" => "DamageBonusPierce",
         "siege" => "DamageBonusSiege",
@@ -145,7 +147,7 @@ fn restart_anim(u: &mut Unit, name: &str) {
     u.anim_serial = u.anim_serial.wrapping_add(1);
 }
 
-fn angle_to(from: (f32, f32), to: (f32, f32)) -> f32 {
+pub(crate) fn angle_to(from: (f32, f32), to: (f32, f32)) -> f32 {
     (to.1 - from.1).atan2(to.0 - from.0).to_degrees()
 }
 
@@ -154,7 +156,7 @@ fn angle_diff(a: f32, b: f32) -> f32 {
 }
 
 /// Turns toward `target_deg`; returns the remaining difference.
-fn turn(u: &mut Unit, target_deg: f32, dt: f32) -> f32 {
+pub(crate) fn turn(u: &mut Unit, target_deg: f32, dt: f32) -> f32 {
     // Turn rate: the data's turnRate scaled to a full revolution per second.  The exact
     // scale game.dll applies to this field (stored at unit-type offset 0x74) is pending.
     let rate = (u.turn_speed.max(0.05) * 360.0) * dt;
@@ -215,6 +217,11 @@ impl World {
             }
         } else if order == smart || order == mv {
             Action::Move { x, y }
+        } else if let Some(a) = self.ability_for_order(h, order) {
+            if self.targeting(a) == crate::ability::Targeting::Passive {
+                return;
+            }
+            Action::Cast { ability: a, target, x, y }
         } else {
             return;
         };
@@ -236,7 +243,7 @@ impl World {
         }
     }
 
-    fn path_to(&mut self, h: u32, goal: (f32, f32)) {
+    pub(crate) fn path_to(&mut self, h: u32, goal: (f32, f32)) {
         let Some(u) = self.unit(h) else { return };
         let (from, radius) = ((u.x, u.y), u.collision);
         let path = match &self.pathing {
@@ -250,7 +257,7 @@ impl World {
     }
 
     /// Steps along the unit's path; returns true when it has arrived.
-    fn walk(&mut self, h: u32, dt: f32) -> bool {
+    pub(crate) fn walk(&mut self, h: u32, dt: f32) -> bool {
         let Some(u) = self.unit_mut(h) else { return true };
         let Some(&next) = u.path.first() else {
             set_anim(u, "stand");
@@ -262,6 +269,8 @@ impl World {
             return false;
         }
         let step = u.move_speed * dt;
+        let step = step * self.buff_mods(h).0;
+        let Some(u) = self.unit_mut(h) else { return true };
         let (dx, dy) = (next.0 - u.x, next.1 - u.y);
         let d = (dx * dx + dy * dy).sqrt();
         set_anim(u, "walk");
@@ -303,9 +312,14 @@ impl World {
 
     fn deal_damage(&mut self, vm: &mut Vm, source: u32, target: u32, raw: f32, attack_type: &str) {
         let Some(t) = self.unit(target) else { return };
-        if t.dead || t.invulnerable {
+        if t.dead || t.invulnerable || self.buff_mods(target).5 {
             return;
         }
+        if self.evades(target) {
+            return;
+        }
+        let raw = self.on_attack_passives(source, target, raw * self.buff_mods(source).3);
+        let Some(t) = self.unit(target) else { return };
         let dmg = final_damage(self, raw, attack_type, t);
         let owner = t.owner;
         let t = self.unit_mut(target).unwrap();
@@ -348,6 +362,13 @@ impl World {
                 self.update_structure(vm, h, dt);
                 continue;
             }
+            // Stunned units do nothing; an attack in progress is lost.
+            if self.buff_mods(h).4 {
+                let u = self.unit_mut(h).unwrap();
+                u.swing = None;
+                u.casting = None;
+                continue;
+            }
             let action = u.action.clone();
             let wp = weapon(self, u.type_id);
             {
@@ -378,6 +399,7 @@ impl World {
                                 damage: raw,
                                 attack_type: wp.attack_type.clone(),
                                 start: (src.x, src.y),
+                                spell: None,
                             });
                         }
                     } else {
@@ -394,6 +416,7 @@ impl World {
                 continue;
             }
             match action {
+                Action::Cast { ability, target, x, y } => self.cast_step(vm, h, ability, target, x, y, dt),
                 Action::Idle | Action::Hold => {
                     if let Some(u) = self.unit_mut(h) {
                         if !u.path.is_empty() {
@@ -1018,6 +1041,8 @@ impl World {
             self.walk(h, dt);
             return;
         }
+        let buff_attack = self.buff_mods(h).1;
+        let agi_bonus = self.misc_f32("AgiAttackSpeedBonus", 0.02);
         let u = self.unit_mut(h).unwrap();
         u.path.clear();
         let left = turn(u, angle_to(upos, tpos), dt);
@@ -1028,8 +1053,9 @@ impl World {
         }
         if u.cooldown <= 0.0 {
             // Agility shortens a hero's attack cooldown (AgiAttackSpeedBonus per point).
-            let speed = if u.is_hero { 1.0 + u.agi.floor() * 0.02 } else { 1.0 };
-            u.cooldown = wp.cooldown / speed;
+            let speed = if u.is_hero { 1.0 + u.agi.floor() * agi_bonus } else { 1.0 };
+            let speed = speed * buff_attack;
+            u.cooldown = wp.cooldown / speed.max(0.01);
             u.swing = Some(Swing { target, elapsed: 0.0, done: false });
             restart_anim(u, "attack");
         } else if u.anim == "walk" {
@@ -1103,7 +1129,15 @@ impl World {
             i += 1;
         }
         for m in hits {
-            self.deal_damage(vm, m.source, m.target, m.damage, &m.attack_type);
+            match m.spell {
+                Some((a, lvl, stun, buff)) => {
+                    self.spell_damage(vm, m.source, m.target, m.damage);
+                    if stun > 0.0 {
+                        self.apply_buff(m.target, Buff { id: buff, ability: a, level: lvl, caster: m.source, remaining: stun, stun: true, ..Default::default() });
+                    }
+                }
+                None => self.deal_damage(vm, m.source, m.target, m.damage, &m.attack_type),
+            }
         }
     }
 }

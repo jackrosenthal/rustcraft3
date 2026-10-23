@@ -199,6 +199,36 @@ pub struct Unit {
     pub int: f32,
     pub skill_points: i32,
     pub regen_timer: f32,
+    /// Remaining cooldown per ability.
+    pub cooldowns: HashMap<Id, f32>,
+    pub autocast: Vec<Id>,
+    pub buffs: Vec<Buff>,
+    /// A spell being cast: time since the cast began and whether its effect has fired.
+    pub casting: Option<(f32, bool)>,
+    /// Summoned units expire when this reaches zero.
+    pub timed_life: Option<f32>,
+}
+
+/// An effect on a unit for a while: from spells, auras, and passives.
+#[derive(Clone, Debug, Default)]
+pub struct Buff {
+    /// Buff type from AbilityBuffData (e.g. BHtb).
+    pub id: Id,
+    pub ability: Id,
+    pub level: u32,
+    pub caster: u32,
+    pub remaining: f32,
+    pub stun: bool,
+    pub move_factor: f32,
+    pub attack_factor: f32,
+    pub armor: f32,
+    pub damage_factor: f32,
+    pub invulnerable: bool,
+    /// Damage (negative heals) per second.
+    pub dps: f32,
+    pub mana_regen: f32,
+    pub life_regen: f32,
+    pub effect: u32,
 }
 
 /// What a unit is doing.
@@ -215,6 +245,7 @@ pub enum Action {
     Harvest { target: u32 },
     ReturnResources,
     Build { id: Id, x: f32, y: f32 },
+    Cast { ability: Id, target: u32, x: f32, y: f32 },
     /// A worker constructing a structure.
     Construct { target: u32 },
 }

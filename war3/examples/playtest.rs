@@ -115,6 +115,43 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 1;
             }
+            // spawn <type> <player> <dx> <dy>: creates a unit near player 0's start.
+            "spawn" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let (sx, sy) = g.world.start_of(0);
+                    let id = w3_game::objects::id_from_str(&a[i + 1]);
+                    let hd = w3_game::natives::units::create_unit(&mut g.world, num(&a[i + 2]) as u8, id, sx + num(&a[i + 3]), sy + num(&a[i + 4]), 270.0);
+                    eprintln!("spawned {} = {hd}", a[i + 1]);
+                }
+                i += 5;
+            }
+            // hero <handle> <xp> <ability>: grants experience and learns an ability.
+            "hero" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let h = num(&a[i + 1]) as u32;
+                    g.world.add_hero_xp(h, num(&a[i + 2]) as i32);
+                    let ok = g.world.learn_skill(h, w3_game::objects::id_from_str(&a[i + 3]));
+                    let u = g.world.unit(h).unwrap();
+                    eprintln!("hero level {} xp {} str {} agi {} int {} life {}/{} mana {}/{} learned {ok} skill points {}", u.level, u.hero_xp, u.str_, u.agi, u.int, u.life, u.max_life, u.mana, u.max_mana, u.skill_points);
+                }
+                i += 4;
+            }
+            // order <unit> <order> <target>: issues an order at a unit.
+            "order" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let id = w3_game::natives::basic::order_id(&a[i + 2]);
+                    g.world.order_unit(num(&a[i + 1]) as u32, id, 0.0, 0.0, num(&a[i + 3]) as u32);
+                }
+                i += 4;
+            }
+            "unit" => {
+                if let Some(g) = scene.game.as_ref() {
+                    if let Some(u) = g.world.unit(num(&a[i + 1]) as u32) {
+                        eprintln!("unit {} life {}/{} mana {} action {:?} buffs {:?}", w3_game::objects::id_str(u.type_id), u.life, u.max_life, u.mana, u.action, u.buffs.iter().map(|b| (w3_game::objects::id_str(b.id), b.remaining, b.stun)).collect::<Vec<_>>());
+                    }
+                }
+                i += 2;
+            }
             "aidump" => {
                 if let Some(g) = &scene.game {
                     let w = &g.world;

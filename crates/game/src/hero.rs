@@ -111,22 +111,25 @@ impl World {
         }
     }
 
-    /// Learns or improves a hero ability, spending a skill point.
-    pub fn learn_skill(&mut self, h: u32, ability: Id) -> bool {
+    /// Whether a hero can learn the next level of an ability now.
+    pub fn can_learn(&self, h: u32, ability: Id) -> bool {
         let Some(u) = self.unit(h) else { return false };
-        if u.skill_points <= 0 {
-            return false;
-        }
-        let level = u.level;
         let current = u.abilities.iter().find(|(a, _)| *a == ability).map_or(0, |a| a.1);
         let ab = self.objects.abilities.get(ability);
         let max = ab.map_or(3, |a| a.int("levels").max(1));
         let req = ab.map_or(1, |a| a.int("reqLevel").max(1));
         let skip = ab.map_or(2, |a| a.int("levelSkip").max(1));
-        // Each ability level needs a hero level: reqLevel, then every levelSkip levels.
-        if current >= max || level < req + current * skip {
+        u.skill_points > 0 && current < max && u.level >= req + current * skip
+    }
+
+    /// Learns or improves a hero ability, spending a skill point.
+    pub fn learn_skill(&mut self, h: u32, ability: Id) -> bool {
+        if !self.can_learn(h, ability) {
             return false;
         }
+        let Some(u) = self.unit(h) else { return false };
+        let _ = u;
+        // Each ability level needs a hero level: reqLevel, then every levelSkip levels.
         let u = self.unit_mut(h).unwrap();
         u.skill_points -= 1;
         match u.abilities.iter_mut().find(|(a, _)| *a == ability) {

@@ -569,6 +569,19 @@ impl Scene {
                     h.page = crate::card::Page::Build;
                 }
             }
+            A::LearnMenu => {
+                if let Some(h) = self.hud.as_mut() {
+                    h.page = crate::card::Page::Learn;
+                }
+            }
+            A::Learn(id) => {
+                g.world.learn_skill(first, id);
+                if let Some(h) = self.hud.as_mut() {
+                    if g.world.unit(first).is_none_or(|u| u.skill_points <= 0) {
+                        h.page = crate::card::Page::Main;
+                    }
+                }
+            }
             A::Build(id) => {
                 self.placing = Some(id);
                 if let Some(h) = self.hud.as_mut() {

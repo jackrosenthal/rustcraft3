@@ -40,6 +40,8 @@ pub enum Screen {
     Score,
     /// COptionsMenu: the player's options.
     Options,
+    /// CCustomCampaignMenu: choosing a custom campaign from the Campaigns folder.
+    CustomCampaign,
 }
 
 impl Screen {
@@ -55,6 +57,8 @@ impl Screen {
             Screen::LoadSaved => "BattlenetCustomCreate",
             Screen::Campaign => "Campaign",
             Screen::Options => "Options",
+            // Laid out as the saved games screen is.
+            Screen::CustomCampaign => "BattlenetCustomCreate",
             Screen::Loading | Screen::Score => "",
         }
     }
@@ -70,6 +74,7 @@ impl Screen {
             Screen::Loading => "Loading",
             Screen::Score => "ScoreScreenFrame",
             Screen::Options => "OptionsMenu",
+            Screen::CustomCampaign => "CustomCampaignMenu",
         }
     }
 }
@@ -140,6 +145,10 @@ pub struct Glue {
     pub options: crate::options::Options,
     /// The display's size in pixels, which the options screen lists as its resolution.
     pub display: (u32, u32),
+    /// The game's archives, where a custom campaign is mounted while it is open.
+    chain: std::sync::Arc<w3_mpq::Chain>,
+    /// The Campaigns folder.
+    campaigns_dir: std::path::PathBuf,
 }
 
 impl Glue {
@@ -199,6 +208,8 @@ impl Glue {
             sprite_sequences: HashMap::new(),
             options: crate::options::Options::load(),
             display: (800, 600),
+            chain: data.chain.clone(),
+            campaigns_dir: data.dir.join("Campaigns"),
         };
         g.build(Screen::MainMenu, assets);
         g.play_layers(&format!("{} Birth", Screen::MainMenu.token()));
@@ -272,6 +283,11 @@ impl Glue {
                 // CCampaignMenu::vf55: Normal and Hard, from the profile's difficulty.
                 let hard = self.persist.borrow().difficulty == 2;
                 self.tree.set_items("DifficultySelect", vec![db.string("NORMAL"), db.string("HARD")], hard as usize);
+            }
+            Screen::CustomCampaign => {
+                self.skirmish.detach_saves();
+                let dir = self.campaigns_dir.clone();
+                self.skirmish.attach_campaigns(&mut self.tree, db, &dir);
             }
             Screen::Options => {
                 self.options = crate::options::Options::load();
@@ -521,7 +537,7 @@ impl Glue {
         if self.tree.pointer_down(x, y).is_some() {
             return true;
         }
-        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved) {
+        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign) {
             self.skirmish.click(&mut self.tree, &assets.frames, x, y);
         }
         if self.screen == Screen::Campaign && self.phase == Phase::Stand {
@@ -549,6 +565,27 @@ impl Glue {
             }
         }
         false
+    }
+
+    /// CCustomCampaignMenu's OK (FUN_6f2f7730): the chosen campaign's archive joins the
+    /// game's, its difficulty (Normal unless it lets the player choose) is set, and the
+    /// campaign screen shows its missions.
+    fn open_custom_campaign(&mut self, assets: &mut Assets) {
+        let (Some(path), Some(summary)) = (self.skirmish.selected_campaign(), self.skirmish.campaign.clone()) else { return };
+        let archive = match w3_mpq::Archive::open(&path) {
+            Ok(a) => std::sync::Arc::new(a),
+            Err(e) => {
+                log::error!("opening {}: {e}", path.display());
+                return;
+            }
+        };
+        let hard = summary.info.flags & 1 != 0 && self.tree.get("DifficultySelect").is_some_and(|i| self.tree.frames[i].selected == 1);
+        self.persist.borrow_mut().difficulty = if hard { 2 } else { 1 };
+        self.chain.unmount(crate::data::PRIORITY_CAMPAIGN);
+        self.chain.mount(archive, None, crate::data::PRIORITY_CAMPAIGN);
+        let world_edit = self.skirmish.world_edit.clone();
+        self.campaigns.open_custom(&path, &summary, &world_edit);
+        self.show(Screen::Campaign, assets);
     }
 
     fn start_mission(&mut self, c: usize, m: usize) {
@@ -626,6 +663,14 @@ impl Glue {
                 if let Some(path) = self.skirmish.selected_save() {
                     self.action = Some(GlueAction::LoadSave(path));
                 }
+            }
+            (Screen::SinglePlayer, "CustomCampaignButton") => self.show(Screen::CustomCampaign, assets),
+            (Screen::CustomCampaign, "CancelButton") => self.show(Screen::SinglePlayer, assets),
+            (Screen::CustomCampaign, "OKButton") => self.open_custom_campaign(assets),
+            (Screen::Campaign, "BackButton") if self.campaigns.custom.is_some() => {
+                self.campaigns.close_custom();
+                self.chain.unmount(crate::data::PRIORITY_CAMPAIGN);
+                self.show(Screen::CustomCampaign, assets);
             }
             (Screen::Campaign, "BackButton") => {
                 if self.campaigns.open.take().is_none() {
@@ -738,7 +783,7 @@ impl Glue {
         if self.screen == Screen::Campaign && self.saved_background.is_none() {
             let pick = self.campaigns.backdrop_campaign(&self.persist.borrow()).and_then(|c| self.campaigns.list[c].clone());
             if let Some(c) = pick {
-                let path = assets.frames.skin_value(&c.background);
+                let path = c.model.clone().or_else(|| assets.frames.skin_value(&c.background));
                 let model = path.and_then(|p| assets.model(device, queue, &p));
                 if let Some(m) = model {
                     let mut i = ModelInstance::new(m);
@@ -947,7 +992,7 @@ impl Glue {
         if self.screen == Screen::Score {
             self.score_draws(&assets.frames, &mut draws);
         }
-        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved) && self.phase == Phase::Stand {
+        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign) && self.phase == Phase::Stand {
             self.skirmish.draws(&self.tree, &assets.frames, &mut draws);
         }
         if self.screen == Screen::Campaign && self.phase == Phase::Stand {

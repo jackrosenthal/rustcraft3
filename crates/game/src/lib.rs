@@ -125,6 +125,7 @@ impl Game {
         if let Some(k) = custom_keys {
             objects.apply_custom_keys(k);
         }
+        objects.apply_campaign(&chain);
         objects.apply_map(&chain);
         let mut world = World::new(chain.clone(), objects);
         world.version = version;

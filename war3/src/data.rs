@@ -40,6 +40,8 @@ impl DataSet {
 const PRIORITY_DATA_SET: [i32; 4] = [9, 10, 11, 12];
 /// Maps are mounted above everything else.
 pub const PRIORITY_MAP: i32 = 100;
+/// A custom campaign's archive: under its maps, over the game's data.
+pub const PRIORITY_CAMPAIGN: i32 = 50;
 
 pub struct GameData {
     pub dir: PathBuf,

@@ -199,6 +199,12 @@ impl ObjectTable {
     /// `leveled`: whether modifications carry a level and data column; doodad files
     /// (w3d) carry them from version 2 on (`None`).
     pub fn apply_mods(&mut self, data: &[u8], leveled: Option<bool>) -> Result<(), Error> {
+        self.apply_mods_with(data, leveled, None)
+    }
+
+    /// As `apply_mods`, with `TRIGSTR_n` text taken from `strings` at once (a custom
+    /// campaign's objects, whose strings are its war3campaign.wts, not the map's).
+    pub fn apply_mods_with(&mut self, data: &[u8], leveled: Option<bool>, strings: Option<&HashMap<u32, String>>) -> Result<(), Error> {
         let mut r = Reader::new(data);
         let version = r.u32()?;
         let leveled = leveled.unwrap_or(version >= 2);
@@ -228,7 +234,13 @@ impl ObjectTable {
                     let value = match ty {
                         0 => r.i32()?.to_string(),
                         1 | 2 => r.f32()?.to_string(),
-                        _ => r.cstr()?,
+                        _ => {
+                            let s = r.cstr()?;
+                            match (strings, s.strip_prefix("TRIGSTR_").and_then(|n| n.parse::<u32>().ok())) {
+                                (Some(t), Some(n)) => t.get(&n).cloned().unwrap_or(s),
+                                _ => s,
+                            }
+                        }
                     };
                     let _end = r.u32()?;
                     let Some(meta) = self.meta.get(&field) else { continue };
@@ -378,6 +390,31 @@ impl ObjectDb {
     pub fn apply_custom_keys(&mut self, keys: &Profile) {
         for t in [&mut self.units, &mut self.items, &mut self.abilities, &mut self.buffs, &mut self.upgrades] {
             t.merge_profile(keys, true);
+        }
+    }
+
+    /// Applies a custom campaign's object modification files (war3campaign.w3u and
+    /// its kin, under the map's own), their strings from war3campaign.wts.
+    pub fn apply_campaign(&mut self, chain: &Chain) {
+        if !chain.contains("war3campaign.w3f") {
+            return;
+        }
+        let strings = chain.read_string("war3campaign.wts").map(|s| w3_formats::map::parse_wts(&s)).unwrap_or_default();
+        let files: [(&str, &mut ObjectTable, Option<bool>); 7] = [
+            ("war3campaign.w3u", &mut self.units, Some(false)),
+            ("war3campaign.w3t", &mut self.items, Some(false)),
+            ("war3campaign.w3b", &mut self.destructables, Some(false)),
+            ("war3campaign.w3d", &mut self.doodads, None),
+            ("war3campaign.w3a", &mut self.abilities, Some(true)),
+            ("war3campaign.w3h", &mut self.buffs, Some(false)),
+            ("war3campaign.w3q", &mut self.upgrades, Some(true)),
+        ];
+        for (name, table, leveled) in files {
+            if let Ok(data) = chain.read(name) {
+                if let Err(e) = table.apply_mods_with(&data, leveled, Some(&strings)) {
+                    log::warn!("{name}: {e}");
+                }
+            }
         }
     }
 

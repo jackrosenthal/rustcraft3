@@ -1,6 +1,7 @@
 //! Parsers for the file formats shipped in the Warcraft III data archives.
 
 pub mod blp;
+pub mod campaign;
 pub mod map;
 pub mod mdx;
 pub mod profile;

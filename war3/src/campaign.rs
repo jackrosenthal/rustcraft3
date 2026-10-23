@@ -24,6 +24,17 @@ pub struct Campaign {
     /// BackgroundFogStart, End, Density, and Color (alpha, red, green, blue).
     pub fog: (f32, f32, f32, [f32; 4]),
     pub missions: Vec<Mission>,
+    /// A custom campaign's backdrop model, in place of `background`.
+    pub model: Option<String>,
+}
+
+/// A custom campaign open on the campaign screen: its file, and which mission buttons
+/// show from the start.
+pub struct CustomCampaign {
+    pub path: std::path::PathBuf,
+    pub visible: Vec<bool>,
+    /// The game's own campaigns, back when the custom one closes.
+    saved: Vec<Option<Campaign>>,
 }
 
 /// One row of the list box.
@@ -40,6 +51,8 @@ pub struct Campaigns {
     pub list: Vec<Option<Campaign>>,
     /// The campaign whose missions are listed, if any.
     pub open: Option<usize>,
+    /// The custom campaign shown in place of the game's, if any.
+    pub custom: Option<CustomCampaign>,
 }
 
 /// CCampaignListBox's rows: CampaignItemHeader and CampaignItemName text beside a
@@ -82,10 +95,42 @@ impl Campaigns {
                     background: s("Background"),
                     fog: (num("BackgroundFogStart"), num("BackgroundFogEnd"), num("BackgroundFogDensity"), color),
                     missions,
+                    model: None,
                 })
             })
             .collect();
-        Campaigns { list, open: None }
+        Campaigns { list, open: None, custom: None }
+    }
+
+    /// Shows a custom campaign's missions (CCustomCampaignMenu's OK): its backdrop is
+    /// UI\WorldEditData.txt's [CampaignScreens] entry, or its own model, under its fog.
+    pub fn open_custom(&mut self, path: &std::path::Path, s: &crate::skirmish::CampaignSummary, world_edit: &Profile) {
+        self.close_custom();
+        let info = &s.info;
+        let model = if info.background < 0 {
+            Some(info.background_path.clone()).filter(|p| !p.is_empty())
+        } else {
+            world_edit.get_list("CampaignScreens", &format!("{:02}", info.background)).get(3).map(|p| p.trim().to_string())
+        };
+        let fog = if info.fog.0 >= 0 {
+            let c = info.fog.4;
+            (info.fog.1, info.fog.2, info.fog.3, [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, c[3] as f32 / 255.0])
+        } else {
+            (0.0, 0.0, 0.0, [0.0; 4])
+        };
+        let missions = info.missions.iter().map(|m| Mission { header: s.text(&m.chapter), name: s.text(&m.title), map: m.map.clone() }).collect();
+        let campaign = Campaign { header: String::new(), name: s.text(&info.name), default_open: true, background: String::new(), fog, missions, model };
+        let saved = std::mem::replace(&mut self.list, vec![Some(campaign)]);
+        self.custom = Some(CustomCampaign { path: path.to_path_buf(), visible: info.missions.iter().map(|m| m.visible).collect(), saved });
+        self.open = Some(0);
+    }
+
+    /// Puts the game's campaigns back.
+    pub fn close_custom(&mut self) {
+        if let Some(c) = self.custom.take() {
+            self.list = c.saved;
+            self.open = None;
+        }
     }
 
     pub fn available(&self, persist: &Persist, c: usize) -> bool {
@@ -94,12 +139,20 @@ impl Campaigns {
 
     /// The first mission is open with its campaign; the rest as games open them.
     pub fn mission_available(&self, persist: &Persist, c: usize, m: usize) -> bool {
+        // A custom campaign's buttons show from the start or once a mission shows them
+        // (SetCustomCampaignButtonVisible).
+        if let Some(cc) = &self.custom {
+            return cc.visible.get(m).copied().unwrap_or(false) || persist.custom_campaign_buttons.get(&(m as i32)).copied().unwrap_or(false);
+        }
         self.available(persist, c) && (m == 0 || persist.mission_open(c, m))
     }
 
     /// The campaign the screen's backdrop shows: the one the profile names
     /// (SetCampaignMenuRaceEx), else the first open one.
     pub fn backdrop_campaign(&self, persist: &Persist) -> Option<usize> {
+        if self.custom.is_some() {
+            return Some(0);
+        }
         let named = persist.menu_race.max(0) as usize;
         if persist.menu_race > 0 && self.available(persist, named) {
             return Some(named);

@@ -15,6 +15,8 @@ pub struct Entry {
     pub kind: EntryKind,
     /// Player slots of a map, shown on its icon.
     pub players: usize,
+    /// A melee map (w3i flag 4), shown with the melee icon rather than the custom one.
+    pub melee: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,6 +26,31 @@ pub enum EntryKind {
     Map,
     /// A saved game (the Load Saved Game screen).
     Save,
+    /// A custom campaign (the Custom Campaign screen).
+    Campaign,
+}
+
+/// What the Custom Campaign screen shows about the selected campaign.
+#[derive(Clone, Debug, Default)]
+pub struct CampaignSummary {
+    pub info: w3_formats::campaign::CampaignInfo,
+    pub strings: HashMap<u32, String>,
+}
+
+impl CampaignSummary {
+    pub fn read(path: &Path) -> Option<CampaignSummary> {
+        let ar = w3_mpq::Archive::open(path).ok()?;
+        let info = w3_formats::campaign::CampaignInfo::parse(&ar.read("war3campaign.w3f").ok()?).ok()?;
+        let strings = ar.read("war3campaign.wts").ok().map(|b| w3_formats::map::parse_wts(&String::from_utf8_lossy(&b))).unwrap_or_default();
+        Some(CampaignSummary { info, strings })
+    }
+
+    pub fn text(&self, s: &str) -> String {
+        match s.strip_prefix("TRIGSTR_").and_then(|n| n.parse::<u32>().ok()) {
+            Some(n) => self.strings.get(&n).cloned().unwrap_or_default(),
+            None => s.to_string(),
+        }
+    }
 }
 
 /// Who plays a slot.
@@ -91,14 +118,22 @@ pub struct Skirmish {
     /// Map list rows' rectangle, from MapListContainer.
     list: Option<Rect>,
     /// WorldEditData [MapSizes] and [TileSets], and WorldEditStrings, for the info pane.
-    world_edit: w3_formats::profile::Profile,
+    pub world_edit: w3_formats::profile::Profile,
     pub preview_dirty: bool,
     pub slots: Vec<SlotChoice>,
     /// The screen's frames need rebuilding (the slot count changed).
     pub rebuild: bool,
     /// The local player's name for its slot.
     pub player_name: String,
+    /// The Maps folder, which the Custom Game screen browses.
+    maps_root: PathBuf,
+    /// The selected custom campaign.
+    pub campaign: Option<CampaignSummary>,
 }
+
+/// The Custom Campaign screen's list frame (as on the Load Saved Game screen, whose
+/// list is also FileListFrame, the mode is told apart by this name).
+const CAMPAIGN_LIST: &str = "FileListFrame#campaigns";
 
 /// Height of a map list row and its text, in interface units.
 const ROW: f32 = 0.0195;
@@ -123,6 +158,8 @@ impl Skirmish {
             slots: Vec::new(),
             rebuild: false,
             player_name: String::new(),
+            maps_root: game_dir.join("Maps"),
+            campaign: None,
         }
     }
 
@@ -142,7 +179,7 @@ impl Skirmish {
     fn scan(&mut self) {
         self.entries.clear();
         if self.dir != self.root {
-            self.entries.push(Entry { name: String::new(), path: self.dir.parent().unwrap_or(&self.root).to_path_buf(), kind: EntryKind::Up, players: 0 });
+            self.entries.push(Entry { name: String::new(), path: self.dir.parent().unwrap_or(&self.root).to_path_buf(), kind: EntryKind::Up, players: 0, melee: false });
         }
         let Ok(rd) = std::fs::read_dir(&self.dir) else { return };
         let mut folders = Vec::new();
@@ -151,14 +188,20 @@ impl Skirmish {
             let p = e.path();
             let name = e.file_name().to_string_lossy().to_string();
             if p.is_dir() {
-                folders.push(Entry { name, path: p, kind: EntryKind::Folder, players: 0 });
+                folders.push(Entry { name, path: p, kind: EntryKind::Folder, players: 0, melee: false });
             } else {
                 let ext = p.extension().map(|x| x.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-                if ext == "w3m" || ext == "w3x" && self.expansion {
+                if self.list_frame == CAMPAIGN_LIST {
+                    // Custom campaigns list under their own names.
+                    if ext == "w3n" {
+                        let title = CampaignSummary::read(&p).map(|s| s.text(&s.info.name)).unwrap_or_default();
+                        maps.push(Entry { name: if title.is_empty() { name } else { title }, path: p, kind: EntryKind::Campaign, players: 0, melee: false });
+                    }
+                } else if ext == "w3m" || ext == "w3x" && self.expansion {
                     // Maps list under their own names, by player count.
                     let Some(s) = summarize(&p, false) else { continue };
                     let title = s.text(&s.info.name);
-                    maps.push(Entry { name: if title.is_empty() { name } else { title }, path: p, kind: EntryKind::Map, players: s.user_slots() });
+                    maps.push(Entry { name: if title.is_empty() { name } else { title }, path: p, kind: EntryKind::Map, players: s.user_slots(), melee: s.info.flags & 0x4 != 0 });
                 }
             }
         }
@@ -173,7 +216,12 @@ impl Skirmish {
     fn select(&mut self, i: usize) {
         self.selected = Some(i);
         self.summary = None;
+        self.campaign = None;
         let Some(e) = self.entries.get(i) else { return };
+        if e.kind == EntryKind::Campaign {
+            self.campaign = CampaignSummary::read(&e.path);
+            return;
+        }
         if e.kind == EntryKind::Save {
             // The saved game's map: a file, or one in the game's archives.
             let map = std::fs::read(&e.path).ok().and_then(|b| w3_game::save::SaveGame::peek_map(&b));
@@ -295,7 +343,7 @@ impl Skirmish {
         }
         // Measured from the original's Load Saved Game screen.
         Self::layout_info_at(tree, [0.001, -0.033, -0.172, -0.2233]);
-        self.entries = crate::saveload::saved_games(dir).into_iter().map(|(name, path)| Entry { name, path, kind: EntryKind::Save, players: 0 }).collect();
+        self.entries = crate::saveload::saved_games(dir).into_iter().map(|(name, path)| Entry { name, path, kind: EntryKind::Save, players: 0, melee: false }).collect();
         self.scroll = 0;
         self.selected = None;
         self.summary = None;
@@ -305,13 +353,59 @@ impl Skirmish {
         self.fill_info(tree, db);
     }
 
+    /// Lists the custom campaigns in `dir` (the Campaigns folder) for the Custom
+    /// Campaign screen (CCustomCampaignMenu), and selects the first.
+    pub fn attach_campaigns(&mut self, tree: &mut FrameTree, db: &FrameDb, dir: &Path) {
+        self.list_frame = CAMPAIGN_LIST;
+        if let (Some(parent), true) = (tree.get("FileListFrame"), db.templates.contains_key("MapListBox")) {
+            if let Some(i) = tree.create(db, "MapListBox", parent) {
+                tree.frames[i].all_points = true;
+            }
+        }
+        self.root = dir.to_path_buf();
+        self.dir = self.root.clone();
+        self.scan();
+        if let Some(i) = self.entries.iter().position(|e| e.kind == EntryKind::Campaign) {
+            self.select(i);
+        }
+        self.fill_campaign(tree, db);
+    }
+
+    /// The selected campaign's details in CampaignInfoPane, and its difficulty choice
+    /// (Normal or Hard, when the campaign lets the player choose).
+    fn fill_campaign(&self, tree: &mut FrameTree, db: &FrameDb) {
+        let Some(s) = &self.campaign else {
+            for f in ["CampaignNameValue", "AuthorValue", "DifficultyValue", "NumMissionsValue", "MapDescValue"] {
+                tree.set_text(f, "");
+            }
+            tree.set_enabled("DifficultySelect", false);
+            return;
+        };
+        tree.set_text("CampaignNameValue", &s.text(&s.info.name));
+        tree.set_text("AuthorValue", &s.text(&s.info.author));
+        tree.set_text("DifficultyValue", &s.text(&s.info.difficulty));
+        tree.set_text("NumMissionsValue", &s.info.missions.len().to_string());
+        tree.set_text("MapDescValue", &s.text(&s.info.description));
+        let sel = tree.get("DifficultySelect").map_or(0, |i| tree.frames[i].selected);
+        tree.set_items("DifficultySelect", vec![db.string("NORMAL"), db.string("HARD")], sel.min(1));
+        tree.set_enabled("DifficultySelect", s.info.flags & 1 != 0);
+    }
+
+    pub fn selected_campaign(&self) -> Option<PathBuf> {
+        let e = self.entries.get(self.selected?)?;
+        (e.kind == EntryKind::Campaign).then(|| e.path.clone())
+    }
+
     /// Back to the Custom Game screen's map list.
     pub fn detach_saves(&mut self) {
         if self.list_frame != "MapListContainer" {
             self.list_frame = "MapListContainer";
+            self.root = self.maps_root.clone();
+            self.dir = self.root.clone();
             self.entries.clear();
             self.selected = None;
             self.summary = None;
+            self.campaign = None;
         }
     }
 
@@ -424,7 +518,11 @@ impl Skirmish {
             }
             _ => self.select(row),
         }
-        self.fill_info(tree, db);
+        if self.list_frame == CAMPAIGN_LIST {
+            self.fill_campaign(tree, db);
+        } else {
+            self.fill_info(tree, db);
+        }
         tree.layout();
     }
 
@@ -459,10 +557,10 @@ impl Skirmish {
 
     /// The map list rows and the map preview.
     pub fn draws(&mut self, tree: &FrameTree, db: &FrameDb, out: &mut Vec<Draw>) {
-        let Some(container) = tree.get(self.list_frame).and_then(|i| tree.frames[i].rect) else { return };
+        let Some(container) = tree.get(self.list_frame.split('#').next().unwrap_or_default()).and_then(|i| tree.frames[i].rect) else { return };
         // Rows sit inside the list's border, left of its scroll bar; the saved games list
         // (measured from the original) runs nearly to the border, in larger text.
-        let saves = self.list_frame == "FileListFrame";
+        let saves = self.list_frame != "MapListContainer";
         let inner = Rect { x0: container.x0 + 0.012, x1: container.x1 - if saves { 0.0125 } else { 0.03 }, y0: container.y0 + 0.008, y1: container.y1 - 0.008 };
         self.list = Some(inner);
         let rows = (inner.h() / ROW) as usize;
@@ -477,8 +575,10 @@ impl Skirmish {
             let icon = match e.kind {
                 EntryKind::Up => "ui\\widgets\\glues\\icon-folder-up.blp",
                 EntryKind::Folder => "ui\\widgets\\glues\\icon-folder.blp",
-                EntryKind::Map => "ui\\widgets\\glues\\icon-file-melee.blp",
-                EntryKind::Save => "ui\\widgets\\glues\\icon-file.blp",
+                // game.dll's file icons (0x6faa37c4): melee and custom maps, files.
+                EntryKind::Map if e.melee => "ui\\widgets\\glues\\icon-file-melee.blp",
+                EntryKind::Map => "ui\\widgets\\glues\\icon-file-ums.blp",
+                EntryKind::Save | EntryKind::Campaign => "ui\\widgets\\glues\\icon-file.blp",
             };
             let ir = if saves { Rect { x0: row.x0 + 0.004, x1: row.x0 + 0.004 + ROW, y0: row.y0, y1: row.y1 } } else { Rect { x0: row.x0 + 0.004, x1: row.x0 + 0.004 + ROW * 0.9 * 0.75, y0: row.y0 + ROW * 0.05, y1: row.y1 - ROW * 0.05 } };
             out.push(Draw::Image { texture: icon.into(), rect: ir, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
@@ -497,6 +597,10 @@ impl Skirmish {
         }
         // The preview goes where MinimapImage is; a map without one (and a saved game)
         // shows Minimap-Unknown.
+        // A campaign shows its own image.
+        if let (Some(c), Some(r)) = (self.campaign.as_ref(), tree.get("MinimapImage").and_then(|i| tree.frames[i].rect)) {
+            out.push(Draw::Image { texture: c.info.minimap_path.clone(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+        }
         if let (Some(s), Some(r)) = (self.summary.as_ref(), tree.get("MinimapImage").and_then(|i| tree.frames[i].rect)) {
             let texture = if s.preview.is_some() { MAP_PREVIEW.to_string() } else { "UI\\Widgets\\Glues\\Minimap-Unknown.blp".to_string() };
             out.push(Draw::Image { texture, rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });

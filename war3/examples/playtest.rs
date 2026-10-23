@@ -14,6 +14,10 @@ fn main() -> anyhow::Result<()> {
     let a: Vec<String> = std::env::args().collect();
     let (w, h): (u32, u32) = if a.len() > 5 { (a[4].parse()?, a[5].parse()?) } else { (1920, 1080) };
     let data = GameData::open(Path::new(&a[1]), false)?;
+    // W3CAMPAIGN: a custom campaign (.w3n) whose maps and data the map is played with.
+    if let Ok(c) = std::env::var("W3CAMPAIGN") {
+        data.chain.mount(std::sync::Arc::new(w3_mpq::Archive::open(&c)?), None, war3::data::PRIORITY_CAMPAIGN);
+    }
     let mut desc = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
     desc.backends = wgpu::Backends::PRIMARY.with_env();
     let instance = wgpu::Instance::new(desc);

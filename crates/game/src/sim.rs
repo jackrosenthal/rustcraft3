@@ -550,7 +550,14 @@ impl World {
     }
 
     pub fn refund(&mut self, player: u8, id: Id, rate: f32) {
-        let (g, l, _) = self.cost(id);
+        let (g, l) = if self.objects.upgrades.get(id).is_some() {
+            // The level being researched is the next one after those finished.
+            let level = self.players[player as usize].tech_researched.get(&id).copied().unwrap_or(0);
+            self.upgrade_cost(id, level)
+        } else {
+            let (g, l, _) = self.cost(id);
+            (g, l)
+        };
         let p = &mut self.players[player as usize];
         *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) += (g as f32 * rate) as i32;
         *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) += (l as f32 * rate) as i32;
@@ -568,6 +575,36 @@ impl World {
         Ok(())
     }
 
+    /// Changes a unit's type, keeping its life and mana fractions (structure upgrades,
+    /// morphs).
+    pub fn transform_unit(&mut self, h: u32, id: Id) {
+        let Some(o) = self.objects.units.get(id) else { return };
+        let (hp, mana) = (o.real("HP").max(1.0), o.real("manaN"));
+        let abilities: Vec<(Id, i32)> = o.list("abilList").iter().map(|s| (crate::objects::id_from_str(s.trim()), 1)).filter(|(a, _)| a[0] != 0).collect();
+        let Some(u) = self.unit_mut(h) else { return };
+        let lf = if u.max_life > 0.0 { u.life / u.max_life } else { 1.0 };
+        let mf = if u.max_mana > 0.0 { u.mana / u.max_mana } else { 0.0 };
+        u.type_id = id;
+        u.max_life = hp;
+        u.life = hp * lf;
+        u.max_mana = mana;
+        u.mana = mana * mf;
+        u.abilities = abilities;
+        self.update_food();
+    }
+
+    /// Starts upgrading a structure into another type from its Upgrade list.
+    pub fn upgrade_structure(&mut self, h: u32, id: Id) -> Result<(), &'static str> {
+        let Some(u) = self.unit(h) else { return Err("") };
+        if u.dead || u.constructing.is_some() || !u.queue.is_empty() {
+            return Err("");
+        }
+        let owner = u.owner;
+        self.spend(owner, id, false)?;
+        self.unit_mut(h).unwrap().queue.push(id);
+        Ok(())
+    }
+
     /// Starts researching an upgrade at a structure that offers it.
     pub fn research(&mut self, player: u8, id: Id) -> bool {
         let id_s = crate::objects::id_str(id);
@@ -581,15 +618,37 @@ impl World {
                 && self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|o| o.list("Researches").iter().any(|r| r.trim() == id_s))
         });
         let Some(b) = building else { return false };
-        let (g, l) = self.objects.upgrades.get(id).map_or((0, 0), |o| (o.int("goldbase") + o.int("goldmod") * level, o.int("lumberbase") + o.int("lumbermod") * level));
+        self.research_at(b, id).is_ok()
+    }
+
+    /// Queues the next level of an upgrade at a structure.
+    pub fn research_at(&mut self, b: u32, id: Id) -> Result<(), &'static str> {
+        let Some(u) = self.unit(b) else { return Err("") };
+        let player = u.owner;
+        let level = self.players[player as usize].tech_researched.get(&id).copied().unwrap_or(0);
+        let queued = self.unit_order.iter().filter(|&&h| self.unit(h).is_some_and(|u| u.owner == player && u.queue.contains(&id))).count() as i32;
+        let max = self.objects.upgrades.get(id).map_or(1, |o| o.int("maxlevel").max(1));
+        if level + queued >= max || u.queue.len() >= 7 {
+            return Err("");
+        }
+        let (g, l) = self.upgrade_cost(id, level + queued);
         let p = &mut self.players[player as usize];
-        if p.get_state(player_state::RESOURCE_GOLD) < g || p.get_state(player_state::RESOURCE_LUMBER) < l {
-            return false;
+        if p.get_state(player_state::RESOURCE_GOLD) < g {
+            return Err("NOGOLD");
+        }
+        if p.get_state(player_state::RESOURCE_LUMBER) < l {
+            return Err("NOLUMBER");
         }
         *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) -= g;
         *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) -= l;
         self.unit_mut(b).unwrap().queue.push(id);
-        true
+        Ok(())
+    }
+
+    /// Gold and lumber for researching level `level` + 1 of an upgrade (base plus
+    /// increment per level).
+    pub fn upgrade_cost(&self, id: Id, level: i32) -> (i32, i32) {
+        self.objects.upgrades.get(id).map_or((0, 0), |o| (o.int("goldbase") + o.int("goldmod") * level, o.int("lumberbase") + o.int("lumbermod") * level))
     }
 
     /// Cancels the last queued item and refunds it (TrainRefundRate).
@@ -674,6 +733,15 @@ impl World {
         let owner = u.owner;
         u.queue_progress = 0.0;
         u.queue.remove(0);
+        // A structure upgrade (the building's Upgrade list) transforms it in place.
+        let from = u.type_id;
+        let id_s = crate::objects::id_str(id);
+        if self.objects.units.get(from).is_some_and(|o| o.list("Upgrade").iter().any(|x| x.trim() == id_s)) {
+            self.transform_unit(h, id);
+            let ctx = EventCtx { unit: h, player: owner, has_player: true, event_id: EVENT_PLAYER_UNIT_UPGRADE_FINISH, ..Default::default() };
+            self.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event, .. } if *player == owner && *event == EVENT_PLAYER_UNIT_UPGRADE_FINISH));
+            return;
+        }
         let radius = self.objects.units.get(id).map_or(16.0, |o| o.real("collision"));
         let (x, y) = self.spawn_point(h, radius);
         let new = crate::natives::units::create_unit(self, owner, id, x, y, 270.0);
@@ -815,12 +883,36 @@ impl World {
         (span / 2.0).max(u.collision)
     }
 
+    /// Distance from a point to the edge of a widget: to its pathing footprint's rectangle
+    /// for structures, else to its collision circle.
+    pub fn edge_distance(&self, target: u32, x: f32, y: f32) -> Option<f32> {
+        let tp = self.widget_pos(target)?;
+        let cells = self.unit(target).map(|u| u.pathing_cells.as_slice()).unwrap_or(&[]);
+        if cells.is_empty() || self.pathing.is_none() {
+            let tr = if self.unit(target).is_some() { self.reach_radius(target) } else { 16.0 };
+            return Some((tp.0 - x).hypot(tp.1 - y) - tr);
+        }
+        let p = self.pathing.as_ref().unwrap();
+        let (mut x0, mut x1, mut y0, mut y1) = (f32::MAX, f32::MIN, f32::MAX, f32::MIN);
+        for &c in cells {
+            let (cx, cy) = p.center(c);
+            let half = crate::pathing::CELL / 2.0;
+            x0 = x0.min(cx - half);
+            x1 = x1.max(cx + half);
+            y0 = y0.min(cy - half);
+            y1 = y1.max(cy + half);
+        }
+        let dx = (x0 - x).max(x - x1).max(0.0);
+        let dy = (y0 - y).max(y - y1).max(0.0);
+        Some(dx.hypot(dy))
+    }
+
     /// Walks toward a widget until within `range` of its edge; true once there.
     fn approach(&mut self, h: u32, target: u32, range: f32, dt: f32) -> bool {
         let Some(tp) = self.widget_pos(target) else { return false };
-        let tr = if self.unit(target).is_some() { self.reach_radius(target) } else { 16.0 };
         let u = self.unit(h).unwrap();
-        let d = (tp.0 - u.x).hypot(tp.1 - u.y) - u.collision - tr;
+        let Some(edge) = self.edge_distance(target, u.x, u.y) else { return false };
+        let d = edge - u.collision;
         if d <= range {
             let u = self.unit_mut(h).unwrap();
             u.path.clear();

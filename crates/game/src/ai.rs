@@ -136,9 +136,36 @@ impl World {
                     aivm.sleepers.push((now, t));
                 }
             }
+            self.ai_hero_skills(p, &mut aivm);
             self.ai_current = None;
             self.ai_vms.insert(p, aivm);
             self.ai_engine(p, dt);
+        }
+    }
+
+    /// Spends AI heroes' skill points on what the script's SetHeroLevels callback picks
+    /// (it reads GetHeroId and GetHeroLevelAI and returns an ability id).
+    fn ai_hero_skills(&mut self, p: u8, aivm: &mut AiVm) {
+        let Some(f) = self.ai.get(&p).and_then(|s| s.hero_levels) else { return };
+        let heroes: Vec<u32> = self.ai_units(p).into_iter().filter(|&h| self.unit(h).is_some_and(|u| u.is_hero && u.skill_points > 0)).collect();
+        for h in heroes {
+            // Guard against a callback that picks something unlearnable.
+            for _ in 0..4 {
+                let Some(u) = self.unit(h) else { break };
+                if u.skill_points <= 0 {
+                    break;
+                }
+                let learned: i32 = u.abilities.iter().filter(|(a, _)| self.objects.abilities.get(*a).is_some_and(|o| o.int("hero") != 0)).map(|a| a.1).sum();
+                let ctx = (id_to_int(u.type_id), learned + 1);
+                if let Some(s) = self.ai.get_mut(&p) {
+                    s.hero_context = ctx;
+                }
+                let mut t = aivm.vm.new_thread(f, &[], false);
+                let Outcome::Finished(Value::Int(a)) = aivm.vm.run(self, &mut t) else { break };
+                if !self.learn_skill(h, id_from_int(a)) {
+                    break;
+                }
+            }
         }
     }
 
@@ -198,7 +225,7 @@ impl World {
                     continue;
                 }
             }
-            if u.type_id == id && (!done || u.constructing.is_none()) {
+            if self.counts_as(u.type_id, id) && (!done || u.constructing.is_none() && !u.queue.contains(&u.type_id)) {
                 n += 1;
             }
             if !done {
@@ -210,6 +237,26 @@ impl World {
             }
         }
         n
+    }
+
+    /// Whether a unit of type `have` counts as `want`: the same type, or a structure
+    /// upgraded from it (a Stronghold counts as a Great Hall).
+    fn counts_as(&self, have: Id, want: Id) -> bool {
+        let mut cur = vec![want];
+        for _ in 0..4 {
+            if cur.contains(&have) {
+                return true;
+            }
+            cur = cur
+                .iter()
+                .filter_map(|t| self.objects.units.get(*t))
+                .flat_map(|o| o.list("Upgrade").iter().map(|s| id_from_str(s.trim())).collect::<Vec<_>>())
+                .collect();
+            if cur.is_empty() {
+                return false;
+            }
+        }
+        false
     }
 
     fn workers(&self, p: u8) -> Vec<u32> {
@@ -252,6 +299,15 @@ impl World {
     /// Starts producing one unit, structure, or hero; returns whether it started.
     pub fn ai_produce(&mut self, p: u8, id: Id, town: i32) -> bool {
         let Some(o) = self.objects.units.get(id) else { return false };
+        // Town hall tiers and other structure upgrades transform an existing structure.
+        let id_s = crate::objects::id_str(id);
+        let upgradable = self.ai_units(p).into_iter().find(|&h| {
+            self.unit(h).is_some_and(|u| u.is_building && u.constructing.is_none() && u.queue.is_empty())
+                && self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|bo| bo.list("Upgrade").iter().any(|x| x.trim() == id_s))
+        });
+        if let Some(b) = upgradable {
+            return self.upgrade_structure(b, id).is_ok();
+        }
         if o.bool("isbldg") {
             let (g, l, _) = self.cost(id);
             let pl = &self.players[p as usize];

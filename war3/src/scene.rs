@@ -596,7 +596,16 @@ impl Scene {
                 }
             }
             A::CancelTrain => g.world.cancel_last(first),
-            A::Research(_) | A::Upgrade(_) => {}
+            A::Research(id) => {
+                if let Err(e) = g.world.research_at(first, id) {
+                    log::info!("[error] {e}");
+                }
+            }
+            A::Upgrade(id) => {
+                if let Err(e) = g.world.upgrade_structure(first, id) {
+                    log::info!("[error] {e}");
+                }
+            }
         }
     }
 

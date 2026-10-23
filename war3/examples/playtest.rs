@@ -152,11 +152,33 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            "mine" => {
+                if let Some(g) = &scene.game {
+                    let w = &g.world;
+                    let m = num(&a[i + 1]) as u32;
+                    if let Some(u) = w.unit(m) { eprintln!("mine at {:.0},{:.0} inside {} gold {}", u.x, u.y, u.inside, u.resource); }
+                    for &h in &w.unit_order {
+                        if let Some(u) = w.unit(h) { if u.owner == 1 && matches!(u.action, w3_game::types::Action::Harvest{target} if target == m) || u.owner == 1 && u.carry_gold > 0 { eprintln!("  t={:.1} {h} at {:.0},{:.0} {:?} inside {} path {}", w.time, u.x, u.y, u.action, u.inside, u.path.len()); } }
+                    }
+                }
+                i += 2;
+            }
+            "structs" => {
+                if let Some(g) = &scene.game {
+                    let w = &g.world;
+                    for (h, o) in w.handles.iter() {
+                        if let w3_game::types::Obj::Unit(u) = o {
+                            if u.owner == 1 && u.is_building { eprintln!("  {h} {} at {:.0},{:.0} constructing {:?} dead {} in order {}", w3_game::objects::id_str(u.type_id), u.x, u.y, u.constructing, u.dead, w.unit_order.contains(&h)); }
+                        }
+                    }
+                }
+                i += 1;
+            }
             "aidump" => {
                 if let Some(g) = &scene.game {
                     let w = &g.world;
                     for &h in &w.unit_order {
-                        if let Some(u) = w.unit(h) { if u.owner == 1 && !u.is_building { eprintln!("  {} {:?} gold {} lumber {} inside {}", w3_game::objects::id_str(u.type_id), u.action, u.carry_gold, u.carry_lumber, u.inside); } }
+                        if let Some(u) = w.unit(h) { if u.owner == 1 && !u.is_building { eprintln!("  {} {:?} gold {} lumber {} inside {} lvl {} abil {:?}", w3_game::objects::id_str(u.type_id), u.action, u.carry_gold, u.carry_lumber, u.inside, u.level, u.abilities.iter().map(|(a, l)| (w3_game::objects::id_str(*a), *l)).collect::<Vec<_>>()); } }
                     }
                     if let Some(a) = w.ai.get(&1) { eprintln!("  harvest {:?}", a.harvest); }
                 }

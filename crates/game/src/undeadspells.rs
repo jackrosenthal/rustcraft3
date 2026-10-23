@@ -188,3 +188,38 @@ impl World {
         }
     }
 }
+
+impl World {
+    /// Permanent Immolation (ANpi, and the goblin's Apig): the unit burns what its
+    /// ability allows within Area for DataA a second, its buff showing the flames.
+    pub fn update_permanent_immolation(&mut self, vm: &mut Vm, dt: f32) {
+        let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden)).collect();
+        for h in units {
+            for code in ["ANpi", "Apig"] {
+                let Some((a, lvl)) = self.ability_with_code(h, code) else { continue };
+                let lvl = lvl.max(1) as u32;
+                let Some(u) = self.unit(h) else { continue };
+                let (owner, x, y) = (u.owner, u.x, u.y);
+                if !self.ability_enabled(owner, a) {
+                    continue;
+                }
+                if !u.buffs.iter().any(|b| b.ability == a) {
+                    let buff = self.objects.abilities.get(a).map(|o| id_from_str(o.level_str("BuffID", lvl).split(',').next().unwrap_or("").trim())).unwrap_or([0; 4]);
+                    self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: f32::MAX, ..Default::default() });
+                }
+                let left = self.unit(h).and_then(|u| u.cooldowns.get(&a).copied()).unwrap_or(0.0) - dt;
+                if left > 0.0 {
+                    self.unit_mut(h).unwrap().cooldowns.insert(a, left);
+                    continue;
+                }
+                self.unit_mut(h).unwrap().cooldowns.insert(a, left + 1.0);
+                let (area, dps) = (self.data(a, "Area", lvl), self.data(a, "DataA", lvl));
+                for t in self.units_in_pub(x, y, area) {
+                    if t != h && self.cast_target_error(h, a, t).is_none() {
+                        self.spell_damage(vm, h, t, dps);
+                    }
+                }
+            }
+        }
+    }
+}

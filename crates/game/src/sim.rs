@@ -848,7 +848,7 @@ impl World {
             return Err("");
         }
         let owner = u.owner;
-        if !self.missing_requirements(owner, id, 1).is_empty() {
+        if !self.missing_requirements(owner, id, 1).is_empty() || !self.tech_allowed(owner, id, 1) {
             return Err("");
         }
         self.spend(owner, id, true)?;
@@ -881,7 +881,7 @@ impl World {
             return Err("");
         }
         let owner = u.owner;
-        if !self.missing_requirements(owner, id, 1).is_empty() {
+        if !self.missing_requirements(owner, id, 1).is_empty() || !self.tech_allowed(owner, id, 1) {
             return Err("");
         }
         self.spend(owner, id, false)?;
@@ -912,7 +912,7 @@ impl World {
         let level = self.players[player as usize].tech_researched.get(&id).copied().unwrap_or(0);
         let queued = self.unit_order.iter().filter(|&&h| self.unit(h).is_some_and(|u| u.owner == player && u.queue.contains(&id))).count() as i32;
         let max = self.objects.upgrades.get(id).map_or(1, |o| o.int("maxlevel").max(1));
-        if level + queued >= max || u.queue.len() >= 7 || !self.missing_requirements(player, id, (level + queued + 1) as u32).is_empty() {
+        if level + queued >= max || u.queue.len() >= 7 || !self.missing_requirements(player, id, (level + queued + 1) as u32).is_empty() || !self.tech_allowed(player, id, (level + queued + 1) as u32) {
             return Err("");
         }
         let (g, l) = self.upgrade_cost(id, level + queued);
@@ -1129,8 +1129,9 @@ impl World {
     fn build(&mut self, vm: &mut Vm, h: u32, id: Id, x: f32, y: f32, dt: f32) {
         let u = self.unit(h).unwrap();
         let (d, need_path, owner) = ((u.x - x).hypot(u.y - y), u.path.is_empty() || u.repath_timer <= 0.0, u.owner);
-        // Structures whose requirements are not met are not started.
-        if !self.missing_requirements(owner, id, 1).is_empty() {
+        // Structures whose requirements are not met, or over their limit, are not
+        // started.
+        if !self.missing_requirements(owner, id, 1).is_empty() || !self.tech_allowed(owner, id, 1) {
             self.unit_mut(h).unwrap().action = Action::Idle;
             return;
         }

@@ -200,6 +200,12 @@ impl Commands {
         let mut out = Vec::new();
         let object_button = |id: Id, action: Action, enabled: bool| -> Option<Button> {
             let ob = w.objects.units.get(id).or_else(|| w.objects.upgrades.get(id)).or_else(|| w.objects.abilities.get(id))?;
+            // What SetPlayerTechMaxAllowed rules out does not show.
+            let next = w.players[u.owner as usize].tech_researched.get(&id).copied().unwrap_or(0) as u32 + 1;
+            let revive = matches!(action, Action::Revive(_));
+            if !revive && (w.tech_hidden(u.owner, id) || !w.tech_allowed(u.owner, id, next)) {
+                return None;
+            }
             let (x, y) = parse_pos(&ob.list("Buttonpos"))?;
             // Research shows the next level's tip, art, and cost.
             let (tip, uber, icon, costs) = if w.objects.upgrades.get(id).is_some() {
@@ -287,6 +293,10 @@ impl Commands {
         }
         for &(a, _) in &u.abilities {
             let Some(ab) = w.objects.abilities.get(a) else { continue };
+            // SetPlayerAbilityAvailable takes the button away.
+            if w.players[u.owner as usize].abilities_unavailable.contains(&a) {
+                continue;
+            }
             // Root (Aroo) shows Uproot (Unbuttonpos, Unart, Unorder) while rooted, and a
             // morph its way back while in its other form (UnitID).
             const MORPHS: [&str; 9] = ["Abrf", "Arav", "Astn", "Abur", "AEme", "ANcr", "ANrg", "Acpf", "Aetf"];

@@ -47,11 +47,26 @@ impl World {
     }
 
     fn compute_tech_met(&self, owner: u8, req: Id, amount: i32) -> bool {
-        let Some(p) = self.players.get(owner as usize) else { return false };
-        if self.objects.upgrades.get(req).is_some() {
-            return p.tech_researched.get(&req).copied().unwrap_or(0) >= amount.max(1);
+        self.tech_count(owner, req, true) >= amount.max(1)
+    }
+
+    /// Research levels of `id`, or the finished units of type `id` (with the types it
+    /// upgrades into and its DependencyOr types when `equivalents`).
+    pub fn tech_count(&self, owner: u8, id: Id, equivalents: bool) -> i32 {
+        let Some(p) = self.players.get(owner as usize) else { return 0 };
+        if self.objects.upgrades.get(id).is_some() {
+            return p.tech_researched.get(&id).copied().unwrap_or(0);
         }
-        // The type, what it upgrades into (transitively), and its DependencyOr types.
+        let types = if equivalents { self.equivalent_types(id) } else { vec![id] };
+        self.unit_order
+            .iter()
+            .filter_map(|&h| self.unit(h))
+            .filter(|u| u.owner == owner && !u.dead && u.constructing.is_none() && types.contains(&u.type_id))
+            .count() as i32
+    }
+
+    /// A type, what it upgrades into (transitively), and its DependencyOr types.
+    fn equivalent_types(&self, req: Id) -> Vec<Id> {
         let mut types = vec![req];
         let mut k = 0;
         while k < types.len() {
@@ -65,17 +80,51 @@ impl World {
             }
             k += 1;
         }
-        let have = self
-            .unit_order
-            .iter()
-            .filter_map(|&h| self.unit(h))
-            .filter(|u| u.owner == owner && !u.dead && u.constructing.is_none() && types.contains(&u.type_id))
-            .count() as i32;
-        have >= amount.max(1)
+        types
     }
 
-    /// Whether an ability works for its owner: its research is done.
+    /// Whether an ability works for its owner: available (SetPlayerAbilityAvailable)
+    /// and its research done.
     pub fn ability_enabled(&self, owner: u8, a: Id) -> bool {
+        if self.players.get(owner as usize).is_some_and(|p| p.abilities_unavailable.contains(&a)) {
+            return false;
+        }
         self.objects.abilities.get(a).is_none_or(|o| o.list("Requires").is_empty()) || self.missing_requirements(owner, a, 1).is_empty()
+    }
+
+    /// SetPlayerTechMaxAllowed's limit for `id`, if any (negative is none).
+    fn tech_max(&self, owner: u8, id: Id) -> Option<i32> {
+        self.players.get(owner as usize)?.tech_max.get(&id).copied().filter(|&m| m >= 0)
+    }
+
+    /// Whether `owner` may make another `id` (or research level `level` of it) under
+    /// SetPlayerTechMaxAllowed: units count those alive, being built, or in training;
+    /// Heroes also count against the HERO limit.
+    pub fn tech_allowed(&self, owner: u8, id: Id, level: u32) -> bool {
+        if self.objects.upgrades.get(id).is_some() {
+            return self.tech_max(owner, id).is_none_or(|m| level as i32 <= m);
+        }
+        let made = |types: &dyn Fn(Id) -> bool| -> i32 {
+            let living = self.unit_order.iter().filter_map(|&h| self.unit(h)).filter(|u| u.owner == owner && !(u.dead && !u.is_hero) && types(u.type_id)).count();
+            let queued: usize = self.unit_order.iter().filter_map(|&h| self.unit(h)).filter(|u| u.owner == owner).map(|u| u.queue.iter().filter(|&&q| types(q)).count()).sum();
+            (living + queued) as i32
+        };
+        if self.tech_max(owner, id).is_some_and(|m| made(&|t| t == id) >= m) {
+            return false;
+        }
+        let hero = id[0].is_ascii_uppercase();
+        if hero {
+            if let Some(m) = self.tech_max(owner, *b"HERO") {
+                if made(&|t| t[0].is_ascii_uppercase()) >= m {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// Hidden from the command card: SetPlayerTechMaxAllowed of 0.
+    pub fn tech_hidden(&self, owner: u8, id: Id) -> bool {
+        self.tech_max(owner, id) == Some(0)
     }
 }

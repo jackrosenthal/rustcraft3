@@ -164,11 +164,16 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let id = id_from_int(a.i(1));
             boolean(player_arg(w, a, 0).is_some_and(|p| w.players[p as usize].tech_researched.get(&id).copied().unwrap_or(0) > 0))
         },
+        // Research levels, or finished units of the type (and its equivalents unless
+        // specificonly).
         GetPlayerTechCount => |w, _, a| {
             let id = id_from_int(a.i(1));
-            int(player_arg(w, a, 0).and_then(|p| w.players[p as usize].tech_researched.get(&id).copied()).unwrap_or(0))
+            int(player_arg(w, a, 0).map_or(0, |p| w.tech_count(p, id, !a.b(2))))
         },
-        SetPlayerAbilityAvailable => |_, _, _| none(),
+        SetPlayerAbilityAvailable => |w, _, a| {
+            let (id, on) = (id_from_int(a.i(1)), a.b(2));
+            with_player(w, a, |p| { if on { p.abilities_unavailable.remove(&id); } else { p.abilities_unavailable.insert(id); } })
+        },
         GetPlayerScore => |_, _, _| int(0),
         CreateForce => |w, _, _| handle(w.handles.insert(Obj::Force(Force::default()))),
         DestroyForce => |w, _, a| { if w.force(a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },

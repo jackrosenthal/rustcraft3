@@ -77,6 +77,8 @@ pub struct Player {
     pub state: HashMap<i32, i32>,
     pub tech_max: HashMap<Id, i32>,
     pub tech_researched: HashMap<Id, i32>,
+    /// Abilities SetPlayerAbilityAvailable turned off.
+    pub abilities_unavailable: std::collections::HashSet<Id>,
     pub tax_rates: HashMap<(u8, i32), i32>,
     pub ai_script: Option<String>,
 }
@@ -102,6 +104,7 @@ impl Player {
             state: HashMap::new(),
             tech_max: HashMap::new(),
             tech_researched: HashMap::new(),
+            abilities_unavailable: Default::default(),
             tax_rates: HashMap::new(),
             ai_script: None,
         }

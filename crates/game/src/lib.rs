@@ -114,10 +114,10 @@ impl Game {
             }
         }
         world.camera_bounds = info.camera_bounds;
-        for (i, p) in info.players.iter().enumerate() {
+        for p in &info.players {
+            let name = world.localized(&p.name);
             if let Some(pl) = world.players.get_mut(p.id as usize) {
-                pl.name = p.name.clone();
-                let _ = i;
+                pl.name = name;
             }
         }
         Ok(Game { vm, world, info })
@@ -144,6 +144,16 @@ impl Game {
                     SlotFill::Computer => {
                         p.controller = map_control::COMPUTER;
                         p.slot_state = slot_state::PLAYING;
+                        // Without fixed player settings (w3i flag 0x20) the lobby names
+                        // computer slots by difficulty.
+                        if self.info.flags & 0x20 == 0 {
+                            let key = match self.world.ai_difficulty.get(&p.id).copied().unwrap_or(1) {
+                                0 => "COMPUTER_NEWBIE",
+                                2 => "COMPUTER_INSANE",
+                                _ => "COMPUTER_NORMAL",
+                            };
+                            p.name = self.world.strings.get(key).cloned().unwrap_or_else(|| key.to_string());
+                        }
                     }
                     SlotFill::Empty => p.slot_state = slot_state::EMPTY,
                 }

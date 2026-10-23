@@ -650,6 +650,7 @@ impl World {
             self.call_for_help(target, source);
             // A computer's or creep's unit hurt by an enemy weighs its spells.
             if self.unit(source).is_some_and(|s| self.unit(target).is_some_and(|t| !is_ally(self, t.owner, s.owner))) {
+                self.spell_ai_hurt(vm, target, source, attack_type != "spells");
                 self.spell_ai(target, source, target);
             }
             let Some(t) = self.unit(target) else { return };

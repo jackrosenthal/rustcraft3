@@ -19,6 +19,8 @@
 //! (invisible and undetected).  Constants are game.dll's static floats (400 at 0x6fd77f34, 450 at
 //! 0x6fd77f38, 1000 at 0x6fd3c7f8, 9999 at 0x6fd3c804, and so on).
 
+use w3_jass::Vm;
+
 use crate::objects::{Id, id_from_str};
 use crate::types::*;
 use crate::world::World;
@@ -209,6 +211,118 @@ impl World {
         }
     }
 
+    /// The abilities' "hurt" AI (their vf63), when a computer's or creep's unit takes
+    /// damage from an enemy `attacker` (`attack` when by an attack).
+    pub(crate) fn spell_ai_hurt(&mut self, vm: &mut Vm, h: u32, attacker: u32, attack: bool) {
+        if !self.ai_controlled(h) || self.unit(h).is_none_or(|u| u.dead || u.paused) {
+            return;
+        }
+        let abilities: Vec<(Id, i32)> = self.unit(h).map(|u| u.abilities.clone()).unwrap_or_default();
+        for (a, lvl) in abilities {
+            if lvl <= 0 || self.unit(h).is_some_and(|u| matches!(u.action, Action::Cast { .. })) {
+                continue;
+            }
+            let lvl = lvl as u32;
+            match self.ability_code(a).as_str() {
+                // FUN_6f602930: Thunder Clap's own test, easier when hard pressed.
+                "AHtc" | "ACtc" | "AOws" => self.thunder_clap_test(h, a, lvl, true),
+                // FUN_6f602950: a summon past the gate.
+                "AHwe" | "ANsg" | "ANsq" | "ANsw" | "ANlm" | "AHpx" | "AEsv" | "ANwm" => {
+                    if !self.ai_gate(h, a, attacker, h, true, None, None) {
+                        self.ai_cast(h, a, 0);
+                    }
+                }
+                // FUN_6f6028d0: Feral Spirit against a seen enemy.
+                "AOsf" | "AIsh" => {
+                    let owner = self.unit(h).map_or(0, |u| u.owner);
+                    let ok = self.unit(attacker).is_some_and(|e| !crate::natives::players::is_ally(self, owner, e.owner)) && self.unit_visible_to(attacker, owner);
+                    if ok && self.can_cast(h, a).is_ok() {
+                        self.ai_cast(h, a, 0);
+                    }
+                }
+                // CAbilityWindWalk vf63: past the gate with less than a third of its life or
+                // 200.
+                "AOwk" => {
+                    if !self.ai_gate(h, a, attacker, h, true, None, None) && (self.life_fraction(h) < 1.0 / 3.0 || self.life(h) < 200.0) {
+                        self.ai_cast(h, a, 0);
+                    }
+                }
+                "AOmi" => self.ai_mirror_image(h, a, attacker),
+                // CAbilityAvatar vf63: able to cast, armed, with half its life or less.
+                "AHav" => {
+                    if self.can_cast(h, a).is_ok() && self.unit(h).is_some_and(|u| !crate::sim::unit_weapons(self, u).is_empty()) && self.life_fraction(h) <= 0.5 {
+                        self.ai_cast(h, a, 0);
+                    }
+                }
+                // CAbilityDivineShield vf63: struck by an attack, at once.
+                "AHds" => {
+                    if attack && self.can_cast(h, a).is_ok() {
+                        self.ai_cast(h, a, 0);
+                    }
+                }
+                // CAbilityMetamorphosis vf63: under half its life, struck by an enemy.
+                "AEme" => {
+                    let owner = self.unit(h).map_or(0, |u| u.owner);
+                    let enemy = self.unit(attacker).is_some_and(|e| !crate::natives::players::is_ally(self, owner, e.owner));
+                    if enemy && self.can_cast(h, a).is_ok() && self.life_fraction(h) < 0.5 {
+                        self.ai_cast(h, a, 0);
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.ai_use_potions(vm, h, attacker);
+    }
+
+    fn life_fraction(&self, h: u32) -> f32 {
+        self.unit(h).map_or(1.0, |u| if u.max_life > 0.0 { u.life / u.max_life } else { 0.0 })
+    }
+
+    /// Mirror Image (CAbilityMirrorImage vf63): past the gate; at once when its mana is
+    /// full or it has half its life or less; otherwise with 3 enemies able to fight
+    /// within 500 of the attacker.
+    fn ai_mirror_image(&mut self, h: u32, a: Id, attacker: u32) {
+        if self.ai_gate(h, a, attacker, h, true, None, None) {
+            return;
+        }
+        let full = self.unit(h).is_some_and(|u| u.mana == u.max_mana);
+        if !full && self.life_fraction(h) > 0.5 {
+            self.ai_rest(h, a);
+            let (x, y) = self.pos(attacker);
+            if self.census(h, x, y, 500.0, true).enemy_fighters < 3 {
+                return;
+            }
+        }
+        self.ai_cast(h, a, 0);
+    }
+
+    /// Held potions (CAbilityItemHeal, ItemHealAoe, ItemRestore, ItemInvul, ItemInvis
+    /// vf63): healing once missing as much as it heals; restoration at less than 100
+    /// life; invulnerability at 100 life or less against an enemy; invisibility with
+    /// less than a third of its life or 200 against an enemy.
+    fn ai_use_potions(&mut self, vm: &mut Vm, h: u32, attacker: u32) {
+        let Some(u) = self.unit(h) else { return };
+        let (life, max, owner) = (u.life, u.max_life, u.owner);
+        let enemy = self.unit(attacker).is_some_and(|e| !crate::natives::players::is_ally(self, owner, e.owner));
+        let slots: Vec<(usize, u32)> = u.inventory.iter().copied().enumerate().filter(|&(_, i)| i != 0).collect();
+        for (slot, item) in slots {
+            let Some(t) = self.item(item).map(|i| i.type_id) else { continue };
+            for a in self.item_abilities(t) {
+                let use_it = match self.ability_code(a).as_str() {
+                    "AIhe" | "AIha" => max - life >= self.data(a, "DataA", 1),
+                    "AIre" => life < 100.0,
+                    "AIvu" => enemy && life <= 100.0,
+                    "AIvi" => enemy && (self.life_fraction(h) < 1.0 / 3.0 || life < 200.0),
+                    _ => false,
+                };
+                if use_it && self.unit(h).is_some_and(|u| u.cooldowns.get(&a).copied().unwrap_or(0.0) <= 0.0) {
+                    self.use_item(vm, h, slot, 0, 0.0, 0.0);
+                    return;
+                }
+            }
+        }
+    }
+
     /// Thunder Clap, War Stomp (FUN_6f60fca0, FUN_6f605650): with the victim on the
     /// caster's side and the AI ready, it counts within Area (no magic-immune units):
     /// at least 3 seen enemies besides structures, and more enemies able to fight,
@@ -218,13 +332,23 @@ impl World {
         if enemy == 0 || self.unit(victim).is_none_or(|v| !crate::natives::players::is_ally(self, owner, v.owner)) {
             return;
         }
+        self.thunder_clap_test(h, a, lvl, false);
+    }
+
+    /// FUN_6f605650: the census test; when hurt and below 400 life, 2 seen enemies
+    /// within Area suffice.
+    fn thunder_clap_test(&mut self, h: u32, a: Id, lvl: u32, hurt: bool) {
         if self.ai_resting(h, a) || self.can_cast(h, a).is_err() {
             return;
         }
         self.ai_rest(h, a);
-        let (x, y) = self.unit(h).map(|u| (u.x, u.y)).unwrap();
+        let (x, y) = self.pos(h);
         let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
-        if c.enemy_seen - c.enemy_structures < 3 || c.enemy_fighters - c.enemy_structures <= c.allies {
+        if hurt && self.life(h) < 400.0 {
+            if c.enemy_seen < 2 {
+                return;
+            }
+        } else if c.enemy_seen - c.enemy_structures < 3 || c.enemy_fighters - c.enemy_structures <= c.allies {
             return;
         }
         self.ai_cast(h, a, 0);

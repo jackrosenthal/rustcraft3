@@ -2379,6 +2379,29 @@ impl Scene {
         }
     }
 
+    /// Brings the interface up to date with the game (done each frame before drawing).
+    pub fn sync_hud(&mut self, db: &w3_ui::FrameDb, aspect: f32) {
+        let (Some(hud), Some(g)) = (self.hud.as_mut(), self.game.as_ref()) else { return };
+        hud.update(db, &g.world);
+        hud.sync_dialog(db, &g.world, g.world.local_player, aspect);
+        if std::mem::take(&mut self.menu_requested) && hud.menu.is_none() {
+            hud.quests = None;
+            hud.log_view = None;
+            hud.open_menu(db, aspect);
+        }
+        Self::update_quests(&mut self.quests_requested, &mut self.log_requested, hud, db, &g.world, &self.info, aspect);
+        hud.sync_save_panel(db);
+        if let Some(m) = hud.menu.as_mut() {
+            m.set_enabled("RestartButton", !g.world.restart_disabled);
+        }
+        hud.show_unit(db, &g.world, self.selection.first().copied());
+        hud.show_group(&g.world, &self.selection);
+        hud.sync_cinematic(db, &g.world, aspect);
+        hud.sync_heroes(&g.world);
+        hud.sync_idle_workers(&g.world);
+        crate::boards::sync(&mut hud.boards, db, &g.world, &self.team_rgb, aspect);
+    }
+
     /// Opens a requested quest log and shows a changed choice in it.
     fn update_quests(requested: &mut bool, log: &mut bool, hud: &mut crate::hud::Hud, db: &w3_ui::FrameDb, world: &w3_game::world::World, info: &MapInfo, aspect: f32) {
         if std::mem::take(log) && hud.menu.is_none() {
@@ -2627,26 +2650,8 @@ impl Scene {
         drop(pass);
         let mut tag_draws = self.health_bar_draws(&assets.frames, size);
         tag_draws.extend(self.text_tag_draws(&assets.frames, size));
-        if let (Some(hud), Some(g)) = (self.hud.as_mut(), self.game.as_ref()) {
-            hud.update(&assets.frames, &g.world);
-            let aspect = size.0 as f32 / size.1.max(1) as f32;
-            hud.sync_dialog(&assets.frames, &g.world, g.world.local_player, aspect);
-            if std::mem::take(&mut self.menu_requested) && hud.menu.is_none() {
-                hud.quests = None;
-                hud.log_view = None;
-                hud.open_menu(&assets.frames, aspect);
-            }
-            Self::update_quests(&mut self.quests_requested, &mut self.log_requested, hud, &assets.frames, &g.world, &self.info, aspect);
-            hud.sync_save_panel(&assets.frames);
-            if let Some(m) = hud.menu.as_mut() {
-                m.set_enabled("RestartButton", !g.world.restart_disabled);
-            }
-            hud.show_unit(&assets.frames, &g.world, self.selection.first().copied());
-            hud.show_group(&g.world, &self.selection);
-            hud.sync_cinematic(&assets.frames, &g.world, aspect);
-            hud.sync_heroes(&g.world);
-            hud.sync_idle_workers(&g.world);
-            crate::boards::sync(&mut hud.boards, &assets.frames, &g.world, &self.team_rgb, aspect);
+        self.sync_hud(&assets.frames, size.0 as f32 / size.1.max(1) as f32);
+        if let (Some(hud), Some(_)) = (self.hud.as_mut(), self.game.as_ref()) {
             // Text tags lie under the interface.
             let mut draws = tag_draws;
             draws.extend(hud.draws(&assets.frames));

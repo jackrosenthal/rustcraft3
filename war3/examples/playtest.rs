@@ -42,6 +42,7 @@ fn main() -> anyhow::Result<()> {
     let num = |s: &str| s.parse::<f32>().unwrap();
     while i < a.len() {
         scene.update_menu(&assets.frames, w as f32 / h as f32);
+        scene.sync_hud(&assets.frames, w as f32 / h as f32);
         match a[i].as_str() {
             "select" => {
                 scene.select((num(&a[i + 1]), num(&a[i + 2])), (num(&a[i + 3]), num(&a[i + 4])), (w, h), false);

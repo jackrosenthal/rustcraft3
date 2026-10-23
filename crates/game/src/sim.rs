@@ -460,9 +460,11 @@ impl World {
         let Some(u) = self.unit(h) else { return };
         let (from, radius) = ((u.x, u.y), u.collision);
         let kind = self.move_kind(h);
+        let free = u.extra.no_pathing;
         let path = match &self.pathing {
-            // Flyers go straight over everything but the map's no-fly cells.
-            Some(_) if kind == crate::pathing::Move::Fly => vec![goal],
+            // Flyers go straight over everything but the map's no-fly cells, as does a
+            // unit whose pathing is off (SetUnitPathing).
+            Some(_) if kind == crate::pathing::Move::Fly || free => vec![goal],
             Some(p) => {
                 let direct = p.find_path_kind(from, goal, radius * 0.5, 20000, kind);
                 let reaches = |path: &Vec<(f32, f32)>, to: (f32, f32)| path.last().is_some_and(|e| (e.0 - to.0).hypot(e.1 - to.1) < 64.0);
@@ -685,7 +687,12 @@ impl World {
         for h in units {
             let Some(u) = self.unit(h) else { continue };
             if u.dead {
-                let decay = if u.is_building { self.misc_f32("StructureDecayTime", 30.0) } else { self.misc_f32("BoneDecayTime", 88.0) };
+                // UnitSuspendDecay holds the corpse's clock.
+                if u.extra.suspend_decay {
+                    self.unit_mut(h).unwrap().death_time += dt;
+                    continue;
+                }
+                let decay = if u.extra.exploded { 0.0 } else if u.is_building { self.misc_f32("StructureDecayTime", 30.0) } else { self.misc_f32("BoneDecayTime", 88.0) };
                 let t = self.time - u.death_time;
                 // Dead heroes stay, out of sight, to be revived.
                 if u.is_hero {

@@ -349,6 +349,9 @@ pub struct UnitExtra {
     /// Animations QueueUnitAnimation lined up after the one playing.
     #[serde(default)]
     pub anim_queue: Vec<String>,
+    /// The unit burst as it died and left no corpse.
+    #[serde(default)]
+    pub exploded: bool,
     /// A bone turned toward a unit, offset from it (SetUnitLookAt).
     #[serde(default)]
     pub look_at: Option<(String, u32, [f32; 3])>,
@@ -437,6 +440,7 @@ impl Default for UnitExtra {
             spun_at: -100.0,
             anim_props: Vec::new(),
             anim_queue: Vec::new(),
+            exploded: false,
             look_at: None,
             illusion: None,
             factory: None,

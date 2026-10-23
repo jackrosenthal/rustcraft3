@@ -175,6 +175,9 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
 pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     w.set_asleep(h, false);
     let illusion = w.unit(h).and_then(|u| u.extra.illusion);
+    // A unit set to explode (SetUnitExploded) or dying under Incinerate bursts, unless a
+    // Hero (FUN_6f678280).
+    let explodes = w.unit(h).is_some_and(|u| !u.is_hero && (u.explode_on_death || u.buffs.iter().any(|b| matches!(w.ability_code(b.ability).as_str(), "ANia" | "ANic"))));
     if w.unit(h).is_some_and(|u| !u.dead) && killer != 0 && illusion.is_none() {
         w.grant_kill_xp(h, killer);
     }
@@ -241,6 +244,16 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
             w.spawn_effect(&art, x, y);
         }
         remove_unit(w, h);
+    } else if explodes {
+        // Into its type's Specialart, leaving no corpse.
+        if let Some((x, y, type_id)) = w.unit(h).map(|u| (u.x, u.y, u.type_id)) {
+            let art = w.objects.units.get(type_id).map(|o| o.list("Specialart").first().cloned().unwrap_or_default()).unwrap_or_default();
+            w.spawn_effect(&art, x, y);
+        }
+        if let Some(u) = w.unit_mut(h) {
+            u.hidden = true;
+            u.extra.exploded = true;
+        }
     }
 }
 
@@ -660,7 +673,30 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             with_unit(w, a, |u| if on { u.extra.rescuable_by |= 1 << p } else { u.extra.rescuable_by &= !(1 << p) })
         },
         SetUnitRescueRange => |w, _, a| { let r = a.r(1); with_unit(w, a, |u| u.extra.rescue_range = r) },
-        SetUnitPathing => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.no_pathing = !on) },
+        // A unit whose pathing is off goes straight over everything; a structure's
+        // footprint no longer blocks.
+        SetUnitPathing => |w, _, a| {
+            let (h, on) = (a.h(0), a.b(1));
+            let Some(u) = w.unit_mut(h) else { return none() };
+            if u.extra.no_pathing == !on {
+                return none();
+            }
+            u.extra.no_pathing = !on;
+            let (type_id, x, y) = (u.type_id, u.x, u.y);
+            let cells = if on {
+                let tex = w.objects.units.get(type_id).map(|o| o.str("pathTex")).unwrap_or_default();
+                w.pathing_cells(&tex, x, y, 0.0)
+            } else {
+                std::mem::take(&mut w.unit_mut(h).unwrap().pathing_cells)
+            };
+            if let Some(p) = w.pathing.as_mut() {
+                p.stamp(&cells, if on { 1 } else { -1 });
+            }
+            if on {
+                w.unit_mut(h).unwrap().pathing_cells = cells;
+            }
+            none()
+        },
         SetUnitUseFood => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.use_food = on); w.update_food(); none() },
         SetUnitCreepGuard => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.creep_guard = on) },
         UnitSetUsesAltIcon => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.alt_icon = on) },

@@ -10,7 +10,7 @@ use crate::types::*;
 use crate::world::{NativeFn, World};
 
 /// ALLIANCE_PASSIVE: the alliance flag IsPlayerAlly and IsPlayerEnemy read.
-const ALLIANCE_PASSIVE: usize = 0;
+pub(crate) const ALLIANCE_PASSIVE: usize = 0;
 
 pub(crate) fn player_arg(w: &World, a: &[Value], n: usize) -> Option<u8> {
     w.player_of(a.h(n))

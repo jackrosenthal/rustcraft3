@@ -193,6 +193,9 @@ pub struct World {
     pub fog: Option<crate::fog::FogMap>,
     pub shops: crate::shops::Shops,
     pub upgrade_cache: crate::upgrades::UpgradeCache,
+    /// Spell lightning between units, and jumping spells' next strikes.
+    pub bolts: Vec<crate::bolts::Bolt>,
+    pub jumps: Vec<crate::bolts::Jump>,
     /// Tech requirements met, by player, requirement, and amount; cleared each tick.
     #[serde(skip)]
     pub tech_cache: std::cell::RefCell<HashMap<(u8, crate::objects::Id, i32), bool>>,
@@ -368,6 +371,8 @@ impl World {
             shops: Default::default(),
             upgrade_cache: Default::default(),
             tech_cache: Default::default(),
+            bolts: Vec::new(),
+            jumps: Vec::new(),
             ground_effects: Vec::new(),
             quests: Vec::new(),
             defeat_conditions: Vec::new(),
@@ -735,6 +740,7 @@ impl World {
         prof!(self, "update_area_buffs", self.update_area_buffs(vm, dt));
         prof!(self, "update_traps", self.update_traps(vm));
         prof!(self, "update_splits", self.update_splits(dt));
+        self.update_bolts(vm, dt);
         // Owls leave fallen trees.
         let standing: Vec<bool> = self.sentinels.iter().map(|s| self.is_tree_pub(s.tree)).collect();
         let fallen: Vec<u32> = self.sentinels.iter().zip(&standing).filter(|(_, ok)| !**ok).map(|(s, _)| s.effect).collect();

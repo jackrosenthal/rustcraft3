@@ -205,34 +205,15 @@ impl World {
             }
             // Chains: Chain Lightning and Healing Wave jump to the nearest new target,
             // losing a fraction per jump.
+            // Jumps come a moment apart, each with its bolt (bolts.rs).
             "AOcl" | "AOhw" => {
-                let (mut amount, jumps, loss) = (self.d(a, "DataA", lvl), self.d(a, "DataB", lvl).max(1.0) as usize, self.d(a, "DataC", lvl));
-                let heal = code == "AOhw";
-                let mut hit = vec![target];
-                let mut cur = target;
-                for _ in 0..jumps {
-                    if heal { self.heal(cur, amount); } else { self.spell_damage(vm, h, cur, amount); }
-                    amount *= 1.0 - loss;
-                    let Some((px, py)) = self.widget_pos(cur) else { break };
-                    let range = if area > 0.0 { area } else { 500.0 };
-                    let next = self
-                        .units_in(px, py, range)
-                        .into_iter()
-                        .filter(|t| !hit.contains(t))
-                        .filter(|&t| crate::natives::players::is_ally(self, owner, self.owner_of(t)) == heal)
-                        .filter(|&t| !heal || self.unit(t).is_some_and(|u| u.life < u.max_life))
-                        .min_by(|&p, &q| {
-                            let dd = |t: u32| self.widget_pos(t).map_or(f32::MAX, |w| (w.0 - px).hypot(w.1 - py));
-                            dd(p).total_cmp(&dd(q))
-                        });
-                    let Some(n) = next else { break };
-                    hit.push(n);
-                    cur = n;
-                }
+                let (amount, jumps) = (self.d(a, "DataA", lvl), self.d(a, "DataB", lvl).max(1.0) as usize);
+                self.start_jumps(vm, a, lvl, h, target, amount, jumps, code == "AOhw");
                 true
             }
             // Mana Burn: drains up to DataA mana and deals as much damage.
             "AEmb" => {
+                self.ability_bolt(a, true, h, target);
                 let drained = self.unit(target).map_or(0.0, |t| t.mana.min(self.d(a, "DataA", lvl)));
                 if let Some(t) = self.unit_mut(target) {
                     t.mana -= drained;

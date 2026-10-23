@@ -117,7 +117,10 @@ impl World {
                 }
             }
             // Finger of Death: DataC damage.
-            "ANfd" => self.spell_damage(vm, h, target, d(self, "DataC")),
+            "ANfd" => {
+                self.ability_bolt(a, true, h, target);
+                self.spell_damage(vm, h, target, d(self, "DataC"))
+            }
             // Forked Lightning: DataA to at most DataB in a cone DataC long ending DataD wide.
             "ANfl" => {
                 let len = d(self, "DataC");
@@ -129,6 +132,7 @@ impl World {
                 targets.insert(0, target);
                 targets.truncate(d(self, "DataB").max(1.0) as usize);
                 for t in targets {
+                    self.ability_bolt(a, true, h, t);
                     self.spell_damage(vm, h, t, d(self, "DataA"));
                 }
             }

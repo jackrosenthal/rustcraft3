@@ -3,6 +3,9 @@
 //! error for a target that is not allowed.
 
 use crate::objects::Id;
+
+/// ALLIANCE_SHARED_SPELLS.
+const ALLIANCE_SHARED_SPELLS: usize = 4;
 use crate::types::*;
 use crate::world::World;
 
@@ -71,9 +74,14 @@ impl World {
         // Who the target belongs to.
         let relations = ["self", "player", "ally", "friend", "neutral", "enemy"];
         if relations.iter().any(|r| has(r)) {
-            let neutral = t.owner >= PLAYER_NEUTRAL_AGGRESSIVE;
+            // As the original classifies: the target's owner not passive toward the
+            // caster's is an enemy; passive and sharing spells, an ally; passive
+            // alone, neutral.
             let own = t.owner == caster.owner;
-            let allied = !own && crate::natives::players::is_ally(self, caster.owner, t.owner);
+            let toward = |k: usize| self.players.get(t.owner as usize).is_some_and(|p| p.alliances[caster.owner as usize % PLAYER_COUNT][k]);
+            let passive = toward(crate::natives::players::ALLIANCE_PASSIVE);
+            let allied = !own && passive && toward(ALLIANCE_SHARED_SPELLS);
+            let neutral = !own && passive && !allied;
             let ok = if t.handle == h {
                 has("self")
             } else if own {

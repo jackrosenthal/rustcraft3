@@ -16,6 +16,7 @@ pub mod save;
 pub mod targets;
 pub mod passives;
 pub mod techtree;
+pub mod bolts;
 pub mod info;
 pub mod mining;
 pub mod morph;

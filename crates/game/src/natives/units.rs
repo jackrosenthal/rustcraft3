@@ -602,8 +602,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             boolean(race == want)
         },
         IsUnitIllusion => |_, _, _| boolean(false),
-        IsUnitInTransport => |_, _, _| boolean(false),
-        IsUnitLoaded => |_, _, _| boolean(false),
+        IsUnitInTransport => |w, _, a| { let t = a.h(1); boolean(unit_arg(w, a, 0).is_some_and(|u| u.extra.transport == t && t != 0)) },
+        IsUnitLoaded => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| u.extra.transport != 0)),
         UnitShareVision => |w, _, a| {
             let (Some(p), on) = (w.player_of(a.h(1)), a.b(2)) else { return none() };
             with_unit(w, a, |u| if on { u.extra.shared_vision |= 1 << p } else { u.extra.shared_vision &= !(1 << p) })

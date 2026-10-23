@@ -90,6 +90,10 @@ pub fn weapon_n(w: &World, type_id: Id, n: usize) -> Option<Weapon> {
 /// A unit's enabled weapons, numbered: its type's weapsOn bits, or the ones its form
 /// enables (rooted or uprooted ancients).
 pub fn unit_weapons(w: &World, u: &Unit) -> Vec<(u8, Weapon)> {
+    // A burrow shoots only with workers inside.
+    if u.extra.cargo.is_empty() && w.ability_with_code(u.handle, "Abun").is_some() {
+        return Vec::new();
+    }
     let mask = u.extra.weapons.unwrap_or_else(|| w.objects.units.get(u.type_id).map_or(0, |o| o.int("weapsOn")));
     (1..=2u8).filter(|n| mask & (1 << (n - 1)) != 0).filter_map(|n| weapon_n(w, u.type_id, n as usize).map(|wp| (n, wp))).collect()
 }
@@ -208,6 +212,47 @@ impl World {
         let patrol = crate::natives::basic::order_id("patrol");
         let setrally = crate::natives::basic::order_id("setrally");
         let owner_of = |w: &World, t: u32| w.unit(t).map(|u| u.owner);
+        // Transports: unloading one unit, everyone, or at a point; loading a unit.
+        let unload = crate::natives::basic::order_id("unload");
+        if order == unload && target != 0 && self.unit(target).is_some_and(|t| t.extra.transport == h) {
+            self.disembark(target);
+            return;
+        }
+        if order == crate::natives::basic::order_id("unloadall") || order == crate::natives::basic::order_id("unloadallinstant") || (order == crate::natives::basic::order_id("standdown") && self.ability_with_code(h, "Abun").is_some()) {
+            self.unload_all(h);
+            return;
+        }
+        if order == unload && self.cargo_hold(h).is_some() {
+            if let Some(u) = self.unit_mut(h) {
+                u.action = Action::Unload { x, y };
+                u.path.clear();
+                u.work_timer = 0.0;
+            }
+            return;
+        }
+        if (order == crate::natives::basic::order_id("load") || order == smart) && target != 0 && self.ability_with_code(h, "Aloa").is_some() && self.can_board(h, target) {
+            if let Some(u) = self.unit_mut(h) {
+                u.action = Action::Load { target };
+                u.path.clear();
+            }
+            return;
+        }
+        // Battle Stations (Abtl): the owner's UnitID workers within Area head inside.
+        if order == crate::natives::basic::order_id("battlestations") {
+            if let Some((a, l)) = self.ability_with_code(h, "Abtl") {
+                let (area, id) = self.objects.abilities.get(a).map_or((0.0, [0; 4]), |o| (o.level_real("Area", l), crate::objects::id_from_str(o.level_str("UnitID", l).trim())));
+                let (owner, bx, by) = self.unit(h).map(|u| (u.owner, u.x, u.y)).unwrap_or_default();
+                let workers: Vec<u32> = self.unit_order.iter().copied().filter(|&o| self.unit(o).is_some_and(|w| !w.dead && !w.hidden && w.owner == owner && w.type_id == id && (w.x - bx).hypot(w.y - by) <= area)).collect();
+                for wk in workers {
+                    self.leave_mine(wk);
+                    if let Some(w) = self.unit_mut(wk) {
+                        w.action = Action::Board { transport: h };
+                        w.path.clear();
+                    }
+                }
+            }
+            return;
+        }
         // Uprooting and rooting (Aroo).
         if order == crate::natives::basic::order_id("unroot") {
             self.uproot(h);
@@ -246,6 +291,8 @@ impl World {
         } else if order == patrol {
             let p = self.unit(h).map(|u| (u.x, u.y)).unwrap_or_default();
             Action::Patrol { a: p, b: (x, y) }
+        } else if order == smart && target != 0 && self.cargo_hold(target).is_some() && self.can_board(target, h) {
+            Action::Board { transport: target }
         } else if (order == smart || order == crate::natives::basic::order_id("harvest")) && target != 0 && self.can_harvest(h, target) {
             Action::Harvest { target }
         } else if order == crate::natives::basic::order_id("returnresources") {
@@ -289,11 +336,19 @@ impl World {
         }
     }
 
+    /// How a unit moves, from its type's movetp (an uprooted ancient walks).
+    pub fn move_kind(&self, h: u32) -> crate::pathing::Move {
+        self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map_or(crate::pathing::Move::Foot, |o| crate::pathing::Move::from_movetp(&o.str("movetp")))
+    }
+
     pub(crate) fn path_to(&mut self, h: u32, goal: (f32, f32)) {
         let Some(u) = self.unit(h) else { return };
         let (from, radius) = ((u.x, u.y), u.collision);
+        let kind = self.move_kind(h);
         let path = match &self.pathing {
-            Some(p) => p.find_path(from, goal, radius * 0.5, 20000),
+            // Flyers go straight over everything but the map's no-fly cells.
+            Some(_) if kind == crate::pathing::Move::Fly => vec![goal],
+            Some(p) => p.find_path_kind(from, goal, radius * 0.5, 20000, kind),
             None => vec![goal],
         };
         if let Some(u) = self.unit_mut(h) {
@@ -667,6 +722,9 @@ impl World {
                     }
                 }
                 Action::ReturnResources => self.return_resources(h, dt),
+                Action::Load { target } => self.load_step(h, target, dt),
+                Action::Board { transport } => self.board_step(h, transport, dt),
+                Action::Unload { x, y } => self.unload_step(h, x, y, dt),
                 Action::Patrol { a, b } => {
                     if self.unit(h).is_some_and(|u| u.path.is_empty()) {
                         self.path_to(h, b);

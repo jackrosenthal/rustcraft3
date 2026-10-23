@@ -274,6 +274,9 @@ pub struct UnitExtra {
     pub root_target: Option<(f32, f32)>,
     /// A defense type the unit's form gives it (UnitBalance defType names).
     pub defense: Option<String>,
+    /// Units aboard this transport, and the transport this unit rides.
+    pub cargo: Vec<u32>,
+    pub transport: u32,
 }
 
 impl Default for UnitExtra {
@@ -307,6 +310,8 @@ impl Default for UnitExtra {
             rooting: None,
             root_target: None,
             defense: None,
+            cargo: Vec::new(),
+            transport: 0,
         }
     }
 }
@@ -420,6 +425,12 @@ pub enum Action {
     DropItem { item: u32, x: f32, y: f32 },
     /// A worker constructing a structure.
     Construct { target: u32 },
+    /// A transport going to take a unit aboard.
+    Load { target: u32 },
+    /// A unit going to board a transport.
+    Board { transport: u32 },
+    /// A transport going to unload at a point.
+    Unload { x: f32, y: f32 },
 }
 
 /// An attack in progress: damage lands at the damage point, then the backswing plays.

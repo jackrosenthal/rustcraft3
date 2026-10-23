@@ -12,6 +12,28 @@ pub const NO_FLY: u8 = 0x04;
 pub const NO_BUILD: u8 = 0x08;
 pub const LAND: u8 = 0x40;
 
+/// How a unit moves (UnitData movetp): on foot (also horse and hover), flying, floating
+/// on water, or amphibious.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Move {
+    #[default]
+    Foot,
+    Fly,
+    Float,
+    Amphibious,
+}
+
+impl Move {
+    pub fn from_movetp(t: &str) -> Move {
+        match t.to_ascii_lowercase().as_str() {
+            "fly" => Move::Fly,
+            "float" => Move::Float,
+            "amph" => Move::Amphibious,
+            _ => Move::Foot,
+        }
+    }
+}
+
 pub struct PathingMap {
     pub width: u32,
     pub height: u32,
@@ -63,7 +85,22 @@ impl PathingMap {
     }
 
     pub fn walkable(&self, c: (i32, i32)) -> bool {
-        self.index(c).is_some_and(|i| self.flags[i] & NO_WALK == 0 && self.blocked[i] == 0)
+        self.passable(c, Move::Foot)
+    }
+
+    /// Whether a cell is open to a way of moving: walkable ground, water without land
+    /// (the floatability flag), either, or anywhere flyable.
+    pub fn passable(&self, c: (i32, i32), kind: Move) -> bool {
+        self.index(c).is_some_and(|i| {
+            let f = self.flags[i];
+            let free = self.blocked[i] == 0;
+            match kind {
+                Move::Foot => f & NO_WALK == 0 && free,
+                Move::Float => f & LAND == 0 && free,
+                Move::Amphibious => (f & NO_WALK == 0 || f & LAND == 0) && free,
+                Move::Fly => f & NO_FLY == 0,
+            }
+        })
     }
 
     pub fn buildable(&self, c: (i32, i32)) -> bool {
@@ -72,10 +109,14 @@ impl PathingMap {
 
     /// Whether a unit of `radius` fits centered in a cell.
     pub fn fits(&self, c: (i32, i32), radius: f32) -> bool {
+        self.fits_kind(c, radius, Move::Foot)
+    }
+
+    pub fn fits_kind(&self, c: (i32, i32), radius: f32, kind: Move) -> bool {
         let r = ((radius / CELL).floor() as i32).max(0);
         for dy in -r..=r {
             for dx in -r..=r {
-                if !self.walkable((c.0 + dx, c.1 + dy)) {
+                if !self.passable((c.0 + dx, c.1 + dy), kind) {
                     return false;
                 }
             }
@@ -94,18 +135,26 @@ impl PathingMap {
 
     /// Straight-line walkability between two points, sampled every half cell.
     pub fn line_clear(&self, a: (f32, f32), b: (f32, f32), radius: f32) -> bool {
+        self.line_clear_kind(a, b, radius, Move::Foot)
+    }
+
+    pub fn line_clear_kind(&self, a: (f32, f32), b: (f32, f32), radius: f32, kind: Move) -> bool {
         let d = ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
         let n = (d / (CELL * 0.5)).ceil().max(1.0) as i32;
         (0..=n).all(|i| {
             let t = i as f32 / n as f32;
-            self.fits(self.cell_of(a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t), radius)
+            self.fits_kind(self.cell_of(a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t), radius, kind)
         })
     }
 
     /// Finds a path from `from` toward `to`; when the goal is unreachable the path ends at
     /// the reachable cell closest to it.  Returns world-space waypoints (excluding the start).
     pub fn find_path(&self, from: (f32, f32), to: (f32, f32), radius: f32, max_nodes: usize) -> Vec<(f32, f32)> {
-        if self.line_clear(from, to, radius) {
+        self.find_path_kind(from, to, radius, max_nodes, Move::Foot)
+    }
+
+    pub fn find_path_kind(&self, from: (f32, f32), to: (f32, f32), radius: f32, max_nodes: usize, kind: Move) -> Vec<(f32, f32)> {
+        if self.line_clear_kind(from, to, radius, kind) {
             return vec![to];
         }
         let start = self.cell_of(from.0, from.1);
@@ -154,10 +203,10 @@ impl PathingMap {
             for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)] {
                 let nc = (c.0 + dx, c.1 + dy);
                 let Some(ni) = self.index(nc) else { continue };
-                if !self.fits(nc, radius) {
+                if !self.fits_kind(nc, radius, kind) {
                     continue;
                 }
-                if dx != 0 && dy != 0 && (!self.fits((c.0 + dx, c.1), radius) || !self.fits((c.0, c.1 + dy), radius)) {
+                if dx != 0 && dy != 0 && (!self.fits_kind((c.0 + dx, c.1), radius, kind) || !self.fits_kind((c.0, c.1 + dy), radius, kind)) {
                     continue;
                 }
                 let cost = g[i] + if dx != 0 && dy != 0 { std::f32::consts::SQRT_2 } else { 1.0 };
@@ -191,7 +240,7 @@ impl PathingMap {
         while k < pts.len() {
             let mut far = k;
             for j in (k..pts.len()).rev() {
-                if self.line_clear(cur, pts[j], radius) {
+                if self.line_clear_kind(cur, pts[j], radius, kind) {
                     far = j;
                     break;
                 }

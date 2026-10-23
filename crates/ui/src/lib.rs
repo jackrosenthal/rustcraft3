@@ -366,6 +366,9 @@ impl FrameTree {
                     "Anchor" => {
                         let a = &p.args;
                         let Some(pt) = a.first().and_then(|x| FramePoint::parse(x.as_str())) else { continue };
+                        // An Anchor replaces the points before it: a frame's own Anchor
+                        // overrides its template's (InfoPanelIconHeroIcon).
+                        self.frames[i].points.clear();
                         self.frames[i].points.push(Point {
                             point: pt,
                             relative: None,

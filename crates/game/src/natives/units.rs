@@ -100,9 +100,21 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         reviving: false,
         channel: None,
         reincarnate: None,
+        proper_name: String::new(),
     };
     let path_tex = if unit.is_building { o.str("pathTex") } else { String::new() };
     let mut unit = unit;
+    // Heroes take one of their type's proper names, preferring one no living hero of
+    // the type has.
+    if is_hero {
+        let names = o.list("Propernames");
+        let free: Vec<&String> = names.iter().filter(|n| !w.unit_order.iter().any(|&h| w.unit(h).is_some_and(|u| u.type_id == type_id && &u.proper_name == *n))).collect();
+        let pool: Vec<&String> = if free.is_empty() { names.iter().collect() } else { free };
+        if !pool.is_empty() {
+            let k = w.rng.int(0, pool.len() as i32 - 1) as usize;
+            unit.proper_name = pool[k].trim().to_string();
+        }
+    }
     // Gold mines start with their ability's gold (Agld DataA).
     for (a, _) in &unit.abilities {
         if let Some(ab) = w.objects.abilities.get(*a) {
@@ -445,6 +457,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetUnitLevel => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.level)),
         GetHeroLevel => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.level)),
         GetHeroXP => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.hero_xp)),
+        GetHeroProperName => |w, _, a| { let n = unit_arg(w, a, 0).map(|u| u.proper_name.clone()).unwrap_or_default(); string(n) },
         AddHeroXP => |w, _, a| { w.add_hero_xp(a.h(0), a.i(1)); none() },
         SetHeroXP => |w, _, a| {
             let cur = unit_arg(w, a, 0).map_or(0, |u| u.hero_xp);
@@ -715,6 +728,6 @@ fn dummy_unit() -> Unit {
         queue: vec![], queue_progress: 0.0, constructing: None, build_time: 0.0, building: 0,
         str_: 0.0, agi: 0.0, int: 0.0, skill_points: 0, regen_timer: 0.0,
         cooldowns: HashMap::new(), autocast: vec![], buffs: vec![], casting: None, timed_life: None,
-        item_bonus: Default::default(), revive: None, reviving: false, channel: None, reincarnate: None,
+        item_bonus: Default::default(), revive: None, reviving: false, channel: None, reincarnate: None, proper_name: String::new(),
     }
 }

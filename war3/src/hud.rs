@@ -98,6 +98,8 @@ pub struct Hud {
     /// Text under the portrait: hit points (with color) and mana.
     pub portrait_stats: Option<(String, [f32; 4], Option<String>)>,
     info: Option<usize>,
+    /// The hero level bar's experience fraction within the level, when a hero is shown.
+    level_bar: Option<f32>,
     pub minimap_area: Option<MinimapArea>,
     pub minimap_dots: Vec<(f32, f32, [f32; 4], f32)>,
     /// Whether the "@minimapfog" overlay texture is current.
@@ -192,6 +194,7 @@ impl Hud {
             dialog: None,
             menu: None,
             inventory: Vec::new(),
+            level_bar: None,
             camera_box: Vec::new(),
             card: Vec::new(),
             page: crate::card::Page::Main,
@@ -221,7 +224,7 @@ impl Hud {
 
     /// The info panel's icons for a unit (CInfoPanelUnitDetail::vf27 and the
     /// CInfoPanelIcon* updates): which show, where they sit, and their texts.
-    fn show_info_icons(&mut self, world: &World, h: u32) {
+    fn show_info_icons(&mut self, db: &FrameDb, world: &World, h: u32) {
         let s = world.info_stats(h);
         let t = &mut self.tree;
         let frame = |kind: &str| format!("SimpleInfoPanelIcon{kind}{kind}");
@@ -241,6 +244,12 @@ impl Hud {
             let mut c = s.chars();
             c.next().map(|f| f.to_ascii_uppercase().to_string() + c.as_str()).unwrap_or_default()
         };
+        // The neutral variant of an icon when no research applies, if the data has its
+        // file (there is no neutral hero armor).
+        let icon = |key: String, upgrade: Option<i32>| {
+            let neutral = format!("{key}Neutral");
+            if upgrade.is_none() && db.skin_value(&neutral).is_some_and(|f| world.chain.contains(&f)) { neutral } else { key }
+        };
         let detail = "SimpleInfoPanelUnitDetail";
         let damage0 = "SimpleInfoPanelIconDamageDamage0";
         let armor = frame("Armor");
@@ -248,8 +257,7 @@ impl Hud {
         if let Some(a) = &s.attack {
             t.set_visible(damage0, true);
             // Neutral icons when no research improves it.
-            let neutral = if a.upgrade.is_some() { "" } else { "Neutral" };
-            t.set_model("InfoPanelIconBackdropDamage0", &format!("InfoPanelIconDamage{}{neutral}", capitalized(&a.attack_type)));
+            t.set_model("InfoPanelIconBackdropDamage0", &icon(format!("InfoPanelIconDamage{}", capitalized(&a.attack_type)), a.upgrade));
             t.set_text("InfoPanelIconValueDamage0", &format!("{} - {}{}", a.min.max(0), a.max.max(0), bonus(a.bonus as f32)));
             t.set_text("InfoPanelIconLevelDamage0", &a.upgrade.map(|l| l.to_string()).unwrap_or_default());
         }
@@ -263,8 +271,7 @@ impl Hud {
         }
         t.set_visible(&armor, true);
         let ar = &s.armor;
-        let neutral = if ar.upgrade.is_some() { "" } else { "Neutral" };
-        t.set_model("InfoPanelIconBackdropArmor", &format!("InfoPanelIconArmor{}{neutral}", capitalized(&ar.def_type)));
+        t.set_model("InfoPanelIconBackdropArmor", &icon(format!("InfoPanelIconArmor{}", capitalized(&ar.def_type)), ar.upgrade));
         let value = if ar.invulnerable { world.localized("INVULNERABLE") } else { format!("{}{}", ar.armor, bonus(ar.bonus)) };
         t.set_text("InfoPanelIconValueArmor", &value);
         t.set_text("InfoPanelIconLevelArmor", &ar.upgrade.map(|l| l.to_string()).unwrap_or_default());
@@ -285,12 +292,9 @@ impl Hud {
         // Hero attributes, with the primary attribute's icon.
         if let Some(hero) = &s.hero {
             t.set_visible(&frame("Hero"), true);
-            let icon = match hero.primary.as_str() {
-                "AGI" => "HeroAgilityIcon",
-                "INT" => "HeroIntelligenceIcon",
-                _ => "HeroStrengthIcon",
-            };
-            t.set_model("InfoPanelIconHeroIconHero", icon);
+            // InfoPanelIconHeroIcon<primary attribute>.
+            let primary = if hero.primary.is_empty() { "STR" } else { hero.primary.as_str() };
+            t.set_model("InfoPanelIconHeroIconHero", &format!("InfoPanelIconHeroIcon{primary}"));
             for (k, name) in ["Strength", "Agility", "Intellect"].iter().enumerate() {
                 let (base, b) = hero.attributes[k];
                 t.set_text(&format!("InfoPanelIconHero{name}ValueHero"), &format!("{base}{}", bonus(b as f32)));
@@ -324,11 +328,34 @@ impl Hud {
             return;
         };
         let o = world.objects.units.get(u.type_id);
-        let name = world.localized(&o.map(|o| o.str("Name")).unwrap_or_default());
+        let type_name = world.localized(&o.map(|o| o.str("Name")).unwrap_or_default());
+        // Heroes go by their proper name (FUN_6f3af530).
+        let name = if u.is_hero && !u.proper_name.is_empty() { world.localized(&u.proper_name) } else { type_name.clone() };
         if let Some(f) = self.tree.get("SimpleNameValue") {
             self.tree.frames[f].text = Some(name);
         }
-        self.show_info_icons(world, unit.unwrap_or(0));
+        // The class line (FUN_6f3af350): "Level %u %s" for heroes, "Level %u" for
+        // creeps, the gold left for mines.
+        let class = if u.is_hero {
+            world.localized("INFOPANEL_LEVEL_CLASS").replacen("%u", &u.level.to_string(), 1).replacen("%s", &type_name, 1)
+        } else if let Some(g) = world.info_stats(unit.unwrap_or(0)).gold {
+            format!("{}{g}", world.localized("COLON_GOLD"))
+        } else if o.is_some_and(|o| o.str("race").eq_ignore_ascii_case("creeps")) {
+            world.localized("INFOPANEL_LEVEL").replacen("%u", &u.level.to_string(), 1)
+        } else {
+            String::new()
+        };
+        self.tree.set_text("SimpleClassValue", &class);
+        // The hero level bar: experience through the current level.
+        self.level_bar = u.is_hero.then(|| {
+            let (lo, hi) = (world.hero_xp_needed(u.level), world.hero_xp_needed(u.level + 1));
+            if hi > lo { ((u.hero_xp - lo) as f32 / (hi - lo) as f32).clamp(0.0, 1.0) } else { 1.0 }
+        });
+        self.tree.set_visible("SimpleHeroLevelBar", u.is_hero);
+        // No width in its definition; 0.17875 measured from the original.
+        self.tree.set_size("SimpleHeroLevelBar", Some(0.17875), None);
+        self.tree.layout();
+        self.show_info_icons(db, world, unit.unwrap_or(0));
         let hp = format!("{} / {}", u.life.ceil().max(0.0) as u32, u.max_life.ceil() as u32);
         let mana = (u.max_mana > 0.0).then(|| format!("{} / {}", u.mana.floor().max(0.0) as u32, u.max_mana.floor() as u32));
         self.portrait_stats = Some((hp, life_color(u.life / u.max_life.max(1.0)), mana));
@@ -546,6 +573,24 @@ impl Hud {
 
     pub fn draws(&self, db: &FrameDb) -> Vec<Draw> {
         let mut out = self.tree.draw(db);
+        // CStatBar of the experience kind: a black backdrop 0.001 outside, the
+        // SimpleXpBarConsole fill tinted 0xFF8B0083, and the SimpleXpBarBorder.
+        if let (Some(p), Some(f)) = (self.level_bar, self.tree.get("SimpleHeroLevelBar")) {
+            if let Some(r) = self.tree.frames[f].rect.filter(|_| self.tree.is_visible(f)) {
+                let image = |texture: String, rect: w3_ui::Rect, uv: [f32; 4], color: [f32; 4]| Draw::Image { texture, rect, uv, color, blend: w3_ui::Blend::Alpha, rotated: false };
+                let outer = w3_ui::Rect { x0: r.x0 - 0.001, x1: r.x1 + 0.001, y0: r.y0 - 0.001, y1: r.y1 + 0.001 };
+                let fill = w3_ui::Rect { x1: r.x0 + (r.x1 - r.x0) * p, ..r };
+                let bar = [
+                    image(String::new(), outer, [0.0, 0.0, 1.0, 1.0], [0.0, 0.0, 0.0, 1.0]),
+                    image(db.decorate("SimpleXpBarConsole"), fill, [0.0, 0.0, p, 1.0], [0x8b as f32 / 255.0, 0.0, 0x83 as f32 / 255.0, 1.0]),
+                    image(db.decorate("SimpleXpBarBorder"), r, [0.0, 0.0, 1.0, 1.0], [1.0; 4]),
+                ];
+                // Under the class text, which SimpleUnitStatsPanel keeps above the bars.
+                let class_text = self.tree.get("SimpleClassValue").and_then(|c| self.tree.frames[c].text.clone());
+                let at = out.iter().position(|d| matches!(d, Draw::Text { text, .. } if Some(text) == class_text.as_ref())).unwrap_or(out.len());
+                out.splice(at..at, bar);
+            }
+        }
         self.message_draws(db, &mut out);
         let root = self.tree.frames[0].rect.unwrap_or_default();
         {

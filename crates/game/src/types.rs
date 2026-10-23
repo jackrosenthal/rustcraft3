@@ -216,6 +216,8 @@ pub struct Unit {
     pub channel: Option<Channel>,
     /// Reincarnation: seconds until a dead hero rises again.
     pub reincarnate: Option<f32>,
+    /// A hero's name from its type's Propernames.
+    pub proper_name: String,
 }
 
 /// Bonuses from held items' abilities.

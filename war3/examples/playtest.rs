@@ -526,6 +526,55 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // aithreads: where each computer player's script threads wait.
+            "aithreads" => {
+                if let Some(g) = scene.game.as_ref() {
+                    for (p, a) in &g.world.ai_vms {
+                        for (at, t) in &a.sleepers {
+                            eprintln!("aithread p{p} wakes {at:.1} {:?}", t.backtrace(&a.vm.module));
+                        }
+                        if let Some(st) = g.world.ai.get(p) {
+                            for (name, c) in [("attack", &st.attack), ("defense", &st.defense)] {
+                                let t = g.world.unit(c.target).map(|u| format!("{} {} at {:.0} {:.0} life {:.0}", w3_game::objects::id_str(u.type_id), c.target, u.x, u.y, u.life));
+                                let units: Vec<String> = c.units.iter().filter_map(|&h| g.world.unit(h).map(|u| format!("{}@{:.0},{:.0}:{:?}", w3_game::objects::id_str(u.type_id), u.x, u.y, u.action))).collect();
+                                eprintln!("captain p{p} {name} target {t:?} goal {:?} units {units:?}", c.goal);
+                            }
+                        }
+                    }
+                }
+                i += 1;
+            }
+            // pathtime <x1> <y1> <x2> <y2> <nodes>: times a ground path search.
+            "pathtime" => {
+                if let Some(g) = scene.game.as_ref() {
+                    if let Some(m) = &g.world.pathing {
+                        let t0 = std::time::Instant::now();
+                        let path = m.find_path((num(&a[i + 1]), num(&a[i + 2])), (num(&a[i + 3]), num(&a[i + 4])), 16.0, num(&a[i + 5]) as usize);
+                        eprintln!("pathtime {:?} waypoints {} ends {:?}", t0.elapsed(), path.len(), path.last());
+                    }
+                }
+                i += 6;
+            }
+            // pathmap <x1> <y1> <x2> <y2>: the walkable cells of a box ('.' open, '#'
+            // unwalkable ground, 'o' blocked by an object), top row first.
+            "pathmap" => {
+                if let Some(g) = scene.game.as_ref() {
+                    if let Some(m) = &g.world.pathing {
+                        let (a0, b0) = m.cell_of(num(&a[i + 1]), num(&a[i + 2]));
+                        let (a1, b1) = m.cell_of(num(&a[i + 3]), num(&a[i + 4]));
+                        for cy in (b0..=b1).rev() {
+                            let row: String = (a0..=a1).map(|cx| match m.flags_at((cx, cy)) {
+                                None => ' ',
+                                Some(f) if f & w3_game::pathing::NO_WALK != 0 => '#',
+                                Some(_) if m.walkable((cx, cy)) => '.',
+                                Some(_) => 'o',
+                            }).collect();
+                            eprintln!("pathmap {row}");
+                        }
+                    }
+                }
+                i += 5;
+            }
             // info <unit>: a unit's type, owner, life, place, and action.
             "info" => {
                 if let Some(g) = scene.game.as_ref() {

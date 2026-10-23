@@ -96,8 +96,8 @@ impl World {
         }
     }
 
-    /// The length of the ground path from `from` to `to`, and what is left from where it
-    /// ends when `to` cannot be reached.
+    /// The length of the ground path from `from` to `to`; infinite when the path ends
+    /// short of it (more than a cell and the unit's reach away).
     fn walk_length(&self, from: (f32, f32), to: (f32, f32), radius: f32) -> f32 {
         let Some(map) = &self.pathing else { return (to.0 - from.0).hypot(to.1 - from.1) };
         let mut at = from;
@@ -106,7 +106,11 @@ impl World {
             len += (p.0 - at.0).hypot(p.1 - at.1);
             at = p;
         }
-        len + (to.0 - at.0).hypot(to.1 - at.1)
+        let left = (to.0 - at.0).hypot(to.1 - at.1);
+        if left > radius + 2.0 * crate::pathing::CELL {
+            return f32::INFINITY;
+        }
+        len + left
     }
 
     /// GetCreepCamp (FUN_6f9baa40): the nearest camp to the player's start whose
@@ -239,7 +243,7 @@ impl World {
                 match aivm.vm.run(self, &mut t) {
                     Outcome::Sleeping(s) => aivm.sleepers.push((now + s.max(0.0), t)),
                     Outcome::Finished(_) => {}
-                    Outcome::Aborted(e) => log::debug!("AI thread for player {p} ended: {e}"),
+                    Outcome::Aborted(e) => log::warn!("AI thread for player {p} ended: {e} at {:?}", t.backtrace(&aivm.vm.module)),
                 }
                 let spawned = self.ai.get_mut(&p).map(|a| std::mem::take(&mut a.spawned)).unwrap_or_default();
                 for t in spawned {
@@ -350,9 +354,13 @@ impl World {
         n
     }
 
-    /// Whether a unit of type `have` counts as `want`: the same type, or a structure
-    /// upgraded from it (a Stronghold counts as a Great Hall).
+    /// Whether a unit of type `have` counts as `want`: the same type, a type its
+    /// DependencyOr names (a Headhunter counts as a Berserker), or a structure upgraded
+    /// from it (a Stronghold counts as a Great Hall).
     fn counts_as(&self, have: Id, want: Id) -> bool {
+        if self.objects.units.get(have).is_some_and(|o| o.list("DependencyOr").iter().any(|d| id_from_str(d.trim()) == want)) {
+            return true;
+        }
         let mut cur = vec![want];
         for _ in 0..4 {
             if cur.contains(&have) {
@@ -407,7 +415,6 @@ impl World {
         [(64.0, 0.0), (-64.0, 0.0), (0.0, 64.0), (0.0, -64.0)].iter().all(|&(dx, dy)| self.can_place(id, x + dx, y + dy))
     }
 
-    /// Starts producing one unit, structure, or hero; returns whether it started.
     /// A Hero type first (FUN_6f9caff0): an idle altar of the player revives a dead
     /// Hero of that type; failing that, owning one (dead or alive) is enough.
     fn ai_revive(&mut self, vm: &mut Vm, p: u8, id: Id) -> bool {
@@ -427,6 +434,7 @@ impl World {
         self.unit_order.iter().any(|&h| self.unit(h).is_some_and(|u| u.owner == p && u.is_hero && u.type_id == id))
     }
 
+    /// Starts producing one unit, structure, or hero; returns whether it started.
     pub fn ai_produce(&mut self, p: u8, id: Id, town: i32) -> bool {
         let Some(o) = self.objects.units.get(id) else { return false };
         // Town hall tiers and other structure upgrades transform an existing structure.
@@ -475,7 +483,10 @@ impl World {
         if self.unit(b).is_some_and(|u| !u.queue.is_empty()) {
             return false;
         }
-        self.train(b, id).is_ok()
+        // The order is given to an idle producer that lists the type, and that is the
+        // answer, whether or not the order then goes through (FUN_6f9cb530).
+        let _ = self.train(b, id);
+        true
     }
 
     /// Engine-side behavior: keeping workers on gold and wood, and moving captains.

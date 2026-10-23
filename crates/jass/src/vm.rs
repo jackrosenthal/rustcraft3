@@ -43,6 +43,21 @@ pub struct Thread {
     pub can_sleep: bool,
 }
 
+impl Thread {
+    /// The functions on the thread's call stack, outermost first, each with the source
+    /// line it is at.
+    pub fn backtrace(&self, module: &Module) -> Vec<String> {
+        self.frames
+            .iter()
+            .map(|f| {
+                let func = &module.functions[f.func as usize];
+                let line = func.lines.get(f.pc.saturating_sub(1)).copied().unwrap_or(0);
+                format!("{}:{line}", func.name)
+            })
+            .collect()
+    }
+}
+
 #[derive(Debug)]
 pub enum Outcome {
     Finished(Value),

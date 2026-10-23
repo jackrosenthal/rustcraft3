@@ -625,6 +625,61 @@ pub struct CameraSetup {
     pub y: f32,
 }
 
+/// A transmission on the cinematic panel (SetCinematicScene).
+#[derive(Clone, Debug, Default)]
+pub struct CineScene {
+    pub unit_type: crate::objects::Id,
+    pub color: i32,
+    pub speaker: String,
+    pub text: String,
+    /// Game time when the scene and its voice end.
+    pub ends: f32,
+    pub voice_ends: f32,
+}
+
+/// A screen overlay that changes over time (the SetCineFilter natives).
+#[derive(Clone, Debug)]
+pub struct CineFilter {
+    pub texture: String,
+    pub blend: i32,
+    pub tex_flags: i32,
+    pub start_uv: [f32; 4],
+    pub end_uv: [f32; 4],
+    /// Red, green, blue, and alpha from 0 to 255.
+    pub start_color: [i32; 4],
+    pub end_color: [i32; 4],
+    pub duration: f32,
+    /// Game time the filter was displayed, while it is.
+    pub shown: Option<f32>,
+}
+
+impl Default for CineFilter {
+    fn default() -> Self {
+        CineFilter { texture: String::new(), blend: 1, tex_flags: 0, start_uv: [0.0, 0.0, 1.0, 1.0], end_uv: [0.0, 0.0, 1.0, 1.0], start_color: [255; 4], end_color: [255; 4], duration: 0.0, shown: None }
+    }
+}
+
+/// Cinematic presentation state for the local player.
+#[derive(Clone, Debug)]
+pub struct Cinematic {
+    /// ShowInterface: the console is shown (false shows the cinematic panel), and the
+    /// time the last change started and how long it fades.
+    pub interface: bool,
+    pub interface_changed: f32,
+    pub interface_fade: f32,
+    pub user_control: bool,
+    pub user_ui: bool,
+    pub scene: Option<CineScene>,
+    pub subtitles: bool,
+    pub filter: CineFilter,
+}
+
+impl Default for Cinematic {
+    fn default() -> Self {
+        Cinematic { interface: true, interface_changed: 0.0, interface_fade: 0.0, user_control: true, user_ui: true, scene: None, subtitles: false, filter: CineFilter::default() }
+    }
+}
+
 /// A quest in the quest log (CreateQuest makes one required, discovered, and
 /// enabled).
 #[derive(Clone, Debug)]

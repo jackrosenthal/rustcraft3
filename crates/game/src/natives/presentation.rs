@@ -241,19 +241,31 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         CameraSetupApplyWithZ => |w, _, a| { w.apply_camera_setup(a.h(0), true, false, None); none() },
         CameraSetupApplyForceDuration => |w, _, a| { w.apply_camera_setup(a.h(0), a.b(1), true, Some(a.r(2))); none() },
         CameraSetupApplyForceDurationWithZ => |w, _, a| { w.apply_camera_setup(a.h(0), true, true, Some(a.r(2))); none() },
-        SetCinematicScene => |_, _, _| none(),
-        EndCinematicScene => |_, _, _| none(),
-        ForceCinematicSubtitles => |_, _, _| none(),
-        DisplayCineFilter => |_, _, _| none(),
-        IsCineFilterDisplayed => |_, _, _| boolean(false),
-        SetCineFilterTexture => |_, _, _| none(),
-        SetCineFilterBlendMode => |_, _, _| none(),
-        SetCineFilterTexMapFlags => |_, _, _| none(),
-        SetCineFilterStartUV => |_, _, _| none(),
-        SetCineFilterEndUV => |_, _, _| none(),
-        SetCineFilterStartColor => |_, _, _| none(),
-        SetCineFilterEndColor => |_, _, _| none(),
-        SetCineFilterDuration => |_, _, _| none(),
+        SetCinematicScene => |w, _, a| {
+            let now = w.time;
+            let scene = CineScene {
+                unit_type: crate::objects::id_from_int(a.i(0)),
+                color: a.h(1) as i32,
+                speaker: w.localized(&a.s(2)),
+                text: w.localized(&a.s(3)),
+                ends: now + a.r(4),
+                voice_ends: now + a.r(5),
+            };
+            w.cinematic.scene = Some(scene);
+            none()
+        },
+        EndCinematicScene => |w, _, _| { w.cinematic.scene = None; none() },
+        ForceCinematicSubtitles => |w, _, a| { w.cinematic.subtitles = a.b(0); none() },
+        DisplayCineFilter => |w, _, a| { w.cinematic.filter.shown = a.b(0).then_some(w.time); none() },
+        IsCineFilterDisplayed => |w, _, _| boolean(w.cinematic.filter.shown.is_some()),
+        SetCineFilterTexture => |w, _, a| { w.cinematic.filter.texture = a.s(0); none() },
+        SetCineFilterBlendMode => |w, _, a| { w.cinematic.filter.blend = a.h(0) as i32; none() },
+        SetCineFilterTexMapFlags => |w, _, a| { w.cinematic.filter.tex_flags = a.h(0) as i32; none() },
+        SetCineFilterStartUV => |w, _, a| { w.cinematic.filter.start_uv = [a.r(0), a.r(1), a.r(2), a.r(3)]; none() },
+        SetCineFilterEndUV => |w, _, a| { w.cinematic.filter.end_uv = [a.r(0), a.r(1), a.r(2), a.r(3)]; none() },
+        SetCineFilterStartColor => |w, _, a| { w.cinematic.filter.start_color = [a.i(0), a.i(1), a.i(2), a.i(3)]; none() },
+        SetCineFilterEndColor => |w, _, a| { w.cinematic.filter.end_color = [a.i(0), a.i(1), a.i(2), a.i(3)]; none() },
+        SetCineFilterDuration => |w, _, a| { w.cinematic.filter.duration = a.r(0); none() },
         AddWeatherEffect => |w, _, _| opaque(w, "weathereffect"),
         RemoveWeatherEffect => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
         EnableWeatherEffect => |_, _, _| none(),
@@ -473,9 +485,16 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         EnableOcclusion => |_, _, _| none(),
         SetIntroShotText => |_, _, _| none(),
         SetIntroShotModel => |_, _, _| none(),
-        EnableUserControl => |_, _, _| none(),
-        EnableUserUI => |_, _, _| none(),
-        ShowInterface => |_, _, _| none(),
+        EnableUserControl => |w, _, a| { w.cinematic.user_control = a.b(0); none() },
+        EnableUserUI => |w, _, a| { w.cinematic.user_ui = a.b(0); none() },
+        ShowInterface => |w, _, a| {
+            let now = w.time;
+            let c = &mut w.cinematic;
+            c.interface = a.b(0);
+            c.interface_changed = now;
+            c.interface_fade = a.r(1);
+            none()
+        },
         PauseGame => |_, _, _| none(),
         SetPortraitLight => |_, _, _| none(),
         SetUnitFog => |_, _, _| none(),

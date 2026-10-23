@@ -135,7 +135,8 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed {
                     if let (Some(scene), Some(text)) = (r.scene.as_mut(), event.text.as_ref()) {
-                        for c in text.chars() {
+                        // Escape comes through its key code below.
+                        for c in text.chars().filter(|&c| c != '\u{1b}') {
                             scene.key(c);
                         }
                     }

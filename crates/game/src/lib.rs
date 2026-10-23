@@ -249,6 +249,13 @@ impl Game {
 
     /// A player clicked a dialog button: the dialog closes for them, then the button's
     /// and the dialog's click events fire (EVENT_DIALOG_BUTTON_CLICK, EVENT_DIALOG_CLICK).
+    /// A player event with no other data: Escape (EVENT_PLAYER_END_CINEMATIC) and the
+    /// arrow key events.
+    pub fn player_event(&mut self, player: u8, event: i32) {
+        let ctx = types::EventCtx { player, has_player: true, event_id: event, ..Default::default() };
+        self.world.fire(&mut self.vm, ctx, move |_, k| matches!(k, types::EventKind::Player { player: p, event: e } if *p == player && *e == event));
+    }
+
     pub fn click_dialog_button(&mut self, player: u8, button: u32) {
         let Some(types::Obj::DialogButton(b)) = self.world.handles.get(button) else { return };
         let (dialog, quit) = (b.dialog, b.quit);

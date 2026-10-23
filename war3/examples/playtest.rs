@@ -33,6 +33,13 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("selected {:?}", scene.selection);
                 i += 5;
             }
+            "camdump" => {
+                if let Some(g) = scene.game.as_ref() {
+                    let c = &g.world.camera;
+                    eprintln!("camera target {} {} fields {:?}", c.x, c.y, c.fields);
+                }
+                i += 1;
+            }
             // hover <x> <y>: moves the pointer (screen pixels).
             "hover" => {
                 scene.hover(num(&a[i + 1]), num(&a[i + 2]), (w, h));

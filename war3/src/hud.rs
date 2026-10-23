@@ -121,6 +121,11 @@ pub struct Hud {
     pub group: Vec<GroupSlot>,
     /// The pointer in interface units, for tooltips.
     pub pointer: (f32, f32),
+    /// CinematicPanel while the interface is hidden (ShowInterface false), and the cine
+    /// filter overlay: texture, texture coordinates, color, and additive blending.
+    pub cine: Option<FrameTree>,
+    pub cinematic: bool,
+    filter: Option<(String, [f32; 4], [f32; 4], bool)>,
     pub minimap_area: Option<MinimapArea>,
     pub minimap_dots: Vec<(f32, f32, [f32; 4], f32)>,
     /// Whether the "@minimapfog" overlay texture is current.
@@ -232,6 +237,9 @@ impl Hud {
             production: None,
             group: Vec::new(),
             pointer: (-1.0, -1.0),
+            cine: None,
+            cinematic: false,
+            filter: None,
             camera_box: Vec::new(),
             card: Vec::new(),
             page: crate::card::Page::Main,
@@ -377,6 +385,71 @@ impl Hud {
         self.production = None;
         self.buff_icons = None;
         self.level_bar = None;
+    }
+
+    /// Follows the game's cinematic state: CinematicPanel (spanning the window) with the
+    /// transmission's speaker and text, and the cine filter's current look.
+    pub fn sync_cinematic(&mut self, db: &FrameDb, world: &World, aspect: f32) {
+        let c = &world.cinematic;
+        self.cinematic = !c.interface;
+        self.filter = c.filter.shown.and_then(|shown| {
+            let f = &c.filter;
+            let t = if f.duration > 0.0 { ((world.time - shown) / f.duration).clamp(0.0, 1.0) } else { 1.0 };
+            let lerp = |a: f32, b: f32| a + (b - a) * t;
+            let col: Vec<f32> = (0..4).map(|i| lerp(f.start_color[i] as f32, f.end_color[i] as f32) / 255.0).collect();
+            let uv: Vec<f32> = (0..4).map(|i| lerp(f.start_uv[i], f.end_uv[i])).collect();
+            (!f.texture.is_empty()).then(|| (f.texture.clone(), [uv[0], uv[1], uv[2], uv[3]], [col[0], col[1], col[2], col[3]], f.blend == 2))
+        });
+        if !self.cinematic {
+            return;
+        }
+        if self.cine.is_none() {
+            let mut t = FrameTree::new(aspect);
+            if let Some(p) = t.create(db, "CinematicPanel", 0) {
+                // The panel and its borders span the whole window, not only the 4:3 area.
+                let extra = (t.width - w3_ui::UI_WIDTH) / 2.0;
+                t.frames[p].all_points = false;
+                t.frames[p].points = vec![
+                    Point { point: FramePoint::TopLeft, relative: None, relative_point: FramePoint::TopLeft, x: -extra, y: 0.0 },
+                    Point { point: FramePoint::BottomRight, relative: None, relative_point: FramePoint::BottomRight, x: extra, y: 0.0 },
+                ];
+            }
+            t.bind_points();
+            let full = t.width;
+            t.set_size("CinematicBottomBorder", Some(full), None);
+            t.set_size("CinematicTopBorder", Some(full), None);
+            // The portrait sits in the 4:3 area's corner.
+            let extra = (t.width - w3_ui::UI_WIDTH) / 2.0;
+            for name in ["CinematicPortraitBackground", "CinematicPortrait"] {
+                t.set_point(name, FramePoint::BottomLeft, "CinematicPanel", FramePoint::BottomLeft, 0.014 + extra, 0.014);
+            }
+            t.set_point("CinematicPortraitCover", FramePoint::BottomLeft, "CinematicPanel", FramePoint::BottomLeft, extra, 0.0);
+            t.layout();
+            self.cine = Some(t);
+        }
+        let t = self.cine.as_mut().unwrap();
+        t.set_visible("CinematicScenePanel", c.scene.is_some());
+        if let Some(s) = &c.scene {
+            t.set_text("CinematicSpeakerText", &s.speaker);
+            t.set_text("CinematicDialogueText", &s.text);
+        }
+        t.layout();
+    }
+
+    /// The cine filter over the whole window.
+    fn filter_draws(&self, out: &mut Vec<Draw>) {
+        if let Some((texture, uv, color, add)) = &self.filter {
+            let rect = w3_ui::Rect { x0: 0.0, y0: 0.0, x1: self.tree.width, y1: w3_ui::UI_HEIGHT };
+            let blend = if *add { w3_ui::Blend::Add } else { w3_ui::Blend::Alpha };
+            out.push(Draw::Image { texture: texture.clone(), rect, uv: *uv, color: *color, blend, rotated: false });
+        }
+    }
+
+    /// Where the transmission's portrait model is drawn.
+    pub fn cine_portrait_rect(&self) -> Option<w3_ui::Rect> {
+        let t = self.cine.as_ref()?;
+        let f = t.get("CinematicPortrait")?;
+        t.frames[f].rect
     }
 
     /// CUberToolTipWar3 for a command button: its BOTTOMRIGHT 0.1625 above the
@@ -847,7 +920,19 @@ impl Hud {
     }
 
     pub fn draws(&self, db: &FrameDb) -> Vec<Draw> {
+        // While the interface is hidden only the cinematic panel, text messages, and the
+        // filter show.
+        if self.cinematic {
+            let mut out = Vec::new();
+            self.filter_draws(&mut out);
+            if let Some(c) = &self.cine {
+                out.extend(c.draw(db));
+            }
+            self.message_draws(db, &mut out);
+            return out;
+        }
         let mut out = self.tree.draw(db);
+        self.filter_draws(&mut out);
         // CStatBar of the experience kind: a black backdrop 0.001 outside, the
         // SimpleXpBarConsole fill tinted 0xFF8B0083, and the SimpleXpBarBorder.
         if let (Some(p), Some(f)) = (self.level_bar, self.tree.get("SimpleHeroLevelBar")) {

@@ -121,6 +121,7 @@ pub struct World {
     pub quest_flash: bool,
     /// The local player's camera.
     pub camera: crate::camera::GameCamera,
+    pub cinematic: Cinematic,
     /// Handles removed at a game time (temporary fog modifiers).
     pub timed_removals: Vec<(u32, f32)>,
 }
@@ -253,6 +254,7 @@ impl World {
             defeat_conditions: Vec::new(),
             quest_flash: false,
             camera,
+            cinematic: Cinematic::default(),
             timed_removals: Vec::new(),
         }
     }
@@ -495,6 +497,9 @@ impl World {
         let hours_per_second = day_hours / day_length * self.time_of_day_scale;
         self.time_of_day = (self.time_of_day + dt * hours_per_second) % day_hours;
         self.camera.update(dt);
+        if self.cinematic.scene.as_ref().is_some_and(|s| s.ends <= self.time) {
+            self.cinematic.scene = None;
+        }
 
         self.update_food();
         self.update_units(vm, dt);

@@ -158,6 +158,8 @@ pub struct Scene {
     hud_sprites: ModelRenderer,
     time_indicator: Option<ModelInstance>,
     portrait: Option<(u32, UnitView)>,
+    /// The transmission's portrait: its unit type and model.
+    cine_portrait: Option<(w3_game::objects::Id, UnitView)>,
     fog: Option<Arc<w3_render::fog::FogTexture>>,
     /// Sound output; absent when running without audio.
     pub audio: Option<w3_audio::Audio>,
@@ -352,7 +354,7 @@ impl Scene {
         let portrait_renderer = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let hud_sprites = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, time_indicator: None, portrait: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, time_indicator: None, portrait: None, cine_portrait: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -715,7 +717,15 @@ impl Scene {
     }
 
     /// Selects with a click or a drag rectangle, the way the local player would.
+    /// Whether the player may act (EnableUserControl); cinematics take it away.
+    pub fn user_control(&self) -> bool {
+        self.game.as_ref().is_none_or(|g| g.world.cinematic.user_control)
+    }
+
     pub fn select(&mut self, a: (f32, f32), b: (f32, f32), size: (u32, u32), add: bool) {
+        if !self.user_control() {
+            return;
+        }
         let Some(g) = self.game.as_ref() else { return };
         let local = g.world.local_player;
         let mut picked: Vec<u32> = Vec::new();
@@ -896,6 +906,9 @@ impl Scene {
     /// Returns true when the click was consumed and should not start a selection drag.
     pub fn left_click(&mut self, sx: f32, sy: f32, size: (u32, u32)) -> bool {
         let (ux, uy) = self.to_ui(sx, sy, size);
+        if !self.user_control() && self.hud.as_ref().is_none_or(|h| h.menu.is_none() && h.dialog.is_none()) {
+            return true;
+        }
         // The game menu takes every click while it is open.
         if let Some(m) = self.hud.as_mut().and_then(|h| h.menu.as_mut()) {
             m.pointer_down(ux, uy);
@@ -1026,6 +1039,16 @@ impl Scene {
     }
 
     pub fn key(&mut self, c: char) {
+        // Escape is the player's end-cinematic event (EVENT_PLAYER_END_CINEMATIC).
+        if c == '\u{1b}' {
+            if let Some(g) = self.game.as_mut() {
+                let p = g.world.local_player;
+                g.player_event(p, w3_game::event_ids::EVENT_PLAYER_END_CINEMATIC);
+            }
+        }
+        if !self.user_control() && c != '\u{1b}' {
+            return;
+        }
         if c == '\u{1b}' {
             if let Some(h) = self.hud.as_mut().filter(|h| h.menu.is_some()) {
                 h.menu = None;
@@ -1056,6 +1079,9 @@ impl Scene {
 
     /// Right-click: a smart order to every selected unit the local player owns.
     pub fn command(&mut self, sx: f32, sy: f32, size: (u32, u32)) {
+        if !self.user_control() {
+            return;
+        }
         if self.targeting.take().is_some() || self.placing.take().is_some() {
             return;
         }
@@ -1225,6 +1251,31 @@ impl Scene {
                 v.pick("portrait");
             }
         }
+        // The transmission's speaker: "portrait talk" while the voice plays.
+        match w.cinematic.scene.as_ref() {
+            Some(s) => {
+                if self.cine_portrait.as_ref().map(|p| p.0) != Some(s.unit_type) {
+                    self.cine_portrait = w.objects.units.get(s.unit_type).and_then(|o| {
+                        let file = o.str("file");
+                        let base = file.strip_suffix(".mdl").or_else(|| file.strip_suffix(".mdx")).unwrap_or(&file);
+                        let model = assets.model(device, queue, &format!("{base}_Portrait")).or_else(|| assets.model(device, queue, &file))?;
+                        let mut v = UnitView { inst: ModelInstance::new(model), serial: 0, requested: String::new(), anim: String::new(), rng: 1 };
+                        v.inst.team = s.color.clamp(0, 15) as u8;
+                        Some((s.unit_type, v))
+                    });
+                }
+                let talking = w.time < s.voice_ends;
+                if let Some((_, v)) = self.cine_portrait.as_mut() {
+                    let want = if talking { "portrait talk" } else { "portrait" };
+                    if v.requested != want || v.inst.looped || v.inst.finished {
+                        v.requested = want.into();
+                        v.inst.looped = false;
+                        v.pick(want);
+                    }
+                }
+            }
+            None => self.cine_portrait = None,
+        }
         let footprint = self.camera_footprint();
         let team_rgb = self.team_rgb;
         if let Some(hud) = self.hud.as_mut() {
@@ -1349,6 +1400,9 @@ impl Scene {
         if let Some((_, v)) = self.portrait.as_mut() {
             v.inst.advance(dt * 1000.0);
         }
+        if let Some((_, v)) = self.cine_portrait.as_mut() {
+            v.inst.advance(dt * 1000.0);
+        }
         self.sync_camera();
     }
 
@@ -1374,6 +1428,9 @@ impl Scene {
 
     /// Scrolling the view (keys and screen edges).
     pub fn scroll(&mut self, dx: f32, dy: f32) {
+        if !self.user_control() {
+            return;
+        }
         if let Some(g) = self.game.as_mut() {
             let c = &mut g.world.camera;
             let (x, y) = (c.x + dx, c.y + dy);
@@ -1386,6 +1443,9 @@ impl Scene {
 
     /// Zooming with the wheel.
     pub fn zoom(&mut self, amount: f32) {
+        if !self.user_control() {
+            return;
+        }
         if let Some(g) = self.game.as_mut() {
             let c = &mut g.world.camera;
             let d = (c.fields[w3_game::camera::FIELD_TARGET_DISTANCE] - amount).clamp(500.0, 5000.0);
@@ -1488,6 +1548,7 @@ impl Scene {
             ..Default::default()
         });
         queue.write_buffer(&self.models.globals_buf, 0, bytemuck::bytes_of(&globals));
+        // The world shows inside the same frame in cinematics; the panel covers the rest.
         if self.hud.is_some() {
             // The world shows only inside the game interface's world frame, which CGameUI
             // places from 0.13 to 0.58 of the 0.6-tall screen (game.dll 0x6f367710).
@@ -1511,6 +1572,7 @@ impl Scene {
             }
             hud.show_unit(&assets.frames, &g.world, self.selection.first().copied());
             hud.show_group(&g.world, &self.selection);
+            hud.sync_cinematic(&assets.frames, &g.world, aspect);
             let draws = hud.draws(&assets.frames);
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("interface"),
@@ -1524,11 +1586,19 @@ impl Scene {
             });
             self.ui.render(device, queue, &mut assets.textures, &mut pass, &draws, hud.tree.width, size);
             drop(pass);
+            let cine_rect = if hud.cinematic { hud.cine_portrait_rect() } else { None };
             let rect = hud.portrait_rect();
+            let cinematic = hud.cinematic;
             let (width, root) = (hud.tree.width, hud.tree.frames[0].rect.unwrap_or_default());
             let tod = self.game.as_ref().map_or((0.0, 24.0, 60.0), |g| (g.world.time_of_day, g.world.misc_f32("DayHours", 24.0), g.world.misc_f32("ScaledAnimTime", 60.0)));
-            self.render_time_indicator(device, queue, encoder, color, depth, assets, width, root, tod);
-            self.render_portrait(device, queue, encoder, color, depth, size, rect);
+            if cinematic {
+                if let Some(r) = cine_rect {
+                    self.render_portrait(device, queue, encoder, color, depth, size, r, true);
+                }
+            } else {
+                self.render_time_indicator(device, queue, encoder, color, depth, assets, width, root, tod);
+                self.render_portrait(device, queue, encoder, color, depth, size, rect, false);
+            }
         }
     }
 
@@ -1577,10 +1647,11 @@ impl Scene {
 
     /// Draws the portrait model through its own camera in the console's portrait slot.
     #[allow(clippy::too_many_arguments)]
-    fn render_portrait(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, encoder: &mut wgpu::CommandEncoder, color: &wgpu::TextureView, depth: &wgpu::TextureView, size: (u32, u32), rect: w3_ui::Rect) {
-        let Some((_, v)) = self.portrait.as_mut() else { return };
+    fn render_portrait(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, encoder: &mut wgpu::CommandEncoder, color: &wgpu::TextureView, depth: &wgpu::TextureView, size: (u32, u32), rect: w3_ui::Rect, cine: bool) {
+        let width = self.hud.as_ref().map_or(w3_ui::UI_WIDTH, |h| if cine { h.cine.as_ref().map_or(h.tree.width, |c| c.width) } else { h.tree.width });
+        let view = if cine { self.cine_portrait.as_mut().map(|p| &mut p.1) } else { self.portrait.as_mut().map(|p| &mut p.1) };
+        let Some(v) = view else { return };
         let Some(cam) = v.inst.model.mdx.cameras.first().cloned() else { return };
-        let width = self.hud.as_ref().map_or(w3_ui::UI_WIDTH, |h| h.tree.width);
         let px = |x: f32| x / width * size.0 as f32;
         let py = |y: f32| (1.0 - y / w3_ui::UI_HEIGHT) * size.1 as f32;
         let (x0, x1, y0, y1) = (px(rect.x0), px(rect.x1), py(rect.y1), py(rect.y0));
@@ -1591,8 +1662,10 @@ impl Scene {
         let target = Vec3::from_array(cam.target);
         let view = Mat4::look_at_rh(eye, target, Vec3::Z);
         let aspect = (x1 - x0) / (y1 - y0);
-        // MDX camera field of view is the vertical angle in radians.
-        let proj = Mat4::perspective_rh(cam.fov, aspect, cam.near_clip.max(1.0), cam.far_clip.max(100.0));
+        // The model camera's field of view spans the viewport's diagonal (matched against
+        // the original's portraits), like the game camera's.
+        let half_h = (cam.fov / 2.0).tan() / (1.0 + aspect * aspect).sqrt();
+        let proj = Mat4::perspective_rh(2.0 * half_h.atan(), aspect, cam.near_clip.max(1.0), cam.far_clip.max(100.0));
         let mut globals = default_globals(proj * view, eye);
         globals.light_dir = [0.3, 0.3, -1.0, 0.0];
         globals.ambient = [0.4, 0.4, 0.4, 1.0];

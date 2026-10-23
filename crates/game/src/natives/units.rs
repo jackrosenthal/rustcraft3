@@ -377,7 +377,12 @@ fn for_group(w: &mut World, vm: &mut Vm, a: &[Value]) -> NativeResult {
 
 fn issue_order(w: &mut World, vm: &mut Vm, unit: u32, order: i32, x: f32, y: f32, target: u32) -> NativeResult {
     let Some(owner) = w.unit(unit).map(|u| u.owner) else { return boolean(false) };
+    w.order_error = None;
     w.order_unit(unit, order, x, y, target);
+    // A refused order (a target the ability does not allow) is not issued.
+    if w.order_error.take().is_some() {
+        return boolean(false);
+    }
     let (event, ctx) = if target != 0 {
         (EVENT_PLAYER_UNIT_ISSUED_TARGET_ORDER, EventCtx { target_unit: target, ..Default::default() })
     } else if x != 0.0 || y != 0.0 {
@@ -504,7 +509,18 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetUnitBlendTime => |_, _, _| none(),
         SetUnitLookAt => |_, _, _| none(),
         ResetUnitLookAt => |_, _, _| none(),
-        SetUnitInvulnerable => |w, _, a| { let v = a.b(1); with_unit(w, a, |u| u.invulnerable = v) },
+        // The original grants and takes away the Invulnerable ability ('Avul').
+        SetUnitInvulnerable => |w, _, a| {
+            let v = a.b(1);
+            let avul = crate::objects::id_from_str("Avul");
+            with_unit(w, a, |u| {
+                u.invulnerable = v;
+                u.abilities.retain(|(x, _)| *x != avul);
+                if v {
+                    u.abilities.push((avul, 1));
+                }
+            })
+        },
         PauseUnit => |w, _, a| { let v = a.b(1); with_unit(w, a, |u| u.paused = v) },
         IsUnitPaused => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| u.paused)),
         SetUnitExploded => |w, _, a| { let v = a.b(1); with_unit(w, a, |u| u.explode_on_death = v) },

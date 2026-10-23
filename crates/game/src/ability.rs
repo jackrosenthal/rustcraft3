@@ -97,6 +97,11 @@ impl World {
         (mv.max(0.0), atk.max(0.0), armor, dmg, stun, inv)
     }
 
+    /// Invulnerable: SetUnitInvulnerable, or the Invulnerable ability (Avul).
+    pub fn unit_invulnerable(&self, u: &Unit) -> bool {
+        u.invulnerable || u.abilities.iter().any(|(a, _)| self.ability_code(*a) == "Avul")
+    }
+
     pub fn has_buff_flag(&self, h: u32, f: impl Fn(&Buff) -> bool) -> bool {
         self.unit(h).is_some_and(|u| u.buffs.iter().any(|b| f(b)))
     }
@@ -295,7 +300,7 @@ impl World {
     /// Spell damage: the DamageBonusSpells table applies, armor value does not.
     pub fn spell_damage(&mut self, vm: &mut Vm, source: u32, target: u32, amount: f32) {
         let Some(t) = self.unit(target) else { return };
-        if t.dead || t.invulnerable || self.buff_mods(target).5 {
+        if t.dead || self.unit_invulnerable(t) || self.buff_mods(target).5 {
             return;
         }
         // Magic immune units ignore spell damage (MagicImmunesResistDamage).

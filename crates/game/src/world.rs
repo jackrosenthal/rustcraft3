@@ -161,6 +161,9 @@ pub struct World {
     pub blight_serial: u32,
     pub autocast_timer: f32,
     pub sentinels: Vec<Sentinel>,
+    /// Why the last order was refused (a command error key), for the interface.
+    #[serde(skip)]
+    pub order_error: Option<&'static str>,
     /// Where saved games are kept (set by the program running the game).
     #[serde(skip)]
     pub saves_dir: Option<std::path::PathBuf>,
@@ -347,6 +350,7 @@ impl World {
             profile: None,
             lightning_data: None,
             saves_dir: None,
+            order_error: None,
             destructable_order: Vec::new(),
             item_order: Vec::new(),
             dying_effects: Vec::new(),

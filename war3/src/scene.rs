@@ -1344,18 +1344,31 @@ impl Scene {
         if let Some(order) = self.targeting.take() {
             let target = self.pick_unit(sx, sy, size).or_else(|| self.pick_destructable(sx, sy, size));
             let point = self.ground_at(sx, sy, size);
+            let (mut ordered, mut error) = (false, None);
             if let Some(g) = self.game.as_mut() {
                 let id = w3_game::natives::basic::order_id(order);
                 for &h in &self.selection {
                     if g.world.unit(h).is_none_or(|u| u.owner != g.world.local_player) {
                         continue;
                     }
+                    g.world.order_error = None;
                     match (target, point) {
                         (Some(t), _) => g.world.order_unit(h, id, 0.0, 0.0, t),
                         (None, Some((x, y))) => g.world.order_unit(h, id, x, y, 0),
                         _ => {}
                     }
+                    match g.world.order_error.take() {
+                        Some(e) => error = Some(e),
+                        None => ordered = true,
+                    }
                 }
+            }
+            // A target no selected unit may take is refused with its error, and the
+            // targeting goes on.
+            if let (false, Some(e)) = (ordered, error) {
+                self.targeting = Some(order);
+                self.error(e);
+                return true;
             }
             self.order_ack();
             return true;

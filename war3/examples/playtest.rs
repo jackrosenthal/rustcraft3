@@ -227,7 +227,11 @@ fn main() -> anyhow::Result<()> {
             "order" => {
                 if let Some(g) = scene.game.as_mut() {
                     let id = w3_game::natives::basic::order_id(&a[i + 2]);
+                    g.world.order_error = None;
                     g.world.order_unit(num(&a[i + 1]) as u32, id, 0.0, 0.0, num(&a[i + 3]) as u32);
+                    if let Some(e) = g.world.order_error.take() {
+                        eprintln!("order refused: {e}");
+                    }
                 }
                 i += 4;
             }

@@ -152,7 +152,7 @@ pub fn final_damage(w: &World, raw: f32, attack_type: &str, target: &Unit) -> f3
 }
 
 fn can_target(w: &World, wp: &Weapon, attacker: &Unit, t: &Unit) -> bool {
-    if t.dead || t.hidden || t.invulnerable || t.handle == attacker.handle {
+    if t.dead || t.hidden || w.unit_invulnerable(t) || t.handle == attacker.handle {
         return false;
     }
     let flying = w.objects.units.get(t.type_id).is_some_and(|o| o.str("movetp").eq_ignore_ascii_case("fly"));
@@ -339,6 +339,13 @@ impl World {
             if self.targeting(a) == crate::ability::Targeting::Passive {
                 return;
             }
+            // Targets the ability does not allow are refused with their error.
+            if target != 0 {
+                if let Some(e) = self.cast_target_error(h, a, target) {
+                    self.order_error = Some(e);
+                    return;
+                }
+            }
             Action::Cast { ability: a, target, x, y }
         } else {
             return;
@@ -448,7 +455,7 @@ impl World {
 
     fn deal_damage(&mut self, vm: &mut Vm, source: u32, target: u32, raw: f32, attack_type: &str) {
         let Some(t) = self.unit(target) else { return };
-        if t.dead || t.invulnerable || self.buff_mods(target).5 {
+        if t.dead || self.unit_invulnerable(t) || self.buff_mods(target).5 {
             return;
         }
         // Ethereal units take no physical damage (EtherealDamageBonus: magic 1.66).

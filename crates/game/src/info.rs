@@ -85,7 +85,7 @@ impl World {
             bonus: u.item_bonus.armor + self.buff_mods(h).2,
             def_type: o.map(|o| o.str("defType").to_ascii_lowercase()).unwrap_or_default(),
             upgrade: self.upgrade_level_for(u.owner, u.type_id, &["rarm"]),
-            invulnerable: u.invulnerable,
+            invulnerable: self.unit_invulnerable(u),
         };
         s.food_made = o.map_or(0, |o| o.int("fmade"));
         s.gold = self.ability_with_code(h, "Agld").map(|_| u.resource);

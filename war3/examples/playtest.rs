@@ -465,6 +465,16 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 3;
             }
+            // lookat <handle> <bone> <target>: turns a unit's bone toward another unit.
+            "lookat" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let t = num(&a[i + 3]) as u32;
+                    if let Some(u) = g.world.unit_mut(num(&a[i + 1]) as u32) {
+                        u.extra.look_at = Some((a[i + 2].clone(), t, [0.0, 0.0, 60.0]));
+                    }
+                }
+                i += 4;
+            }
             // log: opens the message log (F12).
             "log" => {
                 scene.open_log();

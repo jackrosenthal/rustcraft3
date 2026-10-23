@@ -140,6 +140,13 @@ fn submit_children(models: &mut w3_render::model::ModelRenderer, v: &mut UnitVie
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+enum LoopKey {
+    Moving(u32),
+    Building(u32),
+    Doodad(usize),
+}
+
 pub struct UnitView {
     pub inst: ModelInstance,
     /// The unit type the model is for (a morph changes it).
@@ -219,6 +226,11 @@ pub struct Scene {
     weather: crate::weather::WeatherView,
     /// Ambient loops of enabled weather effects the camera is inside, by weather handle.
     weather_sounds: HashMap<u32, u64>,
+    /// Doodads' looping sounds (Doodads.slk soundLoop) and where they are.
+    doodad_loops: Vec<(String, [f32; 3])>,
+    /// Playing looping sounds: units moving (MovementSoundLabel) or under construction
+    /// (BuildingSoundLabel), and doodads in earshot; with their fade-out milliseconds.
+    loops: HashMap<LoopKey, (u64, f32)>,
     splat_births: HashMap<u32, f32>,
     pub info: MapInfo,
     pub terrain: TerrainRenderer,
@@ -344,6 +356,7 @@ impl Scene {
         );
 
         let mut instances = Vec::new();
+        let mut doodad_loops = Vec::new();
         if let Ok(bytes) = chain.read("war3map.doo") {
             let doodads = Doodads::parse(&bytes).context("war3map.doo")?;
             let doodad_slk = data.slk("Doodads\\Doodads.slk");
@@ -384,6 +397,10 @@ impl Scene {
                 }
                 inst.play("Stand");
                 instances.push(inst);
+                let sound = text(table, &id, "soundLoop");
+                if !sound.is_empty() && sound != "_" && sound != "-" {
+                    doodad_loops.push((sound, d.position));
+                }
             }
         }
 
@@ -475,7 +492,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), weather: Default::default(), weather_sounds: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), weather: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -697,6 +714,59 @@ impl Scene {
             }
         }
         let t = self.camera.target;
+        // Looping sounds: units moving or under construction that the local player sees,
+        // and doodads, within the label's cutoff.
+        let mut want: Vec<(LoopKey, String, [f32; 3], f32, f32)> = Vec::new();
+        let in_range = |audio: &w3_audio::Audio, label: &str, p: [f32; 3]| {
+            let Some(d) = audio.def(label) else { return false };
+            let r = if d.cutoff > 0.0 { d.cutoff } else { d.max_distance };
+            (p[0] - t.x).powi(2) + (p[1] - t.y).powi(2) + (p[2] - t.z).powi(2) <= r * r
+        };
+        for (&h, v) in &self.units {
+            let Some(u) = g.world.unit(h) else { continue };
+            if !v.inst.visible || u.dead {
+                continue;
+            }
+            let Some(o) = g.world.objects.units.get(u.type_id) else { continue };
+            let p = v.inst.transform.w_axis;
+            let p = [p.x, p.y, p.z];
+            let fades = (o.real("LoopingSoundFadeIn"), o.real("LoopingSoundFadeOut"));
+            let (key, label) = if u.constructing.is_some() {
+                (LoopKey::Building(h), o.str("BuildingSoundLabel"))
+            } else if u.anim.starts_with("walk") {
+                (LoopKey::Moving(h), o.str("MovementSoundLabel"))
+            } else {
+                continue;
+            };
+            if !label.is_empty() && in_range(audio, &label, p) {
+                want.push((key, label, p, fades.0, fades.1));
+            }
+        }
+        for (i, (label, p)) in self.doodad_loops.iter().enumerate() {
+            if in_range(audio, label, *p) {
+                want.push((LoopKey::Doodad(i), label.clone(), *p, 0.0, 0.0));
+            }
+        }
+        self.loops.retain(|k, (id, fade_out)| {
+            let keep = want.iter().any(|w| w.0 == *k) && audio.is_playing(*id);
+            if !keep {
+                audio.fade_out(*id, *fade_out);
+            }
+            keep
+        });
+        for (key, label, p, fade_in, fade_out) in want {
+            match self.loops.get(&key) {
+                Some((id, _)) => audio.set_position(*id, p),
+                None => {
+                    if let Some(id) = audio.play_label_repeating(&label, Some(p)) {
+                        if fade_in > 0.0 {
+                            audio.fade_in(id, fade_in);
+                        }
+                        self.loops.insert(key, (id, fade_out));
+                    }
+                }
+            }
+        }
         // Weather ambience plays while the camera is inside an enabled effect's rect.
         let mut want = Vec::new();
         for (&h, o) in g.world.handles.iter() {

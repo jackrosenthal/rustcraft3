@@ -80,6 +80,21 @@ struct Voice {
     position: Option<[f32; 3]>,
     volume: f32,
     distances: (f32, f32, f32),
+    /// A fade: start, length, and the levels it runs between; a fade to zero stops the
+    /// voice at its end.
+    fade: Option<(std::time::Instant, f32, f32, f32)>,
+}
+
+impl Voice {
+    fn fade_level(&self) -> f32 {
+        match self.fade {
+            Some((start, secs, from, to)) => {
+                let t = (start.elapsed().as_secs_f32() / secs.max(1e-3)).min(1.0);
+                from + (to - from) * t
+            }
+            None => 1.0,
+        }
+    }
 }
 
 pub struct Audio {
@@ -233,6 +248,17 @@ impl Audio {
         self.play_file(&file, def.volume / 127.0, def.pitch, None, (def.min_distance, def.max_distance, def.cutoff), true)
     }
 
+    /// Plays one of a label's files, looping, at `position` if the label is 3D.
+    pub fn play_label_repeating(&mut self, label: &str, position: Option<[f32; 3]>) -> Option<u64> {
+        let def = self.def(label)?.clone();
+        if def.files.is_empty() {
+            return None;
+        }
+        let file = def.files[(self.random() % def.files.len() as u64) as usize].clone();
+        let pos = if def.has_flag("WANT3D") { position } else { None };
+        self.play_file(&file, def.volume / 127.0, def.pitch, pos, (def.min_distance, def.max_distance, def.cutoff), true)
+    }
+
     /// Plays one file of a label by index (for lines played in order).
     pub fn play_label_variant(&mut self, label: &str, index: usize, position: Option<[f32; 3]>) -> Option<u64> {
         let def = self.def(label)?.clone();
@@ -272,7 +298,7 @@ impl Audio {
         player.append(midi::Player::new(bank, song, 1.0));
         let id = self.next_id;
         self.next_id += 1;
-        self.voices.push(Voice { id, player, position: None, volume, distances: (0.0, 0.0, 0.0) });
+        self.voices.push(Voice { id, player, position: None, volume, distances: (0.0, 0.0, 0.0), fade: None });
         Some(id)
     }
 
@@ -302,12 +328,30 @@ impl Audio {
         }
         let id = self.next_id;
         self.next_id += 1;
-        self.voices.push(Voice { id, player, position, volume, distances });
+        self.voices.push(Voice { id, player, position, volume, distances, fade: None });
         Some(id)
     }
 
     pub fn stop(&mut self, id: u64) {
         self.voices.retain(|v| v.id != id);
+    }
+
+    /// Fades a voice in from silence over `ms` milliseconds.
+    pub fn fade_in(&mut self, id: u64, ms: f32) {
+        if let Some(v) = self.voices.iter_mut().find(|v| v.id == id) {
+            v.fade = Some((std::time::Instant::now(), ms / 1000.0, 0.0, 1.0));
+        }
+    }
+
+    /// Fades a voice out over `ms` milliseconds and stops it.
+    pub fn fade_out(&mut self, id: u64, ms: f32) {
+        if ms <= 0.0 {
+            return self.stop(id);
+        }
+        if let Some(v) = self.voices.iter_mut().find(|v| v.id == id) {
+            let level = v.fade_level();
+            v.fade = Some((std::time::Instant::now(), ms / 1000.0 * level, level, 0.0));
+        }
     }
 
     pub fn is_playing(&self, id: u64) -> bool {
@@ -368,13 +412,13 @@ impl Audio {
     /// Moves the listener, updates 3D volumes, and advances the playlist.
     pub fn update(&mut self, listener: [f32; 3]) {
         self.listener = listener;
-        self.voices.retain(|v| !v.player.empty());
+        self.voices.retain(|v| !v.player.empty() && !v.fade.is_some_and(|(start, secs, _, to)| to == 0.0 && start.elapsed().as_secs_f32() >= secs));
         for i in 0..self.voices.len() {
             let v = &self.voices[i];
-            if v.position.is_some() {
+            if v.position.is_some() || v.fade.is_some() {
                 let g = self.gain_at(v.position, v.distances);
                 let v = &self.voices[i];
-                v.player.set_volume(v.volume * g * self.sound_volume);
+                v.player.set_volume(v.volume * g * v.fade_level() * self.sound_volume);
             }
         }
         if self.music.as_ref().is_some_and(|m| m.empty()) && !self.playlist.is_empty() {

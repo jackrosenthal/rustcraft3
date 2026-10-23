@@ -274,6 +274,9 @@ pub struct World {
     /// Unit events raised where no VM is at hand, fired at the end of the tick: the
     /// unit, its player and unit event ids, and the context.
     pub queued_events: Vec<(u32, i32, i32, EventCtx)>,
+    /// Where each unit or player state event's comparison last stood.
+    #[serde(default)]
+    pub state_seen: HashMap<u32, bool>,
     /// Structures whose construction was cancelled, removed once their event fires.
     pub cancelled_constructions: Vec<u32>,
     /// The player's profile: campaign progress and saved game caches.
@@ -478,6 +481,7 @@ impl World {
             sky_model: None,
             water_color: [255; 4],
             queued_events: Vec::new(),
+            state_seen: HashMap::new(),
             cancelled_constructions: Vec::new(),
             persist: Default::default(),
             timed_removals: Vec::new(),
@@ -986,6 +990,54 @@ impl World {
             EventKind::GameState { state: 2, op, value } => compare(*op, t, *value) && !compare(*op, t - dt, *value),
             _ => false,
         });
+        self.check_state_events(vm);
+    }
+
+    /// Unit and player state events (TriggerRegisterUnitStateEvent,
+    /// TriggerRegisterPlayerStateEvent): each fires as its comparison becomes true, the
+    /// first look only noting where it stands.
+    fn check_state_events(&mut self, vm: &mut Vm) {
+        let mut due = Vec::new();
+        for &e in &self.events {
+            let Some(Obj::Event(r)) = self.handles.get(e) else { continue };
+            let (now, ctx) = match r.kind {
+                EventKind::UnitState { unit, state, op, value } => {
+                    let Some(u) = self.unit(unit) else { continue };
+                    let v = match state {
+                        0 => u.life,
+                        1 => u.max_life,
+                        2 => u.mana,
+                        3 => u.max_mana,
+                        _ => continue,
+                    };
+                    let ctx = EventCtx { unit, event_id: crate::event_ids::EVENT_UNIT_STATE_LIMIT, player: u.owner, has_player: true, ..Default::default() };
+                    (compare(op, v, value), ctx)
+                }
+                EventKind::PlayerState { player, state, op, value } => {
+                    let Some(p) = self.players.get(player as usize) else { continue };
+                    let ctx = EventCtx { player, has_player: true, event_id: crate::event_ids::EVENT_PLAYER_STATE_LIMIT, ..Default::default() };
+                    (compare(op, p.get_state(state) as f32, value), ctx)
+                }
+                _ => continue,
+            };
+            let before = self.state_seen.insert(e, now);
+            if now && before == Some(false) {
+                due.push((r.trigger, ctx));
+            }
+        }
+        for (trig, ctx) in due {
+            if !self.trigger(trig).is_some_and(|t| t.enabled) {
+                continue;
+            }
+            let mut c = ctx;
+            c.trigger = trig;
+            let saved = std::mem::replace(&mut self.ctx, c.clone());
+            let pass = self.trigger_evaluate(vm, trig);
+            self.ctx = saved;
+            if pass {
+                self.trigger_execute(vm, trig, c);
+            }
+        }
     }
 
     /// Cells blocked by a pathing texture (PathTextures\\*.tga) centered at a position.

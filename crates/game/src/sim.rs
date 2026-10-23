@@ -527,6 +527,18 @@ impl World {
         false
     }
 
+    /// An enemy a unit would acquire now, within its acquisition range.
+    pub(crate) fn acquirable_target(&self, h: u32) -> Option<u32> {
+        let range = self.unit(h)?.acquire_range;
+        self.find_target(h, range)
+    }
+
+    /// Whether one of a unit's weapons can attack `t`.
+    pub(crate) fn can_attack_unit(&self, h: u32, t: u32) -> bool {
+        let (Some(u), Some(tu)) = (self.unit(h), self.unit(t)) else { return false };
+        !u.dead && unit_weapons(self, u).iter().any(|(_, wp)| can_target(self, wp, u, tu))
+    }
+
     fn find_target(&self, h: u32, range: f32) -> Option<u32> {
         let u = self.unit(h)?;
         let weapons = unit_weapons(self, u);
@@ -648,6 +660,7 @@ impl World {
             kill_unit(self, vm, target, source);
         } else if self.unit(target).is_some() {
             self.call_for_help(target, source);
+            self.ai_town_attacked(target, source);
             // A computer's or creep's unit hurt by an enemy weighs its spells.
             if self.unit(source).is_some_and(|s| self.unit(target).is_some_and(|t| !is_ally(self, t.owner, s.owner))) {
                 self.spell_ai_hurt(vm, target, source, attack_type != "spells");

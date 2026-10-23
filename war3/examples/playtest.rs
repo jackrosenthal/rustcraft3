@@ -526,6 +526,16 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // info <unit>: a unit's type, owner, life, place, and action.
+            "info" => {
+                if let Some(g) = scene.game.as_ref() {
+                    let h = num(&a[i + 1]) as u32;
+                    if let Some(u) = g.world.unit(h) {
+                        eprintln!("info {h} {} p{} life {}/{} at {:.0} {:.0} {:?} swing {:?} acquire {}", w3_game::objects::id_str(u.type_id), u.owner, u.life, u.max_life, u.x, u.y, u.action, u.swing.is_some(), u.acquire_range);
+                    }
+                }
+                i += 2;
+            }
             // life <unit> <amount>: sets a unit's life.
             "life" => {
                 if let Some(g) = scene.game.as_mut() {

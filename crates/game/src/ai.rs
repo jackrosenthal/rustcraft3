@@ -53,6 +53,14 @@ pub struct AiState {
     pub stage: Option<(f32, f32)>,
     pub harvest_timer: f32,
     pub guard_posts: Vec<(Id, f32, f32)>,
+    /// The enemy threatening the town (CCompAI +0x164; TownThreatened), whether an
+    /// attack may be answered now (flag 2 of +0x2d0), and the 2 s check that reopens it.
+    #[serde(default)]
+    pub threat: u32,
+    #[serde(default)]
+    pub threat_open: bool,
+    #[serde(default)]
+    pub threat_timer: f32,
 }
 
 /// Distance within which a town hall and a gold mine belong to the same town.
@@ -242,6 +250,7 @@ impl World {
             self.ai_current = None;
             self.ai_vms.insert(p, aivm);
             self.ai_engine(p, dt);
+            self.ai_threat_tick(p, dt);
         }
     }
 
@@ -558,6 +567,118 @@ impl World {
                 }
             }
         }
+    }
+
+    /// The 2 s threat check (FUN_6f9ccbd0): attacks may be answered again, and the
+    /// threat ends once the defense captain is no longer fighting.
+    fn ai_threat_tick(&mut self, p: u8, dt: f32) {
+        let Some(st) = self.ai.get_mut(&p) else { return };
+        st.threat_timer -= dt;
+        if st.threat_timer > 0.0 {
+            return;
+        }
+        st.threat_timer = 2.0;
+        st.threat_open = true;
+        let (threat, units) = (st.threat, st.defense.units.clone());
+        if threat != 0 {
+            let fighting = units.iter().any(|&h| self.unit(h).is_some_and(|u| !u.dead && (u.swing.is_some() || matches!(u.action, Action::Attack { .. }))));
+            let gone = self.unit(threat).is_none_or(|u| u.dead);
+            if !fighting || gone {
+                if let Some(st) = self.ai.get_mut(&p) {
+                    st.threat = 0;
+                    if st.defense.target == threat {
+                        st.defense.target = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    /// An enemy hurt a computer player's unit (the CallForHelp handler FUN_6f66e9e0
+    /// and FUN_6f9cbfc0).  A structure's attack is major when its life is under 60%;
+    /// a captain's unit's when the attacker's side has more than 8 strength within
+    /// 1200 of it (a Hero (level + 1) / 2 + 4, any other its level); a worker's never.
+    /// The attacker becomes the threat (a Hero before any other), the defense captain
+    /// goes at it, and on a major attack the attack captain too (when it has more
+    /// than 2 units; GetMegaTarget names none here).  Allies' computers that defend
+    /// their allies (flag 0x200000) answer attacks on a player's structures.
+    pub(crate) fn ai_town_attacked(&mut self, victim: u32, attacker: u32) {
+        let Some(v) = self.unit(victim) else { return };
+        let Some(a) = self.unit(attacker) else { return };
+        let (owner, enemy) = (v.owner, a.owner);
+        let structure = v.is_building;
+        let low = v.life < v.max_life * 0.6;
+        let peon = self.objects.units.get(v.type_id).is_some_and(|o| o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case("peon")));
+        let respond = |w: &mut World, p: u8, major: Option<bool>| {
+            if crate::natives::players::is_ally(w, p, enemy) {
+                return;
+            }
+            let Some(st) = w.ai.get_mut(&p) else { return };
+            if !st.threat_open {
+                return;
+            }
+            st.threat_open = false;
+            // An attacker no nearer the defense captain than the threat is already
+            // answered (FUN_6f9c8fd0).
+            let threat = st.threat;
+            let units = st.defense.units.clone();
+            let home = st.defense.home;
+            let living: Vec<(f32, f32)> = units.iter().filter_map(|&h| w.unit(h)).filter(|u| !u.dead).map(|u| (u.x, u.y)).collect();
+            let at = if living.is_empty() { home } else { (living.iter().map(|p| p.0).sum::<f32>() / living.len() as f32, living.iter().map(|p| p.1).sum::<f32>() / living.len() as f32) };
+            let dist = |h: u32| w.unit(h).map_or(f32::MAX, |u| (u.x - at.0).hypot(u.y - at.1));
+            if threat != 0 && w.unit(threat).is_some_and(|u| !u.dead) && dist(threat) <= dist(attacker) {
+                return;
+            }
+            let major = major.unwrap_or_else(|| w.enemy_strength_near(attacker, enemy) > 8);
+            let hero = |w: &World, h: u32| w.unit(h).is_some_and(|u| u.is_hero && u.extra.illusion.is_none());
+            let threat = w.ai.get(&p).map_or(0, |s| s.threat);
+            if threat == 0 || w.unit(threat).is_none_or(|u| u.dead) || hero(w, attacker) && !hero(w, threat) {
+                if let Some(st) = w.ai.get_mut(&p) {
+                    st.threat = attacker;
+                }
+            }
+            let at = w.unit(attacker).map(|u| (u.x, u.y));
+            let Some(st) = w.ai.get_mut(&p) else { return };
+            st.defense.goal = at;
+            st.defense.target = 0;
+            st.defense.retreating = false;
+            let mut sent = st.defense.units.clone();
+            let attack_units = st.attack.units.clone();
+            // FUN_6f9d02c0: the attack captain comes only when it can see the attacker
+            // and one of its units can attack it.
+            let reachable = w.unit_visible_to(attacker, p) && attack_units.iter().any(|&h| w.can_attack_unit(h, attacker));
+            let Some(st) = w.ai.get_mut(&p) else { return };
+            if major && st.attack.units.len() > 2 && reachable {
+                st.attack.goal = at;
+                st.attack.target = 0;
+                st.attack.retreating = false;
+                sent.extend(st.attack.units.iter().copied());
+            }
+            // The captains move at once, every unit with them (FUN_6f9d44d0).
+            let Some((x, y)) = at else { return };
+            let order = crate::natives::basic::order_id("attack");
+            for h in sent {
+                // Units already fighting fight on.
+                if w.unit(h).is_some_and(|u| !u.dead && u.swing.is_none() && !matches!(u.action, Action::Attack { .. })) && w.acquirable_target(h).is_none() {
+                    w.order_unit(h, order, x, y, 0);
+                }
+            }
+        };
+        if self.ai.contains_key(&owner) {
+            let major = if structure { Some(low) } else if peon { Some(false) } else { None };
+            respond(self, owner, major);
+        } else if structure {
+            let allies: Vec<u8> = self.ai.keys().copied().filter(|&p| p != owner && crate::natives::players::is_ally(self, p, owner) && self.ai.get(&p).is_some_and(|s| s.flags.get("defend_player").copied().unwrap_or(false))).collect();
+            for p in allies {
+                respond(self, p, Some(low));
+            }
+        }
+    }
+
+    /// The strength of `player`'s units within 1200 of `at` (LAB_6f9c5d30).
+    fn enemy_strength_near(&self, at: u32, player: u8) -> i32 {
+        let Some((x, y)) = self.unit(at).map(|u| (u.x, u.y)) else { return 0 };
+        self.unit_order.iter().filter_map(|&h| self.unit(h)).filter(|u| u.owner == player && !u.dead && (u.x - x).hypot(u.y - y) <= 1200.0).map(|u| if u.is_hero { (u.level + 1) / 2 + 4 } else { u.level }).sum()
     }
 
     pub fn leave_mine_pub(&mut self, h: u32) {
@@ -903,7 +1024,10 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         UnitAlive => |w, _, a| boolean(w.unit(a.h(0)).is_some_and(|u| !u.dead)),
         UnitInvis => |_, _, _| boolean(false),
         IgnoredUnits => |_, _, _| int(0),
-        TownThreatened => |_, _, _| boolean(false),
+        TownThreatened => |w, _, _| {
+            let p = w.ai_player();
+            boolean(w.ai.get(&p).is_some_and(|s| s.threat != 0))
+        },
         DisablePathing => |_, _, _| none(),
         SetAmphibious => |_, _, _| none(),
         CommandsWaiting => |w, _, _| int(w.ai_state().map_or(0, |s| s.commands.len() as i32)),

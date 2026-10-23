@@ -377,6 +377,87 @@ impl World {
                     self.apply_item_bonuses(unit);
                     did = true;
                 }
+                // Amulet of Recall and Dark Summoning: up to DataA of the player's units
+                // within Area of the target come to the hero.
+                "AIrt" | "AUds" => {
+                    let Some((tx, ty)) = self.widget_pos(_target) else { continue };
+                    let (ux, uy) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
+                    let n = data(self, "DataA") as usize;
+                    let group: Vec<u32> = self.units_in_pub(tx, ty, area).into_iter().filter(|&t| t != unit && self.unit(t).is_some_and(|u| u.owner == owner && !u.is_building && !u.dead)).take(n).collect();
+                    for t in group {
+                        let r = self.unit(t).map_or(16.0, |u| u.collision);
+                        let (x, y) = self.free_point(ux, uy, r + 32.0);
+                        if let Some(u) = self.unit_mut(t) {
+                            u.x = x;
+                            u.y = y;
+                            u.path.clear();
+                            u.action = Action::Idle;
+                        }
+                    }
+                    did = true;
+                }
+                // Wand of Neutralization: magic dispelled from the target and up to DataC
+                // in all within Area of it, nearest first, each losing DataA mana; summons
+                // take DataB.
+                "AIdc" => {
+                    let Some((tx, ty)) = self.widget_pos(_target).or(Some((_x, _y))) else { continue };
+                    let (mana, summoned, max) = (data(self, "DataA"), data(self, "DataB"), data(self, "DataC").max(1.0) as usize);
+                    let mut hit = self.units_in_pub(tx, ty, area);
+                    hit.sort_by(|&p, &q| {
+                        let d = |t: u32| self.unit(t).map_or(f32::MAX, |u| (u.x - tx).hypot(u.y - ty));
+                        d(p).total_cmp(&d(q))
+                    });
+                    for t in hit.into_iter().take(max) {
+                        if let Some(u) = self.unit_mut(t) {
+                            u.mana = (u.mana - mana).max(0.0);
+                        }
+                        self.dispel_pub(vm, unit, t, summoned);
+                    }
+                    did = true;
+                }
+                // Scepter of Mastery (ItemCommand): a non-hero of level DataA or less
+                // becomes the user's.
+                "AIco" => {
+                    let max = data(self, "DataA") as i32;
+                    let color = self.players.get(owner as usize).map_or(0, |p| p.color);
+                    if let Some(t) = self.unit_mut(_target).filter(|t| !t.is_hero && !t.dead && t.level <= max) {
+                        t.owner = owner;
+                        t.color = color;
+                        t.action = Action::Idle;
+                        did = true;
+                    }
+                    self.update_food();
+                }
+                // Anti-magic Potion: magic immunity for Dur.
+                "Aami" => {
+                    let id = self.first_buff(a, 1);
+                    self.apply_buff(unit, Buff { id, ability: a, level: 1, caster: unit, remaining: data(self, "Dur"), magic_immune: true, ..Default::default() });
+                    did = true;
+                }
+                // Sacrificial Skull: blight within Area of the point.
+                "Ablp" => {
+                    let (px, py) = if _x != 0.0 || _y != 0.0 { (_x, _y) } else { self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default() };
+                    self.blight_circle(px, py, area);
+                    did = true;
+                }
+                // Wand of Mana Stealing: up to DataA of the target's mana to the user.
+                "Aste" => {
+                    let take = self.unit(_target).map_or(0.0, |t| t.mana.min(data(self, "DataA")));
+                    if let Some(t) = self.unit_mut(_target) {
+                        t.mana -= take;
+                    }
+                    if let Some(u) = self.unit_mut(unit) {
+                        u.mana = (u.mana + take).min(u.max_mana);
+                    }
+                    did = take > 0.0;
+                }
+                // Monster Lure: DataA lures (UnitID) at the point for Dur.
+                "AImo" => {
+                    let kind = crate::objects::id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", 1)).unwrap_or_default().trim());
+                    let (px, py) = if _x != 0.0 || _y != 0.0 { (_x, _y) } else { self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default() };
+                    self.summon(unit, owner, kind, data(self, "DataA").max(1.0) as i32, px, py, data(self, "Dur"));
+                    did = true;
+                }
                 // Wand of Illusion: an image of the target.
                 "AIil" => {
                     let t = if _target != 0 { _target } else { unit };

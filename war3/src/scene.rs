@@ -217,6 +217,8 @@ pub struct Scene {
     /// was first drawn.
     uber_slk: w3_formats::slk::Table,
     weather: crate::weather::WeatherView,
+    /// Ambient loops of enabled weather effects the camera is inside, by weather handle.
+    weather_sounds: HashMap<u32, u64>,
     splat_births: HashMap<u32, f32>,
     pub info: MapInfo,
     pub terrain: TerrainRenderer,
@@ -473,7 +475,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), weather: Default::default(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), weather: Default::default(), weather_sounds: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -695,6 +697,32 @@ impl Scene {
             }
         }
         let t = self.camera.target;
+        // Weather ambience plays while the camera is inside an enabled effect's rect.
+        let mut want = Vec::new();
+        for (&h, o) in g.world.handles.iter() {
+            if let w3_game::types::Obj::Weather(w) = o {
+                let r = w.rect;
+                if w.enabled && (r.min_x..=r.max_x).contains(&t.x) && (r.min_y..=r.max_y).contains(&t.y) {
+                    if let Some(label) = self.weather.ambient(w.id) {
+                        want.push((h, label));
+                    }
+                }
+            }
+        }
+        self.weather_sounds.retain(|h, id| {
+            let keep = want.iter().any(|(w, _)| w == h);
+            if !keep {
+                audio.stop(*id);
+            }
+            keep
+        });
+        for (h, label) in want {
+            if !self.weather_sounds.contains_key(&h) {
+                if let Some(id) = audio.play_label_looping(&label) {
+                    self.weather_sounds.insert(h, id);
+                }
+            }
+        }
         audio.update([t.x, t.y, t.z]);
     }
 

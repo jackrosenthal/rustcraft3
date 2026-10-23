@@ -135,6 +135,13 @@ impl WeatherView {
         self.cells.retain(|k, _| keep.contains(k));
     }
 
+    /// The effect's ambient sound label, if it has one.
+    pub fn ambient(&self, id: [u8; 4]) -> Option<String> {
+        let row = String::from_utf8_lossy(&id).to_string();
+        let v = self.slk.as_ref()?.get(&row, "AmbientSound")?.as_str();
+        (!v.is_empty() && v != "-").then_some(v)
+    }
+
     pub fn advance(&mut self, ms: f32) {
         for i in self.cells.values_mut() {
             i.advance(ms);

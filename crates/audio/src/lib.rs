@@ -7,6 +7,8 @@ use std::io::Cursor;
 use std::sync::Arc;
 
 use rodio::{Decoder, Player, Source};
+
+pub mod midi;
 use w3_formats::slk::Table;
 use w3_mpq::Chain;
 
@@ -96,6 +98,10 @@ pub struct Audio {
     pub sound_volume: f32,
     pub music_volume: f32,
     rng: u64,
+    /// MIDISounds.slk: label to (MIDI file, DLS file, volume 0 to 127).
+    midi_defs: HashMap<String, (String, String, f32)>,
+    banks: HashMap<String, Option<Arc<midi::Bank>>>,
+    songs: HashMap<String, Option<Arc<midi::Song>>>,
 }
 
 impl Audio {
@@ -115,6 +121,17 @@ impl Audio {
         for t in TABLES {
             if let Ok(s) = chain.read_string(t) {
                 parse_defs(&Table::parse(&s), &mut defs);
+            }
+        }
+        let mut midi_defs = HashMap::new();
+        if let Ok(s) = chain.read_string("UI\\SoundInfo\\MIDISounds.slk") {
+            let t = Table::parse(&s);
+            let get = |row: &str, col: &str| t.get(row, col).map(|v| v.as_str()).unwrap_or_default();
+            for k in &t.order {
+                let dir = get(k, "DirectoryBase");
+                let sep = if dir.ends_with('\\') { "" } else { "\\" };
+                let volume = get(k, "Volume").trim().parse().unwrap_or(127.0);
+                midi_defs.insert(k.to_ascii_lowercase(), (format!("{dir}{sep}{}", get(k, "MIDIFileName")), format!("{dir}{sep}{}", get(k, "DLSFileName")), volume));
             }
         }
         let mut anim_lookups = HashMap::new();
@@ -141,6 +158,9 @@ impl Audio {
             sound_volume: 1.0,
             music_volume: 1.0,
             rng: 0x2545_f491_4f6c_dd1d,
+            midi_defs,
+            banks: HashMap::new(),
+            songs: HashMap::new(),
         }
     }
 
@@ -195,12 +215,22 @@ impl Audio {
 
     /// Plays a labeled sound; `position` makes it 3D.  Returns an id for [`Audio::stop`].
     pub fn play_label(&mut self, label: &str, position: Option<[f32; 3]>) -> Option<u64> {
+        if let Some(m) = self.midi_defs.get(&label.to_ascii_lowercase()).cloned() {
+            return self.play_midi(&m.0, &m.1, m.2 / 127.0);
+        }
         let n = self.def(label)?.files.len() as u64;
         if n == 0 {
             return None;
         }
         let i = (self.random() % n) as usize;
         self.play_label_variant(label, i, position)
+    }
+
+    /// Plays a label's first file over and over, not positioned.
+    pub fn play_label_looping(&mut self, label: &str) -> Option<u64> {
+        let def = self.def(label)?.clone();
+        let file = def.files.first()?.clone();
+        self.play_file(&file, def.volume / 127.0, def.pitch, None, (def.min_distance, def.max_distance, def.cutoff), true)
     }
 
     /// Plays one file of a label by index (for lines played in order).
@@ -214,7 +244,36 @@ impl Audio {
             def.pitch
         };
         let pos = if def.has_flag("WANT3D") { position } else { None };
-        self.play_file(&file, def.volume / 127.0, pitch, pos, (def.min_distance, def.max_distance, def.cutoff), false)
+        self.play_file(&file, def.volume / 127.0, pitch, pos, (def.min_distance, def.max_distance, def.cutoff), def.has_flag("LOOPING"))
+    }
+
+    /// Plays a MIDI file with a DLS bank, looping.
+    pub fn play_midi(&mut self, mid: &str, dls: &str, volume: f32) -> Option<u64> {
+        let sink = self.sink.as_ref()?;
+        let mixer = sink.mixer().clone();
+        let bank = match self.banks.get(&dls.to_ascii_lowercase()) {
+            Some(b) => b.clone(),
+            None => {
+                let b = self.chain.read(dls).ok().and_then(|d| midi::Bank::parse(&d)).map(Arc::new);
+                self.banks.insert(dls.to_ascii_lowercase(), b.clone());
+                b
+            }
+        }?;
+        let song = match self.songs.get(&mid.to_ascii_lowercase()) {
+            Some(s) => s.clone(),
+            None => {
+                let s = self.chain.read(mid).ok().and_then(|d| midi::Song::parse(&d)).map(Arc::new);
+                self.songs.insert(mid.to_ascii_lowercase(), s.clone());
+                s
+            }
+        }?;
+        let player = Player::connect_new(&mixer);
+        player.set_volume(volume * self.sound_volume);
+        player.append(midi::Player::new(bank, song, 1.0));
+        let id = self.next_id;
+        self.next_id += 1;
+        self.voices.push(Voice { id, player, position: None, volume, distances: (0.0, 0.0, 0.0) });
+        Some(id)
     }
 
     /// Plays a sound file with a volume from 0 to 1.

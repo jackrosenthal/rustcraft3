@@ -168,8 +168,6 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         UnregisterStackedSound => |_, _, _| none(),
         VolumeGroupSetVolume => |_, _, _| none(),
         VolumeGroupReset => |_, _, _| none(),
-        SetAmbientDaySound => |_, _, _| none(),
-        SetAmbientNightSound => |_, _, _| none(),
         SetCameraPosition => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), 0.0); none() },
         SetCameraQuickPosition => |_, _, _| none(),
         PanCameraTo => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), 0.0); none() },

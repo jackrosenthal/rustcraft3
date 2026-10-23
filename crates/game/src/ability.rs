@@ -695,7 +695,33 @@ impl World {
         self.ability_effect(vm, h, a, lvl, target, at);
     }
 
+    /// Spell Shield (ANss, an item's): a spell an enemy aims at the bearer is spent
+    /// on the shield instead, which then rests for its Cool and shows its Casterart.
+    fn spell_shield_blocks(&mut self, caster: u32, target: u32) -> bool {
+        let Some(t) = self.unit(target) else { return false };
+        let enemy = self.unit(caster).is_some_and(|c| !crate::natives::players::is_ally(self, t.owner, c.owner));
+        if !enemy || caster == target {
+            return false;
+        }
+        let shield = t.inventory.iter().filter_map(|&i| self.item(i)).flat_map(|i| self.item_abilities(i.type_id)).find(|&a| self.ability_code(a) == "ANss");
+        let Some(a) = shield else { return false };
+        if self.unit(target).is_some_and(|u| u.cooldowns.get(&a).copied().unwrap_or(0.0) > 0.0) {
+            return false;
+        }
+        let cool = self.data(a, "Cool", 1);
+        self.unit_mut(target).unwrap().cooldowns.insert(a, cool);
+        let (model, attach) = (self.profile_art(a, "Casterart"), self.profile_art(a, "Casterattach"));
+        if !model.is_empty() {
+            let e = self.handles.insert(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((target, attach)), destroyed: false, facing: 0.0 }));
+            self.timed_removals.push((e, self.time));
+        }
+        true
+    }
+
     fn ability_effect(&mut self, vm: &mut Vm, h: u32, a: Id, lvl: u32, target: u32, (x, y): (f32, f32)) {
+        if target != 0 && self.unit(target).is_some() && self.spell_shield_blocks(h, target) {
+            return;
+        }
         let code = self.ability_code(a);
         let owner = self.unit(h).map_or(0, |u| u.owner);
         let dur = if self.hero_duration(target) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };

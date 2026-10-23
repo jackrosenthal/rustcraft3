@@ -1069,6 +1069,11 @@ impl World {
     }
 
     fn update_structure(&mut self, vm: &mut Vm, h: u32, dt: f32) {
+        // A frozen structure (Freezing Breath) does nothing: no training, research,
+        // building, or attacks.
+        if self.buff_mods(h).4 {
+            return;
+        }
         self.update_revive(vm, h, dt);
         // Construction.
         if let Some(left) = self.unit(h).and_then(|u| u.constructing) {

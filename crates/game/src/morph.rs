@@ -7,7 +7,7 @@ use crate::objects::{Id, id_from_str};
 use crate::types::*;
 use crate::world::World;
 
-const MORPHS: [&str; 9] = ["Abrf", "Arav", "Astn", "Abur", "AEme", "ANcr", "ANrg", "Acpf", "Aetf"];
+const MORPHS: [&str; 10] = ["Abrf", "Arav", "Astn", "Abur", "AEme", "ANcr", "ANrg", "Acpf", "Aetf", "Aave"];
 
 impl World {
     /// The morph ability a unit has whose order or unorder is `name`, and the type it

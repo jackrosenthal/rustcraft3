@@ -408,6 +408,14 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 1;
             }
+            // mana <handle> <amount>: sets a unit's mana.
+            "mana" => {
+                if let Some(u) = scene.game.as_mut().and_then(|g| g.world.unit_mut(num(&a[i + 1]) as u32)) {
+                    u.mana = num(&a[i + 2]);
+                    u.max_mana = u.max_mana.max(u.mana);
+                }
+                i += 3;
+            }
             // kill <handle>: kills a unit.
             "kill" => {
                 if let Some(g) = scene.game.as_mut() {

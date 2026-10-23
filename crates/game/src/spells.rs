@@ -452,6 +452,10 @@ impl World {
                 self.devour(h, a, lvl, target);
                 true
             }
+            "Aps2" => {
+                self.begin_possession(h, a, lvl, target);
+                true
+            }
             "AOre" | "AEev" | "AOcr" | "AHbh" | "AUts" | "AEah" | "AUav" => true,
             _ => false,
         }
@@ -496,6 +500,10 @@ impl World {
             let done = c.elapsed >= c.duration;
             if done {
                 self.release_channel(&c);
+                if self.ability_code(c.ability) == "Aps2" {
+                    self.finish_possession(vm, h, c.target);
+                    continue;
+                }
             }
             let u = self.unit_mut(h).unwrap();
             if done {

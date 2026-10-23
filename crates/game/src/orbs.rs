@@ -54,8 +54,36 @@ impl World {
                 "Apoi" | "Aven" | "Apo2" if !target_building => {
                     self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: dur, dps: d(self, "DataA"), attack_factor: -d(self, "DataB"), move_factor: -d(self, "DataC"), ..Default::default() });
                 }
-                // Frost Attack: the MiscGame frost slow.
-                "Afra" if !target_building => {
+                // Freezing Breath: a structure hit stops working for Dur.
+                "Afrz" if target_building => {
+                    self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: d(self, "Dur"), stun: true, ..Default::default() });
+                }
+                // Orb of Annihilation: while autocast and mana last, DataA more damage, and
+                // the hit spreads: all of it within DataD, DataB within DataE, and DataC
+                // within Area.
+                "Afak" if autocast.contains(&a) => {
+                    let cost = d(self, "Cost");
+                    if mana_left < cost {
+                        continue;
+                    }
+                    mana_left -= cost;
+                    damage += d(self, "DataA");
+                    let (full_r, half_r, small_r, half, small) = (d(self, "DataD"), d(self, "DataE"), d(self, "Area"), d(self, "DataB"), d(self, "DataC"));
+                    if let Some((tx, ty)) = self.unit(target).map(|t| (t.x, t.y)) {
+                        for t in self.enemies_in(owner, tx, ty, small_r.max(half_r)) {
+                            if t == target {
+                                continue;
+                            }
+                            let dist = self.unit(t).map_or(f32::MAX, |u| (u.x - tx).hypot(u.y - ty));
+                            let f = if dist <= full_r { 1.0 } else if dist <= half_r { half } else if dist <= small_r { small } else { 0.0 };
+                            if f > 0.0 {
+                                self.spell_damage(vm, attacker, t, damage * f);
+                            }
+                        }
+                    }
+                }
+                // Frost Attack (and the Frost Wyrm's Frost Breath): the MiscGame frost slow.
+                "Afra" | "Afrb" if !target_building => {
                     let (mv, at) = (self.misc_f32("FrostMoveSpeedDecrease", 0.5), self.misc_f32("FrostAttackSpeedDecrease", 0.25));
                     self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: dur, move_factor: -mv, attack_factor: -at, ..Default::default() });
                 }

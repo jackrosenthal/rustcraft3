@@ -126,12 +126,14 @@ impl World {
     }
 
     /// The unit that would receive a purchase for `player`: for a neutral building, the
-    /// player's nearest unit with an inventory inside its Aneu Activation Radius; for the
-    /// player's own shop, its nearest such unit as well.
+    /// player's nearest unit with an inventory inside its Aneu Activation Radius (an
+    /// allied racial shop's Aall); for the player's own shop, its nearest such unit as
+    /// well.
     pub fn shopper(&self, player: u8, shop: u32) -> Option<u32> {
         let s = self.unit(shop)?;
         let radius = self
             .ability_with_code(shop, "Aneu")
+            .or_else(|| self.ability_with_code(shop, "Aall"))
             .and_then(|(a, l)| self.objects.abilities.get(a).map(|o| o.level_real("DataA", l)))
             .filter(|&r| r > 0.0)
             .unwrap_or(500.0);

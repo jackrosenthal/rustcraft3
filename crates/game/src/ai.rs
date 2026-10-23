@@ -52,7 +52,11 @@ pub struct AiState {
     pub enemy_base: u32,
     pub stage: Option<(f32, f32)>,
     pub harvest_timer: f32,
-    pub guard_posts: Vec<(Id, f32, f32)>,
+    #[serde(default)]
+    pub posts: Vec<crate::aiposts::GuardPost>,
+    /// How many times a guard post is filled (SetReplacementCount; CCompAI +0x1d4).
+    #[serde(default)]
+    pub replacements: i32,
     /// The enemy threatening the town (CCompAI +0x164; TownThreatened), whether an
     /// attack may be answered now (flag 2 of +0x2d0), and the 2 s check that reopens it.
     #[serde(default)]
@@ -710,7 +714,8 @@ impl World {
         let p = self.ai_player();
         let have: Vec<u32> = self.captain(attack).map(|c| c.units.clone()).unwrap_or_default();
         let mut count = have.iter().filter(|&&h| self.unit(h).is_some_and(|u| u.type_id == id && !u.dead)).count() as i32;
-        let others: Vec<u32> = self.captain(!attack).map(|c| c.units.clone()).unwrap_or_default();
+        let mut others: Vec<u32> = self.captain(!attack).map(|c| c.units.clone()).unwrap_or_default();
+        others.extend(self.guards(p));
         for h in self.ai_units(p) {
             if count >= qty {
                 break;
@@ -883,7 +888,12 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         SetSlowChopping => |w, _, a| set_flag(w, "slow_chopping", a.b(0)),
         SetCaptainChanges => |w, _, a| set_flag(w, "captain_changes", a.b(0)),
         SetSmartArtillery => |w, _, a| set_flag(w, "smart_artillery", a.b(0)),
-        SetReplacementCount => |_, _, _| none(),
+        SetReplacementCount => |w, _, a| {
+            if let Some(s) = w.ai_state() {
+                s.replacements = a.i(0);
+            }
+            none()
+        },
         GroupTimedLife => |_, _, _| none(),
         RemoveInjuries => |_, _, _| none(),
         RemoveSiege => |_, _, _| none(),
@@ -953,9 +963,21 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         HarvestGold => |w, _, a| { let (t, n) = (a.i(0), a.i(1)); if let Some(s) = w.ai_state() { s.harvest.push((true, t, n)); } none() },
         HarvestWood => |w, _, a| { let (t, n) = (a.i(0), a.i(1)); if let Some(s) = w.ai_state() { s.harvest.push((false, t, n)); } none() },
         StopGathering => |_, _, _| none(),
-        AddGuardPost => |w, _, a| { let g = (id_from_int(a.i(0)), a.r(1), a.r(2)); if let Some(s) = w.ai_state() { s.guard_posts.push(g); } none() },
-        FillGuardPosts => |_, _, _| none(),
-        ReturnGuardPosts => |_, _, _| none(),
+        AddGuardPost => |w, _, a| {
+            let p = w.ai_player();
+            w.add_guard_post(p, id_from_int(a.i(0)), a.r(1), a.r(2));
+            none()
+        },
+        FillGuardPosts => |w, _, _| {
+            let p = w.ai_player();
+            w.fill_guard_posts(p);
+            none()
+        },
+        ReturnGuardPosts => |w, _, _| {
+            let p = w.ai_player();
+            w.return_guard_posts(p);
+            none()
+        },
         CreateCaptains => |w, _, _| {
             let p = w.ai_player();
             let home = w.start_of(p);

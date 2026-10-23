@@ -167,6 +167,8 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
             u.autocast = auto;
         }
     }
+    // A computer player's new unit may take a guard post.
+    w.ai_new_unit(h);
     h
 }
 

@@ -90,10 +90,10 @@ impl World {
         if self.unit(t).is_some_and(|u| !u.dead) { t } else { 0 }
     }
 
-    /// GetEnemyExpansion (FUN_6f9c66d0): for each enemy, of its structures within 1000
+    /// GetEnemyExpansion (FUN_6f9c66d0): for each enemy player, of its structures within 1000
     /// of a gold mine, the one by the mine with the most gold (its town hall there, if
     /// any), when it has structures by more than one mine; of those the one the attack
-    /// captain reaches soonest within a 5000 walk.
+    /// captain can walk to soonest.
     pub(crate) fn enemy_expansion(&self, p: u8) -> u32 {
         #[derive(Clone, Copy, Default)]
         struct Rec {
@@ -113,7 +113,7 @@ impl World {
         for (m, mx, my, gold) in mines {
             for &h in &self.unit_order {
                 let Some(u) = self.unit(h) else { continue };
-                if u.dead || !u.is_building || is_ally(self, p, u.owner) || (u.owner as usize) >= 16 || (u.x - mx).hypot(u.y - my) > 1000.0 {
+                if u.dead || !u.is_building || is_ally(self, p, u.owner) || u.owner > 11 || (u.x - mx).hypot(u.y - my) > 1000.0 {
                     continue;
                 }
                 let r = &mut recs[u.owner as usize];
@@ -134,7 +134,7 @@ impl World {
         for r in recs.iter().filter(|r| r.mines > 1 && r.unit != 0) {
             let Some(u) = self.unit(r.unit) else { continue };
             let d = self.walk_to_pub(from, (u.x, u.y), u.collision);
-            if d.is_finite() && d <= 5000.0 && best.is_none_or(|b| d < b.0) {
+            if d.is_finite() && best.is_none_or(|b| d < b.0) {
                 best = Some((d, r.unit));
             }
         }

@@ -249,8 +249,10 @@ impl World {
     /// The next expansion's gold mine.  A mine counts with more than 600 gold, when no
     /// allied computer is taking it, no town hall or haunted mine of anyone stands
     /// within 1200 of it, and it lies within 20000 of the defense captain.  The nearest
-    /// by walking (within 5000) with no enemy player's unit within 1500 is taken;
-    /// failing that the nearest such guarded one, then the nearest out of walking reach.
+    /// by walking with no enemy player's unit within 1500 is taken; failing that the
+    /// nearest such guarded one, then the nearest (in a line) out of walking reach.  (The
+    /// 5000 game.dll starts its path searches with bounds their cost, lowered to the
+    /// best found so far, not their length.)
     /// The choice stands for 10 s while its mine keeps more than 600 gold.
     pub(crate) fn next_expansion(&mut self, p: u8) -> Option<u32> {
         let gold = |w: &World, m: u32| w.unit(m).map_or(0, |u| if u.dead { 0 } else { u.resource });
@@ -278,7 +280,7 @@ impl World {
                 continue;
             }
             let walk = self.walk_to(from, (mx, my), mr);
-            if !walk.is_finite() || walk > 5000.0 {
+            if !walk.is_finite() {
                 let d = (mx - from.0).hypot(my - from.1);
                 if far.is_none_or(|f| d < f.1) {
                     far = Some((m, d));

@@ -2492,6 +2492,10 @@ impl Scene {
                 self.units.insert(h, view);
             }
             let view = self.units.get_mut(&h).unwrap();
+            // A unit's animations cross-fade over its blend (UnitUI blend, or
+            // SetUnitBlendTime).
+            let blend = u.extra.blend_time.unwrap_or_else(|| w.objects.units.get(u.type_id).map_or(0.15, |o| o.real("blend")));
+            view.inst.blend_ms = blend * 1000.0;
             // An uprooted ancient takes the alternate of each animation but its walk; the
             // type's Animprops ("upgrade,first" for a Keep on the Town Hall's model) and
             // those scripts add qualify every animation.

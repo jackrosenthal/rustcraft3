@@ -545,7 +545,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 }
             })
         },
-        SetUnitBlendTime => |_, _, _| none(),
+        SetUnitBlendTime => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.extra.blend_time = Some(v.max(0.0))) },
         SetUnitLookAt => |w, _, a| {
             let (bone, target, off) = (a.s(1), a.h(2), [a.r(3), a.r(4), a.r(5)]);
             with_unit(w, a, |u| u.extra.look_at = Some((bone, target, off)))

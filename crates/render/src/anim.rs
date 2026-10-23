@@ -174,7 +174,9 @@ impl Skeleton {
     }
 
     /// `camera_rotation` is the inverse view rotation, used for billboarded nodes.
-    pub fn update(&mut self, model: &Model, time: &Time, camera_rotation: Quat) {
+    /// With `blend`, each node's translation, rotation, and scale run from their values
+    /// at that earlier time (the sequence left) toward the current ones by the weight.
+    pub fn update(&mut self, model: &Model, time: &Time, camera_rotation: Quat, blend: Option<(&Time, f32)>) {
         let nodes = model.nodes();
         let g = &model.global_sequences;
         let mut local_rot = vec![Quat::IDENTITY; self.world.len()];
@@ -182,9 +184,17 @@ impl Skeleton {
         let mut world_scale = vec![Vec3::ONE; self.world.len()];
         for &i in &self.order {
             let Some(node) = nodes[i] else { continue };
-            let t = Vec3::from_array(sample(node.tracks.vec3(b"KGTR"), time, g, [0.0; 3]));
-            let r = q(sample(node.tracks.quat(b"KGRT"), time, g, [0.0, 0.0, 0.0, 1.0]));
-            let s = Vec3::from_array(sample(node.tracks.vec3(b"KGSC"), time, g, [1.0; 3]));
+            let mut t = Vec3::from_array(sample(node.tracks.vec3(b"KGTR"), time, g, [0.0; 3]));
+            let mut r = q(sample(node.tracks.quat(b"KGRT"), time, g, [0.0, 0.0, 0.0, 1.0]));
+            let mut s = Vec3::from_array(sample(node.tracks.vec3(b"KGSC"), time, g, [1.0; 3]));
+            if let Some((from, w)) = blend {
+                let t0 = Vec3::from_array(sample(node.tracks.vec3(b"KGTR"), from, g, [0.0; 3]));
+                let r0 = q(sample(node.tracks.quat(b"KGRT"), from, g, [0.0, 0.0, 0.0, 1.0]));
+                let s0 = Vec3::from_array(sample(node.tracks.vec3(b"KGSC"), from, g, [1.0; 3]));
+                t = t0.lerp(t, w);
+                r = r0.slerp(r, w);
+                s = s0.lerp(s, w);
+            }
             let pivot = self.pivots[i];
             let flags = self.flags[i];
             let parent = self.parents[i];

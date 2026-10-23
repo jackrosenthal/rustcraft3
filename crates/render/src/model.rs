@@ -175,12 +175,21 @@ pub struct ModelInstance {
     /// since the caller last drained them.
     pub sound_events: Vec<[u8; 4]>,
     pub particles: crate::particles::Particles,
+    /// Milliseconds a change of sequence cross-fades over (the model's BlendTime, or a
+    /// unit's blend), the pose left behind, and how far the fade has gone.
+    pub blend_ms: f32,
+    blend_from: Option<Time>,
+    blend_elapsed: f32,
 }
 
 impl ModelInstance {
     pub fn new(model: Arc<ModelGpu>) -> Self {
         let skeleton = Skeleton::new(&model.mdx);
+        let blend_ms = model.mdx.blend_time as f32;
         ModelInstance {
+            blend_ms,
+            blend_from: None,
+            blend_elapsed: 0.0,
             model,
             transform: Mat4::IDENTITY,
             sequence: None,
@@ -200,6 +209,10 @@ impl ModelInstance {
     }
 
     pub fn set_sequence(&mut self, seq: Option<usize>) {
+        if self.blend_ms > 0.0 && self.sequence.is_some() && seq != self.sequence {
+            self.blend_from = Some(self.time());
+            self.blend_elapsed = 0.0;
+        }
         self.sequence = seq;
         self.frame = 0.0;
         self.finished = false;
@@ -212,6 +225,12 @@ impl ModelInstance {
 
     pub fn advance(&mut self, dt_ms: f32) {
         self.global_time += dt_ms;
+        if self.blend_from.is_some() {
+            self.blend_elapsed += dt_ms;
+            if self.blend_elapsed >= self.blend_ms {
+                self.blend_from = None;
+            }
+        }
         if let Some(s) = self.sequence.and_then(|s| self.model.mdx.sequences.get(s)) {
             let len = (s.end - s.start) as f32;
             // Event keys in (before, after], in sequence time.
@@ -554,7 +573,8 @@ impl ModelRenderer {
             let i = mdx.nodes().iter().position(|n| n.is_some_and(|n| n.name.eq_ignore_ascii_case(bone)))?;
             Some((i, inst.transform.inverse().transform_point3(*target)))
         });
-        inst.skeleton.update(mdx, &time, inv_rot);
+        let blend = inst.blend_from.as_ref().map(|f| (f, (inst.blend_elapsed / inst.blend_ms.max(1.0)).clamp(0.0, 1.0)));
+        inst.skeleton.update(mdx, &time, inv_rot, blend);
         let bone_offset = self.bones.len() as u32;
         if inst.skeleton.world.is_empty() {
             self.bones.push(inst.transform.to_cols_array_2d());

@@ -134,6 +134,13 @@ pub struct Hud {
     /// war3map.mmp: icons stamped on the minimap image (kind, x and y on its 256-pixel
     /// grid): 0 gold mine, 1 neutral building, 2 start location.
     pub minimap_icons: Vec<(i32, f32, f32)>,
+    /// The minimap buttons' states: terrain shown, ally color mode (0 player colors, 1
+    /// ally and enemy colors on the minimap, 2 also in the world), creep camps shown,
+    /// and formation movement.
+    pub minimap_terrain: bool,
+    pub ally_mode: u8,
+    pub show_creeps: bool,
+    pub formation: bool,
     /// Whether the "@minimapfog" overlay texture is current.
     pub minimap_fog: bool,
     pub camera_box: Vec<(f32, f32)>,
@@ -231,6 +238,10 @@ impl Hud {
             minimap_dots: Vec::new(),
             minimap_fog: false,
             minimap_icons: Vec::new(),
+            minimap_terrain: true,
+            ally_mode: 0,
+            show_creeps: true,
+            formation: true,
             now: 0.0,
             unit_messages: Vec::new(),
             unit_message_offset: (0.0, 0.0),
@@ -573,6 +584,45 @@ impl Hud {
             if let Some(m) = mana {
                 bar(*m, "SimpleManaBarConsoleSmall", [0.0, 0.0, 1.0, 1.0], out);
             }
+        }
+    }
+
+    /// CGameUI's minimap buttons (FUN_6f36d890): 0.023125 x 0.020625 with their top left
+    /// at (0.154375, 0.14375 / 0.121875 / 0.1 / 0.0775) and the formation button at
+    /// (0.155, 0.05) from the interface's lower left: signal, terrain, ally colors,
+    /// creeps, formation.
+    pub fn minimap_button_rect(&self, k: usize) -> w3_ui::Rect {
+        let root = self.tree.frames[0].rect.unwrap_or_default();
+        let (x, y) = [(0.154375, 0.14375), (0.154375, 0.121875), (0.154375, 0.1), (0.154375, 0.0775), (0.155, 0.05)][k.min(4)];
+        let (x0, y1) = (root.x0 + x, root.y0 + y);
+        w3_ui::Rect { x0, x1: x0 + 0.023125, y0: y1 - 0.020625, y1 }
+    }
+
+    pub fn minimap_button_at(&self, x: f32, y: f32) -> Option<usize> {
+        (0..5).find(|&k| self.minimap_button_rect(k).contains(x, y))
+    }
+
+    /// Toggles a minimap button; the signal button (0) has no state.
+    pub fn press_minimap_button(&mut self, k: usize) {
+        match k {
+            1 => self.minimap_terrain = !self.minimap_terrain,
+            2 => self.ally_mode = (self.ally_mode + 1) % 3,
+            3 => self.show_creeps = !self.show_creeps,
+            4 => self.formation = !self.formation,
+            _ => {}
+        }
+    }
+
+    fn minimap_button_draws(&self, db: &FrameDb, out: &mut Vec<Draw>) {
+        let keys = [
+            "MiniMapSignalButtonEnabled",
+            if self.minimap_terrain { "MiniMapTerrainButtonInactiveEnabled" } else { "MiniMapTerrainButtonActiveEnabled" },
+            ["MiniMapAllyButtonInactiveEnabled", "MiniMapAllyButtonActiveEnabled", "MiniMapAllyButtonOffEnabled"][self.ally_mode as usize % 3],
+            if self.show_creeps { "MiniMapCreepButtonActiveEnabled" } else { "MiniMapCreepButtonInactiveEnabled" },
+            if self.formation { "MiniMapFormationOnButtonEnabled" } else { "MiniMapFormationOffButtonEnabled" },
+        ];
+        for (k, key) in keys.iter().enumerate() {
+            out.push(Draw::Image { texture: db.decorate(key), rect: self.minimap_button_rect(k), uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
         }
     }
 
@@ -998,6 +1048,7 @@ impl Hud {
         let mut out = self.tree.draw(db);
         self.filter_draws(&mut out);
         self.hero_bar_draws(db, &mut out);
+        self.minimap_button_draws(db, &mut out);
         // CStatBar of the experience kind: a black backdrop 0.001 outside, the
         // SimpleXpBarConsole fill tinted 0xFF8B0083, and the SimpleXpBarBorder.
         if let (Some(p), Some(f)) = (self.level_bar, self.tree.get("SimpleHeroLevelBar")) {
@@ -1093,7 +1144,11 @@ impl Hud {
         }
         if self.minimap_area.is_some() {
             let r = self.minimap_rect();
-            out.push(Draw::Image { texture: "war3mapMap.blp".into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+            if self.minimap_terrain {
+                out.push(Draw::Image { texture: "war3mapMap.blp".into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+            } else {
+                out.push(Draw::Image { texture: String::new(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [0.0, 0.0, 0.0, 1.0], blend: w3_ui::Blend::Alpha, rotated: false });
+            }
             if self.minimap_fog {
                 out.push(Draw::Image { texture: MINIMAP_FOG.into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
             }

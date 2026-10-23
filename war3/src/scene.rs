@@ -946,6 +946,13 @@ impl Scene {
             return true;
         }
         // Clicking an inventory item uses it.
+        if let Some(k) = self.hud.as_ref().and_then(|h| h.minimap_button_at(ux, uy)) {
+            self.ui_sound("InterfaceClick");
+            if let Some(h) = self.hud.as_mut() {
+                h.press_minimap_button(k);
+            }
+            return true;
+        }
         // A hero bar button selects the hero.
         if let Some(hero) = self.hud.as_ref().and_then(|h| h.hero_at(ux, uy)) {
             self.selection = vec![hero];
@@ -1290,6 +1297,7 @@ impl Scene {
         let footprint = self.camera_footprint();
         let team_rgb = self.team_rgb;
         if let Some(hud) = self.hud.as_mut() {
+            let ally_mode = hud.ally_mode;
             hud.minimap_dots = w
                 .unit_order
                 .iter()
@@ -1297,7 +1305,23 @@ impl Scene {
                 .filter_map(|&h| w.unit(h))
                 .filter(|u| !u.dead && !u.hidden)
                 .map(|u| {
-                    let c = team_rgb[u.color.clamp(0, 15) as usize];
+                    // Ally color modes use [FogOfWar] FogColorPlayer, FogColorAlly,
+                    // FogColorEnemy, and FogColorCreepNormal.
+                    let c = if ally_mode == 0 {
+                        team_rgb[u.color.clamp(0, 15) as usize]
+                    } else {
+                        let key = if u.owner == w.local_player {
+                            "FogColorPlayer"
+                        } else if u.owner as usize == w3_game::types::PLAYER_NEUTRAL_AGGRESSIVE as usize {
+                            "FogColorCreepNormal"
+                        } else if w3_game::natives::players::is_ally(w, w.local_player, u.owner) {
+                            "FogColorAlly"
+                        } else {
+                            "FogColorEnemy"
+                        };
+                        let v: Vec<f32> = w.misc.get_list("FogOfWar", key).iter().filter_map(|s| s.trim().parse().ok()).collect();
+                        if v.len() == 4 { [v[1] / 255.0, v[2] / 255.0, v[3] / 255.0] } else { team_rgb[u.color.clamp(0, 15) as usize] }
+                    };
                     (u.x, u.y, [c[0], c[1], c[2], 1.0], if u.is_building { 0.004 } else { 0.0025 })
                 })
                 .collect();

@@ -260,6 +260,27 @@ impl World {
                 "AEsh" => self.ai_lingering(h, a, lvl, enemy, victim, false),
                 "Auco" => self.ai_concoction(h, a, lvl, enemy, victim),
                 "ANso" => self.ai_lingering(h, a, lvl, enemy, victim, true),
+                "Absk" | "ANcr" => self.ai_restart_timer(h, a, 2.0, victim != h),
+                "AEbl" => {
+                    if victim == h {
+                        self.ai_restart_timer(h, a, 5.0, false);
+                    }
+                }
+                "Abtl" => self.ai_battle_stations(h, a, enemy),
+                "Abrf" => self.ai_bear_form(h, a, enemy, victim),
+                "Aroa" => self.ai_roar(h, a, enemy, victim),
+                "Aclf" => self.ai_cloud(h, a, enemy, victim),
+                "Acpf" => self.ai_corporeal_form(h, a, enemy, victim),
+                "Amfl" => {
+                    if !self.ai_gate(h, a, enemy, victim, false, None, None) && self.ai_mana_flare_due(h, a, lvl) {
+                        self.ai_cast(h, a, 0);
+                    }
+                }
+                "Amic" => self.ai_militia(h, a, enemy, victim),
+                "Asds" => self.ai_self_destruct(h, a, lvl, enemy, victim),
+                "AEsv" => self.ai_spirit_of_vengeance(h, a, enemy, victim),
+                "Asta" => self.ai_stasis_trap(h, a, lvl, enemy, victim),
+                "ANab" => self.ai_acid_bomb(h, a, lvl, enemy, victim),
                 "Aams" => {
                     if !self.ai_gate(h, a, enemy, victim, true, Some(victim), None) && self.unit(victim).is_some_and(Self::real_hero) {
                         self.ai_cast(h, a, victim);
@@ -1698,6 +1719,324 @@ impl World {
         let (x, y) = self.pos(enemy);
         let c = self.census(h, x, y, self.data(a, "Area", lvl), true);
         if c.allies - c.ally_ground < 2 && (self.life(h) <= 200.0 || c.enemies - c.enemy_ground > 2) {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Restarts an ability's AI timer (its 0xd01bf event), unless `keep` and it is
+    /// already running.
+    fn ai_restart_timer(&mut self, h: u32, a: Id, secs: f32, keep: bool) {
+        let now = self.time;
+        let Some(u) = self.unit_mut(h) else { return };
+        if keep && u.extra.ai_timers.iter().any(|t| t.0 == a) {
+            return;
+        }
+        u.extra.ai_timers.retain(|t| t.0 != a);
+        u.extra.ai_timers.push((a, now + secs));
+    }
+
+    fn ai_timer_left(&self, h: u32, a: Id) -> Option<f32> {
+        self.unit(h)?.extra.ai_timers.iter().find(|t| t.0 == a).map(|t| t.1 - self.time)
+    }
+
+    fn attacking(&self, h: u32) -> bool {
+        self.unit(h).is_some_and(|u| u.swing.is_some() || matches!(u.action, Action::Attack { .. }))
+    }
+
+    /// The second steps, when a timer comes due: Berserk and Chemical Rage while the
+    /// unit attacks (Chemical Rage only when its mana will not pay for an Acid Bomb as
+    /// well), and Blink toward where the unit is going (their vf3 on 0xd01bf).
+    pub(crate) fn update_ai_timers(&mut self) {
+        let now = self.time;
+        let due: Vec<(u32, Id)> = self
+            .unit_order
+            .iter()
+            .filter_map(|&h| self.unit(h).map(|u| (h, u)))
+            .flat_map(|(h, u)| u.extra.ai_timers.iter().filter(|t| t.1 <= now).map(move |t| (h, t.0)))
+            .collect();
+        for (h, a) in due {
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.ai_timers.retain(|t| t.0 != a);
+            }
+            if !self.ai_controlled(h) || self.unit(h).is_none_or(|u| u.dead) {
+                continue;
+            }
+            let lvl = self.unit(h).and_then(|u| u.abilities.iter().find(|x| x.0 == a).map(|x| x.1.max(1) as u32)).unwrap_or(1);
+            match self.ability_code(a).as_str() {
+                "Absk" => {
+                    if self.attacking(h) && self.can_cast(h, a).is_ok() {
+                        self.ai_cast(h, a, 0);
+                    }
+                }
+                "ANcr" => {
+                    if let Some((bomb, bl)) = self.ability_with_code(h, "ANab") {
+                        let costs = self.data(bomb, "Cost", bl.max(1) as u32) + self.data(a, "Cost", lvl);
+                        if costs < self.unit(h).map_or(0.0, |u| u.mana) {
+                            continue;
+                        }
+                    }
+                    if self.attacking(h) && self.can_cast(h, a).is_ok() {
+                        self.ai_cast(h, a, 0);
+                    }
+                }
+                "AEbl" => self.ai_blink(h, a, lvl),
+                _ => {}
+            }
+        }
+    }
+
+    /// Blink (CAbilityBlink vf3): toward the point or unit the unit is moving or
+    /// attacking to, when it lies within range but beyond a part of it (0.3 of the range
+    /// squared, or with a Cool over 1, 0.6 for a Cost under 11, else 0.9).
+    fn ai_blink(&mut self, h: u32, a: Id, lvl: u32) {
+        if self.can_cast(h, a).is_err() {
+            return;
+        }
+        let Some(u) = self.unit(h) else { return };
+        let to = match u.action {
+            Action::Move { x, y } | Action::AttackMove { x, y } => Some((x, y)),
+            Action::Patrol { b, .. } => Some(b),
+            Action::Attack { target } => self.widget_pos(target),
+            _ => None,
+        };
+        let Some((tx, ty)) = to else { return };
+        let d2 = (tx - u.x).powi(2) + (ty - u.y).powi(2);
+        let range2 = self.data(a, "Rng", lvl).powi(2);
+        let part = if self.data(a, "Cool", lvl) > 1.0 { if self.data(a, "Cost", lvl) < 11.0 { 0.6 } else { 0.9 } } else { 0.3 };
+        if range2 * part <= d2 && d2 <= range2 {
+            self.ai_cast_at(h, a, tx, ty);
+        }
+    }
+
+    fn ai_cast_at(&mut self, h: u32, a: Id, x: f32, y: f32) {
+        if let Some(u) = self.unit_mut(h) {
+            if !matches!(u.action, Action::Cast { .. }) {
+                u.extra.resume = Some(u.action.clone());
+            }
+            u.action = Action::Cast { ability: a, target: 0, x, y };
+            u.path.clear();
+        }
+    }
+
+    /// Battle Stations (CAbilityBattlestations vf64): an enemy within the Burrow's
+    /// attack range while it has room calls its workers in, at most once in 5 of every
+    /// 10 seconds.
+    fn ai_battle_stations(&mut self, h: u32, a: Id, enemy: u32) {
+        let Some(e) = self.unit(enemy) else { return };
+        let Some(b) = self.unit(h) else { return };
+        if crate::natives::players::is_ally(self, b.owner, e.owner) {
+            return;
+        }
+        let range = crate::sim::unit_weapons(self, b).iter().map(|(_, w)| w.range).fold(0.0f32, f32::max);
+        if range <= 0.0 || (e.x - b.x).hypot(e.y - b.y) > range + e.collision {
+            return;
+        }
+        let full = self.ability_with_code(h, "Acar").is_some() && b.extra.cargo.len() as f32 >= self.ability_with_code(h, "Acar").map_or(0.0, |(c, l)| self.data(c, "DataA", l.max(1) as u32));
+        if full {
+            return;
+        }
+        if self.ai_timer_left(h, a).is_none_or(|t| t <= 5.0) && self.can_cast(h, a).is_ok() {
+            self.order_unit(h, crate::natives::basic::order_id("battlestations"), 0.0, 0.0, 0);
+        }
+        // The timer only paces this hook; it has no second step.
+        let now = self.time;
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.ai_timers.retain(|t| t.0 != a);
+            u.extra.ai_timers.push((a, now + 10.0));
+        }
+    }
+
+    /// The Druid of the Claw's choice (FUN_6f603af0): Rejuvenation (1) for a target
+    /// without it that lacks DataA life (or a small one with 200 or less), Roar (2) when 3
+    /// friends within its Area not roused attack players' units, else Bear Form (3) when
+    /// no other Druid of the Claw within 300 has as much mana; 0 for none.
+    fn druid_choice(&self, h: u32, target: u32) -> u8 {
+        let mana = self.unit(h).map_or(0.0, |u| u.mana);
+        let ready = |code: &str| -> Option<(Id, u32)> {
+            let (a, l) = self.ability_with_code(h, code)?;
+            let l = l.max(1) as u32;
+            (self.can_cast(h, a).is_ok() && mana >= self.data(a, "Cost", l)).then_some((a, l))
+        };
+        if let (Some((a, l)), Some(t)) = (ready("Arej"), self.unit(target)) {
+            if !t.buffs.iter().any(|b| b.id == *b"Brej") {
+                let small = t.life <= 200.0 && (400.0..=600.0).contains(&t.max_life);
+                if small || t.max_life - t.life >= self.data(a, "DataA", l) {
+                    return 1;
+                }
+            }
+        }
+        let Some(me) = self.unit(h) else { return 0 };
+        let (x, y, owner) = (me.x, me.y, me.owner);
+        if let Some((a, l)) = ready("Aroa") {
+            let area = self.data(a, "Area", l);
+            let busy = self
+                .unit_order
+                .iter()
+                .filter_map(|&f| self.unit(f))
+                .filter(|f| !f.dead && crate::natives::players::is_ally(self, owner, f.owner) && (f.x - x).hypot(f.y - y) <= area && !f.buffs.iter().any(|b| b.id == *b"Broa"))
+                .filter(|f| match f.action {
+                    Action::Attack { target } => self.unit(target).is_some_and(|t| t.owner < 12),
+                    _ => false,
+                })
+                .count();
+            if busy >= 3 {
+                return 2;
+            }
+        }
+        if ready("Abrf").is_some() {
+            let rival = self.unit_order.iter().any(|&f| {
+                f != h && self.unit(f).is_some_and(|d| !d.dead && d.type_id == *b"edoc" && crate::natives::players::is_ally(self, owner, d.owner) && (d.x - x).hypot(d.y - y) <= 300.0 && d.mana >= mana)
+            });
+            if !rival {
+                return 3;
+            }
+        }
+        0
+    }
+
+    /// Bear Form (CAbilityBearForm vf64): against an enemy, past a rest, when the
+    /// Druid's choice is Bear Form.
+    fn ai_bear_form(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
+        if self.unit(enemy).is_none_or(|e| crate::natives::players::is_ally(self, owner, e.owner)) || self.unit(h).is_some_and(|u| u.extra.morph.is_some()) {
+            return;
+        }
+        if self.ai_resting(h, a) || self.can_cast(h, a).is_err() {
+            return;
+        }
+        self.ai_rest(h, a);
+        if self.druid_choice(h, victim) == 3 {
+            self.ai_cast(h, a, 0);
+        }
+    }
+
+    /// Roar (CAbilityRoar vf64): past the gate, with 200 life or more, when the
+    /// Druid's choice is Roar.
+    fn ai_roar(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, None, None) || self.unit(enemy).is_none_or(|e| e.life < 200.0) {
+            return;
+        }
+        self.ai_rest(h, a);
+        if self.unit(h).is_some_and(|u| u.type_id != *b"edoc") || self.druid_choice(h, victim) == 2 {
+            self.ai_cast(h, a, 0);
+        }
+    }
+
+    /// Cloud (CAbilityCloudOfFog vf64): past the gate, on an enemy structure that can
+    /// attack the victim, when more than one of the caster's side stands within 500.
+    fn ai_cloud(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, false, None, None) || self.unit(enemy).is_none_or(|e| !e.is_building) || !self.can_attack_unit(enemy, victim) {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(h);
+        if self.census(h, x, y, 500.0, true).allies > 1 {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Corporeal Form (CAbilityCorporealForm vf64): the caster, hurt to 100 life or
+    /// less and not magic immune, by an attack that is not magic.
+    fn ai_corporeal_form(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        if victim != h || self.unit(h).is_none_or(|u| u.life > 100.0) || self.is_magic_immune(h) || self.can_cast(h, a).is_err() {
+            return;
+        }
+        let magic = self.unit(enemy).is_some_and(|e| crate::sim::unit_weapons(self, e).first().is_some_and(|(_, w)| w.attack_type.eq_ignore_ascii_case("magic")));
+        if !magic {
+            self.ai_cast(h, a, 0);
+        }
+    }
+
+    /// Mana Flare (FUN_6f603460): within its Area at least 4 enemies have more than 20
+    /// mana.
+    fn ai_mana_flare_due(&mut self, h: u32, a: Id, lvl: u32) -> bool {
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(h);
+        self.census(h, x, y, self.data(a, "Area", lvl), false).enemy_mana >= 4
+    }
+
+    /// Call to Arms (CAbilityMilitiaConvert vf64): a seen enemy hurting a worker or
+    /// town hall makes the hall call its workers to arms, at most once in 5 of every 10
+    /// seconds.
+    fn ai_militia(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
+        let Some(v) = self.unit(victim) else { return };
+        if !(self.is_classed(v, "peon") || self.is_classed(v, "townhall")) || self.unit(enemy).is_none_or(|e| crate::natives::players::is_ally(self, owner, e.owner)) || !self.unit_visible_to(enemy, owner) {
+            return;
+        }
+        if self.ai_timer_left(h, a).is_none_or(|t| t <= 5.0) && self.can_cast(h, a).is_ok() {
+            self.ai_cast(h, a, 0);
+        }
+        let now = self.time;
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.ai_timers.retain(|t| t.0 != a);
+            u.extra.ai_timers.push((a, now + 10.0));
+        }
+    }
+
+    /// Self Destruct (CAbilitySelfDestruct vf64): past the gate, at the enemy when none
+    /// of the caster's side stands on the ground within DataA of it.
+    fn ai_self_destruct(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, false, Some(enemy), None) {
+            return;
+        }
+        let (x, y) = self.pos(enemy);
+        if self.census(h, x, y, self.data(a, "DataA", lvl), true).ally_ground < 1 {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Spirit of Vengeance (CAbilitySpiritOfVengeance vf64): against an enemy, when a
+    /// corpse of the caster's own lies within 900.
+    fn ai_spirit_of_vengeance(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        let _ = victim;
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
+        if self.unit(enemy).is_none_or(|e| crate::natives::players::is_ally(self, owner, e.owner)) || self.can_cast(h, a).is_err() {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(h);
+        let corpse = self.unit_order.iter().filter_map(|&c| self.unit(c)).any(|c| c.dead && c.owner == owner && (c.x - x).hypot(c.y - y) <= 900.0);
+        if corpse {
+            self.ai_cast(h, a, 0);
+        }
+    }
+
+    /// Stasis Trap (CAbilityStasisTrap vf64): past the gate, at the victim when within
+    /// DataC of it more than 4 enemies stand, or for the caster itself at half life or
+    /// less.
+    fn ai_stasis_trap(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, false, Some(victim), None) {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(victim);
+        let crowd = self.census(h, x, y, self.data(a, "DataC", lvl), true).enemies > 4;
+        let low = victim == h && self.unit(h).is_some_and(|u| u.max_life > 0.0 && u.life / u.max_life <= 0.5);
+        if crowd || low {
+            self.ai_cast_at(h, a, x, y);
+        }
+    }
+
+    /// Acid Bomb (CAbilityAcidBomb vf64): at an enemy Hero without it, within the cast
+    /// range plus 100, whose life lies between what the bomb deals over its duration
+    /// (DataD every DataF seconds) and that plus 2000.
+    fn ai_acid_bomb(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        let _ = victim;
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
+        let Some(e) = self.unit(enemy) else { return };
+        if crate::natives::players::is_ally(self, owner, e.owner) || self.can_cast(h, a).is_err() || !Self::real_hero(e) || e.buffs.iter().any(|b| b.id == *b"BNab") {
+            return;
+        }
+        let dur = if self.hero_duration(enemy) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
+        let every = self.data(a, "DataF", lvl);
+        let ticks = if every > 0.0 { (dur / every) as i32 } else { 0 };
+        let total = self.data(a, "DataD", lvl) * ticks as f32;
+        if e.life < total || e.life > total + 2000.0 {
+            return;
+        }
+        let (x, y) = self.pos(h);
+        if (e.x - x).hypot(e.y - y) <= self.data(a, "Rng", lvl) + 100.0 {
             self.ai_cast(h, a, enemy);
         }
     }

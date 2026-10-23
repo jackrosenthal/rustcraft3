@@ -840,6 +840,7 @@ impl World {
         prof!(self, "update_incinerations", self.update_incinerations(vm));
         prof!(self, "update_volcanoes", self.update_volcanoes(vm, dt));
         prof!(self, "update_spell_watch", self.update_spell_watch());
+        prof!(self, "update_ai_timers", self.update_ai_timers());
         for (u, slot, target) in std::mem::take(&mut self.ai_item_uses) {
             let (x, y) = self.widget_pos(target).unwrap_or((0.0, 0.0));
             self.use_item(vm, u, slot, target, x, y);

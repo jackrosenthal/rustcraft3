@@ -371,6 +371,10 @@ pub struct UnitExtra {
     /// The units each watching ability saw inside its range last time.
     #[serde(default)]
     pub ai_inside: Vec<(Id, Vec<u32>)>,
+    /// The spell AI's timers that run a hook's second step when they come due (their
+    /// 0xd01bf events): the ability and when.
+    #[serde(default)]
+    pub ai_timers: Vec<(Id, f32)>,
     /// SetUnitBlendTime: seconds its animations cross-fade over, in place of its type's.
     #[serde(default)]
     pub blend_time: Option<f32>,
@@ -438,6 +442,7 @@ impl Default for UnitExtra {
             ai_rest: Vec::new(),
             ai_watch: 0.0,
             ai_inside: Vec::new(),
+            ai_timers: Vec::new(),
             blend_time: None,
             order_queue: Default::default(),
             resume: None,

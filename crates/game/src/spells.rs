@@ -41,7 +41,7 @@ impl World {
         self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && (u.x - x).hypot(u.y - y) <= r)).collect()
     }
 
-    fn allies_in(&self, owner: u8, x: f32, y: f32, r: f32) -> Vec<u32> {
+    pub(crate) fn allies_in(&self, owner: u8, x: f32, y: f32, r: f32) -> Vec<u32> {
         self.units_in(x, y, r).into_iter().filter(|&h| crate::natives::players::is_ally(self, owner, self.owner_of(h))).collect()
     }
 
@@ -737,12 +737,36 @@ impl World {
             }
             u.reincarnate = None;
             let (x, y) = (u.x, u.y);
+            let restore = u.extra.restore.take();
+            let mana_before = u.mana;
             self.revive_hero(h, x, y);
+            if let (Some((life, mana)), Some(u)) = (restore, self.unit_mut(h)) {
+                if life > 0.0 {
+                    u.life = life.min(u.max_life);
+                }
+                u.mana = if mana < 0.0 { mana_before.min(u.max_mana) } else { mana.min(u.max_mana) };
+            }
         }
     }
 
     /// Called as a hero dies: starts Reincarnation if it has it ready.
     pub fn try_reincarnate(&mut self, h: u32) -> bool {
+        // An Ankh of Reincarnation (AIrc) in the inventory: back after DataA with DataB
+        // life and DataC mana (-1 keeps it), the ankh spent.
+        if self.ability_with_code(h, "AOre").is_none() {
+            let held = self.unit(h).map(|u| u.inventory.clone()).unwrap_or_default();
+            for item in held {
+                let Some(t) = self.item(item).map(|i| i.type_id) else { continue };
+                let Some(a) = self.item_abilities(t).into_iter().find(|&a| self.ability_code(a) == "AIrc") else { continue };
+                let (delay, life, mana) = (self.d(a, "DataA", 1), self.d(a, "DataB", 1), self.d(a, "DataC", 1));
+                self.remove_item(item);
+                let u = self.unit_mut(h).unwrap();
+                u.reincarnate = Some(delay);
+                u.extra.restore = Some((life, mana));
+                return true;
+            }
+            return false;
+        }
         let Some((a, lvl)) = self.ability_with_code(h, "AOre") else { return false };
         if self.unit(h).is_some_and(|u| u.cooldowns.get(&a).copied().unwrap_or(0.0) > 0.0) {
             return false;

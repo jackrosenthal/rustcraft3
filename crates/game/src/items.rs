@@ -192,6 +192,99 @@ impl World {
                     }
                     did = true;
                 }
+                // Healing Salve, Clarity Potion, and the like: DataA life and DataB mana
+                // over Dur, ended by damage when DataE is set.  The buff is the first of
+                // BuffID for both, the second for life, the third for mana.
+                "AIrg" => {
+                    let t = if _target != 0 { _target } else { unit };
+                    let dur = data(self, "Dur").max(0.1);
+                    let (life, mana) = (data(self, "DataA"), data(self, "DataB"));
+                    let ids: Vec<Id> = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", 1)).unwrap_or_default().split(',').map(|b| crate::objects::id_from_str(b.trim())).collect();
+                    let k = if life > 0.0 && mana > 0.0 { 0 } else if life > 0.0 { 1 } else { 2 };
+                    let id = ids.get(k).or(ids.first()).copied().unwrap_or([0; 4]);
+                    let ends = data(self, "DataE") != 0.0;
+                    self.apply_buff(t, Buff { id, ability: a, level: 1, caster: unit, remaining: dur, life_regen: life / dur, mana_regen: mana / dur, ends_on_damage: ends, ..Default::default() });
+                    did = true;
+                }
+                // Scroll of Protection (and the like): DataA armor for Dur to friends
+                // within Area, who gain DataB life and DataC mana.
+                "AIda" => {
+                    let (ux, uy) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
+                    let id = self.first_buff(a, 1);
+                    let (armor, life, mana, dur) = (data(self, "DataA"), data(self, "DataB"), data(self, "DataC"), data(self, "Dur"));
+                    for t in self.allies_in(owner, ux, uy, area) {
+                        if let Some(u) = self.unit_mut(t) {
+                            u.life = (u.life + life).min(u.max_life);
+                            u.mana = (u.mana + mana).min(u.max_mana);
+                        }
+                        self.apply_buff(t, Buff { id, ability: a, level: 1, caster: unit, remaining: dur, armor, ..Default::default() });
+                    }
+                    did = true;
+                }
+                // Scroll of Speed: friends within Area move DataA faster for Dur.
+                "AIsa" | "AIsp" => {
+                    let (ux, uy) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
+                    let id = self.first_buff(a, 1);
+                    let (speed, dur) = (data(self, "DataA"), data(self, "Dur"));
+                    let group = if code == "AIsa" { self.allies_in(owner, ux, uy, area) } else { vec![unit] };
+                    for t in group {
+                        self.apply_buff(t, Buff { id, ability: a, level: 1, caster: unit, remaining: dur, move_factor: speed, ..Default::default() });
+                    }
+                    did = true;
+                }
+                // Potions of Invisibility and Invulnerability.
+                "AIvi" | "AIvu" => {
+                    let id = self.first_buff(a, 1);
+                    let dur = data(self, "Dur");
+                    let b = Buff { id, ability: a, level: 1, caster: unit, remaining: dur, invisible: code == "AIvi", invulnerable: code == "AIvu", ..Default::default() };
+                    self.apply_buff(unit, b);
+                    did = true;
+                }
+                // Wand of Negation: magic dispelled within Area of the target, DataA mana
+                // lost, and DataB damage to summoned units.
+                "AIdi" => {
+                    let (px, py) = if _target != 0 { self.widget_pos(_target).unwrap_or((_x, _y)) } else { (_x, _y) };
+                    let (mana, summoned) = (data(self, "DataA"), data(self, "DataB"));
+                    for t in self.units_in_pub(px, py, area) {
+                        if let Some(u) = self.unit_mut(t) {
+                            u.mana = (u.mana - mana).max(0.0);
+                        }
+                        self.dispel_pub(vm, unit, t, summoned);
+                    }
+                    did = true;
+                }
+                // Dust of Appearance: invisible units within Area show for Dur.
+                "AItb" => {
+                    let (ux, uy) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
+                    let until = self.time + data(self, "Dur");
+                    self.detect_areas.push((owner, ux, uy, area, until));
+                    did = true;
+                }
+                // Scroll of Town Portal: the hero and up to DataA friends within Area go to
+                // the target structure.
+                "AItp" => {
+                    let Some((tx, ty)) = self.widget_pos(_target).or_else(|| (_x != 0.0 || _y != 0.0).then_some((_x, _y))) else { continue };
+                    let (ux, uy) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
+                    let n = data(self, "DataA") as usize;
+                    let mut group: Vec<u32> = self.allies_in(owner, ux, uy, area).into_iter().filter(|&t| t != unit && self.unit(t).is_some_and(|u| u.owner == owner && !u.is_building)).take(n).collect();
+                    group.push(unit);
+                    for t in group {
+                        let r = self.unit(t).map_or(16.0, |u| u.collision);
+                        let (x, y) = if _target != 0 && self.unit(_target).is_some() { self.spawn_point_pub(_target, r) } else { self.free_point(tx, ty, r) };
+                        if let Some(u) = self.unit_mut(t) {
+                            u.x = x;
+                            u.y = y;
+                            u.path.clear();
+                            u.action = Action::Idle;
+                        }
+                    }
+                    did = true;
+                }
+                // Moonstone: the time of day becomes DataA:DataB.
+                "AIct" => {
+                    self.time_of_day = data(self, "DataA") + data(self, "DataB") / 60.0;
+                    did = true;
+                }
                 // Wand of Illusion: an image of the target.
                 "AIil" => {
                     let t = if _target != 0 { _target } else { unit };
@@ -279,6 +372,12 @@ impl World {
                     "AIml" | "AImi" => b.life += d("DataA"),
                     "AImm" => b.mana += d("DataA"),
                     "AIrm" => b.mana_regen += d("DataA"),
+                    "Arel" => b.life_regen += d("DataA"),
+                    "AIsr" => {
+                        b.damage += d("DataA");
+                        b.spell_reduction += d("DataB");
+                    }
+                    "AIva" => b.life_steal += d("DataA"),
                     // Attribute items (not tomes, which are powerups).
                     "AIsm" | "AIam" | "AIim" | "AIxm" | "AIab" => {
                         b.agi += d("DataA");

@@ -588,8 +588,8 @@ impl World {
         for d in linked_dead {
             kill_unit(self, vm, d, source);
         }
-        // Vampiric Aura: the attacker regains a share of the damage.
-        let steal: f32 = self.unit(source).map_or(0.0, |u| u.buffs.iter().map(|b| b.life_steal).sum());
+        // Vampiric Aura and the Mask of Death: the attacker regains a share of the damage.
+        let steal: f32 = self.unit(source).map_or(0.0, |u| u.buffs.iter().map(|b| b.life_steal).sum::<f32>() + if attack_type == "spells" { 0.0 } else { u.item_bonus.life_steal });
         if steal > 0.0 {
             if let Some(u) = self.unit_mut(source) {
                 u.life = (u.life + dmg * steal).min(u.max_life);

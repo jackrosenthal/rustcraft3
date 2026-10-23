@@ -14,7 +14,7 @@ impl World {
         self.objects.abilities.get(a).map(|o| o.level_str(field, lvl)).unwrap_or_default().trim().to_string()
     }
 
-    fn first_buff(&self, a: Id, lvl: u32) -> Id {
+    pub(crate) fn first_buff(&self, a: Id, lvl: u32) -> Id {
         id_from_str(self.level_str(a, "BuffID", lvl).split(',').next().unwrap_or("").trim())
     }
 

@@ -354,6 +354,9 @@ pub struct UnitExtra {
     /// A Pocket Factory: its ability, level, and seconds to its next goblin.
     #[serde(default)]
     pub factory: Option<(Id, u32, f32)>,
+    /// The life and mana an ankh brings a hero back with (-1 mana keeps it).
+    #[serde(default)]
+    pub restore: Option<(f32, f32)>,
 }
 
 impl Default for UnitExtra {
@@ -410,6 +413,7 @@ impl Default for UnitExtra {
             look_at: None,
             illusion: None,
             factory: None,
+            restore: None,
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,
@@ -434,6 +438,14 @@ pub struct ItemBonus {
     pub str_: f32,
     pub agi: f32,
     pub int: f32,
+    /// Life a second (Ring of Regeneration), the share of spell damage taken away
+    /// (Runed Bracers), and the share of attack damage regained (Mask of Death).
+    #[serde(default)]
+    pub life_regen: f32,
+    #[serde(default)]
+    pub spell_reduction: f32,
+    #[serde(default)]
+    pub life_steal: f32,
 }
 
 /// An effect on a unit for a while: from spells, auras, and passives.
@@ -466,6 +478,9 @@ pub struct Buff {
     pub ethereal: bool,
     /// Asleep: stunned until damaged.
     pub sleep: bool,
+    /// Ends when the unit is hurt (Healing Salve, Clarity Potion).
+    #[serde(default)]
+    pub ends_on_damage: bool,
     /// Fraction of attack damage regained as life (Vampiric Aura).
     pub life_steal: f32,
     /// Melee attackers take this damage (or this fraction when `return_pct`).

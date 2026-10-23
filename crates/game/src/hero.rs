@@ -179,7 +179,7 @@ impl World {
             // Mana regeneration items and research add a fraction of the normal rate.
             let ub = self.upgrade_bonus(u.owner, u.type_id);
             mp *= 1.0 + u.item_bonus.mana_regen + ub.mana_regen;
-            hp += ub.hp_regen;
+            hp += ub.hp_regen + u.item_bonus.life_regen;
             if u.is_hero {
                 hp += (u.str_ + u.item_bonus.str_).floor() * str_regen;
                 mp += (u.int + u.item_bonus.int).floor() * int_regen;

@@ -294,7 +294,7 @@ impl World {
     /// Damage wakes sleeping units.
     pub fn wake(&mut self, h: u32) {
         if let Some(u) = self.unit_mut(h) {
-            u.buffs.retain(|b| !b.sleep);
+            u.buffs.retain(|b| !b.sleep && !b.ends_on_damage);
         }
         self.set_asleep(h, false);
     }
@@ -481,7 +481,8 @@ impl World {
         let mult: f32 = self.misc.get_list("Misc", "DamageBonusSpells").get(col).and_then(|v| v.trim().parse().ok()).unwrap_or(1.0);
         // Ethereal units take EtherealDamageBonus's SPELLS factor.
         let ethereal: f32 = if self.is_ethereal(target) { self.misc.get_list("Misc", "EtherealDamageBonus").get(5).and_then(|v| v.trim().parse().ok()).unwrap_or(1.0) } else { 1.0 };
-        let dmg = self.illusion_damage(source, target, self.elunes_grace(target, "spells", amount * mult * ethereal));
+        let reduction = self.unit(target).map_or(0.0, |u| u.item_bonus.spell_reduction).clamp(0.0, 1.0);
+        let dmg = self.illusion_damage(source, target, self.elunes_grace(target, "spells", amount * mult * ethereal)) * (1.0 - reduction);
         let owner = t.owner;
         self.wake(target);
         let linked_dead = self.take_life(target, dmg);

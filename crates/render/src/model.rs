@@ -357,11 +357,13 @@ pub struct ModelRenderer {
     fog: Arc<crate::fog::FogTexture>,
     particle_shader: wgpu::ShaderModule,
     particle_layout: wgpu::PipelineLayout,
-    particle_pipelines: HashMap<u32, wgpu::RenderPipeline>,
+    /// By filter and whether depth is tested.
+    particle_pipelines: HashMap<(u32, bool), wgpu::RenderPipeline>,
     particle_buf: Option<wgpu::Buffer>,
     /// This frame's particle quads: vertices and runs sharing a texture and filter.
     particle_verts: Vec<ParticleVertex>,
-    particle_runs: Vec<(Arc<Texture>, u32, std::ops::Range<u32>)>,
+    /// Texture, filter, u wrap, depth test, and vertices.
+    particle_runs: Vec<(Arc<Texture>, u32, bool, bool, std::ops::Range<u32>)>,
     // Per-frame state.
     bones: Vec<[[f32; 4]; 4]>,
     draws: Vec<Draw>,
@@ -502,6 +504,36 @@ impl ModelRenderer {
         }
     }
 
+    fn push_quad(&mut self, texture: &Arc<Texture>, q: &crate::particles::Quad, wrap_u: bool, depth: bool) {
+        let mut flags = 0;
+        if q.unfogged {
+            flags |= 1;
+        }
+        if q.filter == crate::particles::filter::ALPHA_KEY {
+            flags |= 2;
+        }
+        if q.filter == crate::particles::filter::ADDITIVE {
+            flags |= 4;
+        }
+        let first = self.particle_verts.len() as u32;
+        for k in [0usize, 2, 1, 1, 2, 3] {
+            self.particle_verts.push(ParticleVertex { pos: q.corners[k].to_array(), uv: q.uv[k], color: q.color, flags });
+        }
+        let end = first + 6;
+        match self.particle_runs.last_mut() {
+            Some((t, f, w, d, r)) if Arc::ptr_eq(t, texture) && *f == q.filter && *w == wrap_u && *d == depth && r.end == first => r.end = end,
+            _ => self.particle_runs.push((texture.clone(), q.filter, wrap_u, depth, first..end)),
+        }
+    }
+
+    /// Queues textured quads drawn with the particles (lightning); `wrap_u` repeats the
+    /// texture along u, and `depth` hides them behind nearer things.
+    pub fn submit_quads(&mut self, texture: &Arc<Texture>, quads: &[crate::particles::Quad], wrap_u: bool, depth: bool) {
+        for q in quads {
+            self.push_quad(texture, q, wrap_u, depth);
+        }
+    }
+
     /// Animates an instance and queues its geosets for drawing.
     pub fn submit(&mut self, inst: &mut ModelInstance, camera_pos: Vec3, camera_rot: Quat) {
         if !inst.visible {
@@ -533,25 +565,7 @@ impl ModelRenderer {
                     id => inst.replaceable.get(&id).cloned(),
                 };
                 let Some(texture) = texture else { continue };
-                let mut flags = 0;
-                if q.unfogged {
-                    flags |= 1;
-                }
-                if q.filter == crate::particles::filter::ALPHA_KEY {
-                    flags |= 2;
-                }
-                if q.filter == crate::particles::filter::ADDITIVE {
-                    flags |= 4;
-                }
-                let first = self.particle_verts.len() as u32;
-                for k in [0usize, 2, 1, 1, 2, 3] {
-                    self.particle_verts.push(ParticleVertex { pos: q.corners[k].to_array(), uv: q.uv[k], color: q.color, flags });
-                }
-                let end = first + 6;
-                match self.particle_runs.last_mut() {
-                    Some((t, f, r)) if Arc::ptr_eq(t, &texture) && *f == q.filter && r.end == first => r.end = end,
-                    _ => self.particle_runs.push((texture, q.filter, first..end)),
-                }
+                self.push_quad(&texture, &q, false, true);
             }
         }
         let center = inst.transform.transform_point3(Vec3::ZERO);
@@ -803,26 +817,26 @@ impl ModelRenderer {
         let buf = self.particle_buf.as_ref().unwrap();
         queue.write_buffer(buf, 0, bytemuck::cast_slice(&self.particle_verts));
         let runs = std::mem::take(&mut self.particle_runs);
-        for (t, f, _) in &runs {
-            self.particle_pipeline(device, *f);
-            let key = (Arc::as_ptr(t) as usize, false, false);
+        for (t, f, w, d, _) in &runs {
+            self.particle_pipeline(device, *f, *d);
+            let key = (Arc::as_ptr(t) as usize, *w, false);
             if !self.texture_bgs.contains_key(&key) {
-                let bg = texture_bind_group(device, &self.texture_layout, &t.view, &self.samplers[0]);
+                let bg = texture_bind_group(device, &self.texture_layout, &t.view, &self.samplers[*w as usize]);
                 self.texture_bgs.insert(key, bg);
             }
         }
         pass.set_bind_group(0, &self.globals_bg, &[]);
         pass.set_vertex_buffer(0, self.particle_buf.as_ref().unwrap().slice(..));
-        for (t, f, r) in &runs {
-            pass.set_pipeline(&self.particle_pipelines[f]);
-            pass.set_bind_group(1, &self.texture_bgs[&(Arc::as_ptr(t) as usize, false, false)], &[]);
+        for (t, f, w, d, r) in &runs {
+            pass.set_pipeline(&self.particle_pipelines[&(*f, *d)]);
+            pass.set_bind_group(1, &self.texture_bgs[&(Arc::as_ptr(t) as usize, *w, false)], &[]);
             pass.draw(r.clone(), 0..1);
         }
         self.particle_verts.clear();
     }
 
-    fn particle_pipeline(&mut self, device: &wgpu::Device, filter: u32) {
-        if self.particle_pipelines.contains_key(&filter) {
+    fn particle_pipeline(&mut self, device: &wgpu::Device, filter: u32, depth: bool) {
+        if self.particle_pipelines.contains_key(&(filter, depth)) {
             return;
         }
         use crate::particles::filter as pf;
@@ -858,7 +872,7 @@ impl ModelRenderer {
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: crate::gpu::DEPTH_FORMAT,
                 depth_write_enabled: Some(false),
-                depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                depth_compare: Some(if depth { wgpu::CompareFunction::LessEqual } else { wgpu::CompareFunction::Always }),
                 stencil: Default::default(),
                 bias: Default::default(),
             }),
@@ -866,7 +880,7 @@ impl ModelRenderer {
             multiview_mask: None,
             cache: None,
         });
-        self.particle_pipelines.insert(filter, p);
+        self.particle_pipelines.insert((filter, depth), p);
     }
 }
 

@@ -224,6 +224,7 @@ pub struct Scene {
     /// was first drawn.
     uber_slk: w3_formats::slk::Table,
     weather: crate::weather::WeatherView,
+    lightning: crate::lightning::LightningView,
     /// Ambient loops of enabled weather effects the camera is inside, by weather handle.
     weather_sounds: HashMap<u32, u64>,
     /// Doodads' looping sounds (Doodads.slk soundLoop) and where they are.
@@ -492,7 +493,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), weather: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1914,10 +1915,23 @@ impl Scene {
             self.camera.fov = c.fields[FIELD_FIELD_OF_VIEW];
             self.camera.roll = c.fields[FIELD_ROLL];
             self.camera.rotation = c.fields[FIELD_ROTATION];
-            self.camera.target.z = self.terrain.height_at(c.x, c.y) + c.fields[FIELD_ZOFFSET];
+            self.camera.target.z = self.camera_ground(c.x, c.y) + c.fields[FIELD_ZOFFSET];
         } else {
-            self.camera.target.z = self.terrain.height_at(self.camera.target.x, self.camera.target.y);
+            self.camera.target.z = self.camera_ground(self.camera.target.x, self.camera.target.y);
         }
+    }
+
+    /// The ground height the camera looks at: the terrain 500 units around the target
+    /// on a 3 by 3 grid, weighted 2 at the corners and center and 3 at the edges.
+    fn camera_ground(&self, x: f32, y: f32) -> f32 {
+        let (mut sum, mut total) = (0.0, 0.0);
+        for k in 0..9 {
+            let (dx, dy) = ((1 - k / 3) as f32 * 500.0, (1 - k % 3) as f32 * 500.0);
+            let w = if k % 2 == 1 { 3.0 } else { 2.0 };
+            sum += w * self.terrain.height_at(x + dx, y + dy);
+            total += w;
+        }
+        sum / total
     }
 
     /// Scrolling the view (keys and screen edges).
@@ -2040,6 +2054,9 @@ impl Scene {
         }
         for inst in self.weather.instances() {
             self.models.submit(inst, eye, rot);
+        }
+        if let Some(g) = self.game.as_ref() {
+            self.lightning.draw(assets, device, queue, &g.world, self.camera.view(), self.time, &mut self.models);
         }
         for inst in self.items.values_mut() {
             self.models.submit(inst, eye, rot);

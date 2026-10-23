@@ -31,6 +31,40 @@ fn lightning_color(w: &mut World, h: u32, k: usize) -> f32 {
     lightning(w, h).map_or(0.0, |l| l.color[k])
 }
 
+/// A lightning type's color (R, G, B, A from 0 to 1), or None if it has no row.
+fn lightning_type_color(w: &mut World, code: &str) -> Option<[f32; 4]> {
+    let chain = w.chain.clone();
+    let t = w.lightning_data.get_or_insert_with(|| chain.read_string("Splats\\LightningData.slk").map(|s| w3_formats::slk::Table::parse(&s)).unwrap_or_default());
+    if !t.rows.contains_key(code) {
+        return None;
+    }
+    let n = |c: &str| t.get(code, c).map(|v| v.as_str()).unwrap_or_default().trim().parse::<f32>().unwrap_or(255.0) / 255.0;
+    Some([n("R"), n("G"), n("B"), n("A")])
+}
+
+/// Whether the local player sees either end (checkVisibility).
+fn ends_visible(w: &World, from: [f32; 3], to: [f32; 3]) -> bool {
+    let p = w.local_player;
+    w.fog_state(from[0], from[1], p) == crate::fog::FOG_VISIBLE || w.fog_state(to[0], to[1], p) == crate::fog::FOG_VISIBLE
+}
+
+/// AddLightning and AddLightningEx: nothing for an unknown type, or when checking
+/// visibility and neither end is visible.
+fn add_lightning(w: &mut World, code: String, check: bool, from: [f32; 3], to: [f32; 3]) -> super::NativeResult {
+    if check && !ends_visible(w, from, to) {
+        return handle(0);
+    }
+    let Some(color) = lightning_type_color(w, &code) else { return handle(0) };
+    handle(w.handles.insert(Obj::Lightning(Lightning { code, check_visibility: check, from, to, color })))
+}
+
+fn move_lightning(w: &mut World, h: u32, check: bool, from: [f32; 3], to: [f32; 3]) -> super::NativeResult {
+    if check && !ends_visible(w, from, to) {
+        return boolean(false);
+    }
+    boolean(lightning(w, h).map(|l| { l.from = from; l.to = to; }).is_some())
+}
+
 /// A terrain deformation (TerrainDeform*): its kind and parameters, kept for drawing.
 #[derive(Clone, Debug)]
 pub enum Deform {
@@ -90,23 +124,18 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetUbersplatRender => |w, _, a| { let on = a.b(1); if let Some(u) = ubersplat(w, a.h(0)) { u.render = on; } none() },
         SetUbersplatRenderAlways => |w, _, a| { let on = a.b(1); if let Some(u) = ubersplat(w, a.h(0)) { u.render_always = on; } none() },
 
+        // AddLightning and MoveLightning put the ends on the ground.
         AddLightning => |w, _, a| {
-            let l = Lightning { code: a.s(0), check_visibility: a.b(1), from: [a.r(2), a.r(3), 0.0], to: [a.r(4), a.r(5), 0.0], color: [1.0; 4] };
-            handle(w.handles.insert(Obj::Lightning(l)))
+            let (f, t) = ([a.r(2), a.r(3), w.ground_z(a.r(2), a.r(3))], [a.r(4), a.r(5), w.ground_z(a.r(4), a.r(5))]);
+            add_lightning(w, a.s(0), a.b(1), f, t)
         },
-        AddLightningEx => |w, _, a| {
-            let l = Lightning { code: a.s(0), check_visibility: a.b(1), from: [a.r(2), a.r(3), a.r(4)], to: [a.r(5), a.r(6), a.r(7)], color: [1.0; 4] };
-            handle(w.handles.insert(Obj::Lightning(l)))
-        },
+        AddLightningEx => |w, _, a| add_lightning(w, a.s(0), a.b(1), [a.r(2), a.r(3), a.r(4)], [a.r(5), a.r(6), a.r(7)]),
         DestroyLightning => |w, _, a| boolean(lightning(w, a.h(0)).is_some() && w.handles.remove(a.h(0)).is_some()),
         MoveLightning => |w, _, a| {
-            let (f, t) = ([a.r(2), a.r(3), 0.0], [a.r(4), a.r(5), 0.0]);
-            boolean(lightning(w, a.h(0)).map(|l| { l.from = f; l.to = t; }).is_some())
+            let (f, t) = ([a.r(2), a.r(3), w.ground_z(a.r(2), a.r(3))], [a.r(4), a.r(5), w.ground_z(a.r(4), a.r(5))]);
+            move_lightning(w, a.h(0), a.b(1), f, t)
         },
-        MoveLightningEx => |w, _, a| {
-            let (f, t) = ([a.r(2), a.r(3), a.r(4)], [a.r(5), a.r(6), a.r(7)]);
-            boolean(lightning(w, a.h(0)).map(|l| { l.from = f; l.to = t; }).is_some())
-        },
+        MoveLightningEx => |w, _, a| move_lightning(w, a.h(0), a.b(1), [a.r(2), a.r(3), a.r(4)], [a.r(5), a.r(6), a.r(7)]),
         // SetLightningColor keeps each channel as a byte (value times 255).
         SetLightningColor => |w, _, a| {
             let c = [a.r(1), a.r(2), a.r(3), a.r(4)].map(|v| ((v * 255.0) as i32 & 0xff) as f32 / 255.0);

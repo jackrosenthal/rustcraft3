@@ -147,6 +147,8 @@ pub struct World {
     pub blight_serial: u32,
     pub autocast_timer: f32,
     pub sentinels: Vec<Sentinel>,
+    /// Splats\\LightningData.slk, read when first needed.
+    pub lightning_data: Option<w3_formats::slk::Table>,
     /// W3PROF timings by subsystem.
     pub profile: Option<HashMap<&'static str, f64>>,
     pub destructable_order: Vec<u32>,
@@ -321,6 +323,7 @@ impl World {
             autocast_timer: 0.0,
             sentinels: Vec::new(),
             profile: None,
+            lightning_data: None,
             destructable_order: Vec::new(),
             item_order: Vec::new(),
             dying_effects: Vec::new(),

@@ -2,8 +2,9 @@
 
 use glam::{Mat4, Quat, Vec3};
 
-/// Vertical position of the camera target in normalized device coordinates.
-pub const TARGET_SCREEN_OFFSET: f32 = 0.085;
+/// Vertical position of the camera target in normalized device coordinates (fitted to
+/// the original at camera distances of 1650 and 2500 and angles of 304 and 320).
+pub const TARGET_SCREEN_OFFSET: f32 = 0.18;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Camera {
@@ -55,7 +56,7 @@ impl Camera {
 
     /// Measured against frames captured from the original 1.27b renderer at 4:3: the
     /// vertical extent matches a 70 degree field of view across the
-    /// diagonal of a 4:3 screen, and the camera target projects 0.085 of the half-height
+    /// diagonal of a 4:3 screen, and the camera target projects 0.18 of the half-height
     /// above the screen center.
     pub fn projection(&self, aspect: f32) -> Mat4 {
         let half_h = (self.fov.to_radians() / 2.0).tan() * 0.6;

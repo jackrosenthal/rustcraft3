@@ -165,6 +165,40 @@ pub struct Unit {
     pub explode_on_death: bool,
     pub is_building: bool,
     pub is_hero: bool,
+    pub collision: f32,
+    pub action: Action,
+    pub path: Vec<(f32, f32)>,
+    pub repath_timer: f32,
+    pub cooldown: f32,
+    pub swing: Option<Swing>,
+    pub acquire_timer: f32,
+    /// Animation the presentation layer should play; `anim_serial` changes whenever a new
+    /// animation starts.
+    pub anim: String,
+    pub anim_serial: u32,
+    pub death_time: f32,
+    pub pathing_cells: Vec<(i32, i32)>,
+}
+
+/// What a unit is doing.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum Action {
+    #[default]
+    Idle,
+    Move { x: f32, y: f32 },
+    Attack { target: u32 },
+    AttackMove { x: f32, y: f32 },
+    Hold,
+    Patrol { a: (f32, f32), b: (f32, f32) },
+    Follow { target: u32 },
+}
+
+/// An attack in progress: damage lands at the damage point, then the backswing plays.
+#[derive(Clone, Debug)]
+pub struct Swing {
+    pub target: u32,
+    pub elapsed: f32,
+    pub done: bool,
 }
 
 #[derive(Clone, Debug)]

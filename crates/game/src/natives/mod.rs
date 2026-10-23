@@ -6,14 +6,14 @@ use w3_jass::{NativeResult, Value};
 
 use crate::world::NativeFn;
 
-mod basic;
-mod game;
-mod geometry;
-mod objects;
-mod players;
-mod presentation;
-mod triggers;
-mod units;
+pub mod basic;
+pub mod game;
+pub mod geometry;
+pub mod objects;
+pub mod players;
+pub mod presentation;
+pub mod triggers;
+pub mod units;
 
 pub fn table() -> HashMap<&'static str, NativeFn> {
     let mut t: HashMap<&'static str, NativeFn> = HashMap::new();

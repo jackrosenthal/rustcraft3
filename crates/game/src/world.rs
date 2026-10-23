@@ -95,6 +95,8 @@ pub struct World {
     /// Effects destroyed by script, with the time they were destroyed; the presentation
     /// layer plays their death animation before the handle is freed.
     pub dying_effects: Vec<(u32, f32)>,
+    pub pathing: Option<crate::pathing::PathingMap>,
+    pub missiles: Vec<crate::sim::Missile>,
 }
 
 /// Ground heights for GetLocationZ and unit placement.
@@ -188,6 +190,8 @@ impl World {
             destructable_order: Vec::new(),
             item_order: Vec::new(),
             dying_effects: Vec::new(),
+            pathing: None,
+            missiles: Vec::new(),
         }
     }
 
@@ -430,6 +434,7 @@ impl World {
         self.time_of_day = (self.time_of_day + dt * hours_per_second) % day_hours;
 
         self.update_food();
+        self.update_units(vm, dt);
 
         // Timers.
         let mut expired = Vec::new();

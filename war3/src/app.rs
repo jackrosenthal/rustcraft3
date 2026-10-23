@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
@@ -121,7 +121,31 @@ impl ApplicationHandler for App {
                     }
                 }
             }
-            WindowEvent::CursorMoved { position, .. } => r.cursor = position,
+            WindowEvent::CursorMoved { position, .. } => {
+                r.cursor = position;
+                if let Some(scene) = r.scene.as_mut() {
+                    if let Some(d) = scene.drag.as_mut() {
+                        d.1 = (position.x as f32, position.y as f32);
+                    }
+                }
+            }
+            WindowEvent::MouseInput { state, button, .. } => {
+                let size = (r.gpu.config.width, r.gpu.config.height);
+                let p = (r.cursor.x as f32, r.cursor.y as f32);
+                let shift = r.keys.contains(&KeyCode::ShiftLeft) || r.keys.contains(&KeyCode::ShiftRight);
+                if let Some(scene) = r.scene.as_mut() {
+                    match (button, state) {
+                        (MouseButton::Left, ElementState::Pressed) => scene.drag = Some((p, p)),
+                        (MouseButton::Left, ElementState::Released) => {
+                            if let Some((a, b)) = scene.drag.take() {
+                                scene.select(a, b, size, shift);
+                            }
+                        }
+                        (MouseButton::Right, ElementState::Pressed) => scene.command(p.0, p.1, size),
+                        _ => {}
+                    }
+                }
+            }
             WindowEvent::MouseWheel { delta, .. } => {
                 if let Some(scene) = r.scene.as_mut() {
                     let lines = match delta {

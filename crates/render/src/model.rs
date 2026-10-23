@@ -167,6 +167,8 @@ pub struct ModelInstance {
     pub skeleton: Skeleton,
     /// Set once a non-looping sequence reaches its end.
     pub finished: bool,
+    /// Set whenever a looping sequence wraps around.
+    pub looped: bool,
 }
 
 impl ModelInstance {
@@ -184,6 +186,7 @@ impl ModelInstance {
             replaceable: HashMap::new(),
             skeleton,
             finished: false,
+            looped: false,
         }
     }
 
@@ -209,6 +212,7 @@ impl ModelInstance {
                     self.finished = true;
                 } else if len > 0.0 {
                     self.frame %= len;
+                    self.looped = true;
                 } else {
                     self.frame = 0.0;
                 }

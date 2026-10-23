@@ -2,6 +2,7 @@
 
 pub mod anim;
 pub mod camera;
+pub mod decal;
 pub mod dnc;
 pub mod gpu;
 pub mod model;

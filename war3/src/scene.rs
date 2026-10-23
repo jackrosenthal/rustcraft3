@@ -57,10 +57,61 @@ impl Assets {
     }
 }
 
+pub struct UnitView {
+    pub inst: ModelInstance,
+    serial: u32,
+    requested: String,
+    anim: String,
+    rng: u32,
+}
+
+impl UnitView {
+    fn pick(&mut self, name: &str) {
+        let seqs = w3_render::anim::sequences_named(&self.inst.model.mdx, name);
+        if seqs.is_empty() {
+            if name != "stand" {
+                self.pick("stand");
+            }
+            return;
+        }
+        self.rng = self.rng.wrapping_mul(1_103_515_245).wrapping_add(12345);
+        let s = seqs[(self.rng >> 16) as usize % seqs.len()];
+        self.inst.set_sequence(Some(s));
+    }
+
+    /// Follows the game's animation requests; returns to stand variants when a one-shot
+    /// animation ends, and lets corpses decay.
+    fn update(&mut self, anim: &str, serial: u32) {
+        if serial != self.serial || anim != self.requested {
+            self.serial = serial;
+            self.requested = anim.to_string();
+            self.anim = anim.to_string();
+            self.pick(anim);
+            return;
+        }
+        if self.inst.finished {
+            let next = match self.anim.as_str() {
+                "death" => Some("decay flesh"),
+                "decay flesh" => Some("decay bone"),
+                "decay bone" => None,
+                _ => Some("stand"),
+            };
+            if let Some(n) = next {
+                self.anim = n.to_string();
+                self.pick(n);
+            }
+        } else if self.inst.looped && self.anim == "stand" {
+            self.inst.looped = false;
+            self.pick("stand");
+        }
+    }
+}
+
 pub struct Scene {
     pub game: Option<w3_game::Game>,
     /// Render instances for game units, by handle.
-    pub units: HashMap<u32, ModelInstance>,
+    pub units: HashMap<u32, UnitView>,
+    pub selection: Vec<u32>,
     pub info: MapInfo,
     pub terrain: TerrainRenderer,
     pub models: ModelRenderer,
@@ -74,6 +125,8 @@ pub struct Scene {
     dnc_paths: (String, String),
     pub hud: Option<crate::hud::Hud>,
     ui: w3_render::ui::UiRenderer,
+    decals: w3_render::decal::DecalRenderer,
+    pub drag: Option<((f32, f32), (f32, f32))>,
 }
 
 fn num(t: &Table, row: &str, col: &str) -> f64 {
@@ -215,7 +268,8 @@ impl Scene {
             crate::hud::Hud::new(&mut assets.frames, aspect, race)
         });
         let ui = w3_render::ui::UiRenderer::new(device, color_format);
-        let mut scene = Scene { game, units: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui };
+        let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
+        let mut scene = Scene { game, units: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None };
         scene.apply_requests();
         Ok(scene)
     }
@@ -245,22 +299,193 @@ impl Scene {
         chain.read(&p).ok().and_then(|b| w3_formats::mdx::Model::parse(&b).ok())
     }
 
+    fn selection_decals(&self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) -> Vec<w3_render::decal::Decal> {
+        let Some(g) = &self.game else { return vec![] };
+        let w = &g.world;
+        let misc = &w.misc;
+        let num = |k: &str, d: f32| misc.get_str("SelectionCircle", k).and_then(|v| v.trim().parse().ok()).unwrap_or(d);
+        let argb = |k: &str| {
+            let v: Vec<f32> = misc.get_list("SelectionCircle", k).iter().filter_map(|x| x.trim().parse().ok()).collect();
+            if v.len() == 4 { [v[1] / 255.0, v[2] / 255.0, v[3] / 255.0, v[0] / 255.0] } else { [0.0, 1.0, 0.0, 1.0] }
+        };
+        let mut out = Vec::new();
+        for &h in &self.selection {
+            let Some(u) = w.unit(h) else { continue };
+            let Some(o) = w.objects.units.get(u.type_id) else { continue };
+            // UI\MiscData.txt [SelectionCircle]: size = SLK scale x ScaleFactor; the texture
+            // is chosen by the first SizeNN at least that large.
+            let size = o.real("scale") * num("ScaleFactor", 72.0);
+            let sizes = num("NumSizes", 3.0) as usize;
+            let mut idx = sizes.saturating_sub(1);
+            for i in 0..sizes.saturating_sub(1) {
+                if size <= num(&format!("Size{i:02}"), f32::MAX) {
+                    idx = i;
+                    break;
+                }
+            }
+            let Some(tex) = misc.get_str("SelectionCircle", &format!("Texture{idx:02}")) else { continue };
+            let texture = assets.textures.get_or_white(device, queue, &format!("{tex}.blp"));
+            let rel = if u.owner == w.local_player {
+                "ColorFriend"
+            } else if w3_game::natives::players::is_ally(w, w.local_player, u.owner) {
+                "ColorFriend"
+            } else if u.owner >= w3_game::types::PLAYER_NEUTRAL_AGGRESSIVE {
+                "ColorNeutral"
+            } else {
+                "ColorEnemy"
+            };
+            out.push(w3_render::decal::Decal {
+                texture,
+                center: [u.x, u.y, self.terrain.height_at(u.x, u.y)],
+                size: [size, size],
+                color: argb(rel),
+                additive: false,
+            });
+        }
+        out
+    }
+
+    /// World point under a screen position, intersecting the terrain.
+    pub fn ground_at(&self, sx: f32, sy: f32, size: (u32, u32)) -> Option<(f32, f32)> {
+        let aspect = size.0 as f32 / size.1 as f32;
+        let (nx, ny) = (sx / size.0 as f32 * 2.0 - 1.0, 1.0 - sy / size.1 as f32 * 2.0);
+        let (o, d) = self.camera.ray(aspect, nx, ny);
+        let mut t = 0.0;
+        let mut prev = o;
+        for _ in 0..2000 {
+            t += 8.0;
+            let p = o + d * t;
+            if p.z <= self.terrain.height_at(p.x, p.y) {
+                // Refine between the last two samples.
+                let mut a = prev;
+                let mut b = p;
+                for _ in 0..12 {
+                    let m = (a + b) * 0.5;
+                    if m.z <= self.terrain.height_at(m.x, m.y) { b = m } else { a = m }
+                }
+                return Some((b.x, b.y));
+            }
+            prev = p;
+        }
+        None
+    }
+
+    fn project(&self, p: Vec3, size: (u32, u32)) -> Option<(f32, f32)> {
+        let aspect = size.0 as f32 / size.1 as f32;
+        let c = self.camera.view_proj(aspect) * p.extend(1.0);
+        if c.w <= 0.0 {
+            return None;
+        }
+        Some(((c.x / c.w + 1.0) / 2.0 * size.0 as f32, (1.0 - c.y / c.w) / 2.0 * size.1 as f32))
+    }
+
+    /// The unit under a screen position, if any.
+    pub fn pick_unit(&self, sx: f32, sy: f32, size: (u32, u32)) -> Option<u32> {
+        let g = self.game.as_ref()?;
+        let w = &g.world;
+        let mut best: Option<(f32, u32)> = None;
+        for &h in &w.unit_order {
+            let Some(u) = w.unit(h) else { continue };
+            if u.hidden || (u.dead && !u.is_building) {
+                continue;
+            }
+            let o = w.objects.units.get(u.type_id);
+            let radius = o.map_or(32.0, |o| o.real("scale") * w.misc_f32("ScaleFactor", 72.0) * 0.5).max(16.0);
+            let z = self.terrain.height_at(u.x, u.y) + u.fly_height;
+            let Some(c) = self.project(Vec3::new(u.x, u.y, z + radius * 0.5), size) else { continue };
+            let Some(e) = self.project(Vec3::new(u.x + radius, u.y, z + radius * 0.5), size) else { continue };
+            let r = (e.0 - c.0).abs().max(8.0);
+            let d = (c.0 - sx).hypot(c.1 - sy);
+            if d <= r && best.is_none_or(|b| d < b.0) {
+                best = Some((d, h));
+            }
+        }
+        best.map(|b| b.1)
+    }
+
+    /// Selects with a click or a drag rectangle, the way the local player would.
+    pub fn select(&mut self, a: (f32, f32), b: (f32, f32), size: (u32, u32), add: bool) {
+        let Some(g) = self.game.as_ref() else { return };
+        let local = g.world.local_player;
+        let mut picked: Vec<u32> = Vec::new();
+        if (a.0 - b.0).abs() < 4.0 && (a.1 - b.1).abs() < 4.0 {
+            if let Some(h) = self.pick_unit(b.0, b.1, size) {
+                picked.push(h);
+            }
+        } else {
+            let (x0, x1) = (a.0.min(b.0), a.0.max(b.0));
+            let (y0, y1) = (a.1.min(b.1), a.1.max(b.1));
+            let w = &g.world;
+            for &h in &w.unit_order {
+                let Some(u) = w.unit(h) else { continue };
+                if u.owner != local || u.dead || u.hidden {
+                    continue;
+                }
+                let z = self.terrain.height_at(u.x, u.y) + u.fly_height;
+                if let Some((px, py)) = self.project(Vec3::new(u.x, u.y, z), size) {
+                    if px >= x0 && px <= x1 && py >= y0 && py <= y1 {
+                        picked.push(h);
+                    }
+                }
+            }
+            // Box selection prefers units over structures.
+            if picked.iter().any(|&h| w.unit(h).is_some_and(|u| !u.is_building)) {
+                picked.retain(|&h| w.unit(h).is_some_and(|u| !u.is_building));
+            }
+            picked.truncate(12);
+        }
+        if add {
+            for h in picked {
+                if !self.selection.contains(&h) && self.selection.len() < 12 {
+                    self.selection.push(h);
+                }
+            }
+        } else if !picked.is_empty() || (a.0 - b.0).abs() >= 4.0 {
+            self.selection = picked;
+        } else {
+            self.selection.clear();
+        }
+    }
+
+    /// Right-click: a smart order to every selected unit the local player owns.
+    pub fn command(&mut self, sx: f32, sy: f32, size: (u32, u32)) {
+        let target = self.pick_unit(sx, sy, size);
+        let point = self.ground_at(sx, sy, size);
+        let Some(g) = self.game.as_mut() else { return };
+        let local = g.world.local_player;
+        let smart = w3_game::natives::basic::order_id("smart");
+        for &h in &self.selection {
+            if g.world.unit(h).is_none_or(|u| u.owner != local) {
+                continue;
+            }
+            match (target, point) {
+                (Some(t), _) if t != h => g.world.order_unit(h, smart, 0.0, 0.0, t),
+                (_, Some((x, y))) => g.world.order_unit(h, smart, x, y, 0),
+                _ => {}
+            }
+        }
+    }
+
     /// Creates, updates, and removes render instances to match the game's units.
     pub fn sync_units(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) {
         let Some(g) = self.game.as_ref() else { return };
         let w = &g.world;
         self.units.retain(|h, _| w.unit(*h).is_some());
+        self.selection.retain(|h| w.unit(*h).is_some_and(|u| !u.dead));
         for &h in &w.unit_order {
             let Some(u) = w.unit(h) else { continue };
             if !self.units.contains_key(&h) {
                 let Some(o) = w.objects.units.get(u.type_id) else { continue };
                 let file = o.str("file");
                 let Some(model) = assets.model(device, queue, &file) else { continue };
-                let mut inst = ModelInstance::new(model);
-                inst.play("Stand");
-                self.units.insert(h, inst);
+                let inst = ModelInstance::new(model);
+                let mut view = UnitView { inst, serial: u32::MAX, requested: String::new(), anim: String::new(), rng: h };
+                view.update(&u.anim, u.anim_serial);
+                self.units.insert(h, view);
             }
-            let inst = self.units.get_mut(&h).unwrap();
+            let view = self.units.get_mut(&h).unwrap();
+            view.update(&u.anim, u.anim_serial);
+            let inst = &mut view.inst;
             let z = self.terrain.height_at(u.x, u.y) + u.fly_height;
             inst.transform = Mat4::from_scale_rotation_translation(
                 Vec3::splat(u.scale),
@@ -282,8 +507,8 @@ impl Scene {
         for inst in &mut self.instances {
             inst.advance(dt * 1000.0);
         }
-        for inst in self.units.values_mut() {
-            inst.advance(dt * 1000.0);
+        for v in self.units.values_mut() {
+            v.inst.advance(dt * 1000.0);
         }
         self.camera.target.z = self.terrain.height_at(self.camera.target.x, self.camera.target.y);
     }
@@ -331,8 +556,8 @@ impl Scene {
             }
             self.models.submit(inst, eye, rot);
         }
-        for inst in self.units.values_mut() {
-            self.models.submit(inst, eye, rot);
+        for v in self.units.values_mut() {
+            self.models.submit(&mut v.inst, eye, rot);
         }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("scene"),
@@ -361,6 +586,9 @@ impl Scene {
             pass.set_scissor_rect(0, top, size.0, bottom - top);
         }
         self.terrain.render_ground(&mut pass);
+        let decals = self.selection_decals(device, queue, assets);
+        let terrain = &self.terrain;
+        self.decals.render(device, queue, &mut pass, &decals, &|x, y| terrain.height_at(x, y));
         self.models.render(device, queue, &mut pass, &globals);
         self.terrain.render_water(&mut pass, self.time);
         drop(pass);

@@ -5,7 +5,9 @@ pub mod handles;
 pub mod natives;
 pub mod objects;
 pub mod orders;
+pub mod pathing;
 pub mod rng;
+pub mod sim;
 pub mod types;
 pub mod world;
 
@@ -76,6 +78,9 @@ impl Game {
                 offset: t.offset,
                 heights: t.corners.iter().map(|c| c.height()).collect(),
             });
+        }
+        if let (Ok(wpm), Some(t)) = (chain.read("war3map.wpm"), world.terrain_heights.as_ref()) {
+            world.pathing = pathing::PathingMap::parse(&wpm, t.offset);
         }
         world.camera_bounds = info.camera_bounds;
         for (i, p) in info.players.iter().enumerate() {

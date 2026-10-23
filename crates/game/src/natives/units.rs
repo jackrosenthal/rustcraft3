@@ -63,6 +63,17 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         explode_on_death: false,
         is_building: o.bool("isbldg"),
         is_hero,
+        collision: o.real("collision"),
+        action: Action::Idle,
+        path: Vec::new(),
+        repath_timer: 0.0,
+        cooldown: 0.0,
+        swing: None,
+        acquire_timer: 0.0,
+        anim: "stand".into(),
+        anim_serial: 0,
+        death_time: 0.0,
+        pathing_cells: Vec::new(),
     };
     let h = w.handles.insert(Obj::Unit(Box::new(unit)));
     if let Some(u) = w.unit_mut(h) {
@@ -80,7 +91,13 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     }
     u.dead = true;
     u.life = 0.0;
+    u.action = Action::Idle;
+    u.swing = None;
+    u.path.clear();
+    u.anim = "death".into();
+    u.anim_serial = u.anim_serial.wrapping_add(1);
     let owner = u.owner;
+    w.unit_mut(h).unwrap().death_time = w.time;
     let ctx = EventCtx {
         unit: h,
         widget: h,
@@ -196,9 +213,8 @@ fn for_group(w: &mut World, vm: &mut Vm, a: &[Value]) -> NativeResult {
 }
 
 fn issue_order(w: &mut World, vm: &mut Vm, unit: u32, order: i32, x: f32, y: f32, target: u32) -> NativeResult {
-    let Some(u) = w.unit_mut(unit) else { return boolean(false) };
-    u.order = Order { id: order, target_x: x, target_y: y, target };
-    let owner = u.owner;
+    let Some(owner) = w.unit(unit).map(|u| u.owner) else { return boolean(false) };
+    w.order_unit(unit, order, x, y, target);
     let (event, ctx) = if target != 0 {
         (EVENT_PLAYER_UNIT_ISSUED_TARGET_ORDER, EventCtx { target_unit: target, ..Default::default() })
     } else if x != 0.0 || y != 0.0 {
@@ -590,5 +606,7 @@ fn dummy_unit() -> Unit {
         move_speed: 0.0, turn_speed: 0.0, prop_window: 0.0, paused: false, hidden: false, invulnerable: false,
         dead: false, level: 0, hero_xp: 0, resource: 0, abilities: vec![], order: Order::default(), animation: None,
         time_scale: 1.0, inventory: [0; 6], rally: None, explode_on_death: false, is_building: false, is_hero: false,
+        collision: 0.0, action: Action::Idle, path: vec![], repath_timer: 0.0, cooldown: 0.0, swing: None,
+        acquire_timer: 0.0, anim: String::new(), anim_serial: 0, death_time: 0.0, pathing_cells: vec![],
     }
 }

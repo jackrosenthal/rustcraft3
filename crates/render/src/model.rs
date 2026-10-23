@@ -289,6 +289,8 @@ const FLAG_ALPHA_TEST: u32 = 2;
 /// fade out rather than brighten or darken the scene.
 const FLAG_FOG_BLACK: u32 = 4;
 const FLAG_FOG_WHITE: u32 = 8;
+/// Additive layers add their color, faded by the layer's alpha (not the texture's).
+const FLAG_ADDITIVE: u32 = 16;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -315,7 +317,7 @@ pub struct Globals {
     pub fow_masked_object: [f32; 4],
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 struct PipelineKey {
     filter: u32,
     two_sided: bool,
@@ -611,6 +613,9 @@ impl ModelRenderer {
                 if layer.filter_mode == filter::ADDITIVE || layer.filter_mode == filter::ADD_ALPHA {
                     flags |= FLAG_FOG_BLACK;
                 }
+                if layer.filter_mode == filter::ADDITIVE {
+                    flags |= FLAG_ADDITIVE;
+                }
                 if layer.filter_mode == filter::MODULATE || layer.filter_mode == filter::MODULATE_2X {
                     flags |= FLAG_FOG_WHITE;
                 }
@@ -661,9 +666,11 @@ impl ModelRenderer {
                     color: comp(F::SrcAlpha, F::OneMinusSrcAlpha),
                     alpha: comp(F::One, F::OneMinusSrcAlpha),
                 }),
+                // Additive adds the color (the shader fades it by the layer's alpha), as
+                // measured from the original's hero glow; AddAlpha adds it by its alpha.
                 filter::ADDITIVE => Some(wgpu::BlendState {
-                    color: comp(F::Src, F::One),
-                    alpha: comp(F::Src, F::One),
+                    color: comp(F::One, F::One),
+                    alpha: comp(F::Zero, F::One),
                 }),
                 filter::ADD_ALPHA => Some(wgpu::BlendState {
                     color: comp(F::SrcAlpha, F::One),

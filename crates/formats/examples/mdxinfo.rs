@@ -15,8 +15,14 @@ fn main() {
     for a in &m.attachments { println!("attachment {:?} path {:?} id {} tracks {:?}", a.node.name, a.path, a.attachment_id, a.tracks.f32s.iter().map(|(t, tr)| (String::from_utf8_lossy(t).to_string(), tr.keys.iter().take(8).map(|k| (k.frame, k.value)).collect::<Vec<_>>())).collect::<Vec<_>>()); }
     for e in &m.event_objects { println!("event {:?} {:?}", e.node.name, e.frames); }
     for c in &m.cameras { println!("camera {:?}", c); }
-    for b in &m.bones { println!("bone {:?} parent {:?} pivot {:?}", b.node.name, b.node.parent, m.pivots.get(b.node.object_id as usize)); for (t, tr) in &b.node.tracks.vec3s { println!("  {} {:?}", String::from_utf8_lossy(t), tr.keys.iter().take(6).map(|k| (k.frame, k.value)).collect::<Vec<_>>()); } }
-    for g in &m.geosets { println!("geoset extent {:?} verts {} material {}", g.extent, g.vertices.len(), g.material_id); if let Some(uv) = g.uvs.first() { let (mut a, mut b) = ([9f32; 2], [-9f32; 2]); for p in uv { a[0] = a[0].min(p[0]); a[1] = a[1].min(p[1]); b[0] = b[0].max(p[0]); b[1] = b[1].max(p[1]); } println!("  uv {:?}..{:?} sets {}", a, b, g.uvs.len()); } }
+    for b in &m.bones { println!("bone {:?} parent {:?} pivot {:?} flags {:#x} id {}", b.node.name, b.node.parent, m.pivots.get(b.node.object_id as usize), b.node.flags, b.node.object_id); for (t, tr) in &b.node.tracks.vec3s { println!("  {} {:?}", String::from_utf8_lossy(t), tr.keys.iter().take(6).map(|k| (k.frame, k.value)).collect::<Vec<_>>()); } }
+    for g in &m.geosets { println!("geoset extent {:?} verts {} material {} groups {:?} matrices {:?}", g.extent, g.vertices.len(), g.material_id, g.group_sizes, g.matrix_indices); if let Some(uv) = g.uvs.first() { let (mut a, mut b) = ([9f32; 2], [-9f32; 2]); for p in uv { a[0] = a[0].min(p[0]); a[1] = a[1].min(p[1]); b[0] = b[0].max(p[0]); b[1] = b[1].max(p[1]); } println!("  uv {:?}..{:?} sets {}", a, b, g.uvs.len()); } }
+    // MDXVERTS=<geoset>: that geoset's vertices with their group.
+    if let Some(gi) = std::env::var("MDXVERTS").ok().and_then(|v| v.parse::<usize>().ok()) {
+        if let Some(g) = m.geosets.get(gi) {
+            for (v, grp) in g.vertices.iter().zip(&g.vertex_groups) { println!("v {:?} group {}", v, grp); }
+        }
+    }
     for l in &m.lights {
         println!("light {:?} kind {} att {:?} color {:?} int {} amb {:?} ambint {} flags {:#x}", l.node.name, l.kind, l.attenuation, l.color, l.intensity, l.ambient_color, l.ambient_intensity, l.node.flags);
         for (t, tr) in &l.tracks.f32s { println!("  {} {:?} {:?}", String::from_utf8_lossy(t), tr.interp, tr.keys.iter().map(|k| (k.frame, k.value)).collect::<Vec<_>>()); }

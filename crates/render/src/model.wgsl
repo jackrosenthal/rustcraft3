@@ -98,5 +98,8 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         }
         c = vec4<f32>(mix(c.rgb, fc, f), c.a);
     }
+    if ((draw.flags & 16u) != 0u) {
+        c = vec4<f32>(c.rgb * draw.color.a, c.a);
+    }
     return c;
 }

@@ -367,10 +367,34 @@ fn main() -> anyhow::Result<()> {
                         let Some(u) = wo.unit(hd) else { continue };
                         let z = wo.ground_z(u.x, u.y) + u.fly_height;
                         let pts: Vec<_> = [0.0, 50.0, 100.0, 150.0, 200.0, 250.0, 300.0].iter().filter_map(|dz| scene.project(glam::Vec3::new(u.x, u.y, z + dz), (w, h))).map(|(x, y)| (x.round(), y.round())).collect();
-                        eprintln!("proj {} {hd} {:?}", w3_game::objects::id_str(u.type_id), pts);
+                        let inst = scene.units.get(&hd).map(|v| v.inst.transform.w_axis);
+                        eprintln!("proj {} {hd} ground {} terrain {} at ({}, {}) inst {:?} {:?}", w3_game::objects::id_str(u.type_id), wo.ground_z(u.x, u.y), scene.terrain.height_at(u.x, u.y), u.x, u.y, inst, pts);
                     }
                 }
                 i += 1;
+            }
+            // flyh <handle> <height>: sets a unit's flying height.
+            "flyh" => {
+                if let Some(g) = scene.game.as_mut() {
+                    if let Some(u) = g.world.unit_mut(num(&a[i + 1]) as u32) {
+                        u.fly_height = num(&a[i + 2]);
+                    }
+                }
+                i += 3;
+            }
+            // heights <x> <y>: terrain heights around a point, 64 apart.
+            "heights" => {
+                let (x, y) = (num(&a[i + 1]), num(&a[i + 2]));
+                for dy in (-3..=3).rev() {
+                    let row: Vec<String> = (-3..=3).map(|dx| format!("{:.0}", scene.terrain.height_at(x + dx as f32 * 64.0, y + dy as f32 * 64.0))).collect();
+                    eprintln!("heights {}", row.join(" "));
+                }
+                i += 3;
+            }
+            // rclick <x> <y>: a right click (the selection's smart order).
+            "rclick" => {
+                scene.command(num(&a[i + 1]), num(&a[i + 2]), (w, h));
+                i += 3;
             }
             "alt" => {
                 scene.alt_held = true;

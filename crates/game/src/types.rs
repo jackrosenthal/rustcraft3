@@ -348,6 +348,9 @@ pub struct UnitExtra {
     /// A bone turned toward a unit, offset from it (SetUnitLookAt).
     #[serde(default)]
     pub look_at: Option<(String, u32, [f32; 3])>,
+    /// An illusion's damage dealt and taken factors, and its buff.
+    #[serde(default)]
+    pub illusion: Option<(f32, f32, Id)>,
 }
 
 impl Default for UnitExtra {
@@ -402,6 +405,7 @@ impl Default for UnitExtra {
             spun_at: -100.0,
             anim_props: Vec::new(),
             look_at: None,
+            illusion: None,
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,

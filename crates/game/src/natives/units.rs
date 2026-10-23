@@ -173,7 +173,8 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
 /// Kills a unit and fires its death events.
 pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     w.set_asleep(h, false);
-    if w.unit(h).is_some_and(|u| !u.dead) && killer != 0 {
+    let illusion = w.unit(h).and_then(|u| u.extra.illusion);
+    if w.unit(h).is_some_and(|u| !u.dead) && killer != 0 && illusion.is_none() {
         w.grant_kill_xp(h, killer);
     }
     // The Phoenix falls into its egg instead of dying.
@@ -232,6 +233,14 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
         EventKind::PlayerUnit { player, event, .. } => *player == owner && *event == EVENT_PLAYER_UNIT_DEATH,
         _ => false,
     });
+    // An illusion vanishes, its buff's Specialart left where it fell.
+    if let Some((_, _, buff)) = illusion {
+        if let Some((x, y)) = w.unit(h).map(|u| (u.x, u.y)) {
+            let art = w.objects.buffs.get(buff).map(|o| o.list("Specialart").first().cloned().unwrap_or_default()).unwrap_or_default();
+            w.spawn_effect(&art, x, y);
+        }
+        remove_unit(w, h);
+    }
 }
 
 pub fn remove_unit(w: &mut World, h: u32) {
@@ -659,7 +668,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let want = match a.h(1) { 1 => "human", 2 => "orc", 3 => "undead", 4 => "nightelf", 5 => "demon", 8 => "creeps", 9 => "critters", 12 => "naga", _ => "other" };
             boolean(race == want)
         },
-        IsUnitIllusion => |_, _, _| boolean(false),
+        IsUnitIllusion => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| u.extra.illusion.is_some())),
         IsUnitInTransport => |w, _, a| { let t = a.h(1); boolean(unit_arg(w, a, 0).is_some_and(|u| u.extra.transport == t && t != 0)) },
         IsUnitLoaded => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| u.extra.transport != 0)),
         UnitShareVision => |w, _, a| {

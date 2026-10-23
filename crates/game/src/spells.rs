@@ -484,6 +484,10 @@ impl World {
                 self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: self.d(a, "DataA", lvl), attack_factor: -self.d(a, "DataB", lvl), move_factor: -self.d(a, "DataC", lvl), ..Default::default() });
                 true
             }
+            "AOmi" => {
+                self.mirror_image(h, a, lvl);
+                true
+            }
             "AUls" => {
                 self.begin_swarm(h, a, lvl);
                 true

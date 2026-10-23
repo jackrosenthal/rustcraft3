@@ -357,7 +357,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             boolean(w.unit(a.h(0)).is_some_and(|u| w.fog_state(u.x, u.y, p) == FOG_MASKED) && !w.unit_visible_to(a.h(0), p))
         },
         IsUnitDetected => |_, _, _| boolean(true),
-        IsUnitInvisible => |_, _, _| boolean(false),
+        IsUnitInvisible => |w, _, a| { let (h, p) = (a.h(0), w.player_of(a.h(1)).unwrap_or(0)); boolean(w.is_invisible(h) && !w.detected_by(h, p)) },
         CreateTextTag => |w, _, _| handle(w.handles.insert(Obj::TextTag(Box::new(TextTag { visible: true, color: [255; 4], permanent: true, ..Default::default() })))),
         DestroyTextTag => |w, _, a| { if tag_mut(w, a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
         SetTextTagText => |w, _, a| { let (s, h) = (w.localized(&a.s(1)), a.r(2)); if let Some(t) = tag_mut(w, a.h(0)) { t.text = s; t.height = h; } none() },

@@ -572,6 +572,7 @@ impl World {
         let melee_hit = self.unit(source).and_then(|u| u.swing.as_ref().and_then(|s| weapon_numbered(self, u, s.weapon)).or_else(|| weapon(self, u.type_id))).is_some_and(|w| w.range <= self.misc.get_str("InfoPanel", "MeleeRangeMax").and_then(|v| v.trim().parse().ok()).unwrap_or(128.0));
         let dmg = if attack_type == "spells" { dmg } else { self.hardened_skin(target, melee_hit, dmg) };
         let dmg = self.elunes_grace(target, &attack_type.to_ascii_lowercase(), dmg);
+        let dmg = self.illusion_damage(source, target, dmg);
         let Some(t) = self.unit(target) else { return };
         let owner = t.owner;
         self.wake(target);

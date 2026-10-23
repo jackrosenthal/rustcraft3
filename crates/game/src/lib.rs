@@ -16,6 +16,7 @@ pub mod nightelfspells;
 pub mod guard;
 pub mod warp;
 pub mod deaths;
+pub mod illusions;
 pub mod orcspells;
 pub mod undeadspells;
 pub mod herospells;

@@ -192,6 +192,14 @@ impl World {
                     }
                     did = true;
                 }
+                // Wand of Illusion: an image of the target.
+                "AIil" => {
+                    let t = if _target != 0 { _target } else { unit };
+                    let (dealt, taken) = (data(self, "DataA"), data(self, "DataB"));
+                    if let Some((tx, ty)) = self.unit(t).map(|u| (u.x + 64.0, u.y)) {
+                        did = self.make_illusion(t, owner, (tx, ty), a, 1, dealt, taken).is_some();
+                    }
+                }
                 "AIre" => {
                     let (hp, mp) = (data(self, "DataA"), data(self, "DataB"));
                     if let Some(u) = self.unit_mut(unit) {

@@ -481,7 +481,7 @@ impl World {
         let mult: f32 = self.misc.get_list("Misc", "DamageBonusSpells").get(col).and_then(|v| v.trim().parse().ok()).unwrap_or(1.0);
         // Ethereal units take EtherealDamageBonus's SPELLS factor.
         let ethereal: f32 = if self.is_ethereal(target) { self.misc.get_list("Misc", "EtherealDamageBonus").get(5).and_then(|v| v.trim().parse().ok()).unwrap_or(1.0) } else { 1.0 };
-        let dmg = self.elunes_grace(target, "spells", amount * mult * ethereal);
+        let dmg = self.illusion_damage(source, target, self.elunes_grace(target, "spells", amount * mult * ethereal));
         let owner = t.owner;
         self.wake(target);
         let linked_dead = self.take_life(target, dmg);

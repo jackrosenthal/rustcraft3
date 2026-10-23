@@ -21,6 +21,8 @@ pub enum GlueAction {
     Campaign(String),
     /// A saved game file.
     LoadSave(std::path::PathBuf),
+    /// The same map again with the same setup.
+    Restart(std::path::PathBuf, Option<Vec<w3_game::LobbySlot>>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

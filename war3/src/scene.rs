@@ -229,6 +229,10 @@ pub struct Scene {
     pub saves_dir: std::path::PathBuf,
     /// A saved game the player chose to load.
     pub load_requested: Option<std::path::PathBuf>,
+    /// The game starts over (Restart, RestartGame).
+    pub restart_requested: bool,
+    /// The setup the game started with, for restarting it.
+    pub lobby: Option<Vec<w3_game::LobbySlot>>,
     weather: crate::weather::WeatherView,
     lightning: crate::lightning::LightningView,
     /// Ambient loops of enabled weather effects the camera is inside, by weather handle.
@@ -506,7 +510,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -537,6 +541,7 @@ impl Scene {
                     }
                 }
                 w3_game::world::Request::EndGame => self.ended = true,
+                w3_game::world::Request::Restart => self.restart_requested = true,
                 w3_game::world::Request::SaveGame(name) => {
                     if let Some(path) = self.game.as_ref().and_then(|g| g.world.save_path(&name)) {
                         self.write_save(&path);
@@ -1410,6 +1415,11 @@ impl Scene {
             "ExitButton" => crate::hud::Hud::menu_panel(m, "ConfirmQuitPanel"),
             "ConfirmQuitCancelButton" => crate::hud::Hud::menu_panel(m, "EndGamePanel"),
             "ConfirmQuitQuitButton" => self.exit = true,
+            // DisableRestartMission takes Restart away.
+            "RestartButton" if !self.game.as_ref().is_some_and(|g| g.world.restart_disabled) => {
+                h.menu = None;
+                self.restart_requested = true;
+            }
             "SaveGameButton" | "LoadGameButton" => {
                 crate::hud::Hud::menu_panel(m, "EscMenuSaveGamePanel");
                 h.save_panel = Some(crate::saveload::SavePanel::new(name == "LoadGameButton", self.saves_dir.clone()));
@@ -2252,6 +2262,9 @@ impl Scene {
                 hud.open_menu(&assets.frames, aspect);
             }
             hud.sync_save_panel(&assets.frames);
+            if let Some(m) = hud.menu.as_mut() {
+                m.set_enabled("RestartButton", !g.world.restart_disabled);
+            }
             hud.show_unit(&assets.frames, &g.world, self.selection.first().copied());
             hud.show_group(&g.world, &self.selection);
             hud.sync_cinematic(&assets.frames, &g.world, aspect);

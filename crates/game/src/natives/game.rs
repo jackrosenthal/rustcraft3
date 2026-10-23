@@ -104,7 +104,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetCampaignAvailable => |w, _, a| { w.persist.campaign(a.i(0).max(0) as usize).available = a.b(1); none() },
         SetOpCinematicAvailable => |w, _, a| { w.persist.campaign(a.i(0).max(0) as usize).opening_cinematic = a.b(1); none() },
         SetEdCinematicAvailable => |w, _, a| { w.persist.campaign(a.i(0).max(0) as usize).ending_cinematic = a.b(1); none() },
-        RestartGame => |_, _, _| none(),
+        RestartGame => |w, _, _| { w.requests.push(crate::world::Request::Restart); none() },
         ReloadGame => |_, _, _| none(),
         SetCampaignMenuRace => |w, _, a| { w.persist.menu_race = a.h(0) as i32; none() },
         SetCampaignMenuRaceEx => |w, _, a| { w.persist.menu_race = a.i(0); none() },

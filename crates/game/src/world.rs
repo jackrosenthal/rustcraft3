@@ -36,6 +36,8 @@ pub enum Request {
     ChangeLevel { map: String, score: bool },
     Fade { players: u32, out: bool, duration: f32 },
     EndGame,
+    /// RestartGame: the map starts over.
+    Restart,
     /// SaveGame and LoadGame: a saved game's name in the saved games folder.
     SaveGame(String),
     LoadGame(String),

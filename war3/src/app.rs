@@ -295,8 +295,10 @@ impl ApplicationHandler for App {
                         el.exit();
                         return;
                     }
-                    // A saved game chosen in the game menu: its loading screen, then the game.
-                    if let Some(file) = scene.load_requested.take() {
+                    // A saved game chosen in the game menu, or a restart: the map's loading
+                    // screen, then the game.
+                    let restart = std::mem::take(&mut scene.restart_requested).then(|| crate::glue::GlueAction::Restart(std::path::PathBuf::from(&scene.map_path), scene.lobby.clone()));
+                    if let Some(action) = scene.load_requested.take().map(crate::glue::GlueAction::LoadSave).or(restart) {
                         let mut audio = scene.audio.take();
                         if let Some(a) = audio.as_mut() {
                             a.stop_music();
@@ -308,7 +310,7 @@ impl ApplicationHandler for App {
                             r.glue = Some(crate::glue::Glue::new(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets));
                         }
                         if let Some(glue) = r.glue.as_mut() {
-                            glue.action = Some(crate::glue::GlueAction::LoadSave(file));
+                            glue.action = Some(action);
                         }
                         return;
                     }
@@ -387,6 +389,12 @@ impl ApplicationHandler for App {
                             glue.skirmish.summary = crate::skirmish::summarize_from(&self.data.chain, &map);
                             glue.show_loading(&mut r.assets);
                             r.pending = Some((std::path::PathBuf::from(map), None, None));
+                        }
+                        Some(crate::glue::GlueAction::Restart(path, slots)) => {
+                            let map = path.to_string_lossy().to_string();
+                            glue.skirmish.summary = if path.is_file() { crate::skirmish::summarize_path(&path) } else { crate::skirmish::summarize_from(&self.data.chain, &map) };
+                            glue.show_loading(&mut r.assets);
+                            r.pending = Some((path, slots, None));
                         }
                         Some(crate::glue::GlueAction::LoadSave(file)) => {
                             match std::fs::read(&file).map_err(anyhow::Error::from).and_then(|b| w3_game::save::SaveGame::parse(&b)) {

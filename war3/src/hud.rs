@@ -13,8 +13,32 @@ const CARD_RIGHT: f32 = 0.007375;
 const CARD_BOTTOM: f32 = 0.002;
 const BUTTON: f32 = 0.038;
 
+/// CMinimap (game.dll 0x6f39f8c0 as placed by CGameUI): from (0.009375, 0.006875) to
+/// (0.14875, 0.145) of the console.
+const MINIMAP: [f32; 4] = [0.009375, 0.006875, 0.14875, 0.145];
+
+/// What the minimap shows: the map's playable area, letterboxed to a square.
+#[derive(Clone, Copy, Debug)]
+pub struct MinimapArea {
+    pub x0: f32,
+    pub y0: f32,
+    pub x1: f32,
+    pub y1: f32,
+}
+
+impl MinimapArea {
+    fn square(&self) -> (f32, f32, f32) {
+        let (w, h) = (self.x1 - self.x0, self.y1 - self.y0);
+        let side = w.max(h);
+        (self.x0 - (side - w) / 2.0, self.y0 - (side - h) / 2.0, side)
+    }
+}
+
 pub struct Hud {
     pub tree: FrameTree,
+    pub minimap_area: Option<MinimapArea>,
+    pub minimap_dots: Vec<(f32, f32, [f32; 4], f32)>,
+    pub camera_box: Vec<(f32, f32)>,
     pub card: Vec<crate::card::Button>,
     pub page: crate::card::Page,
     gold: Option<usize>,
@@ -56,6 +80,9 @@ impl Hud {
         pin(&mut tree, upper, FramePoint::TopLeft);
         tree.layout();
         Hud {
+            minimap_area: None,
+            minimap_dots: Vec::new(),
+            camera_box: Vec::new(),
             card: Vec::new(),
             page: crate::card::Page::Main,
             gold: tree.get("ResourceBarGoldText"),
@@ -91,6 +118,30 @@ impl Hud {
         set(&mut self.tree, self.upkeep, db.string(key));
     }
 
+    fn minimap_rect(&self) -> w3_ui::Rect {
+        let root = self.tree.frames[0].rect.unwrap_or_default();
+        w3_ui::Rect { x0: root.x0 + MINIMAP[0], y0: root.y0 + MINIMAP[1], x1: root.x0 + MINIMAP[2], y1: root.y0 + MINIMAP[3] }
+    }
+
+    /// Interface position of a world point on the minimap.
+    pub fn world_to_minimap(&self, x: f32, y: f32) -> Option<(f32, f32)> {
+        let a = self.minimap_area?;
+        let (sx, sy, side) = a.square();
+        let r = self.minimap_rect();
+        Some((r.x0 + (x - sx) / side * r.w(), r.y0 + (y - sy) / side * r.h()))
+    }
+
+    /// World point under an interface position, if it is on the minimap.
+    pub fn minimap_to_world(&self, ux: f32, uy: f32) -> Option<(f32, f32)> {
+        let a = self.minimap_area?;
+        let r = self.minimap_rect();
+        if !r.contains(ux, uy) {
+            return None;
+        }
+        let (sx, sy, side) = a.square();
+        Some((sx + (ux - r.x0) / r.w() * side, sy + (uy - r.y0) / r.h() * side))
+    }
+
     /// Interface rectangle of a command card slot.
     pub fn slot_rect(&self, x: u32, y: u32) -> w3_ui::Rect {
         let root = self.tree.frames[0].rect.unwrap_or_default();
@@ -109,6 +160,35 @@ impl Hud {
 
     pub fn draws(&self, db: &FrameDb) -> Vec<Draw> {
         let mut out = self.tree.draw(db);
+        if self.minimap_area.is_some() {
+            let r = self.minimap_rect();
+            out.push(Draw::Image { texture: "war3mapMap.blp".into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+            for &(x, y, color, size) in &self.minimap_dots {
+                if let Some((ux, uy)) = self.world_to_minimap(x, y) {
+                    let s = size / 2.0;
+                    out.push(Draw::Image { texture: String::new(), rect: w3_ui::Rect { x0: ux - s, y0: uy - s, x1: ux + s, y1: uy + s }, uv: [0.0, 0.0, 1.0, 1.0], color, blend: w3_ui::Blend::Alpha, rotated: false });
+                }
+            }
+            // The camera's view on the ground, as an outline.
+            let pts: Vec<(f32, f32)> = self.camera_box.iter().filter_map(|&(x, y)| self.world_to_minimap(x, y)).collect();
+            if pts.len() == 4 {
+                for i in 0..4 {
+                    let (a, b) = (pts[i], pts[(i + 1) % 4]);
+                    let t = 0.0012;
+                    let (x0, x1, y0, y1) = (a.0.min(b.0), a.0.max(b.0), a.1.min(b.1), a.1.max(b.1));
+                    let rect = if (x1 - x0) > (y1 - y0) {
+                        w3_ui::Rect { x0, x1, y0: (y0 + y1) / 2.0 - t / 2.0, y1: (y0 + y1) / 2.0 + t / 2.0 }
+                    } else {
+                        w3_ui::Rect { x0: (x0 + x1) / 2.0 - t / 2.0, x1: (x0 + x1) / 2.0 + t / 2.0, y0, y1 }
+                    };
+                    let clip = r;
+                    let rect = w3_ui::Rect { x0: rect.x0.max(clip.x0), x1: rect.x1.min(clip.x1), y0: rect.y0.max(clip.y0), y1: rect.y1.min(clip.y1) };
+                    if rect.x1 > rect.x0 && rect.y1 > rect.y0 {
+                        out.push(Draw::Image { texture: String::new(), rect, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+                    }
+                }
+            }
+        }
         for b in &self.card {
             let icon = if b.enabled { b.icon.clone() } else { crate::card::disabled_icon(&b.icon) };
             out.push(Draw::Image {

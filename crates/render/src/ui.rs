@@ -233,7 +233,11 @@ impl UiRenderer {
         for d in draws {
             match d {
                 Draw::Image { texture, rect, uv, color, blend, rotated } => {
-                    let Some(t) = textures.get(device, queue, texture) else { continue };
+                    // An empty texture name draws a solid color.
+                    let t = if texture.is_empty() { textures.white.clone() } else {
+                        let Some(t) = textures.get(device, queue, texture) else { continue };
+                        t
+                    };
                     let key = Arc::as_ptr(&t) as usize;
                     let tiled = uv.iter().any(|v| *v > 1.0 || *v < 0.0);
                     if !self.binds.contains_key(&key) {

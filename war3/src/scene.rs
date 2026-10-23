@@ -57,6 +57,17 @@ impl Assets {
     }
 }
 
+fn team_colors(chain: &w3_mpq::Chain) -> [[f32; 3]; 16] {
+    let mut out = [[1.0; 3]; 16];
+    for (i, c) in out.iter_mut().enumerate() {
+        let path = format!("ReplaceableTextures\\TeamColor\\TeamColor{i:02}.blp");
+        if let Some(img) = chain.read(&path).ok().and_then(|b| w3_formats::blp::decode_texture(&path, &b).ok()).and_then(|v| v.into_iter().next()) {
+            *c = [img.rgba[0] as f32 / 255.0, img.rgba[1] as f32 / 255.0, img.rgba[2] as f32 / 255.0];
+        }
+    }
+    out
+}
+
 pub struct UnitView {
     pub inst: ModelInstance,
     serial: u32,
@@ -136,6 +147,8 @@ pub struct Scene {
     /// A structure waiting for a placement click.
     pub placing: Option<w3_game::objects::Id>,
     commands: crate::card::Commands,
+    /// Player colors, read from the solid ReplaceableTextures\TeamColor images.
+    team_rgb: [[f32; 3]; 16],
 }
 
 fn num(t: &Table, row: &str, col: &str) -> f64 {
@@ -276,9 +289,21 @@ impl Scene {
             let race = g.world.players[g.world.local_player as usize].race;
             crate::hud::Hud::new(&mut assets.frames, aspect, race)
         });
+        let mut hud = hud;
+        if let Some(h) = hud.as_mut() {
+            let c = info.camera_complements;
+            let (ox, oy) = (terrain.offset[0], terrain.offset[1]);
+            let (w, hgt) = ((terrain.width - 1) as f32 * 128.0, (terrain.height - 1) as f32 * 128.0);
+            h.minimap_area = Some(crate::hud::MinimapArea {
+                x0: ox + c[0] as f32 * 128.0,
+                x1: ox + w - c[1] as f32 * 128.0,
+                y0: oy + c[2] as f32 * 128.0,
+                y1: oy + hgt - c[3] as f32 * 128.0,
+            });
+        }
         let ui = w3_render::ui::UiRenderer::new(device, color_format);
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain) };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain) };
         scene.apply_requests();
         Ok(scene)
     }
@@ -486,6 +511,23 @@ impl Scene {
         }
     }
 
+    /// Where the corners of the world view meet the ground.
+    fn camera_footprint(&self) -> Vec<(f32, f32)> {
+        let aspect = 16.0 / 9.0;
+        let ndc_top = (0.58 / 0.6) * 2.0 - 1.0;
+        let ndc_bottom = (0.13 / 0.6) * 2.0 - 1.0;
+        [(-1.0, ndc_top), (1.0, ndc_top), (1.0, ndc_bottom), (-1.0, ndc_bottom)]
+            .iter()
+            .filter_map(|&(x, y)| {
+                let (o, d) = self.camera.ray(aspect, x, y);
+                (d.z < -1e-3).then(|| {
+                    let t = (self.camera.target.z - o.z) / d.z;
+                    (o.x + d.x * t, o.y + d.y * t)
+                })
+            })
+            .collect()
+    }
+
     /// Converts a screen position to interface coordinates.
     pub fn to_ui(&self, sx: f32, sy: f32, size: (u32, u32)) -> (f32, f32) {
         let width = self.hud.as_ref().map_or(w3_ui::UI_WIDTH, |h| h.tree.width);
@@ -552,6 +594,11 @@ impl Scene {
             }
             return true;
         }
+        if let Some((wx, wy)) = self.hud.as_ref().and_then(|h| h.minimap_to_world(ux, uy)) {
+            self.camera.target.x = wx;
+            self.camera.target.y = wy;
+            return true;
+        }
         if self.over_console(sx, sy, size) {
             return true;
         }
@@ -606,6 +653,18 @@ impl Scene {
     /// Right-click: a smart order to every selected unit the local player owns.
     pub fn command(&mut self, sx: f32, sy: f32, size: (u32, u32)) {
         if self.targeting.take().is_some() || self.placing.take().is_some() {
+            return;
+        }
+        let (ux, uy) = self.to_ui(sx, sy, size);
+        if let Some((wx, wy)) = self.hud.as_ref().and_then(|h| h.minimap_to_world(ux, uy)) {
+            if let Some(g) = self.game.as_mut() {
+                let smart = w3_game::natives::basic::order_id("smart");
+                for &h in &self.selection {
+                    if g.world.unit(h).is_some_and(|u| u.owner == g.world.local_player) {
+                        g.world.order_unit(h, smart, wx, wy, 0);
+                    }
+                }
+            }
             return;
         }
         if self.over_console(sx, sy, size) {
@@ -680,7 +739,20 @@ impl Scene {
         let w = &g.world;
         self.units.retain(|h, _| w.unit(*h).is_some());
         self.selection.retain(|h| w.unit(*h).is_some_and(|u| !u.dead));
+        let footprint = self.camera_footprint();
+        let team_rgb = self.team_rgb;
         if let Some(hud) = self.hud.as_mut() {
+            hud.minimap_dots = w
+                .unit_order
+                .iter()
+                .filter_map(|&h| w.unit(h))
+                .filter(|u| !u.dead && !u.hidden)
+                .map(|u| {
+                    let c = team_rgb[u.color.clamp(0, 15) as usize];
+                    (u.x, u.y, [c[0], c[1], c[2], 1.0], if u.is_building { 0.004 } else { 0.0025 })
+                })
+                .collect();
+            hud.camera_box = footprint;
             hud.card = match self.selection.first() {
                 Some(&h) if w.unit(h).is_some_and(|u| u.owner == w.local_player) => self.commands.card(&assets.frames, w, h, hud.page),
                 _ => Vec::new(),

@@ -22,6 +22,9 @@ pub enum DoodadArea {
 /// Messages for the presentation layer (renderer, audio, interface).
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Request {
+    /// A minimap ping at a point for a duration, in a color (red, green, blue) or the
+    /// default (PingMinimap, PingMinimapEx).
+    Ping { x: f32, y: f32, duration: f32, color: Option<[u8; 3]> },
     DisplayText { players: u32, x: f32, y: f32, text: String, duration: f32 },
     /// Doodads of a type play an animation: those within a radius of a point (or only
     /// the nearest), or inside a rect (SetDoodadAnimation, SetDoodadAnimationRect).

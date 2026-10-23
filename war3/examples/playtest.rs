@@ -457,6 +457,14 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 4;
             }
+            // ping <dx> <dy>: pings the minimap at a point (relative to the start).
+            "ping" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let (sx, sy) = g.world.start_of(0);
+                    g.world.requests.push(w3_game::world::Request::Ping { x: sx + num(&a[i + 1]), y: sy + num(&a[i + 2]), duration: 3.0, color: None });
+                }
+                i += 3;
+            }
             // log: opens the message log (F12).
             "log" => {
                 scene.open_log();

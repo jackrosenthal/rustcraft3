@@ -267,6 +267,8 @@ pub struct Scene {
     pub instances: Vec<ModelInstance>,
     /// Each doodad instance's type.
     doodad_ids: Vec<[u8; 4]>,
+    /// The cinematic camera model in use, by path.
+    cine_camera: Option<(String, Option<w3_formats::mdx::Model>)>,
     pub camera: Camera,
     pub time: f32,
     /// Direction from the light toward the world (UI\MiscData.txt [Light] Direction).
@@ -290,6 +292,8 @@ pub struct Scene {
     hud_sprites: ModelRenderer,
     /// The autocast indicator on each card slot whose autocast is on.
     quest_fx: Option<ModelInstance>,
+    /// Minimap pings: where, until when, their color, and their model.
+    pings: Vec<(f32, f32, f32, [f32; 4], Option<ModelInstance>)>,
     autocast_fx: HashMap<(u32, u32), ModelInstance>,
     time_indicator: Option<ModelInstance>,
     portrait: Option<(u32, UnitView)>,
@@ -539,7 +543,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, log_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, log_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -565,6 +569,22 @@ impl Scene {
                     }
                 }
                 w3_game::world::Request::DoodadAnimation { id, area, anim, random } => self.doodad_animation(id, &area, &anim, random),
+                // A ping lasts its duration (1.5 seconds when none), in its color or
+                // UI\MiscData.txt [PingColor] PingColor (FUN_6f3b0a30).
+                w3_game::world::Request::Ping { x, y, duration, color } => {
+                    let color = match color {
+                        Some(c) => [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, 1.0],
+                        None => {
+                            let v: Vec<f32> = self.game.as_ref().map(|g| g.world.misc.get_list("PingColor", "PingColor")).unwrap_or_default().iter().filter_map(|s| s.trim().parse().ok()).collect();
+                            if v.len() == 4 { [v[1] / 255.0, v[2] / 255.0, v[3] / 255.0, v[0] / 255.0] } else { [0.0, 1.0, 0.0, 1.0] }
+                        }
+                    };
+                    let until = self.time + if duration > 0.0 { duration } else { 1.5 };
+                    self.pings.push((x, y, until, color, None));
+                    if self.pings.len() > 16 {
+                        self.pings.remove(0);
+                    }
+                }
                 w3_game::world::Request::ClearText { players } if players & local != 0 => {
                     if let Some(h) = self.hud.as_mut() {
                         h.unit_messages.clear();
@@ -2364,6 +2384,11 @@ impl Scene {
         if let Some(fx) = self.quest_fx.as_mut() {
             fx.advance(dt * 1000.0);
         }
+        for p in self.pings.iter_mut() {
+            if let Some(fx) = p.4.as_mut() {
+                fx.advance(dt * 1000.0);
+            }
+        }
         if let Some((_, v)) = self.portrait.as_mut() {
             v.inst.advance(gdt * 1000.0);
         }
@@ -2388,6 +2413,36 @@ impl Scene {
             self.camera.roll = c.fields[FIELD_ROLL];
             self.camera.rotation = c.fields[FIELD_ROTATION];
             self.camera.target.z = self.camera_ground(c.x, c.y) + c.fields[FIELD_ZOFFSET];
+            // A cinematic camera model's first camera, over its first sequence (holding
+            // its last frame), places the eye and target in map coordinates.
+            if let Some((path, start)) = c.cinematic.clone() {
+                if self.cine_camera.as_ref().map(|c| &c.0) != Some(&path) {
+                    self.cine_camera = Some((path.clone(), Self::load_dnc(&g.world.chain, &path)));
+                }
+                let now = g.world.time;
+                if let Some(m) = self.cine_camera.as_ref().and_then(|c| c.1.as_ref()) {
+                    if let Some(cam) = m.cameras.first() {
+                        let (s0, s1) = m.sequences.first().map_or((0, 0), |s| (s.start, s.end));
+                        let frame = (s0 as f32 + (now - start).max(0.0) * 1000.0).min(s1 as f32) as u32;
+                        let time = w3_render::anim::Time { frame, seq_start: s0, seq_end: s1, global: (now * 1000.0) as u32 };
+                        let track = |tag: &[u8; 4]| cam.tracks.vec3s.iter().find(|(t, _)| t == tag).map(|(_, tr)| tr);
+                        let pos = Vec3::from_array(cam.position) + Vec3::from_array(w3_render::anim::sample(track(b"KCTR"), &time, &m.global_sequences, [0.0; 3]));
+                        let target = Vec3::from_array(cam.target) + Vec3::from_array(w3_render::anim::sample(track(b"KTTR"), &time, &m.global_sequences, [0.0; 3]));
+                        let roll = cam.tracks.f32s.iter().find(|(t, _)| t == b"KCRL").map_or(0.0, |(_, tr)| w3_render::anim::sample(Some(tr), &time, &m.global_sequences, 0.0));
+                        let d = target - pos;
+                        let len = d.length().max(1.0);
+                        self.camera.target = target;
+                        self.camera.distance = len;
+                        self.camera.angle_of_attack = (d.z / len).asin().to_degrees();
+                        self.camera.rotation = d.y.atan2(d.x).to_degrees();
+                        self.camera.roll = roll.to_degrees();
+                        self.camera.fov = cam.fov.to_degrees();
+                        self.camera.far = cam.far_clip.max(self.camera.far);
+                        self.camera.eye_offset = Vec3::ZERO;
+                        return;
+                    }
+                }
+            }
             // Camera noise shakes the target and the eye.
             let t = noise_offset(c.target_noise, self.time);
             self.camera.target += Vec3::from_array(t);
@@ -2761,6 +2816,26 @@ impl Scene {
         globals.light_dir = [0.0, 0.0, -1.0, 0.0];
         globals.ambient = [1.0, 1.0, 1.0, 1.0];
         self.hud_sprites.submit(inst, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
+        // Minimap pings: MinimapIndicator at each point on the minimap.
+        let now = self.time;
+        self.pings.retain(|p| p.2 > now);
+        let path = assets.frames.skin_value("MinimapIndicator").unwrap_or_default();
+        for k in 0..self.pings.len() {
+            let (x, y, _, color, _) = self.pings[k];
+            let Some((mx, my)) = self.hud.as_ref().and_then(|h| h.world_to_minimap(x, y)) else { continue };
+            if self.pings[k].4.is_none() {
+                if let Some(m) = assets.model(device, queue, path.trim_matches('"')) {
+                    let mut fx = ModelInstance::new(m);
+                    fx.play("stand");
+                    self.pings[k].4 = Some(fx);
+                }
+            }
+            if let Some(fx) = self.pings[k].4.as_mut() {
+                fx.transform = Mat4::from_translation(Vec3::new(mx, my, 0.0));
+                fx.tint = glam::Vec4::from_array(color);
+                self.hud_sprites.submit(fx, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
+            }
+        }
         // QuestChangedParticles over the Quests button while it shows.
         let quest_button = self.hud.as_ref().filter(|h| h.quest_indicator.is_some_and(|t| h.now < t)).and_then(|h| h.tree.get("UpperButtonBarQuestsButton").and_then(|i| h.tree.frames[i].rect));
         match quest_button {

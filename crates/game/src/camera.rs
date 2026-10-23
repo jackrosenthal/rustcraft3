@@ -52,6 +52,9 @@ pub struct GameCamera {
     pub source_noise: (f32, f32, bool),
     #[serde(default)]
     pub target_noise: (f32, f32, bool),
+    /// A cinematic camera model and when it started (SetCinematicCamera).
+    #[serde(default)]
+    pub cinematic: Option<(String, f32)>,
 }
 
 /// A camera noise's offset at time `t`: two sine waves per axis at the velocity's
@@ -76,7 +79,7 @@ impl GameCamera {
         defaults[FIELD_ROLL] = 0.0;
         defaults[FIELD_ROTATION] = first("Rotation", 90.0);
         defaults[FIELD_ZOFFSET] = first("Height", 0.0);
-        GameCamera { x: 0.0, y: 0.0, fields: defaults, defaults, pan: None, lerps: [None; FIELD_COUNT], follow: None, source_noise: (0.0, 0.0, false), target_noise: (0.0, 0.0, false) }
+        GameCamera { x: 0.0, y: 0.0, fields: defaults, defaults, pan: None, lerps: [None; FIELD_COUNT], follow: None, source_noise: (0.0, 0.0, false), target_noise: (0.0, 0.0, false), cinematic: None }
     }
 
     /// Moves a field to `value` over `duration` seconds (at once when zero).

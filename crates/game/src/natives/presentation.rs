@@ -184,6 +184,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         ResetToGameCamera => |w, _, a| {
             let d = a.r(0);
             w.camera.follow = None;
+            w.camera.cinematic = None;
             for f in 0..crate::camera::FIELD_COUNT {
                 let v = w.camera.defaults[f];
                 w.camera.set_field(f, v, d);
@@ -198,7 +199,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         SetCameraOrientController => |_, _, _| none(),
         SetCameraRotateMode => |_, _, _| none(),
-        SetCinematicCamera => |_, _, _| none(),
+        SetCinematicCamera => |w, _, a| {
+            let model = a.s(0);
+            w.camera.cinematic = (!model.is_empty()).then(|| (model, w.time));
+            none()
+        },
         SetCameraBoundsToRect => |_, _, _| none(),
         CameraSetSmoothingFactor => |_, _, _| none(),
         CameraSetSourceNoise => |w, _, a| { w.camera.source_noise = (a.r(0), a.r(1), false); none() },
@@ -475,8 +480,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         PreloadGenStart => |_, _, _| none(),
         PreloadGenEnd => |_, _, _| none(),
         Preloader => |_, _, _| none(),
-        PingMinimap => |_, _, _| none(),
-        PingMinimapEx => |_, _, _| none(),
+        PingMinimap => |w, _, a| { w.requests.push(Request::Ping { x: a.r(0), y: a.r(1), duration: a.r(2), color: None }); none() },
+        PingMinimapEx => |w, _, a| {
+            let c = [a.i(3), a.i(4), a.i(5)].map(|v| v.clamp(0, 255) as u8);
+            w.requests.push(Request::Ping { x: a.r(0), y: a.r(1), duration: a.r(2), color: Some(c) });
+            none()
+        },
         SetDoodadAnimation => |w, _, a| {
             let area = crate::world::DoodadArea::Circle { x: a.r(0), y: a.r(1), radius: a.r(2), nearest: a.b(4) };
             w.requests.push(Request::DoodadAnimation { id: crate::objects::id_from_int(a.i(3)), area, anim: a.s(5), random: a.b(6) });

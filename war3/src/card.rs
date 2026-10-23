@@ -193,9 +193,10 @@ impl Commands {
             let id = id_from_str(r.trim());
             out.extend(object_button(id, Action::Research(id), true));
         }
+        // A structure cannot upgrade while it produces.
         for r in o.list("Upgrade") {
             let id = id_from_str(r.trim());
-            out.extend(object_button(id, Action::Upgrade(id), true));
+            out.extend(object_button(id, Action::Upgrade(id), u.queue.is_empty()));
         }
         for &(a, _) in &u.abilities {
             let Some(ab) = w.objects.abilities.get(a) else { continue };

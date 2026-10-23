@@ -916,6 +916,11 @@ impl Scene {
             return true;
         }
         // Clicking an inventory item uses it.
+        // A group button selects its unit alone.
+        if let Some(unit) = self.hud.as_ref().and_then(|h| h.group_at(ux, uy)) {
+            self.selection = vec![unit];
+            return true;
+        }
         if let Some(slot) = self.hud.as_ref().and_then(|h| h.inventory_at(ux, uy)) {
             if let (Some(&u), Some(g)) = (self.selection.first(), self.game.as_mut()) {
                 if g.world.unit(u).is_some_and(|un| un.owner == g.world.local_player) {
@@ -1008,6 +1013,16 @@ impl Scene {
         }
         if c == '\u{1b}' && (self.targeting.is_some() || self.placing.is_some()) {
             self.card_action(crate::card::Action::Cancel);
+            return;
+        }
+        // Tab makes the next subgroup (units of the next type) active.
+        if c == '\t' {
+            if let Some(g) = self.game.as_ref() {
+                let first = self.selection.first().and_then(|&h| g.world.unit(h)).map(|u| u.type_id);
+                if let Some(k) = self.selection.iter().position(|&h| g.world.unit(h).map(|u| u.type_id) != first) {
+                    self.selection.rotate_left(k);
+                }
+            }
             return;
         }
         let c = c.to_ascii_uppercase();

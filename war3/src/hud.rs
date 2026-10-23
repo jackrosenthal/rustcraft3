@@ -376,6 +376,23 @@ impl Hud {
         self.level_bar = None;
     }
 
+    /// The center of group button `k`, in interface units.
+    fn group_button_center(&self, k: usize) -> (f32, f32) {
+        let root = self.tree.frames[0].rect.unwrap_or_default();
+        let (cx, y0) = (root.x0 + 0.309375 + 0.188125 / 2.0 - 0.001563, root.y0);
+        let (gw, gh) = (0.185937, 0.101562);
+        let (col, row) = ((k % 6) as f32, (k / 6) as f32);
+        (cx - gw / 2.0 + gw / 6.0 * (col + 0.5), y0 + gh - gh / 2.0 * (row + 0.5))
+    }
+
+    /// The unit whose group button is under an interface point.
+    pub fn group_at(&self, x: f32, y: f32) -> Option<u32> {
+        (0..self.group.len()).find_map(|k| {
+            let (bx, by) = self.group_button_center(k);
+            ((x - bx).abs() <= 0.03125 / 2.0 && (y - by).abs() <= 0.046 / 2.0).then(|| self.group[k].unit)
+        })
+    }
+
     /// The group panel's buttons (CInfoPanelGroupButton): a 2 x 6 grid 0.185937 x
     /// 0.101562 centered 0.001563 left of the panel's bottom; each 0.03125 x 0.046
     /// button has its icon centered 0.016875 below its top and the life and mana bars
@@ -385,17 +402,11 @@ impl Hud {
         if self.group.is_empty() {
             return;
         }
-        let root = self.tree.frames[0].rect.unwrap_or_default();
-        let (cx, y0) = (root.x0 + 0.309375 + 0.188125 / 2.0 - 0.001563, root.y0);
-        let (gw, gh) = (0.185937, 0.101562);
-        let (cw, ch) = (gw / 6.0, gh / 2.0);
         let image = |texture: String, rect: w3_ui::Rect, color: [f32; 4], blend: w3_ui::Blend| Draw::Image { texture, rect, uv: [0.0, 0.0, 1.0, 1.0], color, blend, rotated: false };
         let bar_tex = db.decorate("SimpleHpBarConsoleSmall");
         let mana_tex = db.decorate("SimpleManaBarConsoleSmall");
         for (k, s) in self.group.iter().enumerate() {
-            let (col, row) = ((k % 6) as f32, (k / 6) as f32);
-            let bx = cx - gw / 2.0 + cw * (col + 0.5);
-            let by = y0 + gh - ch * (row + 0.5);
+            let (bx, by) = self.group_button_center(k);
             let top = by + 0.046 / 2.0;
             let (size, bar_h) = if s.active { (0.028, 0.00375) } else { (0.021875, 0.0025) };
             if s.active {

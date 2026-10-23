@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/mpq", "crates/formats", "crates/jass"]
+members = ["crates/mpq", "crates/formats", "crates/jass", "crates/render", "war3"]
 
 [workspace.package]
 version = "0.1.0"
@@ -25,9 +25,9 @@ flate2 = "1"
 bzip2-rs = "0.1.2"
 implode = "0.1.1"
 clap = { version = "4.6", features = ["derive"] }
-wgpu = "27"
+wgpu = "30"
 winit = "0.30"
-pollster = "0.4"
+pollster = "1"
 image = { version = "0.25", default-features = false, features = ["jpeg", "tga", "png"] }
 
 [profile.dev.package."*"]

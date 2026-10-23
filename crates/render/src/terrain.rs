@@ -1,0 +1,397 @@
+//! Ground tiles and water for a map's `war3map.w3e` terrain.
+
+use std::sync::Arc;
+
+use bytemuck::{Pod, Zeroable};
+use glam::Vec3;
+use w3_formats::map::Terrain;
+use w3_formats::profile::Profile;
+use w3_formats::slk::Table;
+
+use crate::model::{make_sampler, texture_bind_group, texture_bind_group_layout};
+use crate::texture::{Texture, TextureCache};
+
+pub const TILE: f32 = 128.0;
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct Vertex {
+    pos: [f32; 3],
+    normal: [f32; 3],
+    uv: [f32; 2],
+    color: [f32; 4],
+}
+
+struct Batch {
+    texture: usize,
+    first: u32,
+    count: u32,
+    blended: bool,
+}
+
+pub struct TerrainRenderer {
+    opaque: wgpu::RenderPipeline,
+    blended: wgpu::RenderPipeline,
+    water_pipeline: wgpu::RenderPipeline,
+    globals_bg: wgpu::BindGroup,
+    vertices: wgpu::Buffer,
+    indices: wgpu::Buffer,
+    batches: Vec<Batch>,
+    texture_bgs: Vec<wgpu::BindGroup>,
+    water_textures: Vec<wgpu::BindGroup>,
+    water_range: (u32, u32),
+    water_rate: f32,
+    pub width: u32,
+    pub height: u32,
+    pub offset: [f32; 2],
+    heights: Vec<f32>,
+}
+
+/// Index of the tile cell in a ground texture for a full tile of the given variation.
+fn full_variation(extended: bool, variation: u8) -> u32 {
+    if extended {
+        match variation {
+            v if v < 16 => 16 + v as u32,
+            16 => 15,
+            _ => 0,
+        }
+    } else if variation == 0 {
+        0
+    } else {
+        15
+    }
+}
+
+impl TerrainRenderer {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        textures: &mut TextureCache,
+        color_format: wgpu::TextureFormat,
+        globals_buf: &wgpu::Buffer,
+        terrain: &Terrain,
+        terrain_slk: &Table,
+        water_slk: &Table,
+        misc: &Profile,
+    ) -> Self {
+        use wgpu::util::DeviceExt;
+        let (w, h) = (terrain.width, terrain.height);
+        let heights: Vec<f32> = terrain.corners.iter().map(|c| c.height()).collect();
+        let hat = |x: u32, y: u32| heights[(y.min(h - 1) * w + x.min(w - 1)) as usize];
+
+        // Ground textures in tileset order; blight is drawn above all of them.
+        let mut ground: Vec<(Arc<Texture>, bool)> = terrain
+            .ground_tilesets
+            .iter()
+            .map(|id| {
+                let key = String::from_utf8_lossy(id).into_owned();
+                let dir = terrain_slk.get(&key, "dir").map(|v| v.as_str()).unwrap_or_default();
+                let file = terrain_slk.get(&key, "file").map(|v| v.as_str()).unwrap_or_default();
+                let t = textures.get_or_white(device, queue, &format!("{dir}\\{file}.blp"));
+                let ext = t.width > t.height;
+                (t, ext)
+            })
+            .collect();
+        let blight_index = ground.len();
+        let blight_path = misc.get_str("Blight", "Texture").unwrap_or_default();
+        let blight = textures.get_or_white(device, queue, &format!("{blight_path}.blp"));
+        let blight_ext = blight.width > blight.height;
+        ground.push((blight, blight_ext));
+
+        let corner_tex = |x: u32, y: u32| -> usize {
+            let c = terrain.corner(x, y);
+            if c.blight { blight_index } else { c.ground_texture as usize }
+        };
+
+        let mut verts: Vec<Vertex> = Vec::new();
+        let mut per_tex_base: Vec<Vec<u32>> = vec![Vec::new(); ground.len()];
+        let mut per_tex_overlay: Vec<Vec<u32>> = vec![Vec::new(); ground.len()];
+        let normal_at = |x: u32, y: u32| -> [f32; 3] {
+            let l = hat(x.saturating_sub(1), y);
+            let r = hat(x + 1, y);
+            let d = hat(x, y.saturating_sub(1));
+            let u = hat(x, y + 1);
+            Vec3::new(l - r, d - u, 2.0 * TILE).normalize().to_array()
+        };
+        for y in 0..h - 1 {
+            for x in 0..w - 1 {
+                let bl = corner_tex(x, y);
+                let br = corner_tex(x + 1, y);
+                let tl = corner_tex(x, y + 1);
+                let tr = corner_tex(x + 1, y + 1);
+                let mut texs = vec![bl, br, tl, tr];
+                texs.sort_unstable();
+                texs.dedup();
+                let corners = [(x, y + 1), (x + 1, y + 1), (x, y), (x + 1, y)];
+                for (n, &t) in texs.iter().enumerate() {
+                    let ext = ground.get(t).map_or(false, |g| g.1);
+                    let cell = if n == 0 {
+                        full_variation(ext, terrain.corner(x, y).ground_variation)
+                    } else {
+                        (br == t) as u32 | ((bl == t) as u32) << 1 | ((tr == t) as u32) << 2 | ((tl == t) as u32) << 3
+                    };
+                    let cols = if ext { 8.0 } else { 4.0 };
+                    let cx = (cell % 4 + (cell / 16) * 4) as f32;
+                    let cy = ((cell % 16) / 4) as f32;
+                    let (u0, v0) = (cx / cols, cy / 4.0);
+                    let (du, dv) = (1.0 / cols, 0.25);
+                    let base = verts.len() as u32;
+                    // top-left, top-right, bottom-left, bottom-right
+                    let uvs = [[u0, v0], [u0 + du, v0], [u0, v0 + dv], [u0 + du, v0 + dv]];
+                    for (k, &(cx, cy)) in corners.iter().enumerate() {
+                        verts.push(Vertex {
+                            pos: [
+                                terrain.offset[0] + cx as f32 * TILE,
+                                terrain.offset[1] + cy as f32 * TILE,
+                                hat(cx, cy),
+                            ],
+                            normal: normal_at(cx, cy),
+                            uv: uvs[k],
+                            color: [1.0; 4],
+                        });
+                    }
+                    let quad = [base + 2, base + 3, base + 1, base + 2, base + 1, base];
+                    if n == 0 {
+                        per_tex_base[t].extend(quad);
+                    } else {
+                        per_tex_overlay[t].extend(quad);
+                    }
+                }
+            }
+        }
+
+        let mut indices: Vec<u32> = Vec::new();
+        let mut batches = Vec::new();
+        for (t, list) in per_tex_base.iter().enumerate() {
+            if !list.is_empty() {
+                batches.push(Batch { texture: t, first: indices.len() as u32, count: list.len() as u32, blended: false });
+                indices.extend(list);
+            }
+        }
+        for (t, list) in per_tex_overlay.iter().enumerate() {
+            if !list.is_empty() {
+                batches.push(Batch { texture: t, first: indices.len() as u32, count: list.len() as u32, blended: true });
+                indices.extend(list);
+            }
+        }
+
+        // Water: one quad per tile that has any water corner.
+        let tileset = terrain.tileset as char;
+        let water_id = format!("{tileset}Sha");
+        let water_offset = water_slk
+            .get(&water_id, "height")
+            .and_then(|v| match v {
+                w3_formats::slk::Value::Num(n) => Some(*n as f32),
+                _ => None,
+            })
+            .unwrap_or(0.0)
+            * TILE;
+        let num = |col: &str| match water_slk.get(&water_id, col) {
+            Some(w3_formats::slk::Value::Num(n)) => *n as f32,
+            _ => 0.0,
+        };
+        let shallow_min = [num("Smin_R"), num("Smin_G"), num("Smin_B"), num("Smin_A")].map(|v| v / 255.0);
+        let shallow_max = [num("Smax_R"), num("Smax_G"), num("Smax_B"), num("Smax_A")].map(|v| v / 255.0);
+        let deep_min = [num("Dmin_R"), num("Dmin_G"), num("Dmin_B"), num("Dmin_A")].map(|v| v / 255.0);
+        let deep_max = [num("Dmax_R"), num("Dmax_G"), num("Dmax_B"), num("Dmax_A")].map(|v| v / 255.0);
+        let min_depth = misc.get_str("Water", "MinDepth").and_then(|v| v.parse().ok()).unwrap_or(10.0);
+        let deep_level = misc.get_str("Water", "DeepLevel").and_then(|v| v.parse().ok()).unwrap_or(64.0);
+        let max_depth = misc.get_str("Water", "MaxDepth").and_then(|v| v.parse().ok()).unwrap_or(72.0);
+        let water_color = |depth: f32| -> [f32; 4] {
+            let lerp = |a: [f32; 4], b: [f32; 4], t: f32| [0, 1, 2, 3].map(|i| a[i] + (b[i] - a[i]) * t);
+            if depth <= deep_level {
+                let t = ((depth - min_depth) / (deep_level - min_depth)).clamp(0.0, 1.0);
+                lerp(shallow_min, shallow_max, t)
+            } else {
+                let t = ((depth - deep_level) / (max_depth - deep_level)).clamp(0.0, 1.0);
+                lerp(deep_min, deep_max, t)
+            }
+        };
+        let water_first = indices.len() as u32;
+        for y in 0..h - 1 {
+            for x in 0..w - 1 {
+                let corners = [(x, y + 1), (x + 1, y + 1), (x, y), (x + 1, y)];
+                if !corners.iter().any(|&(cx, cy)| terrain.corner(cx, cy).water) {
+                    continue;
+                }
+                let base = verts.len() as u32;
+                let uvs = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
+                for (k, &(cx, cy)) in corners.iter().enumerate() {
+                    let c = terrain.corner(cx, cy);
+                    let wz = c.water_height() + water_offset;
+                    let depth = wz - hat(cx, cy);
+                    let mut color = water_color(depth);
+                    if !c.water {
+                        color[3] = 0.0;
+                    }
+                    verts.push(Vertex {
+                        pos: [terrain.offset[0] + cx as f32 * TILE, terrain.offset[1] + cy as f32 * TILE, wz],
+                        normal: [0.0, 0.0, 1.0],
+                        uv: uvs[k],
+                        color,
+                    });
+                }
+                indices.extend([base + 2, base + 3, base + 1, base + 2, base + 1, base]);
+            }
+        }
+        let water_range = (water_first, indices.len() as u32 - water_first);
+        if verts.is_empty() {
+            verts.push(Vertex::zeroed());
+        }
+        if indices.is_empty() {
+            indices.push(0);
+        }
+
+        let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("terrain vertices"),
+            contents: bytemuck::cast_slice(&verts),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let index_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("terrain indices"),
+            contents: bytemuck::cast_slice(&indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+
+        let shader = device.create_shader_module(wgpu::include_wgsl!("terrain.wgsl"));
+        let globals_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("terrain globals"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+        let globals_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("terrain globals"),
+            layout: &globals_layout,
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: globals_buf.as_entire_binding() }],
+        });
+        let tex_layout = texture_bind_group_layout(device);
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("terrain"),
+            bind_group_layouts: &[Some(&globals_layout), Some(&tex_layout)],
+            immediate_size: 0,
+        });
+        let attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x4];
+        let make = |entry: &str, blend: Option<wgpu::BlendState>, depth_write: bool| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("terrain"),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<Vertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &attrs,
+                    })],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some(entry),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: color_format,
+                        blend,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: crate::gpu::DEPTH_FORMAT,
+                    depth_write_enabled: Some(depth_write),
+                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: Default::default(),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let opaque = make("fs_ground", None, true);
+        let blended = make("fs_ground", Some(wgpu::BlendState::ALPHA_BLENDING), false);
+        let water_pipeline = make("fs_water", Some(wgpu::BlendState::ALPHA_BLENDING), false);
+
+        let clamp = make_sampler(device, false, false);
+        let wrap = make_sampler(device, true, true);
+        let texture_bgs = ground.iter().map(|(t, _)| texture_bind_group(device, &tex_layout, &t.view, &clamp)).collect();
+        let water_tex = water_slk
+            .get(&water_id, "texFile")
+            .map(|v| v.as_str())
+            .unwrap_or_else(|| "ReplaceableTextures\\Water\\Water".into());
+        let water_count = num("numTex").max(1.0) as usize;
+        let water_textures = (0..water_count)
+            .map(|i| {
+                let t = textures.get_or_white(device, queue, &format!("{water_tex}{i:02}.blp"));
+                texture_bind_group(device, &tex_layout, &t.view, &wrap)
+            })
+            .collect();
+        TerrainRenderer {
+            opaque,
+            blended,
+            water_pipeline,
+            globals_bg,
+            vertices,
+            indices: index_buf,
+            batches,
+            texture_bgs,
+            water_textures,
+            water_range,
+            water_rate: num("texRate").max(1.0),
+            width: w,
+            height: h,
+            offset: terrain.offset,
+            heights,
+        }
+    }
+
+    /// Ground height at a world position, interpolated across the tile.
+    pub fn height_at(&self, x: f32, y: f32) -> f32 {
+        let fx = ((x - self.offset[0]) / TILE).clamp(0.0, (self.width - 1) as f32);
+        let fy = ((y - self.offset[1]) / TILE).clamp(0.0, (self.height - 1) as f32);
+        let (ix, iy) = (fx.floor() as u32, fy.floor() as u32);
+        let (tx, ty) = (fx - ix as f32, fy - iy as f32);
+        let at = |x: u32, y: u32| self.heights[(y.min(self.height - 1) * self.width + x.min(self.width - 1)) as usize];
+        let a = at(ix, iy) * (1.0 - tx) + at(ix + 1, iy) * tx;
+        let b = at(ix, iy + 1) * (1.0 - tx) + at(ix + 1, iy + 1) * tx;
+        a * (1.0 - ty) + b * ty
+    }
+
+    pub fn render_ground(&self, pass: &mut wgpu::RenderPass) {
+        pass.set_bind_group(0, &self.globals_bg, &[]);
+        pass.set_vertex_buffer(0, self.vertices.slice(..));
+        pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+        for b in &self.batches {
+            pass.set_pipeline(if b.blended { &self.blended } else { &self.opaque });
+            pass.set_bind_group(1, &self.texture_bgs[b.texture], &[]);
+            pass.draw_indexed(b.first..b.first + b.count, 0, 0..1);
+        }
+    }
+
+    /// `seconds` drives the water texture animation.
+    pub fn render_water(&self, pass: &mut wgpu::RenderPass, seconds: f32) {
+        if self.water_range.1 == 0 || self.water_textures.is_empty() {
+            return;
+        }
+        pass.set_bind_group(0, &self.globals_bg, &[]);
+        pass.set_vertex_buffer(0, self.vertices.slice(..));
+        pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+        pass.set_pipeline(&self.water_pipeline);
+        let frame = (seconds * self.water_rate) as usize % self.water_textures.len();
+        pass.set_bind_group(1, &self.water_textures[frame], &[]);
+        let (first, count) = self.water_range;
+        pass.draw_indexed(first..first + count, 0, 0..1);
+    }
+}

@@ -1,0 +1,763 @@
+//! MDX model rendering with GPU skinning.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use bytemuck::{Pod, Zeroable};
+use glam::{Mat4, Quat, Vec3, Vec4};
+use w3_formats::mdx::{self, Model, filter, shading};
+
+use crate::anim::{self, Skeleton, Time};
+use crate::texture::{Texture, TextureCache};
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+pub struct Vertex {
+    pub pos: [f32; 3],
+    pub normal: [f32; 3],
+    pub uv: [f32; 2],
+    pub bones: [u16; 4],
+    pub bone_count: u32,
+}
+
+pub struct GeosetGpu {
+    pub first_index: u32,
+    pub index_count: u32,
+    pub base_vertex: i32,
+    pub material: usize,
+    pub geoset: usize,
+}
+
+pub struct ModelGpu {
+    pub path: String,
+    pub mdx: Model,
+    pub vertices: wgpu::Buffer,
+    pub indices: wgpu::Buffer,
+    pub geosets: Vec<GeosetGpu>,
+    /// Loaded textures by texture index; `None` for replaceable textures.
+    pub textures: Vec<Option<Arc<Texture>>>,
+    /// Geoset id -> geoset animation index.
+    pub geoset_anims: HashMap<u32, usize>,
+}
+
+impl ModelGpu {
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        textures: &mut TextureCache,
+        path: &str,
+        mdx: Model,
+    ) -> ModelGpu {
+        use wgpu::util::DeviceExt;
+        let mut verts: Vec<Vertex> = Vec::new();
+        let mut idx: Vec<u16> = Vec::new();
+        let mut geosets = Vec::new();
+        for (gi, g) in mdx.geosets.iter().enumerate() {
+            // Expand matrix groups into per-vertex bone lists.
+            let mut groups: Vec<Vec<u16>> = Vec::new();
+            let mut k = 0usize;
+            for &size in &g.group_sizes {
+                let list = g
+                    .matrix_indices
+                    .get(k..k + size as usize)
+                    .unwrap_or(&[])
+                    .iter()
+                    .map(|&m| m as u16)
+                    .collect();
+                k += size as usize;
+                groups.push(list);
+            }
+            let base = verts.len() as i32;
+            let uvs = g.uvs.first();
+            for (vi, p) in g.vertices.iter().enumerate() {
+                let grp = g.vertex_groups.get(vi).and_then(|&gidx| groups.get(gidx as usize));
+                let mut bones = [0u16; 4];
+                let mut count = 0;
+                if let Some(grp) = grp {
+                    for (j, &b) in grp.iter().take(4).enumerate() {
+                        bones[j] = b;
+                        count = j as u32 + 1;
+                    }
+                }
+                verts.push(Vertex {
+                    pos: *p,
+                    normal: g.normals.get(vi).copied().unwrap_or([0.0, 0.0, 1.0]),
+                    uv: uvs.and_then(|u| u.get(vi)).copied().unwrap_or([0.0; 2]),
+                    bones,
+                    bone_count: count,
+                });
+            }
+            let first = idx.len() as u32;
+            let tri_len = g.faces.len() / 3 * 3;
+            idx.extend_from_slice(&g.faces[..tri_len]);
+            if idx.len() % 2 == 1 {
+                // Keep each geoset's first index 4-byte aligned is not required, but keep the
+                // buffer size a multiple of 4 bytes for the copy.
+            }
+            geosets.push(GeosetGpu {
+                first_index: first,
+                index_count: tri_len as u32,
+                base_vertex: base,
+                material: g.material_id as usize,
+                geoset: gi,
+            });
+        }
+        if idx.len() % 2 == 1 {
+            idx.push(0);
+        }
+        if verts.is_empty() {
+            verts.push(Vertex::zeroed());
+        }
+        if idx.is_empty() {
+            idx.extend([0, 0]);
+        }
+        let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(path),
+            contents: bytemuck::cast_slice(&verts),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(path),
+            contents: bytemuck::cast_slice(&idx),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let tex = mdx
+            .textures
+            .iter()
+            .map(|t| {
+                if t.replaceable_id != 0 {
+                    None
+                } else {
+                    Some(textures.get_or_white(device, queue, &t.path))
+                }
+            })
+            .collect();
+        let geoset_anims = mdx
+            .geoset_anims
+            .iter()
+            .enumerate()
+            .map(|(i, ga)| (ga.geoset_id, i))
+            .collect();
+        ModelGpu {
+            path: path.to_string(),
+            mdx,
+            vertices,
+            indices,
+            geosets,
+            textures: tex,
+            geoset_anims,
+        }
+    }
+}
+
+/// One placed, animated copy of a model.
+pub struct ModelInstance {
+    pub model: Arc<ModelGpu>,
+    pub transform: Mat4,
+    pub sequence: Option<usize>,
+    /// Milliseconds into the current sequence.
+    pub frame: f32,
+    /// Milliseconds since creation, driving global sequences.
+    pub global_time: f32,
+    pub team: u8,
+    pub tint: Vec4,
+    pub visible: bool,
+    /// Textures substituted for replaceable texture ids (trees, cliffs, ...).
+    pub replaceable: HashMap<u32, Arc<Texture>>,
+    pub skeleton: Skeleton,
+    /// Set once a non-looping sequence reaches its end.
+    pub finished: bool,
+}
+
+impl ModelInstance {
+    pub fn new(model: Arc<ModelGpu>) -> Self {
+        let skeleton = Skeleton::new(&model.mdx);
+        ModelInstance {
+            model,
+            transform: Mat4::IDENTITY,
+            sequence: None,
+            frame: 0.0,
+            global_time: 0.0,
+            team: 0,
+            tint: Vec4::ONE,
+            visible: true,
+            replaceable: HashMap::new(),
+            skeleton,
+            finished: false,
+        }
+    }
+
+    pub fn set_sequence(&mut self, seq: Option<usize>) {
+        self.sequence = seq;
+        self.frame = 0.0;
+        self.finished = false;
+    }
+
+    pub fn play(&mut self, name: &str) {
+        let s = anim::find_sequence(&self.model.mdx, name);
+        self.set_sequence(s);
+    }
+
+    pub fn advance(&mut self, dt_ms: f32) {
+        self.global_time += dt_ms;
+        if let Some(s) = self.sequence.and_then(|s| self.model.mdx.sequences.get(s)) {
+            let len = (s.end - s.start) as f32;
+            self.frame += dt_ms;
+            if self.frame > len {
+                if s.non_looping {
+                    self.frame = len;
+                    self.finished = true;
+                } else if len > 0.0 {
+                    self.frame %= len;
+                } else {
+                    self.frame = 0.0;
+                }
+            }
+        }
+    }
+
+    pub fn time(&self) -> Time {
+        match self.sequence.and_then(|s| self.model.mdx.sequences.get(s)) {
+            Some(s) => Time {
+                frame: s.start + self.frame as u32,
+                seq_start: s.start,
+                seq_end: s.end,
+                global: self.global_time as u32,
+            },
+            None => Time { global: self.global_time as u32, ..Default::default() },
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct DrawUniform {
+    color: [f32; 4],
+    uv_offset: [f32; 2],
+    bone_offset: u32,
+    flags: u32,
+    _pad: [u32; 56],
+}
+
+const DRAW_ALIGN: u64 = 256;
+const FLAG_UNSHADED: u32 = 1;
+const FLAG_ALPHA_TEST: u32 = 2;
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+pub struct Globals {
+    pub view_proj: [[f32; 4]; 4],
+    pub light_dir: [f32; 4],
+    pub light_color: [f32; 4],
+    pub ambient: [f32; 4],
+    pub fog_color: [f32; 4],
+    /// x: start, y: end, z: enabled
+    pub fog: [f32; 4],
+    pub camera_pos: [f32; 4],
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct PipelineKey {
+    filter: u32,
+    two_sided: bool,
+    depth_test: bool,
+    depth_write: bool,
+}
+
+struct Draw {
+    model: Arc<ModelGpu>,
+    geoset: usize,
+    pipeline: PipelineKey,
+    texture: Arc<Texture>,
+    wrap: (bool, bool),
+    uniform: DrawUniform,
+    depth: f32,
+    priority: i32,
+    order: usize,
+}
+
+pub struct ModelRenderer {
+    shader: wgpu::ShaderModule,
+    globals_layout: wgpu::BindGroupLayout,
+    draw_layout: wgpu::BindGroupLayout,
+    texture_layout: wgpu::BindGroupLayout,
+    pipeline_layout: wgpu::PipelineLayout,
+    pipelines: HashMap<PipelineKey, wgpu::RenderPipeline>,
+    color_format: wgpu::TextureFormat,
+    pub globals_buf: wgpu::Buffer,
+    bones_buf: wgpu::Buffer,
+    bones_cap: usize,
+    draws_buf: wgpu::Buffer,
+    draws_cap: usize,
+    globals_bg: wgpu::BindGroup,
+    draws_bg: wgpu::BindGroup,
+    samplers: [wgpu::Sampler; 4],
+    texture_bgs: HashMap<(usize, bool, bool), wgpu::BindGroup>,
+    team_colors: Vec<Arc<Texture>>,
+    team_glows: Vec<Arc<Texture>>,
+    // Per-frame state.
+    bones: Vec<[[f32; 4]; 4]>,
+    draws: Vec<Draw>,
+}
+
+impl ModelRenderer {
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        textures: &mut TextureCache,
+        color_format: wgpu::TextureFormat,
+    ) -> Self {
+        let shader = device.create_shader_module(wgpu::include_wgsl!("model.wgsl"));
+        let globals_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("model globals"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let draw_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("model draw"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: true,
+                    min_binding_size: wgpu::BufferSize::new(std::mem::size_of::<DrawUniform>() as u64),
+                },
+                count: None,
+            }],
+        });
+        let texture_layout = texture_bind_group_layout(device);
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("model"),
+            bind_group_layouts: &[Some(&globals_layout), Some(&draw_layout), Some(&texture_layout)],
+            immediate_size: 0,
+        });
+        let globals_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("model globals"),
+            size: std::mem::size_of::<Globals>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let bones_cap = 1024;
+        let bones_buf = bones_buffer(device, bones_cap);
+        let draws_cap = 256;
+        let draws_buf = draws_buffer(device, draws_cap);
+        let globals_bg = globals_bind_group(device, &globals_layout, &globals_buf, &bones_buf);
+        let draws_bg = draws_bind_group(device, &draw_layout, &draws_buf);
+        let samplers = [
+            (false, false),
+            (true, false),
+            (false, true),
+            (true, true),
+        ]
+        .map(|(u, v)| make_sampler(device, u, v));
+        let team = |kind: &str, textures: &mut TextureCache| {
+            (0..16)
+                .map(|i| {
+                    textures.get_or_white(
+                        device,
+                        queue,
+                        &format!("ReplaceableTextures\\TeamColor\\{kind}{i:02}.blp"),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let team_colors = team("TeamColor", textures);
+        let team_glows = {
+            (0..16)
+                .map(|i| {
+                    textures.get_or_white(
+                        device,
+                        queue,
+                        &format!("ReplaceableTextures\\TeamGlow\\TeamGlow{i:02}.blp"),
+                    )
+                })
+                .collect()
+        };
+        ModelRenderer {
+            shader,
+            globals_layout,
+            draw_layout,
+            texture_layout,
+            pipeline_layout,
+            pipelines: HashMap::new(),
+            color_format,
+            globals_buf,
+            bones_buf,
+            bones_cap,
+            draws_buf,
+            draws_cap,
+            globals_bg,
+            draws_bg,
+            samplers,
+            texture_bgs: HashMap::new(),
+            team_colors,
+            team_glows,
+            bones: Vec::new(),
+            draws: Vec::new(),
+        }
+    }
+
+    /// Animates an instance and queues its geosets for drawing.
+    pub fn submit(&mut self, inst: &mut ModelInstance, camera_pos: Vec3, camera_rot: Quat) {
+        if !inst.visible {
+            return;
+        }
+        let model = inst.model.clone();
+        let mdx = &model.mdx;
+        let time = inst.time();
+        let inv_rot = inst.transform.to_scale_rotation_translation().1.inverse() * camera_rot;
+        inst.skeleton.update(mdx, &time, inv_rot);
+        let bone_offset = self.bones.len() as u32;
+        if inst.skeleton.world.is_empty() {
+            self.bones.push(inst.transform.to_cols_array_2d());
+        }
+        for m in &inst.skeleton.world {
+            self.bones.push((inst.transform * *m).to_cols_array_2d());
+        }
+        let center = inst.transform.transform_point3(Vec3::ZERO);
+        let depth = center.distance(camera_pos);
+        let globals = &mdx.global_sequences;
+        for g in &model.geosets {
+            let (mut ga_alpha, mut ga_color) = (1.0, [1.0f32; 3]);
+            if let Some(&ga) = model.geoset_anims.get(&(g.geoset as u32)) {
+                let (a, c) = anim::geoset_anim_state(&mdx.geoset_anims[ga], &time, globals);
+                ga_alpha = a;
+                if mdx.geoset_anims[ga].flags & 2 != 0 {
+                    // Colors are stored blue, green, red.
+                    ga_color = [c[2], c[1], c[0]];
+                }
+            }
+            if ga_alpha <= 0.0 {
+                continue;
+            }
+            let Some(mat) = mdx.materials.get(g.material) else { continue };
+            for (li, layer) in mat.layers.iter().enumerate() {
+                let (alpha, tex_id) = anim::layer_state(layer, &time, globals);
+                let alpha = alpha * ga_alpha * inst.tint.w;
+                if alpha <= 0.0 {
+                    continue;
+                }
+                let Some(t) = mdx.textures.get(tex_id as usize) else { continue };
+                let texture = match t.replaceable_id {
+                    0 => model.textures[tex_id as usize].clone().unwrap_or_else(|| self.team_colors[0].clone()),
+                    1 => self.team_colors[inst.team as usize % 16].clone(),
+                    2 => self.team_glows[inst.team as usize % 16].clone(),
+                    id => match inst.replaceable.get(&id) {
+                        Some(t) => t.clone(),
+                        None => continue,
+                    },
+                };
+                let mut flags = 0;
+                if layer.shading & shading::UNSHADED != 0 {
+                    flags |= FLAG_UNSHADED;
+                }
+                if layer.filter_mode == filter::TRANSPARENT {
+                    flags |= FLAG_ALPHA_TEST;
+                }
+                let blended = layer.filter_mode >= filter::BLEND;
+                let key = PipelineKey {
+                    filter: layer.filter_mode.min(6),
+                    two_sided: layer.shading & shading::TWO_SIDED != 0,
+                    depth_test: layer.shading & shading::NO_DEPTH_TEST == 0,
+                    depth_write: layer.shading & shading::NO_DEPTH_SET == 0 && !blended,
+                };
+                let tint = inst.tint;
+                self.draws.push(Draw {
+                    model: model.clone(),
+                    geoset: g.geoset,
+                    pipeline: key,
+                    texture,
+                    wrap: (t.flags & 1 != 0, t.flags & 2 != 0),
+                    uniform: DrawUniform {
+                        color: [ga_color[0] * tint.x, ga_color[1] * tint.y, ga_color[2] * tint.z, alpha],
+                        uv_offset: [0.0, 0.0],
+                        bone_offset,
+                        flags,
+                        _pad: [0; 56],
+                    },
+                    depth: if blended { depth } else { 0.0 },
+                    priority: mat.priority_plane * 16 + li as i32,
+                    order: self.draws.len(),
+                });
+            }
+        }
+    }
+
+    fn pipeline(&mut self, device: &wgpu::Device, key: PipelineKey) -> &wgpu::RenderPipeline {
+        let (shader, layout, format) = (&self.shader, &self.pipeline_layout, self.color_format);
+        self.pipelines.entry(key).or_insert_with(|| {
+            use wgpu::{BlendComponent as C, BlendFactor as F, BlendOperation as O};
+            let comp = |src, dst| C { src_factor: src, dst_factor: dst, operation: O::Add };
+            let blend = match key.filter {
+                filter::BLEND => Some(wgpu::BlendState {
+                    color: comp(F::SrcAlpha, F::OneMinusSrcAlpha),
+                    alpha: comp(F::One, F::OneMinusSrcAlpha),
+                }),
+                filter::ADDITIVE => Some(wgpu::BlendState {
+                    color: comp(F::Src, F::One),
+                    alpha: comp(F::Src, F::One),
+                }),
+                filter::ADD_ALPHA => Some(wgpu::BlendState {
+                    color: comp(F::SrcAlpha, F::One),
+                    alpha: comp(F::SrcAlpha, F::One),
+                }),
+                filter::MODULATE => Some(wgpu::BlendState {
+                    color: comp(F::Zero, F::Src),
+                    alpha: comp(F::Zero, F::One),
+                }),
+                filter::MODULATE_2X => Some(wgpu::BlendState {
+                    color: comp(F::Dst, F::Src),
+                    alpha: comp(F::Zero, F::One),
+                }),
+                _ => None,
+            };
+            let attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Uint16x4, 4 => Uint32];
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("model"),
+                layout: Some(layout),
+                vertex: wgpu::VertexState {
+                    module: shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<Vertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &attrs,
+                    })],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format,
+                        blend,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: if key.two_sided { None } else { Some(wgpu::Face::Back) },
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: crate::gpu::DEPTH_FORMAT,
+                    depth_write_enabled: Some(key.depth_write),
+                    depth_compare: Some(if key.depth_test {
+                        wgpu::CompareFunction::LessEqual
+                    } else {
+                        wgpu::CompareFunction::Always
+                    }),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: Default::default(),
+                multiview_mask: None,
+                cache: None,
+            })
+        })
+    }
+
+    /// Uploads this frame's data and records draws into `pass`.
+    pub fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, pass: &mut wgpu::RenderPass, globals: &Globals) {
+        queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(globals));
+        if self.draws.is_empty() {
+            self.bones.clear();
+            return;
+        }
+        let mut rebind = false;
+        if self.bones.len() > self.bones_cap {
+            self.bones_cap = self.bones.len().next_power_of_two();
+            self.bones_buf = bones_buffer(device, self.bones_cap);
+            rebind = true;
+        }
+        if rebind {
+            self.globals_bg = globals_bind_group(device, &self.globals_layout, &self.globals_buf, &self.bones_buf);
+        }
+        queue.write_buffer(&self.bones_buf, 0, bytemuck::cast_slice(&self.bones));
+        // Opaque first, then blended back to front.
+        let mut draws = std::mem::take(&mut self.draws);
+        draws.sort_by(|a, b| {
+            let ab = a.pipeline.filter >= filter::BLEND;
+            let bb = b.pipeline.filter >= filter::BLEND;
+            ab.cmp(&bb)
+                .then(b.depth.total_cmp(&a.depth))
+                .then(a.priority.cmp(&b.priority))
+                .then(a.order.cmp(&b.order))
+        });
+        if draws.len() > self.draws_cap {
+            self.draws_cap = draws.len().next_power_of_two();
+            self.draws_buf = draws_buffer(device, self.draws_cap);
+            self.draws_bg = draws_bind_group(device, &self.draw_layout, &self.draws_buf);
+        }
+        let uniforms: Vec<DrawUniform> = draws.iter().map(|d| d.uniform).collect();
+        queue.write_buffer(&self.draws_buf, 0, bytemuck::cast_slice(&uniforms));
+        for d in &draws {
+            self.pipeline(device, d.pipeline);
+            let key = (Arc::as_ptr(&d.texture) as usize, d.wrap.0, d.wrap.1);
+            if !self.texture_bgs.contains_key(&key) {
+                let s = &self.samplers[d.wrap.0 as usize | (d.wrap.1 as usize) << 1];
+                let bg = texture_bind_group(device, &self.texture_layout, &d.texture.view, s);
+                self.texture_bgs.insert(key, bg);
+            }
+        }
+        pass.set_bind_group(0, &self.globals_bg, &[]);
+        let mut last_model: Option<*const ModelGpu> = None;
+        for (i, d) in draws.iter().enumerate() {
+            let pipeline = &self.pipelines[&d.pipeline];
+            pass.set_pipeline(pipeline);
+            pass.set_bind_group(1, &self.draws_bg, &[(i as u64 * DRAW_ALIGN) as u32]);
+            let key = (Arc::as_ptr(&d.texture) as usize, d.wrap.0, d.wrap.1);
+            pass.set_bind_group(2, &self.texture_bgs[&key], &[]);
+            if last_model != Some(Arc::as_ptr(&d.model)) {
+                pass.set_vertex_buffer(0, d.model.vertices.slice(..));
+                pass.set_index_buffer(d.model.indices.slice(..), wgpu::IndexFormat::Uint16);
+                last_model = Some(Arc::as_ptr(&d.model));
+            }
+            let g = &d.model.geosets[d.geoset];
+            pass.draw_indexed(g.first_index..g.first_index + g.index_count, g.base_vertex, 0..1);
+        }
+        self.bones.clear();
+        // Keep textures alive until the next frame's draws replace them.
+        self.draws = Vec::with_capacity(draws.len());
+    }
+}
+
+fn bones_buffer(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("bones"),
+        size: (cap * 64) as u64,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    })
+}
+
+fn draws_buffer(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("model draws"),
+        size: cap as u64 * DRAW_ALIGN,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    })
+}
+
+fn globals_bind_group(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    globals: &wgpu::Buffer,
+    bones: &wgpu::Buffer,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("model globals"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: globals.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 1, resource: bones.as_entire_binding() },
+        ],
+    })
+}
+
+fn draws_bind_group(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, buf: &wgpu::Buffer) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("model draws"),
+        layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                buffer: buf,
+                offset: 0,
+                size: wgpu::BufferSize::new(std::mem::size_of::<DrawUniform>() as u64),
+            }),
+        }],
+    })
+}
+
+pub fn texture_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("texture"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    })
+}
+
+pub fn texture_bind_group(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    view: &wgpu::TextureView,
+    sampler: &wgpu::Sampler,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("texture"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(view) },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
+        ],
+    })
+}
+
+pub fn make_sampler(device: &wgpu::Device, wrap_u: bool, wrap_v: bool) -> wgpu::Sampler {
+    let mode = |w| if w { wgpu::AddressMode::Repeat } else { wgpu::AddressMode::ClampToEdge };
+    device.create_sampler(&wgpu::SamplerDescriptor {
+        label: None,
+        address_mode_u: mode(wrap_u),
+        address_mode_v: mode(wrap_v),
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::MipmapFilterMode::Linear,
+        anisotropy_clamp: 1,
+        ..Default::default()
+    })
+}
+
+pub fn default_globals(view_proj: Mat4, camera: Vec3) -> Globals {
+    Globals {
+        view_proj: view_proj.to_cols_array_2d(),
+        light_dir: [0.3, 0.3, -0.25, 0.0],
+        light_color: [1.0, 1.0, 1.0, 1.0],
+        ambient: [0.35, 0.35, 0.35, 1.0],
+        fog_color: [0.0; 4],
+        fog: [0.0; 4],
+        camera_pos: [camera.x, camera.y, camera.z, 1.0],
+    }
+}
+
+pub use mdx::Model as Mdx;

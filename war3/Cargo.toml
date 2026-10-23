@@ -1,0 +1,24 @@
+[package]
+name = "war3"
+description = "Warcraft III: Reign of Chaos and The Frozen Throne, ported to Rust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+w3-mpq.workspace = true
+w3-formats.workspace = true
+w3-jass.workspace = true
+w3-render.workspace = true
+clap.workspace = true
+winit.workspace = true
+wgpu.workspace = true
+glam.workspace = true
+log.workspace = true
+env_logger.workspace = true
+anyhow.workspace = true
+bytemuck.workspace = true
+
+[dev-dependencies]
+pollster.workspace = true
+image.workspace = true

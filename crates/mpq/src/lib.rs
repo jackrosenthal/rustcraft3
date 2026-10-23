@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, RwLock};
 
 use crypt::*;
 
@@ -272,11 +272,23 @@ impl Archive {
     }
 }
 
-/// An ordered set of archives searched from highest to lowest priority, the way the game
-/// layers patch, expansion, and base data (and a map on top of all of them).
+/// A mounted archive or archive sub-folder.  Storm can open a path inside an archive as
+/// its own archive (`SFileOpenPathAsArchive`); the game uses this for its `Melee_V1`-style
+/// data sets.
+struct Mount {
+    archive: Arc<Archive>,
+    /// Prepended to every lookup, including the trailing backslash.
+    prefix: String,
+    priority: i32,
+}
+
+/// Archives searched from highest to lowest priority, the way the game layers patch,
+/// expansion, and base data (and a map on top of all of them).
+///
+/// Mounting is done through `&self` so one chain can be shared by every subsystem.
 #[derive(Default)]
 pub struct Chain {
-    archives: Vec<Archive>,
+    mounts: RwLock<Vec<Mount>>,
     cache: Mutex<HashMap<String, Option<usize>>>,
 }
 
@@ -285,33 +297,41 @@ impl Chain {
         Self::default()
     }
 
-    /// Adds an archive with lower priority than every archive already present.
-    pub fn push_back(&mut self, a: Archive) {
-        self.archives.push(a);
+    /// Mounts an archive, or a folder within it, at a priority.  Higher priorities are
+    /// searched first; among equal priorities the most recent mount wins.
+    pub fn mount(&self, archive: Arc<Archive>, folder: Option<&str>, priority: i32) {
+        let prefix = folder.map(|f| format!("{}\\", f.trim_end_matches(['\\', '/']))).unwrap_or_default();
+        let mut mounts = self.mounts.write().unwrap();
+        let at = mounts.iter().position(|m| m.priority <= priority).unwrap_or(mounts.len());
+        mounts.insert(at, Mount { archive, prefix, priority });
         self.cache.lock().unwrap().clear();
     }
 
-    /// Adds an archive with higher priority than every archive already present.
-    pub fn push_front(&mut self, a: Archive) {
-        self.archives.insert(0, a);
+    /// Removes every mount at the given priority.
+    pub fn unmount(&self, priority: i32) {
+        self.mounts.write().unwrap().retain(|m| m.priority != priority);
         self.cache.lock().unwrap().clear();
     }
 
-    pub fn pop_front(&mut self) -> Option<Archive> {
-        self.cache.lock().unwrap().clear();
-        (!self.archives.is_empty()).then(|| self.archives.remove(0))
+    pub fn archives(&self) -> Vec<Arc<Archive>> {
+        self.mounts.read().unwrap().iter().map(|m| m.archive.clone()).collect()
     }
 
-    pub fn archives(&self) -> &[Archive] {
-        &self.archives
+    fn key(name: &str) -> String {
+        name.to_ascii_lowercase().replace('/', "\\")
     }
 
     fn locate(&self, name: &str) -> Option<usize> {
-        let key = name.to_ascii_lowercase().replace('/', "\\");
+        let key = Self::key(name);
         if let Some(&r) = self.cache.lock().unwrap().get(&key) {
             return r;
         }
-        let r = self.archives.iter().position(|a| a.contains(&key));
+        let r = self
+            .mounts
+            .read()
+            .unwrap()
+            .iter()
+            .position(|m| m.archive.contains(&format!("{}{key}", m.prefix)));
         self.cache.lock().unwrap().insert(key, r);
         r
     }
@@ -322,7 +342,9 @@ impl Chain {
 
     pub fn read(&self, name: &str) -> Result<Vec<u8>, Error> {
         let i = self.locate(name).ok_or_else(|| Error::NotFound(name.to_string()))?;
-        self.archives[i].read(&name.replace('/', "\\"))
+        let mounts = self.mounts.read().unwrap();
+        let m = &mounts[i];
+        m.archive.read(&format!("{}{}", m.prefix, name.replace('/', "\\")))
     }
 
     pub fn read_string(&self, name: &str) -> Result<String, Error> {

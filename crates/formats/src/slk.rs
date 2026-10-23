@@ -34,7 +34,7 @@ impl Table {
         let (mut x, mut y) = (1usize, 1usize);
         let (mut max_x, mut max_y) = (0, 0);
         for line in text.lines() {
-            let mut fields = line.split(';');
+            let mut fields = line.trim_end_matches('\r').split(';');
             let rtype = fields.next().unwrap_or("");
             if rtype != "C" && rtype != "F" {
                 continue;

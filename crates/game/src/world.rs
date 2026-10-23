@@ -33,6 +33,12 @@ pub enum Request {
     PlaySound(u32),
     StopSound { sound: u32, fade: bool },
     PlayMusic(String),
+    /// A piece played once before returning to the music (PlayThematicMusic), its end
+    /// (EndThematicMusic), resuming stopped music, and the script's music volume.
+    PlayThematic(String),
+    EndThematic,
+    ResumeMusic,
+    MusicVolume(f32),
     /// A sound label at a world position, heard where the local player can see.
     WorldSound { label: String, x: f32, y: f32, z: f32 },
     /// An interface sound label for some players.

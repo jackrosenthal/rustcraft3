@@ -110,6 +110,12 @@ pub struct Audio {
     music: Option<Player>,
     playlist: Vec<String>,
     playlist_pos: usize,
+    /// The playlist a thematic piece interrupted, and where it was.
+    before_thematic: Option<(Vec<String>, usize)>,
+    /// The playlist StopMusic left, for ResumeMusic.
+    stopped: Option<(Vec<String>, usize)>,
+    /// The script's music volume (SetMusicVolume, 0 to 1), under the player's.
+    script_music_volume: f32,
     pub sound_volume: f32,
     pub music_volume: f32,
     rng: u64,
@@ -170,6 +176,9 @@ impl Audio {
             music: None,
             playlist: Vec::new(),
             playlist_pos: 0,
+            before_thematic: None,
+            stopped: None,
+            script_music_volume: 1.0,
             sound_volume: 1.0,
             music_volume: 1.0,
             rng: 0x2545_f491_4f6c_dd1d,
@@ -396,7 +405,7 @@ impl Audio {
         match Decoder::new(Cursor::new(data)) {
             Ok(d) => {
                 let p = Player::connect_new(&mixer);
-                p.set_volume(self.music_volume);
+                p.set_volume(self.music_volume * self.script_music_volume);
                 p.append(d);
                 self.music = Some(p);
             }
@@ -406,7 +415,49 @@ impl Audio {
 
     pub fn stop_music(&mut self) {
         self.music = None;
-        self.playlist.clear();
+        if !self.playlist.is_empty() {
+            self.stopped = Some((std::mem::take(&mut self.playlist), self.playlist_pos));
+        }
+    }
+
+    /// Plays what StopMusic stopped (ResumeMusic).
+    pub fn resume_music(&mut self) {
+        if let Some((list, pos)) = self.stopped.take() {
+            self.playlist = list;
+            self.playlist_pos = pos;
+            self.start_track();
+        }
+    }
+
+    /// Plays a piece once, then returns to the music it interrupted (PlayThematicMusic).
+    pub fn play_thematic(&mut self, path: &str) {
+        if self.before_thematic.is_none() {
+            self.before_thematic = Some((std::mem::take(&mut self.playlist), self.playlist_pos));
+        }
+        self.playlist = vec![path.to_string()];
+        self.playlist_pos = 0;
+        self.start_track();
+    }
+
+    /// Ends a thematic piece and returns to the music before it (EndThematicMusic).
+    pub fn end_thematic(&mut self) {
+        if let Some((list, pos)) = self.before_thematic.take() {
+            self.playlist = list;
+            self.playlist_pos = pos;
+            if self.playlist.is_empty() {
+                self.music = None;
+            } else {
+                self.start_track();
+            }
+        }
+    }
+
+    /// The script's music volume (SetMusicVolume: 0 to 127).
+    pub fn set_script_music_volume(&mut self, volume: f32) {
+        self.script_music_volume = volume.clamp(0.0, 1.0);
+        if let Some(m) = self.music.as_ref() {
+            m.set_volume(self.music_volume * self.script_music_volume);
+        }
     }
 
     /// Sets the sound effect and music volumes (0 to 1), for what is playing too.
@@ -417,7 +468,7 @@ impl Audio {
         self.sound_volume = sound;
         self.music_volume = music;
         if let Some(m) = self.music.as_ref() {
-            m.set_volume(music);
+            m.set_volume(music * self.script_music_volume);
         }
         for i in 0..self.voices.len() {
             let v = &self.voices[i];
@@ -440,6 +491,11 @@ impl Audio {
             }
         }
         if self.music.as_ref().is_some_and(|m| m.empty()) && !self.playlist.is_empty() {
+            // A thematic piece plays once.
+            if self.before_thematic.is_some() {
+                self.end_thematic();
+                return;
+            }
             self.playlist_pos = (self.playlist_pos + 1) % self.playlist.len();
             self.start_track();
         }

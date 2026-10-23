@@ -617,6 +617,10 @@ impl Scene {
                 | w3_game::world::Request::Ack { .. }
                 | w3_game::world::Request::StopSound { .. }
                 | w3_game::world::Request::PlayMusic(_)
+                | w3_game::world::Request::PlayThematic(_)
+                | w3_game::world::Request::EndThematic
+                | w3_game::world::Request::ResumeMusic
+                | w3_game::world::Request::MusicVolume(_)
                 | w3_game::world::Request::StopMusic(_)) => self.pending_audio.push(r),
                 _ => {}
             }
@@ -755,6 +759,10 @@ impl Scene {
                     audio.play_music(&list, true, 0);
                 }
                 w3_game::world::Request::StopMusic(_) => audio.stop_music(),
+                w3_game::world::Request::PlayThematic(path) => audio.play_thematic(&path),
+                w3_game::world::Request::EndThematic => audio.end_thematic(),
+                w3_game::world::Request::ResumeMusic => audio.resume_music(),
+                w3_game::world::Request::MusicVolume(v) => audio.set_script_music_volume(v),
                 w3_game::world::Request::UiSound { players, label } if players & (1 << local) != 0 => {
                     audio.play_label(&label, None);
                 }
@@ -2350,7 +2358,10 @@ impl Scene {
         }
         // Without audio, keep only the music requests for when it starts.
         if self.audio.is_none() {
-            self.pending_audio.retain(|r| matches!(r, w3_game::world::Request::PlayMusic(_) | w3_game::world::Request::StopMusic(_)));
+            self.pending_audio.retain(|r| {
+                use w3_game::world::Request as R;
+                matches!(r, R::PlayMusic(_) | R::StopMusic(_) | R::PlayThematic(_) | R::EndThematic | R::ResumeMusic | R::MusicVolume(_))
+            });
         }
         for inst in &mut self.instances {
             inst.advance(gdt * 1000.0);

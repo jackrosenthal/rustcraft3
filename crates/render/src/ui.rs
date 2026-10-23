@@ -276,7 +276,8 @@ impl UiRenderer {
                         }
                         lines.push(cur);
                     }
-                    let line_h = px as f32 * 1.2;
+                    // Lines advance by the font height, as the original's text does.
+                    let line_h = px as f32;
                     let widths: Vec<f32> = lines.iter().map(|l| self.measure(queue, fi, px, l)).collect();
                     let to_px_y = |y: f32| sh - y * px_per_unit;
                     let (rx0, rx1) = (to_px_x(rect.x0), to_px_x(rect.x1));

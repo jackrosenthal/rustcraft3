@@ -614,6 +614,25 @@ pub struct GameCache {
     pub reals: HashMap<(String, String), f32>,
     pub bools: HashMap<(String, String), bool>,
     pub strings: HashMap<(String, String), String>,
+    /// Units kept by StoreUnit.
+    pub units: HashMap<(String, String), StoredUnit>,
+}
+
+/// A unit as StoreUnit keeps it: type, hero progress, abilities, and items.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct StoredUnit {
+    pub type_id: [u8; 4],
+    pub level: i32,
+    pub xp: i32,
+    pub skill_points: i32,
+    pub str_: f32,
+    pub agi: f32,
+    pub int: f32,
+    pub proper_name: String,
+    /// Abilities and their levels.
+    pub abilities: Vec<([u8; 4], i32)>,
+    /// Items by slot: type and charges.
+    pub items: Vec<Option<([u8; 4], i32)>>,
 }
 
 #[derive(Clone, Debug, Default)]

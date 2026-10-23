@@ -484,7 +484,7 @@ impl Hud {
         let (name_h, desc_h, cost_h) = (height("ToolTipName"), height("ToolTipDesc"), height("ToolTipCost"));
         let name_w = db.text_width(&font, name_h, &b.tip);
         let lines = if b.ubertip.is_empty() { Vec::new() } else { db.wrap(&font, desc_h, &b.ubertip, 0.21) };
-        let line_h = desc_h * 1.2;
+        let line_h = desc_h;
         let costs: Vec<(usize, i32)> = b.costs.iter().copied().enumerate().filter(|&(_, c)| c != 0).collect();
         let cost_row = if costs.is_empty() { 0.0 } else { 0.013375 };
         let uber_h = if lines.is_empty() { 0.0 } else { lines.len() as f32 * line_h + 0.005 };

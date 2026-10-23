@@ -24,13 +24,32 @@ struct Running {
     /// The menus kept while a game runs, to return to afterwards.
     glue_saved: Option<crate::glue::Glue>,
     /// A map to load once the loading screen has been drawn.
-    pending: Option<(std::path::PathBuf, Vec<w3_game::LobbySlot>)>,
+    pending: Option<(std::path::PathBuf, Option<Vec<w3_game::LobbySlot>>)>,
+    /// A loaded campaign mission waiting for a key on its loading screen.
+    ready: Option<Scene>,
     /// Sound output, handed to each game.
     audio: Option<w3_audio::Audio>,
     assets: Assets,
     last: Instant,
     keys: HashSet<KeyCode>,
     cursor: PhysicalPosition<f64>,
+}
+
+impl Running {
+    /// Starts the loaded game: the music stops, the menus are kept for afterwards.
+    fn start_ready(r: &mut Running) {
+        let Some(mut s) = r.ready.take() else { return };
+        if let Some(mut a) = r.audio.take() {
+            a.stop_music();
+            s.audio = Some(a);
+        }
+        r.scene = Some(s);
+        r.glue_saved = r.glue.take();
+        if let Some(g) = r.glue_saved.as_mut() {
+            g.press_a_key = false;
+            g.show(crate::glue::Screen::Skirmish, &mut r.assets);
+        }
+    }
 }
 
 struct App {
@@ -107,6 +126,7 @@ impl App {
             glue,
             glue_saved: None,
             pending: None,
+            ready: None,
             audio,
             assets,
             last: Instant::now(),
@@ -133,6 +153,10 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => el.exit(),
             WindowEvent::Resized(s) => r.gpu.resize(s.width, s.height),
             WindowEvent::KeyboardInput { event, .. } => {
+                if event.state == ElementState::Pressed && r.ready.is_some() {
+                    Running::start_ready(r);
+                    return;
+                }
                 if event.state == ElementState::Pressed {
                     if let (Some(scene), Some(text)) = (r.scene.as_mut(), event.text.as_ref()) {
                         // Escape comes through its key code below.
@@ -184,6 +208,10 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
+                if state == ElementState::Pressed && r.ready.is_some() {
+                    Running::start_ready(r);
+                    return;
+                }
                 let size = (r.gpu.config.width, r.gpu.config.height);
                 let p = (r.cursor.x as f32, r.cursor.y as f32);
                 let shift = r.keys.contains(&KeyCode::ShiftLeft) || r.keys.contains(&KeyCode::ShiftRight);
@@ -260,6 +288,31 @@ impl ApplicationHandler for App {
                         el.exit();
                         return;
                     }
+                    // The game's profile changes (campaign progress, saved caches) are kept.
+                    let change = scene.change_level.take();
+                    if scene.ended || change.is_some() {
+                        if let Some(g) = scene.game.as_ref() {
+                            *self.data.persist.borrow_mut() = g.world.persist.clone();
+                            self.data.save_profile();
+                        }
+                    }
+                    if let Some(map) = change {
+                        // ChangeLevel: the next mission's loading screen, then the mission.
+                        let mut audio = scene.audio.take();
+                        if let Some(a) = audio.as_mut() {
+                            a.stop_music();
+                        }
+                        r.audio = audio;
+                        r.scene = None;
+                        r.glue = r.glue_saved.take();
+                        if r.glue.is_none() {
+                            r.glue = Some(crate::glue::Glue::new(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets));
+                        }
+                        if let Some(glue) = r.glue.as_mut() {
+                            glue.action = Some(crate::glue::GlueAction::Campaign(map));
+                        }
+                        return;
+                    }
                     if scene.ended {
                         // Back to the screen the game started from, with the glue music.
                         let mut audio = scene.audio.take();
@@ -301,22 +354,30 @@ impl ApplicationHandler for App {
                         }
                         Some(crate::glue::GlueAction::Play(path, slots)) => {
                             // Draw the loading screen first; the map loads next frame.
+                            self.data.campaign_game.set(false);
                             glue.show_loading(&mut r.assets);
-                            r.pending = Some((path, slots));
+                            r.pending = Some((path, Some(slots)));
+                        }
+                        Some(crate::glue::GlueAction::Campaign(map)) => {
+                            self.data.campaign_game.set(true);
+                            glue.skirmish.summary = crate::skirmish::summarize_from(&self.data.chain, &map);
+                            glue.show_loading(&mut r.assets);
+                            r.pending = Some((std::path::PathBuf::from(map), None));
                         }
                         None if r.pending.is_some() => {
                             let (path, slots) = r.pending.take().unwrap();
                             let aspect = size.0 as f32 / size.1.max(1) as f32;
-                            match Scene::load(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets, &path, aspect, Some(&slots)) {
-                                Ok(mut s) => {
-                                    if let Some(mut a) = r.audio.take() {
-                                        a.stop_music();
-                                        s.audio = Some(a);
-                                    }
-                                    r.scene = Some(s);
-                                    r.glue_saved = r.glue.take();
-                                    if let Some(g) = r.glue_saved.as_mut() {
-                                        g.show(crate::glue::Screen::Skirmish, &mut r.assets);
+                            match Scene::load(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets, &path, aspect, slots.as_deref()) {
+                                Ok(s) => {
+                                    if self.data.campaign_game.get() {
+                                        // Campaign missions wait on their loading screen for a
+                                        // key (LOADING_PRESS_A_KEY).
+                                        glue.loading_done(&mut r.assets);
+                                        r.ready = Some(s);
+                                    } else {
+                                        r.ready = Some(s);
+                                        Running::start_ready(r);
+                                        return;
                                     }
                                 }
                                 Err(e) => log::error!("loading {}: {e:#}", path.display()),

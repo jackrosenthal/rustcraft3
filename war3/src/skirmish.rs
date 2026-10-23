@@ -188,10 +188,12 @@ impl Skirmish {
         self.rebuild |= self.slots.len() != old;
     }
 
-    /// WorldEditData [LoadingScreens] entry `i`: its background model.
-    pub fn loading_screen(&self, i: i32) -> Option<String> {
+    /// WorldEditData [LoadingScreens] entry `i`: its background model and which of the
+    /// model's sequences to play (the map's place on it).
+    pub fn loading_screen(&self, i: i32) -> Option<(String, usize)> {
         let v = self.world_edit.get_list("LoadingScreens", &format!("{i:02}"));
-        v.get(3).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+        let model = v.get(3).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())?;
+        Some((model, v.get(2).and_then(|s| s.trim().parse().ok()).unwrap_or(0)))
     }
 
     /// The game setup for the selected map.
@@ -431,9 +433,19 @@ impl Skirmish {
     }
 }
 
+/// A map in the game's archives (a campaign mission), read for the loading screen.
+pub fn summarize_from(chain: &w3_mpq::Chain, name: &str) -> Option<MapSummary> {
+    let ar = w3_mpq::Archive::from_bytes(name, chain.read(name).ok()?).ok()?;
+    summarize_archive(&ar, false)
+}
+
 /// Reads a map's w3i, trigger strings, and optionally its preview image.
 fn summarize(path: &Path, preview: bool) -> Option<MapSummary> {
     let ar = w3_mpq::Archive::open(path).ok()?;
+    summarize_archive(&ar, preview)
+}
+
+fn summarize_archive(ar: &w3_mpq::Archive, preview: bool) -> Option<MapSummary> {
     let info = MapInfo::parse(&ar.read("war3map.w3i").ok()?).ok()?;
     let strings = ar.read("war3map.wts").ok().map(|b| w3_formats::map::parse_wts(&String::from_utf8_lossy(&b))).unwrap_or_default();
     let preview = if preview { ar.read("war3mapMap.blp").ok().and_then(|b| w3_formats::blp::decode_texture("war3mapMap.blp", &b).ok()).and_then(|m| m.into_iter().next()) } else { None };

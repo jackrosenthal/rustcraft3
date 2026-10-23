@@ -13,3 +13,4 @@ w3-ui.workspace = true
 thiserror.workspace = true
 log.workspace = true
 anyhow.workspace = true
+serde.workspace = true

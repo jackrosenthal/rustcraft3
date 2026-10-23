@@ -9,6 +9,7 @@ pub mod handles;
 pub mod hero;
 pub mod info;
 pub mod items;
+pub mod persist;
 pub mod shops;
 pub mod spells;
 pub mod upgrades;

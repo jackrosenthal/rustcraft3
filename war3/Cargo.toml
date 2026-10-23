@@ -21,6 +21,9 @@ log.workspace = true
 env_logger.workspace = true
 anyhow.workspace = true
 bytemuck.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+dirs.workspace = true
 
 [dev-dependencies]
 pollster.workspace = true

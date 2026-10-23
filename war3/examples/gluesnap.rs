@@ -41,8 +41,15 @@ fn main() -> anyhow::Result<()> {
                 glue.pointer_down(&mut assets);
                 let clicked = glue.pointer_up(&mut assets);
                 eprintln!("clicked {clicked:?}");
-                if let Some(war3::glue::GlueAction::Play(..)) = glue.action.take() {
-                    glue.show_loading(&mut assets);
+                match glue.action.take() {
+                    Some(war3::glue::GlueAction::Play(..)) => glue.show_loading(&mut assets),
+                    Some(war3::glue::GlueAction::Campaign(map)) => {
+                        eprintln!("campaign mission {map}");
+                        glue.skirmish.summary = war3::skirmish::summarize_from(&data.chain, &map);
+                        glue.show_loading(&mut assets);
+                        glue.loading_done(&mut assets);
+                    }
+                    _ => {}
                 }
                 i += 3;
             }

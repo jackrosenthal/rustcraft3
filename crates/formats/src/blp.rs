@@ -95,7 +95,9 @@ impl<'a> Blp<'a> {
                     rgba[d] = c(2);
                     rgba[d + 1] = c(1);
                     rgba[d + 2] = c(0);
-                    rgba[d + 3] = if comps == 4 && self.alpha_bits != 0 { c(3) } else { 255 };
+                    // The fourth component is alpha even when the header's alpha bits are 0
+                    // (the campaign loading screens' emblems show through it).
+                    rgba[d + 3] = if comps == 4 { c(3) } else { 255 };
                 }
             }
         } else {

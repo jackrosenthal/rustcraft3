@@ -49,6 +49,16 @@ pub struct GameData {
     war3x_local: Option<Arc<Archive>>,
     patch: Option<Arc<Archive>>,
     pub misc: Profile,
+    /// The player's profile (campaign progress and saved game caches), kept on disk
+    /// per data version.
+    pub persist: std::rc::Rc<std::cell::RefCell<w3_game::persist::Persist>>,
+    /// Whether the next game is a campaign mission (it takes the profile's difficulty).
+    pub campaign_game: std::cell::Cell<bool>,
+}
+
+/// Where the profile lives: the user's data directory, one file per data version.
+pub fn profile_path(version: Version) -> Option<PathBuf> {
+    Some(dirs::data_dir()?.join("war3-remaster").join(format!("profile_v{}.json", version as u32)))
 }
 
 fn open_optional(dir: &Path, name: &str) -> anyhow::Result<Option<Arc<Archive>>> {
@@ -87,9 +97,29 @@ impl GameData {
         // FUN_6f046800: the expansion is used when installed unless -classic is given.
         let version = if classic || war3x.is_none() { Version::ReignOfChaos } else { Version::FrozenThrone };
         let misc = Profile::parse(&chain.read_string("UI\\MiscData.txt").unwrap_or_default());
-        let data = GameData { dir: dir.to_path_buf(), version, chain, war3x, war3x_local, patch, misc };
+        let persist = profile_path(version)
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_else(|| w3_game::persist::Persist { difficulty: 1, ..Default::default() });
+        let data = GameData { dir: dir.to_path_buf(), version, chain, war3x, war3x_local, patch, misc, persist: std::rc::Rc::new(std::cell::RefCell::new(persist)), campaign_game: std::cell::Cell::new(false) };
         data.select_data_set(DataSet::Melee);
         Ok(data)
+    }
+
+    /// Writes the profile to disk.
+    pub fn save_profile(&self) {
+        let Some(path) = profile_path(self.version) else { return };
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        match serde_json::to_string_pretty(&*self.persist.borrow()) {
+            Ok(s) => {
+                if let Err(e) = std::fs::write(&path, s) {
+                    log::warn!("saving profile {}: {e}", path.display());
+                }
+            }
+            Err(e) => log::warn!("profile: {e}"),
+        }
     }
 
     /// Mounts the rule-set folders for a game (FUN_6f03e070).

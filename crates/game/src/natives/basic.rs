@@ -235,8 +235,74 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         InitGameCache => |w, _, a| {
+            // A cache saved by an earlier game comes back with its contents.
             let name = a.s(0);
-            handle(w.handles.insert(Obj::GameCache(Box::new(GameCache { name, ..Default::default() }))))
+            let cache = match w.persist.caches.get(&name.to_ascii_lowercase()) {
+                Some(saved) => saved.to_cache(&name),
+                None => GameCache { name, ..Default::default() },
+            };
+            handle(w.handles.insert(Obj::GameCache(Box::new(cache))))
+        },
+        StoreUnit => |w, _, a| {
+            let (key, unit) = ((a.s(1), a.s(2)), a.h(3));
+            let stored = w.unit(unit).map(|u| crate::types::StoredUnit {
+                type_id: u.type_id,
+                level: u.level,
+                xp: u.hero_xp,
+                skill_points: u.skill_points,
+                str_: u.str_,
+                agi: u.agi,
+                int: u.int,
+                proper_name: u.proper_name.clone(),
+                abilities: u.abilities.clone(),
+                items: u.inventory.iter().map(|&i| w.item(i).map(|it| (it.type_id, it.charges))).collect(),
+            });
+            match (stored, gamecache(w, a.h(0))) {
+                (Some(s), Some(c)) => { c.units.insert(key, s); boolean(true) }
+                _ => boolean(false),
+            }
+        },
+        RestoreUnit => |w, vm, a| {
+            let key = (a.s(1), a.s(2));
+            let Some(s) = gamecache(w, a.h(0)).and_then(|c| c.units.get(&key).cloned()) else { return handle(0) };
+            let Some(p) = w.player_of(a.h(3)) else { return handle(0) };
+            let h = crate::natives::units::create_unit(w, p, s.type_id, a.r(4), a.r(5), a.r(6));
+            if let Some(u) = w.unit_mut(h) {
+                u.level = s.level;
+                u.hero_xp = s.xp;
+                u.skill_points = s.skill_points;
+                u.str_ = s.str_;
+                u.agi = s.agi;
+                u.int = s.int;
+                if !s.proper_name.is_empty() {
+                    u.proper_name = s.proper_name.clone();
+                }
+                u.abilities = s.abilities.clone();
+            }
+            for (slot, it) in s.items.iter().enumerate() {
+                if let Some((t, charges)) = *it {
+                    let item = crate::natives::objects::create_item(w, t, a.r(4), a.r(5));
+                    if let Some(i) = w.item_mut(item) {
+                        i.charges = charges;
+                    }
+                    w.give_item(vm, h, item, Some(slot));
+                }
+            }
+            w.apply_hero_stats(h, true);
+            handle(h)
+        },
+        HaveStoredUnit => |w, _, a| { let k = (a.s(1), a.s(2)); boolean(gamecache(w, a.h(0)).is_some_and(|c| c.units.contains_key(&k))) },
+        FlushStoredUnit => |w, _, a| { let k = (a.s(1), a.s(2)); if let Some(c) = gamecache(w, a.h(0)) { c.units.remove(&k); } none() },
+        FlushStoredMission => |w, _, a| {
+            let m = a.s(1);
+            if let Some(c) = gamecache(w, a.h(0)) {
+                c.ints.retain(|k, _| k.0 != m);
+                c.reals.retain(|k, _| k.0 != m);
+                c.bools.retain(|k, _| k.0 != m);
+                c.strings.retain(|k, _| k.0 != m);
+                c.units.retain(|k, _| k.0 != m);
+            }
+            none()
         },
         StoreInteger => |w, _, a| { let k = (a.s(1), a.s(2)); if let Some(c) = gamecache(w, a.h(0)) { c.ints.insert(k, a.i(3)); } none() },
         StoreReal => |w, _, a| { let k = (a.s(1), a.s(2)); if let Some(c) = gamecache(w, a.h(0)) { c.reals.insert(k, a.r(3)); } none() },
@@ -251,7 +317,13 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         HaveStoredBoolean => |w, _, a| { let k = (a.s(1), a.s(2)); boolean(gamecache(w, a.h(0)).is_some_and(|c| c.bools.contains_key(&k))) },
         HaveStoredString => |w, _, a| { let k = (a.s(1), a.s(2)); boolean(gamecache(w, a.h(0)).is_some_and(|c| c.strings.contains_key(&k))) },
         FlushGameCache => |w, _, a| { if let Some(c) = gamecache(w, a.h(0)) { let n = c.name.clone(); *c = GameCache { name: n, ..Default::default() }; } none() },
-        SaveGameCache => |_, _, _| boolean(true),
+        SaveGameCache => |w, _, a| {
+            let saved = gamecache(w, a.h(0)).map(|c| (c.name.to_ascii_lowercase(), crate::persist::SavedCache::from_cache(c)));
+            match saved {
+                Some((name, s)) => { w.persist.caches.insert(name, s); boolean(true) }
+                None => boolean(false),
+            }
+        },
         ReloadGameCachesFromDisk => |_, _, _| boolean(true),
     );
     // Typed handle stores and loads share one representation.

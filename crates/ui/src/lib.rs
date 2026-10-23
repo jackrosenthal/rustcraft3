@@ -264,6 +264,10 @@ pub struct FrameTree {
     pub by_name: HashMap<String, usize>,
     /// Width of the interface space (0.8 at 4:3, wider on wide displays).
     pub width: f32,
+    /// The skins' fonts (from the frame database), for sizing wrapped text.
+    pub fonts: HashMap<String, Rc<fontdue::Font>>,
+    /// Font skin keys (MasterFont) and the files they name.
+    pub font_keys: HashMap<String, String>,
 }
 
 impl FrameTree {
@@ -319,6 +323,18 @@ impl FrameTree {
     /// Instantiates a template with `scope` appended to every frame name.
     pub fn create_scoped(&mut self, db: &FrameDb, template: &str, parent: usize, scope: &str) -> Option<usize> {
         let d = db.templates.get(template)?.clone();
+        if self.fonts.is_empty() {
+            self.fonts = db.fonts.clone();
+            for sec in [db.skin.as_str(), "Default"] {
+                if let Some(entries) = db.skins.sections.get(sec) {
+                    for (k, v) in entries {
+                        if v.to_ascii_lowercase().ends_with(".ttf") {
+                            self.font_keys.entry(k.clone()).or_insert_with(|| v.clone());
+                        }
+                    }
+                }
+            }
+        }
         Some(self.instantiate(db, &d, parent, scope))
     }
 
@@ -366,6 +382,11 @@ impl FrameTree {
             }
         }
         i
+    }
+
+    /// The file a font skin key names.
+    fn skin_font(&self, name: &str) -> String {
+        self.font_keys.get(name).cloned().unwrap_or_else(|| name.to_string())
     }
 
     /// Looks up a name as written inside frame `i`'s definition: within its scope first.
@@ -494,13 +515,20 @@ impl FrameTree {
             }
         }
         let w = f.width.unwrap_or(0.0);
-        // A text frame without a height is one line of its font tall.
+        // A text frame without a height is as tall as its text wrapped to its width:
+        // one font height per line.
         let h = f.height.unwrap_or_else(|| {
-            if (f.def.kind == "TEXT" || f.def.block == "String") && f.text.as_deref().is_some_and(|t| !t.is_empty()) {
-                f.def.prop("FrameFont").or_else(|| f.def.prop("Font")).and_then(|p| p.args.get(1).map(Arg::num)).unwrap_or(0.0)
-            } else {
-                0.0
-            }
+            let Some(text) = f.text.as_deref().filter(|t| !t.is_empty() && (f.def.kind == "TEXT" || f.def.block == "String")) else { return 0.0 };
+            let font = f.def.prop("FrameFont").or_else(|| f.def.prop("Font"));
+            let size = font.and_then(|p| p.args.get(1).map(Arg::num)).unwrap_or(0.0);
+            let lines = match (font.and_then(|p| p.args.first()), f.width) {
+                (Some(name), Some(width)) => {
+                    let path = self.skin_font(name.as_str());
+                    wrap_lines(self.fonts.get(&path.to_ascii_lowercase()).map(|f| &**f), size, text, width)
+                }
+                _ => text.replace("|n", "\n").replace("|N", "\n").split('\n').count(),
+            };
+            lines.max(1) as f32 * size
         });
         let (x0, x1) = match (x0, x1, cx) {
             (Some(a), Some(b), _) => (a, b),
@@ -1094,6 +1122,31 @@ impl FrameTree {
             push(Rect { x0: r.x1 - c, x1: r.x1, y0: r.y0, y1: r.y0 + c }, piece(7.0), false);
         }
     }
+}
+
+/// How many lines text takes when broken at newlines and |n and then wrapped to `max_w`
+/// (as the renderer and FrameDb::wrap break it).
+fn wrap_lines(font: Option<&fontdue::Font>, size: f32, text: &str, max_w: f32) -> usize {
+    let width = |s: &str| match font {
+        Some(f) => strip_color_codes(s).chars().map(|c| f.metrics(c, 64.0).advance_width).sum::<f32>() * size / 64.0,
+        None => s.chars().count() as f32 * size * 0.5,
+    };
+    let text = text.replace("|n", "\n").replace("|N", "\n");
+    let mut n = 0;
+    for para in text.split('\n') {
+        let mut cur = String::new();
+        n += 1;
+        for word in para.split(' ') {
+            let cand = if cur.is_empty() { word.to_string() } else { format!("{cur} {word}") };
+            if !cur.is_empty() && width(&cand) > max_w {
+                n += 1;
+                cur = word.to_string();
+            } else {
+                cur = cand;
+            }
+        }
+    }
+    n
 }
 
 /// Text without |cAARRGGBB and |r color codes.

@@ -17,6 +17,8 @@ pub enum GlueAction {
     Quit,
     /// Start a game on a map file with the setup screen's choices.
     Play(std::path::PathBuf, Vec<w3_game::LobbySlot>),
+    /// A campaign mission, by its path in the game's archives.
+    Campaign(String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,6 +26,8 @@ pub enum Screen {
     MainMenu,
     SinglePlayer,
     Skirmish,
+    /// CCampaignMenu: choosing a campaign and mission.
+    Campaign,
     /// The loading screen shown while a map loads.
     Loading,
 }
@@ -36,6 +40,7 @@ impl Screen {
             Screen::MainMenu => "MainMenu",
             Screen::SinglePlayer => "SinglePlayer",
             Screen::Skirmish => "SinglePlayerSkirmish",
+            Screen::Campaign => "Campaign",
             Screen::Loading => "",
         }
     }
@@ -46,6 +51,7 @@ impl Screen {
             Screen::MainMenu => "MainMenuFrame",
             Screen::SinglePlayer => "SinglePlayerMenu",
             Screen::Skirmish => "Skirmish",
+            Screen::Campaign => "CampaignMenu",
             Screen::Loading => "Loading",
         }
     }
@@ -79,6 +85,15 @@ pub struct Glue {
     pub skirmish: crate::skirmish::Skirmish,
     /// Loading progress from 0 to 1, shown by the bar's Birth animation.
     pub progress: f32,
+    pub campaigns: crate::campaign::Campaigns,
+    pub persist: std::rc::Rc<std::cell::RefCell<w3_game::persist::Persist>>,
+    /// The glue's own background and fog, kept while the campaign screen shows a
+    /// campaign's backdrop.
+    saved_background: Option<(Option<ModelInstance>, (f32, f32, [f32; 4]))>,
+    /// The loading screen waits for a key (LOADING_PRESS_A_KEY) once loading is done.
+    pub press_a_key: bool,
+    /// The loading background's sequence, when its [LoadingScreens] entry names one.
+    loading_sequence: Option<usize>,
 }
 
 impl Glue {
@@ -125,6 +140,11 @@ impl Glue {
             pointer: (0.0, 0.0),
             skirmish,
             progress: 0.0,
+            campaigns: crate::campaign::Campaigns::load(&data.chain, &assets.frames),
+            persist: data.persist.clone(),
+            saved_background: None,
+            press_a_key: false,
+            loading_sequence: None,
         };
         g.build(Screen::MainMenu, assets);
         g.play_layers(&format!("{} Birth", Screen::MainMenu.token()));
@@ -181,10 +201,29 @@ impl Glue {
                 self.tree.set_text("ProfileNameText", &name);
             }
             Screen::Skirmish => self.skirmish.attach(&mut self.tree, db),
+            Screen::Campaign => {
+                self.tree.set_visible("MissionSelectFrame", false);
+                // SlidingDoors (Campaign-Fade) fades to black when a mission starts.
+                self.tree.set_visible("SlidingDoors", false);
+                if let Some(logo) = db.skin_value("MainMenuLogo") {
+                    self.tree.set_model("WarCraftIIILogo", &logo);
+                }
+                // CCampaignMenu::vf55: Normal and Hard, from the profile's difficulty.
+                let hard = self.persist.borrow().difficulty == 2;
+                self.tree.set_items("DifficultySelect", vec![db.string("NORMAL"), db.string("HARD")], hard as usize);
+            }
             Screen::Loading => {}
         }
         self.tree.bind_points();
         self.tree.layout();
+    }
+
+    /// Loading is done (CLoading state 1): the bar asks for a key.
+    pub fn loading_done(&mut self, assets: &mut Assets) {
+        self.press_a_key = true;
+        self.progress = 1.0;
+        let text = assets.frames.string("LOADING_PRESS_A_KEY");
+        self.tree.set_text("LoadingBarText", &text);
     }
 
     /// Shows the loading screen for the selected map (CLoading): a melee map shows the
@@ -193,6 +232,7 @@ impl Glue {
     pub fn show_loading(&mut self, assets: &mut Assets) {
         self.screen = Screen::Loading;
         self.phase = Phase::Stand;
+        self.loading_sequence = None;
         self.tree = FrameTree::new(4.0 / 3.0);
         self.sprites.clear();
         let db = &assets.frames;
@@ -219,7 +259,10 @@ impl Glue {
         } else if !info.loading_model.is_empty() {
             Some(text(&info.loading_model))
         } else if info.loading_screen >= 0 {
-            self.skirmish.loading_screen(info.loading_screen)
+            self.skirmish.loading_screen(info.loading_screen).map(|(m, seq)| {
+                self.loading_sequence = Some(seq);
+                m
+            })
         } else {
             Some("UI\\Glues\\Loading\\Load-Generic\\Load-Generic.mdl".to_string())
         };
@@ -271,7 +314,37 @@ impl Glue {
         if self.screen == Screen::Skirmish {
             self.skirmish.click(&mut self.tree, &assets.frames, x, y);
         }
+        if self.screen == Screen::Campaign && self.phase == Phase::Stand {
+            let root = self.tree.frames[0].rect.unwrap_or_default();
+            let row = self.campaigns.row_at(&self.persist.borrow(), root, x, y);
+            match row {
+                // A campaign with only its first mission open starts it; otherwise its
+                // open missions are listed.
+                Some(crate::campaign::Row::Campaign(c)) => {
+                    let p = self.persist.borrow();
+                    let more = (1..self.campaigns.list[c].as_ref().map_or(0, |e| e.missions.len())).any(|m| self.campaigns.mission_available(&p, c, m));
+                    drop(p);
+                    if more {
+                        self.campaigns.open = Some(c);
+                    } else {
+                        self.start_mission(c, 0);
+                    }
+                    return true;
+                }
+                Some(crate::campaign::Row::Mission(c, m)) => {
+                    self.start_mission(c, m);
+                    return true;
+                }
+                _ => {}
+            }
+        }
         false
+    }
+
+    fn start_mission(&mut self, c: usize, m: usize) {
+        if let Some(map) = self.campaigns.list.get(c).and_then(|e| e.as_ref()).and_then(|e| e.missions.get(m)) {
+            self.action = Some(GlueAction::Campaign(map.map.clone()));
+        }
     }
 
     pub fn pointer_up(&mut self, assets: &mut Assets) -> Option<String> {
@@ -311,6 +384,16 @@ impl Glue {
                 }
             }
             (Screen::Skirmish, other) => self.skirmish.button(&mut self.tree, &assets.frames, other),
+            (Screen::SinglePlayer, "CampaignButton") => self.show(Screen::Campaign, assets),
+            (Screen::Campaign, "BackButton") => {
+                if self.campaigns.open.take().is_none() {
+                    self.show(Screen::SinglePlayer, assets);
+                }
+            }
+            (Screen::Campaign, "DifficultySelect") => {
+                let sel = self.tree.get("DifficultySelect").map_or(0, |i| self.tree.frames[i].selected);
+                self.persist.borrow_mut().difficulty = if sel == 1 { 2 } else { 1 };
+            }
             _ => log::debug!("glue button {name} has no handler yet"),
         }
     }
@@ -381,6 +464,26 @@ impl Glue {
         assets: &mut Assets,
     ) {
         let aspect = size.0 as f32 / size.1.max(1) as f32;
+        // The campaign screen shows a campaign's backdrop and fog in place of the glue's.
+        if self.screen == Screen::Campaign && self.saved_background.is_none() {
+            let pick = self.campaigns.backdrop_campaign(&self.persist.borrow()).and_then(|c| self.campaigns.list[c].clone());
+            if let Some(c) = pick {
+                let path = assets.frames.skin_value(&c.background);
+                let model = path.and_then(|p| assets.model(device, queue, &p));
+                if let Some(m) = model {
+                    let mut i = ModelInstance::new(m);
+                    i.sequence = w3_render::anim::find_sequence(&i.model.mdx, "Stand");
+                    let (start, end, _, color) = c.fog;
+                    self.saved_background = Some((self.background.replace(i), self.fog));
+                    self.fog = (start, end, color);
+                }
+            }
+        } else if self.screen != Screen::Campaign {
+            if let Some((b, fog)) = self.saved_background.take() {
+                self.background = b;
+                self.fog = fog;
+            }
+        }
         // Background through the model's camera.
         let mut bg_globals = None;
         let loading = self.screen == Screen::Loading;
@@ -431,6 +534,11 @@ impl Glue {
                 relayout = true;
                 let mut inst = ModelInstance::new(m);
                 inst.sequence = w3_render::anim::find_sequence(&inst.model.mdx, "Birth").or_else(|| w3_render::anim::find_sequence(&inst.model.mdx, "Stand"));
+                if self.tree.frames[*i].name == "LoadingBackground" {
+                    if let Some(k) = self.loading_sequence.filter(|&k| k < inst.model.mdx.sequences.len()) {
+                        inst.sequence = Some(k);
+                    }
+                }
                 self.sprites.insert(*i, (path.clone(), inst));
             }
         }
@@ -446,7 +554,8 @@ impl Glue {
         }
         let sprites = self.tree.sprites();
         // The panel layers cover the glue root with their origin at its lower left.
-        for l in self.layers.iter_mut().filter(|_| !loading) {
+        let campaign = self.screen == Screen::Campaign && self.phase != Phase::Death(Screen::SinglePlayer);
+        for l in self.layers.iter_mut().filter(|_| !loading && !campaign) {
             l.transform = Mat4::IDENTITY;
             self.sprite_renderer.submit(l, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
         }
@@ -528,6 +637,12 @@ impl Glue {
         }
         if self.screen == Screen::Skirmish && self.phase == Phase::Stand {
             self.skirmish.draws(&self.tree, &assets.frames, &mut draws);
+        }
+        if self.screen == Screen::Campaign && self.phase == Phase::Stand {
+            let root = self.tree.frames[0].rect.unwrap_or_default();
+            let p = self.persist.borrow();
+            let hover = self.campaigns.row_at(&p, root, self.pointer.0, self.pointer.1);
+            self.campaigns.draws(&p, &assets.frames, root, hover.as_ref(), &mut draws);
         }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("glue interface"),

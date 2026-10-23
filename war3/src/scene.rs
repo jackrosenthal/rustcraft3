@@ -158,6 +158,8 @@ pub struct Scene {
     hud_sprites: ModelRenderer,
     time_indicator: Option<ModelInstance>,
     portrait: Option<(u32, UnitView)>,
+    /// ChangeLevel's next map, for the app to load.
+    pub change_level: Option<String>,
     /// The transmission's portrait: its unit type and model.
     cine_portrait: Option<(w3_game::objects::Id, UnitView)>,
     fog: Option<Arc<w3_render::fog::FogTexture>>,
@@ -288,6 +290,12 @@ impl Scene {
         // user slot.  Other slots stay empty until computer players are implemented.
         let mut game = match w3_game::Game::load(data.chain.clone(), data.version as i32) {
             Ok(mut g) => {
+                // The profile comes in before the script runs (InitGameCache reads saved
+                // caches); campaign games take its difficulty.
+                g.world.persist = data.persist.borrow().clone();
+                if data.campaign_game.get() && g.world.persist.difficulty > 0 {
+                    g.world.difficulty = g.world.persist.difficulty;
+                }
                 if let Err(e) = g.config() {
                     log::error!("config: {e:#}");
                 }
@@ -360,7 +368,7 @@ impl Scene {
         let portrait_renderer = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let hud_sprites = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, time_indicator: None, portrait: None, cine_portrait: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -391,6 +399,7 @@ impl Scene {
                     }
                 }
                 w3_game::world::Request::EndGame => self.ended = true,
+                w3_game::world::Request::ChangeLevel { map, .. } => self.change_level = Some(map),
                 r @ (w3_game::world::Request::PlaySound(_)
                 | w3_game::world::Request::UiSound { .. }
                 | w3_game::world::Request::WorldSound { .. }

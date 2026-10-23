@@ -32,6 +32,8 @@ pub enum Request {
     SetCameraField { players: u32, field: i32, value: f32, duration: f32 },
     ResetCamera { players: u32, duration: f32 },
     CinematicMode(bool),
+    /// ChangeLevel: the next map, and whether the score screen comes first.
+    ChangeLevel { map: String, score: bool },
     Fade { players: u32, out: bool, duration: f32 },
     EndGame,
 }
@@ -122,6 +124,8 @@ pub struct World {
     /// The local player's camera.
     pub camera: crate::camera::GameCamera,
     pub cinematic: Cinematic,
+    /// The player's profile: campaign progress and saved game caches.
+    pub persist: crate::persist::Persist,
     /// Handles removed at a game time (temporary fog modifiers).
     pub timed_removals: Vec<(u32, f32)>,
 }
@@ -255,6 +259,7 @@ impl World {
             quest_flash: false,
             camera,
             cinematic: Cinematic::default(),
+            persist: Default::default(),
             timed_removals: Vec::new(),
         }
     }

@@ -326,6 +326,10 @@ pub struct Scene {
     item_target: Option<(u32, usize)>,
     /// An item picked up with a right-click to be moved, dropped, or handed over.
     held_item: Option<(u32, usize)>,
+    /// Control groups 0 to 9, and the last one chosen and when (to look at it when
+    /// chosen again soon after).
+    groups: [Vec<u32>; 10],
+    last_group: Option<(usize, f32)>,
     /// The message log is to open (F12 or the Log button).
     log_requested: bool,
     /// Acknowledgments: the unit last clicked, the consecutive "What" count (game.dll
@@ -552,7 +556,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, item_target: None, held_item: None, log_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1678,6 +1682,42 @@ impl Scene {
     }
 
     /// A key press: command card hotkeys and Escape.
+    /// A digit key: with Ctrl the selection becomes control group `n`, with Shift it
+    /// joins it; alone the group (its living units) is selected, and the camera goes
+    /// to it when it is chosen again within half a second.
+    pub fn control_group(&mut self, n: usize, ctrl: bool, shift: bool) {
+        if n >= 10 || !self.user_control() {
+            return;
+        }
+        if ctrl {
+            self.groups[n] = self.selection.clone();
+            return;
+        }
+        if shift {
+            for &h in &self.selection.clone() {
+                if !self.groups[n].contains(&h) {
+                    self.groups[n].push(h);
+                }
+            }
+            return;
+        }
+        let Some(g) = self.game.as_ref() else { return };
+        self.groups[n].retain(|&h| g.world.unit(h).is_some_and(|u| !u.dead));
+        if self.groups[n].is_empty() {
+            return;
+        }
+        let again = self.last_group.is_some_and(|(k, t)| k == n && self.time - t < 0.5);
+        self.last_group = Some((n, self.time));
+        self.selection = self.groups[n].clone();
+        if again {
+            if let Some(g) = self.game.as_mut() {
+                if let Some((x, y)) = self.selection.first().and_then(|&h| g.world.unit(h)).map(|u| (u.x, u.y)) {
+                    g.world.camera.pan_to(x, y, 0.0);
+                }
+            }
+        }
+    }
+
     fn select_worker(&mut self, worker: u32) {
         self.selection = vec![worker];
         if let Some(g) = self.game.as_mut() {

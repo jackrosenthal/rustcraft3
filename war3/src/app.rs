@@ -196,6 +196,15 @@ impl ApplicationHandler for App {
                             scene.open_quests();
                         }
                     }
+                    // Digits: control groups.
+                    let digits = [KeyCode::Digit0, KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3, KeyCode::Digit4, KeyCode::Digit5, KeyCode::Digit6, KeyCode::Digit7, KeyCode::Digit8, KeyCode::Digit9];
+                    if let Some(n) = digits.iter().position(|&d| event.physical_key == PhysicalKey::Code(d)) {
+                        let ctrl = r.keys.contains(&KeyCode::ControlLeft) || r.keys.contains(&KeyCode::ControlRight);
+                        let shift = r.keys.contains(&KeyCode::ShiftLeft) || r.keys.contains(&KeyCode::ShiftRight);
+                        if let Some(scene) = r.scene.as_mut() {
+                            scene.control_group(n, ctrl, shift);
+                        }
+                    }
                     if event.physical_key == PhysicalKey::Code(KeyCode::F8) {
                         if let Some(scene) = r.scene.as_mut() {
                             scene.idle_worker_key();

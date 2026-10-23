@@ -206,6 +206,18 @@ impl World {
                 "Acri" => self.ai_cripple(h, a, enemy, victim),
                 "AEfk" => self.ai_fan_of_knives(h, a, lvl, enemy, victim),
                 "ANbf" | "ACbf" => self.ai_breath(h, a, lvl, enemy, victim),
+                "AHwe" | "ANsg" | "ANsq" | "ANsw" | "ANlm" => self.ai_summon(h, a, enemy, victim),
+                "AOsf" | "AIsh" => self.ai_feral_spirit(h, a, victim),
+                "AHpx" => self.ai_phoenix(h, a, lvl, enemy, victim),
+                "ANwm" => self.ai_watery_minion(h, a, enemy, victim),
+                "ANsy" | "AOwd" => self.ai_ward(h, a, lvl, enemy, victim),
+                "ANht" => self.ai_howl(h, a, lvl, enemy, victim),
+                "Auhf" => self.ai_unholy_frenzy(h, a, lvl, enemy, victim),
+                "Aspl" => self.ai_spirit_link(h, a, lvl, enemy, victim),
+                "Alsh" => self.ai_lightning_shield(h, a, lvl, enemy, victim),
+                "AUls" => self.ai_locust_swarm(h, a, lvl, enemy, victim),
+                "AEsf" => self.ai_starfall(h, a, lvl, enemy, victim),
+                "AOvd" => self.ai_voodoo(h, a, lvl, enemy, victim),
                 _ => {}
             }
         }
@@ -972,6 +984,206 @@ impl World {
             return true;
         }
         false
+    }
+
+    /// Summons (FUN_6f610120: Water Elemental, Summon Bear, Quilbeast, Hawk, Lava
+    /// Spawn): past the gate, when more than 2 enemies are within 500 of the victim or
+    /// the caster has half its life or less.
+    fn ai_summon(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, None, None) {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(victim);
+        if self.census(h, x, y, 500.0, true).enemies > 2 || self.life_fraction(h) <= 0.5 {
+            self.ai_cast(h, a, 0);
+        }
+    }
+
+    /// Feral Spirit (FUN_6f60f690): with its AI ready, when within 500 of the victim
+    /// more than one enemy is seen and the caster's side is not the larger.
+    fn ai_feral_spirit(&mut self, h: u32, a: Id, victim: u32) {
+        if self.ai_resting(h, a) || self.can_cast(h, a).is_err() {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(victim);
+        let c = self.census(h, x, y, 500.0, true);
+        if c.enemy_seen > 1 && c.allies <= c.enemies {
+            self.ai_cast(h, a, 0);
+        }
+    }
+
+    /// Phoenix (CAbilitySummonPhoenix vf64): past the gate, unless one of its phoenixes
+    /// still lives.
+    fn ai_phoenix(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, None, None) {
+            return;
+        }
+        self.ai_rest(h, a);
+        let kind = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
+        let owner = self.unit(h).map_or(0, |u| u.owner);
+        if self.unit_order.iter().any(|&t| self.unit(t).is_some_and(|u| u.owner == owner && u.type_id == kind && !u.dead)) {
+            return;
+        }
+        self.ai_cast(h, a, 0);
+    }
+
+    /// Watery Minion (CAbilityWateryMinion vf64): past the gate, at the enemy; when the
+    /// victim is another, only with 3 enemies within 500 of it or the caster at half
+    /// its life or less.
+    fn ai_watery_minion(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, None, None) {
+            return;
+        }
+        if victim != h {
+            self.ai_rest(h, a);
+            let (x, y) = self.pos(victim);
+            if self.census(h, x, y, 500.0, true).enemies < 3 && self.life_fraction(h) > 0.5 {
+                return;
+            }
+        }
+        self.ai_cast(h, a, enemy);
+    }
+
+    /// Pocket Factory, Serpent Ward (CAbilitySummonFactory, CAbilityWard vf64): past the
+    /// gate, at the enemy when it costs under 11 mana; else at the victim when 5
+    /// enemies are within 600 of it or the caster has half its life or less.
+    fn ai_ward(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, None, None) {
+            return;
+        }
+        if self.data(a, "Cost", lvl) < 11.0 {
+            self.ai_cast(h, a, enemy);
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(victim);
+        if self.census(h, x, y, 600.0, true).enemies < 5 && self.life_fraction(h) > 0.5 {
+            return;
+        }
+        self.ai_cast(h, a, victim);
+    }
+
+    /// Howl of Terror (CAbilityHowlOfTerror vf64): past the gate (no creeps), at once
+    /// when hard pressed; else with 3 seen enemies besides structures within Area.
+    fn ai_howl(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        let buff = self.buff_id(a, lvl);
+        if self.ai_gate(h, a, enemy, victim, false, None, buff) {
+            return;
+        }
+        if !(victim == h && self.life(h) <= 400.0) {
+            self.ai_rest(h, a);
+            let (x, y) = self.pos(h);
+            let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
+            if c.enemy_seen - c.enemy_structures < 3 {
+                return;
+            }
+        }
+        self.ai_cast(h, a, 0);
+    }
+
+    /// Unholy Frenzy (CAbilityUnholyFrenzy vf64): past the gate (no creeps, not on one
+    /// bearing it), on the armed victim when it has twice the life the frenzy drains
+    /// over its time (DataB a second for Dur) and deals at least 14 damage a second.
+    fn ai_unholy_frenzy(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        let buff = self.buff_id(a, lvl);
+        if self.ai_gate(h, a, enemy, victim, false, Some(victim), buff) {
+            return;
+        }
+        let Some(v) = self.unit(victim) else { return };
+        let Some((_, w)) = crate::sim::unit_weapons(self, v).into_iter().next() else { return };
+        let drain = self.data(a, "Dur", lvl) * self.data(a, "DataB", lvl);
+        if v.life < 2.0 * drain || w.cooldown <= 0.0 {
+            return;
+        }
+        let (min, max) = (w.base + w.dice as f32, w.base + (w.dice * w.sides) as f32);
+        if ((max - min) / 2.0 + min) / w.cooldown >= 14.0 {
+            self.ai_cast(h, a, victim);
+        }
+    }
+
+    /// Spirit Link (CAbilitySpiritLink vf64): past the gate (not on one linked), on a
+    /// victim other than itself that is a Hero or has at least 100 life.
+    fn ai_spirit_link(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        let buff = self.buff_id(a, lvl);
+        if self.ai_gate(h, a, enemy, victim, true, Some(victim), buff) || victim == h {
+            return;
+        }
+        if self.unit(victim).is_some_and(|v| !Self::real_hero(v) && v.life < 100.0) {
+            return;
+        }
+        self.ai_cast(h, a, victim);
+    }
+
+    /// FUN_6f604b80: Lightning Shield on `t` when within Area of it 3 enemies are seen
+    /// (2 when the caster has under 100 life) and the caster's side there numbers no
+    /// more than `t` itself when a friend.
+    fn lightning_shield_at(&mut self, h: u32, a: Id, lvl: u32, t: u32) -> bool {
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(t);
+        let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
+        let need = if self.life(h) < 100.0 { 2 } else { 3 };
+        let owner = self.unit(h).map_or(0, |u| u.owner);
+        let friend = self.unit(t).is_some_and(|u| crate::natives::players::is_ally(self, owner, u.owner)) as i32;
+        if need <= c.enemy_seen && c.allies <= friend {
+            self.ai_cast(h, a, t);
+            return true;
+        }
+        false
+    }
+
+    /// Lightning Shield (CAbilityLightningShield vf64): on the victim, else on the
+    /// enemy, past the gate (no creeps, not on one bearing it).
+    fn ai_lightning_shield(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        let buff = self.buff_id(a, lvl);
+        if !self.ai_gate(h, a, enemy, victim, false, Some(victim), buff) && self.lightning_shield_at(h, a, lvl, victim) {
+            return;
+        }
+        if !self.ai_gate(h, a, enemy, victim, false, Some(enemy), buff) {
+            self.lightning_shield_at(h, a, lvl, enemy);
+        }
+    }
+
+    /// Locust Swarm (CAbilityLocustSwarm vf64): past the gate (no creeps), with 8
+    /// enemies able to fight within Area (2 when the caster has 400 life or less).
+    fn ai_locust_swarm(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, false, None, None) {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(h);
+        let need = if self.life(h) > 400.0 { 8 } else { 2 };
+        if need <= self.census(h, x, y, self.data(a, "Area", lvl), true).enemy_fighters {
+            self.ai_cast(h, a, 0);
+        }
+    }
+
+    /// Starfall (CAbilityStarfall vf64, FUN_6f603520): past the gate (no creeps), with 5
+    /// enemies within Area.
+    fn ai_starfall(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, false, None, None) {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(h);
+        if self.census(h, x, y, self.data(a, "Area", lvl), false).enemies >= 5 {
+            self.ai_cast(h, a, 0);
+        }
+    }
+
+    /// Big Bad Voodoo (CAbilityVoodoo vf64, FUN_6f603580): past the gate (no creeps),
+    /// with 4 of the caster's side within Area and an enemy structure there.
+    fn ai_voodoo(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, false, None, None) {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(h);
+        let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
+        if c.allies >= 4 && c.enemy_structures > 0 {
+            self.ai_cast(h, a, 0);
+        }
     }
 }
 

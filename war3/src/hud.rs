@@ -106,6 +106,8 @@ pub struct Hud {
     /// The game menu (F10), built by CEscMenu: EscMenuBackdrop centered 0.06 above the
     /// middle, holding EscMenuMainPanel.
     pub menu: Option<FrameTree>,
+    /// The quest log (F9), while open.
+    pub quests: Option<crate::quests::QuestView>,
     /// The game menu's Save Game or Load Game panel, while shown.
     pub save_panel: Option<crate::saveload::SavePanel>,
     /// The selected unit's inventory: icon and charges per slot it has.
@@ -257,6 +259,7 @@ impl Hud {
             dialog: None,
             boards: None,
             menu: None,
+            quests: None,
             save_panel: None,
             inventory: Vec::new(),
             level_bar: None,
@@ -1263,6 +1266,9 @@ impl Hud {
         }
         if let Some(d) = &self.dialog {
             out.extend(d.tree.draw(db));
+        }
+        if let Some(q) = &self.quests {
+            out.extend(q.draws(db));
         }
         if let Some(m) = &self.menu {
             out.extend(m.draw(db));

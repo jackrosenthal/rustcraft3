@@ -401,6 +401,13 @@ impl FrameTree {
         i
     }
 
+    /// A frame's font file (decorated) and size, from its FrameFont or Font.
+    pub fn text_font(&self, db: &FrameDb, name: &str) -> Option<(String, f32)> {
+        let f = &self.frames[self.get(name)?];
+        let p = f.def.prop("FrameFont").or_else(|| f.def.prop("Font"))?;
+        Some((db.decorate(p.args.first().map(Arg::as_str).unwrap_or("MasterFont")), p.args.get(1).map_or(0.012, Arg::num)))
+    }
+
     /// The file a font skin key names.
     fn skin_font(&self, name: &str) -> String {
         self.font_keys.get(&name.to_ascii_lowercase()).cloned().unwrap_or_else(|| name.to_string())
@@ -820,6 +827,10 @@ impl FrameTree {
             }
             let Some(bar) = self.frames[i].def.str("TextAreaScrollBar").map(str::to_string) else { continue };
             let Some(c) = self.frames[i].children.iter().copied().find(|&c| self.frames[c].def.name == bar) else { continue };
+            // A bar placed by its own definition (the quest log's) stays there.
+            if self.frames[c].def.prop("SetPoint").is_some() {
+                continue;
+            }
             let f = &mut self.frames[c];
             f.all_points = false;
             f.points = vec![
@@ -1209,12 +1220,11 @@ impl FrameTree {
                 }
             }
             (_, "GLUETEXTBUTTON") | (_, "GLUEBUTTON") | (_, "TEXTBUTTON") | (_, "BUTTON") | (_, "GLUECHECKBOX") | (_, "CHECKBOX") | (_, "CONTROL") | (_, "EDITBOX") | (_, "SCROLLBAR") => {
-                let key = if !f.enabled {
-                    "ControlDisabledBackdrop"
-                } else if f.pushed {
-                    "ControlPushedBackdrop"
-                } else {
-                    "ControlBackdrop"
+                let key = match (f.enabled, f.pushed) {
+                    (false, true) if d.str("ControlDisabledPushedBackdrop").is_some() => "ControlDisabledPushedBackdrop",
+                    (false, _) => "ControlDisabledBackdrop",
+                    (true, true) => "ControlPushedBackdrop",
+                    (true, false) => "ControlBackdrop",
                 };
                 let name = d.str(key).or_else(|| d.str("ControlBackdrop"));
                 if let Some(bd) = name.and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {

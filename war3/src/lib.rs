@@ -16,3 +16,4 @@ pub mod saveload;
 pub mod options;
 pub mod shadows;
 pub mod scorescreen;
+pub mod quests;

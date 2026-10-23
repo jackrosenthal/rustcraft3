@@ -444,6 +444,11 @@ fn main() -> anyhow::Result<()> {
                 scene.alt_held = true;
                 i += 1;
             }
+            // quests: opens the quest log (F9).
+            "quests" => {
+                scene.open_quests();
+                i += 1;
+            }
             // tod <hour>: sets the time of day.
             "tod" => {
                 if let Some(g) = scene.game.as_mut() {

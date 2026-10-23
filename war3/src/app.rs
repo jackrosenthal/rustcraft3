@@ -183,6 +183,11 @@ impl ApplicationHandler for App {
                             }
                         }
                     }
+                    if event.physical_key == PhysicalKey::Code(KeyCode::F9) {
+                        if let Some(scene) = r.scene.as_mut() {
+                            scene.open_quests();
+                        }
+                    }
                     if event.physical_key == PhysicalKey::Code(KeyCode::F8) {
                         if let Some(scene) = r.scene.as_mut() {
                             scene.idle_worker_key();

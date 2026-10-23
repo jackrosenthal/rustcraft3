@@ -17,7 +17,7 @@ impl World {
         Some((o.level_real("DataA", l) as i32, o.level_real("Rng", l), o.level_real("Dur", l)))
     }
 
-    fn cargo_size(&self, h: u32) -> i32 {
+    pub fn cargo_size(&self, h: u32) -> i32 {
         self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map_or(1, |o| o.int("cargoSize").max(1))
     }
 

@@ -106,6 +106,9 @@ pub struct Hud {
     /// The game menu (F10), built by CEscMenu: EscMenuBackdrop centered 0.06 above the
     /// middle, holding EscMenuMainPanel.
     pub menu: Option<FrameTree>,
+    /// A transport's cargo grid: rows, columns, and each aboard unit's icon, life, and
+    /// the slots it takes.
+    pub cargo: Option<(usize, usize, Vec<(String, f32, usize)>)>,
     /// The quest log (F9), while open.
     pub quests: Option<crate::quests::QuestView>,
     /// The message log (F12), while open, and its lines; the transmission last logged.
@@ -218,7 +221,15 @@ impl Hud {
             for (template, scope) in INFO_ICONS {
                 tree.create_scoped(db, template, i, scope);
             }
-            // The building detail shares the unit detail's place.
+            // The building and cargo details share the unit detail's place.
+            if let Some(c) = tree.create_scoped(db, "SimpleInfoPanelCargoDetail", 0, "C") {
+                let f = &mut tree.frames[c];
+                f.all_points = false;
+                f.width = Some(0.188125);
+                f.height = Some(0.114063);
+                f.points = vec![Point { point: FramePoint::BottomLeft, relative: None, relative_point: FramePoint::BottomLeft, x: 0.309375, y: 0.0 }];
+                f.visible = false;
+            }
             building = tree.create_scoped(db, "SimpleInfoPanelBuildingDetail", 0, "B");
             if let Some(b) = building {
                 let f = &mut tree.frames[b];
@@ -266,6 +277,7 @@ impl Hud {
             boards: None,
             menu: None,
             quests: None,
+            cargo: None,
             log_view: None,
             log: Vec::new(),
             logged_scene: None,
@@ -784,6 +796,83 @@ impl Hud {
         }
     }
 
+    /// A transport's cargo detail (CInfoPanelCargoDetail vf27): its name, and its grid
+    /// of the hold's DataA slots, one row when there are at most three (or five), else
+    /// two; the class line only with one row.
+    fn show_cargo(&mut self, world: &World, h: u32, name: &str, class: &str) {
+        self.cargo = None;
+        self.tree.set_visible("SimpleInfoPanelCargoDetailC", false);
+        if self.production.is_some() {
+            return;
+        }
+        let Some((capacity, _, _)) = world.cargo_hold(h) else { return };
+        let Some(u) = world.unit(h) else { return };
+        if u.constructing.is_some() {
+            return;
+        }
+        let capacity = capacity.max(0) as usize;
+        let (rows, cols) = if capacity > 3 && capacity != 5 { (2, capacity / 2) } else { (1, capacity) };
+        let aboard = u
+            .extra
+            .cargo
+            .iter()
+            .filter_map(|&c| {
+                let cu = world.unit(c)?;
+                let icon = world.objects.units.get(cu.type_id).map(|o| o.str("Art")).unwrap_or_default();
+                Some((icon, cu.life / cu.max_life.max(1.0), world.cargo_size(c).max(1) as usize))
+            })
+            .collect();
+        self.cargo = Some((rows, cols, aboard));
+        if let Some(i) = self.info {
+            self.tree.frames[i].visible = false;
+        }
+        self.tree.set_visible("SimpleInfoPanelCargoDetailC", true);
+        self.tree.set_text("SimpleHoldNameValueC", name);
+        self.tree.set_text("SimpleHoldDescriptionValueC", class);
+        self.tree.set_visible("SimpleHoldDescriptionValueC", rows == 1);
+    }
+
+    /// The cargo grid (CCargoGrid, FUN_6f3cdef0): centered 0.007 below the detail's
+    /// middle, 0.036875 x 0.044375 slots 0.00125 apart, each over CargoBackdrop; a unit
+    /// aboard shows its icon (0.02875, 0.005 below the slot's top) with its life under
+    /// it, and fills as many slots as its cargoSize.
+    fn cargo_draws(&self, db: &FrameDb, out: &mut Vec<Draw>) {
+        let Some((rows, cols, aboard)) = &self.cargo else { return };
+        let Some(r) = self.tree.get("SimpleInfoPanelCargoDetailC").and_then(|i| self.tree.frames[i].rect) else { return };
+        let (gap, sw, sh) = (0.00125, 0.036875, 0.044375);
+        let (gw, gh) = ((*cols as f32 + 1.0) * gap + *cols as f32 * sw, (*rows as f32 + 1.0) * gap + *rows as f32 * sh);
+        let (cx, cy) = ((r.x0 + r.x1) / 2.0, (r.y0 + r.y1) / 2.0 - 0.007);
+        let (x0, y1) = (cx - gw / 2.0, cy + gh / 2.0);
+        let image = |texture: String, rect: w3_ui::Rect, color: [f32; 4]| Draw::Image { texture, rect, uv: [0.0, 0.0, 1.0, 1.0], color, blend: w3_ui::Blend::Alpha, rotated: false };
+        let slot = |k: usize| {
+            let (row, col) = (k / cols.max(&1), k % cols.max(&1));
+            let left = x0 + gap + col as f32 * (sw + gap);
+            let top = y1 - (row as f32 + 1.0) * gap - row as f32 * sh;
+            w3_ui::Rect { x0: left, x1: left + sw, y0: top - sh, y1: top }
+        };
+        let backdrop = db.decorate("CargoBackdrop");
+        for k in 0..rows * cols {
+            out.push(image(backdrop.clone(), slot(k), [1.0; 4]));
+        }
+        let bar_tex = db.decorate("SimpleHpBarConsoleSmall");
+        let mut k = 0;
+        for (icon, life, size) in aboard {
+            for _ in 0..*size {
+                if k >= rows * cols {
+                    return;
+                }
+                let s = slot(k);
+                let mid = (s.x0 + s.x1) / 2.0;
+                let icon_r = w3_ui::Rect { x0: mid - 0.014375, x1: mid + 0.014375, y0: s.y1 - 0.005 - 0.02875, y1: s.y1 - 0.005 };
+                out.push(image(icon.clone(), icon_r, [1.0; 4]));
+                let bar = w3_ui::Rect { x0: icon_r.x0, x1: icon_r.x1, y0: icon_r.y0 - 0.0025 - 0.0025, y1: icon_r.y0 - 0.0025 };
+                out.push(image(String::new(), bar, [0.0, 0.0, 0.0, 1.0]));
+                out.push(image(bar_tex.clone(), w3_ui::Rect { x1: bar.x0 + (bar.x1 - bar.x0) * life.clamp(0.0, 1.0), ..bar }, life_color(*life)));
+                k += 1;
+            }
+        }
+    }
+
     /// The building detail while a structure produces (FUN_6f3ccfd0's modes): the
     /// action label, the queue backdrop when training or reviving, and the queue.
     fn show_production(&mut self, db: &FrameDb, world: &World, h: u32, name: &str) {
@@ -860,6 +949,8 @@ impl Hud {
         self.production = None;
         let Some(u) = u else {
             self.portrait_stats = None;
+            self.cargo = None;
+            self.tree.set_visible("SimpleInfoPanelCargoDetailC", false);
             return;
         };
         let o = world.objects.units.get(u.type_id);
@@ -883,6 +974,7 @@ impl Hud {
         self.tree.set_text("SimpleClassValue", &class);
         let shown_name = self.tree.get("SimpleNameValue").and_then(|f| self.tree.frames[f].text.clone()).unwrap_or_default();
         self.show_production(db, world, unit.unwrap_or(0), &shown_name);
+        self.show_cargo(world, unit.unwrap_or(0), &shown_name, &class);
         // Buff icons for units (structures have no status bar), at most the bar's eight.
         self.buff_icons = (!u.is_building).then(|| {
             let mut icons: Vec<String> = Vec::new();
@@ -1250,6 +1342,7 @@ impl Hud {
             }
         }
         self.production_draws(db, &mut out);
+        self.cargo_draws(db, &mut out);
         self.group_draws(db, &mut out);
         let mut tip = self.button_at(self.pointer.0, self.pointer.1).filter(|b| !b.tip.is_empty()).cloned();
         // The idle worker button's tooltip (CPeonBar: IDLE_PEON and IDLE_PEON_DESC).

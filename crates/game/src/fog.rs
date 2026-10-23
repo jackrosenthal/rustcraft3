@@ -246,6 +246,10 @@ impl World {
         if u.owner == player || self.players.get(u.owner as usize).is_some_and(|o| o.alliances[player as usize % PLAYER_COUNT][ALLIANCE_SHARED_VISION]) {
             return true;
         }
+        // Invisible units are hidden from others.
+        if self.is_invisible(h) {
+            return false;
+        }
         self.fog_state(u.x, u.y, player) == FOG_VISIBLE
     }
 

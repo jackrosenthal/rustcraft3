@@ -113,6 +113,9 @@ pub struct World {
     pub fog: Option<crate::fog::FogMap>,
     pub shops: crate::shops::Shops,
     pub upgrade_cache: crate::upgrades::UpgradeCache,
+    pub ground_effects: Vec<GroundEffect>,
+    /// Handles removed at a game time (temporary fog modifiers).
+    pub timed_removals: Vec<(u32, f32)>,
 }
 
 /// Ground heights for GetLocationZ and unit placement.
@@ -237,6 +240,8 @@ impl World {
             fog: None,
             shops: Default::default(),
             upgrade_cache: Default::default(),
+            ground_effects: Vec::new(),
+            timed_removals: Vec::new(),
         }
     }
 
@@ -482,6 +487,9 @@ impl World {
         self.update_units(vm, dt);
         self.regenerate(dt);
         self.update_buffs(vm, dt);
+        self.update_channels(vm, dt);
+        self.update_ground_effects(vm, dt);
+        self.update_reincarnation(dt);
         self.update_fog(dt);
         self.update_shops(dt);
         self.update_ai(dt);

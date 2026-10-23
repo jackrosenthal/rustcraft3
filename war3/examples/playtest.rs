@@ -145,6 +145,15 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 4;
             }
+            // orderpt <unit> <order> <dx> <dy>: an order at a point near player 0's start.
+            "orderpt" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let (sx, sy) = g.world.start_of(0);
+                    let id = w3_game::natives::basic::order_id(&a[i + 2]);
+                    g.world.order_unit(num(&a[i + 1]) as u32, id, sx + num(&a[i + 3]), sy + num(&a[i + 4]), 0);
+                }
+                i += 5;
+            }
             // order <unit> <order> <target>: issues an order at a unit.
             "order" => {
                 if let Some(g) = scene.game.as_mut() {

@@ -98,6 +98,8 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         item_bonus: Default::default(),
         revive: None,
         reviving: false,
+        channel: None,
+        reincarnate: None,
     };
     let path_tex = if unit.is_building { o.str("pathTex") } else { String::new() };
     let mut unit = unit;
@@ -141,6 +143,17 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
 pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     if w.unit(h).is_some_and(|u| !u.dead) && killer != 0 {
         w.grant_kill_xp(h, killer);
+    }
+    // Reincarnation: the hero falls and rises again without dying.
+    if w.unit(h).is_some_and(|u| !u.dead && u.is_hero) && w.try_reincarnate(h) {
+        if let Some(u) = w.unit_mut(h) {
+            u.dead = true;
+            u.life = 0.0;
+            u.action = Action::Idle;
+            u.anim = "death".into();
+            u.anim_serial = u.anim_serial.wrapping_add(1);
+        }
+        return;
     }
     if w.unit(h).is_some_and(|u| !u.dead) {
         w.drop_on_death(vm, h);
@@ -702,6 +715,6 @@ fn dummy_unit() -> Unit {
         queue: vec![], queue_progress: 0.0, constructing: None, build_time: 0.0, building: 0,
         str_: 0.0, agi: 0.0, int: 0.0, skill_points: 0, regen_timer: 0.0,
         cooldowns: HashMap::new(), autocast: vec![], buffs: vec![], casting: None, timed_life: None,
-        item_bonus: Default::default(), revive: None, reviving: false,
+        item_bonus: Default::default(), revive: None, reviving: false, channel: None, reincarnate: None,
     }
 }

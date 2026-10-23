@@ -303,8 +303,9 @@ impl World {
             if is_ally(self, u.owner, tu.owner) || !can_target(self, &wp, u, tu) {
                 continue;
             }
-            // Neutral passive units are never acquired automatically.
-            if tu.owner == PLAYER_NEUTRAL_PASSIVE {
+            // Neutral passive units are never acquired automatically, nor are
+            // invisible or ethereal ones.
+            if tu.owner == PLAYER_NEUTRAL_PASSIVE || self.is_invisible(t) || self.is_ethereal(t) {
                 continue;
             }
             let d = (tu.x - u.x).hypot(tu.y - u.y);
@@ -320,16 +321,46 @@ impl World {
         if t.dead || t.invulnerable || self.buff_mods(target).5 {
             return;
         }
+        // Ethereal units take no physical damage (EtherealDamageBonus: magic 1.66).
+        if self.is_ethereal(target) && !attack_type.eq_ignore_ascii_case("magic") {
+            return;
+        }
         if self.evades(target) {
             return;
         }
-        let raw = self.on_attack_passives(source, target, raw * self.buff_mods(source).3);
+        let mut raw = self.on_attack_passives(source, target, raw * self.buff_mods(source).3) + self.buff_damage_bonus(source);
+        // Wind Walk: the first strike adds its backstab damage and ends the invisibility.
+        if let Some(u) = self.unit_mut(source) {
+            if let Some(b) = u.buffs.iter().find(|b| b.backstab > 0.0) {
+                raw += b.backstab;
+            }
+            u.buffs.retain(|b| !b.invisible);
+        }
         let Some(t) = self.unit(target) else { return };
         let dmg = final_damage(self, raw, attack_type, t);
         let owner = t.owner;
+        self.wake(target);
         let t = self.unit_mut(target).unwrap();
         t.life -= dmg;
         let dead = t.life <= 0.405;
+        // Vampiric Aura: the attacker regains a share of the damage.
+        let steal: f32 = self.unit(source).map_or(0.0, |u| u.buffs.iter().map(|b| b.life_steal).sum());
+        if steal > 0.0 {
+            if let Some(u) = self.unit_mut(source) {
+                u.life = (u.life + dmg * steal).min(u.max_life);
+            }
+        }
+        // Thorns: melee attackers of a thorned unit take damage back.
+        let melee = self.unit(source).and_then(|u| weapon(self, u.type_id)).is_some_and(|w| w.range <= self.misc.get_str("InfoPanel", "MeleeRangeMax").and_then(|v| v.trim().parse().ok()).unwrap_or(128.0));
+        if melee {
+            let thorns: Vec<(f32, bool)> = self.unit(target).map(|u| u.buffs.iter().filter(|b| b.return_damage > 0.0).map(|b| (b.return_damage, b.return_pct)).collect()).unwrap_or_default();
+            for (v, pct) in thorns {
+                let back = if pct { dmg * v } else { v };
+                if let Some(u) = self.unit_mut(source) {
+                    u.life -= back;
+                }
+            }
+        }
         let ctx = EventCtx { unit: target, other_unit: source, damage: dmg, event_id: EVENT_UNIT_DAMAGED, player: owner, has_player: true, ..Default::default() };
         self.fire(vm, ctx, |_, k| matches!(k, EventKind::Unit { unit, event } if *unit == target && *event == EVENT_UNIT_DAMAGED));
         if dead {
@@ -900,6 +931,10 @@ impl World {
 
     fn ability_real(&self, id: Id, field: &str, level: u32) -> f32 {
         self.objects.abilities.get(id).map_or(0.0, |a| a.level_real(field, level))
+    }
+
+    pub fn is_tree_pub(&self, h: u32) -> bool {
+        self.is_tree(h)
     }
 
     fn is_tree(&self, h: u32) -> bool {

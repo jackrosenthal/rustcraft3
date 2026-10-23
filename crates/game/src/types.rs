@@ -213,6 +213,9 @@ pub struct Unit {
     pub revive: Option<(u32, f32, f32)>,
     /// A dead hero being revived.
     pub reviving: bool,
+    pub channel: Option<Channel>,
+    /// Reincarnation: seconds until a dead hero rises again.
+    pub reincarnate: Option<f32>,
 }
 
 /// Bonuses from held items' abilities.
@@ -251,6 +254,55 @@ pub struct Buff {
     pub dps: f32,
     pub mana_regen: f32,
     pub life_regen: f32,
+    pub effect: u32,
+    /// Flat damage added to attacks.
+    pub damage_bonus: f32,
+    /// Extra maximum life while the buff lasts (Avatar).
+    pub life_bonus: f32,
+    pub invisible: bool,
+    pub magic_immune: bool,
+    /// Banished: cannot attack or be attacked physically; takes extra spell damage.
+    pub ethereal: bool,
+    /// Asleep: stunned until damaged.
+    pub sleep: bool,
+    /// Fraction of attack damage regained as life (Vampiric Aura).
+    pub life_steal: f32,
+    /// Melee attackers take this damage (or this fraction when `return_pct`).
+    pub return_damage: f32,
+    pub return_pct: bool,
+    /// Wind Walk's first strike bonus.
+    pub backstab: f32,
+}
+
+/// A spell kept up by its caster: it ends when the time runs out or the caster stops.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Channel {
+    pub ability: Id,
+    pub level: u32,
+    pub target: u32,
+    pub x: f32,
+    pub y: f32,
+    pub elapsed: f32,
+    pub duration: f32,
+    /// Seconds between the spell's waves or ticks, and until the next.
+    pub interval: f32,
+    pub next: f32,
+    pub waves: u32,
+}
+
+/// A spell's lasting effect on the ground (Flame Strike, Earthquake).
+#[derive(Clone, Debug, Default)]
+pub struct GroundEffect {
+    pub caster: u32,
+    pub owner: u8,
+    pub ability: Id,
+    pub level: u32,
+    pub x: f32,
+    pub y: f32,
+    pub elapsed: f32,
+    pub duration: f32,
+    pub interval: f32,
+    pub next: f32,
     pub effect: u32,
 }
 

@@ -142,6 +142,10 @@ fn item_mut(w: &mut World, h: u32) -> Option<&mut Item> {
     }
 }
 
+pub fn kill_destructable_pub(w: &mut World, vm: &mut Vm, h: u32) {
+    kill_destructable(w, vm, h);
+}
+
 fn kill_destructable(w: &mut World, vm: &mut Vm, h: u32) {
     let Some(d) = dest_mut(w, h) else { return };
     if d.life <= 0.0 {

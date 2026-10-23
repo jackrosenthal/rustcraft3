@@ -20,17 +20,17 @@ pub enum Targeting {
 
 /// Abilities whose code takes a point rather than a unit target.
 fn point_target(code: &str) -> bool {
-    matches!(code, "AHbz" | "AHfs" | "AOsh" | "AUcs" | "ANrf" | "AHmt" | "AEsf" | "AHwe" | "ANst" | "AOcl" | "ANvc" | "AEtq")
+    matches!(code, "AHbz" | "AHfs" | "AOsh" | "AUcs" | "AUim" | "ANrf" | "AEbl" | "AUin" | "AOeq" | "AOsw" | "AOfs" | "AUdd" | "AEfn" | "ANst" | "ANvc")
 }
 
 /// Abilities with no target (cast instantly around the caster).
 fn no_target(code: &str) -> bool {
-    matches!(code, "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEmb" | "AEim" | "AEme" | "AOww" | "AOfs" | "ANdr" | "AUdd" | "AUim" | "ANsy" | "AOhx")
+    matches!(code, "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "ANsy")
 }
 
 /// Passive abilities and auras.
 fn passive(code: &str) -> bool {
-    matches!(code, "AHbh" | "AOcr" | "AEev" | "AHad" | "AHab" | "AUav" | "AOae" | "AEar" | "AEah" | "AOr2" | "AUts" | "ANba" | "AUau" | "Aamk" | "AHca" | "AOre")
+    matches!(code, "AHbh" | "AOcr" | "AEev" | "AHad" | "AHab" | "AUav" | "AOae" | "AEar" | "AEah" | "AOr2" | "AUts" | "ANba" | "AUau" | "Aamk" | "AOre")
 }
 
 impl World {
@@ -49,7 +49,7 @@ impl World {
         base
     }
 
-    fn data(&self, id: Id, field: &str, level: u32) -> f32 {
+    pub(crate) fn data(&self, id: Id, field: &str, level: u32) -> f32 {
         self.objects.abilities.get(id).map_or(0.0, |a| a.level_real(field, level.max(1)))
     }
 
@@ -94,6 +94,34 @@ impl World {
             inv |= b.invulnerable;
         }
         (mv.max(0.0), atk.max(0.0), armor, dmg, stun, inv)
+    }
+
+    pub fn has_buff_flag(&self, h: u32, f: impl Fn(&Buff) -> bool) -> bool {
+        self.unit(h).is_some_and(|u| u.buffs.iter().any(|b| f(b)))
+    }
+
+    /// Flat attack bonus from buffs (Avatar) and the life fraction stolen (Vampiric Aura).
+    pub fn buff_damage_bonus(&self, h: u32) -> f32 {
+        self.unit(h).map_or(0.0, |u| u.buffs.iter().map(|b| b.damage_bonus).sum())
+    }
+
+    pub fn is_magic_immune(&self, h: u32) -> bool {
+        self.has_buff_flag(h, |b| b.magic_immune) || self.ability_with_code(h, "Amim").is_some() || self.ability_with_code(h, "ACmi").is_some()
+    }
+
+    pub fn is_invisible(&self, h: u32) -> bool {
+        self.has_buff_flag(h, |b| b.invisible)
+    }
+
+    pub fn is_ethereal(&self, h: u32) -> bool {
+        self.has_buff_flag(h, |b| b.ethereal)
+    }
+
+    /// Damage wakes sleeping units.
+    pub fn wake(&mut self, h: u32) {
+        if let Some(u) = self.unit_mut(h) {
+            u.buffs.retain(|b| !b.sleep);
+        }
     }
 
     /// Adds or refreshes a buff of the same type from the same ability.
@@ -148,14 +176,20 @@ impl World {
                 u.mana = (u.mana + b.mana_regen * dt).min(u.max_mana);
                 u.life = (u.life + b.life_regen * dt).min(u.max_life);
             }
+            let mut lost_life = 0.0;
             u.buffs.retain(|b| {
                 if b.remaining <= 0.0 {
                     expired_effects.push(b.effect);
+                    lost_life += b.life_bonus;
                     false
                 } else {
                     true
                 }
             });
+            if lost_life > 0.0 {
+                u.max_life -= lost_life;
+                u.life = u.life.min(u.max_life).max(1.0);
+            }
             for c in u.cooldowns.values_mut() {
                 *c = (*c - dt).max(0.0);
             }
@@ -211,6 +245,13 @@ impl World {
                     }
                     // Trueshot Aura: damage bonus factor (DataA).
                     "AEar" => b.damage_factor = self.data(a, "DataA", lvl),
+                    // Vampiric Aura: a share of attack damage returns as life (DataA).
+                    "AUav" => b.life_steal = self.data(a, "DataA", lvl),
+                    // Thorns Aura: melee attackers take damage (DataA, a fraction when DataB).
+                    "AEah" => {
+                        b.return_damage = self.data(a, "DataA", lvl);
+                        b.return_pct = self.data(a, "DataB", lvl) != 0.0;
+                    }
                     _ => continue,
                 }
                 let area = self.data(a, "Area", lvl);
@@ -239,11 +280,18 @@ impl World {
         if t.dead || t.invulnerable || self.buff_mods(target).5 {
             return;
         }
+        // Magic immune units ignore spell damage (MagicImmunesResistDamage).
+        if self.is_magic_immune(target) && self.misc_f32("MagicImmunesResistDamage", 1.0) != 0.0 {
+            return;
+        }
         let def_type = self.objects.units.get(t.type_id).map(|o| o.str("defType").to_ascii_lowercase()).unwrap_or_default();
         let col = ["small", "medium", "large", "fort", "normal", "hero", "divine"].iter().position(|c| *c == def_type).unwrap_or(7);
         let mult: f32 = self.misc.get_list("Misc", "DamageBonusSpells").get(col).and_then(|v| v.trim().parse().ok()).unwrap_or(1.0);
-        let dmg = amount * mult;
+        // Ethereal units take EtherealDamageBonus's SPELLS factor.
+        let ethereal: f32 = if self.is_ethereal(target) { self.misc.get_list("Misc", "EtherealDamageBonus").get(5).and_then(|v| v.trim().parse().ok()).unwrap_or(1.0) } else { 1.0 };
+        let dmg = amount * mult * ethereal;
         let owner = t.owner;
+        self.wake(target);
         let t = self.unit_mut(target).unwrap();
         t.life -= dmg;
         let dead = t.life <= 0.405;
@@ -254,7 +302,7 @@ impl World {
         }
     }
 
-    fn heal(&mut self, target: u32, amount: f32) {
+    pub(crate) fn heal(&mut self, target: u32, amount: f32) {
         if let Some(u) = self.unit_mut(target) {
             if !u.dead {
                 u.life = (u.life + amount).min(u.max_life);
@@ -262,7 +310,7 @@ impl World {
         }
     }
 
-    fn spawn_effect(&mut self, model: &str, x: f32, y: f32) {
+    pub(crate) fn spawn_effect(&mut self, model: &str, x: f32, y: f32) {
         if model.is_empty() {
             return;
         }
@@ -271,15 +319,15 @@ impl World {
         self.dying_effects.push((e, self.time));
     }
 
-    fn profile_art(&self, id: Id, key: &str) -> String {
+    pub(crate) fn profile_art(&self, id: Id, key: &str) -> String {
         self.objects.abilities.get(id).and_then(|o| o.list(key).first().cloned()).unwrap_or_default()
     }
 
-    fn is_undead(&self, h: u32) -> bool {
+    pub(crate) fn is_undead(&self, h: u32) -> bool {
         self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|o| o.str("type").to_ascii_lowercase().split(',').any(|c| c.trim() == "undead"))
     }
 
-    fn enemies_in(&self, owner: u8, x: f32, y: f32, r: f32) -> Vec<u32> {
+    pub(crate) fn enemies_in(&self, owner: u8, x: f32, y: f32, r: f32) -> Vec<u32> {
         self.unit_order
             .iter()
             .copied()
@@ -363,10 +411,23 @@ impl World {
             let owner = u.owner;
             let ctx = EventCtx { unit: h, target_unit: target, spell_ability: crate::objects::id_to_int(a), order_x: x, order_y: y, player: owner, has_player: true, event_id: EVENT_PLAYER_UNIT_SPELL_EFFECT, ..Default::default() };
             self.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event, .. } if *player == owner && *event == EVENT_PLAYER_UNIT_SPELL_EFFECT));
+            // CasterArt at the caster and TargetArt at the target, as the ability lists.
+            let (cx, cy) = self.unit(h).map_or(goal, |u| (u.x, u.y));
+            let caster_art = self.profile_art(a, "CasterArt");
+            self.spawn_effect(&caster_art, cx, cy);
+            if target != 0 {
+                let target_art = self.profile_art(a, "TargetArt");
+                self.spawn_effect(&target_art, goal.0, goal.1);
+            }
             self.ability_effect(vm, h, a, lvl, target, goal);
             return;
         }
         let u = self.unit_mut(h).unwrap();
+        // A channeled spell holds the caster until it ends (update_channels).
+        if u.channel.is_some() {
+            u.casting = Some((elapsed, fired));
+            return;
+        }
         if fired && elapsed >= castpt + backsw {
             u.casting = None;
             u.action = Action::Idle;
@@ -495,7 +556,11 @@ impl World {
                     }
                 }
             }
-            _ => log::debug!("ability {code} has no effect yet"),
+            other => {
+                if !self.spell_effect(vm, h, a, lvl, other, target, (x, y)) {
+                    log::debug!("ability {other} has no effect yet");
+                }
+            }
         }
     }
 

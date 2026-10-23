@@ -8,6 +8,7 @@ pub mod handles;
 pub mod hero;
 pub mod items;
 pub mod shops;
+pub mod spells;
 pub mod upgrades;
 pub mod natives;
 pub mod objects;

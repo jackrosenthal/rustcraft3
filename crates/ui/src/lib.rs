@@ -449,7 +449,7 @@ impl FrameTree {
         let w = f.width.unwrap_or(0.0);
         // A text frame without a height is one line of its font tall.
         let h = f.height.unwrap_or_else(|| {
-            if f.def.kind == "TEXT" && f.text.as_deref().is_some_and(|t| !t.is_empty()) {
+            if (f.def.kind == "TEXT" || f.def.block == "String") && f.text.as_deref().is_some_and(|t| !t.is_empty()) {
                 f.def.prop("FrameFont").or_else(|| f.def.prop("Font")).and_then(|p| p.args.get(1).map(Arg::num)).unwrap_or(0.0)
             } else {
                 0.0
@@ -857,7 +857,8 @@ impl FrameTree {
         let file = |name: &str| if decorate { db.decorate(name) } else { name.to_string() };
         match (d.block.as_str(), d.kind.as_str()) {
             ("Texture", _) => {
-                let Some(name) = d.str("File") else { return };
+                // A screen may replace the file (set_model), as the info panel's icons do.
+                let Some(name) = f.model.as_deref().or(d.str("File")) else { return };
                 let uv = texcoord(d);
                 let blend = match d.str("AlphaMode") {
                     Some("ALPHAKEY") => Blend::AlphaKey,

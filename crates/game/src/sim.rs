@@ -1214,6 +1214,10 @@ impl World {
         *p.state.entry(player_state::LUMBER_GATHERED).or_insert(0) += lumber;
     }
 
+    pub fn primary_attribute_pub(&self, h: u32) -> f32 {
+        self.primary_attribute(h)
+    }
+
     /// A hero's primary attribute, which adds to its attack damage.
     fn primary_attribute(&self, h: u32) -> f32 {
         let Some(u) = self.unit(h) else { return 0.0 };

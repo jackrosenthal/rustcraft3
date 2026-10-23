@@ -6,6 +6,7 @@ pub mod event_ids;
 pub mod fog;
 pub mod handles;
 pub mod hero;
+pub mod info;
 pub mod items;
 pub mod shops;
 pub mod spells;

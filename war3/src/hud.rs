@@ -15,6 +15,19 @@ const BUTTON: f32 = 0.038;
 
 /// CMinimap (game.dll 0x6f39f8c0 as placed by CGameUI): from (0.009375, 0.006875) to
 /// (0.14875, 0.145) of the console.
+/// The info panel's icons (CInfoPanelUnitDetail, in its order) and the scope each
+/// instance's frame names take.
+const INFO_ICONS: [(&str, &str); 8] = [
+    ("SimpleInfoPanelIconDamage", "Damage0"),
+    ("SimpleInfoPanelIconDamage", "Damage1"),
+    ("SimpleInfoPanelIconArmor", "Armor"),
+    ("SimpleInfoPanelIconRank", "Rank"),
+    ("SimpleInfoPanelIconFood", "Food"),
+    ("SimpleInfoPanelIconGold", "Gold"),
+    ("SimpleInfoPanelIconHero", "Hero"),
+    ("SimpleInfoPanelIconAlly", "Ally"),
+];
+
 const MINIMAP: [f32; 4] = [0.009375, 0.006875, 0.14875, 0.145];
 
 /// The run-time texture holding the minimap's fog of war.
@@ -144,7 +157,26 @@ impl Hud {
                     tree.frames[f].visible = false;
                 }
             }
+            for (template, scope) in INFO_ICONS {
+                tree.create_scoped(db, template, i, scope);
+            }
             tree.bind_points();
+            // Each icon is 0.094062 wide; the first column starts 0.03125 below the top,
+            // and the second weapon and the hero attributes sit to the right of the first.
+            for (template, scope) in INFO_ICONS {
+                let name = format!("{template}{scope}");
+                tree.clear_points(&name);
+                tree.set_size(&name, Some(0.094062), None);
+                if let Some(f) = tree.get(&name) {
+                    tree.frames[f].visible = false;
+                }
+            }
+            let detail = "SimpleInfoPanelUnitDetail";
+            let damage0 = "SimpleInfoPanelIconDamageDamage0";
+            tree.set_point(damage0, FramePoint::TopLeft, detail, FramePoint::TopLeft, 0.0, -0.03125);
+            tree.set_point("SimpleInfoPanelIconDamageDamage1", FramePoint::TopLeft, damage0, FramePoint::TopRight, 0.0, 0.0);
+            tree.set_point("SimpleInfoPanelIconGoldGold", FramePoint::TopLeft, detail, FramePoint::TopLeft, 0.0, -0.03125);
+            tree.set_point("SimpleInfoPanelIconHeroHero", FramePoint::TopLeft, damage0, FramePoint::TopRight, 0.0, 0.0);
             tree.layout();
         }
         Hud {
@@ -187,6 +219,90 @@ impl Hud {
         (0..self.inventory.len()).find(|&s| self.inventory_rect(s).contains(x, y))
     }
 
+    /// The info panel's icons for a unit (CInfoPanelUnitDetail::vf27 and the
+    /// CInfoPanelIcon* updates): which show, where they sit, and their texts.
+    fn show_info_icons(&mut self, world: &World, h: u32) {
+        let s = world.info_stats(h);
+        let t = &mut self.tree;
+        let frame = |kind: &str| format!("SimpleInfoPanelIcon{kind}{kind}");
+        for (template, scope) in INFO_ICONS {
+            t.set_visible(&format!("{template}{scope}"), false);
+        }
+        // A bonus follows the value in green with a plus, or red (" |CFF00FF00+%d|R").
+        let bonus = |v: f32| {
+            if v == 0.0 {
+                String::new()
+            } else {
+                let color = if v > 0.0 { " |CFF00FF00+" } else { " |CFFFF0000" };
+                if v == v.trunc() { format!("{color}{}|R", v as i32) } else { format!("{color}{v:.1}|R") }
+            }
+        };
+        let capitalized = |s: &str| {
+            let mut c = s.chars();
+            c.next().map(|f| f.to_ascii_uppercase().to_string() + c.as_str()).unwrap_or_default()
+        };
+        let detail = "SimpleInfoPanelUnitDetail";
+        let damage0 = "SimpleInfoPanelIconDamageDamage0";
+        let armor = frame("Armor");
+        let weapons = s.attack.is_some() as u32;
+        if let Some(a) = &s.attack {
+            t.set_visible(damage0, true);
+            // Neutral icons when no research improves it.
+            let neutral = if a.upgrade.is_some() { "" } else { "Neutral" };
+            t.set_model("InfoPanelIconBackdropDamage0", &format!("InfoPanelIconDamage{}{neutral}", capitalized(&a.attack_type)));
+            t.set_text("InfoPanelIconValueDamage0", &format!("{} - {}{}", a.min.max(0), a.max.max(0), bonus(a.bonus as f32)));
+            t.set_text("InfoPanelIconLevelDamage0", &a.upgrade.map(|l| l.to_string()).unwrap_or_default());
+        }
+        // Armor: below gold (mines), below the attack, or first.
+        if s.gold.is_some() {
+            t.set_point(&armor, FramePoint::TopLeft, &frame("Gold"), FramePoint::BottomLeft, 0.0, 0.0);
+        } else if weapons == 0 {
+            t.set_point(&armor, FramePoint::TopLeft, detail, FramePoint::TopLeft, 0.0, -0.03125);
+        } else {
+            t.set_point(&armor, FramePoint::TopLeft, damage0, FramePoint::BottomLeft, 0.0, 0.0);
+        }
+        t.set_visible(&armor, true);
+        let ar = &s.armor;
+        let neutral = if ar.upgrade.is_some() { "" } else { "Neutral" };
+        t.set_model("InfoPanelIconBackdropArmor", &format!("InfoPanelIconArmor{}{neutral}", capitalized(&ar.def_type)));
+        let value = if ar.invulnerable { world.localized("INVULNERABLE") } else { format!("{}{}", ar.armor, bonus(ar.bonus)) };
+        t.set_text("InfoPanelIconValueArmor", &value);
+        t.set_text("InfoPanelIconLevelArmor", &ar.upgrade.map(|l| l.to_string()).unwrap_or_default());
+        // Gold left in a mine.
+        if let Some(g) = s.gold {
+            t.set_visible(&frame("Gold"), true);
+            t.set_text("InfoPanelIconValueGold", &g.to_string());
+            t.set_text("InfoPanelIconLevelGold", "");
+        }
+        // Food provided, beside the armor (or the attack when there is one).
+        if s.hero.is_none() && s.food_made > 0 {
+            let beside = if weapons == 1 { damage0.to_string() } else { armor.clone() };
+            t.set_point(&frame("Food"), FramePoint::TopLeft, &beside, FramePoint::TopRight, 0.0, 0.0);
+            t.set_visible(&frame("Food"), true);
+            t.set_text("InfoPanelIconValueFood", &s.food_made.to_string());
+            t.set_text("InfoPanelIconLevelFood", "");
+        }
+        // Hero attributes, with the primary attribute's icon.
+        if let Some(hero) = &s.hero {
+            t.set_visible(&frame("Hero"), true);
+            let icon = match hero.primary.as_str() {
+                "AGI" => "HeroAgilityIcon",
+                "INT" => "HeroIntelligenceIcon",
+                _ => "HeroStrengthIcon",
+            };
+            t.set_model("InfoPanelIconHeroIconHero", icon);
+            for (k, name) in ["Strength", "Agility", "Intellect"].iter().enumerate() {
+                let (base, b) = hero.attributes[k];
+                t.set_text(&format!("InfoPanelIconHero{name}ValueHero"), &format!("{base}{}", bonus(b as f32)));
+            }
+        }
+        t.layout();
+    }
+
+    fn info_visible(&self) -> bool {
+        self.info.is_some_and(|i| self.tree.frames[i].visible)
+    }
+
     pub fn show_unit(&mut self, db: &FrameDb, world: &World, unit: Option<u32>) {
         let u = unit.and_then(|h| world.unit(h));
         // Inventory icons (ItemFunc Art) and charges.
@@ -212,6 +328,7 @@ impl Hud {
         if let Some(f) = self.tree.get("SimpleNameValue") {
             self.tree.frames[f].text = Some(name);
         }
+        self.show_info_icons(world, unit.unwrap_or(0));
         let hp = format!("{} / {}", u.life.ceil().max(0.0) as u32, u.max_life.ceil() as u32);
         let mana = (u.max_mana > 0.0).then(|| format!("{} / {}", u.mana.floor().max(0.0) as u32, u.max_mana.floor() as u32));
         self.portrait_stats = Some((hp, life_color(u.life / u.max_life.max(1.0)), mana));
@@ -430,6 +547,30 @@ impl Hud {
     pub fn draws(&self, db: &FrameDb) -> Vec<Draw> {
         let mut out = self.tree.draw(db);
         self.message_draws(db, &mut out);
+        let root = self.tree.frames[0].rect.unwrap_or_default();
+        {
+            if !self.info_visible() || self.inventory.is_empty() {
+                // CInfoBar's cover over the slots of a unit without an inventory: texture
+                // coordinates (0.31640625, 0)-(1, 1) with the lower right at (0.6, 0), at
+                // the console's 0.0005 per texel (fit to the original's rendering).
+                let r = w3_ui::Rect { x0: root.x0 + 0.6 - 0.0875, x1: root.x0 + 0.6, y0: root.y0, y1: root.y0 + 0.256 };
+                out.push(Draw::Image { texture: db.decorate("ConsoleInventoryCoverTexture"), rect: r, uv: [0.31640625, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+            } else if self.info_visible() {
+                // Slots beyond the capacity take the filler.
+                for s in self.inventory.len()..6 {
+                    let r = self.inventory_rect(s);
+                    out.push(Draw::Image { texture: db.decorate("ConsoleInventoryNoCapacity"), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+                }
+                // "INVENTORY": 0.076875 x 0.01125 from CInfoBar's top right + (0.015625,
+                // 0.016563), MasterFont at [FontHeights] Inventory, gold with a shadow.
+                let x0 = root.x0 + 0.309375 + 0.188125 + 0.015625;
+                let y1 = root.y0 + 0.114063 + 0.016563;
+                let rect = w3_ui::Rect { x0, x1: x0 + 0.076875, y0: y1 - 0.01125, y1 };
+                let size = db.misc_ui.get_str("FontHeights", "Inventory").and_then(|v| v.trim().parse().ok()).unwrap_or(0.011);
+                let color = [0xfe as f32 / 255.0, 0xd3 as f32 / 255.0, 0x12 as f32 / 255.0, 1.0];
+                out.push(Draw::Text { font: db.decorate("MasterFont"), size, rect, text: db.string("INVENTORY"), color, justify_h: w3_ui::Justify::Middle, justify_v: w3_ui::Justify::Middle, shadow: Some(([0.0, 0.0, 0.0, 0xee as f32 / 255.0], 0.001, -0.001)) });
+            }
+        }
         for (s, slot) in self.inventory.iter().enumerate() {
             let Some((icon, charges)) = slot else { continue };
             let r = self.inventory_rect(s);

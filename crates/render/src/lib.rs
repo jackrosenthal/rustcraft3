@@ -7,6 +7,7 @@ pub mod dnc;
 pub mod fog;
 pub mod gpu;
 pub mod model;
+pub mod particles;
 pub mod terrain;
 pub mod texture;
 pub mod ui;

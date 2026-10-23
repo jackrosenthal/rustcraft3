@@ -28,8 +28,10 @@ fn main() -> anyhow::Result<()> {
             "wait" => {
                 let secs: f32 = a[i + 1].parse()?;
                 let mut t = 0.0;
+                // Render every step so particles and other per-frame effects advance.
                 while t < secs {
                     glue.update(0.02, &mut assets);
+                    shot(&device, &queue, &mut glue, &mut assets, format, w, h, "")?;
                     t += 0.02;
                 }
                 i += 2;
@@ -119,6 +121,8 @@ fn shot(device: &wgpu::Device, queue: &wgpu::Queue, glue: &mut Glue, assets: &mu
     for p in px.chunks_mut(4) {
         p[3] = 255;
     }
-    image::save_buffer(&out, &px, w, h, image::ExtendedColorType::Rgba8)?;
+    if !out.is_empty() {
+        image::save_buffer(&out, &px, w, h, image::ExtendedColorType::Rgba8)?;
+    }
     Ok(())
 }

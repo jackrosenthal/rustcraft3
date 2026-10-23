@@ -172,6 +172,7 @@ pub struct ModelInstance {
     /// Sound event codes (the `xxxx` of `SNDxxxxx` event objects) whose keys were passed
     /// since the caller last drained them.
     pub sound_events: Vec<[u8; 4]>,
+    pub particles: crate::particles::Particles,
 }
 
 impl ModelInstance {
@@ -190,6 +191,7 @@ impl ModelInstance {
             skeleton,
             finished: false,
             sound_events: Vec::new(),
+            particles: Default::default(),
             looped: false,
         }
     }
@@ -272,6 +274,15 @@ struct DrawUniform {
 }
 
 const DRAW_ALIGN: u64 = 256;
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct ParticleVertex {
+    pos: [f32; 3],
+    uv: [f32; 2],
+    color: [f32; 4],
+    flags: u32,
+}
+
 const FLAG_UNSHADED: u32 = 1;
 const FLAG_ALPHA_TEST: u32 = 2;
 /// Fog takes additive layers toward black and modulating layers toward white, so they
@@ -340,6 +351,13 @@ pub struct ModelRenderer {
     team_colors: Vec<Arc<Texture>>,
     team_glows: Vec<Arc<Texture>>,
     fog: Arc<crate::fog::FogTexture>,
+    particle_shader: wgpu::ShaderModule,
+    particle_layout: wgpu::PipelineLayout,
+    particle_pipelines: HashMap<u32, wgpu::RenderPipeline>,
+    particle_buf: Option<wgpu::Buffer>,
+    /// This frame's particle quads: vertices and runs sharing a texture and filter.
+    particle_verts: Vec<ParticleVertex>,
+    particle_runs: Vec<(Arc<Texture>, u32, std::ops::Range<u32>)>,
     // Per-frame state.
     bones: Vec<[[f32; 4]; 4]>,
     draws: Vec<Draw>,
@@ -443,8 +461,20 @@ impl ModelRenderer {
                 })
                 .collect()
         };
+        let particle_shader = device.create_shader_module(wgpu::include_wgsl!("particle.wgsl"));
+        let particle_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("particles"),
+            bind_group_layouts: &[Some(&globals_layout), Some(&texture_layout)],
+            immediate_size: 0,
+        });
         ModelRenderer {
             fog,
+            particle_shader,
+            particle_layout,
+            particle_pipelines: HashMap::new(),
+            particle_buf: None,
+            particle_verts: Vec::new(),
+            particle_runs: Vec::new(),
             shader,
             globals_layout,
             draw_layout,
@@ -484,6 +514,41 @@ impl ModelRenderer {
         }
         for m in &inst.skeleton.world {
             self.bones.push((inst.transform * *m).to_cols_array_2d());
+        }
+        // Particles: emit and move, then queue quads.
+        if !mdx.particle_emitters2.is_empty() {
+            let now = inst.global_time;
+            inst.particles.update(mdx, &inst.skeleton.world, inst.transform, &time, now);
+            let mut quads = Vec::new();
+            inst.particles.quads(mdx, inst.transform, camera_rot, &mut quads);
+            for q in quads {
+                let texture = match q.replaceable_id {
+                    0 => model.textures.get(q.texture_id as usize).cloned().flatten(),
+                    1 => Some(self.team_colors[inst.team as usize % 16].clone()),
+                    2 => Some(self.team_glows[inst.team as usize % 16].clone()),
+                    id => inst.replaceable.get(&id).cloned(),
+                };
+                let Some(texture) = texture else { continue };
+                let mut flags = 0;
+                if q.unfogged {
+                    flags |= 1;
+                }
+                if q.filter == crate::particles::filter::ALPHA_KEY {
+                    flags |= 2;
+                }
+                if q.filter == crate::particles::filter::ADDITIVE {
+                    flags |= 4;
+                }
+                let first = self.particle_verts.len() as u32;
+                for k in [0usize, 2, 1, 1, 2, 3] {
+                    self.particle_verts.push(ParticleVertex { pos: q.corners[k].to_array(), uv: q.uv[k], color: q.color, flags });
+                }
+                let end = first + 6;
+                match self.particle_runs.last_mut() {
+                    Some((t, f, r)) if Arc::ptr_eq(t, &texture) && *f == q.filter && r.end == first => r.end = end,
+                    _ => self.particle_runs.push((texture, q.filter, first..end)),
+                }
+            }
         }
         let center = inst.transform.transform_point3(Vec3::ZERO);
         let depth = center.distance(camera_pos);
@@ -653,6 +718,7 @@ impl ModelRenderer {
         queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(globals));
         if self.draws.is_empty() {
             self.bones.clear();
+            self.render_particles(device, queue, pass);
             return;
         }
         let mut rebind = false;
@@ -710,6 +776,91 @@ impl ModelRenderer {
         self.bones.clear();
         // Keep textures alive until the next frame's draws replace them.
         self.draws = Vec::with_capacity(draws.len());
+        self.render_particles(device, queue, pass);
+    }
+
+    /// Draws this frame's particle quads after the models: depth tested, not written.
+    fn render_particles(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, pass: &mut wgpu::RenderPass) {
+        if self.particle_verts.is_empty() {
+            self.particle_runs.clear();
+            return;
+        }
+        let bytes = (self.particle_verts.len() * std::mem::size_of::<ParticleVertex>()) as u64;
+        if self.particle_buf.as_ref().is_none_or(|b| b.size() < bytes) {
+            self.particle_buf = Some(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("particles"),
+                size: bytes.next_power_of_two(),
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+        }
+        let buf = self.particle_buf.as_ref().unwrap();
+        queue.write_buffer(buf, 0, bytemuck::cast_slice(&self.particle_verts));
+        let runs = std::mem::take(&mut self.particle_runs);
+        for (t, f, _) in &runs {
+            self.particle_pipeline(device, *f);
+            let key = (Arc::as_ptr(t) as usize, false, false);
+            if !self.texture_bgs.contains_key(&key) {
+                let bg = texture_bind_group(device, &self.texture_layout, &t.view, &self.samplers[0]);
+                self.texture_bgs.insert(key, bg);
+            }
+        }
+        pass.set_bind_group(0, &self.globals_bg, &[]);
+        pass.set_vertex_buffer(0, self.particle_buf.as_ref().unwrap().slice(..));
+        for (t, f, r) in &runs {
+            pass.set_pipeline(&self.particle_pipelines[f]);
+            pass.set_bind_group(1, &self.texture_bgs[&(Arc::as_ptr(t) as usize, false, false)], &[]);
+            pass.draw(r.clone(), 0..1);
+        }
+        self.particle_verts.clear();
+    }
+
+    fn particle_pipeline(&mut self, device: &wgpu::Device, filter: u32) {
+        if self.particle_pipelines.contains_key(&filter) {
+            return;
+        }
+        use crate::particles::filter as pf;
+        use wgpu::{BlendComponent as C, BlendFactor as F, BlendOperation as O};
+        let comp = |src, dst| C { src_factor: src, dst_factor: dst, operation: O::Add };
+        let blend = match filter {
+            pf::ADDITIVE => wgpu::BlendState { color: comp(F::SrcAlpha, F::One), alpha: comp(F::Zero, F::One) },
+            pf::MODULATE => wgpu::BlendState { color: comp(F::Zero, F::Src), alpha: comp(F::Zero, F::One) },
+            pf::MODULATE_2X => wgpu::BlendState { color: comp(F::Dst, F::Src), alpha: comp(F::Zero, F::One) },
+            _ => wgpu::BlendState { color: comp(F::SrcAlpha, F::OneMinusSrcAlpha), alpha: comp(F::One, F::OneMinusSrcAlpha) },
+        };
+        let attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x4, 3 => Uint32];
+        let p = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("particles"),
+            layout: Some(&self.particle_layout),
+            vertex: wgpu::VertexState {
+                module: &self.particle_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[Some(wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<ParticleVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &attrs,
+                })],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &self.particle_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState { format: self.color_format, blend: Some(blend), write_mask: wgpu::ColorWrites::ALL })],
+            }),
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: crate::gpu::DEPTH_FORMAT,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: Default::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        self.particle_pipelines.insert(filter, p);
     }
 }
 

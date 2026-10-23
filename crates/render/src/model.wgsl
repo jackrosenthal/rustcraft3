@@ -47,6 +47,20 @@ struct VsOut {
     @location(2) world: vec3<f32>,
 };
 
+// Direct3D's fog modes as game.dll sets them (style 0 linear from start to end, 1
+// exponential, 2 squared exponential, by density): fog.z is the style + 1, fog.w the
+// density.
+fn fog_amount(d: f32) -> f32 {
+    if (globals.fog.z > 2.5) {
+        let e = d * globals.fog.w;
+        return 1.0 - exp(-e * e);
+    }
+    if (globals.fog.z > 1.5) {
+        return 1.0 - exp(-d * globals.fog.w);
+    }
+    return clamp((d - globals.fog.x) / max(globals.fog.y - globals.fog.x, 1.0), 0.0, 1.0);
+}
+
 @vertex
 fn vs_main(v: VsIn) -> VsOut {
     var p = vec4<f32>(0.0);
@@ -89,7 +103,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     }
     if (globals.fog.z > 0.0) {
         let d = distance(in.world, globals.camera_pos.xyz);
-        let f = clamp((d - globals.fog.x) / max(globals.fog.y - globals.fog.x, 1.0), 0.0, 1.0);
+        let f = fog_amount(d);
         var fc = globals.fog_color.rgb;
         if ((draw.flags & 4u) != 0u) {
             fc = vec3<f32>(0.0);

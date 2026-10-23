@@ -3068,10 +3068,10 @@ impl Scene {
                 globals.ambient = [l.ambient.x, l.ambient.y, l.ambient.z, 1.0];
             }
         }
-        // Terrain fog, from the camera's distance; the exponential styles' density
-        // scaling is not yet recovered, so every style uses the start and end range.
-        if let Some((_, start, end, _, color)) = self.game.as_ref().and_then(|g| g.world.terrain_fog) {
-            globals.fog = [start, end, 1.0, 0.0];
+        // Terrain fog, from the camera's distance: game.dll hands the style (modulo 3: linear,
+        // exponential, squared exponential), range, and density to Direct3D unchanged.
+        if let Some((style, start, end, density, color)) = self.game.as_ref().and_then(|g| g.world.terrain_fog) {
+            globals.fog = [start, end, style.rem_euclid(3) as f32 + 1.0, density];
             globals.fog_color = [color[0], color[1], color[2], 1.0];
         }
         if let (Some(tex), Some(g)) = (&self.fog, &self.game) {

@@ -16,3 +16,6 @@ anyhow.workspace = true
 pollster.workspace = true
 fontdue.workspace = true
 w3-ui = { path = "../ui" }
+
+[dev-dependencies]
+w3-mpq.workspace = true

@@ -33,6 +33,15 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("selected {:?}", scene.selection);
                 i += 5;
             }
+            // doodads <text>: doodad instances whose model path contains the text.
+            "doodads" => {
+                for inst in &scene.instances {
+                    if inst.model.path.to_ascii_lowercase().contains(&a[i + 1].to_ascii_lowercase()) {
+                        eprintln!("doodad {} at {:?} seq {:?} visible {}", inst.model.path, inst.transform.w_axis, inst.sequence, inst.visible);
+                    }
+                }
+                i += 2;
+            }
             "camdump" => {
                 if let Some(g) = scene.game.as_ref() {
                     let c = &g.world.camera;
@@ -332,6 +341,13 @@ fn main() -> anyhow::Result<()> {
     });
     let cv = color.create_view(&Default::default());
     let dv = depth.create_view(&Default::default());
+    // Particles emit as frames are drawn: draw a second of frames before the shot.
+    for _ in 0..30 {
+        scene.update(1.0 / 30.0);
+        let mut enc = device.create_command_encoder(&Default::default());
+        scene.render(&device, &queue, &mut enc, &cv, &dv, (w, h), &mut assets);
+        queue.submit([enc.finish()]);
+    }
     let mut enc = device.create_command_encoder(&Default::default());
     scene.render(&device, &queue, &mut enc, &cv, &dv, (w, h), &mut assets);
     let stride = (w * 4).div_ceil(256) * 256;

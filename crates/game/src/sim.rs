@@ -488,7 +488,7 @@ impl World {
         let owner = t.owner;
         self.wake(target);
         let t = self.unit_mut(target).unwrap();
-        t.life -= dmg;
+        t.life -= crate::ability::mana_shield(t, dmg);
         let dead = t.life <= 0.405;
         // Vampiric Aura: the attacker regains a share of the damage.
         let steal: f32 = self.unit(source).map_or(0.0, |u| u.buffs.iter().map(|b| b.life_steal).sum());

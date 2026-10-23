@@ -81,6 +81,14 @@ impl World {
     }
 
     /// Units along a line from `a` toward `b`, within a width growing from `w0` to `w1`.
+    pub(crate) fn line_units_pub(&self, owner: u8, a: (f32, f32), b: (f32, f32), w0: f32, w1: f32) -> Vec<u32> {
+        self.line_units(owner, a, b, w0, w1)
+    }
+
+    pub(crate) fn capped_damage_pub(&mut self, vm: &mut Vm, source: u32, targets: &[u32], each: f32, max: f32) {
+        self.capped_damage(vm, source, targets, each, max)
+    }
+
     fn line_units(&self, owner: u8, a: (f32, f32), b: (f32, f32), w0: f32, w1: f32) -> Vec<u32> {
         let (dx, dy) = (b.0 - a.0, b.1 - a.1);
         let len = dx.hypot(dy).max(1.0);

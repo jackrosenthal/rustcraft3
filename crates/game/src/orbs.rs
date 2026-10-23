@@ -72,6 +72,16 @@ impl World {
                 "Aliq" if target_building => {
                     self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: dur, dps: d(self, "DataA"), attack_factor: -d(self, "DataC"), no_repair: d(self, "DataD") == 0.0, ..Default::default() });
                 }
+                // Cleaving Attack: DataA of the damage to other enemies within Area.
+                "ANca" => {
+                    let (tx, ty) = self.unit(target).map(|t| (t.x, t.y)).unwrap_or_default();
+                    let owner = self.unit(attacker).map_or(0, |u| u.owner);
+                    for t in self.enemies_in(owner, tx, ty, d(self, "Area")) {
+                        if t != target {
+                            self.deal_damage_pub(vm, attacker, t, damage * d(self, "DataA"), "normal");
+                        }
+                    }
+                }
                 // Pillage: structures hit pay their cost times DataA per share of life.
                 "Asal" if target_building => {
                     let Some(t) = self.unit(target) else { continue };
@@ -103,6 +113,17 @@ impl World {
             return;
         }
         let (x, y) = (u.x, u.y);
+        // Doom: DataB of UnitID rise for DataC.
+        let doom: Vec<(Id, u32, u32)> = u.buffs.iter().filter(|b| self.ability_code(b.ability) == "ANdo").map(|b| (b.ability, b.level, b.caster)).collect();
+        if let Some((a, lvl, caster)) = doom.first().copied() {
+            let n = self.data(a, "DataB", lvl) as i32;
+            let life = self.data(a, "DataC", lvl);
+            let unit = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
+            let owner = self.unit(caster).map_or(0, |c| c.owner);
+            self.summon(caster, owner, unit, n, x, y, life);
+            return;
+        }
+        let Some(u) = self.unit(h) else { return };
         let arrows: Vec<(Id, u32, u32)> = u.buffs.iter().filter(|b| self.ability_code(b.ability) == "ANba").map(|b| (b.ability, b.level, b.caster)).collect();
         if let Some((a, lvl, caster)) = arrows.first().copied() {
             let n = self.data(a, "DataB", lvl) as i32;

@@ -663,6 +663,7 @@ impl World {
         self.update_buffs(vm, dt);
         self.update_area_buffs(vm, dt);
         self.update_traps(vm);
+        self.update_splits(dt);
         // Owls leave fallen trees.
         let standing: Vec<bool> = self.sentinels.iter().map(|s| self.is_tree_pub(s.tree)).collect();
         let fallen: Vec<u32> = self.sentinels.iter().zip(&standing).filter(|(_, ok)| !**ok).map(|(s, _)| s.effect).collect();

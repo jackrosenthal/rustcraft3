@@ -292,6 +292,8 @@ pub struct UnitExtra {
     pub trap: Option<(crate::objects::Id, u32, f32)>,
     /// Since when the unit has stood still (Shadowmeld).
     pub still_since: f32,
+    /// Storm, Earth and Fire: time left and the spirits.
+    pub split: Option<(f32, Vec<u32>)>,
 }
 
 impl Default for UnitExtra {
@@ -334,6 +336,7 @@ impl Default for UnitExtra {
             repair_debt: (0.0, 0.0),
             trap: None,
             still_since: 0.0,
+            split: None,
         }
     }
 }
@@ -407,6 +410,10 @@ pub struct Buff {
     pub life_regen_pct: f32,
     /// Fraction of piercing damage taken (Defend); zero when it does not apply.
     pub pierce_taken: f32,
+    /// No spells (Silence, Doom, Soul Burn, Hex).
+    pub silence: bool,
+    /// Mana Shield: mana spent per point of damage, and the fraction of damage taken.
+    pub mana_shield: (f32, f32),
 }
 
 /// A spell kept up by its caster: it ends when the time runs out or the caster stops.

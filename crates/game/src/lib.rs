@@ -11,6 +11,7 @@ pub mod fog;
 pub mod forms;
 pub mod handles;
 pub mod hero;
+pub mod herospells;
 pub mod info;
 pub mod mining;
 pub mod morph;

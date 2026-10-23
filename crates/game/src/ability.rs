@@ -20,12 +20,12 @@ pub enum Targeting {
 
 /// Abilities whose code takes a point rather than a unit target.
 fn point_target(code: &str) -> bool {
-    matches!(code, "AHbz" | "AHfs" | "AOsh" | "AUcs" | "AUim" | "ANrf" | "AEbl" | "AUin" | "AOeq" | "AOsw" | "AOfs" | "AUdd" | "AEfn" | "ANst" | "ANvc" | "Adro" | "Aroo" | "Adis" | "Advm" | "Ahwd" | "Aeye" | "Asta")
+    matches!(code, "AHbz" | "AHfs" | "AOsh" | "AUcs" | "AUim" | "ANrf" | "AEbl" | "AUin" | "AOeq" | "AOsw" | "AOfs" | "AUdd" | "AEfn" | "ANst" | "ANvc" | "Adro" | "Aroo" | "Adis" | "Advm" | "Ahwd" | "Aeye" | "Asta" | "ANbf" | "ANcs" | "ANdp" | "ANrc" | "ANhs" | "ANsi" | "ANto" | "ANdh")
 }
 
 /// Abilities with no target (cast instantly around the caster).
 fn no_target(code: &str) -> bool {
-    matches!(code, "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "ANsy" | "Astd" | "Abtl" | "Arai" | "Aroa" | "Atau" | "Absk")
+    matches!(code, "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "ANsy" | "Astd" | "Abtl" | "Arai" | "Aroa" | "Atau" | "Absk" | "ANef" | "ANht" | "ANms" | "ANlm" | "ANsg" | "ANsq" | "ANsw")
 }
 
 /// Passive abilities and auras.
@@ -311,7 +311,7 @@ impl World {
         let owner = t.owner;
         self.wake(target);
         let t = self.unit_mut(target).unwrap();
-        t.life -= dmg;
+        t.life -= mana_shield(t, dmg);
         let dead = t.life <= 0.405;
         let ctx = EventCtx { unit: target, other_unit: source, damage: dmg, event_id: EVENT_UNIT_DAMAGED, player: owner, has_player: true, ..Default::default() };
         self.fire(vm, ctx, |_, k| matches!(k, EventKind::Unit { unit, event } if *unit == target && *event == EVENT_UNIT_DAMAGED));
@@ -365,6 +365,9 @@ impl World {
         }
         if u.mana < self.data(a, "Cost", lvl) {
             return Err("Nomana");
+        }
+        if u.buffs.iter().any(|b| b.silence) {
+            return Err("");
         }
         Ok(())
     }
@@ -574,7 +577,7 @@ impl World {
                 self.apply_buff(target, Buff { id: buff_id, ability: a, level: lvl, caster: h, remaining: dur, stun: true, ..Default::default() });
             }
             other => {
-                if !self.unit_spell_effect(vm, h, a, lvl, other, target, (x, y)) && !self.spell_effect(vm, h, a, lvl, other, target, (x, y)) {
+                if !self.unit_spell_effect(vm, h, a, lvl, other, target, (x, y)) && !self.hero_spell_effect(vm, h, a, lvl, other, target, (x, y)) && !self.spell_effect(vm, h, a, lvl, other, target, (x, y)) {
                     log::debug!("ability {other} has no effect yet");
                 }
             }
@@ -600,6 +603,12 @@ impl World {
                         self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: attacker, remaining: d, stun: true, ..Default::default() });
                     }
                 }
+                // Drunken Brawler: DataA% chance to deal DataB times damage.
+                "ANdb" => {
+                    if (self.rng.int(1, 100) as f32) <= self.data(a, "DataA", lvl) {
+                        damage = damage * self.data(a, "DataB", lvl) + self.data(a, "DataC", lvl);
+                    }
+                }
                 // Critical Strike: DataA% chance to deal DataB times damage.
                 "AOcr" => {
                     if (self.rng.int(1, 100) as f32) <= self.data(a, "DataA", lvl) {
@@ -617,8 +626,9 @@ impl World {
         let Some(u) = self.unit(target) else { return false };
         let abilities = u.abilities.clone();
         for (a, lvl) in abilities {
-            if self.ability_code(a) == "AEev" {
-                let chance = self.data(a, "DataA", lvl.max(1) as u32) * 100.0;
+            let code = self.ability_code(a);
+            if code == "AEev" || code == "ANdb" {
+                let chance = self.data(a, if code == "ANdb" { "DataD" } else { "DataA" }, lvl.max(1) as u32) * 100.0;
                 if (self.rng.int(1, 100) as f32) <= chance {
                     return true;
                 }
@@ -626,4 +636,16 @@ impl World {
         }
         false
     }
+}
+
+/// Mana Shield: the shielded share of damage comes off mana while it lasts; returns the
+/// damage left for life.
+pub(crate) fn mana_shield(u: &mut Unit, dmg: f32) -> f32 {
+    let Some((per, frac)) = u.buffs.iter().find(|b| b.mana_shield.1 > 0.0).map(|b| b.mana_shield) else { return dmg };
+    let shielded = dmg * frac;
+    let cost = shielded * per.max(0.0);
+    let paid = cost.min(u.mana);
+    u.mana -= paid;
+    let absorbed = if cost > 0.0 { shielded * paid / cost } else { shielded };
+    dmg - absorbed
 }

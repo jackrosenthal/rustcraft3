@@ -58,6 +58,20 @@ pub struct GameCamera {
     /// CameraSetSmoothingFactor, 0 to 10 (the camera's +0x5bc).
     #[serde(default)]
     pub smoothing: f32,
+    /// SetCameraRotateMode (FUN_6f3633f0): the point turned about, the target's offset
+    /// from it, the rotation it started at, the sweep in degrees, and the time.
+    #[serde(default)]
+    rotate: Option<RotateMode>,
+}
+
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+struct RotateMode {
+    pivot: (f32, f32),
+    offset: (f32, f32),
+    rotation: f32,
+    sweep: f32,
+    elapsed: f32,
+    duration: f32,
 }
 
 /// How far the camera's target moves toward where it should be this frame
@@ -94,7 +108,7 @@ impl GameCamera {
         defaults[FIELD_ROLL] = 0.0;
         defaults[FIELD_ROTATION] = first("Rotation", 90.0);
         defaults[FIELD_ZOFFSET] = first("Height", 0.0);
-        GameCamera { x: 0.0, y: 0.0, fields: defaults, defaults, pan: None, lerps: [None; FIELD_COUNT], follow: None, source_noise: (0.0, 0.0, false), target_noise: (0.0, 0.0, false), cinematic: None, smoothing: 0.0 }
+        GameCamera { x: 0.0, y: 0.0, fields: defaults, defaults, pan: None, lerps: [None; FIELD_COUNT], follow: None, source_noise: (0.0, 0.0, false), target_noise: (0.0, 0.0, false), cinematic: None, smoothing: 0.0, rotate: None }
     }
 
     /// Moves a field to `value` over `duration` seconds (at once when zero).
@@ -112,6 +126,7 @@ impl GameCamera {
 
     /// Pans the target to a point over `duration` seconds (at once when zero).
     pub fn pan_to(&mut self, x: f32, y: f32, duration: f32) {
+        self.rotate = None;
         if duration <= 0.0 {
             self.x = x;
             self.y = y;
@@ -125,6 +140,15 @@ impl GameCamera {
     pub fn stop(&mut self) {
         self.pan = None;
         self.lerps = [None; FIELD_COUNT];
+        self.rotate = None;
+    }
+
+    /// SetCameraRotateMode: the camera turns about a point by `sweep` radians over
+    /// `duration` seconds, its target and eye keeping their places relative to it.
+    pub fn rotate_about(&mut self, x: f32, y: f32, sweep: f32, duration: f32) {
+        self.pan = None;
+        self.rotate = Some(RotateMode { pivot: (x, y), offset: (self.x - x, self.y - y), rotation: self.fields[FIELD_ROTATION], sweep: sweep.to_degrees(), elapsed: 0.0, duration });
+        self.update(0.0);
     }
 
     pub fn panning(&self) -> bool {
@@ -132,6 +156,15 @@ impl GameCamera {
     }
 
     pub fn update(&mut self, dt: f32) {
+        if let Some(r) = self.rotate.as_mut() {
+            r.elapsed += dt;
+            let t = if r.duration > 0.0 { (r.elapsed / r.duration).min(1.0) } else { 1.0 };
+            let turn = r.sweep * t;
+            let (s, c) = turn.to_radians().sin_cos();
+            self.x = r.pivot.0 + r.offset.0 * c - r.offset.1 * s;
+            self.y = r.pivot.1 + r.offset.0 * s + r.offset.1 * c;
+            self.fields[FIELD_ROTATION] = r.rotation + turn;
+        }
         if let Some((px, py)) = self.pan.as_mut() {
             px.elapsed += dt;
             py.elapsed += dt;

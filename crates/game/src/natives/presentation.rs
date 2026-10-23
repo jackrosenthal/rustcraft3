@@ -220,7 +220,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         SetCameraOrientController => |_, _, _| none(),
-        SetCameraRotateMode => |_, _, _| none(),
+        SetCameraRotateMode => |w, _, a| {
+            let (x, y, sweep, duration) = (a.r(0), a.r(1), a.r(2), a.r(3));
+            w.camera.rotate_about(x, y, sweep, duration);
+            none()
+        },
         SetCinematicCamera => |w, _, a| {
             let model = a.s(0);
             w.camera.cinematic = (!model.is_empty()).then(|| (model, w.time));

@@ -537,6 +537,13 @@ impl World {
     }
 
     /// Steps along the unit's path; returns true when it has arrived.
+    /// How fast a unit moves now: its speed with items, upgrades, and buffs.
+    pub fn current_move_speed(&self, h: u32) -> f32 {
+        let Some(u) = self.unit(h) else { return 0.0 };
+        let ub = self.upgrade_bonus(u.owner, u.type_id);
+        (u.move_speed + u.item_bonus.move_speed + ub.move_speed) * (1.0 + ub.move_pct) * self.buff_mods(h).0
+    }
+
     pub(crate) fn walk(&mut self, h: u32, dt: f32) -> bool {
         let Some(u) = self.unit_mut(h) else { return true };
         let Some(&next) = u.path.first() else {
@@ -548,10 +555,7 @@ impl World {
         if left.abs() > u.prop_window.max(1.0) {
             return false;
         }
-        let (speed, owner, tid) = (u.move_speed + u.item_bonus.move_speed, u.owner, u.type_id);
-        let ub = self.upgrade_bonus(owner, tid);
-        let step = (speed + ub.move_speed) * (1.0 + ub.move_pct) * dt;
-        let step = step * self.buff_mods(h).0;
+        let step = self.current_move_speed(h) * dt;
         let Some(u) = self.unit_mut(h) else { return true };
         let (dx, dy) = (next.0 - u.x, next.1 - u.y);
         let d = (dx * dx + dy * dy).sqrt();

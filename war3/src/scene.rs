@@ -2721,8 +2721,17 @@ impl Scene {
         }
         for (h, v) in self.units.iter_mut() {
             let progress = self.game.as_ref().and_then(|g| g.world.unit(*h)).and_then(|u| u.constructing.map(|left| 1.0 - left / u.build_time.max(0.01)));
-            // SetUnitTimeScale speeds or slows the unit's animation.
-            let scale = self.game.as_ref().and_then(|g| g.world.unit(*h)).map_or(1.0, |u| u.time_scale);
+            // SetUnitTimeScale speeds or slows the unit's animation, and a walk plays at
+            // the unit's speed over its UnitUI walk speed.
+            let scale = self.game.as_ref().and_then(|g| g.world.unit(*h).map(|u| (g, u))).map_or(1.0, |(g, u)| {
+                let walk = if u.anim.starts_with("walk") {
+                    let base = g.world.objects.units.get(u.type_id).map_or(0.0, |o| o.real("walk"));
+                    if base > 0.0 { g.world.current_move_speed(*h) / base } else { 1.0 }
+                } else {
+                    1.0
+                };
+                u.time_scale * walk
+            });
             match progress {
                 // A structure's birth plays along with its construction.
                 Some(p) => {

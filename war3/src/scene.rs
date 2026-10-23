@@ -1024,6 +1024,28 @@ impl Scene {
         out
     }
 
+    /// Images (CreateImage) laid on the ground: those shown, rendered always
+    /// (SetImageRenderAlways, flag 0x40) or rendered where not fogged (SetImageRender,
+    /// 0x20); each spans its size from its position less its origin, in its color.
+    fn image_decals(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) -> Vec<w3_render::decal::Decal> {
+        let Some(g) = &self.game else { return vec![] };
+        let w = &g.world;
+        let mut out = Vec::new();
+        for (_, o) in w.handles.iter() {
+            let w3_game::types::Obj::Image(i) = o else { continue };
+            let (x0, y0) = (i.pos[0] - i.origin[0], i.pos[1] - i.origin[1]);
+            let (cx, cy) = (x0 + i.size[0] / 2.0, y0 + i.size[1] / 2.0);
+            let seen = i.render && w.fog_state(cx, cy, w.local_player) == w3_game::fog::FOG_VISIBLE;
+            if !i.shown || !(i.render_always || seen) {
+                continue;
+            }
+            let texture = assets.textures.get_or_white(device, queue, &i.file);
+            let z = i.constant_height.unwrap_or_else(|| self.terrain.height_at(cx, cy));
+            out.push(w3_render::decal::Decal { texture, center: [cx, cy, z], size: [i.size[0], i.size[1]], color: i.color.map(|c| c as f32 / 255.0), additive: false });
+        }
+        out
+    }
+
     /// Units' and items' shadow images on the ground (see crate::shadows).
     fn shadow_decals(&self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) -> Vec<w3_render::decal::Decal> {
         let Some(g) = &self.game else { return vec![] };
@@ -3117,6 +3139,7 @@ impl Scene {
         }
         self.terrain.render_ground(&mut pass);
         let mut decals = self.ubersplat_decals(device, queue, assets);
+        decals.extend(self.image_decals(device, queue, assets));
         decals.extend(self.shadow_decals(device, queue, assets));
         decals.extend(self.selection_decals(device, queue, assets));
         decals.extend(self.area_cursor_decal(device, queue, assets));

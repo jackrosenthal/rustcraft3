@@ -83,8 +83,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 pos: [a.r(4), a.r(5), a.r(6)],
                 origin: [a.r(7), a.r(8), a.r(9)],
                 kind: a.i(10),
+                // Made shown but not rendered (flags 1 and 2; FUN_6f7309a0).
                 shown: true,
-                render: true,
+                render: false,
                 render_always: false,
                 above_water: (false, false),
                 constant_height: None,

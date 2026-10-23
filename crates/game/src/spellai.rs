@@ -218,6 +218,21 @@ impl World {
                 "AUls" => self.ai_locust_swarm(h, a, lvl, enemy, victim),
                 "AEsf" => self.ai_starfall(h, a, lvl, enemy, victim),
                 "AOvd" => self.ai_voodoo(h, a, lvl, enemy, victim),
+                "Arai" | "AUcb" | "AIrd" | "Avng" => self.ai_raise_dead(h, a, lvl, enemy, victim),
+                "AUin" | "ANin" => self.ai_inferno(h, a, lvl, enemy, victim),
+                "ANrc" => {
+                    if !self.ai_gate(h, a, enemy, victim, false, None, None) {
+                        self.ai_cast(h, a, enemy);
+                    }
+                }
+                "AHdr" => self.ai_drain(h, a, lvl, enemy, victim),
+                "Aens" => self.ai_ensnare(h, a, enemy, victim),
+                "Aweb" => {
+                    if !self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
+                        self.ai_cast(h, a, enemy);
+                    }
+                }
+                "Acyc" => self.ai_cyclone(h, a, enemy),
                 _ => {}
             }
         }
@@ -1183,6 +1198,106 @@ impl World {
         let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
         if c.allies >= 4 && c.enemy_structures > 0 {
             self.ai_cast(h, a, 0);
+        }
+    }
+
+    /// Raise Dead, Carrion Scarabs, Vengeance (FUN_6f60ec20): past the gate, against a
+    /// seen enemy, a Hero raises at once when a corpse lies within the spell's reach;
+    /// other casters leave it to their autocast.
+    fn ai_raise_dead(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, None, None) {
+            return;
+        }
+        let owner = self.unit(h).map_or(0, |u| u.owner);
+        if !self.unit_visible_to(enemy, owner) || !self.unit(h).is_some_and(Self::real_hero) {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(h);
+        let reach = self.data(a, "Area", lvl).max(self.data(a, "Rng", lvl));
+        if !self.corpses_in(x, y, reach).is_empty() {
+            self.ai_cast(h, a, 0);
+        }
+    }
+
+    /// Inferno (FUN_6f60dad0, FUN_6f607470): past the gate (no creeps), at an enemy
+    /// player's unit when more than one enemy on the ground is seen within Area of it.
+    fn ai_inferno(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, false, None, None) || self.unit(enemy).is_none_or(|e| e.owner >= PLAYER_NEUTRAL_AGGRESSIVE) {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(enemy);
+        let c = self.census(h, x, y, self.data(a, "Area", lvl), true);
+        if c.enemy_seen - c.enemy_flying > 1 {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Drain (CAbilityDrain vf64): past the gate, on an enemy it may target: draining
+    /// life (DataA a second for Dur) when the enemy has between half and all of it, or
+    /// the caster lacks all of it and the enemy has it; else draining mana (DataB) when
+    /// the caster lacks all of it and the enemy has it.
+    fn ai_drain(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, None, None) || self.cast_target_error(h, a, enemy).is_some() {
+            return;
+        }
+        let (Some(c), Some(e)) = (self.unit(h), self.unit(enemy)) else { return };
+        let dur = self.data(a, "Dur", lvl);
+        let life = self.data(a, "DataA", lvl) * dur;
+        if life != 0.0 {
+            let missing = c.max_life - c.life;
+            if (life * 0.5 <= e.life && e.life <= life) || (life <= missing && life <= e.life) {
+                self.ai_cast(h, a, enemy);
+                return;
+            }
+        }
+        let mana = self.data(a, "DataB", lvl) * dur;
+        if mana == 0.0 || c.max_mana - c.mana < mana || e.mana < mana {
+            return;
+        }
+        self.ai_cast(h, a, enemy);
+    }
+
+    /// Ensnare (CAbilityEnsnare vf64): past the gate, on a unit that is not a Hero or has
+    /// under 300 life; a seen one only of an enemy player, and with 700 life or less
+    /// only at 200 or less and not attacking, or above 700 only attacking from 200 or
+    /// closer.
+    fn ai_ensnare(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
+            return;
+        }
+        let Some(e) = self.unit(enemy) else { return };
+        if Self::real_hero(e) && e.life >= 300.0 {
+            return;
+        }
+        let owner = self.unit(h).map_or(0, |u| u.owner);
+        if self.unit_visible_to(enemy, owner) {
+            if e.owner >= PLAYER_NEUTRAL_AGGRESSIVE {
+                return;
+            }
+            let reach = crate::sim::unit_weapons(self, e).iter().map(|w| w.1.range).fold(-1.0f32, f32::max);
+            if e.life <= 700.0 {
+                if e.life > 200.0 || matches!(e.action, Action::Attack { .. }) {
+                    return;
+                }
+            } else if reach < 0.0 || reach > 200.0 {
+                return;
+            }
+        }
+        self.ai_cast(h, a, enemy);
+    }
+
+    /// Cyclone (CAbilityCyclone vf64): able to cast, on an enemy player's unit that is
+    /// not a Hero, has more than 400 life, and may be targeted.
+    fn ai_cyclone(&mut self, h: u32, a: Id, enemy: u32) {
+        let owner = self.unit(h).map_or(0, |u| u.owner);
+        let Some(e) = self.unit(enemy) else { return };
+        if self.can_cast(h, a).is_err() || Self::real_hero(e) || e.life <= 400.0 || e.owner >= PLAYER_NEUTRAL_AGGRESSIVE {
+            return;
+        }
+        if self.cast_target_error(h, a, enemy).is_none() && !crate::natives::players::is_ally(self, owner, e.owner) {
+            self.ai_cast(h, a, enemy);
         }
     }
 }

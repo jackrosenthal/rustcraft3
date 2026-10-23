@@ -276,6 +276,17 @@ impl World {
         }
     }
 
+    /// EVENT_UNIT_ACQUIRED_TARGET when a unit takes up a target of its own accord (once
+    /// per target).
+    fn acquired(&mut self, h: u32, t: u32) {
+        let Some(u) = self.unit_mut(h) else { return };
+        if u.extra.acquired == t {
+            return;
+        }
+        u.extra.acquired = t;
+        self.queue_unit_event(h, 0, EVENT_UNIT_ACQUIRED_TARGET, EventCtx { target_unit: t, ..Default::default() });
+    }
+
     /// The issued-order events for an order (its kind by target) and their context:
     /// a target order's target unit, item, or destructable, a point order's point.
     pub(crate) fn order_event(&self, h: u32, order: i32, x: f32, y: f32, target: u32) -> (i32, i32, EventCtx) {
@@ -300,6 +311,9 @@ impl World {
     }
 
     pub fn order_unit(&mut self, h: u32, order: i32, x: f32, y: f32, target: u32) {
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.acquired = 0;
+        }
         let smart = crate::natives::basic::order_id("smart");
         let mv = crate::natives::basic::order_id("move");
         let attack = crate::natives::basic::order_id("attack");
@@ -926,6 +940,7 @@ impl World {
                             if let Some(u) = self.unit_mut(h) {
                                 u.action = if matches!(action, Action::Hold) { Action::Hold } else { Action::Attack { target: t } };
                             }
+                            self.acquired(h, t);
                             self.spell_ai(h, t, h);
                             if matches!(action, Action::Hold) {
                                 self.try_attack(h, t, dt, true);
@@ -979,6 +994,7 @@ impl World {
                     if self.unit(h).is_some_and(|u| u.acquire_timer <= 0.0) {
                         let range = self.unit(h).map_or(0.0, |u| u.acquire_range);
                         if let Some(t) = self.find_target(h, range) {
+                            self.acquired(h, t);
                             self.spell_ai(h, t, h);
                             if self.unit(h).is_some_and(|u| matches!(u.action, Action::Cast { .. })) {
                                 continue;

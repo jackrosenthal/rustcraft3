@@ -352,6 +352,9 @@ pub struct UnitExtra {
     /// The unit burst as it died and left no corpse.
     #[serde(default)]
     pub exploded: bool,
+    /// The target the unit last took up of its own accord.
+    #[serde(default)]
+    pub acquired: u32,
     /// A bone turned toward a unit, offset from it (SetUnitLookAt).
     #[serde(default)]
     pub look_at: Option<(String, u32, [f32; 3])>,
@@ -441,6 +444,7 @@ impl Default for UnitExtra {
             anim_props: Vec::new(),
             anim_queue: Vec::new(),
             exploded: false,
+            acquired: 0,
             look_at: None,
             illusion: None,
             factory: None,

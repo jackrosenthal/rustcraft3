@@ -14,6 +14,8 @@ pub struct Light {
     pub diffuse: Vec3,
     /// Ambient color times ambient intensity.
     pub ambient: Vec3,
+    pub intensity: f32,
+    pub ambient_intensity: f32,
 }
 
 fn bgr(c: [f32; 3]) -> Vec3 {
@@ -38,5 +40,7 @@ pub fn light_at(model: &Model, hour: f32) -> Option<Light> {
         direction: q * Vec3::NEG_Z,
         diffuse: bgr(color) * intensity,
         ambient: bgr(amb) * amb_intensity,
+        intensity,
+        ambient_intensity: amb_intensity,
     })
 }

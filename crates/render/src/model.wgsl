@@ -15,6 +15,9 @@ struct Globals {
     fow_object: vec4<f32>,
     fow_masked_terrain: vec4<f32>,
     fow_masked_object: vec4<f32>,
+    water_tint: vec4<f32>,
+    /// The light grid's first cell and its size in cells (zero: no grid).
+    light_grid: vec4<f32>,
 };
 
 struct Draw {
@@ -22,12 +25,54 @@ struct Draw {
     uv_offset: vec2<f32>,
     bone_offset: u32,
     flags: u32,
+    light_cell: u32,
+};
+
+struct Light {
+    pos: vec4<f32>,
+    diffuse: vec4<f32>,
+    ambient: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var<storage, read> bones: array<mat4x4<f32>>;
 @group(0) @binding(2) var fow_tex: texture_2d<f32>;
 @group(0) @binding(3) var fow_samp: sampler;
+@group(0) @binding(4) var<storage, read> lights: array<Light>;
+@group(0) @binding(5) var<storage, read> light_cells: array<u32>;
+
+// The lights of the instance's cell (see lights.rs): the day/night light, or a model's
+// light, Direct3D's way: its ambient plus its diffuse by the angle, a point light's under
+// 1 / (1 + 0.0005 d^2) out to 10000.
+fn lighting(n: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
+    let sun = globals.ambient.rgb + globals.light_color.rgb * max(dot(n, -normalize(globals.light_dir.xyz)), 0.0);
+    if (globals.light_grid.z <= 0.0 || draw.light_cell == 0xffffffffu) {
+        return clamp(sun, vec3<f32>(0.0), vec3<f32>(1.0));
+    }
+    var sum = vec3<f32>(0.0);
+    for (var k = 0u; k < 8u; k++) {
+        let i = light_cells[draw.light_cell * 8u + k];
+        if (i == 0xffffffffu) {
+            break;
+        }
+        if (i == 0xfffffffeu) {
+            sum += sun;
+            continue;
+        }
+        let l = lights[i];
+        if (l.pos.w < 0.5) {
+            sum += l.ambient.rgb + l.diffuse.rgb * max(dot(n, -normalize(l.pos.xyz)), 0.0);
+            continue;
+        }
+        let d = l.pos.xyz - world;
+        let dist = length(d);
+        if (dist < 10000.0) {
+            let att = 1.0 / (1.0 + 0.0005 * dist * dist);
+            sum += (l.ambient.rgb + l.diffuse.rgb * max(dot(n, d / max(dist, 0.001)), 0.0)) * att;
+        }
+    }
+    return clamp(sum, vec3<f32>(0.0), vec3<f32>(1.0));
+}
 @group(1) @binding(0) var<uniform> draw: Draw;
 @group(2) @binding(0) var tex: texture_2d<f32>;
 @group(2) @binding(1) var samp: sampler;
@@ -89,8 +134,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         discard;
     }
     if ((draw.flags & 1u) == 0u) {
-        let l = max(dot(in.normal, -normalize(globals.light_dir.xyz)), 0.0);
-        c = vec4<f32>(c.rgb * clamp(globals.ambient.rgb + globals.light_color.rgb * l, vec3<f32>(0.0), vec3<f32>(1.0)), c.a);
+        c = vec4<f32>(c.rgb * lighting(in.normal, in.world), c.a);
     }
     if (globals.fow_extent.z > 0.0) {
         // Fogged objects take FoggedObject's color, masked ones the masked color.

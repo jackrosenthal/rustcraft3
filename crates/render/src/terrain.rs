@@ -38,6 +38,8 @@ pub struct TerrainRenderer {
     globals_layout: wgpu::BindGroupLayout,
     globals_buf: wgpu::Buffer,
     extent_buf: wgpu::Buffer,
+    /// The model lights, shared with the models' renderer.
+    lights: std::sync::Arc<crate::lights::LightBuffers>,
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
     /// The ground tiles, in their own buffers so blight can change them.
@@ -183,6 +185,7 @@ impl TerrainRenderer {
         textures: &mut TextureCache,
         color_format: wgpu::TextureFormat,
         globals_buf: &wgpu::Buffer,
+        lights: std::sync::Arc<crate::lights::LightBuffers>,
         terrain: &Terrain,
         terrain_slk: &Table,
         water_slk: &Table,
@@ -487,7 +490,10 @@ impl TerrainRenderer {
         let fog = std::sync::Arc::new(crate::fog::FogTexture::new(device, queue, 1, 1));
         let globals_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("terrain globals"),
-            entries: &[uniform(0), uniform(1), fow0, fow1],
+            entries: &{
+                let [l0, l1] = crate::lights::LightBuffers::layout_entries(4, wgpu::ShaderStages::FRAGMENT);
+                [uniform(0), uniform(1), fow0, fow1, l0, l1]
+            },
         });
         let tex_layout = texture_bind_group_layout(device);
         // war3map.shd: one byte per 32x32 cell, four cells per tile edge, 0 or 255.
@@ -513,6 +519,8 @@ impl TerrainRenderer {
                 wgpu::BindGroupEntry { binding: 1, resource: extent_buf.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&fog.view) },
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&fog.sampler) },
+                wgpu::BindGroupEntry { binding: 4, resource: lights.lights.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 5, resource: lights.cells.as_entire_binding() },
             ],
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -588,6 +596,7 @@ impl TerrainRenderer {
             globals_layout,
             globals_buf: globals_buf.clone(),
             extent_buf,
+            lights,
             vertices,
             indices: index_buf,
             ground_vertices,
@@ -638,6 +647,8 @@ impl TerrainRenderer {
                 wgpu::BindGroupEntry { binding: 1, resource: self.extent_buf.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&fog.view) },
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&fog.sampler) },
+                wgpu::BindGroupEntry { binding: 4, resource: self.lights.lights.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 5, resource: self.lights.cells.as_entire_binding() },
             ],
         });
     }

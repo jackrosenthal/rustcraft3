@@ -434,6 +434,7 @@ impl Scene {
             &mut assets.textures,
             color_format,
             &models.globals_buf,
+            models.lights.clone(),
             &terrain,
             &terrain_slk,
             &water_slk,
@@ -3114,15 +3115,23 @@ impl Scene {
             sky.transform = Mat4::from_translation(eye);
             self.sky_renderer.submit(sky, eye, rot);
         }
+        // The model lights' cells cover the map (see w3_render::lights).
+        let grid = LightGrid::new(&self.terrain);
+        let cell = |inst: &ModelInstance| grid.cell(inst.transform.w_axis.truncate());
         for inst in &mut self.instances {
             // Cull instances well outside the view.
             let p = inst.transform.w_axis.truncate();
             if p.distance(self.camera.target) > self.camera.far * 1.5 {
                 continue;
             }
+            inst.light_cell = cell(inst);
             self.models.submit(inst, eye, rot);
         }
         for v in self.units.values_mut() {
+            v.inst.light_cell = cell(&v.inst);
+            for (_, c) in &mut v.children {
+                c.light_cell = v.inst.light_cell;
+            }
             self.models.submit(&mut v.inst, eye, rot);
             submit_children(&mut self.models, v, eye, rot);
         }
@@ -3132,12 +3141,15 @@ impl Scene {
             if inst.transform.w_axis.truncate().distance(target) > far {
                 continue;
             }
+            inst.light_cell = cell(inst);
             self.models.submit(inst, eye, rot);
         }
         for v in self.effects.values_mut().filter(|v| v.inst.visible) {
+            v.inst.light_cell = cell(&v.inst);
             self.models.submit(&mut v.inst, eye, rot);
         }
         for v in self.missiles.values_mut().filter(|v| v.inst.visible) {
+            v.inst.light_cell = cell(&v.inst);
             self.models.submit(&mut v.inst, eye, rot);
         }
         for inst in self.weather.instances() {
@@ -3147,6 +3159,7 @@ impl Scene {
             self.lightning.draw(assets, device, queue, &g.world, self.camera.view(), self.time, &mut self.models);
         }
         for inst in self.items.values_mut() {
+            inst.light_cell = cell(inst);
             self.models.submit(inst, eye, rot);
         }
         // The structure being placed, at the snapped point under the pointer.
@@ -3192,6 +3205,27 @@ impl Scene {
             }),
             ..Default::default()
         });
+        // The lights the posed models give off, and each nearby cell's choice of them.
+        let mut lights = Vec::new();
+        {
+            let mut add = |i: &ModelInstance| w3_render::lights::instance_lights(i, &mut lights);
+            self.instances.iter().filter(|i| i.transform.w_axis.truncate().distance(target) <= far).for_each(&mut add);
+            for v in self.units.values() {
+                add(&v.inst);
+                v.children.iter().for_each(|(_, c)| add(c));
+            }
+            self.dests.values().map(|(i, _)| i).filter(|i| i.transform.w_axis.truncate().distance(target) <= far).for_each(&mut add);
+            self.effects.values().for_each(|v| add(&v.inst));
+            self.missiles.values().for_each(|v| add(&v.inst));
+            self.items.values().for_each(&mut add);
+        }
+        // Lights per object by the Lights option: 1, 4, or 8 (FUN_6f1206b0).
+        let n = [1, 4, 8][self.options.lights.min(2) as usize];
+        let sun = self.dnc.1.as_ref().and_then(|m| w3_render::dnc::light_at(m, self.game.as_ref().map_or(12.0, |g| g.world.time_of_day))).map_or(1.0, |l| l.intensity + l.ambient_intensity);
+        let cells = grid.choose(&self.terrain, target, far, sun, &lights, n);
+        let gpu: Vec<w3_render::lights::GpuLight> = lights.iter().map(|l| l.gpu()).collect();
+        self.models.lights.write(queue, &gpu, &cells);
+        globals.light_grid = grid.uniform();
         queue.write_buffer(&self.models.globals_buf, 0, bytemuck::bytes_of(&globals));
         // The world shows inside the same frame in cinematics; the panel covers the rest.
         if self.hud.is_some() {
@@ -3462,3 +3496,60 @@ fn load_tips(chain: &w3_mpq::Chain) -> Vec<String> {
     (1..=n).filter_map(|k| p.get_str("General", &format!("Tip{k}"))).map(|t| t.trim_matches('"').to_string()).collect()
 }
 
+/// The map's cells for the model lights (w3_render::lights): the first cell's indices
+/// and the count across and up.
+struct LightGrid {
+    first: (i32, i32),
+    size: (i32, i32),
+}
+
+impl LightGrid {
+    fn new(t: &TerrainRenderer) -> LightGrid {
+        use w3_render::lights::cell_of;
+        let (x0, y0) = (t.offset[0], t.offset[1]);
+        let (x1, y1) = (x0 + t.width.saturating_sub(1) as f32 * 128.0, y0 + t.height.saturating_sub(1) as f32 * 128.0);
+        let first = (cell_of(x0), cell_of(y0));
+        let size = (cell_of(x1) - first.0 + 1, cell_of(y1) - first.1 + 1);
+        if (size.0 * size.1) as usize > w3_render::lights::MAX_CELLS {
+            return LightGrid { first, size: (0, 0) };
+        }
+        LightGrid { first, size }
+    }
+
+    fn index(&self, i: i32, j: i32) -> Option<u32> {
+        let (a, b) = (i - self.first.0, j - self.first.1);
+        (a >= 0 && b >= 0 && a < self.size.0 && b < self.size.1).then(|| (b * self.size.0 + a) as u32)
+    }
+
+    fn cell(&self, p: Vec3) -> u32 {
+        use w3_render::lights::{NO_LIGHT, cell_of};
+        self.index(cell_of(p.x), cell_of(p.y)).unwrap_or(NO_LIGHT)
+    }
+
+    fn uniform(&self) -> [f32; 4] {
+        [self.first.0 as f32, self.first.1 as f32, self.size.0 as f32, self.size.1 as f32]
+    }
+
+    /// Every cell's lights: those within `far` of `target` chosen at their points (on
+    /// the ground), the rest the day/night light alone.
+    fn choose(&self, t: &TerrainRenderer, target: Vec3, far: f32, sun: f32, lights: &[w3_render::lights::ModelLight], n: usize) -> Vec<[u32; w3_render::lights::PER_CELL]> {
+        use w3_render::lights::{CELL, NO_LIGHT, PER_CELL, SUN, choose};
+        let mut only_sun = [NO_LIGHT; PER_CELL];
+        only_sun[0] = SUN;
+        let mut out = vec![only_sun; (self.size.0 * self.size.1).max(0) as usize];
+        if lights.is_empty() {
+            return out;
+        }
+        for b in 0..self.size.1 {
+            for a in 0..self.size.0 {
+                let (x, y) = ((self.first.0 + a) as f32 * CELL, (self.first.1 + b) as f32 * CELL);
+                if Vec3::new(x, y, target.z).distance(target) > far + CELL {
+                    continue;
+                }
+                let p = Vec3::new(x, y, t.height_at(x, y));
+                out[(b * self.size.0 + a) as usize] = choose(p, sun, lights, n);
+            }
+        }
+        out
+    }
+}

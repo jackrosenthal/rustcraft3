@@ -16,6 +16,14 @@ struct Globals {
     fow_masked_terrain: vec4<f32>,
     fow_masked_object: vec4<f32>,
     water_tint: vec4<f32>,
+    /// The light grid's first cell and its size in cells (zero: no grid).
+    light_grid: vec4<f32>,
+};
+
+struct Light {
+    pos: vec4<f32>,
+    diffuse: vec4<f32>,
+    ambient: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> globals: Globals;
@@ -26,6 +34,42 @@ struct Globals {
 @group(2) @binding(1) var shadow_samp: sampler;
 @group(0) @binding(2) var fow_tex: texture_2d<f32>;
 @group(0) @binding(3) var fow_samp: sampler;
+@group(0) @binding(4) var<storage, read> lights: array<Light>;
+@group(0) @binding(5) var<storage, read> light_cells: array<u32>;
+
+// The lights of the cell the ground is in (see lights.rs, and the model shader).
+fn lighting(n: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
+    let sun = globals.terrain_ambient.rgb + globals.terrain_light_color.rgb * max(dot(n, -normalize(globals.light_dir.xyz)), 0.0);
+    let g = globals.light_grid;
+    let ci = floor((world.xy + vec2<f32>(512.0)) / 1024.0) - g.xy;
+    if (g.z <= 0.0 || ci.x < 0.0 || ci.y < 0.0 || ci.x >= g.z || ci.y >= g.w) {
+        return clamp(sun, vec3<f32>(0.0), vec3<f32>(1.0));
+    }
+    let cell = u32(ci.y) * u32(g.z) + u32(ci.x);
+    var sum = vec3<f32>(0.0);
+    for (var k = 0u; k < 8u; k++) {
+        let i = light_cells[cell * 8u + k];
+        if (i == 0xffffffffu) {
+            break;
+        }
+        if (i == 0xfffffffeu) {
+            sum += sun;
+            continue;
+        }
+        let l = lights[i];
+        if (l.pos.w < 0.5) {
+            sum += l.ambient.rgb + l.diffuse.rgb * max(dot(n, -normalize(l.pos.xyz)), 0.0);
+            continue;
+        }
+        let d = l.pos.xyz - world;
+        let dist = length(d);
+        if (dist < 10000.0) {
+            let att = 1.0 / (1.0 + 0.0005 * dist * dist);
+            sum += (l.ambient.rgb + l.diffuse.rgb * max(dot(n, d / max(dist, 0.001)), 0.0)) * att;
+        }
+    }
+    return clamp(sum, vec3<f32>(0.0), vec3<f32>(1.0));
+}
 
 /// Fog of war over terrain: fogged cells blend toward FoggedTerrain by its alpha, masked
 /// cells toward the masked color by its.  The texture holds 255 visible, 128 fogged, and 0
@@ -97,8 +141,7 @@ fn fog(c: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
 @fragment
 fn fs_ground(in: VsOut) -> @location(0) vec4<f32> {
     let t = textureSample(tex, samp, in.uv);
-    let l = max(dot(normalize(in.normal), -normalize(globals.light_dir.xyz)), 0.0);
-    var lit = clamp(globals.terrain_ambient.rgb + globals.terrain_light_color.rgb * l, vec3<f32>(0.0), vec3<f32>(1.0));
+    var lit = lighting(normalize(in.normal), in.world);
     let suv = (in.world.xy - extent.xy) / extent.zw;
     // Rows run south to north.
     let shadow = textureSample(shadow_tex, shadow_samp, suv).r;

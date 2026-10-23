@@ -6,6 +6,7 @@ pub mod decal;
 pub mod dnc;
 pub mod fog;
 pub mod gpu;
+pub mod lights;
 pub mod model;
 pub mod particles;
 pub mod terrain;

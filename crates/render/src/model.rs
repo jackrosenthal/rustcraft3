@@ -180,6 +180,8 @@ pub struct ModelInstance {
     pub blend_ms: f32,
     blend_from: Option<Time>,
     blend_elapsed: f32,
+    /// The light grid cell the instance stands in, whose lights light it.
+    pub light_cell: u32,
 }
 
 impl ModelInstance {
@@ -205,6 +207,7 @@ impl ModelInstance {
             sound_events: Vec::new(),
             particles: Default::default(),
             looped: false,
+            light_cell: crate::lights::NO_LIGHT,
         }
     }
 
@@ -292,7 +295,9 @@ struct DrawUniform {
     uv_offset: [f32; 2],
     bone_offset: u32,
     flags: u32,
-    _pad: [u32; 56],
+    /// The instance's cell in the light grid (`lights::NO_LIGHT` outside it).
+    light_cell: u32,
+    _pad: [u32; 55],
 }
 
 const DRAW_ALIGN: u64 = 256;
@@ -339,6 +344,9 @@ pub struct Globals {
     pub fow_masked_object: [f32; 4],
     /// SetWaterBaseColor, multiplying the water's colors.
     pub water_tint: [f32; 4],
+    /// The model lights' cell grid (see `lights`): its first cell's indices and its
+    /// width and height in cells; a zero width leaves only the day/night light.
+    pub light_grid: [f32; 4],
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -381,6 +389,8 @@ pub struct ModelRenderer {
     team_colors: Vec<Arc<Texture>>,
     team_glows: Vec<Arc<Texture>>,
     fog: Arc<crate::fog::FogTexture>,
+    /// The model lights and the cells' choices of them, shared with the terrain.
+    pub lights: Arc<crate::lights::LightBuffers>,
     particle_shader: wgpu::ShaderModule,
     particle_layout: wgpu::PipelineLayout,
     /// By filter and whether depth is tested.
@@ -404,6 +414,8 @@ impl ModelRenderer {
     ) -> Self {
         let shader = device.create_shader_module(wgpu::include_wgsl!("model.wgsl"));
         let [fow0, fow1] = crate::fog::layout_entries(2);
+        let [light0, light1] = crate::lights::LightBuffers::layout_entries(4, wgpu::ShaderStages::FRAGMENT);
+        let lights = Arc::new(crate::lights::LightBuffers::new(device));
         let fog = Arc::new(crate::fog::FogTexture::new(device, queue, 1, 1));
         let globals_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("model globals"),
@@ -430,6 +442,8 @@ impl ModelRenderer {
                 },
                 fow0,
                 fow1,
+                light0,
+                light1,
             ],
         });
         let draw_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -461,7 +475,7 @@ impl ModelRenderer {
         let bones_buf = bones_buffer(device, bones_cap);
         let draws_cap = 256;
         let draws_buf = draws_buffer(device, draws_cap);
-        let globals_bg = globals_bind_group(device, &globals_layout, &globals_buf, &bones_buf, &fog);
+        let globals_bg = globals_bind_group(device, &globals_layout, &globals_buf, &bones_buf, &fog, &lights);
         let draws_bg = draws_bind_group(device, &draw_layout, &draws_buf);
         let samplers = [
             (false, false),
@@ -501,6 +515,7 @@ impl ModelRenderer {
         });
         ModelRenderer {
             fog,
+            lights,
             particle_shader,
             particle_layout,
             particle_pipelines: HashMap::new(),
@@ -679,7 +694,8 @@ impl ModelRenderer {
                         uv_offset,
                         bone_offset,
                         flags,
-                        _pad: [0; 56],
+                        light_cell: inst.light_cell,
+                        _pad: [0; 55],
                     },
                     depth: if blended { depth } else { 0.0 },
                     priority: mat.priority_plane * 16 + li as i32,
@@ -770,7 +786,7 @@ impl ModelRenderer {
     /// Uses a fog-of-war texture (see [`Globals::fow_extent`]).
     pub fn set_fog(&mut self, device: &wgpu::Device, fog: Arc<crate::fog::FogTexture>) {
         self.fog = fog;
-        self.globals_bg = globals_bind_group(device, &self.globals_layout, &self.globals_buf, &self.bones_buf, &self.fog);
+        self.globals_bg = globals_bind_group(device, &self.globals_layout, &self.globals_buf, &self.bones_buf, &self.fog, &self.lights);
     }
 
     /// Uploads this frame's data and records draws into `pass`.
@@ -788,7 +804,7 @@ impl ModelRenderer {
             rebind = true;
         }
         if rebind {
-            self.globals_bg = globals_bind_group(device, &self.globals_layout, &self.globals_buf, &self.bones_buf, &self.fog);
+            self.globals_bg = globals_bind_group(device, &self.globals_layout, &self.globals_buf, &self.bones_buf, &self.fog, &self.lights);
         }
         queue.write_buffer(&self.bones_buf, 0, bytemuck::cast_slice(&self.bones));
         // Opaque first, then blended back to front.
@@ -948,6 +964,7 @@ fn globals_bind_group(
     globals: &wgpu::Buffer,
     bones: &wgpu::Buffer,
     fog: &crate::fog::FogTexture,
+    lights: &crate::lights::LightBuffers,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("model globals"),
@@ -957,6 +974,8 @@ fn globals_bind_group(
             wgpu::BindGroupEntry { binding: 1, resource: bones.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&fog.view) },
             wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&fog.sampler) },
+            wgpu::BindGroupEntry { binding: 4, resource: lights.lights.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 5, resource: lights.cells.as_entire_binding() },
         ],
     })
 }
@@ -1047,6 +1066,7 @@ pub fn default_globals(view_proj: Mat4, camera: Vec3) -> Globals {
         fow_masked_terrain: [0.0, 0.0, 0.0, 1.0],
         fow_masked_object: [0.0, 0.0, 0.0, 1.0],
         water_tint: [1.0; 4],
+        light_grid: [0.0; 4],
     }
 }
 

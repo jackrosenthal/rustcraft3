@@ -148,6 +148,7 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         }
     }
     w.unit_order.push(h);
+    w.attach_ability_art(h);
     w.score_made(owner, type_id, h, is_hero);
     if !path_tex.is_empty() {
         // Structures are always placed facing BuildingAngle; their footprint does not turn.
@@ -191,6 +192,7 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
         return;
     }
     if w.unit(h).is_some_and(|u| !u.dead) {
+        w.detach_ability_art(h);
         w.death_abilities(vm, h);
         w.on_death_buffs(h);
         w.drop_on_death(vm, h);
@@ -233,6 +235,7 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
 }
 
 pub fn remove_unit(w: &mut World, h: u32) {
+    w.detach_ability_art(h);
     if let Some(cells) = w.unit_mut(h).map(|u| std::mem::take(&mut u.pathing_cells)) {
         if let Some(p) = w.pathing.as_mut() {
             p.stamp(&cells, -1);

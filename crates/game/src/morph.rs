@@ -126,6 +126,8 @@ impl World {
         }
         u.abilities = abilities;
         u.extra.weapons = None;
+        self.detach_ability_art(h);
+        self.attach_ability_art(h);
     }
 
     /// Call to Arms (Amic) and Militia (Amil) orders: None when the order is none of

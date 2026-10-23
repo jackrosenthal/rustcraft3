@@ -336,6 +336,9 @@ pub struct UnitExtra {
     /// it is on its way back.
     #[serde(default)]
     pub swarm: Option<(u32, f32, bool)>,
+    /// Effects its abilities attach to it (Sphere, Tree of Life art).
+    #[serde(default)]
+    pub art: Vec<u32>,
 }
 
 impl Default for UnitExtra {
@@ -386,6 +389,7 @@ impl Default for UnitExtra {
             born: 0.0,
             mine_fuse: None,
             swarm: None,
+            art: Vec::new(),
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,

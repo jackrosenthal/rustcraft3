@@ -149,3 +149,46 @@ impl World {
         }
     }
 }
+
+impl World {
+    /// Abilities that only attach art to their unit (Sphere's BloodElfBall at "sprite
+    /// first", "second", and "third"; the Tree of Life upgrades'): each Targetart at its
+    /// Targetattach, TargetattachN.
+    pub fn attach_ability_art(&mut self, h: u32) {
+        let Some(u) = self.unit(h) else { return };
+        let mut out = Vec::new();
+        for &(a, _) in &u.abilities {
+            if !matches!(self.ability_code(a).as_str(), "Asph" | "Atol") {
+                continue;
+            }
+            let Some(o) = self.objects.abilities.get(a) else { continue };
+            let models = o.list("Targetart");
+            let n = o.str("Targetattachcount").trim().parse::<usize>().unwrap_or(1).max(1);
+            for k in 0..n {
+                let key = if k == 0 { "Targetattach".to_string() } else { format!("Targetattach{k}") };
+                let attach = o.str(&key);
+                let model = models.get(k).or(models.first()).cloned().unwrap_or_default();
+                if !model.is_empty() {
+                    out.push((model, attach));
+                }
+            }
+        }
+        let mut handles = Vec::new();
+        for (model, attach) in out {
+            handles.push(self.handles.insert(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((h, attach)), destroyed: false, facing: 0.0 })));
+        }
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.art = handles;
+        }
+    }
+
+    /// Takes a unit's ability art away.
+    pub fn detach_ability_art(&mut self, h: u32) {
+        let Some(handles) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.art)) else { return };
+        for e in handles {
+            if let Some(Obj::Effect(f)) = self.handles.get_mut(e) {
+                f.destroyed = true;
+            }
+        }
+    }
+}

@@ -124,10 +124,6 @@ impl World {
 
     /// A dying unit drops what it carries when AInv says so (Drop Items On Death, DataB).
     pub fn drop_on_death(&mut self, vm: &mut Vm, unit: u32) {
-        // SetItemDropID: the unit leaves that item where it dies.
-        if let Some((id, x, y)) = self.unit(unit).and_then(|u| u.extra.drop_item.map(|i| (i, u.x, u.y))) {
-            crate::natives::objects::create_item(self, id, x, y);
-        }
         let drops = self.ability_with_code(unit, "AInv").is_some_and(|(a, l)| self.objects.abilities.get(a).is_some_and(|o| o.level_real("DataB", l) != 0.0));
         let Some(u) = self.unit(unit) else { return };
         let (x, y) = (u.x, u.y);
@@ -283,6 +279,25 @@ impl World {
                             u.path.clear();
                             u.action = Action::Idle;
                         }
+                    }
+                    did = true;
+                }
+                // Rune of Rebirth (CAbilityRebirth): a unit of the type whose death left
+                // the rune (SetItemDropID) joins the one picking it up, for Dur when set,
+                // not as a summon, with the BIrb buff's Effectart.
+                "AIrb" => {
+                    if let Some(t) = self.item(_item).and_then(|i| i.drop_type) {
+                        let (x, y) = self.unit(unit).map_or((0.0, 0.0), |u| (u.x, u.y));
+                        let born = crate::natives::units::create_unit(self, owner, t, x, y, 270.0);
+                        let dur = data(self, "Dur");
+                        if dur > 0.0 {
+                            if let Some(u) = self.unit_mut(born) {
+                                u.timed_life = Some(dur);
+                            }
+                        }
+                        let buff = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", 1)).unwrap_or_default();
+                        let art = self.objects.buffs.get(crate::objects::id_from_str(buff.trim())).map(|o| o.str("Effectart")).unwrap_or_default();
+                        self.spawn_effect(&art, x, y);
                     }
                     did = true;
                 }

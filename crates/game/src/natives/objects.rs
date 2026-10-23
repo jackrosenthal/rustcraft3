@@ -90,6 +90,7 @@ pub fn create_item(w: &mut World, id: Id, x: f32, y: f32) -> u32 {
         pawnable: o.bool("pawnable"),
         drop_on_death: false,
         droppable: o.bool("droppable"),
+        drop_type: None,
     };
     let h = w.handles.insert(Obj::Item(Box::new(item)));
     if let Some(Obj::Item(i)) = w.handles.get_mut(h) {
@@ -383,6 +384,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         SetItemDropOnDeath => |w, _, a| { let v = a.b(1); if let Some(i) = item_mut(w, a.h(0)) { i.drop_on_death = v; } none() },
+        SetItemDropID => |w, _, a| { let id = id_from_int(a.i(1)); if let Some(i) = item_mut(w, a.h(0)) { i.drop_type = (id[0] != 0).then_some(id); } none() },
         SetItemDroppable => |w, _, a| { let v = a.b(1); if let Some(i) = item_mut(w, a.h(0)) { i.droppable = v; } none() },
         SetItemPawnable => |w, _, a| { let v = a.b(1); if let Some(i) = item_mut(w, a.h(0)) { i.pawnable = v; } none() },
         IsItemPawnable => |w, _, a| boolean(item(w, a.h(0)).is_some_and(|i| i.pawnable)),

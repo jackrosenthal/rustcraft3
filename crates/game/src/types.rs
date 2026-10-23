@@ -257,8 +257,6 @@ pub struct UnitExtra {
     /// A waygate's destination and whether it is active.
     pub waygate: Option<(f32, f32, bool)>,
     pub creep_guard: bool,
-    /// SetItemDropID: the item the unit drops when it dies.
-    pub drop_item: Option<Id>,
     pub alt_icon: bool,
     /// A haunted gold mine's gold mine underneath.
     pub mine: Option<u32>,
@@ -392,7 +390,6 @@ impl Default for UnitExtra {
             timed_life_paused: false,
             waygate: None,
             creep_guard: false,
-            drop_item: None,
             alt_icon: false,
             mine: None,
             mine_slot: None,
@@ -665,6 +662,9 @@ pub struct Item {
     pub pawnable: bool,
     pub drop_on_death: bool,
     pub droppable: bool,
+    /// The type of unit whose death left it (SetItemDropID; the Rune of Rebirth's).
+    #[serde(default)]
+    pub drop_type: Option<Id>,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]

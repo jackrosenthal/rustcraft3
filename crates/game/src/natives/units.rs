@@ -654,7 +654,6 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetUnitPathing => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.no_pathing = !on) },
         SetUnitUseFood => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.use_food = on); w.update_food(); none() },
         SetUnitCreepGuard => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.creep_guard = on) },
-        SetItemDropID => |w, _, a| { let id = id_from_int(a.i(1)); with_unit(w, a, |u| u.extra.drop_item = (id[0] != 0).then_some(id)) },
         UnitSetUsesAltIcon => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.alt_icon = on) },
         GetUnitRallyUnit => |_, _, _| handle(0),
         GetUnitRallyDestructable => |_, _, _| handle(0),

@@ -137,6 +137,26 @@ impl World {
         self.objects.units.get(id).is_some_and(|o| o.bool("isbldg"))
     }
 
+    /// The share of its race's research a player has made (FUN_6f24b240): the levels
+    /// researched of the race's used upgrades over their maximum levels (FUN_6f6a6e40).
+    fn tech_percent(&self, player: u8) -> i32 {
+        let Some(p) = self.players.get(player as usize) else { return 0 };
+        let race = match p.race {
+            1 => "human",
+            2 => "orc",
+            3 => "undead",
+            4 => "nightelf",
+            _ => return 0,
+        };
+        let ours = |o: &crate::objects::Object| o.str("race").eq_ignore_ascii_case(race) && o.int("used") != 0;
+        let total: i32 = self.objects.upgrades.objects.values().filter(|o| ours(o)).map(|o| o.int("maxlevel").max(0)).sum();
+        if total == 0 {
+            return 0;
+        }
+        let made: i32 = p.tech_researched.iter().filter(|(id, _)| self.objects.upgrades.get(**id).is_some_and(ours)).map(|(_, &l)| l.max(0)).sum();
+        100 * made / total
+    }
+
     /// GetPlayerScore.
     pub fn player_score(&self, player: u8, which: i32) -> i32 {
         use kind::*;
@@ -155,9 +175,7 @@ impl World {
             UNITS_KILLED => sum(false, true),
             STRUCT_BUILT => sum(true, false),
             STRUCT_RAZED => sum(true, true),
-            // The share of the race's technology made (FUN_6f24b240) needs the race's
-            // tech list, which is not read yet.
-            TECH_PERCENT => 0,
+            TECH_PERCENT => self.tech_percent(player),
             FOOD_MAXPROD => s.food_max_made,
             FOOD_MAXUSED => s.food_max_used,
             HEROES_KILLED => s.heroes_killed,

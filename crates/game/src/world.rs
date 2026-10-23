@@ -738,6 +738,7 @@ impl World {
         prof!(self, "update_periodic_attacks", self.update_periodic_attacks(vm, dt));
         prof!(self, "update_devoured", self.update_devoured(vm, dt));
         prof!(self, "update_undead_auras", self.update_undead_auras(vm, dt));
+        prof!(self, "update_corpse_makers", self.update_corpse_makers(dt));
         let now = self.time;
         let due: Vec<(f32, u32, u32)> = self.pending_entangles.iter().copied().filter(|e| e.0 <= now).collect();
         self.pending_entangles.retain(|e| e.0 > now);

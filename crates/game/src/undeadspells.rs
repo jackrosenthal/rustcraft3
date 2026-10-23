@@ -1,4 +1,5 @@
-//! Undead unit abilities: Disease Cloud, Possession, and Replenish.
+//! Undead unit abilities: Disease Cloud, Possession, Replenish, the meat wagon's
+//! corpses (Get Corpse, Drop All Corpses, Exhume Corpses), and the Graveyard's.
 
 use w3_jass::Vm;
 
@@ -106,5 +107,84 @@ impl World {
         let ctx = EventCtx { state: prev as i32, ..Default::default() };
         self.fire_unit_pair(vm, target, EVENT_PLAYER_UNIT_CHANGE_OWNER, EVENT_UNIT_CHANGE_OWNER, ctx);
         crate::natives::units::remove_unit(self, h);
+    }
+
+    /// The corpses a meat wagon holds at most: its cargo hold's (Amtc) DataA.
+    fn corpse_capacity(&self, h: u32) -> usize {
+        self.ability_with_code(h, "Amtc").map_or(0, |(a, lvl)| self.data(a, "DataA", lvl.max(1) as u32) as usize)
+    }
+
+    /// Get Corpse: the wagon takes up a corpse.
+    pub(crate) fn load_corpse(&mut self, h: u32, corpse: u32) {
+        let Some(c) = self.unit(corpse).filter(|c| c.dead && !c.hidden && !c.is_hero) else { return };
+        let type_id = c.type_id;
+        if self.unit(h).is_none_or(|u| u.extra.corpses.len() >= self.corpse_capacity(h)) {
+            return;
+        }
+        crate::natives::units::remove_unit(self, corpse);
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.corpses.push(type_id);
+        }
+    }
+
+    fn place_corpse(&mut self, owner: u8, type_id: Id, x: f32, y: f32) {
+        let facing = self.rng.real(0.0, 360.0);
+        let c = crate::natives::units::create_unit(self, owner, type_id, x, y, facing);
+        if let Some(u) = self.unit_mut(c) {
+            u.dead = true;
+            u.life = 0.0;
+        }
+    }
+
+    /// Drop All Corpses: the wagon's corpses fall around it.
+    pub(crate) fn drop_corpses(&mut self, h: u32) {
+        let Some(u) = self.unit_mut(h) else { return };
+        let corpses = std::mem::take(&mut u.extra.corpses);
+        let (owner, x, y) = (u.owner, u.x, u.y);
+        for t in corpses {
+            let (dx, dy) = (self.rng.real(-48.0, 48.0), self.rng.real(-48.0, 48.0));
+            self.place_corpse(owner, t, x + dx, y + dy);
+        }
+    }
+
+    /// Exhume Corpses: a wagon with fewer than DataA corpses gains one of UnitID every
+    /// Dur.  The Graveyard: every Cool, while fewer than DataA corpses lie within
+    /// DataC, one of UnitID appears within DataB.
+    pub fn update_corpse_makers(&mut self, dt: f32) {
+        let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && u.constructing.is_none())).collect();
+        for h in units {
+            for code in ["Aexh", "Agyd"] {
+                let Some((a, lvl)) = self.ability_with_code(h, code) else { continue };
+                let lvl = lvl.max(1) as u32;
+                let Some(u) = self.unit(h) else { continue };
+                let (owner, x, y, held) = (u.owner, u.x, u.y, u.extra.corpses.len());
+                if !self.ability_enabled(owner, a) {
+                    continue;
+                }
+                let max = self.data(a, "DataA", lvl) as usize;
+                let full = if code == "Aexh" { held >= max.min(self.corpse_capacity(h)) } else { self.corpses_in(x, y, self.data(a, "DataC", lvl)).len() >= max };
+                let period = self.data(a, if code == "Aexh" { "Dur" } else { "Cool" }, lvl);
+                let u = self.unit_mut(h).unwrap();
+                if full {
+                    u.cooldowns.insert(a, period);
+                    continue;
+                }
+                let left = u.cooldowns.get(&a).copied().unwrap_or(period) - dt;
+                if left > 0.0 {
+                    u.cooldowns.insert(a, left);
+                    continue;
+                }
+                u.cooldowns.insert(a, period);
+                let type_id = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
+                if code == "Aexh" {
+                    self.unit_mut(h).unwrap().extra.corpses.push(type_id);
+                } else {
+                    let r = self.data(a, "DataB", lvl);
+                    let ang = self.rng.real(0.0, std::f32::consts::TAU);
+                    let d = self.rng.real(0.0, r);
+                    self.place_corpse(owner, type_id, x + d * ang.cos(), y + d * ang.sin());
+                }
+            }
+        }
     }
 }

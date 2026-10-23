@@ -307,6 +307,9 @@ pub struct UnitExtra {
     /// The unit whose spell raised this one (Vengeance), for its limit.
     #[serde(default)]
     pub summoner: u32,
+    /// The corpses a meat wagon carries, by unit type.
+    #[serde(default)]
+    pub corpses: Vec<Id>,
 }
 
 impl Default for UnitExtra {
@@ -347,6 +350,7 @@ impl Default for UnitExtra {
             last_attacked: -100.0,
             devoured: Vec::new(),
             summoner: 0,
+            corpses: Vec::new(),
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,

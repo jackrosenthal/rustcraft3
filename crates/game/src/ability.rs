@@ -32,6 +32,8 @@ pub fn default_buff(code: &str) -> Option<&'static str> {
 pub fn intrinsic_order(code: &str) -> Option<i32> {
     match code {
         "AIta" => Some(852270),
+        // Drop All Corpses (CAbilityMeatDrop::vf194).
+        "Amed" => Some(852054),
         _ => None,
     }
 }
@@ -43,7 +45,7 @@ fn point_target(code: &str) -> bool {
 
 /// Abilities with no target (cast instantly around the caster).
 fn no_target(code: &str) -> bool {
-    matches!(code, "Amic" | "Adec" | "Amfl" | "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "ANsy" | "Astd" | "Abtl" | "Arai" | "Aroa" | "Atau" | "Absk" | "ANef" | "ANht" | "ANms" | "ANlm" | "ANsg" | "ANsq" | "ANsw")
+    matches!(code, "Amed" | "Amic" | "Adec" | "Amfl" | "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "ANsy" | "Astd" | "Abtl" | "Arai" | "Aroa" | "Atau" | "Absk" | "ANef" | "ANht" | "ANms" | "ANlm" | "ANsg" | "ANsq" | "ANsw")
 }
 
 /// Passive abilities and auras.
@@ -458,10 +460,14 @@ impl World {
         let range = self.data(a, "Rng", lvl);
         let goal = if target != 0 { self.widget_pos(target) } else { Some((x, y)) };
         let Some(goal) = goal else {
-            self.unit_mut(h).unwrap().action = Action::Idle;
+            let u = self.unit_mut(h).unwrap();
+            u.action = Action::Idle;
+            u.casting = None;
             return;
         };
-        if target != 0 && self.unit(target).is_some_and(|t| t.dead) {
+        // A dead target ends the cast, unless the ability is for corpses.
+        let for_corpses = self.objects.abilities.get(a).is_some_and(|o| o.level_str("targs", lvl).split(',').any(|t| t.trim().eq_ignore_ascii_case("dead")));
+        if target != 0 && self.unit(target).is_some_and(|t| t.dead != for_corpses || t.hidden && for_corpses) {
             self.unit_mut(h).unwrap().action = Action::Idle;
             return;
         }

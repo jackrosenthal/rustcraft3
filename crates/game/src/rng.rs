@@ -52,6 +52,17 @@ impl Rng {
 
     /// GetRandomInt (game.dll 0x6f201e30), including its handling of a maximum below the
     /// minimum.
+    /// A uniform real in [lo, hi), built from the generator's mantissa bits as
+    /// GetRandomReal does.
+    pub fn real(&mut self, lo: f32, hi: f32) -> f32 {
+        if (hi - lo).abs() < f32::EPSILON {
+            return lo;
+        }
+        let (lo, hi) = if hi < lo { (hi, lo) } else { (lo, hi) };
+        let r = f32::from_bits((self.next_u32() & 0x7f_ffff) | 0x3f80_0000) - 1.0;
+        lo + r * (hi - lo)
+    }
+
     pub fn int(&mut self, lo: i32, hi: i32) -> i32 {
         if lo == hi {
             return lo;

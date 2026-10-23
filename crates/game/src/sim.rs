@@ -400,6 +400,8 @@ impl World {
         self.leave_mine(h);
         if let Some(u) = self.unit_mut(h) {
             u.action = action;
+            // A new order cuts off a cast's backswing (and a channel, below).
+            u.casting = None;
             u.path.clear();
             u.repath_timer = 0.0;
             u.order = Order { id: order, target_x: x, target_y: y, target };

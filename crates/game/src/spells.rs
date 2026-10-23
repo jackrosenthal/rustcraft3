@@ -452,6 +452,14 @@ impl World {
                 self.devour(h, a, lvl, target);
                 true
             }
+            "Amel" => {
+                self.load_corpse(h, target);
+                true
+            }
+            "Amed" => {
+                self.drop_corpses(h);
+                true
+            }
             "Aps2" => {
                 self.begin_possession(h, a, lvl, target);
                 true
@@ -497,8 +505,8 @@ impl World {
         let casters: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.channel.is_some())).collect();
         for h in casters {
             let Some(u) = self.unit(h) else { continue };
-            let stop = u.dead || !matches!(u.action, Action::Cast { .. }) || self.buff_mods(h).4;
             let Some(mut c) = u.channel.clone() else { continue };
+            let stop = u.dead || !matches!(u.action, Action::Cast { ability, .. } if ability == c.ability) || self.buff_mods(h).4;
             if let Some(t) = (c.link != 0).then(|| self.channel_link_ends(h, c.target)).flatten() {
                 if let Some(Obj::Lightning(l)) = self.handles.get_mut(c.link) {
                     l.from = t.0;

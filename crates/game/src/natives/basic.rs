@@ -174,14 +174,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         GetRandomInt => |w, _, a| int(w.rng.int(a.i(0), a.i(1))),
         GetRandomReal => |w, _, a| {
-            let (lo, hi) = (a.r(0), a.r(1));
-            if (hi - lo).abs() < f32::EPSILON {
-                return real(lo);
-            }
-            let (lo, hi) = if hi < lo { (hi, lo) } else { (lo, hi) };
-            // A uniform float in [1, 2) built from the generator's mantissa bits.
-            let r = f32::from_bits((w.rng.next_u32() & 0x7f_ffff) | 0x3f80_0000) - 1.0;
-            real(lo + r * (hi - lo))
+            real(w.rng.real(a.r(0), a.r(1)))
         },
         SetRandomSeed => |w, _, a| {
             w.rng = crate::rng::Rng::new(a.i(0) as u32);

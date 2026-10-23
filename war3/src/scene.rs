@@ -284,7 +284,7 @@ impl Scene {
 
         // Run the map script: config, then main with the local player in the first
         // user slot.  Other slots stay empty until computer players are implemented.
-        let game = match w3_game::Game::load(data.chain.clone(), data.version as i32) {
+        let mut game = match w3_game::Game::load(data.chain.clone(), data.version as i32) {
             Ok(mut g) => {
                 if let Err(e) = g.config() {
                     log::error!("config: {e:#}");
@@ -321,6 +321,15 @@ impl Scene {
             .map(|p| p.start)
             .unwrap_or([terrain.offset[0] + terrain.width as f32 * 64.0, terrain.offset[1] + terrain.height as f32 * 64.0]);
         camera.target = Vec3::new(start[0], start[1], terrain_r.height_at(start[0], start[1]));
+        // The game camera starts on the local player's start location unless the map's
+        // script placed it.
+        if let Some(g) = game.as_mut() {
+            if g.world.camera.x == 0.0 && g.world.camera.y == 0.0 {
+                let (sx, sy) = g.world.start_of(g.world.local_player);
+                let (sx, sy) = if sx == 0.0 && sy == 0.0 { (start[0], start[1]) } else { (sx, sy) };
+                g.world.camera.pan_to(sx, sy, 0.0);
+            }
+        }
         let dir: Vec<f32> = data.misc.get_list("Light", "Direction").iter().filter_map(|v| v.trim().parse().ok()).collect();
         let light = if dir.len() == 3 { Vec3::new(dir[0], dir[1], dir[2]) } else { Vec3::new(0.3, 0.3, -0.25) };
         let hud = game.as_ref().map(|g| {
@@ -360,14 +369,6 @@ impl Scene {
         let local = 1u32 << g.world.local_player;
         for r in std::mem::take(&mut g.world.requests) {
             match r {
-                w3_game::world::Request::SetCameraPosition { players, x, y } if players & local != 0 => {
-                    self.camera.target.x = x;
-                    self.camera.target.y = y;
-                }
-                w3_game::world::Request::PanCamera { players, x, y, .. } if players & local != 0 => {
-                    self.camera.target.x = x;
-                    self.camera.target.y = y;
-                }
                 w3_game::world::Request::DisplayText { players, x, y, text, duration } => {
                     log::info!("[text] {text}");
                     if players & local != 0 {
@@ -947,8 +948,10 @@ impl Scene {
             return true;
         }
         if let Some((wx, wy)) = self.hud.as_ref().and_then(|h| h.minimap_to_world(ux, uy)) {
-            self.camera.target.x = wx;
-            self.camera.target.y = wy;
+            if let Some(g) = self.game.as_mut() {
+                g.world.camera.pan_to(wx, wy, 0.0);
+            }
+            self.sync_camera();
             return true;
         }
         if self.over_console(sx, sy, size) {
@@ -1346,7 +1349,50 @@ impl Scene {
         if let Some((_, v)) = self.portrait.as_mut() {
             v.inst.advance(dt * 1000.0);
         }
-        self.camera.target.z = self.terrain.height_at(self.camera.target.x, self.camera.target.y);
+        self.sync_camera();
+    }
+
+    /// The render camera from the game's: target, distance, angles, field of view, far
+    /// plane, and height offset.
+    pub fn sync_camera(&mut self) {
+        use w3_game::camera::*;
+        if let Some(g) = self.game.as_ref() {
+            let c = &g.world.camera;
+            self.camera.target.x = c.x;
+            self.camera.target.y = c.y;
+            self.camera.distance = c.fields[FIELD_TARGET_DISTANCE];
+            self.camera.far = c.fields[FIELD_FAR_Z];
+            self.camera.angle_of_attack = c.fields[FIELD_ANGLE_OF_ATTACK];
+            self.camera.fov = c.fields[FIELD_FIELD_OF_VIEW];
+            self.camera.roll = c.fields[FIELD_ROLL];
+            self.camera.rotation = c.fields[FIELD_ROTATION];
+            self.camera.target.z = self.terrain.height_at(c.x, c.y) + c.fields[FIELD_ZOFFSET];
+        } else {
+            self.camera.target.z = self.terrain.height_at(self.camera.target.x, self.camera.target.y);
+        }
+    }
+
+    /// Scrolling the view (keys and screen edges).
+    pub fn scroll(&mut self, dx: f32, dy: f32) {
+        if let Some(g) = self.game.as_mut() {
+            let c = &mut g.world.camera;
+            let (x, y) = (c.x + dx, c.y + dy);
+            c.pan_to(x, y, 0.0);
+        } else {
+            self.camera.target.x += dx;
+            self.camera.target.y += dy;
+        }
+    }
+
+    /// Zooming with the wheel.
+    pub fn zoom(&mut self, amount: f32) {
+        if let Some(g) = self.game.as_mut() {
+            let c = &mut g.world.camera;
+            let d = (c.fields[w3_game::camera::FIELD_TARGET_DISTANCE] - amount).clamp(500.0, 5000.0);
+            c.set_field(w3_game::camera::FIELD_TARGET_DISTANCE, d, 0.0);
+        } else {
+            self.camera.distance = (self.camera.distance - amount).clamp(500.0, 5000.0);
+        }
     }
 
     #[allow(clippy::too_many_arguments)]

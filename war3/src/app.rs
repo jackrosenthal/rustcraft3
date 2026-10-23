@@ -225,7 +225,7 @@ impl ApplicationHandler for App {
                         MouseScrollDelta::LineDelta(_, y) => y,
                         MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
                     };
-                    scene.camera.distance = (scene.camera.distance - lines * 100.0).clamp(500.0, 5000.0);
+                    scene.zoom(lines * 100.0);
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -250,8 +250,9 @@ impl ApplicationHandler for App {
                     if r.keys.contains(&KeyCode::ArrowDown) || r.cursor.y >= h - 1.0 - edge {
                         d.y -= 1.0;
                     }
-                    scene.camera.target.x += d.x * speed;
-                    scene.camera.target.y += d.y * speed;
+                    if d != glam::Vec2::ZERO {
+                        scene.scroll(d.x * speed, d.y * speed);
+                    }
                     scene.update(dt);
                     scene.update_audio(&r.assets);
                     if scene.exit {

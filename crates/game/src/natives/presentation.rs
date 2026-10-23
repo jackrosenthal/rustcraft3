@@ -28,6 +28,15 @@ fn tag_mut(w: &mut World, h: u32) -> Option<&mut TextTag> {
     }
 }
 
+/// The camera's eye: back from the target along its angle of attack and rotation.
+fn camera_eye(w: &World) -> (f32, f32, f32) {
+    use crate::camera::*;
+    let c = &w.camera;
+    let (aoa, rot, d) = (c.fields[FIELD_ANGLE_OF_ATTACK].to_radians(), c.fields[FIELD_ROTATION].to_radians(), c.fields[FIELD_TARGET_DISTANCE]);
+    let z = w.ground_z(c.x, c.y) + c.fields[FIELD_ZOFFSET];
+    (c.x - rot.cos() * aoa.cos() * d, c.y - rot.sin() * aoa.cos() * d, z - aoa.sin() * d)
+}
+
 fn quest(w: &mut World, h: u32, f: impl FnOnce(&mut Quest)) -> w3_jass::NativeResult {
     if let Some(Obj::Quest(q)) = w.handles.get_mut(h) {
         f(q);
@@ -166,20 +175,28 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         VolumeGroupReset => |_, _, _| none(),
         SetAmbientDaySound => |_, _, _| none(),
         SetAmbientNightSound => |_, _, _| none(),
-        SetCameraPosition => |w, _, a| {
-            let players = 1 << w.local_player;
-            w.requests.push(Request::SetCameraPosition { players, x: a.r(0), y: a.r(1) });
+        SetCameraPosition => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), 0.0); none() },
+        SetCameraQuickPosition => |_, _, _| none(),
+        PanCameraTo => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), 0.0); none() },
+        PanCameraToTimed => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), a.r(2)); none() },
+        PanCameraToWithZ => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), 0.0); none() },
+        PanCameraToTimedWithZ => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), a.r(3)); none() },
+        SetCameraField => |w, _, a| { w.camera.set_field(a.h(0) as usize, a.r(1), a.r(2)); none() },
+        AdjustCameraField => |w, _, a| {
+            let f = a.h(0) as usize;
+            let v = w.camera.fields.get(f).copied().unwrap_or(0.0) + a.r(1);
+            w.camera.set_field(f, v, a.r(2));
             none()
         },
-        SetCameraQuickPosition => |_, _, _| none(),
-        PanCameraTo => |w, _, a| { w.requests.push(Request::PanCamera { players: 1 << w.local_player, x: a.r(0), y: a.r(1), z: None, duration: 0.0 }); none() },
-        PanCameraToTimed => |w, _, a| { w.requests.push(Request::PanCamera { players: 1 << w.local_player, x: a.r(0), y: a.r(1), z: None, duration: a.r(2) }); none() },
-        PanCameraToWithZ => |w, _, a| { w.requests.push(Request::PanCamera { players: 1 << w.local_player, x: a.r(0), y: a.r(1), z: Some(a.r(2)), duration: 0.0 }); none() },
-        PanCameraToTimedWithZ => |w, _, a| { w.requests.push(Request::PanCamera { players: 1 << w.local_player, x: a.r(0), y: a.r(1), z: Some(a.r(2)), duration: a.r(3) }); none() },
-        SetCameraField => |w, _, a| { w.requests.push(Request::SetCameraField { players: 1 << w.local_player, field: a.h(0) as i32, value: a.r(1), duration: a.r(2) }); none() },
-        AdjustCameraField => |_, _, _| none(),
-        ResetToGameCamera => |w, _, a| { w.requests.push(Request::ResetCamera { players: 1 << w.local_player, duration: a.r(0) }); none() },
-        StopCamera => |_, _, _| none(),
+        ResetToGameCamera => |w, _, a| {
+            let d = a.r(0);
+            for f in 0..crate::camera::FIELD_COUNT {
+                let v = w.camera.defaults[f];
+                w.camera.set_field(f, v, d);
+            }
+            none()
+        },
+        StopCamera => |w, _, _| { w.camera.stop(); none() },
         SetCameraTargetController => |_, _, _| none(),
         SetCameraOrientController => |_, _, _| none(),
         SetCameraRotateMode => |_, _, _| none(),
@@ -190,16 +207,20 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         CameraSetTargetNoise => |_, _, _| none(),
         CameraSetSourceNoiseEx => |_, _, _| none(),
         CameraSetTargetNoiseEx => |_, _, _| none(),
-        GetCameraField => |_, _, _| real(0.0),
-        GetCameraTargetPositionX => |_, _, _| real(0.0),
-        GetCameraTargetPositionY => |_, _, _| real(0.0),
-        GetCameraTargetPositionZ => |_, _, _| real(0.0),
-        GetCameraEyePositionX => |_, _, _| real(0.0),
-        GetCameraEyePositionY => |_, _, _| real(0.0),
-        GetCameraEyePositionZ => |_, _, _| real(0.0),
+        GetCameraField => |w, _, a| {
+            let f = a.h(0) as usize;
+            let v = w.camera.fields.get(f).copied().unwrap_or(0.0);
+            real(if crate::camera::is_angle(f) { v.to_radians() } else { v })
+        },
+        GetCameraTargetPositionX => |w, _, _| real(w.camera.x),
+        GetCameraTargetPositionY => |w, _, _| real(w.camera.y),
+        GetCameraTargetPositionZ => |w, _, _| { let (x, y) = (w.camera.x, w.camera.y); real(w.ground_z(x, y) + w.camera.fields[crate::camera::FIELD_ZOFFSET]) },
+        GetCameraEyePositionX => |w, _, _| real(camera_eye(w).0),
+        GetCameraEyePositionY => |w, _, _| real(camera_eye(w).1),
+        GetCameraEyePositionZ => |w, _, _| real(camera_eye(w).2),
         CreateCameraSetup => |w, _, _| handle(w.handles.insert(Obj::CameraSetup(Box::default()))),
         CameraSetupSetField => |w, _, a| {
-            if let Some(Obj::CameraSetup(c)) = w.handles.get_mut(a.h(0)) { c.fields.insert(a.h(1) as i32, a.r(2)); }
+            if let Some(Obj::CameraSetup(c)) = w.handles.get_mut(a.h(0)) { c.fields.insert(a.h(1) as i32, a.r(2)); c.durations.insert(a.h(1) as i32, a.r(3)); }
             none()
         },
         CameraSetupGetField => |w, _, a| real(match w.handles.get(a.h(0)) {
@@ -216,10 +237,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let (x, y) = match w.handles.get(a.h(0)) { Some(Obj::CameraSetup(c)) => (c.x, c.y), _ => (0.0, 0.0) };
             handle(w.handles.insert(Obj::Location(x, y)))
         },
-        CameraSetupApply => |_, _, _| none(),
-        CameraSetupApplyWithZ => |_, _, _| none(),
-        CameraSetupApplyForceDuration => |_, _, _| none(),
-        CameraSetupApplyForceDurationWithZ => |_, _, _| none(),
+        CameraSetupApply => |w, _, a| { w.apply_camera_setup(a.h(0), a.b(1), a.b(2), None); none() },
+        CameraSetupApplyWithZ => |w, _, a| { w.apply_camera_setup(a.h(0), true, false, None); none() },
+        CameraSetupApplyForceDuration => |w, _, a| { w.apply_camera_setup(a.h(0), a.b(1), true, Some(a.r(2))); none() },
+        CameraSetupApplyForceDurationWithZ => |w, _, a| { w.apply_camera_setup(a.h(0), true, true, Some(a.r(2))); none() },
         SetCinematicScene => |_, _, _| none(),
         EndCinematicScene => |_, _, _| none(),
         ForceCinematicSubtitles => |_, _, _| none(),

@@ -52,16 +52,21 @@ fn main() -> anyhow::Result<()> {
                 i += 3;
             }
             "camera" => {
-                scene.camera.target.x = num(&a[i + 1]);
-                scene.camera.target.y = num(&a[i + 2]);
+                if let Some(g) = scene.game.as_mut() {
+                    g.world.camera.pan_to(num(&a[i + 1]), num(&a[i + 2]), 0.0);
+                }
+                scene.sync_camera();
                 i += 3;
             }
             // camstart <dx> <dy>: centers the camera near player 0's start.
             "camstart" => {
                 if let Some(g) = scene.game.as_ref() {
                     let (sx, sy) = g.world.start_of(0);
-                    scene.camera.target.x = sx + num(&a[i + 1]);
-                    scene.camera.target.y = sy + num(&a[i + 2]);
+                    let (dx, dy) = (num(&a[i + 1]), num(&a[i + 2]));
+                    if let Some(g) = scene.game.as_mut() {
+                        g.world.camera.pan_to(sx + dx, sy + dy, 0.0);
+                    }
+                    scene.sync_camera();
                 }
                 i += 3;
             }

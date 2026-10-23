@@ -619,6 +619,8 @@ pub struct GameCache {
 #[derive(Clone, Debug, Default)]
 pub struct CameraSetup {
     pub fields: HashMap<i32, f32>,
+    /// Each field's transition time (CameraSetupSetField's duration).
+    pub durations: HashMap<i32, f32>,
     pub x: f32,
     pub y: f32,
 }

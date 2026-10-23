@@ -2,6 +2,7 @@
 
 pub mod ability;
 pub mod ai;
+pub mod camera;
 pub mod event_ids;
 pub mod fog;
 pub mod handles;

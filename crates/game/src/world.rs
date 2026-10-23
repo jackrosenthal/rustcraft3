@@ -119,6 +119,8 @@ pub struct World {
     pub quests: Vec<u32>,
     pub defeat_conditions: Vec<u32>,
     pub quest_flash: bool,
+    /// The local player's camera.
+    pub camera: crate::camera::GameCamera,
     /// Handles removed at a game time (temporary fog modifiers).
     pub timed_removals: Vec<(u32, f32)>,
 }
@@ -167,6 +169,7 @@ impl World {
     }
 
     pub fn new(chain: Arc<Chain>, objects: ObjectDb) -> World {
+        let camera = crate::camera::GameCamera::new(&w3_formats::profile::Profile::parse(&chain.read_string("UI\\MiscData.txt").unwrap_or_default()));
         let mut misc = w3_formats::profile::Profile::default();
         for f in ["UI\\MiscData.txt", "Units\\MiscData.txt", "Units\\MiscGame.txt"] {
             if let Ok(s) = chain.read_string(f) {
@@ -249,6 +252,7 @@ impl World {
             quests: Vec::new(),
             defeat_conditions: Vec::new(),
             quest_flash: false,
+            camera,
             timed_removals: Vec::new(),
         }
     }
@@ -490,6 +494,7 @@ impl World {
         let day_length = self.misc_f32("DayLength", 480.0);
         let hours_per_second = day_hours / day_length * self.time_of_day_scale;
         self.time_of_day = (self.time_of_day + dt * hours_per_second) % day_hours;
+        self.camera.update(dt);
 
         self.update_food();
         self.update_units(vm, dt);

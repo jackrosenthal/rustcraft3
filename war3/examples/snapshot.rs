@@ -20,13 +20,15 @@ fn main() -> anyhow::Result<()> {
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let mut assets = Assets::new(&device, &queue, &data);
     let mut scene = Scene::load(&device, &queue, format, &data, &mut assets, Path::new(&a[2]), w as f32 / h as f32, None)?;
-    if a.len() > 7 {
-        scene.camera.target.x = a[6].parse()?;
-        scene.camera.target.y = a[7].parse()?;
+    if let Some(g) = scene.game.as_mut() {
+        if a.len() > 7 {
+            g.world.camera.pan_to(a[6].parse()?, a[7].parse()?, 0.0);
+        }
+        if a.len() > 8 {
+            g.world.camera.set_field(w3_game::camera::FIELD_TARGET_DISTANCE, a[8].parse()?, 0.0);
+        }
     }
-    if a.len() > 8 {
-        scene.camera.distance = a[8].parse()?;
-    }
+    scene.sync_camera();
     scene.sync_units(&device, &queue, &mut assets);
     scene.sync_destructables(&device, &queue, &mut assets);
     scene.update(0.5);

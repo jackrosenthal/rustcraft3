@@ -3,6 +3,7 @@
 pub mod ability;
 pub mod ai;
 pub mod aiplace;
+pub mod aitargets;
 pub mod autocast;
 pub mod blight;
 pub mod camera;

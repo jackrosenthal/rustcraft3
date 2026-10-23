@@ -1,5 +1,5 @@
 //! Where a computer player puts a structure (FUN_6f9ba3f0 and the CAIBuildGrid around
-//! it, FUN_6f9b6cd0 to FUN_6f9b8120).
+//! it, FUN_6f9b6cd0 to FUN_6f9b8120), and where it expands (FUN_6f9bb210).
 //!
 //! A grid of 101 by 101 cells of 32 is laid around the town's center, the midpoint of
 //! its hall and gold mine (FUN_6f9bfe80).  A cell is free (5) when it lies in the
@@ -197,7 +197,11 @@ impl World {
     /// Where a computer player's builder puts a structure of type `id` in `town`
     /// (FUN_6f9ba3f0).
     pub(crate) fn ai_build_site(&mut self, p: u8, id: Id, town: i32, builder: u32) -> Option<(f32, f32)> {
-        let (cx, cy) = self.town_center(p, town);
+        let center = self.town_center(p, town);
+        self.ai_build_site_at(p, id, center, builder)
+    }
+
+    fn ai_build_site_at(&mut self, p: u8, id: Id, (cx, cy): (f32, f32), builder: u32) -> Option<(f32, f32)> {
         let mut grid = self.ai_grid(p, id, cx, cy);
         let mut copy = grid.clone();
         let who = self.unit(builder).map(|u| (u.x, u.y, u.collision));
@@ -214,4 +218,165 @@ impl World {
         let end = map.find_path(from, to, radius, 200_000).last().copied().unwrap_or(from);
         (end.0 - to.0).hypot(end.1 - to.1) <= radius + 2.0 * CELL
     }
+}
+
+/// Expansions (FUN_6f9bb210 and the natives around it).  Each gold mine is a town spot.
+impl World {
+    fn gold_mines(&self) -> Vec<u32> {
+        self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead) && self.ability_with_code(h, "Agld").is_some()).collect()
+    }
+
+    /// A mine's place among the map's gold mines (GetNextExpansion's town number).
+    pub(crate) fn mine_index(&self, mine: u32) -> i32 {
+        self.gold_mines().iter().position(|&m| m == mine).map_or(-1, |i| i as i32)
+    }
+
+    fn is_town_hall(&self, u: &crate::types::Unit) -> bool {
+        self.objects.units.get(u.type_id).is_some_and(|o| o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case("townhall")))
+    }
+
+    /// Where the defense captain stands: amid its units, else at home, else the start.
+    fn defense_position(&self, p: u8) -> (f32, f32) {
+        let Some(st) = self.ai.get(&p) else { return self.start_of(p) };
+        let living: Vec<(f32, f32)> = st.defense.units.iter().filter_map(|&h| self.unit(h)).filter(|u| !u.dead).map(|u| (u.x, u.y)).collect();
+        if living.is_empty() {
+            return if st.defense.home != (0.0, 0.0) { st.defense.home } else { self.start_of(p) };
+        }
+        let n = living.len() as f32;
+        (living.iter().map(|q| q.0).sum::<f32>() / n, living.iter().map(|q| q.1).sum::<f32>() / n)
+    }
+
+    /// The next expansion's gold mine.  A mine counts with more than 600 gold, when no
+    /// allied computer is taking it, no town hall or haunted mine of anyone stands
+    /// within 1200 of it, and it lies within 20000 of the defense captain.  The nearest
+    /// by walking (within 5000) with no enemy player's unit within 1500 is taken;
+    /// failing that the nearest such guarded one, then the nearest out of walking reach.
+    /// The choice stands for 10 s while its mine keeps more than 600 gold.
+    pub(crate) fn next_expansion(&mut self, p: u8) -> Option<u32> {
+        let gold = |w: &World, m: u32| w.unit(m).map_or(0, |u| if u.dead { 0 } else { u.resource });
+        if let Some(st) = self.ai.get(&p) {
+            if let Some(m) = st.expansion {
+                if self.time < st.expansion_until && gold(self, m) > 600 {
+                    return Some(m);
+                }
+            }
+        }
+        let from = self.defense_position(p);
+        let taken: Vec<u32> = self.ai.iter().filter(|(q, _)| **q != p && crate::natives::players::is_ally(self, p, **q)).filter_map(|(_, s)| s.expansion).collect();
+        let haunted = id_from_str("ugol");
+        let (mut best, mut guarded, mut far): (Option<(u32, f32)>, Option<(u32, f32)>, Option<(u32, f32)>) = (None, None, None);
+        for m in self.gold_mines() {
+            if gold(self, m) <= 600 || taken.contains(&m) {
+                continue;
+            }
+            let Some((mx, my, mr)) = self.unit(m).map(|u| (u.x, u.y, u.collision)) else { continue };
+            if (mx - from.0).powi(2) + (my - from.1).powi(2) > 400_000_000.0 {
+                continue;
+            }
+            let claimed = self.unit_order.iter().filter_map(|&h| self.unit(h)).any(|u| !u.dead && h_near(u, mx, my, 1200.0) && (self.is_town_hall(u) || u.type_id == haunted));
+            if claimed {
+                continue;
+            }
+            let walk = self.walk_to(from, (mx, my), mr);
+            if !walk.is_finite() || walk > 5000.0 {
+                let d = (mx - from.0).hypot(my - from.1);
+                if far.is_none_or(|f| d < f.1) {
+                    far = Some((m, d));
+                }
+                continue;
+            }
+            let enemy = self.unit_order.iter().filter_map(|&h| self.unit(h)).any(|u| !u.dead && u.owner < crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !crate::natives::players::is_ally(self, p, u.owner) && h_near(u, mx, my, 1500.0));
+            let slot = if enemy { &mut guarded } else { &mut best };
+            if slot.is_none_or(|b| walk < b.1) {
+                *slot = Some((m, walk));
+            }
+        }
+        let choice = best.or(guarded).or(far).map(|b| b.0);
+        let until = self.time + 10.0;
+        if let Some(st) = self.ai.get_mut(&p) {
+            st.expansion = choice;
+            st.expansion_until = until;
+        }
+        choice
+    }
+
+    /// The length of the walk to a structure at `to` of collision `radius`; infinite
+    /// when the walk ends short of it.
+    pub(crate) fn walk_to_pub(&self, from: (f32, f32), to: (f32, f32), radius: f32) -> f32 {
+        self.walk_to(from, to, radius)
+    }
+
+    fn walk_to(&self, from: (f32, f32), to: (f32, f32), radius: f32) -> f32 {
+        let Some(map) = &self.pathing else { return (to.0 - from.0).hypot(to.1 - from.1) };
+        let mut at = from;
+        let mut len = 0.0;
+        for q in map.find_path(from, to, 16.0, 200_000) {
+            len += (q.0 - at.0).hypot(q.1 - at.1);
+            at = q;
+        }
+        let left = (to.0 - at.0).hypot(to.1 - at.1);
+        if left > radius + 3.0 * CELL {
+            return f32::INFINITY;
+        }
+        len + left
+    }
+
+    /// GetExpansionFoe (FUN_6f9bace0): the nearest unit hostile to the player within
+    /// 1500 of the next expansion's mine.
+    pub(crate) fn expansion_foe(&mut self, p: u8) -> Option<u32> {
+        let m = self.next_expansion(p)?;
+        let (mx, my) = self.unit(m).map(|u| (u.x, u.y))?;
+        self.unit_order
+            .iter()
+            .copied()
+            .filter_map(|h| self.unit(h).map(|u| (h, u)))
+            .filter(|(_, u)| !u.dead && !u.hidden && !crate::natives::players::is_ally(self, p, u.owner) && u.owner != crate::types::PLAYER_NEUTRAL_PASSIVE && h_near(u, mx, my, 1500.0))
+            .map(|(h, u)| ((u.x - mx).hypot(u.y - my), h))
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|x| x.1)
+    }
+
+    /// GetExpansionPeon (FUN_6f9c6860): the player's worker nearest the next expansion
+    /// that is idle or gathering.
+    pub(crate) fn expansion_peon(&mut self, p: u8) -> Option<u32> {
+        let m = self.next_expansion(p)?;
+        let (mx, my) = self.unit(m).map(|u| (u.x, u.y))?;
+        self.workers(p)
+            .into_iter()
+            .filter_map(|h| self.unit(h).map(|u| (h, u)))
+            .filter(|(_, u)| u.constructing.is_none() && matches!(u.action, crate::types::Action::Idle | crate::types::Action::Harvest { .. } | crate::types::Action::ReturnResources))
+            .map(|(h, u)| ((u.x - mx).hypot(u.y - my), h))
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|x| x.1)
+    }
+
+    /// SetExpansion (FUN_6f9cb9f0): the worker leaves the attack captain and goes to
+    /// build the hall at the next expansion, placed on the build grid around its mine.
+    pub(crate) fn set_expansion(&mut self, p: u8, peon: u32, hall: Id) -> bool {
+        let Some(m) = self.next_expansion(p) else { return false };
+        let Some(center) = self.unit(m).map(|u| (u.x, u.y)) else { return false };
+        let can = self.unit(peon).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|o| o.list("Builds").iter().any(|b| id_from_str(b.trim()) == hall));
+        if !can {
+            return false;
+        }
+        if let Some(st) = self.ai.get_mut(&p) {
+            st.attack.units.retain(|&h| h != peon);
+        }
+        let Some((x, y)) = self.ai_build_site_at(p, hall, center, peon) else {
+            if let Some(st) = self.ai.get_mut(&p) {
+                st.expansion_until = self.time + 10.0;
+            }
+            return false;
+        };
+        self.leave_mine_pub(peon);
+        if let Some(u) = self.unit_mut(peon) {
+            u.action = crate::types::Action::Build { id: hall, x, y };
+            u.path.clear();
+        }
+        true
+    }
+}
+
+fn h_near(u: &crate::types::Unit, x: f32, y: f32, r: f32) -> bool {
+    (u.x - x).hypot(u.y - y) <= r
 }

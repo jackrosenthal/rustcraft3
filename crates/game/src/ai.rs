@@ -61,6 +61,17 @@ pub struct AiState {
     pub threat_open: bool,
     #[serde(default)]
     pub threat_timer: f32,
+    /// The gold mine of the next expansion and until when that choice stands
+    /// (FUN_6f9bb210 keeps it 10 s).
+    #[serde(default)]
+    pub expansion: Option<u32>,
+    #[serde(default)]
+    pub expansion_until: f32,
+    /// The mega target (CCompAI +0x2c4) and the 10 s check that picks it.
+    #[serde(default)]
+    pub mega: u32,
+    #[serde(default)]
+    pub mega_timer: f32,
 }
 
 /// Distance within which a town hall and a gold mine belong to the same town.
@@ -255,6 +266,7 @@ impl World {
             self.ai_vms.insert(p, aivm);
             self.ai_engine(p, dt);
             self.ai_threat_tick(p, dt);
+            self.ai_mega_tick(p, dt);
         }
     }
 
@@ -386,11 +398,9 @@ impl World {
         false
     }
 
-    fn workers(&self, p: u8) -> Vec<u32> {
+    pub(crate) fn workers(&self, p: u8) -> Vec<u32> {
         self.ai_units(p).into_iter().filter(|&h| self.ability_with_code(h, "Ahar").is_some() || self.ability_with_code(h, "Ahrl").is_some()).collect()
     }
-
-    /// Finds a spot for a structure near a town, keeping clear of the path to the mine.
 
     /// A Hero type first (FUN_6f9caff0): an idle altar of the player revives a dead
     /// Hero of that type; failing that, owning one (dead or alive) is enough.
@@ -594,7 +604,7 @@ impl World {
     /// 1200 of it (a Hero (level + 1) / 2 + 4, any other its level); a worker's never.
     /// The attacker becomes the threat (a Hero before any other), the defense captain
     /// goes at it, and on a major attack the attack captain too (when it has more
-    /// than 2 units; GetMegaTarget names none here).  Allies' computers that defend
+    /// than 2 units and there is no mega target).  Allies' computers that defend
     /// their allies (flag 0x200000) answer attacks on a player's structures.
     pub(crate) fn ai_town_attacked(&mut self, victim: u32, attacker: u32) {
         let Some(v) = self.unit(victim) else { return };
@@ -641,8 +651,9 @@ impl World {
             // FUN_6f9d02c0: the attack captain comes only when it can see the attacker
             // and one of its units can attack it.
             let reachable = w.unit_visible_to(attacker, p) && attack_units.iter().any(|&h| w.can_attack_unit(h, attacker));
+            let mega = w.mega_target(p) != 0;
             let Some(st) = w.ai.get_mut(&p) else { return };
-            if major && st.attack.units.len() > 2 && reachable {
+            if major && !mega && st.attack.units.len() > 2 && reachable {
                 st.attack.goal = at;
                 st.attack.target = 0;
                 st.attack.retreating = false;
@@ -814,8 +825,14 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         },
         GetUpgradeGoldCost => |w, _, a| int(upgrade_cost(w, id_from_int(a.i(0)), true)),
         GetUpgradeWoodCost => |w, _, a| int(upgrade_cost(w, id_from_int(a.i(0)), false)),
-        GetNextExpansion => |_, _, _| int(-1),
-        GetMegaTarget => |_, _, _| none(),
+        GetNextExpansion => |w, _, _| {
+            let p = w.ai_player();
+            int(w.next_expansion(p).map_or(-1, |m| w.mine_index(m)))
+        },
+        GetMegaTarget => |w, _, _| {
+            let p = w.ai_player();
+            handle(w.mega_target(p))
+        },
         GetBuilding => |w, _, a| {
             let Some(p) = w.player_of(a.h(0)) else { return none() };
             handle(w.unit_order.iter().copied().find(|&h| w.unit(h).is_some_and(|u| u.owner == p && u.is_building && !u.dead)).unwrap_or(0))
@@ -836,7 +853,10 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             boolean(ok)
         },
         Unsummon => |_, _, _| none(),
-        SetExpansion => |_, _, _| boolean(false),
+        SetExpansion => |w, _, a| {
+            let p = w.ai_player();
+            boolean(w.set_expansion(p, a.h(0), id_from_int(a.i(1))))
+        },
         SetUpgrade => |w, _, a| {
             let p = w.ai_player();
             let id = id_from_int(a.i(0));
@@ -890,11 +910,26 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         },
         WaitGetEnemyBase => |_, _, _| boolean(false),
         GetEnemyBase => |w, _, _| handle(w.ai_state().map_or(0, |s| s.enemy_base)),
-        GetExpansionFoe => |_, _, _| none(),
-        GetEnemyExpansion => |_, _, _| none(),
-        GetExpansionX => |_, _, _| int(0),
-        GetExpansionY => |_, _, _| int(0),
-        GetExpansionPeon => |_, _, _| none(),
+        GetExpansionFoe => |w, _, _| {
+            let p = w.ai_player();
+            handle(w.expansion_foe(p).unwrap_or(0))
+        },
+        GetEnemyExpansion => |w, _, _| {
+            let p = w.ai_player();
+            handle(w.enemy_expansion(p))
+        },
+        GetExpansionX => |w, _, _| {
+            let p = w.ai_player();
+            int(w.next_expansion(p).and_then(|m| w.unit(m)).map_or(-1, |m| m.x as i32))
+        },
+        GetExpansionY => |w, _, _| {
+            let p = w.ai_player();
+            int(w.next_expansion(p).and_then(|m| w.unit(m)).map_or(-1, |m| m.y as i32))
+        },
+        GetExpansionPeon => |w, _, _| {
+            let p = w.ai_player();
+            handle(w.expansion_peon(p).unwrap_or(0))
+        },
         SetStagePoint => |w, _, a| { let p = (a.r(0), a.r(1)); if let Some(s) = w.ai_state() { s.stage = Some(p); } none() },
         AttackMoveKill => |w, _, a| {
             let t = a.h(0);
@@ -913,7 +948,7 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             let units = w.captain_units(a.b(0));
             boolean(units.iter().any(|&h| w.unit(h).is_some_and(|u| u.swing.is_some() || matches!(u.action, Action::Attack { .. }))))
         },
-        IsTowered => |_, _, _| boolean(false),
+        IsTowered => |w, _, a| boolean(w.is_towered(a.h(0))),
         ClearHarvestAI => |w, _, _| { if let Some(s) = w.ai_state() { s.harvest.clear(); } none() },
         HarvestGold => |w, _, a| { let (t, n) = (a.i(0), a.i(1)); if let Some(s) = w.ai_state() { s.harvest.push((true, t, n)); } none() },
         HarvestWood => |w, _, a| { let (t, n) = (a.i(0), a.i(1)); if let Some(s) = w.ai_state() { s.harvest.push((false, t, n)); } none() },

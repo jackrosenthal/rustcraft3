@@ -1432,6 +1432,17 @@ impl Scene {
             }
             return true;
         }
+        // The idle worker button selects an idle worker and looks at it.
+        let now = self.time;
+        if let Some(worker) = self.hud.as_mut().and_then(|h| h.pick_idle_worker(ux, uy, now)) {
+            self.selection = vec![worker];
+            if let Some(g) = self.game.as_mut() {
+                if let Some((x, y)) = g.world.unit(worker).map(|u| (u.x, u.y)) {
+                    g.world.camera.pan_to(x, y, 0.0);
+                }
+            }
+            return true;
+        }
         // A hero bar button selects the hero.
         if let Some(hero) = self.hud.as_ref().and_then(|h| h.hero_at(ux, uy)) {
             self.selection = vec![hero];
@@ -2489,6 +2500,7 @@ impl Scene {
             hud.show_group(&g.world, &self.selection);
             hud.sync_cinematic(&assets.frames, &g.world, aspect);
             hud.sync_heroes(&g.world);
+            hud.sync_idle_workers(&g.world);
             crate::boards::sync(&mut hud.boards, &assets.frames, &g.world, &self.team_rgb, aspect);
             // Text tags lie under the interface.
             let mut draws = tag_draws;

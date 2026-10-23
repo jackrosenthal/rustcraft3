@@ -276,13 +276,16 @@ impl UiRenderer {
                         }
                         lines.push(cur);
                     }
-                    // Lines advance by the font height, as the original's text does.
+                    // Lines advance by the font height, as the original's text does; a line's
+                    // box is the font's ascent and descent, its baseline at the ascent
+                    // (measured against the original's titles and button numbers).
                     let line_h = px as f32;
+                    let (ascent, descent) = self.fonts[fi].1.horizontal_line_metrics(px as f32).map_or((px as f32, 0.0), |m| (m.ascent, -m.descent));
                     let widths: Vec<f32> = lines.iter().map(|l| self.measure(queue, fi, px, l)).collect();
                     let to_px_y = |y: f32| sh - y * px_per_unit;
                     let (rx0, rx1) = (to_px_x(rect.x0), to_px_x(rect.x1));
                     let (ry_top, ry_bottom) = (to_px_y(rect.y1), to_px_y(rect.y0));
-                    let total_h = line_h * lines.len() as f32;
+                    let total_h = line_h * (lines.len() as f32 - 1.0) + ascent + descent;
                     let y = match justify_v {
                         Justify::Start => ry_top,
                         Justify::End => ry_bottom - total_h,
@@ -301,7 +304,7 @@ impl UiRenderer {
                             Justify::End => rx1 - widths[li],
                             Justify::Middle => (rx0 + rx1 - widths[li]) / 2.0,
                         };
-                        let baseline = y + px as f32;
+                        let baseline = y + ascent;
                         let mut col = base_color;
                         let mut chars = line.chars().peekable();
                         while let Some(c) = chars.next() {

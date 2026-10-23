@@ -1139,11 +1139,13 @@ impl FrameTree {
                     Some(_) => Justify::Middle,
                     None => def,
                 };
-                // Text owned by a button takes the button's state color.
+                // Text owned by a button takes the button's state color: disabled, under
+                // the pointer (highlighted), or its own (as captured from the original's
+                // glue buttons).
                 let owner = f.parent.map(|p| &self.frames[p]).filter(|p| p.def.str("ButtonText") == Some(f.def.name.as_str()));
                 let color_key = match owner {
                     Some(o) if !o.enabled => "FontDisabledColor",
-                    Some(_) if !self.plain_button_text => "FontHighlightColor",
+                    Some(o) if o.hovered && !self.plain_button_text => "FontHighlightColor",
                     _ => "FontColor",
                 };
                 // CTextFrame starts white (0xffffffff) until FontColor sets it.

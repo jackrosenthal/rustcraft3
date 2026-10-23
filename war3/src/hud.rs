@@ -131,6 +131,10 @@ pub struct Hud {
     /// CHeroBar: the local player's heroes (unit, icon, life and mana fractions, and
     /// whether it has skill points to spend).
     pub heroes: Vec<(u32, String, f32, Option<f32>, bool)>,
+    /// CPeonBar: the local player's idle workers, and the last one its button chose
+    /// and when.
+    pub idle_workers: Vec<u32>,
+    idle_pick: (f32, usize),
     pub cinematic: bool,
     filter: Option<(String, [f32; 4], [f32; 4], bool)>,
     pub minimap_area: Option<MinimapArea>,
@@ -263,6 +267,8 @@ impl Hud {
             pointer: (-1.0, -1.0),
             cine: None,
             heroes: Vec::new(),
+            idle_workers: Vec::new(),
+            idle_pick: (f32::MIN, 0),
             cinematic: false,
             filter: None,
             camera_box: Vec::new(),
@@ -551,6 +557,58 @@ impl Hud {
         }
     }
 
+    /// Follows the local player's idle workers (units classified peon with nothing to
+    /// do) for the idle worker button.
+    pub fn sync_idle_workers(&mut self, world: &World) {
+        self.idle_workers = world
+            .unit_order
+            .iter()
+            .copied()
+            .filter(|&h| {
+                world.unit(h).is_some_and(|u| {
+                    u.owner == world.local_player
+                        && !u.dead
+                        && !u.hidden
+                        && u.constructing.is_none()
+                        && matches!(u.action, w3_game::types::Action::Idle)
+                        && u.queue.is_empty()
+                        && world.objects.units.get(u.type_id).is_some_and(|o| o.str("type").to_ascii_lowercase().split(',').any(|c| c.trim() == "peon"))
+                })
+            })
+            .collect();
+    }
+
+    /// The idle worker button (CPeonBar, 0.038 square): its lower left 0.00375 right of
+    /// and 0.17 above the interface's; the icon shows 0.002 further right and 0.001
+    /// higher (measured from the original).
+    pub fn idle_worker_rect(&self) -> w3_ui::Rect {
+        let root = self.tree.frames[0].rect.unwrap_or_default();
+        let (x0, y0) = (root.x0 + 0.00575, root.y0 + 0.171);
+        w3_ui::Rect { x0, x1: x0 + 0.038, y0, y1: y0 + 0.038 }
+    }
+
+    /// The idle worker its button chooses at `now`: the next after the last one chosen
+    /// within a second, else the first (CPeonBar::vf3_6f3bd9c0).
+    pub fn pick_idle_worker(&mut self, x: f32, y: f32, now: f32) -> Option<u32> {
+        if self.idle_workers.is_empty() || !self.idle_worker_rect().contains(x, y) {
+            return None;
+        }
+        let k = if now < self.idle_pick.0 + 1.0 { (self.idle_pick.1 + 1) % self.idle_workers.len() } else { 0 };
+        self.idle_pick = (now, k);
+        Some(self.idle_workers[k])
+    }
+
+    /// A command button's number (CCommandButton FUN_6f3adba0): CommandButtonNumberOverlay
+    /// 0.015625 square at its lower right, the number on it in MasterFont
+    /// [FontHeights] CommandButtonNumber, 0.0006 low.
+    fn number_overlay(db: &FrameDb, r: w3_ui::Rect, n: i32, out: &mut Vec<Draw>) {
+        let o = w3_ui::Rect { x0: r.x1 - 0.015625, x1: r.x1, y0: r.y0, y1: r.y0 + 0.015625 };
+        out.push(Draw::Image { texture: db.decorate("CommandButtonNumberOverlay"), rect: o, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+        let size = db.misc_ui.get_str("FontHeights", "CommandButtonNumber").and_then(|v| v.split("//").next().and_then(|v| v.trim().parse().ok())).unwrap_or(0.009);
+        let t = w3_ui::Rect { y0: o.y0 - 0.0006, y1: o.y1 - 0.0006, ..o };
+        out.push(Draw::Text { font: db.decorate("MasterFont"), size, rect: t, text: n.to_string(), color: [1.0; 4], justify_h: w3_ui::Justify::Middle, justify_v: w3_ui::Justify::Middle, shadow: None });
+    }
+
     /// Follows the local player's heroes for the hero bar, in the order they came.
     pub fn sync_heroes(&mut self, world: &World) {
         self.heroes = world
@@ -568,11 +626,12 @@ impl Hud {
     }
 
     /// The hero bar's button `k`: CHeroBar's 7-row grid (0.038 x 0.35825) from 0.00375
-    /// right of and 0.02625 below the interface's top left.
+    /// right of and 0.02625 below the interface's top left; the icons show 0.002
+    /// further right (measured from the original).
     pub fn hero_button_rect(&self, k: usize) -> w3_ui::Rect {
         let root = self.tree.frames[0].rect.unwrap_or_default();
         let cell = 0.35825 / 7.0;
-        let (x0, y1) = (root.x0 + 0.00375, root.y1 - 0.02625 - cell * k as f32);
+        let (x0, y1) = (root.x0 + 0.00575, root.y1 - 0.02625 - cell * k as f32);
         w3_ui::Rect { x0, x1: x0 + 0.038, y0: y1 - 0.038, y1 }
     }
 
@@ -1111,6 +1170,11 @@ impl Hud {
         out.extend(self.tree.draw(db));
         self.filter_draws(&mut out);
         self.hero_bar_draws(db, &mut out);
+        if !self.idle_workers.is_empty() {
+            let r = self.idle_worker_rect();
+            out.push(Draw::Image { texture: db.decorate("IdlePeon"), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+            Self::number_overlay(db, r, self.idle_workers.len() as i32, &mut out);
+        }
         self.minimap_button_draws(db, &mut out);
         // CStatBar of the experience kind: a black backdrop 0.001 outside, the
         // SimpleXpBarConsole fill tinted 0xFF8B0083, and the SimpleXpBarBorder.
@@ -1179,9 +1243,7 @@ impl Hud {
             let r = self.inventory_rect(s);
             out.push(Draw::Image { texture: icon.clone(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
             if *charges > 0 {
-                let font = db.decorate("MasterFont");
-                let cr = w3_ui::Rect { x0: r.x1 - 0.012, x1: r.x1 - 0.001, y0: r.y0 + 0.001, y1: r.y0 + 0.011 };
-                out.push(Draw::Text { font, size: 0.009, rect: cr, text: charges.to_string(), color: [1.0; 4], justify_h: w3_ui::Justify::End, justify_v: w3_ui::Justify::End, shadow: Some(([0.0, 0.0, 0.0, 1.0], 0.0005, -0.0005)) });
+                Self::number_overlay(db, r, *charges, &mut out);
             }
         }
         if let Some(b) = &self.boards {

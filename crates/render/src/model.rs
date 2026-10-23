@@ -579,8 +579,9 @@ impl ModelRenderer {
                 let (a, c) = anim::geoset_anim_state(&mdx.geoset_anims[ga], &time, globals);
                 ga_alpha = a;
                 if mdx.geoset_anims[ga].flags & 2 != 0 {
-                    // Colors are stored blue, green, red.
-                    ga_color = [c[2], c[1], c[0]];
+                    // Red, green, blue: the main menu's tower glow (Blue_Glow2 under
+                    // 0, 0.07, 1) shows blue in the original.
+                    ga_color = c;
                 }
             }
             if ga_alpha <= 0.0 {

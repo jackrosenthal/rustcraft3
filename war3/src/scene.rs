@@ -246,6 +246,8 @@ pub struct Scene {
     /// A game menu slider being dragged; an options page to fill in.
     menu_drag: bool,
     options_fill: bool,
+    /// Structures' and destructables' shadows stamped into the terrain.
+    shadows: crate::shadows::Shadows,
     /// The pointer's screen position, and whether Alt is held (health bars show).
     cursor: (f32, f32),
     pub alt_held: bool,
@@ -526,7 +528,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -916,6 +918,42 @@ impl Scene {
         out
     }
 
+    /// Units' and items' shadow images on the ground (see crate::shadows).
+    fn shadow_decals(&self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) -> Vec<w3_render::decal::Decal> {
+        let Some(g) = &self.game else { return vec![] };
+        let w = &g.world;
+        let color = crate::shadows::image_color(w);
+        let mut out = Vec::new();
+        let mut push = |name: &str, x: f32, y: f32, size: [f32; 2], at: [f32; 2]| {
+            if name.is_empty() || name == "_" {
+                return;
+            }
+            let texture = assets.textures.get_or_white(device, queue, &format!("ReplaceableTextures\\Shadows\\{name}.blp"));
+            let (cx, cy) = (x - at[0] + size[0] / 2.0, y - at[1] + size[1] / 2.0);
+            out.push(w3_render::decal::Decal { texture, center: [cx, cy, self.terrain.height_at(cx, cy)], size, color, additive: false });
+        };
+        for (&h, v) in &self.units {
+            let Some(u) = w.unit(h) else { continue };
+            if !v.inst.visible || u.dead || u.hidden {
+                continue;
+            }
+            let Some(o) = w.objects.units.get(u.type_id) else { continue };
+            push(&o.str("unitShadow"), u.x, u.y, [o.real("shadowW"), o.real("shadowH")], [o.real("shadowX"), o.real("shadowY")]);
+        }
+        let pair = |k: &str, d: f32| {
+            let v: Vec<f32> = w.misc.get_list("Misc", k).iter().filter_map(|x| x.trim().parse().ok()).collect();
+            [v.first().copied().unwrap_or(d), v.get(1).copied().unwrap_or(d)]
+        };
+        let (file, size, at) = (w.misc.get_str("Misc", "ItemShadowFile").unwrap_or_default(), pair("ItemShadowSize", 120.0), pair("ItemShadowOffset", 50.0));
+        for (&h, inst) in &self.items {
+            let Some(w3_game::types::Obj::Item(it)) = w.handles.get(h) else { continue };
+            if inst.visible && it.visible && it.owner_unit == 0 {
+                push(file.trim(), it.x, it.y, size, at);
+            }
+        }
+        out
+    }
+
     fn selection_decals(&self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) -> Vec<w3_render::decal::Decal> {
         let Some(g) = &self.game else { return vec![] };
         let w = &g.world;
@@ -1006,7 +1044,7 @@ impl Scene {
             return Vec::new();
         }
         let width = w3_ui::UI_HEIGHT * (size.0 as f32 / size.1.max(1) as f32).max(4.0 / 3.0);
-        let factor = w.misc_f32("ScaleFactor", 72.0) * 0.0005;
+        let factor = w.misc.get_str("SelectionCircle", "ScaleFactor").and_then(|v| v.trim().parse().ok()).unwrap_or(72.0) * 0.0005;
         let fill = db.decorate("SimpleHpBarConsoleSmall");
         let mut out = Vec::new();
         for (&h, v) in &self.units {
@@ -2309,6 +2347,9 @@ impl Scene {
         assets: &mut Assets,
     ) {
         let aspect = size.0 as f32 / size.1 as f32;
+        if let Some(g) = self.game.as_ref() {
+            self.shadows.update(&g.world, &mut self.terrain, device, queue);
+        }
         let view_proj = self.camera.view_proj(aspect);
         let eye = self.camera.eye();
         let rot = self.camera.billboard_rotation();
@@ -2424,6 +2465,7 @@ impl Scene {
         }
         self.terrain.render_ground(&mut pass);
         let mut decals = self.ubersplat_decals(device, queue, assets);
+        decals.extend(self.shadow_decals(device, queue, assets));
         decals.extend(self.selection_decals(device, queue, assets));
         let terrain = &self.terrain;
         self.decals.render(device, queue, &mut pass, &decals, &|x, y| terrain.height_at(x, y));

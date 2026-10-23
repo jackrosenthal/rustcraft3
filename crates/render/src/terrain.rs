@@ -49,6 +49,10 @@ pub struct TerrainRenderer {
     cliff_batches: Vec<Batch>,
     cliff_bgs: Vec<wgpu::BindGroup>,
     shadow_bg: wgpu::BindGroup,
+    shadow_layout: wgpu::BindGroupLayout,
+    shadow_sampler: wgpu::Sampler,
+    /// The map's baked shadows (war3map.shd), one byte per 32 by 32 cell.
+    pub shadow_base: Vec<u8>,
     water_textures: Vec<wgpu::BindGroup>,
     water_range: (u32, u32),
     water_rate: f32,
@@ -495,6 +499,7 @@ impl TerrainRenderer {
         let shadow_tex = crate::texture::upload_r8(device, queue, "shadows", sw, sh, &shadow_bytes);
         let shadow_sampler = make_sampler(device, false, false);
         let shadow_bg = texture_bind_group(device, &tex_layout, &shadow_tex, &shadow_sampler);
+        let shadow_layout = tex_layout.clone();
         let extent_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("terrain extent"),
             contents: bytemuck::cast_slice(&[terrain.offset[0], terrain.offset[1], (w - 1) as f32 * TILE, (h - 1) as f32 * TILE]),
@@ -593,6 +598,9 @@ impl TerrainRenderer {
             cliff_batches,
             cliff_bgs,
             shadow_bg,
+            shadow_layout,
+            shadow_sampler,
+            shadow_base: shadow_bytes,
             water_textures,
             water_range,
             water_rate: num("texRate").max(1.0),
@@ -635,6 +643,21 @@ impl TerrainRenderer {
     }
 
     /// Ground height at a world position, interpolated across the tile.
+    /// The shadow cells' size: four per tile edge.
+    pub fn shadow_size(&self) -> (u32, u32) {
+        ((self.width - 1) * 4, (self.height - 1) * 4)
+    }
+
+    /// Replaces the shadow mask (the baked shadows with shadow images stamped in).
+    pub fn set_shadows(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, mask: &[u8]) {
+        let (sw, sh) = self.shadow_size();
+        if mask.len() < (sw * sh) as usize {
+            return;
+        }
+        let tex = crate::texture::upload_r8(device, queue, "shadows", sw, sh, &mask[..(sw * sh) as usize]);
+        self.shadow_bg = texture_bind_group(device, &self.shadow_layout, &tex, &self.shadow_sampler);
+    }
+
     pub fn height_at(&self, x: f32, y: f32) -> f32 {
         let fx = ((x - self.offset[0]) / TILE).clamp(0.0, (self.width - 1) as f32);
         let fy = ((y - self.offset[1]) / TILE).clamp(0.0, (self.height - 1) as f32);

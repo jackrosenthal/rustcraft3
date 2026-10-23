@@ -9,12 +9,17 @@ pub const HANDLE_BASE: u32 = 0x10_0000;
 pub struct Handles<T> {
     objects: HashMap<u32, T>,
     free: BTreeSet<u32>,
+    /// Ids of removed objects that scripts may still hold; each is freed once a sweep
+    /// finds no script value referring to it, as the original frees a handle only when
+    /// its references are gone.
+    #[serde(default)]
+    pending: BTreeSet<u32>,
     next: u32,
 }
 
 impl<T> Default for Handles<T> {
     fn default() -> Self {
-        Handles { objects: HashMap::new(), free: BTreeSet::new(), next: HANDLE_BASE }
+        Handles { objects: HashMap::new(), free: BTreeSet::new(), pending: BTreeSet::new(), next: HANDLE_BASE }
     }
 }
 
@@ -35,9 +40,23 @@ impl<T> Handles<T> {
     pub fn remove(&mut self, id: u32) -> Option<T> {
         let v = self.objects.remove(&id);
         if v.is_some() {
-            self.free.insert(id);
+            self.pending.insert(id);
         }
         v
+    }
+
+    /// Whether any removed id awaits a sweep.
+    pub fn has_pending(&self) -> bool {
+        !self.pending.is_empty()
+    }
+
+    /// Frees the removed ids no script value refers to.
+    pub fn sweep(&mut self, referenced: &std::collections::HashSet<u32>) {
+        let gone: Vec<u32> = self.pending.iter().copied().filter(|id| !referenced.contains(id)).collect();
+        for id in gone {
+            self.pending.remove(&id);
+            self.free.insert(id);
+        }
     }
 
     pub fn get(&self, id: u32) -> Option<&T> {

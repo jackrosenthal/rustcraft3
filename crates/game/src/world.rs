@@ -110,6 +110,8 @@ pub struct World {
     pub ctx: EventCtx,
     pub enum_ctx: EnumCtx,
     pub sleepers: Vec<Sleeper>,
+    #[serde(skip)]
+    pub handle_sweep_timer: f32,
     /// Threads started by natives (TriggerExecute, ExecuteFunc) that must run once the
     /// current native returns.
     pub pending: Vec<(Thread, EventCtx)>,
@@ -360,6 +362,7 @@ impl World {
             ctx: EventCtx::default(),
             enum_ctx: EnumCtx::default(),
             sleepers: Vec::new(),
+            handle_sweep_timer: 0.0,
             pending: Vec::new(),
             requests: Vec::new(),
             map_name: String::new(),
@@ -480,6 +483,31 @@ impl World {
     /// A gameplay constant from Units\\MiscData.txt or Units\\MiscGame.txt.
     pub fn misc_f32(&self, key: &str, default: f32) -> f32 {
         self.misc.get_str("Misc", key).and_then(|v| v.trim().parse().ok()).unwrap_or(default)
+    }
+
+    /// Once a second, frees removed handles no script value refers to: the map
+    /// script's globals and suspended threads, and each computer player's.
+    fn sweep_handles(&mut self, vm: &Vm, dt: f32) {
+        self.handle_sweep_timer -= dt;
+        if self.handle_sweep_timer > 0.0 || !self.handles.has_pending() {
+            return;
+        }
+        self.handle_sweep_timer = 1.0;
+        let mut held = std::collections::HashSet::new();
+        let mut add = |h: u32| {
+            held.insert(h);
+        };
+        vm.global_handles(&mut add);
+        for s in &self.sleepers {
+            s.thread.handles(&mut add);
+        }
+        for a in self.ai_vms.values() {
+            a.vm.global_handles(&mut add);
+            for (_, t) in &a.sleepers {
+                t.handles(&mut add);
+            }
+        }
+        self.handles.sweep(&held);
     }
 
     /// Resolves each declared native to its implementation.
@@ -857,6 +885,7 @@ impl World {
         prof!(self, "update_fog", self.update_fog(dt));
         prof!(self, "update_shops", self.update_shops(dt));
         prof!(self, "update_ai", self.update_ai(dt));
+        self.sweep_handles(vm, dt);
         prof!(self, "update_rescue", self.update_rescue());
         self.flush_events(vm);
 

@@ -557,11 +557,17 @@ impl World {
             cap.units.retain(|_| true);
             let units = cap.units.clone();
             let goal = cap.goal;
-            let target = cap.target;
+            let mut target = cap.target;
+            // A target that died (its handle may since name another unit) or that is
+            // friendly is dropped.
+            if target != 0 && self.unit(target).is_none_or(|t| t.dead || crate::natives::players::is_ally(self, p, t.owner)) {
+                target = 0;
+            }
             let units: Vec<u32> = units.into_iter().filter(|&h| self.unit(h).is_some_and(|u| !u.dead)).collect();
             if let Some(st) = self.ai.get_mut(&p) {
                 let cap = if which == 0 { &mut st.attack } else { &mut st.defense };
                 cap.units = units.clone();
+                cap.target = target;
             }
             let attack = crate::natives::basic::order_id("attack");
             for h in units {

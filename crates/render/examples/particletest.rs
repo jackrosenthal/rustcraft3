@@ -14,7 +14,7 @@ fn main() {
     for step in 0..60 {
         let now = step as f32 * 33.0;
         let time = Time { frame: seq.start + (now as u32) % (seq.end - seq.start).max(1), seq_start: seq.start, seq_end: seq.end, global: now as u32 };
-        skel.update(&m, &time, Quat::IDENTITY);
+        skel.update(&m, &time, Quat::IDENTITY, None);
         p.update(&m, &skel.world, Mat4::IDENTITY, &time, now);
     }
     let mut quads = Vec::new();

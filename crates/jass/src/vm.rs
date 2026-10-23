@@ -44,6 +44,20 @@ pub struct Thread {
 }
 
 impl Thread {
+    /// Every handle the thread's locals, local arrays, and stack hold.
+    pub fn handles(&self, out: &mut impl FnMut(u32)) {
+        let mut take = |v: &Value| {
+            if let Value::Handle(h) = v {
+                out(*h);
+            }
+        };
+        for f in &self.frames {
+            f.locals.iter().for_each(&mut take);
+            f.arrays.iter().flatten().for_each(&mut take);
+        }
+        self.stack.iter().for_each(&mut take);
+    }
+
     /// The functions on the thread's call stack, outermost first, each with the source
     /// line it is at.
     pub fn backtrace(&self, module: &Module) -> Vec<String> {
@@ -63,6 +77,17 @@ pub enum Outcome {
     Finished(Value),
     Sleeping(f32),
     Aborted(String),
+}
+
+impl Vm {
+    /// Every handle the globals and global arrays hold.
+    pub fn global_handles(&self, out: &mut impl FnMut(u32)) {
+        for v in self.globals.iter().chain(self.global_arrays.iter().flatten()) {
+            if let Value::Handle(h) = v {
+                out(*h);
+            }
+        }
+    }
 }
 
 pub struct Vm {

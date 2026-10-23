@@ -44,6 +44,8 @@ struct EmitterState {
 
 #[derive(Clone, Debug)]
 pub struct Particles {
+    /// False stops emission; live particles finish their lives.
+    pub emitting: bool,
     particles: Vec<Particle>,
     emitters: Vec<EmitterState>,
     rng: u32,
@@ -52,7 +54,7 @@ pub struct Particles {
 
 impl Default for Particles {
     fn default() -> Self {
-        Particles { particles: Vec::new(), emitters: Vec::new(), rng: 0x9e37_79b9, last_time: None }
+        Particles { emitting: true, particles: Vec::new(), emitters: Vec::new(), rng: 0x9e37_79b9, last_time: None }
     }
 }
 
@@ -109,7 +111,7 @@ impl Particles {
         self.particles.retain(|p| p.age < emitters[p.emitter].lifespan);
         // Emit.
         for (ei, e) in emitters.iter().enumerate() {
-            let visible = sample(e.tracks.f32(b"KP2V"), time, g, 1.0) > 0.0;
+            let visible = self.emitting && sample(e.tracks.f32(b"KP2V"), time, g, 1.0) > 0.0;
             let rate = sample(e.tracks.f32(b"KP2E"), time, g, e.emission_rate);
             let count = if e.squirt {
                 // A squirt emits its whole rate at once when it becomes visible.
@@ -162,17 +164,20 @@ impl Particles {
         }
     }
 
-    /// Builds quads facing the camera (right and up are its world axes).
+    /// Builds quads facing the camera.  `camera_rot` is the billboard rotation: it turns
+    /// +x toward the camera, +y to the screen's right, and +z to its top.
     pub fn quads(&self, model: &Model, transform: Mat4, camera_rot: Quat, out: &mut Vec<Quad>) {
-        let right = camera_rot * Vec3::X;
-        let up = camera_rot * Vec3::Y;
+        let right = camera_rot * Vec3::Y;
+        let up = camera_rot * Vec3::Z;
+        let toward = camera_rot * Vec3::X;
         let scale = transform.to_scale_rotation_translation().0.max_element();
         for p in &self.particles {
             let e = &model.particle_emitters2[p.emitter];
             let t = (p.age / e.lifespan.max(1e-4)).clamp(0.0, 1.0);
             let (color, alpha, size) = segment(e, t);
             let pos = if e.node.flags & flags::MODEL_SPACE != 0 { transform.transform_point3(p.pos) } else { p.pos };
-            let half = size * 0.5 * if e.node.flags & flags::MODEL_SPACE != 0 { scale } else { 1.0 };
+            // Segment scaling is the quad's half-extent (measured against the original).
+            let half = size * if e.node.flags & flags::MODEL_SPACE != 0 { scale } else { 1.0 };
             let uv = atlas(e, t);
             let base = Quad {
                 corners: [Vec3::ZERO; 4],
@@ -195,7 +200,7 @@ impl Particles {
                 // The tail runs back along the velocity for TailLength of a second.
                 let tail = pos - p.vel * e.tail_length;
                 let along = (pos - tail).normalize_or_zero();
-                let side = along.cross(camera_rot * Vec3::Z).normalize_or_zero() * half;
+                let side = along.cross(toward).normalize_or_zero() * half;
                 let mut q = base;
                 q.corners = [pos - side, pos + side, tail - side, tail + side];
                 out.push(q);

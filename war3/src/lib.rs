@@ -10,3 +10,4 @@ pub mod glue;
 pub mod skirmish;
 pub mod hud;
 pub mod scene;
+pub mod weather;

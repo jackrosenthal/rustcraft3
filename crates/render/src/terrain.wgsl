@@ -85,7 +85,8 @@ fn fs_ground(in: VsOut) -> @location(0) vec4<f32> {
     let l = max(dot(normalize(in.normal), -normalize(globals.light_dir.xyz)), 0.0);
     var lit = clamp(globals.terrain_ambient.rgb + globals.terrain_light_color.rgb * l, vec3<f32>(0.0), vec3<f32>(1.0));
     let suv = (in.world.xy - extent.xy) / extent.zw;
-    let shadow = textureSample(shadow_tex, shadow_samp, vec2<f32>(suv.x, 1.0 - suv.y)).r;
+    // Rows run south to north.
+    let shadow = textureSample(shadow_tex, shadow_samp, suv).r;
     lit = lit * (1.0 - shadow * SHADOW_STRENGTH);
     return vec4<f32>(fog(fow(t.rgb * lit, in.world), in.world), t.a);
 }

@@ -361,8 +361,10 @@ fn main() -> anyhow::Result<()> {
     });
     let cv = color.create_view(&Default::default());
     let dv = depth.create_view(&Default::default());
-    // Particles emit as frames are drawn: draw a second of frames before the shot.
-    for _ in 0..30 {
+    // Particles emit as frames are drawn: draw a second (W3WARM seconds) of frames
+    // before the shot.
+    let warm: f32 = std::env::var("W3WARM").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0);
+    for _ in 0..(warm * 30.0) as u32 {
         scene.update(1.0 / 30.0);
         let mut enc = device.create_command_encoder(&Default::default());
         scene.render(&device, &queue, &mut enc, &cv, &dv, (w, h), &mut assets);

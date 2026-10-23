@@ -78,11 +78,6 @@ fn add_dialog_button(w: &mut World, b: DialogButton) -> w3_jass::NativeResult {
     handle(h)
 }
 
-fn destroy_opaque(w: &mut World, h: u32) {
-    if matches!(w.handles.get(h), Some(Obj::Opaque(_))) {
-        w.handles.remove(h);
-    }
-}
 
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
     reg!(t,
@@ -268,9 +263,14 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetCineFilterStartColor => |w, _, a| { w.cinematic.filter.start_color = [a.i(0), a.i(1), a.i(2), a.i(3)]; none() },
         SetCineFilterEndColor => |w, _, a| { w.cinematic.filter.end_color = [a.i(0), a.i(1), a.i(2), a.i(3)]; none() },
         SetCineFilterDuration => |w, _, a| { w.cinematic.filter.duration = a.r(0); none() },
-        AddWeatherEffect => |w, _, _| opaque(w, "weathereffect"),
-        RemoveWeatherEffect => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
-        EnableWeatherEffect => |_, _, _| none(),
+        // Weather effects start off until enabled.
+        AddWeatherEffect => |w, _, a| {
+            let Some(Obj::Rect(r)) = w.handles.get(a.h(0)).cloned() else { return handle(0) };
+            let id = crate::objects::id_from_int(a.i(1));
+            handle(w.handles.insert(Obj::Weather(Weather { rect: r, id, enabled: false })))
+        },
+        RemoveWeatherEffect => |w, _, a| { if matches!(w.handles.get(a.h(0)), Some(Obj::Weather(_))) { w.handles.remove(a.h(0)); } none() },
+        EnableWeatherEffect => |w, _, a| { let on = a.b(1); if let Some(Obj::Weather(x)) = w.handles.get_mut(a.h(0)) { x.enabled = on; } none() },
         CreateFogModifierRect => |w, _, a| {
             let (Some(p), Some(r)) = (w.player_of(a.h(0)), w.rect(a.h(2))) else { return none() };
             fog_modifier(w, p, a.i(1), FogShape::Rect(r), a.b(3), a.b(4))

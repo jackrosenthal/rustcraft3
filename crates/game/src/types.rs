@@ -885,6 +885,7 @@ pub struct QuestItem {
 /// A handle-table entry.
 #[derive(Clone, Debug)]
 pub enum Obj {
+    Weather(Weather),
     Image(Image),
     Ubersplat(Ubersplat),
     Lightning(Lightning),
@@ -1070,4 +1071,12 @@ pub struct Lightning {
     pub from: [f32; 3],
     pub to: [f32; 3],
     pub color: [f32; 4],
+}
+
+/// A weather effect (AddWeatherEffect): a TerrainArt\\Weather.slk effect over a rect.
+#[derive(Clone, Debug)]
+pub struct Weather {
+    pub rect: Rect,
+    pub id: crate::objects::Id,
+    pub enabled: bool,
 }

@@ -287,6 +287,7 @@ pub struct Scene {
     /// The console's SPRITE frames (CTimeOfDayIndicator) and their renderer.
     hud_sprites: ModelRenderer,
     /// The autocast indicator on each card slot whose autocast is on.
+    quest_fx: Option<ModelInstance>,
     autocast_fx: HashMap<(u32, u32), ModelInstance>,
     time_indicator: Option<ModelInstance>,
     portrait: Option<(u32, UnitView)>,
@@ -534,7 +535,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, log_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, log_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -2272,6 +2273,17 @@ impl Scene {
         // The game menu pauses a single-player game; the game speed (slow, normal, fast:
         // 3/5, 4/5, and 5/5 of real time in the original) scales the game and its
         // animation.
+        // FlashQuestDialogButton: QuestLogModified, and QuestChangedParticles on the
+        // Quests button for [QuestIndicatorTimeout] (at least 2 seconds) unless the
+        // quest log is open (FUN_6f36c9b0, FUN_6f3b0ce0).
+        if let Some(g) = self.game.as_mut().filter(|g| g.world.quest_flash) {
+            g.world.quest_flash = false;
+            let timeout = g.world.misc.get_str("QuestIndicatorTimeout", "QuestIndicatorTimeout").and_then(|v| v.trim().parse().ok()).unwrap_or(10.0f32).max(2.0);
+            if let Some(h) = self.hud.as_mut().filter(|h| h.quests.is_none()) {
+                h.quest_indicator = Some(h.now + timeout);
+            }
+            self.ui_sound("QuestLogModified");
+        }
         let paused = self.hud.as_ref().is_some_and(|h| h.menu.is_some() || h.quests.is_some() || h.log_view.is_some());
         let speed = self.game.as_ref().map_or(1.0, |g| [0.6, 0.8, 1.0][g.world.game_speed.clamp(0, 2) as usize]);
         let gdt = if paused { 0.0 } else { dt * speed };
@@ -2328,6 +2340,9 @@ impl Scene {
         for fx in self.autocast_fx.values_mut() {
             fx.advance(gdt * 1000.0);
         }
+        if let Some(fx) = self.quest_fx.as_mut() {
+            fx.advance(dt * 1000.0);
+        }
         if let Some((_, v)) = self.portrait.as_mut() {
             v.inst.advance(gdt * 1000.0);
         }
@@ -2365,6 +2380,7 @@ impl Scene {
         }
         if std::mem::take(requested) && hud.menu.is_none() {
             hud.log_view = None;
+            hud.quest_indicator = None;
             hud.quests = crate::quests::QuestView::open(db, aspect, world, (&info.loading_title, &info.loading_subtitle));
         }
         if let Some(q) = hud.quests.as_mut().filter(|q| q.dirty) {
@@ -2680,6 +2696,25 @@ impl Scene {
         globals.light_dir = [0.0, 0.0, -1.0, 0.0];
         globals.ambient = [1.0, 1.0, 1.0, 1.0];
         self.hud_sprites.submit(inst, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
+        // QuestChangedParticles over the Quests button while it shows.
+        let quest_button = self.hud.as_ref().filter(|h| h.quest_indicator.is_some_and(|t| h.now < t)).and_then(|h| h.tree.get("UpperButtonBarQuestsButton").and_then(|i| h.tree.frames[i].rect));
+        match quest_button {
+            Some(r) => {
+                if self.quest_fx.is_none() {
+                    let path = assets.frames.skin_value("QuestChangedParticles").unwrap_or_default();
+                    if let Some(m) = assets.model(device, queue, path.trim_matches('"')) {
+                        let mut fx = ModelInstance::new(m);
+                        fx.play("stand");
+                        self.quest_fx = Some(fx);
+                    }
+                }
+                if let Some(fx) = self.quest_fx.as_mut() {
+                    fx.transform = Mat4::from_translation(Vec3::new(r.x0, r.y0, 0.0));
+                    self.hud_sprites.submit(fx, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
+                }
+            }
+            None => self.quest_fx = None,
+        }
         // CommandButtonAutocast over each button whose autocast is on, from its lower left.
         let slots = self.hud.as_ref().map(|h| h.autocast_slots()).unwrap_or_default();
         self.autocast_fx.retain(|k, _| slots.iter().any(|s| (s.0, s.1) == *k));

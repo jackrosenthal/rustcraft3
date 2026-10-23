@@ -112,6 +112,8 @@ pub struct Hud {
     pub log_view: Option<crate::msglog::LogView>,
     pub log: Vec<String>,
     logged_scene: Option<(f32, String)>,
+    /// QuestChangedParticles on the Quests button until this time (FUN_6f3b0ce0).
+    pub quest_indicator: Option<f32>,
     /// The game menu's Save Game or Load Game panel, while shown.
     pub save_panel: Option<crate::saveload::SavePanel>,
     /// The selected unit's inventory: icon and charges per slot it has.
@@ -267,6 +269,7 @@ impl Hud {
             log_view: None,
             log: Vec::new(),
             logged_scene: None,
+            quest_indicator: None,
             save_panel: None,
             inventory: Vec::new(),
             level_bar: None,

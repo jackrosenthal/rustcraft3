@@ -154,6 +154,9 @@ pub struct Scene {
     /// Player colors, read from the solid ReplaceableTextures\TeamColor images.
     team_rgb: [[f32; 3]; 16],
     portrait_renderer: ModelRenderer,
+    /// The console's SPRITE frames (CTimeOfDayIndicator) and their renderer.
+    hud_sprites: ModelRenderer,
+    time_indicator: Option<ModelInstance>,
     portrait: Option<(u32, UnitView)>,
     fog: Option<Arc<w3_render::fog::FogTexture>>,
     /// Sound output; absent when running without audio.
@@ -332,8 +335,9 @@ impl Scene {
         }
         let ui = w3_render::ui::UiRenderer::new(device, color_format);
         let portrait_renderer = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
+        let hud_sprites = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, portrait: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, time_indicator: None, portrait: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1469,8 +1473,54 @@ impl Scene {
             self.ui.render(device, queue, &mut assets.textures, &mut pass, &draws, hud.tree.width, size);
             drop(pass);
             let rect = hud.portrait_rect();
+            let (width, root) = (hud.tree.width, hud.tree.frames[0].rect.unwrap_or_default());
+            let tod = self.game.as_ref().map_or((0.0, 24.0, 60.0), |g| (g.world.time_of_day, g.world.misc_f32("DayHours", 24.0), g.world.misc_f32("ScaledAnimTime", 60.0)));
+            self.render_time_indicator(device, queue, encoder, color, depth, assets, width, root, tod);
             self.render_portrait(device, queue, encoder, color, depth, size, rect);
         }
+    }
+
+    /// CTimeOfDayIndicator: the TimeOfDayIndicator model with its origin on the
+    /// interface's lower left, its Stand animation at (time of day / DayHours) x
+    /// ScaledAnimTime seconds (FUN_6f3d35f0), drawn as CSpriteFrame draws.
+    #[allow(clippy::too_many_arguments)]
+    fn render_time_indicator(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, encoder: &mut wgpu::CommandEncoder, color: &wgpu::TextureView, depth: &wgpu::TextureView, assets: &mut Assets, width: f32, root: w3_ui::Rect, (tod, hours, scaled): (f32, f32, f32)) {
+        if self.time_indicator.is_none() {
+            let path = assets.frames.decorate("TimeOfDayIndicator");
+            let Some(m) = assets.model(device, queue, &path) else { return };
+            let mut inst = ModelInstance::new(m);
+            inst.sequence = w3_render::anim::find_sequence(&inst.model.mdx, "Stand");
+            self.time_indicator = Some(inst);
+        }
+        let Some(inst) = self.time_indicator.as_mut() else { return };
+        if let Some(s) = inst.sequence.and_then(|s| inst.model.mdx.sequences.get(s)) {
+            let len = (s.end - s.start) as f32;
+            inst.frame = ((tod / hours.max(1e-3)) * scaled * 1000.0).rem_euclid(len.max(1.0));
+            inst.finished = false;
+            inst.looped = false;
+        }
+        inst.transform = Mat4::from_translation(Vec3::new(root.x0, root.y0, 0.0));
+        let ortho = Mat4::orthographic_rh(0.0, width, 0.0, w3_ui::UI_HEIGHT, -500.0, 500.0);
+        let mut globals = default_globals(ortho, Vec3::new(0.0, 0.0, 50.0));
+        globals.light_dir = [0.0, 0.0, -1.0, 0.0];
+        globals.ambient = [1.0, 1.0, 1.0, 1.0];
+        self.hud_sprites.submit(inst, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("console sprites"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: color,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: depth,
+                depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        });
+        self.hud_sprites.render(device, queue, &mut pass, &globals);
     }
 
     /// Draws the portrait model through its own camera in the console's portrait slot.

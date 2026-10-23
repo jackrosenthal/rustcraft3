@@ -435,8 +435,9 @@ impl Glue {
             }
         }
         // CSpriteFrame's default projection: orthographic over the frame with depth from
-        // -500 to 500 and z flipped (FUN_6f1add30).
-        let ortho = Mat4::orthographic_rh(0.0, self.tree.width, 0.0, w3_ui::UI_HEIGHT, -500.0, 500.0) * Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0));
+        // -500 to 500 (FUN_6f1add30: a left-handed projection with z negated, which is
+        // the right-handed one), so higher model z is nearer.
+        let ortho = Mat4::orthographic_rh(0.0, self.tree.width, 0.0, w3_ui::UI_HEIGHT, -500.0, 500.0);
         let mut sprite_globals = default_globals(ortho, Vec3::new(0.0, 0.0, 50.0));
         sprite_globals.light_dir = [0.0, 0.0, -1.0, 0.0];
         sprite_globals.ambient = [1.0, 1.0, 1.0, 1.0];

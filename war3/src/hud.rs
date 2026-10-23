@@ -131,6 +131,9 @@ pub struct Hud {
     filter: Option<(String, [f32; 4], [f32; 4], bool)>,
     pub minimap_area: Option<MinimapArea>,
     pub minimap_dots: Vec<(f32, f32, [f32; 4], f32)>,
+    /// war3map.mmp: icons stamped on the minimap image (kind, x and y on its 256-pixel
+    /// grid): 0 gold mine, 1 neutral building, 2 start location.
+    pub minimap_icons: Vec<(i32, f32, f32)>,
     /// Whether the "@minimapfog" overlay texture is current.
     pub minimap_fog: bool,
     pub camera_box: Vec<(f32, f32)>,
@@ -227,6 +230,7 @@ impl Hud {
             minimap_area: None,
             minimap_dots: Vec::new(),
             minimap_fog: false,
+            minimap_icons: Vec::new(),
             now: 0.0,
             unit_messages: Vec::new(),
             unit_message_offset: (0.0, 0.0),
@@ -1092,6 +1096,18 @@ impl Hud {
             out.push(Draw::Image { texture: "war3mapMap.blp".into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
             if self.minimap_fog {
                 out.push(Draw::Image { texture: MINIMAP_FOG.into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+            }
+            // CMinimap's icons: MinimapResourceTexture for mines and MinimapNeutralTexture
+            // for neutral buildings, 16 pixels of the 256-pixel image, centered.
+            for &(kind, x, y) in &self.minimap_icons {
+                let key = match kind {
+                    0 => "MinimapResourceTexture",
+                    1 => "MinimapNeutralTexture",
+                    _ => continue,
+                };
+                let (cx, cy) = (r.x0 + x / 256.0 * (r.x1 - r.x0), r.y1 - y / 256.0 * (r.y1 - r.y0));
+                let (hw, hh) = (8.0 / 256.0 * (r.x1 - r.x0), 8.0 / 256.0 * (r.y1 - r.y0));
+                out.push(Draw::Image { texture: db.decorate(key), rect: w3_ui::Rect { x0: cx - hw, x1: cx + hw, y0: cy - hh, y1: cy + hh }, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
             }
             for &(x, y, color, size) in &self.minimap_dots {
                 if let Some((ux, uy)) = self.world_to_minimap(x, y) {

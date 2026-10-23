@@ -339,6 +339,12 @@ impl Scene {
             crate::hud::Hud::new(&mut assets.frames, aspect, race)
         });
         let mut hud = hud;
+        // The map's minimap icons (war3map.mmp: count, then kind, x, y, and color each).
+        if let (Some(h), Ok(b)) = (hud.as_mut(), data.chain.read("war3map.mmp")) {
+            let int = |o: usize| b.get(o..o + 4).map(|s| i32::from_le_bytes(s.try_into().unwrap()));
+            let n = int(4).unwrap_or(0).max(0) as usize;
+            h.minimap_icons = (0..n).filter_map(|i| Some((int(8 + i * 16)?, int(12 + i * 16)? as f32, int(16 + i * 16)? as f32))).collect();
+        }
         if let Some(h) = hud.as_mut() {
             let c = info.camera_complements;
             let (ox, oy) = (terrain.offset[0], terrain.offset[1]);

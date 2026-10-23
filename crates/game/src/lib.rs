@@ -282,6 +282,18 @@ impl Game {
             p.slot_state = slot_state::PLAYING;
             p.controller = map_control::CREEP;
         }
+        // Players the map gives a neutral or rescuable controller are passive toward
+        // every user and computer player and toward each other, and those toward them
+        // (FUN_6f1e9bf0, as the game loads).
+        let calm: Vec<usize> = (0..types::PLAYER_COUNT).filter(|&i| matches!(self.world.players[i].controller, map_control::NEUTRAL | map_control::RESCUABLE)).collect();
+        let active: Vec<usize> = (0..types::PLAYER_COUNT).filter(|&i| matches!(self.world.players[i].controller, map_control::USER | map_control::COMPUTER)).collect();
+        const PASSIVE: usize = 0;
+        for (k, &n) in calm.iter().enumerate() {
+            for &u in active.iter().chain(&calm[k..]) {
+                self.world.players[n].alliances[u][PASSIVE] = true;
+                self.world.players[u].alliances[n][PASSIVE] = true;
+            }
+        }
         self.call("main")
     }
 

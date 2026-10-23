@@ -181,8 +181,11 @@ fn main() -> anyhow::Result<()> {
             "players" => {
                 if let Some(g) = &scene.game {
                     let w = &g.world;
-                    for p in 0..2u8 {
+                    for p in 0..16u8 {
                         let n = w.unit_order.iter().filter(|&&h| w.unit(h).is_some_and(|u| u.owner == p && !u.dead)).count();
+                        if p >= 2 && n == 0 {
+                            continue;
+                        }
                         let mut types: std::collections::BTreeMap<String, i32> = Default::default();
                         for &h in &w.unit_order {
                             if let Some(u) = w.unit(h) { if u.owner == p && !u.dead { *types.entry(w3_game::objects::id_str(u.type_id)).or_default() += 1; } }

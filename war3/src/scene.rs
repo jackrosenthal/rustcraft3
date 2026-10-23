@@ -211,6 +211,10 @@ pub struct Scene {
     selection_serial: u32,
     /// The world's blight count the ground was last built with.
     blight_serial: u32,
+    /// Splats\UberSplatData.slk, and when each splat (by unit or ubersplat handle)
+    /// was first drawn.
+    uber_slk: w3_formats::slk::Table,
+    splat_births: HashMap<u32, f32>,
     pub info: MapInfo,
     pub terrain: TerrainRenderer,
     pub models: ModelRenderer,
@@ -458,7 +462,7 @@ impl Scene {
         let portrait_renderer = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let hud_sprites = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -685,6 +689,70 @@ impl Scene {
     fn load_dnc(chain: &w3_mpq::Chain, path: &str) -> Option<w3_formats::mdx::Model> {
         let p = if path.to_ascii_lowercase().ends_with(".mdl") { format!("{}.mdx", &path[..path.len() - 4]) } else { path.to_string() };
         chain.read(&p).ok().and_then(|b| w3_formats::mdx::Model::parse(&b).ok())
+    }
+
+    /// Ground splats (Splats\UberSplatData.slk): a structure's UnitUI uberSplat from the
+    /// start of its construction until it decays after death, and scripts' ubersplats.
+    /// Each fades from its start color to its middle over BirthTime, holds, and fades to
+    /// its end over Decay once its owner is gone; it is twice its Scale across.
+    fn ubersplat_decals(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) -> Vec<w3_render::decal::Decal> {
+        let Some(g) = &self.game else { return vec![] };
+        let w = &g.world;
+        let local = w.local_player;
+        let slk = &self.uber_slk;
+        let num = |row: &str, col: &str| -> f32 {
+            match slk.get(row, col) {
+                Some(w3_formats::slk::Value::Num(n)) => *n as f32,
+                Some(v) => v.as_str().trim().parse().unwrap_or(0.0),
+                None => 0.0,
+            }
+        };
+        let color = |row: &str, phase: &str| [num(row, &format!("{phase}R")), num(row, &format!("{phase}G")), num(row, &format!("{phase}B")), num(row, &format!("{phase}A"))].map(|v| (v / 255.0).clamp(0.0, 1.0));
+        let mut wanted: Vec<(u32, String, f32, f32, Option<f32>, [f32; 4])> = Vec::new();
+        for &h in &w.unit_order {
+            let Some(u) = w.unit(h) else { continue };
+            let Some(o) = w.objects.units.get(u.type_id) else { continue };
+            let code = o.str("uberSplat");
+            if code.is_empty() || u.hidden || w.fog_state(u.x, u.y, local) == w3_game::fog::FOG_MASKED {
+                continue;
+            }
+            let dead_for = u.dead.then(|| w.time - u.death_time);
+            wanted.push((h, code, u.x, u.y, dead_for, [1.0; 4]));
+        }
+        for (&h, o) in w.handles.iter() {
+            if let w3_game::types::Obj::Ubersplat(s) = o {
+                if s.shown && (s.render || s.render_always) && s.age.is_some() {
+                    wanted.push((h, s.name.clone(), s.x, s.y, None, s.color.map(|c| c as f32 / 255.0)));
+                }
+            }
+        }
+        let now = self.time;
+        self.splat_births.retain(|h, _| wanted.iter().any(|x| x.0 == *h));
+        let mut out = Vec::new();
+        for (h, code, x, y, dead_for, tint) in wanted {
+            if slk.rows.get(&code).is_none() {
+                continue;
+            }
+            let born = *self.splat_births.entry(h).or_insert(now);
+            let age = now - born;
+            let (birth, decay) = (num(&code, "BirthTime").max(0.001), num(&code, "Decay").max(0.001));
+            let (start, mid, end) = (color(&code, "Start"), color(&code, "Middle"), color(&code, "End"));
+            let lerp = |a: [f32; 4], b: [f32; 4], t: f32| [0, 1, 2, 3].map(|i| a[i] + (b[i] - a[i]) * t.clamp(0.0, 1.0));
+            let mut c = if age < birth { lerp(start, mid, age / birth) } else { mid };
+            if let Some(d) = dead_for {
+                if d >= decay {
+                    continue;
+                }
+                c = lerp(mid, end, d / decay);
+            }
+            let c = [c[0] * tint[0], c[1] * tint[1], c[2] * tint[2], c[3] * tint[3]];
+            let dir = slk.get(&code, "Dir").map(|v| v.as_str()).unwrap_or_default();
+            let file = slk.get(&code, "file").map(|v| v.as_str()).unwrap_or_default();
+            let texture = assets.textures.get_or_white(device, queue, &format!("{dir}\\{file}.blp"));
+            let size = num(&code, "Scale") * 2.0;
+            out.push(w3_render::decal::Decal { texture, center: [x, y, self.terrain.height_at(x, y)], size: [size, size], color: c, additive: num(&code, "BlendMode") != 0.0 });
+        }
+        out
     }
 
     fn selection_decals(&self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) -> Vec<w3_render::decal::Decal> {
@@ -1864,7 +1932,8 @@ impl Scene {
             pass.set_scissor_rect(0, top, size.0, bottom - top);
         }
         self.terrain.render_ground(&mut pass);
-        let decals = self.selection_decals(device, queue, assets);
+        let mut decals = self.ubersplat_decals(device, queue, assets);
+        decals.extend(self.selection_decals(device, queue, assets));
         let terrain = &self.terrain;
         self.decals.render(device, queue, &mut pass, &decals, &|x, y| terrain.height_at(x, y));
         self.models.render(device, queue, &mut pass, &globals);

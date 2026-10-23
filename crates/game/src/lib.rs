@@ -11,6 +11,7 @@ pub mod fog;
 pub mod forms;
 pub mod handles;
 pub mod hero;
+pub mod humanspells;
 pub mod herospells;
 pub mod save;
 pub mod targets;

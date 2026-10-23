@@ -18,6 +18,15 @@ pub enum Targeting {
     Passive,
 }
 
+/// Buffs abilities give when their BuffID names none (their classes' defaults: 'Bpxf'
+/// for Phoenix Fire).
+pub fn default_buff(code: &str) -> Option<&'static str> {
+    match code {
+        "Apxf" => Some("Bpxf"),
+        _ => None,
+    }
+}
+
 /// The orders abilities carry in their code rather than in an order string
 /// (CAbilityItemDetectAoe::vf194 for Reveal).
 pub fn intrinsic_order(code: &str) -> Option<i32> {
@@ -29,7 +38,7 @@ pub fn intrinsic_order(code: &str) -> Option<i32> {
 
 /// Abilities whose code takes a point rather than a unit target.
 fn point_target(code: &str) -> bool {
-    matches!(code, "AIta" | "Afla" | "AHbz" | "AHfs" | "AOsh" | "AUcs" | "AUim" | "ANrf" | "AEbl" | "AUin" | "AOeq" | "AOsw" | "AOfs" | "AUdd" | "AEfn" | "ANst" | "ANvc" | "Adro" | "Aroo" | "Adis" | "Advm" | "Ahwd" | "Aeye" | "Asta" | "ANbf" | "ANcs" | "ANdp" | "ANrc" | "ANhs" | "ANsi" | "ANto" | "ANdh")
+    matches!(code, "AIta" | "Afla" | "Aclf" | "AHbz" | "AHfs" | "AOsh" | "AUcs" | "AUim" | "ANrf" | "AEbl" | "AUin" | "AOeq" | "AOsw" | "AOfs" | "AUdd" | "AEfn" | "ANst" | "ANvc" | "Adro" | "Aroo" | "Adis" | "Advm" | "Ahwd" | "Aeye" | "Asta" | "ANbf" | "ANcs" | "ANdp" | "ANrc" | "ANhs" | "ANsi" | "ANto" | "ANdh")
 }
 
 /// Abilities with no target (cast instantly around the caster).

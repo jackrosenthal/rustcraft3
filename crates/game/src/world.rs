@@ -727,6 +727,7 @@ impl World {
         prof!(self, "update_cargo", self.update_cargo(vm));
         prof!(self, "update_morphs", self.update_morphs(dt));
         prof!(self, "update_autocast", self.update_autocast(dt));
+        prof!(self, "update_periodic_attacks", self.update_periodic_attacks(vm, dt));
         let now = self.time;
         let due: Vec<(f32, u32, u32)> = self.pending_entangles.iter().copied().filter(|e| e.0 <= now).collect();
         self.pending_entangles.retain(|e| e.0 > now);

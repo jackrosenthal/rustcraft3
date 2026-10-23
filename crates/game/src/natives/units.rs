@@ -167,6 +167,10 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     if w.unit(h).is_some_and(|u| !u.dead) && killer != 0 {
         w.grant_kill_xp(h, killer);
     }
+    // The Phoenix falls into its egg instead of dying.
+    if w.phoenix_egg(h) {
+        return;
+    }
     // Reincarnation: the hero falls and rises again without dying.
     if w.unit(h).is_some_and(|u| !u.dead && u.is_hero) && w.try_reincarnate(h) {
         if let Some(u) = w.unit_mut(h) {

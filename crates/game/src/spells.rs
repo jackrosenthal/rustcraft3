@@ -156,7 +156,35 @@ impl World {
                 };
                 let (px, py) = if code == "AOvd" || code == "AEtq" || code == "AEsf" { (cx, cy) } else { (x, y) };
                 if let Some(u) = self.unit_mut(h) {
-                    u.channel = Some(Channel { ability: a, level: lvl, target, x: px, y: py, elapsed: 0.0, duration, interval, next: 0.0, waves });
+                    u.channel = Some(Channel { ability: a, level: lvl, target, x: px, y: py, elapsed: 0.0, duration, interval, next: 0.0, waves, link: 0, held: [0; 4] });
+                }
+                true
+            }
+            // Cloud: while the caster channels, for Dur, structures within Area stop
+            // their DataA attacks (2: ranged).
+            "Aclf" => {
+                let duration = self.d(a, "Dur", lvl);
+                self.effect_at(a, lvl, x, y, duration);
+                if let Some(u) = self.unit_mut(h) {
+                    u.channel = Some(Channel { ability: a, level: lvl, target: 0, x, y, elapsed: 0.0, duration, interval: 0.25, next: 0.0, waves: 0, link: 0, held: [0; 4] });
+                }
+                true
+            }
+            // Aerial Shackles: the target is held and takes DataA a second while the
+            // caster channels, for Dur (HeroDur on Heroes), tied by its lightning.
+            "Amls" => {
+                let duration = self.duration_for(a, lvl, target);
+                // BuffID: the caster's buff (Bmlc), then the target's (Bmlt).
+                let buffs = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", lvl)).unwrap_or_default();
+                let ids: Vec<Id> = buffs.split(',').map(|b| crate::objects::id_from_str(b.trim())).collect();
+                let held = ids.get(1).or(ids.first()).copied().unwrap_or([0; 4]);
+                if let Some(&mine) = ids.first().filter(|_| ids.len() > 1) {
+                    self.apply_buff(h, Buff { id: mine, ability: a, level: lvl, caster: h, remaining: duration, ..Default::default() });
+                }
+                self.apply_buff(target, Buff { id: held, ability: a, level: lvl, caster: h, remaining: duration, stun: true, dps: self.d(a, "DataA", lvl), ..Default::default() });
+                let link = self.channel_link(a, h, target);
+                if let Some(u) = self.unit_mut(h) {
+                    u.channel = Some(Channel { ability: a, level: lvl, target, x, y, elapsed: 0.0, duration, interval: duration.max(0.1) + 1.0, next: duration.max(0.1) + 1.0, waves: 0, link, held });
                 }
                 true
             }
@@ -404,6 +432,14 @@ impl World {
                 self.take_up_arms(h, a, lvl);
                 true
             }
+            "Acmg" => {
+                self.control_magic(vm, h, a, lvl, target);
+                true
+            }
+            "Asps" => {
+                self.spell_steal(h, a, lvl, target);
+                true
+            }
             "AOre" | "AEev" | "AOcr" | "AHbh" | "AUts" | "AEah" | "AUav" => true,
             _ => false,
         }
@@ -417,8 +453,16 @@ impl World {
             let Some(u) = self.unit(h) else { continue };
             let stop = u.dead || !matches!(u.action, Action::Cast { .. }) || self.buff_mods(h).4;
             let Some(mut c) = u.channel.clone() else { continue };
-            if stop {
+            if let Some(t) = (c.link != 0).then(|| self.channel_link_ends(h, c.target)).flatten() {
+                if let Some(Obj::Lightning(l)) = self.handles.get_mut(c.link) {
+                    l.from = t.0;
+                    l.to = t.1;
+                }
+            }
+            let target_gone = c.link != 0 && self.unit(c.target).is_none_or(|t| t.dead);
+            if stop || target_gone {
                 // An interrupted channel ends without finishing.
+                self.release_channel(&c);
                 self.unit_mut(h).unwrap().channel = None;
                 use crate::event_ids::*;
                 let ctx = EventCtx { target_unit: c.target, spell_ability: crate::objects::id_to_int(c.ability), order_x: c.x, order_y: c.y, ..Default::default() };
@@ -438,6 +482,9 @@ impl World {
                 }
             }
             let done = c.elapsed >= c.duration;
+            if done {
+                self.release_channel(&c);
+            }
             let u = self.unit_mut(h).unwrap();
             if done {
                 u.channel = None;
@@ -459,6 +506,17 @@ impl World {
         let owner = self.owner_of(h);
         let area = self.d(a, "Area", lvl);
         match code.as_str() {
+            "Aclf" => {
+                let buff = self.buff_of(a, lvl);
+                let disarm = self.d(a, "DataA", lvl) as u8;
+                let targs = self.objects.abilities.get(a).map(|o| o.level_str("targs", lvl).to_ascii_lowercase()).unwrap_or_default();
+                for t in self.units_in(c.x, c.y, area) {
+                    let ok = self.unit(t).is_some_and(|u| u.is_building || !targs.contains("structure"));
+                    if ok && self.unit(t).is_some_and(|u| u.owner != owner) {
+                        self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: 0.5, disarm, ..Default::default() });
+                    }
+                }
+            }
             // Blizzard: a wave of shards over the area; friends are hit too.
             "AHbz" => {
                 let targets = self.units_in(c.x, c.y, area);
@@ -658,5 +716,49 @@ impl World {
         let z = self.ground_z(x, y);
         let e = self.handles.insert(Obj::Effect(Effect { model, x, y, z, target: None, destroyed: false, facing: 0.0 }));
         self.timed_removals.push((e, self.time + secs));
+    }
+
+    /// The ability's channel lightning (its LightningEffect) from caster to target.
+    fn channel_link(&mut self, a: Id, from: u32, to: u32) -> u32 {
+        let code = self.objects.abilities.get(a).map(|o| o.str("LightningEffect")).unwrap_or_default();
+        let code = code.split(',').next().unwrap_or("").trim().to_string();
+        let Some((f, t)) = self.channel_link_ends(from, to) else { return 0 };
+        if code.is_empty() {
+            return 0;
+        }
+        let chain = self.chain.clone();
+        let table = self.lightning_data.get_or_insert_with(|| chain.read_string("Splats\\LightningData.slk").map(|s| w3_formats::slk::Table::parse(&s)).unwrap_or_default());
+        let n = |c: &str| table.get(&code, c).map(|v| v.as_str()).unwrap_or_default().trim().parse::<f32>().unwrap_or(255.0) / 255.0;
+        let color = [n("R"), n("G"), n("B"), n("A")];
+        self.handles.insert(Obj::Lightning(Lightning { code, check_visibility: false, from: f, to: t, color }))
+    }
+
+    fn channel_link_ends(&self, from: u32, to: u32) -> Option<([f32; 3], [f32; 3])> {
+        let (f, t) = (self.unit(from)?, self.unit(to)?);
+        let launch = self.objects.units.get(f.type_id).map_or(60.0, |o| o.real("launchZ"));
+        let impact = self.objects.units.get(t.type_id).map_or(60.0, |o| o.real("impactZ"));
+        Some(([f.x, f.y, self.ground_z(f.x, f.y) + f.fly_height + launch], [t.x, t.y, self.ground_z(t.x, t.y) + t.fly_height + impact]))
+    }
+
+    /// A channel's end lets its target go and takes down its lightning.
+    fn release_channel(&mut self, c: &Channel) {
+        if c.link != 0 {
+            self.handles.remove(c.link);
+        }
+        // The caster's own channel buff ends too.
+        if let Some(caster) = self.unit_order.iter().copied().find(|&u| self.unit(u).is_some_and(|x| x.channel.as_ref().is_some_and(|ch| ch.ability == c.ability && ch.target == c.target))) {
+            if let Some(u) = self.unit_mut(caster) {
+                for b in u.buffs.iter_mut().filter(|b| b.ability == c.ability) {
+                    b.remaining = 0.0;
+                }
+            }
+        }
+        if c.held != [0; 4] {
+            if let Some(t) = self.unit_mut(c.target) {
+                for b in t.buffs.iter_mut().filter(|b| b.id == c.held) {
+                    b.remaining = 0.0;
+                }
+            }
+        }
     }
 }

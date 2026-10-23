@@ -421,6 +421,9 @@ pub struct Buff {
     pub silence: bool,
     /// Mana Shield: mana spent per point of damage, and the fraction of damage taken.
     pub mana_shield: (f32, f32),
+    /// Attacks prevented (Cloud): 1 melee, 2 ranged.
+    #[serde(default)]
+    pub disarm: u8,
 }
 
 /// A spell kept up by its caster: it ends when the time runs out or the caster stops.
@@ -437,6 +440,12 @@ pub struct Channel {
     pub interval: f32,
     pub next: f32,
     pub waves: u32,
+    /// A lightning tying the caster to its target while the channel lasts (Aerial
+    /// Shackles), and the buff it holds on the target.
+    #[serde(default)]
+    pub link: u32,
+    #[serde(default)]
+    pub held: Id,
 }
 
 /// A spell's lasting effect on the ground (Flame Strike, Earthquake).

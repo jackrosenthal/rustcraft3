@@ -131,7 +131,13 @@ pub fn unit_weapons(w: &World, u: &Unit) -> Vec<(u8, Weapon)> {
             mask = m;
         }
     }
-    (1..=2u8).filter(|n| mask & (1 << (n - 1)) != 0).filter_map(|n| weapon_n(w, u.type_id, n as usize).map(|wp| (n, wp))).collect()
+    // Cloud keeps melee (1) or ranged (2) attacks from firing.
+    let disarm = u.buffs.iter().fold(0u8, |m, b| m | b.disarm);
+    (1..=2u8)
+        .filter(|n| mask & (1 << (n - 1)) != 0)
+        .filter_map(|n| weapon_n(w, u.type_id, n as usize).map(|wp| (n, wp)))
+        .filter(|(_, wp)| disarm & if wp.weapon_type == "normal" { 1 } else { 2 } == 0)
+        .collect()
 }
 
 /// The first of a unit's weapons that can hit a target.

@@ -408,6 +408,13 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 1;
             }
+            // kill <handle>: kills a unit.
+            "kill" => {
+                if let Some(g) = scene.game.as_mut() {
+                    w3_game::natives::units::kill_unit(&mut g.world, &mut g.vm, num(&a[i + 1]) as u32, 0);
+                }
+                i += 2;
+            }
             "alt" => {
                 scene.alt_held = true;
                 i += 1;

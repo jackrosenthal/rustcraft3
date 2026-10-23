@@ -1013,6 +1013,7 @@ impl Hud {
             }
         }
         tree.set_point("EscMenuBackdrop", P::Center, "", P::Center, 0.0, 0.06);
+        tree.place_text_area_scroll_bars();
         // Pausing is for multiplayer games; single player games pause while the menu is
         // open.
         tree.set_visible("PauseButton", false);
@@ -1035,9 +1036,11 @@ impl Hud {
         for p in ["MainPanel", "EndGamePanel", "ConfirmQuitPanel", "HelpPanel", "TipsPanel", "EscMenuOptionsPanel", "EscMenuSaveGamePanel"] {
             tree.set_visible(p, p == panel);
         }
-        // EscMenuBackdrop's own size, except behind the save and load panel.
+        // The backdrop takes the panel's size (Help and Tips are wider), else its own;
+        // the save and load panel sizes it itself.
         if panel != "EscMenuSaveGamePanel" {
-            tree.set_size("EscMenuBackdrop", Some(0.288), Some(0.384));
+            let size = |k: &str| tree.get(panel).and_then(|i| tree.frames[i].def.prop(k)).and_then(|p| p.args.first()).map(|a| a.num());
+            tree.set_size("EscMenuBackdrop", Some(size("Width").unwrap_or(0.288)), Some(size("Height").unwrap_or(0.384)));
             tree.bind_points();
             tree.layout();
         }

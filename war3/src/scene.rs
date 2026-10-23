@@ -233,6 +233,10 @@ pub struct Scene {
     pub restart_requested: bool,
     /// The setup the game started with, for restarting it.
     pub lobby: Option<Vec<w3_game::LobbySlot>>,
+    /// UI\\HelpStrings.txt, and UI\\TipStrings.txt's tips and the one shown.
+    help_text: String,
+    tips: Vec<String>,
+    tip: usize,
     weather: crate::weather::WeatherView,
     lightning: crate::lightning::LightningView,
     /// Ambient loops of enabled weather effects the camera is inside, by weather handle.
@@ -510,7 +514,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1415,6 +1419,23 @@ impl Scene {
             "ExitButton" => crate::hud::Hud::menu_panel(m, "ConfirmQuitPanel"),
             "ConfirmQuitCancelButton" => crate::hud::Hud::menu_panel(m, "EndGamePanel"),
             "ConfirmQuitQuitButton" => self.exit = true,
+            "HelpButton" => {
+                crate::hud::Hud::menu_panel(m, "HelpPanel");
+                m.set_text("HelpTextArea", &self.help_text);
+                m.set_selected("HelpTextArea", 0);
+            }
+            "HelpOKButton" | "TipsOKButton" => crate::hud::Hud::menu_panel(m, "MainPanel"),
+            "TipsButton" | "TipsBackButton" | "TipsNextButton" => {
+                let n = self.tips.len().max(1);
+                self.tip = match name {
+                    "TipsNextButton" => (self.tip + 1) % n,
+                    "TipsBackButton" => (self.tip + n - 1) % n,
+                    _ => self.tip,
+                };
+                crate::hud::Hud::menu_panel(m, "TipsPanel");
+                m.set_text("TipsTextArea", self.tips.get(self.tip).map_or("", |s| s.as_str()));
+                m.set_selected("TipsTextArea", 0);
+            }
             // DisableRestartMission takes Restart away.
             "RestartButton" if !self.game.as_ref().is_some_and(|g| g.world.restart_disabled) => {
                 h.menu = None;
@@ -2108,6 +2129,17 @@ impl Scene {
 
     /// Zooming with the wheel.
     pub fn zoom(&mut self, amount: f32) {
+        // Over the game menu, the wheel scrolls its text areas a line at a time.
+        if let Some(h) = self.hud.as_mut() {
+            if let Some(m) = h.menu.as_mut() {
+                let (px, py) = h.pointer;
+                if let Some(i) = (0..m.frames.len()).find(|&i| m.frames[i].def.kind == "TEXTAREA" && m.is_visible(i) && m.frames[i].rect.is_some_and(|r| r.contains(px, py))) {
+                    let f = &mut m.frames[i];
+                    f.selected = if amount > 0.0 { f.selected.saturating_sub(1) } else { f.selected + 1 };
+                }
+                return;
+            }
+        }
         if !self.user_control() {
             return;
         }
@@ -2405,4 +2437,11 @@ impl Scene {
         pass.set_scissor_rect(x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32);
         self.portrait_renderer.render(device, queue, &mut pass, &globals);
     }
+}
+
+/// UI\\TipStrings.txt [General]: TipCount tips, Tip1 on.
+fn load_tips(chain: &w3_mpq::Chain) -> Vec<String> {
+    let p = w3_formats::profile::Profile::parse(&chain.read_string("UI\\TipStrings.txt").unwrap_or_default());
+    let n: usize = p.get_str("General", "TipCount").and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+    (1..=n).filter_map(|k| p.get_str("General", &format!("Tip{k}"))).map(|t| t.trim_matches('"').to_string()).collect()
 }

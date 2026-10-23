@@ -712,6 +712,23 @@ impl FrameTree {
         }
     }
 
+    /// Places each text area's TextAreaScrollBar along its right edge.
+    pub fn place_text_area_scroll_bars(&mut self) {
+        for i in 0..self.frames.len() {
+            if self.frames[i].def.kind != "TEXTAREA" {
+                continue;
+            }
+            let Some(bar) = self.frames[i].def.str("TextAreaScrollBar").map(str::to_string) else { continue };
+            let Some(c) = self.frames[i].children.iter().copied().find(|&c| self.frames[c].def.name == bar) else { continue };
+            let f = &mut self.frames[c];
+            f.all_points = false;
+            f.points = vec![
+                Point { point: FramePoint::TopRight, relative: Some(i), relative_point: FramePoint::TopRight, x: -0.004, y: -0.004 },
+                Point { point: FramePoint::BottomRight, relative: Some(i), relative_point: FramePoint::BottomRight, x: -0.004, y: 0.004 },
+            ];
+        }
+    }
+
     pub fn clear_points(&mut self, name: &str) {
         if let Some(i) = self.get(name) {
             self.frames[i].points.clear();
@@ -953,6 +970,31 @@ impl FrameTree {
                 out.push(Draw::Image { texture: path, rect: r, uv, color: [1.0; 4], blend, rotated: false });
             }
             (_, "BACKDROP") => self.draw_backdrop(db, d, r, &file, out),
+            // A text area: its ControlBackdrop, then its text wrapped inside
+            // TextAreaInset, TextAreaLineHeight apart, from its scroll line down.
+            (_, "TEXTAREA") => {
+                if let Some(bd) = d.str("ControlBackdrop").and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
+                    self.draw_backdrop(db, &bd.def, r, &file, out);
+                }
+                let inset = d.prop("TextAreaInset").and_then(|p| p.args.first()).map_or(0.0, Arg::num);
+                let line_h = d.prop("TextAreaLineHeight").and_then(|p| p.args.first()).map_or(0.015, Arg::num);
+                let gap = d.prop("TextAreaLineGap").and_then(|p| p.args.first()).map_or(0.0, Arg::num);
+                // Without a FrameFont, MasterFont at the size measured from the original.
+                let (font, size) = match d.prop("FrameFont") {
+                    Some(p) => (db.decorate(p.args.first().map(Arg::as_str).unwrap_or("MasterFont")), p.args.get(1).map_or(0.012, Arg::num)),
+                    None => (db.decorate("MasterFont"), 0.012),
+                };
+                let text = f.text.clone().unwrap_or_default();
+                let w = (r.w() - 2.0 * inset).max(0.0);
+                let lines: Vec<String> = text.split('\n').flat_map(|l| if l.trim().is_empty() { vec![String::new()] } else { db.wrap(&font, size, l, w) }).collect();
+                let rows = (((r.h() - 2.0 * inset) / (line_h + gap)).floor() as usize).max(1);
+                let start = f.selected.min(lines.len().saturating_sub(1));
+                for (k, line) in lines.iter().skip(start).take(rows).enumerate() {
+                    let y1 = r.y1 - inset - k as f32 * (line_h + gap);
+                    let rect = Rect { x0: r.x0 + inset, x1: r.x1 - inset, y0: y1 - line_h, y1 };
+                    out.push(Draw::Text { font: font.clone(), size, rect, text: line.clone(), color: [1.0; 4], justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
+                }
+            }
             (_, "SIMPLEBUTTON") => {
                 let key = if !f.enabled { "DisabledTexture" } else if f.pushed { "PushedTexture" } else { "NormalTexture" };
                 for k in [key, if f.hovered && f.enabled { "UseHighlight" } else { "" }] {
@@ -1039,7 +1081,7 @@ impl FrameTree {
                     shadow,
                 });
             }
-            (_, "GLUETEXTBUTTON") | (_, "GLUEBUTTON") | (_, "TEXTBUTTON") | (_, "BUTTON") | (_, "GLUECHECKBOX") | (_, "CONTROL") | (_, "EDITBOX") => {
+            (_, "GLUETEXTBUTTON") | (_, "GLUEBUTTON") | (_, "TEXTBUTTON") | (_, "BUTTON") | (_, "GLUECHECKBOX") | (_, "CONTROL") | (_, "EDITBOX") | (_, "SCROLLBAR") => {
                 let key = if !f.enabled {
                     "ControlDisabledBackdrop"
                 } else if f.pushed {

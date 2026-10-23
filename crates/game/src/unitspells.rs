@@ -216,6 +216,26 @@ impl World {
                     crate::sim::set_anim(u, "stand");
                 }
             }
+            // Sentinel: an owl perches on the tree, DataC above it, seeing DataB around,
+            // until the tree falls; the caster keeps at most DataD.
+            "Aesn" | "Aesr" => {
+                if !self.is_tree_pub(target) {
+                    return true;
+                }
+                let (px, py) = self.widget_pos(target).unwrap_or((x, y));
+                let z = self.ground_z(px, py) + d(self, "DataC");
+                let model = self.profile_art(a, "Missileart");
+                let e = self.handles.insert(Obj::Effect(Effect { model, x: px, y: py, z, target: None, destroyed: false, facing: 0.0 }));
+                let max = d(self, "DataD").max(1.0) as usize;
+                let mine: Vec<usize> = self.sentinels.iter().enumerate().filter(|(_, s)| s.caster == h).map(|(i, _)| i).collect();
+                if mine.len() >= max {
+                    let old = self.sentinels.remove(mine[0]);
+                    if let Some(Obj::Effect(x)) = self.handles.get_mut(old.effect) {
+                        x.destroyed = true;
+                    }
+                }
+                self.sentinels.push(crate::world::Sentinel { caster: h, owner, tree: target, radius: d(self, "DataB"), effect: e });
+            }
             // Wards: Healing Ward, Sentry Ward, and Stasis Trap place their UnitID at the
             // point for Dur.
             "Ahwd" | "Aeye" | "Asta" => {

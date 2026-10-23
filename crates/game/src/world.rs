@@ -47,6 +47,16 @@ pub enum Request {
     DisplayLoadDialog,
 }
 
+/// A Sentinel owl perched on a tree.
+#[derive(Clone, Debug)]
+pub struct Sentinel {
+    pub caster: u32,
+    pub owner: u8,
+    pub tree: u32,
+    pub radius: f32,
+    pub effect: u32,
+}
+
 /// A suspended trigger thread and the event context it resumes with.
 pub struct Sleeper {
     pub wake_at: f32,
@@ -136,6 +146,7 @@ pub struct World {
     pub blight: Vec<bool>,
     pub blight_serial: u32,
     pub autocast_timer: f32,
+    pub sentinels: Vec<Sentinel>,
     pub destructable_order: Vec<u32>,
     pub item_order: Vec<u32>,
     /// Effects destroyed by script, with the time they were destroyed; the presentation
@@ -306,6 +317,7 @@ impl World {
             blight: Vec::new(),
             blight_serial: 0,
             autocast_timer: 0.0,
+            sentinels: Vec::new(),
             destructable_order: Vec::new(),
             item_order: Vec::new(),
             dying_effects: Vec::new(),
@@ -651,6 +663,19 @@ impl World {
         self.update_buffs(vm, dt);
         self.update_area_buffs(vm, dt);
         self.update_traps(vm);
+        // Owls leave fallen trees.
+        let standing: Vec<bool> = self.sentinels.iter().map(|s| self.is_tree_pub(s.tree)).collect();
+        let fallen: Vec<u32> = self.sentinels.iter().zip(&standing).filter(|(_, ok)| !**ok).map(|(s, _)| s.effect).collect();
+        let mut k = 0;
+        self.sentinels.retain(|_| {
+            k += 1;
+            standing[k - 1]
+        });
+        for e in fallen {
+            if let Some(Obj::Effect(x)) = self.handles.get_mut(e) {
+                x.destroyed = true;
+            }
+        }
         self.update_channels(vm, dt);
         self.update_ground_effects(vm, dt);
         self.update_reincarnation(dt);

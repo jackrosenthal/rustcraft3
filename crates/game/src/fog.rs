@@ -163,6 +163,14 @@ impl World {
             let crippled = self.crippled.get(&u.owner).copied().unwrap_or(0);
             sources.push((u.owner, u.x, u.y, r, lvl, flying, u.extra.shared_vision | crippled));
         }
+        // Sentinel owls see from their trees while the trees stand.
+        for s in &self.sentinels {
+            if self.is_tree_pub(s.tree) {
+                if let Some((x, y)) = self.widget_pos(s.tree) {
+                    sources.push((s.owner, x, y, s.radius, u8::MAX, true, 0));
+                }
+            }
+        }
         let modifiers: Vec<FogModifier> = self.handles.iter().filter_map(|(_, o)| match o {
             Obj::FogModifier(m) if m.active => Some(m.clone()),
             _ => None,

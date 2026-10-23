@@ -4,6 +4,7 @@ pub mod anim;
 pub mod camera;
 pub mod decal;
 pub mod dnc;
+pub mod fog;
 pub mod gpu;
 pub mod model;
 pub mod terrain;

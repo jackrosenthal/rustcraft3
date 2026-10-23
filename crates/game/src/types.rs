@@ -548,6 +548,7 @@ pub enum Obj {
     Hashtable(Box<Hashtable>),
     GameCache(Box<GameCache>),
     CameraSetup(Box<CameraSetup>),
+    FogModifier(crate::fog::FogModifier),
     /// Objects the simulation does not model yet; the handle stays valid.
     Opaque(&'static str),
 }

@@ -261,6 +261,11 @@ pub struct Globals {
     /// Terrain uses its own day/night light.
     pub terrain_light_color: [f32; 4],
     pub terrain_ambient: [f32; 4],
+    /// Fog of war grid origin and size; a zero size disables it.
+    pub fow_extent: [f32; 4],
+    /// UI\MiscData.txt [FogOfWar] FoggedTerrain and FoggedObject as rgb and alpha.
+    pub fow_terrain: [f32; 4],
+    pub fow_object: [f32; 4],
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -302,6 +307,7 @@ pub struct ModelRenderer {
     texture_bgs: HashMap<(usize, bool, bool), wgpu::BindGroup>,
     team_colors: Vec<Arc<Texture>>,
     team_glows: Vec<Arc<Texture>>,
+    fog: Arc<crate::fog::FogTexture>,
     // Per-frame state.
     bones: Vec<[[f32; 4]; 4]>,
     draws: Vec<Draw>,
@@ -315,6 +321,8 @@ impl ModelRenderer {
         color_format: wgpu::TextureFormat,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::include_wgsl!("model.wgsl"));
+        let [fow0, fow1] = crate::fog::layout_entries(2);
+        let fog = Arc::new(crate::fog::FogTexture::new(device, queue, 1, 1));
         let globals_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("model globals"),
             entries: &[
@@ -338,6 +346,8 @@ impl ModelRenderer {
                     },
                     count: None,
                 },
+                fow0,
+                fow1,
             ],
         });
         let draw_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -369,7 +379,7 @@ impl ModelRenderer {
         let bones_buf = bones_buffer(device, bones_cap);
         let draws_cap = 256;
         let draws_buf = draws_buffer(device, draws_cap);
-        let globals_bg = globals_bind_group(device, &globals_layout, &globals_buf, &bones_buf);
+        let globals_bg = globals_bind_group(device, &globals_layout, &globals_buf, &bones_buf, &fog);
         let draws_bg = draws_bind_group(device, &draw_layout, &draws_buf);
         let samplers = [
             (false, false),
@@ -402,6 +412,7 @@ impl ModelRenderer {
                 .collect()
         };
         ModelRenderer {
+            fog,
             shader,
             globals_layout,
             draw_layout,
@@ -587,6 +598,12 @@ impl ModelRenderer {
         })
     }
 
+    /// Uses a fog-of-war texture (see [`Globals::fow_extent`]).
+    pub fn set_fog(&mut self, device: &wgpu::Device, fog: Arc<crate::fog::FogTexture>) {
+        self.fog = fog;
+        self.globals_bg = globals_bind_group(device, &self.globals_layout, &self.globals_buf, &self.bones_buf, &self.fog);
+    }
+
     /// Uploads this frame's data and records draws into `pass`.
     pub fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, pass: &mut wgpu::RenderPass, globals: &Globals) {
         queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(globals));
@@ -601,7 +618,7 @@ impl ModelRenderer {
             rebind = true;
         }
         if rebind {
-            self.globals_bg = globals_bind_group(device, &self.globals_layout, &self.globals_buf, &self.bones_buf);
+            self.globals_bg = globals_bind_group(device, &self.globals_layout, &self.globals_buf, &self.bones_buf, &self.fog);
         }
         queue.write_buffer(&self.bones_buf, 0, bytemuck::cast_slice(&self.bones));
         // Opaque first, then blended back to front.
@@ -675,6 +692,7 @@ fn globals_bind_group(
     layout: &wgpu::BindGroupLayout,
     globals: &wgpu::Buffer,
     bones: &wgpu::Buffer,
+    fog: &crate::fog::FogTexture,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("model globals"),
@@ -682,6 +700,8 @@ fn globals_bind_group(
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: globals.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 1, resource: bones.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&fog.view) },
+            wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&fog.sampler) },
         ],
     })
 }
@@ -766,6 +786,9 @@ pub fn default_globals(view_proj: Mat4, camera: Vec3) -> Globals {
         camera_pos: [camera.x, camera.y, camera.z, 1.0],
         terrain_light_color: [1.0, 1.0, 1.0, 1.0],
         terrain_ambient: [0.35, 0.35, 0.35, 1.0],
+        fow_extent: [0.0; 4],
+        fow_terrain: [0.0; 4],
+        fow_object: [0.0; 4],
     }
 }
 

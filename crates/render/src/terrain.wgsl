@@ -8,6 +8,11 @@ struct Globals {
     camera_pos: vec4<f32>,
     terrain_light_color: vec4<f32>,
     terrain_ambient: vec4<f32>,
+    /// Fog of war grid: origin xy and size zw in world units; z of 0 disables it.
+    fow_extent: vec4<f32>,
+    /// [FogOfWar] FoggedTerrain and FoggedObject (rgb, alpha).
+    fow_terrain: vec4<f32>,
+    fow_object: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> globals: Globals;
@@ -16,6 +21,20 @@ struct Globals {
 @group(1) @binding(1) var samp: sampler;
 @group(2) @binding(0) var shadow_tex: texture_2d<f32>;
 @group(2) @binding(1) var shadow_samp: sampler;
+@group(0) @binding(2) var fow_tex: texture_2d<f32>;
+@group(0) @binding(3) var fow_samp: sampler;
+
+/// Fog of war over terrain: fogged cells blend toward FoggedTerrain by its alpha, masked
+/// cells go black.  The texture holds 255 visible, 128 fogged, and 0 masked.
+fn fow(c: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
+    if (globals.fow_extent.z <= 0.0) {
+        return c;
+    }
+    let fuv = (world.xy - globals.fow_extent.xy) / globals.fow_extent.zw;
+    let v = textureSample(fow_tex, fow_samp, fuv).r;
+    let fogged = mix(c, globals.fow_terrain.rgb, globals.fow_terrain.a);
+    return mix(fogged * clamp(v / 0.5, 0.0, 1.0), c, clamp(v * 2.0 - 1.0, 0.0, 1.0));
+}
 
 /// Darkening applied by the map's baked shadows: the alpha of UI\MiscData.txt
 /// [FogOfWar] ShadowImageColor (170 of 255).
@@ -64,11 +83,11 @@ fn fs_ground(in: VsOut) -> @location(0) vec4<f32> {
     let suv = (in.world.xy - extent.xy) / extent.zw;
     let shadow = textureSample(shadow_tex, shadow_samp, vec2<f32>(suv.x, 1.0 - suv.y)).r;
     lit = lit * (1.0 - shadow * SHADOW_STRENGTH);
-    return vec4<f32>(fog(t.rgb * lit, in.world), t.a);
+    return vec4<f32>(fog(fow(t.rgb * lit, in.world), in.world), t.a);
 }
 
 @fragment
 fn fs_water(in: VsOut) -> @location(0) vec4<f32> {
     let t = textureSample(tex, samp, in.uv) * in.color;
-    return vec4<f32>(fog(t.rgb, in.world), t.a);
+    return vec4<f32>(fog(fow(t.rgb, in.world), in.world), t.a);
 }

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use w3_jass::Value;
 
 use super::{Args, boolean, handle, int, none, real, reg};
+use crate::fog::{FOG_FOGGED, FOG_MASKED, FOG_VISIBLE, FogModifier, FogShape};
 use crate::types::*;
 use crate::world::{NativeFn, Request, World};
 
@@ -29,6 +30,17 @@ fn tag_mut(w: &mut World, h: u32) -> Option<&mut TextTag> {
 
 fn opaque(w: &mut World, kind: &'static str) -> w3_jass::NativeResult {
     handle(w.handles.insert(Obj::Opaque(kind)))
+}
+
+fn fog_modifier(w: &mut World, player: u8, state: i32, shape: FogShape, shared: bool, after_units: bool) -> w3_jass::NativeResult {
+    handle(w.handles.insert(Obj::FogModifier(FogModifier { player, state, shape, shared, after_units, active: false })))
+}
+
+fn set_fog_state(w: &mut World, player: u8, state: i32, shape: FogShape, _shared: bool) -> w3_jass::NativeResult {
+    if let Some(f) = w.fog.as_mut() {
+        f.set_state(player, state, &shape);
+    }
+    none()
 }
 
 fn destroy_opaque(w: &mut World, h: u32) {
@@ -198,24 +210,60 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         AddWeatherEffect => |w, _, _| opaque(w, "weathereffect"),
         RemoveWeatherEffect => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
         EnableWeatherEffect => |_, _, _| none(),
-        CreateFogModifierRect => |w, _, _| opaque(w, "fogmodifier"),
-        CreateFogModifierRadius => |w, _, _| opaque(w, "fogmodifier"),
-        CreateFogModifierRadiusLoc => |w, _, _| opaque(w, "fogmodifier"),
-        DestroyFogModifier => |w, _, a| { destroy_opaque(w, a.h(0)); none() },
-        FogModifierStart => |_, _, _| none(),
-        FogModifierStop => |_, _, _| none(),
-        SetFogStateRect => |_, _, _| none(),
-        SetFogStateRadius => |_, _, _| none(),
-        SetFogStateRadiusLoc => |_, _, _| none(),
-        IsVisibleToPlayer => |_, _, _| boolean(true),
-        IsLocationVisibleToPlayer => |_, _, _| boolean(true),
-        IsFoggedToPlayer => |_, _, _| boolean(false),
-        IsLocationFoggedToPlayer => |_, _, _| boolean(false),
-        IsMaskedToPlayer => |_, _, _| boolean(false),
-        IsLocationMaskedToPlayer => |_, _, _| boolean(false),
-        IsUnitVisible => |_, _, _| boolean(true),
-        IsUnitFogged => |_, _, _| boolean(false),
-        IsUnitMasked => |_, _, _| boolean(false),
+        CreateFogModifierRect => |w, _, a| {
+            let (Some(p), Some(r)) = (w.player_of(a.h(0)), w.rect(a.h(2))) else { return none() };
+            fog_modifier(w, p, a.i(1), FogShape::Rect(r), a.b(3), a.b(4))
+        },
+        CreateFogModifierRadius => |w, _, a| {
+            let Some(p) = w.player_of(a.h(0)) else { return none() };
+            fog_modifier(w, p, a.i(1), FogShape::Circle(a.r(2), a.r(3), a.r(4)), a.b(5), a.b(6))
+        },
+        CreateFogModifierRadiusLoc => |w, _, a| {
+            let (Some(p), Some((x, y))) = (w.player_of(a.h(0)), w.location(a.h(2))) else { return none() };
+            fog_modifier(w, p, a.i(1), FogShape::Circle(x, y, a.r(3)), a.b(4), a.b(5))
+        },
+        DestroyFogModifier => |w, _, a| {
+            if matches!(w.handles.get(a.h(0)), Some(Obj::FogModifier(_))) { w.handles.remove(a.h(0)); }
+            none()
+        },
+        FogModifierStart => |w, _, a| { if let Some(Obj::FogModifier(m)) = w.handles.get_mut(a.h(0)) { m.active = true; } none() },
+        FogModifierStop => |w, _, a| { if let Some(Obj::FogModifier(m)) = w.handles.get_mut(a.h(0)) { m.active = false; } none() },
+        SetFogStateRect => |w, _, a| {
+            let (Some(p), Some(r)) = (w.player_of(a.h(0)), w.rect(a.h(2))) else { return none() };
+            set_fog_state(w, p, a.i(1), FogShape::Rect(r), a.b(3))
+        },
+        SetFogStateRadius => |w, _, a| {
+            let Some(p) = w.player_of(a.h(0)) else { return none() };
+            set_fog_state(w, p, a.i(1), FogShape::Circle(a.r(2), a.r(3), a.r(4)), a.b(5))
+        },
+        SetFogStateRadiusLoc => |w, _, a| {
+            let (Some(p), Some((x, y))) = (w.player_of(a.h(0)), w.location(a.h(2))) else { return none() };
+            set_fog_state(w, p, a.i(1), FogShape::Circle(x, y, a.r(3)), a.b(4))
+        },
+        IsVisibleToPlayer => |w, _, a| { let p = w.player_of(a.h(2)).unwrap_or(0); boolean(w.fog_state(a.r(0), a.r(1), p) == FOG_VISIBLE) },
+        IsLocationVisibleToPlayer => |w, _, a| {
+            let p = w.player_of(a.h(1)).unwrap_or(0);
+            boolean(w.location(a.h(0)).is_some_and(|(x, y)| w.fog_state(x, y, p) == FOG_VISIBLE))
+        },
+        IsFoggedToPlayer => |w, _, a| { let p = w.player_of(a.h(2)).unwrap_or(0); boolean(w.fog_state(a.r(0), a.r(1), p) == FOG_FOGGED) },
+        IsLocationFoggedToPlayer => |w, _, a| {
+            let p = w.player_of(a.h(1)).unwrap_or(0);
+            boolean(w.location(a.h(0)).is_some_and(|(x, y)| w.fog_state(x, y, p) == FOG_FOGGED))
+        },
+        IsMaskedToPlayer => |w, _, a| { let p = w.player_of(a.h(2)).unwrap_or(0); boolean(w.fog_state(a.r(0), a.r(1), p) == FOG_MASKED) },
+        IsLocationMaskedToPlayer => |w, _, a| {
+            let p = w.player_of(a.h(1)).unwrap_or(0);
+            boolean(w.location(a.h(0)).is_some_and(|(x, y)| w.fog_state(x, y, p) == FOG_MASKED))
+        },
+        IsUnitVisible => |w, _, a| { let p = w.player_of(a.h(1)).unwrap_or(0); boolean(w.unit_visible_to(a.h(0), p)) },
+        IsUnitFogged => |w, _, a| {
+            let p = w.player_of(a.h(1)).unwrap_or(0);
+            boolean(w.unit(a.h(0)).is_some_and(|u| w.fog_state(u.x, u.y, p) == FOG_FOGGED) && !w.unit_visible_to(a.h(0), p))
+        },
+        IsUnitMasked => |w, _, a| {
+            let p = w.player_of(a.h(1)).unwrap_or(0);
+            boolean(w.unit(a.h(0)).is_some_and(|u| w.fog_state(u.x, u.y, p) == FOG_MASKED) && !w.unit_visible_to(a.h(0), p))
+        },
         IsUnitDetected => |_, _, _| boolean(true),
         IsUnitInvisible => |_, _, _| boolean(false),
         CreateTextTag => |w, _, _| handle(w.handles.insert(Obj::TextTag(Box::new(TextTag { visible: true, color: [255; 4], permanent: true, ..Default::default() })))),

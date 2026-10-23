@@ -151,6 +151,7 @@ pub struct Scene {
     team_rgb: [[f32; 3]; 16],
     portrait_renderer: ModelRenderer,
     portrait: Option<(u32, UnitView)>,
+    fog: Option<Arc<w3_render::fog::FogTexture>>,
 }
 
 fn num(t: &Table, row: &str, col: &str) -> f64 {
@@ -306,7 +307,13 @@ impl Scene {
         let ui = w3_render::ui::UiRenderer::new(device, color_format);
         let portrait_renderer = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, portrait: None };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, portrait: None, fog: None };
+        if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
+            let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
+            scene.terrain.set_fog(device, &tex);
+            scene.models.set_fog(device, tex.clone());
+            scene.fog = Some(tex);
+        }
         scene.apply_requests();
         Ok(scene)
     }
@@ -791,6 +798,7 @@ impl Scene {
             hud.minimap_dots = w
                 .unit_order
                 .iter()
+                .filter(|&&h| w.unit_visible_to(h, w.local_player) || w.unit(h).is_some_and(|u| u.is_building && w.fog_state(u.x, u.y, w.local_player) != w3_game::fog::FOG_MASKED))
                 .filter_map(|&h| w.unit(h))
                 .filter(|u| !u.dead && !u.hidden)
                 .map(|u| {
@@ -799,6 +807,33 @@ impl Scene {
                 })
                 .collect();
             hud.camera_box = footprint;
+            // The minimap's fog: FoggedTerrain over fogged cells and black over masked ones.
+            if let (Some(area), true) = (hud.minimap_area, w.fog.is_some()) {
+                let n = crate::hud::MINIMAP_FOG_SIZE;
+                let (sx, sy, side) = area.square();
+                let argb = |key: &str| -> [u8; 4] {
+                    let v: Vec<u8> = w.misc.get_list("FogOfWar", key).iter().filter_map(|s| s.trim().parse().ok()).collect();
+                    if v.len() < 4 { [0, 0, 0, 255] } else { [v[1], v[2], v[3], v[0]] }
+                };
+                let (fogged, masked) = (argb("FoggedTerrain"), argb("BlackMaskedTerrain"));
+                let mut rgba = vec![0u8; (n * n * 4) as usize];
+                for py in 0..n {
+                    for px in 0..n {
+                        let x = sx + (px as f32 + 0.5) / n as f32 * side;
+                        // Image rows run from the top (north).
+                        let y = sy + (1.0 - (py as f32 + 0.5) / n as f32) * side;
+                        let c = match w.fog_state(x, y, w.local_player) {
+                            w3_game::fog::FOG_VISIBLE => [0; 4],
+                            w3_game::fog::FOG_FOGGED => fogged,
+                            _ => masked,
+                        };
+                        let i = ((py * n + px) * 4) as usize;
+                        rgba[i..i + 4].copy_from_slice(&c);
+                    }
+                }
+                assets.textures.set_dynamic(device, queue, crate::hud::MINIMAP_FOG, n, n, &rgba);
+                hud.minimap_fog = true;
+            }
             hud.card = match self.selection.first() {
                 Some(&h) if w.unit(h).is_some_and(|u| u.owner == w.local_player) => self.commands.card(&assets.frames, w, h, hud.page),
                 _ => Vec::new(),
@@ -831,7 +866,11 @@ impl Scene {
             );
             inst.team = w.players.get(u.owner as usize).map_or(0, |p| p.color.clamp(0, 15) as u8);
             inst.team = u.color.clamp(0, 15) as u8;
-            inst.visible = !u.hidden;
+            // Enemy units show only where the local player sees; structures stay where
+            // they have been explored.
+            let state = w.fog_state(u.x, u.y, w.local_player);
+            let seen = w.unit_visible_to(h, w.local_player) || u.is_building && state != w3_game::fog::FOG_MASKED;
+            inst.visible = !u.hidden && seen;
         }
     }
 
@@ -892,6 +931,23 @@ impl Scene {
             if let Some(l) = self.dnc.1.as_ref().and_then(|m| w3_render::dnc::light_at(m, hour)) {
                 globals.light_color = [l.diffuse.x, l.diffuse.y, l.diffuse.z, 1.0];
                 globals.ambient = [l.ambient.x, l.ambient.y, l.ambient.z, 1.0];
+            }
+        }
+        if let (Some(tex), Some(g)) = (&self.fog, &self.game) {
+            let w = &g.world;
+            // UI\MiscData.txt [FogOfWar]: alpha, red, green, blue.
+            let argb = |key: &str| -> [f32; 4] {
+                let v: Vec<f32> = w.misc.get_list("FogOfWar", key).iter().filter_map(|s| s.trim().parse().ok()).collect();
+                if v.len() < 4 {
+                    return [0.0; 4];
+                }
+                [v[1] / 255.0, v[2] / 255.0, v[3] / 255.0, v[0] / 255.0]
+            };
+            if let (Some(f), Some((_, _, img))) = (w.fog.as_ref(), w.fog_image(w.local_player, 128)) {
+                tex.write(queue, &img);
+                globals.fow_extent = [f.origin.0, f.origin.1, f.width as f32 * w3_game::fog::FOG_CELL, f.height as f32 * w3_game::fog::FOG_CELL];
+                globals.fow_terrain = argb("FoggedTerrain");
+                globals.fow_object = argb("FoggedObject");
             }
         }
         for inst in &mut self.instances {

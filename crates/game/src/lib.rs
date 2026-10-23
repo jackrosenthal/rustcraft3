@@ -3,6 +3,7 @@
 pub mod ability;
 pub mod ai;
 pub mod event_ids;
+pub mod fog;
 pub mod handles;
 pub mod hero;
 pub mod natives;
@@ -82,7 +83,10 @@ impl Game {
                 height: h,
                 offset: t.offset,
                 heights: t.corners.iter().map(|c| c.height()).collect(),
+                layers: t.corners.iter().map(|c| c.layer_height).collect(),
             });
+            let th = world.terrain_heights.as_ref().unwrap();
+            world.fog = Some(fog::FogMap::new(world.map_bounds, |x, y| th.level_at(x, y)));
         }
         if let (Ok(wpm), Some(t)) = (chain.read("war3map.wpm"), world.terrain_heights.as_ref()) {
             world.pathing = pathing::PathingMap::parse(&wpm, t.offset);

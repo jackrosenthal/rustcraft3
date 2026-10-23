@@ -17,6 +17,11 @@ const BUTTON: f32 = 0.038;
 /// (0.14875, 0.145) of the console.
 const MINIMAP: [f32; 4] = [0.009375, 0.006875, 0.14875, 0.145];
 
+/// The run-time texture holding the minimap's fog of war.
+pub const MINIMAP_FOG: &str = "@minimapfog";
+/// Its resolution.
+pub const MINIMAP_FOG_SIZE: u32 = 128;
+
 /// What the minimap shows: the map's playable area, letterboxed to a square.
 #[derive(Clone, Copy, Debug)]
 pub struct MinimapArea {
@@ -27,7 +32,7 @@ pub struct MinimapArea {
 }
 
 impl MinimapArea {
-    fn square(&self) -> (f32, f32, f32) {
+    pub fn square(&self) -> (f32, f32, f32) {
         let (w, h) = (self.x1 - self.x0, self.y1 - self.y0);
         let side = w.max(h);
         (self.x0 - (side - w) / 2.0, self.y0 - (side - h) / 2.0, side)
@@ -51,6 +56,8 @@ pub struct Hud {
     info: Option<usize>,
     pub minimap_area: Option<MinimapArea>,
     pub minimap_dots: Vec<(f32, f32, [f32; 4], f32)>,
+    /// Whether the "@minimapfog" overlay texture is current.
+    pub minimap_fog: bool,
     pub camera_box: Vec<(f32, f32)>,
     pub card: Vec<crate::card::Button>,
     pub page: crate::card::Page,
@@ -114,6 +121,7 @@ impl Hud {
             info,
             minimap_area: None,
             minimap_dots: Vec::new(),
+            minimap_fog: false,
             camera_box: Vec::new(),
             card: Vec::new(),
             page: crate::card::Page::Main,
@@ -238,6 +246,9 @@ impl Hud {
         if self.minimap_area.is_some() {
             let r = self.minimap_rect();
             out.push(Draw::Image { texture: "war3mapMap.blp".into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+            if self.minimap_fog {
+                out.push(Draw::Image { texture: MINIMAP_FOG.into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+            }
             for &(x, y, color, size) in &self.minimap_dots {
                 if let Some((ux, uy)) = self.world_to_minimap(x, y) {
                     let s = size / 2.0;

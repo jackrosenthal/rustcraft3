@@ -104,6 +104,7 @@ pub struct World {
     pub ai_current: Option<u8>,
     /// AI_DIFFICULTY_* per computer player.
     pub ai_difficulty: HashMap<u8, i32>,
+    pub fog: Option<crate::fog::FogMap>,
 }
 
 /// Ground heights for GetLocationZ and unit placement.
@@ -112,9 +113,20 @@ pub struct TerrainHeights {
     pub height: u32,
     pub offset: [f32; 2],
     pub heights: Vec<f32>,
+    /// Cliff level of each corner.
+    pub layers: Vec<u8>,
 }
 
 impl TerrainHeights {
+    /// The lowest cliff level among the corners of the tile containing (x, y).
+    pub fn level_at(&self, x: f32, y: f32) -> u8 {
+        let fx = ((x - self.offset[0]) / 128.0).clamp(0.0, (self.width - 1) as f32);
+        let fy = ((y - self.offset[1]) / 128.0).clamp(0.0, (self.height - 1) as f32);
+        let (ix, iy) = (fx.floor() as u32, fy.floor() as u32);
+        let at = |x: u32, y: u32| self.layers.get((y.min(self.height - 1) * self.width + x.min(self.width - 1)) as usize).copied().unwrap_or(0);
+        at(ix, iy).min(at(ix + 1, iy)).min(at(ix, iy + 1)).min(at(ix + 1, iy + 1))
+    }
+
     pub fn at(&self, x: f32, y: f32) -> f32 {
         let fx = ((x - self.offset[0]) / 128.0).clamp(0.0, (self.width - 1) as f32);
         let fy = ((y - self.offset[1]) / 128.0).clamp(0.0, (self.height - 1) as f32);
@@ -204,6 +216,7 @@ impl World {
             ai_vms: HashMap::new(),
             ai_current: None,
             ai_difficulty: HashMap::new(),
+            fog: None,
         }
     }
 
@@ -449,6 +462,7 @@ impl World {
         self.update_units(vm, dt);
         self.regenerate(dt);
         self.update_buffs(vm, dt);
+        self.update_fog(dt);
         self.update_ai(dt);
 
         // Timers.

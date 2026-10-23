@@ -128,6 +128,25 @@ impl TextureCache {
         tex
     }
 
+    /// Creates or updates a texture made at run time (such as the minimap fog), which
+    /// interface draws then name like an archive file.
+    pub fn set_dynamic(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, name: &str, w: u32, h: u32, rgba: &[u8]) {
+        let key = name.to_ascii_lowercase();
+        if let Some(Some(t)) = self.cache.get(&key) {
+            if t.width == w && t.height == h {
+                queue.write_texture(
+                    t.texture.as_image_copy(),
+                    rgba,
+                    wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(w * 4), rows_per_image: Some(h) },
+                    wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+                );
+                return;
+            }
+        }
+        let t = upload(device, queue, name, &[w3_formats::blp::Image { width: w, height: h, rgba: rgba.to_vec() }]);
+        self.cache.insert(key, Some(Arc::new(t)));
+    }
+
     pub fn get_or_white(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, path: &str) -> Arc<Texture> {
         self.get(device, queue, path).unwrap_or_else(|| self.white.clone())
     }

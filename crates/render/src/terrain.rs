@@ -35,6 +35,9 @@ pub struct TerrainRenderer {
     blended: wgpu::RenderPipeline,
     water_pipeline: wgpu::RenderPipeline,
     globals_bg: wgpu::BindGroup,
+    globals_layout: wgpu::BindGroupLayout,
+    globals_buf: wgpu::Buffer,
+    extent_buf: wgpu::Buffer,
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
     batches: Vec<Batch>,
@@ -367,9 +370,11 @@ impl TerrainRenderer {
             },
             count: None,
         };
+        let [fow0, fow1] = crate::fog::layout_entries(2);
+        let fog = std::sync::Arc::new(crate::fog::FogTexture::new(device, queue, 1, 1));
         let globals_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("terrain globals"),
-            entries: &[uniform(0), uniform(1)],
+            entries: &[uniform(0), uniform(1), fow0, fow1],
         });
         let tex_layout = texture_bind_group_layout(device);
         // war3map.shd: one byte per 32x32 cell, four cells per tile edge, 0 or 255.
@@ -392,6 +397,8 @@ impl TerrainRenderer {
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: globals_buf.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 1, resource: extent_buf.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&fog.view) },
+                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&fog.sampler) },
             ],
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -464,6 +471,9 @@ impl TerrainRenderer {
             blended,
             water_pipeline,
             globals_bg,
+            globals_layout,
+            globals_buf: globals_buf.clone(),
+            extent_buf,
             vertices,
             indices: index_buf,
             batches,
@@ -479,6 +489,20 @@ impl TerrainRenderer {
             offset: terrain.offset,
             heights,
         }
+    }
+
+    /// Uses a fog-of-war texture (see `Globals::fow_extent`).
+    pub fn set_fog(&mut self, device: &wgpu::Device, fog: &crate::fog::FogTexture) {
+        self.globals_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("terrain globals"),
+            layout: &self.globals_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: self.globals_buf.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: self.extent_buf.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&fog.view) },
+                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&fog.sampler) },
+            ],
+        });
     }
 
     /// Ground height at a world position, interpolated across the tile.

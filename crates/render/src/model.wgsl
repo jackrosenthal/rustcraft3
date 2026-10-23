@@ -8,6 +8,11 @@ struct Globals {
     camera_pos: vec4<f32>,
     terrain_light_color: vec4<f32>,
     terrain_ambient: vec4<f32>,
+    /// Fog of war grid: origin xy and size zw in world units; z of 0 disables it.
+    fow_extent: vec4<f32>,
+    /// [FogOfWar] FoggedTerrain and FoggedObject (rgb, alpha).
+    fow_terrain: vec4<f32>,
+    fow_object: vec4<f32>,
 };
 
 struct Draw {
@@ -19,6 +24,8 @@ struct Draw {
 
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var<storage, read> bones: array<mat4x4<f32>>;
+@group(0) @binding(2) var fow_tex: texture_2d<f32>;
+@group(0) @binding(3) var fow_samp: sampler;
 @group(1) @binding(0) var<uniform> draw: Draw;
 @group(2) @binding(0) var tex: texture_2d<f32>;
 @group(2) @binding(1) var samp: sampler;
@@ -66,6 +73,14 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if ((draw.flags & 1u) == 0u) {
         let l = max(dot(in.normal, -normalize(globals.light_dir.xyz)), 0.0);
         c = vec4<f32>(c.rgb * clamp(globals.ambient.rgb + globals.light_color.rgb * l, vec3<f32>(0.0), vec3<f32>(1.0)), c.a);
+    }
+    if (globals.fow_extent.z > 0.0) {
+        // Fogged objects take FoggedObject's color; masked ones go black.
+        let fuv = (in.world.xy - globals.fow_extent.xy) / globals.fow_extent.zw;
+        let v = textureSample(fow_tex, fow_samp, vec2<f32>(fuv.x, fuv.y)).r;
+        let fogged = c.rgb * globals.fow_object.rgb;
+        let lit = mix(fogged * clamp(v / 0.5, 0.0, 1.0), c.rgb, clamp(v * 2.0 - 1.0, 0.0, 1.0));
+        c = vec4<f32>(lit, c.a);
     }
     if (globals.fog.z > 0.0) {
         let d = distance(in.world, globals.camera_pos.xyz);

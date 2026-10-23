@@ -344,6 +344,39 @@ impl World {
                     self.apply_buff(unit, Buff { id, ability: a, level: 1, caster: unit, remaining: dur, damage_bonus: bonus, life_steal: steal, ..Default::default() });
                     did = true;
                 }
+                // Tiny buildings: the owner's race's structure (UnitID: Human, Orc,
+                // Undead, Night Elf) at the point, going up over Dur.
+                "AIbl" => {
+                    let ids = self.objects.abilities.get(a).map(|o| o.level_str("UnitID", 1)).unwrap_or_default();
+                    let ids: Vec<&str> = ids.split(',').map(str::trim).collect();
+                    let race = self.players.get(owner as usize).map_or(1, |p| p.race).clamp(1, 4) as usize;
+                    let kind = crate::objects::id_from_str(ids.get(race - 1).or(ids.first()).copied().unwrap_or(""));
+                    if (_x != 0.0 || _y != 0.0) && self.can_place(kind, _x, _y) {
+                        let angle = self.misc_f32("BuildingAngle", 270.0);
+                        let b = crate::natives::units::create_unit(self, owner, kind, _x, _y, angle);
+                        let dur = data(self, "Dur").max(0.1);
+                        if let Some(bu) = self.unit_mut(b) {
+                            bu.build_time = dur;
+                            bu.constructing = Some(dur);
+                            bu.life = bu.max_life * 0.1;
+                            bu.anim = "birth".into();
+                            bu.anim_serial = bu.anim_serial.wrapping_add(1);
+                        }
+                        did = true;
+                    }
+                }
+                // Tome of Retraining: the hero unlearns its skills and has a point for
+                // each level again.
+                "Aret" => {
+                    let Some(u) = self.unit(unit).filter(|u| u.is_hero) else { continue };
+                    let skills: Vec<Id> = self.objects.units.get(u.type_id).map(|o| o.list("heroAbilList")).unwrap_or_default().iter().map(|s| crate::objects::id_from_str(s.trim())).collect();
+                    let level = u.level;
+                    let u = self.unit_mut(unit).unwrap();
+                    u.abilities.retain(|(a, _)| !skills.contains(a));
+                    u.skill_points = level;
+                    self.apply_item_bonuses(unit);
+                    did = true;
+                }
                 // Wand of Illusion: an image of the target.
                 "AIil" => {
                     let t = if _target != 0 { _target } else { unit };

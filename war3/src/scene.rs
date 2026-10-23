@@ -327,6 +327,9 @@ pub struct Scene {
     /// (CWorldFrameWar3's first layer), and its renderer.
     sky: Option<(String, ModelInstance)>,
     sky_renderer: ModelRenderer,
+    /// Indicators flashed on widgets (UnitAddIndicator, and the target of a right
+    /// click in TargetingColors' SelTargetColor): the widget, its color, and when.
+    indicators: Vec<(u32, [f32; 4], f32)>,
     /// The autocast indicator on each card slot whose autocast is on.
     quest_fx: Option<ModelInstance>,
     /// The race's cursor model, the sequence it plays, and the edge scroll direction the
@@ -594,7 +597,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -620,6 +623,7 @@ impl Scene {
                     }
                 }
                 w3_game::world::Request::DoodadAnimation { id, area, anim, random } => self.doodad_animation(id, &area, &anim, random),
+                w3_game::world::Request::Indicator { widget, color } => self.add_indicator(widget, color.map(|c| c as f32 / 255.0)),
                 // A ping lasts its duration (1.5 seconds when none), in its color or
                 // UI\MiscData.txt [PingColor] PingColor (FUN_6f3b0a30).
                 w3_game::world::Request::Ping { x, y, duration, color } => {
@@ -1082,6 +1086,15 @@ impl Scene {
         out
     }
 
+    /// One of the eight indicator slots (CWorldFrameWar3 +0x378), replacing the oldest.
+    fn add_indicator(&mut self, widget: u32, color: [f32; 4]) {
+        self.indicators.retain(|i| i.0 != widget);
+        if self.indicators.len() >= 8 {
+            self.indicators.remove(0);
+        }
+        self.indicators.push((widget, color, self.time));
+    }
+
     fn selection_decals(&self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) -> Vec<w3_render::decal::Decal> {
         let Some(g) = &self.game else { return vec![] };
         let w = &g.world;
@@ -1092,6 +1105,18 @@ impl Scene {
             if v.len() == 4 { [v[1] / 255.0, v[2] / 255.0, v[3] / 255.0, v[0] / 255.0] } else { [0.0, 1.0, 0.0, 1.0] }
         };
         let mut out = Vec::new();
+        // Indicators show 1.1 seconds (0x6fce5a04) as a circle the size of the unit's.
+        for &(h, color, start) in &self.indicators {
+            if self.time - start > 1.1 {
+                continue;
+            }
+            let Some((x, y)) = w.widget_pos(h) else { continue };
+            let scale = w.unit(h).and_then(|u| w.objects.units.get(u.type_id)).map_or(1.0, |o| o.real("scale"));
+            let size = scale * num("ScaleFactor", 72.0);
+            let Some(tex) = misc.get_str("SelectionCircle", "Texture00") else { continue };
+            let texture = assets.textures.get_or_white(device, queue, &format!("{tex}.blp"));
+            out.push(w3_render::decal::Decal { texture, center: [x, y, self.terrain.height_at(x, y)], size: [size, size], color, additive: false });
+        }
         for &h in &self.selection {
             let Some(u) = w.unit(h) else { continue };
             let Some(o) = w.objects.units.get(u.type_id) else { continue };
@@ -2165,15 +2190,25 @@ impl Scene {
         let Some(g) = self.game.as_mut() else { return };
         let local = g.world.local_player;
         let smart = w3_game::natives::basic::order_id("smart");
+        let mut ordered = false;
         for &h in &self.selection {
             if g.world.unit(h).is_none_or(|u| u.owner != local) {
                 continue;
             }
             match (target, point) {
-                (Some(t), _) if t != h => g.world.issue_order(h, smart, 0.0, 0.0, t, self.shift_held),
+                (Some(t), _) if t != h => {
+                    g.world.issue_order(h, smart, 0.0, 0.0, t, self.shift_held);
+                    ordered = true;
+                }
                 (_, Some((x, y))) => g.world.issue_order(h, smart, x, y, 0, self.shift_held),
                 _ => {}
             }
+        }
+        // The target flashes in SelTargetColor (FUN_6f3814e0).
+        if let (Some(t), true) = (target, ordered) {
+            let v: Vec<f32> = g.world.misc.get_list("TargetingColors", "SelTargetColor").iter().filter_map(|x| x.trim().parse().ok()).collect();
+            let c = if v.len() == 4 { [v[0] / 255.0, v[1] / 255.0, v[2] / 255.0, 1.0] } else { [1.0; 4] };
+            self.add_indicator(t, c);
         }
         self.order_ack();
     }

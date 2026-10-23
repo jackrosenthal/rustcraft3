@@ -229,6 +229,9 @@ pub struct World {
     /// Fog modifiers that start at a game time (Flare's delay).
     #[serde(default)]
     pub timed_activations: Vec<(u32, f32)>,
+    /// The last Spirit Link group made.
+    #[serde(default)]
+    pub next_link_group: u32,
     /// Areas revealing invisible units to a player until a game time (Reveal, Flare):
     /// player, x, y, radius, and the time.
     #[serde(default)]
@@ -397,6 +400,7 @@ impl World {
             persist: Default::default(),
             timed_removals: Vec::new(),
             timed_activations: Vec::new(),
+            next_link_group: 0,
             detect_areas: Vec::new(),
         }
     }
@@ -728,6 +732,7 @@ impl World {
         prof!(self, "update_morphs", self.update_morphs(dt));
         prof!(self, "update_autocast", self.update_autocast(dt));
         prof!(self, "update_periodic_attacks", self.update_periodic_attacks(vm, dt));
+        prof!(self, "update_devoured", self.update_devoured(vm, dt));
         let now = self.time;
         let due: Vec<(f32, u32, u32)> = self.pending_entangles.iter().copied().filter(|e| e.0 <= now).collect();
         self.pending_entangles.retain(|e| e.0 > now);

@@ -544,9 +544,11 @@ impl World {
         let Some(t) = self.unit(target) else { return };
         let owner = t.owner;
         self.wake(target);
-        let t = self.unit_mut(target).unwrap();
-        t.life -= crate::ability::mana_shield(t, dmg);
-        let dead = t.life <= 0.405;
+        let linked_dead = self.take_life(target, dmg);
+        let dead = self.unit(target).is_some_and(|t| t.life <= 0.405);
+        for d in linked_dead {
+            kill_unit(self, vm, d, source);
+        }
         // Vampiric Aura: the attacker regains a share of the damage.
         let steal: f32 = self.unit(source).map_or(0.0, |u| u.buffs.iter().map(|b| b.life_steal).sum());
         if steal > 0.0 {
@@ -1823,6 +1825,17 @@ impl World {
                     if dead {
                         crate::natives::objects::kill_destructable_pub(self, vm, h);
                     }
+                }
+            }
+        }
+        // Burning Oil: the shell sets the ground alight for Dur.
+        if artillery {
+            if let Some((a, lvl)) = self.ability_with_code(source, "Abof") {
+                let owner = self.unit(source).map_or(0, |u| u.owner);
+                if self.ability_enabled(owner, a) {
+                    let lvl = lvl.max(1) as u32;
+                    let (duration, interval) = (self.data(a, "Dur", lvl), self.data(a, "DataB", lvl).max(0.05));
+                    self.ground_effects.push(GroundEffect { caster: source, owner, ability: a, level: lvl, x: at.0, y: at.1, elapsed: 0.0, duration, interval, next: 0.0, effect: 0 });
                 }
             }
         }

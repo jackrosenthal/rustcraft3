@@ -440,6 +440,18 @@ impl World {
                 self.spell_steal(h, a, lvl, target);
                 true
             }
+            "Aspl" => {
+                self.spirit_link(h, a, lvl, target);
+                true
+            }
+            "Auco" => {
+                self.unstable_concoction(vm, h, a, lvl, target);
+                true
+            }
+            "Adev" => {
+                self.devour(h, a, lvl, target);
+                true
+            }
             "AOre" | "AEev" | "AOcr" | "AHbh" | "AUts" | "AEah" | "AUav" => true,
             _ => false,
         }
@@ -650,6 +662,18 @@ impl World {
                         };
                         for t in self.enemies_in(e.owner, e.x, e.y, area) {
                             self.spell_damage(vm, e.caster, t, damage);
+                        }
+                    }
+                    // Burning Oil: DataA every DataB to what it allows within Area,
+                        // structures taking DataE of it.
+                    "Abof" => {
+                        let (dmg, reduction) = (self.d(e.ability, "DataA", e.level), self.d(e.ability, "DataE", e.level));
+                        for t in self.units_in(e.x, e.y, area) {
+                            if self.cast_target_error(e.caster, e.ability, t).is_some() {
+                                continue;
+                            }
+                            let k = if self.unit(t).is_some_and(|u| u.is_building) && reduction > 0.0 { reduction } else { 1.0 };
+                            self.spell_damage(vm, e.caster, t, dmg * k);
                         }
                     }
                     "AOww" => {

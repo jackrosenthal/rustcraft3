@@ -368,9 +368,11 @@ impl World {
         let dmg = amount * mult * ethereal;
         let owner = t.owner;
         self.wake(target);
-        let t = self.unit_mut(target).unwrap();
-        t.life -= mana_shield(t, dmg);
-        let dead = t.life <= 0.405;
+        let linked_dead = self.take_life(target, dmg);
+        let dead = self.unit(target).is_some_and(|t| t.life <= 0.405);
+        for d in linked_dead {
+            crate::natives::units::kill_unit(self, vm, d, source);
+        }
         let ctx = EventCtx { unit: target, other_unit: source, damage: dmg, event_id: EVENT_UNIT_DAMAGED, player: owner, has_player: true, ..Default::default() };
         self.fire(vm, ctx, |_, k| matches!(k, EventKind::Unit { unit, event } if *unit == target && *event == EVENT_UNIT_DAMAGED));
         if dead {

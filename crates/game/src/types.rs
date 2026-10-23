@@ -301,6 +301,9 @@ pub struct UnitExtra {
     pub still_since: f32,
     /// Storm, Earth and Fire: time left and the spirits.
     pub split: Option<(f32, Vec<u32>)>,
+    /// Units a Kodo has devoured.
+    #[serde(default)]
+    pub devoured: Vec<u32>,
 }
 
 impl Default for UnitExtra {
@@ -339,6 +342,7 @@ impl Default for UnitExtra {
             morph: None,
             morph_revert: None,
             last_attacked: -100.0,
+            devoured: Vec::new(),
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,
@@ -424,6 +428,12 @@ pub struct Buff {
     /// Attacks prevented (Cloud): 1 melee, 2 ranged.
     #[serde(default)]
     pub disarm: u8,
+    /// Spirit Link: the group the unit is linked in (0 for none) and the share of its
+    /// damage the group takes.
+    #[serde(default)]
+    pub link_group: u32,
+    #[serde(default)]
+    pub link_share: f32,
 }
 
 /// A spell kept up by its caster: it ends when the time runs out or the caster stops.

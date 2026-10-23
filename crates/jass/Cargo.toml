@@ -1,0 +1,13 @@
+[package]
+name = "w3-jass"
+description = "JASS compiler and virtual machine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+log.workspace = true
+
+[dev-dependencies]
+w3-mpq.workspace = true

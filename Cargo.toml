@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/mpq", "crates/formats"]
+members = ["crates/mpq", "crates/formats", "crates/jass"]
 
 [workspace.package]
 version = "0.1.0"

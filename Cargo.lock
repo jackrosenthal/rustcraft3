@@ -301,6 +301,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "w3-jass"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "thiserror",
+ "w3-mpq",
+]
+
+[[package]]
 name = "w3-mpq"
 version = "0.1.0"
 dependencies = [

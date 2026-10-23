@@ -47,6 +47,9 @@ pub struct Missile {
     /// something to strike (stampede.rs).
     #[serde(default)]
     pub stampede: Option<(Id, u32, f32)>,
+    /// A Volcano's rock: its ability and level (volcano.rs).
+    #[serde(default)]
+    pub rock: Option<(Id, u32)>,
 }
 
 /// Weapon 1 of a unit type, from UnitWeapons.slk and the unit's profile.
@@ -759,6 +762,7 @@ impl World {
                                 bounces: if wp.weapon_type == "mbounce" { wp.target_count - 1 + self.upgrade_bonus(src.owner, src.type_id).targets } else { 0 },
                                 hit: Vec::new(),
                                 stampede: None,
+                    rock: None,
                             });
                         }
                     } else {
@@ -1830,7 +1834,7 @@ impl World {
         let mut i = 0;
         while i < self.missiles.len() {
             let m = &mut self.missiles[i];
-            if m.stampede.is_some() {
+            if m.stampede.is_some() || m.rock.is_some() {
                 i += 1;
                 continue;
             }

@@ -9,7 +9,7 @@ use crate::world::World;
 
 /// Codes whose effect keeps the caster channeling.
 pub fn channeled(code: &str) -> bool {
-    matches!(code, "AHbz" | "ANrf" | "AEsf" | "AEtq" | "AUdd" | "AHdr" | "AOvd" | "AOeq" | "ANst")
+    matches!(code, "AHbz" | "ANrf" | "AEsf" | "AEtq" | "AUdd" | "AHdr" | "AOvd" | "AOeq" | "ANst" | "ANvc")
 }
 
 impl World {
@@ -167,6 +167,17 @@ impl World {
                 };
                 if let Some(u) = self.unit_mut(h) {
                     u.channel = Some(Channel { ability: a, level: lvl, target, x: px, y: py, elapsed: 0.0, duration, interval, next: 0.0, waves, link, held: [0; 4], lanes: 0 });
+                }
+                true
+            }
+            // Volcano: DataB waves DataC apart, the first a second after the cast
+            // (volcano.rs).
+            "ANvc" => {
+                let every = self.d(a, "DataC", lvl).max(0.1);
+                let duration = self.d(a, "DataB", lvl) * every;
+                self.begin_volcano(h, a, lvl, x, y);
+                if let Some(u) = self.unit_mut(h) {
+                    u.channel = Some(Channel { ability: a, level: lvl, target: 0, x, y, elapsed: 0.0, duration, interval: every, next: 1.0, waves: 0, link: 0, held: [0; 4], lanes: 0 });
                 }
                 true
             }
@@ -619,6 +630,7 @@ impl World {
         let area = self.d(a, "Area", lvl);
         match code.as_str() {
             "ANst" => self.stampede_beast(h, c),
+            "ANvc" => self.volcano_wave(h, a),
             "Aclf" => {
                 let buff = self.buff_of(a, lvl);
                 let disarm = self.d(a, "DataA", lvl) as u8;

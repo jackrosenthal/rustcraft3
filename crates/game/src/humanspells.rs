@@ -179,6 +179,7 @@ impl World {
                         bounces: 0,
                         hit: Vec::new(),
                     stampede: None,
+                    rock: None,
                     });
                 }
             }

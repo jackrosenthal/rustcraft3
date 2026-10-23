@@ -180,6 +180,9 @@ pub struct World {
     /// Incinerated deaths to burst: when, the caster, ability, level, buff, and where.
     #[serde(default)]
     pub incinerations: Vec<(f32, u32, crate::objects::Id, u32, crate::objects::Id, f32, f32)>,
+    /// Volcanoes standing while their casters channel.
+    #[serde(default)]
+    pub volcanoes: Vec<crate::volcano::Volcano>,
     /// Blighted terrain corners, and a count that changes when they do.
     pub blight: Vec<bool>,
     pub blight_serial: u32,
@@ -395,6 +398,7 @@ impl World {
             deformations: Vec::new(),
             pending_entangles: Vec::new(),
             incinerations: Vec::new(),
+            volcanoes: Vec::new(),
             blight: Vec::new(),
             blight_serial: 0,
             autocast_timer: 0.0,
@@ -793,6 +797,7 @@ impl World {
         prof!(self, "update_tornadoes", self.update_tornadoes(vm, dt));
         prof!(self, "update_factories", self.update_factories(dt));
         prof!(self, "update_incinerations", self.update_incinerations(vm));
+        prof!(self, "update_volcanoes", self.update_volcanoes(vm, dt));
         let now = self.time;
         let due: Vec<(f32, u32, u32)> = self.pending_entangles.iter().copied().filter(|e| e.0 <= now).collect();
         self.pending_entangles.retain(|e| e.0 > now);

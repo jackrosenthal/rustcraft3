@@ -53,16 +53,23 @@ fn fit(db: &FrameDb, font: &(String, f32), text: &str, width: f32) -> String {
 }
 
 impl QuestView {
-    /// The dialog centered 0.064 above the screen's middle (CQuestMode vf9).
-    pub fn open(db: &FrameDb, aspect: f32, world: &World) -> Option<QuestView> {
+    /// The dialog centered 0.064 above the screen's middle (CQuestMode vf9), titled by
+    /// the map's loading screen title and subtitle when it has both.
+    pub fn open(db: &FrameDb, aspect: f32, world: &World, titles: (&str, &str)) -> Option<QuestView> {
         let mut tree = FrameTree::new(aspect);
         tree.plain_button_text = true;
         tree.create(db, "QuestDialog", 0)?;
         tree.set_point("QuestDialog", P::Center, "", P::Center, 0.0, 0.064);
-        // The map's title is for campaign missions; others show a blank title over
-        // QUESTS (CQuestDialog vf55).
-        tree.set_text("QuestTitleValue", " ");
-        tree.set_text("QuestSubtitleValue", &db.string("QUESTS"));
+        // The map info's loading screen title and subtitle (read by FUN_6f78b790), else a
+        // blank title over QUESTS (CQuestDialog vf55).
+        let (title, subtitle) = (world.localized(titles.0), world.localized(titles.1));
+        if title.is_empty() || subtitle.is_empty() {
+            tree.set_text("QuestTitleValue", " ");
+            tree.set_text("QuestSubtitleValue", &db.string("QUESTS"));
+        } else {
+            tree.set_text("QuestTitleValue", &title);
+            tree.set_text("QuestSubtitleValue", &subtitle);
+        }
         let mut lists = [Vec::new(), Vec::new()];
         for (k, list) in lists.iter_mut().enumerate() {
             let required = k == 0;

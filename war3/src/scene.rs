@@ -2329,9 +2329,9 @@ impl Scene {
     }
 
     /// Opens a requested quest log and shows a changed choice in it.
-    fn update_quests(requested: &mut bool, hud: &mut crate::hud::Hud, db: &w3_ui::FrameDb, world: &w3_game::world::World, aspect: f32) {
+    fn update_quests(requested: &mut bool, hud: &mut crate::hud::Hud, db: &w3_ui::FrameDb, world: &w3_game::world::World, info: &MapInfo, aspect: f32) {
         if std::mem::take(requested) && hud.menu.is_none() {
-            hud.quests = crate::quests::QuestView::open(db, aspect, world);
+            hud.quests = crate::quests::QuestView::open(db, aspect, world, (&info.loading_title, &info.loading_subtitle));
         }
         if let Some(q) = hud.quests.as_mut().filter(|q| q.dirty) {
             q.dirty = false;
@@ -2343,7 +2343,7 @@ impl Scene {
     pub fn update_menu(&mut self, db: &w3_ui::FrameDb, aspect: f32) {
         let Some(hud) = self.hud.as_mut() else { return };
         if let Some(g) = self.game.as_ref() {
-            Self::update_quests(&mut self.quests_requested, hud, db, &g.world, aspect);
+            Self::update_quests(&mut self.quests_requested, hud, db, &g.world, &self.info, aspect);
         }
         if std::mem::take(&mut self.menu_requested) && hud.menu.is_none() {
             hud.open_menu(db, aspect);
@@ -2578,7 +2578,7 @@ impl Scene {
                 hud.quests = None;
                 hud.open_menu(&assets.frames, aspect);
             }
-            Self::update_quests(&mut self.quests_requested, hud, &assets.frames, &g.world, aspect);
+            Self::update_quests(&mut self.quests_requested, hud, &assets.frames, &g.world, &self.info, aspect);
             hud.sync_save_panel(&assets.frames);
             if let Some(m) = hud.menu.as_mut() {
                 m.set_enabled("RestartButton", !g.world.restart_disabled);

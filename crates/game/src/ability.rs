@@ -689,6 +689,7 @@ impl World {
                 let (sx, sy) = (src.x, src.y);
                 let z = self.ground_z(sx, sy) + 60.0;
                 self.missiles.push(crate::sim::Missile {
+                    id: 0,
                     source: h,
                     target,
                     model,

@@ -202,6 +202,9 @@ pub struct World {
     pub dying_effects: Vec<(u32, f32)>,
     pub pathing: Option<crate::pathing::PathingMap>,
     pub missiles: Vec<crate::sim::Missile>,
+    /// The last missile id given.
+    #[serde(default)]
+    pub missile_serial: u32,
     #[serde(skip)]
     pathing_textures: HashMap<String, Option<w3_formats::blp::Image>>,
     pub ai: HashMap<u8, crate::ai::AiState>,
@@ -403,6 +406,7 @@ impl World {
             dying_effects: Vec::new(),
             pathing: None,
             missiles: Vec::new(),
+            missile_serial: 0,
             pathing_textures: HashMap::new(),
             ai: HashMap::new(),
             ai_vms: HashMap::new(),

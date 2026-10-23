@@ -288,6 +288,8 @@ pub struct Scene {
     pub drag: Option<((f32, f32), (f32, f32))>,
     /// A targeted order waiting for a world click.
     pub targeting: Option<i32>,
+    /// Missiles in flight by id, and those that landed playing their death.
+    missiles: HashMap<u32, EffectView>,
     /// The model of the structure being placed, under the pointer (CConstructUI).
     ghost: Option<(w3_game::objects::Id, ModelInstance)>,
     /// A structure waiting for a placement click.
@@ -564,7 +566,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -2293,9 +2295,62 @@ impl Scene {
         }
     }
 
+    /// Draws each missile in flight at its place, rising from its launch height to its
+    /// target's impact height (impactZ) along an arc whose peak is its arc times the
+    /// distance (a parabola; the engine's own curve was not traced), facing along its
+    /// path.  A missile that has landed plays its death where it fell, then goes.
+    pub fn sync_missiles(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) {
+        let Some(g) = self.game.as_ref() else { return };
+        let w = &g.world;
+        let local = w.local_player;
+        let live: std::collections::HashSet<u32> = w.missiles.iter().map(|m| m.id).collect();
+        // Landed: play the death, or drop at once without one.
+        self.missiles.retain(|id, v| {
+            if live.contains(id) {
+                return true;
+            }
+            if !v.dying {
+                v.dying = true;
+                if w3_render::anim::find_sequence(&v.inst.model.mdx, "death").is_some() {
+                    v.inst.play("death");
+                    return true;
+                }
+                return false;
+            }
+            !(v.inst.finished || v.inst.looped)
+        });
+        for m in &w.missiles {
+            if m.id == 0 || m.model.is_empty() {
+                continue;
+            }
+            if !self.missiles.contains_key(&m.id) {
+                let Some(model) = assets.model(device, queue, &m.model) else { continue };
+                let mut inst = ModelInstance::new(model);
+                inst.play("stand");
+                inst.team = w.unit(m.source).and_then(|u| w.players.get(u.owner as usize)).map_or(0, |p| p.color as u8);
+                self.missiles.insert(m.id, EffectView { inst, dying: false, done: false });
+            }
+            let target = m.impact.or_else(|| w.widget_pos(m.target)).unwrap_or((m.x, m.y));
+            let target_z = w.unit(m.target).map_or(self.terrain.height_at(target.0, target.1), |t| {
+                let impact = w.objects.units.get(t.type_id).map_or(60.0, |o| o.real("impactZ"));
+                self.terrain.height_at(t.x, t.y) + t.fly_height + impact
+            });
+            let total = (target.0 - m.start.0).hypot(target.1 - m.start.1).max(1.0);
+            let left = (target.0 - m.x).hypot(target.1 - m.y);
+            let t = (1.0 - left / total).clamp(0.0, 1.0);
+            let z = m.z + (target_z - m.z) * t + m.arc * total * 4.0 * t * (1.0 - t);
+            let slope = (target_z - m.z) / total + m.arc * 4.0 * (1.0 - 2.0 * t);
+            let yaw = (target.1 - m.y).atan2(target.0 - m.x);
+            let v = self.missiles.get_mut(&m.id).unwrap();
+            v.inst.transform = Mat4::from_rotation_translation(Quat::from_rotation_z(yaw) * Quat::from_rotation_y(-slope.atan()), Vec3::new(m.x, m.y, z));
+            v.inst.visible = w.fog_state(m.x, m.y, local) == w3_game::fog::FOG_VISIBLE;
+        }
+    }
+
     /// Creates, updates, and removes render instances to match the game's units.
     pub fn sync_units(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) {
         self.sync_effects(device, queue, assets);
+        self.sync_missiles(device, queue, assets);
         if let Some(g) = self.game.as_ref() {
             let terrain = &self.terrain;
             self.weather.sync(device, queue, assets, &g.world, |x, y| terrain.height_at(x, y), self.camera.target);
@@ -2546,6 +2601,9 @@ impl Scene {
             inst.advance(gdt * 1000.0);
         }
         for v in self.effects.values_mut() {
+            v.inst.advance(gdt * 1000.0);
+        }
+        for v in self.missiles.values_mut() {
             v.inst.advance(gdt * 1000.0);
         }
         self.weather.advance(gdt * 1000.0);
@@ -2897,6 +2955,9 @@ impl Scene {
             self.models.submit(inst, eye, rot);
         }
         for v in self.effects.values_mut().filter(|v| v.inst.visible) {
+            self.models.submit(&mut v.inst, eye, rot);
+        }
+        for v in self.missiles.values_mut().filter(|v| v.inst.visible) {
             self.models.submit(&mut v.inst, eye, rot);
         }
         for inst in self.weather.instances() {

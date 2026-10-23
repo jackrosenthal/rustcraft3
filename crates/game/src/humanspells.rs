@@ -161,6 +161,7 @@ impl World {
                     let launch = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map_or(60.0, |o| o.real("launchZ"));
                     let z = self.ground_z(ux, uy) + launch;
                     self.missiles.push(crate::sim::Missile {
+                        id: 0,
                         source: h,
                         target: t,
                         model: model.clone(),

@@ -21,6 +21,9 @@ use crate::world::{Request, World};
 /// A projectile in flight.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Missile {
+    /// Which missile this is, for the renderer to follow (given when it starts).
+    #[serde(default)]
+    pub id: u32,
     pub source: u32,
     pub target: u32,
     pub model: String,
@@ -732,6 +735,7 @@ impl World {
                             }
                             let launch_z = self.objects.units.get(src.type_id).map_or(60.0, |o| o.real("launchZ"));
                             self.missiles.push(Missile {
+                                id: 0,
                                 source: h,
                                 target: s.target,
                                 model: wp.missile.clone(),
@@ -1812,6 +1816,10 @@ impl World {
     }
 
     fn update_missiles(&mut self, vm: &mut Vm, dt: f32) {
+        for m in self.missiles.iter_mut().filter(|m| m.id == 0) {
+            self.missile_serial += 1;
+            m.id = self.missile_serial;
+        }
         let mut hits = Vec::new();
         let mut i = 0;
         while i < self.missiles.len() {
@@ -1866,7 +1874,7 @@ impl World {
                                 });
                             if let Some(n) = next {
                                 let z = self.ground_z(at.0, at.1) + 60.0;
-                                self.missiles.push(Missile { target: n, x: at.0, y: at.1, z, start: at, damage: m.damage * (1.0 - wp.damage_loss), bounces: m.bounces - 1, hit, impact: None, ..m.clone() });
+                                self.missiles.push(Missile { id: 0, target: n, x: at.0, y: at.1, z, start: at, damage: m.damage * (1.0 - wp.damage_loss), bounces: m.bounces - 1, hit, impact: None, ..m.clone() });
                             }
                         }
                     }

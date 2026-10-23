@@ -575,6 +575,14 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 5;
             }
+            // nofog: turns the fog of war and black mask off.
+            "nofog" => {
+                if let Some(g) = scene.game.as_mut() {
+                    g.world.fog_enabled = false;
+                    g.world.fog_mask_enabled = false;
+                }
+                i += 1;
+            }
             // info <unit>: a unit's type, owner, life, place, and action.
             "info" => {
                 if let Some(g) = scene.game.as_ref() {

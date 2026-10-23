@@ -232,6 +232,9 @@ pub struct World {
     pub fog: Option<crate::fog::FogMap>,
     pub shops: crate::shops::Shops,
     pub upgrade_cache: crate::upgrades::UpgradeCache,
+    /// The connected walkable region of each pathing cell (the AI's build grid).
+    #[serde(skip)]
+    pub regions: std::cell::OnceCell<Vec<u32>>,
     /// Spell lightning between units, and jumping spells' next strikes.
     pub bolts: Vec<crate::bolts::Bolt>,
     pub jumps: Vec<crate::bolts::Jump>,
@@ -433,6 +436,7 @@ impl World {
             fog: None,
             shops: Default::default(),
             upgrade_cache: Default::default(),
+            regions: Default::default(),
             tech_cache: Default::default(),
             bolts: Vec::new(),
             jumps: Vec::new(),

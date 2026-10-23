@@ -313,6 +313,14 @@ impl World {
         out
     }
 
+    pub(crate) fn town_pos_pub(&self, p: u8, town: i32) -> (f32, f32) {
+        self.town_pos(p, town)
+    }
+
+    pub(crate) fn mine_near_pub(&self, x: f32, y: f32) -> Option<u32> {
+        self.mine_near(x, y)
+    }
+
     fn town_pos(&self, p: u8, town: i32) -> (f32, f32) {
         let t = self.towns(p);
         let t = t.get(town.max(0) as usize).or(t.first()).copied().unwrap_or_default();
@@ -383,37 +391,6 @@ impl World {
     }
 
     /// Finds a spot for a structure near a town, keeping clear of the path to the mine.
-    fn find_build_site(&mut self, p: u8, id: Id, town: i32) -> Option<(f32, f32)> {
-        let (cx, cy) = self.town_pos(p, town);
-        let mine = self.mine_near(cx, cy).and_then(|m| self.unit(m).map(|u| (u.x, u.y)));
-        for ring in 3..24 {
-            let r = ring as f32 * 64.0;
-            let steps = ring * 8;
-            for k in 0..steps {
-                let a = k as f32 / steps as f32 * std::f32::consts::TAU;
-                let (x, y) = self.snap_placement(cx + r * a.cos(), cy + r * a.sin());
-                if let Some((mx, my)) = mine {
-                    // Stay off the line between the hall and its mine.
-                    let (dx, dy) = (mx - cx, my - cy);
-                    let len2 = (dx * dx + dy * dy).max(1.0);
-                    let t = (((x - cx) * dx + (y - cy) * dy) / len2).clamp(0.0, 1.0);
-                    let (px, py) = (cx + dx * t, cy + dy * t);
-                    if (x - px).hypot(y - py) < 384.0 {
-                        continue;
-                    }
-                }
-                if self.can_place(id, x, y) && self.can_place_with_margin(id, x, y) {
-                    return Some((x, y));
-                }
-            }
-        }
-        None
-    }
-
-    fn can_place_with_margin(&mut self, id: Id, x: f32, y: f32) -> bool {
-        // Leave a path around the structure.
-        [(64.0, 0.0), (-64.0, 0.0), (0.0, 64.0), (0.0, -64.0)].iter().all(|&(dx, dy)| self.can_place(id, x + dx, y + dy))
-    }
 
     /// A Hero type first (FUN_6f9caff0): an idle altar of the player revives a dead
     /// Hero of that type; failing that, owning one (dead or alive) is enough.
@@ -462,7 +439,7 @@ impl World {
                 .collect();
             builders.sort_by_key(|&h| self.unit(h).map_or(0, |u| u.carry_gold + u.carry_lumber));
             let Some(&b) = builders.first() else { return false };
-            let Some((x, y)) = self.find_build_site(p, id, town) else { return false };
+            let Some((x, y)) = self.ai_build_site(p, id, town, b) else { return false };
             self.leave_mine_pub(b);
             if let Some(u) = self.unit_mut(b) {
                 u.action = Action::Build { id, x, y };

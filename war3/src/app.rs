@@ -176,6 +176,13 @@ impl ApplicationHandler for App {
                             scene.key('\u{1b}');
                         }
                     }
+                    for (k, key) in [KeyCode::F1, KeyCode::F2, KeyCode::F3].into_iter().enumerate() {
+                        if event.physical_key == PhysicalKey::Code(key) {
+                            if let Some(scene) = r.scene.as_mut() {
+                                scene.hero_key(k);
+                            }
+                        }
+                    }
                     if event.physical_key == PhysicalKey::Code(KeyCode::F8) {
                         if let Some(scene) = r.scene.as_mut() {
                             scene.idle_worker_key();

@@ -1550,6 +1550,17 @@ impl Scene {
         }
     }
 
+    /// F1 to F3: selects the hero on that hero bar button, or looks at it when it is
+    /// the selection already.
+    pub fn hero_key(&mut self, k: usize) {
+        let Some(hero) = self.hud.as_ref().and_then(|h| h.heroes.get(k)).map(|e| e.0) else { return };
+        if self.selection == [hero] {
+            self.select_worker(hero);
+        } else {
+            self.selection = vec![hero];
+        }
+    }
+
     /// The idle worker button's hotkey (F8, as IDLE_PEON shows it).
     pub fn idle_worker_key(&mut self) {
         let now = self.time;

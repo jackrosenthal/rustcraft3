@@ -25,6 +25,11 @@ impl World {
             .collect()
     }
 
+    /// Each active waygate's position and destination, for paths through them.
+    pub(crate) fn waygate_routes(&self) -> Vec<((f32, f32), (f32, f32))> {
+        self.warps().into_iter().filter_map(|(h, _, dest)| self.unit(h).map(|u| ((u.x, u.y), dest))).collect()
+    }
+
     pub fn update_waygates(&mut self) {
         let warps = self.warps();
         if warps.is_empty() {

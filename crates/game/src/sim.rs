@@ -437,7 +437,27 @@ impl World {
         let path = match &self.pathing {
             // Flyers go straight over everything but the map's no-fly cells.
             Some(_) if kind == crate::pathing::Move::Fly => vec![goal],
-            Some(p) => p.find_path_kind(from, goal, radius * 0.5, 20000, kind),
+            Some(p) => {
+                let direct = p.find_path_kind(from, goal, radius * 0.5, 20000, kind);
+                let reaches = |path: &Vec<(f32, f32)>, to: (f32, f32)| path.last().is_some_and(|e| (e.0 - to.0).hypot(e.1 - to.1) < 64.0);
+                if reaches(&direct, goal) {
+                    direct
+                } else {
+                    // Where the goal cannot be walked to, a waygate whose far side can
+                    // reach it (the pathing's warps).
+                    let mut via = None;
+                    for (gate, dest) in self.waygate_routes() {
+                        let mut to_gate = p.find_path_kind(from, gate, radius * 0.5, 20000, kind);
+                        let near = to_gate.last().is_some_and(|e| (e.0 - gate.0).hypot(e.1 - gate.1) < 250.0);
+                        if near && reaches(&p.find_path_kind(dest, goal, radius * 0.5, 20000, kind), goal) {
+                            to_gate.push(gate);
+                            via = Some(to_gate);
+                            break;
+                        }
+                    }
+                    via.unwrap_or(direct)
+                }
+            }
             None => vec![goal],
         };
         if let Some(u) = self.unit_mut(h) {

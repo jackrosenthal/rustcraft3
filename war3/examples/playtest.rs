@@ -599,6 +599,16 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 1;
             }
+            // camfield <field> <value>: sets a game camera field (CAMERA_FIELD_* order).
+            "camfield" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let f = num(&a[i + 1]) as usize;
+                    if f < g.world.camera.fields.len() {
+                        g.world.camera.fields[f] = num(&a[i + 2]);
+                    }
+                }
+                i += 3;
+            }
             // info <unit>: a unit's type, owner, life, place, and action.
             "info" => {
                 if let Some(g) = scene.game.as_ref() {

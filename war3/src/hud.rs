@@ -102,6 +102,10 @@ pub struct Hud {
     level_bar: Option<f32>,
     /// CBuffBar: the shown unit's buff icons (Buffart), when it has the bar.
     buff_icons: Option<Vec<String>>,
+    /// CInfoPanelBuildingDetail (frame names scoped "B"), shown while a structure
+    /// produces, and what it is producing.
+    building: Option<usize>,
+    production: Option<w3_game::info::Production>,
     pub minimap_area: Option<MinimapArea>,
     pub minimap_dots: Vec<(f32, f32, [f32; 4], f32)>,
     /// Whether the "@minimapfog" overlay texture is current.
@@ -148,6 +152,7 @@ impl Hud {
         pin(&mut tree, upper, FramePoint::TopLeft);
         tree.layout();
         // The info panel's unit detail fills CInfoBar: 0.188125 x 0.114063 at (0.309375, 0).
+        let mut building = None;
         let info = tree.create(db, "SimpleInfoPanelUnitDetail", 0);
         if let Some(i) = info {
             tree.frames[i].all_points = false;
@@ -163,6 +168,16 @@ impl Hud {
             }
             for (template, scope) in INFO_ICONS {
                 tree.create_scoped(db, template, i, scope);
+            }
+            // The building detail shares the unit detail's place.
+            building = tree.create_scoped(db, "SimpleInfoPanelBuildingDetail", 0, "B");
+            if let Some(b) = building {
+                let f = &mut tree.frames[b];
+                f.all_points = false;
+                f.width = Some(0.188125);
+                f.height = Some(0.114063);
+                f.points = vec![Point { point: FramePoint::BottomLeft, relative: None, relative_point: FramePoint::BottomLeft, x: 0.309375, y: 0.0 }];
+                f.visible = false;
             }
             tree.bind_points();
             // Each icon is 0.094062 wide; the first column starts 0.03125 below the top,
@@ -198,6 +213,8 @@ impl Hud {
             inventory: Vec::new(),
             level_bar: None,
             buff_icons: None,
+            building,
+            production: None,
             camera_box: Vec::new(),
             card: Vec::new(),
             page: crate::card::Page::Main,
@@ -307,7 +324,61 @@ impl Hud {
     }
 
     fn info_visible(&self) -> bool {
-        self.info.is_some_and(|i| self.tree.frames[i].visible)
+        [self.info, self.building].iter().flatten().any(|&i| self.tree.frames[i].visible)
+    }
+
+    /// The building detail while a structure produces (FUN_6f3ccfd0's modes): the
+    /// action label, the queue backdrop when training or reviving, and the queue.
+    fn show_production(&mut self, db: &FrameDb, world: &World, h: u32, name: &str) {
+        use w3_game::info::ProductionKind as K;
+        self.production = world.production(h);
+        let Some(b) = self.building else { return };
+        let Some(p) = &self.production else {
+            self.tree.frames[b].visible = false;
+            return;
+        };
+        self.tree.frames[b].visible = true;
+        if let Some(i) = self.info {
+            self.tree.frames[i].visible = false;
+        }
+        let t = &mut self.tree;
+        t.set_text("SimpleBuildingNameValueB", name);
+        t.set_visible("SimpleBuildingDescriptionValueB", false);
+        let label = match p.kind {
+            K::Training | K::Upgrading => "TRAINING",
+            K::Researching => "RESEARCHING",
+            K::Reviving => "REVIVING",
+            K::Constructing => "CONSTRUCTING",
+        };
+        t.set_text("SimpleBuildingActionLabelB", &db.string(label));
+        t.set_visible("SimpleBuildQueueBackdropB", matches!(p.kind, K::Training | K::Reviving));
+        // No size in its definition; 0.105 x 0.009375 measured from the original.
+        t.set_size("SimpleBuildTimeIndicatorB", Some(0.105), Some(0.009375));
+        t.layout();
+    }
+
+    /// The building detail's bar and queue icons: the item in progress at 0.032 from
+    /// the lower left + (0.0105, 0.081344), the rest in a 0.1772 x 0.02301 row of six
+    /// 0.02301 icons from + (0.0095, 0.040438); the bar is SimpleBuildTimeIndicator's
+    /// fill and border.
+    fn production_draws(&self, db: &FrameDb, out: &mut Vec<Draw>) {
+        let (Some(p), Some(b)) = (&self.production, self.building) else { return };
+        let Some(r) = self.tree.frames[b].rect.filter(|_| self.tree.frames[b].visible) else { return };
+        let image = |texture: String, rect: w3_ui::Rect, uv: [f32; 4]| Draw::Image { texture, rect, uv, color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false };
+        if let Some(bar) = self.tree.get("SimpleBuildTimeIndicatorB").and_then(|f| self.tree.frames[f].rect) {
+            let fill = w3_ui::Rect { x1: bar.x0 + (bar.x1 - bar.x0) * p.progress, ..bar };
+            out.push(image(db.decorate("SimpleBuildTimeIndicator"), fill, [0.0, 0.0, p.progress, 1.0]));
+            out.push(image(db.decorate("SimpleBuildTimeIndicatorBorder"), bar, [0.0, 0.0, 1.0, 1.0]));
+        }
+        if let Some(first) = p.icons.first() {
+            let (x0, y1) = (r.x0 + 0.0105, r.y0 + 0.081344);
+            out.push(image(first.clone(), w3_ui::Rect { x0, x1: x0 + 0.032, y0: y1 - 0.032, y1 }, [0.0, 0.0, 1.0, 1.0]));
+        }
+        let cell = 0.1772 / 6.0;
+        for (k, icon) in p.icons.iter().skip(1).take(6).enumerate() {
+            let (x0, y1) = (r.x0 + 0.0095 + cell * k as f32, r.y0 + 0.040438);
+            out.push(image(icon.clone(), w3_ui::Rect { x0, x1: x0 + 0.02301, y0: y1 - 0.02301, y1 }, [0.0, 0.0, 1.0, 1.0]));
+        }
     }
 
     pub fn show_unit(&mut self, db: &FrameDb, world: &World, unit: Option<u32>) {
@@ -326,6 +397,10 @@ impl Hud {
         if let Some(i) = self.info {
             self.tree.frames[i].visible = u.is_some();
         }
+        if let Some(b) = self.building {
+            self.tree.frames[b].visible = false;
+        }
+        self.production = None;
         let Some(u) = u else {
             self.portrait_stats = None;
             return;
@@ -349,6 +424,8 @@ impl Hud {
             String::new()
         };
         self.tree.set_text("SimpleClassValue", &class);
+        let shown_name = self.tree.get("SimpleNameValue").and_then(|f| self.tree.frames[f].text.clone()).unwrap_or_default();
+        self.show_production(db, world, unit.unwrap_or(0), &shown_name);
         // Buff icons for units (structures have no status bar), at most the bar's eight.
         self.buff_icons = (!u.is_building).then(|| {
             let mut icons: Vec<String> = Vec::new();
@@ -631,10 +708,11 @@ impl Hud {
                 out.push(Draw::Text { font: db.decorate("MasterFont"), size, rect, text: db.string("INVENTORY"), color, justify_h: w3_ui::Justify::Middle, justify_v: w3_ui::Justify::Middle, shadow: Some(([0.0, 0.0, 0.0, 0xee as f32 / 255.0], 0.001, -0.001)) });
             }
         }
+        self.production_draws(db, &mut out);
         // CBuffBar: 0.12 x 0.015 with its lower right 0.003 left of and 0.005687 above
         // the unit detail's, eight 0.015 icons in a row, and COLON_STATUS 0.01 left of it
         // (InfoPanelTextFont 0.0085, white, shadowed).
-        if let (Some(icons), Some(r)) = (&self.buff_icons, self.info.filter(|_| self.info_visible()).and_then(|i| self.tree.frames[i].rect)) {
+        if let (Some(icons), Some(r)) = (&self.buff_icons, self.info.filter(|&i| self.tree.frames[i].visible).and_then(|i| self.tree.frames[i].rect)) {
             let (x1, y0) = (r.x1 - 0.003, r.y0 + 0.005687);
             let x0 = x1 - 0.12;
             for (k, icon) in icons.iter().enumerate() {

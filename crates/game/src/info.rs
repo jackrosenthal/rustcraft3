@@ -99,3 +99,58 @@ impl World {
         s
     }
 }
+
+/// What a structure is producing, for CInfoPanelBuildingDetail's modes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProductionKind {
+    Training,
+    /// A structure's own upgrade (FUN_6f3ccfd0 mode 2: TRAINING without the queue).
+    Upgrading,
+    Researching,
+    Reviving,
+    Constructing,
+}
+
+#[derive(Clone, Debug)]
+pub struct Production {
+    pub kind: ProductionKind,
+    /// Icons of the queued items, the one in progress first.
+    pub icons: Vec<String>,
+    /// Fraction of the first item done.
+    pub progress: f32,
+}
+
+impl World {
+    fn upgrade_icon(&self, owner: u8, id: crate::objects::Id) -> Option<String> {
+        let up = self.objects.upgrades.get(id)?;
+        let level = self.players.get(owner as usize).and_then(|p| p.tech_researched.get(&id).copied()).unwrap_or(0);
+        let art = up.list("Art");
+        art.get(level as usize).or(art.last()).map(|s| s.trim().to_string())
+    }
+
+    pub fn production(&self, h: u32) -> Option<Production> {
+        let u = self.unit(h)?;
+        if let Some(left) = u.constructing {
+            let total = u.build_time.max(0.01);
+            let art = self.objects.units.get(u.type_id).map(|o| o.str("Art")).unwrap_or_default();
+            return Some(Production { kind: ProductionKind::Constructing, icons: vec![art], progress: (1.0 - left / total).clamp(0.0, 1.0) });
+        }
+        if let Some((hero, done, need)) = u.revive {
+            let art = self.unit(hero).and_then(|hu| self.objects.units.get(hu.type_id)).map(|o| o.str("Art")).unwrap_or_default();
+            return Some(Production { kind: ProductionKind::Reviving, icons: vec![art], progress: (done / need.max(0.01)).clamp(0.0, 1.0) });
+        }
+        let &first = u.queue.first()?;
+        let icon = |id| self.upgrade_icon(u.owner, id).or_else(|| self.objects.units.get(id).map(|o| o.str("Art"))).unwrap_or_default();
+        let icons = u.queue.iter().map(|&id| icon(id)).collect();
+        let (kind, total) = if let Some(up) = self.objects.upgrades.get(first) {
+            let level = self.players.get(u.owner as usize).and_then(|p| p.tech_researched.get(&first).copied()).unwrap_or(0);
+            (ProductionKind::Researching, up.real("timebase") + up.real("timemod") * level as f32)
+        } else {
+            let id_s = crate::objects::id_str(first);
+            let own = self.objects.units.get(u.type_id).is_some_and(|o| o.list("Upgrade").iter().any(|x| x.trim() == id_s));
+            let kind = if own { ProductionKind::Upgrading } else { ProductionKind::Training };
+            (kind, self.objects.units.get(first).map_or(1.0, |o| o.real("bldtm")))
+        };
+        Some(Production { kind, icons, progress: (u.queue_progress / total.max(0.01)).clamp(0.0, 1.0) })
+    }
+}

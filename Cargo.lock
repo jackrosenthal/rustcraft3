@@ -2304,6 +2304,7 @@ dependencies = [
  "w3-formats",
  "w3-jass",
  "w3-mpq",
+ "w3-ui",
 ]
 
 [[package]]

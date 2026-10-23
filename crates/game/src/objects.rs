@@ -138,7 +138,10 @@ impl ObjectTable {
                     if col.is_empty() {
                         continue;
                     }
-                    obj.fields.insert(col.to_ascii_lowercase(), v.as_str());
+                    // UnitUI's internal "name" ("townhall") is distinct from the profile's
+                    // display "Name"; keep it as "unitName".
+                    let key = if col == "name" { "unitname".to_string() } else { col.to_ascii_lowercase() };
+                    obj.fields.insert(key, v.as_str());
                 }
             }
         }

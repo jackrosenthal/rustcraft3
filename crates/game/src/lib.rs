@@ -62,6 +62,8 @@ impl Game {
         let mut world = World::new(chain.clone(), objects);
         world.version = version;
         world.bind_natives(&vm);
+        // Interface strings (FDF StringList tables) resolve GetLocalizedString keys.
+        world.strings = w3_ui::FrameDb::load(&chain).strings;
         if let Ok(s) = chain.read_string("war3map.wts") {
             world.trigger_strings = w3_formats::map::parse_wts(&s);
         }

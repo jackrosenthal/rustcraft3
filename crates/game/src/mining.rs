@@ -440,4 +440,48 @@ impl World {
             }
         }
     }
+
+    /// A moon well's pool (CAbilityManaBattery, Ambt): its Effectart for the owner's race
+    /// (human, orc, undead, night elf, demon) over the finished structure, risen above
+    /// the ground by its mana fraction of DataD (0x6f64d2f0).
+    pub fn update_moon_wells(&mut self) {
+        let wells: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.ability_with_code(h, "Ambt").is_some()).collect();
+        for h in wells {
+            let Some(u) = self.unit(h) else { continue };
+            let (x, y, dead, building, frac, pool, owner) = (u.x, u.y, u.dead, u.constructing.is_some(), if u.max_mana > 0.0 { u.mana / u.max_mana } else { 0.0 }, u.extra.slot_effects.first().copied(), u.owner);
+            if dead || building {
+                if let (true, Some(e)) = (dead, pool) {
+                    if let Some(Obj::Effect(x)) = self.handles.get_mut(e) {
+                        x.destroyed = true;
+                    }
+                    self.unit_mut(h).unwrap().extra.slot_effects.clear();
+                }
+                continue;
+            }
+            let (a, lvl) = self.ability_with_code(h, "Ambt").unwrap();
+            let height = self.objects.abilities.get(a).map_or(0.0, |o| o.level_real("DataD", lvl));
+            let z = self.ground_z(x, y) + frac * height;
+            match pool {
+                Some(e) => {
+                    if let Some(Obj::Effect(x)) = self.handles.get_mut(e) {
+                        x.z = z;
+                    }
+                }
+                None => {
+                    let race = self.players.get(owner as usize).map_or(4, |p| p.race);
+                    let index = match race {
+                        1 => 0,
+                        2 => 1,
+                        3 => 2,
+                        4 => 3,
+                        _ => 4,
+                    };
+                    let model = self.profile_art(a, "Effectart");
+                    let model = model.split(',').nth(index).or_else(|| model.split(',').next()).unwrap_or_default().trim().to_string();
+                    let e = self.handles.insert(Obj::Effect(Effect { model, x, y, z, target: None, destroyed: false, facing: 0.0 }));
+                    self.unit_mut(h).unwrap().extra.slot_effects = vec![e];
+                }
+            }
+        }
+    }
 }

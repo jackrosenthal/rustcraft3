@@ -74,6 +74,37 @@ impl World {
         self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, life_regen: life / dur, ..Default::default() });
     }
 
+    /// War Club: the tree comes up and the giant fights with it: only attack index
+    /// DataD (not DataC) for DataE attacks.
+    pub(crate) fn grab_tree(&mut self, vm: &mut Vm, h: u32, a: Id, lvl: u32, tree: u32) {
+        if !matches!(self.handles.get(tree), Some(Obj::Destructable(d)) if d.life > 0.0) {
+            return;
+        }
+        crate::natives::objects::kill_destructable_pub(self, vm, tree);
+        let (index, attacks) = (self.data(a, "DataD", lvl) as u32, self.data(a, "DataE", lvl) as i32);
+        let buff = self.objects.abilities.get(a).map(|o| id_from_str(o.level_str("BuffID", lvl).split(',').next().unwrap_or("").trim())).unwrap_or([0; 4]);
+        self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: f32::MAX, ..Default::default() });
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.weapons = Some(1 << index.min(1));
+            u.extra.club = Some((a, attacks.max(1)));
+        }
+    }
+
+    /// One War Club attack spent; the last drops the tree.
+    pub(crate) fn club_swing(&mut self, h: u32) {
+        let Some(u) = self.unit_mut(h) else { return };
+        let Some((a, left)) = u.extra.club else { return };
+        if left > 1 {
+            u.extra.club = Some((a, left - 1));
+            return;
+        }
+        u.extra.club = None;
+        u.extra.weapons = None;
+        for b in u.buffs.iter_mut().filter(|b| b.ability == a) {
+            b.remaining = 0.0;
+        }
+    }
+
     /// Elune's Grace (AIdd): the damage a unit takes, piercing scaled by DataA and
     /// spells by DataE.
     pub fn elunes_grace(&self, target: u32, attack_type: &str, dmg: f32) -> f32 {

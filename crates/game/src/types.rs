@@ -310,6 +310,9 @@ pub struct UnitExtra {
     /// The corpses a meat wagon carries, by unit type.
     #[serde(default)]
     pub corpses: Vec<Id>,
+    /// War Club: attacks left with the tree, and the ability.
+    #[serde(default)]
+    pub club: Option<(Id, i32)>,
 }
 
 impl Default for UnitExtra {
@@ -351,6 +354,7 @@ impl Default for UnitExtra {
             devoured: Vec::new(),
             summoner: 0,
             corpses: Vec::new(),
+            club: None,
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,

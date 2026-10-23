@@ -201,6 +201,22 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 5;
             }
+            // tree <dx> <dy>: prints the standing tree nearest a point (relative to the
+            // start) and where it is.
+            "tree" => {
+                if let Some(g) = scene.game.as_ref() {
+                    let (sx, sy) = g.world.start_of(0);
+                    let (px, py) = (sx + num(&a[i + 1]), sy + num(&a[i + 2]));
+                    let best = g.world.handles.iter().filter_map(|(h, o)| match o {
+                        w3_game::types::Obj::Destructable(d) if d.life > 0.0 && g.world.objects.destructables.get(d.type_id).is_some_and(|o| o.str("category").eq_ignore_ascii_case("D")) => Some((h, d.x, d.y)),
+                        _ => None,
+                    }).min_by(|p, q| (p.1 - px).hypot(p.2 - py).total_cmp(&(q.1 - px).hypot(q.2 - py)));
+                    if let Some((h, x, y)) = best {
+                        eprintln!("tree {h} at {} {}", x - sx, y - sy);
+                    }
+                }
+                i += 3;
+            }
             // hero <handle> <xp> <ability>: grants experience and learns an ability.
             "hero" => {
                 if let Some(g) = scene.game.as_mut() {

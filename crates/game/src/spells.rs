@@ -476,6 +476,10 @@ impl World {
                 self.detonate(vm, h, a, lvl, x, y);
                 true
             }
+            "Agra" => {
+                self.grab_tree(vm, h, a, lvl, target);
+                true
+            }
             "Aeat" => {
                 self.eat_tree(vm, h, a, lvl, target);
                 true

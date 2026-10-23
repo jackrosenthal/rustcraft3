@@ -649,6 +649,7 @@ impl World {
                     let raw = wp.base + (0..dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>() + self.primary_attribute(h) + bonus;
                     let raw = self.attack_modifiers(vm, h, s.target, raw);
                     self.attack_passives(vm, h, s.target);
+                    self.club_swing(h);
                     if self.unit(h).is_none_or(|u| u.dead) {
                         continue;
                     }

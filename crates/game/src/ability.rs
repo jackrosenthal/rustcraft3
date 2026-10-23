@@ -114,6 +114,19 @@ impl World {
         u.collision.max(n * 16.0)
     }
 
+    /// How far a widget reaches from its center: a unit's size, or half a
+    /// destructable's pathing footprint (pathTex NxN, 32 a cell).
+    pub fn widget_size(&self, h: u32) -> f32 {
+        match self.handles.get(h) {
+            Some(Obj::Unit(u)) => self.unit_size(u),
+            Some(Obj::Destructable(d)) => {
+                let tex = self.objects.destructables.get(d.type_id).map(|o| o.str("pathTex")).unwrap_or_default();
+                tex.rsplit('\\').next().and_then(|f| f.split('x').next()).and_then(|v| v.trim().parse::<f32>().ok()).unwrap_or(0.0) * 16.0
+            }
+            _ => 0.0,
+        }
+    }
+
     /// The unit's ability with `order` built into its code.
     pub fn ability_for_intrinsic_order(&self, h: u32, order: i32) -> Option<Id> {
         let u = self.unit(h)?;
@@ -471,7 +484,7 @@ impl World {
             self.unit_mut(h).unwrap().action = Action::Idle;
             return;
         }
-        let target_size = if target != 0 { self.unit(target).map_or(0.0, |t| self.unit_size(t)) } else { 0.0 };
+        let target_size = if target != 0 { self.widget_size(target) } else { 0.0 };
         let Some(u) = self.unit(h) else { return };
         if u.casting.is_none() {
             // Range runs between the caster's and the target unit's edges.

@@ -218,9 +218,10 @@ impl ObjectTable {
                 obj.id = id;
                 let mods = r.u32()?;
                 for _ in 0..mods {
+                    // Field, value type, then (in the leveled files) level and data column.
                     let field = r.tag()?;
-                    let (level, column) = if leveled { (r.u32()?, r.u32()?) } else { (0, 0) };
                     let ty = r.u32()?;
+                    let (level, column) = if leveled { (r.u32()?, r.u32()?) } else { (0, 0) };
                     let value = match ty {
                         0 => r.i32()?.to_string(),
                         1 | 2 => r.f32()?.to_string(),
@@ -363,7 +364,7 @@ impl ObjectDb {
             ("war3map.w3u", &mut self.units, false),
             ("war3map.w3t", &mut self.items, false),
             ("war3map.w3b", &mut self.destructables, false),
-            ("war3map.w3d", &mut self.doodads, true),
+            ("war3map.w3d", &mut self.doodads, false),
             ("war3map.w3a", &mut self.abilities, true),
             ("war3map.w3h", &mut self.buffs, false),
             ("war3map.w3q", &mut self.upgrades, true),

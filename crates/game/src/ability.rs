@@ -70,8 +70,9 @@ impl World {
     pub fn ability_for_order(&self, h: u32, order: i32) -> Option<Id> {
         let name = crate::natives::basic::order_name(order)?;
         let u = self.unit(h)?;
+        // Gathering is an action of its own, never a cast.
         u.abilities.iter().map(|(a, _)| *a).find(|&a| {
-            self.objects.abilities.get(a).is_some_and(|o| o.str("Order").eq_ignore_ascii_case(name) || o.str("Orderon").eq_ignore_ascii_case(name))
+            self.objects.abilities.get(a).is_some_and(|o| !matches!(o.str("code").as_str(), "Ahar" | "Ahrl" | "Aaha" | "Awha") && (o.str("Order").eq_ignore_ascii_case(name) || o.str("Orderon").eq_ignore_ascii_case(name)))
         })
     }
 

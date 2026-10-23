@@ -175,7 +175,7 @@ impl World {
         base
     }
 
-    pub(crate) fn data(&self, id: Id, field: &str, level: u32) -> f32 {
+    pub fn data(&self, id: Id, field: &str, level: u32) -> f32 {
         self.objects.abilities.get(id).map_or(0.0, |a| a.level_real(field, level.max(1)))
     }
 

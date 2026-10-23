@@ -1057,6 +1057,24 @@ impl Scene {
         out
     }
 
+    /// While a spell with an area awaits its target, the race's PlacementCursor
+    /// (SpellAreaOfEffect) on the ground under the pointer, as wide as the area.
+    fn area_cursor_decal(&self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets) -> Option<w3_render::decal::Decal> {
+        let order = self.targeting?;
+        let g = self.game.as_ref()?;
+        let &h = self.selection.first()?;
+        let a = g.world.ability_for_order(h, order)?;
+        let lvl = g.world.ability_level(h, a).max(1) as u32;
+        let area = g.world.data(a, "Area", lvl);
+        if area <= 0.0 {
+            return None;
+        }
+        let (x, y) = self.ground_at(self.cursor.0, self.cursor.1, self.screen)?;
+        let tex = assets.frames.skin_value("PlacementCursor")?;
+        let texture = assets.textures.get_or_white(device, queue, tex.trim_matches('"'));
+        Some(w3_render::decal::Decal { texture, center: [x, y, self.terrain.height_at(x, y)], size: [area * 2.0, area * 2.0], color: [1.0; 4], additive: false })
+    }
+
     /// World point under a screen position, intersecting the terrain.
     pub fn ground_at(&self, sx: f32, sy: f32, size: (u32, u32)) -> Option<(f32, f32)> {
         let aspect = size.0 as f32 / size.1 as f32;
@@ -2272,18 +2290,6 @@ impl Scene {
                 assets.textures.set_dynamic(device, queue, crate::hud::MINIMAP_FOG, n, n, &rgba);
                 hud.minimap_fog = true;
             }
-            hud.card = match self.selection.first() {
-                Some(&h) if w.unit(h).is_some_and(|u| u.owner == w.local_player) => {
-                    let mut card = self.commands.card(&assets.frames, w, h, hud.page);
-                    if hud.page == crate::card::Page::Main {
-                        card.extend(self.commands.shop_card(w, h));
-                    }
-                    card
-                }
-                // Neutral shops show their goods to everyone.
-                Some(&h) if w.ability_with_code(h, "Aneu").is_some() => self.commands.shop_card(w, h),
-                _ => Vec::new(),
-            };
         }
         for &h in &w.unit_order {
             let Some(u) = w.unit(h) else { continue };
@@ -2549,6 +2555,19 @@ impl Scene {
             m.set_enabled("RestartButton", !g.world.restart_disabled);
         }
         hud.show_unit(db, &g.world, self.selection.first().copied());
+        let w = &g.world;
+        hud.card = match self.selection.first() {
+            Some(&h) if w.unit(h).is_some_and(|u| u.owner == w.local_player) => {
+                let mut card = self.commands.card(db, w, h, hud.page);
+                if hud.page == crate::card::Page::Main {
+                    card.extend(self.commands.shop_card(w, h));
+                }
+                card
+            }
+            // Neutral shops show their goods to everyone.
+            Some(&h) if w.ability_with_code(h, "Aneu").is_some() => self.commands.shop_card(w, h),
+            _ => Vec::new(),
+        };
         hud.show_group(&g.world, &self.selection);
         hud.sync_cinematic(db, &g.world, aspect);
         hud.sync_heroes(&g.world);
@@ -2798,6 +2817,7 @@ impl Scene {
         let mut decals = self.ubersplat_decals(device, queue, assets);
         decals.extend(self.shadow_decals(device, queue, assets));
         decals.extend(self.selection_decals(device, queue, assets));
+        decals.extend(self.area_cursor_decal(device, queue, assets));
         let terrain = &self.terrain;
         self.decals.render(device, queue, &mut pass, &decals, &|x, y| terrain.height_at(x, y));
         self.models.render(device, queue, &mut pass, &globals);

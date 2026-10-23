@@ -357,6 +357,33 @@ impl Game {
         self.world.use_item(&mut self.vm, unit, slot, 0, 0.0, 0.0)
     }
 
+    /// Moves an item between inventory slots (swapping with what is there).
+    pub fn move_item(&mut self, unit: u32, from: usize, to: usize) {
+        if let Some(u) = self.world.unit_mut(unit) {
+            if from < u.inventory.len() && to < u.inventory.len() {
+                u.inventory.swap(from, to);
+            }
+        }
+    }
+
+    /// Orders a unit to drop the item in a slot at a point.
+    pub fn drop_item_at(&mut self, unit: u32, slot: usize, x: f32, y: f32) {
+        let Some(item) = self.world.unit(unit).and_then(|u| u.inventory.get(slot).copied()).filter(|&i| i != 0) else { return };
+        if let Some(u) = self.world.unit_mut(unit) {
+            u.action = types::Action::DropItem { item, x, y };
+            u.path.clear();
+        }
+    }
+
+    /// Orders a unit to hand the item in a slot to another.
+    pub fn give_item_to(&mut self, unit: u32, slot: usize, target: u32) {
+        let Some(item) = self.world.unit(unit).and_then(|u| u.inventory.get(slot).copied()).filter(|&i| i != 0) else { return };
+        if let Some(u) = self.world.unit_mut(unit) {
+            u.action = types::Action::GiveItem { item, target };
+            u.path.clear();
+        }
+    }
+
     /// The local player uses the item in a slot on a target unit or point.
     pub fn use_item_at(&mut self, unit: u32, slot: usize, target: u32, x: f32, y: f32) -> bool {
         self.world.use_item(&mut self.vm, unit, slot, target, x, y)

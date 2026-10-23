@@ -324,6 +324,8 @@ pub struct Scene {
     quests_requested: bool,
     /// An item waiting for the click on its target: the unit and the slot.
     item_target: Option<(u32, usize)>,
+    /// An item picked up with a right-click to be moved, dropped, or handed over.
+    held_item: Option<(u32, usize)>,
     /// The message log is to open (F12 or the Log button).
     log_requested: bool,
     /// Acknowledgments: the unit last clicked, the consecutive "What" count (game.dll
@@ -550,7 +552,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, item_target: None, log_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, quests_requested: false, item_target: None, held_item: None, log_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1563,6 +1565,16 @@ impl Scene {
             self.selection = vec![unit];
             return true;
         }
+        // A held item goes to the slot clicked.
+        if let Some((u, from)) = self.held_item {
+            if let Some(slot) = self.hud.as_ref().and_then(|h| h.inventory_at(ux, uy)) {
+                self.held_item = None;
+                if let Some(g) = self.game.as_mut() {
+                    g.move_item(u, from, slot);
+                }
+                return true;
+            }
+        }
         if let Some(slot) = self.hud.as_ref().and_then(|h| h.inventory_at(ux, uy)) {
             if let (Some(&u), Some(g)) = (self.selection.first(), self.game.as_mut()) {
                 if g.world.unit(u).is_some_and(|un| un.owner == g.world.local_player) {
@@ -1592,6 +1604,19 @@ impl Scene {
             return true;
         }
         if self.over_console(sx, sy, size) {
+            return true;
+        }
+        // A held item is handed to the unit clicked, or dropped where the ground is.
+        if let Some((u, slot)) = self.held_item.take() {
+            let target = self.pick_unit(sx, sy, size).filter(|&t| t != u);
+            let point = self.ground_at(sx, sy, size);
+            if let Some(g) = self.game.as_mut() {
+                match (target, point) {
+                    (Some(t), _) => g.give_item_to(u, slot, t),
+                    (None, Some((x, y))) => g.drop_item_at(u, slot, x, y),
+                    _ => {}
+                }
+            }
             return true;
         }
         if let Some((u, slot)) = self.item_target.take() {
@@ -1914,7 +1939,7 @@ impl Scene {
                 return;
             }
         }
-        if c == '\u{1b}' && self.item_target.take().is_some() {
+        if c == '\u{1b}' && (self.item_target.take().is_some() || self.held_item.take().is_some()) {
             return;
         }
         if c == '\u{1b}' && (self.targeting.is_some() || self.placing.is_some()) {
@@ -1944,10 +1969,19 @@ impl Scene {
         if !self.user_control() {
             return;
         }
-        if self.targeting.take().is_some() || self.placing.take().is_some() || self.item_target.take().is_some() {
+        if self.targeting.take().is_some() || self.placing.take().is_some() || self.item_target.take().is_some() || self.held_item.take().is_some() {
             return;
         }
         let (ux, uy) = self.to_ui(sx, sy, size);
+        // A right-click on an item picks it up to move.
+        if let Some(slot) = self.hud.as_ref().and_then(|h| h.inventory_at(ux, uy)) {
+            if let (Some(&u), Some(g)) = (self.selection.first(), self.game.as_ref()) {
+                if g.world.unit(u).is_some_and(|un| un.owner == g.world.local_player && un.inventory.get(slot).is_some_and(|&i| i != 0)) {
+                    self.held_item = Some((u, slot));
+                }
+            }
+            return;
+        }
         if let Some((wx, wy)) = self.hud.as_ref().and_then(|h| h.minimap_to_world(ux, uy)) {
             if let Some(g) = self.game.as_mut() {
                 let smart = w3_game::natives::basic::order_id("smart");
@@ -2897,6 +2931,12 @@ impl Scene {
             }
             let over_unit = self.screen.0 > 0 && self.pick_unit(self.cursor.0, self.cursor.1, self.screen).is_some();
             let targeting = self.targeting.is_some() || self.item_target.is_some();
+            let held_icon = self.held_item.and_then(|(u, slot)| {
+                let g = self.game.as_ref()?;
+                let item = g.world.unit(u)?.inventory.get(slot).copied()?;
+                let t = g.world.item(item)?.type_id;
+                g.world.objects.items.get(t).map(|o| o.str("Art"))
+            });
             let seq = match self.scroll_dir {
                 (0, 1) => "Scroll Up",
                 (0, -1) => "Scroll Down",
@@ -2906,12 +2946,23 @@ impl Scene {
                 (1, 1) => "Scroll Up Right",
                 (-1, -1) => "Scroll Down Left",
                 (1, -1) => "Scroll Down Right",
+                _ if held_icon.is_some() => "HoldItem",
                 _ if targeting && over_unit => "TargetSelect",
                 _ if targeting => "Target",
                 _ if over_unit => "Select",
                 _ => "Normal",
             };
+            let icon = held_icon.map(|p| assets.textures.get_or_white(device, queue, &p));
             if let Some(c) = self.cursor_model.as_mut() {
+                // The held item's icon is the cursor's replaceable texture 21.
+                match icon {
+                    Some(t) => {
+                        c.replaceable.insert(21, t);
+                    }
+                    None => {
+                        c.replaceable.remove(&21);
+                    }
+                }
                 if self.cursor_sequence != seq {
                     self.cursor_sequence = seq.to_string();
                     c.play(seq);

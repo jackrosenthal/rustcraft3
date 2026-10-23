@@ -575,6 +575,8 @@ pub enum Action {
     PickUp { item: u32 },
     /// Carry an item to a point and drop it there.
     DropItem { item: u32, x: f32, y: f32 },
+    /// Walking to a unit to hand it an item.
+    GiveItem { item: u32, target: u32 },
     /// A worker constructing a structure.
     Construct { target: u32 },
     /// A transport going to take a unit aboard.

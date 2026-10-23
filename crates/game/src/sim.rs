@@ -777,6 +777,33 @@ impl World {
                         set_anim(u, "stand");
                     }
                 }
+                // Handing an item over: within DropItemRange of the target, into its
+                // inventory (or onto the ground beside it when it has no room).
+                Action::GiveItem { item, target } => {
+                    let range = self.misc_f32("DropItemRange", 100.0);
+                    let Some((tx, ty)) = self.unit(target).filter(|t| !t.dead).map(|t| (t.x, t.y)) else {
+                        self.unit_mut(h).unwrap().action = Action::Idle;
+                        continue;
+                    };
+                    let u = self.unit(h).unwrap();
+                    if (u.x - tx).hypot(u.y - ty) > range + u.collision {
+                        if u.path.is_empty() || u.repath_timer <= 0.0 {
+                            self.path_to(h, (tx, ty));
+                        }
+                        self.walk(h, dt);
+                        continue;
+                    }
+                    if self.unit(h).is_some_and(|u| u.inventory.contains(&item)) {
+                        self.drop_item(vm, item, tx, ty);
+                        if !self.give_item(vm, target, item, None) {
+                            // Left where it fell.
+                        }
+                    }
+                    if let Some(u) = self.unit_mut(h) {
+                        u.action = Action::Idle;
+                        set_anim(u, "stand");
+                    }
+                }
                 Action::DropItem { item, x, y } => {
                     let range = self.misc_f32("DropItemRange", 100.0);
                     let u = self.unit(h).unwrap();

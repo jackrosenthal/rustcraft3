@@ -87,7 +87,10 @@ impl TerrainRenderer {
     ) -> Self {
         use wgpu::util::DeviceExt;
         let (w, h) = (terrain.width, terrain.height);
-        let heights: Vec<f32> = terrain.corners.iter().map(|c| c.height()).collect();
+        let letters = w3_formats::map::ramp_letters(terrain);
+        let letter = |x: u32, y: u32| letters[(y.min(h - 1) * w + x.min(w - 1)) as usize];
+        // A middle ramp corner sits half a level above its stored layer.
+        let heights: Vec<f32> = terrain.corners.iter().zip(&letters).map(|(c, &l)| c.height() + if l == b'R' { 64.0 } else { 0.0 }).collect();
         let hat = |x: u32, y: u32| heights[(y.min(h - 1) * w + x.min(w - 1)) as usize];
 
         // Ground textures in tileset order; blight is drawn above all of them.
@@ -124,9 +127,11 @@ impl TerrainRenderer {
             let u = hat(x, y + 1);
             Vec3::new(l - r, d - u, 2.0 * TILE).normalize().to_array()
         };
+        // A tile on a ramp (any corner H, L, R, or S) is ground, not cliff.
+        let on_ramp = |x: u32, y: u32| [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)].iter().any(|&(cx, cy)| matches!(letter(cx, cy), b'H' | b'L' | b'R' | b'S'));
         let is_cliff = |x: u32, y: u32| {
             let l = [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)].map(|(cx, cy)| terrain.corner(cx, cy).layer_height);
-            l.iter().any(|&v| v != l[0])
+            l.iter().any(|&v| v != l[0]) && !on_ramp(x, y)
         };
         // Ground height without cliff layers, which cliff models are draped over.
         let ground_only: Vec<f32> = terrain
@@ -220,6 +225,8 @@ impl TerrainRenderer {
                 let dir = cliff_slk.get(&key, "cliffModelDir").map(|v| v.as_str()).unwrap_or_else(|| "Cliffs".into());
                 let tdir = cliff_slk.get(&key, "texDir").map(|v| v.as_str()).unwrap_or_default();
                 let tfile = cliff_slk.get(&key, "texFile").map(|v| v.as_str()).unwrap_or_default();
+                // Some entries name the file with its source extension (Cliff0.tga).
+                let tfile = tfile.rsplit_once('.').map_or(tfile.as_str(), |(stem, _)| stem).to_string();
                 (dir, textures.get_or_white(device, queue, &format!("{tdir}\\{tfile}.blp")))
             })
             .collect();
@@ -260,11 +267,59 @@ impl TerrainRenderer {
                 for g in &m.geosets {
                     let first = verts.len() as u32;
                     for (vi, p) in g.vertices.iter().enumerate() {
-                        let (wx, wy) = (ox + p[0], oy + p[1]);
+                        // Cliff models are turned a quarter: world x is model y, world y is
+                        // minus model x, from the corner the letters start at.
+                        let (wx, wy) = (ox + p[1], oy - p[0]);
                         let gz = ground_at((wx - terrain.offset[0]) / TILE, (wy - terrain.offset[1]) / TILE);
+                        let n = g.normals.get(vi).copied().unwrap_or([0.0, 0.0, 1.0]);
                         verts.push(Vertex {
                             pos: [wx, wy, oz + p[2] + gz],
-                            normal: g.normals.get(vi).copied().unwrap_or([0.0, 0.0, 1.0]),
+                            normal: [n[1], -n[0], n[2]],
+                            uv: g.uvs.first().and_then(|u| u.get(vi)).copied().unwrap_or([0.0; 2]),
+                            color: [1.0; 4],
+                        });
+                    }
+                    per_cliff[ct].extend(g.faces.chunks_exact(3).flat_map(|t| [first + t[0] as u32, first + t[1] as u32, first + t[2] as u32]));
+                }
+            }
+        }
+        // Ramps (FUN_6f730e50): a tile whose corners match a ramp pattern takes the
+        // cliff type's ramp model named by its letters with R as L, placed at the
+        // pattern's offset from the tile.
+        for y in 0..h - 1 {
+            for x in 0..w - 1 {
+                let l = [letter(x, y + 1), letter(x + 1, y + 1), letter(x + 1, y), letter(x, y)];
+                let weight: u32 = l.iter().map(|&c| match c { b'R' => 1, b'S' => 2, _ => 0 }).sum();
+                if weight != 1 {
+                    continue;
+                }
+                let Some(&(_, dx, dy)) = w3_formats::map::RAMP_PATTERNS.iter().find(|p| p.0 == &l) else { continue };
+                let mut ct = terrain.corner(x, y).cliff_texture as usize;
+                if ct == 15 {
+                    ct = 0;
+                }
+                let Some((_, _)) = cliff_types.get(ct) else { continue };
+                let key = String::from_utf8_lossy(&terrain.cliff_tilesets[ct]).into_owned();
+                let dir = cliff_slk.get(&key, "rampModelDir").map(|v| v.as_str()).unwrap_or_else(|| "CliffTrans".into());
+                let name: String = l.iter().map(|&c| if c == b'R' { 'L' } else { c as char }).collect();
+                let path = format!("Doodads\\Terrain\\{dir}\\{dir}{name}0.mdx");
+                let m = cliff_models.entry(path.clone()).or_insert_with(|| load_mdx(&path));
+                let Some(m) = m.as_ref() else { continue };
+                let base = [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)].iter().map(|&(cx, cy)| terrain.corner(cx, cy).layer_height).min().unwrap_or(0);
+                let ox = terrain.offset[0] + (x as i32 + dx) as f32 * TILE;
+                let oy = terrain.offset[1] + (y as i32 + dy) as f32 * TILE;
+                let oz = (base as f32 - 2.0) * TILE;
+                for g in &m.geosets {
+                    let first = verts.len() as u32;
+                    for (vi, p) in g.vertices.iter().enumerate() {
+                        // Cliff models are turned a quarter: world x is model y, world y is
+                        // minus model x, from the corner the letters start at.
+                        let (wx, wy) = (ox + p[1], oy - p[0]);
+                        let gz = ground_at((wx - terrain.offset[0]) / TILE, (wy - terrain.offset[1]) / TILE);
+                        let n = g.normals.get(vi).copied().unwrap_or([0.0, 0.0, 1.0]);
+                        verts.push(Vertex {
+                            pos: [wx, wy, oz + p[2] + gz],
+                            normal: [n[1], -n[0], n[2]],
                             uv: g.uvs.first().and_then(|u| u.get(vi)).copied().unwrap_or([0.0; 2]),
                             color: [1.0; 4],
                         });

@@ -467,3 +467,108 @@ pub fn parse_wts(text: &str) -> HashMap<u32, String> {
     }
     out
 }
+
+/// Ramp letters for every corner (game.dll FUN_6f7445c0): a corner without the ramp
+/// flag is 'A', or 'B' at the top of a ramp's levels; a ramp corner is 'H' at the top,
+/// otherwise 'L' (low end), 'R' (middle, half a level up), 'S' (inside a wide ramp), or
+/// '!' (no valid ramp).
+pub fn ramp_letters(t: &Terrain) -> Vec<u8> {
+    let (w, h) = (t.width as i32, t.height as i32);
+    let corner = |x: i32, y: i32| (x >= 0 && y >= 0 && x < w && y < h).then(|| t.corner(x as u32, y as u32));
+    // FUN_6f74a910: among the ramp corners of the four tiles around this corner, whether
+    // their levels differ and this corner is on the highest.
+    let upper = |x: i32, y: i32| -> bool {
+        let (mut lo, mut hi) = (u8::MAX, 0u8);
+        for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+            let (tx, ty) = (x - dx, y - dy);
+            if tx < 0 || ty < 0 || tx >= w - 1 || ty >= h - 1 {
+                continue;
+            }
+            for (cx, cy) in [(tx, ty), (tx + 1, ty), (tx, ty + 1), (tx + 1, ty + 1)] {
+                if let Some(c) = corner(cx, cy).filter(|c| c.ramp) {
+                    lo = lo.min(c.layer_height);
+                    hi = hi.max(c.layer_height);
+                }
+            }
+        }
+        lo != hi && lo != u8::MAX && corner(x, y).is_some_and(|c| c.layer_height == hi)
+    };
+    // FUN_6f744750: how a low ramp corner sits among its eight neighbors.
+    let classify = |x: i32, y: i32| -> i32 {
+        let me = corner(x, y).unwrap();
+        let (mut all, mut lo, mut hi) = (true, me.layer_height, me.layer_height);
+        let (mut rlo, mut rhi) = (me.layer_height, me.layer_height);
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                match corner(x + dx, y + dy) {
+                    None => all = false,
+                    Some(c) => {
+                        lo = lo.min(c.layer_height);
+                        hi = hi.max(c.layer_height);
+                        if c.ramp {
+                            rlo = rlo.min(c.layer_height);
+                            rhi = rhi.max(c.layer_height);
+                        } else {
+                            all = false;
+                        }
+                    }
+                }
+            }
+        }
+        let range = hi - lo;
+        if (all && range == 0) || rhi - rlo > 1 {
+            return -1;
+        }
+        let across = |a: Option<&Corner>, b: Option<&Corner>| matches!((a, b), (Some(a), Some(b)) if a.ramp && b.ramp && a.layer_height != b.layer_height);
+        let lr = across(corner(x - 1, y), corner(x + 1, y));
+        let ud = across(corner(x, y - 1), corner(x, y + 1));
+        match (lr, ud) {
+            (true, true) => if range > 1 { -1 } else { 2 },
+            (true, false) | (false, true) => if range <= 1 { 1 } else { -1 },
+            (false, false) => if all { 2 } else { 0 },
+        }
+    };
+    let mut out = Vec::with_capacity((w * h) as usize);
+    for y in 0..h {
+        for x in 0..w {
+            let c = t.corner(x as u32, y as u32);
+            let up = upper(x, y);
+            out.push(if !c.ramp {
+                b'A' + up as u8
+            } else if up {
+                b'H'
+            } else {
+                match classify(x, y) {
+                    0 => b'L',
+                    1 => b'R',
+                    2 => b'S',
+                    _ => b'!',
+                }
+            });
+        }
+    }
+    out
+}
+
+/// Ramp patterns (game.dll 0x6fb85ae8): a tile's corner letters (top left, top right,
+/// bottom right, bottom left) where a ramp model starts, and the offset in tiles from
+/// the tile's lower-left corner where the model is placed (the entry's +8 and +0xC; +0x10
+/// and +0x14 name the other tile the ramp covers).
+pub const RAMP_PATTERNS: [(&[u8; 4], i32, i32); 16] = [
+    (b"HRAA", 0, 0),
+    (b"RHAA", -1, 0),
+    (b"AARH", 0, 0),
+    (b"AAHR", -1, 0),
+    (b"AHRA", 0, -1),
+    (b"ARHA", 0, 0),
+    (b"HAAR", 0, -1),
+    (b"RAAH", 0, 0),
+    (b"HRAB", 0, 0),
+    (b"RHBA", -1, 0),
+    (b"BARH", 0, 0),
+    (b"ABHR", -1, 0),
+    (b"BHRA", 0, -1),
+    (b"ARHB", 0, 0),
+    (b"HBAR", 0, -1),
+    (b"RABH", 0, 0),
+];

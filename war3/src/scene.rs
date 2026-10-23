@@ -200,10 +200,16 @@ impl Scene {
         aspect: f32,
         lobby: Option<&[w3_game::LobbySlot]>,
     ) -> anyhow::Result<Scene> {
-        let archive = Arc::new(
-            w3_mpq::Archive::open(map_path).with_context(|| format!("opening map {}", map_path.display()))?,
-        );
         data.chain.unmount(PRIORITY_MAP);
+        // A map on disk, or one inside the game's archives (the campaigns' maps).
+        let archive = if map_path.is_file() {
+            w3_mpq::Archive::open(map_path).with_context(|| format!("opening map {}", map_path.display()))?
+        } else {
+            let name = map_path.to_string_lossy().replace('/', "\\");
+            let bytes = data.chain.read(&name).with_context(|| format!("reading map {name}"))?;
+            w3_mpq::Archive::from_bytes(map_path, bytes).with_context(|| format!("opening map {name}"))?
+        };
+        let archive = Arc::new(archive);
         data.chain.mount(archive, None, PRIORITY_MAP);
         let chain = &data.chain;
         let info = MapInfo::parse(&chain.read("war3map.w3i")?).context("war3map.w3i")?;

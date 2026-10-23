@@ -104,7 +104,11 @@ impl Game {
                 width: w,
                 height: h,
                 offset: t.offset,
-                heights: t.corners.iter().map(|c| c.height()).collect(),
+                // A middle ramp corner sits half a level up, as the terrain draws it.
+                heights: {
+                    let letters = w3_formats::map::ramp_letters(&t);
+                    t.corners.iter().zip(letters).map(|(c, l)| c.height() + if l == b'R' { 64.0 } else { 0.0 }).collect()
+                },
                 layers: t.corners.iter().map(|c| c.layer_height).collect(),
             });
             let th = world.terrain_heights.as_ref().unwrap();

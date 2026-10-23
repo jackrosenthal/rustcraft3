@@ -57,7 +57,7 @@ struct BlockEntry {
 
 pub struct Archive {
     path: PathBuf,
-    file: Mutex<File>,
+    file: Mutex<Box<dyn ReadSeek>>,
     base: u64,
     archive_size: u64,
     sector_size: usize,
@@ -71,11 +71,26 @@ fn read_u32s(b: &[u8]) -> Vec<u32> {
         .collect()
 }
 
+/// Storage an archive reads from: a file or bytes in memory.
+pub trait ReadSeek: Read + Seek + Send {}
+impl<T: Read + Seek + Send> ReadSeek for T {}
+
 impl Archive {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, Error> {
         let path = path.as_ref().to_path_buf();
-        let mut file = File::open(&path)?;
+        let file = File::open(&path)?;
         let len = file.metadata()?.len();
+        Self::from_reader(path, Box::new(file), len)
+    }
+
+    /// An archive held in memory (a map read out of another archive); `name` stands in
+    /// for its path.
+    pub fn from_bytes(name: impl AsRef<Path>, bytes: Vec<u8>) -> Result<Self, Error> {
+        let len = bytes.len() as u64;
+        Self::from_reader(name.as_ref().to_path_buf(), Box::new(std::io::Cursor::new(bytes)), len)
+    }
+
+    fn from_reader(path: PathBuf, mut file: Box<dyn ReadSeek>, len: u64) -> Result<Self, Error> {
         // The header may start at any 512-byte boundary (maps carry an HM3W header first).
         let mut base = 0u64;
         let mut hdr = [0u8; 32];

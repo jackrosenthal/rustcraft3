@@ -62,6 +62,9 @@ impl World {
             return Some(CLASSES.iter().find(|c| c.0 == class).map_or("Notthisunit", |c| c.2));
         }
         let Some(t) = unit else { return None };
+        if self.is_locust(t) {
+            return Some("Notthisunit");
+        }
         if has("notself") && t.handle == h {
             return Some("Notself");
         }

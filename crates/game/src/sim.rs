@@ -152,7 +152,7 @@ pub fn final_damage(w: &World, raw: f32, attack_type: &str, target: &Unit) -> f3
 }
 
 fn can_target(w: &World, wp: &Weapon, attacker: &Unit, t: &Unit) -> bool {
-    if t.dead || t.hidden || w.unit_invulnerable(t) || t.handle == attacker.handle {
+    if t.dead || t.hidden || w.unit_invulnerable(t) || w.is_locust(t) || t.handle == attacker.handle {
         return false;
     }
     let flying = w.objects.units.get(t.type_id).is_some_and(|o| o.str("movetp").eq_ignore_ascii_case("fly"));

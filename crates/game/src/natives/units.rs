@@ -849,34 +849,34 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         GroupEnumUnitsInRect => |w, vm, a| {
             let Some(r) = w.rect(a.h(1)) else { return none() };
-            enum_units(w, vm, a.h(0), a.h(2), -1, |_, u| r.contains(u.x, u.y));
+            enum_units(w, vm, a.h(0), a.h(2), -1, |w, u| r.contains(u.x, u.y) && !w.is_locust(u));
             none()
         },
         GroupEnumUnitsInRectCounted => |w, vm, a| {
             let Some(r) = w.rect(a.h(1)) else { return none() };
-            enum_units(w, vm, a.h(0), a.h(2), a.i(3), |_, u| r.contains(u.x, u.y));
+            enum_units(w, vm, a.h(0), a.h(2), a.i(3), |w, u| r.contains(u.x, u.y) && !w.is_locust(u));
             none()
         },
         GroupEnumUnitsInRange => |w, vm, a| {
             let (x, y, r) = (a.r(1), a.r(2), a.r(3));
-            enum_units(w, vm, a.h(0), a.h(4), -1, |_, u| (u.x - x).hypot(u.y - y) <= r);
+            enum_units(w, vm, a.h(0), a.h(4), -1, |w, u| (u.x - x).hypot(u.y - y) <= r && !w.is_locust(u));
             none()
         },
         GroupEnumUnitsInRangeOfLoc => |w, vm, a| {
             let (x, y) = w.location(a.h(1)).unwrap_or_default();
             let r = a.r(2);
-            enum_units(w, vm, a.h(0), a.h(3), -1, |_, u| (u.x - x).hypot(u.y - y) <= r);
+            enum_units(w, vm, a.h(0), a.h(3), -1, |w, u| (u.x - x).hypot(u.y - y) <= r && !w.is_locust(u));
             none()
         },
         GroupEnumUnitsInRangeOfLocCounted => |w, vm, a| {
             let (x, y) = w.location(a.h(1)).unwrap_or_default();
             let r = a.r(2);
-            enum_units(w, vm, a.h(0), a.h(3), a.i(4), |_, u| (u.x - x).hypot(u.y - y) <= r);
+            enum_units(w, vm, a.h(0), a.h(3), a.i(4), |w, u| (u.x - x).hypot(u.y - y) <= r && !w.is_locust(u));
             none()
         },
         GroupEnumUnitsInRangeCounted => |w, vm, a| {
             let (x, y, r) = (a.r(1), a.r(2), a.r(3));
-            enum_units(w, vm, a.h(0), a.h(4), a.i(5), |_, u| (u.x - x).hypot(u.y - y) <= r);
+            enum_units(w, vm, a.h(0), a.h(4), a.i(5), |w, u| (u.x - x).hypot(u.y - y) <= r && !w.is_locust(u));
             none()
         },
         GroupEnumUnitsSelected => |w, vm, a| {

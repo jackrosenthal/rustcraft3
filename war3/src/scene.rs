@@ -1016,7 +1016,7 @@ impl Scene {
         let mut best: Option<(f32, u32)> = None;
         for &h in &w.unit_order {
             let Some(u) = w.unit(h) else { continue };
-            if u.hidden || (u.dead && !u.is_building) {
+            if u.hidden || (u.dead && !u.is_building) || w.is_locust(u) {
                 continue;
             }
             let o = w.objects.units.get(u.type_id);
@@ -1086,7 +1086,7 @@ impl Scene {
             let w = &g.world;
             for &h in &w.unit_order {
                 let Some(u) = w.unit(h) else { continue };
-                if u.owner != local || u.dead || u.hidden {
+                if u.owner != local || u.dead || u.hidden || w.is_locust(u) {
                     continue;
                 }
                 let z = self.terrain.height_at(u.x, u.y) + u.fly_height;
@@ -1846,7 +1846,7 @@ impl Scene {
                 .iter()
                 .filter(|&&h| w.unit_visible_to(h, w.local_player) || w.unit(h).is_some_and(|u| u.is_building && w.fog_state(u.x, u.y, w.local_player) != w3_game::fog::FOG_MASKED))
                 .filter_map(|&h| w.unit(h))
-                .filter(|u| !u.dead && !u.hidden)
+                .filter(|u| !u.dead && !u.hidden && !w.is_locust(u))
                 .map(|u| {
                     // Ally color modes use [FogOfWar] FogColorPlayer, FogColorAlly,
                     // FogColorEnemy, and FogColorCreepNormal.

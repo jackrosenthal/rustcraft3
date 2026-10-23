@@ -97,6 +97,11 @@ impl World {
         (mv.max(0.0), atk.max(0.0), armor, dmg, stun, inv)
     }
 
+    /// Locust (Aloc): a unit nobody selects, targets, or finds in an area.
+    pub fn is_locust(&self, u: &Unit) -> bool {
+        u.abilities.iter().any(|(a, _)| self.ability_code(*a) == "Aloc")
+    }
+
     /// Invulnerable: SetUnitInvulnerable, or the Invulnerable ability (Avul).
     pub fn unit_invulnerable(&self, u: &Unit) -> bool {
         u.invulnerable || u.abilities.iter().any(|(a, _)| self.ability_code(*a) == "Avul")

@@ -11,6 +11,8 @@ struct Globals {
     fow_extent: vec4<f32>,
     fow_terrain: vec4<f32>,
     fow_object: vec4<f32>,
+    fow_masked_terrain: vec4<f32>,
+    fow_masked_object: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> globals: Globals;

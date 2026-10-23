@@ -13,6 +13,8 @@ struct Globals {
     /// [FogOfWar] FoggedTerrain and FoggedObject (rgb, alpha).
     fow_terrain: vec4<f32>,
     fow_object: vec4<f32>,
+    fow_masked_terrain: vec4<f32>,
+    fow_masked_object: vec4<f32>,
 };
 
 struct Draw {
@@ -75,11 +77,12 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         c = vec4<f32>(c.rgb * clamp(globals.ambient.rgb + globals.light_color.rgb * l, vec3<f32>(0.0), vec3<f32>(1.0)), c.a);
     }
     if (globals.fow_extent.z > 0.0) {
-        // Fogged objects take FoggedObject's color; masked ones go black.
+        // Fogged objects take FoggedObject's color, masked ones the masked color.
         let fuv = (in.world.xy - globals.fow_extent.xy) / globals.fow_extent.zw;
         let v = textureSample(fow_tex, fow_samp, vec2<f32>(fuv.x, fuv.y)).r;
         let fogged = c.rgb * globals.fow_object.rgb;
-        let lit = mix(fogged * clamp(v / 0.5, 0.0, 1.0), c.rgb, clamp(v * 2.0 - 1.0, 0.0, 1.0));
+        let masked = c.rgb * globals.fow_masked_object.rgb;
+        let lit = mix(mix(masked, fogged, clamp(v / 0.5, 0.0, 1.0)), c.rgb, clamp(v * 2.0 - 1.0, 0.0, 1.0));
         c = vec4<f32>(lit, c.a);
     }
     if (globals.fog.z > 0.0) {

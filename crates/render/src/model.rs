@@ -309,6 +309,10 @@ pub struct Globals {
     /// UI\MiscData.txt [FogOfWar] FoggedTerrain and FoggedObject as rgb and alpha.
     pub fow_terrain: [f32; 4],
     pub fow_object: [f32; 4],
+    /// Masked areas: BlackMaskedTerrain/Object, or the Dark ones where masked areas
+    /// are partially visible.
+    pub fow_masked_terrain: [f32; 4],
+    pub fow_masked_object: [f32; 4],
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -984,6 +988,8 @@ pub fn default_globals(view_proj: Mat4, camera: Vec3) -> Globals {
         fow_extent: [0.0; 4],
         fow_terrain: [0.0; 4],
         fow_object: [0.0; 4],
+        fow_masked_terrain: [0.0, 0.0, 0.0, 1.0],
+        fow_masked_object: [0.0, 0.0, 0.0, 1.0],
     }
 }
 

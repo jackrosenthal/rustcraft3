@@ -285,7 +285,23 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             if matches!(w.handles.get(a.h(0)), Some(Obj::FogModifier(_))) { w.handles.remove(a.h(0)); }
             none()
         },
-        FogModifierStart => |w, _, a| { if let Some(Obj::FogModifier(m)) = w.handles.get_mut(a.h(0)) { m.active = true; } none() },
+        FogModifierStart => |w, _, a| {
+            // Starting a modifier applies it at once, so the area is explored even if it
+            // stops before the next update.
+            let m = match w.handles.get_mut(a.h(0)) {
+                Some(Obj::FogModifier(m)) => {
+                    m.active = true;
+                    Some((m.player, m.state, m.shape.clone()))
+                }
+                _ => None,
+            };
+            if let (Some((p, state, shape)), Some(f)) = (m, w.fog.as_mut()) {
+                if state != FOG_MASKED {
+                    f.set_state(p, state, &shape);
+                }
+            }
+            none()
+        },
         FogModifierStop => |w, _, a| { if let Some(Obj::FogModifier(m)) = w.handles.get_mut(a.h(0)) { m.active = false; } none() },
         SetFogStateRect => |w, _, a| {
             let (Some(p), Some(r)) = (w.player_of(a.h(0)), w.rect(a.h(2))) else { return none() };

@@ -1296,15 +1296,18 @@ impl Scene {
                 })
                 .collect();
             hud.camera_box = footprint;
-            // The minimap's fog: FoggedTerrain over fogged cells and black over masked ones.
+            // The minimap's fog: black over the map image, leaving FogColorFogMaskAlpha of it
+            // in fogged cells and FogColorBlackMaskAlpha (or FogColorDarkMaskAlpha where
+            // masked areas are partially visible) in masked ones.
             if let (Some(area), true) = (hud.minimap_area, w.fog.is_some()) {
                 let n = crate::hud::MINIMAP_FOG_SIZE;
                 let (sx, sy, side) = area.square();
-                let argb = |key: &str| -> [u8; 4] {
-                    let v: Vec<u8> = w.misc.get_list("FogOfWar", key).iter().filter_map(|s| s.trim().parse().ok()).collect();
-                    if v.len() < 4 { [0, 0, 0, 255] } else { [v[1], v[2], v[3], v[0]] }
+                let cover = |key: &str, default: u8| -> [u8; 4] {
+                    let shown: u8 = w.misc.get_str("FogOfWar", key).and_then(|v| v.trim().parse().ok()).unwrap_or(default);
+                    [0, 0, 0, 255 - shown]
                 };
-                let (fogged, masked) = (argb("FoggedTerrain"), argb("BlackMaskedTerrain"));
+                let dark = self.info.flags & 0x10 != 0;
+                let (fogged, masked) = (cover("FogColorFogMaskAlpha", 192), if dark { cover("FogColorDarkMaskAlpha", 96) } else { cover("FogColorBlackMaskAlpha", 0) });
                 let mut rgba = vec![0u8; (n * n * 4) as usize];
                 for py in 0..n {
                     for px in 0..n {
@@ -1510,6 +1513,10 @@ impl Scene {
                 globals.fow_extent = [f.origin.0, f.origin.1, f.width as f32 * w3_game::fog::FOG_CELL, f.height as f32 * w3_game::fog::FOG_CELL];
                 globals.fow_terrain = argb("FoggedTerrain");
                 globals.fow_object = argb("FoggedObject");
+                // w3i flag 0x10: masked areas partially visible.
+                let dark = self.info.flags & 0x10 != 0;
+                globals.fow_masked_terrain = argb(if dark { "DarkMaskedTerrain" } else { "BlackMaskedTerrain" });
+                globals.fow_masked_object = argb(if dark { "DarkMaskedObject" } else { "BlackMaskedObject" });
             }
         }
         for inst in &mut self.instances {

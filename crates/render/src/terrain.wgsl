@@ -13,6 +13,8 @@ struct Globals {
     /// [FogOfWar] FoggedTerrain and FoggedObject (rgb, alpha).
     fow_terrain: vec4<f32>,
     fow_object: vec4<f32>,
+    fow_masked_terrain: vec4<f32>,
+    fow_masked_object: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> globals: Globals;
@@ -25,7 +27,8 @@ struct Globals {
 @group(0) @binding(3) var fow_samp: sampler;
 
 /// Fog of war over terrain: fogged cells blend toward FoggedTerrain by its alpha, masked
-/// cells go black.  The texture holds 255 visible, 128 fogged, and 0 masked.
+/// cells toward the masked color by its.  The texture holds 255 visible, 128 fogged, and 0
+/// masked.
 fn fow(c: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
     if (globals.fow_extent.z <= 0.0) {
         return c;
@@ -33,7 +36,8 @@ fn fow(c: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
     let fuv = (world.xy - globals.fow_extent.xy) / globals.fow_extent.zw;
     let v = textureSample(fow_tex, fow_samp, fuv).r;
     let fogged = mix(c, globals.fow_terrain.rgb, globals.fow_terrain.a);
-    return mix(fogged * clamp(v / 0.5, 0.0, 1.0), c, clamp(v * 2.0 - 1.0, 0.0, 1.0));
+    let masked = mix(c, globals.fow_masked_terrain.rgb, globals.fow_masked_terrain.a);
+    return mix(mix(masked, fogged, clamp(v / 0.5, 0.0, 1.0)), c, clamp(v * 2.0 - 1.0, 0.0, 1.0));
 }
 
 /// Darkening applied by the map's baked shadows: the alpha of UI\MiscData.txt

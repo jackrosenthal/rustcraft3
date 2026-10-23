@@ -22,6 +22,8 @@ pub enum EntryKind {
     Up,
     Folder,
     Map,
+    /// A saved game (the Load Saved Game screen).
+    Save,
 }
 
 /// Who plays a slot.
@@ -73,6 +75,11 @@ impl MapSummary {
 }
 
 pub struct Skirmish {
+    /// The game's archives, for maps inside them (saved campaign games).
+    chain: Option<std::sync::Arc<w3_mpq::Chain>>,
+    /// The frame holding the list: MapListContainer, or FileListFrame on the Load
+    /// Saved Game screen.
+    list_frame: &'static str,
     root: PathBuf,
     dir: PathBuf,
     /// The expansion's .w3x maps are listed only with its data.
@@ -101,6 +108,8 @@ impl Skirmish {
     pub fn new(game_dir: &Path) -> Skirmish {
         let root = game_dir.join("Maps");
         Skirmish {
+            chain: None,
+            list_frame: "MapListContainer",
             dir: root.clone(),
             root,
             expansion: true,
@@ -117,8 +126,9 @@ impl Skirmish {
         }
     }
 
-    pub fn load_strings(&mut self, chain: &w3_mpq::Chain, expansion: bool) {
+    pub fn load_strings(&mut self, chain: &std::sync::Arc<w3_mpq::Chain>, expansion: bool) {
         self.expansion = expansion;
+        self.chain = Some(chain.clone());
         let mut p = w3_formats::profile::Profile::default();
         for f in ["UI\\WorldEditData.txt", "UI\\WorldEditStrings.txt", "UI\\WorldEditGameStrings.txt"] {
             if let Ok(s) = chain.read_string(f) {
@@ -164,6 +174,17 @@ impl Skirmish {
         self.selected = Some(i);
         self.summary = None;
         let Some(e) = self.entries.get(i) else { return };
+        if e.kind == EntryKind::Save {
+            // The saved game's map: a file, or one in the game's archives.
+            let map = std::fs::read(&e.path).ok().and_then(|b| w3_game::save::SaveGame::peek_map(&b));
+            self.summary = map.and_then(|m| {
+                let p = PathBuf::from(&m);
+                // Saved games show the unknown map image, not the map's preview.
+                if p.is_file() { summarize(&p, false) } else { self.chain.as_ref().and_then(|c| summarize_from(c, &m)) }
+            });
+            self.preview_dirty = true;
+            return;
+        }
         if e.kind != EntryKind::Map {
             return;
         }
@@ -261,6 +282,44 @@ impl Skirmish {
         }
     }
 
+    /// Lists the saved games in `dir` for the Load Saved Game screen, newest first, and
+    /// selects the first.
+    pub fn attach_saves(&mut self, tree: &mut FrameTree, db: &FrameDb, dir: &Path) {
+        self.list_frame = "FileListFrame";
+        for (template, container) in [("MapListBox", "FileListFrame"), ("MapInfoPane", "MapInfoPaneContainer")] {
+            if let (Some(parent), true) = (tree.get(container), db.templates.contains_key(template)) {
+                if let Some(i) = tree.create(db, template, parent) {
+                    tree.frames[i].all_points = true;
+                }
+            }
+        }
+        // Measured from the original's Load Saved Game screen.
+        Self::layout_info_at(tree, [0.001, -0.033, -0.172, -0.2233]);
+        self.entries = crate::saveload::saved_games(dir).into_iter().map(|(name, path)| Entry { name, path, kind: EntryKind::Save, players: 0 }).collect();
+        self.scroll = 0;
+        self.selected = None;
+        self.summary = None;
+        if !self.entries.is_empty() {
+            self.select(0);
+        }
+        self.fill_info(tree, db);
+    }
+
+    /// Back to the Custom Game screen's map list.
+    pub fn detach_saves(&mut self) {
+        if self.list_frame != "MapListContainer" {
+            self.list_frame = "MapListContainer";
+            self.entries.clear();
+            self.selected = None;
+            self.summary = None;
+        }
+    }
+
+    pub fn selected_save(&self) -> Option<PathBuf> {
+        let e = self.entries.get(self.selected?)?;
+        (e.kind == EntryKind::Save).then(|| e.path.clone())
+    }
+
     pub fn selected_map(&self) -> Option<PathBuf> {
         let e = self.entries.get(self.selected?)?;
         (e.kind == EntryKind::Map).then(|| e.path.clone())
@@ -292,12 +351,18 @@ impl Skirmish {
     /// the minimap below it, then the label rows and the description (offsets measured
     /// from the original at 1600x900).
     fn layout_info(tree: &mut FrameTree) {
+        Self::layout_info_at(tree, [-0.019, -0.06, -0.186, -0.2353]);
+    }
+
+    /// The parts at these heights below the pane's top: the name row, the minimap, the
+    /// first label row, and the description label.
+    fn layout_info_at(tree: &mut FrameTree, [name, minimap, labels, desc]: [f32; 4]) {
         use w3_ui::FramePoint as P;
         let pane = "MapInfoPane";
         let Some(w) = tree.get("MapInfoPaneContainer").and_then(|i| tree.frames[i].width) else { return };
-        tree.set_point("MaxPlayersIcon", P::TopLeft, pane, P::TopLeft, 0.075, -0.019);
-        tree.set_point("MinimapImage", P::Top, pane, P::Top, 0.0, -0.06);
-        let rows = [("SuggestedPlayersLabel", -0.186), ("MapSizeLabel", -0.2007), ("MapTilesetLabel", -0.2153), ("MapDescLabel", -0.2353)];
+        tree.set_point("MaxPlayersIcon", P::TopLeft, pane, P::TopLeft, 0.075, name);
+        tree.set_point("MinimapImage", P::Top, pane, P::Top, 0.0, minimap);
+        let rows = [("SuggestedPlayersLabel", labels), ("MapSizeLabel", labels - 0.0147), ("MapTilesetLabel", labels - 0.0293), ("MapDescLabel", desc)];
         for (label, y) in rows {
             tree.set_point(label, P::TopLeft, pane, P::TopLeft, 0.0, y);
             tree.set_size(label, Some(w), Some(0.0146));
@@ -394,11 +459,14 @@ impl Skirmish {
 
     /// The map list rows and the map preview.
     pub fn draws(&mut self, tree: &FrameTree, db: &FrameDb, out: &mut Vec<Draw>) {
-        let Some(container) = tree.get("MapListContainer").and_then(|i| tree.frames[i].rect) else { return };
-        // Rows sit inside the list's border, left of its scroll bar.
-        let inner = Rect { x0: container.x0 + 0.012, x1: container.x1 - 0.03, y0: container.y0 + 0.008, y1: container.y1 - 0.008 };
+        let Some(container) = tree.get(self.list_frame).and_then(|i| tree.frames[i].rect) else { return };
+        // Rows sit inside the list's border, left of its scroll bar; the saved games list
+        // (measured from the original) runs nearly to the border, in larger text.
+        let saves = self.list_frame == "FileListFrame";
+        let inner = Rect { x0: container.x0 + 0.012, x1: container.x1 - if saves { 0.0125 } else { 0.03 }, y0: container.y0 + 0.008, y1: container.y1 - 0.008 };
         self.list = Some(inner);
         let rows = (inner.h() / ROW) as usize;
+        let row_font = if saves { 0.0135 } else { ROW_FONT };
         let font = db.decorate("MasterFont");
         for (k, e) in self.entries.iter().enumerate().skip(self.scroll).take(rows) {
             let y1 = inner.y1 - (k - self.scroll) as f32 * ROW;
@@ -410,15 +478,16 @@ impl Skirmish {
                 EntryKind::Up => "ui\\widgets\\glues\\icon-folder-up.blp",
                 EntryKind::Folder => "ui\\widgets\\glues\\icon-folder.blp",
                 EntryKind::Map => "ui\\widgets\\glues\\icon-file-melee.blp",
+                EntryKind::Save => "ui\\widgets\\glues\\icon-file.blp",
             };
-            let ir = Rect { x0: row.x0 + 0.004, x1: row.x0 + 0.004 + ROW * 0.9 * 0.75, y0: row.y0 + ROW * 0.05, y1: row.y1 - ROW * 0.05 };
+            let ir = if saves { Rect { x0: row.x0 + 0.004, x1: row.x0 + 0.004 + ROW, y0: row.y0, y1: row.y1 } } else { Rect { x0: row.x0 + 0.004, x1: row.x0 + 0.004 + ROW * 0.9 * 0.75, y0: row.y0 + ROW * 0.05, y1: row.y1 - ROW * 0.05 } };
             out.push(Draw::Image { texture: icon.into(), rect: ir, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
             if e.kind == EntryKind::Map {
                 out.push(Draw::Text { font: font.clone(), size: 0.009, rect: ir, text: e.players.to_string(), color: [1.0; 4], justify_h: Justify::Middle, justify_v: Justify::Middle, shadow: None });
             }
             let tr = Rect { x0: ir.x1 + 0.008, x1: row.x1, y0: row.y0, y1: row.y1 };
             let color = if self.selected == Some(k) { [1.0, 0.8, 0.0, 1.0] } else { [1.0; 4] };
-            out.push(Draw::Text { font: font.clone(), size: ROW_FONT, rect: tr, text: e.name.clone(), color, justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
+            out.push(Draw::Text { font: font.clone(), size: row_font, rect: tr, text: e.name.clone(), color, justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
         }
         // Each slot's color button shows the player color.
         for (k, s) in self.slots.iter().enumerate() {
@@ -426,9 +495,11 @@ impl Skirmish {
                 out.push(Draw::Image { texture: format!("ReplaceableTextures\\TeamColor\\TeamColor{:02}.blp", s.color), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
             }
         }
-        // The preview goes where MinimapImage is.
-        if let (Some(_), Some(r)) = (self.summary.as_ref().and_then(|s| s.preview.as_ref()), tree.get("MinimapImage").and_then(|i| tree.frames[i].rect)) {
-            out.push(Draw::Image { texture: MAP_PREVIEW.into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+        // The preview goes where MinimapImage is; a map without one (and a saved game)
+        // shows Minimap-Unknown.
+        if let (Some(s), Some(r)) = (self.summary.as_ref(), tree.get("MinimapImage").and_then(|i| tree.frames[i].rect)) {
+            let texture = if s.preview.is_some() { MAP_PREVIEW.to_string() } else { "UI\\Widgets\\Glues\\Minimap-Unknown.blp".to_string() };
+            out.push(Draw::Image { texture, rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
         }
     }
 }

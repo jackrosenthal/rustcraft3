@@ -30,6 +30,8 @@ pub enum Screen {
     Skirmish,
     /// CCampaignMenu: choosing a campaign and mission.
     Campaign,
+    /// CLoadSavedGameScreen: the saved games and the chosen one's map.
+    LoadSaved,
     /// The loading screen shown while a map loads.
     Loading,
 }
@@ -42,6 +44,9 @@ impl Screen {
             Screen::MainMenu => "MainMenu",
             Screen::SinglePlayer => "SinglePlayer",
             Screen::Skirmish => "SinglePlayerSkirmish",
+            // The panels' layout for the saved games screen matches the original's with
+            // these sequences (compared against a capture).
+            Screen::LoadSaved => "BattlenetCustomCreate",
             Screen::Campaign => "Campaign",
             Screen::Loading => "",
         }
@@ -53,6 +58,7 @@ impl Screen {
             Screen::MainMenu => "MainMenuFrame",
             Screen::SinglePlayer => "SinglePlayerMenu",
             Screen::Skirmish => "Skirmish",
+            Screen::LoadSaved => "LoadSavedGameScreen",
             Screen::Campaign => "CampaignMenu",
             Screen::Loading => "Loading",
         }
@@ -96,6 +102,8 @@ pub struct Glue {
     pub press_a_key: bool,
     /// The loading background's sequence, when its [LoadingScreens] entry names one.
     loading_sequence: Option<usize>,
+    /// Where saved games are kept.
+    pub saves_dir: std::path::PathBuf,
 }
 
 impl Glue {
@@ -147,6 +155,7 @@ impl Glue {
             saved_background: None,
             press_a_key: false,
             loading_sequence: None,
+            saves_dir: crate::data::save_dir(data.version).unwrap_or_default(),
         };
         g.build(Screen::MainMenu, assets);
         g.play_layers(&format!("{} Birth", Screen::MainMenu.token()));
@@ -202,7 +211,14 @@ impl Glue {
                 let name = self.skirmish.player_name.clone();
                 self.tree.set_text("ProfileNameText", &name);
             }
-            Screen::Skirmish => self.skirmish.attach(&mut self.tree, db),
+            Screen::Skirmish => {
+                self.skirmish.detach_saves();
+                self.skirmish.attach(&mut self.tree, db);
+            }
+            Screen::LoadSaved => {
+                let dir = self.saves_dir.clone();
+                self.skirmish.attach_saves(&mut self.tree, db, &dir);
+            }
             Screen::Campaign => {
                 self.tree.set_visible("MissionSelectFrame", false);
                 // SlidingDoors (Campaign-Fade) fades to black when a mission starts.
@@ -313,7 +329,7 @@ impl Glue {
         if self.tree.pointer_down(x, y).is_some() {
             return true;
         }
-        if self.screen == Screen::Skirmish {
+        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved) {
             self.skirmish.click(&mut self.tree, &assets.frames, x, y);
         }
         if self.screen == Screen::Campaign && self.phase == Phase::Stand {
@@ -387,6 +403,13 @@ impl Glue {
             }
             (Screen::Skirmish, other) => self.skirmish.button(&mut self.tree, &assets.frames, other),
             (Screen::SinglePlayer, "CampaignButton") => self.show(Screen::Campaign, assets),
+            (Screen::SinglePlayer, "LoadSavedButton") => self.show(Screen::LoadSaved, assets),
+            (Screen::LoadSaved, "CancelButton") => self.show(Screen::SinglePlayer, assets),
+            (Screen::LoadSaved, "OKButton") => {
+                if let Some(path) = self.skirmish.selected_save() {
+                    self.action = Some(GlueAction::LoadSave(path));
+                }
+            }
             (Screen::Campaign, "BackButton") => {
                 if self.campaigns.open.take().is_none() {
                     self.show(Screen::SinglePlayer, assets);
@@ -637,7 +660,7 @@ impl Glue {
                 draws.push(Draw::Image { texture: crate::skirmish::MAP_PREVIEW.into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
             }
         }
-        if self.screen == Screen::Skirmish && self.phase == Phase::Stand {
+        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved) && self.phase == Phase::Stand {
             self.skirmish.draws(&self.tree, &assets.frames, &mut draws);
         }
         if self.screen == Screen::Campaign && self.phase == Phase::Stand {

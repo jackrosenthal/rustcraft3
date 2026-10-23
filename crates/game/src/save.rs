@@ -78,4 +78,10 @@ impl SaveGame {
     pub fn parse(bytes: &[u8]) -> anyhow::Result<SaveGame> {
         Ok(postcard::from_bytes(bytes)?)
     }
+
+    /// The saved game's map, read without the rest of the state.
+    pub fn peek_map(bytes: &[u8]) -> Option<String> {
+        let ((format, map), _) = postcard::take_from_bytes::<(u32, String)>(bytes).ok()?;
+        (format == FORMAT).then_some(map)
+    }
 }

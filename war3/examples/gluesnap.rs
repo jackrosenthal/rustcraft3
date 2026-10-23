@@ -22,6 +22,10 @@ fn main() -> anyhow::Result<()> {
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let mut assets = Assets::new(&device, &queue, &data);
     let mut glue = Glue::new(&device, &queue, format, &data, &mut assets);
+    // W3SAVES: where saved games are kept, for testing.
+    if let Ok(d) = std::env::var("W3SAVES") {
+        glue.saves_dir = d.into();
+    }
     let mut i = 4;
     while i < a.len() {
         match a[i].as_str() {

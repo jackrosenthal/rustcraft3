@@ -28,7 +28,23 @@ fn main() -> anyhow::Result<()> {
     } else {
         (a[2].clone(), None)
     };
-    let mut scene = Scene::load(&device, &queue, format, &data, &mut assets, Path::new(&map), w as f32 / h as f32, None, restore)?;
+    // W3LOBBY="L1,C3" fills the slots in order: L the local player, C a computer, E
+    // empty, each followed by its race (1 Human, 2 Orc, 3 Undead, 4 Night Elf, none
+    // random).
+    let lobby: Option<Vec<w3_game::LobbySlot>> = std::env::var("W3LOBBY").ok().map(|v| {
+        v.split(',')
+            .enumerate()
+            .map(|(i, s)| {
+                let fill = match s.chars().next() {
+                    Some('L') => w3_game::SlotFill::Local,
+                    Some('C') => w3_game::SlotFill::Computer,
+                    _ => w3_game::SlotFill::Empty,
+                };
+                w3_game::LobbySlot { player: i as u8, fill, name: None, race: s[1..].parse().ok(), team: i as i32, color: i as i32, handicap: 100.0, difficulty: 1 }
+            })
+            .collect()
+    });
+    let mut scene = Scene::load(&device, &queue, format, &data, &mut assets, Path::new(&map), w as f32 / h as f32, lobby.as_deref(), restore)?;
     scene.sync_units(&device, &queue, &mut assets);
     scene.sync_destructables(&device, &queue, &mut assets);
     // W3SAVES: where the game menu keeps saved games, for testing.

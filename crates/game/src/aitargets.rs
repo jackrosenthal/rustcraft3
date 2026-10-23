@@ -107,7 +107,7 @@ impl World {
             .unit_order
             .iter()
             .copied()
-            .filter(|&h| self.ability_with_code(h, "Agld").is_some())
+            .filter(|&h| self.is_gold_mine(h))
             .filter_map(|h| self.unit(h).filter(|u| !u.dead).map(|u| (h, u.x, u.y, u.resource)))
             .collect();
         for (m, mx, my, gold) in mines {

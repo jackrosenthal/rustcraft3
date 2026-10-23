@@ -335,7 +335,7 @@ impl World {
         let mut out: Vec<(f32, f32, u32)> = self
             .ai_units(p)
             .into_iter()
-            .filter(|&h| self.ability_with_code(h, "Artn").is_some_and(|(a, l)| self.objects.abilities.get(a).is_some_and(|o| o.level_real("DataA", l) != 0.0)))
+            .filter(|&h| self.unit(h).is_some_and(|u| self.is_town_hall(u)))
             .filter_map(|h| self.unit(h).map(|u| (u.x, u.y, h)))
             .collect();
         if out.is_empty() {
@@ -363,7 +363,7 @@ impl World {
         self.unit_order
             .iter()
             .copied()
-            .filter(|&h| self.ability_with_code(h, "Agld").is_some() && self.unit(h).is_some_and(|m| !m.dead))
+            .filter(|&h| self.is_gold_mine(h) && self.unit(h).is_some_and(|m| !m.dead && !m.hidden))
             .filter_map(|h| self.unit(h).map(|m| ((m.x - x).hypot(m.y - y), h)))
             .filter(|(d, _)| *d < TOWN_MINE_RADIUS)
             .min_by(|a, b| a.0.total_cmp(&b.0))
@@ -419,7 +419,7 @@ impl World {
     }
 
     pub(crate) fn workers(&self, p: u8) -> Vec<u32> {
-        self.ai_units(p).into_iter().filter(|&h| self.ability_with_code(h, "Ahar").is_some() || self.ability_with_code(h, "Ahrl").is_some()).collect()
+        self.ai_units(p).into_iter().filter(|&h| ["Ahar", "Ahrl", "Aaha", "Awha"].iter().any(|c| self.ability_with_code(h, c).is_some())).collect()
     }
 
     /// A Hero type first (FUN_6f9caff0): an idle altar of the player revives a dead
@@ -507,8 +507,8 @@ impl World {
         let requests = st.harvest.clone();
         let workers = self.workers(p);
         let busy = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Build { .. } | Action::Construct { .. } | Action::Attack { .. } | Action::Move { .. }));
-        let on_gold = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if w.ability_with_code(target, "Agld").is_some()) || (matches!(u.action, Action::ReturnResources) && u.carry_gold > 0));
-        let on_wood = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if w.ability_with_code(target, "Agld").is_none()) || (matches!(u.action, Action::ReturnResources) && u.carry_lumber > 0));
+        let on_gold = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_gold > 0));
+        let on_wood = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if !w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_lumber > 0));
         // Split the available workers among the requests in priority order.
         let available = workers.iter().filter(|&&h| !busy(self, h)).count() as i32;
         let (mut gold_target, mut wood_target, mut left) = (0, 0, available);
@@ -763,7 +763,7 @@ impl World {
             .copied()
             .filter_map(|h| self.unit(h).map(|u| (h, u)))
             .filter(|(_, u)| !u.dead && u.owner < PLAYER_NEUTRAL_AGGRESSIVE && !crate::natives::players::is_ally(self, p, u.owner))
-            .filter(|(h, _)| self.ability_with_code(*h, "Artn").is_some())
+            .filter(|(_, u)| self.is_town_hall(u))
             .map(|(h, u)| ((u.x - sx).hypot(u.y - sy), h))
             .min_by(|a, b| a.0.total_cmp(&b.0))
             .map(|x| x.1)

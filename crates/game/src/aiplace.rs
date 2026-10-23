@@ -229,7 +229,7 @@ impl World {
 /// Expansions (FUN_6f9bb210 and the natives around it).  Each gold mine is a town spot.
 impl World {
     fn gold_mines(&self) -> Vec<u32> {
-        self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead) && self.ability_with_code(h, "Agld").is_some()).collect()
+        self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden) && self.is_gold_mine(h)).collect()
     }
 
     /// A mine's place among the map's gold mines (GetNextExpansion's town number).
@@ -237,7 +237,12 @@ impl World {
         self.gold_mines().iter().position(|&m| m == mine).map_or(-1, |i| i as i32)
     }
 
-    fn is_town_hall(&self, u: &crate::types::Unit) -> bool {
+    /// A gold mine: plain, haunted (Abgm), or entangled (Aegm).
+    pub(crate) fn is_gold_mine(&self, h: u32) -> bool {
+        ["Agld", "Abgm", "Aegm"].iter().any(|c| self.ability_with_code(h, c).is_some())
+    }
+
+    pub(crate) fn is_town_hall(&self, u: &crate::types::Unit) -> bool {
         self.objects.units.get(u.type_id).is_some_and(|o| o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case("townhall")))
     }
 

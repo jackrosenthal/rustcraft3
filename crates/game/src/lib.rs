@@ -106,6 +106,10 @@ impl Game {
             world.terrain_fog = Some(f);
         }
         world.bind_natives(&vm);
+        // The map's gameplay constants (war3mapMisc.txt) over the game's.
+        if let Ok(s) = chain.read_string("war3mapMisc.txt") {
+            world.misc.merge(&s);
+        }
         // Interface strings (FDF StringList tables) resolve GetLocalizedString keys.
         world.strings = w3_ui::FrameDb::load(&chain).strings;
         if let Ok(s) = chain.read_string("war3map.wts") {

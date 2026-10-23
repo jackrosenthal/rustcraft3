@@ -196,9 +196,12 @@ impl ObjectTable {
     /// Applies a map's object modification file (`war3map.w3u` and friends).  `leveled`
     /// is true for the formats that carry level and data-column fields (abilities,
     /// doodads, upgrades).
-    pub fn apply_mods(&mut self, data: &[u8], leveled: bool) -> Result<(), Error> {
+    /// `leveled`: whether modifications carry a level and data column; doodad files
+    /// (w3d) carry them from version 2 on (`None`).
+    pub fn apply_mods(&mut self, data: &[u8], leveled: Option<bool>) -> Result<(), Error> {
         let mut r = Reader::new(data);
-        let _version = r.u32()?;
+        let version = r.u32()?;
+        let leveled = leveled.unwrap_or(version >= 2);
         for custom in [false, true] {
             if r.remaining() < 4 {
                 break;
@@ -360,14 +363,14 @@ impl ObjectDb {
 
     /// Applies the map's object modification files, if present.
     pub fn apply_map(&mut self, chain: &Chain) {
-        let files: [(&str, &mut ObjectTable, bool); 7] = [
-            ("war3map.w3u", &mut self.units, false),
-            ("war3map.w3t", &mut self.items, false),
-            ("war3map.w3b", &mut self.destructables, false),
-            ("war3map.w3d", &mut self.doodads, false),
-            ("war3map.w3a", &mut self.abilities, true),
-            ("war3map.w3h", &mut self.buffs, false),
-            ("war3map.w3q", &mut self.upgrades, true),
+        let files: [(&str, &mut ObjectTable, Option<bool>); 7] = [
+            ("war3map.w3u", &mut self.units, Some(false)),
+            ("war3map.w3t", &mut self.items, Some(false)),
+            ("war3map.w3b", &mut self.destructables, Some(false)),
+            ("war3map.w3d", &mut self.doodads, None),
+            ("war3map.w3a", &mut self.abilities, Some(true)),
+            ("war3map.w3h", &mut self.buffs, Some(false)),
+            ("war3map.w3q", &mut self.upgrades, Some(true)),
         ];
         for (name, table, leveled) in files {
             if let Ok(data) = chain.read(name) {

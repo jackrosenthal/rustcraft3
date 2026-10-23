@@ -539,8 +539,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         SetHeroLevel => |w, vm, a| {
-            let (h, l) = (a.h(0), a.i(1));
-            while w.unit(h).is_some_and(|u| u.is_hero && u.level < l) {
+            // Up to MaxHeroLevel.
+            let (h, l) = (a.h(0), a.i(1).min(w.misc_f32("MaxHeroLevel", 10.0) as i32));
+            while w.unit(h).is_some_and(|u| u.is_hero && !u.dead && u.level < l) {
                 let need = w.hero_xp_needed(w.unit(h).unwrap().level + 1) - w.unit(h).unwrap().hero_xp;
                 w.add_hero_xp(h, need.max(1));
             }

@@ -31,6 +31,8 @@ pub struct FrameDb {
     pub version: u32,
     /// The skins' TrueType fonts by lowercase path, for measuring text.
     pub fonts: HashMap<String, Rc<fontdue::Font>>,
+    /// The map's war3mapSkin.txt [CustomSkin] keys (lower case), which come first.
+    pub custom_skin: HashMap<String, String>,
 }
 
 impl FrameDb {
@@ -115,6 +117,9 @@ impl FrameDb {
     }
 
     pub fn skin_value(&self, name: &str) -> Option<String> {
+        if let Some(v) = self.custom_skin.get(&name.to_ascii_lowercase()) {
+            return Some(v.clone());
+        }
         let versioned = format!("{name}_V{}", self.version);
         for sec in [self.skin.as_str(), "Default"] {
             if let Some(v) = self.skins.get_str(sec, &versioned).or_else(|| self.skins.get_str(sec, name)) {

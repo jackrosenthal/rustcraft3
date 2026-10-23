@@ -147,6 +147,8 @@ pub struct World {
     pub blight_serial: u32,
     pub autocast_timer: f32,
     pub sentinels: Vec<Sentinel>,
+    /// W3PROF timings by subsystem.
+    pub profile: Option<HashMap<&'static str, f64>>,
     pub destructable_order: Vec<u32>,
     pub item_order: Vec<u32>,
     /// Effects destroyed by script, with the time they were destroyed; the presentation
@@ -318,6 +320,7 @@ impl World {
             blight_serial: 0,
             autocast_timer: 0.0,
             sentinels: Vec::new(),
+            profile: None,
             destructable_order: Vec::new(),
             item_order: Vec::new(),
             dying_effects: Vec::new(),
@@ -625,20 +628,43 @@ impl World {
     }
 
     pub fn tick(&mut self, vm: &mut Vm, dt: f32) {
+        // W3PROF: time per subsystem, printed every 60 game seconds.
+        macro_rules! prof {
+            ($w:expr, $name:expr, $e:expr) => {{
+                if $w.profile.is_some() {
+                    let t0 = std::time::Instant::now();
+                    let r = $e;
+                    *$w.profile.as_mut().unwrap().entry($name).or_insert(0.0) += t0.elapsed().as_secs_f64();
+                    r
+                } else {
+                    $e
+                }
+            }};
+        }
+        if self.profile.is_none() && std::env::var("W3PROF").is_ok() {
+            self.profile = Some(HashMap::new());
+        }
+        if let Some(p) = self.profile.as_mut() {
+            if (self.time / 5.0).floor() != ((self.time + dt) / 5.0).floor() {
+                let mut v: Vec<(&&str, &f64)> = p.iter().collect();
+                v.sort_by(|a, b| b.1.total_cmp(a.1));
+                eprintln!("profile at {:.0}s: {}", self.time, v.iter().take(8).map(|(k, t)| format!("{k} {:.2}s", t)).collect::<Vec<_>>().join(", "));
+            }
+        }
         self.time += dt;
         let day_hours = self.misc_f32("DayHours", 24.0);
         let day_length = self.misc_f32("DayLength", 480.0);
         let hours_per_second = day_hours / day_length * self.time_of_day_scale;
         self.time_of_day = (self.time_of_day + dt * hours_per_second) % day_hours;
         self.camera.update(dt);
-        self.update_text_tags(dt);
-        self.update_blight(dt);
-        self.update_mines();
-        self.update_moon_wells();
-        self.update_forms(dt);
-        self.update_cargo(vm);
-        self.update_morphs(dt);
-        self.update_autocast(dt);
+        prof!(self, "update_text_tags", self.update_text_tags(dt));
+        prof!(self, "update_blight", self.update_blight(dt));
+        prof!(self, "update_mines", self.update_mines());
+        prof!(self, "update_moon_wells", self.update_moon_wells());
+        prof!(self, "update_forms", self.update_forms(dt));
+        prof!(self, "update_cargo", self.update_cargo(vm));
+        prof!(self, "update_morphs", self.update_morphs(dt));
+        prof!(self, "update_autocast", self.update_autocast(dt));
         let now = self.time;
         let due: Vec<(f32, u32, u32)> = self.pending_entangles.iter().copied().filter(|e| e.0 <= now).collect();
         self.pending_entangles.retain(|e| e.0 > now);
@@ -657,13 +683,13 @@ impl World {
             self.cinematic.scene = None;
         }
 
-        self.update_food();
-        self.update_units(vm, dt);
-        self.regenerate(dt);
-        self.update_buffs(vm, dt);
-        self.update_area_buffs(vm, dt);
-        self.update_traps(vm);
-        self.update_splits(dt);
+        prof!(self, "update_food", self.update_food());
+        prof!(self, "update_units", self.update_units(vm, dt));
+        prof!(self, "regenerate", self.regenerate(dt));
+        prof!(self, "update_buffs", self.update_buffs(vm, dt));
+        prof!(self, "update_area_buffs", self.update_area_buffs(vm, dt));
+        prof!(self, "update_traps", self.update_traps(vm));
+        prof!(self, "update_splits", self.update_splits(dt));
         // Owls leave fallen trees.
         let standing: Vec<bool> = self.sentinels.iter().map(|s| self.is_tree_pub(s.tree)).collect();
         let fallen: Vec<u32> = self.sentinels.iter().zip(&standing).filter(|(_, ok)| !**ok).map(|(s, _)| s.effect).collect();
@@ -677,13 +703,13 @@ impl World {
                 x.destroyed = true;
             }
         }
-        self.update_channels(vm, dt);
-        self.update_ground_effects(vm, dt);
-        self.update_reincarnation(dt);
-        self.update_fog(dt);
-        self.update_shops(dt);
-        self.update_ai(dt);
-        self.update_rescue();
+        prof!(self, "update_channels", self.update_channels(vm, dt));
+        prof!(self, "update_ground_effects", self.update_ground_effects(vm, dt));
+        prof!(self, "update_reincarnation", self.update_reincarnation(dt));
+        prof!(self, "update_fog", self.update_fog(dt));
+        prof!(self, "update_shops", self.update_shops(dt));
+        prof!(self, "update_ai", self.update_ai(dt));
+        prof!(self, "update_rescue", self.update_rescue());
         self.flush_events(vm);
 
         // Timers.

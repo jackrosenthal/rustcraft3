@@ -131,6 +131,7 @@ pub struct Scene {
     /// Render instances for items lying on the ground.
     pub items: HashMap<u32, ModelInstance>,
     pub selection: Vec<u32>,
+    selection_serial: u32,
     pub info: MapInfo,
     pub terrain: TerrainRenderer,
     pub models: ModelRenderer,
@@ -378,7 +379,7 @@ impl Scene {
         let portrait_renderer = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let hud_sprites = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), selection: Vec::new(), selection_serial: 0, info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, exit: false, menu_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1427,6 +1428,18 @@ impl Scene {
         self.time += dt;
         // The game menu pauses a single-player game.
         let paused = self.hud.as_ref().is_some_and(|h| h.menu.is_some());
+        // The selection: script changes come to the interface, the player's go to the
+        // game (with its selection events).
+        if let Some(g) = self.game.as_mut() {
+            let local = g.world.local_player;
+            if g.world.selection_serial != self.selection_serial {
+                self.selection_serial = g.world.selection_serial;
+                self.selection = g.world.selection.get(&local).cloned().unwrap_or_default();
+            } else {
+                let sel = self.selection.clone();
+                g.set_selection(local, &sel);
+            }
+        }
         if let Some(g) = self.game.as_mut().filter(|_| !paused) {
             g.tick(dt);
         }

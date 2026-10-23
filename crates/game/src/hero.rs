@@ -2,6 +2,7 @@
 //! Units\\MiscGame.txt.
 
 use crate::objects::Id;
+use crate::types::EventCtx;
 
 use crate::world::World;
 
@@ -86,6 +87,8 @@ impl World {
             u.agi += da;
             u.int += di;
             self.apply_hero_stats(h, false);
+            use crate::event_ids::*;
+            self.queue_unit_event(h, EVENT_PLAYER_HERO_LEVEL, EVENT_UNIT_HERO_LEVEL, EventCtx::default());
         }
     }
 
@@ -101,7 +104,7 @@ impl World {
             .unit_order
             .iter()
             .copied()
-            .filter(|&h| self.unit(h).is_some_and(|u| u.is_hero && !u.dead && u.owner == kowner && (u.x - vx).hypot(u.y - vy) <= range))
+            .filter(|&h| self.unit(h).is_some_and(|u| u.is_hero && !u.dead && !u.xp_suspended && u.owner == kowner && (u.x - vx).hypot(u.y - vy) <= range))
             .collect();
         if heroes.is_empty() {
             return;
@@ -133,10 +136,19 @@ impl World {
         // Each ability level needs a hero level: reqLevel, then every levelSkip levels.
         let u = self.unit_mut(h).unwrap();
         u.skill_points -= 1;
-        match u.abilities.iter_mut().find(|(a, _)| *a == ability) {
-            Some(e) => e.1 += 1,
-            None => u.abilities.push((ability, 1)),
-        }
+        let level = match u.abilities.iter_mut().find(|(a, _)| *a == ability) {
+            Some(e) => {
+                e.1 += 1;
+                e.1
+            }
+            None => {
+                u.abilities.push((ability, 1));
+                1
+            }
+        };
+        use crate::event_ids::*;
+        let ctx = EventCtx { spell_ability: crate::objects::id_to_int(ability), state: level, ..Default::default() };
+        self.queue_unit_event(h, EVENT_PLAYER_HERO_SKILL, EVENT_UNIT_HERO_SKILL, ctx);
         true
     }
 

@@ -746,16 +746,51 @@ impl World {
         self.objects.upgrades.get(id).map_or((0, 0), |o| (o.int("goldbase") + o.int("goldmod") * level, o.int("lumberbase") + o.int("lumbermod") * level))
     }
 
-    /// Cancels the last queued item and refunds it (TrainRefundRate).
+    /// The start or cancel event of a queued item: research, a structure upgrade, or
+    /// training (`which` 0 for start, 1 for cancel).
+    fn production_event(&self, h: u32, id: Id, which: usize) -> (i32, i32, EventCtx) {
+        let id_s = crate::objects::id_str(id);
+        if self.objects.upgrades.get(id).is_some() {
+            let ctx = EventCtx { research: crate::objects::id_to_int(id), ..Default::default() };
+            [(EVENT_PLAYER_UNIT_RESEARCH_START, EVENT_UNIT_RESEARCH_START, ctx.clone()), (EVENT_PLAYER_UNIT_RESEARCH_CANCEL, EVENT_UNIT_RESEARCH_CANCEL, ctx)][which].clone()
+        } else if self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|o| o.list("Upgrade").iter().any(|x| x.trim() == id_s)) {
+            [(EVENT_PLAYER_UNIT_UPGRADE_START, EVENT_UNIT_UPGRADE_START, EventCtx::default()), (EVENT_PLAYER_UNIT_UPGRADE_CANCEL, EVENT_UNIT_UPGRADE_CANCEL, EventCtx::default())][which].clone()
+        } else {
+            let ctx = EventCtx { train_unit_type: crate::objects::id_to_int(id), ..Default::default() };
+            [(EVENT_PLAYER_UNIT_TRAIN_START, EVENT_UNIT_TRAIN_START, ctx.clone()), (EVENT_PLAYER_UNIT_TRAIN_CANCEL, EVENT_UNIT_TRAIN_CANCEL, ctx)][which].clone()
+        }
+    }
+
+    /// Cancels the last queued item and refunds it (MiscGame ResearchRefundRate,
+    /// UpgradeRefundRate, or TrainRefundRate); a structure being built is cancelled
+    /// instead (ConstructionRefundRate) and removed.
     pub fn cancel_last(&mut self, h: u32) {
-        let Some(u) = self.unit_mut(h) else { return };
-        let Some(id) = u.queue.pop() else { return };
+        let Some(u) = self.unit(h) else { return };
+        let owner = u.owner;
+        if u.constructing.is_some() {
+            let id = u.type_id;
+            let rate = self.misc_f32("ConstructionRefundRate", 0.75);
+            self.refund(owner, id, rate);
+            self.queue_unit_event(h, EVENT_PLAYER_UNIT_CONSTRUCT_CANCEL, EVENT_UNIT_CONSTRUCT_CANCEL, EventCtx::default());
+            self.cancelled_constructions.push(h);
+            return;
+        }
+        let Some(&id) = u.queue.last() else { return };
+        let (pe, ue, ctx) = self.production_event(h, id, 1);
+        let key = match pe {
+            EVENT_PLAYER_UNIT_RESEARCH_CANCEL => "ResearchRefundRate",
+            EVENT_PLAYER_UNIT_UPGRADE_CANCEL => "UpgradeRefundRate",
+            _ => "TrainRefundRate",
+        };
+        let rate = self.misc_f32(key, 1.0);
+        let u = self.unit_mut(h).unwrap();
+        u.queue.pop();
         if u.queue.is_empty() {
             u.queue_progress = 0.0;
+            u.queue_started = false;
         }
-        let owner = u.owner;
-        let rate = self.misc_f32("TrainRefundRate", 1.0);
         self.refund(owner, id, rate);
+        self.queue_unit_event(h, pe, ue, ctx);
     }
 
     /// A free spot near a structure for a new unit: the nearest walkable cell outside it.
@@ -803,8 +838,7 @@ impl World {
                 let owner = u.owner;
                 let label = format!("JobDoneSound{}", self.race_label(owner));
                 self.requests.push(Request::UiSound { players: 1 << owner, label });
-                let ctx = EventCtx { unit: h, player: owner, has_player: true, event_id: EVENT_PLAYER_UNIT_CONSTRUCT_FINISH, ..Default::default() };
-                self.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event, .. } if *player == owner && *event == EVENT_PLAYER_UNIT_CONSTRUCT_FINISH));
+                self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_CONSTRUCT_FINISH, EVENT_UNIT_CONSTRUCT_FINISH, EventCtx::default());
             } else {
                 u.constructing = Some(left);
             }
@@ -812,6 +846,12 @@ impl World {
         }
         // Production.
         let Some(&id) = self.unit(h).and_then(|u| u.queue.first()) else { return };
+        // The item at the front starts: research, a structure upgrade, or training.
+        if !self.unit(h).unwrap().queue_started {
+            self.unit_mut(h).unwrap().queue_started = true;
+            let (pe, ue, ctx) = self.production_event(h, id, 0);
+            self.fire_unit_pair(vm, h, pe, ue, ctx);
+        }
         if let Some(up) = self.objects.upgrades.get(id) {
             let owner = self.unit(h).unwrap().owner;
             let level = self.players[owner as usize].tech_researched.get(&id).copied().unwrap_or(0);
@@ -821,10 +861,13 @@ impl World {
             if u.queue_progress >= t {
                 u.queue_progress = 0.0;
                 u.queue.remove(0);
+                u.queue_started = false;
                 *self.players[owner as usize].tech_researched.entry(id).or_insert(0) += 1;
                 self.research_changed(owner);
                 let label = format!("ResearchComplete{}", self.race_label(owner));
                 self.requests.push(Request::UiSound { players: 1 << owner, label });
+                let ctx = EventCtx { research: crate::objects::id_to_int(id), ..Default::default() };
+                self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_RESEARCH_FINISH, EVENT_UNIT_RESEARCH_FINISH, ctx);
             }
             return;
         }
@@ -838,6 +881,7 @@ impl World {
         let owner = u.owner;
         u.queue_progress = 0.0;
         u.queue.remove(0);
+        u.queue_started = false;
         // A structure upgrade (the building's Upgrade list) transforms it in place.
         let from = u.type_id;
         let id_s = crate::objects::id_str(id);
@@ -845,8 +889,7 @@ impl World {
             self.transform_unit(h, id);
             let label = format!("UpgradeComplete{}", self.race_label(owner));
             self.requests.push(Request::UiSound { players: 1 << owner, label });
-            let ctx = EventCtx { unit: h, player: owner, has_player: true, event_id: EVENT_PLAYER_UNIT_UPGRADE_FINISH, ..Default::default() };
-            self.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event, .. } if *player == owner && *event == EVENT_PLAYER_UNIT_UPGRADE_FINISH));
+            self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_UPGRADE_FINISH, EVENT_UNIT_UPGRADE_FINISH, EventCtx::default());
             return;
         }
         let radius = self.objects.units.get(id).map_or(16.0, |o| o.real("collision"));
@@ -858,8 +901,8 @@ impl World {
             let smart = crate::natives::basic::order_id("smart");
             self.order_unit(new, smart, rx, ry, 0);
         }
-        let ctx = EventCtx { unit: h, target_unit: new, player: owner, has_player: true, train_unit_type: crate::objects::id_to_int(id), event_id: EVENT_PLAYER_UNIT_TRAIN_FINISH, ..Default::default() };
-        self.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event, .. } if *player == owner && *event == EVENT_PLAYER_UNIT_TRAIN_FINISH));
+        let ctx = EventCtx { target_unit: new, train_unit_type: crate::objects::id_to_int(id), ..Default::default() };
+        self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_TRAIN_FINISH, EVENT_UNIT_TRAIN_FINISH, ctx);
     }
 
     /// Whether a structure of type `id` can be placed centered at (x, y).
@@ -1294,6 +1337,8 @@ impl World {
             u.cooldown = wp.cooldown / speed.max(0.01);
             u.swing = Some(Swing { target, elapsed: 0.0, done: false });
             restart_anim(u, "attack");
+            // The target is attacked (GetAttacker is the attacker).
+            self.queue_unit_event(target, EVENT_PLAYER_UNIT_ATTACKED, EVENT_UNIT_ATTACKED, EventCtx { other_unit: h, ..Default::default() });
         } else if u.anim == "walk" {
             set_anim(u, "stand");
         }

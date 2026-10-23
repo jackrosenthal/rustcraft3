@@ -230,7 +230,7 @@ impl World {
         self.unit_mut(altar).unwrap().revive = Some((hero, 0.0, t.max(0.01)));
         self.unit_mut(hero).unwrap().reviving = true;
         let ctx = EventCtx { unit: hero, ..Default::default() };
-        self.fire_unit_pair(vm, hero, EVENT_PLAYER_HERO_REVIVE_START, EVENT_PLAYER_HERO_REVIVE_START, ctx);
+        self.fire_unit_pair(vm, hero, EVENT_PLAYER_HERO_REVIVE_START, EVENT_UNIT_HERO_REVIVE_START, ctx);
         Ok(())
     }
 
@@ -248,7 +248,7 @@ impl World {
         let (x, y) = self.spawn_point_pub(altar, radius);
         self.revive_hero(hero, x, y);
         let ctx = EventCtx { unit: hero, ..Default::default() };
-        self.fire_unit_pair(vm, hero, EVENT_PLAYER_HERO_REVIVE_FINISH, EVENT_PLAYER_HERO_REVIVE_FINISH, ctx);
+        self.fire_unit_pair(vm, hero, EVENT_PLAYER_HERO_REVIVE_FINISH, EVENT_UNIT_HERO_REVIVE_FINISH, ctx);
     }
 
     /// Brings a dead hero back at a point (ReviveHero and altars).

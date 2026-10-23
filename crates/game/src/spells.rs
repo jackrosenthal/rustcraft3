@@ -50,8 +50,9 @@ impl World {
         c.into_iter().map(|c| c.1).collect()
     }
 
-    /// Creates summoned units with a timed life around a point.
-    pub fn summon(&mut self, owner: u8, unit: Id, n: i32, x: f32, y: f32, life: f32) -> Vec<u32> {
+    /// Creates summoned units with a timed life around a point; each raises the summon
+    /// event (the summoned unit triggering, the summoner as GetSummoningUnit).
+    pub fn summon(&mut self, summoner: u32, owner: u8, unit: Id, n: i32, x: f32, y: f32, life: f32) -> Vec<u32> {
         let mut out = Vec::new();
         for i in 0..n.max(0) {
             let ang = i as f32 / n.max(1) as f32 * std::f32::consts::TAU;
@@ -63,6 +64,8 @@ impl World {
                         u.timed_life = Some(life);
                     }
                 }
+                use crate::event_ids::*;
+                self.queue_unit_event(s, EVENT_PLAYER_UNIT_SUMMON, EVENT_UNIT_SUMMON, EventCtx { other_unit: summoner, ..Default::default() });
                 out.push(s);
             }
         }
@@ -300,7 +303,7 @@ impl World {
                 true
             }
             // Summons.
-            "AOsf" | "AHpx" | "AEst" | "AEsv" | "AOwd" | "AOsw" => {
+            "AOsf" | "AHwe" | "AHpx" | "AEst" | "AEsv" | "AOwd" | "AOsw" => {
                 let unit = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
                 let n = match code {
                     "AOsf" => self.d(a, "DataB", lvl),
@@ -309,7 +312,7 @@ impl World {
                 .max(1.0) as i32;
                 let (sx, sy) = if code == "AOsw" || code == "AOwd" { (x, y) } else { (cx, cy) };
                 let life = self.d(a, "Dur", lvl);
-                self.summon(owner, unit, n, sx, sy, life);
+                self.summon(h, owner, unit, n, sx, sy, life);
                 true
             }
             // Force of Nature: trees in the area become treants.
@@ -321,7 +324,7 @@ impl World {
                 for t in trees {
                     let (px, py) = self.widget_pos(t).unwrap();
                     crate::natives::objects::kill_destructable_pub(self, vm, t);
-                    self.summon(owner, unit, 1, px, py, life);
+                    self.summon(h, owner, unit, 1, px, py, life);
                 }
                 true
             }
@@ -334,7 +337,7 @@ impl World {
                 }
                 let unit = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
                 let life = self.d(a, "DataB", lvl);
-                self.summon(owner, unit, 1, x, y, life);
+                self.summon(h, owner, unit, 1, x, y, life);
                 true
             }
             // Corpses: Animate Dead raises any, Resurrection friendly ones.
@@ -399,7 +402,11 @@ impl World {
             let stop = u.dead || !matches!(u.action, Action::Cast { .. }) || self.buff_mods(h).4;
             let Some(mut c) = u.channel.clone() else { continue };
             if stop {
+                // An interrupted channel ends without finishing.
                 self.unit_mut(h).unwrap().channel = None;
+                use crate::event_ids::*;
+                let ctx = EventCtx { target_unit: c.target, spell_ability: crate::objects::id_to_int(c.ability), order_x: c.x, order_y: c.y, ..Default::default() };
+                self.queue_unit_event(h, EVENT_PLAYER_UNIT_SPELL_ENDCAST, EVENT_UNIT_SPELL_ENDCAST, ctx);
                 continue;
             }
             c.elapsed += dt;
@@ -420,6 +427,10 @@ impl World {
                 u.channel = None;
                 u.casting = None;
                 u.action = Action::Idle;
+                use crate::event_ids::*;
+                let ctx = EventCtx { target_unit: c.target, spell_ability: crate::objects::id_to_int(c.ability), order_x: c.x, order_y: c.y, ..Default::default() };
+                self.queue_unit_event(h, EVENT_PLAYER_UNIT_SPELL_FINISH, EVENT_UNIT_SPELL_FINISH, ctx.clone());
+                self.queue_unit_event(h, EVENT_PLAYER_UNIT_SPELL_ENDCAST, EVENT_UNIT_SPELL_ENDCAST, ctx);
             } else {
                 u.channel = Some(c);
             }

@@ -395,6 +395,10 @@ impl World {
             u.casting = Some((0.0, false));
             u.anim = if anim.is_empty() { "spell".into() } else { anim };
             u.anim_serial = u.anim_serial.wrapping_add(1);
+            // The cast begins: channel, then cast.
+            let ctx = EventCtx { target_unit: target, spell_ability: crate::objects::id_to_int(a), order_x: goal.0, order_y: goal.1, ..Default::default() };
+            self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_SPELL_CHANNEL, EVENT_UNIT_SPELL_CHANNEL, ctx.clone());
+            self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_SPELL_CAST, EVENT_UNIT_SPELL_CAST, ctx);
             return;
         }
         let (elapsed, fired) = u.casting.unwrap();
@@ -408,9 +412,8 @@ impl World {
             u.mana -= cost;
             u.cooldowns.insert(a, cool);
             u.casting = Some((elapsed, true));
-            let owner = u.owner;
-            let ctx = EventCtx { unit: h, target_unit: target, spell_ability: crate::objects::id_to_int(a), order_x: x, order_y: y, player: owner, has_player: true, event_id: EVENT_PLAYER_UNIT_SPELL_EFFECT, ..Default::default() };
-            self.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event, .. } if *player == owner && *event == EVENT_PLAYER_UNIT_SPELL_EFFECT));
+            let ctx = EventCtx { target_unit: target, spell_ability: crate::objects::id_to_int(a), order_x: goal.0, order_y: goal.1, ..Default::default() };
+            self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_SPELL_EFFECT, EVENT_UNIT_SPELL_EFFECT, ctx);
             // CasterArt at the caster and TargetArt at the target, as the ability lists.
             let (cx, cy) = self.unit(h).map_or(goal, |u| (u.x, u.y));
             let caster_art = self.profile_art(a, "CasterArt");
@@ -431,6 +434,10 @@ impl World {
         if fired && elapsed >= castpt + backsw {
             u.casting = None;
             u.action = Action::Idle;
+            let ctx = EventCtx { target_unit: target, spell_ability: crate::objects::id_to_int(a), order_x: goal.0, order_y: goal.1, ..Default::default() };
+            self.queue_unit_event(h, EVENT_PLAYER_UNIT_SPELL_FINISH, EVENT_UNIT_SPELL_FINISH, ctx.clone());
+            self.queue_unit_event(h, EVENT_PLAYER_UNIT_SPELL_ENDCAST, EVENT_UNIT_SPELL_ENDCAST, ctx);
+            let u = self.unit_mut(h).unwrap();
             u.anim = "stand".into();
             u.anim_serial = u.anim_serial.wrapping_add(1);
         } else {
@@ -541,20 +548,6 @@ impl World {
             "ACtb" | "ANfb" => {
                 self.spell_damage(vm, h, target, self.data(a, "DataA", lvl));
                 self.apply_buff(target, Buff { id: buff_id, ability: a, level: lvl, caster: h, remaining: dur, stun: true, ..Default::default() });
-            }
-            // Water Elemental and other timed summons: DataA units of UnitID for Dur.
-            "AHwe" | "AOsf" | "AUcs" => {
-                let unit = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
-                let n = self.data(a, "DataA", lvl).max(1.0) as i32;
-                let d = self.data(a, "Dur", lvl);
-                let (cx, cy) = self.unit(h).map_or((x, y), |u| (u.x, u.y));
-                for i in 0..n {
-                    let ang = i as f32 / n as f32 * std::f32::consts::TAU;
-                    let s = crate::natives::units::create_unit(self, owner, unit, cx + 100.0 * ang.cos(), cy + 100.0 * ang.sin(), 270.0);
-                    if let Some(u) = self.unit_mut(s) {
-                        u.timed_life = Some(d);
-                    }
-                }
             }
             other => {
                 if !self.spell_effect(vm, h, a, lvl, other, target, (x, y)) {

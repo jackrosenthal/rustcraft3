@@ -101,6 +101,8 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         channel: None,
         reincarnate: None,
         proper_name: String::new(),
+        xp_suspended: false,
+        queue_started: false,
     };
     let path_tex = if unit.is_building { o.str("pathTex") } else { String::new() };
     let mut unit = unit;
@@ -458,18 +460,20 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetHeroLevel => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.level)),
         GetHeroXP => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.hero_xp)),
         GetHeroProperName => |w, _, a| { let n = unit_arg(w, a, 0).map(|u| u.proper_name.clone()).unwrap_or_default(); string(n) },
-        AddHeroXP => |w, _, a| { w.add_hero_xp(a.h(0), a.i(1)); none() },
-        SetHeroXP => |w, _, a| {
+        AddHeroXP => |w, vm, a| { w.add_hero_xp(a.h(0), a.i(1)); w.flush_events(vm); none() },
+        SetHeroXP => |w, vm, a| {
             let cur = unit_arg(w, a, 0).map_or(0, |u| u.hero_xp);
             if a.i(1) > cur { w.add_hero_xp(a.h(0), a.i(1) - cur); }
+            w.flush_events(vm);
             none()
         },
-        SetHeroLevel => |w, _, a| {
+        SetHeroLevel => |w, vm, a| {
             let (h, l) = (a.h(0), a.i(1));
             while w.unit(h).is_some_and(|u| u.is_hero && u.level < l) {
                 let need = w.hero_xp_needed(w.unit(h).unwrap().level + 1) - w.unit(h).unwrap().hero_xp;
                 w.add_hero_xp(h, need.max(1));
             }
+            w.flush_events(vm);
             none()
         },
         GetHeroStr => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.str_ as i32)),
@@ -482,7 +486,33 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             u.skill_points = (u.skill_points + d).max(0);
             boolean(true)
         },
-        SelectHeroSkill => |w, _, a| { w.learn_skill(a.h(0), id_from_int(a.i(1))); none() },
+        SelectHeroSkill => |w, vm, a| { w.learn_skill(a.h(0), id_from_int(a.i(1))); w.flush_events(vm); none() },
+        SetHeroStr => |w, _, a| { if let Some(u) = w.unit_mut(a.h(0)) { u.str_ = a.i(1) as f32; } w.apply_hero_stats(a.h(0), false); none() },
+        SetHeroAgi => |w, _, a| { if let Some(u) = w.unit_mut(a.h(0)) { u.agi = a.i(1) as f32; } w.apply_hero_stats(a.h(0), false); none() },
+        SetHeroInt => |w, _, a| { if let Some(u) = w.unit_mut(a.h(0)) { u.int = a.i(1) as f32; } w.apply_hero_stats(a.h(0), false); none() },
+        // Levels lost take their attribute gains and skill points with them; the
+        // experience drops to the new level's.
+        UnitStripHeroLevel => |w, _, a| {
+            let h = a.h(0);
+            let Some(u) = w.unit(h).filter(|u| u.is_hero) else { return boolean(false) };
+            let o = w.objects.units.get(u.type_id);
+            let (ds, da, di) = o.map_or((0.0, 0.0, 0.0), |o| (o.real("STRplus"), o.real("AGIplus"), o.real("INTplus")));
+            let n = a.i(1).min(u.level - 1).max(0);
+            if n == 0 { return boolean(false); }
+            let level = u.level - n;
+            let xp = w.hero_xp_needed(level);
+            let u = w.unit_mut(h).unwrap();
+            u.level = level;
+            u.hero_xp = xp;
+            u.str_ -= ds * n as f32;
+            u.agi -= da * n as f32;
+            u.int -= di * n as f32;
+            u.skill_points = (u.skill_points - n).max(0);
+            w.apply_hero_stats(h, false);
+            boolean(true)
+        },
+        SuspendHeroXP => |w, _, a| { if let Some(u) = w.unit_mut(a.h(0)) { u.xp_suspended = a.b(1); } none() },
+        IsSuspendedXP => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| u.xp_suspended)),
         IsHeroUnitId => |_, _, a| boolean(id_from_int(a.i(0))[0].is_ascii_uppercase()),
         IsUnitIdType => |w, _, a| {
             let id = id_from_int(a.i(0));
@@ -491,11 +521,18 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         IsUnitType => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| is_unit_type(w, u, a.h(1) as i32))),
         GetOwningPlayer => |w, _, a| match unit_arg(w, a, 0) { Some(u) => NativeResult::Return(w.player_handle(u.owner)), None => none() },
-        SetUnitOwner => |w, _, a| {
+        SetUnitOwner => |w, vm, a| {
             let Some(p) = w.player_of(a.h(1)) else { return none() };
             let change_color = a.b(2);
             let color = w.players[p as usize].color;
-            with_unit(w, a, |u| { u.owner = p; if change_color { u.color = color; } })
+            let prev = unit_arg(w, a, 0).map(|u| u.owner);
+            with_unit(w, a, |u| { u.owner = p; if change_color { u.color = color; } });
+            w.update_food();
+            if let Some(prev) = prev.filter(|&o| o != p) {
+                let ctx = EventCtx { state: prev as i32, ..Default::default() };
+                w.fire_unit_pair(vm, a.h(0), EVENT_PLAYER_UNIT_CHANGE_OWNER, EVENT_UNIT_CHANGE_OWNER, ctx);
+            }
+            none()
         },
         IsUnitOwnedByPlayer => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| Some(u.owner) == w.player_of(a.h(1)))),
         IsUnitAlly => |w, _, a| {
@@ -688,9 +725,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let local = w.local_player;
             let sel = w.selection.entry(local).or_default();
             if on { if !sel.contains(&u) { sel.push(u); } } else { sel.retain(|x| *x != u); }
+            w.selection_serial += 1;
             none()
         },
-        ClearSelection => |w, _, _| { let local = w.local_player; w.selection.remove(&local); none() },
+        ClearSelection => |w, _, _| { let local = w.local_player; w.selection.remove(&local); w.selection_serial += 1; none() },
         IsUnitSelected => |w, _, a| {
             let Some(p) = w.player_of(a.h(1)) else { return boolean(false) };
             boolean(w.selection.get(&p).is_some_and(|s| s.contains(&a.h(0))))
@@ -728,6 +766,6 @@ fn dummy_unit() -> Unit {
         queue: vec![], queue_progress: 0.0, constructing: None, build_time: 0.0, building: 0,
         str_: 0.0, agi: 0.0, int: 0.0, skill_points: 0, regen_timer: 0.0,
         cooldowns: HashMap::new(), autocast: vec![], buffs: vec![], casting: None, timed_life: None,
-        item_bonus: Default::default(), revive: None, reviving: false, channel: None, reincarnate: None, proper_name: String::new(),
+        item_bonus: Default::default(), revive: None, reviving: false, channel: None, reincarnate: None, proper_name: String::new(), xp_suspended: false, queue_started: false,
     }
 }

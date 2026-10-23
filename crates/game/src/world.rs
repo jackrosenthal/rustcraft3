@@ -98,6 +98,8 @@ pub struct World {
     /// Live units in creation order, the order enumerations visit them.
     pub unit_order: Vec<u32>,
     pub selection: HashMap<u8, Vec<u32>>,
+    /// Counts script changes to the selection, so the interface can follow them.
+    pub selection_serial: u32,
     pub destructable_order: Vec<u32>,
     pub item_order: Vec<u32>,
     /// Effects destroyed by script, with the time they were destroyed; the presentation
@@ -130,6 +132,11 @@ pub struct World {
     pub map_terrain_fog: Option<(i32, f32, f32, f32, [f32; 3])>,
     /// SetSkyModel's model, if any.
     pub sky_model: Option<String>,
+    /// Unit events raised where no VM is at hand, fired at the end of the tick: the
+    /// unit, its player and unit event ids, and the context.
+    pub queued_events: Vec<(u32, i32, i32, EventCtx)>,
+    /// Structures whose construction was cancelled, removed once their event fires.
+    pub cancelled_constructions: Vec<u32>,
     /// The player's profile: campaign progress and saved game caches.
     pub persist: crate::persist::Persist,
     /// Handles removed at a game time (temporary fog modifiers).
@@ -246,6 +253,7 @@ impl World {
             version: 1,
             unit_order: Vec::new(),
             selection: HashMap::new(),
+            selection_serial: 0,
             destructable_order: Vec::new(),
             item_order: Vec::new(),
             dying_effects: Vec::new(),
@@ -268,6 +276,8 @@ impl World {
             terrain_fog: None,
             map_terrain_fog: None,
             sky_model: None,
+            queued_events: Vec::new(),
+            cancelled_constructions: Vec::new(),
             persist: Default::default(),
             timed_removals: Vec::new(),
         }
@@ -504,6 +514,20 @@ impl World {
     // ---- time ----
 
     /// Advances game time: timers, sleeping threads, and time-based events.
+    /// Queues a unit event to fire with the VM (see `queued_events`).
+    pub fn queue_unit_event(&mut self, unit: u32, player_event: i32, unit_event: i32, ctx: EventCtx) {
+        self.queued_events.push((unit, player_event, unit_event, ctx));
+    }
+
+    pub fn flush_events(&mut self, vm: &mut Vm) {
+        for (unit, pe, ue, ctx) in std::mem::take(&mut self.queued_events) {
+            self.fire_unit_pair(vm, unit, pe, ue, ctx);
+        }
+        for h in std::mem::take(&mut self.cancelled_constructions) {
+            crate::natives::units::remove_unit(self, h);
+        }
+    }
+
     pub fn tick(&mut self, vm: &mut Vm, dt: f32) {
         self.time += dt;
         let day_hours = self.misc_f32("DayHours", 24.0);
@@ -525,6 +549,7 @@ impl World {
         self.update_fog(dt);
         self.update_shops(dt);
         self.update_ai(dt);
+        self.flush_events(vm);
 
         // Timers.
         let mut expired = Vec::new();

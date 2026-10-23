@@ -257,6 +257,29 @@ impl Game {
 
     /// A player clicked a dialog button: the dialog closes for them, then the button's
     /// and the dialog's click events fire (EVENT_DIALOG_BUTTON_CLICK, EVENT_DIALOG_CLICK).
+    /// The player's selection from the interface: units leaving it raise the deselect
+    /// events and units joining it the select events.
+    pub fn set_selection(&mut self, player: u8, units: &[u32]) {
+        use event_ids::*;
+        let old = self.world.selection.get(&player).cloned().unwrap_or_default();
+        if old == units {
+            return;
+        }
+        self.world.selection.insert(player, units.to_vec());
+        // These belong to the selecting player, not the unit's owner.
+        let fire = |world: &mut World, vm: &mut Vm, u: u32, pe: i32, ue: i32| {
+            let ctx = types::EventCtx { unit: u, player, has_player: true, event_id: pe, ..Default::default() };
+            world.fire(vm, ctx.clone(), move |_, k| matches!(k, types::EventKind::PlayerUnit { player: p, event, .. } if *p == player && *event == pe));
+            world.fire(vm, types::EventCtx { event_id: ue, ..ctx }, move |_, k| matches!(k, types::EventKind::Unit { unit, event } if *unit == u && *event == ue));
+        };
+        for &u in old.iter().filter(|u| !units.contains(u)) {
+            fire(&mut self.world, &mut self.vm, u, EVENT_PLAYER_UNIT_DESELECTED, EVENT_UNIT_DESELECTED);
+        }
+        for &u in units.iter().filter(|u| !old.contains(u)) {
+            fire(&mut self.world, &mut self.vm, u, EVENT_PLAYER_UNIT_SELECTED, EVENT_UNIT_SELECTED);
+        }
+    }
+
     /// A player event with no other data: Escape (EVENT_PLAYER_END_CINEMATIC) and the
     /// arrow key events.
     pub fn player_event(&mut self, player: u8, event: i32) {

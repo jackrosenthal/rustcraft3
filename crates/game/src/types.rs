@@ -218,6 +218,10 @@ pub struct Unit {
     pub reincarnate: Option<f32>,
     /// A hero's name from its type's Propernames.
     pub proper_name: String,
+    /// SuspendHeroXP: the hero gains no experience from kills.
+    pub xp_suspended: bool,
+    /// Whether the first queued item has started (its start event has fired).
+    pub queue_started: bool,
 }
 
 /// Bonuses from held items' abilities.

@@ -49,8 +49,24 @@ fn life_color(p: f32) -> [f32; 4] {
     }
 }
 
+/// Timed text in one of the world frame's message areas.
+#[derive(Clone, Debug)]
+pub struct Message {
+    pub text: String,
+    /// Scene time when it disappears.
+    pub until: f32,
+}
+
 pub struct Hud {
     pub tree: FrameTree,
+    /// Scene time, for message expiry.
+    pub now: f32,
+    /// WorldFrameUnitMessage: trigger text, oldest first.
+    pub unit_messages: Vec<Message>,
+    /// The unit message frame's placement from the last DisplayTextToPlayer x and y.
+    pub unit_message_offset: (f32, f32),
+    /// WorldFrameMessage: the error line above the console.
+    pub error_message: Option<Message>,
     /// Text under the portrait: hit points (with color) and mana.
     pub portrait_stats: Option<(String, [f32; 4], Option<String>)>,
     info: Option<usize>,
@@ -122,6 +138,10 @@ impl Hud {
             minimap_area: None,
             minimap_dots: Vec::new(),
             minimap_fog: false,
+            now: 0.0,
+            unit_messages: Vec::new(),
+            unit_message_offset: (0.0, 0.0),
+            error_message: None,
             camera_box: Vec::new(),
             card: Vec::new(),
             page: crate::card::Page::Main,
@@ -226,8 +246,60 @@ impl Hud {
         self.card.iter().find(|b| self.slot_rect(b.x, b.y).contains(x, y))
     }
 
+    /// Adds trigger text (DisplayTextToPlayer): `x` and `y` from 0 to 1 move the frame,
+    /// and a negative duration means the default of 3 seconds plus 0.1 per byte
+    /// (game.dll jass_DisplayTextToPlayer).
+    pub fn unit_message(&mut self, text: &str, x: f32, y: f32, duration: f32) {
+        let duration = if duration < 0.0 { 3.0 + 0.1 * text.len() as f32 } else { duration };
+        self.unit_message_offset = (x.max(0.0), y.max(0.0));
+        self.unit_messages.push(Message { text: text.to_string(), until: self.now + duration });
+    }
+
+    /// Shows an error line for 10 seconds, replacing the previous one (FUN_6f36de80).
+    pub fn error(&mut self, text: &str) {
+        self.error_message = Some(Message { text: text.to_string(), until: self.now + 10.0 });
+    }
+
+    /// Drops expired messages.
+    pub fn tick(&mut self, now: f32) {
+        self.now = now;
+        self.unit_messages.retain(|m| m.until > now);
+        if self.error_message.as_ref().is_some_and(|m| m.until <= now) {
+            self.error_message = None;
+        }
+    }
+
+    fn message_draws(&self, db: &FrameDb, out: &mut Vec<Draw>) {
+        let root = self.tree.frames[0].rect.unwrap_or_default();
+        let cx = (root.x0 + root.x1) / 2.0;
+        let font = db.decorate("MessageFont");
+        let height = |key: &str| db.misc_ui.get_str("FontHeights", key).and_then(|v| v.trim().parse().ok()).unwrap_or(0.015);
+        let shadow = Some(([0.0, 0.0, 0.0, 1.0], 0.001, -0.001));
+        // WorldFrameMessage: 0.38 x 0.05, its bottom 0.18 above the bottom of the screen.
+        let msg = w3_ui::Rect { x0: cx - 0.19, x1: cx + 0.19, y0: root.y0 + 0.18, y1: root.y0 + 0.23 };
+        if let Some(m) = &self.error_message {
+            let size = height("WorldFrameMessage");
+            out.push(Draw::Text { font: font.clone(), size, rect: msg, text: m.text.clone(), color: [1.0; 4], justify_h: w3_ui::Justify::Middle, justify_v: w3_ui::Justify::End, shadow });
+        }
+        // WorldFrameUnitMessage: 0.5 x 0.25 with its bottom center on the message frame's
+        // top, 0.098125 left of center and 0.0005 up at offset (0, 0); offsets of 1 move
+        // it to x 0.8 and y 0.452 (FUN_6f374d20).
+        if !self.unit_messages.is_empty() {
+            let size = height("WorldFrameUnitMessage");
+            let (ox, oy) = self.unit_message_offset;
+            let ax0 = cx - 0.098125;
+            let ay0 = msg.y1 + 0.0005;
+            let ax = ax0 + (root.x0 + 0.8 - ax0) * ox;
+            let ay = ay0 + (root.y0 + 0.452 - ay0) * oy;
+            let rect = w3_ui::Rect { x0: ax - 0.25, x1: ax + 0.25, y0: ay, y1: ay + 0.25 };
+            let text = self.unit_messages.iter().map(|m| m.text.replace("|n", "\n")).collect::<Vec<_>>().join("\n");
+            out.push(Draw::Text { font, size, rect, text, color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow });
+        }
+    }
+
     pub fn draws(&self, db: &FrameDb) -> Vec<Draw> {
         let mut out = self.tree.draw(db);
+        self.message_draws(db, &mut out);
         if let Some((hp, color, mana)) = &self.portrait_stats {
             // Hit points and mana: 0.078125 x 0.011875 at (0.214375, 0.0283) and
             // (0.214375, 0.01375), MasterFont at [FontHeights] PortraitStats.

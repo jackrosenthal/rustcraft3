@@ -345,7 +345,19 @@ impl Scene {
                     self.camera.target.x = x;
                     self.camera.target.y = y;
                 }
-                w3_game::world::Request::DisplayText { text, .. } => log::info!("[text] {text}"),
+                w3_game::world::Request::DisplayText { players, x, y, text, duration } => {
+                    log::info!("[text] {text}");
+                    if players & local != 0 {
+                        if let Some(h) = self.hud.as_mut() {
+                            h.unit_message(&text, x, y, duration);
+                        }
+                    }
+                }
+                w3_game::world::Request::ClearText { players } if players & local != 0 => {
+                    if let Some(h) = self.hud.as_mut() {
+                        h.unit_messages.clear();
+                    }
+                }
                 r @ (w3_game::world::Request::PlaySound(_)
                 | w3_game::world::Request::UiSound { .. }
                 | w3_game::world::Request::WorldSound { .. }
@@ -421,6 +433,9 @@ impl Scene {
         let i = match race { 2 => 1, 3 => 2, 4 => 3, _ => 0 };
         let text = texts.get(i).or(texts.first()).cloned().unwrap_or_default();
         log::info!("[error] {text}");
+        if let Some(h) = self.hud.as_mut() {
+            h.error(&text);
+        }
         let label = match key {
             "Nogold" => format!("NoGold{race_name}"),
             "Nolumber" => format!("NoLumber{race_name}"),
@@ -1094,6 +1109,10 @@ impl Scene {
             g.tick(dt);
         }
         self.apply_requests();
+        let now = self.time;
+        if let Some(h) = self.hud.as_mut() {
+            h.tick(now);
+        }
         // Without audio, keep only the music requests for when it starts.
         if self.audio.is_none() {
             self.pending_audio.retain(|r| matches!(r, w3_game::world::Request::PlayMusic(_) | w3_game::world::Request::StopMusic(_)));

@@ -174,6 +174,14 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 1;
             }
+            "error" => {
+                scene.error(&a[i + 1]);
+                i += 2;
+            }
+            "msg" => {
+                if let Some(h) = scene.hud.as_mut() { h.unit_message(&a[i + 1], 0.0, 0.0, -1.0); }
+                i += 2;
+            }
             "aidump" => {
                 if let Some(g) = &scene.game {
                     let w = &g.world;

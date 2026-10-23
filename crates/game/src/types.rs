@@ -332,6 +332,10 @@ pub struct UnitExtra {
     pub born: f32,
     #[serde(default)]
     pub mine_fuse: Option<f32>,
+    /// A locust's caster, the damage it has dealt since it last came back, and whether
+    /// it is on its way back.
+    #[serde(default)]
+    pub swarm: Option<(u32, f32, bool)>,
 }
 
 impl Default for UnitExtra {
@@ -381,6 +385,7 @@ impl Default for UnitExtra {
             warp_inside: 0,
             born: 0.0,
             mine_fuse: None,
+            swarm: None,
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,

@@ -580,6 +580,10 @@ impl World {
         if !dead {
             self.phase_shift(target);
         }
+        // A locust counts what it deals toward going back to its caster.
+        if let Some(s) = self.unit_mut(source).and_then(|u| u.extra.swarm.as_mut()) {
+            s.1 += dmg;
+        }
         for d in linked_dead {
             kill_unit(self, vm, d, source);
         }

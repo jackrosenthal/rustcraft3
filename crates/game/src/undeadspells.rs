@@ -223,3 +223,95 @@ impl World {
         }
     }
 }
+
+/// A Locust Swarm under way.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Swarm {
+    pub caster: u32,
+    pub ability: Id,
+    pub level: u32,
+    pub until: f32,
+    pub next: f32,
+    pub released: u32,
+    pub locusts: Vec<u32>,
+}
+
+impl World {
+    /// Locust Swarm: DataA locusts (UnitID) leave the caster one every DataB for Dur;
+    /// each attacks an enemy within Area of it (at most DataC on one), and after dealing
+    /// DataE comes back to give the caster DataD of what it dealt as life.
+    pub(crate) fn begin_swarm(&mut self, h: u32, a: Id, lvl: u32) {
+        let until = self.time + self.data(a, "Dur", lvl).max(self.data(a, "HeroDur", lvl));
+        self.swarms.push(Swarm { caster: h, ability: a, level: lvl, until, next: self.time, released: 0, locusts: Vec::new() });
+    }
+
+    pub fn update_swarms(&mut self) {
+        let mut swarms = std::mem::take(&mut self.swarms);
+        swarms.retain_mut(|s| {
+            let (a, lvl) = (s.ability, s.level);
+            let caster = self.unit(s.caster).filter(|u| !u.dead).map(|u| (u.owner, u.x, u.y));
+            let Some((owner, cx, cy)) = caster.filter(|_| self.time < s.until) else {
+                for &l in &s.locusts {
+                    crate::natives::units::remove_unit(self, l);
+                }
+                return false;
+            };
+            let (count, every, per_target, ret, threshold, area) = (self.data(a, "DataA", lvl) as u32, self.data(a, "DataB", lvl).max(0.01), self.data(a, "DataC", lvl) as usize, self.data(a, "DataD", lvl), self.data(a, "DataE", lvl), self.data(a, "Area", lvl));
+            let kind = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
+            while s.released < count && self.time >= s.next {
+                let l = crate::natives::units::create_unit(self, owner, kind, cx, cy, 0.0);
+                if let Some(u) = self.unit_mut(l) {
+                    u.extra.swarm = Some((s.caster, 0.0, false));
+                }
+                s.locusts.push(l);
+                s.released += 1;
+                s.next += every;
+            }
+            s.locusts.retain(|&l| self.unit(l).is_some_and(|u| !u.dead));
+            let enemies: Vec<u32> = self.enemies_in(owner, cx, cy, area).into_iter().filter(|&t| self.unit(t).is_some_and(|u| !u.is_building)).collect();
+            for &l in &s.locusts.clone() {
+                let Some((_, dealt, back)) = self.unit(l).and_then(|u| u.extra.swarm) else { continue };
+                let Some(u) = self.unit(l) else { continue };
+                let (lx, ly) = (u.x, u.y);
+                if back {
+                    if (lx - cx).hypot(ly - cy) < 64.0 {
+                        if let Some(c) = self.unit_mut(s.caster) {
+                            c.life = (c.life + dealt * ret).min(c.max_life);
+                        }
+                        self.unit_mut(l).unwrap().extra.swarm = Some((s.caster, 0.0, false));
+                    } else {
+                        self.unit_mut(l).unwrap().action = Action::Move { x: cx, y: cy };
+                    }
+                    continue;
+                }
+                if dealt >= threshold {
+                    let u = self.unit_mut(l).unwrap();
+                    u.extra.swarm = Some((s.caster, dealt, true));
+                    u.action = Action::Move { x: cx, y: cy };
+                    u.path.clear();
+                    continue;
+                }
+                let current = match u.action {
+                    Action::Attack { target } if enemies.contains(&target) => Some(target),
+                    _ => None,
+                };
+                if current.is_some() {
+                    continue;
+                }
+                let on = |t: u32| s.locusts.iter().filter(|&&o| o != l && matches!(self.unit(o).map(|u| &u.action), Some(Action::Attack { target }) if *target == t)).count();
+                let pick = enemies.iter().copied().filter(|&t| on(t) < per_target).min_by(|&p, &q| {
+                    let d = |t: u32| self.unit(t).map_or(f32::MAX, |u| (u.x - lx).hypot(u.y - ly));
+                    d(p).total_cmp(&d(q))
+                });
+                let u = self.unit_mut(l).unwrap();
+                u.action = match pick {
+                    Some(t) => Action::Attack { target: t },
+                    None => Action::Follow { target: s.caster },
+                };
+            }
+            true
+        });
+        swarms.append(&mut self.swarms);
+        self.swarms = swarms;
+    }
+}

@@ -460,6 +460,10 @@ impl World {
                 self.drop_corpses(h);
                 true
             }
+            "AUls" => {
+                self.begin_swarm(h, a, lvl);
+                true
+            }
             "Aps2" => {
                 self.begin_possession(h, a, lvl, target);
                 true

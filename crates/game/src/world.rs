@@ -235,6 +235,9 @@ pub struct World {
     /// Mana Flare: when each (flaring unit, caster) pair may next strike.
     #[serde(skip)]
     pub flare_cooldowns: std::collections::HashMap<(u32, u32), f32>,
+    /// Locust Swarms under way.
+    #[serde(default)]
+    pub swarms: Vec<crate::undeadspells::Swarm>,
     /// Areas revealing invisible units to a player until a game time (Reveal, Flare):
     /// player, x, y, radius, and the time.
     #[serde(default)]
@@ -405,6 +408,7 @@ impl World {
             timed_activations: Vec::new(),
             next_link_group: 0,
             flare_cooldowns: Default::default(),
+            swarms: Vec::new(),
             detect_areas: Vec::new(),
         }
     }
@@ -745,6 +749,7 @@ impl World {
         prof!(self, "update_creep_sleep", self.update_creep_sleep());
         prof!(self, "update_waygates", self.update_waygates());
         prof!(self, "update_mines_armed", self.update_mines_armed(vm));
+        prof!(self, "update_swarms", self.update_swarms());
         let now = self.time;
         let due: Vec<(f32, u32, u32)> = self.pending_entangles.iter().copied().filter(|e| e.0 <= now).collect();
         self.pending_entangles.retain(|e| e.0 > now);

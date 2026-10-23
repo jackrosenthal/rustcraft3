@@ -68,6 +68,9 @@ pub struct Scene {
     pub time: f32,
     /// Direction from the light toward the world (UI\MiscData.txt [Light] Direction).
     pub light: Vec3,
+    /// Terrain and unit day/night models.
+    pub dnc: (Option<w3_formats::mdx::Model>, Option<w3_formats::mdx::Model>),
+    dnc_paths: (String, String),
 }
 
 fn num(t: &Table, row: &str, col: &str) -> f64 {
@@ -120,6 +123,7 @@ impl Scene {
             &cliff_slk,
             &data.misc,
             &mut load_mdx,
+            chain.read("war3map.shd").ok().as_deref(),
         );
 
         let mut instances = Vec::new();
@@ -202,7 +206,7 @@ impl Scene {
         camera.target = Vec3::new(start[0], start[1], terrain_r.height_at(start[0], start[1]));
         let dir: Vec<f32> = data.misc.get_list("Light", "Direction").iter().filter_map(|v| v.trim().parse().ok()).collect();
         let light = if dir.len() == 3 { Vec3::new(dir[0], dir[1], dir[2]) } else { Vec3::new(0.3, 0.3, -0.25) };
-        let mut scene = Scene { game, units: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light };
+        let mut scene = Scene { game, units: HashMap::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default() };
         scene.apply_requests();
         Ok(scene)
     }
@@ -225,6 +229,11 @@ impl Scene {
                 _ => {}
             }
         }
+    }
+
+    fn load_dnc(chain: &w3_mpq::Chain, path: &str) -> Option<w3_formats::mdx::Model> {
+        let p = if path.to_ascii_lowercase().ends_with(".mdl") { format!("{}.mdx", &path[..path.len() - 4]) } else { path.to_string() };
+        chain.read(&p).ok().and_then(|b| w3_formats::mdx::Model::parse(&b).ok())
     }
 
     /// Creates, updates, and removes render instances to match the game's units.
@@ -285,6 +294,23 @@ impl Scene {
         let mut globals = default_globals(view_proj, eye);
         let light = self.light;
         globals.light_dir = [light.x, light.y, light.z, 0.0];
+        if let Some(g) = &self.game {
+            let paths = g.world.day_night_models.clone();
+            if paths != self.dnc_paths {
+                self.dnc = (Self::load_dnc(&g.world.chain, &paths.0), Self::load_dnc(&g.world.chain, &paths.1));
+                self.dnc_paths = paths;
+            }
+            let hour = g.world.time_of_day;
+            if let Some(l) = self.dnc.0.as_ref().and_then(|m| w3_render::dnc::light_at(m, hour)) {
+                globals.light_dir = [l.direction.x, l.direction.y, l.direction.z, 0.0];
+                globals.terrain_light_color = [l.diffuse.x, l.diffuse.y, l.diffuse.z, 1.0];
+                globals.terrain_ambient = [l.ambient.x, l.ambient.y, l.ambient.z, 1.0];
+            }
+            if let Some(l) = self.dnc.1.as_ref().and_then(|m| w3_render::dnc::light_at(m, hour)) {
+                globals.light_color = [l.diffuse.x, l.diffuse.y, l.diffuse.z, 1.0];
+                globals.ambient = [l.ambient.x, l.ambient.y, l.ambient.z, 1.0];
+            }
+        }
         for inst in &mut self.instances {
             // Cull instances well outside the view.
             let p = inst.transform.w_axis.truncate();

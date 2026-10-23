@@ -6,6 +6,8 @@ struct Globals {
     fog_color: vec4<f32>,
     fog: vec4<f32>,
     camera_pos: vec4<f32>,
+    terrain_light_color: vec4<f32>,
+    terrain_ambient: vec4<f32>,
 };
 
 struct Draw {

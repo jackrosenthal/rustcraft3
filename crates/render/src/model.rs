@@ -254,6 +254,9 @@ pub struct Globals {
     /// x: start, y: end, z: enabled
     pub fog: [f32; 4],
     pub camera_pos: [f32; 4],
+    /// Terrain uses its own day/night light.
+    pub terrain_light_color: [f32; 4],
+    pub terrain_ambient: [f32; 4],
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -757,6 +760,8 @@ pub fn default_globals(view_proj: Mat4, camera: Vec3) -> Globals {
         fog_color: [0.0; 4],
         fog: [0.0; 4],
         camera_pos: [camera.x, camera.y, camera.z, 1.0],
+        terrain_light_color: [1.0, 1.0, 1.0, 1.0],
+        terrain_ambient: [0.35, 0.35, 0.35, 1.0],
     }
 }
 

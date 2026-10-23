@@ -41,6 +41,7 @@ pub struct TerrainRenderer {
     texture_bgs: Vec<wgpu::BindGroup>,
     cliff_batches: Vec<Batch>,
     cliff_bgs: Vec<wgpu::BindGroup>,
+    shadow_bg: wgpu::BindGroup,
     water_textures: Vec<wgpu::BindGroup>,
     water_range: (u32, u32),
     water_rate: f32,
@@ -79,6 +80,7 @@ impl TerrainRenderer {
         cliff_slk: &Table,
         misc: &Profile,
         load_mdx: &mut dyn FnMut(&str) -> Option<w3_formats::mdx::Model>,
+        shadows: Option<&[u8]>,
     ) -> Self {
         use wgpu::util::DeviceExt;
         let (w, h) = (terrain.width, terrain.height);
@@ -355,28 +357,46 @@ impl TerrainRenderer {
         });
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("terrain.wgsl"));
+        let uniform = |binding| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        };
         let globals_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("terrain globals"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
+            entries: &[uniform(0), uniform(1)],
+        });
+        let tex_layout = texture_bind_group_layout(device);
+        // war3map.shd: one byte per 32x32 cell, four cells per tile edge, 0 or 255.
+        let (sw, sh) = ((w - 1) * 4, (h - 1) * 4);
+        let shadow_bytes: Vec<u8> = match shadows {
+            Some(b) if b.len() >= (sw * sh) as usize => b[..(sw * sh) as usize].to_vec(),
+            _ => vec![0; (sw * sh) as usize],
+        };
+        let shadow_tex = crate::texture::upload_r8(device, queue, "shadows", sw, sh, &shadow_bytes);
+        let shadow_sampler = make_sampler(device, false, false);
+        let shadow_bg = texture_bind_group(device, &tex_layout, &shadow_tex, &shadow_sampler);
+        let extent_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("terrain extent"),
+            contents: bytemuck::cast_slice(&[terrain.offset[0], terrain.offset[1], (w - 1) as f32 * TILE, (h - 1) as f32 * TILE]),
+            usage: wgpu::BufferUsages::UNIFORM,
         });
         let globals_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("terrain globals"),
             layout: &globals_layout,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: globals_buf.as_entire_binding() }],
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: globals_buf.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: extent_buf.as_entire_binding() },
+            ],
         });
-        let tex_layout = texture_bind_group_layout(device);
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("terrain"),
-            bind_group_layouts: &[Some(&globals_layout), Some(&tex_layout)],
+            bind_group_layouts: &[Some(&globals_layout), Some(&tex_layout), Some(&tex_layout)],
             immediate_size: 0,
         });
         let attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x4];
@@ -450,6 +470,7 @@ impl TerrainRenderer {
             texture_bgs,
             cliff_batches,
             cliff_bgs,
+            shadow_bg,
             water_textures,
             water_range,
             water_rate: num("texRate").max(1.0),
@@ -474,6 +495,7 @@ impl TerrainRenderer {
 
     pub fn render_ground(&self, pass: &mut wgpu::RenderPass) {
         pass.set_bind_group(0, &self.globals_bg, &[]);
+        pass.set_bind_group(2, &self.shadow_bg, &[]);
         pass.set_vertex_buffer(0, self.vertices.slice(..));
         pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
         for b in &self.batches {
@@ -494,6 +516,7 @@ impl TerrainRenderer {
             return;
         }
         pass.set_bind_group(0, &self.globals_bg, &[]);
+        pass.set_bind_group(2, &self.shadow_bg, &[]);
         pass.set_vertex_buffer(0, self.vertices.slice(..));
         pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
         pass.set_pipeline(&self.water_pipeline);

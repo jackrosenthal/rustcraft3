@@ -946,9 +946,15 @@ impl World {
                     continue;
                 }
                 let lvl = lvl as u32;
-                let radius = if code == "AUdd" { 1000.0 } else { self.data(a, "Rng", lvl) };
+                let radius = match code.as_str() {
+                    "AUdd" => 1000.0,
+                    "ANsl" => self.data(a, "Rng", lvl) + 400.0,
+                    _ => self.data(a, "Rng", lvl),
+                };
+                // Dark Conversion and Soul Preservation weigh every unit, not only enemies.
+                let any = matches!(code.as_str(), "ANdc" | "ANsl");
                 let (x, y, owner) = self.unit(h).map(|u| (u.x, u.y, u.owner)).unwrap();
-                let near: Vec<u32> = self.unit_order.iter().copied().filter(|&t| self.unit(t).is_some_and(|u| !u.dead && !u.hidden && (u.x - x).hypot(u.y - y) <= radius && !crate::natives::players::is_ally(self, owner, u.owner))).collect();
+                let near: Vec<u32> = self.unit_order.iter().copied().filter(|&t| t != h && self.unit(t).is_some_and(|u| !u.dead && !u.hidden && (u.x - x).hypot(u.y - y) <= radius && (any || !crate::natives::players::is_ally(self, owner, u.owner)))).collect();
                 let before = self.unit(h).and_then(|u| u.extra.ai_inside.iter().find(|e| e.0 == a).map(|e| e.1.clone())).unwrap_or_default();
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.ai_inside.retain(|e| e.0 != a);
@@ -958,6 +964,16 @@ impl World {
                     match code.as_str() {
                         "AHbz" | "ANrf" => self.ai_blizzard(h, a, lvl, t),
                         "AUdd" => self.ai_death_and_decay(h, a, lvl, t),
+                        // Dark Conversion, Soul Preservation (their vf3 on the watch): on a
+                        // unit they may target that does not bear them already.
+                        "ANdc" | "ANsl" => {
+                            let buff = self.buff_id(a, lvl);
+                            let bears = self.unit(t).is_some_and(|u| u.buffs.iter().any(|b| Some(b.id) == buff));
+                            let fits = if code == "ANdc" { self.converts_race(a, lvl, t) } else { self.unit(t).is_some_and(|u| !crate::natives::players::is_ally(self, owner, u.owner)) };
+                            if fits && self.can_cast(h, a).is_ok() && self.cast_target_error(h, a, t).is_none() && !bears {
+                                self.ai_cast(h, a, t);
+                            }
+                        }
                         // Finger of Death (its vf3 on the watch): at an enemy that is not
                         // within 300 of the caster.
                         "ANfd" => {
@@ -1670,7 +1686,7 @@ impl World {
 }
 
 /// Abilities whose AI watches the units about the caster.
-const WATCHED: [&str; 4] = ["AHbz", "ANrf", "AUdd", "ANfd"];
+const WATCHED: [&str; 6] = ["AHbz", "ANrf", "AUdd", "ANfd", "ANdc", "ANsl"];
 
 /// Abilities whose AI looks every 2 seconds (their vf50 timer, 0x6fd6fbb0).
 const EVERY_2S: [&str; 2] = ["AUan", "AHre"];

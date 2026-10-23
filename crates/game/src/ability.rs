@@ -343,6 +343,7 @@ impl World {
         let units = self.unit_order.clone();
         let mut expired_effects = Vec::new();
         let mut dots = Vec::new();
+        let mut conversions = Vec::new();
         for &h in &units {
             let Some(u) = self.unit_mut(h) else { continue };
             if u.dead {
@@ -360,6 +361,10 @@ impl World {
                 u.life = (u.life + (b.life_regen + b.life_regen_pct * u.max_life) * dt).min(u.max_life);
             }
             let mut lost_life = 0.0;
+            let ended: Vec<(u32, Id, u32)> = u.buffs.iter().filter(|b| b.remaining <= 0.0).map(|b| (b.caster, b.ability, b.level)).collect();
+            for (caster, a, lvl) in ended {
+                conversions.push((h, caster, a, lvl));
+            }
             u.buffs.retain(|b| {
                 if b.remaining <= 0.0 {
                     expired_effects.push(b.effect);
@@ -382,6 +387,28 @@ impl World {
         }
         for e in expired_effects {
             self.remove_buff_effect(e);
+        }
+        // Dark Conversion runs its course (CBuffDarkConversion vf41): the sleeper becomes
+        // UnitID for the caster's player, the caster raising the summon events
+        // (FUN_6f67b0b0).
+        // Soul Preservation's end (CBuffSoulPreservation vf41): the held unit becomes the
+        // caster's player's, the caster raising the summon events.
+        for (h, caster, a, lvl) in conversions {
+            let code = self.ability_code(a);
+            if !matches!(code.as_str(), "ANdc" | "ANsl") || self.unit(h).is_none_or(|u| u.dead) {
+                continue;
+            }
+            let Some(owner) = self.unit(caster).map(|c| c.owner) else { continue };
+            if code == "ANdc" {
+                let to = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
+                self.change_type(h, to);
+            }
+            if let Some(u) = self.unit_mut(h) {
+                u.owner = owner;
+                u.action = Action::Idle;
+            }
+            use crate::event_ids::*;
+            self.queue_unit_event(h, EVENT_PLAYER_UNIT_SUMMON, EVENT_UNIT_SUMMON, EventCtx { other_unit: caster, ..Default::default() });
         }
         for (src, h, amount) in dots {
             if amount >= 0.0 {

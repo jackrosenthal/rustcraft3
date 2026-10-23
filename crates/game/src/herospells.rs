@@ -19,6 +19,12 @@ impl World {
         id_from_str(self.lstr(a, "BuffID", lvl).split(',').next().unwrap_or("").trim())
     }
 
+    /// Dark Conversion takes only units of its DataA race (commoner).
+    pub(crate) fn converts_race(&self, a: Id, lvl: u32, target: u32) -> bool {
+        let race = self.lstr(a, "DataA", lvl).to_ascii_lowercase();
+        race.is_empty() || race == "-" || self.unit(target).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|o| o.str("race").eq_ignore_ascii_case(&race))
+    }
+
     pub(crate) fn hero_spell_effect(&mut self, vm: &mut Vm, h: u32, a: Id, lvl: u32, code: &str, target: u32, (x, y): (f32, f32)) -> bool {
         let d = |w: &World, f: &str| w.data(a, f, lvl);
         let owner = self.unit(h).map_or(0, |u| u.owner);
@@ -60,12 +66,26 @@ impl World {
                     u.action = Action::Idle;
                 }
             }
-            "ANdc" => {
-                let to = id_from_str(&self.lstr(a, "UnitID", lvl));
+            // Soul Preservation (CAbilitySoulPreservation, CBuffSoulPreservation): the
+            // target is held, untouchable, for Dur (HeroDur); then it is the caster's
+            // (update_buffs).
+            "ANsl" => {
                 if self.unit(target).is_some_and(|u| !u.is_hero) {
-                    self.change_type(target, to);
+                    let dur = self.duration_for(a, lvl, target);
+                    self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, stun: true, invulnerable: true, magic_immune: true, ..Default::default() });
                     if let Some(u) = self.unit_mut(target) {
-                        u.owner = owner;
+                        u.action = Action::Idle;
+                    }
+                }
+            }
+            // Dark Conversion (CAbilityDarkConversion, CBuffDarkConversion): the target
+            // sleeps under the buff for Dur (HeroDur); when it ends with the target alive
+            // the target becomes UnitID for the caster (update_buffs).
+            "ANdc" => {
+                if self.unit(target).is_some_and(|u| !u.is_hero) && self.converts_race(a, lvl, target) {
+                    let dur = self.duration_for(a, lvl, target);
+                    self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, stun: true, ..Default::default() });
+                    if let Some(u) = self.unit_mut(target) {
                         u.action = Action::Idle;
                     }
                 }

@@ -21,7 +21,7 @@ impl World {
         id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("BuffID", lvl)).unwrap_or_default().split(',').next().unwrap_or("").trim())
     }
 
-    fn duration_for(&self, a: Id, lvl: u32, target: u32) -> f32 {
+    pub(crate) fn duration_for(&self, a: Id, lvl: u32, target: u32) -> f32 {
         if self.hero_duration(target) { self.d(a, "HeroDur", lvl) } else { self.d(a, "Dur", lvl) }
     }
 

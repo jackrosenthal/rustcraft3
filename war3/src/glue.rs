@@ -906,7 +906,20 @@ impl Glue {
             let rot = Quat::from_mat4(&view.inverse());
             if let Some(b) = self.background.as_mut() {
                 b.transform = Mat4::IDENTITY;
+                b.light_cell = 0;
                 self.background_renderer.submit(b, eye, rot);
+                // The scene is lit by its model's own lights (w3_render::lights), the best
+                // eight at its cell; there is no day/night light.
+                let mut lights = Vec::new();
+                w3_render::lights::instance_lights(b, &mut lights);
+                use w3_render::lights::{CELL, cell_of, choose};
+                let at = Vec3::new(cell_of(0.0) as f32 * CELL, cell_of(0.0) as f32 * CELL, 0.0);
+                let cells = [choose(at, f32::NEG_INFINITY, &lights, 8)];
+                let gpu: Vec<_> = lights.iter().map(|l| l.gpu()).collect();
+                self.background_renderer.lights.write(queue, &gpu, &cells);
+                g.light_grid = [cell_of(0.0) as f32, cell_of(0.0) as f32, 1.0, 1.0];
+                g.light_color = [0.0; 4];
+                g.ambient = [0.0; 4];
             }
             bg_globals = Some(g);
         }

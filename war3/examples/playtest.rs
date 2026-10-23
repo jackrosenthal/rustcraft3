@@ -444,6 +444,18 @@ fn main() -> anyhow::Result<()> {
                 scene.alt_held = true;
                 i += 1;
             }
+            // waygate <handle> <dx> <dy>: activates a waygate to a point (relative to
+            // the start).
+            "waygate" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let (sx, sy) = g.world.start_of(0);
+                    let (x, y) = (sx + num(&a[i + 2]), sy + num(&a[i + 3]));
+                    if let Some(u) = g.world.unit_mut(num(&a[i + 1]) as u32) {
+                        u.extra.waygate = Some((x, y, true));
+                    }
+                }
+                i += 4;
+            }
             // log: opens the message log (F12).
             "log" => {
                 scene.open_log();

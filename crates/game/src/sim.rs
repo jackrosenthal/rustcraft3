@@ -358,6 +358,10 @@ impl World {
             Action::Construct { target }
         } else if (order == crate::natives::basic::order_id("repair") || order == smart) && target != 0 && self.can_repair(h, target) {
             Action::Repair { target }
+        } else if order == smart && target != 0 && self.unit(target).is_some_and(|t| t.extra.waygate.is_some_and(|g| g.2)) {
+            // Into an active waygate.
+            let (tx, ty) = self.widget_pos(target).unwrap_or((x, y));
+            Action::Move { x: tx, y: ty }
         } else if order == smart && target != 0 && self.cargo_hold(target).is_some() && self.can_board(target, h) {
             Action::Board { transport: target }
         } else if (order == smart || order == crate::natives::basic::order_id("harvest")) && target != 0 && self.can_harvest(h, target) {

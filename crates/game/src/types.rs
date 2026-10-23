@@ -324,6 +324,9 @@ pub struct UnitExtra {
     /// The creep sleep effect over a sleeping unit's head.
     #[serde(default)]
     pub sleep_effect: u32,
+    /// The waygate whose box the unit is in after coming through one.
+    #[serde(default)]
+    pub warp_inside: u32,
 }
 
 impl Default for UnitExtra {
@@ -370,6 +373,7 @@ impl Default for UnitExtra {
             returning: false,
             strayed: None,
             sleep_effect: 0,
+            warp_inside: 0,
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,

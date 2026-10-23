@@ -321,6 +321,9 @@ pub struct UnitExtra {
     pub returning: bool,
     #[serde(default)]
     pub strayed: Option<f32>,
+    /// The creep sleep effect over a sleeping unit's head.
+    #[serde(default)]
+    pub sleep_effect: u32,
 }
 
 impl Default for UnitExtra {
@@ -366,6 +369,7 @@ impl Default for UnitExtra {
             home: None,
             returning: false,
             strayed: None,
+            sleep_effect: 0,
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,

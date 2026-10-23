@@ -63,7 +63,6 @@ impl World {
             "ACdv" => "Adev",
             "ACrn" => "AOre",
             "ACad" => "AUan",
-            "ACsp" => "AUsl",
             _ => return code,
         }
         .to_string()
@@ -218,6 +217,7 @@ impl World {
         if let Some(u) = self.unit_mut(h) {
             u.buffs.retain(|b| !b.sleep);
         }
+        self.set_asleep(h, false);
     }
 
     /// Adds or refreshes a buff of the same type from the same ability.

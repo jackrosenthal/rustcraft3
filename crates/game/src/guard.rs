@@ -66,7 +66,51 @@ impl World {
             })
             .collect();
         for f in friends {
+            self.set_asleep(f, false);
             self.unit_mut(f).unwrap().action = Action::Attack { target: attacker };
+        }
+    }
+}
+
+impl World {
+    /// Creep sleep (CAbilityCreepSleep): at night an idle creep at its camp that may
+    /// sleep falls asleep, CreepSleepTarget over its head, unless its owner has
+    /// PLAYER_STATE_NO_CREEP_SLEEP; one that sleeps always (UnitAddSleepPerm) sleeps
+    /// whenever idle.  Day, damage, or a friend's call wakes it.
+    pub fn update_creep_sleep(&mut self) {
+        let night = !(6.0..18.0).contains(&self.time_of_day);
+        let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && (u.extra.can_sleep || u.extra.sleep_perm))).collect();
+        for h in units {
+            let u = self.unit(h).unwrap();
+            let allowed = self.players.get(u.owner as usize).is_none_or(|p| p.get_state(player_state::NO_CREEP_SLEEP) == 0);
+            let idle = matches!(u.action, Action::Idle) && !u.extra.returning && u.swing.is_none();
+            let want = idle && (u.extra.sleep_perm || night && allowed);
+            if want && !u.extra.sleeping {
+                self.set_asleep(h, true);
+            } else if u.extra.sleeping && !u.extra.sleep_perm && !(night && allowed) {
+                self.set_asleep(h, false);
+            }
+        }
+    }
+
+    pub(crate) fn set_asleep(&mut self, h: u32, on: bool) {
+        let Some(u) = self.unit_mut(h) else { return };
+        if u.extra.sleeping == on {
+            return;
+        }
+        u.extra.sleeping = on;
+        let old = std::mem::take(&mut u.extra.sleep_effect);
+        if old != 0 {
+            self.handles.remove(old);
+        }
+        if on {
+            let art = self.objects.abilities.get(*b"ACsp").map(|o| (o.list("Casterart").first().cloned().unwrap_or_default(), o.list("Casterattach").first().cloned().unwrap_or_default()));
+            if let Some((model, attach)) = art.filter(|a| !a.0.is_empty()) {
+                let e = self.handles.insert(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((h, attach)), destroyed: false, facing: 0.0 }));
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.sleep_effect = e;
+                }
+            }
         }
     }
 }

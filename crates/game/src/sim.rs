@@ -769,7 +769,7 @@ impl World {
                             set_anim(u, "stand");
                         }
                     }
-                    if wp.is_some() && self.unit(h).is_some_and(|u| u.acquire_timer <= 0.0) {
+                    if wp.is_some() && self.unit(h).is_some_and(|u| u.acquire_timer <= 0.0 && !u.extra.sleeping) {
                         let range = self.unit(h).map_or(0.0, |u| u.acquire_range);
                         let range = if matches!(action, Action::Hold) { wp.as_ref().map_or(0.0, |w| w.range) } else { range };
                         if let Some(t) = self.find_target(h, range) {

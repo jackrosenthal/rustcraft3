@@ -252,7 +252,7 @@ fn main() -> anyhow::Result<()> {
             "unit" => {
                 if let Some(g) = scene.game.as_ref() {
                     if let Some(u) = g.world.unit(num(&a[i + 1]) as u32) {
-                        eprintln!("unit {} life {}/{} mana {} action {:?} buffs {:?}{}", w3_game::objects::id_str(u.type_id), u.life, u.max_life, u.mana, u.action, u.buffs.iter().map(|b| (w3_game::objects::id_str(b.id), b.remaining, b.stun)).collect::<Vec<_>>(), if u.extra.corpses.is_empty() { String::new() } else { format!(" corpses {}", u.extra.corpses.len()) });
+                        eprintln!("unit {} life {}/{} mana {} action {:?} buffs {:?}{}", w3_game::objects::id_str(u.type_id), u.life, u.max_life, u.mana, u.action, u.buffs.iter().map(|b| (w3_game::objects::id_str(b.id), b.remaining, b.stun)).collect::<Vec<_>>(), if u.extra.corpses.is_empty() { String::new() } else { format!(" corpses {}", u.extra.corpses.len()) } + if u.extra.sleeping { " asleep" } else { "" });
                         eprintln!("  at {:.0} {:.0}", u.x, u.y);
                     }
                 }
@@ -443,6 +443,13 @@ fn main() -> anyhow::Result<()> {
             "alt" => {
                 scene.alt_held = true;
                 i += 1;
+            }
+            // tod <hour>: sets the time of day.
+            "tod" => {
+                if let Some(g) = scene.game.as_mut() {
+                    g.world.time_of_day = num(&a[i + 1]);
+                }
+                i += 2;
             }
             "state" => {
                 if let Some(g) = &scene.game {

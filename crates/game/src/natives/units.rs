@@ -130,6 +130,7 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
     // Creeps keep to where they settle once made (NaN until the first update).
     if owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !unit.is_building {
         unit.extra.home = Some((f32::NAN, f32::NAN));
+        unit.extra.can_sleep = true;
     }
     let h = w.handles.insert(Obj::Unit(Box::new(unit)));
     if let Some(u) = w.unit_mut(h) {
@@ -169,6 +170,7 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
 
 /// Kills a unit and fires its death events.
 pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
+    w.set_asleep(h, false);
     if w.unit(h).is_some_and(|u| !u.dead) && killer != 0 {
         w.grant_kill_xp(h, killer);
     }

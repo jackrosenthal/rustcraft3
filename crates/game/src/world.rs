@@ -741,6 +741,7 @@ impl World {
         prof!(self, "update_corpse_makers", self.update_corpse_makers(dt));
         prof!(self, "update_wander", self.update_wander(dt));
         prof!(self, "update_guards", self.update_guards());
+        prof!(self, "update_creep_sleep", self.update_creep_sleep());
         let now = self.time;
         let due: Vec<(f32, u32, u32)> = self.pending_entangles.iter().copied().filter(|e| e.0 <= now).collect();
         self.pending_entangles.retain(|e| e.0 > now);

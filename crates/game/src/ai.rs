@@ -87,6 +87,9 @@ pub struct AiState {
     /// The target allied computers share (SetAllianceTarget; CCompAI +0x2a0).
     #[serde(default)]
     pub alliance_target: u32,
+    /// The main town's center as ShiftTownSpot set it (FUN_6f9cbf00).
+    #[serde(default)]
+    pub town_shift: Option<(f32, f32)>,
 }
 
 /// Distance within which a town hall and a gold mine belong to the same town.
@@ -899,7 +902,10 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         SetHeroLevels => |w, _, a| { let f = a.code(0); if let Some(s) = w.ai_state() { s.hero_levels = f; } none() },
         SetNewHeroes => |w, _, a| set_flag(w, "new_heroes", a.b(0)),
         PurchaseZeppelin => |_, _, _| none(),
-        MergeUnits => |_, _, _| boolean(false),
+        MergeUnits => |w, _, a| {
+            let p = w.ai_player();
+            boolean(w.merge_units(p, a.i(0), id_from_int(a.i(1)), id_from_int(a.i(2)), id_from_int(a.i(3))))
+        },
         ConvertUnits => |w, _, a| {
             let p = w.ai_player();
             w.ai_convert(p, a.i(0), id_from_int(a.i(1)));
@@ -927,7 +933,7 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             }
             none()
         },
-        GroupTimedLife => |_, _, _| none(),
+        GroupTimedLife => |w, _, a| set_flag(w, "group_timed_life", a.b(0)),
         RemoveInjuries => |w, _, _| {
             let p = w.ai_player();
             w.remove_injuries(p);
@@ -1023,7 +1029,10 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         ClearHarvestAI => |w, _, _| { if let Some(s) = w.ai_state() { s.harvest.clear(); } none() },
         HarvestGold => |w, _, a| { let (t, n) = (a.i(0), a.i(1)); if let Some(s) = w.ai_state() { s.harvest.push((true, t, n)); } none() },
         HarvestWood => |w, _, a| { let (t, n) = (a.i(0), a.i(1)); if let Some(s) = w.ai_state() { s.harvest.push((false, t, n)); } none() },
-        StopGathering => |_, _, _| none(),
+        StopGathering => |w, _, _| {
+            if let Some(s) = w.ai_state() { s.harvest.clear(); }
+            set_flag(w, "gathering", false)
+        },
         AddGuardPost => |w, _, a| {
             let p = w.ai_player();
             w.add_guard_post(p, id_from_int(a.i(0)), a.r(1), a.r(2));
@@ -1058,8 +1067,16 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             }
             none()
         },
-        ResetCaptainLocs => |_, _, _| none(),
-        ShiftTownSpot => |_, _, _| none(),
+        ResetCaptainLocs => |w, _, _| {
+            let p = w.ai_player();
+            w.reset_captain_locs(p);
+            none()
+        },
+        ShiftTownSpot => |w, _, a| {
+            let p = (a.r(0), a.r(1));
+            if let Some(s) = w.ai_state() { s.town_shift = Some(p); }
+            none()
+        },
         TeleportCaptain => |_, _, _| none(),
         ClearCaptainTargets => |w, _, _| { if let Some(c) = w.captain(true) { c.goal = None; c.target = 0; } none() },
         CaptainAttack => |w, _, a| {
@@ -1151,7 +1168,10 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             let p = w.ai_player();
             boolean(w.ai_unit_invis(p, a.h(0)))
         },
-        IgnoredUnits => |_, _, _| int(0),
+        IgnoredUnits => |w, _, a| {
+            let p = w.ai_player();
+            int(w.ignored_units(p, id_from_int(a.i(0))))
+        },
         TownThreatened => |w, _, _| {
             let p = w.ai_player();
             boolean(w.ai.get(&p).is_some_and(|s| s.threat != 0))

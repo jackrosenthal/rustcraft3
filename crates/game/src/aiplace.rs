@@ -64,8 +64,14 @@ impl Grid {
 }
 
 impl World {
-    /// The center of a computer player's town: between its hall and its gold mine.
+    /// The center of a computer player's town: between its hall and its gold mine, or
+    /// for the main town where ShiftTownSpot put it.
     pub(crate) fn town_center(&self, p: u8, town: i32) -> (f32, f32) {
+        if town <= 0 {
+            if let Some(c) = self.ai.get(&p).and_then(|s| s.town_shift) {
+                return c;
+            }
+        }
         let (hx, hy) = self.town_pos_pub(p, town);
         match self.mine_near_pub(hx, hy).and_then(|m| self.unit(m)) {
             Some(m) => ((hx + m.x) * 0.5, (hy + m.y) * 0.5),

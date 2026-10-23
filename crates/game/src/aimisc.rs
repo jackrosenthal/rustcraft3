@@ -219,3 +219,66 @@ impl World {
         self.is_invisible(h) && !self.detected_by(h, p)
     }
 }
+
+impl World {
+    /// IgnoredUnits (FUN_6f9c7990): the player's units of the type in no captain, at no
+    /// guard post, and not sent to die.
+    pub(crate) fn ignored_units(&self, p: u8, id: Id) -> i32 {
+        let Some(st) = self.ai.get(&p) else { return 0 };
+        let guards = self.guards(p);
+        self.unit_order
+            .iter()
+            .filter(|h| !st.attack.units.contains(h) && !st.defense.units.contains(h) && !guards.contains(h))
+            .filter_map(|&h| self.unit(h))
+            .filter(|u| u.owner == p && !u.dead && u.type_id == id && u.extra.ai_suicide.is_none())
+            .count() as i32
+    }
+
+    /// MergeUnits (FUN_6f9c8a30): with fewer than `qty` of `make` (counting those
+    /// coupling), idle pairs of `a` and `b` are ordered to couple.
+    pub(crate) fn merge_units(&mut self, p: u8, qty: i32, a: Id, b: Id, make: Id) -> bool {
+        let couple = |w: &World, h: u32| -> Option<String> {
+            w.unit(h)?.abilities.iter().find_map(|&(ab, _)| {
+                let o = w.objects.abilities.get(ab)?;
+                matches!(o.str("code").as_str(), "Acoa" | "Acoh" | "Aco2" | "Aco3").then(|| o.str("Order"))
+            })
+        };
+        let mine = |w: &World, id: Id| -> Vec<u32> { w.unit_order.iter().copied().filter(|&h| w.unit(h).is_some_and(|u| u.owner == p && !u.dead && u.type_id == id)).collect() };
+        let coupling = mine(self, a).into_iter().filter(|&h| self.unit(h).is_some_and(|u| matches!(u.action, Action::Cast { .. }))).count() as i32;
+        let made = mine(self, make).len() as i32;
+        if made + coupling >= qty {
+            return true;
+        }
+        let idle = |w: &World, id: Id| -> Vec<u32> { mine(w, id).into_iter().filter(|&h| w.unit(h).is_some_and(|u| matches!(u.action, Action::Idle | Action::AttackMove { .. } | Action::Move { .. }))).collect() };
+        let (left, right) = (idle(self, a), idle(self, b));
+        if left.is_empty() || right.is_empty() {
+            return false;
+        }
+        for (&x, &y) in left.iter().zip(right.iter()).take((qty - made - coupling).max(0) as usize) {
+            if let Some(order) = couple(self, x) {
+                self.order_unit(x, order_id(&order), 0.0, 0.0, y);
+            }
+        }
+        true
+    }
+
+    /// ResetCaptainLocs (FUN_6f9c9c10): the attack captain's home 300 beyond the main
+    /// hall away from its mine, the defense captain's the town's center.
+    pub(crate) fn reset_captain_locs(&mut self, p: u8) {
+        let center = self.town_center(p, 0);
+        let (hx, hy) = self.town_pos_pub(p, 0);
+        let mine = self.mine_near_pub(hx, hy).and_then(|m| self.unit(m)).map(|m| (m.x, m.y));
+        let attack = match mine {
+            Some((mx, my)) => {
+                let (dx, dy) = (hx - mx, hy - my);
+                let len = dx.hypot(dy).max(1.0);
+                (hx + dx / len * 300.0, hy + dy / len * 300.0)
+            }
+            None => (hx, hy),
+        };
+        if let Some(st) = self.ai.get_mut(&p) {
+            st.attack.home = attack;
+            st.defense.home = center;
+        }
+    }
+}

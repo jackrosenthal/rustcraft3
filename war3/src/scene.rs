@@ -2527,6 +2527,9 @@ impl Scene {
             // SetUnitBlendTime).
             let blend = u.extra.blend_time.unwrap_or_else(|| w.objects.units.get(u.type_id).map_or(0.15, |o| o.real("blend")));
             view.inst.blend_ms = blend * 1000.0;
+            // The unit's color and transparency (UnitUI red, green, blue;
+            // SetUnitVertexColor).
+            view.inst.tint = glam::Vec4::new(u.vertex_color[0] as f32, u.vertex_color[1] as f32, u.vertex_color[2] as f32, u.vertex_color[3] as f32) / 255.0;
             // An uprooted ancient takes the alternate of each animation but its walk; the
             // type's Animprops ("upgrade,first" for a Keep on the Town Hall's model) and
             // those scripts add qualify every animation.
@@ -2619,6 +2622,8 @@ impl Scene {
         }
         for (h, v) in self.units.iter_mut() {
             let progress = self.game.as_ref().and_then(|g| g.world.unit(*h)).and_then(|u| u.constructing.map(|left| 1.0 - left / u.build_time.max(0.01)));
+            // SetUnitTimeScale speeds or slows the unit's animation.
+            let scale = self.game.as_ref().and_then(|g| g.world.unit(*h)).map_or(1.0, |u| u.time_scale);
             match progress {
                 // A structure's birth plays along with its construction.
                 Some(p) => {
@@ -2627,7 +2632,7 @@ impl Scene {
                     }
                     v.inst.global_time += gdt * 1000.0;
                 }
-                None => v.inst.advance(gdt * 1000.0),
+                None => v.inst.advance(gdt * 1000.0 * scale),
             }
         }
         for (h, (inst, _)) in self.dests.iter_mut() {

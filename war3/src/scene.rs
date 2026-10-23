@@ -490,7 +490,7 @@ impl Scene {
                     let tex_id = num(table, &id, "texID") as u32;
                     let tex_file = text(table, &id, "texFile");
                     if tex_id != 0 && !tex_file.is_empty() && tex_file != "_" {
-                        let t = assets.textures.get_or_white(device, queue, &format!("{tex_file}.blp"));
+                        let t = assets.textures.get_or_white(device, queue, &tex_file);
                         inst.replaceable.insert(tex_id, t);
                     }
                 }
@@ -2266,8 +2266,8 @@ impl Scene {
                 );
                 let tex_id = o.int("texID") as u32;
                 let tex_file = o.str("texFile");
-                if tex_id != 0 && !tex_file.is_empty() {
-                    let t = assets.textures.get_or_white(device, queue, &format!("{tex_file}.blp"));
+                if tex_id != 0 && !tex_file.is_empty() && tex_file != "_" {
+                    let t = assets.textures.get_or_white(device, queue, &tex_file);
                     inst.replaceable.insert(tex_id, t);
                 }
                 let alive = d.life > 0.0;
@@ -3461,3 +3461,4 @@ fn load_tips(chain: &w3_mpq::Chain) -> Vec<String> {
     let n: usize = p.get_str("General", "TipCount").and_then(|v| v.trim().parse().ok()).unwrap_or(0);
     (1..=n).filter_map(|k| p.get_str("General", &format!("Tip{k}"))).map(|t| t.trim_matches('"').to_string()).collect()
 }
+

@@ -21,6 +21,8 @@ pub struct Options {
     pub netgameport: u32,
     #[serde(rename = "autosaveReplay")]
     pub autosave_replay: bool,
+    /// The chat font chosen from UI\MiscUI.txt's [ChatFonts].
+    pub chatsupport: u32,
     // Sound.
     pub sfx: bool,
     pub sfxvolume: u32,
@@ -54,6 +56,7 @@ impl Default for Options {
             customkeys: false,
             netgameport: 6112,
             autosave_replay: false,
+            chatsupport: 0,
             sfx: true,
             sfxvolume: 100,
             music: true,
@@ -236,7 +239,7 @@ pub mod panel {
 /// The main menu's options (COptionsMenu, OptionsMenu.fdf): the Gameplay, Video, and
 /// Sound panels, chosen by their buttons, with OK and Cancel.
 pub mod menu {
-    use w3_ui::FrameTree;
+    use w3_ui::{FrameDb, FrameTree};
 
     use super::Options;
 
@@ -247,15 +250,24 @@ pub mod menu {
 
     /// Puts the options in the controls (FUN_6f2b2c50 and its kin).  No panel shows and
     /// OK waits until a panel is chosen.
-    pub fn fill(tree: &mut FrameTree, o: &Options, resolution: (u32, u32)) {
+    pub fn fill(tree: &mut FrameTree, db: &FrameDb, o: &Options, resolution: (u32, u32)) {
         for p in PANELS {
             tree.set_visible(p, false);
         }
         tree.set_enabled("OKButton", false);
         tree.set_visible("OptionsConfirmDialog", false);
-        // Chat support shows only with the ChatFonts registry key's ChatFontEnabled set.
+        // Chat support shows only with [ChatFonts] ChatFontEnabled set, listing its
+        // ChatFontDisplayName<n>.
+        let fonts = &db.misc_ui;
+        let chat = fonts.get_str("ChatFonts", "ChatFontEnabled").is_some_and(|v| v.trim() != "0");
         for n in ["ChatSupportMenu", "ChatSupportInfoText", "ChatSupportLabel", "ChatSupportBackdrop"] {
-            tree.set_visible(n, false);
+            tree.set_visible(n, chat);
+        }
+        if chat {
+            let count = fonts.get_str("ChatFonts", "ChatFontCount").and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+            let names: Vec<String> = (0..count).map(|k| fonts.get_str("ChatFonts", &format!("ChatFontDisplayName{k}")).unwrap_or_default()).collect();
+            let sel = (o.chatsupport as usize).min(names.len().saturating_sub(1));
+            tree.set_items("ChatSupportMenu", names, sel);
         }
         // Gameplay.
         tree.set_value("MouseScrollSlider", o.mousescroll as f32);
@@ -330,6 +342,7 @@ pub mod menu {
         if let Some(port) = tree.get("GamePortEditBox").and_then(|i| tree.frames[i].text.as_deref()?.trim().parse().ok()) {
             o.netgameport = port;
         }
+        o.chatsupport = sel("ChatSupportMenu");
         o.gamma = v("GammaSlider");
         o.particles = sel("ParticlesMenu");
         o.lights = sel("LightsMenu");

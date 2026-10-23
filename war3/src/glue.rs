@@ -275,7 +275,7 @@ impl Glue {
             }
             Screen::Options => {
                 self.options = crate::options::Options::load();
-                crate::options::menu::fill(&mut self.tree, &self.options, self.display);
+                crate::options::menu::fill(&mut self.tree, &assets.frames, &self.options, self.display);
             }
             Screen::Loading => {}
             Screen::Score => {
@@ -586,6 +586,13 @@ impl Glue {
             (Screen::MainMenu, "SinglePlayerButton") => self.show(Screen::SinglePlayer, assets),
             (Screen::MainMenu, "ExitButton") => self.action = Some(GlueAction::Quit),
             (Screen::MainMenu, "OptionsButton") => self.show(Screen::Options, assets),
+            // The credits are a map: UI\MiscUI.txt's CreditsFile_V<n> (FUN_6f2eb220).
+            (Screen::MainMenu, "CreditsButton") => {
+                let db = &assets.frames;
+                if let Some(map) = db.misc_ui.get_str("Misc", &format!("CreditsFile_V{}", db.version)) {
+                    self.action = Some(GlueAction::Campaign(map));
+                }
+            }
             (Screen::Options, "GameplayButton") => crate::options::menu::show(&mut self.tree, 0),
             (Screen::Options, "VideoButton") => crate::options::menu::show(&mut self.tree, 1),
             (Screen::Options, "SoundButton") => crate::options::menu::show(&mut self.tree, 2),

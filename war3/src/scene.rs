@@ -1326,12 +1326,13 @@ impl Scene {
         best.map(|b| b.1)
     }
 
-    /// Selects with a click or a drag rectangle, the way the local player would.
-    /// Whether the player may act (EnableUserControl); cinematics take it away.
+    /// Whether the player may act: EnableUserControl and EnableUserUI both allow it
+    /// (FUN_6f376f60); cinematics and fades take it away.
     pub fn user_control(&self) -> bool {
-        self.game.as_ref().is_none_or(|g| g.world.cinematic.user_control)
+        self.game.as_ref().is_none_or(|g| g.world.cinematic.user_control && g.world.cinematic.user_ui)
     }
 
+    /// Selects with a click or a drag rectangle, the way the local player would.
     pub fn select(&mut self, a: (f32, f32), b: (f32, f32), size: (u32, u32), add: bool) {
         if !self.user_control() {
             return;

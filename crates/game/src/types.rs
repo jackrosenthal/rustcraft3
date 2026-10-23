@@ -360,6 +360,9 @@ pub struct UnitExtra {
     /// Abilities Engineering Upgrade replaced: each original and what stands for it now.
     #[serde(default)]
     pub swapped: Vec<(Id, Id)>,
+    /// Abilities whose AI rests until a time (spellai.rs).
+    #[serde(default)]
+    pub ai_rest: Vec<(Id, f32)>,
     /// Orders given with Shift, waiting for the ones before them: id, point, target.
     #[serde(default)]
     pub order_queue: std::collections::VecDeque<(i32, f32, f32, u32)>,
@@ -421,6 +424,7 @@ impl Default for UnitExtra {
             factory: None,
             restore: None,
             swapped: Vec::new(),
+            ai_rest: Vec::new(),
             order_queue: Default::default(),
             resume: None,
             repair_debt: (0.0, 0.0),

@@ -648,6 +648,10 @@ impl World {
             kill_unit(self, vm, target, source);
         } else if self.unit(target).is_some() {
             self.call_for_help(target, source);
+            // A computer's or creep's unit hurt by an enemy weighs its spells.
+            if self.unit(source).is_some_and(|s| self.unit(target).is_some_and(|t| !is_ally(self, t.owner, s.owner))) {
+                self.spell_ai(target, source, target);
+            }
             let Some(t) = self.unit(target) else { return };
             // Retaliate when idle.
             if matches!(t.action, Action::Idle) && !unit_weapons(self, t).is_empty() && !t.is_building {
@@ -873,6 +877,7 @@ impl World {
                             if let Some(u) = self.unit_mut(h) {
                                 u.action = if matches!(action, Action::Hold) { Action::Hold } else { Action::Attack { target: t } };
                             }
+                            self.spell_ai(h, t, h);
                             if matches!(action, Action::Hold) {
                                 self.try_attack(h, t, dt, true);
                             }
@@ -925,6 +930,10 @@ impl World {
                     if self.unit(h).is_some_and(|u| u.acquire_timer <= 0.0) {
                         let range = self.unit(h).map_or(0.0, |u| u.acquire_range);
                         if let Some(t) = self.find_target(h, range) {
+                            self.spell_ai(h, t, h);
+                            if self.unit(h).is_some_and(|u| matches!(u.action, Action::Cast { .. })) {
+                                continue;
+                            }
                             self.try_attack(h, t, dt, false);
                             continue;
                         }

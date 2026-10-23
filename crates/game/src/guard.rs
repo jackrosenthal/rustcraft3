@@ -68,6 +68,7 @@ impl World {
         for f in friends {
             self.set_asleep(f, false);
             self.unit_mut(f).unwrap().action = Action::Attack { target: attacker };
+            self.spell_ai(f, attacker, target);
         }
     }
 }

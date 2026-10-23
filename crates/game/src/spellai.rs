@@ -1,0 +1,376 @@
+//! Computer players' and creeps' spellcasting (each ability class's vf64, run for a
+//! unit by FUN_6f695030).  A unit owned by a computer or creep player runs its
+//! abilities' AI when it takes damage from an enemy (CUnit vf72), when it answers a
+//! friend's call for help (FUN_6f66e9e0), and when it engages an enemy (FUN_6f9ce5b0,
+//! FUN_6f9d35f0), with the enemy and the unit the fight is about (the "victim": the
+//! damaged or called-for unit, or the unit itself).  Each ability decides whether to
+//! cast and at what.
+//!
+//! Most start with the same gate (FUN_6f6095f0): no enemy, the ability's AI still
+//! resting, the ability unable to cast now, a neutral enemy when the ability does not
+//! allow one, an enemy that is not one, a victim not on the caster's side, a target
+//! that already bears the spell's buff, or a target the spell cannot take all mean no.
+//! An ability that weighs a cast rests its AI for half a second (FUN_6f432b20).  Many
+//! count the units around them (FUN_6f602e30 with FUN_6f602f70): wards, and unless
+//! asked magic-immune units, are not counted; of the caster's side, all, those with
+//! more than 20 mana, those not finished structures, and those attacking from beyond
+//! 200; of its enemies, all, the disabled, the flying, the Heroes, those that can
+//! fight (armed, not workers), those with more than 20 mana, and those not finished
+//! structures.  Constants are game.dll's static floats (400 at 0x6fd77f34, 450 at
+//! 0x6fd77f38, 1000 at 0x6fd3c7f8, 9999 at 0x6fd3c804, and so on).
+
+use crate::objects::{Id, id_from_str};
+use crate::types::*;
+use crate::world::World;
+
+/// The units around a point, as FUN_6f602f70 counts them.
+#[derive(Default, Debug, Clone, Copy)]
+pub(crate) struct Census {
+    /// The caster's side: all (0x18), ranged beyond 200 (0x1c), not finished structures
+    /// (0x3c), with more than 20 mana (0x44).
+    pub allies: i32,
+    pub ally_ranged: i32,
+    pub ally_mobile: i32,
+    pub ally_mana: i32,
+    /// Its enemies: all (0x20), flying (0x24), Heroes (0x28), able to fight (0x2c),
+    /// disabled (0x34), not finished structures (0x38), with more than 20 mana (0x40).
+    pub enemies: i32,
+    pub enemy_flying: i32,
+    pub enemy_heroes: i32,
+    pub enemy_fighters: i32,
+    pub enemy_disabled: i32,
+    pub enemy_mobile: i32,
+    pub enemy_mana: i32,
+}
+
+/// Illidan's demon form ('Eidm'), which Sleep leaves alone.
+const ILLIDAN_DEMON: Id = *b"Eidm";
+
+impl World {
+    /// Whether a player's units help another's (the caster's side in the census).
+    fn helps(&self, a: u8, b: u8) -> bool {
+        const HELP_RESPONSE: usize = 2;
+        a == b || self.players.get(a as usize).is_some_and(|p| p.alliances[b as usize % PLAYER_COUNT][HELP_RESPONSE])
+    }
+
+    fn is_classed(&self, u: &Unit, class: &str) -> bool {
+        self.objects.units.get(u.type_id).is_some_and(|o| o.str("type").to_ascii_lowercase().split(',').any(|c| c.trim() == class))
+    }
+
+    fn real_hero(u: &Unit) -> bool {
+        u.is_hero && u.extra.illusion.is_none()
+    }
+
+    /// Whether a unit's owner is a computer or the creeps (the units whose spells the
+    /// game casts).
+    pub(crate) fn ai_controlled(&self, h: u32) -> bool {
+        self.unit(h).and_then(|u| self.players.get(u.owner as usize)).is_some_and(|p| matches!(p.controller, map_control::COMPUTER | map_control::CREEP))
+    }
+
+    /// FUN_6f602e30: the census within `radius` of a point for `caster`'s side.
+    pub(crate) fn census(&self, caster: u32, x: f32, y: f32, radius: f32, with_immune: bool) -> Census {
+        let mut c = Census::default();
+        let Some(owner) = self.unit(caster).map(|u| u.owner) else { return c };
+        for &h in &self.unit_order {
+            let Some(u) = self.unit(h) else { continue };
+            if u.dead || u.hidden || (u.x - x).hypot(u.y - y) > radius || self.is_classed(u, "ward") {
+                continue;
+            }
+            if !with_immune && self.is_magic_immune(h) {
+                continue;
+            }
+            let mana = u.mana > 20.0;
+            let mobile = !u.is_building || u.constructing.is_some();
+            if self.helps(owner, u.owner) {
+                c.allies += 1;
+                c.ally_mana += mana as i32;
+                c.ally_mobile += mobile as i32;
+                if crate::sim::unit_weapons(self, u).iter().map(|w| w.1.range).fold(0.0f32, f32::max) > 200.0 {
+                    c.ally_ranged += 1;
+                }
+            } else if !crate::natives::players::is_ally(self, owner, u.owner) {
+                c.enemies += 1;
+                c.enemy_disabled += self.buff_mods(h).4 as i32;
+                c.enemy_heroes += Self::real_hero(u) as i32;
+                c.enemy_fighters += (!crate::sim::unit_weapons(self, u).is_empty() && !self.is_classed(u, "peon")) as i32;
+                c.enemy_flying += (u.fly_height > 1.0) as i32;
+                c.enemy_mana += mana as i32;
+                c.enemy_mobile += mobile as i32;
+            }
+        }
+        c
+    }
+
+    fn ai_resting(&self, h: u32, a: Id) -> bool {
+        self.unit(h).is_some_and(|u| u.extra.ai_rest.iter().any(|&(x, t)| x == a && t > self.time))
+    }
+
+    /// FUN_6f432b20: the ability's AI rests half a second.
+    fn ai_rest(&mut self, h: u32, a: Id) {
+        let until = self.time + 0.5;
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.ai_rest.retain(|&(x, _)| x != a);
+            u.extra.ai_rest.push((a, until));
+        }
+    }
+
+    /// FUN_6f6095f0: whether the ability's AI should not cast (see the module notes).
+    fn ai_gate(&self, h: u32, a: Id, enemy: u32, victim: u32, allow_neutral: bool, target: Option<u32>, buff: Option<Id>) -> bool {
+        let Some(e) = self.unit(enemy) else { return true };
+        if self.ai_resting(h, a) || self.can_cast(h, a).is_err() {
+            return true;
+        }
+        if !allow_neutral && e.owner >= PLAYER_NEUTRAL_AGGRESSIVE {
+            return true;
+        }
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return true };
+        if crate::natives::players::is_ally(self, owner, e.owner) {
+            return true;
+        }
+        let Some(v) = self.unit(victim) else { return true };
+        if !crate::natives::players::is_ally(self, owner, v.owner) {
+            return true;
+        }
+        if let Some(b) = buff {
+            let on = target.unwrap_or(enemy);
+            if self.unit(on).is_some_and(|t| t.buffs.iter().any(|x| x.id == b)) {
+                return true;
+            }
+        }
+        match target {
+            Some(t) => self.cast_target_error(h, a, t).is_some(),
+            None => false,
+        }
+    }
+
+    /// FUN_6f6033e0 and FUN_6f40eaa0: orders the cast (at a unit, or with none), the
+    /// unit going back to what it did after (order 0xd0006).
+    fn ai_cast(&mut self, h: u32, a: Id, target: u32) {
+        let (x, y) = self.widget_pos(target).unwrap_or_else(|| self.unit(h).map_or((0.0, 0.0), |u| (u.x, u.y)));
+        if let Some(u) = self.unit_mut(h) {
+            if !matches!(u.action, Action::Cast { .. }) {
+                u.extra.resume = Some(u.action.clone());
+            }
+            u.action = Action::Cast { ability: a, target, x, y };
+            u.path.clear();
+        }
+    }
+
+    fn buff_id(&self, a: Id, lvl: u32) -> Option<Id> {
+        let s = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", lvl)).unwrap_or_default();
+        let id = id_from_str(s.split(',').next().unwrap_or("").trim());
+        (id[0] != 0).then_some(id)
+    }
+
+    fn life(&self, h: u32) -> f32 {
+        self.unit(h).map_or(0.0, |u| u.life)
+    }
+
+    /// FUN_6f695030: each of the unit's abilities with an AI weighs a cast.
+    pub(crate) fn spell_ai(&mut self, h: u32, enemy: u32, victim: u32) {
+        if !self.ai_controlled(h) || self.unit(h).is_none_or(|u| u.dead || u.paused) {
+            return;
+        }
+        let abilities: Vec<(Id, i32)> = self.unit(h).map(|u| u.abilities.clone()).unwrap_or_default();
+        for (a, lvl) in abilities {
+            if lvl <= 0 {
+                continue;
+            }
+            // A cast already ordered this round ends the round.
+            if self.unit(h).is_some_and(|u| matches!(u.action, Action::Cast { .. })) {
+                return;
+            }
+            let lvl = lvl as u32;
+            match self.ability_code(a).as_str() {
+                "AHtc" | "ACtc" | "AOws" => self.ai_thunder_clap(h, a, lvl, enemy, victim),
+                "AHtb" | "ACtb" | "ANfb" => self.ai_storm_bolt(h, a, lvl, enemy, victim),
+                "AHhb" => self.ai_holy_light(h, a, lvl, enemy, victim),
+                "AUdc" => self.ai_death_coil(h, a, lvl, enemy, victim),
+                "AUsl" => self.ai_sleep(h, a, lvl, enemy, victim),
+                _ => {}
+            }
+        }
+    }
+
+    /// Thunder Clap, War Stomp (FUN_6f60fca0, FUN_6f605650): with the victim on the
+    /// caster's side and the AI ready, it counts within Area (no magic-immune units):
+    /// at least 3 enemies that are neither Heroes nor finished structures, and more
+    /// enemies able to fight, less Heroes, than units on its side.
+    fn ai_thunder_clap(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
+        if enemy == 0 || self.unit(victim).is_none_or(|v| !crate::natives::players::is_ally(self, owner, v.owner)) {
+            return;
+        }
+        if self.ai_resting(h, a) || self.can_cast(h, a).is_err() {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.unit(h).map(|u| (u.x, u.y)).unwrap();
+        let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
+        if c.enemy_mobile - c.enemy_heroes < 3 || c.enemy_fighters - c.enemy_heroes <= c.allies {
+            return;
+        }
+        self.ai_cast(h, a, 0);
+    }
+
+    /// Storm Bolt, Firebolt (FUN_6f60fb90): past the gate, at once on a Hero; otherwise
+    /// only when the caster is the one fighting, at an enemy with between DataA + 50 and
+    /// DataA + 150 life (between 0.6 × DataA and 9999 when the caster has less than
+    /// 400 life).
+    fn ai_storm_bolt(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
+            return;
+        }
+        if self.unit(enemy).is_some_and(Self::real_hero) {
+            self.ai_cast(h, a, enemy);
+            return;
+        }
+        if h != victim {
+            return;
+        }
+        let dmg = self.data(a, "DataA", lvl);
+        let (lo, hi) = if self.life(h) >= 400.0 { (dmg + 50.0, dmg + 150.0) } else { (dmg * 0.6, 9999.0) };
+        let life = self.life(enemy);
+        if lo <= life && life <= hi {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// How many more casts the caster's mana pays for (10 when the spell is free).
+    fn casts_left(&self, h: u32, a: Id, lvl: u32) -> i32 {
+        let cost = self.data(a, "Cost", lvl);
+        if cost <= 0.0 { 10 } else { (self.unit(h).map_or(0.0, |u| u.mana) / cost) as i32 }
+    }
+
+    fn race_of(&self, h: u32) -> String {
+        self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map(|o| o.str("race").to_ascii_lowercase()).unwrap_or_default()
+    }
+
+    /// FUN_6f608c60: whom Holy Light suits: a friend that has 100 life or less or is
+    /// missing at least `amount`, or an undead or demon enemy (when `other` is on the
+    /// caster's side) that is a Hero or has between `amount` + 20 and `amount` + 50
+    /// life.
+    fn holy_light_target(&self, h: u32, cand: u32, other: u32, amount: f32) -> Option<u32> {
+        let owner = self.unit(h)?.owner;
+        let c = self.unit(cand)?;
+        if crate::natives::players::is_ally(self, owner, c.owner) {
+            if c.life > 100.0 && c.max_life - c.life < amount {
+                return None;
+            }
+            return Some(cand);
+        }
+        if other != 0 && self.unit(other).is_some_and(|o| !crate::natives::players::is_ally(self, owner, o.owner)) {
+            return None;
+        }
+        if !matches!(self.race_of(cand).as_str(), "undead" | "demon") {
+            return None;
+        }
+        if Self::real_hero(c) {
+            return Some(cand);
+        }
+        (amount <= c.life - 20.0 && amount >= c.life - 50.0).then_some(cand)
+    }
+
+    /// Holy Light (CAbilityHolyBolt vf64): heals the victim when it suits; else, with
+    /// fewer than 3 casts' mana and the victim not itself, nothing; else the enemy when
+    /// half the heal suits it.
+    fn ai_holy_light(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
+        if self.unit(enemy).is_some_and(|e| crate::natives::players::is_ally(self, owner, e.owner)) {
+            return;
+        }
+        if self.can_cast(h, a).is_err() {
+            return;
+        }
+        let amount = self.data(a, "DataA", lvl);
+        let casts = self.casts_left(h, a, lvl);
+        let target = match self.holy_light_target(h, victim, enemy, amount) {
+            Some(t) => t,
+            None => {
+                if casts < 3 && victim != h {
+                    return;
+                }
+                let Some(t) = self.holy_light_target(h, enemy, victim, amount * 0.5) else { return };
+                t
+            }
+        };
+        if self.cast_target_error(h, a, target).is_none() {
+            self.ai_cast(h, a, target);
+        }
+    }
+
+    /// FUN_6f603e00: whom Death Coil suits: an enemy (with `other` on the caster's
+    /// side) that is a Hero or has between `amount` + 20 and `amount` + 50 life, or an
+    /// undead or demon friend with 70 life or less or missing at least `amount`.
+    fn death_coil_target(&self, h: u32, cand: u32, other: u32, amount: f32) -> Option<u32> {
+        let owner = self.unit(h)?.owner;
+        let c = self.unit(cand)?;
+        if !crate::natives::players::is_ally(self, owner, c.owner) {
+            if self.unit(other).is_none_or(|o| !crate::natives::players::is_ally(self, owner, o.owner)) {
+                return None;
+            }
+            if !Self::real_hero(c) && (c.life - 20.0 < amount || c.life - 50.0 > amount) {
+                return None;
+            }
+            return Some(cand);
+        }
+        if !matches!(self.race_of(cand).as_str(), "undead" | "demon") {
+            return None;
+        }
+        if c.life > 70.0 && c.max_life - c.life < amount {
+            return None;
+        }
+        Some(cand)
+    }
+
+    /// Death Coil (CAbilityDeathCoil vf64): past the gate, heals the victim when it
+    /// suits; else, with fewer than 3 casts' mana and the victim not itself, nothing;
+    /// else the enemy when half of DataA suits it.
+    fn ai_death_coil(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, None, None) {
+            return;
+        }
+        let amount = self.data(a, "DataA", lvl);
+        let casts = self.casts_left(h, a, lvl);
+        let target = match self.death_coil_target(h, victim, enemy, amount) {
+            Some(t) => t,
+            None => {
+                if casts < 3 && victim != h {
+                    return;
+                }
+                let Some(t) = self.death_coil_target(h, enemy, victim, amount * 0.5) else { return };
+                t
+            }
+        };
+        if self.cast_target_error(h, a, target).is_none() {
+            self.ai_cast(h, a, target);
+        }
+    }
+
+    /// Sleep (CAbilitySleep vf64): past the gate (and not on one already asleep), not
+    /// on Illidan's demon form, on an enemy with at least 100 life that is a Hero, or
+    /// has at least 200 (and 450 unless the caster is the victim), and, above the first
+    /// level, not a creep of level 5 or less; then with more than one enemy able to
+    /// fight and not disabled within 1000.
+    fn ai_sleep(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        let buff = self.buff_id(a, lvl);
+        if self.ai_gate(h, a, enemy, victim, true, Some(enemy), buff) {
+            return;
+        }
+        let Some(e) = self.unit(enemy) else { return };
+        if e.type_id == ILLIDAN_DEMON || e.life < 100.0 {
+            return;
+        }
+        let worthy = Self::real_hero(e) || (e.life >= 200.0 && (victim == h || e.life >= 450.0));
+        let creep_ok = lvl <= 1 || e.owner < PLAYER_NEUTRAL_AGGRESSIVE || e.level > 5;
+        if !worthy || !creep_ok {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.unit(h).map(|u| (u.x, u.y)).unwrap();
+        let c = self.census(h, x, y, 1000.0, true);
+        if c.enemy_fighters - c.enemy_disabled > 1 {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+}

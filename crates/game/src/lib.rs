@@ -31,6 +31,7 @@ pub mod morph;
 pub mod items;
 pub mod persist;
 pub mod shops;
+pub mod spellai;
 pub mod spells;
 pub mod stampede;
 pub mod volcano;

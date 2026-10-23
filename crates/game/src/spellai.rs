@@ -250,6 +250,8 @@ impl World {
                 "Advm" => self.ai_devour_magic(h, a, enemy, victim),
                 "ANfl" => self.ai_forked_lightning(h, a, lvl, enemy, victim),
                 "Apos" | "Aps2" => self.ai_possession(h, a, enemy, victim),
+                "AEsh" => self.ai_lingering(h, a, lvl, enemy, victim, false),
+                "ANso" => self.ai_lingering(h, a, lvl, enemy, victim, true),
                 "Aams" => {
                     if !self.ai_gate(h, a, enemy, victim, true, Some(victim), None) && self.unit(victim).is_some_and(Self::real_hero) {
                         self.ai_cast(h, a, victim);
@@ -1559,6 +1561,52 @@ impl World {
             return;
         }
         if self.ability_with_code(h, "Acrs").is_none() && self.ability_with_code(h, "Aams").is_none() && self.unit(h).is_some_and(|u| u.life != u.max_life) {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Shadow Strike, Soul Burn (their vf64): able to cast, against an enemy (Soul Burn
+    /// only a Hero) without the spell's buff, with the victim on its side: the damage
+    /// over the spell's time (Shadow Strike DataA every Cast seconds plus DataE, Soul
+    /// Burn DataA every DataB seconds; over HeroDur for Heroes) must leave the enemy
+    /// between 0 and 2000 life (200 and 400 for Shadow Strike on others) unless it is
+    /// an unseen flyer, and it must be within the cast range plus 100 (200 for Shadow
+    /// Strike on others).
+    fn ai_lingering(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32, soul_burn: bool) {
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
+        let Some(e) = self.unit(enemy) else { return };
+        if self.can_cast(h, a).is_err() || crate::natives::players::is_ally(self, owner, e.owner) {
+            return;
+        }
+        if self.unit(victim).is_none_or(|v| !crate::natives::players::is_ally(self, owner, v.owner)) {
+            return;
+        }
+        if let Some(b) = self.buff_id(a, lvl) {
+            if e.buffs.iter().any(|x| x.id == b) {
+                return;
+            }
+        }
+        let hero = Self::real_hero(e);
+        if soul_burn && !hero {
+            return;
+        }
+        let unseen_flyer = e.fly_height > 1.0 && !self.unit_visible_to(enemy, owner);
+        if !unseen_flyer {
+            let dur = if self.hero_duration(enemy) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
+            let every = if soul_burn { self.data(a, "DataB", lvl) } else { self.data(a, "Cast", lvl) };
+            let ticks = if every > 0.0 { (dur / every) as i32 } else { 0 };
+            let mut total = self.data(a, "DataA", lvl) * ticks as f32;
+            if !soul_burn {
+                total += self.data(a, "DataE", lvl);
+            }
+            let (lo, hi) = if soul_burn || hero { (total, total + 2000.0) } else { (total + 200.0, total + 400.0) };
+            if e.life < lo || hi < e.life {
+                return;
+            }
+        }
+        let reach = self.data(a, "Rng", lvl) + if !soul_burn && !hero { 200.0 } else { 100.0 };
+        let ((cx, cy), (ex, ey)) = (self.pos(h), self.pos(enemy));
+        if (ex - cx).hypot(ey - cy) <= reach {
             self.ai_cast(h, a, enemy);
         }
     }

@@ -160,7 +160,8 @@ impl World {
             let flying = o.str("movetp").eq_ignore_ascii_case("fly");
             let fog = self.fog.as_ref().unwrap();
             let lvl = fog.cell(u.x, u.y).map_or(0, |c| fog.level[c]);
-            sources.push((u.owner, u.x, u.y, r, lvl, flying, u.extra.shared_vision));
+            let crippled = self.crippled.get(&u.owner).copied().unwrap_or(0);
+            sources.push((u.owner, u.x, u.y, r, lvl, flying, u.extra.shared_vision | crippled));
         }
         let modifiers: Vec<FogModifier> = self.handles.iter().filter_map(|(_, o)| match o {
             Obj::FogModifier(m) if m.active => Some(m.clone()),

@@ -28,6 +28,11 @@ pub struct Shops {
     /// Goods scripts added (AddItemToStock, AddUnitToStock), which RemoveItemFromStock
     /// takes away again.
     pub added: HashMap<(u32, Id), Stock>,
+    /// How many item and unit types shops show (SetAllItemTypeSlots, SetItemTypeSlots).
+    pub item_slots: Option<i32>,
+    pub unit_slots: Option<i32>,
+    pub shop_item_slots: HashMap<u32, i32>,
+    pub shop_unit_slots: HashMap<u32, i32>,
 }
 
 impl World {
@@ -46,6 +51,12 @@ impl World {
             } else {
                 units.push(id);
             }
+        }
+        if let Some(n) = self.shops.shop_item_slots.get(&shop).copied().or(self.shops.item_slots) {
+            items.truncate(n.max(0) as usize);
+        }
+        if let Some(n) = self.shops.shop_unit_slots.get(&shop).copied().or(self.shops.unit_slots) {
+            units.truncate(n.max(0) as usize);
         }
         (items, units)
     }

@@ -253,6 +253,8 @@ pub struct UnitExtra {
     /// SetItemDropID: the item the unit drops when it dies.
     pub drop_item: Option<Id>,
     pub alt_icon: bool,
+    /// A haunted gold mine's gold mine underneath.
+    pub mine: Option<u32>,
 }
 
 impl Default for UnitExtra {
@@ -275,6 +277,7 @@ impl Default for UnitExtra {
             creep_guard: false,
             drop_item: None,
             alt_icon: false,
+            mine: None,
         }
     }
 }
@@ -790,6 +793,12 @@ pub struct QuestItem {
 /// A handle-table entry.
 #[derive(Clone, Debug)]
 pub enum Obj {
+    Image(Image),
+    Ubersplat(Ubersplat),
+    Lightning(Lightning),
+    /// Unit or item types with weights (CreateUnitPool, CreateItemPool).
+    UnitPool(Vec<(Id, f32)>),
+    ItemPool(Vec<(Id, f32)>),
     TimerDialog(TimerDialog),
     Leaderboard(Leaderboard),
     Multiboard(Multiboard),
@@ -926,4 +935,47 @@ impl Multiboard {
             }
         }
     }
+}
+
+/// An image (CreateImage): a texture laid on the ground.
+#[derive(Clone, Debug)]
+pub struct Image {
+    pub file: String,
+    pub size: [f32; 3],
+    pub pos: [f32; 3],
+    pub origin: [f32; 3],
+    /// IMAGE_TYPE: 1 selection, 2 indicator, 3 occlusion mask, 4 ubersplat.
+    pub kind: i32,
+    pub shown: bool,
+    pub render: bool,
+    pub render_always: bool,
+    pub above_water: (bool, bool),
+    pub constant_height: Option<f32>,
+    pub color: [u8; 4],
+}
+
+/// An ubersplat (CreateUbersplat): a Splats\UberSplatData.slk ground texture.
+#[derive(Clone, Debug)]
+pub struct Ubersplat {
+    pub x: f32,
+    pub y: f32,
+    pub name: String,
+    pub color: [u8; 4],
+    pub paused: bool,
+    pub no_birth: bool,
+    pub shown: bool,
+    pub render: bool,
+    pub render_always: bool,
+    /// Seconds since it started (ResetUbersplat starts over); None when finished.
+    pub age: Option<f32>,
+}
+
+/// A lightning effect between two points (AddLightning): a Splats\LightningData.slk type.
+#[derive(Clone, Debug)]
+pub struct Lightning {
+    pub code: String,
+    pub check_visibility: bool,
+    pub from: [f32; 3],
+    pub to: [f32; 3],
+    pub color: [f32; 4],
 }

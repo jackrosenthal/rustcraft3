@@ -36,6 +36,15 @@ pub enum Request {
     ChangeLevel { map: String, score: bool },
     Fade { players: u32, out: bool, duration: f32 },
     EndGame,
+    /// UnitAddIndicator and AddIndicator: a widget's indicator in a color.
+    Indicator { widget: u32, color: [u8; 4] },
+    /// PlayCinematic: a movie.
+    PlayMovie(String),
+    /// ForceUIKey: the interface acts as if a hotkey were pressed; ForceUICancel as if
+    /// the cancel key were.
+    ForceUIKey(String),
+    ForceUICancel,
+    DisplayLoadDialog,
 }
 
 /// A suspended trigger thread and the event context it resumes with.
@@ -104,6 +113,23 @@ pub struct World {
     pub player_leaderboards: HashMap<u8, u32>,
     /// MultiboardSuppressDisplay.
     pub multiboard_suppressed: bool,
+    /// Map tileset letter (war3map.w3e).
+    pub tileset: u8,
+    /// CripplePlayer: players who see each player's units.
+    pub crippled: HashMap<u8, u16>,
+    /// RemovePlayer: each removed player's PLAYER_GAME_RESULT.
+    pub player_results: HashMap<u8, i32>,
+    pub restart_disabled: bool,
+    /// The saved game this game was loaded from (GetSaveBasicFilename).
+    pub load_game_name: String,
+    pub reserved_hero_buttons: i32,
+    pub alt_minimap_icon: Option<String>,
+    /// EnableWorldFogBoundary.
+    pub fog_boundary: bool,
+    /// PlayModelCinematic.
+    pub model_cinematic: Option<String>,
+    /// Running terrain deformations: handle, start time, and parameters.
+    pub deformations: Vec<(u32, f32, crate::natives::visuals::Deform)>,
     pub destructable_order: Vec<u32>,
     pub item_order: Vec<u32>,
     /// Effects destroyed by script, with the time they were destroyed; the presentation
@@ -260,6 +286,16 @@ impl World {
             selection_serial: 0,
             player_leaderboards: HashMap::new(),
             multiboard_suppressed: false,
+            tileset: 0,
+            crippled: HashMap::new(),
+            player_results: HashMap::new(),
+            restart_disabled: false,
+            load_game_name: String::new(),
+            reserved_hero_buttons: 0,
+            alt_minimap_icon: None,
+            fog_boundary: true,
+            model_cinematic: None,
+            deformations: Vec::new(),
             destructable_order: Vec::new(),
             item_order: Vec::new(),
             dying_effects: Vec::new(),

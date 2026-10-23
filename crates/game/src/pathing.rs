@@ -46,6 +46,22 @@ impl PathingMap {
             .then(|| (c.1 as u32 * self.width + c.0 as u32) as usize)
     }
 
+    /// A cell's war3map.wpm flags.
+    pub fn flags_at(&self, c: (i32, i32)) -> Option<u8> {
+        self.index(c).map(|i| self.flags[i])
+    }
+
+    /// Sets or clears flag bits of a cell (SetTerrainPathable).
+    pub fn set_flags(&mut self, c: (i32, i32), mask: u8, on: bool) {
+        if let Some(i) = self.index(c) {
+            if on {
+                self.flags[i] |= mask;
+            } else {
+                self.flags[i] &= !mask;
+            }
+        }
+    }
+
     pub fn walkable(&self, c: (i32, i32)) -> bool {
         self.index(c).is_some_and(|i| self.flags[i] & NO_WALK == 0 && self.blocked[i] == 0)
     }

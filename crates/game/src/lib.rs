@@ -103,6 +103,7 @@ impl Game {
         }
         if let Ok(t) = chain.read("war3map.w3e").map_err(anyhow::Error::from).and_then(|b| Terrain::parse(&b).map_err(Into::into)) {
             let (w, h) = (t.width, t.height);
+            world.tileset = t.tileset;
             world.map_bounds = Rect {
                 min_x: t.offset[0],
                 min_y: t.offset[1],

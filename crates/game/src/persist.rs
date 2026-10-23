@@ -52,6 +52,7 @@ impl SavedCache {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Persist {
     /// By campaign number (the position in CampaignList).
     pub campaigns: Vec<CampaignState>,
@@ -61,6 +62,10 @@ pub struct Persist {
     pub caches: HashMap<String, SavedCache>,
     /// Campaigns whose race the menu was last set to show (SetCampaignMenuRace).
     pub menu_race: i32,
+    /// SetTutorialCleared.
+    pub tutorial_cleared: bool,
+    /// SetCustomCampaignButtonVisible, by button.
+    pub custom_campaign_buttons: HashMap<i32, bool>,
 }
 
 impl Persist {

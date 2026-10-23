@@ -292,6 +292,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             handle(h)
         },
         HaveStoredUnit => |w, _, a| { let k = (a.s(1), a.s(2)); boolean(gamecache(w, a.h(0)).is_some_and(|c| c.units.contains_key(&k))) },
+        FlushStoredInteger => |w, _, a| { let k = (a.s(1), a.s(2)); if let Some(c) = gamecache(w, a.h(0)) { c.ints.remove(&k); } none() },
+        FlushStoredReal => |w, _, a| { let k = (a.s(1), a.s(2)); if let Some(c) = gamecache(w, a.h(0)) { c.reals.remove(&k); } none() },
+        FlushStoredBoolean => |w, _, a| { let k = (a.s(1), a.s(2)); if let Some(c) = gamecache(w, a.h(0)) { c.bools.remove(&k); } none() },
+        FlushStoredString => |w, _, a| { let k = (a.s(1), a.s(2)); if let Some(c) = gamecache(w, a.h(0)) { c.strings.remove(&k); } none() },
         FlushStoredUnit => |w, _, a| { let k = (a.s(1), a.s(2)); if let Some(c) = gamecache(w, a.h(0)) { c.units.remove(&k); } none() },
         FlushStoredMission => |w, _, a| {
             let m = a.s(1);

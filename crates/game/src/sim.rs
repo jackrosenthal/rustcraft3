@@ -268,7 +268,35 @@ impl World {
         if let Some(u) = self.unit_mut(h) {
             u.extra.order_queue.clear();
         }
+        self.order_error = None;
         self.order_unit(h, order, x, y, target);
+        if self.order_error.is_none() {
+            let ctx = self.order_event(h, order, x, y, target);
+            self.queue_unit_event(h, ctx.0, ctx.1, ctx.2);
+        }
+    }
+
+    /// The issued-order events for an order (its kind by target) and their context:
+    /// a target order's target unit, item, or destructable, a point order's point.
+    pub(crate) fn order_event(&self, h: u32, order: i32, x: f32, y: f32, target: u32) -> (i32, i32, EventCtx) {
+        let _ = h;
+        let mut ctx = EventCtx { order_id: order, order_x: x, order_y: y, ..Default::default() };
+        if target != 0 {
+            match self.handles.get(target) {
+                Some(Obj::Item(_)) => ctx.item = target,
+                Some(Obj::Destructable(_)) => ctx.destructable = target,
+                _ => ctx.target_unit = target,
+            }
+            if let Some((tx, ty)) = self.widget_pos(target) {
+                ctx.order_x = tx;
+                ctx.order_y = ty;
+            }
+            (EVENT_PLAYER_UNIT_ISSUED_TARGET_ORDER, EVENT_UNIT_ISSUED_TARGET_ORDER, ctx)
+        } else if x != 0.0 || y != 0.0 {
+            (EVENT_PLAYER_UNIT_ISSUED_POINT_ORDER, EVENT_UNIT_ISSUED_POINT_ORDER, ctx)
+        } else {
+            (EVENT_PLAYER_UNIT_ISSUED_ORDER, EVENT_UNIT_ISSUED_ORDER, ctx)
+        }
     }
 
     pub fn order_unit(&mut self, h: u32, order: i32, x: f32, y: f32, target: u32) {

@@ -432,15 +432,9 @@ fn issue_order(w: &mut World, vm: &mut Vm, unit: u32, order: i32, x: f32, y: f32
     if w.order_error.take().is_some() {
         return boolean(false);
     }
-    let (event, ctx) = if target != 0 {
-        (EVENT_PLAYER_UNIT_ISSUED_TARGET_ORDER, EventCtx { target_unit: target, ..Default::default() })
-    } else if x != 0.0 || y != 0.0 {
-        (EVENT_PLAYER_UNIT_ISSUED_POINT_ORDER, EventCtx::default())
-    } else {
-        (EVENT_PLAYER_UNIT_ISSUED_ORDER, EventCtx::default())
-    };
-    let ctx = EventCtx { unit, event_id: event, order_id: order, order_x: x, order_y: y, player: owner, has_player: true, ..ctx };
-    w.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event: e, .. } if *player == owner && *e == event));
+    let _ = owner;
+    let (pe, ue, ctx) = w.order_event(unit, order, x, y, target);
+    w.fire_unit_pair(vm, unit, pe, ue, ctx);
     boolean(true)
 }
 

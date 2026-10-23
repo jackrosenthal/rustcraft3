@@ -147,6 +147,9 @@ pub struct Hud {
     pub idle_workers: Vec<u32>,
     idle_pick: (f32, usize),
     pub cinematic: bool,
+    /// How much of the game interface and of the cinematic panel shows, while
+    /// ShowInterface fades between them.
+    pub fades: (f32, f32),
     filter: Option<(String, [f32; 4], [f32; 4], bool)>,
     pub minimap_area: Option<MinimapArea>,
     pub minimap_dots: Vec<(f32, f32, [f32; 4], f32)>,
@@ -295,6 +298,7 @@ impl Hud {
             idle_workers: Vec::new(),
             idle_pick: (f32::MIN, 0),
             cinematic: false,
+            fades: (1.0, 0.0),
             filter: None,
             camera_box: Vec::new(),
             card: Vec::new(),
@@ -456,6 +460,8 @@ impl Hud {
             }
         }
         self.cinematic = !c.interface;
+        let t = if c.interface_fade > 0.0 { ((world.time - c.interface_changed) / c.interface_fade).clamp(0.0, 1.0) } else { 1.0 };
+        self.fades = if c.interface { (t, 1.0 - t) } else { (1.0 - t, t) };
         self.filter = c.filter.shown.and_then(|shown| {
             let f = &c.filter;
             let t = if f.duration > 0.0 { ((world.time - shown) / f.duration).clamp(0.0, 1.0) } else { 1.0 };
@@ -464,7 +470,7 @@ impl Hud {
             let uv: Vec<f32> = (0..4).map(|i| lerp(f.start_uv[i], f.end_uv[i])).collect();
             (!f.texture.is_empty()).then(|| (f.texture.clone(), [uv[0], uv[1], uv[2], uv[3]], [col[0], col[1], col[2], col[3]], f.blend == 2))
         });
-        if !self.cinematic {
+        if !self.cinematic && self.fades.1 <= 0.0 {
             return;
         }
         if self.cine.is_none() {
@@ -1288,10 +1294,27 @@ impl Hud {
         }
     }
 
+    /// The interface's draws.  ShowInterface's fade (FUN_6f373c20) fades the game
+    /// interface out and the cinematic panel in, or back, over its seconds.
     pub fn draws(&self, db: &FrameDb) -> Vec<Draw> {
+        let (ui, cine) = self.fades;
+        if ui >= 1.0 || cine <= 0.0 {
+            return self.interface_draws(db, false);
+        }
+        if cine >= 1.0 || ui <= 0.0 {
+            return self.interface_draws(db, true);
+        }
+        let mut out = faded(self.interface_draws(db, false), ui);
+        if let Some(c) = &self.cine {
+            out.extend(faded(c.draw(db), cine));
+        }
+        out
+    }
+
+    fn interface_draws(&self, db: &FrameDb, cinematic: bool) -> Vec<Draw> {
         // While the interface is hidden only the cinematic panel, text messages, and the
         // filter show.
-        if self.cinematic {
+        if cinematic {
             let mut out = Vec::new();
             self.filter_draws(&mut out);
             if let Some(c) = &self.cine {
@@ -1485,4 +1508,16 @@ impl Hud {
         }
         out
     }
+}
+
+/// Draws with their alpha scaled.
+fn faded(mut draws: Vec<Draw>, alpha: f32) -> Vec<Draw> {
+    for d in &mut draws {
+        match d {
+            Draw::Image { color, .. } | Draw::Text { color, .. } => color[3] *= alpha,
+            #[allow(unreachable_patterns)]
+            _ => {}
+        }
+    }
+    draws
 }

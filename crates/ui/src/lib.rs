@@ -250,6 +250,8 @@ pub struct Frame {
     /// Which part of the frame its anchors fixed (0 left or bottom, 0.5 center, 1 right
     /// or top); a text frame without a size grows from there to fit its text.
     pub anchor: (f32, f32),
+    /// A text color a screen sets in place of the definition's (SetTextColor).
+    pub color: Option<[f32; 4]>,
 }
 
 #[derive(Default)]
@@ -300,6 +302,7 @@ impl FrameTree {
             selected: 0,
             open: false,
             anchor: (0.0, 0.0),
+            color: None,
         });
         t
     }
@@ -345,6 +348,7 @@ impl FrameTree {
             selected: 0,
             open: false,
             anchor: (0.0, 0.0),
+            color: None,
         });
         if !name.is_empty() {
             self.by_name.insert(name, i);
@@ -958,7 +962,7 @@ impl FrameTree {
                     None => "FontColor",
                 };
                 // CTextFrame starts white (0xffffffff) until FontColor sets it.
-                let color = color_prop(d.prop(color_key).or_else(|| d.prop("FontColor")), [1.0; 4]);
+                let color = f.color.unwrap_or_else(|| color_prop(d.prop(color_key).or_else(|| d.prop("FontColor")), [1.0; 4]));
                 // Without a size, the text sizes itself around the anchored point.
                 let (mut jh, mut jv) = (justify("FontJustificationH", Justify::Middle), justify("FontJustificationV", Justify::Middle));
                 let mut r = r;

@@ -722,14 +722,20 @@ impl Hud {
         set(
             &mut self.tree,
             self.supply,
-            format!("{}/{}", p.get_state(player_state::RESOURCE_FOOD_USED), p.get_state(player_state::RESOURCE_FOOD_CAP)),
+            {
+                // FUN_6f3d1080: the food used alone when nothing provides any.
+                let (used, cap) = (p.get_state(player_state::RESOURCE_FOOD_USED), p.get_state(player_state::RESOURCE_FOOD_CAP));
+                if cap == 0 { used.to_string() } else { format!("{used}/{cap}") }
+            },
         );
-        // The thresholds between low and high upkeep are not yet recovered from game.dll;
-        // the label follows the player's gold upkeep rate state.
-        let rate = p.get_state(player_state::GOLD_UPKEEP_RATE);
-        let key = match rate {
+        // Red when more food is used than provided.
+        if let Some(f) = self.supply {
+            let (used, cap) = (p.get_state(player_state::RESOURCE_FOOD_USED), p.get_state(player_state::RESOURCE_FOOD_CAP));
+            self.tree.frames[f].color = (cap != 0 && used > cap).then_some([1.0, 0.0, 0.0, 1.0]);
+        }
+        let key = match world.upkeep_level(world.local_player) {
             0 => "UPKEEP_NONE",
-            r if r < 60 => "UPKEEP_LOW",
+            1 => "UPKEEP_LOW",
             _ => "UPKEEP_HIGH",
         };
         set(&mut self.tree, self.upkeep, db.string(key));

@@ -1208,11 +1208,37 @@ impl World {
         u.carry_gold = 0;
         u.carry_lumber = 0;
         u.action = if src != 0 { Action::Harvest { target: src } } else { Action::Idle };
+        // Upkeep takes its share of what is returned.
+        let (gold_tax, lumber_tax) = self.upkeep_tax(owner);
         let p = &mut self.players[owner as usize];
-        *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) += gold;
-        *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) += lumber;
+        let (kept_gold, kept_lumber) = (gold * (100 - gold_tax) / 100, lumber * (100 - lumber_tax) / 100);
+        *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) += kept_gold;
+        *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) += kept_lumber;
         *p.state.entry(player_state::GOLD_GATHERED).or_insert(0) += gold;
         *p.state.entry(player_state::LUMBER_GATHERED).or_insert(0) += lumber;
+    }
+
+    /// The upkeep level from food used: how many of [Misc] UpkeepUsage's thresholds it is
+    /// above (game.dll FUN_6f047f90; 40 and 70 for Reign of Chaos, 50 and 80 for The Frozen
+    /// Throne when the data has none).
+    pub fn upkeep_level(&self, player: u8) -> usize {
+        let used = self.players.get(player as usize).map_or(0, |p| p.get_state(player_state::RESOURCE_FOOD_USED));
+        let data: Vec<i32> = self.misc.get_list("Misc", "UpkeepUsage").iter().filter_map(|v| v.trim().parse().ok()).collect();
+        let thresholds = if data.is_empty() { if self.version >= 1 { vec![50, 80] } else { vec![40, 70] } } else { data };
+        thresholds.iter().take_while(|&&t| t < used).count()
+    }
+
+    /// Percent of gold and lumber income upkeep takes ([Misc] UpkeepGoldTax and
+    /// UpkeepLumberTax by level; 0, 30, 60 and none without data: FUN_6f0016f0,
+    /// FUN_6f001880).
+    pub fn upkeep_tax(&self, player: u8) -> (i32, i32) {
+        let level = self.upkeep_level(player).min(9);
+        let tax = |key: &str, default: &[f32]| -> i32 {
+            let data: Vec<f32> = self.misc.get_list("Misc", key).iter().filter_map(|v| v.trim().parse().ok()).collect();
+            let v = if data.is_empty() { default.get(level).or(default.last()).copied().unwrap_or(0.0) } else { data.get(level).or(data.last()).copied().unwrap_or(0.0) };
+            (v * 100.0).round() as i32
+        };
+        (tax("UpkeepGoldTax", &[0.0, 0.3, 0.6]), tax("UpkeepLumberTax", &[0.0]))
     }
 
     pub fn primary_attribute_pub(&self, h: u32) -> f32 {

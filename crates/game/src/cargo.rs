@@ -146,16 +146,23 @@ impl World {
         }
     }
 
-    /// Units aboard ride along; a dead transport's cargo is lost.
+    /// Units aboard ride along; a dead transport's cargo dies with it when it has Cargo
+    /// Hold Death (Achd), and comes out otherwise.
     pub fn update_cargo(&mut self, vm: &mut Vm) {
         let carriers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.extra.cargo.is_empty())).collect();
         for t in carriers {
             let Some((x, y, dead)) = self.unit(t).map(|u| (u.x, u.y, u.dead)) else { continue };
             let cargo = self.unit(t).unwrap().extra.cargo.clone();
             if dead {
+                let lost = self.ability_with_code(t, "Achd").is_some();
                 for c in cargo {
                     self.disembark(c);
-                    crate::natives::units::kill_unit(self, vm, c, 0);
+                    if lost {
+                        crate::natives::units::kill_unit(self, vm, c, 0);
+                    }
+                }
+                if let Some(u) = self.unit_mut(t) {
+                    u.extra.cargo.clear();
                 }
                 continue;
             }

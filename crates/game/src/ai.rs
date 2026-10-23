@@ -76,6 +76,17 @@ pub struct AiState {
     pub mega: u32,
     #[serde(default)]
     pub mega_timer: f32,
+    /// Whether the assault group filled every request since InitAssault (the attack
+    /// captain's flag 1).
+    #[serde(default)]
+    pub assault_full: bool,
+    /// The player the attack captain is sent against (SuicidePlayer), and whether its
+    /// structures count.
+    #[serde(default)]
+    pub attack_player: Option<(u8, bool)>,
+    /// The target allied computers share (SetAllianceTarget; CCompAI +0x2a0).
+    #[serde(default)]
+    pub alliance_target: u32,
 }
 
 /// Distance within which a town hall and a gold mine belong to the same town.
@@ -271,6 +282,8 @@ impl World {
             self.ai_engine(p, dt);
             self.ai_threat_tick(p, dt);
             self.ai_mega_tick(p, dt);
+            self.ai_attack_player_tick(p);
+            self.ai_suicide_tick(p);
         }
     }
 
@@ -603,9 +616,10 @@ impl World {
     }
 
     /// An enemy hurt a computer player's unit (the CallForHelp handler FUN_6f66e9e0
-    /// and FUN_6f9cbfc0).  A structure's attack is major when its life is under 60%;
-    /// a captain's unit's when the attacker's side has more than 8 strength within
-    /// 1200 of it (a Hero (level + 1) / 2 + 4, any other its level); a worker's never.
+    /// and FUN_6f9cbfc0), when it is a structure, a worker, or a guard (other units
+    /// look after themselves).  A structure's attack is major when its life is under
+    /// 60%; a guard's when the attacker's side has more than 8 strength within 1200 of
+    /// it (a Hero (level + 1) / 2 + 4, any other its level); a worker's never.
     /// The attacker becomes the threat (a Hero before any other), the defense captain
     /// goes at it, and on a major attack the attack captain too (when it has more
     /// than 2 units and there is no mega target).  Allies' computers that defend
@@ -674,6 +688,9 @@ impl World {
             }
         };
         if self.ai.contains_key(&owner) {
+            if !structure && !peon && !self.guards(owner).contains(&victim) {
+                return;
+            }
             let major = if structure { Some(low) } else if peon { Some(false) } else { None };
             respond(self, owner, major);
         } else if structure {
@@ -843,8 +860,16 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             handle(w.unit_order.iter().copied().find(|&h| w.unit(h).is_some_and(|u| u.owner == p && u.is_building && !u.dead)).unwrap_or(0))
         },
         GetEnemyPower => |_, _, _| int(0),
-        SetAllianceTarget => |_, _, _| none(),
-        GetAllianceTarget => |_, _, _| none(),
+        SetAllianceTarget => |w, _, a| {
+            let p = w.ai_player();
+            w.set_alliance_target(p, a.h(0));
+            none()
+        },
+        GetAllianceTarget => |w, _, _| {
+            let p = w.ai_player();
+            let t = w.ai.get(&p).map_or(0, |s| s.alliance_target);
+            handle(if w.unit(t).is_some_and(|u| !u.dead) { t } else { 0 })
+        },
         SetProduce => |w, vm, a| {
             let p = w.ai_player();
             let id = id_from_int(a.i(1));
@@ -857,7 +882,11 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             }
             boolean(ok)
         },
-        Unsummon => |_, _, _| none(),
+        Unsummon => |w, _, a| {
+            let p = w.ai_player();
+            w.ai_unsummon(p, a.h(0));
+            none()
+        },
         SetExpansion => |w, _, a| {
             let p = w.ai_player();
             boolean(w.set_expansion(p, a.h(0), id_from_int(a.i(1))))
@@ -871,7 +900,11 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         SetNewHeroes => |w, _, a| set_flag(w, "new_heroes", a.b(0)),
         PurchaseZeppelin => |_, _, _| none(),
         MergeUnits => |_, _, _| boolean(false),
-        ConvertUnits => |_, _, _| boolean(false),
+        ConvertUnits => |w, _, a| {
+            let p = w.ai_player();
+            w.ai_convert(p, a.i(0), id_from_int(a.i(1)));
+            boolean(false)
+        },
         SetCampaignAI => |w, _, _| { if let Some(s) = w.ai_state() { s.melee = false; } none() },
         SetMeleeAI => |w, _, _| { if let Some(s) = w.ai_state() { s.melee = true; } none() },
         SetTargetHeroes => |w, _, a| set_flag(w, "target_heroes", a.b(0)),
@@ -895,13 +928,31 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             none()
         },
         GroupTimedLife => |_, _, _| none(),
-        RemoveInjuries => |_, _, _| none(),
-        RemoveSiege => |_, _, _| none(),
-        InitAssault => |w, _, _| { if let Some(s) = w.ai_state() { s.assault.clear(); } none() },
+        RemoveInjuries => |w, _, _| {
+            let p = w.ai_player();
+            w.remove_injuries(p);
+            none()
+        },
+        RemoveSiege => |w, _, _| {
+            let p = w.ai_player();
+            w.remove_siege(p);
+            none()
+        },
+        InitAssault => |w, _, _| {
+            if let Some(s) = w.ai_state() {
+                s.assault.clear();
+                s.assault_full = true;
+            }
+            none()
+        },
         AddAssault => |w, _, a| {
             let id = id_from_int(a.i(1));
             if let Some(s) = w.ai_state() { s.assault.push((id, a.i(0))); }
-            boolean(w.fill_captain(captain_flag(true), id, a.i(0)))
+            let full = w.fill_captain(captain_flag(true), id, a.i(0));
+            if !full {
+                if let Some(s) = w.ai_state() { s.assault_full = false; }
+            }
+            boolean(full)
         },
         AddDefenders => |w, _, a| {
             let id = id_from_int(a.i(1));
@@ -943,17 +994,27 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         SetStagePoint => |w, _, a| { let p = (a.r(0), a.r(1)); if let Some(s) = w.ai_state() { s.stage = Some(p); } none() },
         AttackMoveKill => |w, _, a| {
             let t = a.h(0);
+            if let Some(s) = w.ai_state() { s.attack_player = None; }
             if let Some(c) = w.captain(true) { c.target = t; c.retreating = false; }
             none()
         },
         AttackMoveXY => |w, _, a| {
             let p = (a.i(0) as f32, a.i(1) as f32);
+            if let Some(s) = w.ai_state() { s.attack_player = None; }
             if let Some(c) = w.captain(true) { c.goal = Some(p); c.target = 0; c.retreating = false; }
             none()
         },
         LoadZepWave => |_, _, _| none(),
-        SuicidePlayer => |_, _, _| boolean(false),
-        SuicidePlayerUnits => |_, _, _| boolean(false),
+        SuicidePlayer => |w, _, a| {
+            let p = w.ai_player();
+            let Some(t) = w.player_of(a.h(0)) else { return boolean(false) };
+            boolean(w.suicide_player(p, t, a.b(1), true))
+        },
+        SuicidePlayerUnits => |w, _, a| {
+            let p = w.ai_player();
+            let Some(t) = w.player_of(a.h(0)) else { return boolean(false) };
+            boolean(w.suicide_player(p, t, a.b(1), false))
+        },
         CaptainInCombat => |w, _, a| {
             let units = w.captain_units(a.b(0));
             boolean(units.iter().any(|&h| w.unit(h).is_some_and(|u| u.swing.is_some() || matches!(u.action, Action::Attack { .. }))))
@@ -1024,6 +1085,7 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             none()
         },
         CaptainGoHome => |w, _, _| {
+            if let Some(s) = w.ai_state() { s.attack_player = None; }
             if let Some(c) = w.captain(true) { c.goal = Some(c.home); c.target = 0; c.retreating = true; }
             none()
         },
@@ -1062,8 +1124,20 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             boolean(units.iter().filter_map(|&h| w.unit(h)).any(|u| (u.x - gx).hypot(u.y - gy) < 500.0))
         },
         CreepsOnMap => |w, _, _| boolean(w.unit_order.iter().any(|&h| w.unit(h).is_some_and(|u| u.owner == PLAYER_NEUTRAL_AGGRESSIVE && !u.dead))),
-        SuicideUnit => |_, _, _| none(),
-        SuicideUnitEx => |_, _, _| none(),
+        SuicideUnit => |w, _, a| {
+            let p = w.ai_player();
+            if a.i(0) > 0 {
+                w.suicide_units(p, a.i(0), id_from_int(a.i(1)), -1);
+            }
+            none()
+        },
+        SuicideUnitEx => |w, _, a| {
+            let p = w.ai_player();
+            if a.i(0) > 0 {
+                w.suicide_units(p, a.i(0), id_from_int(a.i(1)), a.i(2));
+            }
+            none()
+        },
         StartThread => |w, vm, a| {
             if let Some(f) = a.code(0) {
                 let t = vm.new_thread(f, &[], true);
@@ -1073,7 +1147,10 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         },
         Sleep => |_, _, a| NativeResult::Sleep(a.r(0)),
         UnitAlive => |w, _, a| boolean(w.unit(a.h(0)).is_some_and(|u| !u.dead)),
-        UnitInvis => |_, _, _| boolean(false),
+        UnitInvis => |w, _, a| {
+            let p = w.ai_player();
+            boolean(w.ai_unit_invis(p, a.h(0)))
+        },
         IgnoredUnits => |_, _, _| int(0),
         TownThreatened => |w, _, _| {
             let p = w.ai_player();

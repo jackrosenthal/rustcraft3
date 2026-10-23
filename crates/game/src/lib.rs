@@ -2,6 +2,7 @@
 
 pub mod ability;
 pub mod ai;
+pub mod aimisc;
 pub mod aiplace;
 pub mod aiposts;
 pub mod aitargets;

@@ -235,6 +235,10 @@ pub struct Unit {
 /// Unit settings scripts change.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct UnitExtra {
+    /// A computer player's unit sent to die (SuicideUnit): the player it goes after,
+    /// or -1 for any enemy.
+    #[serde(default)]
+    pub ai_suicide: Option<i32>,
     /// SetUnitRescuable: players (bits) who rescue the unit by coming near; the range.
     pub rescuable_by: u16,
     pub rescue_range: f32,
@@ -378,6 +382,7 @@ pub struct UnitExtra {
 impl Default for UnitExtra {
     fn default() -> Self {
         UnitExtra {
+            ai_suicide: None,
             rescuable_by: 0,
             rescue_range: 0.0,
             no_pathing: false,

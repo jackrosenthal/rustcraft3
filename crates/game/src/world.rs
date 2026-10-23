@@ -112,6 +112,7 @@ pub struct World {
     pub ai_difficulty: HashMap<u8, i32>,
     pub fog: Option<crate::fog::FogMap>,
     pub shops: crate::shops::Shops,
+    pub upgrade_cache: crate::upgrades::UpgradeCache,
 }
 
 /// Ground heights for GetLocationZ and unit placement.
@@ -235,6 +236,7 @@ impl World {
             ai_difficulty: HashMap::new(),
             fog: None,
             shops: Default::default(),
+            upgrade_cache: Default::default(),
         }
     }
 

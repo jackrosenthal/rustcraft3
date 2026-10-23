@@ -110,7 +110,7 @@ pub fn final_damage(w: &World, raw: f32, attack_type: &str, target: &Unit) -> f3
     };
     let mult = misc_list(w, key).get(col).copied().unwrap_or(1.0);
     // Heroes gain armor from agility (AgiDefenseBonus per point, plus AgiDefenseBase).
-    let armor = armor + target.item_bonus.armor;
+    let armor = armor + target.item_bonus.armor + w.upgrade_bonus(target.owner, target.type_id).armor;
     let armor = if target.is_hero {
         armor + (target.agi + target.item_bonus.agi).floor() * w.misc_f32("AgiDefenseBonus", 0.3) + w.misc_f32("AgiDefenseBase", -2.0)
     } else {
@@ -271,7 +271,9 @@ impl World {
         if left.abs() > u.prop_window.max(1.0) {
             return false;
         }
-        let step = (u.move_speed + u.item_bonus.move_speed) * dt;
+        let (speed, owner, tid) = (u.move_speed + u.item_bonus.move_speed, u.owner, u.type_id);
+        let ub = self.upgrade_bonus(owner, tid);
+        let step = (speed + ub.move_speed) * (1.0 + ub.move_pct) * dt;
         let step = step * self.buff_mods(h).0;
         let Some(u) = self.unit_mut(h) else { return true };
         let (dx, dy) = (next.0 - u.x, next.1 - u.y);
@@ -391,8 +393,11 @@ impl World {
                 s.elapsed += dt;
                 if !s.done && s.elapsed >= wp.damage_point {
                     s.done = true;
-                    let bonus = self.unit(h).map_or(0.0, |u| u.item_bonus.damage);
-                    let raw = wp.base + (0..wp.dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>() + self.primary_attribute(h) + bonus;
+                    let (owner, tid) = self.unit(h).map_or((0, [0; 4]), |u| (u.owner, u.type_id));
+                    let ub = self.upgrade_bonus(owner, tid);
+                    let bonus = self.unit(h).map_or(0.0, |u| u.item_bonus.damage) + ub.damage;
+                    let dice = wp.dice + ub.dice;
+                    let raw = wp.base + (0..dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>() + self.primary_attribute(h) + bonus;
                     if wp.weapon_type == "missile" || wp.weapon_type == "artillery" || wp.weapon_type.starts_with("msplash") || wp.weapon_type == "mbounce" || wp.weapon_type == "mline" {
                         if let (Some(src), Some(_)) = (self.unit(h).cloned(), self.unit(s.target)) {
                             let launch_z = self.objects.units.get(src.type_id).map_or(60.0, |o| o.real("launchZ"));
@@ -785,6 +790,7 @@ impl World {
                 u.queue_progress = 0.0;
                 u.queue.remove(0);
                 *self.players[owner as usize].tech_researched.entry(id).or_insert(0) += 1;
+                self.research_changed(owner);
                 let label = format!("ResearchComplete{}", self.race_label(owner));
                 self.requests.push(Request::UiSound { players: 1 << owner, label });
             }
@@ -1194,7 +1200,8 @@ impl World {
         let Some(wp) = weapon(self, u.type_id) else { return };
         let d = (t.x - u.x).hypot(t.y - u.y) - u.collision - self.reach_radius(target);
         let (tpos, upos) = ((t.x, t.y), (u.x, u.y));
-        if d > wp.range {
+        let ub = self.upgrade_bonus(u.owner, u.type_id);
+        if d > wp.range + ub.range {
             if stationary {
                 return;
             }
@@ -1217,7 +1224,7 @@ impl World {
         if u.cooldown <= 0.0 {
             // Agility shortens a hero's attack cooldown (AgiAttackSpeedBonus per point).
             let speed = if u.is_hero { 1.0 + (u.agi + u.item_bonus.agi).floor() * agi_bonus } else { 1.0 };
-            let speed = (speed + u.item_bonus.attack_speed) * buff_attack;
+            let speed = (speed + u.item_bonus.attack_speed + ub.attack_speed) * buff_attack;
             u.cooldown = wp.cooldown / speed.max(0.01);
             u.swing = Some(Swing { target, elapsed: 0.0, done: false });
             restart_anim(u, "attack");

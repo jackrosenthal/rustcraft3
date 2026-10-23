@@ -280,15 +280,8 @@ impl World {
         if self.unit(unit).is_some_and(|u| u.is_hero) {
             self.apply_hero_stats(unit, false);
         } else {
-            // Non-heroes: life and mana bonuses apply to the base maximum.
-            let base = self.unit(unit).and_then(|u| self.objects.units.get(u.type_id)).map(|o| (o.real("HP"), o.real("manaN")));
-            if let (Some((hp, mp)), Some(u)) = (base, self.unit_mut(unit)) {
-                let (oh, om) = (u.max_life, u.max_mana);
-                u.max_life = hp + u.item_bonus.life;
-                u.max_mana = mp + u.item_bonus.mana;
-                u.life = (u.life + u.max_life - oh).max(1.0).min(u.max_life);
-                u.mana = (u.mana + u.max_mana - om).clamp(0.0, u.max_mana);
-            }
+            // Non-heroes: life and mana bonuses apply with research to the base maximum.
+            self.apply_upgrades(unit);
         }
     }
 }

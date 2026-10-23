@@ -115,6 +115,13 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
     }
     if is_hero {
         w.apply_hero_stats(h, true);
+    } else {
+        // Research already done applies to new units, at full life.
+        w.apply_upgrades(h);
+        if let Some(u) = w.unit_mut(h) {
+            u.life = u.max_life;
+            u.mana = u.mana.min(u.max_mana);
+        }
     }
     w.unit_order.push(h);
     if !path_tex.is_empty() {

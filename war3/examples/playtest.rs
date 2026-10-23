@@ -213,6 +213,22 @@ fn main() -> anyhow::Result<()> {
                 scene.open_menu((w as u32, h as u32));
                 i += 1;
             }
+            // tech <upgrade> <level>: gives player 0 research.
+            "tech" => {
+                if let Some(g) = scene.game.as_mut() {
+                    g.world.players[0].tech_researched.insert(w3_game::objects::id_from_str(&a[i + 1]), num(&a[i + 2]) as i32);
+                    g.world.research_changed(0);
+                }
+                i += 3;
+            }
+            "bonus" => {
+                if let Some(g) = scene.game.as_ref() {
+                    if let Some(u) = g.world.unit(num(&a[i + 1]) as u32) {
+                        eprintln!("{} life {}/{} bonus {:?}", w3_game::objects::id_str(u.type_id), u.life, u.max_life, g.world.upgrade_bonus(u.owner, u.type_id));
+                    }
+                }
+                i += 2;
+            }
             "selecth" => {
                 scene.selection = vec![num(&a[i + 1]) as u32];
                 i += 2;

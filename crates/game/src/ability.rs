@@ -39,7 +39,14 @@ impl World {
     }
 
     pub fn ability_level(&self, h: u32, id: Id) -> u32 {
-        self.unit(h).and_then(|u| u.abilities.iter().find(|(a, _)| *a == id)).map_or(0, |a| a.1.max(0) as u32)
+        let Some(u) = self.unit(h) else { return 0 };
+        let base = u.abilities.iter().find(|(a, _)| *a == id).map_or(0, |a| a.1.max(0) as u32);
+        // Research raises unit spells (rlev); hero skills level by learning.
+        if base > 0 && !u.is_hero {
+            let code = self.ability_code(id);
+            return base + self.upgrade_spell_levels(u.owner, u.type_id, &code).max(0) as u32;
+        }
+        base
     }
 
     fn data(&self, id: Id, field: &str, level: u32) -> f32 {

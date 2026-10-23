@@ -150,11 +150,15 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         AddPlayerTechResearched => |w, _, a| {
             let (id, v) = (id_from_int(a.i(1)), a.i(2));
-            with_player(w, a, |p| { *p.tech_researched.entry(id).or_insert(0) += v; })
+            let r = with_player(w, a, |p| { *p.tech_researched.entry(id).or_insert(0) += v; });
+            if let Some(p) = player_arg(w, a, 0) { w.research_changed(p); }
+            r
         },
         SetPlayerTechResearched => |w, _, a| {
             let (id, v) = (id_from_int(a.i(1)), a.i(2));
-            with_player(w, a, |p| { p.tech_researched.insert(id, v); })
+            let r = with_player(w, a, |p| { p.tech_researched.insert(id, v); });
+            if let Some(p) = player_arg(w, a, 0) { w.research_changed(p); }
+            r
         },
         GetPlayerTechResearched => |w, _, a| {
             let id = id_from_int(a.i(1));

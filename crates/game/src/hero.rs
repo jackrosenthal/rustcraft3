@@ -159,8 +159,10 @@ impl World {
             if rt == "none" || (rt == "night" && day) || (rt == "day" && !day) {
                 hp = 0.0;
             }
-            // Mana regeneration items add a fraction of the normal rate.
-            mp *= 1.0 + u.item_bonus.mana_regen;
+            // Mana regeneration items and research add a fraction of the normal rate.
+            let ub = self.upgrade_bonus(u.owner, u.type_id);
+            mp *= 1.0 + u.item_bonus.mana_regen + ub.mana_regen;
+            hp += ub.hp_regen;
             if u.is_hero {
                 hp += (u.str_ + u.item_bonus.str_).floor() * str_regen;
                 mp += (u.int + u.item_bonus.int).floor() * int_regen;

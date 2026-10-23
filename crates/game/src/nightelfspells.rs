@@ -166,6 +166,36 @@ impl World {
         true
     }
 
+    /// Carrion Scarabs: a corpse becomes DataA beetles (DataC), and DataB of DataD, while
+    /// the caster has fewer than DataE.
+    pub(crate) fn carrion_scarabs(&mut self, h: u32, a: Id, lvl: u32, corpse: u32) {
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
+        let o = self.objects.abilities.get(a);
+        let kinds: Vec<(Id, i32)> = [("DataC", "DataA"), ("DataD", "DataB")]
+            .iter()
+            .map(|(t, n)| (id_from_str(o.map(|o| o.level_str(t, lvl)).unwrap_or_default().trim()), self.data(a, n, lvl) as i32))
+            .filter(|(t, n)| t[0] != 0 && *n > 0)
+            .collect();
+        let max = self.data(a, "DataE", lvl) as usize;
+        let have = self.unit_order.iter().filter(|&&s| self.unit(s).is_some_and(|u| !u.dead && u.extra.summoner == h && kinds.iter().any(|k| k.0 == u.type_id))).count();
+        if max > 0 && have >= max {
+            return;
+        }
+        let Some((x, y)) = self.unit(corpse).filter(|c| c.dead).map(|c| (c.x, c.y)) else { return };
+        crate::natives::units::remove_unit(self, corpse);
+        let life = self.data(a, "Dur", lvl);
+        let mut room = if max > 0 { max - have } else { usize::MAX };
+        for (kind, n) in kinds {
+            let n = (n as usize).min(room) as i32;
+            room = room.saturating_sub(n as usize);
+            for s in self.summon(h, owner, kind, n, x, y, life) {
+                if let Some(su) = self.unit_mut(s) {
+                    su.extra.summoner = h;
+                }
+            }
+        }
+    }
+
     /// Vengeance: a corpse rises as a spirit (DataC) for Dur, while the caster has fewer
     /// than DataE; they die with the caster (DataF 1).
     pub(crate) fn vengeance(&mut self, h: u32, a: Id, lvl: u32, corpse: u32) {

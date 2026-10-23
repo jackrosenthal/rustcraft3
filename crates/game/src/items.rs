@@ -289,6 +289,15 @@ impl World {
                 }
             }
         }
+        // Attribute Bonus (Aamk): DataA agility, DataB intelligence, and DataC strength
+        // at its level.
+        let learned: Vec<(Id, i32)> = self.unit(unit).map(|u| u.abilities.iter().copied().filter(|&(a, l)| l > 0 && self.ability_code(a) == "Aamk").collect()).unwrap_or_default();
+        for (a, l) in learned {
+            let d = |f: &str| self.data(a, f, l as u32);
+            b.agi += d("DataA");
+            b.int += d("DataB");
+            b.str_ += d("DataC");
+        }
         if let Some(u) = self.unit_mut(unit) {
             u.item_bonus = b;
         }

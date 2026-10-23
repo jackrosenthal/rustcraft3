@@ -148,6 +148,9 @@ impl World {
                 1
             }
         };
+        if self.ability_code(ability) == "Aamk" {
+            self.apply_item_bonuses(h);
+        }
         use crate::event_ids::*;
         let ctx = EventCtx { spell_ability: crate::objects::id_to_int(ability), state: level, ..Default::default() };
         self.queue_unit_event(h, EVENT_PLAYER_HERO_SKILL, EVENT_UNIT_HERO_SKILL, ctx);

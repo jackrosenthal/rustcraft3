@@ -351,6 +351,9 @@ pub struct UnitExtra {
     /// An illusion's damage dealt and taken factors, and its buff.
     #[serde(default)]
     pub illusion: Option<(f32, f32, Id)>,
+    /// A Pocket Factory: its ability, level, and seconds to its next goblin.
+    #[serde(default)]
+    pub factory: Option<(Id, u32, f32)>,
 }
 
 impl Default for UnitExtra {
@@ -406,6 +409,7 @@ impl Default for UnitExtra {
             anim_props: Vec::new(),
             look_at: None,
             illusion: None,
+            factory: None,
             resume: None,
             repair_debt: (0.0, 0.0),
             trap: None,

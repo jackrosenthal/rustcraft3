@@ -79,6 +79,8 @@ impl World {
                 .min_by(|x, y| (x.x - u.x).hypot(x.y - u.y).total_cmp(&(y.x - u.x).hypot(y.y - u.y)))
                 .map(|t| t.handle),
             "Arai" => self.corpses_in(u.x, u.y, self.data(a, "Area", lvl)).first().map(|_| h),
+            // Carrion Scarabs: the nearest corpse in range, in a fight.
+            "AUcb" => self.in_combat(h).then(|| self.corpses_in(u.x, u.y, self.data(a, "Rng", lvl)).first().copied()).flatten(),
             "Aadm" => units().find(|t| alive(t) && !ally(t) && near(t) && self.is_summoned(t.handle)).map(|t| t.handle),
             // Frenzy: the caster itself, in a fight, without it.
             "Afzy" => (self.in_combat(h) && !self.has_buff_of(h, a)).then_some(h),

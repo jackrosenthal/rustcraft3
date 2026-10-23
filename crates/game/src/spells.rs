@@ -9,7 +9,7 @@ use crate::world::World;
 
 /// Codes whose effect keeps the caster channeling.
 pub fn channeled(code: &str) -> bool {
-    matches!(code, "AHbz" | "AEsf" | "AEtq" | "AUdd" | "AHdr" | "AOvd" | "AOeq")
+    matches!(code, "AHbz" | "ANrf" | "AEsf" | "AEtq" | "AUdd" | "AHdr" | "AOvd" | "AOeq")
 }
 
 impl World {
@@ -139,17 +139,17 @@ impl World {
         let (tx, ty) = self.widget_pos(target).unwrap_or((x, y));
         match code {
             // Channeled waves.
-            "AHbz" | "AEsf" | "AEtq" | "AUdd" | "AHdr" | "AOvd" | "AOeq" => {
+            "AHbz" | "ANrf" | "AEsf" | "AEtq" | "AUdd" | "AHdr" | "AOvd" | "AOeq" => {
                 let waves = match code {
-                    "AHbz" => self.d(a, "DataA", lvl).max(1.0) as u32,
+                    "AHbz" | "ANrf" => self.d(a, "DataA", lvl).max(1.0) as u32,
                     _ => 0,
                 };
                 // Self-sustained spells last the caster's duration (HeroDur for heroes);
                 // Blizzard's waves come one per Cast time.
                 let cast = self.d(a, "Cast", lvl).max(0.1);
-                let duration = if code == "AHbz" { waves as f32 * cast } else { self.duration_for(a, lvl, h) };
+                let duration = if code == "AHbz" || code == "ANrf" { waves as f32 * cast } else { self.duration_for(a, lvl, h) };
                 let interval = match code {
-                    "AHbz" => cast,
+                    "AHbz" | "ANrf" => cast,
                     "AEsf" | "AEtq" => self.d(a, "DataB", lvl).max(0.1),
                     "AHdr" => self.d(a, "DataC", lvl).max(0.1),
                     _ => 1.0,
@@ -484,6 +484,22 @@ impl World {
                 self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: self.d(a, "DataA", lvl), attack_factor: -self.d(a, "DataB", lvl), move_factor: -self.d(a, "DataC", lvl), ..Default::default() });
                 true
             }
+            // Pocket Factory: a factory (UnitID) for Dur at the point.
+            "ANsy" => {
+                let kind = crate::objects::id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
+                let dur = self.duration_for(a, lvl, h);
+                let every = self.d(a, "DataA", lvl);
+                for f in self.summon(h, owner, kind, 1, x, y, dur) {
+                    if let Some(u) = self.unit_mut(f) {
+                        u.extra.factory = Some((a, lvl, every));
+                    }
+                }
+                true
+            }
+            "AUcb" => {
+                self.carrion_scarabs(h, a, lvl, target);
+                true
+            }
             "AOmi" => {
                 self.mirror_image(h, a, lvl);
                 true
@@ -612,6 +628,23 @@ impl World {
                 }
             }
             // Blizzard: a wave of shards over the area; friends are hit too.
+            // Rain of Fire: a Blizzard wave that also leaves what it hits burning for DataE
+            // a second for Dur.
+            "ANrf" => {
+                let targets: Vec<u32> = self.units_in(c.x, c.y, area).into_iter().filter(|&t| self.cast_target_error(h, a, t).is_none()).collect();
+                let (reduction, max, each) = (self.d(a, "DataD", lvl), self.d(a, "DataF", lvl), self.d(a, "DataB", lvl));
+                let per = if max > 0.0 && !targets.is_empty() { each.min(max / targets.len() as f32) } else { each };
+                let buff = self.buff_of(a, lvl);
+                let (burn, dur) = (self.d(a, "DataE", lvl), self.d(a, "Dur", lvl));
+                for t in targets {
+                    let k = if self.unit(t).is_some_and(|u| u.is_building) && reduction > 0.0 { reduction } else { 1.0 };
+                    self.spell_damage(vm, h, t, per * k);
+                    if burn > 0.0 && self.unit(t).is_some_and(|u| !u.is_building) {
+                        self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: burn, ..Default::default() });
+                    }
+                }
+                self.art_at(a, "EffectArt", c.x, c.y);
+            }
             "AHbz" => {
                 let targets = self.units_in(c.x, c.y, area);
                 let reduction = self.d(a, "DataD", lvl);

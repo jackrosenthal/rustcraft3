@@ -255,3 +255,25 @@ impl World {
         }
     }
 }
+
+impl World {
+    /// Pocket Factories: every DataA a goblin (DataB) for DataC seconds, DataD in front.
+    pub fn update_factories(&mut self, dt: f32) {
+        let factories: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.factory.is_some())).collect();
+        for h in factories {
+            let Some(u) = self.unit(h) else { continue };
+            let Some((a, lvl, left)) = u.extra.factory else { continue };
+            let (owner, x, y, facing) = (u.owner, u.x, u.y, u.facing.to_radians());
+            let left = left - dt;
+            if left > 0.0 {
+                self.unit_mut(h).unwrap().extra.factory = Some((a, lvl, left));
+                continue;
+            }
+            let every = self.data(a, "DataA", lvl).max(0.1);
+            self.unit_mut(h).unwrap().extra.factory = Some((a, lvl, left + every));
+            let kind = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("DataB", lvl)).unwrap_or_default().trim());
+            let (life, off) = (self.data(a, "DataC", lvl), self.data(a, "DataD", lvl));
+            self.summon(h, owner, kind, 1, x + off * facing.cos(), y + off * facing.sin(), life);
+        }
+    }
+}

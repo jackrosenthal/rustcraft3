@@ -403,6 +403,17 @@ impl World {
                             });
                         }
                     } else {
+                        // Melee impacts sound by weapon (weapType1) and target armor
+                        // (UnitCombatSounds: MetalMediumSlice + Flesh).
+                        let weap = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map(|o| o.str("weapType1")).unwrap_or_default();
+                        let armor = self.unit(s.target).and_then(|t| self.objects.units.get(t.type_id)).map(|o| o.str("armor")).unwrap_or_default();
+                        if !weap.is_empty() && !weap.eq_ignore_ascii_case("_") {
+                            if let Some(t) = self.unit(s.target) {
+                                let (x, y) = (t.x, t.y);
+                                let z = self.ground_z(x, y);
+                                self.requests.push(Request::WorldSound { label: format!("{weap}{armor}"), x, y, z });
+                            }
+                        }
                         self.deal_damage(vm, h, s.target, raw, &wp.attack_type);
                     }
                 }

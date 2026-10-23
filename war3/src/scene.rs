@@ -348,6 +348,7 @@ impl Scene {
                 w3_game::world::Request::DisplayText { text, .. } => log::info!("[text] {text}"),
                 r @ (w3_game::world::Request::PlaySound(_)
                 | w3_game::world::Request::UiSound { .. }
+                | w3_game::world::Request::WorldSound { .. }
                 | w3_game::world::Request::Ack { .. }
                 | w3_game::world::Request::StopSound { .. }
                 | w3_game::world::Request::PlayMusic(_)
@@ -483,6 +484,11 @@ impl Scene {
                 w3_game::world::Request::StopMusic(_) => audio.stop_music(),
                 w3_game::world::Request::UiSound { players, label } if players & (1 << local) != 0 => {
                     audio.play_label(&label, None);
+                }
+                w3_game::world::Request::WorldSound { label, x, y, z } => {
+                    if g.world.fog_state(x, y, local) == w3_game::fog::FOG_VISIBLE {
+                        audio.play_label(&label, Some([x, y, z]));
+                    }
                 }
                 _ => {}
             }
@@ -1088,6 +1094,10 @@ impl Scene {
             g.tick(dt);
         }
         self.apply_requests();
+        // Without audio, keep only the music requests for when it starts.
+        if self.audio.is_none() {
+            self.pending_audio.retain(|r| matches!(r, w3_game::world::Request::PlayMusic(_) | w3_game::world::Request::StopMusic(_)));
+        }
         for inst in &mut self.instances {
             inst.advance(dt * 1000.0);
         }

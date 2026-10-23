@@ -20,6 +20,8 @@ pub enum Request {
     PlaySound(u32),
     StopSound { sound: u32, fade: bool },
     PlayMusic(String),
+    /// A sound label at a world position, heard where the local player can see.
+    WorldSound { label: String, x: f32, y: f32, z: f32 },
     /// An interface sound label for some players.
     UiSound { players: u32, label: String },
     /// A unit's acknowledgment line (UnitAckSounds `<unitSound><kind>`).

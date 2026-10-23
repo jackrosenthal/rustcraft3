@@ -222,6 +222,61 @@ pub struct Unit {
     pub xp_suspended: bool,
     /// Whether the first queued item has started (its start event has fired).
     pub queue_started: bool,
+    pub extra: UnitExtra,
+}
+
+/// Unit settings scripts change.
+#[derive(Clone, Debug)]
+pub struct UnitExtra {
+    /// SetUnitRescuable: players (bits) who rescue the unit by coming near; the range.
+    pub rescuable_by: u16,
+    pub rescue_range: f32,
+    /// SetUnitPathing false: ignores collision.
+    pub no_pathing: bool,
+    /// SetUnitUseFood.
+    pub use_food: bool,
+    /// UnitShareVision: players (bits) who see what the unit sees.
+    pub shared_vision: u16,
+    pub suspend_decay: bool,
+    /// UnitAddType and UnitRemoveType changes to the unit's classifications.
+    pub added_types: Vec<i32>,
+    pub removed_types: Vec<i32>,
+    /// Creep sleep: may sleep at night, sleeps always, is asleep.
+    pub can_sleep: bool,
+    pub sleep_perm: bool,
+    pub sleeping: bool,
+    pub ignore_alarm: bool,
+    pub timed_life_paused: bool,
+    /// A waygate's destination and whether it is active.
+    pub waygate: Option<(f32, f32, bool)>,
+    pub creep_guard: bool,
+    /// SetItemDropID: the item the unit drops when it dies.
+    pub drop_item: Option<Id>,
+    pub alt_icon: bool,
+}
+
+impl Default for UnitExtra {
+    fn default() -> Self {
+        UnitExtra {
+            rescuable_by: 0,
+            rescue_range: 0.0,
+            no_pathing: false,
+            use_food: true,
+            shared_vision: 0,
+            suspend_decay: false,
+            added_types: Vec::new(),
+            removed_types: Vec::new(),
+            can_sleep: false,
+            sleep_perm: false,
+            sleeping: false,
+            ignore_alarm: false,
+            timed_life_paused: false,
+            waygate: None,
+            creep_guard: false,
+            drop_item: None,
+            alt_icon: false,
+        }
+    }
 }
 
 /// Bonuses from held items' abilities.

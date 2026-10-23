@@ -193,7 +193,7 @@ impl World {
             for c in u.cooldowns.values_mut() {
                 *c = (*c - dt).max(0.0);
             }
-            if let Some(t) = u.timed_life.as_mut() {
+            if let Some(t) = u.timed_life.as_mut().filter(|_| !u.extra.timed_life_paused) {
                 *t -= dt;
             }
         }

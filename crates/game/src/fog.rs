@@ -146,7 +146,7 @@ impl World {
         fog.timer = 0.1;
         let day = (6.0..18.0).contains(&self.time_of_day);
         // Each unit's sight: position, radius, cliff level, and whether it sees over cliffs.
-        let mut sources: Vec<(u8, f32, f32, f32, u8, bool)> = Vec::new();
+        let mut sources: Vec<(u8, f32, f32, f32, u8, bool, u16)> = Vec::new();
         for &h in &self.unit_order {
             let Some(u) = self.unit(h) else { continue };
             if u.dead || u.hidden && u.inside == 0 {
@@ -160,7 +160,7 @@ impl World {
             let flying = o.str("movetp").eq_ignore_ascii_case("fly");
             let fog = self.fog.as_ref().unwrap();
             let lvl = fog.cell(u.x, u.y).map_or(0, |c| fog.level[c]);
-            sources.push((u.owner, u.x, u.y, r, lvl, flying));
+            sources.push((u.owner, u.x, u.y, r, lvl, flying, u.extra.shared_vision));
         }
         let modifiers: Vec<FogModifier> = self.handles.iter().filter_map(|(_, o)| match o {
             Obj::FogModifier(m) if m.active => Some(m.clone()),
@@ -180,7 +180,7 @@ impl World {
             v.fill(false);
         }
         let w = fog.width;
-        for (owner, x, y, r, lvl, flying) in sources {
+        for (owner, x, y, r, lvl, flying, shared) in sources {
             let mut cells = Vec::new();
             fog.circle(x, y, r, |cx, cy| cells.push(cy * w + cx));
             for c in cells {
@@ -189,6 +189,11 @@ impl World {
                     continue;
                 }
                 for &p in &viewers[owner as usize % PLAYER_COUNT] {
+                    fog.visible[p][c] = true;
+                    fog.explored[p][c] = true;
+                }
+                // UnitShareVision: players this unit shares its sight with.
+                for p in (0..PLAYER_COUNT).filter(|&p| shared & (1 << p) != 0) {
                     fog.visible[p][c] = true;
                     fog.explored[p][c] = true;
                 }

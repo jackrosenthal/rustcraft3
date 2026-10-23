@@ -121,6 +121,10 @@ impl World {
 
     /// A dying unit drops what it carries when AInv says so (Drop Items On Death, DataB).
     pub fn drop_on_death(&mut self, vm: &mut Vm, unit: u32) {
+        // SetItemDropID: the unit leaves that item where it dies.
+        if let Some((id, x, y)) = self.unit(unit).and_then(|u| u.extra.drop_item.map(|i| (i, u.x, u.y))) {
+            crate::natives::objects::create_item(self, id, x, y);
+        }
         let drops = self.ability_with_code(unit, "AInv").is_some_and(|(a, l)| self.objects.abilities.get(a).is_some_and(|o| o.level_real("DataB", l) != 0.0));
         let Some(u) = self.unit(unit) else { return };
         let (x, y) = (u.x, u.y);

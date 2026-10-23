@@ -317,6 +317,10 @@ impl World {
         best.map(|b| b.1)
     }
 
+    pub fn deal_damage_pub(&mut self, vm: &mut Vm, source: u32, target: u32, raw: f32, attack_type: &str) {
+        self.deal_damage(vm, source, target, raw, attack_type);
+    }
+
     fn deal_damage(&mut self, vm: &mut Vm, source: u32, target: u32, raw: f32, attack_type: &str) {
         let Some(t) = self.unit(target) else { return };
         if t.dead || t.invulnerable || self.buff_mods(target).5 {

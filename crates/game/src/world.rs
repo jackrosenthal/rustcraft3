@@ -514,6 +514,37 @@ impl World {
     // ---- time ----
 
     /// Advances game time: timers, sleeping threads, and time-based events.
+    /// Rescue (CAbilityRescuable): a unit rescuable by a player, or owned by a player
+    /// rescuable by it (ALLIANCE_RESCUABLE), raises EVENT_PLAYER_UNIT_RESCUED once one of
+    /// that player's units comes within its rescue range (384 unless set); Blizzard.j
+    /// then changes its owner.
+    fn update_rescue(&mut self) {
+        const ALLIANCE_RESCUABLE: usize = 8;
+        let mut rescued = Vec::new();
+        for &h in &self.unit_order {
+            let Some(u) = self.unit(h).filter(|u| !u.dead) else { continue };
+            let by_alliance: u16 = (0..PLAYER_COUNT).filter(|&p| self.players.get(u.owner as usize).is_some_and(|o| o.alliances[p][ALLIANCE_RESCUABLE])).fold(0, |m, p| m | 1 << p);
+            let by = u.extra.rescuable_by | by_alliance;
+            if by == 0 {
+                continue;
+            }
+            let range = if u.extra.rescue_range > 0.0 { u.extra.rescue_range } else { 384.0 };
+            let rescuer = self.unit_order.iter().copied().find(|&r| {
+                self.unit(r).is_some_and(|ru| !ru.dead && !ru.hidden && ru.owner != u.owner && by & (1 << ru.owner) != 0 && (ru.x - u.x).hypot(ru.y - u.y) <= range + u.collision + ru.collision)
+            });
+            if let Some(r) = rescuer {
+                rescued.push((h, r));
+            }
+        }
+        for (h, r) in rescued {
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.rescuable_by = 0;
+            }
+            use crate::event_ids::*;
+            self.queue_unit_event(h, EVENT_PLAYER_UNIT_RESCUED, EVENT_UNIT_RESCUED, EventCtx { other_unit: r, ..Default::default() });
+        }
+    }
+
     /// Queues a unit event to fire with the VM (see `queued_events`).
     pub fn queue_unit_event(&mut self, unit: u32, player_event: i32, unit_event: i32, ctx: EventCtx) {
         self.queued_events.push((unit, player_event, unit_event, ctx));
@@ -549,6 +580,7 @@ impl World {
         self.update_fog(dt);
         self.update_shops(dt);
         self.update_ai(dt);
+        self.update_rescue();
         self.flush_events(vm);
 
         // Timers.
@@ -646,7 +678,9 @@ impl World {
                 continue;
             }
             if let Some(o) = self.objects.units.get(u.type_id) {
-                used[u.owner as usize % PLAYER_COUNT] += o.int("fused");
+                if u.extra.use_food {
+                    used[u.owner as usize % PLAYER_COUNT] += o.int("fused");
+                }
                 if u.constructing.is_none() {
                     made[u.owner as usize % PLAYER_COUNT] += o.int("fmade");
                 }

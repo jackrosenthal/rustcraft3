@@ -103,6 +103,7 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         proper_name: String::new(),
         xp_suspended: false,
         queue_started: false,
+        extra: Default::default(),
     };
     let path_tex = if unit.is_building { o.str("pathTex") } else { String::new() };
     let mut unit = unit;
@@ -225,6 +226,55 @@ fn unit_arg<'a>(w: &'a World, a: &[Value], n: usize) -> Option<&'a Unit> {
     w.unit(a.h(n))
 }
 
+/// Removes a unit's buffs: positive ones (from allied casters), negative ones, or both.
+fn remove_buffs(w: &mut World, h: u32, positive: bool, negative: bool) {
+    let Some(owner) = w.unit(h).map(|u| u.owner) else { return };
+    let allied: Vec<bool> = w.unit(h).unwrap().buffs.iter().map(|b| w.unit(b.caster).is_some_and(|c| is_ally(w, owner, c.owner))).collect();
+    let u = w.unit_mut(h).unwrap();
+    let mut k = 0;
+    u.buffs.retain(|_| {
+        let pos = allied[k];
+        k += 1;
+        !((pos && positive) || (!pos && negative))
+    });
+}
+
+fn count_buffs(w: &World, h: u32, positive: bool, negative: bool) -> i32 {
+    let Some(u) = w.unit(h) else { return 0 };
+    u.buffs.iter().filter(|b| {
+        let pos = w.unit(b.caster).is_some_and(|c| is_ally(w, u.owner, c.owner));
+        (pos && positive) || (!pos && negative)
+    }).count() as i32
+}
+
+/// Damage dealt by a script with an attack type (ATTACK_TYPE_* index).
+fn script_damage(w: &mut World, vm: &mut Vm, src: u32, target: u32, amount: f32, attack_type: i32) {
+    let name = match attack_type {
+        0 => return w.spell_damage(vm, src, target, amount),
+        1 => "normal",
+        2 => "pierce",
+        3 => "siege",
+        4 => "magic",
+        5 => "chaos",
+        6 => "hero",
+        _ => "normal",
+    };
+    w.deal_damage_pub(vm, src, target, amount, name);
+}
+
+/// A worker's build order at a point.
+fn issue_build(w: &mut World, h: u32, id: crate::objects::Id, x: f32, y: f32) -> NativeResult {
+    let ok = w.unit(h).and_then(|u| w.objects.units.get(u.type_id)).is_some_and(|o| o.list("Builds").iter().any(|b| crate::objects::id_from_str(b.trim()) == id));
+    if !ok {
+        return boolean(false);
+    }
+    if let Some(u) = w.unit_mut(h) {
+        u.action = Action::Build { id, x, y };
+        u.path.clear();
+    }
+    boolean(true)
+}
+
 fn with_unit(w: &mut World, a: &[Value], f: impl FnOnce(&mut Unit)) -> NativeResult {
     if let Some(u) = w.unit_mut(a.h(0)) {
         f(u);
@@ -235,6 +285,17 @@ fn with_unit(w: &mut World, a: &[Value], f: impl FnOnce(&mut Unit)) -> NativeRes
 /// UNIT_TYPE_* (common.j ConvertUnitType values).  Classifications that depend on status
 /// effects the simulation does not model yet read as false.
 fn is_unit_type(w: &World, u: &Unit, t: i32) -> bool {
+    // UnitAddType and UnitRemoveType override the type's classifications.
+    if u.extra.added_types.contains(&t) {
+        return true;
+    }
+    if u.extra.removed_types.contains(&t) {
+        return false;
+    }
+    is_unit_type_base(w, u, t)
+}
+
+fn is_unit_type_base(w: &World, u: &Unit, t: i32) -> bool {
     let o = w.objects.units.get(u.type_id);
     let field = |f: &str| o.map(|o| o.str(f).to_ascii_lowercase()).unwrap_or_default();
     let classes = field("type");
@@ -511,6 +572,117 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             w.apply_hero_stats(h, false);
             boolean(true)
         },
+        // Defaults from the unit's type.
+        GetUnitDefaultAcquireRange => |w, _, a| real(unit_arg(w, a, 0).and_then(|u| w.objects.units.get(u.type_id)).map_or(0.0, |o| o.real("acquire"))),
+        GetUnitDefaultTurnSpeed => |w, _, a| real(unit_arg(w, a, 0).and_then(|u| w.objects.units.get(u.type_id)).map_or(0.0, |o| o.real("turnRate"))),
+        GetUnitDefaultPropWindow => |w, _, a| real(unit_arg(w, a, 0).and_then(|u| w.objects.units.get(u.type_id)).map_or(0.0, |o| o.real("propWin"))),
+        GetUnitDefaultFlyHeight => |w, _, a| real(unit_arg(w, a, 0).and_then(|u| w.objects.units.get(u.type_id)).map_or(0.0, |o| o.real("moveHeight"))),
+        SetUnitRescuable => |w, _, a| {
+            let (Some(p), on) = (w.player_of(a.h(1)), a.b(2)) else { return none() };
+            with_unit(w, a, |u| if on { u.extra.rescuable_by |= 1 << p } else { u.extra.rescuable_by &= !(1 << p) })
+        },
+        SetUnitRescueRange => |w, _, a| { let r = a.r(1); with_unit(w, a, |u| u.extra.rescue_range = r) },
+        SetUnitPathing => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.no_pathing = !on) },
+        SetUnitUseFood => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.use_food = on); w.update_food(); none() },
+        SetUnitCreepGuard => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.creep_guard = on) },
+        SetItemDropID => |w, _, a| { let id = id_from_int(a.i(1)); with_unit(w, a, |u| u.extra.drop_item = (id[0] != 0).then_some(id)) },
+        UnitSetUsesAltIcon => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.alt_icon = on) },
+        GetUnitRallyUnit => |_, _, _| handle(0),
+        GetUnitRallyDestructable => |_, _, _| handle(0),
+        IsUnitInForce => |w, _, a| {
+            let Some(owner) = unit_arg(w, a, 0).map(|u| u.owner) else { return boolean(false) };
+            boolean(matches!(w.handles.get(a.h(1)), Some(Obj::Force(f)) if f.players & (1 << owner) != 0))
+        },
+        IsUnitRace => |w, _, a| {
+            let race = unit_arg(w, a, 0).and_then(|u| w.objects.units.get(u.type_id)).map(|o| o.str("race").to_ascii_lowercase()).unwrap_or_default();
+            // RACE_HUMAN 1, ORC 2, UNDEAD 3, NIGHTELF 4, DEMON 5, OTHER 7, CREEP 8, CRITTER 9, NAGA 12.
+            let want = match a.h(1) { 1 => "human", 2 => "orc", 3 => "undead", 4 => "nightelf", 5 => "demon", 8 => "creeps", 9 => "critters", 12 => "naga", _ => "other" };
+            boolean(race == want)
+        },
+        IsUnitIllusion => |_, _, _| boolean(false),
+        IsUnitInTransport => |_, _, _| boolean(false),
+        IsUnitLoaded => |_, _, _| boolean(false),
+        UnitShareVision => |w, _, a| {
+            let (Some(p), on) = (w.player_of(a.h(1)), a.b(2)) else { return none() };
+            with_unit(w, a, |u| if on { u.extra.shared_vision |= 1 << p } else { u.extra.shared_vision &= !(1 << p) })
+        },
+        UnitSuspendDecay => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.suspend_decay = on) },
+        UnitAddType => |w, _, a| {
+            let t = a.h(1) as i32;
+            let r = with_unit(w, a, |u| { u.extra.removed_types.retain(|&x| x != t); if !u.extra.added_types.contains(&t) { u.extra.added_types.push(t); } });
+            let _ = r;
+            boolean(true)
+        },
+        UnitRemoveType => |w, _, a| {
+            let t = a.h(1) as i32;
+            let _ = with_unit(w, a, |u| { u.extra.added_types.retain(|&x| x != t); if !u.extra.removed_types.contains(&t) { u.extra.removed_types.push(t); } });
+            boolean(true)
+        },
+        // Buffs from an allied caster count as positive, others as negative.
+        UnitRemoveBuffs => |w, _, a| { remove_buffs(w, a.h(0), a.b(1), a.b(2)); none() },
+        UnitRemoveBuffsEx => |w, _, a| { remove_buffs(w, a.h(0), a.b(1), a.b(2)); none() },
+        UnitHasBuffsEx => |w, _, a| boolean(count_buffs(w, a.h(0), a.b(1), a.b(2)) > 0),
+        UnitCountBuffsEx => |w, _, a| int(count_buffs(w, a.h(0), a.b(1), a.b(2))),
+        UnitAddSleep => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.can_sleep = on) },
+        UnitCanSleep => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| u.extra.can_sleep)),
+        UnitAddSleepPerm => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| { u.extra.sleep_perm = on; if on { u.extra.sleeping = true; } }) },
+        UnitCanSleepPerm => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| u.extra.sleep_perm)),
+        UnitIsSleeping => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| u.extra.sleeping)),
+        UnitWakeUp => |w, _, a| with_unit(w, a, |u| u.extra.sleeping = false),
+        UnitApplyTimedLife => |w, _, a| { let d = a.r(2); with_unit(w, a, |u| u.timed_life = Some(d)) },
+        UnitPauseTimedLife => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.timed_life_paused = on) },
+        UnitIgnoreAlarm => |w, _, a| { let on = a.b(1); let _ = with_unit(w, a, |u| u.extra.ignore_alarm = on); boolean(true) },
+        UnitIgnoreAlarmToggled => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| u.extra.ignore_alarm)),
+        UnitResetCooldown => |w, _, a| with_unit(w, a, |u| { u.cooldowns.clear(); u.cooldown = 0.0; }),
+        UnitSetConstructionProgress => |w, _, a| {
+            let p = (a.i(1) as f32 / 100.0).clamp(0.0, 1.0);
+            with_unit(w, a, |u| if u.constructing.is_some() { u.constructing = Some(u.build_time * (1.0 - p)); })
+        },
+        UnitSetUpgradeProgress => |w, _, a| {
+            let p = (a.i(1) as f32 / 100.0).clamp(0.0, 1.0);
+            let id = unit_arg(w, a, 0).and_then(|u| u.queue.first().copied());
+            let t = id.and_then(|id| w.objects.units.get(id)).map_or(0.0, |o| o.real("bldtm"));
+            with_unit(w, a, |u| u.queue_progress = t * p)
+        },
+        // Damage from a script: ATTACK_TYPE_NORMAL (0) is spell damage, the rest take the
+        // attack type's bonus against the target's armor type.
+        UnitDamageTarget => |w, vm, a| {
+            let (src, target, amount, atk) = (a.h(0), a.h(1), a.r(2), a.h(5) as i32);
+            if w.unit(target).is_some() {
+                script_damage(w, vm, src, target, amount, atk);
+                boolean(true)
+            } else if let Some(Obj::Destructable(d)) = w.handles.get_mut(target) {
+                d.life -= amount;
+                boolean(true)
+            } else {
+                boolean(false)
+            }
+        },
+        UnitDamagePoint => |w, vm, a| {
+            let (src, radius, x, y, amount, atk) = (a.h(0), a.r(2), a.r(3), a.r(4), a.r(5), a.h(8) as i32);
+            let targets: Vec<u32> = w.unit_order.iter().copied().filter(|&t| w.unit(t).is_some_and(|u| !u.dead && (u.x - x).hypot(u.y - y) <= radius)).collect();
+            for t in targets {
+                script_damage(w, vm, src, t, amount, atk);
+            }
+            boolean(true)
+        },
+        IssueInstantPointOrder => |w, vm, a| issue_order(w, vm, a.h(0), crate::natives::basic::order_id(&a.s(1)), a.r(2), a.r(3), 0),
+        IssueInstantPointOrderById => |w, vm, a| issue_order(w, vm, a.h(0), a.i(1), a.r(2), a.r(3), 0),
+        IssueInstantTargetOrder => |w, vm, a| issue_order(w, vm, a.h(0), crate::natives::basic::order_id(&a.s(1)), 0.0, 0.0, a.h(2)),
+        IssueInstantTargetOrderById => |w, vm, a| issue_order(w, vm, a.h(0), a.i(1), 0.0, 0.0, a.h(2)),
+        IssueNeutralImmediateOrder => |w, vm, a| issue_order(w, vm, a.h(1), crate::natives::basic::order_id(&a.s(2)), 0.0, 0.0, 0),
+        IssueNeutralImmediateOrderById => |w, vm, a| issue_order(w, vm, a.h(1), a.i(2), 0.0, 0.0, 0),
+        IssueNeutralPointOrder => |w, vm, a| issue_order(w, vm, a.h(1), crate::natives::basic::order_id(&a.s(2)), a.r(3), a.r(4), 0),
+        IssueNeutralPointOrderById => |w, vm, a| issue_order(w, vm, a.h(1), a.i(2), a.r(3), a.r(4), 0),
+        IssueNeutralTargetOrder => |w, vm, a| issue_order(w, vm, a.h(1), crate::natives::basic::order_id(&a.s(2)), 0.0, 0.0, a.h(3)),
+        IssueNeutralTargetOrderById => |w, vm, a| issue_order(w, vm, a.h(1), a.i(2), 0.0, 0.0, a.h(3)),
+        IssueBuildOrder => |w, _, a| { let id = crate::objects::id_from_str(&a.s(1)); issue_build(w, a.h(0), id, a.r(2), a.r(3)) },
+        IssueBuildOrderById => |w, _, a| { let id = id_from_int(a.i(1)); issue_build(w, a.h(0), id, a.r(2), a.r(3)) },
+        WaygateGetDestinationX => |w, _, a| real(unit_arg(w, a, 0).and_then(|u| u.extra.waygate).map_or(0.0, |g| g.0)),
+        WaygateGetDestinationY => |w, _, a| real(unit_arg(w, a, 0).and_then(|u| u.extra.waygate).map_or(0.0, |g| g.1)),
+        WaygateSetDestination => |w, _, a| { let (x, y) = (a.r(1), a.r(2)); with_unit(w, a, |u| { let on = u.extra.waygate.is_some_and(|g| g.2); u.extra.waygate = Some((x, y, on)); }) },
+        WaygateActivate => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| { let (x, y, _) = u.extra.waygate.unwrap_or((u.x, u.y, false)); u.extra.waygate = Some((x, y, on)); }) },
+        WaygateIsActive => |w, _, a| boolean(unit_arg(w, a, 0).and_then(|u| u.extra.waygate).is_some_and(|g| g.2)),
         SuspendHeroXP => |w, _, a| { if let Some(u) = w.unit_mut(a.h(0)) { u.xp_suspended = a.b(1); } none() },
         IsSuspendedXP => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| u.xp_suspended)),
         IsHeroUnitId => |_, _, a| boolean(id_from_int(a.i(0))[0].is_ascii_uppercase()),
@@ -766,6 +938,6 @@ fn dummy_unit() -> Unit {
         queue: vec![], queue_progress: 0.0, constructing: None, build_time: 0.0, building: 0,
         str_: 0.0, agi: 0.0, int: 0.0, skill_points: 0, regen_timer: 0.0,
         cooldowns: HashMap::new(), autocast: vec![], buffs: vec![], casting: None, timed_life: None,
-        item_bonus: Default::default(), revive: None, reviving: false, channel: None, reincarnate: None, proper_name: String::new(), xp_suspended: false, queue_started: false,
+        item_bonus: Default::default(), revive: None, reviving: false, channel: None, reincarnate: None, proper_name: String::new(), xp_suspended: false, queue_started: false, extra: Default::default(),
     }
 }

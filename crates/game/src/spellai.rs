@@ -241,6 +241,15 @@ impl World {
                 "Arej" => self.ai_rejuvenation(h, a, lvl, enemy, victim),
                 "ANcs" => self.ai_cluster_rockets(h, a, lvl, enemy, victim),
                 "Aabs" => self.ai_absorb(h, a, enemy, victim),
+                "ANch" => self.ai_charm(h, a, enemy, victim),
+                "Acmg" => {
+                    if !self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
+                        self.ai_cast(h, a, enemy);
+                    }
+                }
+                "Advm" => self.ai_devour_magic(h, a, enemy, victim),
+                "ANfl" => self.ai_forked_lightning(h, a, lvl, enemy, victim),
+                "Apos" | "Aps2" => self.ai_possession(h, a, enemy, victim),
                 "Aams" => {
                     if !self.ai_gate(h, a, enemy, victim, true, Some(victim), None) && self.unit(victim).is_some_and(Self::real_hero) {
                         self.ai_cast(h, a, victim);
@@ -1480,6 +1489,77 @@ impl World {
         }
         if self.unit(victim).is_some_and(|v| !Self::real_hero(v) && v.life <= 100.0 && v.mana >= 10.0) {
             self.ai_cast(h, a, victim);
+        }
+    }
+
+    /// Charm (CAbilityCharm vf64): past the gate, on an enemy it may target and not in
+    /// militia (Bmil), with more than 400 life unless hard pressed.
+    fn ai_charm(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, None, None) || self.cast_target_error(h, a, enemy).is_some() {
+            return;
+        }
+        let Some(e) = self.unit(enemy) else { return };
+        if e.buffs.iter().any(|b| b.id == *b"Bmil") || (!(victim == h && self.life(h) <= 400.0) && e.life <= 400.0) {
+            return;
+        }
+        self.ai_cast(h, a, enemy);
+    }
+
+    /// Whether a unit bears buffs its friends laid (UnitHasBuffsEx's positive buffs).
+    fn has_friendly_buff(&self, h: u32) -> bool {
+        let Some(u) = self.unit(h) else { return false };
+        u.buffs.iter().any(|b| b.remaining > 0.5 && b.caster != 0 && self.unit(b.caster).is_some_and(|c| crate::natives::players::is_ally(self, u.owner, c.owner)))
+    }
+
+    /// Devour Magic (CAbilityDevourMagic vf64): past the gate, cleansing the victim when
+    /// only enemy spells are on it; else on an enemy that is summoned or bears its
+    /// friends' spells, unless the caster has 200 life and 100 mana while the enemy
+    /// bears enemy spells already.
+    fn ai_devour_magic(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, None, None) {
+            return;
+        }
+        if self.has_hostile_buff(victim) && !self.has_friendly_buff(victim) {
+            self.ai_cast(h, a, victim);
+            return;
+        }
+        let summoned = self.unit(enemy).is_some_and(|e| self.is_classed(e, "summoned"));
+        if !summoned && !self.has_friendly_buff(enemy) {
+            return;
+        }
+        let strong = self.life(h) >= 200.0 && self.unit(h).is_some_and(|u| u.mana >= 100.0);
+        if strong && self.has_hostile_buff(enemy) {
+            return;
+        }
+        self.ai_cast(h, a, enemy);
+    }
+
+    /// Forked Lightning (CAbilityForkedLightning vf64): past the gate, on an enemy it may
+    /// target with at least DataA life when its fork would reach DataB enemies (1 for a
+    /// Hero or when hard pressed) around it.
+    fn ai_forked_lightning(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, None, None) || self.life(enemy) < self.data(a, "DataA", lvl) || self.cast_target_error(h, a, enemy).is_some() {
+            return;
+        }
+        let mut need = self.data(a, "DataB", lvl) as i32;
+        if self.unit(enemy).is_some_and(Self::real_hero) || self.hard_pressed(h, victim) {
+            need = 1;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(enemy);
+        if need <= self.census(h, x, y, self.data(a, "Area", lvl), false).enemies {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Possession (FUN_6f60e810): past the gate, on an enemy not in militia (Bmil), by a
+    /// caster without Curse and Anti-magic Shell that is not at full life.
+    fn ai_possession(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) || self.unit(enemy).is_some_and(|e| e.buffs.iter().any(|b| b.id == *b"Bmil")) {
+            return;
+        }
+        if self.ability_with_code(h, "Acrs").is_none() && self.ability_with_code(h, "Aams").is_none() && self.unit(h).is_some_and(|u| u.life != u.max_life) {
+            self.ai_cast(h, a, enemy);
         }
     }
 }

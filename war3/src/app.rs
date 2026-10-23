@@ -23,6 +23,8 @@ struct Running {
     glue: Option<crate::glue::Glue>,
     /// The menus kept while a game runs, to return to afterwards.
     glue_saved: Option<crate::glue::Glue>,
+    /// A map to load once the loading screen has been drawn.
+    pending: Option<(std::path::PathBuf, Vec<w3_game::LobbySlot>)>,
     /// Sound output, handed to each game.
     audio: Option<w3_audio::Audio>,
     assets: Assets,
@@ -104,6 +106,7 @@ impl App {
             scene,
             glue,
             glue_saved: None,
+            pending: None,
             audio,
             assets,
             last: Instant::now(),
@@ -284,6 +287,12 @@ impl ApplicationHandler for App {
                             return;
                         }
                         Some(crate::glue::GlueAction::Play(path, slots)) => {
+                            // Draw the loading screen first; the map loads next frame.
+                            glue.show_loading(&mut r.assets);
+                            r.pending = Some((path, slots));
+                        }
+                        None if r.pending.is_some() => {
+                            let (path, slots) = r.pending.take().unwrap();
                             let aspect = size.0 as f32 / size.1.max(1) as f32;
                             match Scene::load(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets, &path, aspect, Some(&slots)) {
                                 Ok(mut s) => {
@@ -293,6 +302,9 @@ impl ApplicationHandler for App {
                                     }
                                     r.scene = Some(s);
                                     r.glue_saved = r.glue.take();
+                                    if let Some(g) = r.glue_saved.as_mut() {
+                                        g.show(crate::glue::Screen::Skirmish, &mut r.assets);
+                                    }
                                 }
                                 Err(e) => log::error!("loading {}: {e:#}", path.display()),
                             }

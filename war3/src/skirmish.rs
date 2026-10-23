@@ -188,6 +188,12 @@ impl Skirmish {
         self.rebuild |= self.slots.len() != old;
     }
 
+    /// WorldEditData [LoadingScreens] entry `i`: its background model.
+    pub fn loading_screen(&self, i: i32) -> Option<String> {
+        let v = self.world_edit.get_list("LoadingScreens", &format!("{i:02}"));
+        v.get(3).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    }
+
     /// The game setup for the selected map.
     pub fn lobby(&self) -> Vec<w3_game::LobbySlot> {
         self.slots

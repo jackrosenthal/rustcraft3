@@ -49,6 +49,48 @@ original images.
   (frame, point, relative, relativePoint, x, y), points in TOPLEFT…BOTTOMRIGHT order.
 - Player gold is stored in tenths internally (`CInfoPanelIconAlly::vf27`).
 
+## Fog of war
+
+- `CFogOfWarMap` cells are 128 units: a static initializer stores 128.0 at
+  `0x6fd723d8` and 64.0 at `0x6fd723dc` (`mov edx, 0x80; mov ecx, &global`).
+- `UI\MiscData.txt [FogOfWar]` colors are alpha, red, green, blue.
+
+## Interface
+
+- Message frames (CGameUI init): `WorldFrameMessage` 0.38 × 0.05 with its bottom 0.18
+  above the screen bottom (errors, 10 s, cleared first; `FUN_6f36de80`);
+  `WorldFrameUnitMessage` 0.5 × 0.25 whose bottom center sits 0.098125 left of center
+  on the message frame's top, moved by DisplayTextToPlayer x and y toward x 0.8 and
+  y 0.452 (`FUN_6f374d20`); default duration 3 s + 0.1 s per byte.
+- Error texts: `Units\CommandStrings.txt [Errors]`; per-race lists run Human, Orc,
+  Undead, Night Elf.
+- Acknowledgments (`FUN_6f697c30`, `FUN_6f690dd0`): three consecutive "What" lines on
+  the same unit, then "Pissed" lines in order; the counter resets on another unit or
+  when the Pissed list runs out.  Suffix table at `0x6fce5734`.
+- Script dialogs (`FUN_6f3c9550`, `FUN_6f3aa500`): height = 0.03 margins + message +
+  0.011 + buttons (0.003 apart), rounded up to 0.048 steps, at least 0.096; the
+  message is centered in the extra space.
+- CTextFrame starts with white text and a black shadow.
+
+## Glue screens
+
+- 1.27 stretches the 0.8 × 0.6 glue space over the whole window (unlike the in-game
+  console, which stays 4:3).  Wine reference captures have a 29-pixel title bar, so
+  the client area is 871 pixels tall at 900.
+- `CGlueMgr` sprite layers are war3skins keys `GlueSpriteLayerBackground_V<n>` (the
+  3D scene with its camera and `[MenuZFog]`), `GlueSpriteLayerTopLeft` and
+  `GlueSpriteLayerTopRight` (panel models whose sequences are named after the screen:
+  `MainMenu Birth`, `SinglePlayerSkirmish Stand`, ...; word list at `0xab6aa0`).
+- `CSpriteFrame` (`FUN_6f1add30`): orthographic over the frame, depth −500 to 500
+  with z flipped, model origin at the frame's lower left; a frame without a size
+  takes the model's bounds (`FUN_6f0f7080`, `FUN_6f0f6fc0`).
+- The menu background camera's field of view spans the 4:3 diagonal, as in game.
+- Map size names: `UI\WorldEditData.txt [MapSizes]`, the first area bound at or above
+  the playable area (`FUN_6f71f720`); tileset names `[TileSets]`; strings from
+  `UI\WorldEditGameStrings.txt`.
+- Loading: `LoadingMeleeBackground` per race skin, `LoadingProgressBar` stepped through
+  its Birth; custom maps use the w3i model or `[LoadingScreens]`.
+
 ## Tooling
 
 The decompilation is produced by headless Ghidra 12.1.2 with MSVC RTTI applied,

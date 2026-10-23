@@ -24,6 +24,8 @@ pub enum Screen {
     MainMenu,
     SinglePlayer,
     Skirmish,
+    /// The loading screen shown while a map loads.
+    Loading,
 }
 
 impl Screen {
@@ -34,6 +36,7 @@ impl Screen {
             Screen::MainMenu => "MainMenu",
             Screen::SinglePlayer => "SinglePlayer",
             Screen::Skirmish => "SinglePlayerSkirmish",
+            Screen::Loading => "",
         }
     }
 
@@ -43,6 +46,7 @@ impl Screen {
             Screen::MainMenu => "MainMenuFrame",
             Screen::SinglePlayer => "SinglePlayerMenu",
             Screen::Skirmish => "Skirmish",
+            Screen::Loading => "Loading",
         }
     }
 }
@@ -73,6 +77,8 @@ pub struct Glue {
     /// Interface-space pointer position.
     pointer: (f32, f32),
     pub skirmish: crate::skirmish::Skirmish,
+    /// Loading progress from 0 to 1, shown by the bar's Birth animation.
+    pub progress: f32,
 }
 
 impl Glue {
@@ -118,6 +124,7 @@ impl Glue {
             action: None,
             pointer: (0.0, 0.0),
             skirmish,
+            progress: 0.0,
         };
         g.build(Screen::MainMenu, assets);
         g.play_layers(&format!("{} Birth", Screen::MainMenu.token()));
@@ -174,6 +181,77 @@ impl Glue {
                 self.tree.set_text("ProfileNameText", &name);
             }
             Screen::Skirmish => self.skirmish.attach(&mut self.tree, db),
+            Screen::Loading => {}
+        }
+        self.tree.bind_points();
+        self.tree.layout();
+    }
+
+    /// Shows the loading screen for the selected map (CLoading): a melee map shows the
+    /// local race's LoadingMeleeBackground with the map, game type, and players; other
+    /// maps show their w3i loading screen and texts.
+    pub fn show_loading(&mut self, assets: &mut Assets) {
+        self.screen = Screen::Loading;
+        self.phase = Phase::Stand;
+        self.tree = FrameTree::new(4.0 / 3.0);
+        self.sprites.clear();
+        let db = &assets.frames;
+        if self.tree.create(db, "Loading", 0).is_none() {
+            return;
+        }
+        let summary = self.skirmish.summary.clone().unwrap_or_default();
+        let info = &summary.info;
+        let text = |s: &str| match s.strip_prefix("TRIGSTR_").and_then(|n| n.parse::<u32>().ok()) {
+            Some(n) => summary.strings.get(&n).cloned().unwrap_or_default(),
+            None => s.to_string(),
+        };
+        let melee = info.flags & 0x4 != 0;
+        self.tree.set_visible("LoadingMeleePanel", melee);
+        self.tree.set_visible("LoadingCustomPanel", !melee);
+        if let Some(bar) = db.skin_value("LoadingProgressBar") {
+            self.tree.set_model("LoadingBar", &bar);
+        }
+        let background = if melee {
+            // The local player's race picks the skin section.
+            let race = self.skirmish.slots.iter().find(|s| s.controller == crate::skirmish::Controller::Local).map_or(0, |s| s.race);
+            let section = ["Default", "Human", "Orc", "Undead", "NightElf"][race.min(4)];
+            db.skins.get_str(section, "LoadingMeleeBackground").or_else(|| db.skin_value("LoadingMeleeBackground"))
+        } else if !info.loading_model.is_empty() {
+            Some(text(&info.loading_model))
+        } else if info.loading_screen >= 0 {
+            self.skirmish.loading_screen(info.loading_screen)
+        } else {
+            Some("UI\\Glues\\Loading\\Load-Generic\\Load-Generic.mdl".to_string())
+        };
+        if let Some(b) = background {
+            self.tree.set_model("LoadingBackground", &b);
+        }
+        self.tree.set_text("LoadingMeleeMapName", &text(&info.name));
+        self.tree.set_text("LoadingMeleeGameTypeValue", &db.string("MELEE"));
+        self.tree.set_text("LoadingTitleText", &text(&info.loading_title));
+        self.tree.set_text("LoadingSubtitleText", &text(&info.loading_subtitle));
+        self.tree.set_text("LoadingText", &text(&info.loading_text));
+        // One LoadingPlayerSlot per player, stacked in the container.
+        if let Some(container) = self.tree.get("LoadingMeleePlayerContainer").filter(|_| melee) {
+            let races = ["RANDOM", "HUMAN", "ORC", "UNDEAD", "NIGHT_ELF"];
+            let names = ["OPEN", "CLOSED", "COMPUTER_NEWBIE", "COMPUTER_NORMAL", "COMPUTER_INSANE"];
+            let playing: Vec<&crate::skirmish::SlotChoice> = self.skirmish.slots.iter().filter(|s| !matches!(s.controller, crate::skirmish::Controller::Open | crate::skirmish::Controller::Closed)).collect();
+            for (k, s) in playing.iter().enumerate() {
+                let scope = format!("#{k}");
+                if self.tree.create_scoped(db, "LoadingPlayerSlot", container, &scope).is_none() {
+                    continue;
+                }
+                use w3_ui::FramePoint as P;
+                self.tree.set_point(&format!("LoadingPlayerSlot{scope}"), P::TopLeft, "LoadingMeleePlayerContainer", P::TopLeft, 0.0, -(k as f32) * 0.032);
+                let name = match s.controller {
+                    crate::skirmish::Controller::Local => self.skirmish.player_name.clone(),
+                    crate::skirmish::Controller::Computer(d) => db.string(names[2 + d.clamp(0, 2) as usize]),
+                    _ => String::new(),
+                };
+                self.tree.set_text(&format!("LoadingPlayerSlotName{scope}"), &name);
+                self.tree.set_text(&format!("LoadingPlayerSlotRace{scope}"), &db.string(races[s.race.min(4)]));
+                self.tree.set_visible(&format!("LoadingPlayerSlotReadyHighlight{scope}"), false);
+            }
         }
         self.tree.bind_points();
         self.tree.layout();
@@ -305,7 +383,8 @@ impl Glue {
         let aspect = size.0 as f32 / size.1.max(1) as f32;
         // Background through the model's camera.
         let mut bg_globals = None;
-        if let Some((eye, target, roll, fov, near, far)) = self.background_camera() {
+        let loading = self.screen == Screen::Loading;
+        if let Some((eye, target, roll, fov, near, far)) = self.background_camera().filter(|_| !loading) {
             let fwd = (target - eye).normalize_or_zero();
             let up = Quat::from_axis_angle(fwd, roll) * Vec3::Z;
             let view = Mat4::look_at_rh(eye, target, up);
@@ -366,7 +445,7 @@ impl Glue {
         }
         let sprites = self.tree.sprites();
         // The panel layers cover the glue root with their origin at its lower left.
-        for l in &mut self.layers {
+        for l in self.layers.iter_mut().filter(|_| !loading) {
             l.transform = Mat4::IDENTITY;
             self.sprite_renderer.submit(l, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
         }
@@ -378,6 +457,16 @@ impl Glue {
                     inst.frame = 0.0;
                     inst.finished = false;
                     inst.looped = false;
+                }
+                // CLoading steps the bar through its Birth animation as loading goes.
+                if self.tree.frames[*i].name == "LoadingBar" {
+                    if let Some(s) = w3_render::anim::find_sequence(&inst.model.mdx, "Birth") {
+                        let len = inst.model.mdx.sequences[s].end - inst.model.mdx.sequences[s].start;
+                        inst.sequence = Some(s);
+                        inst.frame = self.progress.clamp(0.0, 1.0) * len as f32;
+                        inst.finished = false;
+                        inst.looped = false;
+                    }
                 }
                 inst.transform = Mat4::from_translation(Vec3::new(*x, *y, 0.0));
                 self.sprite_renderer.submit(inst, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
@@ -430,6 +519,11 @@ impl Glue {
         let mut draws: Vec<Draw> = if self.phase == Phase::Stand { self.tree.draw(&assets.frames) } else { Vec::new() };
         if self.screen == Screen::MainMenu && self.phase == Phase::Stand {
             draws.push(self.version_text(assets));
+        }
+        if self.screen == Screen::Loading {
+            if let Some(r) = self.tree.get("MinimapImage").filter(|&i| self.tree.is_visible(i)).and_then(|i| self.tree.frames[i].rect) {
+                draws.push(Draw::Image { texture: crate::skirmish::MAP_PREVIEW.into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+            }
         }
         if self.screen == Screen::Skirmish && self.phase == Phase::Stand {
             self.skirmish.draws(&self.tree, &assets.frames, &mut draws);

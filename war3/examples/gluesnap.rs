@@ -41,6 +41,9 @@ fn main() -> anyhow::Result<()> {
                 glue.pointer_down(&mut assets);
                 let clicked = glue.pointer_up(&mut assets);
                 eprintln!("clicked {clicked:?}");
+                if let Some(war3::glue::GlueAction::Play(..)) = glue.action.take() {
+                    glue.show_loading(&mut assets);
+                }
                 i += 3;
             }
             "move" => {

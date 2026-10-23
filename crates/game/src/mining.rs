@@ -361,7 +361,13 @@ impl World {
             crate::sim::set_anim(u, "stand");
             return;
         }
-        if !self.approach(h, tree, 0.0, dt) {
+        if !self.approach(h, tree, 64.0, dt) {
+            // No way to the tree: take the nearest one instead.
+            if self.unit(h).is_some_and(|u| u.path.is_empty()) {
+                if let Some(t) = self.nearest_tree_pub(h, 900.0).filter(|&t| t != tree) {
+                    self.unit_mut(h).unwrap().action = Action::Harvest { target: t };
+                }
+            }
             return;
         }
         let a = self.objects.abilities.get(awha);

@@ -182,8 +182,15 @@ impl World {
         let patrol = crate::natives::basic::order_id("patrol");
         let setrally = crate::natives::basic::order_id("setrally");
         let owner_of = |w: &World, t: u32| w.unit(t).map(|u| u.owner);
+        // entangleinstant: Entangle Gold Mine at once, without its casting time.
+        if order == crate::natives::basic::order_id("entangleinstant") && self.ability_with_code(h, "Aent").is_some() {
+            self.entangle(h, target);
+            return;
+        }
         let me = match self.unit(h) {
             Some(u) if !u.dead && !u.is_building => u.owner,
+            // Structures cast their abilities (Entangle Gold Mine).
+            Some(u) if !u.dead && u.is_building && u.constructing.is_none() && self.ability_for_order(h, order).is_some() => u.owner,
             Some(u) if !u.dead && u.is_building && (order == smart || order == setrally) => {
                 // Structures take a smart order as their rally point.
                 let p = self.widget_pos(target).unwrap_or((x, y));
@@ -193,11 +200,6 @@ impl World {
             }
             _ => return,
         };
-        // entangleinstant: Entangle Gold Mine at once, without its casting time.
-        if order == crate::natives::basic::order_id("entangleinstant") && self.ability_with_code(h, "Aent").is_some() {
-            self.entangle(h, target);
-            return;
-        }
         let action = if order == stop {
             Action::Idle
         } else if order == hold {
@@ -1221,6 +1223,10 @@ impl World {
                 d_kill(self, vm, target);
             }
         }
+    }
+
+    pub(crate) fn nearest_tree_pub(&self, h: u32, radius: f32) -> Option<u32> {
+        self.nearest_tree(h, radius)
     }
 
     fn nearest_tree(&self, h: u32, radius: f32) -> Option<u32> {

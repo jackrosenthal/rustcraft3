@@ -104,6 +104,17 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 1;
             }
+            "all" => {
+                if let Some(g) = &scene.game {
+                    let w = &g.world;
+                    for &h in &w.unit_order {
+                        if let Some(u) = w.unit(h).filter(|u| u.owner == w.local_player) {
+                            eprintln!("{h:#x} {} at ({:.0},{:.0}) {:?} anim {} hidden {} path {:?}", String::from_utf8_lossy(&u.type_id), u.x, u.y, u.action, u.anim, u.hidden, u.path.last());
+                        }
+                    }
+                }
+                i += 1;
+            }
             "res" => {
                 if let Some(g) = &scene.game {
                     let p = &g.world.players[g.world.local_player as usize];

@@ -190,6 +190,25 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             enum_players(w, vm, a.h(0), a.h(2), move |w, o| !is_ally(w, p, o))
         },
         ForForce => |w, vm, a| for_force(w, vm, a.h(0), a.code(1)),
+        StartMeleeAI => |w, _, a| {
+            if let Some(p) = w.player_of(a.h(0)) { let s = a.s(1); w.start_ai(p, &s, true); }
+            none()
+        },
+        StartCampaignAI => |w, _, a| {
+            if let Some(p) = w.player_of(a.h(0)) { let s = a.s(1); w.start_ai(p, &s, false); }
+            none()
+        },
+        CommandAI => |w, _, a| {
+            if let Some(p) = w.player_of(a.h(0)) {
+                if let Some(s) = w.ai.get_mut(&p) { s.commands.push_front((a.i(1), a.i(2))); }
+            }
+            none()
+        },
+        PauseCompAI => |_, _, _| none(),
+        GetAIDifficulty => |w, _, a| int(w.player_of(a.h(0)).and_then(|p| w.ai_difficulty.get(&p).copied()).unwrap_or(0)),
+        RemoveGuardPosition => |_, _, _| none(),
+        RecycleGuardPosition => |_, _, _| none(),
+        RemoveAllGuardPositions => |_, _, _| none(),
         GetEnumPlayer => |w, _, _| NativeResult::Return(w.player_handle(w.enum_ctx.enum_player)),
         GetFilterPlayer => |w, _, _| NativeResult::Return(w.player_handle(w.enum_ctx.filter_player)),
     );

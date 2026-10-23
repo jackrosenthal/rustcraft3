@@ -98,6 +98,12 @@ pub struct World {
     pub pathing: Option<crate::pathing::PathingMap>,
     pub missiles: Vec<crate::sim::Missile>,
     pathing_textures: HashMap<String, Option<w3_formats::blp::Image>>,
+    pub ai: HashMap<u8, crate::ai::AiState>,
+    pub ai_vms: HashMap<u8, crate::ai::AiVm>,
+    /// The computer player whose AI script is running, while one is.
+    pub ai_current: Option<u8>,
+    /// AI_DIFFICULTY_* per computer player.
+    pub ai_difficulty: HashMap<u8, i32>,
 }
 
 /// Ground heights for GetLocationZ and unit placement.
@@ -194,6 +200,10 @@ impl World {
             pathing: None,
             missiles: Vec::new(),
             pathing_textures: HashMap::new(),
+            ai: HashMap::new(),
+            ai_vms: HashMap::new(),
+            ai_current: None,
+            ai_difficulty: HashMap::new(),
         }
     }
 
@@ -437,6 +447,7 @@ impl World {
 
         self.update_food();
         self.update_units(vm, dt);
+        self.update_ai(dt);
 
         // Timers.
         let mut expired = Vec::new();
@@ -575,6 +586,16 @@ pub fn compare(op: i32, a: f32, b: f32) -> bool {
 
 impl Host for World {
     fn call_native(&mut self, vm: &mut Vm, native: u32, args: &[Value]) -> NativeResult {
+        if let Some(p) = self.ai_current {
+            let f = self.ai.get(&p).and_then(|a| a.natives.get(native as usize).copied().flatten());
+            return match f {
+                Some(f) => f(self, vm, args),
+                None => {
+                    let ret = vm.module.natives[native as usize].ret_base;
+                    NativeResult::Return(ret.map_or(Value::Null, |b| b.default_value()))
+                }
+            };
+        }
         log::trace!("{}{:?}", self.native_names.get(native as usize).map_or("?", |s| s.as_str()), args);
         match self.natives.get(native as usize).copied().flatten() {
             Some(f) => f(self, vm, args),

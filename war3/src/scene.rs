@@ -264,7 +264,7 @@ impl Scene {
                         first = false;
                         w3_game::SlotFill::Local
                     } else {
-                        w3_game::SlotFill::Empty
+                        w3_game::SlotFill::Computer
                     }
                 });
                 if let Err(e) = res {

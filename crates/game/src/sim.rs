@@ -539,6 +539,30 @@ impl World {
         Ok(())
     }
 
+    /// Starts researching an upgrade at a structure that offers it.
+    pub fn research(&mut self, player: u8, id: Id) -> bool {
+        let id_s = crate::objects::id_str(id);
+        let level = self.players[player as usize].tech_researched.get(&id).copied().unwrap_or(0);
+        let max = self.objects.upgrades.get(id).map_or(1, |o| o.int("maxlevel").max(1));
+        if level >= max {
+            return false;
+        }
+        let building = self.unit_order.iter().copied().find(|&h| {
+            self.unit(h).is_some_and(|u| u.owner == player && u.is_building && !u.dead && u.constructing.is_none() && u.queue.is_empty())
+                && self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|o| o.list("Researches").iter().any(|r| r.trim() == id_s))
+        });
+        let Some(b) = building else { return false };
+        let (g, l) = self.objects.upgrades.get(id).map_or((0, 0), |o| (o.int("goldbase") + o.int("goldmod") * level, o.int("lumberbase") + o.int("lumbermod") * level));
+        let p = &mut self.players[player as usize];
+        if p.get_state(player_state::RESOURCE_GOLD) < g || p.get_state(player_state::RESOURCE_LUMBER) < l {
+            return false;
+        }
+        *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) -= g;
+        *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) -= l;
+        self.unit_mut(b).unwrap().queue.push(id);
+        true
+    }
+
     /// Cancels the last queued item and refunds it (TrainRefundRate).
     pub fn cancel_last(&mut self, h: u32) {
         let Some(u) = self.unit_mut(h) else { return };
@@ -598,6 +622,19 @@ impl World {
         }
         // Production.
         let Some(&id) = self.unit(h).and_then(|u| u.queue.first()) else { return };
+        if let Some(up) = self.objects.upgrades.get(id) {
+            let owner = self.unit(h).unwrap().owner;
+            let level = self.players[owner as usize].tech_researched.get(&id).copied().unwrap_or(0);
+            let t = (up.real("timebase") + up.real("timemod") * level as f32).max(0.01);
+            let u = self.unit_mut(h).unwrap();
+            u.queue_progress += dt;
+            if u.queue_progress >= t {
+                u.queue_progress = 0.0;
+                u.queue.remove(0);
+                *self.players[owner as usize].tech_researched.entry(id).or_insert(0) += 1;
+            }
+            return;
+        }
         let build_time = self.objects.units.get(id).map_or(1.0, |o| o.real("bldtm")).max(0.01);
         let u = self.unit_mut(h).unwrap();
         u.queue_progress += dt;

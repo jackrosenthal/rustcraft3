@@ -101,6 +101,30 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("unit {:?} dest {:?} ground {:?}", scene.pick_unit(x, y, (w, h)), scene.pick_destructable(x, y, (w, h)), scene.ground_at(x, y, (w, h)));
                 i += 3;
             }
+            "players" => {
+                if let Some(g) = &scene.game {
+                    let w = &g.world;
+                    for p in 0..2u8 {
+                        let n = w.unit_order.iter().filter(|&&h| w.unit(h).is_some_and(|u| u.owner == p && !u.dead)).count();
+                        let mut types: std::collections::BTreeMap<String, i32> = Default::default();
+                        for &h in &w.unit_order {
+                            if let Some(u) = w.unit(h) { if u.owner == p && !u.dead { *types.entry(w3_game::objects::id_str(u.type_id)).or_default() += 1; } }
+                        }
+                        eprintln!("p{p} gold {} lumber {} food {}/{} units {n} {:?}", w.players[p as usize].get_state(1), w.players[p as usize].get_state(2), w.players[p as usize].get_state(5), w.players[p as usize].get_state(4), types);
+                    }
+                }
+                i += 1;
+            }
+            "aidump" => {
+                if let Some(g) = &scene.game {
+                    let w = &g.world;
+                    for &h in &w.unit_order {
+                        if let Some(u) = w.unit(h) { if u.owner == 1 && !u.is_building { eprintln!("  {} {:?} gold {} lumber {} inside {}", w3_game::objects::id_str(u.type_id), u.action, u.carry_gold, u.carry_lumber, u.inside); } }
+                    }
+                    if let Some(a) = w.ai.get(&1) { eprintln!("  harvest {:?}", a.harvest); }
+                }
+                i += 1;
+            }
             "state" => {
                 if let Some(g) = &scene.game {
                     let p = &g.world.players[g.world.local_player as usize];

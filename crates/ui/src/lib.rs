@@ -26,12 +26,15 @@ pub struct FrameDb {
     pub misc_ui: Profile,
     /// war3skins.txt section consulted first when decorating file names.
     pub skin: String,
+    /// Data version for `_V0`/`_V1` skin keys: 0 for Reign of Chaos, 1 for The Frozen
+    /// Throne.
+    pub version: u32,
 }
 
 impl FrameDb {
     /// Loads every file named in UI\FrameDef\FrameDef.toc plus their includes.
     pub fn load(chain: &Chain) -> FrameDb {
-        let mut db = FrameDb { skin: "Default".into(), ..Default::default() };
+        let mut db = FrameDb { skin: "Default".into(), version: 1, ..Default::default() };
         db.skins = Profile::parse(&chain.read_string("UI\\war3skins.txt").unwrap_or_default());
         db.misc_ui = Profile::parse(&chain.read_string("UI\\MiscUI.txt").unwrap_or_default());
         let toc = chain.read_string("UI\\FrameDef\\FrameDef.toc").unwrap_or_default();
@@ -65,14 +68,20 @@ impl FrameDb {
         self.strings.get(key).cloned().unwrap_or_else(|| key.to_string())
     }
 
-    /// Looks up a decorated file name in war3skins.txt (current skin, then Default).
+    /// Looks up a decorated file name in war3skins.txt (current skin, then Default),
+    /// preferring the key for the data version (`Music_V1`).
     pub fn decorate(&self, name: &str) -> String {
+        self.skin_value(name).unwrap_or_else(|| name.to_string())
+    }
+
+    pub fn skin_value(&self, name: &str) -> Option<String> {
+        let versioned = format!("{name}_V{}", self.version);
         for sec in [self.skin.as_str(), "Default"] {
-            if let Some(v) = self.skins.get_str(sec, name) {
-                return v;
+            if let Some(v) = self.skins.get_str(sec, &versioned).or_else(|| self.skins.get_str(sec, name)) {
+                return Some(v);
             }
         }
-        name.to_string()
+        None
     }
 
     /// Flattens inheritance: the base template's properties come first, then the frame's own.

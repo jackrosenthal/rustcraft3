@@ -288,10 +288,10 @@ impl World {
             return Err("");
         }
         if u.cooldowns.get(&a).copied().unwrap_or(0.0) > 0.0 {
-            return Err("ABILITYNOTREADY");
+            return Err("Cooldown");
         }
         if u.mana < self.data(a, "Cost", lvl) {
-            return Err("NOMANA");
+            return Err("Nomana");
         }
         Ok(())
     }

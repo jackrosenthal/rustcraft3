@@ -169,6 +169,9 @@ pub struct ModelInstance {
     pub finished: bool,
     /// Set whenever a looping sequence wraps around.
     pub looped: bool,
+    /// Sound event codes (the `xxxx` of `SNDxxxxx` event objects) whose keys were passed
+    /// since the caller last drained them.
+    pub sound_events: Vec<[u8; 4]>,
 }
 
 impl ModelInstance {
@@ -186,6 +189,7 @@ impl ModelInstance {
             replaceable: HashMap::new(),
             skeleton,
             finished: false,
+            sound_events: Vec::new(),
             looped: false,
         }
     }
@@ -205,6 +209,30 @@ impl ModelInstance {
         self.global_time += dt_ms;
         if let Some(s) = self.sequence.and_then(|s| self.model.mdx.sequences.get(s)) {
             let len = (s.end - s.start) as f32;
+            // Event keys in (before, after], in sequence time.
+            // Events nobody drains (no audio) are dropped.
+            if self.sound_events.len() > 32 {
+                self.sound_events.clear();
+            }
+            // A sequence that just started includes its first frame.
+            let before = if self.frame <= 0.0 { -1.0 } else { self.frame };
+            let after = self.frame + dt_ms;
+            for e in &self.model.mdx.event_objects {
+                let name = e.node.name.as_bytes();
+                if e.global_seq.is_some() || name.len() < 8 || !name.starts_with(b"SND") {
+                    continue;
+                }
+                let hit = e.frames.iter().any(|&f| {
+                    if f < s.start || f > s.end {
+                        return false;
+                    }
+                    let t = (f - s.start) as f32;
+                    (t > before && t <= after) || (!s.non_looping && len > 0.0 && after > len && t <= after - len)
+                });
+                if hit {
+                    self.sound_events.push([name[4], name[5], name[6], name[7]]);
+                }
+            }
             self.frame += dt_ms;
             if self.frame > len {
                 if s.non_looping {

@@ -1,0 +1,12 @@
+[package]
+name = "w3-audio"
+description = "Warcraft III sound and music playback"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+w3-mpq.workspace = true
+w3-formats.workspace = true
+log.workspace = true
+rodio = { version = "0.23", default-features = false, features = ["playback", "mp3", "wav"] }

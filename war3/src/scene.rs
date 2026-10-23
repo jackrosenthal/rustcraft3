@@ -22,7 +22,9 @@ pub struct Assets {
 
 impl Assets {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, data: &GameData) -> Self {
-        Assets { textures: TextureCache::new(device, queue, data.chain.clone()), frames: w3_ui::FrameDb::load(&data.chain), models: HashMap::new() }
+        let mut frames = w3_ui::FrameDb::load(&data.chain);
+        frames.version = if data.version == crate::data::Version::FrozenThrone { 1 } else { 0 };
+        Assets { textures: TextureCache::new(device, queue, data.chain.clone()), frames, models: HashMap::new() }
     }
 
     /// Loads a model by path.  Model references often name `.mdl` files, which ship
@@ -152,6 +154,17 @@ pub struct Scene {
     portrait_renderer: ModelRenderer,
     portrait: Option<(u32, UnitView)>,
     fog: Option<Arc<w3_render::fog::FogTexture>>,
+    /// Sound output; absent when running without audio.
+    pub audio: Option<w3_audio::Audio>,
+    /// Sound and music requests waiting for [`Scene::update_audio`].
+    pending_audio: Vec<w3_game::world::Request>,
+    /// Script sound handles to playing voices.
+    voices: HashMap<u32, u64>,
+    /// Acknowledgments: the unit last clicked, the consecutive "What" count (game.dll
+    /// DAT_6fd707f0), and the playing line.
+    ack_unit: u32,
+    ack_clicks: usize,
+    ack_voice: Option<u64>,
 }
 
 fn num(t: &Table, row: &str, col: &str) -> f64 {
@@ -307,7 +320,7 @@ impl Scene {
         let ui = w3_render::ui::UiRenderer::new(device, color_format);
         let portrait_renderer = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, portrait: None, fog: None };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), selection: Vec::new(), info, terrain: terrain_r, models, instances, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, placing: None, commands: crate::card::Commands::load(&data.chain), team_rgb: team_colors(&data.chain), portrait_renderer, portrait: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -333,9 +346,187 @@ impl Scene {
                     self.camera.target.y = y;
                 }
                 w3_game::world::Request::DisplayText { text, .. } => log::info!("[text] {text}"),
+                r @ (w3_game::world::Request::PlaySound(_)
+                | w3_game::world::Request::UiSound { .. }
+                | w3_game::world::Request::Ack { .. }
+                | w3_game::world::Request::StopSound { .. }
+                | w3_game::world::Request::PlayMusic(_)
+                | w3_game::world::Request::StopMusic(_)) => self.pending_audio.push(r),
                 _ => {}
             }
         }
+    }
+
+    /// Plays a unit's acknowledgment line (UnitAckSounds `<unitSound><kind>`), replacing
+    /// the one playing.  Returns whether a line started.
+    fn ack(&mut self, h: u32, kind: &str, variant: Option<usize>) -> bool {
+        let Some(g) = &self.game else { return false };
+        let Some(u) = g.world.unit(h) else { return false };
+        let Some(sound) = g.world.objects.units.get(u.type_id).map(|o| o.str("unitSound")).filter(|s| !s.is_empty()) else { return false };
+        let pos = [u.x, u.y, g.world.ground_z(u.x, u.y)];
+        let Some(audio) = self.audio.as_mut() else { return false };
+        let label = format!("{sound}{kind}");
+        if let Some(v) = self.ack_voice.take() {
+            audio.stop(v);
+        }
+        self.ack_voice = match variant {
+            Some(i) => audio.play_label_variant(&label, i, Some(pos)),
+            None => audio.play_label(&label, Some(pos)),
+        };
+        self.ack_voice.is_some()
+    }
+
+    /// Selecting a unit: its "What" line, or after three in a row on the same unit, its
+    /// "Pissed" lines in order (game.dll FUN_6f697c30 and FUN_6f690dd0).
+    fn select_ack(&mut self, h: u32) {
+        if h != self.ack_unit {
+            self.ack_unit = h;
+            self.ack_clicks = 0;
+        }
+        let playing = self.ack_voice.is_some_and(|v| self.audio.as_ref().is_some_and(|a| a.is_playing(v)));
+        if playing {
+            return;
+        }
+        if self.ack_clicks >= 3 {
+            if self.ack(h, "Pissed", Some(self.ack_clicks - 3)) {
+                self.ack_clicks += 1;
+                return;
+            }
+            self.ack_clicks = 0;
+        }
+        if self.ack(h, "What", None) {
+            self.ack_clicks += 1;
+        }
+    }
+
+    /// Plays an interface sound label.
+    pub fn ui_sound(&mut self, label: &str) {
+        if let Some(a) = self.audio.as_mut() {
+            a.play_label(label, None);
+        }
+    }
+
+    /// Reports a command error: its text from Units\CommandStrings.txt [Errors] and the
+    /// race's spoken warning.
+    pub fn error(&mut self, key: &str) {
+        if key.is_empty() {
+            return;
+        }
+        let Some(g) = &self.game else { return };
+        let race = g.world.players.get(g.world.local_player as usize).map_or(1, |p| p.race);
+        let race_name = match race { 2 => "Orc", 3 => "Undead", 4 => "NightElf", _ => "Human" };
+        // Per-race lists run Human, Orc, Undead, Night Elf.
+        let texts = self.commands.profile.get_list("Errors", key);
+        let i = match race { 2 => 1, 3 => 2, 4 => 3, _ => 0 };
+        let text = texts.get(i).or(texts.first()).cloned().unwrap_or_default();
+        log::info!("[error] {text}");
+        let label = match key {
+            "Nogold" => format!("NoGold{race_name}"),
+            "Nolumber" => format!("NoLumber{race_name}"),
+            "Nofood" => format!("NoFood{race_name}"),
+            "Nomana" => format!("NoMana{race_name}"),
+            _ => "InterfaceError".to_string(),
+        };
+        self.ui_sound(&label);
+    }
+
+    /// Plays requested sounds and music and moves the listener with the camera.
+    pub fn update_audio(&mut self, assets: &Assets) {
+        let mut pending = std::mem::take(&mut self.pending_audio);
+        // Acknowledgments of the local player's units.
+        let local = self.game.as_ref().map_or(0, |g| g.world.local_player);
+        let owned = |s: &Self, h: u32| s.game.as_ref().and_then(|g| g.world.unit(h)).is_some_and(|u| u.owner == local);
+        let acks: Vec<(u32, &'static str)> = pending
+            .iter()
+            .filter_map(|r| match r {
+                w3_game::world::Request::Ack { unit, kind } => Some((*unit, *kind)),
+                _ => None,
+            })
+            .collect();
+        pending.retain(|r| !matches!(r, w3_game::world::Request::Ack { .. }));
+        for (h, kind) in acks {
+            if owned(self, h) {
+                self.ack(h, kind, None);
+            }
+        }
+        let Some(audio) = self.audio.as_mut() else { return };
+        let Some(g) = self.game.as_mut() else { return };
+        for r in pending {
+            match r {
+                w3_game::world::Request::PlaySound(h) => {
+                    let Some(w3_game::types::Obj::Sound(s)) = g.world.handles.get(h) else { continue };
+                    let s = (**s).clone();
+                    let pos = if s.is_3d { s.position.map(|p| [p.0, p.1, p.2]) } else { None };
+                    let id = match (&s.label, s.path.is_empty()) {
+                        // A label supplies the file list and parameters unless a file is named.
+                        (Some(l), true) => audio.play_label(l, pos),
+                        _ => {
+                            let def = s.label.as_deref().and_then(|l| audio.def(l)).cloned();
+                            let d = def.map_or((s.min_dist, s.max_dist, s.cutoff), |d| (d.min_distance, d.max_distance, d.cutoff));
+                            audio.play_file(&s.path, s.volume.clamp(0, 127) as f32 / 127.0, s.pitch.max(0.01), pos, d, s.looping)
+                        }
+                    };
+                    if let Some(id) = id {
+                        self.voices.insert(h, id);
+                    }
+                }
+                w3_game::world::Request::StopSound { sound, .. } => {
+                    if let Some(id) = self.voices.remove(&sound) {
+                        audio.stop(id);
+                    }
+                }
+                w3_game::world::Request::PlayMusic(list) => {
+                    // "Music" and similar names are war3skins.txt keys for the local race.
+                    let list = if list.contains('\\') || list.contains('/') { list } else { assets.frames.skin_value(&list).unwrap_or(list) };
+                    audio.play_music(&list, true, 0);
+                }
+                w3_game::world::Request::StopMusic(_) => audio.stop_music(),
+                w3_game::world::Request::UiSound { players, label } if players & (1 << local) != 0 => {
+                    audio.play_label(&label, None);
+                }
+                _ => {}
+            }
+        }
+        // Script sounds report when they finish.
+        self.voices.retain(|h, id| {
+            let playing = audio.is_playing(*id);
+            if !playing {
+                if let Some(w3_game::types::Obj::Sound(s)) = g.world.handles.get_mut(*h) {
+                    s.playing = false;
+                }
+            }
+            playing
+        });
+        // Animation sound events of units and doodads the local player can see.
+        let mut events: Vec<([u8; 4], [f32; 3])> = Vec::new();
+        let mut drain = |inst: &mut ModelInstance| {
+            if inst.sound_events.is_empty() {
+                return;
+            }
+            let p = inst.transform.w_axis;
+            for e in inst.sound_events.drain(..) {
+                if inst.visible {
+                    events.push((e, [p.x, p.y, p.z]));
+                }
+            }
+        };
+        for v in self.units.values_mut() {
+            drain(&mut v.inst);
+        }
+        for (inst, _) in self.dests.values_mut() {
+            drain(inst);
+        }
+        for inst in &mut self.instances {
+            drain(inst);
+        }
+        for (code, pos) in events {
+            let code = String::from_utf8_lossy(&code).to_ascii_uppercase();
+            if let Some(label) = audio.anim_lookups.get(&code).cloned() {
+                audio.play_label(&label, Some(pos));
+            }
+        }
+        let t = self.camera.target;
+        audio.update([t.x, t.y, t.z]);
     }
 
     fn load_dnc(chain: &w3_mpq::Chain, path: &str) -> Option<w3_formats::mdx::Model> {
@@ -519,6 +710,9 @@ impl Scene {
         } else {
             self.selection.clear();
         }
+        if let Some(&h) = self.selection.first() {
+            self.select_ack(h);
+        }
     }
 
     /// Where the corners of the world view meet the ground.
@@ -564,11 +758,12 @@ impl Scene {
                 for h in mine {
                     g.world.order_unit(h, id, 0.0, 0.0, 0);
                 }
+                self.order_ack();
             }
             A::Order { .. } => {}
             A::Train(id) => {
                 if let Err(e) = g.world.train(first, id) {
-                    log::info!("[error] {e}");
+                    self.error(e);
                 }
             }
             A::BuildMenu => {
@@ -605,12 +800,12 @@ impl Scene {
             A::CancelTrain => g.world.cancel_last(first),
             A::Research(id) => {
                 if let Err(e) = g.world.research_at(first, id) {
-                    log::info!("[error] {e}");
+                    self.error(e);
                 }
             }
             A::Upgrade(id) => {
                 if let Err(e) = g.world.upgrade_structure(first, id) {
-                    log::info!("[error] {e}");
+                    self.error(e);
                 }
             }
         }
@@ -622,6 +817,7 @@ impl Scene {
         let (ux, uy) = self.to_ui(sx, sy, size);
         if let Some(b) = self.hud.as_ref().and_then(|h| h.button_at(ux, uy)).cloned() {
             if b.enabled {
+                self.ui_sound("InterfaceClick");
                 self.card_action(b.action);
             }
             return true;
@@ -650,6 +846,7 @@ impl Scene {
                     }
                 }
             }
+            self.order_ack();
             return true;
         }
         if let Some(id) = self.placing.take() {
@@ -717,6 +914,17 @@ impl Scene {
                 _ => {}
             }
         }
+        self.order_ack();
+    }
+
+    /// The first selected unit acknowledges an order: "YesAttack" when it is now
+    /// attacking, else "Yes".
+    fn order_ack(&mut self) {
+        let Some(g) = &self.game else { return };
+        let Some(&h) = self.selection.iter().find(|&&h| g.world.unit(h).is_some_and(|u| u.owner == g.world.local_player && !u.is_building)) else { return };
+        let attacking = g.world.unit(h).is_some_and(|u| matches!(u.action, w3_game::types::Action::Attack { .. } | w3_game::types::Action::AttackMove { .. }));
+        self.ack_clicks = 0;
+        self.ack(h, if attacking { "YesAttack" } else { "Yes" }, None);
     }
 
     /// Creates and updates render instances for destructables.

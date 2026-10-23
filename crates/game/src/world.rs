@@ -20,6 +20,10 @@ pub enum Request {
     PlaySound(u32),
     StopSound { sound: u32, fade: bool },
     PlayMusic(String),
+    /// An interface sound label for some players.
+    UiSound { players: u32, label: String },
+    /// A unit's acknowledgment line (UnitAckSounds `<unitSound><kind>`).
+    Ack { unit: u32, kind: &'static str },
     StopMusic(bool),
     SetCameraPosition { players: u32, x: f32, y: f32 },
     PanCamera { players: u32, x: f32, y: f32, z: Option<f32>, duration: f32 },
@@ -140,6 +144,16 @@ impl TerrainHeights {
 }
 
 impl World {
+    /// The race name used in sound labels (JobDoneSoundHuman).
+    pub fn race_label(&self, player: u8) -> &'static str {
+        match self.players.get(player as usize).map_or(1, |p| p.race) {
+            2 => "Orc",
+            3 => "Undead",
+            4 => "NightElf",
+            _ => "Human",
+        }
+    }
+
     pub fn new(chain: Arc<Chain>, objects: ObjectDb) -> World {
         let mut misc = w3_formats::profile::Profile::default();
         for f in ["UI\\MiscData.txt", "Units\\MiscData.txt", "Units\\MiscGame.txt"] {

@@ -12,6 +12,7 @@ w3-jass.workspace = true
 w3-render.workspace = true
 w3-game.workspace = true
 w3-ui = { path = "../crates/ui" }
+w3-audio.workspace = true
 clap.workspace = true
 winit.workspace = true
 wgpu.workspace = true
@@ -26,4 +27,5 @@ pollster.workspace = true
 image.workspace = true
 w3-game.workspace = true
 w3-ui = { path = "../crates/ui" }
+w3-audio.workspace = true
 w3-mpq.workspace = true

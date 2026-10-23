@@ -16,7 +16,7 @@ fn d_kill(w: &mut World, vm: &mut Vm, h: u32) {
 }
 use crate::objects::Id;
 use crate::types::*;
-use crate::world::World;
+use crate::world::{Request, World};
 
 /// A projectile in flight.
 #[derive(Clone, Debug)]
@@ -535,13 +535,13 @@ impl World {
         let (g, l, f) = self.cost(id);
         let p = &self.players[player as usize];
         if p.get_state(player_state::RESOURCE_GOLD) < g {
-            return Err("NOGOLD");
+            return Err("Nogold");
         }
         if p.get_state(player_state::RESOURCE_LUMBER) < l {
-            return Err("NOLUMBER");
+            return Err("Nolumber");
         }
         if food && f > 0 && p.get_state(player_state::RESOURCE_FOOD_USED) + f > p.get_state(player_state::RESOURCE_FOOD_CAP) {
-            return Err("NOFOOD");
+            return Err("Nofood");
         }
         let p = &mut self.players[player as usize];
         *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) -= g;
@@ -634,10 +634,10 @@ impl World {
         let (g, l) = self.upgrade_cost(id, level + queued);
         let p = &mut self.players[player as usize];
         if p.get_state(player_state::RESOURCE_GOLD) < g {
-            return Err("NOGOLD");
+            return Err("Nogold");
         }
         if p.get_state(player_state::RESOURCE_LUMBER) < l {
-            return Err("NOLUMBER");
+            return Err("Nolumber");
         }
         *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) -= g;
         *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) -= l;
@@ -701,6 +701,8 @@ impl World {
                 u.constructing = None;
                 restart_anim(u, "stand");
                 let owner = u.owner;
+                let label = format!("JobDoneSound{}", self.race_label(owner));
+                self.requests.push(Request::UiSound { players: 1 << owner, label });
                 let ctx = EventCtx { unit: h, player: owner, has_player: true, event_id: EVENT_PLAYER_UNIT_CONSTRUCT_FINISH, ..Default::default() };
                 self.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event, .. } if *player == owner && *event == EVENT_PLAYER_UNIT_CONSTRUCT_FINISH));
             } else {
@@ -720,6 +722,8 @@ impl World {
                 u.queue_progress = 0.0;
                 u.queue.remove(0);
                 *self.players[owner as usize].tech_researched.entry(id).or_insert(0) += 1;
+                let label = format!("ResearchComplete{}", self.race_label(owner));
+                self.requests.push(Request::UiSound { players: 1 << owner, label });
             }
             return;
         }
@@ -738,6 +742,8 @@ impl World {
         let id_s = crate::objects::id_str(id);
         if self.objects.units.get(from).is_some_and(|o| o.list("Upgrade").iter().any(|x| x.trim() == id_s)) {
             self.transform_unit(h, id);
+            let label = format!("UpgradeComplete{}", self.race_label(owner));
+            self.requests.push(Request::UiSound { players: 1 << owner, label });
             let ctx = EventCtx { unit: h, player: owner, has_player: true, event_id: EVENT_PLAYER_UNIT_UPGRADE_FINISH, ..Default::default() };
             self.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event, .. } if *player == owner && *event == EVENT_PLAYER_UNIT_UPGRADE_FINISH));
             return;
@@ -745,6 +751,7 @@ impl World {
         let radius = self.objects.units.get(id).map_or(16.0, |o| o.real("collision"));
         let (x, y) = self.spawn_point(h, radius);
         let new = crate::natives::units::create_unit(self, owner, id, x, y, 270.0);
+        self.requests.push(Request::Ack { unit: new, kind: "Ready" });
         let rally = self.unit(h).and_then(|u| u.rally);
         if let (Some((rx, ry)), true) = (rally, new != 0) {
             let smart = crate::natives::basic::order_id("smart");

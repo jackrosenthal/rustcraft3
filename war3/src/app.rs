@@ -74,13 +74,16 @@ impl App {
         };
         let gpu = w3_render::Gpu::new(window.clone(), inner.width, inner.height, backends, !self.args.no_vsync)?;
         let mut assets = Assets::new(&gpu.device, &gpu.queue, &self.data);
-        let scene = match &self.args.loadfile {
+        let mut scene = match &self.args.loadfile {
             Some(path) => Some(Scene::load(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets, path, inner.width as f32 / inner.height.max(1) as f32)?),
             None => {
                 log::warn!("the glue screens are not implemented yet; pass --loadfile <map>");
                 None
             }
         };
+        if let Some(s) = scene.as_mut() {
+            s.audio = Some(w3_audio::Audio::new(self.data.chain.clone()));
+        }
         self.running = Some(Running {
             window,
             gpu,
@@ -196,6 +199,7 @@ impl ApplicationHandler for App {
                     scene.camera.target.x += d.x * speed;
                     scene.camera.target.y += d.y * speed;
                     scene.update(dt);
+                    scene.update_audio(&r.assets);
                     scene.sync_units(&r.gpu.device, &r.gpu.queue, &mut r.assets);
                     scene.sync_destructables(&r.gpu.device, &r.gpu.queue, &mut r.assets);
                 }

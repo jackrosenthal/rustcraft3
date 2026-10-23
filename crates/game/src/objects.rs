@@ -280,6 +280,19 @@ fn slk(chain: &Chain, path: &str) -> Table {
 }
 
 /// Profile files in the order game.dll lists them (file offsets 0xab4f3c-0xab5474).
+/// The fields CustomKeys.txt may set (game.dll's list at 0x6fce56cc, which
+/// FUN_6f350da0 hands FUN_6f3534d0 when the customkeys option is on).
+pub const CUSTOM_KEY_FIELDS: [&str; 11] = ["hotkey", "unhotkey", "researchhotkey", "tip", "untip", "researchtip", "revivetip", "awakentip", "buttonpos", "unbuttonpos", "researchbuttonpos"];
+
+/// A CustomKeys.txt, keeping only the fields it may set.
+pub fn custom_keys(text: &str) -> Profile {
+    let mut p = Profile::parse(text);
+    for keys in p.sections.values_mut() {
+        keys.retain(|k, _| CUSTOM_KEY_FIELDS.contains(&k.as_str()));
+    }
+    p
+}
+
 pub const PROFILE_FILES: &[&str] = &[
     "Units\\CampaignUnitStrings.txt",
     "Units\\HumanUnitStrings.txt",
@@ -361,6 +374,13 @@ impl ObjectDb {
         db
     }
 
+    /// Lays a player's custom keys (see `custom_keys`) over the objects' strings.
+    pub fn apply_custom_keys(&mut self, keys: &Profile) {
+        for t in [&mut self.units, &mut self.items, &mut self.abilities, &mut self.buffs, &mut self.upgrades] {
+            t.merge_profile(keys, true);
+        }
+    }
+
     /// Applies the map's object modification files, if present.
     pub fn apply_map(&mut self, chain: &Chain) {
         let files: [(&str, &mut ObjectTable, Option<bool>); 7] = [
@@ -391,5 +411,26 @@ impl ObjectDb {
             Kind::Buff => &self.buffs,
             Kind::Upgrade => &self.upgrades,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn custom_keys_set_only_their_fields_of_known_objects() {
+        let mut db = ObjectDb::default();
+        let mut o = Object { id: *b"AHbz", ..Default::default() };
+        o.fields.insert("hotkey".into(), "B".into());
+        o.fields.insert("art".into(), "a.blp".into());
+        db.abilities.objects.insert(*b"AHbz", o);
+        let keys = custom_keys("\u{feff}[AHbz]\r\nHotkey=Q\r\nArt=b.blp\r\nResearchhotkey=W\r\n[Zzzz]\r\nHotkey=Z\r\n");
+        db.apply_custom_keys(&keys);
+        let a = &db.abilities.objects[b"AHbz"];
+        assert_eq!(a.fields["hotkey"], "Q");
+        assert_eq!(a.fields["researchhotkey"], "W");
+        assert_eq!(a.fields["art"], "a.blp");
+        assert!(!db.abilities.objects.contains_key(b"Zzzz"));
     }
 }

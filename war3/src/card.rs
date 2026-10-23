@@ -155,11 +155,17 @@ fn parse_pos(v: &[String]) -> Option<(u32, u32)> {
 }
 
 impl Commands {
-    pub fn load(chain: &w3_mpq::Chain) -> Commands {
+    /// The command buttons' strings, with the player's custom keys over them.
+    pub fn load(chain: &w3_mpq::Chain, custom_keys: Option<&Profile>) -> Commands {
         let mut profile = Profile::default();
         for f in ["Units\\CommandFunc.txt", "Units\\CommandStrings.txt"] {
             if let Ok(s) = chain.read_string(f) {
                 profile.merge(&s);
+            }
+        }
+        for (section, keys) in custom_keys.map(|k| &k.sections).into_iter().flatten() {
+            if let Some(own) = profile.sections.get_mut(section) {
+                own.extend(keys.iter().map(|(k, v)| (k.clone(), v.clone())));
             }
         }
         Commands { profile }

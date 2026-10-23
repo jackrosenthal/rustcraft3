@@ -17,6 +17,10 @@ pub struct Options {
     pub healthbars: bool,
     pub formationtoggle: bool,
     pub subgrouporder: bool,
+    pub customkeys: bool,
+    pub netgameport: u32,
+    #[serde(rename = "autosaveReplay")]
+    pub autosave_replay: bool,
     // Sound.
     pub sfx: bool,
     pub sfxvolume: u32,
@@ -47,6 +51,9 @@ impl Default for Options {
             healthbars: false,
             formationtoggle: true,
             subgrouporder: false,
+            customkeys: false,
+            netgameport: 6112,
+            autosave_replay: false,
             sfx: true,
             sfxvolume: 100,
             music: true,
@@ -145,8 +152,7 @@ pub mod panel {
         tree.set_checked("SubgroupCheckBox", o.subgrouporder);
         tree.set_checked("FormationToggleCheckBox", o.formationtoggle);
         tree.set_checked("HealthBarsCheckBox", o.healthbars);
-        // Custom keys (CustomKeys.txt) are not read: always off.
-        tree.set_text("CustomKeysValue", &db.string("OFF"));
+        tree.set_text("CustomKeysValue", &db.string(if o.customkeys { "ON" } else { "OFF" }));
         for n in ["DifficultyLabel", "DifficultyValue"] {
             tree.set_visible(n, c.difficulty.is_some());
         }

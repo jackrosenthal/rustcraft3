@@ -506,7 +506,10 @@ impl Scene {
 
         // Run the map script: config, then main with the local player in the first
         // user slot.  Other slots stay empty until computer players are implemented.
-        let mut game = match w3_game::Game::load(data.chain.clone(), data.version as i32) {
+        // The customkeys option lays the player's CustomKeys.txt, beside the game's
+        // archives, over the game's hotkeys, tips, and button positions.
+        let custom_keys = crate::options::Options::load().customkeys.then(|| std::fs::read(data.dir.join("CustomKeys.txt")).ok()).flatten().map(|b| w3_game::objects::custom_keys(&String::from_utf8_lossy(&b)));
+        let mut game = match w3_game::Game::load_with_keys(data.chain.clone(), data.version as i32, custom_keys.as_ref()) {
             Ok(mut g) if restore.is_some() => {
                 g.restore(restore.unwrap())?;
                 g.world.saves_dir = crate::data::save_dir(data.version);
@@ -595,7 +598,7 @@ impl Scene {
         let decals = w3_render::decal::DecalRenderer::new(device, color_format, &models.globals_buf);
         // The map's interface settings (war3mapSkin.txt): command strings and errors, and
         // [CustomSkin] keys over the skins.
-        let mut commands = crate::card::Commands::load(&data.chain);
+        let mut commands = crate::card::Commands::load(&data.chain, custom_keys.as_ref());
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();

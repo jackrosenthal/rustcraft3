@@ -109,6 +109,12 @@ impl Game {
     /// Loads the mounted map's script and data.  `version` is 0 for Reign of Chaos and 1
     /// for The Frozen Throne.
     pub fn load(chain: Arc<Chain>, version: i32) -> anyhow::Result<Game> {
+        Self::load_with_keys(chain, version, None)
+    }
+
+    /// As `load`, with the player's CustomKeys.txt (already filtered by
+    /// `objects::custom_keys`) laid over the game's strings before the map's own changes.
+    pub fn load_with_keys(chain: Arc<Chain>, version: i32, custom_keys: Option<&w3_formats::profile::Profile>) -> anyhow::Result<Game> {
         let info = MapInfo::parse(&chain.read("war3map.w3i")?).context("war3map.w3i")?;
         let common = read_script(&chain, &["Scripts\\common.j"])?;
         let blizzard = read_script(&chain, &["Scripts\\Blizzard.j"])?;
@@ -116,6 +122,9 @@ impl Game {
         let module = w3_jass::compile([("common.j", &*common), ("Blizzard.j", &*blizzard), ("war3map.j", &*map)])?;
         let vm = Vm::new(module);
         let mut objects = ObjectDb::load(&chain);
+        if let Some(k) = custom_keys {
+            objects.apply_custom_keys(k);
+        }
         objects.apply_map(&chain);
         let mut world = World::new(chain.clone(), objects);
         world.version = version;

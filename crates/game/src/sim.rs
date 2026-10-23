@@ -560,6 +560,24 @@ impl World {
         let (dx, dy) = (next.0 - u.x, next.1 - u.y);
         let d = (dx * dx + dy * dy).sqrt();
         set_anim(u, "walk");
+        // A turn on the way is passed once the unit is within its own size of it: units
+        // bound for the same turn would otherwise crowd it, each held off by the others.
+        if u.path.len() > 1 && d <= u.collision * 2.0 {
+            u.path.remove(0);
+            return false;
+        }
+        // Likewise the end, when another unit already stands on it.
+        if u.path.len() == 1 && d > step && d <= u.collision * 2.0 {
+            let size = u.collision;
+            let taken = self.unit_order.iter().any(|&o| o != h && self.unit(o).is_some_and(|v| !v.dead && !v.hidden && !v.is_building && (v.x - next.0).hypot(v.y - next.1) < v.collision + size));
+            if taken {
+                let Some(u) = self.unit_mut(h) else { return true };
+                u.path.clear();
+                set_anim(u, "stand");
+                return true;
+            }
+        }
+        let Some(u) = self.unit_mut(h) else { return true };
         if d <= step {
             u.x = next.0;
             u.y = next.1;

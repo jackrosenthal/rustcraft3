@@ -233,6 +233,19 @@ impl World {
                     }
                 }
                 "Acyc" => self.ai_cyclone(h, a, enemy),
+                "Atau" => self.ai_taunt(h, a, lvl, enemy, victim),
+                "ANtm" => self.ai_transmute(h, a, enemy, victim),
+                "ANmo" => self.ai_monsoon(h, a, lvl, enemy, victim),
+                "ANst" => self.ai_stampede(h, a, lvl, enemy, victim),
+                "ANms" => self.ai_mana_shield(h, a, lvl, enemy, victim),
+                "Arej" => self.ai_rejuvenation(h, a, lvl, enemy, victim),
+                "ANcs" => self.ai_cluster_rockets(h, a, lvl, enemy, victim),
+                "Aabs" => self.ai_absorb(h, a, enemy, victim),
+                "Aams" => {
+                    if !self.ai_gate(h, a, enemy, victim, true, Some(victim), None) && self.unit(victim).is_some_and(Self::real_hero) {
+                        self.ai_cast(h, a, victim);
+                    }
+                }
                 _ => {}
             }
         }
@@ -1344,6 +1357,129 @@ impl World {
         let go = if self.life(h) <= 400.0 { large > 0 || count >= 2 } else { count >= self.data(a, "DataA", lvl) as i32 };
         if go {
             self.ai_cast(h, a, 0);
+        }
+    }
+
+    /// Taunt (CAbilityTaunt vf64): past the gate, for a victim other than itself
+    /// against a unit that is no structure, with at least 300 life, and an enemy
+    /// within Area.
+    fn ai_taunt(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, None, None) || victim == h || self.unit(enemy).is_some_and(|e| e.is_building) || self.life(h) < 300.0 {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(h);
+        if self.census(h, x, y, self.data(a, "Area", lvl), true).enemies > 0 {
+            self.ai_cast(h, a, 0);
+        }
+    }
+
+    /// Transmute (CAbilityTransmute vf64): past the gate, on an enemy it may target and
+    /// not in militia (Bmil), with at least 600 life unless hard pressed.
+    fn ai_transmute(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, None, None) || self.cast_target_error(h, a, enemy).is_some() {
+            return;
+        }
+        let Some(e) = self.unit(enemy) else { return };
+        if e.buffs.iter().any(|b| b.id == *b"Bmil") {
+            return;
+        }
+        if !(victim == h && self.life(h) <= 400.0) && e.life < 600.0 {
+            return;
+        }
+        self.ai_cast(h, a, enemy);
+    }
+
+    /// Monsoon (CAbilityMonsoon vf64): past the gate (no creeps), at the enemy when more
+    /// than 4 enemies on the ground are within Area of it.
+    fn ai_monsoon(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, false, None, None) {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(enemy);
+        let c = self.census(h, x, y, self.data(a, "Area", lvl), false);
+        if c.enemies - c.enemy_flying > 4 {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Stampede (CAbilityStampede vf64, FUN_6f6034c0): past the gate (no creeps), at the
+    /// enemy with 5 enemies within Area of the caster.
+    fn ai_stampede(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, false, None, None) {
+            return;
+        }
+        self.ai_rest(h, a);
+        let (x, y) = self.pos(h);
+        if self.census(h, x, y, self.data(a, "Area", lvl), true).enemies >= 5 {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Mana Shield (CAbilityManaShield vf64): past the gate, for itself: with S the life
+    /// its mana beyond the cost would shield ((1 − DataB) × (mana − cost) ÷ (DataB ÷
+    /// DataA), at least 100), raised once its life falls to S, lowered once above
+    /// S + 100.
+    fn ai_mana_shield(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, None, None) || victim != h {
+            return;
+        }
+        let (per, part) = (self.data(a, "DataA", lvl), self.data(a, "DataB", lvl));
+        if per == 0.0 || part == 0.0 {
+            return;
+        }
+        let cost = self.data(a, "Cost", lvl);
+        let mana = self.unit(h).map_or(0.0, |u| u.mana);
+        let shield = ((1.0 - part) * (mana - cost) / (part / per)).max(100.0);
+        let on = self.unit(h).is_some_and(|u| u.buffs.iter().any(|b| b.ability == a));
+        let life = self.life(h);
+        // Casting it raises or lowers it.
+        if (!on && life <= shield) || (on && life > shield + 100.0) {
+            self.ai_cast(h, a, 0);
+        }
+    }
+
+    /// Rejuvenation (CAbilityRejuvination vf64, FUN_6f603af0): past the gate, on a
+    /// victim without it that lacks at least DataA life, or has 200 or less of between
+    /// 400 and 600.
+    fn ai_rejuvenation(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, Some(victim), None) {
+            return;
+        }
+        self.ai_rest(h, a);
+        let Some(v) = self.unit(victim) else { return };
+        if v.buffs.iter().any(|b| b.id == *b"Brej") {
+            return;
+        }
+        let small = v.life <= 200.0 && (400.0..=600.0).contains(&v.max_life);
+        if small || v.max_life - v.life >= self.data(a, "DataA", lvl) {
+            self.ai_cast(h, a, victim);
+        }
+    }
+
+    /// Cluster Rockets (CAbilityClusterRockets vf64): past the gate, at the enemy when
+    /// within Area of it 3 enemies (2 when hard pressed) are seen.
+    fn ai_cluster_rockets(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
+            return;
+        }
+        self.ai_rest(h, a);
+        let need = if self.hard_pressed(h, victim) { 2 } else { 3 };
+        let (x, y) = self.pos(enemy);
+        if need <= self.census(h, x, y, self.data(a, "Area", lvl), false).enemy_seen {
+            self.ai_cast(h, a, enemy);
+        }
+    }
+
+    /// Absorb Mana (CAbilityAbsorb vf64): past the gate, from a victim that is no Hero
+    /// with 100 life or less and at least 10 mana.
+    fn ai_absorb(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
+        if self.ai_gate(h, a, enemy, victim, true, Some(victim), None) {
+            return;
+        }
+        if self.unit(victim).is_some_and(|v| !Self::real_hero(v) && v.life <= 100.0 && v.mana >= 10.0) {
+            self.ai_cast(h, a, victim);
         }
     }
 }

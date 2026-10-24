@@ -1780,7 +1780,7 @@ impl Scene {
         }
         let all = self.alt_held || self.options.healthbars;
         let hovered = if all { None } else { self.pick_unit(self.cursor.0, self.cursor.1, size) };
-        if !all && hovered.is_none() {
+        if self.over_console(self.cursor.0, self.cursor.1, size) && !all {
             return Vec::new();
         }
         let width = w3_ui::UI_HEIGHT * (size.0 as f32 / size.1.max(1) as f32).max(4.0 / 3.0);
@@ -1788,7 +1788,7 @@ impl Scene {
         let fill = db.decorate("SimpleHpBarConsoleSmall");
         let mut out = Vec::new();
         for (&h, v) in &self.units {
-            if hovered.is_some_and(|x| x != h) {
+            if !all && hovered != Some(h) {
                 continue;
             }
             let Some(u) = w.unit(h) else { continue };
@@ -1815,6 +1815,83 @@ impl Scene {
             };
             let filled = w3_ui::Rect { x1: rect.x0 + bw * f, ..rect };
             out.push(w3_ui::Draw::Image { texture: fill.clone(), rect: filled, uv: [0.0, 0.0, f, 1.0], color, blend: w3_ui::Blend::Alpha, rotated: false });
+            if hovered == Some(h) {
+                let lines = self.unit_tip_lines(w, h);
+                if let Some(hud) = self.hud.as_ref() {
+                    hud.unit_tip_draws(db, &lines, cx, black.y1, &mut out);
+                }
+            }
+        }
+        // A destructable under the pointer: its health bar and name.
+        if hovered.is_none() && !all {
+            if let Some(d) = self.pick_destructable(self.cursor.0, self.cursor.1, size).and_then(|d| w.handles.get(d).and_then(|o| if let w3_game::types::Obj::Destructable(x) = o { Some((d, x.clone())) } else { None })) {
+                let (h, dx) = d;
+                if let Some((inst, _)) = self.dests.get(&h) {
+                    let mdx = &inst.model.mdx;
+                    let p = inst.transform.transform_point3(Vec3::new(0.0, 0.0, mdx.extent.max[2]));
+                    if let Some((px, py)) = self.project(p, size) {
+                        let (cx, bottom) = (px / size.0 as f32 * width, (1.0 - py / size.1 as f32) * w3_ui::UI_HEIGHT);
+                        // As wide as its selection circle (selcircsize), at the units' 72
+                        // world units to a ScaleFactor.
+                        let circle = w.objects.destructables.get(dx.type_id).map_or(72.0, |o| o.real("selcircsize").max(1.0));
+                        let (bw, bh, border) = (factor * circle / 72.0 * dx.scale.max(0.1), 0.004, 0.001);
+                        let y0 = bottom + border;
+                        let rect = w3_ui::Rect { x0: cx - bw / 2.0, x1: cx + bw / 2.0, y0, y1: y0 + bh };
+                        let black = w3_ui::Rect { x0: rect.x0 - border, x1: rect.x1 + border, y0: rect.y0 - border, y1: rect.y1 + border };
+                        out.push(w3_ui::Draw::Image { texture: String::new(), rect: black, uv: [0.0, 0.0, 1.0, 1.0], color: [0.0, 0.0, 0.0, 1.0], blend: w3_ui::Blend::Alpha, rotated: false });
+                        let f = (dx.life / dx.max_life.max(1.0)).clamp(0.0, 1.0);
+                        let filled = w3_ui::Rect { x1: rect.x0 + bw * f, ..rect };
+                        let color = if f > 0.6 {
+                            [(255.0 - (f - 0.5) * 255.0 * 2.0).clamp(0.0, 255.0) / 255.0, 1.0, 0.0, 1.0]
+                        } else {
+                            let d = if f > 0.3 { 0.6 } else { 0.8 };
+                            [1.0, (f / d).min(1.0), 0.0, 1.0]
+                        };
+                        out.push(w3_ui::Draw::Image { texture: fill.clone(), rect: filled, uv: [0.0, 0.0, f, 1.0], color, blend: w3_ui::Blend::Alpha, rotated: false });
+                        let name = w.localized(&w.objects.destructables.get(dx.type_id).map(|o| o.str("Name")).unwrap_or_default());
+                        if let Some(hud) = self.hud.as_ref() {
+                            hud.unit_tip_draws(db, &[(name, [1.0; 4])], cx, black.y1, &mut out);
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// The lines of a unit's tip (FUN_6f3d16c0): another player's unit names its owner
+    /// in the owner's color; a hero gives its proper name and LEVEL, a hostile neutral
+    /// its type and LEVEL, a gold mine its type and COLON_GOLD (FUN_6f3d65c0), and a
+    /// neutral passive structure its type.
+    fn unit_tip_lines(&self, w: &w3_game::World, h: u32) -> Vec<(String, [f32; 4])> {
+        let mut out = Vec::new();
+        let Some(u) = w.unit(h) else { return out };
+        let white = [1.0; 4];
+        if u.owner != w.local_player && u.owner < 12 {
+            let p = &w.players[u.owner as usize];
+            if !p.name.is_empty() {
+                let c = self.team_rgb[p.color as usize % 16];
+                out.push((p.name.clone(), [c[0], c[1], c[2], 1.0]));
+            }
+        }
+        let type_name = w.objects.units.get(u.type_id).map(|o| o.str("Name")).unwrap_or_default();
+        let level = |l: i32| format!("{} {l}", w.localized("LEVEL"));
+        let unit_level = if u.is_hero { u.level } else { w.objects.units.get(u.type_id).map_or(0, |o| o.int("level")) };
+        if u.is_hero {
+            out.push((if u.proper_name.is_empty() { type_name } else { u.proper_name.clone() }, white));
+            if unit_level != 0 {
+                out.push((level(unit_level), white));
+            }
+        } else if u.owner == w3_game::types::PLAYER_NEUTRAL_AGGRESSIVE {
+            out.push((type_name, white));
+            if unit_level != 0 {
+                out.push((level(unit_level), white));
+            }
+        } else if w.ability_with_code(h, "Agld").is_some() {
+            out.push((type_name, white));
+            out.push((format!("{}  {}", w.localized("COLON_GOLD"), u.resource), white));
+        } else if u.owner == 15 && u.is_building {
+            out.push((type_name, white));
         }
         out
     }

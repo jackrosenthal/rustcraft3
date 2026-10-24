@@ -595,6 +595,45 @@ impl Hud {
         t.frames[f].rect
     }
 
+    /// CUnitTip over what the pointer is on (CPreselectUI, FUN_6f3d16c0): a ToolTip box
+    /// (corners 0.01, insets 0.0019) of the given lines, the first 0.008 in and 0.006
+    /// down, 0.0125 apart (measured from the original), centered on and resting on the
+    /// health bar's top at `x`, `bottom`.
+    pub fn unit_tip_draws(&self, db: &FrameDb, lines: &[(String, [f32; 4])], x: f32, bottom: f32, out: &mut Vec<Draw>) {
+        use w3_ui::fdf::{Arg, Def, Prop};
+        if lines.is_empty() {
+            return;
+        }
+        let font = db.decorate("MasterFont");
+        let size = db.misc_ui.get_str("FontHeights", "UnitTipPlayerName").and_then(|v| v.trim().parse().ok()).unwrap_or(0.011f32);
+        let widest = lines.iter().map(|(t, _)| db.text_width(&font, size, t)).fold(0.0, f32::max);
+        let (w, h) = (widest + 0.016, 0.006 + lines.len() as f32 * 0.0125 + 0.004);
+        let r = w3_ui::Rect { x0: x - w / 2.0, x1: x + w / 2.0, y0: bottom, y1: bottom + h };
+        let prop = |key: &str, args: Vec<Arg>| Prop { key: key.into(), args };
+        let s = |v: &str| Arg::Str(v.into());
+        let def = Def {
+            block: "Frame".into(),
+            kind: "BACKDROP".into(),
+            name: String::new(),
+            inherits: None,
+            with_children: false,
+            props: vec![
+                prop("BackdropBackground", vec![s("ToolTipBackground")]),
+                prop("BackdropCornerFlags", vec![s("UL|UR|BL|BR|T|L|B|R")]),
+                prop("BackdropCornerSize", vec![Arg::Num(0.01)]),
+                prop("BackdropBackgroundInsets", vec![Arg::Num(0.0019); 4]),
+                prop("BackdropEdgeFile", vec![s("ToolTipBorder")]),
+            ],
+            children: vec![],
+        };
+        self.tree.backdrop(db, &def, r, out);
+        let mut y = r.y1 - 0.006;
+        for (t, color) in lines {
+            out.push(Draw::Text { font: font.clone(), size, rect: w3_ui::Rect { x0: r.x0 + 0.008, x1: r.x1, y0: y - size * 1.2, y1: y }, text: t.clone(), color: *color, justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Start, shadow: None });
+            y -= 0.0125;
+        }
+    }
+
     /// CUberToolTipWar3 for a command button: its BOTTOMRIGHT 0.1625 above the
     /// interface's, a ToolTipBorder/ToolTipBackground box (corners 0.01, insets 0.0019),
     /// the name 0.005 in, the cost row (0.009375 icons with gold values, 0.004 below),

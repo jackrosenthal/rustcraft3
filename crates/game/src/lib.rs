@@ -163,6 +163,17 @@ impl Game {
         }
         // Interface strings (FDF StringList tables) resolve GetLocalizedString keys.
         world.strings = w3_ui::FrameDb::load(&chain).strings.into_iter().collect();
+        // The world editor's strings name destructables and doodads (WESTRING_...).
+        for f in ["UI\\WorldEditStrings.txt", "UI\\WorldEditGameStrings.txt"] {
+            if let Ok(s) = chain.read_string(f) {
+                let p = w3_formats::profile::Profile::parse(&s);
+                if let Some(sec) = p.sections.get("worldeditstrings") {
+                    for (k, v) in sec {
+                        world.strings.entry(k.to_ascii_uppercase()).or_insert_with(|| v.trim().trim_matches('"').to_string());
+                    }
+                }
+            }
+        }
         if let Ok(s) = chain.read_string("war3map.wts") {
             world.trigger_strings = w3_formats::map::parse_wts(&s).into_iter().collect();
         }

@@ -285,8 +285,25 @@ pub struct World {
     pub fog_boundary: bool,
     /// PlayModelCinematic.
     pub model_cinematic: Option<String>,
-    /// Running terrain deformations: handle, start time, and parameters.
-    pub deformations: Vec<(u32, f32, crate::natives::visuals::Deform)>,
+    /// Running terrain deformations (deform.rs).
+    pub deformations: Vec<crate::deform::Deformation>,
+    /// The deformations' clock in milliseconds and the generator Random ones draw from.
+    #[serde(default)]
+    pub deform_clock: i64,
+    #[serde(default)]
+    pub deform_rng: u32,
+    /// Changes in corner heights permanent deformations left, by corner index.
+    #[serde(default)]
+    pub deform_baked: HashMap<u32, f32>,
+    /// Each corner's change in height from all deformations, and a count bumped when it
+    /// changes, for the renderer.
+    #[serde(default)]
+    pub deform_offsets: HashMap<u32, f32>,
+    #[serde(default)]
+    pub deform_generation: u64,
+    /// SetWaterDeforms: whether deformations move the water too.
+    #[serde(default)]
+    pub water_deforms: bool,
     /// Entangle Gold Mine casts finishing: time, caster, and mine.
     pub pending_entangles: Vec<(f32, u32, u32)>,
     /// Incinerated deaths to burst: when, the caster, ability, level, buff, and where.
@@ -585,6 +602,12 @@ impl World {
             fog_boundary: true,
             model_cinematic: None,
             deformations: Vec::new(),
+            deform_clock: 0,
+            deform_rng: 0,
+            deform_baked: HashMap::default(),
+            deform_offsets: HashMap::default(),
+            deform_generation: 0,
+            water_deforms: false,
             pending_entangles: Vec::new(),
             incinerations: Vec::new(),
             volcanoes: Vec::new(),
@@ -826,7 +849,22 @@ impl World {
     }
 
     pub fn ground_z(&self, x: f32, y: f32) -> f32 {
-        self.terrain_heights.as_ref().map_or(0.0, |t| t.at(x, y))
+        let Some(t) = self.terrain_heights.as_ref() else { return 0.0 };
+        if self.deform_offsets.is_empty() {
+            return t.at(x, y);
+        }
+        // With the deformations' changes at the corners (FUN_6f745110 with flag 4).
+        let fx = ((x - t.offset[0]) / 128.0).clamp(0.0, (t.width - 1) as f32);
+        let fy = ((y - t.offset[1]) / 128.0).clamp(0.0, (t.height - 1) as f32);
+        let (ix, iy) = (fx.floor() as u32, fy.floor() as u32);
+        let (tx, ty) = (fx - ix as f32, fy - iy as f32);
+        let at = |x: u32, y: u32| {
+            let i = y.min(t.height - 1) * t.width + x.min(t.width - 1);
+            t.heights[i as usize] + self.deform_offset(i)
+        };
+        let a = at(ix, iy) * (1.0 - tx) + at(ix + 1, iy) * tx;
+        let b = at(ix, iy + 1) * (1.0 - tx) + at(ix + 1, iy + 1) * tx;
+        a * (1.0 - ty) + b * ty
     }
 
     // ---- boolean expressions and triggers ----
@@ -1142,6 +1180,7 @@ impl World {
         }
         prof!(self, "update_moon_wells", self.update_moon_wells());
         prof!(self, "update_forms", self.update_forms(dt));
+        prof!(self, "update_deformations", self.update_deformations(dt));
         prof!(self, "update_cargo", self.update_cargo(vm));
         prof!(self, "update_morphs", self.update_morphs(dt));
         prof!(self, "update_autocast", self.update_autocast(dt));

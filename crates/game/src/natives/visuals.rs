@@ -4,6 +4,7 @@ use crate::collections::HashMap;
 
 use super::{Args, boolean, handle, none, real};
 use crate::types::*;
+use crate::deform::Kind;
 use crate::world::{NativeFn, World};
 
 fn image(w: &mut World, h: u32) -> Option<&mut Image> {
@@ -63,15 +64,6 @@ fn move_lightning(w: &mut World, h: u32, check: bool, from: [f32; 3], to: [f32; 
         return boolean(false);
     }
     boolean(lightning(w, h).map(|l| { l.from = from; l.to = to; }).is_some())
-}
-
-/// A terrain deformation (TerrainDeform*): its kind and parameters, kept for drawing.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub enum Deform {
-    Crater { x: f32, y: f32, radius: f32, depth: f32, duration: f32, permanent: bool },
-    Ripple { x: f32, y: f32, radius: f32, depth: f32, duration: f32, count: i32, space_wave: f32, time_wave: f32, radius_start_pct: f32, limit_neg: bool },
-    Wave { x: f32, y: f32, dir_x: f32, dir_y: f32, distance: f32, speed: f32, radius: f32, depth: f32, trail_time: f32, count: i32 },
-    Random { x: f32, y: f32, radius: f32, min_delta: f32, max_delta: f32, duration: f32, update_interval: f32 },
 }
 
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
@@ -147,34 +139,41 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetLightningColorB => |w, _, a| real(lightning_color(w, a.h(0), 2)),
         GetLightningColorA => |w, _, a| real(lightning_color(w, a.h(0), 3)),
 
+        // The natives build the original's parameter arrays (FUN_6f78d2e0, FUN_6f78d850,
+        // FUN_6f78d440, FUN_6f78d740); see deform.rs.
         TerrainDeformCrater => |w, _, a| {
-            let d = Deform::Crater { x: a.r(0), y: a.r(1), radius: a.r(2), depth: a.r(3), duration: a.i(4) as f32 / 1000.0, permanent: a.b(5) };
-            handle(w.add_deformation(d))
+            let (x, y, r, depth, dur) = (a.r(0), a.r(1), a.r(2), a.r(3), a.i(4) as i64);
+            // Grows over its duration: it is all "in" time, none held or "out".
+            let share = dur as f32 / dur as f32;
+            let params = vec![x, y, r, depth, share, share, 0.0];
+            handle(w.start_deformation(Kind::Crater, params, [x - r, y - r, x + r, y + r], true, dur, 0, 1, a.b(5)))
         },
         TerrainDeformRipple => |w, _, a| {
-            let d = Deform::Ripple { x: a.r(0), y: a.r(1), radius: a.r(2), depth: a.r(3), duration: a.i(4) as f32 / 1000.0, count: a.i(5), space_wave: a.r(6), time_wave: a.r(7), radius_start_pct: a.r(8), limit_neg: a.b(9) };
-            handle(w.add_deformation(d))
+            let (x, y, r) = (a.r(0), a.r(1), a.r(2));
+            let params = vec![x, y, r, a.r(3), a.r(6) * std::f32::consts::PI, a.r(7) * std::f32::consts::PI, a.r(8), if a.b(9) { 1.0 } else { 0.0 }];
+            handle(w.start_deformation(Kind::Ripple, params, [x - r, y - r, x + r, y + r], true, a.i(4) as i64, 0, a.i(5), false))
         },
         TerrainDeformWave => |w, _, a| {
-            let d = Deform::Wave { x: a.r(0), y: a.r(1), dir_x: a.r(2), dir_y: a.r(3), distance: a.r(4), speed: a.r(5), radius: a.r(6), depth: a.r(7), trail_time: a.i(8) as f32 / 1000.0, count: a.i(9) };
-            handle(w.add_deformation(d))
+            let (sx, sy, dx, dy, distance, speed, r, depth, trail, count) = (a.r(0), a.r(1), a.r(2), a.r(3), a.r(4), a.r(5), a.r(6), a.r(7), a.i(8), a.i(9));
+            let len = (dx * dx + dy * dy).sqrt();
+            let (ex, ey) = (dx / len * distance + sx, dy / len * distance + sy);
+            let (along, across) = (ex - sx, -(ey - sy));
+            let inv = 1.0 / (along * along + across * across).sqrt();
+            let travel = ((distance / speed) * 1000.0) as i32;
+            let total = travel + trail;
+            let params = vec![sx, sy, ex, ey, r, depth, trail as f32 / total as f32, travel as f32 / total as f32, inv * across, inv * along];
+            let bounds = [sx.min(ex) - r, sy.min(ey) - r, sx.max(ex) + r, sy.max(ey) + r];
+            handle(w.start_deformation(Kind::Wave, params, bounds, false, total as i64, 0, count, false))
         },
         TerrainDeformRandom => |w, _, a| {
-            let d = Deform::Random { x: a.r(0), y: a.r(1), radius: a.r(2), min_delta: a.r(3), max_delta: a.r(4), duration: a.i(5) as f32 / 1000.0, update_interval: a.i(6) as f32 / 1000.0 };
-            handle(w.add_deformation(d))
+            let (x, y, r) = (a.r(0), a.r(1), a.r(2));
+            let params = vec![x, y, r, a.r(3), a.r(4)];
+            handle(w.start_deformation(Kind::Random, params, [x - r, y - r, x + r, y + r], true, a.i(5) as i64, a.i(6) as i64, 1, false))
         },
-        TerrainDeformStop => |w, _, a| { let h = a.h(0); w.deformations.retain(|d| d.0 != h); none() },
+        TerrainDeformStop => |w, _, a| { w.stop_deformation(a.h(0), a.i(1) as i64); none() },
+        // Ends them all at once, leaving nothing (FUN_6f73aad0).
         TerrainDeformStopAll => |w, _, _| { w.deformations.clear(); none() },
     );
-}
-
-impl World {
-    /// Starts a terrain deformation and returns its handle.
-    pub fn add_deformation(&mut self, d: Deform) -> u32 {
-        let h = self.handles.insert(Obj::Opaque("terraindeformation".to_string()));
-        self.deformations.push((h, self.time, d));
-        h
-    }
 }
 
 use super::reg;

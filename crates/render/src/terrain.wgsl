@@ -39,6 +39,9 @@ struct Light {
 @group(0) @binding(2) var fow_tex: texture_2d<f32>;
 @group(0) @binding(3) var fow_samp: sampler;
 @group(0) @binding(4) var<storage, read> lights: array<Light>;
+@group(0) @binding(6) var deform_tex: texture_2d<f32>;
+/// x: whether the water moves with the deformations (SetWaterDeforms).
+@group(0) @binding(7) var<uniform> deform_params: vec4<f32>;
 @group(0) @binding(5) var<storage, read> light_cells: array<u32>;
 
 // The lights of the cell the ground is in (see lights.rs, and the model shader).
@@ -128,8 +131,49 @@ fn fog_amount(d: f32) -> f32 {
     return clamp((d - globals.fog.x) / max(globals.fog.y - globals.fog.x, 1.0), 0.0, 1.0);
 }
 
+/// The terrain deformations' change in height at a world point, between its corners.
+fn deform_at(p: vec2<f32>) -> f32 {
+    let size = vec2<i32>(textureDimensions(deform_tex));
+    let f = clamp((p - extent.xy) / 128.0, vec2<f32>(0.0), vec2<f32>(size - vec2<i32>(1)));
+    let i = vec2<i32>(floor(f));
+    let t = f - vec2<f32>(i);
+    let j = min(i + vec2<i32>(1), size - vec2<i32>(1));
+    let a = mix(textureLoad(deform_tex, i, 0).r, textureLoad(deform_tex, vec2<i32>(j.x, i.y), 0).r, t.x);
+    let b = mix(textureLoad(deform_tex, vec2<i32>(i.x, j.y), 0).r, textureLoad(deform_tex, j, 0).r, t.x);
+    return mix(a, b, t.y);
+}
+
+fn deformed(v: VsIn) -> VsOut {
+    var out: VsOut;
+    let d = deform_at(v.pos.xy);
+    var pos = v.pos;
+    var normal = v.normal;
+    if (d != 0.0 || deform_at(v.pos.xy + vec2<f32>(64.0, 0.0)) != 0.0 || deform_at(v.pos.xy + vec2<f32>(0.0, 64.0)) != 0.0) {
+        pos.z = pos.z + d;
+        // The surface's slope gains the deformation's.
+        let ddx = (deform_at(v.pos.xy + vec2<f32>(64.0, 0.0)) - deform_at(v.pos.xy - vec2<f32>(64.0, 0.0))) / 128.0;
+        let ddy = (deform_at(v.pos.xy + vec2<f32>(0.0, 64.0)) - deform_at(v.pos.xy - vec2<f32>(0.0, 64.0))) / 128.0;
+        normal = normalize(normal / max(normal.z, 0.05) - vec3<f32>(ddx, ddy, 0.0));
+    }
+    out.clip = globals.view_proj * vec4<f32>(pos, 1.0);
+    out.uv = v.uv;
+    out.normal = normal;
+    out.color = v.color;
+    out.world = pos;
+    return out;
+}
+
 @vertex
 fn vs_main(v: VsIn) -> VsOut {
+    return deformed(v);
+}
+
+/// Water moves with the deformations only under SetWaterDeforms (FUN_6f74ced0).
+@vertex
+fn vs_water(v: VsIn) -> VsOut {
+    if (deform_params.x != 0.0) {
+        return deformed(v);
+    }
     var out: VsOut;
     out.clip = globals.view_proj * vec4<f32>(v.pos, 1.0);
     out.uv = v.uv;

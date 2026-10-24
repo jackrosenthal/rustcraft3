@@ -63,6 +63,11 @@ pub struct TerrainRenderer {
     pub height: u32,
     pub offset: [f32; 2],
     heights: Vec<f32>,
+    deform_tex: wgpu::Texture,
+    deform_view: wgpu::TextureView,
+    deform_params: wgpu::Buffer,
+    /// The deformations' change in each corner's height, as last set.
+    deform_heights: Vec<f32>,
 }
 
 /// What the ground mesh is built from: each corner's ground texture and variation,
@@ -504,7 +509,19 @@ impl TerrainRenderer {
             label: Some("terrain globals"),
             entries: &{
                 let [l0, l1] = crate::lights::LightBuffers::layout_entries(4, wgpu::ShaderStages::FRAGMENT);
-                [uniform(0), uniform(1), fow0, fow1, l0, l1]
+                // The deformations' change in each corner's height, and whether the
+                // water moves with them.
+                let deform = wgpu::BindGroupLayoutEntry {
+                    binding: 6,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                };
+                [uniform(0), uniform(1), fow0, fow1, l0, l1, deform, uniform(7)]
             },
         });
         let tex_layout = texture_bind_group_layout(device);
@@ -523,6 +540,22 @@ impl TerrainRenderer {
             contents: bytemuck::cast_slice(&[terrain.offset[0], terrain.offset[1], (w - 1) as f32 * TILE, (h - 1) as f32 * TILE]),
             usage: wgpu::BufferUsages::UNIFORM,
         });
+        let deform_tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("terrain deformation"),
+            size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::R32Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let deform_view = deform_tex.create_view(&Default::default());
+        let deform_params = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("terrain deformation params"),
+            contents: bytemuck::cast_slice(&[0.0f32; 4]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
         let globals_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("terrain globals"),
             layout: &globals_layout,
@@ -533,6 +566,8 @@ impl TerrainRenderer {
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&fog.sampler) },
                 wgpu::BindGroupEntry { binding: 4, resource: lights.lights.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 5, resource: lights.cells.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&deform_view) },
+                wgpu::BindGroupEntry { binding: 7, resource: deform_params.as_entire_binding() },
             ],
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -547,7 +582,7 @@ impl TerrainRenderer {
                 layout: Some(&layout),
                 vertex: wgpu::VertexState {
                     module: &shader,
-                    entry_point: Some("vs_main"),
+                    entry_point: Some(if entry == "fs_water" { "vs_water" } else { "vs_main" }),
                     compilation_options: Default::default(),
                     buffers: &[Some(wgpu::VertexBufferLayout {
                         array_stride: std::mem::size_of::<Vertex>() as u64,
@@ -630,6 +665,10 @@ impl TerrainRenderer {
             height: h,
             offset: terrain.offset,
             heights,
+            deform_tex,
+            deform_view,
+            deform_params,
+            deform_heights: Vec::new(),
         }
     }
 
@@ -681,8 +720,27 @@ impl TerrainRenderer {
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&fog.sampler) },
                 wgpu::BindGroupEntry { binding: 4, resource: self.lights.lights.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 5, resource: self.lights.cells.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&self.deform_view) },
+                wgpu::BindGroupEntry { binding: 7, resource: self.deform_params.as_entire_binding() },
             ],
         });
+    }
+
+    /// The terrain deformations' change in each corner's height (row by row from the
+    /// south), and whether the water moves with them (SetWaterDeforms).
+    pub fn set_deformation(&mut self, queue: &wgpu::Queue, offsets: &[f32], water: bool) {
+        let (w, h) = (self.width, self.height);
+        if offsets.len() < (w * h) as usize {
+            return;
+        }
+        queue.write_texture(
+            self.deform_tex.as_image_copy(),
+            bytemuck::cast_slice(&offsets[..(w * h) as usize]),
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(w * 4), rows_per_image: Some(h) },
+            wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        );
+        queue.write_buffer(&self.deform_params, 0, bytemuck::cast_slice(&[if water { 1.0f32 } else { 0.0 }, 0.0, 0.0, 0.0]));
+        self.deform_heights = offsets[..(w * h) as usize].to_vec();
     }
 
     /// Ground height at a world position, interpolated across the tile.
@@ -706,7 +764,10 @@ impl TerrainRenderer {
         let fy = ((y - self.offset[1]) / TILE).clamp(0.0, (self.height - 1) as f32);
         let (ix, iy) = (fx.floor() as u32, fy.floor() as u32);
         let (tx, ty) = (fx - ix as f32, fy - iy as f32);
-        let at = |x: u32, y: u32| self.heights[(y.min(self.height - 1) * self.width + x.min(self.width - 1)) as usize];
+        let at = |x: u32, y: u32| {
+            let i = (y.min(self.height - 1) * self.width + x.min(self.width - 1)) as usize;
+            self.heights[i] + self.deform_heights.get(i).copied().unwrap_or(0.0)
+        };
         let a = at(ix, iy) * (1.0 - tx) + at(ix + 1, iy) * tx;
         let b = at(ix, iy + 1) * (1.0 - tx) + at(ix + 1, iy + 1) * tx;
         a * (1.0 - ty) + b * ty

@@ -624,7 +624,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         IsPointBlighted => |w, _, a| boolean(w.point_blighted(a.r(0), a.r(1))),
         SetWaterBaseColor => |w, _, a| { w.water_color = [a.i(0), a.i(1), a.i(2), a.i(3)].map(|v| v.clamp(0, 255) as u8); none() },
-        SetWaterDeforms => |_, _, _| none(),
+        SetWaterDeforms => |w, _, a| { w.water_deforms = a.b(0); none() },
         EnableOcclusion => |_, _, _| none(),
         SetIntroShotText => |_, _, _| none(),
         SetIntroShotModel => |_, _, _| none(),

@@ -168,7 +168,7 @@ fn misc_list(w: &World, key: &str) -> Vec<f32> {
 /// DamageBonus* tables and DefenseArmor).
 pub fn final_damage(w: &World, raw: f32, attack_type: &str, target: &Unit) -> f32 {
     let o = w.objects.units.get(target.type_id);
-    let def_type = target.extra.defense.clone().unwrap_or_else(|| o.map(|o| o.str("defType").to_ascii_lowercase()).unwrap_or_default());
+    let def_type = w.defense_type(target);
     let armor = o.map_or(0.0, |o| o.real("def")) + w.buff_mods(target.handle).2;
     let key = match attack_type {
         "pierce" => "DamageBonusPierce",

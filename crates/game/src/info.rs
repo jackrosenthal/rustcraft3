@@ -83,7 +83,7 @@ impl World {
         s.armor = ArmorInfo {
             armor: (def + agi).round() as i32,
             bonus: u.item_bonus.armor + self.buff_mods(h).2,
-            def_type: o.map(|o| o.str("defType").to_ascii_lowercase()).unwrap_or_default(),
+            def_type: self.defense_type(u),
             upgrade: self.upgrade_level_for(u.owner, u.type_id, &["rarm"]),
             invulnerable: self.unit_invulnerable(u),
         };

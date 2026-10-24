@@ -47,7 +47,12 @@ pub struct UpgradeBonus {
     pub lumber: i32,
     /// rauv: ultravision.
     pub ultravision: bool,
+    /// rart: steps along the defense types (Reinforced Defenses: large to fort).
+    pub armor_type: i32,
 }
+
+/// The defense types in the engine's order (MiscGame's DamageBonus columns).
+pub const DEFENSE_TYPES: [&str; 8] = ["small", "medium", "large", "fort", "normal", "hero", "divine", "none"];
 
 /// One upgrade's value at a level, or `None` when the effect gives no value ("-").
 fn value(base: &str, md: &str, level: i32) -> Option<f32> {
@@ -102,11 +107,44 @@ impl World {
                     "renw" => b.weapons = v.map(|m| m as i32),
                     "rlum" => b.lumber += v.unwrap_or(0.0) as i32,
                     "rauv" => b.ultravision = true,
+                    "rart" => b.armor_type += v.unwrap_or(0.0) as i32,
                     _ => {}
                 }
             }
         }
         b
+    }
+
+    /// raud and rrai: what research adds to a unit's ability with code `code` (Improved
+    /// War Drums to War Drums' damage factor, Skeletal Longevity to Raise Dead's
+    /// duration).
+    pub fn upgrade_ability_bonus(&self, owner: u8, id: Id, effect: &str, code: &str) -> f32 {
+        let Some(o) = self.objects.units.get(id) else { return 0.0 };
+        let Some(p) = self.players.get(owner as usize) else { return 0.0 };
+        let mut n = 0.0;
+        for up in o.list("upgrades") {
+            let up = id_from_str(up.trim());
+            let level = p.tech_researched.get(&up).copied().unwrap_or(0);
+            let Some(u) = self.objects.upgrades.get(up).filter(|_| level > 0) else { continue };
+            for k in 1..=4 {
+                let c = u.str(&format!("code{k}"));
+                if u.str(&format!("effect{k}")) == effect && (c.trim().is_empty() || c.trim() == "-" || c.trim().eq_ignore_ascii_case(code)) {
+                    n += value(&u.str(&format!("base{k}")), &u.str(&format!("mod{k}")), level).unwrap_or(0.0);
+                }
+            }
+        }
+        n
+    }
+
+    /// A unit's defense type: its form's, or its type's moved along by research (rart).
+    pub fn defense_type(&self, u: &crate::types::Unit) -> String {
+        let base = u.extra.defense.clone().unwrap_or_else(|| self.objects.units.get(u.type_id).map(|o| o.str("defType").to_ascii_lowercase()).unwrap_or_default());
+        let step = self.upgrade_bonus(u.owner, u.type_id).armor_type;
+        if step == 0 {
+            return base;
+        }
+        let i = DEFENSE_TYPES.iter().position(|t| *t == base).unwrap_or(7) as i32;
+        DEFENSE_TYPES[(i + step).clamp(0, 7) as usize].to_string()
     }
 
     /// rlev: research that raises the level of a unit's ability with code `code`.

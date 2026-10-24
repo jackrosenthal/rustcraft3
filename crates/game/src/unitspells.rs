@@ -79,7 +79,7 @@ impl World {
                 let Some(&corpse) = self.corpses_in(cx, cy, d(self, "Area")).first() else { return true };
                 let (px, py) = self.unit(corpse).map(|u| (u.x, u.y)).unwrap();
                 crate::natives::units::remove_unit(self, corpse);
-                let life = d(self, "Dur");
+                let life = d(self, "Dur") + self.unit(h).map_or(0.0, |u| self.upgrade_ability_bonus(u.owner, u.type_id, "rrai", "Arai"));
                 for (n, t) in [(d(self, "DataA") as i32, self.level_str(a, "DataC", lvl)), (d(self, "DataB") as i32, self.level_str(a, "DataD", lvl))] {
                     if n > 0 && !t.is_empty() {
                         self.summon(h, owner, id_from_str(&t), n, px, py, life);

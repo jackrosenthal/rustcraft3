@@ -487,7 +487,7 @@ impl World {
                         b.damage_bonus = self.data(a, "DataB", lvl);
                     }
                     // War Drums and Command Aura: attack damage increase (DataA).
-                    "Aakb" | "AOac" => b.damage_factor = self.data(a, "DataA", lvl),
+                    "Aakb" | "AOac" => b.damage_factor = self.data(a, "DataA", lvl) + self.upgrade_ability_bonus(u.owner, u.type_id, "raud", &code),
                     // Slow Aura (a tornado): enemies move (DataA) and attack (DataB) slower.
                     "Aasl" => {
                         b.move_factor = self.data(a, "DataA", lvl);
@@ -536,8 +536,8 @@ impl World {
         if self.is_magic_immune(target) && self.misc_f32("MagicImmunesResistDamage", 1.0) != 0.0 {
             return;
         }
-        let def_type = self.objects.units.get(t.type_id).map(|o| o.str("defType").to_ascii_lowercase()).unwrap_or_default();
-        let col = ["small", "medium", "large", "fort", "normal", "hero", "divine"].iter().position(|c| *c == def_type).unwrap_or(7);
+        let def_type = self.defense_type(t);
+        let col = crate::upgrades::DEFENSE_TYPES.iter().position(|c| *c == def_type).unwrap_or(7);
         let mult: f32 = self.misc.get_list("Misc", "DamageBonusSpells").get(col).and_then(|v| v.trim().parse().ok()).unwrap_or(1.0);
         // Ethereal units take EtherealDamageBonus's SPELLS factor.
         let ethereal: f32 = if self.is_ethereal(target) { self.misc.get_list("Misc", "EtherealDamageBonus").get(5).and_then(|v| v.trim().parse().ok()).unwrap_or(1.0) } else { 1.0 };

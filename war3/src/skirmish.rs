@@ -352,6 +352,12 @@ impl Skirmish {
             tree.set_selected(&format!("HandicapMenu{scope}"), s.handicap);
             let team = db.string("TEAM_FORMAT").replace("%d", &(s.team + 1).to_string());
             tree.set_text(&format!("TeamButtonTitle{scope}"), &team);
+            // The team button opens the list of teams, "TEAM %u" (FUN_6f2bc6e0).
+            let teams = (1..=self.slots.len()).map(|t| format!("{} {t}", db.string("TEAM"))).collect();
+            tree.set_pulldown(&format!("TeamButton{scope}"), &format!("RacePopupMenuMenu{scope}"), teams, s.team.max(0) as usize);
+            // The color button opens the player colors' swatches (FUN_6f2bc6e0).
+            let swatches = (0..12).map(|c| format!("ReplaceableTextures\\TeamColor\\TeamColor{c:02}.blp")).collect();
+            tree.set_pulldown_images(&format!("ColorButton{scope}"), &format!("RacePopupMenuMenu{scope}"), swatches, s.color.clamp(0, 11) as usize);
             let open = matches!(s.controller, Controller::Open | Controller::Closed);
             for f in ["RaceMenu", "TeamButton", "ColorButton", "HandicapMenu"] {
                 tree.set_visible(&format!("{f}{scope}"), !open);
@@ -643,11 +649,11 @@ impl Skirmish {
             "RaceMenu" => s.race = chosen,
             "HandicapMenu" => s.handicap = chosen,
             "TeamButton" => {
-                s.team = (s.team + 1) % n.max(1);
+                s.team = (chosen as i32).min(n - 1).max(0);
                 let team = db.string("TEAM_FORMAT").replace("%d", &(s.team + 1).to_string());
                 tree.set_text(&format!("TeamButtonTitle#{k}"), &team);
             }
-            "ColorButton" => s.color = (s.color + 1) % 12,
+            "ColorButton" => s.color = chosen.min(11) as i32,
             _ => {}
         }
     }

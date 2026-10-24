@@ -261,6 +261,11 @@ pub struct Frame {
     pub anchor: (f32, f32),
     /// A text color a screen sets in place of the definition's (SetTextColor).
     pub color: Option<[f32; 4]>,
+    /// A button whose list opens when pressed (a pulldown: CPlayerSlot's team and color
+    /// buttons), drawn with this MENU frame's look.
+    pub pulldown: Option<usize>,
+    /// A list's rows drawn as these images (CTeamColorData's swatches) in place of text.
+    pub item_images: Vec<String>,
 }
 
 #[derive(Default)]
@@ -321,6 +326,8 @@ impl FrameTree {
             open: false,
             anchor: (0.0, 0.0),
             color: None,
+            pulldown: None,
+            item_images: Vec::new(),
         });
         t
     }
@@ -382,6 +389,8 @@ impl FrameTree {
             open: false,
             anchor: (0.0, 0.0),
             color: None,
+            pulldown: None,
+            item_images: Vec::new(),
         });
         if !name.is_empty() {
             self.by_name.insert(name, i);
@@ -630,7 +639,7 @@ impl FrameTree {
     pub fn popup_list(&self, i: usize) -> Option<(Rect, f32, f32)> {
         let f = &self.frames[i];
         let r = f.rect?;
-        let menu = f.def.str("PopupMenuFrame").and_then(|m| f.children.iter().copied().find(|&c| self.frames[c].def.name == m));
+        let menu = f.pulldown.or_else(|| f.def.str("PopupMenuFrame").and_then(|m| f.children.iter().copied().find(|&c| self.frames[c].def.name == m)));
         let md = menu.map(|m| self.frames[m].def.clone());
         let item_h = md.as_ref().and_then(|d| d.num("MenuItemHeight")).unwrap_or(0.014);
         let border = md.as_ref().and_then(|d| d.num("MenuBorder")).unwrap_or(0.009);
@@ -641,6 +650,23 @@ impl FrameTree {
     /// The open popup menu, if any.
     pub fn open_popup(&self) -> Option<usize> {
         (1..self.frames.len()).find(|&i| self.frames[i].open)
+    }
+
+    /// Makes a button a pulldown: pressed, it opens `items`, drawn as the MENU frame
+    /// `menu` draws its list.
+    pub fn set_pulldown(&mut self, name: &str, menu: &str, items: Vec<String>, selected: usize) {
+        let (Some(i), Some(m)) = (self.get(name), self.get(menu)) else { return };
+        self.frames[i].pulldown = Some(m);
+        self.frames[i].items = items;
+        self.frames[i].selected = selected;
+    }
+
+    /// A pulldown whose rows are images (color swatches).
+    pub fn set_pulldown_images(&mut self, name: &str, menu: &str, images: Vec<String>, selected: usize) {
+        self.set_pulldown(name, menu, vec![String::new(); images.len()], selected);
+        if let Some(i) = self.get(name) {
+            self.frames[i].item_images = images;
+        }
     }
 
     pub fn set_items(&mut self, name: &str, items: Vec<String>, selected: usize) {
@@ -775,7 +801,7 @@ impl FrameTree {
         if matches!(self.frames[i].def.kind.as_str(), "GLUECHECKBOX" | "CHECKBOX" | "SIMPLECHECKBOX") {
             self.frames[i].checked = !self.frames[i].checked;
         }
-        if self.is_popup(i) && !self.frames[i].items.is_empty() {
+        if (self.is_popup(i) || self.frames[i].pulldown.is_some()) && !self.frames[i].items.is_empty() {
             self.frames[i].open = true;
             return None;
         }
@@ -964,7 +990,7 @@ impl FrameTree {
     fn popup_parts(&self, i: usize) -> (Option<usize>, Option<usize>, Option<usize>) {
         let f = &self.frames[i];
         let child = |key: &str| f.def.str(key).and_then(|n| f.children.iter().copied().find(|&c| self.frames[c].def.name == n));
-        (child("PopupMenuFrame"), child("PopupTitleFrame"), child("PopupArrowFrame"))
+        (f.pulldown.or_else(|| child("PopupMenuFrame")), child("PopupTitleFrame"), child("PopupArrowFrame"))
     }
 
     fn popup_font(&self, db: &FrameDb, d: &Def) -> (String, f32) {
@@ -1024,6 +1050,15 @@ impl FrameTree {
         for (k, item) in self.frames[p].items.iter().enumerate() {
             let y1 = r.y1 - border - k as f32 * item_h;
             let row = Rect { x0: r.x0 + border, x1: r.x1 - border, y0: y1 - item_h, y1 };
+            if let Some(img) = self.frames[p].item_images.get(k) {
+                let inset = item_h * 0.15;
+                let sw = Rect { x0: row.x0 + inset, x1: row.x1 - inset, y0: row.y0 + inset, y1: row.y1 - inset };
+                out.push(Draw::Image { texture: img.clone(), rect: sw, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: Blend::Alpha, rotated: false });
+                if self.pointer_in(row) {
+                    out.push(Draw::Image { texture: String::new(), rect: row, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0, 1.0, 1.0, 0.25], blend: Blend::Alpha, rotated: false });
+                }
+                continue;
+            }
             let color = if self.pointer_in(row) { highlight } else { [1.0; 4] };
             out.push(Draw::Text { font: font.clone(), size, rect: row, text: item.clone(), color, justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
         }

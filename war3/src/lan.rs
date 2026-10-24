@@ -531,6 +531,18 @@ impl Lan {
                 db.string("TEAM_FORMAT").replace("%d", &(s.team + 1).to_string())
             };
             tree.set_text(&format!("TeamButtonTitle{scope}"), &team);
+            // The team button opens the list of teams, "TEAM %u", then the Observers
+            // (FUN_6f2bc6e0).
+            let teams_n = self.setup.slots.iter().filter(|s| s.team != OBSERVERS).count();
+            let mut teams: Vec<String> = (1..=teams_n).map(|t| format!("{} {t}", db.string("TEAM"))).collect();
+            if self.setup.slots.iter().any(|s| s.team == OBSERVERS) && matches!(s.holder, Holder::Human(_)) {
+                teams.push(db.string(if self.setup.flags & 0x400000 != 0 { "REFEREE" } else { "OBSERVER" }));
+            }
+            let at = if observer { teams.len() - 1 } else { s.team.max(0) as usize };
+            tree.set_pulldown(&format!("TeamButton{scope}"), &format!("RacePopupMenuMenu{scope}"), teams, at);
+            // The color button opens the player colors' swatches.
+            let swatches = (0..12).map(|c| format!("ReplaceableTextures\\TeamColor\\TeamColor{c:02}.blp")).collect();
+            tree.set_pulldown_images(&format!("ColorButton{scope}"), &format!("RacePopupMenuMenu{scope}"), swatches, s.color.clamp(0, 11) as usize);
             let open = matches!(s.holder, Holder::Open | Holder::Closed) && !(self.setup.saved && !s.name.is_empty());
             // A loaded game's slots are as they were saved.
             let mine = !self.setup.saved && (s.holder == Holder::Human(self.me) || (host && matches!(s.holder, Holder::Computer(_))));
@@ -581,20 +593,15 @@ impl Lan {
             "HandicapMenu" if mine => s.handicap = chosen,
             // The team list runs through the map's teams, then the Observers.
             "TeamButton" if mine => {
-                let next = if s.team == OBSERVERS {
-                    0
-                } else if s.team + 1 >= n && observers && matches!(s.holder, Holder::Human(_)) {
-                    OBSERVERS
-                } else {
-                    (s.team + 1) % n.max(1)
-                };
+                // The list's last entry past the map's teams is the Observers.
+                let next = if chosen as i32 >= n && observers && matches!(s.holder, Holder::Human(_)) { OBSERVERS } else { (chosen as i32).min(n - 1).max(0) };
                 if host {
                     move_to = Some((s.holder, next));
                 } else {
                     s.team = next;
                 }
             }
-            "ColorButton" if mine => s.color = (s.color + 1) % 12,
+            "ColorButton" if mine => s.color = chosen.min(11) as i32,
             _ => return,
         }
         let s = s.clone();

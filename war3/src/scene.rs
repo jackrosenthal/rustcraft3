@@ -2188,10 +2188,28 @@ impl Scene {
             self.selection = vec![hero];
             return true;
         }
-        // A group button selects its unit alone.
+        // A group button (Tip13, Tip14, Tip20, Tip46): while targeting it is the target;
+        // with Shift its unit leaves the selection; a double click selects it alone; a
+        // click makes its subgroup the active one.
+        let mut portrait_target = None;
         if let Some(unit) = self.hud.as_ref().and_then(|h| h.group_at(ux, uy)) {
-            self.selection = vec![unit];
-            return true;
+            if self.targeting.is_some() || self.item_target.is_some() {
+                portrait_target = Some(unit);
+            } else {
+                let double = self.last_pick.is_some_and(|(p, t)| p == unit && self.time - t < 0.4);
+                self.last_pick = Some((unit, self.time));
+                if self.shift_held {
+                    self.selection.retain(|&h| h != unit);
+                } else if double {
+                    self.selection = vec![unit];
+                } else if let Some(g) = self.game.as_ref() {
+                    let kind = g.world.unit(unit).map(|u| u.type_id);
+                    if let Some(k) = self.selection.iter().position(|&h| g.world.unit(h).map(|u| u.type_id) == kind) {
+                        self.selection.rotate_left(k);
+                    }
+                }
+                return true;
+            }
         }
         // A held item goes to the slot clicked.
         if let Some((u, from)) = self.held_item {
@@ -2222,7 +2240,7 @@ impl Scene {
             self.sync_camera();
             return true;
         }
-        if self.over_console(sx, sy, size) {
+        if portrait_target.is_none() && self.over_console(sx, sy, size) {
             return true;
         }
         // A click on a trackable hits it (EVENT_GAME_TRACKABLE_HIT).
@@ -2248,7 +2266,7 @@ impl Scene {
             return true;
         }
         if let Some((u, slot)) = self.item_target.take() {
-            let target = self.pick_unit(sx, sy, size).or_else(|| self.pick_destructable(sx, sy, size));
+            let target = portrait_target.or_else(|| self.pick_unit(sx, sy, size)).or_else(|| self.pick_destructable(sx, sy, size));
             let point = self.ground_at(sx, sy, size);
             if let Some(g) = self.game.as_mut() {
                 let point_only = g.world.item_targeting(u, slot) == w3_game::ability::Targeting::Point;
@@ -2258,7 +2276,7 @@ impl Scene {
             return true;
         }
         if let Some(order) = self.targeting.take() {
-            let target = self.pick_unit(sx, sy, size).or_else(|| self.pick_destructable(sx, sy, size));
+            let target = portrait_target.or_else(|| self.pick_unit(sx, sy, size)).or_else(|| self.pick_destructable(sx, sy, size));
             let point = self.ground_at(sx, sy, size);
             let (mut ordered, mut error) = (false, None);
             let formation = self.formation_on();

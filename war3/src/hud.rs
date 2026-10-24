@@ -998,6 +998,25 @@ impl Hud {
         }
     }
 
+    /// The queue icon under an interface point: 0 for the one in progress, then the
+    /// rest in order (as [`Hud::production_draws`] lays them out).
+    pub fn queue_slot_at(&self, x: f32, y: f32) -> Option<usize> {
+        let (Some(p), Some(b)) = (&self.production, self.building) else { return None };
+        let r = self.tree.frames[b].rect.filter(|_| self.tree.frames[b].visible)?;
+        if p.icons.is_empty() {
+            return None;
+        }
+        let (x0, y1) = (r.x0 + 0.0105, r.y0 + 0.081344);
+        if (w3_ui::Rect { x0, x1: x0 + 0.032, y0: y1 - 0.032, y1 }).contains(x, y) {
+            return Some(0);
+        }
+        let cell = 0.1772 / 6.0;
+        (0..p.icons.len().saturating_sub(1).min(6)).find(|&k| {
+            let (x0, y1) = (r.x0 + 0.0095 + cell * k as f32, r.y0 + 0.040438);
+            (w3_ui::Rect { x0, x1: x0 + 0.02301, y0: y1 - 0.02301, y1 }).contains(x, y)
+        }).map(|k| k + 1)
+    }
+
     pub fn show_unit(&mut self, db: &FrameDb, world: &World, unit: Option<u32>) {
         let u = unit.and_then(|h| world.unit(h));
         // Inventory icons (ItemFunc Art) and charges.

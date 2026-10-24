@@ -2188,6 +2188,13 @@ impl Scene {
             self.selection = vec![hero];
             return true;
         }
+        // A queue icon cancels its item (Tip10).
+        if let Some(slot) = self.hud.as_ref().and_then(|h| h.queue_slot_at(ux, uy)) {
+            if let (Some(&b), Some(g)) = (self.selection.first(), self.game.as_mut()) {
+                g.apply(w3_game::replay::Command::CancelQueue { building: b, slot });
+            }
+            return true;
+        }
         // A group button (Tip13, Tip14, Tip20, Tip46): while targeting it is the target;
         // with Shift its unit leaves the selection; a double click selects it alone; a
         // click makes its subgroup the active one.

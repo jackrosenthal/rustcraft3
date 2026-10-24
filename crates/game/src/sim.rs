@@ -1373,6 +1373,32 @@ impl World {
         self.queue_unit_event(h, pe, ue, ctx);
     }
 
+    /// Cancels the queue's item at `slot` (a click on its icon, Tip10), refunded as
+    /// [`World::cancel_last`] refunds.
+    pub fn cancel_queue_at(&mut self, h: u32, slot: usize) {
+        let Some(u) = self.unit(h) else { return };
+        if u.revive.is_some() || u.constructing.is_some() {
+            return self.cancel_last(h);
+        }
+        let owner = u.owner;
+        let Some(&id) = u.queue.get(slot) else { return };
+        let (pe, ue, ctx) = self.production_event(h, id, 1);
+        let key = match pe {
+            EVENT_PLAYER_UNIT_RESEARCH_CANCEL => "ResearchRefundRate",
+            EVENT_PLAYER_UNIT_UPGRADE_CANCEL => "UpgradeRefundRate",
+            _ => "TrainRefundRate",
+        };
+        let rate = self.misc_f32(key, 1.0);
+        let u = self.unit_mut(h).unwrap();
+        u.queue.remove(slot);
+        if slot == 0 {
+            u.queue_progress = 0.0;
+            u.queue_started = false;
+        }
+        self.refund(owner, id, rate);
+        self.queue_unit_event(h, pe, ue, ctx);
+    }
+
     /// A free spot near a structure for a new unit: the nearest walkable cell outside it.
     pub fn spawn_point_pub(&self, h: u32, radius: f32) -> (f32, f32) {
         self.spawn_point(h, radius)

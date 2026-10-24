@@ -51,6 +51,8 @@ pub enum Command {
     /// The units just ordered to a point move as a group in formation (the order flag
     /// 0x10 of FUN_6f394600): at the speed of the slowest.
     Formation { units: Vec<u32> },
+    /// Cancels one item of a structure's queue, by its place (0 the one in progress).
+    CancelQueue { building: u32, slot: usize },
 }
 
 impl Command {
@@ -66,7 +68,7 @@ impl Command {
             | C::DropItemAt { unit, .. }
             | C::GiveItemTo { unit, .. } => Some(*unit),
             C::Build { worker, .. } => Some(*worker),
-            C::Train { building, .. } | C::Research { building, .. } | C::Upgrade { building, .. } | C::CancelLast { building } => Some(*building),
+            C::Train { building, .. } | C::Research { building, .. } | C::Upgrade { building, .. } | C::CancelLast { building } | C::CancelQueue { building, .. } => Some(*building),
             C::LearnSkill { hero, .. } => Some(*hero),
             C::StartRevive { altar, .. } => Some(*altar),
             _ => None,

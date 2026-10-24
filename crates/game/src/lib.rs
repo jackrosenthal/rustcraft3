@@ -603,6 +603,10 @@ impl Game {
                 self.world.cancel_last(building);
                 O::Done
             }
+            C::CancelQueue { building, slot } => {
+                self.world.cancel_queue_at(building, slot);
+                O::Done
+            }
             C::LearnSkill { hero, id } => O::Flag(self.world.learn_skill(hero, id)),
             C::BuyItem { player, shop, id } => res(self.buy_item(player, shop, id)),
             C::HireUnit { player, shop, id } => res(self.hire_unit(player, shop, id)),

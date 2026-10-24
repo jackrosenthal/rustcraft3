@@ -161,10 +161,14 @@ impl World {
         let mut sources: Vec<(u8, f32, f32, f32, u8, bool, u16)> = Vec::new();
         for &h in &self.unit_order {
             let Some(u) = self.unit(h) else { continue };
-            if u.dead || u.hidden && u.inside == 0 {
+            let Some(o) = self.objects.units.get(u.type_id) else { continue };
+            // A dead unit sees on while its death plays (measured: a footman, death
+            // 3.04, still shows its owner 1100 away 2.5 seconds after dying and not at
+            // 3.0; a grunt, 1.75, at 1.6 and not at 1.9).
+            let dying = u.dead && !u.extra.exploded && self.time - u.death_time < o.real("death");
+            if (u.dead && !dying) || u.hidden && u.inside == 0 {
                 continue;
             }
-            let Some(o) = self.objects.units.get(u.type_id) else { continue };
             let r = if day || self.ultravision(u) { o.real("sight") } else { o.real("nsight") };
             if r <= 0.0 {
                 continue;

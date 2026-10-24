@@ -51,10 +51,6 @@ fn quest_get(w: &World, h: u32) -> Option<&Quest> {
     }
 }
 
-fn opaque(w: &mut World, kind: &'static str) -> w3_jass::NativeResult {
-    handle(w.handles.insert(Obj::Opaque(kind.to_string())))
-}
-
 fn fog_modifier(w: &mut World, player: u8, state: i32, shape: FogShape, shared: bool, after_units: bool) -> w3_jass::NativeResult {
     handle(w.handles.insert(Obj::FogModifier(FogModifier { player, state, shape, shared, after_units, active: false })))
 }
@@ -507,7 +503,15 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         FlashQuestDialogButton => |w, _, _| { w.quest_flash = true; none() },
         ForceQuestDialogUpdate => |_, _, _| none(),
-        CreateTrackable => |w, _, _| opaque(w, "trackable"),
+        // A trackable: its model standing at a point, which the mouse hits and tracks
+        // (TriggerRegisterTrackableHitEvent, ...TrackEvent).
+        CreateTrackable => |w, _, a| {
+            let (x, y) = (a.r(1), a.r(2));
+            let z = w.ground_z(x, y);
+            let h = w.handles.insert(Obj::Effect(crate::types::Effect { model: a.s(0), x, y, z, target: None, destroyed: false, facing: a.r(3) }));
+            w.trackables.push(h);
+            handle(h)
+        },
         Preload => |_, _, _| none(),
         PreloadEnd => |_, _, _| none(),
         PreloadStart => |_, _, _| none(),

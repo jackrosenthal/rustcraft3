@@ -619,6 +619,12 @@ impl Game {
                 self.set_selection(player, &units);
                 O::Done
             }
+            C::Trackable { player, trackable, hit } => {
+                let event = if hit { event_ids::EVENT_GAME_TRACKABLE_HIT } else { event_ids::EVENT_GAME_TRACKABLE_TRACK };
+                let ctx = types::EventCtx { player, has_player: true, trackable, event_id: event, ..Default::default() };
+                self.world.fire(&mut self.vm, ctx, move |_, k| matches!(k, types::EventKind::Trackable { trackable: t, hit: h } if *t == trackable && *h == hit));
+                O::Done
+            }
             // A player opened the hero skill menu or the build menu: the game events
             // EVENT_GAME_SHOW_SKILL and EVENT_GAME_BUILD_SUBMENU.
             C::Submenu { build, .. } => {

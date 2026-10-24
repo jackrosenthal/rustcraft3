@@ -243,6 +243,9 @@ pub struct World {
     /// Effects destroyed by script, with the time they were destroyed; the presentation
     /// layer plays their death animation before the handle is freed.
     pub dying_effects: Vec<(u32, f32)>,
+    /// Trackables (CreateTrackable), as the effects that show them.
+    #[serde(default)]
+    pub trackables: Vec<u32>,
     pub pathing: Option<crate::pathing::PathingMap>,
     pub missiles: Vec<crate::sim::Missile>,
     /// The last missile id given.
@@ -476,6 +479,7 @@ impl World {
             destructable_order: Vec::new(),
             item_order: Vec::new(),
             dying_effects: Vec::new(),
+            trackables: Vec::new(),
             pathing: None,
             missiles: Vec::new(),
             missile_serial: 0,

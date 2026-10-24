@@ -296,6 +296,8 @@ pub struct Scene {
     chat_dialog_requested: bool,
     /// The minimap's signal button was pressed: the next click signals there.
     signaling: bool,
+    /// The trackable the mouse is on.
+    tracked: Option<u32>,
     options_fill: bool,
     /// Structures' and destructables' shadows stamped into the terrain.
     shadows: crate::shadows::Shadows,
@@ -658,7 +660,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1987,6 +1989,11 @@ impl Scene {
         if self.over_console(sx, sy, size) {
             return true;
         }
+        // A click on a trackable hits it (EVENT_GAME_TRACKABLE_HIT).
+        if let (Some(t), Some(g)) = (self.trackable_at(sx, sy, size), self.game.as_mut()) {
+            let player = g.world.local_player;
+            g.apply(w3_game::replay::Command::Trackable { player, trackable: t, hit: true });
+        }
         // A held item is handed to the unit clicked, or dropped where the ground is.
         if let Some((u, slot)) = self.held_item.take() {
             let target = self.pick_unit(sx, sy, size).filter(|&t| t != u);
@@ -2375,8 +2382,39 @@ impl Scene {
         }
     }
 
+    /// The trackable under a screen point: the nearest whose model's bounds, projected,
+    /// hold it.
+    fn trackable_at(&self, sx: f32, sy: f32, size: (u32, u32)) -> Option<u32> {
+        let g = self.game.as_ref()?;
+        if self.over_console(sx, sy, size) {
+            return None;
+        }
+        let mut best: Option<(f32, u32)> = None;
+        for &h in &g.world.trackables {
+            let Some(v) = self.effects.get(&h) else { continue };
+            let c = v.inst.transform.w_axis.truncate();
+            let r = v.inst.model.mdx.extent.radius.max(16.0);
+            let (Some((px, py)), Some((ex, ey))) = (self.project(c, size), self.project(c + Vec3::Z * r, size)) else { continue };
+            let screen_r = (ex - px).hypot(ey - py);
+            let d = (sx - px).hypot(sy - py);
+            if d <= screen_r && best.is_none_or(|b| d < b.0) {
+                best = Some((d, h));
+            }
+        }
+        best.map(|b| b.1)
+    }
+
     pub fn hover(&mut self, sx: f32, sy: f32, size: (u32, u32)) {
         self.cursor = (sx, sy);
+        // Moving onto a trackable tracks it (EVENT_GAME_TRACKABLE_TRACK).
+        let tracked = self.trackable_at(sx, sy, size);
+        if tracked != self.tracked {
+            self.tracked = tracked;
+            if let (Some(t), Some(g)) = (tracked, self.game.as_mut()) {
+                let player = g.world.local_player;
+                g.apply(w3_game::replay::Command::Trackable { player, trackable: t, hit: false });
+            }
+        }
         let p = self.to_ui(sx, sy, size);
         if let Some(h) = self.hud.as_mut() {
             h.pointer = p;

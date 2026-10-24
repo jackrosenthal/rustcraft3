@@ -37,6 +37,8 @@ pub enum Command {
     Chat { player: u8, text: String, to: u8 },
     /// A network game's player left.
     PlayerLeft { player: u8 },
+    /// A player's mouse hit (clicked) or tracked (moved onto) a trackable.
+    Trackable { player: u8, trackable: u32, hit: bool },
     /// A player opened the build menu (or the hero skill menu).
     Submenu { player: u8, build: bool },
     /// A player's minimap signal to their allies (CNetCommandAllyPing, 5 seconds).
@@ -81,6 +83,7 @@ impl Command {
             | C::Chat { player, .. }
             | C::PlayerLeft { player }
             | C::Submenu { player, .. }
+            | C::Trackable { player, .. }
             | C::Signal { player, .. }
             | C::Alliance { player, .. }
             | C::Trade { player, .. } => Some(*player),

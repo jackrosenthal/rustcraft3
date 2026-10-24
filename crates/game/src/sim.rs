@@ -1064,13 +1064,13 @@ impl World {
                         set_anim(u, "stand");
                     }
                 }
-                // Handing an item over: within DropItemRange of the target, into its
-                // inventory (or onto the ground beside it when it has no room).
+                // Handing an item over: within GiveItemRange of the target (FUN_6f54efe0),
+                // into its inventory (or onto the ground beside it when it has no room).
                 Action::GiveItem { item, target } => {
                     // A shop that buys items (Purchase Item, Apit) takes it for gold within
                     // PawnItemRange (CAbilityPurchaseItem).
                     let pawn = self.ability_with_code(target, "Apit").is_some() && self.unit(target).is_some_and(|t| t.owner == self.unit(h).map_or(0, |u| u.owner) || t.owner >= crate::types::PLAYER_NEUTRAL_AGGRESSIVE);
-                    let range = if pawn { self.misc_f32("PawnItemRange", 300.0) } else { self.misc_f32("DropItemRange", 100.0) };
+                    let range = if pawn { self.misc_f32("PawnItemRange", 300.0) } else { self.misc_f32("GiveItemRange", 150.0) };
                     let Some((tx, ty)) = self.unit(target).filter(|t| !t.dead).map(|t| (t.x, t.y)) else {
                         self.unit_mut(h).unwrap().action = Action::Idle;
                         continue;

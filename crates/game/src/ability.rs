@@ -652,6 +652,8 @@ impl World {
         let reduction = self.unit(target).map_or(0.0, |u| u.item_bonus.spell_reduction).clamp(0.0, 1.0);
         let dmg = self.illusion_damage(source, target, self.elunes_grace(target, "spells", amount * mult * ethereal)) * (1.0 - reduction);
         let owner = t.owner;
+        // A spell shows its caster to the target's owner (FUN_6f67fde0).
+        self.reveal_attacker(source, target, 0.0);
         self.wake(target);
         let linked_dead = self.take_life(target, dmg);
         let dead = self.unit(target).is_some_and(|t| t.life <= 0.405);

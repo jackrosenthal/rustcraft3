@@ -858,6 +858,11 @@ impl World {
         let dmg = self.elunes_grace(target, &attack_type.to_ascii_lowercase(), dmg);
         let dmg = self.illusion_damage(source, target, dmg);
         let dmg = self.god_damage(source, target, dmg);
+        // An attack shows the attacker to its victim's owner within its range.
+        let range = self.unit(source).and_then(|u| u.swing.as_ref().and_then(|s| weapon_numbered(self, u, s.weapon)).or_else(|| weapon(self, u.type_id))).map_or(0.0, |w| w.range);
+        if attack_type != "spells" {
+            self.reveal_attacker(source, target, range + 1.0);
+        }
         let Some(t) = self.unit(target) else { return };
         let owner = t.owner;
         self.wake(target);

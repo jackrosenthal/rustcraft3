@@ -283,6 +283,9 @@ pub struct World {
     pub next_formation: u32,
     /// EnableWorldFogBoundary.
     pub fog_boundary: bool,
+    /// Attackers shown to their victims' owners for a moment (fog.rs).
+    #[serde(default)]
+    pub fog_flashes: Vec<crate::fog::FogFlash>,
     /// PlayModelCinematic.
     pub model_cinematic: Option<String>,
     /// Running terrain deformations (deform.rs).
@@ -600,6 +603,7 @@ impl World {
             formations: HashMap::default(),
             next_formation: 1,
             fog_boundary: true,
+            fog_flashes: Vec::new(),
             model_cinematic: None,
             deformations: Vec::new(),
             deform_clock: 0,

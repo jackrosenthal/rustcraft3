@@ -30,6 +30,18 @@ pub struct FogModifier {
     pub active: bool,
 }
 
+/// A unit that struck an enemy which could not see it, shown to the enemy's owner for
+/// a moment (FUN_6f67fc70): where it stood, how far around, and until when.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct FogFlash {
+    pub unit: u32,
+    pub players: u16,
+    pub x: f32,
+    pub y: f32,
+    pub radius: f32,
+    pub until: f32,
+}
+
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct FogMap {
     pub width: usize,
@@ -286,6 +298,21 @@ impl World {
                 }
             }
         }
+        // Attackers seen for striking from the fog.
+        let now = self.time;
+        self.fog_flashes.retain(|f| f.until > now);
+        if let Some(fog) = self.fog.as_mut() {
+            for f in &self.fog_flashes {
+                let mut cells = Vec::new();
+                fog.circle(f.x, f.y, f.radius, |cx, cy| cells.push(cy * w + cx));
+                for p in (0..PLAYER_COUNT).filter(|&p| f.players & (1 << p) != 0) {
+                    for &c in &cells {
+                        fog.visible[p][c] = true;
+                        fog.explored[p][c] = true;
+                    }
+                }
+            }
+        }
         // Observers see the whole map.
         let observers: Vec<usize> = (0..PLAYER_COUNT).filter(|&p| self.players.get(p).is_some_and(|pl| pl.get_state(crate::types::player_state::OBSERVER) != 0)).collect();
         if let Some(fog) = self.fog.as_mut() {
@@ -293,6 +320,26 @@ impl World {
                 fog.visible[p].iter_mut().for_each(|v| *v = true);
                 fog.explored[p].iter_mut().for_each(|v| *v = true);
             }
+        }
+    }
+
+    /// Shows an attacker to the owner of the enemy it struck, around where it stands, for
+    /// FogFlashTime: at least FoggedAttackRevealRadius around it, or `radius` (an
+    /// attack's range) when more (FUN_6f67fde0, FUN_6f67fc70).
+    pub fn reveal_attacker(&mut self, attacker: u32, victim: u32, radius: f32) {
+        let (Some(a), Some(v)) = (self.unit(attacker), self.unit(victim)) else { return };
+        if a.owner == v.owner || v.dead || v.hidden || crate::natives::players::is_ally(self, v.owner, a.owner) {
+            return;
+        }
+        let (x, y, player) = (a.x, a.y, v.owner as usize % PLAYER_COUNT);
+        let radius = self.misc_f32("FoggedAttackRevealRadius", 200.0).max(radius);
+        let until = self.time + self.misc_f32("FogFlashTime", 3.0);
+        match self.fog_flashes.iter_mut().find(|f| f.unit == attacker) {
+            Some(f) => {
+                f.players |= 1 << player;
+                (f.x, f.y, f.radius, f.until) = (x, y, radius, until);
+            }
+            None => self.fog_flashes.push(FogFlash { unit: attacker, players: 1 << player, x, y, radius, until }),
         }
     }
 

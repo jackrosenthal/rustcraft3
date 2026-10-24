@@ -288,6 +288,8 @@ pub struct Scene {
     pub net: Option<crate::net::Session>,
     /// The players the host waits on, and whether the host is silent.
     net_waiting: (Vec<u8>, bool),
+    /// The Allies button was pressed; the dialog opens with the next interface update.
+    alliance_requested: bool,
     options_fill: bool,
     /// Structures' and destructables' shadows stamped into the terrain.
     shadows: crate::shadows::Shadows,
@@ -646,7 +648,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false) };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1726,6 +1728,24 @@ impl Scene {
             }
             return true;
         }
+        // The Allies dialog takes every click while it is open.
+        if let Some(d) = self.hud.as_mut().and_then(|h| h.alliance.as_mut()) {
+            let shift = self.shift_held;
+            match d.click(ux, uy, true, shift) {
+                Some(crate::alliance::Event::Accept(sends)) => {
+                    if let Some(g) = self.game.as_mut() {
+                        let local = g.world.local_player;
+                        for (other, gold, lumber) in sends {
+                            g.apply(w3_game::replay::Command::Trade { player: local, other, gold, lumber });
+                        }
+                    }
+                    self.hud.as_mut().unwrap().alliance = None;
+                }
+                Some(crate::alliance::Event::Cancel) => self.hud.as_mut().unwrap().alliance = None,
+                None => {}
+            }
+            return true;
+        }
         // The game menu takes every click while it is open.
         if let Some(p) = self.hud.as_mut().and_then(|h| h.save_panel.as_mut()) {
             if p.click(ux, uy) {
@@ -1768,6 +1788,12 @@ impl Scene {
             if let Some(i) = h.tree.control_at(ux, uy) {
                 if h.tree.frames[i].name == "UpperButtonBarMenuButton" {
                     self.open_menu(size);
+                    return true;
+                }
+                if h.tree.frames[i].name == "UpperButtonBarAlliesButton" && h.tree.frames[i].enabled {
+                    if h.alliance.take().is_none() {
+                        self.alliance_requested = true;
+                    }
                     return true;
                 }
                 if h.tree.frames[i].name == "UpperButtonBarQuestsButton" && h.tree.frames[i].enabled {
@@ -2352,6 +2378,12 @@ impl Scene {
             return;
         }
         let (ux, uy) = self.to_ui(sx, sy, size);
+        // A right click in the Allies dialog takes an amount away.
+        let shift = self.shift_held;
+        if let Some(d) = self.hud.as_mut().and_then(|h| h.alliance.as_mut()) {
+            d.click(ux, uy, false, shift);
+            return;
+        }
         // A right-click on an item picks it up to move.
         if let Some(slot) = self.hud.as_ref().and_then(|h| h.inventory_at(ux, uy)) {
             if let (Some(&u), Some(g)) = (self.selection.first(), self.game.as_ref()) {
@@ -3123,6 +3155,9 @@ impl Scene {
         let (Some(hud), Some(g)) = (self.hud.as_mut(), self.game.as_ref()) else { return };
         hud.update(db, &g.world);
         hud.sync_dialog(db, &g.world, g.world.local_player, aspect);
+        if std::mem::take(&mut self.alliance_requested) {
+            hud.alliance = crate::alliance::AllianceDialog::new(db, &g.world, aspect);
+        }
         // The waiting dialogs of a network game.
         let (lagging, silent) = &self.net_waiting;
         if self.net.is_none() {

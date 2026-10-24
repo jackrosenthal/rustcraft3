@@ -100,6 +100,14 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("left click consumed: {consumed}");
                 i += 3;
             }
+            // allies: opens the Allies dialog, to look at.
+            "allies" => {
+                let aspect = w as f32 / h as f32;
+                if let (Some(hud), Some(g)) = (scene.hud.as_mut(), scene.game.as_ref()) {
+                    hud.alliance = war3::alliance::AllianceDialog::new(&assets.frames, &g.world, aspect);
+                }
+                i += 1;
+            }
             // netdialog: shows the host's waiting dialog for player 2, to look at.
             "netdialog" => {
                 let aspect = w as f32 / h as f32;

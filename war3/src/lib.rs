@@ -1,5 +1,6 @@
 //! Warcraft III: Reign of Chaos and The Frozen Throne, ported to Rust.
 
+pub mod alliance;
 pub mod app;
 pub mod boards;
 pub mod campaign;

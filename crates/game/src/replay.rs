@@ -36,6 +36,8 @@ pub enum Command {
     Chat { player: u8, text: String },
     /// A network game's player left.
     PlayerLeft { player: u8 },
+    /// A player sends another gold and lumber (CNetCommandTeamTradeResources).
+    Trade { player: u8, other: u8, gold: i32, lumber: i32 },
 }
 
 /// What a command answered: an interface error to show, or whether a chat line is shown

@@ -178,6 +178,8 @@ pub struct Hud {
     pub replay: Option<crate::replaypanel::ReplayPanel>,
     /// A network game's waiting dialog, while it waits.
     pub net_dialog: Option<crate::netdialog::NetDialog>,
+    /// The Allies dialog, while open.
+    pub alliance: Option<crate::alliance::AllianceDialog>,
     gold: Option<usize>,
     lumber: Option<usize>,
     supply: Option<usize>,
@@ -318,6 +320,7 @@ impl Hud {
             page: crate::card::Page::Main,
             replay: None,
             net_dialog: None,
+            alliance: None,
             gold: tree.get("ResourceBarGoldText"),
             lumber: tree.get("ResourceBarLumberText"),
             supply: tree.get("ResourceBarSupplyText"),
@@ -1050,7 +1053,7 @@ impl Hud {
         // original).
         let menu = self.menu.is_some();
         self.tree.set_enabled("UpperButtonBarMenuButton", !menu);
-        self.tree.set_enabled("UpperButtonBarAlliesButton", false);
+        self.tree.set_enabled("UpperButtonBarAlliesButton", world.network && !menu);
         self.tree.set_enabled("UpperButtonBarQuestsButton", !menu && !world.quests.is_empty());
         self.tree.set_enabled("UpperButtonBarChatButton", !menu);
         if let Some(f) = self.tree.get("UpperButtonBarChatButton") {
@@ -1484,6 +1487,9 @@ impl Hud {
         }
         if let Some(d) = &self.dialog {
             out.extend(d.tree.draw(db));
+        }
+        if let Some(d) = &self.alliance {
+            d.draws(db, &mut out);
         }
         if let Some(d) = &self.net_dialog {
             d.draws(db, &mut out);

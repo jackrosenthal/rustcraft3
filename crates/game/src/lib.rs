@@ -599,6 +599,20 @@ impl Game {
                 self.player_event(player, event_ids::EVENT_PLAYER_LEAVE);
                 O::Done
             }
+            // Resources sent to another player, as much as the sender has.
+            C::Trade { player, other, gold, lumber } => {
+                use types::player_state::{RESOURCE_GOLD, RESOURCE_LUMBER};
+                let n = self.world.players.len();
+                if (player as usize) < n && (other as usize) < n && player != other {
+                    for (state, amount) in [(RESOURCE_GOLD, gold), (RESOURCE_LUMBER, lumber)] {
+                        let have = self.world.players[player as usize].get_state(state);
+                        let v = amount.clamp(0, have.max(0));
+                        *self.world.players[player as usize].state.entry(state).or_insert(0) -= v;
+                        *self.world.players[other as usize].state.entry(state).or_insert(0) += v;
+                    }
+                }
+                O::Done
+            }
             C::PlayerEvent { player, event } => {
                 self.player_event(player, event);
                 O::Done

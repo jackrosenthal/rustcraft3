@@ -2111,9 +2111,7 @@ impl Scene {
                     return true;
                 }
                 if h.tree.frames[i].name == "UpperButtonBarAlliesButton" && h.tree.frames[i].enabled {
-                    if h.alliance.take().is_none() {
-                        self.alliance_requested = true;
-                    }
+                    self.toggle_allies();
                     return true;
                 }
                 if h.tree.frames[i].name == "UpperButtonBarQuestsButton" && h.tree.frames[i].enabled {
@@ -2427,6 +2425,15 @@ impl Scene {
     /// Opens the game menu (F10) on the next frame.
     pub fn open_menu(&mut self, _size: (u32, u32)) {
         self.menu_requested = true;
+    }
+
+    /// The Allies button and F11: opens the Allies dialog, or closes it.
+    pub fn toggle_allies(&mut self) {
+        let Some(h) = self.hud.as_mut() else { return };
+        let enabled = h.tree.get("UpperButtonBarAlliesButton").is_some_and(|i| h.tree.frames[i].enabled);
+        if h.alliance.take().is_none() && enabled {
+            self.alliance_requested = true;
+        }
     }
 
     /// Opens the message log (F12) on the next frame; in a network game the chat dialog.

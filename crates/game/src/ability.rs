@@ -164,6 +164,10 @@ impl World {
     pub fn ability_level(&self, h: u32, id: Id) -> u32 {
         let Some(u) = self.unit(h) else { return 0 };
         let base = u.abilities.iter().find(|(a, _)| *a == id).map_or(0, |a| a.1.max(0) as u32);
+        // An item's ability is its holder's, at level 1.
+        if base == 0 && u.inventory.iter().any(|&it| it != 0 && self.item(it).is_some_and(|i| self.item_abilities(i.type_id).contains(&id))) {
+            return 1;
+        }
         // An ability whose research is not done does nothing yet.
         if base > 0 && !self.ability_enabled(u.owner, id) {
             return 0;
@@ -884,6 +888,11 @@ impl World {
                 self.spawn_effect(&target_art, goal.0, goal.1);
             }
             self.ability_effect(vm, h, a, lvl, target, goal);
+            if let Some(item) = self.unit_mut(h).and_then(|u| u.extra.casting_item.take()) {
+                if let Some(type_id) = self.item(item).map(|i| i.type_id) {
+                    self.spend_item_use(vm, h, item, type_id);
+                }
+            }
             return;
         }
         let u = self.unit_mut(h).unwrap();

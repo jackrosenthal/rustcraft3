@@ -176,8 +176,14 @@ impl World {
                 }
                 crate::natives::units::remove_unit(self, h);
             }
-            // Cyclone: lifted, helpless and untouchable, for Dur.
-            "Acyc" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, stun: true, invulnerable: true, ..Default::default() }),
+            // Cyclone: lifted, helpless and untouchable, for Dur, under the second of its
+            // buffs (measured: a footman cycloned by a druid or a Wand of the Wind has
+            // Bcy2, not Bcyc).
+            "Acyc" => {
+                let ids = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", lvl)).unwrap_or_default();
+                let id = ids.split(',').nth(1).map(|b| crate::objects::id_from_str(b.trim())).unwrap_or(buff);
+                self.apply_buff(target, Buff { id, ability: a, level: lvl, caster: h, remaining: dur, stun: true, invulnerable: true, ..Default::default() })
+            }
             // Roar: DataA more damage for allies within Area.
             "Aroa" => {
                 let (cx, cy) = self.unit(h).map(|u| (u.x, u.y)).unwrap_or((x, y));

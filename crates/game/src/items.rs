@@ -182,9 +182,38 @@ impl World {
         if !usable {
             return false;
         }
+        // An item's spell aimed at a unit or point is cast as the holder's own, and
+        // its charge is spent when it takes effect (measured: a Wand of the Wind used
+        // on a footman goes from 3 charges to 2 and the footman is cycloned).
+        if target != 0 || x != 0.0 || y != 0.0 {
+            let cast = self.item_abilities(type_id).into_iter().find(|&a| !matches!(self.targeting(a), crate::ability::Targeting::None | crate::ability::Targeting::Passive));
+            if let Some(a) = cast {
+                if target != 0 {
+                    if let Some(e) = self.cast_target_error(unit, a, target) {
+                        self.order_error = Some(e);
+                        return false;
+                    }
+                }
+                if let Some(u) = self.unit_mut(unit) {
+                    u.action = Action::Cast { ability: a, target, x, y };
+                    u.casting = None;
+                    u.swing = None;
+                    u.path.clear();
+                    u.extra.casting_item = Some(item);
+                }
+                return true;
+            }
+        }
         if !self.item_effect(vm, unit, item, type_id, target, x, y) {
             return false;
         }
+        self.spend_item_use(vm, unit, item, type_id);
+        true
+    }
+
+    /// An item's use is spent: its use events, and a charge, the item going when a
+    /// perishable one has none left.
+    pub(crate) fn spend_item_use(&mut self, vm: &mut Vm, unit: u32, item: u32, type_id: Id) {
         let ctx = EventCtx { item, ..Default::default() };
         self.fire_unit_pair(vm, unit, EVENT_PLAYER_UNIT_USE_ITEM, EVENT_UNIT_USE_ITEM, ctx);
         // Charged items spend one; perishable ones vanish when out.
@@ -197,7 +226,6 @@ impl World {
                 }
             }
         }
-        true
     }
 
     /// What an item's abilities do when used (or picked up, for powerups).  Returns

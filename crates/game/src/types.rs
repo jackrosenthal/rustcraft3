@@ -239,6 +239,9 @@ pub struct Unit {
 /// Unit settings scripts change.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct UnitExtra {
+    /// The item whose spell is being cast, spent when it takes effect.
+    #[serde(default)]
+    pub casting_item: Option<u32>,
     /// Maximum life gained for good (a Manual of Health).
     #[serde(default)]
     pub permanent_life: f32,
@@ -460,6 +463,7 @@ impl Default for UnitExtra {
     fn default() -> Self {
         UnitExtra {
             aura_clock: None,
+            casting_item: None,
             permanent_life: 0.0,
             cooldown_speed: None,
             construction_damage: 0.0,

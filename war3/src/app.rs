@@ -28,6 +28,8 @@ struct Running {
     pending: Option<(std::path::PathBuf, Option<Vec<w3_game::LobbySlot>>, Option<w3_game::save::SaveGame>)>,
     /// A replay to watch on the pending map.
     pending_replay: Option<w3_game::replay::Replay>,
+    /// The glue cinematic's scene sound.
+    scene_sound: Option<u64>,
     /// The network game the pending map is for.
     pending_net: Option<(crate::net::Role, u8)>,
     /// A loaded campaign mission waiting for a key on its loading screen.
@@ -140,6 +142,7 @@ impl App {
             glue_saved: None,
             pending: None,
             pending_replay: None,
+            scene_sound: None,
             pending_net: None,
             ready: None,
             audio,
@@ -378,6 +381,9 @@ impl ApplicationHandler for App {
                     // The game's profile changes (campaign progress, saved caches) are kept.
                     let change = scene.change_level.take();
                     let mut scene_score = scene.final_score.take();
+                    // A model cinematic the level asked for plays first (PlayModelCinematic,
+                    // FUN_6f1e05a0), then what follows.
+                    let cinematic = if scene.ended || change.is_some() { scene.game.as_mut().and_then(|g| g.world.model_cinematic.take()) } else { None };
                     if scene.ended || change.is_some() {
                         if let Some(g) = scene.game.as_ref() {
                             *self.data.persist.borrow_mut() = g.world.persist.clone();
@@ -386,6 +392,22 @@ impl ApplicationHandler for App {
                         if let Some(replay) = scene.take_replay() {
                             crate::replays::keep(&replay);
                         }
+                    }
+                    if let Some(path) = cinematic {
+                        let mut audio = scene.audio.take();
+                        if let Some(a) = audio.as_mut() {
+                            a.stop_music();
+                        }
+                        r.audio = audio;
+                        r.scene = None;
+                        r.glue = r.glue_saved.take();
+                        if r.glue.is_none() {
+                            r.glue = Some(crate::glue::Glue::new(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets));
+                        }
+                        if let Some(glue) = r.glue.as_mut() {
+                            glue.play_cinematic(path, scene_score.take(), change, &mut r.assets);
+                        }
+                        return;
                     }
                     if let Some(map) = change {
                         // ChangeLevel: the next mission's loading screen, then the mission.
@@ -446,6 +468,14 @@ impl ApplicationHandler for App {
                     if let Some(a) = r.audio.as_mut() {
                         let (sound, music) = glue.options.volumes();
                         a.set_volumes(sound, music);
+                        if std::mem::take(&mut glue.stop_scene_sound) {
+                            if let Some(id) = r.scene_sound.take() {
+                                a.stop(id);
+                            }
+                        }
+                        for label in glue.sounds.drain(..) {
+                            r.scene_sound = a.play_label(&label, None);
+                        }
                         a.update([0.0; 3]);
                     }
                     match glue.action.take() {

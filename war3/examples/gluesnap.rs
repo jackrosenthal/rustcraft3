@@ -85,6 +85,11 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // cinematic <model>: plays a model cinematic (PlayModelCinematic).
+            "cinematic" => {
+                glue.play_cinematic(a[i + 1].clone(), None, None, &mut assets);
+                i += 2;
+            }
             "move" => {
                 glue.pointer_move(a[i + 1].parse()?, a[i + 2].parse()?, (w, h));
                 i += 3;

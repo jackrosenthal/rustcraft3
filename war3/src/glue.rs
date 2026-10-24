@@ -55,6 +55,8 @@ pub enum Screen {
     LanJoin,
     LanCreate,
     LanLobby,
+    /// CModelCinematic: a model played as a cinematic after a level (PlayModelCinematic).
+    ModelCinematic,
 }
 
 impl Screen {
@@ -75,7 +77,7 @@ impl Screen {
             Screen::LanJoin => "BattlenetCustom",
             Screen::LanCreate => "BattlenetCustomCreate",
             Screen::LanLobby => "MultiplayerPreGameChat",
-            Screen::Loading | Screen::Score => "",
+            Screen::Loading | Screen::Score | Screen::ModelCinematic => "",
         }
     }
 
@@ -95,6 +97,7 @@ impl Screen {
             Screen::LanJoin => "LocalMultiplayerJoin",
             Screen::LanCreate => "LocalMultiplayerCreate",
             Screen::LanLobby => "GameChatroom",
+            Screen::ModelCinematic => "",
         }
     }
 }
@@ -179,7 +182,28 @@ pub struct Glue {
     pub lan: crate::lan::Lan,
     /// A network game's players (name and race) for its loading screen.
     lan_players: Option<Vec<(String, usize)>>,
+    /// A model cinematic playing, or waiting for its model to load.
+    cinematic: Option<Cinematic>,
+    /// Sound labels the glue asks the application to play.
+    pub sounds: Vec<String>,
+    /// Stop the cinematic scene's sound (a new scene, or the cinematic's end).
+    pub stop_scene_sound: bool,
+    /// UI\MiscData.txt, for a cinematic's fog and sounds.
+    misc: w3_formats::profile::Profile,
     version: crate::data::Version,
+}
+
+/// A model cinematic (CModelCinematic, FUN_6f30b790): its sequences in order, each
+/// through the camera of the same number, the glue's background put aside; fog from
+/// UI\MiscData.txt [<name>ZFog]; [<name>Sounds] SceneN as sequence N begins
+/// (FUN_6f306950); letterboxed 0.11875 above and below (FUN_6f305170).  A key or a
+/// click ends it, as does its last sequence; then what the level's end asked for.
+struct Cinematic {
+    path: String,
+    loaded: bool,
+    sequence: usize,
+    /// The score screen and the next level after it, or nothing (back to the menus).
+    after: (Option<crate::scorescreen::ScoreData>, Option<String>),
 }
 
 /// What a glue message's Yes (or OK) does.
@@ -257,6 +281,10 @@ impl Glue {
             save_replay: Default::default(),
             lan,
             lan_players: None,
+            cinematic: None,
+            sounds: Vec::new(),
+            stop_scene_sound: false,
+            misc: data.misc.clone(),
             version: data.version,
         };
         g.build(Screen::MainMenu, assets);
@@ -295,7 +323,7 @@ impl Glue {
         self.tree = FrameTree::new(4.0 / 3.0);
         self.sprites.clear();
         let db = &assets.frames;
-        if self.tree.create(db, screen.frame(), 0).is_none() {
+        if !screen.frame().is_empty() && self.tree.create(db, screen.frame(), 0).is_none() {
             log::warn!("glue frame {} is not defined", screen.frame());
         }
         match screen {
@@ -369,7 +397,7 @@ impl Glue {
                 self.options = crate::options::Options::load();
                 crate::options::menu::fill(&mut self.tree, &assets.frames, &self.options, self.display);
             }
-            Screen::Loading => {}
+            Screen::Loading | Screen::ModelCinematic => {}
             Screen::Score => {
                 // Save Replay keeps the game just played (Replay\LastReplay.w3g).
                 let last = crate::replays::last_replay().is_some_and(|p| p.is_file());
@@ -382,6 +410,56 @@ impl Glue {
         self.tree.bind_points();
         self.tree.fit_text_widths();
         self.tree.layout();
+    }
+
+    /// Plays a model cinematic, then shows `score` (going on to `next`), starts `next`,
+    /// or goes back to the menus.
+    pub fn play_cinematic(&mut self, path: String, score: Option<crate::scorescreen::ScoreData>, next: Option<String>, assets: &mut Assets) {
+        self.cinematic = Some(Cinematic { path, loaded: false, sequence: 0, after: (score, next) });
+        self.build(Screen::ModelCinematic, assets);
+        self.phase = Phase::Stand;
+    }
+
+    /// The cinematic's name in UI\MiscData.txt's sections: its file name.
+    fn cinematic_name(path: &str) -> String {
+        let file = path.rsplit(['\\', '/']).next().unwrap_or(path);
+        file.rsplit_once('.').map_or(file, |(n, _)| n).to_string()
+    }
+
+    /// Starts sequence `k` with its camera and its scene sound.
+    fn cinematic_sequence(&mut self, k: usize) {
+        let Some(c) = self.cinematic.as_mut() else { return };
+        c.sequence = k;
+        let name = Self::cinematic_name(&c.path);
+        if let Some(b) = self.background.as_mut() {
+            b.sequence = Some(k);
+            b.frame = 0.0;
+            b.finished = false;
+            b.looped = false;
+        }
+        if let Some(label) = self.misc.get_str(&format!("{name}Sounds"), &format!("Scene{k}")) {
+            self.stop_scene_sound = true;
+            self.sounds.push(label.trim().trim_matches('"').to_string());
+        }
+    }
+
+    /// The cinematic is over: the glue's background back, then what follows.
+    fn end_cinematic(&mut self, assets: &mut Assets) {
+        let Some(c) = self.cinematic.take() else { return };
+        self.stop_scene_sound = true;
+        if let Some((b, fog)) = self.saved_background.take() {
+            self.background = b;
+            self.fog = fog;
+        }
+        match c.after {
+            (Some(score), next) => self.show_score(score, next, assets),
+            (None, Some(map)) => self.action = Some(GlueAction::Campaign(map)),
+            (None, None) => {
+                self.build(Screen::MainMenu, assets);
+                self.play_layers(&format!("{} Birth", Screen::MainMenu.token()));
+                self.phase = Phase::Birth;
+            }
+        }
     }
 
     /// Shows the score screen for a finished game; OK goes on to `next` (a ChangeLevel
@@ -622,6 +700,10 @@ impl Glue {
     }
 
     pub fn pointer_down(&mut self, assets: &mut Assets) -> bool {
+        if self.cinematic.is_some() {
+            self.end_cinematic(assets);
+            return true;
+        }
         let (x, y) = self.pointer;
         if self.tree.pointer_down(x, y).is_some() {
             return true;
@@ -781,6 +863,12 @@ impl Glue {
 
     /// A key press: control shortcut keys and Escape for Cancel.
     pub fn key(&mut self, c: char, assets: &mut Assets) {
+        if self.cinematic.is_some() {
+            if c == '\u{1b}' || c == ' ' || c == '\r' {
+                self.end_cinematic(assets);
+            }
+            return;
+        }
         if self.screen == Screen::Score && self.save_replay.open {
             if let Some(crate::savereplay::Event::Saved) = self.save_replay.key(c, &mut self.tree) {
                 self.replay_saved();
@@ -1009,6 +1097,18 @@ impl Glue {
             self.skirmish.rebuild = false;
             self.build(Screen::Skirmish, assets);
         }
+        // A model cinematic goes from sequence to sequence, and ends after the last.
+        if let Some(c) = self.cinematic.as_ref().filter(|c| c.loaded) {
+            let k = c.sequence;
+            let (done, count) = self.background.as_ref().map_or((true, 0), |b| (b.finished || b.looped, b.model.mdx.sequences.len()));
+            if done {
+                if k + 1 < count {
+                    self.cinematic_sequence(k + 1);
+                } else {
+                    self.end_cinematic(assets);
+                }
+            }
+        }
         // The local network: games found, and the lobby's messages.
         if matches!(self.screen, Screen::LanJoin | Screen::LanLobby) {
             if let Some(e) = self.lan.update(&mut self.tree, &assets.frames) {
@@ -1044,7 +1144,9 @@ impl Glue {
     /// The background model's camera at its current time: eye, target, roll, and fov.
     fn background_camera(&self) -> Option<(Vec3, Vec3, f32, f32, f32, f32)> {
         let b = self.background.as_ref()?;
-        let cam = b.model.mdx.cameras.first()?;
+        // A cinematic's sequence N is seen through its camera N.
+        let k = self.cinematic.as_ref().map_or(0, |c| c.sequence);
+        let cam = b.model.mdx.cameras.get(k).or(b.model.mdx.cameras.first())?;
         let time = b.time();
         let globals = &b.model.mdx.global_sequences;
         let t = w3_render::anim::sample(cam.tracks.vec3(b"KCTR"), &time, globals, [0.0; 3]);
@@ -1081,15 +1183,36 @@ impl Glue {
                     self.fog = (start, end, color);
                 }
             }
-        } else if self.screen != Screen::Campaign {
+        } else if self.screen != Screen::Campaign && self.screen != Screen::ModelCinematic {
             if let Some((b, fog)) = self.saved_background.take() {
                 self.background = b;
                 self.fog = fog;
             }
         }
+        // A model cinematic's model takes the background's place once it loads, with its
+        // fog.
+        if let Some(path) = self.cinematic.as_ref().filter(|c| !c.loaded).map(|c| c.path.clone()) {
+            let name = Self::cinematic_name(&path);
+            if let Some(m) = assets.model(device, queue, &path) {
+                let inst = ModelInstance::new(m);
+                let section = format!("{name}ZFog");
+                let num = |k: &str| self.misc.get_str(&section, k).and_then(|v| v.trim().parse::<f32>().ok());
+                let color: Vec<f32> = self.misc.get_list(&section, "Color").iter().filter_map(|v| v.trim().parse().ok()).collect();
+                let fog = match (num("Start"), num("End")) {
+                    (Some(s), Some(e)) if color.len() == 4 => (s, e, [color[1] / 255.0, color[2] / 255.0, color[3] / 255.0, color[0] / 255.0]),
+                    _ => (0.0, 0.0, [0.0; 4]),
+                };
+                self.saved_background = Some((self.background.replace(inst), self.fog));
+                self.fog = fog;
+            }
+            if let Some(c) = self.cinematic.as_mut() {
+                c.loaded = true;
+            }
+            self.cinematic_sequence(0);
+        }
         // Background through the model's camera.
         let mut bg_globals = None;
-        let loading = matches!(self.screen, Screen::Loading | Screen::Score);
+        let loading = matches!(self.screen, Screen::Loading | Screen::Score) || (self.screen == Screen::ModelCinematic && self.cinematic.is_none());
         if let Some((eye, target, roll, fov, near, far)) = self.background_camera().filter(|_| !loading) {
             let fwd = (target - eye).normalize_or_zero();
             let up = Quat::from_axis_angle(fwd, roll) * Vec3::Z;
@@ -1171,7 +1294,8 @@ impl Glue {
         let sprites = self.tree.sprites();
         // The panel layers cover the glue root with their origin at its lower left.
         let campaign = self.screen == Screen::Campaign && self.phase != Phase::Death(Screen::SinglePlayer);
-        for l in self.layers.iter_mut().filter(|_| !loading && !campaign) {
+        let cinematic = self.screen == Screen::ModelCinematic;
+        for l in self.layers.iter_mut().filter(|_| !loading && !campaign && !cinematic) {
             l.transform = Mat4::IDENTITY;
             self.sprite_renderer.submit(l, Vec3::new(0.0, 0.0, 50.0), Quat::IDENTITY);
         }
@@ -1284,6 +1408,13 @@ impl Glue {
         let mut draws: Vec<Draw> = if self.phase == Phase::Stand { self.tree.draw(&assets.frames) } else { Vec::new() };
         if self.screen == Screen::MainMenu && self.phase == Phase::Stand {
             draws.push(self.version_text(assets));
+        }
+        // A cinematic's black bars, 0.11875 above and below.
+        if self.screen == Screen::ModelCinematic {
+            let w = self.tree.width.max(w3_ui::UI_WIDTH);
+            for (y0, y1) in [(0.0, 0.11875), (w3_ui::UI_HEIGHT - 0.11875, w3_ui::UI_HEIGHT)] {
+                draws.push(Draw::Image { texture: String::new(), rect: w3_ui::Rect { x0: -1.0, x1: w + 1.0, y0, y1 }, uv: [0.0, 0.0, 1.0, 1.0], color: [0.0, 0.0, 0.0, 1.0], blend: w3_ui::Blend::Alpha, rotated: false });
+            }
         }
         if self.screen == Screen::Loading {
             if let Some(r) = self.tree.get("MinimapImage").filter(|&i| self.tree.is_visible(i)).and_then(|i| self.tree.frames[i].rect) {

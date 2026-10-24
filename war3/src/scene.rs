@@ -4321,7 +4321,7 @@ impl Scene {
         hud.card = self.selection.first().map_or_else(Vec::new, |&h| card_of(&self.commands, db, w, h, page));
         hud.show_group(&g.world, &self.selection);
         hud.sync_cinematic(db, &g.world, aspect);
-        hud.sync_heroes(&g.world);
+        hud.sync_heroes(db, &g.world);
         hud.sync_idle_workers(&g.world);
         crate::boards::sync(&mut hud.boards, db, &g.world, &self.team_rgb, aspect);
     }

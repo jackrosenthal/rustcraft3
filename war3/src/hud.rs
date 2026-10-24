@@ -162,6 +162,8 @@ pub struct Hud {
     /// CHeroBar: the local player's heroes (unit, icon, life and mana fractions, and
     /// whether it has skill points to spend).
     pub heroes: Vec<(u32, String, f32, Option<f32>, bool)>,
+    /// Each hero button's tooltip.
+    hero_tips: Vec<crate::card::Button>,
     /// When each hero's button began to flash for an attack (FUN_6f3b0920).
     pub hero_flash: std::collections::HashMap<u32, f32>,
     /// CPeonBar: the local player's idle workers, and the last one its button chose
@@ -364,6 +366,7 @@ impl Hud {
             hover_tips: Vec::new(),
             tooltips: true,
             info_tips: Vec::new(),
+            hero_tips: Vec::new(),
             level_bar: None,
             buff_icons: None,
             building,
@@ -969,8 +972,30 @@ impl Hud {
         out.push(Draw::Text { font: db.decorate("MasterFont"), size, rect: t, text: n.to_string(), color: [1.0; 4], justify_h: w3_ui::Justify::Middle, justify_v: w3_ui::Justify::Middle, shadow: None });
     }
 
-    /// Follows the local player's heroes for the hero bar, in the order they came.
-    pub fn sync_heroes(&mut self, world: &World) {
+    /// Follows the local player's heroes for the hero bar, in the order they came, and
+    /// their buttons' tooltips (FUN_6f3c6e90): the hero's name with its key, F1 to F5,
+    /// and its level, or "Dead" and "Revive at Altar".
+    pub fn sync_heroes(&mut self, db: &FrameDb, world: &World) {
+        let replay = self.replay.is_some();
+        self.hero_tips = world
+            .unit_order
+            .iter()
+            .filter_map(|&h| world.unit(h))
+            .filter(|u| u.is_hero && u.owner == world.local_player && !u.hidden)
+            .take(7)
+            .enumerate()
+            .map(|(k, u)| {
+                let name = u.proper_name.clone();
+                let key = |k: usize| format!("{name} (|cfffed312F{}|r)", k + 1);
+                let level = format!("{} {}", db.string("LEVEL"), u.level);
+                match (u.dead, replay) {
+                    (true, false) => crate::card::Button::text_only(format!("{name} (|cfffed312{}|r)", db.string("DEAD")), db.string("REVIVE_AT_ALTAR")),
+                    (true, true) => crate::card::Button::text_only(name.clone(), level),
+                    (false, _) if k <= 4 => crate::card::Button::text_only(key(k), level),
+                    (false, _) => crate::card::Button::text_only(name.clone(), level),
+                }
+            })
+            .collect();
         self.heroes = world
             .unit_order
             .iter()
@@ -1985,6 +2010,9 @@ impl Hud {
         }
         if tip.is_none() {
             tip = self.hover_tips.iter().find(|(r, _)| r.contains(self.pointer.0, self.pointer.1)).map(|(_, b)| b.clone());
+        }
+        if tip.is_none() {
+            tip = (0..self.hero_tips.len()).find(|&k| self.hero_button_rect(k).contains(self.pointer.0, self.pointer.1)).map(|k| self.hero_tips[k].clone());
         }
         if tip.is_none() && self.info.is_some_and(|i| self.tree.frames[i].visible) {
             tip = self.info_tips.iter().find(|(f, _)| self.tree.get(f).is_some_and(|f| self.tree.frames[f].visible && self.tree.frames[f].rect.is_some_and(|r| r.contains(self.pointer.0, self.pointer.1)))).map(|(_, b)| b.clone());

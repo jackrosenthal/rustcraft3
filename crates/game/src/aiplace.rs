@@ -323,7 +323,7 @@ impl World {
     }
 
     fn walk_to(&self, from: (f32, f32), to: (f32, f32), radius: f32) -> f32 {
-        self.prof_time("walk_to", || self.walk_to_inner(from, to, radius))
+        self.prof_time("walk_to", || self.ai_walk(1, from, to, radius, || self.walk_to_inner(from, to, radius)))
     }
 
     fn walk_to_inner(&self, from: (f32, f32), to: (f32, f32), radius: f32) -> f32 {

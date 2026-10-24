@@ -270,6 +270,11 @@ pub struct World {
     /// W3PROF time spent finding targets (from `&self` code).
     #[serde(skip)]
     pub prof_find: std::cell::Cell<f64>,
+    /// The AI's walking distances by their question (FUN_6f9baa40's and the
+    /// expansions' path lengths), with the game time each was found: kept 30 seconds
+    /// whatever the map does, as every computer asks the same at the same times.
+    #[serde(skip)]
+    pub ai_walks: std::cell::RefCell<HashMap<[u32; 6], (f32, f32)>>,
     /// W3PROF times measured from `&self` code.
     #[serde(skip)]
     pub prof_cells: std::cell::RefCell<HashMap<&'static str, f64>>,
@@ -514,6 +519,7 @@ impl World {
             profile: None,
             prof_find: Default::default(),
             prof_cells: Default::default(),
+            ai_walks: Default::default(),
             lightning_data: None,
             saves_dir: None,
             order_error: None,
@@ -915,6 +921,24 @@ impl World {
         }
         mix(self.rng.state());
         h
+    }
+
+    /// An AI walking distance, remembered for 30 game seconds.
+    pub(crate) fn ai_walk(&self, kind: u32, from: (f32, f32), to: (f32, f32), radius: f32, f: impl FnOnce() -> f32) -> f32 {
+        let key = [kind, from.0.to_bits(), from.1.to_bits(), to.0.to_bits(), to.1.to_bits(), radius.to_bits()];
+        if let Some(&(at, len)) = self.ai_walks.borrow().get(&key) {
+            if self.time - at < 30.0 {
+                return len;
+            }
+        }
+        let len = f();
+        let mut walks = self.ai_walks.borrow_mut();
+        if walks.len() > 20000 {
+            let now = self.time;
+            walks.retain(|_, v| now - v.0 < 30.0);
+        }
+        walks.insert(key, (self.time, len));
+        len
     }
 
     /// Runs `f`, adding its time to a W3PROF entry when profiling.

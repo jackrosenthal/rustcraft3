@@ -132,7 +132,12 @@ impl World {
     /// The length of the ground path from `from` to `to`; infinite when the path ends
     /// short of it (more than a cell and the unit's reach away).
     fn walk_length(&self, from: (f32, f32), to: (f32, f32), radius: f32) -> f32 {
-        self.prof_time("walk_length", || self.walk_length_inner(from, to, radius))
+        // Asked between cell centers, so a creep shifting within its cell asks the same.
+        let (from, to) = match &self.pathing {
+            Some(map) => (map.center(map.cell_of(from.0, from.1)), map.center(map.cell_of(to.0, to.1))),
+            None => (from, to),
+        };
+        self.prof_time("walk_length", || self.ai_walk(0, from, to, radius, || self.walk_length_inner(from, to, radius)))
     }
 
     fn walk_length_inner(&self, from: (f32, f32), to: (f32, f32), radius: f32) -> f32 {

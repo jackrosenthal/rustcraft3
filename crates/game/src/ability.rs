@@ -326,6 +326,26 @@ impl World {
         self.has_buff_flag(h, |b| b.ethereal)
     }
 
+    /// The factor on damage of an attack type to an ethereal unit: its entry in
+    /// EtherealDamageBonus (NORMAL, PIERCE, SIEGE, MAGIC, CHAOS, SPELLS, HERO), applied
+    /// to damage from an enemy, or from anyone under EtherealDamageBonusAlly
+    /// (FUN_6f69b380).  1 for a unit that is not ethereal.
+    pub fn ethereal_factor(&self, source: u32, target: u32, attack_type: &str) -> f32 {
+        if !self.is_ethereal(target) {
+            return 1.0;
+        }
+        const TYPES: [&str; 7] = ["normal", "pierce", "siege", "magic", "chaos", "spells", "hero"];
+        let Some(i) = TYPES.iter().position(|t| t.eq_ignore_ascii_case(attack_type)) else { return 1.0 };
+        let enemy = match (self.unit(source), self.unit(target)) {
+            (Some(s), Some(t)) => !crate::natives::players::is_ally(self, t.owner, s.owner),
+            _ => true,
+        };
+        if !enemy && self.misc_f32("EtherealDamageBonusAlly", 0.0) == 0.0 {
+            return 1.0;
+        }
+        self.misc.get_list("Misc", "EtherealDamageBonus").get(i).and_then(|v| v.trim().parse().ok()).unwrap_or(1.0)
+    }
+
     /// Damage wakes sleeping units.
     pub fn wake(&mut self, h: u32) {
         if let Some(u) = self.unit_mut(h) {
@@ -628,8 +648,7 @@ impl World {
         let def_type = self.defense_type(t);
         let col = crate::upgrades::DEFENSE_TYPES.iter().position(|c| *c == def_type).unwrap_or(7);
         let mult: f32 = self.misc.get_list("Misc", "DamageBonusSpells").get(col).and_then(|v| v.trim().parse().ok()).unwrap_or(1.0);
-        // Ethereal units take EtherealDamageBonus's SPELLS factor.
-        let ethereal: f32 = if self.is_ethereal(target) { self.misc.get_list("Misc", "EtherealDamageBonus").get(5).and_then(|v| v.trim().parse().ok()).unwrap_or(1.0) } else { 1.0 };
+        let ethereal = self.ethereal_factor(source, target, "spells");
         let reduction = self.unit(target).map_or(0.0, |u| u.item_bonus.spell_reduction).clamp(0.0, 1.0);
         let dmg = self.illusion_damage(source, target, self.elunes_grace(target, "spells", amount * mult * ethereal)) * (1.0 - reduction);
         let owner = t.owner;

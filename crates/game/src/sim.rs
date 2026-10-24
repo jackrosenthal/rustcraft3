@@ -809,8 +809,10 @@ impl World {
         if t.dead || self.unit_invulnerable(t) || self.buff_mods(target).5 {
             return;
         }
-        // Ethereal units take no physical damage (EtherealDamageBonus: magic 1.66).
-        if self.is_ethereal(target) && !attack_type.eq_ignore_ascii_case("magic") {
+        // Ethereal units take EtherealDamageBonus's factor: none from physical attacks,
+        // 1.66 from magic ones.
+        let ethereal = self.ethereal_factor(source, target, attack_type);
+        if ethereal <= 0.0 {
             return;
         }
         if self.evades(target) {
@@ -840,7 +842,7 @@ impl World {
                 taken *= p;
             }
         }
-        let raw = raw * taken;
+        let raw = raw * taken * ethereal;
         let mut raw = self.on_attack_passives(source, target, raw * self.buff_mods(source).3) + self.buff_damage_bonus(source);
         // Wind Walk: the first strike adds its backstab damage and ends the invisibility.
         if let Some(u) = self.unit_mut(source) {

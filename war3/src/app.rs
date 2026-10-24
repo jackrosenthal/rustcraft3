@@ -44,6 +44,8 @@ struct Running {
     cursor: PhysicalPosition<f64>,
     /// Whether the system cursor is hidden for the game's own.
     cursor_hidden: bool,
+    /// Screen captures (Print Screen).
+    capture: crate::screenshot::Capture,
 }
 
 impl Running {
@@ -153,7 +155,7 @@ impl App {
             last: Instant::now(),
             keys: HashSet::new(),
             cursor: PhysicalPosition::new(0.0, 0.0),
-            cursor_hidden: false,
+            cursor_hidden: false, capture: Default::default(),
         });
         Ok(())
     }
@@ -202,6 +204,9 @@ impl ApplicationHandler for App {
                         if let Some(scene) = r.scene.as_mut() {
                             scene.toggle_allies();
                         }
+                    }
+                    if event.physical_key == PhysicalKey::Code(KeyCode::PrintScreen) {
+                        r.capture.requested = true;
                     }
                     if event.physical_key == PhysicalKey::Code(KeyCode::F12) {
                         if let Some(scene) = r.scene.as_mut() {
@@ -623,9 +628,12 @@ impl ApplicationHandler for App {
                         None => {}
                     }
                 }
+                let overlay: Vec<w3_ui::Draw> = r.capture.overlay(&r.assets.frames).into_iter().collect();
                 if let Some(glue) = r.glue.as_mut() {
+                    glue.overlay = overlay;
                     glue.render(&r.gpu.device, &r.gpu.queue, &mut enc, &view, &r.gpu.depth, size, &mut r.assets);
                 } else if let Some(scene) = r.scene.as_mut() {
+                    scene.overlay = overlay;
                     scene.render(&r.gpu.device, &r.gpu.queue, &mut enc, &view, &r.gpu.depth, size, &mut r.assets);
                 } else {
                     enc.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -642,7 +650,40 @@ impl ApplicationHandler for App {
                         ..Default::default()
                     });
                 }
+                // A requested capture copies the frame out before it is shown.
+                let capture = std::mem::take(&mut r.capture.requested).then(|| {
+                    let (w, h) = size;
+                    let stride = (w * 4).div_ceil(256) * 256;
+                    let buf = r.gpu.device.create_buffer(&wgpu::BufferDescriptor { label: Some("capture"), size: (stride * h) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+                    let ok = r.gpu.config.usage.contains(wgpu::TextureUsages::COPY_SRC);
+                    if ok {
+                        enc.copy_texture_to_buffer(
+                            frame.texture.as_image_copy(),
+                            wgpu::TexelCopyBufferInfo { buffer: &buf, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(stride), rows_per_image: Some(h) } },
+                            wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+                        );
+                    }
+                    (buf, stride, ok)
+                });
                 r.gpu.queue.submit([enc.finish()]);
+                if let Some((buf, stride, ok)) = capture {
+                    let (w, h) = size;
+                    let bgra = matches!(r.gpu.config.format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
+                    let pixels = ok
+                        .then(|| {
+                            buf.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+                            r.gpu.device.poll(wgpu::PollType::wait_indefinitely()).ok()?;
+                            let data = buf.slice(..).get_mapped_range().ok()?;
+                            let mut px = Vec::with_capacity((w * h * 4) as usize);
+                            for row in 0..h {
+                                let s = (row * stride) as usize;
+                                px.extend_from_slice(&data[s..s + (w * 4) as usize]);
+                            }
+                            Some(px)
+                        })
+                        .flatten();
+                    r.capture.save(&r.assets.frames, pixels.as_deref(), w, h, bgra);
+                }
                 r.window.pre_present_notify();
                 r.gpu.queue.present(frame);
             }

@@ -50,8 +50,10 @@ impl Gpu {
         } else {
             wgpu::PresentMode::AutoNoVsync
         };
+        // Copying out lets a frame be saved (screen captures).
+        let copy = caps.usages.contains(wgpu::TextureUsages::COPY_SRC);
         let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage: if copy { wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC } else { wgpu::TextureUsages::RENDER_ATTACHMENT },
             format,
             color_space: wgpu::SurfaceColorSpace::Auto,
             width: width.max(1),

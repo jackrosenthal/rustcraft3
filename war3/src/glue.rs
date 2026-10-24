@@ -132,6 +132,8 @@ enum Phase {
 }
 
 pub struct Glue {
+    /// Drawn over the menus (the screen capture's message).
+    pub overlay: Vec<w3_ui::Draw>,
     pub screen: Screen,
     pub tree: FrameTree,
     phase: Phase,
@@ -257,6 +259,7 @@ impl Glue {
         skirmish.player_name = profile.name().unwrap_or(local);
         let lan = crate::lan::Lan::new(&data.dir, skirmish.player_name.clone());
         let mut g = Glue {
+            overlay: Vec::new(),
             screen: Screen::MainMenu,
             tree: FrameTree::new(4.0 / 3.0),
             phase: Phase::Birth,
@@ -1491,6 +1494,7 @@ impl Glue {
             depth_stencil_attachment: None,
             ..Default::default()
         });
+        draws.extend(std::mem::take(&mut self.overlay));
         self.ui.render(device, queue, &mut assets.textures, &mut pass, &draws, self.tree.width, size);
         drop(pass);
         // The cursor's Normal sequence at the pointer, over everything.

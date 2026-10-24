@@ -13,6 +13,7 @@ pub mod glue;
 pub mod skirmish;
 pub mod hud;
 pub mod scene;
+pub mod screenshot;
 pub mod weather;
 pub mod lan;
 pub mod lightning;

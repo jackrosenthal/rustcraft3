@@ -194,8 +194,13 @@ impl Commands {
         let (items, units) = w.shop_goods(h);
         let has_shopper = w.shopper(local, h).is_some() || w.unit(h).is_some_and(|u| u.owner == local);
         let mut out = Vec::new();
+        // Without a buyer near: "Requires: - Nearby Patron", and no price
+        // (CAbilitySellItem::vf166, FUN_6f416b60).
+        let patron_note = format!("{}\n - {}", db.string("REQUIRESTOOLTIP"), db.string("REQUIRESNEARPATRON"));
         let stock_note = |id: Id| -> String {
-            if w.stock_count(h, id) > 0 {
+            if !has_shopper {
+                patron_note.clone()
+            } else if w.stock_count(h, id) > 0 {
                 String::new()
             } else if w.stock_arriving(h, id) {
                 db.string("COOLDOWNSTOCKTOOLTIP")
@@ -208,7 +213,7 @@ impl Commands {
             let Some(o) = w.objects.items.get(id) else { continue };
             let Some((x, y)) = parse_pos(&o.list("Buttonpos")) else { continue };
             let ok = has_shopper && stock > 0;
-            let costs = [0, o.int("goldcost"), o.int("lumbercost"), 0];
+            let costs = if has_shopper { [0, o.int("goldcost"), o.int("lumbercost"), 0] } else { [0; 4] };
             let mut b = Button::new(x, y, o.str("Art"), hotkey(&o.str("Hotkey")), Action::Buy(id), ok).with_tip(o.str("Tip"), fill_placeholders(w, &o.str("Ubertip")), costs);
             b.requires = stock_note(id);
             out.push(b);
@@ -218,7 +223,13 @@ impl Commands {
             let Some(o) = w.objects.units.get(id) else { continue };
             let Some((x, y)) = parse_pos(&o.list("Buttonpos")) else { continue };
             let ok = has_shopper && stock > 0;
-            let costs = if w.hero_token_pays(local, id) { [0, 0, 0, o.int("fused")] } else { [0, o.int("goldcost"), o.int("lumbercost"), o.int("fused")] };
+            let costs = if !has_shopper {
+                [0; 4]
+            } else if w.hero_token_pays(local, id) {
+                [0, 0, 0, o.int("fused")]
+            } else {
+                [0, o.int("goldcost"), o.int("lumbercost"), o.int("fused")]
+            };
             let mut b = Button::new(x, y, o.str("Art"), hotkey(&o.str("Hotkey")), Action::Hire(id), ok).with_tip(o.str("Tip"), fill_placeholders(w, &o.str("Ubertip")), costs);
             b.requires = stock_note(id);
             // Its requirements, at the hero level for heroes (REQUIRESTOOLTIP).

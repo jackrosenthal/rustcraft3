@@ -291,6 +291,25 @@ impl World {
                 // Scroll of Town Portal: the hero and up to DataA friends within Area go to
                 // the target structure.
                 "AItp" => {
+                    // Aimed at a point it goes to the town hall nearest it: the owner's,
+                    // else an ally's (FUN_6f40d3d0).
+                    let mut _target = _target;
+                    if _target == 0 && (_x != 0.0 || _y != 0.0) {
+                        let hall = |w: &World, mine: bool| {
+                            w.unit_order
+                                .iter()
+                                .copied()
+                                .filter(|&t| w.unit(t).is_some_and(|u| !u.dead && u.constructing.is_none() && w.is_town_hall(u) && if mine { u.owner == owner } else { u.owner != owner && crate::natives::players::is_ally(w, owner, u.owner) }))
+                                .min_by(|&a, &b| {
+                                    let d = |t: u32| w.unit(t).map_or(f32::MAX, |u| (u.x - _x).hypot(u.y - _y));
+                                    d(a).total_cmp(&d(b))
+                                })
+                        };
+                        match hall(self, true).or_else(|| hall(self, false)) {
+                            Some(t) => _target = t,
+                            None => continue,
+                        }
+                    }
                     let Some((tx, ty)) = self.widget_pos(_target).or_else(|| (_x != 0.0 || _y != 0.0).then_some((_x, _y))) else { continue };
                     let (ux, uy) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
                     let n = data(self, "DataA") as usize;

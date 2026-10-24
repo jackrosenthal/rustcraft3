@@ -851,6 +851,7 @@ impl Scene {
         };
         let name = strip_color_codes(&w.localized(&name));
         let text = format!("{}{name}", self.completed_prefix);
+        log::info!("[alert] {text} ({sound})");
         if let Some(h) = self.hud.as_mut() {
             h.error(&text);
         }

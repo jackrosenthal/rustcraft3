@@ -13,7 +13,8 @@ fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     let mut a: Vec<String> = std::env::args().collect();
     let (w, h): (u32, u32) = (a[2].parse()?, a[3].parse()?);
-    let data = GameData::open(Path::new(&a[1]), false)?;
+    // W3CLASSIC=1 opens Reign of Chaos.
+    let data = GameData::open(Path::new(&a[1]), std::env::var("W3CLASSIC").is_ok_and(|v| v == "1"))?;
     let mut desc = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
     desc.backends = wgpu::Backends::PRIMARY.with_env();
     let instance = wgpu::Instance::new(desc);

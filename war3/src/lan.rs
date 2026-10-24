@@ -519,7 +519,7 @@ impl Lan {
                         _ => 0,
                     };
                     tree.set_items(&name_menu, items, sel);
-                    tree.set_enabled(&name_menu, host);
+                    tree.set_enabled(&name_menu, host && !self.setup.saved);
                 }
             }
             tree.set_selected(&format!("RaceMenu{scope}"), s.race);
@@ -566,10 +566,11 @@ impl Lan {
         let me = self.me;
         let host = self.is_host();
         let mut move_to = None;
+        let saved = self.setup.saved;
         let Some(s) = self.setup.slots.get_mut(k) else { return };
         let mine = s.holder == Holder::Human(me) || (host && matches!(s.holder, Holder::Computer(_)));
         match part {
-            "NameMenu" if host && !matches!(s.holder, Holder::Human(_)) => {
+            "NameMenu" if host && !saved && !matches!(s.holder, Holder::Human(_)) => {
                 s.holder = match chosen {
                     0 => Holder::Open,
                     1 => Holder::Closed,

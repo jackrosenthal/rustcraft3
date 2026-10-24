@@ -11,7 +11,7 @@ use war3::scene::Assets;
 
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
-    let a: Vec<String> = std::env::args().collect();
+    let mut a: Vec<String> = std::env::args().collect();
     let (w, h): (u32, u32) = (a[2].parse()?, a[3].parse()?);
     let data = GameData::open(Path::new(&a[1]), false)?;
     let mut desc = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
@@ -56,6 +56,22 @@ fn main() -> anyhow::Result<()> {
                     std::thread::sleep(std::time::Duration::from_millis(20));
                 }
                 i += 2;
+            }
+            // press <frame>: clicks the middle of a named frame.
+            "press" => {
+                let rect = glue.tree.get(&a[i + 1]).and_then(|f| glue.tree.frames[f].rect);
+                match rect {
+                    Some(r) => {
+                        let (ux, uy) = ((r.x0 + r.x1) / 2.0, (r.y0 + r.y1) / 2.0);
+                        let (px, py) = (ux / glue.tree.width * w as f32, (1.0 - uy / w3_ui::UI_HEIGHT) * h as f32);
+                        a.splice(i..i + 2, ["click".to_string(), px.to_string(), py.to_string()]);
+                        continue;
+                    }
+                    None => {
+                        eprintln!("no frame {}", a[i + 1]);
+                        i += 2;
+                    }
+                }
             }
             "click" => {
                 glue.pointer_move(a[i + 1].parse()?, a[i + 2].parse()?, (w, h));

@@ -145,7 +145,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         let lit = mix(mix(masked, fogged, clamp(v / 0.5, 0.0, 1.0)), c.rgb, clamp(v * 2.0 - 1.0, 0.0, 1.0));
         c = vec4<f32>(lit, c.a);
     }
-    if (globals.fog.z > 0.0) {
+    if (globals.fog.z > 0.0 && (draw.flags & 32u) == 0u) {
         let d = distance(in.world, globals.camera_pos.xyz);
         let f = fog_amount(d);
         var fc = globals.fog_color.rgb;

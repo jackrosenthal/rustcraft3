@@ -318,6 +318,8 @@ const FLAG_FOG_BLACK: u32 = 4;
 const FLAG_FOG_WHITE: u32 = 8;
 /// Additive layers add their color, faded by the layer's alpha (not the texture's).
 const FLAG_ADDITIVE: u32 = 16;
+/// A layer the distance fog leaves alone (shading Unfogged, 0x20).
+const FLAG_UNFOGGED: u32 = 32;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -654,6 +656,9 @@ impl ModelRenderer {
                 let mut flags = 0;
                 if layer.shading & shading::UNSHADED != 0 {
                     flags |= FLAG_UNSHADED;
+                }
+                if layer.shading & shading::UNFOGGED != 0 {
+                    flags |= FLAG_UNFOGGED;
                 }
                 if layer.filter_mode == filter::TRANSPARENT {
                     flags |= FLAG_ALPHA_TEST;

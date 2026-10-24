@@ -610,3 +610,28 @@ fn choose_team(setup: &mut net::Setup, holder: Holder, team: i32) {
     old_slot.holder = Holder::Open;
     old_slot.name.clear();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn slot(player: u8, holder: Holder, team: i32) -> NetSlot {
+        NetSlot { player, holder, name: if let Holder::Human(_) = holder { format!("p{player}") } else { String::new() }, race: 1, team, color: player as i32, handicap: 0 }
+    }
+
+    #[test]
+    fn a_player_moves_to_the_observers_and_back() {
+        let mut setup = net::Setup { slots: vec![slot(0, Holder::Human(0), 0), slot(1, Holder::Human(5), 1), slot(2, Holder::Open, OBSERVERS), slot(3, Holder::Open, OBSERVERS)], ..Default::default() };
+        choose_team(&mut setup, Holder::Human(5), OBSERVERS);
+        assert_eq!(setup.slots[1].holder, Holder::Open);
+        assert_eq!(setup.slots[2].holder, Holder::Human(5));
+        assert_eq!(setup.slots[2].name, "p1");
+        // Back to the first open player's slot.
+        choose_team(&mut setup, Holder::Human(5), 0);
+        assert_eq!(setup.slots[1].holder, Holder::Human(5));
+        assert_eq!(setup.slots[2].holder, Holder::Open);
+        // A team change among the map's teams stays in the slot.
+        choose_team(&mut setup, Holder::Human(0), 1);
+        assert_eq!(setup.slots[0].team, 1);
+    }
+}

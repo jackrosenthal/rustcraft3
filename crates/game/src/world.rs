@@ -265,6 +265,9 @@ pub struct World {
     /// W3PROF timings by subsystem.
     #[serde(skip)]
     pub profile: Option<HashMap<&'static str, f64>>,
+    /// W3PROF time spent finding targets (from `&self` code).
+    #[serde(skip)]
+    pub prof_find: std::cell::Cell<f64>,
     pub destructable_order: Vec<u32>,
     pub item_order: Vec<u32>,
     /// Effects destroyed by script, with the time they were destroyed; the presentation
@@ -504,6 +507,7 @@ impl World {
             autocast_timer: 0.0,
             sentinels: Vec::new(),
             profile: None,
+            prof_find: Default::default(),
             lightning_data: None,
             saves_dir: None,
             order_error: None,
@@ -854,17 +858,18 @@ impl World {
     fn update_rescue(&mut self) {
         const ALLIANCE_RESCUABLE: usize = 8;
         let mut rescued = Vec::new();
+        // Each owner's rescuers by alliance, and the units that could rescue.
+        let masks: Vec<u16> = (0..self.players.len()).map(|o| (0..PLAYER_COUNT).filter(|&p| self.players[o].alliances[p][ALLIANCE_RESCUABLE]).fold(0, |m, p| m | 1 << p)).collect();
+        let mut rescuers: Option<Vec<(u32, u8, f32, f32, f32)>> = None;
         for &h in &self.unit_order {
             let Some(u) = self.unit(h).filter(|u| !u.dead) else { continue };
-            let by_alliance: u16 = (0..PLAYER_COUNT).filter(|&p| self.players.get(u.owner as usize).is_some_and(|o| o.alliances[p][ALLIANCE_RESCUABLE])).fold(0, |m, p| m | 1 << p);
-            let by = u.extra.rescuable_by | by_alliance;
+            let by = u.extra.rescuable_by | masks.get(u.owner as usize).copied().unwrap_or(0);
             if by == 0 {
                 continue;
             }
             let range = if u.extra.rescue_range > 0.0 { u.extra.rescue_range } else { 384.0 };
-            let rescuer = self.unit_order.iter().copied().find(|&r| {
-                self.unit(r).is_some_and(|ru| !ru.dead && !ru.hidden && ru.owner != u.owner && by & (1 << ru.owner) != 0 && (ru.x - u.x).hypot(ru.y - u.y) <= range + u.collision + ru.collision)
-            });
+            let all = rescuers.get_or_insert_with(|| self.unit_order.iter().filter_map(|&r| self.unit(r).filter(|ru| !ru.dead && !ru.hidden).map(|ru| (r, ru.owner, ru.x, ru.y, ru.collision))).collect());
+            let rescuer = all.iter().find(|&&(_, o, x, y, c)| o != u.owner && by & (1 << o) != 0 && (x - u.x).hypot(y - u.y) <= range + u.collision + c).map(|r| r.0);
             if let Some(r) = rescuer {
                 rescued.push((h, r));
             }
@@ -912,10 +917,17 @@ impl World {
             self.profile = Some(HashMap::default());
         }
         if let Some(p) = self.profile.as_mut() {
+            p.insert("find_target", self.prof_find.get());
+            if let Some(pm) = self.pathing.as_ref() {
+                let (calls, expanded, capped) = pm.search_stats();
+                p.insert("searches(k)", calls as f64 / 1000.0);
+                p.insert("expanded(M)", expanded as f64 / 1e6);
+                p.insert("capped(k)", capped as f64 / 1000.0);
+            }
             if (self.time / 5.0).floor() != ((self.time + dt) / 5.0).floor() {
                 let mut v: Vec<(&&str, &f64)> = p.iter().collect();
                 v.sort_by(|a, b| b.1.total_cmp(a.1));
-                eprintln!("profile at {:.0}s: {}", self.time, v.iter().take(8).map(|(k, t)| format!("{k} {:.2}s", t)).collect::<Vec<_>>().join(", "));
+                eprintln!("profile at {:.0}s: {}", self.time, v.iter().take(14).map(|(k, t)| format!("{k} {:.2}s", t)).collect::<Vec<_>>().join(", "));
             }
         }
         self.time += dt;

@@ -512,6 +512,19 @@ impl World {
     }
 
     pub(crate) fn path_to(&mut self, h: u32, goal: (f32, f32)) {
+        let t0 = self.profile.is_some().then(std::time::Instant::now);
+        self.path_to_inner(h, goal);
+        self.prof_add("path_to", t0);
+    }
+
+    /// Adds the time since `t0` to a W3PROF entry.
+    pub(crate) fn prof_add(&mut self, name: &'static str, t0: Option<std::time::Instant>) {
+        if let (Some(t0), Some(p)) = (t0, self.profile.as_mut()) {
+            *p.entry(name).or_insert(0.0) += t0.elapsed().as_secs_f64();
+        }
+    }
+
+    fn path_to_inner(&mut self, h: u32, goal: (f32, f32)) {
         let Some(u) = self.unit(h) else { return };
         let (from, radius) = ((u.x, u.y), u.collision);
         let kind = self.move_kind(h);
@@ -603,6 +616,13 @@ impl World {
     }
 
     pub(crate) fn walk(&mut self, h: u32, dt: f32) -> bool {
+        let t0 = self.profile.is_some().then(std::time::Instant::now);
+        let r = self.walk_inner(h, dt);
+        self.prof_add("walk", t0);
+        r
+    }
+
+    fn walk_inner(&mut self, h: u32, dt: f32) -> bool {
         let Some(u) = self.unit_mut(h) else { return true };
         let Some(&next) = u.path.first() else {
             set_anim(u, "stand");
@@ -667,6 +687,16 @@ impl World {
     }
 
     fn find_target(&self, h: u32, range: f32) -> Option<u32> {
+        if self.profile.is_none() {
+            return self.find_target_inner(h, range);
+        }
+        let t0 = std::time::Instant::now();
+        let r = self.find_target_inner(h, range);
+        self.prof_find.set(self.prof_find.get() + t0.elapsed().as_secs_f64());
+        r
+    }
+
+    fn find_target_inner(&self, h: u32, range: f32) -> Option<u32> {
         let u = self.unit(h)?;
         let weapons = unit_weapons(self, u);
         if weapons.is_empty() {

@@ -43,6 +43,28 @@ pub struct PathingMap {
     pub flags: Vec<u8>,
     /// Count of dynamic blockers per cell (walk-blocking).
     pub blocked: Vec<u16>,
+    /// The search's working arrays, kept between searches.
+    #[serde(skip)]
+    scratch: std::cell::RefCell<Scratch>,
+}
+
+/// A search's costs and parents, valid where `stamp` is the search's `generation`, so
+/// a search need not clear the whole map's worth.
+#[derive(Default)]
+struct Scratch {
+    g: Vec<f32>,
+    parent: Vec<u32>,
+    stamp: Vec<u32>,
+    generation: u32,
+    /// Searches, cells expanded, and searches that gave up (for W3PROF).
+    pub stats: (u64, u64, u64),
+}
+
+impl PathingMap {
+    /// Searches made, cells they expanded, and how many gave up at their limit.
+    pub fn search_stats(&self) -> (u64, u64, u64) {
+        self.scratch.borrow().stats
+    }
 }
 
 impl PathingMap {
@@ -53,7 +75,7 @@ impl PathingMap {
         let w = u32::from_le_bytes(data[8..12].try_into().ok()?);
         let h = u32::from_le_bytes(data[12..16].try_into().ok()?);
         let flags = data.get(16..16 + (w * h) as usize)?.to_vec();
-        Some(PathingMap { width: w, height: h, origin, flags, blocked: vec![0; (w * h) as usize] })
+        Some(PathingMap { width: w, height: h, origin, flags, blocked: vec![0; (w * h) as usize], scratch: Default::default() })
     }
 
     pub fn cell_of(&self, x: f32, y: f32) -> (i32, i32) {
@@ -184,10 +206,49 @@ impl PathingMap {
                 return rest;
             }
         }
-        let goal = self.cell_of(to.0, to.1);
+        // A goal the unit cannot stand on (a tree, a mine, a structure) is sought at the
+        // nearest cell around it that it fits, which a search can reach.
+        let mut goal = self.cell_of(to.0, to.1);
+        if !self.fits_kind(goal, radius, kind) {
+            let mut nearest: Option<((i32, i32), i32)> = None;
+            for r in 1..=24i32 {
+                for dy in -r..=r {
+                    for dx in -r..=r {
+                        if dx.abs() != r && dy.abs() != r {
+                            continue;
+                        }
+                        let c = (goal.0 + dx, goal.1 + dy);
+                        let d = dx * dx + dy * dy;
+                        if nearest.is_none_or(|(_, b)| d < b) && self.index(c).is_some() && self.fits_kind(c, radius, kind) {
+                            nearest = Some((c, d));
+                        }
+                    }
+                }
+                if nearest.is_some_and(|(_, b)| b <= (r * r)) {
+                    break;
+                }
+            }
+            if let Some((c, _)) = nearest {
+                goal = c;
+            }
+        }
         let n = (self.width * self.height) as usize;
-        let mut g = vec![f32::INFINITY; n];
-        let mut parent = vec![u32::MAX; n];
+        let mut scratch = self.scratch.borrow_mut();
+        let sc = &mut *scratch;
+        if sc.stamp.len() != n {
+            sc.g = vec![f32::INFINITY; n];
+            sc.parent = vec![u32::MAX; n];
+            sc.stamp = vec![0; n];
+            sc.generation = 0;
+        }
+        sc.generation = sc.generation.wrapping_add(1);
+        if sc.generation == 0 {
+            sc.stamp.iter_mut().for_each(|s| *s = 0);
+            sc.generation = 1;
+        }
+        let generation = sc.generation;
+        let (g, parent, stamp) = (&mut sc.g, &mut sc.parent, &mut sc.stamp);
+        let cost_of = |stamp: &[u32], g: &[f32], i: usize| if stamp[i] == generation { g[i] } else { f32::INFINITY };
         let Some(si) = self.index(start) else { return vec![] };
         let h = |c: (i32, i32)| {
             let (dx, dy) = ((c.0 - goal.0).abs() as f32, (c.1 - goal.1).abs() as f32);
@@ -208,6 +269,8 @@ impl PathingMap {
         }
         let mut open = BinaryHeap::new();
         g[si] = 0.0;
+        parent[si] = u32::MAX;
+        stamp[si] = generation;
         open.push(Node(h(start), si as u32));
         let mut best = (h(start), si);
         let mut expanded = 0;
@@ -236,13 +299,18 @@ impl PathingMap {
                     continue;
                 }
                 let cost = g[i] + if dx != 0 && dy != 0 { std::f32::consts::SQRT_2 } else { 1.0 };
-                if cost < g[ni] {
+                if cost < cost_of(stamp, g, ni) {
                     g[ni] = cost;
                     parent[ni] = i as u32;
+                    stamp[ni] = generation;
                     open.push(Node(cost + h(nc), ni as u32));
                 }
             }
         }
+        sc.stats.0 += 1;
+        sc.stats.1 += expanded as u64;
+        sc.stats.2 += (expanded > max_nodes) as u64;
+        let parent = &sc.parent;
         // Rebuild and smooth.
         let mut cells = Vec::new();
         let mut i = best.1;

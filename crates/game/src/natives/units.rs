@@ -328,7 +328,17 @@ fn buff_filter(a: &[Value]) -> crate::bufftable::Filter {
 /// DAMAGE_TYPE_NORMAL: 56.7 to a Paladin, 70 otherwise).
 fn script_damage(w: &mut World, vm: &mut Vm, src: u32, target: u32, amount: f32, attack_type: i32, damage_type: i32) {
     const DAMAGE_TYPE_NORMAL: i32 = 4;
+    const ATTACK_TYPE_MAGIC: i32 = 4;
     let physical = damage_type == DAMAGE_TYPE_NORMAL;
+    // Spell immunity turns away magic attacks and these damage types: fire, cold,
+    // lightning, divine, magic, sonic, force, death, mind, plant, defensive, spirit
+    // link, and shadow strike (measured against a Dryad, each type in turn; unknown,
+    // normal, enhanced, poison, disease, acid, demolition, slow poison, and universal
+    // damage it takes).
+    const RESISTED: [i32; 13] = [8, 9, 10, 13, 14, 15, 17, 18, 19, 20, 21, 24, 25];
+    if w.is_magic_immune(target) && w.misc_f32("MagicImmunesResistDamage", 1.0) != 0.0 && (attack_type == ATTACK_TYPE_MAGIC || RESISTED.contains(&damage_type)) {
+        return;
+    }
     if attack_type == 0 && !physical {
         return w.spell_damage(vm, src, target, amount);
     }

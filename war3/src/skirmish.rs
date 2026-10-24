@@ -137,6 +137,8 @@ pub struct Skirmish {
     pub campaign: Option<CampaignSummary>,
     /// The selected replay's players.
     replay_players: Option<usize>,
+    /// The file name of a map asked for that could not be read.
+    unknown_map: Option<String>,
     /// The game setup's advanced options (crate::advanced).
     pub flags: u32,
 }
@@ -183,6 +185,7 @@ impl Skirmish {
             maps_root: game_dir.join("Maps"),
             campaign: None,
             replay_players: None,
+            unknown_map: None,
             flags: crate::advanced::DEFAULT_FLAGS,
         }
     }
@@ -240,6 +243,7 @@ impl Skirmish {
     fn select(&mut self, i: usize) {
         self.selected = Some(i);
         self.summary = None;
+        self.unknown_map = None;
         self.campaign = None;
         let Some(e) = self.entries.get(i) else { return };
         if e.kind == EntryKind::Campaign {
@@ -389,6 +393,7 @@ impl Skirmish {
         self.scroll = 0;
         self.selected = None;
         self.summary = None;
+        self.unknown_map = None;
         if !self.entries.is_empty() {
             self.select(0);
         }
@@ -470,6 +475,7 @@ impl Skirmish {
         self.scroll = 0;
         self.selected = None;
         self.summary = None;
+        self.unknown_map = None;
         if let Some(i) = self.entries.iter().position(|e| e.kind == EntryKind::Replay) {
             self.select(i);
         }
@@ -501,6 +507,7 @@ impl Skirmish {
         self.campaign = None;
         self.replay_players = None;
         self.summary = map.and_then(|p| if p.is_file() { summarize(p, true) } else { self.chain.as_ref().and_then(|c| summarize_from(c, &p.to_string_lossy())) });
+        self.unknown_map = map.filter(|_| self.summary.is_none()).map(|p| p.to_string_lossy().rsplit(['\\', '/']).next().unwrap_or_default().to_string());
         self.preview_dirty = true;
         self.fill_info(tree, db);
     }
@@ -514,6 +521,7 @@ impl Skirmish {
             self.entries.clear();
             self.selected = None;
             self.summary = None;
+            self.unknown_map = None;
             self.campaign = None;
         }
     }
@@ -598,6 +606,15 @@ impl Skirmish {
         let Some(s) = &self.summary else {
             for f in ["MapNameValue", "SuggestedPlayersValue", "MapSizeValue", "MapTilesetValue", "MapDescValue", "MaxPlayersValue"] {
                 tree.set_text(f, "");
+            }
+            // A map that could not be read shows its file name and the UNKNOWNMAP texts
+            // (CMapInfoPane, FUN_6f2d11d0).
+            if let Some(name) = &self.unknown_map {
+                tree.set_text("MapNameValue", name);
+                tree.set_text("SuggestedPlayersValue", &db.string("UNKNOWNMAP_SUGGESTEDPLAYERS"));
+                tree.set_text("MapSizeValue", &db.string("UNKNOWNMAP_MAPSIZE"));
+                tree.set_text("MapTilesetValue", &db.string("UNKNOWNMAP_TILESET"));
+                tree.set_text("MapDescValue", &db.string("UNKNOWNMAP_DESCRIPTION"));
             }
             return;
         };

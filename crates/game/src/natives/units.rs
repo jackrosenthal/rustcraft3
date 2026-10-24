@@ -962,9 +962,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         // A buff's id reads level 1 while the unit has it, as buffs are abilities to the
         // original.
+        // A buff counts as level 1, unless it is a class's own (Defend's: measured, a
+        // defending footman's GetUnitAbilityLevel for 'Bdef' is 0).
         GetUnitAbilityLevel => |w, _, a| {
             let id = id_from_int(a.i(1));
-            int(unit_arg(w, a, 0).map_or(0, |u| u.abilities.iter().find(|(x, _)| *x == id).map_or_else(|| u.buffs.iter().any(|b| b.id == id) as i32, |(_, l)| *l)))
+            let hidden = |b: &crate::types::Buff| crate::ability::default_buff(&w.ability_code(b.ability)).is_some_and(|d| crate::objects::id_from_str(d) == b.id);
+            int(unit_arg(w, a, 0).map_or(0, |u| u.abilities.iter().find(|(x, _)| *x == id).map_or_else(|| u.buffs.iter().any(|b| b.id == id && !hidden(b)) as i32, |(_, l)| *l)))
         },
         SetUnitAbilityLevel => |w, _, a| {
             let (id, l) = (id_from_int(a.i(1)), a.i(2));

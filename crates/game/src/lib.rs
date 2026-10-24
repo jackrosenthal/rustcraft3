@@ -382,6 +382,13 @@ impl Game {
 
     /// A player event with no other data: Escape (EVENT_PLAYER_END_CINEMATIC) and the
     /// arrow key events.
+    /// A game event for the triggers registered on it (TriggerRegisterGameEvent: the game
+    /// loaded or saved, the hero skill or build menu shown).
+    pub fn game_event(&mut self, event: i32) {
+        let ctx = types::EventCtx { event_id: event, ..Default::default() };
+        self.world.fire(&mut self.vm, ctx, move |_, k| matches!(k, types::EventKind::Game(e) if *e == event));
+    }
+
     pub fn player_event(&mut self, player: u8, event: i32) {
         let ctx = types::EventCtx { player, has_player: true, event_id: event, ..Default::default() };
         self.world.fire(&mut self.vm, ctx, move |_, k| matches!(k, types::EventKind::Player { player: p, event: e } if *p == player && *e == event));
@@ -610,6 +617,12 @@ impl Game {
             }
             C::Select { player, units } => {
                 self.set_selection(player, &units);
+                O::Done
+            }
+            // A player opened the hero skill menu or the build menu: the game events
+            // EVENT_GAME_SHOW_SKILL and EVENT_GAME_BUILD_SUBMENU.
+            C::Submenu { build, .. } => {
+                self.game_event(if build { event_ids::EVENT_GAME_BUILD_SUBMENU } else { event_ids::EVENT_GAME_SHOW_SKILL });
                 O::Done
             }
             // A network game's player is gone: their slot is left, and EVENT_PLAYER_LEAVE

@@ -37,6 +37,8 @@ pub enum Command {
     Chat { player: u8, text: String, to: u8 },
     /// A network game's player left.
     PlayerLeft { player: u8 },
+    /// A player opened the build menu (or the hero skill menu).
+    Submenu { player: u8, build: bool },
     /// A player's minimap signal to their allies (CNetCommandAllyPing, 5 seconds).
     Signal { player: u8, x: f32, y: f32 },
     /// A player's alliance kinds toward another (CNetCommandTeamChangeAlliance: bits 0
@@ -78,6 +80,7 @@ impl Command {
             | C::DialogButton { player, .. }
             | C::Chat { player, .. }
             | C::PlayerLeft { player }
+            | C::Submenu { player, .. }
             | C::Signal { player, .. }
             | C::Alliance { player, .. }
             | C::Trade { player, .. } => Some(*player),

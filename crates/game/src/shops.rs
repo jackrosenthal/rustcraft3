@@ -352,6 +352,7 @@ impl World {
         let mana_f = self.misc_f32("HeroReviveManaFactor", 0.0);
         let Some(u) = self.unit_mut(hero) else { return };
         u.dead = false;
+        u.extra.decaying = false;
         u.reviving = false;
         u.hidden = false;
         u.x = x;

@@ -106,6 +106,32 @@ impl World {
         self.fire_unit_pair(vm, holder, EVENT_PLAYER_UNIT_DROP_ITEM, EVENT_UNIT_DROP_ITEM, ctx);
     }
 
+    /// A unit sells an item to a shop (pawns it): its gold and lumber cost times
+    /// PawnItemRate, and times the charges left of those it began with (FUN_6f65a1b0),
+    /// go to the unit's owner; the item is gone, and EVENT_PLAYER_UNIT_PAWN_ITEM fires.
+    pub fn pawn_item(&mut self, vm: &mut Vm, unit: u32, item: u32, shop: u32) {
+        let Some(it) = self.item(item) else { return };
+        let (type_id, charges) = (it.type_id, it.charges);
+        let Some(o) = self.objects.items.get(type_id) else { return };
+        let uses = o.int("uses");
+        let mut rate = self.misc_f32("PawnItemRate", 0.5);
+        if uses > 0 {
+            rate *= charges as f32 / uses as f32;
+        }
+        let (gold, lumber) = ((o.int("goldcost") as f32 * rate) as i32, (o.int("lumbercost") as f32 * rate) as i32);
+        let Some(owner) = self.unit(unit).map(|u| u.owner) else { return };
+        let ctx = EventCtx { unit, other_unit: shop, item, ..Default::default() };
+        self.fire_unit_pair(vm, unit, EVENT_PLAYER_UNIT_PAWN_ITEM, EVENT_UNIT_PAWN_ITEM, ctx);
+        if let Some(p) = self.players.get_mut(owner as usize) {
+            *p.state.entry(crate::types::player_state::RESOURCE_GOLD).or_insert(0) += gold;
+            *p.state.entry(crate::types::player_state::RESOURCE_LUMBER).or_insert(0) += lumber;
+        }
+        // It leaves the inventory as a dropped item does (its bonuses go), then is gone.
+        let (x, y) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
+        self.drop_item(vm, item, x, y);
+        self.remove_item(item);
+    }
+
     pub fn remove_item(&mut self, item: u32) {
         let holder = self.item(item).map_or(0, |i| i.owner_unit);
         if let Some(u) = self.unit_mut(holder) {

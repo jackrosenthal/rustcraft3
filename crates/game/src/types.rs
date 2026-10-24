@@ -348,6 +348,9 @@ pub struct UnitExtra {
     pub fire_timer: f32,
     #[serde(default)]
     pub fire_started: bool,
+    /// The corpse has begun to decay (EVENT_UNIT_DECAY fired).
+    #[serde(default)]
+    pub decaying: bool,
     #[serde(default)]
     pub fire_art: Vec<u32>,
     /// When a tornado last let the unit down.
@@ -453,6 +456,7 @@ impl Default for UnitExtra {
             fire: 0,
             fire_timer: 0.0,
             fire_started: false,
+            decaying: false,
             fire_art: Vec::new(),
             spun_at: -100.0,
             anim_props: Vec::new(),

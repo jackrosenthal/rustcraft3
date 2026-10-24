@@ -785,6 +785,16 @@ impl World {
                 // iocainepowder.
                 let decay = if self.cheat(crate::cheats::flag::FAST_DEATH) { decay / crate::cheats::FAST } else { decay };
                 let t = self.time - u.death_time;
+                // Once its death has played (UnitData death) a corpse of a decaying kind
+                // (deathType 2 or 3) decays: EVENT_PLAYER_UNIT_DECAY (FUN_6f69c000).
+                if !u.extra.decaying && !u.extra.exploded && !u.hidden {
+                    let o = self.objects.units.get(u.type_id);
+                    if o.is_some_and(|o| o.int("deathType") & 2 != 0) && t >= o.map_or(0.0, |o| o.real("death")) {
+                        self.unit_mut(h).unwrap().extra.decaying = true;
+                        self.queue_unit_event(h, EVENT_PLAYER_UNIT_DECAY, EVENT_UNIT_DECAY, EventCtx::default());
+                    }
+                }
+                let Some(u) = self.unit(h) else { continue };
                 // Dead heroes stay, out of sight, to be revived.
                 if u.is_hero {
                     if t > decay && !u.hidden {
@@ -933,7 +943,10 @@ impl World {
                 // Handing an item over: within DropItemRange of the target, into its
                 // inventory (or onto the ground beside it when it has no room).
                 Action::GiveItem { item, target } => {
-                    let range = self.misc_f32("DropItemRange", 100.0);
+                    // A shop that buys items (Purchase Item, Apit) takes it for gold within
+                    // PawnItemRange (CAbilityPurchaseItem).
+                    let pawn = self.ability_with_code(target, "Apit").is_some() && self.unit(target).is_some_and(|t| t.owner == self.unit(h).map_or(0, |u| u.owner) || t.owner >= crate::types::PLAYER_NEUTRAL_AGGRESSIVE);
+                    let range = if pawn { self.misc_f32("PawnItemRange", 300.0) } else { self.misc_f32("DropItemRange", 100.0) };
                     let Some((tx, ty)) = self.unit(target).filter(|t| !t.dead).map(|t| (t.x, t.y)) else {
                         self.unit_mut(h).unwrap().action = Action::Idle;
                         continue;
@@ -946,7 +959,9 @@ impl World {
                         self.walk(h, dt);
                         continue;
                     }
-                    if self.unit(h).is_some_and(|u| u.inventory.contains(&item)) {
+                    if pawn && self.unit(h).is_some_and(|u| u.inventory.contains(&item)) {
+                        self.pawn_item(vm, h, item, target);
+                    } else if self.unit(h).is_some_and(|u| u.inventory.contains(&item)) {
                         self.drop_item(vm, item, tx, ty);
                         if !self.give_item(vm, target, item, None) {
                             // Left where it fell.
@@ -1257,6 +1272,22 @@ impl World {
     pub fn cancel_last(&mut self, h: u32) {
         let Some(u) = self.unit(h) else { return };
         let owner = u.owner;
+        // A revival stops, its cost back at ReviveRefundRate
+        // (EVENT_PLAYER_HERO_REVIVE_CANCEL).
+        if let Some((hero, _, _)) = u.revive {
+            let (g, l, _) = self.revive_cost(hero);
+            let rate = self.misc_f32("ReviveRefundRate", 1.0);
+            if let Some(p) = self.players.get_mut(owner as usize) {
+                *p.state.entry(crate::types::player_state::RESOURCE_GOLD).or_insert(0) += (g as f32 * rate) as i32;
+                *p.state.entry(crate::types::player_state::RESOURCE_LUMBER).or_insert(0) += (l as f32 * rate) as i32;
+            }
+            self.unit_mut(h).unwrap().revive = None;
+            if let Some(x) = self.unit_mut(hero) {
+                x.reviving = false;
+            }
+            self.queue_unit_event(hero, EVENT_PLAYER_HERO_REVIVE_CANCEL, EVENT_UNIT_HERO_REVIVE_CANCEL, EventCtx { unit: hero, ..Default::default() });
+            return;
+        }
         if u.constructing.is_some() {
             let id = u.type_id;
             let rate = self.misc_f32("ConstructionRefundRate", 0.75);

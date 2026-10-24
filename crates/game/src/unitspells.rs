@@ -214,6 +214,7 @@ impl World {
                 let (lf, mf) = (d(self, "DataA"), d(self, "DataB"));
                 if let Some(u) = self.unit_mut(t) {
                     u.dead = false;
+                    u.extra.decaying = false;
                     u.life = u.max_life * lf;
                     u.mana = u.max_mana * mf;
                     u.action = Action::Idle;

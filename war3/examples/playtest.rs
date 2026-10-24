@@ -427,6 +427,22 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 3;
             }
+            // additem <unit> <item>: puts an item in a unit's inventory.
+            "additem" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let (u, it) = (num(&a[i + 1]) as u32, num(&a[i + 2]) as u32);
+                    let w3_game::Game { world, vm, .. } = g;
+                    world.give_item(vm, u, it, None);
+                }
+                i += 3;
+            }
+            // giveitem <unit> <slot> <target>: hands an item to a unit (or sells it to a shop).
+            "giveitem" => {
+                if let Some(g) = scene.game.as_mut() {
+                    g.apply(w3_game::replay::Command::GiveItemTo { unit: num(&a[i + 1]) as u32, slot: num(&a[i + 2]) as usize, target: num(&a[i + 3]) as u32 });
+                }
+                i += 4;
+            }
             "inv" => {
                 if let Some(g) = scene.game.as_ref() {
                     if let Some(u) = g.world.unit(num(&a[i + 1]) as u32) {

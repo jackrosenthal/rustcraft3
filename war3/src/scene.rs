@@ -551,6 +551,8 @@ impl Scene {
         let mut game = match w3_game::Game::load_with_keys(data.chain.clone(), data.version as i32, custom_keys.as_ref()) {
             Ok(mut g) if restore.is_some() => {
                 g.restore(restore.unwrap())?;
+                // The loaded game's triggers hear it (EVENT_GAME_LOADED).
+                g.game_event(w3_game::event_ids::EVENT_GAME_LOADED);
                 g.world.saves_dir = crate::data::save_dir(data.version);
                 Some(g)
             }
@@ -1685,11 +1687,13 @@ impl Scene {
                 if let Some(h) = self.hud.as_mut() {
                     h.page = crate::card::Page::Build;
                 }
+                g.apply(w3_game::replay::Command::Submenu { player: local, build: true });
             }
             A::LearnMenu => {
                 if let Some(h) = self.hud.as_mut() {
                     h.page = crate::card::Page::Learn;
                 }
+                g.apply(w3_game::replay::Command::Submenu { player: local, build: false });
             }
             A::Learn(id) => {
                 g.apply(w3_game::replay::Command::LearnSkill { hero: first, id });
@@ -2183,6 +2187,23 @@ impl Scene {
             h.unit_message(&text, 0.0, 0.0, 10.0);
         }
         true
+    }
+
+    /// An arrow key (left, right, down, up) pressed or let go: the player's
+    /// EVENT_PLAYER_ARROW_*_DOWN or _UP.
+    pub fn arrow_key(&mut self, k: usize, down: bool) {
+        use w3_game::event_ids::*;
+        let events = [
+            (EVENT_PLAYER_ARROW_LEFT_DOWN, EVENT_PLAYER_ARROW_LEFT_UP),
+            (EVENT_PLAYER_ARROW_RIGHT_DOWN, EVENT_PLAYER_ARROW_RIGHT_UP),
+            (EVENT_PLAYER_ARROW_DOWN_DOWN, EVENT_PLAYER_ARROW_DOWN_UP),
+            (EVENT_PLAYER_ARROW_UP_DOWN, EVENT_PLAYER_ARROW_UP_UP),
+        ];
+        let Some(&(d, u)) = events.get(k) else { return };
+        if let Some(g) = self.game.as_mut() {
+            let player = g.world.local_player;
+            g.apply(w3_game::replay::Command::PlayerEvent { player, event: if down { d } else { u } });
+        }
     }
 
     /// Whom Enter's chat goes to: the chat dialog's choice, which starts as allies when
@@ -3415,8 +3436,10 @@ impl Scene {
     }
 
     /// The game as a saved game.
-    pub fn save_game(&self) -> anyhow::Result<Vec<u8>> {
-        let g = self.game.as_ref().context("no game")?;
+    pub fn save_game(&mut self) -> anyhow::Result<Vec<u8>> {
+        let g = self.game.as_mut().context("no game")?;
+        // The triggers hear the save first (EVENT_GAME_SAVE).
+        g.game_event(w3_game::event_ids::EVENT_GAME_SAVE);
         g.save(&self.map_path)
     }
 

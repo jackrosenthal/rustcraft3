@@ -232,11 +232,19 @@ impl ApplicationHandler for App {
                     }
                 }
                 if let PhysicalKey::Code(code) = event.physical_key {
+                    // The arrow keys are also the player's arrow events, pressed and let go.
+                    let arrow = [KeyCode::ArrowLeft, KeyCode::ArrowRight, KeyCode::ArrowDown, KeyCode::ArrowUp].iter().position(|&k| k == code);
                     match event.state {
                         ElementState::Pressed => {
+                            if let (Some(k), true, Some(scene)) = (arrow, !r.keys.contains(&code), r.scene.as_mut()) {
+                                scene.arrow_key(k, true);
+                            }
                             r.keys.insert(code);
                         }
                         ElementState::Released => {
+                            if let (Some(k), Some(scene)) = (arrow, r.scene.as_mut()) {
+                                scene.arrow_key(k, false);
+                            }
                             r.keys.remove(&code);
                         }
                     }

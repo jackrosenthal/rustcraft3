@@ -237,6 +237,10 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
         EventKind::PlayerUnit { player, event, .. } => *player == owner && *event == EVENT_PLAYER_UNIT_DEATH,
         _ => false,
     });
+    // A fallen hero can be revived (EVENT_PLAYER_HERO_REVIVABLE).
+    if w.unit(h).is_some_and(|u| u.is_hero && u.dead) && illusion.is_none() {
+        w.queue_unit_event(h, EVENT_PLAYER_HERO_REVIVABLE, EVENT_UNIT_HERO_REVIVABLE, EventCtx { unit: h, ..Default::default() });
+    }
     // An illusion vanishes, its buff's Specialart left where it fell.
     if let Some((_, _, buff)) = illusion {
         if let Some((x, y)) = w.unit(h).map(|u| (u.x, u.y)) {

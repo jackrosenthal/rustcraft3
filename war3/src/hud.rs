@@ -1048,7 +1048,13 @@ impl Hud {
     /// action label, the queue backdrop when training or reviving, and the queue.
     fn show_production(&mut self, db: &FrameDb, world: &World, h: u32, name: &str) {
         use w3_game::info::ProductionKind as K;
-        self.production = world.production(h);
+        // Another's structure shows what it is making only under DisplayBuildingStatus;
+        // the player's own, one it shares control of, and any to an observer always
+        // (CInfoPanelUnitDetail::vf27).
+        let me = world.local_player;
+        let observer = world.players.get(me as usize).is_some_and(|p| p.get_state(w3_game::types::player_state::OBSERVER) != 0);
+        let shown = observer || w3_game::natives::players::controls(world, me, h) || world.misc.get_str("Misc", "DisplayBuildingStatus").and_then(|v| v.trim().parse::<f32>().ok()).unwrap_or(0.0) != 0.0;
+        self.production = if shown { world.production(h) } else { None };
         let Some(b) = self.building else { return };
         let Some(p) = &self.production else {
             self.tree.frames[b].visible = false;

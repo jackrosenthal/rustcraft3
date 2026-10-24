@@ -347,10 +347,14 @@ impl World {
             }
             return;
         }
-        // Battle Stations (Abtl): the owner's UnitID workers within Area head inside.
+        // Battle Stations (Abtl): the owner's UnitID workers within Area head inside;
+        // Chaos Cargo Load (Achl) makes them its UnitID instead (FUN_6f4c9ce0).
         if order == crate::natives::basic::order_id("battlestations") {
             if let Some((a, l)) = self.ability_with_code(h, "Abtl") {
-                let (area, id) = self.objects.abilities.get(a).map_or((0.0, [0; 4]), |o| (o.level_real("Area", l), crate::objects::id_from_str(o.level_str("UnitID", l).trim())));
+                let (area, mut id) = self.objects.abilities.get(a).map_or((0.0, [0; 4]), |o| (o.level_real("Area", l), crate::objects::id_from_str(o.level_str("UnitID", l).trim())));
+                if let Some(o) = self.ability_with_code(h, "Achl").and_then(|(c, cl)| self.objects.abilities.get(c).map(|o| (o, cl))) {
+                    id = crate::objects::id_from_str(o.0.level_str("UnitID", o.1).trim());
+                }
                 let (owner, bx, by) = self.unit(h).map(|u| (u.owner, u.x, u.y)).unwrap_or_default();
                 let workers: Vec<u32> = self.unit_order.iter().copied().filter(|&o| self.unit(o).is_some_and(|w| !w.dead && !w.hidden && w.owner == owner && w.type_id == id && (w.x - bx).hypot(w.y - by) <= area)).collect();
                 for wk in workers {

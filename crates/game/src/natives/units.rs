@@ -289,24 +289,32 @@ fn unit_arg<'a>(w: &'a World, a: &[Value], n: usize) -> Option<&'a Unit> {
 }
 
 /// Removes a unit's buffs: positive ones (from allied casters), negative ones, or both.
-fn remove_buffs(w: &mut World, h: u32, positive: bool, negative: bool) {
-    let Some(owner) = w.unit(h).map(|u| u.owner) else { return };
-    let allied: Vec<bool> = w.unit(h).unwrap().buffs.iter().map(|b| w.unit(b.caster).is_some_and(|c| is_ally(w, owner, c.owner))).collect();
+/// UnitRemoveBuffs and UnitRemoveBuffsEx (FUN_6f48eb10).
+fn remove_buffs(w: &mut World, h: u32, f: crate::bufftable::Filter) {
+    let Some(u) = w.unit(h) else { return };
+    let take: Vec<bool> = u.buffs.iter().map(|b| w.buff_removable(b, u.owner, f)).collect();
+    let effects: Vec<u32> = u.buffs.iter().zip(&take).filter(|(_, t)| **t).map(|(b, _)| b.effect).collect();
     let u = w.unit_mut(h).unwrap();
     let mut k = 0;
     u.buffs.retain(|_| {
-        let pos = allied[k];
         k += 1;
-        !((pos && positive) || (!pos && negative))
+        !take[k - 1]
     });
+    for e in effects {
+        w.remove_buff_effect(e);
+    }
 }
 
-fn count_buffs(w: &World, h: u32, positive: bool, negative: bool) -> i32 {
+/// UnitHasBuffsEx and UnitCountBuffsEx (FUN_6f48bd70).
+fn count_buffs(w: &World, h: u32, f: crate::bufftable::Filter) -> i32 {
     let Some(u) = w.unit(h) else { return 0 };
-    u.buffs.iter().filter(|b| {
-        let pos = w.unit(b.caster).is_some_and(|c| is_ally(w, u.owner, c.owner));
-        (pos && positive) || (!pos && negative)
-    }).count() as i32
+    u.buffs.iter().filter(|b| w.buff_counted(b, u.owner, f)).count() as i32
+}
+
+/// The Ex natives' arguments: positive, negative, magic, physical, timed life, aura,
+/// auto dispel.
+fn buff_filter(a: &[Value]) -> crate::bufftable::Filter {
+    crate::bufftable::Filter { positive: a.b(1), negative: a.b(2), magic: a.b(3), physical: a.b(4), timed_life: a.b(5), aura: a.b(6), auto_dispel: a.b(7) }
 }
 
 /// Damage dealt by a script with an attack type (ATTACK_TYPE_* index).
@@ -735,10 +743,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             boolean(true)
         },
         // Buffs from an allied caster count as positive, others as negative.
-        UnitRemoveBuffs => |w, _, a| { remove_buffs(w, a.h(0), a.b(1), a.b(2)); none() },
-        UnitRemoveBuffsEx => |w, _, a| { remove_buffs(w, a.h(0), a.b(1), a.b(2)); none() },
-        UnitHasBuffsEx => |w, _, a| boolean(count_buffs(w, a.h(0), a.b(1), a.b(2)) > 0),
-        UnitCountBuffsEx => |w, _, a| int(count_buffs(w, a.h(0), a.b(1), a.b(2))),
+        // Any helpful or harmful buff, auras' and timed lives too.
+        UnitRemoveBuffs => |w, _, a| { remove_buffs(w, a.h(0), crate::bufftable::Filter { positive: a.b(1), negative: a.b(2), timed_life: true, aura: true, ..Default::default() }); none() },
+        UnitRemoveBuffsEx => |w, _, a| { remove_buffs(w, a.h(0), buff_filter(a)); none() },
+        UnitHasBuffsEx => |w, _, a| boolean(count_buffs(w, a.h(0), buff_filter(a)) > 0),
+        UnitCountBuffsEx => |w, _, a| int(count_buffs(w, a.h(0), buff_filter(a))),
         UnitAddSleep => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.can_sleep = on) },
         UnitCanSleep => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| u.extra.can_sleep)),
         UnitAddSleepPerm => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| { u.extra.sleep_perm = on; if on { u.extra.sleeping = true; } }) },

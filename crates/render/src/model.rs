@@ -349,6 +349,12 @@ pub struct Globals {
     /// The model lights' cell grid (see `lights`): its first cell's indices and its
     /// width and height in cells; a zero width leaves only the day/night light.
     pub light_grid: [f32; 4],
+    /// The world's boundary: [FogOfWar] BoundaryTerrain, FoggedBoundaryTerrain,
+    /// BoundaryObject, and FoggedBoundaryObject.
+    pub fow_boundary_terrain: [f32; 4],
+    pub fow_fogged_boundary_terrain: [f32; 4],
+    pub fow_boundary_object: [f32; 4],
+    pub fow_fogged_boundary_object: [f32; 4],
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -1072,6 +1078,10 @@ pub fn default_globals(view_proj: Mat4, camera: Vec3) -> Globals {
         fow_masked_object: [0.0, 0.0, 0.0, 1.0],
         water_tint: [1.0; 4],
         light_grid: [0.0; 4],
+        fow_boundary_terrain: [0.0; 4],
+        fow_fogged_boundary_terrain: [0.0; 4],
+        fow_boundary_object: [1.0; 4],
+        fow_fogged_boundary_object: [1.0; 4],
     }
 }
 

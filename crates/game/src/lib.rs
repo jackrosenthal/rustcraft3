@@ -196,6 +196,7 @@ impl Game {
                     t.corners.iter().zip(letters).map(|(c, l)| c.height() + if l == b'R' { 64.0 } else { 0.0 }).collect()
                 },
                 layers: t.corners.iter().map(|c| c.layer_height).collect(),
+                boundary: t.corners.iter().map(|c| c.boundary || c.map_edge).collect(),
             });
             world.blight = t.corners.iter().map(|c| c.blight).collect();
             world.ground = t.corners.iter().map(|c| (c.ground_texture, c.ground_variation)).collect();

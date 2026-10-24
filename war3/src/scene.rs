@@ -4621,6 +4621,10 @@ impl Scene {
                 let dark = self.info.flags & 0x10 != 0;
                 globals.fow_masked_terrain = argb(if dark { "DarkMaskedTerrain" } else { "BlackMaskedTerrain" });
                 globals.fow_masked_object = argb(if dark { "DarkMaskedObject" } else { "BlackMaskedObject" });
+                globals.fow_boundary_terrain = argb("BoundaryTerrain");
+                globals.fow_fogged_boundary_terrain = argb("FoggedBoundaryTerrain");
+                globals.fow_boundary_object = argb("BoundaryObject");
+                globals.fow_fogged_boundary_object = argb("FoggedBoundaryObject");
                 globals.water_tint = g.world.water_color.map(|v| v as f32 / 255.0);
             }
         }

@@ -433,6 +433,8 @@ pub struct TerrainHeights {
     pub heights: Vec<f32>,
     /// Cliff level of each corner.
     pub layers: Vec<u8>,
+    /// Each corner's boundary flag (the World Editor's camera bounds).
+    pub boundary: Vec<bool>,
 }
 
 impl TerrainHeights {

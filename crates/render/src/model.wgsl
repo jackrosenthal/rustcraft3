@@ -18,6 +18,10 @@ struct Globals {
     water_tint: vec4<f32>,
     /// The light grid's first cell and its size in cells (zero: no grid).
     light_grid: vec4<f32>,
+    fow_boundary_terrain: vec4<f32>,
+    fow_fogged_boundary_terrain: vec4<f32>,
+    fow_boundary_object: vec4<f32>,
+    fow_fogged_boundary_object: vec4<f32>,
 };
 
 struct Draw {
@@ -139,10 +143,15 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if (globals.fow_extent.z > 0.0) {
         // Fogged objects take FoggedObject's color, masked ones the masked color.
         let fuv = (in.world.xy - globals.fow_extent.xy) / globals.fow_extent.zw;
-        let v = textureSample(fow_tex, fow_samp, vec2<f32>(fuv.x, fuv.y)).r;
+        let s = textureSample(fow_tex, fow_samp, vec2<f32>(fuv.x, fuv.y));
+        let v = s.r;
         let fogged = c.rgb * globals.fow_object.rgb;
         let masked = c.rgb * globals.fow_masked_object.rgb;
-        let lit = mix(mix(masked, fogged, clamp(v / 0.5, 0.0, 1.0)), c.rgb, clamp(v * 2.0 - 1.0, 0.0, 1.0));
+        let inside = mix(mix(masked, fogged, clamp(v / 0.5, 0.0, 1.0)), c.rgb, clamp(v * 2.0 - 1.0, 0.0, 1.0));
+        let b_fogged = c.rgb * globals.fow_fogged_boundary_object.rgb;
+        let b_seen = c.rgb * globals.fow_boundary_object.rgb;
+        let edge = mix(mix(masked, b_fogged, clamp(v / 0.5, 0.0, 1.0)), b_seen, clamp(v * 2.0 - 1.0, 0.0, 1.0));
+        let lit = mix(inside, edge, s.g);
         c = vec4<f32>(lit, c.a);
     }
     if (globals.fog.z > 0.0 && (draw.flags & 32u) == 0u) {

@@ -18,6 +18,10 @@ struct Globals {
     water_tint: vec4<f32>,
     /// The light grid's first cell and its size in cells (zero: no grid).
     light_grid: vec4<f32>,
+    fow_boundary_terrain: vec4<f32>,
+    fow_fogged_boundary_terrain: vec4<f32>,
+    fow_boundary_object: vec4<f32>,
+    fow_fogged_boundary_object: vec4<f32>,
 };
 
 struct Light {
@@ -79,10 +83,16 @@ fn fow(c: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
         return c;
     }
     let fuv = (world.xy - globals.fow_extent.xy) / globals.fow_extent.zw;
-    let v = textureSample(fow_tex, fow_samp, fuv).r;
+    let s = textureSample(fow_tex, fow_samp, fuv);
+    let v = s.r;
     let fogged = mix(c, globals.fow_terrain.rgb, globals.fow_terrain.a);
     let masked = mix(c, globals.fow_masked_terrain.rgb, globals.fow_masked_terrain.a);
-    return mix(mix(masked, fogged, clamp(v / 0.5, 0.0, 1.0)), c, clamp(v * 2.0 - 1.0, 0.0, 1.0));
+    let inside = mix(mix(masked, fogged, clamp(v / 0.5, 0.0, 1.0)), c, clamp(v * 2.0 - 1.0, 0.0, 1.0));
+    // The world's boundary ramps through its own colors (FUN_6f747700's tables 1 and 3).
+    let b_fogged = mix(c, globals.fow_fogged_boundary_terrain.rgb, globals.fow_fogged_boundary_terrain.a);
+    let b_seen = mix(c, globals.fow_boundary_terrain.rgb, globals.fow_boundary_terrain.a);
+    let edge = mix(mix(masked, b_fogged, clamp(v / 0.5, 0.0, 1.0)), b_seen, clamp(v * 2.0 - 1.0, 0.0, 1.0));
+    return mix(inside, edge, s.g);
 }
 
 /// Darkening applied by the map's baked shadows: the alpha of UI\MiscData.txt

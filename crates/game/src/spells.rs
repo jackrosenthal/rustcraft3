@@ -9,7 +9,7 @@ use crate::world::World;
 
 /// Codes whose effect keeps the caster channeling.
 pub fn channeled(code: &str) -> bool {
-    matches!(code, "AHbz" | "ANrf" | "AEsf" | "AEtq" | "AUdd" | "AHdr" | "AOvd" | "AOeq" | "ANst" | "ANvc")
+    matches!(code, "AHbz" | "ANrf" | "AEsf" | "AEtq" | "AUdd" | "AHdr" | "AOvd" | "AOeq" | "ANst" | "ANvc" | "AHmt")
 }
 
 impl World {
@@ -431,19 +431,15 @@ impl World {
                 true
             }
             // Mass Teleport: the caster and units around it to a friendly unit.
+            // Mass Teleport: the caster channels DataB seconds, then it and up to DataA of
+            // its owner's units within Area go to the target (measured: a Staff of
+            // Teleportation's hero arrives 3.06 seconds after it is used).
             "AHmt" => {
-                let n = self.d(a, "DataA", lvl) as usize;
-                let mut group: Vec<u32> = self.allies_in(owner, cx, cy, area).into_iter().filter(|&u| u != h && self.owner_of(u) == owner && self.unit(u).is_some_and(|u| !u.is_building)).take(n).collect();
-                group.push(h);
-                for (k, u) in group.into_iter().enumerate() {
-                    let ang = k as f32 * 0.9;
-                    let r = 40.0 * (k as f32).sqrt();
-                    if let Some(un) = self.unit_mut(u) {
-                        un.x = tx + r * ang.cos();
-                        un.y = ty + r * ang.sin();
-                        un.path.clear();
-                        un.action = Action::Idle;
-                    }
+                let delay = self.d(a, "DataB", lvl).max(0.01);
+                if let Some(u) = self.unit_mut(h) {
+                    // The teleport comes when the delay is up; the channel lasts a step
+                    // longer so that its last tick is not cut off.
+                    u.channel = Some(Channel { ability: a, level: lvl, target, x, y, elapsed: 0.0, duration: delay + 0.05, interval: delay + 1.0, next: delay, waves: 0, link: 0, held: [0; 4], lanes: 0, ai_fails: 0 });
                 }
                 true
             }
@@ -645,6 +641,30 @@ impl World {
         }
     }
 
+    /// Mass Teleport's end: the caster and up to DataA of its owner's units within Area
+    /// go to the target, or its point if it is gone.
+    fn mass_teleport(&mut self, h: u32, a: Id, lvl: u32, target: u32, at: (f32, f32)) {
+        let owner = self.owner_of(h);
+        let area = self.d(a, "Area", lvl);
+        let (cx, cy) = self.unit(h).map_or(at, |u| (u.x, u.y));
+        let (tx, ty) = self.widget_pos(target).unwrap_or(at);
+        let n = self.d(a, "DataA", lvl) as usize;
+        let mut group: Vec<u32> = self.allies_in(owner, cx, cy, area).into_iter().filter(|&u| u != h && self.owner_of(u) == owner && self.unit(u).is_some_and(|u| !u.is_building)).take(n).collect();
+        group.push(h);
+        for (k, u) in group.into_iter().enumerate() {
+            let ang = k as f32 * 0.9;
+            let r = 40.0 * (k as f32).sqrt();
+            if let Some(un) = self.unit_mut(u) {
+                un.x = tx + r * ang.cos();
+                un.y = ty + r * ang.sin();
+                un.path.clear();
+                if u != h {
+                    un.action = Action::Idle;
+                }
+            }
+        }
+    }
+
     fn channel_tick(&mut self, vm: &mut Vm, h: u32, c: &mut Channel) {
         // A computer's channel goes on only while its AI still likes the spot.
         if self.ai_channel_recheck(h, c) {
@@ -655,6 +675,7 @@ impl World {
         let owner = self.owner_of(h);
         let area = self.d(a, "Area", lvl);
         match code.as_str() {
+            "AHmt" => self.mass_teleport(h, a, lvl, c.target, (c.x, c.y)),
             "ANst" => self.stampede_beast(h, c),
             "ANvc" => self.volcano_wave(h, a),
             "Aclf" => {

@@ -831,7 +831,11 @@ impl World {
             }
             let u = self.unit_mut(h).unwrap();
             u.path.clear();
-            if self.targeting(a) != Targeting::None {
+            // An item's spell goes off without the holder turning (measured: a Staff of
+            // Teleportation used toward the hero's back takes 3.06 seconds, its 3 second
+            // delay and no more).
+            let from_item = u.extra.casting_item.is_some();
+            if self.targeting(a) != Targeting::None && !from_item {
                 let u = self.unit_mut(h).unwrap();
                 let want = crate::sim::angle_to((u.x, u.y), goal);
                 let left = crate::sim::turn(u, want, dt);
@@ -866,6 +870,8 @@ impl World {
         let elapsed = elapsed + dt;
         let o = self.objects.units.get(u.type_id);
         let (castpt, backsw) = o.map_or((0.3, 0.5), |o| (o.real("castpt"), o.real("castbsw")));
+        // Nor does it wait for the holder's cast point.
+        let (castpt, backsw) = if u.extra.casting_item.is_some() { (0.0, 0.0) } else { (castpt, backsw) };
         if !fired && elapsed >= castpt {
             // thereisnospoon and thedudeabides.
             let cost = if self.cheat(crate::cheats::flag::MANA) { 0.0 } else { self.data(a, "Cost", lvl) };

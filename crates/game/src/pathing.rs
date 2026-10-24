@@ -348,29 +348,37 @@ impl PathingMap {
                 return rest;
             }
         }
-        // A goal the unit cannot stand on (a tree, a mine, a structure) is sought at the
-        // nearest cell around it that it fits, which a search can reach.
+        // A goal the unit cannot stand on (a tree, a mine, a structure) is sought at a
+        // cell around it that it fits: of the first ring around it holding one, and the
+        // ring past it, the one nearest the unit, so it walks to the near side (as the
+        // original's workers go straight between a mine and a hall).
         let mut goal = self.cell_of(to.0, to.1);
         if !self.fits_kind(goal, radius, kind) {
-            let mut nearest: Option<((i32, i32), i32)> = None;
+            let dist = |a: (i32, i32), b: (i32, i32)| (a.0 - b.0).pow(2) + (a.1 - b.1).pow(2);
+            let mut nearest: Option<((i32, i32), i32, i32)> = None;
+            let mut first_ring = None;
             for r in 1..=24i32 {
+                if first_ring.is_some_and(|f| r > f + 1) {
+                    break;
+                }
                 for dy in -r..=r {
                     for dx in -r..=r {
                         if dx.abs() != r && dy.abs() != r {
                             continue;
                         }
                         let c = (goal.0 + dx, goal.1 + dy);
-                        let d = dx * dx + dy * dy;
-                        if nearest.is_none_or(|(_, b)| d < b) && self.index(c).is_some() && self.fits_kind(c, radius, kind) {
-                            nearest = Some((c, d));
+                        if self.index(c).is_none() || !self.fits_kind(c, radius, kind) {
+                            continue;
+                        }
+                        first_ring.get_or_insert(r);
+                        let key = (dist(c, start), dx * dx + dy * dy);
+                        if nearest.is_none_or(|(_, a, b)| key < (a, b)) {
+                            nearest = Some((c, key.0, key.1));
                         }
                     }
                 }
-                if nearest.is_some_and(|(_, b)| b <= (r * r)) {
-                    break;
-                }
             }
-            if let Some((c, _)) = nearest {
+            if let Some((c, _, _)) = nearest {
                 goal = c;
             }
         }

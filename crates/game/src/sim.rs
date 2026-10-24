@@ -1868,6 +1868,36 @@ impl World {
             || self.ability_with_code(h, "Ahrl").is_some() && self.is_tree(target)
     }
 
+    /// A worker leaving a mine with its load comes out on the mine's side toward the
+    /// structure it returns to, just past its edge (measured against the original,
+    /// whose workers then walk the straight way between the two).
+    fn exit_toward_drop_off(&mut self, h: u32, mine: u32) {
+        let (Some(hall), Some((mx, my)), Some(c)) = (self.drop_off(h), self.widget_pos(mine), self.unit(h).map(|u| u.collision)) else { return };
+        let Some((hx, hy)) = self.widget_pos(hall) else { return };
+        let len = (hx - mx).hypot(hy - my);
+        if len < 1.0 {
+            return;
+        }
+        let (dx, dy) = ((hx - mx) / len, (hy - my) / len);
+        let mut r = 0.0;
+        while r < len {
+            let (x, y) = (mx + dx * r, my + dy * r);
+            if self.edge_distance(mine, x, y).is_some_and(|e| e - c >= crate::pathing::CELL) {
+                let kind = self.move_kind(h);
+                if self.pathing.as_ref().is_none_or(|p| p.passable(p.cell_of(x, y), kind)) {
+                    if let Some(u) = self.unit_mut(h) {
+                        u.x = x;
+                        u.y = y;
+                        u.path.clear();
+                        u.facing = dy.atan2(dx).to_degrees();
+                    }
+                }
+                return;
+            }
+            r += 8.0;
+        }
+    }
+
     pub(crate) fn leave_mine(&mut self, h: u32) {
         let mine = self.unit(h).map_or(0, |u| u.inside);
         if mine == 0 {
@@ -1940,6 +1970,11 @@ impl World {
         let u = self.unit(h).unwrap();
         let Some(edge) = self.edge_distance(target, u.x, u.y) else { return false };
         let d = edge - u.collision;
+        // A unit comes no nearer a structure's footprint than one pathing cell past its
+        // own size (measured: the original's workers stop 48 from a hall's or a mine's
+        // footprint), so it is there once that close.
+        let structure = self.unit(target).is_some_and(|t| !t.pathing_cells.is_empty());
+        let range = if structure { range.max(crate::pathing::CELL) } else { range };
         if d <= range {
             let u = self.unit_mut(h).unwrap();
             u.path.clear();
@@ -2017,6 +2052,7 @@ impl World {
                     u.carry_gold = take;
                     u.carry_lumber = 0;
                     u.action = Action::ReturnResources;
+                    self.exit_toward_drop_off(h, target);
                     if self.unit(target).is_some_and(|m| m.resource <= 0) {
                         kill_unit(self, vm, target, 0);
                     }

@@ -419,7 +419,7 @@ fn main() -> anyhow::Result<()> {
                     let m = num(&a[i + 1]) as u32;
                     if let Some(u) = w.unit(m) { eprintln!("mine at {:.0},{:.0} inside {} gold {}", u.x, u.y, u.inside, u.resource); }
                     for &h in &w.unit_order {
-                        if let Some(u) = w.unit(h) { if u.owner == 1 && matches!(u.action, w3_game::types::Action::Harvest{target} if target == m) || u.owner == 1 && u.carry_gold > 0 { eprintln!("  t={:.1} {h} at {:.0},{:.0} {:?} inside {} path {}", w.time, u.x, u.y, u.action, u.inside, u.path.len()); } }
+                        if let Some(u) = w.unit(h) { if matches!(u.action, w3_game::types::Action::Harvest{target} if target == m) || u.carry_gold > 0 { eprintln!("  t={:.1} {h} at {:.0},{:.0} {:?} inside {} path {}", w.time, u.x, u.y, u.action, u.inside, u.path.len()); } }
                     }
                 }
                 i += 2;

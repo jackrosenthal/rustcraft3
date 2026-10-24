@@ -803,6 +803,24 @@ fn main() -> anyhow::Result<()> {
         scene.render(&device, &queue, &mut enc, &cv, &dv, (w, h), &mut assets);
         queue.submit([enc.finish()]);
     }
+    // W3BENCH=<frames>: how long a frame takes (update, sync, draw, and the GPU's
+    // finishing it), on average.
+    if let Some(n) = std::env::var("W3BENCH").ok().and_then(|v| v.parse::<u32>().ok()) {
+        let t0 = std::time::Instant::now();
+        let mut cpu = 0.0;
+        for _ in 0..n {
+            let c0 = std::time::Instant::now();
+            scene.update(1.0 / 60.0);
+            scene.sync_units(&device, &queue, &mut assets);
+            let mut enc = device.create_command_encoder(&Default::default());
+            scene.render(&device, &queue, &mut enc, &cv, &dv, (w, h), &mut assets);
+            cpu += c0.elapsed().as_secs_f64();
+            queue.submit([enc.finish()]);
+            device.poll(wgpu::PollType::wait_indefinitely())?;
+        }
+        let total = t0.elapsed().as_secs_f64();
+        eprintln!("bench {n} frames at {w}x{h}: {:.2} ms a frame ({:.2} ms on the CPU)", total * 1000.0 / n as f64, cpu * 1000.0 / n as f64);
+    }
     let mut enc = device.create_command_encoder(&Default::default());
     scene.render(&device, &queue, &mut enc, &cv, &dv, (w, h), &mut assets);
     let stride = (w * 4).div_ceil(256) * 256;

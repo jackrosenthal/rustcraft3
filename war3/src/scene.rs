@@ -3986,8 +3986,10 @@ impl Scene {
         }
         // A network game does not stop for one player's menus.
         // A script dialog pauses too (CScriptDialogMode::vf9 sends CNetCommandPause
-        // outside network games).
-        let paused = self.net.is_none() && self.hud.as_ref().is_some_and(|h| h.menu.is_some() || h.quests.is_some() || h.log_view.is_some() || h.dialog.is_some());
+        // outside network games), while the player is still in the game: the original
+        // goes on under the victory dialog, shown once the player is removed.
+        let dialog_pauses = self.dialog_pauses();
+        let paused = self.net.is_none() && self.hud.as_ref().is_some_and(|h| h.menu.is_some() || h.quests.is_some() || h.log_view.is_some() || (h.dialog.is_some() && dialog_pauses));
         let speed = self.game.as_ref().map_or(1.0, |g| [0.6, 0.8, 1.0][g.world.game_speed.clamp(0, 2) as usize]);
         // The script's pause (PauseGame) stops a game played alone; its players' commands
         // and the script's answers to them still go on.
@@ -4248,6 +4250,12 @@ impl Scene {
     }
 
     /// Brings the interface up to date with the game (done each frame before drawing).
+    /// Whether a script dialog pauses a game played alone: only while the local player
+    /// is still in it.
+    fn dialog_pauses(&self) -> bool {
+        self.game.as_ref().is_some_and(|g| g.world.players.get(g.world.local_player as usize).is_some_and(|p| p.slot_state != w3_game::types::slot_state::LEFT))
+    }
+
     pub fn sync_hud(&mut self, db: &w3_ui::FrameDb, aspect: f32) {
         // A menu key or a load request waits for the menu it opened.
         if self.hud.as_ref().is_some_and(|h| h.menu.is_some()) {
@@ -4819,8 +4827,9 @@ impl Scene {
             // it, as does a network pause).  PauseGame's pause is not dimmed: the
             // original shows a paused cinematic at full brightness.
             let alone = self.net.is_none();
+            let dialog_pauses = self.game.as_ref().is_some_and(|g| g.world.players.get(g.world.local_player as usize).is_some_and(|p| p.slot_state != w3_game::types::slot_state::LEFT));
             let world_paused = self.game.as_ref().is_some_and(|g| g.world.net_paused.is_some());
-            let paused = world_paused || (alone && (hud.menu.is_some() || hud.quests.is_some() || hud.log_view.is_some() || hud.dialog.is_some()));
+            let paused = world_paused || (alone && (hud.menu.is_some() || hud.quests.is_some() || hud.log_view.is_some() || (hud.dialog.is_some() && dialog_pauses)));
             hud.paused = paused;
             let mut draws = Vec::new();
             if paused {

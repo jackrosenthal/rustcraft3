@@ -262,6 +262,7 @@ impl Game {
     /// explored (0x2) lifts the fog or its mask.
     pub fn start_lobby(&mut self, slots: &[LobbySlot], flags: u32) -> anyhow::Result<()> {
         self.world.map_flags = flags as i32;
+        self.world.lobby_teams = true;
         if flags & 4 != 0 {
             self.world.fog_enabled = false;
             self.world.fog_mask_enabled = false;
@@ -414,6 +415,11 @@ impl Game {
     /// (0x10), and shared advanced units (0x20).
     fn ally_teams(&mut self) {
         let custom = self.info.flags & 0x40 != 0;
+        // Without a setup screen a melee map's players stand alone, as the original
+        // plays a map loaded with -loadfile; the map script's teams do not ally them.
+        if !custom && !self.world.lobby_teams {
+            return;
+        }
         let forces: Vec<u32> = self.info.forces.iter().map(|f| f.flags).collect();
         let playing: Vec<usize> = (0..12)
             .filter(|&i| {

@@ -252,6 +252,9 @@ pub struct World {
     /// in a pool of their own: one player's tags must not move another's handle ids.
     #[serde(default)]
     pub local_text_tags: Vec<crate::types::TextTag>,
+    /// The players' teams came from a setup screen.
+    #[serde(default)]
+    pub lobby_teams: bool,
     /// SetResourceDensity and SetCreatureDensity (MAP_DENSITY_*).
     #[serde(default = "light2")]
     pub densities: (i32, i32),
@@ -571,6 +574,7 @@ impl World {
             pauses_used: [0; 16],
             save_copies: 0,
             local_text_tags: Vec::new(),
+            lobby_teams: false,
             densities: (1, 1),
             stacked_sounds: Vec::new(),
             integer_states: [0; 2],

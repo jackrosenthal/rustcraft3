@@ -85,3 +85,19 @@ mod tests {
         assert_eq!(hash_string("(block table)", HASH_FILE_KEY), 0xEC83_B3A3);
     }
 }
+
+/// Encrypts in place (the inverse of [`decrypt`]).
+pub fn encrypt(data: &mut [u32], mut key: u32) {
+    let t = table();
+    let mut seed: u32 = 0xEEEE_EEEE;
+    for v in data.iter_mut() {
+        seed = seed.wrapping_add(t[0x400 + (key & 0xFF) as usize]);
+        let ch = *v;
+        *v = ch ^ key.wrapping_add(seed);
+        key = ((!key << 0x15).wrapping_add(0x1111_1111)) | (key >> 0x0B);
+        seed = ch
+            .wrapping_add(seed)
+            .wrapping_add(seed << 5)
+            .wrapping_add(3);
+    }
+}

@@ -4,6 +4,7 @@
 mod adpcm;
 mod compression;
 pub mod crypt;
+pub mod writer;
 mod huffman;
 
 use std::collections::HashMap;

@@ -283,7 +283,16 @@ impl Vm {
                 Op::Eq | Op::Ne => {
                     let r = t.stack.pop().unwrap();
                     let l = t.stack.pop().unwrap();
-                    let eq = values_equal(&l, &r);
+                    // A real `==` holds within 0.001, while `!=` stays exact (measured in
+                    // the original: 1.0 == 1.001 and 1.0 != 1.0001 are both true).
+                    let eq = match (op, &l, &r) {
+                        (Op::Eq, Value::Real(_) | Value::Int(_), Value::Real(_)) | (Op::Eq, Value::Real(_), Value::Int(_)) => {
+                            let f = |v: &Value| match v { Value::Real(x) => *x, Value::Int(i) => *i as f32, _ => 0.0 };
+                            // A float step past 0.001 allowed for literals rounded up.
+                            (f(&l) - f(&r)).abs() <= 0.001 + 1e-7
+                        }
+                        _ => values_equal(&l, &r),
+                    };
                     t.stack.push(Value::Bool(if op == Op::Eq { eq } else { !eq }));
                 }
                 Op::Lt | Op::Le | Op::Gt | Op::Ge => {

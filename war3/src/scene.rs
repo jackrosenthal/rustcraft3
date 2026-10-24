@@ -2861,6 +2861,20 @@ impl Scene {
         self.write_save(path);
     }
 
+    /// F6: saves a game played alone as QuickSave in the saved games' folder, while it is
+    /// not yet won or lost (FUN_6f3c5a70, as the original names the file).
+    pub fn quick_save(&mut self) {
+        if self.ended || !self.user_control() {
+            return;
+        }
+        let Some(g) = self.game.as_ref() else { return };
+        if g.world.network || self.playback.is_some() {
+            return;
+        }
+        let Some(path) = g.world.save_path("QuickSave") else { return };
+        self.write_save(&path);
+    }
+
     /// Writes the game to a saved game file and returns to the game.
     fn write_save(&mut self, path: &std::path::Path) {
         let res = self.save_game().and_then(|bytes| {

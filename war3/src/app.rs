@@ -243,6 +243,7 @@ impl ApplicationHandler for App {
                                 KeyCode::KeyC if alt || ctrl => scene.center_on_portrait(),
                                 // ~ selects idle workers as F8 does.
                                 KeyCode::Backquote => scene.idle_worker_key(),
+                                KeyCode::F6 => scene.quick_save(),
                                 _ => {}
                             }
                         }

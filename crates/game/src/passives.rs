@@ -182,6 +182,64 @@ impl World {
         }
     }
 
+    /// Spiked Barricades (Aspi) and Reinforced Burrows (Arbr) show their Targetart once
+    /// the owner has researched what they stand for: spike damage (rspi) and reinforced
+    /// defense (rart).  CAbilitySpiked and CAbilityReinforce share it.
+    pub fn update_upgrade_art(&mut self) {
+        let mut changes: Vec<(u32, Id, bool)> = Vec::new();
+        for &h in &self.unit_order {
+            let Some(u) = self.unit(h) else { continue };
+            for &(a, _) in &u.abilities {
+                let code = self.ability_code(a);
+                if !matches!(code.as_str(), "Aspi" | "Arbr") {
+                    continue;
+                }
+                let bonus = self.upgrade_bonus(u.owner, u.type_id);
+                let want = !u.dead && if code == "Aspi" { bonus.spikes > 0.0 } else { bonus.armor_type > 0 };
+                let has = u.extra.upgrade_art.iter().any(|e| e.0 == a);
+                if want != has {
+                    changes.push((h, a, want));
+                }
+            }
+            // Art of abilities it no longer has goes.
+            for (a, _) in &u.extra.upgrade_art {
+                if !u.abilities.iter().any(|x| x.0 == *a) {
+                    changes.push((h, *a, false));
+                }
+            }
+        }
+        for (h, a, want) in changes {
+            if want {
+                let Some(o) = self.objects.abilities.get(a) else { continue };
+                let models = o.list("Targetart");
+                let n = o.str("Targetattachcount").trim().parse::<usize>().unwrap_or(1).max(1);
+                let mut art = Vec::new();
+                for k in 0..n {
+                    let key = if k == 0 { "Targetattach".to_string() } else { format!("Targetattach{k}") };
+                    let attach = o.str(&key);
+                    let model = models.get(k).or(models.first()).cloned().unwrap_or_default();
+                    if !model.is_empty() {
+                        art.push(self.handles.insert(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((h, attach)), destroyed: false, facing: 0.0 })));
+                    }
+                }
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.upgrade_art.push((a, art));
+                }
+            } else {
+                let gone: Vec<u32> = self.unit_mut(h).map(|u| {
+                    let (out, keep): (Vec<_>, Vec<_>) = std::mem::take(&mut u.extra.upgrade_art).into_iter().partition(|e| e.0 == a);
+                    u.extra.upgrade_art = keep;
+                    out.into_iter().flat_map(|e| e.1).collect()
+                }).unwrap_or_default();
+                for e in gone {
+                    if let Some(Obj::Effect(f)) = self.handles.get_mut(e) {
+                        f.destroyed = true;
+                    }
+                }
+            }
+        }
+    }
+
     /// Takes a unit's ability art away.
     pub fn detach_ability_art(&mut self, h: u32) {
         let Some(handles) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.art)) else { return };

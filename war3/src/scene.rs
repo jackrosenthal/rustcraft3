@@ -116,18 +116,37 @@ fn card_of(commands: &crate::card::Commands, db: &w3_ui::FrameDb, w: &w3_game::W
 /// A special effect's model: born, standing, and dying once destroyed.
 pub struct EffectView {
     pub inst: ModelInstance,
+    /// The animation props of the unit it is attached to (Attachmentanimprops: a
+    /// building's "medium" or "large"), which pick among its sequences.
+    props: String,
     /// Whether its destruction has been seen (its death playing).
     dying: bool,
     /// Finished and no longer drawn.
     done: bool,
 }
 
+/// Plays a sequence by name with animation props ("stand" with "large" is "Stand
+/// Large"), or the plain one when the model has none so tagged.
+fn play_with_props(inst: &mut ModelInstance, name: &str, props: &str) {
+    if !props.trim().is_empty() {
+        let full = format!("{name} {props}");
+        if let Some(&s) = w3_render::anim::sequences_named(&inst.model.mdx, &full).first() {
+            inst.set_sequence(Some(s));
+            return;
+        }
+    }
+    inst.play(name);
+}
+
 /// An attachment point of a model instance in world space: the attachment node whose
 /// name (less "Ref") has the same words as `name` ("hand,left" is "Hand Left Ref"), else
-/// one with all of them; the origin for "origin" or when none matches.
+/// one with all of them; the origin for "origin", for no name, or when none matches.
 pub fn attachment_point(inst: &ModelInstance, name: &str) -> Vec3 {
     let origin = inst.transform.w_axis.truncate();
     let want: Vec<String> = name.split([' ', ',']).filter(|s| !s.is_empty()).map(|s| s.to_ascii_lowercase()).collect();
+    if want.is_empty() {
+        return origin;
+    }
     let words = |n: &str| -> Vec<String> { n.split_whitespace().map(|s| s.to_ascii_lowercase()).filter(|s| s != "ref").collect() };
     let mdx = &inst.model.mdx;
     let same = |n: &str| {
@@ -3246,25 +3265,30 @@ impl Scene {
                     continue;
                 };
                 let mut inst = ModelInstance::new(model);
+                let props = match &e.target {
+                    Some((t, _)) => w.unit(*t).and_then(|u| w.objects.units.get(u.type_id)).map(|o| o.str("Attachmentanimprops").to_ascii_lowercase()).unwrap_or_default(),
+                    None => String::new(),
+                };
                 let has = |i: &ModelInstance, n: &str| w3_render::anim::find_sequence(&i.model.mdx, n).is_some();
                 let first = if e.destroyed && has(&inst, "death") { "death" } else if has(&inst, "birth") { "birth" } else { "stand" };
-                inst.play(first);
-                self.effects.insert(h, EffectView { inst, dying: e.destroyed, done: false });
+                play_with_props(&mut inst, first, &props);
+                self.effects.insert(h, EffectView { inst, props, dying: e.destroyed, done: false });
             }
             let v = self.effects.get_mut(&h).unwrap();
             if e.destroyed && !v.dying {
                 v.dying = true;
                 if w3_render::anim::find_sequence(&v.inst.model.mdx, "death").is_some() {
-                    v.inst.play("death");
+                    play_with_props(&mut v.inst, "death", &v.props);
                 } else if !v.inst.model.mdx.sequences.get(v.inst.sequence.unwrap_or(usize::MAX)).is_some_and(|s| s.non_looping) {
                     v.done = true;
                 }
             }
             if v.inst.finished || v.inst.looped {
+                let birth = v.inst.sequence.and_then(|s| v.inst.model.mdx.sequences.get(s)).is_some_and(|s| s.name.split_whitespace().next().is_some_and(|w| w.eq_ignore_ascii_case("birth")));
                 if v.dying {
                     v.done = true;
-                } else if v.inst.finished || v.inst.sequence == w3_render::anim::find_sequence(&v.inst.model.mdx, "birth") {
-                    v.inst.play("stand");
+                } else if v.inst.finished || birth {
+                    play_with_props(&mut v.inst, "stand", &v.props);
                 }
                 v.inst.looped = false;
             }
@@ -3332,7 +3356,7 @@ impl Scene {
                 let mut inst = ModelInstance::new(model);
                 inst.play("stand");
                 inst.team = w.unit(m.source).map_or(0, |u| world_color(w, u.owner, w.players.get(u.owner as usize).map_or(0, |p| p.color)));
-                self.missiles.insert(m.id, EffectView { inst, dying: false, done: false });
+                self.missiles.insert(m.id, EffectView { inst, props: String::new(), dying: false, done: false });
             }
             let target = m.impact.or_else(|| w.widget_pos(m.target)).unwrap_or((m.x, m.y));
             let target_z = w.unit(m.target).map_or(self.terrain.height_at(target.0, target.1), |t| {

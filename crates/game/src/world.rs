@@ -1110,6 +1110,10 @@ impl World {
         prof!(self, "update_text_tags", self.update_text_tags(dt));
         prof!(self, "update_blight", self.update_blight(dt));
         prof!(self, "update_mines", self.update_mines());
+        // Once a second, the art upgrades show (CAbilitySpiked, CAbilityReinforce).
+        if (self.time - dt).floor() != self.time.floor() {
+            self.update_upgrade_art();
+        }
         prof!(self, "update_moon_wells", self.update_moon_wells());
         prof!(self, "update_forms", self.update_forms(dt));
         prof!(self, "update_cargo", self.update_cargo(vm));

@@ -340,6 +340,10 @@ pub struct UnitExtra {
     /// Effects its abilities attach to it (Sphere, Tree of Life art).
     #[serde(default)]
     pub art: Vec<u32>,
+    /// The art researched upgrades show through its abilities (Spiked Barricades,
+    /// Reinforced Burrows): each ability and its effects.
+    #[serde(default)]
+    pub upgrade_art: Vec<(Id, Vec<u32>)>,
     /// A structure's fire: 0 none, 1 small, 2 medium, 3 large; the time to its next
     /// check, and its effects.
     #[serde(default)]
@@ -470,6 +474,7 @@ impl Default for UnitExtra {
             mine_fuse: None,
             swarm: None,
             art: Vec::new(),
+            upgrade_art: Vec::new(),
             fire: 0,
             fire_timer: 0.0,
             fire_started: false,

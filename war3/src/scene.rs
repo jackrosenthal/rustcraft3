@@ -664,13 +664,19 @@ impl Scene {
                 if let Err(e) = res {
                     log::error!("main: {e:#}");
                 }
-                // Without a setup screen the local player goes by the profile's name
-                // (LOCAL_PLAYER without one), not the map's: the original names its
-                // campaign player after the profile.  A replay keeps the recorder's.
+                // Without a setup screen the local player is not the map's: a campaign's
+                // goes by the profile's name (LOCAL_PLAYER without one), and a map loaded
+                // directly is a test game, played as World Edit's test profile,
+                // "WorldEdit" (as the original shows -loadfile).  A replay keeps the
+                // recorder's.
                 let local_name = match (lobby, replay.as_ref()) {
                     (Some(_), _) => None,
                     (None, Some(r)) => r.local_name.clone(),
-                    (None, None) => Some(crate::data::Profiles::load("").current().map(|p| p.name.clone()).unwrap_or_else(|| assets.frames.string("LOCAL_PLAYER"))),
+                    (None, None) if campaign => {
+                        let local = assets.frames.string("LOCAL_PLAYER");
+                        Some(crate::data::Profiles::load(&local).current().map(|p| p.name.clone()).unwrap_or(local))
+                    }
+                    (None, None) => Some("WorldEdit".to_string()),
                 };
                 if let Some(n) = &local_name {
                     let local = g.world.local_player as usize;

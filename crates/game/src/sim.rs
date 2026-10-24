@@ -790,6 +790,7 @@ impl World {
             return;
         }
         if self.evades(target) {
+            self.show_miss(source);
             return;
         }
         // Curse: the attacker misses some of its attacks.
@@ -2238,7 +2239,16 @@ impl World {
                 None => match &m.weapon {
                     Some(wp) => {
                         let at = m.impact.or_else(|| self.widget_pos(m.target)).unwrap_or((m.x, m.y));
-                        self.attack_impact(vm, m.source, m.target, m.damage, wp, at);
+                        // Shot from below at a target on higher ground, it may miss
+                        // (ChanceToMiss): the target takes nothing and any splash only
+                        // MissDamageReduction of the damage (FUN_6f6d48b0, FUN_6f6d2530).
+                        if self.high_ground_miss(m.source, m.target) {
+                            self.show_miss(m.source);
+                            let reduced = m.damage * self.misc_f32("MissDamageReduction", 0.5);
+                            self.attack_impact_missed(vm, m.source, m.target, reduced, wp, at);
+                        } else {
+                            self.attack_impact(vm, m.source, m.target, m.damage, wp, at);
+                        }
                         // A bounce goes on to the nearest unit within Farea it may hit that it
                         // has not (AllowMultiBounce 0), losing damageLoss (CMissileBounce).
                         if m.bounces > 0 {
@@ -2263,6 +2273,61 @@ impl World {
                     }
                     None => self.deal_damage(vm, m.source, m.target, m.damage, &m.attack_type),
                 },
+            }
+        }
+    }
+
+    /// Whether a missile attack misses for its target standing on higher ground: a roll
+    /// under ChanceToMiss, with the attacker on a lower cliff level than its target.
+    fn high_ground_miss(&mut self, source: u32, target: u32) -> bool {
+        let (Some(s), Some(t)) = (self.unit(source), self.unit(target)) else { return false };
+        let ((sx, sy), (tx, ty)) = ((s.x, s.y), (t.x, t.y));
+        let chance = self.misc_f32("ChanceToMiss", 0.25);
+        if self.rng.real(0.0, 1.0) >= chance {
+            return false;
+        }
+        let Some(th) = self.terrain_heights.as_ref() else { return false };
+        th.level_at(sx, sy) < th.level_at(tx, ty)
+    }
+
+    /// "miss" over an attacker whose attack missed, for whoever sees it (FUN_6f6d6350):
+    /// MISS in [Misc] Miss text colors.
+    pub fn show_miss(&mut self, attacker: u32) {
+        let Some((x, y, hidden)) = self.unit(attacker).map(|u| (u.x, u.y, u.hidden)) else { return };
+        if hidden || self.fog_state(x, y, self.local_player) != crate::fog::FOG_VISIBLE {
+            return;
+        }
+        let text = self.localized("MISS");
+        let tag = self.engine_text_tag("Miss", text, x, y, self.ground_z(x, y));
+        self.local_text_tags.push(tag);
+    }
+
+    /// A missed missile attack lands: its splash only, without the target.
+    fn attack_impact_missed(&mut self, vm: &mut Vm, source: u32, target: u32, raw: f32, wp: &Weapon, at: (f32, f32)) {
+        let area = if wp.weapon_type == "mbounce" { 0.0 } else { wp.full_area.max(wp.half_area).max(wp.quarter_area) };
+        if area <= 0.0 {
+            return;
+        }
+        for u in self.units_in_pub(at.0, at.1, area + 64.0) {
+            if u == target {
+                continue;
+            }
+            let Some(t) = self.unit(u) else { continue };
+            if !self.splash_allows(source, &wp.splash_targets, t) {
+                continue;
+            }
+            let d = ((t.x - at.0).hypot(t.y - at.1) - t.collision).max(0.0);
+            let f = if d <= wp.full_area {
+                1.0
+            } else if d <= wp.half_area {
+                wp.half_factor
+            } else if d <= wp.quarter_area {
+                wp.quarter_factor
+            } else {
+                0.0
+            };
+            if f > 0.0 {
+                self.deal_damage(vm, source, u, raw * f, &wp.attack_type);
             }
         }
     }

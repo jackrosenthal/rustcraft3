@@ -312,6 +312,23 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 5;
             }
+            // spawnat <type> <owner> <x> <y>: creates a unit at a map point.
+            "spawnat" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let id = w3_game::objects::id_from_str(&a[i + 1]);
+                    let hd = w3_game::natives::units::create_unit(&mut g.world, num(&a[i + 2]) as u8, id, num(&a[i + 3]), num(&a[i + 4]), 270.0);
+                    eprintln!("spawned {} = {hd}", a[i + 1]);
+                }
+                i += 5;
+            }
+            // tags: the engine's own text tags now (gold, bounty, miss).
+            "tags" => {
+                if let Some(g) = scene.game.as_ref() {
+                    let texts: Vec<&str> = g.world.local_text_tags.iter().map(|t| t.text.as_str()).collect();
+                    eprintln!("tags {:?}", texts);
+                }
+                i += 1;
+            }
             // give <unit> <item type>: creates an item in the unit's inventory.
             "give" => {
                 if let Some(g) = scene.game.as_mut() {

@@ -266,6 +266,8 @@ pub struct Frame {
     pub pulldown: Option<usize>,
     /// A list's rows drawn as these images (CTeamColorData's swatches) in place of text.
     pub item_images: Vec<String>,
+    /// A text frame given its text's width (fit_text_widths), which its text fills.
+    pub fitted: bool,
 }
 
 #[derive(Default)]
@@ -328,6 +330,7 @@ impl FrameTree {
             color: None,
             pulldown: None,
             item_images: Vec::new(),
+            fitted: false,
         });
         t
     }
@@ -393,6 +396,7 @@ impl FrameTree {
             color: None,
             pulldown: None,
             item_images: Vec::new(),
+            fitted: false,
         });
         if !name.is_empty() {
             self.by_name.insert(name, i);
@@ -572,6 +576,7 @@ impl FrameTree {
             let w = strip_color_codes(text).chars().map(|c| font.metrics(c, 64.0).advance_width).sum::<f32>() * size / 64.0;
             // As wide as the text, and a line tall.
             self.frames[i].width = Some(w + 1e-4);
+            self.frames[i].fitted = true;
             if self.frames[i].height.is_none() {
                 self.frames[i].height = Some(size);
             }
@@ -1307,6 +1312,10 @@ impl FrameTree {
                 // box's text runs from its left.
                 let edit_text = f.parent.is_some_and(|p| self.frames[p].def.str("EditTextFrame") == Some(f.def.name.as_str()));
                 let (mut jh, mut jv) = (justify("FontJustificationH", if edit_text { Justify::Start } else { Justify::Middle }), justify("FontJustificationV", Justify::Middle));
+                // Sized to its text, it starts at its left edge whatever its justification.
+                if f.fitted {
+                    jh = Justify::Start;
+                }
                 let mut r = r;
                 if r.w() < 1e-6 {
                     let (ax, x) = (f.anchor.0, r.x0);

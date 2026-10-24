@@ -58,6 +58,16 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // rects <text>: prints the frames whose names contain the text, with their
+            // rectangles, widths, and text.
+            "rects" => {
+                for (k, f) in glue.tree.frames.iter().enumerate() {
+                    if f.def.name.contains(a[i + 1].as_str()) {
+                        eprintln!("{k} {} {:?} width {:?} text {:?}", f.def.name, f.rect, f.width, f.text);
+                    }
+                }
+                i += 2;
+            }
             // hoverframe <frame>: moves the pointer to the middle of a named frame.
             "hoverframe" => {
                 if let Some(r) = glue.tree.get(&a[i + 1]).and_then(|f| glue.tree.frames[f].rect) {

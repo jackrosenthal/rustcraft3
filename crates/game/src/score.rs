@@ -36,6 +36,10 @@ pub struct Score {
     /// The heroes the player has had, in order, and the experience they gained.
     pub heroes: Vec<u32>,
     pub experience: i32,
+    /// CachePlayerHeroData: the heroes' types and levels as they were, for the score
+    /// screen once the heroes are gone or given away.
+    #[serde(default)]
+    pub hero_cache: HashMap<u32, (Id, i32)>,
 }
 
 /// PLAYER_SCORE_* (common.j).
@@ -70,6 +74,16 @@ pub mod kind {
 impl World {
     fn score_mut(&mut self, player: u8) -> Option<&mut Score> {
         self.players.get_mut(player as usize).map(|p| &mut p.score)
+    }
+
+    /// CachePlayerHeroData: keeps the player's heroes as they are now for the score
+    /// screen (FUN_6f25bfc0, FUN_6f25c1a0).
+    pub fn cache_hero_data(&mut self, player: u8) {
+        let Some(p) = self.players.get(player as usize) else { return };
+        let cached: Vec<(u32, (Id, i32))> = p.score.heroes.iter().filter_map(|&h| self.unit(h).map(|u| (h, (u.type_id, u.level)))).collect();
+        if let Some(s) = self.score_mut(player) {
+            s.hero_cache.extend(cached);
+        }
     }
 
     /// A unit made for a player.

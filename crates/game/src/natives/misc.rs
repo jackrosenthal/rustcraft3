@@ -201,7 +201,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         // An empty function in the original (0x6f25c2a0).
         SetPlayerUnitsOwner => |_, _, _| none(),
-        CachePlayerHeroData => |_, _, _| none(),
+        CachePlayerHeroData => |w, _, a| { if let Some(p) = super::players::player_arg(w, a, 0) { w.cache_hero_data(p); } none() },
 
         SetTutorialCleared => |w, _, a| { w.persist.tutorial_cleared = a.b(0); none() },
         GetDefaultDifficulty => |w, _, _| handle(w.persist.difficulty as u32),

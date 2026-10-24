@@ -56,8 +56,8 @@ impl ScoreData {
             let heroes: Vec<(String, i32)> = sc
                 .heroes
                 .iter()
-                .filter_map(|&h| w.unit(h))
-                .map(|u| (w.objects.units.get(u.type_id).map(|o| o.str("Art")).unwrap_or_default(), u.level))
+                .filter_map(|&h| w.unit(h).map(|u| (u.type_id, u.level)).or_else(|| sc.hero_cache.get(&h).copied()))
+                .map(|(t, level)| (w.objects.units.get(t).map(|o| o.str("Art")).unwrap_or_default(), level))
                 .collect();
             rows.push(Row {
                 player,

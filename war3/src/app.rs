@@ -242,11 +242,32 @@ impl ApplicationHandler for App {
                             if let (Some(k), true, Some(scene)) = (arrow, !r.keys.contains(&code), r.scene.as_mut()) {
                                 scene.arrow_key(k, true);
                             }
+                            // The camera's keys (CCameraWar3 vf3): Page Up and Page Down
+                            // zoom, Insert and Delete turn while held, Backspace goes to
+                            // the town halls.
+                            if let Some(scene) = r.scene.as_mut().filter(|s| s.hud.as_ref().is_none_or(|h| h.chat.is_none() && h.menu.is_none())) {
+                                let repeat = r.keys.contains(&code);
+                                match code {
+                                    KeyCode::PageUp => scene.zoom_step(true),
+                                    KeyCode::PageDown => scene.zoom_step(false),
+                                    KeyCode::Insert if !repeat => scene.rotate_key(1, true),
+                                    KeyCode::Delete if !repeat => scene.rotate_key(2, true),
+                                    KeyCode::Backspace => scene.town_hall_key(),
+                                    _ => {}
+                                }
+                            }
                             r.keys.insert(code);
                         }
                         ElementState::Released => {
                             if let (Some(k), Some(scene)) = (arrow, r.scene.as_mut()) {
                                 scene.arrow_key(k, false);
+                            }
+                            if let Some(scene) = r.scene.as_mut() {
+                                match code {
+                                    KeyCode::Insert => scene.rotate_key(1, false),
+                                    KeyCode::Delete => scene.rotate_key(2, false),
+                                    _ => {}
+                                }
                             }
                             r.keys.remove(&code);
                         }
@@ -313,7 +334,7 @@ impl ApplicationHandler for App {
                         MouseScrollDelta::LineDelta(_, y) => y,
                         MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
                     };
-                    scene.zoom(lines * 100.0);
+                    scene.zoom(lines);
                 }
             }
             WindowEvent::RedrawRequested => {

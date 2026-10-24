@@ -335,6 +335,12 @@ pub struct Scene {
     /// structures, then the four second timers.
     attack_times: HashMap<u32, (f32, f32)>,
     attack_timers: [f32; 8],
+    /// The game camera's zoom level (0 to 5) and rotation (0, or 1 and 2 while Insert or
+    /// Delete is held), CCameraWar3 +0x20 and +0x24.
+    zoom_level: usize,
+    rotation_state: usize,
+    /// Backspace's town halls: the one it went to and when (FUN_6f3613b0).
+    hall_cursor: Option<(u32, f32)>,
     /// GlobalStrings' COLON_COMPLETED.
     completed_prefix: String,
     options_fill: bool,
@@ -699,7 +705,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8], completed_prefix: assets.frames.string("COLON_COMPLETED") };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8], completed_prefix: assets.frames.string("COLON_COMPLETED"), zoom_level: 0, rotation_state: 0, hall_cursor: None };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -3783,6 +3789,84 @@ impl Scene {
         }
     }
 
+    /// The game camera at its zoom level and rotation (FUN_6f35ea80): each level's
+    /// distance and angle of attack, the rotation for the level and state, a 70 degree
+    /// field of view, and far Z 5000, over `secs`.
+    fn apply_camera_level(&mut self, secs: f32) {
+        const DISTANCE: [f32; 6] = [1650.0, 1600.0, 1500.0, 1400.0, 1275.0, 1200.0];
+        const AOA: [f32; 6] = [304.0, 311.0, 318.0, 325.0, 332.0, 335.0];
+        const ROTATION: [f32; 3] = [90.0, 20.0, 160.0];
+        let (z, r) = (self.zoom_level.min(5), self.rotation_state.min(2));
+        if let Some(g) = self.game.as_mut() {
+            use w3_game::camera::*;
+            let c = &mut g.world.camera;
+            c.set_field(FIELD_TARGET_DISTANCE, DISTANCE[z], secs);
+            c.set_field(FIELD_FAR_Z, 5000.0, secs);
+            c.set_field(FIELD_ANGLE_OF_ATTACK, AOA[z], secs);
+            c.set_field(FIELD_FIELD_OF_VIEW, 70.0, secs);
+            c.set_field(FIELD_ROLL, 0.0, secs);
+            c.set_field(FIELD_ROTATION, ROTATION[r], secs);
+            c.set_field(FIELD_ZOFFSET, 0.0, secs);
+        }
+    }
+
+    /// Page Up, Page Down, and the wheel: a zoom level nearer or farther, over a second
+    /// (FUN_6f361330).
+    pub fn zoom_step(&mut self, nearer: bool) {
+        if !self.user_control() {
+            return;
+        }
+        let level = if nearer { (self.zoom_level + 1).min(5) } else { self.zoom_level.saturating_sub(1) };
+        if level != self.zoom_level {
+            self.zoom_level = level;
+            self.apply_camera_level(1.0);
+        }
+    }
+
+    /// Insert and Delete: while held the camera turns to the second or third rotation,
+    /// and back when let go, over half a second (FUN_6f361370).
+    pub fn rotate_key(&mut self, state: usize, down: bool) {
+        if !self.user_control() {
+            return;
+        }
+        let next = match (down, self.rotation_state) {
+            (true, 0) => state,
+            (false, s) if s == state => 0,
+            _ => return,
+        };
+        self.rotation_state = next;
+        self.apply_camera_level(0.5);
+    }
+
+    /// Backspace: to the local player's town halls in turn, the largest first; after a
+    /// second's pause it starts again from the first (FUN_6f3613b0).
+    pub fn town_hall_key(&mut self) {
+        if !self.user_control() {
+            return;
+        }
+        let Some(g) = self.game.as_ref() else { return };
+        let w = &g.world;
+        let me = w.local_player;
+        let mut halls: Vec<(f32, u32)> = w.unit_order.iter().filter_map(|&h| w.unit(h).filter(|u| u.owner == me && !u.dead && !u.hidden && w.is_town_hall(u)).map(|u| (u.max_life, h))).collect();
+        halls.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+        if halls.is_empty() {
+            return;
+        }
+        let now = self.time;
+        let k = match self.hall_cursor {
+            Some((last, at)) if now < at + 1.0 => halls.iter().position(|&(_, h)| h == last).map_or(0, |i| (i + 1) % halls.len()),
+            _ => 0,
+        };
+        let h = halls[k].1;
+        let at = w.unit(h).map(|u| (u.x, u.y));
+        self.hall_cursor = Some((h, now));
+        if let (Some((x, y)), Some(g)) = (at, self.game.as_mut()) {
+            let (x, y) = g.world.clamp_to_camera_bounds(x, y);
+            g.world.camera.pan_to(x, y, 0.0);
+        }
+        self.sync_camera();
+    }
+
     /// Zooming with the wheel.
     pub fn zoom(&mut self, amount: f32) {
         // Over the game menu, the wheel scrolls its text areas a line at a time.
@@ -3796,15 +3880,9 @@ impl Scene {
                 return;
             }
         }
-        if !self.user_control() {
-            return;
-        }
-        if let Some(g) = self.game.as_mut() {
-            let c = &mut g.world.camera;
-            let d = (c.fields[w3_game::camera::FIELD_TARGET_DISTANCE] - amount).clamp(500.0, 5000.0);
-            c.set_field(w3_game::camera::FIELD_TARGET_DISTANCE, d, 0.0);
-        } else {
-            self.camera.distance = (self.camera.distance - amount).clamp(500.0, 5000.0);
+        // Each notch is a zoom level (CCameraWar3 vf3: the delta in 120ths).
+        if amount != 0.0 {
+            self.zoom_step(amount > 0.0);
         }
     }
 

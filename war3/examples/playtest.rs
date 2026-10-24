@@ -143,6 +143,25 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // zoom <steps>: Page Up (positive) or Page Down (negative) that many times.
+            "zoom" => {
+                let n = num(&a[i + 1]) as i32;
+                for _ in 0..n.abs() {
+                    scene.zoom_step(n > 0);
+                }
+                i += 2;
+            }
+            // rotate <0|1|2>: holds Insert (1) or Delete (2), or lets go (0).
+            "rotate" => {
+                match num(&a[i + 1]) as usize {
+                    0 => {
+                        scene.rotate_key(1, false);
+                        scene.rotate_key(2, false);
+                    }
+                    s => scene.rotate_key(s, true),
+                }
+                i += 2;
+            }
             "key" => {
                 scene.key(a[i + 1].chars().next().unwrap());
                 i += 2;

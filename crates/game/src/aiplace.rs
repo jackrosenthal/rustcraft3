@@ -242,7 +242,7 @@ impl World {
         ["Agld", "Abgm", "Aegm"].iter().any(|c| self.ability_with_code(h, c).is_some())
     }
 
-    pub(crate) fn is_town_hall(&self, u: &crate::types::Unit) -> bool {
+    pub fn is_town_hall(&self, u: &crate::types::Unit) -> bool {
         self.objects.units.get(u.type_id).is_some_and(|o| o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case("townhall")))
     }
 

@@ -438,6 +438,9 @@ impl TerrainRenderer {
                 lerp(deep_min, deep_max, t)
             }
         };
+        // Water.slk "lighting": the water is lit by the day's light (FUN_6f760b50 picks
+        // its lit render state).
+        let water_normal = if num("lighting") != 0.0 { [0.0, 0.0, 1.0] } else { [0.0; 3] };
         let water_first = indices.len() as u32;
         for y in 0..h - 1 {
             for x in 0..w - 1 {
@@ -457,7 +460,7 @@ impl TerrainRenderer {
                     }
                     verts.push(Vertex {
                         pos: [terrain.offset[0] + cx as f32 * TILE, terrain.offset[1] + cy as f32 * TILE, wz],
-                        normal: [0.0, 0.0, 1.0],
+                        normal: water_normal,
                         uv: uvs[k],
                         color,
                     });

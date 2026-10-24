@@ -887,11 +887,19 @@ impl World {
                 let target_art = self.profile_art(a, "TargetArt");
                 self.spawn_effect(&target_art, goal.0, goal.1);
             }
-            self.ability_effect(vm, h, a, lvl, target, goal);
-            if let Some(item) = self.unit_mut(h).and_then(|u| u.extra.casting_item.take()) {
-                if let Some(type_id) = self.item(item).map(|i| i.type_id) {
-                    self.spend_item_use(vm, h, item, type_id);
-                }
+            // An item's spell does what the item does (a Wand of Illusion's image),
+            // else what the ability does as a unit's.
+            let item = self.unit_mut(h).and_then(|u| u.extra.casting_item.take());
+            let item_type = item.and_then(|it| self.item(it).map(|i| i.type_id));
+            let handled = match (item, item_type) {
+                (Some(it), Some(ty)) => self.item_effect(vm, h, it, ty, target, goal.0, goal.1),
+                _ => false,
+            };
+            if !handled {
+                self.ability_effect(vm, h, a, lvl, target, goal);
+            }
+            if let (Some(it), Some(ty)) = (item, item_type) {
+                self.spend_item_use(vm, h, it, ty);
             }
             return;
         }

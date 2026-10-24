@@ -230,7 +230,7 @@ impl World {
 
     /// What an item's abilities do when used (or picked up, for powerups).  Returns
     /// whether anything happened.
-    fn item_effect(&mut self, vm: &mut Vm, unit: u32, _item: u32, type_id: Id, _target: u32, _x: f32, _y: f32) -> bool {
+    pub(crate) fn item_effect(&mut self, vm: &mut Vm, unit: u32, _item: u32, type_id: Id, _target: u32, _x: f32, _y: f32) -> bool {
         let owner = self.unit(unit).map_or(0, |u| u.owner);
         let mut did = false;
         for a in self.item_abilities(type_id) {

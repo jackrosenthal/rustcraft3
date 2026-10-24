@@ -493,6 +493,12 @@ impl World {
         }
     }
 
+    /// Ghost and Ghost (Visible) (CAbilityGhost, CAbilityGhostVisible: Agho, Aeth) take
+    /// a unit's collision with other units away (FUN_6f623bd0).
+    pub fn is_ghost(&self, u: &Unit) -> bool {
+        u.abilities.iter().any(|&(a, _)| matches!(self.ability_code(a).as_str(), "Agho" | "Aeth"))
+    }
+
     /// How a unit moves, from its type's movetp (an uprooted ancient walks).
     pub fn move_kind(&self, h: u32) -> crate::pathing::Move {
         self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map_or(crate::pathing::Move::Foot, |o| crate::pathing::Move::from_movetp(&o.str("movetp")))
@@ -556,6 +562,7 @@ impl World {
             return false;
         }
         let step = self.current_move_speed(h) * dt;
+        let ghost = self.unit(h).is_some_and(|u| self.is_ghost(u));
         let Some(u) = self.unit_mut(h) else { return true };
         let (dx, dy) = (next.0 - u.x, next.1 - u.y);
         let d = (dx * dx + dy * dy).sqrt();
@@ -569,9 +576,9 @@ impl World {
         // Likewise the end of a move to a point, when another unit already stands on it
         // (a worker bound for a mine or a building site goes all the way).
         let to_point = matches!(u.action, Action::Move { .. } | Action::AttackMove { .. } | Action::Patrol { .. });
-        if to_point && u.path.len() == 1 && d > step && d <= u.collision * 2.0 {
+        if to_point && u.path.len() == 1 && d > step && d <= u.collision * 2.0 && !ghost {
             let size = u.collision;
-            let taken = self.unit_order.iter().any(|&o| o != h && self.unit(o).is_some_and(|v| !v.dead && !v.hidden && !v.is_building && (v.x - next.0).hypot(v.y - next.1) < v.collision + size));
+            let taken = self.unit_order.iter().any(|&o| o != h && self.unit(o).is_some_and(|v| !v.dead && !v.hidden && !v.is_building && !self.is_ghost(v) && (v.x - next.0).hypot(v.y - next.1) < v.collision + size));
             if taken {
                 let Some(u) = self.unit_mut(h) else { return true };
                 u.path.clear();
@@ -1903,13 +1910,13 @@ impl World {
     }
 
     /// Pushes overlapping units apart, flyers among flyers and the rest among
-    /// themselves; units unseen, aboard, or with their pathing off take no part.
+    /// themselves; units unseen, aboard, with their pathing off, or ghosts take no part.
     fn separate_units(&mut self, _dt: f32) {
         let hs: Vec<u32> = self
             .unit_order
             .iter()
             .copied()
-            .filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.is_building && u.collision > 0.0 && !u.extra.no_pathing))
+            .filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.is_building && u.collision > 0.0 && !u.extra.no_pathing && !self.is_ghost(u)))
             .collect();
         let pos: Vec<(f32, f32, f32)> = hs.iter().map(|&h| self.unit(h).map(|u| (u.x, u.y, u.collision)).unwrap()).collect();
         let air: Vec<bool> = hs.iter().map(|&h| self.move_kind(h) == crate::pathing::Move::Fly).collect();

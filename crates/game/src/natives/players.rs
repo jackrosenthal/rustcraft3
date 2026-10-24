@@ -23,6 +23,20 @@ fn with_player(w: &mut World, a: &[Value], f: impl FnOnce(&mut Player)) -> Nativ
     none()
 }
 
+/// Whether a player commands a unit: their own, or one whose owner shares advanced
+/// control with them, or shares control of a unit not a structure (structures too with
+/// the setup's full shared unit control, 0x10000: FUN_6f1ea8b0, FUN_6f1e0fe0).
+pub fn controls(w: &World, player: u8, h: u32) -> bool {
+    let Some(u) = w.unit(h) else { return false };
+    if u.owner == player {
+        return true;
+    }
+    let Some(a) = w.players.get(u.owner as usize).and_then(|o| o.alliances.get(player as usize)) else { return false };
+    const SHARED_CONTROL: usize = 6;
+    const SHARED_ADVANCED_CONTROL: usize = 7;
+    a[SHARED_ADVANCED_CONTROL] || (a[SHARED_CONTROL] && (!u.is_building || w.map_flags & 0x10000 != 0))
+}
+
 pub fn is_ally(w: &World, a: u8, b: u8) -> bool {
     w.players.get(a as usize).is_some_and(|p| p.alliances[b as usize % PLAYER_COUNT][ALLIANCE_PASSIVE])
 }

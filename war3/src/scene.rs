@@ -73,7 +73,7 @@ fn team_colors(chain: &w3_mpq::Chain) -> [[f32; 3]; 16] {
 /// A unit's command card: the local player's own buttons (and goods), or a neutral
 /// shop's goods, which show to everyone.
 fn card_of(commands: &crate::card::Commands, db: &w3_ui::FrameDb, w: &w3_game::World, h: u32, page: crate::card::Page) -> Vec<crate::card::Button> {
-    if w.unit(h).is_some_and(|u| u.owner == w.local_player) {
+    if w3_game::natives::players::controls(w, w.local_player, h) {
         let mut card = commands.card(db, w, h, page);
         if page == crate::card::Page::Main {
             card.extend(commands.shop_card(w, h));
@@ -894,7 +894,7 @@ impl Scene {
         let mut pending = std::mem::take(&mut self.pending_audio);
         // Acknowledgments of the local player's units.
         let local = self.game.as_ref().map_or(0, |g| g.world.local_player);
-        let owned = |s: &Self, h: u32| s.game.as_ref().and_then(|g| g.world.unit(h)).is_some_and(|u| u.owner == local);
+        let owned = |s: &Self, h: u32| s.game.as_ref().is_some_and(|g| w3_game::natives::players::controls(&g.world, local, h));
         let acks: Vec<(u32, &'static str)> = pending
             .iter()
             .filter_map(|r| match r {
@@ -1547,12 +1547,12 @@ impl Scene {
                 let double = self.last_pick.is_some_and(|(p, t)| p == h && self.time - t < 0.4);
                 self.last_pick = Some((h, self.time));
                 let w = &g.world;
-                if let Some(t) = w.unit(h).filter(|u| u.owner == local && (self.ctrl_held || double)).map(|u| u.type_id) {
+                if let Some(t) = w.unit(h).filter(|_| w3_game::natives::players::controls(w, local, h) && (self.ctrl_held || double)).map(|u| u.type_id) {
                     for &o in &w.unit_order {
                         if o == h || picked.len() >= 12 {
                             continue;
                         }
-                        let Some(u) = w.unit(o).filter(|u| u.owner == local && u.type_id == t && !u.dead && !u.hidden) else { continue };
+                        let Some(u) = w.unit(o).filter(|u| w3_game::natives::players::controls(w, local, o) && u.type_id == t && !u.dead && !u.hidden) else { continue };
                         let z = self.terrain.height_at(u.x, u.y) + u.fly_height;
                         if self.project(Vec3::new(u.x, u.y, z), size).is_some_and(|(px, py)| px >= 0.0 && py >= 0.0 && px <= size.0 as f32 && py <= size.1 as f32) {
                             picked.push(o);
@@ -1566,7 +1566,7 @@ impl Scene {
             let w = &g.world;
             for &h in &w.unit_order {
                 let Some(u) = w.unit(h) else { continue };
-                if u.owner != local || u.dead || u.hidden || w.is_locust(u) {
+                if !w3_game::natives::players::controls(w, local, h) || u.dead || u.hidden || w.is_locust(u) {
                     continue;
                 }
                 let z = self.terrain.height_at(u.x, u.y) + u.fly_height;
@@ -1632,7 +1632,7 @@ impl Scene {
         use crate::card::Action as A;
         let Some(g) = self.game.as_mut() else { return };
         let local = g.world.local_player;
-        let mine: Vec<u32> = self.selection.iter().copied().filter(|&h| g.world.unit(h).is_some_and(|u| u.owner == local)).collect();
+        let mine: Vec<u32> = self.selection.iter().copied().filter(|&h| w3_game::natives::players::controls(&g.world, local, h)).collect();
         // Shops need not be the local player's own.
         let first_any = self.selection.first().copied().unwrap_or(0);
         if matches!(action, A::Buy(_) | A::Hire(_) | A::Awaken(_)) {
@@ -1952,7 +1952,7 @@ impl Scene {
         }
         if let Some(slot) = self.hud.as_ref().and_then(|h| h.inventory_at(ux, uy)) {
             if let (Some(&u), Some(g)) = (self.selection.first(), self.game.as_mut()) {
-                if g.world.unit(u).is_some_and(|un| un.owner == g.world.local_player) {
+                if w3_game::natives::players::controls(&g.world, g.world.local_player, u) {
                     // An item used on a unit or a point waits for the click on it.
                     if g.world.item_targeting(u, slot) == w3_game::ability::Targeting::None {
                         g.apply(w3_game::replay::Command::UseItem { unit: u, slot });
@@ -2015,7 +2015,7 @@ impl Scene {
             if let Some(g) = self.game.as_mut() {
                 let id = order;
                 for &h in &self.selection {
-                    if g.world.unit(h).is_none_or(|u| u.owner != g.world.local_player) {
+                    if !w3_game::natives::players::controls(&g.world, g.world.local_player, h) {
                         continue;
                     }
                     g.world.order_error = None;
@@ -2543,7 +2543,7 @@ impl Scene {
         // A right-click on an item picks it up to move.
         if let Some(slot) = self.hud.as_ref().and_then(|h| h.inventory_at(ux, uy)) {
             if let (Some(&u), Some(g)) = (self.selection.first(), self.game.as_ref()) {
-                if g.world.unit(u).is_some_and(|un| un.owner == g.world.local_player && un.inventory.get(slot).is_some_and(|&i| i != 0)) {
+                if g.world.unit(u).is_some_and(|un| w3_game::natives::players::controls(&g.world, g.world.local_player, u) && un.inventory.get(slot).is_some_and(|&i| i != 0)) {
                     self.held_item = Some((u, slot));
                 }
             }
@@ -2553,7 +2553,7 @@ impl Scene {
             if let Some(g) = self.game.as_mut() {
                 let smart = w3_game::natives::basic::order_id("smart");
                 for &h in &self.selection {
-                    if g.world.unit(h).is_some_and(|u| u.owner == g.world.local_player) {
+                    if w3_game::natives::players::controls(&g.world, g.world.local_player, h) {
                         g.apply(w3_game::replay::Command::Order { unit: h, order: smart, x: wx, y: wy, target: 0 });
                     }
                 }
@@ -2566,7 +2566,7 @@ impl Scene {
                 let order = w3_game::natives::basic::order_id(if state { off } else { on });
                 let local = g.world.local_player;
                 for &h in &self.selection {
-                    if g.world.unit(h).is_some_and(|u| u.owner == local) {
+                    if w3_game::natives::players::controls(&g.world, local, h) {
                         g.apply(w3_game::replay::Command::Order { unit: h, order, x: 0.0, y: 0.0, target: 0 });
                     }
                 }
@@ -2583,7 +2583,7 @@ impl Scene {
         let smart = w3_game::natives::basic::order_id("smart");
         let mut ordered = false;
         for &h in &self.selection {
-            if g.world.unit(h).is_none_or(|u| u.owner != local) {
+            if !w3_game::natives::players::controls(&g.world, local, h) {
                 continue;
             }
             match (target, point) {
@@ -2610,7 +2610,7 @@ impl Scene {
     /// attacking, else "Yes".
     fn order_ack(&mut self) {
         let Some(g) = &self.game else { return };
-        let Some(&h) = self.selection.iter().find(|&&h| g.world.unit(h).is_some_and(|u| u.owner == g.world.local_player && !u.is_building)) else { return };
+        let Some(&h) = self.selection.iter().find(|&&h| g.world.unit(h).is_some_and(|u| w3_game::natives::players::controls(&g.world, g.world.local_player, h) && !u.is_building)) else { return };
         let attacking = g.world.unit(h).is_some_and(|u| matches!(u.action, w3_game::types::Action::Attack { .. } | w3_game::types::Action::AttackMove { .. }));
         self.ack_clicks = 0;
         self.ack(h, if attacking { "YesAttack" } else { "Yes" }, None);

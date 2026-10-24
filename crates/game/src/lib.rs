@@ -538,8 +538,12 @@ impl Game {
 
     fn execute(&mut self, player: u8, c: replay::Command) -> replay::Outcome {
         use replay::{Command as C, Outcome as O};
-        // A command speaks only for the player who gave it.
+        // A command speaks only for the player who gave it, and orders only the units
+        // they command.
         if c.player().is_some_and(|p| p != player) {
+            return O::Done;
+        }
+        if c.unit().is_some_and(|u| !natives::players::controls(&self.world, player, u)) {
             return O::Done;
         }
         // A selection the player already has changes nothing.

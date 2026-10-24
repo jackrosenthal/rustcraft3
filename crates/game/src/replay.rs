@@ -47,6 +47,25 @@ pub enum Command {
 }
 
 impl Command {
+    /// The unit (or structure) a command orders, when it orders one.
+    pub fn unit(&self) -> Option<u32> {
+        use Command as C;
+        match self {
+            C::Order { unit, .. }
+            | C::Issue { unit, .. }
+            | C::UseItem { unit, .. }
+            | C::UseItemAt { unit, .. }
+            | C::MoveItem { unit, .. }
+            | C::DropItemAt { unit, .. }
+            | C::GiveItemTo { unit, .. } => Some(*unit),
+            C::Build { worker, .. } => Some(*worker),
+            C::Train { building, .. } | C::Research { building, .. } | C::Upgrade { building, .. } | C::CancelLast { building } => Some(*building),
+            C::LearnSkill { hero, .. } => Some(*hero),
+            C::StartRevive { altar, .. } => Some(*altar),
+            _ => None,
+        }
+    }
+
     /// The player a command speaks for, when it names one.
     pub fn player(&self) -> Option<u8> {
         use Command as C;

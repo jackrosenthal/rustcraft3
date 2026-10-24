@@ -541,6 +541,7 @@ impl Game {
             C::LearnSkill { hero, id } => O::Flag(self.world.learn_skill(hero, id)),
             C::BuyItem { player, shop, id } => res(self.buy_item(player, shop, id)),
             C::HireUnit { player, shop, id } => res(self.hire_unit(player, shop, id)),
+            C::Awaken { player, tavern, hero } => res(self.world.awaken(player, tavern, hero)),
             C::StartRevive { altar, hero } => res(self.start_revive(altar, hero)),
             C::UseItem { unit, slot } => O::Flag(self.use_item(unit, slot)),
             C::UseItemAt { unit, slot, target, x, y } => O::Flag(self.use_item_at(unit, slot, target, x, y)),

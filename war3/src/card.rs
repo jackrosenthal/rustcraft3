@@ -24,6 +24,8 @@ pub enum Action {
     Hire(Id),
     /// Revive a dead hero at the selected altar.
     Revive(u32),
+    /// Awaken a dead hero at the selected tavern.
+    Awaken(u32),
     Cancel,
     CancelTrain,
 }
@@ -202,6 +204,25 @@ impl Commands {
             let ok = has_shopper && stock > 0 && gold >= o.int("goldcost") && lumber >= o.int("lumbercost");
             let costs = [0, o.int("goldcost"), o.int("lumbercost"), o.int("fused")];
             out.push(Button::new(x, y, o.str("Art"), hotkey(&o.str("Hotkey")), Action::Hire(id), ok).with_tip(o.str("Tip"), fill_placeholders(w, &o.str("Ubertip")), costs));
+        }
+        // A tavern's Awaken: the player's first four heroes along the top row, the dead
+        // ones to awaken ("Awakentip - name" with the cost), the others by name
+        // (CAbilityAwaken::vf112, vf166).
+        if w.awakens(h) {
+            for (i, hero) in w.awaken_heroes(local).into_iter().enumerate() {
+                let Some(hu) = w.unit(hero) else { continue };
+                let Some(o) = w.objects.units.get(hu.type_id) else { continue };
+                let dead = hu.dead && !hu.reviving;
+                let mut b = Button::new(i as u32, 0, o.str("Art"), None, Action::Awaken(hero), false);
+                if dead {
+                    let (g, l) = w.awaken_cost(hero);
+                    b.enabled = has_shopper && gold >= g && lumber >= l;
+                    b = b.with_tip(format!("{} - {}", o.str("Awakentip"), hu.proper_name), String::new(), [0, g, l, o.int("fused")]);
+                } else {
+                    b = b.with_tip(hu.proper_name.clone(), String::new(), [0; 4]);
+                }
+                out.push(b);
+            }
         }
         out
     }

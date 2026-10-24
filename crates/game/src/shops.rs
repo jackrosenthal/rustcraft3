@@ -131,18 +131,22 @@ impl World {
     /// well.
     pub fn shopper(&self, player: u8, shop: u32) -> Option<u32> {
         let s = self.unit(shop)?;
-        let radius = self
-            .ability_with_code(shop, "Aneu")
-            .or_else(|| self.ability_with_code(shop, "Aall"))
-            .and_then(|(a, l)| self.objects.abilities.get(a).map(|o| o.level_real("DataA", l)))
-            .filter(|&r| r > 0.0)
-            .unwrap_or(500.0);
+        // The neutral building ability (Aneu, Ane2, or Aall): its activation radius
+        // (DataA) and interaction type (DataB, FUN_6f3fa620): 0 heroes, bit 1 units with
+        // an inventory, bit 2 units not structures, otherwise any; never illusions.
+        let neutral = self.ability_with_code(shop, "Aneu").or_else(|| self.ability_with_code(shop, "Ane2")).or_else(|| self.ability_with_code(shop, "Aall"));
+        let data = |k: &str| neutral.and_then(|(a, l)| self.objects.abilities.get(a).map(|o| o.level_real(k, l)));
+        let radius = data("DataA").filter(|&r| r > 0.0).unwrap_or(500.0);
+        let kind = data("DataB").map_or(1, |v| v as i32);
         let (sx, sy) = (s.x, s.y);
         self.unit_order
             .iter()
             .copied()
-            .filter(|&h| self.unit(h).is_some_and(|u| u.owner == player && !u.dead && (u.x - sx).hypot(u.y - sy) <= radius))
-            .filter(|&h| self.inventory_size(h) > 0)
+            .filter(|&h| self.unit(h).is_some_and(|u| u.owner == player && !u.dead && u.extra.illusion.is_none() && (u.x - sx).hypot(u.y - sy) <= radius))
+            .filter(|&h| {
+                let Some(u) = self.unit(h) else { return false };
+                (kind != 0 || u.is_hero) && (kind & 1 == 0 || self.inventory_size(h) > 0) && (kind & 2 == 0 || !u.is_building)
+            })
             .min_by(|&a, &b| {
                 let d = |h: u32| self.unit(h).map_or(f32::MAX, |u| (u.x - sx).hypot(u.y - sy));
                 d(a).total_cmp(&d(b))
@@ -198,20 +202,93 @@ impl World {
     }
 
     /// Gold, lumber, and seconds to revive a hero: its cost times ReviveBaseFactor plus
-    /// ReviveLevelFactor per level past the first, capped by ReviveMaxFactor and the
-    /// HeroMaxRevive* limits; time is its build time times level times ReviveTimeFactor.
+    /// ReviveLevelFactor per level past the first, capped by ReviveMaxFactor, rounded
+    /// to a multiple of 5 and capped by the HeroMaxRevive* limits (FUN_6f3f99b0); time is
+    /// its build time times level times ReviveTimeFactor.
     pub fn revive_cost(&self, hero: u32) -> (i32, i32, f32) {
         let Some(u) = self.unit(hero) else { return (0, 0, 0.0) };
         let Some(o) = self.objects.units.get(u.type_id) else { return (0, 0, 0.0) };
         let level = u.level.max(1) as f32;
         let m = |k: &str, d: f32| self.misc_f32(k, d);
-        let max = m("ReviveMaxFactor", 4.0);
-        let gf = (m("ReviveBaseFactor", 0.4) + m("ReviveLevelFactor", 0.1) * (level - 1.0)).min(max);
-        let lf = (m("ReviveBaseLumberFactor", 0.0) + m("ReviveLumberLevelFactor", 0.0) * (level - 1.0)).min(max);
-        let gold = (o.real("goldcost") * gf).min(m("HeroMaxReviveCostGold", 700.0));
-        let lumber = (o.real("lumbercost") * lf).min(m("HeroMaxReviveCostLumber", 0.0).max(0.0));
+        let (gold, lumber) = self.hero_cost(hero, "Revive", "HeroMaxRevive");
         let time = (o.real("bldtm") * level * m("ReviveTimeFactor", 0.65)).min(m("HeroMaxReviveTime", 150.0));
-        (gold as i32, lumber as i32, time)
+        (gold, lumber, time)
+    }
+
+    /// A revival's or awakening's gold and lumber: the hero's cost times
+    /// <kind>BaseFactor plus <kind>LevelFactor per level past the first (and the lumber
+    /// factors), at most <kind>MaxFactor, plus a half, cut to a multiple of 5, and at
+    /// most the <max>CostGold and <max>CostLumber limits.
+    fn hero_cost(&self, hero: u32, kind: &str, max: &str) -> (i32, i32) {
+        let Some(u) = self.unit(hero) else { return (0, 0) };
+        let Some(o) = self.objects.units.get(u.type_id) else { return (0, 0) };
+        let level = u.level.max(1) as f32;
+        let m = |k: &str| self.misc_f32(&format!("{kind}{k}"), 0.0);
+        let limit = |k: &str| self.misc_f32(&format!("{max}{k}"), 0.0) as i32;
+        let fmax = m("MaxFactor");
+        let gf = (m("BaseFactor") + m("LevelFactor") * (level - 1.0)).min(fmax);
+        let lf = (m("BaseLumberFactor") + m("LumberLevelFactor") * (level - 1.0)).min(fmax);
+        let round = |cost: f32, f: f32| ((cost * f + 0.5) / 5.0) as i32 * 5;
+        (round(o.real("goldcost"), gf).min(limit("CostGold")), round(o.real("lumbercost"), lf).min(limit("CostLumber")))
+    }
+
+    /// The heroes a tavern's Awaken (CAbilityAwaken) lists for a player: its first four.
+    pub fn awaken_heroes(&self, player: u8) -> Vec<u32> {
+        self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.is_hero && u.owner == player)).take(4).collect()
+    }
+
+    /// Whether a unit awakens heroes (has Awaken, Aawa).
+    pub fn awakens(&self, h: u32) -> bool {
+        self.unit(h).is_some_and(|u| u.abilities.iter().any(|&(a, _)| self.ability_code(a) == "Aawa"))
+    }
+
+    /// Gold and lumber to awaken a hero (FUN_6f4187a0, FUN_6f421e80).
+    pub fn awaken_cost(&self, hero: u32) -> (i32, i32) {
+        self.hero_cost(hero, "Awaken", "HeroMaxAwaken")
+    }
+
+    /// A tavern awakens a player's dead hero at once (CAbilityAwaken::vf190 and
+    /// FUN_6f3f8350): within reach of the tavern, with the gold, lumber, and food, it
+    /// stands beside it with HeroAwakenLifeFactor of its life and, with
+    /// HeroAwakenManaStart 0, HeroAwakenManaFactor of its mana.
+    pub fn awaken(&mut self, player: u8, tavern: u32, hero: u32) -> Result<(), &'static str> {
+        if !self.awakens(tavern) || !self.awaken_heroes(player).contains(&hero) {
+            return Err("");
+        }
+        if self.shopper(player, tavern).is_none() && self.unit(tavern).is_none_or(|u| u.owner != player) {
+            return Err("Notinrange");
+        }
+        if self.unit(hero).is_none_or(|u| !u.dead || u.reviving) {
+            return Err("");
+        }
+        let (g, l) = self.awaken_cost(hero);
+        let food = self.unit(hero).and_then(|u| self.objects.units.get(u.type_id)).map_or(0, |o| o.int("fused"));
+        let p = &self.players[player as usize];
+        if p.get_state(player_state::RESOURCE_GOLD) < g {
+            return Err("Nogold");
+        }
+        if p.get_state(player_state::RESOURCE_LUMBER) < l {
+            return Err("Nolumber");
+        }
+        if food > 0 && !self.cheat(crate::cheats::flag::FOOD) && p.get_state(player_state::RESOURCE_FOOD_USED) + food > p.get_state(player_state::RESOURCE_FOOD_CAP) {
+            return Err("Nofood");
+        }
+        let p = &mut self.players[player as usize];
+        *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) -= g;
+        *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) -= l;
+        let radius = self.unit(hero).map_or(16.0, |u| u.collision);
+        let (x, y) = self.spawn_point_pub(tavern, radius);
+        self.revive_hero(hero, x, y);
+        let life_f = self.misc_f32("HeroAwakenLifeFactor", 0.5);
+        let mana_start = self.misc_f32("HeroAwakenManaStart", 0.0);
+        let mana_f = self.misc_f32("HeroAwakenManaFactor", 0.0);
+        if let Some(u) = self.unit_mut(hero) {
+            u.life = u.max_life * life_f;
+            if mana_start == 0.0 {
+                u.mana = u.max_mana * mana_f;
+            }
+        }
+        Ok(())
     }
 
     /// Dead heroes an altar (a structure whose type has Revive) can bring back for its

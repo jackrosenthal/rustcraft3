@@ -70,6 +70,22 @@ fn team_colors(chain: &w3_mpq::Chain) -> [[f32; 3]; 16] {
     out
 }
 
+/// A unit's command card: the local player's own buttons (and goods), or a neutral
+/// shop's goods, which show to everyone.
+fn card_of(commands: &crate::card::Commands, db: &w3_ui::FrameDb, w: &w3_game::World, h: u32, page: crate::card::Page) -> Vec<crate::card::Button> {
+    if w.unit(h).is_some_and(|u| u.owner == w.local_player) {
+        let mut card = commands.card(db, w, h, page);
+        if page == crate::card::Page::Main {
+            card.extend(commands.shop_card(w, h));
+        }
+        card
+    } else if w.ability_with_code(h, "Aneu").or_else(|| w.ability_with_code(h, "Ane2")).is_some() {
+        commands.shop_card(w, h)
+    } else {
+        Vec::new()
+    }
+}
+
 /// A special effect's model: born, standing, and dying once destroyed.
 pub struct EffectView {
     pub inst: ModelInstance,
@@ -1561,7 +1577,7 @@ impl Scene {
         let mine: Vec<u32> = self.selection.iter().copied().filter(|&h| g.world.unit(h).is_some_and(|u| u.owner == local)).collect();
         // Shops need not be the local player's own.
         let first_any = self.selection.first().copied().unwrap_or(0);
-        if matches!(action, A::Buy(_) | A::Hire(_)) {
+        if matches!(action, A::Buy(_) | A::Hire(_) | A::Awaken(_)) {
             match action {
                 A::Buy(id) => {
                     if let Err(e) = g.apply(w3_game::replay::Command::BuyItem { player: local, shop: first_any, id }).ok() {
@@ -1570,6 +1586,11 @@ impl Scene {
                 }
                 A::Hire(id) => {
                     if let Err(e) = g.apply(w3_game::replay::Command::HireUnit { player: local, shop: first_any, id }).ok() {
+                        self.error(e);
+                    }
+                }
+                A::Awaken(hero) => {
+                    if let Err(e) = g.apply(w3_game::replay::Command::Awaken { player: local, tavern: first_any, hero }).ok() {
                         self.error(e);
                     }
                 }
@@ -1651,6 +1672,8 @@ impl Scene {
                     self.error(e);
                 }
             }
+            // Taken with the shop actions above.
+            A::Awaken(_) => {}
             A::Research(id) => {
                 if let Err(e) = g.apply(w3_game::replay::Command::Research { building: first, id }).ok() {
                     self.error(e);
@@ -3051,18 +3074,8 @@ impl Scene {
         }
         hud.show_unit(db, &g.world, self.selection.first().copied());
         let w = &g.world;
-        hud.card = match self.selection.first() {
-            Some(&h) if w.unit(h).is_some_and(|u| u.owner == w.local_player) => {
-                let mut card = self.commands.card(db, w, h, hud.page);
-                if hud.page == crate::card::Page::Main {
-                    card.extend(self.commands.shop_card(w, h));
-                }
-                card
-            }
-            // Neutral shops show their goods to everyone.
-            Some(&h) if w.ability_with_code(h, "Aneu").is_some() => self.commands.shop_card(w, h),
-            _ => Vec::new(),
-        };
+        let page = hud.page;
+        hud.card = self.selection.first().map_or_else(Vec::new, |&h| card_of(&self.commands, db, w, h, page));
         hud.show_group(&g.world, &self.selection);
         hud.sync_cinematic(db, &g.world, aspect);
         hud.sync_heroes(&g.world);
@@ -3121,7 +3134,7 @@ impl Scene {
     /// The selected unit's command card, as the interface would show it.
     pub fn card_now(&self, db: &w3_ui::FrameDb) -> Vec<crate::card::Button> {
         let (Some(g), Some(&h)) = (self.game.as_ref(), self.selection.first()) else { return Vec::new() };
-        self.commands.card(db, &g.world, h, crate::card::Page::Main)
+        card_of(&self.commands, db, &g.world, h, crate::card::Page::Main)
     }
 
     /// The game as a saved game.

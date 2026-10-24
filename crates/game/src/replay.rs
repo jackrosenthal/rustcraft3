@@ -23,6 +23,8 @@ pub enum Command {
     BuyItem { player: u8, shop: u32, id: Id },
     HireUnit { player: u8, shop: u32, id: Id },
     StartRevive { altar: u32, hero: u32 },
+    /// A tavern's Awaken of a player's dead hero.
+    Awaken { player: u8, tavern: u32, hero: u32 },
     UseItem { unit: u32, slot: usize },
     UseItemAt { unit: u32, slot: usize, target: u32, x: f32, y: f32 },
     MoveItem { unit: u32, from: usize, to: usize },

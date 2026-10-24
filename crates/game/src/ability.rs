@@ -533,7 +533,7 @@ impl World {
     }
 
     /// Auras give their buff to qualifying units in range, refreshed every update.
-    fn update_auras(&mut self) {
+    pub(crate) fn update_auras(&mut self) {
         let mut grants = Vec::new();
         for &h in &self.unit_order {
             let Some(u) = self.unit(h) else { continue };

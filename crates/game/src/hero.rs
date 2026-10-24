@@ -323,6 +323,10 @@ impl World {
         use crate::event_ids::*;
         let ctx = EventCtx { spell_ability: crate::objects::id_to_int(ability), state: level, ..Default::default() };
         self.queue_unit_event(h, EVENT_PLAYER_HERO_SKILL, EVENT_UNIT_HERO_SKILL, ctx);
+        // A learned aura reaches those around at once (measured: a grunt's first attack
+        // beside a Tauren Chieftain who has just learned Endurance Aura is already
+        // quickened in the original).
+        self.update_auras();
         true
     }
 

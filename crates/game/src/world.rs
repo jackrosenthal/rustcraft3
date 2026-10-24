@@ -66,6 +66,9 @@ pub enum Request {
     SoundCone(u32),
     /// SyncStored*: this computer's game cache value, to send to everyone.
     SyncCache { cache: String, mission: String, key: String, value: crate::replay::CacheValue },
+    /// A player paused or resumed the game: PAUSE_GAME_NOTIFY (with the pauses left) or
+    /// PAUSE_GAME_NOTIFY_NO_TIMEOUT, or RESUME_GAME_NOTIFY.
+    PauseNotice { player: u8, on: bool, left: Option<i32> },
     /// SetMusicPlayPosition and SetThematicMusicPlayPosition.
     MusicOffset(i32),
     /// NewSoundEnvironment: the environment 3D sounds reverberate in.
@@ -250,6 +253,12 @@ pub struct World {
     /// CopySaveGame's copies this game (at most sixteen).
     #[serde(default)]
     pub save_copies: i32,
+    /// A network game paused by a player, and the pauses each has taken (three each,
+    /// none counted for observers).
+    #[serde(default)]
+    pub net_paused: Option<u8>,
+    #[serde(default)]
+    pub pauses_used: [u8; 16],
     /// PauseGame: the script has paused the game (FUN_6f3719c0).
     #[serde(default)]
     pub script_paused: bool,
@@ -550,6 +559,8 @@ impl World {
             minimap_filter_buttons: (true, true),
             no_replay: false,
             script_paused: false,
+            net_paused: None,
+            pauses_used: [0; 16],
             save_copies: 0,
             densities: (1, 1),
             stacked_sounds: Vec::new(),

@@ -1332,8 +1332,8 @@ impl Hud {
         }
         tree.set_point("EscMenuBackdrop", P::Center, "", P::Center, 0.0, 0.06);
         tree.place_text_area_scroll_bars();
-        // Pausing is for multiplayer games; single player games pause while the menu is
-        // open.
+        // Pausing is for network games (shown then by the scene); a single player game
+        // pauses while the menu is open.
         tree.set_visible("PauseButton", false);
         Self::menu_panel(&mut tree, "MainPanel");
         self.save_panel = None;

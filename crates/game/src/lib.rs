@@ -559,7 +559,10 @@ impl Game {
         if let Some(r) = self.recorder.as_mut() {
             r.step(f.dt);
         }
-        self.world.tick(&mut self.vm, f.dt);
+        // A paused game takes commands (a resume among them) but no time passes.
+        if self.world.net_paused.is_none() {
+            self.world.tick(&mut self.vm, f.dt);
+        }
         out
     }
 
@@ -631,6 +634,38 @@ impl Game {
             C::Upgrade { building, id } => res(self.world.upgrade_structure(building, id)),
             C::CancelLast { building } => {
                 self.world.cancel_last(building);
+                O::Done
+            }
+            // Three pauses a player; an observer's are not counted, and only an observer
+            // lifts one (FUN_6f3719c0, FUN_6f32b7d0).
+            C::Pause { player: p, on } => {
+                let observer = |w: &world::World, p: u8| w.players.get(p as usize).is_some_and(|pl| pl.get_state(types::player_state::OBSERVER) != 0);
+                let w = &mut self.world;
+                if p != player {
+                    return O::Done;
+                }
+                match (on, w.net_paused) {
+                    (true, None) => {
+                        let free = observer(w, p);
+                        if !free && w.pauses_used[p as usize % 16] >= 3 {
+                            return O::Done;
+                        }
+                        if !free {
+                            w.pauses_used[p as usize % 16] += 1;
+                        }
+                        w.net_paused = Some(p);
+                        let left = (!free).then(|| 3 - w.pauses_used[p as usize % 16] as i32);
+                        w.requests.push(world::Request::PauseNotice { player: p, on: true, left });
+                    }
+                    (false, Some(by)) => {
+                        if observer(w, by) && !observer(w, p) {
+                            return O::Done;
+                        }
+                        w.net_paused = None;
+                        w.requests.push(world::Request::PauseNotice { player: p, on: false, left: None });
+                    }
+                    _ => {}
+                }
                 O::Done
             }
             C::CacheValue { cache, mission, key, value } => {

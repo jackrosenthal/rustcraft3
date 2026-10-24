@@ -125,6 +125,17 @@ fn main() -> anyhow::Result<()> {
             gc = restored(&data, &bytes, 1)?;
             println!("saved and loaded at frame {} ({} bytes)", hs.played, bytes.len());
         }
+        // NETTEST_PAUSE: at a third the host pauses, and at a half the player resumes.
+        if std::env::var("NETTEST_PAUSE").is_ok() {
+            if step == steps / 3 {
+                gh.apply(w3_game::replay::Command::Pause { player: 0, on: true });
+                println!("pause at game time {:.2}", gh.world.time);
+            }
+            if step == steps / 2 {
+                println!("resume at game time {:.2} (paused: {:?})", gc.world.time, gc.world.net_paused);
+                gc.apply(w3_game::replay::Command::Pause { player: 1, on: false });
+            }
+        }
         // Every five seconds each side sends its units somewhere.
         if step % 300 == 60 {
             for (g, p) in [(&mut gh, 0u8), (&mut gc, 1u8)] {
@@ -164,7 +175,7 @@ fn main() -> anyhow::Result<()> {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     hs.pump(0.0);
-    println!("host played {} frames, player {}; out of step: {:?}", hs.played, cs.played, hs.desynced);
+    println!("host played {} frames, player {}; out of step: {:?}; game time {:.2}", hs.played, cs.played, hs.desynced, gh.world.time);
     let (dh, dc) = (digest(&gh), digest(&gc));
     if dh == dc {
         println!("SAME ({} units)", dh.lines().count() - 4);

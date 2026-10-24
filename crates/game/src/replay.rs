@@ -66,6 +66,8 @@ pub enum Command {
     /// Saves a network game on every computer at once, under this name (the game
     /// menu's Save Game in a network game, kept in Save\\Multiplayer).
     Save { name: String },
+    /// A player pauses or resumes a network game (FUN_6f3719c0).
+    Pause { player: u8, on: bool },
     /// A game cache value one computer had, for all (SyncStoredInteger and the rest).
     CacheValue { cache: String, mission: String, key: String, value: CacheValue },
 }

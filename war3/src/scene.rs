@@ -975,6 +975,21 @@ impl Scene {
                         h.chat_history.push(line);
                     }
                 }
+                // A pause or resume, told for ten seconds in the player's color (FUN_6f3719c0).
+                w3_game::world::Request::PauseNotice { player, on, left } => {
+                    let Some(w) = self.game.as_ref().map(|g| &g.world) else { continue };
+                    let p = &w.players[player as usize % w.players.len()];
+                    let c = self.team_rgb[p.color as usize % 16].map(|v| (v * 255.0).round() as u8);
+                    let name = format!("|c{:02x}{:02x}{:02x}{:02x}{}|r", 0xff, c[0], c[1], c[2], p.name);
+                    let line = match (on, left) {
+                        (true, Some(n)) => w.localized("PAUSE_GAME_NOTIFY").replacen("%s", &name, 1).replacen("%u", &n.to_string(), 1),
+                        (true, None) => w.localized("PAUSE_GAME_NOTIFY_NO_TIMEOUT").replacen("%s", &name, 1),
+                        (false, _) => w.localized("RESUME_GAME_NOTIFY").replacen("%s", &name, 1),
+                    };
+                    if let Some(h) = self.hud.as_mut() {
+                        h.unit_message(&line, 0.0, 0.0, 10.0);
+                    }
+                }
                 w3_game::world::Request::DoodadAnimation { id, area, anim, random } => self.doodad_animation(id, &area, &anim, random),
                 w3_game::world::Request::Indicator { widget, color } => self.add_indicator(widget, color.map(|c| c as f32 / 255.0)),
                 // ForceUIKey: the interface acts on the key as if pressed; ForceUICancel
@@ -2659,6 +2674,13 @@ impl Scene {
         let Some(m) = h.menu.as_mut() else { return };
         match name {
             "ReturnButton" => h.menu = None,
+            "PauseButton" => {
+                h.menu = None;
+                if let Some(g) = self.game.as_mut() {
+                    let (player, on) = (g.world.local_player, g.world.net_paused.is_none());
+                    g.apply(w3_game::replay::Command::Pause { player, on });
+                }
+            }
             "EndGameButton" => crate::hud::Hud::menu_panel(m, "EndGamePanel"),
             "PreviousButton" => crate::hud::Hud::menu_panel(m, "MainPanel"),
             "QuitButton" => {
@@ -3902,6 +3924,11 @@ impl Scene {
             m.set_enabled("RestartButton", !g.world.restart_disabled && !net);
             m.set_enabled("SaveGameButton", true);
             m.set_enabled("LoadGameButton", !net);
+            // A network game pauses from here; a paused one resumes.
+            m.set_visible("PauseButton", net);
+            if net {
+                m.set_text("PauseButtonText", &db.string(if g.world.net_paused.is_some() { "KEY_RESUME_GAME" } else { "KEY_PAUSE_GAME" }));
+            }
         }
         hud.show_unit(db, &g.world, self.selection.first().copied());
         let w = &g.world;

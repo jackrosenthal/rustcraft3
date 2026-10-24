@@ -405,6 +405,9 @@ impl World {
                     .take(n)
                     .collect();
                 let life = if code == "AUan" { self.d(a, "Dur", lvl) } else { 0.0 };
+                // DataB: the raised are invulnerable, under the ability's buff (BUan).
+                let invulnerable = self.d(a, "DataB", lvl) != 0.0;
+                let buff = self.buff_of(a, lvl);
                 for c in corpses {
                     let Some(u) = self.unit(c) else { continue };
                     let (t, px, py, f) = (u.type_id, u.x, u.y, u.facing);
@@ -414,6 +417,11 @@ impl World {
                         if life > 0.0 {
                             ru.timed_life = Some(life);
                         }
+                        ru.extra.animated = invulnerable;
+                    }
+                    if invulnerable && buff != [0; 4] && r != 0 {
+                        let remaining = if life > 0.0 { life } else { f32::INFINITY };
+                        self.apply_buff(r, Buff { id: buff, ability: a, level: lvl, caster: h, remaining, invulnerable: true, ..Default::default() });
                     }
                     self.art_at(a, "TargetArt", px, py);
                 }

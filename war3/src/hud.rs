@@ -71,6 +71,10 @@ pub struct GroupSlot {
     pub life: f32,
     pub mana: Option<f32>,
     pub active: bool,
+    /// The icon's color (FUN_6f3da4e0): illusions 0xff1460ff, the animated dead
+    /// 0xffa04040, the ethereal 0xffc0ff80, those under an enemy's dispellable spell red
+    /// (Tip49), others white.
+    pub color: [f32; 4],
 }
 
 /// A script dialog on screen: its handle, the message and button labels it was built
@@ -473,7 +477,19 @@ impl Hud {
                 }
                 let icon = world.objects.units.get(u.type_id).map(|o| o.str("Art")).unwrap_or_default();
                 let mana = (u.max_mana > 0.0).then(|| u.mana / u.max_mana);
-                self.group.push(GroupSlot { unit: h, icon, life: u.life / u.max_life.max(1.0), mana, active: k == 0 });
+                let argb = |c: u32| [((c >> 16) & 0xff) as f32 / 255.0, ((c >> 8) & 0xff) as f32 / 255.0, (c & 0xff) as f32 / 255.0, 1.0];
+                let color = if u.extra.illusion.is_some() {
+                    argb(0xff1460ff)
+                } else if u.extra.animated {
+                    argb(0xffa04040)
+                } else if world.is_ethereal(h) {
+                    argb(0xffc0ff80)
+                } else if u.buffs.iter().any(|b| world.unit(b.caster).is_some_and(|c| !w3_game::natives::players::is_ally(world, u.owner, c.owner))) {
+                    argb(0xffff0000)
+                } else {
+                    [1.0; 4]
+                };
+                self.group.push(GroupSlot { unit: h, icon, life: u.life / u.max_life.max(1.0), mana, active: k == 0, color });
             }
         }
         for f in [self.info, self.building].into_iter().flatten() {
@@ -833,7 +849,7 @@ impl Hud {
             }
             let icy = top - 0.016875;
             let icon = w3_ui::Rect { x0: bx - size / 2.0, x1: bx + size / 2.0, y0: icy - size / 2.0, y1: icy + size / 2.0 };
-            out.push(image(s.icon.clone(), icon, [1.0; 4], w3_ui::Blend::Alpha));
+            out.push(image(s.icon.clone(), icon, s.color, w3_ui::Blend::Alpha));
             let mut bar_top = icon.y0 - 0.0025;
             let mut bar = |frac: f32, tex: &String, color: [f32; 4], out: &mut Vec<Draw>| {
                 let r = w3_ui::Rect { x0: icon.x0, x1: icon.x1, y0: bar_top - bar_h, y1: bar_top };

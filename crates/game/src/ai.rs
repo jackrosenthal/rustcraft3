@@ -879,8 +879,9 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             let pos = w.town_pos(p, a.i(1));
             int(w.unit_count(p, id_from_int(a.i(0)), a.b(2), Some(pos)))
         },
-        GetUnitGoldCost => |w, _, a| { let id = id_from_int(a.i(0)); int(w.objects.units.get(id).map_or(0, |o| o.int("goldcost"))) },
-        GetUnitWoodCost => |w, _, a| { let id = id_from_int(a.i(0)); int(w.objects.units.get(id).map_or(0, |o| o.int("lumbercost"))) },
+        // A hero costs nothing while the AI's player holds a hero token (ai_GetUnitGoldCost).
+        GetUnitGoldCost => |w, _, a| { let id = id_from_int(a.i(0)); int(if w.hero_token_pays(w.ai_player(), id) { 0 } else { w.objects.units.get(id).map_or(0, |o| o.int("goldcost")) }) },
+        GetUnitWoodCost => |w, _, a| { let id = id_from_int(a.i(0)); int(if w.hero_token_pays(w.ai_player(), id) { 0 } else { w.objects.units.get(id).map_or(0, |o| o.int("lumbercost")) }) },
         GetUnitBuildTime => |w, _, a| { let id = id_from_int(a.i(0)); int(w.objects.units.get(id).map_or(0, |o| o.int("bldtm"))) },
         GetMinesOwned => |w, _, _| {
             let p = w.ai_player();

@@ -1271,7 +1271,9 @@ impl Glue {
                 g.fog = [fs, fe, 1.0, 0.0];
                 g.fog_color = fc;
             }
-            let rot = Quat::from_mat4(&view.inverse());
+            // View space looks down -z; billboards in MDX face +x (as the game camera's
+            // billboard_rotation turns them).
+            let rot = Quat::from_mat4(&view.inverse()) * Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2) * Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2);
             if let Some(b) = self.background.as_mut() {
                 b.transform = Mat4::IDENTITY;
                 b.light_cell = 0;

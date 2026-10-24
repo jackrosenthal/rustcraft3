@@ -59,6 +59,26 @@ impl Assets {
     }
 }
 
+/// A name without its color codes (FUN_6f2bff20).
+fn strip_color_codes(s: &str) -> String {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(i) = rest.find('|') {
+        out.push_str(&rest[..i]);
+        let tail = &rest[i + 1..];
+        if tail.starts_with(['c', 'C']) && tail.len() >= 9 {
+            rest = &tail[9..];
+        } else if tail.starts_with(['r', 'R']) {
+            rest = &tail[1..];
+        } else {
+            out.push('|');
+            rest = tail;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 /// The color a player's unit shows in the world: its own, or under the ally color
 /// mode's second state the filter's (FUN_6f33c920 with FUN_6f36abf0).
 fn world_color(w: &w3_game::World, owner: u8, color: i32) -> u8 {
@@ -315,6 +335,8 @@ pub struct Scene {
     /// structures, then the four second timers.
     attack_times: HashMap<u32, (f32, f32)>,
     attack_timers: [f32; 8],
+    /// GlobalStrings' COLON_COMPLETED.
+    completed_prefix: String,
     options_fill: bool,
     /// Structures' and destructables' shadows stamped into the terrain.
     shadows: crate::shadows::Shadows,
@@ -677,7 +699,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8] };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8], completed_prefix: assets.frames.string("COLON_COMPLETED") };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -810,6 +832,32 @@ impl Scene {
         self.attack_timers[kind + 4] = now + (delay * 0.5).max(2.0);
     }
 
+    /// Something finished at a unit (FUN_6f3777b0): for players who hear of its owner,
+    /// COLON_COMPLETED and the name for 10 seconds, the sound, and a ping in PingColor.
+    fn completed(&mut self, unit: u32, id: w3_game::objects::Id, level: u32, sound: &str) {
+        let Some(g) = self.game.as_ref() else { return };
+        let w = &g.world;
+        let Some(u) = w.unit(unit) else { return };
+        if !Self::hears_of(w, u.owner) {
+            return;
+        }
+        let (x, y) = (u.x, u.y);
+        let name = match w.objects.upgrades.get(id) {
+            Some(o) => {
+                let names = o.list("Name");
+                names.get(level.max(1) as usize - 1).or(names.last()).cloned().unwrap_or_default()
+            }
+            None => w.objects.units.get(id).map(|o| o.str("Name")).unwrap_or_default(),
+        };
+        let name = strip_color_codes(&w.localized(&name));
+        let text = format!("{}{name}", self.completed_prefix);
+        if let Some(h) = self.hud.as_mut() {
+            h.error(&text);
+        }
+        self.ui_sound(sound);
+        self.event_ping(x, y, "PingColor");
+    }
+
     /// A harvester's mine runs low or collapses (FUN_6f36d340): Goldminelow or
     /// Goldminedestroyed for 10 seconds, GoldMineLowSound or GoldMineCollapseSound, and a
     /// ping in PingAdvisorColor at the harvester, for players who hear of it.
@@ -917,6 +965,7 @@ impl Scene {
                 }
                 w3_game::world::Request::Attacked { unit } => self.attack_warning(unit),
                 w3_game::world::Request::QuickPosition { x, y } => self.add_quick(x, y),
+                w3_game::world::Request::Completed { unit, id, level, sound } => self.completed(unit, id, level, &sound),
                 w3_game::world::Request::GoldMine { worker, collapsed } => self.gold_mine_warning(worker, collapsed),
                 // A ping lasts its duration (1.5 seconds when none), in its color or
                 // UI\MiscData.txt [PingColor] PingColor (FUN_6f3b0a30).

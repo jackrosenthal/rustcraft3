@@ -51,6 +51,10 @@ pub enum Request {
     /// An enemy damaged a unit (CUnit vf72 to FUN_6f375d70): the interface decides
     /// whether to warn (FUN_6f36ac70).
     Attacked { unit: u32 },
+    /// Research, a structure, or a structure's upgrade finished at `unit`: the interface
+    /// says "Completed: " and the name (an upgrade's at `level`), with `sound`
+    /// (FUN_6f3777b0 from CAbilityQueue vf215 and CAbilityInProgress vf205).
+    Completed { unit: u32, id: crate::objects::Id, level: u32, sound: String },
     /// SetCameraQuickPosition: a place for the space bar.
     QuickPosition { x: f32, y: f32 },
     /// A harvester left its mine low on gold (LowGoldAmount) or empty (FUN_6f4382c0).

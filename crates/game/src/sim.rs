@@ -1385,9 +1385,9 @@ impl World {
             if left <= 0.0 {
                 u.constructing = None;
                 restart_anim(u, "stand");
-                let owner = u.owner;
-                let label = format!("JobDoneSound{}", self.race_label(owner));
-                self.requests.push(Request::UiSound { players: 1 << owner, label });
+                let (owner, id) = (u.owner, u.type_id);
+                let sound = format!("JobDoneSound{}", self.race_label(owner));
+                self.requests.push(Request::Completed { unit: h, id, level: 1, sound });
                 self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_CONSTRUCT_FINISH, EVENT_UNIT_CONSTRUCT_FINISH, EventCtx::default());
             } else {
                 u.constructing = Some(left);
@@ -1414,8 +1414,8 @@ impl World {
                 u.queue_started = false;
                 *self.players[owner as usize].tech_researched.entry(id).or_insert(0) += 1;
                 self.research_changed(owner);
-                let label = format!("ResearchComplete{}", self.race_label(owner));
-                self.requests.push(Request::UiSound { players: 1 << owner, label });
+                let sound = format!("ResearchComplete{}", self.race_label(owner));
+                self.requests.push(Request::Completed { unit: h, id, level: level as u32 + 1, sound });
                 let ctx = EventCtx { research: crate::objects::id_to_int(id), ..Default::default() };
                 self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_RESEARCH_FINISH, EVENT_UNIT_RESEARCH_FINISH, ctx);
             }
@@ -1437,8 +1437,8 @@ impl World {
         let id_s = crate::objects::id_str(id);
         if self.objects.units.get(from).is_some_and(|o| o.list("Upgrade").iter().any(|x| x.trim() == id_s)) {
             self.transform_unit(h, id);
-            let label = format!("UpgradeComplete{}", self.race_label(owner));
-            self.requests.push(Request::UiSound { players: 1 << owner, label });
+            let sound = format!("UpgradeComplete{}", self.race_label(owner));
+            self.requests.push(Request::Completed { unit: h, id, level: 1, sound });
             self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_UPGRADE_FINISH, EVENT_UNIT_UPGRADE_FINISH, EventCtx::default());
             return;
         }

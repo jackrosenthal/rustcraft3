@@ -39,11 +39,54 @@ fn set_prop(t: &mut FrameTree, name: &str, key: &str, value: &str) {
 
 struct Shown<'a> {
     dialogs: Vec<(&'a TimerDialog, String)>,
-    multiboard: Option<(u32, &'a Multiboard)>,
+    multiboard: Option<(u32, std::borrow::Cow<'a, Multiboard>)>,
     leaderboard: Option<&'a Leaderboard>,
 }
 
-fn shown(w: &World) -> Shown<'_> {
+/// The handle standing for the Team Resources board.
+pub const TEAM_RESOURCES: u32 = u32::MAX;
+
+/// Alliance type 7, shared advanced control.
+const ALLIANCE_SHARED_ADVANCED_CONTROL: usize = 7;
+
+/// The Team Resources board (FUN_6f3dffa0, FUN_6f3deb30): shown while other players
+/// share advanced control with the local one, a row for each with the name in its
+/// color, gold, lumber, and food used over food made, green, yellow, or red by its
+/// upkeep level.
+fn team_resources(w: &World, db: &FrameDb, team_rgb: &[[f32; 3]; 16], minimized: bool) -> Option<Multiboard> {
+    use w3_game::types::{player_state as ps, MultiboardItem};
+    let me = w.local_player as usize;
+    let allies: Vec<usize> = (0..12.min(w.players.len())).filter(|&p| p != me && w.players[p].alliances[me][ALLIANCE_SHARED_ADVANCED_CONTROL]).collect();
+    if allies.is_empty() {
+        return None;
+    }
+    let mut b = Multiboard { title: db.string("TEAM_RESOURCES"), title_color: Some([0xf0, 0xf0, 0x10, 0xff]), displayed: true, minimized, ..Multiboard::default() };
+    b.resize(allies.len(), 4);
+    let icons = [String::new(), db.skin_value("GoldIcon").unwrap_or_default(), db.skin_value("LumberIcon").unwrap_or_default(), db.skin_value("SupplyIcon").unwrap_or_default()];
+    let widths = [0.1, 0.052, 0.05, 0.05];
+    for (row, &p) in allies.iter().enumerate() {
+        let pl = &w.players[p];
+        let (used, cap) = (pl.get_state(ps::RESOURCE_FOOD_USED), pl.get_state(ps::RESOURCE_FOOD_CAP));
+        let [r, g, bl] = team_rgb[pl.color.clamp(0, 15) as usize];
+        let food_color = match w.upkeep_level(p as u8) {
+            1 => [0xff, 0xff, 0, 0xff],
+            2 => [0xff, 0, 0, 0xff],
+            _ => [0, 0xff, 0, 0xff],
+        };
+        let values = [
+            (pl.name.clone(), [(r * 255.0) as u8, (g * 255.0) as u8, (bl * 255.0) as u8, 0xff]),
+            (pl.get_state(ps::RESOURCE_GOLD).to_string(), [0xff; 4]),
+            (pl.get_state(ps::RESOURCE_LUMBER).to_string(), [0xff; 4]),
+            (if cap == 0 { used.to_string() } else { format!("{used}/{cap}") }, food_color),
+        ];
+        for (col, (value, color)) in values.into_iter().enumerate() {
+            b.items[row][col] = MultiboardItem { value, icon: icons[col].clone(), color, show_value: true, show_icon: col != 0, width: widths[col] };
+        }
+    }
+    Some(b)
+}
+
+fn shown<'a>(w: &'a World, db: &FrameDb, team_rgb: &[[f32; 3]; 16], team_minimized: bool) -> Shown<'a> {
     let mut dialogs: Vec<(u32, &TimerDialog)> = w.handles.iter().filter_map(|(&h, o)| match o {
         Obj::TimerDialog(d) if d.displayed => Some((h, d)),
         _ => None,
@@ -52,10 +95,11 @@ fn shown(w: &World) -> Shown<'_> {
     let multiboard = if w.multiboard_suppressed {
         None
     } else {
+        // A map's multiboard is shown over the Team Resources board.
         w.handles.iter().find_map(|(&h, o)| match o {
-            Obj::Multiboard(b) if b.displayed => Some((h, b)),
+            Obj::Multiboard(b) if b.displayed => Some((h, std::borrow::Cow::Borrowed(b))),
             _ => None,
-        })
+        }).or_else(|| team_resources(w, db, team_rgb, team_minimized).map(|b| (TEAM_RESOURCES, std::borrow::Cow::Owned(b))))
     };
     let leaderboard = w.player_leaderboards.get(&w.local_player).and_then(|&h| match w.handles.get(h) {
         Some(Obj::Leaderboard(b)) if b.displayed => Some(b),
@@ -64,8 +108,8 @@ fn shown(w: &World) -> Shown<'_> {
     Shown { dialogs: dialogs.into_iter().map(|(_, d)| (d, w.timer_dialog_text(d))).collect(), multiboard, leaderboard }
 }
 
-pub fn sync(view: &mut Option<BoardsView>, db: &FrameDb, w: &World, team_rgb: &[[f32; 3]; 16], aspect: f32) {
-    let s = shown(w);
+pub fn sync(view: &mut Option<BoardsView>, db: &FrameDb, w: &World, team_rgb: &[[f32; 3]; 16], aspect: f32, team_minimized: bool) {
+    let s = shown(w, db, team_rgb, team_minimized);
     if s.dialogs.is_empty() && s.multiboard.is_none() && s.leaderboard.is_none() {
         *view = None;
         return;
@@ -109,11 +153,12 @@ pub fn sync(view: &mut Option<BoardsView>, db: &FrameDb, w: &World, team_rgb: &[
     }
     let first_dialog = (!s.dialogs.is_empty()).then_some("TimerDialog#0");
 
-    // CMultiboard: the title backdrop as wide as the title plus 0.03, or the cells less
-    // the 0.024 button; the backdrop the rows' height (0.013 each, 0.001 apart, plus
+    // CMultiboard: the title backdrop as wide as the title plus 0.03, or the cells (each
+    // column's width plus 0.002; FUN_6f3dd850 takes off a width that measures nothing
+    // against the original's screen); the backdrop the rows' height (0.013 each, 0.001 apart, plus
     // 0.012); the button shows MultiboardMaximizeButtonEnabled while minimized.
     let mut mb_rows: Option<(&Multiboard, f32)> = None;
-    if let Some((_, b)) = s.multiboard {
+    if let Some((_, b)) = s.multiboard.as_ref().map(|(h, b)| (h, b.as_ref())) {
         if t.create(db, "Multiboard", 0).is_some() {
             t.set_text("MultiboardTitle", &b.title);
             if let (Some(c), Some(i)) = (b.title_color, t.get("MultiboardTitle")) {
@@ -126,7 +171,7 @@ pub fn sync(view: &mut Option<BoardsView>, db: &FrameDb, w: &World, team_rgb: &[
             let cells: f32 = b.items.first().map_or(0.0, |r| r.iter().map(|c| c.width + 0.002).sum());
             let height = (0.013 + 0.001) * b.rows as f32 + 0.001 + 0.011;
             let title_w = db.text_width(&font, 0.011, &b.title) + 0.03;
-            let title_w = if b.minimized { title_w } else { title_w.max(cells - 0.024) };
+            let title_w = if b.minimized { title_w } else { title_w.max(cells) };
             t.clear_points("MultiboardTitleBackdrop");
             t.set_point("MultiboardTitleBackdrop", P::TopRight, "MultiboardMinimizeButton", P::TopLeft, 0.0057, 0.0);
             t.set_point("MultiboardTitleBackdrop", P::BottomRight, "MultiboardMinimizeButton", P::BottomLeft, 0.0057, 0.0);
@@ -148,7 +193,7 @@ pub fn sync(view: &mut Option<BoardsView>, db: &FrameDb, w: &World, team_rgb: &[
         if t.create(db, "Leaderboard", 0).is_some() {
             t.set_text("LeaderboardTitle", &b.label);
             t.set_visible("LeaderboardTitle", b.style[0]);
-            let anchor = match (s.multiboard, first_dialog) {
+            let anchor = match (s.multiboard.as_ref(), first_dialog) {
                 (Some((_, m)), _) => Some((if m.minimized { "MultiboardMinimizeButton" } else { "MultiboardBackdrop" }, -0.005)),
                 (None, Some(d)) => Some((d, -0.001)),
                 (None, None) => None,
@@ -227,7 +272,7 @@ pub fn sync(view: &mut Option<BoardsView>, db: &FrameDb, w: &World, team_rgb: &[
             }
         }
     }
-    *view = Some(BoardsView { key, tree: t, extra, multiboard: s.multiboard.map(|m| m.0) });
+    *view = Some(BoardsView { key, tree: t, extra, multiboard: s.multiboard.as_ref().map(|m| m.0) });
 }
 
 impl BoardsView {

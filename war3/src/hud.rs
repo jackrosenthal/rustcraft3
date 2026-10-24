@@ -118,6 +118,8 @@ pub struct Hud {
     pub dialog: Option<DialogView>,
     /// Timer dialogs, the multiboard, and the leaderboard.
     pub boards: Option<crate::boards::BoardsView>,
+    /// The Team Resources board is minimized.
+    pub team_board_minimized: bool,
     /// The game menu (F10), built by CEscMenu: EscMenuBackdrop centered 0.06 above the
     /// middle, holding EscMenuMainPanel.
     pub menu: Option<FrameTree>,
@@ -356,6 +358,7 @@ impl Hud {
             targeting: false,
             dialog: None,
             boards: None,
+            team_board_minimized: false,
             menu: None,
             quests: None,
             cargo: None,

@@ -2532,7 +2532,11 @@ impl Scene {
         }
         // The multiboard's minimize button.
         if let Some(b) = self.hud.as_ref().and_then(|h| h.boards.as_ref()).and_then(|b| b.minimize_at(ux, uy)) {
-            if let Some(w3_game::types::Obj::Multiboard(m)) = self.game.as_mut().and_then(|g| g.world.handles.get_mut(b)) {
+            if b == crate::boards::TEAM_RESOURCES {
+                if let Some(h) = self.hud.as_mut() {
+                    h.team_board_minimized = !h.team_board_minimized;
+                }
+            } else if let Some(w3_game::types::Obj::Multiboard(m)) = self.game.as_mut().and_then(|g| g.world.handles.get_mut(b)) {
                 m.minimized = !m.minimized;
             }
             return true;
@@ -4325,7 +4329,7 @@ impl Scene {
         hud.sync_cinematic(db, &g.world, aspect);
         hud.sync_heroes(db, &g.world);
         hud.sync_idle_workers(&g.world);
-        crate::boards::sync(&mut hud.boards, db, &g.world, &self.team_rgb, aspect);
+        crate::boards::sync(&mut hud.boards, db, &g.world, &self.team_rgb, aspect, hud.team_board_minimized);
     }
 
     /// Opens a requested quest log and shows a changed choice in it.

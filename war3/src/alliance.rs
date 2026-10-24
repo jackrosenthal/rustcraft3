@@ -62,7 +62,7 @@ impl AllianceDialog {
             let Some(slot) = tree.create_scoped(db, "AllianceSlot", root, &scope) else { continue };
             let h = tree.frames[slot].height.unwrap_or(0.024);
             tree.set_point(&format!("AllianceSlot{scope}"), P::Top, "AllianceDialog", P::Top, 0.0, -((h + 0.003125) * k as f32 + 0.07375));
-            tree.set_text(&format!("PlayerNameLabel{scope}"), &pl.name);
+            tree.set_text(&format!("PlayerNameLabel{scope}"), &w.player_name(p));
             if let Some(c) = tree.get(&format!("ColorBackdrop{scope}")) {
                 tree.frames[c].texture = Some(format!("ReplaceableTextures\\TeamColor\\TeamColor{:02}.blp", pl.color));
             }

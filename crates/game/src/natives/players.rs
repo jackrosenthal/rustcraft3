@@ -113,7 +113,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetLocalPlayer => |w, _, _| NativeResult::Return(w.player_handle(w.local_player)),
         GetPlayerId => |w, _, a| int(player_arg(w, a, 0).map_or(0, |p| p as i32)),
         GetPlayerName => |w, _, a| match player_arg(w, a, 0) {
-            Some(p) => string(w.localized(&w.players[p as usize].name.clone())),
+            Some(p) => string(w.player_name(p)),
             None => none(),
         },
         SetPlayerName => |w, _, a| { let n = a.s(1); with_player(w, a, |p| p.name = n) },

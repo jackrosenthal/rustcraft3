@@ -25,7 +25,7 @@ impl ChatDialog {
         tree.set_point("ChatDialog", P::Center, "", P::Center, 0.0, 0.05);
         let me = w.local_player;
         let players: Vec<u8> = (0..12u8).filter(|&p| p != me && w.players[p as usize].slot_state == w3_game::types::slot_state::PLAYING).collect();
-        let names = players.iter().map(|&p| w.players[p as usize].name.clone()).collect();
+        let names = players.iter().map(|&p| w.player_name(p)).collect();
         // FUN_6f3b6440's mapping, backward: the player radio for a player, else allies,
         // observers, or everyone.
         let (radio, pick) = match recipient {

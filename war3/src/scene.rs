@@ -2887,10 +2887,10 @@ impl Scene {
         let starts = |word: &str| rest.len() >= word.len() && rest[..word.len()].eq_ignore_ascii_case(word);
         let Some(g) = self.game.as_ref() else { return false };
         let w = &g.world;
-        let player_named = |name: &str| (0..12u8).find(|&p| w.players[p as usize].name.eq_ignore_ascii_case(name.trim()));
+        let player_named = |name: &str| (0..12u8).find(|&p| w.player_name(p).eq_ignore_ascii_case(name.trim()));
         let colored = |p: u8| {
             let c = self.team_rgb[w.players[p as usize].color as usize % 16].map(|v| (v * 255.0).round() as u8);
-            format!("|cff{:02x}{:02x}{:02x}{}|r", c[0], c[1], c[2], w.players[p as usize].name)
+            format!("|cff{:02x}{:02x}{:02x}{}|r", c[0], c[1], c[2], w.player_name(p))
         };
         let message = if rest.eq_ignore_ascii_case("mapname") {
             let name = w.localized(&self.info.name);
@@ -4279,7 +4279,7 @@ impl Scene {
         if self.net.is_none() {
         } else if !lagging.is_empty() {
             if hud.net_dialog.as_ref().is_none_or(|d| d.players() != *lagging) {
-                let players: Vec<(u8, String, i32)> = lagging.iter().map(|&p| (p, g.world.players[p as usize].name.clone(), g.world.players[p as usize].color)).collect();
+                let players: Vec<(u8, String, i32)> = lagging.iter().map(|&p| (p, g.world.player_name(p), g.world.players[p as usize].color)).collect();
                 hud.net_dialog = crate::netdialog::NetDialog::suspend(db, aspect, &players);
             }
         } else if *silent {

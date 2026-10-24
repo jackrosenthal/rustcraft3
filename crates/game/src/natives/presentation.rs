@@ -105,7 +105,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         DisplayTimedTextFromPlayer => |w, _, a| {
             let players = 1 << w.local_player;
-            let name = w.player_of(a.h(0)).map(|p| w.players[p as usize].name.clone()).unwrap_or_default();
+            let name = w.player_of(a.h(0)).map(|p| w.player_name(p)).unwrap_or_default();
             let text = w.localized(&a.s(4)).replace("%s", &name);
             w.requests.push(Request::DisplayText { players, x: a.r(1), y: a.r(2), text, duration: a.r(3) });
             none()

@@ -74,7 +74,7 @@ fn team_resources(w: &World, db: &FrameDb, team_rgb: &[[f32; 3]; 16], minimized:
             _ => [0, 0xff, 0, 0xff],
         };
         let values = [
-            (pl.name.clone(), [(r * 255.0) as u8, (g * 255.0) as u8, (bl * 255.0) as u8, 0xff]),
+            (w.player_name(p as u8), [(r * 255.0) as u8, (g * 255.0) as u8, (bl * 255.0) as u8, 0xff]),
             (pl.get_state(ps::RESOURCE_GOLD).to_string(), [0xff; 4]),
             (pl.get_state(ps::RESOURCE_LUMBER).to_string(), [0xff; 4]),
             (if cap == 0 { used.to_string() } else { format!("{used}/{cap}") }, food_color),

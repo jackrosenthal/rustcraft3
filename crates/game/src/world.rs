@@ -702,6 +702,16 @@ impl World {
         any.then_some(p)
     }
 
+    /// A player's name; an unnamed player is "Player" and its number (FUN_6f2684b0).
+    pub fn player_name(&self, p: u8) -> String {
+        let name = self.players.get(p as usize).map(|pl| self.localized(&pl.name)).unwrap_or_default();
+        if name.is_empty() {
+            format!("{} {}", self.localized("PLAYER"), p as u32 + 1)
+        } else {
+            name
+        }
+    }
+
     pub fn localized(&self, s: &str) -> String {
         if let Some(n) = s.strip_prefix("TRIGSTR_") {
             let digits: String = n.chars().take_while(|c| c.is_ascii_digit()).collect();

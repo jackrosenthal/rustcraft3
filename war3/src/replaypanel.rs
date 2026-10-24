@@ -61,7 +61,7 @@ impl ReplayPanel {
             .map(|&p| {
                 let pl = &world.players[p as usize];
                 let c = team_rgb[pl.color as usize % 16].map(|v| (v * 255.0).round() as u8);
-                format!("|cff{:02x}{:02x}{:02x}{}|r", c[0], c[1], c[2], pl.name)
+                format!("|cff{:02x}{:02x}{:02x}{}|r", c[0], c[1], c[2], world.player_name(p))
             })
             .collect();
         let local = world.local_player;

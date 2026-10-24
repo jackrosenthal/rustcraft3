@@ -32,15 +32,18 @@ impl World {
         t.is_building || kinds.contains("mechanical")
     }
 
-    /// The repair rate (life a second) and cost (gold and lumber per point of life).
+    /// The repair rate (life a second) and cost (gold and lumber per point of life), from
+    /// the target's repair gold, lumber, and time (UnitBalance goldRep, lumberRep, and
+    /// reptm; its build costs and time where it has none) and the ability's ratios.
     fn repair_terms(&self, h: u32, target: u32) -> Option<(f32, f32, f32)> {
         let (a, l) = self.repair_ability(h)?;
         let t = self.unit(target)?;
         let o = self.objects.units.get(t.type_id)?;
+        let field = |rep: &str, build: &str| if o.str(rep).trim().is_empty() { o.real(build) } else { o.real(rep) };
         let (cost_ratio, time_ratio) = (self.data(a, "DataA", l), self.data(a, "DataB", l));
-        let time = (o.real("bldtm") * time_ratio).max(0.1);
+        let time = (field("reptm", "bldtm") * time_ratio).max(0.1);
         let per_life = 1.0 / t.max_life.max(1.0);
-        Some((t.max_life / time, o.real("goldcost") * cost_ratio * per_life, o.real("lumbercost") * cost_ratio * per_life))
+        Some((t.max_life / time, field("goldRep", "goldcost") * cost_ratio * per_life, field("lumberRep", "lumbercost") * cost_ratio * per_life))
     }
 
     pub(crate) fn repair_step(&mut self, h: u32, target: u32, dt: f32) {

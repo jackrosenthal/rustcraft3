@@ -1065,6 +1065,8 @@ impl Scene {
                 | w3_game::world::Request::ResumeMusic
                 | w3_game::world::Request::MusicVolume(_)
                 | w3_game::world::Request::SoundEnvironment(_)
+                | w3_game::world::Request::SoundOffset { .. }
+                | w3_game::world::Request::MusicOffset(_)
                 | w3_game::world::Request::StopMusic(_)) => self.pending_audio.push(r),
                 _ => {}
             }
@@ -1219,6 +1221,12 @@ impl Scene {
                 w3_game::world::Request::ResumeMusic => audio.resume_music(),
                 w3_game::world::Request::MusicVolume(v) => audio.set_script_music_volume(v),
                 w3_game::world::Request::SoundEnvironment(name) => audio.set_environment(&name),
+                w3_game::world::Request::SoundOffset { sound, ms } => {
+                    if let Some(&id) = self.voices.get(&sound) {
+                        audio.seek(id, ms);
+                    }
+                }
+                w3_game::world::Request::MusicOffset(ms) => audio.seek_music(ms),
                 w3_game::world::Request::UiSound { players, label } if players & (1 << local) != 0 => {
                     audio.play_label(&label, None);
                 }

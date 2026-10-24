@@ -110,8 +110,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         ResumeMusic => |w, _, _| { w.requests.push(Request::ResumeMusic); none() },
         EndThematicMusic => |w, _, _| { w.requests.push(Request::EndThematic); none() },
         SetMusicVolume => |w, _, a| { w.requests.push(Request::MusicVolume(a.i(0) as f32 / 127.0)); none() },
-        SetMusicPlayPosition => |_, _, _| none(),
-        SetThematicMusicPlayPosition => |_, _, _| none(),
+        SetMusicPlayPosition => |w, _, a| { w.requests.push(Request::MusicOffset(a.i(0))); none() },
+        SetThematicMusicPlayPosition => |w, _, a| { w.requests.push(Request::MusicOffset(a.i(0))); none() },
         CreateSound => |w, _, a| {
             let s = Sound { path: a.s(0), looping: a.b(1), is_3d: a.b(2), stop_when_out_of_range: a.b(3), fade_in: a.i(4), fade_out: a.i(5), eax: a.s(6), volume: 127, pitch: 1.0, ..Default::default() };
             handle(w.handles.insert(Obj::Sound(Box::new(s))))
@@ -162,7 +162,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         KillSoundWhenDone => |_, _, _| none(),
         GetSoundIsPlaying => |w, _, a| boolean(sound_mut(w, a.h(0)).is_some_and(|s| s.playing)),
         GetSoundIsLoading => |_, _, _| boolean(false),
-        SetSoundPlayPosition => |_, _, _| none(),
+        SetSoundPlayPosition => |w, _, a| { w.requests.push(Request::SoundOffset { sound: a.h(0), ms: a.i(1) }); none() },
         RegisterStackedSound => |_, _, _| none(),
         UnregisterStackedSound => |_, _, _| none(),
         VolumeGroupSetVolume => |w, _, a| {

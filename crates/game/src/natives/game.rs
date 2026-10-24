@@ -44,10 +44,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetGameSpeed => |w, _, _| int(w.game_speed),
         SetGameDifficulty => |w, _, a| { w.difficulty = a.h(0) as i32; none() },
         GetGameDifficulty => |w, _, _| int(w.difficulty),
-        SetResourceDensity => |_, _, _| none(),
-        SetCreatureDensity => |_, _, _| none(),
-        GetResourceDensity => |_, _, _| int(1),
-        GetCreatureDensity => |_, _, _| int(1),
+        // The game setup's densities (its +0x4a and +0x49).
+        SetResourceDensity => |w, _, a| { w.densities.0 = a.h(0) as i32; none() },
+        SetCreatureDensity => |w, _, a| { w.densities.1 = a.h(0) as i32; none() },
+        GetResourceDensity => |w, _, _| int(w.densities.0),
+        GetCreatureDensity => |w, _, _| int(w.densities.1),
         DefineStartLocation => |w, _, a| {
             let i = a.i(0).max(0) as usize;
             if w.start_locations.len() <= i {
@@ -93,11 +94,18 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             if a.h(0) as i32 == GAME_STATE_TIME_OF_DAY { w.time_of_day = a.r(1); }
             none()
         },
-        GetIntegerGameState => |_, _, a| int(match a.h(0) as i32 {
-            GAME_STATE_DIVINE_INTERVENTION | GAME_STATE_DISCONNECTED => 0,
+        // The two integer game states, which scripts may set (divine intervention and
+        // disconnected).
+        GetIntegerGameState => |w, _, a| int(match a.h(0) as i32 {
+            s @ (GAME_STATE_DIVINE_INTERVENTION | GAME_STATE_DISCONNECTED) => w.integer_states[s as usize],
             _ => 0,
         }),
-        SetIntegerGameState => |_, _, _| none(),
+        SetIntegerGameState => |w, _, a| {
+            if let s @ 0..=1 = a.h(0) as usize {
+                w.integer_states[s] = a.i(1);
+            }
+            none()
+        },
         SetTimeOfDayScale => |w, _, a| { w.time_of_day_scale = a.r(0); none() },
         GetTimeOfDayScale => |w, _, _| real(w.time_of_day_scale),
         SuspendTimeOfDay => |w, _, a| { w.time_of_day_suspended = a.b(0); none() },
@@ -111,7 +119,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetOpCinematicAvailable => |w, _, a| { w.persist.campaign(a.i(0).max(0) as usize).opening_cinematic = a.b(1); none() },
         SetEdCinematicAvailable => |w, _, a| { w.persist.campaign(a.i(0).max(0) as usize).ending_cinematic = a.b(1); none() },
         RestartGame => |w, _, _| { w.requests.push(crate::world::Request::Restart); none() },
-        ReloadGame => |_, _, _| none(),
+        // The same start over as RestartGame, without its score screen (FUN_6f1e7370).
+        ReloadGame => |w, _, _| { w.requests.push(crate::world::Request::Restart); none() },
         SetCampaignMenuRace => |w, _, a| { w.persist.menu_race = a.h(0) as i32; none() },
         SetCampaignMenuRaceEx => |w, _, a| { w.persist.menu_race = a.i(0); none() },
         ForceCampaignSelectScreen => |w, _, _| { w.force_campaign_select = true; none() },

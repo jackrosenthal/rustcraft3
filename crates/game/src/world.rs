@@ -60,6 +60,10 @@ pub enum Request {
     UnitReady { unit: u32 },
     /// A network game is saved now, on every computer, under this name.
     NetSave(String),
+    /// SetSoundPlayPosition: a playing sound moves to a point in it, in milliseconds.
+    SoundOffset { sound: u32, ms: i32 },
+    /// SetMusicPlayPosition and SetThematicMusicPlayPosition.
+    MusicOffset(i32),
     /// NewSoundEnvironment: the environment 3D sounds reverberate in.
     SoundEnvironment(String),
     /// SetCameraQuickPosition: a place for the space bar.
@@ -230,6 +234,12 @@ pub struct World {
     /// EnableMinimapFilterButtons: the ally color and creep camp buttons usable.
     #[serde(default = "yes2")]
     pub minimap_filter_buttons: (bool, bool),
+    /// SetResourceDensity and SetCreatureDensity (MAP_DENSITY_*).
+    #[serde(default = "light2")]
+    pub densities: (i32, i32),
+    /// SetIntegerGameState's divine intervention and disconnected states.
+    #[serde(default)]
+    pub integer_states: [i32; 2],
     /// DoNotSaveReplay: this game keeps no replay.
     #[serde(default)]
     pub no_replay: bool,
@@ -514,6 +524,8 @@ impl World {
             creep_camp_filter: true,
             minimap_filter_buttons: (true, true),
             no_replay: false,
+            densities: (1, 1),
+            integer_states: [0; 2],
             formations: HashMap::default(),
             next_formation: 1,
             fog_boundary: true,
@@ -1375,4 +1387,8 @@ fn yes() -> bool {
 
 fn yes2() -> (bool, bool) {
     (true, true)
+}
+
+fn light2() -> (i32, i32) {
+    (1, 1)
 }

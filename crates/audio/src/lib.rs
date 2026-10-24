@@ -445,6 +445,25 @@ impl Audio {
         Some(id)
     }
 
+    /// Moves a playing voice to `ms` milliseconds into its sound (where its source
+    /// can seek).
+    pub fn seek(&mut self, id: u64, ms: i32) {
+        if let Some(v) = self.voices.iter().find(|v| v.id == id) {
+            if let Err(e) = v.player.try_seek(std::time::Duration::from_millis(ms.max(0) as u64)) {
+                log::debug!("seeking a sound: {e}");
+            }
+        }
+    }
+
+    /// Moves the music playing to `ms` milliseconds into its piece.
+    pub fn seek_music(&mut self, ms: i32) {
+        if let Some(m) = self.music.as_ref() {
+            if let Err(e) = m.try_seek(std::time::Duration::from_millis(ms.max(0) as u64)) {
+                log::debug!("seeking the music: {e}");
+            }
+        }
+    }
+
     pub fn stop(&mut self, id: u64) {
         self.voices.retain(|v| v.id != id);
     }

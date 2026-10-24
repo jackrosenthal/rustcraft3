@@ -50,6 +50,7 @@ pub mod replay;
 pub mod orbs;
 pub mod orders;
 pub mod paint;
+pub mod preload;
 pub mod pathing;
 pub mod placement;
 pub mod repair;

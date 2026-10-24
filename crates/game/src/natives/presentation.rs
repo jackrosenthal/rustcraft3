@@ -567,15 +567,16 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             w.trackables.push(h);
             handle(h)
         },
-        Preload => |_, _, _| none(),
+        // The files preloaded since PreloadGenClear, for PreloadGenEnd (FUN_6f2407c0).
+        Preload => |w, _, a| { let f = a.s(0); if !f.is_empty() { w.preload.files.push(f); } none() },
         PreloadEnd => |_, _, _| none(),
         PreloadStart => |_, _, _| none(),
         PreloadRefresh => |_, _, _| none(),
         PreloadEndEx => |_, _, _| none(),
-        PreloadGenClear => |_, _, _| none(),
-        PreloadGenStart => |_, _, _| none(),
-        PreloadGenEnd => |_, _, _| none(),
-        Preloader => |_, _, _| none(),
+        PreloadGenClear => |w, _, _| { w.preload.files.clear(); none() },
+        PreloadGenStart => |w, _, _| { w.preload.started = Some(std::time::Instant::now()); none() },
+        PreloadGenEnd => |w, _, a| { w.write_preload_file(&a.s(0)); none() },
+        Preloader => |w, _, a| { w.run_preload_file(&a.s(0)); none() },
         PingMinimap => |w, _, a| { w.requests.push(Request::Ping { x: a.r(0), y: a.r(1), duration: a.r(2), color: None }); none() },
         PingMinimapEx => |w, _, a| {
             let c = [a.i(3), a.i(4), a.i(5)].map(|v| v.clamp(0, 255) as u8);

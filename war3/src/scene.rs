@@ -605,10 +605,12 @@ impl Scene {
                 // The loaded game's triggers hear it (EVENT_GAME_LOADED).
                 g.game_event(w3_game::event_ids::EVENT_GAME_LOADED);
                 g.world.saves_dir = crate::data::save_dir(data.version);
+                g.world.preload.dir = crate::data::custom_map_data_dir();
                 Some(g)
             }
             Ok(mut g) => {
                 g.world.saves_dir = crate::data::save_dir(data.version);
+                g.world.preload.dir = crate::data::custom_map_data_dir();
                 // The profile comes in before the script runs (InitGameCache reads saved
                 // caches); campaign games take its difficulty.
                 g.world.persist = replay.as_ref().map_or_else(|| data.persist.borrow().clone(), |r| r.persist.clone());

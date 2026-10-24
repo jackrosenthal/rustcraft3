@@ -172,6 +172,11 @@ pub fn replay_dir() -> Option<PathBuf> {
 }
 
 /// Where network games are saved (the original's Save\Multiplayer).
+/// Where maps' preload files are written and read (the original's CustomMapData).
+pub fn custom_map_data_dir() -> Option<PathBuf> {
+    Some(data_root()?.join("CustomMapData"))
+}
+
 pub fn multiplayer_save_dir() -> Option<PathBuf> {
     Some(data_root()?.join("Save").join("Multiplayer"))
 }

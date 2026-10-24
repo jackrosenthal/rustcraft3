@@ -298,6 +298,10 @@ pub struct World {
     /// Where saved games are kept (set by the program running the game).
     #[serde(skip)]
     pub saves_dir: Option<std::path::PathBuf>,
+    /// The CustomMapData folder preload files are written to and run from (set by the
+    /// program running the game), and the files preloaded.
+    #[serde(skip)]
+    pub preload: crate::preload::Preload,
     /// Splats\\LightningData.slk, read when first needed.
     #[serde(skip)]
     pub lightning_data: Option<w3_formats::slk::Table>,
@@ -569,6 +573,7 @@ impl World {
             ai_walks: Default::default(),
             lightning_data: None,
             saves_dir: None,
+            preload: Default::default(),
             order_error: None,
             destructable_order: Vec::new(),
             item_order: Vec::new(),

@@ -365,6 +365,9 @@ pub struct UnitExtra {
     /// The unit burst as it died and left no corpse.
     #[serde(default)]
     pub exploded: bool,
+    /// The formation group the unit moves with.
+    #[serde(default)]
+    pub formation: Option<u32>,
     /// The target the unit last took up of its own accord.
     #[serde(default)]
     pub acquired: u32,
@@ -407,6 +410,7 @@ pub struct UnitExtra {
 impl Default for UnitExtra {
     fn default() -> Self {
         UnitExtra {
+            formation: None,
             ai_suicide: None,
             rescuable_by: 0,
             rescue_range: 0.0,

@@ -554,6 +554,51 @@ impl World {
         (u.move_speed + u.item_bonus.move_speed + ub.move_speed) * (1.0 + ub.move_pct) * self.buff_mods(h).0
     }
 
+    /// Units ordered to a point together move in formation (Tip39 to Tip41): each at
+    /// the speed of the slowest still on its way.
+    pub fn form_group(&mut self, units: &[u32]) {
+        let units: Vec<u32> = units.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.is_building && u.move_speed > 0.0)).collect();
+        if units.len() < 2 {
+            return;
+        }
+        for &h in &units {
+            self.leave_formation(h);
+        }
+        let id = self.next_formation.max(1);
+        self.next_formation = id + 1;
+        for &h in &units {
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.formation = Some(id);
+            }
+        }
+        self.formations.insert(id, units);
+    }
+
+    /// A unit given another order leaves its formation.
+    pub fn leave_formation(&mut self, h: u32) {
+        let Some(id) = self.unit_mut(h).and_then(|u| u.extra.formation.take()) else { return };
+        if let Some(m) = self.formations.get_mut(&id) {
+            m.retain(|&x| x != h);
+            if m.len() < 2 {
+                for x in std::mem::take(m) {
+                    if let Some(u) = self.unit_mut(x) {
+                        u.extra.formation = None;
+                    }
+                }
+                self.formations.remove(&id);
+            }
+        }
+    }
+
+    /// A unit's speed in its formation: the slowest of those still moving.
+    fn formation_speed(&self, h: u32) -> f32 {
+        let own = self.current_move_speed(h);
+        let Some(id) = self.unit(h).and_then(|u| u.extra.formation) else { return own };
+        self.formations.get(&id).map_or(own, |m| {
+            m.iter().filter(|&&x| self.unit(x).is_some_and(|u| !u.dead && !u.path.is_empty())).map(|&x| self.current_move_speed(x)).fold(own, f32::min)
+        })
+    }
+
     pub(crate) fn walk(&mut self, h: u32, dt: f32) -> bool {
         let Some(u) = self.unit_mut(h) else { return true };
         let Some(&next) = u.path.first() else {
@@ -565,7 +610,7 @@ impl World {
         if left.abs() > u.prop_window.max(1.0) {
             return false;
         }
-        let step = self.current_move_speed(h) * dt;
+        let step = self.formation_speed(h) * dt;
         let ghost = self.unit(h).is_some_and(|u| self.is_ghost(u));
         let Some(u) = self.unit_mut(h) else { return true };
         let (dx, dy) = (next.0 - u.x, next.1 - u.y);

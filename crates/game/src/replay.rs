@@ -48,6 +48,9 @@ pub enum Command {
     Alliance { player: u8, other: u8, flags: u32 },
     /// A player sends another gold and lumber (CNetCommandTeamTradeResources).
     Trade { player: u8, other: u8, gold: i32, lumber: i32 },
+    /// The units just ordered to a point move as a group in formation (the order flag
+    /// 0x10 of FUN_6f394600): at the speed of the slowest.
+    Formation { units: Vec<u32> },
 }
 
 impl Command {

@@ -222,6 +222,11 @@ pub struct World {
     /// ForceCampaignSelectScreen: after the game, the campaign screen lists the
     /// campaigns rather than the missions.
     pub force_campaign_select: bool,
+    /// Formation groups and their members, and the next group's number.
+    #[serde(default)]
+    pub formations: HashMap<u32, Vec<u32>>,
+    #[serde(default)]
+    pub next_formation: u32,
     /// EnableWorldFogBoundary.
     pub fog_boundary: bool,
     /// PlayModelCinematic.
@@ -484,6 +489,8 @@ impl World {
             alt_minimap_icon: None,
             ally_color_filter: 0,
             force_campaign_select: false,
+            formations: HashMap::default(),
+            next_formation: 1,
             fog_boundary: true,
             model_cinematic: None,
             deformations: Vec::new(),

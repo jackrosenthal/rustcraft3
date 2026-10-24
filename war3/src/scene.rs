@@ -732,6 +732,13 @@ impl Scene {
         self.quick_pressed = f32::NEG_INFINITY;
     }
 
+    /// Whether a group's point order moves it in formation (FUN_6f3dc4e0): the minimap's
+    /// formation button, which Alt reverses with the Formation Toggle option.
+    fn formation_on(&self) -> bool {
+        let on = self.hud.as_ref().is_some_and(|h| h.formation);
+        on != (self.options.formationtoggle && self.alt_held)
+    }
+
     /// The space bar (CCameraWar3 key 0x20, FUN_6f361ac0): the camera goes to the newest
     /// place, or within a second of the last press to the one before.
     fn quick_jump(&mut self) {
@@ -2257,8 +2264,10 @@ impl Scene {
             let target = self.pick_unit(sx, sy, size).or_else(|| self.pick_destructable(sx, sy, size));
             let point = self.ground_at(sx, sy, size);
             let (mut ordered, mut error) = (false, None);
+            let formation = self.formation_on();
             if let Some(g) = self.game.as_mut() {
                 let id = order;
+                let mut moved = Vec::new();
                 for &h in &self.selection {
                     if !w3_game::natives::players::controls(&g.world, g.world.local_player, h) {
                         continue;
@@ -2270,6 +2279,7 @@ impl Scene {
                         }
                         (None, Some((x, y))) => {
                             g.apply(w3_game::replay::Command::Issue { unit: h, order: id, x, y, target: 0, queue: self.shift_held });
+                            moved.push(h);
                         }
                         _ => {}
                     }
@@ -2277,6 +2287,9 @@ impl Scene {
                         Some(e) => error = Some(e),
                         None => ordered = true,
                     }
+                }
+                if formation && moved.len() > 1 {
+                    g.apply(w3_game::replay::Command::Formation { units: moved });
                 }
             }
             // A target no selected unit may take is refused with its error, and the
@@ -2860,12 +2873,18 @@ impl Scene {
             return;
         }
         if let Some((wx, wy)) = self.hud.as_ref().and_then(|h| h.minimap_to_world(ux, uy)) {
+            let formation = self.formation_on();
             if let Some(g) = self.game.as_mut() {
                 let smart = w3_game::natives::basic::order_id("smart");
+                let mut moved = Vec::new();
                 for &h in &self.selection {
                     if w3_game::natives::players::controls(&g.world, g.world.local_player, h) {
                         g.apply(w3_game::replay::Command::Order { unit: h, order: smart, x: wx, y: wy, target: 0 });
+                        moved.push(h);
                     }
+                }
+                if formation && moved.len() > 1 {
+                    g.apply(w3_game::replay::Command::Formation { units: moved });
                 }
             }
             return;
@@ -2888,10 +2907,12 @@ impl Scene {
         }
         let target = self.pick_unit(sx, sy, size).or_else(|| self.pick_item(sx, sy, size)).or_else(|| self.pick_destructable(sx, sy, size));
         let point = self.ground_at(sx, sy, size);
+        let formation = self.formation_on();
         let Some(g) = self.game.as_mut() else { return };
         let local = g.world.local_player;
         let smart = w3_game::natives::basic::order_id("smart");
         let mut ordered = false;
+        let mut moved = Vec::new();
         for &h in &self.selection {
             if !w3_game::natives::players::controls(&g.world, local, h) {
                 continue;
@@ -2903,9 +2924,13 @@ impl Scene {
                 }
                 (_, Some((x, y))) => {
                     g.apply(w3_game::replay::Command::Issue { unit: h, order: smart, x, y, target: 0, queue: self.shift_held });
+                    moved.push(h);
                 }
                 _ => {}
             }
+        }
+        if formation && moved.len() > 1 {
+            g.apply(w3_game::replay::Command::Formation { units: moved });
         }
         // The target flashes in SelTargetColor (FUN_6f3814e0).
         if let (Some(t), true) = (target, ordered) {

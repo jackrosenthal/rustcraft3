@@ -575,11 +575,18 @@ impl Game {
         let res = |r: Result<(), &'static str>| r.map_or_else(O::Error, |_| O::Done);
         match c {
             C::Order { unit, order, x, y, target } => {
+                self.world.leave_formation(unit);
                 self.world.order_unit(unit, order, x, y, target);
                 O::Done
             }
             C::Issue { unit, order, x, y, target, queue } => {
+                self.world.leave_formation(unit);
                 self.world.issue_order(unit, order, x, y, target, queue);
+                O::Done
+            }
+            C::Formation { units } => {
+                let mine: Vec<u32> = units.into_iter().filter(|&u| natives::players::controls(&self.world, player, u)).collect();
+                self.world.form_group(&mine);
                 O::Done
             }
             C::Build { worker, id, x, y } => {

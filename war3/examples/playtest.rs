@@ -509,6 +509,9 @@ fn main() -> anyhow::Result<()> {
             // rclick <x> <y>: a right click (the selection's smart order).
             "rclick" => {
                 scene.command(num(&a[i + 1]), num(&a[i + 2]), (w, h));
+                if let Some(g) = scene.game.as_ref() {
+                    eprintln!("formations {:?}", g.world.formations);
+                }
                 i += 3;
             }
             // scores: every player's GetPlayerScore values.

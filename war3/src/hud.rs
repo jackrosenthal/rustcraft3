@@ -105,6 +105,8 @@ pub struct Hud {
     pub now: f32,
     /// WorldFrameUnitMessage: trigger text, oldest first.
     pub unit_messages: Vec<Message>,
+    /// Chat lines and the game's notices under a player's name (CGameUI +0x3ec).
+    pub chat_messages: Vec<Message>,
     /// The unit message frame's placement from the last DisplayTextToPlayer x and y.
     pub unit_message_offset: (f32, f32),
     /// WorldFrameMessage: the error line above the console.
@@ -322,6 +324,7 @@ impl Hud {
             formation: true,
             now: 0.0,
             unit_messages: Vec::new(),
+            chat_messages: Vec::new(),
             unit_message_offset: (0.0, 0.0),
             error_message: None,
             dialog: None,
@@ -1184,9 +1187,10 @@ impl Hud {
         // CUpperButtonBar (vf9, FUN_6f3af910): Menu always; Allies only in network
         // games; the F12 button is the message log outside them; Quests once a map has
         // made a quest.
-        // The game menu, the quest log, the message log, and the allies and chat
-        // dialogs disable them all while open (as captured from the original).
-        let menu = self.menu.is_some() || self.quests.is_some() || self.log_view.is_some() || self.alliance.is_some() || self.chat_dialog.is_some();
+        // The game menu, the quest log, the message log, the allies and chat dialogs,
+        // and a script dialog (FUN_6f3aee90) disable them all while open (as captured
+        // from the original).
+        let menu = self.menu.is_some() || self.quests.is_some() || self.log_view.is_some() || self.alliance.is_some() || self.chat_dialog.is_some() || self.dialog.is_some();
         self.tree.set_enabled("UpperButtonBarMenuButton", !menu);
         self.tree.set_enabled("UpperButtonBarAlliesButton", world.network && !menu);
         self.tree.set_enabled("UpperButtonBarQuestsButton", !menu && !world.quests.is_empty());
@@ -1306,6 +1310,13 @@ impl Hud {
         self.log.push(text.to_string());
     }
 
+    /// A line in the chat message frame for `duration` seconds (or by its length).
+    pub fn chat_message(&mut self, text: &str, duration: f32) {
+        let duration = if duration < 0.0 { 3.0 + 0.1 * text.len() as f32 } else { duration };
+        self.chat_messages.push(Message { text: text.to_string(), until: self.now + duration });
+        self.log.push(text.to_string());
+    }
+
     /// Shows an error line for 10 seconds, replacing the previous one (FUN_6f36de80).
     pub fn error(&mut self, text: &str) {
         self.error_message = Some(Message { text: text.to_string(), until: self.now + 10.0 });
@@ -1370,7 +1381,9 @@ impl Hud {
         };
         tree.set_size("ScriptDialog", None, Some(height));
         tree.set_point("ScriptDialogText", w3_ui::FramePoint::Top, "ScriptDialog", w3_ui::FramePoint::Top, 0.0, top);
-        tree.set_point("ScriptDialog", w3_ui::FramePoint::Center, "", w3_ui::FramePoint::Center, 0.0, 0.0);
+        // Centered in its parent, the world frame (CWorldFrameWar3), which runs from 0.13
+        // above the bottom to 0.02 below the top (FUN_6f367710).
+        tree.set_point("ScriptDialog", w3_ui::FramePoint::Center, "", w3_ui::FramePoint::Center, 0.0, (0.13 - 0.02) / 2.0);
         tree.bind_points();
         tree.layout();
         self.dialog = Some(DialogView { dialog: h, content, tree, buttons });
@@ -1434,6 +1447,7 @@ impl Hud {
     pub fn tick(&mut self, now: f32) {
         self.now = now;
         self.unit_messages.retain(|m| m.until > now);
+        self.chat_messages.retain(|m| m.until > now);
         if self.error_message.as_ref().is_some_and(|m| m.until <= now) {
             self.error_message = None;
         }
@@ -1464,6 +1478,15 @@ impl Hud {
             let rect = w3_ui::Rect { x0: ax - 0.25, x1: ax + 0.25, y0: ay, y1: ay + 0.25 };
             let text = self.unit_messages.iter().map(|m| m.text.replace("|n", "\n")).collect::<Vec<_>>().join("\n");
             out.push(Draw::Text { font, size, rect, text, color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow });
+        }
+        // The chat message frame: from the screen's top down to 0.2 above its bottom,
+        // 0.00625 in from its left and 0.02 from its right, in MasterFont (unless the
+        // player chose another) at WorldFrameChatMessage, its lines kept to the bottom.
+        if !self.chat_messages.is_empty() {
+            let size = height("WorldFrameChatMessage");
+            let rect = w3_ui::Rect { x0: root.x0 + 0.00625, x1: root.x1 - 0.02, y0: root.y0 + 0.2, y1: root.y1 };
+            let text = self.chat_messages.iter().map(|m| m.text.replace("|n", "\n")).collect::<Vec<_>>().join("\n");
+            out.push(Draw::Text { font: db.decorate("MasterFont"), size, rect, text, color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow });
         }
     }
 

@@ -31,6 +31,9 @@ pub enum Request {
     /// A player's chat line, to everyone (0), allies (1), observers (2), or a player (3
     /// on).
     Chat { player: u8, text: String, to: u8 },
+    /// A line under a player's name in their color, as game.dll's own notices are
+    /// (FUN_6f3735a0), for `duration` seconds.
+    PlayerLine { player: u8, text: String, duration: f32 },
     /// Doodads of a type play an animation: those within a radius of a point (or only
     /// the nearest), or inside a rect (SetDoodadAnimation, SetDoodadAnimationRect).
     DoodadAnimation { id: crate::objects::Id, area: DoodadArea, anim: String, random: bool },

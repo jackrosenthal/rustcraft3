@@ -79,15 +79,17 @@ impl World {
     }
 
     /// The cheat announcement (FUN_6f379aa0).
-    fn announce(&mut self, on: bool) {
+    /// "Cheat enabled!" (or disabled) under the cheating player's name for ten seconds
+    /// (FUN_6f379aa0).
+    fn announce(&mut self, player: u8, on: bool) {
         let text = self.localized(if on { "CHEATENABLED" } else { "CHEATDISABLED" });
-        self.requests.push(Request::DisplayText { players: 1 << self.local_player, x: 0.0, y: 0.0, text, duration: -1.0 });
+        self.requests.push(Request::PlayerLine { player, text, duration: 10.0 });
     }
 
-    fn toggle(&mut self, bit: u32) -> bool {
+    fn toggle(&mut self, player: u8, bit: u32) -> bool {
         self.cheat_flags ^= bit;
         let on = self.cheat_flags & bit != 0;
-        self.announce(on);
+        self.announce(player, on);
         on
     }
 
@@ -116,22 +118,22 @@ impl World {
         let amount = |a: Option<&&str>| a.and_then(|v| v.parse::<i32>().ok()).unwrap_or(500);
         match key {
             'a' => {
-                self.toggle(flag::FAST_BUILD);
+                self.toggle(player, flag::FAST_BUILD);
             }
             'b' => {
-                self.toggle(flag::FAST_DEATH);
+                self.toggle(player, flag::FAST_DEATH);
             }
             'c' => {
-                self.toggle(flag::GOD);
+                self.toggle(player, flag::GOD);
             }
             'g' => {
-                self.toggle(flag::FOOD);
+                self.toggle(player, flag::FOOD);
             }
             'h' => {
-                self.toggle(flag::MANA);
+                self.toggle(player, flag::MANA);
             }
             'i' => {
-                if self.toggle(flag::COOLDOWN) {
+                if self.toggle(player, flag::COOLDOWN) {
                     for &u in &self.unit_order.clone() {
                         if let Some(u) = self.unit_mut(u) {
                             u.cooldowns.clear();
@@ -140,16 +142,16 @@ impl World {
                 }
             }
             'j' => {
-                self.toggle(flag::NO_DEFEAT);
+                self.toggle(player, flag::NO_DEFEAT);
             }
             'k' => {
-                self.toggle(flag::NO_VICTORY);
+                self.toggle(player, flag::NO_VICTORY);
             }
             'l' => {
-                self.toggle(flag::HERO_LEVEL);
+                self.toggle(player, flag::HERO_LEVEL);
             }
             'm' => {
-                let on = self.toggle(flag::SHOW_MAP);
+                let on = self.toggle(player, flag::SHOW_MAP);
                 if on {
                     self.cheat_fog = Some((self.fog_enabled, self.fog_mask_enabled));
                     self.fog_enabled = false;
@@ -160,7 +162,7 @@ impl World {
                 }
             }
             'n' => {
-                self.toggle(flag::TECH_TREE);
+                self.toggle(player, flag::TECH_TREE);
             }
             // keysersoze, leafittome, greedisgood [amount] [player].
             'd' | 'e' | 'f' => {
@@ -172,21 +174,21 @@ impl World {
                 if key != 'd' {
                     self.add_resource(p, player_state::RESOURCE_LUMBER, n);
                 }
-                self.announce(true);
+                self.announce(player, true);
             }
             // riseandshine and lightsout: [Misc] Dawn and Dusk; daylightsavings [hour]
             // sets the hour, or stops and starts the day.
             'o' | 'p' => {
                 self.time_of_day = self.misc_f32(if key == 'o' { "Dawn" } else { "Dusk" }, if key == 'o' { 6.0 } else { 18.0 });
-                self.announce(true);
+                self.announce(player, true);
             }
             'q' => match args.first().and_then(|v| v.parse::<f32>().ok()) {
                 Some(h) => {
                     self.time_of_day = h;
-                    self.announce(true);
+                    self.announce(player, true);
                 }
                 None => {
-                    let on = self.toggle(flag::TIME_STOPPED);
+                    let on = self.toggle(player, flag::TIME_STOPPED);
                     self.time_of_day_suspended = on;
                 }
             },
@@ -200,14 +202,14 @@ impl World {
                     }
                 }
                 self.research_changed(player);
-                self.announce(true);
+                self.announce(player, true);
             }
             // tenthleveltaurenchieftain: Power of the Horde.
             'v' => self.requests.push(Request::PlayMusic("Sound\\Music\\mp3Music\\PH1.mp3".into())),
             // somebodysetupusthebomb, allyourbasearebelongtous: the player's defeat or
             // victory event (0x8020d, 0x8020e).
             't' | 'u' => {
-                self.announce(true);
+                self.announce(player, true);
                 let event = if key == 't' { crate::event_ids::EVENT_PLAYER_DEFEAT } else { crate::event_ids::EVENT_PLAYER_VICTORY };
                 return Some(crate::types::EventCtx { player, has_player: true, event_id: event, ..Default::default() });
             }
@@ -224,7 +226,7 @@ impl World {
                     for m in 0..=n {
                         self.persist.set_mission(c, m, true);
                     }
-                    self.announce(true);
+                    self.announce(player, true);
                     self.requests.push(Request::ChangeLevel { map, score: false });
                 }
             }

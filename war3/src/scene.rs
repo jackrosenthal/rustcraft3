@@ -952,6 +952,16 @@ impl Scene {
                         }
                     }
                 }
+                // "name: line", the name in the player's color (FUN_6f3735a0).
+                w3_game::world::Request::PlayerLine { player, text, duration } => {
+                    let Some(w) = self.game.as_ref().map(|g| &g.world) else { continue };
+                    let p = &w.players[player as usize % w.players.len()];
+                    let c = self.team_rgb[p.color as usize % 16].map(|v| (v * 255.0).round() as u8);
+                    let line = format!("|c{:02x}{:02x}{:02x}{:02x}{}: |r{text}", 0xff, c[0], c[1], c[2], p.name);
+                    if let Some(h) = self.hud.as_mut() {
+                        h.chat_message(&line, duration);
+                    }
+                }
                 // A chat line: "[All] name: line" in the player's color.
                 w3_game::world::Request::Chat { player, text, to } => {
                     let Some(w) = self.game.as_ref().map(|g| &g.world) else { continue };
@@ -979,7 +989,7 @@ impl Scene {
                     let line = format!("{recipient} |c{:02x}{:02x}{:02x}{:02x}{}: |r{text}", 0xff, c[0], c[1], c[2], p.name);
                     log::info!("[chat] {line}");
                     if let Some(h) = self.hud.as_mut() {
-                        h.unit_message(&line, 0.0, 0.0, -1.0);
+                        h.chat_message(&line, -1.0);
                         h.chat_history.push(line);
                     }
                 }
@@ -995,7 +1005,7 @@ impl Scene {
                         (false, _) => w.localized("RESUME_GAME_NOTIFY").replacen("%s", &name, 1),
                     };
                     if let Some(h) = self.hud.as_mut() {
-                        h.unit_message(&line, 0.0, 0.0, 10.0);
+                        h.chat_message(&line, 10.0);
                     }
                 }
                 w3_game::world::Request::DoodadAnimation { id, area, anim, random } => self.doodad_animation(id, &area, &anim, random),
@@ -3818,7 +3828,9 @@ impl Scene {
             self.ui_sound("QuestLogModified");
         }
         // A network game does not stop for one player's menus.
-        let paused = self.net.is_none() && self.hud.as_ref().is_some_and(|h| h.menu.is_some() || h.quests.is_some() || h.log_view.is_some());
+        // A script dialog pauses too (CScriptDialogMode::vf9 sends CNetCommandPause
+        // outside network games).
+        let paused = self.net.is_none() && self.hud.as_ref().is_some_and(|h| h.menu.is_some() || h.quests.is_some() || h.log_view.is_some() || h.dialog.is_some());
         let speed = self.game.as_ref().map_or(1.0, |g| [0.6, 0.8, 1.0][g.world.game_speed.clamp(0, 2) as usize]);
         // The script's pause (PauseGame) stops a game played alone; its players' commands
         // and the script's answers to them still go on.
@@ -4604,7 +4616,7 @@ impl Scene {
             // it, as do PauseGame and a network pause).
             let alone = self.net.is_none();
             let world_paused = self.game.as_ref().is_some_and(|g| g.world.net_paused.is_some() || (alone && g.world.script_paused));
-            let paused = world_paused || (alone && (hud.menu.is_some() || hud.quests.is_some() || hud.log_view.is_some()));
+            let paused = world_paused || (alone && (hud.menu.is_some() || hud.quests.is_some() || hud.log_view.is_some() || hud.dialog.is_some()));
             hud.paused = paused;
             let mut draws = Vec::new();
             if paused {

@@ -381,6 +381,7 @@ impl Game {
         // Players the map gives a neutral or rescuable controller are passive toward
         // every user and computer player and toward each other, and those toward them
         // (FUN_6f1e9bf0, as the game loads).
+        self.ally_teams();
         let calm: Vec<usize> = (0..types::PLAYER_COUNT).filter(|&i| matches!(self.world.players[i].controller, map_control::NEUTRAL | map_control::RESCUABLE)).collect();
         let active: Vec<usize> = (0..types::PLAYER_COUNT).filter(|&i| matches!(self.world.players[i].controller, map_control::USER | map_control::COMPUTER)).collect();
         const PASSIVE: usize = 0;
@@ -391,6 +392,62 @@ impl Game {
             }
         }
         self.call("main")
+    }
+
+    /// Teammates ally as the game begins (FUN_6f29e300): each pair of playing,
+    /// non-observer players on one team are passive, help each other, share experience
+    /// and spells, share vision, and win together (PLAYER_STATE_ALLIED_VICTORY).  A map
+    /// with its own forces (w3i flag 0x40) does each of these only as the team's force
+    /// says: allied (0x1), allied victory (0x2), shared vision (0x8), shared units
+    /// (0x10), and shared advanced units (0x20).
+    fn ally_teams(&mut self) {
+        let custom = self.info.flags & 0x40 != 0;
+        let forces: Vec<u32> = self.info.forces.iter().map(|f| f.flags).collect();
+        let playing: Vec<usize> = (0..12)
+            .filter(|&i| {
+                let p = &self.world.players[i];
+                p.slot_state == slot_state::PLAYING && p.get_state(types::player_state::OBSERVER) == 0
+            })
+            .collect();
+        for (k, &a) in playing.iter().enumerate() {
+            for &b in &playing[k + 1..] {
+                let team = self.world.players[a].team;
+                if team != self.world.players[b].team {
+                    continue;
+                }
+                let flags = if custom {
+                    match forces.get(team.max(0) as usize) {
+                        Some(&f) => f,
+                        None => continue,
+                    }
+                } else {
+                    u32::MAX
+                };
+                let mut set = |kinds: &[usize]| {
+                    for &t in kinds {
+                        self.world.players[a].alliances[b][t] = true;
+                        self.world.players[b].alliances[a][t] = true;
+                    }
+                };
+                if flags & 0x1 != 0 {
+                    set(&[0, 1, 2, 3, 4]);
+                }
+                if flags & 0x8 != 0 {
+                    set(&[5]);
+                }
+                if custom && flags & 0x10 != 0 {
+                    set(&[6]);
+                }
+                if custom && flags & 0x20 != 0 {
+                    set(&[7]);
+                }
+                if flags & 0x2 != 0 {
+                    for p in [a, b] {
+                        self.world.players[p].state.insert(types::player_state::ALLIED_VICTORY, 1);
+                    }
+                }
+            }
+        }
     }
 
     fn call(&mut self, name: &str) -> anyhow::Result<()> {

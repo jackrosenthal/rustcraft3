@@ -45,8 +45,13 @@ fn main() -> anyhow::Result<()> {
                     Some('O') => w3_game::SlotFill::Observer(true),
                     _ => w3_game::SlotFill::Empty,
                 };
-                let team = if s.starts_with('O') { 12 } else { i as i32 };
-                w3_game::LobbySlot { player: i as u8, fill, name: None, race: s[1..].parse().ok(), team, color: i as i32, handicap: 100.0, difficulty: 1 }
+                // An optional "t<team>" after the race puts the slot on that team.
+                let (race, team) = match s[1..].split_once('t') {
+                    Some((r, t)) => (r.parse().ok(), t.parse().unwrap_or(i as i32)),
+                    None => (s[1..].parse().ok(), i as i32),
+                };
+                let team = if s.starts_with('O') { 12 } else { team };
+                w3_game::LobbySlot { player: i as u8, fill, name: None, race, team, color: i as i32, handicap: 100.0, difficulty: 1 }
             })
             .collect()
     });
@@ -128,6 +133,17 @@ fn main() -> anyhow::Result<()> {
                 let aspect = w as f32 / h as f32;
                 if let (Some(hud), Some(g)) = (scene.hud.as_mut(), scene.game.as_ref()) {
                     hud.alliance = war3::alliance::AllianceDialog::new(&assets.frames, &g.world, aspect);
+                }
+                i += 1;
+            }
+            // alliances: each player's alliance flags toward the others, and allied victory.
+            "alliances" => {
+                if let Some(g) = scene.game.as_ref() {
+                    for p in 0..4usize {
+                        let pl = &g.world.players[p];
+                        let flags: Vec<String> = (0..4usize).map(|q| pl.alliances[q].iter().map(|&b| if b { '1' } else { '0' }).collect()).collect();
+                        eprintln!("p{p} team {} allied_victory {} toward {:?}", pl.team, pl.get_state(w3_game::types::player_state::ALLIED_VICTORY), flags);
+                    }
                 }
                 i += 1;
             }

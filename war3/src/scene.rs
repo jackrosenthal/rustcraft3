@@ -1644,7 +1644,11 @@ impl Scene {
             let texture = assets.textures.get_or_white(device, queue, &format!("{tex}.blp"));
             out.push(w3_render::decal::Decal { texture, center: [x, y, self.terrain.height_at(x, y)], size: [size, size], color, additive: false });
         }
-        for &h in &self.selection {
+        // The unit under the pointer takes the dotted circle (CPreselectUI's
+        // TextureDottedNN), unless it is selected.
+        let hovered = if self.over_console(self.cursor.0, self.cursor.1, self.screen) { None } else { self.pick_unit(self.cursor.0, self.cursor.1, self.screen) };
+        let hovered = hovered.filter(|h| !self.selection.contains(h)).map(|h| (h, true));
+        for (h, dotted) in self.selection.iter().map(|&h| (h, false)).chain(hovered) {
             let Some(u) = w.unit(h) else { continue };
             let Some(o) = w.objects.units.get(u.type_id) else { continue };
             // UI\MiscData.txt [SelectionCircle]: size = SLK scale x ScaleFactor; the texture
@@ -1658,7 +1662,8 @@ impl Scene {
                     break;
                 }
             }
-            let Some(tex) = misc.get_str("SelectionCircle", &format!("Texture{idx:02}")) else { continue };
+            let key = if dotted { format!("TextureDotted{idx:02}") } else { format!("Texture{idx:02}") };
+            let Some(tex) = misc.get_str("SelectionCircle", &key) else { continue };
             let texture = assets.textures.get_or_white(device, queue, &format!("{tex}.blp"));
             let rel = if u.owner == w.local_player {
                 "ColorFriend"

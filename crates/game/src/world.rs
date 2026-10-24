@@ -247,6 +247,9 @@ pub struct World {
     /// SetIntegerGameState's divine intervention and disconnected states.
     #[serde(default)]
     pub integer_states: [i32; 2],
+    /// CopySaveGame's copies this game (at most sixteen).
+    #[serde(default)]
+    pub save_copies: i32,
     /// PauseGame: the script has paused the game (FUN_6f3719c0).
     #[serde(default)]
     pub script_paused: bool,
@@ -547,6 +550,7 @@ impl World {
             minimap_filter_buttons: (true, true),
             no_replay: false,
             script_paused: false,
+            save_copies: 0,
             densities: (1, 1),
             stacked_sounds: Vec::new(),
             integer_states: [0; 2],
@@ -622,11 +626,27 @@ impl World {
     /// A saved game's file from the name a script gives (".w3z" when it has no
     /// extension).
     pub fn save_path(&self, name: &str) -> Option<std::path::PathBuf> {
-        let dir = self.saves_dir.as_ref()?;
-        let name = name.replace('\\', "/");
-        let file = std::path::Path::new(&name).file_name()?.to_string_lossy().to_string();
-        let file = if file.contains('.') { file } else { format!("{file}.w3z") };
-        Some(dir.join(file))
+        let mut p = self.save_dir_path(name)?;
+        let file = p.file_name()?.to_string_lossy().to_string();
+        if !file.contains('.') {
+            p.set_file_name(format!("{file}.w3z"));
+        }
+        Some(p)
+    }
+
+    /// A folder (or file) within the saved games' folder, by a name with backslashes,
+    /// never outside it.
+    pub fn save_dir_path(&self, name: &str) -> Option<std::path::PathBuf> {
+        let mut p = self.saves_dir.clone()?;
+        let mut any = false;
+        for part in name.split(['\\', '/']).filter(|s| !s.is_empty()) {
+            if part == ".." || part == "." || part.contains(':') {
+                return None;
+            }
+            p.push(part);
+            any = true;
+        }
+        any.then_some(p)
     }
 
     pub fn localized(&self, s: &str) -> String {

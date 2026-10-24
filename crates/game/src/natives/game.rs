@@ -126,9 +126,30 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         ForceCampaignSelectScreen => |w, _, _| { w.force_campaign_select = true; none() },
         LoadGame => |w, _, a| { w.requests.push(crate::world::Request::LoadGame(a.s(0))); none() },
         SaveGame => |w, _, a| { w.requests.push(crate::world::Request::SaveGame(a.s(0))); none() },
-        RenameSaveDirectory => |_, _, _| boolean(false),
-        RemoveSaveDirectory => |_, _, _| boolean(false),
-        CopySaveGame => |_, _, _| boolean(false),
+        // Not in network games (FUN_6f1f8390).
+        RenameSaveDirectory => |w, _, a| {
+            let (from, to) = (w.save_dir_path(&a.s(0)), w.save_dir_path(&a.s(1)));
+            boolean(!w.network && matches!((from, to), (Some(f), Some(t)) if f.is_dir() && !t.exists() && std::fs::rename(&f, &t).is_ok()))
+        },
+        RemoveSaveDirectory => |w, _, a| {
+            let d = w.save_dir_path(&a.s(0));
+            boolean(!w.network && d.is_some_and(|d| d.is_dir() && std::fs::remove_dir_all(d).is_ok()))
+        },
+        // Only while a game is saved or loaded, and sixteen times a game.
+        CopySaveGame => |w, _, a| {
+            let (from, to) = (w.save_path(&a.s(0)), w.save_path(&a.s(1)));
+            if w.network || !matches!(w.ctx.event_id, 0x100 | 0x103) || w.save_copies >= 16 {
+                return boolean(false);
+            }
+            w.save_copies += 1;
+            let ok = match (from, to) {
+                (Some(f), Some(t)) if f.is_file() => {
+                    t.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::copy(f, t).is_ok()
+                }
+                _ => false,
+            };
+            boolean(ok)
+        },
         SaveGameExists => |w, _, a| boolean(w.save_path(&a.s(0)).is_some_and(|p| p.exists())),
         SyncSelections => |_, _, _| none(),
         IsNoVictoryCheat => |w, _, _| boolean(w.cheat(crate::cheats::flag::NO_VICTORY)),

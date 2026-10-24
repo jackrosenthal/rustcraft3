@@ -233,7 +233,7 @@ fn main() -> anyhow::Result<()> {
                 if let Some(g) = &scene.game {
                     let p = &g.world.players[g.world.local_player as usize];
                     let st = |k: i32| p.state.get(&k).copied().unwrap_or(0);
-                    eprintln!("t {:.1} gold {} lumber {}", g.world.time, st(w3_game::types::player_state::RESOURCE_GOLD), st(w3_game::types::player_state::RESOURCE_LUMBER));
+                    eprintln!("t {:.1} gold {} lumber {} food {}/{} tokens {}", g.world.time, st(w3_game::types::player_state::RESOURCE_GOLD), st(w3_game::types::player_state::RESOURCE_LUMBER), st(w3_game::types::player_state::RESOURCE_FOOD_USED), st(w3_game::types::player_state::RESOURCE_FOOD_CAP), st(w3_game::types::player_state::RESOURCE_HERO_TOKENS));
                 }
                 i += 1;
             }

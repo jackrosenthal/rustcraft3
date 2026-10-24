@@ -206,6 +206,11 @@ impl World {
         if self.stock(shop, id).count <= 0 {
             return Err("");
         }
+        // Its requirements at the hero level, and the hero limits (code 0xb7 of
+        // FUN_6f3fe0f0).
+        if !self.missing_requirements(player, id, self.requirement_level(player, id)).is_empty() || !self.tech_allowed(player, id, 1) {
+            return Err("");
+        }
         self.spend(player, id, true)?;
         self.take_stock(shop, id);
         let radius = self.objects.units.get(id).map_or(16.0, |o| o.real("collision"));

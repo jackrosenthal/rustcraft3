@@ -18,7 +18,11 @@ impl World {
         } else if let Some(o) = self.objects.abilities.get(id) {
             (o.list("Requires"), o.list("Requiresamount"))
         } else if let Some(o) = self.objects.units.get(id) {
-            (o.list("Requires"), o.list("Requiresamount"))
+            // Requires for the first level, Requires1 for the second, and so on, up to
+            // Requirescount (FUN_6f344380 clamps to the last).
+            let count = o.int("Requirescount").max(1) as u32;
+            let k = level.max(1).min(count) - 1;
+            if k == 0 { (o.list("Requires"), o.list("Requiresamount")) } else { (o.list(&format!("Requires{k}")), Vec::new()) }
         } else {
             return Vec::new();
         };
@@ -69,12 +73,19 @@ impl World {
             .count() as i32
     }
 
+    /// A dependency group named in requirements (TALT, TWN1 to TWN9): a section of
+    /// Units\ItemFunc.txt with its DependencyOr list and an ItemStrings Name, kept
+    /// among the items under its lower-cased name.
+    pub fn dependency_group(&self, id: Id) -> Option<&crate::objects::Object> {
+        self.objects.items.get(id).or_else(|| self.objects.items.get(id.map(|c| c.to_ascii_lowercase())))
+    }
+
     /// A type, what it upgrades into (transitively), and its DependencyOr types.
     fn equivalent_types(&self, req: Id) -> Vec<Id> {
         let mut types = vec![req];
         let mut k = 0;
         while k < types.len() {
-            if let Some(o) = self.objects.units.get(types[k]) {
+            if let Some(o) = self.objects.units.get(types[k]).or_else(|| self.dependency_group(types[k])) {
                 for next in o.list("Upgrade").iter().chain(o.list("DependencyOr").iter()) {
                     let next = id_from_str(next.trim());
                     if !types.contains(&next) {
@@ -101,6 +112,25 @@ impl World {
     fn tech_max(&self, owner: u8, id: Id) -> Option<i32> {
         let set = self.players.get(owner as usize)?.tech_max.get(&id).copied().unwrap_or(-1);
         Some(set + self.research_tech_max(owner, id)).filter(|&m| m >= 0)
+    }
+
+    /// The player's heroes, as their limit counts them: alive, dead awaiting revival, or
+    /// in training.
+    pub fn hero_count(&self, owner: u8) -> i32 {
+        let living = self.unit_order.iter().filter_map(|&h| self.unit(h)).filter(|u| u.owner == owner && u.is_hero).count();
+        let queued: usize = self.unit_order.iter().filter_map(|&h| self.unit(h)).filter(|u| u.owner == owner).map(|u| u.queue.iter().filter(|q| q[0].is_ascii_uppercase() && self.objects.units.get(**q).is_some()).count()).sum();
+        (living + queued) as i32
+    }
+
+    /// The requirement level of making `id`: for a hero, one more than the player's
+    /// heroes, so the second and third take Requires1 and Requires2 (FUN_6f419b40 with
+    /// the HERO count); else the first.
+    pub fn requirement_level(&self, owner: u8, id: Id) -> u32 {
+        if id[0].is_ascii_uppercase() && self.objects.units.get(id).is_some() {
+            self.hero_count(owner) as u32 + 1
+        } else {
+            1
+        }
     }
 
     /// Whether `owner` may make another `id` (or research level `level` of it) under

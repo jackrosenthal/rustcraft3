@@ -375,6 +375,21 @@ impl ObjectDb {
         for t in [&mut db.units, &mut db.items, &mut db.abilities, &mut db.buffs, &mut db.upgrades] {
             t.merge_profile(&profile, true);
         }
+        // Dependency groups that requirements name (TALT, TWN1 to TWN9): ItemFunc and
+        // ItemStrings sections with a DependencyOr list and no object of their own.
+        for (section, keys) in &profile.sections {
+            if section.len() != 4 || !keys.keys().any(|k| k.eq_ignore_ascii_case("DependencyOr")) {
+                continue;
+            }
+            let id = id_from_str(&section.to_ascii_uppercase());
+            if db.units.get(id).is_some() || db.items.get(id).is_some() {
+                continue;
+            }
+            let obj = db.items.objects.entry(id).or_insert_with(|| Object { id, ..Default::default() });
+            for (k, v) in keys {
+                obj.fields.insert(k.clone(), v.clone());
+            }
+        }
         let unit_meta = slk(chain, "Units\\UnitMetaData.slk");
         db.units.load_meta(&unit_meta);
         db.items.load_meta(&unit_meta);

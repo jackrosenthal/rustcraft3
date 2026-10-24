@@ -234,6 +234,10 @@ pub struct Unit {
 /// Unit settings scripts change.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct UnitExtra {
+    /// Which of the production queue's entries a hero token paid for (refunded as a
+    /// token when cancelled), kept beside `queue`.
+    #[serde(default)]
+    pub queue_tokens: Vec<bool>,
     /// A computer player's unit sent to die (SuicideUnit): the player it goes after,
     /// or -1 for any enemy.
     #[serde(default)]
@@ -429,6 +433,7 @@ pub struct UnitExtra {
 impl Default for UnitExtra {
     fn default() -> Self {
         UnitExtra {
+            queue_tokens: Vec::new(),
             formation: None,
             rally_target: 0,
             animated: false,

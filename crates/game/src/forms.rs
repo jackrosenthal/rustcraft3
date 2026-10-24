@@ -28,6 +28,7 @@ impl World {
         let u = self.unit_mut(h).unwrap();
         u.extra.rooting = Some((dur, None));
         u.queue.clear();
+        u.extra.queue_tokens.clear();
         crate::sim::set_anim(u, "morph");
         true
     }

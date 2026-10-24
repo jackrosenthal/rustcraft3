@@ -73,7 +73,7 @@ impl Button {
             // A research requirement names its level.
             let name = match w.objects.upgrades.get(r) {
                 Some(o) => level_entry(&o.list("Name"), amount.max(1) as u32),
-                None => w.objects.units.get(r).map(|o| o.str("Name")).unwrap_or_default(),
+                None => w.objects.units.get(r).or_else(|| w.dependency_group(r)).map(|o| o.str("Name")).unwrap_or_default(),
             };
             text.push_str(&format!("\n - {name}"));
         }
@@ -218,9 +218,13 @@ impl Commands {
             let Some(o) = w.objects.units.get(id) else { continue };
             let Some((x, y)) = parse_pos(&o.list("Buttonpos")) else { continue };
             let ok = has_shopper && stock > 0;
-            let costs = [0, o.int("goldcost"), o.int("lumbercost"), o.int("fused")];
+            let costs = if w.hero_token_pays(local, id) { [0, 0, 0, o.int("fused")] } else { [0, o.int("goldcost"), o.int("lumbercost"), o.int("fused")] };
             let mut b = Button::new(x, y, o.str("Art"), hotkey(&o.str("Hotkey")), Action::Hire(id), ok).with_tip(o.str("Tip"), fill_placeholders(w, &o.str("Ubertip")), costs);
             b.requires = stock_note(id);
+            // Its requirements, at the hero level for heroes (REQUIRESTOOLTIP).
+            if b.requires.is_empty() {
+                b = b.with_requirements(db, w, local, id, w.requirement_level(local, id));
+            }
             out.push(b);
         }
         // A tavern's Awaken: the player's first four heroes along the top row, the dead
@@ -354,10 +358,13 @@ impl Commands {
                 let art = level_entry(&ob.list("Art"), level + 1);
                 let costs = [0, ob.int("goldbase") + ob.int("goldmod") * level as i32, ob.int("lumberbase") + ob.int("lumbermod") * level as i32, 0];
                 (level_entry(&ob.list("Tip"), level + 1), level_entry(&ob.list("Ubertip"), level + 1), art, costs)
+            } else if w.hero_token_pays(u.owner, id) {
+                // A hero token pays: no gold or lumber (FUN_6f402c30).
+                (ob.str("Tip"), ob.str("Ubertip"), ob.str("Art"), [0, 0, 0, ob.int("fused")])
             } else {
                 (ob.str("Tip"), ob.str("Ubertip"), ob.str("Art"), [0, ob.int("goldcost"), ob.int("lumbercost"), ob.int("fused")])
             };
-            let level = w.players[u.owner as usize].tech_researched.get(&id).copied().unwrap_or(0) as u32 + 1;
+            let level = if w.objects.upgrades.get(id).is_some() { w.players[u.owner as usize].tech_researched.get(&id).copied().unwrap_or(0) as u32 + 1 } else { w.requirement_level(u.owner, id) };
             Some(Button::new(x, y, icon, hotkey(&ob.str("Hotkey")), action, enabled).with_tip(tip, fill_placeholders(w, &uber), costs).with_requirements(db, w, u.owner, id, level))
         };
         if page == Page::Build {

@@ -1249,8 +1249,13 @@ impl World {
     }
 
     /// Checks and spends resources, returning the interface error string key on failure.
-    pub fn spend(&mut self, player: u8, id: Id, food: bool) -> Result<(), &'static str> {
+    /// Pays for `id`: a hero while the player holds a hero token (the melee start's free
+    /// hero) costs the token instead of gold and lumber (FUN_6f40c600, FUN_6f5a8f80).
+    /// Returns whether a token paid.
+    pub fn spend(&mut self, player: u8, id: Id, food: bool) -> Result<bool, &'static str> {
+        let token = self.hero_token_pays(player, id);
         let (g, l, f) = self.cost(id);
+        let (g, l) = if token { (0, 0) } else { (g, l) };
         let p = &self.players[player as usize];
         if p.get_state(player_state::RESOURCE_GOLD) < g {
             return Err("Nogold");
@@ -1264,7 +1269,25 @@ impl World {
         let p = &mut self.players[player as usize];
         *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) -= g;
         *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) -= l;
-        Ok(())
+        if token {
+            *p.state.entry(player_state::RESOURCE_HERO_TOKENS).or_insert(0) -= 1;
+        }
+        Ok(token)
+    }
+
+    /// Whether a hero token would pay for `id`: a hero type, with a token in hand.
+    pub fn hero_token_pays(&self, player: u8, id: Id) -> bool {
+        id[0].is_ascii_uppercase() && self.objects.units.get(id).is_some() && self.players.get(player as usize).is_some_and(|p| p.get_state(player_state::RESOURCE_HERO_TOKENS) > 0)
+    }
+
+    /// Cancelled production: a token-paid hero gives its token back, anything else its
+    /// cost at `rate`.
+    fn refund_queued(&mut self, player: u8, id: Id, rate: f32, token: bool) {
+        if token {
+            *self.players[player as usize].state.entry(player_state::RESOURCE_HERO_TOKENS).or_insert(0) += 1;
+        } else {
+            self.refund(player, id, rate);
+        }
     }
 
     pub fn refund(&mut self, player: u8, id: Id, rate: f32) {
@@ -1288,11 +1311,14 @@ impl World {
             return Err("");
         }
         let owner = u.owner;
-        if !self.missing_requirements(owner, id, 1).is_empty() || !self.tech_allowed(owner, id, 1) {
+        if !self.missing_requirements(owner, id, self.requirement_level(owner, id)).is_empty() || !self.tech_allowed(owner, id, 1) {
             return Err("");
         }
-        self.spend(owner, id, true)?;
-        self.unit_mut(h).unwrap().queue.push(id);
+        let token = self.spend(owner, id, true)?;
+        let u = self.unit_mut(h).unwrap();
+        u.extra.queue_tokens.resize(u.queue.len(), false);
+        u.queue.push(id);
+        u.extra.queue_tokens.push(token);
         Ok(())
     }
 
@@ -1434,12 +1460,14 @@ impl World {
         };
         let rate = self.misc_f32(key, 1.0);
         let u = self.unit_mut(h).unwrap();
+        let token = u.extra.queue_tokens.get(u.queue.len() - 1).copied().unwrap_or(false);
         u.queue.pop();
+        u.extra.queue_tokens.truncate(u.queue.len());
         if u.queue.is_empty() {
             u.queue_progress = 0.0;
             u.queue_started = false;
         }
-        self.refund(owner, id, rate);
+        self.refund_queued(owner, id, rate, token);
         self.queue_unit_event(h, pe, ue, ctx);
     }
 
@@ -1460,12 +1488,16 @@ impl World {
         };
         let rate = self.misc_f32(key, 1.0);
         let u = self.unit_mut(h).unwrap();
+        let token = u.extra.queue_tokens.get(slot).copied().unwrap_or(false);
         u.queue.remove(slot);
+        if slot < u.extra.queue_tokens.len() {
+            u.extra.queue_tokens.remove(slot);
+        }
         if slot == 0 {
             u.queue_progress = 0.0;
             u.queue_started = false;
         }
-        self.refund(owner, id, rate);
+        self.refund_queued(owner, id, rate, token);
         self.queue_unit_event(h, pe, ue, ctx);
     }
 
@@ -1555,6 +1587,9 @@ impl World {
             if u.queue_progress >= t {
                 u.queue_progress = 0.0;
                 u.queue.remove(0);
+                if !u.extra.queue_tokens.is_empty() {
+                    u.extra.queue_tokens.remove(0);
+                }
                 u.queue_started = false;
                 *self.players[owner as usize].tech_researched.entry(id).or_insert(0) += 1;
                 self.research_changed(owner);
@@ -1575,6 +1610,9 @@ impl World {
         let owner = u.owner;
         u.queue_progress = 0.0;
         u.queue.remove(0);
+        if !u.extra.queue_tokens.is_empty() {
+            u.extra.queue_tokens.remove(0);
+        }
         u.queue_started = false;
         // A structure upgrade (the building's Upgrade list) transforms it in place.
         let from = u.type_id;

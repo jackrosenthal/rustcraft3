@@ -205,6 +205,13 @@ impl World {
         (x.clamp(x0, x1), y.clamp(y0, y1))
     }
 
+    /// Pans the camera to a target kept inside the camera bounds, as every pan and
+    /// SetCameraPosition does (FUN_6f35f1a0).
+    pub fn pan_camera(&mut self, x: f32, y: f32, duration: f32) {
+        let (x, y) = self.clamp_to_camera_bounds(x, y);
+        self.camera.pan_to(x, y, duration);
+    }
+
     /// Applies a camera setup: its fields (each over its own duration, or `force`), and
     /// its destination when `pan` is set (over the longest field duration, or `force`;
     /// at once unless `timed`).
@@ -219,7 +226,7 @@ impl World {
         }
         if pan {
             let d = if timed { force.unwrap_or(longest) } else { 0.0 };
-            self.camera.pan_to(s.x, s.y, d);
+            self.pan_camera(s.x, s.y, d);
         }
     }
 }

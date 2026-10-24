@@ -233,12 +233,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             }
             none()
         },
-        SetCameraPosition => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), 0.0); none() },
+        SetCameraPosition => |w, _, a| { w.pan_camera(a.r(0), a.r(1), 0.0); none() },
         SetCameraQuickPosition => |w, _, a| { w.requests.push(Request::QuickPosition { x: a.r(0), y: a.r(1) }); none() },
-        PanCameraTo => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), 0.0); none() },
-        PanCameraToTimed => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), a.r(2)); none() },
-        PanCameraToWithZ => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), 0.0); none() },
-        PanCameraToTimedWithZ => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), a.r(3)); none() },
+        PanCameraTo => |w, _, a| { w.pan_camera(a.r(0), a.r(1), 0.0); none() },
+        PanCameraToTimed => |w, _, a| { w.pan_camera(a.r(0), a.r(1), a.r(2)); none() },
+        PanCameraToWithZ => |w, _, a| { w.pan_camera(a.r(0), a.r(1), 0.0); none() },
+        PanCameraToTimedWithZ => |w, _, a| { w.pan_camera(a.r(0), a.r(1), a.r(3)); none() },
         SetCameraField => |w, _, a| { w.camera.set_field(a.h(0) as usize, a.r(1), a.r(2)); none() },
         AdjustCameraField => |w, _, a| {
             let f = a.h(0) as usize;

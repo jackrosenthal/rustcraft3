@@ -1446,6 +1446,7 @@ impl World {
         let (x, y) = self.spawn_point(h, radius);
         let new = crate::natives::units::create_unit(self, owner, id, x, y, 270.0);
         self.requests.push(Request::Ack { unit: new, kind: "Ready" });
+        self.requests.push(Request::UnitReady { unit: new });
         let rally = self.unit(h).and_then(|u| u.rally);
         if let (Some((rx, ry)), true) = (rally, new != 0) {
             let smart = crate::natives::basic::order_id("smart");

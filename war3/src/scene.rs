@@ -966,6 +966,12 @@ impl Scene {
                 }
                 w3_game::world::Request::Attacked { unit } => self.attack_warning(unit),
                 w3_game::world::Request::QuickPosition { x, y } => self.add_quick(x, y),
+                w3_game::world::Request::UnitReady { unit } => {
+                    let at = self.game.as_ref().and_then(|g| g.world.unit(unit).filter(|u| Self::hears_of(&g.world, u.owner)).map(|u| (u.x, u.y)));
+                    if let Some((x, y)) = at {
+                        self.event_ping(x, y, "PingColor");
+                    }
+                }
                 w3_game::world::Request::Completed { unit, id, level, sound } => self.completed(unit, id, level, &sound),
                 w3_game::world::Request::GoldMine { worker, collapsed } => self.gold_mine_warning(worker, collapsed),
                 // A ping lasts its duration (1.5 seconds when none), in its color or

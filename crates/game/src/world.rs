@@ -55,6 +55,9 @@ pub enum Request {
     /// says "Completed: " and the name (an upgrade's at `level`), with `sound`
     /// (FUN_6f3777b0 from CAbilityQueue vf215 and CAbilityInProgress vf205).
     Completed { unit: u32, id: crate::objects::Id, level: u32, sound: String },
+    /// A unit trained, or a hero revived or awakened: a ping in PingColor there for
+    /// players who hear of it (FUN_6f3777b0 from CAbilityTrain vf209 and FUN_6f3f8350).
+    UnitReady { unit: u32 },
     /// SetCameraQuickPosition: a place for the space bar.
     QuickPosition { x: f32, y: f32 },
     /// A harvester left its mine low on gold (LowGoldAmount) or empty (FUN_6f4382c0).

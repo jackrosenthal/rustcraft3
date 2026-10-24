@@ -279,6 +279,7 @@ impl World {
         let radius = self.unit(hero).map_or(16.0, |u| u.collision);
         let (x, y) = self.spawn_point_pub(tavern, radius);
         self.revive_hero(hero, x, y);
+        self.requests.push(crate::world::Request::UnitReady { unit: hero });
         let life_f = self.misc_f32("HeroAwakenLifeFactor", 0.5);
         let mana_start = self.misc_f32("HeroAwakenManaStart", 0.0);
         let mana_f = self.misc_f32("HeroAwakenManaFactor", 0.0);
@@ -341,6 +342,7 @@ impl World {
         let radius = self.unit(hero).map_or(16.0, |u| u.collision);
         let (x, y) = self.spawn_point_pub(altar, radius);
         self.revive_hero(hero, x, y);
+        self.requests.push(crate::world::Request::UnitReady { unit: hero });
         let ctx = EventCtx { unit: hero, ..Default::default() };
         self.fire_unit_pair(vm, hero, EVENT_PLAYER_HERO_REVIVE_FINISH, EVENT_UNIT_HERO_REVIVE_FINISH, ctx);
     }

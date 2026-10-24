@@ -389,7 +389,10 @@ impl World {
                 // Structures take a smart order as their rally point.
                 let p = self.widget_pos(target).unwrap_or((x, y));
                 let _ = u;
-                self.unit_mut(h).unwrap().rally = Some(p);
+                let target = if self.widget_pos(target).is_some() { target } else { 0 };
+                let u = self.unit_mut(h).unwrap();
+                u.rally = Some(p);
+                u.extra.rally_target = target;
                 return;
             }
             _ => return,
@@ -1492,10 +1495,20 @@ impl World {
         let new = crate::natives::units::create_unit(self, owner, id, x, y, 270.0);
         self.requests.push(Request::Ack { unit: new, kind: "Ready" });
         self.requests.push(Request::UnitReady { unit: new });
-        let rally = self.unit(h).and_then(|u| u.rally);
+        // The rally point (FUN_6f429790): a unit or widget there is followed or worked
+        // (Tip58); a point on the ground is attack-moved to (Tip59); one on the
+        // structure itself sends nowhere.
+        let (rally, on) = self.unit(h).map_or((None, 0), |u| (u.rally, u.extra.rally_target));
         if let (Some((rx, ry)), true) = (rally, new != 0) {
-            let smart = crate::natives::basic::order_id("smart");
-            self.order_unit(new, smart, rx, ry, 0);
+            if on != 0 && self.widget_pos(on).is_some() {
+                if on != h {
+                    let smart = crate::natives::basic::order_id("smart");
+                    self.order_unit(new, smart, rx, ry, on);
+                }
+            } else {
+                let attack = crate::natives::basic::order_id("attack");
+                self.order_unit(new, attack, rx, ry, 0);
+            }
         }
         let ctx = EventCtx { target_unit: new, train_unit_type: crate::objects::id_to_int(id), ..Default::default() };
         self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_TRAIN_FINISH, EVENT_UNIT_TRAIN_FINISH, ctx);

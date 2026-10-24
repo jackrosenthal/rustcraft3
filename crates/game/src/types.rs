@@ -368,6 +368,9 @@ pub struct UnitExtra {
     /// The formation group the unit moves with.
     #[serde(default)]
     pub formation: Option<u32>,
+    /// The widget a structure's rally point is on (0 for the ground).
+    #[serde(default)]
+    pub rally_target: u32,
     /// The target the unit last took up of its own accord.
     #[serde(default)]
     pub acquired: u32,
@@ -411,6 +414,7 @@ impl Default for UnitExtra {
     fn default() -> Self {
         UnitExtra {
             formation: None,
+            rally_target: 0,
             ai_suicide: None,
             rescuable_by: 0,
             rescue_range: 0.0,

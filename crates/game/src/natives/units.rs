@@ -698,8 +698,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetUnitUseFood => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.use_food = on); w.update_food(); none() },
         SetUnitCreepGuard => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.creep_guard = on) },
         UnitSetUsesAltIcon => |w, _, a| { let on = a.b(1); with_unit(w, a, |u| u.extra.alt_icon = on) },
-        GetUnitRallyUnit => |_, _, _| handle(0),
-        GetUnitRallyDestructable => |_, _, _| handle(0),
+        GetUnitRallyUnit => |w, _, a| handle(w.unit(a.h(0)).map(|u| u.extra.rally_target).filter(|&t| w.unit(t).is_some()).unwrap_or(0)),
+        GetUnitRallyDestructable => |w, _, a| handle(w.unit(a.h(0)).map(|u| u.extra.rally_target).filter(|&t| matches!(w.handles.get(t), Some(crate::types::Obj::Destructable(_)))).unwrap_or(0)),
         IsUnitInForce => |w, _, a| {
             let Some(owner) = unit_arg(w, a, 0).map(|u| u.owner) else { return boolean(false) };
             boolean(matches!(w.handles.get(a.h(1)), Some(Obj::Force(f)) if f.players & (1 << owner) != 0))

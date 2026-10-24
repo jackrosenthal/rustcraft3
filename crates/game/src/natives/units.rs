@@ -43,7 +43,9 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         scale: o.real("modelScale").max(0.0001),
         vertex_color: [o.int("red") as u8, o.int("green") as u8, o.int("blue") as u8, 255],
         user_data: 0,
-        acquire_range: o.real("acquire"),
+        // Without a weapon enabled it acquires nothing (measured: a Goblin Sapper,
+        // weapsOn 0 and acquire 500, reads 0).
+        acquire_range: if o.int("weapsOn") == 0 { 0.0 } else { o.real("acquire") },
         move_speed: o.real("spd"),
         turn_speed: o.real("turnRate"),
         prop_window: o.real("propWin"),

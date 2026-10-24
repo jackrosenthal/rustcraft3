@@ -316,6 +316,10 @@ impl Game {
 
     /// Fills player slots as the lobby would, then runs the map's `main`.
     pub fn start(&mut self, mut fill: impl FnMut(u8, i32) -> SlotFill) -> anyhow::Result<()> {
+        // The four neutral players give bounty for their units (FUN_6f1e7c20).
+        for p in self.world.players.iter_mut().skip(types::PLAYER_NEUTRAL_AGGRESSIVE as usize).take(4) {
+            p.state.insert(types::player_state::GIVES_BOUNTY, 1);
+        }
         for p in self.world.players.iter_mut() {
             let controller = p.controller;
             if controller == map_control::USER || controller == map_control::COMPUTER {

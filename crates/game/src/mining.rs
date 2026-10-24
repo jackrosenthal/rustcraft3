@@ -104,7 +104,46 @@ impl World {
             ResourceText::Bounty => "Bounty",
         };
         let tag = self.engine_text_tag(key, format!("+{amount}"), x, y, self.ground_z(x, y) + z);
-        self.handles.insert(Obj::TextTag(Box::new(tag)));
+        self.local_text_tags.push(tag);
+    }
+
+    /// Bounty for killing a unit of a player that gives it (PLAYER_STATE_GIVES_BOUNTY):
+    /// its UnitBalance bountyplus plus bountydice rolls of 1 to bountysides in gold, and
+    /// the lumber columns' likewise, to the killer's owner if an enemy (FUN_6f66a670,
+    /// FUN_6f687490).  The killer's owner sees "+N" over the victim, in Bounty colors, or
+    /// LumberBounty's for lumber alone (FUN_6f66a6d0).
+    pub fn grant_bounty(&mut self, victim: u32, killer: u32) {
+        let (Some(v), Some(k)) = (self.unit(victim), self.unit(killer)) else { return };
+        let (vowner, kowner, vtype, x, y) = (v.owner, k.owner, v.type_id, v.x, v.y);
+        if self.players.get(vowner as usize).is_none_or(|p| p.get_state(player_state::GIVES_BOUNTY) == 0) || crate::natives::players::is_ally(self, kowner, vowner) {
+            return;
+        }
+        let Some(o) = self.objects.units.get(vtype) else { return };
+        let cols = [("bountyplus", "bountydice", "bountysides"), ("lumberbountyplus", "lumberbountydice", "lumberbountysides")];
+        let fields: Vec<(i32, i32, i32)> = cols.iter().map(|(p, d, s)| (o.int(p), o.int(d), o.int(s))).collect();
+        let mut roll = |(plus, dice, sides): (i32, i32, i32)| -> i32 {
+            let mut v = plus;
+            if dice > 0 && sides > 0 {
+                for _ in 0..dice {
+                    v += self.rng.int(1, sides);
+                }
+            }
+            v.max(0)
+        };
+        let gold = roll(fields[0]);
+        let lumber = roll(fields[1]);
+        if gold == 0 && lumber == 0 {
+            return;
+        }
+        if let Some(p) = self.players.get_mut(kowner as usize) {
+            *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) += gold;
+            *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) += lumber;
+        }
+        if kowner == self.local_player {
+            let (kind, amount) = if gold != 0 { ("Bounty", gold) } else { ("LumberBounty", lumber) };
+            let tag = self.engine_text_tag(kind, format!("+{amount}"), x, y, self.ground_z(x, y));
+            self.local_text_tags.push(tag);
+        }
     }
 
     /// An engine text tag of one of UI\MiscData.txt's kinds (Gold, Lumber, Bounty, Miss,
@@ -154,6 +193,10 @@ impl World {
         for h in expired {
             self.handles.remove(h);
         }
+        for t in self.local_text_tags.iter_mut().filter(|t| !t.suspended) {
+            t.age += dt;
+        }
+        self.local_text_tags.retain(|t| t.permanent || t.age < t.lifespan);
     }
 
     /// The ring slot positions around a haunted mine (0x6f4d7e40): min(DataC, 8) slots

@@ -181,6 +181,7 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     // Hero (FUN_6f678280).
     let explodes = w.unit(h).is_some_and(|u| !u.is_hero && (u.explode_on_death || u.buffs.iter().any(|b| matches!(w.ability_code(b.ability).as_str(), "ANia" | "ANic"))));
     if w.unit(h).is_some_and(|u| !u.dead) && killer != 0 && illusion.is_none() {
+        w.grant_bounty(h, killer);
         w.grant_kill_xp(h, killer);
     }
     // The Phoenix falls into its egg instead of dying.

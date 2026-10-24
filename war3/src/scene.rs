@@ -1981,8 +1981,8 @@ impl Scene {
         let width = w3_ui::UI_HEIGHT * (size.0 as f32 / size.1.max(1) as f32).max(4.0 / 3.0);
         let font = db.decorate("MasterFont");
         let mut out = Vec::new();
-        for (_, o) in w.handles.iter() {
-            let w3_game::types::Obj::TextTag(t) = o else { continue };
+        let script_tags = w.handles.iter().filter_map(|(_, o)| if let w3_game::types::Obj::TextTag(t) = o { Some(&**t) } else { None });
+        for t in script_tags.chain(w.local_text_tags.iter()) {
             if !t.visible || t.text.is_empty() {
                 continue;
             }

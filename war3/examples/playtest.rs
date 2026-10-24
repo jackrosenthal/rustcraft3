@@ -643,6 +643,13 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // killby <victim> <killer>: kills a unit by another's hand.
+            "killby" => {
+                if let Some(g) = scene.game.as_mut() {
+                    w3_game::natives::units::kill_unit(&mut g.world, &mut g.vm, num(&a[i + 1]) as u32, num(&a[i + 2]) as u32);
+                }
+                i += 3;
+            }
             "alt" => {
                 scene.alt_held = true;
                 i += 1;

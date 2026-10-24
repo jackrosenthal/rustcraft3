@@ -247,6 +247,11 @@ pub struct World {
     /// Places stacked sounds are heard from (RegisterStackedSound).
     #[serde(default)]
     pub stacked_sounds: Vec<crate::types::StackedSound>,
+    /// The engine's own text tags for the local player alone (gathered gold, bounty),
+    /// kept apart from the handles every player shares, as the original keeps text tags
+    /// in a pool of their own: one player's tags must not move another's handle ids.
+    #[serde(default)]
+    pub local_text_tags: Vec<crate::types::TextTag>,
     /// SetResourceDensity and SetCreatureDensity (MAP_DENSITY_*).
     #[serde(default = "light2")]
     pub densities: (i32, i32),
@@ -565,6 +570,7 @@ impl World {
             net_paused: None,
             pauses_used: [0; 16],
             save_copies: 0,
+            local_text_tags: Vec::new(),
             densities: (1, 1),
             stacked_sounds: Vec::new(),
             integer_states: [0; 2],

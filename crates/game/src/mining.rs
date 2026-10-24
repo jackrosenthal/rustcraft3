@@ -9,7 +9,7 @@ use w3_jass::Vm;
 
 use crate::objects::Id;
 use crate::types::*;
-use crate::world::World;
+use crate::world::{Request, World};
 
 /// Engine text tags for gathered resources (UI\MiscData.txt Gold/LumberText*, heights
 /// from UI\MiscUI.txt): "+N" at the unit, rising.
@@ -186,12 +186,27 @@ impl World {
             || (self.ability_with_code(h, "Awha").is_some() && self.ability_with_code(mine, "Aegm").is_some())
     }
 
+    /// A harvest that left `before` gold in a mine at `after`: its harvester's owner
+    /// hears that the mine runs low, on passing LowGoldAmount, or has collapsed
+    /// (FUN_6f4382c0).
+    pub(crate) fn gold_warning(&mut self, worker: u32, before: i32, after: i32) {
+        let low = self.misc_f32("LowGoldAmount", 1500.0) as i32;
+        if after < 1 {
+            self.requests.push(Request::GoldMine { worker, collapsed: true });
+        } else if before > low && after <= low {
+            self.requests.push(Request::GoldMine { worker, collapsed: false });
+        }
+    }
+
     /// Takes gold from a covering mine; it collapses when empty.
-    fn take_gold(&mut self, vm: &mut Vm, mine: u32, amount: i32) -> i32 {
+    fn take_gold(&mut self, vm: &mut Vm, h: u32, mine: u32, amount: i32) -> i32 {
         let left = self.unit(mine).map_or(0, |m| m.resource);
         let take = amount.min(left).max(0);
         if let Some(m) = self.unit_mut(mine) {
             m.resource -= take;
+        }
+        if take > 0 {
+            self.gold_warning(h, left, left - take);
         }
         if self.unit(mine).is_some_and(|m| m.resource <= 0) {
             crate::natives::units::kill_unit(self, vm, mine, 0);
@@ -276,7 +291,7 @@ impl World {
         }
         u.work_timer += interval;
         let owner = u.owner;
-        let got = self.take_gold(vm, mine, per);
+        let got = self.take_gold(vm, h, mine, per);
         if got > 0 {
             self.gather(owner, mine, got, 0, 0.0);
         }
@@ -331,7 +346,7 @@ impl World {
         }
         u.work_timer += interval;
         let owner = u.owner;
-        let got = self.take_gold(vm, mine, per);
+        let got = self.take_gold(vm, h, mine, per);
         if got > 0 {
             self.gather(owner, mine, got, 0, 0.0);
         }

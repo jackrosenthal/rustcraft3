@@ -305,6 +305,16 @@ pub struct Scene {
     signaling: bool,
     /// The trackable the mouse is on.
     tracked: Option<u32>,
+    /// The places the space bar returns to (CCameraWar3's eight, FUN_6f363980), oldest
+    /// first, with the one last returned to and when.
+    quick: Vec<(f32, f32)>,
+    quick_cursor: usize,
+    quick_pressed: f32,
+    /// Each attacked unit's last attack and last warning (FUN_6f36ac70), and when each
+    /// kind of warning may come again: own units, own structures, allies' units, allies'
+    /// structures, then the four second timers.
+    attack_times: HashMap<u32, (f32, f32)>,
+    attack_timers: [f32; 8],
     options_fill: bool,
     /// Structures' and destructables' shadows stamped into the terrain.
     shadows: crate::shadows::Shadows,
@@ -667,7 +677,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8] };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -681,8 +691,148 @@ impl Scene {
                 r.leave(&mut g.world);
             }
         }
+        // The space bar's first place is the local player's start location
+        // (FUN_6f363b20).
+        if let Some(g) = scene.game.as_ref() {
+            let start = g.world.start_of(g.world.local_player);
+            scene.quick.push(start);
+        }
         scene.apply_requests();
         Ok(scene)
+    }
+
+    /// A place for the space bar (FUN_6f363980): the newest of eight.
+    fn add_quick(&mut self, x: f32, y: f32) {
+        if self.quick.len() >= 8 {
+            self.quick.remove(0);
+        }
+        self.quick.push((x, y));
+        self.quick_pressed = f32::NEG_INFINITY;
+    }
+
+    /// The space bar (CCameraWar3 key 0x20, FUN_6f361ac0): the camera goes to the newest
+    /// place, or within a second of the last press to the one before.
+    fn quick_jump(&mut self) {
+        let count = self.quick.len();
+        if count == 0 {
+            return;
+        }
+        let now = self.time;
+        let k = if now < self.quick_pressed + 1.0 { (self.quick_cursor + count - 1) % count } else { count - 1 };
+        self.quick_pressed = now;
+        self.quick_cursor = k;
+        let (x, y) = self.quick[k];
+        if let Some(g) = self.game.as_mut() {
+            let (x, y) = g.world.clamp_to_camera_bounds(x, y);
+            g.world.camera.pan_to(x, y, 0.0);
+        }
+        self.sync_camera();
+    }
+
+    /// A [PingColor] color of UI\MiscData.txt.
+    fn ping_color(&self, key: &str) -> [f32; 4] {
+        let v: Vec<f32> = self.game.as_ref().map(|g| g.world.misc.get_list("PingColor", key)).unwrap_or_default().iter().filter_map(|s| s.trim().parse().ok()).collect();
+        if v.len() == 4 { [v[1] / 255.0, v[2] / 255.0, v[3] / 255.0, v[0] / 255.0] } else { [0.0, 1.0, 0.0, 1.0] }
+    }
+
+    /// A unit event's ping (FUN_6f3777b0): the minimap pings there in `color` and the
+    /// space bar may return there.
+    fn event_ping(&mut self, x: f32, y: f32, color: &str) {
+        let c = self.ping_color(color);
+        self.pings.push((x, y, self.time + 1.5, c, None));
+        if self.pings.len() > 16 {
+            self.pings.remove(0);
+        }
+        self.add_quick(x, y);
+    }
+
+    /// Whether the local player hears of `owner`'s units (FUN_6f1ea8b0): their own, or
+    /// an ally's sharing units with them, or vision with full shared unit control.
+    fn hears_of(w: &w3_game::World, owner: u8) -> bool {
+        let me = w.local_player;
+        if owner == me {
+            return true;
+        }
+        let Some(a) = w.players.get(owner as usize).and_then(|p| p.alliances.get(me as usize)) else { return false };
+        a[6] || (a[5] && w.map_flags & 0x10000 != 0)
+    }
+
+    /// An enemy damaged a unit (FUN_6f36ac70).  Its owner, or an ally asking for help,
+    /// hears UnderAttackSound (TownAttackSound for structures, the Ally kinds for
+    /// allies) and sees it pinged in PingAttackColor, unless the camera is within
+    /// AttackNotifyRange (at most 1000) of it.  A unit warns again only after
+    /// AttackNotifyDelay (at most 15 seconds, twice that for observers) times 1.2, or
+    /// when it was left alone three seconds; each kind of warning waits its delay.
+    fn attack_warning(&mut self, unit: u32) {
+        let Some(g) = self.game.as_ref() else { return };
+        let w = &g.world;
+        let Some(u) = w.unit(unit) else { return };
+        let me = w.local_player;
+        let observer = w.players.get(me as usize).is_some_and(|p| p.get_state(w3_game::types::player_state::OBSERVER) != 0);
+        let own = u.owner == me || observer;
+        let kind = match (own, u.is_building) {
+            (true, false) => 0,
+            (true, true) => 1,
+            (false, false) => 2,
+            (false, true) => 3,
+        };
+        if !own {
+            let passive = w3_game::natives::players::is_ally(w, u.owner, me);
+            let help = w.players.get(me as usize).and_then(|p| p.alliances.get(u.owner as usize)).is_some_and(|a| a[1]);
+            if !passive || !help || !u.is_building && !Self::hears_of(w, u.owner) {
+                return;
+            }
+        }
+        let (ux, uy) = (u.x, u.y);
+        let delay = w.misc_f32("AttackNotifyDelay", 30.0).min(15.0) * if observer { 2.0 } else { 1.0 };
+        let range = w.misc_f32("AttackNotifyRange", 1250.0).min(1000.0);
+        let race = if observer { "Generic" } else { w.race_label(me) };
+        let now = self.time;
+        let (attacked, warned) = self.attack_times.get(&unit).copied().unwrap_or((f32::NEG_INFINITY, f32::NEG_INFINITY));
+        let t = self.camera.target;
+        if (ux - t.x).hypot(uy - t.y) <= range {
+            self.attack_times.insert(unit, (now, now));
+            return;
+        }
+        self.attack_times.insert(unit, (now, warned));
+        if now - warned < delay * 1.2 && now - attacked <= 3.0 {
+            return;
+        }
+        if self.attack_timers[kind + 4] > now || self.attack_timers[kind] > now {
+            return;
+        }
+        self.event_ping(ux, uy, "PingAttackColor");
+        self.attack_times.insert(unit, (now, now));
+        let label = ["UnderAttack", "TownAttack", "AllyUnderAttack", "AllyTownUnderAttack"][kind];
+        log::info!("[alert] {label}{race} at {ux:.0} {uy:.0}");
+        self.ui_sound(&format!("{label}{race}"));
+        self.attack_timers[kind] = now + delay;
+        self.attack_timers[kind + 4] = now + (delay * 0.5).max(2.0);
+    }
+
+    /// A harvester's mine runs low or collapses (FUN_6f36d340): Goldminelow or
+    /// Goldminedestroyed for 10 seconds, GoldMineLowSound or GoldMineCollapseSound, and a
+    /// ping in PingAdvisorColor at the harvester, for players who hear of it.
+    fn gold_mine_warning(&mut self, worker: u32, collapsed: bool) {
+        let Some(g) = self.game.as_ref() else { return };
+        let w = &g.world;
+        let Some(u) = w.unit(worker) else { return };
+        if !Self::hears_of(w, u.owner) {
+            return;
+        }
+        let (x, y) = (u.x, u.y);
+        let me = w.local_player;
+        let race = w.players.get(me as usize).map_or(1, |p| p.race);
+        let texts = self.commands.profile.get_list("Errors", if collapsed { "Goldminedestroyed" } else { "Goldminelow" });
+        let i = match race { 2 => 1, 3 => 2, 4 => 3, _ => 0 };
+        let text = w.localized(&texts.get(i).or(texts.first()).cloned().unwrap_or_default());
+        let label = format!("{}{}", if collapsed { "GoldMineCollapse" } else { "GoldMineLow" }, w.race_label(me));
+        if let Some(h) = self.hud.as_mut() {
+            h.error(&text);
+        }
+        log::info!("[alert] {label}: {text}");
+        self.ui_sound(&label);
+        self.event_ping(x, y, "PingAdvisorColor");
     }
 
     /// Handles presentation requests from the game.
@@ -762,7 +912,11 @@ impl Scene {
                     if self.pings.len() > 16 {
                         self.pings.remove(0);
                     }
+                    // The space bar may return there (FUN_6f26ee00).
+                    self.add_quick(x, y);
                 }
+                w3_game::world::Request::Attacked { unit } => self.attack_warning(unit),
+                w3_game::world::Request::GoldMine { worker, collapsed } => self.gold_mine_warning(worker, collapsed),
                 // A ping lasts its duration (1.5 seconds when none), in its color or
                 // UI\MiscData.txt [PingColor] PingColor (FUN_6f3b0a30).
                 w3_game::world::Request::Ping { x, y, duration, color } => {
@@ -2562,6 +2716,11 @@ impl Scene {
             }
         }
         if !self.user_control() && c != '\u{1b}' {
+            return;
+        }
+        // Space: back to the latest event (CCameraWar3, key 0x20).
+        if c == ' ' {
+            self.quick_jump();
             return;
         }
         // Alt-A: the ally color mode (MINIMAPALLYCOLORTOOLTIP).

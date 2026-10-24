@@ -687,6 +687,13 @@ impl World {
         if let Some(t) = self.unit_mut(target) {
             t.extra.last_attacked = now;
         }
+        // An enemy's damage may warn the target's owner and allies.
+        let owners = (self.unit(source).map(|u| u.owner), self.unit(target).map_or(0, |u| u.owner));
+        if let (Some(from), to) = owners {
+            if from != to && !crate::natives::players::is_ally(self, to, from) {
+                self.requests.push(Request::Attacked { unit: target });
+            }
+        }
         // Berserk: the target takes more damage; Defend: less from piercing attacks.
         let mut taken = 1.0 + self.unit(target).map_or(0.0, |u| u.buffs.iter().map(|b| b.damage_taken).sum());
         if attack_type == "pierce" {
@@ -1725,10 +1732,12 @@ impl World {
                 u.work_timer -= dt;
                 if u.work_timer <= 0.0 {
                     self.leave_mine(h);
-                    let take = gold_cap.min(self.unit(target).map_or(0, |m| m.resource));
+                    let before = self.unit(target).map_or(0, |m| m.resource);
+                    let take = gold_cap.min(before);
                     if let Some(m) = self.unit_mut(target) {
                         m.resource -= take;
                     }
+                    self.gold_warning(h, before, before - take);
                     let u = self.unit_mut(h).unwrap();
                     u.carry_gold = take;
                     u.carry_lumber = 0;

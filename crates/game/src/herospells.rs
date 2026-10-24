@@ -160,7 +160,7 @@ impl World {
             "ANhs" => {
                 let total = d(self, "DataA") * d(self, "DataF").max(1.0);
                 for t in self.allies_in_pub(owner, x, y, area) {
-                    self.heal(t, total.min(d(self, "DataD").max(total)));
+                    self.magic_heal(t, total.min(d(self, "DataD").max(total)));
                 }
             }
             // Howl of Terror: enemies within Area deal DataA less damage.

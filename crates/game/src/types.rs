@@ -577,6 +577,9 @@ pub struct Buff {
     pub dps: f32,
     pub mana_regen: f32,
     pub life_regen: f32,
+    /// Its healing is magical: more on an ethereal unit (Rejuvenation, Eat Tree).
+    #[serde(default)]
+    pub ethereal_heal: bool,
     pub effect: u32,
     /// Flat damage added to attacks.
     pub damage_bonus: f32,

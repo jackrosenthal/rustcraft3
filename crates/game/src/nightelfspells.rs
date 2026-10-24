@@ -71,7 +71,7 @@ impl World {
         crate::natives::objects::kill_destructable_pub(self, vm, tree);
         let (life, dur) = (self.data(a, "DataC", lvl), self.data(a, "Dur", lvl).max(0.1));
         let buff = self.objects.abilities.get(a).map(|o| id_from_str(o.level_str("BuffID", lvl).split(',').next().unwrap_or("").trim())).unwrap_or([0; 4]);
-        self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, life_regen: life / dur, ..Default::default() });
+        self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, life_regen: life / dur, ethereal_heal: true, ..Default::default() });
     }
 
     /// War Club: the tree comes up and the giant fights with it: only attack index

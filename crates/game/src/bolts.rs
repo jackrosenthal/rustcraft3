@@ -106,7 +106,7 @@ impl World {
         let first = j.hit.is_empty();
         self.ability_bolt(j.ability, first, j.from, target);
         if j.heal {
-            self.heal(target, j.amount);
+            self.magic_heal(target, j.amount);
         } else {
             self.spell_damage(vm, j.caster, target, j.amount);
         }

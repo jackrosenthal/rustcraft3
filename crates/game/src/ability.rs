@@ -392,7 +392,9 @@ impl World {
         let mut expired_effects = Vec::new();
         let mut dots = Vec::new();
         let mut conversions = Vec::new();
+        let ethereal_heal = self.misc_f32("EtherealHealBonus", 1.66);
         for &h in &units {
+            let heal_factor = if self.is_ethereal(h) { ethereal_heal } else { 1.0 };
             let Some(u) = self.unit_mut(h) else { continue };
             if u.dead {
                 for b in u.buffs.drain(..) {
@@ -406,7 +408,8 @@ impl World {
                     dots.push((b.caster, h, b.dps * dt));
                 }
                 u.mana = (u.mana + (b.mana_regen + b.mana_regen_pct * u.max_mana) * dt).min(u.max_mana);
-                u.life = (u.life + (b.life_regen + b.life_regen_pct * u.max_life) * dt).min(u.max_life);
+                let f = if b.ethereal_heal { heal_factor } else { 1.0 };
+                u.life = (u.life + (b.life_regen * f + b.life_regen_pct * u.max_life) * dt).min(u.max_life);
             }
             let mut lost_life = 0.0;
             let ended: Vec<(u32, Id, u32)> = u.buffs.iter().filter(|b| b.remaining <= 0.0).map(|b| (b.caster, b.ability, b.level)).collect();
@@ -668,6 +671,14 @@ impl World {
         if dead {
             crate::natives::units::kill_unit(self, vm, target, source);
         }
+    }
+
+    /// A magical heal: EtherealHealBonus times as much on an ethereal unit, as Holy
+    /// Light, Heal, Death Coil, Healing Wave, Healing Spray, and Tranquility give
+    /// (their abilities' vf267, FUN_6f5d7700, FUN_6f54d8a0); healing items do not.
+    pub(crate) fn magic_heal(&mut self, target: u32, amount: f32) {
+        let f = if self.is_ethereal(target) { self.misc_f32("EtherealHealBonus", 1.66) } else { 1.0 };
+        self.heal(target, amount * f);
     }
 
     pub(crate) fn heal(&mut self, target: u32, amount: f32) {
@@ -938,7 +949,7 @@ impl World {
                 if self.is_undead(target) {
                     self.spell_damage(vm, h, target, amount / 2.0);
                 } else {
-                    self.heal(target, amount);
+                    self.magic_heal(target, amount);
                 }
                 let art = self.profile_art(a, "TargetArt");
                 if let Some((tx, ty)) = self.widget_pos(target) {
@@ -951,12 +962,12 @@ impl World {
                 self.apply_buff(h, Buff { id: buff_id, ability: a, level: lvl, caster: h, remaining: d, invulnerable: true, ..Default::default() });
             }
             // Heal: restores DataA hit points.
-            "Ahea" | "Anhe" => self.heal(target, self.data(a, "DataA", lvl)),
+            "Ahea" | "Anhe" => self.magic_heal(target, self.data(a, "DataA", lvl)),
             // Death Coil: heals undead allies (DataA) or damages living enemies (half).
             "AUdc" => {
                 let amount = self.data(a, "DataA", lvl);
                 if self.is_undead(target) {
-                    self.heal(target, amount);
+                    self.magic_heal(target, amount);
                 } else {
                     self.spell_damage(vm, h, target, amount / 2.0);
                 }

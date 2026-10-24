@@ -705,7 +705,7 @@ impl World {
             "AEtq" => {
                 for t in self.allies_in(owner, c.x, c.y, area) {
                     if self.unit(t).is_some_and(|u| !u.is_building) {
-                        self.heal(t, self.d(a, "DataA", lvl));
+                        self.magic_heal(t, self.d(a, "DataA", lvl));
                     }
                 }
             }

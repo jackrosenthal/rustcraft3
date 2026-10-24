@@ -178,7 +178,7 @@ impl World {
             // Rejuvenation: DataA life and DataB mana over Dur.
             "Arej" => {
                 let t = dur.max(0.01);
-                self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, life_regen: d(self, "DataA") / t, mana_regen: d(self, "DataB") / t, ..Default::default() });
+                self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, life_regen: d(self, "DataA") / t, mana_regen: d(self, "DataB") / t, ethereal_heal: true, ..Default::default() });
             }
             // Taunt: enemies within Area (at most DataC when set) attack the caster.
             "Atau" => {

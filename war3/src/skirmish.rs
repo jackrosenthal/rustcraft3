@@ -430,7 +430,9 @@ impl Skirmish {
         };
         tree.set_text("CampaignNameValue", &s.text(&s.info.name));
         tree.set_text("AuthorValue", &s.text(&s.info.author));
-        tree.set_text("DifficultyValue", &s.text(&s.info.difficulty));
+        // A campaign whose player picks the difficulty reads VARIABLE (FUN_6f2f8ca0).
+        let difficulty = if s.info.flags & 1 != 0 { db.string("VARIABLE") } else { s.text(&s.info.difficulty) };
+        tree.set_text("DifficultyValue", &difficulty);
         tree.set_text("NumMissionsValue", &s.info.missions.len().to_string());
         tree.set_text("MapDescValue", &s.text(&s.info.description));
         let sel = tree.get("DifficultySelect").map_or(0, |i| tree.frames[i].selected);

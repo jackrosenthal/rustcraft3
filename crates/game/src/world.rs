@@ -51,6 +51,8 @@ pub enum Request {
     /// An enemy damaged a unit (CUnit vf72 to FUN_6f375d70): the interface decides
     /// whether to warn (FUN_6f36ac70).
     Attacked { unit: u32 },
+    /// SetCameraQuickPosition: a place for the space bar.
+    QuickPosition { x: f32, y: f32 },
     /// A harvester left its mine low on gold (LowGoldAmount) or empty (FUN_6f4382c0).
     GoldMine { worker: u32, collapsed: bool },
     /// A unit's acknowledgment line (UnitAckSounds `<unitSound><kind>`).

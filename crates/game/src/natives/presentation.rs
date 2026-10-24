@@ -187,7 +187,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         SetCameraPosition => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), 0.0); none() },
-        SetCameraQuickPosition => |_, _, _| none(),
+        SetCameraQuickPosition => |w, _, a| { w.requests.push(Request::QuickPosition { x: a.r(0), y: a.r(1) }); none() },
         PanCameraTo => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), 0.0); none() },
         PanCameraToTimed => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), a.r(2)); none() },
         PanCameraToWithZ => |w, _, a| { w.camera.pan_to(a.r(0), a.r(1), 0.0); none() },

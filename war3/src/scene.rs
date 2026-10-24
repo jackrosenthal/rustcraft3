@@ -916,6 +916,7 @@ impl Scene {
                     self.add_quick(x, y);
                 }
                 w3_game::world::Request::Attacked { unit } => self.attack_warning(unit),
+                w3_game::world::Request::QuickPosition { x, y } => self.add_quick(x, y),
                 w3_game::world::Request::GoldMine { worker, collapsed } => self.gold_mine_warning(worker, collapsed),
                 // A ping lasts its duration (1.5 seconds when none), in its color or
                 // UI\MiscData.txt [PingColor] PingColor (FUN_6f3b0a30).

@@ -1015,7 +1015,10 @@ impl World {
             let wp = u.swing.as_ref().and_then(|s| weapon_numbered(self, u, s.weapon)).or_else(|| unit_weapons(self, u).into_iter().next().map(|x| x.1));
             {
                 let u = self.unit_mut(h).unwrap();
-                u.cooldown = (u.cooldown - dt).max(0.0);
+                // What runs past zero within a step carries into the next attack, so a
+                // unit attacking steadily strikes exactly its cooldown apart, as the
+                // original's timers do (measured: 1.60 for a grunt, 1.35 for a footman).
+                u.cooldown = (u.cooldown - dt).max(-dt);
                 u.repath_timer -= dt;
                 u.acquire_timer -= dt;
             }
@@ -2284,7 +2287,7 @@ impl World {
             // Agility shortens a hero's attack cooldown (AgiAttackSpeedBonus per point).
             let speed = if u.is_hero { 1.0 + (u.agi + u.item_bonus.agi).floor() * agi_bonus } else { 1.0 };
             let speed = (speed + u.item_bonus.attack_speed + ub.attack_speed) * buff_attack;
-            u.cooldown = wp.cooldown / speed.max(0.01);
+            u.cooldown = wp.cooldown / speed.max(0.01) + u.cooldown.min(0.0);
             u.swing = Some(Swing { target, elapsed: 0.0, done: false, weapon: wn });
             restart_anim(u, "attack");
             // The target is attacked (GetAttacker is the attacker).

@@ -89,6 +89,9 @@ struct Voice {
     fade: Option<(std::time::Instant, f32, f32, f32)>,
     /// The sound's channel (its SLK Channel), whose volume group scales it.
     channel: usize,
+    /// A directional sound's cone: inside and outside half-angles (radians), the gain
+    /// outside, and the way it points.
+    cone: Option<(f32, f32, f32, [f32; 3])>,
 }
 
 impl Voice {
@@ -403,7 +406,7 @@ impl Audio {
         player.append(midi::Player::new(bank, song, 1.0));
         let id = self.next_id;
         self.next_id += 1;
-        self.voices.push(Voice { id, player, position: None, volume, distances: (0.0, 0.0, 0.0), fade: None, channel: 0 });
+        self.voices.push(Voice { id, player, position: None, volume, distances: (0.0, 0.0, 0.0), fade: None, channel: 0, cone: None });
         Some(id)
     }
 
@@ -441,8 +444,34 @@ impl Audio {
         }
         let id = self.next_id;
         self.next_id += 1;
-        self.voices.push(Voice { id, player, position, volume, distances, fade: None, channel: 0 });
+        self.voices.push(Voice { id, player, position, volume, distances, fade: None, channel: 0, cone: None });
         Some(id)
+    }
+
+    /// Points a voice's sound cone: full volume within half the inside angle of
+    /// `dir`, `outside_volume` (0 to 127) beyond half the outside angle, and between
+    /// them in proportion, as a directional sound source's cone is heard.
+    pub fn set_cone(&mut self, id: u64, inside: f32, outside: f32, outside_volume: i32, dir: [f32; 3]) {
+        if let Some(v) = self.voices.iter_mut().find(|v| v.id == id) {
+            v.cone = Some(((inside / 2.0).to_radians(), (outside.max(inside) / 2.0).to_radians(), outside_volume.clamp(0, 127) as f32 / 127.0, dir));
+        }
+    }
+
+    fn cone_gain(&self, v: &Voice) -> f32 {
+        let (Some((inside, outside, out_gain, dir)), Some(p)) = (v.cone, v.position) else { return 1.0 };
+        let to = [self.listener[0] - p[0], self.listener[1] - p[1], self.listener[2] - p[2]];
+        let (lt, ld) = ((to[0] * to[0] + to[1] * to[1] + to[2] * to[2]).sqrt(), (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt());
+        if lt <= 0.0 || ld <= 0.0 {
+            return 1.0;
+        }
+        let a = ((to[0] * dir[0] + to[1] * dir[1] + to[2] * dir[2]) / (lt * ld)).clamp(-1.0, 1.0).acos();
+        if a <= inside {
+            1.0
+        } else if a >= outside {
+            out_gain
+        } else {
+            1.0 + (out_gain - 1.0) * (a - inside) / (outside - inside).max(1e-6)
+        }
     }
 
     /// Moves a playing voice to `ms` milliseconds into its sound (where its source
@@ -608,7 +637,7 @@ impl Audio {
         for i in 0..self.voices.len() {
             let v = &self.voices[i];
             if v.position.is_some() || v.fade.is_some() {
-                let g = self.gain_at(v.position, v.distances);
+                let g = self.gain_at(v.position, v.distances) * self.cone_gain(v);
                 let v = &self.voices[i];
                 v.player.set_volume(v.volume * g * v.fade_level() * self.sound_volume * self.channel_gain[v.channel.min(15)]);
             }

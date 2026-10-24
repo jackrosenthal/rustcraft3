@@ -1066,6 +1066,7 @@ impl Scene {
                 | w3_game::world::Request::MusicVolume(_)
                 | w3_game::world::Request::SoundEnvironment(_)
                 | w3_game::world::Request::SoundOffset { .. }
+                | w3_game::world::Request::SoundCone(_)
                 | w3_game::world::Request::MusicOffset(_)
                 | w3_game::world::Request::StopMusic(_)) => self.pending_audio.push(r),
                 _ => {}
@@ -1202,6 +1203,9 @@ impl Scene {
                         }
                     };
                     if let Some(id) = id {
+                        if let (Some((i, o, v)), Some(d)) = (s.cone, s.cone_dir) {
+                            audio.set_cone(id, i, o, v, [d.0, d.1, d.2]);
+                        }
                         self.voices.insert(h, id);
                     }
                 }
@@ -1227,6 +1231,13 @@ impl Scene {
                     }
                 }
                 w3_game::world::Request::MusicOffset(ms) => audio.seek_music(ms),
+                w3_game::world::Request::SoundCone(h) => {
+                    if let (Some(&id), Some(w3_game::types::Obj::Sound(s))) = (self.voices.get(&h), g.world.handles.get(h)) {
+                        if let (Some((i, o, v)), Some(d)) = (s.cone, s.cone_dir) {
+                            audio.set_cone(id, i, o, v, [d.0, d.1, d.2]);
+                        }
+                    }
+                }
                 w3_game::world::Request::UiSound { players, label } if players & (1 << local) != 0 => {
                     audio.play_label(&label, None);
                 }

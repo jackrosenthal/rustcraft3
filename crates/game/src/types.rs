@@ -869,6 +869,12 @@ pub struct Sound {
     pub max_dist: f32,
     pub cutoff: f32,
     pub playing: bool,
+    /// SetSoundConeAngles: inside and outside angles in degrees and the volume
+    /// outside (0 to 127); SetSoundConeOrientation: the way the cone points.
+    #[serde(default)]
+    pub cone: Option<(f32, f32, i32)>,
+    #[serde(default)]
+    pub cone_dir: Option<(f32, f32, f32)>,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]

@@ -62,6 +62,8 @@ pub enum Request {
     NetSave(String),
     /// SetSoundPlayPosition: a playing sound moves to a point in it, in milliseconds.
     SoundOffset { sound: u32, ms: i32 },
+    /// A sound's cone changed (SetSoundConeAngles, SetSoundConeOrientation).
+    SoundCone(u32),
     /// SetMusicPlayPosition and SetThematicMusicPlayPosition.
     MusicOffset(i32),
     /// NewSoundEnvironment: the environment 3D sounds reverberate in.

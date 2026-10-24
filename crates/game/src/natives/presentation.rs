@@ -140,8 +140,22 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             int(w.chain.read(&path).ok().and_then(|d| sound_file_ms(&d)).map_or(0, |ms| ms as i32))
         },
         SetSoundDistances => |w, _, a| { let (lo, hi) = (a.r(1), a.r(2)); if let Some(s) = sound_mut(w, a.h(0)) { s.min_dist = lo; s.max_dist = hi; } none() },
-        SetSoundConeAngles => |_, _, _| none(),
-        SetSoundConeOrientation => |_, _, _| none(),
+        SetSoundConeAngles => |w, _, a| {
+            let (h, cone) = (a.h(0), (a.r(1), a.r(2), a.i(3)));
+            if let Some(s) = sound_mut(w, h) {
+                s.cone = Some(cone);
+            }
+            w.requests.push(Request::SoundCone(h));
+            none()
+        },
+        SetSoundConeOrientation => |w, _, a| {
+            let (h, d) = (a.h(0), (a.r(1), a.r(2), a.r(3)));
+            if let Some(s) = sound_mut(w, h) {
+                s.cone_dir = Some(d);
+            }
+            w.requests.push(Request::SoundCone(h));
+            none()
+        },
         SetSoundPosition => |w, _, a| { let p = (a.r(1), a.r(2), a.r(3)); if let Some(s) = sound_mut(w, a.h(0)) { s.position = Some(p); } none() },
         SetSoundVelocity => |_, _, _| none(),
         AttachSoundToUnit => |w, _, a| {

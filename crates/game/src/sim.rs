@@ -512,6 +512,12 @@ impl World {
         } else {
             return;
         };
+        // The same cast again, at the same target, goes on as it was (measured: a
+        // Paladin ordered to Holy Light the same footman every tenth of a second
+        // casts at 0.60 seconds, then each 5.6, in the original).
+        if self.unit(h).is_some_and(|u| u.action == action && matches!(action, Action::Cast { .. })) {
+            return;
+        }
         self.leave_mine(h);
         if let Some(u) = self.unit_mut(h) {
             u.action = action;

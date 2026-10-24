@@ -648,6 +648,10 @@ impl Skirmish {
             EntryKind::Up | EntryKind::Folder if self.selected == Some(row) => {
                 self.dir = e.path;
                 self.scan();
+                // A folder opens with its "(up one level)" row chosen.
+                if self.entries.first().is_some_and(|e| e.kind == EntryKind::Up) {
+                    self.select(0);
+                }
             }
             _ => self.select(row),
         }
@@ -732,7 +736,9 @@ impl Skirmish {
             }
             let tr = Rect { x0: ir.x1 + 0.008, x1: row.x1, y0: row.y0, y1: row.y1 };
             let color = if self.selected == Some(k) { [1.0, 0.8, 0.0, 1.0] } else { [1.0; 4] };
-            out.push(Draw::Text { font: font.clone(), size: row_font, rect: tr, text: e.name.clone(), color, justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
+            // The parent folder's row reads UP_ONE_LEVEL (CMapList, FUN_6f2bf120).
+            let text = if e.kind == EntryKind::Up { db.string("UP_ONE_LEVEL") } else { e.name.clone() };
+            out.push(Draw::Text { font: font.clone(), size: row_font, rect: tr, text, color, justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
         }
         // Each slot's color button shows the player color.
         color_draws(tree, self.slots.iter().map(|s| s.color), out);

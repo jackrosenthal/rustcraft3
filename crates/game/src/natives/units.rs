@@ -126,10 +126,12 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         }
     }
     let mut unit = unit;
-    // Creeps keep to where they settle once made (NaN until the first update).
+    // Creeps keep to where they settle once made (NaN until the first update).  Those
+    // whose type may sleep (UnitData canSleep) sleep at night: the unit takes the creep
+    // sleep ability only then (FUN_6f670950).
     if owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !unit.is_building {
         unit.extra.home = Some((f32::NAN, f32::NAN));
-        unit.extra.can_sleep = true;
+        unit.extra.can_sleep = w.objects.units.get(type_id).is_some_and(|o| o.int("canSleep") != 0);
     }
     unit.extra.born = w.time;
     let h = w.handles.insert(Obj::Unit(Box::new(unit)));

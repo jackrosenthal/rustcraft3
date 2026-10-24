@@ -104,6 +104,14 @@ fn main() -> anyhow::Result<()> {
                 i += 3;
             }
             // ended: whether the game has ended (EndGame), and with a score screen.
+            // stock <shop> <good>: a shop's stock of one good.
+            "stock" => {
+                if let Some(g) = &scene.game {
+                    let (shop, id) = (num(&a[i + 1]) as u32, w3_game::objects::id_from_str(&a[i + 2]));
+                    eprintln!("stock {:?} added {:?}", g.world.shops.stock.get(&(shop, id)), g.world.shops.added.get(&(shop, id)));
+                }
+                i += 3;
+            }
             "ended" => {
                 eprintln!("ended {} score {}", scene.ended, scene.final_score.is_some());
                 i += 1;

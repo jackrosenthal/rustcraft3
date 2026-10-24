@@ -2185,8 +2185,14 @@ impl Scene {
                 self.signaling = true;
                 return true;
             }
-            if k == 2 {
+            let usable = self.hud.as_ref().map_or((true, true), |h| h.filter_buttons);
+            if k == 2 && usable.0 {
                 self.cycle_ally_colors();
+            }
+            if k == 3 && usable.1 {
+                if let Some(g) = self.game.as_mut() {
+                    g.world.creep_camp_filter = !g.world.creep_camp_filter;
+                }
             }
             if let Some(h) = self.hud.as_mut() {
                 h.press_minimap_button(k);
@@ -2893,7 +2899,7 @@ impl Scene {
             return;
         }
         // Alt-A: the ally color mode (MINIMAPALLYCOLORTOOLTIP).
-        if self.alt_held && c.eq_ignore_ascii_case(&'a') {
+        if self.alt_held && c.eq_ignore_ascii_case(&'a') && self.hud.as_ref().is_none_or(|h| h.filter_buttons.0) {
             self.cycle_ally_colors();
             return;
         }
@@ -3331,6 +3337,8 @@ impl Scene {
         if let Some(hud) = self.hud.as_mut() {
             let ally_mode = w.ally_color_filter as u8;
             hud.ally_mode = ally_mode;
+            hud.show_creeps = w.creep_camp_filter;
+            hud.filter_buttons = w.minimap_filter_buttons;
             hud.minimap_dots = w
                 .unit_order
                 .iter()

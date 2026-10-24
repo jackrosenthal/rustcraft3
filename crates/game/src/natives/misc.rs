@@ -208,7 +208,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetDefaultDifficulty => |w, _, a| { w.persist.difficulty = a.h(0) as i32; none() },
         SetCustomCampaignButtonVisible => |w, _, a| { let (i, on) = (a.i(0), a.b(1)); w.persist.custom_campaign_buttons.insert(i, on); none() },
         GetCustomCampaignButtonVisible => |w, _, a| boolean(w.persist.custom_campaign_buttons.get(&a.i(0)).copied().unwrap_or(true)),
-        DoNotSaveReplay => |_, _, _| none(),
+        DoNotSaveReplay => |w, _, _| { w.no_replay = true; none() },
         DisableRestartMission => |w, _, a| { w.restart_disabled = a.b(0); none() },
         GetSaveBasicFilename => |w, _, _| string(w.load_game_name.clone()),
         SetReservedLocalHeroButtons => |w, _, a| { w.reserved_hero_buttons = a.i(0); none() },

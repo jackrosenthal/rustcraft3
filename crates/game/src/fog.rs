@@ -194,7 +194,10 @@ impl World {
             if d.life <= 0.0 {
                 continue;
             }
-            let occ = *occludes.entry(d.type_id).or_insert_with(|| self.objects.destructables.get(d.type_id).is_some_and(|od| od.real("occH") > 0.0));
+            let occ = match d.occluder_height {
+                Some(h) => h > 0.0,
+                None => *occludes.entry(d.type_id).or_insert_with(|| self.objects.destructables.get(d.type_id).is_some_and(|od| od.real("occH") > 0.0)),
+            };
             if occ {
                 if let Some(c) = self.fog.as_ref().unwrap().cell(d.x, d.y) {
                     occluded[c] = true;

@@ -46,6 +46,11 @@ pub struct GameCamera {
     /// The unit the camera follows and the offset from it (SetCameraTargetController).
     #[serde(default)]
     pub follow: Option<(u32, f32, f32)>,
+    /// The followed unit's facing turns the offset and the view (the controller's
+    /// orientation flags: SetCameraOrientController, or SetCameraTargetController's
+    /// inheritOrientation).
+    #[serde(default)]
+    pub follow_orient: bool,
     /// Shaking of the eye and of the target: magnitude, velocity, and whether only up
     /// and down (CameraSetSourceNoise, CameraSetTargetNoise, and their Ex forms).
     #[serde(default)]
@@ -108,7 +113,7 @@ impl GameCamera {
         defaults[FIELD_ROLL] = 0.0;
         defaults[FIELD_ROTATION] = first("Rotation", 90.0);
         defaults[FIELD_ZOFFSET] = first("Height", 0.0);
-        GameCamera { x: 0.0, y: 0.0, fields: defaults, defaults, pan: None, lerps: [None; FIELD_COUNT], follow: None, source_noise: (0.0, 0.0, false), target_noise: (0.0, 0.0, false), cinematic: None, smoothing: 0.0, rotate: None }
+        GameCamera { x: 0.0, y: 0.0, fields: defaults, defaults, pan: None, lerps: [None; FIELD_COUNT], follow: None, follow_orient: false, source_noise: (0.0, 0.0, false), target_noise: (0.0, 0.0, false), cinematic: None, smoothing: 0.0, rotate: None }
     }
 
     /// Moves a field to `value` over `duration` seconds (at once when zero).

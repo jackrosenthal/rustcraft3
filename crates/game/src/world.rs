@@ -224,6 +224,15 @@ pub struct World {
     /// ForceCampaignSelectScreen: after the game, the campaign screen lists the
     /// campaigns rather than the missions.
     pub force_campaign_select: bool,
+    /// SetCreepCampFilterState (option 0x39): the minimap shows creep camps.
+    #[serde(default = "yes")]
+    pub creep_camp_filter: bool,
+    /// EnableMinimapFilterButtons: the ally color and creep camp buttons usable.
+    #[serde(default = "yes2")]
+    pub minimap_filter_buttons: (bool, bool),
+    /// DoNotSaveReplay: this game keeps no replay.
+    #[serde(default)]
+    pub no_replay: bool,
     /// Formation groups and their members, and the next group's number.
     #[serde(default)]
     pub formations: HashMap<u32, Vec<u32>>,
@@ -502,6 +511,9 @@ impl World {
             alt_minimap_icon: None,
             ally_color_filter: 0,
             force_campaign_select: false,
+            creep_camp_filter: true,
+            minimap_filter_buttons: (true, true),
+            no_replay: false,
             formations: HashMap::default(),
             next_formation: 1,
             fog_boundary: true,
@@ -1017,9 +1029,20 @@ impl World {
         if let Some((u, ox, oy)) = self.camera.follow {
             match self.unit(u) {
                 Some(unit) => {
-                    let (x, y) = (unit.x + ox, unit.y + oy);
+                    // With orientation the offset is the unit's own, turned with it, and
+                    // the view looks the way it faces (FUN_6f35f3a0 with the controller's +0x48).
+                    let (ox, oy) = if self.camera.follow_orient {
+                        let a = unit.facing.to_radians();
+                        (ox * a.cos() - oy * a.sin(), ox * a.sin() + oy * a.cos())
+                    } else {
+                        (ox, oy)
+                    };
+                    let (x, y, facing) = (unit.x + ox, unit.y + oy, unit.facing);
                     self.camera.x = x;
                     self.camera.y = y;
+                    if self.camera.follow_orient {
+                        self.camera.set_field(crate::camera::FIELD_ROTATION, facing, 0.0);
+                    }
                 }
                 None => self.camera.follow = None,
             }
@@ -1344,4 +1367,12 @@ impl World {
 
 fn opaque_white() -> [u8; 4] {
     [255; 4]
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn yes2() -> (bool, bool) {
+    (true, true)
 }

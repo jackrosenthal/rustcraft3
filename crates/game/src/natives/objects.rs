@@ -31,6 +31,7 @@ pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>
         anim_serial: 0,
         anim_speed: 1.0,
         pathing_cells: Vec::new(),
+        occluder_height: None,
     };
     let path_tex = o.str("pathTex");
     let h = w.handles.insert(Obj::Destructable(Box::new(d)));
@@ -243,7 +244,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetDestructableMaxLife => |w, _, a| real(dest(w, a.h(0)).map_or(0.0, |d| d.max_life)),
         SetDestructableMaxLife => |w, _, a| { let v = a.r(1); if let Some(d) = dest_mut(w, a.h(0)) { d.max_life = v; } none() },
         GetDestructableOccluderHeight => |w, _, a| real(dest(w, a.h(0)).and_then(|d| w.objects.destructables.get(d.type_id)).map_or(0.0, |o| o.real("occH"))),
-        SetDestructableOccluderHeight => |_, _, _| none(),
+        SetDestructableOccluderHeight => |w, _, a| {
+            if let Some(crate::types::Obj::Destructable(d)) = w.handles.get_mut(a.h(0)) {
+                d.occluder_height = Some(a.r(1));
+            }
+            none()
+        },
         ShowDestructable => |w, _, a| { let v = a.b(1); if let Some(d) = dest_mut(w, a.h(0)) { d.visible = v; } none() },
         SetDestructableAnimation => |w, _, a| {
             let s = a.s(1).to_ascii_lowercase();

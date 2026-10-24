@@ -428,7 +428,9 @@ impl ApplicationHandler for App {
                         if let (true, Some(glue)) = (campaign_select, r.glue_saved.as_mut()) {
                             glue.campaigns.open = None;
                         }
-                        if let Some(replay) = scene.take_replay() {
+                        // DoNotSaveReplay: the game keeps no replay.
+                        let keep = scene.game.as_ref().is_none_or(|g| !g.world.no_replay);
+                        if let Some(replay) = scene.take_replay().filter(|_| keep) {
                             crate::replays::keep(&replay);
                         }
                     }

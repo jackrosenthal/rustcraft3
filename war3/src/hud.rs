@@ -177,6 +177,8 @@ pub struct Hud {
     pub minimap_terrain: bool,
     pub ally_mode: u8,
     pub show_creeps: bool,
+    /// EnableMinimapFilterButtons: the ally color and creep buttons usable.
+    pub filter_buttons: (bool, bool),
     pub formation: bool,
     /// Whether the "@minimapfog" overlay texture is current.
     pub minimap_fog: bool,
@@ -301,6 +303,7 @@ impl Hud {
             minimap_terrain: true,
             ally_mode: 0,
             show_creeps: true,
+            filter_buttons: (true, true),
             formation: true,
             now: 0.0,
             unit_messages: Vec::new(),
@@ -788,7 +791,8 @@ impl Hud {
             1 => self.minimap_terrain = !self.minimap_terrain,
             // The scene cycles the world's ally color mode (FUN_6f3704f0).
             2 => {}
-            3 => self.show_creeps = !self.show_creeps,
+            // The scene turns the world's creep camp filter (option 0x39).
+            3 => {}
             4 => self.formation = !self.formation,
             _ => {}
         }
@@ -800,8 +804,18 @@ impl Hud {
             if self.minimap_terrain { "MiniMapTerrainButtonInactiveEnabled" } else { "MiniMapTerrainButtonActiveEnabled" },
             // FUN_6f3731a0: Off for player colors, Inactive for the minimap's, Active for
             // everywhere.
-            ["MiniMapAllyButtonOffEnabled", "MiniMapAllyButtonInactiveEnabled", "MiniMapAllyButtonActiveEnabled"][self.ally_mode as usize % 3],
-            if self.show_creeps { "MiniMapCreepButtonActiveEnabled" } else { "MiniMapCreepButtonInactiveEnabled" },
+            match (self.filter_buttons.0, self.ally_mode % 3) {
+                (false, 0) => "MiniMapAllyButtonOffDisabled",
+                (false, 1) => "MiniMapAllyButtonInactiveDisabled",
+                (false, _) => "MiniMapAllyButtonActiveDisabled",
+                (true, m) => ["MiniMapAllyButtonOffEnabled", "MiniMapAllyButtonInactiveEnabled", "MiniMapAllyButtonActiveEnabled"][m as usize],
+            },
+            match (self.filter_buttons.1, self.show_creeps) {
+                (true, true) => "MiniMapCreepButtonActiveEnabled",
+                (true, false) => "MiniMapCreepButtonInactiveEnabled",
+                (false, true) => "MiniMapCreepButtonActiveDisabled",
+                (false, false) => "MiniMapCreepButtonInactiveDisabled",
+            },
             if self.formation { "MiniMapFormationOnButtonEnabled" } else { "MiniMapFormationOffButtonEnabled" },
         ];
         for (k, key) in keys.iter().enumerate() {

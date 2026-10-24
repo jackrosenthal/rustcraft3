@@ -124,15 +124,23 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SyncSelections => |_, _, _| none(),
         IsNoVictoryCheat => |w, _, _| boolean(w.cheat(crate::cheats::flag::NO_VICTORY)),
         IsNoDefeatCheat => |w, _, _| boolean(w.cheat(crate::cheats::flag::NO_DEFEAT)),
-        Cheat => |_, _, _| none(),
+        // A cheat as the local player would type it (FUN_6f196f40).
+        Cheat => |w, vm, a| {
+            let text = a.s(0);
+            if !text.is_empty() {
+                let me = w.local_player;
+                w.console_command(vm, me, &text);
+            }
+            none()
+        },
         GetMapName => |w, _, _| string(w.map_name.clone()),
         SetEnemyStartLocPrioCount => |_, _, _| none(),
         SetEnemyStartLocPrio => |_, _, _| none(),
         SetAllyColorFilterState => |w, _, a| { w.ally_color_filter = a.i(0).clamp(0, 2); none() },
         GetAllyColorFilterState => |w, _, _| int(w.ally_color_filter),
-        SetCreepCampFilterState => |_, _, _| none(),
+        SetCreepCampFilterState => |w, _, a| { w.creep_camp_filter = a.b(0); none() },
         GetCreepCampFilterState => |_, _, _| boolean(false),
-        EnableMinimapFilterButtons => |_, _, _| none(),
+        EnableMinimapFilterButtons => |w, _, a| { w.minimap_filter_buttons = (a.b(0), a.b(1)); none() },
         EnableDragSelect => |w, _, a| { w.select_allowed.1 = a.b(0); none() },
         EnablePreSelect => |w, _, a| { w.select_allowed.2 = a.b(1); none() },
         // Turning selection off also clears the local player's (FUN_6f36c2f0).

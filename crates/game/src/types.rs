@@ -706,6 +706,9 @@ pub struct Destructable {
     #[serde(default = "one")]
     pub anim_speed: f32,
     pub pathing_cells: Vec<(i32, i32)>,
+    /// SetDestructableOccluderHeight: the occlusion height in place of the type's.
+    #[serde(default)]
+    pub occluder_height: Option<f32>,
 }
 
 fn one() -> f32 {

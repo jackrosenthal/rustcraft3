@@ -134,7 +134,9 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, SyntaxError> {
                         0.0
                     } else {
                         let (whole, frac) = text.split_once('.').unwrap_or((text, ""));
-                        let whole: i64 = if whole.is_empty() { 0 } else { whole.parse().map_err(|_| err(line, "bad real literal"))? };
+                        // The whole part wraps as a 32-bit integer (measured: the literal
+                        // 1000000000000000000000.0 reads -559939584).
+                        let whole = whole.bytes().fold(0i32, |v, c| v.wrapping_mul(10).wrapping_add((c - b'0') as i32)) as i64;
                         let frac: f64 = if frac.is_empty() { 0.0 } else { format!("0.{frac}").parse().map_err(|_| err(line, "bad real literal"))? };
                         crate::value::int_to_real(whole) + frac as f32
                     };

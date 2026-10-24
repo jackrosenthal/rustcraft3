@@ -142,7 +142,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             if end <= start {
                 return string("");
             }
-            string(String::from_utf8_lossy(&b[start..end]))
+            // A character cut in two shows as nothing, as in the original (measured:
+            // SubString("h\u{e9}llo", 0, 2) shows "h").
+            string(String::from_utf8_lossy(&b[start..end]).replace('\u{fffd}', ""))
         },
         StringLength => |_, _, a| int(a[0].str().map_or(0, |s| s.len() as i32)),
         StringCase => |_, _, a| {

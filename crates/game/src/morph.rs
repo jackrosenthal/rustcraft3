@@ -124,7 +124,8 @@ impl World {
         u.scale = scale;
         u.fly_height = height;
         u.acquire_range = acquire;
-        let mut abilities: Vec<(Id, i32)> = u.abilities.iter().copied().filter(|(a, _)| new_abils.contains(a) || hero_abils.contains(a) || old_hero.contains(a)).collect();
+        let permanent: Vec<Id> = u.extra.permanent.iter().filter(|p| p.1 > 0).map(|p| p.0).collect();
+        let mut abilities: Vec<(Id, i32)> = u.abilities.iter().copied().filter(|(a, _)| new_abils.contains(a) || hero_abils.contains(a) || old_hero.contains(a) || permanent.contains(a)).collect();
         for a in new_abils {
             if !abilities.iter().any(|x| x.0 == a) {
                 abilities.push((a, 1));

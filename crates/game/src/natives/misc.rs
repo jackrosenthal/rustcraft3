@@ -224,6 +224,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SyncStoredUnit => |w, _, a| { sync_cache(w, a.h(0), a.s(1), a.s(2), |c, k| crate::replay::CacheValue::Unit(c.units.get(k).cloned())); none() },
         SyncStoredString => |w, _, a| { sync_cache(w, a.h(0), a.s(1), a.s(2), |c, k| crate::replay::CacheValue::Str(c.strings.get(k).cloned())); none() },
         // An empty function in the original.
+        // Empty in the original (0x6f214830).
         SetTerrainFog => |_, _, _| none(),
         UnitAddIndicator => |w, _, a| { let c = [a.i(1), a.i(2), a.i(3), a.i(4)].map(|v| v as u8); w.requests.push(crate::world::Request::Indicator { widget: a.h(0), color: c }); none() },
         AddIndicator => |w, _, a| { let c = [a.i(1), a.i(2), a.i(3), a.i(4)].map(|v| v as u8); w.requests.push(crate::world::Request::Indicator { widget: a.h(0), color: c }); none() },

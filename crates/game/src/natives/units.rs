@@ -872,7 +872,19 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let Some(u) = w.unit_mut(a.h(0)) else { return int(0) };
             match u.abilities.iter_mut().find(|(x, _)| *x == id) { Some(e) => { e.1 = (e.1 - 1).max(1); int(e.1) } None => int(0) }
         },
-        UnitMakeAbilityPermanent => |_, _, _| boolean(true),
+        UnitMakeAbilityPermanent => |w, _, a| {
+            let (id, permanent) = (id_from_int(a.i(2)), a.b(1));
+            let Some(u) = w.unit_mut(a.h(0)) else { return boolean(false) };
+            if !u.abilities.iter().any(|x| x.0 == id) {
+                return boolean(false);
+            }
+            let p = &mut u.extra.permanent;
+            match p.iter_mut().find(|x| x.0 == id) {
+                Some(x) => x.1 += if permanent { 1 } else { -1 },
+                None => p.push((id, if permanent { 1 } else { -1 })),
+            }
+            boolean(true)
+        },
         GetUnitCurrentOrder => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.order.id)),
         IssueImmediateOrder => |w, vm, a| issue_order(w, vm, a.h(0), crate::natives::basic::order_id(&a.s(1)), 0.0, 0.0, 0),
         IssueImmediateOrderById => |w, vm, a| issue_order(w, vm, a.h(0), a.i(1), 0.0, 0.0, 0),

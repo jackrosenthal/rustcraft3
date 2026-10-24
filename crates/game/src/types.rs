@@ -393,6 +393,10 @@ pub struct UnitExtra {
     /// Abilities Engineering Upgrade replaced: each original and what stands for it now.
     #[serde(default)]
     pub swapped: Vec<(Id, Id)>,
+    /// UnitMakeAbilityPermanent: abilities kept through morphs and upgrades, with the
+    /// count of times made permanent (the ability's +0x38).
+    #[serde(default)]
+    pub permanent: Vec<(Id, i32)>,
     /// Abilities whose AI rests until a time (spellai.rs).
     #[serde(default)]
     pub ai_rest: Vec<(Id, f32)>,
@@ -481,6 +485,7 @@ impl Default for UnitExtra {
             factory: None,
             restore: None,
             swapped: Vec::new(),
+            permanent: Vec::new(),
             ai_rest: Vec::new(),
             ai_watch: 0.0,
             ai_inside: Vec::new(),

@@ -436,7 +436,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let p = w.player_of(a.h(1)).unwrap_or(0);
             boolean(w.unit(a.h(0)).is_some_and(|u| w.fog_state(u.x, u.y, p) == FOG_MASKED) && !w.unit_visible_to(a.h(0), p))
         },
-        IsUnitDetected => |_, _, _| boolean(true),
+        // Whether the player has the unit in its detection (FUN_6f68bae0).
+        IsUnitDetected => |w, _, a| { let (h, p) = (a.h(0), w.player_of(a.h(1)).unwrap_or(0)); boolean(w.detected_by(h, p)) },
         IsUnitInvisible => |w, _, a| { let (h, p) = (a.h(0), w.player_of(a.h(1)).unwrap_or(0)); boolean(w.is_invisible(h) && !w.detected_by(h, p)) },
         CreateTextTag => |w, _, _| handle(w.handles.insert(Obj::TextTag(Box::new(TextTag { visible: true, color: [255; 4], permanent: true, ..Default::default() })))),
         DestroyTextTag => |w, _, a| { if tag_mut(w, a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
@@ -638,6 +639,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         PauseGame => |w, _, a| { w.script_paused = a.b(0); none() },
         SetPortraitLight => |_, _, _| none(),
+        // Empty in the original (0x6f215310).
         SetUnitFog => |_, _, _| none(),
     );
 }

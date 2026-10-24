@@ -1310,7 +1310,10 @@ impl World {
         u.life = hp * lf;
         u.max_mana = mana;
         u.mana = mana * mf;
+        // Abilities made permanent stay (UnitMakeAbilityPermanent).
+        let kept: Vec<(Id, i32)> = u.abilities.iter().copied().filter(|(a, _)| u.extra.permanent.iter().any(|p| p.0 == *a && p.1 > 0) && !abilities.iter().any(|x| x.0 == *a)).collect();
         u.abilities = abilities;
+        u.abilities.extend(kept);
         self.update_food();
     }
 

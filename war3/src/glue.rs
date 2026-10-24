@@ -226,6 +226,8 @@ const REFEREE_ROW: usize = usize::MAX - 1;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DialogAction {
     DeleteProfile,
+    /// Start this campaign's mission without the prologue cleared.
+    SkipTutorial(usize, usize),
     /// Nothing: the message only tells.
     Notice,
 }
@@ -784,12 +786,12 @@ impl Glue {
                     if more {
                         self.campaigns.open = Some(c);
                     } else {
-                        self.start_mission(c, 0);
+                        self.start_mission(c, 0, assets);
                     }
                     return true;
                 }
                 Some(crate::campaign::Row::Mission(c, m)) => {
-                    self.start_mission(c, m);
+                    self.start_mission(c, m, assets);
                     return true;
                 }
                 _ => {}
@@ -900,7 +902,18 @@ impl Glue {
         self.show(Screen::Campaign, assets);
     }
 
-    fn start_mission(&mut self, c: usize, m: usize) {
+    /// A mission chosen: in Reign of Chaos, one beyond the prologue's campaign with the
+    /// tutorial not cleared asks first (SKIP_TUTORIAL, CCampaignMenu's FUN_6f2f3a00).
+    fn start_mission(&mut self, c: usize, m: usize, assets: &mut Assets) {
+        if self.version == crate::data::Version::ReignOfChaos && c != 0 && !self.persist.borrow().tutorial_cleared {
+            let text = assets.frames.string("SKIP_TUTORIAL");
+            self.show_dialog(&text, true, DialogAction::SkipTutorial(c, m), assets);
+            return;
+        }
+        self.launch_mission(c, m);
+    }
+
+    fn launch_mission(&mut self, c: usize, m: usize) {
         if let Some(map) = self.campaigns.list.get(c).and_then(|e| e.as_ref()).and_then(|e| e.missions.get(m)) {
             self.action = Some(GlueAction::Campaign(map.map.clone()));
         }
@@ -961,6 +974,9 @@ impl Glue {
                 if name != "DialogButtonNo" && action == DialogAction::DeleteProfile {
                     let e = self.profile.delete(&mut self.tree);
                     self.profile_event(e, assets);
+                }
+                if let (DialogAction::SkipTutorial(c, m), "DialogButtonYes") = (action, name) {
+                    self.launch_mission(c, m);
                 }
             }
             return;

@@ -439,6 +439,21 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 3;
             }
+            // shop <h>: the local player's shopper there, and each good's stock and cost.
+            "shop" => {
+                if let Some(g) = scene.game.as_ref() {
+                    let w = &g.world;
+                    let h = num(&a[i + 1]) as u32;
+                    let p = w.local_player;
+                    eprintln!("shopper {:?} gold {} lumber {}", w.shopper(p, h), w.players[p as usize].get_state(1), w.players[p as usize].get_state(2));
+                    let (items, units) = w.shop_goods(h);
+                    for id in items.into_iter().chain(units) {
+                        let cost = w.objects.units.get(id).map(|o| (o.int("goldcost"), o.int("lumbercost"))).or_else(|| w.objects.items.get(id).map(|o| (o.int("goldcost"), o.int("lumbercost"))));
+                        eprintln!("good {} stock {} cost {:?}", w3_game::objects::id_str(id), w.stock_count(h, id), cost);
+                    }
+                }
+                i += 2;
+            }
             // items: the ground items, where they are and where they show on screen.
             "items" => {
                 if let Some(g) = scene.game.as_ref() {

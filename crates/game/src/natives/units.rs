@@ -147,6 +147,7 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         }
     }
     w.unit_order.push(h);
+    w.start_stock(h);
     w.attach_ability_art(h);
     w.sync_spell_books(h);
     w.score_made(owner, type_id, h, is_hero);

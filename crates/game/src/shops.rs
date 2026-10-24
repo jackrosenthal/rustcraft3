@@ -82,6 +82,15 @@ impl World {
         s
     }
 
+    /// A new shop's supply of each of its goods, which its sell abilities hold from its
+    /// creation on: a good with stockStart arrives that long after.
+    pub fn start_stock(&mut self, shop: u32) {
+        let (items, units) = self.shop_goods(shop);
+        for id in items.into_iter().chain(units) {
+            self.stock(shop, id);
+        }
+    }
+
     /// How many of a good a shop has now, without starting its stock.
     pub fn stock_count(&self, shop: u32, id: Id) -> i32 {
         if let Some(s) = self.shops.added.get(&(shop, id)) {

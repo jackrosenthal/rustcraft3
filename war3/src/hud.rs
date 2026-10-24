@@ -498,8 +498,46 @@ impl Hud {
             t.set_text("InfoPanelIconValueRank", &rank.name);
             t.set_text("InfoPanelIconLevelRank", &rank.level.to_string());
         }
+        // A structure of another player who shares vision with the local one (or seen by
+        // an observer) shows that player's resources where its food would be
+        // (CInfoPanelUnitDetail::vf27, CInfoPanelIconAlly::vf27).
+        let local = world.local_player as usize;
+        let ally = world.unit(h).filter(|u| u.is_building && s.hero.is_none() && s.gold.is_none()).map(|u| u.owner as usize).filter(|&o| {
+            let observer = world.players.get(local).is_some_and(|p| p.get_state(w3_game::types::player_state::OBSERVER) != 0);
+            o != local && o < 12 && (observer || world.players.get(o).is_some_and(|p| p.alliances[local][5]))
+        });
+        if let Some(o) = ally {
+            use w3_game::types::player_state as ps;
+            let p = &world.players[o];
+            let beside = if weapons == 1 { damage0.to_string() } else { armor.clone() };
+            t.set_point(&frame("Ally"), FramePoint::TopLeft, &beside, FramePoint::TopRight, 0.0, 0.0);
+            t.set_visible(&frame("Ally"), true);
+            t.set_text("InfoPanelIconAllyTitleAlly", &world.player_name(o as u8));
+            let (gold, lumber) = (p.get_state(ps::RESOURCE_GOLD), p.get_state(ps::RESOURCE_LUMBER));
+            let (used, cap) = (p.get_state(ps::RESOURCE_FOOD_USED), p.get_state(ps::RESOURCE_FOOD_CAP));
+            t.set_text("InfoPanelIconAllyGoldValueAlly", &gold.to_string());
+            t.set_text("InfoPanelIconAllyWoodValueAlly", &lumber.to_string());
+            t.set_text("InfoPanelIconAllyFoodValueAlly", &format!("{used}/{cap}"));
+            let level = world.upkeep_level(o as u8);
+            let upkeep = Self::upkeep_name(db, level.min(2));
+            t.set_text("InfoPanelIconAllyUpkeepAlly", &upkeep);
+            // Each value's tooltip: its name, the value, and the resource's text.
+            let tip = |title: &str, middle: String, uber: &str| {
+                let mut b = crate::card::Button::text_only(db.string(title), db.string(uber));
+                b.requires = middle;
+                b
+            };
+            tips.push(("InfoPanelIconAllyGoldIconAlly".to_string(), tip("COLON_GOLD", gold.to_string(), "RESOURCE_UBERTIP_GOLD")));
+            tips.push(("InfoPanelIconAllyWoodIconAlly".to_string(), tip("COLON_LUMBER", lumber.to_string(), "RESOURCE_UBERTIP_LUMBER")));
+            let food = format!("{} {used}\n{} {cap}", db.string("COLON_USED"), db.string("COLON_PROVIDED"));
+            tips.push(("InfoPanelIconAllyFoodIconAlly".to_string(), tip("COLON_FOOD", food, "RESOURCE_UBERTIP_SUPPLY")));
+            let rate = format!("{} {}%", db.string("COLON_GOLD_INCOME_RATE"), 100 - world.upkeep_tax(o as u8).0);
+            let mut b = crate::card::Button::text_only(upkeep, db.string("RESOURCE_UBERTIP_UPKEEP"));
+            b.requires = rate;
+            tips.push(("InfoPanelIconAllyUpkeepAlly".to_string(), b));
+        }
         // Food provided, beside the armor (or the attack when there is one).
-        if s.hero.is_none() && s.food_made > 0 {
+        if s.hero.is_none() && s.food_made > 0 && ally.is_none() {
             let beside = if weapons == 1 { damage0.to_string() } else { armor.clone() };
             t.set_point(&frame("Food"), FramePoint::TopLeft, &beside, FramePoint::TopRight, 0.0, 0.0);
             t.set_visible(&frame("Food"), true);

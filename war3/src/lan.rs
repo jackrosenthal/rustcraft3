@@ -43,11 +43,15 @@ pub struct Lan {
     pub rebuild: bool,
     /// The game list's selection changed, and its map's details are due.
     pub summary_due: Option<PathBuf>,
+    /// A joined player's copy of the host's map, when it came from the host
+    /// (Maps\Download), and whether it has been asked for.
+    local_map: Option<PathBuf>,
+    map_asked: bool,
 }
 
 impl Lan {
     pub fn new(game_dir: &Path, name: String) -> Lan {
-        Lan { name, port: net::DEFAULT_PORT, game_dir: game_dir.to_path_buf(), browser: None, selected: None, list: None, host: None, conn: None, me: 0, setup: Setup::default(), chat: Vec::new(), line: String::new(), rebuild: false, summary_due: None }
+        Lan { name, port: net::DEFAULT_PORT, game_dir: game_dir.to_path_buf(), browser: None, selected: None, list: None, host: None, conn: None, me: 0, setup: Setup::default(), chat: Vec::new(), line: String::new(), rebuild: false, summary_due: None, local_map: None, map_asked: false }
     }
 
     /// A map's path as the setup names it: within the game folder, relative to it.
@@ -175,6 +179,8 @@ impl Lan {
 
     /// Joins the chosen game.
     pub fn join(&mut self) -> Result<(), &'static str> {
+        self.local_map = None;
+        self.map_asked = false;
         let Some((addr, _, _)) = self.selected.and_then(|k| self.games().get(k)).cloned() else { return Err("NETERROR_NOGAMESPECIFIED") };
         let mut c = Conn::connect(addr).map_err(|_| "NETERROR_JOINGAMEFAILED")?;
         c.send(&Msg::Hello { name: self.name.clone(), version: net::VERSION });
@@ -213,6 +219,7 @@ impl Lan {
     }
 
     fn host_update(&mut self, db: &FrameDb) -> Option<Event> {
+        let map_file = self.map_path(&self.setup.map);
         let h = self.host.as_mut()?;
         let (msgs, gone) = h.poll();
         let mut changed = false;
@@ -253,6 +260,13 @@ impl Lan {
                     self.chat.push(format!("{from}: {text}"));
                 }
                 Msg::Leave => h.drop_peer(id),
+                // The host sends its map to a player who lacks it.
+                Msg::MapRequest => {
+                    match std::fs::read(&map_file) {
+                        Ok(bytes) => h.send(id, &Msg::MapData { name: self.setup.map.clone(), bytes }),
+                        Err(e) => log::warn!("lan: reading the map: {e}"),
+                    }
+                }
                 _ => {}
             }
         }
@@ -293,6 +307,24 @@ impl Lan {
                 Msg::Setup(s) => {
                     self.setup = s;
                     self.rebuild = true;
+                    // A map this computer lacks is asked of the host.
+                    if self.local_map.is_none() && !self.map_path(&self.setup.map).is_file() && !self.map_asked {
+                        self.map_asked = true;
+                        if let Some(c) = self.conn.as_mut() {
+                            c.send(&Msg::MapRequest);
+                        }
+                    }
+                }
+                Msg::MapData { name, bytes } => {
+                    let dir = self.game_dir.join("Maps").join("Download");
+                    let path = dir.join(Path::new(&name).file_name().unwrap_or_default());
+                    match std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, &bytes)) {
+                        Ok(()) => {
+                            self.local_map = Some(path);
+                            self.rebuild = true;
+                        }
+                        Err(e) => log::warn!("lan: saving the map: {e}"),
+                    }
                 }
                 Msg::Chat { from, text } => self.chat.push(format!("{from}: {text}")),
                 Msg::Notice { key, name } => self.chat.push(db.string(&key).replace("%s", &name)),
@@ -354,7 +386,7 @@ impl Lan {
                 },
             })
             .collect();
-        (self.map_path(&self.setup.map), lobby)
+        (self.map(), lobby)
     }
 
     pub fn is_host(&self) -> bool {
@@ -362,7 +394,7 @@ impl Lan {
     }
 
     pub fn map(&self) -> PathBuf {
-        self.map_path(&self.setup.map)
+        self.local_map.clone().unwrap_or_else(|| self.map_path(&self.setup.map))
     }
 
     /// The lobby: a PlayerSlot row per slot in TeamSetup, the host's to change, each

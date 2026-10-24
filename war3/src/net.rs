@@ -84,6 +84,9 @@ pub enum Msg {
     Refused(String),
     Setup(Setup),
     Chat { from: String, text: String },
+    /// A player without the map asks for it; the host sends its file.
+    MapRequest,
+    MapData { name: String, bytes: Vec<u8> },
     /// A lobby notice: a NetworkStrings key and the player it is about.
     Notice { key: String, name: String },
     /// A joined player's choices for their own slot.

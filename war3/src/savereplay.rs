@@ -16,12 +16,24 @@ pub struct SaveReplayPanel {
     names: Vec<String>,
     selected: Option<usize>,
     list: Option<Rect>,
+    /// The delete or overwrite asked about (DELETE_REPLAY_MESSAGE,
+    /// OVERWRITE_REPLAY_MESSAGE).
+    pending: Option<Pending>,
 }
 
 /// What the panel did.
 pub enum Event {
     /// The replay was saved.
     Saved,
+    /// A question to ask first, Yes or No: the message's key and the file it names.
+    Ask(&'static str, String),
+}
+
+/// What waits on the question's Yes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Pending {
+    Delete(usize),
+    Overwrite,
 }
 
 fn dir() -> Option<PathBuf> {
@@ -64,7 +76,7 @@ impl SaveReplayPanel {
         match c {
             '\u{1b}' => self.open = false,
             '\r' | '\n' => {
-                let e = self.save();
+                let e = self.save_asking();
                 self.sync(tree);
                 return e;
             }
@@ -76,6 +88,34 @@ impl SaveReplayPanel {
         }
         self.sync(tree);
         None
+    }
+
+    /// Saving over a replay of the same name asks first (FUN_6f2f8640).
+    fn save_asking(&mut self) -> Option<Event> {
+        let name = self.text.trim().to_string();
+        if !name.is_empty() && dir().is_some_and(|d| d.join(format!("{name}.w3g")).is_file()) {
+            self.pending = Some(Pending::Overwrite);
+            return Some(Event::Ask("OVERWRITE_REPLAY_MESSAGE", format!("{name}.w3g")));
+        }
+        self.save()
+    }
+
+    /// The question's answer.
+    pub fn answer(&mut self, yes: bool, tree: &mut FrameTree) -> Option<Event> {
+        let e = match (self.pending.take(), yes) {
+            (Some(Pending::Overwrite), true) => self.save(),
+            (Some(Pending::Delete(k)), true) => {
+                if let (Some(d), Some(name)) = (dir(), self.names.get(k).cloned()) {
+                    let _ = std::fs::remove_file(d.join(format!("{name}.w3g")));
+                    self.names.remove(k);
+                    self.selected = None;
+                }
+                None
+            }
+            _ => None,
+        };
+        self.sync(tree);
+        e
     }
 
     /// The last game's replay under the typed name.
@@ -99,19 +139,16 @@ impl SaveReplayPanel {
 
     pub fn button(&mut self, name: &str, tree: &mut FrameTree) -> Option<Event> {
         let e = match name {
-            "SaveReplaySaveButton" => self.save(),
+            "SaveReplaySaveButton" => self.save_asking(),
             "SaveReplayCancelButton" => {
                 self.open = false;
                 None
             }
-            "SaveReplayDeleteButton" => {
-                if let (Some(k), Some(d)) = (self.selected, dir()) {
-                    let _ = std::fs::remove_file(d.join(format!("{}.w3g", self.names[k])));
-                    self.names.remove(k);
-                    self.selected = None;
-                }
-                None
-            }
+            // Deleting asks first (FUN_6f2eb5c0).
+            "SaveReplayDeleteButton" => self.selected.and_then(|k| {
+                self.pending = Some(Pending::Delete(k));
+                self.names.get(k).map(|n| Event::Ask("DELETE_REPLAY_MESSAGE", format!("{n}.w3g")))
+            }),
             _ => None,
         };
         self.sync(tree);

@@ -228,6 +228,8 @@ enum DialogAction {
     DeleteProfile,
     /// Start this campaign's mission without the prologue cleared.
     SkipTutorial(usize, usize),
+    /// The save-replay panel's delete or overwrite.
+    Replay,
     /// Nothing: the message only tells.
     Notice,
 }
@@ -935,10 +937,9 @@ impl Glue {
             }
             return;
         }
-        if self.screen == Screen::Score && self.save_replay.open {
-            if let Some(crate::savereplay::Event::Saved) = self.save_replay.key(c, &mut self.tree) {
-                self.replay_saved();
-            }
+        if self.screen == Screen::Score && self.save_replay.open && self.dialog.is_none() {
+            let e = self.save_replay.key(c, &mut self.tree);
+            self.replay_event(e, assets);
             return;
         }
         if self.screen == Screen::SinglePlayer && self.dialog.is_none() {
@@ -977,6 +978,10 @@ impl Glue {
                 }
                 if let (DialogAction::SkipTutorial(c, m), "DialogButtonYes") = (action, name) {
                     self.launch_mission(c, m);
+                }
+                if action == DialogAction::Replay {
+                    let e = self.save_replay.answer(name == "DialogButtonYes", &mut self.tree);
+                    self.replay_event(e, assets);
                 }
             }
             return;
@@ -1134,11 +1139,22 @@ impl Glue {
         }
     }
 
+    /// The save-replay panel's outcome: saved, or a question to ask.
+    fn replay_event(&mut self, e: Option<crate::savereplay::Event>, assets: &mut Assets) {
+        match e {
+            Some(crate::savereplay::Event::Saved) => self.replay_saved(),
+            Some(crate::savereplay::Event::Ask(key, file)) => {
+                let text = assets.frames.string(key).replacen("%s", &file, 1);
+                self.show_dialog(&text, true, DialogAction::Replay, assets);
+            }
+            None => {}
+        }
+    }
+
     fn score_button(&mut self, name: &str, assets: &mut Assets) {
         if self.save_replay.open {
-            if let Some(crate::savereplay::Event::Saved) = self.save_replay.button(name, &mut self.tree) {
-                self.replay_saved();
-            }
+            let e = self.save_replay.button(name, &mut self.tree);
+            self.replay_event(e, assets);
             return;
         }
         if name == "ScoreScreenSaveReplayButton" {

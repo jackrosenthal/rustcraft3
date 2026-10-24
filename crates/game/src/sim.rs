@@ -2089,21 +2089,12 @@ impl World {
                 let u = self.unit_mut(h).unwrap();
                 u.work_timer -= dt;
                 if u.work_timer <= 0.0 {
+                    // Out with the gold taken on entering.
                     self.leave_mine(h);
-                    let before = self.unit(target).map_or(0, |m| m.resource);
-                    let take = gold_cap.min(before);
-                    if let Some(m) = self.unit_mut(target) {
-                        m.resource -= take;
-                    }
-                    self.gold_warning(h, before, before - take);
                     let u = self.unit_mut(h).unwrap();
-                    u.carry_gold = take;
                     u.carry_lumber = 0;
                     u.action = Action::ReturnResources;
                     self.exit_toward_drop_off(h, target);
-                    if self.unit(target).is_some_and(|m| m.resource <= 0) {
-                        kill_unit(self, vm, target, 0);
-                    }
                 }
                 return;
             }
@@ -2122,6 +2113,25 @@ impl World {
                 u.inside = target;
                 u.hidden = true;
                 u.work_timer = duration;
+                // The gold is taken on entering; a mine emptied so collapses then, its
+                // worker coming out with it (measured: a mine left with 15 gold
+                // collapses at 6.15 seconds under one peasant, as the second trip goes in,
+                // and the peasant brings out the last 5).
+                let before = self.unit(target).map_or(0, |m| m.resource);
+                let take = gold_cap.min(before);
+                if let Some(m) = self.unit_mut(target) {
+                    m.resource -= take;
+                }
+                self.gold_warning(h, before, before - take);
+                self.unit_mut(h).unwrap().carry_gold = take;
+                if self.unit(target).is_some_and(|m| m.resource <= 0) {
+                    self.leave_mine(h);
+                    let u = self.unit_mut(h).unwrap();
+                    u.carry_lumber = 0;
+                    u.action = Action::ReturnResources;
+                    self.exit_toward_drop_off(h, target);
+                    kill_unit(self, vm, target, 0);
+                }
             } else if let Some(u) = self.unit_mut(h) {
                 set_anim(u, "stand");
             }
@@ -2219,11 +2229,18 @@ impl World {
         if !self.approach(h, hall, 8.0, dt) {
             return;
         }
+        // Back to the source, unless it is gone (a mine that collapsed): then the worker
+        // stands, its order done (measured: GetUnitCurrentOrder reads no order).
+        let src_gone = self.unit(h).map(|u| u.harvest_source).is_some_and(|s| s != 0 && self.widget_pos(s).is_none() || self.unit(s).is_some_and(|m| m.dead));
         let u = self.unit_mut(h).unwrap();
         let (gold, lumber, owner, src) = (u.carry_gold, u.carry_lumber, u.owner, u.harvest_source);
         u.carry_gold = 0;
         u.carry_lumber = 0;
-        u.action = if src != 0 { Action::Harvest { target: src } } else { Action::Idle };
+        u.action = if src != 0 && !src_gone { Action::Harvest { target: src } } else { Action::Idle };
+        if src_gone {
+            u.harvest_source = 0;
+            u.order = Order::default();
+        }
         // Upkeep takes its share of what is returned; the amount shows over the worker
         // (0x6f40b150).
         self.gather(owner, h, gold, lumber, 0.0);

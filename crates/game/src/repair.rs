@@ -66,7 +66,9 @@ impl World {
         let u = self.unit_mut(h).unwrap();
         u.extra.repair_debt.0 += gold;
         u.extra.repair_debt.1 += lumber;
-        let (pay_gold, pay_lumber) = (u.extra.repair_debt.0.floor() as i32, u.extra.repair_debt.1.floor() as i32);
+        // Paid rounded up, ahead of the work (measured: 90 life of a farm costs 6 gold
+        // and 2 lumber in the original, where its share of the price is 5.04 and 1.26).
+        let (pay_gold, pay_lumber) = (u.extra.repair_debt.0.ceil().max(0.0) as i32, u.extra.repair_debt.1.ceil().max(0.0) as i32);
         let p = &self.players[owner as usize];
         if p.get_state(player_state::RESOURCE_GOLD) < pay_gold || p.get_state(player_state::RESOURCE_LUMBER) < pay_lumber {
             let u = self.unit_mut(h).unwrap();

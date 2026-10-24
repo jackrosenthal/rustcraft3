@@ -300,6 +300,9 @@ pub struct Scene {
     /// Special effects (AddSpecialEffect and ability art), by handle.
     pub effects: HashMap<u32, EffectView>,
     pub selection: Vec<u32>,
+    /// A selectable destructable chosen with a click when no unit was (the original
+    /// selects gates: their circle, name, and portraitmodel).
+    pub selected_widget: Option<u32>,
     selection_serial: u32,
     /// The world's blight count the ground was last built with.
     blight_serial: u32,
@@ -738,7 +741,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, ground_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), overlay: Vec::new(), voices: HashMap::new(), stacked_voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, menu_shortcut: None, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8], completed_prefix: assets.frames.string("COLON_COMPLETED"), zoom_level: 0, rotation_state: 0, hall_cursor: None };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selected_widget: None, selection_serial: 0, blight_serial: 0, ground_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), overlay: Vec::new(), voices: HashMap::new(), stacked_voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, menu_shortcut: None, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8], completed_prefix: assets.frames.string("COLON_COMPLETED"), zoom_level: 0, rotation_state: 0, hall_cursor: None };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1658,6 +1661,22 @@ impl Scene {
         // TextureDottedNN), unless it is selected.
         let hovered = if self.over_console(self.cursor.0, self.cursor.1, self.screen) { None } else { self.pick_unit(self.cursor.0, self.cursor.1, self.screen) };
         let hovered = hovered.filter(|h| !self.selection.contains(h)).map(|h| (h, true));
+        // A chosen destructable: its selcircsize circle in ColorNeutral.
+        if let Some(Some(w3_game::types::Obj::Destructable(d))) = self.selected_widget.map(|h| w.handles.get(h)) {
+            let size = w.objects.destructables.get(d.type_id).map_or(128.0, |o| o.real("selcircsize"));
+            let sizes = num("NumSizes", 3.0) as usize;
+            let mut idx = sizes.saturating_sub(1);
+            for i in 0..sizes.saturating_sub(1) {
+                if size <= num(&format!("Size{i:02}"), f32::MAX) {
+                    idx = i;
+                    break;
+                }
+            }
+            if let Some(tex) = misc.get_str("SelectionCircle", &format!("Texture{idx:02}")) {
+                let texture = assets.textures.get_or_white(device, queue, &format!("{tex}.blp"));
+                out.push(w3_render::decal::Decal { texture, center: [d.x, d.y, self.terrain.height_at(d.x, d.y)], size: [size, size], color: argb("ColorNeutral"), additive: false });
+            }
+        }
         for (h, dotted) in self.selection.iter().map(|&h| (h, false)).chain(hovered) {
             let Some(u) = w.unit(h) else { continue };
             let Some(o) = w.objects.units.get(u.type_id) else { continue };
@@ -2078,6 +2097,15 @@ impl Scene {
             }
             picked.truncate(12);
         }
+        // A click on no unit may choose a selectable destructable instead.
+        let widget = if picked.is_empty() && !dragged && !add {
+            self.pick_destructable(b.0, b.1, size).filter(|&d| match g.world.handles.get(d) {
+                Some(w3_game::types::Obj::Destructable(x)) => g.world.objects.destructables.get(x.type_id).is_some_and(|o| o.int("selectable") != 0),
+                _ => false,
+            })
+        } else {
+            None
+        };
         if add {
             for h in picked {
                 if !self.selection.contains(&h) && self.selection.len() < 12 {
@@ -2089,6 +2117,7 @@ impl Scene {
         } else {
             self.selection.clear();
         }
+        self.selected_widget = if self.selection.is_empty() { widget } else { None };
         if let Some(&h) = self.selection.first() {
             self.select_ack(h);
         }
@@ -3584,10 +3613,23 @@ impl Scene {
         let w = &g.world;
         self.units.retain(|h, _| w.unit(*h).is_some());
         self.selection.retain(|h| w.unit(*h).is_some_and(|u| !u.dead));
-        // The portrait shows the first selected unit's portrait model.
-        let want = self.selection.first().copied();
+        if !self.selection.is_empty() {
+            self.selected_widget = None;
+        }
+        // A chosen destructable stays chosen while it stands.
+        self.selected_widget = self.selected_widget.filter(|&d| matches!(w.handles.get(d), Some(w3_game::types::Obj::Destructable(x)) if x.life > 0.0));
+        // The portrait shows the first selected unit's portrait model, or a chosen
+        // destructable's portraitmodel.
+        let want = self.selection.first().copied().or(self.selected_widget);
         if self.portrait.as_ref().map(|p| p.0) != want {
             self.portrait = want.and_then(|h| {
+                if let Some(w3_game::types::Obj::Destructable(d)) = w.handles.get(h) {
+                    let file = w.objects.destructables.get(d.type_id)?.str("portraitmodel");
+                    let model = assets.model(device, queue, &file)?;
+                    let mut v = UnitView { inst: ModelInstance::new(model), type_id: [0; 4], children: Vec::new(), serial: 0, requested: "portrait".into(), anim: String::new(), rng: h, queued: 0 };
+                    v.pick("portrait");
+                    return Some((h, v));
+                }
                 let u = w.unit(h)?;
                 let o = w.objects.units.get(u.type_id)?;
                 let file = o.str("file");
@@ -4141,6 +4183,12 @@ impl Scene {
             }
         }
         hud.show_unit(db, &g.world, self.selection.first().copied());
+        // A chosen destructable's name (CInfoPanelDestructableDetail).
+        let dest_name = self.selected_widget.filter(|_| self.selection.is_empty()).and_then(|h| match g.world.handles.get(h) {
+            Some(w3_game::types::Obj::Destructable(d)) => g.world.objects.destructables.get(d.type_id).map(|o| g.world.localized(&o.str("Name"))),
+            _ => None,
+        });
+        hud.show_destructable(dest_name.as_deref());
         let w = &g.world;
         let page = hud.page;
         hud.card = self.selection.first().map_or_else(Vec::new, |&h| card_of(&self.commands, db, w, h, page));

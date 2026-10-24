@@ -250,6 +250,14 @@ impl Hud {
         pin(&mut tree, bar, FramePoint::TopRight);
         pin(&mut tree, upper, FramePoint::TopLeft);
         tree.layout();
+        // A destructable's detail takes the same place.
+        if let Some(i) = tree.create(db, "SimpleInfoPanelDestructableDetail", 0) {
+            tree.frames[i].all_points = false;
+            tree.frames[i].width = Some(0.188125);
+            tree.frames[i].height = Some(0.114063);
+            tree.frames[i].points = vec![Point { point: FramePoint::BottomLeft, relative: None, relative_point: FramePoint::BottomLeft, x: 0.309375, y: 0.0 }];
+            tree.frames[i].visible = false;
+        }
         // The info panel's unit detail fills CInfoBar: 0.188125 x 0.114063 at (0.309375, 0).
         let mut building = None;
         let info = tree.create(db, "SimpleInfoPanelUnitDetail", 0);
@@ -1105,6 +1113,14 @@ impl Hud {
             let (x0, y1) = (r.x0 + 0.0095 + cell * k as f32, r.y0 + 0.040438);
             (w3_ui::Rect { x0, x1: x0 + 0.02301, y0: y1 - 0.02301, y1 }).contains(x, y)
         }).map(|k| k + 1)
+    }
+
+    /// A chosen destructable's name in SimpleInfoPanelDestructableDetail, or none.
+    pub fn show_destructable(&mut self, name: Option<&str>) {
+        self.tree.set_visible("SimpleInfoPanelDestructableDetail", name.is_some());
+        if let Some(n) = name {
+            self.tree.set_text("SimpleDestructableNameValue", n);
+        }
     }
 
     pub fn show_unit(&mut self, db: &FrameDb, world: &World, unit: Option<u32>) {

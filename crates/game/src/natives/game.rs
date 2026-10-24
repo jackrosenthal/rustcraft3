@@ -151,6 +151,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             boolean(ok)
         },
         SaveGameExists => |w, _, a| boolean(w.save_path(&a.s(0)).is_some_and(|p| p.exists())),
+        // The selections are already every computer's: each frame carries them.
         SyncSelections => |_, _, _| none(),
         IsNoVictoryCheat => |w, _, _| boolean(w.cheat(crate::cheats::flag::NO_VICTORY)),
         IsNoDefeatCheat => |w, _, _| boolean(w.cheat(crate::cheats::flag::NO_DEFEAT)),

@@ -120,8 +120,17 @@ pub struct Sentinel {
 }
 
 /// A suspended trigger thread and the event context it resumes with.
+/// How often sleeping threads are looked at, and when (the original's trigger sleeps
+/// wake on a coarse timer queue).
+pub const SLEEP_POLL: f32 = 0.1;
+pub const SLEEP_POLL_PHASE: f32 = 0.075;
+/// How much longer than its sleep a thread waits at least.
+pub const SLEEP_SLACK: f32 = 0.05;
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Sleeper {
+    /// When the thread may resume: the time it slept plus its sleep plus
+    /// [`SLEEP_SLACK`]; it resumes at the first sleep poll past this.
     pub wake_at: f32,
     pub thread: Thread,
     pub ctx: EventCtx,
@@ -952,7 +961,7 @@ impl World {
             Outcome::Finished(_) => {}
             Outcome::Sleeping(secs) => {
                 let ctx = self.ctx.clone();
-                self.sleepers.push(Sleeper { wake_at: self.time + secs.max(0.0), thread: t, ctx });
+                self.sleepers.push(Sleeper { wake_at: self.time + secs.max(0.0) + SLEEP_SLACK, thread: t, ctx });
             }
             Outcome::Aborted(e) => log::warn!("thread aborted: {e}"),
         }
@@ -1297,11 +1306,16 @@ impl World {
             self.fire(vm, ctx, |_, k| matches!(k, EventKind::TimerExpire(t) if *t == timer));
         }
 
-        // Sleeping threads.
-        let now = self.time;
+        // Sleeping threads resume on a poll every SLEEP_POLL seconds, at times
+        // SLEEP_POLL_PHASE past a multiple: those more than their sleep and SLEEP_SLACK
+        // past their start (measured from the original: TriggerSleepAction(0.5) lasts
+        // 0.6, (1) 1.1, and (0) until the next poll).
+        let poll = |t: f32| ((t - SLEEP_POLL_PHASE) / SLEEP_POLL).floor();
+        let polled = poll(self.time) > poll(self.time - dt);
+        let now = SLEEP_POLL_PHASE + poll(self.time) * SLEEP_POLL;
         let mut i = 0;
-        while i < self.sleepers.len() {
-            if self.sleepers[i].wake_at <= now {
+        while polled && i < self.sleepers.len() {
+            if self.sleepers[i].wake_at < now {
                 let s = self.sleepers.swap_remove(i);
                 self.run_thread(vm, s.thread, s.ctx);
             } else {

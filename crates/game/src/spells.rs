@@ -165,8 +165,11 @@ impl World {
                 } else {
                     0
                 };
+                // Drain's first transfer comes an interval after the cast, as in the
+                // original.
+                let next = if code == "AHdr" { interval } else { 0.0 };
                 if let Some(u) = self.unit_mut(h) {
-                    u.channel = Some(Channel { ability: a, level: lvl, target, x: px, y: py, elapsed: 0.0, duration, interval, next: 0.0, waves, link, held: [0; 4], lanes: 0, ai_fails: 0 });
+                    u.channel = Some(Channel { ability: a, level: lvl, target, x: px, y: py, elapsed: 0.0, duration, interval, next, waves, link, held: [0; 4], lanes: 0, ai_fails: 0 });
                 }
                 true
             }
@@ -718,7 +721,28 @@ impl World {
                 }
             }
             // Drain (Siphon Mana, Life Drain): each interval DataA life and DataB mana
-            // from the target to the caster.
+            // from an enemy to the caster; to an ally the caster gives DataD life and
+            // DataE mana a second, under DrainTransfersLife and DrainTransfersMana
+            // (CAbilityDrain::vf265), paying all of it though the ally fills, and it
+            // ends once the ally is full.
+            "AHdr" if self.unit(c.target).is_some_and(|t| crate::natives::players::is_ally(self, owner, t.owner)) => {
+                let life = if self.misc_f32("DrainTransfersLife", 1.0) != 0.0 { self.d(a, "DataD", lvl) * c.interval } else { 0.0 };
+                let mana = if self.misc_f32("DrainTransfersMana", 1.0) != 0.0 { self.d(a, "DataE", lvl) * c.interval } else { 0.0 };
+                let (life, mana) = self.unit(h).map_or((0.0, 0.0), |u| (life.min((u.life - 1.0).max(0.0)), mana.min(u.mana)));
+                if let Some(u) = self.unit_mut(h) {
+                    u.life -= life;
+                    u.mana -= mana;
+                }
+                let mut full = true;
+                if let Some(t) = self.unit_mut(c.target) {
+                    t.life = (t.life + life).min(t.max_life);
+                    t.mana = (t.mana + mana).min(t.max_mana);
+                    full = (life == 0.0 || t.life >= t.max_life) && (mana == 0.0 || t.mana >= t.max_mana);
+                }
+                if full {
+                    c.elapsed = c.duration + 1.0;
+                }
+            }
             "AHdr" => {
                 let take = self.unit(c.target).map_or(0.0, |t| t.mana.min(self.d(a, "DataB", lvl)));
                 if let Some(t) = self.unit_mut(c.target) {

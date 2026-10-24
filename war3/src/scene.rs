@@ -272,6 +272,10 @@ impl UnitView {
             // A stand of any kind ("stand work gold") plays again.
             let again = self.requested.starts_with("stand").then(|| self.requested.clone());
             let next = match self.anim.as_str() {
+                // A hero's body dissipates once its death has played (the original shows
+                // its Dissipate before it is gone, DissipateTime after its death).
+                "death" if !w3_render::anim::sequences_named(&self.inst.model.mdx, "dissipate").is_empty() => Some("dissipate".to_string()),
+                "dissipate" => None,
                 "death" => Some("decay flesh".to_string()),
                 "decay flesh" => Some("decay bone".to_string()),
                 "decay bone" => None,

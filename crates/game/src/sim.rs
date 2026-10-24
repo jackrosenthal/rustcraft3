@@ -994,9 +994,12 @@ impl World {
                     }
                 }
                 let Some(u) = self.unit(h) else { continue };
-                // Dead heroes stay, out of sight, to be revived.
+                // Dead heroes stay, out of sight, to be revived: they dissipate once their
+                // death has played (measured: a Paladin, death 1.5, is hidden 4.55 seconds
+                // after dying, a Blademaster, 1.9, after 4.95).
                 if u.is_hero {
-                    if t > decay && !u.hidden {
+                    let gone = if u.extra.exploded { 0.0 } else { death + self.misc_f32("DissipateTime", 3.0) };
+                    if t > gone && !u.hidden {
                         self.unit_mut(h).unwrap().hidden = true;
                     }
                 } else if t > decay {

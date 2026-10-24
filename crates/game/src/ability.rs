@@ -323,7 +323,9 @@ impl World {
     }
 
     pub fn is_ethereal(&self, h: u32) -> bool {
-        self.has_buff_flag(h, |b| b.ethereal)
+        // A buff (Banish), or the Ethereal ability itself (Aetl; measured: a footman
+        // given it takes nothing from piercing attacks and 1.66 times from magic ones).
+        self.has_buff_flag(h, |b| b.ethereal) || self.ability_with_code(h, "Aetl").is_some()
     }
 
     /// The factor on damage of an attack type to an ethereal unit: its entry in

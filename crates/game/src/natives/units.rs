@@ -342,6 +342,11 @@ fn script_damage(w: &mut World, vm: &mut Vm, src: u32, target: u32, amount: f32,
     if attack_type == 0 && !physical {
         return w.spell_damage(vm, src, target, amount);
     }
+    // Spells of DAMAGE_TYPE_NORMAL meet an ethereal unit as a normal attack would
+    // (measured: nothing, where of DAMAGE_TYPE_MAGIC they deal 1.66 times).
+    if attack_type == 0 && w.is_ethereal(target) && w.ethereal_factor(src, target, "normal") <= 0.0 {
+        return;
+    }
     let name = match attack_type {
         0 => "spells",
         1 => "normal",

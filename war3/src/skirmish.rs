@@ -28,6 +28,8 @@ pub enum EntryKind {
     Save,
     /// A custom campaign (the Custom Campaign screen).
     Campaign,
+    /// A replay (the View Replay screen).
+    Replay,
 }
 
 /// What the Custom Campaign screen shows about the selected campaign.
@@ -129,6 +131,8 @@ pub struct Skirmish {
     maps_root: PathBuf,
     /// The selected custom campaign.
     pub campaign: Option<CampaignSummary>,
+    /// The selected replay's players.
+    replay_players: Option<usize>,
 }
 
 /// The Custom Campaign screen's list frame (as on the Load Saved Game screen, whose
@@ -160,6 +164,7 @@ impl Skirmish {
             player_name: String::new(),
             maps_root: game_dir.join("Maps"),
             campaign: None,
+            replay_players: None,
         }
     }
 
@@ -220,6 +225,18 @@ impl Skirmish {
         let Some(e) = self.entries.get(i) else { return };
         if e.kind == EntryKind::Campaign {
             self.campaign = CampaignSummary::read(&e.path);
+            return;
+        }
+        if e.kind == EntryKind::Replay {
+            // The replay's map, as a file or in the game's archives.
+            let replay = std::fs::read(&e.path).ok().and_then(|b| w3_game::replay::Replay::parse(&b).ok());
+            self.replay_players = replay.as_ref().and_then(|r| r.lobby.as_ref()).map(|l| l.iter().filter(|s| !matches!(s.fill, w3_game::SlotFill::Empty)).count());
+            let map = replay.map(|r| r.map);
+            self.summary = map.and_then(|m| {
+                let p = PathBuf::from(&m);
+                if p.is_file() { summarize(&p, true) } else { self.chain.as_ref().and_then(|c| summarize_from(c, &m)) }
+            });
+            self.preview_dirty = true;
             return;
         }
         if e.kind == EntryKind::Save {
@@ -396,6 +413,46 @@ impl Skirmish {
         (e.kind == EntryKind::Campaign).then(|| e.path.clone())
     }
 
+    /// Lists the replays in `dir` (the Replay folder, its folders first) for the View
+    /// Replay screen, and selects the first.
+    pub fn attach_replays(&mut self, tree: &mut FrameTree, db: &FrameDb, dir: &Path) {
+        self.list_frame = "FileListFrame";
+        for (template, container) in [("MapListBox", "FileListFrame"), ("MapInfoPane", "MapInfoPaneContainer")] {
+            if let (Some(parent), true) = (tree.get(container), db.templates.contains_key(template)) {
+                if let Some(i) = tree.create(db, template, parent) {
+                    tree.frames[i].all_points = true;
+                }
+            }
+        }
+        Self::layout_info_at(tree, [0.001, -0.033, -0.172, -0.2233]);
+        let mut entries = Vec::new();
+        if let Ok(rd) = std::fs::read_dir(dir) {
+            let mut files: Vec<_> = rd.flatten().map(|e| e.path()).collect();
+            files.sort();
+            for p in files {
+                let name = p.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                if p.is_dir() {
+                    entries.insert(0, Entry { name, path: p, kind: EntryKind::Folder, players: 0, melee: false });
+                } else if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("w3g")) {
+                    entries.push(Entry { name, path: p, kind: EntryKind::Replay, players: 0, melee: false });
+                }
+            }
+        }
+        self.entries = entries;
+        self.scroll = 0;
+        self.selected = None;
+        self.summary = None;
+        if let Some(i) = self.entries.iter().position(|e| e.kind == EntryKind::Replay) {
+            self.select(i);
+        }
+        self.fill_info(tree, db);
+    }
+
+    pub fn selected_replay(&self) -> Option<PathBuf> {
+        let e = self.entries.get(self.selected?)?;
+        (e.kind == EntryKind::Replay).then(|| e.path.clone())
+    }
+
     /// Back to the Custom Game screen's map list.
     pub fn detach_saves(&mut self) {
         if self.list_frame != "MapListContainer" {
@@ -476,6 +533,8 @@ impl Skirmish {
             return;
         };
         tree.set_text("MapNameValue", &s.text(&s.info.name));
+        let players = self.replay_players.unwrap_or_else(|| s.info.players.len());
+        tree.set_text("NumPlayersValue", &players.to_string());
         tree.set_text("MaxPlayersValue", &s.user_slots().to_string());
         tree.set_text("SuggestedPlayersValue", &s.text(&s.info.recommended_players));
         // [MapSizes]: the first size whose area bound is at least the playable area
@@ -578,7 +637,7 @@ impl Skirmish {
                 // game.dll's file icons (0x6faa37c4): melee and custom maps, files.
                 EntryKind::Map if e.melee => "ui\\widgets\\glues\\icon-file-melee.blp",
                 EntryKind::Map => "ui\\widgets\\glues\\icon-file-ums.blp",
-                EntryKind::Save | EntryKind::Campaign => "ui\\widgets\\glues\\icon-file.blp",
+                EntryKind::Save | EntryKind::Campaign | EntryKind::Replay => "ui\\widgets\\glues\\icon-file.blp",
             };
             let ir = if saves { Rect { x0: row.x0 + 0.004, x1: row.x0 + 0.004 + ROW, y0: row.y0, y1: row.y1 } } else { Rect { x0: row.x0 + 0.004, x1: row.x0 + 0.004 + ROW * 0.9 * 0.75, y0: row.y0 + ROW * 0.05, y1: row.y1 - ROW * 0.05 } };
             out.push(Draw::Image { texture: icon.into(), rect: ir, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });

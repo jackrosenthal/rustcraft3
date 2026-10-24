@@ -26,6 +26,8 @@ struct Running {
     /// A map to load once the loading screen has been drawn.
     /// The map to load next, with the setup screen's choices or a saved game's state.
     pending: Option<(std::path::PathBuf, Option<Vec<w3_game::LobbySlot>>, Option<w3_game::save::SaveGame>)>,
+    /// A replay to watch on the pending map.
+    pending_replay: Option<w3_game::replay::Replay>,
     /// A loaded campaign mission waiting for a key on its loading screen.
     ready: Option<Scene>,
     /// Sound output, handed to each game.
@@ -135,6 +137,7 @@ impl App {
             glue,
             glue_saved: None,
             pending: None,
+            pending_replay: None,
             ready: None,
             audio,
             assets,
@@ -466,10 +469,24 @@ impl ApplicationHandler for App {
                                 Err(e) => log::error!("loading {}: {e:#}", file.display()),
                             }
                         }
+                        Some(crate::glue::GlueAction::WatchReplay(file)) => {
+                            match std::fs::read(&file).map_err(anyhow::Error::from).and_then(|b| w3_game::replay::Replay::parse(&b)) {
+                                Ok(replay) => {
+                                    self.data.campaign_game.set(replay.campaign);
+                                    let path = std::path::PathBuf::from(&replay.map);
+                                    glue.skirmish.summary = if path.is_file() { crate::skirmish::summarize_path(&path) } else { crate::skirmish::summarize_from(&self.data.chain, &replay.map) };
+                                    glue.show_loading(&mut r.assets);
+                                    r.pending = Some((path, None, None));
+                                    r.pending_replay = Some(replay);
+                                }
+                                Err(e) => log::error!("replay {}: {e:#}", file.display()),
+                            }
+                        }
                         None if r.pending.is_some() => {
                             let (path, slots, restore) = r.pending.take().unwrap();
                             let aspect = size.0 as f32 / size.1.max(1) as f32;
-                            match Scene::load(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets, &path, aspect, slots.as_deref(), restore, None) {
+                            let replay = r.pending_replay.take();
+                            match Scene::load(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets, &path, aspect, slots.as_deref(), restore, replay) {
                                 Ok(s) => {
                                     if self.data.campaign_game.get() {
                                         // Campaign missions wait on their loading screen for a

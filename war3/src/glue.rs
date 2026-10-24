@@ -23,6 +23,8 @@ pub enum GlueAction {
     LoadSave(std::path::PathBuf),
     /// The same map again with the same setup.
     Restart(std::path::PathBuf, Option<Vec<w3_game::LobbySlot>>),
+    /// A replay file to watch.
+    WatchReplay(std::path::PathBuf),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +44,8 @@ pub enum Screen {
     Options,
     /// CCustomCampaignMenu: choosing a custom campaign from the Campaigns folder.
     CustomCampaign,
+    /// CViewReplayScreen: the kept replays.
+    ViewReplay,
 }
 
 impl Screen {
@@ -58,7 +62,7 @@ impl Screen {
             Screen::Campaign => "Campaign",
             Screen::Options => "Options",
             // Laid out as the saved games screen is.
-            Screen::CustomCampaign => "BattlenetCustomCreate",
+            Screen::CustomCampaign | Screen::ViewReplay => "BattlenetCustomCreate",
             Screen::Loading | Screen::Score => "",
         }
     }
@@ -75,6 +79,7 @@ impl Screen {
             Screen::Score => "ScoreScreenFrame",
             Screen::Options => "OptionsMenu",
             Screen::CustomCampaign => "CustomCampaignMenu",
+            Screen::ViewReplay => "ViewReplayScreen",
         }
     }
 }
@@ -303,6 +308,11 @@ impl Glue {
                 // CCampaignMenu::vf55: Normal and Hard, from the profile's difficulty.
                 let hard = self.persist.borrow().difficulty == 2;
                 self.tree.set_items("DifficultySelect", vec![db.string("NORMAL"), db.string("HARD")], hard as usize);
+            }
+            Screen::ViewReplay => {
+                self.skirmish.detach_saves();
+                let dir = crate::data::replay_dir().unwrap_or_default();
+                self.skirmish.attach_replays(&mut self.tree, db, &dir);
             }
             Screen::CustomCampaign => {
                 self.skirmish.detach_saves();
@@ -562,7 +572,7 @@ impl Glue {
                 self.profile_event(e, assets);
             }
         }
-        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign) {
+        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign | Screen::ViewReplay) {
             self.skirmish.click(&mut self.tree, &assets.frames, x, y);
         }
         if self.screen == Screen::Campaign && self.phase == Phase::Stand {
@@ -750,6 +760,13 @@ impl Glue {
                 }
             }
             (Screen::SinglePlayer, "CustomCampaignButton") => self.show(Screen::CustomCampaign, assets),
+            (Screen::SinglePlayer, "ViewReplayButton") => self.show(Screen::ViewReplay, assets),
+            (Screen::ViewReplay, "CancelButton") => self.show(Screen::SinglePlayer, assets),
+            (Screen::ViewReplay, "OKButton") => {
+                if let Some(path) = self.skirmish.selected_replay() {
+                    self.action = Some(GlueAction::WatchReplay(path));
+                }
+            }
             (Screen::CustomCampaign, "CancelButton") => self.show(Screen::SinglePlayer, assets),
             (Screen::CustomCampaign, "OKButton") => self.open_custom_campaign(assets),
             (Screen::Campaign, "BackButton") if self.campaigns.custom.is_some() => {
@@ -1090,7 +1107,7 @@ impl Glue {
         if self.screen == Screen::Score {
             self.score_draws(&assets.frames, &mut draws);
         }
-        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign) && self.phase == Phase::Stand {
+        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign | Screen::ViewReplay) && self.phase == Phase::Stand {
             self.skirmish.draws(&self.tree, &assets.frames, &mut draws);
         }
         if self.screen == Screen::SinglePlayer && self.phase == Phase::Stand && self.dialog.is_none() {

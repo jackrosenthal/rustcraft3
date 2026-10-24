@@ -879,6 +879,12 @@ impl Glue {
         self.tree.set_point("DialogWar3", P::Center, self.screen.frame(), P::Center, 0.0, 0.0);
         self.tree.set_visible("DialogWar3", true);
         self.tree.set_text("DialogText", text);
+        // The icon by the kind of message (FUN_6f2ba120): a question for Yes and No; the
+        // messages with OK here are all errors.
+        if let Some(i) = self.tree.get("DialogIcon") {
+            let icon = if yes_no { "ui\\widgets\\glues\\dialogbox-question.blp" } else { "ui\\widgets\\glues\\dialogbox-error.blp" };
+            self.tree.frames[i].texture = Some(icon.to_string());
+        }
         for (n, show) in [("DialogButtonOK", !yes_no), ("DialogButtonYes", yes_no), ("DialogButtonNo", yes_no)] {
             self.tree.set_visible(&format!("{n}Backdrop"), show);
             self.tree.set_visible(n, show);
@@ -1135,10 +1141,13 @@ impl Glue {
                 self.lan.leave();
                 self.show(Screen::LanJoin, assets);
             }
-            (Screen::LanLobby, "StartGameButton") => {
-                self.lan.begin_start();
-                self.tree.set_enabled("StartGameButton", false);
-            }
+            (Screen::LanLobby, "StartGameButton") => match self.lan.begin_start() {
+                Some(key) => {
+                    let text = assets.frames.string(key);
+                    self.show_dialog(&text, false, DialogAction::Notice, assets);
+                }
+                None => self.tree.set_enabled("StartGameButton", false),
+            },
             (Screen::LanLobby, other) => self.lan.button(&mut self.tree, &assets.frames, other),
             _ => log::debug!("glue button {name} has no handler yet"),
         }

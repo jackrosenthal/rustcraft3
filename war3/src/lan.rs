@@ -427,11 +427,26 @@ impl Lan {
         self.sounds.push("ChatroomTimerTick".to_string());
     }
 
-    /// The host presses Start Game: the countdown begins (FUN_6f2f9ce0).
-    pub fn begin_start(&mut self) {
-        if self.host.is_some() && self.countdown.is_none() {
-            self.countdown = Some(0.0);
+    /// The host presses Start Game (FUN_6f2f9ce0): with fewer than two players, fewer
+    /// than two who are not observers, or all of them on one team, the message to show;
+    /// otherwise the countdown begins.
+    pub fn begin_start(&mut self) -> Option<&'static str> {
+        if self.host.is_none() || self.countdown.is_some() {
+            return None;
         }
+        let used: Vec<i32> = self.setup.slots.iter().filter(|s| matches!(s.holder, Holder::Human(_) | Holder::Computer(_))).map(|s| s.team).collect();
+        let playing: Vec<i32> = used.iter().copied().filter(|&t| t != OBSERVERS).collect();
+        if used.len() == 1 {
+            return Some("NEED_MORE_THAN_ONE");
+        }
+        if playing.len() < 2 {
+            return Some("NEED_AT_LEAST_TWO");
+        }
+        if playing.iter().all(|&t| t == playing[0]) {
+            return Some("NEED_MORE_TEAMS");
+        }
+        self.countdown = Some(0.0);
+        None
     }
 
     /// The host's countdown: each second "Game starting in" five down to one, everyone

@@ -4258,8 +4258,10 @@ impl Scene {
         }
         let recipient = self.chat_recipient();
         let tooltips = self.options.tooltips;
+        let targeting = self.targeting.is_some();
         let (Some(hud), Some(g)) = (self.hud.as_mut(), self.game.as_ref()) else { return };
         hud.tooltips = tooltips;
+        hud.set_targeting(targeting);
         hud.update(db, &g.world);
         hud.sync_dialog(db, &g.world, g.world.local_player, aspect);
         if std::mem::take(&mut self.chat_dialog_requested) {

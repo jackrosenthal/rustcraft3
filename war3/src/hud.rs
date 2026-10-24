@@ -111,6 +111,10 @@ pub struct Hud {
     pub unit_message_offset: (f32, f32),
     /// WorldFrameMessage: the error line above the console.
     pub error_message: Option<Message>,
+    /// "Select Target" in the message frame while choosing a target (CTargetMode::vf9),
+    /// and whether target mode was on.
+    target_prompt: bool,
+    targeting: bool,
     pub dialog: Option<DialogView>,
     /// Timer dialogs, the multiboard, and the leaderboard.
     pub boards: Option<crate::boards::BoardsView>,
@@ -348,6 +352,8 @@ impl Hud {
             chat_messages: Vec::new(),
             unit_message_offset: (0.0, 0.0),
             error_message: None,
+            target_prompt: false,
+            targeting: false,
             dialog: None,
             boards: None,
             menu: None,
@@ -1692,6 +1698,19 @@ impl Hud {
     /// Shows an error line for 10 seconds, replacing the previous one (FUN_6f36de80).
     pub fn error(&mut self, text: &str) {
         self.error_message = Some(Message { text: text.to_string(), until: self.now + 10.0 });
+        self.target_prompt = false;
+    }
+
+    /// Follows target mode: entering it clears the message frame for "Select Target".
+    pub fn set_targeting(&mut self, on: bool) {
+        if on && !self.targeting {
+            self.error_message = None;
+            self.target_prompt = true;
+        }
+        if !on {
+            self.target_prompt = false;
+        }
+        self.targeting = on;
     }
 
     /// Shows the first script dialog displayed to `player`, rebuilding its frames when it
@@ -1833,9 +1852,16 @@ impl Hud {
         let shadow = Some(([0.0, 0.0, 0.0, 1.0], 0.001, -0.001));
         // WorldFrameMessage: 0.38 x 0.05, its bottom 0.18 above the bottom of the screen.
         let msg = w3_ui::Rect { x0: cx - 0.19, x1: cx + 0.19, y0: root.y0 + 0.18, y1: root.y0 + 0.23 };
-        if let Some(m) = &self.error_message {
+        // Its text runs from its left edge in gold (0xfed312, as captured from the
+        // original): an error, or "Select Target".
+        let message = match &self.error_message {
+            Some(m) => Some(m.text.clone()),
+            None => self.target_prompt.then(|| db.string("SELECTTARGET")),
+        };
+        if let Some(text) = message {
             let size = height("WorldFrameMessage");
-            out.push(Draw::Text { font: font.clone(), size, rect: msg, text: m.text.clone(), color: [1.0; 4], justify_h: w3_ui::Justify::Middle, justify_v: w3_ui::Justify::End, shadow });
+            let gold = [0xfe as f32 / 255.0, 0xd3 as f32 / 255.0, 0x12 as f32 / 255.0, 1.0];
+            out.push(Draw::Text { font: font.clone(), size, rect: msg, text, color: gold, justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow });
         }
         // WorldFrameUnitMessage: 0.5 x 0.25 with its bottom center on the message frame's
         // top, 0.098125 left of center and 0.0005 up at offset (0, 0); offsets of 1 move

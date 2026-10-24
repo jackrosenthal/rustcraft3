@@ -52,6 +52,21 @@ pub fn order_id(name: &str) -> i32 {
     ORDERS.iter().find(|(_, n)| n.eq_ignore_ascii_case(name)).map_or(0, |(i, _)| *i)
 }
 
+/// A unit type by its name ("footman"), as UnitId reads it.
+pub fn unit_id_by_name(w: &World, name: &str) -> i32 {
+    let id = w.objects.units.objects.iter().find(|(_, o)| o.str("Name").eq_ignore_ascii_case(name) || o.str("unitName").eq_ignore_ascii_case(name)).map(|(id, _)| *id);
+    id.map_or(0, crate::objects::id_to_int)
+}
+
+/// The order an Issue native's string names: an order, else a unit type by name (the
+/// one to train or build), as FUN_6f20f320 looks it up.
+pub fn issue_order_id(w: &World, name: &str) -> i32 {
+    match order_id(name) {
+        0 => unit_id_by_name(w, name),
+        id => id,
+    }
+}
+
 pub fn order_name(id: i32) -> Option<&'static str> {
     ORDERS.iter().find(|(i, _)| *i == id).map(|(_, n)| *n)
 }
@@ -139,11 +154,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             Some(n) => string(n),
             None => none(),
         },
-        UnitId => |w, _, a| {
-            let name = a.s(0);
-            let id = w.objects.units.objects.iter().find(|(_, o)| o.str("Name").eq_ignore_ascii_case(&name) || o.str("unitName").eq_ignore_ascii_case(&name)).map(|(id, _)| *id);
-            int(id.map_or(0, crate::objects::id_to_int))
-        },
+        UnitId => |w, _, a| int(unit_id_by_name(w, &a.s(0))),
         UnitId2String => |w, _, a| {
             let id = id_from_int(a.i(0));
             match w.objects.units.get(id) {

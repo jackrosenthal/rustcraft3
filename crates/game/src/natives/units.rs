@@ -443,6 +443,22 @@ fn for_group(w: &mut World, vm: &mut Vm, a: &[Value]) -> NativeResult {
 
 fn issue_order(w: &mut World, vm: &mut Vm, unit: u32, order: i32, x: f32, y: f32, target: u32) -> NativeResult {
     let Some(owner) = w.unit(unit).map(|u| u.owner) else { return boolean(false) };
+    // An order that is a unit type or a research: a structure trains it, researches it,
+    // or becomes it (a town hall to a keep); a worker builds it at the point.
+    let id = id_from_int(order);
+    let is_unit_type = w.objects.units.get(id).is_some();
+    let is_research = w.objects.upgrades.get(id).is_some();
+    if is_unit_type || is_research {
+        let ok = if is_research {
+            w.research_at(unit, id).is_ok()
+        } else if w.unit(unit).is_some_and(|u| u.is_building) {
+            let upgrades_to = w.unit(unit).and_then(|u| w.objects.units.get(u.type_id)).is_some_and(|o| o.list("Upgrade").iter().any(|b| crate::objects::id_from_str(b.trim()) == id));
+            if upgrades_to { w.upgrade_structure(unit, id).is_ok() } else { w.train(unit, id).is_ok() }
+        } else {
+            return issue_build(w, unit, id, x, y);
+        };
+        return boolean(ok);
+    }
     w.order_error = None;
     w.order_unit(unit, order, x, y, target);
     // A refused order (a target the ability does not allow) is not issued.
@@ -791,17 +807,24 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             }
             boolean(true)
         },
-        IssueInstantPointOrder => |w, vm, a| issue_order(w, vm, a.h(0), crate::natives::basic::order_id(&a.s(1)), a.r(2), a.r(3), 0),
+        IssueInstantPointOrder => |w, vm, a| issue_order(w, vm, a.h(0), crate::natives::basic::issue_order_id(w, &a.s(1)), a.r(2), a.r(3), 0),
         IssueInstantPointOrderById => |w, vm, a| issue_order(w, vm, a.h(0), a.i(1), a.r(2), a.r(3), 0),
-        IssueInstantTargetOrder => |w, vm, a| issue_order(w, vm, a.h(0), crate::natives::basic::order_id(&a.s(1)), 0.0, 0.0, a.h(2)),
+        IssueInstantTargetOrder => |w, vm, a| issue_order(w, vm, a.h(0), crate::natives::basic::issue_order_id(w, &a.s(1)), 0.0, 0.0, a.h(2)),
         IssueInstantTargetOrderById => |w, vm, a| issue_order(w, vm, a.h(0), a.i(1), 0.0, 0.0, a.h(2)),
-        IssueNeutralImmediateOrder => |w, vm, a| issue_order(w, vm, a.h(1), crate::natives::basic::order_id(&a.s(2)), 0.0, 0.0, 0),
+        IssueNeutralImmediateOrder => |w, vm, a| issue_order(w, vm, a.h(1), crate::natives::basic::issue_order_id(w, &a.s(2)), 0.0, 0.0, 0),
         IssueNeutralImmediateOrderById => |w, vm, a| issue_order(w, vm, a.h(1), a.i(2), 0.0, 0.0, 0),
-        IssueNeutralPointOrder => |w, vm, a| issue_order(w, vm, a.h(1), crate::natives::basic::order_id(&a.s(2)), a.r(3), a.r(4), 0),
+        IssueNeutralPointOrder => |w, vm, a| issue_order(w, vm, a.h(1), crate::natives::basic::issue_order_id(w, &a.s(2)), a.r(3), a.r(4), 0),
         IssueNeutralPointOrderById => |w, vm, a| issue_order(w, vm, a.h(1), a.i(2), a.r(3), a.r(4), 0),
-        IssueNeutralTargetOrder => |w, vm, a| issue_order(w, vm, a.h(1), crate::natives::basic::order_id(&a.s(2)), 0.0, 0.0, a.h(3)),
+        IssueNeutralTargetOrder => |w, vm, a| issue_order(w, vm, a.h(1), crate::natives::basic::issue_order_id(w, &a.s(2)), 0.0, 0.0, a.h(3)),
         IssueNeutralTargetOrderById => |w, vm, a| issue_order(w, vm, a.h(1), a.i(2), 0.0, 0.0, a.h(3)),
-        IssueBuildOrder => |w, _, a| { let id = crate::objects::id_from_str(&a.s(1)); issue_build(w, a.h(0), id, a.r(2), a.r(3)) },
+        // The structure by its name (UnitId), as jass_IssueBuildOrder looks it up.
+        IssueBuildOrder => |w, _, a| {
+            let id = crate::natives::basic::unit_id_by_name(w, &a.s(1));
+            if id == 0 {
+                return boolean(false);
+            }
+            issue_build(w, a.h(0), crate::objects::id_from_int(id), a.r(2), a.r(3))
+        },
         IssueBuildOrderById => |w, _, a| { let id = id_from_int(a.i(1)); issue_build(w, a.h(0), id, a.r(2), a.r(3)) },
         WaygateGetDestinationX => |w, _, a| real(unit_arg(w, a, 0).and_then(|u| u.extra.waygate).map_or(0.0, |g| g.0)),
         WaygateGetDestinationY => |w, _, a| real(unit_arg(w, a, 0).and_then(|u| u.extra.waygate).map_or(0.0, |g| g.1)),
@@ -914,19 +937,19 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             boolean(true)
         },
         GetUnitCurrentOrder => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.order.id)),
-        IssueImmediateOrder => |w, vm, a| issue_order(w, vm, a.h(0), crate::natives::basic::order_id(&a.s(1)), 0.0, 0.0, 0),
+        IssueImmediateOrder => |w, vm, a| issue_order(w, vm, a.h(0), crate::natives::basic::issue_order_id(w, &a.s(1)), 0.0, 0.0, 0),
         IssueImmediateOrderById => |w, vm, a| issue_order(w, vm, a.h(0), a.i(1), 0.0, 0.0, 0),
-        IssuePointOrder => |w, vm, a| issue_order(w, vm, a.h(0), crate::natives::basic::order_id(&a.s(1)), a.r(2), a.r(3), 0),
+        IssuePointOrder => |w, vm, a| issue_order(w, vm, a.h(0), crate::natives::basic::issue_order_id(w, &a.s(1)), a.r(2), a.r(3), 0),
         IssuePointOrderById => |w, vm, a| issue_order(w, vm, a.h(0), a.i(1), a.r(2), a.r(3), 0),
         IssuePointOrderLoc => |w, vm, a| {
             let (x, y) = w.location(a.h(2)).unwrap_or_default();
-            issue_order(w, vm, a.h(0), crate::natives::basic::order_id(&a.s(1)), x, y, 0)
+            issue_order(w, vm, a.h(0), crate::natives::basic::issue_order_id(w, &a.s(1)), x, y, 0)
         },
         IssuePointOrderByIdLoc => |w, vm, a| {
             let (x, y) = w.location(a.h(2)).unwrap_or_default();
             issue_order(w, vm, a.h(0), a.i(1), x, y, 0)
         },
-        IssueTargetOrder => |w, vm, a| issue_order(w, vm, a.h(0), crate::natives::basic::order_id(&a.s(1)), 0.0, 0.0, a.h(2)),
+        IssueTargetOrder => |w, vm, a| issue_order(w, vm, a.h(0), crate::natives::basic::issue_order_id(w, &a.s(1)), 0.0, 0.0, a.h(2)),
         IssueTargetOrderById => |w, vm, a| issue_order(w, vm, a.h(0), a.i(1), 0.0, 0.0, a.h(2)),
         GetIssuedOrderId => |w, _, _| int(w.ctx.order_id),
         GetOrderPointX => |w, _, _| real(w.ctx.order_x),
@@ -1010,7 +1033,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         GroupImmediateOrder => |w, vm, a| {
-            let order = crate::natives::basic::order_id(&a.s(1));
+            let order = crate::natives::basic::issue_order_id(w, &a.s(1));
             for u in w.group(a.h(0)).map(|g| g.units.clone()).unwrap_or_default() { issue_order(w, vm, u, order, 0.0, 0.0, 0); }
             boolean(true)
         },
@@ -1019,7 +1042,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             boolean(true)
         },
         GroupPointOrder => |w, vm, a| {
-            let order = crate::natives::basic::order_id(&a.s(1));
+            let order = crate::natives::basic::issue_order_id(w, &a.s(1));
             for u in w.group(a.h(0)).map(|g| g.units.clone()).unwrap_or_default() { issue_order(w, vm, u, order, a.r(2), a.r(3), 0); }
             boolean(true)
         },
@@ -1028,7 +1051,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             boolean(true)
         },
         GroupPointOrderLoc => |w, vm, a| {
-            let order = crate::natives::basic::order_id(&a.s(1));
+            let order = crate::natives::basic::issue_order_id(w, &a.s(1));
             let (x, y) = w.location(a.h(2)).unwrap_or_default();
             for u in w.group(a.h(0)).map(|g| g.units.clone()).unwrap_or_default() { issue_order(w, vm, u, order, x, y, 0); }
             boolean(true)
@@ -1039,7 +1062,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             boolean(true)
         },
         GroupTargetOrder => |w, vm, a| {
-            let order = crate::natives::basic::order_id(&a.s(1));
+            let order = crate::natives::basic::issue_order_id(w, &a.s(1));
             for u in w.group(a.h(0)).map(|g| g.units.clone()).unwrap_or_default() { issue_order(w, vm, u, order, 0.0, 0.0, a.h(2)); }
             boolean(true)
         },

@@ -595,11 +595,32 @@ impl World {
     }
 
     /// Steps along the unit's path; returns true when it has arrived.
-    /// How fast a unit moves now: its speed with items, upgrades, and buffs.
+    /// How fast a unit moves now: its speed with items, upgrades, and buffs, kept
+    /// within its type's minSpd and maxSpd, or where those are 0 MinUnitSpeed and
+    /// MaxUnitSpeed (MinBldgSpeed and MaxBldgSpeed for a structure), each held to 1 to
+    /// 522 (FUN_6f5fc900, FUN_6f68b0e0).
     pub fn current_move_speed(&self, h: u32) -> f32 {
         let Some(u) = self.unit(h) else { return 0.0 };
+        if u.move_speed <= 0.0 {
+            return 0.0;
+        }
         let ub = self.upgrade_bonus(u.owner, u.type_id);
-        (u.move_speed + u.item_bonus.move_speed + ub.move_speed) * (1.0 + ub.move_pct) * self.buff_mods(h).0
+        let speed = (u.move_speed + u.item_bonus.move_speed + ub.move_speed) * (1.0 + ub.move_pct) * self.buff_mods(h).0;
+        const LIMITS: (f32, f32) = (1.0, 522.0);
+        let (min_key, max_key) = if u.is_building { ("MinBldgSpeed", "MaxBldgSpeed") } else { ("MinUnitSpeed", "MaxUnitSpeed") };
+        let o = self.objects.units.get(u.type_id);
+        let own = |k: &str| o.map_or(0.0, |o| o.real(k));
+        let global_min = self.misc_f32(min_key, 150.0).max(LIMITS.0);
+        let global_max = self.misc_f32(max_key, 400.0).min(LIMITS.1).max(global_min);
+        let min = match own("minSpd") {
+            0.0 => global_min,
+            v => v.clamp(LIMITS.0, LIMITS.1),
+        };
+        let max = match own("maxSpd") {
+            0.0 => global_max,
+            v => v.clamp(LIMITS.0, LIMITS.1),
+        };
+        speed.max(min).min(max)
     }
 
     /// Units ordered to a point together move in formation (Tip39 to Tip41): each at

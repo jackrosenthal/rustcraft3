@@ -1240,6 +1240,14 @@ impl FrameTree {
                     r.y1 = y + 2.0 * (1.0 - ay);
                     jv = if ay > 0.75 { Justify::Start } else if ay < 0.25 { Justify::End } else { Justify::Middle };
                 }
+                // FontJustificationOffset moves the text from where it is justified.
+                let r = match d.prop("FontJustificationOffset") {
+                    Some(p) => {
+                        let (dx, dy) = (p.args.first().map_or(0.0, Arg::num), p.args.get(1).map_or(0.0, Arg::num));
+                        Rect { x0: r.x0 + dx, x1: r.x1 + dx, y0: r.y0 + dy, y1: r.y1 + dy }
+                    }
+                    None => r,
+                };
                 // A pressed button moves its text by ButtonPushedTextOffset.
                 let r = match owner.filter(|o| o.pushed).and_then(|o| o.def.prop("ButtonPushedTextOffset")) {
                     Some(p) => {

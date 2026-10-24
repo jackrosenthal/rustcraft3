@@ -384,10 +384,14 @@ impl ApplicationHandler for App {
                     // A model cinematic the level asked for plays first (PlayModelCinematic,
                     // FUN_6f1e05a0), then what follows.
                     let cinematic = if scene.ended || change.is_some() { scene.game.as_mut().and_then(|g| g.world.model_cinematic.take()) } else { None };
+                    let campaign_select = scene.game.as_ref().is_some_and(|g| g.world.force_campaign_select);
                     if scene.ended || change.is_some() {
                         if let Some(g) = scene.game.as_ref() {
                             *self.data.persist.borrow_mut() = g.world.persist.clone();
                             self.data.save_profile();
+                        }
+                        if let (true, Some(glue)) = (campaign_select, r.glue_saved.as_mut()) {
+                            glue.campaigns.open = None;
                         }
                         if let Some(replay) = scene.take_replay() {
                             crate::replays::keep(&replay);

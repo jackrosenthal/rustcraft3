@@ -114,7 +114,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         ReloadGame => |_, _, _| none(),
         SetCampaignMenuRace => |w, _, a| { w.persist.menu_race = a.h(0) as i32; none() },
         SetCampaignMenuRaceEx => |w, _, a| { w.persist.menu_race = a.i(0); none() },
-        ForceCampaignSelectScreen => |_, _, _| none(),
+        ForceCampaignSelectScreen => |w, _, _| { w.force_campaign_select = true; none() },
         LoadGame => |w, _, a| { w.requests.push(crate::world::Request::LoadGame(a.s(0))); none() },
         SaveGame => |w, _, a| { w.requests.push(crate::world::Request::SaveGame(a.s(0))); none() },
         RenameSaveDirectory => |_, _, _| boolean(false),

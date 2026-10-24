@@ -219,6 +219,9 @@ pub struct World {
     /// The ally color mode (option 0x38, Alt-A): 0 player colors, 1 ally colors on the
     /// minimap, 2 on the minimap and in the world (FUN_6f36abf0).
     pub ally_color_filter: i32,
+    /// ForceCampaignSelectScreen: after the game, the campaign screen lists the
+    /// campaigns rather than the missions.
+    pub force_campaign_select: bool,
     /// EnableWorldFogBoundary.
     pub fog_boundary: bool,
     /// PlayModelCinematic.
@@ -480,6 +483,7 @@ impl World {
             reserved_hero_buttons: 0,
             alt_minimap_icon: None,
             ally_color_filter: 0,
+            force_campaign_select: false,
             fog_boundary: true,
             model_cinematic: None,
             deformations: Vec::new(),

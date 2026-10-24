@@ -425,6 +425,9 @@ impl Skirmish {
             }
         }
         Self::layout_info_at(tree, [0.001, -0.033, -0.172, -0.2233]);
+        // CViewReplayScreen clears the pane's description row (+0x194 bit 0x80).
+        tree.set_visible("MapDescLabel", false);
+        tree.set_visible("MapDescValue", false);
         let mut entries = Vec::new();
         if let Ok(rd) = std::fs::read_dir(dir) {
             let mut files: Vec<_> = rd.flatten().map(|e| e.path()).collect();

@@ -393,7 +393,18 @@ impl Commands {
                 let next = w.ability_level(h, id) + 1;
                 let tip = level_entry(&ab.list("Researchtip"), next).replace("%d", &next.to_string());
                 let uber = fill_placeholders(w, &ab.str("Researchubertip"));
-                out.push(Button::new(x, y, icon, hotkey(&ab.str("Researchhotkey")), Action::Learn(id), w.can_learn(h, id)).with_tip(tip, uber, [0; 4]));
+                let mut b = Button::new(x, y, icon, hotkey(&ab.str("Researchhotkey")), Action::Learn(id), w.can_learn(h, id)).with_tip(tip, uber, [0; 4]);
+                // One it cannot learn yet lists its requirements and the hero level it
+                // needs (CAbilityHero::vf166).
+                if !w.learn_allowed(h, id) {
+                    b = b.with_requirements(db, w, u.owner, id, 0);
+                    if b.requires.is_empty() {
+                        b.requires = db.string("REQUIRESTOOLTIP");
+                    }
+                    b.requires.push_str(&format!("\n - {} {}", db.string("REQUIREDLEVELTOOLTIP"), w.learn_level(h, id)));
+                    b.enabled = false;
+                }
+                out.push(b);
             }
             out.extend(self.command(db, "CmdCancel", Action::Cancel, true));
             return out;

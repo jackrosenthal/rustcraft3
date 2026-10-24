@@ -260,23 +260,37 @@ impl World {
         self.attach_ability_art(h);
     }
 
-    pub fn can_learn(&self, h: u32, ability: Id) -> bool {
+    /// The hero level the next level of a hero's skill needs: its reqLevel, and
+    /// levelSkip more for each level it has (HeroAbilityLevelSkip when that is 0)
+    /// (FUN_6f529fc0).
+    pub fn learn_level(&self, h: u32, ability: Id) -> i32 {
+        let ability = self.learned_id(h, ability);
+        let current = self.unit(h).and_then(|u| u.abilities.iter().find(|(a, _)| *a == ability)).map_or(0, |a| a.1);
+        let ab = self.objects.abilities.get(ability);
+        let req = ab.map_or(1, |a| a.int("reqLevel").max(1));
+        let skip = match ab.map_or(0, |a| a.int("levelSkip")) {
+            0 => self.misc_f32("HeroAbilityLevelSkip", 2.0) as i32,
+            v => v,
+        };
+        req + current as i32 * skip
+    }
+
+    /// Whether a hero may take the next level of a skill, skill points aside: below its
+    /// top level, with its requirements met and the hero level it needs, which
+    /// whoisjohngalt waives (FUN_6f528d20).
+    pub fn learn_allowed(&self, h: u32, ability: Id) -> bool {
         if !self.in_hero_list(h, ability) {
             return false;
         }
         let ability = self.learned_id(h, ability);
         let Some(u) = self.unit(h) else { return false };
         let current = u.abilities.iter().find(|(a, _)| *a == ability).map_or(0, |a| a.1);
-        let ab = self.objects.abilities.get(ability);
-        let max = ab.map_or(3, |a| a.int("levels").max(1));
-        let req = ab.map_or(1, |a| a.int("reqLevel").max(1));
-        // A levelSkip of 0 takes HeroAbilityLevelSkip (FUN_6f529fc0).
-        let skip = match ab.map_or(0, |a| a.int("levelSkip")) {
-            0 => self.misc_f32("HeroAbilityLevelSkip", 2.0) as i32,
-            v => v,
-        };
-        // whoisjohngalt waives the hero level a skill needs (FUN_6f528d20).
-        u.skill_points > 0 && current < max && (u.level >= req + current * skip || self.cheat(crate::cheats::flag::HERO_LEVEL))
+        let max = self.objects.abilities.get(ability).map_or(3, |a| a.int("levels").max(1));
+        current < max && self.missing_requirements(u.owner, ability, 0).is_empty() && (u.level >= self.learn_level(h, ability) || self.cheat(crate::cheats::flag::HERO_LEVEL))
+    }
+
+    pub fn can_learn(&self, h: u32, ability: Id) -> bool {
+        self.unit(h).is_some_and(|u| u.skill_points > 0) && self.learn_allowed(h, ability)
     }
 
     /// Learns or improves a hero ability, spending a skill point.

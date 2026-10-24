@@ -191,8 +191,15 @@ impl Browser {
         while let Ok((n, from)) = self.socket.recv_from(&mut buf) {
             if let Some(Msg::Announce(ad)) = decode(&buf[..n]) {
                 let addr = SocketAddr::new(from.ip(), ad.port);
-                self.games.retain(|g| g.0 != addr);
-                self.games.push((addr, ad, Instant::now()));
+                // A game answering at several addresses (the broadcast and the loopback)
+                // is listed once, at the first.
+                match self.games.iter_mut().find(|g| g.0 == addr || g.1 == ad) {
+                    Some(g) => {
+                        g.1 = ad;
+                        g.2 = Instant::now();
+                    }
+                    None => self.games.push((addr, ad, Instant::now())),
+                }
             }
         }
         // Games not heard from in six seconds are gone.

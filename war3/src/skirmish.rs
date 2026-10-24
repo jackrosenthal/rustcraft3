@@ -465,14 +465,18 @@ impl Skirmish {
         (e.kind == EntryKind::Replay).then(|| e.path.clone())
     }
 
-    /// MapInfoPane in a screen's MapInfoPaneContainer, showing a map.
+    /// MapInfoPane in a screen's MapInfoPaneContainer, showing a map, laid out as the
+    /// game list and game setup screens have it (+0x3a0 1, the description row cleared
+    /// from +0x194, as CLocalMultiplayerJoin's and CGameChatroom's vf55 set it).
     pub fn attach_pane(&mut self, tree: &mut FrameTree, db: &FrameDb, map: Option<&Path>) {
         if let (Some(parent), true) = (tree.get("MapInfoPaneContainer"), db.templates.contains_key("MapInfoPane")) {
             if let Some(i) = tree.create(db, "MapInfoPane", parent) {
                 tree.frames[i].all_points = true;
             }
         }
-        Self::layout_info(tree);
+        Self::layout_info_at(tree, [0.001, -0.033, -0.172, -0.2233]);
+        tree.set_visible("MapDescLabel", false);
+        tree.set_visible("MapDescValue", false);
         self.show_map(tree, db, map);
     }
 

@@ -59,6 +59,17 @@ fn main() -> anyhow::Result<()> {
 
     let ad = GameAd { name: "test".into(), host: "Player 1".into(), map: a[2].clone(), players: 1, slots: 2, port, expansion: false };
     let mut host = Host::new(ad)?;
+    // The game is found by searching.
+    let mut browser = war3::net::Browser::new(port)?;
+    for _ in 0..300 {
+        browser.poll();
+        host.poll();
+        if !browser.games.is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    println!("found {:?}", browser.games.iter().map(|g| (g.0, g.1.name.clone())).collect::<Vec<_>>());
     let client = Conn::connect(([127, 0, 0, 1], port).into())?;
     // The player's connection arrives.
     for _ in 0..100 {

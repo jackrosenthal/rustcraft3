@@ -264,11 +264,12 @@ impl Lan {
         let c = self.conn.as_mut()?;
         let msgs = c.poll();
         let alive = c.alive;
+        let mut event = None;
         for m in msgs {
             match m {
                 Msg::Welcome { id } => {
                     self.me = id;
-                    return Some(Event::Lobby);
+                    event = Some(Event::Lobby);
                 }
                 Msg::Refused(key) => {
                     self.conn = None;
@@ -296,7 +297,7 @@ impl Lan {
             self.conn = None;
             return Some(Event::Joining(Some("NETERROR_JOINGAMEFAILED")));
         }
-        None
+        event
     }
 
     /// The host starts the game.
@@ -398,6 +399,7 @@ impl Lan {
             let _ = n;
         }
         tree.set_text("GameNameValue", &self.setup.game);
+        tree.place_text_area_scroll_bars();
         tree.set_visible("StartGameBackdrop", host);
         tree.set_visible("AdvancedOptionsContainer", false);
         self.sync_chat(tree);

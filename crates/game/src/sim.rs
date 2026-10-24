@@ -216,7 +216,13 @@ pub fn final_damage(w: &World, raw: f32, attack_type: &str, target: &Unit) -> f3
         armor
     };
     let k = w.misc_f32("DefenseArmor", 0.06);
-    let armor_factor = if armor >= 0.0 { 1.0 - (armor * k) / (1.0 + armor * k) } else { 2.0 - (1.0 - k).powf(-armor) };
+    let armor_factor = if w.damage_ignores_armor {
+        1.0
+    } else if armor >= 0.0 {
+        1.0 - (armor * k) / (1.0 + armor * k)
+    } else {
+        2.0 - (1.0 - k).powf(-armor)
+    };
     raw * mult * armor_factor
 }
 

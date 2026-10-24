@@ -321,9 +321,19 @@ fn buff_filter(a: &[Value]) -> crate::bufftable::Filter {
 }
 
 /// Damage dealt by a script with an attack type (ATTACK_TYPE_* index).
-fn script_damage(w: &mut World, vm: &mut Vm, src: u32, target: u32, amount: f32, attack_type: i32) {
+/// Damage from UnitDamageTarget or UnitDamagePoint.  The attack type's DamageBonus
+/// table applies; armor reduces only DAMAGE_TYPE_NORMAL (measured in the original:
+/// 100 piercing damage of DAMAGE_TYPE_NORMAL to a farm is 26.9, of DAMAGE_TYPE_MAGIC or
+/// UNIVERSAL 35, and ATTACK_TYPE_NORMAL's spells table is reduced by armor only with
+/// DAMAGE_TYPE_NORMAL: 56.7 to a Paladin, 70 otherwise).
+fn script_damage(w: &mut World, vm: &mut Vm, src: u32, target: u32, amount: f32, attack_type: i32, damage_type: i32) {
+    const DAMAGE_TYPE_NORMAL: i32 = 4;
+    let physical = damage_type == DAMAGE_TYPE_NORMAL;
+    if attack_type == 0 && !physical {
+        return w.spell_damage(vm, src, target, amount);
+    }
     let name = match attack_type {
-        0 => return w.spell_damage(vm, src, target, amount),
+        0 => "spells",
         1 => "normal",
         2 => "pierce",
         3 => "siege",
@@ -332,7 +342,9 @@ fn script_damage(w: &mut World, vm: &mut Vm, src: u32, target: u32, amount: f32,
         6 => "hero",
         _ => "normal",
     };
+    w.damage_ignores_armor = !physical;
     w.deal_damage_pub(vm, src, target, amount, name);
+    w.damage_ignores_armor = false;
 }
 
 /// A worker's build order at a point.
@@ -819,9 +831,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         // Damage from a script: ATTACK_TYPE_NORMAL (0) is spell damage, the rest take the
         // attack type's bonus against the target's armor type.
         UnitDamageTarget => |w, vm, a| {
-            let (src, target, amount, atk) = (a.h(0), a.h(1), a.r(2), a.h(5) as i32);
+            let (src, target, amount, atk, dt) = (a.h(0), a.h(1), a.r(2), a.h(5) as i32, a.h(6) as i32);
             if w.unit(target).is_some() {
-                script_damage(w, vm, src, target, amount, atk);
+                script_damage(w, vm, src, target, amount, atk, dt);
                 boolean(true)
             } else if let Some(Obj::Destructable(d)) = w.handles.get_mut(target) {
                 d.life -= amount;
@@ -831,10 +843,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             }
         },
         UnitDamagePoint => |w, vm, a| {
-            let (src, radius, x, y, amount, atk) = (a.h(0), a.r(2), a.r(3), a.r(4), a.r(5), a.h(8) as i32);
+            let (src, radius, x, y, amount, atk, dt) = (a.h(0), a.r(2), a.r(3), a.r(4), a.r(5), a.h(8) as i32, a.h(9) as i32);
             let targets: Vec<u32> = w.unit_order.iter().copied().filter(|&t| w.unit(t).is_some_and(|u| !u.dead && (u.x - x).hypot(u.y - y) <= radius)).collect();
             for t in targets {
-                script_damage(w, vm, src, t, amount, atk);
+                script_damage(w, vm, src, t, amount, atk, dt);
             }
             boolean(true)
         },

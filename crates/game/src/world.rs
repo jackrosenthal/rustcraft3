@@ -351,6 +351,9 @@ pub struct World {
     /// Why the last order was refused (a command error key), for the interface.
     #[serde(skip)]
     pub order_error: Option<&'static str>,
+    /// Damage being dealt now is not of DAMAGE_TYPE_NORMAL, so armor does not reduce it.
+    #[serde(skip)]
+    pub damage_ignores_armor: bool,
     /// Where saved games are kept (set by the program running the game).
     #[serde(skip)]
     pub saves_dir: Option<std::path::PathBuf>,
@@ -646,6 +649,7 @@ impl World {
             saves_dir: None,
             preload: Default::default(),
             order_error: None,
+            damage_ignores_armor: false,
             destructable_order: Vec::new(),
             item_order: Vec::new(),
             dying_effects: Vec::new(),

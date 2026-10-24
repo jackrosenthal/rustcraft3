@@ -1447,7 +1447,13 @@ impl World {
         }
         if u.constructing.is_some() {
             let id = u.type_id;
-            let rate = self.misc_f32("ConstructionRefundRate", 0.75);
+            // ConstructionRefundRate, less the share of life the structure lost while
+            // being built under ConstructionDamageRefundPenalty
+            // (CAbilityBuildInProgress::vf210).
+            let mut rate = self.misc_f32("ConstructionRefundRate", 0.75);
+            if self.misc_f32("ConstructionDamageRefundPenalty", 0.0) != 0.0 {
+                rate *= (1.0 - u.extra.construction_damage / u.max_life.max(1.0)).clamp(0.0, 1.0);
+            }
             self.refund(owner, id, rate);
             self.queue_unit_event(h, EVENT_PLAYER_UNIT_CONSTRUCT_CANCEL, EVENT_UNIT_CONSTRUCT_CANCEL, EventCtx::default());
             self.cancelled_constructions.push(h);

@@ -14,7 +14,11 @@ impl World {
         let link = self.unit(target).and_then(|t| t.buffs.iter().find(|b| b.link_group != 0).map(|b| (b.link_group, b.link_share)));
         let Some((group, share)) = link else {
             if let Some(t) = self.unit_mut(target) {
-                t.life -= crate::ability::mana_shield(t, dmg);
+                let taken = crate::ability::mana_shield(t, dmg);
+                t.life -= taken;
+                if t.constructing.is_some() {
+                    t.extra.construction_damage += taken.max(0.0);
+                }
             }
             return Vec::new();
         };

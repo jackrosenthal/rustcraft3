@@ -234,6 +234,10 @@ pub struct Unit {
 /// Unit settings scripts change.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct UnitExtra {
+    /// Damage a structure took while under construction (CAbilityBuildInProgress
+    /// +0x10c), which reduces the refund if it is cancelled.
+    #[serde(default)]
+    pub construction_damage: f32,
     /// Which of the production queue's entries a hero token paid for (refunded as a
     /// token when cancelled), kept beside `queue`.
     #[serde(default)]
@@ -433,6 +437,7 @@ pub struct UnitExtra {
 impl Default for UnitExtra {
     fn default() -> Self {
         UnitExtra {
+            construction_damage: 0.0,
             queue_tokens: Vec::new(),
             formation: None,
             rally_target: 0,

@@ -966,18 +966,20 @@ impl World {
                     self.unit_mut(h).unwrap().death_time += dt;
                     continue;
                 }
-                // A decaying corpse lasts its death, then DecayTime and BoneDecayTime
-                // (measured: a footman, death 3.04, is removed 93.05 seconds after it
-                // dies, and a grunt, death 1.75, after 91.80).
-                let decays = !u.is_building && self.objects.units.get(u.type_id).is_some_and(|o| o.int("deathType") & 2 != 0);
+                // A body lasts its death, then: a structure's StructureDecayTime; a
+                // decaying corpse's DecayTime and BoneDecayTime; nothing for one that
+                // leaves no corpse (measured: a footman, death 3.04, is removed 93.05
+                // seconds after it dies, a grunt, 1.75, after 91.80, a farm, 2.34, after
+                // 32.35, and a Flying Machine, 2.67, after 2.70).
+                let (death, decays) = self.objects.units.get(u.type_id).map_or((0.0, false), |o| (o.real("death"), o.int("deathType") & 2 != 0));
                 let decay = if u.extra.exploded {
                     0.0
                 } else if u.is_building {
-                    self.misc_f32("StructureDecayTime", 30.0)
+                    death + self.misc_f32("StructureDecayTime", 30.0)
                 } else if decays {
-                    self.objects.units.get(u.type_id).map_or(0.0, |o| o.real("death")) + self.misc_f32("DecayTime", 2.0) + self.misc_f32("BoneDecayTime", 88.0)
+                    death + self.misc_f32("DecayTime", 2.0) + self.misc_f32("BoneDecayTime", 88.0)
                 } else {
-                    self.misc_f32("BoneDecayTime", 88.0)
+                    death
                 };
                 // iocainepowder.
                 let decay = if self.cheat(crate::cheats::flag::FAST_DEATH) { decay / crate::cheats::FAST } else { decay };

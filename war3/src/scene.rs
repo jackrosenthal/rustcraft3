@@ -1034,6 +1034,7 @@ impl Scene {
                 | w3_game::world::Request::EndThematic
                 | w3_game::world::Request::ResumeMusic
                 | w3_game::world::Request::MusicVolume(_)
+                | w3_game::world::Request::SoundEnvironment(_)
                 | w3_game::world::Request::StopMusic(_)) => self.pending_audio.push(r),
                 _ => {}
             }
@@ -1187,6 +1188,7 @@ impl Scene {
                 w3_game::world::Request::EndThematic => audio.end_thematic(),
                 w3_game::world::Request::ResumeMusic => audio.resume_music(),
                 w3_game::world::Request::MusicVolume(v) => audio.set_script_music_volume(v),
+                w3_game::world::Request::SoundEnvironment(name) => audio.set_environment(&name),
                 w3_game::world::Request::UiSound { players, label } if players & (1 << local) != 0 => {
                     audio.play_label(&label, None);
                 }
@@ -1323,6 +1325,7 @@ impl Scene {
         }
         let (sound, music) = self.options.volumes();
         audio.set_volumes(sound, music);
+        audio.set_environmental_effects(self.options.environmental);
         if let Some(g) = self.game.as_ref() {
             audio.set_channel_gains(g.world.channel_gains());
         }

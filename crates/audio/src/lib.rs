@@ -9,6 +9,7 @@ use std::sync::Arc;
 use rodio::{Decoder, Player, Source};
 
 pub mod midi;
+pub mod reverb;
 use w3_formats::slk::Table;
 use w3_mpq::Chain;
 
@@ -38,6 +39,8 @@ pub struct SoundDef {
     pub max_distance: f32,
     pub cutoff: f32,
     pub channel: i32,
+    /// The label's EAX category (EAXFlags), for environmental effects.
+    pub eax: String,
 }
 
 impl SoundDef {
@@ -67,6 +70,7 @@ fn parse_defs(t: &Table, out: &mut HashMap<String, SoundDef>) {
             max_distance: num(name, "MaxDistance", 10000.0),
             cutoff: num(name, "DistanceCutoff", 0.0),
             channel: num(name, "Channel", 0.0) as i32,
+            eax: get(name, "EAXFlags").trim().to_string(),
         };
         out.entry(name.to_ascii_lowercase()).or_insert(def);
     }
@@ -127,6 +131,15 @@ pub struct Audio {
     midi_defs: HashMap<String, (String, String, f32)>,
     banks: HashMap<String, Option<Arc<midi::Bank>>>,
     songs: HashMap<String, Option<Arc<midi::Song>>>,
+    /// EAXDefs.slk: each EAX category's EAX2Room level, in millibels.
+    eax_rooms: HashMap<String, f32>,
+    /// EnvironmentSounds.slk's environments by name.
+    environments: HashMap<String, reverb::Environment>,
+    /// The sound environment (NewSoundEnvironment), when environmental effects are on.
+    environment: Option<reverb::Environment>,
+    environment_name: String,
+    /// The Environmental Effects option.
+    environmental_effects: bool,
 }
 
 impl Audio {
@@ -157,6 +170,32 @@ impl Audio {
                 let sep = if dir.ends_with('\\') { "" } else { "\\" };
                 let volume = get(k, "Volume").trim().parse().unwrap_or(127.0);
                 midi_defs.insert(k.to_ascii_lowercase(), (format!("{dir}{sep}{}", get(k, "MIDIFileName")), format!("{dir}{sep}{}", get(k, "DLSFileName")), volume));
+            }
+        }
+        let mut eax_rooms = HashMap::new();
+        if let Ok(s) = chain.read_string("UI\\SoundInfo\\EAXDefs.slk") {
+            let t = Table::parse(&s);
+            for k in &t.order {
+                if let Some(v) = t.get(k, "EAX2Room").and_then(|v| v.as_str().trim().parse::<f32>().ok()) {
+                    eax_rooms.insert(k.to_ascii_lowercase(), v);
+                }
+            }
+        }
+        let mut environments = HashMap::new();
+        if let Ok(s) = chain.read_string("UI\\SoundInfo\\EnvironmentSounds.slk") {
+            let t = Table::parse(&s);
+            for k in &t.order {
+                let num = |col: &str| t.get(k, col).and_then(|v| v.as_str().trim().parse::<f32>().ok()).unwrap_or(0.0);
+                let env = reverb::Environment {
+                    decay_time: num("DecayTime"),
+                    decay_hf_ratio: num("DecayHFRatio"),
+                    room: num("Room"),
+                    reflections: num("Reflections"),
+                    reverb: num("Reverb"),
+                    reflections_delay: num("ReflectionsDelay"),
+                    reverb_delay: num("ReverbDelay"),
+                };
+                environments.insert(k.to_ascii_lowercase(), env);
             }
         }
         let mut anim_lookups = HashMap::new();
@@ -190,7 +229,23 @@ impl Audio {
             midi_defs,
             banks: HashMap::new(),
             songs: HashMap::new(),
+            eax_rooms,
+            environments,
+            environment: None,
+            environment_name: String::new(),
+            environmental_effects: true,
         }
+    }
+
+    /// NewSoundEnvironment: the environment 3D sounds reverberate in from now on.
+    pub fn set_environment(&mut self, name: &str) {
+        self.environment_name = name.to_ascii_lowercase();
+        self.environment = self.environments.get(&self.environment_name).copied();
+    }
+
+    /// The Environmental Effects option.
+    pub fn set_environmental_effects(&mut self, on: bool) {
+        self.environmental_effects = on;
     }
 
     pub fn enabled(&self) -> bool {
@@ -271,7 +326,8 @@ impl Audio {
         }
         let file = def.files[(self.random() % def.files.len() as u64) as usize].clone();
         let pos = if def.has_flag("WANT3D") { position } else { None };
-        let id = self.play_file(&file, def.volume / 127.0, def.pitch, pos, (def.min_distance, def.max_distance, def.cutoff), true);
+        let send = self.eax_rooms.get(&def.eax.to_ascii_lowercase()).copied();
+        let id = self.play_file_send(&file, def.volume / 127.0, def.pitch, pos, (def.min_distance, def.max_distance, def.cutoff), true, send);
         self.set_channel(id, def.channel)
     }
 
@@ -286,7 +342,8 @@ impl Audio {
             def.pitch
         };
         let pos = if def.has_flag("WANT3D") { position } else { None };
-        let id = self.play_file(&file, def.volume / 127.0, pitch, pos, (def.min_distance, def.max_distance, def.cutoff), def.has_flag("LOOPING"));
+        let send = self.eax_rooms.get(&def.eax.to_ascii_lowercase()).copied();
+        let id = self.play_file_send(&file, def.volume / 127.0, pitch, pos, (def.min_distance, def.max_distance, def.cutoff), def.has_flag("LOOPING"), send);
         self.set_channel(id, def.channel)
     }
 
@@ -352,6 +409,12 @@ impl Audio {
 
     /// Plays a sound file with a volume from 0 to 1.
     pub fn play_file(&mut self, path: &str, volume: f32, pitch: f32, position: Option<[f32; 3]>, distances: (f32, f32, f32), looping: bool) -> Option<u64> {
+        self.play_file_send(path, volume, pitch, position, distances, looping, None)
+    }
+
+    /// Plays a file, a 3D one sending to the sound environment at `send` millibels.
+    #[allow(clippy::too_many_arguments)]
+    fn play_file_send(&mut self, path: &str, volume: f32, pitch: f32, position: Option<[f32; 3]>, distances: (f32, f32, f32), looping: bool, send: Option<f32>) -> Option<u64> {
         let sink = self.sink.as_ref()?;
         let gain = self.gain_at(position, distances);
         if position.is_some() && gain <= 0.0 && !looping {
@@ -369,10 +432,12 @@ impl Audio {
         let player = Player::connect_new(&mixer);
         player.set_speed(pitch.max(0.01));
         player.set_volume(volume * gain * self.sound_volume);
-        if looping {
-            player.append(decoder.repeat_infinite());
-        } else {
-            player.append(decoder);
+        let env = self.environment.filter(|_| self.environmental_effects && position.is_some());
+        match (env, send, looping) {
+            (Some(env), Some(send), true) => player.append(reverb::Reverb::new(decoder.repeat_infinite(), env, send)),
+            (Some(env), Some(send), false) => player.append(reverb::Reverb::new(decoder, env, send)),
+            (_, _, true) => player.append(decoder.repeat_infinite()),
+            _ => player.append(decoder),
         }
         let id = self.next_id;
         self.next_id += 1;

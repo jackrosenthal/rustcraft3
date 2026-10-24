@@ -99,7 +99,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetTerrainFogEx => |w, _, a| { w.terrain_fog = Some((a.i(0), a.r(1), a.r(2), a.r(3), [a.r(4), a.r(5), a.r(6)])); none() },
         ResetTerrainFog => |w, _, _| { w.terrain_fog = w.map_terrain_fog; none() },
         SetSkyModel => |w, _, a| { let m = a.s(0); w.sky_model = (!m.is_empty()).then_some(m); none() },
-        NewSoundEnvironment => |_, _, _| none(),
+        NewSoundEnvironment => |w, _, a| { w.requests.push(Request::SoundEnvironment(a.s(0))); none() },
         SetMapMusic => |w, _, a| { w.requests.push(Request::PlayMusic(a.s(0))); none() },
         PlayMusic => |w, _, a| { w.requests.push(Request::PlayMusic(a.s(0))); none() },
         PlayMusicEx => |w, _, a| { w.requests.push(Request::PlayMusic(a.s(0))); none() },

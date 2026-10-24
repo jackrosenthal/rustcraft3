@@ -177,6 +177,8 @@ pub struct Glue {
     save_replay: crate::savereplay::SaveReplayPanel,
     /// The local network screens.
     pub lan: crate::lan::Lan,
+    /// A network game's players (name and race) for its loading screen.
+    lan_players: Option<Vec<(String, usize)>>,
     version: crate::data::Version,
 }
 
@@ -254,6 +256,7 @@ impl Glue {
             dialog: None,
             save_replay: Default::default(),
             lan,
+            lan_players: None,
             version: data.version,
         };
         g.build(Screen::MainMenu, assets);
@@ -579,21 +582,32 @@ impl Glue {
         if let Some(container) = self.tree.get("LoadingMeleePlayerContainer").filter(|_| melee) {
             let races = ["RANDOM", "HUMAN", "ORC", "UNDEAD", "NIGHT_ELF"];
             let names = ["OPEN", "CLOSED", "COMPUTER_NEWBIE", "COMPUTER_NORMAL", "COMPUTER_INSANE"];
-            let playing: Vec<&crate::skirmish::SlotChoice> = self.skirmish.slots.iter().filter(|s| !matches!(s.controller, crate::skirmish::Controller::Open | crate::skirmish::Controller::Closed)).collect();
-            for (k, s) in playing.iter().enumerate() {
+            // A network game's players, or the Custom Game screen's.
+            let playing: Vec<(String, usize)> = match self.lan_players.take() {
+                Some(p) => p,
+                None => self
+                    .skirmish
+                    .slots
+                    .iter()
+                    .filter_map(|s| {
+                        let name = match s.controller {
+                            crate::skirmish::Controller::Local => self.skirmish.player_name.clone(),
+                            crate::skirmish::Controller::Computer(d) => db.string(names[2 + d.clamp(0, 2) as usize]),
+                            _ => return None,
+                        };
+                        Some((name, s.race))
+                    })
+                    .collect(),
+            };
+            for (k, (name, race)) in playing.iter().enumerate() {
                 let scope = format!("#{k}");
                 if self.tree.create_scoped(db, "LoadingPlayerSlot", container, &scope).is_none() {
                     continue;
                 }
                 use w3_ui::FramePoint as P;
                 self.tree.set_point(&format!("LoadingPlayerSlot{scope}"), P::TopLeft, "LoadingMeleePlayerContainer", P::TopLeft, 0.0, -(k as f32) * 0.032);
-                let name = match s.controller {
-                    crate::skirmish::Controller::Local => self.skirmish.player_name.clone(),
-                    crate::skirmish::Controller::Computer(d) => db.string(names[2 + d.clamp(0, 2) as usize]),
-                    _ => String::new(),
-                };
-                self.tree.set_text(&format!("LoadingPlayerSlotName{scope}"), &name);
-                self.tree.set_text(&format!("LoadingPlayerSlotRace{scope}"), &db.string(races[s.race.min(4)]));
+                self.tree.set_text(&format!("LoadingPlayerSlotName{scope}"), name);
+                self.tree.set_text(&format!("LoadingPlayerSlotRace{scope}"), &db.string(races[(*race).min(4)]));
                 self.tree.set_visible(&format!("LoadingPlayerSlotReadyHighlight{scope}"), false);
             }
         }
@@ -677,6 +691,19 @@ impl Glue {
             }
             crate::lan::Event::Start(map, lobby, role, speed, flags) => {
                 self.lan.detach();
+                let names = ["OPEN", "CLOSED", "COMPUTER_NEWBIE", "COMPUTER_NORMAL", "COMPUTER_INSANE"];
+                self.lan_players = Some(
+                    self.lan
+                        .setup
+                        .slots
+                        .iter()
+                        .filter_map(|s| match s.holder {
+                            crate::net::Holder::Human(_) => Some((s.name.clone(), s.race)),
+                            crate::net::Holder::Computer(d) => Some((assets.frames.string(names[2 + d.clamp(0, 2) as usize]), s.race)),
+                            _ => None,
+                        })
+                        .collect(),
+                );
                 self.action = Some(GlueAction::PlayNet(map, lobby, std::rc::Rc::new(std::cell::RefCell::new(Some(role))), speed, flags));
             }
         }

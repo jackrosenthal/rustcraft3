@@ -612,13 +612,22 @@ impl World {
         let Some(u) = self.unit(unit) else { return };
         let items: Vec<Id> = u.inventory.iter().filter_map(|&i| self.item(i).map(|i| i.type_id)).collect();
         let mut b = ItemBonus::default();
+        // Without MoveSpeedBonusesStack only the first movement speed bonus counts; the
+        // others wait disabled (CAbilityMoveSpeedBonus::vf15).
+        let stack = self.misc_f32("MoveSpeedBonusesStack", 0.0) != 0.0;
+        let mut speed_bonuses = 0;
         for t in items {
             for a in self.item_abilities(t) {
                 let d = |f: &str| self.objects.abilities.get(a).map_or(0.0, |o| o.level_real(f, 1));
                 match self.ability_code(a).as_str() {
                     "AIat" => b.damage += d("DataA"),
                     "AIde" => b.armor += d("DataA"),
-                    "AIms" => b.move_speed += d("DataA"),
+                    "AIms" => {
+                        if stack || speed_bonuses == 0 {
+                            b.move_speed += d("DataA");
+                        }
+                        speed_bonuses += 1;
+                    }
                     "AIas" => b.attack_speed += d("DataA"),
                     "AIml" | "AImi" => b.life += d("DataA"),
                     "AImm" => b.mana += d("DataA"),

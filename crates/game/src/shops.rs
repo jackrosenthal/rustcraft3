@@ -377,6 +377,7 @@ impl World {
         let life_f = self.misc_f32("HeroReviveLifeFactor", 1.0);
         let mana_start = self.misc_f32("HeroReviveManaStart", 1.0);
         let mana_f = self.misc_f32("HeroReviveManaFactor", 0.0);
+        let mana0 = self.unit(hero).and_then(|u| self.objects.units.get(u.type_id)).map_or(0.0, |o| o.real("mana0"));
         let Some(u) = self.unit_mut(hero) else { return };
         u.dead = false;
         u.extra.decaying = false;
@@ -385,9 +386,11 @@ impl World {
         u.x = x;
         u.y = y;
         u.life = u.max_life * life_f;
-        // HeroReviveManaStart 1 restores the factor of maximum mana; else mana stays.
+        // HeroReviveManaStart 1 gives the hero its starting mana (mana0) and the factor
+        // of its maximum (measured: a Paladin, mana0 100 and factor 0, comes back with
+        // 100); else mana stays.
         if mana_start != 0.0 {
-            u.mana = u.max_mana * mana_f;
+            u.mana = (mana0 + u.max_mana * mana_f).min(u.max_mana);
         }
         u.action = Action::Idle;
         u.anim = "stand".into();

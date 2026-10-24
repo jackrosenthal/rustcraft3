@@ -270,7 +270,11 @@ impl World {
         let ab = self.objects.abilities.get(ability);
         let max = ab.map_or(3, |a| a.int("levels").max(1));
         let req = ab.map_or(1, |a| a.int("reqLevel").max(1));
-        let skip = ab.map_or(2, |a| a.int("levelSkip").max(1));
+        // A levelSkip of 0 takes HeroAbilityLevelSkip (FUN_6f529fc0).
+        let skip = match ab.map_or(0, |a| a.int("levelSkip")) {
+            0 => self.misc_f32("HeroAbilityLevelSkip", 2.0) as i32,
+            v => v,
+        };
         // whoisjohngalt waives the hero level a skill needs (FUN_6f528d20).
         u.skill_points > 0 && current < max && (u.level >= req + current * skip || self.cheat(crate::cheats::flag::HERO_LEVEL))
     }

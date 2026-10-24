@@ -376,7 +376,7 @@ impl Game {
     /// A line `player` typed: a cheat (see `cheats`), or chat that player chat events hear
     /// (an exact registration's text matching the line, another's found in it).  Returns
     /// whether the line was chat to show.
-    pub fn chat(&mut self, player: u8, text: &str) -> bool {
+    pub fn chat(&mut self, player: u8, text: &str, to: u8) -> bool {
         // Cheats work only outside network games.
         if !self.world.network {
             if let Some(ctx) = self.world.console_command(&mut self.vm, player, text) {
@@ -386,7 +386,7 @@ impl Game {
                 return false;
             }
         }
-        self.world.requests.push(world::Request::Chat { player, text: text.to_string() });
+        self.world.requests.push(world::Request::Chat { player, text: text.to_string(), to });
         let regs: Vec<(u32, String)> = self
             .world
             .events
@@ -621,7 +621,7 @@ impl Game {
                 self.click_dialog_button(player, button);
                 O::Done
             }
-            C::Chat { player, text } => O::Flag(self.chat(player, &text)),
+            C::Chat { player, text, to } => O::Flag(self.chat(player, &text, to)),
         }
     }
 }

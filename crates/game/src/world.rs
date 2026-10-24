@@ -26,8 +26,9 @@ pub enum Request {
     /// default (PingMinimap, PingMinimapEx).
     Ping { x: f32, y: f32, duration: f32, color: Option<[u8; 3]> },
     DisplayText { players: u32, x: f32, y: f32, text: String, duration: f32 },
-    /// A player's chat line, shown to everyone.
-    Chat { player: u8, text: String },
+    /// A player's chat line, to everyone (0), allies (1), observers (2), or a player (3
+    /// on).
+    Chat { player: u8, text: String, to: u8 },
     /// Doodads of a type play an animation: those within a radius of a point (or only
     /// the nearest), or inside a rect (SetDoodadAnimation, SetDoodadAnimationRect).
     DoodadAnimation { id: crate::objects::Id, area: DoodadArea, anim: String, random: bool },

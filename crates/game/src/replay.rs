@@ -33,7 +33,8 @@ pub enum Command {
     Select { player: u8, units: Vec<u32> },
     PlayerEvent { player: u8, event: i32 },
     DialogButton { player: u8, button: u32 },
-    Chat { player: u8, text: String },
+    /// A chat line, to everyone (0), allies (1), observers (2), or a player (3 on).
+    Chat { player: u8, text: String, to: u8 },
     /// A network game's player left.
     PlayerLeft { player: u8 },
     /// A player sends another gold and lumber (CNetCommandTeamTradeResources).

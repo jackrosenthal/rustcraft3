@@ -92,8 +92,11 @@ pub struct Message {
 
 pub struct Hud {
     pub tree: FrameTree,
-    /// The chat edit bar's text, while it is open (CChatEditBar).
+    /// The chat edit bar's text, while it is open (CChatEditBar), and its recipient (0
+    /// all, 1 allies, 2 observers) and prompt (COLON_MESSAGE_*).
     pub chat: Option<String>,
+    pub chat_to: u8,
+    pub chat_prompt: String,
     /// Scene time, for message expiry.
     pub now: f32,
     /// WorldFrameUnitMessage: trigger text, oldest first.
@@ -301,6 +304,8 @@ impl Hud {
             quest_indicator: None,
             save_panel: None,
             chat: None,
+            chat_to: 0,
+            chat_prompt: String::new(),
             inventory: Vec::new(),
             level_bar: None,
             buff_icons: None,
@@ -1355,8 +1360,14 @@ impl Hud {
         self.tree.backdrop(db, &def, r, out);
         let size = db.misc_ui.get_str("FontHeights", "ChatEditBar").and_then(|v| v.trim().parse().ok()).unwrap_or(0.013f32);
         let font = db.decorate("ChatFont");
-        let tr = w3_ui::Rect { x0: r.x0 + 0.003, x1: r.x1 - 0.003, y0: r.y0, y1: r.y1 };
-        out.push(Draw::Text { font, size, rect: tr, text: format!("{text}|"), color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Middle, shadow: None });
+        // The prompt, 0xFFCCAC12, 0.003 in, then the line 0.002 after it, both shadowed
+        // 0.001 down and right (FUN_6f39cb10).
+        let shadow = Some(([0.0, 0.0, 0.0, 1.0], 0.001, -0.001));
+        let prompt_w = db.text_width(&font, size, &self.chat_prompt);
+        let pr = w3_ui::Rect { x0: r.x0 + 0.003, x1: r.x0 + 0.003 + prompt_w, y0: r.y0, y1: r.y1 };
+        out.push(Draw::Text { font: font.clone(), size, rect: pr, text: self.chat_prompt.clone(), color: [0xcc as f32 / 255.0, 0xac as f32 / 255.0, 0x12 as f32 / 255.0, 1.0], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Middle, shadow });
+        let tr = w3_ui::Rect { x0: pr.x1 + 0.002, x1: r.x1 - 0.0015, y0: r.y0, y1: r.y1 };
+        out.push(Draw::Text { font, size, rect: tr, text: format!("{text}|"), color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Middle, shadow });
     }
 
     fn layer_draws(&self, db: &FrameDb) -> Vec<Draw> {

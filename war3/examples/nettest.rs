@@ -99,7 +99,7 @@ fn main() -> anyhow::Result<()> {
                 for u in units(g, p) {
                     g.apply(w3_game::replay::Command::Order { unit: u, order: move_order, x: sx + 300.0 * r.cos(), y: sy + 300.0 * r.sin(), target: 0 });
                 }
-                g.apply(w3_game::replay::Command::Chat { player: p, text: format!("step {step}") });
+                g.apply(w3_game::replay::Command::Chat { player: p, text: format!("step {step}"), to: 0 });
             }
         }
         for (g, s, p) in [(&mut gh, &mut hs, 0u8), (&mut gc, &mut cs, 1u8)] {

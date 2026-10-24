@@ -681,9 +681,19 @@ impl Scene {
                     }
                 }
                 // A chat line: "[All] name: line" in the player's color.
-                w3_game::world::Request::Chat { player, text } => {
+                w3_game::world::Request::Chat { player, text, to } => {
                     let Some(w) = self.game.as_ref().map(|g| &g.world) else { continue };
-                    let recipient = w.localized("CHAT_RECIPIENT_ALL");
+                    // Allies' lines reach the speaker and their allies only.
+                    let me = w.local_player;
+                    if to == 1 && me != player && !w3_game::natives::players::is_ally(w, player, me) {
+                        continue;
+                    }
+                    let recipient = w.localized(match to {
+                        0 => "CHAT_RECIPIENT_ALL",
+                        1 => "CHAT_RECIPIENT_ALLIES",
+                        2 => "CHAT_RECIPIENT_OBSERVERS",
+                        _ => "CHAT_RECIPIENT_PRIVATE",
+                    });
                     let p = &w.players[player as usize % w.players.len()];
                     let c = self.team_rgb[p.color as usize % 16].map(|v| (v * 255.0).round() as u8);
                     let line = format!("{recipient} |c{:02x}{:02x}{:02x}{:02x}{}: |r{text}", 0xff, c[0], c[1], c[2], p.name);
@@ -2265,9 +2275,10 @@ impl Scene {
     /// (FUN_6f373470: "%s |c%2.2x%2.2x%2.2x%2.2x%s: |r%s", the recipient, the player's
     /// color and name, and the line).
     fn send_chat(&mut self, line: &str) {
+        let to = self.hud.as_ref().map_or(0, |h| h.chat_to);
         let Some(g) = self.game.as_mut() else { return };
         let local = g.world.local_player;
-        g.apply(w3_game::replay::Command::Chat { player: local, text: line.to_string() });
+        g.apply(w3_game::replay::Command::Chat { player: local, text: line.to_string(), to });
     }
 
     pub fn key(&mut self, c: char) {
@@ -2315,8 +2326,22 @@ impl Scene {
             return;
         }
         if (c == '\r' || c == '\n') && self.user_control() && self.hud.as_ref().is_some_and(|h| h.menu.is_none() && h.quests.is_none() && h.log_view.is_none()) {
+            // In a network game Ctrl+Enter speaks to allies and Shift+Enter to all; alone
+            // the prompt is "Message:" (FUN_6f3af7f0, FUN_6f3d0500).
+            let network = self.game.as_ref().is_some_and(|g| g.world.network);
+            let to = if self.ctrl_held { 1 } else { 0 };
+            let key = if !network {
+                "COLON_MESSAGE_SINGLEPLAYER"
+            } else if to == 1 {
+                "COLON_MESSAGE_ALLIES"
+            } else {
+                "COLON_MESSAGE_ALL"
+            };
+            let prompt = self.game.as_ref().map(|g| g.world.localized(key)).unwrap_or_default();
             if let Some(h) = self.hud.as_mut() {
                 h.chat = Some(String::new());
+                h.chat_to = if network { to } else { 0 };
+                h.chat_prompt = prompt;
             }
             return;
         }

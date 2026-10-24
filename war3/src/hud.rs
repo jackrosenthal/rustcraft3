@@ -170,6 +170,8 @@ pub struct Hud {
     /// Creep camps on the minimap (CMinimap, FUN_6f3d6100): position, color, and scale
     /// (negative for a tough camp).
     pub minimap_camps: Vec<(f32, f32, [f32; 4], f32)>,
+    /// [Minimap] MinimapColorBorder, the playable area's outline.
+    pub minimap_border: [f32; 4],
     /// Units using the alternate minimap icon (UnitSetUsesAltIcon), and that icon
     /// (SetAltMinimapIcon).
     pub minimap_alt: Vec<(f32, f32)>,
@@ -312,6 +314,7 @@ impl Hud {
             minimap_icons: Vec::new(),
             minimap_icons_shown: Vec::new(),
             minimap_camps: Vec::new(),
+            minimap_border: [60.0 / 255.0, 60.0 / 255.0, 70.0 / 255.0, 1.0],
             minimap_terrain: true,
             ally_mode: 0,
             show_creeps: true,
@@ -1644,12 +1647,12 @@ impl Hud {
             if self.minimap_fog {
                 out.push(Draw::Image { texture: MINIMAP_FOG.into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
             }
-            // The map's area outlined in 0xFF3C3C46, two of the 256 texels wide (measured
-            // from the original's minimap).
+            // The map's area outlined in MinimapColorBorder, two of the 256 texels wide
+            // (measured from the original's minimap).
             if let (Some(a), Some((x0, y0)), Some((x1, y1))) = (self.minimap_area, self.minimap_area.and_then(|a| self.world_to_minimap(a.x0, a.y0)), self.minimap_area.and_then(|a| self.world_to_minimap(a.x1, a.y1))) {
                 let _ = a;
                 let (tx, ty) = (2.0 / 256.0 * r.w(), 2.0 / 256.0 * r.h());
-                let c = [60.0 / 255.0, 60.0 / 255.0, 70.0 / 255.0, 1.0];
+                let c = self.minimap_border;
                 for e in [
                     w3_ui::Rect { x0, x1: x0 + tx, y0, y1 },
                     w3_ui::Rect { x0: x1 - tx, x1, y0, y1 },

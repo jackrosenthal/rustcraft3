@@ -713,6 +713,10 @@ impl Scene {
             h.minimap_icons = (0..n).filter_map(|i| Some((int(8 + i * 16)?, int(12 + i * 16)? as f32, int(16 + i * 16)? as f32))).collect();
         }
         if let Some(h) = hud.as_mut() {
+            let v: Vec<f32> = data.misc.get_list("Minimap", "MinimapColorBorder").iter().filter_map(|s| s.trim().parse().ok()).collect();
+            if v.len() == 4 {
+                h.minimap_border = [v[1] / 255.0, v[2] / 255.0, v[3] / 255.0, v[0] / 255.0];
+            }
             let c = info.camera_complements;
             let (ox, oy) = (terrain.offset[0], terrain.offset[1]);
             let (w, hgt) = ((terrain.width - 1) as f32 * 128.0, (terrain.height - 1) as f32 * 128.0);

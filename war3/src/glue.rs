@@ -1286,7 +1286,7 @@ impl Glue {
     /// (CGlueToolTipWar3::vf25).
     fn options_tip_draws(&self, db: &w3_ui::FrameDb, out: &mut Vec<Draw>) {
         use w3_ui::fdf::{Arg, Def, Prop};
-        const TIPS: [(&str, &str); 8] = [
+        const TIPS: [(&str, &str); 10] = [
             ("GamePortEditBox", "GAMEPORT_INFO"),
             ("ChatSupportMenu", "CHAT_SUPPORT_INFO"),
             ("CustomKeysCheckBox", "CUSTOM_KEYS_INFO"),
@@ -1296,6 +1296,9 @@ impl Glue {
             ("SpellFilterMenu", "SPELL_FILTER_INFO"),
             // Each player slot's handicap menu (CPlayerSlot).
             ("HandicapMenu", "HANDICAP_TIP"),
+            // CSinglePlayerMenu and CScoreScreen.
+            ("ProfileButton", "PROFILE_TIP"),
+            ("ScoreScreenTeamColorButton", "SCORESCREEN_TEAM_COLOR"),
         ];
         let (px, py) = self.pointer;
         let Some((owner, key)) = self.tree.frames.iter().enumerate().find_map(|(f, frame)| {

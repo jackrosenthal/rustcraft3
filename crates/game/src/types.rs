@@ -242,6 +242,10 @@ pub struct UnitExtra {
     /// token when cancelled), kept beside `queue`.
     #[serde(default)]
     pub queue_tokens: Vec<bool>,
+    /// Each chance ability's pseudo-random count: the attempts since it last went off,
+    /// starting at 1 (see `World::prd_roll`).
+    #[serde(default)]
+    pub prd: Vec<(Id, u32)>,
     /// A computer player's unit sent to die (SuicideUnit): the player it goes after,
     /// or -1 for any enemy.
     #[serde(default)]
@@ -439,6 +443,7 @@ impl Default for UnitExtra {
         UnitExtra {
             construction_damage: 0.0,
             queue_tokens: Vec::new(),
+            prd: Vec::new(),
             formation: None,
             rally_target: 0,
             animated: false,

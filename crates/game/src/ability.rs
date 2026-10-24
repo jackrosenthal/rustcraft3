@@ -19,10 +19,11 @@ pub enum Targeting {
 }
 
 /// Buffs abilities give when their BuffID names none (their classes' defaults: 'Bpxf'
-/// for Phoenix Fire).
+/// for Phoenix Fire, 'Bdef' for Defend's CBuffDefense).
 pub fn default_buff(code: &str) -> Option<&'static str> {
     match code {
         "Apxf" => Some("Bpxf"),
+        "Adef" => Some("Bdef"),
         _ => None,
     }
 }
@@ -876,6 +877,7 @@ impl World {
                     hit: Vec::new(),
                     stampede: None,
                     rock: None,
+                    reflected: false,
                 });
             }
             // Thunder Clap: area damage (DataA) and slow (DataC movement, DataD attack).
@@ -959,6 +961,25 @@ impl World {
         }
     }
 
+    /// A chance ability's roll by pseudo-random distribution (FUN_6f600930): the chance,
+    /// to the nearest 5%, picks a constant C from the original's table, and the ability
+    /// goes off when a uniform roll is at most C times the attempts since it last did.
+    pub(crate) fn prd_roll(&mut self, h: u32, a: Id, chance_pct: f32) -> bool {
+        const C: [u32; 21] = [0, 38, 147, 320, 547, 819, 1126, 1461, 1815, 2184, 2562, 2953, 3333, 3781, 4204, 4607, 5000, 5799, 6667, 7714, 10000];
+        let i = ((chance_pct * 0.2 + 0.5) as i32).clamp(0, 20) as usize;
+        let c = C[i] as f32 / 10000.0;
+        let n = self.unit(h).and_then(|u| u.extra.prd.iter().find(|e| e.0 == a).map(|e| e.1)).unwrap_or(1);
+        let hit = c * n as f32 >= self.rng.real(0.0, 1.0);
+        if let Some(u) = self.unit_mut(h) {
+            let next = if hit { 1 } else { n + 1 };
+            match u.extra.prd.iter_mut().find(|e| e.0 == a) {
+                Some(e) => e.1 = next,
+                None => u.extra.prd.push((a, next)),
+            }
+        }
+        hit
+    }
+
     /// Passive attack modifiers: Bash, Critical Strike, and Demolish.  Returns the extra damage factor
     /// and flat bonus for this hit, and applies stuns.
     pub fn on_attack_passives(&mut self, attacker: u32, target: u32, damage: f32) -> f32 {
@@ -970,7 +991,7 @@ impl World {
             match self.ability_code(a).as_str() {
                 // Bash: DataA% chance; DataC bonus damage; stun for Dur/HeroDur.
                 "AHbh" => {
-                    if (self.rng.int(1, 100) as f32) <= self.data(a, "DataA", lvl) {
+                    if self.prd_roll(attacker, a, self.data(a, "DataA", lvl)) {
                         damage += self.data(a, "DataC", lvl);
                         let d = if self.hero_duration(target) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
                         let buff = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("BuffID", lvl)).unwrap_or_default().trim());
@@ -979,7 +1000,7 @@ impl World {
                 }
                 // Drunken Brawler: DataA% chance to deal DataB times damage.
                 "ANdb" => {
-                    if (self.rng.int(1, 100) as f32) <= self.data(a, "DataA", lvl) {
+                    if self.prd_roll(attacker, a, self.data(a, "DataA", lvl)) {
                         damage = damage * self.data(a, "DataB", lvl) + self.data(a, "DataC", lvl);
                     }
                 }
@@ -988,13 +1009,13 @@ impl World {
                 "ANde" if self.cast_target_error(attacker, a, target).is_none() => {
                     let (building, hero) = self.unit(target).map_or((false, false), |t| (t.is_building, t.is_hero));
                     let factor = self.data(a, if building { "DataB" } else if hero { "DataD" } else { "DataC" }, lvl);
-                    if factor > 0.0 && (self.rng.int(1, 100) as f32) <= self.data(a, "DataA", lvl) {
+                    if factor > 0.0 && self.prd_roll(attacker, a, self.data(a, "DataA", lvl)) {
                         damage *= factor;
                     }
                 }
                 // Critical Strike: DataA% chance to deal DataB times damage.
                 "AOcr" => {
-                    if (self.rng.int(1, 100) as f32) <= self.data(a, "DataA", lvl) {
+                    if self.prd_roll(attacker, a, self.data(a, "DataA", lvl)) {
                         damage = damage * self.data(a, "DataB", lvl) + self.data(a, "DataC", lvl);
                     }
                 }

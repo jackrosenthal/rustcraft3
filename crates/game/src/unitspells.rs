@@ -15,7 +15,12 @@ impl World {
     }
 
     pub(crate) fn first_buff(&self, a: Id, lvl: u32) -> Id {
-        id_from_str(self.level_str(a, "BuffID", lvl).split(',').next().unwrap_or("").trim())
+        let listed = self.level_str(a, "BuffID", lvl);
+        let first = listed.split(',').next().unwrap_or("").trim();
+        if first.is_empty() || first == "_" {
+            return crate::ability::default_buff(&self.ability_code(a)).map_or([0; 4], id_from_str);
+        }
+        id_from_str(first)
     }
 
     /// Whether a unit was summoned (it has a timed life or the Summoned classification).
@@ -320,6 +325,34 @@ impl World {
             self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: f32::INFINITY, pierce_taken: taken, move_factor: -slow, ..Default::default() });
         }
         true
+    }
+
+    /// Defend's deflection (CAbilityDefend::vf91, FUN_6f5d1920): under DefendDeflection,
+    /// an attack missile reaching a defending unit has a DataF% chance (by pseudo-random
+    /// distribution) to go back at its source when the unit would take other than all of
+    /// it, DataG for Piercing attacks and DataH for Spells and Magic ones; a structure's
+    /// attacks only where DataI is set.  Returns the share the defender still takes.
+    pub(crate) fn defend_deflects(&mut self, defender: u32, source: u32, attack_type: &str) -> Option<f32> {
+        if self.misc_f32("DefendDeflection", 0.0) == 0.0 {
+            return None;
+        }
+        let (a, lvl) = self.ability_with_code(defender, "Adef")?;
+        if !self.unit(defender)?.buffs.iter().any(|b| b.ability == a) {
+            return None;
+        }
+        let taken = match attack_type.to_ascii_lowercase().as_str() {
+            "pierce" => self.data(a, "DataG", lvl),
+            "spells" | "magic" => self.data(a, "DataH", lvl),
+            _ => return None,
+        };
+        if taken == 1.0 || !self.prd_roll(defender, a, self.data(a, "DataF", lvl)) {
+            return None;
+        }
+        if self.unit(source).is_none_or(|u| u.dead || (u.is_building && self.data(a, "DataI", lvl) == 0.0)) {
+            return None;
+        }
+        log::debug!("defend: {defender} deflects an attack from {source}");
+        Some(taken)
     }
 
     /// Stasis traps arm after DataA seconds; then an enemy within DataB sets them off,

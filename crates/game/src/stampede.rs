@@ -65,6 +65,7 @@ impl World {
             hit: Vec::new(),
             stampede: Some((a, lvl, every)),
             rock: None,
+            reflected: false,
         });
     }
 

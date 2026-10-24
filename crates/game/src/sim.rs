@@ -50,6 +50,9 @@ pub struct Missile {
     /// A Volcano's rock: its ability and level (volcano.rs).
     #[serde(default)]
     pub rock: Option<(Id, u32)>,
+    /// An attack Defend sent back, which cannot be deflected again.
+    #[serde(default)]
+    pub reflected: bool,
 }
 
 /// Weapon 1 of a unit type, from UnitWeapons.slk and the unit's profile.
@@ -1035,7 +1038,8 @@ impl World {
                                 bounces: if wp.weapon_type == "mbounce" { wp.target_count - 1 + self.upgrade_bonus(src.owner, src.type_id).targets } else { 0 },
                                 hit: Vec::new(),
                                 stampede: None,
-                    rock: None,
+                                rock: None,
+                                reflected: false,
                             });
                         }
                     } else {
@@ -1051,7 +1055,16 @@ impl World {
                             }
                         }
                         let at = self.widget_pos(s.target).unwrap_or_default();
-                        self.attack_impact(vm, h, s.target, raw, &wp, at);
+                        // An instant ranged attack Defend deflects strikes its source.
+                        let deflected = if wp.weapon_type == "instant" { self.defend_deflects(s.target, h, &wp.attack_type) } else { None };
+                        if let Some(taken) = deflected {
+                            if taken > 0.0 {
+                                self.deal_damage(vm, h, s.target, raw * taken, &wp.attack_type);
+                            }
+                            self.deal_damage(vm, s.target, h, raw, &wp.attack_type);
+                        } else {
+                            self.attack_impact(vm, h, s.target, raw, &wp, at);
+                        }
                     }
                 }
                 let Some(u) = self.unit_mut(h) else { continue };
@@ -2266,6 +2279,17 @@ impl World {
                 None => match &m.weapon {
                     Some(wp) => {
                         let at = m.impact.or_else(|| self.widget_pos(m.target)).unwrap_or((m.x, m.y));
+                        // Defend may send the attack back at its source.
+                        if m.impact.is_none() && !m.reflected {
+                            if let Some(taken) = self.defend_deflects(m.target, m.source, &wp.attack_type) {
+                                if taken > 0.0 {
+                                    self.deal_damage(vm, m.source, m.target, m.damage * taken, &wp.attack_type);
+                                }
+                                let z = self.unit(m.target).map_or(m.z, |u| self.ground_z(u.x, u.y) + 60.0);
+                                self.missiles.push(Missile { id: 0, source: m.target, target: m.source, x: at.0, y: at.1, z, start: at, bounces: 0, hit: Vec::new(), impact: None, reflected: true, ..m.clone() });
+                                continue;
+                            }
+                        }
                         // Shot from below at a target on higher ground, it may miss
                         // (ChanceToMiss): the target takes nothing and any splash only
                         // MissDamageReduction of the damage (FUN_6f6d48b0, FUN_6f6d2530).

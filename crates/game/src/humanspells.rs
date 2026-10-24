@@ -180,6 +180,7 @@ impl World {
                         hit: Vec::new(),
                     stampede: None,
                     rock: None,
+                    reflected: false,
                     });
                 }
             }

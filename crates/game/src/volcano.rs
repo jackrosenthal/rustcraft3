@@ -129,6 +129,7 @@ impl World {
                     hit: Vec::new(),
                     stampede: None,
                     rock: Some((v.ability, v.level)),
+                    reflected: false,
                 });
                 self.volcanoes[i] = v;
             }

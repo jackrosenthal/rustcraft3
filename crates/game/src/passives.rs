@@ -51,7 +51,7 @@ impl World {
     pub fn hardened_skin(&mut self, target: u32, melee: bool, dmg: f32) -> f32 {
         let Some((a, l)) = self.passive(target, "Assk") else { return dmg };
         let applies = if melee { self.data(a, "DataE", l) != 0.0 } else { self.data(a, "DataD", l) != 0.0 };
-        if !applies || (self.rng.int(1, 100) as f32) > self.data(a, "DataA", l) {
+        if !applies || !self.prd_roll(target, a, self.data(a, "DataA", l)) {
             return dmg;
         }
         (dmg - self.data(a, "DataC", l)).max(self.data(a, "DataB", l).min(dmg))
@@ -76,7 +76,7 @@ impl World {
         // Pulverize: a DataA% chance of DataB damage to enemy ground units within DataC
         // of the attacker, half within DataD.
         if let Some((a, l)) = self.passive(h, "Awar") {
-            if (self.rng.int(1, 100) as f32) <= self.data(a, "DataA", l) {
+            if self.prd_roll(h, a, self.data(a, "DataA", l)) {
                 let (dmg, full, half) = (self.data(a, "DataB", l), self.data(a, "DataC", l), self.data(a, "DataD", l));
                 for t in self.enemies_in(owner, ux, uy, half) {
                     let flying = self.unit(t).is_some_and(|tu| self.objects.units.get(tu.type_id).is_some_and(|o| o.str("movetp").eq_ignore_ascii_case("fly")));

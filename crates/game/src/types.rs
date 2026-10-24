@@ -154,6 +154,11 @@ pub struct Unit {
     pub user_data: i32,
     pub acquire_range: f32,
     pub move_speed: f32,
+    /// The facing the model shows and GetUnitFacing reads: it follows `facing` at a
+    /// third of its rate (measured: a footman's turns 0.6 radians a tenth of a second
+    /// where its facing for movement and attacks turns 0.6 a thirtieth).
+    #[serde(default)]
+    pub shown_facing: Option<f32>,
     pub turn_speed: f32,
     pub prop_window: f32,
     pub paused: bool,

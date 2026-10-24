@@ -262,9 +262,10 @@ fn angle_diff(a: f32, b: f32) -> f32 {
 
 /// Turns toward `target_deg`; returns the remaining difference.
 pub(crate) fn turn(u: &mut Unit, target_deg: f32, dt: f32) -> f32 {
-    // Turn rate: the data's turnRate scaled to a full revolution per second.  The exact
-    // scale game.dll applies to this field (stored at unit-type offset 0x74) is pending.
-    let rate = (u.turn_speed.max(0.05) * 360.0) * dt;
+    // Turn rate: the data's turnRate in radians every thirtieth of a second (measured: a
+    // footman facing away starts walking once within its propulsion window and swinging
+    // once within AttackHalfAngle as this rate gives).
+    let rate = (u.turn_speed.max(0.05) * 30.0).to_degrees() * dt;
     let d = angle_diff(u.facing, target_deg);
     if d.abs() <= rate {
         u.facing = target_deg.rem_euclid(360.0);
@@ -1019,6 +1020,11 @@ impl World {
                 // unit attacking steadily strikes exactly its cooldown apart, as the
                 // original's timers do (measured: 1.60 for a grunt, 1.35 for a footman).
                 u.cooldown = (u.cooldown - dt).max(-dt);
+                // The shown facing follows at a third of the turn rate.
+                let shown = u.shown_facing.unwrap_or(u.facing);
+                let d = angle_diff(shown, u.facing);
+                let step = (u.turn_speed.max(0.05) * 10.0).to_degrees() * dt;
+                u.shown_facing = Some(if d.abs() <= step { u.facing } else { (shown + step * d.signum()).rem_euclid(360.0) });
                 u.repath_timer -= dt;
                 u.acquire_timer -= dt;
             }

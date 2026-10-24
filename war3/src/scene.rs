@@ -3955,7 +3955,7 @@ impl Scene {
             let z = self.terrain.height_at(u.x, u.y) + u.fly_height;
             inst.transform = Mat4::from_scale_rotation_translation(
                 Vec3::splat(u.scale),
-                Quat::from_rotation_z(u.facing.to_radians()),
+                Quat::from_rotation_z(u.shown_facing.unwrap_or(u.facing).to_radians()),
                 Vec3::new(u.x, u.y, z),
             );
             inst.team = world_color(w, u.owner, u.color);

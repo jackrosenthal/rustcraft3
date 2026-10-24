@@ -47,6 +47,7 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         move_speed: o.real("spd"),
         turn_speed: o.real("turnRate"),
         prop_window: o.real("propWin"),
+        shown_facing: None,
         paused: false,
         hidden: false,
         invulnerable: false,
@@ -551,7 +552,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let (x, y) = unit_arg(w, a, 0).map_or((0.0, 0.0), |u| (u.x, u.y));
             handle(w.handles.insert(Obj::Location(x, y)))
         },
-        GetUnitFacing => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.facing)),
+        GetUnitFacing => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.shown_facing.unwrap_or(u.facing))),
         GetUnitMoveSpeed => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.move_speed)),
         GetUnitDefaultMoveSpeed => |w, _, a| real(unit_arg(w, a, 0).and_then(|u| w.objects.units.get(u.type_id)).map_or(0.0, |o| o.real("spd"))),
         GetUnitTurnSpeed => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.turn_speed)),
@@ -1111,7 +1112,7 @@ fn dummy_unit() -> Unit {
     Unit {
         handle: 0, type_id: [0; 4], owner: 0, x: 0.0, y: 0.0, fly_height: 0.0, facing: 0.0, life: 0.0, max_life: 0.0,
         mana: 0.0, max_mana: 0.0, color: 0, scale: 1.0, vertex_color: [255; 4], user_data: 0, acquire_range: 0.0,
-        move_speed: 0.0, turn_speed: 0.0, prop_window: 0.0, paused: false, hidden: false, invulnerable: false,
+        move_speed: 0.0, turn_speed: 0.0, prop_window: 0.0, shown_facing: None, paused: false, hidden: false, invulnerable: false,
         dead: false, level: 0, hero_xp: 0, resource: 0, abilities: vec![], order: Order::default(),
         time_scale: 1.0, inventory: [0; 6], rally: None, explode_on_death: false, is_building: false, is_hero: false,
         collision: 0.0, action: Action::Idle, path: vec![], repath_timer: 0.0, cooldown: 0.0, swing: None,

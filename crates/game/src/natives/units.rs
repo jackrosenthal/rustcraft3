@@ -446,6 +446,23 @@ fn for_group(w: &mut World, vm: &mut Vm, a: &[Value]) -> NativeResult {
     none()
 }
 
+/// A player's order to a neutral building: an item type it sells is bought for the
+/// player, and a unit type hired; the rest go to the building as orders (measured: the
+/// original's IssueNeutralImmediateOrderById(player, a Goblin Merchant, 'dust') buys
+/// the one in stock, 75 gold, then returns false).
+fn issue_neutral(w: &mut World, vm: &mut Vm, a: &[Value], order: i32, x: f32, y: f32, target: u32) -> NativeResult {
+    let (Some(player), shop) = (super::players::player_arg(w, a, 0), a.h(1)) else { return boolean(false) };
+    let id = id_from_int(order);
+    if w.objects.items.get(id).is_some() {
+        return boolean(w.buy_item(vm, player, shop, id).is_ok());
+    }
+    let sells_unit = w.unit(shop).and_then(|u| w.objects.units.get(u.type_id)).is_some_and(|o| o.list("Sellunits").iter().any(|b| crate::objects::id_from_str(b.trim()) == id));
+    if sells_unit {
+        return boolean(w.hire_unit(vm, player, shop, id).is_ok());
+    }
+    issue_order(w, vm, shop, order, x, y, target)
+}
+
 fn issue_order(w: &mut World, vm: &mut Vm, unit: u32, order: i32, x: f32, y: f32, target: u32) -> NativeResult {
     let Some(owner) = w.unit(unit).map(|u| u.owner) else { return boolean(false) };
     // An order that is a unit type or a research: a structure trains it, researches it,
@@ -821,12 +838,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         IssueInstantPointOrderById => |w, vm, a| issue_order(w, vm, a.h(0), a.i(1), a.r(2), a.r(3), 0),
         IssueInstantTargetOrder => |w, vm, a| issue_order(w, vm, a.h(0), crate::natives::basic::issue_order_id(w, &a.s(1)), 0.0, 0.0, a.h(2)),
         IssueInstantTargetOrderById => |w, vm, a| issue_order(w, vm, a.h(0), a.i(1), 0.0, 0.0, a.h(2)),
-        IssueNeutralImmediateOrder => |w, vm, a| issue_order(w, vm, a.h(1), crate::natives::basic::issue_order_id(w, &a.s(2)), 0.0, 0.0, 0),
-        IssueNeutralImmediateOrderById => |w, vm, a| issue_order(w, vm, a.h(1), a.i(2), 0.0, 0.0, 0),
-        IssueNeutralPointOrder => |w, vm, a| issue_order(w, vm, a.h(1), crate::natives::basic::issue_order_id(w, &a.s(2)), a.r(3), a.r(4), 0),
-        IssueNeutralPointOrderById => |w, vm, a| issue_order(w, vm, a.h(1), a.i(2), a.r(3), a.r(4), 0),
-        IssueNeutralTargetOrder => |w, vm, a| issue_order(w, vm, a.h(1), crate::natives::basic::issue_order_id(w, &a.s(2)), 0.0, 0.0, a.h(3)),
-        IssueNeutralTargetOrderById => |w, vm, a| issue_order(w, vm, a.h(1), a.i(2), 0.0, 0.0, a.h(3)),
+        IssueNeutralImmediateOrder => |w, vm, a| { let o = crate::natives::basic::issue_order_id(w, &a.s(2)); issue_neutral(w, vm, a, o, 0.0, 0.0, 0) },
+        IssueNeutralImmediateOrderById => |w, vm, a| issue_neutral(w, vm, a, a.i(2), 0.0, 0.0, 0),
+        IssueNeutralPointOrder => |w, vm, a| { let o = crate::natives::basic::issue_order_id(w, &a.s(2)); issue_neutral(w, vm, a, o, a.r(3), a.r(4), 0) },
+        IssueNeutralPointOrderById => |w, vm, a| issue_neutral(w, vm, a, a.i(2), a.r(3), a.r(4), 0),
+        IssueNeutralTargetOrder => |w, vm, a| { let o = crate::natives::basic::issue_order_id(w, &a.s(2)); issue_neutral(w, vm, a, o, 0.0, 0.0, a.h(3)) },
+        IssueNeutralTargetOrderById => |w, vm, a| issue_neutral(w, vm, a, a.i(2), 0.0, 0.0, a.h(3)),
         // The structure by its name (UnitId), as jass_IssueBuildOrder looks it up.
         IssueBuildOrder => |w, _, a| {
             let id = crate::natives::basic::unit_id_by_name(w, &a.s(1));

@@ -29,11 +29,11 @@ impl World {
         need as i32
     }
 
-    /// Experience granted for killing a unit of a level (GrantHeroXP table, then
-    /// GrantHeroXPFormulaA/B/C past its end).
-    pub fn xp_for_kill(&self, level: i32) -> i32 {
-        let table = self.misc_list_f32("GrantHeroXP");
-        let (a, b, c) = (self.misc_f32("GrantHeroXPFormulaA", 1.0), self.misc_f32("GrantHeroXPFormulaB", 0.0), self.misc_f32("GrantHeroXPFormulaC", 100.0));
+    /// A table of experience by level: its listed values, then each further level the
+    /// one before times A, plus B times the level, plus C (FUN_6f048140).
+    fn xp_table(&self, key: &str, defaults: (f32, f32, f32), level: i32) -> f32 {
+        let table = self.misc_list_f32(key);
+        let (a, b, c) = (self.misc_f32(&format!("{key}FormulaA"), defaults.0), self.misc_f32(&format!("{key}FormulaB"), defaults.1), self.misc_f32(&format!("{key}FormulaC"), defaults.2));
         let mut v = 0.0;
         for l in 1..=level.max(1) {
             v = match table.get((l - 1) as usize) {
@@ -41,7 +41,26 @@ impl World {
                 None => a * v + b * l as f32 + c,
             };
         }
-        v as i32
+        v
+    }
+
+    /// The experience a unit is worth killed (FUN_6f6848b0): a Hero's GrantHeroXP at its
+    /// level (up to MaxHeroLevel), anything else's GrantNormalXP at its level (up to
+    /// MaxUnitLevel), nothing below level 1; a summoned unit's times SummonedKillFactor.
+    pub fn kill_xp_value(&self, victim: u32) -> f32 {
+        let Some(u) = self.unit(victim) else { return 0.0 };
+        let hero = u.is_hero && u.extra.illusion.is_none();
+        let level = if u.is_hero { u.level } else { self.objects.units.get(u.type_id).map_or(u.level, |o| o.int("level")) };
+        if level < 1 {
+            return 0.0;
+        }
+        let cap = if hero { self.misc_f32("MaxHeroLevel", 10.0) } else { self.misc_f32("MaxUnitLevel", 20.0) } as i32;
+        let level = level.min(cap.max(1));
+        let mut v = if hero { self.xp_table("GrantHeroXP", (1.0, 0.0, 100.0), level) } else { self.xp_table("GrantNormalXP", (1.0, 5.0, 5.0), level) };
+        if self.is_summoned(victim) {
+            v *= self.misc_f32("SummonedKillFactor", 0.5);
+        }
+        v
     }
 
     /// Recomputes a hero's maximum life and mana from its attributes.
@@ -67,7 +86,6 @@ impl World {
     }
 
     pub fn add_hero_xp(&mut self, h: u32, xp: i32) {
-        let max_level = self.misc_f32("MaxHeroLevel", 10.0) as i32;
         let Some(u) = self.unit_mut(h) else { return };
         if !u.is_hero || u.dead {
             return;
@@ -75,6 +93,12 @@ impl World {
         u.hero_xp += xp;
         let owner = u.owner;
         self.score_experience(owner, xp);
+        self.level_up_from_xp(h);
+    }
+
+    /// Levels a hero up as far as its experience reaches (FUN_6f528110's last loop).
+    fn level_up_from_xp(&mut self, h: u32) {
+        let max_level = self.misc_f32("MaxHeroLevel", 10.0) as i32;
         loop {
             let (level, xp) = (self.unit(h).unwrap().level, self.unit(h).unwrap().hero_xp);
             if level >= max_level || xp < self.hero_xp_needed(level + 1) {
@@ -94,27 +118,106 @@ impl World {
         }
     }
 
-    /// Splits kill experience among the killer's heroes in range (HeroExpRange).
+    /// Kill experience (FUN_6f660500, FUN_6f6881b0, FUN_6f67dd60): not for a kill by a
+    /// structure unless BuildingKillsGiveExp, nor an ally's.  The victim's worth is split
+    /// among the heroes that gain from the killer's player (theirs, or a player's who
+    /// shares experience with them) within HeroExpRange, or with GlobalExperience among
+    /// all of them when none are near.  Illusions take none; heroes at the top level
+    /// share only under MaxLevelHeroesDrainExp, and suspended ones share without gaining.
     pub fn grant_kill_xp(&mut self, victim: u32, killer: u32) {
         let (Some(v), Some(k)) = (self.unit(victim), self.unit(killer)) else { return };
-        let (vx, vy, vlevel, vowner, kowner) = (v.x, v.y, v.level.max(1), v.owner, k.owner);
+        let (vx, vy, vowner, kowner, by_building) = (v.x, v.y, v.owner, k.owner, k.is_building);
         if crate::natives::players::is_ally(self, kowner, vowner) {
             return;
         }
+        if by_building && self.misc_f32("BuildingKillsGiveExp", 0.0) == 0.0 {
+            return;
+        }
+        let max_level = self.misc_f32("MaxHeroLevel", 10.0) as i32;
+        let drain = self.misc_f32("MaxLevelHeroesDrainExp", 1.0) != 0.0;
         let range = self.misc_f32("HeroExpRange", 1200.0);
-        let heroes: Vec<u32> = self
+        let shares = |o: u8| o == kowner || self.players.get(kowner as usize).is_some_and(|p| p.alliances[o as usize % crate::types::PLAYER_COUNT][3]);
+        let eligible: Vec<(u32, bool)> = self
             .unit_order
             .iter()
-            .copied()
-            .filter(|&h| self.unit(h).is_some_and(|u| u.is_hero && !u.dead && !u.xp_suspended && u.owner == kowner && (u.x - vx).hypot(u.y - vy) <= range))
+            .filter_map(|&h| self.unit(h).map(|u| (h, u)))
+            .filter(|(_, u)| u.is_hero && !u.dead && u.extra.illusion.is_none() && shares(u.owner) && (drain || u.level < max_level))
+            .map(|(h, u)| (h, (u.x - vx).hypot(u.y - vy) <= range))
             .collect();
+        let near: Vec<u32> = eligible.iter().filter(|e| e.1).map(|e| e.0).collect();
+        let heroes = if !near.is_empty() || self.misc_f32("GlobalExperience", 0.0) == 0.0 { near } else { eligible.iter().map(|e| e.0).collect() };
         if heroes.is_empty() {
             return;
         }
-        let xp = self.xp_for_kill(vlevel) / heroes.len() as i32;
-        for h in heroes {
-            self.add_hero_xp(h, xp);
+        let share = self.kill_xp_value(victim) / heroes.len() as f32;
+        if share <= 0.0 {
+            return;
         }
+        let creep = vowner >= crate::types::PLAYER_NEUTRAL_AGGRESSIVE;
+        for h in heroes {
+            self.gain_kill_xp(h, share, creep);
+        }
+    }
+
+    /// One hero's part of kill experience (FUN_6f528110): times its player's XP handicap,
+    /// less the XPFactor of the highest hall tier its requirements meet (TWN1 to TWN9,
+    /// by the player's hero count); from a creep, taken level by level at HeroFactorXP's
+    /// percent for each level, so none past the table's zero.
+    fn gain_kill_xp(&mut self, h: u32, share: f32, creep: bool) {
+        let Some(u) = self.unit(h) else { return };
+        if u.xp_suspended || !u.is_hero || u.dead {
+            return;
+        }
+        let (owner, type_id, level, current) = (u.owner, u.type_id, u.level, u.hero_xp);
+        let total = current as f32;
+        let mut raw = share * self.players.get(owner as usize).map_or(1.0, |p| p.handicap_xp);
+        let heroes = self.hero_count(owner);
+        if heroes > 0 {
+            let mut factor = 0.0;
+            for i in 0..9u32 {
+                if !self.missing_requirements(owner, type_id, i + 1).is_empty() {
+                    break;
+                }
+                let twn = crate::objects::id_from_str(&format!("TWN{}", i + 1));
+                let list: Vec<f32> = self.dependency_group(twn).map(|o| o.list("XPFactor")).unwrap_or_default().iter().filter_map(|v| v.trim().parse().ok()).collect();
+                if !list.is_empty() {
+                    factor = list[(heroes as usize).min(list.len()) - 1];
+                }
+            }
+            raw *= 1.0 - factor;
+        }
+        let max_level = self.misc_f32("MaxHeroLevel", 10.0) as i32;
+        let new_total = if !creep {
+            total + raw
+        } else {
+            let factors = self.misc_list_f32("HeroFactorXP");
+            let (mut total, mut level) = (total, level.max(1));
+            while level < max_level {
+                let f = factors.get((level - 1) as usize).or(factors.last()).copied().unwrap_or(100.0) / 100.0;
+                if f <= 0.0 {
+                    break;
+                }
+                let next = self.hero_xp_needed(level + 1) as f32;
+                let gained = total + raw * f;
+                if gained <= next {
+                    total = gained;
+                    break;
+                }
+                raw = (gained - next) / f;
+                total = next;
+                level += 1;
+            }
+            total
+        };
+        let added = new_total.round() as i32 - current;
+        if added <= 0 {
+            return;
+        }
+        if let Some(u) = self.unit_mut(h) {
+            u.hero_xp += added;
+        }
+        self.score_experience(owner, added);
+        self.level_up_from_xp(h);
     }
 
     /// Whether a hero can learn the next level of an ability now.

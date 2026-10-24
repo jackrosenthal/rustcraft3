@@ -250,13 +250,15 @@ impl Hud {
         pin(&mut tree, bar, FramePoint::TopRight);
         pin(&mut tree, upper, FramePoint::TopLeft);
         tree.layout();
-        // A destructable's detail takes the same place.
-        if let Some(i) = tree.create(db, "SimpleInfoPanelDestructableDetail", 0) {
-            tree.frames[i].all_points = false;
-            tree.frames[i].width = Some(0.188125);
-            tree.frames[i].height = Some(0.114063);
-            tree.frames[i].points = vec![Point { point: FramePoint::BottomLeft, relative: None, relative_point: FramePoint::BottomLeft, x: 0.309375, y: 0.0 }];
-            tree.frames[i].visible = false;
+        // A destructable's or an item's detail takes the same place.
+        for panel in ["SimpleInfoPanelDestructableDetail", "SimpleInfoPanelItemDetail"] {
+            if let Some(i) = tree.create(db, panel, 0) {
+                tree.frames[i].all_points = false;
+                tree.frames[i].width = Some(0.188125);
+                tree.frames[i].height = Some(0.114063);
+                tree.frames[i].points = vec![Point { point: FramePoint::BottomLeft, relative: None, relative_point: FramePoint::BottomLeft, x: 0.309375, y: 0.0 }];
+                tree.frames[i].visible = false;
+            }
         }
         // The info panel's unit detail fills CInfoBar: 0.188125 x 0.114063 at (0.309375, 0).
         let mut building = None;
@@ -1120,6 +1122,20 @@ impl Hud {
         self.tree.set_visible("SimpleInfoPanelDestructableDetail", name.is_some());
         if let Some(n) = name {
             self.tree.set_text("SimpleDestructableNameValue", n);
+        }
+    }
+
+    /// A chosen item's name and description in SimpleInfoPanelItemDetail, or none.
+    pub fn show_item(&mut self, item: Option<(&str, &str)>) {
+        self.tree.set_visible("SimpleInfoPanelItemDetail", item.is_some());
+        if let Some((name, desc)) = item {
+            // The description hangs below the name, as tall as its text.
+            let changed = self.tree.get("SimpleItemNameValue").is_some_and(|i| self.tree.frames[i].text.as_deref() != Some(name));
+            self.tree.set_text("SimpleItemNameValue", name);
+            self.tree.set_text("SimpleItemDescriptionValue", desc);
+            if changed {
+                self.tree.layout();
+            }
         }
     }
 

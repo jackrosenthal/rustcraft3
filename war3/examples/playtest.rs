@@ -58,6 +58,7 @@ fn main() -> anyhow::Result<()> {
     let mut scene = Scene::load(&device, &queue, format, &data, &mut assets, Path::new(&map), w as f32 / h as f32, lobby.as_deref(), restore, replay)?;
     scene.sync_units(&device, &queue, &mut assets);
     scene.sync_destructables(&device, &queue, &mut assets);
+    scene.sync_items(&device, &queue, &mut assets);
     // W3SAVES: where the game menu keeps saved games, for testing.
     if let Ok(d) = std::env::var("W3SAVES") {
         scene.saves_dir = d.clone().into();
@@ -196,7 +197,8 @@ fn main() -> anyhow::Result<()> {
                 while t > 0.0 {
                     scene.update(0.02);
                     scene.sync_units(&device, &queue, &mut assets);
-    scene.sync_destructables(&device, &queue, &mut assets);
+                    scene.sync_destructables(&device, &queue, &mut assets);
+                    scene.sync_items(&device, &queue, &mut assets);
                     t -= 0.02;
                 }
                 i += 2;
@@ -436,6 +438,17 @@ fn main() -> anyhow::Result<()> {
                     eprintln!("buy: {r:?} gold {} stock {:?}", g.world.players[0].get_state(1), g.world.shops.stock.get(&(shop, id)));
                 }
                 i += 3;
+            }
+            // items: the ground items, where they are and where they show on screen.
+            "items" => {
+                if let Some(g) = scene.game.as_ref() {
+                    for (&h, inst) in &scene.items {
+                        let Some(it) = g.world.item(h) else { continue };
+                        let p = inst.transform.w_axis.truncate();
+                        eprintln!("item {h} {} at ({:.0}, {:.0}) visible {} screen {:?}", w3_game::objects::id_str(it.type_id), it.x, it.y, inst.visible, scene.project(p, (w, h)));
+                    }
+                }
+                i += 1;
             }
             // menubutton <name>: presses a game menu button.
             "menubutton" => {
@@ -818,6 +831,7 @@ fn main() -> anyhow::Result<()> {
     scene.update(0.02);
     scene.sync_units(&device, &queue, &mut assets);
     scene.sync_destructables(&device, &queue, &mut assets);
+    scene.sync_items(&device, &queue, &mut assets);
     let size = wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 };
     let color = device.create_texture(&wgpu::TextureDescriptor {
         label: None,

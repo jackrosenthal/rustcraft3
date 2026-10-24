@@ -300,8 +300,8 @@ pub struct Scene {
     /// Special effects (AddSpecialEffect and ability art), by handle.
     pub effects: HashMap<u32, EffectView>,
     pub selection: Vec<u32>,
-    /// A selectable destructable chosen with a click when no unit was (the original
-    /// selects gates: their circle, name, and portraitmodel).
+    /// A ground item or selectable destructable chosen with a click when no unit was,
+    /// as the original chooses them: its circle, name, and model in the portrait.
     pub selected_widget: Option<u32>,
     selection_serial: u32,
     /// The world's blight count the ground was last built with.
@@ -664,6 +664,20 @@ impl Scene {
                 if let Err(e) = res {
                     log::error!("main: {e:#}");
                 }
+                // Without a setup screen the local player goes by the profile's name
+                // (LOCAL_PLAYER without one), not the map's: the original names its
+                // campaign player after the profile.  A replay keeps the recorder's.
+                let local_name = match (lobby, replay.as_ref()) {
+                    (Some(_), _) => None,
+                    (None, Some(r)) => r.local_name.clone(),
+                    (None, None) => Some(crate::data::Profiles::load("").current().map(|p| p.name.clone()).unwrap_or_else(|| assets.frames.string("LOCAL_PLAYER"))),
+                };
+                if let Some(n) = &local_name {
+                    let local = g.world.local_player as usize;
+                    if let Some(p) = g.world.players.get_mut(local) {
+                        p.name = n.clone();
+                    }
+                }
                 // The game is recorded from its start; a replay's is locked to it.
                 if replay.is_some() {
                     g.locked = true;
@@ -675,6 +689,7 @@ impl Scene {
                         campaign,
                         version: data.version as i32,
                         flags: setup_flags,
+                        local_name,
                         frames: Vec::new(),
                     }));
                 }
@@ -1661,9 +1676,14 @@ impl Scene {
         // TextureDottedNN), unless it is selected.
         let hovered = if self.over_console(self.cursor.0, self.cursor.1, self.screen) { None } else { self.pick_unit(self.cursor.0, self.cursor.1, self.screen) };
         let hovered = hovered.filter(|h| !self.selection.contains(h)).map(|h| (h, true));
-        // A chosen destructable: its selcircsize circle in ColorNeutral.
-        if let Some(Some(w3_game::types::Obj::Destructable(d))) = self.selected_widget.map(|h| w.handles.get(h)) {
-            let size = w.objects.destructables.get(d.type_id).map_or(128.0, |o| o.real("selcircsize"));
+        // A chosen destructable: its selcircsize circle; an item: its scale times
+        // ScaleFactor (CItem::vf66); both in ColorNeutral.
+        let chosen = match self.selected_widget.map(|h| w.handles.get(h)) {
+            Some(Some(w3_game::types::Obj::Destructable(d))) => Some((d.x, d.y, w.objects.destructables.get(d.type_id).map_or(128.0, |o| o.real("selcircsize")))),
+            Some(Some(w3_game::types::Obj::Item(it))) => Some((it.x, it.y, w.objects.items.get(it.type_id).map_or(1.0, |o| o.real("scale")) * num("ScaleFactor", 72.0))),
+            _ => None,
+        };
+        if let Some((cx, cy, size)) = chosen {
             let sizes = num("NumSizes", 3.0) as usize;
             let mut idx = sizes.saturating_sub(1);
             for i in 0..sizes.saturating_sub(1) {
@@ -1674,7 +1694,7 @@ impl Scene {
             }
             if let Some(tex) = misc.get_str("SelectionCircle", &format!("Texture{idx:02}")) {
                 let texture = assets.textures.get_or_white(device, queue, &format!("{tex}.blp"));
-                out.push(w3_render::decal::Decal { texture, center: [d.x, d.y, self.terrain.height_at(d.x, d.y)], size: [size, size], color: argb("ColorNeutral"), additive: false });
+                out.push(w3_render::decal::Decal { texture, center: [cx, cy, self.terrain.height_at(cx, cy)], size: [size, size], color: argb("ColorNeutral"), additive: false });
             }
         }
         for (h, dotted) in self.selection.iter().map(|&h| (h, false)).chain(hovered) {
@@ -1856,8 +1876,20 @@ impl Scene {
                 }
             }
         }
+        // A ground item under the pointer: its name alone, over its model (no bar).
+        let hovered_item = if hovered.is_none() && !all { self.pick_item(self.cursor.0, self.cursor.1, size) } else { None };
+        if let Some((h, it)) = hovered_item.and_then(|h| w.item(h).map(|it| (h, it.clone()))) {
+            if let Some(inst) = self.items.get(&h) {
+                let p = inst.transform.transform_point3(Vec3::new(0.0, 0.0, inst.model.mdx.extent.max[2]));
+                if let (Some((px, py)), Some(hud)) = (self.project(p, size), self.hud.as_ref()) {
+                    let (cx, bottom) = (px / size.0 as f32 * width, (1.0 - py / size.1 as f32) * w3_ui::UI_HEIGHT);
+                    let name = w.objects.items.get(it.type_id).map(|o| w.localized(&o.str("Name"))).unwrap_or_default();
+                    hud.unit_tip_draws(db, &[(name, [1.0; 4])], cx, bottom, &mut out);
+                }
+            }
+        }
         // A destructable under the pointer: its health bar and name.
-        if hovered.is_none() && !all {
+        if hovered.is_none() && hovered_item.is_none() && !all {
             if let Some(d) = self.pick_destructable(self.cursor.0, self.cursor.1, size).and_then(|d| w.handles.get(d).and_then(|o| if let w3_game::types::Obj::Destructable(x) = o { Some((d, x.clone())) } else { None })) {
                 let (h, dx) = d;
                 if let Some((inst, _)) = self.dests.get(&h) {
@@ -2097,11 +2129,13 @@ impl Scene {
             }
             picked.truncate(12);
         }
-        // A click on no unit may choose a selectable destructable instead.
+        // A click on no unit may choose a ground item or a selectable destructable.
         let widget = if picked.is_empty() && !dragged && !add {
-            self.pick_destructable(b.0, b.1, size).filter(|&d| match g.world.handles.get(d) {
-                Some(w3_game::types::Obj::Destructable(x)) => g.world.objects.destructables.get(x.type_id).is_some_and(|o| o.int("selectable") != 0),
-                _ => false,
+            self.pick_item(b.0, b.1, size).or_else(|| {
+                self.pick_destructable(b.0, b.1, size).filter(|&d| match g.world.handles.get(d) {
+                    Some(w3_game::types::Obj::Destructable(x)) => g.world.objects.destructables.get(x.type_id).is_some_and(|o| o.int("selectable") != 0),
+                    _ => false,
+                })
             })
         } else {
             None
@@ -3616,16 +3650,27 @@ impl Scene {
         if !self.selection.is_empty() {
             self.selected_widget = None;
         }
-        // A chosen destructable stays chosen while it stands.
-        self.selected_widget = self.selected_widget.filter(|&d| matches!(w.handles.get(d), Some(w3_game::types::Obj::Destructable(x)) if x.life > 0.0));
+        // A chosen destructable stays chosen while it stands, an item while it lies on
+        // the ground.
+        let items = &self.items;
+        self.selected_widget = self.selected_widget.filter(|&d| match w.handles.get(d) {
+            Some(w3_game::types::Obj::Destructable(x)) => x.life > 0.0,
+            Some(w3_game::types::Obj::Item(_)) => items.contains_key(&d),
+            _ => false,
+        });
         // The portrait shows the first selected unit's portrait model, or a chosen
         // destructable's portraitmodel.
         let want = self.selection.first().copied().or(self.selected_widget);
         if self.portrait.as_ref().map(|p| p.0) != want {
             self.portrait = want.and_then(|h| {
-                if let Some(w3_game::types::Obj::Destructable(d)) = w.handles.get(h) {
-                    let file = w.objects.destructables.get(d.type_id)?.str("portraitmodel");
-                    let model = assets.model(device, queue, &file)?;
+                let file = match w.handles.get(h) {
+                    Some(w3_game::types::Obj::Destructable(d)) => Some(w.objects.destructables.get(d.type_id)?.str("portraitmodel")),
+                    Some(w3_game::types::Obj::Item(it)) => Some(w.objects.items.get(it.type_id)?.str("file")),
+                    _ => None,
+                };
+                if let Some(file) = file {
+                    let base = file.strip_suffix(".mdl").or_else(|| file.strip_suffix(".mdx")).unwrap_or(&file).to_string();
+                    let model = assets.model(device, queue, &format!("{base}_Portrait")).or_else(|| assets.model(device, queue, &file))?;
                     let mut v = UnitView { inst: ModelInstance::new(model), type_id: [0; 4], children: Vec::new(), serial: 0, requested: "portrait".into(), anim: String::new(), rng: h, queued: 0 };
                     v.pick("portrait");
                     return Some((h, v));
@@ -4183,12 +4228,19 @@ impl Scene {
             }
         }
         hud.show_unit(db, &g.world, self.selection.first().copied());
-        // A chosen destructable's name (CInfoPanelDestructableDetail).
-        let dest_name = self.selected_widget.filter(|_| self.selection.is_empty()).and_then(|h| match g.world.handles.get(h) {
-            Some(w3_game::types::Obj::Destructable(d)) => g.world.objects.destructables.get(d.type_id).map(|o| g.world.localized(&o.str("Name"))),
+        // A chosen destructable's name (CInfoPanelDestructableDetail), or an item's name
+        // and Description (CInfoPanelItemDetail::vf27).
+        let chosen = self.selected_widget.filter(|_| self.selection.is_empty()).map(|h| g.world.handles.get(h));
+        let dest_name = match chosen {
+            Some(Some(w3_game::types::Obj::Destructable(d))) => g.world.objects.destructables.get(d.type_id).map(|o| g.world.localized(&o.str("Name"))),
             _ => None,
-        });
+        };
+        let item = match chosen {
+            Some(Some(w3_game::types::Obj::Item(it))) => g.world.objects.items.get(it.type_id).map(|o| (g.world.localized(&o.str("Name")), g.world.localized(&o.str("Description")))),
+            _ => None,
+        };
         hud.show_destructable(dest_name.as_deref());
+        hud.show_item(item.as_ref().map(|(n, d)| (n.as_str(), d.as_str())));
         let w = &g.world;
         let page = hud.page;
         hud.card = self.selection.first().map_or_else(Vec::new, |&h| card_of(&self.commands, db, w, h, page));

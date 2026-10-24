@@ -145,11 +145,13 @@ pub struct Replay {
     pub version: i32,
     /// The setup's advanced options (the map flags it began with).
     pub flags: u32,
+    /// The local player's name in a game begun without a setup screen (the profile's).
+    pub local_name: Option<String>,
     pub frames: Vec<Frame>,
 }
 
 /// The file's first bytes, before its compressed body.
-pub const MAGIC: &[u8; 8] = b"W3RRPLY3";
+pub const MAGIC: &[u8; 8] = b"W3RRPLY4";
 
 impl Replay {
     /// The replay as a file: the magic, then the replay compressed.

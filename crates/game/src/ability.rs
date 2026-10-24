@@ -411,12 +411,23 @@ impl World {
                 }
                 continue;
             }
+            // A paused unit's buffs hold: they neither run out nor act (measured: a
+            // paused footman under Rain of Fire keeps its burn buffs and loses no life).
+            if u.paused {
+                continue;
+            }
             for b in &mut u.buffs {
                 b.remaining -= dt;
                 if let Some(l) = b.aura_left.as_mut() {
                     *l -= dt;
                 }
-                if b.dps != 0.0 {
+                if b.dps != 0.0 && b.dps_every > 0.0 {
+                    b.dps_next -= dt;
+                    while b.dps_next <= 0.0 {
+                        dots.push((b.caster, h, b.dps * b.dps_every));
+                        b.dps_next += b.dps_every;
+                    }
+                } else if b.dps != 0.0 {
                     dots.push((b.caster, h, b.dps * dt));
                 }
                 u.mana = (u.mana + (b.mana_regen + b.mana_regen_pct * u.max_mana) * dt).min(u.max_mana);

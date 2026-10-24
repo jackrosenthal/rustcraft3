@@ -601,6 +601,11 @@ pub struct Buff {
     pub invulnerable: bool,
     /// Damage (negative heals) per second.
     pub dps: f32,
+    /// Seconds between the damage's ticks (0: dealt every update), and until the next.
+    #[serde(default)]
+    pub dps_every: f32,
+    #[serde(default)]
+    pub dps_next: f32,
     pub mana_regen: f32,
     pub life_regen: f32,
     /// Its healing is magical: more on an ethereal unit (Rejuvenation, Eat Tree).

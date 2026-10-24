@@ -627,7 +627,7 @@ impl World {
                         // the Archmage's order is blizzard for 6.3 seconds, its cast
                         // point and six waves a second apart); the others end with
                         // their last wave.
-                        if self.ability_code(c.ability) == "AHbz" {
+                        if matches!(self.ability_code(c.ability).as_str(), "AHbz" | "ANrf") {
                             c.next = f32::INFINITY;
                         } else {
                             c.elapsed = c.duration + 1.0;
@@ -682,21 +682,42 @@ impl World {
         }
     }
 
-    /// A Blizzard wave strikes: DataB to each unit in Area not struck before by the
-    /// cast, a share of DataF at most when that is less, and DataD of it to
-    /// structures.
+    /// A Blizzard or Rain of Fire wave strikes: DataB to each unit in Area, a share of
+    /// DataF at most when that is less, and DataD of it to structures; Rain of Fire
+    /// leaves units burning DataE a second, in ticks a second apart from the strike,
+    /// for Dur.  A paused unit is struck by the first wave that finds it and no other
+    /// (measured: nine paused footmen take 16.7 each, DataF shared, from the first
+    /// wave and nothing after; unpaused they are struck by every wave they stand in).
     fn blizzard_strike(&mut self, vm: &mut Vm, h: u32, c: &mut Channel) {
         let (a, lvl) = (c.ability, c.level);
         let area = self.d(a, "Area", lvl);
-        let targets: Vec<u32> = self.units_in(c.x, c.y, area).into_iter().filter(|t| !c.struck.contains(t)).collect();
+        let rain = self.ability_code(a) == "ANrf";
+        let targets: Vec<u32> = self
+            .units_in(c.x, c.y, area)
+            .into_iter()
+            .filter(|t| !(c.struck.contains(t) && self.unit(*t).is_some_and(|u| u.paused)))
+            .filter(|&t| !rain || self.cast_target_error(h, a, t).is_none())
+            .collect();
         let reduction = self.d(a, "DataD", lvl);
         let max = self.d(a, "DataF", lvl);
         let each = self.d(a, "DataB", lvl);
         let per = if max > 0.0 && !targets.is_empty() { each.min(max / targets.len() as f32) } else { each };
+        let buff = self.buff_of(a, lvl);
+        let (burn, dur) = (self.d(a, "DataE", lvl), self.d(a, "Dur", lvl));
         for t in targets {
             let k = if self.unit(t).is_some_and(|u| u.is_building) { reduction } else { 1.0 };
             self.spell_damage(vm, h, t, per * if k > 0.0 { k } else { 1.0 });
-            c.struck.push(t);
+            if rain && burn > 0.0 && self.unit(t).is_some_and(|u| !u.is_building) {
+                self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: burn, dps_every: 1.0, dps_next: 0.0, ..Default::default() });
+                // Its other buff (BNrf) goes on with it (measured: both show).
+                let ids = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", lvl)).unwrap_or_default();
+                for other in ids.split(',').skip(1).map(|b| crate::objects::id_from_str(b.trim())).filter(|b| b[0] != 0) {
+                    self.apply_buff(t, Buff { id: other, ability: a, level: lvl, caster: h, remaining: dur, ..Default::default() });
+                }
+            }
+            if !c.struck.contains(&t) {
+                c.struck.push(t);
+            }
         }
     }
 
@@ -727,25 +748,14 @@ impl World {
             // Blizzard: a wave of shards over the area; friends are hit too.
             // Rain of Fire: a Blizzard wave that also leaves what it hits burning for DataE
             // a second for Dur.
+            // Rain of Fire: as Blizzard, its strikes also leaving what they hit burning.
             "ANrf" => {
-                let targets: Vec<u32> = self.units_in(c.x, c.y, area).into_iter().filter(|&t| self.cast_target_error(h, a, t).is_none()).collect();
-                let (reduction, max, each) = (self.d(a, "DataD", lvl), self.d(a, "DataF", lvl), self.d(a, "DataB", lvl));
-                let per = if max > 0.0 && !targets.is_empty() { each.min(max / targets.len() as f32) } else { each };
-                let buff = self.buff_of(a, lvl);
-                let (burn, dur) = (self.d(a, "DataE", lvl), self.d(a, "Dur", lvl));
-                for t in targets {
-                    let k = if self.unit(t).is_some_and(|u| u.is_building) && reduction > 0.0 { reduction } else { 1.0 };
-                    self.spell_damage(vm, h, t, per * k);
-                    if burn > 0.0 && self.unit(t).is_some_and(|u| !u.is_building) {
-                        self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: burn, ..Default::default() });
-                    }
-                }
+                c.strikes.push(0.9);
                 self.art_at(a, "EffectArt", c.x, c.y);
             }
             // Blizzard: a wave's shards fall now and strike 0.9 seconds later
-            // (FUN_6f4daef0's DAT_6fcd5414), each unit once a cast (measured: a footman
-            // moved into the area during the cast is struck by the next wave and no
-            // other, and one moved out after the first wave is not struck again).
+            // (FUN_6f4daef0's DAT_6fcd5414; measured: the first strike lands 1.2 seconds
+            // after the order, the Archmage's 0.3 cast point and 0.9).
             "AHbz" => {
                 c.strikes.push(0.9);
                 self.art_at(a, "EffectArt", c.x, c.y);

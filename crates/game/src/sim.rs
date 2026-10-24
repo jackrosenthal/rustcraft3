@@ -636,6 +636,21 @@ impl World {
         best.map(|b| b.1)
     }
 
+    /// whosyourdaddy (CUnit vf72): a computer's unit does a user's none, a user's unit a
+    /// computer's 100 times its damage.
+    fn god_damage(&self, source: u32, target: u32, dmg: f32) -> f32 {
+        if !self.cheat(crate::cheats::flag::GOD) {
+            return dmg;
+        }
+        let computer = |h: u32| self.unit(h).and_then(|u| self.players.get(u.owner as usize)).is_some_and(|p| p.controller != crate::types::map_control::USER);
+        let (Some(_), Some(_)) = (self.unit(source), self.unit(target)) else { return dmg };
+        match (computer(source), computer(target)) {
+            (false, true) => dmg * 100.0,
+            (true, false) => 0.0,
+            _ => dmg,
+        }
+    }
+
     pub fn deal_damage_pub(&mut self, vm: &mut Vm, source: u32, target: u32, raw: f32, attack_type: &str) {
         self.deal_damage(vm, source, target, raw, attack_type);
     }
@@ -683,6 +698,7 @@ impl World {
         let dmg = if attack_type == "spells" { dmg } else { self.hardened_skin(target, melee_hit, dmg) };
         let dmg = self.elunes_grace(target, &attack_type.to_ascii_lowercase(), dmg);
         let dmg = self.illusion_damage(source, target, dmg);
+        let dmg = self.god_damage(source, target, dmg);
         let Some(t) = self.unit(target) else { return };
         let owner = t.owner;
         self.wake(target);
@@ -759,6 +775,8 @@ impl World {
                     continue;
                 }
                 let decay = if u.extra.exploded { 0.0 } else if u.is_building { self.misc_f32("StructureDecayTime", 30.0) } else { self.misc_f32("BoneDecayTime", 88.0) };
+                // iocainepowder.
+                let decay = if self.cheat(crate::cheats::flag::FAST_DEATH) { decay / crate::cheats::FAST } else { decay };
                 let t = self.time - u.death_time;
                 // Dead heroes stay, out of sight, to be revived.
                 if u.is_hero {
@@ -1094,7 +1112,7 @@ impl World {
         if p.get_state(player_state::RESOURCE_LUMBER) < l {
             return Err("Nolumber");
         }
-        if food && f > 0 && p.get_state(player_state::RESOURCE_FOOD_USED) + f > p.get_state(player_state::RESOURCE_FOOD_CAP) {
+        if food && f > 0 && !self.cheat(crate::cheats::flag::FOOD) && p.get_state(player_state::RESOURCE_FOOD_USED) + f > p.get_state(player_state::RESOURCE_FOOD_CAP) {
             return Err("Nofood");
         }
         let p = &mut self.players[player as usize];
@@ -1294,6 +1312,8 @@ impl World {
         if self.buff_mods(h).4 {
             return;
         }
+        // warpten: building, training, research, and revival go 16 times as fast.
+        let dt = if self.cheat(crate::cheats::flag::FAST_BUILD) { dt * crate::cheats::FAST } else { dt };
         self.update_revive(vm, h, dt);
         // Construction.
         if let Some(left) = self.unit(h).and_then(|u| u.constructing) {

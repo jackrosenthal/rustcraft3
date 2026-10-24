@@ -92,6 +92,8 @@ pub struct Message {
 
 pub struct Hud {
     pub tree: FrameTree,
+    /// The chat edit bar's text, while it is open (CChatEditBar).
+    pub chat: Option<String>,
     /// Scene time, for message expiry.
     pub now: f32,
     /// WorldFrameUnitMessage: trigger text, oldest first.
@@ -292,6 +294,7 @@ impl Hud {
             logged_scene: None,
             quest_indicator: None,
             save_panel: None,
+            chat: None,
             inventory: Vec::new(),
             level_bar: None,
             buff_icons: None,
@@ -1303,6 +1306,46 @@ impl Hud {
     /// The interface's draws.  ShowInterface's fade (FUN_6f373c20) fades the game
     /// interface out and the cinematic panel in, or back, over its seconds.
     pub fn draws(&self, db: &FrameDb) -> Vec<Draw> {
+        let mut out = self.layer_draws(db);
+        self.chat_bar_draws(db, &mut out);
+        out
+    }
+
+    /// CChatEditBar (FUN_6f39cb10, placed by CGameUI): 0.03 tall, from 0.2 in from the
+    /// screen's left to 0.2 in from its right, centered 0.145 above its bottom, a
+    /// ToolTipBorder/ToolTipBackground box (corners 0.01, insets 0.0019) with the line in
+    /// ChatFont at [FontHeights] ChatEditBar, 0.003 in.
+    fn chat_bar_draws(&self, db: &FrameDb, out: &mut Vec<Draw>) {
+        use w3_ui::fdf::{Arg, Def, Prop};
+        let Some(text) = &self.chat else { return };
+        let root = self.tree.frames[0].rect.unwrap_or_default();
+        let (x0, x1, cy) = (root.x0 + 0.2, root.x1 - 0.2, root.y0 + 0.145);
+        let r = w3_ui::Rect { x0, x1, y0: cy - 0.015, y1: cy + 0.015 };
+        let prop = |key: &str, args: Vec<Arg>| Prop { key: key.into(), args };
+        let s = |v: &str| Arg::Str(v.into());
+        let def = Def {
+            block: "Frame".into(),
+            kind: "BACKDROP".into(),
+            name: String::new(),
+            inherits: None,
+            with_children: false,
+            props: vec![
+                prop("BackdropBackground", vec![s("ToolTipBackground")]),
+                prop("BackdropCornerFlags", vec![s("UL|UR|BL|BR|T|L|B|R")]),
+                prop("BackdropCornerSize", vec![Arg::Num(0.01)]),
+                prop("BackdropBackgroundInsets", vec![Arg::Num(0.0019); 4]),
+                prop("BackdropEdgeFile", vec![s("ToolTipBorder")]),
+            ],
+            children: vec![],
+        };
+        self.tree.backdrop(db, &def, r, out);
+        let size = db.misc_ui.get_str("FontHeights", "ChatEditBar").and_then(|v| v.trim().parse().ok()).unwrap_or(0.013f32);
+        let font = db.decorate("ChatFont");
+        let tr = w3_ui::Rect { x0: r.x0 + 0.003, x1: r.x1 - 0.003, y0: r.y0, y1: r.y1 };
+        out.push(Draw::Text { font, size, rect: tr, text: format!("{text}|"), color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Middle, shadow: None });
+    }
+
+    fn layer_draws(&self, db: &FrameDb) -> Vec<Draw> {
         let (ui, cine) = self.fades;
         if ui >= 1.0 || cine <= 0.0 {
             return self.interface_draws(db, false);

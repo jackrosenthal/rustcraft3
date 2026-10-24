@@ -38,6 +38,10 @@ impl World {
 
     /// Whether `owner` has requirement `req` (`amount` research levels or units).
     pub fn tech_met(&self, owner: u8, req: Id, amount: i32) -> bool {
+        // synergy.
+        if self.cheat(crate::cheats::flag::TECH_TREE) {
+            return true;
+        }
         if let Some(v) = self.tech_cache.borrow().get(&(owner, req, amount)) {
             return *v;
         }

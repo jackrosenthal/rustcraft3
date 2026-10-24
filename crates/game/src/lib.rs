@@ -43,6 +43,7 @@ pub mod unitspells;
 pub mod upgrades;
 pub mod natives;
 pub mod objects;
+pub mod cheats;
 pub mod orbs;
 pub mod orders;
 pub mod pathing;
@@ -350,6 +351,35 @@ impl Game {
     pub fn player_event(&mut self, player: u8, event: i32) {
         let ctx = types::EventCtx { player, has_player: true, event_id: event, ..Default::default() };
         self.world.fire(&mut self.vm, ctx, move |_, k| matches!(k, types::EventKind::Player { player: p, event: e } if *p == player && *e == event));
+    }
+
+    /// A line `player` typed: a cheat (see `cheats`), or chat that player chat events hear
+    /// (an exact registration's text matching the line, another's found in it).  Returns
+    /// whether the line was chat to show.
+    pub fn chat(&mut self, player: u8, text: &str) -> bool {
+        if let Some(ctx) = self.world.console_command(&mut self.vm, player, text) {
+            if ctx.event_id != 0 {
+                self.player_event(player, ctx.event_id);
+            }
+            return false;
+        }
+        let regs: Vec<(u32, String)> = self
+            .world
+            .events
+            .iter()
+            .filter_map(|&e| match self.world.handles.get(e) {
+                Some(types::Obj::Event(r)) => match &r.kind {
+                    types::EventKind::PlayerChat { player: p, text: t, exact } if *p == player && if *exact { t == text } else { text.contains(t.as_str()) } => Some((r.trigger, t.clone())),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect();
+        for (trig, matched) in regs {
+            let ctx = types::EventCtx { player, has_player: true, event_id: event_ids::EVENT_PLAYER_CHAT, chat: text.to_string(), matched_chat: matched, ..Default::default() };
+            self.world.fire_trigger(&mut self.vm, trig, ctx);
+        }
+        true
     }
 
     pub fn click_dialog_button(&mut self, player: u8, button: u32) {

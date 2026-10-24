@@ -135,6 +135,12 @@ pub struct World {
     /// SuspendTimeOfDay: the day's clock stands still.
     #[serde(default)]
     pub time_of_day_suspended: bool,
+    /// The cheat flags (see `cheats::flag`).
+    #[serde(default)]
+    pub cheat_flags: u32,
+    /// The fog settings iseedeadpeople put aside.
+    #[serde(default)]
+    pub cheat_fog: Option<(bool, bool)>,
     /// The volume groups (SOUND_VOLUMEGROUP_*): each ramps over a second from one level
     /// to another, from a time (VolumeGroupSetVolume, FUN_6f35aa60).
     #[serde(default = "full_volume")]
@@ -411,6 +417,8 @@ impl World {
             time_of_day: 8.0,
             time_of_day_scale: 1.0,
             time_of_day_suspended: false,
+            cheat_flags: 0,
+            cheat_fog: None,
             volume_groups: full_volume(),
             select_allowed: selection_allowed(),
             day_night_models: (String::new(), String::new()),
@@ -749,6 +757,21 @@ impl World {
 
     /// Fires every enabled trigger registered for events matching `pred`, evaluating
     /// conditions first.
+    /// Runs one trigger for an event: its conditions, then its actions if they pass.
+    pub fn fire_trigger(&mut self, vm: &mut Vm, trig: u32, ctx: EventCtx) {
+        if !self.trigger(trig).is_some_and(|t| t.enabled) {
+            return;
+        }
+        let mut c = ctx;
+        c.trigger = trig;
+        let saved = std::mem::replace(&mut self.ctx, c.clone());
+        let pass = self.trigger_evaluate(vm, trig);
+        self.ctx = saved;
+        if pass {
+            self.trigger_execute(vm, trig, c);
+        }
+    }
+
     pub fn fire(&mut self, vm: &mut Vm, ctx: EventCtx, pred: impl Fn(&World, &EventKind) -> bool) {
         let regs: Vec<(u32, u32)> = self
             .events

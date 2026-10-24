@@ -603,7 +603,7 @@ impl World {
         if u.cooldowns.get(&a).copied().unwrap_or(0.0) > 0.0 {
             return Err("Cooldown");
         }
-        if u.mana < self.data(a, "Cost", lvl) {
+        if u.mana < self.data(a, "Cost", lvl) && !self.cheat(crate::cheats::flag::MANA) {
             return Err("Nomana");
         }
         if u.buffs.iter().any(|b| b.silence) {
@@ -673,8 +673,9 @@ impl World {
         let o = self.objects.units.get(u.type_id);
         let (castpt, backsw) = o.map_or((0.3, 0.5), |o| (o.real("castpt"), o.real("castbsw")));
         if !fired && elapsed >= castpt {
-            let cost = self.data(a, "Cost", lvl);
-            let cool = self.data(a, "Cool", lvl);
+            // thereisnospoon and thedudeabides.
+            let cost = if self.cheat(crate::cheats::flag::MANA) { 0.0 } else { self.data(a, "Cost", lvl) };
+            let cool = if self.cheat(crate::cheats::flag::COOLDOWN) { 0.0 } else { self.data(a, "Cool", lvl) };
             let u = self.unit_mut(h).unwrap();
             u.mana -= cost;
             u.cooldowns.insert(a, cool);

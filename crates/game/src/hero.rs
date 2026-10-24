@@ -168,7 +168,8 @@ impl World {
         let max = ab.map_or(3, |a| a.int("levels").max(1));
         let req = ab.map_or(1, |a| a.int("reqLevel").max(1));
         let skip = ab.map_or(2, |a| a.int("levelSkip").max(1));
-        u.skill_points > 0 && current < max && u.level >= req + current * skip
+        // whoisjohngalt waives the hero level a skill needs (FUN_6f528d20).
+        u.skill_points > 0 && current < max && (u.level >= req + current * skip || self.cheat(crate::cheats::flag::HERO_LEVEL))
     }
 
     /// Learns or improves a hero ability, spending a skill point.

@@ -2094,6 +2094,22 @@ impl Scene {
     }
 
     /// A key press: command card hotkeys and Escape.
+    /// A line the player typed: a cheat, or chat shown as game.dll formats it
+    /// (FUN_6f373470: "%s |c%2.2x%2.2x%2.2x%2.2x%s: |r%s", the recipient, the player's
+    /// color and name, and the line).
+    fn send_chat(&mut self, line: &str) {
+        let Some(g) = self.game.as_mut() else { return };
+        let local = g.world.local_player;
+        if !g.chat(local, line) {
+            return;
+        }
+        let recipient = g.world.localized("CHAT_RECIPIENT_ALL");
+        let p = &g.world.players[local as usize];
+        let c = self.team_rgb[p.color as usize % 16].map(|v| (v * 255.0).round() as u8);
+        let text = format!("{recipient} |c{:02x}{:02x}{:02x}{:02x}{}: |r{line}", 0xff, c[0], c[1], c[2], p.name);
+        g.world.requests.push(w3_game::world::Request::DisplayText { players: 1 << local, x: 0.0, y: 0.0, text, duration: -1.0 });
+    }
+
     pub fn key(&mut self, c: char) {
         // The save panel's edit box takes typing; Enter saves and Escape cancels.
         if let Some(p) = self.hud.as_mut().and_then(|h| h.save_panel.as_mut()) {
@@ -2110,6 +2126,32 @@ impl Scene {
                 }
             } else if c == '\u{1b}' {
                 p.confirm = None;
+            }
+            return;
+        }
+        // The chat bar takes typing while it is open; Enter sends the line, Escape drops it.
+        if let Some(text) = self.hud.as_mut().and_then(|h| h.chat.as_mut()) {
+            match c {
+                '\u{1b}' => {
+                    self.hud.as_mut().unwrap().chat = None;
+                }
+                '\r' | '\n' => {
+                    let line = self.hud.as_mut().unwrap().chat.take().unwrap_or_default();
+                    if !line.trim().is_empty() {
+                        self.send_chat(&line);
+                    }
+                }
+                '\u{8}' => {
+                    text.pop();
+                }
+                c if !c.is_control() && text.chars().count() < 127 => text.push(c),
+                _ => {}
+            }
+            return;
+        }
+        if (c == '\r' || c == '\n') && self.user_control() && self.hud.as_ref().is_some_and(|h| h.menu.is_none() && h.quests.is_none() && h.log_view.is_none()) {
+            if let Some(h) = self.hud.as_mut() {
+                h.chat = Some(String::new());
             }
             return;
         }

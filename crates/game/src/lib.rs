@@ -50,6 +50,7 @@ pub mod replay;
 pub mod orbs;
 pub mod orders;
 pub mod pathing;
+pub mod placement;
 pub mod repair;
 pub mod rng;
 pub mod score;
@@ -323,6 +324,8 @@ impl Game {
                 }
             }
         }
+        // The players take their start locations by the map's placement.
+        self.world.place_start_locations();
         // Neutral players always play, as creeps (MAP_CONTROL_CREEP, as game.dll sets
         // all four).
         for i in types::PLAYER_NEUTRAL_AGGRESSIVE..types::PLAYER_COUNT as u8 {

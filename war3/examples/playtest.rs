@@ -108,6 +108,18 @@ fn main() -> anyhow::Result<()> {
                 scene.open_log();
                 i += 1;
             }
+            // starts: each player's start location.
+            "starts" => {
+                if let Some(g) = &scene.game {
+                    for p in 0..12 {
+                        let pl = &g.world.players[p];
+                        if pl.slot_state == 1 {
+                            eprintln!("start p{p} team {} at {}", pl.team, pl.start_location);
+                        }
+                    }
+                }
+                i += 1;
+            }
             // allies: opens the Allies dialog, to look at.
             "allies" => {
                 let aspect = w as f32 / h as f32;

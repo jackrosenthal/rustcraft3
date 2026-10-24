@@ -37,7 +37,8 @@ fn atof(s: &str) -> f32 {
     let t = s.trim_start();
     let end = t
         .char_indices()
-        .take_while(|&(i, c)| c.is_ascii_digit() || c == '.' || ((c == '-' || c == '+') && i == 0) || c == 'e' || c == 'E')
+        // No exponent: the original reads "1.5e2" as 1.5 (measured).
+        .take_while(|&(i, c)| c.is_ascii_digit() || c == '.' || ((c == '-' || c == '+') && i == 0))
         .map(|(i, c)| i + c.len_utf8())
         .last()
         .unwrap_or(0);
@@ -115,9 +116,16 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         Atan => |_, _, a| real(a.r(0).atan()),
         Atan2 => |_, _, a| real(a.r(0).atan2(a.r(1))),
         SquareRoot => |_, _, a| real(if a.r(0) <= 0.0 { 0.0 } else { a.r(0).sqrt() }),
-        Pow => |_, _, a| real(a.r(0).powf(a.r(1))),
-        I2R => |_, _, a| real(a.i(0) as f32),
-        R2I => |_, _, a| int(a.r(0) as i32),
+        // A negative base to a fractional power is taken as its size's (measured:
+        // Pow(-8, 0.333) is 1.999 in the original).
+        Pow => |_, _, a| {
+            let (x, y) = (a.r(0), a.r(1));
+            real(if x < 0.0 && y.fract() != 0.0 { (-x).powf(y) } else { x.powf(y) })
+        },
+        I2R => |_, _, a| real(w3_jass::value::int_to_real(a.i(0) as i64)),
+        // Out of range it wraps, as the original's conversion through 64 bits does
+        // (measured: R2I(10000000000.0) is 1410065408).
+        R2I => |_, _, a| int(a.r(0) as i64 as i32),
         I2S => |_, _, a| string(a.i(0).to_string()),
         R2S => |_, _, a| string(format_real(a.r(0), 0, 3)),
         R2SW => |_, _, a| string(format_real(a.r(0), a.i(1), a.i(2))),
@@ -128,7 +136,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let Some(s) = a[0].str() else { return none() };
             let b = s.as_bytes();
             let start = (a.i(1).max(0) as usize).min(b.len());
-            let end = (a.i(2).max(0) as usize).min(b.len());
+            // An end before the start reads to the string's end (measured:
+            // SubString("hello", 4, 2) is "o").
+            let end = if a.i(2) < a.i(1) { b.len() } else { (a.i(2).max(0) as usize).min(b.len()) };
             if end <= start {
                 return string("");
             }

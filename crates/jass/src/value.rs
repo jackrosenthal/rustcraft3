@@ -105,3 +105,10 @@ impl BaseType {
         }
     }
 }
+
+/// An integer as a real, toward zero where it cannot be held exactly, as the original
+/// converts (measured: I2R(123456789) is 123456784).
+pub fn int_to_real(i: i64) -> f32 {
+    let f = i as f32;
+    if (f as f64).abs() > (i as f64).abs() { f32::from_bits(f.to_bits() - 1) } else { f }
+}

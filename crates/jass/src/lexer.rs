@@ -126,10 +126,17 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, SyntaxError> {
                 }
                 let text = &src[start..i];
                 if text.contains('.') {
+                    // The whole part converted toward zero, as the original converts
+                    // integers (measured: 123456789.0 reads 123456784, not the nearer
+                    // 123456792), plus the fraction rounded to nearest (0.0005 stays
+                    // just above 0.0005).
                     let v: f32 = if text == "." {
                         0.0
                     } else {
-                        text.parse().map_err(|_| err(line, "bad real literal"))?
+                        let (whole, frac) = text.split_once('.').unwrap_or((text, ""));
+                        let whole: i64 = if whole.is_empty() { 0 } else { whole.parse().map_err(|_| err(line, "bad real literal"))? };
+                        let frac: f64 = if frac.is_empty() { 0.0 } else { format!("0.{frac}").parse().map_err(|_| err(line, "bad real literal"))? };
+                        crate::value::int_to_real(whole) + frac as f32
                     };
                     out.push(Token { tok: Tok::Real(v), line });
                 } else if text.len() > 1 && text.starts_with('0') {

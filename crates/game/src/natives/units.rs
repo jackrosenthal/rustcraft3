@@ -451,6 +451,11 @@ fn issue_order(w: &mut World, vm: &mut Vm, unit: u32, order: i32, x: f32, y: f32
     let id = id_from_int(order);
     let is_unit_type = w.objects.units.get(id).is_some();
     let is_research = w.objects.upgrades.get(id).is_some();
+    // An id that is no order (nor a unit, research, or item type) is refused (measured:
+    // the original's IssueImmediateOrderById with a handle id returns false).
+    if !is_unit_type && !is_research && w.objects.items.get(id).is_none() && crate::natives::basic::order_name(order).is_none() {
+        return boolean(false);
+    }
     if is_unit_type || is_research {
         let ok = if is_research {
             w.research_at(unit, id).is_ok()

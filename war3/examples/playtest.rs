@@ -103,6 +103,11 @@ fn main() -> anyhow::Result<()> {
                 scene.hover(num(&a[i + 1]), num(&a[i + 2]), (w, h));
                 i += 3;
             }
+            // ended: whether the game has ended (EndGame), and with a score screen.
+            "ended" => {
+                eprintln!("ended {} score {}", scene.ended, scene.final_score.is_some());
+                i += 1;
+            }
             "lclick" => {
                 let consumed = scene.left_click(num(&a[i + 1]), num(&a[i + 2]), (w, h));
                 eprintln!("left click consumed: {consumed}");

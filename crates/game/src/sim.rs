@@ -566,8 +566,10 @@ impl World {
             u.path.remove(0);
             return false;
         }
-        // Likewise the end, when another unit already stands on it.
-        if u.path.len() == 1 && d > step && d <= u.collision * 2.0 {
+        // Likewise the end of a move to a point, when another unit already stands on it
+        // (a worker bound for a mine or a building site goes all the way).
+        let to_point = matches!(u.action, Action::Move { .. } | Action::AttackMove { .. } | Action::Patrol { .. });
+        if to_point && u.path.len() == 1 && d > step && d <= u.collision * 2.0 {
             let size = u.collision;
             let taken = self.unit_order.iter().any(|&o| o != h && self.unit(o).is_some_and(|v| !v.dead && !v.hidden && !v.is_building && (v.x - next.0).hypot(v.y - next.1) < v.collision + size));
             if taken {

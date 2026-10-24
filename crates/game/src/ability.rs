@@ -452,6 +452,23 @@ impl World {
         self.update_auras();
     }
 
+    /// Whether a unit's auras reach others, under MiscGame's rules: illusions, invisible
+    /// units, polymorphed ones, burrowed ones, animated dead, and flying heroes bestow
+    /// their auras only where IllusionsBestowAuras (and the rest) say so.
+    fn bestows_auras(&self, h: u32) -> bool {
+        let Some(u) = self.unit(h) else { return false };
+        let allowed = |key: &str| self.misc_f32(key, 1.0) != 0.0;
+        let polymorphed = u.buffs.iter().any(|b| matches!(self.ability_code(b.ability).as_str(), "Aply" | "AOhx"));
+        let burrowed = u.abilities.iter().any(|&(a, l)| self.ability_code(a) == "Abur" && self.objects.abilities.get(a).is_some_and(|o| crate::objects::id_from_str(o.level_str("UnitID", l.max(1) as u32).trim()) == u.type_id));
+        let flying_hero = u.is_hero && self.move_kind(h) == crate::pathing::Move::Fly;
+        !(u.extra.illusion.is_some() && !allowed("IllusionsBestowAuras")
+            || self.is_invisible(h) && !allowed("InvisibleUnitsBestowAuras")
+            || polymorphed && !allowed("PolymorphedUnitsBestowAuras")
+            || burrowed && !allowed("BurrowedUnitsBestowAuras")
+            || u.extra.animated && !allowed("AnimatedUnitsBestowAuras")
+            || flying_hero && !allowed("FlyingHeroesBestowAuras"))
+    }
+
     /// Auras give their buff to qualifying units in range, refreshed every update.
     fn update_auras(&mut self) {
         let mut grants = Vec::new();
@@ -460,6 +477,7 @@ impl World {
             if u.dead {
                 continue;
             }
+            let bestows = self.bestows_auras(h);
             for &(a, lvl) in &u.abilities {
                 let code = self.ability_code(a);
                 let lvl = lvl.max(1) as u32;
@@ -521,6 +539,10 @@ impl World {
                         b.attack_factor = self.data(a, "DataB", lvl);
                     }
                     _ => continue,
+                }
+                // Engineering Upgrade is its bearer's own; the rest are auras.
+                if code != "ANeg" && !bestows {
+                    continue;
                 }
                 let area = if code == "ANeg" { 0.0 } else { self.data(a, "Area", lvl) };
                 // Whom it reaches: enemies (a slow aura), allies, or, for a regeneration

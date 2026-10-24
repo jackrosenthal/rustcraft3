@@ -45,11 +45,12 @@ pub enum Outcome {
     Flag(bool),
 }
 
-/// One step of the game: its length and the commands given before it.
+/// One step of the game: its length and the commands given before it, each with the
+/// player who gave it.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Frame {
     pub dt: f32,
-        pub commands: Vec<Command>,
+    pub commands: Vec<(u8, Command)>,
 }
 
 /// A replay: the game it was, and its frames.
@@ -68,7 +69,7 @@ pub struct Replay {
 }
 
 /// The file's first bytes, before its compressed body.
-pub const MAGIC: &[u8; 8] = b"W3RRPLY1";
+pub const MAGIC: &[u8; 8] = b"W3RRPLY2";
 
 impl Replay {
     /// The replay as a file: the magic, then the replay compressed.
@@ -101,7 +102,7 @@ impl Replay {
 pub struct Recorder {
     pub replay: Replay,
     /// The commands since the last step.
-    pending: Vec<Command>,
+    pending: Vec<(u8, Command)>,
 }
 
 impl Recorder {
@@ -109,8 +110,8 @@ impl Recorder {
         Recorder { replay, pending: Vec::new() }
     }
 
-    pub fn command(&mut self, c: Command) {
-        self.pending.push(c);
+    pub fn command(&mut self, player: u8, c: Command) {
+        self.pending.push((player, c));
     }
 
     pub fn step(&mut self, dt: f32) {

@@ -674,6 +674,18 @@ impl Scene {
                         }
                     }
                 }
+                // A chat line: "[All] name: line" in the player's color.
+                w3_game::world::Request::Chat { player, text } => {
+                    let Some(w) = self.game.as_ref().map(|g| &g.world) else { continue };
+                    let recipient = w.localized("CHAT_RECIPIENT_ALL");
+                    let p = &w.players[player as usize % w.players.len()];
+                    let c = self.team_rgb[p.color as usize % 16].map(|v| (v * 255.0).round() as u8);
+                    let line = format!("{recipient} |c{:02x}{:02x}{:02x}{:02x}{}: |r{text}", 0xff, c[0], c[1], c[2], p.name);
+                    log::info!("[chat] {line}");
+                    if let Some(h) = self.hud.as_mut() {
+                        h.unit_message(&line, 0.0, 0.0, -1.0);
+                    }
+                }
                 w3_game::world::Request::DoodadAnimation { id, area, anim, random } => self.doodad_animation(id, &area, &anim, random),
                 w3_game::world::Request::Indicator { widget, color } => self.add_indicator(widget, color.map(|c| c as f32 / 255.0)),
                 // ForceUIKey: the interface acts on the key as if pressed; ForceUICancel
@@ -2199,14 +2211,7 @@ impl Scene {
     fn send_chat(&mut self, line: &str) {
         let Some(g) = self.game.as_mut() else { return };
         let local = g.world.local_player;
-        if !g.apply(w3_game::replay::Command::Chat { player: local, text: line.to_string() }).flag() {
-            return;
-        }
-        let recipient = g.world.localized("CHAT_RECIPIENT_ALL");
-        let p = &g.world.players[local as usize];
-        let c = self.team_rgb[p.color as usize % 16].map(|v| (v * 255.0).round() as u8);
-        let text = format!("{recipient} |c{:02x}{:02x}{:02x}{:02x}{}: |r{line}", 0xff, c[0], c[1], c[2], p.name);
-        g.world.requests.push(w3_game::world::Request::DisplayText { players: 1 << local, x: 0.0, y: 0.0, text, duration: -1.0 });
+        g.apply(w3_game::replay::Command::Chat { player: local, text: line.to_string() });
     }
 
     pub fn key(&mut self, c: char) {

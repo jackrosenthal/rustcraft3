@@ -26,6 +26,8 @@ pub enum Request {
     /// default (PingMinimap, PingMinimapEx).
     Ping { x: f32, y: f32, duration: f32, color: Option<[u8; 3]> },
     DisplayText { players: u32, x: f32, y: f32, text: String, duration: f32 },
+    /// A player's chat line, shown to everyone.
+    Chat { player: u8, text: String },
     /// Doodads of a type play an animation: those within a radius of a point (or only
     /// the nearest), or inside a rect (SetDoodadAnimation, SetDoodadAnimationRect).
     DoodadAnimation { id: crate::objects::Id, area: DoodadArea, anim: String, random: bool },
@@ -141,6 +143,9 @@ pub struct World {
     /// The cheat flags (see `cheats::flag`).
     #[serde(default)]
     pub cheat_flags: u32,
+    /// A game over the network (no cheats, no saving).
+    #[serde(default)]
+    pub network: bool,
     /// The fog settings iseedeadpeople put aside.
     #[serde(default)]
     pub cheat_fog: Option<(bool, bool)>,
@@ -422,6 +427,7 @@ impl World {
             time_of_day_scale: 1.0,
             time_of_day_suspended: false,
             cheat_flags: 0,
+            network: false,
             cheat_fog: None,
             volume_groups: full_volume(),
             select_allowed: selection_allowed(),

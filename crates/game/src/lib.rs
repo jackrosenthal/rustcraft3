@@ -78,6 +78,10 @@ pub struct Game {
     pub recorder: Option<replay::Recorder>,
     /// While a replay plays, the interface's commands are ignored.
     pub locked: bool,
+    /// In a network game the interface's commands go out here, to come back in frames
+    /// from the host; the last selection sent, so an unchanged one is not sent again.
+    pub outbox: Option<Vec<replay::Command>>,
+    sent_selection: Option<Vec<u32>>,
 }
 
 /// How a player slot is filled when the game starts.
@@ -221,7 +225,7 @@ impl Game {
                 pl.name = name;
             }
         }
-        Ok(Game { vm, world, info, recorder: None, locked: false })
+        Ok(Game { vm, world, info, recorder: None, locked: false, outbox: None, sent_selection: None })
     }
 
     /// Runs the map's `config` function, which declares players and start locations.
@@ -367,12 +371,16 @@ impl Game {
     /// (an exact registration's text matching the line, another's found in it).  Returns
     /// whether the line was chat to show.
     pub fn chat(&mut self, player: u8, text: &str) -> bool {
-        if let Some(ctx) = self.world.console_command(&mut self.vm, player, text) {
-            if ctx.event_id != 0 {
-                self.player_event(player, ctx.event_id);
+        // Cheats work only outside network games.
+        if !self.world.network {
+            if let Some(ctx) = self.world.console_command(&mut self.vm, player, text) {
+                if ctx.event_id != 0 {
+                    self.player_event(player, ctx.event_id);
+                }
+                return false;
             }
-            return false;
         }
+        self.world.requests.push(world::Request::Chat { player, text: text.to_string() });
         let regs: Vec<(u32, String)> = self
             .world
             .events
@@ -487,23 +495,38 @@ impl Game {
         self.world.tick(&mut self.vm, dt);
     }
 
-    /// Plays one replay frame: its commands, then its step.
-    pub fn play_frame(&mut self, f: &replay::Frame) {
-        for c in &f.commands {
-            self.execute(c.clone());
+    /// Plays one frame (of a replay or from a network game's host): its commands, then
+    /// its step; returns what each command answered, with its player.
+    pub fn play_frame(&mut self, f: &replay::Frame) -> Vec<(u8, replay::Outcome)> {
+        let out = f.commands.iter().map(|(p, c)| (*p, self.execute(*p, c.clone()))).collect();
+        if let Some(r) = self.recorder.as_mut() {
+            r.step(f.dt);
         }
         self.world.tick(&mut self.vm, f.dt);
+        out
     }
 
-    /// A command from the interface (noted for the replay); none while a replay plays.
+    /// A command from the interface (noted for the replay); none while a replay plays,
+    /// and in a network game sent to the host rather than carried out.
     pub fn apply(&mut self, c: replay::Command) -> replay::Outcome {
         if self.locked {
             return replay::Outcome::Done;
         }
-        self.execute(c)
+        let local = self.world.local_player;
+        if let Some(out) = self.outbox.as_mut() {
+            if let replay::Command::Select { units, .. } = &c {
+                if self.sent_selection.as_ref() == Some(units) || (self.sent_selection.is_none() && self.world.selection.get(&local).is_some_and(|s| s == units)) {
+                    return replay::Outcome::Done;
+                }
+                self.sent_selection = Some(units.clone());
+            }
+            out.push(c);
+            return replay::Outcome::Done;
+        }
+        self.execute(local, c)
     }
 
-    fn execute(&mut self, c: replay::Command) -> replay::Outcome {
+    fn execute(&mut self, player: u8, c: replay::Command) -> replay::Outcome {
         use replay::{Command as C, Outcome as O};
         // A selection the player already has changes nothing.
         if let C::Select { player, units } = &c {
@@ -512,7 +535,7 @@ impl Game {
             }
         }
         if let Some(r) = self.recorder.as_mut() {
-            r.command(c.clone());
+            r.command(player, c.clone());
         }
         let res = |r: Result<(), &'static str>| r.map_or_else(O::Error, |_| O::Done);
         match c {

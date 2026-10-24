@@ -779,6 +779,18 @@ impl World {
             return;
         }
         let (elapsed, fired) = u.casting.unwrap();
+        // Begun, a cast reaches SpellCastRangeBuffer further; a target that gets
+        // beyond that before the spell goes off is followed again (FUN_6f415270).
+        if !fired && target != 0 && self.targeting(a) != Targeting::None {
+            let d = (goal.0 - u.x).hypot(goal.1 - u.y) - u.collision - target_size;
+            if d > range + self.misc_f32("SpellCastRangeBuffer", 300.0) {
+                let u = self.unit_mut(h).unwrap();
+                u.casting = None;
+                crate::sim::set_anim(u, "stand");
+                return;
+            }
+        }
+        let Some(u) = self.unit(h) else { return };
         let elapsed = elapsed + dt;
         let o = self.objects.units.get(u.type_id);
         let (castpt, backsw) = o.map_or((0.3, 0.5), |o| (o.real("castpt"), o.real("castbsw")));

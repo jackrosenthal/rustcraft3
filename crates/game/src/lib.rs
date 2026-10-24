@@ -44,6 +44,7 @@ pub mod upgrades;
 pub mod natives;
 pub mod objects;
 pub mod cheats;
+pub mod fire;
 pub mod collections;
 pub mod replay;
 pub mod orbs;

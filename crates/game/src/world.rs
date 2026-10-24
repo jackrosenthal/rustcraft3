@@ -944,6 +944,7 @@ impl World {
         prof!(self, "update_units", self.update_units(vm, dt));
         prof!(self, "regenerate", self.regenerate(dt));
         prof!(self, "update_buffs", self.update_buffs(vm, dt));
+        prof!(self, "update_fires", self.update_fires(dt));
         prof!(self, "update_area_buffs", self.update_area_buffs(vm, dt));
         prof!(self, "update_traps", self.update_traps(vm));
         prof!(self, "update_splits", self.update_splits(dt));

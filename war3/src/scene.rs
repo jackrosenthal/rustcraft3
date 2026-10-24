@@ -144,6 +144,8 @@ fn submit_children(models: &mut w3_render::model::ModelRenderer, v: &mut UnitVie
 enum LoopKey {
     Moving(u32),
     Building(u32),
+    /// A burning structure's fire.
+    Fire(u32),
     Doodad(usize),
 }
 
@@ -946,6 +948,9 @@ impl Scene {
             let p = v.inst.transform.w_axis;
             let p = [p.x, p.y, p.z];
             let fades = (o.real("LoopingSoundFadeIn"), o.real("LoopingSoundFadeOut"));
+            if let Some(label) = g.world.fire_sound(h).filter(|l| in_range(audio, l, p)) {
+                want.push((LoopKey::Fire(h), label, p, 0.0, 0.0));
+            }
             let (key, label) = if u.constructing.is_some() {
                 (LoopKey::Building(h), o.str("BuildingSoundLabel"))
             } else if u.anim.starts_with("walk") && self.options.movement {

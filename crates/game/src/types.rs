@@ -340,6 +340,16 @@ pub struct UnitExtra {
     /// Effects its abilities attach to it (Sphere, Tree of Life art).
     #[serde(default)]
     pub art: Vec<u32>,
+    /// A structure's fire: 0 none, 1 small, 2 medium, 3 large; the time to its next
+    /// check, and its effects.
+    #[serde(default)]
+    pub fire: u8,
+    #[serde(default)]
+    pub fire_timer: f32,
+    #[serde(default)]
+    pub fire_started: bool,
+    #[serde(default)]
+    pub fire_art: Vec<u32>,
     /// When a tornado last let the unit down.
     #[serde(default)]
     pub spun_at: f32,
@@ -440,6 +450,10 @@ impl Default for UnitExtra {
             mine_fuse: None,
             swarm: None,
             art: Vec::new(),
+            fire: 0,
+            fire_timer: 0.0,
+            fire_started: false,
+            fire_art: Vec::new(),
             spun_at: -100.0,
             anim_props: Vec::new(),
             anim_queue: Vec::new(),

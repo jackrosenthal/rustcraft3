@@ -170,7 +170,15 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let (s, v) = (a.h(1) as i32, a.i(2));
             with_player(w, a, |p| { p.state.insert(s, v); })
         },
-        GetPlayerState => |w, _, a| int(player_arg(w, a, 0).map_or(0, |p| w.players[p as usize].get_state(a.h(1) as i32))),
+        // The upkeep rates are the upkeep level's taxes (measured: 30 at 55 food used).
+        GetPlayerState => |w, _, a| {
+            let Some(p) = player_arg(w, a, 0) else { return int(0) };
+            int(match a.h(1) as i32 {
+                crate::types::player_state::GOLD_UPKEEP_RATE => w.upkeep_tax(p).0,
+                crate::types::player_state::LUMBER_UPKEEP_RATE => w.upkeep_tax(p).1,
+                s => w.players[p as usize].get_state(s),
+            })
+        },
         SetPlayerTaxRate => |w, _, a| {
             let (Some(p), Some(o)) = (player_arg(w, a, 0), player_arg(w, a, 1)) else { return none() };
             let (r, v) = (a.h(2) as i32, a.i(3));

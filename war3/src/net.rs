@@ -328,6 +328,8 @@ pub struct Session {
     pub left: Vec<u8>,
     /// Waiting on a player who has fallen behind.
     pub waiting: bool,
+    /// Frames are played up to this many (for tests that compare games).
+    pub limit: Option<u32>,
 }
 
 /// The host sends a frame every 50 ms of game time and waits for any player more
@@ -337,7 +339,7 @@ const BEHIND: u32 = 40;
 
 impl Session {
     pub fn new(role: Role) -> Session {
-        Session { role, queue: VecDeque::new(), next: 0, played: 0, owed: 0.0, clock: 0.0, lost: false, left: Vec::new(), waiting: false }
+        Session { role, queue: VecDeque::new(), next: 0, played: 0, owed: 0.0, clock: 0.0, lost: false, left: Vec::new(), waiting: false, limit: None }
     }
 
     /// The local player's commands, to the host (the host takes its own at once).
@@ -417,6 +419,9 @@ impl Session {
         self.owed = (self.owed + dt).min(TURN * 4.0);
         let mut out = Vec::new();
         while let Some(f) = self.queue.front() {
+            if self.limit.is_some_and(|l| self.played + out.len() as u32 >= l) {
+                break;
+            }
             let behind = self.queue.len() > 3;
             if f.dt > self.owed && !behind {
                 break;

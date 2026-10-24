@@ -36,7 +36,22 @@ fn main() -> anyhow::Result<()> {
                 while t < secs {
                     glue.update(0.02, &mut assets);
                     shot(&device, &queue, &mut glue, &mut assets, format, w, h, "")?;
+                    if let Some(war3::glue::GlueAction::PlayNet(map, lobby, role)) = glue.action.take() {
+                        return net_game(&device, &queue, format, &data, &mut assets, &map, &lobby, role.borrow_mut().take(), w, h);
+                    }
                     t += 0.02;
+                }
+                i += 2;
+            }
+            // sleep <s>: real time passes, the glue updating (for network screens).
+            "sleep" => {
+                let end = std::time::Instant::now() + std::time::Duration::from_secs_f32(a[i + 1].parse()?);
+                while std::time::Instant::now() < end {
+                    glue.update(0.02, &mut assets);
+                    if let Some(war3::glue::GlueAction::PlayNet(map, lobby, role)) = glue.action.take() {
+                        return net_game(&device, &queue, format, &data, &mut assets, &map, &lobby, role.borrow_mut().take(), w, h);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(20));
                 }
                 i += 2;
             }
@@ -47,6 +62,9 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("clicked {clicked:?}");
                 match glue.action.take() {
                     Some(war3::glue::GlueAction::Play(..)) => glue.show_loading(&mut assets),
+                    Some(war3::glue::GlueAction::PlayNet(map, lobby, role)) => {
+                        return net_game(&device, &queue, format, &data, &mut assets, &map, &lobby, role.borrow_mut().take(), w, h);
+                    }
                     Some(war3::glue::GlueAction::Campaign(map)) => {
                         eprintln!("campaign mission {map}");
                         glue.skirmish.summary = war3::skirmish::summarize_from(&data.chain, &map);
@@ -160,6 +178,45 @@ fn shot(device: &wgpu::Device, queue: &wgpu::Queue, glue: &mut Glue, assets: &mu
     }
     if !out.is_empty() {
         image::save_buffer(&out, &px, w, h, image::ExtendedColorType::Rgba8)?;
+    }
+    Ok(())
+}
+
+/// A network game the glue started: plays it in real time for W3NETPLAY seconds (20
+/// without), then prints the players and a digest of the game to compare.
+#[allow(clippy::too_many_arguments)]
+fn net_game(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, data: &GameData, assets: &mut Assets, map: &Path, lobby: &[w3_game::LobbySlot], role: Option<war3::net::Role>, w: u32, h: u32) -> anyhow::Result<()> {
+    let mut scene = war3::scene::Scene::load(device, queue, format, data, assets, map, w as f32 / h as f32, Some(lobby), None, None)?;
+    if let Some(r) = role {
+        scene.start_net(r);
+    }
+    // W3NETFRAMES: the frames to play before comparing (400 without).
+    let frames: u32 = std::env::var("W3NETFRAMES").ok().and_then(|s| s.parse().ok()).unwrap_or(400);
+    if let Some(s) = scene.net.as_mut() {
+        s.limit = Some(frames);
+    }
+    let secs: f32 = std::env::var("W3NETPLAY").ok().and_then(|s| s.parse().ok()).unwrap_or(60.0);
+    let start = std::time::Instant::now();
+    let mut last = start;
+    while start.elapsed().as_secs_f32() < secs && scene.net.as_ref().is_some_and(|s| s.played < frames) {
+        let now = std::time::Instant::now();
+        scene.update((now - last).as_secs_f32().min(0.1));
+        last = now;
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let g = scene.game.as_ref().unwrap();
+    let wd = &g.world;
+    let mut digest = 0u64;
+    for &hd in &wd.unit_order {
+        if let Some(u) = wd.unit(hd) {
+            let line = format!("{hd} {:.3} {:.3} {:.3}", u.x, u.y, u.life);
+            digest = line.bytes().fold(digest.rotate_left(5), |d, b| d.wrapping_mul(31).wrapping_add(b as u64));
+        }
+    }
+    let played = scene.net.as_ref().map_or(0, |s| s.played);
+    println!("netgame local {} played {played} units {} digest {digest:016x}", wd.local_player, wd.unit_order.len());
+    for p in 0..2 {
+        println!("p{p} {} gold {:?}", wd.players[p].name, wd.players[p].state.get(&1));
     }
     Ok(())
 }

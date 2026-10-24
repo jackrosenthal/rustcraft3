@@ -684,6 +684,12 @@ pub struct Channel {
     /// A computer's channel: its AI's re-checks failed in a row (spellai.rs).
     #[serde(default)]
     pub ai_fails: u8,
+    /// Blizzard: seconds until each wave that has begun strikes, and the units its
+    /// waves have struck, which no later wave strikes again.
+    #[serde(default)]
+    pub strikes: Vec<f32>,
+    #[serde(default)]
+    pub struck: Vec<u32>,
     #[serde(default)]
     pub held: Id,
 }

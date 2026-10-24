@@ -169,7 +169,7 @@ impl World {
                 // original.
                 let next = if code == "AHdr" { interval } else { 0.0 };
                 if let Some(u) = self.unit_mut(h) {
-                    u.channel = Some(Channel { ability: a, level: lvl, target, x: px, y: py, elapsed: 0.0, duration, interval, next, waves, link, held: [0; 4], lanes: 0, ai_fails: 0 });
+                    u.channel = Some(Channel { ability: a, level: lvl, target, x: px, y: py, elapsed: 0.0, duration, interval, next, waves, link, held: [0; 4], lanes: 0, ai_fails: 0, strikes: Vec::new(), struck: Vec::new() });
                 }
                 true
             }
@@ -180,7 +180,7 @@ impl World {
                 let duration = self.d(a, "DataB", lvl) * every;
                 self.begin_volcano(h, a, lvl, x, y);
                 if let Some(u) = self.unit_mut(h) {
-                    u.channel = Some(Channel { ability: a, level: lvl, target: 0, x, y, elapsed: 0.0, duration, interval: every, next: 1.0, waves: 0, link: 0, held: [0; 4], lanes: 0, ai_fails: 0 });
+                    u.channel = Some(Channel { ability: a, level: lvl, target: 0, x, y, elapsed: 0.0, duration, interval: every, next: 1.0, waves: 0, link: 0, held: [0; 4], lanes: 0, ai_fails: 0, strikes: Vec::new(), struck: Vec::new() });
                 }
                 true
             }
@@ -190,7 +190,7 @@ impl World {
                 let duration = self.d(a, "Dur", lvl);
                 self.effect_at(a, lvl, x, y, duration);
                 if let Some(u) = self.unit_mut(h) {
-                    u.channel = Some(Channel { ability: a, level: lvl, target: 0, x, y, elapsed: 0.0, duration, interval: 0.25, next: 0.0, waves: 0, link: 0, held: [0; 4], lanes: 0, ai_fails: 0 });
+                    u.channel = Some(Channel { ability: a, level: lvl, target: 0, x, y, elapsed: 0.0, duration, interval: 0.25, next: 0.0, waves: 0, link: 0, held: [0; 4], lanes: 0, ai_fails: 0, strikes: Vec::new(), struck: Vec::new() });
                 }
                 true
             }
@@ -208,7 +208,7 @@ impl World {
                 self.apply_buff(target, Buff { id: held, ability: a, level: lvl, caster: h, remaining: duration, stun: true, dps: self.d(a, "DataA", lvl), ..Default::default() });
                 let link = self.channel_link(a, h, target);
                 if let Some(u) = self.unit_mut(h) {
-                    u.channel = Some(Channel { ability: a, level: lvl, target, x, y, elapsed: 0.0, duration, interval: duration.max(0.1) + 1.0, next: duration.max(0.1) + 1.0, waves: 0, link, held, lanes: 0, ai_fails: 0 });
+                    u.channel = Some(Channel { ability: a, level: lvl, target, x, y, elapsed: 0.0, duration, interval: duration.max(0.1) + 1.0, next: duration.max(0.1) + 1.0, waves: 0, link, held, lanes: 0, ai_fails: 0, strikes: Vec::new(), struck: Vec::new() });
                 }
                 true
             }
@@ -439,7 +439,7 @@ impl World {
                 if let Some(u) = self.unit_mut(h) {
                     // The teleport comes when the delay is up; the channel lasts a step
                     // longer so that its last tick is not cut off.
-                    u.channel = Some(Channel { ability: a, level: lvl, target, x, y, elapsed: 0.0, duration: delay + 0.05, interval: delay + 1.0, next: delay, waves: 0, link: 0, held: [0; 4], lanes: 0, ai_fails: 0 });
+                    u.channel = Some(Channel { ability: a, level: lvl, target, x, y, elapsed: 0.0, duration: delay + 0.05, interval: delay + 1.0, next: delay, waves: 0, link: 0, held: [0; 4], lanes: 0, ai_fails: 0, strikes: Vec::new(), struck: Vec::new() });
                 }
                 true
             }
@@ -562,7 +562,7 @@ impl World {
                 let buff = self.buff_of(a, lvl);
                 self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: duration, ..Default::default() });
                 if let Some(u) = self.unit_mut(h) {
-                    u.channel = Some(Channel { ability: a, level: lvl, target: 0, x, y, elapsed: 0.0, duration, interval: duration + 1.0, next: duration + 1.0, waves: 0, link: 0, held: [0; 4], lanes: 0, ai_fails: 0 });
+                    u.channel = Some(Channel { ability: a, level: lvl, target: 0, x, y, elapsed: 0.0, duration, interval: duration + 1.0, next: duration + 1.0, waves: 0, link: 0, held: [0; 4], lanes: 0, ai_fails: 0, strikes: Vec::new(), struck: Vec::new() });
                 }
                 true
             }
@@ -572,7 +572,7 @@ impl World {
                 let duration = self.d(a, "DataA", lvl);
                 if duration > 0.0 {
                     if let Some(u) = self.unit_mut(h) {
-                        u.channel = Some(Channel { ability: a, level: lvl, target, x, y, elapsed: 0.0, duration, interval: duration + 1.0, next: duration + 1.0, waves: 0, link: 0, held: [0; 4], lanes: 0, ai_fails: 0 });
+                        u.channel = Some(Channel { ability: a, level: lvl, target, x, y, elapsed: 0.0, duration, interval: duration + 1.0, next: duration + 1.0, waves: 0, link: 0, held: [0; 4], lanes: 0, ai_fails: 0, strikes: Vec::new(), struck: Vec::new() });
                     }
                 }
                 true
@@ -608,13 +608,30 @@ impl World {
             }
             c.elapsed += dt;
             c.next -= dt;
+            if !c.strikes.is_empty() {
+                for s in c.strikes.iter_mut() {
+                    *s -= dt;
+                }
+                while c.strikes.first().is_some_and(|&s| s <= 0.0) {
+                    c.strikes.remove(0);
+                    self.blizzard_strike(vm, h, &mut c);
+                }
+            }
             while c.next <= 0.0 && c.elapsed <= c.duration + 1e-3 {
                 self.channel_tick(vm, h, &mut c);
                 c.next += c.interval;
                 if c.waves > 0 {
                     c.waves -= 1;
                     if c.waves == 0 {
-                        c.elapsed = c.duration + 1.0;
+                        // Blizzard channels on through its last wave's second (measured:
+                        // the Archmage's order is blizzard for 6.3 seconds, its cast
+                        // point and six waves a second apart); the others end with
+                        // their last wave.
+                        if self.ability_code(c.ability) == "AHbz" {
+                            c.next = f32::INFINITY;
+                        } else {
+                            c.elapsed = c.duration + 1.0;
+                        }
                     }
                 }
             }
@@ -665,6 +682,24 @@ impl World {
         }
     }
 
+    /// A Blizzard wave strikes: DataB to each unit in Area not struck before by the
+    /// cast, a share of DataF at most when that is less, and DataD of it to
+    /// structures.
+    fn blizzard_strike(&mut self, vm: &mut Vm, h: u32, c: &mut Channel) {
+        let (a, lvl) = (c.ability, c.level);
+        let area = self.d(a, "Area", lvl);
+        let targets: Vec<u32> = self.units_in(c.x, c.y, area).into_iter().filter(|t| !c.struck.contains(t)).collect();
+        let reduction = self.d(a, "DataD", lvl);
+        let max = self.d(a, "DataF", lvl);
+        let each = self.d(a, "DataB", lvl);
+        let per = if max > 0.0 && !targets.is_empty() { each.min(max / targets.len() as f32) } else { each };
+        for t in targets {
+            let k = if self.unit(t).is_some_and(|u| u.is_building) { reduction } else { 1.0 };
+            self.spell_damage(vm, h, t, per * if k > 0.0 { k } else { 1.0 });
+            c.struck.push(t);
+        }
+    }
+
     fn channel_tick(&mut self, vm: &mut Vm, h: u32, c: &mut Channel) {
         // A computer's channel goes on only while its AI still likes the spot.
         if self.ai_channel_recheck(h, c) {
@@ -707,16 +742,12 @@ impl World {
                 }
                 self.art_at(a, "EffectArt", c.x, c.y);
             }
+            // Blizzard: a wave's shards fall now and strike 0.9 seconds later
+            // (FUN_6f4daef0's DAT_6fcd5414), each unit once a cast (measured: a footman
+            // moved into the area during the cast is struck by the next wave and no
+            // other, and one moved out after the first wave is not struck again).
             "AHbz" => {
-                let targets = self.units_in(c.x, c.y, area);
-                let reduction = self.d(a, "DataD", lvl);
-                let max = self.d(a, "DataF", lvl);
-                let each = self.d(a, "DataB", lvl);
-                let per = if max > 0.0 && !targets.is_empty() { each.min(max / targets.len() as f32) } else { each };
-                for t in targets {
-                    let k = if self.unit(t).is_some_and(|u| u.is_building) { reduction } else { 1.0 };
-                    self.spell_damage(vm, h, t, per * if k > 0.0 { k } else { 1.0 });
-                }
+                c.strikes.push(0.9);
                 self.art_at(a, "EffectArt", c.x, c.y);
             }
             "AEsf" => {

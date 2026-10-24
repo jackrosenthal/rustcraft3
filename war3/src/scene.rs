@@ -4482,6 +4482,7 @@ impl Scene {
             let alone = self.net.is_none();
             let world_paused = self.game.as_ref().is_some_and(|g| g.world.net_paused.is_some() || (alone && g.world.script_paused));
             let paused = world_paused || (alone && (hud.menu.is_some() || hud.quests.is_some() || hud.log_view.is_some()));
+            hud.paused = paused;
             let mut draws = Vec::new();
             if paused {
                 let w = hud.tree.width;

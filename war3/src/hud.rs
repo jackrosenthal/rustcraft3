@@ -156,6 +156,9 @@ pub struct Hud {
     /// CPeonBar: the local player's idle workers, and the last one its button chose
     /// and when.
     pub idle_workers: Vec<u32>,
+    /// The game is paused: the command card, hero, and idle worker buttons show
+    /// disabled (as the original greys them while paused).
+    pub paused: bool,
     idle_pick: (f32, usize),
     pub cinematic: bool,
     /// How much of the game interface and of the cinematic panel shows, while
@@ -333,6 +336,7 @@ impl Hud {
             heroes: Vec::new(),
             hero_flash: Default::default(),
             idle_workers: Vec::new(),
+            paused: false,
             idle_pick: (f32::MIN, 0),
             cinematic: false,
             fades: (1.0, 0.0),
@@ -755,7 +759,8 @@ impl Hud {
                 (0.5..3.0).contains(&e) && e % 1.0 >= 0.5
             });
             let tint = if flashing { [1.0, 0x44 as f32 / 255.0, 0x44 as f32 / 255.0, 1.0] } else { [1.0; 4] };
-            out.push(image(icon.clone(), r, tint));
+            let icon = if self.paused { crate::card::disabled_icon(icon) } else { icon.clone() };
+            out.push(image(icon, r, tint));
             let mut top = r.y0 - 0.00125;
             let mut bar = |frac: f32, key: &str, color: [f32; 4], out: &mut Vec<Draw>| {
                 let b = w3_ui::Rect { x0: r.x0, x1: r.x1, y0: top - 0.003125, y1: top };
@@ -1489,7 +1494,9 @@ impl Hud {
         self.hero_bar_draws(db, &mut out);
         if !self.idle_workers.is_empty() {
             let r = self.idle_worker_rect();
-            out.push(Draw::Image { texture: db.decorate("IdlePeon"), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+            let icon = db.decorate("IdlePeon");
+            let icon = if self.paused { crate::card::disabled_icon(&icon) } else { icon };
+            out.push(Draw::Image { texture: icon, rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
             Self::number_overlay(db, r, self.idle_workers.len() as i32, &mut out);
         }
         self.minimap_button_draws(db, &mut out);
@@ -1676,7 +1683,7 @@ impl Hud {
             crate::replaypanel::ReplayPanel::draws(&self.tree, db, &mut out);
         }
         for b in self.card.iter().filter(|_| self.replay.is_none()) {
-            let icon = if b.enabled { b.icon.clone() } else { crate::card::disabled_icon(&b.icon) };
+            let icon = if b.enabled && !self.paused { b.icon.clone() } else { crate::card::disabled_icon(&b.icon) };
             out.push(Draw::Image {
                 texture: icon,
                 rect: self.slot_rect(b.x, b.y),

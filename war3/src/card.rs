@@ -471,9 +471,10 @@ impl Commands {
 /// The disabled version of a command button icon.
 pub fn disabled_icon(icon: &str) -> String {
     let lower = icon.to_ascii_lowercase();
-    match lower.find("commandbuttons\\") {
-        Some(i) => {
-            let file = &icon[i + "commandbuttons\\".len()..];
+    // Passive buttons' disabled forms are kept with the command buttons' (DISPASBTN).
+    match lower.find("commandbuttons\\").map(|i| (i, "commandbuttons\\".len())).or_else(|| lower.find("passivebuttons\\").map(|i| (i, "passivebuttons\\".len()))) {
+        Some((i, n)) => {
+            let file = &icon[i + n..];
             format!("{}CommandButtonsDisabled\\DIS{file}", &icon[..i])
         }
         None => icon.to_string(),

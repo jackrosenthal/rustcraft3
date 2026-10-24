@@ -139,10 +139,10 @@ fn main() -> anyhow::Result<()> {
             // alliances: each player's alliance flags toward the others, and allied victory.
             "alliances" => {
                 if let Some(g) = scene.game.as_ref() {
-                    for p in 0..4usize {
+                    for p in [0usize, 1, 2, 3, 12, 15] {
                         let pl = &g.world.players[p];
-                        let flags: Vec<String> = (0..4usize).map(|q| pl.alliances[q].iter().map(|&b| if b { '1' } else { '0' }).collect()).collect();
-                        eprintln!("p{p} team {} allied_victory {} toward {:?}", pl.team, pl.get_state(w3_game::types::player_state::ALLIED_VICTORY), flags);
+                        let flags: Vec<String> = [0usize, 1, 2, 3, 12, 15].into_iter().map(|q| pl.alliances[q].iter().map(|&b| if b { '1' } else { '0' }).collect()).collect();
+                        eprintln!("p{p} team {} allied_victory {} toward 0,1,2,3,12,15 {:?}", pl.team, pl.get_state(w3_game::types::player_state::ALLIED_VICTORY), flags);
                     }
                 }
                 i += 1;

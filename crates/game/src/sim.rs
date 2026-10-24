@@ -743,9 +743,9 @@ impl World {
             if is_ally(self, u.owner, tu.owner) || !weapons.iter().any(|(_, wp)| can_target(self, wp, u, tu)) {
                 continue;
             }
-            // Neutral passive units are never acquired automatically, nor are
-            // invisible or ethereal ones.
-            if tu.owner == PLAYER_NEUTRAL_PASSIVE || (self.is_invisible(t) && !self.detected_by(t, u.owner)) || self.is_ethereal(t) {
+            // Neither are invisible nor ethereal ones (Neutral Passive is passive toward
+            // every player from the start).
+            if (self.is_invisible(t) && !self.detected_by(t, u.owner)) || self.is_ethereal(t) {
                 continue;
             }
             let d = (tu.x - u.x).hypot(tu.y - u.y);

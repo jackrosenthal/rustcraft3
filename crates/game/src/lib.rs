@@ -316,7 +316,19 @@ impl Game {
 
     /// Fills player slots as the lobby would, then runs the map's `main`.
     pub fn start(&mut self, mut fill: impl FnMut(u8, i32) -> SlotFill) -> anyhow::Result<()> {
-        // The four neutral players give bounty for their units (FUN_6f1e7c20).
+        // Each player's start (FUN_6f1e7c20): passive toward Neutral Passive and it
+        // toward them; food capped at [Misc] FoodCeiling (90 for Reign of Chaos, 100 for
+        // The Frozen Throne, kept to 1 to 300: FUN_6f047250); the game's result neutral
+        // (PLAYER_GAME_RESULT_NEUTRAL).  The four neutral players give bounty.
+        let ceiling = self.world.misc.get_str("Misc", "FoodCeiling").and_then(|v| v.trim().parse::<i32>().ok()).map_or(if self.world.version >= 1 { 100 } else { 90 }, |v| v.clamp(1, 300));
+        let passive = types::PLAYER_NEUTRAL_PASSIVE as usize;
+        for i in 0..self.world.players.len() {
+            self.world.players[i].alliances[passive][0] = true;
+            self.world.players[passive].alliances[i][0] = true;
+            let p = &mut self.world.players[i];
+            p.state.insert(types::player_state::FOOD_CAP_CEILING, ceiling);
+            p.state.insert(types::player_state::GAME_RESULT, 3);
+        }
         for p in self.world.players.iter_mut().skip(types::PLAYER_NEUTRAL_AGGRESSIVE as usize).take(4) {
             p.state.insert(types::player_state::GIVES_BOUNTY, 1);
         }

@@ -397,7 +397,10 @@ impl Commands {
             }
             out.extend(self.command(db, "CmdPatrol", Action::Order { order: "patrol", targeted: true }, true));
         }
-        if u.is_hero && u.skill_points > 0 {
+        // Every hero shows Hero Abilities, points or not (CAbilityHero::vf108); its
+        // skills are dimmed while none can be learned.  The original leaves out units
+        // flagged 0x40000000, which cannot gain levels or skills: illusions here.
+        if u.is_hero && u.extra.illusion.is_none() {
             out.extend(self.command(db, "CmdSelectSkill", Action::LearnMenu, true));
         }
         if !o.list("Builds").is_empty() {

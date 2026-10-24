@@ -684,9 +684,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             w.flush_events(vm);
             none()
         },
-        GetHeroStr => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.str_ as i32)),
-        GetHeroAgi => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.agi as i32)),
-        GetHeroInt => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.int as i32)),
+        // With includeBonuses, its items' too (measured: a Paladin of 22 strength with
+        // Gauntlets of Ogre Strength reads 25, and 22 without).
+        GetHeroStr => |w, _, a| { let b = a.b(1); int(unit_arg(w, a, 0).map_or(0, |u| (u.str_ + if b { u.item_bonus.str_ } else { 0.0 }) as i32)) },
+        GetHeroAgi => |w, _, a| { let b = a.b(1); int(unit_arg(w, a, 0).map_or(0, |u| (u.agi + if b { u.item_bonus.agi } else { 0.0 }) as i32)) },
+        GetHeroInt => |w, _, a| { let b = a.b(1); int(unit_arg(w, a, 0).map_or(0, |u| (u.int + if b { u.item_bonus.int } else { 0.0 }) as i32)) },
         GetHeroSkillPoints => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.skill_points)),
         UnitModifySkillPoints => |w, _, a| {
             let d = a.i(1);

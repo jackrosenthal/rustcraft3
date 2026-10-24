@@ -132,7 +132,18 @@ impl World {
     /// The length of the ground path from `from` to `to`; infinite when the path ends
     /// short of it (more than a cell and the unit's reach away).
     fn walk_length(&self, from: (f32, f32), to: (f32, f32), radius: f32) -> f32 {
+        self.prof_time("walk_length", || self.walk_length_inner(from, to, radius))
+    }
+
+    fn walk_length_inner(&self, from: (f32, f32), to: (f32, f32), radius: f32) -> f32 {
         let Some(map) = &self.pathing else { return (to.0 - from.0).hypot(to.1 - from.1) };
+        // Measured between cell centers, so a creep shifting within its cell asks the
+        // same question again.
+        let (from, to) = (map.center(map.cell_of(from.0, from.1)), map.center(map.cell_of(to.0, to.1)));
+        // What cannot be walked to at all is not searched for.
+        if !map.reaches(from, to, radius, radius + 2.0 * crate::pathing::CELL) {
+            return f32::INFINITY;
+        }
         let mut at = from;
         let mut len = 0.0;
         for p in map.find_path_memo(from, to, radius, 200_000) {

@@ -65,6 +65,8 @@ struct Scratch {
     generation: u32,
     /// Searches, cells expanded, and searches that gave up (for W3PROF).
     pub stats: (u64, u64, u64),
+    /// Remembered paths used and searched for.
+    pub memo_stats: (u64, u64),
 }
 
 impl PathingMap {
@@ -73,8 +75,10 @@ impl PathingMap {
     pub fn find_path_memo(&self, from: (f32, f32), to: (f32, f32), radius: f32, max_nodes: usize) -> Vec<(f32, f32)> {
         let key = [from.0.to_bits(), from.1.to_bits(), to.0.to_bits(), to.1.to_bits(), radius.to_bits(), max_nodes as u32];
         if let Some(p) = self.memo.borrow().get(&key) {
+            self.scratch.borrow_mut().memo_stats.0 += 1;
             return p.clone();
         }
+        self.scratch.borrow_mut().memo_stats.1 += 1;
         let p = self.find_path(from, to, radius, max_nodes);
         self.memo.borrow_mut().insert(key, p.clone());
         p
@@ -145,6 +149,10 @@ impl PathingMap {
     pub fn search_stats(&self) -> (u64, u64, u64) {
         self.scratch.borrow().stats
     }
+
+    pub fn memo_stats(&self) -> (u64, u64) {
+        self.scratch.borrow().memo_stats
+    }
 }
 
 impl PathingMap {
@@ -178,8 +186,12 @@ impl PathingMap {
 
     /// Sets or clears flag bits of a cell (SetTerrainPathable).
     pub fn set_flags(&mut self, c: (i32, i32), mask: u8, on: bool) {
-        self.memo.get_mut().clear();
-        self.floods.get_mut().clear();
+        // Only the bits that decide where units may move change what a search finds
+        // (not blight's, say).
+        if mask & (NO_WALK | NO_FLY | LAND) != 0 {
+            self.memo.get_mut().clear();
+            self.floods.get_mut().clear();
+        }
         if let Some(i) = self.index(c) {
             if on {
                 self.flags[i] |= mask;

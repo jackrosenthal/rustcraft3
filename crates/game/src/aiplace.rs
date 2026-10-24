@@ -220,6 +220,10 @@ impl World {
 
     /// Whether a unit of `radius` can walk from `from` to `to`.
     fn walk_reaches(&self, from: (f32, f32), to: (f32, f32), radius: f32) -> bool {
+        self.prof_time("walk_reaches", || self.walk_reaches_inner(from, to, radius))
+    }
+
+    fn walk_reaches_inner(&self, from: (f32, f32), to: (f32, f32), radius: f32) -> bool {
         let Some(map) = &self.pathing else { return true };
         map.reaches(from, to, radius, radius + 2.0 * CELL)
     }
@@ -319,7 +323,15 @@ impl World {
     }
 
     fn walk_to(&self, from: (f32, f32), to: (f32, f32), radius: f32) -> f32 {
+        self.prof_time("walk_to", || self.walk_to_inner(from, to, radius))
+    }
+
+    fn walk_to_inner(&self, from: (f32, f32), to: (f32, f32), radius: f32) -> f32 {
         let Some(map) = &self.pathing else { return (to.0 - from.0).hypot(to.1 - from.1) };
+        // What cannot be walked to at all is not searched for.
+        if !map.reaches(from, to, 16.0, radius + 3.0 * CELL) {
+            return f32::INFINITY;
+        }
         let mut at = from;
         let mut len = 0.0;
         for q in map.find_path_memo(from, to, 16.0, 200_000) {

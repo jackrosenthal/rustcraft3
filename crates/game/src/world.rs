@@ -268,6 +268,9 @@ pub struct World {
     /// W3PROF time spent finding targets (from `&self` code).
     #[serde(skip)]
     pub prof_find: std::cell::Cell<f64>,
+    /// W3PROF times measured from `&self` code.
+    #[serde(skip)]
+    pub prof_cells: std::cell::RefCell<HashMap<&'static str, f64>>,
     pub destructable_order: Vec<u32>,
     pub item_order: Vec<u32>,
     /// Effects destroyed by script, with the time they were destroyed; the presentation
@@ -508,6 +511,7 @@ impl World {
             sentinels: Vec::new(),
             profile: None,
             prof_find: Default::default(),
+            prof_cells: Default::default(),
             lightning_data: None,
             saves_dir: None,
             order_error: None,
@@ -883,6 +887,17 @@ impl World {
         }
     }
 
+    /// Runs `f`, adding its time to a W3PROF entry when profiling.
+    pub(crate) fn prof_time<T>(&self, name: &'static str, f: impl FnOnce() -> T) -> T {
+        if self.profile.is_none() {
+            return f();
+        }
+        let t0 = std::time::Instant::now();
+        let r = f();
+        *self.prof_cells.borrow_mut().entry(name).or_insert(0.0) += t0.elapsed().as_secs_f64();
+        r
+    }
+
     /// Queues a unit event to fire with the VM (see `queued_events`).
     pub fn queue_unit_event(&mut self, unit: u32, player_event: i32, unit_event: i32, ctx: EventCtx) {
         self.queued_events.push((unit, player_event, unit_event, ctx));
@@ -918,16 +933,22 @@ impl World {
         }
         if let Some(p) = self.profile.as_mut() {
             p.insert("find_target", self.prof_find.get());
+            for (k, v) in self.prof_cells.borrow().iter() {
+                p.insert(k, *v);
+            }
             if let Some(pm) = self.pathing.as_ref() {
                 let (calls, expanded, capped) = pm.search_stats();
                 p.insert("searches(k)", calls as f64 / 1000.0);
                 p.insert("expanded(M)", expanded as f64 / 1e6);
                 p.insert("capped(k)", capped as f64 / 1000.0);
+                let (hits, misses) = pm.memo_stats();
+                p.insert("memo_hits(k)", hits as f64 / 1000.0);
+                p.insert("memo_misses(k)", misses as f64 / 1000.0);
             }
             if (self.time / 5.0).floor() != ((self.time + dt) / 5.0).floor() {
                 let mut v: Vec<(&&str, &f64)> = p.iter().collect();
                 v.sort_by(|a, b| b.1.total_cmp(a.1));
-                eprintln!("profile at {:.0}s: {}", self.time, v.iter().take(14).map(|(k, t)| format!("{k} {:.2}s", t)).collect::<Vec<_>>().join(", "));
+                eprintln!("profile at {:.0}s: {}", self.time, v.iter().take(40).map(|(k, t)| format!("{k} {:.2}s", t)).collect::<Vec<_>>().join(", "));
             }
         }
         self.time += dt;

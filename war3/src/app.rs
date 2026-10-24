@@ -227,6 +227,26 @@ impl ApplicationHandler for App {
                             scene.control_group(n, ctrl, shift);
                         }
                     }
+                    // The menu keys of UI\HelpStrings.txt.
+                    if let (Some(scene), PhysicalKey::Code(code)) = (r.scene.as_mut(), event.physical_key) {
+                        let typing = scene.hud.as_ref().is_some_and(|h| h.chat.is_some() || h.save_panel.is_some());
+                        let (alt, ctrl) = (scene.alt_held, scene.ctrl_held);
+                        if !typing {
+                            match code {
+                                KeyCode::KeyQ if alt => scene.menu_key("EndGameButton"),
+                                KeyCode::KeyO if alt => scene.menu_key("OptionsButton"),
+                                KeyCode::KeyS if alt => scene.menu_key("SaveGameButton"),
+                                KeyCode::KeyL if alt => scene.menu_key("LoadGameButton"),
+                                KeyCode::KeyH if alt => scene.menu_key("HelpButton"),
+                                KeyCode::KeyM if ctrl => scene.toggle_sound(true),
+                                KeyCode::KeyS if ctrl => scene.toggle_sound(false),
+                                KeyCode::KeyC if alt || ctrl => scene.center_on_portrait(),
+                                // ~ selects idle workers as F8 does.
+                                KeyCode::Backquote => scene.idle_worker_key(),
+                                _ => {}
+                            }
+                        }
+                    }
                     if event.physical_key == PhysicalKey::Code(KeyCode::F8) {
                         if let Some(scene) = r.scene.as_mut() {
                             scene.idle_worker_key();

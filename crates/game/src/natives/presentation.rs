@@ -14,6 +14,22 @@ fn player_mask(w: &World, a: &[Value], n: usize) -> u32 {
     w.player_of(a.h(n)).map_or(0, |p| 1 << p)
 }
 
+fn stacked_place(w: &mut World, h: u32, by_position: bool, width: f32, height: f32) -> Option<crate::types::StackedSound> {
+    let s = sound_mut(w, h)?;
+    if s.path.is_empty() {
+        return None;
+    }
+    let (file, unit, pos) = (s.path.clone(), s.unit, s.position);
+    match (by_position, pos, unit) {
+        (true, Some((x, y, _)), _) => Some(crate::types::StackedSound { file, sound: h, unit: None, x, y, width, height }),
+        (_, _, Some(u)) => Some(crate::types::StackedSound { file, sound: h, unit: Some(u), x: 0.0, y: 0.0, width: 0.0, height: 0.0 }),
+        _ => {
+            log::warn!("Error, registering stacked sound for HLOOPINGSND that has no unitPtr or position specified!");
+            None
+        }
+    }
+}
+
 fn sound_mut(w: &mut World, h: u32) -> Option<&mut Sound> {
     match w.handles.get_mut(h) {
         Some(Obj::Sound(s)) => Some(s),
@@ -160,7 +176,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetSoundVelocity => |_, _, _| none(),
         AttachSoundToUnit => |w, _, a| {
             let p = w.unit(a.h(1)).map(|u| (u.x, u.y, 0.0));
-            if let (Some(p), Some(s)) = (p, sound_mut(w, a.h(0))) { s.position = Some(p); }
+            let u = a.h(1);
+            if let (Some(p), Some(s)) = (p, sound_mut(w, a.h(0))) { s.position = Some(p); s.unit = Some(u); }
             none()
         },
         StartSound => |w, _, a| {
@@ -177,8 +194,24 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetSoundIsPlaying => |w, _, a| boolean(sound_mut(w, a.h(0)).is_some_and(|s| s.playing)),
         GetSoundIsLoading => |_, _, _| boolean(false),
         SetSoundPlayPosition => |w, _, a| { w.requests.push(Request::SoundOffset { sound: a.h(0), ms: a.i(1) }); none() },
-        RegisterStackedSound => |_, _, _| none(),
-        UnregisterStackedSound => |_, _, _| none(),
+        // By position, the sound's place with the rect's size (FUN_6f359680); else the
+        // unit it is attached to.  Keyed by the sound's file.
+        RegisterStackedSound => |w, _, a| {
+            let (h, by_position, width, height) = (a.h(0), a.b(1), a.r(2).abs(), a.r(3).abs());
+            if let Some(st) = stacked_place(w, h, by_position, width, height) {
+                if !w.stacked_sounds.contains(&st) {
+                    w.stacked_sounds.push(st);
+                }
+            }
+            none()
+        },
+        UnregisterStackedSound => |w, _, a| {
+            let (h, by_position, width, height) = (a.h(0), a.b(1), a.r(2).abs(), a.r(3).abs());
+            if let Some(st) = stacked_place(w, h, by_position, width, height) {
+                w.stacked_sounds.retain(|s| !(s.file.eq_ignore_ascii_case(&st.file) && s.unit == st.unit && s.x == st.x && s.y == st.y));
+            }
+            none()
+        },
         VolumeGroupSetVolume => |w, _, a| {
             let g = a.i(0);
             if (0..8).contains(&g) {

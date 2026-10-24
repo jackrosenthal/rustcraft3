@@ -238,6 +238,9 @@ pub struct World {
     /// EnableMinimapFilterButtons: the ally color and creep camp buttons usable.
     #[serde(default = "yes2")]
     pub minimap_filter_buttons: (bool, bool),
+    /// Places stacked sounds are heard from (RegisterStackedSound).
+    #[serde(default)]
+    pub stacked_sounds: Vec<crate::types::StackedSound>,
     /// SetResourceDensity and SetCreatureDensity (MAP_DENSITY_*).
     #[serde(default = "light2")]
     pub densities: (i32, i32),
@@ -529,6 +532,7 @@ impl World {
             minimap_filter_buttons: (true, true),
             no_replay: false,
             densities: (1, 1),
+            stacked_sounds: Vec::new(),
             integer_states: [0; 2],
             formations: HashMap::default(),
             next_formation: 1,

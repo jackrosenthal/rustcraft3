@@ -875,6 +875,23 @@ pub struct Sound {
     pub cone: Option<(f32, f32, i32)>,
     #[serde(default)]
     pub cone_dir: Option<(f32, f32, f32)>,
+    /// AttachSoundToUnit: the unit it goes with.
+    #[serde(default)]
+    pub unit: Option<u32>,
+}
+
+/// A place a stacked sound is heard from (RegisterStackedSound): a rect about a point,
+/// or a unit.  One voice of each sound file plays, from the place nearest the listener
+/// (FUN_6f340d10).
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StackedSound {
+    pub file: String,
+    pub sound: u32,
+    pub unit: Option<u32>,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]

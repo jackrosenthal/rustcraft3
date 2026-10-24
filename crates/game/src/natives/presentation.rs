@@ -47,7 +47,7 @@ fn sound_length(w: &mut World, h: u32) -> f32 {
 /// does not play.
 pub fn sound_position(w: &mut World, h: u32) -> Option<f32> {
     let len = sound_length(w, h);
-    let now = w.time;
+    let now = w.sleep_time;
     let s = sound_mut(w, h)?;
     let at = now - s.started?;
     (s.looping || at < len).then_some(if s.looping && len > 0.0 { at % len } else { at })
@@ -213,7 +213,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         StartSound => |w, _, a| {
-            let now = w.time;
+            let now = w.sleep_time;
             if let Some(s) = sound_mut(w, a.h(0)) { s.playing = true; s.started = Some(now); }
             w.requests.push(Request::PlaySound(a.h(0)));
             none()
@@ -227,7 +227,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetSoundIsPlaying => |w, _, a| boolean(sound_position(w, a.h(0)).is_some()),
         GetSoundIsLoading => |_, _, _| boolean(false),
         SetSoundPlayPosition => |w, _, a| {
-            let (now, ms) = (w.time, a.i(1));
+            let (now, ms) = (w.sleep_time, a.i(1));
             if let Some(s) = sound_mut(w, a.h(0)).filter(|s| s.started.is_some()) {
                 s.started = Some(now - ms as f32 / 1000.0);
             }

@@ -73,6 +73,14 @@ impl Camera {
         self.projection(aspect) * self.view()
     }
 
+    /// The view and projection with the far plane at least `far` away (the sky, which
+    /// the camera's far clip does not cut).
+    pub fn view_proj_beyond(&self, aspect: f32, far: f32) -> Mat4 {
+        let half_h = (self.fov.to_radians() / 2.0).tan() * 0.6;
+        let far = self.far.max(self.distance * 3.0).max(far);
+        Mat4::from_translation(Vec3::new(0.0, TARGET_SCREEN_OFFSET, 0.0)) * Mat4::perspective_rh(2.0 * half_h.atan(), aspect, self.near, far) * self.view()
+    }
+
     /// Rotation that turns model-space +x toward the camera, for billboards.
     pub fn billboard_rotation(&self) -> Quat {
         let inv = self.view().inverse();

@@ -4069,6 +4069,11 @@ impl Scene {
                 None => g.tick(gdt),
             }
         }
+        // A game played alone and paused (by the player or PauseGame): its sleeping
+        // threads still wake in real time, as the original's do.
+        if let Some(g) = self.game.as_mut().filter(|_| self.net.is_none() && self.playback.is_none() && (paused || script_paused)) {
+            g.tick_paused(dt);
+        }
         self.apply_requests();
         let now = self.time;
         if let Some(h) = self.hud.as_mut() {
@@ -4780,7 +4785,15 @@ impl Scene {
         }
         if self.sky.is_some() {
             // Unfogged and unhidden by the fog of war.
-            let sky_globals = w3_render::model::Globals { fow_extent: [0.0; 4], ..globals };
+            let aspect = size.0 as f32 / size.1.max(1) as f32;
+            let mut sky_globals = w3_render::model::Globals { fow_extent: [0.0; 4], fog: [0.0; 4], view_proj: self.camera.view_proj_beyond(aspect, 100_000.0).to_cols_array_2d(), ..globals };
+            // The sky is lit by its own light (the model's FDirectSun) at the time of day.
+            let hour = self.game.as_ref().map_or(12.0, |g| g.world.time_of_day);
+            if let Some(l) = self.sky.as_ref().and_then(|(_, s)| w3_render::dnc::light_at(&s.model.mdx, hour)) {
+                sky_globals.light_dir = [l.direction.x, l.direction.y, l.direction.z, 0.0];
+                sky_globals.light_color = [l.diffuse.x, l.diffuse.y, l.diffuse.z, 1.0];
+                sky_globals.ambient = [l.ambient.x, l.ambient.y, l.ambient.z, 1.0];
+            }
             self.sky_renderer.render(device, queue, &mut pass, &sky_globals);
         }
         self.terrain.render_ground(&mut pass);
@@ -4803,9 +4816,10 @@ impl Scene {
             // Text tags lie under the interface.
             // A paused game's world shows at 100/255 of its brightness under the
             // interface (as the original draws it; the menus of a game played alone pause
-            // it, as do PauseGame and a network pause).
+            // it, as does a network pause).  PauseGame's pause is not dimmed: the
+            // original shows a paused cinematic at full brightness.
             let alone = self.net.is_none();
-            let world_paused = self.game.as_ref().is_some_and(|g| g.world.net_paused.is_some() || (alone && g.world.script_paused));
+            let world_paused = self.game.as_ref().is_some_and(|g| g.world.net_paused.is_some());
             let paused = world_paused || (alone && (hud.menu.is_some() || hud.quests.is_some() || hud.log_view.is_some() || hud.dialog.is_some()));
             hud.paused = paused;
             let mut draws = Vec::new();

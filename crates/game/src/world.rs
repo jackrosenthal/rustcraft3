@@ -153,6 +153,10 @@ pub struct World {
     warned: HashSet<u32>,
     /// Game time in seconds.
     pub time: f32,
+    /// The clock sleeping threads and script sounds keep: game time, and real time
+    /// while a game played alone is paused.
+    #[serde(default)]
+    pub sleep_time: f32,
     pub ctx: EventCtx,
     pub enum_ctx: EnumCtx,
     pub sleepers: Vec<Sleeper>,
@@ -546,6 +550,7 @@ impl World {
             time: 0.0,
             ctx: EventCtx::default(),
             enum_ctx: EnumCtx::default(),
+            sleep_time: 0.0,
             sleepers: Vec::new(),
             handle_sweep_timer: 0.0,
             pending: Vec::new(),
@@ -961,7 +966,7 @@ impl World {
             Outcome::Finished(_) => {}
             Outcome::Sleeping(secs) => {
                 let ctx = self.ctx.clone();
-                self.sleepers.push(Sleeper { wake_at: self.time + secs.max(0.0) + SLEEP_SLACK, thread: t, ctx });
+                self.sleepers.push(Sleeper { wake_at: self.sleep_time + secs.max(0.0) + SLEEP_SLACK, thread: t, ctx });
             }
             Outcome::Aborted(e) => log::warn!("thread aborted: {e}"),
         }
@@ -1306,13 +1311,28 @@ impl World {
             self.fire(vm, ctx, |_, k| matches!(k, EventKind::TimerExpire(t) if *t == timer));
         }
 
-        // Sleeping threads resume on a poll every SLEEP_POLL seconds, at times
-        // SLEEP_POLL_PHASE past a multiple: those more than their sleep and SLEEP_SLACK
-        // past their start (measured from the original: TriggerSleepAction(0.5) lasts
-        // 0.6, (1) 1.1, and (0) until the next poll).
+        self.wake_sleepers(vm, dt);
+
+        // Elapsed-time game state events.
+        let t = self.time;
+        self.fire(vm, EventCtx::default(), |_, k| match k {
+            EventKind::GameState { state: 2, op, value } => compare(*op, t, *value) && !compare(*op, t - dt, *value),
+            _ => false,
+        });
+        self.check_state_events(vm);
+    }
+
+    /// Advances the sleep clock: with the game, and alone while a game played alone is
+    /// paused, as the original's sleep queue goes on in a pause (CGameUI's FUN_6f36ab40
+    /// advances it then).  Sleeping threads resume on a poll every SLEEP_POLL seconds,
+    /// at times SLEEP_POLL_PHASE past a multiple: those more than their sleep and
+    /// SLEEP_SLACK past their start (measured from the original: TriggerSleepAction(0.5)
+    /// lasts 0.6, (1) 1.1, and (0) until the next poll).
+    pub fn wake_sleepers(&mut self, vm: &mut Vm, dt: f32) {
+        self.sleep_time += dt;
         let poll = |t: f32| ((t - SLEEP_POLL_PHASE) / SLEEP_POLL).floor();
-        let polled = poll(self.time) > poll(self.time - dt);
-        let now = SLEEP_POLL_PHASE + poll(self.time) * SLEEP_POLL;
+        let polled = poll(self.sleep_time) > poll(self.sleep_time - dt);
+        let now = SLEEP_POLL_PHASE + poll(self.sleep_time) * SLEEP_POLL;
         let mut i = 0;
         while polled && i < self.sleepers.len() {
             if self.sleepers[i].wake_at < now {
@@ -1322,14 +1342,6 @@ impl World {
                 i += 1;
             }
         }
-
-        // Elapsed-time game state events.
-        let t = self.time;
-        self.fire(vm, EventCtx::default(), |_, k| match k {
-            EventKind::GameState { state: 2, op, value } => compare(*op, t, *value) && !compare(*op, t - dt, *value),
-            _ => false,
-        });
-        self.check_state_events(vm);
     }
 
     /// Unit and player state events (TriggerRegisterUnitStateEvent,

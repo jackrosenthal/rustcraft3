@@ -129,6 +129,42 @@ impl World {
         }
     }
 
+    /// The hostile neutrals grouped into camps as place_creeps groups them, from
+    /// scratch and without keeping them (for the minimap): each camp's center and the
+    /// sum of its living creeps' levels.
+    pub fn creep_camp_markers(&self) -> Vec<(f32, f32, i32)> {
+        let reach = self.misc_f32("CreepCampPathingCellDistance", 26.0) * 32.0;
+        let mut camps: Vec<Vec<u32>> = Vec::new();
+        for &h in &self.unit_order {
+            let Some(u) = self.unit(h).filter(|u| u.owner == PLAYER_NEUTRAL_AGGRESSIVE && !u.dead && !u.hidden && !self.is_summoned(h)) else { continue };
+            let mut best: Option<(usize, f32)> = None;
+            for (i, camp) in camps.iter().enumerate() {
+                if camp.len() >= 12 {
+                    continue;
+                }
+                let Some(first) = camp.first().and_then(|&c| self.unit(c)) else { continue };
+                let d = (first.x - u.x).hypot(first.y - u.y);
+                if d < reach && best.is_none_or(|b| d < b.1) {
+                    best = Some((i, d));
+                }
+            }
+            match best {
+                Some((i, _)) => camps[i].push(h),
+                None => camps.push(vec![h]),
+            }
+        }
+        camps
+            .iter()
+            .map(|c| {
+                let us: Vec<_> = c.iter().filter_map(|&h| self.unit(h)).collect();
+                let n = us.len().max(1) as f32;
+                let (x, y) = us.iter().fold((0.0, 0.0), |a, u| (a.0 + u.x / n, a.1 + u.y / n));
+                let level = us.iter().map(|u| self.objects.units.get(u.type_id).map_or(u.level, |o| if u.is_hero { u.level } else { o.int("level") })).sum();
+                (x, y, level)
+            })
+            .collect()
+    }
+
     /// The length of the ground path from `from` to `to`; infinite when the path ends
     /// short of it (more than a cell and the unit's reach away).
     fn walk_length(&self, from: (f32, f32), to: (f32, f32), radius: f32) -> f32 {

@@ -389,6 +389,17 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // neutrals: prints the neutral players' structures.
+            "neutrals" => {
+                if let Some(g) = &scene.game {
+                    for &h in &g.world.unit_order {
+                        if let Some(u) = g.world.unit(h).filter(|u| u.is_building && u.owner >= 12) {
+                            eprintln!("  {h} {} owner {} at {:.0},{:.0} hidden {}", w3_game::objects::id_str(u.type_id), u.owner, u.x, u.y, u.hidden);
+                        }
+                    }
+                }
+                i += 1;
+            }
             "structs" => {
                 if let Some(g) = &scene.game {
                     let w = &g.world;

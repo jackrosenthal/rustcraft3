@@ -3534,6 +3534,36 @@ impl Scene {
             hud.ally_mode = ally_mode;
             hud.show_creeps = w.creep_camp_filter;
             hud.filter_buttons = w.minimap_filter_buttons;
+            // Where masked areas are partially visible (w3i 0x10) the icons show there too.
+            let partial = self.info.flags & 0x10 != 0;
+            let shown: Vec<bool> = hud.minimap_icons.iter().map(|&(_, x, y)| partial || hud.minimap_icon_world(x, y).is_none_or(|(wx, wy)| w.fog_state(wx, wy, w.local_player) != w3_game::fog::FOG_MASKED)).collect();
+            hud.minimap_icons_shown = shown;
+            // Creep camps, regrouped twice a second: weak below MinimapMiddleCampThreshold
+            // levels, middle (MinimapMiddleCampScale) below MinimapToughCampThreshold,
+            // tough beyond, where the player has explored or masked areas are partially
+            // visible.
+            if (w.time * 2.0).floor() != ((w.time - self.frame_dt) * 2.0).floor() || hud.minimap_camps.is_empty() {
+                let num = |k: &str, d: f32| w.misc.get_str("Minimap", k).and_then(|v| v.trim().parse().ok()).unwrap_or(d);
+                let argb = |k: &str| -> [f32; 4] {
+                    let v: Vec<f32> = w.misc.get_list("Minimap", k).iter().filter_map(|s| s.trim().parse().ok()).collect();
+                    if v.len() == 4 { [v[1] / 255.0, v[2] / 255.0, v[3] / 255.0, v[0] / 255.0] } else { [1.0; 4] }
+                };
+                let (middle, tough, scale) = (num("MinimapMiddleCampThreshold", 10.0) as i32, num("MinimapToughCampThreshold", 20.0) as i32, num("MinimapMiddleCampScale", 1.3));
+                hud.minimap_camps = w
+                    .creep_camp_markers()
+                    .into_iter()
+                    .filter(|&(x, y, _)| partial || w.fog_state(x, y, w.local_player) != w3_game::fog::FOG_MASKED)
+                    .map(|(x, y, l)| {
+                        if l >= tough {
+                            (x, y, argb("MinimapToughCampColor"), -1.0)
+                        } else if l >= middle {
+                            (x, y, argb("MinimapMiddleCampColor"), scale)
+                        } else {
+                            (x, y, argb("MinimapWeakCampColor"), 1.0)
+                        }
+                    })
+                    .collect();
+            }
             hud.minimap_dots = w
                 .unit_order
                 .iter()

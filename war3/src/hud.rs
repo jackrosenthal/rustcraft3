@@ -167,6 +167,9 @@ pub struct Hud {
     filter: Option<(String, [f32; 4], [f32; 4], bool)>,
     pub minimap_area: Option<MinimapArea>,
     pub minimap_dots: Vec<(f32, f32, [f32; 4], f32)>,
+    /// Creep camps on the minimap (CMinimap, FUN_6f3d6100): position, color, and scale
+    /// (negative for a tough camp).
+    pub minimap_camps: Vec<(f32, f32, [f32; 4], f32)>,
     /// Units using the alternate minimap icon (UnitSetUsesAltIcon), and that icon
     /// (SetAltMinimapIcon).
     pub minimap_alt: Vec<(f32, f32)>,
@@ -174,6 +177,10 @@ pub struct Hud {
     /// war3map.mmp: icons stamped on the minimap image (kind, x and y on its 256-pixel
     /// grid): 0 gold mine, 1 neutral building, 2 start location.
     pub minimap_icons: Vec<(i32, f32, f32)>,
+    /// Which of the icons show: those where the local player has explored, or all where
+    /// masked areas are partially visible (as the original hides an unexplored
+    /// fountain's on NightElfX01 but shows BootyBay's mines from the start).
+    pub minimap_icons_shown: Vec<bool>,
     /// The minimap buttons' states: terrain shown, ally color mode (0 player colors, 1
     /// ally and enemy colors on the minimap, 2 also in the world), creep camps shown,
     /// and formation movement.
@@ -303,6 +310,8 @@ impl Hud {
             alt_icon: None,
             minimap_fog: false,
             minimap_icons: Vec::new(),
+            minimap_icons_shown: Vec::new(),
+            minimap_camps: Vec::new(),
             minimap_terrain: true,
             ally_mode: 0,
             show_creeps: true,
@@ -1193,6 +1202,14 @@ impl Hud {
         Some((r.x0 + (x - sx) / side * r.w(), r.y0 + (y - sy) / side * r.h()))
     }
 
+    /// The world point of a war3map.mmp icon (256 units across the minimap, from the
+    /// top).
+    pub fn minimap_icon_world(&self, x: f32, y: f32) -> Option<(f32, f32)> {
+        let a = self.minimap_area?;
+        let (sx, sy, side) = a.square();
+        Some((sx + x / 256.0 * side, sy + (256.0 - y) / 256.0 * side))
+    }
+
     /// World point under an interface position, if it is on the minimap.
     pub fn minimap_to_world(&self, ux: f32, uy: f32) -> Option<(f32, f32)> {
         let a = self.minimap_area?;
@@ -1627,9 +1644,27 @@ impl Hud {
             if self.minimap_fog {
                 out.push(Draw::Image { texture: MINIMAP_FOG.into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
             }
+            // The map's area outlined in 0xFF3C3C46, two of the 256 texels wide (measured
+            // from the original's minimap).
+            if let (Some(a), Some((x0, y0)), Some((x1, y1))) = (self.minimap_area, self.minimap_area.and_then(|a| self.world_to_minimap(a.x0, a.y0)), self.minimap_area.and_then(|a| self.world_to_minimap(a.x1, a.y1))) {
+                let _ = a;
+                let (tx, ty) = (2.0 / 256.0 * r.w(), 2.0 / 256.0 * r.h());
+                let c = [60.0 / 255.0, 60.0 / 255.0, 70.0 / 255.0, 1.0];
+                for e in [
+                    w3_ui::Rect { x0, x1: x0 + tx, y0, y1 },
+                    w3_ui::Rect { x0: x1 - tx, x1, y0, y1 },
+                    w3_ui::Rect { x0, x1, y0, y1: y0 + ty },
+                    w3_ui::Rect { x0, x1, y0: y1 - ty, y1 },
+                ] {
+                    out.push(Draw::Image { texture: String::new(), rect: e, uv: [0.0, 0.0, 1.0, 1.0], color: c, blend: w3_ui::Blend::Alpha, rotated: false });
+                }
+            }
             // CMinimap's icons: MinimapResourceTexture for mines and MinimapNeutralTexture
             // for neutral buildings, 16 pixels of the 256-pixel image, centered.
-            for &(kind, x, y) in &self.minimap_icons {
+            for (k, &(kind, x, y)) in self.minimap_icons.iter().enumerate() {
+                if !self.minimap_icons_shown.get(k).copied().unwrap_or(true) {
+                    continue;
+                }
                 let key = match kind {
                     0 => "MinimapResourceTexture",
                     1 => "MinimapNeutralTexture",
@@ -1638,6 +1673,22 @@ impl Hud {
                 let (cx, cy) = (r.x0 + x / 256.0 * (r.x1 - r.x0), r.y1 - y / 256.0 * (r.y1 - r.y0));
                 let (hw, hh) = (8.0 / 256.0 * (r.x1 - r.x0), 8.0 / 256.0 * (r.y1 - r.y0));
                 out.push(Draw::Image { texture: db.decorate(key), rect: w3_ui::Rect { x0: cx - hw, x1: cx + hw, y0: cy - hh, y1: cy + hh }, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+            }
+            // Creep camps while the creep filter is on, as MinimapCreepCamp and
+            // MinimapCreepCampTough draw them: a quad 0.012 (or the tough one's 0.016)
+            // across of MinimapIconCreepLoc (or ...Loc2), additive, its alpha pulsing 1, 0.5,
+            // 1 over two seconds (KMTA), in the camp's weak, middle, or tough color.
+            if self.show_creeps {
+                let t = (self.now * 1000.0).rem_euclid(2000.0);
+                let pulse = if t < 960.0 { 1.0 - 0.5 * t / 960.0 } else { 0.5 + 0.5 * (t - 960.0) / 1040.0 };
+                for &(x, y, color, scale) in &self.minimap_camps {
+                    if let Some((ux, uy)) = self.world_to_minimap(x, y) {
+                        let tough = scale < 0.0;
+                        let (tex, half) = if tough { ("UI\\Minimap\\MinimapIconCreepLoc2.blp", 0.008) } else { ("UI\\Minimap\\MinimapIconCreepLoc.blp", 0.006 * scale) };
+                        let c = [color[0], color[1], color[2], color[3] * pulse];
+                        out.push(Draw::Image { texture: tex.into(), rect: w3_ui::Rect { x0: ux - half, x1: ux + half, y0: uy - half, y1: uy + half }, uv: [0.0, 0.0, 1.0, 1.0], color: c, blend: w3_ui::Blend::Add, rotated: false });
+                    }
+                }
             }
             for &(x, y, color, size) in &self.minimap_dots {
                 if let Some((ux, uy)) = self.world_to_minimap(x, y) {

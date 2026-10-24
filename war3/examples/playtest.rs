@@ -100,6 +100,14 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("left click consumed: {consumed}");
                 i += 3;
             }
+            // netdialog: shows the host's waiting dialog for player 2, to look at.
+            "netdialog" => {
+                let aspect = w as f32 / h as f32;
+                if let Some(hud) = scene.hud.as_mut() {
+                    hud.net_dialog = war3::netdialog::NetDialog::suspend(&assets.frames, aspect, &[(1, "Player 2".into(), 1), (2, "Player 3".into(), 2)]);
+                }
+                i += 1;
+            }
             // replaysave <file>: the replay so far.
             "replaysave" => {
                 if let Some(r) = scene.game.as_ref().and_then(|g| g.recorder.as_ref()) {

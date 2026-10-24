@@ -332,6 +332,8 @@ pub struct Session {
     pub waiting: bool,
     /// Frames are played up to this many (for tests that compare games).
     pub limit: Option<u32>,
+    /// When the last frame came (a player's game waits on the host after two seconds).
+    last_frame: Instant,
 }
 
 /// The host sends a frame every 50 ms of game time and waits for any player more
@@ -341,7 +343,7 @@ const BEHIND: u32 = 40;
 
 impl Session {
     pub fn new(role: Role) -> Session {
-        Session { role, queue: VecDeque::new(), next: 0, played: 0, owed: 0.0, clock: 0.0, lost: false, left: Vec::new(), waiting: false, limit: None }
+        Session { role, queue: VecDeque::new(), next: 0, played: 0, owed: 0.0, clock: 0.0, lost: false, left: Vec::new(), waiting: false, limit: None, last_frame: Instant::now() }
     }
 
     /// The local player's commands, to the host (the host takes its own at once).
@@ -402,6 +404,7 @@ impl Session {
                         Msg::Frame(n, f) if n == self.next => {
                             self.queue.push_back(f);
                             self.next += 1;
+                            self.last_frame = Instant::now();
                         }
                         Msg::Chat { from, text } => chat.push((from, text)),
                         _ => {}
@@ -438,6 +441,32 @@ impl Session {
             }
         }
         out
+    }
+
+    /// The players the host waits on.
+    pub fn lagging(&self) -> Vec<u8> {
+        match &self.role {
+            Role::Host { peers, .. } => peers.iter().filter(|p| self.next.saturating_sub(p.2) > BEHIND).map(|p| p.1).collect(),
+            Role::Client { .. } => Vec::new(),
+        }
+    }
+
+    /// A player waits on a host that has sent nothing for two seconds.
+    pub fn host_silent(&self) -> bool {
+        matches!(self.role, Role::Client { .. }) && self.queue.is_empty() && self.last_frame.elapsed() > Duration::from_secs(2)
+    }
+
+    /// The host drops the players it waits on: they leave the game.
+    pub fn drop_lagging(&mut self) {
+        let next = self.next;
+        if let Role::Host { host, peers, .. } = &mut self.role {
+            let gone: Vec<(u32, u8)> = peers.iter().filter(|p| next.saturating_sub(p.2) > BEHIND).map(|p| (p.0, p.1)).collect();
+            for (id, player) in gone {
+                host.drop_peer(id);
+                peers.retain(|p| p.0 != id);
+                self.left.push(player);
+            }
+        }
     }
 
     /// Leaves the game: the host closes it, a player says goodbye.

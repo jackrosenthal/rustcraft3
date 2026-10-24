@@ -176,6 +176,8 @@ pub struct Hud {
     pub page: crate::card::Page,
     /// While a replay plays, its panel in the command card's place.
     pub replay: Option<crate::replaypanel::ReplayPanel>,
+    /// A network game's waiting dialog, while it waits.
+    pub net_dialog: Option<crate::netdialog::NetDialog>,
     gold: Option<usize>,
     lumber: Option<usize>,
     supply: Option<usize>,
@@ -315,6 +317,7 @@ impl Hud {
             card: Vec::new(),
             page: crate::card::Page::Main,
             replay: None,
+            net_dialog: None,
             gold: tree.get("ResourceBarGoldText"),
             lumber: tree.get("ResourceBarLumberText"),
             supply: tree.get("ResourceBarSupplyText"),
@@ -1481,6 +1484,9 @@ impl Hud {
         }
         if let Some(d) = &self.dialog {
             out.extend(d.tree.draw(db));
+        }
+        if let Some(d) = &self.net_dialog {
+            d.draws(db, &mut out);
         }
         if let Some(q) = &self.quests {
             out.extend(q.draws(db));

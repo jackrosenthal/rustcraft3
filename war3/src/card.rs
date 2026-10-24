@@ -127,7 +127,7 @@ pub fn fill_placeholders(w: &World, s: &str) -> String {
 }
 
 /// An entry of a per-level list (Tip, Ubertip), the last when the list is shorter.
-fn level_entry(list: &[String], level: u32) -> String {
+pub fn level_entry(list: &[String], level: u32) -> String {
     list.get(level.saturating_sub(1) as usize).or(list.last()).cloned().unwrap_or_default()
 }
 

@@ -139,6 +139,8 @@ pub struct Hud {
     hover_tips: Vec<(w3_ui::Rect, crate::card::Button)>,
     /// The Tooltips option (0x2a): whether tooltips show their full text.
     pub tooltips: bool,
+    /// The unit detail's icons' tooltips, by the icon's frame.
+    info_tips: Vec<(String, crate::card::Button)>,
     /// Text under the portrait: hit points (with color) and mana.
     pub portrait_stats: Option<(String, [f32; 4], Option<String>)>,
     info: Option<usize>,
@@ -361,6 +363,7 @@ impl Hud {
             inventory_tips: Vec::new(),
             hover_tips: Vec::new(),
             tooltips: true,
+            info_tips: Vec::new(),
             level_bar: None,
             buff_icons: None,
             building,
@@ -441,6 +444,7 @@ impl Hud {
         let detail = "SimpleInfoPanelUnitDetail";
         let damage0 = "SimpleInfoPanelIconDamageDamage0";
         let armor = frame("Armor");
+        let tips = Self::info_icon_tips(db, world, &s, &bonus);
         let weapons = s.attack.is_some() as u32;
         if let Some(a) = &s.attack {
             t.set_visible(damage0, true);
@@ -489,6 +493,104 @@ impl Hud {
             }
         }
         t.layout();
+        self.info_tips = tips;
+    }
+
+    /// The tooltips of the unit detail's damage and armor icons
+    /// (CInfoPanelIconDamage::vf27, CInfoPanelIconArmor::vf27): the value as the title;
+    /// the type, range and speed or damage reduction and move speed, and the research
+    /// that improves it; and the type's tip.
+    fn info_icon_tips(db: &FrameDb, world: &World, s: &w3_game::info::InfoStats, bonus: &dyn Fn(f32) -> String) -> Vec<(String, crate::card::Button)> {
+        use crate::card::Button;
+        let mut out = Vec::new();
+        let ip = |key: &str, d: f32| db.misc_ui.get_str("InfoPanel", key).and_then(|v| v.split("//").next().and_then(|v| v.trim().parse().ok())).unwrap_or(d);
+        // A colored value when something adds to it (green) or takes from it (red).
+        let tinted = |text: String, by: f32| if by == 0.0 { text } else { format!("{}{text}|R", if by > 0.0 { "|CFF00FF00" } else { "|CFFFF0000" }) };
+        // The type's tip: <key>_V<version><C>, else <key>.
+        let type_tip = |key: &str| {
+            let versioned = format!("{key}_V{}C", world.version);
+            let v = db.string(&versioned);
+            if !v.is_empty() && v != versioned { v } else { db.string(key) }
+        };
+        let upgrade_line = |id: Option<w3_game::objects::Id>, level: Option<i32>| -> String {
+            let (Some(id), Some(level)) = (id, level) else { return String::new() };
+            let name = world.objects.upgrades.get(id).map(|o| crate::card::level_entry(&o.list("Name"), level.max(1) as u32)).unwrap_or_default();
+            format!("\n{} {}", db.string("COLON_UPGRADE"), db.string("UPGRADE_TOOLTIP").replacen("%s", &name, 1).replacen("%d", &level.to_string(), 1))
+        };
+        if let Some(a) = &s.attack {
+            let kind = match a.attack_type.as_str() {
+                "pierce" => "PIERCE",
+                "siege" => "SIEGE",
+                "magic" => "MAGIC",
+                "chaos" => "CHAOS",
+                "hero" => "HERO",
+                _ => "NORMAL",
+            };
+            let title = format!("{} {} - {}{}", db.string("COLON_DAMAGE"), a.min.max(0), a.max.max(0), bonus(a.bonus as f32));
+            let range = if a.range as f32 > ip("MeleeRangeMax", 128.0) {
+                format!("{}{}", a.range, if a.range_bonus == 0 { String::new() } else { format!("{}{}|R", if a.range_bonus > 0 { " |CFF00FF00+" } else { " |CFFFF0000" }, a.range_bonus) })
+            } else {
+                format!("{} ", db.string("MELEE"))
+            };
+            // Attack speed by cooldown: AttackVerySlow and slower are very slow, below
+            // AttackFast very fast (FUN_6f3a9e60).
+            let c = a.cooldown;
+            let speed = if c >= ip("AttackVerySlow", 3.0) {
+                "MOVESPEEDVERYSLOW"
+            } else if c >= ip("AttackSlow", 2.0) {
+                "MOVESPEEDSLOW"
+            } else if c >= ip("AttackAverage", 1.5) {
+                "MOVESPEEDAVERAGE"
+            } else if c >= ip("AttackFast", 1.0) {
+                "MOVESPEEDFAST"
+            } else {
+                "MOVESPEEDVERYFAST"
+            };
+            let mut middle = format!("{} \n{} {range}\n{} {}", db.string(&format!("DAMAGE_{kind}")), db.string("COLON_RANGE"), db.string("COLON_SPEED"), tinted(db.string(speed), a.speed_bonus));
+            middle.push_str(&upgrade_line(a.upgrade_id, a.upgrade));
+            let mut b = Button::text_only(title, type_tip(&format!("DAMAGETIP_{kind}")));
+            b.requires = middle;
+            out.push(("SimpleInfoPanelIconDamageDamage0".to_string(), b));
+        }
+        let ar = &s.armor;
+        let kind = match ar.def_type.as_str() {
+            "small" => "SMALL",
+            "medium" => "MEDIUM",
+            "large" => "LARGE",
+            "fort" => "FORT",
+            "hero" => "HERO",
+            "divine" => "DIVINE",
+            "none" => "NONE",
+            _ => "NORMAL",
+        };
+        let value = if ar.invulnerable { db.string("INVULNERABLE") } else { format!("{}{}", ar.armor, bonus(ar.bonus)) };
+        let title = format!("{} {value}", db.string("COLON_ARMOR"));
+        let mut middle = format!("{} \n", db.string(&format!("ARMOR_{kind}")));
+        if !ar.invulnerable {
+            let pct = (ar.reduction * 100.0).floor() as i32;
+            middle.push_str(&format!("{} {}", db.string("COLON_DAMAGE_REDUCTION"), if ar.bonus == 0.0 { format!("{pct}%") } else { format!("{}{pct}|R%", if ar.bonus > 0.0 { "|CFF00FF00" } else { "|CFFFF0000" }) }));
+        }
+        if let Some((speed, by)) = ar.move_speed {
+            // Movement by speed: SpeedVerySlow and below very slow, above SpeedFast
+            // very fast (FUN_6f3aabc0).
+            let word = if speed <= ip("SpeedVerySlow", 175.0) {
+                "MOVESPEEDVERYSLOW"
+            } else if speed <= ip("SpeedSlow", 220.0) {
+                "MOVESPEEDSLOW"
+            } else if speed <= ip("SpeedAverage", 280.0) {
+                "MOVESPEEDAVERAGE"
+            } else if speed <= ip("SpeedFast", 350.0) {
+                "MOVESPEEDFAST"
+            } else {
+                "MOVESPEEDVERYFAST"
+            };
+            middle.push_str(&format!("\n{} {}", db.string("COLON_MOVE_SPEED"), tinted(db.string(word), if by.abs() < 0.001 { 0.0 } else { by })));
+        }
+        middle.push_str(&upgrade_line(ar.upgrade_id, ar.upgrade));
+        let mut b = Button::text_only(title, type_tip(&format!("ARMORTIP_{kind}")));
+        b.requires = middle;
+        out.push(("SimpleInfoPanelIconArmorArmor".to_string(), b));
+        out
     }
 
     fn info_visible(&self) -> bool {
@@ -722,7 +824,8 @@ impl Hud {
         }
         if !req_lines.is_empty() {
             y -= 0.005;
-            text(out, &req_lines.join("\n"), x0, y, desc_h, 0.21 + 0.005, [1.0; 4]);
+            // The tooltip's middle text is gray (145, 144, 144, measured from the original).
+            text(out, &req_lines.join("\n"), x0, y, desc_h, 0.21 + 0.005, [145.0 / 255.0, 144.0 / 255.0, 144.0 / 255.0, 1.0]);
             y -= req_lines.len() as f32 * line_h;
         }
         if !lines.is_empty() {
@@ -1807,6 +1910,9 @@ impl Hud {
         }
         if tip.is_none() {
             tip = self.hover_tips.iter().find(|(r, _)| r.contains(self.pointer.0, self.pointer.1)).map(|(_, b)| b.clone());
+        }
+        if tip.is_none() && self.info.is_some_and(|i| self.tree.frames[i].visible) {
+            tip = self.info_tips.iter().find(|(f, _)| self.tree.get(f).is_some_and(|f| self.tree.frames[f].visible && self.tree.frames[f].rect.is_some_and(|r| r.contains(self.pointer.0, self.pointer.1)))).map(|(_, b)| b.clone());
         }
         if let Some(b) = tip {
             self.tooltip_draws(db, &b, &mut out);

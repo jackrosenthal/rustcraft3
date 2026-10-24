@@ -324,8 +324,8 @@ impl World {
     }
 
     /// Shows an attacker to the owner of the enemy it struck, around where it stands, for
-    /// FogFlashTime: at least FoggedAttackRevealRadius around it, or `radius` (an
-    /// attack's range) when more (FUN_6f67fde0, FUN_6f67fc70).
+    /// FogFlashTime: at least FoggedAttackRevealRadius around it, or `radius` when more
+    /// (FUN_6f67fde0, FUN_6f67fc70).
     pub fn reveal_attacker(&mut self, attacker: u32, victim: u32, radius: f32) {
         let (Some(a), Some(v)) = (self.unit(attacker), self.unit(victim)) else { return };
         if a.owner == v.owner || v.dead || v.hidden || crate::natives::players::is_ally(self, v.owner, a.owner) {

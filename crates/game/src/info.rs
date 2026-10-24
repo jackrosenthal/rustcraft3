@@ -16,6 +16,13 @@ pub struct AttackInfo {
     pub attack_type: String,
     /// The research level of the upgrade that improves it, when one does.
     pub upgrade: Option<i32>,
+    /// That upgrade.
+    pub upgrade_id: Option<crate::objects::Id>,
+    /// Its range and what improves it, and its cooldown and the attack speed added.
+    pub range: i32,
+    pub range_bonus: i32,
+    pub cooldown: f32,
+    pub speed_bonus: f32,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -25,7 +32,12 @@ pub struct ArmorInfo {
     /// defType, lowercase.
     pub def_type: String,
     pub upgrade: Option<i32>,
+    pub upgrade_id: Option<crate::objects::Id>,
     pub invulnerable: bool,
+    /// The share of damage its armor turns away (negative for more).
+    pub reduction: f32,
+    /// For a unit that moves: its speed now and what it gains on its own.
+    pub move_speed: Option<(f32, f32)>,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -46,16 +58,16 @@ pub struct InfoStats {
 }
 
 impl World {
-    /// The research level of the first upgrade in a unit's `upgrades` list with one of
-    /// `effects`.
-    fn upgrade_level_for(&self, owner: u8, h_type: crate::objects::Id, effects: &[&str]) -> Option<i32> {
+    /// The first upgrade in a unit's `upgrades` list with one of `effects`, and its
+    /// research level.
+    fn upgrade_for(&self, owner: u8, h_type: crate::objects::Id, effects: &[&str]) -> Option<(crate::objects::Id, i32)> {
         let o = self.objects.units.get(h_type)?;
         let p = self.players.get(owner as usize)?;
         for up in o.list("upgrades") {
             let id = id_from_str(up.trim());
             let Some(u) = self.objects.upgrades.get(id) else { continue };
             if (1..=4).any(|k| effects.contains(&u.str(&format!("effect{k}")).as_str())) {
-                return Some(p.tech_researched.get(&id).copied().unwrap_or(0));
+                return Some((id, p.tech_researched.get(&id).copied().unwrap_or(0)));
             }
         }
         None
@@ -70,22 +82,45 @@ impl World {
             let dice = wp.dice + ub.dice;
             let base = wp.base + ub.damage + self.primary_attribute_pub(h);
             let bonus = u.item_bonus.damage + self.buff_damage_bonus(h);
+            let up = self.upgrade_for(u.owner, u.type_id, &["ratd", "ratx"]);
             s.attack = Some(AttackInfo {
                 min: (base + dice as f32) as i32,
                 max: (base + (dice * wp.sides) as f32) as i32,
                 bonus: bonus as i32,
                 attack_type: wp.attack_type.clone(),
-                upgrade: self.upgrade_level_for(u.owner, u.type_id, &["ratd", "ratx"]),
+                upgrade: up.map(|(_, l)| l),
+                upgrade_id: up.map(|(id, _)| id),
+                range: wp.range as i32,
+                range_bonus: ub.range as i32,
+                cooldown: wp.cooldown,
+                speed_bonus: u.item_bonus.attack_speed + ub.attack_speed + (self.buff_mods(h).1 - 1.0),
             });
         }
         let def = o.map_or(0.0, |o| o.real("def")) + ub.armor;
         let agi = if u.is_hero { (u.agi + u.item_bonus.agi).floor() * self.misc_f32("AgiDefenseBonus", 0.3) + self.misc_f32("AgiDefenseBase", -2.0) } else { 0.0 };
+        let up = self.upgrade_for(u.owner, u.type_id, &["rarm"]);
+        let bonus = u.item_bonus.armor + self.buff_mods(h).2;
+        // DefenseArmor's reduction, or for negative armor the original's table
+        // (FUN_6f66d320) as the combat uses it.
+        let total = (def + agi).round() + bonus;
+        let reduction = if total >= 0.0 {
+            let k = self.misc_f32("DefenseArmor", 0.06);
+            total * k / (1.0 + total * k)
+        } else {
+            1.0 - crate::sim::final_damage(self, 1.0, "chaos", u).max(0.0)
+        };
         s.armor = ArmorInfo {
             armor: (def + agi).round() as i32,
-            bonus: u.item_bonus.armor + self.buff_mods(h).2,
+            bonus,
             def_type: self.defense_type(u),
-            upgrade: self.upgrade_level_for(u.owner, u.type_id, &["rarm"]),
+            upgrade: up.map(|(_, l)| l),
+            upgrade_id: up.map(|(id, _)| id),
             invulnerable: self.unit_invulnerable(u),
+            reduction,
+            move_speed: (!u.is_building && u.move_speed > 0.0).then(|| {
+                let now = self.current_move_speed(h);
+                (now, now - u.move_speed)
+            }),
         };
         s.food_made = o.map_or(0, |o| o.int("fmade"));
         s.gold = self.ability_with_code(h, "Agld").map(|_| u.resource);

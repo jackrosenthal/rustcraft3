@@ -490,6 +490,65 @@ pub struct Scene {
     ack_voice: Option<u64>,
 }
 
+/// Waves along the shores (FUN_6f735ed0): a tile's corners with water more than [Water]
+/// WavesDepth deep make a mask whose shape picks the tileset's shoreline model (two
+/// beside each other the straight one, three the outside corner, one the inside corner),
+/// turned to face the land, at the tile's middle on the water.  A tile across cliff
+/// levels has waves only if the map shows them on cliff shores (w3i 0x800); any other
+/// only on rolling shores (0x1000).  The model is shoreDir\File\File<variation>.
+fn shore_waves(terrain: &Terrain, water_slk: &Table, misc: &w3_formats::profile::Profile, flags: u32, mut load: impl FnMut(&str) -> Option<Arc<ModelGpu>>) -> Vec<ModelInstance> {
+    let (cliff_shores, rolling_shores) = (flags & 0x800 != 0, flags & 0x1000 != 0);
+    if !cliff_shores && !rolling_shores {
+        return Vec::new();
+    }
+    let row = format!("{}Sha", terrain.tileset as char);
+    let field = |col: &str| text(water_slk, &row, col);
+    let offset = num(water_slk, &row, "height") as f32 * 128.0;
+    let depth = misc.get_str("Water", "WavesDepth").and_then(|v| v.trim().parse::<f32>().ok()).unwrap_or(25.0);
+    let dir = field("shoreDir");
+    // Straight, outside corner, inside corner: each kind's models.
+    let kinds: Vec<Vec<Arc<ModelGpu>>> = [("shoreSFile", "shoreSVar"), ("shoreOCFile", "shoreOCVar"), ("shoreICFile", "shoreICVar")]
+        .iter()
+        .map(|(file, var)| {
+            let (file, count) = (field(file), num(water_slk, &row, var) as u32);
+            (0..count).filter_map(|k| load(&format!("{dir}\\{file}\\{file}{k}.mdl"))).collect()
+        })
+        .collect();
+    // Corners (0, 0), (1, 0), (0, 1), (1, 1) set bits 2, 1, 8, 4; each mask's kind and
+    // facing in degrees (DAT_6fb86aa8).
+    const CORNERS: [(u32, u32, u8); 4] = [(0, 0, 2), (1, 0, 1), (0, 1, 8), (1, 1, 4)];
+    const SHAPES: [(i32, f32); 16] = [(-1, 0.0), (2, 180.0), (2, 90.0), (0, 270.0), (2, 270.0), (0, 0.0), (-1, 0.0), (1, 0.0), (2, 0.0), (-1, 0.0), (0, 180.0), (1, 270.0), (0, 90.0), (1, 90.0), (1, 180.0), (-1, 0.0)];
+    let mut out = Vec::new();
+    for y in 0..terrain.height.saturating_sub(1) {
+        for x in 0..terrain.width.saturating_sub(1) {
+            let base = terrain.corner(x, y);
+            let cliff = CORNERS[1..].iter().any(|&(dx, dy, _)| terrain.corner(x + dx, y + dy).layer_height != base.layer_height);
+            if (cliff && !cliff_shores) || (!cliff && !rolling_shores) {
+                continue;
+            }
+            let (mut mask, mut z) = (0usize, 0.0);
+            for &(dx, dy, bit) in &CORNERS {
+                let c = terrain.corner(x + dx, y + dy);
+                let surface = c.water_height() + offset;
+                if c.water && surface - c.height() > depth {
+                    mask |= bit as usize;
+                    z = surface;
+                }
+            }
+            let (kind, facing) = SHAPES[mask];
+            let Some(models) = usize::try_from(kind).ok().and_then(|k| kinds.get(k)).filter(|m| !m.is_empty()) else { continue };
+            // A variation chosen by place (the original draws one at random).
+            let model = models[((x.wrapping_mul(73_856_093) ^ y.wrapping_mul(19_349_663)) as usize) % models.len()].clone();
+            let mut inst = ModelInstance::new(model);
+            let (wx, wy) = (terrain.offset[0] + x as f32 * 128.0 + 64.0, terrain.offset[1] + y as f32 * 128.0 + 64.0);
+            inst.transform = Mat4::from_rotation_translation(Quat::from_rotation_z(facing.to_radians()), Vec3::new(wx, wy, z));
+            inst.play("Stand");
+            out.push(inst);
+        }
+    }
+    out
+}
+
 fn num(t: &Table, row: &str, col: &str) -> f64 {
     match t.get(row, col) {
         Some(w3_formats::slk::Value::Num(n)) => *n,
@@ -618,6 +677,12 @@ impl Scene {
                     doodad_loops.push((sound, d.position));
                 }
             }
+        }
+
+        // Waves along the shores (FUN_6f735ed0).
+        for inst in shore_waves(&terrain, &water_slk, &data.misc, info.flags, |path| assets.model(device, queue, path)) {
+            instances.push(inst);
+            doodad_ids.push(*b"shor");
         }
 
         // Run the map script: config, then main with the local player in the first

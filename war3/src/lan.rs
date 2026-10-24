@@ -202,10 +202,19 @@ impl Lan {
         }
     }
 
-    fn host_update(&mut self, _db: &FrameDb) -> Option<Event> {
+    /// A notice everyone in the lobby sees (NETMESSAGE_PLAYERJOINED, _PLAYERLEFT).
+    fn notice(&mut self, db: &FrameDb, key: &str, name: &str) {
+        self.chat.push(db.string(key).replace("%s", name));
+        if let Some(h) = self.host.as_mut() {
+            h.broadcast(&Msg::Notice { key: key.to_string(), name: name.to_string() });
+        }
+    }
+
+    fn host_update(&mut self, db: &FrameDb) -> Option<Event> {
         let h = self.host.as_mut()?;
         let (msgs, gone) = h.poll();
         let mut changed = false;
+        let mut notices = Vec::new();
         for (id, m) in msgs {
             match m {
                 Msg::Hello { name, version } => {
@@ -218,6 +227,7 @@ impl Lan {
                         Some(s) => {
                             s.holder = Holder::Human(id);
                             s.name = name.clone();
+                            notices.push(("NETMESSAGE_PLAYERJOINED", name.clone()));
                             if let Some(p) = h.peers.iter_mut().find(|p| p.0 == id) {
                                 p.2 = Some(name);
                             }
@@ -247,7 +257,7 @@ impl Lan {
         for id in gone {
             if let Some(s) = self.setup.slots.iter_mut().find(|s| s.holder == Holder::Human(id)) {
                 s.holder = Holder::Open;
-                s.name.clear();
+                notices.push(("NETMESSAGE_PLAYERLEFT", std::mem::take(&mut s.name)));
                 changed = true;
             }
         }
@@ -257,10 +267,13 @@ impl Lan {
             h.broadcast(&Msg::Setup(self.setup.clone()));
             self.rebuild = true;
         }
+        for (key, name) in notices {
+            self.notice(db, key, &name);
+        }
         None
     }
 
-    fn client_update(&mut self, _db: &FrameDb) -> Option<Event> {
+    fn client_update(&mut self, db: &FrameDb) -> Option<Event> {
         let c = self.conn.as_mut()?;
         let msgs = c.poll();
         let alive = c.alive;
@@ -280,6 +293,7 @@ impl Lan {
                     self.rebuild = true;
                 }
                 Msg::Chat { from, text } => self.chat.push(format!("{from}: {text}")),
+                Msg::Notice { key, name } => self.chat.push(db.string(&key).replace("%s", &name)),
                 Msg::Start(s) => {
                     self.setup = s;
                     let conn = self.conn.take()?;

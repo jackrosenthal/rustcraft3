@@ -3111,7 +3111,11 @@ impl Scene {
         Self::update_quests(&mut self.quests_requested, &mut self.log_requested, hud, db, &g.world, &self.info, aspect);
         hud.sync_save_panel(db);
         if let Some(m) = hud.menu.as_mut() {
-            m.set_enabled("RestartButton", !g.world.restart_disabled);
+            // Network games cannot be restarted, saved, or loaded here.
+            let net = g.world.network;
+            m.set_enabled("RestartButton", !g.world.restart_disabled && !net);
+            m.set_enabled("SaveGameButton", !net);
+            m.set_enabled("LoadGameButton", !net);
         }
         hud.show_unit(db, &g.world, self.selection.first().copied());
         let w = &g.world;

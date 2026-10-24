@@ -78,6 +78,8 @@ pub enum Msg {
     Refused(String),
     Setup(Setup),
     Chat { from: String, text: String },
+    /// A lobby notice: a NetworkStrings key and the player it is about.
+    Notice { key: String, name: String },
     /// A joined player's choices for their own slot.
     Choose { race: usize, team: i32, color: i32, handicap: usize },
     /// The game begins with this setup.

@@ -403,9 +403,11 @@ impl PathingMap {
         let (g, parent, stamp) = (&mut sc.g, &mut sc.parent, &mut sc.stamp);
         let cost_of = |stamp: &[u32], g: &[f32], i: usize| if stamp[i] == generation { g[i] } else { f32::INFINITY };
         let Some(si) = self.index(start) else { return vec![] };
+        // The octile distance, weighted a little: long searches settle on a good path
+        // in far fewer cells than the shortest one would take.
         let h = |c: (i32, i32)| {
             let (dx, dy) = ((c.0 - goal.0).abs() as f32, (c.1 - goal.1).abs() as f32);
-            dx.max(dy) + (std::f32::consts::SQRT_2 - 1.0) * dx.min(dy)
+            (dx.max(dy) + (std::f32::consts::SQRT_2 - 1.0) * dx.min(dy)) * 1.2
         };
         #[derive(PartialEq, serde::Serialize, serde::Deserialize)]
         struct Node(f32, u32);

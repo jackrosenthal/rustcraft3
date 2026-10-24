@@ -75,23 +75,6 @@ impl FogMap {
         Some(cy as usize * self.width + cx as usize)
     }
 
-    /// Whether an occluded cell lies strictly between two cells (along the line between
-    /// their centers, sampled every half cell).
-    fn blocked(&self, from: usize, to: usize, occluded: &[bool]) -> bool {
-        let (fx, fy) = ((from % self.width) as f32, (from / self.width) as f32);
-        let (tx, ty) = ((to % self.width) as f32, (to / self.width) as f32);
-        let steps = ((tx - fx).abs().max((ty - fy).abs()) * 2.0) as usize;
-        for k in 1..steps {
-            let t = k as f32 / steps as f32;
-            let (cx, cy) = ((fx + (tx - fx) * t).round() as usize, (fy + (ty - fy) * t).round() as usize);
-            let c = cy * self.width + cx;
-            if c != from && c != to && occluded.get(c).copied().unwrap_or(false) {
-                return true;
-            }
-        }
-        false
-    }
-
     /// Cells whose centers lie within `r` of (x, y).
     fn circle(&self, x: f32, y: f32, r: f32, mut f: impl FnMut(usize, usize)) {
         let x0 = (((x - r) - self.origin.0) / FOG_CELL).floor().max(0.0) as usize;
@@ -205,12 +188,14 @@ impl World {
         // blockers) hide what lies beyond them from the ground.
         let (fw, fh) = { let f = self.fog.as_ref().unwrap(); (f.width, f.height) };
         let mut occluded = vec![false; fw * fh];
-        for (_, o) in self.handles.iter() {
-            let Obj::Destructable(d) = o else { continue };
+        let mut occludes: crate::HashMap<crate::objects::Id, bool> = crate::HashMap::default();
+        for &h in &self.destructable_order {
+            let Some(Obj::Destructable(d)) = self.handles.get(h) else { continue };
             if d.life <= 0.0 {
                 continue;
             }
-            if self.objects.destructables.get(d.type_id).is_some_and(|od| od.real("occH") > 0.0) {
+            let occ = *occludes.entry(d.type_id).or_insert_with(|| self.objects.destructables.get(d.type_id).is_some_and(|od| od.real("occH") > 0.0));
+            if occ {
                 if let Some(c) = self.fog.as_ref().unwrap().cell(d.x, d.y) {
                     occluded[c] = true;
                 }
@@ -221,16 +206,43 @@ impl World {
             v.fill(false);
         }
         let w = fog.width;
+        let table = sight_table();
+        let mut shadow = vec![false; table.len()];
         for (owner, x, y, r, lvl, flying, shared) in sources {
             let mut cells = Vec::new();
-            fog.circle(x, y, r, |cx, cy| cells.push(cy * w + cx));
-            let from = fog.cell(x, y);
-            for c in cells {
+            let Some(from) = fog.cell(x, y) else { continue };
+            let (ox, oy) = ((from % w) as i32, (from / w) as i32);
+            // Cells outward from the viewer's: each is shadowed when the cell one step
+            // nearer the viewer is shadowed or holds an occluder.
+            let reach = (r / FOG_CELL).ceil() as i32 + 1;
+            for (k, &(dx, dy, d2, parent)) in table.iter().enumerate() {
+                if d2 > (reach * reach) as u32 {
+                    break;
+                }
+                let (cx, cy) = (ox + dx as i32, oy + dy as i32);
+                let inside = cx >= 0 && cy >= 0 && (cx as usize) < fw && (cy as usize) < fh;
+                let c = if inside { cy as usize * w + cx as usize } else { usize::MAX };
+                shadow[k] = k > 0 && {
+                    let p = parent as usize;
+                    let (pdx, pdy) = (table[p].0 as i32, table[p].1 as i32);
+                    let pc = ((oy + pdy) as usize).wrapping_mul(w).wrapping_add((ox + pdx) as usize);
+                    shadow[p] || (p > 0 && occluded.get(pc).copied().unwrap_or(false))
+                };
+                if !inside {
+                    continue;
+                }
+                let px = fog.origin.0 + (cx as f32 + 0.5) * FOG_CELL;
+                let py = fog.origin.1 + (cy as f32 + 0.5) * FOG_CELL;
+                if (px - x).hypot(py - y) <= r {
+                    cells.push((c, shadow[k]));
+                }
+            }
+            for (c, shaded) in cells {
                 // Ground units do not see onto higher cliff levels, nor past occluders.
                 if !flying && fog.level[c] > lvl {
                     continue;
                 }
-                if !flying && from.is_some_and(|f| fog.blocked(f, c, &occluded)) {
+                if !flying && shaded {
                     continue;
                 }
                 for &p in &viewers[owner as usize % PLAYER_COUNT] {
@@ -342,4 +354,31 @@ impl World {
             .collect();
         Some((fog.width, fog.height, img))
     }
+}
+
+/// Offsets from a viewer's cell out to 40 cells, nearest first: (dx, dy, squared
+/// distance, the entry one step back toward the viewer).
+fn sight_table() -> &'static [(i8, i8, u32, u16)] {
+    static TABLE: std::sync::OnceLock<Vec<(i8, i8, u32, u16)>> = std::sync::OnceLock::new();
+    TABLE.get_or_init(|| {
+        const R: i32 = 40;
+        let mut v: Vec<(i8, i8, u32)> = Vec::new();
+        for dy in -R..=R {
+            for dx in -R..=R {
+                let d2 = (dx * dx + dy * dy) as u32;
+                if d2 <= (R * R) as u32 {
+                    v.push((dx as i8, dy as i8, d2));
+                }
+            }
+        }
+        v.sort_by_key(|e| (e.2, e.1, e.0));
+        let index: std::collections::HashMap<(i8, i8), usize> = v.iter().enumerate().map(|(k, e)| ((e.0, e.1), k)).collect();
+        v.iter()
+            .map(|&(dx, dy, d2)| {
+                let d = (d2 as f32).sqrt();
+                let (px, py) = if d <= 1.0 { (0, 0) } else { ((dx as f32 * (d - 1.0) / d).round() as i8, (dy as f32 * (d - 1.0) / d).round() as i8) };
+                (dx, dy, d2, index.get(&(px, py)).copied().unwrap_or(0) as u16)
+            })
+            .collect()
+    })
 }

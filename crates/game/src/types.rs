@@ -371,6 +371,9 @@ pub struct UnitExtra {
     /// The widget a structure's rally point is on (0 for the ground).
     #[serde(default)]
     pub rally_target: u32,
+    /// Where the unit's current path was found to.
+    #[serde(default)]
+    pub path_goal: Option<(f32, f32)>,
     /// Raised by Animate Dead as an invulnerable (the unit flag 0x80000000 of
     /// FUN_6f4e66f0).
     #[serde(default)]
@@ -420,6 +423,7 @@ impl Default for UnitExtra {
             formation: None,
             rally_target: 0,
             animated: false,
+            path_goal: None,
             ai_suicide: None,
             rescuable_by: 0,
             rescue_range: 0.0,

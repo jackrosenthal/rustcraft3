@@ -512,6 +512,14 @@ impl World {
     }
 
     pub(crate) fn path_to(&mut self, h: u32, goal: (f32, f32)) {
+        // A unit on its way to much the same place keeps its path (a chase's target
+        // hardly moved); a cleared path is always found again.
+        if let Some(u) = self.unit_mut(h) {
+            if !u.path.is_empty() && u.extra.path_goal.is_some_and(|g| (g.0 - goal.0).hypot(g.1 - goal.1) < 32.0) {
+                u.repath_timer = 1.0;
+                return;
+            }
+        }
         let t0 = self.profile.is_some().then(std::time::Instant::now);
         self.path_to_inner(h, goal);
         self.prof_add("path_to", t0);
@@ -559,6 +567,7 @@ impl World {
         if let Some(u) = self.unit_mut(h) {
             u.path = path;
             u.repath_timer = 1.0;
+            u.extra.path_goal = Some(goal);
         }
     }
 

@@ -252,7 +252,11 @@ impl UiRenderer {
                     } else {
                         [[l, tp], [r, tp], [l, b], [r, b]]
                     };
-                    let mode = if *blend == Blend::AlphaKey { 2 } else { 0 };
+                    let mode = match blend {
+                        Blend::AlphaKey => 2,
+                        Blend::Opaque => 3,
+                        _ => 0,
+                    };
                     push_quad(&mut verts, &mut batches, BindKey::Texture(key), *blend == Blend::Add, [nx(rect.x0), ny(rect.y0), nx(rect.x1), ny(rect.y1)], corners, *color, mode);
                 }
                 Draw::Text { font, size, rect, text, color, justify_h, justify_v, shadow } => {

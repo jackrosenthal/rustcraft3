@@ -4462,7 +4462,18 @@ impl Scene {
         self.sync_hud(&assets.frames, size.0 as f32 / size.1.max(1) as f32);
         if let (Some(hud), Some(_)) = (self.hud.as_mut(), self.game.as_ref()) {
             // Text tags lie under the interface.
-            let mut draws = tag_draws;
+            // A paused game's world shows at 100/255 of its brightness under the
+            // interface (as the original draws it; the menus of a game played alone pause
+            // it, as do PauseGame and a network pause).
+            let alone = self.net.is_none();
+            let world_paused = self.game.as_ref().is_some_and(|g| g.world.net_paused.is_some() || (alone && g.world.script_paused));
+            let paused = world_paused || (alone && (hud.menu.is_some() || hud.quests.is_some() || hud.log_view.is_some()));
+            let mut draws = Vec::new();
+            if paused {
+                let w = hud.tree.width;
+                draws.push(w3_ui::Draw::Image { texture: String::new(), rect: w3_ui::Rect { x0: -1.0, x1: w + 1.0, y0: -1.0, y1: w3_ui::UI_HEIGHT + 1.0 }, uv: [0.0, 0.0, 1.0, 1.0], color: [0.0, 0.0, 0.0, 155.0 / 255.0], blend: w3_ui::Blend::Alpha, rotated: false });
+            }
+            draws.extend(tag_draws);
             draws.extend(hud.draws(&assets.frames));
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("interface"),

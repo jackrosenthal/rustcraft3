@@ -31,6 +31,10 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if (in.mode == 1u) {
         return vec4<f32>(in.color.rgb, in.color.a * t.r);
     }
+    // Opaque: the texture's alpha is not used.
+    if (in.mode == 3u) {
+        return vec4<f32>(t.rgb * in.color.rgb, in.color.a);
+    }
     let c = t * in.color;
     if (in.mode == 2u && c.a < 0.75) {
         discard;

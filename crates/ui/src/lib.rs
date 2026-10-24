@@ -947,6 +947,8 @@ pub enum Blend {
     Alpha,
     AlphaKey,
     Add,
+    /// The texture's alpha ignored: a backdrop's background without BackdropBlendAll.
+    Opaque,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1371,7 +1373,9 @@ impl FrameTree {
             if d.has("BackdropMirrored") {
                 uv = [uv[2], uv[1], uv[0], uv[3]];
             }
-            out.push(Draw::Image { texture: file(bg), rect: inner, uv, color: [1.0; 4], blend: Blend::Alpha, rotated: false });
+            // Only BackdropBlendAll blends the background; the edges always blend.
+            let blend = if d.has("BackdropBlendAll") { Blend::Alpha } else { Blend::Opaque };
+            out.push(Draw::Image { texture: file(bg), rect: inner, uv, color: [1.0; 4], blend, rotated: false });
         }
         self.draw_backdrop_edges(d, r, file, out);
     }

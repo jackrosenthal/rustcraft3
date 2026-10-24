@@ -239,6 +239,9 @@ pub struct Unit {
 /// Unit settings scripts change.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct UnitExtra {
+    /// Maximum life gained for good (a Manual of Health).
+    #[serde(default)]
+    pub permanent_life: f32,
     /// The attack speed the running cooldown was set at.
     #[serde(default)]
     pub cooldown_speed: Option<f32>,
@@ -457,6 +460,7 @@ impl Default for UnitExtra {
     fn default() -> Self {
         UnitExtra {
             aura_clock: None,
+            permanent_life: 0.0,
             cooldown_speed: None,
             construction_damage: 0.0,
             queue_tokens: Vec::new(),

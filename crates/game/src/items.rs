@@ -579,6 +579,23 @@ impl World {
                     self.apply_hero_stats(unit, false);
                     did = true;
                 }
+                // Manual of Health: maximum life for good (measured: a Paladin of 650
+                // goes to 725 with it and a Tome of Strength).
+                "AImi" => {
+                    let gain = data(self, "DataA");
+                    let hero = self.unit(unit).is_some_and(|u| u.is_hero);
+                    if let Some(u) = self.unit_mut(unit) {
+                        u.extra.permanent_life += gain;
+                        if !hero {
+                            u.max_life += gain;
+                            u.life += gain;
+                        }
+                    }
+                    if hero {
+                        self.apply_hero_stats(unit, false);
+                    }
+                    did = true;
+                }
                 "AIem" => {
                     let xp = data(self, "DataA") as i32;
                     self.add_hero_xp(unit, xp);
@@ -634,7 +651,7 @@ impl World {
                         speed_bonuses += 1;
                     }
                     "AIas" => b.attack_speed += d("DataA"),
-                    "AIml" | "AImi" => b.life += d("DataA"),
+                    "AIml" => b.life += d("DataA"),
                     "AImm" => b.mana += d("DataA"),
                     "AIrm" => b.mana_regen += d("DataA"),
                     "Arel" => b.life_regen += d("DataA"),

@@ -74,7 +74,7 @@ impl World {
         let (str_, int) = (u.str_ + b.str_, u.int + b.int);
         let u = self.unit_mut(h).unwrap();
         let (old_hp, old_mana) = (u.max_life, u.max_mana);
-        u.max_life = base_hp + str_.floor() * hp_per + b.life;
+        u.max_life = base_hp + str_.floor() * hp_per + b.life + u.extra.permanent_life;
         u.max_mana = base_mana + int.floor() * mana_per + b.mana;
         if fill {
             u.life = u.max_life;

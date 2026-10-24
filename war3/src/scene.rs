@@ -5013,9 +5013,10 @@ impl Scene {
         let target = Vec3::from_array(cam.target);
         let view = Mat4::look_at_rh(eye, target, Vec3::Z);
         let aspect = (x1 - x0) / (y1 - y0);
-        // The model camera's field of view spans the viewport's diagonal (matched against
-        // the original's portraits), like the game camera's.
-        let half_h = (cam.fov / 2.0).tan() / (1.0 + aspect * aspect).sqrt();
+        // The unit portrait's model camera field of view spans the viewport's diagonal,
+        // like the game camera's; the cinematic one (a SPRITE frame) takes it as the
+        // vertical extent (both matched against the original's).
+        let half_h = if cine { (cam.fov / 2.0).tan() } else { (cam.fov / 2.0).tan() / (1.0 + aspect * aspect).sqrt() };
         let proj = Mat4::perspective_rh(2.0 * half_h.atan(), aspect, cam.near_clip.max(1.0), cam.far_clip.max(100.0));
         let mut globals = default_globals(proj * view, eye);
         globals.light_dir = [0.3, 0.3, -1.0, 0.0];

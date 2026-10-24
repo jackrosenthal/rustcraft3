@@ -110,15 +110,7 @@ impl World {
     /// PawnItemRate, and times the charges left of those it began with (FUN_6f65a1b0),
     /// go to the unit's owner; the item is gone, and EVENT_PLAYER_UNIT_PAWN_ITEM fires.
     pub fn pawn_item(&mut self, vm: &mut Vm, unit: u32, item: u32, shop: u32) {
-        let Some(it) = self.item(item) else { return };
-        let (type_id, charges) = (it.type_id, it.charges);
-        let Some(o) = self.objects.items.get(type_id) else { return };
-        let uses = o.int("uses");
-        let mut rate = self.misc_f32("PawnItemRate", 0.5);
-        if uses > 0 {
-            rate *= charges as f32 / uses as f32;
-        }
-        let (gold, lumber) = ((o.int("goldcost") as f32 * rate) as i32, (o.int("lumbercost") as f32 * rate) as i32);
+        let (gold, lumber) = self.pawn_value(item);
         let Some(owner) = self.unit(unit).map(|u| u.owner) else { return };
         let ctx = EventCtx { unit, other_unit: shop, item, ..Default::default() };
         self.fire_unit_pair(vm, unit, EVENT_PLAYER_UNIT_PAWN_ITEM, EVENT_UNIT_PAWN_ITEM, ctx);
@@ -130,6 +122,19 @@ impl World {
         let (x, y) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
         self.drop_item(vm, item, x, y);
         self.remove_item(item);
+    }
+
+    /// What selling an item brings: its gold and lumber cost times PawnItemRate, and
+    /// times the charges left of those it began with (FUN_6f65a1b0, FUN_6f65a230).
+    pub fn pawn_value(&self, item: u32) -> (i32, i32) {
+        let Some(it) = self.item(item) else { return (0, 0) };
+        let Some(o) = self.objects.items.get(it.type_id) else { return (0, 0) };
+        let uses = o.int("uses");
+        let mut rate = self.misc_f32("PawnItemRate", 0.5);
+        if uses > 0 {
+            rate *= it.charges as f32 / uses as f32;
+        }
+        ((o.int("goldcost") as f32 * rate) as i32, (o.int("lumbercost") as f32 * rate) as i32)
     }
 
     pub fn remove_item(&mut self, item: u32) {

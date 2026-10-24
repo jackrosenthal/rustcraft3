@@ -132,6 +132,13 @@ pub struct Hud {
     pub save_panel: Option<crate::saveload::SavePanel>,
     /// The selected unit's inventory: icon and charges per slot it has.
     pub inventory: Vec<Option<(String, i32)>>,
+    /// Each inventory slot's tooltip (CInventoryBar::vf28).
+    pub inventory_tips: Vec<Option<crate::card::Button>>,
+    /// The interface's other elements that show a tooltip under the pointer: where
+    /// each is, and its tip.
+    hover_tips: Vec<(w3_ui::Rect, crate::card::Button)>,
+    /// The Tooltips option (0x2a): whether tooltips show their full text.
+    pub tooltips: bool,
     /// Text under the portrait: hit points (with color) and mana.
     pub portrait_stats: Option<(String, [f32; 4], Option<String>)>,
     info: Option<usize>,
@@ -351,6 +358,9 @@ impl Hud {
             chat_to: 0,
             chat_prompt: String::new(),
             inventory: Vec::new(),
+            inventory_tips: Vec::new(),
+            hover_tips: Vec::new(),
+            tooltips: true,
             level_bar: None,
             buff_icons: None,
             building,
@@ -1158,6 +1168,42 @@ impl Hud {
                 .collect(),
             _ => Vec::new(),
         };
+        // Their tooltips (CInventoryBar::vf28): a usable item's name with its NumPad
+        // key, "Drop item on shop to sell" with the price for a pawnable one of the
+        // player's own (The Frozen Throne), "Left-Click to Use", and the Ubertip under
+        // the Tooltips option.
+        let mine = self.replay.is_none() && unit.is_some_and(|h| w3_game::natives::players::controls(world, world.local_player, h));
+        self.inventory_tips = match (unit, u) {
+            (Some(h), Some(u)) => (0..world.inventory_size(h))
+                .map(|s| {
+                    let item = u.inventory[s];
+                    let o = world.objects.items.get(world.item(item)?.type_id)?;
+                    let pawn = mine && world.version >= 1 && o.bool("pawnable");
+                    let usable = mine && o.bool("usable");
+                    let uber = if self.tooltips { crate::card::fill_placeholders(world, &o.str("Ubertip")) } else { String::new() };
+                    let mut body = String::new();
+                    if pawn {
+                        body.push_str(&db.string("ITEM_PAWN_TOOLTIP"));
+                        body.push('\n');
+                    }
+                    let mut title = o.str("Name");
+                    if usable {
+                        const NUMPAD: [u32; 6] = [7, 8, 4, 5, 1, 2];
+                        title = db.string("ITEM_NAME_HOTKEY").replacen("%s", &title, 1).replacen("%u", &NUMPAD.get(s).copied().unwrap_or(0).to_string(), 1);
+                        body.push_str(&db.string("ITEM_USE_TOOLTIP"));
+                        if !uber.is_empty() {
+                            body.push('\n');
+                        }
+                    }
+                    body.push_str(&uber);
+                    let (gold, lumber) = if pawn { world.pawn_value(item) } else { (0, 0) };
+                    let mut b = crate::card::Button::text_only(title, body);
+                    b.costs = [0, gold, lumber, 0];
+                    Some(b)
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
         if let Some(i) = self.info {
             self.tree.frames[i].visible = u.is_some();
         }
@@ -1271,6 +1317,90 @@ impl Hud {
             _ => "UPKEEP_HIGH",
         };
         set(&mut self.tree, self.upkeep, db.string(key));
+        self.hover_tips = self.hover_tip_list(db, world);
+    }
+
+    /// An upkeep level's name (FUN_6f3dc320): none, low, high, and UPKEEP_HIGH<n> past
+    /// those (UPKEEP_HIGH and the number when that is missing).
+    fn upkeep_name(db: &FrameDb, level: usize) -> String {
+        match level {
+            0 => db.string("UPKEEP_NONE"),
+            1 => db.string("UPKEEP_LOW"),
+            2 => db.string("UPKEEP_HIGH"),
+            n => {
+                let s = db.string(&format!("UPKEEP_HIGH{}", n - 1));
+                if s.is_empty() || s == format!("UPKEEP_HIGH{}", n - 1) { format!("{}{}", db.string("UPKEEP_HIGH"), n - 1) } else { s }
+            }
+        }
+    }
+
+    /// The tooltips of the resource bar (FUN_6f3c99d0), the upper buttons (FUN_6f3bc7e0),
+    /// the time of day (CTimeCover::vf34), and the minimap buttons and formation toggle
+    /// (FUN_6f370540), with where each shows.
+    fn hover_tip_list(&self, db: &FrameDb, world: &World) -> Vec<(w3_ui::Rect, crate::card::Button)> {
+        use crate::card::Button;
+        let mut out = Vec::new();
+        let Some(p) = world.players.get(world.local_player as usize) else { return out };
+        // The resource bar's four: from each icon to its count.
+        if let Some(r) = self.tree.get("ResourceBarFrame").and_then(|f| self.tree.frames[f].rect) {
+            let (y1, y0) = (r.y1 - 0.003125, r.y1 - 0.003125 - 0.01640625);
+            let cell = |x0: f32, right: f32| w3_ui::Rect { x0: r.x0 + x0, x1: r.x1 - right, y0, y1 };
+            let gold = p.get_state(player_state::RESOURCE_GOLD);
+            out.push((cell(0.0, 0.26484375), Button::text_only(format!("{} {gold}", db.string("COLON_GOLD")), db.string("RESOURCE_UBERTIP_GOLD"))));
+            let lumber = p.get_state(player_state::RESOURCE_LUMBER);
+            out.push((cell(0.0859375, 0.178125), Button::text_only(format!("{} {lumber}", db.string("COLON_LUMBER")), db.string("RESOURCE_UBERTIP_LUMBER"))));
+            let (used, cap) = (p.get_state(player_state::RESOURCE_FOOD_USED), p.get_state(player_state::RESOURCE_FOOD_CAP));
+            let (open, close) = if used > cap { ("|CFFFF0000", "|r") } else { ("", "") };
+            out.push((cell(0.17265625, 0.09140625), Button::text_only(format!("{} {open}{used}/{cap}{close}", db.string("COLON_FOOD")), db.string("RESOURCE_UBERTIP_SUPPLY"))));
+            if let Some(u) = self.upkeep.and_then(|f| self.tree.frames[f].rect) {
+                let (gold_tax, lumber_tax) = world.upkeep_tax(world.local_player);
+                let mut rate = format!("{} {}%", db.string("COLON_GOLD_INCOME_RATE"), 100 - gold_tax);
+                if lumber_tax > 0 {
+                    rate.push_str(&format!("|n{} {}%", db.string("COLON_LUMBER_INCOME_RATE"), 100 - lumber_tax));
+                }
+                let mut uber = db.string("RESOURCE_UBERTIP_UPKEEP");
+                for (from, to, level, gold, lumber) in world.upkeep_levels() {
+                    let name = Self::upkeep_name(db, level);
+                    let line = if lumber < 100 {
+                        c_format(&db.string("RESOURCE_UBERTIP_UPKEEP_INFO_WOOD"), &[&from.to_string(), &to.to_string(), &name, &gold.to_string(), &lumber.to_string()])
+                    } else {
+                        c_format(&db.string("RESOURCE_UBERTIP_UPKEEP_INFO"), &[&from.to_string(), &to.to_string(), &name, &gold.to_string()])
+                    };
+                    uber.push_str(&line);
+                }
+                let mut b = Button::text_only(Self::upkeep_name(db, world.upkeep_level(world.local_player)), uber);
+                b.requires = rate;
+                out.push((u, b));
+            }
+        }
+        if self.tooltips {
+            // The upper buttons, while usable; F12 is Chat in network games and the
+            // message log otherwise.
+            let chat = if world.network { "CHAT" } else { "LOG" };
+            for (frame, key) in [("UpperButtonBarMenuButton", "MENU"), ("UpperButtonBarAlliesButton", "ALLY"), ("UpperButtonBarChatButton", chat), ("UpperButtonBarQuestsButton", "QUEST")] {
+                let Some(f) = self.tree.get(frame) else { continue };
+                if !self.tree.frames[f].enabled {
+                    continue;
+                }
+                if let Some(r) = self.tree.frames[f].rect {
+                    out.push((r, Button::text_only(db.string(&format!("UPPER_BUTTON_{key}_TIP")), db.string(&format!("UPPER_BUTTON_{key}_UBER")))));
+                }
+            }
+            // The clock: a 0.04125 square at the top of the console.
+            let root = self.tree.frames[0].rect.unwrap_or_default();
+            let cx = (root.x0 + root.x1) / 2.0;
+            let clock = w3_ui::Rect { x0: cx - 0.020625, x1: cx + 0.020625, y0: root.y1 - 0.04125, y1: root.y1 };
+            let hour = world.time_of_day;
+            let time = format!("{}:{:02}", hour as i32, ((hour - hour.trunc()) * 60.0) as i32);
+            out.push((clock, Button::text_only(db.string("TIME_OF_DAY_TOOLTIP").replacen("%s", &time, 1), db.string("TIME_OF_DAY_UBERTIP"))));
+        }
+        // The minimap buttons and the formation toggle: the full tip under the Tooltips
+        // option, the name alone without.
+        for (k, key) in ["MINIMAPSIGNALTOOLTIP", "MINIMAPTERRAINTOOLTIP", "MINIMAPALLYCOLORTOOLTIP", "MINIMAPCREEPCOLORTOOLTIP", "FORMATION_TOOLTIP"].iter().enumerate() {
+            let uber = if self.tooltips { db.string(&format!("{key}_UBER")) } else { String::new() };
+            out.push((self.minimap_button_rect(k), Button::text_only(db.string(key), uber)));
+        }
+        out
     }
 
     fn minimap_rect(&self) -> w3_ui::Rect {
@@ -1671,6 +1801,13 @@ impl Hud {
         if tip.is_none() && !self.idle_workers.is_empty() && self.idle_worker_rect().contains(self.pointer.0, self.pointer.1) {
             tip = Some(crate::card::Button::text_only(db.string("IDLE_PEON"), db.string("IDLE_PEON_DESC")));
         }
+        // An inventory item's, then the rest of the interface's.
+        if tip.is_none() {
+            tip = self.inventory_at(self.pointer.0, self.pointer.1).and_then(|s| self.inventory_tips.get(s).cloned().flatten());
+        }
+        if tip.is_none() {
+            tip = self.hover_tips.iter().find(|(r, _)| r.contains(self.pointer.0, self.pointer.1)).map(|(_, b)| b.clone());
+        }
         if let Some(b) = tip {
             self.tooltip_draws(db, &b, &mut out);
         }
@@ -1856,4 +1993,27 @@ fn faded(mut draws: Vec<Draw>, alpha: f32) -> Vec<Draw> {
         }
     }
     draws
+}
+
+/// Fills a C format's %s, %d, and %% in order (the tooltip formats in GlobalStrings).
+fn c_format(fmt: &str, args: &[&str]) -> String {
+    let mut out = String::new();
+    let mut args = args.iter();
+    let mut chars = fmt.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '%' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('%') => out.push('%'),
+            Some('s') | Some('d') | Some('u') => out.push_str(args.next().copied().unwrap_or("")),
+            Some(o) => {
+                out.push('%');
+                out.push(o);
+            }
+            None => out.push('%'),
+        }
+    }
+    out
 }

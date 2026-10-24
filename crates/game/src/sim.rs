@@ -2117,16 +2117,46 @@ impl World {
     /// Throne when the data has none).
     pub fn upkeep_level(&self, player: u8) -> usize {
         let used = self.players.get(player as usize).map_or(0, |p| p.get_state(player_state::RESOURCE_FOOD_USED));
+        self.upkeep_thresholds().iter().take_while(|&&t| t < used).count()
+    }
+
+    /// [Misc] UpkeepUsage, or the built-in levels.
+    fn upkeep_thresholds(&self) -> Vec<i32> {
         let data: Vec<i32> = self.misc.get_list("Misc", "UpkeepUsage").iter().filter_map(|v| v.trim().parse().ok()).collect();
-        let thresholds = if data.is_empty() { if self.version >= 1 { vec![50, 80] } else { vec![40, 70] } } else { data };
-        thresholds.iter().take_while(|&&t| t < used).count()
+        if data.is_empty() { if self.version >= 1 { vec![50, 80] } else { vec![40, 70] } } else { data }
+    }
+
+    /// The upkeep levels the resource bar's tooltip lists (FUN_6f3c99d0): for each, the
+    /// food it covers, from and to (at most FoodCeiling), and the percent of gold and of
+    /// lumber income kept, until a level covers nothing new.
+    pub fn upkeep_levels(&self) -> Vec<(i32, i32, usize, i32, i32)> {
+        let ceiling = self.misc.get_str("Misc", "FoodCeiling").and_then(|v| v.trim().parse::<i32>().ok()).map_or(if self.version >= 1 { 100 } else { 90 }, |v| v.clamp(1, 300));
+        let thresholds = self.upkeep_thresholds();
+        let mut out = Vec::new();
+        let mut last = -1;
+        for level in 0..10 {
+            // The built-in table's further levels are 10000.
+            let to = thresholds.get(level).copied().unwrap_or(10000).min(ceiling);
+            if to == 0 || to == last {
+                break;
+            }
+            let (gold, lumber) = self.upkeep_tax_at(level);
+            out.push((last + 1, to, level, 100 - gold, 100 - lumber));
+            last = to;
+        }
+        out
     }
 
     /// Percent of gold and lumber income upkeep takes ([Misc] UpkeepGoldTax and
     /// UpkeepLumberTax by level; 0, 30, 60 and none without data: FUN_6f0016f0,
     /// FUN_6f001880).
     pub fn upkeep_tax(&self, player: u8) -> (i32, i32) {
-        let level = self.upkeep_level(player).min(9);
+        self.upkeep_tax_at(self.upkeep_level(player))
+    }
+
+    /// Upkeep's percent of gold and lumber income at a level.
+    pub fn upkeep_tax_at(&self, level: usize) -> (i32, i32) {
+        let level = level.min(9);
         let tax = |key: &str, default: &[f32]| -> i32 {
             let data: Vec<f32> = self.misc.get_list("Misc", key).iter().filter_map(|v| v.trim().parse().ok()).collect();
             let v = if data.is_empty() { default.get(level).or(default.last()).copied().unwrap_or(0.0) } else { data.get(level).or(data.last()).copied().unwrap_or(0.0) };

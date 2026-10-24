@@ -528,7 +528,8 @@ impl Hud {
             let lerp = |a: f32, b: f32| a + (b - a) * t;
             let col: Vec<f32> = (0..4).map(|i| lerp(f.start_color[i] as f32, f.end_color[i] as f32) / 255.0).collect();
             let uv: Vec<f32> = (0..4).map(|i| lerp(f.start_uv[i], f.end_uv[i])).collect();
-            (!f.texture.is_empty()).then(|| (f.texture.clone(), [uv[0], uv[1], uv[2], uv[3]], [col[0], col[1], col[2], col[3]], f.blend == 2))
+            // BLEND_MODE_ADDITIVE is 3; BLEND_MODE_BLEND (2) blends by alpha.
+            (!f.texture.is_empty()).then(|| (f.texture.clone(), [uv[0], uv[1], uv[2], uv[3]], [col[0], col[1], col[2], col[3]], f.blend == 3))
         });
         if !self.cinematic && self.fades.1 <= 0.0 {
             return;
@@ -1483,12 +1484,6 @@ impl Hud {
             return out;
         }
         let mut out = Vec::new();
-        // The game menu darkens the world to 0.4 (measured from the original), not the
-        // interface.
-        if self.menu.is_some() {
-            let rect = w3_ui::Rect { x0: 0.0, x1: self.tree.width, y0: 0.0, y1: w3_ui::UI_HEIGHT };
-            out.push(Draw::Image { texture: String::new(), rect, uv: [0.0, 0.0, 1.0, 1.0], color: [0.0, 0.0, 0.0, 0.6], blend: w3_ui::Blend::Alpha, rotated: false });
-        }
         out.extend(self.tree.draw(db));
         self.filter_draws(&mut out);
         self.hero_bar_draws(db, &mut out);

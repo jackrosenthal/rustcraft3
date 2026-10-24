@@ -1028,6 +1028,23 @@ impl Scene {
                         self.write_save(&path);
                     }
                 }
+                // A network game's save, made on every computer at the same moment (a
+                // replay's saves are not made again).
+                w3_game::world::Request::NetSave(name) if self.playback.is_none() => {
+                    let path = crate::data::multiplayer_save_dir().map(|d| d.join(format!("{name}.{}", crate::saveload::EXTENSION)));
+                    let bytes = self.game.as_ref().map(|g| g.save(&self.map_path));
+                    if let (Some(path), Some(bytes)) = (path, bytes) {
+                        let res = bytes.and_then(|b| {
+                            if let Some(d) = path.parent() {
+                                std::fs::create_dir_all(d)?;
+                            }
+                            std::fs::write(&path, b).map_err(Into::into)
+                        });
+                        if let Err(e) = res {
+                            log::error!("saving {}: {e:#}", path.display());
+                        }
+                    }
+                }
                 w3_game::world::Request::LoadGame(name) => {
                     self.load_requested = self.game.as_ref().and_then(|g| g.world.save_path(&name)).filter(|p| p.exists());
                 }
@@ -2596,7 +2613,10 @@ impl Scene {
             }
             "SaveGameButton" | "LoadGameButton" => {
                 crate::hud::Hud::menu_panel(m, "EscMenuSaveGamePanel");
-                h.save_panel = Some(crate::saveload::SavePanel::new(name == "LoadGameButton", self.saves_dir.clone()));
+                // A network game saves to Save\Multiplayer.
+                let network = self.game.as_ref().is_some_and(|g| g.world.network);
+                let dir = if network { crate::data::multiplayer_save_dir().unwrap_or_default() } else { self.saves_dir.clone() };
+                h.save_panel = Some(crate::saveload::SavePanel::new(name == "LoadGameButton", dir));
             }
             "SaveGameCancelButton" | "LoadGameCancelButton" => {
                 h.save_panel = None;
@@ -2608,12 +2628,12 @@ impl Scene {
                 if path.exists() {
                     p.confirm = Some(crate::saveload::Confirm::Overwrite(path));
                 } else {
-                    self.write_save(&path);
+                    self.save_to(&path);
                 }
             }
             "OverwriteOverwriteButton" => {
                 if let Some(crate::saveload::Confirm::Overwrite(path)) = h.save_panel.as_mut().and_then(|p| p.confirm.take()) {
-                    self.write_save(&path);
+                    self.save_to(&path);
                 }
             }
             "SaveGameDeleteButton" => {
@@ -2645,6 +2665,22 @@ impl Scene {
             }
             other => log::debug!("game menu button {other} has no handler yet"),
         }
+    }
+
+    /// Saves the game: in a network game on every computer at once (a command all
+    /// carry out), else here.
+    fn save_to(&mut self, path: &std::path::Path) {
+        let Some(g) = self.game.as_mut() else { return };
+        if g.world.network {
+            let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            g.apply(w3_game::replay::Command::Save { name });
+            if let Some(h) = self.hud.as_mut() {
+                h.save_panel = None;
+                h.menu = None;
+            }
+            return;
+        }
+        self.write_save(path);
     }
 
     /// Writes the game to a saved game file and returns to the game.
@@ -3738,7 +3774,7 @@ impl Scene {
             // Network games cannot be restarted, saved, or loaded here.
             let net = g.world.network;
             m.set_enabled("RestartButton", !g.world.restart_disabled && !net);
-            m.set_enabled("SaveGameButton", !net);
+            m.set_enabled("SaveGameButton", true);
             m.set_enabled("LoadGameButton", !net);
         }
         hud.show_unit(db, &g.world, self.selection.first().copied());

@@ -53,6 +53,9 @@ pub enum Command {
     Formation { units: Vec<u32> },
     /// Cancels one item of a structure's queue, by its place (0 the one in progress).
     CancelQueue { building: u32, slot: usize },
+    /// Saves a network game on every computer at once, under this name (the game
+    /// menu's Save Game in a network game, kept in Save\\Multiplayer).
+    Save { name: String },
 }
 
 impl Command {

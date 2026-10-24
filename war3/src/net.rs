@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use w3_game::replay::{Command, Frame};
 
 /// Messages of this protocol's version only are understood.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 /// The game port when the options name none (netgameport).
 pub const DEFAULT_PORT: u16 = 6112;
 const MAGIC: &[u8; 4] = b"W3RN";
@@ -70,6 +70,9 @@ pub struct Setup {
     pub speed: u8,
     /// The advanced options (crate::advanced).
     pub flags: u32,
+    /// A saved game is being loaded: only those who were in it may join, each to their
+    /// own slot (LOAD_BATTLENET_INFO).
+    pub saved: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -93,6 +96,8 @@ pub enum Msg {
     Choose { race: usize, team: i32, color: i32, handicap: usize },
     /// The game begins with this setup.
     Start(Setup),
+    /// A loaded game's saved state, from the host as the game begins.
+    SaveData(Vec<u8>),
     /// A player's commands, to the host.
     Commands(Vec<Command>),
     /// A frame, from the host.

@@ -22,6 +22,9 @@ pub enum Event {
     /// The game begins: its map, the setup for this computer, how it plays, and its
     /// speed.
     Start(PathBuf, Vec<w3_game::LobbySlot>, net::Role, u8, u32),
+    /// A loaded game begins: its map, its saved state, how it plays, its speed, and
+    /// this computer's player.
+    StartSaved(PathBuf, Vec<u8>, net::Role, u8, u8),
 }
 
 pub struct Lan {
@@ -47,11 +50,13 @@ pub struct Lan {
     /// (Maps\Download), and whether it has been asked for.
     local_map: Option<PathBuf>,
     map_asked: bool,
+    /// The saved game being loaded (the host's file, or what it sent).
+    save: Option<Vec<u8>>,
 }
 
 impl Lan {
     pub fn new(game_dir: &Path, name: String) -> Lan {
-        Lan { name, port: net::DEFAULT_PORT, game_dir: game_dir.to_path_buf(), browser: None, selected: None, list: None, host: None, conn: None, me: 0, setup: Setup::default(), chat: Vec::new(), line: String::new(), rebuild: false, summary_due: None, local_map: None, map_asked: false }
+        Lan { name, port: net::DEFAULT_PORT, game_dir: game_dir.to_path_buf(), browser: None, selected: None, list: None, host: None, conn: None, me: 0, setup: Setup::default(), chat: Vec::new(), line: String::new(), rebuild: false, summary_due: None, local_map: None, map_asked: false, save: None }
     }
 
     /// A map's path as the setup names it: within the game folder, relative to it.
@@ -71,7 +76,6 @@ impl Lan {
             self.browser = Browser::new(port).map_err(|e| log::warn!("lan: {e}")).ok();
         }
         self.selected = None;
-        tree.set_enabled("LoadButton", false);
         self.sync_join(tree, db);
     }
 
@@ -178,7 +182,7 @@ impl Lan {
             log::warn!("lan: hosting: {e}");
             "NETERROR_CREATEGAMEFAILED"
         })?;
-        self.setup = Setup { game: game.to_string(), map: ad.map, slots, speed, flags };
+        self.setup = Setup { game: game.to_string(), map: ad.map, slots, speed, flags, saved: false };
         self.host = Some(host);
         self.me = 0;
         self.chat.clear();
@@ -187,6 +191,49 @@ impl Lan {
     }
 
     /// Joins the chosen game.
+    /// Hosts a saved network game (CLocalMultiplayerLoad): its map and speed, its
+    /// people's slots kept for them by name, its computers as they were.
+    pub fn host_saved(&mut self, file: &Path, expansion: bool) -> Result<(), &'static str> {
+        let bytes = std::fs::read(file).map_err(|_| "SAVE_ERROR_BAD_SAVE")?;
+        let save = w3_game::save::SaveGame::parse(&bytes).map_err(|_| "SAVE_ERROR_BAD_SAVE")?;
+        let players = save.players();
+        if !players.iter().any(|p| p.human && p.name.eq_ignore_ascii_case(&self.name)) {
+            return Err("NETERROR_JOINGAMEFAILED");
+        }
+        let map = self.map_name(Path::new(&save.map));
+        let slots: Vec<NetSlot> = players
+            .iter()
+            .map(|p| NetSlot {
+                player: p.id,
+                holder: if p.computer {
+                    Holder::Computer(1)
+                } else if p.name.eq_ignore_ascii_case(&self.name) {
+                    Holder::Human(0)
+                } else {
+                    Holder::Open
+                },
+                name: if p.computer { String::new() } else { p.name.clone() },
+                race: p.race.clamp(0, 4) as usize,
+                team: if p.observer { OBSERVERS } else { p.team },
+                color: p.color,
+                handicap: 0,
+            })
+            .collect();
+        let game = file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let ad = GameAd { name: game.clone(), host: self.name.clone(), map: map.clone(), players: 1, slots: slots.len() as u8, port: self.port, expansion, speed: 2 };
+        let host = Host::new(ad).map_err(|e| {
+            log::warn!("lan: hosting: {e}");
+            "NETERROR_CREATEGAMEFAILED"
+        })?;
+        self.setup = Setup { game, map, slots, speed: 2, flags: crate::advanced::DEFAULT_FLAGS, saved: true };
+        self.host = Some(host);
+        self.save = Some(bytes);
+        self.me = 0;
+        self.chat.clear();
+        self.rebuild = true;
+        Ok(())
+    }
+
     pub fn join(&mut self) -> Result<(), &'static str> {
         self.local_map = None;
         self.map_asked = false;
@@ -241,7 +288,9 @@ impl Lan {
                         h.drop_peer(id);
                         continue;
                     }
-                    match self.setup.slots.iter_mut().find(|s| s.holder == Holder::Open) {
+                    // A loaded game seats only those who were in it, each in their slot.
+                    let saved = self.setup.saved;
+                    match self.setup.slots.iter_mut().find(|s| s.holder == Holder::Open && (!saved || s.name.eq_ignore_ascii_case(&name))) {
                         Some(s) => {
                             s.holder = Holder::Human(id);
                             s.name = name.clone();
@@ -283,7 +332,9 @@ impl Lan {
         for id in gone {
             if let Some(s) = self.setup.slots.iter_mut().find(|s| s.holder == Holder::Human(id)) {
                 s.holder = Holder::Open;
-                notices.push(("NETMESSAGE_PLAYERLEFT", std::mem::take(&mut s.name)));
+                // A loaded game's slot stays kept for its player.
+                let name = if self.setup.saved { s.name.clone() } else { std::mem::take(&mut s.name) };
+                notices.push(("NETMESSAGE_PLAYERLEFT", name));
                 changed = true;
             }
         }
@@ -338,9 +389,15 @@ impl Lan {
                 }
                 Msg::Chat { from, text } => self.chat.push(format!("{from}: {text}")),
                 Msg::Notice { key, name } => self.chat.push(db.string(&key).replace("%s", &name)),
+                Msg::SaveData(bytes) => self.save = Some(bytes),
                 Msg::Start(s) => {
                     self.setup = s;
                     let conn = self.conn.take()?;
+                    if self.setup.saved {
+                        let me = self.setup.slots.iter().find(|s| s.holder == Holder::Human(self.me)).map_or(0, |s| s.player);
+                        let save = self.save.take().unwrap_or_default();
+                        return Some(Event::StartSaved(self.map(), save, net::Role::Client { conn }, self.setup.speed, me));
+                    }
                     let (map, lobby) = self.start_setup();
                     return Some(Event::Start(map, lobby, net::Role::Client { conn }, self.setup.speed, self.setup.flags));
                 }
@@ -361,14 +418,25 @@ impl Lan {
     /// The host starts the game.
     pub fn start(&mut self) -> Option<Event> {
         let mut h = self.host.take()?;
+        // A loaded game's state goes to everyone first.
+        if self.setup.saved {
+            if let Some(bytes) = self.save.as_ref() {
+                h.broadcast(&Msg::SaveData(bytes.clone()));
+            }
+        }
         h.broadcast(&Msg::Start(self.setup.clone()));
         let peers = self.setup.slots.iter().filter_map(|s| match s.holder {
             Holder::Human(id) if id != 0 => Some((id, s.player, 0)),
             _ => None,
         });
         let peers = peers.collect();
+        let role = net::Role::Host { host: h, pending: Vec::new(), peers };
+        if self.setup.saved {
+            let me = self.setup.slots.iter().find(|s| s.holder == Holder::Human(0)).map_or(0, |s| s.player);
+            return Some(Event::StartSaved(self.map(), self.save.take().unwrap_or_default(), role, self.setup.speed, me));
+        }
         let (map, lobby) = self.start_setup();
-        Some(Event::Start(map, lobby, net::Role::Host { host: h, pending: Vec::new(), peers }, self.setup.speed, self.setup.flags))
+        Some(Event::Start(map, lobby, role, self.setup.speed, self.setup.flags))
     }
 
     /// The setup as this computer plays it: its own slot local, other people remote,
@@ -436,6 +504,11 @@ impl Lan {
                     tree.set_items(&name_menu, vec![s.name.clone()], 0);
                     tree.set_enabled(&name_menu, false);
                 }
+                // A loaded game's slot waits for its player, by name.
+                Holder::Open if self.setup.saved && !s.name.is_empty() => {
+                    tree.set_items(&name_menu, vec![s.name.clone()], 0);
+                    tree.set_enabled(&name_menu, false);
+                }
                 h => {
                     // An observer's slot is open or closed, never a computer's.
                     let keys: &[&str] = if observer { &["OPEN", "CLOSED"] } else { &["OPEN", "CLOSED", "COMPUTER_NEWBIE", "COMPUTER_NORMAL", "COMPUTER_INSANE"] };
@@ -458,8 +531,9 @@ impl Lan {
                 db.string("TEAM_FORMAT").replace("%d", &(s.team + 1).to_string())
             };
             tree.set_text(&format!("TeamButtonTitle{scope}"), &team);
-            let open = matches!(s.holder, Holder::Open | Holder::Closed);
-            let mine = s.holder == Holder::Human(self.me) || (host && matches!(s.holder, Holder::Computer(_)));
+            let open = matches!(s.holder, Holder::Open | Holder::Closed) && !(self.setup.saved && !s.name.is_empty());
+            // A loaded game's slots are as they were saved.
+            let mine = !self.setup.saved && (s.holder == Holder::Human(self.me) || (host && matches!(s.holder, Holder::Computer(_))));
             for f in ["RaceMenu", "TeamButton", "ColorButton", "HandicapMenu"] {
                 tree.set_visible(&format!("{f}{scope}"), !open && (f == "TeamButton" || !observer));
                 tree.set_enabled(&format!("{f}{scope}"), mine);

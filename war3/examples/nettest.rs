@@ -40,6 +40,17 @@ fn game(data: &war3::data::GameData, local: u8) -> anyhow::Result<w3_game::Game>
     Ok(g)
 }
 
+/// A network game loaded from a saved one, as player `local`.
+fn restored(data: &war3::data::GameData, bytes: &[u8], local: u8) -> anyhow::Result<w3_game::Game> {
+    let mut g = w3_game::Game::load_with_keys(data.chain.clone(), data.version as i32, None)?;
+    g.restore(w3_game::save::SaveGame::parse(bytes)?)?;
+    g.game_event(w3_game::event_ids::EVENT_GAME_LOADED);
+    g.outbox = Some(Vec::new());
+    g.world.network = true;
+    g.world.local_player = local;
+    Ok(g)
+}
+
 /// The game's state, for comparing: each unit's place and life, and the players'
 /// resources.
 fn digest(g: &w3_game::Game) -> String {
@@ -98,7 +109,16 @@ fn main() -> anyhow::Result<()> {
     let steps = (secs / dt) as usize;
     let units = |g: &w3_game::Game, p: u8| -> Vec<u32> { g.world.unit_order.iter().copied().filter(|&h| g.world.unit(h).is_some_and(|u| u.owner == p && !u.is_building)).collect() };
     let move_order = w3_game::natives::basic::order_id("move");
+    // NETTEST_SAVE: halfway, the host's game is saved and both sides go on from the
+    // saved game, as loading a network game does.
+    let save_at = std::env::var("NETTEST_SAVE").is_ok().then_some(steps / 2);
     for step in 0..steps {
+        if Some(step) == save_at {
+            let bytes = gh.save("test")?;
+            gh = restored(&data, &bytes, 0)?;
+            gc = restored(&data, &bytes, 1)?;
+            println!("saved and loaded at frame {} ({} bytes)", hs.played, bytes.len());
+        }
         // Every five seconds each side sends its units somewhere.
         if step % 300 == 60 {
             for (g, p) in [(&mut gh, 0u8), (&mut gc, 1u8)] {

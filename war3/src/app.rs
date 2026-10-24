@@ -32,6 +32,8 @@ struct Running {
     scene_sound: Option<u64>,
     /// The network game the pending map is for.
     pending_net: Option<(crate::net::Role, u8)>,
+    /// A loaded network game's player for this computer.
+    pending_local: Option<u8>,
     /// A loaded campaign mission waiting for a key on its loading screen.
     ready: Option<Scene>,
     /// Sound output, handed to each game.
@@ -144,6 +146,7 @@ impl App {
             pending_replay: None,
             scene_sound: None,
             pending_net: None,
+            pending_local: None,
             ready: None,
             audio,
             assets,
@@ -563,6 +566,17 @@ impl ApplicationHandler for App {
                             r.pending = Some((path, Some(slots), None));
                             r.pending_net = role.borrow_mut().take().map(|r| (r, speed));
                         }
+                        Some(crate::glue::GlueAction::PlayNetSave(path, bytes, role, speed, me)) => match w3_game::save::SaveGame::parse(&bytes) {
+                            Ok(save) => {
+                                self.data.campaign_game.set(false);
+                                glue.skirmish.summary = crate::skirmish::summarize_path(&path);
+                                glue.show_loading(&mut r.assets);
+                                r.pending = Some((path, None, Some(save)));
+                                r.pending_net = role.borrow_mut().take().map(|r| (r, speed));
+                                r.pending_local = Some(me);
+                            }
+                            Err(e) => log::error!("loading the network game: {e:#}"),
+                        },
                         Some(crate::glue::GlueAction::PlayReplay(replay)) => {
                             match Ok::<_, anyhow::Error>(*replay) {
                                 Ok(replay) => {
@@ -582,6 +596,11 @@ impl ApplicationHandler for App {
                             let replay = r.pending_replay.take();
                             match Scene::load(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets, &path, aspect, slots.as_deref(), restore, replay) {
                                 Ok(mut s) => {
+                                    // A loaded network game: each computer plays its own
+                                    // player.
+                                    if let (Some(me), Some(g)) = (r.pending_local.take(), s.game.as_mut()) {
+                                        g.world.local_player = me;
+                                    }
                                     if let Some((role, speed)) = r.pending_net.take() {
                                         s.start_net(role, speed);
                                     }

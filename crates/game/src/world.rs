@@ -58,6 +58,8 @@ pub enum Request {
     /// A unit trained, or a hero revived or awakened: a ping in PingColor there for
     /// players who hear of it (FUN_6f3777b0 from CAbilityTrain vf209 and FUN_6f3f8350).
     UnitReady { unit: u32 },
+    /// A network game is saved now, on every computer, under this name.
+    NetSave(String),
     /// NewSoundEnvironment: the environment 3D sounds reverberate in.
     SoundEnvironment(String),
     /// SetCameraQuickPosition: a place for the space bar.

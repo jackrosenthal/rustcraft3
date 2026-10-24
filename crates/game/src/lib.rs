@@ -628,6 +628,12 @@ impl Game {
                 self.world.cancel_last(building);
                 O::Done
             }
+            C::Save { name } => {
+                // The triggers hear the save first (EVENT_GAME_SAVE).
+                self.game_event(event_ids::EVENT_GAME_SAVE);
+                self.world.requests.push(world::Request::NetSave(name));
+                O::Done
+            }
             C::CancelQueue { building, slot } => {
                 self.world.cancel_queue_at(building, slot);
                 O::Done

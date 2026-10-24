@@ -29,6 +29,9 @@ pub enum GlueAction {
     PlayReplay(Box<w3_game::replay::Replay>),
     /// A network game: its map, this computer's setup, and how it plays.
     PlayNet(std::path::PathBuf, Vec<w3_game::LobbySlot>, std::rc::Rc<std::cell::RefCell<Option<crate::net::Role>>>, u8, u32),
+    /// A loaded network game: its map, saved state, role, speed, and this computer's
+    /// player.
+    PlayNetSave(std::path::PathBuf, Vec<u8>, std::rc::Rc<std::cell::RefCell<Option<crate::net::Role>>>, u8, u8),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,6 +58,8 @@ pub enum Screen {
     LanJoin,
     LanCreate,
     LanLobby,
+    /// CLocalMultiplayerLoad: a saved network game to host.
+    LanLoad,
     /// CModelCinematic: a model played as a cinematic after a level (PlayModelCinematic).
     ModelCinematic,
 }
@@ -75,7 +80,7 @@ impl Screen {
             // Laid out as the saved games screen is.
             Screen::CustomCampaign | Screen::ViewReplay => "BattlenetCustomCreate",
             Screen::LanJoin => "BattlenetCustom",
-            Screen::LanCreate => "BattlenetCustomCreate",
+            Screen::LanCreate | Screen::LanLoad => "BattlenetCustomCreate",
             Screen::LanLobby => "MultiplayerPreGameChat",
             Screen::Loading | Screen::Score | Screen::ModelCinematic => "",
         }
@@ -97,6 +102,7 @@ impl Screen {
             Screen::LanJoin => "LocalMultiplayerJoin",
             Screen::LanCreate => "LocalMultiplayerCreate",
             Screen::LanLobby => "GameChatroom",
+            Screen::LanLoad => "LocalMultiplayerLoad",
             Screen::ModelCinematic => "",
         }
     }
@@ -390,6 +396,10 @@ impl Glue {
                 crate::advanced::attach(&mut self.tree, db, self.skirmish.flags, false);
                 self.tree.set_value("GameSpeedSlider", 2.0);
                 self.tree.set_text("GameSpeedValue", &db.string("FAST"));
+            }
+            Screen::LanLoad => {
+                let dir = crate::data::multiplayer_save_dir().unwrap_or_default();
+                self.skirmish.attach_saves(&mut self.tree, db, &dir);
             }
             Screen::LanLobby => {
                 self.lan.rebuild = false;
@@ -725,7 +735,7 @@ impl Glue {
                 self.profile_event(e, assets);
             }
         }
-        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign | Screen::ViewReplay | Screen::LanCreate) {
+        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign | Screen::ViewReplay | Screen::LanCreate | Screen::LanLoad) {
             self.skirmish.click(&mut self.tree, &assets.frames, x, y);
         }
         if self.screen == Screen::LanJoin {
@@ -798,6 +808,11 @@ impl Glue {
                         .collect(),
                 );
                 self.action = Some(GlueAction::PlayNet(map, lobby, std::rc::Rc::new(std::cell::RefCell::new(Some(role))), speed, flags));
+            }
+            crate::lan::Event::StartSaved(map, save, role, speed, me) => {
+                self.lan.detach();
+                self.lan_players = Some(self.lan.setup.slots.iter().filter(|s| matches!(s.holder, crate::net::Holder::Human(_))).map(|s| (s.name.clone(), s.race)).collect());
+                self.action = Some(GlueAction::PlayNetSave(map, save, std::rc::Rc::new(std::cell::RefCell::new(Some(role))), speed, me));
             }
         }
     }
@@ -1010,6 +1025,19 @@ impl Glue {
                 self.show(Screen::MainMenu, assets);
             }
             (Screen::LanJoin, "CreateButton") => self.show(Screen::LanCreate, assets),
+            (Screen::LanJoin, "LoadButton") => self.show(Screen::LanLoad, assets),
+            (Screen::LanLoad, "CancelButton") => self.show(Screen::LanJoin, assets),
+            // A saved network game is hosted with its players' slots kept for them.
+            (Screen::LanLoad, "OKButton") => {
+                let Some(file) = self.skirmish.selected_save() else { return };
+                match self.lan.host_saved(&file, self.version == crate::data::Version::FrozenThrone) {
+                    Ok(()) => self.show(Screen::LanLobby, assets),
+                    Err(key) => {
+                        let text = assets.frames.string(key);
+                        self.show_dialog(&text, false, DialogAction::Notice, assets);
+                    }
+                }
+            }
             (Screen::LanJoin, "JoinButton") => {
                 if let Err(key) = self.lan.join() {
                     let text = assets.frames.string(key);
@@ -1436,7 +1464,7 @@ impl Glue {
             self.score_draws(&assets.frames, &mut draws);
             self.save_replay.draws(&self.tree, &assets.frames, &mut draws);
         }
-        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign | Screen::ViewReplay | Screen::LanCreate) && self.phase == Phase::Stand {
+        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign | Screen::ViewReplay | Screen::LanCreate | Screen::LanLoad) && self.phase == Phase::Stand {
             self.skirmish.draws(&self.tree, &assets.frames, &mut draws);
         }
         if matches!(self.screen, Screen::LanJoin | Screen::LanLobby) && self.phase == Phase::Stand {

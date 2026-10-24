@@ -171,6 +171,11 @@ pub fn replay_dir() -> Option<PathBuf> {
     Some(data_root()?.join("Replay"))
 }
 
+/// Where network games are saved (the original's Save\Multiplayer).
+pub fn multiplayer_save_dir() -> Option<PathBuf> {
+    Some(data_root()?.join("Save").join("Multiplayer"))
+}
+
 /// The current profile's progress (a fresh one at Normal difficulty when it has none).
 pub fn load_persist(version: Version) -> w3_game::persist::Persist {
     profile_path(version)

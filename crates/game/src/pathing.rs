@@ -53,6 +53,10 @@ pub struct PathingMap {
     /// changed ([`PathingMap::reaches`]).
     #[serde(skip)]
     floods: std::cell::RefCell<std::collections::HashMap<(i32, i32, u32), std::rc::Rc<Vec<bool>>>>,
+    /// The map's connected regions for each way of moving and size (in cells), since
+    /// the map last changed: cells with the same number reach one another.
+    #[serde(skip)]
+    regions: std::cell::RefCell<std::collections::HashMap<(u8, i32), std::rc::Rc<Vec<u32>>>>,
 }
 
 /// A search's costs and parents, valid where `stamp` is the search's `generation`, so
@@ -145,6 +149,46 @@ impl PathingMap {
         false
     }
 
+    /// The connected region of each cell for a way of moving and a size (0 where it
+    /// does not fit), labelled once until the map changes.
+    fn regions(&self, radius: f32, kind: Move) -> std::rc::Rc<Vec<u32>> {
+        let r = ((radius / CELL).floor() as i32).max(0);
+        let key = (kind as u8, r);
+        if let Some(v) = self.regions.borrow().get(&key) {
+            return v.clone();
+        }
+        let n = (self.width * self.height) as usize;
+        let mut label = vec![0u32; n];
+        let mut next = 0;
+        let mut queue = std::collections::VecDeque::new();
+        for i in 0..n {
+            let c = ((i as u32 % self.width) as i32, (i as u32 / self.width) as i32);
+            if label[i] != 0 || !self.fits_kind(c, radius, kind) {
+                continue;
+            }
+            next += 1;
+            label[i] = next;
+            queue.push_back(c);
+            while let Some(c) = queue.pop_front() {
+                for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)] {
+                    let nc = (c.0 + dx, c.1 + dy);
+                    let Some(ni) = self.index(nc) else { continue };
+                    if label[ni] != 0 || !self.fits_kind(nc, radius, kind) {
+                        continue;
+                    }
+                    if dx != 0 && dy != 0 && (!self.fits_kind((c.0 + dx, c.1), radius, kind) || !self.fits_kind((c.0, c.1 + dy), radius, kind)) {
+                        continue;
+                    }
+                    label[ni] = next;
+                    queue.push_back(nc);
+                }
+            }
+        }
+        let v = std::rc::Rc::new(label);
+        self.regions.borrow_mut().insert(key, v.clone());
+        v
+    }
+
     /// Searches made, cells they expanded, and how many gave up at their limit.
     pub fn search_stats(&self) -> (u64, u64, u64) {
         self.scratch.borrow().stats
@@ -163,7 +207,7 @@ impl PathingMap {
         let w = u32::from_le_bytes(data[8..12].try_into().ok()?);
         let h = u32::from_le_bytes(data[12..16].try_into().ok()?);
         let flags = data.get(16..16 + (w * h) as usize)?.to_vec();
-        Some(PathingMap { width: w, height: h, origin, flags, blocked: vec![0; (w * h) as usize], scratch: Default::default(), memo: Default::default(), floods: Default::default() })
+        Some(PathingMap { width: w, height: h, origin, flags, blocked: vec![0; (w * h) as usize], scratch: Default::default(), memo: Default::default(), floods: Default::default(), regions: Default::default() })
     }
 
     pub fn cell_of(&self, x: f32, y: f32) -> (i32, i32) {
@@ -191,6 +235,7 @@ impl PathingMap {
         if mask & (NO_WALK | NO_FLY | LAND) != 0 {
             self.memo.get_mut().clear();
             self.floods.get_mut().clear();
+        self.regions.get_mut().clear();
         }
         if let Some(i) = self.index(c) {
             if on {
@@ -245,6 +290,7 @@ impl PathingMap {
     pub fn stamp(&mut self, cells: &[(i32, i32)], delta: i32) {
         self.memo.get_mut().clear();
         self.floods.get_mut().clear();
+        self.regions.get_mut().clear();
         for &c in cells {
             if let Some(i) = self.index(c) {
                 self.blocked[i] = (self.blocked[i] as i32 + delta).max(0) as u16;
@@ -326,6 +372,17 @@ impl PathingMap {
             }
             if let Some((c, _)) = nearest {
                 goal = c;
+            }
+        }
+        // A goal in another region cannot be reached: a short search then finds the way
+        // to as near it as the start's region allows, rather than searching everywhere.
+        let mut max_nodes = max_nodes;
+        if kind != Move::Fly {
+            let regions = self.regions(radius, kind);
+            if let (Some(si), Some(gi)) = (self.index(start), self.index(goal)) {
+                if regions[si] != regions[gi] {
+                    max_nodes = max_nodes.min(2000);
+                }
             }
         }
         let n = (self.width * self.height) as usize;

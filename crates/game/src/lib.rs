@@ -168,6 +168,9 @@ impl Game {
                 layers: t.corners.iter().map(|c| c.layer_height).collect(),
             });
             world.blight = t.corners.iter().map(|c| c.blight).collect();
+            let [left, right, bottom, top] = info.camera_complements.map(|v| v as f32 * 128.0);
+            let b = world.map_bounds;
+            world.playable = Rect { min_x: b.min_x + left, max_x: b.max_x - right, min_y: b.min_y + bottom, max_y: b.max_y - top };
             let th = world.terrain_heights.as_ref().unwrap();
             world.fog = Some(fog::FogMap::new(world.map_bounds, |x, y| th.level_at(x, y)));
         }

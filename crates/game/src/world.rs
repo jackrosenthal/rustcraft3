@@ -130,6 +130,9 @@ pub struct World {
     pub camera_bounds: [f32; 8],
     pub camera_margins: [f32; 4],
     pub map_bounds: Rect,
+    /// The playable area: the map less war3map.w3i's camera bounds complements.
+    #[serde(default)]
+    pub playable: Rect,
     pub time_of_day: f32,
     pub time_of_day_scale: f32,
     /// SuspendTimeOfDay: the day's clock stands still.
@@ -414,6 +417,7 @@ impl World {
             camera_bounds: [0.0; 8],
             camera_margins: [0.0; 4],
             map_bounds: Rect::default(),
+            playable: Rect::default(),
             time_of_day: 8.0,
             time_of_day_scale: 1.0,
             time_of_day_suspended: false,

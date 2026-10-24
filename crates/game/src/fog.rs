@@ -308,9 +308,18 @@ impl World {
     pub fn fog_image(&self, player: u8, fogged: u8) -> Option<(usize, usize, Vec<u8>)> {
         let fog = self.fog.as_ref()?;
         let p = player as usize % PLAYER_COUNT;
+        // The world's boundary, outside the playable area, stays black
+        // (EnableWorldFogBoundary).
+        let pl = self.playable;
+        let boundary = |c: usize| {
+            let (x, y) = (fog.origin.0 + ((c % fog.width) as f32 + 0.5) * FOG_CELL, fog.origin.1 + ((c / fog.width) as f32 + 0.5) * FOG_CELL);
+            self.fog_boundary && pl.max_x > pl.min_x && (x < pl.min_x || x > pl.max_x || y < pl.min_y || y > pl.max_y)
+        };
         let img = (0..fog.width * fog.height)
             .map(|c| {
-                if !self.fog_enabled || fog.visible[p][c] {
+                if boundary(c) {
+                    0
+                } else if !self.fog_enabled || fog.visible[p][c] {
                     255
                 } else if fog.explored[p][c] || !self.fog_mask_enabled {
                     fogged

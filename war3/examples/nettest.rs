@@ -76,7 +76,7 @@ fn main() -> anyhow::Result<()> {
     let secs: f32 = a.get(3).and_then(|s| s.parse().ok()).unwrap_or(30.0);
     let port: u16 = a.get(4).and_then(|s| s.parse().ok()).unwrap_or(6290);
 
-    let ad = GameAd { name: "test".into(), host: "Player 1".into(), map: a[2].clone(), players: 1, slots: 2, port, expansion: false, speed: 2 };
+    let ad = GameAd { name: "test".into(), host: "Player 1".into(), map: a[2].clone(), players: 1, slots: 2, port, expansion: false, flags: war3::advanced::DEFAULT_FLAGS, speed: 2 };
     let mut host = Host::new(ad)?;
     // The game is found by searching.
     let mut browser = war3::net::Browser::new(port)?;

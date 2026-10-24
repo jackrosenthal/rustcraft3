@@ -91,6 +91,7 @@ impl Lan {
         let ad = self.selected.and_then(|k| self.games().get(k)).map(|g| &g.1);
         tree.set_text("GameCreatorValue", ad.map_or("", |a| a.host.as_str()));
         tree.set_text("GameSpeedValue", &ad.map_or(String::new(), |a| db.string(speed_key(a.speed))));
+        crate::advanced::display(tree, db, ad.map_or(crate::advanced::DEFAULT_FLAGS, |a| a.flags));
         tree.set_enabled("JoinButton", ad.is_some() && !self.name.trim().is_empty());
         tree.set_enabled("CreateButton", !self.name.trim().is_empty());
     }
@@ -177,7 +178,7 @@ impl Lan {
                 slots.push(NetSlot { player: id, holder: Holder::Open, name: String::new(), race: 0, team: OBSERVERS, color: id as i32, handicap: 0 });
             }
         }
-        let ad = GameAd { name: game.to_string(), host: self.name.clone(), map: self.map_name(map), players: 1, slots: slots.len() as u8, port: self.port, expansion, speed };
+        let ad = GameAd { name: game.to_string(), host: self.name.clone(), map: self.map_name(map), players: 1, slots: slots.len() as u8, port: self.port, expansion, speed, flags };
         let host = Host::new(ad.clone()).map_err(|e| {
             log::warn!("lan: hosting: {e}");
             "NETERROR_CREATEGAMEFAILED"
@@ -220,7 +221,7 @@ impl Lan {
             })
             .collect();
         let game = file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-        let ad = GameAd { name: game.clone(), host: self.name.clone(), map: map.clone(), players: 1, slots: slots.len() as u8, port: self.port, expansion, speed: 2 };
+        let ad = GameAd { name: game.clone(), host: self.name.clone(), map: map.clone(), players: 1, slots: slots.len() as u8, port: self.port, expansion, speed: 2, flags: crate::advanced::DEFAULT_FLAGS };
         let host = Host::new(ad).map_err(|e| {
             log::warn!("lan: hosting: {e}");
             "NETERROR_CREATEGAMEFAILED"
@@ -555,7 +556,7 @@ impl Lan {
         tree.set_text("GameNameValue", &self.setup.game);
         tree.place_text_area_scroll_bars();
         tree.set_visible("StartGameBackdrop", host);
-        tree.set_visible("AdvancedOptionsContainer", false);
+        crate::advanced::display(tree, db, self.setup.flags);
         self.sync_chat(tree);
     }
 

@@ -34,6 +34,9 @@ pub struct GameAd {
     pub expansion: bool,
     /// Slow (0), normal (1), or fast (2).
     pub speed: u8,
+    /// The advanced options (crate::advanced), shown to those choosing a game.
+    #[serde(default)]
+    pub flags: u32,
 }
 
 /// Who holds a slot of the game setup.

@@ -71,3 +71,43 @@ pub fn read(tree: &FrameTree) -> u32 {
     flags |= [8, 1, 2, 4][selected("MapVisibilityMenu").min(3)];
     flags
 }
+
+/// The game's options as text (AdvancedOptionsDisplay in AdvancedOptionsContainer) for
+/// those in its chatroom or choosing it to join, unless they are the defaults
+/// (FUN_6f304c80): Yes or No for each choice, then the observers and the visibility.
+pub fn display(tree: &mut FrameTree, db: &FrameDb, flags: u32) {
+    let Some(container) = tree.get("AdvancedOptionsContainer") else { return };
+    if flags == DEFAULT_FLAGS {
+        tree.set_visible("AdvancedOptionsContainer", false);
+        return;
+    }
+    tree.set_visible("AdvancedOptionsContainer", true);
+    if tree.get("AdvancedOptionsDisplay").is_none() && db.templates.contains_key("AdvancedOptionsDisplay") {
+        if let Some(i) = tree.create(db, "AdvancedOptionsDisplay", container) {
+            tree.frames[i].all_points = true;
+        }
+    }
+    let yes_no = |on: bool| db.string(if on { "YES" } else { "NO" });
+    for (name, bit) in CHECKS {
+        let value = name.replace("CheckBox", "Value");
+        tree.set_text(&value, &yes_no(flags & bit == bit));
+    }
+    let observers = match (flags & 0x10 != 0, flags & 0x20 != 0) {
+        (true, true) => "FULL_OBSERVERS",
+        (false, true) => "OBSERVERS_ON_DEFEAT",
+        _ if flags & 0x400000 != 0 => "REFEREES",
+        _ => "NO_OBSERVERS",
+    };
+    tree.set_text("ObserversValue", &db.string(observers));
+    let visibility = if flags & 1 != 0 {
+        "HIDE_TERRAIN"
+    } else if flags & 4 != 0 {
+        "ALWAYS_VISIBLE"
+    } else if flags & 2 != 0 {
+        "MAP_EXPLORED"
+    } else {
+        "DEFAULT"
+    };
+    tree.set_text("MapVisibilityValue", &db.string(visibility));
+    tree.layout();
+}

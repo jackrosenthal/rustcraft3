@@ -39,8 +39,32 @@ pub enum Command {
     PlayerLeft { player: u8 },
     /// A player's minimap signal to their allies (CNetCommandAllyPing, 5 seconds).
     Signal { player: u8, x: f32, y: f32 },
+    /// A player's alliance kinds toward another (CNetCommandTeamChangeAlliance: bits 0
+    /// to 6 of the alliance types).
+    Alliance { player: u8, other: u8, flags: u32 },
     /// A player sends another gold and lumber (CNetCommandTeamTradeResources).
     Trade { player: u8, other: u8, gold: i32, lumber: i32 },
+}
+
+impl Command {
+    /// The player a command speaks for, when it names one.
+    pub fn player(&self) -> Option<u8> {
+        use Command as C;
+        match self {
+            C::BuyItem { player, .. }
+            | C::HireUnit { player, .. }
+            | C::Awaken { player, .. }
+            | C::Select { player, .. }
+            | C::PlayerEvent { player, .. }
+            | C::DialogButton { player, .. }
+            | C::Chat { player, .. }
+            | C::PlayerLeft { player }
+            | C::Signal { player, .. }
+            | C::Alliance { player, .. }
+            | C::Trade { player, .. } => Some(*player),
+            _ => None,
+        }
+    }
 }
 
 /// What a command answered: an interface error to show, or whether a chat line is shown

@@ -1780,9 +1780,12 @@ impl Scene {
         if let Some(d) = self.hud.as_mut().and_then(|h| h.alliance.as_mut()) {
             let shift = self.shift_held;
             match d.click(ux, uy, true, shift) {
-                Some(crate::alliance::Event::Accept(sends)) => {
+                Some(crate::alliance::Event::Accept(sends, changes)) => {
                     if let Some(g) = self.game.as_mut() {
                         let local = g.world.local_player;
+                        for (other, flags) in changes {
+                            g.apply(w3_game::replay::Command::Alliance { player: local, other, flags });
+                        }
                         for (other, gold, lumber) in sends {
                             g.apply(w3_game::replay::Command::Trade { player: local, other, gold, lumber });
                         }

@@ -1,11 +1,14 @@
 //! The Allies dialog of a network game (CAllianceDialog, AllianceDialog.fdf): a row
 //! (AllianceSlot) per other player in the game, with their alliance, shared vision,
-//! and shared units, and the gold and lumber to send them.  Teams are locked (the
-//! game setup's Lock Teams, on as the advanced options start), so the check boxes show
-//! the alliances without changing them (FUN_6f3c66d0); resources go to allies.  A
-//! click on an amount adds TradingIncSmall (TradingIncLarge with Shift), a right click
-//! takes it away, and all the gold (or lumber) offered stays within what the player has
-//! (FUN_6f3c2f30).  Accept sends it (CNetCommandTeamTradeResources).
+//! and shared units, and the gold and lumber to send them.  The map flags rule it
+//! (FUN_6f3c66d0): with MAP_LOCK_ALLIANCE_CHANGES the check boxes only show the
+//! alliances; MAP_LOCK_RESOURCE_TRADING stops trading, and
+//! MAP_RESOURCE_TRADING_ALLIES_ONLY keeps it to allies.  A click on an amount adds
+//! TradingIncSmall (TradingIncLarge with Shift), a right click takes it away, and all
+//! the gold (or lumber) offered stays within what the player has (FUN_6f3c2f30).
+//! Accept sends it (CNetCommandTeamTradeResources), and changed alliances
+//! (CNetCommandTeamChangeAlliance: ally 0x1F, vision 0x20, units 0x40); shared units
+//! need the alliance and shared vision (FUN_6f3bc530).
 
 use w3_game::World;
 use w3_game::types::{ALLIANCE_TYPES, player_state, slot_state};
@@ -22,11 +25,13 @@ struct Row {
     gold: i32,
     lumber: i32,
     trade: bool,
+    /// The alliance kinds held toward the player (bits 0 to 6).
+    flags: u32,
 }
 
 pub enum Event {
-    /// Send these players this gold and lumber.
-    Accept(Vec<(u8, i32, i32)>),
+    /// Send these players this gold and lumber, and change these alliances.
+    Accept(Vec<(u8, i32, i32)>, Vec<(u8, u32)>),
     Cancel,
 }
 
@@ -64,19 +69,21 @@ impl AllianceDialog {
             let a = &me.alliances[p as usize % me.alliances.len()];
             let get = |t: usize| t < ALLIANCE_TYPES && a[t];
             let ally = ALLY.iter().all(|&t| get(t));
+            let locked = w.map_flags & 0x400 != 0;
             for (name, on) in [("AllyCheckBox", ally), ("VisionCheckBox", get(VISION)), ("UnitsCheckBox", get(UNITS))] {
                 let n = format!("{name}{scope}");
                 tree.set_checked(&n, on);
-                tree.set_enabled(&n, false);
+                tree.set_enabled(&n, !locked);
             }
-            // Resources go to allies.
-            let trade = ally;
+            let held = (0..=UNITS).filter(|&t| get(t)).fold(0u32, |f, t| f | 1 << t);
+            let flags = w.map_flags;
+            let trade = flags & 0x100 == 0 && (flags & 0x200 == 0 || ally);
             for (backdrop, key) in [("GoldBackdrop", "AllianceGold"), ("LumberBackdrop", "AllianceLumber")] {
                 if let Some(b) = tree.get(&format!("{backdrop}{scope}")) {
                     tree.frames[b].texture = Some(db.decorate(&if trade { key.to_string() } else { format!("{key}Disabled") }));
                 }
             }
-            rows.push(Row { player: p, gold: 0, lumber: 0, trade });
+            rows.push(Row { player: p, gold: 0, lumber: 0, trade, flags: held });
         }
         tree.set_enabled("AlliedVictoryCheckBox", false);
         let misc = |k: &str, d: i32| w.misc.get_str("Misc", k).and_then(|v| v.trim().parse().ok()).unwrap_or(d);
@@ -91,6 +98,17 @@ impl AllianceDialog {
     }
 
     fn sync(&mut self) {
+        // Shared units need the alliance and shared vision.
+        for k in 0..self.rows.len() {
+            let both = self.tree.checked(&format!("AllyCheckBox#{k}")) && self.tree.checked(&format!("VisionCheckBox#{k}"));
+            let units = format!("UnitsCheckBox#{k}");
+            if !both {
+                self.tree.set_checked(&units, false);
+            }
+            if self.tree.get(&format!("AllyCheckBox#{k}")).is_some_and(|i| self.tree.frames[i].enabled) {
+                self.tree.set_enabled(&units, both);
+            }
+        }
         for (k, r) in self.rows.iter().enumerate() {
             let show = |v: i32| if r.trade { v.to_string() } else { String::new() };
             self.tree.set_text(&format!("GoldText#{k}"), &show(r.gold));
@@ -124,9 +142,25 @@ impl AllianceDialog {
         self.tree.pointer_down(x, y);
         let i = self.tree.pointer_up(x, y)?;
         match self.tree.frames[i].name.as_str() {
-            "AllianceAcceptButton" => Some(Event::Accept(self.rows.iter().filter(|r| r.gold > 0 || r.lumber > 0).map(|r| (r.player, r.gold, r.lumber)).collect())),
+            "AllianceAcceptButton" => {
+                let sends = self.rows.iter().filter(|r| r.gold > 0 || r.lumber > 0).map(|r| (r.player, r.gold, r.lumber)).collect();
+                let changes = self
+                    .rows
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(k, r)| {
+                        let on = |n: &str| self.tree.checked(&format!("{n}#{k}"));
+                        let f = if on("AllyCheckBox") { 0x1f } else { 0 } | if on("VisionCheckBox") { 0x20 } else { 0 } | if on("UnitsCheckBox") { 0x40 } else { 0 };
+                        (f != r.flags).then_some((r.player, f))
+                    })
+                    .collect();
+                Some(Event::Accept(sends, changes))
+            }
             "AllianceCancelButton" => Some(Event::Cancel),
-            _ => None,
+            _ => {
+                self.sync();
+                None
+            }
         }
     }
 

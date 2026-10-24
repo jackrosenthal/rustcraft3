@@ -237,8 +237,12 @@ impl Game {
         self.call("config")
     }
 
-    /// Applies the setup screen's choices, then runs the map's `main`.
+    /// Applies the setup screen's choices, then runs the map's `main`.  The setup's
+    /// advanced options start as game.dll's do (FUN_6f303550: 0x648, Lock Teams with
+    /// resource trading among allies, Teams Together, and the default visibility); they
+    /// are the map flags scripts read (IsMapFlagSet).
     pub fn start_lobby(&mut self, slots: &[LobbySlot]) -> anyhow::Result<()> {
+        self.world.map_flags = 0x648;
         // RACE_PREF_* bits from common.j.
         const PREF_RANDOM: i32 = 32;
         for s in slots {
@@ -534,6 +538,10 @@ impl Game {
 
     fn execute(&mut self, player: u8, c: replay::Command) -> replay::Outcome {
         use replay::{Command as C, Outcome as O};
+        // A command speaks only for the player who gave it.
+        if c.player().is_some_and(|p| p != player) {
+            return O::Done;
+        }
         // A selection the player already has changes nothing.
         if let C::Select { player, units } = &c {
             if self.world.selection.get(player).is_some_and(|s| s == units) {
@@ -601,6 +609,19 @@ impl Game {
             }
             C::Signal { player, x, y } => {
                 self.world.requests.push(world::Request::AllySignal { player, x, y });
+                O::Done
+            }
+            // An alliance change from the Allies dialog: the kinds set, and the player's
+            // EVENT_PLAYER_ALLIANCE_CHANGED.
+            C::Alliance { player, other, flags } => {
+                if let Some(p) = self.world.players.get_mut(player as usize) {
+                    if let Some(a) = p.alliances.get_mut(other as usize) {
+                        for t in 0..=6 {
+                            a[t] = flags & (1 << t) != 0;
+                        }
+                    }
+                }
+                self.player_event(player, event_ids::EVENT_PLAYER_ALLIANCE_CHANGED);
                 O::Done
             }
             // Resources sent to another player, as much as the sender has.

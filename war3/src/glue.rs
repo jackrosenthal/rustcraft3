@@ -206,6 +206,10 @@ struct Cinematic {
     after: (Option<crate::scorescreen::ScoreData>, Option<String>),
 }
 
+/// A loading screen row's race for an observer and for a referee.
+const OBSERVER_ROW: usize = usize::MAX;
+const REFEREE_ROW: usize = usize::MAX - 1;
+
 /// What a glue message's Yes (or OK) does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DialogAction {
@@ -685,7 +689,12 @@ impl Glue {
                 use w3_ui::FramePoint as P;
                 self.tree.set_point(&format!("LoadingPlayerSlot{scope}"), P::TopLeft, "LoadingMeleePlayerContainer", P::TopLeft, 0.0, -(k as f32) * 0.032);
                 self.tree.set_text(&format!("LoadingPlayerSlotName{scope}"), name);
-                self.tree.set_text(&format!("LoadingPlayerSlotRace{scope}"), &db.string(races[(*race).min(4)]));
+                let race_text = match *race {
+                    OBSERVER_ROW => db.string("OBSERVER"),
+                    REFEREE_ROW => db.string("REFEREE"),
+                    r => db.string(races[r.min(4)]),
+                };
+                self.tree.set_text(&format!("LoadingPlayerSlotRace{scope}"), &race_text);
                 self.tree.set_visible(&format!("LoadingPlayerSlotReadyHighlight{scope}"), false);
             }
         }
@@ -780,6 +789,8 @@ impl Glue {
                         .slots
                         .iter()
                         .filter_map(|s| match s.holder {
+                            // An observer's race reads OBSERVER or REFEREE (FUN_6f2fb430).
+                            crate::net::Holder::Human(_) if s.team == crate::lan::OBSERVERS => Some((s.name.clone(), if self.lan.setup.flags & 0x400000 != 0 { REFEREE_ROW } else { OBSERVER_ROW })),
                             crate::net::Holder::Human(_) => Some((s.name.clone(), s.race)),
                             crate::net::Holder::Computer(d) => Some((assets.frames.string(names[2 + d.clamp(0, 2) as usize]), s.race)),
                             _ => None,

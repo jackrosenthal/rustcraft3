@@ -271,6 +271,14 @@ impl World {
                 }
             }
         }
+        // Observers see the whole map.
+        let observers: Vec<usize> = (0..PLAYER_COUNT).filter(|&p| self.players.get(p).is_some_and(|pl| pl.get_state(crate::types::player_state::OBSERVER) != 0)).collect();
+        if let Some(fog) = self.fog.as_mut() {
+            for p in observers {
+                fog.visible[p].iter_mut().for_each(|v| *v = true);
+                fog.explored[p].iter_mut().for_each(|v| *v = true);
+            }
+        }
     }
 
     /// FOG_OF_WAR_VISIBLE, _FOGGED, or _MASKED at a point for a player, honoring
@@ -294,6 +302,10 @@ impl World {
     pub fn unit_visible_to(&self, h: u32, player: u8) -> bool {
         let Some(u) = self.unit(h) else { return false };
         if u.owner == player || self.players.get(u.owner as usize).is_some_and(|o| o.alliances[player as usize % PLAYER_COUNT][ALLIANCE_SHARED_VISION]) {
+            return true;
+        }
+        // Observers see every unit.
+        if self.players.get(player as usize).is_some_and(|p| p.get_state(crate::types::player_state::OBSERVER) != 0) {
             return true;
         }
         // Invisible units are hidden from others without a detector near.

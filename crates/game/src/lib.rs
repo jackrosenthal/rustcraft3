@@ -93,6 +93,8 @@ pub enum SlotFill {
     Remote,
     Computer,
     Empty,
+    /// An observer (a slot of the lobby's Observers team): on this computer or not.
+    Observer(bool),
 }
 
 /// One player's choices from the game setup screen.
@@ -278,6 +280,13 @@ impl Game {
                 self.world.ai_difficulty.insert(s.player, s.difficulty);
             }
         }
+        // Observers hold player slots the map leaves unused: they are users who do not
+        // play (IsPlayerObserver), with no start location or units.
+        for s in slots.iter().filter(|s| matches!(s.fill, SlotFill::Observer(_))) {
+            if let Some(p) = self.world.players.get_mut(s.player as usize) {
+                p.controller = map_control::USER;
+            }
+        }
         let fills: HashMap<u8, SlotFill> = slots.iter().map(|s| (s.player, s.fill.clone())).collect();
         self.start(|id, _| fills.get(&id).cloned().unwrap_or(SlotFill::Empty))
     }
@@ -312,6 +321,15 @@ impl Game {
                         }
                     }
                     SlotFill::Empty => p.slot_state = slot_state::EMPTY,
+                    SlotFill::Observer(local) => {
+                        p.controller = map_control::USER;
+                        p.slot_state = slot_state::EMPTY;
+                        p.state.insert(crate::types::player_state::OBSERVER, 1);
+                        p.start_location = -1;
+                        if local {
+                            self.world.local_player = p.id;
+                        }
+                    }
                 }
             }
             // Races follow the map's player setup.

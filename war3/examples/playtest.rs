@@ -33,8 +33,8 @@ fn main() -> anyhow::Result<()> {
         (a[2].clone(), None)
     };
     // W3LOBBY="L1,C3" fills the slots in order: L the local player, C a computer, E
-    // empty, each followed by its race (1 Human, 2 Orc, 3 Undead, 4 Night Elf, none
-    // random).
+    // empty, O the local player observing, each followed by its race (1 Human, 2 Orc, 3
+    // Undead, 4 Night Elf, none random).
     let lobby: Option<Vec<w3_game::LobbySlot>> = std::env::var("W3LOBBY").ok().map(|v| {
         v.split(',')
             .enumerate()
@@ -42,9 +42,11 @@ fn main() -> anyhow::Result<()> {
                 let fill = match s.chars().next() {
                     Some('L') => w3_game::SlotFill::Local,
                     Some('C') => w3_game::SlotFill::Computer,
+                    Some('O') => w3_game::SlotFill::Observer(true),
                     _ => w3_game::SlotFill::Empty,
                 };
-                w3_game::LobbySlot { player: i as u8, fill, name: None, race: s[1..].parse().ok(), team: i as i32, color: i as i32, handicap: 100.0, difficulty: 1 }
+                let team = if s.starts_with('O') { 12 } else { i as i32 };
+                w3_game::LobbySlot { player: i as u8, fill, name: None, race: s[1..].parse().ok(), team, color: i as i32, handicap: 100.0, difficulty: 1 }
             })
             .collect()
     });

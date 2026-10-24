@@ -16,6 +16,7 @@ pub mod saveload;
 pub mod options;
 pub mod profiles;
 pub mod replays;
+pub mod savereplay;
 pub mod shadows;
 pub mod scorescreen;
 pub mod quests;

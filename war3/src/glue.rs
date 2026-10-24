@@ -158,6 +158,8 @@ pub struct Glue {
     pub profile: crate::profiles::ProfilePanel,
     /// What a DialogWar3 message's Yes does, while one shows.
     dialog: Option<DialogAction>,
+    /// The score screen's Save Replay panel.
+    save_replay: crate::savereplay::SaveReplayPanel,
     version: crate::data::Version,
 }
 
@@ -230,6 +232,7 @@ impl Glue {
             campaigns_dir: data.dir.join("Campaigns"),
             profile,
             dialog: None,
+            save_replay: Default::default(),
             version: data.version,
         };
         g.build(Screen::MainMenu, assets);
@@ -325,9 +328,11 @@ impl Glue {
             }
             Screen::Loading => {}
             Screen::Score => {
-                // No replays are kept: Save Replay stays disabled.
-                self.tree.set_enabled("ScoreScreenSaveReplayButton", false);
+                // Save Replay keeps the game just played (Replay\LastReplay.w3g).
+                let last = crate::replays::last_replay().is_some_and(|p| p.is_file());
+                self.tree.set_enabled("ScoreScreenSaveReplayButton", last);
                 self.tree.set_visible("ScoreScreenReplaySavedButton", false);
+                self.save_replay = Default::default();
                 self.sync_score(db);
             }
         }
@@ -567,6 +572,9 @@ impl Glue {
         if self.tree.pointer_down(x, y).is_some() {
             return true;
         }
+        if self.screen == Screen::Score {
+            self.save_replay.click(&mut self.tree, x, y);
+        }
         if self.screen == Screen::SinglePlayer && self.dialog.is_none() {
             if let Some(e) = self.profile.click(&mut self.tree, x, y) {
                 self.profile_event(e, assets);
@@ -600,6 +608,14 @@ impl Glue {
             }
         }
         false
+    }
+
+    /// Once saved, the score screen's Save Replay gives way to Replay Saved.
+    fn replay_saved(&mut self) {
+        self.tree.set_visible("ScoreScreenSaveReplayButton", false);
+        self.tree.set_visible("ScoreScreenReplaySavedButton", true);
+        self.tree.set_enabled("ScoreScreenReplaySavedButton", false);
+        self.tree.set_visible("SaveReplayPanel", false);
     }
 
     /// The profile panel's requests: another profile chosen (its progress and saved
@@ -674,6 +690,12 @@ impl Glue {
 
     /// A key press: control shortcut keys and Escape for Cancel.
     pub fn key(&mut self, c: char, assets: &mut Assets) {
+        if self.screen == Screen::Score && self.save_replay.open {
+            if let Some(crate::savereplay::Event::Saved) = self.save_replay.key(c, &mut self.tree) {
+                self.replay_saved();
+            }
+            return;
+        }
         if self.screen == Screen::SinglePlayer && self.dialog.is_none() {
             if let Some(e) = self.profile.key(c, &mut self.tree) {
                 if let Some(e) = e {
@@ -789,6 +811,16 @@ impl Glue {
     }
 
     fn score_button(&mut self, name: &str, assets: &mut Assets) {
+        if self.save_replay.open {
+            if let Some(crate::savereplay::Event::Saved) = self.save_replay.button(name, &mut self.tree) {
+                self.replay_saved();
+            }
+            return;
+        }
+        if name == "ScoreScreenSaveReplayButton" {
+            self.save_replay.open(&mut self.tree, &assets.frames);
+            return;
+        }
         let Some(s) = self.score.as_mut() else { return };
         if let Some(k) = name.strip_prefix("ScoreScreenTabButton").and_then(|k| k.parse::<usize>().ok()) {
             s.tab = k.min(3);
@@ -1106,6 +1138,7 @@ impl Glue {
         }
         if self.screen == Screen::Score {
             self.score_draws(&assets.frames, &mut draws);
+            self.save_replay.draws(&self.tree, &assets.frames, &mut draws);
         }
         if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign | Screen::ViewReplay) && self.phase == Phase::Stand {
             self.skirmish.draws(&self.tree, &assets.frames, &mut draws);

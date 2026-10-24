@@ -760,7 +760,8 @@ impl Hud {
     pub fn press_minimap_button(&mut self, k: usize) {
         match k {
             1 => self.minimap_terrain = !self.minimap_terrain,
-            2 => self.ally_mode = (self.ally_mode + 1) % 3,
+            // The scene cycles the world's ally color mode (FUN_6f3704f0).
+            2 => {}
             3 => self.show_creeps = !self.show_creeps,
             4 => self.formation = !self.formation,
             _ => {}
@@ -771,7 +772,9 @@ impl Hud {
         let keys = [
             "MiniMapSignalButtonEnabled",
             if self.minimap_terrain { "MiniMapTerrainButtonInactiveEnabled" } else { "MiniMapTerrainButtonActiveEnabled" },
-            ["MiniMapAllyButtonInactiveEnabled", "MiniMapAllyButtonActiveEnabled", "MiniMapAllyButtonOffEnabled"][self.ally_mode as usize % 3],
+            // FUN_6f3731a0: Off for player colors, Inactive for the minimap's, Active for
+            // everywhere.
+            ["MiniMapAllyButtonOffEnabled", "MiniMapAllyButtonInactiveEnabled", "MiniMapAllyButtonActiveEnabled"][self.ally_mode as usize % 3],
             if self.show_creeps { "MiniMapCreepButtonActiveEnabled" } else { "MiniMapCreepButtonInactiveEnabled" },
             if self.formation { "MiniMapFormationOnButtonEnabled" } else { "MiniMapFormationOffButtonEnabled" },
         ];

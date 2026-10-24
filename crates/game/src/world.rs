@@ -200,6 +200,9 @@ pub struct World {
     pub load_game_name: String,
     pub reserved_hero_buttons: i32,
     pub alt_minimap_icon: Option<String>,
+    /// The ally color mode (option 0x38, Alt-A): 0 player colors, 1 ally colors on the
+    /// minimap, 2 on the minimap and in the world (FUN_6f36abf0).
+    pub ally_color_filter: i32,
     /// EnableWorldFogBoundary.
     pub fog_boundary: bool,
     /// PlayModelCinematic.
@@ -460,6 +463,7 @@ impl World {
             load_game_name: String::new(),
             reserved_hero_buttons: 0,
             alt_minimap_icon: None,
+            ally_color_filter: 0,
             fog_boundary: true,
             model_cinematic: None,
             deformations: Vec::new(),

@@ -59,6 +59,13 @@ impl Assets {
     }
 }
 
+/// The color a player's unit shows in the world: its own, or under the ally color
+/// mode's second state the filter's (FUN_6f33c920 with FUN_6f36abf0).
+fn world_color(w: &w3_game::World, owner: u8, color: i32) -> u8 {
+    let c = if w.ally_color_filter == 2 { w3_game::natives::players::filter_color(w, owner, color) } else { color };
+    c.clamp(0, 15) as u8
+}
+
 fn team_colors(chain: &w3_mpq::Chain) -> [[f32; 3]; 16] {
     let mut out = [[1.0; 3]; 16];
     for (i, c) in out.iter_mut().enumerate() {
@@ -1909,6 +1916,9 @@ impl Scene {
                 self.signaling = true;
                 return true;
             }
+            if k == 2 {
+                self.cycle_ally_colors();
+            }
             if let Some(h) = self.hud.as_mut() {
                 h.press_minimap_button(k);
             }
@@ -2464,6 +2474,13 @@ impl Scene {
         g.apply(w3_game::replay::Command::Chat { player: local, text: line.to_string(), to });
     }
 
+    /// The next ally color mode: player colors, the minimap's, everywhere (FUN_6f3704f0).
+    pub fn cycle_ally_colors(&mut self) {
+        if let Some(g) = self.game.as_mut() {
+            g.world.ally_color_filter = (g.world.ally_color_filter + 1) % 3;
+        }
+    }
+
     pub fn key(&mut self, c: char) {
         if let Some(h) = self.hud.as_mut().filter(|h| h.chat.is_none() && h.menu.is_none()) {
             if h.replay.as_mut().is_some_and(|r| r.key(c)) {
@@ -2545,6 +2562,11 @@ impl Scene {
             }
         }
         if !self.user_control() && c != '\u{1b}' {
+            return;
+        }
+        // Alt-A: the ally color mode (MINIMAPALLYCOLORTOOLTIP).
+        if self.alt_held && c.eq_ignore_ascii_case(&'a') {
+            self.cycle_ally_colors();
             return;
         }
         if c == '\u{1b}' {
@@ -2885,7 +2907,7 @@ impl Scene {
                 let Some(model) = assets.model(device, queue, &m.model) else { continue };
                 let mut inst = ModelInstance::new(model);
                 inst.play("stand");
-                inst.team = w.unit(m.source).and_then(|u| w.players.get(u.owner as usize)).map_or(0, |p| p.color as u8);
+                inst.team = w.unit(m.source).map_or(0, |u| world_color(w, u.owner, w.players.get(u.owner as usize).map_or(0, |p| p.color)));
                 self.missiles.insert(m.id, EffectView { inst, dying: false, done: false });
             }
             let target = m.impact.or_else(|| w.widget_pos(m.target)).unwrap_or((m.x, m.y));
@@ -2927,7 +2949,7 @@ impl Scene {
                 let base = file.strip_suffix(".mdl").or_else(|| file.strip_suffix(".mdx")).unwrap_or(&file);
                 let model = assets.model(device, queue, &format!("{base}_Portrait")).or_else(|| assets.model(device, queue, &file))?;
                 let mut v = UnitView { inst: ModelInstance::new(model), type_id: [0; 4], children: Vec::new(), serial: 0, requested: "portrait".into(), anim: String::new(), rng: h, queued: 0 };
-                v.inst.team = u.color.clamp(0, 15) as u8;
+                v.inst.team = world_color(w, u.owner, u.color);
                 v.pick("portrait");
                 Some((h, v))
             });
@@ -2966,7 +2988,8 @@ impl Scene {
         let footprint = self.camera_footprint();
         let team_rgb = self.team_rgb;
         if let Some(hud) = self.hud.as_mut() {
-            let ally_mode = hud.ally_mode;
+            let ally_mode = w.ally_color_filter as u8;
+            hud.ally_mode = ally_mode;
             hud.minimap_dots = w
                 .unit_order
                 .iter()
@@ -3095,8 +3118,7 @@ impl Scene {
                 Quat::from_rotation_z(u.facing.to_radians()),
                 Vec3::new(u.x, u.y, z),
             );
-            inst.team = w.players.get(u.owner as usize).map_or(0, |p| p.color.clamp(0, 15) as u8);
-            inst.team = u.color.clamp(0, 15) as u8;
+            inst.team = world_color(w, u.owner, u.color);
             // Enemy units show only where the local player sees; structures stay where
             // they have been explored.
             let state = w.fog_state(u.x, u.y, w.local_player);

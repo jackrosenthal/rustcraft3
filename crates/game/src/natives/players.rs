@@ -37,6 +37,33 @@ pub fn controls(w: &World, player: u8, h: u32) -> bool {
     a[SHARED_ADVANCED_CONTROL] || (a[SHARED_CONTROL] && (!u.is_building || w.map_flags & 0x10000 != 0))
 }
 
+/// A player's color under the ally color filter (FUN_6f33c820), from UI\MiscData.txt
+/// [TeamColorFilter]: the local player's ColorIndexPlayer, allies' ColorIndexAlly,
+/// others' ColorIndexEnemy (ColorIndexCreep past the twelve players); an observer sees
+/// each team in the color of its first player.  Neutral passive and beyond keep
+/// `color`.
+pub fn filter_color(w: &World, player: u8, color: i32) -> i32 {
+    let me = w.local_player;
+    if player >= 15 || me >= 15 {
+        return color;
+    }
+    let index = |k: &str, d: i32| w.misc.get_str("TeamColorFilter", k).and_then(|v| v.trim().parse().ok()).unwrap_or(d);
+    if w.players[me as usize].get_state(crate::types::player_state::OBSERVER) != 0 {
+        if let Some(u) = (0..12u8).find(|&u| is_ally(w, player, u) && is_ally(w, u, player)) {
+            return w.players[u as usize].color;
+        }
+    }
+    if player == me {
+        index("ColorIndexPlayer", 1)
+    } else if is_ally(w, me, player) {
+        index("ColorIndexAlly", 2)
+    } else if player > 11 {
+        index("ColorIndexCreep", 12)
+    } else {
+        index("ColorIndexEnemy", 0)
+    }
+}
+
 pub fn is_ally(w: &World, a: u8, b: u8) -> bool {
     w.players.get(a as usize).is_some_and(|p| p.alliances[b as usize % PLAYER_COUNT][ALLIANCE_PASSIVE])
 }

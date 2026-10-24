@@ -2258,7 +2258,10 @@ impl Scene {
             }
             return true;
         }
-        if let Some((wx, wy)) = self.hud.as_ref().and_then(|h| h.minimap_to_world(ux, uy)) {
+        // While aiming, a minimap click is the point aimed at (Tip17, Tip45).
+        let minimap_point = self.hud.as_ref().and_then(|h| h.minimap_to_world(ux, uy));
+        let aiming = self.targeting.is_some() || self.item_target.is_some();
+        if let (Some((wx, wy)), false) = (minimap_point, aiming) {
             if let Some(g) = self.game.as_mut() {
                 let (wx, wy) = g.world.clamp_to_camera_bounds(wx, wy);
                 g.world.camera.pan_to(wx, wy, 0.0);
@@ -2266,7 +2269,8 @@ impl Scene {
             self.sync_camera();
             return true;
         }
-        if portrait_target.is_none() && self.over_console(sx, sy, size) {
+        let on_minimap = aiming && minimap_point.is_some();
+        if portrait_target.is_none() && !on_minimap && self.over_console(sx, sy, size) {
             return true;
         }
         // A click on a trackable hits it (EVENT_GAME_TRACKABLE_HIT).
@@ -2292,8 +2296,8 @@ impl Scene {
             return true;
         }
         if let Some((u, slot)) = self.item_target.take() {
-            let target = portrait_target.or_else(|| self.pick_unit(sx, sy, size)).or_else(|| self.pick_destructable(sx, sy, size));
-            let point = self.ground_at(sx, sy, size);
+            let target = if on_minimap { None } else { portrait_target.or_else(|| self.pick_unit(sx, sy, size)).or_else(|| self.pick_destructable(sx, sy, size)) };
+            let point = if on_minimap { minimap_point } else { self.ground_at(sx, sy, size) };
             if let Some(g) = self.game.as_mut() {
                 let point_only = g.world.item_targeting(u, slot) == w3_game::ability::Targeting::Point;
                 let (t, (x, y)) = if point_only { (0, point.unwrap_or_default()) } else { (target.unwrap_or(0), point.unwrap_or_default()) };
@@ -2302,8 +2306,8 @@ impl Scene {
             return true;
         }
         if let Some(order) = self.targeting.take() {
-            let target = portrait_target.or_else(|| self.pick_unit(sx, sy, size)).or_else(|| self.pick_destructable(sx, sy, size));
-            let point = self.ground_at(sx, sy, size);
+            let target = if on_minimap { None } else { portrait_target.or_else(|| self.pick_unit(sx, sy, size)).or_else(|| self.pick_destructable(sx, sy, size)) };
+            let point = if on_minimap { minimap_point } else { self.ground_at(sx, sy, size) };
             let (mut ordered, mut error) = (false, None);
             let formation = self.formation_on();
             if let Some(g) = self.game.as_mut() {

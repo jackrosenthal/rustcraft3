@@ -1184,9 +1184,9 @@ impl Hud {
         // CUpperButtonBar (vf9, FUN_6f3af910): Menu always; Allies only in network
         // games; the F12 button is the message log outside them; Quests once a map has
         // made a quest.
-        // The game menu disables them all while it is open (as captured from the
-        // original).
-        let menu = self.menu.is_some();
+        // The game menu, the quest log, the message log, and the allies and chat
+        // dialogs disable them all while open (as captured from the original).
+        let menu = self.menu.is_some() || self.quests.is_some() || self.log_view.is_some() || self.alliance.is_some() || self.chat_dialog.is_some();
         self.tree.set_enabled("UpperButtonBarMenuButton", !menu);
         self.tree.set_enabled("UpperButtonBarAlliesButton", world.network && !menu);
         self.tree.set_enabled("UpperButtonBarQuestsButton", !menu && !world.quests.is_empty());

@@ -577,7 +577,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             handle(w.handles.insert(Obj::Location(x, y)))
         },
         GetUnitFacing => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.shown_facing.unwrap_or(u.facing))),
-        GetUnitMoveSpeed => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.move_speed)),
+        // The speed it moves at now, with its bonuses (measured: 337.5 for a grunt, 270,
+        // under Bloodlust's 25 percent).
+        GetUnitMoveSpeed => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| w.current_move_speed(u.handle))),
         GetUnitDefaultMoveSpeed => |w, _, a| real(unit_arg(w, a, 0).and_then(|u| w.objects.units.get(u.type_id)).map_or(0.0, |o| o.real("spd"))),
         GetUnitTurnSpeed => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.turn_speed)),
         GetUnitPropWindow => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.prop_window.to_radians())),

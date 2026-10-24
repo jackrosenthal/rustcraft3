@@ -1022,7 +1022,13 @@ impl FrameTree {
             // The title's text frame offsets it by FontJustificationOffset.
             let text_def = td.str("ButtonText").and_then(|n| self.frames[t].children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)).map(|c| c.def.clone());
             let off = text_def.as_ref().and_then(|d| d.prop("FontJustificationOffset")).and_then(|p| p.args.first().map(Arg::num)).unwrap_or(0.01);
-            let color = if f.enabled { [1.0; 4] } else { [0.5, 0.5, 0.5, 1.0] };
+            // A disabled popup's title takes its FontDisabledColor, which the standard
+            // templates leave unset: white, as in the original.
+            let color = match (f.enabled, text_def.as_ref()) {
+                (false, Some(d)) => color_prop(d.prop("FontDisabledColor").or_else(|| d.prop("FontColor")), [1.0; 4]),
+                (_, Some(d)) => color_prop(d.prop("FontColor"), [1.0; 4]),
+                _ => [1.0; 4],
+            };
             out.push(Draw::Text { font, size, rect: Rect { x0: r.x0 + off, ..r }, text, color, justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
         }
         if let Some(a) = arrow {
@@ -1031,7 +1037,10 @@ impl FrameTree {
             let (w, h) = (ad.num("Width").unwrap_or(0.011), ad.num("Height").unwrap_or(0.011));
             let cy = (r.y0 + r.y1) / 2.0;
             let ar = Rect { x0: r.x1 - inset - w, x1: r.x1 - inset, y0: cy - h / 2.0, y1: cy + h / 2.0 };
-            if let Some(bd) = ad.str("ControlBackdrop").and_then(|n| self.frames[a].children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
+            // A disabled popup's arrow shows its ControlDisabledBackdrop, which the
+            // standard arrow has none of.
+            let key = if f.enabled { "ControlBackdrop" } else { "ControlDisabledBackdrop" };
+            if let Some(bd) = ad.str(key).and_then(|n| self.frames[a].children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
                 let afile = |n: &str| if bd.def.has("DecorateFileNames") { db.decorate(n) } else { n.to_string() };
                 self.draw_backdrop_with(db, &bd.def, bd.texture.as_deref(), ar, &afile, out);
             }

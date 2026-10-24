@@ -3578,7 +3578,10 @@ impl Scene {
         // A network game does not stop for one player's menus.
         let paused = self.net.is_none() && self.hud.as_ref().is_some_and(|h| h.menu.is_some() || h.quests.is_some() || h.log_view.is_some());
         let speed = self.game.as_ref().map_or(1.0, |g| [0.6, 0.8, 1.0][g.world.game_speed.clamp(0, 2) as usize]);
-        let gdt = if paused { 0.0 } else { dt * speed };
+        // The script's pause (PauseGame) stops a game played alone; its players' commands
+        // and the script's answers to them still go on.
+        let script_paused = self.net.is_none() && self.game.as_ref().is_some_and(|g| g.world.script_paused);
+        let gdt = if paused || script_paused { 0.0 } else { dt * speed };
         // The selection: script changes come to the interface, the player's go to the
         // game (with its selection events).
         if let Some(g) = self.game.as_mut() {

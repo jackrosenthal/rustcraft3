@@ -247,6 +247,9 @@ pub struct World {
     /// SetIntegerGameState's divine intervention and disconnected states.
     #[serde(default)]
     pub integer_states: [i32; 2],
+    /// PauseGame: the script has paused the game (FUN_6f3719c0).
+    #[serde(default)]
+    pub script_paused: bool,
     /// DoNotSaveReplay: this game keeps no replay.
     #[serde(default)]
     pub no_replay: bool,
@@ -539,6 +542,7 @@ impl World {
             creep_camp_filter: true,
             minimap_filter_buttons: (true, true),
             no_replay: false,
+            script_paused: false,
             densities: (1, 1),
             stacked_sounds: Vec::new(),
             integer_states: [0; 2],

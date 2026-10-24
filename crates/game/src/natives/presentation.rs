@@ -636,7 +636,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             c.interface_fade = a.r(1);
             none()
         },
-        PauseGame => |_, _, _| none(),
+        PauseGame => |w, _, a| { w.script_paused = a.b(0); none() },
         SetPortraitLight => |_, _, _| none(),
         SetUnitFog => |_, _, _| none(),
     );

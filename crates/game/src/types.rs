@@ -990,7 +990,7 @@ pub struct GameCache {
 }
 
 /// A unit as StoreUnit keeps it: type, hero progress, abilities, and items.
-#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StoredUnit {
     pub type_id: [u8; 4],
     pub level: i32,

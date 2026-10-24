@@ -64,6 +64,8 @@ pub enum Request {
     SoundOffset { sound: u32, ms: i32 },
     /// A sound's cone changed (SetSoundConeAngles, SetSoundConeOrientation).
     SoundCone(u32),
+    /// SyncStored*: this computer's game cache value, to send to everyone.
+    SyncCache { cache: String, mission: String, key: String, value: crate::replay::CacheValue },
     /// SetMusicPlayPosition and SetThematicMusicPlayPosition.
     MusicOffset(i32),
     /// NewSoundEnvironment: the environment 3D sounds reverberate in.

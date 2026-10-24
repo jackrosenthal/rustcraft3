@@ -628,6 +628,30 @@ impl Game {
                 self.world.cancel_last(building);
                 O::Done
             }
+            C::CacheValue { cache, mission, key, value } => {
+                use replay::CacheValue as V;
+                let k = (mission, key);
+                for (_, o) in self.world.handles.iter_mut() {
+                    let types::Obj::GameCache(c) = o else { continue };
+                    if !c.name.eq_ignore_ascii_case(&cache) {
+                        continue;
+                    }
+                    fn set<T>(m: &mut collections::HashMap<(String, String), T>, k: &(String, String), v: Option<T>) {
+                        match v {
+                            Some(v) => _ = m.insert(k.clone(), v),
+                            None => _ = m.remove(k),
+                        }
+                    }
+                    match value.clone() {
+                        V::Int(v) => set(&mut c.ints, &k, v),
+                        V::Real(v) => set(&mut c.reals, &k, v),
+                        V::Bool(v) => set(&mut c.bools, &k, v),
+                        V::Str(v) => set(&mut c.strings, &k, v),
+                        V::Unit(v) => set(&mut c.units, &k, v),
+                    }
+                }
+                O::Done
+            }
             C::Save { name } => {
                 // The triggers hear the save first (EVENT_GAME_SAVE).
                 self.game_event(event_ids::EVENT_GAME_SAVE);

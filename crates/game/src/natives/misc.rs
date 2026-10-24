@@ -216,11 +216,13 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         EnableWorldFogBoundary => |w, _, a| { w.fog_boundary = a.b(0); none() },
 
         // Single player: nothing to synchronize.
-        SyncStoredInteger => |_, _, _| none(),
-        SyncStoredReal => |_, _, _| none(),
-        SyncStoredBoolean => |_, _, _| none(),
-        SyncStoredUnit => |_, _, _| none(),
-        SyncStoredString => |_, _, _| none(),
+        // SyncStored*: this computer's value goes to everyone, who all take it on the
+        // same frame (outside a network game every value is already everyone's).
+        SyncStoredInteger => |w, _, a| { sync_cache(w, a.h(0), a.s(1), a.s(2), |c, k| crate::replay::CacheValue::Int(c.ints.get(k).copied())); none() },
+        SyncStoredReal => |w, _, a| { sync_cache(w, a.h(0), a.s(1), a.s(2), |c, k| crate::replay::CacheValue::Real(c.reals.get(k).copied())); none() },
+        SyncStoredBoolean => |w, _, a| { sync_cache(w, a.h(0), a.s(1), a.s(2), |c, k| crate::replay::CacheValue::Bool(c.bools.get(k).copied())); none() },
+        SyncStoredUnit => |w, _, a| { sync_cache(w, a.h(0), a.s(1), a.s(2), |c, k| crate::replay::CacheValue::Unit(c.units.get(k).cloned())); none() },
+        SyncStoredString => |w, _, a| { sync_cache(w, a.h(0), a.s(1), a.s(2), |c, k| crate::replay::CacheValue::Str(c.strings.get(k).cloned())); none() },
         // An empty function in the original.
         SetTerrainFog => |_, _, _| none(),
         UnitAddIndicator => |w, _, a| { let c = [a.i(1), a.i(2), a.i(3), a.i(4)].map(|v| v as u8); w.requests.push(crate::world::Request::Indicator { widget: a.h(0), color: c }); none() },
@@ -257,3 +259,14 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
 }
 
 use super::reg;
+
+/// Sends this computer's value of a game cache entry to everyone in a network game.
+fn sync_cache(w: &mut World, h: u32, mission: String, key: String, get: impl Fn(&crate::types::GameCache, &(String, String)) -> crate::replay::CacheValue) {
+    if !w.network {
+        return;
+    }
+    let Some(crate::types::Obj::GameCache(c)) = w.handles.get(h) else { return };
+    let value = get(c, &(mission.clone(), key.clone()));
+    let cache = c.name.clone();
+    w.requests.push(crate::world::Request::SyncCache { cache, mission, key, value });
+}

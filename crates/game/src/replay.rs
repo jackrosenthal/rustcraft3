@@ -8,6 +8,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::objects::Id;
 
+/// A game cache entry's value, as SyncStored* sends it (none when the sender lacked it).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum CacheValue {
+    Int(Option<i32>),
+    Real(Option<f32>),
+    Bool(Option<bool>),
+    Str(Option<String>),
+    Unit(Option<crate::types::StoredUnit>),
+}
+
 /// A player's command, as the interface gives it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Command {
@@ -56,6 +66,8 @@ pub enum Command {
     /// Saves a network game on every computer at once, under this name (the game
     /// menu's Save Game in a network game, kept in Save\\Multiplayer).
     Save { name: String },
+    /// A game cache value one computer had, for all (SyncStoredInteger and the rest).
+    CacheValue { cache: String, mission: String, key: String, value: CacheValue },
 }
 
 impl Command {

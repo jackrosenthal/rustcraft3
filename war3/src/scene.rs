@@ -987,6 +987,12 @@ impl Scene {
                 }
                 w3_game::world::Request::Attacked { unit } => self.attack_warning(unit),
                 w3_game::world::Request::QuickPosition { x, y } => self.add_quick(x, y),
+                // This computer's game cache value goes to everyone (SyncStored*).
+                w3_game::world::Request::SyncCache { cache, mission, key, value } => {
+                    if let Some(g) = self.game.as_mut() {
+                        g.apply(w3_game::replay::Command::CacheValue { cache, mission, key, value });
+                    }
+                }
                 w3_game::world::Request::UnitReady { unit } => {
                     let at = self.game.as_ref().and_then(|g| g.world.unit(unit).filter(|u| Self::hears_of(&g.world, u.owner)).map(|u| (u.x, u.y)));
                     if let Some((x, y)) = at {

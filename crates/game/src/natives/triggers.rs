@@ -127,7 +127,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         TriggerSleepAction => |_, _, a| NativeResult::Sleep(a.r(0)),
         TriggerWaitForSound => |_, _, _| NativeResult::Sleep(0.0),
         TriggerSyncStart => |_, _, _| none(),
-        TriggerSyncReady => |_, _, _| NativeResult::Sleep(0.0),
+        // Waits for the synced values: in a network game long enough for them to go
+        // round (the frames carrying them come within it), else at once.
+        TriggerSyncReady => |w, _, _| NativeResult::Sleep(if w.network { 0.5 } else { 0.0 }),
         ExecuteFunc => |w, vm, a| {
             let name = a.s(0);
             if let Some(f) = vm.module.function(&name) {

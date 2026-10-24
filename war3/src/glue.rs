@@ -1095,7 +1095,8 @@ impl Glue {
             // A saved network game is hosted with its players' slots kept for them.
             (Screen::LanLoad, "OKButton") => {
                 let Some(file) = self.skirmish.selected_save() else { return };
-                match self.lan.host_saved(&file, self.version == crate::data::Version::FrozenThrone) {
+                let game = self.lan.game_name(&assets.frames);
+                match self.lan.host_saved(&file, &game, self.version == crate::data::Version::FrozenThrone) {
                     Ok(()) => self.show(Screen::LanLobby, assets),
                     Err(key) => {
                         let text = assets.frames.string(key);
@@ -1112,7 +1113,7 @@ impl Glue {
             (Screen::LanCreate, "CancelButton") => self.show(Screen::LanJoin, assets),
             (Screen::LanCreate, "PlayButton") => {
                 let (Some(map), Some(summary)) = (self.skirmish.selected_map(), self.skirmish.summary.clone()) else { return };
-                let game = assets.frames.string("LOCAL_GAME");
+                let game = self.lan.game_name(&assets.frames);
                 let speed = self.tree.value("GameSpeedSlider").round().clamp(0.0, 2.0) as u8;
                 match self.lan.host_game(&map, &summary, &game, self.version == crate::data::Version::FrozenThrone, speed, self.skirmish.flags) {
                     Ok(()) => self.show(Screen::LanLobby, assets),

@@ -198,7 +198,7 @@ impl Lan {
     /// Joins the chosen game.
     /// Hosts a saved network game (CLocalMultiplayerLoad): its map and speed, its
     /// people's slots kept for them by name, its computers as they were.
-    pub fn host_saved(&mut self, file: &Path, expansion: bool) -> Result<(), &'static str> {
+    pub fn host_saved(&mut self, file: &Path, game: &str, expansion: bool) -> Result<(), &'static str> {
         let bytes = std::fs::read(file).map_err(|_| "SAVE_ERROR_BAD_SAVE")?;
         let save = w3_game::save::SaveGame::parse(&bytes).map_err(|_| "SAVE_ERROR_BAD_SAVE")?;
         let players = save.players();
@@ -224,7 +224,7 @@ impl Lan {
                 handicap: 0,
             })
             .collect();
-        let game = file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let game = game.to_string();
         let ad = GameAd { name: game.clone(), host: self.name.clone(), map: map.clone(), players: 1, slots: slots.len() as u8, port: self.port, expansion, speed: 2, flags: crate::advanced::DEFAULT_FLAGS };
         let host = Host::new(ad).map_err(|e| {
             log::warn!("lan: hosting: {e}");
@@ -458,6 +458,16 @@ impl Lan {
     /// Whether the start's countdown is running.
     pub fn counting_down(&self) -> bool {
         self.countdown.is_some()
+    }
+
+    /// A hosted game's name: GAMENAME with the player's name, in 31 bytes
+    /// (CLocalMultiplayerCreate and CLocalMultiplayerLoad, FUN_6f2ea760).
+    pub fn game_name(&self, db: &FrameDb) -> String {
+        let mut s = db.string("GAMENAME").replacen("%s", &self.name, 1);
+        while s.len() > 31 {
+            s.pop();
+        }
+        s
     }
 
     /// The host starts the game.

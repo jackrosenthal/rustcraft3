@@ -2204,16 +2204,7 @@ impl Scene {
             }
         }
         if let Some(slot) = self.hud.as_ref().and_then(|h| h.inventory_at(ux, uy)) {
-            if let (Some(&u), Some(g)) = (self.selection.first(), self.game.as_mut()) {
-                if w3_game::natives::players::controls(&g.world, g.world.local_player, u) {
-                    // An item used on a unit or a point waits for the click on it.
-                    if g.world.item_targeting(u, slot) == w3_game::ability::Targeting::None {
-                        g.apply(w3_game::replay::Command::UseItem { unit: u, slot });
-                    } else {
-                        self.item_target = Some((u, slot));
-                    }
-                }
-            }
+            self.use_inventory_slot(slot);
             return true;
         }
         if let Some(b) = self.hud.as_ref().and_then(|h| h.button_at(ux, uy)).cloned() {
@@ -3865,6 +3856,21 @@ impl Scene {
             g.world.camera.pan_to(x, y, 0.0);
         }
         self.sync_camera();
+    }
+
+    /// Uses the item in an inventory slot of the selected unit, as a click on it does;
+    /// the number pad's 7, 8, 4, 5, 1, and 2 are the slots too (Tip50).
+    pub fn use_inventory_slot(&mut self, slot: usize) {
+        if let (Some(&u), Some(g)) = (self.selection.first(), self.game.as_mut()) {
+            if w3_game::natives::players::controls(&g.world, g.world.local_player, u) && g.world.unit(u).is_some_and(|un| un.inventory.get(slot).is_some_and(|&i| i != 0)) {
+                // An item used on a unit or a point waits for the click on it.
+                if g.world.item_targeting(u, slot) == w3_game::ability::Targeting::None {
+                    g.apply(w3_game::replay::Command::UseItem { unit: u, slot });
+                } else {
+                    self.item_target = Some((u, slot));
+                }
+            }
+        }
     }
 
     /// Zooming with the wheel.

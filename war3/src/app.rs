@@ -253,6 +253,12 @@ impl ApplicationHandler for App {
                                     KeyCode::Insert if !repeat => scene.rotate_key(1, true),
                                     KeyCode::Delete if !repeat => scene.rotate_key(2, true),
                                     KeyCode::Backspace => scene.town_hall_key(),
+                                    KeyCode::Numpad7 => scene.use_inventory_slot(0),
+                                    KeyCode::Numpad8 => scene.use_inventory_slot(1),
+                                    KeyCode::Numpad4 => scene.use_inventory_slot(2),
+                                    KeyCode::Numpad5 => scene.use_inventory_slot(3),
+                                    KeyCode::Numpad1 => scene.use_inventory_slot(4),
+                                    KeyCode::Numpad2 => scene.use_inventory_slot(5),
                                     _ => {}
                                 }
                             }

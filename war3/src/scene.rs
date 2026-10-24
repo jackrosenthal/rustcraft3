@@ -804,6 +804,7 @@ impl Scene {
                 self.ack(h, kind, None);
             }
         }
+        let listener = self.camera.target;
         let Some(audio) = self.audio.as_mut() else { return };
         let Some(g) = self.game.as_mut() else { return };
         for r in pending {
@@ -812,6 +813,14 @@ impl Scene {
                     let Some(w3_game::types::Obj::Sound(s)) = g.world.handles.get(h) else { continue };
                     let s = (**s).clone();
                     let pos = if s.is_3d { s.position.map(|p| [p.0, p.1, p.2]) } else { None };
+                    // CreateSound's stopWhenOutOfRange: a 3D sound beyond its cutoff from the
+                    // listener does not play.
+                    let cutoff = s.label.as_deref().and_then(|l| audio.def(l)).map_or(s.cutoff, |d| d.cutoff);
+                    if let (true, Some(p)) = (s.stop_when_out_of_range && cutoff > 0.0, pos) {
+                        if Vec3::from_array(p).distance(listener) > cutoff {
+                            continue;
+                        }
+                    }
                     let id = match (&s.label, s.path.is_empty()) {
                         // A label supplies the file list and parameters unless a file is named.
                         (Some(l), true) => audio.play_label(l, pos),
@@ -1017,6 +1026,10 @@ impl Scene {
         for (&h, o) in w.handles.iter() {
             if let w3_game::types::Obj::Ubersplat(s) = o {
                 if s.shown && (s.render || s.render_always) && s.age.is_some() {
+                    // CreateUbersplat's noBirthTime starts it past its birth.
+                    if s.no_birth {
+                        self.splat_births.entry(h).or_insert(f32::NEG_INFINITY);
+                    }
                     wanted.push((h, s.name.clone(), s.x, s.y, None, s.color.map(|c| c as f32 / 255.0)));
                 }
             }

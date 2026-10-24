@@ -79,6 +79,11 @@ impl LightningView {
         let mut live = Vec::new();
         for (&h, o) in world.handles.iter() {
             let w3_game::types::Obj::Lightning(l) = o else { continue };
+            // AddLightningEx's checkVisibility: shown only while the player sees an end.
+            let seen = |p: [f32; 3]| world.fog_state(p[0], p[1], world.local_player) == w3_game::fog::FOG_VISIBLE;
+            if l.check_visibility && !seen(l.from) && !seen(l.to) {
+                continue;
+            }
             live.push((h, l.code.clone(), Vec3::from_array(l.from), Vec3::from_array(l.to), l.color));
         }
         self.bolts.retain(|h, _| live.iter().any(|l| l.0 == *h));

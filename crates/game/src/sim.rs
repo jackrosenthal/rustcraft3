@@ -59,6 +59,8 @@ pub struct Missile {
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Weapon {
     pub range: f32,
+    /// The unit's minimum range (UnitWeapons minRange): nothing closer is attacked.
+    pub min_range: f32,
     pub cooldown: f32,
     pub damage_point: f32,
     pub backswing: f32,
@@ -105,6 +107,7 @@ pub fn weapon_n(w: &World, type_id: Id, n: usize) -> Option<Weapon> {
     };
     Some(Weapon {
         range: o.real(&f("rangeN")),
+        min_range: o.real("minRange"),
         cooldown: o.real(&f("cool")),
         damage_point: o.real(&f("dmgpt")),
         backswing: o.real(&f("backSw")),
@@ -151,6 +154,17 @@ pub fn unit_weapons(w: &World, u: &Unit) -> Vec<(u8, Weapon)> {
         .filter_map(|n| weapon_n(w, u.type_id, n as usize).map(|wp| (n, wp)))
         .filter(|(_, wp)| disarm & if wp.weapon_type == "normal" { 1 } else { 2 } == 0)
         .collect()
+}
+
+impl World {
+    /// Whether only the minimum range keeps a unit's weapons from a target.
+    fn inside_min_range(&self, h: u32, target: u32) -> bool {
+        let (Some(u), Some(t)) = (self.unit(h), self.unit(target)) else { return false };
+        if is_ally(self, u.owner, t.owner) || weapon_for(self, u, t).is_some() {
+            return false;
+        }
+        unit_weapons(self, u).into_iter().any(|(_, wp)| wp.min_range > 0.0 && can_target(self, &Weapon { min_range: 0.0, ..wp }, u, t))
+    }
 }
 
 /// The first of a unit's weapons that can hit a target.
@@ -208,6 +222,11 @@ pub fn final_damage(w: &World, raw: f32, attack_type: &str, target: &Unit) -> f3
 
 fn can_target(w: &World, wp: &Weapon, attacker: &Unit, t: &Unit) -> bool {
     if t.dead || t.hidden || w.unit_invulnerable(t) || w.is_locust(t) || t.handle == attacker.handle {
+        return false;
+    }
+    // Siege weapons cannot hit what is inside their minimum range (measured like
+    // their range, from edge to edge).
+    if wp.min_range > 0.0 && (t.x - attacker.x).hypot(t.y - attacker.y) - attacker.collision - w.reach_radius(t.handle) < wp.min_range {
         return false;
     }
     let flying = w.objects.units.get(t.type_id).is_some_and(|o| o.str("movetp").eq_ignore_ascii_case("fly"));
@@ -420,6 +439,12 @@ impl World {
             if self.autocast_order(h, name) || self.morph_order(h, name) || self.toggle_off_order(h, name) {
                 return;
             }
+        }
+        // An attack on a unit only a weapon's minimum range keeps it from is refused
+        // ("Target is inside minimum range."), the unit free to choose another.
+        if (order == attack || order == smart) && target != 0 && self.inside_min_range(h, target) {
+            self.order_error = Some("UnderRange");
+            return;
         }
         let action = if order == stop {
             Action::Idle
@@ -1170,8 +1195,14 @@ impl World {
                         let range = self.unit(h).map_or(0.0, |u| u.acquire_range);
                         let range = if matches!(action, Action::Hold) { wp.as_ref().map_or(0.0, |w| w.range) } else { range };
                         if let Some(t) = self.find_target(h, range) {
+                            let attack = crate::natives::basic::order_id("attack");
                             if let Some(u) = self.unit_mut(h) {
                                 u.action = if matches!(action, Action::Hold) { Action::Hold } else { Action::Attack { target: t } };
+                                // An idle unit that takes up a target is under an attack
+                                // order (GetUnitCurrentOrder reads attack, as measured).
+                                if !matches!(action, Action::Hold) {
+                                    u.order = Order { id: attack, target_x: 0.0, target_y: 0.0, target: t };
+                                }
                             }
                             self.acquired(h, t);
                             self.spell_ai(h, t, h);

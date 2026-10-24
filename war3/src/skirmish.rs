@@ -87,6 +87,10 @@ pub struct MapSummary {
     pub info: MapInfo,
     pub strings: HashMap<u32, String>,
     pub preview: Option<w3_formats::blp::Image>,
+    /// The map carries a strong signature (the 'NGIS' block after the archive, as
+    /// Blizzard's maps do), for the pane's AuthIcon.  The original also checks the
+    /// signature against Blizzard's key; this takes its presence.
+    pub signed: bool,
 }
 
 impl MapSummary {
@@ -152,6 +156,9 @@ const CAMPAIGN_LIST: &str = "FileListFrame#campaigns";
 
 /// Height of a map list row and its text, in interface units.
 const ROW: f32 = 0.0195;
+/// CMapList's margins and row height (its +0x200..+0x20c and +0x230).
+const MAP_LIST_INSET: f32 = 0.013125;
+const MAP_ROW: f32 = 0.02;
 const ROW_FONT: f32 = 0.012;
 
 impl Skirmish {
@@ -530,6 +537,12 @@ impl Skirmish {
                 }
             }
         }
+        // CMapList sets its scroll bar inside its margins, the list's height less them.
+        use w3_ui::FramePoint as FP;
+        tree.set_point("MapListScrollBar", FP::TopRight, "MapListBox", FP::TopRight, -MAP_LIST_INSET, -MAP_LIST_INSET);
+        tree.set_point("MapListScrollBar", FP::BottomRight, "MapListBox", FP::BottomRight, -MAP_LIST_INSET, MAP_LIST_INSET);
+        // It starts at the list's top (CMapList::vf55 sets 1.0).
+        tree.set_value("MapListScrollBar", 1.0);
         Self::layout_info(tree);
         if self.entries.is_empty() {
             self.scan();
@@ -570,6 +583,18 @@ impl Skirmish {
 
     /// Writes the selected map's details into MapInfoPane's text frames.
     fn fill_info(&self, tree: &mut FrameTree, db: &FrameDb) {
+        // The list's scroll bar shows only when its rows outgrow it (an empty saved
+        // games list has none, as in the original).
+        let rows = tree.get(self.list_frame.split('#').next().unwrap_or_default()).and_then(|i| tree.frames[i].rect).map(|r| ((r.h() - 2.0 * MAP_LIST_INSET) / self.row_h()) as usize);
+        tree.set_visible("MapListScrollBar", rows.map_or(!self.entries.is_empty(), |n| self.entries.len() > n));
+        // Its value runs from 1 at the list's top to 0 at its end (FUN_6f2ac2a0).
+        if let Some(n) = rows.filter(|&n| self.entries.len() > n) {
+            tree.set_value("MapListScrollBar", 1.0 - self.scroll as f32 / (self.entries.len() - n) as f32);
+        }
+        // The player count and the Blizzard logo show only with a map, the logo only
+        // for a signed one.
+        tree.set_visible("MaxPlayersIcon", self.summary.is_some());
+        tree.set_visible("AuthIcon", self.summary.as_ref().is_some_and(|s| s.signed));
         let Some(s) = &self.summary else {
             for f in ["MapNameValue", "SuggestedPlayersValue", "MapSizeValue", "MapTilesetValue", "MapDescValue", "MaxPlayersValue"] {
                 tree.set_text(f, "");
@@ -603,13 +628,18 @@ impl Skirmish {
         let _ = db;
     }
 
+    /// The list's row height: the map list's (CMapList), or the saved games list's.
+    fn row_h(&self) -> f32 {
+        if self.list_frame == "MapListContainer" { MAP_ROW } else { ROW }
+    }
+
     /// A click in the map list: selects a row; a click on the selected folder opens it.
     pub fn click(&mut self, tree: &mut FrameTree, db: &FrameDb, x: f32, y: f32) {
         let Some(r) = self.list else { return };
         if !r.contains(x, y) {
             return;
         }
-        let row = ((r.y1 - y) / ROW) as usize + self.scroll;
+        let row = ((r.y1 - y) / self.row_h()) as usize + self.scroll;
         if row >= self.entries.len() {
             return;
         }
@@ -669,14 +699,21 @@ impl Skirmish {
         // Rows sit inside the list's border, left of its scroll bar; the saved games list
         // (measured from the original) runs nearly to the border, in larger text.
         let saves = self.list_frame != "MapListContainer";
-        let inner = Rect { x0: container.x0 + 0.012, x1: container.x1 - if saves { 0.0125 } else { 0.03 }, y0: container.y0 + 0.008, y1: container.y1 - 0.008 };
+        // The map list (CMapList) keeps 0.013125 inside its border on every side, its
+        // rows 0.02 tall, and its scroll bar inside the same margins (FUN_6f2abb20).
+        let inner = if saves {
+            Rect { x0: container.x0 + 0.012, x1: container.x1 - 0.0125, y0: container.y0 + 0.008, y1: container.y1 - 0.008 }
+        } else {
+            Rect { x0: container.x0 + MAP_LIST_INSET, x1: container.x1 - MAP_LIST_INSET - 0.0165, y0: container.y0 + MAP_LIST_INSET, y1: container.y1 - MAP_LIST_INSET }
+        };
         self.list = Some(inner);
-        let rows = (inner.h() / ROW) as usize;
+        let row_h = if saves { ROW } else { MAP_ROW };
+        let rows = (inner.h() / row_h) as usize;
         let row_font = if saves { 0.0135 } else { ROW_FONT };
         let font = db.decorate("MasterFont");
         for (k, e) in self.entries.iter().enumerate().skip(self.scroll).take(rows) {
-            let y1 = inner.y1 - (k - self.scroll) as f32 * ROW;
-            let row = Rect { x0: inner.x0, x1: inner.x1, y0: y1 - ROW, y1 };
+            let y1 = inner.y1 - (k - self.scroll) as f32 * row_h;
+            let row = Rect { x0: inner.x0, x1: inner.x1, y0: y1 - row_h, y1 };
             if self.selected == Some(k) {
                 out.push(Draw::Image { texture: String::new(), rect: row, uv: [0.0, 0.0, 1.0, 1.0], color: [0.0, 0.0, 0.8, 0.8], blend: w3_ui::Blend::Alpha, rotated: false });
             }
@@ -730,14 +767,24 @@ pub fn summarize_path(path: &Path) -> Option<MapSummary> {
 /// Reads a map's w3i, trigger strings, and optionally its preview image.
 fn summarize(path: &Path, preview: bool) -> Option<MapSummary> {
     let ar = w3_mpq::Archive::open(path).ok()?;
-    summarize_archive(&ar, preview)
+    let mut s = summarize_archive(&ar, preview)?;
+    s.signed = strongly_signed(path);
+    Some(s)
+}
+
+/// Whether a file ends in a strong signature block: 'NGIS' and 256 bytes.
+fn strongly_signed(path: &Path) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut f) = std::fs::File::open(path) else { return false };
+    let mut tag = [0u8; 4];
+    f.seek(SeekFrom::End(-260)).is_ok() && f.read_exact(&mut tag).is_ok() && &tag == b"NGIS"
 }
 
 fn summarize_archive(ar: &w3_mpq::Archive, preview: bool) -> Option<MapSummary> {
     let info = MapInfo::parse(&ar.read("war3map.w3i").ok()?).ok()?;
     let strings = ar.read("war3map.wts").ok().map(|b| w3_formats::map::parse_wts(&String::from_utf8_lossy(&b))).unwrap_or_default();
     let preview = if preview { ar.read("war3mapMap.blp").ok().and_then(|b| w3_formats::blp::decode_texture("war3mapMap.blp", &b).ok()).and_then(|m| m.into_iter().next()) } else { None };
-    Some(MapSummary { info, strings, preview })
+    Some(MapSummary { info, strings, preview, signed: false })
 }
 
 /// The run-time texture holding the selected map's preview.

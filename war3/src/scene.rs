@@ -2810,7 +2810,7 @@ impl Scene {
     }
 
     /// The game menu's buttons (CEscMenuMainPanel).
-    fn menu_button(&mut self, name: &str) {
+    pub fn menu_button(&mut self, name: &str) {
         let Some(h) = self.hud.as_mut() else { return };
         let Some(m) = h.menu.as_mut() else { return };
         match name {

@@ -437,6 +437,13 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 3;
             }
+            // menubutton <name>: presses a game menu button.
+            "menubutton" => {
+                scene.update_menu(&assets.frames, w as f32 / h as f32);
+                scene.menu_button(&a[i + 1]);
+                scene.update_menu(&assets.frames, w as f32 / h as f32);
+                i += 2;
+            }
             "menu" => {
                 scene.open_menu((w as u32, h as u32));
                 i += 1;

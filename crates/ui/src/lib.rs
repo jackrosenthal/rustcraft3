@@ -381,7 +381,9 @@ impl FrameTree {
             enabled: true,
             model: d.str("BackgroundArt").map(|s| if d.has("DecorateFileNames") { db.decorate(s) } else { s.to_string() }),
             checked: false,
-            value: d.num("SliderInitialValue").unwrap_or(0.0),
+            // A scroll bar starts at its top (its highest value), as the original's lists
+            // and text areas set it.
+            value: d.num("SliderInitialValue").unwrap_or(if d.kind == "SCROLLBAR" { 1.0 } else { 0.0 }),
             texture: None,
             scope: scope.to_string(),
             items: Vec::new(),
@@ -501,6 +503,54 @@ impl FrameTree {
             }
             if !progress {
                 break;
+            }
+        }
+        self.place_scroll_bar_parts();
+    }
+
+    /// A vertical scroll bar's parts: its ScrollBarIncButtonFrame (the up arrow) at its
+    /// top, its ScrollBarDecButtonFrame at its bottom, both centered, and its
+    /// SliderThumbButtonFrame between them, at the top for its highest value.  Each part's
+    /// own children (its backdrops) take the part's place.
+    fn place_scroll_bar_parts(&mut self) {
+        for i in 0..self.frames.len() {
+            if self.frames[i].def.kind != "SCROLLBAR" {
+                continue;
+            }
+            let Some(r) = self.frames[i].rect else { continue };
+            let part = |key: &str| self.frames[i].def.str(key).and_then(|n| self.frames[i].children.iter().copied().find(|&c| self.frames[c].def.name == n));
+            let sizes: Vec<(f32, f32)> = self.frames.iter().map(|f| (f.def.num("Width").unwrap_or(0.015), f.def.num("Height").unwrap_or(0.015))).collect();
+            let size = |c: usize| sizes[c];
+            let (inc, dec, thumb) = (part("ScrollBarIncButtonFrame"), part("ScrollBarDecButtonFrame"), part("SliderThumbButtonFrame"));
+            let cx = (r.x0 + r.x1) / 2.0;
+            let mut top = r.y1;
+            let mut bottom = r.y0;
+            let set = |tree: &mut Self, c: usize, rect: Rect| {
+                tree.frames[c].rect = Some(rect);
+                let mut stack: Vec<usize> = tree.frames[c].children.clone();
+                while let Some(k) = stack.pop() {
+                    if tree.frames[k].points.is_empty() {
+                        tree.frames[k].rect = Some(rect);
+                        stack.extend(tree.frames[k].children.clone());
+                    }
+                }
+            };
+            if let Some(c) = inc {
+                let (w, h) = size(c);
+                set(self, c, Rect { x0: cx - w / 2.0, x1: cx + w / 2.0, y0: r.y1 - h, y1: r.y1 });
+                top -= h;
+            }
+            if let Some(c) = dec {
+                let (w, h) = size(c);
+                set(self, c, Rect { x0: cx - w / 2.0, x1: cx + w / 2.0, y0: r.y0, y1: r.y0 + h });
+                bottom += h;
+            }
+            if let Some(c) = thumb {
+                let (w, h) = (self.frames[c].def.num("Width").unwrap_or(0.01), self.frames[c].def.num("Height").unwrap_or(0.01));
+                let (min, max, _) = self.slider_range(i);
+                let k = if max > min { ((self.frames[i].value - min) / (max - min)).clamp(0.0, 1.0) } else { 1.0 };
+                let y1 = bottom + h + k * ((top - bottom) - h).max(0.0);
+                set(self, c, Rect { x0: cx - w / 2.0, x1: cx + w / 2.0, y0: y1 - h, y1 });
             }
         }
     }
@@ -1092,8 +1142,10 @@ impl FrameTree {
             return;
         }
         for &c in &f.children {
-            // Control state backdrops are drawn by their owning control.
-            if self.is_state_backdrop(i, c) {
+            // Control state backdrops are drawn by their owning control; a scroll bar's
+            // thumb is a part of its own, placed by place_scroll_bar_parts.
+            let thumb = f.def.kind == "SCROLLBAR" && f.def.str("SliderThumbButtonFrame") == Some(self.frames[c].def.name.as_str());
+            if self.is_state_backdrop(i, c) && !thumb {
                 continue;
             }
             self.draw_frame(db, c, out);

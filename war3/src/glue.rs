@@ -660,6 +660,8 @@ impl Glue {
         if self.tree.create(db, "Loading", 0).is_none() {
             return;
         }
+        // While loading the bar reads LOADING_LOADING (CLoading state 0, FUN_6f304a20).
+        self.tree.set_text("LoadingBarText", &db.string("LOADING_LOADING"));
         let summary = self.skirmish.summary.clone().unwrap_or_default();
         let info = &summary.info;
         let text = |s: &str| match s.strip_prefix("TRIGSTR_").and_then(|n| n.parse::<u32>().ok()) {

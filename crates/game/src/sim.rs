@@ -705,6 +705,10 @@ impl World {
         let mut best: Option<(f32, u32)> = None;
         for &t in &self.unit_order {
             let Some(tu) = self.unit(t) else { continue };
+            // Out of range first: the other tests cost more.
+            if (tu.x - u.x).abs() > range || (tu.y - u.y).abs() > range {
+                continue;
+            }
             if is_ally(self, u.owner, tu.owner) || !weapons.iter().any(|(_, wp)| can_target(self, wp, u, tu)) {
                 continue;
             }

@@ -2372,10 +2372,11 @@ impl Scene {
     /// A key press: command card hotkeys and Escape.
     /// Plays as a network game: the interface's commands go to the host, and the game
     /// moves only by the host's frames.
-    pub fn start_net(&mut self, role: crate::net::Role) {
+    pub fn start_net(&mut self, role: crate::net::Role, speed: u8) {
         if let Some(g) = self.game.as_mut() {
             g.outbox = Some(Vec::new());
             g.world.network = true;
+            g.world.game_speed = speed as i32;
         }
         self.net = Some(crate::net::Session::new(role));
     }

@@ -19,8 +19,9 @@ pub enum Event {
     Lobby,
     /// Back to the game list, with a message to show (a NETERROR key), if any.
     Joining(Option<&'static str>),
-    /// The game begins: its map, the setup for this computer, and how it plays.
-    Start(PathBuf, Vec<w3_game::LobbySlot>, net::Role),
+    /// The game begins: its map, the setup for this computer, how it plays, and its
+    /// speed.
+    Start(PathBuf, Vec<w3_game::LobbySlot>, net::Role, u8),
 }
 
 pub struct Lan {
@@ -60,14 +61,14 @@ impl Lan {
     }
 
     /// The game list screen: searching starts.
-    pub fn attach_join(&mut self, tree: &mut FrameTree, port: u16) {
+    pub fn attach_join(&mut self, tree: &mut FrameTree, db: &FrameDb, port: u16) {
         self.port = port;
         if self.browser.is_none() {
             self.browser = Browser::new(port).map_err(|e| log::warn!("lan: {e}")).ok();
         }
         self.selected = None;
         tree.set_enabled("LoadButton", false);
-        self.sync_join(tree);
+        self.sync_join(tree, db);
     }
 
     pub fn detach(&mut self) {
@@ -78,9 +79,10 @@ impl Lan {
         self.browser.as_ref().map_or(&[], |b| &b.games)
     }
 
-    fn sync_join(&self, tree: &mut FrameTree) {
+    fn sync_join(&self, tree: &mut FrameTree, db: &FrameDb) {
         let ad = self.selected.and_then(|k| self.games().get(k)).map(|g| &g.1);
         tree.set_text("GameCreatorValue", ad.map_or("", |a| a.host.as_str()));
+        tree.set_text("GameSpeedValue", &ad.map_or(String::new(), |a| db.string(speed_key(a.speed))));
         tree.set_enabled("JoinButton", ad.is_some() && !self.name.trim().is_empty());
         tree.set_enabled("CreateButton", !self.name.trim().is_empty());
     }
@@ -92,7 +94,7 @@ impl Lan {
             b.poll();
             if b.games.len() != before {
                 self.selected = self.selected.filter(|&k| k < b.games.len());
-                self.sync_join(tree);
+                self.sync_join(tree, db);
             }
         }
         if self.host.is_some() {
@@ -105,7 +107,7 @@ impl Lan {
     }
 
     /// Typing goes to the name on the game list, to the chat line in the lobby.
-    pub fn key(&mut self, c: char, tree: &mut FrameTree, lobby: bool) -> bool {
+    pub fn key(&mut self, c: char, tree: &mut FrameTree, db: &FrameDb, lobby: bool) -> bool {
         let (text, max) = if lobby { (&mut self.line, 255) } else { (&mut self.name, NAME_LEN) };
         match c {
             '\u{8}' => {
@@ -121,13 +123,13 @@ impl Lan {
             _ => return false,
         }
         if !lobby {
-            self.sync_join(tree);
+            self.sync_join(tree, db);
         }
         true
     }
 
     /// A click in the game list chooses a game.
-    pub fn click(&mut self, tree: &mut FrameTree, x: f32, y: f32) {
+    pub fn click(&mut self, tree: &mut FrameTree, db: &FrameDb, x: f32, y: f32) {
         let Some(r) = self.list else { return };
         if !r.contains(x, y) {
             return;
@@ -136,12 +138,12 @@ impl Lan {
         if k < self.games().len() {
             self.selected = Some(k);
             self.summary_due = Some(self.map_path(&self.games()[k].1.map));
-            self.sync_join(tree);
+            self.sync_join(tree, db);
         }
     }
 
     /// Hosts a game on a map, its user slots open for others, the host in the first.
-    pub fn host_game(&mut self, map: &Path, summary: &crate::skirmish::MapSummary, game: &str, expansion: bool) -> Result<(), &'static str> {
+    pub fn host_game(&mut self, map: &Path, summary: &crate::skirmish::MapSummary, game: &str, expansion: bool, speed: u8) -> Result<(), &'static str> {
         let slots: Vec<NetSlot> = summary
             .info
             .players
@@ -158,12 +160,12 @@ impl Lan {
                 handicap: 0,
             })
             .collect();
-        let ad = GameAd { name: game.to_string(), host: self.name.clone(), map: self.map_name(map), players: 1, slots: slots.len() as u8, port: self.port, expansion };
+        let ad = GameAd { name: game.to_string(), host: self.name.clone(), map: self.map_name(map), players: 1, slots: slots.len() as u8, port: self.port, expansion, speed };
         let host = Host::new(ad.clone()).map_err(|e| {
             log::warn!("lan: hosting: {e}");
             "NETERROR_CREATEGAMEFAILED"
         })?;
-        self.setup = Setup { game: game.to_string(), map: ad.map, slots };
+        self.setup = Setup { game: game.to_string(), map: ad.map, slots, speed };
         self.host = Some(host);
         self.me = 0;
         self.chat.clear();
@@ -298,7 +300,7 @@ impl Lan {
                     self.setup = s;
                     let conn = self.conn.take()?;
                     let (map, lobby) = self.start_setup();
-                    return Some(Event::Start(map, lobby, net::Role::Client { conn }));
+                    return Some(Event::Start(map, lobby, net::Role::Client { conn }, self.setup.speed));
                 }
                 Msg::Leave => {
                     self.conn = None;
@@ -324,7 +326,7 @@ impl Lan {
         });
         let peers = peers.collect();
         let (map, lobby) = self.start_setup();
-        Some(Event::Start(map, lobby, net::Role::Host { host: h, pending: Vec::new(), peers }))
+        Some(Event::Start(map, lobby, net::Role::Host { host: h, pending: Vec::new(), peers }, self.setup.speed))
     }
 
     /// The setup as this computer plays it: its own slot local, other people remote.
@@ -489,6 +491,15 @@ impl Lan {
             let rect = Rect { x0: r.x0 + inset, x1: r.x1 - inset, ..r };
             out.push(Draw::Text { font: font.clone(), size, rect, text: format!("{text}|"), color: [1.0; 4], justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
         }
+    }
+}
+
+/// The speed's GlobalStrings name.
+pub fn speed_key(speed: u8) -> &'static str {
+    match speed {
+        0 => "SLOW",
+        1 => "NORMAL",
+        _ => "FAST",
     }
 }
 

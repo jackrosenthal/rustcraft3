@@ -36,8 +36,8 @@ fn main() -> anyhow::Result<()> {
                 while t < secs {
                     glue.update(0.02, &mut assets);
                     shot(&device, &queue, &mut glue, &mut assets, format, w, h, "")?;
-                    if let Some(war3::glue::GlueAction::PlayNet(map, lobby, role)) = glue.action.take() {
-                        return net_game(&device, &queue, format, &data, &mut assets, &map, &lobby, role.borrow_mut().take(), w, h);
+                    if let Some(war3::glue::GlueAction::PlayNet(map, lobby, role, speed)) = glue.action.take() {
+                        return net_game(&device, &queue, format, &data, &mut assets, &map, &lobby, role.borrow_mut().take(), speed, w, h);
                     }
                     t += 0.02;
                 }
@@ -48,8 +48,8 @@ fn main() -> anyhow::Result<()> {
                 let end = std::time::Instant::now() + std::time::Duration::from_secs_f32(a[i + 1].parse()?);
                 while std::time::Instant::now() < end {
                     glue.update(0.02, &mut assets);
-                    if let Some(war3::glue::GlueAction::PlayNet(map, lobby, role)) = glue.action.take() {
-                        return net_game(&device, &queue, format, &data, &mut assets, &map, &lobby, role.borrow_mut().take(), w, h);
+                    if let Some(war3::glue::GlueAction::PlayNet(map, lobby, role, speed)) = glue.action.take() {
+                        return net_game(&device, &queue, format, &data, &mut assets, &map, &lobby, role.borrow_mut().take(), speed, w, h);
                     }
                     std::thread::sleep(std::time::Duration::from_millis(20));
                 }
@@ -62,8 +62,8 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("clicked {clicked:?}");
                 match glue.action.take() {
                     Some(war3::glue::GlueAction::Play(..)) => glue.show_loading(&mut assets),
-                    Some(war3::glue::GlueAction::PlayNet(map, lobby, role)) => {
-                        return net_game(&device, &queue, format, &data, &mut assets, &map, &lobby, role.borrow_mut().take(), w, h);
+                    Some(war3::glue::GlueAction::PlayNet(map, lobby, role, speed)) => {
+                        return net_game(&device, &queue, format, &data, &mut assets, &map, &lobby, role.borrow_mut().take(), speed, w, h);
                     }
                     Some(war3::glue::GlueAction::Campaign(map)) => {
                         eprintln!("campaign mission {map}");
@@ -185,10 +185,10 @@ fn shot(device: &wgpu::Device, queue: &wgpu::Queue, glue: &mut Glue, assets: &mu
 /// A network game the glue started: plays it in real time for W3NETPLAY seconds (20
 /// without), then prints the players and a digest of the game to compare.
 #[allow(clippy::too_many_arguments)]
-fn net_game(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, data: &GameData, assets: &mut Assets, map: &Path, lobby: &[w3_game::LobbySlot], role: Option<war3::net::Role>, w: u32, h: u32) -> anyhow::Result<()> {
+fn net_game(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, data: &GameData, assets: &mut Assets, map: &Path, lobby: &[w3_game::LobbySlot], role: Option<war3::net::Role>, speed: u8, w: u32, h: u32) -> anyhow::Result<()> {
     let mut scene = war3::scene::Scene::load(device, queue, format, data, assets, map, w as f32 / h as f32, Some(lobby), None, None)?;
     if let Some(r) = role {
-        scene.start_net(r);
+        scene.start_net(r, speed);
     }
     // W3NETFRAMES: the frames to play before comparing (400 without).
     let frames: u32 = std::env::var("W3NETFRAMES").ok().and_then(|s| s.parse().ok()).unwrap_or(400);

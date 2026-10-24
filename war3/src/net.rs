@@ -32,6 +32,8 @@ pub struct GameAd {
     pub slots: u8,
     pub port: u16,
     pub expansion: bool,
+    /// Slow (0), normal (1), or fast (2).
+    pub speed: u8,
 }
 
 /// Who holds a slot of the game setup.
@@ -64,6 +66,8 @@ pub struct Setup {
     pub game: String,
     pub map: String,
     pub slots: Vec<NetSlot>,
+    /// Slow (0), normal (1), or fast (2).
+    pub speed: u8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

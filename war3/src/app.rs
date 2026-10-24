@@ -29,7 +29,7 @@ struct Running {
     /// A replay to watch on the pending map.
     pending_replay: Option<w3_game::replay::Replay>,
     /// The network game the pending map is for.
-    pending_net: Option<crate::net::Role>,
+    pending_net: Option<(crate::net::Role, u8)>,
     /// A loaded campaign mission waiting for a key on its loading screen.
     ready: Option<Scene>,
     /// Sound output, handed to each game.
@@ -480,12 +480,12 @@ impl ApplicationHandler for App {
                             Ok(replay) => glue.action = Some(crate::glue::GlueAction::PlayReplay(Box::new(replay))),
                             Err(e) => log::error!("replay {}: {e:#}", file.display()),
                         },
-                        Some(crate::glue::GlueAction::PlayNet(path, slots, role)) => {
+                        Some(crate::glue::GlueAction::PlayNet(path, slots, role, speed)) => {
                             self.data.campaign_game.set(false);
                             glue.skirmish.summary = crate::skirmish::summarize_path(&path);
                             glue.show_loading(&mut r.assets);
                             r.pending = Some((path, Some(slots), None));
-                            r.pending_net = role.borrow_mut().take();
+                            r.pending_net = role.borrow_mut().take().map(|r| (r, speed));
                         }
                         Some(crate::glue::GlueAction::PlayReplay(replay)) => {
                             match Ok::<_, anyhow::Error>(*replay) {
@@ -506,8 +506,8 @@ impl ApplicationHandler for App {
                             let replay = r.pending_replay.take();
                             match Scene::load(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets, &path, aspect, slots.as_deref(), restore, replay) {
                                 Ok(mut s) => {
-                                    if let Some(role) = r.pending_net.take() {
-                                        s.start_net(role);
+                                    if let Some((role, speed)) = r.pending_net.take() {
+                                        s.start_net(role, speed);
                                     }
                                     if self.data.campaign_game.get() {
                                         // Campaign missions wait on their loading screen for a

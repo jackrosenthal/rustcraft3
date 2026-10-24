@@ -28,7 +28,7 @@ pub enum GlueAction {
     /// A replay to watch (again).
     PlayReplay(Box<w3_game::replay::Replay>),
     /// A network game: its map, this computer's setup, and how it plays.
-    PlayNet(std::path::PathBuf, Vec<w3_game::LobbySlot>, std::rc::Rc<std::cell::RefCell<Option<crate::net::Role>>>),
+    PlayNet(std::path::PathBuf, Vec<w3_game::LobbySlot>, std::rc::Rc<std::cell::RefCell<Option<crate::net::Role>>>, u8),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -345,14 +345,15 @@ impl Glue {
             }
             Screen::LanJoin => {
                 let port = crate::net::port(&self.options);
-                self.lan.attach_join(&mut self.tree, port);
+                self.lan.attach_join(&mut self.tree, db, port);
                 self.skirmish.attach_pane(&mut self.tree, db, None);
             }
             Screen::LanCreate => {
                 self.skirmish.detach_saves();
                 self.skirmish.attach(&mut self.tree, db);
                 self.tree.set_visible("AdvancedOptionsPanel", false);
-                self.tree.set_enabled("GameSpeedSlider", false);
+                self.tree.set_value("GameSpeedSlider", 2.0);
+                self.tree.set_text("GameSpeedValue", &db.string("FAST"));
             }
             Screen::LanLobby => {
                 self.lan.rebuild = false;
@@ -622,7 +623,7 @@ impl Glue {
             self.skirmish.click(&mut self.tree, &assets.frames, x, y);
         }
         if self.screen == Screen::LanJoin {
-            self.lan.click(&mut self.tree, x, y);
+            self.lan.click(&mut self.tree, &assets.frames, x, y);
             if let Some(map) = self.lan.summary_due.take() {
                 self.skirmish.show_map(&mut self.tree, &assets.frames, Some(&map));
             }
@@ -673,9 +674,9 @@ impl Glue {
                     self.show_dialog(&text, false, DialogAction::Notice, assets);
                 }
             }
-            crate::lan::Event::Start(map, lobby, role) => {
+            crate::lan::Event::Start(map, lobby, role, speed) => {
                 self.lan.detach();
-                self.action = Some(GlueAction::PlayNet(map, lobby, std::rc::Rc::new(std::cell::RefCell::new(Some(role)))));
+                self.action = Some(GlueAction::PlayNet(map, lobby, std::rc::Rc::new(std::cell::RefCell::new(Some(role))), speed));
             }
         }
     }
@@ -766,7 +767,7 @@ impl Glue {
                 return;
             }
         }
-        if matches!(self.screen, Screen::LanJoin | Screen::LanLobby) && c != '\u{1b}' && self.lan.key(c, &mut self.tree, self.screen == Screen::LanLobby) {
+        if matches!(self.screen, Screen::LanJoin | Screen::LanLobby) && c != '\u{1b}' && self.lan.key(c, &mut self.tree, &assets.frames, self.screen == Screen::LanLobby) {
             return;
         }
         if c == '\u{1b}' {
@@ -887,13 +888,18 @@ impl Glue {
             (Screen::LanCreate, "PlayButton") => {
                 let (Some(map), Some(summary)) = (self.skirmish.selected_map(), self.skirmish.summary.clone()) else { return };
                 let game = assets.frames.string("LOCAL_GAME");
-                match self.lan.host_game(&map, &summary, &game, self.version == crate::data::Version::FrozenThrone) {
+                let speed = self.tree.value("GameSpeedSlider").round().clamp(0.0, 2.0) as u8;
+                match self.lan.host_game(&map, &summary, &game, self.version == crate::data::Version::FrozenThrone, speed) {
                     Ok(()) => self.show(Screen::LanLobby, assets),
                     Err(key) => {
                         let text = assets.frames.string(key);
                         self.show_dialog(&text, false, DialogAction::Notice, assets);
                     }
                 }
+            }
+            (Screen::LanCreate, "GameSpeedSlider") => {
+                let speed = self.tree.value("GameSpeedSlider").round().clamp(0.0, 2.0) as u8;
+                self.tree.set_text("GameSpeedValue", &assets.frames.string(crate::lan::speed_key(speed)));
             }
             (Screen::LanCreate, other) => self.skirmish.button(&mut self.tree, &assets.frames, other),
             (Screen::LanLobby, "CancelButton") => {

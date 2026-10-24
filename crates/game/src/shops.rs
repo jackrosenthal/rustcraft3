@@ -227,14 +227,16 @@ impl World {
     /// Gold, lumber, and seconds to revive a hero: its cost times ReviveBaseFactor plus
     /// ReviveLevelFactor per level past the first, capped by ReviveMaxFactor, rounded
     /// to a multiple of 5 and capped by the HeroMaxRevive* limits (FUN_6f3f99b0); time is
-    /// its build time times level times ReviveTimeFactor.
+    /// its build time times level times ReviveTimeFactor (at most ReviveMaxTimeFactor),
+    /// cut to a multiple of 5, at least 1 and at most HeroMaxReviveTime (FUN_6f42cd30).
     pub fn revive_cost(&self, hero: u32) -> (i32, i32, f32) {
         let Some(u) = self.unit(hero) else { return (0, 0, 0.0) };
         let Some(o) = self.objects.units.get(u.type_id) else { return (0, 0, 0.0) };
         let level = u.level.max(1) as f32;
         let m = |k: &str, d: f32| self.misc_f32(k, d);
         let (gold, lumber) = self.hero_cost(hero, "Revive", "HeroMaxRevive");
-        let time = (o.real("bldtm") * level * m("ReviveTimeFactor", 0.65)).min(m("HeroMaxReviveTime", 150.0));
+        let factor = (level * m("ReviveTimeFactor", 0.65)).min(m("ReviveMaxTimeFactor", 2.0));
+        let time = (((factor * o.int("bldtm") as f32) / 5.0).trunc() * 5.0).max(1.0).min(m("HeroMaxReviveTime", 150.0));
         (gold, lumber, time)
     }
 

@@ -135,6 +135,15 @@ pub struct Skirmish {
     replay_players: Option<usize>,
 }
 
+/// Each team setup row's color button shows its player color.
+pub fn color_draws(tree: &FrameTree, colors: impl Iterator<Item = i32>, out: &mut Vec<Draw>) {
+    for (k, color) in colors.enumerate() {
+        if let Some(r) = tree.get(&format!("ColorButtonValue#{k}")).filter(|&i| tree.is_visible(i)).and_then(|i| tree.frames[i].rect) {
+            out.push(Draw::Image { texture: format!("ReplaceableTextures\\TeamColor\\TeamColor{color:02}.blp"), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+        }
+    }
+}
+
 /// The Custom Campaign screen's list frame (as on the Load Saved Game screen, whose
 /// list is also FileListFrame, the mode is told apart by this name).
 const CAMPAIGN_LIST: &str = "FileListFrame#campaigns";
@@ -456,6 +465,26 @@ impl Skirmish {
         (e.kind == EntryKind::Replay).then(|| e.path.clone())
     }
 
+    /// MapInfoPane in a screen's MapInfoPaneContainer, showing a map.
+    pub fn attach_pane(&mut self, tree: &mut FrameTree, db: &FrameDb, map: Option<&Path>) {
+        if let (Some(parent), true) = (tree.get("MapInfoPaneContainer"), db.templates.contains_key("MapInfoPane")) {
+            if let Some(i) = tree.create(db, "MapInfoPane", parent) {
+                tree.frames[i].all_points = true;
+            }
+        }
+        Self::layout_info(tree);
+        self.show_map(tree, db, map);
+    }
+
+    /// The pane shows a map (a file or one in the game's archives), or nothing.
+    pub fn show_map(&mut self, tree: &mut FrameTree, db: &FrameDb, map: Option<&Path>) {
+        self.campaign = None;
+        self.replay_players = None;
+        self.summary = map.and_then(|p| if p.is_file() { summarize(p, true) } else { self.chain.as_ref().and_then(|c| summarize_from(c, &p.to_string_lossy())) });
+        self.preview_dirty = true;
+        self.fill_info(tree, db);
+    }
+
     /// Back to the Custom Game screen's map list.
     pub fn detach_saves(&mut self) {
         if self.list_frame != "MapListContainer" {
@@ -619,6 +648,11 @@ impl Skirmish {
 
     /// The map list rows and the map preview.
     pub fn draws(&mut self, tree: &FrameTree, db: &FrameDb, out: &mut Vec<Draw>) {
+        self.list_draws(tree, db, out);
+        self.preview_draws(tree, out);
+    }
+
+    fn list_draws(&mut self, tree: &FrameTree, db: &FrameDb, out: &mut Vec<Draw>) {
         let Some(container) = tree.get(self.list_frame.split('#').next().unwrap_or_default()).and_then(|i| tree.frames[i].rect) else { return };
         // Rows sit inside the list's border, left of its scroll bar; the saved games list
         // (measured from the original) runs nearly to the border, in larger text.
@@ -652,11 +686,11 @@ impl Skirmish {
             out.push(Draw::Text { font: font.clone(), size: row_font, rect: tr, text: e.name.clone(), color, justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
         }
         // Each slot's color button shows the player color.
-        for (k, s) in self.slots.iter().enumerate() {
-            if let Some(r) = tree.get(&format!("ColorButtonValue#{k}")).filter(|&i| tree.is_visible(i)).and_then(|i| tree.frames[i].rect) {
-                out.push(Draw::Image { texture: format!("ReplaceableTextures\\TeamColor\\TeamColor{:02}.blp", s.color), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
-            }
-        }
+        color_draws(tree, self.slots.iter().map(|s| s.color), out);
+    }
+
+    /// The map preview, where MinimapImage is.
+    pub fn preview_draws(&self, tree: &FrameTree, out: &mut Vec<Draw>) {
         // The preview goes where MinimapImage is; a map without one (and a saved game)
         // shows Minimap-Unknown.
         // A campaign shows its own image.

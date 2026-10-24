@@ -28,6 +28,8 @@ struct Running {
     pending: Option<(std::path::PathBuf, Option<Vec<w3_game::LobbySlot>>, Option<w3_game::save::SaveGame>)>,
     /// A replay to watch on the pending map.
     pending_replay: Option<w3_game::replay::Replay>,
+    /// The network game the pending map is for.
+    pending_net: Option<crate::net::Role>,
     /// A loaded campaign mission waiting for a key on its loading screen.
     ready: Option<Scene>,
     /// Sound output, handed to each game.
@@ -138,6 +140,7 @@ impl App {
             glue_saved: None,
             pending: None,
             pending_replay: None,
+            pending_net: None,
             ready: None,
             audio,
             assets,
@@ -477,6 +480,13 @@ impl ApplicationHandler for App {
                             Ok(replay) => glue.action = Some(crate::glue::GlueAction::PlayReplay(Box::new(replay))),
                             Err(e) => log::error!("replay {}: {e:#}", file.display()),
                         },
+                        Some(crate::glue::GlueAction::PlayNet(path, slots, role)) => {
+                            self.data.campaign_game.set(false);
+                            glue.skirmish.summary = crate::skirmish::summarize_path(&path);
+                            glue.show_loading(&mut r.assets);
+                            r.pending = Some((path, Some(slots), None));
+                            r.pending_net = role.borrow_mut().take();
+                        }
                         Some(crate::glue::GlueAction::PlayReplay(replay)) => {
                             match Ok::<_, anyhow::Error>(*replay) {
                                 Ok(replay) => {
@@ -495,7 +505,10 @@ impl ApplicationHandler for App {
                             let aspect = size.0 as f32 / size.1.max(1) as f32;
                             let replay = r.pending_replay.take();
                             match Scene::load(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets, &path, aspect, slots.as_deref(), restore, replay) {
-                                Ok(s) => {
+                                Ok(mut s) => {
+                                    if let Some(role) = r.pending_net.take() {
+                                        s.start_net(role);
+                                    }
                                     if self.data.campaign_game.get() {
                                         // Campaign missions wait on their loading screen for a
                                         // key (LOADING_PRESS_A_KEY).

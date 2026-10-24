@@ -88,6 +88,8 @@ pub struct Game {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SlotFill {
     Local,
+    /// A human playing on another computer of a network game.
+    Remote,
     Computer,
     Empty,
 }
@@ -278,6 +280,10 @@ impl Game {
                         p.controller = map_control::USER;
                         p.slot_state = slot_state::PLAYING;
                         self.world.local_player = p.id;
+                    }
+                    SlotFill::Remote => {
+                        p.controller = map_control::USER;
+                        p.slot_state = slot_state::PLAYING;
                     }
                     SlotFill::Computer => {
                         p.controller = map_control::COMPUTER;
@@ -582,6 +588,15 @@ impl Game {
             }
             C::Select { player, units } => {
                 self.set_selection(player, &units);
+                O::Done
+            }
+            // A network game's player is gone: their slot is left, and EVENT_PLAYER_LEAVE
+            // fires.
+            C::PlayerLeft { player } => {
+                if let Some(p) = self.world.players.get_mut(player as usize) {
+                    p.slot_state = types::slot_state::LEFT;
+                }
+                self.player_event(player, event_ids::EVENT_PLAYER_LEAVE);
                 O::Done
             }
             C::PlayerEvent { player, event } => {

@@ -284,6 +284,8 @@ pub struct Scene {
     menu_drag: bool,
     /// The replay being watched, if any.
     pub playback: Option<w3_game::replay::Playback>,
+    /// The network game this is, if any.
+    pub net: Option<crate::net::Session>,
     options_fill: bool,
     /// Structures' and destructables' shadows stamped into the terrain.
     shadows: crate::shadows::Shadows,
@@ -642,7 +644,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }) };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -2199,6 +2201,16 @@ impl Scene {
     }
 
     /// A key press: command card hotkeys and Escape.
+    /// Plays as a network game: the interface's commands go to the host, and the game
+    /// moves only by the host's frames.
+    pub fn start_net(&mut self, role: crate::net::Role) {
+        if let Some(g) = self.game.as_mut() {
+            g.outbox = Some(Vec::new());
+            g.world.network = true;
+        }
+        self.net = Some(crate::net::Session::new(role));
+    }
+
     /// The replay of the game played, to keep when it ends.
     pub fn take_replay(&mut self) -> Option<w3_game::replay::Replay> {
         let r = self.game.as_mut()?.recorder.take()?;
@@ -2843,7 +2855,8 @@ impl Scene {
             }
             self.ui_sound("QuestLogModified");
         }
-        let paused = self.hud.as_ref().is_some_and(|h| h.menu.is_some() || h.quests.is_some() || h.log_view.is_some());
+        // A network game does not stop for one player's menus.
+        let paused = self.net.is_none() && self.hud.as_ref().is_some_and(|h| h.menu.is_some() || h.quests.is_some() || h.log_view.is_some());
         let speed = self.game.as_ref().map_or(1.0, |g| [0.6, 0.8, 1.0][g.world.game_speed.clamp(0, 2) as usize]);
         let gdt = if paused { 0.0 } else { dt * speed };
         // The selection: script changes come to the interface, the player's go to the
@@ -2858,7 +2871,30 @@ impl Scene {
                 g.apply(w3_game::replay::Command::Select { player: local, units: sel });
             }
         }
-        if let Some(g) = self.game.as_mut().filter(|_| !paused) {
+        // A network game: the commands go out, and the host's frames play as they come.
+        if let (Some(g), Some(s)) = (self.game.as_mut(), self.net.as_mut()) {
+            let local = g.world.local_player;
+            let out = g.outbox.as_mut().map(std::mem::take).unwrap_or_default();
+            s.send_commands(local, out);
+            s.pump(gdt);
+            let mut errors = Vec::new();
+            for f in s.due(gdt) {
+                for (p, o) in g.play_frame(&f) {
+                    if let (true, w3_game::replay::Outcome::Error(e)) = (p == local, o) {
+                        errors.push(e);
+                    }
+                }
+            }
+            let lost = s.lost;
+            for e in errors {
+                self.error(e);
+            }
+            // Without the host the game is over.
+            if lost {
+                self.ended = true;
+                self.final_score = self.game.as_ref().map(|g| crate::scorescreen::ScoreData::from_world(&g.world));
+            }
+        } else if let Some(g) = self.game.as_mut().filter(|_| !paused) {
             match self.playback.as_mut() {
                 // A replay plays its frames as their time comes, at the panel's speed, with
                 // the game's own player and fog.

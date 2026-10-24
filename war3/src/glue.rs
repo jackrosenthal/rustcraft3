@@ -27,6 +27,8 @@ pub enum GlueAction {
     WatchReplay(std::path::PathBuf),
     /// A replay to watch (again).
     PlayReplay(Box<w3_game::replay::Replay>),
+    /// A network game: its map, this computer's setup, and how it plays.
+    PlayNet(std::path::PathBuf, Vec<w3_game::LobbySlot>, std::rc::Rc<std::cell::RefCell<Option<crate::net::Role>>>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,6 +50,11 @@ pub enum Screen {
     CustomCampaign,
     /// CViewReplayScreen: the kept replays.
     ViewReplay,
+    /// CLocalMultiplayerJoin, CLocalMultiplayerCreate, and CGameChatroom: the local
+    /// network's games, hosting one, and a game's setup.
+    LanJoin,
+    LanCreate,
+    LanLobby,
 }
 
 impl Screen {
@@ -65,6 +72,9 @@ impl Screen {
             Screen::Options => "Options",
             // Laid out as the saved games screen is.
             Screen::CustomCampaign | Screen::ViewReplay => "BattlenetCustomCreate",
+            Screen::LanJoin => "BattlenetCustom",
+            Screen::LanCreate => "BattlenetCustomCreate",
+            Screen::LanLobby => "MultiplayerPreGameChat",
             Screen::Loading | Screen::Score => "",
         }
     }
@@ -82,6 +92,9 @@ impl Screen {
             Screen::Options => "OptionsMenu",
             Screen::CustomCampaign => "CustomCampaignMenu",
             Screen::ViewReplay => "ViewReplayScreen",
+            Screen::LanJoin => "LocalMultiplayerJoin",
+            Screen::LanCreate => "LocalMultiplayerCreate",
+            Screen::LanLobby => "GameChatroom",
         }
     }
 }
@@ -162,6 +175,8 @@ pub struct Glue {
     dialog: Option<DialogAction>,
     /// The score screen's Save Replay panel.
     save_replay: crate::savereplay::SaveReplayPanel,
+    /// The local network screens.
+    pub lan: crate::lan::Lan,
     version: crate::data::Version,
 }
 
@@ -169,6 +184,8 @@ pub struct Glue {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DialogAction {
     DeleteProfile,
+    /// Nothing: the message only tells.
+    Notice,
 }
 
 impl Glue {
@@ -202,6 +219,7 @@ impl Glue {
         let local = assets.frames.string("LOCAL_PLAYER");
         let profile = crate::profiles::ProfilePanel::new(&local);
         skirmish.player_name = profile.name().unwrap_or(local);
+        let lan = crate::lan::Lan::new(&data.dir, skirmish.player_name.clone());
         let mut g = Glue {
             screen: Screen::MainMenu,
             tree: FrameTree::new(4.0 / 3.0),
@@ -235,6 +253,7 @@ impl Glue {
             profile,
             dialog: None,
             save_replay: Default::default(),
+            lan,
             version: data.version,
         };
         g.build(Screen::MainMenu, assets);
@@ -323,6 +342,23 @@ impl Glue {
                 self.skirmish.detach_saves();
                 let dir = self.campaigns_dir.clone();
                 self.skirmish.attach_campaigns(&mut self.tree, db, &dir);
+            }
+            Screen::LanJoin => {
+                let port = crate::net::port(&self.options);
+                self.lan.attach_join(&mut self.tree, port);
+                self.skirmish.attach_pane(&mut self.tree, db, None);
+            }
+            Screen::LanCreate => {
+                self.skirmish.detach_saves();
+                self.skirmish.attach(&mut self.tree, db);
+                self.tree.set_visible("AdvancedOptionsPanel", false);
+                self.tree.set_enabled("GameSpeedSlider", false);
+            }
+            Screen::LanLobby => {
+                self.lan.rebuild = false;
+                self.lan.attach_lobby(&mut self.tree, db);
+                let map = self.lan.map();
+                self.skirmish.attach_pane(&mut self.tree, db, Some(&map));
             }
             Screen::Options => {
                 self.options = crate::options::Options::load();
@@ -582,8 +618,14 @@ impl Glue {
                 self.profile_event(e, assets);
             }
         }
-        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign | Screen::ViewReplay) {
+        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign | Screen::ViewReplay | Screen::LanCreate) {
             self.skirmish.click(&mut self.tree, &assets.frames, x, y);
+        }
+        if self.screen == Screen::LanJoin {
+            self.lan.click(&mut self.tree, x, y);
+            if let Some(map) = self.lan.summary_due.take() {
+                self.skirmish.show_map(&mut self.tree, &assets.frames, Some(&map));
+            }
         }
         if self.screen == Screen::Campaign && self.phase == Phase::Stand {
             let root = self.tree.frames[0].rect.unwrap_or_default();
@@ -618,6 +660,24 @@ impl Glue {
         self.tree.set_visible("ScoreScreenReplaySavedButton", true);
         self.tree.set_enabled("ScoreScreenReplaySavedButton", false);
         self.tree.set_visible("SaveReplayPanel", false);
+    }
+
+    /// What the local network screens ask.
+    fn lan_event(&mut self, e: crate::lan::Event, assets: &mut Assets) {
+        match e {
+            crate::lan::Event::Lobby => self.show(Screen::LanLobby, assets),
+            crate::lan::Event::Joining(message) => {
+                self.show(Screen::LanJoin, assets);
+                if let Some(key) = message {
+                    let text = assets.frames.string(key);
+                    self.show_dialog(&text, false, DialogAction::Notice, assets);
+                }
+            }
+            crate::lan::Event::Start(map, lobby, role) => {
+                self.lan.detach();
+                self.action = Some(GlueAction::PlayNet(map, lobby, std::rc::Rc::new(std::cell::RefCell::new(Some(role)))));
+            }
+        }
     }
 
     /// The profile panel's requests: another profile chosen (its progress and saved
@@ -705,6 +765,9 @@ impl Glue {
                 }
                 return;
             }
+        }
+        if matches!(self.screen, Screen::LanJoin | Screen::LanLobby) && c != '\u{1b}' && self.lan.key(c, &mut self.tree, self.screen == Screen::LanLobby) {
+            return;
         }
         if c == '\u{1b}' {
             if let Some(i) = self.tree.get("CancelButton").filter(|&i| self.tree.is_visible(i)) {
@@ -808,6 +871,41 @@ impl Glue {
                 self.persist.borrow_mut().difficulty = if sel == 1 { 2 } else { 1 };
             }
             (Screen::Score, _) => self.score_button(name, assets),
+            (Screen::MainMenu, "LocalAreaNetworkButton") => self.show(Screen::LanJoin, assets),
+            (Screen::LanJoin, "CancelButton") => {
+                self.lan.detach();
+                self.show(Screen::MainMenu, assets);
+            }
+            (Screen::LanJoin, "CreateButton") => self.show(Screen::LanCreate, assets),
+            (Screen::LanJoin, "JoinButton") => {
+                if let Err(key) = self.lan.join() {
+                    let text = assets.frames.string(key);
+                    self.show_dialog(&text, false, DialogAction::Notice, assets);
+                }
+            }
+            (Screen::LanCreate, "CancelButton") => self.show(Screen::LanJoin, assets),
+            (Screen::LanCreate, "PlayButton") => {
+                let (Some(map), Some(summary)) = (self.skirmish.selected_map(), self.skirmish.summary.clone()) else { return };
+                let game = assets.frames.string("LOCAL_GAME");
+                match self.lan.host_game(&map, &summary, &game, self.version == crate::data::Version::FrozenThrone) {
+                    Ok(()) => self.show(Screen::LanLobby, assets),
+                    Err(key) => {
+                        let text = assets.frames.string(key);
+                        self.show_dialog(&text, false, DialogAction::Notice, assets);
+                    }
+                }
+            }
+            (Screen::LanCreate, other) => self.skirmish.button(&mut self.tree, &assets.frames, other),
+            (Screen::LanLobby, "CancelButton") => {
+                self.lan.leave();
+                self.show(Screen::LanJoin, assets);
+            }
+            (Screen::LanLobby, "StartGameButton") => {
+                if let Some(e) = self.lan.start() {
+                    self.lan_event(e, assets);
+                }
+            }
+            (Screen::LanLobby, other) => self.lan.button(&mut self.tree, &assets.frames, other),
             _ => log::debug!("glue button {name} has no handler yet"),
         }
     }
@@ -868,6 +966,18 @@ impl Glue {
         if self.skirmish.rebuild && self.screen == Screen::Skirmish && self.phase == Phase::Stand {
             self.skirmish.rebuild = false;
             self.build(Screen::Skirmish, assets);
+        }
+        // The local network: games found, and the lobby's messages.
+        if matches!(self.screen, Screen::LanJoin | Screen::LanLobby) {
+            if let Some(e) = self.lan.update(&mut self.tree, &assets.frames) {
+                self.lan_event(e, assets);
+            }
+            if self.screen == Screen::LanLobby && self.phase == Phase::Stand {
+                if self.lan.rebuild {
+                    self.build(Screen::LanLobby, assets);
+                }
+                self.lan.sync_chat(&mut self.tree);
+            }
         }
         // Birth and Death sequences run once; then the screen stands or the next arrives.
         match self.phase {
@@ -1142,8 +1252,12 @@ impl Glue {
             self.score_draws(&assets.frames, &mut draws);
             self.save_replay.draws(&self.tree, &assets.frames, &mut draws);
         }
-        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign | Screen::ViewReplay) && self.phase == Phase::Stand {
+        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign | Screen::ViewReplay | Screen::LanCreate) && self.phase == Phase::Stand {
             self.skirmish.draws(&self.tree, &assets.frames, &mut draws);
+        }
+        if matches!(self.screen, Screen::LanJoin | Screen::LanLobby) && self.phase == Phase::Stand {
+            self.skirmish.preview_draws(&self.tree, &mut draws);
+            self.lan.draws(&self.tree, &assets.frames, &mut draws);
         }
         if self.screen == Screen::SinglePlayer && self.phase == Phase::Stand && self.dialog.is_none() {
             self.profile.draws(&self.tree, &assets.frames, &mut draws);

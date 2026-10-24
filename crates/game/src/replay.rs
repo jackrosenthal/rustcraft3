@@ -34,6 +34,8 @@ pub enum Command {
     PlayerEvent { player: u8, event: i32 },
     DialogButton { player: u8, button: u32 },
     Chat { player: u8, text: String },
+    /// A network game's player left.
+    PlayerLeft { player: u8 },
 }
 
 /// What a command answered: an interface error to show, or whether a chat line is shown

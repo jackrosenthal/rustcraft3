@@ -375,6 +375,11 @@ impl Vm {
                             if t.can_sleep {
                                 return Outcome::Sleeping(secs);
                             }
+                            // A thread that may not sleep (a timer's callback, an
+                            // enumeration's, a filter) ends there, as the original's
+                            // does (measured: a timer callback's text after its sleep
+                            // never shows).
+                            return Outcome::Finished(Value::Null);
                         }
                         NativeResult::Abort(e) => return Outcome::Aborted(e),
                     }

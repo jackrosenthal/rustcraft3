@@ -3514,11 +3514,19 @@ impl Scene {
             s.send_commands(local, out);
             s.pump(gdt);
             let mut errors = Vec::new();
-            for f in s.due(gdt) {
-                for (p, o) in g.play_frame(&f) {
+            let frames = s.due(gdt);
+            let first = s.played - frames.len() as u32;
+            for (k, f) in frames.iter().enumerate() {
+                for (p, o) in g.play_frame(f) {
                     if let (true, w3_game::replay::Outcome::Error(e)) = (p == local, o) {
                         errors.push(e);
                     }
+                }
+                // Every 50 frames the games are compared (a player out of step is
+                // dropped).
+                let n = first + k as u32 + 1;
+                if n % 50 == 0 {
+                    s.check(n, g.world.checksum());
                 }
             }
             let lost = s.lost;

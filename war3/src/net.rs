@@ -104,6 +104,9 @@ pub enum Msg {
     Frame(u32, Frame),
     /// The frames a player has played, to the host.
     Played(u32),
+    /// A player's game state checksum after a frame, to the host, which drops a
+    /// player whose game no longer matches its own.
+    Check(u32, u64),
     Leave,
 }
 
@@ -348,6 +351,11 @@ pub struct Session {
     pub limit: Option<u32>,
     /// When the last frame came (a player's game waits on the host after two seconds).
     last_frame: Instant,
+    /// The host's own checksums by frame, players' checksums not yet compared, and
+    /// players dropped for being out of step.
+    own_checks: std::collections::HashMap<u32, u64>,
+    peer_checks: Vec<(u32, u8, u32, u64)>,
+    pub desynced: Vec<u8>,
 }
 
 /// The host sends a frame every 50 ms of game time and waits for any player more
@@ -357,7 +365,7 @@ const BEHIND: u32 = 40;
 
 impl Session {
     pub fn new(role: Role) -> Session {
-        Session { role, queue: VecDeque::new(), next: 0, played: 0, owed: 0.0, clock: 0.0, lost: false, left: Vec::new(), waiting: false, limit: None, last_frame: Instant::now() }
+        Session { role, queue: VecDeque::new(), next: 0, played: 0, owed: 0.0, clock: 0.0, lost: false, left: Vec::new(), waiting: false, limit: None, last_frame: Instant::now(), own_checks: Default::default(), peer_checks: Vec::new(), desynced: Vec::new() }
     }
 
     /// The local player's commands, to the host (the host takes its own at once).
@@ -388,6 +396,7 @@ impl Session {
                             }
                         }
                         (Msg::Chat { from, text }, _) => chat.push((from, text)),
+                        (Msg::Check(frame, sum), Some(p)) => self.peer_checks.push((id, p, frame, sum)),
                         _ => {}
                     }
                 }
@@ -428,6 +437,9 @@ impl Session {
                     self.lost = true;
                 }
             }
+        }
+        if !self.peer_checks.is_empty() {
+            self.compare_checks();
         }
         chat
     }
@@ -481,6 +493,41 @@ impl Session {
                 self.left.push(player);
             }
         }
+    }
+
+    /// Notes this computer's game checksum after `frame`: a player sends it to the
+    /// host; the host keeps it and drops each player whose checksum for the frame
+    /// differs (their games have parted).
+    pub fn check(&mut self, frame: u32, sum: u64) {
+        match &mut self.role {
+            Role::Client { conn } => conn.send(&Msg::Check(frame, sum)),
+            Role::Host { .. } => {
+                self.own_checks.insert(frame, sum);
+            }
+        }
+        self.compare_checks();
+    }
+
+    fn compare_checks(&mut self) {
+        let Role::Host { host, peers, .. } = &mut self.role else { return };
+        let mut keep = Vec::new();
+        for (id, player, frame, sum) in std::mem::take(&mut self.peer_checks) {
+            match self.own_checks.get(&frame) {
+                Some(&mine) if mine != sum => {
+                    log::warn!("net: player {player} is out of step at frame {frame}");
+                    host.drop_peer(id);
+                    peers.retain(|p| p.0 != id);
+                    self.left.push(player);
+                    self.desynced.push(player);
+                }
+                Some(_) => {}
+                None => keep.push((id, player, frame, sum)),
+            }
+        }
+        self.peer_checks = keep;
+        // Old checksums are no longer needed once everyone is past them.
+        let oldest = peers.iter().map(|p| p.2).min().unwrap_or(self.next);
+        self.own_checks.retain(|&f, _| f + 1000 >= oldest);
     }
 
     /// Leaves the game: the host closes it, a player says goodbye.

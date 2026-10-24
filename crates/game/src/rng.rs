@@ -25,6 +25,11 @@ fn word(offset: u32) -> u32 {
 }
 
 impl Rng {
+    /// The generator's state, for checksums.
+    pub fn state(&self) -> u64 {
+        (self.value as u64) << 32 | self.taps as u64
+    }
+
     pub fn new(seed: u32) -> Rng {
         let taps = (seed % 0x3b).wrapping_mul(0x400)
             | (seed % 0x3d).wrapping_mul(4)

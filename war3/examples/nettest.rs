@@ -113,6 +113,12 @@ fn main() -> anyhow::Result<()> {
     // saved game, as loading a network game does.
     let save_at = std::env::var("NETTEST_SAVE").is_ok().then_some(steps / 2);
     for step in 0..steps {
+        // NETTEST_DESYNC: halfway, the player's game is nudged out of step.
+        if std::env::var("NETTEST_DESYNC").is_ok() && step == steps / 2 {
+            if let Some(u) = gc.world.unit_order.first().copied().and_then(|h| gc.world.unit_mut(h)) {
+                u.x += 1.0;
+            }
+        }
         if Some(step) == save_at {
             let bytes = gh.save("test")?;
             gh = restored(&data, &bytes, 0)?;
@@ -134,8 +140,14 @@ fn main() -> anyhow::Result<()> {
             let out = g.outbox.as_mut().map(std::mem::take).unwrap_or_default();
             s.send_commands(p, out);
             s.pump(dt);
-            for f in s.due(dt) {
-                g.play_frame(&f);
+            let frames = s.due(dt);
+            let first = s.played - frames.len() as u32;
+            for (k, f) in frames.iter().enumerate() {
+                g.play_frame(f);
+                let n = first + k as u32 + 1;
+                if n % 50 == 0 {
+                    s.check(n, g.world.checksum());
+                }
             }
         }
         std::thread::sleep(std::time::Duration::from_micros(500));
@@ -151,7 +163,8 @@ fn main() -> anyhow::Result<()> {
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    println!("host played {} frames, player {}", hs.played, cs.played);
+    hs.pump(0.0);
+    println!("host played {} frames, player {}; out of step: {:?}", hs.played, cs.played, hs.desynced);
     let (dh, dc) = (digest(&gh), digest(&gc));
     if dh == dc {
         println!("SAME ({} units)", dh.lines().count() - 4);

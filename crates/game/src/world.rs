@@ -889,6 +889,34 @@ impl World {
         }
     }
 
+    /// A checksum of the game's state for network games to compare: the units' places
+    /// and life, the players' states, and the random generator.
+    pub fn checksum(&self) -> u64 {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut mix = |v: u64| {
+            h ^= v;
+            h = h.wrapping_mul(0x100_0000_01b3);
+        };
+        for &u in &self.unit_order {
+            if let Some(x) = self.unit(u) {
+                mix(u as u64);
+                mix(x.x.to_bits() as u64);
+                mix(x.y.to_bits() as u64);
+                mix(x.life.to_bits() as u64);
+            }
+        }
+        for p in &self.players {
+            let mut s: Vec<(&i32, &i32)> = p.state.iter().collect();
+            s.sort();
+            for (k, v) in s {
+                mix(*k as u64);
+                mix(*v as u64);
+            }
+        }
+        mix(self.rng.state());
+        h
+    }
+
     /// Runs `f`, adding its time to a W3PROF entry when profiling.
     pub(crate) fn prof_time<T>(&self, name: &'static str, f: impl FnOnce() -> T) -> T {
         if self.profile.is_none() {

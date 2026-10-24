@@ -282,7 +282,7 @@ impl World {
                         if let Some(u) = self.unit_mut(t) {
                             u.mana = (u.mana - mana).max(0.0);
                         }
-                        self.dispel_pub(vm, unit, t, summoned);
+                        self.dispel_pub(vm, unit, t, summoned, false);
                     }
                     did = true;
                 }
@@ -492,7 +492,7 @@ impl World {
                         if let Some(u) = self.unit_mut(t) {
                             u.mana = (u.mana - mana).max(0.0);
                         }
-                        self.dispel_pub(vm, unit, t, summoned);
+                        self.dispel_pub(vm, unit, t, summoned, true);
                     }
                     did = true;
                 }

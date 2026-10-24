@@ -9,6 +9,64 @@ use crate::objects::{Id, id_from_str};
 use crate::types::*;
 use crate::world::World;
 
+/// Which side of its bearer a dispellable buff is on.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Side {
+    Positive,
+    Negative,
+    /// Harmful when an enemy cast it.
+    Relative,
+}
+
+/// The buffs a dispel can take, by buff id: game.dll's buff classes (registered by
+/// FUN_6f04daa0) that say they are dispellable (vf118), helpful (vf121) or harmful
+/// (vf120), and not auras (vf122); Ensnare's and Web's only under the constant named.
+const DISPELLABLE: &[(&str, Side, Option<&str>)] = &[
+    ("BEer", Side::Negative, None), // CBuffEntanglingRoots
+    ("BHbn", Side::Relative, None), // CBuffBanish
+    ("BIpv", Side::Positive, None), // CBuffItemVampirePotion
+    ("BNbr", Side::Positive, None), // CBuffBattleRoar
+    ("BNdh", Side::Negative, None), // CBuffDrunkenHaze
+    ("BNht", Side::Negative, None), // CBuffHowlOfTerror
+    ("BNmr", Side::Negative, None), // CBuffMindRot
+    ("BNsa", Side::Positive, None), // CBuffSanctuary
+    ("BNsi", Side::Negative, None), // CBuffSilence
+    ("BNso", Side::Negative, None), // CBuffSoulBurn
+    ("BOhx", Side::Negative, None), // CBuffHex
+    ("BUfa", Side::Positive, None), // CBuffFrostArmor
+    ("BUsl", Side::Negative, None), // CBuffSleep
+    ("Bams", Side::Positive, None), // CBuffAntiMagicShell
+    ("Bbar", Side::Positive, None), // CBuffBarkskin
+    ("Bblo", Side::Positive, None), // CBuffBloodlust
+    ("Bcor", Side::Negative, None), // CBuffCorrosiveBreath
+    ("Bcri", Side::Negative, None), // CBuffCripple
+    ("Bcrs", Side::Negative, None), // CBuffCurse
+    ("Bcy2", Side::Negative, None), // CBuffCycloneTwo
+    ("Bdef", Side::Positive, None), // CBuffDefense
+    ("Bdig", Side::Negative, None), // CBuffDigesting
+    ("Beat", Side::Positive, None), // CBuffEatTree
+    ("Bena", Side::Negative, Some("EnsnareIsMagic")), // CBuffEnsnareAir
+    ("Beng", Side::Negative, Some("EnsnareIsMagic")), // CBuffEnsnareGround
+    ("Bens", Side::Negative, Some("EnsnareIsMagic")), // CBuffEnsnare
+    ("Beth", Side::Relative, None), // CBuffEthereal
+    ("Bfae", Side::Negative, None), // CBuffFaerieFire
+    ("Bfzy", Side::Positive, None), // CBuffFrenzy
+    ("Binf", Side::Positive, None), // CBuffInnerFire
+    ("Binv", Side::Positive, None), // CBuffInvisibility
+    ("Blsh", Side::Relative, None), // CBuffLightningShield
+    ("Bply", Side::Negative, None), // CBuffPolymorph
+    ("Brej", Side::Positive, None), // CBuffRejuvination
+    ("Broa", Side::Positive, None), // CBuffRoar
+    ("Bshs", Side::Negative, None), // CBuffShadowSight
+    ("Bslo", Side::Negative, None), // CBuffSlow
+    ("Bspe", Side::Positive, None), // CBuffSpeedBonus
+    ("Bspl", Side::Positive, None), // CBuffSpiritLink
+    ("Btsp", Side::Negative, None), // CBuffTornadoSpin
+    ("Buhf", Side::Relative, None), // CBuffUnholyFrenzy
+    ("Bwea", Side::Negative, Some("EnsnareIsMagic")), // CBuffWebAir
+    ("Bweb", Side::Negative, Some("WebIsMagic")), // CBuffWeb
+];
+
 impl World {
     fn level_str(&self, a: Id, field: &str, lvl: u32) -> String {
         self.objects.abilities.get(a).map(|o| o.level_str(field, lvl)).unwrap_or_default().trim().to_string()
@@ -28,13 +86,35 @@ impl World {
         self.unit(h).is_some_and(|u| u.timed_life.is_some() || self.objects.units.get(u.type_id).is_some_and(|o| o.str("type").to_ascii_lowercase().contains("summoned")))
     }
 
-    /// Removes buffs a dispel takes: from an ally of the caster those its enemies cast,
-    /// from an enemy those its allies cast.  Summoned units take `summon_damage`.
-    pub(crate) fn dispel_pub(&mut self, vm: &mut Vm, caster: u32, target: u32, summon_damage: f32) -> usize {
-        self.dispel(vm, caster, target, summon_damage)
+    /// Whether a dispel can take a buff, and if so whether it harms its bearer: buffs
+    /// of the classes [`DISPELLABLE`] lists, by the buff's id or else its ability's
+    /// own buff; a relative one harms when an enemy of the bearer cast it.
+    fn dispellable(&self, b: &Buff, bearer: u8) -> Option<bool> {
+        let code = crate::objects::id_str(b.id);
+        let row = DISPELLABLE.iter().find(|r| r.0 == code).or_else(|| {
+            let base = crate::objects::id_from_str(&self.ability_code(b.ability));
+            let ids = self.objects.abilities.get(base).map(|o| o.level_str("BuffID", 1)).unwrap_or_default();
+            ids.split(',').find_map(|id| DISPELLABLE.iter().find(|r| r.0 == id.trim()))
+        })?;
+        if row.2.is_some_and(|k| self.misc_f32(k, 0.0) == 0.0) {
+            return None;
+        }
+        Some(match row.1 {
+            Side::Positive => false,
+            Side::Negative => true,
+            Side::Relative => !self.unit(b.caster).is_some_and(|c| crate::natives::players::is_ally(self, bearer, c.owner)),
+        })
     }
 
-    fn dispel(&mut self, vm: &mut Vm, caster: u32, target: u32, summon_damage: f32) -> usize {
+    /// Removes the buffs a dispel takes (FUN_6f48eb10): dispellable ones, all of them,
+    /// or when `smart` the harmful ones from an ally of the caster and the helpful ones
+    /// from an enemy (FUN_6f54c890's remove-positive and remove-negative).  Summoned
+    /// units take `summon_damage`.
+    pub(crate) fn dispel_pub(&mut self, vm: &mut Vm, caster: u32, target: u32, summon_damage: f32, smart: bool) -> usize {
+        self.dispel(vm, caster, target, summon_damage, smart)
+    }
+
+    fn dispel(&mut self, vm: &mut Vm, caster: u32, target: u32, summon_damage: f32, smart: bool) -> usize {
         let Some(owner) = self.unit(caster).map(|u| u.owner) else { return 0 };
         let Some(tu) = self.unit(target) else { return 0 };
         let friend = crate::natives::players::is_ally(self, owner, tu.owner);
@@ -42,9 +122,10 @@ impl World {
         let removable: Vec<bool> = tu
             .buffs
             .iter()
-            .map(|b| {
-                let from_ally_of_target = self.unit(b.caster).is_some_and(|c| crate::natives::players::is_ally(self, towner, c.owner));
-                if friend { !from_ally_of_target } else { from_ally_of_target }
+            .map(|b| match self.dispellable(b, towner) {
+                None => false,
+                Some(_) if !smart => true,
+                Some(harmful) => harmful == friend,
             })
             .collect();
         let mut gone = Vec::new();
@@ -95,14 +176,21 @@ impl World {
             "Acrs" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, miss_chance: d(self, "DataA"), ..Default::default() }),
             // Faerie Fire: DataA less armor.
             "Afae" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, armor: -d(self, "DataA"), ..Default::default() }),
-            // Abolish Magic: one target.
+            // Abolish Magic: one target, only its side's harmful buffs or the other side's
+            // helpful ones when DataC is set under AbolishMagicDispelSmart (otherwise when
+            // autocast), all of them otherwise (CAbilityAutoDispelMagic::vf265).
             "Aadm" => {
-                self.dispel(vm, h, target, d(self, "DataB"));
+                let smart = if self.misc_f32("AbolishMagicDispelSmart", 1.0) != 0.0 {
+                    d(self, "DataC") != 0.0
+                } else {
+                    self.unit(h).is_some_and(|u| u.autocast.contains(&a))
+                };
+                self.dispel(vm, h, target, d(self, "DataB"), smart);
             }
-            // Dispel Magic: everyone within Area.
+            // Dispel Magic: every buff on everyone within Area (FUN_6f54c780).
             "Adis" => {
                 for t in self.units_in_pub(x, y, d(self, "Area")) {
-                    self.dispel(vm, h, t, d(self, "DataB"));
+                    self.dispel(vm, h, t, d(self, "DataB"), false);
                 }
             }
             // Devour Magic: dispels within Area; the caster gains DataA life and DataB mana
@@ -110,7 +198,7 @@ impl World {
             "Advm" => {
                 let (mut units, mut buffs) = (0, 0);
                 for t in self.units_in_pub(x, y, d(self, "Area")) {
-                    let n = self.dispel(vm, h, t, d(self, "DataE"));
+                    let n = self.dispel(vm, h, t, d(self, "DataE"), false);
                     if n > 0 {
                         units += 1;
                         buffs += n;
@@ -125,7 +213,7 @@ impl World {
             // Purge: dispels and stops the target, its speed returning over Dur.
             // The Orb of Lightning's purge (CAbilityLightningPurge) is Purge's.
             "Aprg" | "AIlp" => {
-                self.dispel(vm, h, target, d(self, "DataC"));
+                self.dispel(vm, h, target, d(self, "DataC"), false);
                 self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, move_factor: -1.0, decaying: dur, ..Default::default() });
             }
             // Lightning Shield: DataA damage a second to units within Area of the target.

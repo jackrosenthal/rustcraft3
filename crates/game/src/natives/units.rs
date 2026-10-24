@@ -857,13 +857,24 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let Some(u) = w.unit_mut(a.h(0)) else { return boolean(false) };
             let n = u.abilities.len();
             u.abilities.retain(|(x, _)| *x != id);
-            let removed = u.abilities.len() != n;
+            let mut removed = u.abilities.len() != n;
+            // Buffs are abilities to the original: removing a buff's id takes the buff.
+            if !removed {
+                let effects: Vec<u32> = u.buffs.iter().filter(|b| b.id == id).map(|b| b.effect).collect();
+                u.buffs.retain(|b| b.id != id);
+                removed = !effects.is_empty();
+                for e in effects {
+                    w.remove_buff_effect(e);
+                }
+            }
             w.sync_spell_books(a.h(0));
             boolean(removed)
         },
+        // A buff's id reads level 1 while the unit has it, as buffs are abilities to the
+        // original.
         GetUnitAbilityLevel => |w, _, a| {
             let id = id_from_int(a.i(1));
-            int(unit_arg(w, a, 0).and_then(|u| u.abilities.iter().find(|(x, _)| *x == id)).map_or(0, |(_, l)| *l))
+            int(unit_arg(w, a, 0).map_or(0, |u| u.abilities.iter().find(|(x, _)| *x == id).map_or_else(|| u.buffs.iter().any(|b| b.id == id) as i32, |(_, l)| *l)))
         },
         SetUnitAbilityLevel => |w, _, a| {
             let (id, l) = (id_from_int(a.i(1)), a.i(2));

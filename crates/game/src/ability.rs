@@ -377,7 +377,7 @@ impl World {
         self.unit_mut(target).unwrap().buffs.push(b);
     }
 
-    fn remove_buff_effect(&mut self, e: u32) {
+    pub(crate) fn remove_buff_effect(&mut self, e: u32) {
         if e != 0 {
             if let Some(Obj::Effect(x)) = self.handles.get_mut(e) {
                 x.destroyed = true;

@@ -58,7 +58,7 @@ impl World {
             if let Some(u) = self.unit_mut(t) {
                 u.mana = (u.mana - mana).max(0.0);
             }
-            self.dispel_pub(vm, h, t, summon_damage);
+            self.dispel_pub(vm, h, t, summon_damage, false);
         }
         crate::natives::units::kill_unit(self, vm, h, h);
     }

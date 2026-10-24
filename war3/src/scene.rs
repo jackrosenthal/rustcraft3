@@ -806,6 +806,14 @@ impl Scene {
             }
         }
         let (ux, uy) = (u.x, u.y);
+        // An attacked hero's button flashes (FUN_6f3b0920): not an illusion's.
+        if u.is_hero && u.extra.illusion.is_none() {
+            if let Some(h) = self.hud.as_mut() {
+                h.hero_flash.insert(unit, h.now);
+            }
+        }
+        let Some(g) = self.game.as_ref() else { return };
+        let w = &g.world;
         let delay = w.misc_f32("AttackNotifyDelay", 30.0).min(15.0) * if observer { 2.0 } else { 1.0 };
         let range = w.misc_f32("AttackNotifyRange", 1250.0).min(1000.0);
         let race = if observer { "Generic" } else { w.race_label(me) };

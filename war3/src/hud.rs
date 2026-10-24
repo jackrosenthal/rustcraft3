@@ -147,6 +147,8 @@ pub struct Hud {
     /// CHeroBar: the local player's heroes (unit, icon, life and mana fractions, and
     /// whether it has skill points to spend).
     pub heroes: Vec<(u32, String, f32, Option<f32>, bool)>,
+    /// When each hero's button began to flash for an attack (FUN_6f3b0920).
+    pub hero_flash: std::collections::HashMap<u32, f32>,
     /// CPeonBar: the local player's idle workers, and the last one its button chose
     /// and when.
     pub idle_workers: Vec<u32>,
@@ -322,6 +324,7 @@ impl Hud {
             pointer: (-1.0, -1.0),
             cine: None,
             heroes: Vec::new(),
+            hero_flash: Default::default(),
             idle_workers: Vec::new(),
             idle_pick: (f32::MIN, 0),
             cinematic: false,
@@ -724,9 +727,16 @@ impl Hud {
     /// tall, 0.00125 apart).
     fn hero_bar_draws(&self, db: &FrameDb, out: &mut Vec<Draw>) {
         let image = |texture: String, rect: w3_ui::Rect, color: [f32; 4]| Draw::Image { texture, rect, uv: [0.0, 0.0, 1.0, 1.0], color, blend: w3_ui::Blend::Alpha, rotated: false };
-        for (k, (_, icon, life, mana, _)) in self.heroes.iter().enumerate() {
+        for (k, (hero, icon, life, mana, _)) in self.heroes.iter().enumerate() {
             let r = self.hero_button_rect(k);
-            out.push(image(icon.clone(), r, [1.0; 4]));
+            // An attacked hero's button turns 0xffff4444 and back every half second for
+            // three seconds (FUN_6f3b08c0, FUN_6f3be330).
+            let flashing = self.hero_flash.get(hero).is_some_and(|&t0| {
+                let e = self.now - t0;
+                (0.5..3.0).contains(&e) && e % 1.0 >= 0.5
+            });
+            let tint = if flashing { [1.0, 0x44 as f32 / 255.0, 0x44 as f32 / 255.0, 1.0] } else { [1.0; 4] };
+            out.push(image(icon.clone(), r, tint));
             let mut top = r.y0 - 0.00125;
             let mut bar = |frac: f32, key: &str, color: [f32; 4], out: &mut Vec<Draw>| {
                 let b = w3_ui::Rect { x0: r.x0, x1: r.x1, y0: top - 0.003125, y1: top };

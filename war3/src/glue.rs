@@ -265,7 +265,9 @@ impl Glue {
         let local = assets.frames.string("LOCAL_PLAYER");
         let profile = crate::profiles::ProfilePanel::new(&local);
         skirmish.player_name = profile.name().unwrap_or(local);
-        let lan = crate::lan::Lan::new(&data.dir, skirmish.player_name.clone());
+        // The Local Area Network screen keeps its own name, empty until one is typed
+        // (setting 0x41).
+        let lan = crate::lan::Lan::new(&data.dir, crate::options::Options::load().lanname);
         let mut g = Glue {
             overlay: Vec::new(),
             screen: Screen::MainMenu,
@@ -868,6 +870,15 @@ impl Glue {
         }
     }
 
+    /// The Local Area Network name, kept for next time.
+    fn keep_lan_name(&self) {
+        let mut o = crate::options::Options::load();
+        if o.lanname != self.lan.name {
+            o.lanname = self.lan.name.clone();
+            o.store();
+        }
+    }
+
     /// A DialogWar3 message over the screen (FUN_6f2bc510): OK, or Yes and No.
     fn show_dialog(&mut self, text: &str, yes_no: bool, action: DialogAction, assets: &mut Assets) {
         if self.tree.get("DialogWar3").is_none() {
@@ -1095,8 +1106,19 @@ impl Glue {
                 self.lan.detach();
                 self.show(Screen::MainMenu, assets);
             }
-            (Screen::LanJoin, "CreateButton") => self.show(Screen::LanCreate, assets),
-            (Screen::LanJoin, "LoadButton") => self.show(Screen::LanLoad, assets),
+            // Create, Load, and Join need a name (FUN_6f2ea9a0, FUN_6f2f3b50); it is kept.
+            (Screen::LanJoin, "CreateButton" | "LoadButton" | "JoinButton") if self.lan.name.is_empty() => {
+                let text = assets.frames.string("NETERROR_NOPLAYERNAMESPECIFIED");
+                self.show_dialog(&text, false, DialogAction::Notice, assets);
+            }
+            (Screen::LanJoin, "CreateButton") => {
+                self.keep_lan_name();
+                self.show(Screen::LanCreate, assets)
+            }
+            (Screen::LanJoin, "LoadButton") => {
+                self.keep_lan_name();
+                self.show(Screen::LanLoad, assets)
+            }
             (Screen::LanLoad, "CancelButton") => self.show(Screen::LanJoin, assets),
             // A saved network game is hosted with its players' slots kept for them.
             (Screen::LanLoad, "OKButton") => {
@@ -1111,6 +1133,7 @@ impl Glue {
                 }
             }
             (Screen::LanJoin, "JoinButton") => {
+                self.keep_lan_name();
                 if let Err(key) = self.lan.join() {
                     let text = assets.frames.string(key);
                     self.show_dialog(&text, false, DialogAction::Notice, assets);

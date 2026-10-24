@@ -96,8 +96,7 @@ impl Lan {
         tree.set_text("GameCreatorValue", ad.map_or("", |a| a.host.as_str()));
         tree.set_text("GameSpeedValue", &ad.map_or(String::new(), |a| db.string(speed_key(a.speed))));
         crate::advanced::display(tree, db, ad.map_or(crate::advanced::DEFAULT_FLAGS, |a| a.flags));
-        tree.set_enabled("JoinButton", ad.is_some() && !self.name.trim().is_empty());
-        tree.set_enabled("CreateButton", !self.name.trim().is_empty());
+        // The buttons stay enabled: without a name or a game they say what is needed.
     }
 
     /// Searches go on, the lobby's messages come in.

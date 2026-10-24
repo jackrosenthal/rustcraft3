@@ -41,6 +41,8 @@ pub struct Options {
     pub lights: u32,
     pub unitshadows: bool,
     pub occlusion: bool,
+    /// The name typed on the Local Area Network screen (setting 0x41, empty at first).
+    pub lanname: String,
 }
 
 impl Default for Options {
@@ -72,6 +74,7 @@ impl Default for Options {
             lights: 2,
             unitshadows: true,
             occlusion: true,
+            lanname: String::new(),
         }
     }
 }

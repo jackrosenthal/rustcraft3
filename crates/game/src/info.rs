@@ -48,6 +48,17 @@ pub struct HeroInfo {
     pub attributes: [(i32, i32); 3],
 }
 
+/// A spellcaster's rank (Casterupgradeart, Casterupgradename, Casterupgradetip at its
+/// caster training's level).
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct RankInfo {
+    pub art: String,
+    pub name: String,
+    pub tip: String,
+    pub level: i32,
+    pub upgrade_id: Option<crate::objects::Id>,
+}
+
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct InfoStats {
     pub attack: Option<AttackInfo>,
@@ -55,18 +66,20 @@ pub struct InfoStats {
     pub food_made: i32,
     pub gold: Option<i32>,
     pub hero: Option<HeroInfo>,
+    pub rank: Option<RankInfo>,
 }
 
 impl World {
-    /// The first upgrade in a unit's `upgrades` list with one of `effects`, and its
+    /// The first upgrade in a unit's `upgrades` list of one of `classes` (UpgradeData
+    /// class: melee and ranged for its attack, armor, caster for its rank), and its
     /// research level.
-    fn upgrade_for(&self, owner: u8, h_type: crate::objects::Id, effects: &[&str]) -> Option<(crate::objects::Id, i32)> {
+    fn upgrade_for(&self, owner: u8, h_type: crate::objects::Id, classes: &[&str]) -> Option<(crate::objects::Id, i32)> {
         let o = self.objects.units.get(h_type)?;
         let p = self.players.get(owner as usize)?;
         for up in o.list("upgrades") {
             let id = id_from_str(up.trim());
             let Some(u) = self.objects.upgrades.get(id) else { continue };
-            if (1..=4).any(|k| effects.contains(&u.str(&format!("effect{k}")).as_str())) {
+            if classes.contains(&u.str("class").to_ascii_lowercase().as_str()) {
                 return Some((id, p.tech_researched.get(&id).copied().unwrap_or(0)));
             }
         }
@@ -82,7 +95,7 @@ impl World {
             let dice = wp.dice + ub.dice;
             let base = wp.base + ub.damage + self.primary_attribute_pub(h);
             let bonus = u.item_bonus.damage + self.buff_damage_bonus(h);
-            let up = self.upgrade_for(u.owner, u.type_id, &["ratd", "ratx"]);
+            let up = self.upgrade_for(u.owner, u.type_id, &["melee", "ranged"]);
             s.attack = Some(AttackInfo {
                 min: (base + dice as f32) as i32,
                 max: (base + (dice * wp.sides) as f32) as i32,
@@ -98,7 +111,7 @@ impl World {
         }
         let def = o.map_or(0.0, |o| o.real("def")) + ub.armor;
         let agi = if u.is_hero { (u.agi + u.item_bonus.agi).floor() * self.misc_f32("AgiDefenseBonus", 0.3) + self.misc_f32("AgiDefenseBase", -2.0) } else { 0.0 };
-        let up = self.upgrade_for(u.owner, u.type_id, &["rarm"]);
+        let up = self.upgrade_for(u.owner, u.type_id, &["armor"]);
         let bonus = u.item_bonus.armor + self.buff_mods(h).2;
         // DefenseArmor's reduction, or for negative armor the original's table
         // (FUN_6f66d320) as the combat uses it.
@@ -123,6 +136,17 @@ impl World {
             }),
         };
         s.food_made = o.map_or(0, |o| o.int("fmade"));
+        // A spellcaster's rank (CInfoPanelIconRank::vf27, FUN_6f340c30 and FUN_6f340c60).
+        if let Some(o) = o {
+            let art = o.str("Casterupgradeart");
+            let names = o.list("Casterupgradename");
+            if !art.is_empty() && !names.is_empty() {
+                let up = self.upgrade_for(u.owner, u.type_id, &["caster"]);
+                let level = up.map_or(0, |(_, l)| l);
+                let entry = |list: Vec<String>| list.get((level.max(0) as usize).min(list.len().saturating_sub(1))).map(|s| s.trim().to_string()).unwrap_or_default();
+                s.rank = Some(RankInfo { art, name: entry(names), tip: entry(o.list("Casterupgradetip")), level, upgrade_id: up.map(|(id, _)| id) });
+            }
+        }
         s.gold = self.ability_with_code(h, "Agld").map(|_| u.resource);
         if u.is_hero {
             let b = u.item_bonus;

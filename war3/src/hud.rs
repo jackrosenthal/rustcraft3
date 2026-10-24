@@ -477,6 +477,15 @@ impl Hud {
             t.set_text("InfoPanelIconValueGold", &g.to_string());
             t.set_text("InfoPanelIconLevelGold", "");
         }
+        // A spellcaster's rank, beside the attack (or the armor).
+        if let Some(rank) = &s.rank {
+            let beside = if weapons == 1 { damage0.to_string() } else { armor.clone() };
+            t.set_point(&frame("Rank"), FramePoint::TopLeft, &beside, FramePoint::TopRight, 0.0, 0.0);
+            t.set_visible(&frame("Rank"), true);
+            t.set_model("InfoPanelIconBackdropRank", &rank.art);
+            t.set_text("InfoPanelIconValueRank", &rank.name);
+            t.set_text("InfoPanelIconLevelRank", &rank.level.to_string());
+        }
         // Food provided, beside the armor (or the attack when there is one).
         if s.hero.is_none() && s.food_made > 0 {
             let beside = if weapons == 1 { damage0.to_string() } else { armor.clone() };
@@ -633,6 +642,29 @@ impl Hud {
         let mut b = Button::text_only(title, type_tip(&format!("ARMORTIP_{kind}")));
         b.requires = middle;
         out.push(("SimpleInfoPanelIconArmorArmor".to_string(), b));
+        // A spellcaster's rank (CInfoPanelIconRank::vf27): its name and training, and
+        // its spells at that rank.
+        if let Some(rank) = &s.rank {
+            let mut middle = format!("{} {}", db.string("COLON_NAME"), rank.name);
+            middle.push_str(&upgrade_line(rank.upgrade_id, rank.upgrade_id.map(|_| rank.level)));
+            let mut uber = format!("{} \n{}", db.string("COLON_SPELLS"), rank.tip);
+            if rank.level != 0 {
+                uber.push_str(&format!("\n\n{} ", db.string("CASTER_UPGRADE_TIP")));
+            }
+            let mut b = Button::text_only(db.string("COLON_RANK"), uber);
+            b.requires = middle;
+            out.push(("SimpleInfoPanelIconRankRank".to_string(), b));
+        }
+        // A mine's gold (CInfoPanelIconGold::vf27) and the food a structure provides
+        // (CInfoPanelIconFood::vf27).
+        if let Some(g) = s.gold {
+            let mut b = Button::text_only(db.string("COLON_GOLD"), db.string("RESOURCE_UBERTIP_GOLD"));
+            b.requires = g.to_string();
+            out.push(("SimpleInfoPanelIconGoldGold".to_string(), b));
+        }
+        if s.hero.is_none() && s.food_made > 0 {
+            out.push(("SimpleInfoPanelIconFoodFood".to_string(), Button::text_only(db.string("COLON_FOOD"), format!("{}{}", db.string("COLON_PROVIDED"), s.food_made))));
+        }
         out
     }
 

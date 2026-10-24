@@ -18,6 +18,8 @@ pub enum Action {
     Build(Id),
     LearnMenu,
     Learn(Id),
+    /// Open a spell book's page.
+    BookMenu(Id),
     /// Buy an item from the selected shop.
     Buy(Id),
     /// Hire a unit from the selected shop.
@@ -135,6 +137,8 @@ pub enum Page {
     Main,
     Build,
     Learn,
+    /// A spell book's spells.
+    Book(Id),
 }
 
 pub struct Commands {
@@ -227,6 +231,93 @@ impl Commands {
         out
     }
 
+    /// An ability's buttons on a unit's card (two for Call to Arms), at its Buttonpos
+    /// or at `at`.
+    fn ability_buttons(&self, db: &w3_ui::FrameDb, w: &World, h: u32, a: Id, at: Option<(u32, u32)>) -> Vec<Button> {
+        let _ = db;
+        let mut out = Vec::new();
+        let Some(u) = w.unit(h) else { return out };
+        let Some(o) = w.objects.units.get(u.type_id) else { return out };
+        let Some(ab) = w.objects.abilities.get(a) else { return out };
+        // SetPlayerAbilityAvailable takes the button away.
+        if w.players[u.owner as usize].abilities_unavailable.contains(&a) || !w.ability_visible(a) {
+            return out;
+        }
+        // Root (Aroo) shows Uproot (Unbuttonpos, Unart, Unorder) while rooted, and a
+        // morph its way back while in its other form (UnitID).
+        const MORPHS: [&str; 9] = ["Abrf", "Arav", "Astn", "Abur", "AEme", "ANcr", "ANrg", "Acpf", "Aetf"];
+        let code = ab.str("code");
+        let in_other_form = MORPHS.contains(&code.as_str()) && id_from_str(ab.level_str("UnitID", w.ability_level(h, a).max(1)).trim()) == u.type_id;
+        let unrooted_side = (code == "Aroo" && !u.extra.uprooted) || in_other_form;
+        // Abilities with a button position appear on the card.
+        let Some((x, y)) = at.or_else(|| parse_pos(&ab.list(if unrooted_side { "Unbuttonpos" } else { "Buttonpos" }))) else { return out };
+        // Art may list one icon per race (Rally): human, orc, undead, night elf.
+        let race_index = match o.str("race").to_ascii_lowercase().as_str() {
+            "orc" => 1,
+            "undead" => 2,
+            "nightelf" => 3,
+            _ => 0,
+        };
+        let pick = |key: &str| {
+            let arts = ab.list(key);
+            arts.get(race_index).or(arts.first()).map(|s| s.trim().to_string()).unwrap_or_default()
+        };
+        let art = pick(if unrooted_side { "Unart" } else { "Art" });
+        if art.is_empty() {
+            return out;
+        }
+        // The ability's order string, as one of the game's order names.
+        let order = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&w.order_string(a))).unwrap_or("");
+        let targeting = w.targeting(a);
+        let (order, targeted) = match ab.str("code").as_str() {
+            "Ahar" | "Ahrl" => ("harvest", true),
+            // Militia walk to their Town Hall themselves.
+            "Amil" => (order, false),
+            "Aroo" if unrooted_side => ("unroot", false),
+            "Aroo" => ("root", true),
+            c if MORPHS.contains(&c) => {
+                let name = ab.str(if unrooted_side { "Unorder" } else { "Order" });
+                (w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&name)).unwrap_or(""), false)
+            }
+            _ if targeting == w3_game::ability::Targeting::Passive => ("", false),
+            _ => (order, targeting != w3_game::ability::Targeting::None),
+        };
+        let ready = order.is_empty() || w.can_cast(h, a).is_ok();
+        let level = w.ability_level(h, a).max(1);
+        let (tip_key, uber_key, hot_key) = if unrooted_side { ("Untip", "Unubertip", "Unhotkey") } else { ("Tip", "Ubertip", "Hotkey") };
+        let tip = level_entry(&ab.list(tip_key), level);
+        let uber = fill_placeholders(w, &level_entry(&ab.list(uber_key), level));
+        let mana = ab.int(&format!("Cost{level}"));
+        // An ability without an order string uses its code's built-in order; a spell
+        // book opens its page.
+        let action = match w.intrinsic_order_of(a) {
+            _ if code == "Aspb" => Action::BookMenu(a),
+            Some(id) if order.is_empty() && targeting != w3_game::ability::Targeting::Passive => Action::OrderId { order: id, targeted },
+            _ => Action::Order { order, targeted },
+        };
+        let ready = ready && (order.is_empty() || w.can_cast(h, a).is_ok()) && (!matches!(action, Action::OrderId { .. }) || w.can_cast(h, a).is_ok());
+        let mut button = Button::new(x, y, art, hotkey(&ab.str(hot_key)), action, ready).with_tip(tip, uber, [mana, 0, 0, 0]).with_requirements(db, w, u.owner, a, 1);
+        // Autocast abilities toggle with their orderon and orderoff.
+        let on = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Orderon")));
+        let off = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Orderoff")));
+        if let (Some(on), Some(off)) = (on, off) {
+            button.autocast = Some((on, off, u.autocast.contains(&a)));
+        }
+        out.push(button);
+        // Call to Arms shows its second button (Unbuttonpos, Unart, Unorder: Back to
+        // Work) beside it; other toggles show one button at a time.
+        let both = ab.str("code") == "Amic";
+        if let (true, Some((ux, uy)), unart) = (both, parse_pos(&ab.list("Unbuttonpos")), pick("Unart")) {
+            let unorder = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Unorder"))).unwrap_or("");
+            if !unart.is_empty() && !unorder.is_empty() {
+                let tip = level_entry(&ab.list("Untip"), level);
+                let uber = fill_placeholders(w, &level_entry(&ab.list("Unubertip"), level));
+                out.push(Button::new(ux, uy, unart, hotkey(&ab.str("Unhotkey")), Action::Order { order: unorder, targeted: false }, true).with_tip(tip, uber, [0; 4]));
+            }
+        }
+        out
+    }
+
     /// Buttons for a unit owned by the local player.
     pub fn card(&self, db: &w3_ui::FrameDb, w: &World, h: u32, page: Page) -> Vec<Button> {
         let Some(u) = w.unit(h) else { return vec![] };
@@ -281,6 +372,17 @@ impl Commands {
             out.extend(self.command(db, "CmdCancel", Action::Cancel, true));
             return out;
         }
+        // A spell book's page: its spells in the order chosen from the top left, and
+        // Cancel (CAbilitySpellBook::vf108, the slots at 0x6fce5dd0).
+        if let Page::Book(book) = page {
+            const SLOTS: [(u32, u32); 11] = [(0, 0), (1, 0), (2, 0), (3, 0), (0, 1), (1, 1), (2, 1), (3, 1), (0, 2), (1, 2), (2, 2)];
+            let spells = u.extra.books.iter().find(|b| b.0 == book).map(|b| b.1.clone()).unwrap_or_default();
+            for (&s, &at) in spells.iter().zip(SLOTS.iter()) {
+                out.extend(self.ability_buttons(db, w, h, s, Some(at)));
+            }
+            out.extend(self.command(db, "CmdCancel", Action::Cancel, true));
+            return out;
+        }
         if u.constructing.is_some() {
             out.extend(self.command(db, "CmdCancelBuild", Action::CancelTrain, true));
             return out;
@@ -327,81 +429,11 @@ impl Commands {
             out.extend(object_button(id, Action::Upgrade(id), u.queue.is_empty()));
         }
         for &(a, _) in &u.abilities {
-            let Some(ab) = w.objects.abilities.get(a) else { continue };
-            // SetPlayerAbilityAvailable takes the button away.
-            if w.players[u.owner as usize].abilities_unavailable.contains(&a) || !w.ability_visible(a) {
+            // A spell book's spells are on its own page.
+            if w.book_of(h, a).is_some() {
                 continue;
             }
-            // Root (Aroo) shows Uproot (Unbuttonpos, Unart, Unorder) while rooted, and a
-            // morph its way back while in its other form (UnitID).
-            const MORPHS: [&str; 9] = ["Abrf", "Arav", "Astn", "Abur", "AEme", "ANcr", "ANrg", "Acpf", "Aetf"];
-            let code = ab.str("code");
-            let in_other_form = MORPHS.contains(&code.as_str()) && id_from_str(ab.level_str("UnitID", w.ability_level(h, a).max(1)).trim()) == u.type_id;
-            let unrooted_side = (code == "Aroo" && !u.extra.uprooted) || in_other_form;
-            // Abilities with a button position appear on the card.
-            let Some((x, y)) = parse_pos(&ab.list(if unrooted_side { "Unbuttonpos" } else { "Buttonpos" })) else { continue };
-            // Art may list one icon per race (Rally): human, orc, undead, night elf.
-            let race_index = match o.str("race").to_ascii_lowercase().as_str() {
-                "orc" => 1,
-                "undead" => 2,
-                "nightelf" => 3,
-                _ => 0,
-            };
-            let pick = |key: &str| {
-                let arts = ab.list(key);
-                arts.get(race_index).or(arts.first()).map(|s| s.trim().to_string()).unwrap_or_default()
-            };
-            let art = pick(if unrooted_side { "Unart" } else { "Art" });
-            if art.is_empty() {
-                continue;
-            }
-            // The ability's order string, as one of the game's order names.
-            let order = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&w.order_string(a))).unwrap_or("");
-            let targeting = w.targeting(a);
-            let (order, targeted) = match ab.str("code").as_str() {
-                "Ahar" | "Ahrl" => ("harvest", true),
-                // Militia walk to their Town Hall themselves.
-                "Amil" => (order, false),
-                "Aroo" if unrooted_side => ("unroot", false),
-                "Aroo" => ("root", true),
-                c if MORPHS.contains(&c) => {
-                    let name = ab.str(if unrooted_side { "Unorder" } else { "Order" });
-                    (w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&name)).unwrap_or(""), false)
-                }
-                _ if targeting == w3_game::ability::Targeting::Passive => ("", false),
-                _ => (order, targeting != w3_game::ability::Targeting::None),
-            };
-            let ready = order.is_empty() || w.can_cast(h, a).is_ok();
-            let level = w.ability_level(h, a).max(1);
-            let (tip_key, uber_key, hot_key) = if unrooted_side { ("Untip", "Unubertip", "Unhotkey") } else { ("Tip", "Ubertip", "Hotkey") };
-            let tip = level_entry(&ab.list(tip_key), level);
-            let uber = fill_placeholders(w, &level_entry(&ab.list(uber_key), level));
-            let mana = ab.int(&format!("Cost{level}"));
-            // An ability without an order string uses its code's built-in order.
-            let action = match w.intrinsic_order_of(a) {
-                Some(id) if order.is_empty() && targeting != w3_game::ability::Targeting::Passive => Action::OrderId { order: id, targeted },
-                _ => Action::Order { order, targeted },
-            };
-            let ready = ready && (order.is_empty() || w.can_cast(h, a).is_ok()) && (!matches!(action, Action::OrderId { .. }) || w.can_cast(h, a).is_ok());
-            let mut button = Button::new(x, y, art, hotkey(&ab.str(hot_key)), action, ready).with_tip(tip, uber, [mana, 0, 0, 0]).with_requirements(db, w, u.owner, a, 1);
-            // Autocast abilities toggle with their orderon and orderoff.
-            let on = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Orderon")));
-            let off = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Orderoff")));
-            if let (Some(on), Some(off)) = (on, off) {
-                button.autocast = Some((on, off, u.autocast.contains(&a)));
-            }
-            out.push(button);
-            // Call to Arms shows its second button (Unbuttonpos, Unart, Unorder: Back to
-            // Work) beside it; other toggles show one button at a time.
-            let both = ab.str("code") == "Amic";
-            if let (true, Some((ux, uy)), unart) = (both, parse_pos(&ab.list("Unbuttonpos")), pick("Unart")) {
-                let unorder = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Unorder"))).unwrap_or("");
-                if !unart.is_empty() && !unorder.is_empty() {
-                    let tip = level_entry(&ab.list("Untip"), level);
-                    let uber = fill_placeholders(w, &level_entry(&ab.list("Unubertip"), level));
-                    out.push(Button::new(ux, uy, unart, hotkey(&ab.str("Unhotkey")), Action::Order { order: unorder, targeted: false }, true).with_tip(tip, uber, [0; 4]));
-                }
-            }
+            out.extend(self.ability_buttons(db, w, h, a, None));
         }
         // An altar offers its owner's dead heroes, where their train buttons would be.
         for hero in w.revivable(h) {

@@ -607,6 +607,8 @@ impl World {
 
     /// Recomputes what held items add: attributes, life, mana, armor, damage, speed.
     pub fn apply_item_bonuses(&mut self, unit: u32) {
+        // A carried spell book's spells come and go with it.
+        self.sync_spell_books(unit);
         let Some(u) = self.unit(unit) else { return };
         let items: Vec<Id> = u.inventory.iter().filter_map(|&i| self.item(i).map(|i| i.type_id)).collect();
         let mut b = ItemBonus::default();

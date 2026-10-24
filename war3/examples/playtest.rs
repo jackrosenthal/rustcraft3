@@ -294,6 +294,33 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 5;
             }
+            // give <unit> <item type>: creates an item in the unit's inventory.
+            "give" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let u = num(&a[i + 1]) as u32;
+                    let id = w3_game::objects::id_from_str(&a[i + 2]);
+                    let it = w3_game::natives::objects::create_item(&mut g.world, id, 0.0, 0.0);
+                    let ok = g.world.give_item(&mut g.vm, u, it, None);
+                    eprintln!("gave {} = {it}: {ok}", a[i + 2]);
+                }
+                i += 3;
+            }
+            // useslot <n>: uses the selected unit's item in a slot.
+            "useslot" => {
+                scene.use_inventory_slot(num(&a[i + 1]) as usize);
+                i += 2;
+            }
+            // books <unit>: prints the unit's spell books and their spells.
+            "books" => {
+                if let Some(g) = scene.game.as_ref() {
+                    if let Some(u) = g.world.unit(num(&a[i + 1]) as u32) {
+                        for (b, s) in &u.extra.books {
+                            eprintln!("book {} spells {:?}", w3_game::objects::id_str(*b), s.iter().map(|x| w3_game::objects::id_str(*x)).collect::<Vec<_>>());
+                        }
+                    }
+                }
+                i += 2;
+            }
             // tree <dx> <dy>: prints the standing tree nearest a point (relative to the
             // start) and where it is.
             "tree" => {

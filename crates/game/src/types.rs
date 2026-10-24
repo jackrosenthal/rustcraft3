@@ -397,6 +397,10 @@ pub struct UnitExtra {
     /// Abilities Engineering Upgrade replaced: each original and what stands for it now.
     #[serde(default)]
     pub swapped: Vec<(Id, Id)>,
+    /// Its spell books (Aspb, its own or a carried item's) and the spells each chose,
+    /// which it has while it has the book.
+    #[serde(default)]
+    pub books: Vec<(Id, Vec<Id>)>,
     /// UnitMakeAbilityPermanent: abilities kept through morphs and upgrades, with the
     /// count of times made permanent (the ability's +0x38).
     #[serde(default)]
@@ -491,6 +495,7 @@ impl Default for UnitExtra {
             restore: None,
             swapped: Vec::new(),
             permanent: Vec::new(),
+            books: Vec::new(),
             ai_rest: Vec::new(),
             ai_watch: 0.0,
             ai_inside: Vec::new(),

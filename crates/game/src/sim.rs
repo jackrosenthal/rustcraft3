@@ -1314,6 +1314,8 @@ impl World {
         let kept: Vec<(Id, i32)> = u.abilities.iter().copied().filter(|(a, _)| u.extra.permanent.iter().any(|p| p.0 == *a && p.1 > 0) && !abilities.iter().any(|x| x.0 == *a)).collect();
         u.abilities = abilities;
         u.abilities.extend(kept);
+        u.extra.books.clear();
+        self.sync_spell_books(h);
         self.update_food();
     }
 

@@ -148,6 +148,7 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
     }
     w.unit_order.push(h);
     w.attach_ability_art(h);
+    w.sync_spell_books(h);
     w.score_made(owner, type_id, h, is_hero);
     if !path_tex.is_empty() {
         // Structures are always placed facing BuildingAngle; their footprint does not turn.
@@ -844,6 +845,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let Some(u) = w.unit_mut(a.h(0)) else { return boolean(false) };
             if u.abilities.iter().any(|(x, _)| *x == id) { return boolean(false); }
             u.abilities.push((id, 1));
+            w.sync_spell_books(a.h(0));
             boolean(true)
         },
         UnitRemoveAbility => |w, _, a| {
@@ -851,7 +853,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let Some(u) = w.unit_mut(a.h(0)) else { return boolean(false) };
             let n = u.abilities.len();
             u.abilities.retain(|(x, _)| *x != id);
-            boolean(u.abilities.len() != n)
+            let removed = u.abilities.len() != n;
+            w.sync_spell_books(a.h(0));
+            boolean(removed)
         },
         GetUnitAbilityLevel => |w, _, a| {
             let id = id_from_int(a.i(1));

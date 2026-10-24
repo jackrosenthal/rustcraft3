@@ -2066,6 +2066,11 @@ impl Scene {
                 }
                 g.apply(w3_game::replay::Command::Submenu { player: local, build: true });
             }
+            A::BookMenu(book) => {
+                if let Some(h) = self.hud.as_mut() {
+                    h.page = crate::card::Page::Book(book);
+                }
+            }
             A::LearnMenu => {
                 if let Some(h) = self.hud.as_mut() {
                     h.page = crate::card::Page::Learn;
@@ -3960,7 +3965,8 @@ impl Scene {
     /// The selected unit's command card, as the interface would show it.
     pub fn card_now(&self, db: &w3_ui::FrameDb) -> Vec<crate::card::Button> {
         let (Some(g), Some(&h)) = (self.game.as_ref(), self.selection.first()) else { return Vec::new() };
-        card_of(&self.commands, db, &g.world, h, crate::card::Page::Main)
+        let page = self.hud.as_ref().map_or(crate::card::Page::Main, |h| h.page);
+        card_of(&self.commands, db, &g.world, h, page)
     }
 
     /// The game as a saved game.
@@ -4082,6 +4088,15 @@ impl Scene {
     pub fn use_inventory_slot(&mut self, slot: usize) {
         if let (Some(&u), Some(g)) = (self.selection.first(), self.game.as_mut()) {
             if w3_game::natives::players::controls(&g.world, g.world.local_player, u) && g.world.unit(u).is_some_and(|un| un.inventory.get(slot).is_some_and(|&i| i != 0)) {
+                // A spell book opens its page (its base order, spellbook).
+                let item = g.world.unit(u).map_or(0, |un| un.inventory[slot]);
+                let book = g.world.item(item).map(|i| g.world.item_abilities(i.type_id)).unwrap_or_default().into_iter().find(|&a| g.world.ability_code(a) == "Aspb");
+                if let Some(book) = book {
+                    if let Some(h) = self.hud.as_mut() {
+                        h.page = crate::card::Page::Book(book);
+                    }
+                    return;
+                }
                 // An item used on a unit or a point waits for the click on it.
                 if g.world.item_targeting(u, slot) == w3_game::ability::Targeting::None {
                     g.apply(w3_game::replay::Command::UseItem { unit: u, slot });

@@ -133,8 +133,11 @@ impl World {
         }
         u.abilities = abilities;
         u.extra.weapons = None;
+        // Its spell books choose again in the new form.
+        u.extra.books.clear();
         self.detach_ability_art(h);
         self.attach_ability_art(h);
+        self.sync_spell_books(h);
     }
 
     /// Call to Arms (Amic) and Militia (Amil) orders: None when the order is none of

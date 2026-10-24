@@ -1073,7 +1073,7 @@ impl Scene {
                 w3_game::world::Request::EndGame { score } => {
                     self.ended = true;
                     if score {
-                        self.final_score = self.game.as_ref().map(|g| crate::scorescreen::ScoreData::from_world(&g.world));
+                        self.final_score = self.score_data();
                     }
                 }
                 w3_game::world::Request::Restart => self.restart_requested = true,
@@ -1105,7 +1105,7 @@ impl Scene {
                 w3_game::world::Request::ChangeLevel { map, score } => {
                     self.change_level = Some(map);
                     if score {
-                        self.final_score = self.game.as_ref().map(|g| crate::scorescreen::ScoreData::from_world(&g.world));
+                        self.final_score = self.score_data();
                     }
                 }
                 r @ (w3_game::world::Request::PlaySound(_)
@@ -2255,7 +2255,7 @@ impl Scene {
                 }
                 Some(crate::netdialog::Event::Disconnect) => {
                     self.ended = true;
-                    self.final_score = self.game.as_ref().map(|g| crate::scorescreen::ScoreData::from_world(&g.world));
+                    self.final_score = self.score_data();
                 }
                 None => {}
             }
@@ -2657,6 +2657,13 @@ impl Scene {
         if let Some(worker) = self.hud.as_mut().and_then(|h| h.next_idle_worker(now)) {
             self.select_worker(worker);
         }
+    }
+
+    /// The score screen's data for the game, with no replay to save from a campaign.
+    fn score_data(&self) -> Option<crate::scorescreen::ScoreData> {
+        let mut d = crate::scorescreen::ScoreData::from_world(&self.game.as_ref()?.world);
+        d.replay &= !self.campaign;
+        Some(d)
     }
 
     /// Opens the game menu (F10) on the next frame.
@@ -3860,7 +3867,7 @@ impl Scene {
             // Without the host the game is over.
             if lost {
                 self.ended = true;
-                self.final_score = self.game.as_ref().map(|g| crate::scorescreen::ScoreData::from_world(&g.world));
+                self.final_score = self.score_data();
             }
         } else if let Some(g) = self.game.as_mut().filter(|_| !paused) {
             match self.playback.as_mut() {

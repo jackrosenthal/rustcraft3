@@ -34,6 +34,9 @@ pub struct ScoreData {
     pub victory: bool,
     pub local_race: i32,
     pub elapsed: f32,
+    /// Whether the game kept a replay to save (not a campaign's, nor under
+    /// DoNotSaveReplay): otherwise Save Replay is hidden (FUN_6f2dc950).
+    pub replay: bool,
 }
 
 /// The column the tab sorts by until another is chosen (as captured from the original).
@@ -84,6 +87,7 @@ impl ScoreData {
             victory: w.player_results.get(&local) == Some(&0),
             local_race: w.players.get(local as usize).map_or(1, |p| p.race),
             elapsed: w.time,
+            replay: !w.no_replay,
         }
     }
 

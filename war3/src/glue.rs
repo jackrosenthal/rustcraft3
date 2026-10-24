@@ -419,6 +419,8 @@ impl Glue {
                 // Save Replay keeps the game just played (Replay\LastReplay.w3g).
                 let last = crate::replays::last_replay().is_some_and(|p| p.is_file());
                 self.tree.set_enabled("ScoreScreenSaveReplayButton", last);
+                let kept = self.score.as_ref().is_none_or(|s| s.data.replay);
+                self.tree.set_visible("ScoreScreenSaveReplayButton", kept);
                 self.tree.set_visible("ScoreScreenReplaySavedButton", false);
                 self.save_replay = Default::default();
                 self.sync_score(db);

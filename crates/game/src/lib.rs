@@ -637,7 +637,8 @@ impl Game {
         natives::units::kill_unit(&mut self.world, &mut self.vm, h, 0);
     }
 
-    /// Real time passes in a paused game played alone: sleeping threads go on.
+    /// Real time passes in a game played alone that PauseGame paused: sleeping threads
+    /// go on.
     pub fn tick_paused(&mut self, dt: f32) {
         self.world.wake_sleepers(&mut self.vm, dt);
     }

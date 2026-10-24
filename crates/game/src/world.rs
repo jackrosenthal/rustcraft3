@@ -154,7 +154,7 @@ pub struct World {
     /// Game time in seconds.
     pub time: f32,
     /// The clock sleeping threads and script sounds keep: game time, and real time
-    /// while a game played alone is paused.
+    /// while a game played alone is paused by PauseGame.
     #[serde(default)]
     pub sleep_time: f32,
     pub ctx: EventCtx,
@@ -1323,8 +1323,8 @@ impl World {
     }
 
     /// Advances the sleep clock: with the game, and alone while a game played alone is
-    /// paused, as the original's sleep queue goes on in a pause (CGameUI's FUN_6f36ab40
-    /// advances it then).  Sleeping threads resume on a poll every SLEEP_POLL seconds,
+    /// paused by PauseGame, as the original's sleep queue goes on then (CGameUI's
+    /// FUN_6f36ab40 advances it) though not under its menus.  Sleeping threads resume on a poll every SLEEP_POLL seconds,
     /// at times SLEEP_POLL_PHASE past a multiple: those more than their sleep and
     /// SLEEP_SLACK past their start (measured from the original: TriggerSleepAction(0.5)
     /// lasts 0.6, (1) 1.1, and (0) until the next poll).

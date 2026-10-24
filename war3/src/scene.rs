@@ -4069,9 +4069,9 @@ impl Scene {
                 None => g.tick(gdt),
             }
         }
-        // A game played alone and paused (by the player or PauseGame): its sleeping
-        // threads still wake in real time, as the original's do.
-        if let Some(g) = self.game.as_mut().filter(|_| self.net.is_none() && self.playback.is_none() && (paused || script_paused)) {
+        // A game played alone and paused by PauseGame: its sleeping threads still wake in
+        // real time, as the original's do; its menus' pause stops them (measured).
+        if let Some(g) = self.game.as_mut().filter(|_| self.net.is_none() && self.playback.is_none() && script_paused && !paused) {
             g.tick_paused(dt);
         }
         self.apply_requests();

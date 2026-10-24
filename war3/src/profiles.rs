@@ -26,6 +26,8 @@ pub enum Event {
     Chosen,
     /// Delete asks to confirm (DELETE_PROFILE_MESSAGE).
     ConfirmDelete(String),
+    /// Enter with no name typed (PROFILE_NEEDS_A_NAME).
+    NeedsName,
 }
 
 impl ProfilePanel {
@@ -80,7 +82,8 @@ impl ProfilePanel {
                 self.text.pop();
             }
             '\r' | '\n' => {
-                let e = self.create();
+                // With nothing typed the original says a name is needed (FUN_6f2e4c40).
+                let e = if self.text.is_empty() { Some(Event::NeedsName) } else { self.create() };
                 self.sync(tree);
                 return Some(e);
             }

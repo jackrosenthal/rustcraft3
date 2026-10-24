@@ -861,6 +861,10 @@ impl Glue {
                 let text = assets.frames.string("DELETE_PROFILE_MESSAGE").replacen("%s", &name, 1);
                 self.show_dialog(&text, true, DialogAction::DeleteProfile, assets);
             }
+            crate::profiles::Event::NeedsName => {
+                let text = assets.frames.string("PROFILE_NEEDS_A_NAME");
+                self.show_dialog(&text, false, DialogAction::Notice, assets);
+            }
         }
     }
 

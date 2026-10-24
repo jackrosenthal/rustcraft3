@@ -417,6 +417,7 @@ impl Hud {
     /// CInfoPanelIcon* updates): which show, where they sit, and their texts.
     fn show_info_icons(&mut self, db: &FrameDb, world: &World, h: u32) {
         let s = world.info_stats(h);
+        let tooltips = self.tooltips;
         let t = &mut self.tree;
         let frame = |kind: &str| format!("SimpleInfoPanelIcon{kind}{kind}");
         for (template, scope) in INFO_ICONS {
@@ -444,7 +445,10 @@ impl Hud {
         let detail = "SimpleInfoPanelUnitDetail";
         let damage0 = "SimpleInfoPanelIconDamageDamage0";
         let armor = frame("Armor");
-        let tips = Self::info_icon_tips(db, world, &s, &bonus);
+        let mut tips = Self::info_icon_tips(db, world, &s, &bonus);
+        if let Some(hero) = &s.hero {
+            tips.push(("SimpleInfoPanelIconHeroHero".to_string(), Self::hero_attribute_tip(db, world, &hero.primary, tooltips)));
+        }
         let weapons = s.attack.is_some() as u32;
         if let Some(a) = &s.attack {
             t.set_visible(damage0, true);
@@ -494,6 +498,45 @@ impl Hud {
         }
         t.layout();
         self.info_tips = tips;
+    }
+
+    /// The hero attributes icon's tooltip (CInfoPanelIconHero::vf27): each attribute,
+    /// the primary one marked with the damage it adds, and under the Tooltips option what
+    /// each point of each gives, in the tip's text; without the option the names alone,
+    /// the primary one with a colon, as its middle text.
+    fn hero_attribute_tip(db: &FrameDb, world: &World, primary: &str, ext: bool) -> crate::card::Button {
+        let misc = |k: &str, d: f32| world.misc_f32(k, d);
+        let mut primary_block = format!(" - {} \n", db.string("PRIMARY_ATTRIBUTE"));
+        if ext {
+            primary_block.push_str(&format!("{} \n", db.string("BONUS_DAMAGE").replacen("%d", &(misc("StrAttackBonus", 1.0) as i32).to_string(), 1)));
+        }
+        let mut text = String::new();
+        let sections: [(&str, &str, &str, Vec<String>); 3] = [
+            ("STR", "STRENGTH", "COLON_STRENGTH", vec![db.string("BONUS_HITPOINTS").replacen("%d", &(misc("StrHitPointBonus", 25.0) as i32).to_string(), 1), db.string("BONUS_HPREGEN")]),
+            ("AGI", "AGILITY", "COLON_AGILITY", vec![db.string("BONUS_DEFENSE_FIXED").replacen("%d", &((1.0 / misc("AgiDefenseBonus", 0.3)) as i32).to_string(), 1), db.string("BONUS_ATTACK_SPEED")]),
+            ("INT", "INTELLECT", "COLON_INTELLECT", vec![db.string("BONUS_MANA").replacen("%d", &(misc("IntManaBonus", 15.0) as i32).to_string(), 1), db.string("BONUS_MANAREGEN")]),
+        ];
+        for (code, name, colon, bonuses) in sections {
+            let is_primary = primary.eq_ignore_ascii_case(code);
+            text.push_str(&format!("{} \n", db.string(if ext || is_primary { colon } else { name })));
+            if is_primary {
+                text.push_str(&primary_block);
+            }
+            if ext {
+                for b in bonuses {
+                    text.push_str(&format!("{b} \n"));
+                }
+            }
+        }
+        let text = text.trim_end().to_string();
+        let title = db.string("COLON_HERO_ATTRIBUTES");
+        if ext {
+            crate::card::Button::text_only(title, text)
+        } else {
+            let mut b = crate::card::Button::text_only(title, String::new());
+            b.requires = text;
+            b
+        }
     }
 
     /// The tooltips of the unit detail's damage and armor icons

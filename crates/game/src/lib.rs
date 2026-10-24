@@ -384,6 +384,12 @@ impl Game {
                     };
                 }
             }
+            // Each player in the game is placed at a start (measured:
+            // PLAYER_STATE_PLACED is 1 for the user and computer playing and 0 for the
+            // rest).
+            if p.slot_state == slot_state::PLAYING {
+                p.state.insert(crate::types::player_state::PLACED, 1);
+            }
         }
         // The players take their start locations by the map's placement.
         self.world.place_start_locations();

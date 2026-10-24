@@ -1395,6 +1395,16 @@ impl FrameTree {
                         }
                     }
                 }
+                // An edit box without an EditTextFrame shows its text in its own text frame
+                // (CEditBox's +0x254): MasterFont, white, from its left past EditBorderSize,
+                // 0.015 high as measured from the original's Game Port box.
+                if matches!(d.kind.as_str(), "EDITBOX" | "GLUEEDITBOX") && d.str("EditTextFrame").is_none() {
+                    if let Some(text) = f.text.as_deref().filter(|t| !t.is_empty()) {
+                        let border = d.prop("EditBorderSize").and_then(|p| p.args.first()).map_or(0.0, Arg::num);
+                        let rect = Rect { x0: r.x0 + border, x1: r.x1 - border, y0: r.y0, y1: r.y1 };
+                        out.push(Draw::Text { font: db.decorate("MasterFont"), size: 0.015, rect, text: text.to_string(), color: [1.0; 4], justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
+                    }
+                }
             }
             _ => {}
         }

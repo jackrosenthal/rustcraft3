@@ -137,6 +137,10 @@ pub struct Glue {
     pub screen: Screen,
     pub tree: FrameTree,
     phase: Phase,
+    /// The options' panel: whether it has come out (a page was opened), and the sequence
+    /// that follows its morph once that is done.
+    options_panel: bool,
+    panel_next: Option<String>,
     background: Option<ModelInstance>,
     /// GlueSpriteLayerTopLeft and GlueSpriteLayerTopRight: the panel models.
     layers: Vec<ModelInstance>,
@@ -263,6 +267,8 @@ impl Glue {
             screen: Screen::MainMenu,
             tree: FrameTree::new(4.0 / 3.0),
             phase: Phase::Birth,
+            options_panel: false,
+            panel_next: None,
             background,
             layers,
             fog,
@@ -305,6 +311,18 @@ impl Glue {
         g
     }
 
+    /// Plays a sequence on the top-left panel alone (the glue's layer 1, FUN_6f306dd0).
+    fn play_top_left(&mut self, name: &str) {
+        if let Some(l) = self.layers.first_mut() {
+            if let Some(s) = w3_render::anim::find_sequence(&l.model.mdx, name) {
+                l.sequence = Some(s);
+                l.frame = 0.0;
+                l.finished = false;
+                l.looped = false;
+            }
+        }
+    }
+
     fn play_layers(&mut self, name: &str) {
         for l in &mut self.layers {
             if let Some(s) = w3_render::anim::find_sequence(&l.model.mdx, name) {
@@ -333,6 +351,8 @@ impl Glue {
     /// Builds a screen's frames.
     fn build(&mut self, screen: Screen, assets: &mut Assets) {
         self.screen = screen;
+        self.options_panel = false;
+        self.panel_next = None;
         self.tree = FrameTree::new(4.0 / 3.0);
         self.sprites.clear();
         let db = &assets.frames;
@@ -960,9 +980,22 @@ impl Glue {
                     self.action = Some(GlueAction::Campaign(map));
                 }
             }
-            (Screen::Options, "GameplayButton") => crate::options::menu::show(&mut self.tree, 0),
-            (Screen::Options, "VideoButton") => crate::options::menu::show(&mut self.tree, 1),
-            (Screen::Options, "SoundButton") => crate::options::menu::show(&mut self.tree, 2),
+            (Screen::Options, "GameplayButton" | "VideoButton" | "SoundButton") => {
+                // The first page opened brings the top-left panel out: its Options Morph,
+                // then Options Stand Alternate (FUN_6f2aa3a0 with the glue's morph and
+                // alternate tokens).
+                if !self.options_panel {
+                    self.options_panel = true;
+                    self.play_top_left("Options Morph");
+                    self.panel_next = Some("Options Stand Alternate".to_string());
+                }
+                let page = match name {
+                    "GameplayButton" => 0,
+                    "VideoButton" => 1,
+                    _ => 2,
+                };
+                crate::options::menu::show(&mut self.tree, page);
+            }
             (Screen::Options, "OKButton") => {
                 crate::options::menu::read(&self.tree, &mut self.options);
                 self.options.store();
@@ -1165,6 +1198,11 @@ impl Glue {
                 self.lan.sync_chat(&mut self.tree);
             }
         }
+        if self.phase == Phase::Stand && done {
+            if let Some(next) = self.panel_next.take() {
+                self.play_top_left(&next);
+            }
+        }
         // Birth and Death sequences run once; then the screen stands or the next arrives.
         match self.phase {
             Phase::Birth if done || self.layers.is_empty() => {
@@ -1202,6 +1240,62 @@ impl Glue {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// The options' explanations (COptionsMenu::vf55's FUN_6f2bb390 and kin) in the glue
+    /// tooltip (CGlueToolTipWar3) over the control under the pointer: MasterFont at
+    /// FontHeights GlueToolTip, at most 0.22 wide, 0.006 inside the Battle.net tooltip
+    /// backdrop, its lower left on the control's upper right and kept on the screen
+    /// (CGlueToolTipWar3::vf25).
+    fn options_tip_draws(&self, db: &w3_ui::FrameDb, out: &mut Vec<Draw>) {
+        use w3_ui::fdf::{Arg, Def, Prop};
+        const TIPS: [(&str, &str); 7] = [
+            ("GamePortEditBox", "GAMEPORT_INFO"),
+            ("ChatSupportMenu", "CHAT_SUPPORT_INFO"),
+            ("CustomKeysCheckBox", "CUSTOM_KEYS_INFO"),
+            ("HealthBarsCheckBox", "HEALTH_BARS_INFO"),
+            ("AutosaveReplayCheckBox", "AUTOSAVE_REPLAY_INFO"),
+            ("FormationToggleCheckBox", "FORMATION_TOGGLE_INFO"),
+            ("SpellFilterMenu", "SPELL_FILTER_INFO"),
+        ];
+        let (px, py) = self.pointer;
+        let Some((owner, key)) = TIPS.iter().find_map(|&(name, key)| {
+            let f = self.tree.get(name).filter(|&f| self.tree.is_visible(f))?;
+            self.tree.frames[f].rect.filter(|r| r.contains(px, py)).map(|r| (r, key))
+        }) else {
+            return;
+        };
+        let text = db.string(key);
+        let font = db.decorate("MasterFont");
+        let size = db.misc_ui.get_str("FontHeights", "GlueToolTip").and_then(|v| v.split("//").next().and_then(|v| v.trim().parse().ok())).unwrap_or(0.011f32);
+        let lines = db.wrap(&font, size, &text, 0.22);
+        let width = lines.iter().map(|l| db.text_width(&font, size, l)).fold(0.0f32, f32::max).min(0.22);
+        let (w, h) = (width + 0.012, lines.len() as f32 * size + 0.012);
+        // Kept on the screen: moved left of the right edge and below the top.
+        let screen_w = self.tree.width.max(w3_ui::UI_WIDTH);
+        let x0 = owner.x1.min(screen_w - w);
+        let y0 = owner.y1.min(w3_ui::UI_HEIGHT - h);
+        let r = w3_ui::Rect { x0, x1: x0 + w, y0, y1: y0 + h };
+        let prop = |key: &str, args: Vec<Arg>| Prop { key: key.into(), args };
+        let s = |v: &str| Arg::Str(v.into());
+        let def = Def {
+            block: "Frame".into(),
+            kind: "BACKDROP".into(),
+            name: String::new(),
+            inherits: None,
+            with_children: false,
+            props: vec![
+                prop("BackdropBackground", vec![s("UI\\widgets\\BattleNet\\bnet-tooltip-background.blp")]),
+                prop("BackdropTileBackground", vec![]),
+                prop("BackdropCornerFlags", vec![s("UL|UR|BL|BR|T|L|B|R")]),
+                prop("BackdropCornerSize", vec![Arg::Num(0.008)]),
+                prop("BackdropBackgroundInsets", vec![Arg::Num(0.0019); 4]),
+                prop("BackdropEdgeFile", vec![s("UI\\widgets\\BattleNet\\bnet-tooltip-border.blp")]),
+            ],
+            children: vec![],
+        };
+        self.tree.backdrop(db, &def, r, out);
+        out.push(Draw::Text { font, size, rect: w3_ui::Rect { x0: r.x0 + 0.006, x1: r.x1 - 0.006 + 0.001, y0: r.y0 + 0.006, y1: r.y1 - 0.006 }, text: lines.join("\n"), color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Start, shadow: None });
+    }
+
     pub fn render(
         &mut self,
         device: &wgpu::Device,
@@ -1486,6 +1580,9 @@ impl Glue {
             let p = self.persist.borrow();
             let hover = self.campaigns.row_at(&p, root, self.pointer.0, self.pointer.1);
             self.campaigns.draws(&p, &assets.frames, root, hover.as_ref(), &mut draws);
+        }
+        if self.screen == Screen::Options && self.phase == Phase::Stand {
+            self.options_tip_draws(&assets.frames, &mut draws);
         }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("glue interface"),

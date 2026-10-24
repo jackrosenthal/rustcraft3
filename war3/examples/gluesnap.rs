@@ -58,6 +58,14 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // hoverframe <frame>: moves the pointer to the middle of a named frame.
+            "hoverframe" => {
+                if let Some(r) = glue.tree.get(&a[i + 1]).and_then(|f| glue.tree.frames[f].rect) {
+                    let (ux, uy) = ((r.x0 + r.x1) / 2.0, (r.y0 + r.y1) / 2.0);
+                    glue.pointer_move(ux / glue.tree.width * w as f32, (1.0 - uy / w3_ui::UI_HEIGHT) * h as f32, (w, h));
+                }
+                i += 2;
+            }
             // press <frame>: clicks the middle of a named frame.
             "press" => {
                 let rect = glue.tree.get(&a[i + 1]).and_then(|f| glue.tree.frames[f].rect);

@@ -1014,8 +1014,18 @@ impl World {
             let Some(u) = self.unit(h) else { continue };
             let action = u.action.clone();
             let wp = u.swing.as_ref().and_then(|s| weapon_numbered(self, u, s.weapon)).or_else(|| unit_weapons(self, u).into_iter().next().map(|x| x.1));
+            let speed = (u.cooldown > 0.0 && u.extra.cooldown_speed.is_some()).then(|| self.attack_speed(h));
             {
                 let u = self.unit_mut(h).unwrap();
+                // A change in attack speed scales what is left of the cooldown
+                // (FUN_6f495ef0; measured: a grunt's first attack under an Endurance
+                // Aura taking hold during it is quickened).
+                if let (Some(new), Some(old)) = (speed, u.extra.cooldown_speed) {
+                    if new != old {
+                        u.cooldown *= old / new;
+                        u.extra.cooldown_speed = Some(new);
+                    }
+                }
                 // What runs past zero within a step carries into the next attack, so a
                 // unit attacking steadily strikes exactly its cooldown apart, as the
                 // original's timers do (measured: 1.60 for a grunt, 1.35 for a footman).
@@ -2263,6 +2273,16 @@ impl World {
     }
 
     /// Moves into range of `target` and starts a swing when ready.
+    /// The factor a unit's attacks are quickened by: agility for a hero
+    /// (AgiAttackSpeedBonus per point), items, upgrades, and buffs.
+    pub(crate) fn attack_speed(&self, h: u32) -> f32 {
+        let Some(u) = self.unit(h) else { return 1.0 };
+        let ub = self.upgrade_bonus(u.owner, u.type_id);
+        let agi = self.misc_f32("AgiAttackSpeedBonus", 0.02);
+        let base = if u.is_hero { 1.0 + (u.agi + u.item_bonus.agi).floor() * agi } else { 1.0 };
+        ((base + u.item_bonus.attack_speed + ub.attack_speed) * self.buff_mods(h).1).max(0.01)
+    }
+
     fn try_attack(&mut self, h: u32, target: u32, dt: f32, stationary: bool) {
         let (Some(u), Some(t)) = (self.unit(h), self.unit(target)) else { return };
         let Some((wn, wp)) = weapon_for(self, u, t) else { return };
@@ -2279,8 +2299,7 @@ impl World {
             self.walk(h, dt);
             return;
         }
-        let buff_attack = self.buff_mods(h).1;
-        let agi_bonus = self.misc_f32("AgiAttackSpeedBonus", 0.02);
+        let speed = self.attack_speed(h);
         let u = self.unit_mut(h).unwrap();
         u.path.clear();
         let left = turn(u, angle_to(upos, tpos), dt);
@@ -2290,10 +2309,8 @@ impl World {
             return;
         }
         if u.cooldown <= 0.0 {
-            // Agility shortens a hero's attack cooldown (AgiAttackSpeedBonus per point).
-            let speed = if u.is_hero { 1.0 + (u.agi + u.item_bonus.agi).floor() * agi_bonus } else { 1.0 };
-            let speed = (speed + u.item_bonus.attack_speed + ub.attack_speed) * buff_attack;
-            u.cooldown = wp.cooldown / speed.max(0.01) + u.cooldown.min(0.0);
+            u.cooldown = wp.cooldown / speed + u.cooldown.min(0.0);
+            u.extra.cooldown_speed = Some(speed);
             u.swing = Some(Swing { target, elapsed: 0.0, done: false, weapon: wn });
             restart_anim(u, "attack");
             // The target is attacked (GetAttacker is the attacker).

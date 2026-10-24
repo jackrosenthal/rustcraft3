@@ -365,6 +365,9 @@ impl World {
         // An effect without a buff type (a fountain's) is told apart by its ability.
         if let Some(existing) = u.buffs.iter_mut().find(|x| x.id == b.id && (b.id != [0; 4] || x.ability == b.ability)) {
             existing.remaining = existing.remaining.max(b.remaining);
+            if b.aura_left.is_some() {
+                existing.aura_left = b.aura_left;
+            }
             existing.level = b.level;
             return;
         }
@@ -404,6 +407,9 @@ impl World {
             }
             for b in &mut u.buffs {
                 b.remaining -= dt;
+                if let Some(l) = b.aura_left.as_mut() {
+                    *l -= dt;
+                }
                 if b.dps != 0.0 {
                     dots.push((b.caster, h, b.dps * dt));
                 }
@@ -473,7 +479,7 @@ impl World {
         for h in expired {
             crate::natives::units::kill_unit(self, vm, h, 0);
         }
-        self.update_auras();
+        self.update_auras(dt);
     }
 
     /// Whether a toggled ability is on: Immolation while it burns, the others while
@@ -533,8 +539,34 @@ impl World {
     }
 
     /// Auras give their buff to qualifying units in range, refreshed every update.
-    pub(crate) fn update_auras(&mut self) {
+    /// Auras, as the original runs them (measured with Devotion Aura): each bearer
+    /// scans every half second from when it began to bear one, the first scan half a
+    /// second in, giving those in range its buff for 2 seconds; every 2 seconds it
+    /// drops the buffs it gave whose 2 seconds have run out (a footman leaving at 6.13,
+    /// 6.38, or 6.63 seconds loses the buff at 10.01).
+    pub(crate) fn update_auras(&mut self, dt: f32) {
         let mut grants = Vec::new();
+        let mut sweeps = Vec::new();
+        let bearers: Vec<u32> = self
+            .unit_order
+            .iter()
+            .copied()
+            .filter(|&h| self.unit(h).is_some_and(|u| u.abilities.iter().any(|(a, _)| matches!(self.ability_code(*a).as_str(), "AHad" | "AHab" | "AUau" | "AOae" | "AEar" | "AUav" | "AEah" | "Aoar" | "Aarm" | "Aakb" | "AOac" | "Aasl"))))
+            .collect();
+        let mut scanning = crate::collections::HashSet::default();
+        for h in bearers {
+            let u = self.unit_mut(h).unwrap();
+            let prev = u.extra.aura_clock;
+            let now = prev.map_or(0.0, |c| c + dt);
+            u.extra.aura_clock = Some(now);
+            let Some(prev) = prev else { continue };
+            if (now / 0.5).floor() > (prev / 0.5).floor() {
+                scanning.insert(h);
+            }
+            if (now / 2.0).floor() > (prev / 2.0).floor() {
+                sweeps.push(h);
+            }
+        }
         for &h in &self.unit_order {
             let Some(u) = self.unit(h) else { continue };
             if u.dead {
@@ -619,6 +651,13 @@ impl World {
                 } else {
                     Some(false)
                 };
+                if code != "ANeg" {
+                    if !scanning.contains(&h) {
+                        continue;
+                    }
+                    b.remaining = f32::INFINITY;
+                    b.aura_left = Some(2.0);
+                }
                 grants.push((h, u.owner, u.x, u.y, area, b, reach));
             }
         }
@@ -634,6 +673,22 @@ impl World {
                 .collect();
             for t in targets {
                 self.apply_buff(t, b.clone());
+            }
+        }
+        // The sweeps, and the buffs of bearers that are gone once lapsed.
+        let lapsed: Vec<(u32, u32)> = self
+            .unit_order
+            .iter()
+            .flat_map(|&t| self.unit(t).into_iter().flat_map(move |u| u.buffs.iter().map(move |b| (t, b))))
+            .filter(|(_, b)| b.aura_left.is_some_and(|l| l < 0.0) && (sweeps.contains(&b.caster) || self.unit(b.caster).is_none()))
+            .map(|(t, b)| (t, b.effect))
+            .collect();
+        for (t, effect) in lapsed {
+            if let Some(u) = self.unit_mut(t) {
+                u.buffs.retain(|b| !(b.effect == effect && b.aura_left.is_some_and(|l| l < 0.0)));
+            }
+            if effect != 0 {
+                self.remove_buff_effect(effect);
             }
         }
     }

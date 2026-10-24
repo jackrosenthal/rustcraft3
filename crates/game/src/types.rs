@@ -239,6 +239,13 @@ pub struct Unit {
 /// Unit settings scripts change.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct UnitExtra {
+    /// The attack speed the running cooldown was set at.
+    #[serde(default)]
+    pub cooldown_speed: Option<f32>,
+    /// Seconds since the unit began to bear an aura: its auras reach those around every
+    /// half second of this and drop their lapsed buffs every two seconds of it.
+    #[serde(default)]
+    pub aura_clock: Option<f32>,
     /// Damage a structure took while under construction (CAbilityBuildInProgress
     /// +0x10c), which reduces the refund if it is cancelled.
     #[serde(default)]
@@ -449,6 +456,8 @@ pub struct UnitExtra {
 impl Default for UnitExtra {
     fn default() -> Self {
         UnitExtra {
+            aura_clock: None,
+            cooldown_speed: None,
             construction_damage: 0.0,
             queue_tokens: Vec::new(),
             prd: Vec::new(),
@@ -565,6 +574,10 @@ pub struct ItemBonus {
 pub struct Buff {
     /// Buff type from AbilityBuffData (e.g. BHtb).
     pub id: Id,
+    /// An aura's: what is left of the 2 seconds each of its bearer's scans gives it; it
+    /// ends only at one of the bearer's sweeps once this has run out.
+    #[serde(default)]
+    pub aura_left: Option<f32>,
     /// How many times it has been laid on (Incinerate).
     #[serde(default)]
     pub stacks: u32,

@@ -411,9 +411,10 @@ impl World {
                 return;
             }
         }
-        // Autocast toggles, and morphs (Bear Form and the like) by their order or unorder.
+        // Autocast toggles, morphs (Bear Form and the like) by their order or unorder,
+        // and toggled abilities turned off by their unorder.
         if let Some(name) = crate::natives::basic::order_name(order) {
-            if self.autocast_order(h, name) || self.morph_order(h, name) {
+            if self.autocast_order(h, name) || self.morph_order(h, name) || self.toggle_off_order(h, name) {
                 return;
             }
         }

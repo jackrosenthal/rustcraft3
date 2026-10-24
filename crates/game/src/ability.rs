@@ -124,7 +124,7 @@ fn point_target(code: &str) -> bool {
 
 /// Abilities with no target (cast instantly around the caster).
 fn no_target(code: &str) -> bool {
-    matches!(code, "AUls" | "Afzy" | "Amed" | "Amic" | "Adec" | "Amfl" | "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "Astd" | "Abtl" | "Arai" | "Aroa" | "Atau" | "Absk" | "ANef" | "ANht" | "ANms" | "ANlm" | "ANsg" | "ANsq" | "ANsw")
+    matches!(code, "Adef" | "Amdf" | "ANth" | "AUls" | "Afzy" | "Amed" | "Amic" | "Adec" | "Amfl" | "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "Astd" | "Abtl" | "Arai" | "Aroa" | "Atau" | "Absk" | "ANef" | "ANht" | "ANms" | "ANlm" | "ANsg" | "ANsq" | "ANsw")
 }
 
 /// Passive abilities and auras.
@@ -450,6 +450,45 @@ impl World {
             crate::natives::units::kill_unit(self, vm, h, 0);
         }
         self.update_auras();
+    }
+
+    /// Whether a toggled ability is on: Immolation while it burns, the others while
+    /// their buff lasts.
+    pub fn toggle_active(&self, h: u32, a: Id) -> bool {
+        if self.ability_code(a) == "AEim" {
+            return self.ground_effects.iter().any(|e| e.caster == h && e.ability == a && e.elapsed < e.duration);
+        }
+        self.unit(h).is_some_and(|u| u.buffs.iter().any(|b| b.ability == a))
+    }
+
+    /// Whether a toggled ability that is on may be turned off now: all but Divine Shield,
+    /// which only under CanDeactivateDivineShield (CAbilityDivineShield::vf198).
+    pub fn toggle_can_end(&self, a: Id) -> bool {
+        self.ability_code(a) != "AHds" || self.misc_f32("CanDeactivateDivineShield", 0.0) != 0.0
+    }
+
+    /// An off order (an ability's Unorder) for a toggled ability that is on: ends it.
+    pub fn toggle_off_order(&mut self, h: u32, name: &str) -> bool {
+        let Some(u) = self.unit(h) else { return false };
+        let found = u.abilities.iter().map(|&(a, _)| a).find(|&a| {
+            self.objects.abilities.get(a).is_some_and(|o| o.str("Unorder").eq_ignore_ascii_case(name)) && matches!(self.ability_code(a).as_str(), "AEim" | "AHds" | "Amfl" | "ANth" | "Amdf")
+        });
+        let Some(a) = found else { return false };
+        if !self.toggle_active(h, a) || !self.toggle_can_end(a) {
+            return true;
+        }
+        if self.ability_code(a) == "AEim" {
+            for e in self.ground_effects.iter_mut().filter(|e| e.caster == h && e.ability == a) {
+                e.elapsed = e.duration;
+            }
+        }
+        if let Some(u) = self.unit_mut(h) {
+            u.buffs.retain(|b| b.ability != a);
+            if u.channel.as_ref().is_some_and(|c| c.ability == a) {
+                u.channel = None;
+            }
+        }
+        true
     }
 
     /// Whether a unit's auras reach others, under MiscGame's rules: illusions, invisible

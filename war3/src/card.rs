@@ -268,7 +268,10 @@ impl Commands {
         const MORPHS: [&str; 9] = ["Abrf", "Arav", "Astn", "Abur", "AEme", "ANcr", "ANrg", "Acpf", "Aetf"];
         let code = ab.str("code");
         let in_other_form = MORPHS.contains(&code.as_str()) && id_from_str(ab.level_str("UnitID", w.ability_level(h, a).max(1)).trim()) == u.type_id;
-        let unrooted_side = (code == "Aroo" && !u.extra.uprooted) || in_other_form;
+        // A toggled ability that is on shows its off side (Unart, Untip, Unorder), if it
+        // may be turned off.
+        let toggled_on = matches!(code.as_str(), "Adef" | "AEim" | "AHds" | "Amfl" | "ANth" | "Amdf") && !ab.str("Unorder").is_empty() && w.toggle_active(h, a) && w.toggle_can_end(a);
+        let unrooted_side = (code == "Aroo" && !u.extra.uprooted) || in_other_form || toggled_on;
         // Abilities with a button position appear on the card.
         let Some((x, y)) = at.or_else(|| parse_pos(&ab.list(if unrooted_side { "Unbuttonpos" } else { "Buttonpos" }))) else { return out };
         // Art may list one icon per race (Rally): human, orc, undead, night elf.
@@ -295,14 +298,14 @@ impl Commands {
             "Amil" => (order, false),
             "Aroo" if unrooted_side => ("unroot", false),
             "Aroo" => ("root", true),
-            c if MORPHS.contains(&c) => {
+            c if MORPHS.contains(&c) || toggled_on => {
                 let name = ab.str(if unrooted_side { "Unorder" } else { "Order" });
                 (w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&name)).unwrap_or(""), false)
             }
             _ if targeting == w3_game::ability::Targeting::Passive => ("", false),
             _ => (order, targeting != w3_game::ability::Targeting::None),
         };
-        let ready = order.is_empty() || w.can_cast(h, a).is_ok();
+        let ready = toggled_on || order.is_empty() || w.can_cast(h, a).is_ok();
         let level = w.ability_level(h, a).max(1);
         let (tip_key, uber_key, hot_key) = if unrooted_side { ("Untip", "Unubertip", "Unhotkey") } else { ("Tip", "Ubertip", "Hotkey") };
         let tip = level_entry(&ab.list(tip_key), level);
@@ -315,7 +318,7 @@ impl Commands {
             Some(id) if order.is_empty() && targeting != w3_game::ability::Targeting::Passive => Action::OrderId { order: id, targeted },
             _ => Action::Order { order, targeted },
         };
-        let ready = ready && (order.is_empty() || w.can_cast(h, a).is_ok()) && (!matches!(action, Action::OrderId { .. }) || w.can_cast(h, a).is_ok());
+        let ready = toggled_on || ready && (order.is_empty() || w.can_cast(h, a).is_ok()) && (!matches!(action, Action::OrderId { .. }) || w.can_cast(h, a).is_ok());
         let mut button = Button::new(x, y, art, hotkey(&ab.str(hot_key)), action, ready).with_tip(tip, uber, [mana, 0, 0, 0]).with_requirements(db, w, u.owner, a, 1);
         // Autocast abilities toggle with their orderon and orderoff.
         let on = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Orderon")));

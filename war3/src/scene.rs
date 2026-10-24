@@ -1584,6 +1584,25 @@ impl Scene {
         Some(w3_render::decal::Decal { texture, center: [x, y, self.terrain.height_at(x, y)], size: [area * 2.0, area * 2.0], color: [1.0; 4], additive: false })
     }
 
+    /// The target light while an area spell awaits its target (CTargetMode vf9 with
+    /// ability vf176): the point under the pointer, the area, and UI\MiscData.txt
+    /// [TargetingColors] TargetLightColor (alpha, red, green, blue).
+    fn target_light(&self) -> Option<(f32, f32, f32, [f32; 4])> {
+        let order = self.targeting?;
+        let g = self.game.as_ref()?;
+        let &h = self.selection.first()?;
+        let a = g.world.ability_for_order(h, order)?;
+        let lvl = g.world.ability_level(h, a).max(1) as u32;
+        let area = g.world.data(a, "Area", lvl);
+        if area <= 0.0 {
+            return None;
+        }
+        let (x, y) = self.ground_at(self.cursor.0, self.cursor.1, self.screen)?;
+        let v: Vec<f32> = g.world.misc.get_list("TargetingColors", "TargetLightColor").iter().filter_map(|s| s.trim().parse().ok()).collect();
+        let c = if v.len() == 4 { [v[1] / 255.0, v[2] / 255.0, v[3] / 255.0, v[0] / 255.0] } else { [0.0, 1.0, 0.0, 0.7] };
+        Some((x, y, area, c))
+    }
+
     /// World point under a screen position, intersecting the terrain.
     pub fn ground_at(&self, sx: f32, sy: f32, size: (u32, u32)) -> Option<(f32, f32)> {
         let aspect = size.0 as f32 / size.1 as f32;
@@ -3209,6 +3228,7 @@ impl Scene {
             let terrain = &self.terrain;
             self.weather.sync(device, queue, assets, &g.world, |x, y| terrain.height_at(x, y), self.camera.target);
         }
+        let light = self.target_light();
         let Some(g) = self.game.as_ref() else { return };
         let w = &g.world;
         self.units.retain(|h, _| w.unit(*h).is_some());
@@ -3362,6 +3382,12 @@ impl Scene {
             // The unit's color and transparency (UnitUI red, green, blue;
             // SetUnitVertexColor).
             view.inst.tint = glam::Vec4::new(u.vertex_color[0] as f32, u.vertex_color[1] as f32, u.vertex_color[2] as f32, u.vertex_color[3] as f32) / 255.0;
+            // Within an area spell's target light, units take its color (Tip35).
+            if let Some((_, _, _, c)) = light.filter(|l| (u.x - l.0).hypot(u.y - l.1) <= l.2 + u.collision) {
+                let a = c[3];
+                let t = view.inst.tint;
+                view.inst.tint = glam::Vec4::new(t.x * (1.0 - a) + c[0] * a, t.y * (1.0 - a) + c[1] * a, t.z * (1.0 - a) + c[2] * a, t.w);
+            }
             // An uprooted ancient takes the alternate of each animation but its walk; the
             // type's Animprops ("upgrade,first" for a Keep on the Town Hall's model) and
             // those scripts add qualify every animation.

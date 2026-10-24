@@ -559,6 +559,17 @@ impl World {
                 }
                 true
             }
+            // Channel: the caster channels for DataA, Follow Through Time, with no effect
+            // of its own (maps answer its spell events).
+            "ANcl" => {
+                let duration = self.d(a, "DataA", lvl);
+                if duration > 0.0 {
+                    if let Some(u) = self.unit_mut(h) {
+                        u.channel = Some(Channel { ability: a, level: lvl, target, x, y, elapsed: 0.0, duration, interval: duration + 1.0, next: duration + 1.0, waves: 0, link: 0, held: [0; 4], lanes: 0, ai_fails: 0 });
+                    }
+                }
+                true
+            }
             "AOre" | "AEev" | "AOcr" | "AHbh" | "AUts" | "AEah" | "AUav" => true,
             _ => false,
         }

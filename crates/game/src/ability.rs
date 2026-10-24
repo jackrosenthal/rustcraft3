@@ -181,6 +181,15 @@ impl World {
 
     pub fn targeting(&self, id: Id) -> Targeting {
         let code = self.ability_code(id);
+        // Channel (ANcl): its target type, DataB (none, unit, point, either).
+        if code == "ANcl" {
+            return match self.data(id, "DataB", 1) as i32 {
+                1 => Targeting::Unit,
+                2 => Targeting::Point,
+                3 => Targeting::UnitOrPoint,
+                _ => Targeting::None,
+            };
+        }
         if passive(&code) {
             Targeting::Passive
         } else if no_target(&code) {
@@ -192,6 +201,24 @@ impl World {
         }
     }
 
+    /// The order an ability answers to: Channel's (ANcl) is its DataF, Base Order ID.
+    pub fn order_string(&self, a: Id) -> String {
+        let Some(o) = self.objects.abilities.get(a) else { return String::new() };
+        if o.str("code") == "ANcl" {
+            let base = o.level_str("DataF", 1).trim().to_string();
+            if !base.is_empty() && base != "-" && base != "_" {
+                return base;
+            }
+        }
+        o.str("Order")
+    }
+
+    /// Whether the ability shows a button: Channel (ANcl) only with its Visible option
+    /// (DataC 1).
+    pub fn ability_visible(&self, a: Id) -> bool {
+        self.ability_code(a) != "ANcl" || self.data(a, "DataC", 1) as i32 & 1 != 0
+    }
+
     /// The unit's ability whose order string matches `order`.
     pub fn ability_for_order(&self, h: u32, order: i32) -> Option<Id> {
         if let Some(a) = self.ability_for_intrinsic_order(h, order) {
@@ -201,7 +228,7 @@ impl World {
         let u = self.unit(h)?;
         // Gathering is an action of its own, never a cast.
         u.abilities.iter().map(|(a, _)| *a).find(|&a| {
-            self.objects.abilities.get(a).is_some_and(|o| !matches!(o.str("code").as_str(), "Ahar" | "Ahrl" | "Aaha" | "Awha") && (o.str("Order").eq_ignore_ascii_case(name) || o.str("Orderon").eq_ignore_ascii_case(name)))
+            self.objects.abilities.get(a).is_some_and(|o| !matches!(o.str("code").as_str(), "Ahar" | "Ahrl" | "Aaha" | "Awha") && (self.order_string(a).eq_ignore_ascii_case(name) || o.str("Orderon").eq_ignore_ascii_case(name)))
         })
     }
 

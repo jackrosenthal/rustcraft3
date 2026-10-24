@@ -329,7 +329,7 @@ impl Commands {
         for &(a, _) in &u.abilities {
             let Some(ab) = w.objects.abilities.get(a) else { continue };
             // SetPlayerAbilityAvailable takes the button away.
-            if w.players[u.owner as usize].abilities_unavailable.contains(&a) {
+            if w.players[u.owner as usize].abilities_unavailable.contains(&a) || !w.ability_visible(a) {
                 continue;
             }
             // Root (Aroo) shows Uproot (Unbuttonpos, Unart, Unorder) while rooted, and a
@@ -356,7 +356,7 @@ impl Commands {
                 continue;
             }
             // The ability's order string, as one of the game's order names.
-            let order = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Order"))).unwrap_or("");
+            let order = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&w.order_string(a))).unwrap_or("");
             let targeting = w.targeting(a);
             let (order, targeted) = match ab.str("code").as_str() {
                 "Ahar" | "Ahrl" => ("harvest", true),

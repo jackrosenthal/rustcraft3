@@ -1148,6 +1148,10 @@ impl FrameTree {
             if self.is_state_backdrop(i, c) && !thumb {
                 continue;
             }
+            // A text area's scroll bar shows only when its lines outgrow it.
+            if f.def.kind == "TEXTAREA" && f.def.str("TextAreaScrollBar") == Some(self.frames[c].def.name.as_str()) && !self.text_area_overflows(db, i) {
+                continue;
+            }
             self.draw_frame(db, c, out);
         }
     }
@@ -1168,6 +1172,31 @@ impl FrameTree {
         ]
         .iter()
             .any(|k| d.str(k).is_some_and(|n| n == name))
+    }
+
+    /// A text area's font, line height and gap, and inset, and its text wrapped to it.
+    fn text_area_lines(&self, db: &FrameDb, i: usize, r: Rect) -> ((String, f32), f32, f32, f32, Vec<String>) {
+        let f = &self.frames[i];
+        let d = &f.def;
+        let inset = d.prop("TextAreaInset").and_then(|p| p.args.first()).map_or(0.0, Arg::num);
+        let line_h = d.prop("TextAreaLineHeight").and_then(|p| p.args.first()).map_or(0.015, Arg::num);
+        let gap = d.prop("TextAreaLineGap").and_then(|p| p.args.first()).map_or(0.0, Arg::num);
+        // Without a FrameFont, MasterFont at the size measured from the original.
+        let (font, size) = match d.prop("FrameFont") {
+            Some(p) => (db.decorate(p.args.first().map(Arg::as_str).unwrap_or("MasterFont")), p.args.get(1).map_or(0.012, Arg::num)),
+            None => (db.decorate("MasterFont"), 0.012),
+        };
+        let text = f.text.clone().unwrap_or_default();
+        let w = (r.w() - 2.0 * inset).max(0.0);
+        let lines: Vec<String> = text.split('\n').flat_map(|l| if l.trim().is_empty() { vec![String::new()] } else { db.wrap(&font, size, l, w) }).collect();
+        ((font, size), line_h, gap, inset, lines)
+    }
+
+    fn text_area_overflows(&self, db: &FrameDb, i: usize) -> bool {
+        let Some(r) = self.frames[i].rect else { return false };
+        let (_, line_h, gap, inset, lines) = self.text_area_lines(db, i, r);
+        let rows = (((r.h() - 2.0 * inset) / (line_h + gap)).floor() as usize).max(1);
+        lines.len() > rows
     }
 
     fn draw_self(&self, db: &FrameDb, i: usize, r: Rect, out: &mut Vec<Draw>) {
@@ -1196,17 +1225,7 @@ impl FrameTree {
                 if let Some(bd) = d.str("ControlBackdrop").and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
                     self.draw_backdrop_with(db, &bd.def, bd.texture.as_deref(), r, &file, out);
                 }
-                let inset = d.prop("TextAreaInset").and_then(|p| p.args.first()).map_or(0.0, Arg::num);
-                let line_h = d.prop("TextAreaLineHeight").and_then(|p| p.args.first()).map_or(0.015, Arg::num);
-                let gap = d.prop("TextAreaLineGap").and_then(|p| p.args.first()).map_or(0.0, Arg::num);
-                // Without a FrameFont, MasterFont at the size measured from the original.
-                let (font, size) = match d.prop("FrameFont") {
-                    Some(p) => (db.decorate(p.args.first().map(Arg::as_str).unwrap_or("MasterFont")), p.args.get(1).map_or(0.012, Arg::num)),
-                    None => (db.decorate("MasterFont"), 0.012),
-                };
-                let text = f.text.clone().unwrap_or_default();
-                let w = (r.w() - 2.0 * inset).max(0.0);
-                let lines: Vec<String> = text.split('\n').flat_map(|l| if l.trim().is_empty() { vec![String::new()] } else { db.wrap(&font, size, l, w) }).collect();
+                let ((font, size), line_h, gap, inset, lines) = self.text_area_lines(db, i, r);
                 let rows = (((r.h() - 2.0 * inset) / (line_h + gap)).floor() as usize).max(1);
                 let start = f.selected.min(lines.len().saturating_sub(1));
                 for (k, line) in lines.iter().skip(start).take(rows).enumerate() {

@@ -133,6 +133,8 @@ pub struct Skirmish {
     pub campaign: Option<CampaignSummary>,
     /// The selected replay's players.
     replay_players: Option<usize>,
+    /// The game setup's advanced options (crate::advanced).
+    pub flags: u32,
 }
 
 /// Each team setup row's color button shows its player color.
@@ -174,6 +176,7 @@ impl Skirmish {
             maps_root: game_dir.join("Maps"),
             campaign: None,
             replay_players: None,
+            flags: crate::advanced::DEFAULT_FLAGS,
         }
     }
 
@@ -521,7 +524,6 @@ impl Skirmish {
                 }
             }
         }
-        tree.set_visible("AdvancedOptionsPanel", false);
         Self::layout_info(tree);
         if self.entries.is_empty() {
             self.scan();
@@ -698,10 +700,10 @@ impl Skirmish {
         // The preview goes where MinimapImage is; a map without one (and a saved game)
         // shows Minimap-Unknown.
         // A campaign shows its own image.
-        if let (Some(c), Some(r)) = (self.campaign.as_ref(), tree.get("MinimapImage").and_then(|i| tree.frames[i].rect)) {
+        if let (Some(c), Some(r)) = (self.campaign.as_ref(), tree.get("MinimapImage").filter(|&i| tree.is_visible(i)).and_then(|i| tree.frames[i].rect)) {
             out.push(Draw::Image { texture: c.info.minimap_path.clone(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
         }
-        if let (Some(s), Some(r)) = (self.summary.as_ref(), tree.get("MinimapImage").and_then(|i| tree.frames[i].rect)) {
+        if let (Some(s), Some(r)) = (self.summary.as_ref(), tree.get("MinimapImage").filter(|&i| tree.is_visible(i)).and_then(|i| tree.frames[i].rect)) {
             let texture = if s.preview.is_some() { MAP_PREVIEW.to_string() } else { "UI\\Widgets\\Glues\\Minimap-Unknown.blp".to_string() };
             out.push(Draw::Image { texture, rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
         }

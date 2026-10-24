@@ -68,6 +68,8 @@ pub struct Setup {
     pub slots: Vec<NetSlot>,
     /// Slow (0), normal (1), or fast (2).
     pub speed: u8,
+    /// The advanced options (crate::advanced).
+    pub flags: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

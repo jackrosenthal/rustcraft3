@@ -115,11 +115,13 @@ pub struct Replay {
     pub campaign: bool,
     /// 0 for Reign of Chaos, 1 for The Frozen Throne.
     pub version: i32,
+    /// The setup's advanced options (the map flags it began with).
+    pub flags: u32,
     pub frames: Vec<Frame>,
 }
 
 /// The file's first bytes, before its compressed body.
-pub const MAGIC: &[u8; 8] = b"W3RRPLY2";
+pub const MAGIC: &[u8; 8] = b"W3RRPLY3";
 
 impl Replay {
     /// The replay as a file: the magic, then the replay compressed.

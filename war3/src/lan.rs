@@ -21,7 +21,7 @@ pub enum Event {
     Joining(Option<&'static str>),
     /// The game begins: its map, the setup for this computer, how it plays, and its
     /// speed.
-    Start(PathBuf, Vec<w3_game::LobbySlot>, net::Role, u8),
+    Start(PathBuf, Vec<w3_game::LobbySlot>, net::Role, u8, u32),
 }
 
 pub struct Lan {
@@ -143,7 +143,7 @@ impl Lan {
     }
 
     /// Hosts a game on a map, its user slots open for others, the host in the first.
-    pub fn host_game(&mut self, map: &Path, summary: &crate::skirmish::MapSummary, game: &str, expansion: bool, speed: u8) -> Result<(), &'static str> {
+    pub fn host_game(&mut self, map: &Path, summary: &crate::skirmish::MapSummary, game: &str, expansion: bool, speed: u8, flags: u32) -> Result<(), &'static str> {
         let slots: Vec<NetSlot> = summary
             .info
             .players
@@ -165,7 +165,7 @@ impl Lan {
             log::warn!("lan: hosting: {e}");
             "NETERROR_CREATEGAMEFAILED"
         })?;
-        self.setup = Setup { game: game.to_string(), map: ad.map, slots, speed };
+        self.setup = Setup { game: game.to_string(), map: ad.map, slots, speed, flags };
         self.host = Some(host);
         self.me = 0;
         self.chat.clear();
@@ -300,7 +300,7 @@ impl Lan {
                     self.setup = s;
                     let conn = self.conn.take()?;
                     let (map, lobby) = self.start_setup();
-                    return Some(Event::Start(map, lobby, net::Role::Client { conn }, self.setup.speed));
+                    return Some(Event::Start(map, lobby, net::Role::Client { conn }, self.setup.speed, self.setup.flags));
                 }
                 Msg::Leave => {
                     self.conn = None;
@@ -326,7 +326,7 @@ impl Lan {
         });
         let peers = peers.collect();
         let (map, lobby) = self.start_setup();
-        Some(Event::Start(map, lobby, net::Role::Host { host: h, pending: Vec::new(), peers }, self.setup.speed))
+        Some(Event::Start(map, lobby, net::Role::Host { host: h, pending: Vec::new(), peers }, self.setup.speed, self.setup.flags))
     }
 
     /// The setup as this computer plays it: its own slot local, other people remote.

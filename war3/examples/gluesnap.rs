@@ -36,7 +36,8 @@ fn main() -> anyhow::Result<()> {
                 while t < secs {
                     glue.update(0.02, &mut assets);
                     shot(&device, &queue, &mut glue, &mut assets, format, w, h, "")?;
-                    if let Some(war3::glue::GlueAction::PlayNet(map, lobby, role, speed)) = glue.action.take() {
+                    if let Some(war3::glue::GlueAction::PlayNet(map, lobby, role, speed, flags)) = glue.action.take() {
+                        data.setup_flags.set(flags);
                         return net_game(&device, &queue, format, &data, &mut assets, &map, &lobby, role.borrow_mut().take(), speed, w, h);
                     }
                     t += 0.02;
@@ -48,7 +49,8 @@ fn main() -> anyhow::Result<()> {
                 let end = std::time::Instant::now() + std::time::Duration::from_secs_f32(a[i + 1].parse()?);
                 while std::time::Instant::now() < end {
                     glue.update(0.02, &mut assets);
-                    if let Some(war3::glue::GlueAction::PlayNet(map, lobby, role, speed)) = glue.action.take() {
+                    if let Some(war3::glue::GlueAction::PlayNet(map, lobby, role, speed, flags)) = glue.action.take() {
+                        data.setup_flags.set(flags);
                         return net_game(&device, &queue, format, &data, &mut assets, &map, &lobby, role.borrow_mut().take(), speed, w, h);
                     }
                     std::thread::sleep(std::time::Duration::from_millis(20));
@@ -62,7 +64,8 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("clicked {clicked:?}");
                 match glue.action.take() {
                     Some(war3::glue::GlueAction::Play(..)) => glue.show_loading(&mut assets),
-                    Some(war3::glue::GlueAction::PlayNet(map, lobby, role, speed)) => {
+                    Some(war3::glue::GlueAction::PlayNet(map, lobby, role, speed, flags)) => {
+                        data.setup_flags.set(flags);
                         return net_game(&device, &queue, format, &data, &mut assets, &map, &lobby, role.borrow_mut().take(), speed, w, h);
                     }
                     Some(war3::glue::GlueAction::Campaign(map)) => {

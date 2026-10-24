@@ -445,9 +445,10 @@ impl ApplicationHandler for App {
                             el.exit();
                             return;
                         }
-                        Some(crate::glue::GlueAction::Play(path, slots)) => {
+                        Some(crate::glue::GlueAction::Play(path, slots, flags)) => {
                             // Draw the loading screen first; the map loads next frame.
                             self.data.campaign_game.set(false);
+                            self.data.setup_flags.set(flags);
                             glue.show_loading(&mut r.assets);
                             r.pending = Some((path, Some(slots), None));
                         }
@@ -480,8 +481,9 @@ impl ApplicationHandler for App {
                             Ok(replay) => glue.action = Some(crate::glue::GlueAction::PlayReplay(Box::new(replay))),
                             Err(e) => log::error!("replay {}: {e:#}", file.display()),
                         },
-                        Some(crate::glue::GlueAction::PlayNet(path, slots, role, speed)) => {
+                        Some(crate::glue::GlueAction::PlayNet(path, slots, role, speed, flags)) => {
                             self.data.campaign_game.set(false);
+                            self.data.setup_flags.set(flags);
                             glue.skirmish.summary = crate::skirmish::summarize_path(&path);
                             glue.show_loading(&mut r.assets);
                             r.pending = Some((path, Some(slots), None));

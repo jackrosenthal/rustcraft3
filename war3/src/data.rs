@@ -56,6 +56,8 @@ pub struct GameData {
     pub persist: std::rc::Rc<std::cell::RefCell<w3_game::persist::Persist>>,
     /// Whether the next game is a campaign mission (it takes the profile's difficulty).
     pub campaign_game: std::cell::Cell<bool>,
+    /// The game setup's advanced options for the next game (crate::advanced).
+    pub setup_flags: std::cell::Cell<u32>,
 }
 
 /// The player profiles (the original keeps their names in the registry's userlocal
@@ -214,7 +216,7 @@ impl GameData {
         let version = if classic || war3x.is_none() { Version::ReignOfChaos } else { Version::FrozenThrone };
         let misc = Profile::parse(&chain.read_string("UI\\MiscData.txt").unwrap_or_default());
         let persist = load_persist(version);
-        let data = GameData { dir: dir.to_path_buf(), version, chain, war3x, war3x_local, patch, misc, persist: std::rc::Rc::new(std::cell::RefCell::new(persist)), campaign_game: std::cell::Cell::new(false) };
+        let data = GameData { dir: dir.to_path_buf(), version, chain, war3x, war3x_local, patch, misc, persist: std::rc::Rc::new(std::cell::RefCell::new(persist)), campaign_game: std::cell::Cell::new(false), setup_flags: std::cell::Cell::new(crate::advanced::DEFAULT_FLAGS) };
         data.select_data_set(DataSet::Melee);
         Ok(data)
     }

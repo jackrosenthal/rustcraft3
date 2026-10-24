@@ -15,8 +15,8 @@ use crate::scene::Assets;
 #[derive(Clone, Debug)]
 pub enum GlueAction {
     Quit,
-    /// Start a game on a map file with the setup screen's choices.
-    Play(std::path::PathBuf, Vec<w3_game::LobbySlot>),
+    /// Start a game on a map file with the setup screen's choices and advanced options.
+    Play(std::path::PathBuf, Vec<w3_game::LobbySlot>, u32),
     /// A campaign mission, by its path in the game's archives.
     Campaign(String),
     /// A saved game file.
@@ -28,7 +28,7 @@ pub enum GlueAction {
     /// A replay to watch (again).
     PlayReplay(Box<w3_game::replay::Replay>),
     /// A network game: its map, this computer's setup, and how it plays.
-    PlayNet(std::path::PathBuf, Vec<w3_game::LobbySlot>, std::rc::Rc<std::cell::RefCell<Option<crate::net::Role>>>, u8),
+    PlayNet(std::path::PathBuf, Vec<w3_game::LobbySlot>, std::rc::Rc<std::cell::RefCell<Option<crate::net::Role>>>, u8, u32),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -317,6 +317,7 @@ impl Glue {
             Screen::Skirmish => {
                 self.skirmish.detach_saves();
                 self.skirmish.attach(&mut self.tree, db);
+                crate::advanced::attach(&mut self.tree, db, self.skirmish.flags, true);
             }
             Screen::LoadSaved => {
                 let dir = self.saves_dir.clone();
@@ -351,7 +352,7 @@ impl Glue {
             Screen::LanCreate => {
                 self.skirmish.detach_saves();
                 self.skirmish.attach(&mut self.tree, db);
-                self.tree.set_visible("AdvancedOptionsPanel", false);
+                crate::advanced::attach(&mut self.tree, db, self.skirmish.flags, false);
                 self.tree.set_value("GameSpeedSlider", 2.0);
                 self.tree.set_text("GameSpeedValue", &db.string("FAST"));
             }
@@ -674,9 +675,9 @@ impl Glue {
                     self.show_dialog(&text, false, DialogAction::Notice, assets);
                 }
             }
-            crate::lan::Event::Start(map, lobby, role, speed) => {
+            crate::lan::Event::Start(map, lobby, role, speed, flags) => {
                 self.lan.detach();
-                self.action = Some(GlueAction::PlayNet(map, lobby, std::rc::Rc::new(std::cell::RefCell::new(Some(role))), speed));
+                self.action = Some(GlueAction::PlayNet(map, lobby, std::rc::Rc::new(std::cell::RefCell::new(Some(role))), speed, flags));
             }
         }
     }
@@ -835,10 +836,15 @@ impl Glue {
             (Screen::Skirmish, "CancelButton") => self.show(Screen::SinglePlayer, assets),
             (Screen::Skirmish, "PlayGameButton") => {
                 if let Some(p) = self.skirmish.selected_map() {
-                    self.action = Some(GlueAction::Play(p, self.skirmish.lobby()));
+                    self.action = Some(GlueAction::Play(p, self.skirmish.lobby(), self.skirmish.flags));
                 }
             }
-            (Screen::Skirmish, other) => self.skirmish.button(&mut self.tree, &assets.frames, other),
+            (Screen::Skirmish | Screen::LanCreate, "MapInfoButton") => crate::advanced::show(&mut self.tree, true),
+            (Screen::Skirmish | Screen::LanCreate, "AdvancedOptionsButton") => crate::advanced::show(&mut self.tree, false),
+            (Screen::Skirmish, other) => {
+                self.skirmish.button(&mut self.tree, &assets.frames, other);
+                self.skirmish.flags = crate::advanced::read(&self.tree);
+            }
             (Screen::SinglePlayer, "CampaignButton") => self.show(Screen::Campaign, assets),
             (Screen::SinglePlayer, "LoadSavedButton") => self.show(Screen::LoadSaved, assets),
             (Screen::LoadSaved, "CancelButton") => self.show(Screen::SinglePlayer, assets),
@@ -889,7 +895,7 @@ impl Glue {
                 let (Some(map), Some(summary)) = (self.skirmish.selected_map(), self.skirmish.summary.clone()) else { return };
                 let game = assets.frames.string("LOCAL_GAME");
                 let speed = self.tree.value("GameSpeedSlider").round().clamp(0.0, 2.0) as u8;
-                match self.lan.host_game(&map, &summary, &game, self.version == crate::data::Version::FrozenThrone, speed) {
+                match self.lan.host_game(&map, &summary, &game, self.version == crate::data::Version::FrozenThrone, speed, self.skirmish.flags) {
                     Ok(()) => self.show(Screen::LanLobby, assets),
                     Err(key) => {
                         let text = assets.frames.string(key);
@@ -901,7 +907,10 @@ impl Glue {
                 let speed = self.tree.value("GameSpeedSlider").round().clamp(0.0, 2.0) as u8;
                 self.tree.set_text("GameSpeedValue", &assets.frames.string(crate::lan::speed_key(speed)));
             }
-            (Screen::LanCreate, other) => self.skirmish.button(&mut self.tree, &assets.frames, other),
+            (Screen::LanCreate, other) => {
+                self.skirmish.button(&mut self.tree, &assets.frames, other);
+                self.skirmish.flags = crate::advanced::read(&self.tree);
+            }
             (Screen::LanLobby, "CancelButton") => {
                 self.lan.leave();
                 self.show(Screen::LanJoin, assets);

@@ -26,7 +26,7 @@ fn lobby(local: u8) -> Vec<w3_game::LobbySlot> {
 fn game(data: &war3::data::GameData, local: u8) -> anyhow::Result<w3_game::Game> {
     let mut g = w3_game::Game::load_with_keys(data.chain.clone(), data.version as i32, None)?;
     g.config()?;
-    g.start_lobby(&lobby(local))?;
+    g.start_lobby(&lobby(local), war3::advanced::DEFAULT_FLAGS)?;
     g.outbox = Some(Vec::new());
     g.world.network = true;
     Ok(g)

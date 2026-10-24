@@ -238,11 +238,18 @@ impl Game {
     }
 
     /// Applies the setup screen's choices, then runs the map's `main`.  The setup's
-    /// advanced options start as game.dll's do (FUN_6f303550: 0x648, Lock Teams with
-    /// resource trading among allies, Teams Together, and the default visibility); they
-    /// are the map flags scripts read (IsMapFlagSet).
-    pub fn start_lobby(&mut self, slots: &[LobbySlot]) -> anyhow::Result<()> {
-        self.world.map_flags = 0x648;
+    /// advanced options are the map flags scripts read (IsMapFlagSet): Random Races
+    /// (0x40000) draws every race, and the visibility always visible (0x4) or map
+    /// explored (0x2) lifts the fog or its mask.
+    pub fn start_lobby(&mut self, slots: &[LobbySlot], flags: u32) -> anyhow::Result<()> {
+        self.world.map_flags = flags as i32;
+        if flags & 4 != 0 {
+            self.world.fog_enabled = false;
+            self.world.fog_mask_enabled = false;
+        } else if flags & 2 != 0 {
+            self.world.fog_mask_enabled = false;
+        }
+        let random_races = flags & 0x40000 != 0;
         // RACE_PREF_* bits from common.j.
         const PREF_RANDOM: i32 = 32;
         for s in slots {
@@ -253,7 +260,7 @@ impl Game {
             p.team = s.team;
             p.color = s.color;
             p.handicap = s.handicap / 100.0;
-            match s.race {
+            match s.race.filter(|_| !random_races) {
                 Some(r) => {
                     p.race = r;
                     p.race_preference = [0, 1, 2, 8, 4].get(r as usize).copied().unwrap_or(0);

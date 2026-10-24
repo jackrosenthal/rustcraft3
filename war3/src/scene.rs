@@ -442,6 +442,7 @@ impl Scene {
         let replay_lobby = replay.as_ref().and_then(|r| r.lobby.clone());
         let lobby = if replay.is_some() { replay_lobby.as_deref() } else { lobby };
         let campaign = replay.as_ref().map_or(data.campaign_game.get(), |r| r.campaign);
+        let setup_flags = replay.as_ref().map_or(data.setup_flags.get(), |r| r.flags);
         data.chain.unmount(PRIORITY_MAP);
         // A map on disk, or one inside the game's archives (the campaigns' maps).
         let archive = if map_path.is_file() {
@@ -567,7 +568,7 @@ impl Scene {
                 }
                 let mut first = true;
                 let res = match lobby {
-                    Some(slots) => g.start_lobby(slots),
+                    Some(slots) => g.start_lobby(slots, setup_flags),
                     // Without a setup screen: the local player in the first user slot and
                     // computers in the rest.
                     None => g.start(|_, controller| {
@@ -592,6 +593,7 @@ impl Scene {
                         persist: persist_at_start,
                         campaign,
                         version: data.version as i32,
+                        flags: setup_flags,
                         frames: Vec::new(),
                     }));
                 }

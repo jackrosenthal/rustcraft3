@@ -390,6 +390,12 @@ impl Game {
             if p.slot_state == slot_state::PLAYING {
                 p.state.insert(crate::types::player_state::PLACED, 1);
             }
+            // Players not in the game, the neutrals among them, are on no team
+            // (measured: GetPlayerTeam is -1 for them).
+            let in_game = p.slot_state == slot_state::PLAYING && (p.controller == map_control::USER || p.controller == map_control::COMPUTER);
+            if !in_game && p.get_state(crate::types::player_state::OBSERVER) == 0 {
+                p.team = -1;
+            }
         }
         // The players take their start locations by the map's placement.
         self.world.place_start_locations();

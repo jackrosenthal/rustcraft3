@@ -15,6 +15,7 @@ pub mod lightning;
 pub mod saveload;
 pub mod options;
 pub mod profiles;
+pub mod replaypanel;
 pub mod replays;
 pub mod savereplay;
 pub mod shadows;

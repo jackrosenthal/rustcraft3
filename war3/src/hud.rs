@@ -174,6 +174,8 @@ pub struct Hud {
     pub camera_box: Vec<(f32, f32)>,
     pub card: Vec<crate::card::Button>,
     pub page: crate::card::Page,
+    /// While a replay plays, its panel in the command card's place.
+    pub replay: Option<crate::replaypanel::ReplayPanel>,
     gold: Option<usize>,
     lumber: Option<usize>,
     supply: Option<usize>,
@@ -312,6 +314,7 @@ impl Hud {
             camera_box: Vec::new(),
             card: Vec::new(),
             page: crate::card::Page::Main,
+            replay: None,
             gold: tree.get("ResourceBarGoldText"),
             lumber: tree.get("ResourceBarLumberText"),
             supply: tree.get("ResourceBarSupplyText"),
@@ -1122,6 +1125,11 @@ impl Hud {
         w3_ui::Rect { x0: cx - BUTTON / 2.0, x1: cx + BUTTON / 2.0, y0: cy - BUTTON / 2.0, y1: cy + BUTTON / 2.0 }
     }
 
+    /// The replay panel, in the command card's place.
+    pub fn show_replay(&mut self, db: &FrameDb, world: &World, team_rgb: &[[f32; 3]; 16], length: f32) {
+        self.replay = Some(crate::replaypanel::ReplayPanel::new(&mut self.tree, db, world, team_rgb, (CARD_W, CARD_H, CARD_RIGHT, CARD_BOTTOM), length));
+    }
+
     /// The card button at an interface position.
     /// The card slots whose autocast is on.
     pub fn autocast_slots(&self) -> Vec<(u32, u32, w3_ui::Rect)> {
@@ -1434,7 +1442,12 @@ impl Hud {
         self.production_draws(db, &mut out);
         self.cargo_draws(db, &mut out);
         self.group_draws(db, &mut out);
-        let mut tip = self.button_at(self.pointer.0, self.pointer.1).filter(|b| !b.tip.is_empty()).cloned();
+        let mut tip = self.button_at(self.pointer.0, self.pointer.1).filter(|b| !b.tip.is_empty() && self.replay.is_none()).cloned();
+        if self.replay.is_some() {
+            if let Some(t) = crate::replaypanel::ReplayPanel::tip(&self.tree, db, self.pointer.0, self.pointer.1) {
+                tip = Some(crate::card::Button::text_only(t, String::new()));
+            }
+        }
         // The idle worker button's tooltip (CPeonBar: IDLE_PEON and IDLE_PEON_DESC).
         if tip.is_none() && !self.idle_workers.is_empty() && self.idle_worker_rect().contains(self.pointer.0, self.pointer.1) {
             tip = Some(crate::card::Button::text_only(db.string("IDLE_PEON"), db.string("IDLE_PEON_DESC")));
@@ -1553,7 +1566,10 @@ impl Hud {
                 }
             }
         }
-        for b in &self.card {
+        if self.replay.is_some() {
+            crate::replaypanel::ReplayPanel::draws(&self.tree, db, &mut out);
+        }
+        for b in self.card.iter().filter(|_| self.replay.is_none()) {
             let icon = if b.enabled { b.icon.clone() } else { crate::card::disabled_icon(&b.icon) };
             out.push(Draw::Image {
                 texture: icon,

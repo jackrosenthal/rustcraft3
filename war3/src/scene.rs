@@ -631,6 +631,13 @@ impl Scene {
             scene.models.set_fog(device, tex.clone());
             scene.fog = Some(tex);
         }
+        // A replay's panel takes the command card's place.
+        if let (Some(p), Some(h), Some(g)) = (scene.playback.as_ref(), scene.hud.as_mut(), scene.game.as_mut()) {
+            h.show_replay(&assets.frames, &g.world, &scene.team_rgb, p.replay.length());
+            if let Some(r) = h.replay.as_mut() {
+                r.leave(&mut g.world);
+            }
+        }
         scene.apply_requests();
         Ok(scene)
     }
@@ -1725,6 +1732,23 @@ impl Scene {
             }
             return true;
         }
+        // The replay panel's buttons, vision menu, and check boxes.
+        if let Some(h) = self.hud.as_mut() {
+            if let Some(r) = h.replay.as_mut() {
+                let mut event = None;
+                if r.click(&mut h.tree, ux, uy, &mut event) {
+                    if let Some(crate::replaypanel::Event::Restart) = event {
+                        self.restart_requested = true;
+                    }
+                    if let (Some(g), Some(r)) = (self.game.as_mut(), self.hud.as_mut().and_then(|h| h.replay.as_mut())) {
+                        // The view changes at once.
+                        r.enter(&mut g.world);
+                        r.leave(&mut g.world);
+                    }
+                    return true;
+                }
+            }
+        }
         // The multiboard's minimize button.
         if let Some(b) = self.hud.as_ref().and_then(|h| h.boards.as_ref()).and_then(|b| b.minimize_at(ux, uy)) {
             if let Some(w3_game::types::Obj::Multiboard(m)) = self.game.as_mut().and_then(|g| g.world.handles.get_mut(b)) {
@@ -2158,6 +2182,11 @@ impl Scene {
     }
 
     pub fn key(&mut self, c: char) {
+        if let Some(h) = self.hud.as_mut().filter(|h| h.chat.is_none() && h.menu.is_none()) {
+            if h.replay.as_mut().is_some_and(|r| r.key(c)) {
+                return;
+            }
+        }
         // The save panel's edit box takes typing; Enter saves and Escape cancels.
         if let Some(p) = self.hud.as_mut().and_then(|h| h.save_panel.as_mut()) {
             if p.confirm.is_none() {
@@ -2798,9 +2827,14 @@ impl Scene {
         }
         if let Some(g) = self.game.as_mut().filter(|_| !paused) {
             match self.playback.as_mut() {
-                // A replay plays its frames as their time comes.
+                // A replay plays its frames as their time comes, at the panel's speed, with
+                // the game's own player and fog.
                 Some(p) => {
-                    p.owed += gdt;
+                    let panel = self.hud.as_mut().and_then(|h| h.replay.as_mut());
+                    p.owed += panel.as_ref().map_or(gdt, |r| r.scaled(gdt));
+                    if let Some(r) = panel.as_ref() {
+                        r.enter(&mut g.world);
+                    }
                     while let Some(f) = p.replay.frames.get(p.next) {
                         if f.dt > p.owed {
                             break;
@@ -2808,6 +2842,15 @@ impl Scene {
                         p.owed -= f.dt;
                         g.play_frame(f);
                         p.next += 1;
+                    }
+                    if let Some(r) = panel {
+                        r.leave(&mut g.world);
+                    }
+                    let elapsed: f32 = p.replay.frames[..p.next].iter().map(|f| f.dt).sum();
+                    if let Some(h) = self.hud.as_mut() {
+                        if let Some(r) = h.replay.as_ref() {
+                            r.sync(&mut h.tree, elapsed);
+                        }
                     }
                 }
                 None => g.tick(gdt),

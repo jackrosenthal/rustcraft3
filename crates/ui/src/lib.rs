@@ -502,7 +502,7 @@ impl FrameTree {
         let targets: std::collections::HashSet<usize> = self.frames.iter().flat_map(|f| f.points.iter().filter_map(|p| p.relative)).collect();
         for i in targets {
             let f = &self.frames[i];
-            if f.def.kind != "TEXT" || f.width.is_some() {
+            if (f.def.kind != "TEXT" && f.def.block != "String") || f.width.is_some() {
                 continue;
             }
             let Some(text) = f.text.as_ref() else { continue };
@@ -617,7 +617,7 @@ impl FrameTree {
         }
         matches!(
             kind,
-            "GLUETEXTBUTTON" | "GLUEBUTTON" | "TEXTBUTTON" | "BUTTON" | "SIMPLEBUTTON" | "GLUECHECKBOX" | "CHECKBOX" | "POPUPMENU" | "GLUEPOPUPMENU" | "EDITBOX" | "GLUEEDITBOX" | "SLIDER" | "LISTBOX"
+            "GLUETEXTBUTTON" | "GLUEBUTTON" | "TEXTBUTTON" | "BUTTON" | "SIMPLEBUTTON" | "SIMPLECHECKBOX" | "GLUECHECKBOX" | "CHECKBOX" | "POPUPMENU" | "GLUEPOPUPMENU" | "EDITBOX" | "GLUEEDITBOX" | "SLIDER" | "LISTBOX"
         )
     }
 
@@ -772,7 +772,7 @@ impl FrameTree {
             return Some(p);
         }
         let i = pressed.filter(|p| Some(*p) == hit)?;
-        if matches!(self.frames[i].def.kind.as_str(), "GLUECHECKBOX" | "CHECKBOX") {
+        if matches!(self.frames[i].def.kind.as_str(), "GLUECHECKBOX" | "CHECKBOX" | "SIMPLECHECKBOX") {
             self.frames[i].checked = !self.frames[i].checked;
         }
         if self.is_popup(i) && !self.frames[i].items.is_empty() {
@@ -1115,6 +1115,27 @@ impl FrameTree {
                     let y1 = r.y1 - inset - k as f32 * (line_h + gap);
                     let rect = Rect { x0: r.x0 + inset, x1: r.x1 - inset, y0: y1 - line_h, y1 };
                     out.push(Draw::Text { font: font.clone(), size, rect, text: line.clone(), color: [1.0; 4], justify_h: Justify::Start, justify_v: Justify::Middle, shadow: None });
+                }
+            }
+            // A simple check box: its normal or pushed texture, and its checked texture over
+            // it while checked (each a Texture template or a decorated file name).
+            (_, "SIMPLECHECKBOX") => {
+                let key = if f.pushed { "PushedTexture" } else { "NormalTexture" };
+                for k in [key, if f.checked { "CheckedTexture" } else { "" }] {
+                    let Some(n) = d.str(k) else { continue };
+                    let (name, uv) = match db.templates.get(n).map(|t| db.resolve(t)) {
+                        Some(t) => (t.str("File").map(|s| s.to_string()).unwrap_or_default(), texcoord(&t)),
+                        None => (n.to_string(), [0.0, 0.0, 1.0, 1.0]),
+                    };
+                    out.push(Draw::Image { texture: db.decorate(&name), rect: r, uv, color: [1.0; 4], blend: Blend::Alpha, rotated: false });
+                }
+            }
+            // A simple status bar: its BarTexture filled to its value (0 to 1) from the left.
+            (_, "SIMPLESTATUSBAR") => {
+                if let Some(n) = d.str("BarTexture") {
+                    let v = f.value.clamp(0.0, 1.0);
+                    let rect = Rect { x1: r.x0 + r.w() * v, ..r };
+                    out.push(Draw::Image { texture: file(n), rect, uv: [0.0, 0.0, v, 1.0], color: [1.0; 4], blend: Blend::Alpha, rotated: false });
                 }
             }
             (_, "SIMPLEBUTTON") => {

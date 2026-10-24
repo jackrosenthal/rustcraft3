@@ -343,7 +343,11 @@ impl ApplicationHandler for App {
                     }
                     // A saved game chosen in the game menu, or a restart: the map's loading
                     // screen, then the game.
-                    let restart = std::mem::take(&mut scene.restart_requested).then(|| crate::glue::GlueAction::Restart(std::path::PathBuf::from(&scene.map_path), scene.lobby.clone()));
+                    // A replay restarts as itself.
+                    let restart = std::mem::take(&mut scene.restart_requested).then(|| match scene.playback.as_ref() {
+                        Some(p) => crate::glue::GlueAction::PlayReplay(Box::new(p.replay.clone())),
+                        None => crate::glue::GlueAction::Restart(std::path::PathBuf::from(&scene.map_path), scene.lobby.clone()),
+                    });
                     if let Some(action) = scene.load_requested.take().map(crate::glue::GlueAction::LoadSave).or(restart) {
                         let mut audio = scene.audio.take();
                         if let Some(a) = audio.as_mut() {
@@ -469,8 +473,12 @@ impl ApplicationHandler for App {
                                 Err(e) => log::error!("loading {}: {e:#}", file.display()),
                             }
                         }
-                        Some(crate::glue::GlueAction::WatchReplay(file)) => {
-                            match std::fs::read(&file).map_err(anyhow::Error::from).and_then(|b| w3_game::replay::Replay::parse(&b)) {
+                        Some(crate::glue::GlueAction::WatchReplay(file)) => match std::fs::read(&file).map_err(anyhow::Error::from).and_then(|b| w3_game::replay::Replay::parse(&b)) {
+                            Ok(replay) => glue.action = Some(crate::glue::GlueAction::PlayReplay(Box::new(replay))),
+                            Err(e) => log::error!("replay {}: {e:#}", file.display()),
+                        },
+                        Some(crate::glue::GlueAction::PlayReplay(replay)) => {
+                            match Ok::<_, anyhow::Error>(*replay) {
                                 Ok(replay) => {
                                     self.data.campaign_game.set(replay.campaign);
                                     let path = std::path::PathBuf::from(&replay.map);
@@ -479,7 +487,7 @@ impl ApplicationHandler for App {
                                     r.pending = Some((path, None, None));
                                     r.pending_replay = Some(replay);
                                 }
-                                Err(e) => log::error!("replay {}: {e:#}", file.display()),
+                                Err(e) => log::error!("replay: {e:#}"),
                             }
                         }
                         None if r.pending.is_some() => {

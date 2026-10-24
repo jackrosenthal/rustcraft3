@@ -25,6 +25,8 @@ pub enum GlueAction {
     Restart(std::path::PathBuf, Option<Vec<w3_game::LobbySlot>>),
     /// A replay file to watch.
     WatchReplay(std::path::PathBuf),
+    /// A replay to watch (again).
+    PlayReplay(Box<w3_game::replay::Replay>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

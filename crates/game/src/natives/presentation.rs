@@ -592,9 +592,13 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             w.requests.push(Request::DoodadAnimation { id: crate::objects::id_from_int(a.i(1)), area, anim: a.s(2), random: a.b(3) });
             none()
         },
-        SetTerrainType => |_, _, _| none(),
-        GetTerrainType => |_, _, _| int(0),
-        GetTerrainVariance => |_, _, _| int(0),
+        SetTerrainType => |w, _, a| {
+            let (x, y, t, variation, area, shape) = (a.r(0), a.r(1), a.i(2), a.i(3), a.i(4), a.i(5));
+            w.set_terrain_type(x, y, (t as u32).to_be_bytes(), variation, area, shape != 0);
+            none()
+        },
+        GetTerrainType => |w, _, a| int(w.terrain_corner(a.r(0), a.r(1)).and_then(|i| w.ground_tilesets.get(w.ground[i].0 as usize & 0xf)).map_or(0, |t| u32::from_be_bytes(*t) as i32)),
+        GetTerrainVariance => |w, _, a| int(w.terrain_corner(a.r(0), a.r(1)).map_or(0, |i| (w.ground[i].1 & 0x1f) as i32)),
         SetBlight => |w, _, a| {
             let (x, y, r, add) = (a.r(1), a.r(2), a.r(3), a.b(4));
             w.set_blight(add, (x - r, y - r, x + r, y + r), |px, py| (px - x).hypot(py - y) <= r);

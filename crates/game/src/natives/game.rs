@@ -148,7 +148,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetAllyColorFilterState => |w, _, a| { w.ally_color_filter = a.i(0).clamp(0, 2); none() },
         GetAllyColorFilterState => |w, _, _| int(w.ally_color_filter),
         SetCreepCampFilterState => |w, _, a| { w.creep_camp_filter = a.b(0); none() },
-        GetCreepCampFilterState => |_, _, _| boolean(false),
+        GetCreepCampFilterState => |w, _, _| boolean(w.creep_camp_filter),
         EnableMinimapFilterButtons => |w, _, a| { w.minimap_filter_buttons = (a.b(0), a.b(1)); none() },
         EnableDragSelect => |w, _, a| { w.select_allowed.1 = a.b(0); none() },
         EnablePreSelect => |w, _, a| { w.select_allowed.2 = a.b(1); none() },

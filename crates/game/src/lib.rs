@@ -49,6 +49,7 @@ pub mod collections;
 pub mod replay;
 pub mod orbs;
 pub mod orders;
+pub mod paint;
 pub mod pathing;
 pub mod placement;
 pub mod repair;
@@ -184,6 +185,8 @@ impl Game {
                 layers: t.corners.iter().map(|c| c.layer_height).collect(),
             });
             world.blight = t.corners.iter().map(|c| c.blight).collect();
+            world.ground = t.corners.iter().map(|c| (c.ground_texture, c.ground_variation)).collect();
+            world.ground_tilesets = t.ground_tilesets.clone();
             let [left, right, bottom, top] = info.camera_complements.map(|v| v as f32 * 128.0);
             let b = world.map_bounds;
             world.playable = Rect { min_x: b.min_x + left, max_x: b.max_x - right, min_y: b.min_y + bottom, max_y: b.max_y - top };

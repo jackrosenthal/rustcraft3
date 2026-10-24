@@ -51,6 +51,7 @@ pub struct TerrainRenderer {
     cliff_batches: Vec<Batch>,
     cliff_bgs: Vec<wgpu::BindGroup>,
     shadow_bg: wgpu::BindGroup,
+    ground_sampler: wgpu::Sampler,
     shadow_layout: wgpu::BindGroupLayout,
     shadow_sampler: wgpu::Sampler,
     /// The map's baked shadows (war3map.shd), one byte per 32 by 32 cell.
@@ -85,7 +86,15 @@ fn build_ground(src: &GroundSource, heights: &[f32], blight: &[bool]) -> (Vec<Ve
     let hat = |x: u32, y: u32| heights[idx(x, y)];
     let corner_tex = |x: u32, y: u32| -> usize {
         let i = idx(x, y);
-        if blight.get(i).copied().unwrap_or(false) { src.blight_index } else { src.textures[i] as usize }
+        // Tilesets painted in later come after the blight.
+        let t = src.textures[i] as usize;
+        if blight.get(i).copied().unwrap_or(false) {
+            src.blight_index
+        } else if t >= src.blight_index {
+            t + 1
+        } else {
+            t
+        }
     };
     let normal_at = |x: u32, y: u32| -> [f32; 3] {
         let l = hat(x.saturating_sub(1), y);
@@ -607,6 +616,7 @@ impl TerrainRenderer {
             cliff_batches,
             cliff_bgs,
             shadow_bg,
+            ground_sampler: make_sampler(device, false, false),
             shadow_layout,
             shadow_sampler,
             shadow_base: shadow_bytes,
@@ -635,6 +645,25 @@ impl TerrainRenderer {
             usage: wgpu::BufferUsages::INDEX,
         });
         self.batches = batches;
+    }
+
+    /// The tilesets the ground has textures for (the map's, then any painted in).
+    pub fn ground_texture_count(&self) -> usize {
+        self.ground.extended.len() - 1
+    }
+
+    /// Repaints the ground (SetTerrainType): each corner's tileset and variation, with
+    /// the textures of tilesets added since (`added`, each with whether it is extended).
+    pub fn set_ground(&mut self, device: &wgpu::Device, added: &[(std::sync::Arc<crate::texture::Texture>, bool)], textures: &[u8], variations: &[u8], blight: &[bool]) {
+        for (t, ext) in added {
+            self.texture_bgs.push(texture_bind_group(device, &self.shadow_layout, &t.view, &self.ground_sampler));
+            self.ground.extended.push(*ext);
+        }
+        if textures.len() == self.ground.textures.len() {
+            self.ground.textures = textures.to_vec();
+            self.ground.variations = variations.to_vec();
+        }
+        self.set_blight(device, blight);
     }
 
     /// Uses a fog-of-war texture (see `Globals::fow_extent`).

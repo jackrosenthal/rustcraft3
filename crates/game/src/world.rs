@@ -276,6 +276,14 @@ pub struct World {
     /// Items the spell AI chose to use: the unit, slot, and target.
     #[serde(default)]
     pub ai_item_uses: Vec<(u32, usize, u32)>,
+    /// Each terrain corner's ground texture (an index into `ground_tilesets`) and
+    /// variation, the tilesets, and a count that changes when they do (SetTerrainType).
+    #[serde(default)]
+    pub ground: Vec<(u8, u8)>,
+    #[serde(default)]
+    pub ground_tilesets: Vec<[u8; 4]>,
+    #[serde(default)]
+    pub ground_serial: u32,
     /// Blighted terrain corners, and a count that changes when they do.
     pub blight: Vec<bool>,
     pub blight_serial: u32,
@@ -544,6 +552,9 @@ impl World {
             volcanoes: Vec::new(),
             ai_item_uses: Vec::new(),
             creep_camps: Vec::new(),
+            ground: Vec::new(),
+            ground_tilesets: Vec::new(),
+            ground_serial: 0,
             blight: Vec::new(),
             blight_serial: 0,
             autocast_timer: 0.0,

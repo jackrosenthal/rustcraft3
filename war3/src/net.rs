@@ -95,6 +95,8 @@ pub enum Msg {
     MapData { name: String, bytes: Vec<u8> },
     /// A lobby notice: a NetworkStrings key and the player it is about.
     Notice { key: String, name: String },
+    /// The game starts in this many seconds (CGameChatroom's countdown).
+    Countdown(u8),
     /// A joined player's choices for their own slot.
     Choose { race: usize, team: i32, color: i32, handicap: usize },
     /// The game begins with this setup.

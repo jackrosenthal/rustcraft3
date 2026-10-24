@@ -52,11 +52,15 @@ pub struct Lan {
     map_asked: bool,
     /// The saved game being loaded (the host's file, or what it sent).
     save: Option<Vec<u8>>,
+    /// The host's countdown to the start: seconds since Start Game was pressed.
+    countdown: Option<f32>,
+    /// Sound labels for the glue to play.
+    pub sounds: Vec<String>,
 }
 
 impl Lan {
     pub fn new(game_dir: &Path, name: String) -> Lan {
-        Lan { name, port: net::DEFAULT_PORT, game_dir: game_dir.to_path_buf(), browser: None, selected: None, list: None, host: None, conn: None, me: 0, setup: Setup::default(), chat: Vec::new(), line: String::new(), rebuild: false, summary_due: None, local_map: None, map_asked: false, save: None }
+        Lan { name, port: net::DEFAULT_PORT, game_dir: game_dir.to_path_buf(), browser: None, selected: None, list: None, host: None, conn: None, me: 0, setup: Setup::default(), chat: Vec::new(), line: String::new(), rebuild: false, summary_due: None, local_map: None, map_asked: false, save: None, countdown: None, sounds: Vec::new() }
     }
 
     /// A map's path as the setup names it: within the game folder, relative to it.
@@ -390,6 +394,7 @@ impl Lan {
                 }
                 Msg::Chat { from, text } => self.chat.push(format!("{from}: {text}")),
                 Msg::Notice { key, name } => self.chat.push(db.string(&key).replace("%s", &name)),
+                Msg::Countdown(n) => self.countdown_line(db, n),
                 Msg::SaveData(bytes) => self.save = Some(bytes),
                 Msg::Start(s) => {
                     self.setup = s;
@@ -414,6 +419,45 @@ impl Lan {
             return Some(Event::Joining(Some("NETERROR_JOINGAMEFAILED")));
         }
         event
+    }
+
+    /// "Game starting in N ..." in the chat with the timer's tick (FUN_6f2fab40).
+    fn countdown_line(&mut self, db: &FrameDb, n: u8) {
+        self.chat.push(db.string("TIMER_COUNTDOWN").replacen("%d", &n.to_string(), 1));
+        self.sounds.push("ChatroomTimerTick".to_string());
+    }
+
+    /// The host presses Start Game: the countdown begins (FUN_6f2f9ce0).
+    pub fn begin_start(&mut self) {
+        if self.host.is_some() && self.countdown.is_none() {
+            self.countdown = Some(0.0);
+        }
+    }
+
+    /// The host's countdown: each second "Game starting in" five down to one, everyone
+    /// told; six seconds after Start Game the game starts (FUN_6f2fab40, timer 1.0).
+    pub fn tick_countdown(&mut self, db: &FrameDb, dt: f32) -> Option<Event> {
+        let t0 = self.countdown?;
+        let t1 = t0 + dt;
+        self.countdown = Some(t1);
+        for s in (t0.floor() as i32 + 1)..=(t1.floor() as i32) {
+            let left = 6 - s;
+            if left <= 0 {
+                self.countdown = None;
+                return self.start();
+            }
+            let n = left as u8;
+            if let Some(h) = self.host.as_mut() {
+                h.broadcast(&Msg::Countdown(n));
+            }
+            self.countdown_line(db, n);
+        }
+        None
+    }
+
+    /// Whether the start's countdown is running.
+    pub fn counting_down(&self) -> bool {
+        self.countdown.is_some()
     }
 
     /// The host starts the game.

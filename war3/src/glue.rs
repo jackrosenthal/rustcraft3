@@ -1108,9 +1108,8 @@ impl Glue {
                 self.show(Screen::LanJoin, assets);
             }
             (Screen::LanLobby, "StartGameButton") => {
-                if let Some(e) = self.lan.start() {
-                    self.lan_event(e, assets);
-                }
+                self.lan.begin_start();
+                self.tree.set_enabled("StartGameButton", false);
             }
             (Screen::LanLobby, other) => self.lan.button(&mut self.tree, &assets.frames, other),
             _ => log::debug!("glue button {name} has no handler yet"),
@@ -1188,6 +1187,12 @@ impl Glue {
         }
         // The local network: games found, and the lobby's messages.
         if matches!(self.screen, Screen::LanJoin | Screen::LanLobby) {
+            if self.screen == Screen::LanLobby {
+                if let Some(e) = self.lan.tick_countdown(&assets.frames, dt) {
+                    self.lan_event(e, assets);
+                }
+                self.sounds.append(&mut self.lan.sounds);
+            }
             if let Some(e) = self.lan.update(&mut self.tree, &assets.frames) {
                 self.lan_event(e, assets);
             }

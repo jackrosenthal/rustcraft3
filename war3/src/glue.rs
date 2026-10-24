@@ -1286,7 +1286,7 @@ impl Glue {
     /// (CGlueToolTipWar3::vf25).
     fn options_tip_draws(&self, db: &w3_ui::FrameDb, out: &mut Vec<Draw>) {
         use w3_ui::fdf::{Arg, Def, Prop};
-        const TIPS: [(&str, &str); 7] = [
+        const TIPS: [(&str, &str); 8] = [
             ("GamePortEditBox", "GAMEPORT_INFO"),
             ("ChatSupportMenu", "CHAT_SUPPORT_INFO"),
             ("CustomKeysCheckBox", "CUSTOM_KEYS_INFO"),
@@ -1294,11 +1294,17 @@ impl Glue {
             ("AutosaveReplayCheckBox", "AUTOSAVE_REPLAY_INFO"),
             ("FormationToggleCheckBox", "FORMATION_TOGGLE_INFO"),
             ("SpellFilterMenu", "SPELL_FILTER_INFO"),
+            // Each player slot's handicap menu (CPlayerSlot).
+            ("HandicapMenu", "HANDICAP_TIP"),
         ];
         let (px, py) = self.pointer;
-        let Some((owner, key)) = TIPS.iter().find_map(|&(name, key)| {
-            let f = self.tree.get(name).filter(|&f| self.tree.is_visible(f))?;
-            self.tree.frames[f].rect.filter(|r| r.contains(px, py)).map(|r| (r, key))
+        let Some((owner, key)) = self.tree.frames.iter().enumerate().find_map(|(f, frame)| {
+            let base = frame.name.split('#').next().unwrap_or_default();
+            let key = TIPS.iter().find(|t| t.0 == base)?.1;
+            if !self.tree.is_visible(f) {
+                return None;
+            }
+            frame.rect.filter(|r| r.contains(px, py)).map(|r| (r, key))
         }) else {
             return;
         };
@@ -1620,7 +1626,7 @@ impl Glue {
             let hover = self.campaigns.row_at(&p, root, self.pointer.0, self.pointer.1);
             self.campaigns.draws(&p, &assets.frames, root, hover.as_ref(), &mut draws);
         }
-        if self.screen == Screen::Options && self.phase == Phase::Stand {
+        if self.phase == Phase::Stand {
             self.options_tip_draws(&assets.frames, &mut draws);
         }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

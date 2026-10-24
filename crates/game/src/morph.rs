@@ -57,6 +57,7 @@ impl World {
         u.path.clear();
         u.swing = None;
         u.extra.morph = Some((dur, to, if timed { Some((limit, back)) } else { None }));
+        u.extra.morph_total = dur;
         crate::sim::set_anim(u, "morph");
         true
     }

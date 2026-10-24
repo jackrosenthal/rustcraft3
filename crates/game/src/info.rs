@@ -168,6 +168,8 @@ pub enum ProductionKind {
     Researching,
     Reviving,
     Constructing,
+    /// A unit changing form over time (FUN_6f3d2cb0: MORPHING).
+    Morphing,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -189,6 +191,12 @@ impl World {
 
     pub fn production(&self, h: u32) -> Option<Production> {
         let u = self.unit(h)?;
+        if let Some((left, to, _)) = u.extra.morph {
+            if left > 0.0 && u.extra.morph_total > 0.0 {
+                let art = self.objects.units.get(to).map(|o| o.str("Art")).unwrap_or_default();
+                return Some(Production { kind: ProductionKind::Morphing, icons: vec![art], progress: (1.0 - left / u.extra.morph_total).clamp(0.0, 1.0) });
+            }
+        }
         if let Some(left) = u.constructing {
             let total = u.build_time.max(0.01);
             let art = self.objects.units.get(u.type_id).map(|o| o.str("Art")).unwrap_or_default();

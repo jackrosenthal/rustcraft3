@@ -1285,6 +1285,7 @@ impl Hud {
             K::Researching => "RESEARCHING",
             K::Reviving => "REVIVING",
             K::Constructing => "CONSTRUCTING",
+            K::Morphing => "MORPHING",
         };
         t.set_text("SimpleBuildingActionLabelB", &db.string(label));
         t.set_visible("SimpleBuildQueueBackdropB", matches!(p.kind, K::Training | K::Reviving));

@@ -300,6 +300,9 @@ pub struct UnitExtra {
     /// A morph under way: seconds left, the type it becomes, and for a timed form how
     /// long it lasts and the type it returns to.
     pub morph: Option<(f32, crate::objects::Id, Option<(f32, crate::objects::Id)>)>,
+    /// How long that morph takes in all, for its progress.
+    #[serde(default)]
+    pub morph_total: f32,
     /// A timed form's time left and the type it returns to.
     pub morph_revert: Option<(f32, crate::objects::Id)>,
     /// When the unit was last attacked (game time), for autocast.
@@ -478,6 +481,7 @@ impl Default for UnitExtra {
             cargo: Vec::new(),
             transport: 0,
             morph: None,
+            morph_total: 0.0,
             morph_revert: None,
             last_attacked: -100.0,
             devoured: Vec::new(),

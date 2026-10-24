@@ -2754,6 +2754,7 @@ name = "w3-game"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "flate2",
  "log",
  "postcard",
  "serde",

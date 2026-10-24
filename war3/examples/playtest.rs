@@ -48,7 +48,12 @@ fn main() -> anyhow::Result<()> {
             })
             .collect()
     });
-    let mut scene = Scene::load(&device, &queue, format, &data, &mut assets, Path::new(&map), w as f32 / h as f32, lobby.as_deref(), restore)?;
+    // W3REPLAY: a replay to watch on the map instead of playing.
+    let replay = match std::env::var("W3REPLAY") {
+        Ok(f) => Some(w3_game::replay::Replay::parse(&std::fs::read(f)?)?),
+        Err(_) => None,
+    };
+    let mut scene = Scene::load(&device, &queue, format, &data, &mut assets, Path::new(&map), w as f32 / h as f32, lobby.as_deref(), restore, replay)?;
     scene.sync_units(&device, &queue, &mut assets);
     scene.sync_destructables(&device, &queue, &mut assets);
     // W3SAVES: where the game menu keeps saved games, for testing.
@@ -94,6 +99,13 @@ fn main() -> anyhow::Result<()> {
                 let consumed = scene.left_click(num(&a[i + 1]), num(&a[i + 2]), (w, h));
                 eprintln!("left click consumed: {consumed}");
                 i += 3;
+            }
+            // replaysave <file>: the replay so far.
+            "replaysave" => {
+                if let Some(r) = scene.game.as_ref().and_then(|g| g.recorder.as_ref()) {
+                    std::fs::write(&a[i + 1], r.replay.to_bytes()?)?;
+                }
+                i += 2;
             }
             "key" => {
                 scene.key(a[i + 1].chars().next().unwrap());

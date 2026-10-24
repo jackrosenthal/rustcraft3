@@ -110,9 +110,9 @@ impl App {
             Some(path) if path.extension().is_some_and(|e| e.eq_ignore_ascii_case(crate::saveload::EXTENSION)) => {
                 let save = w3_game::save::SaveGame::parse(&std::fs::read(path)?)?;
                 let map = std::path::PathBuf::from(&save.map);
-                Some(Scene::load(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets, &map, inner.width as f32 / inner.height.max(1) as f32, None, Some(save))?)
+                Some(Scene::load(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets, &map, inner.width as f32 / inner.height.max(1) as f32, None, Some(save), None)?)
             }
-            Some(path) => Some(Scene::load(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets, path, inner.width as f32 / inner.height.max(1) as f32, None, None)?),
+            Some(path) => Some(Scene::load(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets, path, inner.width as f32 / inner.height.max(1) as f32, None, None, None)?),
             None => None,
         };
         let glue = match scene.as_mut() {
@@ -365,6 +365,9 @@ impl ApplicationHandler for App {
                             *self.data.persist.borrow_mut() = g.world.persist.clone();
                             self.data.save_profile();
                         }
+                        if let Some(replay) = scene.take_replay() {
+                            crate::replays::keep(&replay);
+                        }
                     }
                     if let Some(map) = change {
                         // ChangeLevel: the next mission's loading screen, then the mission.
@@ -466,7 +469,7 @@ impl ApplicationHandler for App {
                         None if r.pending.is_some() => {
                             let (path, slots, restore) = r.pending.take().unwrap();
                             let aspect = size.0 as f32 / size.1.max(1) as f32;
-                            match Scene::load(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets, &path, aspect, slots.as_deref(), restore) {
+                            match Scene::load(&r.gpu.device, &r.gpu.queue, r.gpu.config.format, &self.data, &mut r.assets, &path, aspect, slots.as_deref(), restore, None) {
                                 Ok(s) => {
                                     if self.data.campaign_game.get() {
                                         // Campaign missions wait on their loading screen for a

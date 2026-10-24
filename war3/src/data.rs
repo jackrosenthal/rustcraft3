@@ -164,6 +164,11 @@ pub fn save_dir(version: Version) -> Option<PathBuf> {
     Some(profile_dir()?.join("Save").join(format!("v{}", version as u32)))
 }
 
+/// Where replays live (the original's Replay folder).
+pub fn replay_dir() -> Option<PathBuf> {
+    Some(data_root()?.join("Replay"))
+}
+
 /// The current profile's progress (a fresh one at Normal difficulty when it has none).
 pub fn load_persist(version: Version) -> w3_game::persist::Persist {
     profile_path(version)

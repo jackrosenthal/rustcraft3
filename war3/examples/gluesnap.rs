@@ -81,7 +81,7 @@ fn main() -> anyhow::Result<()> {
             // score <map> <seconds>: plays the map that long, then shows its score screen
             // with player 1 the winner.
             "score" => {
-                let mut scene = war3::scene::Scene::load(&device, &queue, format, &data, &mut assets, Path::new(&a[i + 1]), w as f32 / h as f32, None, None)?;
+                let mut scene = war3::scene::Scene::load(&device, &queue, format, &data, &mut assets, Path::new(&a[i + 1]), w as f32 / h as f32, None, None, None)?;
                 let secs: f32 = a[i + 2].parse()?;
                 let mut t = 0.0;
                 while t < secs {

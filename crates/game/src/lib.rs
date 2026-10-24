@@ -45,6 +45,7 @@ pub mod natives;
 pub mod objects;
 pub mod cheats;
 pub mod collections;
+pub mod replay;
 pub mod orbs;
 pub mod orders;
 pub mod pathing;
@@ -72,6 +73,10 @@ pub struct Game {
     pub vm: Vm,
     pub world: World,
     pub info: MapInfo,
+    /// The replay being recorded, if any.
+    pub recorder: Option<replay::Recorder>,
+    /// While a replay plays, the interface's commands are ignored.
+    pub locked: bool,
 }
 
 /// How a player slot is filled when the game starts.
@@ -215,7 +220,7 @@ impl Game {
                 pl.name = name;
             }
         }
-        Ok(Game { vm, world, info })
+        Ok(Game { vm, world, info, recorder: None, locked: false })
     }
 
     /// Runs the map's `config` function, which declares players and start locations.
@@ -475,6 +480,94 @@ impl Game {
 
     /// Advances the simulation.
     pub fn tick(&mut self, dt: f32) {
+        if let Some(r) = self.recorder.as_mut() {
+            r.step(dt);
+        }
         self.world.tick(&mut self.vm, dt);
+    }
+
+    /// Plays one replay frame: its commands, then its step.
+    pub fn play_frame(&mut self, f: &replay::Frame) {
+        for c in &f.commands {
+            self.execute(c.clone());
+        }
+        self.world.tick(&mut self.vm, f.dt);
+    }
+
+    /// A command from the interface (noted for the replay); none while a replay plays.
+    pub fn apply(&mut self, c: replay::Command) -> replay::Outcome {
+        if self.locked {
+            return replay::Outcome::Done;
+        }
+        self.execute(c)
+    }
+
+    fn execute(&mut self, c: replay::Command) -> replay::Outcome {
+        use replay::{Command as C, Outcome as O};
+        // A selection the player already has changes nothing.
+        if let C::Select { player, units } = &c {
+            if self.world.selection.get(player).is_some_and(|s| s == units) {
+                return O::Done;
+            }
+        }
+        if let Some(r) = self.recorder.as_mut() {
+            r.command(c.clone());
+        }
+        let res = |r: Result<(), &'static str>| r.map_or_else(O::Error, |_| O::Done);
+        match c {
+            C::Order { unit, order, x, y, target } => {
+                self.world.order_unit(unit, order, x, y, target);
+                O::Done
+            }
+            C::Issue { unit, order, x, y, target, queue } => {
+                self.world.issue_order(unit, order, x, y, target, queue);
+                O::Done
+            }
+            C::Build { worker, id, x, y } => {
+                if let Some(u) = self.world.unit_mut(worker) {
+                    u.action = types::Action::Build { id, x, y };
+                    u.path.clear();
+                }
+                O::Done
+            }
+            C::Train { building, id } => res(self.world.train(building, id)),
+            C::Research { building, id } => res(self.world.research_at(building, id)),
+            C::Upgrade { building, id } => res(self.world.upgrade_structure(building, id)),
+            C::CancelLast { building } => {
+                self.world.cancel_last(building);
+                O::Done
+            }
+            C::LearnSkill { hero, id } => O::Flag(self.world.learn_skill(hero, id)),
+            C::BuyItem { player, shop, id } => res(self.buy_item(player, shop, id)),
+            C::HireUnit { player, shop, id } => res(self.hire_unit(player, shop, id)),
+            C::StartRevive { altar, hero } => res(self.start_revive(altar, hero)),
+            C::UseItem { unit, slot } => O::Flag(self.use_item(unit, slot)),
+            C::UseItemAt { unit, slot, target, x, y } => O::Flag(self.use_item_at(unit, slot, target, x, y)),
+            C::MoveItem { unit, from, to } => {
+                self.move_item(unit, from, to);
+                O::Done
+            }
+            C::DropItemAt { unit, slot, x, y } => {
+                self.drop_item_at(unit, slot, x, y);
+                O::Done
+            }
+            C::GiveItemTo { unit, slot, target } => {
+                self.give_item_to(unit, slot, target);
+                O::Done
+            }
+            C::Select { player, units } => {
+                self.set_selection(player, &units);
+                O::Done
+            }
+            C::PlayerEvent { player, event } => {
+                self.player_event(player, event);
+                O::Done
+            }
+            C::DialogButton { player, button } => {
+                self.click_dialog_button(player, button);
+                O::Done
+            }
+            C::Chat { player, text } => O::Flag(self.chat(player, &text)),
+        }
     }
 }

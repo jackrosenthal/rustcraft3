@@ -264,6 +264,8 @@ pub struct Scene {
     screen: (u32, u32),
     /// A game menu slider being dragged; an options page to fill in.
     menu_drag: bool,
+    /// The replay being watched, if any.
+    pub playback: Option<w3_game::replay::Playback>,
     options_fill: bool,
     /// Structures' and destructables' shadows stamped into the terrain.
     shadows: crate::shadows::Shadows,
@@ -404,7 +406,12 @@ impl Scene {
         aspect: f32,
         lobby: Option<&[w3_game::LobbySlot]>,
         restore: Option<w3_game::save::SaveGame>,
+        replay: Option<w3_game::replay::Replay>,
     ) -> anyhow::Result<Scene> {
+        // A replay plays its own setup and profile.
+        let replay_lobby = replay.as_ref().and_then(|r| r.lobby.clone());
+        let lobby = if replay.is_some() { replay_lobby.as_deref() } else { lobby };
+        let campaign = replay.as_ref().map_or(data.campaign_game.get(), |r| r.campaign);
         data.chain.unmount(PRIORITY_MAP);
         // A map on disk, or one inside the game's archives (the campaigns' maps).
         let archive = if map_path.is_file() {
@@ -520,8 +527,9 @@ impl Scene {
                 g.world.saves_dir = crate::data::save_dir(data.version);
                 // The profile comes in before the script runs (InitGameCache reads saved
                 // caches); campaign games take its difficulty.
-                g.world.persist = data.persist.borrow().clone();
-                if data.campaign_game.get() && g.world.persist.difficulty > 0 {
+                g.world.persist = replay.as_ref().map_or_else(|| data.persist.borrow().clone(), |r| r.persist.clone());
+                let persist_at_start = g.world.persist.clone();
+                if campaign && g.world.persist.difficulty > 0 {
                     g.world.difficulty = g.world.persist.difficulty;
                 }
                 if let Err(e) = g.config() {
@@ -543,6 +551,19 @@ impl Scene {
                 };
                 if let Err(e) = res {
                     log::error!("main: {e:#}");
+                }
+                // The game is recorded from its start; a replay's is locked to it.
+                if replay.is_some() {
+                    g.locked = true;
+                } else {
+                    g.recorder = Some(w3_game::replay::Recorder::new(w3_game::replay::Replay {
+                        map: map_path.to_string_lossy().to_string(),
+                        lobby: lobby.map(|l| l.to_vec()),
+                        persist: persist_at_start,
+                        campaign,
+                        version: data.version as i32,
+                        frames: Vec::new(),
+                    }));
                 }
                 Some(g)
             }
@@ -603,7 +624,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }) };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -1531,12 +1552,12 @@ impl Scene {
         if matches!(action, A::Buy(_) | A::Hire(_)) {
             match action {
                 A::Buy(id) => {
-                    if let Err(e) = g.buy_item(local, first_any, id) {
+                    if let Err(e) = g.apply(w3_game::replay::Command::BuyItem { player: local, shop: first_any, id }).ok() {
                         self.error(e);
                     }
                 }
                 A::Hire(id) => {
-                    if let Err(e) = g.hire_unit(local, first_any, id) {
+                    if let Err(e) = g.apply(w3_game::replay::Command::HireUnit { player: local, shop: first_any, id }).ok() {
                         self.error(e);
                     }
                 }
@@ -1551,19 +1572,19 @@ impl Scene {
             A::Order { order, targeted: false } if !order.is_empty() => {
                 let id = w3_game::natives::basic::order_id(order);
                 for h in mine {
-                    g.world.order_unit(h, id, 0.0, 0.0, 0);
+                    g.apply(w3_game::replay::Command::Order { unit: h, order: id, x: 0.0, y: 0.0, target: 0 });
                 }
                 self.order_ack();
             }
             A::OrderId { order, targeted: false } => {
                 for h in mine {
-                    g.world.order_unit(h, order, 0.0, 0.0, 0);
+                    g.apply(w3_game::replay::Command::Order { unit: h, order, x: 0.0, y: 0.0, target: 0 });
                 }
                 self.order_ack();
             }
             A::Order { .. } => {}
             A::Train(id) => {
-                if let Err(e) = g.world.train(first, id) {
+                if let Err(e) = g.apply(w3_game::replay::Command::Train { building: first, id }).ok() {
                     self.error(e);
                 }
             }
@@ -1578,7 +1599,7 @@ impl Scene {
                 }
             }
             A::Learn(id) => {
-                g.world.learn_skill(first, id);
+                g.apply(w3_game::replay::Command::LearnSkill { hero: first, id });
                 if let Some(h) = self.hud.as_mut() {
                     if g.world.unit(first).is_none_or(|u| u.skill_points <= 0) {
                         h.page = crate::card::Page::Main;
@@ -1598,31 +1619,33 @@ impl Scene {
                     h.page = crate::card::Page::Main;
                 }
             }
-            A::CancelTrain => g.world.cancel_last(first),
+            A::CancelTrain => {
+                g.apply(w3_game::replay::Command::CancelLast { building: first });
+            }
             A::Buy(id) => {
                 let local = g.world.local_player;
-                if let Err(e) = g.buy_item(local, first_any, id) {
+                if let Err(e) = g.apply(w3_game::replay::Command::BuyItem { player: local, shop: first_any, id }).ok() {
                     self.error(e);
                 }
             }
             A::Hire(id) => {
                 let local = g.world.local_player;
-                if let Err(e) = g.hire_unit(local, first_any, id) {
+                if let Err(e) = g.apply(w3_game::replay::Command::HireUnit { player: local, shop: first_any, id }).ok() {
                     self.error(e);
                 }
             }
             A::Revive(hero) => {
-                if let Err(e) = g.start_revive(first, hero) {
+                if let Err(e) = g.apply(w3_game::replay::Command::StartRevive { altar: first, hero }).ok() {
                     self.error(e);
                 }
             }
             A::Research(id) => {
-                if let Err(e) = g.world.research_at(first, id) {
+                if let Err(e) = g.apply(w3_game::replay::Command::Research { building: first, id }).ok() {
                     self.error(e);
                 }
             }
             A::Upgrade(id) => {
-                if let Err(e) = g.world.upgrade_structure(first, id) {
+                if let Err(e) = g.apply(w3_game::replay::Command::Upgrade { building: first, id }).ok() {
                     self.error(e);
                 }
             }
@@ -1697,7 +1720,7 @@ impl Scene {
                 let button = d.buttons.iter().find(|b| b.0 == i).map(|b| b.1);
                 if let (Some(b), Some(g)) = (button, self.game.as_mut()) {
                     let local = g.world.local_player;
-                    g.click_dialog_button(local, b);
+                    g.apply(w3_game::replay::Command::DialogButton { player: local, button: b });
                 }
             }
             return true;
@@ -1726,7 +1749,7 @@ impl Scene {
         // A cargo slot unloads the unit in it.
         if let Some(c) = self.hud.as_ref().and_then(|h| h.cargo_at(ux, uy)) {
             if let (Some(&t), Some(g)) = (self.selection.first(), self.game.as_mut()) {
-                g.world.order_unit(t, w3_game::natives::basic::order_id("unload"), 0.0, 0.0, c);
+                g.apply(w3_game::replay::Command::Order { unit: t, order: w3_game::natives::basic::order_id("unload"), x: 0.0, y: 0.0, target: c });
             }
             return true;
         }
@@ -1745,7 +1768,7 @@ impl Scene {
             if let Some(slot) = self.hud.as_ref().and_then(|h| h.inventory_at(ux, uy)) {
                 self.held_item = None;
                 if let Some(g) = self.game.as_mut() {
-                    g.move_item(u, from, slot);
+                    g.apply(w3_game::replay::Command::MoveItem { unit: u, from, to: slot });
                 }
                 return true;
             }
@@ -1755,7 +1778,7 @@ impl Scene {
                 if g.world.unit(u).is_some_and(|un| un.owner == g.world.local_player) {
                     // An item used on a unit or a point waits for the click on it.
                     if g.world.item_targeting(u, slot) == w3_game::ability::Targeting::None {
-                        g.use_item(u, slot);
+                        g.apply(w3_game::replay::Command::UseItem { unit: u, slot });
                     } else {
                         self.item_target = Some((u, slot));
                     }
@@ -1787,8 +1810,12 @@ impl Scene {
             let point = self.ground_at(sx, sy, size);
             if let Some(g) = self.game.as_mut() {
                 match (target, point) {
-                    (Some(t), _) => g.give_item_to(u, slot, t),
-                    (None, Some((x, y))) => g.drop_item_at(u, slot, x, y),
+                    (Some(t), _) => {
+                        g.apply(w3_game::replay::Command::GiveItemTo { unit: u, slot, target: t });
+                    }
+                    (None, Some((x, y))) => {
+                        g.apply(w3_game::replay::Command::DropItemAt { unit: u, slot, x, y });
+                    }
                     _ => {}
                 }
             }
@@ -1800,7 +1827,7 @@ impl Scene {
             if let Some(g) = self.game.as_mut() {
                 let point_only = g.world.item_targeting(u, slot) == w3_game::ability::Targeting::Point;
                 let (t, (x, y)) = if point_only { (0, point.unwrap_or_default()) } else { (target.unwrap_or(0), point.unwrap_or_default()) };
-                g.use_item_at(u, slot, t, x, y);
+                g.apply(w3_game::replay::Command::UseItemAt { unit: u, slot, target: t, x, y });
             }
             return true;
         }
@@ -1816,8 +1843,12 @@ impl Scene {
                     }
                     g.world.order_error = None;
                     match (target, point) {
-                        (Some(t), _) => g.world.issue_order(h, id, 0.0, 0.0, t, self.shift_held),
-                        (None, Some((x, y))) => g.world.issue_order(h, id, x, y, 0, self.shift_held),
+                        (Some(t), _) => {
+                            g.apply(w3_game::replay::Command::Issue { unit: h, order: id, x: 0.0, y: 0.0, target: t, queue: self.shift_held });
+                        }
+                        (None, Some((x, y))) => {
+                            g.apply(w3_game::replay::Command::Issue { unit: h, order: id, x, y, target: 0, queue: self.shift_held });
+                        }
                         _ => {}
                     }
                     match g.world.order_error.take() {
@@ -1841,10 +1872,7 @@ impl Scene {
             if let Some(g) = self.game.as_mut() {
                 let (x, y) = g.world.snap_placement(x, y);
                 if let Some(&worker) = self.selection.first() {
-                    if let Some(u) = g.world.unit_mut(worker) {
-                        u.action = w3_game::types::Action::Build { id, x, y };
-                        u.path.clear();
-                    }
+                    g.apply(w3_game::replay::Command::Build { worker, id, x, y });
                 }
             }
             return true;
@@ -2107,13 +2135,19 @@ impl Scene {
     }
 
     /// A key press: command card hotkeys and Escape.
+    /// The replay of the game played, to keep when it ends.
+    pub fn take_replay(&mut self) -> Option<w3_game::replay::Replay> {
+        let r = self.game.as_mut()?.recorder.take()?;
+        (!r.replay.frames.is_empty()).then_some(r.replay)
+    }
+
     /// A line the player typed: a cheat, or chat shown as game.dll formats it
     /// (FUN_6f373470: "%s |c%2.2x%2.2x%2.2x%2.2x%s: |r%s", the recipient, the player's
     /// color and name, and the line).
     fn send_chat(&mut self, line: &str) {
         let Some(g) = self.game.as_mut() else { return };
         let local = g.world.local_player;
-        if !g.chat(local, line) {
+        if !g.apply(w3_game::replay::Command::Chat { player: local, text: line.to_string() }).flag() {
             return;
         }
         let recipient = g.world.localized("CHAT_RECIPIENT_ALL");
@@ -2172,7 +2206,7 @@ impl Scene {
         if c == '\u{1b}' {
             if let Some(g) = self.game.as_mut() {
                 let p = g.world.local_player;
-                g.player_event(p, w3_game::event_ids::EVENT_PLAYER_END_CINEMATIC);
+                g.apply(w3_game::replay::Command::PlayerEvent { player: p, event: w3_game::event_ids::EVENT_PLAYER_END_CINEMATIC });
             }
         }
         if !self.user_control() && c != '\u{1b}' {
@@ -2240,7 +2274,7 @@ impl Scene {
                 let smart = w3_game::natives::basic::order_id("smart");
                 for &h in &self.selection {
                     if g.world.unit(h).is_some_and(|u| u.owner == g.world.local_player) {
-                        g.world.order_unit(h, smart, wx, wy, 0);
+                        g.apply(w3_game::replay::Command::Order { unit: h, order: smart, x: wx, y: wy, target: 0 });
                     }
                 }
             }
@@ -2253,7 +2287,7 @@ impl Scene {
                 let local = g.world.local_player;
                 for &h in &self.selection {
                     if g.world.unit(h).is_some_and(|u| u.owner == local) {
-                        g.world.order_unit(h, order, 0.0, 0.0, 0);
+                        g.apply(w3_game::replay::Command::Order { unit: h, order, x: 0.0, y: 0.0, target: 0 });
                     }
                 }
             }
@@ -2274,10 +2308,12 @@ impl Scene {
             }
             match (target, point) {
                 (Some(t), _) if t != h => {
-                    g.world.issue_order(h, smart, 0.0, 0.0, t, self.shift_held);
+                    g.apply(w3_game::replay::Command::Issue { unit: h, order: smart, x: 0.0, y: 0.0, target: t, queue: self.shift_held });
                     ordered = true;
                 }
-                (_, Some((x, y))) => g.world.issue_order(h, smart, x, y, 0, self.shift_held),
+                (_, Some((x, y))) => {
+                    g.apply(w3_game::replay::Command::Issue { unit: h, order: smart, x, y, target: 0, queue: self.shift_held });
+                }
                 _ => {}
             }
         }
@@ -2757,11 +2793,25 @@ impl Scene {
                 self.selection = g.world.selection.get(&local).cloned().unwrap_or_default();
             } else {
                 let sel = self.selection.clone();
-                g.set_selection(local, &sel);
+                g.apply(w3_game::replay::Command::Select { player: local, units: sel });
             }
         }
         if let Some(g) = self.game.as_mut().filter(|_| !paused) {
-            g.tick(gdt);
+            match self.playback.as_mut() {
+                // A replay plays its frames as their time comes.
+                Some(p) => {
+                    p.owed += gdt;
+                    while let Some(f) = p.replay.frames.get(p.next) {
+                        if f.dt > p.owed {
+                            break;
+                        }
+                        p.owed -= f.dt;
+                        g.play_frame(f);
+                        p.next += 1;
+                    }
+                }
+                None => g.tick(gdt),
+            }
         }
         self.apply_requests();
         let now = self.time;

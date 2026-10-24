@@ -8,13 +8,21 @@ use std::path::Path;
 
 use war3::net::{Conn, GameAd, Host, Role, Session};
 
+/// Two people, and NETTEST_AI computers after them.
 fn lobby(local: u8) -> Vec<w3_game::LobbySlot> {
-    (0..2u8)
+    let ai: u8 = std::env::var("NETTEST_AI").ok().and_then(|s| s.parse().ok()).unwrap_or(0);
+    (0..2 + ai)
         .map(|p| w3_game::LobbySlot {
             player: p,
-            fill: if p == local { w3_game::SlotFill::Local } else { w3_game::SlotFill::Remote },
+            fill: if p >= 2 {
+                w3_game::SlotFill::Computer
+            } else if p == local {
+                w3_game::SlotFill::Local
+            } else {
+                w3_game::SlotFill::Remote
+            },
             name: Some(format!("Player {}", p + 1)),
-            race: Some(if p == 0 { 1 } else { 2 }),
+            race: Some(p as i32 % 4 + 1),
             team: p as i32,
             color: p as i32,
             handicap: 100.0,
@@ -42,7 +50,7 @@ fn digest(g: &w3_game::Game) -> String {
             s += &format!("{h} {} {:.3} {:.3} {:.3}\n", String::from_utf8_lossy(&u.type_id), u.x, u.y, u.life);
         }
     }
-    for p in 0..2 {
+    for p in 0..4 {
         s += &format!("p{p} {:?}\n", w.players[p].state.iter().collect::<std::collections::BTreeMap<_, _>>());
     }
     s
@@ -126,7 +134,7 @@ fn main() -> anyhow::Result<()> {
     println!("host played {} frames, player {}", hs.played, cs.played);
     let (dh, dc) = (digest(&gh), digest(&gc));
     if dh == dc {
-        println!("SAME ({} units)", dh.lines().count() - 2);
+        println!("SAME ({} units)", dh.lines().count() - 4);
     } else {
         println!("DIFFERENT");
         for (l, r) in dh.lines().zip(dc.lines()).filter(|(l, r)| l != r).take(10) {

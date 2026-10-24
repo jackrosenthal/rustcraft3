@@ -46,6 +46,13 @@ pub struct PathingMap {
     /// The search's working arrays, kept between searches.
     #[serde(skip)]
     scratch: std::cell::RefCell<Scratch>,
+    /// Paths found by [`PathingMap::find_path_memo`] since the map last changed.
+    #[serde(skip)]
+    memo: std::cell::RefCell<std::collections::HashMap<[u32; 6], Vec<(f32, f32)>>>,
+    /// Cells reachable on foot from a start cell for a radius, since the map last
+    /// changed ([`PathingMap::reaches`]).
+    #[serde(skip)]
+    floods: std::cell::RefCell<std::collections::HashMap<(i32, i32, u32), std::rc::Rc<Vec<bool>>>>,
 }
 
 /// A search's costs and parents, valid where `stamp` is the search's `generation`, so
@@ -61,6 +68,79 @@ struct Scratch {
 }
 
 impl PathingMap {
+    /// [`PathingMap::find_path`], remembered until the map changes: the same search
+    /// on the same map finds the same path.
+    pub fn find_path_memo(&self, from: (f32, f32), to: (f32, f32), radius: f32, max_nodes: usize) -> Vec<(f32, f32)> {
+        let key = [from.0.to_bits(), from.1.to_bits(), to.0.to_bits(), to.1.to_bits(), radius.to_bits(), max_nodes as u32];
+        if let Some(p) = self.memo.borrow().get(&key) {
+            return p.clone();
+        }
+        let p = self.find_path(from, to, radius, max_nodes);
+        self.memo.borrow_mut().insert(key, p.clone());
+        p
+    }
+
+    /// Whether a walker of `radius` at `from` can get within `near` of `to`: a cell it
+    /// fits there is connected to where it stands (one flood of the map per start,
+    /// kept until the map changes).
+    pub fn reaches(&self, from: (f32, f32), to: (f32, f32), radius: f32, near: f32) -> bool {
+        let mut start = self.cell_of(from.0, from.1);
+        if !self.fits(start, radius) {
+            // As a search starts: from the nearest cell it fits.
+            let found = (1..=16i32).find_map(|r| {
+                (-r..=r).flat_map(|dy| (-r..=r).map(move |dx| (dx, dy))).filter(|(dx, dy)| dx.abs() == r || dy.abs() == r).map(|(dx, dy)| (start.0 + dx, start.1 + dy)).find(|&c| self.index(c).is_some() && self.fits(c, radius))
+            });
+            match found {
+                Some(c) => start = c,
+                None => return false,
+            }
+        }
+        let key = (start.0, start.1, radius.to_bits());
+        let flood = self.floods.borrow().get(&key).cloned();
+        let flood = match flood {
+            Some(f) => f,
+            None => {
+                let mut seen = vec![false; (self.width * self.height) as usize];
+                let mut queue = std::collections::VecDeque::new();
+                if let Some(i) = self.index(start) {
+                    seen[i] = true;
+                    queue.push_back(start);
+                }
+                while let Some(c) = queue.pop_front() {
+                    for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)] {
+                        let nc = (c.0 + dx, c.1 + dy);
+                        let Some(ni) = self.index(nc) else { continue };
+                        if seen[ni] || !self.fits(nc, radius) {
+                            continue;
+                        }
+                        if dx != 0 && dy != 0 && (!self.fits((c.0 + dx, c.1), radius) || !self.fits((c.0, c.1 + dy), radius)) {
+                            continue;
+                        }
+                        seen[ni] = true;
+                        queue.push_back(nc);
+                    }
+                }
+                let f = std::rc::Rc::new(seen);
+                self.floods.borrow_mut().insert(key, f.clone());
+                f
+            }
+        };
+        let goal = self.cell_of(to.0, to.1);
+        let r = (near / CELL).ceil() as i32;
+        for dy in -r..=r {
+            for dx in -r..=r {
+                let c = (goal.0 + dx, goal.1 + dy);
+                if let Some(i) = self.index(c) {
+                    let p = self.center(c);
+                    if flood[i] && (p.0 - to.0).hypot(p.1 - to.1) <= near {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// Searches made, cells they expanded, and how many gave up at their limit.
     pub fn search_stats(&self) -> (u64, u64, u64) {
         self.scratch.borrow().stats
@@ -75,7 +155,7 @@ impl PathingMap {
         let w = u32::from_le_bytes(data[8..12].try_into().ok()?);
         let h = u32::from_le_bytes(data[12..16].try_into().ok()?);
         let flags = data.get(16..16 + (w * h) as usize)?.to_vec();
-        Some(PathingMap { width: w, height: h, origin, flags, blocked: vec![0; (w * h) as usize], scratch: Default::default() })
+        Some(PathingMap { width: w, height: h, origin, flags, blocked: vec![0; (w * h) as usize], scratch: Default::default(), memo: Default::default(), floods: Default::default() })
     }
 
     pub fn cell_of(&self, x: f32, y: f32) -> (i32, i32) {
@@ -98,6 +178,8 @@ impl PathingMap {
 
     /// Sets or clears flag bits of a cell (SetTerrainPathable).
     pub fn set_flags(&mut self, c: (i32, i32), mask: u8, on: bool) {
+        self.memo.get_mut().clear();
+        self.floods.get_mut().clear();
         if let Some(i) = self.index(c) {
             if on {
                 self.flags[i] |= mask;
@@ -149,6 +231,8 @@ impl PathingMap {
 
     /// Adds (or removes, with `delta` -1) a blocker covering the given cells.
     pub fn stamp(&mut self, cells: &[(i32, i32)], delta: i32) {
+        self.memo.get_mut().clear();
+        self.floods.get_mut().clear();
         for &c in cells {
             if let Some(i) = self.index(c) {
                 self.blocked[i] = (self.blocked[i] as i32 + delta).max(0) as u16;

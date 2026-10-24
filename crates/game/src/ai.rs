@@ -135,7 +135,7 @@ impl World {
         let Some(map) = &self.pathing else { return (to.0 - from.0).hypot(to.1 - from.1) };
         let mut at = from;
         let mut len = 0.0;
-        for p in map.find_path(from, to, radius, 200_000) {
+        for p in map.find_path_memo(from, to, radius, 200_000) {
             len += (p.0 - at.0).hypot(p.1 - at.1);
             at = p;
         }

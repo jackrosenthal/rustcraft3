@@ -221,8 +221,7 @@ impl World {
     /// Whether a unit of `radius` can walk from `from` to `to`.
     fn walk_reaches(&self, from: (f32, f32), to: (f32, f32), radius: f32) -> bool {
         let Some(map) = &self.pathing else { return true };
-        let end = map.find_path(from, to, radius, 200_000).last().copied().unwrap_or(from);
-        (end.0 - to.0).hypot(end.1 - to.1) <= radius + 2.0 * CELL
+        map.reaches(from, to, radius, radius + 2.0 * CELL)
     }
 }
 
@@ -323,7 +322,7 @@ impl World {
         let Some(map) = &self.pathing else { return (to.0 - from.0).hypot(to.1 - from.1) };
         let mut at = from;
         let mut len = 0.0;
-        for q in map.find_path(from, to, 16.0, 200_000) {
+        for q in map.find_path_memo(from, to, 16.0, 200_000) {
             len += (q.0 - at.0).hypot(q.1 - at.1);
             at = q;
         }

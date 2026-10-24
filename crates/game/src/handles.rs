@@ -1,6 +1,7 @@
 //! The handle table: every object a script can reference.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
+use crate::collections::HashMap;
 
 /// Handle ids start here, as GetHandleId shows in the original.
 pub const HANDLE_BASE: u32 = 0x10_0000;
@@ -19,7 +20,7 @@ pub struct Handles<T> {
 
 impl<T> Default for Handles<T> {
     fn default() -> Self {
-        Handles { objects: HashMap::new(), free: BTreeSet::new(), pending: BTreeSet::new(), next: HANDLE_BASE }
+        Handles { objects: HashMap::default(), free: BTreeSet::new(), pending: BTreeSet::new(), next: HANDLE_BASE }
     }
 }
 
@@ -51,7 +52,7 @@ impl<T> Handles<T> {
     }
 
     /// Frees the removed ids no script value refers to.
-    pub fn sweep(&mut self, referenced: &std::collections::HashSet<u32>) {
+    pub fn sweep(&mut self, referenced: &crate::collections::HashSet<u32>) {
         let gone: Vec<u32> = self.pending.iter().copied().filter(|id| !referenced.contains(id)).collect();
         for id in gone {
             self.pending.remove(&id);

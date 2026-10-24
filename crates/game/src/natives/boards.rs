@@ -1,6 +1,6 @@
 //! Timer dialogs, leaderboards, and multiboards: the on-screen panels maps fill.
 
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 use w3_jass::Value;
 

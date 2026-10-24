@@ -1,6 +1,6 @@
 //! Destructables, items, and special effects.
 
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 use w3_jass::{NativeResult, Value, Vm};
 

@@ -2,7 +2,7 @@
 //! UpgradeEffectMetaData) worth `base + mod * (level - 1)` at a level, applied to the
 //! unit types whose UnitBalance `upgrades` list names it.
 
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 use crate::objects::{Id, id_from_str};
 use crate::world::World;

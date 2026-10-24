@@ -1,6 +1,6 @@
 //! Game state and the script host.
 
-use std::collections::{HashMap, HashSet};
+use crate::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use w3_jass::{FuncId, Host, NativeResult, Outcome, Thread, Value, Vm};
@@ -300,7 +300,7 @@ pub struct World {
     pub next_link_group: u32,
     /// Mana Flare: when each (flaring unit, caster) pair may next strike.
     #[serde(skip)]
-    pub flare_cooldowns: std::collections::HashMap<(u32, u32), f32>,
+    pub flare_cooldowns: crate::collections::HashMap<(u32, u32), f32>,
     /// Locust Swarms under way.
     #[serde(default)]
     pub swarms: Vec<crate::undeadspells::Swarm>,
@@ -396,7 +396,7 @@ impl World {
             events: Vec::new(),
             natives: Vec::new(),
             native_names: Vec::new(),
-            warned: HashSet::new(),
+            warned: HashSet::default(),
             time: 0.0,
             ctx: EventCtx::default(),
             enum_ctx: EnumCtx::default(),
@@ -429,21 +429,21 @@ impl World {
             fog_enabled: true,
             fog_mask_enabled: true,
             terrain_heights: None,
-            global_variables_changed: HashMap::new(),
+            global_variables_changed: HashMap::default(),
             misc,
             rng: crate::rng::Rng::new(0),
-            trigger_strings: HashMap::new(),
-            strings: HashMap::new(),
+            trigger_strings: HashMap::default(),
+            strings: HashMap::default(),
             local_player: 0,
             version: 1,
             unit_order: Vec::new(),
-            selection: HashMap::new(),
+            selection: HashMap::default(),
             selection_serial: 0,
-            player_leaderboards: HashMap::new(),
+            player_leaderboards: HashMap::default(),
             multiboard_suppressed: false,
             tileset: 0,
-            crippled: HashMap::new(),
-            player_results: HashMap::new(),
+            crippled: HashMap::default(),
+            player_results: HashMap::default(),
             restart_disabled: false,
             load_game_name: String::new(),
             reserved_hero_buttons: 0,
@@ -470,11 +470,11 @@ impl World {
             pathing: None,
             missiles: Vec::new(),
             missile_serial: 0,
-            pathing_textures: HashMap::new(),
-            ai: HashMap::new(),
-            ai_vms: HashMap::new(),
+            pathing_textures: HashMap::default(),
+            ai: HashMap::default(),
+            ai_vms: HashMap::default(),
             ai_current: None,
-            ai_difficulty: HashMap::new(),
+            ai_difficulty: HashMap::default(),
             fog: None,
             shops: Default::default(),
             upgrade_cache: Default::default(),
@@ -493,7 +493,7 @@ impl World {
             sky_model: None,
             water_color: [255; 4],
             queued_events: Vec::new(),
-            state_seen: HashMap::new(),
+            state_seen: HashMap::default(),
             cancelled_constructions: Vec::new(),
             persist: Default::default(),
             timed_removals: Vec::new(),
@@ -557,7 +557,7 @@ impl World {
             return;
         }
         self.handle_sweep_timer = 1.0;
-        let mut held = std::collections::HashSet::new();
+        let mut held = crate::collections::HashSet::default();
         let mut add = |h: u32| {
             held.insert(h);
         };
@@ -865,7 +865,7 @@ impl World {
             }};
         }
         if self.profile.is_none() && std::env::var("W3PROF").is_ok() {
-            self.profile = Some(HashMap::new());
+            self.profile = Some(HashMap::default());
         }
         if let Some(p) = self.profile.as_mut() {
             if (self.time / 5.0).floor() != ((self.time + dt) / 5.0).floor() {

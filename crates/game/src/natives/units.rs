@@ -1,6 +1,6 @@
 //! Units and unit groups.
 
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 use w3_jass::{NativeResult, Value, Vm};
 
@@ -89,7 +89,7 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         int: o.real("INT"),
         skill_points: if is_hero { 1 } else { 0 },
         regen_timer: 0.0,
-        cooldowns: HashMap::new(),
+        cooldowns: HashMap::default(),
         autocast: Vec::new(),
         buffs: Vec::new(),
         casting: None,
@@ -1050,7 +1050,7 @@ fn dummy_unit() -> Unit {
         carry_gold: 0, carry_lumber: 0, work_timer: 0.0, harvest_source: 0, inside: 0,
         queue: vec![], queue_progress: 0.0, constructing: None, build_time: 0.0, building: 0,
         str_: 0.0, agi: 0.0, int: 0.0, skill_points: 0, regen_timer: 0.0,
-        cooldowns: HashMap::new(), autocast: vec![], buffs: vec![], casting: None, timed_life: None,
+        cooldowns: HashMap::default(), autocast: vec![], buffs: vec![], casting: None, timed_life: None,
         item_bonus: Default::default(), revive: None, reviving: false, channel: None, reincarnate: None, proper_name: String::new(), xp_suspended: false, queue_started: false, extra: Default::default(),
     }
 }

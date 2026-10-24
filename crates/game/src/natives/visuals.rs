@@ -1,6 +1,6 @@
 //! Images, ubersplats, lightning, and terrain deformations.
 
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 use super::{Args, boolean, handle, none, real};
 use crate::types::*;

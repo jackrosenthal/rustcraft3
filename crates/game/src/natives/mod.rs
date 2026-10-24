@@ -1,6 +1,6 @@
 //! JASS native implementations, registered by the names common.j declares.
 
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 use w3_jass::{NativeResult, Value};
 
@@ -19,7 +19,7 @@ pub mod units;
 pub mod visuals;
 
 pub fn table() -> HashMap<&'static str, NativeFn> {
-    let mut t: HashMap<&'static str, NativeFn> = HashMap::new();
+    let mut t: HashMap<&'static str, NativeFn> = HashMap::default();
     basic::register(&mut t);
     boards::register(&mut t);
     game::register(&mut t);

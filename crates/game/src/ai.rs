@@ -2,7 +2,8 @@
 //! engine carries out what the script asks for through the AI natives (production,
 //! harvesting, towns, and the attack and defense "captains").
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
+use crate::collections::HashMap;
 
 use w3_jass::{FuncId, NativeResult, Outcome, Thread, Value, Vm};
 
@@ -106,7 +107,7 @@ impl World {
     fn place_creeps(&mut self) {
         let cells = self.misc_f32("CreepCampPathingCellDistance", 26.0);
         let reach = cells * 32.0;
-        let placed: std::collections::HashSet<u32> = self.creep_camps.iter().flatten().copied().collect();
+        let placed: crate::collections::HashSet<u32> = self.creep_camps.iter().flatten().copied().collect();
         let new: Vec<u32> = self.unit_order.iter().copied().filter(|h| !placed.contains(h)).filter(|&h| self.unit(h).is_some_and(|u| u.owner == PLAYER_NEUTRAL_AGGRESSIVE && !u.dead && !self.is_summoned(h))).collect();
         for h in new {
             let Some((x, y)) = self.unit(h).map(|u| (u.x, u.y)) else { continue };
@@ -801,7 +802,7 @@ fn set_flag(w: &mut World, key: &'static str, v: bool) -> NativeResult {
 }
 
 pub fn table_ai() -> HashMap<&'static str, NativeFn> {
-    let mut t: HashMap<&'static str, NativeFn> = HashMap::new();
+    let mut t: HashMap<&'static str, NativeFn> = HashMap::default();
     reg!(t,
         DebugS => |_, _, a| { log::trace!("AI: {}", a.s(0)); none() },
         DebugFI => |_, _, a| { log::trace!("AI: {} {}", a.s(0), a.i(1)); none() },

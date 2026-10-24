@@ -1,6 +1,6 @@
 //! Rects, locations, regions, and map bounds.
 
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 use super::{Args, boolean, handle, none, real, reg};
 use crate::types::*;

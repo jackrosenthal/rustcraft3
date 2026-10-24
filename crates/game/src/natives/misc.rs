@@ -1,7 +1,7 @@
 //! Unit and item pools, random creeps and buildings, terrain queries, shop stock
 //! across shops, player removal, and game settings.
 
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 use super::{Args, boolean, handle, int, none, string};
 use crate::objects::{Id, id_from_int, id_to_int};

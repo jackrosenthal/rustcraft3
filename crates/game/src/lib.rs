@@ -44,6 +44,7 @@ pub mod upgrades;
 pub mod natives;
 pub mod objects;
 pub mod cheats;
+pub mod collections;
 pub mod orbs;
 pub mod orders;
 pub mod pathing;
@@ -54,7 +55,7 @@ pub mod sim;
 pub mod types;
 pub mod world;
 
-use std::collections::HashMap;
+use crate::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -143,9 +144,9 @@ impl Game {
             world.misc.merge(&s);
         }
         // Interface strings (FDF StringList tables) resolve GetLocalizedString keys.
-        world.strings = w3_ui::FrameDb::load(&chain).strings;
+        world.strings = w3_ui::FrameDb::load(&chain).strings.into_iter().collect();
         if let Ok(s) = chain.read_string("war3map.wts") {
-            world.trigger_strings = w3_formats::map::parse_wts(&s);
+            world.trigger_strings = w3_formats::map::parse_wts(&s).into_iter().collect();
         }
         if let Ok(t) = chain.read("war3map.w3e").map_err(anyhow::Error::from).and_then(|b| Terrain::parse(&b).map_err(Into::into)) {
             let (w, h) = (t.width, t.height);

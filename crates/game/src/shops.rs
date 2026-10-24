@@ -2,7 +2,7 @@
 //! stock, the Aneu activation radius of neutral buildings, and reviving heroes at
 //! altars with the MiscGame revival factors.
 
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 use w3_jass::Vm;
 

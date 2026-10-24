@@ -1,7 +1,7 @@
 //! Text, sound, music, camera, and other presentation natives.  These record state or
 //! queue requests for the presentation layer; they do not affect the simulation.
 
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 use w3_jass::Value;
 

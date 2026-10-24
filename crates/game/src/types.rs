@@ -1,6 +1,6 @@
 //! Script-visible game objects.
 
-use std::collections::{HashMap, HashSet};
+use crate::collections::{HashMap, HashSet};
 
 use w3_jass::FuncId;
 
@@ -78,7 +78,7 @@ pub struct Player {
     pub tech_max: HashMap<Id, i32>,
     pub tech_researched: HashMap<Id, i32>,
     /// Abilities SetPlayerAbilityAvailable turned off.
-    pub abilities_unavailable: std::collections::HashSet<Id>,
+    pub abilities_unavailable: crate::collections::HashSet<Id>,
     /// What the score screen and GetPlayerScore report.
     #[serde(default)]
     pub score: crate::score::Score,
@@ -104,12 +104,12 @@ impl Player {
             handicap_xp: 1.0,
             on_score_screen: true,
             alliances: [[false; ALLIANCE_TYPES]; PLAYER_COUNT],
-            state: HashMap::new(),
-            tech_max: HashMap::new(),
-            tech_researched: HashMap::new(),
+            state: HashMap::default(),
+            tech_max: HashMap::default(),
+            tech_researched: HashMap::default(),
             abilities_unavailable: Default::default(),
             score: Default::default(),
-            tax_rates: HashMap::new(),
+            tax_rates: HashMap::default(),
             ai_script: None,
         }
     }

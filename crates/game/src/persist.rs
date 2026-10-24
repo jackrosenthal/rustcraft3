@@ -2,7 +2,7 @@
 //! missions are open, and the cinematics seen), the campaign difficulty, and the game
 //! caches maps save (SaveGameCache) to carry heroes and choices into later missions.
 
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 

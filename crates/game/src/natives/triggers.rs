@@ -1,6 +1,6 @@
 //! Triggers, events, conditions, timers, and thread control.
 
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 use w3_jass::{NativeResult, Value, Vm};
 

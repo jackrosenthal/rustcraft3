@@ -1,6 +1,6 @@
 //! Map setup, game options, and global game state.
 
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 use super::{Args, boolean, int, none, real, reg, string};
 use crate::types::*;

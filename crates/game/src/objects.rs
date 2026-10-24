@@ -1,7 +1,7 @@
 //! Object data: units, items, abilities, buffs, upgrades, destructables, and doodads, merged
 //! from the SLK tables, the profile text files, and a map's object modifications.
 
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 use w3_formats::profile::{Profile, split_list, unquote};
 use w3_formats::slk::Table;
@@ -154,7 +154,7 @@ impl ObjectTable {
     fn merge_profile(&mut self, profile: &Profile, only_existing: bool) {
         // Profile section names are object ids; the profile parser lower-cases them, so
         // match case-insensitively against known objects.
-        let mut by_lower: HashMap<String, Vec<Id>> = HashMap::new();
+        let mut by_lower: HashMap<String, Vec<Id>> = HashMap::default();
         for id in self.objects.keys() {
             by_lower.entry(id_str(*id).to_ascii_lowercase()).or_default().push(*id);
         }
@@ -399,7 +399,7 @@ impl ObjectDb {
         if !chain.contains("war3campaign.w3f") {
             return;
         }
-        let strings = chain.read_string("war3campaign.wts").map(|s| w3_formats::map::parse_wts(&s)).unwrap_or_default();
+        let strings: HashMap<u32, String> = chain.read_string("war3campaign.wts").map(|s| w3_formats::map::parse_wts(&s).into_iter().collect()).unwrap_or_default();
         let files: [(&str, &mut ObjectTable, Option<bool>); 7] = [
             ("war3campaign.w3u", &mut self.units, Some(false)),
             ("war3campaign.w3t", &mut self.items, Some(false)),

@@ -6,7 +6,7 @@
 //! resource score gold kept after upkeep plus lumber (FUN_6f269cf0), and the total their
 //! sum (FUN_6f26b1d0).
 
-use std::collections::HashMap;
+use crate::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 

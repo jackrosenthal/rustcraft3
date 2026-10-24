@@ -906,6 +906,9 @@ pub struct Sound {
     pub max_dist: f32,
     pub cutoff: f32,
     pub playing: bool,
+    /// When StartSound last started it (moved by SetSoundPlayPosition).
+    #[serde(default)]
+    pub started: Option<f32>,
     /// SetSoundConeAngles: inside and outside angles in degrees and the volume
     /// outside (0 to 127); SetSoundConeOrientation: the way the cone points.
     #[serde(default)]

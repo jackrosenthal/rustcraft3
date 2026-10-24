@@ -1404,16 +1404,9 @@ impl Scene {
                 _ => {}
             }
         }
-        // Script sounds report when they finish.
-        self.voices.retain(|h, id| {
-            let playing = audio.is_playing(*id);
-            if !playing {
-                if let Some(w3_game::types::Obj::Sound(s)) = g.world.handles.get_mut(*h) {
-                    s.playing = false;
-                }
-            }
-            playing
-        });
+        // Voices drop once done; the game itself times its sounds (GetSoundIsPlaying,
+        // TriggerWaitForSound).
+        self.voices.retain(|_, id| audio.is_playing(*id));
         // Animation sound events of units and doodads the local player can see.
         let mut events: Vec<([u8; 4], [f32; 3])> = Vec::new();
         let mut drain = |inst: &mut ModelInstance| {

@@ -30,6 +30,38 @@ fn stacked_place(w: &mut World, h: u32, by_position: bool, width: f32, height: f
     }
 }
 
+/// A sound's length in seconds: SetSoundDuration's, else its file's (as the original
+/// reads it, FUN_6f2331d0), kept once found.
+fn sound_length(w: &mut World, h: u32) -> f32 {
+    let Some(Obj::Sound(s)) = w.handles.get(h) else { return 0.0 };
+    if s.duration_ms == 0 && !s.path.is_empty() {
+        let ms = w.chain.read(&s.path).ok().and_then(|d| sound_file_ms(&d)).unwrap_or(0) as i32;
+        if let Some(s) = sound_mut(w, h) {
+            s.duration_ms = ms;
+        }
+    }
+    sound_mut(w, h).map_or(0.0, |s| s.duration_ms as f32 / 1000.0)
+}
+
+/// How far a playing sound has played, in seconds; None once it has ended or when it
+/// does not play.
+pub fn sound_position(w: &mut World, h: u32) -> Option<f32> {
+    let len = sound_length(w, h);
+    let now = w.time;
+    let s = sound_mut(w, h)?;
+    let at = now - s.started?;
+    (s.looping || at < len).then_some(if s.looping && len > 0.0 { at % len } else { at })
+}
+
+/// TriggerWaitForSound: until `offset` seconds before the sound ends, or no time when
+/// it does not play (FUN_6f2975c0: the sound's length less the offset less where it
+/// is).
+pub fn sound_wait(w: &mut World, h: u32, offset: f32) -> f32 {
+    let len = sound_length(w, h);
+    let at = sound_position(w, h).unwrap_or(len);
+    (len - offset - at).max(0.0)
+}
+
 fn sound_mut(w: &mut World, h: u32) -> Option<&mut Sound> {
     match w.handles.get_mut(h) {
         Some(Obj::Sound(s)) => Some(s),
@@ -181,19 +213,27 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         StartSound => |w, _, a| {
-            if let Some(s) = sound_mut(w, a.h(0)) { s.playing = true; }
+            let now = w.time;
+            if let Some(s) = sound_mut(w, a.h(0)) { s.playing = true; s.started = Some(now); }
             w.requests.push(Request::PlaySound(a.h(0)));
             none()
         },
         StopSound => |w, _, a| {
-            if let Some(s) = sound_mut(w, a.h(0)) { s.playing = false; }
+            if let Some(s) = sound_mut(w, a.h(0)) { s.playing = false; s.started = None; }
             w.requests.push(Request::StopSound { sound: a.h(0), fade: a.b(2) });
             none()
         },
         KillSoundWhenDone => |_, _, _| none(),
-        GetSoundIsPlaying => |w, _, a| boolean(sound_mut(w, a.h(0)).is_some_and(|s| s.playing)),
+        GetSoundIsPlaying => |w, _, a| boolean(sound_position(w, a.h(0)).is_some()),
         GetSoundIsLoading => |_, _, _| boolean(false),
-        SetSoundPlayPosition => |w, _, a| { w.requests.push(Request::SoundOffset { sound: a.h(0), ms: a.i(1) }); none() },
+        SetSoundPlayPosition => |w, _, a| {
+            let (now, ms) = (w.time, a.i(1));
+            if let Some(s) = sound_mut(w, a.h(0)).filter(|s| s.started.is_some()) {
+                s.started = Some(now - ms as f32 / 1000.0);
+            }
+            w.requests.push(Request::SoundOffset { sound: a.h(0), ms });
+            none()
+        },
         // By position, the sound's place with the rect's size (FUN_6f359680); else the
         // unit it is attached to.  Keyed by the sound's file.
         RegisterStackedSound => |w, _, a| {

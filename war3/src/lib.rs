@@ -5,6 +5,7 @@ pub mod app;
 pub mod boards;
 pub mod campaign;
 pub mod card;
+pub mod chatdialog;
 pub mod cli;
 pub mod data;
 pub mod glue;

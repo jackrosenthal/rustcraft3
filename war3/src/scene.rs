@@ -290,6 +290,12 @@ pub struct Scene {
     net_waiting: (Vec<u8>, bool),
     /// The Allies button was pressed; the dialog opens with the next interface update.
     alliance_requested: bool,
+    /// The chat recipient the chat dialog chose, once it has.
+    chat_default: Option<u8>,
+    /// The chat dialog opens with the next interface update.
+    chat_dialog_requested: bool,
+    /// The minimap's signal button was pressed: the next click signals there.
+    signaling: bool,
     options_fill: bool,
     /// Structures' and destructables' shadows stamped into the terrain.
     shadows: crate::shadows::Shadows,
@@ -648,7 +654,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selection_serial: 0, blight_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -683,9 +689,17 @@ impl Scene {
                 // A chat line: "[All] name: line" in the player's color.
                 w3_game::world::Request::Chat { player, text, to } => {
                     let Some(w) = self.game.as_ref().map(|g| &g.world) else { continue };
-                    // Allies' lines reach the speaker and their allies only.
+                    // Allies' lines reach the speaker and their allies only, a private line
+                    // the speaker and its player.
                     let me = w.local_player;
                     if to == 1 && me != player && !w3_game::natives::players::is_ally(w, player, me) {
+                        continue;
+                    }
+                    if to >= 3 && me != player && me + 3 != to {
+                        continue;
+                    }
+                    // Squelched players are not heard.
+                    if self.hud.as_ref().is_some_and(|h| h.squelched.contains(&player)) {
                         continue;
                     }
                     let recipient = w.localized(match to {
@@ -700,6 +714,7 @@ impl Scene {
                     log::info!("[chat] {line}");
                     if let Some(h) = self.hud.as_mut() {
                         h.unit_message(&line, 0.0, 0.0, -1.0);
+                        h.chat_history.push(line);
                     }
                 }
                 w3_game::world::Request::DoodadAnimation { id, area, anim, random } => self.doodad_animation(id, &area, &anim, random),
@@ -719,6 +734,21 @@ impl Scene {
                 w3_game::world::Request::DisplayLoadDialog => {
                     self.menu_requested = true;
                     self.load_dialog_requested = true;
+                }
+                // A player's signal: five seconds in their color, for them and their
+                // allies (unless /hideminimapsignals hides others').
+                w3_game::world::Request::AllySignal { player, x, y } => {
+                    let Some(w) = self.game.as_ref().map(|g| &g.world) else { continue };
+                    let me = w.local_player;
+                    let hidden = self.hud.as_ref().is_some_and(|h| h.hide_signals);
+                    if me != player && (hidden || !w3_game::natives::players::is_ally(w, player, me)) {
+                        continue;
+                    }
+                    let c = self.team_rgb[w.players[player as usize % w.players.len()].color as usize % 16];
+                    self.pings.push((x, y, self.time + 5.0, [c[0], c[1], c[2], 1.0], None));
+                    if self.pings.len() > 16 {
+                        self.pings.remove(0);
+                    }
                 }
                 // A ping lasts its duration (1.5 seconds when none), in its color or
                 // UI\MiscData.txt [PingColor] PingColor (FUN_6f3b0a30).
@@ -1738,6 +1768,14 @@ impl Scene {
             }
             return true;
         }
+        // The chat dialog takes every click while it is open; OK keeps its recipient.
+        if let Some(d) = self.hud.as_mut().and_then(|h| h.chat_dialog.as_mut()) {
+            if let Some(r) = d.click(ux, uy) {
+                self.chat_default = Some(r);
+                self.hud.as_mut().unwrap().chat_dialog = None;
+            }
+            return true;
+        }
         // The Allies dialog takes every click while it is open.
         if let Some(d) = self.hud.as_mut().and_then(|h| h.alliance.as_mut()) {
             let shift = self.shift_held;
@@ -1855,10 +1893,26 @@ impl Scene {
         // Clicking an inventory item uses it.
         if let Some(k) = self.hud.as_ref().and_then(|h| h.minimap_button_at(ux, uy)) {
             self.ui_sound("InterfaceClick");
+            // The signal button waits for the place to signal (CSignalMode).
+            if k == 0 {
+                self.signaling = true;
+                return true;
+            }
             if let Some(h) = self.hud.as_mut() {
                 h.press_minimap_button(k);
             }
             return true;
+        }
+        // A signal, chosen on the minimap or the ground (or Alt+click), goes to allies
+        // with InterfaceClick (FUN_6f3c4de0).
+        if std::mem::take(&mut self.signaling) || self.alt_held {
+            let at = self.hud.as_ref().and_then(|h| h.minimap_to_world(ux, uy)).or_else(|| if self.over_console(sx, sy, size) { None } else { self.ground_at(sx, sy, size) });
+            if let (Some((x, y)), Some(g)) = (at, self.game.as_mut()) {
+                let local = g.world.local_player;
+                g.apply(w3_game::replay::Command::Signal { player: local, x, y });
+                self.ui_sound("InterfaceClick");
+                return true;
+            }
         }
         // The idle worker button selects an idle worker and looks at it.
         let now = self.time;
@@ -2069,11 +2123,72 @@ impl Scene {
         self.menu_requested = true;
     }
 
-    /// Opens the message log (F12) on the next frame.
+    /// Opens the message log (F12) on the next frame; in a network game the chat dialog.
     pub fn open_log(&mut self) {
         if self.hud.as_ref().is_some_and(|h| h.menu.is_none()) {
-            self.log_requested = true;
+            if self.game.as_ref().is_some_and(|g| g.world.network) {
+                self.chat_dialog_requested = true;
+            } else {
+                self.log_requested = true;
+            }
         }
+    }
+
+    /// The chat bar's slash commands, which stay on this computer (FUN_6f371e80):
+    /// /mapname, /squelch or /ignore a player by name (SQUELCH_PLAYER_NOTIFY),
+    /// /unsquelch or /unignore (UNSQUELCH_PLAYER_NOTIFY), and /showminimapsignals and
+    /// /hideminimapsignals.  Returns whether the line was one.
+    fn slash_command(&mut self, line: &str) -> bool {
+        let Some(rest) = line.strip_prefix('/') else { return false };
+        let starts = |word: &str| rest.len() >= word.len() && rest[..word.len()].eq_ignore_ascii_case(word);
+        let Some(g) = self.game.as_ref() else { return false };
+        let w = &g.world;
+        let player_named = |name: &str| (0..12u8).find(|&p| w.players[p as usize].name.eq_ignore_ascii_case(name.trim()));
+        let colored = |p: u8| {
+            let c = self.team_rgb[w.players[p as usize].color as usize % 16].map(|v| (v * 255.0).round() as u8);
+            format!("|cff{:02x}{:02x}{:02x}{}|r", c[0], c[1], c[2], w.players[p as usize].name)
+        };
+        let message = if rest.eq_ignore_ascii_case("mapname") {
+            let name = w.localized(&self.info.name);
+            Some(if name.is_empty() { "Unknown map name!".to_string() } else { name })
+        } else if let Some(word) = ["squelch", "ignore", "unsquelch", "unignore"].into_iter().find(|w| starts(w) && rest[w.len()..].starts_with(' ')) {
+            let on = !word.starts_with("un");
+            let Some(p) = player_named(&rest[word.len()..]) else { return true };
+            let Some(h) = self.hud.as_mut() else { return true };
+            if h.squelched.contains(&p) == on {
+                return true;
+            }
+            if on {
+                h.squelched.push(p);
+            } else {
+                h.squelched.retain(|&q| q != p);
+            }
+            let key = if on { "SQUELCH_PLAYER_NOTIFY" } else { "UNSQUELCH_PLAYER_NOTIFY" };
+            Some(w.localized(key).replace("%s", &colored(p)))
+        } else if rest.eq_ignore_ascii_case("showminimapsignals") || rest.eq_ignore_ascii_case("hideminimapsignals") {
+            let show = rest.eq_ignore_ascii_case("showminimapsignals");
+            if let Some(h) = self.hud.as_mut() {
+                h.hide_signals = !show;
+            }
+            Some(if show { "Showing incoming minimap signals" } else { "Hiding incoming minimap signals" }.to_string())
+        } else {
+            return false;
+        };
+        if let (Some(text), Some(h)) = (message, self.hud.as_mut()) {
+            h.unit_message(&text, 0.0, 0.0, 10.0);
+        }
+        true
+    }
+
+    /// Whom Enter's chat goes to: the chat dialog's choice, which starts as allies when
+    /// the player has any and everyone otherwise (CChatDialog's constructor).
+    fn chat_recipient(&self) -> u8 {
+        self.chat_default.unwrap_or_else(|| {
+            let Some(w) = self.game.as_ref().map(|g| &g.world) else { return 0 };
+            let me = w.local_player;
+            let allied = (0..12u8).any(|p| p != me && w.players[p as usize].slot_state == w3_game::types::slot_state::PLAYING && w3_game::natives::players::is_ally(w, me, p));
+            if allied { 1 } else { 0 }
+        })
     }
 
     /// Opens the quest log (F9) on the next frame, when the map has quests.
@@ -2275,6 +2390,9 @@ impl Scene {
     /// (FUN_6f373470: "%s |c%2.2x%2.2x%2.2x%2.2x%s: |r%s", the recipient, the player's
     /// color and name, and the line).
     fn send_chat(&mut self, line: &str) {
+        if self.slash_command(line) {
+            return;
+        }
         let to = self.hud.as_ref().map_or(0, |h| h.chat_to);
         let Some(g) = self.game.as_mut() else { return };
         let local = g.world.local_player;
@@ -2326,10 +2444,19 @@ impl Scene {
             return;
         }
         if (c == '\r' || c == '\n') && self.user_control() && self.hud.as_ref().is_some_and(|h| h.menu.is_none() && h.quests.is_none() && h.log_view.is_none()) {
-            // In a network game Ctrl+Enter speaks to allies and Shift+Enter to all; alone
-            // the prompt is "Message:" (FUN_6f3af7f0, FUN_6f3d0500).
+            // In a network game Ctrl+Enter speaks to allies, Shift+Enter to all, and Enter
+            // to the chat dialog's choice, which starts as allies when the player has any
+            // and everyone otherwise (CChatDialog's constructor); alone the prompt is
+            // "Message:" (FUN_6f3af7f0, FUN_6f3d0500).
             let network = self.game.as_ref().is_some_and(|g| g.world.network);
-            let to = if self.ctrl_held { 1 } else { 0 };
+            let default = self.chat_recipient();
+            let to = if self.ctrl_held {
+                1
+            } else if self.shift_held {
+                0
+            } else {
+                default
+            };
             let key = if !network {
                 "COLON_MESSAGE_SINGLEPLAYER"
             } else if to == 1 {
@@ -3177,9 +3304,13 @@ impl Scene {
 
     /// Brings the interface up to date with the game (done each frame before drawing).
     pub fn sync_hud(&mut self, db: &w3_ui::FrameDb, aspect: f32) {
+        let recipient = self.chat_recipient();
         let (Some(hud), Some(g)) = (self.hud.as_mut(), self.game.as_ref()) else { return };
         hud.update(db, &g.world);
         hud.sync_dialog(db, &g.world, g.world.local_player, aspect);
+        if std::mem::take(&mut self.chat_dialog_requested) {
+            hud.chat_dialog = crate::chatdialog::ChatDialog::open(db, aspect, &g.world, &hud.chat_history, recipient);
+        }
         if std::mem::take(&mut self.alliance_requested) {
             hud.alliance = crate::alliance::AllianceDialog::new(db, &g.world, aspect);
         }

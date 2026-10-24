@@ -100,6 +100,14 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("left click consumed: {consumed}");
                 i += 3;
             }
+            // chatdialog: as in a network game, opens the chat dialog, to look at.
+            "chatdialog" => {
+                if let Some(g) = scene.game.as_mut() {
+                    g.world.network = true;
+                }
+                scene.open_log();
+                i += 1;
+            }
             // allies: opens the Allies dialog, to look at.
             "allies" => {
                 let aspect = w as f32 / h as f32;

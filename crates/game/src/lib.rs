@@ -599,6 +599,10 @@ impl Game {
                 self.player_event(player, event_ids::EVENT_PLAYER_LEAVE);
                 O::Done
             }
+            C::Signal { player, x, y } => {
+                self.world.requests.push(world::Request::AllySignal { player, x, y });
+                O::Done
+            }
             // Resources sent to another player, as much as the sender has.
             C::Trade { player, other, gold, lumber } => {
                 use types::player_state::{RESOURCE_GOLD, RESOURCE_LUMBER};

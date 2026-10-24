@@ -26,6 +26,8 @@ pub enum Request {
     /// default (PingMinimap, PingMinimapEx).
     Ping { x: f32, y: f32, duration: f32, color: Option<[u8; 3]> },
     DisplayText { players: u32, x: f32, y: f32, text: String, duration: f32 },
+    /// A player's minimap signal, for their allies to see.
+    AllySignal { player: u8, x: f32, y: f32 },
     /// A player's chat line, to everyone (0), allies (1), observers (2), or a player (3
     /// on).
     Chat { player: u8, text: String, to: u8 },

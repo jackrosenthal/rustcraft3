@@ -37,6 +37,8 @@ pub enum Command {
     Chat { player: u8, text: String, to: u8 },
     /// A network game's player left.
     PlayerLeft { player: u8 },
+    /// A player's minimap signal to their allies (CNetCommandAllyPing, 5 seconds).
+    Signal { player: u8, x: f32, y: f32 },
     /// A player sends another gold and lumber (CNetCommandTeamTradeResources).
     Trade { player: u8, other: u8, gold: i32, lumber: i32 },
 }

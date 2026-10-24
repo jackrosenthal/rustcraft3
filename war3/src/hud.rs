@@ -183,6 +183,13 @@ pub struct Hud {
     pub net_dialog: Option<crate::netdialog::NetDialog>,
     /// The Allies dialog, while open.
     pub alliance: Option<crate::alliance::AllianceDialog>,
+    /// A network game's chat dialog, while open, and the chat lines so far.
+    pub chat_dialog: Option<crate::chatdialog::ChatDialog>,
+    pub chat_history: Vec<String>,
+    /// Players whose chat is not shown (/squelch), and whether other players' minimap
+    /// signals are hidden (/hideminimapsignals).
+    pub squelched: Vec<u8>,
+    pub hide_signals: bool,
     gold: Option<usize>,
     lumber: Option<usize>,
     supply: Option<usize>,
@@ -326,6 +333,10 @@ impl Hud {
             replay: None,
             net_dialog: None,
             alliance: None,
+            chat_dialog: None,
+            chat_history: Vec::new(),
+            squelched: Vec::new(),
+            hide_signals: false,
             gold: tree.get("ResourceBarGoldText"),
             lumber: tree.get("ResourceBarLumberText"),
             supply: tree.get("ResourceBarSupplyText"),
@@ -1062,7 +1073,14 @@ impl Hud {
         self.tree.set_enabled("UpperButtonBarQuestsButton", !menu && !world.quests.is_empty());
         self.tree.set_enabled("UpperButtonBarChatButton", !menu);
         if let Some(f) = self.tree.get("UpperButtonBarChatButton") {
-            self.tree.frames[f].text = Some(db.string(if menu { "LOG" } else { "KEY_LOG" }));
+            // In a network game it is Chat (CUpperButtonBar::vf9).
+            let key = match (world.network, menu) {
+                (true, true) => "CHAT",
+                (true, false) => "KEY_CHAT",
+                (false, true) => "LOG",
+                (false, false) => "KEY_LOG",
+            };
+            self.tree.frames[f].text = Some(db.string(key));
         }
         let Some(p) = world.players.get(world.local_player as usize) else { return };
         let set = |tree: &mut FrameTree, f: Option<usize>, s: String| {
@@ -1500,6 +1518,9 @@ impl Hud {
             out.extend(d.tree.draw(db));
         }
         if let Some(d) = &self.alliance {
+            d.draws(db, &mut out);
+        }
+        if let Some(d) = &self.chat_dialog {
             d.draws(db, &mut out);
         }
         if let Some(d) = &self.net_dialog {

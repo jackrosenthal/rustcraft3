@@ -84,6 +84,9 @@ fn main() -> anyhow::Result<()> {
                         data.setup_flags.set(flags);
                         return net_game(&device, &queue, format, &data, &mut assets, &map, &lobby, role.borrow_mut().take(), speed, w, h);
                     }
+                    Some(war3::glue::GlueAction::PlayNetSave(map, save, role, speed, me)) => {
+                        return net_game_saved(&device, &queue, format, &data, &mut assets, &map, &save, role.borrow_mut().take(), speed, me, w, h);
+                    }
                     Some(war3::glue::GlueAction::Campaign(map)) => {
                         eprintln!("campaign mission {map}");
                         glue.skirmish.summary = war3::skirmish::summarize_from(&data.chain, &map);
@@ -209,8 +212,25 @@ fn shot(device: &wgpu::Device, queue: &wgpu::Queue, glue: &mut Glue, assets: &mu
 /// A network game the glue started: plays it in real time for W3NETPLAY seconds (20
 /// without), then prints the players and a digest of the game to compare.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 fn net_game(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, data: &GameData, assets: &mut Assets, map: &Path, lobby: &[w3_game::LobbySlot], role: Option<war3::net::Role>, speed: u8, w: u32, h: u32) -> anyhow::Result<()> {
-    let mut scene = war3::scene::Scene::load(device, queue, format, data, assets, map, w as f32 / h as f32, Some(lobby), None, None)?;
+    let scene = war3::scene::Scene::load(device, queue, format, data, assets, map, w as f32 / h as f32, Some(lobby), None, None)?;
+    play_net(scene, role, speed)
+}
+
+/// A loaded network game, as the application starts one.
+#[allow(clippy::too_many_arguments)]
+fn net_game_saved(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, data: &GameData, assets: &mut Assets, map: &Path, save: &[u8], role: Option<war3::net::Role>, speed: u8, me: u8, w: u32, h: u32) -> anyhow::Result<()> {
+    let save = w3_game::save::SaveGame::parse(save)?;
+    let mut scene = war3::scene::Scene::load(device, queue, format, data, assets, map, w as f32 / h as f32, None, Some(save), None)?;
+    if let Some(g) = scene.game.as_mut() {
+        g.world.local_player = me;
+        println!("loaded at {:.1}s", g.world.time);
+    }
+    play_net(scene, role, speed)
+}
+
+fn play_net(mut scene: war3::scene::Scene, role: Option<war3::net::Role>, speed: u8) -> anyhow::Result<()> {
     if let Some(r) = role {
         scene.start_net(r, speed);
     }

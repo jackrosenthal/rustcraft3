@@ -113,7 +113,15 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             for c in acts { w.handles.remove(c); }
             none()
         },
-        TriggerEvaluate => |w, vm, a| boolean(w.trigger_evaluate(vm, a.h(0))),
+        // The trigger evaluated is the triggering trigger while its conditions run
+        // (FUN_6f297520 sets it with FUN_6f2895e0); the other event responses stay.
+        TriggerEvaluate => |w, vm, a| {
+            let outer = w.ctx.trigger;
+            w.ctx.trigger = a.h(0);
+            let r = w.trigger_evaluate(vm, a.h(0));
+            w.ctx.trigger = outer;
+            boolean(r)
+        },
         TriggerExecute => |w, vm, a| {
             let ctx = EventCtx { trigger: a.h(0), ..w.ctx.clone() };
             w.trigger_execute(vm, a.h(0), ctx);

@@ -253,6 +253,13 @@ impl Game {
             self.world.fog_mask_enabled = false;
         }
         let random_races = flags & 0x40000 != 0;
+        // Observers on defeat (MAP_OBSERVERS_ON_DEATH): each player's
+        // PLAYER_STATE_OBSERVER_ON_DEATH.
+        if flags & 0x20 != 0 {
+            for p in self.world.players.iter_mut() {
+                p.state.insert(crate::types::player_state::OBSERVER_ON_DEATH, 1);
+            }
+        }
         // RACE_PREF_* bits from common.j.
         const PREF_RANDOM: i32 = 32;
         for s in slots {

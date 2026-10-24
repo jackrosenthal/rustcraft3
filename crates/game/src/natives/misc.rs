@@ -190,6 +190,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let (Some(p), result) = (w.player_of(a.h(0)), a.h(1) as i32) else { return none() };
             if let Some(pl) = w.players.get_mut(p as usize) {
                 pl.slot_state = slot_state::LEFT;
+                // A defeated player who may observe on death goes on as an observer.
+                const PLAYER_GAME_RESULT_DEFEAT: i32 = 1;
+                if result == PLAYER_GAME_RESULT_DEFEAT && pl.get_state(crate::types::player_state::OBSERVER_ON_DEATH) != 0 {
+                    pl.state.insert(crate::types::player_state::OBSERVER, 1);
+                }
             }
             w.player_results.insert(p, result);
             none()

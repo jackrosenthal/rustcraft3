@@ -512,17 +512,40 @@ impl World {
     }
 
     pub(crate) fn path_to(&mut self, h: u32, goal: (f32, f32)) {
-        // A unit on its way to much the same place keeps its path (a chase's target
-        // hardly moved); a cleared path is always found again.
-        if let Some(u) = self.unit_mut(h) {
-            if !u.path.is_empty() && u.extra.path_goal.is_some_and(|g| (g.0 - goal.0).hypot(g.1 - goal.1) < 32.0) {
-                u.repath_timer = 1.0;
-                return;
-            }
-        }
         let t0 = self.profile.is_some().then(std::time::Instant::now);
+        let capped_before = self.pathing.as_ref().map_or(0, |p| p.search_stats().2);
         self.path_to_inner(h, goal);
         self.prof_add("path_to", t0);
+        // A search that gave up before reaching its goal is not tried again for three
+        // seconds: the unit follows the way it found meanwhile.
+        let capped = self.pathing.as_ref().map_or(0, |p| p.search_stats().2) > capped_before;
+        if capped {
+            if std::env::var("W3CAPLOG").is_ok() {
+                if let Some(u) = self.unit(h) {
+                    let t = match u.action { Action::Attack { target } => target, _ => 0 };
+                    let tu = self.unit(t);
+                    eprintln!("CAP {} {} at ({:.0},{:.0}) -> {} at ({:.0},{:.0}) d {:.0} flying {} path {} t={:.1}", u.owner, crate::objects::id_str(u.type_id), u.x, u.y, tu.map_or("?".into(), |t| crate::objects::id_str(t.type_id)), goal.0, goal.1, (goal.0 - u.x).hypot(goal.1 - u.y), tu.is_some_and(|t| t.fly_height > 0.0), u.path.len(), self.time);
+                }
+            }
+            if let Some(u) = self.unit_mut(h) {
+                u.repath_timer = 3.0;
+            }
+        }
+        if self.profile.is_some() && capped {
+            let kind: &'static str = match self.unit(h).map(|u| &u.action) {
+                Some(Action::Attack { .. }) => "capped:attack",
+                Some(Action::AttackMove { .. }) => "capped:attackmove",
+                Some(Action::Move { .. }) => "capped:move",
+                Some(Action::Follow { .. }) => "capped:follow",
+                Some(Action::Harvest { .. }) => "capped:harvest",
+                Some(Action::Build { .. }) => "capped:build",
+                Some(Action::Cast { .. }) => "capped:cast",
+                _ => "capped:other",
+            };
+            if let Some(p) = self.profile.as_mut() {
+                *p.entry(kind).or_insert(0.0) += 0.001;
+            }
+        }
     }
 
     /// Adds the time since `t0` to a W3PROF entry.
@@ -567,7 +590,6 @@ impl World {
         if let Some(u) = self.unit_mut(h) {
             u.path = path;
             u.repath_timer = 1.0;
-            u.extra.path_goal = Some(goal);
         }
     }
 

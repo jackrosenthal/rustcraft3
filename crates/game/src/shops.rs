@@ -19,6 +19,9 @@ pub struct Stock {
     /// Seconds until the next one is added.
     pub timer: f32,
     pub regen: f32,
+    /// The good has yet to arrive the first time (its stockStart delay).
+    #[serde(default)]
+    pub arriving: bool,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -77,7 +80,7 @@ impl World {
         }
         let (max, regen, start) = self.stock_def(id);
         // A good with a start delay arrives after it; others start full.
-        let s = if start > 0.0 { Stock { count: 0, max, timer: start, regen } } else { Stock { count: max, max, timer: regen, regen } };
+        let s = if start > 0.0 { Stock { count: 0, max, timer: start, regen, arriving: true } } else { Stock { count: max, max, timer: regen, regen, arriving: false } };
         self.shops.stock.insert((shop, id), s);
         s
     }
@@ -89,6 +92,11 @@ impl World {
         for id in items.into_iter().chain(units) {
             self.stock(shop, id);
         }
+    }
+
+    /// Whether a good has yet to arrive the first time.
+    pub fn stock_arriving(&self, shop: u32, id: Id) -> bool {
+        self.shops.added.get(&(shop, id)).or_else(|| self.shops.stock.get(&(shop, id))).map_or_else(|| self.stock_def(id).2 > 0.0, |s| s.arriving)
     }
 
     /// How many of a good a shop has now, without starting its stock.
@@ -115,6 +123,7 @@ impl World {
             if s.timer <= 0.0 {
                 s.count += 1;
                 s.timer = s.regen.max(0.01);
+                s.arriving = false;
             }
         }
     }

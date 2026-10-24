@@ -439,6 +439,14 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 3;
             }
+            // hire <shop> <unit type>: hires a unit for player 0.
+            "hire" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let r = g.hire_unit(0, num(&a[i + 1]) as u32, w3_game::objects::id_from_str(&a[i + 2]));
+                    eprintln!("hire: {r:?} gold {} lumber {}", g.world.players[0].get_state(1), g.world.players[0].get_state(2));
+                }
+                i += 3;
+            }
             // shop <h>: the local player's shopper there, and each good's stock and cost.
             "shop" => {
                 if let Some(g) = scene.game.as_ref() {

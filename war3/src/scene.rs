@@ -103,11 +103,11 @@ fn card_of(commands: &crate::card::Commands, db: &w3_ui::FrameDb, w: &w3_game::W
     if w3_game::natives::players::controls(w, w.local_player, h) {
         let mut card = commands.card(db, w, h, page);
         if page == crate::card::Page::Main {
-            card.extend(commands.shop_card(w, h));
+            card.extend(commands.shop_card(db, w, h));
         }
         card
     } else if w.ability_with_code(h, "Aneu").or_else(|| w.ability_with_code(h, "Ane2")).is_some() {
-        commands.shop_card(w, h)
+        commands.shop_card(db, w, h)
     } else {
         Vec::new()
     }

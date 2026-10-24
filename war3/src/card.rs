@@ -185,34 +185,50 @@ impl Commands {
         Some(Button::new(x, y, db.decorate(&art), self.profile.get_str(name, "Hotkey").and_then(|h| hotkey(&h)), action, enabled).with_tip(tip, uber, [0; 4]))
     }
 
-    /// A shop's goods for the local player: items, hired units, and revivals.
-    pub fn shop_card(&self, w: &World, h: u32) -> Vec<Button> {
+    /// A shop's goods for the local player: items, hired units, and revivals.  A good is
+    /// unavailable out of the shop's reach, before it first arrives (COOLDOWNSTOCKTOOLTIP),
+    /// or sold out (OUTOFSTOCKTOOLTIP) (FUN_6f3fe0f0, CAbilitySellUnit::vf166); gold and
+    /// lumber are checked when it is bought.
+    pub fn shop_card(&self, db: &w3_ui::FrameDb, w: &World, h: u32) -> Vec<Button> {
         let local = w.local_player;
         let (items, units) = w.shop_goods(h);
         let has_shopper = w.shopper(local, h).is_some() || w.unit(h).is_some_and(|u| u.owner == local);
         let mut out = Vec::new();
-        let gold = w.players[local as usize].get_state(1);
-        let lumber = w.players[local as usize].get_state(2);
+        let stock_note = |id: Id| -> String {
+            if w.stock_count(h, id) > 0 {
+                String::new()
+            } else if w.stock_arriving(h, id) {
+                db.string("COOLDOWNSTOCKTOOLTIP")
+            } else {
+                db.string("OUTOFSTOCKTOOLTIP")
+            }
+        };
         for id in items {
             let stock = w.stock_count(h, id);
             let Some(o) = w.objects.items.get(id) else { continue };
             let Some((x, y)) = parse_pos(&o.list("Buttonpos")) else { continue };
-            let ok = has_shopper && stock > 0 && gold >= o.int("goldcost") && lumber >= o.int("lumbercost");
+            let ok = has_shopper && stock > 0;
             let costs = [0, o.int("goldcost"), o.int("lumbercost"), 0];
-            out.push(Button::new(x, y, o.str("Art"), hotkey(&o.str("Hotkey")), Action::Buy(id), ok).with_tip(o.str("Tip"), fill_placeholders(w, &o.str("Ubertip")), costs));
+            let mut b = Button::new(x, y, o.str("Art"), hotkey(&o.str("Hotkey")), Action::Buy(id), ok).with_tip(o.str("Tip"), fill_placeholders(w, &o.str("Ubertip")), costs);
+            b.requires = stock_note(id);
+            out.push(b);
         }
         for id in units {
             let stock = w.stock_count(h, id);
             let Some(o) = w.objects.units.get(id) else { continue };
             let Some((x, y)) = parse_pos(&o.list("Buttonpos")) else { continue };
-            let ok = has_shopper && stock > 0 && gold >= o.int("goldcost") && lumber >= o.int("lumbercost");
+            let ok = has_shopper && stock > 0;
             let costs = [0, o.int("goldcost"), o.int("lumbercost"), o.int("fused")];
-            out.push(Button::new(x, y, o.str("Art"), hotkey(&o.str("Hotkey")), Action::Hire(id), ok).with_tip(o.str("Tip"), fill_placeholders(w, &o.str("Ubertip")), costs));
+            let mut b = Button::new(x, y, o.str("Art"), hotkey(&o.str("Hotkey")), Action::Hire(id), ok).with_tip(o.str("Tip"), fill_placeholders(w, &o.str("Ubertip")), costs);
+            b.requires = stock_note(id);
+            out.push(b);
         }
         // A tavern's Awaken: the player's first four heroes along the top row, the dead
         // ones to awaken ("Awakentip - name" with the cost), the others by name
         // (CAbilityAwaken::vf112, vf166).
         if w.awakens(h) {
+            let gold = w.players[local as usize].get_state(1);
+            let lumber = w.players[local as usize].get_state(2);
             for (i, hero) in w.awaken_heroes(local).into_iter().enumerate() {
                 let Some(hu) = w.unit(hero) else { continue };
                 let Some(o) = w.objects.units.get(hu.type_id) else { continue };

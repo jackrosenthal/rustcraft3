@@ -105,7 +105,7 @@ pub fn create_item(w: &mut World, id: Id, x: f32, y: f32) -> u32 {
 
 pub(crate) fn add_stock(w: &mut World, shop: u32, id: Id, current: i32, max: i32) {
     let regen = w.objects.items.get(id).or_else(|| w.objects.units.get(id)).map_or(0.0, |o| o.real("stockRegen"));
-    w.shops.added.insert((shop, id), crate::shops::Stock { count: current, max, timer: regen, regen });
+    w.shops.added.insert((shop, id), crate::shops::Stock { count: current, max, timer: regen, regen, arriving: false });
 }
 
 /// A random item type of a level (and class: ITEM_TYPE_* from common.j), among those

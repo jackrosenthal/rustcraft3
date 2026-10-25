@@ -954,15 +954,7 @@ impl World {
                 self.spell_ai_hurt(vm, target, source, attack_type != "spells");
                 self.spell_ai(target, source, target);
             }
-            let Some(t) = self.unit(target) else { return };
-            // Retaliate when idle.
-            if matches!(t.action, Action::Idle) && !unit_weapons(self, t).is_empty() && !t.is_building {
-                if let Some(s) = self.unit(source) {
-                    if !is_ally(self, t.owner, s.owner) {
-                        self.unit_mut(target).unwrap().action = Action::Attack { target: source };
-                    }
-                }
-            }
+            self.retaliate(target, source);
         }
     }
 
@@ -2364,6 +2356,24 @@ impl World {
         } else if u.anim == "walk" {
             set_anim(u, "stand");
         }
+    }
+
+    /// An idle armed unit hurt by an enemy, by an attack or a spell, attacks it back,
+    /// its order an attack (measured: a footman hurt by a spell from an Archmage 600
+    /// away walks at it ordered to attack, even an invulnerable one).
+    pub(crate) fn retaliate(&mut self, target: u32, source: u32) {
+        let Some(t) = self.unit(target) else { return };
+        if !matches!(t.action, Action::Idle) || unit_weapons(self, t).is_empty() || t.is_building || t.paused {
+            return;
+        }
+        let Some(s) = self.unit(source) else { return };
+        if is_ally(self, t.owner, s.owner) || s.dead {
+            return;
+        }
+        let (sx, sy) = (s.x, s.y);
+        let u = self.unit_mut(target).unwrap();
+        u.action = Action::Attack { target: source };
+        u.order = Order { id: crate::natives::basic::order_id("attack"), target_x: sx, target_y: sy, target: source };
     }
 
     /// Pushes overlapping units apart, flyers among flyers and the rest among

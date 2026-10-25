@@ -31,14 +31,22 @@ impl World {
             }
             if d <= guard {
                 u.extra.strayed = None;
+                u.extra.idle_away = None;
                 continue;
             }
             let strayed = *u.extra.strayed.get_or_insert(now);
             let chasing = matches!(u.action, Action::Attack { .. });
             let idle = matches!(u.action, Action::Idle);
-            let go = idle || chasing && now - strayed >= wait && (d > max || now - u.extra.last_attacked >= wait);
+            // One standing idle away from home waits GuardReturnTime first (measured: an
+            // ogre that fled 971 from home stands there five seconds, then goes back).
+            let idle_since = if idle { *u.extra.idle_away.get_or_insert(now) } else {
+                u.extra.idle_away = None;
+                now
+            };
+            let go = idle && now - idle_since >= wait || chasing && now - strayed >= wait && (d > max || now - u.extra.last_attacked >= wait);
             if go {
                 u.extra.returning = true;
+                u.extra.idle_away = None;
                 // Its order reads "move" on the way (measured).
                 u.order = Order { id: crate::natives::basic::order_id("move"), target_x: hx, target_y: hy, target: 0 };
                 u.action = Action::Move { x: hx, y: hy };

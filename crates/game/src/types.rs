@@ -368,6 +368,9 @@ pub struct UnitExtra {
     pub returning: bool,
     #[serde(default)]
     pub strayed: Option<f32>,
+    /// When the creep last stood idle away from home, if it has since.
+    #[serde(default)]
+    pub idle_away: Option<f32>,
     /// The creep sleep effect over a sleeping unit's head.
     #[serde(default)]
     pub sleep_effect: u32,
@@ -530,6 +533,7 @@ impl Default for UnitExtra {
             home: None,
             returning: false,
             strayed: None,
+            idle_away: None,
             sleep_effect: 0,
             warp_inside: 0,
             born: 0.0,

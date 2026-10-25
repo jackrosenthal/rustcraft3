@@ -2545,15 +2545,19 @@ impl World {
             // instead, a fighter attack-moving and a worker moving (measured: a footman
             // struck by a gryphon rider it cannot hit, from 200 or 400 away, goes 291.6
             // off on an attack order each time, and a peasant 284.5 on a move order,
-            // each stopping within 15.6875 of a point 300 off).  Creeps flee otherwise,
-            // not yet done here.
+            // each stopping within 15.6875 of a point 300 off).  A creep moves off the
+            // attacker's reach and 100 more (measured: an ogre struck by an invulnerable
+            // footman, reach 90, goes 177 a time, and by a rifleman, 400, 485).
             let (sx, sy, tx, ty) = (s.x, s.y, t.x, t.y);
             let neutral = t.owner >= PLAYER_NEUTRAL_AGGRESSIVE;
             let flees = self.objects.units.get(t.type_id).is_some_and(|o| o.int("canFlee") != 0);
-            if flees && !neutral {
+            if flees {
                 let worker = self.unit_class(t, "peon");
+                let reach = unit_weapons(self, s).iter().map(|(_, w)| w.range).fold(0.0, f32::max);
+                let away = if neutral { reach + 100.0 } else { 300.0 };
                 let d = (tx - sx).hypot(ty - sy).max(0.001);
-                let (fx, fy) = self.clamp_to_map(tx + (tx - sx) / d * 300.0, ty + (ty - sy) / d * 300.0);
+                let (fx, fy) = self.clamp_to_map(tx + (tx - sx) / d * away, ty + (ty - sy) / d * away);
+                let worker = worker || neutral;
                 let name = if worker { "move" } else { "attack" };
                 let u = self.unit_mut(target).unwrap();
                 u.action = if worker { Action::Move { x: fx, y: fy } } else { Action::AttackMove { x: fx, y: fy } };

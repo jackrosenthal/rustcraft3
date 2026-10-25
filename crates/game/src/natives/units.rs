@@ -416,13 +416,15 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
         has_player: true,
         ..Default::default()
     };
-    w.fire(vm, EventCtx { event_id: EVENT_UNIT_DEATH, ..ctx.clone() }, |_, k| match k {
-        EventKind::Unit { unit, event } => *unit == h && *event == EVENT_UNIT_DEATH,
-        EventKind::Death(widget) => *widget == h,
+    // The owner's death triggers go first, then the unit's (measured: triggers made in
+    // the order player A, unit B, player D, players E, unit F fire A D E B F).
+    w.fire(vm, EventCtx { event_id: EVENT_PLAYER_UNIT_DEATH, ..ctx.clone() }, |_, k| match k {
+        EventKind::PlayerUnit { player, event, .. } => *player == owner && *event == EVENT_PLAYER_UNIT_DEATH,
         _ => false,
     });
-    w.fire(vm, EventCtx { event_id: EVENT_PLAYER_UNIT_DEATH, ..ctx }, |_, k| match k {
-        EventKind::PlayerUnit { player, event, .. } => *player == owner && *event == EVENT_PLAYER_UNIT_DEATH,
+    w.fire(vm, EventCtx { event_id: EVENT_UNIT_DEATH, ..ctx }, |_, k| match k {
+        EventKind::Unit { unit, event } => *unit == h && *event == EVENT_UNIT_DEATH,
+        EventKind::Death(widget) => *widget == h,
         _ => false,
     });
     // A fallen hero can be revived (EVENT_PLAYER_HERO_REVIVABLE).

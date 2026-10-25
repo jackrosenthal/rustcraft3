@@ -1039,7 +1039,8 @@ impl World {
             if is_ally(self, u.owner, tu.owner) || !weapons.iter().any(|(_, wp)| can_target(self, wp, u, tu)) {
                 continue;
             }
-            if !creeps && tu.owner == PLAYER_NEUTRAL_AGGRESSIVE {
+            // A creep only once it goes for this unit.
+            if !creeps && tu.owner == PLAYER_NEUTRAL_AGGRESSIVE && !(matches!(tu.action, Action::Attack { target } if target == h) || tu.swing.as_ref().is_some_and(|s| s.target == h)) {
                 continue;
             }
             // Neither are invisible nor ethereal ones (Neutral Passive is passive toward
@@ -1518,9 +1519,10 @@ impl World {
                     if wp.is_some() && self.unit(h).is_some_and(|u| u.acquire_timer <= 0.0 && !u.extra.sleeping) {
                         let range = self.unit(h).map_or(0.0, |u| u.acquire_range);
                         let range = if matches!(action, Action::Hold) { wp.as_ref().map_or(0.0, |w| w.range) } else { range };
-                        // A creep is left be: only another creep takes one up (measured: a
-                        // user's idle footman 300 from a gnoll camp leaves the gnolls be,
-                        // fighting or not, and attacks an enemy player's footman among them).
+                        // A creep is left be unless it goes for the unit: only another creep
+                        // takes one up (measured: a user's idle footman 300 from a gnoll camp
+                        // leaves the gnolls be, fighting or not, and attacks an enemy player's
+                        // footman among them).
                         let creeps = self.unit(h).is_some_and(|u| u.owner == PLAYER_NEUTRAL_AGGRESSIVE);
                         if let Some(t) = self.find_target_ex(h, range, creeps) {
                             // A target taken up on its own leaves the unit's order as it
@@ -1584,7 +1586,10 @@ impl World {
                 Action::AttackMove { x, y } => {
                     if self.unit(h).is_some_and(|u| u.acquire_timer <= 0.0) {
                         let range = self.unit(h).map_or(0.0, |u| u.acquire_range);
-                        if let Some(t) = self.find_target(h, range) {
+                        // Creeps likewise (measured: a footman attack-moving past a gnoll
+                        // camp 200 off walks on by).
+                        let creeps = self.unit(h).is_some_and(|u| u.owner == PLAYER_NEUTRAL_AGGRESSIVE);
+                        if let Some(t) = self.find_target_ex(h, range, creeps) {
                             self.acquired(h, t);
                             self.spell_ai(h, t, h);
                             if self.unit(h).is_some_and(|u| matches!(u.action, Action::Cast { .. })) {

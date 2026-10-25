@@ -1817,7 +1817,7 @@ impl World {
         self.unit(h)?.extra.ai_timers.iter().find(|t| t.0 == a).map(|t| t.1 - self.time)
     }
 
-    fn attacking(&self, h: u32) -> bool {
+    pub(crate) fn attacking(&self, h: u32) -> bool {
         self.unit(h).is_some_and(|u| u.swing.is_some() || matches!(u.action, Action::Attack { .. }))
     }
 

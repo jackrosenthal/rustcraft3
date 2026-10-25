@@ -357,7 +357,6 @@ pub struct World {
     /// Blighted terrain corners, and a count that changes when they do.
     pub blight: Vec<bool>,
     pub blight_serial: u32,
-    pub autocast_timer: f32,
     pub sentinels: Vec<Sentinel>,
     /// Why the last order was refused (a command error key), for the interface.
     #[serde(skip)]
@@ -710,7 +709,6 @@ impl World {
             ground_serial: 0,
             blight: Vec::new(),
             blight_serial: 0,
-            autocast_timer: 0.0,
             sentinels: Vec::new(),
             profile: None,
             prof_find: Default::default(),

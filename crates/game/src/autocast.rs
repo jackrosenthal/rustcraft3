@@ -1,7 +1,7 @@
 //! Autocast: abilities a unit casts on its own while their autocast is on (orderon /
-//! orderoff, the right-click toggle).  Twice a second each idle or fighting unit looks
+//! orderoff, the right-click toggle).  Each moment each idle or fighting unit looks
 //! for a target its spell suits: the most hurt living ally for Heal, an ally in combat
-//! without the buff for Inner Fire, Bloodlust, and Frost Armor, an enemy in combat
+//! without the buff for Inner Fire, Bloodlust, and Frost Armor, an enemy attacking
 //! without the buff for Slow, Curse, Faerie Fire, and Web (flyers), a corpse for Raise
 //! Dead, and an enemy summon for Abolish Magic.  The interrupted order resumes after.
 
@@ -64,11 +64,13 @@ impl World {
         if ALLY_BUFF.contains(&code.as_str()) {
             return units().find(|t| alive(t) && ally(t) && near(t) && self.in_combat(t.handle) && !self.has_buff_of(t.handle, a)).map(|t| t.handle);
         }
+        // An enemy fighting itself (measured: a Sorceress slows a footman attacking her but
+        // not one on hold position she attacks).
         if ENEMY_DEBUFF.contains(&code.as_str()) {
             let air_only = code == "Aweb";
             return units()
                 .find(|t| {
-                    alive(t) && !ally(t) && near(t) && !self.has_buff_of(t.handle, a) && !self.is_magic_immune(t.handle) && (self.in_combat(h) || self.in_combat(t.handle)) && (!air_only || self.move_kind(t.handle) == crate::pathing::Move::Fly)
+                    alive(t) && !ally(t) && near(t) && !self.has_buff_of(t.handle, a) && !self.is_magic_immune(t.handle) && self.attacking(t.handle) && (!air_only || self.move_kind(t.handle) == crate::pathing::Move::Fly)
                 })
                 .map(|t| t.handle);
         }
@@ -88,12 +90,9 @@ impl World {
         }
     }
 
-    pub fn update_autocast(&mut self, dt: f32) {
-        self.autocast_timer -= dt;
-        if self.autocast_timer > 0.0 {
-            return;
-        }
-        self.autocast_timer = 0.5;
+    /// Each moment (measured: a Priest heals at 0.54 seconds after it is made, its cast
+    /// point 0.5, and again 0.02 to 0.04 seconds after each cooldown runs out).
+    pub fn update_autocast(&mut self, _dt: f32) {
         // Illusions autocast only under [Misc] IllusionsGetAutocast (0 in the game's data).
         let illusions_cast = self.misc_f32("IllusionsGetAutocast", 0.0) != 0.0;
         let casters: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.autocast.is_empty() && u.casting.is_none() && (illusions_cast || u.extra.illusion.is_none()) && matches!(u.action, Action::Idle | Action::Attack { .. } | Action::AttackMove { .. } | Action::Hold))).collect();

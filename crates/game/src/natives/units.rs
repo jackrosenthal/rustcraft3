@@ -328,6 +328,15 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         if let Some(u) = w.unit_mut(h) {
             u.autocast = auto;
         }
+    } else {
+        // Others' start with their type's own (UnitAbilities auto) on (measured: a
+        // user's and an empty slot's Priests heal, a user's Sorceress slows, and a Druid
+        // of the Talon casts Faerie Fire unbidden; a Necromancer raises no dead).
+        let own = w.unit(h).and_then(|u| w.objects.units.get(u.type_id)).map(|o| o.str("auto")).unwrap_or_default();
+        let auto: Vec<Id> = own.split(',').map(|c| crate::objects::id_from_str(c.trim())).filter(|c| c[0] != 0).filter(|c| w.unit(h).is_some_and(|u| u.abilities.iter().any(|a| a.0 == *c))).collect();
+        if let Some(u) = w.unit_mut(h) {
+            u.autocast = auto;
+        }
     }
     // Food it provides counts at once (measured: two farms made by a script read a food
     // cap 12 higher straight after).

@@ -32,7 +32,7 @@ impl Value {
     pub fn real(&self) -> f32 {
         match *self {
             Value::Real(v) => v,
-            Value::Int(v) => v as f32,
+            Value::Int(v) => int_to_real(v as i64),
             _ => 0.0,
         }
     }

@@ -128,8 +128,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, SyntaxError> {
                 if text.contains('.') {
                     // The whole part converted toward zero, as the original converts
                     // integers (measured: 123456789.0 reads 123456784, not the nearer
-                    // 123456792), plus the fraction rounded to nearest (0.0005 stays
-                    // just above 0.0005).
+                    // 123456792), plus the fraction, in the original's software floats.
                     let v: f32 = if text == "." {
                         0.0
                     } else {
@@ -137,8 +136,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, SyntaxError> {
                         // The whole part wraps as a 32-bit integer (measured: the literal
                         // 1000000000000000000000.0 reads -559939584).
                         let whole = whole.bytes().fold(0i32, |v, c| v.wrapping_mul(10).wrapping_add((c - b'0') as i32)) as i64;
-                        let frac: f64 = if frac.is_empty() { 0.0 } else { format!("0.{frac}").parse().map_err(|_| err(line, "bad real literal"))? };
-                        crate::value::int_to_real(whole) + frac as f32
+                        f32::from_bits(crate::softfloat::literal(whole as i32, frac))
                     };
                     out.push(Token { tok: Tok::Real(v), line });
                 } else if text.len() > 1 && text.starts_with('0') {

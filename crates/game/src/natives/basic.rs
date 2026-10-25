@@ -12,10 +12,7 @@ use crate::world::{NativeFn, World};
 
 /// Formats a real the way R2S/R2SW do: fixed-point with the given precision.
 pub fn format_real(v: f32, width: i32, precision: i32) -> String {
-    let p = precision.max(0) as usize;
-    let s = format!("{v:.p$}");
-    let w = width.max(0) as usize;
-    if s.len() < w { format!("{s:>w$}") } else { s }
+    w3_jass::softfloat::format(v.to_bits(), width, precision)
 }
 
 fn atoi(s: &str) -> i32 {
@@ -33,20 +30,9 @@ fn atoi(s: &str) -> i32 {
     v.clamp(i32::MIN as i64, i32::MAX as i64) as i32
 }
 
+/// S2R, as the original reads it (softfloat.rs; measured: " 2.5" reads 0, "1.5e2" 1.5).
 fn atof(s: &str) -> f32 {
-    let t = s.trim_start();
-    let end = t
-        .char_indices()
-        // No exponent: the original reads "1.5e2" as 1.5 (measured).
-        .take_while(|&(i, c)| c.is_ascii_digit() || c == '.' || ((c == '-' || c == '+') && i == 0))
-        .map(|(i, c)| i + c.len_utf8())
-        .last()
-        .unwrap_or(0);
-    let mut cut = &t[..end];
-    while !cut.is_empty() && cut.parse::<f32>().is_err() {
-        cut = &cut[..cut.len() - 1];
-    }
-    cut.parse().unwrap_or(0.0)
+    f32::from_bits(w3_jass::softfloat::parse(s))
 }
 
 pub fn order_id(name: &str) -> i32 {
@@ -111,15 +97,25 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         Sin => |_, _, a| real(a.r(0).sin()),
         Cos => |_, _, a| real(a.r(0).cos()),
         Tan => |_, _, a| real(a.r(0).tan()),
-        Asin => |_, _, a| real(a.r(0).asin()),
-        Acos => |_, _, a| real(a.r(0).acos()),
+        // Outside -1 to 1, 0 (jass_Asin, jass_Acos; measured: Asin(2) and Acos(-2) are 0).
+        Asin => |_, _, a| real(if (-1.0..=1.0).contains(&a.r(0)) { a.r(0).asin() } else { 0.0 }),
+        Acos => |_, _, a| real(if (-1.0..=1.0).contains(&a.r(0)) { a.r(0).acos() } else { 0.0 }),
         Atan => |_, _, a| real(a.r(0).atan()),
         Atan2 => |_, _, a| real(a.r(0).atan2(a.r(1))),
         SquareRoot => |_, _, a| real(if a.r(0) <= 0.0 { 0.0 } else { a.r(0).sqrt() }),
         // A negative base to a fractional power is taken as its size's (measured:
         // Pow(-8, 0.333) is 1.999 in the original).
+        // A base within 0.001 of 0 to a negative power is 0, and anything to a power
+        // within 0.001 of 0 is 1 (jass_Pow; measured: Pow(0, -1) is 0).
         Pow => |_, _, a| {
             let (x, y) = (a.r(0), a.r(1));
+            if x.abs() < 0.001 {
+                if y < 0.0 {
+                    return real(0.0);
+                }
+            } else if y.abs() < 0.001 {
+                return real(1.0);
+            }
             real(if x < 0.0 && y.fract() != 0.0 { (-x).powf(y) } else { x.powf(y) })
         },
         I2R => |_, _, a| real(w3_jass::value::int_to_real(a.i(0) as i64)),

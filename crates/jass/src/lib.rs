@@ -4,6 +4,7 @@ pub mod ast;
 pub mod compile;
 pub mod lexer;
 pub mod parser;
+pub mod softfloat;
 pub mod value;
 pub mod vm;
 

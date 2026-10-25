@@ -253,18 +253,20 @@ impl Vm {
                             }
                         }),
                         (Value::Int(_) | Value::Real(_), Value::Int(_) | Value::Real(_)) => {
-                            let (a, b) = (l.real(), r.real());
-                            Value::Real(match op {
-                                Op::Add => a + b,
-                                Op::Sub => a - b,
-                                Op::Mul => a * b,
+                            // In the original's software floats (softfloat.rs).
+                            use crate::softfloat as sf;
+                            let (a, b) = (l.real().to_bits(), r.real().to_bits());
+                            Value::Real(f32::from_bits(match op {
+                                Op::Add => sf::add(a, b),
+                                Op::Sub => sf::sub(a, b),
+                                Op::Mul => sf::mul(a, b),
                                 _ => {
-                                    if b == 0.0 {
+                                    if b & 0x7fff_ffff == 0 {
                                         abort!("real division by zero");
                                     }
-                                    a / b
+                                    sf::div(a, b)
                                 }
-                            })
+                            }))
                         }
                         (Value::Str(_) | Value::Null, Value::Str(_) | Value::Null) if op == Op::Add => {
                             match (l.str(), r.str()) {

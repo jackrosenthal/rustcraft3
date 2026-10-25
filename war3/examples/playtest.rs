@@ -634,7 +634,7 @@ fn main() -> anyhow::Result<()> {
                     }
                     let pp = &w.players[pl as usize];
                     eprintln!("  gold {} lumber {} food {}/{}", pp.get_state(1), pp.get_state(2), pp.get_state(5), pp.get_state(4));
-                    if let Some(st) = w.ai.get(&pl) { eprintln!("  script {} harvest {:?} assault {:?} defenders {:?} attack {:?} defense {:?} replacements {}", st.script, st.harvest, st.assault.iter().map(|(i, n)| (w3_game::objects::id_str(*i), *n)).collect::<Vec<_>>(), st.defenders.iter().map(|(i, n)| (w3_game::objects::id_str(*i), *n)).collect::<Vec<_>>(), st.attack.units.len(), st.defense.units.len(), st.replacements); }
+                    if let Some(st) = w.ai.get(&pl) { eprintln!("  script {} harvest {:?} assault {:?} attack {:?} defense {:?} replacements {}", st.script, st.harvest, st.assault.iter().map(|(i, n)| (w3_game::objects::id_str(*i), *n)).collect::<Vec<_>>(), st.attack.units.len(), st.defense.units.len(), st.replacements); }
                 }
                 i += if p.is_some() { 2 } else { 1 };
             }

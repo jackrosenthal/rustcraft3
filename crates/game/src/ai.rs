@@ -46,7 +46,6 @@ pub struct AiState {
     pub attack: Captain,
     pub defense: Captain,
     pub assault: Vec<(Id, i32)>,
-    pub defenders: Vec<(Id, i32)>,
     pub hero_levels: Option<FuncId>,
     pub hero_context: (i32, i32),
     pub commands: VecDeque<(i32, i32)>,
@@ -1031,7 +1030,6 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         },
         AddDefenders => |w, _, a| {
             let id = id_from_int(a.i(1));
-            if let Some(s) = w.ai_state() { s.defenders.push((id, a.i(0))); }
             boolean(w.fill_captain(false, id, a.i(0)))
         },
         GetCreepCamp => |w, _, a| {

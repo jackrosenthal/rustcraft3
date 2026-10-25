@@ -927,9 +927,12 @@ impl World {
         // a ghost's touches a footman 1.73 seconds after the order, a short walk, its
         // cast point 0.5, and Cast 1 later; ours, without, 0.70).
         let castpt = if self.ability_code(a) == "Apos" { castpt + self.data(a, "Cast", lvl) } else { castpt };
-        // Bladestorm begins at once (measured: its first strike 0.20 seconds after the
-        // order, its interval, though the Blademaster's cast point is 0.3).
-        let castpt = if self.ability_code(a) == "AOww" { 0.0 } else { castpt };
+        // Bladestorm and Immolation begin at once, without a backswing (measured:
+        // Bladestorm's first strike 0.20 seconds after the order, its interval,
+        // Immolation's 0.02, though their heroes' cast point is 0.3; each hero's first
+        // attack lands 0.35 seconds in, its damage point).
+        let instant = matches!(self.ability_code(a).as_str(), "AOww" | "AEim");
+        let (castpt, backsw) = if instant { (0.0, 0.0) } else { (castpt, backsw) };
         if !fired && elapsed >= castpt {
             // thereisnospoon and thedudeabides.
             let cost = if self.cheat(crate::cheats::flag::MANA) { 0.0 } else { self.data(a, "Cost", lvl) };

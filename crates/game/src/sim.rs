@@ -349,8 +349,12 @@ impl World {
     }
 
     pub fn order_unit(&mut self, h: u32, order: i32, x: f32, y: f32, target: u32) {
+        // An order ends a new unit's first wait to look for targets (measured: a Demon
+        // Hunter and a Blademaster ordered to Immolation and Bladestorm as they are made
+        // strike the footman beside them 0.35 seconds in).
         if let Some(u) = self.unit_mut(h) {
             u.extra.acquired = 0;
+            u.acquire_timer = 0.0;
         }
         let smart = crate::natives::basic::order_id("smart");
         let mv = crate::natives::basic::order_id("move");

@@ -35,14 +35,15 @@ impl World {
         let area = d(self, "Area");
         match code {
             // Acid Bomb: the target loses DataC armor and takes DataD every DataF; others
-            // within Area take DataE every DataF.
+            // within Area take DataE every DataF; the first at once (measured: a footman
+            // bombed at 0.83 seconds takes 5 at 0.84 and each second after).
             "ANab" => {
                 let every = d(self, "DataF").max(0.01);
                 for t in self.enemies_in(owner, tx, ty, area) {
                     let dps = if t == target { d(self, "DataD") } else { d(self, "DataE") } / every;
                     let armor = if t == target { -d(self, "DataC") } else { 0.0 };
                     let dur = if self.hero_duration(t) { d(self, "HeroDur") } else { d(self, "Dur") };
-                    self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps, armor, ..Default::default() });
+                    self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps, dps_every: every, dps_next: 0.0, armor, ..Default::default() });
                 }
             }
             // Breath of Fire: a cone DataC long widening from Area to DataD; DataA each up to

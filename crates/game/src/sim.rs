@@ -2900,7 +2900,7 @@ impl World {
         }
         for m in hits {
             match m.spell {
-                Some((a, lvl, _, _)) if matches!(self.ability_code(a).as_str(), "ANdh" | "AEsh") => {
+                Some((a, lvl, _, _)) if crate::ability::spell_flies(&self.ability_code(a)) => {
                     let at = self.widget_pos(m.target).or(m.impact).unwrap_or((m.x, m.y));
                     self.spell_landed(vm, m.source, a, lvl, m.target, at);
                 }

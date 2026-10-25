@@ -225,8 +225,16 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         TriggerRegisterDialogEvent => |w, _, a| register_event(w, a.h(0), EventKind::Dialog(a.h(1))),
         TriggerRegisterDialogButtonEvent => |w, _, a| register_event(w, a.h(0), EventKind::DialogButton(a.h(1))),
         TriggerRegisterGameEvent => |w, _, a| register_event(w, a.h(0), EventKind::Game(a.h(1) as i32)),
-        TriggerRegisterEnterRegion => |w, _, a| register_event(w, a.h(0), EventKind::EnterRegion { region: a.h(1), filter: opt(a.h(2)) }),
-        TriggerRegisterLeaveRegion => |w, _, a| register_event(w, a.h(0), EventKind::LeaveRegion { region: a.h(1), filter: opt(a.h(2)) }),
+        // The units inside when a region is first watched raise nothing; those made or
+        // moved into it after do (measured).
+        TriggerRegisterEnterRegion => |w, _, a| {
+            w.watch_region(a.h(1));
+            register_event(w, a.h(0), EventKind::EnterRegion { region: a.h(1), filter: opt(a.h(2)) })
+        },
+        TriggerRegisterLeaveRegion => |w, _, a| {
+            w.watch_region(a.h(1));
+            register_event(w, a.h(0), EventKind::LeaveRegion { region: a.h(1), filter: opt(a.h(2)) })
+        },
         TriggerRegisterTrackableHitEvent => |w, _, a| register_event(w, a.h(0), EventKind::Trackable { trackable: a.h(1), hit: true }),
         TriggerRegisterTrackableTrackEvent => |w, _, a| register_event(w, a.h(0), EventKind::Trackable { trackable: a.h(1), hit: false }),
         TriggerRegisterPlayerEvent => |w, _, a| {

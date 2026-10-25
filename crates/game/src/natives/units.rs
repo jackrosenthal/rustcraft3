@@ -715,27 +715,45 @@ fn issue_order(w: &mut World, vm: &mut Vm, unit: u32, order: i32, x: f32, y: f32
 
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
     reg!(t,
-        CreateUnit => |w, _, a| {
+        CreateUnit => |w, vm, a| {
             let Some(p) = w.player_of(a.h(0)) else { return none() };
-            handle(create_unit(w, p, id_from_int(a.i(1)), a.r(2), a.r(3), a.r(4)))
+            let h = create_unit(w, p, id_from_int(a.i(1)), a.r(2), a.r(3), a.r(4));
+            w.unit_placed(vm, h);
+            handle(h)
         },
-        CreateUnitByName => |w, _, a| {
+        CreateUnitByName => |w, vm, a| {
             let Some(p) = w.player_of(a.h(0)) else { return none() };
             let name = a.s(1);
             let id = w.objects.units.objects.iter().find(|(_, o)| o.str("unitName").eq_ignore_ascii_case(&name)).map(|(id, _)| *id);
-            match id { Some(id) => handle(create_unit(w, p, id, a.r(2), a.r(3), a.r(4))), None => none() }
+            match id {
+                Some(id) => {
+                    let h = create_unit(w, p, id, a.r(2), a.r(3), a.r(4));
+                    w.unit_placed(vm, h);
+                    handle(h)
+                }
+                None => none(),
+            }
         },
-        CreateUnitAtLoc => |w, _, a| {
+        CreateUnitAtLoc => |w, vm, a| {
             let Some(p) = w.player_of(a.h(0)) else { return none() };
             let (x, y) = w.location(a.h(2)).unwrap_or_default();
-            handle(create_unit(w, p, id_from_int(a.i(1)), x, y, a.r(3)))
+            let h = create_unit(w, p, id_from_int(a.i(1)), x, y, a.r(3));
+            w.unit_placed(vm, h);
+            handle(h)
         },
-        CreateUnitAtLocByName => |w, _, a| {
+        CreateUnitAtLocByName => |w, vm, a| {
             let Some(p) = w.player_of(a.h(0)) else { return none() };
             let (x, y) = w.location(a.h(2)).unwrap_or_default();
             let name = a.s(1);
             let id = w.objects.units.objects.iter().find(|(_, o)| o.str("unitName").eq_ignore_ascii_case(&name)).map(|(id, _)| *id);
-            match id { Some(id) => handle(create_unit(w, p, id, x, y, a.r(3))), None => none() }
+            match id {
+                Some(id) => {
+                    let h = create_unit(w, p, id, x, y, a.r(3));
+                    w.unit_placed(vm, h);
+                    handle(h)
+                }
+                None => none(),
+            }
         },
         CreateCorpse => |w, _, a| {
             let Some(p) = w.player_of(a.h(0)) else { return none() };
@@ -805,14 +823,21 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetUnitPropWindow => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.prop_window.to_radians())),
         GetUnitFlyHeight => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.fly_height)),
         GetUnitAcquireRange => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.acquire_range)),
-        SetUnitX => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.x = v) },
-        SetUnitY => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.y = v) },
+        SetUnitX => |w, vm, a| { let v = a.r(1); let r = with_unit(w, a, |u| u.x = v); w.unit_placed(vm, a.h(0)); r },
+        SetUnitY => |w, vm, a| { let v = a.r(1); let r = with_unit(w, a, |u| u.y = v); w.unit_placed(vm, a.h(0)); r },
         // Kept on the map (measured: 99999 places at 10208), unlike SetUnitX and SetUnitY.
-        SetUnitPosition => |w, _, a| { let (x, y) = w.clamp_to_map(a.r(1), a.r(2)); with_unit(w, a, |u| { u.x = x; u.y = y; }) },
-        SetUnitPositionLoc => |w, _, a| {
+        SetUnitPosition => |w, vm, a| {
+            let (x, y) = w.clamp_to_map(a.r(1), a.r(2));
+            let r = with_unit(w, a, |u| { u.x = x; u.y = y; });
+            w.unit_placed(vm, a.h(0));
+            r
+        },
+        SetUnitPositionLoc => |w, vm, a| {
             let (x, y) = w.location(a.h(1)).unwrap_or_default();
             let (x, y) = w.clamp_to_map(x, y);
-            with_unit(w, a, |u| { u.x = x; u.y = y; })
+            let r = with_unit(w, a, |u| { u.x = x; u.y = y; });
+            w.unit_placed(vm, a.h(0));
+            r
         },
         // Within a turn (measured: 720 reads 0).
         SetUnitFacing => |w, _, a| { let v = a.r(1).rem_euclid(360.0); with_unit(w, a, |u| u.facing = v) },

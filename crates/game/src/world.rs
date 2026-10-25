@@ -381,6 +381,16 @@ pub struct World {
     /// target searches look (a cache, rebuilt from the units, so not saved).
     #[serde(skip)]
     pub unit_grid: std::cell::RefCell<(f32, crate::HashMap<(i32, i32), Vec<u32>>)>,
+    /// Units inside each region that enter or leave events watch, in their order, and
+    /// units within each in-range event's reach: what was so at the last moment.
+    #[serde(default)]
+    pub region_inside: crate::HashMap<u32, Vec<u32>>,
+    #[serde(default)]
+    pub in_range: crate::HashMap<u32, Vec<u32>>,
+    /// Region events a script's placing raised, their filters passed, to run once the
+    /// script has gone on.
+    #[serde(default)]
+    pub queued_region_events: Vec<(EventCtx, Vec<u32>)>,
     /// Units RemoveUnit asked for, gone at the end of the moment.
     #[serde(default)]
     pub pending_removals: Vec<u32>,
@@ -527,6 +537,19 @@ fn full_volume() -> [(f32, f32, f32); 8] {
 /// The sound channels each volume group holds (game.dll 0x6fce5560): unit movement,
 /// unit sounds, combat, spells, the interface, music, ambient sounds, and fire.
 pub const VOLUME_GROUP_CHANNELS: [u32; 8] = [0x200, 0x101e, 0x20, 0x800, 0x100, 0x80, 0x400, 0x4000];
+
+/// The filter a registration carries, if its kind takes one.
+fn event_filter(k: &EventKind) -> Option<u32> {
+    match k {
+        // A player-unit event's filter is never asked (measured: one always false still
+        // fires, and is not called).
+        EventKind::UnitInRange { filter, .. } | EventKind::EnterRegion { filter, .. } | EventKind::LeaveRegion { filter, .. } => *filter,
+        _ => None,
+    }
+}
+
+/// GetTriggerEventId for a unit coming in range (measured).
+const IN_RANGE_EVENT_ID: i32 = 61;
 
 impl World {
     /// A point kept on the map, as the original places units and items: within its
@@ -681,6 +704,9 @@ impl World {
             weapon_cache: Default::default(),
             cache_alias: Default::default(),
             pending_removals: Vec::new(),
+            region_inside: Default::default(),
+            in_range: Default::default(),
+            queued_region_events: Vec::new(),
             prof_cells: Default::default(),
             ai_walks: Default::default(),
             lightning_data: None,
@@ -1041,18 +1067,141 @@ impl World {
         }
     }
 
+    /// A unit a script made or moved enters and leaves the watched regions at once: the
+    /// filters are asked inside the native, the triggers run once the script goes on
+    /// (measured: a unit made inside passes a filter by the custom value it has inside
+    /// CreateUnit, while the action reads the one set on the script's next line).
+    pub fn unit_placed(&mut self, vm: &mut Vm, h: u32) {
+        let Some((x, y)) = self.unit(h).map(|u| (u.x, u.y)) else { return };
+        let mut regions: Vec<u32> = self.region_inside.keys().copied().collect();
+        regions.sort_unstable();
+        for region in regions {
+            let inside = self.region(region).is_some_and(|r| r.contains(x, y));
+            let Some(list) = self.region_inside.get_mut(&region) else { continue };
+            let was = list.contains(&h);
+            if inside == was {
+                continue;
+            }
+            let event_id = if inside {
+                list.push(h);
+                crate::event_ids::EVENT_GAME_ENTER_REGION
+            } else {
+                list.retain(|&u| u != h);
+                crate::event_ids::EVENT_GAME_LEAVE_REGION
+            };
+            let regs: Vec<(u32, Option<u32>)> = self
+                .events
+                .iter()
+                .filter_map(|&e| match self.handles.get(e) {
+                    Some(Obj::Event(EventReg { kind: k @ EventKind::EnterRegion { region: r, .. }, .. })) if inside && *r == region => Some((e, event_filter(k))),
+                    Some(Obj::Event(EventReg { kind: k @ EventKind::LeaveRegion { region: r, .. }, .. })) if !inside && *r == region => Some((e, event_filter(k))),
+                    _ => None,
+                })
+                .collect();
+            let mut passed = Vec::new();
+            for (e, filter) in regs {
+                if let Some(f) = filter.filter(|&f| f != 0) {
+                    let saved = self.enum_ctx;
+                    self.enum_ctx.filter_unit = h;
+                    let ok = self.eval_boolexpr(vm, f);
+                    self.enum_ctx = saved;
+                    if !ok {
+                        continue;
+                    }
+                }
+                passed.push(e);
+            }
+            if !passed.is_empty() {
+                self.queued_region_events.push((EventCtx { unit: h, region, event_id, ..Default::default() }, passed));
+            }
+        }
+    }
+
+    /// Starts keeping who is inside a region, if not yet kept.
+    pub(crate) fn watch_region(&mut self, region: u32) {
+        if self.region_inside.contains_key(&region) {
+            return;
+        }
+        let Some(r) = self.region(region) else { return };
+        let now: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| r.contains(u.x, u.y))).collect();
+        self.region_inside.insert(region, now);
+    }
+
+    /// Region enter and leave events, and units coming in range: each moment, the
+    /// units now inside each watched region against those inside at the last; a region
+    /// first watched takes those already inside without events.  Only moving counts
+    /// (measured: units made inside enter; dying, being removed, or hidden there
+    /// leaves nothing, and shown again enters nothing).
+    fn update_region_events(&mut self, vm: &mut Vm) {
+        let mut regions: Vec<u32> = Vec::new();
+        let mut ranges: Vec<(u32, u32, f32)> = Vec::new();
+        for &e in &self.events {
+            match self.handles.get(e) {
+                Some(Obj::Event(EventReg { kind: EventKind::EnterRegion { region, .. } | EventKind::LeaveRegion { region, .. }, .. })) => {
+                    if !regions.contains(region) {
+                        regions.push(*region);
+                    }
+                }
+                Some(Obj::Event(EventReg { kind: EventKind::UnitInRange { unit, range, .. }, .. })) => ranges.push((e, *unit, *range)),
+                _ => {}
+            }
+        }
+        let present = |w: &World, h: u32| w.unit(h).is_some();
+        for region in regions {
+            let Some(r) = self.region(region) else { continue };
+            let now: Vec<u32> = self.unit_order.iter().copied().filter(|&h| present(self, h) && self.unit(h).is_some_and(|u| r.contains(u.x, u.y))).collect();
+            let Some(before) = self.region_inside.insert(region, now.clone()) else { continue };
+            for &h in now.iter().filter(|h| !before.contains(h)) {
+                let ctx = EventCtx { unit: h, region, event_id: crate::event_ids::EVENT_GAME_ENTER_REGION, ..Default::default() };
+                self.fire(vm, ctx, move |_, k| matches!(k, EventKind::EnterRegion { region: r, .. } if *r == region));
+            }
+            let left: Vec<u32> = before.iter().copied().filter(|&h| !now.contains(&h) && self.unit(h).is_some()).collect();
+            for h in left {
+                let ctx = EventCtx { unit: h, region, event_id: crate::event_ids::EVENT_GAME_LEAVE_REGION, ..Default::default() };
+                self.fire(vm, ctx, move |_, k| matches!(k, EventKind::LeaveRegion { region: r, .. } if *r == region));
+            }
+        }
+        for (e, center, range) in ranges {
+            let Some((cx, cy)) = self.unit(center).filter(|u| !u.dead).map(|u| (u.x, u.y)) else {
+                self.in_range.remove(&e);
+                continue;
+            };
+            let now: Vec<u32> = self.unit_order.iter().copied().filter(|&h| h != center && self.unit(h).is_some_and(|u| !u.dead && (u.x - cx).hypot(u.y - cy) <= range)).collect();
+            let before = self.in_range.insert(e, now.clone()).unwrap_or_default();
+            for &h in now.iter().filter(|h| !before.contains(h)) {
+                let ctx = EventCtx { unit: h, event_id: IN_RANGE_EVENT_ID, ..Default::default() };
+                self.fire_registrations(vm, ctx, vec![e], true);
+            }
+        }
+    }
+
     pub fn fire(&mut self, vm: &mut Vm, ctx: EventCtx, pred: impl Fn(&World, &EventKind) -> bool) {
-        let regs: Vec<(u32, u32)> = self
-            .events
-            .iter()
-            .filter_map(|&e| match self.handles.get(e) {
-                Some(Obj::Event(r)) if pred(self, &r.kind) => Some((e, r.trigger)),
+        let regs: Vec<u32> = self.events.iter().copied().filter(|&e| matches!(self.handles.get(e), Some(Obj::Event(r)) if pred(self, &r.kind))).collect();
+        self.fire_registrations(vm, ctx, regs, true);
+    }
+
+    /// Runs the triggers of these event registrations whose filters and conditions pass.
+    fn fire_registrations(&mut self, vm: &mut Vm, ctx: EventCtx, regs: Vec<u32>, filters: bool) {
+        let regs: Vec<(u32, Option<u32>)> = regs
+            .into_iter()
+            .filter_map(|e| match self.handles.get(e) {
+                Some(Obj::Event(r)) => Some((r.trigger, event_filter(&r.kind))),
                 _ => None,
             })
             .collect();
-        for (_event, trig) in regs {
+        for (trig, filter) in regs {
             if !self.trigger(trig).is_some_and(|t| t.enabled) {
                 continue;
+            }
+            // A registration's filter sees the unit as GetFilterUnit.
+            if let Some(f) = filter.filter(|&f| filters && f != 0) {
+                let saved = self.enum_ctx;
+                self.enum_ctx.filter_unit = ctx.unit;
+                let ok = self.eval_boolexpr(vm, f);
+                self.enum_ctx = saved;
+                if !ok {
+                    continue;
+                }
             }
             let mut c = ctx.clone();
             c.trigger = trig;
@@ -1163,6 +1312,9 @@ impl World {
     }
 
     pub fn flush_events(&mut self, vm: &mut Vm) {
+        for (ctx, regs) in std::mem::take(&mut self.queued_region_events) {
+            self.fire_registrations(vm, ctx, regs, false);
+        }
         for (unit, pe, ue, ctx) in std::mem::take(&mut self.queued_events) {
             self.fire_unit_pair(vm, unit, pe, ue, ctx);
         }
@@ -1297,6 +1449,7 @@ impl World {
 
         prof!(self, "update_food", self.update_food());
         prof!(self, "update_units", self.update_units(vm, dt));
+        prof!(self, "update_region_events", self.update_region_events(vm));
         prof!(self, "regenerate", self.regenerate(dt));
         prof!(self, "update_buffs", self.update_buffs(vm, dt));
         prof!(self, "update_fires", self.update_fires(dt));

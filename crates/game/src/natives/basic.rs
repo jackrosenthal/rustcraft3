@@ -108,10 +108,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         Atan2 => |_, _, a| real(if a.r(0).abs() < 0.001 && a.r(1).abs() < 0.001 { 0.0 } else { f32::from_bits(sf::atan2(a.r(0).to_bits(), a.r(1).to_bits())) }),
         // Below 0.001, 0 (jass_SquareRoot).
         SquareRoot => |_, _, a| real(if a.r(0) < 0.001 { 0.0 } else { f32::from_bits(sf::sqrt(a.r(0).to_bits())) }),
-        // A negative base to a fractional power is taken as its size's (measured:
-        // Pow(-8, 0.333) is 1.999 in the original).
         // A base within 0.001 of 0 to a negative power is 0, and anything to a power
-        // within 0.001 of 0 is 1 (jass_Pow; measured: Pow(0, -1) is 0).
+        // within 0.001 of 0 is 1 (jass_Pow; measured: Pow(0, -1) is 0); a negative base
+        // to a fractional power is taken as its size's (measured: Pow(-8, 0.333) is
+        // 1.998613824).
         Pow => |_, _, a| {
             let (x, y) = (a.r(0), a.r(1));
             if x.abs() < 0.001 {
@@ -121,7 +121,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             } else if y.abs() < 0.001 {
                 return real(1.0);
             }
-            real(if x < 0.0 && y.fract() != 0.0 { (-x).powf(y) } else { x.powf(y) })
+            real(f32::from_bits(sf::pow(x.to_bits(), y.to_bits())))
         },
         I2R => |_, _, a| real(w3_jass::value::int_to_real(a.i(0) as i64)),
         // Out of range it wraps, as the original's conversion through 64 bits does

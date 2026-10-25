@@ -609,6 +609,93 @@ pub fn asin(x: u32) -> u32 {
     if x & 0x8000_0000 != 0 { add(HALF_PI ^ 0x8000_0000, r) } else { sub(HALF_PI, r) }
 }
 
+/// The whole part as a real (FUN_6f0715c0).
+fn trunc(b: u32) -> u32 {
+    let e = ((b >> 23) & 0xff) as i32 - 0x7f;
+    if e < 0 {
+        0
+    } else if e < 23 {
+        sar(0x8000_0000, (e + 8) as u32) & b
+    } else {
+        b
+    }
+}
+
+/// A power by repeated squaring (FUN_6f071180).
+fn powi(base: u32, mut n: i32) -> u32 {
+    let (mut r, mut x) = (ONE, base);
+    while n != 0 {
+        if n & 1 != 0 {
+            r = mul(r, x);
+        }
+        x = mul(x, x);
+        n >>= 1;
+    }
+    r
+}
+
+/// The natural logarithm near 1 (FUN_6f06fd50): from (x - 1) / (x + 1) by a ratio of
+/// polynomials.
+fn ln_core(x: u32) -> u32 {
+    let q = div(add(x, 0xbf80_0000), add(x, ONE));
+    let s = mul(q, q);
+    let mut u = mul(q, add(ONE, mul(0xbe88_d424, s)));
+    if u & 0x7f80_0000 != 0 {
+        u = u.wrapping_add(0x80_0000);
+    }
+    div(u, add(ONE, mul(0xbf19_bf59, s)))
+}
+
+/// The natural logarithm of a mantissa (FUN_6f06ff20), scaled toward 1 when small.
+fn ln_mantissa(m: u32) -> u32 {
+    let f = f32::from_bits(m);
+    if f >= f32::from_bits(0x3f61_2ad1) {
+        ln_core(m)
+    } else if f >= f32::from_bits(0x3f28_e5a3) {
+        add(ln_core(mul(m, 0x3fa8_e5a3)), 0xbe8d_f4e0)
+    } else {
+        add(ln_core(mul(m, 0x3fde_dc67)), 0xbf0d_f4e0)
+    }
+}
+
+/// The natural logarithm of a magnitude (FUN_6f070f70): its mantissa's in base 2 plus its
+/// exponent, times ln 2.
+fn ln(x: u32) -> u32 {
+    let t = mul(ln_mantissa((x & 0x7f_ffff) | ONE), 0x3fb8_aa3b);
+    mul(0x3f31_7218, add(itof(((x >> 23) & 0xff) as i32 - 0x7f), t))
+}
+
+/// e to a power of 0 or more (FUN_6f06fe10): e^(1/4) to the quarters, times a polynomial
+/// in what is left.
+fn exp_core(x: u32) -> u32 {
+    let y = x.wrapping_add(if x & 0x7f80_0000 != 0 { 0x100_0000 } else { 0 });
+    let whole = trunc(y);
+    let f = sub(y, whole);
+    let g = !sar(f.wrapping_sub(0x180_0000) ^ f, 31) & f.wrapping_add(0xff00_0000);
+    let mut p = mul(0x3c1a_534c, g);
+    for c in [0x3d29_6ec9, 0x3e2a_b479, 0x3eff_ffbd, ONE] {
+        p = mul(add(p, c), g);
+    }
+    mul(add(p, ONE), powi(0x3fa4_5af2, ftoi(whole)))
+}
+
+/// e to a power (FUN_6f070c20); of a negative one, the reciprocal.
+fn exp(x: u32) -> u32 {
+    if (x << 1) & sar(x, 31) != 0 { recip(exp_core(x ^ 0x8000_0000)) } else { exp_core(x) }
+}
+
+/// A power (FUN_6f0710e0): to a whole power of 0 or more by multiplying; otherwise of the
+/// base's magnitude, by its logarithm.
+pub fn pow(b: u32, e: u32) -> u32 {
+    if f32::from_bits(trunc(e)) == f32::from_bits(e) && (e << 1) & sar(e, 31) == 0 {
+        return powi(b, ftoi(e));
+    }
+    if b & 0x7f80_0000 == 0 {
+        return 0;
+    }
+    exp(mul(e, ln(b)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -633,6 +720,7 @@ mod tests {
         assert_eq!([p(cos(l(1, "0"))), p(cos(l(0, "5"))), p(cos(l(100, "0")))], ["0.540297920", "0.877579776", "0.862317184"]);
         assert_eq!([p(tan(l(0, "5"))), p(tan(l(1, "0")))], ["0.546309760", "1.557425600"]);
         assert_eq!([p(sqrt(l(2, "0"))), p(sqrt(l(1000, "0"))), p(sqrt(l(0, "3")))], ["1.414213536", "31.623027776", "0.547722368"]);
+        assert_eq!([p(pow(l(10, "0"), l(2, "5"))), p(pow(l(2, "0"), l(0, "5"))), p(pow(l(1, "5"), l(3, "0")))], ["316.227294912", "1.414213536", "3.375000000"]);
         let pairs = |v: u32| [p(asin(v)), p(acos(v)), p(asin(v ^ 0x8000_0000)), p(acos(v ^ 0x8000_0000))];
         assert_eq!(pairs(l(0, "3")), ["0.304692672", "1.266103616", "-0.304692672", "1.875488960"]);
         assert_eq!(pairs(l(0, "995")), ["1.470775232", "0.100021064", "-1.470775232", "3.041571616"]);

@@ -119,7 +119,14 @@ impl World {
                 if !self.ability_enabled(owner, a) {
                     continue;
                 }
-                // Ability cooldowns count down with the rest (update_buffs).
+                // Ability cooldowns count down with the rest (update_buffs).  Phoenix Fire
+                // starts cooling as its unit appears (measured: a new Phoenix's first fire
+                // lands 0.72 seconds in, ours 0.22, and every later one as much behind).
+                if code == "Apxf" && !u.cooldowns.contains_key(&a) {
+                    let cool = self.data(a, "Cool", lvl);
+                    self.unit_mut(h).unwrap().cooldowns.insert(a, cool);
+                    continue;
+                }
                 if u.cooldowns.get(&a).copied().unwrap_or(0.0) > 0.0 {
                     continue;
                 }

@@ -200,7 +200,7 @@ impl World {
     /// GetCreepCamp (FUN_6f9baa40): the nearest camp to the player's start whose
     /// strength (its creeps' levels, air units counted twice) lies within min..max and
     /// that has no air units unless they are allowed; a camp too strong (or with air
-    /// units not allowed) rules out those more than 200 farther away.  Failing that, the
+    /// units not allowed) rules out those more than 200 cells farther away.  Failing that, the
     /// nearest weaker camp.  Its first living creep.  A creep's strength is its level
     /// (FUN_6f685150; a Hero's plus one).
     pub(crate) fn creep_camp(&mut self, player: u8, min: i32, max: i32, flyers_ok: bool) -> u32 {
@@ -215,8 +215,11 @@ impl World {
         for camp in self.creep_camps.clone() {
             let living: Vec<&Unit> = camp.iter().filter_map(|&c| self.unit(c)).filter(|u| !u.dead).collect();
             let Some(first) = camp.iter().copied().find(|&c| self.unit(c).is_some_and(|u| !u.dead)) else { continue };
-            // The length of the walk from the start to the camp's first living creep.
-            let d = self.unit(first).map_or(f32::MAX, |u| self.walk_length((sx, sy), (u.x, u.y), u.collision));
+            // The length of the walk to the camp's first living creep, in pathing cells:
+            // the search's costs, against which its 200 margin is reckoned (measured:
+            // the original's Undead computer on TwistedMeadows takes the gnoll camp about
+            // 100 cells off, a stronger camp about 92 off notwithstanding).
+            let d = self.unit(first).map_or(f32::MAX, |u| self.walk_length((sx, sy), (u.x, u.y), u.collision) / crate::pathing::CELL);
             if d > limit {
                 continue;
             }

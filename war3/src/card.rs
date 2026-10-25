@@ -444,6 +444,12 @@ impl Commands {
                 out.extend(self.command(db, "CmdAttack", Action::Order { order: "attack", targeted: true }, true));
             }
             out.extend(self.command(db, "CmdPatrol", Action::Order { order: "patrol", targeted: true }, true));
+            // An artillery weapon shells the ground too (as the original's Mortar Team
+            // card shows).
+            let artillery = w3_game::sim::unit_weapons(w, u).iter().any(|(_, wp)| wp.weapon_type == "artillery" || wp.weapon_type == "aline");
+            if artillery {
+                out.extend(self.command(db, "CmdAttackGround", Action::Order { order: "attackground", targeted: true }, true));
+            }
         }
         // Every hero shows Hero Abilities, points or not (CAbilityHero::vf108); its
         // skills are dimmed while none can be learned.  The original leaves out units

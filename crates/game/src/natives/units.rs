@@ -638,7 +638,13 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetUnitFlyHeight => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.fly_height = v) },
         SetUnitTurnSpeed => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.turn_speed = v) },
         SetUnitPropWindow => |w, _, a| { let v = a.r(1).to_degrees(); with_unit(w, a, |u| u.prop_window = v) },
-        SetUnitAcquireRange => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.acquire_range = v) },
+        // Only above 50, and only for a unit that can attack (FUN_6f697ea0: a setting of
+        // 0 leaves a footman's 500).
+        SetUnitAcquireRange => |w, _, a| {
+            let v = a.r(1);
+            let armed = unit_arg(w, a, 0).and_then(|u| w.objects.units.get(u.type_id)).is_some_and(|o| o.int("weapsOn") != 0);
+            with_unit(w, a, |u| if v > 50.0 && armed { u.acquire_range = v })
+        },
         SetUnitScale => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.scale = v) },
         SetUnitTimeScale => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.time_scale = v) },
         SetUnitVertexColor => |w, _, a| {

@@ -95,6 +95,14 @@ impl World {
         true
     }
 
+    /// Phoenix Fire's burn on the unit a fireball struck: DataB once a second for Dur
+    /// (HeroDur on Heroes), the first at once (measured: a gnoll struck at 1.10 seconds
+    /// burns for 2 at 1.11 and 2.11).
+    pub(crate) fn phoenix_burn(&mut self, caster: u32, target: u32, a: Id, lvl: u32, buff: Id) {
+        let dur = if self.hero_duration(target) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
+        self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster, remaining: dur, dps: self.data(a, "DataB", lvl), dps_every: 1.0, dps_next: 0.0, ..Default::default() });
+    }
+
     /// Phoenix Fire and Barrage: units with them strike enemies near them every Cool
     /// seconds.  Phoenix Fire burns one unit not already burning for DataA, then DataB a
     /// second for Dur (HeroDur on Heroes); Barrage sends rockets at up to DataC air units
@@ -153,10 +161,6 @@ impl World {
                 let speed = self.objects.abilities.get(a).map_or(900.0, |o| o.real("Missilespeed")).max(1.0);
                 let arc = self.objects.abilities.get(a).map_or(0.0, |o| o.real("Missilearc"));
                 for (t, damage) in shots {
-                    if code == "Apxf" {
-                        let dur = if self.hero_duration(t) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
-                        self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: self.data(a, "DataB", lvl), ..Default::default() });
-                    }
                     let launch = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map_or(60.0, |o| o.real("launchZ"));
                     let z = self.ground_z(ux, uy) + launch;
                     self.missiles.push(crate::sim::Missile {
@@ -172,7 +176,8 @@ impl World {
                         damage,
                         attack_type: "spells".into(),
                         start: (ux, uy),
-                        spell: Some((a, lvl, 0.0, [0; 4])),
+                        // Phoenix Fire's burn goes on as it lands (phoenix_burn).
+                        spell: Some((a, lvl, 0.0, if code == "Apxf" { buff } else { [0; 4] })),
                         weapon: None,
                         impact: None,
                         bounces: 0,

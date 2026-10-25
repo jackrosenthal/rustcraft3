@@ -2915,6 +2915,9 @@ impl World {
                         continue;
                     }
                     self.spell_damage(vm, m.source, m.target, m.damage);
+                    if self.ability_code(a) == "Apxf" && self.unit(m.target).is_some_and(|t| !t.dead) {
+                        self.phoenix_burn(m.source, m.target, a, lvl, buff);
+                    }
                     if stun > 0.0 {
                         self.apply_buff(m.target, Buff { id: buff, ability: a, level: lvl, caster: m.source, remaining: stun, stun: true, ..Default::default() });
                     }

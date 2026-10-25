@@ -2541,20 +2541,23 @@ impl World {
             if flying { wants("air") } else if s.is_building { wants("structure") || wants("ground") } else { wants("ground") }
         });
         if !hits || self.unit_invulnerable(s) {
-            // A fighting unit that may flee (UnitData canFlee) attack-moves 300 straight
-            // away from it instead (measured: a footman struck by a gryphon rider it
-            // cannot hit, from 200 or 400 away, goes 291.6 off on an attack order each
-            // time, stopping within 15.6875 of a point 300 off).  Creeps and workers
-            // flee otherwise, not yet done here.
+            // A unit that may flee (UnitData canFlee) goes 300 straight away from it
+            // instead, a fighter attack-moving and a worker moving (measured: a footman
+            // struck by a gryphon rider it cannot hit, from 200 or 400 away, goes 291.6
+            // off on an attack order each time, and a peasant 284.5 on a move order,
+            // each stopping within 15.6875 of a point 300 off).  Creeps flee otherwise,
+            // not yet done here.
             let (sx, sy, tx, ty) = (s.x, s.y, t.x, t.y);
             let neutral = t.owner >= PLAYER_NEUTRAL_AGGRESSIVE;
-            let flees = self.objects.units.get(t.type_id).is_some_and(|o| o.int("canFlee") != 0) && !self.unit_class(t, "peon");
+            let flees = self.objects.units.get(t.type_id).is_some_and(|o| o.int("canFlee") != 0);
             if flees && !neutral {
+                let worker = self.unit_class(t, "peon");
                 let d = (tx - sx).hypot(ty - sy).max(0.001);
                 let (fx, fy) = self.clamp_to_map(tx + (tx - sx) / d * 300.0, ty + (ty - sy) / d * 300.0);
+                let name = if worker { "move" } else { "attack" };
                 let u = self.unit_mut(target).unwrap();
-                u.action = Action::AttackMove { x: fx, y: fy };
-                u.order = Order { id: crate::natives::basic::order_id("attack"), target_x: fx, target_y: fy, target: 0 };
+                u.action = if worker { Action::Move { x: fx, y: fy } } else { Action::AttackMove { x: fx, y: fy } };
+                u.order = Order { id: crate::natives::basic::order_id(name), target_x: fx, target_y: fy, target: 0 };
                 u.path.clear();
             }
             return;

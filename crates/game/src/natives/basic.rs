@@ -173,6 +173,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         UnitId2String => |w, _, a| {
             let id = id_from_int(a.i(0));
             match w.objects.units.get(id) {
+                // A unit type the map adds reads "custom_" and its id (measured:
+                // custom_nC02 for Human04's goblin merchant copy).
+                Some(o) if o.base.is_some() => string(format!("custom_{}", crate::objects::id_str(id))),
                 Some(o) if !o.str("unitName").is_empty() => string(o.str("unitName")),
                 _ => none(),
             }

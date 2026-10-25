@@ -282,8 +282,8 @@ impl World {
 
 impl World {
     /// The tornado's own abilities.  Tornado Wander (Atwa): a new point within Area of
-    /// where it appeared every Dur.  Tornado Damage (Atdg): structures it allows take
-    /// DataA a second within Area, DataC within DataB, and DataE within DataD.  Tornado
+    /// where it appeared every Dur.  Tornado Damage (Atdg): structures it allows take,
+    /// once a second, DataA within Area, DataC within DataB, and DataE within DataD.  Tornado
     /// Spin (Atsp): ground enemies within Area are thrown up for Dur (HeroDur on Heroes),
     /// each at most once every DataB.
     pub fn update_tornadoes(&mut self, vm: &mut Vm, dt: f32) {
@@ -314,13 +314,22 @@ impl World {
                 let lvl = lvl.max(1) as u32;
                 let d = |k: &str| self.data(a, k, lvl);
                 let (area, dps, mid_r, mid, small_r, small) = (d("Area"), d("DataA"), d("DataB"), d("DataC"), d("DataD"), d("DataE"));
+                // A second's worth once a second, the first a second after it appears
+                // (measured: a farm 300 from a new tornado takes 7 at 1.00 seconds and
+                // each second after).
+                let Some(u) = self.unit_mut(h) else { continue };
+                let left = u.extra.pulse_in.unwrap_or(1.0) - dt;
+                u.extra.pulse_in = Some(if left > 0.0 { left } else { left + 1.0 });
+                if left > 0.0 {
+                    continue;
+                }
                 for t in self.units_in_pub(x, y, area) {
                     if t == h || self.cast_target_error(h, a, t).is_some() {
                         continue;
                     }
                     let dist = self.unit(t).map_or(f32::MAX, |u| (u.x - x).hypot(u.y - y));
                     let rate = if small_r > 0.0 && dist <= small_r { small } else if dist <= mid_r { mid } else { dps };
-                    self.spell_damage(vm, h, t, rate * dt);
+                    self.spell_damage(vm, h, t, rate);
                 }
             }
             if let Some((a, lvl)) = self.ability_with_code(h, "Atsp") {

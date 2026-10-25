@@ -253,6 +253,9 @@ pub struct UnitExtra {
     /// Seconds until a Kodo next digests what it has devoured.
     #[serde(default)]
     pub digest_in: f32,
+    /// Seconds until a tornado's damage next strikes, once started.
+    #[serde(default)]
+    pub pulse_in: Option<f32>,
     /// A haunted mine's payout timer and the acolytes it last counted at work.
     #[serde(default)]
     pub payout: Option<(f32, u32)>,
@@ -507,6 +510,7 @@ impl Default for UnitExtra {
             attr_bonus: [0.0; 3],
             pillaged: [0.0; 2],
             digest_in: 0.0,
+            pulse_in: None,
             aura_clock: None,
             payout: None,
             casting_item: None,

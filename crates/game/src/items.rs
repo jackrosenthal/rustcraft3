@@ -727,11 +727,7 @@ impl World {
         if let Some(u) = self.unit_mut(unit) {
             u.item_bonus = b;
         }
-        if self.unit(unit).is_some_and(|u| u.is_hero) {
-            self.apply_hero_stats(unit, false);
-        } else {
-            // Non-heroes: life and mana bonuses apply with research to the base maximum.
-            self.apply_upgrades(unit);
-        }
+        // Life keeps its fraction of the new maximum (apply_upgrades_keeping).
+        self.apply_upgrades_keeping(unit, true);
     }
 }

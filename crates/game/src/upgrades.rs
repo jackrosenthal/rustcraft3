@@ -228,12 +228,20 @@ impl World {
     }
 
     /// As apply_upgrades; with `fraction`, life keeps its fraction of the maximum, as
-    /// research changes it (measured: a Druid of the Claw at 100 life when its adept
-    /// training is researched has 117).
+    /// research and items change it (measured: a Druid of the Claw at 100 life when its
+    /// adept training is researched has 117; a Paladin at 100 of 650 given a Periapt of
+    /// Vitality has 123 of 800).  A hero's level keeps the life it has lost instead
+    /// (measured: 100 of 650 to 225 of 775 at level 3).
     pub fn apply_upgrades_keeping(&mut self, h: u32, fraction: bool) {
         let Some(u) = self.unit(h) else { return };
         if u.is_hero {
+            let before = (u.max_life > 0.0).then(|| u.life / u.max_life);
             self.apply_hero_stats(h, false);
+            if let (true, Some(f)) = (fraction, before) {
+                if let Some(u) = self.unit_mut(h).filter(|u| !u.dead) {
+                    u.life = (u.max_life * f).min(u.max_life);
+                }
+            }
             return;
         }
         // Chaos (Acha): once its requirements are met, the unit becomes UnitID.

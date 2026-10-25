@@ -239,6 +239,9 @@ pub struct Unit {
 /// Unit settings scripts change.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct UnitExtra {
+    /// A haunted mine's payout timer and the acolytes it last counted at work.
+    #[serde(default)]
+    pub payout: Option<(f32, u32)>,
     /// The item whose spell is being cast, spent when it takes effect.
     #[serde(default)]
     pub casting_item: Option<u32>,
@@ -463,6 +466,7 @@ impl Default for UnitExtra {
     fn default() -> Self {
         UnitExtra {
             aura_clock: None,
+            payout: None,
             casting_item: None,
             permanent_life: 0.0,
             cooldown_speed: None,

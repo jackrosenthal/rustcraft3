@@ -1206,6 +1206,7 @@ impl World {
         prof!(self, "update_text_tags", self.update_text_tags(dt));
         prof!(self, "update_blight", self.update_blight(dt));
         prof!(self, "update_mines", self.update_mines());
+        self.haunted_mine_payouts(vm, dt);
         // Once a second, the art upgrades show (CAbilitySpiked, CAbilityReinforce).
         if (self.time - dt).floor() != self.time.floor() {
             self.update_upgrade_art();

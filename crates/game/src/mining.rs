@@ -259,7 +259,7 @@ impl World {
 
     /// An acolyte at a haunted mine: to a free ring slot, then gold every interval times
     /// the slot count.
-    pub(crate) fn acolyte_harvest(&mut self, vm: &mut Vm, h: u32, mine: u32, dt: f32) {
+    pub(crate) fn acolyte_harvest(&mut self, _vm: &mut Vm, h: u32, mine: u32, dt: f32) {
         if !self.can_mine_covered(h, mine) {
             let u = self.unit_mut(h).unwrap();
             u.action = Action::Idle;
@@ -316,27 +316,63 @@ impl World {
                 u.y = sy;
             }
         }
-        let (abgm, lvl) = self.ability_with_code(mine, "Abgm").unwrap();
-        let a = self.objects.abilities.get(abgm);
-        let per = a.map_or(10.0, |a| a.level_real("DataA", lvl)) as i32;
-        let interval = a.map_or(1.0, |a| a.level_real("DataB", lvl)) * slots.len().max(1) as f32;
+        // At its slot it works; the mine pays (haunted_mine_payouts).
         let u = self.unit_mut(h).unwrap();
         crate::sim::turn(u, face, dt);
-        if u.work_timer < 0.0 {
-            u.work_timer = interval;
-            crate::sim::set_anim(u, "stand work gold");
-            return;
-        }
         crate::sim::set_anim(u, "stand work gold");
-        u.work_timer -= dt;
-        if u.work_timer > 0.0 {
-            return;
-        }
-        u.work_timer += interval;
-        let owner = u.owner;
-        let got = self.take_gold(vm, h, mine, per);
-        if got > 0 {
-            self.gather(owner, mine, got, 0, 0.0);
+        u.work_timer = 0.0;
+    }
+
+    /// Haunted mines pay their owners DataA gold at a time, as one timer per mine whose
+    /// period is DataB times DataC over the acolytes at work there, the time left
+    /// scaled when that count changes (CAbilityBlightedGoldMine, FUN_6f4e9650 and
+    /// FUN_6f4e9560; measured: three acolytes bring 10 gold every 1.67 seconds,
+    /// evenly spaced, the first 1.75 seconds after they reach the mine).
+    pub(crate) fn haunted_mine_payouts(&mut self, vm: &mut Vm, dt: f32) {
+        let mines: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.constructing.is_none()) && self.ability_with_code(h, "Abgm").is_some()).collect();
+        for mine in mines {
+            let slots = self.mine_slots(mine);
+            let working = self
+                .unit_order
+                .iter()
+                .filter(|&&o| {
+                    self.unit(o).is_some_and(|u| {
+                        !u.dead && matches!(u.action, Action::Harvest { target } if target == mine) && u.extra.mine_slot.and_then(|k| slots.get(k).copied().flatten()).is_some_and(|(sx, sy, _)| (u.x - sx).hypot(u.y - sy) <= 8.0)
+                    })
+                })
+                .count() as u32;
+            let (abgm, lvl) = self.ability_with_code(mine, "Abgm").unwrap();
+            let a = self.objects.abilities.get(abgm);
+            let per = a.map_or(10.0, |a| a.level_real("DataA", lvl)) as i32;
+            let base = a.map_or(1.0, |a| a.level_real("DataB", lvl)) * a.map_or(5.0, |a| a.level_real("DataC", lvl)).max(1.0);
+            let period = |n: u32| base / n.max(1) as f32;
+            let Some(m) = self.unit_mut(mine) else { continue };
+            let (mut left, was) = m.extra.payout.unwrap_or((0.0, 0));
+            if working == 0 {
+                m.extra.payout = None;
+                continue;
+            }
+            if was == 0 {
+                left = period(working);
+            } else if was != working {
+                left *= period(working) / period(was);
+            }
+            left -= dt;
+            let owner = m.owner;
+            let mut pays = 0;
+            while left <= 0.0 {
+                pays += 1;
+                left += period(working);
+            }
+            if let Some(m) = self.unit_mut(mine) {
+                m.extra.payout = Some((left, working));
+            }
+            for _ in 0..pays {
+                let got = self.take_gold(vm, mine, mine, per);
+                if got > 0 {
+                    self.gather(owner, mine, got, 0, 0.0);
+                }
+            }
         }
     }
 

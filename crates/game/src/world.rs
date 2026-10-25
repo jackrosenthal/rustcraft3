@@ -583,7 +583,9 @@ impl World {
         }
         let mut handles = Handles::default();
         let mut players = Vec::new();
-        // The sixteen player handles are created first, so Player(0) is the first handle.
+        // The player handles come after eight the original makes first (measured:
+        // Player(0) is 0x100008, Player(1) 0x100009; its neutral players come later).
+        handles.reserve(8);
         for i in 0..PLAYER_COUNT as u8 {
             let h = handles.insert(Obj::Player(i));
             players.push(Player::new(i, h));

@@ -621,7 +621,9 @@ impl World {
                         u.int += int;
                         u.str_ += str_;
                     }
-                    self.apply_hero_stats(unit, false);
+                    // Life and mana keep their fractions (measured: a Paladin at 100 of 650
+                    // reading a Tome of Strength has 104 of 675).
+                    self.apply_upgrades_keeping(unit, true);
                     did = true;
                 }
                 // Manual of Health: maximum life for good (measured: a Paladin of 650

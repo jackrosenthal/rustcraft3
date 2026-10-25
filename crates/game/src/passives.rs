@@ -115,11 +115,12 @@ impl World {
         }
     }
 
-    /// Attack passives of the attacker: Pulverize, Corrosive Breath, and Kaboom.
+    /// Attack passives of the attacker: Pulverize and Kaboom.  (Corrosive Breath burns
+    /// nothing: measured, a farm hit by a Chimaera takes the hit alone.)
     pub fn attack_passives(&mut self, vm: &mut Vm, h: u32, target: u32) {
         let Some(u) = self.unit(h) else { return };
         let (owner, ux, uy) = (u.owner, u.x, u.y);
-        let (tx, ty, building) = self.unit(target).map_or((ux, uy, false), |t| (t.x, t.y, t.is_building));
+        let (tx, ty) = self.unit(target).map_or((ux, uy), |t| (t.x, t.y));
         // Pulverize: a DataA% chance of DataB damage to enemy ground units within DataC
         // of the attacker, half within DataD.
         if let Some((a, l)) = self.passive(h, "Awar") {
@@ -134,13 +135,6 @@ impl World {
                     self.spell_damage(vm, h, t, if d <= full { dmg } else { dmg * 0.5 });
                 }
             }
-        }
-        // Corrosive Breath: structures hit take DataA a second.
-        if let Some((a, l)) = self.passive(h, "Acor").filter(|_| building) {
-            let buff = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", l)).unwrap_or_default();
-            let id = id_from_str(buff.split(',').next().unwrap_or("").trim());
-            let b = Buff { id, ability: a, level: l, caster: h, remaining: self.data(a, "Dur", l), dps: self.data(a, "DataA", l), ..Default::default() };
-            self.apply_buff(target, b);
         }
         // Kaboom: the attacker explodes: DataB damage within DataA, DataD within DataC,
         // structures taking DataE times as much.

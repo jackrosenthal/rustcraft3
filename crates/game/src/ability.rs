@@ -909,9 +909,12 @@ impl World {
             let ctx = EventCtx { target_unit: target, spell_ability: crate::objects::id_to_int(a), order_x: goal.0, order_y: goal.1, ..Default::default() };
             self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_SPELL_CHANNEL, EVENT_UNIT_SPELL_CHANNEL, ctx.clone());
             self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_SPELL_CAST, EVENT_UNIT_SPELL_CAST, ctx);
-            return;
+            // The step it begins counts toward its cast point (measured: a Tauren
+            // Chieftain's War Stomp, cast point 0.47, stuns 0.48 seconds after the order;
+            // Wind Walk's buff shows 0.02 after).
         }
-        let (elapsed, fired) = u.casting.unwrap();
+        let Some(u) = self.unit(h) else { return };
+        let Some((elapsed, fired)) = u.casting else { return };
         // Begun, a cast reaches SpellCastRangeBuffer further; a target that gets
         // beyond that before the spell goes off is followed again (FUN_6f415270).
         if !fired && target != 0 && self.targeting(a) != Targeting::None {

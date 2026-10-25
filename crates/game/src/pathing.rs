@@ -43,6 +43,9 @@ pub struct PathingMap {
     pub flags: Vec<u8>,
     /// Count of dynamic blockers per cell (walk-blocking).
     pub blocked: Vec<u16>,
+    /// Of those, destructables' (trees and the like).
+    #[serde(default)]
+    pub by_destructables: Vec<u16>,
     /// The search's working arrays, kept between searches.
     #[serde(skip)]
     scratch: std::cell::RefCell<Scratch>,
@@ -207,7 +210,7 @@ impl PathingMap {
         let w = u32::from_le_bytes(data[8..12].try_into().ok()?);
         let h = u32::from_le_bytes(data[12..16].try_into().ok()?);
         let flags = data.get(16..16 + (w * h) as usize)?.to_vec();
-        Some(PathingMap { width: w, height: h, origin, flags, blocked: vec![0; (w * h) as usize], scratch: Default::default(), memo: Default::default(), floods: Default::default(), regions: Default::default() })
+        Some(PathingMap { width: w, height: h, origin, flags, blocked: vec![0; (w * h) as usize], by_destructables: vec![0; (w * h) as usize], scratch: Default::default(), memo: Default::default(), floods: Default::default(), regions: Default::default() })
     }
 
     pub fn cell_of(&self, x: f32, y: f32) -> (i32, i32) {
@@ -263,6 +266,29 @@ impl PathingMap {
                 Move::Fly => f & NO_FLY == 0,
             }
         })
+    }
+
+    /// The index of a cell on the map.
+    pub fn index_pub(&self, c: (i32, i32)) -> Option<usize> {
+        self.index(c)
+    }
+
+    /// Free of destructables (trees and the like).
+    pub fn clear_of_destructables(&self, c: (i32, i32)) -> bool {
+        self.index(c).is_some_and(|i| self.by_destructables.get(i).is_none_or(|&n| n == 0))
+    }
+
+    /// Stamps a destructable's cells: dynamic blockers counted apart as well.
+    pub fn stamp_destructable(&mut self, cells: &[(i32, i32)], delta: i32) {
+        self.stamp(cells, delta);
+        if self.by_destructables.len() != self.blocked.len() {
+            self.by_destructables = vec![0; self.blocked.len()];
+        }
+        for &c in cells {
+            if let Some(i) = self.index(c) {
+                self.by_destructables[i] = (self.by_destructables[i] as i32 + delta).max(0) as u16;
+            }
+        }
     }
 
     pub fn buildable(&self, c: (i32, i32)) -> bool {

@@ -12,14 +12,108 @@ use crate::types::*;
 use crate::world::{NativeFn, World};
 
 /// Creates a unit of a type for a player, returning its handle (0 if the type is unknown).
+/// Where a new unit stands: a structure snapped to the build grid, and if destructables
+/// stand there, the nearest place on the grid clear of them; a walker among
+/// destructables, the nearest pathing cell's middle where it fits clear of them
+/// (measured: farms made at 3700, 2700 and 1301, 1301 stand at 3648, 2688 and 1280,
+/// 1280, forges at 1728, 1216 and 1760, 1600 at 1760, 1248 and 1760, 1632, all as
+/// snapped; barracks made among trees at 3400, 2400 stand clear of them, at 3776, 2112
+/// there, where the search here finds 3200, 2560; a footman among them moves 76 out).
+fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32) -> (f32, f32) {
+    let Some(o) = w.objects.units.get(type_id) else { return (x, y) };
+    if w.pathing.is_none() {
+        return (x, y);
+    }
+    let building = !o.str("pathTex").is_empty() && o.real("spd") <= 0.0;
+    let (movetp, collision, tex) = (o.str("movetp"), o.real("collision"), o.str("pathTex"));
+    if building {
+        if w.builds_on(type_id) {
+            return (x, y);
+        }
+        let (sx, sy) = w.snap_placement(type_id, x, y);
+        // Only destructables in the way move it, not other structures nor ground the
+        // map marks unwalkable or unbuildable (maps stand their structures close
+        // together there: the original leaves Human01's town where it was made).
+        let clear = |w: &mut World, px: f32, py: f32| {
+            let cells = w.pathing_cells(&tex, px, py, 0.0);
+            let p = w.pathing.as_ref().unwrap();
+            cells.iter().all(|&c| p.clear_of_destructables(c))
+        };
+        if clear(w, sx, sy) {
+            return (sx, sy);
+        }
+        for r in 1..=16i32 {
+            let mut best: Option<(f32, (f32, f32))> = None;
+            for dy in -r..=r {
+                for dx in -r..=r {
+                    if dx.abs() != r && dy.abs() != r {
+                        continue;
+                    }
+                    let (px, py) = (sx + dx as f32 * 64.0, sy + dy as f32 * 64.0);
+                    let d = (px - sx).hypot(py - sy);
+                    if best.is_some_and(|b| b.0 <= d) {
+                        continue;
+                    }
+                    if clear(w, px, py) {
+                        best = Some((d, (px, py)));
+                    }
+                }
+            }
+            if let Some((_, p)) = best {
+                return w.clamp_to_map(p.0, p.1);
+            }
+        }
+        return (sx, sy);
+    }
+    let kind = crate::pathing::Move::from_movetp(&movetp);
+    let radius = collision * 0.5;
+    if kind == crate::pathing::Move::Fly || radius <= 0.0 {
+        return (x, y);
+    }
+    let p = w.pathing.as_ref().unwrap();
+    let start = p.cell_of(x, y);
+    // Moved only off destructables, as structures are (the original leaves units a map
+    // stands on ground it marks unwalkable).
+    let span = (radius / 32.0).ceil() as i32;
+    let on_destructable = (-span..=span).any(|dy| (-span..=span).any(|dx| !p.clear_of_destructables((start.0 + dx, start.1 + dy)) && p.index_pub((start.0 + dx, start.1 + dy)).is_some()));
+    if !on_destructable {
+        return (x, y);
+    }
+    for r in 1..=32i32 {
+        let mut best: Option<(f32, (f32, f32))> = None;
+        for dy in -r..=r {
+            for dx in -r..=r {
+                if dx.abs() != r && dy.abs() != r {
+                    continue;
+                }
+                let c = (start.0 + dx, start.1 + dy);
+                if !p.fits_kind(c, radius, kind) || !(-span..=span).all(|ey| (-span..=span).all(|ex| p.clear_of_destructables((c.0 + ex, c.1 + ey)))) {
+                    continue;
+                }
+                let at = p.center(c);
+                let d = (at.0 - x).hypot(at.1 - y);
+                if best.is_none_or(|b| d < b.0) {
+                    best = Some((d, at));
+                }
+            }
+        }
+        if let Some((_, at)) = best {
+            return at;
+        }
+    }
+    (x, y)
+}
+
 pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing: f32) -> u32 {
+    // On the map, facing within a turn (measured: 400 reads 40, -90 reads 270).
+    let (x, y) = w.clamp_to_map(x, y);
+    let facing = facing.rem_euclid(360.0);
+    let (x, y) = placed_at(w, type_id, x, y);
     let Some(o) = w.objects.units.get(type_id) else {
         log::warn!("CreateUnit: unknown unit type {}", crate::objects::id_str(type_id));
         return 0;
     };
-    // On the map, facing within a turn (measured: 400 reads 40, -90 reads 270).
-    let (x, y) = w.clamp_to_map(x, y);
-    let facing = facing.rem_euclid(360.0);
+
     // Times its owner's handicap (measured: a footman made at 0.5 has 210 of 210).
     let hp = w.handicap_life(owner, o.real("HP").max(1.0));
     let max_mana = o.real("manaN");
@@ -176,6 +270,11 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         if let Some(u) = w.unit_mut(h) {
             u.autocast = auto;
         }
+    }
+    // Food it provides counts at once (measured: two farms made by a script read a food
+    // cap 12 higher straight after).
+    if w.unit(h).and_then(|u| w.objects.units.get(u.type_id)).is_some_and(|o| o.int("fmade") > 0) {
+        w.update_food();
     }
     // A computer player's new unit may take a guard post.
     w.ai_new_unit(h);

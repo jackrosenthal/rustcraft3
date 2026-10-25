@@ -43,7 +43,7 @@ pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>
     // BuildingAngle), and turns from there.
     let cells = w.pathing_cells(&path_tex, x, y, facing - 270.0);
     if let Some(p) = w.pathing.as_mut() {
-        p.stamp(&cells, 1);
+        p.stamp_destructable(&cells, 1);
     }
     if let Some(Obj::Destructable(d)) = w.handles.get_mut(h) {
         d.pathing_cells = cells;
@@ -58,7 +58,7 @@ pub fn unstamp_destructable(w: &mut World, h: u32) {
         _ => return,
     };
     if let Some(p) = w.pathing.as_mut() {
-        p.stamp(&cells, -1);
+        p.stamp_destructable(&cells, -1);
     }
 }
 

@@ -2334,7 +2334,7 @@ impl World {
         // Improved Lumber Harvesting (rlum) adds to a trip.
         let lumber_cap = lumber_cap + self.unit(h).map_or(0, |u| self.upgrade_bonus(u.owner, u.type_id).lumber);
         if (is_mine && u.carry_lumber > 0) || (is_tree && u.carry_gold > 0) || (is_tree && u.carry_lumber >= lumber_cap) {
-            self.unit_mut(h).unwrap().action = Action::ReturnResources;
+            self.carry_home(h);
             return;
         }
         if is_mine {
@@ -2346,7 +2346,7 @@ impl World {
                     self.leave_mine(h);
                     let u = self.unit_mut(h).unwrap();
                     u.carry_lumber = 0;
-                    u.action = Action::ReturnResources;
+                    self.carry_home(h);
                     self.exit_toward_drop_off(h, target);
                 }
                 return;
@@ -2381,7 +2381,7 @@ impl World {
                     self.leave_mine(h);
                     let u = self.unit_mut(h).unwrap();
                     u.carry_lumber = 0;
-                    u.action = Action::ReturnResources;
+                    self.carry_home(h);
                     self.exit_toward_drop_off(h, target);
                     kill_unit(self, vm, target, 0);
                 }
@@ -2465,6 +2465,16 @@ impl World {
         best.map(|b| b.1)
     }
 
+    /// A worker turning home with what it gathered, its order "resumeharvesting" on the
+    /// way (measured: a peasant's order reads resumeharvesting from the mine to the hall
+    /// and harvest from the hall to the mine and inside).
+    fn carry_home(&mut self, h: u32) {
+        if let Some(u) = self.unit_mut(h) {
+            u.action = Action::ReturnResources;
+            u.order = Order { id: crate::natives::basic::order_id("resumeharvesting"), target_x: 0.0, target_y: 0.0, target: 0 };
+        }
+    }
+
     fn return_resources(&mut self, h: u32, dt: f32) {
         let Some(u) = self.unit(h) else { return };
         if u.carry_gold == 0 && u.carry_lumber == 0 {
@@ -2493,6 +2503,9 @@ impl World {
         if src_gone {
             u.harvest_source = 0;
             u.order = Order::default();
+        } else if src != 0 {
+            // Back out to the source, its order "harvest" again (measured).
+            u.order = Order { id: crate::natives::basic::order_id("harvest"), target_x: 0.0, target_y: 0.0, target: src };
         }
         // Upkeep takes its share of what is returned; the amount shows over the worker
         // (0x6f40b150).

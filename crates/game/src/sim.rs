@@ -776,6 +776,14 @@ impl World {
         // Likewise the end of a move to a point, when another unit already stands on it
         // (a worker bound for a mine or a building site goes all the way).
         let to_point = matches!(u.action, Action::Move { .. } | Action::AttackMove { .. } | Action::Patrol { .. });
+        // A unit bound for a point is there once within 15.6875 of it, whatever its
+        // speed or size (measured: footmen and knights ordered 15.68 away stay put, 15.69
+        // away step toward it; ones sent 500 away stop up to 15 short).
+        if to_point && u.path.len() == 1 && d <= 15.6875 {
+            u.path.clear();
+            set_anim(u, "stand");
+            return true;
+        }
         if to_point && u.path.len() == 1 && d > step && d <= u.collision * 2.0 && !ghost {
             let size = u.collision;
             let taken = self.unit_order.iter().any(|&o| o != h && self.unit(o).is_some_and(|v| !v.dead && !v.hidden && !v.is_building && !self.is_ghost(v) && (v.x - next.0).hypot(v.y - next.1) < v.collision + size));

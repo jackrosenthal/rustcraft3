@@ -13,7 +13,7 @@ impl World {
     /// while its autocast is on: every Cool, up to Cast friends within Area short of
     /// life (or mana) gain DataA life (DataB mana), the caster paying Cost for each of
     /// up to DataE of them.
-    pub fn update_undead_auras(&mut self, vm: &mut Vm, dt: f32) {
+    pub fn update_undead_auras(&mut self, vm: &mut Vm, _dt: f32) {
         let _ = vm;
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden)).collect();
         for h in units {
@@ -25,9 +25,8 @@ impl World {
                 if !self.ability_enabled(owner, a) || (code != "Aapl" && !u.autocast.contains(&a)) {
                     continue;
                 }
-                let left = u.cooldowns.get(&a).copied().unwrap_or(0.0) - dt;
-                if left > 0.0 {
-                    self.unit_mut(h).unwrap().cooldowns.insert(a, left);
+                // Ability cooldowns count down with the rest (update_buffs).
+                if u.cooldowns.get(&a).copied().unwrap_or(0.0) > 0.0 {
                     continue;
                 }
                 let area = self.data(a, "Area", lvl);
@@ -153,7 +152,7 @@ impl World {
     /// first due north and the rest a turn over DataA apart counterclockwise (measured:
     /// five ghoul corpses 250 out at 90, 162, 234, 306, and 18 degrees, one at once
     /// and one every 15 seconds).
-    pub fn update_corpse_makers(&mut self, dt: f32) {
+    pub fn update_corpse_makers(&mut self, _dt: f32) {
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && u.constructing.is_none())).collect();
         for h in units {
             for code in ["Aexh", "Agyd"] {
@@ -183,11 +182,16 @@ impl World {
                     u.cooldowns.insert(a, period);
                     continue;
                 }
-                let first = if code == "Aexh" { period } else { 0.0 };
-                let left = u.cooldowns.get(&a).copied().unwrap_or(first) - dt;
-                if left > 0.0 {
-                    u.cooldowns.insert(a, left);
-                    continue;
+                // Ability cooldowns count down with the rest (update_buffs; counting
+                // here as well had a graveyard lay a corpse every 7.5 seconds, the
+                // original's every 15).  A wagon's first comes after a whole Dur.
+                match u.cooldowns.get(&a).copied() {
+                    Some(left) if left > 0.0 => continue,
+                    None if code == "Aexh" => {
+                        u.cooldowns.insert(a, period);
+                        continue;
+                    }
+                    _ => {}
                 }
                 u.cooldowns.insert(a, period);
                 let type_id = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());

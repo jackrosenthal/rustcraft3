@@ -99,7 +99,7 @@ impl World {
     /// seconds.  Phoenix Fire burns one unit not already burning for DataA, then DataB a
     /// second for Dur (HeroDur on Heroes); Barrage sends rockets at up to DataC air units
     /// within Area for DataA each, DataB at most in all.
-    pub fn update_periodic_attacks(&mut self, vm: &mut Vm, dt: f32) {
+    pub fn update_periodic_attacks(&mut self, vm: &mut Vm, _dt: f32) {
         let _ = vm;
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && u.constructing.is_none())).collect();
         for h in units {
@@ -111,9 +111,8 @@ impl World {
                 if !self.ability_enabled(owner, a) {
                     continue;
                 }
-                let left = u.cooldowns.get(&a).copied().unwrap_or(0.0) - dt;
-                if left > 0.0 {
-                    self.unit_mut(h).unwrap().cooldowns.insert(a, left);
+                // Ability cooldowns count down with the rest (update_buffs).
+                if u.cooldowns.get(&a).copied().unwrap_or(0.0) > 0.0 {
                     continue;
                 }
                 let (ux, uy) = (u.x, u.y);

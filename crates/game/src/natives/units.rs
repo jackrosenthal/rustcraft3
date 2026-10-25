@@ -31,13 +31,23 @@ fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32) -> (f32, f32) {
             return (x, y);
         }
         let (sx, sy) = w.snap_placement(type_id, x, y);
-        // Only destructables in the way move it, not other structures nor ground the
-        // map marks unwalkable or unbuildable (maps stand their structures close
-        // together there: the original leaves Human01's town where it was made).
+        // Destructables in the way move it, and ground its preventPlace forbids
+        // (measured: a farm, preventPlace unbuildable, made on unbuildable ground stands
+        // 770 away; Human01's city buildings, with none, stay on theirs), not other
+        // structures.
+        let prevent = w.objects.units.get(type_id).map(|o| o.str("preventPlace").to_ascii_lowercase()).unwrap_or_default();
+        let mut forbid = 0u8;
+        for t in prevent.split(',').map(str::trim) {
+            match t {
+                "unbuildable" => forbid |= crate::pathing::NO_BUILD,
+                "unwalkable" => forbid |= crate::pathing::NO_WALK,
+                _ => {}
+            }
+        }
         let clear = |w: &mut World, px: f32, py: f32| {
             let cells = w.pathing_cells(&tex, px, py, 0.0);
             let p = w.pathing.as_ref().unwrap();
-            cells.iter().all(|&c| p.clear_of_destructables(c))
+            cells.iter().all(|&c| p.clear_of_destructables(c) && p.index_pub(c).is_some_and(|i| p.flags[i] & forbid == 0))
         };
         if clear(w, sx, sy) {
             return (sx, sy);

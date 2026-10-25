@@ -446,7 +446,8 @@ impl World {
                     if b.remaining > 0.0 {
                         b.dps_next -= dt;
                         while b.dps_next <= 0.0 {
-                            dots.push((b.caster, h, b.dps * b.dps_every));
+                            let f = if b.dps < 0.0 && b.ethereal_heal { heal_factor } else { 1.0 };
+                            dots.push((b.caster, h, b.dps * b.dps_every * f));
                             b.dps_next += b.dps_every;
                         }
                     }

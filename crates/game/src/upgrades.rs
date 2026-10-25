@@ -189,7 +189,7 @@ impl World {
         self.upgrade_cache.borrow_mut().retain(|(p, _), _| *p != owner);
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.owner == owner)).collect();
         for h in units {
-            self.apply_upgrades(h);
+            self.apply_upgrades_keeping(h, true);
         }
     }
 
@@ -224,6 +224,13 @@ impl World {
     /// Sets a unit's maximum life and mana from its type, research, and items, keeping
     /// the damage it has taken.
     pub fn apply_upgrades(&mut self, h: u32) {
+        self.apply_upgrades_keeping(h, false);
+    }
+
+    /// As apply_upgrades; with `fraction`, life keeps its fraction of the maximum, as
+    /// research changes it (measured: a Druid of the Claw at 100 life when its adept
+    /// training is researched has 117).
+    pub fn apply_upgrades_keeping(&mut self, h: u32, fraction: bool) {
         let Some(u) = self.unit(h) else { return };
         if u.is_hero {
             self.apply_hero_stats(h, false);
@@ -246,7 +253,10 @@ impl World {
         let (dl, dm) = (max_life - u.max_life, max_mana - u.max_mana);
         u.max_life = max_life;
         u.max_mana = max_mana;
-        if !u.dead {
+        if !u.dead && fraction && max_life - dl > 0.0 {
+            u.life = (u.life * max_life / (max_life - dl)).min(u.max_life);
+            u.mana = (u.mana + dm.max(0.0)).clamp(0.0, u.max_mana);
+        } else if !u.dead {
             u.life = (u.life + dl.max(0.0)).min(u.max_life);
             u.mana = (u.mana + dm.max(0.0)).clamp(0.0, u.max_mana);
         }

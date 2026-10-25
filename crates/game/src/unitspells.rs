@@ -195,9 +195,12 @@ impl World {
                 }
             }
             // Rejuvenation: DataA life and DataB mana over Dur.
+            // Rejuvenation: DataA life over Dur, once a second from a second after
+            // (measured: chunks of about 34 at 1.7 seconds after the order, 1.0 after the
+            // cast, and each second after), and DataB mana.
             "Arej" => {
                 let t = dur.max(0.01);
-                self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, life_regen: d(self, "DataA") / t, mana_regen: d(self, "DataB") / t, ethereal_heal: true, ..Default::default() });
+                self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: -d(self, "DataA") / t, dps_every: 1.0, dps_next: 1.0, mana_regen: d(self, "DataB") / t, ethereal_heal: true, ..Default::default() });
             }
             // Taunt: enemies within Area (at most DataC when set) attack the caster.
             "Atau" => {

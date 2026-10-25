@@ -208,6 +208,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         // The upkeep rates are the upkeep level's taxes (measured: 30 at 55 food used).
         GetPlayerState => |w, _, a| {
             let Some(p) = player_arg(w, a, 0) else { return int(0) };
+            // Food counts units as they come and go (measured: five footmen made just
+            // before read 10 more food used, and the upkeep they bring).
+            use crate::types::player_state as ps;
+            if matches!(a.h(1) as i32, ps::RESOURCE_FOOD_USED | ps::RESOURCE_FOOD_CAP | ps::GOLD_UPKEEP_RATE | ps::LUMBER_UPKEEP_RATE) {
+                w.update_food();
+            }
             int(match a.h(1) as i32 {
                 crate::types::player_state::GOLD_UPKEEP_RATE => w.upkeep_tax(p).0,
                 crate::types::player_state::LUMBER_UPKEEP_RATE => w.upkeep_tax(p).1,

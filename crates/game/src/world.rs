@@ -496,6 +496,9 @@ pub struct World {
     /// The last Spirit Link group made.
     #[serde(default)]
     pub next_link_group: u32,
+    /// The order timers' runs were started in.
+    #[serde(default)]
+    pub timer_seq: u64,
     /// Mana Flare: when each (flaring unit, caster) pair may next strike.
     #[serde(skip)]
     pub flare_cooldowns: crate::collections::HashMap<(u32, u32), f32>,
@@ -772,6 +775,7 @@ impl World {
             timed_removals: Vec::new(),
             timed_activations: Vec::new(),
             next_link_group: 0,
+            timer_seq: 0,
             flare_cooldowns: Default::default(),
             swarms: Vec::new(),
             detect_areas: Vec::new(),
@@ -1530,6 +1534,7 @@ impl World {
                 // 2 seconds with another reads 2.00 of the other's as it expires; ours
                 // read 2.02, 2 less a hundred steps of 0.02 leaving a millionth).
                 if t.remaining <= 1e-4 {
+                    expired.push((t.remaining, t.seq, id, t.callback));
                     if t.periodic && t.timeout > 0.0 {
                         // A resumed run done, the timer goes on by its timeout.
                         t.period = t.timeout;
@@ -1538,11 +1543,24 @@ impl World {
                         t.running = false;
                         t.remaining = 0.0;
                     }
-                    expired.push((id, t.callback));
                 }
             }
         }
-        for (timer, callback) in expired {
+        // They go off in the order they expire, those expiring together in the order
+        // their runs began (measured: two periodic timers started for 0.5 seconds, one
+        // after the other, go off in that order each time); a periodic one's next run
+        // begins as it goes off.
+        expired.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        for &(_, _, id, _) in &expired {
+            self.timer_seq += 1;
+            let seq = self.timer_seq;
+            if let Some(Obj::Timer(t)) = self.handles.get_mut(id) {
+                if t.running {
+                    t.seq = seq;
+                }
+            }
+        }
+        for (_, _, timer, callback) in expired {
             let ctx = EventCtx { timer, ..Default::default() };
             if let Some(f) = callback {
                 let t = vm.new_thread(f, &[], false);

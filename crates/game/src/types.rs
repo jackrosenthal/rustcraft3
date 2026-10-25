@@ -904,6 +904,9 @@ pub struct Timer {
     /// stale or not (FUN_6f232500, FUN_6f233190).
     #[serde(default)]
     pub saved: f32,
+    /// When its run was started, in order among timers' runs.
+    #[serde(default)]
+    pub seq: u64,
 }
 
 impl Timer {

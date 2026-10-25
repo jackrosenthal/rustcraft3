@@ -42,7 +42,10 @@ fn player_unit_event(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
 
 fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
     let (timeout, periodic, cb) = (a.r(1), a.b(2), a.code(3));
+    w.timer_seq += 1;
+    let seq = w.timer_seq;
     if let Some(t) = w.timer_mut(a.h(0)) {
+        t.seq = seq;
         t.timeout = timeout;
         t.period = timeout;
         t.remaining = timeout;
@@ -266,7 +269,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         // for that (FUN_6f245ac0), whether it was paused or had fired since.
         PauseTimer => |w, _, a| { if let Some(t) = w.timer_mut(a.h(0)) { t.saved = t.remaining_now(); t.running = false; } none() },
         ResumeTimer => |w, _, a| {
+            w.timer_seq += 1;
+            let seq = w.timer_seq;
             if let Some(t) = w.timer_mut(a.h(0)).filter(|t| !t.running) {
+                t.seq = seq;
                 t.period = t.saved;
                 t.remaining = t.saved;
                 t.running = true;

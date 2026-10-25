@@ -29,8 +29,17 @@ pub fn default_buff(code: &str) -> Option<&'static str> {
 }
 
 /// The orders built into ability classes (each class's vf194, its code its vf7) whose
-/// abilities have no order string in their func data.
+/// abilities have no order string in their func data, or one the class does not answer
+/// to (measured: a Dread Lord's Inferno is refused as "inferno", its func data's, and
+/// taken as "dreadlordinferno", its class's).
 const BUILT_IN_ORDERS: &[(&str, i32)] = &[
+    ("AUin", 852224), // CAbilityDreadLordInferno
+    ("ACad", 852246), // CAbilityCreepAnimateDead
+    ("ACbf", 852560), // CAbilityBreathOfFrost
+    ("AIsh", 852573), // CAbilitySpiritTroll
+    ("Aabs", 852529), // CAbilityAbsorb
+    ("Aave", 852531), // CAbilityAvengerForm
+    ("Alam", 852201), // CAbilitySacrificialLamb
     ("ACrn", 852251), // CAbilityCreepReincarnation
     ("AEev", 852172), // CAbilityEvasion
     ("AHca", 852244), // CAbilityColdArrows
@@ -219,6 +228,10 @@ impl World {
             if !base.is_empty() && base != "-" && base != "_" {
                 return base;
             }
+        }
+        // A class's own order stands for its func data's.
+        if let Some(name) = intrinsic_order(&o.str("code")).and_then(crate::natives::basic::order_name) {
+            return name.to_string();
         }
         o.str("Order")
     }

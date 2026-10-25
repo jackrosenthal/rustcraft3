@@ -326,6 +326,9 @@ pub struct World {
     pub water_deforms: bool,
     /// Entangle Gold Mine casts finishing: time, caster, and mine.
     pub pending_entangles: Vec<(f32, u32, u32)>,
+    /// Infernals landing: time, caster, ability, level, point, and the Infernal.
+    #[serde(default)]
+    pub pending_infernos: Vec<(f32, u32, crate::objects::Id, u32, f32, f32, u32)>,
     /// How far sight has gone from day's to night's: 0 by day, 1 by night, between for
     /// three seconds after the change.
     #[serde(default)]
@@ -698,6 +701,7 @@ impl World {
             deform_generation: 0,
             water_deforms: false,
             pending_entangles: Vec::new(),
+            pending_infernos: Vec::new(),
             impales: Vec::new(),
             night_sight: 0.0,
             incinerations: Vec::new(),
@@ -1449,6 +1453,14 @@ impl World {
         self.pending_entangles.retain(|e| e.0 > now);
         for (_, caster, mine) in due {
             self.entangle(caster, mine);
+        }
+        let landing: Vec<_> = self.pending_infernos.iter().copied().filter(|e| e.0 <= now).collect();
+        self.pending_infernos.retain(|e| e.0 > now);
+        for (_, caster, a, lvl, x, y, infernal) in landing {
+            if let Some(u) = self.unit_mut(infernal) {
+                u.paused = false;
+            }
+            self.inferno_impact(vm, caster, a, lvl, x, y);
         }
         self.update_impales(vm);
         // TimerDialogSetRealTimeRemaining counts down in the dialog itself.

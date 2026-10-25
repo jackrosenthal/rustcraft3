@@ -48,6 +48,17 @@ impl World {
     /// Corpses (dead non-hero, non-structure units) near a point, nearest first.
     /// Whether a dead unit's body is a corpse yet: its death (UnitData death) has played,
     /// or it was made a corpse (CreateCorpse, a Graveyard's).
+    /// An Infernal lands (Inferno): DataA to those within Area, stunned for its duration.
+    pub(crate) fn inferno_impact(&mut self, vm: &mut Vm, h: u32, a: Id, lvl: u32, x: f32, y: f32) {
+        let owner = self.unit(h).map_or(PLAYER_NEUTRAL_AGGRESSIVE, |u| u.owner);
+        let (area, buff) = (self.d(a, "Area", lvl), self.buff_of(a, lvl));
+        for t in self.enemies_in(owner, x, y, area) {
+            self.spell_damage(vm, h, t, self.d(a, "DataA", lvl));
+            let d = self.duration_for(a, lvl, t);
+            self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: d, stun: true, ..Default::default() });
+        }
+    }
+
     pub fn corpse_ready(&self, u: &Unit) -> bool {
         u.death_time == 0.0 || self.time - u.death_time >= self.objects.units.get(u.type_id).map_or(0.0, |o| o.real("death"))
     }
@@ -408,15 +419,21 @@ impl World {
                 true
             }
             // Inferno: damage and a stun where it lands, then the infernal.
+            // Inferno: the Infernal comes at once and lands DataC later, striking those
+            // within Area for DataA and stunning them (measured: summoned 0.30 seconds after
+            // the order, a footman beside struck for 50 at 1.30).
             "AUin" => {
-                for t in self.enemies_in(owner, x, y, area) {
-                    self.spell_damage(vm, h, t, self.d(a, "DataA", lvl));
-                    let d = self.duration_for(a, lvl, t);
-                    self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: d, stun: true, ..Default::default() });
-                }
+                let delay = self.d(a, "DataC", lvl);
                 let unit = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
                 let life = self.d(a, "DataB", lvl);
-                self.summon(h, owner, unit, 1, x, y, life);
+                // It does nothing until it lands (measured: its burning first strikes at
+                // 1.31 seconds).
+                for infernal in self.summon(h, owner, unit, 1, x, y, life) {
+                    if let Some(u) = self.unit_mut(infernal) {
+                        u.paused = true;
+                    }
+                    self.pending_infernos.push((self.time + delay, h, a, lvl, x, y, infernal));
+                }
                 true
             }
             // Corpses: Animate Dead raises any, Resurrection friendly ones.

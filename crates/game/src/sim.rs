@@ -2835,19 +2835,22 @@ impl World {
                 i += 1;
                 continue;
             }
+            // A missile at a unit lands on reaching its edge (measured: an archer's
+            // arrow, at 900, strikes a footman 500 away 0.51 seconds after leaving, its
+            // 469 to the footman's collision of 31).
             let target = match self.handles.get(m.target) {
-                Some(Obj::Unit(t)) => Some((t.x, t.y, t.dead)),
-                _ if m.target == 0 => m.impact.map(|(x, y)| (x, y, false)),
+                Some(Obj::Unit(t)) => Some((t.x, t.y, t.collision)),
+                _ if m.target == 0 => m.impact.map(|(x, y)| (x, y, 0.0)),
                 _ => None,
             };
-            let Some((tx, ty, _)) = target else {
+            let Some((tx, ty, edge)) = target else {
                 self.missiles.swap_remove(i);
                 continue;
             };
             let (dx, dy) = (tx - m.x, ty - m.y);
             let d = (dx * dx + dy * dy).sqrt();
             let step = m.speed * dt;
-            if d <= step {
+            if d <= step + edge {
                 let m = self.missiles.swap_remove(i);
                 hits.push(m);
                 continue;

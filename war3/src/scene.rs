@@ -4863,6 +4863,13 @@ impl Scene {
             }
             draws.extend(tag_draws);
             draws.extend(hud.draws(&assets.frames));
+            // The unit portrait goes under the console, whose arch masks it (as the
+            // original draws it: the footman's plume stays within the arch).
+            if !hud.cinematic {
+                let rect = hud.portrait_rect();
+                self.render_portrait(device, queue, encoder, color, depth, size, rect, false);
+            }
+            let Some(hud) = self.hud.as_mut() else { return };
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("interface"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -4886,8 +4893,8 @@ impl Scene {
                     self.render_portrait(device, queue, encoder, color, depth, size, r, true);
                 }
             } else {
+                let _ = rect;
                 self.render_time_indicator(device, queue, encoder, color, depth, assets, width, root, tod);
-                self.render_portrait(device, queue, encoder, color, depth, size, rect, false);
             }
         }
     }
@@ -5071,11 +5078,13 @@ impl Scene {
         let half_h = if cine { (cam.fov / 2.0).tan() } else { (cam.fov / 2.0).tan() / (1.0 + aspect * aspect).sqrt() };
         let proj = Mat4::perspective_rh(2.0 * half_h.atan(), aspect, cam.near_clip.max(1.0), cam.far_clip.max(100.0));
         let mut globals = default_globals(proj * view, eye);
-        // Lit from the camera's way (compared against the original: faces and walls
-        // toward the viewer show bright, where a light from above left the Town Hall's
-        // clock tower dim).
+        // Lit from the camera's way and its left (compared against the original: faces
+        // and walls toward the viewer show bright, where a light from above left the Town
+        // Hall's clock tower dim; a footman's helmet is brighter on the viewer's left).
         let look = (target - eye).normalize_or_zero();
-        globals.light_dir = [look.x, look.y, look.z, 0.0];
+        let right = look.cross(Vec3::Z).normalize_or_zero();
+        let light = (look * 0.5 + right).normalize_or_zero();
+        globals.light_dir = [light.x, light.y, light.z, 0.0];
         globals.ambient = [0.4, 0.4, 0.4, 1.0];
         let rot = Quat::IDENTITY;
         v.inst.transform = Mat4::IDENTITY;

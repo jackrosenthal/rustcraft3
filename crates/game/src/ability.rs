@@ -874,7 +874,8 @@ impl World {
         }
         let target_size = if target != 0 { self.widget_size(target) } else { 0.0 };
         let Some(u) = self.unit(h) else { return };
-        if u.casting.is_none() {
+        let began = u.casting.is_none();
+        if began {
             // Range runs between the caster's and the target unit's edges.
             let d = (goal.0 - u.x).hypot(goal.1 - u.y) - u.collision - target_size;
             // One without a target goes to a unit given it all the same (Cannibalize's
@@ -909,9 +910,9 @@ impl World {
             let ctx = EventCtx { target_unit: target, spell_ability: crate::objects::id_to_int(a), order_x: goal.0, order_y: goal.1, ..Default::default() };
             self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_SPELL_CHANNEL, EVENT_UNIT_SPELL_CHANNEL, ctx.clone());
             self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_SPELL_CAST, EVENT_UNIT_SPELL_CAST, ctx);
-            // The step it begins counts toward its cast point (measured: a Tauren
-            // Chieftain's War Stomp, cast point 0.47, stuns 0.48 seconds after the order;
-            // Wind Walk's buff shows 0.02 after).
+            // It goes off its cast point after it begins, in that step if that is none
+            // (measured: a Mountain King's Storm Bolt, cast point 0.4, begins as ordered
+            // and goes off 0.40 seconds after; Wind Walk's buff shows 0.02 after).
         }
         let Some(u) = self.unit(h) else { return };
         let Some((elapsed, fired)) = u.casting else { return };
@@ -927,7 +928,7 @@ impl World {
             }
         }
         let Some(u) = self.unit(h) else { return };
-        let elapsed = elapsed + dt;
+        let elapsed = if began { elapsed } else { elapsed + dt };
         let o = self.objects.units.get(u.type_id);
         let (castpt, backsw) = o.map_or((0.3, 0.5), |o| (o.real("castpt"), o.real("castbsw")));
         // Nor does it wait for the holder's cast point.
@@ -943,7 +944,8 @@ impl World {
         // point).
         let instant = matches!(self.ability_code(a).as_str(), "AOww" | "AEim" | "AOwk");
         let (castpt, backsw) = if instant { (0.0, 0.0) } else { (castpt, backsw) };
-        if !fired && elapsed >= castpt {
+        // Steps of f32 fall short of whole times (twenty 0.02s make 0.39999998).
+        if !fired && elapsed >= castpt - 1e-4 {
             // thereisnospoon and thedudeabides.
             let cost = if self.cheat(crate::cheats::flag::MANA) { 0.0 } else { self.data(a, "Cost", lvl) };
             let cool = if self.cheat(crate::cheats::flag::COOLDOWN) { 0.0 } else { self.data(a, "Cool", lvl) };
@@ -986,7 +988,7 @@ impl World {
             u.casting = Some((elapsed, fired));
             return;
         }
-        if fired && elapsed >= castpt + backsw {
+        if fired && elapsed >= castpt + backsw - 1e-4 {
             u.casting = None;
             // An autocast resumes what it interrupted.
             u.action = u.extra.resume.take().unwrap_or(Action::Idle);

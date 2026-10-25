@@ -978,6 +978,14 @@ impl World {
             return;
         }
         let code = self.ability_code(a);
+        // A spell aimed at an enemy unit touches it with nothing first (measured: Sleep,
+        // Entangling Roots, Slow, Faerie Fire, Hex, Polymorph, Curse, and Frost Nova each
+        // give their target a damage event of 0 as they take hold; a missile's, as Storm
+        // Bolt's and Death Coil's, when it lands; Chain Lightning gives none).
+        let enemy_target = target != 0 && self.unit(target).is_some_and(|t| self.unit(h).is_some_and(|c| !crate::natives::players::is_ally(self, t.owner, c.owner)));
+        if enemy_target && !matches!(code.as_str(), "AOcl" | "AHtb" | "AUdc") {
+            self.spell_damage(vm, h, target, 0.0);
+        }
         let owner = self.unit(h).map_or(0, |u| u.owner);
         let dur = if self.hero_duration(target) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
         let buff_id = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("BuffID", lvl)).unwrap_or_default().trim());
@@ -1058,13 +1066,37 @@ impl World {
             // Heal: restores DataA hit points.
             "Ahea" | "Anhe" => self.magic_heal(target, self.data(a, "DataA", lvl)),
             // Death Coil: heals undead allies (DataA) or damages living enemies (half).
+            // Death Coil: a missile (Missilespeed) that heals an undead target DataA or
+            // harms another half that as it lands (measured: 100 to a footman 0.67
+            // seconds after the order, with its touch).
             "AUdc" => {
-                let amount = self.data(a, "DataA", lvl);
-                if self.is_undead(target) {
-                    self.magic_heal(target, amount);
-                } else {
-                    self.spell_damage(vm, h, target, amount / 2.0);
-                }
+                let model = self.profile_art(a, "Missileart");
+                let speed = self.profile_art(a, "Missilespeed").parse().unwrap_or(1100.0);
+                let src = self.unit(h).unwrap();
+                let (sx, sy) = (src.x, src.y);
+                let z = self.ground_z(sx, sy) + 60.0;
+                self.missiles.push(crate::sim::Missile {
+                    id: 0,
+                    source: h,
+                    target,
+                    model,
+                    x: sx,
+                    y: sy,
+                    z,
+                    speed,
+                    arc: 0.0,
+                    damage: self.data(a, "DataA", lvl),
+                    attack_type: String::new(),
+                    start: (sx, sy),
+                    spell: Some((a, lvl, 0.0, [0; 4])),
+                    weapon: None,
+                    impact: None,
+                    bounces: 0,
+                    hit: Vec::new(),
+                    stampede: None,
+                    rock: None,
+                    reflected: false,
+                });
             }
             // Frost Nova: target damage (DataB), area damage (DataA), and a slow.
             // Frost Nova: a touch of nothing on the target, then DataA to each enemy in
@@ -1072,7 +1104,6 @@ impl World {
             // read 0, then 50 with its neighbor's, then 100).
             "AUfn" => {
                 let (tx, ty) = self.widget_pos(target).unwrap_or((x, y));
-                self.spell_damage(vm, h, target, 0.0);
                 for t in self.enemies_in(owner, tx, ty, area) {
                     self.spell_damage(vm, h, t, self.data(a, "DataA", lvl));
                     let d = if self.hero_duration(t) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };

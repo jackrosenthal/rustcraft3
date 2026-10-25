@@ -2582,6 +2582,19 @@ impl World {
         for m in hits {
             match m.spell {
                 Some((a, lvl, stun, buff)) => {
+                    // The touch of a spell aimed at an enemy, as it lands.
+                    let enemy = self.unit(m.target).is_some_and(|t| self.unit(m.source).is_some_and(|c| !is_ally(self, t.owner, c.owner)));
+                    if enemy {
+                        self.spell_damage(vm, m.source, m.target, 0.0);
+                    }
+                    if self.ability_code(a) == "AUdc" {
+                        if self.is_undead(m.target) {
+                            self.magic_heal(m.target, m.damage);
+                        } else {
+                            self.spell_damage(vm, m.source, m.target, m.damage / 2.0);
+                        }
+                        continue;
+                    }
                     self.spell_damage(vm, m.source, m.target, m.damage);
                     if stun > 0.0 {
                         self.apply_buff(m.target, Buff { id: buff, ability: a, level: lvl, caster: m.source, remaining: stun, stun: true, ..Default::default() });

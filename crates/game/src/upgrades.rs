@@ -230,7 +230,8 @@ impl World {
     /// As apply_upgrades; with `fraction`, life keeps its fraction of the maximum, as
     /// research and items change it (measured: a Druid of the Claw at 100 life when its
     /// adept training is researched has 117; a Paladin at 100 of 650 given a Periapt of
-    /// Vitality has 123 of 800).  A hero's level keeps the life it has lost instead
+    /// Vitality has 123 of 800, exactly, and 100 of 650 again when it drops the periapt:
+    /// rounded to whole life).  A hero's level keeps the life it has lost instead
     /// (measured: 100 of 650 to 225 of 775 at level 3).
     pub fn apply_upgrades_keeping(&mut self, h: u32, fraction: bool) {
         let Some(u) = self.unit(h) else { return };
@@ -239,7 +240,7 @@ impl World {
             self.apply_hero_stats(h, false);
             if let (true, Some(f)) = (fraction, before) {
                 if let Some(u) = self.unit_mut(h).filter(|u| !u.dead) {
-                    u.life = (u.max_life * f).min(u.max_life);
+                    u.life = (u.max_life * f).round().clamp(1.0, u.max_life);
                 }
             }
             return;
@@ -262,7 +263,7 @@ impl World {
         u.max_life = max_life;
         u.max_mana = max_mana;
         if !u.dead && fraction && max_life - dl > 0.0 {
-            u.life = (u.life * max_life / (max_life - dl)).min(u.max_life);
+            u.life = (u.life * max_life / (max_life - dl)).round().clamp(1.0, u.max_life);
             u.mana = (u.mana + dm.max(0.0)).clamp(0.0, u.max_mana);
         } else if !u.dead {
             u.life = (u.life + dl.max(0.0)).min(u.max_life);

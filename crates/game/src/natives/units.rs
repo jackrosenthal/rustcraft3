@@ -408,6 +408,37 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     }
 }
 
+/// A group entry left by a unit a script removed: skipped by everything but
+/// FirstOfGroup, which reads null while it is first.
+pub const GROUP_GHOST: u32 = u32::MAX;
+
+/// RemoveUnit: the unit goes at the end of the moment (measured: it still counts in
+/// its groups and has its type straight after), leaving its place in each group as a
+/// ghost (measured: the group then counts and enumerates without it, yet FirstOfGroup
+/// reads null while its place is first, even after other units are added).
+pub fn script_remove_unit(w: &mut World, h: u32) {
+    if w.unit(h).is_some() && !w.pending_removals.contains(&h) {
+        w.pending_removals.push(h);
+    }
+}
+
+/// The units RemoveUnit asked for, gone now.
+pub fn finish_removals(w: &mut World) {
+    for h in std::mem::take(&mut w.pending_removals) {
+        if w.unit(h).is_none() {
+            continue;
+        }
+        for id in w.handles.ids() {
+            if let Some(Obj::Group(g)) = w.handles.get_mut(id) {
+                for u in g.units.iter_mut().filter(|u| **u == h) {
+                    *u = GROUP_GHOST;
+                }
+            }
+        }
+        remove_unit(w, h);
+    }
+}
+
 pub fn remove_unit(w: &mut World, h: u32) {
     w.detach_ability_art(h);
     if let Some(cells) = w.unit_mut(h).map(|u| std::mem::take(&mut u.pathing_cells)) {
@@ -713,7 +744,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             handle(h)
         },
         KillUnit => |w, vm, a| { kill_unit(w, vm, a.h(0), 0); none() },
-        RemoveUnit => |w, _, a| { remove_unit(w, a.h(0)); none() },
+        RemoveUnit => |w, _, a| { script_remove_unit(w, a.h(0)); none() },
         ShowUnit => |w, _, a| { let v = a.b(1); with_unit(w, a, |u| u.hidden = !v) },
         IsUnitHidden => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| u.hidden)),
         SetUnitState => |w, vm, a| {
@@ -1231,7 +1262,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GroupClear => |w, _, a| { if let Some(g) = w.group_mut(a.h(0)) { g.units.clear(); } none() },
         IsUnitInGroup => |w, _, a| boolean(w.group(a.h(1)).is_some_and(|g| g.units.contains(&a.h(0)))),
         FirstOfGroup => |w, _, a| {
-            let first = w.group(a.h(0)).and_then(|g| g.units.iter().copied().find(|&u| w.unit(u).is_some()));
+            let first = w.group(a.h(0)).and_then(|g| {
+                if g.units.first() == Some(&GROUP_GHOST) {
+                    return None;
+                }
+                g.units.iter().copied().find(|&u| w.unit(u).is_some())
+            });
             handle(first.unwrap_or(0))
         },
         ForGroup => for_group,

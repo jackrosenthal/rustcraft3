@@ -381,6 +381,9 @@ pub struct World {
     /// target searches look (a cache, rebuilt from the units, so not saved).
     #[serde(skip)]
     pub unit_grid: std::cell::RefCell<(f32, crate::HashMap<(i32, i32), Vec<u32>>)>,
+    /// Units RemoveUnit asked for, gone at the end of the moment.
+    #[serde(default)]
+    pub pending_removals: Vec<u32>,
     /// Game cache handles made by InitGameCache for a name already open: each stands
     /// for the first one's contents.
     #[serde(default)]
@@ -677,6 +680,7 @@ impl World {
             unit_grid: std::cell::RefCell::new((f32::NAN, Default::default())),
             weapon_cache: Default::default(),
             cache_alias: Default::default(),
+            pending_removals: Vec::new(),
             prof_cells: Default::default(),
             ai_walks: Default::default(),
             lightning_data: None,
@@ -1170,6 +1174,7 @@ impl World {
 
     pub fn tick(&mut self, vm: &mut Vm, dt: f32) {
         self.tech_cache.borrow_mut().clear();
+        crate::natives::units::finish_removals(self);
         // W3PROF: time per subsystem, printed every 60 game seconds.
         macro_rules! prof {
             ($w:expr, $name:expr, $e:expr) => {{

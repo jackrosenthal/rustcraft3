@@ -452,6 +452,22 @@ impl World {
                 for c in corpses {
                     let Some(u) = self.unit(c) else { continue };
                     let (t, px, py, f) = (u.type_id, u.x, u.y, u.facing);
+                    // Resurrection brings the unit itself back, whole (measured: three
+                    // footmen killed come back as themselves, at 420 of 420).
+                    if code == "AHre" {
+                        if let Some(u) = self.unit_mut(c) {
+                            u.dead = false;
+                            u.extra.decaying = false;
+                            u.life = u.max_life;
+                            u.action = Action::Idle;
+                            u.anim = "stand".into();
+                            u.anim_serial = u.anim_serial.wrapping_add(1);
+                            u.death_time = 0.0;
+                        }
+                        self.update_food();
+                        self.art_at(a, "TargetArt", px, py);
+                        continue;
+                    }
                     crate::natives::units::remove_unit(self, c);
                     let r = crate::natives::units::create_unit(self, owner, t, px, py, f);
                     if let Some(ru) = self.unit_mut(r) {

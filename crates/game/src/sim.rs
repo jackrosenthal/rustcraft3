@@ -828,7 +828,7 @@ impl World {
         };
         let ahead = len.min(r * 2.0 + 64.0);
         let mut block: Option<(f32, f32, f32, f32)> = None;
-        for &o in &self.unit_order {
+        for o in self.units_near(ux, uy, ahead + r + 448.0) {
             if o == h || o == aim {
                 continue;
             }
@@ -944,6 +944,24 @@ impl World {
         false
     }
 
+    /// Living units in the 512 squares within `reach` of a point, in a fixed order, from
+    /// a grid rebuilt once a game moment.
+    pub(crate) fn units_near(&self, x: f32, y: f32, reach: f32) -> Vec<u32> {
+        if self.unit_grid.borrow().0 != self.time {
+            let mut grid: crate::HashMap<(i32, i32), Vec<u32>> = Default::default();
+            for &t in &self.unit_order {
+                if let Some(tu) = self.unit(t).filter(|tu| !tu.dead) {
+                    grid.entry(((tu.x / 512.0).floor() as i32, (tu.y / 512.0).floor() as i32)).or_default().push(t);
+                }
+            }
+            *self.unit_grid.borrow_mut() = (self.time, grid);
+        }
+        let (cx0, cx1) = (((x - reach) / 512.0).floor() as i32, ((x + reach) / 512.0).floor() as i32);
+        let (cy0, cy1) = (((y - reach) / 512.0).floor() as i32, ((y + reach) / 512.0).floor() as i32);
+        let grid = self.unit_grid.borrow();
+        (cy0..=cy1).flat_map(|cy| (cx0..=cx1).map(move |cx| (cx, cy))).filter_map(|c| grid.1.get(&c)).flatten().copied().collect()
+    }
+
     /// An enemy a unit would acquire now, within its acquisition range.
     pub(crate) fn acquirable_target(&self, h: u32) -> Option<u32> {
         let range = self.unit(h)?.acquire_range;
@@ -971,21 +989,7 @@ impl World {
         let mut best: Option<(f32, u32, bool)> = None;
         // Only the squares within reach (the largest structure's half-width and a
         // moment's walk to spare).
-        if self.unit_grid.borrow().0 != self.time {
-            let mut grid: crate::HashMap<(i32, i32), Vec<u32>> = Default::default();
-            for &t in &self.unit_order {
-                if let Some(tu) = self.unit(t).filter(|tu| !tu.dead) {
-                    grid.entry(((tu.x / 512.0).floor() as i32, (tu.y / 512.0).floor() as i32)).or_default().push(t);
-                }
-            }
-            *self.unit_grid.borrow_mut() = (self.time, grid);
-        }
-        let reach = range + u.collision + 448.0;
-        let (cx0, cx1) = (((u.x - reach) / 512.0).floor() as i32, ((u.x + reach) / 512.0).floor() as i32);
-        let (cy0, cy1) = (((u.y - reach) / 512.0).floor() as i32, ((u.y + reach) / 512.0).floor() as i32);
-        let grid = self.unit_grid.borrow();
-        let near: Vec<u32> = (cy0..=cy1).flat_map(|cy| (cx0..=cx1).map(move |cx| (cx, cy))).filter_map(|c| grid.1.get(&c)).flatten().copied().filter(|&t| t != h && self.unit(t).is_some_and(|tu| !is_ally(self, u.owner, tu.owner))).collect();
-        drop(grid);
+        let near: Vec<u32> = self.units_near(u.x, u.y, range + u.collision + 448.0).into_iter().filter(|&t| t != h && self.unit(t).is_some_and(|tu| !is_ally(self, u.owner, tu.owner))).collect();
         if near.is_empty() {
             return None;
         }

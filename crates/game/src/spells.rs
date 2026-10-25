@@ -450,26 +450,22 @@ impl World {
                 let invulnerable = self.d(a, "DataB", lvl) != 0.0;
                 let buff = self.buff_of(a, lvl);
                 for c in corpses {
-                    let Some(u) = self.unit(c) else { continue };
-                    let (t, px, py, f) = (u.type_id, u.x, u.y, u.facing);
-                    // Resurrection brings the unit itself back, whole (measured: three
-                    // footmen killed come back as themselves, at 420 of 420).
-                    if code == "AHre" {
-                        if let Some(u) = self.unit_mut(c) {
-                            u.dead = false;
-                            u.extra.decaying = false;
-                            u.life = u.max_life;
-                            u.action = Action::Idle;
-                            u.anim = "stand".into();
-                            u.anim_serial = u.anim_serial.wrapping_add(1);
-                            u.death_time = 0.0;
-                        }
-                        self.update_food();
-                        self.art_at(a, "TargetArt", px, py);
-                        continue;
+                    let Some((px, py)) = self.unit(c).map(|u| (u.x, u.y)) else { continue };
+                    // The unit itself comes back, whole, the caster's (measured: three
+                    // footmen killed come back as themselves at 420 of 420, Resurrected
+                    // or Animated, the Animated now the Death Knight's player's).
+                    let r = c;
+                    if let Some(u) = self.unit_mut(c) {
+                        u.dead = false;
+                        u.extra.decaying = false;
+                        u.owner = owner;
+                        u.life = u.max_life;
+                        u.action = Action::Idle;
+                        u.anim = "stand".into();
+                        u.anim_serial = u.anim_serial.wrapping_add(1);
+                        u.death_time = 0.0;
                     }
-                    crate::natives::units::remove_unit(self, c);
-                    let r = crate::natives::units::create_unit(self, owner, t, px, py, f);
+                    self.update_food();
                     if let Some(ru) = self.unit_mut(r) {
                         if life > 0.0 {
                             ru.timed_life = Some(life);

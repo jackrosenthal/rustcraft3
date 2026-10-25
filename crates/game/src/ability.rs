@@ -406,6 +406,7 @@ impl World {
         let mut expired_effects = Vec::new();
         let mut dots = Vec::new();
         let mut conversions = Vec::new();
+        let mut released: Vec<(u32, u32, Id, bool)> = Vec::new();
         let ethereal_heal = self.misc_f32("EtherealHealBonus", 1.66);
         for &h in &units {
             let heal_factor = if self.is_ethereal(h) { ethereal_heal } else { 1.0 };
@@ -444,9 +445,10 @@ impl World {
                 u.life = (u.life + (b.life_regen * f + b.life_regen_pct * u.max_life) * dt).min(u.max_life);
             }
             let mut lost_life = 0.0;
-            let ended: Vec<(u32, Id, u32)> = u.buffs.iter().filter(|b| b.remaining <= 0.0).map(|b| (b.caster, b.ability, b.level)).collect();
-            for (caster, a, lvl) in ended {
+            let ended: Vec<(u32, Id, u32, bool)> = u.buffs.iter().filter(|b| b.remaining <= 0.0).map(|b| (b.caster, b.ability, b.level, b.stun)).collect();
+            for (caster, a, lvl, stun) in ended {
                 conversions.push((h, caster, a, lvl));
+                released.push((h, caster, a, stun));
             }
             u.buffs.retain(|b| {
                 if b.remaining <= 0.0 {
@@ -492,6 +494,14 @@ impl World {
             }
             use crate::event_ids::*;
             self.queue_unit_event(h, EVENT_PLAYER_UNIT_SUMMON, EVENT_UNIT_SUMMON, EventCtx { other_unit: caster, ..Default::default() });
+        }
+        // A stun or Entangling Roots running out touches the unit with a hit of nothing
+        // (measured: a footman stunned by Storm Bolt for 5 seconds shows a damage event of
+        // 0 at their end, one rooted for 9 at theirs; one ensnared none).
+        for (h, caster, a, stun) in released {
+            if (stun || self.ability_code(a) == "AEer") && self.unit(h).is_some_and(|u| !u.dead) {
+                self.spell_damage(vm, caster, h, 0.0);
+            }
         }
         for (src, h, amount) in dots {
             if amount >= 0.0 {

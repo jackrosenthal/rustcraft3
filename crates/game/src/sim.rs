@@ -1339,7 +1339,10 @@ impl World {
             // Attack swing in progress.
             if let Some(mut s) = self.unit(h).and_then(|u| u.swing.clone()) {
                 let wp = wp.clone().unwrap_or_default();
-                s.elapsed += dt;
+                // A swing plays at the unit's attack speed (measured: a Blademaster of
+                // agility 32, speed 1.64, strikes 0.20 seconds after its swing begins, its
+                // damage point 0.33).
+                s.elapsed += dt * self.attack_speed(h);
                 if !s.done && s.elapsed >= wp.damage_point && s.ground.is_some() {
                     s.done = true;
                     let (owner, tid) = self.unit(h).map_or((0, [0; 4]), |u| (u.owner, u.type_id));

@@ -2521,6 +2521,16 @@ impl World {
         if is_ally(self, t.owner, s.owner) || s.dead {
             return;
         }
+        // Nor at an attacker it cannot hit (measured: an ogre struck by an invulnerable
+        // footman takes no attack order; ours stood forever ordered to attack it).
+        let flying = self.move_kind(source) == crate::pathing::Move::Fly;
+        let hits = unit_weapons(self, t).iter().any(|(_, wp)| {
+            let wants = |k: &str| wp.targets.split(',').any(|x| x.trim() == k);
+            if flying { wants("air") } else if s.is_building { wants("structure") || wants("ground") } else { wants("ground") }
+        });
+        if !hits || self.unit_invulnerable(s) {
+            return;
+        }
         let (sx, sy) = (s.x, s.y);
         let u = self.unit_mut(target).unwrap();
         u.action = Action::Attack { target: source };

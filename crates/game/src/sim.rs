@@ -1452,7 +1452,11 @@ impl World {
                     }
                 }
                 let Some(u) = self.unit_mut(h) else { continue };
-                if s.elapsed >= wp.damage_point + wp.backswing {
+                // The backswing gives way to the next attack once the cooldown is up
+                // (measured: a level 6 Blademaster, agility 32, strikes every 1.08 seconds,
+                // its cooldown 1.77 / 1.64, though its damage point and backswing make
+                // 1.17).
+                if s.elapsed >= wp.damage_point + wp.backswing || (s.done && u.cooldown <= 0.0) {
                     u.swing = None;
                     set_anim(u, "stand");
                 } else {

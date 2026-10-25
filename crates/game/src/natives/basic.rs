@@ -2,6 +2,7 @@
 
 use crate::collections::HashMap;
 
+use w3_jass::softfloat as sf;
 use w3_jass::{NativeResult, Value, Vm};
 
 use super::{Args, boolean, handle, int, none, real, reg, string};
@@ -92,17 +93,21 @@ fn save_handle(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
 
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
     reg!(t,
-        Deg2Rad => |_, _, a| real(a.r(0).to_radians()),
-        Rad2Deg => |_, _, a| real(a.r(0).to_degrees()),
-        Sin => |_, _, a| real(a.r(0).sin()),
-        Cos => |_, _, a| real(a.r(0).cos()),
-        Tan => |_, _, a| real(a.r(0).tan()),
+        // The original's own approximations, in its software floats (softfloat.rs;
+        // measured: Sin(1) is 0.841473600 there, SquareRoot(1000) 31.623027776).
+        Deg2Rad => |_, _, a| real(f32::from_bits(sf::mul(a.r(0).to_bits(), 0x3c8e_fa35))),
+        Rad2Deg => |_, _, a| real(f32::from_bits(sf::mul(a.r(0).to_bits(), 0x4265_2ee1))),
+        Sin => |_, _, a| real(f32::from_bits(sf::sin(a.r(0).to_bits()))),
+        Cos => |_, _, a| real(f32::from_bits(sf::cos(a.r(0).to_bits()))),
+        Tan => |_, _, a| real(f32::from_bits(sf::tan(a.r(0).to_bits()))),
         // Outside -1 to 1, 0 (jass_Asin, jass_Acos; measured: Asin(2) and Acos(-2) are 0).
         Asin => |_, _, a| real(if (-1.0..=1.0).contains(&a.r(0)) { a.r(0).asin() } else { 0.0 }),
         Acos => |_, _, a| real(if (-1.0..=1.0).contains(&a.r(0)) { a.r(0).acos() } else { 0.0 }),
-        Atan => |_, _, a| real(a.r(0).atan()),
-        Atan2 => |_, _, a| real(a.r(0).atan2(a.r(1))),
-        SquareRoot => |_, _, a| real(if a.r(0) <= 0.0 { 0.0 } else { a.r(0).sqrt() }),
+        Atan => |_, _, a| real(f32::from_bits(sf::atan(a.r(0).to_bits()))),
+        // Both within 0.001 of 0, 0 (jass_Atan2).
+        Atan2 => |_, _, a| real(if a.r(0).abs() < 0.001 && a.r(1).abs() < 0.001 { 0.0 } else { f32::from_bits(sf::atan2(a.r(0).to_bits(), a.r(1).to_bits())) }),
+        // Below 0.001, 0 (jass_SquareRoot).
+        SquareRoot => |_, _, a| real(if a.r(0) < 0.001 { 0.0 } else { f32::from_bits(sf::sqrt(a.r(0).to_bits())) }),
         // A negative base to a fractional power is taken as its size's (measured:
         // Pow(-8, 0.333) is 1.999 in the original).
         // A base within 0.001 of 0 to a negative power is 0, and anything to a power

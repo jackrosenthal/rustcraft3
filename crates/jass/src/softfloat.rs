@@ -284,6 +284,127 @@ pub fn format(b: u32, width: i32, precision: i32) -> String {
     out
 }
 
+const ONE: u32 = 0x3f80_0000;
+const HALF_PI: u32 = 0x3fc9_0fdb;
+const PI: u32 = 0x4049_0fdb;
+
+/// sin(i/1024 of a right angle) in 31 bits, toward zero (game.dll's table at 0x6fa820c8).
+fn sine_table() -> &'static [i32; 1025] {
+    static T: OnceLock<Box<[i32; 1025]>> = OnceLock::new();
+    T.get_or_init(|| {
+        let mut t = Box::new([0i32; 1025]);
+        for (i, v) in t.iter_mut().enumerate() {
+            *v = ((i as f64 * std::f64::consts::PI / 2048.0).sin() * 2f64.powi(31)).floor().min(i32::MAX as f64) as i32;
+        }
+        t
+    })
+}
+
+/// Sine or cosine (FUN_6f071280, FUN_6f070790): the turn in 2^20 parts, read from the
+/// quarter-wave table between neighbors.
+fn sin_cos(x: u32, cos: bool) -> u32 {
+    let t = sine_table();
+    let n = ftoi(mul(x, 0x4822_f983));
+    let q = ((n >> 18) + cos as i32) & 3;
+    let i = ((n >> 8) & 0x3ff) as usize;
+    let f = (n & 0xff) as u32 * 0x0101_0101;
+    let r = if q & 1 == 0 {
+        let (a, b) = (t[i], t[i + 1]);
+        a.wrapping_add(((b.wrapping_sub(a) as u32 as u64 * f as u64) >> 32) as i32)
+    } else {
+        let (a, c) = (t[1024 - i], t[1023 - i]);
+        a.wrapping_sub(((a.wrapping_sub(c) as u32 as u64 * f as u64) >> 32) as i32)
+    };
+    let r = if q & 2 != 0 { r.wrapping_neg() } else { r };
+    let v = itof(r);
+    if v & 0x7f80_0000 != 0 { v.wrapping_sub(0x0f80_0000) } else { v }
+}
+
+pub fn sin(x: u32) -> u32 {
+    sin_cos(x, false)
+}
+
+pub fn cos(x: u32) -> u32 {
+    sin_cos(x, true)
+}
+
+/// Tangent: the sine over the cosine (FUN_6f071590).
+pub fn tan(x: u32) -> u32 {
+    div(sin(x), cos(x))
+}
+
+/// The integer square root of 32 bits (FUN_6f071530).
+fn isqrt(mut p: u32) -> u32 {
+    let (mut rem, mut root) = (0u32, 0u32);
+    let mut two = 0;
+    for _ in 0..16 {
+        two = root.wrapping_mul(2);
+        rem = rem.wrapping_mul(4) | (p >> 30);
+        p <<= 2;
+        if two < rem {
+            rem = rem.wrapping_sub(root.wrapping_mul(2)).wrapping_sub(1);
+            two = two.wrapping_add(2);
+        }
+        root = two;
+    }
+    two >> 1
+}
+
+/// Square root (FUN_6f071480): of the mantissa by integers, scaled, times half the
+/// exponent's power of two (and the square root of 2 for an odd exponent).
+pub fn sqrt(b: u32) -> u32 {
+    if (b << 1) & !sar(b, 31) == 0 {
+        return 0;
+    }
+    let m = b & 0x7f_ffff;
+    let e = ((b >> 23) & 0xff) as i32 - 0x7f;
+    let s = isqrt(((m | 0xff80_0000) << 8) | (m >> 15));
+    let a = (s.wrapping_sub(0xb504).wrapping_mul(0xb505) >> 8) | 0x3f80_0000;
+    let odd = -(e & 1);
+    let half = (e + odd) / 2;
+    let p = (((half + 0x7f) as u32) << 23) | (odd as u32 & 0x35_04f3);
+    mul(p, a)
+}
+
+/// Arctangent (FUN_6f0705b0): beyond 1 by its reciprocal, beyond tan 15 degrees shifted
+/// by 30, then a ratio of polynomials.
+pub fn atan(x: u32) -> u32 {
+    let gt = |a: u32, b: u32| f32::from_bits(a) > f32::from_bits(b);
+    let mut a = x & 0x7fff_ffff;
+    let inv = gt(a, ONE);
+    if inv {
+        a = recip(a);
+    }
+    let big = gt(a, 0x3e89_30a3);
+    if big {
+        a = div(add(a, 0xbf13_cd3a), add(ONE, mul(0x3f13_cd3a, a)));
+    }
+    let s = mul(a, a);
+    let mut r = div(mul(a, add(0x3f7f_fff0, mul(0x3e84_15a6, s))), add(ONE, mul(0x3f17_592e, s)));
+    if big {
+        r = add(r, 0x3f06_0a92);
+    }
+    if inv {
+        r = sub(HALF_PI, r);
+    }
+    if (x << 1) & sar(x, 31) != 0 {
+        r ^= 0x8000_0000;
+    }
+    r
+}
+
+/// The angle of (x, y) (FUN_6f070530).
+pub fn atan2(y: u32, x: u32) -> u32 {
+    let mut r = if x & 0x7f80_0000 != 0 { atan(div(y, x) & 0x7fff_ffff) } else { HALF_PI };
+    if (x << 1) & sar(x, 31) != 0 {
+        r = sub(PI, r);
+    }
+    if (y << 1) & sar(y, 31) != 0 {
+        r ^= 0x8000_0000;
+    }
+    r
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,5 +427,12 @@ mod tests {
         assert_eq!(format(0.5f32.to_bits(), -3, -1), "0.5");
         assert_eq!(parse(" 2.5"), 0);
         assert_eq!(format(itof(123_456_789), 0, 3), "123456784.000");
+        let p = |b: u32| format(b, 1, 9);
+        let l = |w: i32, f: &str| literal(w, f);
+        assert_eq!([p(sin(l(1, "0"))), p(sin(l(3, "0"))), p(sin(l(2, "0") ^ 0x8000_0000)), p(sin(l(10, "0")))], ["0.841473600", "0.141116768", "-0.909297984", "-0.544023296"]);
+        assert_eq!([p(cos(l(1, "0"))), p(cos(l(0, "5"))), p(cos(l(100, "0")))], ["0.540297920", "0.877579776", "0.862317184"]);
+        assert_eq!([p(tan(l(0, "5"))), p(tan(l(1, "0")))], ["0.546309760", "1.557425600"]);
+        assert_eq!([p(sqrt(l(2, "0"))), p(sqrt(l(1000, "0"))), p(sqrt(l(0, "3")))], ["1.414213536", "31.623027776", "0.547722368"]);
+        assert_eq!([p(atan(l(0, "5"))), p(atan(l(3, "0"))), p(atan2(l(1, "0"), l(2, "0"))), p(atan2(l(3, "0") ^ 0x8000_0000, l(1, "0") ^ 0x8000_0000))], ["0.463647616", "1.249045840", "0.463647616", "-1.892546880"]);
     }
 }

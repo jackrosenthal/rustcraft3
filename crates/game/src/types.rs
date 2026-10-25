@@ -723,6 +723,8 @@ pub enum Action {
     Move { x: f32, y: f32 },
     Attack { target: u32 },
     AttackMove { x: f32, y: f32 },
+    /// Attack ground: an artillery weapon shells a point, again and again.
+    AttackGround { x: f32, y: f32 },
     Hold,
     Patrol { a: (f32, f32), b: (f32, f32) },
     Follow { target: u32 },
@@ -752,6 +754,9 @@ pub enum Action {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Swing {
     pub target: u32,
+    /// The point an attack on the ground aims at.
+    #[serde(default)]
+    pub ground: Option<(f32, f32)>,
     pub elapsed: f32,
     pub done: bool,
     /// Weapon 1 or 2.

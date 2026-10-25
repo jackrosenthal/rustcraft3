@@ -469,6 +469,13 @@ impl World {
             Action::Attack { target }
         } else if order == attack {
             Action::AttackMove { x, y }
+        } else if crate::natives::basic::order_name(order) == Some("attackground") {
+            // Only a unit with an artillery weapon shells the ground.
+            let artillery = self.unit(h).is_some_and(|u| unit_weapons(self, u).iter().any(|(_, w)| w.weapon_type == "artillery" || w.weapon_type == "aline"));
+            if !artillery {
+                return;
+            }
+            Action::AttackGround { x, y }
         } else if order == patrol {
             let p = self.unit(h).map(|u| (u.x, u.y)).unwrap_or_default();
             Action::Patrol { a: p, b: (x, y) }
@@ -530,9 +537,17 @@ impl World {
         if let Some(u) = self.unit_mut(h) {
             u.action = action;
             // A new order cuts off an attack or a cast's swing (and a channel, below),
-            // unless it is the same attack.
+            // unless the unit was already under the same attack order (measured: a Mortar
+            // Team re-ordered to attack its target mid-swing fires on time, but one
+            // swinging on its own, idle or on hold, starts over when so ordered).
             u.casting = None;
-            if !matches!((&u.action, &u.swing), (Action::Attack { target: t }, Some(s)) if *t == s.target) {
+            let same_order = u.order.id == order && u.order.target == target && target != 0;
+            if !(same_order && matches!((&u.action, &u.swing), (Action::Attack { target: t }, Some(s)) if *t == s.target)) {
+                // A swing cut off before its damage point gives back its cooldown
+                // (FUN_6f49d5b0 cancels both timers).
+                if u.swing.as_ref().is_some_and(|s| !s.done) {
+                    u.cooldown = u.cooldown.min(0.0);
+                }
                 u.swing = None;
             }
             u.path.clear();
@@ -1074,6 +1089,39 @@ impl World {
             if let Some(mut s) = self.unit(h).and_then(|u| u.swing.clone()) {
                 let wp = wp.clone().unwrap_or_default();
                 s.elapsed += dt;
+                if !s.done && s.elapsed >= wp.damage_point && s.ground.is_some() {
+                    s.done = true;
+                    let (owner, tid) = self.unit(h).map_or((0, [0; 4]), |u| (u.owner, u.type_id));
+                    let ub = self.upgrade_bonus(owner, tid);
+                    let bonus = self.unit(h).map_or(0.0, |u| u.item_bonus.damage) + ub.damage;
+                    let dice = wp.dice + ub.dice;
+                    let raw = wp.base + (0..dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>() + self.primary_attribute(h) + bonus;
+                    if let Some(src) = self.unit(h).cloned() {
+                        let launch_z = self.objects.units.get(src.type_id).map_or(60.0, |o| o.real("launchZ"));
+                        self.missiles.push(Missile {
+                            id: 0,
+                            source: h,
+                            target: 0,
+                            model: wp.missile.clone(),
+                            x: src.x,
+                            y: src.y,
+                            z: self.ground_z(src.x, src.y) + launch_z,
+                            speed: wp.missile_speed.max(1.0),
+                            arc: wp.missile_arc,
+                            damage: raw,
+                            attack_type: wp.attack_type.clone(),
+                            start: (src.x, src.y),
+                            spell: None,
+                            impact: s.ground,
+                            weapon: Some(wp.clone()),
+                            bounces: 0,
+                            hit: Vec::new(),
+                            stampede: None,
+                            rock: None,
+                            reflected: false,
+                        });
+                    }
+                }
                 if !s.done && s.elapsed >= wp.damage_point {
                     s.done = true;
                     let (owner, tid) = self.unit(h).map_or((0, [0; 4]), |u| (u.owner, u.type_id));
@@ -1302,6 +1350,7 @@ impl World {
                     }
                     self.try_attack(h, target, dt, false);
                 }
+                Action::AttackGround { x, y } => self.attack_ground_step(h, (x, y), dt),
                 Action::AttackMove { x, y } => {
                     if self.unit(h).is_some_and(|u| u.acquire_timer <= 0.0) {
                         let range = self.unit(h).map_or(0.0, |u| u.acquire_range);
@@ -2350,6 +2399,39 @@ impl World {
     }
 
     /// Moves into range of `target` and starts a swing when ready.
+    /// An attack on the ground: into range of the point, turned to it, then a swing
+    /// whenever the cooldown allows; the order stands until replaced.
+    fn attack_ground_step(&mut self, h: u32, at: (f32, f32), dt: f32) {
+        let Some(u) = self.unit(h) else { return };
+        let Some((wn, wp)) = unit_weapons(self, u).into_iter().find(|(_, w)| w.weapon_type == "artillery" || w.weapon_type == "aline") else {
+            self.unit_mut(h).unwrap().action = Action::Idle;
+            return;
+        };
+        let d = (at.0 - u.x).hypot(at.1 - u.y) - u.collision;
+        if d > wp.range {
+            if u.path.is_empty() || u.repath_timer <= 0.0 {
+                self.path_to(h, at);
+            }
+            self.walk(h, dt);
+            return;
+        }
+        let speed = self.attack_speed(h);
+        let u = self.unit_mut(h).unwrap();
+        u.path.clear();
+        let left = turn(u, angle_to((u.x, u.y), at), dt);
+        if left.abs() > 0.5f32.to_degrees() {
+            return;
+        }
+        if u.cooldown <= 0.0 {
+            u.cooldown = wp.cooldown / speed + u.cooldown.min(0.0);
+            u.extra.cooldown_speed = Some(speed);
+            u.swing = Some(Swing { target: 0, ground: Some(at), elapsed: 0.0, done: false, weapon: wn });
+            restart_anim(u, "attack");
+        } else if u.anim == "walk" {
+            set_anim(u, "stand");
+        }
+    }
+
     /// The factor a unit's attacks are quickened by: agility for a hero
     /// (AgiAttackSpeedBonus per point), items, upgrades, and buffs.
     pub(crate) fn attack_speed(&self, h: u32) -> f32 {
@@ -2388,7 +2470,7 @@ impl World {
         if u.cooldown <= 0.0 {
             u.cooldown = wp.cooldown / speed + u.cooldown.min(0.0);
             u.extra.cooldown_speed = Some(speed);
-            u.swing = Some(Swing { target, elapsed: 0.0, done: false, weapon: wn });
+            u.swing = Some(Swing { target, ground: None, elapsed: 0.0, done: false, weapon: wn });
             restart_anim(u, "attack");
             // The target is attacked (GetAttacker is the attacker).
             self.queue_unit_event(target, EVENT_PLAYER_UNIT_ATTACKED, EVENT_UNIT_ATTACKED, EventCtx { other_unit: h, ..Default::default() });
@@ -2477,6 +2559,7 @@ impl World {
             }
             let target = match self.handles.get(m.target) {
                 Some(Obj::Unit(t)) => Some((t.x, t.y, t.dead)),
+                _ if m.target == 0 => m.impact.map(|(x, y)| (x, y, false)),
                 _ => None,
             };
             let Some((tx, ty, _)) = target else {

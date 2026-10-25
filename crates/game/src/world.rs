@@ -951,14 +951,10 @@ impl World {
         }
     }
 
+    /// Evaluates a trigger's conditions; GetTriggerEvalCount counts the evaluations that
+    /// pass (measured: two passing and two failing read 2).
     pub fn trigger_evaluate(&mut self, vm: &mut Vm, trig: u32) -> bool {
-        let conds = match self.trigger_mut(trig) {
-            Some(t) => {
-                t.eval_count += 1;
-                t.conditions.clone()
-            }
-            None => return false,
-        };
+        let Some(conds) = self.trigger(trig).map(|t| t.conditions.clone()) else { return false };
         for c in conds {
             let expr = match self.handles.get(c) {
                 Some(Obj::TriggerCondition { expr }) => *expr,
@@ -967,6 +963,9 @@ impl World {
             if !self.eval_boolexpr(vm, expr) {
                 return false;
             }
+        }
+        if let Some(t) = self.trigger_mut(trig) {
+            t.eval_count += 1;
         }
         true
     }

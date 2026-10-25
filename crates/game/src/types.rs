@@ -894,7 +894,7 @@ impl Default for Trigger {
     fn default() -> Self {
         Trigger {
             enabled: true,
-            wait_on_sleeps: true,
+            wait_on_sleeps: false,
             events: Vec::new(),
             conditions: Vec::new(),
             actions: Vec::new(),

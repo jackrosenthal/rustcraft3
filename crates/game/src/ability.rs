@@ -909,6 +909,10 @@ impl World {
         let (castpt, backsw) = o.map_or((0.3, 0.5), |o| (o.real("castpt"), o.real("castbsw")));
         // Nor does it wait for the holder's cast point.
         let (castpt, backsw) = if u.extra.casting_item.is_some() { (0.0, 0.0) } else { (castpt, backsw) };
+        // Possession takes hold its casting time (Cast) after the cast point (measured:
+        // a ghost's touches a footman 1.73 seconds after the order, a short walk, its
+        // cast point 0.5, and Cast 1 later; ours, without, 0.70).
+        let castpt = if self.ability_code(a) == "Apos" { castpt + self.data(a, "Cast", lvl) } else { castpt };
         if !fired && elapsed >= castpt {
             // thereisnospoon and thedudeabides.
             let cost = if self.cheat(crate::cheats::flag::MANA) { 0.0 } else { self.data(a, "Cost", lvl) };

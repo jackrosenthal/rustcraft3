@@ -233,9 +233,15 @@ impl World {
             let (ox, oy) = ((from % w) as i32, (from / w) as i32);
             // Cells outward from the viewer's: each is shadowed when the cell one step
             // nearer the viewer is shadowed or holds an occluder.
-            let reach = (r / FOG_CELL).ceil() as i32 + 1;
+            // The sight in whole cells, rounded; a cell is seen when its offset from the
+            // viewer's cell (dx, dy) has dx² + dy² < (cells + 1/2)² (measured: a peasant,
+            // 800 or 6.25 cells, sees the cell 6 over and 2 up and not 6 and 3, nor 7
+            // and 0; a footman, 1400, sees footmen 1499 away east and not 1478 away
+            // northeast; a gryphon rider, 1600, sees them 1720 away).
+            let span = (r / FOG_CELL + 0.5).floor() as u32;
+            let limit = span * span + span;
             for (k, &(dx, dy, d2, parent)) in table.iter().enumerate() {
-                if d2 > (reach * reach) as u32 {
+                if d2 > limit {
                     break;
                 }
                 let (cx, cy) = (ox + dx as i32, oy + dy as i32);
@@ -250,11 +256,7 @@ impl World {
                 if !inside {
                     continue;
                 }
-                let px = fog.origin.0 + (cx as f32 + 0.5) * FOG_CELL;
-                let py = fog.origin.1 + (cy as f32 + 0.5) * FOG_CELL;
-                if (px - x).hypot(py - y) <= r {
-                    cells.push((c, shadow[k]));
-                }
+                cells.push((c, shadow[k]));
             }
             for (c, shaded) in cells {
                 // Ground units do not see onto higher cliff levels, nor past occluders.

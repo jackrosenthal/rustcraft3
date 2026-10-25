@@ -204,6 +204,12 @@ impl World {
                 return true;
             }
         }
+        // Used without a target, an item whose regeneration reaches a unit (a range
+        // and no area: a Healing Salve's) does nothing (measured: UnitUseItem with a
+        // salve answers false and the holder is not healed).
+        if target == 0 && self.item_abilities(type_id).into_iter().any(|a| self.ability_code(a) == "AIrg" && self.data(a, "Rng", 1) > 0.0 && self.data(a, "Area", 1) <= 0.0) {
+            return false;
+        }
         if !self.item_effect(vm, unit, item, type_id, target, x, y) {
             return false;
         }
@@ -256,15 +262,26 @@ impl World {
                 // Healing Salve, Clarity Potion, and the like: DataA life and DataB mana
                 // over Dur, ended by damage when DataE is set.  The buff is the first of
                 // BuffID for both, the second for life, the third for mana.
+                // Regeneration: DataA life over Dur, once a second from a second after
+                // (measured: a Scroll of Regeneration's 225 over 45 heals 5 at 1.1, 2.1,
+                // and on, used at 0.1), and DataB mana; to friends within Area when it
+                // has one (the scroll's 600), else to its target or holder.
                 "AIrg" => {
-                    let t = if _target != 0 { _target } else { unit };
                     let dur = data(self, "Dur").max(0.1);
                     let (life, mana) = (data(self, "DataA"), data(self, "DataB"));
                     let ids: Vec<Id> = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", 1)).unwrap_or_default().split(',').map(|b| crate::objects::id_from_str(b.trim())).collect();
                     let k = if life > 0.0 && mana > 0.0 { 0 } else if life > 0.0 { 1 } else { 2 };
                     let id = ids.get(k).or(ids.first()).copied().unwrap_or([0; 4]);
                     let ends = data(self, "DataE") != 0.0;
-                    self.apply_buff(t, Buff { id, ability: a, level: 1, caster: unit, remaining: dur, life_regen: life / dur, mana_regen: mana / dur, ends_on_damage: ends, ..Default::default() });
+                    let targets: Vec<u32> = if area > 0.0 {
+                        let (ux, uy) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
+                        self.allies_in(owner, ux, uy, area).into_iter().filter(|&t| self.unit(t).is_some_and(|u| !u.is_building)).collect()
+                    } else {
+                        vec![if _target != 0 { _target } else { unit }]
+                    };
+                    for t in targets {
+                        self.apply_buff(t, Buff { id, ability: a, level: 1, caster: unit, remaining: dur, dps: -life / dur, dps_every: 1.0, dps_next: 1.0, mana_regen: mana / dur, ends_on_damage: ends, ..Default::default() });
+                    }
                     did = true;
                 }
                 // Scroll of Protection (and the like): DataA armor for Dur to friends

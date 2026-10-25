@@ -341,7 +341,12 @@ impl World {
     }
 
     pub fn is_invisible(&self, h: u32) -> bool {
-        self.has_buff_flag(h, |b| b.invisible) || self.unit(h).is_some_and(|u| self.permanently_invisible(u))
+        self.cloaked(h) || self.unit(h).is_some_and(|u| self.permanently_invisible(u))
+    }
+
+    /// Hidden by a buff that has finished fading in (Wind Walk, Invisibility).
+    pub fn cloaked(&self, h: u32) -> bool {
+        self.has_buff_flag(h, |b| b.invisible && b.fade <= 0.0)
     }
 
     pub fn is_ethereal(&self, h: u32) -> bool {
@@ -437,6 +442,7 @@ impl World {
             }
             for b in &mut u.buffs {
                 b.remaining -= dt;
+                b.fade -= dt;
                 if let Some(l) = b.aura_left.as_mut() {
                     *l -= dt;
                 }
@@ -927,11 +933,12 @@ impl World {
         // a ghost's touches a footman 1.73 seconds after the order, a short walk, its
         // cast point 0.5, and Cast 1 later; ours, without, 0.70).
         let castpt = if self.ability_code(a) == "Apos" { castpt + self.data(a, "Cast", lvl) } else { castpt };
-        // Bladestorm and Immolation begin at once, without a backswing (measured:
-        // Bladestorm's first strike 0.20 seconds after the order, its interval,
-        // Immolation's 0.02, though their heroes' cast point is 0.3; each hero's first
-        // attack lands 0.35 seconds in, its damage point).
-        let instant = matches!(self.ability_code(a).as_str(), "AOww" | "AEim");
+        // Bladestorm, Immolation, and Wind Walk begin at once, without a backswing
+        // (measured: Bladestorm's first strike 0.20 seconds after the order, its
+        // interval, Immolation's 0.02, and Wind Walk's buff 0.02, though their heroes'
+        // cast point is 0.3; each hero's first attack lands 0.35 seconds in, its damage
+        // point).
+        let instant = matches!(self.ability_code(a).as_str(), "AOww" | "AEim" | "AOwk");
         let (castpt, backsw) = if instant { (0.0, 0.0) } else { (castpt, backsw) };
         if !fired && elapsed >= castpt {
             // thereisnospoon and thedudeabides.

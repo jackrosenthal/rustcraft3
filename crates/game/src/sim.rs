@@ -1037,6 +1037,12 @@ impl World {
     }
 
     fn find_target_inner(&self, h: u32, range: f32, creeps: bool) -> Option<u32> {
+        // An invisible unit takes up no targets, nor one fading out (measured: a
+        // Blademaster 0.5 seconds into Wind Walk's 0.6 transition leaves a footman shown
+        // beside it be until ordered to attack).
+        if self.has_buff_flag(h, |b| b.invisible) {
+            return None;
+        }
         let u = self.unit(h)?;
         let mut best: Option<(f32, u32, bool, bool)> = None;
         // Only the squares within reach (the largest structure's half-width and a
@@ -1154,12 +1160,16 @@ impl World {
         }
         let raw = raw * taken * ethereal;
         let mut raw = self.on_attack_passives(source, target, raw * self.buff_mods(source).3) + self.buff_damage_bonus(source);
-        // Wind Walk: the first strike adds its backstab damage and ends the invisibility.
-        if let Some(u) = self.unit_mut(source) {
-            if let Some(b) = u.buffs.iter().find(|b| b.backstab > 0.0) {
-                raw += b.backstab;
+        // Wind Walk: the first strike adds its backstab damage and ends the invisibility,
+        // once it has faded in (measured: a Blademaster's hit 0.36 seconds into its 0.6
+        // transition does neither; one at 1.54 deals the 40 more and ends it).
+        if self.cloaked(source) {
+            if let Some(u) = self.unit_mut(source) {
+                if let Some(b) = u.buffs.iter().find(|b| b.backstab > 0.0) {
+                    raw += b.backstab;
+                }
+                u.buffs.retain(|b| !b.invisible);
             }
-            u.buffs.retain(|b| !b.invisible);
         }
         let Some(t) = self.unit(target) else { return };
         let dmg = final_damage(self, raw, attack_type, t);
@@ -1613,6 +1623,16 @@ impl World {
                     }
                     if let Some(u) = self.unit_mut(h).filter(|u| u.extra.reaction > 0.0) {
                         u.extra.reaction -= dt;
+                        continue;
+                    }
+                    // Turned invisible, it lets a target it took up itself go once its
+                    // swing is done (measured: a Blademaster that had taken up a footman
+                    // as it windwalked strikes once and attacks no more).
+                    if self.cloaked(h) && self.unit(h).is_some_and(|u| u.extra.acquired == target && u.swing.is_none()) {
+                        let u = self.unit_mut(h).unwrap();
+                        u.action = Action::Idle;
+                        u.order = Order::default();
+                        set_anim(u, "stand");
                         continue;
                     }
                     self.try_attack(h, target, dt, false);

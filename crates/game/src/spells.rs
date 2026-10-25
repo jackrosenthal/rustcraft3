@@ -387,7 +387,7 @@ impl World {
             }
             "AOwk" => {
                 let d = self.d(a, "Dur", lvl).max(self.d(a, "HeroDur", lvl));
-                let b = Buff { id: buff, ability: a, level: lvl, caster: h, remaining: d, invisible: true, move_factor: self.d(a, "DataB", lvl), backstab: self.d(a, "DataC", lvl), ..Default::default() };
+                let b = Buff { id: buff, ability: a, level: lvl, caster: h, remaining: d, invisible: true, move_factor: self.d(a, "DataB", lvl), backstab: self.d(a, "DataC", lvl), fade: self.d(a, "DataA", lvl), ..Default::default() };
                 self.apply_buff(h, b);
                 true
             }

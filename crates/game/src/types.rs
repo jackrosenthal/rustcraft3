@@ -674,6 +674,9 @@ pub struct Buff {
     pub return_pct: bool,
     /// Wind Walk's first strike bonus.
     pub backstab: f32,
+    /// Seconds before an `invisible` buff hides its bearer (Wind Walk's transition).
+    #[serde(default)]
+    pub fade: f32,
     /// Fraction of attacks that miss (Curse).
     pub miss_chance: f32,
     /// Fraction more damage taken (Berserk).

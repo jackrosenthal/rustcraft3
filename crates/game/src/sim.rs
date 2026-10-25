@@ -1479,6 +1479,26 @@ impl World {
                                 rock: None,
                                 reflected: false,
                             });
+                            // Barrage (Aroc): an attack on an air unit sends rockets at the
+                            // other air enemies within Area too, DataC in all, each with the
+                            // attack's damage (measured: a Siege Engine's every 2 seconds
+                            // strike three Gryphon Riders alike, 28 each, then 26 each).
+                            let barrage = self.ability_with_code(h, "Aroc").filter(|&(a, _)| self.ability_enabled(src.owner, a));
+                            if let Some((a, lvl)) = barrage.filter(|_| self.unit(s.target).is_some_and(|t| self.objects.units.get(t.type_id).is_some_and(|o| o.str("movetp").eq_ignore_ascii_case("fly")))) {
+                                let lvl = lvl.max(1) as u32;
+                                let (area, max) = (self.data(a, "Area", lvl), self.data(a, "DataC", lvl).max(1.0) as usize);
+                                let mut others: Vec<u32> = self.enemies_in(src.owner, src.x, src.y, area).into_iter().filter(|&t| t != s.target && self.unit(t).is_some_and(|tu| !tu.is_building && self.objects.units.get(tu.type_id).is_some_and(|o| o.str("movetp").eq_ignore_ascii_case("fly")))).collect();
+                                others.sort_by(|&p, &q| {
+                                    let d = |t: u32| self.unit(t).map_or(f32::MAX, |u| (u.x - src.x).hypot(u.y - src.y));
+                                    d(p).total_cmp(&d(q))
+                                });
+                                for t in others.into_iter().take(max.saturating_sub(1)) {
+                                    let mut m = self.missiles.last().cloned().unwrap();
+                                    m.target = t;
+                                    m.impact = None;
+                                    self.missiles.push(m);
+                                }
+                            }
                         }
                     } else {
                         // Melee impacts sound by weapon (weapType1) and target armor

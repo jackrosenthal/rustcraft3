@@ -103,15 +103,14 @@ impl World {
         self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster, remaining: dur, dps: self.data(a, "DataB", lvl), dps_every: 1.0, dps_next: 0.0, ..Default::default() });
     }
 
-    /// Phoenix Fire and Barrage: units with them strike enemies near them every Cool
-    /// seconds.  Phoenix Fire burns one unit not already burning for DataA, then DataB a
-    /// second for Dur (HeroDur on Heroes); Barrage sends rockets at up to DataC air units
-    /// within Area for DataA each, DataB at most in all.
+    /// Phoenix Fire: units with it strike enemies near them every Cool seconds, burning
+    /// one unit not already burning for DataA, then DataB a second for Dur (HeroDur on
+    /// Heroes).  (Barrage rides on its unit's attacks: see the swing.)
     pub fn update_periodic_attacks(&mut self, vm: &mut Vm, _dt: f32) {
         let _ = vm;
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && u.constructing.is_none())).collect();
         for h in units {
-            for code in ["Apxf", "Aroc"] {
+            for code in ["Apxf"] {
                 let Some((a, lvl)) = self.ability_with_code(h, code) else { continue };
                 let lvl = lvl.max(1) as u32;
                 let Some(u) = self.unit(h) else { continue };
@@ -151,14 +150,7 @@ impl World {
                     let d = |t: u32| self.unit(t).map_or(f32::MAX, |u| (u.x - ux).hypot(u.y - uy));
                     d(p).total_cmp(&d(q))
                 });
-                let shots: Vec<(u32, f32)> = if code == "Apxf" {
-                    targets.into_iter().filter(|&t| !self.unit(t).is_some_and(|tu| tu.buffs.iter().any(|b| b.id == buff && buff != [0; 4]))).take(1).map(|t| (t, self.data(a, "DataA", lvl))).collect()
-                } else {
-                    let (each, total, max) = (self.data(a, "DataA", lvl), self.data(a, "DataB", lvl), self.data(a, "DataC", lvl).max(1.0) as usize);
-                    let n = targets.len().min(max);
-                    let each = if n > 0 && total > 0.0 { each.min(total / n as f32) } else { each };
-                    targets.into_iter().take(n).map(|t| (t, each)).collect()
-                };
+                let shots: Vec<(u32, f32)> = targets.into_iter().filter(|&t| !self.unit(t).is_some_and(|tu| tu.buffs.iter().any(|b| b.id == buff && buff != [0; 4]))).take(1).map(|t| (t, self.data(a, "DataA", lvl))).collect();
                 if shots.is_empty() {
                     continue;
                 }

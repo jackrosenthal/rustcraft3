@@ -125,13 +125,14 @@ impl World {
 impl World {
     /// Wander (CAbilityWander): an idle wanderer waits 5 to 10 seconds (vf189), then
     /// walks to a point up to 250 away on each axis (vf190).
-    pub fn update_wander(&mut self, dt: f32) {
+    pub fn update_wander(&mut self, _dt: f32) {
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.paused && matches!(u.action, Action::Idle))).collect();
         for h in units {
             let Some((a, _)) = self.ability_with_code(h, "Awan") else { continue };
             let left = self.unit(h).and_then(|u| u.cooldowns.get(&a).copied());
+            // Ability cooldowns count down with the rest (update_buffs).
             let left = match left {
-                Some(t) => t - dt,
+                Some(t) => t,
                 None => self.rng.real(5.0, 10.0),
             };
             if left > 0.0 {
@@ -268,7 +269,7 @@ impl World {
             let (hx, hy) = self.unit(h).and_then(|u| u.extra.home).unwrap_or((x, y));
             if let Some((a, lvl)) = self.ability_with_code(h, "Atwa") {
                 let lvl = lvl.max(1) as u32;
-                let left = self.unit(h).and_then(|u| u.cooldowns.get(&a).copied()).unwrap_or(0.0) - dt;
+                let left = self.unit(h).and_then(|u| u.cooldowns.get(&a).copied()).unwrap_or(0.0);
                 if left <= 0.0 {
                     let r = self.data(a, "Area", lvl);
                     let (ang, d) = (self.rng.real(0.0, std::f32::consts::TAU), self.rng.real(0.0, r));

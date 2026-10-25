@@ -120,7 +120,7 @@ pub fn intrinsic_order(code: &str) -> Option<i32> {
 
 /// Spells that fly to their target as a missile and take hold as it lands.
 pub(crate) fn spell_flies(code: &str) -> bool {
-    matches!(code, "ANdh" | "AEsh" | "Aens" | "ANab" | "ACtb" | "ANfb")
+    matches!(code, "ANdh" | "AEsh" | "Aens" | "ANab" | "ACtb" | "ANfb" | "ANpa" | "ANtm")
 }
 
 /// Abilities whose code takes a point rather than a unit target.
@@ -1018,13 +1018,14 @@ impl World {
     /// A spell's missile lands: its effect takes hold, the target touched with a hit of
     /// nothing as it does, and again after for those that lay a lasting hold (measured:
     /// Shadow Strike shows damage events of 0, 75, and 0 at once; Drunken Haze, Ensnare,
-    /// and Acid Bomb two of 0; Storm Bolt and Firebolt 0 and their damage only).
+    /// Acid Bomb, and Parasite two of 0; Storm Bolt and Firebolt 0 and their damage only,
+    /// Transmute one of 0).
     pub(crate) fn spell_landed(&mut self, vm: &mut Vm, h: u32, a: Id, lvl: u32, target: u32, at: (f32, f32)) {
         self.spell_landing = true;
         self.ability_effect(vm, h, a, lvl, target, at);
         self.spell_landing = false;
         let enemy = self.unit(target).is_some_and(|t| !t.dead && self.unit(h).is_some_and(|c| !crate::natives::players::is_ally(self, t.owner, c.owner)));
-        if enemy && !matches!(self.ability_code(a).as_str(), "ACtb" | "ANfb") {
+        if enemy && !matches!(self.ability_code(a).as_str(), "ACtb" | "ANfb" | "ANtm") {
             self.spell_damage(vm, h, target, 0.0);
         }
     }
@@ -1035,7 +1036,8 @@ impl World {
         // as they land (measured on footmen about 300 away: a Brewmaster's Drunken Haze
         // lands 0.21 seconds after its cast point, a Warden's Shadow Strike 0.25, and a
         // Raider's Ensnare, an Alchemist's Acid Bomb, a granite golem's Storm Bolt, and a
-        // salamander lord's Firebolt at 0.81, 0.83, 0.73, and 0.72 seconds after the order).
+        // salamander lord's Firebolt at 0.81, 0.83, 0.73, and 0.72 seconds after the order,
+        // Parasite at 0.26 and 0.43, and an Alchemist's Transmute at 0.83).
         if spell_flies(&code) && !self.spell_landing {
             self.launch_spell_missile(h, a, lvl, target, (x, y));
             return;

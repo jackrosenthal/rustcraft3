@@ -506,11 +506,13 @@ impl World {
                 self.drop_corpses(h);
                 true
             }
-            // Parasite: DataA a second for Dur, attacks DataB and moves DataC slower.
+            // Parasite: DataA once a second for Dur, the first at once (measured: 5 at 0.44
+            // seconds and each second after, for a parasite landing at 0.43), attacks
+            // DataB and moves DataC slower.
             "ANpa" => {
                 let buff = self.buff_of(a, lvl);
                 let dur = self.duration_for(a, lvl, target);
-                self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: self.d(a, "DataA", lvl), attack_factor: -self.d(a, "DataB", lvl), move_factor: -self.d(a, "DataC", lvl), ..Default::default() });
+                self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: self.d(a, "DataA", lvl), dps_every: 1.0, dps_next: 0.0, attack_factor: -self.d(a, "DataB", lvl), move_factor: -self.d(a, "DataC", lvl), ..Default::default() });
                 true
             }
             // Pocket Factory: a factory (UnitID) for Dur at the point.

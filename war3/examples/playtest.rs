@@ -623,15 +623,20 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // aidump [player]: a computer player's units, resources, and AI state.
             "aidump" => {
+                let p = a.get(i + 1).and_then(|v| v.parse::<u8>().ok());
+                let pl = p.unwrap_or(1);
                 if let Some(g) = &scene.game {
                     let w = &g.world;
                     for &h in &w.unit_order {
-                        if let Some(u) = w.unit(h) { if u.owner == 1 && !u.is_building { eprintln!("  {} {:?} gold {} lumber {} inside {} lvl {} abil {:?}", w3_game::objects::id_str(u.type_id), u.action, u.carry_gold, u.carry_lumber, u.inside, u.level, u.abilities.iter().map(|(a, l)| (w3_game::objects::id_str(*a), *l)).collect::<Vec<_>>()); } }
+                        if let Some(u) = w.unit(h) { if u.owner == pl && !u.dead { eprintln!("  {} {:?} order {} queue {:?} gold {} lumber {} inside {} lvl {}", w3_game::objects::id_str(u.type_id), u.action, w3_game::natives::basic::order_name(u.order.id).unwrap_or(""), u.queue.iter().map(|q| w3_game::objects::id_str(*q)).collect::<Vec<_>>(), u.carry_gold, u.carry_lumber, u.inside, u.level); } }
                     }
-                    if let Some(a) = w.ai.get(&1) { eprintln!("  harvest {:?}", a.harvest); }
+                    let pp = &w.players[pl as usize];
+                    eprintln!("  gold {} lumber {} food {}/{}", pp.get_state(1), pp.get_state(2), pp.get_state(5), pp.get_state(4));
+                    if let Some(st) = w.ai.get(&pl) { eprintln!("  script {} harvest {:?} assault {:?} defenders {:?} attack {:?} defense {:?} replacements {}", st.script, st.harvest, st.assault.iter().map(|(i, n)| (w3_game::objects::id_str(*i), *n)).collect::<Vec<_>>(), st.defenders.iter().map(|(i, n)| (w3_game::objects::id_str(*i), *n)).collect::<Vec<_>>(), st.attack.units.len(), st.defense.units.len(), st.replacements); }
                 }
-                i += 1;
+                i += if p.is_some() { 2 } else { 1 };
             }
             // proj: each unit's screen position at its origin and 50 to 300 above.
             "proj" => {

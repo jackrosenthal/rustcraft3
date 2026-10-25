@@ -439,7 +439,12 @@ impl World {
                     continue;
                 }
             }
-            if self.counts_as(u.type_id, id) && (!done || u.constructing.is_none() && !u.queue.contains(&u.type_id)) {
+            // The type itself only: the original counts with flags 0x36 or 0x30 (no 8, its
+            // DependencyOr equivalents, and 0x20, not the structures it upgrades to), and
+            // common.ai adds Keeps, Berserkers, and the like itself (measured: our
+            // TownCount(HEAD_HUNTER) read 6 for three Headhunters, each counted again as
+            // a Berserker, so Human02's Orcs trained none).
+            if u.type_id == id && (!done || u.constructing.is_none() && !u.queue.contains(&u.type_id)) {
                 n += 1;
             }
             if !done {
@@ -451,30 +456,6 @@ impl World {
             }
         }
         n
-    }
-
-    /// Whether a unit of type `have` counts as `want`: the same type, a type its
-    /// DependencyOr names (a Headhunter counts as a Berserker), or a structure upgraded
-    /// from it (a Stronghold counts as a Great Hall).
-    fn counts_as(&self, have: Id, want: Id) -> bool {
-        if self.objects.units.get(have).is_some_and(|o| o.list("DependencyOr").iter().any(|d| id_from_str(d.trim()) == want)) {
-            return true;
-        }
-        let mut cur = vec![want];
-        for _ in 0..4 {
-            if cur.contains(&have) {
-                return true;
-            }
-            cur = cur
-                .iter()
-                .filter_map(|t| self.objects.units.get(*t))
-                .flat_map(|o| o.list("Upgrade").iter().map(|s| id_from_str(s.trim())).collect::<Vec<_>>())
-                .collect();
-            if cur.is_empty() {
-                return false;
-            }
-        }
-        false
     }
 
     pub(crate) fn workers(&self, p: u8) -> Vec<u32> {
@@ -795,24 +776,39 @@ impl World {
     }
 
     /// Adds units of a type to a captain until it has `qty` of them.
+    /// Fills a captain to `qty` of a type (FUN_6f9c3550, FUN_6f9c32d0): units of the type
+    /// not in the other captain, guards included, those at half life or more first; a
+    /// guard taken leaves its post empty, for FillGuardPosts to fill again (measured:
+    /// Human02's Orcs, taking a headhunter of their posts to defend, train another at
+    /// once).
     fn fill_captain(&mut self, attack: bool, id: Id, qty: i32) -> bool {
         let p = self.ai_player();
         let have: Vec<u32> = self.captain(attack).map(|c| c.units.clone()).unwrap_or_default();
         let mut count = have.iter().filter(|&&h| self.unit(h).is_some_and(|u| u.type_id == id && !u.dead)).count() as i32;
-        let mut others: Vec<u32> = self.captain(!attack).map(|c| c.units.clone()).unwrap_or_default();
-        others.extend(self.guards(p));
-        for h in self.ai_units(p) {
-            if count >= qty {
-                break;
+        let others: Vec<u32> = self.captain(!attack).map(|c| c.units.clone()).unwrap_or_default();
+        for healthy in [true, false] {
+            for h in self.ai_units(p) {
+                if count >= qty {
+                    return true;
+                }
+                let taken = self.captain_units(attack).contains(&h);
+                let Some(u) = self.unit(h) else { continue };
+                if u.type_id != id || u.constructing.is_some() || have.contains(&h) || others.contains(&h) || taken {
+                    continue;
+                }
+                if healthy && u.life < u.max_life * 0.5 {
+                    continue;
+                }
+                if let Some(st) = self.ai.get_mut(&p) {
+                    for g in st.posts.iter_mut().filter(|g| g.unit == h) {
+                        g.unit = 0;
+                    }
+                }
+                if let Some(c) = self.captain(attack) {
+                    c.units.push(h);
+                }
+                count += 1;
             }
-            let Some(u) = self.unit(h) else { continue };
-            if u.type_id != id || u.constructing.is_some() || have.contains(&h) || others.contains(&h) {
-                continue;
-            }
-            if let Some(c) = self.captain(attack) {
-                c.units.push(h);
-            }
-            count += 1;
         }
         count >= qty
     }
@@ -977,7 +973,14 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             w.ai_convert(p, a.i(0), id_from_int(a.i(1)));
             boolean(false)
         },
-        SetCampaignAI => |w, _, _| { if let Some(s) = w.ai_state() { s.melee = false; } none() },
+        SetCampaignAI => |w, _, _| {
+            if let Some(s) = w.ai_state() {
+                s.melee = false;
+            }
+            let p = w.ai_player();
+            w.post_campaign_units(p);
+            none()
+        },
         SetMeleeAI => |w, _, _| { if let Some(s) = w.ai_state() { s.melee = true; } none() },
         SetTargetHeroes => |w, _, a| set_flag(w, "target_heroes", a.b(0)),
         SetPeonsRepair => |w, _, a| set_flag(w, "peons_repair", a.b(0)),

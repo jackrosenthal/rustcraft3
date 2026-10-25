@@ -36,6 +36,32 @@ impl World {
         }
     }
 
+    /// A campaign AI's units each keep a guard post of their own where they stand
+    /// (FUN_6f9c3660 and FUN_6f9c72d0 give every unit the AI takes up a post at its place,
+    /// heroes, structures, workers, and summoned units aside; measured: Human02's Orcs
+    /// count none of their headhunters and grunts as IgnoredUnits from the start, and
+    /// train a headhunter to fill the post the defender they take leaves).  Units the AI
+    /// trains later take empty posts instead (it trains no more than it lost).
+    pub(crate) fn post_campaign_units(&mut self, p: u8) {
+        let units: Vec<(u32, Id, f32, f32)> = self
+            .unit_order
+            .iter()
+            .filter_map(|&h| self.unit(h).map(|u| (h, u)))
+            .filter(|(h, u)| u.owner == p && !u.dead && !u.is_building && !u.is_hero && !self.is_summoned(*h))
+            .filter(|(_, u)| !self.objects.units.get(u.type_id).is_some_and(|o| o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case("peon"))))
+            .map(|(h, u)| (h, u.type_id, u.x, u.y))
+            .collect();
+        let Some(st) = self.ai.get_mut(&p) else { return };
+        for (h, id, x, y) in units {
+            if st.posts.iter().any(|g| g.unit == h) {
+                continue;
+            }
+            st.posts.push(GuardPost { id, x, y, unit: h, filled: 1 });
+            st.attack.units.retain(|&k| k != h);
+            st.defense.units.retain(|&k| k != h);
+        }
+    }
+
     /// A computer player's new unit takes an empty guard post of its type.
     pub(crate) fn ai_new_unit(&mut self, h: u32) {
         let Some(u) = self.unit(h) else { return };

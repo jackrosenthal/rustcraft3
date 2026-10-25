@@ -421,11 +421,15 @@ impl World {
                 if let Some(l) = b.aura_left.as_mut() {
                     *l -= dt;
                 }
+                // Strikes once a second end with the buff: none falls as it runs out
+                // (measured: Breath of Fire's 5 seconds burn 5 times, the first at once).
                 if b.dps != 0.0 && b.dps_every > 0.0 {
-                    b.dps_next -= dt;
-                    while b.dps_next <= 0.0 {
-                        dots.push((b.caster, h, b.dps * b.dps_every));
-                        b.dps_next += b.dps_every;
+                    if b.remaining > 0.0 {
+                        b.dps_next -= dt;
+                        while b.dps_next <= 0.0 {
+                            dots.push((b.caster, h, b.dps * b.dps_every));
+                            b.dps_next += b.dps_every;
+                        }
                     }
                 } else if b.dps != 0.0 {
                     dots.push((b.caster, h, b.dps * dt));

@@ -46,7 +46,9 @@ impl World {
                 }
             }
             // Breath of Fire: a cone DataC long widening from Area to DataD; DataA each up to
-            // DataB in all, then DataE a second for Dur.
+            // DataB in all.  Those under Drunken Haze catch fire: DataE once a second for
+            // Dur, the first at once (measured: a footman not hazed takes 65 and no more;
+            // one hazed takes 65 at 1.90 seconds, then 7 at 1.91 and each second to 5.91).
             "ANbf" => {
                 let len = d(self, "DataC");
                 let dir = (x - cx, y - cy);
@@ -55,7 +57,10 @@ impl World {
                 let targets = self.line_units_pub(owner, (cx, cy), end, area * 2.0, d(self, "DataD") * 2.0);
                 self.capped_damage_pub(vm, h, &targets, d(self, "DataA"), d(self, "DataB"));
                 for t in targets {
-                    self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: d(self, "DataE"), ..Default::default() });
+                    let hazed = self.unit(t).is_some_and(|u| u.buffs.iter().any(|b| self.ability_code(b.ability) == "ANdh"));
+                    if hazed {
+                        self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: d(self, "DataE"), dps_every: 1.0, dps_next: 0.0, ..Default::default() });
+                    }
                 }
             }
             // Charm and Dark Conversion: the target becomes the caster's (Dark Conversion

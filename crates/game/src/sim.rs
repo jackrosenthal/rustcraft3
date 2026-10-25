@@ -1311,8 +1311,15 @@ impl World {
             }
             if u.is_building {
                 self.update_structure(vm, h, dt);
-                continue;
+                // An armed structure, once built, fights as a unit does, from where it
+                // stands (measured: a Guard Tower made beside enemy units strikes the
+                // nearest every 0.9 seconds, its cooldown; ours struck nothing).
+                let armed = self.unit(h).is_some_and(|u| u.constructing.is_none() && !u.dead && !unit_weapons(self, u).is_empty());
+                if !armed {
+                    continue;
+                }
             }
+            let Some(u) = self.unit(h) else { continue };
             // Stunned units do nothing; an attack in progress is lost.
             if self.buff_mods(h).4 {
                 let u = self.unit_mut(h).unwrap();
@@ -2778,7 +2785,7 @@ impl World {
         let speed = self.attack_speed(h);
         let u = self.unit_mut(h).unwrap();
         u.path.clear();
-        let left = turn(u, angle_to((u.x, u.y), at), dt);
+        let left = if u.is_building { 0.0 } else { turn(u, angle_to((u.x, u.y), at), dt) };
         if left.abs() > 0.5f32.to_degrees() {
             return;
         }
@@ -2821,8 +2828,9 @@ impl World {
         let speed = self.attack_speed(h);
         let u = self.unit_mut(h).unwrap();
         u.path.clear();
-        let left = turn(u, angle_to(upos, tpos), dt);
-        // Units attack once facing within AttackHalfAngle radians of the target.
+        // Units attack once facing within AttackHalfAngle radians of the target;
+        // structures turn not at all.
+        let left = if u.is_building { 0.0 } else { turn(u, angle_to(upos, tpos), dt) };
         let half = 0.5f32.to_degrees();
         if left.abs() > half {
             return;

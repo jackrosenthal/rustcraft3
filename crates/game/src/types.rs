@@ -247,6 +247,9 @@ pub struct UnitExtra {
     /// A hero's attributes beyond its type's for its level (tomes, SetHeroStr).
     #[serde(default)]
     pub attr_bonus: [f32; 3],
+    /// Gold and lumber pillaged but not yet paid, being less than a step.
+    #[serde(default)]
+    pub pillaged: [f32; 2],
     /// A haunted mine's payout timer and the acolytes it last counted at work.
     #[serde(default)]
     pub payout: Option<(f32, u32)>,
@@ -499,6 +502,7 @@ impl Default for UnitExtra {
     fn default() -> Self {
         UnitExtra {
             attr_bonus: [0.0; 3],
+            pillaged: [0.0; 2],
             aura_clock: None,
             payout: None,
             casting_item: None,

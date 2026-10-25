@@ -1228,6 +1228,9 @@ impl World {
         }
         let ctx = EventCtx { unit: target, other_unit: source, damage: dmg, event_id: EVENT_UNIT_DAMAGED, player: owner, has_player: true, ..Default::default() };
         self.fire(vm, ctx, |_, k| matches!(k, EventKind::Unit { unit, event } if *unit == target && *event == EVENT_UNIT_DAMAGED));
+        if attack_type != "spells" {
+            self.pillage(source, target, dmg);
+        }
         if dead {
             kill_unit(self, vm, target, source);
         } else if self.unit(target).is_some() {

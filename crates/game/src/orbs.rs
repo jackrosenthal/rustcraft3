@@ -179,17 +179,6 @@ impl World {
                         }
                     }
                 }
-                // Pillage: structures hit pay their cost times DataA per share of life.
-                "Asal" if target_building => {
-                    let Some(t) = self.unit(target) else { continue };
-                    let Some(o) = self.objects.units.get(t.type_id) else { continue };
-                    let share = (damage / t.max_life.max(1.0)) * d(self, "DataA");
-                    let (gold, lumber) = ((o.real("goldcost") * share) as i32, (o.real("lumbercost") * share) as i32);
-                    let owner = self.unit(attacker).map_or(0, |u| u.owner);
-                    let p = &mut self.players[owner as usize];
-                    *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) += gold;
-                    *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) += lumber;
-                }
                 _ => {}
             }
         }
@@ -200,6 +189,33 @@ impl World {
         }
         let _ = vm;
         damage
+    }
+
+    /// Pillage: structures hit pay their cost times DataA per share of life dealt,
+    /// gathered until it makes a step of DataB, after the damage event (measured: a
+    /// grunt's five hits of about 10 on a 500-life farm pay 4 gold and 1 lumber, 0.82 and
+    /// 0.2 each, the gold read at each hit's event the hits' before).
+    pub(crate) fn pillage(&mut self, attacker: u32, target: u32, dealt: f32) {
+        let Some(t) = self.unit(target).filter(|t| t.is_building) else { return };
+        let Some(o) = self.objects.units.get(t.type_id) else { return };
+        let (cost_gold, cost_lumber, max_life) = (o.real("goldcost"), o.real("lumbercost"), t.max_life.max(1.0));
+        let Some(u) = self.unit(attacker) else { return };
+        let owner = u.owner;
+        let Some((a, lvl)) = u.abilities.iter().copied().find(|&(a, _)| self.ability_code(a) == "Asal" && self.ability_enabled(owner, a)) else { return };
+        let lvl = lvl.max(1) as u32;
+        let share = dealt / max_life * self.data(a, "DataA", lvl);
+        let step = self.data(a, "DataB", lvl).max(1.0);
+        let Some(u) = self.unit_mut(attacker) else { return };
+        let acc = &mut u.extra.pillaged;
+        acc[0] += cost_gold * share;
+        acc[1] += cost_lumber * share;
+        let gold = ((acc[0] / step).floor() * step) as i32;
+        let lumber = ((acc[1] / step).floor() * step) as i32;
+        acc[0] -= gold as f32;
+        acc[1] -= lumber as f32;
+        let p = &mut self.players[owner as usize];
+        *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) += gold;
+        *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) += lumber;
     }
 
     /// Black Arrow: a unit dying under it raises DataB of the arrow's UnitID for its

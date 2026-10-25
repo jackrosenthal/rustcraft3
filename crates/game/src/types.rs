@@ -376,6 +376,9 @@ pub struct UnitExtra {
     /// When the creep last stood idle away from home, if it has since.
     #[serde(default)]
     pub idle_away: Option<f32>,
+    /// A wanderer's wait (Awan): it runs only while the unit stands idle.
+    #[serde(default)]
+    pub wander_wait: Option<f32>,
     /// The turn a walker took to go around a unit standing in its way.
     #[serde(default)]
     pub detour: Option<(f32, f32)>,
@@ -542,6 +545,7 @@ impl Default for UnitExtra {
             returning: false,
             strayed: None,
             idle_away: None,
+            wander_wait: None,
             detour: None,
             sleep_effect: 0,
             warp_inside: 0,

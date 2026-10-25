@@ -125,24 +125,26 @@ impl World {
 impl World {
     /// Wander (CAbilityWander): an idle wanderer waits 5 to 10 seconds (vf189), then
     /// walks to a point up to 250 away on each axis (vf190).
-    pub fn update_wander(&mut self, _dt: f32) {
+    pub fn update_wander(&mut self, dt: f32) {
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.paused && matches!(u.action, Action::Idle))).collect();
         for h in units {
-            let Some((a, _)) = self.ability_with_code(h, "Awan") else { continue };
-            let left = self.unit(h).and_then(|u| u.cooldowns.get(&a).copied());
-            // Ability cooldowns count down with the rest (update_buffs).
-            let left = match left {
-                Some(t) => t,
+            if self.ability_with_code(h, "Awan").is_none() {
+                continue;
+            }
+            // The wait runs only while it stands (measured: sheep start a walk every 9 to
+            // 11 seconds, walk included).
+            let left = match self.unit(h).and_then(|u| u.extra.wander_wait) {
+                Some(t) => t - dt,
                 None => self.rng.real(5.0, 10.0),
             };
             if left > 0.0 {
-                self.unit_mut(h).unwrap().cooldowns.insert(a, left);
+                self.unit_mut(h).unwrap().extra.wander_wait = Some(left);
                 continue;
             }
             let next = self.rng.real(5.0, 10.0);
             let (dx, dy) = (self.rng.real(0.0, 500.0) - 250.0, self.rng.real(0.0, 500.0) - 250.0);
             let u = self.unit_mut(h).unwrap();
-            u.cooldowns.insert(a, next);
+            u.extra.wander_wait = Some(next);
             let (x, y) = (u.x + dx, u.y + dy);
             u.action = Action::Move { x, y };
             u.path.clear();

@@ -156,7 +156,10 @@ impl World {
                 let duration = if code == "AHbz" || code == "ANrf" { waves as f32 * cast } else { self.duration_for(a, lvl, h) };
                 let interval = match code {
                     "AHbz" | "ANrf" => cast,
-                    "AEsf" | "AEtq" => self.d(a, "DataB", lvl).max(0.1),
+                    "AEsf" => self.d(a, "DataB", lvl).max(0.1),
+                    // Tranquility heals all the while (measured: a footman gains about 1
+                    // every twentieth of a second, 20 a second, from the cast point).
+                    "AEtq" => 0.02,
                     "AHdr" => self.d(a, "DataC", lvl).max(0.1),
                     // Stampede: DataA beasts a second.
                     "ANst" => 1.0 / self.d(a, "DataA", lvl).max(0.01),
@@ -173,7 +176,9 @@ impl World {
                 };
                 // Drain's first transfer comes an interval after the cast, as in the
                 // original.
-                let next = if code == "AHdr" { interval } else { 0.0 };
+                // Death and Decay's first strike a third of a second after the cast (measured:
+                // 0.73 seconds after the order, the Lich's cast point 0.4).
+                let next = if code == "AHdr" { interval } else if code == "AUdd" { 0.33 } else { 0.0 };
                 if let Some(u) = self.unit_mut(h) {
                     u.channel = Some(Channel { ability: a, level: lvl, target, x: px, y: py, elapsed: 0.0, duration, interval, next, waves, link, held: [0; 4], lanes: 0, ai_fails: 0, strikes: Vec::new(), struck: Vec::new() });
                 }
@@ -783,7 +788,7 @@ impl World {
             "AEtq" => {
                 for t in self.allies_in(owner, c.x, c.y, area) {
                     if self.unit(t).is_some_and(|u| !u.is_building) {
-                        self.magic_heal(t, self.d(a, "DataA", lvl));
+                        self.magic_heal(t, self.d(a, "DataA", lvl) * c.interval);
                     }
                 }
             }

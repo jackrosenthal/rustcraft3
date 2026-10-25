@@ -166,7 +166,9 @@ impl World {
             // Cripple: DataA less movement, DataB less attack speed, DataC less damage.
             "Acri" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, move_factor: -d(self, "DataA"), attack_factor: -d(self, "DataB"), damage_factor: -d(self, "DataC"), ..Default::default() }),
             // Unholy Frenzy: DataA attack speed and DataB damage a second.
-            "Auhf" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, attack_factor: d(self, "DataA"), dps: d(self, "DataB"), ..Default::default() }),
+            // Its damage strikes once a second, the first at once (measured: a footman
+            // frenzied at 0.50 seconds takes 4 at 0.51 and each second after).
+            "Auhf" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, attack_factor: d(self, "DataA"), dps: d(self, "DataB"), dps_every: 1.0, dps_next: 0.0, ..Default::default() }),
             // Anti-magic Shell: immune to magic.
             "Aams" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, magic_immune: true, ..Default::default() }),
             // Possession: the target becomes the caster's and the caster is spent.

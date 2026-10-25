@@ -40,27 +40,34 @@ impl World {
         dead
     }
 
-    /// Spirit Link: the target and up to DataB in all of the caster's friends within
-    /// Area of it share DataA of the damage each takes, for Dur.
+    /// Spirit Link: the target and up to DataB in all of the caster's friends share DataA
+    /// of the damage each takes, for Dur.  Like a chain, each joins nearest the one before
+    /// it within Area (CAbilitySpiritLink vf265; measured: of grunts 100, 150, 200, and 250
+    /// from the target, those at 100, 250 (150 past the first), and 150 join).
     pub(crate) fn spirit_link(&mut self, h: u32, a: Id, lvl: u32, target: u32) {
         let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
-        let Some((tx, ty)) = self.unit(target).map(|t| (t.x, t.y)) else { return };
+        if self.unit(target).is_none() {
+            return;
+        }
         let buff = self.objects.abilities.get(a).map(|o| crate::objects::id_from_str(o.level_str("BuffID", lvl).split(',').next().unwrap_or("").trim())).unwrap_or([0; 4]);
         let (share, max, area, dur) = (self.data(a, "DataA", lvl), self.data(a, "DataB", lvl).max(1.0) as usize, self.data(a, "Area", lvl), self.data(a, "Dur", lvl));
         self.next_link_group += 1;
         let group = self.next_link_group;
         let mut picks = vec![target];
-        let mut near: Vec<u32> = self
-            .units_in_pub(tx, ty, area)
-            .into_iter()
-            .filter(|&u| u != target)
-            .filter(|&u| self.unit(u).is_some_and(|x| !x.is_building && !x.dead && (x.owner == owner || crate::natives::players::is_ally(self, owner, x.owner)) && !x.buffs.iter().any(|b| b.link_group != 0)))
-            .collect();
-        near.sort_by(|&p, &q| {
-            let d = |u: u32| self.unit(u).map_or(f32::MAX, |x| (x.x - tx).hypot(x.y - ty));
-            d(p).total_cmp(&d(q))
-        });
-        picks.extend(near.into_iter().take(max.saturating_sub(1)));
+        while picks.len() < max {
+            let Some((cx, cy)) = picks.last().and_then(|&c| self.unit(c)).map(|c| (c.x, c.y)) else { break };
+            let next = self
+                .units_in_pub(cx, cy, area)
+                .into_iter()
+                .filter(|u| !picks.contains(u))
+                .filter(|&u| self.unit(u).is_some_and(|x| !x.is_building && !x.dead && (x.owner == owner || crate::natives::players::is_ally(self, owner, x.owner)) && !x.buffs.iter().any(|b| b.link_group != 0)))
+                .min_by(|&p, &q| {
+                    let d = |u: u32| self.unit(u).map_or(f32::MAX, |x| (x.x - cx).hypot(x.y - cy));
+                    d(p).total_cmp(&d(q))
+                });
+            let Some(next) = next else { break };
+            picks.push(next);
+        }
         for u in picks {
             // A unit joins only one link at a time.
             if let Some(x) = self.unit_mut(u) {

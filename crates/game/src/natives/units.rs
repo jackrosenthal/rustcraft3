@@ -70,6 +70,42 @@ fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32) -> (f32, f32) {
     if kind == crate::pathing::Move::Fly || radius <= 0.0 {
         return (x, y);
     }
+    // One made on top of another ground unit stands beside it, at the nearest spot on a
+    // grid of 16 clear of the rest (measured: three footmen made on one spot stand at it
+    // and 71 and 59 off; the original's choice among the nearest differs).
+    let others: Vec<(f32, f32, f32)> = w.unit_order.iter().filter_map(|&o| w.unit(o)).filter(|u| !u.dead && !u.hidden && !u.is_building && u.collision > 0.0 && (u.x - x).abs() < 512.0 && (u.y - y).abs() < 512.0).filter(|u| w.move_kind(u.handle) != crate::pathing::Move::Fly).map(|u| (u.x, u.y, u.collision)).collect();
+    // Moved when well within another (a map's units standing close keep their places:
+    // the original leaves Human01's bandits 61 apart where they were made), to a spot
+    // clear of the rest by about both sizes.
+    let crowded = |px: f32, py: f32| others.iter().any(|&(ox, oy, oc)| (ox - px).hypot(oy - py) < (oc + collision) * 0.95);
+    let overlaps = others.iter().any(|&(ox, oy, oc)| (ox - x).hypot(oy - y) < (oc + collision) * 0.5);
+    let (x, y) = if overlaps {
+        let p = w.pathing.as_ref().unwrap();
+        let mut found = (x, y);
+        'search: for r in 1..=24i32 {
+            let mut best: Option<(f32, (f32, f32))> = None;
+            for dy in -r..=r {
+                for dx in -r..=r {
+                    if dx.abs() != r && dy.abs() != r {
+                        continue;
+                    }
+                    let (px, py) = (x + dx as f32 * 16.0, y + dy as f32 * 16.0);
+                    let d = (px - x).hypot(py - y);
+                    if best.is_some_and(|b| b.0 <= d) || crowded(px, py) || !p.fits_kind(p.cell_of(px, py), radius, kind) {
+                        continue;
+                    }
+                    best = Some((d, (px, py)));
+                }
+            }
+            if let Some((_, at)) = best {
+                found = at;
+                break 'search;
+            }
+        }
+        found
+    } else {
+        (x, y)
+    };
     let p = w.pathing.as_ref().unwrap();
     let start = p.cell_of(x, y);
     // Moved only off destructables, as structures are (the original leaves units a map

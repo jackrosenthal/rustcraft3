@@ -2734,10 +2734,19 @@ impl World {
                     continue;
                 }
                 let (a, b) = (pos[i], pos[j]);
-                let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+                let (mut dx, mut dy) = (b.0 - a.0, b.1 - a.1);
+                // Two on the very same spot part along a way fixed by their order.
+                if dx.abs() < 0.001 && dy.abs() < 0.001 {
+                    let ang = (i as f32 * 2.399963 + j as f32) % std::f32::consts::TAU;
+                    dx = ang.cos() * 0.01;
+                    dy = ang.sin() * 0.01;
+                }
                 let d = (dx * dx + dy * dy).sqrt();
-                let min = (a.2 + b.2) * 0.5;
-                if d < min && d > 0.001 {
+                // Each keeps about its size from the other (measured: footmen, size 31,
+                // made on one spot stand 59 to 71 apart, and Human01's bandits stay 61
+                // apart).
+                let min = (a.2 + b.2) * 0.9;
+                if d < min && d > 0.0 {
                     let o = (min - d) * 0.25;
                     push[i].0 -= dx / d * o;
                     push[i].1 -= dy / d * o;

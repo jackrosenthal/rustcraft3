@@ -99,8 +99,10 @@ impl World {
         let defense = DEFENSE.get(self.root_data(h, "DataD") as usize).copied().unwrap_or("large");
         let speed = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map_or(0.0, |o| o.real("spd"));
         let cells = self.unit_mut(h).map(|u| std::mem::take(&mut u.pathing_cells)).unwrap_or_default();
+        let whole = self.unit_mut(h).map(|u| std::mem::take(&mut u.build_cells)).unwrap_or_default();
         if let Some(p) = self.pathing.as_mut() {
             p.stamp(&cells, -1);
+            p.stamp_no_build(&whole, -1);
         }
         let u = self.unit_mut(h).unwrap();
         u.extra.rooting = None;
@@ -120,11 +122,14 @@ impl World {
         // Rooted, it reads its speed as when made (measured: 40 again).
         let speed = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map_or(0.0, |o| o.real("spd"));
         let cells = self.pathing_cells(&tex, x, y, 0.0);
+        let whole = self.build_cells(&tex, x, y, 0.0);
         if let Some(p) = self.pathing.as_mut() {
             p.stamp(&cells, 1);
+            p.stamp_no_build(&whole, 1);
         }
         let u = self.unit_mut(h).unwrap();
         u.pathing_cells = cells;
+        u.build_cells = whole;
         u.extra.rooting = None;
         u.extra.uprooted = false;
         u.extra.weapons = Some(weapons);

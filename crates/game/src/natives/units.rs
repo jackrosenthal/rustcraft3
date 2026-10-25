@@ -54,7 +54,8 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32) -> (f32, f32
             let cells = w.pathing_cells(&tex, px, py, 0.0);
             let whole = w.build_cells(&tex, px, py, 0.0);
             let p = w.pathing.as_ref().unwrap();
-            cells.iter().all(|&c| p.clear_of_destructables(c)) && whole.iter().all(|&c| p.index_pub(c).is_some_and(|i| p.flags[i] & forbid == 0))
+            let _ = &cells;
+            whole.iter().all(|&c| p.clear_of_destructables(c) && p.index_pub(c).is_some_and(|i| p.flags[i] & forbid == 0) && (forbid & crate::pathing::NO_BUILD == 0 || !p.under_structure(c)))
         };
         if clear(w, sx, sy) {
             return (sx, sy);
@@ -228,6 +229,7 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         anim_serial: 0,
         death_time: 0.0,
         pathing_cells: Vec::new(),
+        build_cells: Vec::new(),
         carry_gold: 0,
         carry_lumber: 0,
         work_timer: 0.0,
@@ -310,11 +312,14 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
     if !path_tex.is_empty() {
         // Structures are always placed facing BuildingAngle; their footprint does not turn.
         let cells = w.pathing_cells(&path_tex, x, y, 0.0);
+        let whole = if w.unit(h).is_some_and(|u| u.is_building) { w.build_cells(&path_tex, x, y, 0.0) } else { Vec::new() };
         if let Some(p) = w.pathing.as_mut() {
             p.stamp(&cells, 1);
+            p.stamp_no_build(&whole, 1);
         }
         if let Some(u) = w.unit_mut(h) {
             u.pathing_cells = cells;
+            u.build_cells = whole;
         }
     }
     // Computer players' and creeps' units start with their autocast on.
@@ -436,6 +441,14 @@ pub const GROUP_GHOST: u32 = u32::MAX;
 pub fn script_remove_unit(w: &mut World, h: u32) {
     if w.unit(h).is_some() && !w.pending_removals.contains(&h) {
         w.pending_removals.push(h);
+        // Its ground is free at once (Blizzard.j removes a gold mine and makes the
+        // haunted mine in its place straight after; measured: it stands there).
+        if let Some((cells, whole)) = w.unit_mut(h).map(|u| (std::mem::take(&mut u.pathing_cells), std::mem::take(&mut u.build_cells))) {
+            if let Some(p) = w.pathing.as_mut() {
+                p.stamp(&cells, -1);
+                p.stamp_no_build(&whole, -1);
+            }
+        }
     }
 }
 
@@ -458,9 +471,10 @@ pub fn finish_removals(w: &mut World) {
 
 pub fn remove_unit(w: &mut World, h: u32) {
     w.detach_ability_art(h);
-    if let Some(cells) = w.unit_mut(h).map(|u| std::mem::take(&mut u.pathing_cells)) {
+    if let Some((cells, whole)) = w.unit_mut(h).map(|u| (std::mem::take(&mut u.pathing_cells), std::mem::take(&mut u.build_cells))) {
         if let Some(p) = w.pathing.as_mut() {
             p.stamp(&cells, -1);
+            p.stamp_no_build(&whole, -1);
         }
     }
     if w.unit(h).is_some() {
@@ -1442,7 +1456,7 @@ fn dummy_unit() -> Unit {
         dead: false, level: 0, hero_xp: 0, resource: 0, abilities: vec![], order: Order::default(),
         time_scale: 1.0, inventory: [0; 6], rally: None, explode_on_death: false, is_building: false, is_hero: false,
         collision: 0.0, action: Action::Idle, path: vec![], repath_timer: 0.0, cooldown: 0.0, swing: None,
-        acquire_timer: 0.0, anim: String::new(), anim_serial: 0, death_time: 0.0, pathing_cells: vec![],
+        acquire_timer: 0.0, anim: String::new(), anim_serial: 0, death_time: 0.0, pathing_cells: vec![], build_cells: vec![],
         carry_gold: 0, carry_lumber: 0, work_timer: 0.0, harvest_source: 0, inside: 0,
         queue: vec![], queue_progress: 0.0, constructing: None, build_time: 0.0, building: 0,
         str_: 0.0, agi: 0.0, int: 0.0, skill_points: 0, regen_timer: 0.0,

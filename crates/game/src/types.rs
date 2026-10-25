@@ -190,6 +190,9 @@ pub struct Unit {
     pub anim: String,
     pub anim_serial: u32,
     pub death_time: f32,
+    /// The whole footprint (the pathing texture's blue) a structure stamps unbuildable.
+    #[serde(default)]
+    pub build_cells: Vec<(i32, i32)>,
     pub pathing_cells: Vec<(i32, i32)>,
     pub carry_gold: i32,
     pub carry_lumber: i32,

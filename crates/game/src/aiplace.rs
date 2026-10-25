@@ -148,7 +148,9 @@ impl World {
                 "buffer" => (if many { 15 } else if tower { 5 } else { radius }, 3),
                 _ => (6, 3),
             };
-            let cells = self.pathing_cells(&tex, x, y, facing);
+            // Every texel of its pathing texture (FUN_6f9bcc00 is called for each, its
+            // value unread): the whole footprint.
+            let cells = self.build_cells(&tex, x, y, facing);
             let Some(map) = &self.pathing else { continue };
             for cell in cells {
                 let (wx, wy) = map.center(cell);

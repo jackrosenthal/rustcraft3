@@ -2047,8 +2047,12 @@ impl World {
         if self.objects.units.get(id).is_some_and(|o| o.str("requirePlace").to_ascii_lowercase().contains("blighted")) && !self.footprint_blighted(id, x, y) {
             return false;
         }
+        // Its whole footprint (the pathing texture's blue) on buildable ground, clear
+        // of blockers and of other structures' whole footprints (measured: a computer's
+        // first crypt and ziggurat stand clear of its necropolis's and haunted mine's
+        // margins).
         let tex = self.objects.units.get(id).map(|o| o.str("pathTex")).unwrap_or_default();
-        let cells = self.pathing_cells(&tex, x, y, 0.0);
+        let cells = self.build_cells(&tex, x, y, 0.0);
         let Some(p) = &self.pathing else { return true };
         cells.iter().all(|&c| p.buildable(c))
     }
@@ -2057,7 +2061,7 @@ impl World {
     /// (CPlacementBox's per-cell colors), and their size.
     pub fn placement_cells(&mut self, id: Id, x: f32, y: f32) -> Vec<((f32, f32), bool)> {
         let tex = self.objects.units.get(id).map(|o| o.str("pathTex")).unwrap_or_default();
-        let cells = self.pathing_cells(&tex, x, y, 0.0);
+        let cells = self.build_cells(&tex, x, y, 0.0);
         let whole = self.builds_on(id) && self.build_on_site(x, y).is_some();
         let Some(p) = &self.pathing else { return Vec::new() };
         cells.iter().map(|&c| (p.center(c), whole || p.buildable(c))).collect()

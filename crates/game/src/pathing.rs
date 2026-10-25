@@ -46,6 +46,10 @@ pub struct PathingMap {
     /// Of those, destructables' (trees and the like).
     #[serde(default)]
     pub by_destructables: Vec<u16>,
+    /// Count of structures whose whole footprint (their pathing texture's blue) covers
+    /// each cell: no other structure's whole footprint may.
+    #[serde(default)]
+    pub no_build: Vec<u16>,
     /// The search's working arrays, kept between searches.
     #[serde(skip)]
     scratch: std::cell::RefCell<Scratch>,
@@ -210,7 +214,7 @@ impl PathingMap {
         let w = u32::from_le_bytes(data[8..12].try_into().ok()?);
         let h = u32::from_le_bytes(data[12..16].try_into().ok()?);
         let flags = data.get(16..16 + (w * h) as usize)?.to_vec();
-        Some(PathingMap { width: w, height: h, origin, flags, blocked: vec![0; (w * h) as usize], by_destructables: vec![0; (w * h) as usize], scratch: Default::default(), memo: Default::default(), floods: Default::default(), regions: Default::default() })
+        Some(PathingMap { width: w, height: h, origin, flags, blocked: vec![0; (w * h) as usize], by_destructables: vec![0; (w * h) as usize], no_build: vec![0; (w * h) as usize], scratch: Default::default(), memo: Default::default(), floods: Default::default(), regions: Default::default() })
     }
 
     pub fn cell_of(&self, x: f32, y: f32) -> (i32, i32) {
@@ -292,7 +296,24 @@ impl PathingMap {
     }
 
     pub fn buildable(&self, c: (i32, i32)) -> bool {
-        self.index(c).is_some_and(|i| self.flags[i] & (NO_BUILD | NO_WALK) == 0 && self.blocked[i] == 0)
+        self.index(c).is_some_and(|i| self.flags[i] & (NO_BUILD | NO_WALK) == 0 && self.blocked[i] == 0 && self.no_build.get(i).is_none_or(|&n| n == 0))
+    }
+
+    /// Whether another structure's whole footprint covers a cell.
+    pub fn under_structure(&self, c: (i32, i32)) -> bool {
+        self.index(c).is_some_and(|i| self.no_build.get(i).is_some_and(|&n| n > 0))
+    }
+
+    /// Adds (or removes, with `delta` -1) a structure's whole footprint.
+    pub fn stamp_no_build(&mut self, cells: &[(i32, i32)], delta: i32) {
+        if self.no_build.len() != self.blocked.len() {
+            self.no_build = vec![0; self.blocked.len()];
+        }
+        for &c in cells {
+            if let Some(i) = self.index(c) {
+                self.no_build[i] = (self.no_build[i] as i32 + delta).max(0) as u16;
+            }
+        }
     }
 
     /// Whether a unit of `radius` fits centered in a cell.

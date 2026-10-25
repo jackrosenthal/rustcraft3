@@ -1397,7 +1397,10 @@ impl World {
                         self.path_to(h, (x, y));
                     }
                     if self.walk(h, dt) {
-                        self.unit_mut(h).unwrap().action = Action::Idle;
+                        let u = self.unit_mut(h).unwrap();
+                        u.action = Action::Idle;
+                        // Its order is done (measured: an attack-move that has arrived reads no order).
+                        u.order = Order::default();
                     }
                 }
                 Action::Harvest { target } => self.harvest(vm, h, target, dt),
@@ -2529,6 +2532,22 @@ impl World {
             if flying { wants("air") } else if s.is_building { wants("structure") || wants("ground") } else { wants("ground") }
         });
         if !hits || self.unit_invulnerable(s) {
+            // A fighting unit that may flee (UnitData canFlee) attack-moves 300 straight
+            // away from it instead (measured: a footman struck by a gryphon rider it
+            // cannot hit, from 200 or 400 away, goes 291.6 off on an attack order each
+            // time, stopping within 15.6875 of a point 300 off).  Creeps and workers
+            // flee otherwise, not yet done here.
+            let (sx, sy, tx, ty) = (s.x, s.y, t.x, t.y);
+            let neutral = t.owner >= PLAYER_NEUTRAL_AGGRESSIVE;
+            let flees = self.objects.units.get(t.type_id).is_some_and(|o| o.int("canFlee") != 0) && !self.unit_class(t, "peon");
+            if flees && !neutral {
+                let d = (tx - sx).hypot(ty - sy).max(0.001);
+                let (fx, fy) = self.clamp_to_map(tx + (tx - sx) / d * 300.0, ty + (ty - sy) / d * 300.0);
+                let u = self.unit_mut(target).unwrap();
+                u.action = Action::AttackMove { x: fx, y: fy };
+                u.order = Order { id: crate::natives::basic::order_id("attack"), target_x: fx, target_y: fy, target: 0 };
+                u.path.clear();
+            }
             return;
         }
         let (sx, sy) = (s.x, s.y);

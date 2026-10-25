@@ -80,7 +80,7 @@ impl World {
         }
     }
 
-    fn unit_class(&self, u: &Unit, class: &str) -> bool {
+    pub(crate) fn unit_class(&self, u: &Unit, class: &str) -> bool {
         self.objects.units.get(u.type_id).is_some_and(|o| o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case(class)))
     }
 

@@ -144,12 +144,27 @@ fn weapon_n_read(w: &World, type_id: Id, n: usize) -> Option<Weapon> {
 
 /// A unit's enabled weapons, numbered: its type's weapsOn bits, or the ones its form
 /// enables (rooted or uprooted ancients).
+/// What steps of f32 leave of a whole time: none (thirty 0.02s fall 1e-7 short of 0.6).
+/// Measured: a Watch Tower, cooldown 0.6, strikes every 0.60 seconds; ours, without
+/// this, every 0.62.
+pub(crate) const STEP_SLACK: f32 = 1e-4;
+
 pub fn unit_weapons(w: &World, u: &Unit) -> Vec<(u8, Weapon)> {
     // A burrow shoots only with workers inside.
     if u.extra.cargo.is_empty() && w.ability_with_code(u.handle, "Abun").is_some() {
         return Vec::new();
     }
     let mut mask = u.extra.weapons.unwrap_or_else(|| w.objects.units.get(u.type_id).map_or(0, |o| o.int("weapsOn")));
+    // A rooted ancient that has not changed form uses its rooted weapons (Aroo DataA;
+    // measured: an Ancient Protector made rooted throws at a peasant 150 away, within
+    // its 128 melee reach, every 2 seconds, its second weapon's cooldown).
+    if u.extra.weapons.is_none() && !u.extra.uprooted {
+        if let Some((a, l)) = w.ability_with_code(u.handle, "Aroo") {
+            if let Some(m) = w.objects.abilities.get(a).map(|o| o.level_real("DataA", l) as i32).filter(|&m| m > 0) {
+                mask = m;
+            }
+        }
+    }
     // Research can switch weapons on (renw: Flying Machine Bombs, Vorpal Blades).
     if u.extra.weapons.is_none() {
         if let Some(m) = w.upgrade_bonus(u.owner, u.type_id).weapons {
@@ -177,8 +192,13 @@ impl World {
 }
 
 /// The first of a unit's weapons that can hit a target.
+/// The weapon a unit attacks a target with: the first that may and reaches it, else
+/// the first that may (measured: an Ancient Protector strikes a peasant 300 away every 2
+/// seconds, its second weapon's, the first reaching only 128).
 pub fn weapon_for(w: &World, u: &Unit, t: &Unit) -> Option<(u8, Weapon)> {
-    unit_weapons(w, u).into_iter().find(|(_, wp)| can_target(w, wp, u, t))
+    let allowed: Vec<(u8, Weapon)> = unit_weapons(w, u).into_iter().filter(|(_, wp)| can_target(w, wp, u, t)).collect();
+    let d = (t.x - u.x).hypot(t.y - u.y) - u.collision - t.collision;
+    allowed.iter().find(|(_, wp)| d <= wp.range).or(allowed.first()).cloned()
 }
 
 /// The weapon a unit swings with.
@@ -1352,7 +1372,9 @@ impl World {
                 // What runs past zero within a step carries into the next attack, so a
                 // unit attacking steadily strikes exactly its cooldown apart, as the
                 // original's timers do (measured: 1.60 for a grunt, 1.35 for a footman).
-                u.cooldown = (u.cooldown - dt).max(-dt);
+                // Only the step it runs out in carries over: a ready unit that waits
+                // carries nothing into its next swing.
+                u.cooldown = if u.cooldown <= 0.0 { 0.0 } else { (u.cooldown - dt).max(-dt) };
                 // The shown facing follows at a third of the turn rate.
                 let shown = u.shown_facing.unwrap_or(u.facing);
                 let d = angle_diff(shown, u.facing);
@@ -1372,7 +1394,7 @@ impl World {
                 // agility 32, speed 1.64, strikes 0.20 seconds after its swing begins, its
                 // damage point 0.33).
                 s.elapsed += dt * self.attack_speed(h);
-                if !s.done && s.elapsed >= wp.damage_point && s.ground.is_some() {
+                if !s.done && s.elapsed >= wp.damage_point - STEP_SLACK && s.ground.is_some() {
                     s.done = true;
                     let (owner, tid) = self.unit(h).map_or((0, [0; 4]), |u| (u.owner, u.type_id));
                     let ub = self.upgrade_bonus(owner, tid);
@@ -1405,7 +1427,7 @@ impl World {
                         });
                     }
                 }
-                if !s.done && s.elapsed >= wp.damage_point {
+                if !s.done && s.elapsed >= wp.damage_point - STEP_SLACK {
                     s.done = true;
                     let (owner, tid) = self.unit(h).map_or((0, [0; 4]), |u| (u.owner, u.type_id));
                     let ub = self.upgrade_bonus(owner, tid);
@@ -1488,7 +1510,7 @@ impl World {
                 // (measured: a level 6 Blademaster, agility 32, strikes every 1.08 seconds,
                 // its cooldown 1.77 / 1.64, though its damage point and backswing make
                 // 1.17).
-                if s.elapsed >= wp.damage_point + wp.backswing || (s.done && u.cooldown <= 0.0) {
+                if s.elapsed >= wp.damage_point + wp.backswing - STEP_SLACK || (s.done && u.cooldown <= STEP_SLACK) {
                     u.swing = None;
                     set_anim(u, "stand");
                 } else {
@@ -2789,7 +2811,7 @@ impl World {
         if left.abs() > 0.5f32.to_degrees() {
             return;
         }
-        if u.cooldown <= 0.0 {
+        if u.cooldown <= STEP_SLACK {
             u.cooldown = wp.cooldown / speed + u.cooldown.min(0.0);
             u.extra.cooldown_speed = Some(speed);
             u.swing = Some(Swing { target: 0, ground: Some(at), elapsed: 0.0, done: false, weapon: wn });
@@ -2835,7 +2857,7 @@ impl World {
         if left.abs() > half {
             return;
         }
-        if u.cooldown <= 0.0 {
+        if u.cooldown <= STEP_SLACK {
             u.cooldown = wp.cooldown / speed + u.cooldown.min(0.0);
             u.extra.cooldown_speed = Some(speed);
             u.swing = Some(Swing { target, ground: None, elapsed: 0.0, done: false, weapon: wn });

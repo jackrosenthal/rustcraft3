@@ -642,7 +642,13 @@ impl World {
 
     fn path_to_inner(&mut self, h: u32, goal: (f32, f32)) {
         let Some(u) = self.unit(h) else { return };
-        let (from, radius) = ((u.x, u.y), u.collision);
+        // Paths keep a unit's center a whole cell clear of what blocks it, at least one
+        // (measured: a peasant, a footman, and a knight, collision 16, 31, and 32, all
+        // round the end of a wall of farms 48 out, through the next cell's center).
+        // Where that cannot reach the goal (a tree to cut, a gap between trees), half
+        // the unit's collision does.
+        let (from, radius) = ((u.x, u.y), (u.collision / crate::pathing::CELL).ceil().max(1.0) * crate::pathing::CELL * 2.0);
+        let tight = u.collision;
         let kind = self.move_kind(h);
         let free = u.extra.no_pathing;
         let path = match &self.pathing {
@@ -650,8 +656,9 @@ impl World {
             // unit whose pathing is off (SetUnitPathing).
             Some(_) if kind == crate::pathing::Move::Fly || free => vec![goal],
             Some(p) => {
-                let direct = p.find_path_kind(from, goal, radius * 0.5, 20000, kind);
                 let reaches = |path: &Vec<(f32, f32)>, to: (f32, f32)| path.last().is_some_and(|e| (e.0 - to.0).hypot(e.1 - to.1) < 64.0);
+                let wide = p.find_path_kind(from, goal, radius * 0.5, 20000, kind);
+                let direct = if reaches(&wide, goal) { wide } else { p.find_path_kind(from, goal, tight * 0.5, 20000, kind) };
                 if reaches(&direct, goal) {
                     direct
                 } else {

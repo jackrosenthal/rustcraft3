@@ -556,8 +556,19 @@ impl World {
         }
         st.harvest_timer = 1.0;
         let requests = st.harvest.clone();
-        // Units in a captain or at a guard post do not gather.
-        let mut held: Vec<u32> = st.attack.units.iter().chain(st.defense.units.iter()).copied().collect();
+        // Units at a guard post do not gather, nor those of a captain with somewhere to
+        // go; without SetSlowChopping a captain's units standing at home are taken back
+        // to gather and leave it (FUN_6f9c7700; measured: a melee computer's ghouls go
+        // back to the trees between its waves).
+        let slow = st.flags.get("slow_chopping").copied().unwrap_or(false);
+        let busy_captain = |c: &Captain| slow || c.target != 0 || c.goal.is_some();
+        let mut held: Vec<u32> = Vec::new();
+        for c in [&st.attack, &st.defense] {
+            if busy_captain(c) {
+                held.extend(c.units.iter().copied());
+            }
+        }
+        let in_captain: Vec<u32> = st.attack.units.iter().chain(st.defense.units.iter()).copied().collect();
         held.extend(self.guards(p));
         let workers: Vec<u32> = self.workers(p).into_iter().filter(|h| !held.contains(h)).collect();
         let busy = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Build { .. } | Action::Construct { .. } | Action::Attack { .. } | Action::Move { .. }));
@@ -596,6 +607,13 @@ impl World {
             for h in pool.into_iter().take((*n).max(0) as usize) {
                 taken.push(h);
                 if *gold { to_gold.push(h) } else { to_wood.push(h) }
+            }
+        }
+        // Those taken from a captain leave it.
+        if let Some(st) = self.ai.get_mut(&p) {
+            for h in to_gold.iter().chain(to_wood.iter()).filter(|h| in_captain.contains(h)) {
+                st.attack.units.retain(|u| u != h);
+                st.defense.units.retain(|u| u != h);
             }
         }
         let harvest = crate::natives::basic::order_id("harvest");

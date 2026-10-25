@@ -2969,11 +2969,14 @@ impl World {
                 i += 1;
                 continue;
             }
-            // A missile at a unit lands on reaching its edge (measured: an archer's
-            // arrow, at 900, strikes a footman 500 away 0.51 seconds after leaving, its
-            // 469 to the footman's collision of 31).
+            // An attack's missile at a unit lands on reaching its edge (measured: an
+            // archer's arrow, at 900, strikes a footman 500 away 0.51 seconds after
+            // leaving, its 469 to the footman's collision of 31); a spell's flies to its
+            // middle (measured: a Storm Bolt at 1000 lands on footmen 300 and 600 away
+            // 0.31 and 0.61 seconds after leaving).
+            let spell = m.spell.is_some();
             let target = match self.handles.get(m.target) {
-                Some(Obj::Unit(t)) => Some((t.x, t.y, t.collision)),
+                Some(Obj::Unit(t)) => Some((t.x, t.y, if spell { 0.0 } else { t.collision })),
                 _ if m.target == 0 => m.impact.map(|(x, y)| (x, y, 0.0)),
                 _ => None,
             };

@@ -46,10 +46,15 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32) -> (f32, f32
                 _ => {}
             }
         }
+        // Destructables by its walking footprint (red), the ground by its whole
+        // footprint (blue; measured: an Ancient of War stands where none of its 12x12
+        // cells is unbuildable).  Other structures don't count yet: the original moves
+        // a town hall made on a start location by them, where to is not yet known.
         let clear = |w: &mut World, px: f32, py: f32| {
             let cells = w.pathing_cells(&tex, px, py, 0.0);
+            let whole = w.build_cells(&tex, px, py, 0.0);
             let p = w.pathing.as_ref().unwrap();
-            cells.iter().all(|&c| p.clear_of_destructables(c) && p.index_pub(c).is_some_and(|i| p.flags[i] & forbid == 0))
+            cells.iter().all(|&c| p.clear_of_destructables(c)) && whole.iter().all(|&c| p.index_pub(c).is_some_and(|i| p.flags[i] & forbid == 0))
         };
         if clear(w, sx, sy) {
             return (sx, sy);

@@ -825,6 +825,7 @@ fn main() -> anyhow::Result<()> {
                             let row: String = (a0..=a1).map(|cx| match m.flags_at((cx, cy)) {
                                 None => ' ',
                                 Some(f) if f & w3_game::pathing::NO_WALK != 0 => '#',
+                                Some(f) if f & w3_game::pathing::NO_BUILD != 0 && m.walkable((cx, cy)) => ',',
                                 Some(_) if m.walkable((cx, cy)) => '.',
                                 Some(_) => 'o',
                             }).collect();

@@ -1609,6 +1609,17 @@ impl World {
     /// Red marks unwalkable cells; one texel is one 32x32 cell.  The texture turns with the
     /// object in quarter turns.
     pub fn pathing_cells(&mut self, path_tex: &str, x: f32, y: f32, facing_deg: f32) -> Vec<(i32, i32)> {
+        self.pathing_cells_channel(path_tex, x, y, facing_deg, 0)
+    }
+
+    /// The cells a pathing texture marks unbuildable (blue), as `pathing_cells`: a
+    /// structure's whole footprint, its margin included (12x12Simple marks all 144
+    /// cells blue, the middle 64 red).
+    pub fn build_cells(&mut self, path_tex: &str, x: f32, y: f32, facing_deg: f32) -> Vec<(i32, i32)> {
+        self.pathing_cells_channel(path_tex, x, y, facing_deg, 2)
+    }
+
+    fn pathing_cells_channel(&mut self, path_tex: &str, x: f32, y: f32, facing_deg: f32, channel: usize) -> Vec<(i32, i32)> {
         if path_tex.is_empty() || path_tex == "_" || path_tex.eq_ignore_ascii_case("none") {
             return Vec::new();
         }
@@ -1624,7 +1635,7 @@ impl World {
         let mut out = Vec::new();
         for ty in 0..h {
             for tx in 0..w {
-                let i = ((ty * w + tx) * 4) as usize;
+                let i = ((ty * w + tx) * 4) as usize + channel;
                 if img.rgba[i] == 0 {
                     continue;
                 }

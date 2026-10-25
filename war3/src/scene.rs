@@ -5060,7 +5060,11 @@ impl Scene {
         let half_h = if cine { (cam.fov / 2.0).tan() } else { (cam.fov / 2.0).tan() / (1.0 + aspect * aspect).sqrt() };
         let proj = Mat4::perspective_rh(2.0 * half_h.atan(), aspect, cam.near_clip.max(1.0), cam.far_clip.max(100.0));
         let mut globals = default_globals(proj * view, eye);
-        globals.light_dir = [0.3, 0.3, -1.0, 0.0];
+        // Lit from the camera's way (compared against the original: faces and walls
+        // toward the viewer show bright, where a light from above left the Town Hall's
+        // clock tower dim).
+        let look = (target - eye).normalize_or_zero();
+        globals.light_dir = [look.x, look.y, look.z, 0.0];
         globals.ambient = [0.4, 0.4, 0.4, 1.0];
         let rot = Quat::IDENTITY;
         v.inst.transform = Mat4::IDENTITY;

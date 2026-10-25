@@ -206,7 +206,9 @@ impl World {
                 }
             }
             // Soul Burn: DataA every DataB, DataC less damage, silenced.
-            "ANso" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: d(self, "DataA") / d(self, "DataB").max(0.01), damage_factor: -d(self, "DataC"), silence: true, ..Default::default() }),
+            // Soul Burn strikes once a second, the first at once (measured: 7.14 at 0.68
+            // seconds, 1.68, and on to 11.68).
+            "ANso" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: d(self, "DataA") / d(self, "DataB").max(0.01), dps_every: 1.0, dps_next: 0.0, damage_factor: -d(self, "DataC"), silence: true, ..Default::default() }),
             // Transmute: a unit up to level DataC dies for DataA of its gold cost.
             "ANtm" => {
                 let Some(u) = self.unit(target).filter(|u| !u.is_hero && u.level <= d(self, "DataC") as i32) else { return true };

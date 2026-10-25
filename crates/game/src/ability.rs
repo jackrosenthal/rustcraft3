@@ -1120,7 +1120,9 @@ impl World {
             // Inner Fire: damage factor (DataA) and armor (DataB).
             "Ainf" => self.apply_buff(target, Buff { id: buff_id, ability: a, level: lvl, caster: h, remaining: dur, damage_factor: self.data(a, "DataA", lvl), armor: self.data(a, "DataB", lvl), ..Default::default() }),
             // Ensnare, Web, and Entangling Roots hold the target in place.
-            "Aens" | "Aweb" | "AEer" => self.apply_buff(target, Buff { id: buff_id, ability: a, level: lvl, caster: h, remaining: dur, move_factor: -1.0, dps: if code == "AEer" { self.data(a, "DataA", lvl) } else { 0.0 }, ..Default::default() }),
+            // Entangling Roots strikes DataA once a second, the first at once (measured: a
+            // footman rooted at 0.70 seconds takes 15 at 0.71, 1.71, and on to 8.71).
+            "Aens" | "Aweb" | "AEer" => self.apply_buff(target, Buff { id: buff_id, ability: a, level: lvl, caster: h, remaining: dur, move_factor: -1.0, dps: if code == "AEer" { self.data(a, "DataA", lvl) } else { 0.0 }, dps_every: 1.0, dps_next: 0.0, ..Default::default() }),
             // Hurl Boulder, Firebolt, and similar: damage and stun.
             "ACtb" | "ANfb" => {
                 self.spell_damage(vm, h, target, self.data(a, "DataA", lvl));

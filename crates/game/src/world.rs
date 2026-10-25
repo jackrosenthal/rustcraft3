@@ -362,6 +362,9 @@ pub struct World {
     /// Why the last order was refused (a command error key), for the interface.
     #[serde(skip)]
     pub order_error: Option<&'static str>,
+    /// A spell's missile is landing: its effect takes hold now (ability_effect).
+    #[serde(skip)]
+    pub spell_landing: bool,
     /// Damage being dealt now is not of DAMAGE_TYPE_NORMAL, so armor does not reduce it.
     #[serde(skip)]
     pub damage_ignores_armor: bool,
@@ -725,6 +728,7 @@ impl World {
             saves_dir: None,
             preload: Default::default(),
             order_error: None,
+            spell_landing: false,
             damage_ignores_armor: false,
             destructable_order: Vec::new(),
             item_order: Vec::new(),

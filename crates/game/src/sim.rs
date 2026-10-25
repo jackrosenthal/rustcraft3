@@ -2900,6 +2900,10 @@ impl World {
         }
         for m in hits {
             match m.spell {
+                Some((a, lvl, _, _)) if matches!(self.ability_code(a).as_str(), "ANdh" | "AEsh") => {
+                    let at = self.widget_pos(m.target).or(m.impact).unwrap_or((m.x, m.y));
+                    self.spell_landed(vm, m.source, a, lvl, m.target, at);
+                }
                 Some((a, lvl, stun, buff)) => {
                     // The touch of a spell aimed at an enemy, as it lands.
                     let enemy = self.unit(m.target).is_some_and(|t| self.unit(m.source).is_some_and(|c| !is_ally(self, t.owner, c.owner)));

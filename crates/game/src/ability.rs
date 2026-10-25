@@ -977,11 +977,65 @@ impl World {
         true
     }
 
+    /// A spell's missile from the caster to its target unit (or point), whose effect
+    /// takes hold as it lands (spell_landed).
+    fn launch_spell_missile(&mut self, h: u32, a: Id, lvl: u32, target: u32, at: (f32, f32)) {
+        let Some((sx, sy)) = self.unit(h).map(|u| (u.x, u.y)) else { return };
+        let model = self.profile_art(a, "Missileart");
+        let speed = self.profile_art(a, "Missilespeed").trim().parse().unwrap_or(1000.0f32).max(1.0);
+        let arc = self.profile_art(a, "Missilearc").trim().parse().unwrap_or(0.0);
+        let z = self.ground_z(sx, sy) + 60.0;
+        let target = if self.unit(target).is_some() { target } else { 0 };
+        self.missiles.push(crate::sim::Missile {
+            id: 0,
+            source: h,
+            target,
+            model,
+            x: sx,
+            y: sy,
+            z,
+            speed,
+            arc,
+            damage: 0.0,
+            attack_type: String::new(),
+            start: (sx, sy),
+            spell: Some((a, lvl, 0.0, [0; 4])),
+            weapon: None,
+            impact: (target == 0).then_some(at),
+            bounces: 0,
+            hit: Vec::new(),
+            stampede: None,
+            rock: None,
+            reflected: false,
+        });
+    }
+
+    /// A spell's missile lands: its effect takes hold, the target touched with a hit of
+    /// nothing as it does and again after (measured: Shadow Strike shows damage events
+    /// of 0, 75, and 0 at once; Drunken Haze two of 0).
+    pub(crate) fn spell_landed(&mut self, vm: &mut Vm, h: u32, a: Id, lvl: u32, target: u32, at: (f32, f32)) {
+        self.spell_landing = true;
+        self.ability_effect(vm, h, a, lvl, target, at);
+        self.spell_landing = false;
+        let enemy = self.unit(target).is_some_and(|t| !t.dead && self.unit(h).is_some_and(|c| !crate::natives::players::is_ally(self, t.owner, c.owner)));
+        if enemy {
+            self.spell_damage(vm, h, target, 0.0);
+        }
+    }
+
     fn ability_effect(&mut self, vm: &mut Vm, h: u32, a: Id, lvl: u32, target: u32, (x, y): (f32, f32)) {
+        let code = self.ability_code(a);
+        // Drunken Haze and Shadow Strike fly to their target (Missileart, Missilespeed,
+        // Missilearc) and take hold as they land (measured: a Brewmaster's haze reaches a
+        // footman 300 away 0.21 seconds after its cast point, a Warden's strike one 290
+        // away 0.25 seconds after).
+        if matches!(code.as_str(), "ANdh" | "AEsh") && !self.spell_landing {
+            self.launch_spell_missile(h, a, lvl, target, (x, y));
+            return;
+        }
         if target != 0 && self.unit(target).is_some() && self.spell_shield_blocks(h, target) {
             return;
         }
-        let code = self.ability_code(a);
         // A spell aimed at an enemy unit touches it with nothing first (measured: Sleep,
         // Entangling Roots, Slow, Faerie Fire, Hex, Polymorph, Curse, and Frost Nova each
         // give their target a damage event of 0 as they take hold; a missile's, as Storm

@@ -44,6 +44,7 @@ fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
     let (timeout, periodic, cb) = (a.r(1), a.b(2), a.code(3));
     if let Some(t) = w.timer_mut(a.h(0)) {
         t.timeout = timeout;
+        t.period = timeout;
         t.remaining = timeout;
         t.periodic = periodic;
         t.running = true;
@@ -215,7 +216,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetWinningPlayer => |w, _, _| NativeResult::Return(w.player_handle(w.ctx.player)),
         TriggerRegisterTimerEvent => |w, _, a| {
             // A private timer drives the event.
-            let timer = w.handles.insert(Obj::Timer(Timer { remaining: a.r(1), timeout: a.r(1), periodic: a.b(2), running: true, callback: None }));
+            let timer = w.handles.insert(Obj::Timer(Timer { remaining: a.r(1), timeout: a.r(1), period: a.r(1), periodic: a.b(2), running: true, ..Default::default() }));
             register_event(w, a.h(0), EventKind::TimerExpire(timer))
         },
         TriggerRegisterTimerExpireEvent => |w, _, a| register_event(w, a.h(0), EventKind::TimerExpire(a.h(1))),
@@ -253,10 +254,19 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         CreateTimer => |w, _, _| handle(w.handles.insert(Obj::Timer(Timer::default()))),
         DestroyTimer => |w, _, a| { if w.timer_mut(a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
         TimerStart => timer_start,
-        PauseTimer => |w, _, a| { if let Some(t) = w.timer_mut(a.h(0)) { t.running = false; } none() },
-        ResumeTimer => |w, _, a| { if let Some(t) = w.timer_mut(a.h(0)) { t.running = true; } none() },
-        TimerGetElapsed => |w, _, a| real(w.timer_mut(a.h(0)).map_or(0.0, |t| t.timeout - t.remaining)),
-        TimerGetRemaining => |w, _, a| real(w.timer_mut(a.h(0)).map_or(0.0, |t| t.remaining)),
+        // Pausing keeps what is left (FUN_6f240420); resuming a stopped timer runs it
+        // for that (FUN_6f245ac0), whether it was paused or had fired since.
+        PauseTimer => |w, _, a| { if let Some(t) = w.timer_mut(a.h(0)) { t.saved = t.remaining_now(); t.running = false; } none() },
+        ResumeTimer => |w, _, a| {
+            if let Some(t) = w.timer_mut(a.h(0)).filter(|t| !t.running) {
+                t.period = t.saved;
+                t.remaining = t.saved;
+                t.running = true;
+            }
+            none()
+        },
+        TimerGetElapsed => |w, _, a| real(w.timer_mut(a.h(0)).map_or(0.0, |t| t.elapsed())),
+        TimerGetRemaining => |w, _, a| real(w.timer_mut(a.h(0)).map_or(0.0, |t| t.remaining_now())),
         TimerGetTimeout => |w, _, a| real(w.timer_mut(a.h(0)).map_or(0.0, |t| t.timeout)),
     );
 }

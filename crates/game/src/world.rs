@@ -1328,6 +1328,8 @@ impl World {
                 t.remaining -= dt;
                 if t.remaining <= 0.0 {
                     if t.periodic && t.timeout > 0.0 {
+                        // A resumed run done, the timer goes on by its timeout.
+                        t.period = t.timeout;
                         t.remaining += t.timeout;
                     } else {
                         t.running = false;
@@ -1567,7 +1569,7 @@ impl World {
     /// once it reaches zero.
     pub fn timer_dialog_text(&self, d: &TimerDialog) -> String {
         let remaining = d.real_time.unwrap_or_else(|| match self.handles.get(d.timer) {
-            Some(Obj::Timer(t)) => t.remaining,
+            Some(Obj::Timer(t)) => t.remaining_now(),
             _ => 0.0,
         });
         if remaining <= 0.0 {

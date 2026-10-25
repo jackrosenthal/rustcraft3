@@ -660,6 +660,9 @@ impl World {
                 cap.target = target;
             }
             let attack = crate::natives::basic::order_id("attack");
+            // Sent at a target or a goal, they go by AImove (measured: a computer's ghouls
+            // on their way to a creep camp read AImove).
+            let aimove = crate::natives::basic::order_id("AImove");
             for h in units {
                 // Idle units, and gatherers the captain has taken, go.
                 // So do those still gathering at home once there is somewhere to go.
@@ -669,10 +672,10 @@ impl World {
                     continue;
                 }
                 if target != 0 && self.unit(target).is_some_and(|t| !t.dead) {
-                    self.order_unit(h, attack, 0.0, 0.0, target);
+                    self.order_unit(h, aimove, 0.0, 0.0, target);
                 } else if let Some((x, y)) = goal {
                     if self.unit(h).is_some_and(|u| (u.x - x).hypot(u.y - y) > 300.0) {
-                        self.order_unit(h, attack, x, y, 0);
+                        self.order_unit(h, aimove, x, y, 0);
                     }
                 } else if let Some((x, y)) = Some(home).filter(|&(x, y)| (x, y) != (0.0, 0.0)) {
                     // Without a goal the units gather at home (measured: the original's
@@ -844,6 +847,22 @@ impl World {
                     continue;
                 }
                 if healthy && u.life < u.max_life * 0.5 {
+                    continue;
+                }
+                // A gatherer carrying resources is not taken; the attack captain has it
+                // take them home first, by the unnamed order 852660 (FUN_6f9c32d0;
+                // measured: a computer's ghouls called to its first wave bring their
+                // lumber back before they go).
+                let gatherer = ["Ahar", "Ahrl", "Aaha", "Awha"].iter().any(|c| self.ability_with_code(h, c).is_some());
+                if gatherer && (u.carry_gold > 0 || u.carry_lumber > 0) {
+                    if attack {
+                        if let Some(u) = self.unit_mut(h).filter(|u| !matches!(u.action, Action::ReturnResources)) {
+                            u.action = Action::ReturnResources;
+                            u.harvest_source = 0;
+                            u.path.clear();
+                            u.order = Order { id: 852660, target_x: 0.0, target_y: 0.0, target: 0 };
+                        }
+                    }
                     continue;
                 }
                 if let Some(st) = self.ai.get_mut(&p) {

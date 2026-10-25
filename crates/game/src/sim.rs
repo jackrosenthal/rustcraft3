@@ -355,6 +355,7 @@ impl World {
         let smart = crate::natives::basic::order_id("smart");
         let mv = crate::natives::basic::order_id("move");
         let attack = crate::natives::basic::order_id("attack");
+        let aimove = crate::natives::basic::order_id("AImove");
         let stop = crate::natives::basic::order_id("stop");
         let hold = crate::natives::basic::order_id("holdposition");
         let patrol = crate::natives::basic::order_id("patrol");
@@ -478,9 +479,10 @@ impl World {
             Action::Idle
         } else if order == hold {
             Action::Hold
-        } else if order == attack && target != 0 {
+        } else if (order == attack || order == aimove) && target != 0 {
             Action::Attack { target }
-        } else if order == attack {
+        } else if order == attack || order == aimove {
+            // A computer's captain moves its units by AImove, as an attack (FUN_6f9d44d0).
             Action::AttackMove { x, y }
         } else if crate::natives::basic::order_name(order) == Some("attackground") {
             // Only a unit with an artillery weapon shells the ground.

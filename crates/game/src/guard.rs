@@ -1,7 +1,9 @@
 //! Creeps keep to their camps, and units call their friends to a fight (MiscGame):
 //! a creep that has strayed GuardDistance from home and chased GuardReturnTime
 //! seconds without being attacked heads home, as does one beyond MaxGuardDistance
-//! whatever attacks it, or one left idle away from home.  A unit attacked calls the
+//! after that time whatever attacks it, or one left idle away from home (measured: an
+//! ogre, its camp's or one made by a script, chases a fleeing footman some 2000 from
+//! home and turns back 5 to 6 seconds after passing 600).  A unit attacked calls the
 //! idle friends within CallForHelp (CreepCallForHelp for creeps) to it.
 
 use crate::types::*;
@@ -34,9 +36,11 @@ impl World {
             let strayed = *u.extra.strayed.get_or_insert(now);
             let chasing = matches!(u.action, Action::Attack { .. });
             let idle = matches!(u.action, Action::Idle);
-            let go = d > max || idle || chasing && now - strayed >= wait && now - u.extra.last_attacked >= wait;
+            let go = idle || chasing && now - strayed >= wait && (d > max || now - u.extra.last_attacked >= wait);
             if go {
                 u.extra.returning = true;
+                // Its order reads "move" on the way (measured).
+                u.order = Order { id: crate::natives::basic::order_id("move"), target_x: hx, target_y: hy, target: 0 };
                 u.action = Action::Move { x: hx, y: hy };
                 u.path.clear();
                 u.repath_timer = 0.0;

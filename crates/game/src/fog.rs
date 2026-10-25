@@ -150,13 +150,22 @@ impl FogMap {
 impl World {
     /// Recomputes every player's vision.  Vision changes a few times a second.
     pub fn update_fog(&mut self, dt: f32) {
+        // Sight goes between day's and night's over three seconds (measured with a
+        // timer: a footman, 1400 by day and 800 by night, and a gryphon rider, 1600 and
+        // 900, reach night's sight 2.75 to 3 seconds after midnight comes, losing fog
+        // cells evenly on the way, and the footman regains day's likewise at dawn).
+        let day = (6.0..18.0).contains(&self.time_of_day);
+        let toward = if day { 0.0 } else { 1.0 };
+        self.night_sight = if self.time <= dt {
+            toward
+        } else if self.night_sight < toward { (self.night_sight + dt / 3.0).min(toward) } else { (self.night_sight - dt / 3.0).max(toward) };
         let Some(fog) = self.fog.as_mut() else { return };
         fog.timer -= dt;
         if fog.timer > 0.0 {
             return;
         }
         fog.timer = 0.1;
-        let day = (6.0..18.0).contains(&self.time_of_day);
+        let night = self.night_sight;
         // Each unit's sight: position, radius, cliff level, and whether it sees over cliffs.
         let mut sources: Vec<(u8, f32, f32, f32, u8, bool, u16)> = Vec::new();
         for &h in &self.unit_order {
@@ -169,7 +178,7 @@ impl World {
             if (u.dead && !dying) || u.hidden && u.inside == 0 {
                 continue;
             }
-            let r = if day || self.ultravision(u) { o.real("sight") } else { o.real("nsight") };
+            let r = if self.ultravision(u) { o.real("sight") } else { o.real("sight") + (o.real("nsight") - o.real("sight")) * night };
             if r <= 0.0 {
                 continue;
             }

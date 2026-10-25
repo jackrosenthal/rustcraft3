@@ -322,6 +322,10 @@ pub struct World {
     pub water_deforms: bool,
     /// Entangle Gold Mine casts finishing: time, caster, and mine.
     pub pending_entangles: Vec<(f32, u32, u32)>,
+    /// How far sight has gone from day's to night's: 0 by day, 1 by night, between for
+    /// three seconds after the change.
+    #[serde(default)]
+    pub night_sight: f32,
     /// Impaled units: when the wave reaches each, and then when it lands.
     #[serde(default)]
     pub impales: Vec<crate::spells::Impale>,
@@ -645,6 +649,7 @@ impl World {
             water_deforms: false,
             pending_entangles: Vec::new(),
             impales: Vec::new(),
+            night_sight: 0.0,
             incinerations: Vec::new(),
             volcanoes: Vec::new(),
             ai_item_uses: Vec::new(),

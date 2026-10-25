@@ -848,6 +848,11 @@ impl World {
             if (self.is_invisible(t) && !self.detected_by(t, u.owner)) || self.is_ethereal(t) {
                 continue;
             }
+            // Nor a sleeping one (measured: a Dreadlord leaves the sorceress it put to
+            // sleep alone).
+            if tu.extra.sleeping || tu.buffs.iter().any(|b| b.sleep) {
+                continue;
+            }
             let d = (tu.x - u.x).hypot(tu.y - u.y) - edges;
             // Only what the owner can see (a cliff above, the fog) is acquired.
             if d <= range && self.fog_state(tu.x, tu.y, u.owner) != crate::fog::FOG_VISIBLE {

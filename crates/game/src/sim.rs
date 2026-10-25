@@ -1286,9 +1286,11 @@ impl World {
                 // Dead heroes stay, out of sight, to be revived: they dissipate once their
                 // death has played (measured: a Paladin, death 1.5, is hidden 4.55 seconds
                 // after dying, a Blademaster, 1.9, after 4.95).
+                // One reincarnating stays in sight (measured: a Tauren Chieftain lies shown
+                // the 7 seconds until it rises).
                 if u.is_hero {
                     let gone = if u.extra.exploded { 0.0 } else { death + self.misc_f32("DissipateTime", 3.0) };
-                    if t > gone && !u.hidden {
+                    if t > gone && !u.hidden && u.reincarnate.is_none() {
                         self.unit_mut(h).unwrap().hidden = true;
                     }
                 } else if t > decay {

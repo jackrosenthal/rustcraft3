@@ -925,6 +925,10 @@ impl World {
                     u.life = life.min(u.max_life);
                 }
                 u.mana = if mana < 0.0 { mana_before.min(u.max_mana) } else { mana.min(u.max_mana) };
+            } else if let Some(u) = self.unit_mut(h) {
+                // Reincarnation restores all its mana (measured: a Tauren Chieftain
+                // killed at 50 of 315 rises with 315).
+                u.mana = u.max_mana;
             }
         }
     }

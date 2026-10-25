@@ -450,6 +450,13 @@ impl World {
             }
             if !done {
                 n += u.queue.iter().filter(|q| **q == id).count() as i32;
+                // A hero being revived at an altar counts as being made, as units in
+                // training do (without it, StartUnit held back the hero's whole cost
+                // for the length of the revive, and an Undead computer built nothing
+                // else for 36 seconds at its food cap).
+                if u.revive.as_ref().is_some_and(|r| self.unit(r.0).is_some_and(|hero| hero.type_id == id)) {
+                    n += 1;
+                }
                 // Workers on their way to build count as the structure.
                 if matches!(u.action, Action::Build { id: b, .. } if b == id) {
                     n += 1;

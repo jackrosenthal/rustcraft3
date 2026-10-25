@@ -1064,14 +1064,18 @@ impl World {
                 }
             }
             // Frost Nova: target damage (DataB), area damage (DataA), and a slow.
+            // Frost Nova: a touch of nothing on the target, then DataA to each enemy in
+            // the area, then DataB to the target (measured: the target's damage events
+            // read 0, then 50 with its neighbor's, then 100).
             "AUfn" => {
                 let (tx, ty) = self.widget_pos(target).unwrap_or((x, y));
-                self.spell_damage(vm, h, target, self.data(a, "DataB", lvl));
+                self.spell_damage(vm, h, target, 0.0);
                 for t in self.enemies_in(owner, tx, ty, area) {
                     self.spell_damage(vm, h, t, self.data(a, "DataA", lvl));
                     let d = if self.hero_duration(t) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
                     self.apply_buff(t, Buff { id: buff_id, ability: a, level: lvl, caster: h, remaining: d, move_factor: -0.5, attack_factor: -0.25, ..Default::default() });
                 }
+                self.spell_damage(vm, h, target, self.data(a, "DataB", lvl));
             }
             // Slow: movement (DataA) and attack speed (DataB) factors.
             "Aslo" => self.apply_buff(target, Buff { id: buff_id, ability: a, level: lvl, caster: h, remaining: dur, move_factor: -self.data(a, "DataA", lvl), attack_factor: -self.data(a, "DataB", lvl), ..Default::default() }),

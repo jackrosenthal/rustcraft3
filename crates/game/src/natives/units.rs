@@ -621,7 +621,14 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         SetUnitFacing => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.facing = v) },
         SetUnitFacingTimed => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.facing = v) },
-        SetUnitMoveSpeed => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.move_speed = v) },
+        // A unit that can move cannot be stopped this way: its speed stays within its
+        // limits (measured: SetUnitMoveSpeed(footman, 0) leaves it walking at 150,
+        // MinUnitSpeed).
+        SetUnitMoveSpeed => |w, _, a| {
+            let v = a.r(1);
+            let mobile = unit_arg(w, a, 0).and_then(|u| w.objects.units.get(u.type_id)).is_some_and(|o| o.real("spd") > 0.0);
+            with_unit(w, a, |u| u.move_speed = if mobile { v.max(1.0) } else { v })
+        },
         SetUnitFlyHeight => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.fly_height = v) },
         SetUnitTurnSpeed => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.turn_speed = v) },
         SetUnitPropWindow => |w, _, a| { let v = a.r(1).to_degrees(); with_unit(w, a, |u| u.prop_window = v) },

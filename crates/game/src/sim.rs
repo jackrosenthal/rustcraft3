@@ -845,7 +845,7 @@ impl World {
         if weapons.is_empty() {
             return None;
         }
-        let mut best: Option<(f32, u32)> = None;
+        let mut best: Option<(f32, u32, bool)> = None;
         for &t in &self.unit_order {
             let Some(tu) = self.unit(t) else { continue };
             // Out of range first: the other tests cost more.  The range runs edge to
@@ -873,8 +873,12 @@ impl World {
             if d <= range && self.fog_state(tu.x, tu.y, u.owner) != crate::fog::FOG_VISIBLE {
                 continue;
             }
-            if d <= range && best.is_none_or(|b| d < b.0) {
-                best = Some((d, t));
+            // Units before structures, then the nearest (measured: a footman takes a
+            // footman 300 away over a farm 170 away, and a peasant 150 away over a
+            // footman 250 away).
+            let key = (tu.is_building, d);
+            if d <= range && best.is_none_or(|b| key < (b.2, b.0)) {
+                best = Some((d, t, tu.is_building));
             }
         }
         best.map(|b| b.1)

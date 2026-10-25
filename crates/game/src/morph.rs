@@ -41,7 +41,22 @@ impl World {
             return false;
         }
         let o = self.objects.abilities.get(a);
+        // A form that takes off (Immediate Takeoff, DataB flag 4) changes at once; one
+        // that lands first comes down (DataC), then changes (Dur); others take Dur
+        // (measured: a Druid of the Talon becomes a Storm Crow at once and back 1.6
+        // seconds after the order, DataC 1 and Dur 0.6; a Gargoyle turns to stone in 1.0,
+        // DataC 0.5 and Dur 0.5, and back at once).
+        let flies = |w: &World, id: Id| w.objects.units.get(id).is_some_and(|t| t.str("movetp").eq_ignore_ascii_case("fly"));
+        let from = self.unit(h).map_or([0; 4], |u| u.type_id);
+        let flags = o.map_or(0, |o| o.level_real("DataB", lvl) as i32);
         let dur = o.map_or(0.0, |o| o.level_real("Dur", lvl));
+        let dur = if flies(self, to) && !flies(self, from) && flags & 4 != 0 {
+            0.0
+        } else if flies(self, from) && !flies(self, to) {
+            o.map_or(0.0, |o| o.level_real("DataC", lvl)) + dur
+        } else {
+            dur
+        };
         let cost = o.map_or(0.0, |o| o.level_real("Cost", lvl));
         let cool = o.map_or(0.0, |o| o.level_real("Cool", lvl));
         let back = self.unit(h).unwrap().type_id;

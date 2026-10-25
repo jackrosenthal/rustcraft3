@@ -21,15 +21,30 @@ impl World {
             }
             let lvl = lvl.max(1) as u32;
             let (normal, alternate) = (id_from_str(o.level_str("DataA", lvl).trim()), id_from_str(o.level_str("UnitID", lvl).trim()));
-            let to = if o.str("Order").eq_ignore_ascii_case(name) && u.type_id == normal {
+            let to = if self.order_string(a).eq_ignore_ascii_case(name) && u.type_id == normal {
                 alternate
-            } else if o.str("Unorder").eq_ignore_ascii_case(name) && u.type_id == alternate {
+            } else if self.unorder_string(a).eq_ignore_ascii_case(name) && u.type_id == alternate {
                 normal
             } else {
                 return None;
             };
             Some((a, lvl, to))
         })
+    }
+
+    /// A morph's turning-back order: its class's own, the order after its order when
+    /// named "un" and the order's name (Avenger Form's unavengerform, its func data's
+    /// unsphinxform naming no order), else its func data's Unorder.
+    fn unorder_string(&self, a: Id) -> String {
+        let code = self.ability_code(a);
+        if let Some(o) = crate::ability::intrinsic_order(&code) {
+            if let (Some(on), Some(off)) = (crate::natives::basic::order_name(o), crate::natives::basic::order_name(o + 1)) {
+                if off.eq_ignore_ascii_case(&format!("un{on}")) {
+                    return off.to_string();
+                }
+            }
+        }
+        self.objects.abilities.get(a).map(|o| o.str("Unorder")).unwrap_or_default()
     }
 
     /// Starts a morph ordered by name; true when the order was one.
@@ -39,6 +54,36 @@ impl World {
         let back_to_normal = self.objects.abilities.get(a).is_some_and(|o| id_from_str(o.level_str("DataA", lvl).trim()) == to);
         if self.unit(h).is_none_or(|u| u.dead || u.extra.morph.is_some()) || (!back_to_normal && self.can_cast(h, a).is_err()) {
             return false;
+        }
+        // A form that requires payment (DataB flag 16) costs what the new type costs
+        // beyond the old, and wants the food it uses beyond the old's; without either it
+        // is refused (measured: an Obsidian Statue becomes a Destroyer for 100 gold and
+        // 50 lumber, and is refused without the food).
+        if !back_to_normal && self.objects.abilities.get(a).is_some_and(|o| (o.level_real("DataB", lvl) as i32) & 16 != 0) {
+            self.update_food();
+            let (owner, from) = self.unit(h).map(|u| (u.owner, u.type_id)).unwrap();
+            let ((g1, l1, f1), (g0, l0, f0)) = (self.cost(to), self.cost(from));
+            let (g, l, f) = ((g1 - g0).max(0), (l1 - l0).max(0), (f1 - f0).max(0));
+            let p = &self.players[owner as usize];
+            let food_ok = f == 0 || self.cheat(crate::cheats::flag::FOOD) || p.get_state(player_state::RESOURCE_FOOD_USED) + f <= p.get_state(player_state::RESOURCE_FOOD_CAP);
+            let short = if p.get_state(player_state::RESOURCE_GOLD) < g {
+                Some("Nogold")
+            } else if p.get_state(player_state::RESOURCE_LUMBER) < l {
+                Some("Nolumber")
+            } else if !food_ok {
+                Some("Nofood")
+            } else {
+                None
+            };
+            // Refused, the order is not taken (the original's IssueImmediateOrder answers
+            // false).
+            if let Some(e) = short {
+                self.order_error = Some(e);
+                return true;
+            }
+            let p = &mut self.players[owner as usize];
+            *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) -= g;
+            *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) -= l;
         }
         let o = self.objects.abilities.get(a);
         // A form that takes off (Immediate Takeoff, DataB flag 4) changes at once; one

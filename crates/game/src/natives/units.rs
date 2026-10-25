@@ -480,6 +480,10 @@ pub fn remove_unit(w: &mut World, h: u32) {
     if w.unit(h).is_some() {
         w.handles.remove(h);
         w.unit_order.retain(|x| *x != h);
+        // Creep camps forget it, as its handle may come to name another unit.
+        for camp in w.creep_camps.iter_mut() {
+            camp.retain(|c| *c != h);
+        }
         for id in w.handles.ids() {
             if let Some(Obj::Group(g)) = w.handles.get_mut(id) {
                 g.units.retain(|u| *u != h);

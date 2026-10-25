@@ -2,7 +2,8 @@
 //! DataA in their UnitData cargoSize; Load (Aloa) takes a unit aboard within its Rng,
 //! a unit told onto a friendly transport walks to it and boards, and Drop (Adro)
 //! unloads the cargo at a point one unit every Dur of the cargo hold.  Units aboard are
-//! hidden and move with their transport; they are lost when it dies.
+//! hidden and keep the place they boarded at (measured: GetUnitX of a footman aboard a
+//! flying zeppelin reads where it boarded); they are lost when it dies.
 
 use w3_jass::Vm;
 
@@ -67,12 +68,26 @@ impl World {
 
     /// Takes a unit off its transport beside it.
     pub fn disembark(&mut self, h: u32) {
+        self.disembark_at(h, None);
+    }
+
+    /// Takes a unit off its transport, at a point if given (the nearest clear spot to
+    /// it: measured, a zeppelin unloading at a point sets its first footman there and
+    /// the others just beside), else beside the transport.
+    pub fn disembark_at(&mut self, h: u32, at: Option<(f32, f32)>) {
         let Some(transport) = self.unit(h).map(|u| u.extra.transport).filter(|&t| t != 0) else { return };
         if let Some(t) = self.unit_mut(transport) {
             t.extra.cargo.retain(|&c| c != h);
         }
         let r = self.unit(h).map_or(16.0, |u| u.collision);
-        let (x, y) = if self.unit(transport).is_some() { self.spawn_point_pub(transport, r) } else { self.unit(h).map(|u| (u.x, u.y)).unwrap_or_default() };
+        let (x, y) = match at {
+            Some((px, py)) => {
+                let type_id = self.unit(h).map(|u| u.type_id).unwrap_or_default();
+                crate::natives::units::placed_at(self, type_id, px, py)
+            }
+            None if self.unit(transport).is_some() => self.spawn_point_pub(transport, r),
+            None => self.unit(h).map(|u| (u.x, u.y)).unwrap_or_default(),
+        };
         if let Some(u) = self.unit_mut(h) {
             u.hidden = false;
             u.x = x;
@@ -96,7 +111,9 @@ impl World {
         self.unit_mut(h).unwrap().action = Action::Idle;
     }
 
-    /// A unit walks to a friendly transport and boards it.
+    /// A unit walks to a friendly transport and boards it; a flying transport comes for
+    /// it instead, once free, while it waits (measured: footmen told to board a
+    /// zeppelin stay put, and the zeppelin flies to each).
     pub(crate) fn board_step(&mut self, h: u32, transport: u32, dt: f32) {
         let Some((_, range, _)) = self.cargo_hold(transport) else {
             self.unit_mut(h).unwrap().action = Action::Idle;
@@ -104,6 +121,13 @@ impl World {
         };
         if !self.can_board(transport, h) {
             self.unit_mut(h).unwrap().action = Action::Idle;
+            return;
+        }
+        if self.move_kind(transport) == crate::pathing::Move::Fly && self.ability_with_code(transport, "Aloa").is_some() {
+            if let Some(t) = self.unit_mut(transport).filter(|t| matches!(t.action, Action::Idle)) {
+                t.action = Action::Load { target: h };
+                t.path.clear();
+            }
             return;
         }
         if !self.approach(h, transport, range, dt) {
@@ -138,7 +162,7 @@ impl World {
         }
         u.work_timer = interval;
         if let Some(&c) = u.extra.cargo.first() {
-            self.disembark(c);
+            self.disembark_at(c, Some((x, y)));
         }
     }
 
@@ -149,12 +173,12 @@ impl World {
         }
     }
 
-    /// Units aboard ride along; a dead transport's cargo dies with it when it has Cargo
-    /// Hold Death (Achd), and comes out otherwise.
+    /// A dead transport's cargo dies with it when it has Cargo Hold Death (Achd), and
+    /// comes out otherwise.
     pub fn update_cargo(&mut self, vm: &mut Vm) {
         let carriers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.extra.cargo.is_empty())).collect();
         for t in carriers {
-            let Some((x, y, dead)) = self.unit(t).map(|u| (u.x, u.y, u.dead)) else { continue };
+            let Some(dead) = self.unit(t).map(|u| u.dead) else { continue };
             let cargo = self.unit(t).unwrap().extra.cargo.clone();
             if dead {
                 let lost = self.ability_with_code(t, "Achd").is_some();
@@ -166,13 +190,6 @@ impl World {
                 }
                 if let Some(u) = self.unit_mut(t) {
                     u.extra.cargo.clear();
-                }
-                continue;
-            }
-            for c in cargo {
-                if let Some(u) = self.unit_mut(c) {
-                    u.x = x;
-                    u.y = y;
                 }
             }
         }

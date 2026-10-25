@@ -19,7 +19,7 @@ use crate::world::{NativeFn, World};
 /// 1280, forges at 1728, 1216 and 1760, 1600 at 1760, 1248 and 1760, 1632, all as
 /// snapped; barracks made among trees at 3400, 2400 stand clear of them, at 3776, 2112
 /// there, where the search here finds 3200, 2560; a footman among them moves 76 out).
-fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32) -> (f32, f32) {
+pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32) -> (f32, f32) {
     let Some(o) = w.objects.units.get(type_id) else { return (x, y) };
     if w.pathing.is_none() {
         return (x, y);

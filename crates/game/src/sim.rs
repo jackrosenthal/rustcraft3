@@ -366,11 +366,15 @@ impl World {
             self.disembark(target);
             return;
         }
-        if order == crate::natives::basic::order_id("unloadall") || order == crate::natives::basic::order_id("unloadallinstant") || (order == crate::natives::basic::order_id("standdown") && self.ability_with_code(h, "Abun").is_some()) {
+        // Unloading everyone at a point goes there first (measured: a zeppelin told to
+        // unload 400 away flies there with its cargo aboard).
+        let unloadall = crate::natives::basic::order_id("unloadall");
+        let at_point = order == unloadall && (x, y) != (0.0, 0.0);
+        if order == unloadall && !at_point || order == crate::natives::basic::order_id("unloadallinstant") || (order == crate::natives::basic::order_id("standdown") && self.ability_with_code(h, "Abun").is_some()) {
             self.unload_all(h);
             return;
         }
-        if order == unload && self.cargo_hold(h).is_some() {
+        if (order == unload || at_point) && self.cargo_hold(h).is_some() {
             if let Some(u) = self.unit_mut(h) {
                 u.action = Action::Unload { x, y };
                 u.path.clear();
@@ -497,7 +501,7 @@ impl World {
             // Into an active waygate.
             let (tx, ty) = self.widget_pos(target).unwrap_or((x, y));
             Action::Move { x: tx, y: ty }
-        } else if order == smart && target != 0 && self.cargo_hold(target).is_some() && self.can_board(target, h) {
+        } else if (order == smart || order == crate::natives::basic::order_id("board")) && target != 0 && self.cargo_hold(target).is_some() && self.can_board(target, h) {
             Action::Board { transport: target }
         } else if (order == smart || order == crate::natives::basic::order_id("harvest")) && target != 0 && self.can_harvest(h, target) {
             Action::Harvest { target }

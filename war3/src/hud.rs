@@ -2255,6 +2255,11 @@ impl Hud {
                 blend: w3_ui::Blend::Alpha,
                 rotated: false,
             });
+            // CCommandButton's active highlight (FUN_6f3ad760): over the whole button,
+            // added.
+            if b.active {
+                out.push(Draw::Image { texture: db.decorate("CommandButtonActiveHighlight"), rect: self.slot_rect(b.x, b.y), uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Add, rotated: false });
+            }
         }
         out
     }

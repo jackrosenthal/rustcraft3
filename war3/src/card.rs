@@ -49,6 +49,8 @@ pub struct Button {
     pub autocast: Option<(&'static str, &'static str, bool)>,
     /// REQUIRESTOOLTIP and the requirements, while some are not met.
     pub requires: String,
+    /// The button of the unit's current order, under CommandButtonActiveHighlight.
+    pub active: bool,
 }
 
 impl Button {
@@ -58,7 +60,7 @@ impl Button {
     }
 
     fn new(x: u32, y: u32, icon: String, hotkey: Option<char>, action: Action, enabled: bool) -> Button {
-        Button { x, y, icon, hotkey, action, enabled, tip: String::new(), ubertip: String::new(), costs: [0; 4], autocast: None, requires: String::new() }
+        Button { x, y, icon, hotkey, action, enabled, tip: String::new(), ubertip: String::new(), costs: [0; 4], autocast: None, requires: String::new(), active: false }
     }
 
     /// Disables the button and lists `id`'s requirements (at research level `level`)
@@ -354,6 +356,24 @@ impl Commands {
 
     /// Buttons for a unit owned by the local player.
     pub fn card(&self, db: &w3_ui::FrameDb, w: &World, h: u32, page: Page) -> Vec<Button> {
+        let mut out = self.card_buttons(db, w, h, page);
+        // The current order's button is lit, Stop for an idle unit (as the original's
+        // card shows: Stop on an idle Mortar Team, Attack Ground on one shelling).
+        if let Some(u) = w.unit(h) {
+            let current = if u.order.id != 0 { u.order.id } else { w3_game::natives::basic::order_id("stop") };
+            for b in &mut out {
+                let id = match b.action {
+                    Action::Order { order, .. } if !order.is_empty() => w3_game::natives::basic::order_id(order),
+                    Action::OrderId { order, .. } => order,
+                    _ => 0,
+                };
+                b.active = id != 0 && id == current;
+            }
+        }
+        out
+    }
+
+    fn card_buttons(&self, db: &w3_ui::FrameDb, w: &World, h: u32, page: Page) -> Vec<Button> {
         let Some(u) = w.unit(h) else { return vec![] };
         let Some(o) = w.objects.units.get(u.type_id) else { return vec![] };
         let mut out = Vec::new();

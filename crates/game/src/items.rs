@@ -620,6 +620,9 @@ impl World {
                         u.agi += agi;
                         u.int += int;
                         u.str_ += str_;
+                        u.extra.attr_bonus[0] += str_;
+                        u.extra.attr_bonus[1] += agi;
+                        u.extra.attr_bonus[2] += int;
                     }
                     // Life and mana keep their fractions (measured: a Paladin at 100 of 650
                     // reading a Tome of Strength has 104 of 675).

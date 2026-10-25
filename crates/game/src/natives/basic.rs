@@ -304,9 +304,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 u.level = s.level;
                 u.hero_xp = s.xp;
                 u.skill_points = s.skill_points;
-                u.str_ = s.str_;
-                u.agi = s.agi;
-                u.int = s.int;
+            }
+            w.set_hero_attrs(h, [s.str_, s.agi, s.int]);
+            if let Some(u) = w.unit_mut(h) {
                 if !s.proper_name.is_empty() {
                     u.proper_name = s.proper_name.clone();
                 }

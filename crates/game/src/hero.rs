@@ -105,6 +105,36 @@ impl World {
         self.level_up_from_xp(h);
     }
 
+    /// A hero's strength, agility, and intelligence for its type and level: the base and
+    /// the gain times the levels past the first, at once (measured: a level 6 Paladin
+    /// has 26 intelligence, 17 and 1.8 times 5, where adding 1.8 five times floors to 25).
+    fn type_attrs(&self, h: u32) -> [f32; 3] {
+        let Some(u) = self.unit(h) else { return [0.0; 3] };
+        let Some(o) = self.objects.units.get(u.type_id) else { return [u.str_, u.agi, u.int] };
+        let n = (u.level - 1).max(0) as f32;
+        [o.real("STR") + o.real("STRplus") * n, o.real("AGI") + o.real("AGIplus") * n, o.real("INT") + o.real("INTplus") * n]
+    }
+
+    /// Sets a hero's attributes from its type and level and what it has gained beyond.
+    pub(crate) fn refresh_hero_attrs(&mut self, h: u32) {
+        let t = self.type_attrs(h);
+        let Some(u) = self.unit_mut(h) else { return };
+        let b = u.extra.attr_bonus;
+        u.str_ = t[0] + b[0];
+        u.agi = t[1] + b[1];
+        u.int = t[2] + b[2];
+    }
+
+    /// Sets a hero's attributes outright, keeping what lies beyond its type's as bonus.
+    pub(crate) fn set_hero_attrs(&mut self, h: u32, v: [f32; 3]) {
+        let t = self.type_attrs(h);
+        let Some(u) = self.unit_mut(h) else { return };
+        u.extra.attr_bonus = [v[0] - t[0], v[1] - t[1], v[2] - t[2]];
+        u.str_ = v[0];
+        u.agi = v[1];
+        u.int = v[2];
+    }
+
     /// Levels a hero up as far as its experience reaches (FUN_6f528110's last loop).
     fn level_up_from_xp(&mut self, h: u32) {
         let max_level = self.misc_f32("MaxHeroLevel", 10.0) as i32;
@@ -113,14 +143,10 @@ impl World {
             if level >= max_level || xp < self.hero_xp_needed(level + 1) {
                 break;
             }
-            let o = self.unit(h).and_then(|u| self.objects.units.get(u.type_id));
-            let (ds, da, di) = o.map_or((0.0, 0.0, 0.0), |o| (o.real("STRplus"), o.real("AGIplus"), o.real("INTplus")));
             let u = self.unit_mut(h).unwrap();
             u.level += 1;
             u.skill_points += 1;
-            u.str_ += ds;
-            u.agi += da;
-            u.int += di;
+            self.refresh_hero_attrs(h);
             self.apply_hero_stats(h, false);
             use crate::event_ids::*;
             self.queue_unit_event(h, EVENT_PLAYER_HERO_LEVEL, EVENT_UNIT_HERO_LEVEL, EventCtx::default());

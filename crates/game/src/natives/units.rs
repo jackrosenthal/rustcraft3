@@ -1023,16 +1023,14 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             boolean(true)
         },
         SelectHeroSkill => |w, vm, a| { w.learn_skill(a.h(0), id_from_int(a.i(1))); w.flush_events(vm); none() },
-        SetHeroStr => |w, _, a| { if let Some(u) = w.unit_mut(a.h(0)) { u.str_ = a.i(1) as f32; } w.apply_hero_stats(a.h(0), false); none() },
-        SetHeroAgi => |w, _, a| { if let Some(u) = w.unit_mut(a.h(0)) { u.agi = a.i(1) as f32; } w.apply_hero_stats(a.h(0), false); none() },
-        SetHeroInt => |w, _, a| { if let Some(u) = w.unit_mut(a.h(0)) { u.int = a.i(1) as f32; } w.apply_hero_stats(a.h(0), false); none() },
+        SetHeroStr => |w, _, a| { if let Some(u) = w.unit(a.h(0)) { let v = [a.i(1) as f32, u.agi, u.int]; w.set_hero_attrs(a.h(0), v); } w.apply_hero_stats(a.h(0), false); none() },
+        SetHeroAgi => |w, _, a| { if let Some(u) = w.unit(a.h(0)) { let v = [u.str_, a.i(1) as f32, u.int]; w.set_hero_attrs(a.h(0), v); } w.apply_hero_stats(a.h(0), false); none() },
+        SetHeroInt => |w, _, a| { if let Some(u) = w.unit(a.h(0)) { let v = [u.str_, u.agi, a.i(1) as f32]; w.set_hero_attrs(a.h(0), v); } w.apply_hero_stats(a.h(0), false); none() },
         // Levels lost take their attribute gains and skill points with them; the
         // experience drops to the new level's.
         UnitStripHeroLevel => |w, _, a| {
             let h = a.h(0);
             let Some(u) = w.unit(h).filter(|u| u.is_hero) else { return boolean(false) };
-            let o = w.objects.units.get(u.type_id);
-            let (ds, da, di) = o.map_or((0.0, 0.0, 0.0), |o| (o.real("STRplus"), o.real("AGIplus"), o.real("INTplus")));
             let n = a.i(1).min(u.level - 1).max(0);
             if n == 0 { return boolean(false); }
             let level = u.level - n;
@@ -1040,10 +1038,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let u = w.unit_mut(h).unwrap();
             u.level = level;
             u.hero_xp = xp;
-            u.str_ -= ds * n as f32;
-            u.agi -= da * n as f32;
-            u.int -= di * n as f32;
             u.skill_points = (u.skill_points - n).max(0);
+            w.refresh_hero_attrs(h);
             w.apply_hero_stats(h, false);
             boolean(true)
         },

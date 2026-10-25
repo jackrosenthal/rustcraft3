@@ -244,6 +244,9 @@ pub struct Unit {
 /// Unit settings scripts change.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct UnitExtra {
+    /// A hero's attributes beyond its type's for its level (tomes, SetHeroStr).
+    #[serde(default)]
+    pub attr_bonus: [f32; 3],
     /// A haunted mine's payout timer and the acolytes it last counted at work.
     #[serde(default)]
     pub payout: Option<(f32, u32)>,
@@ -495,6 +498,7 @@ pub struct UnitExtra {
 impl Default for UnitExtra {
     fn default() -> Self {
         UnitExtra {
+            attr_bonus: [0.0; 3],
             aura_clock: None,
             payout: None,
             casting_item: None,

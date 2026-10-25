@@ -38,7 +38,8 @@ impl World {
         if self.root_ability(h).is_none() || self.unit(h).is_none_or(|u| !u.extra.uprooted || u.extra.rooting.is_some()) {
             return false;
         }
-        let (x, y) = self.snap_placement(x, y);
+        let kind = self.unit(h).map(|u| u.type_id).unwrap_or_default();
+        let (x, y) = self.snap_placement(kind, x, y);
         let u = self.unit_mut(h).unwrap();
         u.extra.root_target = Some((x, y));
         u.action = Action::Move { x, y };

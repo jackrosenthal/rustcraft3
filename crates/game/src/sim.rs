@@ -1799,11 +1799,25 @@ impl World {
         cells.iter().map(|&c| (p.center(c), whole || p.buildable(c))).collect()
     }
 
-    /// Snaps a placement to the pathing grid the way structures align (to 64-unit marks
-    /// for even-sized footprints).
-    pub fn snap_placement(&self, x: f32, y: f32) -> (f32, f32) {
-        let s = |v: f32| (v / 64.0).round() * 64.0;
-        (s(x), s(y))
+    /// Snaps a structure's placement as the original does (FUN_6f22f410): each
+    /// coordinate is cut toward zero to a multiple of 64, then moved 32 away from zero
+    /// when half its footprint's texels is odd, and 16 more when their number is odd
+    /// (measured: a farm, 4 by 4, ordered at -4000, -2700 stands at -3968, -2688).
+    pub fn snap_placement(&mut self, id: Id, x: f32, y: f32) -> (f32, f32) {
+        let tex = self.objects.units.get(id).map(|o| o.str("pathTex")).unwrap_or_default();
+        let (w, h) = self.pathing_texture_size(&tex).unwrap_or((0, 0));
+        let snap = |v: f32, n: i32| -> f32 {
+            let neg = v < 0.0;
+            let vi = v as i32;
+            let base = vi - vi % 64;
+            let off = ((n >> 1) & 1) * 32;
+            let mut r = (base + if neg { -off } else { off }) as f32;
+            if n & 1 == 1 {
+                r += if neg { -16.0 } else { 16.0 };
+            }
+            r
+        };
+        (snap(x, w), snap(y, h))
     }
 
     fn build(&mut self, vm: &mut Vm, h: u32, id: Id, x: f32, y: f32, dt: f32) {
@@ -1815,7 +1829,10 @@ impl World {
             self.unit_mut(h).unwrap().action = Action::Idle;
             return;
         }
-        if d > 96.0 {
+        // The worker starts once within StructureFollowRange of the site, whatever the
+        // structure's size (measured: farms, a blacksmith, a lumber mill, and barracks
+        // all begun with their peasant 94 to 99 from the center).
+        if d > self.misc_f32("StructureFollowRange", 100.0) {
             if need_path {
                 self.path_to(h, (x, y));
             }
@@ -1849,9 +1866,20 @@ impl World {
             bu.life = bu.max_life * 0.1;
             restart_anim(bu, "birth");
         }
-        // Move the worker out of the footprint.
+        // The structure is begun with the worker where it stood (measured: a blacksmith's
+        // peasant is inside the footprint when EVENT_PLAYER_UNIT_CONSTRUCT_START fires).
+        let ctx = EventCtx { unit: b, player: owner, has_player: true, event_id: EVENT_PLAYER_UNIT_CONSTRUCT_START, ..Default::default() };
+        self.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event, .. } if *player == owner && *event == EVENT_PLAYER_UNIT_CONSTRUCT_START));
+        if self.unit(h).is_none() {
+            return;
+        }
+        // A worker standing on the footprint moves out of it; one beside it stays.
         let r = self.unit(h).map_or(16.0, |u| u.collision);
-        let (sx, sy) = self.spawn_point(b, r);
+        let blocked = match (self.unit(h), self.pathing.as_ref()) {
+            (Some(u), Some(p)) => !p.fits(p.cell_of(u.x, u.y), r * 0.5),
+            _ => true,
+        };
+        let (sx, sy) = if blocked { self.spawn_point(b, r) } else { self.unit(h).map_or((x, y), |u| (u.x, u.y)) };
         // As the original builds (observed): a peasant (AHbu) works on the structure,
         // which advances only while one does; a peon or wisp (AObu, AEbu) goes inside
         // until it is done; an acolyte (AUbu) summons it and is free at once.
@@ -1873,9 +1901,12 @@ impl World {
             u.building = b;
             u.action = Action::Construct { target: b };
             u.hidden = enters;
+            // A peasant builds under a repair order (measured: GetUnitCurrentOrder reads
+            // repair once the structure is begun).
+            if !enters {
+                u.order = Order { id: crate::natives::basic::order_id("repair"), target_x: x, target_y: y, target: b };
+            }
         }
-        let ctx = EventCtx { unit: b, player: owner, has_player: true, event_id: EVENT_PLAYER_UNIT_CONSTRUCT_START, ..Default::default() };
-        self.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event, .. } if *player == owner && *event == EVENT_PLAYER_UNIT_CONSTRUCT_START));
     }
 
     /// The unit's ability with the given base code, with its level.

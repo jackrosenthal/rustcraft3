@@ -368,6 +368,12 @@ fn issue_build(w: &mut World, h: u32, id: crate::objects::Id, x: f32, y: f32) ->
     if !ok {
         return boolean(false);
     }
+    // A spot the structure cannot stand on is refused at once (measured: the original's
+    // IssueBuildOrderById returns false for a farm on a blocked spot, true otherwise).
+    let (x, y) = w.snap_placement(id, x, y);
+    if !w.can_place(id, x, y) {
+        return boolean(false);
+    }
     if let Some(u) = w.unit_mut(h) {
         u.action = Action::Build { id, x, y };
         u.path.clear();

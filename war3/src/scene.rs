@@ -1811,7 +1811,7 @@ impl Scene {
         let Some(id) = self.placing else { return Vec::new() };
         let Some((x, y)) = self.ground_at(self.cursor.0, self.cursor.1, self.screen) else { return Vec::new() };
         let Some(g) = self.game.as_mut() else { return Vec::new() };
-        let (x, y) = g.world.snap_placement(x, y);
+        let (x, y) = g.world.snap_placement(id, x, y);
         let cells = g.world.placement_cells(id, x, y);
         let texture = assets.textures.get_or_white(device, queue, "");
         let argb = |c: u32| [((c >> 16) & 0xff) as f32 / 255.0, ((c >> 8) & 0xff) as f32 / 255.0, (c & 0xff) as f32 / 255.0, (c >> 24) as f32 / 255.0];
@@ -2732,7 +2732,7 @@ impl Scene {
         if let Some(id) = self.placing.take() {
             let Some((x, y)) = self.ground_at(sx, sy, size) else { return true };
             if let Some(g) = self.game.as_mut() {
-                let (x, y) = g.world.snap_placement(x, y);
+                let (x, y) = g.world.snap_placement(id, x, y);
                 if let Some(&worker) = self.selection.first() {
                     g.apply(w3_game::replay::Command::Build { worker, id, x, y });
                 }
@@ -4726,8 +4726,8 @@ impl Scene {
         match self.placing {
             Some(id) => {
                 let spot = self.ground_at(self.cursor.0, self.cursor.1, self.screen);
+                let spot = spot.and_then(|(x, y)| self.game.as_mut().map(|g| g.world.snap_placement(id, x, y)));
                 if let (Some((x, y)), Some(g)) = (spot, self.game.as_ref()) {
-                    let (x, y) = g.world.snap_placement(x, y);
                     if self.ghost.as_ref().is_none_or(|(k, _)| *k != id) {
                         let file = g.world.objects.units.get(id).map(|o| o.str("file")).unwrap_or_default();
                         self.ghost = assets.model(device, queue, &file).map(|m| {

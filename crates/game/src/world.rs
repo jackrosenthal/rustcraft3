@@ -1395,6 +1395,19 @@ impl World {
         }
     }
 
+    /// A pathing texture's size in texels (cells), loaded once.
+    pub fn pathing_texture_size(&mut self, path_tex: &str) -> Option<(i32, i32)> {
+        if path_tex.is_empty() || path_tex == "_" || path_tex.eq_ignore_ascii_case("none") {
+            return None;
+        }
+        let key = path_tex.to_ascii_lowercase();
+        if !self.pathing_textures.contains_key(&key) {
+            let img = self.chain.read(path_tex).ok().and_then(|b| w3_formats::blp::decode_texture(path_tex, &b).ok()).and_then(|v| v.into_iter().next());
+            self.pathing_textures.insert(key.clone(), img);
+        }
+        self.pathing_textures.get(&key).and_then(|i| i.as_ref()).map(|i| (i.width as i32, i.height as i32))
+    }
+
     /// Cells blocked by a pathing texture (PathTextures\\*.tga) centered at a position.
     /// Red marks unwalkable cells; one texel is one 32x32 cell.  The texture turns with the
     /// object in quarter turns.

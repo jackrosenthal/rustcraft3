@@ -167,7 +167,7 @@ impl World {
         let mut fallback: [Option<(f32, f32)>; 4] = [None; 4];
         let mut unreachable = false;
         while let Some((ci, cj)) = queue.pop_front() {
-            let (x, y) = self.snap_placement(grid.ox + ci as f32 * CELL, grid.oy + cj as f32 * CELL);
+            let (x, y) = self.snap_placement(id, grid.ox + ci as f32 * CELL, grid.oy + cj as f32 * CELL);
             let (si, sj) = grid.cell_of(x, y);
             if let Some(k) = grid.at(si, sj) {
                 let (a, b) = (grid.class[k], visit[k]);

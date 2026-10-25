@@ -807,8 +807,11 @@ impl World {
         let mut best: Option<(f32, u32)> = None;
         for &t in &self.unit_order {
             let Some(tu) = self.unit(t) else { continue };
-            // Out of range first: the other tests cost more.
-            if (tu.x - u.x).abs() > range || (tu.y - u.y).abs() > range {
+            // Out of range first: the other tests cost more.  The range runs edge to
+            // edge (measured: a footman, acquire 500, takes up a grunt 550 away center
+            // to center, the two collisions 63 between, but not one 575 away).
+            let edges = u.collision + self.reach_radius(t);
+            if (tu.x - u.x).abs() > range + edges || (tu.y - u.y).abs() > range + edges {
                 continue;
             }
             if is_ally(self, u.owner, tu.owner) || !weapons.iter().any(|(_, wp)| can_target(self, wp, u, tu)) {
@@ -819,7 +822,7 @@ impl World {
             if (self.is_invisible(t) && !self.detected_by(t, u.owner)) || self.is_ethereal(t) {
                 continue;
             }
-            let d = (tu.x - u.x).hypot(tu.y - u.y);
+            let d = (tu.x - u.x).hypot(tu.y - u.y) - edges;
             // Only what the owner can see (a cliff above, the fog) is acquired.
             if d <= range && self.fog_state(tu.x, tu.y, u.owner) != crate::fog::FOG_VISIBLE {
                 continue;

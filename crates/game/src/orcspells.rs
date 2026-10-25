@@ -115,6 +115,9 @@ impl World {
             t.swing = None;
         }
         if let Some(u) = self.unit_mut(h) {
+            if u.extra.devoured.is_empty() {
+                u.extra.digest_in = 0.0;
+            }
             u.extra.devoured.push(target);
         }
         true
@@ -139,13 +142,21 @@ impl World {
                 self.unit_mut(k).unwrap().extra.devoured.clear();
                 continue;
             }
+            // A second's worth once a second, the first as it is swallowed (measured: a
+            // footman devoured at 0.50 seconds takes 5 at 0.51 and each second after).
             let dps = self.ability_with_code(k, "Advc").map_or(0.0, |(c, l)| self.data(c, "DataB", l.max(1) as u32));
+            let u = self.unit_mut(k).unwrap();
+            u.extra.digest_in -= dt;
+            if u.extra.digest_in > 0.0 {
+                continue;
+            }
+            u.extra.digest_in += 1.0;
             for t in inside {
                 if self.unit(t).is_none_or(|tu| tu.dead) {
                     self.unit_mut(k).unwrap().extra.devoured.retain(|&x| x != t);
                     continue;
                 }
-                self.spell_damage(vm, k, t, dps * dt);
+                self.spell_damage(vm, k, t, dps);
             }
         }
     }

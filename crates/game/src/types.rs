@@ -250,6 +250,9 @@ pub struct UnitExtra {
     /// Gold and lumber pillaged but not yet paid, being less than a step.
     #[serde(default)]
     pub pillaged: [f32; 2],
+    /// Seconds until a Kodo next digests what it has devoured.
+    #[serde(default)]
+    pub digest_in: f32,
     /// A haunted mine's payout timer and the acolytes it last counted at work.
     #[serde(default)]
     pub payout: Option<(f32, u32)>,
@@ -503,6 +506,7 @@ impl Default for UnitExtra {
         UnitExtra {
             attr_bonus: [0.0; 3],
             pillaged: [0.0; 2],
+            digest_in: 0.0,
             aura_clock: None,
             payout: None,
             casting_item: None,

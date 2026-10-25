@@ -67,6 +67,7 @@ fn hashtable(w: &mut World, h: u32) -> Option<&mut Hashtable> {
 }
 
 fn gamecache(w: &mut World, h: u32) -> Option<&mut GameCache> {
+    let h = w.cache_alias.get(&h).copied().unwrap_or(h);
     match w.handles.get_mut(h) {
         Some(Obj::GameCache(t)) => Some(t),
         _ => None,
@@ -252,8 +253,19 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         InitGameCache => |w, _, a| {
-            // A cache saved by an earlier game comes back with its contents.
+            // A cache already open by that name is shared, under a new handle (measured:
+            // two InitGameCache("Test.w3v") differ but read the same values).
             let name = a.s(0);
+            let open = w.handles.iter().find_map(|(h, o)| match o {
+                Obj::GameCache(c) if c.name.eq_ignore_ascii_case(&name) && !w.cache_alias.contains_key(h) => Some(*h),
+                _ => None,
+            });
+            if let Some(first) = open {
+                let alias = w.handles.insert(Obj::GameCache(Box::new(GameCache { name, ..Default::default() })));
+                w.cache_alias.insert(alias, first);
+                return handle(alias);
+            }
+            // A cache saved by an earlier game comes back with its contents.
             let cache = match w.persist.caches.get(&name.to_ascii_lowercase()) {
                 Some(saved) => saved.to_cache(&name),
                 None => GameCache { name, ..Default::default() },

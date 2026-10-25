@@ -266,6 +266,7 @@ fn sync_cache(w: &mut World, h: u32, mission: String, key: String, get: impl Fn(
     if !w.network {
         return;
     }
+    let h = w.cache_alias.get(&h).copied().unwrap_or(h);
     let Some(crate::types::Obj::GameCache(c)) = w.handles.get(h) else { return };
     let value = get(c, &(mission.clone(), key.clone()));
     let cache = c.name.clone();

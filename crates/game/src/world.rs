@@ -381,6 +381,10 @@ pub struct World {
     /// target searches look (a cache, rebuilt from the units, so not saved).
     #[serde(skip)]
     pub unit_grid: std::cell::RefCell<(f32, crate::HashMap<(i32, i32), Vec<u32>>)>,
+    /// Game cache handles made by InitGameCache for a name already open: each stands
+    /// for the first one's contents.
+    #[serde(default)]
+    pub cache_alias: crate::HashMap<u32, u32>,
     /// Each type's weapons as its data gives them (fixed for a game, so kept once read).
     #[serde(skip)]
     pub weapon_cache: std::cell::RefCell<crate::HashMap<(crate::objects::Id, usize), Option<crate::sim::Weapon>>>,
@@ -672,6 +676,7 @@ impl World {
             prof_find: Default::default(),
             unit_grid: std::cell::RefCell::new((f32::NAN, Default::default())),
             weapon_cache: Default::default(),
+            cache_alias: Default::default(),
             prof_cells: Default::default(),
             ai_walks: Default::default(),
             lightning_data: None,

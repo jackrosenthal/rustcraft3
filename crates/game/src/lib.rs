@@ -352,6 +352,12 @@ impl Game {
                     SlotFill::Computer => {
                         p.controller = map_control::COMPUTER;
                         p.slot_state = slot_state::PLAYING;
+                        // A map loaded directly sets its computer in a user slot to play
+                        // Undead (measured on TwistedMeadows and EchoIsles, whose scripts
+                        // prefer Orc for it).
+                        if self.world.fixed_starts && controller == map_control::USER {
+                            p.race = 3;
+                        }
                         // Without fixed player settings (w3i flag 0x20) the lobby names
                         // computer slots by difficulty.
                         if self.info.flags & 0x20 == 0 {

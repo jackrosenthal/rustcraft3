@@ -1439,6 +1439,7 @@ impl World {
         if food && f > 0 && !self.cheat(crate::cheats::flag::FOOD) && p.get_state(player_state::RESOURCE_FOOD_USED) + f > p.get_state(player_state::RESOURCE_FOOD_CAP) {
             return Err("Nofood");
         }
+        log::debug!("t={:.1} player {player} pays {g} gold {l} lumber for {}", self.time, crate::objects::id_str(id));
         let p = &mut self.players[player as usize];
         *p.state.entry(player_state::RESOURCE_GOLD).or_insert(0) -= g;
         *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) -= l;

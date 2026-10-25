@@ -349,6 +349,11 @@ impl World {
     }
 
     pub fn order_unit(&mut self, h: u32, order: i32, x: f32, y: f32, target: u32) {
+        // Shadowmeld's order leaves a hidden unit as it is (measured: an archer hidden at
+        // night stays hidden and reads no order).
+        if order == crate::natives::basic::order_id("ambush") && self.ability_with_code(h, "Ashm").is_some_and(|(a, _)| self.unit(h).is_some_and(|u| u.buffs.iter().any(|b| b.ability == a))) {
+            return;
+        }
         // An order ends a new unit's first wait to look for targets (measured: a Demon
         // Hunter and a Blademaster ordered to Immolation and Bladestorm as they are made
         // strike the footman beside them 0.35 seconds in).

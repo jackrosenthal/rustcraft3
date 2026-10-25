@@ -398,7 +398,11 @@ impl World {
             }
             crate::natives::units::kill_unit(self, vm, h, 0);
         }
-        // Shadowmeld (Ashm): at night, a unit that has stood still DataA seconds hides.
+        // Shadowmeld (Ashm): at night a unit that has never acted hides at once; one that
+        // has hides DataA after it stands still, or after DataC from when it began to act
+        // if later (measured: an archer made at night hides at once; ordered to move at
+        // 1.00, it hides at 3.02 having stopped at 1.34, and at 3.64 having stopped at
+        // 2.12).
         let night = !(6.0..18.0).contains(&self.time_of_day);
         let melders: Vec<(u32, Id, u32)> = self.unit_order.iter().filter_map(|&h| self.ability_with_code(h, "Ashm").map(|(a, l)| (h, a, l))).collect();
         for (h, a, lvl) in melders {
@@ -406,15 +410,23 @@ impl World {
             let idle = matches!(u.action, Action::Idle | Action::Hold) && u.swing.is_none() && u.casting.is_none();
             let hidden = u.buffs.iter().any(|b| b.ability == a);
             if night && idle {
-                let fade = self.data(a, "DataA", lvl);
-                let since = u.extra.still_since;
-                if !hidden && self.time - since >= fade {
+                let (fade, act) = (self.data(a, "DataA", lvl), self.data(a, "DataC", lvl));
+                let ready = match u.extra.meld_active_since {
+                    None => true,
+                    Some(began) => self.time - u.extra.still_since.max(began + act) >= fade,
+                };
+                self.unit_mut(h).unwrap().extra.meld_acting = false;
+                if !hidden && ready {
                     let buff = self.first_buff(a, lvl);
                     self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: f32::INFINITY, invisible: true, ..Default::default() });
                 }
             } else {
                 let now = self.time;
                 if let Some(u) = self.unit_mut(h) {
+                    if !u.extra.meld_acting {
+                        u.extra.meld_acting = true;
+                        u.extra.meld_active_since = Some(now);
+                    }
                     u.extra.still_since = now;
                     if hidden {
                         u.buffs.retain(|b| b.ability != a);

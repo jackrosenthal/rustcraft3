@@ -256,6 +256,11 @@ pub struct UnitExtra {
     /// Seconds until a tornado's damage next strikes, once started.
     #[serde(default)]
     pub pulse_in: Option<f32>,
+    /// When a shadowmelder last began to act, and whether it is acting.
+    #[serde(default)]
+    pub meld_active_since: Option<f32>,
+    #[serde(default)]
+    pub meld_acting: bool,
     /// A haunted mine's payout timer and the acolytes it last counted at work.
     #[serde(default)]
     pub payout: Option<(f32, u32)>,
@@ -511,6 +516,8 @@ impl Default for UnitExtra {
             pillaged: [0.0; 2],
             digest_in: 0.0,
             pulse_in: None,
+            meld_active_since: None,
+            meld_acting: false,
             aura_clock: None,
             payout: None,
             casting_item: None,

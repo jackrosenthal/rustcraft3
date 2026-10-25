@@ -148,8 +148,11 @@ impl World {
     }
 
     /// Exhume Corpses: a wagon with fewer than DataA corpses gains one of UnitID every
-    /// Dur.  The Graveyard: every Cool, while fewer than DataA corpses lie within
-    /// DataC, one of UnitID appears within DataB.
+    /// Dur.  The Graveyard: from the start and every Cool after, a corpse of UnitID,
+    /// Neutral Passive's, lies at the first of DataA places DataC out without one, the
+    /// first due north and the rest a turn over DataA apart counterclockwise (measured:
+    /// five ghoul corpses 250 out at 90, 162, 234, 306, and 18 degrees, one at once
+    /// and one every 15 seconds).
     pub fn update_corpse_makers(&mut self, dt: f32) {
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && u.constructing.is_none())).collect();
         for h in units {
@@ -162,14 +165,26 @@ impl World {
                     continue;
                 }
                 let max = self.data(a, "DataA", lvl) as usize;
-                let full = if code == "Aexh" { held >= max.min(self.corpse_capacity(h)) } else { self.corpses_in(x, y, self.data(a, "DataC", lvl)).len() >= max };
+                let out = self.data(a, "DataC", lvl);
+                let place = |k: usize| {
+                    let ang = std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::TAU / max.max(1) as f32;
+                    (x + out * ang.cos(), y + out * ang.sin())
+                };
+                // A place counts as taken by a corpse near it (ground in the way moves
+                // one a little: measured 29 off).
+                let free = (0..max).find(|&k| {
+                    let (px, py) = place(k);
+                    self.corpses_in(px, py, 96.0).is_empty()
+                });
+                let full = if code == "Aexh" { held >= max.min(self.corpse_capacity(h)) } else { free.is_none() || self.corpses_in(x, y, out + 96.0).len() >= max };
                 let period = self.data(a, if code == "Aexh" { "Dur" } else { "Cool" }, lvl);
                 let u = self.unit_mut(h).unwrap();
                 if full {
                     u.cooldowns.insert(a, period);
                     continue;
                 }
-                let left = u.cooldowns.get(&a).copied().unwrap_or(period) - dt;
+                let first = if code == "Aexh" { period } else { 0.0 };
+                let left = u.cooldowns.get(&a).copied().unwrap_or(first) - dt;
                 if left > 0.0 {
                     u.cooldowns.insert(a, left);
                     continue;
@@ -178,11 +193,9 @@ impl World {
                 let type_id = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
                 if code == "Aexh" {
                     self.unit_mut(h).unwrap().extra.corpses.push(type_id);
-                } else {
-                    let r = self.data(a, "DataB", lvl);
-                    let ang = self.rng.real(0.0, std::f32::consts::TAU);
-                    let d = self.rng.real(0.0, r);
-                    self.place_corpse(owner, type_id, x + d * ang.cos(), y + d * ang.sin());
+                } else if let Some(k) = free {
+                    let (px, py) = place(k);
+                    self.place_corpse(crate::types::PLAYER_NEUTRAL_PASSIVE, type_id, px, py);
                 }
             }
         }

@@ -423,23 +423,32 @@ impl World {
     }
 
     /// Area buffs: Lightning Shield's damage around the shielded unit, and Purge's slow
-    /// wearing off.
-    pub fn update_area_buffs(&mut self, vm: &mut Vm, dt: f32) {
-        let mut hits = Vec::new();
+    /// wearing off.  The shield's damage is a buff on each unit near, striking half a
+    /// second's as it goes on and each half second after, so a paused unit is struck
+    /// once (measured: a footman beside a shielded grunt takes 10 at 0.61 seconds and
+    /// every 0.5 after; paused, once).
+    pub fn update_area_buffs(&mut self, vm: &mut Vm, _dt: f32) {
+        const EVERY: f32 = 0.5;
+        let mut near = Vec::new();
         for &h in &self.unit_order {
             let Some(u) = self.unit(h).filter(|u| !u.dead) else { continue };
             for b in &u.buffs {
                 if b.area_dps > 0.0 {
                     for t in self.units_in_pub(u.x, u.y, b.area) {
                         if t != h {
-                            hits.push((b.caster, t, b.area_dps * dt));
+                            near.push((b.caster, b.ability, b.level, t, b.area_dps));
                         }
                     }
                 }
             }
         }
-        for (src, t, amount) in hits {
-            self.spell_damage(vm, src, t, amount);
+        for (src, a, lvl, t, dps) in near {
+            // Kept on while within Area; a new one strikes at once.
+            let held = self.unit_mut(t).and_then(|tu| tu.buffs.iter_mut().find(|b| b.ability == a && b.caster == src && b.dps > 0.0).map(|b| b.remaining = b.remaining.max(EVERY)));
+            if held.is_none() {
+                self.apply_buff(t, Buff { id: [0; 4], ability: a, level: lvl, caster: src, remaining: EVERY, dps, dps_every: EVERY, dps_next: EVERY, ..Default::default() });
+                self.spell_damage(vm, src, t, dps * EVERY);
+            }
         }
         for &h in &self.unit_order.clone() {
             if let Some(u) = self.unit_mut(h) {

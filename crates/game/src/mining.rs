@@ -268,15 +268,17 @@ impl World {
             return;
         }
         let slots = self.mine_slots(mine);
-        let slot = match self.unit(h).and_then(|u| u.extra.mine_slot) {
+        let taken: Vec<usize> = self
+            .unit_order
+            .iter()
+            .filter(|&&o| o != h)
+            .filter_map(|&o| self.unit(o).filter(|u| !u.dead && matches!(u.action, Action::Harvest { target } if target == mine)).and_then(|u| u.extra.mine_slot))
+            .collect();
+        // A slot kept from before (the acolyte went off to build) holds only while no
+        // other acolyte has taken it meanwhile.
+        let slot = match self.unit(h).and_then(|u| u.extra.mine_slot).filter(|k| !taken.contains(k)) {
             Some(k) => Some(k),
             None => {
-                let taken: Vec<usize> = self
-                    .unit_order
-                    .iter()
-                    .filter(|&&o| o != h)
-                    .filter_map(|&o| self.unit(o).filter(|u| !u.dead && matches!(u.action, Action::Harvest { target } if target == mine)).and_then(|u| u.extra.mine_slot))
-                    .collect();
                 // The nearest free slot.
                 let (ux, uy) = self.unit(h).map(|u| (u.x, u.y)).unwrap_or_default();
                 (0..slots.len())

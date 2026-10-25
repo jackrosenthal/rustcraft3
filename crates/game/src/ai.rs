@@ -571,53 +571,55 @@ impl World {
         let busy = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Build { .. } | Action::Construct { .. } | Action::Attack { .. } | Action::Move { .. }));
         let on_gold = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_gold > 0));
         let on_wood = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if !w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_lumber > 0));
-        // Split the available workers among the requests in priority order.
-        let available = workers.iter().filter(|&&h| !busy(self, h)).count() as i32;
-        let (mut gold_target, mut wood_target, mut left) = (0, 0, available);
+        // Each request in priority order takes workers that can do its work and are free,
+        // those already at it first: an Undead's acolytes mine and its ghouls cut wood
+        // (measured: the original's computer ghoul cuts wood from the start; ours, counted
+        // against the gold request, stood idle for half a minute).
         let mut gold_town = 0;
-        for (gold, town, n) in &requests {
-            let take = (*n).min(left).max(0);
-            left -= take;
-            if *gold {
-                gold_target += take;
-                gold_town = *town;
-            } else {
-                wood_target += take;
-            }
-        }
-        let mut gold_now: Vec<u32> = workers.iter().copied().filter(|&h| on_gold(self, h)).collect();
-        let mut wood_now: Vec<u32> = workers.iter().copied().filter(|&h| on_wood(self, h)).collect();
-        let mut idle: Vec<u32> = workers.iter().copied().filter(|&h| !busy(self, h) && !on_gold(self, h) && !on_wood(self, h)).collect();
-        // Release extras, empty-handed workers first.
-        while gold_now.len() as i32 > gold_target {
-            idle.push(gold_now.pop().unwrap());
-        }
-        while wood_now.len() as i32 > wood_target {
-            idle.push(wood_now.pop().unwrap());
-        }
-        let harvest = crate::natives::basic::order_id("harvest");
-        let (tx, ty) = self.town_pos(p, gold_town);
-        if let Some(mine) = self.mine_near(tx, ty) {
-            while (gold_now.len() as i32) < gold_target {
-                let Some(h) = idle.pop() else { break };
-                self.order_unit(h, harvest, 0.0, 0.0, mine);
-                gold_now.push(h);
-            }
-        }
-        let (tx, ty) = self.town_pos(p, 0);
-        while (wood_now.len() as i32) < wood_target {
-            let Some(h) = idle.pop() else { break };
-            let tree = self
-                .destructable_order
+        let (tx0, ty0) = self.town_pos(p, 0);
+        let tree_near = |w: &World, h: u32| {
+            w.destructable_order
                 .iter()
                 .copied()
-                .filter(|&d| self.can_harvest(h, d))
-                .filter_map(|d| self.widget_pos(d).map(|q| ((q.0 - tx).hypot(q.1 - ty), d)))
+                .filter(|&d| w.can_harvest(h, d))
+                .filter_map(|d| w.widget_pos(d).map(|q| ((q.0 - tx0).hypot(q.1 - ty0), d)))
                 .min_by(|a, b| a.0.total_cmp(&b.0))
-                .map(|x| x.1);
-            let Some(t) = tree else { break };
-            self.order_unit(h, harvest, 0.0, 0.0, t);
-            wood_now.push(h);
+                .map(|x| x.1)
+        };
+        for (gold, town, _) in &requests {
+            if *gold {
+                gold_town = *town;
+            }
+        }
+        let (tx, ty) = self.town_pos(p, gold_town);
+        let mine = self.mine_near(tx, ty);
+        let free: Vec<u32> = workers.iter().copied().filter(|&h| !busy(self, h)).collect();
+        let mut taken: Vec<u32> = Vec::new();
+        let (mut to_gold, mut to_wood) = (Vec::new(), Vec::new());
+        for (gold, _, n) in &requests {
+            let can = |w: &World, h: u32| if *gold { mine.is_some_and(|m| w.can_harvest(h, m)) } else { tree_near(w, h).is_some() };
+            let doing = |w: &World, h: u32| if *gold { on_gold(w, h) } else { on_wood(w, h) };
+            let mut pool: Vec<u32> = free.iter().copied().filter(|h| !taken.contains(h) && can(self, *h)).collect();
+            pool.sort_by_key(|&h| !doing(self, h));
+            for h in pool.into_iter().take((*n).max(0) as usize) {
+                taken.push(h);
+                if *gold { to_gold.push(h) } else { to_wood.push(h) }
+            }
+        }
+        let harvest = crate::natives::basic::order_id("harvest");
+        if let Some(mine) = mine {
+            for &h in &to_gold {
+                if !on_gold(self, h) {
+                    self.order_unit(h, harvest, 0.0, 0.0, mine);
+                }
+            }
+        }
+        for &h in &to_wood {
+            if !on_wood(self, h) {
+                if let Some(t) = tree_near(self, h) {
+                    self.order_unit(h, harvest, 0.0, 0.0, t);
+                }
+            }
         }
         // Captains keep their units moving toward the goal.
         for which in 0..2 {
@@ -1091,8 +1093,10 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         },
         IsTowered => |w, _, a| boolean(w.is_towered(a.h(0))),
         ClearHarvestAI => |w, _, _| { if let Some(s) = w.ai_state() { s.harvest.clear(); } none() },
-        HarvestGold => |w, _, a| { let (t, n) = (a.i(0), a.i(1)); if let Some(s) = w.ai_state() { s.harvest.push((true, t, n)); } none() },
-        HarvestWood => |w, _, a| { let (t, n) = (a.i(0), a.i(1)); if let Some(s) = w.ai_state() { s.harvest.push((false, t, n)); } none() },
+        // Workers are put to the work at once (FUN_6f9c7330 orders them within the call),
+        // so the engine takes the requests up on this tick.
+        HarvestGold => |w, _, a| { let (t, n) = (a.i(0), a.i(1)); if let Some(s) = w.ai_state() { s.harvest.push((true, t, n)); s.harvest_timer = 0.0; } none() },
+        HarvestWood => |w, _, a| { let (t, n) = (a.i(0), a.i(1)); if let Some(s) = w.ai_state() { s.harvest.push((false, t, n)); s.harvest_timer = 0.0; } none() },
         StopGathering => |w, _, _| {
             if let Some(s) = w.ai_state() { s.harvest.clear(); }
             set_flag(w, "gathering", false)

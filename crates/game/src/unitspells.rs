@@ -177,11 +177,13 @@ impl World {
                 crate::natives::units::remove_unit(self, h);
             }
             // Cyclone: lifted, helpless and untouchable, for Dur, under the second of its
-            // buffs (measured: a footman cycloned by a druid or a Wand of the Wind has
-            // Bcy2, not Bcyc).
+            // buffs when DataA is set and [Misc] CycloneStasis is not, else the first
+            // (CAbilityCyclone::vf265; measured: a footman cycloned by a druid or a Wand
+            // of the Wind has Bcy2, not Bcyc).
             "Acyc" => {
                 let ids = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", lvl)).unwrap_or_default();
-                let id = ids.split(',').nth(1).map(|b| crate::objects::id_from_str(b.trim())).unwrap_or(buff);
+                let second = self.data(a, "DataA", lvl) != 0.0 && self.misc_f32("CycloneStasis", 0.0) == 0.0;
+                let id = ids.split(',').nth(if second { 1 } else { 0 }).map(|b| crate::objects::id_from_str(b.trim())).unwrap_or(buff);
                 self.apply_buff(target, Buff { id, ability: a, level: lvl, caster: h, remaining: dur, stun: true, invulnerable: true, ..Default::default() })
             }
             // Roar: DataA more damage for allies within Area.

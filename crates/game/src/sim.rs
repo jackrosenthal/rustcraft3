@@ -750,6 +750,77 @@ impl World {
         })
     }
 
+    /// A walker on the ground goes around a unit standing in its way rather than
+    /// through it (measured: a footman sent past an idle enemy footman bows some 70
+    /// out around it and leaves it where it stood; ours shoved it 267 aside): a turn
+    /// beside the nearest one ahead, both sizes and 8 off, on the side the walker
+    /// already leans to.
+    fn steer_around(&mut self, h: u32) {
+        let Some(u) = self.unit(h) else { return };
+        let Some(&next) = u.path.first() else { return };
+        if u.extra.no_pathing || self.is_ghost(u) || self.move_kind(h) == crate::pathing::Move::Fly {
+            return;
+        }
+        let (ux, uy, r) = (u.x, u.y, u.collision);
+        let (dx, dy) = (next.0 - ux, next.1 - uy);
+        let len = dx.hypot(dy);
+        if len < 1.0 {
+            return;
+        }
+        let (fx, fy) = (dx / len, dy / len);
+        let aim = match u.action {
+            Action::Attack { target } | Action::Follow { target } | Action::Harvest { target } | Action::Repair { target } | Action::Construct { target } => target,
+            Action::Cast { target, .. } => target,
+            _ => 0,
+        };
+        let ahead = len.min(r * 2.0 + 64.0);
+        let mut block: Option<(f32, f32, f32, f32)> = None;
+        for &o in &self.unit_order {
+            if o == h || o == aim {
+                continue;
+            }
+            let Some(v) = self.unit(o) else { continue };
+            if v.dead || v.hidden || v.is_building || v.collision <= 0.0 || !v.path.is_empty() || v.extra.no_pathing || self.is_ghost(v) {
+                continue;
+            }
+            let reach = r + v.collision;
+            if (v.x - ux).abs() > ahead + reach || (v.y - uy).abs() > ahead + reach {
+                continue;
+            }
+            if self.move_kind(o) == crate::pathing::Move::Fly {
+                continue;
+            }
+            let (ox, oy) = (v.x - ux, v.y - uy);
+            let along = ox * fx + oy * fy;
+            let across = ox * fy - oy * fx;
+            if along <= 0.0 || along > ahead || across.abs() >= reach {
+                continue;
+            }
+            if block.is_none_or(|b| along < b.0) {
+                block = Some((along, across, reach, 0.0));
+                block.as_mut().unwrap().3 = o as f32;
+            }
+        }
+        let Some((_, across, reach, o)) = block else { return };
+        let Some(v) = self.unit(o as u32) else { return };
+        let (vx, vy) = (v.x, v.y);
+        // Pass on the side away from it (to the left of the way when it stands square
+        // in it, as measured); the other side if the ground there will not have the
+        // walker.
+        let side = if across < 0.0 { 1.0 } else { -1.0 };
+        let off = reach + 8.0;
+        let at = |s: f32| (vx + fy * off * s, vy - fx * off * s);
+        let fits = |p: (f32, f32)| self.pathing.as_ref().is_none_or(|m| m.fits(m.cell_of(p.0, p.1), r * 0.5));
+        let turn_at = if fits(at(side)) { at(side) } else if fits(at(-side)) { at(-side) } else { return };
+        if let Some(u) = self.unit_mut(h) {
+            if u.path.first().is_some_and(|&p| (p.0 - turn_at.0).hypot(p.1 - turn_at.1) < 1.0) {
+                return;
+            }
+            u.path.insert(0, turn_at);
+            u.extra.detour = Some(turn_at);
+        }
+    }
+
     pub(crate) fn walk(&mut self, h: u32, dt: f32) -> bool {
         let t0 = self.profile.is_some().then(std::time::Instant::now);
         let r = self.walk_inner(h, dt);
@@ -758,6 +829,7 @@ impl World {
     }
 
     fn walk_inner(&mut self, h: u32, dt: f32) -> bool {
+        self.steer_around(h);
         let Some(u) = self.unit_mut(h) else { return true };
         let Some(&next) = u.path.first() else {
             set_anim(u, "stand");
@@ -776,7 +848,8 @@ impl World {
         set_anim(u, "walk");
         // A turn on the way is passed once the unit is within its own size of it: units
         // bound for the same turn would otherwise crowd it, each held off by the others.
-        if u.path.len() > 1 && d <= u.collision * 2.0 {
+        let detour = u.extra.detour == Some(next);
+        if u.path.len() > 1 && d <= u.collision * 2.0 && !detour {
             u.path.remove(0);
             return false;
         }

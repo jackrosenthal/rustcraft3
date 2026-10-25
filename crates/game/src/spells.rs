@@ -232,7 +232,9 @@ impl World {
                 if let Some(&mine) = ids.first().filter(|_| ids.len() > 1) {
                     self.apply_buff(h, Buff { id: mine, ability: a, level: lvl, caster: h, remaining: duration, ..Default::default() });
                 }
-                self.apply_buff(target, Buff { id: held, ability: a, level: lvl, caster: h, remaining: duration, stun: true, dps: self.d(a, "DataA", lvl), ..Default::default() });
+                // Its damage strikes once a second, the first at once (measured: a Gryphon
+                // Rider shackled at 0.30 seconds takes 30 at 0.31 and each second after).
+                self.apply_buff(target, Buff { id: held, ability: a, level: lvl, caster: h, remaining: duration, stun: true, dps: self.d(a, "DataA", lvl), dps_every: 1.0, dps_next: 0.0, ..Default::default() });
                 let link = self.channel_link(a, h, target);
                 if let Some(u) = self.unit_mut(h) {
                     u.channel = Some(Channel { ability: a, level: lvl, target, x, y, elapsed: 0.0, duration, interval: duration.max(0.1) + 1.0, next: duration.max(0.1) + 1.0, waves: 0, link, held, lanes: 0, ai_fails: 0, strikes: Vec::new(), struck: Vec::new() });

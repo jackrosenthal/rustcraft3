@@ -968,12 +968,32 @@ impl World {
 
     fn find_target_inner(&self, h: u32, range: f32) -> Option<u32> {
         let u = self.unit(h)?;
+        let mut best: Option<(f32, u32, bool)> = None;
+        // Only the squares within reach (the largest structure's half-width and a
+        // moment's walk to spare).
+        if self.unit_grid.borrow().0 != self.time {
+            let mut grid: crate::HashMap<(i32, i32), Vec<u32>> = Default::default();
+            for &t in &self.unit_order {
+                if let Some(tu) = self.unit(t).filter(|tu| !tu.dead) {
+                    grid.entry(((tu.x / 512.0).floor() as i32, (tu.y / 512.0).floor() as i32)).or_default().push(t);
+                }
+            }
+            *self.unit_grid.borrow_mut() = (self.time, grid);
+        }
+        let reach = range + u.collision + 448.0;
+        let (cx0, cx1) = (((u.x - reach) / 512.0).floor() as i32, ((u.x + reach) / 512.0).floor() as i32);
+        let (cy0, cy1) = (((u.y - reach) / 512.0).floor() as i32, ((u.y + reach) / 512.0).floor() as i32);
+        let grid = self.unit_grid.borrow();
+        let near: Vec<u32> = (cy0..=cy1).flat_map(|cy| (cx0..=cx1).map(move |cx| (cx, cy))).filter_map(|c| grid.1.get(&c)).flatten().copied().filter(|&t| t != h && self.unit(t).is_some_and(|tu| !is_ally(self, u.owner, tu.owner))).collect();
+        drop(grid);
+        if near.is_empty() {
+            return None;
+        }
         let weapons = unit_weapons(self, u);
         if weapons.is_empty() {
             return None;
         }
-        let mut best: Option<(f32, u32, bool)> = None;
-        for &t in &self.unit_order {
+        for t in near {
             let Some(tu) = self.unit(t) else { continue };
             // Out of range first: the other tests cost more.  The range runs edge to
             // edge (measured: a footman, acquire 500, takes up a grunt 550 away center

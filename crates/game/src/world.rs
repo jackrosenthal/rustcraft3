@@ -377,6 +377,10 @@ pub struct World {
     /// W3PROF time spent finding targets (from `&self` code).
     #[serde(skip)]
     pub prof_find: std::cell::Cell<f64>,
+    /// Living units by 512 square, in their order, rebuilt once a game moment: where
+    /// target searches look (a cache, rebuilt from the units, so not saved).
+    #[serde(skip)]
+    pub unit_grid: std::cell::RefCell<(f32, crate::HashMap<(i32, i32), Vec<u32>>)>,
     /// The AI's walking distances by their question (FUN_6f9baa40's and the
     /// expansions' path lengths), with the game time each was found: kept 30 seconds
     /// whatever the map does, as every computer asks the same at the same times.
@@ -663,6 +667,7 @@ impl World {
             sentinels: Vec::new(),
             profile: None,
             prof_find: Default::default(),
+            unit_grid: std::cell::RefCell::new((f32::NAN, Default::default())),
             prof_cells: Default::default(),
             ai_walks: Default::default(),
             lightning_data: None,

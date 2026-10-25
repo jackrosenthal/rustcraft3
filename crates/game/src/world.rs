@@ -329,6 +329,9 @@ pub struct World {
     /// Infernals landing: time, caster, ability, level, point, and the Infernal.
     #[serde(default)]
     pub pending_infernos: Vec<(f32, u32, crate::objects::Id, u32, f32, f32, u32)>,
+    /// Mirror Images landing: time, caster, ability, and level.
+    #[serde(default)]
+    pub pending_mirrors: Vec<(f32, u32, crate::objects::Id, u32)>,
     /// How far sight has gone from day's to night's: 0 by day, 1 by night, between for
     /// three seconds after the change.
     #[serde(default)]
@@ -702,6 +705,7 @@ impl World {
             water_deforms: false,
             pending_entangles: Vec::new(),
             pending_infernos: Vec::new(),
+            pending_mirrors: Vec::new(),
             impales: Vec::new(),
             night_sight: 0.0,
             incinerations: Vec::new(),
@@ -1461,6 +1465,11 @@ impl World {
                 u.paused = false;
             }
             self.inferno_impact(vm, caster, a, lvl, x, y);
+        }
+        let landing: Vec<_> = self.pending_mirrors.iter().copied().filter(|e| e.0 <= now).collect();
+        self.pending_mirrors.retain(|e| e.0 > now);
+        for (_, caster, a, lvl) in landing {
+            self.mirror_land(caster, a, lvl);
         }
         self.update_impales(vm);
         // TimerDialogSetRealTimeRemaining counts down in the dialog itself.

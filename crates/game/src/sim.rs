@@ -1043,7 +1043,9 @@ impl World {
         if self.has_buff_flag(h, |b| b.invisible) {
             return None;
         }
-        let u = self.unit(h)?;
+        // Nor does a hidden one (measured: a Blademaster hidden by Mirror Image strikes
+        // nothing until it shows).
+        let u = self.unit(h).filter(|u| !u.hidden)?;
         let mut best: Option<(f32, u32, bool, bool)> = None;
         // Only the squares within reach (the largest structure's half-width and a
         // moment's walk to spare).

@@ -37,26 +37,42 @@ impl World {
         Some(h)
     }
 
-    /// Mirror Image: the caster and its DataA images around it, in an order chosen at
-    /// random; the caster loses its buffs.
+    /// Mirror Image: the caster loses its buffs and hides; DataD later its missiles fly
+    /// out Rng to their spots, and on landing it and its DataA images stand there (measured:
+    /// a Blademaster hides at its cast point, 0.32 seconds in, and shows with its image
+    /// at 1.00).
     pub(crate) fn mirror_image(&mut self, h: u32, a: Id, lvl: u32) {
-        let Some(u) = self.unit(h) else { return };
-        let (owner, x, y) = (u.owner, u.x, u.y);
+        let speed = self.profile_art(a, "Missilespeed").trim().parse().unwrap_or(1000.0f32).max(1.0);
+        let flight = self.data(a, "Rng", lvl).max(64.0) / speed;
+        let delay = self.data(a, "DataD", lvl);
+        let Some(u) = self.unit_mut(h) else { return };
+        u.buffs.retain(|b| b.invulnerable && b.ability == a);
+        u.action = Action::Idle;
+        u.swing = None;
+        u.hidden = true;
+        self.pending_mirrors.push((self.time + delay + flight, h, a, lvl));
+    }
+
+    /// The images land in an order chosen at random, the caster at one spot, about it
+    /// from a quarter turn left of its facing (measured: a Blademaster facing east
+    /// shows 128 north or south with its image opposite).
+    pub(crate) fn mirror_land(&mut self, h: u32, a: Id, lvl: u32) {
+        let Some(u) = self.unit(h).filter(|u| !u.dead) else { return };
+        let (owner, x, y, facing) = (u.owner, u.x, u.y, u.facing);
         let n = self.data(a, "DataA", lvl).max(0.0) as usize;
         let (dealt, taken) = (self.data(a, "DataB", lvl), self.data(a, "DataC", lvl));
         let r = self.data(a, "Rng", lvl).max(64.0);
         let mut spots: Vec<(f32, f32)> = (0..=n).map(|k| {
-            let ang = k as f32 / (n + 1) as f32 * std::f32::consts::TAU;
+            let ang = facing.to_radians() + std::f32::consts::FRAC_PI_2 + k as f32 / (n + 1) as f32 * std::f32::consts::TAU;
             (x + r * ang.cos(), y + r * ang.sin())
         }).collect();
         // The caster takes one spot at random.
         let pick = self.rng.int(0, n as i32).max(0) as usize;
         let mine = spots.remove(pick.min(spots.len() - 1));
         if let Some(u) = self.unit_mut(h) {
-            u.buffs.retain(|b| b.invulnerable && b.ability == a);
             u.x = mine.0;
             u.y = mine.1;
-            u.action = Action::Idle;
+            u.hidden = false;
         }
         for spot in spots {
             self.make_illusion(h, owner, spot, a, lvl, dealt, taken);

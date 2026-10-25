@@ -94,7 +94,9 @@ impl World {
             return;
         }
         self.autocast_timer = 0.5;
-        let casters: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.autocast.is_empty() && u.casting.is_none() && matches!(u.action, Action::Idle | Action::Attack { .. } | Action::AttackMove { .. } | Action::Hold))).collect();
+        // Illusions autocast only under [Misc] IllusionsGetAutocast (0 in the game's data).
+        let illusions_cast = self.misc_f32("IllusionsGetAutocast", 0.0) != 0.0;
+        let casters: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.autocast.is_empty() && u.casting.is_none() && (illusions_cast || u.extra.illusion.is_none()) && matches!(u.action, Action::Idle | Action::Attack { .. } | Action::AttackMove { .. } | Action::Hold))).collect();
         for h in casters {
             let list = self.unit(h).map(|u| u.autocast.clone()).unwrap_or_default();
             for a in list {

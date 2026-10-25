@@ -998,8 +998,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         SetHeroLevel => |w, vm, a| {
-            // Up to MaxHeroLevel.
+            // Up to MaxHeroLevel.  The original looks the experience up at the level less
+            // one, clamped into its table, so level 1 reads the first entry, level 2's, and
+            // a level 1 hero set to level 1 rises to 2 (measured: 200 experience).
             let (h, l) = (a.h(0), a.i(1).min(w.misc_f32("MaxHeroLevel", 10.0) as i32));
+            let l = if l == 1 { 2 } else { l };
             while w.unit(h).is_some_and(|u| u.is_hero && !u.dead && u.level < l) {
                 let need = w.hero_xp_needed(w.unit(h).unwrap().level + 1) - w.unit(h).unwrap().hero_xp;
                 w.add_hero_xp(h, need.max(1));

@@ -24,7 +24,9 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32) -> (f32, f32
     if w.pathing.is_none() {
         return (x, y);
     }
-    let building = !o.str("pathTex").is_empty() && o.real("spd") <= 0.0;
+    // A structure by isbldg, ancients that walk among them (measured: an Ancient of
+    // War made on unbuildable ground stands 181 away).
+    let building = !o.str("pathTex").is_empty() && (o.real("spd") <= 0.0 || o.int("isbldg") == 1);
     let (movetp, collision, tex) = (o.str("movetp"), o.real("collision"), o.str("pathTex"));
     if building {
         if w.builds_on(type_id) {
@@ -610,7 +612,8 @@ fn is_unit_type_base(w: &World, u: &Unit, t: i32) -> bool {
     match t {
         0 => u.is_hero,
         1 => u.dead,
-        2 => u.is_building,
+        // An uprooted ancient is still a structure (measured).
+        2 => u.is_building || u.extra.uprooted,
         3 => field("movetp") == "fly",
         4 => field("movetp") != "fly",
         5 => targets.split(',').any(|x| x.trim() == "air"),

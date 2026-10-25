@@ -702,7 +702,9 @@ impl World {
         let ub = self.upgrade_bonus(u.owner, u.type_id);
         let speed = (u.move_speed + u.item_bonus.move_speed + ub.move_speed) * (1.0 + ub.move_pct) * self.buff_mods(h).0;
         const LIMITS: (f32, f32) = (1.0, 522.0);
-        let (min_key, max_key) = if u.is_building { ("MinBldgSpeed", "MaxBldgSpeed") } else { ("MinUnitSpeed", "MaxUnitSpeed") };
+        // An uprooted ancient keeps a structure's limits (measured: an Ancient of War
+        // walks at its 40, where a unit's least is 150).
+        let (min_key, max_key) = if u.is_building || u.extra.uprooted { ("MinBldgSpeed", "MaxBldgSpeed") } else { ("MinUnitSpeed", "MaxUnitSpeed") };
         let o = self.objects.units.get(u.type_id);
         let own = |k: &str| o.map_or(0.0, |o| o.real(k));
         let global_min = self.misc_f32(min_key, 150.0).max(LIMITS.0);

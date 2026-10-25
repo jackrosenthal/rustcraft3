@@ -27,6 +27,8 @@ impl World {
         let dur = self.root_data(h, "Dur");
         let u = self.unit_mut(h).unwrap();
         u.extra.rooting = Some((dur, None));
+        // Its order reads unroot until it is done (measured).
+        u.order = Order { id: crate::natives::basic::order_id("unroot"), ..Default::default() };
         u.queue.clear();
         u.extra.queue_tokens.clear();
         crate::sim::set_anim(u, "morph");
@@ -44,6 +46,8 @@ impl World {
         u.extra.root_target = Some((x, y));
         u.action = Action::Move { x, y };
         u.path.clear();
+        // Its order reads root on the way and while rooting (measured).
+        u.order = Order { id: crate::natives::basic::order_id("root"), target_x: x, target_y: y, target: 0 };
         true
     }
 
@@ -106,12 +110,15 @@ impl World {
         u.is_building = false;
         u.move_speed = speed;
         u.action = Action::Idle;
+        u.order = Order::default();
         crate::sim::set_anim(u, "stand");
     }
 
     fn finish_root(&mut self, h: u32, x: f32, y: f32) {
         let weapons = self.root_data(h, "DataA") as i32;
         let tex = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map(|o| o.str("pathTex")).unwrap_or_default();
+        // Rooted, it reads its speed as when made (measured: 40 again).
+        let speed = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map_or(0.0, |o| o.real("spd"));
         let cells = self.pathing_cells(&tex, x, y, 0.0);
         if let Some(p) = self.pathing.as_mut() {
             p.stamp(&cells, 1);
@@ -123,8 +130,9 @@ impl World {
         u.extra.weapons = Some(weapons);
         u.extra.defense = None;
         u.is_building = true;
-        u.move_speed = 0.0;
+        u.move_speed = speed;
         u.action = Action::Idle;
+        u.order = Order::default();
         crate::sim::set_anim(u, "stand");
     }
 }

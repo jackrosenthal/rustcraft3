@@ -1,5 +1,5 @@
 //! Attack modifiers: Searing and Cold Arrows and Black Arrow while their autocast is on
-//! and mana lasts (each attack costs the ability's mana), Poison and Venom, Frost
+//! and mana lasts (each attack costs the ability's mana), Frost
 //! Attack (MiscGame FrostMoveSpeedDecrease and FrostAttackSpeedDecrease), Feedback,
 //! Liquid Fire on structures, and Pillage, which pays for damage done to structures.
 
@@ -81,10 +81,6 @@ impl World {
                     if let Some(at) = self.widget_pos(target) {
                         self.ability_effect_pub(vm, attacker, a, 1, target, at);
                     }
-                }
-                // Poison and Venom: damage a second and slows for Dur.
-                "Apoi" | "Aven" | "Apo2" if !target_building => {
-                    self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: dur, dps: d(self, "DataA"), attack_factor: -d(self, "DataB"), move_factor: -d(self, "DataC"), ..Default::default() });
                 }
                 // Freezing Breath: a structure hit stops working for Dur.
                 "Afrz" if target_building => {

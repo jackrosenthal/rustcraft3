@@ -3033,6 +3033,7 @@ impl World {
     /// where it lands), then splash and line spill spread it.
     fn attack_impact(&mut self, vm: &mut Vm, source: u32, target: u32, raw: f32, wp: &Weapon, at: (f32, f32)) {
         let artillery = wp.weapon_type == "artillery" || wp.weapon_type == "aline";
+        self.poison_on_hit(vm, source, target);
         if !artillery {
             self.deal_damage(vm, source, target, raw, &wp.attack_type);
         }

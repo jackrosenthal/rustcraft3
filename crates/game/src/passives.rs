@@ -67,8 +67,42 @@ impl World {
         self.upgrade_bonus(t.owner, t.type_id).spikes
     }
 
-    /// Attack passives of the attacker: Pulverize, Slow Poison, Corrosive Breath, and
-    /// Kaboom.
+    /// Poisons, as the attack lands: Slow Poison (DataB slower movement, DataC slower
+    /// attacks), and Poison and Venom, from the unit or a held item (DataB slower
+    /// attacks, DataC slower movement), each DataA once a second for Dur, the first at
+    /// once; each touches the target with a hit of nothing first (measured: a Dryad's
+    /// arrow and an envenomed Wind Rider's spear each show a damage event of 0, then
+    /// the attack's, then 4 of poison each second from the next moment).
+    pub(crate) fn poison_on_hit(&mut self, vm: &mut Vm, h: u32, target: u32) {
+        let Some(u) = self.unit(h) else { return };
+        if self.unit(target).is_none_or(|t| t.is_building || t.dead) {
+            return;
+        }
+        let owner = u.owner;
+        let mut abilities = u.abilities.clone();
+        for item in u.inventory.clone() {
+            if let Some(t) = self.item(item).map(|i| i.type_id) {
+                abilities.extend(self.item_abilities(t).into_iter().map(|a| (a, 1)));
+            }
+        }
+        for (a, l) in abilities {
+            let code = self.ability_code(a);
+            if !matches!(code.as_str(), "Aspo" | "Apoi" | "Aven" | "Apo2") || !self.ability_enabled(owner, a) {
+                continue;
+            }
+            let l = l.max(1) as u32;
+            self.spell_damage(vm, h, target, 0.0);
+            let buff = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", l)).unwrap_or_default();
+            let id = id_from_str(buff.split(',').next().unwrap_or("").trim());
+            let dur = if self.hero_duration(target) { self.data(a, "HeroDur", l) } else { self.data(a, "Dur", l) };
+            let (b, c) = (self.data(a, "DataB", l), self.data(a, "DataC", l));
+            let (move_factor, attack_factor) = if code == "Aspo" { (-b, -c) } else { (-c, -b) };
+            let b = Buff { id, ability: a, level: l, caster: h, remaining: dur, dps: self.data(a, "DataA", l), dps_every: 1.0, dps_next: 0.0, move_factor, attack_factor, ..Default::default() };
+            self.apply_buff(target, b);
+        }
+    }
+
+    /// Attack passives of the attacker: Pulverize, Corrosive Breath, and Kaboom.
     pub fn attack_passives(&mut self, vm: &mut Vm, h: u32, target: u32) {
         let Some(u) = self.unit(h) else { return };
         let (owner, ux, uy) = (u.owner, u.x, u.y);
@@ -87,14 +121,6 @@ impl World {
                     self.spell_damage(vm, h, t, if d <= full { dmg } else { dmg * 0.5 });
                 }
             }
-        }
-        // Slow Poison: DataA a second and DataB slower movement, DataC slower attacks.
-        if let Some((a, l)) = self.passive(h, "Aspo").filter(|_| !building) {
-            let buff = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", l)).unwrap_or_default();
-            let id = id_from_str(buff.split(',').next().unwrap_or("").trim());
-            let dur = if self.hero_duration(target) { self.data(a, "HeroDur", l) } else { self.data(a, "Dur", l) };
-            let b = Buff { id, ability: a, level: l, caster: h, remaining: dur, dps: self.data(a, "DataA", l), move_factor: -self.data(a, "DataB", l), attack_factor: -self.data(a, "DataC", l), ..Default::default() };
-            self.apply_buff(target, b);
         }
         // Corrosive Breath: structures hit take DataA a second.
         if let Some((a, l)) = self.passive(h, "Acor").filter(|_| building) {

@@ -288,11 +288,14 @@ impl World {
                 self.spell_damage(vm, h, target, drained);
                 true
             }
-            // Shadow Strike: initial damage, then decaying damage over time with a slow.
+            // Shadow Strike: DataE at once, then DataA every DataD seconds with a slow
+            // (measured: a footman struck at 0.75 seconds takes 75, then 10 at 3.75 and
+            // 6.75).
             "AEsh" => {
                 self.spell_damage(vm, h, target, self.d(a, "DataE", lvl));
-                let dps = self.d(a, "DataA", lvl) / 3.0;
-                let b = Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps, move_factor: -self.d(a, "DataB", lvl), attack_factor: -self.d(a, "DataC", lvl), ..Default::default() };
+                let every = self.d(a, "DataD", lvl).max(0.01);
+                let dps = self.d(a, "DataA", lvl) / every;
+                let b = Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps, dps_every: every, dps_next: every, move_factor: -self.d(a, "DataB", lvl), attack_factor: -self.d(a, "DataC", lvl), ..Default::default() };
                 self.apply_buff(target, b);
                 true
             }

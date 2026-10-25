@@ -278,14 +278,10 @@ impl World {
                 self.start_jumps(vm, a, lvl, h, target, amount, jumps, code == "AOhw");
                 true
             }
-            // Mana Burn: drains up to DataA mana and deals as much damage.
+            // Mana Burn: after DataB, drains up to DataA mana and deals as much damage.
             "AEmb" => {
-                self.ability_bolt(a, true, h, target);
-                let drained = self.unit(target).map_or(0.0, |t| t.mana.min(self.d(a, "DataA", lvl)));
-                if let Some(t) = self.unit_mut(target) {
-                    t.mana -= drained;
-                }
-                self.spell_damage(vm, h, target, drained);
+                let (amount, delay) = (self.d(a, "DataA", lvl), self.d(a, "DataB", lvl));
+                self.start_mana_burn(a, lvl, h, target, amount, delay);
                 true
             }
             // Shadow Strike: DataE at once, then DataA every DataD seconds with a slow

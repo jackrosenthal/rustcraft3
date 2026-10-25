@@ -46,6 +46,12 @@ pub struct Jump {
     pub hit: Vec<u32>,
     pub heal: bool,
     pub timer: f32,
+    /// The first strike's target, waiting for the timer.
+    #[serde(default)]
+    pub first: u32,
+    /// Mana Burn: the strike drains up to `amount` mana and deals as much damage.
+    #[serde(default)]
+    pub burn: bool,
 }
 
 impl World {
@@ -93,13 +99,18 @@ impl World {
     }
 
     /// Starts a jumping spell at its first target.
-    pub fn start_jumps(&mut self, vm: &mut Vm, a: Id, level: u32, caster: u32, target: u32, amount: f32, jumps: usize, heal: bool) {
+    /// A jumping spell's first strike comes a jump's time after the cast, as the others
+    /// after it (measured: Chain Lightning's first 85 at 0.23 seconds after its cast).
+    pub fn start_jumps(&mut self, _vm: &mut Vm, a: Id, level: u32, caster: u32, target: u32, amount: f32, jumps: usize, heal: bool) {
         let owner = self.unit(caster).map_or(0, |u| u.owner);
-        let mut j = Jump { ability: a, level, caster, owner, from: caster, amount, jumps_left: jumps, hit: Vec::new(), heal, timer: 0.0 };
-        self.strike(vm, &mut j, target);
-        if j.jumps_left > 0 {
-            self.jumps.push(j);
-        }
+        self.jumps.push(Jump { ability: a, level, caster, owner, from: caster, amount, jumps_left: jumps, hit: Vec::new(), heal, timer: JUMP_DELAY, first: target, burn: false });
+    }
+
+    /// Mana Burn's bolt strikes after its delay (DataB, "bolt delay"; measured: 50 at
+    /// 0.25 seconds after the cast).
+    pub fn start_mana_burn(&mut self, a: Id, level: u32, caster: u32, target: u32, amount: f32, delay: f32) {
+        let owner = self.unit(caster).map_or(0, |u| u.owner);
+        self.jumps.push(Jump { ability: a, level, caster, owner, from: caster, amount, jumps_left: 1, hit: Vec::new(), heal: false, timer: delay, first: target, burn: true });
     }
 
     fn strike(&mut self, vm: &mut Vm, j: &mut Jump, target: u32) {
@@ -107,6 +118,12 @@ impl World {
         self.ability_bolt(j.ability, first, j.from, target);
         if j.heal {
             self.magic_heal(target, j.amount);
+        } else if j.burn {
+            let drained = self.unit(target).map_or(0.0, |t| t.mana.min(j.amount));
+            if let Some(t) = self.unit_mut(target) {
+                t.mana -= drained;
+            }
+            self.spell_damage(vm, j.caster, target, drained);
         } else {
             self.spell_damage(vm, j.caster, target, j.amount);
         }
@@ -157,6 +174,16 @@ impl World {
             j.timer -= dt;
             if j.timer > 0.0 {
                 keep.push(j);
+                continue;
+            }
+            if j.first != 0 {
+                let t = std::mem::take(&mut j.first);
+                if self.unit(t).is_some_and(|u| !u.dead) {
+                    self.strike(vm, &mut j, t);
+                    if j.jumps_left > 0 {
+                        keep.push(j);
+                    }
+                }
                 continue;
             }
             let area = self.data(j.ability, "Area", j.level);

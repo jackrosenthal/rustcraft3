@@ -17,6 +17,9 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         log::warn!("CreateUnit: unknown unit type {}", crate::objects::id_str(type_id));
         return 0;
     };
+    // On the map, facing within a turn (measured: 400 reads 40, -90 reads 270).
+    let (x, y) = w.clamp_to_map(x, y);
+    let facing = facing.rem_euclid(360.0);
     // Times its owner's handicap (measured: a footman made at 0.5 has 210 of 210).
     let hp = w.handicap_life(owner, o.real("HP").max(1.0));
     let max_mana = o.real("manaN");
@@ -566,15 +569,20 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         RemoveUnit => |w, _, a| { remove_unit(w, a.h(0)); none() },
         ShowUnit => |w, _, a| { let v = a.b(1); with_unit(w, a, |u| u.hidden = !v) },
         IsUnitHidden => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| u.hidden)),
-        SetUnitState => |w, _, a| {
+        SetUnitState => |w, vm, a| {
             let (s, v) = (a.h(1) as i32, a.r(2));
-            with_unit(w, a, |u| match s {
-                unit_state::LIFE => u.life = v.min(u.max_life),
+            let r = with_unit(w, a, |u| match s {
+                unit_state::LIFE => u.life = v.clamp(0.0, u.max_life),
                 unit_state::MAX_LIFE => u.max_life = v,
                 unit_state::MANA => u.mana = v.clamp(0.0, u.max_mana),
                 unit_state::MAX_MANA => u.max_mana = v,
                 _ => {}
-            })
+            });
+            // Life set to none kills (measured: -5 reads 0, and the unit is dead).
+            if s == unit_state::LIFE && w.unit(a.h(0)).is_some_and(|u| !u.dead && u.life <= 0.405) {
+                kill_unit(w, vm, a.h(0), 0);
+            }
+            r
         },
         GetUnitState => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| match a.h(1) as i32 {
             unit_state::LIFE => u.life,
@@ -621,13 +629,16 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetUnitAcquireRange => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.acquire_range)),
         SetUnitX => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.x = v) },
         SetUnitY => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.y = v) },
-        SetUnitPosition => |w, _, a| { let (x, y) = (a.r(1), a.r(2)); with_unit(w, a, |u| { u.x = x; u.y = y; }) },
+        // Kept on the map (measured: 99999 places at 10208), unlike SetUnitX and SetUnitY.
+        SetUnitPosition => |w, _, a| { let (x, y) = w.clamp_to_map(a.r(1), a.r(2)); with_unit(w, a, |u| { u.x = x; u.y = y; }) },
         SetUnitPositionLoc => |w, _, a| {
             let (x, y) = w.location(a.h(1)).unwrap_or_default();
+            let (x, y) = w.clamp_to_map(x, y);
             with_unit(w, a, |u| { u.x = x; u.y = y; })
         },
-        SetUnitFacing => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.facing = v) },
-        SetUnitFacingTimed => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.facing = v) },
+        // Within a turn (measured: 720 reads 0).
+        SetUnitFacing => |w, _, a| { let v = a.r(1).rem_euclid(360.0); with_unit(w, a, |u| u.facing = v) },
+        SetUnitFacingTimed => |w, _, a| { let v = a.r(1).rem_euclid(360.0); with_unit(w, a, |u| u.facing = v) },
         // A unit that can move cannot be stopped this way: its speed stays within its
         // limits (measured: SetUnitMoveSpeed(footman, 0) leaves it walking at 150,
         // MinUnitSpeed).

@@ -511,6 +511,17 @@ fn full_volume() -> [(f32, f32, f32); 8] {
 pub const VOLUME_GROUP_CHANNELS: [u32; 8] = [0x200, 0x101e, 0x20, 0x800, 0x100, 0x80, 0x400, 0x4000];
 
 impl World {
+    /// A point kept on the map, as the original places units and items: within its
+    /// bounds, short of the last 32 at the top and right (measured on a map spanning
+    /// -10240 to 10240: 99999 places at 10208, -99999 at -10240).
+    pub fn clamp_to_map(&self, x: f32, y: f32) -> (f32, f32) {
+        let b = self.map_bounds;
+        if b.max_x <= b.min_x || b.max_y <= b.min_y {
+            return (x, y);
+        }
+        (x.clamp(b.min_x, b.max_x - 32.0), y.clamp(b.min_y, b.max_y - 32.0))
+    }
+
     /// The race name used in sound labels (JobDoneSoundHuman).
     pub fn race_label(&self, player: u8) -> &'static str {
         match self.players.get(player as usize).map_or(1, |p| p.race) {

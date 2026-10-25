@@ -534,8 +534,15 @@ impl World {
             return;
         }
         self.leave_mine(h);
+        // A unit takes up an attack order after a random delay of up to ReactionDelay
+        // ("max random reaction delay"; measured: footmen ordered to attack strike 0.07
+        // to 0.28 seconds later than their swing alone allows, one by one, where ones
+        // that take up the same target on their own strike on time).
+        let fresh_attack = matches!(action, Action::Attack { .. }) && self.unit(h).is_some_and(|u| !(u.order.id == order && u.order.target == target));
+        let reaction = if fresh_attack { self.rng.real(0.0, self.misc_f32("ReactionDelay", 0.25)) } else { 0.0 };
         if let Some(u) = self.unit_mut(h) {
             u.action = action;
+            u.extra.reaction = reaction;
             // A new order cuts off an attack or a cast's swing (and a channel, below),
             // unless the unit was already under the same attack order (measured: a Mortar
             // Team re-ordered to attack its target mid-swing fires on time, but one
@@ -1011,7 +1018,6 @@ impl World {
     /// Advances every unit by `dt` seconds.
     pub fn update_units(&mut self, vm: &mut Vm, dt: f32) {
         let units = self.unit_order.clone();
-        let reaction = self.misc_f32("ReactionDelay", 0.25);
         for h in units {
             let Some(u) = self.unit(h) else { continue };
             if u.dead {
@@ -1318,6 +1324,9 @@ impl World {
                             set_anim(u, "stand");
                         }
                     }
+                    // An idle unit takes up what comes in reach at once (measured: idle
+                    // footmen beside a target made attackable strike 0.505 seconds later,
+                    // their damage point; ours, looking every ReactionDelay, at 0.581).
                     if wp.is_some() && self.unit(h).is_some_and(|u| u.acquire_timer <= 0.0 && !u.extra.sleeping) {
                         let range = self.unit(h).map_or(0.0, |u| u.acquire_range);
                         let range = if matches!(action, Action::Hold) { wp.as_ref().map_or(0.0, |w| w.range) } else { range };
@@ -1333,9 +1342,6 @@ impl World {
                             if matches!(action, Action::Hold) {
                                 self.try_attack(h, t, dt, true);
                             }
-                        }
-                        if let Some(u) = self.unit_mut(h) {
-                            u.acquire_timer = reaction;
                         }
                     }
                 }
@@ -1376,6 +1382,10 @@ impl World {
                         set_anim(u, "stand");
                         continue;
                     }
+                    if let Some(u) = self.unit_mut(h).filter(|u| u.extra.reaction > 0.0) {
+                        u.extra.reaction -= dt;
+                        continue;
+                    }
                     self.try_attack(h, target, dt, false);
                 }
                 Action::AttackGround { x, y } => self.attack_ground_step(h, (x, y), dt),
@@ -1391,7 +1401,6 @@ impl World {
                             self.try_attack(h, t, dt, false);
                             continue;
                         }
-                        self.unit_mut(h).unwrap().acquire_timer = reaction;
                     }
                     if self.unit(h).is_some_and(|u| u.path.is_empty()) {
                         self.path_to(h, (x, y));

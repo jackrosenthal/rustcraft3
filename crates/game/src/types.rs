@@ -326,6 +326,10 @@ pub struct UnitExtra {
     pub morph_total: f32,
     /// A timed form's time left and the type it returns to.
     pub morph_revert: Option<(f32, crate::objects::Id)>,
+    /// Seconds before the unit takes up an attack order it was given (a random share of
+    /// ReactionDelay).
+    #[serde(default)]
+    pub reaction: f32,
     /// The height the model shows while it moves toward its flying height at
     /// `height_rate` a second (SetUnitFlyHeight with a rate); None once there.
     #[serde(default)]
@@ -515,6 +519,7 @@ impl Default for UnitExtra {
             morph: None,
             morph_total: 0.0,
             morph_revert: None,
+            reaction: 0.0,
             shown_height: None,
             height_rate: 0.0,
             last_attacked: -100.0,

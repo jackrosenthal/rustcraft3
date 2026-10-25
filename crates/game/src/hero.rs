@@ -352,7 +352,10 @@ impl World {
             // regenType: "always", "night", "day", "blight", or "none".
             let rt = o.str("regenType").to_ascii_lowercase();
             let day = (6.0..18.0).contains(&self.time_of_day);
-            if rt == "none" || (rt == "night" && day) || (rt == "day" && !day) {
+            // An Undead's life comes back only on blight (measured: a ghoul off blight
+            // stays at 100 for ten seconds).
+            let off_blight = rt == "blight" && !self.point_blighted(u.x, u.y);
+            if rt == "none" || (rt == "night" && day) || (rt == "day" && !day) || off_blight {
                 hp = 0.0;
             }
             // Mana regeneration items and research add a fraction of the normal rate.

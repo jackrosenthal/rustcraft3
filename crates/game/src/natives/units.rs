@@ -400,6 +400,18 @@ fn with_unit(w: &mut World, a: &[Value], f: impl FnOnce(&mut Unit)) -> NativeRes
     none()
 }
 
+/// A group sent to a point: each unit ordered, then those that went taking places in a
+/// formation there.
+fn group_point_order(w: &mut World, vm: &mut Vm, g: u32, order: i32, x: f32, y: f32) -> NativeResult {
+    let units = w.group(g).map(|g| g.units.clone()).unwrap_or_default();
+    for &u in &units {
+        issue_order(w, vm, u, order, x, y, 0);
+    }
+    let going: Vec<u32> = units.into_iter().filter(|&u| w.unit(u).is_some_and(|u| matches!(u.action, Action::Move { .. } | Action::AttackMove { .. }))).collect();
+    w.take_formation_places(&going, (x, y));
+    boolean(true)
+}
+
 /// UNIT_TYPE_* (common.j ConvertUnitType values).  Classifications that depend on status
 /// effects the simulation does not model yet read as false.
 fn is_unit_type(w: &World, u: &Unit, t: i32) -> bool {
@@ -1152,23 +1164,17 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         GroupPointOrder => |w, vm, a| {
             let order = crate::natives::basic::issue_order_id(w, &a.s(1));
-            for u in w.group(a.h(0)).map(|g| g.units.clone()).unwrap_or_default() { issue_order(w, vm, u, order, a.r(2), a.r(3), 0); }
-            boolean(true)
+            group_point_order(w, vm, a.h(0), order, a.r(2), a.r(3))
         },
-        GroupPointOrderById => |w, vm, a| {
-            for u in w.group(a.h(0)).map(|g| g.units.clone()).unwrap_or_default() { issue_order(w, vm, u, a.i(1), a.r(2), a.r(3), 0); }
-            boolean(true)
-        },
+        GroupPointOrderById => |w, vm, a| group_point_order(w, vm, a.h(0), a.i(1), a.r(2), a.r(3)),
         GroupPointOrderLoc => |w, vm, a| {
             let order = crate::natives::basic::issue_order_id(w, &a.s(1));
             let (x, y) = w.location(a.h(2)).unwrap_or_default();
-            for u in w.group(a.h(0)).map(|g| g.units.clone()).unwrap_or_default() { issue_order(w, vm, u, order, x, y, 0); }
-            boolean(true)
+            group_point_order(w, vm, a.h(0), order, x, y)
         },
         GroupPointOrderByIdLoc => |w, vm, a| {
             let (x, y) = w.location(a.h(2)).unwrap_or_default();
-            for u in w.group(a.h(0)).map(|g| g.units.clone()).unwrap_or_default() { issue_order(w, vm, u, a.i(1), x, y, 0); }
-            boolean(true)
+            group_point_order(w, vm, a.h(0), a.i(1), x, y)
         },
         GroupTargetOrder => |w, vm, a| {
             let order = crate::natives::basic::issue_order_id(w, &a.s(1));

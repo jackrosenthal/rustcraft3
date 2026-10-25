@@ -725,6 +725,59 @@ impl World {
         self.formations.insert(id, units);
     }
 
+    /// Units sent together to one point take places in a formation there, as the
+    /// original lays one out: about the square root of their number abreast across the
+    /// way, the front rows filled first by formation rank (UnitData formation: melee
+    /// before ranged before workers), then by who is ahead, each row left to right as
+    /// they stand; places 4 sizes and 60 apart abreast and 3 sizes and 50 apart in
+    /// depth, by the largest size among them (measured: nine footmen, size 31, end in
+    /// a 3 by 3 grid 186 abreast and 143 deep, each where it stood among the rest;
+    /// four tauren, 48, 250 and 195; four peasants or sorceresses, 16, 123 and 106;
+    /// three footmen and three riflemen, the footmen in front).
+    pub fn take_formation_places(&mut self, units: &[u32], goal: (f32, f32)) {
+        let units: Vec<u32> = units.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.is_building && u.move_speed > 0.0)).collect();
+        let n = units.len();
+        if n < 2 {
+            return;
+        }
+        let pos: Vec<(f32, f32)> = units.iter().map(|&h| self.unit(h).map(|u| (u.x, u.y)).unwrap()).collect();
+        let (cx, cy) = (pos.iter().map(|p| p.0).sum::<f32>() / n as f32, pos.iter().map(|p| p.1).sum::<f32>() / n as f32);
+        let (dx, dy) = (goal.0 - cx, goal.1 - cy);
+        let len = dx.hypot(dy);
+        if len < 1.0 {
+            return;
+        }
+        let (fx, fy) = (dx / len, dy / len);
+        let (px, py) = (-fy, fx);
+        let size = units.iter().filter_map(|&h| self.unit(h)).map(|u| u.collision).fold(0.0, f32::max);
+        let (abreast, deep) = (4.0 * size + 60.0, 3.0 * size + 50.0);
+        let cols = (n as f32).sqrt().ceil() as usize;
+        let rows = n.div_ceil(cols);
+        let rank = |w: &World, h: u32| w.unit(h).and_then(|u| w.objects.units.get(u.type_id)).map_or(0, |o| o.int("formation"));
+        let mut order: Vec<(i32, f32, f32, u32)> = units.iter().zip(&pos).map(|(&h, p)| (rank(self, h), (p.0 - cx) * fx + (p.1 - cy) * fy, (p.0 - cx) * px + (p.1 - cy) * py, h)).collect();
+        order.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.total_cmp(&a.1)));
+        for (r, row) in order.chunks(cols).enumerate() {
+            let mut row = row.to_vec();
+            row.sort_by(|a, b| a.2.total_cmp(&b.2));
+            let m = row.len();
+            let depth = ((rows - 1) as f32 / 2.0 - r as f32) * deep;
+            for (k, &(_, _, _, h)) in row.iter().enumerate() {
+                let side = (k as f32 - (m - 1) as f32 / 2.0) * abreast;
+                let (x, y) = self.clamp_to_map(goal.0 + fx * depth + px * side, goal.1 + fy * depth + py * side);
+                if let Some(u) = self.unit_mut(h) {
+                    match &mut u.action {
+                        Action::Move { x: ax, y: ay } | Action::AttackMove { x: ax, y: ay } => {
+                            *ax = x;
+                            *ay = y;
+                            u.path.clear();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
     /// A unit given another order leaves its formation.
     pub fn leave_formation(&mut self, h: u32) {
         let Some(id) = self.unit_mut(h).and_then(|u| u.extra.formation.take()) else { return };
@@ -866,7 +919,8 @@ impl World {
         }
         if to_point && u.path.len() == 1 && d > step && d <= u.collision * 2.0 && !ghost {
             let size = u.collision;
-            let taken = self.unit_order.iter().any(|&o| o != h && self.unit(o).is_some_and(|v| !v.dead && !v.hidden && !v.is_building && !self.is_ghost(v) && (v.x - next.0).hypot(v.y - next.1) < v.collision + size));
+            // (one standing there, not one passing by on its own way)
+            let taken = self.unit_order.iter().any(|&o| o != h && self.unit(o).is_some_and(|v| !v.dead && !v.hidden && !v.is_building && v.path.is_empty() && !self.is_ghost(v) && (v.x - next.0).hypot(v.y - next.1) < v.collision + size));
             if taken {
                 let Some(u) = self.unit_mut(h) else { return true };
                 u.path.clear();

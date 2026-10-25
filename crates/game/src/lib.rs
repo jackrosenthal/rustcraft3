@@ -730,6 +730,16 @@ impl Game {
             }
             C::Formation { units } => {
                 let mine: Vec<u32> = units.into_iter().filter(|&u| natives::players::controls(&self.world, player, u)).collect();
+                // Sent together to one point, they take places in a formation there.
+                let goals: Vec<(f32, f32)> = mine.iter().filter_map(|&u| self.world.unit(u)).filter_map(|u| match u.action {
+                    types::Action::Move { x, y } | types::Action::AttackMove { x, y } => Some((x, y)),
+                    _ => None,
+                }).collect();
+                if goals.len() == mine.len() && goals.windows(2).all(|w| (w[0].0 - w[1].0).hypot(w[0].1 - w[1].1) < 1.0) {
+                    if let Some(&g) = goals.first() {
+                        self.world.take_formation_places(&mine, g);
+                    }
+                }
                 self.world.form_group(&mine);
                 O::Done
             }

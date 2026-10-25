@@ -249,14 +249,20 @@ impl World {
                 let l = dx.hypot(dy).max(1.0);
                 let end = (cx + dx / l * len, cy + dy / l * len);
                 let hit = self.line_units(owner, (cx, cy), end, area, w1.max(area));
-                self.capped_damage(vm, h, &hit, each, max);
                 if code == "AUim" {
-                    // Impaled units are thrown up, stunned for the air time plus Dur.
-                    let air = self.d(a, "DataD", lvl);
+                    // The spikes run the length in DataB seconds; each unit they reach is
+                    // thrown up, stunned for the air time (DataD) plus Dur, and takes the
+                    // damage as it lands (measured: units 139, 346, and 569 along take it
+                    // 1.01, 1.07, and 1.25 seconds after the cast).
+                    let (wave, air) = (self.d(a, "DataB", lvl), self.d(a, "DataD", lvl));
                     for t in hit {
-                        let d = self.duration_for(a, lvl, t) + air;
-                        self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: d, stun: true, ..Default::default() });
+                        let (px, py) = self.unit(t).map_or((cx, cy), |u| (u.x, u.y));
+                        let along = ((px - cx) * dx + (py - cy) * dy) / l;
+                        let at = self.time + (along / len.max(1.0)).clamp(0.0, 1.0) * wave;
+                        self.impales.push(Impale { at, caster: h, target: t, ability: a, level: lvl, buff, air, damage: each, landed: false });
                     }
+                } else {
+                    self.capped_damage(vm, h, &hit, each, max);
                 }
                 for k in 1..=4 {
                     let f = k as f32 / 4.0;
@@ -1062,6 +1068,42 @@ impl World {
                 for b in t.buffs.iter_mut().filter(|b| b.id == c.held) {
                     b.remaining = 0.0;
                 }
+            }
+        }
+    }
+}
+
+/// A unit caught by Impale: thrown when the wave reaches it, hurt when it lands.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Impale {
+    pub at: f32,
+    pub caster: u32,
+    pub target: u32,
+    pub ability: Id,
+    pub level: u32,
+    pub buff: [u8; 4],
+    pub air: f32,
+    pub damage: f32,
+    pub landed: bool,
+}
+
+impl World {
+    pub(crate) fn update_impales(&mut self, vm: &mut Vm) {
+        let now = self.time;
+        let due: Vec<Impale> = self.impales.iter().filter(|i| i.at <= now).cloned().collect();
+        self.impales.retain(|i| i.at > now);
+        for mut i in due {
+            if self.unit(i.target).is_none_or(|u| u.dead) {
+                continue;
+            }
+            if i.landed {
+                self.spell_damage(vm, i.caster, i.target, i.damage);
+            } else {
+                let d = self.duration_for(i.ability, i.level, i.target) + i.air;
+                self.apply_buff(i.target, Buff { id: i.buff, ability: i.ability, level: i.level, caster: i.caster, remaining: d, stun: true, ..Default::default() });
+                i.at += i.air;
+                i.landed = true;
+                self.impales.push(i);
             }
         }
     }

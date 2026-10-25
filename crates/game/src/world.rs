@@ -322,6 +322,9 @@ pub struct World {
     pub water_deforms: bool,
     /// Entangle Gold Mine casts finishing: time, caster, and mine.
     pub pending_entangles: Vec<(f32, u32, u32)>,
+    /// Impaled units: when the wave reaches each, and then when it lands.
+    #[serde(default)]
+    pub impales: Vec<crate::spells::Impale>,
     /// Incinerated deaths to burst: when, the caster, ability, level, buff, and where.
     #[serde(default)]
     pub incinerations: Vec<(f32, u32, crate::objects::Id, u32, crate::objects::Id, f32, f32)>,
@@ -630,6 +633,7 @@ impl World {
             deform_generation: 0,
             water_deforms: false,
             pending_entangles: Vec::new(),
+            impales: Vec::new(),
             incinerations: Vec::new(),
             volcanoes: Vec::new(),
             ai_item_uses: Vec::new(),
@@ -1244,6 +1248,7 @@ impl World {
         for (_, caster, mine) in due {
             self.entangle(caster, mine);
         }
+        self.update_impales(vm);
         // TimerDialogSetRealTimeRemaining counts down in the dialog itself.
         for (_, o) in self.handles.iter_mut() {
             if let Obj::TimerDialog(d) = o {

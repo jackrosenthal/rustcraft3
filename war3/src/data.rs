@@ -208,19 +208,8 @@ fn open_optional(dir: &Path, name: &str) -> anyhow::Result<Option<Arc<Archive>>>
     Ok(Some(Arc::new(a)))
 }
 
-/// Gives JASS's software floats game.dll's reciprocal table, so that scripts divide as
-/// the original does (w3_jass::softfloat).
-fn load_float_table(dir: &Path) {
-    let dll = std::fs::read_dir(dir).ok().and_then(|d| d.flatten().map(|e| e.path()).find(|p| p.file_name().is_some_and(|n| n.eq_ignore_ascii_case("game.dll"))));
-    let found = dll.and_then(|p| std::fs::read(p).ok()).is_some_and(|b| w3_jass::softfloat::load_reciprocal_table(&b));
-    if !found {
-        log::warn!("game.dll's reciprocal table not found; script division may differ in its last bit");
-    }
-}
-
 impl GameData {
     pub fn open(dir: &Path, classic: bool) -> anyhow::Result<GameData> {
-        load_float_table(dir);
         let chain = Arc::new(Chain::new());
         let Some(war3) = open_optional(dir, "War3.mpq")? else {
             bail!("War3.mpq not found in {}", dir.display());

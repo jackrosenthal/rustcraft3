@@ -101,8 +101,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         Cos => |_, _, a| real(f32::from_bits(sf::cos(a.r(0).to_bits()))),
         Tan => |_, _, a| real(f32::from_bits(sf::tan(a.r(0).to_bits()))),
         // Outside -1 to 1, 0 (jass_Asin, jass_Acos; measured: Asin(2) and Acos(-2) are 0).
-        Asin => |_, _, a| real(if (-1.0..=1.0).contains(&a.r(0)) { a.r(0).asin() } else { 0.0 }),
-        Acos => |_, _, a| real(if (-1.0..=1.0).contains(&a.r(0)) { a.r(0).acos() } else { 0.0 }),
+        Asin => |_, _, a| real(if (-1.0..=1.0).contains(&a.r(0)) { f32::from_bits(sf::asin(a.r(0).to_bits())) } else { 0.0 }),
+        Acos => |_, _, a| real(if (-1.0..=1.0).contains(&a.r(0)) { f32::from_bits(sf::acos(a.r(0).to_bits())) } else { 0.0 }),
         Atan => |_, _, a| real(f32::from_bits(sf::atan(a.r(0).to_bits()))),
         // Both within 0.001 of 0, 0 (jass_Atan2).
         Atan2 => |_, _, a| real(if a.r(0).abs() < 0.001 && a.r(1).abs() < 0.001 { 0.0 } else { f32::from_bits(sf::atan2(a.r(0).to_bits(), a.r(1).to_bits())) }),

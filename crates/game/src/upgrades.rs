@@ -193,6 +193,34 @@ impl World {
         }
     }
 
+    /// A unit's maximum life before its owner's handicap: its type's, research's, and
+    /// items' for a unit; for a hero, with its strength's.
+    pub fn base_max_life(&self, h: u32) -> f32 {
+        let Some(u) = self.unit(h) else { return 0.0 };
+        let Some(o) = self.objects.units.get(u.type_id) else { return u.max_life };
+        if u.is_hero {
+            let hp_per = self.misc_f32("StrHitPointBonus", 25.0);
+            let str_ = u.str_ + u.item_bonus.str_;
+            return o.real("HP") + str_.floor() * hp_per + u.item_bonus.life + u.extra.permanent_life;
+        }
+        let b = self.upgrade_bonus(u.owner, u.type_id);
+        o.real("HP") * (1.0 + b.hp_pct) + b.hp + u.item_bonus.life
+    }
+
+    /// The handicap's part of maximum life: `life` times the owner's handicap, kept whole
+    /// while there is one (measured: a footman's 420 at 0.01 reads 4, and its life then
+    /// keeps 3 of 4).
+    pub fn handicap_life(&self, owner: u8, life: f32) -> f32 {
+        let hc = self.players.get(owner as usize).map_or(1.0, |p| p.handicap);
+        if hc == 1.0 { life } else { (life * hc).trunc().max(1.0) }
+    }
+
+    /// A unit's maximum life with its owner's handicap.
+    pub fn handicapped_life(&self, h: u32) -> f32 {
+        let owner = self.unit(h).map_or(0, |u| u.owner);
+        self.handicap_life(owner, self.base_max_life(h))
+    }
+
     /// Sets a unit's maximum life and mana from its type, research, and items, keeping
     /// the damage it has taken.
     pub fn apply_upgrades(&mut self, h: u32) {
@@ -211,9 +239,9 @@ impl World {
         let Some(u) = self.unit(h) else { return };
         let b = self.upgrade_bonus(u.owner, u.type_id);
         let Some(o) = self.objects.units.get(u.type_id) else { return };
-        let (hp, mp) = (o.real("HP"), o.real("manaN"));
+        let mp = o.real("manaN");
+        let max_life = self.handicapped_life(h);
         let u = self.unit_mut(h).unwrap();
-        let max_life = hp * (1.0 + b.hp_pct) + b.hp + u.item_bonus.life;
         let max_mana = if mp > 0.0 { mp * (1.0 + b.mana_pct) + b.mana + u.item_bonus.mana } else { 0.0 };
         let (dl, dm) = (max_life - u.max_life, max_mana - u.max_mana);
         u.max_life = max_life;

@@ -17,7 +17,8 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         log::warn!("CreateUnit: unknown unit type {}", crate::objects::id_str(type_id));
         return 0;
     };
-    let hp = o.real("HP").max(1.0);
+    // Times its owner's handicap (measured: a footman made at 0.5 has 210 of 210).
+    let hp = w.handicap_life(owner, o.real("HP").max(1.0));
     let max_mana = o.real("manaN");
     let mana = o.real("mana0").min(max_mana.max(0.0));
     let mut abilities: Vec<(Id, i32)> = o
@@ -648,8 +649,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 u.fly_height = v;
             })
         },
-        SetUnitTurnSpeed => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.turn_speed = v) },
-        SetUnitPropWindow => |w, _, a| { let v = a.r(1).to_degrees(); with_unit(w, a, |u| u.prop_window = v) },
+        // Both are kept as angles within a turn (measured: -1 reads 5.283, 7 reads 0.717).
+        SetUnitTurnSpeed => |w, _, a| { let v = a.r(1).rem_euclid(std::f32::consts::TAU); with_unit(w, a, |u| u.turn_speed = v) },
+        SetUnitPropWindow => |w, _, a| { let v = a.r(1).rem_euclid(std::f32::consts::TAU).to_degrees(); with_unit(w, a, |u| u.prop_window = v) },
         // Only above 50, and only for a unit that can attack (FUN_6f697ea0: a setting of
         // 0 leaves a footman's 500).
         SetUnitAcquireRange => |w, _, a| {
@@ -1000,8 +1002,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let hidden = |b: &crate::types::Buff| crate::ability::default_buff(&w.ability_code(b.ability)).is_some_and(|d| crate::objects::id_from_str(d) == b.id);
             int(unit_arg(w, a, 0).map_or(0, |u| u.abilities.iter().find(|(x, _)| *x == id).map_or_else(|| u.buffs.iter().any(|b| b.id == id && !hidden(b)) as i32, |(_, l)| *l)))
         },
+        // Kept within 1 and the ability's level count (measured: 9 reads 3 for Holy Light,
+        // 0 reads 1).
         SetUnitAbilityLevel => |w, _, a| {
-            let (id, l) = (id_from_int(a.i(1)), a.i(2));
+            let id = id_from_int(a.i(1));
+            let levels = w.objects.abilities.get(id).map_or(1, |o| o.int("levels").max(1));
+            let l = a.i(2).clamp(1, levels);
             let Some(u) = w.unit_mut(a.h(0)) else { return int(0) };
             match u.abilities.iter_mut().find(|(x, _)| *x == id) { Some(e) => { e.1 = l; int(l) } None => int(0) }
         },

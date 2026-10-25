@@ -1521,6 +1521,7 @@ impl World {
     pub fn transform_unit(&mut self, h: u32, id: Id) {
         let Some(o) = self.objects.units.get(id) else { return };
         let (hp, mana) = (o.real("HP").max(1.0), o.real("manaN"));
+        let hp = self.handicap_life(self.unit(h).map_or(0, |u| u.owner), hp);
         let abilities: Vec<(Id, i32)> = o.list("abilList").iter().map(|s| (crate::objects::id_from_str(s.trim()), 1)).filter(|(a, _)| a[0] != 0).collect();
         let Some(u) = self.unit_mut(h) else { return };
         let lf = if u.max_life > 0.0 { u.life / u.max_life } else { 1.0 };

@@ -65,21 +65,21 @@ impl World {
 
     /// Recomputes a hero's maximum life and mana from its attributes.
     pub fn apply_hero_stats(&mut self, h: u32, fill: bool) {
-        let hp_per = self.misc_f32("StrHitPointBonus", 25.0);
         let mana_per = self.misc_f32("IntManaBonus", 15.0);
         let Some(u) = self.unit(h) else { return };
         let Some(o) = self.objects.units.get(u.type_id) else { return };
-        let (base_hp, base_mana) = (o.real("HP"), o.real("manaN"));
+        let base_mana = o.real("manaN");
         let b = u.item_bonus;
-        let (str_, int) = (u.str_ + b.str_, u.int + b.int);
+        let int = u.int + b.int;
+        let max_life = self.handicapped_life(h);
         let u = self.unit_mut(h).unwrap();
         let (old_hp, old_mana) = (u.max_life, u.max_mana);
-        u.max_life = base_hp + str_.floor() * hp_per + b.life + u.extra.permanent_life;
+        u.max_life = max_life;
         u.max_mana = base_mana + int.floor() * mana_per + b.mana;
         if fill {
             u.life = u.max_life;
             u.mana = u.max_mana;
-        } else {
+        } else if !u.dead {
             u.life += u.max_life - old_hp;
             u.mana = (u.mana + u.max_mana - old_mana).max(0.0);
         }
@@ -87,7 +87,9 @@ impl World {
 
     pub fn add_hero_xp(&mut self, h: u32, xp: i32) {
         let Some(u) = self.unit_mut(h) else { return };
-        if !u.is_hero || u.dead {
+        // Experience is never taken away (measured: AddHeroXP of -50 leaves it); a dead
+        // hero takes it too (measured: SetHeroXP to 500 reads 500 after its death).
+        if !u.is_hero || xp <= 0 {
             return;
         }
         u.hero_xp += xp;

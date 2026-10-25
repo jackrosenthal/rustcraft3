@@ -98,7 +98,7 @@ impl World {
     /// skills and the levels of abilities both types have.
     pub fn change_type(&mut self, h: u32, to: Id) {
         let Some(o) = self.objects.units.get(to) else { return };
-        let hp = o.real("HP").max(1.0);
+        let hp = self.handicap_life(self.unit(h).map_or(0, |u| u.owner), o.real("HP").max(1.0));
         let mana_max = o.real("manaN");
         let new_abils: Vec<Id> = o.list("abilList").iter().map(|s| id_from_str(s.trim())).filter(|i| i[0] != 0).collect();
         let hero_abils: Vec<Id> = o.list("heroAbilList").iter().map(|s| id_from_str(s.trim())).filter(|i| i[0] != 0).collect();

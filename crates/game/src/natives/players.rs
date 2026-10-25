@@ -135,7 +135,37 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         ForcePlayerStartLocation => |w, _, a| { let s = a.i(1); with_player(w, a, |p| p.start_location = s) },
         SetPlayerTeam => |w, _, a| { let s = a.i(1); with_player(w, a, |p| p.team = s) },
         GetPlayerTeam => |w, _, a| int(player_arg(w, a, 0).map_or(0, |p| w.players[p as usize].team)),
-        SetPlayerHandicap => |w, _, a| { let v = a.r(1); with_player(w, a, |p| p.handicap = v) },
+        // Kept within 0.01 and 100 (measured: -1 and 0 read 0.01, 200 reads 100).  The
+        // player's units' maximum life goes with what was asked, unclamped, kept whole,
+        // their life in proportion; any left with none die (jass_SetPlayerHandicap passes
+        // the raw value to its units; measured: a footman at 300 of 420 reads 150 of 210
+        // at 0.5; at 0.01 3 of 4, and from there at 2, 630 of 840; at 0.005 2 of 2; at
+        // 0 or -1 it dies).
+        SetPlayerHandicap => |w, vm, a| {
+            let raw = a.r(1);
+            let Some(p) = player_arg(w, a, 0) else { return none() };
+            let old = std::mem::replace(&mut w.players[p as usize].handicap, raw.clamp(0.01, 100.0));
+            if (raw - old).abs() > 0.0 {
+                let units: Vec<u32> = w.unit_order.iter().copied().filter(|&h| w.unit(h).is_some_and(|u| u.owner == p && !u.dead)).collect();
+                let mut dying = Vec::new();
+                for h in units {
+                    let exact = w.base_max_life(h) * raw;
+                    let u = w.unit_mut(h).unwrap();
+                    if u.max_life > 0.0 {
+                        u.life *= exact / u.max_life;
+                    }
+                    u.max_life = if raw == 1.0 { exact } else { exact.trunc() };
+                    u.life = u.life.min(u.max_life);
+                    if u.life <= 0.405 {
+                        dying.push(h);
+                    }
+                }
+                for h in dying {
+                    super::units::kill_unit(w, vm, h, 0);
+                }
+            }
+            none()
+        },
         GetPlayerHandicap => |w, _, a| real(player_arg(w, a, 0).map_or(1.0, |p| w.players[p as usize].handicap)),
         SetPlayerHandicapXP => |w, _, a| { let v = a.r(1); with_player(w, a, |p| p.handicap_xp = v) },
         GetPlayerHandicapXP => |w, _, a| real(player_arg(w, a, 0).map_or(1.0, |p| w.players[p as usize].handicap_xp)),
@@ -166,8 +196,13 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let Some(p) = player_arg(w, a, 0) else { return boolean(false) };
             boolean(force_contains(w, a.h(1), p))
         },
+        // Gold and lumber stay within 0 and 1,000,000 (FUN_6f1e98e0 keeps them in tenths
+        // up to 10,000,000, a negative amount reading as too many and so as none).
         SetPlayerState => |w, _, a| {
-            let (s, v) = (a.h(1) as i32, a.i(2));
+            let (s, mut v) = (a.h(1) as i32, a.i(2));
+            if matches!(s, crate::types::player_state::RESOURCE_GOLD | crate::types::player_state::RESOURCE_LUMBER) && !(0..=1_000_000).contains(&v) {
+                v = if v < 0 { 0 } else { 1_000_000 };
+            }
             with_player(w, a, |p| { p.state.insert(s, v); })
         },
         // The upkeep rates are the upkeep level's taxes (measured: 30 at 55 food used).
@@ -195,19 +230,22 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         GetPlayerTechMaxAllowed => |w, _, a| {
             let id = id_from_int(a.i(1));
-            int(player_arg(w, a, 0).and_then(|p| w.players[p as usize].tech_max.get(&id).copied()).unwrap_or(-1))
+            let Some(p) = player_arg(w, a, 0) else { return int(0) };
+            int(tech_max_allowed(w, p, id))
         },
         AddPlayerTechResearched => |w, _, a| {
             let (id, v) = (id_from_int(a.i(1)), a.i(2));
-            let r = with_player(w, a, |p| { *p.tech_researched.entry(id).or_insert(0) += v; });
-            if let Some(p) = player_arg(w, a, 0) { w.research_changed(p); }
-            r
+            let Some(p) = player_arg(w, a, 0) else { return none() };
+            add_tech_researched(w, p, id, v);
+            none()
         },
+        // Only ever raises the level (jass_SetPlayerTechResearched adds the difference).
         SetPlayerTechResearched => |w, _, a| {
             let (id, v) = (id_from_int(a.i(1)), a.i(2));
-            let r = with_player(w, a, |p| { p.tech_researched.insert(id, v); });
-            if let Some(p) = player_arg(w, a, 0) { w.research_changed(p); }
-            r
+            let Some(p) = player_arg(w, a, 0) else { return none() };
+            let have = w.players[p as usize].tech_researched.get(&id).copied().unwrap_or(0);
+            add_tech_researched(w, p, id, (v - have).max(0));
+            none()
         },
         GetPlayerTechResearched => |w, _, a| {
             let id = id_from_int(a.i(1));
@@ -288,4 +326,29 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetEnumPlayer => |w, _, _| NativeResult::Return(w.player_handle(w.enum_ctx.enum_player)),
         GetFilterPlayer => |w, _, _| NativeResult::Return(w.player_handle(w.enum_ctx.filter_player)),
     );
+}
+
+/// GetPlayerTechMaxAllowed: the set limit, compared unsigned against the type's own (an
+/// upgrade's level count, else 2147483647), so an unset or negative limit reads that
+/// (jass_GetPlayerTechMaxAllowed; measured: a footman unset reads 2147483647, Iron
+/// Forged Swords 3, and Iron Forged Swords set to 10 reads 3).
+fn tech_max_allowed(w: &World, p: u8, id: crate::objects::Id) -> i32 {
+    let own = w.objects.upgrades.get(id).map_or(i32::MAX, |o| o.int("maxlevel").max(0)) as u32;
+    let set = w.players[p as usize].tech_max.get(&id).copied().unwrap_or(-1) as u32;
+    own.min(set) as i32
+}
+
+/// AddPlayerTechResearched: a level at a time while another is allowed, so a negative
+/// amount does nothing and an upgrade stops at its level count and its maximum allowed
+/// (measured: set to 3 with a maximum of 1 reads 1; adding -1 leaves it).
+fn add_tech_researched(w: &mut World, p: u8, id: crate::objects::Id, n: i32) {
+    if n <= 0 {
+        return;
+    }
+    let have = w.players[p as usize].tech_researched.get(&id).copied().unwrap_or(0);
+    let to = if w.objects.upgrades.get(id).is_some() { have.max((have + n).min(tech_max_allowed(w, p, id))) } else { have + n };
+    if to != have {
+        w.players[p as usize].tech_researched.insert(id, to);
+        w.research_changed(p);
+    }
 }

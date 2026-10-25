@@ -1034,7 +1034,7 @@ impl World {
 
     fn find_target_inner(&self, h: u32, range: f32, creeps: bool) -> Option<u32> {
         let u = self.unit(h)?;
-        let mut best: Option<(f32, u32, bool)> = None;
+        let mut best: Option<(f32, u32, bool, bool)> = None;
         // Only the squares within reach (the largest structure's half-width and a
         // moment's walk to spare).
         let near: Vec<u32> = self.units_near(u.x, u.y, range + u.collision + 448.0).into_iter().filter(|&t| t != h && self.unit(t).is_some_and(|tu| !is_ally(self, u.owner, tu.owner))).collect();
@@ -1076,12 +1076,16 @@ impl World {
             if d <= range && self.fog_state(tu.x, tu.y, u.owner) != crate::fog::FOG_VISIBLE {
                 continue;
             }
-            // Units before structures, then the nearest (measured: a footman takes a
+            // Then units before structures, then the nearest (measured: a footman takes a
             // footman 300 away over a farm 170 away, and a peasant 150 away over a
             // footman 250 away).
-            let key = (tu.is_building, d);
-            if d <= range && best.is_none_or(|b| key < (b.2, b.0)) {
-                best = Some((d, t, tu.is_building));
+            // One going for the unit before the rest (measured: a Rifleman takes an archer
+            // 500 away that has taken it up over a paused footman 150 away, but the
+            // footman when the archer is paused too).
+            let at_me = matches!(tu.action, Action::Attack { target } if target == h) || tu.swing.as_ref().is_some_and(|s| s.target == h);
+            let key = (!at_me, tu.is_building, d);
+            if d <= range && best.is_none_or(|b| key < (b.3, b.2, b.0)) {
+                best = Some((d, t, tu.is_building, !at_me));
             }
         }
         best.map(|b| b.1)

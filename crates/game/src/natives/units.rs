@@ -322,6 +322,16 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
             u.build_cells = whole;
         }
     }
+    // An armed unit first looks for a target after a random moment of up to a second
+    // (CAbilityAttack::Initialize's timer, the random times 1.0 at 0x6fd6bf44; measured:
+    // five riflemen made beside paused footmen first strike 0.16 to 0.73 seconds later
+    // than an immediate look allows).
+    if w.unit(h).is_some_and(|u| !crate::sim::unit_weapons(w, u).is_empty()) {
+        let t = w.rng.real(0.0, 1.0);
+        if let Some(u) = w.unit_mut(h) {
+            u.acquire_timer = t;
+        }
+    }
     // Computer players' and creeps' units start with their autocast on.
     if w.players.get(owner as usize).is_some_and(|p| p.controller == map_control::COMPUTER || p.controller == map_control::CREEP) {
         let auto: Vec<Id> = w.unit(h).map(|u| u.abilities.iter().map(|a| a.0).filter(|&a| w.objects.abilities.get(a).is_some_and(|o| !o.str("Orderon").is_empty())).collect()).unwrap_or_default();

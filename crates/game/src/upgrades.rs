@@ -231,16 +231,23 @@ impl World {
     /// research and items change it (measured: a Druid of the Claw at 100 life when its
     /// adept training is researched has 117; a Paladin at 100 of 650 given a Periapt of
     /// Vitality has 123 of 800, exactly, and 100 of 650 again when it drops the periapt:
-    /// rounded to whole life).  A hero's level keeps the life it has lost instead
+    /// rounded to whole life; mana likewise, 100 of 255 to 159 of 405 with a Pendant of
+    /// Energy).  A hero's level keeps the life it has lost instead
     /// (measured: 100 of 650 to 225 of 775 at level 3).
     pub fn apply_upgrades_keeping(&mut self, h: u32, fraction: bool) {
         let Some(u) = self.unit(h) else { return };
         if u.is_hero {
             let before = (u.max_life > 0.0).then(|| u.life / u.max_life);
+            let before_mana = (u.max_mana > 0.0).then(|| u.mana / u.max_mana);
             self.apply_hero_stats(h, false);
-            if let (true, Some(f)) = (fraction, before) {
+            if fraction {
                 if let Some(u) = self.unit_mut(h).filter(|u| !u.dead) {
-                    u.life = (u.max_life * f).round().clamp(1.0, u.max_life);
+                    if let Some(f) = before {
+                        u.life = (u.max_life * f).round().clamp(1.0, u.max_life);
+                    }
+                    if let Some(f) = before_mana {
+                        u.mana = (u.max_mana * f).round().clamp(0.0, u.max_mana);
+                    }
                 }
             }
             return;
@@ -264,7 +271,8 @@ impl World {
         u.max_mana = max_mana;
         if !u.dead && fraction && max_life - dl > 0.0 {
             u.life = (u.life * max_life / (max_life - dl)).round().clamp(1.0, u.max_life);
-            u.mana = (u.mana + dm.max(0.0)).clamp(0.0, u.max_mana);
+            let old_mana = max_mana - dm;
+            u.mana = if old_mana > 0.0 { (u.mana * max_mana / old_mana).round() } else { u.mana + dm.max(0.0) }.clamp(0.0, u.max_mana);
         } else if !u.dead {
             u.life = (u.life + dl.max(0.0)).min(u.max_life);
             u.mana = (u.mana + dm.max(0.0)).clamp(0.0, u.max_mana);

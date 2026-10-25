@@ -2095,7 +2095,7 @@ impl Scene {
             }
             let o = w.objects.units.get(u.type_id);
             let radius = o.map_or(32.0, |o| o.real("scale") * w.misc_f32("ScaleFactor", 72.0) * 0.5).max(16.0);
-            let z = self.terrain.height_at(u.x, u.y) + u.fly_height;
+            let z = self.terrain.height_at(u.x, u.y) + u.extra.shown_height.unwrap_or(u.fly_height);
             let Some(c) = self.project(Vec3::new(u.x, u.y, z + radius * 0.5), size) else { continue };
             let Some(e) = self.project(Vec3::new(u.x + radius, u.y, z + radius * 0.5), size) else { continue };
             let r = (e.0 - c.0).abs().max(8.0);
@@ -2170,7 +2170,7 @@ impl Scene {
                             continue;
                         }
                         let Some(u) = w.unit(o).filter(|u| w3_game::natives::players::controls(w, local, o) && u.type_id == t && !u.dead && !u.hidden) else { continue };
-                        let z = self.terrain.height_at(u.x, u.y) + u.fly_height;
+                        let z = self.terrain.height_at(u.x, u.y) + u.extra.shown_height.unwrap_or(u.fly_height);
                         if self.project(Vec3::new(u.x, u.y, z), size).is_some_and(|(px, py)| px >= 0.0 && py >= 0.0 && px <= size.0 as f32 && py <= size.1 as f32) {
                             picked.push(o);
                         }
@@ -2186,7 +2186,7 @@ impl Scene {
                 if !w3_game::natives::players::controls(w, local, h) || u.dead || u.hidden || w.is_locust(u) {
                     continue;
                 }
-                let z = self.terrain.height_at(u.x, u.y) + u.fly_height;
+                let z = self.terrain.height_at(u.x, u.y) + u.extra.shown_height.unwrap_or(u.fly_height);
                 if let Some((px, py)) = self.project(Vec3::new(u.x, u.y, z), size) {
                     if px >= x0 && px <= x1 && py >= y0 && py <= y1 {
                         picked.push(h);
@@ -3694,7 +3694,7 @@ impl Scene {
             let target = m.impact.or_else(|| w.widget_pos(m.target)).unwrap_or((m.x, m.y));
             let target_z = w.unit(m.target).map_or(self.terrain.height_at(target.0, target.1), |t| {
                 let impact = w.objects.units.get(t.type_id).map_or(60.0, |o| o.real("impactZ"));
-                self.terrain.height_at(t.x, t.y) + t.fly_height + impact
+                self.terrain.height_at(t.x, t.y) + t.extra.shown_height.unwrap_or(t.fly_height) + impact
             });
             let total = (target.0 - m.start.0).hypot(target.1 - m.start.1).max(1.0);
             let left = (target.0 - m.x).hypot(target.1 - m.y);
@@ -3954,11 +3954,11 @@ impl Scene {
             // SetUnitLookAt: the bone faces the target unit, offset.
             view.inst.look_at = u.extra.look_at.as_ref().and_then(|(bone, t, off)| {
                 let tu = w.unit(*t)?;
-                let tz = self.terrain.height_at(tu.x, tu.y) + tu.fly_height;
+                let tz = self.terrain.height_at(tu.x, tu.y) + tu.extra.shown_height.unwrap_or(tu.fly_height);
                 Some((bone.clone(), Vec3::new(tu.x + off[0], tu.y + off[1], tz + off[2])))
             });
             let inst = &mut view.inst;
-            let z = self.terrain.height_at(u.x, u.y) + u.fly_height;
+            let z = self.terrain.height_at(u.x, u.y) + u.extra.shown_height.unwrap_or(u.fly_height);
             inst.transform = Mat4::from_scale_rotation_translation(
                 Vec3::splat(u.scale),
                 Quat::from_rotation_z(u.shown_facing.unwrap_or(u.facing).to_radians()),

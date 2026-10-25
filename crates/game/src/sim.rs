@@ -1098,6 +1098,10 @@ impl World {
                 let d = angle_diff(shown, u.facing);
                 let step = (u.turn_speed.max(0.05) * 10.0).to_degrees() * dt;
                 u.shown_facing = Some(if d.abs() <= step { u.facing } else { (shown + step * d.signum()).rem_euclid(360.0) });
+                if let Some(z) = u.extra.shown_height {
+                    let (d, step) = (u.fly_height - z, u.extra.height_rate * dt);
+                    u.extra.shown_height = (d.abs() > step).then(|| z + step * d.signum());
+                }
                 u.repath_timer -= dt;
                 u.acquire_timer -= dt;
             }

@@ -326,6 +326,12 @@ pub struct UnitExtra {
     pub morph_total: f32,
     /// A timed form's time left and the type it returns to.
     pub morph_revert: Option<(f32, crate::objects::Id)>,
+    /// The height the model shows while it moves toward its flying height at
+    /// `height_rate` a second (SetUnitFlyHeight with a rate); None once there.
+    #[serde(default)]
+    pub shown_height: Option<f32>,
+    #[serde(default)]
+    pub height_rate: f32,
     /// When the unit was last attacked (game time), for autocast.
     pub last_attacked: f32,
     /// The order an autocast interrupted, resumed after the cast.
@@ -509,6 +515,8 @@ impl Default for UnitExtra {
             morph: None,
             morph_total: 0.0,
             morph_revert: None,
+            shown_height: None,
+            height_rate: 0.0,
             last_attacked: -100.0,
             devoured: Vec::new(),
             summoner: 0,

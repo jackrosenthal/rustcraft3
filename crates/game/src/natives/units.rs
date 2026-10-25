@@ -635,7 +635,19 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let mobile = unit_arg(w, a, 0).and_then(|u| w.objects.units.get(u.type_id)).is_some_and(|o| o.real("spd") > 0.0);
             with_unit(w, a, |u| u.move_speed = if mobile { v.max(1.0) } else { v })
         },
-        SetUnitFlyHeight => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.fly_height = v) },
+        // Never below 0, nor below the type's moveFloor (measured: a gryphon rider set
+        // to 50, 0, or -50 reads 90; a footman set to -50 reads 0).
+        SetUnitFlyHeight => |w, _, a| {
+            let floor = unit_arg(w, a, 0).and_then(|u| w.objects.units.get(u.type_id)).map_or(0.0, |o| o.real("moveFloor"));
+            let (v, rate) = (a.r(1).max(0.0).max(floor), a.r(2));
+            // GetUnitFlyHeight reads the new height at once; the model gets there at the
+            // rate (0 for at once).
+            with_unit(w, a, |u| {
+                u.extra.shown_height = (rate > 0.0).then(|| u.extra.shown_height.unwrap_or(u.fly_height));
+                u.extra.height_rate = rate;
+                u.fly_height = v;
+            })
+        },
         SetUnitTurnSpeed => |w, _, a| { let v = a.r(1); with_unit(w, a, |u| u.turn_speed = v) },
         SetUnitPropWindow => |w, _, a| { let v = a.r(1).to_degrees(); with_unit(w, a, |u| u.prop_window = v) },
         // Only above 50, and only for a unit that can attack (FUN_6f697ea0: a setting of

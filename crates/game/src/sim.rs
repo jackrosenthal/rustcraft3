@@ -999,16 +999,22 @@ impl World {
     }
 
     fn find_target(&self, h: u32, range: f32) -> Option<u32> {
+        self.find_target_ex(h, range, true)
+    }
+
+    /// `creeps`: whether Neutral Hostile's units may be taken up (an idle unit leaves
+    /// them be).
+    fn find_target_ex(&self, h: u32, range: f32, creeps: bool) -> Option<u32> {
         if self.profile.is_none() {
-            return self.find_target_inner(h, range);
+            return self.find_target_inner(h, range, creeps);
         }
         let t0 = std::time::Instant::now();
-        let r = self.find_target_inner(h, range);
+        let r = self.find_target_inner(h, range, creeps);
         self.prof_find.set(self.prof_find.get() + t0.elapsed().as_secs_f64());
         r
     }
 
-    fn find_target_inner(&self, h: u32, range: f32) -> Option<u32> {
+    fn find_target_inner(&self, h: u32, range: f32, creeps: bool) -> Option<u32> {
         let u = self.unit(h)?;
         let mut best: Option<(f32, u32, bool)> = None;
         // Only the squares within reach (the largest structure's half-width and a
@@ -1031,6 +1037,9 @@ impl World {
                 continue;
             }
             if is_ally(self, u.owner, tu.owner) || !weapons.iter().any(|(_, wp)| can_target(self, wp, u, tu)) {
+                continue;
+            }
+            if !creeps && tu.owner == PLAYER_NEUTRAL_AGGRESSIVE {
                 continue;
             }
             // Neither are invisible nor ethereal ones (Neutral Passive is passive toward
@@ -1190,7 +1199,7 @@ impl World {
                 self.spell_ai_hurt(vm, target, source, attack_type != "spells");
                 self.spell_ai(target, source, target);
             }
-            self.retaliate(target, source);
+            self.retaliate(target, source, attack_type == "spells");
         }
     }
 
@@ -1509,7 +1518,11 @@ impl World {
                     if wp.is_some() && self.unit(h).is_some_and(|u| u.acquire_timer <= 0.0 && !u.extra.sleeping) {
                         let range = self.unit(h).map_or(0.0, |u| u.acquire_range);
                         let range = if matches!(action, Action::Hold) { wp.as_ref().map_or(0.0, |w| w.range) } else { range };
-                        if let Some(t) = self.find_target(h, range) {
+                        // A creep is left be: only another creep takes one up (measured: a
+                        // user's idle footman 300 from a gnoll camp leaves the gnolls be,
+                        // fighting or not, and attacks an enemy player's footman among them).
+                        let creeps = self.unit(h).is_some_and(|u| u.owner == PLAYER_NEUTRAL_AGGRESSIVE);
+                        if let Some(t) = self.find_target_ex(h, range, creeps) {
                             // A target taken up on its own leaves the unit's order as it
                             // was (measured: GetUnitCurrentOrder reads none for a footman
                             // or Crypt Fiend attacking what it acquired, near or far).
@@ -2754,12 +2767,20 @@ impl World {
         }
     }
 
-    /// An idle armed unit hurt by an enemy, by an attack or a spell, attacks it back,
-    /// its order an attack (measured: a footman hurt by a spell from an Archmage 600
-    /// away walks at it ordered to attack, even an invulnerable one).
-    pub(crate) fn retaliate(&mut self, target: u32, source: u32) {
+    /// An idle armed unit hurt by an enemy, by an attack or a spell, attacks it back: hurt
+    /// by a spell, its order an attack (measured: a footman hurt by a spell from an
+    /// Archmage 600 away walks at it ordered to attack, even an invulnerable one); by an
+    /// attack, its order left as it was, as for a target taken up on its own (measured:
+    /// a footman shot by an archer walks at it, its order reading none).
+    /// A unit attacking what it took up on its own, a target not fighting, turns on its
+    /// attacker the same way (measured: a Rifleman shooting a paused footman beside it
+    /// turns on an archer that shoots it, at its next shot; one shooting an archer that
+    /// shoots back keeps to it when a second archer joins in).
+    pub(crate) fn retaliate(&mut self, target: u32, source: u32, ordered: bool) {
         let Some(t) = self.unit(target) else { return };
-        if !matches!(t.action, Action::Idle) || unit_weapons(self, t).is_empty() || t.is_building || t.paused {
+        let idle = matches!(t.action, Action::Idle);
+        let unordered = t.order.id == 0 && matches!(t.action, Action::Attack { target: c } if c != source && !self.attacking(c));
+        if !(idle || unordered) || unit_weapons(self, t).is_empty() || t.is_building || t.paused {
             return;
         }
         let Some(s) = self.unit(source) else { return };
@@ -2802,7 +2823,9 @@ impl World {
         let (sx, sy) = (s.x, s.y);
         let u = self.unit_mut(target).unwrap();
         u.action = Action::Attack { target: source };
-        u.order = Order { id: crate::natives::basic::order_id("attack"), target_x: sx, target_y: sy, target: source };
+        if ordered {
+            u.order = Order { id: crate::natives::basic::order_id("attack"), target_x: sx, target_y: sy, target: source };
+        }
     }
 
     /// Pushes overlapping units apart, flyers among flyers and the rest among

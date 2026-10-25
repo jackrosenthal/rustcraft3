@@ -760,7 +760,7 @@ impl World {
         let ctx = EventCtx { unit: target, other_unit: source, damage: dmg, event_id: EVENT_UNIT_DAMAGED, player: owner, has_player: true, ..Default::default() };
         self.fire(vm, ctx, |_, k| matches!(k, EventKind::Unit { unit, event } if *unit == target && *event == EVENT_UNIT_DAMAGED));
         if !dead && source != target {
-            self.retaliate(target, source);
+            self.retaliate(target, source, true);
         }
         if dead {
             crate::natives::units::kill_unit(self, vm, target, source);

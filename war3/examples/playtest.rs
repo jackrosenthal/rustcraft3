@@ -809,7 +809,13 @@ fn main() -> anyhow::Result<()> {
                     if let Some(m) = &g.world.pathing {
                         let t0 = std::time::Instant::now();
                         let path = m.find_path((num(&a[i + 1]), num(&a[i + 2])), (num(&a[i + 3]), num(&a[i + 4])), 16.0, num(&a[i + 5]) as usize);
-                        eprintln!("pathtime {:?} waypoints {} ends {:?}", t0.elapsed(), path.len(), path.last());
+                        let mut at = (num(&a[i + 1]), num(&a[i + 2]));
+                        let mut len = 0.0;
+                        for p in &path {
+                            len += (p.0 - at.0).hypot(p.1 - at.1);
+                            at = *p;
+                        }
+                        eprintln!("pathtime {:?} waypoints {} length {len} path {:?}", t0.elapsed(), path.len(), path.iter().map(|p| (p.0 as i32, p.1 as i32)).collect::<Vec<_>>());
                     }
                 }
                 i += 6;

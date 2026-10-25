@@ -205,7 +205,9 @@ impl World {
     /// (FUN_6f685150; a Hero's plus one).
     pub(crate) fn creep_camp(&mut self, player: u8, min: i32, max: i32, flyers_ok: bool) -> u32 {
         self.place_creeps();
-        let (sx, sy) = self.start_of(player);
+        // Walked from the attack captain (FUN_6f9baa40 is the captain's): amid its
+        // units, else at its home.
+        let (sx, sy) = self.attack_captain_position(player);
         let air = |w: &World, u: &Unit| w.objects.units.get(u.type_id).is_some_and(|o| o.str("movetp").eq_ignore_ascii_case("fly"));
         let mut limit = 999_999.0f32;
         let mut best: Option<(u32, f32)> = None;
@@ -608,6 +610,7 @@ impl World {
             cap.units.retain(|_| true);
             let units = cap.units.clone();
             let goal = cap.goal;
+            let home = cap.home;
             let mut target = cap.target;
             // A target that died (its handle may since name another unit) or that is
             // friendly is dropped.
@@ -630,6 +633,13 @@ impl World {
                 if target != 0 && self.unit(target).is_some_and(|t| !t.dead) {
                     self.order_unit(h, attack, 0.0, 0.0, target);
                 } else if let Some((x, y)) = goal {
+                    if self.unit(h).is_some_and(|u| (u.x - x).hypot(u.y - y) > 300.0) {
+                        self.order_unit(h, attack, x, y, 0);
+                    }
+                } else if let Some((x, y)) = Some(home).filter(|&(x, y)| (x, y) != (0.0, 0.0)) {
+                    // Without a goal the units gather at home (measured: the original's
+                    // ghouls, taken into the attack group, leave the trees on attack
+                    // orders).
                     if self.unit(h).is_some_and(|u| (u.x - x).hypot(u.y - y) > 300.0) {
                         self.order_unit(h, attack, x, y, 0);
                     }
@@ -805,6 +815,12 @@ impl World {
                 }
                 if let Some(c) = self.captain(attack) {
                     c.units.push(h);
+                }
+                // A gatherer taken stops gathering (FUN_6f9c32d0 has its harvest ability
+                // let go), for the captain to move.
+                if let Some(u) = self.unit_mut(h).filter(|u| matches!(u.action, Action::Harvest { .. } | Action::ReturnResources)) {
+                    u.action = Action::Idle;
+                    u.path.clear();
                 }
                 count += 1;
             }
@@ -1119,9 +1135,9 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         },
         CreateCaptains => |w, _, _| {
             let p = w.ai_player();
-            let home = w.start_of(p);
+            let (attack_home, home) = w.captain_homes(p);
             if let Some(s) = w.ai_state() {
-                s.attack = Captain { home, ..Default::default() };
+                s.attack = Captain { home: attack_home, ..Default::default() };
                 s.defense = Captain { home, ..Default::default() };
             }
             none()

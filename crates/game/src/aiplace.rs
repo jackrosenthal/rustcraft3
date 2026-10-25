@@ -251,6 +251,32 @@ impl World {
         self.objects.units.get(u.type_id).is_some_and(|o| o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case("townhall")))
     }
 
+    /// Where the captains are made (FUN_6f9c5360, from the town FUN_6f9bfe80 lays out):
+    /// the attack captain 300 beyond the town hall from its gold mine, the defense
+    /// captain between the two; without a mine, both at the hall.
+    pub(crate) fn captain_homes(&self, p: u8) -> ((f32, f32), (f32, f32)) {
+        let (hx, hy) = self.town_pos_pub(p, 0);
+        let Some((mx, my)) = self.mine_near_pub(hx, hy).and_then(|m| self.unit(m)).map(|m| (m.x, m.y)) else { return ((hx, hy), (hx, hy)) };
+        let (dx, dy) = (hx - mx, hy - my);
+        let len = dx.hypot(dy);
+        if len <= 0.0 {
+            return ((hx, hy), (hx, hy));
+        }
+        ((hx + dx * 300.0 / len, hy + dy * 300.0 / len), ((hx + mx) * 0.5, (hy + my) * 0.5))
+    }
+
+    /// Where the attack captain stands: amid its living units, else at home, else the
+    /// start.
+    pub(crate) fn attack_captain_position(&self, p: u8) -> (f32, f32) {
+        let Some(st) = self.ai.get(&p) else { return self.start_of(p) };
+        let living: Vec<(f32, f32)> = st.attack.units.iter().filter_map(|&h| self.unit(h)).filter(|u| !u.dead).map(|u| (u.x, u.y)).collect();
+        if living.is_empty() {
+            return if st.attack.home != (0.0, 0.0) { st.attack.home } else { self.start_of(p) };
+        }
+        let n = living.len() as f32;
+        (living.iter().map(|q| q.0).sum::<f32>() / n, living.iter().map(|q| q.1).sum::<f32>() / n)
+    }
+
     /// Where the defense captain stands: amid its units, else at home, else the start.
     fn defense_position(&self, p: u8) -> (f32, f32) {
         let Some(st) = self.ai.get(&p) else { return self.start_of(p) };

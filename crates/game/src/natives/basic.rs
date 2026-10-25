@@ -154,7 +154,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let s: String = s.chars().take(1023).collect();
             string(if a.b(1) { s.to_ascii_uppercase() } else { s.to_ascii_lowercase() })
         },
-        StringHash => |_, _, a| int(a[0].str().map_or(0, crate::rng::string_hash)),
+        // Of an empty string, 0 (jass_StringHash hashes only a non-empty string).
+        StringHash => |_, _, a| int(a[0].str().filter(|s| !s.is_empty()).map_or(0, crate::rng::string_hash)),
         GetLocalizedString => |w, _, a| {
             let s = a.s(0);
             string(w.localized(&s))

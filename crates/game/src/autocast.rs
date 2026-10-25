@@ -90,6 +90,57 @@ impl World {
         }
     }
 
+    /// A computer's or creep's unit with Cannibalize eats a corpse on its own
+    /// (CAbilityCannibalize: its 2 second timer, and its going idle, both to
+    /// FUN_6f608370): able to cast, not moving or eating already, and at half its life
+    /// or less; on the timer, only at a quarter or less, unarmed, or not attacking.  It
+    /// goes for the nearest corpse within 800 whose death has played (measured: a creep
+    /// ghoul at 120 of 340 goes to eat corpses 200 to 800 away, but not 850, beginning
+    /// between 3 and 4 seconds after it is made, near a footman killed at 0.3).
+    pub fn update_cannibalize(&mut self, dt: f32) {
+        let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && u.owner >= PLAYER_NEUTRAL_AGGRESSIVE || self.unit(h).is_some_and(|u| !u.dead && !u.hidden && self.players.get(u.owner as usize).is_some_and(|p| p.controller == map_control::COMPUTER)))).collect();
+        for h in units {
+            let Some((a, lvl)) = self.ability_with_code(h, "Acan") else { continue };
+            let Some(u) = self.unit_mut(h) else { continue };
+            let idle = matches!(u.action, Action::Idle);
+            let became_idle = idle && !u.extra.was_idle;
+            u.extra.was_idle = idle;
+            let wait = u.extra.cannibal_wait.get_or_insert(2.0);
+            *wait -= dt;
+            let timed = *wait <= 0.0;
+            if timed {
+                *wait += 2.0;
+            }
+            if !timed && !became_idle {
+                continue;
+            }
+            let Some(u) = self.unit(h) else { continue };
+            let moving = u.order.id == crate::natives::basic::order_id("move");
+            let eating = matches!(u.action, Action::Cast { ability, .. } if ability == a) || u.buffs.iter().any(|b| b.ability == a);
+            let frac = u.life / u.max_life.max(1.0);
+            if moving || eating || frac > 0.5 || lvl == 0 || self.can_cast(h, a).is_err() {
+                continue;
+            }
+            let fighting = matches!(u.action, Action::Attack { .. }) || u.swing.is_some();
+            if timed && !became_idle && !(frac <= 0.25 || crate::sim::unit_weapons(self, u).is_empty() || !fighting) {
+                continue;
+            }
+            let (x, y) = (u.x, u.y);
+            // A body whose death still plays is no corpse yet (measured: a footman killed
+            // 0.3 seconds in, its death 3.04, is first gone for at 4).
+            let ready = |w: &World, c: u32| w.unit(c).is_some_and(|cu| w.time - cu.death_time >= w.objects.units.get(cu.type_id).map_or(0.0, |o| o.real("death")));
+            let Some(corpse) = self.corpses_in(x, y, 800.0).into_iter().filter(|&c| ready(self, c)).min_by(|&p, &q| {
+                let d = |c: u32| self.widget_pos(c).map_or(f32::MAX, |(cx, cy)| (cx - x).hypot(cy - y));
+                d(p).total_cmp(&d(q))
+            }) else { continue };
+            let Some((cx, cy)) = self.widget_pos(corpse) else { continue };
+            let u = self.unit_mut(h).unwrap();
+            u.action = Action::Cast { ability: a, target: corpse, x: cx, y: cy };
+            u.order = Order { id: crate::natives::basic::order_id("cannibalize"), target_x: cx, target_y: cy, target: corpse };
+            u.path.clear();
+        }
+    }
+
     /// Each moment (measured: a Priest heals at 0.54 seconds after it is made, its cast
     /// point 0.5, and again 0.02 to 0.04 seconds after each cooldown runs out).
     pub fn update_autocast(&mut self, _dt: f32) {

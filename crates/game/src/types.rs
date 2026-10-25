@@ -379,6 +379,12 @@ pub struct UnitExtra {
     /// A wanderer's wait (Awan): it runs only while the unit stands idle.
     #[serde(default)]
     pub wander_wait: Option<f32>,
+    /// Cannibalize's own look for a corpse (every 2 seconds), and whether the unit
+    /// stood idle when it last looked.
+    #[serde(default)]
+    pub cannibal_wait: Option<f32>,
+    #[serde(default)]
+    pub was_idle: bool,
     /// The turn a walker took to go around a unit standing in its way.
     #[serde(default)]
     pub detour: Option<(f32, f32)>,
@@ -546,6 +552,8 @@ impl Default for UnitExtra {
             strayed: None,
             idle_away: None,
             wander_wait: None,
+            cannibal_wait: None,
+            was_idle: false,
             detour: None,
             sleep_effect: 0,
             warp_inside: 0,

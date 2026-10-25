@@ -235,7 +235,7 @@ pub fn final_damage(w: &World, raw: f32, attack_type: &str, target: &Unit) -> f3
     raw * mult * armor_factor
 }
 
-fn can_target(w: &World, wp: &Weapon, attacker: &Unit, t: &Unit) -> bool {
+pub(crate) fn can_target(w: &World, wp: &Weapon, attacker: &Unit, t: &Unit) -> bool {
     if t.dead || t.hidden || w.unit_invulnerable(t) || w.is_locust(t) || t.handle == attacker.handle {
         return false;
     }
@@ -1200,7 +1200,9 @@ impl World {
                 self.spell_ai_hurt(vm, target, source, attack_type != "spells");
                 self.spell_ai(target, source, target);
             }
-            self.retaliate(target, source, attack_type == "spells");
+            if !self.ai_flees(target, source) {
+                self.retaliate(target, source, attack_type == "spells");
+            }
         }
     }
 

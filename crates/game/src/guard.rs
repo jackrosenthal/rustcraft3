@@ -127,3 +127,72 @@ impl World {
         }
     }
 }
+
+impl World {
+    /// A computer player's unit hurt by an enemy may run from it instead of answering,
+    /// when the player's AI lets its units (SetUnitsFlee) or its Heroes (SetHeroesFlee)
+    /// flee (FUN_6f5fa400, FUN_6f607ba0).  An illusion, one disabled or moving already,
+    /// or one whose acquisition range is under 100 stays; one without a weapon runs,
+    /// and from an attacker without one none does.  Of their weapons' reaches at each
+    /// other: an attacker not free to fight (disabled) is run from when the unit reaches
+    /// farther, or when it is ensnared and not the unit's target.  The unit runs as its
+    /// life falls into 600 to 610, 500 to 510, and so on to 100 to 110 (only 200 to 210
+    /// and 100 to 110 for a unit reaching 200 or less hurt by one reaching 200 or more);
+    /// a unit not a Hero below 150; a Hero in 400 to 410 or 300 to 310, from a Hero
+    /// reaching under 200 that it outreaches past 200, below 200, or below a third of
+    /// its most.  It runs 300 straight away (a Hero that low, or from an attacker
+    /// without a weapon), or else the attacker's reach and 100 more (FUN_6f5fc350),
+    /// ordered to move.  Measured: a computer's ghoul struck to 103 and to 47 in a
+    /// creep camp is ordered to move, and comes back.
+    pub(crate) fn ai_flees(&mut self, h: u32, attacker: u32) -> bool {
+        let (Some(u), Some(a)) = (self.unit(h), self.unit(attacker)) else { return false };
+        if u.dead || u.is_building || u.paused || u.extra.illusion.is_some() || crate::natives::players::is_ally(self, u.owner, a.owner) {
+            return false;
+        }
+        let Some(st) = self.ai.get(&u.owner) else { return false };
+        let flag = if u.is_hero { "heroes_flee" } else { "units_flee" };
+        if !st.flags.get(flag).copied().unwrap_or(false) || u.order.id == crate::natives::basic::order_id("move") || self.buff_mods(h).4 {
+            return false;
+        }
+        let mine = crate::sim::unit_weapons(self, u);
+        let theirs = crate::sim::unit_weapons(self, a);
+        let reach = |ws: &[(u8, crate::sim::Weapon)], from: &Unit, to: &Unit| ws.iter().find(|(_, w)| crate::sim::can_target(self, w, from, to)).map_or(0.0, |(_, w)| w.range);
+        let (mine_r, theirs_r) = (reach(&mine, u, a), reach(&theirs, a, u));
+        let life = u.life;
+        let run = if mine.is_empty() {
+            true
+        } else if u.acquire_range < 100.0 || theirs.is_empty() {
+            false
+        } else {
+            let attacker_free = !a.paused && !self.buff_mods(attacker).4;
+            let ensnared = a.buffs.iter().any(|b| b.id == *b"Bens");
+            let targeting = matches!(u.action, Action::Attack { target } if target == attacker);
+            let band = |n: f32| life >= n && life <= n + 10.0;
+            let bands: &[f32] = if theirs_r >= 200.0 && mine_r <= 200.0 { &[200.0, 100.0] } else { &[600.0, 500.0, 400.0, 300.0, 200.0, 100.0] };
+            if !attacker_free && (mine_r > theirs_r || (!targeting && ensnared)) {
+                true
+            } else if bands.iter().any(|&n| band(n)) {
+                true
+            } else if !u.is_hero {
+                life < 150.0
+            } else {
+                band(400.0) || band(300.0) || (a.is_hero && a.extra.illusion.is_none() && theirs_r < 200.0 && mine_r > 200.0) || life < 200.0 || life < u.max_life / 3.0
+            }
+        };
+        if !run {
+            return false;
+        }
+        let low_hero = u.is_hero && (life < 200.0 || life < u.max_life / 3.0);
+        let dist = if low_hero || theirs.is_empty() { 300.0 } else { theirs_r + 100.0 };
+        let (dx, dy) = (u.x - a.x, u.y - a.y);
+        let d = dx.hypot(dy);
+        let (nx, ny) = if d > 0.001 { (dx / d, dy / d) } else { (u.facing.to_radians().cos(), u.facing.to_radians().sin()) };
+        let (fx, fy) = self.clamp_to_map(u.x + nx * dist, u.y + ny * dist);
+        let u = self.unit_mut(h).unwrap();
+        u.action = Action::Move { x: fx, y: fy };
+        u.order = Order { id: crate::natives::basic::order_id("move"), target_x: fx, target_y: fy, target: 0 };
+        u.path.clear();
+        u.swing = None;
+        true
+    }
+}

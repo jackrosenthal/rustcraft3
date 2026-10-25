@@ -346,6 +346,8 @@ impl World {
             self.ai_current = None;
             self.ai_vms.insert(p, aivm);
             self.ai_engine(p, dt);
+            self.ai_captains_move(p);
+            self.ai_captain_spells(p);
             self.ai_threat_tick(p, dt);
             self.ai_mega_tick(p, dt);
             self.ai_attack_player_tick(p);
@@ -639,7 +641,14 @@ impl World {
                 }
             }
         }
-        // Captains keep their units moving toward the goal.
+
+    }
+
+    /// Each moment the captains keep their units moving toward the goal (the
+    /// captain's timer has period 0: FUN_6f9d2f90, FUN_6f9d7b00; measured: a
+    /// computer's ghoul that has fled a creep camp goes back at it the moment it
+    /// stops).
+    fn ai_captains_move(&mut self, p: u8) {
         for which in 0..2 {
             let Some(st) = self.ai.get_mut(&p) else { return };
             let cap = if which == 0 { &mut st.attack } else { &mut st.defense };
@@ -684,6 +693,27 @@ impl World {
                     if self.unit(h).is_some_and(|u| (u.x - x).hypot(u.y - y) > 300.0) {
                         self.order_unit(h, attack, x, y, 0);
                     }
+                }
+            }
+        }
+    }
+
+    /// Each moment a captain at a target has its Heroes and summoned units weigh their
+    /// spells at it (the captain's timer, period 0, FUN_6f9d7b00, to FUN_6f9d3bc0,
+    /// FUN_6f9d6cc0, and FUN_6f9d35f0; measured: a computer's Dread Lord puts creeps of
+    /// the camp its wave attacks to sleep, at 174, 208, and 215 seconds).
+    fn ai_captain_spells(&mut self, p: u8) {
+        for which in 0..2 {
+            let Some(st) = self.ai.get(&p) else { return };
+            let cap = if which == 0 { &st.attack } else { &st.defense };
+            let (target, units) = (cap.target, cap.units.clone());
+            if target == 0 || self.unit(target).is_none_or(|t| t.dead || crate::natives::players::is_ally(self, p, t.owner)) {
+                continue;
+            }
+            for h in units {
+                let casts = self.unit(h).is_some_and(|u| !u.dead && (u.is_hero || u.timed_life.is_some()));
+                if casts {
+                    self.spell_ai(h, target, h);
                 }
             }
         }

@@ -1422,6 +1422,7 @@ impl World {
         prof!(self, "update_cargo", self.update_cargo(vm));
         prof!(self, "update_morphs", self.update_morphs(dt));
         prof!(self, "update_autocast", self.update_autocast(dt));
+        self.update_cannibalize(dt);
         prof!(self, "update_periodic_attacks", self.update_periodic_attacks(vm, dt));
         prof!(self, "update_devoured", self.update_devoured(vm, dt));
         prof!(self, "update_undead_auras", self.update_undead_auras(vm, dt));

@@ -449,8 +449,16 @@ impl World {
         }
         // An attack on a unit only a weapon's minimum range keeps it from is refused
         // ("Target is inside minimum range."), the unit free to choose another.
+        // The unit keeps the attack as its order, choosing its own targets meanwhile
+        // (measured: a Mortar Team so ordered at a footman beside it shells another and
+        // reads attack).
         if (order == attack || order == smart) && target != 0 && self.inside_min_range(h, target) {
             self.order_error = Some("UnderRange");
+            if order == attack {
+                if let Some(u) = self.unit_mut(h) {
+                    u.order = Order { id: order, target_x: x, target_y: y, target };
+                }
+            }
             return;
         }
         let action = if order == stop {
@@ -1235,14 +1243,11 @@ impl World {
                         let range = self.unit(h).map_or(0.0, |u| u.acquire_range);
                         let range = if matches!(action, Action::Hold) { wp.as_ref().map_or(0.0, |w| w.range) } else { range };
                         if let Some(t) = self.find_target(h, range) {
-                            let attack = crate::natives::basic::order_id("attack");
+                            // A target taken up on its own leaves the unit's order as it
+                            // was (measured: GetUnitCurrentOrder reads none for a footman
+                            // or Crypt Fiend attacking what it acquired, near or far).
                             if let Some(u) = self.unit_mut(h) {
                                 u.action = if matches!(action, Action::Hold) { Action::Hold } else { Action::Attack { target: t } };
-                                // An idle unit that takes up a target is under an attack
-                                // order (GetUnitCurrentOrder reads attack, as measured).
-                                if !matches!(action, Action::Hold) {
-                                    u.order = Order { id: attack, target_x: 0.0, target_y: 0.0, target: t };
-                                }
                             }
                             self.acquired(h, t);
                             self.spell_ai(h, t, h);

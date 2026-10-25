@@ -421,7 +421,7 @@ fn main() -> anyhow::Result<()> {
                 if let Some(g) = scene.game.as_ref() {
                     if let Some(u) = g.world.unit(num(&a[i + 1]) as u32) {
                         eprintln!("unit {} life {}/{} mana {} action {:?} buffs {:?}{}", w3_game::objects::id_str(u.type_id), u.life, u.max_life, u.mana, u.action, u.buffs.iter().map(|b| (w3_game::objects::id_str(b.id), b.remaining, b.stun)).collect::<Vec<_>>(), if u.extra.corpses.is_empty() { String::new() } else { format!(" corpses {}", u.extra.corpses.len()) } + if u.extra.sleeping { " asleep" } else { "" });
-                        eprintln!("  at {:.0} {:.0} casting {:?} channel {:?} path {}", u.x, u.y, u.casting, u.channel.as_ref().map(|c| (c.elapsed, c.duration, c.next)), u.path.len());
+                        eprintln!("  at {:.0} {:.0} casting {:?} channel {:?} path {} cooldown {:.2} swing {:?} t {:.2}", u.x, u.y, u.casting, u.channel.as_ref().map(|c| (c.elapsed, c.duration, c.next)), u.path.len(), u.cooldown, u.swing.as_ref().map(|s| (s.elapsed, s.done)), g.world.time);
                     }
                 }
                 i += 2;
@@ -447,6 +447,18 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
                 i += 1;
+            }
+            // around <x> <y> <radius>: the units there, with owner, life, and action.
+            "around" => {
+                if let Some(g) = &scene.game {
+                    let (x, y, r) = (num(&a[i + 1]), num(&a[i + 2]), num(&a[i + 3]));
+                    for &h in &g.world.unit_order {
+                        if let Some(u) = g.world.unit(h).filter(|u| !u.dead && (u.x - x).hypot(u.y - y) <= r) {
+                            eprintln!("around {h} p{} {} at {:.0},{:.0} life {:.0} {:?}", u.owner, w3_game::objects::id_str(u.type_id), u.x, u.y, u.life, u.action);
+                        }
+                    }
+                }
+                i += 4;
             }
             "structs" => {
                 if let Some(g) = &scene.game {

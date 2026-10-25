@@ -260,7 +260,11 @@ impl World {
             // Bladestorm and Immolation follow the caster.
             "AOww" | "AEim" => {
                 let duration = if code == "AEim" { f32::MAX } else { self.duration_for(a, lvl, h) };
-                self.ground_effects.push(GroundEffect { caster: h, owner, ability: a, level: lvl, x: cx, y: cy, elapsed: 0.0, duration, interval: 1.0, next: 0.0, effect: 0 });
+                // Bladestorm strikes a fifth of DataA every fifth of a second, the first a
+                // fifth after the order (measured: a footman takes 22 at 0.20 seconds and
+                // each 0.20 after).
+                let (interval, next) = if code == "AOww" { (0.2, 0.2) } else { (1.0, 0.0) };
+                self.ground_effects.push(GroundEffect { caster: h, owner, ability: a, level: lvl, x: cx, y: cy, elapsed: 0.0, duration, interval, next, effect: 0 });
                 if code == "AOww" {
                     self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: duration, magic_immune: true, ..Default::default() });
                 }

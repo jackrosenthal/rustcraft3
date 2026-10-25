@@ -3089,6 +3089,9 @@ impl World {
     /// where it lands), then splash and line spill spread it.
     fn attack_impact(&mut self, vm: &mut Vm, source: u32, target: u32, raw: f32, wp: &Weapon, at: (f32, f32)) {
         let artillery = wp.weapon_type == "artillery" || wp.weapon_type == "aline";
+        // Bladestorming, the hero's attacks strike for nothing (measured: a Blademaster's
+        // hits show damage events of 0 while it spins).
+        let raw = if self.unit(source).is_some_and(|u| u.buffs.iter().any(|b| self.ability_code(b.ability) == "AOww")) { 0.0 } else { raw };
         self.poison_on_hit(vm, source, target);
         if !artillery {
             self.deal_damage(vm, source, target, raw, &wp.attack_type);

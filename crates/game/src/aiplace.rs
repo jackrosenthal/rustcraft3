@@ -405,6 +405,9 @@ impl World {
     /// SetExpansion (FUN_6f9cb9f0): the worker leaves the attack captain and goes to
     /// build the hall at the next expansion, placed on the build grid around its mine.
     pub(crate) fn set_expansion(&mut self, p: u8, peon: u32, hall: Id) -> bool {
+        if self.ai_builder_en_route(p) {
+            return false;
+        }
         let Some(m) = self.next_expansion(p) else { return false };
         let Some(center) = self.unit(m).map(|u| (u.x, u.y)) else { return false };
         let can = self.unit(peon).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|o| o.list("Builds").iter().any(|b| id_from_str(b.trim()) == hall));
@@ -421,11 +424,7 @@ impl World {
             return false;
         };
         self.leave_mine_pub(peon);
-        if let Some(u) = self.unit_mut(peon) {
-            u.action = crate::types::Action::Build { id: hall, x, y };
-            u.path.clear();
-        }
-        true
+        self.order_build(peon, hall, x, y).is_ok()
     }
 }
 

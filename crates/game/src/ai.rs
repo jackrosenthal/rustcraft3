@@ -469,6 +469,13 @@ impl World {
         n
     }
 
+    /// Whether one of the player's workers is still on its way to begin a structure
+    /// (FUN_6f9c9280): the AI then orders no other structure (measured: an Undead
+    /// computer's Ziggurat is ordered only after its acolyte has begun the Crypt).
+    pub(crate) fn ai_builder_en_route(&self, p: u8) -> bool {
+        self.ai_units(p).into_iter().any(|h| self.unit(h).is_some_and(|u| !u.dead && matches!(u.action, Action::Build { .. })))
+    }
+
     pub(crate) fn workers(&self, p: u8) -> Vec<u32> {
         self.ai_units(p).into_iter().filter(|&h| ["Ahar", "Ahrl", "Aaha", "Awha"].iter().any(|c| self.ability_with_code(h, c).is_some())).collect()
     }
@@ -505,28 +512,29 @@ impl World {
             return self.upgrade_structure(b, id).is_ok();
         }
         if o.bool("isbldg") {
+            if self.ai_builder_en_route(p) {
+                return false;
+            }
             let (g, l, _) = self.cost(id);
             let pl = &self.players[p as usize];
             if pl.get_state(player_state::RESOURCE_GOLD) < g || pl.get_state(player_state::RESOURCE_LUMBER) < l {
                 return false;
             }
-            // A worker that can build it, preferring one not carrying resources.
+            // The newest worker that can build it (FUN_6f9cb230; measured: an Undead
+            // computer's Crypt, Ziggurat, Altar, and second Ziggurat are each begun by
+            // its newest acolyte).
             let id_s = crate::objects::id_str(id);
-            let mut builders: Vec<u32> = self
+            let builders: Vec<u32> = self
                 .workers(p)
                 .into_iter()
+                .rev()
                 .filter(|&h| self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|wo| wo.list("Builds").iter().any(|b| b.trim() == id_s)))
                 .filter(|&h| self.unit(h).is_some_and(|u| !matches!(u.action, Action::Build { .. } | Action::Construct { .. })))
                 .collect();
-            builders.sort_by_key(|&h| self.unit(h).map_or(0, |u| u.carry_gold + u.carry_lumber));
             let Some(&b) = builders.first() else { return false };
             let Some((x, y)) = self.ai_build_site(p, id, town, b) else { return false };
             self.leave_mine_pub(b);
-            if let Some(u) = self.unit_mut(b) {
-                u.action = Action::Build { id, x, y };
-                u.path.clear();
-            }
-            return true;
+            return self.order_build(b, id, x, y).is_ok();
         }
         // Units and heroes train at the least busy structure that offers them.
         let id_s = crate::objects::id_str(id);

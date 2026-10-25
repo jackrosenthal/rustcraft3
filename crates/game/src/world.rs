@@ -398,6 +398,10 @@ pub struct World {
     /// Units RemoveUnit asked for, gone at the end of the moment.
     #[serde(default)]
     pub pending_removals: Vec<u32>,
+    /// Build orders paid for and not yet begun: the worker, its owner, and the
+    /// structure.
+    #[serde(default)]
+    pub paid_builds: Vec<(u32, u8, crate::objects::Id)>,
     /// Game cache handles made by InitGameCache for a name already open: each stands
     /// for the first one's contents.
     #[serde(default)]
@@ -711,6 +715,7 @@ impl World {
             weapon_cache: Default::default(),
             cache_alias: Default::default(),
             pending_removals: Vec::new(),
+            paid_builds: Vec::new(),
             region_inside: Default::default(),
             in_range: Default::default(),
             queued_region_events: Vec::new(),
@@ -1334,6 +1339,7 @@ impl World {
     pub fn tick(&mut self, vm: &mut Vm, dt: f32) {
         self.tech_cache.borrow_mut().clear();
         crate::natives::units::finish_removals(self);
+        self.settle_paid_builds();
         // W3PROF: time per subsystem, printed every 60 game seconds.
         macro_rules! prof {
             ($w:expr, $name:expr, $e:expr) => {{
@@ -1726,7 +1732,15 @@ impl Host for World {
         }
         log::trace!("{}{:?}", self.native_names.get(native as usize).map_or("?", |s| s.as_str()), args);
         match self.natives.get(native as usize).copied().flatten() {
-            Some(f) => f(self, vm, args),
+            Some(f) => {
+                let r = f(self, vm, args);
+                // A build order a native ends is refunded within the call (measured: the
+                // gold is back as soon as IssueImmediateOrder stop or KillUnit returns).
+                if !self.paid_builds.is_empty() {
+                    self.settle_paid_builds();
+                }
+                r
+            }
             None => {
                 self.warn_unimplemented(native);
                 let ret = vm.module.natives[native as usize].ret.clone();

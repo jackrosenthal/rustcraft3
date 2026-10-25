@@ -579,13 +579,7 @@ fn issue_build(w: &mut World, h: u32, id: crate::objects::Id, x: f32, y: f32) ->
     if !w.can_place(id, x, y) {
         return boolean(false);
     }
-    if let Some(u) = w.unit_mut(h) {
-        u.action = Action::Build { id, x, y };
-        u.path.clear();
-        // Its order is the structure's id (GetUnitCurrentOrder).
-        u.order = Order { id: crate::objects::id_to_int(id), target_x: x, target_y: y, target: 0 };
-    }
-    boolean(true)
+    boolean(w.order_build(h, id, x, y).is_ok())
 }
 
 fn play_anim(u: &mut Unit, name: String) {

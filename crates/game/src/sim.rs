@@ -1695,6 +1695,47 @@ impl World {
         *p.state.entry(player_state::RESOURCE_LUMBER).or_insert(0) += (l as f32 * rate) as i32;
     }
 
+    /// A worker's order to build a structure at a point, paid for at once (measured:
+    /// the original takes a barracks' cost as IssueBuildOrder is called, and gives it
+    /// all back at once when the peasant is stopped or killed on its way).
+    pub fn order_build(&mut self, h: u32, id: Id, x: f32, y: f32) -> Result<(), &'static str> {
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return Err("") };
+        self.settle_paid_build(h);
+        self.spend(owner, id, false)?;
+        if let Some(u) = self.unit_mut(h) {
+            u.action = Action::Build { id, x, y };
+            u.path.clear();
+            // Its order is the structure's id (GetUnitCurrentOrder).
+            u.order = Order { id: crate::objects::id_to_int(id), target_x: x, target_y: y, target: 0 };
+        }
+        self.paid_builds.push((h, owner, id));
+        Ok(())
+    }
+
+    /// Refunds a worker's paid build order whether or not it still stands.
+    fn settle_paid_build(&mut self, h: u32) {
+        while let Some(k) = self.paid_builds.iter().position(|&(w, _, _)| w == h) {
+            let (_, owner, id) = self.paid_builds.remove(k);
+            self.refund(owner, id, 1.0);
+        }
+    }
+
+    /// Refunds paid build orders their workers no longer follow (stopped, ordered
+    /// elsewhere, dead, or gone) without having begun the structure.
+    pub(crate) fn settle_paid_builds(&mut self) {
+        let mut k = 0;
+        while k < self.paid_builds.len() {
+            let (h, owner, id) = self.paid_builds[k];
+            let keeps = self.unit(h).is_some_and(|u| !u.dead && matches!(u.action, Action::Build { id: b, .. } if b == id));
+            if keeps {
+                k += 1;
+            } else {
+                self.paid_builds.remove(k);
+                self.refund(owner, id, 1.0);
+            }
+        }
+    }
+
     /// Queues a unit at a structure (a train order).
     pub fn train(&mut self, h: u32, id: Id) -> Result<(), &'static str> {
         let Some(u) = self.unit(h) else { return Err("") };
@@ -2122,12 +2163,8 @@ impl World {
             set_anim(u, "stand");
             return;
         }
-        if self.spend(owner, id, false).is_err() {
-            let u = self.unit_mut(h).unwrap();
-            u.action = Action::Idle;
-            set_anim(u, "stand");
-            return;
-        }
+        // Paid for when ordered (order_build).
+        self.paid_builds.retain(|&(w, _, _)| w != h);
         // A structure built on another unit stands on it and takes it over.
         let site = if self.builds_on(id) { self.build_on_site(x, y) } else { None };
         let (x, y) = site.and_then(|s| self.unit(s).map(|m| (m.x, m.y))).unwrap_or((x, y));

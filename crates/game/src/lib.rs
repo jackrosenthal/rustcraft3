@@ -755,13 +755,7 @@ impl Game {
                 self.world.form_group(&mine);
                 O::Done
             }
-            C::Build { worker, id, x, y } => {
-                if let Some(u) = self.world.unit_mut(worker) {
-                    u.action = types::Action::Build { id, x, y };
-                    u.path.clear();
-                }
-                O::Done
-            }
+            C::Build { worker, id, x, y } => res(self.world.order_build(worker, id, x, y)),
             C::Train { building, id } => res(self.world.train(building, id)),
             C::Research { building, id } => res(self.world.research_at(building, id)),
             C::Upgrade { building, id } => res(self.world.upgrade_structure(building, id)),

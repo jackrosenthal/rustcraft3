@@ -3754,16 +3754,24 @@ impl Scene {
                 let file = o.str("file");
                 let base = file.strip_suffix(".mdl").or_else(|| file.strip_suffix(".mdx")).unwrap_or(&file);
                 let model = assets.model(device, queue, &format!("{base}_Portrait")).or_else(|| assets.model(device, queue, &file))?;
-                let mut v = UnitView { inst: ModelInstance::new(model), type_id: [0; 4], children: Vec::new(), serial: 0, requested: "portrait".into(), anim: String::new(), rng: h, queued: 0 };
+                // Qualified by the type's Animprops, so a Keep on the Town Hall's model
+                // shows "Portrait Upgrade First" and that sequence's camera.
+                let mut name = String::from("portrait");
+                for p in o.str("Animprops").split(',').map(|p| p.trim().to_ascii_lowercase()).filter(|p| !p.is_empty() && p != "_") {
+                    name.push(' ');
+                    name.push_str(&p);
+                }
+                let mut v = UnitView { inst: ModelInstance::new(model), type_id: [0; 4], children: Vec::new(), serial: 0, requested: name.clone(), anim: String::new(), rng: h, queued: 0 };
                 v.inst.team = world_color(w, u.owner, u.color);
-                v.pick("portrait");
+                v.pick(&name);
                 Some((h, v))
             });
         }
         if let Some((_, v)) = self.portrait.as_mut() {
             if v.inst.looped || v.inst.finished {
                 v.inst.looped = false;
-                v.pick("portrait");
+                let name = v.requested.clone();
+                v.pick(&name);
             }
         }
         // The transmission's speaker: "portrait talk" while the voice plays.
@@ -5039,8 +5047,11 @@ impl Scene {
         if x1 <= x0 || y1 <= y0 {
             return;
         }
-        let eye = Vec3::from_array(cam.position);
-        let target = Vec3::from_array(cam.target);
+        // The camera moves with its tracks in the playing sequence (a building shown by
+        // its own model plays "Portrait", where the Town Hall's camera comes in close).
+        let (time, g) = (v.inst.time(), &v.inst.model.mdx.global_sequences);
+        let eye = Vec3::from_array(cam.position) + Vec3::from_array(w3_render::anim::sample(cam.tracks.vec3(b"KCTR"), &time, g, [0.0; 3]));
+        let target = Vec3::from_array(cam.target) + Vec3::from_array(w3_render::anim::sample(cam.tracks.vec3(b"KTTR"), &time, g, [0.0; 3]));
         let view = Mat4::look_at_rh(eye, target, Vec3::Z);
         let aspect = (x1 - x0) / (y1 - y0);
         // The unit portrait's model camera field of view spans the viewport's diagonal,

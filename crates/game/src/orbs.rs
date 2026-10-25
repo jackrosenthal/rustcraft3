@@ -165,10 +165,6 @@ impl World {
                         _ => {}
                     }
                 }
-                // Liquid Fire: burning structures take DataA a second and attack slower.
-                "Aliq" if target_building => {
-                    self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: dur, dps: d(self, "DataA"), attack_factor: -d(self, "DataC"), no_repair: d(self, "DataD") == 0.0, ..Default::default() });
-                }
                 // Cleaving Attack: DataA of the damage to other enemies within Area.
                 "ANca" => {
                     let (tx, ty) = self.unit(target).map(|t| (t.x, t.y)).unwrap_or_default();

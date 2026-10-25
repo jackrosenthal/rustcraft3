@@ -75,9 +75,7 @@ impl World {
     /// the attack's, then 4 of poison each second from the next moment).
     pub(crate) fn poison_on_hit(&mut self, vm: &mut Vm, h: u32, target: u32) {
         let Some(u) = self.unit(h) else { return };
-        if self.unit(target).is_none_or(|t| t.is_building || t.dead) {
-            return;
-        }
+        let Some(building) = self.unit(target).filter(|t| !t.dead).map(|t| t.is_building) else { return };
         let owner = u.owner;
         let mut abilities = u.abilities.clone();
         for item in u.inventory.clone() {
@@ -87,10 +85,25 @@ impl World {
         }
         for (a, l) in abilities {
             let code = self.ability_code(a);
-            if !matches!(code.as_str(), "Aspo" | "Apoi" | "Aven" | "Apo2") || !self.ability_enabled(owner, a) {
+            if !self.ability_enabled(owner, a) {
                 continue;
             }
             let l = l.max(1) as u32;
+            // Liquid Fire likewise: burning structures take DataA a second and attack
+            // slower (measured: a farm hit at 0.98 seconds takes 0, the hit, and 8 at
+            // 0.99, 1.99, and 2.99, its Dur 3).
+            if code == "Aliq" && building {
+                self.spell_damage(vm, h, target, 0.0);
+                let buff = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", l)).unwrap_or_default();
+                let id = id_from_str(buff.split(',').next().unwrap_or("").trim());
+                let d = |k: &str| self.data(a, k, l);
+                let b = Buff { id, ability: a, level: l, caster: h, remaining: d("Dur"), dps: d("DataA"), dps_every: 1.0, dps_next: 0.0, attack_factor: -d("DataC"), no_repair: d("DataD") == 0.0, ..Default::default() };
+                self.apply_buff(target, b);
+                continue;
+            }
+            if !matches!(code.as_str(), "Aspo" | "Apoi" | "Aven" | "Apo2") || building {
+                continue;
+            }
             self.spell_damage(vm, h, target, 0.0);
             let buff = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", l)).unwrap_or_default();
             let id = id_from_str(buff.split(',').next().unwrap_or("").trim());

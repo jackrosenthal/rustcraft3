@@ -626,7 +626,9 @@ impl World {
             let attack = crate::natives::basic::order_id("attack");
             for h in units {
                 // Idle units, and gatherers the captain has taken, go.
-                let idle = self.unit(h).is_some_and(|u| matches!(u.action, Action::Idle | Action::Harvest { .. } | Action::ReturnResources));
+                // So do those still gathering at home once there is somewhere to go.
+                let gathering = |a: &Action| matches!(*a, Action::AttackMove { x, y } if (x, y) == home) && (target != 0 || goal.is_some());
+                let idle = self.unit(h).is_some_and(|u| matches!(u.action, Action::Idle | Action::Harvest { .. } | Action::ReturnResources) || gathering(&u.action));
                 if !idle {
                     continue;
                 }

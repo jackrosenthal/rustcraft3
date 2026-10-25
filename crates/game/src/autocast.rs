@@ -80,7 +80,7 @@ impl World {
                 .filter(|t| (t.x - u.x).hypot(t.y - u.y) <= u.acquire_range.max(500.0) && self.can_repair(h, t.handle))
                 .min_by(|x, y| (x.x - u.x).hypot(x.y - u.y).total_cmp(&(y.x - u.x).hypot(y.y - u.y)))
                 .map(|t| t.handle),
-            "Arai" => self.corpses_in(u.x, u.y, self.data(a, "Area", lvl)).first().map(|_| h),
+            "Arai" => self.corpses_in(u.x, u.y, self.data(a, "Area", lvl)).first().copied(),
             // Carrion Scarabs: the nearest corpse in range, in a fight.
             "AUcb" => self.in_combat(h).then(|| self.corpses_in(u.x, u.y, self.data(a, "Rng", lvl)).first().copied()).flatten(),
             "Aadm" => units().find(|t| alive(t) && !ally(t) && near(t) && self.is_summoned(t.handle)).map(|t| t.handle),
@@ -126,10 +126,7 @@ impl World {
                 continue;
             }
             let (x, y) = (u.x, u.y);
-            // A body whose death still plays is no corpse yet (measured: a footman killed
-            // 0.3 seconds in, its death 3.04, is first gone for at 4).
-            let ready = |w: &World, c: u32| w.unit(c).is_some_and(|cu| w.time - cu.death_time >= w.objects.units.get(cu.type_id).map_or(0.0, |o| o.real("death")));
-            let Some(corpse) = self.corpses_in(x, y, 800.0).into_iter().filter(|&c| ready(self, c)).min_by(|&p, &q| {
+            let Some(corpse) = self.corpses_in(x, y, 800.0).into_iter().min_by(|&p, &q| {
                 let d = |c: u32| self.widget_pos(c).map_or(f32::MAX, |(cx, cy)| (cx - x).hypot(cy - y));
                 d(p).total_cmp(&d(q))
             }) else { continue };

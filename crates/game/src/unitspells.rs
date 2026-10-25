@@ -82,9 +82,12 @@ impl World {
         match code {
             // Raise Dead: DataA units of DataC and DataB of DataD from the nearest corpse,
             // which is used up; they last Dur.
+            // Raise Dead: from its corpse (measured: the original refuses the order without
+            // a target, and takes it at a corpse), or the nearest within Area.
             "Arai" => {
                 let (cx, cy) = self.unit(h).map(|u| (u.x, u.y)).unwrap_or((x, y));
-                let Some(&corpse) = self.corpses_in(cx, cy, d(self, "Area")).first() else { return true };
+                let aimed = self.unit(target).filter(|t| t.dead && !t.hidden && self.corpse_ready(t)).map(|_| target);
+                let Some(corpse) = aimed.or_else(|| self.corpses_in(cx, cy, d(self, "Area")).first().copied()) else { return true };
                 let (px, py) = self.unit(corpse).map(|u| (u.x, u.y)).unwrap();
                 crate::natives::units::remove_unit(self, corpse);
                 let life = d(self, "Dur") + self.unit(h).map_or(0.0, |u| self.upgrade_ability_bonus(u.owner, u.type_id, "rrai", "Arai"));

@@ -538,6 +538,24 @@ impl World {
                     return;
                 }
             }
+            // Raise Dead wants its corpse; Cannibalize, without one, a corpse within its
+            // reach (measured: the original refuses an immediate raisedead, and an
+            // immediate cannibalize once the corpse beside the ghoul is eaten).
+            let code = self.ability_code(a);
+            if target == 0 && (x, y) == (0.0, 0.0) {
+                if code == "Arai" {
+                    self.order_error = Some("Targetcorpse");
+                    return;
+                }
+                if code == "Acan" {
+                    let (ux, uy, r) = self.unit(h).map_or((0.0, 0.0, 0.0), |u| (u.x, u.y, u.collision));
+                    let lvl = self.ability_level(h, a);
+                    if self.corpses_in(ux, uy, self.data(a, "Rng", lvl) + r + 32.0).is_empty() {
+                        self.order_error = Some("Cantfindcorpse");
+                        return;
+                    }
+                }
+            }
             Action::Cast { ability: a, target, x, y }
         } else {
             return;

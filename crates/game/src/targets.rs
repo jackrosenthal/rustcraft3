@@ -130,6 +130,11 @@ impl World {
         if !t.dead && has("dead") && !has("alive") {
             return Some("Targetcorpse");
         }
+        // A body whose death still plays is no corpse yet (measured: Raise Dead aimed at
+        // a footman killed 0.3 seconds in, its death 3.04, is refused until 3.5).
+        if t.dead && has("dead") && !self.corpse_ready(t) {
+            return Some("Targetcorpse");
+        }
         if t.is_hero && has("nonhero") && !has("hero") {
             return Some("Nohero");
         }

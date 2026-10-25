@@ -46,12 +46,18 @@ impl World {
     }
 
     /// Corpses (dead non-hero, non-structure units) near a point, nearest first.
+    /// Whether a dead unit's body is a corpse yet: its death (UnitData death) has played,
+    /// or it was made a corpse (CreateCorpse, a Graveyard's).
+    pub fn corpse_ready(&self, u: &Unit) -> bool {
+        u.death_time == 0.0 || self.time - u.death_time >= self.objects.units.get(u.type_id).map_or(0.0, |o| o.real("death"))
+    }
+
     pub fn corpses_in(&self, x: f32, y: f32, r: f32) -> Vec<u32> {
         let mut c: Vec<(f32, u32)> = self
             .unit_order
             .iter()
             .copied()
-            .filter_map(|h| self.unit(h).filter(|u| u.dead && !u.is_hero && !u.is_building && !u.hidden).map(|u| ((u.x - x).hypot(u.y - y), h)))
+            .filter_map(|h| self.unit(h).filter(|u| u.dead && !u.is_hero && !u.is_building && !u.hidden && self.corpse_ready(u)).map(|u| ((u.x - x).hypot(u.y - y), h)))
             .filter(|(d, _)| *d <= r)
             .collect();
         c.sort_by(|a, b| a.0.total_cmp(&b.0));

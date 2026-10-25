@@ -130,7 +130,7 @@ fn point_target(code: &str) -> bool {
 
 /// Abilities with no target (cast instantly around the caster).
 fn no_target(code: &str) -> bool {
-    matches!(code, "Adef" | "Amdf" | "ANth" | "AUls" | "Afzy" | "Amed" | "Amic" | "Adec" | "Amfl" | "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "Astd" | "Abtl" | "Arai" | "Aroa" | "Atau" | "Absk" | "ANef" | "ANht" | "ANms" | "ANlm" | "ANsg" | "ANsq" | "ANsw")
+    matches!(code, "Adef" | "Amdf" | "ANth" | "AUls" | "Afzy" | "Amed" | "Amic" | "Adec" | "Amfl" | "AHtc" | "AHds" | "AOws" | "AOwk" | "AOmi" | "AHav" | "AUan" | "AHre" | "AEim" | "AEme" | "AOww" | "AEtq" | "AEsf" | "AOvd" | "AOsf" | "AHpx" | "AEst" | "AEsv" | "AUcb" | "AHwe" | "AEfk" | "ANdr" | "Astd" | "Abtl" | "Acan" | "Aroa" | "Atau" | "Absk" | "ANef" | "ANht" | "ANms" | "ANlm" | "ANsg" | "ANsq" | "ANsw")
 }
 
 /// Passive abilities and auras.
@@ -857,7 +857,9 @@ impl World {
         if u.casting.is_none() {
             // Range runs between the caster's and the target unit's edges.
             let d = (goal.0 - u.x).hypot(goal.1 - u.y) - u.collision - target_size;
-            if self.targeting(a) != Targeting::None && d > range {
+            // One without a target goes to a unit given it all the same (Cannibalize's
+            // corpse, as a computer's ghoul does).
+            if (self.targeting(a) != Targeting::None || target != 0) && d > range {
                 if u.path.is_empty() || u.repath_timer <= 0.0 {
                     self.path_to(h, goal);
                 }

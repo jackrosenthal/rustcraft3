@@ -3897,12 +3897,14 @@ impl Scene {
         }
         for &h in &w.unit_order {
             let Some(u) = w.unit(h) else { continue };
-            // A unit that changed type (a morph) takes its new model.
-            if self.units.get(&h).is_some_and(|v| v.type_id != u.type_id) {
+            // A unit that changed type (a morph), or shows as another (Polymorph), takes
+            // that model.
+            let shown = w.shown_type(h).unwrap_or(u.type_id);
+            if self.units.get(&h).is_some_and(|v| v.type_id != shown) {
                 self.units.remove(&h);
             }
             if !self.units.contains_key(&h) {
-                let Some(o) = w.objects.units.get(u.type_id) else { continue };
+                let Some(o) = w.objects.units.get(shown) else { continue };
                 let file = o.str("file");
                 let Some(model) = assets.model(device, queue, &file) else { continue };
                 let children = model
@@ -3914,7 +3916,7 @@ impl Scene {
                     .filter_map(|(i, a)| assets.model(device, queue, &a.path).map(|m| (i, ModelInstance::new(m))))
                     .collect();
                 let inst = ModelInstance::new(model);
-                let mut view = UnitView { inst, type_id: u.type_id, children, serial: u32::MAX, requested: String::new(), anim: String::new(), rng: h, queued: 0 };
+                let mut view = UnitView { inst, type_id: shown, children, serial: u32::MAX, requested: String::new(), anim: String::new(), rng: h, queued: 0 };
                 view.update(&u.anim, u.anim_serial, &u.extra.anim_queue);
                 self.units.insert(h, view);
             }

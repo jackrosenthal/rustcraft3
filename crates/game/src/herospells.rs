@@ -233,12 +233,9 @@ impl World {
                     return true;
                 }
                 let to = list[self.rng.int(0, list.len() as i32 - 1) as usize];
-                let Some(back) = self.unit(target).map(|u| u.type_id) else { return true };
-                self.change_type(target, to);
-                if let Some(u) = self.unit_mut(target) {
-                    u.extra.morph_revert = Some((dur, back));
-                }
-                self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, silence: true, ..Default::default() });
+                // As Polymorph: the unit stays what it was, shown as the critter.
+                let speed = self.objects.units.get(to).map_or(0.0, |o| o.real("spd"));
+                self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, shown_as: Some(to), move_set: speed, disarm: 3, silence: true, ..Default::default() });
             }
             _ => return false,
         }

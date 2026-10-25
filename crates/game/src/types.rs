@@ -661,6 +661,12 @@ pub struct Buff {
     /// Attacks prevented (Cloud): 1 melee, 2 ranged.
     #[serde(default)]
     pub disarm: u8,
+    /// The unit shows as this type meanwhile (Polymorph, Hex), and moves at this
+    /// speed.
+    #[serde(default)]
+    pub shown_as: Option<crate::objects::Id>,
+    #[serde(default)]
+    pub move_set: f32,
     /// Spirit Link: the group the unit is linked in (0 for none) and the share of its
     /// damage the group takes.
     #[serde(default)]

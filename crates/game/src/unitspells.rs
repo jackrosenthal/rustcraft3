@@ -151,13 +151,11 @@ impl World {
                     _ => "DataB",
                 };
                 let to = id_from_str(&self.level_str(a, field, lvl));
-                let Some(back) = self.unit(target).map(|u| u.type_id) else { return true };
-                if self.objects.units.get(to).is_some() {
-                    self.change_type(target, to);
-                    if let Some(u) = self.unit_mut(target) {
-                        u.extra.morph_revert = Some((dur, back));
-                    }
-                    self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, ..Default::default() });
+                // The unit stays what it was, shown as the critter and moving at its
+                // speed, unable to attack or cast (measured: a polymorphed footman
+                // still reads as a footman with its own life and armor, at speed 100).
+                if let Some(speed) = self.objects.units.get(to).map(|o| o.real("spd")) {
+                    self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, shown_as: Some(to), move_set: speed, disarm: 3, silence: true, ..Default::default() });
                 }
             }
             // Invisibility.

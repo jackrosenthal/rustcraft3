@@ -658,6 +658,13 @@ impl World {
         }
     }
 
+    /// The type a unit shows as: a Polymorph's or Hex's critter while it lasts, else
+    /// its own.
+    pub fn shown_type(&self, h: u32) -> Option<Id> {
+        let u = self.unit(h)?;
+        Some(u.buffs.iter().find_map(|b| b.shown_as).unwrap_or(u.type_id))
+    }
+
     /// Steps along the unit's path; returns true when it has arrived.
     /// How fast a unit moves now: its speed with items, upgrades, and buffs, kept
     /// within its type's minSpd and maxSpd, or where those are 0 MinUnitSpeed and
@@ -667,6 +674,10 @@ impl World {
         let Some(u) = self.unit(h) else { return 0.0 };
         if u.move_speed <= 0.0 {
             return 0.0;
+        }
+        // A unit shown as a critter moves at the critter's speed.
+        if let Some(v) = u.buffs.iter().map(|b| b.move_set).find(|&v| v > 0.0) {
+            return v;
         }
         let ub = self.upgrade_bonus(u.owner, u.type_id);
         let speed = (u.move_speed + u.item_bonus.move_speed + ub.move_speed) * (1.0 + ub.move_pct) * self.buff_mods(h).0;

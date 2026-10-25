@@ -181,7 +181,9 @@ impl World {
                 // Starfall's first wave an interval after the cast (measured: a knight is
                 // struck at 1.88 seconds after the order, the cast point 0.5, then about
                 // every 1.5 at uneven gaps).
-                let next = if code == "AHdr" || code == "AEsf" { interval } else if code == "AUdd" { 0.33 } else { 0.0 };
+                // Earthquake's first strike 0.48 seconds after the cast (measured: a farm
+                // struck 0.80 seconds after the order, the Far Seer's cast point 0.3).
+                let next = if code == "AHdr" || code == "AEsf" { interval } else if code == "AUdd" { 0.33 } else if code == "AOeq" { 0.48 } else { 0.0 };
                 if let Some(u) = self.unit_mut(h) {
                     u.channel = Some(Channel { ability: a, level: lvl, target, x: px, y: py, elapsed: 0.0, duration, interval, next, waves, link, held: [0; 4], lanes: 0, ai_fails: 0, strikes: Vec::new(), struck: Vec::new() });
                 }

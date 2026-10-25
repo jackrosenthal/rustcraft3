@@ -92,9 +92,16 @@ impl World {
         if !u.is_hero || xp <= 0 {
             return;
         }
+        let before = u.hero_xp;
         u.hero_xp += xp;
         let owner = u.owner;
-        self.score_experience(owner, xp);
+        // No more than the top level needs (measured: 51,200 given reads 5,400, level
+        // 10's need, as MaxHeroLevel is 10).
+        let top = self.hero_xp_needed(self.misc_f32("MaxHeroLevel", 10.0) as i32);
+        let u = self.unit_mut(h).unwrap();
+        u.hero_xp = u.hero_xp.min(top.max(before));
+        let gained = u.hero_xp - before;
+        self.score_experience(owner, gained);
         self.level_up_from_xp(h);
     }
 
@@ -211,7 +218,8 @@ impl World {
             }
             total
         };
-        let added = new_total.round() as i32 - current;
+        let top = self.hero_xp_needed(max_level);
+        let added = (new_total.round() as i32).min(top.max(current)) - current;
         if added <= 0 {
             return;
         }

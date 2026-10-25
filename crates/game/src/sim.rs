@@ -99,6 +99,15 @@ pub fn weapon(w: &World, type_id: Id) -> Option<Weapon> {
 /// Weapon 1 or 2 of a unit type (UnitWeapons fields with the number; the missile art
 /// lists hold one entry per weapon).
 pub fn weapon_n(w: &World, type_id: Id, n: usize) -> Option<Weapon> {
+    if let Some(wp) = w.weapon_cache.borrow().get(&(type_id, n)) {
+        return wp.clone();
+    }
+    let wp = weapon_n_read(w, type_id, n);
+    w.weapon_cache.borrow_mut().insert((type_id, n), wp.clone());
+    wp
+}
+
+fn weapon_n_read(w: &World, type_id: Id, n: usize) -> Option<Weapon> {
     let o = w.objects.units.get(type_id)?;
     let f = |k: &str| format!("{k}{n}");
     let pick = |k: &str| -> String {

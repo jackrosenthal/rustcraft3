@@ -381,6 +381,9 @@ pub struct World {
     /// target searches look (a cache, rebuilt from the units, so not saved).
     #[serde(skip)]
     pub unit_grid: std::cell::RefCell<(f32, crate::HashMap<(i32, i32), Vec<u32>>)>,
+    /// Each type's weapons as its data gives them (fixed for a game, so kept once read).
+    #[serde(skip)]
+    pub weapon_cache: std::cell::RefCell<crate::HashMap<(crate::objects::Id, usize), Option<crate::sim::Weapon>>>,
     /// The AI's walking distances by their question (FUN_6f9baa40's and the
     /// expansions' path lengths), with the game time each was found: kept 30 seconds
     /// whatever the map does, as every computer asks the same at the same times.
@@ -668,6 +671,7 @@ impl World {
             profile: None,
             prof_find: Default::default(),
             unit_grid: std::cell::RefCell::new((f32::NAN, Default::default())),
+            weapon_cache: Default::default(),
             prof_cells: Default::default(),
             ai_walks: Default::default(),
             lightning_data: None,

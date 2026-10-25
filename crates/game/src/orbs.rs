@@ -111,10 +111,6 @@ impl World {
                     }
                 }
                 // Frost Attack (and the Frost Wyrm's Frost Breath): the MiscGame frost slow.
-                "Afra" | "Afrb" if !target_building => {
-                    let (mv, at) = (self.misc_f32("FrostMoveSpeedDecrease", 0.5), self.misc_f32("FrostAttackSpeedDecrease", 0.25));
-                    self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: dur, move_factor: -mv, attack_factor: -at, ..Default::default() });
-                }
                 // Feedback: burns mana (DataA, DataC for heroes) and deals it as damage
                 // (DataB, DataD); summons take DataE.
                 "Afbk" => {

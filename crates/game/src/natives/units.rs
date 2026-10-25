@@ -39,8 +39,14 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32) -> (f32, f32
         // structures.
         let prevent = w.objects.units.get(type_id).map(|o| o.str("preventPlace").to_ascii_lowercase()).unwrap_or_default();
         let mut forbid = 0u8;
+        // One that must stand on blight makes its own, and its ground's buildability
+        // goes unasked (measured: a Ziggurat and a Crypt made where unbuildable cells
+        // lie under their footprints stand there, at 992 and 960 for 1000, where a farm
+        // and an Ancient Protector move off).
+        let blight = w.objects.units.get(type_id).is_some_and(|o| o.str("requirePlace").to_ascii_lowercase().split(',').any(|t| t.trim() == "blighted"));
         for t in prevent.split(',').map(str::trim) {
             match t {
+                "unbuildable" if blight => {}
                 "unbuildable" => forbid |= crate::pathing::NO_BUILD,
                 "unwalkable" => forbid |= crate::pathing::NO_WALK,
                 _ => {}

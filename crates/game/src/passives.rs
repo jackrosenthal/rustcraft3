@@ -101,7 +101,22 @@ impl World {
                 self.apply_buff(target, b);
                 continue;
             }
-            if !matches!(code.as_str(), "Aspo" | "Apoi" | "Aven" | "Apo2") || building {
+            if building {
+                continue;
+            }
+            // Frost Attack: its slow as the attack lands, touching the target with a hit
+            // of nothing first (measured: a Nerubian Tower's every strike shows 0 then its
+            // damage).
+            if matches!(code.as_str(), "Afra" | "Afrb") {
+                self.spell_damage(vm, h, target, 0.0);
+                let buff = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", l)).unwrap_or_default();
+                let id = id_from_str(buff.split(',').next().unwrap_or("").trim());
+                let dur = if self.hero_duration(target) { self.data(a, "HeroDur", l) } else { self.data(a, "Dur", l) };
+                let (mv, at) = (self.misc_f32("FrostMoveSpeedDecrease", 0.5), self.misc_f32("FrostAttackSpeedDecrease", 0.25));
+                self.apply_buff(target, Buff { id, ability: a, level: l, caster: h, remaining: dur, move_factor: -mv, attack_factor: -at, ..Default::default() });
+                continue;
+            }
+            if !matches!(code.as_str(), "Aspo" | "Apoi" | "Aven" | "Apo2") {
                 continue;
             }
             self.spell_damage(vm, h, target, 0.0);

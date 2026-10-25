@@ -1525,7 +1525,11 @@ impl World {
                     continue;
                 }
                 t.remaining -= dt;
-                if t.remaining <= 0.0 {
+                // What f32 leaves of a timeout after its steps is no time: the original's
+                // timers expire on the step their timeout ends (measured: one started for
+                // 2 seconds with another reads 2.00 of the other's as it expires; ours
+                // read 2.02, 2 less a hundred steps of 0.02 leaving a millionth).
+                if t.remaining <= 1e-4 {
                     if t.periodic && t.timeout > 0.0 {
                         // A resumed run done, the timer goes on by its timeout.
                         t.period = t.timeout;

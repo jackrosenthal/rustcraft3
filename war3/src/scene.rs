@@ -718,19 +718,30 @@ impl Scene {
                 if let Err(e) = g.config() {
                     log::error!("config: {e:#}");
                 }
-                let mut first = true;
+                let mut users = 0;
                 let res = match lobby {
                     Some(slots) => g.start_lobby(slots, setup_flags),
-                    // Without a setup screen: the local player in the first user slot and
-                    // computers in the rest.
-                    None => g.start(|_, controller| {
-                        if controller == w3_game::types::map_control::USER && first {
-                            first = false;
-                            w3_game::SlotFill::Local
-                        } else {
-                            w3_game::SlotFill::Computer
-                        }
-                    }),
+                    // Without a setup screen: a campaign's local player in the first user
+                    // slot and computers in the rest; another map, as the original's
+                    // -loadfile, the local player in the first user slot and a computer in
+                    // the second, each at the start location of its number, and the other
+                    // user slots empty (measured: Player(1) a computer at start 1, Player(2)
+                    // and Player(3) empty).
+                    None => {
+                        g.world.fixed_starts = !campaign;
+                        g.start(|_, controller| {
+                            if controller != w3_game::types::map_control::USER {
+                                return w3_game::SlotFill::Computer;
+                            }
+                            users += 1;
+                            match users {
+                                1 => w3_game::SlotFill::Local,
+                                2 => w3_game::SlotFill::Computer,
+                                _ if campaign => w3_game::SlotFill::Computer,
+                                _ => w3_game::SlotFill::Empty,
+                            }
+                        })
+                    }
                 };
                 if let Err(e) = res {
                     log::error!("main: {e:#}");

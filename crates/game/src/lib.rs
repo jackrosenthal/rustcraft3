@@ -398,7 +398,13 @@ impl Game {
             }
         }
         // The players take their start locations by the map's placement.
-        self.world.place_start_locations();
+        if self.world.fixed_starts {
+            for p in self.world.players.iter_mut().take(types::PLAYER_NEUTRAL_AGGRESSIVE as usize) {
+                p.start_location = p.id as i32;
+            }
+        } else {
+            self.world.place_start_locations();
+        }
         // Neutral players always play, as creeps (MAP_CONTROL_CREEP, as game.dll sets
         // all four).
         for i in types::PLAYER_NEUTRAL_AGGRESSIVE..types::PLAYER_COUNT as u8 {

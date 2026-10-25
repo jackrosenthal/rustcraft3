@@ -175,6 +175,10 @@ pub struct World {
     pub game_type_selected: i32,
     pub game_types_supported: i32,
     pub map_flags: i32,
+    /// Each player takes the start location of its own number (a map loaded
+    /// directly, as the original's -loadfile does).
+    #[serde(default)]
+    pub fixed_starts: bool,
     pub game_speed: i32,
     pub difficulty: i32,
     pub camera_bounds: [f32; 8],
@@ -623,6 +627,7 @@ impl World {
             game_type_selected: 0,
             game_types_supported: 0,
             map_flags: 0,
+            fixed_starts: false,
             game_speed: 2,
             difficulty: 1,
             camera_bounds: [0.0; 8],

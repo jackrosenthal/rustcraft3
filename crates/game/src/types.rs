@@ -99,7 +99,9 @@ impl Player {
             controller: map_control::NONE,
             slot_state: slot_state::EMPTY,
             start_location: -1,
-            team: 0,
+            // Each player on a team of its own unless set (measured: GetPlayerTeam is 1 for
+            // Player(1) on a map whose script sets none).
+            team: id as i32,
             handicap: 1.0,
             handicap_xp: 1.0,
             on_score_screen: true,

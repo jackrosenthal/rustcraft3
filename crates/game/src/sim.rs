@@ -2785,7 +2785,9 @@ impl World {
             u.carry_lumber = (u.carry_lumber + per).min(lumber_cap.max(1));
             restart_anim(u, "attack lumber");
             let owner = u.owner;
-            let damage = if self.slow_chopping(owner) { 0.1 } else { 1.0 };
+            // A chop takes as much of the tree's life as the lumber it gives (FUN_6f405110;
+            // measured: a ghoul, Ahrl's 2, fells a 50-life tree in 25 chops, a peasant in 50).
+            let damage = if self.slow_chopping(owner) { 0.1 } else { per as f32 };
             let mut died = false;
             if let Some(Obj::Destructable(d)) = self.handles.get_mut(target) {
                 d.life -= damage;

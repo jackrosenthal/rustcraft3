@@ -390,7 +390,11 @@ impl World {
             hp += ub.hp_regen + u.item_bonus.life_regen;
             if u.is_hero {
                 hp += (u.str_ + u.item_bonus.str_).floor() * str_regen;
-                mp += (u.int + u.item_bonus.int).floor() * int_regen;
+                // A hero's mana comes from its intelligence alone, without its type's
+                // regenMana (measured: a Paladin of 17 intelligence regains 8.50 in 10
+                // seconds, its regenMana 0.01 not added; its life 13.50, regenHP 0.25
+                // with 22 strength's 1.1).
+                mp = (mp - o.real("regenMana")) + (u.int + u.item_bonus.int).floor() * int_regen;
             }
             let u = self.unit_mut(h).unwrap();
             u.life = (u.life + hp * dt).min(u.max_life);

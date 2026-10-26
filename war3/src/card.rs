@@ -51,6 +51,9 @@ pub struct Button {
     pub requires: String,
     /// The button of the unit's current order, under CommandButtonActiveHighlight.
     pub active: bool,
+    /// An ability cooling down: the seconds left and its whole cooldown, for
+    /// CommandButtonCooldown.
+    pub cooldown: Option<(f32, f32)>,
 }
 
 impl Button {
@@ -60,7 +63,7 @@ impl Button {
     }
 
     fn new(x: u32, y: u32, icon: String, hotkey: Option<char>, action: Action, enabled: bool) -> Button {
-        Button { x, y, icon, hotkey, action, enabled, tip: String::new(), ubertip: String::new(), costs: [0; 4], autocast: None, requires: String::new(), active: false }
+        Button { x, y, icon, hotkey, action, enabled, tip: String::new(), ubertip: String::new(), costs: [0; 4], autocast: None, requires: String::new(), active: false, cooldown: None }
     }
 
     /// Disables the button and lists `id`'s requirements (at research level `level`)
@@ -338,6 +341,11 @@ impl Commands {
         let off = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Orderoff")));
         if let (Some(on), Some(off)) = (on, off) {
             button.autocast = Some((on, off, u.autocast.contains(&a)));
+        }
+        let left = u.cooldowns.get(&a).copied().unwrap_or(0.0);
+        let total = w.data(a, "Cool", level as u32);
+        if left > 0.0 && total > 0.0 {
+            button.cooldown = Some((left, total));
         }
         out.push(button);
         // Call to Arms shows its second button (Unbuttonpos, Unart, Unorder: Back to

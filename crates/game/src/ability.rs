@@ -1001,8 +1001,16 @@ impl World {
         }
         if fired && elapsed >= castpt + backsw - 1e-4 {
             u.casting = None;
-            // An autocast resumes what it interrupted.
-            u.action = u.extra.resume.take().unwrap_or(Action::Idle);
+            // An autocast resumes what it interrupted; otherwise the order is done
+            // (measured: a Paladin that has cast Divine Shield shows Stop lit, as an
+            // idle unit does).
+            match u.extra.resume.take() {
+                Some(r) => u.action = r,
+                None => {
+                    u.action = Action::Idle;
+                    u.order = Order::default();
+                }
+            }
             let ctx = EventCtx { target_unit: target, spell_ability: crate::objects::id_to_int(a), order_x: goal.0, order_y: goal.1, ..Default::default() };
             self.queue_unit_event(h, EVENT_PLAYER_UNIT_SPELL_FINISH, EVENT_UNIT_SPELL_FINISH, ctx.clone());
             self.queue_unit_event(h, EVENT_PLAYER_UNIT_SPELL_ENDCAST, EVENT_UNIT_SPELL_ENDCAST, ctx);

@@ -297,7 +297,11 @@ struct DrawUniform {
     flags: u32,
     /// The instance's cell in the light grid (`lights::NO_LIGHT` outside it).
     light_cell: u32,
-    _pad: [u32; 55],
+    _pad0: [u32; 3],
+    /// The texture animation's rotation and scaling of the coordinates (a 2x2 matrix,
+    /// columns first), before uv_offset.
+    uv_mat: [f32; 4],
+    _pad: [u32; 48],
 }
 
 const DRAW_ALIGN: u64 = 256;
@@ -688,12 +692,20 @@ impl ModelRenderer {
                     depth_write: layer.shading & shading::NO_DEPTH_SET == 0 && !blended,
                 };
                 let tint = inst.tint;
-                // Texture animation: the translation track scrolls the coordinates.
-                let uv_offset = layer
-                    .texture_anim_id
-                    .and_then(|i| mdx.texture_anims.get(i as usize))
-                    .map(|ta| anim::sample(ta.vec3(b"KTAT"), &time, globals, [0.0; 3]))
-                    .map_or([0.0, 0.0], |t| [t[0], t[1]]);
+                // Texture animation: the coordinates are scaled (KTAS) and turned (KTAR)
+                // about their origin, then moved (KTAT), as the cooldown indicator's
+                // sweep turns its texture.
+                let ta = layer.texture_anim_id.and_then(|i| mdx.texture_anims.get(i as usize));
+                let uv_offset = ta.map(|ta| anim::sample(ta.vec3(b"KTAT"), &time, globals, [0.0; 3])).map_or([0.0, 0.0], |t| [t[0], t[1]]);
+                let uv_mat = ta.map_or([1.0, 0.0, 0.0, 1.0], |ta| {
+                    let q = anim::sample(ta.quat(b"KTAR"), &time, globals, [0.0, 0.0, 0.0, 1.0]);
+                    let s = anim::sample(ta.vec3(b"KTAS"), &time, globals, [1.0; 3]);
+                    let m = Mat4::from_quat(glam::Quat::from_array(q).normalize()) * Mat4::from_scale(Vec3::from_array(s));
+                    // The coordinates turn the other way from the model's own rotations:
+                    // the transpose (measured: the cooldown indicator 28% through shows
+                    // its first quarter clear, top right, as the original's does).
+                    [m.x_axis.x, m.y_axis.x, m.x_axis.y, m.y_axis.y]
+                });
                 self.draws.push(Draw {
                     model: model.clone(),
                     geoset: g.geoset,
@@ -706,7 +718,9 @@ impl ModelRenderer {
                         bone_offset,
                         flags,
                         light_cell: inst.light_cell,
-                        _pad: [0; 55],
+                        _pad0: [0; 3],
+                        uv_mat,
+                        _pad: [0; 48],
                     },
                     depth: if blended { depth } else { 0.0 },
                     priority: mat.priority_plane * 16 + li as i32,

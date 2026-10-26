@@ -30,6 +30,7 @@ struct Draw {
     bone_offset: u32,
     flags: u32,
     light_cell: u32,
+    uv_mat: vec4<f32>,
 };
 
 struct Light {
@@ -123,7 +124,7 @@ fn vs_main(v: VsIn) -> VsOut {
     p /= f32(count);
     var out: VsOut;
     out.clip = globals.view_proj * vec4<f32>(p.xyz, 1.0);
-    out.uv = v.uv + draw.uv_offset;
+    out.uv = mat2x2<f32>(draw.uv_mat.xy, draw.uv_mat.zw) * v.uv + draw.uv_offset;
     out.normal = normalize(n);
     out.world = p.xyz;
     return out;

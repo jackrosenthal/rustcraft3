@@ -1715,6 +1715,11 @@ impl Hud {
         self.card.iter().filter(|b| b.autocast.is_some_and(|a| a.2)).map(|b| (b.x, b.y, self.slot_rect(b.x, b.y))).collect()
     }
 
+    /// Buttons whose ability is cooling down, with the share of its cooldown gone.
+    pub fn cooldown_slots(&self) -> Vec<(u32, u32, w3_ui::Rect, f32)> {
+        self.card.iter().filter_map(|b| b.cooldown.map(|(left, total)| (b.x, b.y, self.slot_rect(b.x, b.y), (1.0 - left / total).clamp(0.0, 1.0)))).collect()
+    }
+
     pub fn button_at(&self, x: f32, y: f32) -> Option<&crate::card::Button> {
         self.card.iter().find(|b| self.slot_rect(b.x, b.y).contains(x, y))
     }

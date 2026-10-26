@@ -19,7 +19,20 @@ use crate::world::{NativeFn, World};
 /// 1280, forges at 1728, 1216 and 1760, 1600 at 1760, 1248 and 1760, 1632, all as
 /// snapped; barracks made among trees at 3400, 2400 stand clear of them, at 3776, 2112
 /// there, where the search here finds 3200, 2560; a footman among them moves 76 out).
-pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32) -> (f32, f32) {
+/// The cells of one ring of the placement search, in the order the original's walks it
+/// (FUN_6f14b070 and its three turns): the ring is ymin, xmin, ymax, xmax (the maxima
+/// past its last cells).
+fn ring_order(mode: i32, r0: i32, r1: i32, r2: i32, r3: i32) -> Vec<(i32, i32)> {
+    let top: Vec<(i32, i32)> = (r1..=r3 - 2).rev().map(|x| (x, r2 - 1)).collect();
+    let left: Vec<(i32, i32)> = (r0..=r2 - 2).rev().map(|y| (r1, y)).collect();
+    let bottom: Vec<(i32, i32)> = (r1 + 1..=r3 - 1).map(|x| (x, r0)).collect();
+    let right: Vec<(i32, i32)> = (r0 + 1..=r2 - 1).map(|y| (r3 - 1, y)).collect();
+    let sides = [top, left, bottom, right];
+    let start = mode.rem_euclid(4) as usize;
+    (0..4).flat_map(|i| sides[(start + i) % 4].clone()).collect()
+}
+
+pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32, facing: f32) -> (f32, f32) {
     let Some(o) = w.objects.units.get(type_id) else { return (x, y) };
     if w.pathing.is_none() {
         return (x, y);
@@ -56,35 +69,38 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32) -> (f32, f32
         // footprint (blue; measured: an Ancient of War stands where none of its 12x12
         // cells is unbuildable).  Other structures don't count yet: the original moves
         // a town hall made on a start location by them, where to is not yet known.
+        // A town hall stands at least 768 from a gold mine (measured: one asked for 512 to
+        // 704 north of a mine is moved 768 away, a barracks not; one west of a mine lands
+        // 781 off).
+        let hall = w.objects.units.get(type_id).is_some_and(|o| o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case("townhall")));
+        let mines: Vec<(f32, f32)> = if hall {
+            w.unit_order.iter().filter_map(|&h| w.unit(h)).filter(|u| !u.dead && w.ability_with_code(u.handle, "Agld").is_some()).map(|u| (u.x, u.y)).collect()
+        } else {
+            Vec::new()
+        };
         let clear = |w: &mut World, px: f32, py: f32| {
-            let cells = w.pathing_cells(&tex, px, py, 0.0);
+            if mines.iter().any(|&(mx, my)| (mx - px).hypot(my - py) < 768.0) {
+                return false;
+            }
             let whole = w.build_cells(&tex, px, py, 0.0);
             let p = w.pathing.as_ref().unwrap();
-            let _ = &cells;
             whole.iter().all(|&c| p.clear_of_destructables(c) && p.index_pub(c).is_some_and(|i| p.flags[i] & forbid == 0) && (forbid & crate::pathing::NO_BUILD == 0 || !p.under_structure(c)))
         };
         if clear(w, sx, sy) {
             return (sx, sy);
         }
-        for r in 1..=16i32 {
-            let mut best: Option<(f32, (f32, f32))> = None;
-            for dy in -r..=r {
-                for dx in -r..=r {
-                    if dx.abs() != r && dy.abs() != r {
-                        continue;
-                    }
-                    let (px, py) = (sx + dx as f32 * 64.0, sy + dy as f32 * 64.0);
-                    let d = (px - sx).hypot(py - sy);
-                    if best.is_some_and(|b| b.0 <= d) {
-                        continue;
-                    }
-                    if clear(w, px, py) {
-                        best = Some((d, (px, py)));
-                    }
+        // The search turns with the facing asked for, a quarter turn a side (measured:
+        // structures made facing 0 around a stand of trees and facing 270 around a gold
+        // mine land where the original's do, each walk only with its own facing).
+        let mode = ((facing / 90.0).round() as i32).rem_euclid(4);
+        let (cx, cy) = ((x / 32.0).floor() as i32, (y / 32.0).floor() as i32);
+        for k in 1..=64i32 {
+            let (r0, r1, r2, r3) = (cy - k, cx - k, cy + 1 + k, cx + 1 + k);
+            for (px, py) in ring_order(mode, r0, r1, r2, r3) {
+                let (ax, ay) = w.snap_placement(type_id, px as f32 * 32.0 + 16.0, py as f32 * 32.0 + 16.0);
+                if clear(w, ax, ay) {
+                    return w.clamp_to_map(ax, ay);
                 }
-            }
-            if let Some((_, p)) = best {
-                return w.clamp_to_map(p.0, p.1);
             }
         }
         return (sx, sy);
@@ -182,7 +198,7 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
     // On the map, facing within a turn (measured: 400 reads 40, -90 reads 270).
     let (x, y) = w.clamp_to_map(x, y);
     let facing = facing.rem_euclid(360.0);
-    let (x, y) = placed_at(w, type_id, x, y);
+    let (x, y) = placed_at(w, type_id, x, y, facing);
     let Some(o) = w.objects.units.get(type_id) else {
         log::warn!("CreateUnit: unknown unit type {}", crate::objects::id_str(type_id));
         return 0;

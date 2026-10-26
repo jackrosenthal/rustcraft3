@@ -83,7 +83,7 @@ impl World {
         let (x, y) = match at {
             Some((px, py)) => {
                 let type_id = self.unit(h).map(|u| u.type_id).unwrap_or_default();
-                crate::natives::units::placed_at(self, type_id, px, py)
+                crate::natives::units::placed_at(self, type_id, px, py, 0.0)
             }
             None if self.unit(transport).is_some() => self.spawn_point_pub(transport, r),
             None => self.unit(h).map(|u| (u.x, u.y)).unwrap_or_default(),

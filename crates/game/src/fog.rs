@@ -51,20 +51,37 @@ pub struct FogMap {
     pub explored: Vec<Vec<bool>>,
     /// Per player: cells seen now.
     pub visible: Vec<Vec<bool>>,
-    /// Cliff level per cell, for line of sight.
-    pub level: Vec<u8>,
+    /// Cliff level of each terrain corner, (width + 1) by (height + 1).
+    pub corners: Vec<u8>,
+    /// Each cell's height for line of sight: its tile's highest corner level times 128,
+    /// raised by the occluders standing in it (CFogOfWarMap's height grid,
+    /// FUN_6f24fff0, FUN_6f2517f0).
+    pub sight_height: Vec<i16>,
+    /// The occluders raising `sight_height`: handle, cell, the cliff level under it
+    /// times 128, and the height it set.
+    pub occluders: Vec<(u32, usize, i16, i16)>,
     pub timer: f32,
 }
 
 impl FogMap {
-    pub fn new(bounds: Rect, levels: impl Fn(f32, f32) -> u8) -> FogMap {
+    /// `corner_level(x, y)`: the cliff level of terrain corner (x, y).
+    pub fn new(bounds: Rect, corner_level: impl Fn(usize, usize) -> u8) -> FogMap {
         let width = ((bounds.max_x - bounds.min_x) / FOG_CELL).ceil().max(1.0) as usize;
         let height = ((bounds.max_y - bounds.min_y) / FOG_CELL).ceil().max(1.0) as usize;
         let origin = (bounds.min_x, bounds.min_y);
-        let mut level = vec![0; width * height];
+        let mut corners = vec![0; (width + 1) * (height + 1)];
+        for y in 0..=height {
+            for x in 0..=width {
+                corners[y * (width + 1) + x] = corner_level(x, y);
+            }
+        }
+        // A cell's height is the highest level among its sixteen pathing squares, each
+        // taking the level of its nearest corner: the highest of its tile's corners.
+        let mut sight_height = vec![0; width * height];
         for y in 0..height {
             for x in 0..width {
-                level[y * width + x] = levels(origin.0 + (x as f32 + 0.5) * FOG_CELL, origin.1 + (y as f32 + 0.5) * FOG_CELL);
+                let c = |dx: usize, dy: usize| corners[(y + dy) * (width + 1) + x + dx];
+                sight_height[y * width + x] = c(0, 0).max(c(1, 0)).max(c(0, 1)).max(c(1, 1)) as i16 * 128;
             }
         }
         FogMap {
@@ -73,9 +90,19 @@ impl FogMap {
             origin,
             explored: vec![vec![false; width * height]; PLAYER_COUNT],
             visible: vec![vec![false; width * height]; PLAYER_COUNT],
-            level,
+            corners,
+            sight_height,
+            occluders: Vec::new(),
             timer: 0.0,
         }
+    }
+
+    /// The cliff level at a point: that of the corner nearest its pathing square
+    /// (FUN_6f78bc90, FUN_6f750100).
+    pub fn level_at(&self, x: f32, y: f32) -> u8 {
+        let corner = |v: f32, o: f32, n: usize| ((((v - o) / 32.0).floor() as i32 + 2).div_euclid(4)).clamp(0, n as i32) as usize;
+        let (cx, cy) = (corner(x, self.origin.0, self.width), corner(y, self.origin.1, self.height));
+        self.corners.get(cy * (self.width + 1) + cx).copied().unwrap_or(0)
     }
 
     pub fn cell(&self, x: f32, y: f32) -> Option<usize> {
@@ -184,7 +211,7 @@ impl World {
             }
             let flying = o.str("movetp").eq_ignore_ascii_case("fly");
             let fog = self.fog.as_ref().unwrap();
-            let lvl = fog.cell(u.x, u.y).map_or(0, |c| fog.level[c]);
+            let lvl = fog.level_at(u.x, u.y);
             let crippled = self.crippled.get(&u.owner).copied().unwrap_or(0);
             sources.push((u.owner, u.x, u.y, r, lvl, flying, u.extra.shared_vision | crippled));
         }
@@ -210,71 +237,87 @@ impl World {
             }
         }
         // Standing destructables with an occlusion height (trees, line of sight
-        // blockers) hide what lies beyond them from the ground.
-        let (fw, fh) = { let f = self.fog.as_ref().unwrap(); (f.width, f.height) };
-        let mut occluded = vec![false; fw * fh];
-        let mut occludes: crate::HashMap<crate::objects::Id, bool> = crate::HashMap::default();
+        // blockers) raise their cell to the cliff level under them times 128 plus that
+        // height, keeping what is higher; one that falls or loses its height sets the
+        // cell back to its own cliff level when it was the highest there, and
+        // SetDestructableOccluderHeight sets the cell outright (FUN_6f2517f0).
+        let mut standing: Vec<(u32, f32, bool)> = Vec::new();
+        let mut occludes: crate::HashMap<crate::objects::Id, f32> = crate::HashMap::default();
         for &h in &self.destructable_order {
             let Some(Obj::Destructable(d)) = self.handles.get(h) else { continue };
             if d.life <= 0.0 {
                 continue;
             }
             let occ = match d.occluder_height {
-                Some(h) => h > 0.0,
-                None => *occludes.entry(d.type_id).or_insert_with(|| self.objects.destructables.get(d.type_id).is_some_and(|od| od.real("occH") > 0.0)),
+                Some(v) => v,
+                None => *occludes.entry(d.type_id).or_insert_with(|| self.objects.destructables.get(d.type_id).map_or(0.0, |od| od.real("occH"))),
             };
-            if occ {
-                if let Some(c) = self.fog.as_ref().unwrap().cell(d.x, d.y) {
-                    occluded[c] = true;
-                }
+            if occ > 0.0 {
+                standing.push((h, occ, d.occluder_height.is_some()));
             }
+        }
+        {
+            let fog = self.fog.as_mut().unwrap();
+            let mut applied = std::mem::take(&mut fog.occluders);
+            applied.retain(|&(h, c, base, value)| {
+                let keep = standing.iter().any(|&(s, occ, _)| s == h && base + occ as i32 as i16 == value);
+                if !keep && fog.sight_height[c] <= value {
+                    fog.sight_height[c] = base;
+                }
+                keep
+            });
+            for &(h, occ, set) in &standing {
+                if applied.iter().any(|&(a, ..)| a == h) {
+                    continue;
+                }
+                let Some(Obj::Destructable(d)) = self.handles.get(h) else { continue };
+                let Some(c) = fog.cell(d.x, d.y) else { continue };
+                let base = fog.level_at(d.x, d.y) as i16 * 128;
+                let value = base + occ as i32 as i16;
+                fog.sight_height[c] = if set { value } else { fog.sight_height[c].max(value) };
+                applied.push((h, c, base, value));
+            }
+            fog.occluders = applied;
         }
         let fog = self.fog.as_mut().unwrap();
         for v in fog.visible.iter_mut() {
             v.fill(false);
         }
         let w = fog.width;
-        let table = sight_table();
-        let mut shadow = vec![false; table.len()];
+        let mut flags: Vec<u8> = Vec::new();
         for (owner, x, y, r, lvl, flying, shared) in sources {
-            let mut cells = Vec::new();
             let Some(from) = fog.cell(x, y) else { continue };
             let (ox, oy) = ((from % w) as i32, (from / w) as i32);
-            // Cells outward from the viewer's: each is shadowed when the cell one step
-            // nearer the viewer is shadowed or holds an occluder.
-            // The sight in whole cells, rounded; a cell is seen when its offset from the
-            // viewer's cell (dx, dy) has dx² + dy² < (cells + 1/2)² (measured: a peasant,
-            // 800 or 6.25 cells, sees the cell 6 over and 2 up and not 6 and 3, nor 7
-            // and 0; a footman, 1400, sees footmen 1499 away east and not 1478 away
-            // northeast; a gryphon rider, 1600, sees them 1720 away).
-            let span = (r / FOG_CELL + 0.5).floor() as u32;
-            let limit = span * span + span;
-            for (k, &(dx, dy, d2, parent)) in table.iter().enumerate() {
-                if d2 > limit {
-                    break;
-                }
-                let (cx, cy) = (ox + dx as i32, oy + dy as i32);
-                let inside = cx >= 0 && cy >= 0 && (cx as usize) < fw && (cy as usize) < fh;
-                let c = if inside { cy as usize * w + cx as usize } else { usize::MAX };
-                shadow[k] = k > 0 && {
-                    let p = parent as usize;
-                    let (pdx, pdy) = (table[p].0 as i32, table[p].1 as i32);
-                    let pc = ((oy + pdy) as usize).wrapping_mul(w).wrapping_add((ox + pdx) as usize);
-                    shadow[p] || (p > 0 && occluded.get(pc).copied().unwrap_or(false))
-                };
-                if !inside {
+            // The sight in whole cells, rounded (measured: a peasant, 800 or 6.25 cells,
+            // sees the cell 6 over and 2 up and not 6 and 3, nor 7 and 0; a footman,
+            // 1400, sees footmen 1499 away east and not 1478 away northeast; a gryphon
+            // rider, 1600, sees them 1720 away).
+            let span = (r / FOG_CELL + 0.5).floor() as usize;
+            let table = sight_table(span);
+            // A ground viewer's eye is at its cliff level times 128 (FUN_6f252340).  The
+            // cells about it are seen; each further cell is seen unless either of its
+            // two cells toward the viewer is shadowed or stands above the eye, and is
+            // shadowed itself on the same terms.  Cells off the map shadow nothing but
+            // what lies past them, which is off the map too.
+            let eye = lvl as i32 * 128;
+            flags.clear();
+            flags.resize(table.len(), 0);
+            let mut cells = Vec::new();
+            for (k, n) in table.iter().enumerate() {
+                let (cx, cy) = (ox + n.dx as i32, oy + n.dy as i32);
+                let inside = cx >= 0 && cy >= 0 && (cx as usize) < fog.width && (cy as usize) < fog.height;
+                let inherited = if k < 9 { 0 } else { flags[n.a as usize] | flags[n.b as usize] };
+                if inherited & 2 != 0 || !inside {
+                    flags[k] = inherited | 2;
                     continue;
                 }
-                cells.push((c, shadow[k]));
+                let c = cy as usize * w + cx as usize;
+                if flying || inherited & 1 == 0 {
+                    cells.push(c);
+                }
+                flags[k] = inherited | (eye < fog.sight_height[c] as i32) as u8;
             }
-            for (c, shaded) in cells {
-                // Ground units do not see onto higher cliff levels, nor past occluders.
-                if !flying && fog.level[c] > lvl {
-                    continue;
-                }
-                if !flying && shaded {
-                    continue;
-                }
+            for c in cells {
                 for &p in &viewers[owner as usize % PLAYER_COUNT] {
                     fog.visible[p][c] = true;
                     fog.explored[p][c] = true;
@@ -427,29 +470,116 @@ impl World {
     }
 }
 
-/// Offsets from a viewer's cell out to 40 cells, nearest first: (dx, dy, squared
-/// distance, the entry one step back toward the viewer).
-fn sight_table() -> &'static [(i8, i8, u32, u16)] {
-    static TABLE: std::sync::OnceLock<Vec<(i8, i8, u32, u16)>> = std::sync::OnceLock::new();
-    TABLE.get_or_init(|| {
-        const R: i32 = 40;
-        let mut v: Vec<(i8, i8, u32)> = Vec::new();
-        for dy in -R..=R {
-            for dx in -R..=R {
-                let d2 = (dx * dx + dy * dy) as u32;
-                if d2 <= (R * R) as u32 {
-                    v.push((dx as i8, dy as i8, d2));
+/// One cell of a sight mask: its offset from the viewer's cell and the two mask
+/// entries nearer the viewer whose shadows it takes.
+#[derive(Clone, Copy)]
+struct SightNode {
+    dx: i16,
+    dy: i16,
+    a: u16,
+    b: u16,
+}
+
+/// The sight mask of a radius in cells, as CFogMask builds it (FUN_6f24de40): the
+/// cells about the viewer, then ring by ring outward the cells of eight octants out to
+/// the edge of a midpoint circle (FUN_6f250e00, FUN_6f24fad0).  Each octant runs along
+/// an axis, a cell `s` out and `j` aside taking its shadows from the cells `s - 1` out
+/// and `j` and `j - 1` aside.  The second four octants start a cell aside of the axis
+/// and stop a cell short of the first four, which leaves the masks lopsided as the
+/// original's are (measured: a peasant sees one cell further west than east 5 cells
+/// north, and further east than west 5 cells south).
+fn sight_table(r: usize) -> std::sync::Arc<Vec<SightNode>> {
+    static TABLES: std::sync::Mutex<Vec<Option<std::sync::Arc<Vec<SightNode>>>>> = std::sync::Mutex::new(Vec::new());
+    let mut tables = TABLES.lock().unwrap();
+    if tables.len() <= r {
+        tables.resize(r + 1, None);
+    }
+    tables[r].get_or_insert_with(|| std::sync::Arc::new(build_sight_table(r))).clone()
+}
+
+/// The circle's half-width on each row from the top, 2r + 1 rows.
+fn circle_spans(r: i32) -> Vec<i32> {
+    let mut widths = Vec::new();
+    let (mut c, mut x, mut d, mut e, mut y) = (6, 0, 3 - 2 * r, 10 - 4 * r, r);
+    loop {
+        if d < 0 {
+            d += c;
+            e += 4;
+        } else {
+            widths.push(x);
+            y -= 1;
+            d += e;
+            e += 8;
+        }
+        c += 4;
+        x += 1;
+        if x > y {
+            break;
+        }
+    }
+    let mut spans = vec![0; (2 * r + 1) as usize];
+    spans[r as usize] = r;
+    let (mut lo, mut hi, mut next, mut p) = (r - 1, r + 1, 1, r);
+    for (k, &u) in widths.iter().enumerate() {
+        spans[k] = u;
+        spans[(2 * r) as usize - k] = u;
+        while next <= u {
+            spans[lo as usize] = p;
+            spans[hi as usize] = p;
+            lo -= 1;
+            hi += 1;
+            next += 1;
+        }
+        p -= 1;
+    }
+    spans
+}
+
+fn build_sight_table(r: usize) -> Vec<SightNode> {
+    const OCTANTS: [((i16, i16), (i16, i16)); 8] = [
+        ((0, -1), (1, 0)),
+        ((0, 1), (-1, 0)),
+        ((1, 0), (0, 1)),
+        ((-1, 0), (0, -1)),
+        ((0, -1), (-1, 0)),
+        ((0, 1), (1, 0)),
+        ((1, 0), (0, -1)),
+        ((-1, 0), (0, 1)),
+    ];
+    let r = r.max(1) as i32;
+    let spans = circle_spans(r);
+    let size = 2 * r + 1;
+    let mut index = vec![u16::MAX; (size * size) as usize];
+    let at = |dx: i32, dy: i32| ((dy + r) * size + dx + r) as usize;
+    let mut nodes = Vec::new();
+    for dy in -1..=1 {
+        for dx in -1..=1 {
+            index[at(dx, dy)] = nodes.len() as u16;
+            nodes.push(SightNode { dx: dx as i16, dy: dy as i16, a: 0, b: 0 });
+        }
+    }
+    for s in 1..=r {
+        let w = spans[(r - s) as usize];
+        for (o, &((ax, ay), (px, py))) in OCTANTS.iter().enumerate() {
+            let (ax, ay, px, py) = (ax as i32, ay as i32, px as i32, py as i32);
+            let (first, last) = if o > 3 { (1, s.min(w) - 1) } else { (0, s.min(w)) };
+            for j in first..=last {
+                let (cx, cy) = (ax * s + px * j, ay * s + py * j);
+                if index[at(cx, cy)] != u16::MAX {
+                    continue;
                 }
+                let (ix, iy) = (cx - ax, cy - ay);
+                let (a, b) = if j == 0 {
+                    ((ix, iy), (ix, iy))
+                } else if j == s {
+                    ((ix - px, iy - py), (ix - px, iy - py))
+                } else {
+                    ((ix, iy), (ix - px, iy - py))
+                };
+                index[at(cx, cy)] = nodes.len() as u16;
+                nodes.push(SightNode { dx: cx as i16, dy: cy as i16, a: index[at(a.0, a.1)], b: index[at(b.0, b.1)] });
             }
         }
-        v.sort_by_key(|e| (e.2, e.1, e.0));
-        let index: std::collections::HashMap<(i8, i8), usize> = v.iter().enumerate().map(|(k, e)| ((e.0, e.1), k)).collect();
-        v.iter()
-            .map(|&(dx, dy, d2)| {
-                let d = (d2 as f32).sqrt();
-                let (px, py) = if d <= 1.0 { (0, 0) } else { ((dx as f32 * (d - 1.0) / d).round() as i8, (dy as f32 * (d - 1.0) / d).round() as i8) };
-                (dx, dy, d2, index.get(&(px, py)).copied().unwrap_or(0) as u16)
-            })
-            .collect()
-    })
+    }
+    nodes
 }

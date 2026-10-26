@@ -207,7 +207,7 @@ impl Game {
             let b = world.map_bounds;
             world.playable = Rect { min_x: b.min_x + left, max_x: b.max_x - right, min_y: b.min_y + bottom, max_y: b.max_y - top };
             let th = world.terrain_heights.as_ref().unwrap();
-            world.fog = Some(fog::FogMap::new(world.map_bounds, |x, y| th.level_at(x, y)));
+            world.fog = Some(fog::FogMap::new(world.map_bounds, |x, y| th.layers.get(y.min(th.height as usize - 1) * th.width as usize + x.min(th.width as usize - 1)).copied().unwrap_or(0)));
         }
         if let (Ok(wpm), Some(t)) = (chain.read("war3map.wpm"), world.terrain_heights.as_ref()) {
             world.pathing = pathing::PathingMap::parse(&wpm, t.offset);

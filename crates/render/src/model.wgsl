@@ -31,6 +31,7 @@ struct Draw {
     flags: u32,
     light_cell: u32,
     uv_mat: vec4<f32>,
+    origin: vec4<f32>,
 };
 
 struct Light {
@@ -142,9 +143,16 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         c = vec4<f32>(c.rgb * lighting(in.normal, in.world), c.a);
     }
     if (globals.fow_extent.z > 0.0) {
-        // Fogged objects take FoggedObject's color, masked ones the masked color.
-        let fuv = (in.world.xy - globals.fow_extent.xy) / globals.fow_extent.zw;
-        let s = textureSample(fow_tex, fow_samp, vec2<f32>(fuv.x, fuv.y));
+        // Fogged objects take FoggedObject's color, masked ones the masked color, the
+        // whole object by the cell it stands in (measured: Orc01's opening shows a rock
+        // in an unexplored cell all black, though it reaches over seen ground; ours
+        // shaded each part by the ground under it).
+        // The cell as the game finds it: the 32-unit pathing square, then a quarter of
+        // that (a tree on a cell's corner belongs to the cell above and right of it).
+        let dims = vec2<i32>(textureDimensions(fow_tex));
+        let square = vec2<i32>(floor((draw.origin.xy - globals.fow_extent.xy) / 32.0 + vec2<f32>(1e-3)));
+        let texel = clamp(square >> vec2<u32>(2u), vec2<i32>(0), dims - vec2<i32>(1));
+        let s = textureLoad(fow_tex, texel, 0);
         let v = s.r;
         let fogged = c.rgb * globals.fow_object.rgb;
         let masked = c.rgb * globals.fow_masked_object.rgb;

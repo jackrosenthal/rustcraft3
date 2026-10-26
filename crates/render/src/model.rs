@@ -301,7 +301,9 @@ struct DrawUniform {
     /// The texture animation's rotation and scaling of the coordinates (a 2x2 matrix,
     /// columns first), before uv_offset.
     uv_mat: [f32; 4],
-    _pad: [u32; 48],
+    /// Where the instance stands, for its fog of war.
+    origin: [f32; 4],
+    _pad: [u32; 44],
 }
 
 const DRAW_ALIGN: u64 = 256;
@@ -724,7 +726,8 @@ impl ModelRenderer {
                         light_cell: inst.light_cell,
                         _pad0: [0; 3],
                         uv_mat,
-                        _pad: [0; 48],
+                        origin: inst.transform.w_axis.to_array(),
+                        _pad: [0; 44],
                     },
                     depth: if blended { depth } else { 0.0 },
                     priority: mat.priority_plane * 16 + li as i32,

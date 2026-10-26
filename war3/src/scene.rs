@@ -770,6 +770,10 @@ impl Scene {
                     // and Player(3) empty).
                     None => {
                         g.world.fixed_starts = !campaign;
+                        // A map with a computer slot of its own gets no other (measured: a
+                        // test map whose Player(1) is a computer slot leaves its user slots
+                        // Player(2) and Player(3) empty).
+                        let has_computer = g.world.players.iter().any(|p| p.controller == w3_game::types::map_control::COMPUTER);
                         g.start(|_, controller| {
                             if controller != w3_game::types::map_control::USER {
                                 return w3_game::SlotFill::Computer;
@@ -777,7 +781,7 @@ impl Scene {
                             users += 1;
                             match users {
                                 1 => w3_game::SlotFill::Local,
-                                2 => w3_game::SlotFill::Computer,
+                                2 if campaign || !has_computer => w3_game::SlotFill::Computer,
                                 _ if campaign => w3_game::SlotFill::Computer,
                                 _ => w3_game::SlotFill::Empty,
                             }

@@ -295,6 +295,35 @@ impl World {
         }
     }
 
+    /// A computer player's idle workers go to mine gold on their own, AI script or none
+    /// (measured: a computer player's peasants by its town hall and a gold mine are
+    /// harvesting half a second in, and one made a second in is by four, where a user's
+    /// stay idle; workers with only trees about, peasant or ghoul, stay idle too;
+    /// Human02's Uther, a computer slot without a script, so works the mine its intro
+    /// shows, and holds it when the intro is skipped).  Looked for every quarter second.
+    pub fn computer_idle_workers(&mut self, dt: f32) {
+        const EVERY: f32 = 0.25;
+        if (self.time / EVERY).floor() == ((self.time - dt) / EVERY).floor() {
+            return;
+        }
+        let order = crate::natives::basic::order_id("autoharvestgold");
+        let idle: Vec<u32> = self
+            .unit_order
+            .iter()
+            .copied()
+            .filter(|&h| {
+                self.unit(h).is_some_and(|u| {
+                    !u.dead && !u.hidden && !u.paused && !u.is_building && matches!(u.action, Action::Idle) && u.order.id == 0
+                        && self.players.get(u.owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER)
+                })
+            })
+            .filter(|&h| ["Ahar", "Ahrl"].iter().any(|c| self.ability_with_code(h, c).is_some()))
+            .collect();
+        for h in idle {
+            self.order_unit(h, order, 0.0, 0.0, 0);
+        }
+    }
+
     /// Takes a unit's ability art away.
     pub fn detach_ability_art(&mut self, h: u32) {
         let Some(handles) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.art)) else { return };

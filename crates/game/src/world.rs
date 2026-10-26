@@ -1478,6 +1478,7 @@ impl World {
         prof!(self, "update_permanent_immolation", self.update_permanent_immolation(vm, dt));
         prof!(self, "update_corpse_makers", self.update_corpse_makers(dt));
         prof!(self, "update_wander", self.update_wander(dt));
+        prof!(self, "computer_idle_workers", self.computer_idle_workers(dt));
         prof!(self, "update_guards", self.update_guards());
         prof!(self, "update_creep_sleep", self.update_creep_sleep());
         prof!(self, "update_waygates", self.update_waygates());

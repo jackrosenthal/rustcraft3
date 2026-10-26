@@ -1022,17 +1022,26 @@ impl Hud {
         out.push(Draw::Text { font: db.decorate("MasterFont"), size, rect: t, text: n.to_string(), color: [1.0; 4], justify_h: w3_ui::Justify::Middle, justify_v: w3_ui::Justify::Middle, shadow: None });
     }
 
-    /// Follows the local player's heroes for the hero bar, in the order they came, and
-    /// their buttons' tooltips (FUN_6f3c6e90): the hero's name with its key, F1 to F5,
-    /// and its level, or "Dead" and "Revive at Altar".
+    /// Follows the local player's heroes for the hero bar, in the order they came, then
+    /// those of players who give it advanced control of their units (CHeroBar keeps its
+    /// own before others, FUN_6f3b92d0; measured: UndeadX01 shows Arthas, then the
+    /// heroes of the two allies giving advanced control; a player giving shared control
+    /// alone shows none), and their buttons' tooltips (FUN_6f3c6e90): the hero's name
+    /// with its key, F1 to F5, and its level, or "Dead" and "Revive at Altar".
     pub fn sync_heroes(&mut self, db: &FrameDb, world: &World) {
         let replay = self.replay.is_some();
-        self.hero_tips = world
-            .unit_order
+        const ALLIANCE_SHARED_ADVANCED_CONTROL: usize = 7;
+        let me = world.local_player as usize;
+        let advanced = |owner: u8| owner as usize != me && world.players.get(owner as usize).is_some_and(|p| p.alliances.get(me).is_some_and(|a| a[ALLIANCE_SHARED_ADVANCED_CONTROL]));
+        let order: Vec<u32> = {
+            let shown = |u: &w3_game::types::Unit| u.is_hero && !u.hidden;
+            let own = world.unit_order.iter().copied().filter(|&h| world.unit(h).is_some_and(|u| shown(u) && u.owner as usize == me));
+            let allied = world.unit_order.iter().copied().filter(|&h| world.unit(h).is_some_and(|u| shown(u) && advanced(u.owner)));
+            own.chain(allied).take(7).collect()
+        };
+        self.hero_tips = order
             .iter()
             .filter_map(|&h| world.unit(h))
-            .filter(|u| u.is_hero && u.owner == world.local_player && !u.hidden)
-            .take(7)
             .enumerate()
             .map(|(k, u)| {
                 let name = u.proper_name.clone();
@@ -1046,12 +1055,9 @@ impl Hud {
                 }
             })
             .collect();
-        self.heroes = world
-            .unit_order
+        self.heroes = order
             .iter()
             .filter_map(|&h| world.unit(h).map(|u| (h, u)))
-            .filter(|(_, u)| u.is_hero && u.owner == world.local_player && !u.hidden)
-            .take(7)
             .map(|(h, u)| {
                 let icon = world.objects.units.get(u.type_id).map(|o| o.str("Art")).unwrap_or_default();
                 let icon = if u.dead { crate::card::disabled_icon(&icon) } else { icon };
@@ -1522,8 +1528,12 @@ impl Hud {
             icons.truncate(8);
             icons
         });
-        // The hero level bar: experience through the current level.
+        // The hero level bar: experience through the current level, full at the top
+        // level (measured: a level 10 Death Knight's shows full).
         self.level_bar = u.is_hero.then(|| {
+            if u.level >= world.misc_f32("MaxHeroLevel", 10.0) as i32 {
+                return 1.0;
+            }
             let (lo, hi) = (world.hero_xp_needed(u.level), world.hero_xp_needed(u.level + 1));
             if hi > lo { ((u.hero_xp - lo) as f32 / (hi - lo) as f32).clamp(0.0, 1.0) } else { 1.0 }
         });

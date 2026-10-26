@@ -483,8 +483,11 @@ impl Commands {
         }
         // Every hero shows Hero Abilities, points or not (CAbilityHero::vf108); its
         // skills are dimmed while none can be learned.  The original leaves out units
-        // flagged 0x40000000, which cannot gain levels or skills: illusions here.
-        if u.is_hero && u.extra.illusion.is_none() {
+        // flagged 0x40000000, which cannot gain levels or skills: illusions here; and a
+        // hero with every skill at its top level and no points (measured: a level 10
+        // Death Knight with all ten points spent shows none, one at level 10 with points
+        // or at level 3 with none spent and more to learn shows it).
+        if u.is_hero && u.extra.illusion.is_none() && !(u.skill_points == 0 && w.all_skills_learned(h)) {
             // Its unspent skill points in the corner (measured: a new Paladin's shows 1).
             let points = u.skill_points;
             out.extend(self.command(db, "CmdSelectSkill", Action::LearnMenu, true).into_iter().map(|mut b| {

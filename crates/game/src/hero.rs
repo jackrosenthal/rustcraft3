@@ -325,6 +325,18 @@ impl World {
         current < max && self.missing_requirements(u.owner, ability, 0).is_empty() && (u.level >= self.learn_level(h, ability) || self.cheat(crate::cheats::flag::HERO_LEVEL))
     }
 
+    /// Whether every skill of a hero's list stands at its top level.
+    pub fn all_skills_learned(&self, h: u32) -> bool {
+        let Some(u) = self.unit(h) else { return false };
+        let list: Vec<Id> = self.objects.units.get(u.type_id).map(|o| o.list("heroAbilList")).unwrap_or_default().iter().map(|s| crate::objects::id_from_str(s.trim())).filter(|a| a[0] != 0).collect();
+        !list.is_empty()
+            && list.iter().all(|&a| {
+                let a = self.learned_id(h, a);
+                let current = u.abilities.iter().find(|(x, _)| *x == a).map_or(0, |x| x.1);
+                current >= self.objects.abilities.get(a).map_or(3, |o| o.int("levels").max(1))
+            })
+    }
+
     pub fn can_learn(&self, h: u32, ability: Id) -> bool {
         self.unit(h).is_some_and(|u| u.skill_points > 0) && self.learn_allowed(h, ability)
     }

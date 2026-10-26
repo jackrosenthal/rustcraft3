@@ -643,7 +643,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetTerrainVariance => |w, _, a| int(w.terrain_corner(a.r(0), a.r(1)).map_or(0, |i| (w.ground[i].1 & 0x1f) as i32)),
         SetBlight => |w, _, a| {
             let (x, y, r, add) = (a.r(1), a.r(2), a.r(3), a.b(4));
-            w.set_blight(add, (x - r, y - r, x + r, y + r), |px, py| (px - x).hypot(py - y) <= r);
+            w.blight_disc(add, x, y, r);
             none()
         },
         SetBlightRect => |w, _, a| {
@@ -659,7 +659,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetBlightLoc => |w, _, a| {
             let Some((x, y)) = w.location(a.h(1)) else { return none() };
             let (r, add) = (a.r(2), a.b(3));
-            w.set_blight(add, (x - r, y - r, x + r, y + r), |px, py| (px - x).hypot(py - y) <= r);
+            w.blight_disc(add, x, y, r);
             none()
         },
         IsPointBlighted => |w, _, a| boolean(w.point_blighted(a.r(0), a.r(1))),

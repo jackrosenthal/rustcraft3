@@ -498,7 +498,7 @@ fn sight_table(r: usize) -> std::sync::Arc<Vec<SightNode>> {
 }
 
 /// The circle's half-width on each row from the top, 2r + 1 rows.
-fn circle_spans(r: i32) -> Vec<i32> {
+pub(crate) fn circle_spans(r: i32) -> Vec<i32> {
     let mut widths = Vec::new();
     let (mut c, mut x, mut d, mut e, mut y) = (6, 0, 3 - 2 * r, 10 - 4 * r, r);
     loop {

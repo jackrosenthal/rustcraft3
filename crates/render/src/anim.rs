@@ -97,7 +97,10 @@ pub fn sample<T: Sample>(track: Option<&Track<T>>, time: &Time, globals: &[u32],
     let (frame, start, end) = match track.global_seq {
         Some(g) => match globals.get(g as usize) {
             Some(&d) if d > 0 => (time.global % d, 0, d),
-            _ => (0, 0, 0),
+            // A global sequence of no length holds its track at the first key (the
+            // Archer's portrait sets its root 21.8 lower so, keyed at 155633 on one of
+            // length 0; without it the camera saw her shoulder, not her face).
+            _ => return track.keys[0].value,
         },
         None => (time.frame, time.seq_start, time.seq_end),
     };

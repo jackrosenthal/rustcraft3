@@ -2772,10 +2772,14 @@ impl World {
         // (FUN_6f436a90 starts a swing, FUN_6f405110 chops, FUN_6f40bce0 and FUN_6f40c4a0
         // start the next; CAbilityHarvestLumber::vf32 takes both times from the attack).
         let range = self.ability_real(ahar, "Rng", lvl);
+        // One that comes to the tree swings at once (FUN_6f436400; measured: the
+        // original's peasant stands 10.92 seconds at the tree every trip, where ours
+        // first waited out what was left of its last trip's swing).
         if !self.approach(h, target, range, dt) {
             if let Some(u) = self.unit_mut(h) {
                 u.extra.chop_swinging = false;
                 u.extra.chop_recover = 0.0;
+                u.work_timer = 0.0;
             }
             return;
         }

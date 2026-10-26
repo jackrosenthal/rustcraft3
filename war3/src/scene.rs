@@ -321,6 +321,9 @@ pub struct Scene {
     selection_serial: u32,
     /// The world's blight count the ground was last built with.
     blight_serial: u32,
+    /// The map's minimap image, and the blight it was last shaded for.
+    minimap_image: Option<(u32, u32, Vec<u8>)>,
+    minimap_blight_serial: Option<u32>,
     /// The world's terrain deformation count and water flag last given the terrain.
     deform_serial: (u64, bool),
     /// The world's painted ground count the terrain was last built from.
@@ -869,7 +872,7 @@ impl Scene {
         let map_skin = game.as_ref().and_then(|g| g.world.chain.read_string("war3mapSkin.txt").ok()).unwrap_or_default();
         commands.profile.merge(&map_skin);
         assets.frames.custom_skin = w3_formats::profile::Profile::parse(&map_skin).sections.remove("customskin").unwrap_or_default();
-        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selected_widget: None, selection_serial: 0, blight_serial: 0, deform_serial: (0, false), ground_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), cooldown_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), overlay: Vec::new(), voices: HashMap::new(), stacked_voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, menu_shortcut: None, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8], completed_prefix: assets.frames.string("COLON_COMPLETED"), zoom_level: 0, rotation_state: 0, hall_cursor: None };
+        let mut scene = Scene { game, units: HashMap::new(), dests: HashMap::new(), items: HashMap::new(), dest_anims: HashMap::new(), effects: HashMap::new(), selection: Vec::new(), selected_widget: None, selection_serial: 0, blight_serial: 0, minimap_image: None, minimap_blight_serial: None, deform_serial: (0, false), ground_serial: 0, uber_slk: data.slk("Splats\\UberSplatData.slk"), map_path: map_path.to_string_lossy().to_string(), saves_dir: crate::data::save_dir(data.version).unwrap_or_default(), load_requested: None, restart_requested: false, lobby: lobby.map(|l| l.to_vec()), help_text: data.chain.read_string("UI\\HelpStrings.txt").unwrap_or_default().replace('\r', ""), tips: load_tips(&data.chain), tip: 0, options: crate::options::Options::load(), options_page: "OptionsPanel", campaign: data.campaign_game.get(), screen: (0, 0), menu_drag: false, options_fill: false, shadows: Default::default(), cursor: (-1.0, -1.0), alt_held: false, shift_held: false, ctrl_held: false, last_pick: None, weather: Default::default(), lightning: Default::default(), weather_sounds: HashMap::new(), doodad_loops, loops: HashMap::new(), splat_births: HashMap::new(), info, terrain: terrain_r, models, instances, doodad_ids, cine_camera: None, smoothed_target: None, frame_dt: 0.0, camera, time: 0.0, light, dnc: (None, None), dnc_paths: Default::default(), hud, ui, decals, drag: None, targeting: None, missiles: HashMap::new(), ghost: None, placing: None, commands, team_rgb: team_colors(&data.chain), portrait_renderer, hud_sprites, sky: None, sky_renderer, indicators: Vec::new(), quest_fx: None, cursor_model: None, cursor_sequence: String::new(), scroll_dir: (0, 0), pings: Vec::new(), autocast_fx: HashMap::new(), cooldown_fx: HashMap::new(), time_indicator: None, portrait: None, cine_portrait: None, change_level: None, fog: None, audio: None, pending_audio: Vec::new(), overlay: Vec::new(), voices: HashMap::new(), stacked_voices: HashMap::new(), ack_unit: 0, ack_clicks: 0, ack_voice: None, ended: false, final_score: None, exit: false, menu_requested: false, menu_shortcut: None, load_dialog_requested: false, quests_requested: false, item_target: None, held_item: None, groups: Default::default(), last_group: None, log_requested: false, playback: replay.map(|r| w3_game::replay::Playback { replay: r, next: 0, owed: 0.0 }), net: None, net_waiting: (Vec::new(), false), alliance_requested: false, chat_default: None, chat_dialog_requested: false, signaling: false, tracked: None, quick: Vec::new(), quick_cursor: 0, quick_pressed: f32::NEG_INFINITY, attack_times: HashMap::new(), attack_timers: [0.0; 8], completed_prefix: assets.frames.string("COLON_COMPLETED"), zoom_level: 0, rotation_state: 0, hall_cursor: None };
         if let Some(f) = scene.game.as_ref().and_then(|g| g.world.fog.as_ref()) {
             let tex = Arc::new(w3_render::fog::FogTexture::new(device, queue, f.width as u32, f.height as u32));
             scene.terrain.set_fog(device, &tex);
@@ -3860,7 +3863,10 @@ impl Scene {
                 hud.minimap_camps = w
                     .creep_camp_markers()
                     .into_iter()
-                    .filter(|&(x, y, _)| partial || w.fog_state(x, y, w.local_player) != w3_game::fog::FOG_MASKED)
+                    // Not where the camp is in view: its creeps show themselves
+                    // (measured: with the fog off the original shows no camp markers,
+                    // the creeps as dots).
+                    .filter(|&(x, y, _)| (partial || w.fog_state(x, y, w.local_player) != w3_game::fog::FOG_MASKED) && w.fog_state(x, y, w.local_player) != w3_game::fog::FOG_VISIBLE)
                     .map(|(x, y, l)| {
                         if l >= tough {
                             (x, y, argb("MinimapToughCampColor"), -1.0)
@@ -3878,10 +3884,20 @@ impl Scene {
                 .filter(|&&h| w.unit_visible_to(h, w.local_player) || w.unit(h).is_some_and(|u| u.is_building && w.fog_state(u.x, u.y, w.local_player) != w3_game::fog::FOG_MASKED))
                 .filter_map(|&h| w.unit(h))
                 .filter(|u| !u.dead && !u.hidden && !w.is_locust(u))
+                // Gold mines and neutral buildings show as the map's minimap icons, not
+                // as dots, and the neutral's other units not at all (measured: the
+                // original draws Twisted Meadows' mines as its yellow resource icons alone,
+                // and none of its sheep and pigs).
+                .filter(|u| !(w.ability_with_code(u.handle, "Agld").is_some() || u.owner as usize == w3_game::types::PLAYER_NEUTRAL_PASSIVE as usize))
                 .map(|u| {
                     // Ally color modes use [FogOfWar] FogColorPlayer, FogColorAlly,
-                    // FogColorEnemy, and FogColorCreepNormal.
-                    let c = if ally_mode == 0 {
+                    // FogColorEnemy, and FogColorCreepNormal; the local player's own
+                    // take FogColorPlayer in every mode (measured: a red player's
+                    // units show white on the original's minimap with the filter off,
+                    // others in their team colors).
+                    // And creeps FogColorCreepNormal in every mode (measured: Twisted
+                    // Meadows' creeps show dark blue with the filter off).
+                    let c = if ally_mode == 0 && u.owner != w.local_player && u.owner as usize != w3_game::types::PLAYER_NEUTRAL_AGGRESSIVE as usize {
                         team_rgb[u.color.clamp(0, 15) as usize]
                     } else {
                         let key = if u.owner == w.local_player {
@@ -3911,6 +3927,57 @@ impl Scene {
             // The minimap's fog: black over the map image, leaving FogColorFogMaskAlpha of it
             // in fogged cells and FogColorBlackMaskAlpha (or FogColorDarkMaskAlpha where
             // masked areas are partially visible) in masked ones.
+            // Blight on the minimap: a pixel whose four fog cells about it are all
+            // blighted (any of a cell's sixteen pathing squares) takes FogColorBlightMask
+            // bitwise, its red and green and'ed with it and its blue or'ed (FUN_6f3d5ee0;
+            // 0,63,63,64 darkens it to a deep blue, as the original's undead bases show).
+            if let (Some(area), Some(fog)) = (hud.minimap_area, w.fog.as_ref()) {
+                if self.minimap_blight_serial != Some(w.blight_serial) {
+                    self.minimap_blight_serial = Some(w.blight_serial);
+                    if self.minimap_image.is_none() {
+                        self.minimap_image = w.chain.read("war3mapMap.blp").ok().and_then(|b| w3_formats::blp::decode_texture("war3mapMap.blp", &b).ok()).and_then(|m| m.into_iter().next()).map(|i| (i.width, i.height, i.rgba));
+                    }
+                    let mask: Vec<u8> = w.misc.get_list("FogOfWar", "FogColorBlightMask").iter().filter_map(|s| s.trim().parse().ok()).collect();
+                    let (mr, mg, mb) = if mask.len() == 4 { (mask[1], mask[2], mask[3]) } else { (63, 63, 64) };
+                    let (fw, fh) = (fog.width as i32, fog.height as i32);
+                    let cell_blighted: Vec<bool> = match w.pathing.as_ref() {
+                        Some(p) => (0..fw * fh)
+                            .map(|i| {
+                                let (cx, cy) = (i % fw, i / fw);
+                                let (x0, y0) = (fog.origin.0 + cx as f32 * w3_game::fog::FOG_CELL, fog.origin.1 + cy as f32 * w3_game::fog::FOG_CELL);
+                                (0..16).any(|k| {
+                                    let c = p.cell_of(x0 + (k % 4) as f32 * 32.0 + 16.0, y0 + (k / 4) as f32 * 32.0 + 16.0);
+                                    p.flags_at(c).is_some_and(|f| f & w3_game::blight::BLIGHT_FLAG != 0)
+                                })
+                            })
+                            .collect(),
+                        None => Vec::new(),
+                    };
+                    let blighted_at = |cx: i32, cy: i32| cx >= 0 && cy >= 0 && cx < fw && cy < fh && cell_blighted.get((cy * fw + cx) as usize).copied().unwrap_or(false);
+                    hud.minimap_blighted = false;
+                    if cell_blighted.iter().any(|&b| b) {
+                        if let Some((iw, ih, base)) = &self.minimap_image {
+                            let (sx, sy, side) = area.square();
+                            let mut rgba = base.clone();
+                            for py in 0..*ih {
+                                for px in 0..*iw {
+                                    let x = sx + (px as f32 + 0.5) / *iw as f32 * side;
+                                    let y = sy + (1.0 - (py as f32 + 0.5) / *ih as f32) * side;
+                                    let (cx, cy) = (((x - fog.origin.0) / w3_game::fog::FOG_CELL).floor() as i32, ((y - fog.origin.1) / w3_game::fog::FOG_CELL).floor() as i32);
+                                    if blighted_at(cx, cy) && blighted_at(cx - 1, cy) && blighted_at(cx, cy - 1) && blighted_at(cx - 1, cy - 1) {
+                                        let i = ((py * iw + px) * 4) as usize;
+                                        rgba[i] &= mr;
+                                        rgba[i + 1] &= mg;
+                                        rgba[i + 2] |= mb;
+                                    }
+                                }
+                            }
+                            assets.textures.set_dynamic(device, queue, crate::hud::MINIMAP_TERRAIN, *iw, *ih, &rgba);
+                            hud.minimap_blighted = true;
+                        }
+                    }
+                }
+            }
             if let (Some(area), true) = (hud.minimap_area, w.fog.is_some()) {
                 let n = crate::hud::MINIMAP_FOG_SIZE;
                 let (sx, sy, side) = area.square();

@@ -34,6 +34,8 @@ const MINIMAP: [f32; 4] = [0.009375, 0.006875, 0.14875, 0.145];
 pub const MINIMAP_FOG: &str = "@minimapfog";
 /// Its resolution.
 pub const MINIMAP_FOG_SIZE: u32 = 128;
+/// The minimap's image with the blight shaded in, made at run time.
+pub const MINIMAP_TERRAIN: &str = "@minimapterrain";
 
 /// What the minimap shows: the map's playable area, letterboxed to a square.
 #[derive(Clone, Copy, Debug)]
@@ -215,6 +217,9 @@ pub struct Hud {
     pub formation: bool,
     /// Whether the "@minimapfog" overlay texture is current.
     pub minimap_fog: bool,
+    /// Whether the minimap's image with its blight (MINIMAP_TERRAIN) stands for the
+    /// map's.
+    pub minimap_blighted: bool,
     pub camera_box: Vec<(f32, f32)>,
     pub card: Vec<crate::card::Button>,
     pub page: crate::card::Page,
@@ -342,6 +347,7 @@ impl Hud {
             minimap_alt: Vec::new(),
             alt_icon: None,
             minimap_fog: false,
+            minimap_blighted: false,
             minimap_icons: Vec::new(),
             minimap_icons_shown: Vec::new(),
             minimap_camps: Vec::new(),
@@ -2197,7 +2203,8 @@ impl Hud {
         if self.minimap_area.is_some() {
             let r = self.minimap_rect();
             if self.minimap_terrain {
-                out.push(Draw::Image { texture: "war3mapMap.blp".into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
+                let image = if self.minimap_blighted { MINIMAP_TERRAIN } else { "war3mapMap.blp" };
+                out.push(Draw::Image { texture: image.into(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
             } else {
                 out.push(Draw::Image { texture: String::new(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [0.0, 0.0, 0.0, 1.0], blend: w3_ui::Blend::Alpha, rotated: false });
             }

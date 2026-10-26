@@ -64,6 +64,15 @@ fn restamp_destructable(w: &mut World, h: u32) {
     }
 }
 
+/// Where a script's destructable stands: snapped as a structure is, by its pathing
+/// texture's size (measured: trees asked for at 1380, 930 and 1395.5, 947.3 stand at
+/// 1344, 896, at -1380, -930 at -1344, -896; 2 by 2 barrels at 1530 at 1504, a gate,
+/// rocks, and a sight blocker at 1472).
+fn snapped(w: &mut World, id: i32, x: f32, y: f32) -> (f32, f32) {
+    let tex = w.objects.destructables.get(id_from_int(id)).map(|o| o.str("pathTex")).unwrap_or_default();
+    w.snap_to_texture(&tex, x, y)
+}
+
 /// Clears a destructable's pathing blockers (on death or removal).
 pub fn unstamp_destructable(w: &mut World, h: u32) {
     let cells = match w.handles.get_mut(h) {
@@ -223,15 +232,17 @@ fn add_effect(w: &mut World, model: String, x: f32, y: f32, target: Option<(u32,
 
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
     reg!(t,
-        CreateDestructable => |w, _, a| handle(create_destructable(w, id_from_int(a.i(0)), a.r(1), a.r(2), None, a.r(3), a.r(4), a.i(5) as u32)),
-        CreateDestructableZ => |w, _, a| handle(create_destructable(w, id_from_int(a.i(0)), a.r(1), a.r(2), Some(a.r(3)), a.r(4), a.r(5), a.i(6) as u32)),
+        CreateDestructable => |w, _, a| { let (x, y) = snapped(w, a.i(0), a.r(1), a.r(2)); handle(create_destructable(w, id_from_int(a.i(0)), x, y, None, a.r(3), a.r(4), a.i(5) as u32)) },
+        CreateDestructableZ => |w, _, a| { let (x, y) = snapped(w, a.i(0), a.r(1), a.r(2)); handle(create_destructable(w, id_from_int(a.i(0)), x, y, Some(a.r(3)), a.r(4), a.r(5), a.i(6) as u32)) },
         CreateDeadDestructable => |w, _, a| {
-            let h = create_destructable(w, id_from_int(a.i(0)), a.r(1), a.r(2), None, a.r(3), a.r(4), a.i(5) as u32);
+            let (x, y) = snapped(w, a.i(0), a.r(1), a.r(2));
+            let h = create_destructable(w, id_from_int(a.i(0)), x, y, None, a.r(3), a.r(4), a.i(5) as u32);
             if let Some(d) = dest_mut(w, h) { d.life = 0.0; }
             handle(h)
         },
         CreateDeadDestructableZ => |w, _, a| {
-            let h = create_destructable(w, id_from_int(a.i(0)), a.r(1), a.r(2), Some(a.r(3)), a.r(4), a.r(5), a.i(6) as u32);
+            let (x, y) = snapped(w, a.i(0), a.r(1), a.r(2));
+            let h = create_destructable(w, id_from_int(a.i(0)), x, y, Some(a.r(3)), a.r(4), a.r(5), a.i(6) as u32);
             if let Some(d) = dest_mut(w, h) { d.life = 0.0; }
             handle(h)
         },

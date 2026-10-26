@@ -2368,7 +2368,12 @@ impl World {
     /// (measured: a farm, 4 by 4, ordered at -4000, -2700 stands at -3968, -2688).
     pub fn snap_placement(&mut self, id: Id, x: f32, y: f32) -> (f32, f32) {
         let tex = self.objects.units.get(id).map(|o| o.str("pathTex")).unwrap_or_default();
-        let (w, h) = self.pathing_texture_size(&tex).unwrap_or((0, 0));
+        self.snap_to_texture(&tex, x, y)
+    }
+
+    /// The same snap by a pathing texture's size.
+    pub fn snap_to_texture(&mut self, tex: &str, x: f32, y: f32) -> (f32, f32) {
+        let (w, h) = self.pathing_texture_size(tex).unwrap_or((0, 0));
         let snap = |v: f32, n: i32| -> f32 {
             let neg = v < 0.0;
             let vi = v as i32;

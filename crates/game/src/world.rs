@@ -389,6 +389,9 @@ pub struct World {
     /// W3PROF time spent finding targets (from `&self` code).
     #[serde(skip)]
     pub prof_find: std::cell::Cell<f64>,
+    /// Whether the last look for targets passed one over only for our fog's lag.
+    #[serde(skip)]
+    pub fog_passed: std::cell::Cell<bool>,
     /// Living units by 512 square, in their order, rebuilt once a game moment: where
     /// target searches look (a cache, rebuilt from the units, so not saved).
     #[serde(skip)]
@@ -723,6 +726,7 @@ impl World {
             sentinels: Vec::new(),
             profile: None,
             prof_find: Default::default(),
+            fog_passed: Default::default(),
             unit_grid: std::cell::RefCell::new((f32::NAN, Default::default())),
             weapon_cache: Default::default(),
             cache_alias: Default::default(),

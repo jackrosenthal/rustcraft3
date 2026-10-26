@@ -1048,6 +1048,42 @@ impl World {
         !u.dead && unit_weapons(self, u).iter().any(|(_, wp)| can_target(self, wp, u, tu))
     }
 
+    /// Idle creeps near one that has taken up a target take it up too.
+    fn creeps_join(&mut self, h: u32, t: u32) {
+        let Some((x, y)) = self.unit(h).map(|u| (u.x, u.y)) else { return };
+        let range = self.misc_f32("CreepCallForHelp", 600.0);
+        let friends: Vec<u32> = self
+            .unit_order
+            .iter()
+            .copied()
+            .filter(|&f| f != h)
+            .filter(|&f| {
+                self.unit(f).is_some_and(|u| u.owner == PLAYER_NEUTRAL_AGGRESSIVE && !u.dead && !u.hidden && !u.paused && !u.extra.sleeping && matches!(u.action, Action::Idle) && (u.x - x).hypot(u.y - y) <= range)
+            })
+            .collect();
+        for f in friends {
+            if self.unit(f).is_some_and(|u| !unit_weapons(self, u).is_empty()) && self.unit(t).is_some_and(|tu| self.unit(f).is_some_and(|u| weapon_for(self, u, tu).is_some())) {
+                self.unit_mut(f).unwrap().action = Action::Attack { target: t };
+                self.acquired(f, t);
+            }
+        }
+    }
+
+    /// A look for targets that finds none looks again half a second on (CAbilityAttack's
+    /// look timer, 0xd01c1, runs 1/2 without a target, DAT_6fd6bf40; measured: the
+    /// gnolls of a camp a ghoul walks into take it up at 3.47, 3.66, or 3.97 seconds as
+    /// it comes earlier or later, ours as it came within reach).
+    fn acquire_miss(&mut self, h: u32, dt: f32) {
+        // One passed over only as our fog, refreshed each tenth of a second, has yet to
+        // show it is looked for again at once: the original's sight has no such lag.
+        if self.fog_passed.get() {
+            return;
+        }
+        if let Some(u) = self.unit_mut(h) {
+            u.acquire_timer = u.acquire_timer.max(-dt) + 0.5;
+        }
+    }
+
     fn find_target(&self, h: u32, range: f32) -> Option<u32> {
         self.find_target_ex(h, range, true)
     }
@@ -1074,6 +1110,7 @@ impl World {
         // Nor does a hidden one (measured: a Blademaster hidden by Mirror Image strikes
         // nothing until it shows).
         let u = self.unit(h).filter(|u| !u.hidden)?;
+        self.fog_passed.set(false);
         let mut best: Option<(f32, u32, bool, bool)> = None;
         // Only the squares within reach (the largest structure's half-width and a
         // moment's walk to spare).
@@ -1114,6 +1151,7 @@ impl World {
             let d = (tu.x - u.x).hypot(tu.y - u.y) - edges;
             // Only what the owner can see (a cliff above, the fog) is acquired.
             if d <= range && self.fog_state(tu.x, tu.y, u.owner) != crate::fog::FOG_VISIBLE {
+                self.fog_passed.set(true);
                 continue;
             }
             // Then units before structures, then the nearest (measured: a footman takes a
@@ -1642,9 +1680,18 @@ impl World {
                             }
                             self.acquired(h, t);
                             self.spell_ai(h, t, h);
+                            // A creep that takes one up brings its idle friends within
+                            // CreepCallForHelp with it (measured: a camp's three gnolls take
+                            // up a ghoul walking in at the same moment, 220, 241, and 341
+                            // away, their reach 200).
+                            if creeps {
+                                self.creeps_join(h, t);
+                            }
                             if matches!(action, Action::Hold) {
                                 self.try_attack(h, t, dt, true);
                             }
+                        } else {
+                            self.acquire_miss(h, dt);
                         }
                     }
                 }
@@ -1717,6 +1764,7 @@ impl World {
                             self.try_attack(h, t, dt, false);
                             continue;
                         }
+                        self.acquire_miss(h, dt);
                     }
                     if self.unit(h).is_some_and(|u| u.path.is_empty()) {
                         self.path_to(h, (x, y));

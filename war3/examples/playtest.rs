@@ -13,7 +13,7 @@ fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     let a: Vec<String> = std::env::args().collect();
     let (w, h): (u32, u32) = if a.len() > 5 { (a[4].parse()?, a[5].parse()?) } else { (1920, 1080) };
-    let data = GameData::open(Path::new(&a[1]), false)?;
+    let data = GameData::open(Path::new(&a[1]), std::env::var("W3CLASSIC").is_ok())?;
     // W3CAMPAIGN: a custom campaign (.w3n) whose maps and data the map is played with.
     if let Ok(c) = std::env::var("W3CAMPAIGN") {
         data.chain.mount(std::sync::Arc::new(w3_mpq::Archive::open(&c)?), None, war3::data::PRIORITY_CAMPAIGN);

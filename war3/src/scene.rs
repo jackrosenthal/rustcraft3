@@ -696,11 +696,13 @@ impl Scene {
                     continue;
                 }
                 let (table, is_dest) = (&doodad_slk, false);
-                let file = text(table, &id, "file");
+                let ty = doodad_types.get(d.id);
+                let field = |f: &str| ty.map(|o| o.str(f)).unwrap_or_else(|| text(table, &id, f));
+                let file = field("file");
                 if file.is_empty() {
                     continue;
                 }
-                let nvar = num(table, &id, "numVar") as u32;
+                let nvar = field("numVar").trim().parse::<f32>().unwrap_or(0.0) as u32;
                 let model = if nvar > 1 || is_dest {
                     assets
                         .model(device, queue, &format!("{file}{}", d.variation))
@@ -713,7 +715,7 @@ impl Scene {
                 // The map's scale is over the type's defScale (measured: Orc01's Barrens
                 // spire BRsp, defScale 0.36, placed at 1.11, shows about a third the size
                 // of ours, which drew it at 1.11).
-                let def_scale = Some(num(table, &id, "defScale") as f32).filter(|v| *v > 0.0).unwrap_or(1.0);
+                let def_scale = field("defScale").trim().parse::<f32>().ok().filter(|v| *v > 0.0).unwrap_or(1.0);
                 inst.transform = Mat4::from_scale_rotation_translation(
                     Vec3::from_array(d.scale) * def_scale,
                     Quat::from_rotation_z(d.angle),
@@ -738,7 +740,7 @@ impl Scene {
                 inst.play("Stand");
                 instances.push(inst);
                 doodad_ids.push(d.id);
-                let sound = text(table, &id, "soundLoop");
+                let sound = field("soundLoop");
                 if !sound.is_empty() && sound != "_" && sound != "-" {
                     doodad_loops.push((sound, d.position));
                 }

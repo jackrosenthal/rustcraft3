@@ -1736,6 +1736,26 @@ impl World {
                         u.extra.reaction -= dt;
                         continue;
                     }
+                    // On a target it took up itself it looks again each second (the look
+                    // timer runs 1 with a target, DAT_6fd6bf44) and takes a better one
+                    // between swings (measured: a footman striking a farm turns on an enemy
+                    // footman made beside it at 3 seconds, its next strike at 4.72).
+                    let own = self.unit(h).is_some_and(|u| u.extra.acquired == target && u.swing.is_none() && u.acquire_timer <= 0.0 && wp.is_some());
+                    if own {
+                        let range = self.unit(h).map_or(0.0, |u| u.acquire_range);
+                        let creeps = self.unit(h).is_some_and(|u| u.owner == PLAYER_NEUTRAL_AGGRESSIVE);
+                        let better = self.find_target_ex(h, range, creeps).filter(|&t| t != target);
+                        if let Some(u) = self.unit_mut(h) {
+                            u.acquire_timer = u.acquire_timer.max(-dt) + 1.0;
+                        }
+                        if let Some(t) = better {
+                            if let Some(u) = self.unit_mut(h) {
+                                u.action = Action::Attack { target: t };
+                            }
+                            self.acquired(h, t);
+                            continue;
+                        }
+                    }
                     // Turned invisible, it lets a target it took up itself go once its
                     // swing is done (measured: a Blademaster that had taken up a footman
                     // as it windwalked strikes once and attacks no more).

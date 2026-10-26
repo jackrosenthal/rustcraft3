@@ -1328,7 +1328,9 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         CaptainIsFull => |w, _, _| {
             let want = w.ai_state().map(|s| s.assault.clone()).unwrap_or_default();
             let units = w.captain_units(true);
-            boolean(want.iter().all(|(id, qty)| units.iter().filter(|&&h| w.unit(h).is_some_and(|u| u.type_id == *id && !u.dead)).count() as i32 >= *qty))
+            // Units below half their life, Heroes aside, don't count (FUN_6f9c4d20 for the
+            // attack captain, DAT_6fcd53f8 0.5).
+            boolean(want.iter().all(|(id, qty)| units.iter().filter(|&&h| w.unit(h).is_some_and(|u| u.type_id == *id && !u.dead && (u.is_hero || u.life >= 0.5 * u.max_life))).count() as i32 >= *qty))
         },
         CaptainIsEmpty => |w, _, _| { let u = w.captain_units(true); boolean(u.iter().all(|&h| w.unit(h).is_none_or(|u| u.dead))) },
         CaptainGroupSize => |w, _, _| { let u = w.captain_units(true); int(u.iter().filter(|&&h| w.unit(h).is_some_and(|u| !u.dead)).count() as i32) },

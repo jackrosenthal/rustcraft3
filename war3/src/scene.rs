@@ -235,7 +235,12 @@ impl UnitView {
                 return;
             }
         }
-        let seqs = w3_render::anim::sequences_named(&self.inst.model.mdx, name);
+        let mut seqs = w3_render::anim::sequences_named(&self.inst.model.mdx, name);
+        // Else one carrying more words besides (as the original shows a Scout Tower's
+        // "Stand Ready Attack" standing; ours fell back to its Birth, the scaffolding).
+        if seqs.is_empty() {
+            seqs = w3_render::anim::sequences_containing(&self.inst.model.mdx, name);
+        }
         if seqs.is_empty() {
             // Drop qualifiers ("walk gold" -> "walk") before falling back to stand.
             match name.rsplit_once(' ') {

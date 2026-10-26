@@ -287,6 +287,28 @@ pub fn sequences_named(model: &Model, name: &str) -> Vec<usize> {
         .collect()
 }
 
+/// The sequences whose words include all of `name`'s, with the fewest others: a Scout
+/// Tower's "Stand Ready Attack" for "stand", where its model has no plain Stand.
+pub fn sequences_containing(model: &Model, name: &str) -> Vec<usize> {
+    let want: Vec<String> = name.split_whitespace().map(|w| w.to_ascii_lowercase()).collect();
+    let extras: Vec<(usize, usize)> = model
+        .sequences
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| {
+            let words: Vec<String> = s
+                .name
+                .split(|c: char| c.is_whitespace() || c == '-')
+                .filter(|w| !w.is_empty() && !w.chars().all(|c| c.is_ascii_digit()))
+                .map(|w| w.to_ascii_lowercase())
+                .collect();
+            want.iter().all(|w| words.contains(w)).then(|| (i, words.len() - want.len()))
+        })
+        .collect();
+    let fewest = extras.iter().map(|e| e.1).min();
+    extras.into_iter().filter(|e| Some(e.1) == fewest).map(|e| e.0).collect()
+}
+
 /// Layer alpha and texture id at a given time.
 pub fn layer_state(layer: &mdx::Layer, time: &Time, globals: &[u32]) -> (f32, u32) {
     (

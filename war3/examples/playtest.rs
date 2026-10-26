@@ -646,7 +646,7 @@ fn main() -> anyhow::Result<()> {
                     for &h in &w.unit_order {
                         if let Some(u) = w.unit(h).filter(|u| !u.dead && (u.x - x).hypot(u.y - y) <= r) {
                             let target = match u.action { w3_game::types::Action::Attack { target } => w.unit(target).map_or(String::new(), |t| w3_game::objects::id_str(t.type_id)), _ => String::new() };
-                            eprintln!("  p{} {} ({:.0},{:.0}) life {:.0} {:?} {} order {} sleep {}", u.owner, w3_game::objects::id_str(u.type_id), u.x, u.y, u.life, u.action, target, w3_game::natives::basic::order_name(u.order.id).unwrap_or(""), u.extra.sleeping);
+                            eprintln!("  p{} {} ({:.0},{:.0}) life {:.0} {:?} {} order {} sleep {} anim {:?} building {} constructing {:?}", u.owner, w3_game::objects::id_str(u.type_id), u.x, u.y, u.life, u.action, target, w3_game::natives::basic::order_name(u.order.id).unwrap_or(""), u.extra.sleeping, u.anim, u.is_building, u.constructing);
                         }
                     }
                 }

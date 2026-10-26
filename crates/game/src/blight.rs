@@ -56,84 +56,60 @@ impl World {
                 }
             }
         }
-        let mut changed = false;
-        if let Some(p) = self.pathing.as_mut() {
-            for &(row, c0, c1) in &rows {
-                for col in c0..=c1 {
-                    let (x0, y0) = (origin.0 + col as f32 * CELL, origin.1 + row as f32 * CELL);
-                    for k in 0..16 {
-                        let c = p.cell_of(x0 + (k % 4) as f32 * 32.0 + 16.0, y0 + (k / 4) as f32 * 32.0 + 16.0);
-                        p.set_flags(c, BLIGHT_FLAG, add);
-                    }
-                }
-            }
-        }
-        // The terrain's corners take the blight of the cells about them: a corner is
-        // blighted while any of its four cells is.
-        if let (Some(t), Some(p)) = (self.terrain_heights.as_ref(), self.pathing.as_ref()) {
-            let (w, h) = (t.width as i32, t.height as i32);
-            let (ox, oy) = (t.offset[0], t.offset[1]);
-            let cell_blighted = |col: i32, row: i32| {
-                let (px, py) = (origin.0 + col as f32 * CELL + 16.0, origin.1 + row as f32 * CELL + 16.0);
-                p.flags_at(p.cell_of(px, py)).is_some_and(|f| f & BLIGHT_FLAG != 0)
-            };
-            for &(row, c0, c1) in &rows {
-                for col in c0 - 1..=c1 + 1 {
-                    for drow in 0..=1 {
-                        let (i, j) = (((origin.0 + col as f32 * CELL - ox) / CELL).round() as i32, ((origin.1 + (row + drow) as f32 * CELL - oy) / CELL).round() as i32);
-                        if i < 0 || j < 0 || i >= w || j >= h {
-                            continue;
-                        }
-                        let (ci, cj) = (col, row + drow);
-                        let on = cell_blighted(ci - 1, cj - 1) || cell_blighted(ci, cj - 1) || cell_blighted(ci - 1, cj) || cell_blighted(ci, cj);
-                        if let Some(b) = self.blight.get_mut((j * w + i) as usize) {
-                            if *b != on {
-                                *b = on;
-                                changed = true;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if changed {
-            self.blight_serial = self.blight_serial.wrapping_add(1);
+        for (row, c0, c1) in rows {
+            let (x0, y0) = (origin.0 + c0 as f32 * CELL, origin.1 + row as f32 * CELL);
+            self.blight_area(add, x0, y0, origin.0 + (c1 + 1) as f32 * CELL, y0 + CELL);
         }
     }
 
-    /// Blights or clears the corners and pathing cells inside `bounds` that `inside`
-    /// takes (SetBlight, SetBlightRect, SetBlightPoint).
-    pub fn set_blight(&mut self, add: bool, bounds: (f32, f32, f32, f32), inside: impl Fn(f32, f32) -> bool) {
-        let mut changed = false;
-        if let Some(t) = self.terrain_heights.as_ref() {
-            let (w, h) = (t.width as i32, t.height as i32);
-            let (ox, oy) = (t.offset[0], t.offset[1]);
-            let i0 = (((bounds.0 - ox) / 128.0).floor() as i32 - 1).max(0);
-            let i1 = (((bounds.2 - ox) / 128.0).ceil() as i32 + 1).min(w - 1);
-            let j0 = (((bounds.1 - oy) / 128.0).floor() as i32 - 1).max(0);
-            let j1 = (((bounds.3 - oy) / 128.0).ceil() as i32 + 1).min(h - 1);
-            for j in j0..=j1 {
-                for i in i0..=i1 {
-                    let (px, py) = (ox + i as f32 * 128.0, oy + j as f32 * 128.0);
-                    if inside(px, py) {
-                        let k = (j * w + i) as usize;
-                        if let Some(b) = self.blight.get_mut(k) {
-                            if *b != add {
-                                *b = add;
-                                changed = true;
-                            }
-                        }
-                    }
+    /// SetBlightRect (FUN_6f48fc70): its edges rounded to the 128 grid, halves away from
+    /// zero, and the cells between blighted or cleared.
+    pub fn blight_rect(&mut self, add: bool, x0: f32, y0: f32, x1: f32, y1: f32) {
+        let snap = |v: f32| (v / 128.0).round() * 128.0;
+        self.blight_area(add, snap(x0), snap(y0), snap(x1), snap(y1));
+    }
+
+    /// SetBlightPoint (FUN_6f48fa60): the point moved 64 up and right and cut to the 128
+    /// grid toward zero, and the 256 square about it blighted or cleared.
+    pub fn blight_point(&mut self, add: bool, x: f32, y: f32) {
+        let snap = |v: f32| ((v + 64.0) / 128.0).trunc() * 128.0;
+        let (x, y) = (snap(x), snap(y));
+        self.blight_area(add, x - 128.0, y - 128.0, x + 128.0, y + 128.0);
+    }
+
+    /// Blights or clears the pathing cells whose middles lie in [x0, x1) by [y0, y1)
+    /// (FUN_6f04d6d0 with 0x20), and sets the terrain corners about them by the 128
+    /// cells around each: a corner is blighted while any of its four cells is.
+    fn blight_area(&mut self, add: bool, x0: f32, y0: f32, x1: f32, y1: f32) {
+        if x1 <= x0 || y1 <= y0 {
+            return;
+        }
+        if let Some(p) = self.pathing.as_mut() {
+            let (c0, c1) = (p.cell_of(x0 + 16.0, y0 + 16.0), p.cell_of(x1 - 16.0, y1 - 16.0));
+            for j in c0.1..=c1.1 {
+                for i in c0.0..=c1.0 {
+                    p.set_flags((i, j), BLIGHT_FLAG, add);
                 }
             }
         }
-        if let Some(p) = self.pathing.as_mut() {
-            let (c0, c1) = (p.cell_of(bounds.0, bounds.1), p.cell_of(bounds.2, bounds.3));
-            for j in c0.1 - 1..=c1.1 + 1 {
-                for i in c0.0 - 1..=c1.0 + 1 {
-                    let (px, py) = p.center((i, j));
-                    if inside(px, py) {
-                        p.set_flags((i, j), BLIGHT_FLAG, add);
+        let mut changed = false;
+        if let (Some(t), Some(p)) = (self.terrain_heights.as_ref(), self.pathing.as_ref()) {
+            let (w, h) = (t.width as i32, t.height as i32);
+            let (ox, oy) = (t.offset[0], t.offset[1]);
+            let blighted = |cx: f32, cy: f32| p.flags_at(p.cell_of(cx, cy)).is_some_and(|f| f & BLIGHT_FLAG != 0);
+            let i0 = (((x0 - ox) / 128.0).floor() as i32 - 1).max(0);
+            let i1 = (((x1 - ox) / 128.0).ceil() as i32 + 1).min(w - 1);
+            let j0 = (((y0 - oy) / 128.0).floor() as i32 - 1).max(0);
+            let j1 = (((y1 - oy) / 128.0).ceil() as i32 + 1).min(h - 1);
+            for j in j0..=j1 {
+                for i in i0..=i1 {
+                    let (cx, cy) = (ox + i as f32 * 128.0, oy + j as f32 * 128.0);
+                    let on = blighted(cx - 64.0, cy - 64.0) || blighted(cx + 64.0, cy - 64.0) || blighted(cx - 64.0, cy + 64.0) || blighted(cx + 64.0, cy + 64.0);
+                    if let Some(b) = self.blight.get_mut((j * w + i) as usize) {
+                        if *b != on {
+                            *b = on;
+                            changed = true;
+                        }
                     }
                 }
             }

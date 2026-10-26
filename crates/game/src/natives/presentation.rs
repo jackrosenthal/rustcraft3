@@ -648,12 +648,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         SetBlightRect => |w, _, a| {
             let Some(Obj::Rect(r)) = w.handles.get(a.h(1)).cloned() else { return none() };
-            w.set_blight(a.b(2), (r.min_x, r.min_y, r.max_x, r.max_y), |px, py| px >= r.min_x && px <= r.max_x && py >= r.min_y && py <= r.max_y);
+            w.blight_rect(a.b(2), r.min_x, r.min_y, r.max_x, r.max_y);
             none()
         },
         SetBlightPoint => |w, _, a| {
             let (x, y, add) = (a.r(1), a.r(2), a.b(3));
-            w.set_blight(add, (x - 64.0, y - 64.0, x + 64.0, y + 64.0), |px, py| (px - x).abs() <= 64.0 && (py - y).abs() <= 64.0);
+            w.blight_point(add, x, y);
             none()
         },
         SetBlightLoc => |w, _, a| {

@@ -77,10 +77,17 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32, facing: f32)
         // footprint (blue; measured: an Ancient of War stands where none of its 12x12
         // cells is unbuildable).  Other structures don't count yet: the original moves
         // a town hall made on a start location by them, where to is not yet known.
-        // A town hall stands at least 768 from a gold mine (measured: one asked for 512 to
-        // 704 north of a mine is moved 768 away, a barracks not; one west of a mine lands
-        // 781 off).
-        let hall = w.objects.units.get(type_id).is_some_and(|o| o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case("townhall")));
+        // A structure that takes gold in (Artn with DataA: a Town Hall's or Great Hall's
+        // Argl) stands at least 768 from a gold mine (measured: one asked for 512 to 704
+        // north of a mine is moved 768 away, a barracks not; one west of a mine lands 781
+        // off; a Tree of Life or Eternity and a Necropolis, taking lumber alone (Arlm),
+        // stay where asked 448 and 512 from one, their footprints clear of its, as
+        // Orc04's trees do 590 from their mines).
+        let abil_list = w.objects.units.get(type_id).map(|o| o.list("abilList")).unwrap_or_default();
+        let hall = abil_list
+            .iter()
+            .filter_map(|a| w.objects.abilities.get(crate::objects::id_from_str(a.trim())))
+            .any(|a| a.str("code") == "Artn" && a.level_real("DataA", 1) != 0.0);
         let mines: Vec<(f32, f32)> = if hall {
             w.unit_order.iter().filter_map(|&h| w.unit(h)).filter(|u| !u.dead && w.ability_with_code(u.handle, "Agld").is_some()).map(|u| (u.x, u.y)).collect()
         } else {

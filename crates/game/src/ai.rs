@@ -289,6 +289,11 @@ impl World {
             melee,
             attack: Captain { home: self.start_of(player), ..Default::default() },
             defense: Captain { home: self.start_of(player), ..Default::default() },
+            // Three replacements until SetReplacementCount says otherwise (FUN_6f9c7b20
+            // sets 3 as an AI starts; measured: Orc04's night elf computers, whose
+            // scripts never set it, take an archer and a dryad off their posts to
+            // defend and train both again at once, 275 gold, where ours trained none).
+            replacements: 3,
             ..Default::default()
         };
         self.ai.insert(player, state);
@@ -569,6 +574,8 @@ impl World {
         }
         st.harvest_timer = 1.0;
         let requests = st.harvest.clone();
+        self.ai_entangle(p);
+        let Some(st) = self.ai.get_mut(&p) else { return };
         // Units at a guard post do not gather, nor those of a captain with somewhere to
         // go; without SetSlowChopping a captain's units standing at home are taken back
         // to gather and leave it (FUN_6f9c7700; measured: a melee computer's ghouls go
@@ -645,6 +652,36 @@ impl World {
             }
         }
 
+    }
+
+    /// A computer's tree that can entangle a gold mine (Aent) and covers none entangles
+    /// the first plain mine in reach on its own: within Rng past both their sizes
+    /// (CAbilityEntangle, FUN_6f543750 and FUN_6f56b510, run for a computer's units;
+    /// measured: Orc04's night elf computers gain gold from their wisps within half a
+    /// minute in the original, their trees 590 from the mines; ours, never entangling,
+    /// gained none).
+    fn ai_entangle(&mut self, p: u8) {
+        let trees: Vec<(u32, Id, u32)> = self
+            .unit_order
+            .iter()
+            .copied()
+            .filter(|&h| self.unit(h).is_some_and(|u| u.owner == p && !u.dead && u.constructing.is_none() && u.extra.mine.is_none() && !u.extra.uprooted && matches!(u.action, Action::Idle)))
+            .filter_map(|h| self.ability_with_code(h, "Aent").map(|(a, l)| (h, a, l)))
+            .collect();
+        let order = crate::natives::basic::order_id("entangle");
+        for (h, a, lvl) in trees {
+            if self.pending_entangles.iter().any(|e| e.1 == h) {
+                continue;
+            }
+            let Some((x, y, size)) = self.unit(h).map(|u| (u.x, u.y, u.collision)) else { continue };
+            let reach = self.data(a, "Rng", lvl) + size;
+            let mine = self.unit_order.iter().copied().find(|&m| {
+                self.unit(m).is_some_and(|u| !u.dead && !u.hidden && (u.x - x).hypot(u.y - y) <= reach + u.collision) && self.ability_with_code(m, "Agld").is_some()
+            });
+            if let Some(m) = mine {
+                self.order_unit(h, order, 0.0, 0.0, m);
+            }
+        }
     }
 
     /// Each moment the captains keep their units moving toward the goal (the

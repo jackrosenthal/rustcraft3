@@ -134,6 +134,9 @@ pub struct Sleeper {
     pub wake_at: f32,
     pub thread: Thread,
     pub ctx: EventCtx,
+    /// The sound a TriggerWaitForSound waits on, or 0: it resumes too once that sound
+    /// has stopped.
+    pub sound: u32,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -165,6 +168,10 @@ pub struct World {
     pub ctx: EventCtx,
     pub enum_ctx: EnumCtx,
     pub sleepers: Vec<Sleeper>,
+    /// The sound the native just called waits on (TriggerWaitForSound), for the sleeper
+    /// it makes.
+    #[serde(skip)]
+    pub sound_wait: u32,
     #[serde(skip)]
     pub handle_sweep_timer: f32,
     /// Threads started by natives (TriggerExecute, ExecuteFunc) that must run once the
@@ -649,6 +656,7 @@ impl World {
             time_exact: 0.0,
             sleep_exact: 0.0,
             sleepers: Vec::new(),
+            sound_wait: 0,
             handle_sweep_timer: 0.0,
             pending: Vec::new(),
             requests: Vec::new(),
@@ -1085,7 +1093,8 @@ impl World {
             Outcome::Finished(_) => {}
             Outcome::Sleeping(secs) => {
                 let ctx = self.ctx.clone();
-                self.sleepers.push(Sleeper { wake_at: self.sleep_time + secs.max(0.0) + SLEEP_SLACK, thread: t, ctx });
+                let sound = std::mem::take(&mut self.sound_wait);
+                self.sleepers.push(Sleeper { wake_at: self.sleep_time + secs.max(0.0) + SLEEP_SLACK, thread: t, ctx, sound });
             }
             Outcome::Aborted(e) => log::warn!("thread aborted: {e}"),
         }
@@ -1622,7 +1631,14 @@ impl World {
         let now = SLEEP_POLL_PHASE + poll(self.sleep_time) * SLEEP_POLL;
         let mut i = 0;
         while polled && i < self.sleepers.len() {
-            if self.sleepers[i].wake_at < now {
+            // A wait for a sound ends too once the sound is stopped (measured: Escape
+            // during NightElf07's Furion transmission, whose wait is WaitForSoundBJ,
+            // stops it by CancelCineSceneBJ and the script goes on at once in the
+            // original, its game timer 5 seconds sooner than ours, which slept the
+            // sound's whole length).
+            let sound = self.sleepers[i].sound;
+            let stopped = sound != 0 && crate::natives::presentation::sound_position(self, sound).is_none();
+            if self.sleepers[i].wake_at < now || stopped {
                 let s = self.sleepers.swap_remove(i);
                 self.run_thread(vm, s.thread, s.ctx);
             } else {

@@ -137,7 +137,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         TriggerSleepAction => |_, _, a| NativeResult::Sleep(a.r(0)),
-        TriggerWaitForSound => |w, _, a| NativeResult::Sleep(super::presentation::sound_wait(w, a.h(0), a.r(1))),
+        TriggerWaitForSound => |w, _, a| {
+            w.sound_wait = a.h(0);
+            NativeResult::Sleep(super::presentation::sound_wait(w, a.h(0), a.r(1)))
+        },
         TriggerSyncStart => |_, _, _| none(),
         // Waits for the synced values: in a network game long enough for them to go
         // round (the frames carrying them come within it), else at once.

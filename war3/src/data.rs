@@ -4,7 +4,9 @@
 //! `War3.mpq` (priority 0) and `War3x.mpq` (1) are always mounted, then `War3xLocal.mpq`
 //! (3) and `War3Patch.mpq` (8).  When a game starts, the `Melee_V<n>` or `Custom_V<n>`
 //! folder of War3x, War3xLocal, and War3Patch is mounted above them at priorities 9-12,
-//! where `n` is 0 for Reign of Chaos and 1 for The Frozen Throne.
+//! where `n` is 0 for Reign of Chaos and 1 for The Frozen Throne.  A map's tileset
+//! archive, `<letter>.mpq` found in those (War3x's over War3's), is mounted at 6 while
+//! it plays (FUN_6f78c570): its cliffs, water, ground splats, and some units' textures.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -38,6 +40,8 @@ impl DataSet {
 }
 
 const PRIORITY_DATA_SET: [i32; 4] = [9, 10, 11, 12];
+/// The map's tileset archive (FUN_6f78c570 opens "%c.mpq" at 6).
+const PRIORITY_TILESET: i32 = 6;
 /// Maps are mounted above everything else.
 pub const PRIORITY_MAP: i32 = 100;
 /// A custom campaign's archive: under its maps, over the game's data.
@@ -265,6 +269,20 @@ impl GameData {
             if let Some(a) = src {
                 self.chain.mount(a.clone(), Some(&folder), prio);
             }
+        }
+    }
+
+    /// Mounts the tileset archive of a map's w3i tileset letter, found among the
+    /// archives mounted (measured: the original opens J.mpq for a map whose w3i says J,
+    /// and draws its water and cliffs from it, where a map whose w3e alone says J draws
+    /// Lordaeron's; with J.mpq's water missing from ours, Dalaran Ruins water showed the
+    /// generic blue).
+    pub fn select_tileset(&self, tileset: u8) {
+        self.chain.unmount(PRIORITY_TILESET);
+        let name = format!("{}.mpq", tileset as char);
+        match self.chain.read(&name).map_err(anyhow::Error::from).and_then(|b| Archive::from_bytes(&name, b).map_err(Into::into)) {
+            Ok(a) => self.chain.mount(Arc::new(a), None, PRIORITY_TILESET),
+            Err(e) => log::warn!("tileset archive {name}: {e}"),
         }
     }
 

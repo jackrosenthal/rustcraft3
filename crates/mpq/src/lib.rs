@@ -196,6 +196,36 @@ impl Archive {
         self.find(name).is_some()
     }
 
+    /// The indices of the files no name in `names` reaches, for looking at what an
+    /// archive's listfile leaves out.
+    pub fn unnamed(&self, names: &[String]) -> Vec<usize> {
+        let mut reached = vec![false; self.blocks.len()];
+        for name in names {
+            let n = self.hashes.len().max(1);
+            let start = hash_string(name, HASH_TABLE_OFFSET) as usize % n;
+            let (a, b) = (hash_string(name, HASH_NAME_A), hash_string(name, HASH_NAME_B));
+            for i in 0..n {
+                let h = self.hashes[(start + i) % n];
+                if h.block == HASH_EMPTY {
+                    break;
+                }
+                if h.block != HASH_DELETED && h.name_a == a && h.name_b == b {
+                    if let Some(r) = reached.get_mut(h.block as usize) {
+                        *r = true;
+                    }
+                }
+            }
+        }
+        (0..self.blocks.len()).filter(|&i| !reached[i] && self.blocks[i].flags & FLAG_EXISTS != 0).collect()
+    }
+
+    /// Reads a file by its index, without its name (so not one whose name keys its
+    /// encryption).
+    pub fn read_index(&self, index: usize) -> Result<Vec<u8>, Error> {
+        let blk = *self.blocks.get(index).ok_or_else(|| Error::NotFound(format!("#{index}")))?;
+        self.read_block("", blk)
+    }
+
     pub fn read(&self, name: &str) -> Result<Vec<u8>, Error> {
         let blk = self.find(name).ok_or_else(|| Error::NotFound(name.to_string()))?;
         self.read_block(name, blk)

@@ -29,6 +29,12 @@ impl Assets {
 
     /// Loads a model by path.  Model references often name `.mdl` files, which ship
     /// only as `.mdx`.
+    /// Forgets the models loaded, whose textures may have come from another tileset's
+    /// archive.
+    pub fn clear_models(&mut self) {
+        self.models.clear();
+    }
+
     pub fn model(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, path: &str) -> Option<Arc<ModelGpu>> {
         let key = path.to_ascii_lowercase();
         if let Some(m) = self.models.get(&key) {
@@ -611,7 +617,11 @@ impl Scene {
         // The tileset is the map's w3i's: its water and its textures' versions follow it
         // (measured: a Lordaeron map whose w3i alone says Barrens draws Barrens water).
         terrain.tileset = info.tileset;
-        assets.textures.set_tileset(Some(info.tileset));
+        // The tileset's archive, and anything read from the last one forgotten.
+        data.select_tileset(info.tileset);
+        if assets.textures.set_tileset(Some(info.tileset)) {
+            assets.clear_models();
+        }
 
         let models = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let terrain_slk = data.slk("TerrainArt\\Terrain.slk");

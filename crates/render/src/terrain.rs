@@ -252,6 +252,36 @@ impl TerrainRenderer {
             let l = [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)].map(|(cx, cy)| terrain.corner(cx, cy).layer_height);
             l.iter().any(|&v| v != l[0]) && !on_ramp(x, y)
         };
+        // A cliff tile's type is that of the highest corner of it and of the cliff tiles
+        // beside it, right, left, above, and below, the first found of the highest (each
+        // tile's corners bottom left, bottom right, top left, top right), and the first
+        // type for none (FUN_6f7443b0; measured: HumanX01's raised city blocks, whose
+        // low corners say none, show city cliffs where ours, by the bottom left corner,
+        // drew natural ones).
+        let cliff_type = |x: u32, y: u32| -> usize {
+            let steps = |x: u32, y: u32| x + 1 < w && y + 1 < h && {
+                let l = [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)].map(|(cx, cy)| terrain.corner(cx, cy).layer_height);
+                l.iter().any(|&v| v != l[0])
+            };
+            let mut best: Option<(u8, u8)> = None;
+            for (dx, dy) in [(0i32, 0i32), (1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let (tx, ty) = (x as i32 + dx, y as i32 + dy);
+                if tx < 0 || ty < 0 || !steps(tx as u32, ty as u32) {
+                    continue;
+                }
+                let (tx, ty) = (tx as u32, ty as u32);
+                for (cx, cy) in [(tx, ty), (tx + 1, ty), (tx, ty + 1), (tx + 1, ty + 1)] {
+                    let c = terrain.corner(cx, cy);
+                    if best.is_none_or(|b| c.layer_height > b.0) {
+                        best = Some((c.layer_height, c.cliff_texture));
+                    }
+                }
+            }
+            match best.map_or(0, |b| b.1) {
+                15 => 0,
+                t => t as usize,
+            }
+        };
         // Ground height without cliff layers, which cliff models are draped over.
         let ground_only: Vec<f32> = terrain
             .corners
@@ -323,10 +353,7 @@ impl TerrainRenderer {
                 }
                 let letters: String = layers.iter().map(|&l| (b'A' + l - base) as char).collect();
                 let bl = terrain.corner(x, y);
-                let mut ct = bl.cliff_texture as usize;
-                if ct == 15 {
-                    ct = 0;
-                }
+                let ct = cliff_type(x, y);
                 let Some((dir, _)) = cliff_types.get(ct) else { continue };
                 let mut model = None;
                 for var in [bl.cliff_variation as u32, 0] {
@@ -372,10 +399,7 @@ impl TerrainRenderer {
                     continue;
                 }
                 let Some(&(_, dx, dy)) = w3_formats::map::RAMP_PATTERNS.iter().find(|p| p.0 == &l) else { continue };
-                let mut ct = terrain.corner(x, y).cliff_texture as usize;
-                if ct == 15 {
-                    ct = 0;
-                }
+                let ct = cliff_type(x, y);
                 let Some((_, _)) = cliff_types.get(ct) else { continue };
                 let key = String::from_utf8_lossy(&terrain.cliff_tilesets[ct]).into_owned();
                 let dir = cliff_slk.get(&key, "rampModelDir").map(|v| v.as_str()).unwrap_or_else(|| "CliffTrans".into());

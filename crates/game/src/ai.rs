@@ -26,6 +26,9 @@ pub struct Captain {
     pub goal: Option<(f32, f32)>,
     pub target: u32,
     pub retreating: bool,
+    /// Its size when last a unit joined: those lost since count against its readiness.
+    #[serde(default)]
+    pub peak: usize,
 }
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
@@ -909,6 +912,7 @@ impl World {
                 }
                 if let Some(c) = self.captain(attack) {
                     c.units.push(h);
+                    c.peak = c.units.len();
                 }
                 // A gatherer taken stops gathering (FUN_6f9c32d0 has its harvest ability
                 // let go), for the captain to move.
@@ -955,6 +959,18 @@ impl World {
             .min_by(|a, b| a.0.total_cmp(&b.0))
             .map(|x| x.1)
     }
+}
+
+/// CaptainReadiness and CaptainReadinessHP (FUN_6f9d52c0 with 1): the attack
+/// captain's units other than Heroes, their life against their maximum and 400 for each
+/// unit lost since one last joined, as a percentage.
+fn captain_readiness(w: &mut World) -> i32 {
+    let units = w.captain_units(true);
+    let peak = w.captain(true).map_or(0, |c| c.peak);
+    let alive: Vec<&crate::types::Unit> = units.iter().filter_map(|&h| w.unit(h)).filter(|u| !u.dead).collect();
+    let missing = peak as f32 - alive.len() as f32;
+    let (life, max) = alive.iter().filter(|u| !u.is_hero).fold((0.0, missing * 400.0), |a, u| (a.0 + u.life, a.1 + u.max_life));
+    if max > 0.0 { (life * 100.0 / max) as i32 } else { 0 }
 }
 
 fn captain_flag(attack: bool) -> bool {
@@ -1316,16 +1332,8 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         },
         CaptainIsEmpty => |w, _, _| { let u = w.captain_units(true); boolean(u.iter().all(|&h| w.unit(h).is_none_or(|u| u.dead))) },
         CaptainGroupSize => |w, _, _| { let u = w.captain_units(true); int(u.iter().filter(|&&h| w.unit(h).is_some_and(|u| !u.dead)).count() as i32) },
-        CaptainReadiness => |w, _, _| {
-            let u = w.captain_units(true);
-            let (life, max) = u.iter().filter_map(|&h| w.unit(h)).fold((0.0, 0.0), |a, u| (a.0 + u.life, a.1 + u.max_life));
-            int(if max > 0.0 { (life / max * 100.0) as i32 } else { 0 })
-        },
-        CaptainReadinessHP => |w, _, _| {
-            let u = w.captain_units(true);
-            let (life, max) = u.iter().filter_map(|&h| w.unit(h)).fold((0.0, 0.0), |a, u| (a.0 + u.life, a.1 + u.max_life));
-            int(if max > 0.0 { (life / max * 100.0) as i32 } else { 0 })
-        },
+        CaptainReadiness => |w, _, _| int(captain_readiness(w)),
+        CaptainReadinessHP => |w, _, _| int(captain_readiness(w)),
         CaptainReadinessMa => |w, _, _| {
             let u = w.captain_units(true);
             let (m, max) = u.iter().filter_map(|&h| w.unit(h)).fold((0.0, 0.0), |a, u| (a.0 + u.mana, a.1 + u.max_mana));

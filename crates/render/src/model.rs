@@ -701,7 +701,10 @@ impl ModelRenderer {
                     filter: if fading { filter::BLEND } else { layer.filter_mode.min(6) },
                     two_sided: layer.shading & shading::TWO_SIDED != 0,
                     depth_test: layer.shading & shading::NO_DEPTH_TEST == 0,
-                    depth_write: layer.shading & shading::NO_DEPTH_SET == 0 && !blended,
+                    // A fading opaque layer still writes its depth (measured: a Warden at
+                    // half alpha shows its armor over its hero glow in the original, where
+                    // ours, not writing it, showed the glow's dome over all of her).
+                    depth_write: layer.shading & shading::NO_DEPTH_SET == 0 && layer.filter_mode < filter::BLEND,
                 };
                 let tint = inst.tint;
                 // Texture animation: the coordinates are scaled (KTAS) and turned (KTAR)

@@ -1509,7 +1509,11 @@ impl Hud {
         // Buff icons for units (structures have no status bar), at most the bar's eight.
         self.buff_icons = (!u.is_building).then(|| {
             let mut icons: Vec<String> = Vec::new();
-            for b in &u.buffs {
+            // Auras' buffs after the rest (measured: Inner Fire shows before Devotion
+            // Aura whichever came first).
+            let mut order: Vec<&w3_game::types::Buff> = u.buffs.iter().collect();
+            order.sort_by_key(|b| b.aura_left.is_some());
+            for b in order {
                 let art = world.objects.buffs.get(b.id).map(|o| o.str("Buffart")).unwrap_or_default();
                 if !art.is_empty() && !icons.contains(&art) {
                     icons.push(art);

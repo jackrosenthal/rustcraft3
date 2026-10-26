@@ -94,11 +94,16 @@ impl World {
         if let Some(wp) = weapon(self, u.type_id) {
             let dice = wp.dice + ub.dice;
             let base = wp.base + ub.damage + self.primary_attribute_pub(h);
-            let bonus = u.item_bonus.damage + self.buff_damage_bonus(h);
+            let (min, max) = ((base + dice as f32) as i32, (base + (dice * wp.sides) as f32) as i32);
+            // Damage factors (Inner Fire, Trueshot Aura) show as that share of the mean,
+            // rounded (measured with Inner Fire's tenth: +1 on a footman's 12 - 13, +2 on
+            // a grunt's 18 - 21 and an archer's 16 - 18).
+            let factor = self.buff_mods(h).3 - 1.0;
+            let bonus = u.item_bonus.damage + self.buff_damage_bonus(h) + (factor * (min + max) as f32 / 2.0).round();
             let up = self.upgrade_for(u.owner, u.type_id, &["melee", "ranged"]);
             s.attack = Some(AttackInfo {
-                min: (base + dice as f32) as i32,
-                max: (base + (dice * wp.sides) as f32) as i32,
+                min,
+                max,
                 bonus: bonus as i32,
                 attack_type: wp.attack_type.clone(),
                 upgrade: up.map(|(_, l)| l),

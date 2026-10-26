@@ -105,7 +105,18 @@ impl World {
             // Rexxar's 74 - 84 with his strength's 6).
             let factor = self.buff_mods(h).3 - 1.0;
             let mean = (min + max) as f32 / 2.0 + (all - own);
-            let bonus = u.item_bonus.damage + self.buff_damage_bonus(h) + (all - own) + (factor * mean).round();
+            // A carried orb's DataA, added as it strikes (orbs.rs), shows there too
+            // (measured: HumanX06's Illidan with the Orb of Kil'jaeden, AIgd's 6, reads
+            // 37 - 59 +6 in the original).
+            let orbs: f32 = u
+                .inventory
+                .iter()
+                .filter_map(|&i| self.item(i))
+                .flat_map(|i| self.item_abilities(i.type_id))
+                .filter(|&a| matches!(self.ability_code(a).as_str(), "AIob" | "AIcb" | "AIpb" | "AIlb" | "AIsb" | "AIfb"))
+                .map(|a| self.data(a, "DataA", 1))
+                .sum();
+            let bonus = u.item_bonus.damage + orbs + self.buff_damage_bonus(h) + (all - own) + (factor * mean).round();
             let up = self.upgrade_for(u.owner, u.type_id, &["melee", "ranged"]);
             s.attack = Some(AttackInfo {
                 min,

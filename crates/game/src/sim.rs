@@ -2622,6 +2622,15 @@ impl World {
         }
         if u.path.is_empty() || u.repath_timer <= 0.0 {
             self.path_to(h, tp);
+            // Already in the nearest open cell yet short of reach (a cell's half off the
+            // footprint): the last step is straight at it (ours stood there for good,
+            // three of five peasants mining past a standing hero idle 54 from a mine's
+            // footprint, where the original's never stall).
+            if structure && self.unit(h).is_some_and(|u| u.path.is_empty()) {
+                if let Some(u) = self.unit_mut(h) {
+                    u.path.push(tp);
+                }
+            }
         }
         let tag = Self::carry_tag(self.unit(h).unwrap());
         self.walk(h, dt);

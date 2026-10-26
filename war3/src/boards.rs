@@ -244,7 +244,11 @@ pub fn sync(view: &mut Option<BoardsView>, db: &FrameDb, w: &World, team_rgb: &[
             if it.style[0] {
                 let x1 = if it.style[1] || it.style[2] { right - 0.02 } else { right };
                 let c = it.label_color.map(color).unwrap_or_else(|| player_rgb(it.player));
-                text(&mut extra, &it.label, Rect { x0: row.x0 + 0.005, x1, y0: row.y0, y1: row.y1 }, c, w3_ui::Justify::Start);
+                // The row holds one line: a label too long for it shows its first
+                // (measured: "Quillboars Remaining Quillboars Remaining" shows its first
+                // two words in the original, where ours wrapped four lines over the board).
+                let label = db.wrap(&font, lb_size, &it.label, x1 - row.x0 - 0.005).into_iter().next().unwrap_or_default();
+                text(&mut extra, &label, Rect { x0: row.x0 + 0.005, x1, y0: row.y0, y1: row.y1 }, c, w3_ui::Justify::Start);
             }
         }
     }

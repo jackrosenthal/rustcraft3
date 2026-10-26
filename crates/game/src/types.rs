@@ -264,6 +264,10 @@ pub struct UnitExtra {
     /// A haunted mine's payout timer and the acolytes it last counted at work.
     #[serde(default)]
     pub payout: Option<(f32, u32)>,
+    /// A gold mine's holder: the player whose workers are in it, until when (infinite
+    /// while any is inside, GoldMineOwnDuration after the last leaves).
+    #[serde(default)]
+    pub mine_holder: Option<(u8, f32)>,
     /// The item whose spell is being cast, spent when it takes effect.
     #[serde(default)]
     pub casting_item: Option<u32>,
@@ -520,6 +524,7 @@ impl Default for UnitExtra {
             meld_acting: false,
             aura_clock: None,
             payout: None,
+            mine_holder: None,
             casting_item: None,
             permanent_life: 0.0,
             cooldown_speed: None,

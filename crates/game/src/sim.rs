@@ -535,6 +535,9 @@ impl World {
         } else if (order == smart || order == crate::natives::basic::order_id("board")) && target != 0 && self.cargo_hold(target).is_some() && self.can_board(target, h) {
             Action::Board { transport: target }
         } else if (order == smart || order == crate::natives::basic::order_id("harvest")) && target != 0 && self.can_harvest(h, target) {
+            if self.mine_held_by_other(h, target) {
+                return;
+            }
             Action::Harvest { target }
         } else if order == crate::natives::basic::order_id("returnresources") {
             Action::ReturnResources
@@ -557,7 +560,7 @@ impl World {
                     // peasant so ordered takes a visible mine, and none fogged or masked;
                     // Human02's skipped intro orders its gold peasants so while the mine
                     // lies masked, and they stand idle in the original).
-                    .filter(|&m| m != h && self.can_harvest(h, m) && self.unit(m).is_some_and(|t| t.is_building && self.fog_state(t.x, t.y, u.owner) == crate::fog::FOG_VISIBLE))
+                    .filter(|&m| m != h && self.can_harvest(h, m) && !self.mine_held_by_other(h, m) && self.unit(m).is_some_and(|t| t.is_building && self.fog_state(t.x, t.y, u.owner) == crate::fog::FOG_VISIBLE))
                     .filter_map(|m| self.unit(m).map(|t| ((t.x - ux).hypot(t.y - uy), m)))
                     .filter(|(d, _)| *d <= RANGE)
                     .min_by(|a, b| a.0.total_cmp(&b.0))
@@ -2542,6 +2545,15 @@ impl World {
         }
     }
 
+    /// A gold mine another player's workers hold: one is inside, or one left it less
+    /// than GoldMineOwnDuration ago (measured: while a peasant of Player 1 works a mine,
+    /// Player 2's peasants ordered to harvest it or to autoharvestgold stay idle; two
+    /// seconds after it last came out they go).
+    pub(crate) fn mine_held_by_other(&self, h: u32, mine: u32) -> bool {
+        let Some(owner) = self.unit(h).map(|u| u.owner) else { return false };
+        self.ability_with_code(mine, "Agld").is_some() && self.unit(mine).and_then(|m| m.extra.mine_holder).is_some_and(|(p, until)| p != owner && until > self.time)
+    }
+
     pub(crate) fn leave_mine(&mut self, h: u32) {
         let mine = self.unit(h).map_or(0, |u| u.inside);
         if mine == 0 {
@@ -2553,6 +2565,12 @@ impl World {
         if let Some(u) = self.unit_mut(h) {
             u.inside = 0;
             u.hidden = false;
+        }
+        let until = self.time + self.misc_f32("GoldMineOwnDuration", 2.0);
+        if let Some(m) = self.unit_mut(mine).filter(|m| m.inside == 0) {
+            if let Some(holder) = m.extra.mine_holder.as_mut() {
+                holder.1 = until;
+            }
         }
         self.mine_work_anim(mine);
     }
@@ -2712,8 +2730,10 @@ impl World {
             let capacity = self.ability_real(agld, "DataC", mlvl).max(1.0) as u32;
             let duration = self.ability_real(agld, "DataB", mlvl);
             if self.unit(target).is_some_and(|m| m.inside < capacity) {
+                let owner = self.unit(h).map_or(0, |u| u.owner);
                 if let Some(m) = self.unit_mut(target) {
                     m.inside += 1;
+                    m.extra.mine_holder = Some((owner, f32::INFINITY));
                 }
                 let u = self.unit_mut(h).unwrap();
                 u.inside = target;

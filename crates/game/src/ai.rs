@@ -884,17 +884,7 @@ impl World {
     }
 
     pub fn leave_mine_pub(&mut self, h: u32) {
-        let mine = self.unit(h).map_or(0, |u| u.inside);
-        if mine == 0 {
-            return;
-        }
-        if let Some(m) = self.unit_mut(mine) {
-            m.inside = m.inside.saturating_sub(1);
-        }
-        if let Some(u) = self.unit_mut(h) {
-            u.inside = 0;
-            u.hidden = false;
-        }
+        self.leave_mine(h);
     }
 
     fn captain(&mut self, attack: bool) -> Option<&mut Captain> {

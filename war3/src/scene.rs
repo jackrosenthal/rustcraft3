@@ -669,8 +669,12 @@ impl Scene {
                 };
                 let Some(model) = model else { continue };
                 let mut inst = ModelInstance::new(model);
+                // The map's scale is over the type's defScale (measured: Orc01's Barrens
+                // spire BRsp, defScale 0.36, placed at 1.11, shows about a third the size
+                // of ours, which drew it at 1.11).
+                let def_scale = Some(num(table, &id, "defScale") as f32).filter(|v| *v > 0.0).unwrap_or(1.0);
                 inst.transform = Mat4::from_scale_rotation_translation(
-                    Vec3::from_array(d.scale),
+                    Vec3::from_array(d.scale) * def_scale,
                     Quat::from_rotation_z(d.angle),
                     Vec3::from_array(d.position),
                 );

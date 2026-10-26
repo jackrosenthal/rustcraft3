@@ -3580,6 +3580,9 @@ impl Scene {
                     let t = assets.textures.get_or_white(device, queue, &tex_file);
                     inst.replaceable.insert(tex_id, t);
                 }
+                // Its type's tint (DestructableData colorR, colorG, colorB; w3b bvcr...).
+                let c = |f: &str| o.str(f).trim().parse::<f32>().map_or(1.0, |v| v / 255.0);
+                inst.tint = glam::Vec4::new(c("colorR"), c("colorG"), c("colorB"), 1.0);
                 let alive = d.life > 0.0;
                 inst.play(if alive { "stand" } else { "death" });
                 if !alive {

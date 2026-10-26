@@ -506,7 +506,11 @@ impl World {
 
     /// Entangle Gold Mine (Aent): a gold mine becomes the caster's entangled mine
     /// (UnitID), which takes it over.
-    pub fn entangle(&mut self, caster: u32, mine: u32) {
+    /// The entangled mine grows over its build time unless the order was the instant one
+    /// (measured: Orc04's night elf computers entangle their mines at once, and their
+    /// wisps go in 60 seconds later, egol's bldtm; NightElfX04's entangleinstant leaves
+    /// a finished mine).
+    pub fn entangle(&mut self, caster: u32, mine: u32, instant: bool) {
         let Some((aent, lvl)) = self.ability_with_code(caster, "Aent") else { return };
         let Some(owner) = self.unit(caster).map(|u| u.owner) else { return };
         if !self.unit(mine).is_some_and(|m| !m.dead && !m.hidden) || self.ability_with_code(mine, "Agld").is_none() {
@@ -521,6 +525,13 @@ impl World {
         let e = crate::natives::units::create_unit_exact(self, owner, id, x, y, facing);
         if e != 0 {
             self.cover_mine(e, mine);
+            if !instant {
+                if let Some(u) = self.unit_mut(e) {
+                    u.constructing = Some(u.build_time);
+                    u.life = u.max_life * 0.1;
+                    crate::sim::restart_anim(u, "birth");
+                }
+            }
         }
     }
 

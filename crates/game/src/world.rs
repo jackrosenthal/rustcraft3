@@ -1497,7 +1497,7 @@ impl World {
         let due: Vec<(f32, u32, u32)> = self.pending_entangles.iter().copied().filter(|e| e.0 <= now).collect();
         self.pending_entangles.retain(|e| e.0 > now);
         for (_, caster, mine) in due {
-            self.entangle(caster, mine);
+            self.entangle(caster, mine, false);
         }
         let landing: Vec<_> = self.pending_infernos.iter().copied().filter(|e| e.0 <= now).collect();
         self.pending_infernos.retain(|e| e.0 > now);

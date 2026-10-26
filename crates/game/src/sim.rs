@@ -282,7 +282,7 @@ pub(crate) fn set_anim(u: &mut Unit, name: &str) {
     }
 }
 
-fn restart_anim(u: &mut Unit, name: &str) {
+pub(crate) fn restart_anim(u: &mut Unit, name: &str) {
     u.anim = name.to_string();
     u.anim_serial = u.anim_serial.wrapping_add(1);
 }
@@ -450,7 +450,7 @@ impl World {
         }
         // entangleinstant: Entangle Gold Mine at once, without its casting time.
         if order == crate::natives::basic::order_id("entangleinstant") && self.ability_with_code(h, "Aent").is_some() {
-            self.entangle(h, target);
+            self.entangle(h, target, true);
             return;
         }
         let me = match self.unit(h) {

@@ -607,7 +607,7 @@ impl World {
             .unit_order
             .iter()
             .copied()
-            .filter(|&h| self.unit(h).is_some_and(|u| u.abilities.iter().any(|(a, _)| matches!(self.ability_code(*a).as_str(), "AHad" | "AHab" | "AUau" | "AOae" | "AEar" | "AUav" | "AEah" | "Aoar" | "Aarm" | "Aakb" | "AOac" | "Aasl"))))
+            .filter(|&h| self.aura_sources(h).iter().any(|(a, _)| matches!(self.ability_code(*a).as_str(), "AHad" | "AHab" | "AUau" | "AOae" | "AEar" | "AUav" | "AEah" | "Aoar" | "Aarm" | "Aakb" | "AOac" | "Aasl")))
             .collect();
         let mut scanning = crate::collections::HashSet::default();
         // A new bearer has its own aura at once (measured: an Archmage that learns
@@ -637,7 +637,7 @@ impl World {
                 continue;
             }
             let bestows = self.bestows_auras(h);
-            for &(a, lvl) in &u.abilities {
+            for (a, lvl) in self.aura_sources(h) {
                 let code = self.ability_code(a);
                 let lvl = lvl.max(1) as u32;
                 let buff = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", lvl)).unwrap_or_default();
@@ -758,6 +758,16 @@ impl World {
                 self.remove_buff_effect(effect);
             }
         }
+    }
+
+    /// A unit's abilities and those of the items it carries, at their first level: an
+    /// item's aura is its bearer's (measured: OrcX03a's Rexxar holds BHad, BHab, and
+    /// BOac in the original, from the Devotion, Brilliance, and Command Aura of the
+    /// heroes' blba, mnsf, and shhn; ours gave none).
+    fn aura_sources(&self, h: u32) -> Vec<(Id, i32)> {
+        let Some(u) = self.unit(h) else { return Vec::new() };
+        let items = u.inventory.iter().filter_map(|&i| self.item(i)).flat_map(|i| self.item_abilities(i.type_id)).map(|a| (a, 1));
+        u.abilities.iter().copied().chain(items).collect()
     }
 
     /// Spell damage: the DamageBonusSpells table applies, armor value does not.

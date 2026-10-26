@@ -2904,6 +2904,21 @@ impl World {
         self.primary_attribute(h)
     }
 
+    /// The primary attribute's share of the attack from the hero's own attributes,
+    /// without what items and abilities add.
+    pub fn primary_attribute_base(&self, h: u32) -> f32 {
+        let Some(u) = self.unit(h) else { return 0.0 };
+        if !u.is_hero {
+            return 0.0;
+        }
+        match self.objects.units.get(u.type_id).map(|o| o.str("Primary").to_ascii_uppercase()).as_deref() {
+            Some("STR") => u.str_.floor() * self.misc_f32("StrAttackBonus", 1.0),
+            Some("AGI") => u.agi.floor(),
+            Some("INT") => u.int.floor(),
+            _ => 0.0,
+        }
+    }
+
     /// A hero's primary attribute, which adds to its attack damage.
     fn primary_attribute(&self, h: u32) -> f32 {
         let Some(u) = self.unit(h) else { return 0.0 };

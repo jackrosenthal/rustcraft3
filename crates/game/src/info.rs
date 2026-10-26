@@ -93,13 +93,19 @@ impl World {
         let ub = self.upgrade_bonus(u.owner, u.type_id);
         if let Some(wp) = weapon(self, u.type_id) {
             let dice = wp.dice + ub.dice;
-            let base = wp.base + ub.damage + self.primary_attribute_pub(h);
+            // The base takes the hero's own primary attribute; what items and abilities
+            // add to it shows in the bonus (measured: OrcX03a's Rexxar, strength 56 + 6,
+            // reads 68 - 78 +34 in the original, where ours read 74 - 84 +28).
+            let (own, all) = (self.primary_attribute_base(h), self.primary_attribute_pub(h));
+            let base = wp.base + ub.damage + own;
             let (min, max) = ((base + dice as f32) as i32, (base + (dice * wp.sides) as f32) as i32);
             // Damage factors (Inner Fire, Trueshot Aura) show as that share of the mean,
             // rounded (measured with Inner Fire's tenth: +1 on a footman's 12 - 13, +2 on
-            // a grunt's 18 - 21 and an archer's 16 - 18).
+            // a grunt's 18 - 21 and an archer's 16 - 18; Command Aura's tenth +8 on
+            // Rexxar's 74 - 84 with his strength's 6).
             let factor = self.buff_mods(h).3 - 1.0;
-            let bonus = u.item_bonus.damage + self.buff_damage_bonus(h) + (factor * (min + max) as f32 / 2.0).round();
+            let mean = (min + max) as f32 / 2.0 + (all - own);
+            let bonus = u.item_bonus.damage + self.buff_damage_bonus(h) + (all - own) + (factor * mean).round();
             let up = self.upgrade_for(u.owner, u.type_id, &["melee", "ranged"]);
             s.attack = Some(AttackInfo {
                 min,
@@ -115,9 +121,13 @@ impl World {
             });
         }
         let def = o.map_or(0.0, |o| o.real("def")) + ub.armor;
-        let agi = if u.is_hero { (u.agi + u.item_bonus.agi).floor() * self.misc_f32("AgiDefenseBonus", 0.3) + self.misc_f32("AgiDefenseBase", -2.0) } else { 0.0 };
+        // The base takes the hero's own agility, the bonus what items and abilities add
+        // to it (measured: Rexxar, agility 28 + 6, reads 7 +9.8 in the original).
+        let per = self.misc_f32("AgiDefenseBonus", 0.3);
+        let agi = if u.is_hero { u.agi.floor() * per + self.misc_f32("AgiDefenseBase", -2.0) } else { 0.0 };
+        let agi_bonus = if u.is_hero { ((u.agi + u.item_bonus.agi).floor() - u.agi.floor()) * per } else { 0.0 };
         let up = self.upgrade_for(u.owner, u.type_id, &["armor"]);
-        let bonus = u.item_bonus.armor + self.buff_mods(h).2;
+        let bonus = u.item_bonus.armor + self.buff_mods(h).2 + agi_bonus;
         // DefenseArmor's reduction, or for negative armor the original's table
         // (FUN_6f66d320) as the combat uses it.
         let total = (def + agi).round() + bonus;

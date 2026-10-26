@@ -668,7 +668,10 @@ impl World {
             camera_margins: [0.0; 4],
             map_bounds: Rect::default(),
             playable: Rect::default(),
-            time_of_day: 8.0,
+            // Midnight until a script sets it (measured: NightElf06, which never does,
+            // reads 0 at start in the original; melee games take 8 from Blizzard.j's
+            // MeleeStartingVisibility).
+            time_of_day: 0.0,
             time_of_day_scale: 1.0,
             time_of_day_suspended: false,
             cheat_flags: 0,

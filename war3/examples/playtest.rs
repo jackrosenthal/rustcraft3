@@ -71,6 +71,29 @@ fn main() -> anyhow::Result<()> {
             g.world.saves_dir = Some(d.into());
         }
     }
+    let size = wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 };
+    let color = device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let depth = device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: w3_render::gpu::DEPTH_FORMAT,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
+    });
+    let cv = color.create_view(&Default::default());
+    let dv = depth.create_view(&Default::default());
     let mut i = 6;
     let num = |s: &str| s.parse::<f32>().unwrap();
     while i < a.len() {
@@ -232,6 +255,17 @@ fn main() -> anyhow::Result<()> {
                     scene.sync_items(&device, &queue, &mut assets);
                     t -= 0.02;
                 }
+                i += 2;
+            }
+            // shot <path>: the frame now, rendered a few times first so its particles
+            // and blends settle.
+            "shot" => {
+                for _ in 0..3 {
+                    let mut enc = device.create_command_encoder(&Default::default());
+                    scene.render(&device, &queue, &mut enc, &cv, &dv, (w, h), &mut assets);
+                    queue.submit([enc.finish()]);
+                }
+                save_frame(&device, &queue, &mut scene, &mut assets, &color, &cv, &dv, (w, h), &a[i + 1])?;
                 i += 2;
             }
             "card" => {
@@ -963,29 +997,6 @@ fn main() -> anyhow::Result<()> {
     scene.sync_units(&device, &queue, &mut assets);
     scene.sync_destructables(&device, &queue, &mut assets);
     scene.sync_items(&device, &queue, &mut assets);
-    let size = wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 };
-    let color = device.create_texture(&wgpu::TextureDescriptor {
-        label: None,
-        size,
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    });
-    let depth = device.create_texture(&wgpu::TextureDescriptor {
-        label: None,
-        size,
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: w3_render::gpu::DEPTH_FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        view_formats: &[],
-    });
-    let cv = color.create_view(&Default::default());
-    let dv = depth.create_view(&Default::default());
     // Particles emit as frames are drawn: draw a second (W3WARM seconds) of frames
     // before the shot.
     let warm: f32 = std::env::var("W3WARM").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0);
@@ -1013,8 +1024,16 @@ fn main() -> anyhow::Result<()> {
         let total = t0.elapsed().as_secs_f64();
         eprintln!("bench {n} frames at {w}x{h}: {:.2} ms a frame ({:.2} ms on the CPU)", total * 1000.0 / n as f64, cpu * 1000.0 / n as f64);
     }
+    save_frame(&device, &queue, &mut scene, &mut assets, &color, &cv, &dv, (w, h), &a[3])?;
+    Ok(())
+}
+
+/// Renders the scene once and writes the frame to a PNG.
+#[allow(clippy::too_many_arguments)]
+fn save_frame(device: &wgpu::Device, queue: &wgpu::Queue, scene: &mut war3::scene::Scene, assets: &mut war3::scene::Assets, color: &wgpu::Texture, cv: &wgpu::TextureView, dv: &wgpu::TextureView, (w, h): (u32, u32), path: &str) -> anyhow::Result<()> {
+    let size = wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 };
     let mut enc = device.create_command_encoder(&Default::default());
-    scene.render(&device, &queue, &mut enc, &cv, &dv, (w, h), &mut assets);
+    scene.render(device, queue, &mut enc, cv, dv, (w, h), assets);
     let stride = (w * 4).div_ceil(256) * 256;
     let buf = device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
@@ -1042,6 +1061,6 @@ fn main() -> anyhow::Result<()> {
     for p in px.chunks_mut(4) {
         p[3] = 255;
     }
-    image::save_buffer(&a[3], &px, w, h, image::ExtendedColorType::Rgba8)?;
+    image::save_buffer(path, &px, w, h, image::ExtendedColorType::Rgba8)?;
     Ok(())
 }

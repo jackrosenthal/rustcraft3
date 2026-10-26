@@ -538,6 +538,32 @@ impl World {
             Action::Harvest { target }
         } else if order == crate::natives::basic::order_id("returnresources") {
             Action::ReturnResources
+        } else if order == crate::natives::basic::order_id("autoharvestgold") || order == crate::natives::basic::order_id("autoharvestlumber") {
+            // The nearest gold mine, or tree, within 2000 of the worker (CAbilityHarvest's
+            // FUN_6f426830 and FUN_6f426870, DAT_6fd6b7dc 2000; measured: HumanX02's
+            // workers so ordered mine, its gold 690 where ours stayed at 500).
+            let gold = order == crate::natives::basic::order_id("autoharvestgold");
+            const RANGE: f32 = 2000.0;
+            let found = if gold {
+                let Some(u) = self.unit(h) else { return };
+                let (ux, uy) = (u.x, u.y);
+                self.unit_order
+                    .iter()
+                    .copied()
+                    .filter(|&m| self.is_mine(m) && self.can_harvest(h, m))
+                    .filter_map(|m| self.unit(m).map(|t| ((t.x - ux).hypot(t.y - uy), m)))
+                    .filter(|(d, _)| *d <= RANGE)
+                    .min_by(|a, b| a.0.total_cmp(&b.0))
+                    .map(|x| x.1)
+            } else if self.ability_with_code(h, "Awha").is_some() || self.ability_with_code(h, "Ahar").is_some() {
+                self.nearest_tree(h, RANGE).filter(|&t| self.can_harvest(h, t))
+            } else {
+                None
+            };
+            match found {
+                Some(target) => Action::Harvest { target },
+                None => return,
+            }
         } else if (order == smart || order == crate::natives::basic::order_id("getitem")) && self.item(target).is_some_and(|i| i.owner_unit == 0) && self.inventory_size(h) > 0 {
             Action::PickUp { item: target }
         } else if (order == smart || order == mv) && target != 0 {

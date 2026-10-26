@@ -140,6 +140,8 @@ pub struct Hud {
     pub inventory: Vec<Option<(String, i32)>>,
     /// Each inventory slot's tooltip (CInventoryBar::vf28).
     pub inventory_tips: Vec<Option<crate::card::Button>>,
+    /// Each inventory slot's share of its item's cooldown gone, while it cools.
+    pub inventory_cooldowns: Vec<Option<f32>>,
     /// The interface's other elements that show a tooltip under the pointer: where
     /// each is, and its tip.
     hover_tips: Vec<(w3_ui::Rect, crate::card::Button)>,
@@ -372,6 +374,7 @@ impl Hud {
             chat_prompt: String::new(),
             inventory: Vec::new(),
             inventory_tips: Vec::new(),
+            inventory_cooldowns: Vec::new(),
             hover_tips: Vec::new(),
             tooltips: true,
             info_tips: Vec::new(),
@@ -1419,6 +1422,19 @@ impl Hud {
                 .collect(),
             _ => Vec::new(),
         };
+        // Items cooling down, by their cooldown group.
+        self.inventory_cooldowns = match (unit, u) {
+            (Some(h), Some(u)) => (0..world.inventory_size(h))
+                .map(|s| {
+                    let it = world.item(u.inventory[s])?;
+                    let group = world.item_cooldown_group(it.type_id)?;
+                    let left = u.cooldowns.get(&group).copied().filter(|&l| l > 0.0)?;
+                    let total = world.item_abilities(it.type_id).into_iter().map(|a| world.data(a, "Cool", 1)).fold(0.0f32, f32::max);
+                    (total > 0.0).then(|| (1.0 - left / total).clamp(0.0, 1.0))
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
         // Their tooltips (CInventoryBar::vf28): a usable item's name with its NumPad
         // key, "Drop item on shop to sell" with the price for a pawnable one of the
         // player's own (The Frozen Throne), "Left-Click to Use", and the Ubertip under
@@ -1717,7 +1733,14 @@ impl Hud {
 
     /// Buttons whose ability is cooling down, with the share of its cooldown gone.
     pub fn cooldown_slots(&self) -> Vec<(u32, u32, w3_ui::Rect, f32)> {
-        self.card.iter().filter_map(|b| b.cooldown.map(|(left, total)| (b.x, b.y, self.slot_rect(b.x, b.y), (1.0 - left / total).clamp(0.0, 1.0)))).collect()
+        let mut out: Vec<(u32, u32, w3_ui::Rect, f32)> = self.card.iter().filter_map(|b| b.cooldown.map(|(left, total)| (b.x, b.y, self.slot_rect(b.x, b.y), (1.0 - left / total).clamp(0.0, 1.0)))).collect();
+        // Inventory slots too, keyed apart from the card's.
+        for (s, gone) in self.inventory_cooldowns.iter().enumerate() {
+            if let Some(g) = gone {
+                out.push((100 + s as u32, 0, self.inventory_rect(s), *g));
+            }
+        }
+        out
     }
 
     pub fn button_at(&self, x: f32, y: f32) -> Option<&crate::card::Button> {
@@ -2264,6 +2287,9 @@ impl Hud {
             // added.
             if b.active {
                 out.push(Draw::Image { texture: db.decorate("CommandButtonActiveHighlight"), rect: self.slot_rect(b.x, b.y), uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Add, rotated: false });
+            }
+            if let Some(n) = b.number {
+                Self::number_overlay(db, self.slot_rect(b.x, b.y), n, &mut out);
             }
         }
         out

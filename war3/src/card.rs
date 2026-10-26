@@ -54,6 +54,8 @@ pub struct Button {
     /// An ability cooling down: the seconds left and its whole cooldown, for
     /// CommandButtonCooldown.
     pub cooldown: Option<(f32, f32)>,
+    /// A count shown in the button's corner (CommandButtonNumberOverlay).
+    pub number: Option<i32>,
 }
 
 impl Button {
@@ -63,7 +65,7 @@ impl Button {
     }
 
     fn new(x: u32, y: u32, icon: String, hotkey: Option<char>, action: Action, enabled: bool) -> Button {
-        Button { x, y, icon, hotkey, action, enabled, tip: String::new(), ubertip: String::new(), costs: [0; 4], autocast: None, requires: String::new(), active: false, cooldown: None }
+        Button { x, y, icon, hotkey, action, enabled, tip: String::new(), ubertip: String::new(), costs: [0; 4], autocast: None, requires: String::new(), active: false, cooldown: None, number: None }
     }
 
     /// Disables the button and lists `id`'s requirements (at research level `level`)
@@ -483,7 +485,12 @@ impl Commands {
         // skills are dimmed while none can be learned.  The original leaves out units
         // flagged 0x40000000, which cannot gain levels or skills: illusions here.
         if u.is_hero && u.extra.illusion.is_none() {
-            out.extend(self.command(db, "CmdSelectSkill", Action::LearnMenu, true));
+            // Its unspent skill points in the corner (measured: a new Paladin's shows 1).
+            let points = u.skill_points;
+            out.extend(self.command(db, "CmdSelectSkill", Action::LearnMenu, true).into_iter().map(|mut b| {
+                b.number = (points > 0).then_some(points);
+                b
+            }));
         }
         if !o.list("Builds").is_empty() {
             let race = o.str("race").to_ascii_lowercase();

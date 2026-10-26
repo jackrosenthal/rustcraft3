@@ -42,7 +42,7 @@ impl World {
 
     /// The cooldown group an item's use counts against: its cooldownID, else its first
     /// ability.
-    pub(crate) fn item_cooldown_group(&self, type_id: Id) -> Option<Id> {
+    pub fn item_cooldown_group(&self, type_id: Id) -> Option<Id> {
         let named = self.objects.items.get(type_id).map(|o| o.str("cooldownID").trim().to_string()).filter(|s| s.len() == 4);
         named.map(|s| id_from_str(&s)).or_else(|| self.item_abilities(type_id).first().copied())
     }

@@ -755,6 +755,10 @@ fn issue_order(w: &mut World, vm: &mut Vm, unit: u32, order: i32, x: f32, y: f32
             let upgrades_to = w.unit(unit).and_then(|u| w.objects.units.get(u.type_id)).is_some_and(|o| o.list("Upgrade").iter().any(|b| crate::objects::id_from_str(b.trim()) == id));
             if upgrades_to { w.upgrade_structure(unit, id).is_ok() } else { w.train(unit, id).is_ok() }
         } else {
+            // At its target when it has one: Blizzard.j's IssueHauntOrderAtLocBJ orders
+            // a haunted gold mine as a target order on the mine (measured: Undead03's
+            // acolyte so ordered pays 255 gold and 220 lumber and haunts the mine).
+            let (x, y) = if target != 0 { w.widget_pos(target).unwrap_or((x, y)) } else { (x, y) };
             return issue_build(w, unit, id, x, y);
         };
         // What it starts on, it starts at once, its event firing within the order

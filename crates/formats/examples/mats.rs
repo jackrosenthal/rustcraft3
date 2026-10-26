@@ -7,6 +7,13 @@ fn main() {
     for (i, s) in m.sequences.iter().enumerate() {
         println!("sequence {i} {:?} rarity {} looping {}", s.name, s.rarity, !s.non_looping);
     }
+    for (i, n) in m.nodes().iter().enumerate() {
+        let Some(n) = n else { continue };
+        println!("node {i} {:?} parent {:?} flags {:#x}", n.name, n.parent, n.flags);
+        for (tag, t) in &n.tracks.vec3s {
+            println!("  {} {:?}", String::from_utf8_lossy(tag), t.keys.iter().map(|k| (k.frame, k.value)).collect::<Vec<_>>());
+        }
+    }
     for (i, t) in m.textures.iter().enumerate() {
         println!("texture {i} replaceable {} {}", t.replaceable_id, t.path);
     }

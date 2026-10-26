@@ -110,85 +110,34 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32, facing: f32)
     if kind == crate::pathing::Move::Fly || radius <= 0.0 {
         return (x, y);
     }
-    // One made on top of another ground unit stands beside it, at the nearest spot on a
-    // grid of 16 clear of the rest (measured: three footmen made on one spot stand at it
-    // and 71 and 59 off; the original's choice among the nearest differs).
-    let others: Vec<(f32, f32, f32)> = w.unit_order.iter().filter_map(|&o| w.unit(o)).filter(|u| !u.dead && !u.hidden && !u.is_building && u.collision > 0.0 && (u.x - x).abs() < 512.0 && (u.y - y).abs() < 512.0).filter(|u| w.move_kind(u.handle) != crate::pathing::Move::Fly).map(|u| (u.x, u.y, u.collision)).collect();
-    // Moved when well within another (a map's units standing close keep their places:
-    // the original leaves Human01's bandits 61 apart where they were made), to a spot
-    // clear of the rest by about both sizes.
-    let crowded = |px: f32, py: f32| others.iter().any(|&(ox, oy, oc)| (ox - px).hypot(oy - py) < (oc + collision) * 0.95);
-    let overlaps = others.iter().any(|&(ox, oy, oc)| (ox - x).hypot(oy - y) < (oc + collision) * 0.5);
-    let (x, y) = if overlaps {
-        let p = w.pathing.as_ref().unwrap();
-        let mut found = (x, y);
-        'search: for r in 1..=24i32 {
-            let mut best: Option<(f32, (f32, f32))> = None;
-            for dy in -r..=r {
-                for dx in -r..=r {
-                    if dx.abs() != r && dy.abs() != r {
-                        continue;
-                    }
-                    let (px, py) = (x + dx as f32 * 16.0, y + dy as f32 * 16.0);
-                    let d = (px - x).hypot(py - y);
-                    if best.is_some_and(|b| b.0 <= d) || crowded(px, py) || !p.fits_kind(p.cell_of(px, py), radius, kind) {
-                        continue;
-                    }
-                    best = Some((d, (px, py)));
-                }
-            }
-            if let Some((_, at)) = best {
-                found = at;
-                break 'search;
-            }
-        }
-        found
-    } else {
-        (x, y)
-    };
+    // One made too near another ground unit stands at the first pathing cell's middle
+    // clear of them, searched ring by ring outward from its cell: each ring's bottom
+    // row left to right, its right column upward, its top row right to left, and its
+    // left column downward (FUN_6f170080 walks FUN_6f14a1e0's rings this way for every
+    // unit, whatever its facing).  A cell is clear of a unit when their cells are more
+    // than the two sizes over a cell apart in either axis (measured: peasants and
+    // footmen, 16 and 31, made on one spot stand 2 cells apart, knights, 32, 3, and meat
+    // wagons, 48, 4, the second each time at the ring's first cell; Human01's bandits
+    // made 2 cells apart keep their places).
+    let others: Vec<(f32, f32, f32)> = w.unit_order.iter().filter_map(|&o| w.unit(o)).filter(|u| !u.dead && !u.hidden && !u.is_building && u.collision > 0.0 && (u.x - x).abs() < 1024.0 && (u.y - y).abs() < 1024.0).filter(|u| w.move_kind(u.handle) != crate::pathing::Move::Fly).map(|u| (u.x, u.y, u.collision)).collect();
     let p = w.pathing.as_ref().unwrap();
-    let start = p.cell_of(x, y);
-    // Moved only off destructables, as structures are (the original leaves units a map
-    // stands on ground it marks unwalkable).
-    // The cells it covers beyond its own (a footman made at 500,1600 among trees stands
-    // at 464,1520 in the original; ours, also keeping the cells around it clear, went to
-    // 496,1488, and now goes to 496,1520).
+    let near: Vec<((i32, i32), i32)> = others.iter().map(|&(ox, oy, oc)| (p.cell_of(ox, oy), ((collision + oc) / crate::pathing::CELL).floor() as i32)).collect();
+    let apart = |c: (i32, i32)| near.iter().all(|&(o, t)| (c.0 - o.0).abs().max((c.1 - o.1).abs()) > t);
+    // Destructables under the cells it covers beyond its own move it too (measured: a
+    // footman made at 500,1600 among trees stands at 464,1520), the ground's own
+    // pathing only once it is moved (the original leaves units a map stands on ground
+    // it marks unwalkable).
     let span = ((radius - 16.0) / 32.0).ceil().max(0.0) as i32;
-    let on_destructable = (-span..=span).any(|dy| (-span..=span).any(|dx| !p.clear_of_destructables((start.0 + dx, start.1 + dy)) && p.index_pub((start.0 + dx, start.1 + dy)).is_some()));
-    if !on_destructable {
+    let open = |c: (i32, i32)| (-span..=span).all(|ey| (-span..=span).all(|ex| p.clear_of_destructables((c.0 + ex, c.1 + ey)) || p.index_pub((c.0 + ex, c.1 + ey)).is_none()));
+    let (cx, cy) = p.cell_of(x, y);
+    if apart((cx, cy)) && open((cx, cy)) {
         return (x, y);
     }
-    // The nearest open cell: rings out until one is found, then on as far as one could
-    // still lie nearer.
-    let mut best: Option<(f32, (f32, f32))> = None;
-    let mut last = 32i32;
-    for r in 1..=32i32 {
-        if r > last {
-            break;
-        }
-        for dy in -r..=r {
-            for dx in -r..=r {
-                if dx.abs() != r && dy.abs() != r {
-                    continue;
-                }
-                let c = (start.0 + dx, start.1 + dy);
-                if !p.fits_kind(c, radius, kind) || !(-span..=span).all(|ey| (-span..=span).all(|ex| p.clear_of_destructables((c.0 + ex, c.1 + ey)))) {
-                    continue;
-                }
-                let at = p.center(c);
-                let d = (at.0 - x).hypot(at.1 - y);
-                if best.is_none_or(|b| d < b.0) {
-                    best = Some((d, at));
-                }
+    for k in 1..=64i32 {
+        for c in ring_order(2, cy - k, cx - k, cy + 1 + k, cx + 1 + k) {
+            if apart(c) && open(c) && p.fits_kind(c, radius, kind) {
+                return p.center(c);
             }
-        }
-        if best.is_some() && last == 32 {
-            last = ((r as f32 * std::f32::consts::SQRT_2).ceil() as i32 + 1).min(32);
-        }
-    }
-    {
-        if let Some((_, at)) = best {
-            return at;
         }
     }
     (x, y)

@@ -61,10 +61,14 @@ fn vs_main(v: VsIn) -> VsOut {
     return out;
 }
 
-/// flags: 1 unfogged, 2 alpha key, 4 additive (fog fades it out).
+/// flags: 1 unfogged, 2 alpha key, 4 additive (fog fades it out), 8 the color added by
+/// the vertex alpha alone (the blend adds it whole).
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     var c = textureSample(tex, samp, in.uv) * in.color;
+    if ((in.flags & 8u) != 0u) {
+        c = vec4<f32>(c.rgb * in.color.a, 1.0);
+    }
     if ((in.flags & 2u) != 0u && c.a < 0.75) {
         discard;
     }

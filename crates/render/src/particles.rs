@@ -24,6 +24,9 @@ pub mod filter {
     pub const MODULATE: u32 = 2;
     pub const MODULATE_2X: u32 = 3;
     pub const ALPHA_KEY: u32 = 4;
+    /// Not an MDX mode: a material layer's Additive, the color added by its alpha alone
+    /// whatever the texture's (weather's alphaMode 1).
+    pub const ADD_COLOR: u32 = 5;
 }
 
 #[derive(Clone, Debug)]

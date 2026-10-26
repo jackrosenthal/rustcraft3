@@ -43,12 +43,16 @@ fn emitter_model(t: &Table, row: &str) -> Option<(Model, f32, f32, f32)> {
     }
     let n = |c: &str| num(t, row, c);
     let color = |seg: &str| [n(&format!("red{seg}")) / 255.0, n(&format!("green{seg}")) / 255.0, n(&format!("blue{seg}")) / 255.0];
-    // alphaMode: 0 blend, 1 additive, 2 additive alpha, 3 modulate, 4 alpha key.
+    // alphaMode: 0 blend, 1 additive, 2 additive alpha, 3 modulate, 4 alpha key, as
+    // the original's material blends 2, 3, 4, 5, and 1 (FUN_6f762e90): additive adds
+    // the color whatever the texture's alpha.
+    use w3_render::particles::filter;
     let filter_mode = match n("alphaMode") as i32 {
-        0 => 0,
-        1 | 2 => 1,
-        3 => 2,
-        _ => 4,
+        0 => filter::BLEND,
+        1 => filter::ADD_COLOR,
+        2 => filter::ADDITIVE,
+        3 => filter::MODULATE,
+        _ => filter::ALPHA_KEY,
     };
     let (head, tail) = (n("head") != 0.0, n("tail") != 0.0);
     // useFog off: the particles ignore fog of war.
@@ -75,7 +79,9 @@ fn emitter_model(t: &Table, row: &str) -> Option<(Model, f32, f32, f32)> {
         time: n("midTime"),
         segment_color: [color("Start"), color("Mid"), color("End")],
         segment_alpha: [n("alphaStart") as u8, n("alphaMid") as u8, n("alphaEnd") as u8],
-        segment_scaling: [n("scaleStart"), n("scaleMid"), n("scaleEnd")],
+        // A weather particle's scale is its whole width (measured: Rays of Moonlight's
+        // 30 against the original's rays), a model's its half.
+        segment_scaling: [n("scaleStart") / 2.0, n("scaleMid") / 2.0, n("scaleEnd") / 2.0],
         head_intervals: [[n("hUVStart") as u32, n("hUVMid") as u32, 1], [n("hUVMid") as u32, n("hUVEnd") as u32, 1]],
         tail_intervals: [[n("tUVStart") as u32, n("tUVMid") as u32, 1], [n("tUVMid") as u32, n("tUVEnd") as u32, 1]],
         texture_id: 0,
@@ -120,7 +126,7 @@ impl WeatherView {
                     }
                     let inst = self.cells.entry(key).or_insert_with(|| {
                         let mut i = ModelInstance::new(model.clone());
-                        let rot = Quat::from_rotation_x(angx.to_radians()) * Quat::from_rotation_y(angy.to_radians());
+                        let rot = Quat::from_rotation_x(angx.to_radians()) * Quat::from_rotation_y(-angy.to_radians());
                         i.transform = Mat4::from_rotation_translation(rot, Vec3::new(x, y, ground(x, y) + height));
                         i
                     });

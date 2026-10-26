@@ -574,6 +574,9 @@ impl ModelRenderer {
         if q.filter == crate::particles::filter::ADDITIVE {
             flags |= 4;
         }
+        if q.filter == crate::particles::filter::ADD_COLOR {
+            flags |= 4 | 8;
+        }
         let first = self.particle_verts.len() as u32;
         for k in [0usize, 2, 1, 1, 2, 3] {
             self.particle_verts.push(ParticleVertex { pos: q.corners[k].to_array(), uv: q.uv[k], color: q.color, flags });
@@ -939,6 +942,7 @@ impl ModelRenderer {
         let comp = |src, dst| C { src_factor: src, dst_factor: dst, operation: O::Add };
         let blend = match filter {
             pf::ADDITIVE => wgpu::BlendState { color: comp(F::SrcAlpha, F::One), alpha: comp(F::Zero, F::One) },
+            pf::ADD_COLOR => wgpu::BlendState { color: comp(F::One, F::One), alpha: comp(F::Zero, F::One) },
             pf::MODULATE => wgpu::BlendState { color: comp(F::Zero, F::Src), alpha: comp(F::Zero, F::One) },
             pf::MODULATE_2X => wgpu::BlendState { color: comp(F::Dst, F::Src), alpha: comp(F::Zero, F::One) },
             _ => wgpu::BlendState { color: comp(F::SrcAlpha, F::OneMinusSrcAlpha), alpha: comp(F::One, F::OneMinusSrcAlpha) },

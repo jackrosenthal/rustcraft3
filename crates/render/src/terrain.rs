@@ -66,6 +66,9 @@ pub struct TerrainRenderer {
     pub height: u32,
     pub offset: [f32; 2],
     heights: Vec<f32>,
+    /// Each corner's water surface (its level with Water.slk's height), or NaN where
+    /// it has none.
+    water_levels: Vec<f32>,
     deform_tex: wgpu::Texture,
     deform_view: wgpu::TextureView,
     deform_params: wgpu::Buffer,
@@ -693,6 +696,7 @@ impl TerrainRenderer {
             height: h,
             offset: terrain.offset,
             heights,
+            water_levels: terrain.corners.iter().map(|c| if c.water { c.water_height() + water_offset } else { f32::NAN }).collect(),
             deform_tex,
             deform_view,
             deform_params,
@@ -797,6 +801,16 @@ impl TerrainRenderer {
             return 0.0;
         }
         self.splat_shadows.get((cy as u32 * sw + cx as u32) as usize).map_or(0.0, |&v| v as f32 / 255.0)
+    }
+
+    /// The water's surface at a point, from the corners about it that have water, or
+    /// None where none do.
+    pub fn water_at(&self, x: f32, y: f32) -> Option<f32> {
+        let fx = ((x - self.offset[0]) / TILE).clamp(0.0, (self.width - 1) as f32);
+        let fy = ((y - self.offset[1]) / TILE).clamp(0.0, (self.height - 1) as f32);
+        let (ix, iy) = (fx.round() as u32, fy.round() as u32);
+        let level = *self.water_levels.get((iy.min(self.height - 1) * self.width + ix.min(self.width - 1)) as usize)?;
+        (!level.is_nan()).then_some(level)
     }
 
     pub fn height_at(&self, x: f32, y: f32) -> f32 {

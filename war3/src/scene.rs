@@ -147,6 +147,19 @@ fn play_with_props(inst: &mut ModelInstance, name: &str, props: &str) {
 /// An attachment point of a model instance in world space: the attachment node whose
 /// name (less "Ref") has the same words as `name` ("hand,left" is "Hand Left Ref"), else
 /// one with all of them; the origin for "origin", for no name, or when none matches.
+/// The height a unit stands at before its flying height: the ground's, or for one that
+/// floats the water's surface where that is higher (measured: UndeadX04's frigates and
+/// transports ride its sea in the original; ours sat on the sea floor, under the water).
+fn stand_z(terrain: &w3_render::terrain::TerrainRenderer, w: &w3_game::World, u: &w3_game::types::Unit) -> f32 {
+    let ground = terrain.height_at(u.x, u.y);
+    if w.move_kind(u.handle) == w3_game::pathing::Move::Float {
+        if let Some(water) = terrain.water_at(u.x, u.y) {
+            return ground.max(water);
+        }
+    }
+    ground
+}
+
 pub fn attachment_point(inst: &ModelInstance, name: &str) -> Vec3 {
     let origin = inst.transform.w_axis.truncate();
     let want: Vec<String> = name.split([' ', ',']).filter(|s| !s.is_empty()).map(|s| s.to_ascii_lowercase()).collect();
@@ -2134,7 +2147,7 @@ impl Scene {
             }
             let o = w.objects.units.get(u.type_id);
             let radius = o.map_or(32.0, |o| o.real("scale") * w.misc_f32("ScaleFactor", 72.0) * 0.5).max(16.0);
-            let z = self.terrain.height_at(u.x, u.y) + u.extra.shown_height.unwrap_or(u.fly_height);
+            let z = stand_z(&self.terrain, w, u) + u.extra.shown_height.unwrap_or(u.fly_height);
             let Some(c) = self.project(Vec3::new(u.x, u.y, z + radius * 0.5), size) else { continue };
             let Some(e) = self.project(Vec3::new(u.x + radius, u.y, z + radius * 0.5), size) else { continue };
             let r = (e.0 - c.0).abs().max(8.0);
@@ -2209,7 +2222,7 @@ impl Scene {
                             continue;
                         }
                         let Some(u) = w.unit(o).filter(|u| w3_game::natives::players::controls(w, local, o) && u.type_id == t && !u.dead && !u.hidden) else { continue };
-                        let z = self.terrain.height_at(u.x, u.y) + u.extra.shown_height.unwrap_or(u.fly_height);
+                        let z = stand_z(&self.terrain, w, u) + u.extra.shown_height.unwrap_or(u.fly_height);
                         if self.project(Vec3::new(u.x, u.y, z), size).is_some_and(|(px, py)| px >= 0.0 && py >= 0.0 && px <= size.0 as f32 && py <= size.1 as f32) {
                             picked.push(o);
                         }
@@ -2225,7 +2238,7 @@ impl Scene {
                 if !w3_game::natives::players::controls(w, local, h) || u.dead || u.hidden || w.is_locust(u) {
                     continue;
                 }
-                let z = self.terrain.height_at(u.x, u.y) + u.extra.shown_height.unwrap_or(u.fly_height);
+                let z = stand_z(&self.terrain, w, u) + u.extra.shown_height.unwrap_or(u.fly_height);
                 if let Some((px, py)) = self.project(Vec3::new(u.x, u.y, z), size) {
                     if px >= x0 && px <= x1 && py >= y0 && py <= y1 {
                         picked.push(h);
@@ -4067,11 +4080,11 @@ impl Scene {
             // SetUnitLookAt: the bone faces the target unit, offset.
             view.inst.look_at = u.extra.look_at.as_ref().and_then(|(bone, t, off)| {
                 let tu = w.unit(*t)?;
-                let tz = self.terrain.height_at(tu.x, tu.y) + tu.extra.shown_height.unwrap_or(tu.fly_height);
+                let tz = stand_z(&self.terrain, w, tu) + tu.extra.shown_height.unwrap_or(tu.fly_height);
                 Some((bone.clone(), Vec3::new(tu.x + off[0], tu.y + off[1], tz + off[2])))
             });
             let inst = &mut view.inst;
-            let z = self.terrain.height_at(u.x, u.y) + u.extra.shown_height.unwrap_or(u.fly_height);
+            let z = stand_z(&self.terrain, w, u) + u.extra.shown_height.unwrap_or(u.fly_height);
             inst.transform = Mat4::from_scale_rotation_translation(
                 Vec3::splat(u.scale),
                 Quat::from_rotation_z(u.shown_facing.unwrap_or(u.facing).to_radians()),

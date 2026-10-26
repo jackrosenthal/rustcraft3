@@ -2923,7 +2923,11 @@ impl World {
         let ub = self.upgrade_bonus(u.owner, u.type_id);
         let agi = self.misc_f32("AgiAttackSpeedBonus", 0.02);
         let base = if u.is_hero { 1.0 + (u.agi + u.item_bonus.agi).floor() * agi } else { 1.0 };
-        ((base + u.item_bonus.attack_speed + ub.attack_speed) * self.buff_mods(h).1).max(0.01)
+        // A burrow attacks the faster for each worker inside, its cooldown over one more
+        // than their count (measured: a Burrow, cooldown 4, with one, two, and four
+        // peons fires every 2.0, 1.33, and 0.8 seconds).
+        let crew = if self.ability_with_code(h, "Abun").is_some() { (u.extra.cargo.len() + 1) as f32 } else { 1.0 };
+        ((base + u.item_bonus.attack_speed + ub.attack_speed) * self.buff_mods(h).1 * crew).max(0.01)
     }
 
     fn try_attack(&mut self, h: u32, target: u32, dt: f32, stationary: bool) {

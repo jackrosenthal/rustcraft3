@@ -93,6 +93,8 @@ pub struct TextureCache {
     pub chain: Arc<Chain>,
     cache: HashMap<String, Option<Arc<Texture>>>,
     pub white: Arc<Texture>,
+    /// The map's tileset, whose own versions of replaceable textures stand in for them.
+    tileset: Option<u8>,
 }
 
 impl TextureCache {
@@ -103,7 +105,21 @@ impl TextureCache {
             "white",
             &[w3_formats::blp::Image { width: 1, height: 1, rgba: vec![255; 4] }],
         ));
-        TextureCache { chain, cache: HashMap::new(), white }
+        TextureCache { chain, cache: HashMap::new(), white, tileset: None }
+    }
+
+    /// Sets the map's tileset (its w3i's).  A replaceable texture is drawn in the
+    /// tileset's own version when the archives have one, named with the tileset's
+    /// letter before the file's name (measured: the original draws a Barrens map's water
+    /// with ReplaceableTextures\Water\B_Water00 to 44, dark where the generic ones are
+    /// blue, and its cliffs with B_Cliff0 and 1, reddish where the generic ones are gray
+    /// and green; a Lordaeron map whose w3i alone says Barrens draws Barrens water, one
+    /// whose w3e alone says so does not).
+    pub fn set_tileset(&mut self, tileset: Option<u8>) {
+        if tileset != self.tileset {
+            self.tileset = tileset;
+            self.cache.retain(|k, _| !k.starts_with("replaceabletextures\\"));
+        }
     }
 
     pub fn get(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, path: &str) -> Option<Arc<Texture>> {
@@ -111,7 +127,23 @@ impl TextureCache {
         if let Some(t) = self.cache.get(&key) {
             return t.clone();
         }
-        let tex = candidates(path).into_iter().find_map(|name| {
+        if let (Some(t), true) = (self.tileset, key.starts_with("replaceabletextures\\")) {
+            let own = key.rsplit_once('\\').map(|(dir, file)| format!("{dir}\\{}_{file}", t as char));
+            if let Some(tex) = own.and_then(|own| self.load(device, queue, &own)) {
+                self.cache.insert(key, Some(tex.clone()));
+                return Some(tex);
+            }
+        }
+        let tex = self.load(device, queue, path);
+        if tex.is_none() && !path.is_empty() {
+            log::debug!("missing texture {path}");
+        }
+        self.cache.insert(key, tex.clone());
+        tex
+    }
+
+    fn load(&self, device: &wgpu::Device, queue: &wgpu::Queue, path: &str) -> Option<Arc<Texture>> {
+        candidates(path).into_iter().find_map(|name| {
             let data = self.chain.read(&name).ok()?;
             match w3_formats::blp::decode_texture(&name, &data) {
                 Ok(mips) => Some(Arc::new(upload(device, queue, &name, &mips))),
@@ -120,12 +152,7 @@ impl TextureCache {
                     None
                 }
             }
-        });
-        if tex.is_none() && !path.is_empty() {
-            log::debug!("missing texture {path}");
-        }
-        self.cache.insert(key, tex.clone());
-        tex
+        })
     }
 
     /// Creates or updates a texture made at run time (such as the minimap fog), which

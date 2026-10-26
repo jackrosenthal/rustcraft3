@@ -11,6 +11,11 @@ use crate::world::World;
 const DEFENSE: [&str; 8] = ["small", "medium", "large", "fort", "normal", "hero", "divine", "none"];
 
 impl World {
+    /// Whether a unit is an ancient standing rooted.
+    pub fn rooted_ancient(&self, h: u32) -> bool {
+        self.root_ability(h).is_some() && self.unit(h).is_some_and(|u| !u.extra.uprooted)
+    }
+
     fn root_ability(&self, h: u32) -> Option<(crate::objects::Id, u32)> {
         self.ability_with_code(h, "Aroo")
     }
@@ -31,7 +36,10 @@ impl World {
         u.order = Order { id: crate::natives::basic::order_id("unroot"), ..Default::default() };
         u.queue.clear();
         u.extra.queue_tokens.clear();
-        crate::sim::set_anim(u, "morph");
+        // The rooted form is the model's alternate one, so uprooting is its alternate
+        // morph (the Tree of Life's "Morph Alternate" starts from its rooted pose,
+        // "Morph" from its uprooted one).
+        crate::sim::set_anim(u, "morph alternate");
         true
     }
 
@@ -78,7 +86,7 @@ impl World {
                 u.action = Action::Hold;
                 u.path.clear();
                 u.extra.rooting = Some((dur, Some((x, y))));
-                crate::sim::set_anim(u, "morph alternate");
+                crate::sim::set_anim(u, "morph");
                 continue;
             }
             let Some((left, spot)) = self.unit(h).and_then(|u| u.extra.rooting) else { continue };

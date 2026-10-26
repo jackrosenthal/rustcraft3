@@ -611,6 +611,7 @@ impl Scene {
         // The tileset is the map's w3i's: its water and its textures' versions follow it
         // (measured: a Lordaeron map whose w3i alone says Barrens draws Barrens water).
         terrain.tileset = info.tileset;
+        assets.textures.set_tileset(Some(info.tileset));
 
         let models = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let terrain_slk = data.slk("TerrainArt\\Terrain.slk");
@@ -3967,10 +3968,12 @@ impl Scene {
                 let t = view.inst.tint;
                 view.inst.tint = glam::Vec4::new(t.x * (1.0 - a) + c[0] * a, t.y * (1.0 - a) + c[1] * a, t.z * (1.0 - a) + c[2] * a, t.w);
             }
-            // An uprooted ancient takes the alternate of each animation but its walk; the
-            // type's Animprops ("upgrade,first" for a Keep on the Town Hall's model) and
-            // those scripts add qualify every animation.
-            let mut anim = if u.extra.uprooted && !u.anim.starts_with("walk") && !u.anim.starts_with("morph") && !u.anim.contains("alternate") { format!("{} alternate", u.anim) } else { u.anim.clone() };
+            // A rooted ancient takes the alternate of each animation, its model's rooted
+            // form (measured: the original shows a rooted Tree of Life in its "Stand
+            // Alternate" canopy and an uprooted one hunched in "Stand"; its models are
+            // built in "Birth Alternate"); the type's Animprops ("upgrade,first" for a
+            // Keep on the Town Hall's model) and those scripts add qualify every animation.
+            let mut anim = if w.rooted_ancient(h) && !u.anim.starts_with("morph") && !u.anim.contains("alternate") { format!("{} alternate", u.anim) } else { u.anim.clone() };
             let type_props = w.objects.units.get(u.type_id).map(|o| o.str("Animprops")).unwrap_or_default();
             for p in type_props.split(',').map(|p| p.trim().to_ascii_lowercase()).chain(u.extra.anim_props.iter().cloned()) {
                 if !p.is_empty() && p != "_" && !anim.split_whitespace().any(|w| w == p) {

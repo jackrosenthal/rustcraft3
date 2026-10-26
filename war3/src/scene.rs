@@ -1663,7 +1663,9 @@ impl Scene {
             let Some(u) = w.unit(h) else { continue };
             let Some(o) = w.objects.units.get(u.type_id) else { continue };
             let code = o.str("uberSplat");
-            if code.is_empty() || u.hidden || w.fog_state(u.x, u.y, local) == w3_game::fog::FOG_MASKED {
+            // An uprooted ancient leaves its splat behind it (measured: NightElf01's Tree
+            // of Life, uprooted by its script, stands on bare grass).
+            if code.is_empty() || u.hidden || u.extra.uprooted || w.fog_state(u.x, u.y, local) == w3_game::fog::FOG_MASKED {
                 continue;
             }
             let dead_for = u.dead.then(|| w.time - u.death_time);

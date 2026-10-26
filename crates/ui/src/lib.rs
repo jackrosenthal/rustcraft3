@@ -290,9 +290,11 @@ pub struct FrameTree {
 }
 
 impl FrameTree {
-    pub fn new(aspect: f32) -> FrameTree {
-        let mut t = FrameTree { width: UI_HEIGHT * aspect.max(4.0 / 3.0), ..Default::default() };
-        // The root covers the 4:3 area, centered.
+    pub fn new(_aspect: f32) -> FrameTree {
+        // The interface is laid out at 4:3 and stretched across a wider screen, as the
+        // original's is (measured at 1272 by 686: its console, buttons, and minimap span
+        // the window's width; text keeps its shape).
+        let mut t = FrameTree { width: UI_WIDTH, ..Default::default() };
         let root = Rc::new(Def {
             block: "Frame".into(),
             kind: "FRAME".into(),

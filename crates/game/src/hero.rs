@@ -384,9 +384,7 @@ impl World {
             if rt == "none" || (rt == "night" && day) || (rt == "day" && !day) || off_blight {
                 hp = 0.0;
             }
-            // Mana regeneration items and research add a fraction of the normal rate.
             let ub = self.upgrade_bonus(u.owner, u.type_id);
-            mp *= 1.0 + u.item_bonus.mana_regen + ub.mana_regen;
             hp += ub.hp_regen + u.item_bonus.life_regen;
             if u.is_hero {
                 hp += (u.str_ + u.item_bonus.str_).floor() * str_regen;
@@ -394,8 +392,12 @@ impl World {
                 // regenMana (measured: a Paladin of 17 intelligence regains 8.50 in 10
                 // seconds, its regenMana 0.01 not added; its life 13.50, regenHP 0.25
                 // with 22 strength's 1.1).
-                mp = (mp - o.real("regenMana")) + (u.int + u.item_bonus.int).floor() * int_regen;
+                mp = (u.int + u.item_bonus.int).floor() * int_regen;
             }
+            // Mana regeneration items and research add a fraction of that rate (measured:
+            // a Sobi Mask, half again, gives a Paladin of 17 intelligence 4.3 more in 10
+            // seconds; ours added half of its regenMana, 0.05).
+            mp *= 1.0 + u.item_bonus.mana_regen + ub.mana_regen;
             let u = self.unit_mut(h).unwrap();
             u.life = (u.life + hp * dt).min(u.max_life);
             u.mana = (u.mana + mp * dt).min(u.max_mana);

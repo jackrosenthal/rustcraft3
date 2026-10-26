@@ -610,12 +610,20 @@ impl World {
             .filter(|&h| self.unit(h).is_some_and(|u| u.abilities.iter().any(|(a, _)| matches!(self.ability_code(*a).as_str(), "AHad" | "AHab" | "AUau" | "AOae" | "AEar" | "AUav" | "AEah" | "Aoar" | "Aarm" | "Aakb" | "AOac" | "Aasl"))))
             .collect();
         let mut scanning = crate::collections::HashSet::default();
+        // A new bearer has its own aura at once (measured: an Archmage that learns
+        // Brilliance Aura regains its 0.75 a second from then, 17.00 mana in 10 seconds
+        // with its 0.95 by intelligence; those near it from the first scan, 13.79 for a
+        // Sorceress).
+        let mut fresh = crate::collections::HashSet::default();
         for h in bearers {
             let u = self.unit_mut(h).unwrap();
             let prev = u.extra.aura_clock;
             let now = prev.map_or(0.0, |c| c + dt);
             u.extra.aura_clock = Some(now);
-            let Some(prev) = prev else { continue };
+            let Some(prev) = prev else {
+                fresh.insert(h);
+                continue;
+            };
             if (now / 0.5).floor() > (prev / 0.5).floor() {
                 scanning.insert(h);
             }
@@ -707,8 +715,11 @@ impl World {
                 } else {
                     Some(false)
                 };
+                let mut area = area;
                 if code != "ANeg" {
-                    if !scanning.contains(&h) {
+                    if fresh.contains(&h) {
+                        area = 0.0;
+                    } else if !scanning.contains(&h) {
                         continue;
                     }
                     b.remaining = f32::INFINITY;

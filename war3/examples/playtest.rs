@@ -623,6 +623,21 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // near <x> <y> <r>: the living units within r of a point.
+            "near" => {
+                let (x, y, r) = (num(&a[i + 1]), num(&a[i + 2]), num(&a[i + 3]));
+                if let Some(g) = &scene.game {
+                    let w = &g.world;
+                    eprintln!("near t={:.1}", w.time);
+                    for &h in &w.unit_order {
+                        if let Some(u) = w.unit(h).filter(|u| !u.dead && (u.x - x).hypot(u.y - y) <= r) {
+                            let target = match u.action { w3_game::types::Action::Attack { target } => w.unit(target).map_or(String::new(), |t| w3_game::objects::id_str(t.type_id)), _ => String::new() };
+                            eprintln!("  p{} {} ({:.0},{:.0}) life {:.0} {:?} {} order {} sleep {}", u.owner, w3_game::objects::id_str(u.type_id), u.x, u.y, u.life, u.action, target, w3_game::natives::basic::order_name(u.order.id).unwrap_or(""), u.extra.sleeping);
+                        }
+                    }
+                }
+                i += 4;
+            }
             // aidump [player]: a computer player's units, resources, and AI state.
             "aidump" => {
                 let p = a.get(i + 1).and_then(|v| v.parse::<u8>().ok());

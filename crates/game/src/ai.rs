@@ -663,6 +663,13 @@ impl World {
                 target = 0;
             }
             let units: Vec<u32> = units.into_iter().filter(|&h| self.unit(h).is_some_and(|u| !u.dead)).collect();
+            // Its target gone, a captain takes up an enemy fighting one of its units
+            // (FUN_6f9c40d0 reads the captain in combat while it has one; measured: a
+            // computer's ghouls that kill the gnoll brute they were sent at go on to kill
+            // the gnoll beside it, where ours left it fighting them).
+            if target == 0 {
+                target = self.captain_attacker(p, &units).unwrap_or(0);
+            }
             if let Some(st) = self.ai.get_mut(&p) {
                 let cap = if which == 0 { &mut st.attack } else { &mut st.defense };
                 cap.units = units.clone();
@@ -913,6 +920,23 @@ impl World {
             }
         }
         count >= qty
+    }
+
+    /// An enemy attacking one of a captain's units, the nearest to it.
+    fn captain_attacker(&self, p: u8, units: &[u32]) -> Option<u32> {
+        let mut best: Option<(f32, u32)> = None;
+        for &h in &self.unit_order {
+            let Some(e) = self.unit(h).filter(|e| !e.dead && !crate::natives::players::is_ally(self, p, e.owner)) else { continue };
+            let at = match e.action { Action::Attack { target } => target, _ => e.swing.as_ref().map_or(0, |s| s.target) };
+            if at == 0 || !units.contains(&at) {
+                continue;
+            }
+            let d = self.unit(at).map_or(f32::MAX, |v| (v.x - e.x).hypot(v.y - e.y));
+            if best.is_none_or(|b| d < b.0) {
+                best = Some((d, h));
+            }
+        }
+        best.map(|b| b.1)
     }
 
     fn captain_units(&mut self, attack: bool) -> Vec<u32> {
@@ -1193,7 +1217,9 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         },
         CaptainInCombat => |w, _, a| {
             let units = w.captain_units(a.b(0));
-            boolean(units.iter().any(|&h| w.unit(h).is_some_and(|u| u.swing.is_some() || matches!(u.action, Action::Attack { .. }))))
+            let p = w.ai_player();
+            let fighting = units.iter().any(|&h| w.unit(h).is_some_and(|u| u.swing.is_some() || matches!(u.action, Action::Attack { .. })));
+            boolean(fighting || w.captain_attacker(p, &units).is_some())
         },
         IsTowered => |w, _, a| boolean(w.is_towered(a.h(0))),
         ClearHarvestAI => |w, _, _| { if let Some(s) = w.ai_state() { s.harvest.clear(); } none() },

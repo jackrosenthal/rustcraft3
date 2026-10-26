@@ -857,6 +857,11 @@ impl World {
         if u.buffs.iter().any(|b| b.silence) {
             return Err("");
         }
+        // Shadowmeld works only at night (measured: by day the original shows its
+        // button dimmed, Tyrande's in NightElf02's opening and a new one's at noon).
+        if self.ability_code(a) == "Ashm" && (6.0..18.0).contains(&self.time_of_day) {
+            return Err("");
+        }
         Ok(())
     }
 

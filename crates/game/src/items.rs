@@ -40,6 +40,13 @@ impl World {
         self.fire(vm, ctx, move |_, k| matches!(k, EventKind::Unit { unit: u, event } if *u == unit && *event == unit_event));
     }
 
+    /// The cooldown group an item's use counts against: its cooldownID, else its first
+    /// ability.
+    pub(crate) fn item_cooldown_group(&self, type_id: Id) -> Option<Id> {
+        let named = self.objects.items.get(type_id).map(|o| o.str("cooldownID").trim().to_string()).filter(|s| s.len() == 4);
+        named.map(|s| id_from_str(&s)).or_else(|| self.item_abilities(type_id).first().copied())
+    }
+
     /// The abilities an item grants (its abilList).
     pub fn item_abilities(&self, type_id: Id) -> Vec<Id> {
         self.objects.items.get(type_id).map(|o| o.list("abilList").iter().map(|s| id_from_str(s.trim())).filter(|a| a[0] != 0).collect()).unwrap_or_default()
@@ -182,6 +189,14 @@ impl World {
         if !usable {
             return false;
         }
+        // Items sharing a cooldown group wait it out together (measured: a hero's
+        // second Potion of Healing used at once after the first is refused, both
+        // AIhe's).
+        if let Some(group) = self.item_cooldown_group(type_id) {
+            if self.unit(unit).is_some_and(|u| u.cooldowns.get(&group).copied().unwrap_or(0.0) > 0.0) {
+                return false;
+            }
+        }
         // An item's spell aimed at a unit or point is cast as the holder's own, and
         // its charge is spent when it takes effect (measured: a Wand of the Wind used
         // on a footman goes from 3 charges to 2 and the footman is cycloned).
@@ -220,6 +235,14 @@ impl World {
     /// An item's use is spent: its use events, and a charge, the item going when a
     /// perishable one has none left.
     pub(crate) fn spend_item_use(&mut self, vm: &mut Vm, unit: u32, item: u32, type_id: Id) {
+        if let Some(group) = self.item_cooldown_group(type_id) {
+            let cool = self.item_abilities(type_id).into_iter().map(|a| self.data(a, "Cool", 1)).fold(0.0f32, f32::max);
+            if cool > 0.0 {
+                if let Some(u) = self.unit_mut(unit) {
+                    u.cooldowns.insert(group, cool);
+                }
+            }
+        }
         let ctx = EventCtx { item, ..Default::default() };
         self.fire_unit_pair(vm, unit, EVENT_PLAYER_UNIT_USE_ITEM, EVENT_UNIT_USE_ITEM, ctx);
         // Charged items spend one; perishable ones vanish when out.

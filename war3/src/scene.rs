@@ -607,7 +607,10 @@ impl Scene {
         let info = MapInfo::parse(&chain.read("war3map.w3i")?).context("war3map.w3i")?;
         // w3i flag 0x4 marks a melee map; others use the custom rule set.
         data.select_data_set(if info.flags & 0x4 != 0 { DataSet::Melee } else { DataSet::Custom });
-        let terrain = Terrain::parse(&chain.read("war3map.w3e")?).context("war3map.w3e")?;
+        let mut terrain = Terrain::parse(&chain.read("war3map.w3e")?).context("war3map.w3e")?;
+        // The tileset is the map's w3i's: its water and its textures' versions follow it
+        // (measured: a Lordaeron map whose w3i alone says Barrens draws Barrens water).
+        terrain.tileset = info.tileset;
 
         let models = ModelRenderer::new(device, queue, &mut assets.textures, color_format);
         let terrain_slk = data.slk("TerrainArt\\Terrain.slk");

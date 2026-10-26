@@ -305,7 +305,7 @@ impl TerrainRenderer {
                 let tfile = cliff_slk.get(&key, "texFile").map(|v| v.as_str()).unwrap_or_default();
                 // Some entries name the file with its source extension (Cliff0.tga).
                 let tfile = tfile.rsplit_once('.').map_or(tfile.as_str(), |(stem, _)| stem).to_string();
-                (dir, textures.get_or_white(device, queue, &format!("{tdir}\\{tfile}.blp")))
+                (dir, tileset_texture(textures, device, queue, terrain.tileset, &format!("{tdir}\\{tfile}")))
             })
             .collect();
         let mut cliff_models: std::collections::HashMap<String, Option<w3_formats::mdx::Model>> = Default::default();
@@ -446,8 +446,8 @@ impl TerrainRenderer {
                 lerp(deep_min, deep_max, t)
             }
         };
-        // Water.slk "lighting": the water is lit, by the lights' ambient terms only
-        // (FUN_6f760b50 picks its lit render state; see fs_water).
+        // Water.slk "lighting": the water is lit by the day's light (FUN_6f760b50 picks
+        // its lit render state).
         let water_normal = if num("lighting") != 0.0 { [0.0, 0.0, 1.0] } else { [0.0; 3] };
         let water_first = indices.len() as u32;
         for y in 0..h - 1 {
@@ -633,7 +633,7 @@ impl TerrainRenderer {
         let water_count = num("numTex").max(1.0) as usize;
         let water_textures = (0..water_count)
             .map(|i| {
-                let t = textures.get_or_white(device, queue, &format!("{water_tex}{i:02}.blp"));
+                let t = tileset_texture(textures, device, queue, terrain.tileset, &format!("{water_tex}{i:02}"));
                 texture_bind_group(device, &tex_layout, &t.view, &wrap)
             })
             .collect();
@@ -823,4 +823,15 @@ impl TerrainRenderer {
         let (first, count) = self.water_range;
         pass.draw_indexed(first..first + count, 0, 0..1);
     }
+}
+
+/// A terrain texture as the tileset has it: the map's tileset's own version, named with
+/// its letter before the file's name, when there is one (measured: the original draws a
+/// Barrens map's water with ReplaceableTextures\Water\B_Water00 to 44, dark where the
+/// generic ones are blue, and its cliffs with B_Cliff0 and 1, reddish where the generic
+/// ones are gray and green; the letter is the map's w3i tileset).
+fn tileset_texture(textures: &mut TextureCache, device: &wgpu::Device, queue: &wgpu::Queue, tileset: u8, path: &str) -> Arc<Texture> {
+    let (dir, file) = path.rsplit_once('\\').unwrap_or(("", path));
+    let own = if dir.is_empty() { format!("{}_{file}.blp", tileset as char) } else { format!("{dir}\\{}_{file}.blp", tileset as char) };
+    textures.get(device, queue, &own).unwrap_or_else(|| textures.get_or_white(device, queue, &format!("{path}.blp")))
 }

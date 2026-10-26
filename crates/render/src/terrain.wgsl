@@ -206,12 +206,11 @@ fn fs_ground(in: VsOut) -> @location(0) vec4<f32> {
 @fragment
 fn fs_water(in: VsOut) -> @location(0) vec4<f32> {
     let t = textureSample(tex, samp, in.uv) * in.color * globals.water_tint;
-    // Water whose row asks for lighting is lit, but its vertices carry no normal (the
-    // original's water mesh has positions, coordinates, and colors only), so only the
-    // lights' ambient terms reach it.  The flag rides in the normal.
+    // Water whose row asks for lighting carries an up normal and is lit as the ground
+    // is; other water carries none.
     var rgb = t.rgb;
     if (length(in.normal) > 0.5) {
-        rgb = rgb * lighting(vec3<f32>(0.0), in.world);
+        rgb = rgb * lighting(normalize(in.normal), in.world);
     }
     return vec4<f32>(fog(fow(rgb, in.world), in.world), t.a);
 }

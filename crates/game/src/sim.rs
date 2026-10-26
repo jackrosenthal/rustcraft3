@@ -547,10 +547,13 @@ impl World {
             let found = if gold {
                 let Some(u) = self.unit(h) else { return };
                 let (ux, uy) = (u.x, u.y);
+                // Any gold the worker can take: a mine, or the haunted or entangled
+                // mine its kind works (measured: NightElfX02's wisps so ordered go to
+                // their entangled mine).
                 self.unit_order
                     .iter()
                     .copied()
-                    .filter(|&m| self.is_mine(m) && self.can_harvest(h, m))
+                    .filter(|&m| m != h && self.can_harvest(h, m) && self.unit(m).is_some_and(|t| t.is_building))
                     .filter_map(|m| self.unit(m).map(|t| ((t.x - ux).hypot(t.y - uy), m)))
                     .filter(|(d, _)| *d <= RANGE)
                     .min_by(|a, b| a.0.total_cmp(&b.0))

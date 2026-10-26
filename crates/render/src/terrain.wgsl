@@ -205,12 +205,19 @@ fn fs_ground(in: VsOut) -> @location(0) vec4<f32> {
 
 @fragment
 fn fs_water(in: VsOut) -> @location(0) vec4<f32> {
-    let t = textureSample(tex, samp, in.uv) * in.color * globals.water_tint;
-    // Water whose row asks for lighting carries an up normal and is lit as the ground
-    // is; other water carries none.
-    var rgb = t.rgb;
+    let tx = textureSample(tex, samp, in.uv);
+    // Its color, Water.slk's by depth times the water's tint, is lit as a vertex color
+    // is, then held to one, and the texture modulated by it.  Water whose row asks for
+    // lighting carries an up normal and takes the units' day and night light, its
+    // ambient and its sun, unclamped before the color (measured with Water.slk white:
+    // a tint of 128 shows 0.71 of the texture under Dalaran's light at 8.87 and 0.53
+    // under Lordaeron's at noon, as the units' lights there, 1.41 and 1.05, give, and
+    // a tint of 255 the texture itself); other water carries none.
+    var c = in.color.rgb * globals.water_tint.rgb;
     if (length(in.normal) > 0.5) {
-        rgb = rgb * lighting(normalize(in.normal), in.world);
+        let n = normalize(in.normal);
+        c = c * (globals.ambient.rgb + globals.light_color.rgb * max(dot(n, -normalize(globals.light_dir.xyz)), 0.0));
     }
-    return vec4<f32>(fog(fow(rgb, in.world), in.world), t.a);
+    let rgb = tx.rgb * clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
+    return vec4<f32>(fog(fow(rgb, in.world), in.world), tx.a * in.color.a * globals.water_tint.a);
 }

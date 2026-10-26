@@ -87,6 +87,8 @@ struct GroundSource {
     cliff_tiles: Vec<bool>,
     extended: Vec<bool>,
     blight_index: usize,
+    /// Corners under water, which show no blight.
+    water: Vec<bool>,
 }
 
 /// The ground tiles: per tile, the lowest texture index in full and every other texture
@@ -99,7 +101,10 @@ fn build_ground(src: &GroundSource, heights: &[f32], blight: &[bool]) -> (Vec<Ve
         let i = idx(x, y);
         // Tilesets painted in later come after the blight.
         let t = src.textures[i] as usize;
-        if blight.get(i).copied().unwrap_or(false) {
+        // Water corners keep their ground under blight (measured: a blight rect over a
+        // shallow pond shows the pond's dirt and grass in the original, though
+        // IsPointBlighted says yes there; ours drew blight under the water).
+        if blight.get(i).copied().unwrap_or(false) && !src.water.get(i).copied().unwrap_or(false) {
             src.blight_index
         } else if t >= src.blight_index {
             t + 1
@@ -310,6 +315,20 @@ impl TerrainRenderer {
             cliff_tiles: (0..h - 1).flat_map(|y| (0..w - 1).map(move |x| (x, y))).map(|(x, y)| is_cliff(x, y)).collect(),
             extended: ground.iter().map(|g| g.1).collect(),
             blight_index,
+            // Under water: a water corner whose surface (with Water.slk's height) is
+            // above its ground (measured: dry corners flagged water by a pond's edge
+            // take blight in the original).
+            water: {
+                let offset = water_slk
+                    .get(&format!("{}Sha", terrain.tileset as char), "height")
+                    .and_then(|v| match v {
+                        w3_formats::slk::Value::Num(n) => Some(*n as f32),
+                        _ => None,
+                    })
+                    .unwrap_or(0.0)
+                    * TILE;
+                terrain.corners.iter().map(|c| c.water && c.water_height() + offset > c.height()).collect()
+            },
         };
         let blight: Vec<bool> = terrain.corners.iter().map(|c| c.blight).collect();
         let (gverts, gindices, batches) = build_ground(&ground_src, &heights, &blight);

@@ -133,7 +133,7 @@ impl ObjectTable {
         self.objects.keys().copied().collect()
     }
 
-    fn merge_slk(&mut self, table: &Table) {
+    pub fn merge_slk(&mut self, table: &Table) {
         for (key, row) in &table.rows {
             let id = id_from_str(key);
             let obj = self.objects.entry(id).or_insert_with(|| Object { id, ..Default::default() });
@@ -177,7 +177,7 @@ impl ObjectTable {
         }
     }
 
-    fn load_meta(&mut self, table: &Table) {
+    pub fn load_meta(&mut self, table: &Table) {
         for (key, _) in &table.rows {
             let get = |c: &str| table.get(key, c).map(|v| v.as_str()).unwrap_or_default();
             self.meta.insert(
@@ -243,13 +243,26 @@ impl ObjectTable {
                         }
                     };
                     let _end = r.u32()?;
-                    let Some(meta) = self.meta.get(&field) else { continue };
+                    // A doodad file's per-variation fields name their variation in the
+                    // id's last digit (dvb2: vertB02), the metadata holding only the first.
+                    let (meta, level) = match self.meta.get(&field) {
+                        Some(m) => (m, level),
+                        None => {
+                            let digit = field[3].wrapping_sub(b'0');
+                            let first = [field[0], field[1], field[2], b'1'];
+                            match self.meta.get(&first).filter(|m| m.repeat > 0 && (1..=9).contains(&digit)) {
+                                Some(m) => (m, digit as u32),
+                                None => continue,
+                            }
+                        }
+                    };
                     let mut name = meta.field.clone();
                     if meta.data > 0 {
                         name = format!("{name}{}", (b'A' + (column as u8).saturating_sub(1)) as char);
                     }
                     if meta.repeat > 0 && level > 0 {
-                        name = format!("{name}{level}");
+                        // Doodads' variation colors are vertR01 to vertR10.
+                        name = if name.starts_with("vert") { format!("{name}{level:02}") } else { format!("{name}{level}") };
                     }
                     let key = name.to_ascii_lowercase();
                     if meta.index >= 0 && meta.slk.eq_ignore_ascii_case("Profile") {

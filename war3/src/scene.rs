@@ -678,6 +678,17 @@ impl Scene {
             let doodads = Doodads::parse(&bytes).context("war3map.doo")?;
             let doodad_slk = data.slk("Doodads\\Doodads.slk");
             let dest_slk = data.slk("Units\\DestructableData.slk");
+            // The doodad types as the map changes them (war3campaign.w3d, war3map.w3d).
+            let mut doodad_types = w3_game::objects::ObjectTable::default();
+            doodad_types.merge_slk(&doodad_slk);
+            doodad_types.load_meta(&data.slk("Doodads\\DoodadMetaData.slk"));
+            for name in ["war3campaign.w3d", "war3map.w3d"] {
+                if let Ok(b) = chain.read(name) {
+                    if let Err(e) = doodad_types.apply_mods(&b, None) {
+                        log::warn!("{name}: {e}");
+                    }
+                }
+            }
             for d in &doodads.doodads {
                 let id = fourcc_str(d.id);
                 // Destructables are game objects; the scene draws them from the world.
@@ -715,6 +726,14 @@ impl Scene {
                         let t = assets.textures.get_or_white(device, queue, &tex_file);
                         inst.replaceable.insert(tex_id, t);
                     }
+                }
+                // The type's color for this variation (vertR01 to vertB10) tints it
+                // (measured: NightElfX03 zeroes its Magic Runes' blue, and the original
+                // shows nothing of their blue glow).
+                if let Some(o) = doodad_types.get(d.id) {
+                    let k = d.variation as usize + 1;
+                    let c = |ch: &str| o.str(&format!("vert{ch}{k:02}")).trim().parse::<f32>().map_or(1.0, |v| v / 255.0);
+                    inst.tint = glam::Vec4::new(c("R"), c("G"), c("B"), 1.0);
                 }
                 inst.play("Stand");
                 instances.push(inst);

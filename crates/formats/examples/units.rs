@@ -6,7 +6,7 @@ fn main() {
     let mut counts = std::collections::BTreeMap::new();
     for u in &units {
         let id = String::from_utf8_lossy(&u.id).to_string();
-        if a.get(2) == Some(&id) {
+        if a.get(2) == Some(&id) || a.get(2).is_some_and(|s| s == "all") {
             println!("{id} at {:?} player {}", u.position, u.player);
         }
         *counts.entry(id).or_insert(0) += 1;

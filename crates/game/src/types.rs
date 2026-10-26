@@ -268,6 +268,12 @@ pub struct UnitExtra {
     /// while any is inside, GoldMineOwnDuration after the last leaves).
     #[serde(default)]
     pub mine_holder: Option<(u8, f32)>,
+    /// A lumber swing under way, its chop not yet landed; and the time left of the
+    /// backswing after a chop, which a full worker waits out before going home.
+    #[serde(default)]
+    pub chop_swinging: bool,
+    #[serde(default)]
+    pub chop_recover: f32,
     /// The item whose spell is being cast, spent when it takes effect.
     #[serde(default)]
     pub casting_item: Option<u32>,
@@ -525,6 +531,8 @@ impl Default for UnitExtra {
             aura_clock: None,
             payout: None,
             mine_holder: None,
+            chop_swinging: false,
+            chop_recover: 0.0,
             casting_item: None,
             permanent_life: 0.0,
             cooldown_speed: None,

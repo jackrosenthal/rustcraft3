@@ -2683,6 +2683,7 @@ impl World {
             let area = self.ability_real(ahar, "Area", lvl).max(0.0);
             let next = if was_tree { self.nearest_tree(h, area) } else { None };
             let u = self.unit_mut(h).unwrap();
+            u.extra.chop_swinging = false;
             match next {
                 Some(t) => u.action = Action::Harvest { target: t },
                 None if u.carry_gold > 0 || u.carry_lumber > 0 => u.action = Action::ReturnResources,
@@ -2704,7 +2705,9 @@ impl World {
         let lumber_cap = self.ability_real(ahar, "DataB", lvl) as i32;
         // Improved Lumber Harvesting (rlum) adds to a trip.
         let lumber_cap = lumber_cap + self.unit(h).map_or(0, |u| self.upgrade_bonus(u.owner, u.type_id).lumber);
-        if (is_mine && u.carry_lumber > 0) || (is_tree && u.carry_gold > 0) || (is_tree && u.carry_lumber >= lumber_cap) {
+        // A full worker first waits out its last swing's backswing (FUN_6f40bce0).
+        let full = u.carry_lumber >= lumber_cap && u.extra.chop_recover <= 0.0;
+        if (is_mine && u.carry_lumber > 0) || (is_tree && u.carry_gold > 0) || (is_tree && full) {
             self.carry_home(h);
             return;
         }
@@ -2764,26 +2767,50 @@ impl World {
             return;
         }
         // Trees: Rng is the chopping range, Dur the time between swings, DataA lumber per
-        // swing; each swing damages the tree by one.
+        // swing.  A swing lands its chop at the unit's attack damage point, and the next
+        // starts Dur after the last or once that one's backswing is over, if later
+        // (FUN_6f436a90 starts a swing, FUN_6f405110 chops, FUN_6f40bce0 and FUN_6f40c4a0
+        // start the next; CAbilityHarvestLumber::vf32 takes both times from the attack).
         let range = self.ability_real(ahar, "Rng", lvl);
         if !self.approach(h, target, range, dt) {
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.chop_swinging = false;
+                u.extra.chop_recover = 0.0;
+            }
             return;
         }
         let tp = self.widget_pos(target).unwrap();
+        let (point, backswing) = self.unit(h).and_then(|u| weapon(self, u.type_id)).map_or((0.0, 0.0), |w| (w.damage_point, w.backswing));
         let u = self.unit_mut(h).unwrap();
+        u.extra.chop_recover -= dt;
+        if u.carry_lumber >= lumber_cap {
+            return;
+        }
         let left = turn(u, angle_to((u.x, u.y), tp), dt);
-        if left.abs() > 30.0 {
+        if left.abs() > 30.0 && !u.extra.chop_swinging {
             return;
         }
         u.work_timer -= dt;
-        if u.work_timer <= 0.0 {
+        if u.work_timer > 0.0 {
+            return;
+        }
+        if !u.extra.chop_swinging {
+            u.extra.chop_swinging = true;
+            u.work_timer = u.work_timer.max(-dt) + point;
+            restart_anim(u, "attack lumber");
+            if u.work_timer > 0.0 {
+                return;
+            }
+        }
+        {
             let per = self.ability_real(ahar, "DataA", lvl) as i32;
             let interval = self.ability_real(ahar, "Dur", lvl).max(0.1);
             let u = self.unit_mut(h).unwrap();
-            u.work_timer = interval;
+            u.extra.chop_swinging = false;
+            u.extra.chop_recover = backswing;
+            u.work_timer = u.work_timer.max(-dt) + (interval - point).max(backswing);
             u.carry_gold = 0;
             u.carry_lumber = (u.carry_lumber + per).min(lumber_cap.max(1));
-            restart_anim(u, "attack lumber");
             let owner = u.owner;
             // A chop takes as much of the tree's life as the lumber it gives (FUN_6f405110;
             // measured: a ghoul, Ahrl's 2, fells a 50-life tree in 25 chops, a peasant in 50).

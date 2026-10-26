@@ -250,7 +250,7 @@ impl World {
                     continue;
                 }
                 let bonus = self.upgrade_bonus(u.owner, u.type_id);
-                let want = !u.dead && if aura { lvl >= 1 } else if code == "Aspi" { bonus.spikes > 0.0 } else { bonus.armor_type > 0 };
+                let want = !u.dead && if aura { lvl >= 1 && self.ability_enabled(u.owner, a) } else if code == "Aspi" { bonus.spikes > 0.0 } else { bonus.armor_type > 0 };
                 let has = u.extra.upgrade_art.iter().any(|e| e.0 == a);
                 if want != has {
                     changes.push((h, a, want));

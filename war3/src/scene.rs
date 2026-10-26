@@ -4055,6 +4055,12 @@ impl Scene {
             // The unit's color and transparency (UnitUI red, green, blue;
             // SetUnitVertexColor).
             view.inst.tint = glam::Vec4::new(u.vertex_color[0] as f32, u.vertex_color[1] as f32, u.vertex_color[2] as f32, u.vertex_color[3] as f32) / 255.0;
+            // Shadowmelded, it shows half see-through (measured: a night elf archer
+            // melded at night lets 0.47 to 0.48 of the ground through in the original,
+            // its stand pose varying; one made invisible by Apiv shows whole).
+            if u.buffs.iter().any(|b| b.invisible && w.ability_code(b.ability) == "Ashm") {
+                view.inst.tint.w *= 0.5;
+            }
             // Within an area spell's target light, units take its color (Tip35).
             if let Some((_, _, _, c)) = light.filter(|l| (u.x - l.0).hypot(u.y - l.1) <= l.2 + u.collision) {
                 let a = c[3];

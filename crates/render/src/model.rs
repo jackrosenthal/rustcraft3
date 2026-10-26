@@ -639,7 +639,10 @@ impl ModelRenderer {
             let (mut ga_alpha, mut ga_color) = (1.0, [1.0f32; 3]);
             if let Some(&ga) = model.geoset_anims.get(&(g.geoset as u32)) {
                 let (a, c) = anim::geoset_anim_state(&mdx.geoset_anims[ga], &time, globals);
-                ga_alpha = a;
+                // At most 1 (measured: Malfurion's ground glow, keyed at 68.53, shows as a
+                // soft round glow in the original, where ours, so multiplied, lit its
+                // texture's faint edges into a square).
+                ga_alpha = a.min(1.0);
                 if mdx.geoset_anims[ga].flags & 2 != 0 {
                     // A static color is red, green, blue (the main menu's tower glow, a
                     // Blue_Glow2 quad under 0, 0.07, 1, shows blue in the original); the

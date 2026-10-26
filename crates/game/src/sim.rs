@@ -558,7 +558,8 @@ impl World {
                     .filter(|(d, _)| *d <= RANGE)
                     .min_by(|a, b| a.0.total_cmp(&b.0))
                     .map(|x| x.1)
-            } else if self.ability_with_code(h, "Awha").is_some() || self.ability_with_code(h, "Ahar").is_some() {
+            } else if ["Awha", "Ahar", "Ahrl"].iter().any(|c| self.ability_with_code(h, c).is_some()) {
+                // Ghouls too (measured: UndeadX03's ghouls so ordered gather lumber).
                 self.nearest_tree(h, RANGE).filter(|&t| self.can_harvest(h, t))
             } else {
                 None

@@ -51,6 +51,19 @@ pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>
     h
 }
 
+/// Puts back a revived destructable's pathing blockers.
+fn restamp_destructable(w: &mut World, h: u32) {
+    let Some((type_id, x, y, facing)) = dest(w, h).filter(|d| d.pathing_cells.is_empty()).map(|d| (d.type_id, d.x, d.y, d.facing)) else { return };
+    let path_tex = w.objects.destructables.get(type_id).map(|o| o.str("pathTex")).unwrap_or_default();
+    let cells = w.pathing_cells(&path_tex, x, y, facing - 270.0);
+    if let Some(p) = w.pathing.as_mut() {
+        p.stamp_destructable(&cells, 1);
+    }
+    if let Some(d) = dest_mut(w, h) {
+        d.pathing_cells = cells;
+    }
+}
+
 /// Clears a destructable's pathing blockers (on death or removal).
 pub fn unstamp_destructable(w: &mut World, h: u32) {
     let cells = match w.handles.get_mut(h) {
@@ -229,9 +242,17 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         KillDestructable => |w, vm, a| { kill_destructable(w, vm, a.h(0)); none() },
+        // Brings one back to life: none given restores all of it, any other amount
+        // at least half a point (measured: a dead 50-life tree given 0 has 50, given
+        // -5 or 0.3 has 0.5, given 0.6 or 1 has that, given 100 has 50; UndeadX07a's
+        // intro cleanup gives its sight blockers GetDestructableMaxLife(null), 0, and
+        // they block sight again there, where ours stayed dead).
         DestructableRestoreLife => |w, _, a| {
-            let (life, _birth) = (a.r(1), a.b(2));
-            if let Some(d) = dest_mut(w, a.h(0)) { d.life = life.min(d.max_life); }
+            let (h, life, _birth) = (a.h(0), a.r(1), a.b(2));
+            if let Some(d) = dest_mut(w, h) {
+                d.life = if life == 0.0 { d.max_life } else { life.max(0.5).min(d.max_life) };
+            }
+            restamp_destructable(w, h);
             none()
         },
         SetDestructableInvulnerable => |w, _, a| { let v = a.b(1); if let Some(d) = dest_mut(w, a.h(0)) { d.invulnerable = v; } none() },

@@ -424,7 +424,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         FogModifierStart => |w, _, a| {
             // Starting a modifier applies it at once, so the area is explored even if it
-            // stops before the next update.
+            // stops before the next update, or a masked one unexplored (measured:
+            // UndeadX07a's intro cleanup "wipes visibility" with a masked modifier over
+            // the map made and destroyed at once, and in the original what its intro
+            // showed is black again; units see their own ground again next update).
             let m = match w.handles.get_mut(a.h(0)) {
                 Some(Obj::FogModifier(m)) => {
                     m.active = true;
@@ -433,9 +436,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 _ => None,
             };
             if let (Some((p, state, shape)), Some(f)) = (m, w.fog.as_mut()) {
-                if state != FOG_MASKED {
-                    f.set_state(p, state, &shape);
-                }
+                f.set_state(p, state, &shape);
             }
             none()
         },

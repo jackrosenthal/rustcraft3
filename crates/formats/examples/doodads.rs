@@ -10,7 +10,7 @@ fn main() {
             if (p.position[0] - x).hypot(p.position[1] - y) > r { continue; }
         }
         *counts.entry(String::from_utf8_lossy(&p.id).to_string()).or_insert(0) += 1;
-        if std::env::var("WHERE").is_ok_and(|w| w == "all" || w.as_bytes() == p.id) { println!("{} at {:?} scale {:?} var {} flags {}", String::from_utf8_lossy(&p.id), p.position, p.scale, p.variation, p.flags); }
+        if std::env::var("WHERE").is_ok_and(|w| w == "all" || w.as_bytes() == p.id) { println!("{} at {:?} scale {:?} var {} flags {} life {}", String::from_utf8_lossy(&p.id), p.position, p.scale, p.variation, p.flags, p.life); }
     }
     for (k, v) in counts { println!("{k} {v}"); }
     println!("special {}", d.special.len());

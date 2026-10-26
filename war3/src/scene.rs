@@ -4838,6 +4838,47 @@ impl Scene {
         }
         self.terrain.render_ground(&mut pass);
         let mut decals = self.ubersplat_decals(device, queue, assets);
+        // Ground splats are lit as the flat ground they lie on is, by the terrain's day
+        // and night light (as the original's Human01 opening shows its tents' and tower's
+        // splats darkened with the ground at dusk; ours drew them at full brightness).
+        {
+            let d = Vec3::new(globals.light_dir[0], globals.light_dir[1], globals.light_dir[2]).normalize_or_zero();
+            let lit = (-d).dot(Vec3::Z).max(0.0);
+            let shade = [0, 1, 2].map(|k| (globals.terrain_ambient[k] + globals.terrain_light_color[k] * lit).min(1.0));
+            // Under fog of war they take the ground's fogged and masked colors (the
+            // terrain shader's fow, here at each splat's middle: in Human01's opening
+            // the original's splats sit dark in the unexplored shade, ours glowed).
+            if let (Some(g), true) = (self.game.as_ref(), globals.fow_extent[2] > 0.0) {
+                let w = &g.world;
+                if let (Some(f), Some((fw, fh, img))) = (w.fog.as_ref(), w.fog_image(w.local_player, 128)) {
+                    for dc in &mut decals {
+                        let (cx, cy) = (((dc.center[0] - f.origin.0) / w3_game::fog::FOG_CELL).floor(), ((dc.center[1] - f.origin.1) / w3_game::fog::FOG_CELL).floor());
+                        if cx < 0.0 || cy < 0.0 || cx as usize >= fw || cy as usize >= fh {
+                            continue;
+                        }
+                        let v = img[(cy as usize * fw + cx as usize) * 2] as f32 / 255.0;
+                        let (ft, mt) = (globals.fow_terrain, globals.fow_masked_terrain);
+                        for k in 0..3 {
+                            let c = dc.color[k];
+                            let fogged = c + (ft[k] - c) * ft[3];
+                            let masked = c + (mt[k] - c) * mt[3];
+                            let inside = masked + (fogged - masked) * (v / 0.5).clamp(0.0, 1.0);
+                            dc.color[k] = inside + (c - inside) * (v * 2.0 - 1.0).clamp(0.0, 1.0);
+                        }
+                    }
+                }
+            }
+            // And darkened by the shadows under them, baked and trees', not by
+            // structures' own (measured: Human01's tents and tower, in the shade of its
+            // trees, show their splats dark; a farm's in the open at full brightness
+            // though its shadow falls on it).
+            for dc in &mut decals {
+                let s = 1.0 - self.terrain.shadow_at(dc.center[0], dc.center[1]) * 0.6667;
+                for k in 0..3 {
+                    dc.color[k] *= shade[k] * s;
+                }
+            }
+        }
         decals.extend(self.image_decals(device, queue, assets));
         decals.extend(self.shadow_decals(device, queue, assets));
         decals.extend(self.selection_decals(device, queue, assets));

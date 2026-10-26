@@ -56,6 +56,9 @@ pub struct TerrainRenderer {
     shadow_sampler: wgpu::Sampler,
     /// The map's baked shadows (war3map.shd), one byte per 32 by 32 cell.
     pub shadow_base: Vec<u8>,
+    /// The baked shadows with destructables' stamped in, structures' left out: what
+    /// darkens ground splats.
+    pub splat_shadows: Vec<u8>,
     water_textures: Vec<wgpu::BindGroup>,
     water_range: (u32, u32),
     water_rate: f32,
@@ -657,6 +660,7 @@ impl TerrainRenderer {
             ground_sampler: make_sampler(device, false, false),
             shadow_layout,
             shadow_sampler,
+            splat_shadows: shadow_bytes.clone(),
             shadow_base: shadow_bytes,
             water_textures,
             water_range,
@@ -757,6 +761,18 @@ impl TerrainRenderer {
         }
         let tex = crate::texture::upload_r8(device, queue, "shadows", sw, sh, &mask[..(sw * sh) as usize]);
         self.shadow_bg = texture_bind_group(device, &self.shadow_layout, &tex, &self.shadow_sampler);
+    }
+
+    /// How much shadow, baked or a destructable's, lies on the ground at a world
+    /// position, 0 to 1 (as the ground shader reads its mask, a quarter tile a cell).
+    pub fn shadow_at(&self, x: f32, y: f32) -> f32 {
+        let (sw, sh) = self.shadow_size();
+        let cx = ((x - self.offset[0]) / (TILE / 4.0)).floor();
+        let cy = ((y - self.offset[1]) / (TILE / 4.0)).floor();
+        if cx < 0.0 || cy < 0.0 || cx >= sw as f32 || cy >= sh as f32 {
+            return 0.0;
+        }
+        self.splat_shadows.get((cy as u32 * sw + cx as u32) as usize).map_or(0.0, |&v| v as f32 / 255.0)
     }
 
     pub fn height_at(&self, x: f32, y: f32) -> f32 {

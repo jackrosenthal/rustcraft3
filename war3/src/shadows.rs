@@ -49,7 +49,8 @@ fn load_stamp(chain: &w3_mpq::Chain, name: &str) -> Option<Stamp> {
 
 impl Shadows {
     /// The structures and destructables casting shadows: their image and cell.
-    fn casters(world: &World, offset: [f32; 2]) -> Vec<(String, i32, i32)> {
+    /// Each caster's stamp name, cell, and whether it is a structure.
+    fn casters(world: &World, offset: [f32; 2]) -> Vec<(String, i32, i32, bool)> {
         let cell = |x: f32, y: f32| (((x - offset[0]) / 32.0) as i32, ((y - offset[1]) / 32.0) as i32);
         let mut out = Vec::new();
         for &h in &world.unit_order {
@@ -61,7 +62,7 @@ impl Shadows {
             let name = o.str("buildingShadow");
             if !name.is_empty() && name != "_" {
                 let (cx, cy) = cell(u.x, u.y);
-                out.push((name.to_string(), cx, cy));
+                out.push((name.to_string(), cx, cy, true));
             }
         }
         for (_, o) in world.handles.iter() {
@@ -73,7 +74,7 @@ impl Shadows {
             let name = od.str("shadow");
             if !name.is_empty() && name != "_" {
                 let (cx, cy) = cell(d.x, d.y);
-                out.push((name.to_string(), cx, cy));
+                out.push((name.to_string(), cx, cy, false));
             }
         }
         out
@@ -107,7 +108,8 @@ impl Shadows {
         let (sw, sh) = terrain.shadow_size();
         let (sw, sh) = (sw as i32, sh as i32);
         let mut mask = terrain.shadow_base.clone();
-        for (name, cx, cy) in &casters {
+        let mut ground = terrain.shadow_base.clone();
+        for (name, cx, cy, structure) in &casters {
             let stamp = self.stamps.entry(name.clone()).or_insert_with(|| load_stamp(&world.chain, name));
             let Some(s) = stamp else { continue };
             let (x0, y0) = (cx - s.anchor.0, cy - s.anchor.1);
@@ -116,11 +118,15 @@ impl Shadows {
                     let (gx, gy) = (x0 + x, y0 + yb);
                     if s.mask[(yb * s.w + x) as usize] && (0..sw).contains(&gx) && (0..sh).contains(&gy) {
                         mask[(gy * sw + gx) as usize] = 255;
+                        if !structure {
+                            ground[(gy * sw + gx) as usize] = 255;
+                        }
                     }
                 }
             }
         }
         terrain.set_shadows(device, queue, &mask);
+        terrain.splat_shadows = ground;
     }
 }
 

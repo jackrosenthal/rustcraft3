@@ -553,7 +553,11 @@ impl World {
                 self.unit_order
                     .iter()
                     .copied()
-                    .filter(|&m| m != h && self.can_harvest(h, m) && self.unit(m).is_some_and(|t| t.is_building))
+                    // Only a mine its owner sees (FUN_6f439910 asks the fog; measured: a
+                    // peasant so ordered takes a visible mine, and none fogged or masked;
+                    // Human02's skipped intro orders its gold peasants so while the mine
+                    // lies masked, and they stand idle in the original).
+                    .filter(|&m| m != h && self.can_harvest(h, m) && self.unit(m).is_some_and(|t| t.is_building && self.fog_state(t.x, t.y, u.owner) == crate::fog::FOG_VISIBLE))
                     .filter_map(|m| self.unit(m).map(|t| ((t.x - ux).hypot(t.y - uy), m)))
                     .filter(|(d, _)| *d <= RANGE)
                     .min_by(|a, b| a.0.total_cmp(&b.0))
@@ -631,7 +635,7 @@ impl World {
         // Sent to the nearest tree, it is under a harvest order at that tree (measured:
         // NightElfX04's wisps so ordered read "harvest" in the original).
         let (order, target) = match action {
-            Action::Harvest { target: t } if order == crate::natives::basic::order_id("autoharvestlumber") => (crate::natives::basic::order_id("harvest"), t),
+            Action::Harvest { target: t } if order == crate::natives::basic::order_id("autoharvestlumber") || order == crate::natives::basic::order_id("autoharvestgold") => (crate::natives::basic::order_id("harvest"), t),
             _ => (order, target),
         };
         self.leave_mine(h);

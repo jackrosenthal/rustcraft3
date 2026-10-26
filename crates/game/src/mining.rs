@@ -383,6 +383,7 @@ impl World {
             if let Some(m) = self.unit_mut(mine) {
                 m.extra.payout = Some((left, working));
             }
+            let per = if self.slow_chopping(owner) { 1 } else { per };
             for _ in 0..pays {
                 let got = self.take_gold(vm, mine, mine, per);
                 if got > 0 {

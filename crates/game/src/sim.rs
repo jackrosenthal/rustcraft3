@@ -2744,7 +2744,7 @@ impl World {
                 // collapses at 6.15 seconds under one peasant, as the second trip goes in,
                 // and the peasant brings out the last 5).
                 let before = self.unit(target).map_or(0, |m| m.resource);
-                let take = gold_cap.min(before);
+                let take = if self.slow_chopping(owner) { 1 } else { gold_cap }.min(before);
                 if let Some(m) = self.unit_mut(target) {
                     m.resource -= take;
                 }
@@ -2784,9 +2784,11 @@ impl World {
             u.carry_gold = 0;
             u.carry_lumber = (u.carry_lumber + per).min(lumber_cap.max(1));
             restart_anim(u, "attack lumber");
+            let owner = u.owner;
+            let damage = if self.slow_chopping(owner) { 0.1 } else { 1.0 };
             let mut died = false;
             if let Some(Obj::Destructable(d)) = self.handles.get_mut(target) {
-                d.life -= 1.0;
+                d.life -= damage;
                 died = d.life <= 0.0;
             }
             if died {
@@ -2869,7 +2871,7 @@ impl World {
         // stands, its order done (measured: GetUnitCurrentOrder reads no order).
         let src_gone = self.unit(h).map(|u| u.harvest_source).is_some_and(|s| s != 0 && self.widget_pos(s).is_none() || self.unit(s).is_some_and(|m| m.dead));
         let u = self.unit_mut(h).unwrap();
-        let (gold, lumber, owner, src) = (u.carry_gold, u.carry_lumber, u.owner, u.harvest_source);
+        let (mut gold, lumber, owner, src) = (u.carry_gold, u.carry_lumber, u.owner, u.harvest_source);
         u.carry_gold = 0;
         u.carry_lumber = 0;
         u.action = if src != 0 && !src_gone { Action::Harvest { target: src } } else { Action::Idle };
@@ -2882,6 +2884,9 @@ impl World {
         }
         // Upkeep takes its share of what is returned; the amount shows over the worker
         // (0x6f40b150).
+        if gold > 0 && self.slow_chopping(owner) {
+            gold = 1;
+        }
         self.gather(owner, h, gold, lumber, 0.0);
     }
 

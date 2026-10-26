@@ -883,6 +883,16 @@ impl World {
         self.unit_order.iter().filter_map(|&h| self.unit(h)).filter(|u| u.owner == player && !u.dead && (u.x - x).hypot(u.y - y) <= 1200.0).map(|u| if u.is_hero { (u.level + 1) / 2 + 4 } else { u.level }).sum()
     }
 
+    /// Whether a player's AI has SetSlowChopping on (every campaign AI turns it on).
+    /// It holds a worker to 1 gold a trip, from the mine and at the hall, a haunted or
+    /// entangled mine to 1 gold a payout, and a chop to a tenth of a point of a tree's
+    /// life (FUN_6f9cc580, AI flag 0x40, read by FUN_6f4382c0, FUN_6f40b150,
+    /// FUN_6f4efa20, and FUN_6f405110; measured: Undead04's high elf computer's mine
+    /// gives a gold at each peasant's entry, and its gold gathered climbs 1 a trip).
+    pub(crate) fn slow_chopping(&self, player: u8) -> bool {
+        self.ai.get(&player).is_some_and(|s| s.flags.get("slow_chopping").copied().unwrap_or(false))
+    }
+
     pub fn leave_mine_pub(&mut self, h: u32) {
         self.leave_mine(h);
     }

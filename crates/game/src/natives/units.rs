@@ -134,13 +134,22 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32) -> (f32, f32
     let start = p.cell_of(x, y);
     // Moved only off destructables, as structures are (the original leaves units a map
     // stands on ground it marks unwalkable).
-    let span = (radius / 32.0).ceil() as i32;
+    // The cells it covers beyond its own (a footman made at 500,1600 among trees stands
+    // at 464,1520 in the original; ours, also keeping the cells around it clear, went to
+    // 496,1488, and now goes to 496,1520).
+    let span = ((radius - 16.0) / 32.0).ceil().max(0.0) as i32;
     let on_destructable = (-span..=span).any(|dy| (-span..=span).any(|dx| !p.clear_of_destructables((start.0 + dx, start.1 + dy)) && p.index_pub((start.0 + dx, start.1 + dy)).is_some()));
     if !on_destructable {
         return (x, y);
     }
+    // The nearest open cell: rings out until one is found, then on as far as one could
+    // still lie nearer.
+    let mut best: Option<(f32, (f32, f32))> = None;
+    let mut last = 32i32;
     for r in 1..=32i32 {
-        let mut best: Option<(f32, (f32, f32))> = None;
+        if r > last {
+            break;
+        }
         for dy in -r..=r {
             for dx in -r..=r {
                 if dx.abs() != r && dy.abs() != r {
@@ -157,6 +166,11 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32) -> (f32, f32
                 }
             }
         }
+        if best.is_some() && last == 32 {
+            last = ((r as f32 * std::f32::consts::SQRT_2).ceil() as i32 + 1).min(32);
+        }
+    }
+    {
         if let Some((_, at)) = best {
             return at;
         }

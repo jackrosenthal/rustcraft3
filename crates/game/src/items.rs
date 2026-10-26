@@ -584,11 +584,13 @@ impl World {
                     self.summon(unit, owner, kind, data(self, "DataA").max(1.0) as i32, px, py, data(self, "Dur"));
                     did = true;
                 }
-                // Wand of Illusion: an image of the target.
+                // Wand of Illusion: an image of the target, Area before it as it faces
+                // (FUN_6f600f10; measured: footmen facing east, north, and west get
+                // theirs at about 200 that way, moved to open ground).
                 "AIil" => {
                     let t = if _target != 0 { _target } else { unit };
-                    let (dealt, taken) = (data(self, "DataA"), data(self, "DataB"));
-                    if let Some((tx, ty)) = self.unit(t).map(|u| (u.x + 64.0, u.y)) {
+                    let (dealt, taken, area) = (data(self, "DataA"), data(self, "DataB"), data(self, "Area"));
+                    if let Some((tx, ty)) = self.unit(t).map(|u| (u.x + area * u.facing.to_radians().cos(), u.y + area * u.facing.to_radians().sin())) {
                         did = self.make_illusion(t, owner, (tx, ty), a, 1, dealt, taken).is_some();
                     }
                 }

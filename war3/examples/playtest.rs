@@ -623,6 +623,20 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // dnear <x> <y> <r>: the destructables within r of a point.
+            "dnear" => {
+                let (x, y, r) = (num(&a[i + 1]), num(&a[i + 2]), num(&a[i + 3]));
+                if let Some(g) = &scene.game {
+                    for (_, o) in g.world.handles.iter() {
+                        if let w3_game::types::Obj::Destructable(d) = o {
+                            if (d.x - x).hypot(d.y - y) <= r {
+                                eprintln!("  dest {} ({:.0},{:.0}) life {:.0} scale {:.2}", w3_game::objects::id_str(d.type_id), d.x, d.y, d.life, d.scale);
+                            }
+                        }
+                    }
+                }
+                i += 4;
+            }
             // near <x> <y> <r>: the living units within r of a point.
             "near" => {
                 let (x, y, r) = (num(&a[i + 1]), num(&a[i + 2]), num(&a[i + 3]));

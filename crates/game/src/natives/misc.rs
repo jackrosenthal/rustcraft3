@@ -152,9 +152,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         IsTerrainPathable => |w, _, a| {
             let (x, y, m) = (a.r(0), a.r(1), pathing_mask(a.h(2) as i32));
             let Some(p) = w.pathing.as_ref() else { return boolean(false) };
+            // The ground's own flags only: trees and other destructables don't count
+            // (measured: ground under a stand of trees reads walkable).
             let c = p.cell_of(x, y);
-            let blocked = m & crate::pathing::NO_WALK != 0 && !p.walkable(c) && p.flags_at(c).is_some_and(|f| f & crate::pathing::NO_WALK == 0);
-            boolean(p.flags_at(c).is_none_or(|f| f & m != 0) || blocked)
+            boolean(p.flags_at(c).is_none_or(|f| f & m != 0))
         },
         SetTerrainPathable => |w, _, a| {
             let (x, y, m, on) = (a.r(0), a.r(1), pathing_mask(a.h(2) as i32), a.b(3));

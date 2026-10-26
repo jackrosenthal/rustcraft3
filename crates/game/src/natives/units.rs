@@ -756,6 +756,13 @@ fn issue_order(w: &mut World, vm: &mut Vm, unit: u32, order: i32, x: f32, y: f32
         } else {
             return issue_build(w, unit, id, x, y);
         };
+        // What it starts on, it starts at once, its event firing within the order
+        // (measured: a barracks ordered to train two footmen fires its first train
+        // start before the second is paid for, 865 gold of 1000 left; ours fired it
+        // on the next update, 730 left).
+        if ok {
+            w.start_production(vm, unit);
+        }
         return boolean(ok);
     }
     w.order_error = None;

@@ -891,15 +891,16 @@ pub struct Item {
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Timer {
-    /// Time left in the current run, while running.
-    pub remaining: f32,
+    /// Time left in the current run, while running (f64: f32 counting down from a
+    /// large timeout drifts, 0.03 in 40 seconds from 100).
+    pub remaining: f64,
     pub timeout: f32,
     pub periodic: bool,
     pub running: bool,
     pub callback: Option<FuncId>,
     /// The length of the current run: the timeout, or what was left when it was resumed.
     #[serde(default)]
-    pub period: f32,
+    pub period: f64,
     /// What was left when last paused (0 until then); a stopped timer reads by it,
     /// stale or not (FUN_6f232500, FUN_6f233190).
     #[serde(default)]
@@ -914,14 +915,14 @@ impl Timer {
     /// last paused (measured: a one-shot timer that has fired reads the remaining of
     /// the pause before it).
     pub fn remaining_now(&self) -> f32 {
-        if self.running { self.remaining } else { self.saved }
+        if self.running { self.remaining as f32 } else { self.saved }
     }
 
     /// TimerGetElapsed: the run's time gone while running, else the timeout less what
     /// was left when last paused (measured: -0.83 for a timer paused with 0.83 left and
     /// then started for 0).
     pub fn elapsed(&self) -> f32 {
-        if self.running { self.period - self.remaining } else { self.timeout - self.saved }
+        if self.running { (self.period - self.remaining) as f32 } else { self.timeout - self.saved }
     }
 }
 

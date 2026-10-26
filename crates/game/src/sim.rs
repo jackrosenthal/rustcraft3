@@ -2040,6 +2040,15 @@ impl World {
         Ok(())
     }
 
+    /// The item at the front of a structure's queue starts, if it has not: research, a
+    /// structure upgrade, or training.
+    pub(crate) fn start_production(&mut self, vm: &mut Vm, h: u32) {
+        let Some(&id) = self.unit(h).filter(|u| !u.queue_started && u.constructing.is_none()).and_then(|u| u.queue.first()) else { return };
+        self.unit_mut(h).unwrap().queue_started = true;
+        let (pe, ue, ctx) = self.production_event(h, id, 0);
+        self.fire_unit_pair(vm, h, pe, ue, ctx);
+    }
+
     /// Gold and lumber for researching level `level` + 1 of an upgrade (base plus
     /// increment per level).
     pub fn upgrade_cost(&self, id: Id, level: i32) -> (i32, i32) {
@@ -2218,12 +2227,7 @@ impl World {
         }
         // Production.
         let Some(&id) = self.unit(h).and_then(|u| u.queue.first()) else { return };
-        // The item at the front starts: research, a structure upgrade, or training.
-        if !self.unit(h).unwrap().queue_started {
-            self.unit_mut(h).unwrap().queue_started = true;
-            let (pe, ue, ctx) = self.production_event(h, id, 0);
-            self.fire_unit_pair(vm, h, pe, ue, ctx);
-        }
+        self.start_production(vm, h);
         if let Some(up) = self.objects.upgrades.get(id) {
             let owner = self.unit(h).unwrap().owner;
             let level = self.players[owner as usize].tech_researched.get(&id).copied().unwrap_or(0);

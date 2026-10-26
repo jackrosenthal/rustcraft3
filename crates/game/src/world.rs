@@ -157,6 +157,11 @@ pub struct World {
     /// while a game played alone is paused by PauseGame.
     #[serde(default)]
     pub sleep_time: f32,
+    /// time and sleep_time as counted.
+    #[serde(default)]
+    pub time_exact: f64,
+    #[serde(default)]
+    pub sleep_exact: f64,
     pub ctx: EventCtx,
     pub enum_ctx: EnumCtx,
     pub sleepers: Vec<Sleeper>,
@@ -633,6 +638,8 @@ impl World {
             ctx: EventCtx::default(),
             enum_ctx: EnumCtx::default(),
             sleep_time: 0.0,
+            time_exact: 0.0,
+            sleep_exact: 0.0,
             sleepers: Vec::new(),
             handle_sweep_timer: 0.0,
             pending: Vec::new(),
@@ -1394,7 +1401,9 @@ impl World {
                 eprintln!("profile at {:.0}s: {}", self.time, v.iter().take(40).map(|(k, t)| format!("{k} {:.2}s", t)).collect::<Vec<_>>().join(", "));
             }
         }
-        self.time += dt;
+        // Counted in f64 and read as f32: f32 adding 0.02s drifts, by seconds in an hour.
+        self.time_exact = self.time_exact.max(self.time as f64) + dt as f64;
+        self.time = self.time_exact as f32;
         let day_hours = self.misc_f32("DayHours", 24.0);
         let day_length = self.misc_f32("DayLength", 480.0);
         let hours_per_second = day_hours / day_length * self.time_of_day_scale;
@@ -1532,7 +1541,7 @@ impl World {
                 if !t.running {
                     continue;
                 }
-                t.remaining -= dt;
+                t.remaining -= dt as f64;
                 // What f32 leaves of a timeout after its steps is no time: the original's
                 // timers expire on the step their timeout ends (measured: one started for
                 // 2 seconds with another reads 2.00 of the other's as it expires; ours
@@ -1541,8 +1550,8 @@ impl World {
                     expired.push((t.remaining, t.seq, id, t.callback));
                     if t.periodic && t.timeout > 0.0 {
                         // A resumed run done, the timer goes on by its timeout.
-                        t.period = t.timeout;
-                        t.remaining += t.timeout;
+                        t.period = t.timeout as f64;
+                        t.remaining += t.timeout as f64;
                     } else {
                         t.running = false;
                         t.remaining = 0.0;
@@ -1591,7 +1600,8 @@ impl World {
     /// SLEEP_SLACK past their start (measured from the original: TriggerSleepAction(0.5)
     /// lasts 0.6, (1) 1.1, and (0) until the next poll).
     pub fn wake_sleepers(&mut self, vm: &mut Vm, dt: f32) {
-        self.sleep_time += dt;
+        self.sleep_exact = self.sleep_exact.max(self.sleep_time as f64) + dt as f64;
+        self.sleep_time = self.sleep_exact as f32;
         let poll = |t: f32| ((t - SLEEP_POLL_PHASE) / SLEEP_POLL).floor();
         let polled = poll(self.sleep_time) > poll(self.sleep_time - dt);
         let now = SLEEP_POLL_PHASE + poll(self.sleep_time) * SLEEP_POLL;

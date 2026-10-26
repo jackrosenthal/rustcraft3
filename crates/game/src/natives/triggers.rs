@@ -47,8 +47,8 @@ fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
     if let Some(t) = w.timer_mut(a.h(0)) {
         t.seq = seq;
         t.timeout = timeout;
-        t.period = timeout;
-        t.remaining = timeout;
+        t.period = timeout as f64;
+        t.remaining = timeout as f64;
         t.periodic = periodic;
         t.running = true;
         t.callback = cb;
@@ -219,7 +219,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetWinningPlayer => |w, _, _| NativeResult::Return(w.player_handle(w.ctx.player)),
         TriggerRegisterTimerEvent => |w, _, a| {
             // A private timer drives the event.
-            let timer = w.handles.insert(Obj::Timer(Timer { remaining: a.r(1), timeout: a.r(1), period: a.r(1), periodic: a.b(2), running: true, ..Default::default() }));
+            let timer = w.handles.insert(Obj::Timer(Timer { remaining: a.r(1) as f64, timeout: a.r(1), period: a.r(1) as f64, periodic: a.b(2), running: true, ..Default::default() }));
             register_event(w, a.h(0), EventKind::TimerExpire(timer))
         },
         TriggerRegisterTimerExpireEvent => |w, _, a| register_event(w, a.h(0), EventKind::TimerExpire(a.h(1))),
@@ -273,8 +273,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let seq = w.timer_seq;
             if let Some(t) = w.timer_mut(a.h(0)).filter(|t| !t.running) {
                 t.seq = seq;
-                t.period = t.saved;
-                t.remaining = t.saved;
+                t.period = t.saved as f64;
+                t.remaining = t.saved as f64;
                 t.running = true;
             }
             none()

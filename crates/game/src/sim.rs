@@ -591,8 +591,11 @@ impl World {
         };
         // The same cast again, at the same target, goes on as it was (measured: a
         // Paladin ordered to Holy Light the same footman every tenth of a second
-        // casts at 0.60 seconds, then each 5.6, in the original).
-        if self.unit(h).is_some_and(|u| u.action == action && matches!(action, Action::Cast { .. })) {
+        // casts at 0.60 seconds, then each 5.6, in the original), but not at a corpse:
+        // that starts over (measured: a Necromancer, cast point 0.5, ordered to Raise
+        // Dead at a footman's corpse every 0.5 seconds never raises it).
+        let at_corpse = target != 0 && self.unit(target).is_some_and(|t| t.dead);
+        if !at_corpse && self.unit(h).is_some_and(|u| u.action == action && matches!(action, Action::Cast { .. })) {
             return;
         }
         self.leave_mine(h);

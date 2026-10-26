@@ -1042,6 +1042,14 @@ impl World {
         self.ground_effects = effects;
         // Handles with a set lifetime (Far Sight's reveal).
         let now = self.time;
+        let due: Vec<u32> = self.effect_destroys.iter().filter(|(_, t)| *t <= now).map(|(h, _)| *h).collect();
+        self.effect_destroys.retain(|(_, t)| *t > now);
+        for h in due {
+            if let Some(Obj::Effect(e)) = self.handles.get_mut(h) {
+                e.destroyed = true;
+                self.dying_effects.push((h, now));
+            }
+        }
         let expired: Vec<u32> = self.timed_removals.iter().filter(|(_, t)| *t <= now).map(|(h, _)| *h).collect();
         self.timed_removals.retain(|(_, t)| *t > now);
         for h in expired {

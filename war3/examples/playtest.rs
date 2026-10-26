@@ -456,7 +456,7 @@ fn main() -> anyhow::Result<()> {
                     let (x, y, r) = (num(&a[i + 1]), num(&a[i + 2]), num(&a[i + 3]));
                     for &h in &g.world.unit_order {
                         if let Some(u) = g.world.unit(h).filter(|u| !u.dead && (u.x - x).hypot(u.y - y) <= r) {
-                            eprintln!("around {h} p{} {} at {:.0},{:.0} life {:.0} {:?}", u.owner, w3_game::objects::id_str(u.type_id), u.x, u.y, u.life, u.action);
+                            eprintln!("around {h} p{} {} at {:.0},{:.0} life {:.0} mana {:.1}/{:.0} autocast {:?} {:?}", u.owner, w3_game::objects::id_str(u.type_id), u.x, u.y, u.life, u.mana, u.max_mana, u.autocast.iter().map(|a| w3_game::objects::id_str(*a)).collect::<Vec<_>>(), u.action);
                         }
                     }
                 }

@@ -62,6 +62,18 @@ impl World {
                 let u = self.unit_mut(h).unwrap();
                 u.mana -= pay;
                 u.cooldowns.insert(a, cool);
+                // Its Casterart and Specialart on the caster and its Targetart on each it
+                // serves (measured: UndeadX03's Obsidian Statue shows its starburst as it
+                // replenishes a Destroyer's mana; ours showed nothing).
+                let mut arts = vec![(self.profile_art(a, "Casterart"), self.profile_art(a, "Casterattach"), h), (self.profile_art(a, "Specialart"), self.profile_art(a, "Specialattach"), h)];
+                arts.extend(needy.iter().map(|&t| (self.profile_art(a, "Targetart"), self.profile_art(a, "Targetattach"), t)));
+                for (model, attach, on) in arts {
+                    if !model.is_empty() {
+                        // Shown through the cast's Dur: its birth plays, then it goes.
+                        let e = self.handles.insert(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((on, attach)), destroyed: false, facing: 0.0 }));
+                        self.effect_destroys.push((e, self.time + self.data(a, "Dur", lvl).max(0.1)));
+                    }
+                }
                 for t in needy {
                     if let Some(tu) = self.unit_mut(t) {
                         if life {

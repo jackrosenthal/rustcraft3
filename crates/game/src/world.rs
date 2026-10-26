@@ -442,6 +442,10 @@ pub struct World {
     /// Effects destroyed by script, with the time they were destroyed; the presentation
     /// layer plays their death animation before the handle is freed.
     pub dying_effects: Vec<(u32, f32)>,
+    /// Effects to destroy at a time (a spell's art shown through its cast), which then
+    /// play their death as DestroyEffect's do.
+    #[serde(default)]
+    pub effect_destroys: Vec<(u32, f32)>,
     /// Trackables (CreateTrackable), as the effects that show them.
     #[serde(default)]
     pub trackables: Vec<u32>,
@@ -760,6 +764,7 @@ impl World {
             destructable_order: Vec::new(),
             item_order: Vec::new(),
             dying_effects: Vec::new(),
+            effect_destroys: Vec::new(),
             trackables: Vec::new(),
             pathing: None,
             missiles: Vec::new(),

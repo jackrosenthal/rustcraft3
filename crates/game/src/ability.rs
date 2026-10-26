@@ -1050,8 +1050,9 @@ impl World {
         self.unit_mut(target).unwrap().cooldowns.insert(a, cool);
         let (model, attach) = (self.profile_art(a, "Casterart"), self.profile_art(a, "Casterattach"));
         if !model.is_empty() {
+            // Shown for a second, its stand's length.
             let e = self.handles.insert(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((target, attach)), destroyed: false, facing: 0.0 }));
-            self.timed_removals.push((e, self.time));
+            self.effect_destroys.push((e, self.time + 1.0));
         }
         true
     }

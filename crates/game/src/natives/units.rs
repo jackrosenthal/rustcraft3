@@ -46,6 +46,14 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32, facing: f32)
             return (x, y);
         }
         let (sx, sy) = w.snap_placement(type_id, x, y);
+        // One others are built on (canBuildOn: a gold mine) stands where asked
+        // (measured: gold mines made for Neutral Passive and Player 1 on wholly
+        // unbuildable ground stay there, where farms are moved; NightElfX08's, whose
+        // footprint's corner is unbuildable, stays at its 6976, 6016 where ours stood
+        // 1900 away, its slaves mining nothing).
+        if w.objects.units.get(type_id).is_some_and(|o| o.int("canBuildOn") == 1) {
+            return (sx, sy);
+        }
         // Destructables in the way move it, and ground its preventPlace forbids
         // (measured: a farm, preventPlace unbuildable, made on unbuildable ground stands
         // 770 away; Human01's city buildings, with none, stay on theirs), not other

@@ -1956,14 +1956,17 @@ impl Hud {
         // WorldFrameUnitMessage: 0.5 x 0.25 with its bottom center on the message frame's
         // top, 0.098125 left of center and 0.0005 up at offset (0, 0); offsets of 1 move
         // it to x 0.8 and y 0.452 (FUN_6f374d20).
+        // On a wider screen its x measures stretch with it (measured at 16:9: its text
+        // starts 86 pixels in at 1280 by 720, and a line 766 pixels long goes unwrapped).
         if !self.unit_messages.is_empty() {
             let size = height("WorldFrameUnitMessage");
             let (ox, oy) = self.unit_message_offset;
-            let ax0 = cx - 0.098125;
+            let wide = self.tree.width / w3_ui::UI_WIDTH;
+            let ax0 = cx - 0.098125 * wide;
             let ay0 = msg.y1 + 0.0005;
-            let ax = ax0 + (root.x0 + 0.8 - ax0) * ox;
+            let ax = ax0 + (root.x0 + 0.8 * wide - ax0) * ox;
             let ay = ay0 + (root.y0 + 0.452 - ay0) * oy;
-            let rect = w3_ui::Rect { x0: ax - 0.25, x1: ax + 0.25, y0: ay, y1: ay + 0.25 };
+            let rect = w3_ui::Rect { x0: ax - 0.25 * wide, x1: ax + 0.25 * wide, y0: ay, y1: ay + 0.25 };
             let text = self.unit_messages.iter().map(|m| m.text.replace("|n", "\n")).collect::<Vec<_>>().join("\n");
             out.push(Draw::Text { font, size, rect, text, color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow });
         }

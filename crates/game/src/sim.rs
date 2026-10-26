@@ -2639,7 +2639,6 @@ impl World {
             self.unit_mut(h).unwrap().action = Action::Idle;
             return;
         };
-        let code = self.objects.abilities.get(ahar).map(|a| a.str("code")).unwrap_or_default();
         let is_mine = self.is_mine(target);
         let is_tree = self.is_tree(target);
         if !is_mine && !is_tree {
@@ -2663,8 +2662,10 @@ impl World {
         }
         // Full: go home.
         let u = self.unit(h).unwrap();
-        let gold_cap = self.ability_real(ahar, "DataB", lvl) as i32;
-        let lumber_cap = if code == "Ahrl" { self.ability_real(ahar, "DataB", lvl) as i32 } else { self.ability_real(ahar, "DataC", lvl) as i32 };
+        // DataB is the lumber capacity, DataC the gold (the editor's Har2 and Har3;
+        // measured: HumanX05's Mur'gul Slaves, ANha's 20 and 10, bring 20 lumber a trip).
+        let gold_cap = self.ability_real(ahar, "DataC", lvl) as i32;
+        let lumber_cap = self.ability_real(ahar, "DataB", lvl) as i32;
         // Improved Lumber Harvesting (rlum) adds to a trip.
         let lumber_cap = lumber_cap + self.unit(h).map_or(0, |u| self.upgrade_bonus(u.owner, u.type_id).lumber);
         if (is_mine && u.carry_lumber > 0) || (is_tree && u.carry_gold > 0) || (is_tree && u.carry_lumber >= lumber_cap) {

@@ -628,6 +628,12 @@ impl World {
         if !at_corpse && self.unit(h).is_some_and(|u| u.action == action && matches!(action, Action::Cast { .. })) {
             return;
         }
+        // Sent to the nearest tree, it is under a harvest order at that tree (measured:
+        // NightElfX04's wisps so ordered read "harvest" in the original).
+        let (order, target) = match action {
+            Action::Harvest { target: t } if order == crate::natives::basic::order_id("autoharvestlumber") => (crate::natives::basic::order_id("harvest"), t),
+            _ => (order, target),
+        };
         self.leave_mine(h);
         // A unit takes up an attack order after a random delay of up to ReactionDelay
         // ("max random reaction delay"; measured: footmen ordered to attack strike 0.07

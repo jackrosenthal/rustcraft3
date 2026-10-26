@@ -329,24 +329,38 @@ impl World {
     /// period is DataB times DataC over the acolytes at work there, the time left
     /// scaled when that count changes (CAbilityBlightedGoldMine, FUN_6f4e9650 and
     /// FUN_6f4e9560; measured: three acolytes bring 10 gold every 1.67 seconds,
-    /// evenly spaced, the first 1.75 seconds after they reach the mine).
+    /// evenly spaced, the first 1.75 seconds after they reach the mine).  An entangled
+    /// mine pays the same way, its Aegm's DataA every DataB times its capacity (Aenc's
+    /// DataA) over the wisps inside (measured: NightElfX04's five wisps bring 10 gold,
+    /// 7 after upkeep, every second, evenly).
     pub(crate) fn haunted_mine_payouts(&mut self, vm: &mut Vm, dt: f32) {
-        let mines: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.constructing.is_none()) && self.ability_with_code(h, "Abgm").is_some()).collect();
+        let mines: Vec<u32> = self
+            .unit_order
+            .iter()
+            .copied()
+            .filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.constructing.is_none()) && (self.ability_with_code(h, "Abgm").is_some() || self.ability_with_code(h, "Aegm").is_some()))
+            .collect();
         for mine in mines {
-            let slots = self.mine_slots(mine);
-            let working = self
-                .unit_order
-                .iter()
-                .filter(|&&o| {
-                    self.unit(o).is_some_and(|u| {
-                        !u.dead && matches!(u.action, Action::Harvest { target } if target == mine) && u.extra.mine_slot.and_then(|k| slots.get(k).copied().flatten()).is_some_and(|(sx, sy, _)| (u.x - sx).hypot(u.y - sy) <= 8.0)
+            let (working, per, base) = if let Some((aegm, lvl)) = self.ability_with_code(mine, "Aegm") {
+                let capacity = self.ability_with_code(mine, "Aenc").map_or(5, |(a, l)| self.objects.abilities.get(a).map_or(5.0, |o| o.level_real("DataA", l)) as u32).max(1);
+                let a = self.objects.abilities.get(aegm);
+                let working = self.unit(mine).map_or(0, |m| m.inside);
+                (working, a.map_or(10.0, |a| a.level_real("DataA", lvl)) as i32, a.map_or(1.0, |a| a.level_real("DataB", lvl)) * capacity as f32)
+            } else {
+                let slots = self.mine_slots(mine);
+                let working = self
+                    .unit_order
+                    .iter()
+                    .filter(|&&o| {
+                        self.unit(o).is_some_and(|u| {
+                            !u.dead && matches!(u.action, Action::Harvest { target } if target == mine) && u.extra.mine_slot.and_then(|k| slots.get(k).copied().flatten()).is_some_and(|(sx, sy, _)| (u.x - sx).hypot(u.y - sy) <= 8.0)
+                        })
                     })
-                })
-                .count() as u32;
-            let (abgm, lvl) = self.ability_with_code(mine, "Abgm").unwrap();
-            let a = self.objects.abilities.get(abgm);
-            let per = a.map_or(10.0, |a| a.level_real("DataA", lvl)) as i32;
-            let base = a.map_or(1.0, |a| a.level_real("DataB", lvl)) * a.map_or(5.0, |a| a.level_real("DataC", lvl)).max(1.0);
+                    .count() as u32;
+                let (abgm, lvl) = self.ability_with_code(mine, "Abgm").unwrap();
+                let a = self.objects.abilities.get(abgm);
+                (working, a.map_or(10.0, |a| a.level_real("DataA", lvl)) as i32, a.map_or(1.0, |a| a.level_real("DataB", lvl)) * a.map_or(5.0, |a| a.level_real("DataC", lvl)).max(1.0))
+            };
             let period = |n: u32| base / n.max(1) as f32;
             let Some(m) = self.unit_mut(mine) else { continue };
             let (mut left, was) = m.extra.payout.unwrap_or((0.0, 0));
@@ -379,15 +393,15 @@ impl World {
     }
 
     /// A wisp: into its entangled mine for gold, or beside a tree for lumber.
-    pub(crate) fn wisp_harvest(&mut self, vm: &mut Vm, h: u32, target: u32, dt: f32) {
+    pub(crate) fn wisp_harvest(&mut self, _vm: &mut Vm, h: u32, target: u32, dt: f32) {
         if self.unit(target).is_some() {
-            self.wisp_mine(vm, h, target, dt);
+            self.wisp_mine(h, target, dt);
         } else {
             self.wisp_lumber(h, target, dt);
         }
     }
 
-    fn wisp_mine(&mut self, vm: &mut Vm, h: u32, mine: u32, dt: f32) {
+    fn wisp_mine(&mut self, h: u32, mine: u32, dt: f32) {
         if !self.can_mine_covered(h, mine) {
             self.leave_mine(h);
             let u = self.unit_mut(h).unwrap();
@@ -396,10 +410,7 @@ impl World {
             return;
         }
         let capacity = self.ability_with_code(mine, "Aenc").map_or(5, |(a, l)| self.objects.abilities.get(a).map_or(5.0, |o| o.level_real("DataA", l)) as u32).max(1);
-        let (aegm, lvl) = self.ability_with_code(mine, "Aegm").unwrap();
-        let a = self.objects.abilities.get(aegm);
-        let per = a.map_or(10.0, |a| a.level_real("DataA", lvl)) as i32;
-        let interval = a.map_or(1.0, |a| a.level_real("DataB", lvl)) * capacity as f32;
+        // Inside, it waits; the mine pays (haunted_mine_payouts).
         if self.unit(h).is_some_and(|u| u.inside != mine) {
             if !self.approach(h, mine, 8.0, dt) {
                 return;
@@ -416,20 +427,7 @@ impl World {
             let u = self.unit_mut(h).unwrap();
             u.inside = mine;
             u.hidden = true;
-            u.work_timer = interval;
             self.mine_work_anim(mine);
-            return;
-        }
-        let u = self.unit_mut(h).unwrap();
-        u.work_timer -= dt;
-        if u.work_timer > 0.0 {
-            return;
-        }
-        u.work_timer += interval;
-        let owner = u.owner;
-        let got = self.take_gold(vm, h, mine, per);
-        if got > 0 {
-            self.gather(owner, mine, got, 0, 0.0);
         }
     }
 
@@ -458,22 +456,40 @@ impl World {
             crate::sim::set_anim(u, "stand");
             return;
         }
-        if !self.approach(h, tree, 64.0, dt) {
-            // No way to the tree: take the nearest one instead.
-            if self.unit(h).is_some_and(|u| u.path.is_empty()) {
-                if let Some(t) = self.nearest_tree_pub(h, 900.0).filter(|&t| t != tree) {
-                    self.unit_mut(h).unwrap().action = Action::Harvest { target: t };
+        let tp = self.widget_pos(tree).unwrap_or_default();
+        let inside = self.unit(h).is_some_and(|u| u.x == tp.0 && u.y == tp.1);
+        if !inside {
+            // To the tree, or as near as the ground lets it, then into the tree itself
+            // (measured: NightElfX04's wisps gather standing at their trees' very
+            // centers, one from 121 away where the trees about it let it no nearer).
+            let near = self.approach(h, tree, 64.0, dt) || self.unit(h).is_some_and(|u| u.path.is_empty()) && self.edge_distance(tree, self.unit(h).unwrap().x, self.unit(h).unwrap().y).is_some_and(|d| d <= 128.0);
+            if !near {
+                // No way to the tree: take the nearest one instead.
+                if self.unit(h).is_some_and(|u| u.path.is_empty()) {
+                    if let Some(t) = self.nearest_tree_pub(h, 900.0).filter(|&t| t != tree) {
+                        self.unit_mut(h).unwrap().action = Action::Harvest { target: t };
+                    }
                 }
+                return;
             }
-            return;
+            let u = self.unit_mut(h).unwrap();
+            let (dx, dy) = (tp.0 - u.x, tp.1 - u.y);
+            let d = dx.hypot(dy);
+            let step = u.move_speed * dt;
+            if d > step {
+                u.x += dx / d * step;
+                u.y += dy / d * step;
+                u.facing = dy.atan2(dx).to_degrees().rem_euclid(360.0);
+                crate::sim::set_anim(u, "walk");
+                return;
+            }
+            u.x = tp.0;
+            u.y = tp.1;
         }
         let a = self.objects.abilities.get(awha);
         let per = a.map_or(5.0, |a| a.level_real("DataA", lvl)) as i32;
         let interval = a.map_or(8.0, |a| a.level_real("Dur", lvl)).max(0.1);
-        let tp = self.widget_pos(tree).unwrap_or_default();
         let u = self.unit_mut(h).unwrap();
-        let want = crate::sim::angle_to((u.x, u.y), tp);
-        crate::sim::turn(u, want, dt);
         crate::sim::set_anim(u, "stand work");
         if u.harvest_source != tree {
             u.harvest_source = tree;
@@ -498,7 +514,11 @@ impl World {
         }
         let id = crate::objects::id_from_str(self.objects.abilities.get(aent).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
         let (x, y, facing) = self.unit(mine).map(|m| (m.x, m.y, m.facing)).unwrap();
-        let e = crate::natives::units::create_unit(self, owner, id, x, y, facing);
+        // Where the mine stands, though its preventPlace would move it off the mine's
+        // own unbuildable ground (measured: NightElfX04's entangleinstant on its mine
+        // at 11136,3328 leaves the entangled mine there, in the script's rect about it,
+        // where ours stood at 11008,2816 and its wisps, sent by that rect, mined nothing).
+        let e = crate::natives::units::create_unit_exact(self, owner, id, x, y, facing);
         if e != 0 {
             self.cover_mine(e, mine);
         }

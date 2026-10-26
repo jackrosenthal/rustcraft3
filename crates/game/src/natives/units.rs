@@ -146,8 +146,14 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32, facing: f32)
 pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing: f32) -> u32 {
     // On the map, facing within a turn (measured: 400 reads 40, -90 reads 270).
     let (x, y) = w.clamp_to_map(x, y);
+    let (x, y) = placed_at(w, type_id, x, y, facing.rem_euclid(360.0));
+    create_unit_exact(w, owner, type_id, x, y, facing)
+}
+
+/// A unit made just where asked, without looking for room.
+pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing: f32) -> u32 {
+    let (x, y) = w.clamp_to_map(x, y);
     let facing = facing.rem_euclid(360.0);
-    let (x, y) = placed_at(w, type_id, x, y, facing);
     let Some(o) = w.objects.units.get(type_id) else {
         log::warn!("CreateUnit: unknown unit type {}", crate::objects::id_str(type_id));
         return 0;

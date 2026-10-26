@@ -1140,7 +1140,8 @@ impl Hud {
     fn minimap_button_draws(&self, db: &FrameDb, out: &mut Vec<Draw>) {
         let keys = [
             "MiniMapSignalButtonEnabled",
-            if self.minimap_terrain { "MiniMapTerrainButtonInactiveEnabled" } else { "MiniMapTerrainButtonActiveEnabled" },
+            // Active while the terrain shows (as the original shows it at the start).
+            if self.minimap_terrain { "MiniMapTerrainButtonActiveEnabled" } else { "MiniMapTerrainButtonInactiveEnabled" },
             // FUN_6f3731a0: Off for player colors, Inactive for the minimap's, Active for
             // everywhere.
             match (self.filter_buttons.0, self.ally_mode % 3) {

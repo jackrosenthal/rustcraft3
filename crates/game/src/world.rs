@@ -695,7 +695,9 @@ impl World {
             load_game_name: String::new(),
             reserved_hero_buttons: 0,
             alt_minimap_icon: None,
-            ally_color_filter: 0,
+            // The allyFilter option's default (game.dll's option table), the minimap's
+            // colors (measured: NightElf02's ally button shows that state at the start).
+            ally_color_filter: 1,
             force_campaign_select: false,
             creep_camp_filter: true,
             minimap_filter_buttons: (true, true),

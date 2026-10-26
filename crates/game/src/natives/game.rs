@@ -121,8 +121,28 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         RestartGame => |w, _, _| { w.requests.push(crate::world::Request::Restart); none() },
         // The same start over as RestartGame, without its score screen (FUN_6f1e7370).
         ReloadGame => |w, _, _| { w.requests.push(crate::world::Request::Restart); none() },
-        SetCampaignMenuRace => |w, _, a| { w.persist.menu_race = a.h(0) as i32; none() },
-        SetCampaignMenuRaceEx => |w, _, a| { w.persist.menu_race = a.i(0); none() },
+        // Reign of Chaos's campaign menus by race (human 1, undead 2, orc 3, night elf 4,
+        // others 0; none for the local player's), and only with Reign of Chaos's data
+        // (FUN_6f1dec50; measured: NightElf02 played with The Frozen Throne's keeps its
+        // minimap filter buttons, which OrcX01's SetCampaignMenuRaceEx turns off).
+        SetCampaignMenuRace => |w, _, a| {
+            if w.version == 0 {
+                let race = match a.h(0) as i32 {
+                    0 => w.players.get(w.local_player as usize).map_or(0, |p| p.race),
+                    r => r,
+                };
+                let index = match race {
+                    1 => 1,
+                    2 => 3,
+                    3 => 2,
+                    4 => 4,
+                    _ => 0,
+                };
+                set_campaign_menu(w, index);
+            }
+            none()
+        },
+        SetCampaignMenuRaceEx => |w, _, a| { set_campaign_menu(w, a.i(0)); none() },
         ForceCampaignSelectScreen => |w, _, _| { w.force_campaign_select = true; none() },
         LoadGame => |w, _, a| { w.requests.push(crate::world::Request::LoadGame(a.s(0))); none() },
         SaveGame => |w, _, a| { w.requests.push(crate::world::Request::SaveGame(a.s(0))); none() },
@@ -189,4 +209,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         FogEnable => |w, _, a| { w.fog_enabled = a.b(0); none() },
         FogMaskEnable => |w, _, a| { w.fog_mask_enabled = a.b(0); none() },
     );
+}
+
+/// A campaign mission's menu (FUN_6f1e99c0): the campaign it returns to, and the
+/// minimap's ally color and creep camp buttons turned off.
+fn set_campaign_menu(w: &mut crate::World, index: i32) {
+    w.persist.menu_race = index;
+    w.minimap_filter_buttons = (false, false);
 }

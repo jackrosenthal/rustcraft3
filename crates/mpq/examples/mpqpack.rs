@@ -1,5 +1,5 @@
 //! mpqpack <out.w3x> <source map> [name=file ...]: a copy of a map with some files
-//! replaced (or added), written as a simple uncompressed MPQ after the source's 512-byte
+//! replaced (or added, or with name=- left out), written as a simple uncompressed MPQ after the source's 512-byte
 //! HM3W header, for testing the same scene in both games.
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -15,6 +15,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     for r in &a[3..] {
         let (name, path) = r.split_once('=').ok_or("expected name=file")?;
+        // name=- leaves the file out.
+        if path == "-" {
+            files.retain(|f| !f.0.eq_ignore_ascii_case(name));
+            continue;
+        }
         let data = std::fs::read(path)?;
         match files.iter_mut().find(|f| f.0.eq_ignore_ascii_case(name)) {
             Some(f) => f.1 = data,

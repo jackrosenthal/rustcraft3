@@ -180,6 +180,10 @@ pub struct World {
     pub game_type_selected: i32,
     pub game_types_supported: i32,
     pub map_flags: i32,
+    /// The w3i's editor version: a map saved by an editor before 6000 gives its heroes
+    /// their inventories whatever their ability lists say.
+    #[serde(default)]
+    pub editor_version: u32,
     /// Each player takes the start location of its own number (a map loaded
     /// directly, as the original's -loadfile does).
     #[serde(default)]
@@ -652,6 +656,7 @@ impl World {
             game_type_selected: 0,
             game_types_supported: 0,
             map_flags: 0,
+            editor_version: 0,
             fixed_starts: false,
             game_speed: 2,
             difficulty: 1,

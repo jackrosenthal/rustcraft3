@@ -151,6 +151,7 @@ impl Game {
         objects.apply_map(&chain);
         let mut world = World::new(chain.clone(), objects);
         world.version = version;
+        world.editor_version = info.editor_version;
         // w3i flag 0x2000: the map has terrain fog.
         if info.flags & 0x2000 != 0 {
             let c = info.fog_color;

@@ -215,6 +215,14 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
         .collect();
     abilities.retain(|(id, _)| id[0] != 0);
     let is_hero = type_id[0].is_ascii_uppercase();
+    // A hero of a map saved by an editor before 6000 has its inventory whatever its
+    // ability list says (measured: NightElf02, editor version 4436, lists Tyrande's
+    // abilities as Sshm alone and her heroes have six slots; at 5999 too, at 6000 and
+    // Booty Bay's 6030 none).
+    let inventory = *b"AInv";
+    if is_hero && w.editor_version < 6000 && !abilities.iter().any(|(a, _)| *a == inventory) {
+        abilities.insert(0, (inventory, 1));
+    }
     let unit = Unit {
         handle: 0,
         type_id,
@@ -917,19 +925,25 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetUnitPropWindow => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.prop_window.to_radians())),
         GetUnitFlyHeight => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.fly_height)),
         GetUnitAcquireRange => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.acquire_range)),
-        SetUnitX => |w, vm, a| { let v = a.r(1); let r = with_unit(w, a, |u| u.x = v); w.unit_placed(vm, a.h(0)); r },
-        SetUnitY => |w, vm, a| { let v = a.r(1); let r = with_unit(w, a, |u| u.y = v); w.unit_placed(vm, a.h(0)); r },
-        // Kept on the map (measured: 99999 places at 10208), unlike SetUnitX and SetUnitY.
+        // A unit moved by a script plans its way again from where it stands (measured:
+        // NightElf02's opening, skipped, moves a walking Tyrande ahead along her way; ours
+        // walked her back to the waypoints she had planned, into the rect that starts
+        // the Doom Guards' scene, which the original never shows there).
+        SetUnitX => |w, vm, a| { let v = a.r(1); let r = with_unit(w, a, |u| { u.x = v; u.path.clear(); }); w.unit_placed(vm, a.h(0)); r },
+        SetUnitY => |w, vm, a| { let v = a.r(1); let r = with_unit(w, a, |u| { u.y = v; u.path.clear(); }); w.unit_placed(vm, a.h(0)); r },
+        // Kept on the map (measured: 99999 places at 10208), unlike SetUnitX and SetUnitY,
+        // and it stops the unit (measured: a footman walking east, so placed, has no order
+        // after and stays where it was put; one moved by SetUnitX and SetUnitY walks on).
         SetUnitPosition => |w, vm, a| {
             let (x, y) = w.clamp_to_map(a.r(1), a.r(2));
-            let r = with_unit(w, a, |u| { u.x = x; u.y = y; });
+            let r = with_unit(w, a, |u| { u.x = x; u.y = y; placed_stop(u); });
             w.unit_placed(vm, a.h(0));
             r
         },
         SetUnitPositionLoc => |w, vm, a| {
             let (x, y) = w.location(a.h(1)).unwrap_or_default();
             let (x, y) = w.clamp_to_map(x, y);
-            let r = with_unit(w, a, |u| { u.x = x; u.y = y; });
+            let r = with_unit(w, a, |u| { u.x = x; u.y = y; placed_stop(u); });
             w.unit_placed(vm, a.h(0));
             r
         },
@@ -1523,5 +1537,19 @@ fn dummy_unit() -> Unit {
         str_: 0.0, agi: 0.0, int: 0.0, skill_points: 0, regen_timer: 0.0,
         cooldowns: HashMap::default(), autocast: vec![], buffs: vec![], casting: None, timed_life: None,
         item_bonus: Default::default(), revive: None, reviving: false, channel: None, reincarnate: None, proper_name: String::new(), xp_suspended: false, queue_started: false, extra: Default::default(),
+    }
+}
+
+/// A unit SetUnitPosition places stops what it was doing.
+fn placed_stop(u: &mut crate::types::Unit) {
+    u.path.clear();
+    u.queue.clear();
+    u.extra.queue_tokens.clear();
+    if matches!(u.action, crate::types::Action::Move { .. } | crate::types::Action::AttackMove { .. } | crate::types::Action::Attack { .. } | crate::types::Action::Follow { .. } | crate::types::Action::Patrol { .. }) {
+        u.action = crate::types::Action::Idle;
+        u.order = crate::types::Order::default();
+        if u.anim.starts_with("walk") {
+            crate::sim::set_anim(u, "stand");
+        }
     }
 }

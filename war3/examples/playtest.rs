@@ -96,6 +96,8 @@ fn main() -> anyhow::Result<()> {
                     let c = &g.world.camera;
                     eprintln!("camera target {} {} fields {:?}", c.x, c.y, c.fields);
                 }
+                let r = &scene.camera;
+                eprintln!("render camera target {:?} aoa {} rot {} dist {} fov {} roll {}", r.target, r.angle_of_attack, r.rotation, r.distance, r.fov, r.roll);
                 i += 1;
             }
             // hover <x> <y>: moves the pointer (screen pixels).

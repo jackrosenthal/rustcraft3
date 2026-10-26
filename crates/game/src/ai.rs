@@ -60,6 +60,12 @@ pub struct AiState {
     /// Transports carrying units for the captains, and where to (see aiferry).
     #[serde(default)]
     pub ferries: Vec<(u32, (f32, f32))>,
+    /// The shop PurchaseZeppelin buys from (CCompAI +0x22c), and whether the attack
+    /// captain is on its way there to buy.
+    #[serde(default)]
+    pub zep_shop: u32,
+    #[serde(default)]
+    pub zep_buying: bool,
     /// How many times a guard post is filled (SetReplacementCount; CCompAI +0x1d4).
     #[serde(default)]
     pub replacements: i32,
@@ -1153,7 +1159,7 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         },
         SetHeroLevels => |w, _, a| { let f = a.code(0); if let Some(s) = w.ai_state() { s.hero_levels = f; } none() },
         SetNewHeroes => |w, _, a| set_flag(w, "new_heroes", a.b(0)),
-        PurchaseZeppelin => |_, _, _| none(),
+        PurchaseZeppelin => |w, _, _| { let p = w.ai_player(); w.ai_purchase_zeppelin(p); none() },
         MergeUnits => |w, _, a| {
             let p = w.ai_player();
             boolean(w.merge_units(p, a.i(0), id_from_int(a.i(1)), id_from_int(a.i(2)), id_from_int(a.i(3))))
@@ -1268,7 +1274,7 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             if let Some(c) = w.captain(true) { c.goal = Some(p); c.target = 0; c.retreating = false; }
             none()
         },
-        LoadZepWave => |_, _, _| none(),
+        LoadZepWave => |w, _, a| { let p = w.ai_player(); w.ai_load_zep_wave(p, (a.i(0) as f32, a.i(1) as f32)); none() },
         SuicidePlayer => |w, _, a| {
             let p = w.ai_player();
             let Some(t) = w.player_of(a.h(0)) else { return boolean(false) };

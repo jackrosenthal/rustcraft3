@@ -3,21 +3,27 @@
 //! player's transports, which takes it to a drop point it can walk on near the goal
 //! and unloads it there.
 
+use w3_jass::Vm;
+
+use crate::objects::id_from_str;
 use crate::pathing::{Move, CELL};
 use crate::types::*;
 use crate::world::World;
 
 impl World {
     /// Whether a unit must be carried to reach a point: it walks, and no path joins
-    /// where it stands to the point.
+    /// where it stands to the nearest place it could be set down by the point (a
+    /// building's own spot is never walkable).
     pub(crate) fn ai_needs_ferry(&self, h: u32, to: (f32, f32)) -> bool {
         let Some(u) = self.unit(h) else { return false };
         if u.extra.transport != 0 || self.move_kind(h) == Move::Fly || self.cargo_hold(h).is_some() {
             return false;
         }
         let Some(map) = &self.pathing else { return false };
-        let radius = u.collision.max(16.0);
-        !map.reaches((u.x, u.y), to, radius, radius + 2.0 * CELL)
+        // Asked at the smallest size, so only water or cliffs part them, never a gap
+        // between buildings too narrow for this unit.
+        let at = self.ai_drop_point(to);
+        !map.reaches((u.x, u.y), at, 16.0, 16.0 + 2.0 * CELL)
     }
 
     /// Puts a unit aboard one of its player's transports bound for `to`: the nearest
@@ -54,8 +60,8 @@ impl World {
         true
     }
 
-    /// The point near `to` where a walker can be set down and walk to it: the nearest
-    /// cell it fits that joins `to`, searched outward.
+    /// The point near `to` where a walker can be set down: the nearest cell it fits,
+    /// searched outward (beside a building, when `to` is one).
     fn ai_drop_point(&self, to: (f32, f32)) -> (f32, f32) {
         let Some(map) = &self.pathing else { return to };
         let c = map.cell_of(to.0, to.1);
@@ -70,10 +76,7 @@ impl World {
                     }
                     let cell = (c.0 + dx * 2, c.1 + dy * 2);
                     if map.fits(cell, 16.0) {
-                        let at = map.center(cell);
-                        if map.reaches(at, to, 16.0, 16.0 + 2.0 * CELL) {
-                            return at;
-                        }
+                        return map.center(cell);
                     }
                 }
             }
@@ -115,5 +118,56 @@ impl World {
     /// Whether a unit is a transport carrying for its AI.
     pub(crate) fn ai_ferrying(&self, p: u8, h: u32) -> bool {
         self.ai.get(&p).is_some_and(|s| s.ferries.iter().any(|f| f.0 == h))
+    }
+
+    /// LoadZepWave (FUN_6f9d3a00): every unit of the attack captain boards a transport
+    /// bound for a point, where one will take it.
+    pub(crate) fn ai_load_zep_wave(&mut self, p: u8, to: (f32, f32)) {
+        let units = self.ai.get(&p).map(|s| s.attack.units.clone()).unwrap_or_default();
+        for h in units {
+            if self.unit(h).is_some_and(|u| !u.dead && u.extra.transport == 0) && self.cargo_hold(h).is_none() {
+                self.ai_ferry(p, h, to);
+            }
+        }
+    }
+
+    /// PurchaseZeppelin (FUN_6f9d5190): the attack captain goes to a shop that sells
+    /// goblin zeppelins, the first found kept for later purchases, to buy one there.
+    pub(crate) fn ai_purchase_zeppelin(&mut self, p: u8) {
+        let nzep = id_from_str("nzep");
+        let kept = self.ai.get(&p).map_or(0, |s| s.zep_shop);
+        let sells = |w: &World, h: u32| w.unit(h).is_some_and(|u| !u.dead) && w.shop_goods(h).1.contains(&nzep);
+        let shop = if kept != 0 && sells(self, kept) {
+            kept
+        } else {
+            let home = self.ai.get(&p).map_or((0.0, 0.0), |s| s.attack.home);
+            let near = |w: &World, h: u32| w.unit(h).map_or(f32::MAX, |u| (u.x - home.0).hypot(u.y - home.1));
+            let Some(h) = self.unit_order.iter().copied().filter(|&h| sells(self, h)).min_by(|&a, &b| near(self, a).total_cmp(&near(self, b))) else { return };
+            h
+        };
+        let Some(at) = self.unit(shop).map(|u| (u.x, u.y)) else { return };
+        if let Some(st) = self.ai.get_mut(&p) {
+            st.zep_shop = shop;
+            st.zep_buying = true;
+            st.attack_player = None;
+            st.attack.goal = Some(at);
+            st.attack.target = 0;
+            st.attack.retreating = false;
+        }
+    }
+
+    /// A purchase PurchaseZeppelin sent the attack captain to make: made once one of its
+    /// player's units is near the shop, given up when the captain is sent elsewhere.
+    pub(crate) fn ai_zeppelin_tick(&mut self, vm: &mut Vm) {
+        let buying: Vec<(u8, u32)> = self.ai.iter().filter(|(_, s)| s.zep_buying).map(|(&p, s)| (p, s.zep_shop)).collect();
+        for (p, shop) in buying {
+            let at = self.unit(shop).filter(|u| !u.dead).map(|u| (u.x, u.y));
+            let still = at.is_some() && self.ai.get(&p).is_some_and(|s| s.attack.goal == at);
+            if !still || self.hire_unit(vm, p, shop, id_from_str("nzep")).is_ok() {
+                if let Some(st) = self.ai.get_mut(&p) {
+                    st.zep_buying = false;
+                }
+            }
+        }
     }
 }

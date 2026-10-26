@@ -1555,6 +1555,7 @@ impl World {
         prof!(self, "update_fog", self.update_fog(dt));
         prof!(self, "update_shops", self.update_shops(dt));
         prof!(self, "update_ai", self.update_ai(dt));
+        self.ai_zeppelin_tick(vm);
         self.sweep_handles(vm, dt);
         prof!(self, "update_rescue", self.update_rescue());
         self.flush_events(vm);

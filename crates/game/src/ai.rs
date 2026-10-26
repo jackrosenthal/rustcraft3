@@ -57,6 +57,9 @@ pub struct AiState {
     pub harvest_timer: f32,
     #[serde(default)]
     pub posts: Vec<crate::aiposts::GuardPost>,
+    /// Transports carrying units for the captains, and where to (see aiferry).
+    #[serde(default)]
+    pub ferries: Vec<(u32, (f32, f32))>,
     /// How many times a guard post is filled (SetReplacementCount; CCompAI +0x1d4).
     #[serde(default)]
     pub replacements: i32,
@@ -355,6 +358,7 @@ impl World {
             self.ai_vms.insert(p, aivm);
             self.ai_engine(p, dt);
             self.ai_captains_move(p);
+            self.ai_ferries_update(p);
             self.ai_captain_spells(p);
             self.ai_threat_tick(p, dt);
             self.ai_mega_tick(p, dt);
@@ -724,8 +728,15 @@ impl World {
                 // So do those still gathering at home once there is somewhere to go.
                 let gathering = |a: &Action| matches!(*a, Action::AttackMove { x, y } if (x, y) == home) && (target != 0 || goal.is_some());
                 let idle = self.unit(h).is_some_and(|u| matches!(u.action, Action::Idle | Action::Harvest { .. } | Action::ReturnResources) || gathering(&u.action));
-                if !idle {
+                if !idle || self.ai_ferrying(p, h) {
                     continue;
+                }
+                // Where it cannot walk, it boards a transport (FUN_6f607950).
+                let dest = if target != 0 { self.unit(target).filter(|t| !t.dead).map(|t| (t.x, t.y)) } else { goal };
+                if let Some(d) = dest {
+                    if self.ai_needs_ferry(h, d) && self.ai_ferry(p, h, d) {
+                        continue;
+                    }
                 }
                 if target != 0 && self.unit(target).is_some_and(|t| !t.dead) {
                     self.order_unit(h, aimove, 0.0, 0.0, target);

@@ -382,6 +382,9 @@ struct Draw {
 }
 
 pub struct ModelRenderer {
+    /// Leaves the particles for the caller to draw with `render_particles` (the world
+    /// draws them over its water).
+    pub defer_particles: bool,
     shader: wgpu::ShaderModule,
     globals_layout: wgpu::BindGroupLayout,
     draw_layout: wgpu::BindGroupLayout,
@@ -534,6 +537,7 @@ impl ModelRenderer {
             particle_buf: None,
             particle_verts: Vec::new(),
             particle_runs: Vec::new(),
+            defer_particles: false,
             shader,
             globals_layout,
             draw_layout,
@@ -819,7 +823,9 @@ impl ModelRenderer {
         queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(globals));
         if self.draws.is_empty() {
             self.bones.clear();
-            self.render_particles(device, queue, pass);
+            if !self.defer_particles {
+                self.render_particles(device, queue, pass);
+            }
             return;
         }
         let mut rebind = false;
@@ -877,11 +883,13 @@ impl ModelRenderer {
         self.bones.clear();
         // Keep textures alive until the next frame's draws replace them.
         self.draws = Vec::with_capacity(draws.len());
-        self.render_particles(device, queue, pass);
+        if !self.defer_particles {
+            self.render_particles(device, queue, pass);
+        }
     }
 
     /// Draws this frame's particle quads after the models: depth tested, not written.
-    fn render_particles(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, pass: &mut wgpu::RenderPass) {
+    pub fn render_particles(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, pass: &mut wgpu::RenderPass) {
         if self.particle_verts.is_empty() {
             self.particle_runs.clear();
             return;

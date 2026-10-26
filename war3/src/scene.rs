@@ -4886,8 +4886,13 @@ impl Scene {
         decals.extend(self.placement_decals(device, queue, assets));
         let terrain = &self.terrain;
         self.decals.render(device, queue, &mut pass, &decals, &|x, y| terrain.height_at(x, y));
+        // Particles over the water: the shores' foam lies on its surface (measured:
+        // Orc01's shore shows bright white foam along it; ours, drawing the water over
+        // it, showed it dim).
+        self.models.defer_particles = true;
         self.models.render(device, queue, &mut pass, &globals);
         self.terrain.render_water(&mut pass, self.time);
+        self.models.render_particles(device, queue, &mut pass);
         drop(pass);
         let mut tag_draws = self.health_bar_draws(&assets.frames, size);
         tag_draws.extend(self.text_tag_draws(&assets.frames, size));

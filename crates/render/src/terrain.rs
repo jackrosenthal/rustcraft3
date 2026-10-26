@@ -446,8 +446,8 @@ impl TerrainRenderer {
                 lerp(deep_min, deep_max, t)
             }
         };
-        // Water.slk "lighting": the water is lit by the day's light (FUN_6f760b50 picks
-        // its lit render state).
+        // Water.slk "lighting": the water is lit, by the lights' ambient terms only
+        // (FUN_6f760b50 picks its lit render state; see fs_water).
         let water_normal = if num("lighting") != 0.0 { [0.0, 0.0, 1.0] } else { [0.0; 3] };
         let water_first = indices.len() as u32;
         for y in 0..h - 1 {

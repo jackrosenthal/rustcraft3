@@ -3690,9 +3690,12 @@ impl Scene {
                 },
                 None => Some(Vec3::new(e.x, e.y, e.z)),
             };
+            // Art on a unit takes the unit's scale (measured: Vampiric Aura's ring on a
+            // footman scaled to 2 is twice that on one at 1 in the original).
+            let scale = e.target.as_ref().and_then(|(t, _)| w.unit(*t)).map_or(1.0, |u| u.scale);
             match pos {
                 Some(p) => {
-                    v.inst.transform = Mat4::from_rotation_translation(Quat::from_rotation_z(e.facing.to_radians()), p);
+                    v.inst.transform = Mat4::from_scale_rotation_translation(Vec3::splat(scale), Quat::from_rotation_z(e.facing.to_radians()), p);
                     v.inst.visible = w.fog_state(p.x, p.y, local) != w3_game::fog::FOG_MASKED;
                 }
                 None => v.inst.visible = false,

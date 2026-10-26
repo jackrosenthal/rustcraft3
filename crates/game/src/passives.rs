@@ -235,18 +235,22 @@ impl World {
 
     /// Spiked Barricades (Aspi) and Reinforced Burrows (Arbr) show their Targetart once
     /// the owner has researched what they stand for: spike damage (rspi) and reinforced
-    /// defense (rart).  CAbilitySpiked and CAbilityReinforce share it.
+    /// defense (rart).  CAbilitySpiked and CAbilityReinforce share it.  A hero's aura
+    /// shows its Targetart on its bearer while it lives (measured: UndeadX05's
+    /// Varimathras stands in Vampiric Aura's rune ring in the original, where ours
+    /// showed none).
     pub fn update_upgrade_art(&mut self) {
         let mut changes: Vec<(u32, Id, bool)> = Vec::new();
         for &h in &self.unit_order {
             let Some(u) = self.unit(h) else { continue };
-            for &(a, _) in &u.abilities {
+            for &(a, lvl) in &u.abilities {
                 let code = self.ability_code(a);
-                if !matches!(code.as_str(), "Aspi" | "Arbr") {
+                let aura = matches!(code.as_str(), "AHad" | "AHab" | "AUau" | "AOae" | "AEar" | "AUav" | "AEah");
+                if !aura && !matches!(code.as_str(), "Aspi" | "Arbr") {
                     continue;
                 }
                 let bonus = self.upgrade_bonus(u.owner, u.type_id);
-                let want = !u.dead && if code == "Aspi" { bonus.spikes > 0.0 } else { bonus.armor_type > 0 };
+                let want = !u.dead && if aura { lvl >= 1 } else if code == "Aspi" { bonus.spikes > 0.0 } else { bonus.armor_type > 0 };
                 let has = u.extra.upgrade_art.iter().any(|e| e.0 == a);
                 if want != has {
                     changes.push((h, a, want));

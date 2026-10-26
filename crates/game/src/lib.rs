@@ -220,6 +220,15 @@ impl Game {
                         if world.objects.destructables.get(d.id).is_none() {
                             continue;
                         }
+                        // One neither visible nor solid is the script's to make: the
+                        // editor writes it there too (measured: UndeadX05's four gates
+                        // and three trees, flags 0, are made by CreateAllDestructables,
+                        // and the original has one of each where ours had two, its
+                        // killed gate standing closed over the dead one; every campaign
+                        // map has as many such entries as it has destructables made so).
+                        if d.flags & 3 == 0 {
+                            continue;
+                        }
                         let h = natives::objects::create_destructable(
                             &mut world,
                             d.id,

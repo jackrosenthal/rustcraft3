@@ -4733,7 +4733,8 @@ impl Scene {
                         let file = slk.get(&key, "file").map(|v| v.as_str()).unwrap_or_default();
                         let t = assets.textures.get_or_white(device, queue, &format!("{dir}\\{file}.blp"));
                         let ext = t.width > t.height;
-                        added.push((t, ext));
+                        let buildable = slk.get(&key, "buildable").map_or(true, |v| v.as_str().trim() != "0");
+                        added.push((t, ext, buildable));
                     }
                 }
                 let (tex, var): (Vec<u8>, Vec<u8>) = g.world.ground.iter().copied().unzip();

@@ -114,6 +114,23 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // blightdump x y: the world's blighted terrain corners around a point.
+            "blightdump" => {
+                if let Some(g) = scene.game.as_ref() {
+                    let w = &g.world;
+                    if let Some(t) = w.terrain_heights.as_ref() {
+                        let (x, y) = (num(&a[i + 1]), num(&a[i + 2]));
+                        let cx = ((x - t.offset[0]) / 128.0).round() as i32;
+                        let cy = ((y - t.offset[1]) / 128.0).round() as i32;
+                        eprintln!("blight total {} of {}", w.blight.iter().filter(|b| **b).count(), w.blight.len());
+                        for j in (cy - 4..=cy + 4).rev() {
+                            let row: String = (cx - 6..=cx + 6).map(|i| if w.blight.get((j * t.width as i32 + i) as usize).copied().unwrap_or(false) { 'b' } else { '.' }).collect();
+                            eprintln!("blight {row}");
+                        }
+                    }
+                }
+                i += 3;
+            }
             "camdump" => {
                 if let Some(g) = scene.game.as_ref() {
                     let c = &g.world.camera;

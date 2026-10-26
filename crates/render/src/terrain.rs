@@ -89,6 +89,8 @@ struct GroundSource {
     blight_index: usize,
     /// Corners under water, which show no blight.
     water: Vec<bool>,
+    /// Each ground texture's Terrain.slk buildable: only buildable ground shows blight.
+    buildable: Vec<bool>,
 }
 
 /// The ground tiles: per tile, the lowest texture index in full and every other texture
@@ -101,10 +103,15 @@ fn build_ground(src: &GroundSource, heights: &[f32], blight: &[bool]) -> (Vec<Ve
         let i = idx(x, y);
         // Tilesets painted in later come after the blight.
         let t = src.textures[i] as usize;
-        // Water corners keep their ground under blight (measured: a blight rect over a
-        // shallow pond shows the pond's dirt and grass in the original, though
-        // IsPointBlighted says yes there; ours drew blight under the water).
-        if blight.get(i).copied().unwrap_or(false) && !src.water.get(i).copied().unwrap_or(false) {
+        // A blighted corner shows the blight only on buildable ground, out of the water,
+        // and with no cliff tile about it (FUN_6f7376f0: Terrain.slk's buildable,
+        // FUN_6f74bb70, FUN_6f74ba60; measured: a blight rect over a shallow pond shows
+        // the pond's dirt and grass in the original, and UndeadX01's blight over its
+        // Rocks and Cobble Path shows them, though IsPointBlighted says yes there).
+        let cliff_about = [(x.wrapping_sub(1), y.wrapping_sub(1)), (x, y.wrapping_sub(1)), (x.wrapping_sub(1), y), (x, y)]
+            .iter()
+            .any(|&(tx, ty)| tx < w - 1 && ty < h - 1 && src.cliff_tiles[(ty * (w - 1) + tx) as usize]);
+        if blight.get(i).copied().unwrap_or(false) && !src.water.get(i).copied().unwrap_or(false) && src.buildable.get(t).copied().unwrap_or(true) && !cliff_about {
             src.blight_index
         } else if t >= src.blight_index {
             t + 1
@@ -306,7 +313,13 @@ impl TerrainRenderer {
             let b = at(ix, iy + 1) * (1.0 - tx) + at(ix + 1, iy + 1) * tx;
             a * (1.0 - ty) + b * ty
         };
+        let buildable = terrain
+            .ground_tilesets
+            .iter()
+            .map(|id| terrain_slk.get(&String::from_utf8_lossy(id), "buildable").map_or(true, |v| v.as_str().trim() != "0"))
+            .collect();
         let ground_src = GroundSource {
+            buildable,
             width: w,
             height: h,
             offset: terrain.offset,
@@ -747,10 +760,13 @@ impl TerrainRenderer {
 
     /// Repaints the ground (SetTerrainType): each corner's tileset and variation, with
     /// the textures of tilesets added since (`added`, each with whether it is extended).
-    pub fn set_ground(&mut self, device: &wgpu::Device, added: &[(std::sync::Arc<crate::texture::Texture>, bool)], textures: &[u8], variations: &[u8], blight: &[bool]) {
-        for (t, ext) in added {
+    /// `added`: each new tileset's texture, whether it is extended, and whether it is
+    /// buildable.
+    pub fn set_ground(&mut self, device: &wgpu::Device, added: &[(std::sync::Arc<crate::texture::Texture>, bool, bool)], textures: &[u8], variations: &[u8], blight: &[bool]) {
+        for (t, ext, buildable) in added {
             self.texture_bgs.push(texture_bind_group(device, &self.shadow_layout, &t.view, &self.ground_sampler));
             self.ground.extended.push(*ext);
+            self.ground.buildable.push(*buildable);
         }
         if textures.len() == self.ground.textures.len() {
             self.ground.textures = textures.to_vec();

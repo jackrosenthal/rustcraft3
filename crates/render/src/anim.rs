@@ -302,7 +302,13 @@ pub fn sequences_containing(model: &Model, name: &str) -> Vec<usize> {
                 .filter(|w| !w.is_empty() && !w.chars().all(|c| c.is_ascii_digit()))
                 .map(|w| w.to_ascii_lowercase())
                 .collect();
-            want.iter().all(|w| words.contains(w)).then(|| (i, words.len() - want.len()))
+            // Other primary animation names a sequence also serves do not count against
+            // it, only extra qualifiers (measured: a plain Scout Tower stands in "Stand
+            // Ready Attack" in the original, not the Cannon Tower's "Stand Upgrade
+            // Second", which has as many words).
+            const PRIMARY: [&str; 12] = ["stand", "birth", "death", "decay", "dissipate", "walk", "attack", "morph", "sleep", "spell", "portrait", "cinematic"];
+            let extra = words.iter().filter(|w| !want.contains(w) && !PRIMARY.contains(&w.as_str())).count();
+            want.iter().all(|w| words.contains(w)).then_some((i, extra))
         })
         .collect();
     let fewest = extras.iter().map(|e| e.1).min();

@@ -245,7 +245,9 @@ impl World {
             let Some(u) = self.unit(h) else { continue };
             for &(a, lvl) in &u.abilities {
                 let code = self.ability_code(a);
-                let aura = matches!(code.as_str(), "AHad" | "AHab" | "AUau" | "AOae" | "AEar" | "AUav" | "AEah");
+                // Magic Sentry's eye shows over a tower once its research enables it
+                // (measured: HumanX02's Scout Tower, Rhse researched, wears it).
+                let aura = matches!(code.as_str(), "AHad" | "AHab" | "AUau" | "AOae" | "AEar" | "AUav" | "AEah" | "Adts");
                 if !aura && !matches!(code.as_str(), "Aspi" | "Arbr") {
                     continue;
                 }
@@ -266,11 +268,12 @@ impl World {
         for (h, a, want) in changes {
             if want {
                 let Some(o) = self.objects.abilities.get(a) else { continue };
-                let models = o.list("Targetart");
-                let n = o.str("Targetattachcount").trim().parse::<usize>().unwrap_or(1).max(1);
+                let side = if self.ability_code(a) == "Adts" { "Caster" } else { "Target" };
+                let models = o.list(&format!("{side}art"));
+                let n = o.str(&format!("{side}attachcount")).trim().parse::<usize>().unwrap_or(1).max(1);
                 let mut art = Vec::new();
                 for k in 0..n {
-                    let key = if k == 0 { "Targetattach".to_string() } else { format!("Targetattach{k}") };
+                    let key = if k == 0 { format!("{side}attach") } else { format!("{side}attach{k}") };
                     let attach = o.str(&key);
                     let model = models.get(k).or(models.first()).cloned().unwrap_or_default();
                     if !model.is_empty() {

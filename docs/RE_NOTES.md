@@ -537,10 +537,18 @@ these are the findings behind them.
   turn's end in the next.  With these, every allocation and free agrees through turn
   76; with a wanderer's wait due at the last of a tick's four steps given in the next
   tick (that step being, it seems, the original's next turn's first), through turn 84.
-  At turn 85 the original frees seven creeps' objects of the day's change (`` `rcm ``,
-  which this game frees after 3.0 seconds as it does the rest: a Granite Golem's, a
-  Shadow Priest's, sleeping and waking creeps among them); why those last longer is
-  not yet known.
+  At turn 85 the original ends a walk given at turn 84 whose goal (13.7 away) was
+  within reach: only `tsk.`, three `task`, `tskO`, `tskA`, and `ordt` freed at the
+  turn's start, no end objects, its path the next turn.
+- A cleaner reading of the traced turns, not yet carried through: turn N holds game
+  time [(N - 2) * 0.1, (N - 1) * 0.1), its steps the multiples of 30 ms in it (giving
+  every measured four-step turn), its events (a wanderer's wait, at its exact due time:
+  read in the original, a wait drawn at the clock 5.444844 as the last fell due) among
+  the steps by time: the first sheep (due 5.0359) given after step 5.01, the third walk
+  (6.4944) after 6.48, the pig (7.6012) at turn 78's start, as measured.  Tried here:
+  the first sheep's walk then ends a step early, unless a wander's walk starts a step
+  later, which makes the boxed-in pig's end a step late; what separates them is not
+  yet known (perhaps when path searches run within a step).
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

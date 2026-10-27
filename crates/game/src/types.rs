@@ -425,6 +425,9 @@ pub struct UnitExtra {
     /// Its last walk ended in the last movement step of its tick.
     #[serde(default)]
     pub arrived_last_step: bool,
+    /// The step of this tick its walk begins with (its order given after the one before).
+    #[serde(default)]
+    pub walk_from: Option<usize>,
     /// Its search found no way: it turns toward its goal and is done (`Mover::face`).
     #[serde(default)]
     pub facing_goal: bool,
@@ -635,6 +638,7 @@ impl Default for UnitExtra {
             arrived_last_step: false,
             mover: None,
             facing_goal: false,
+            walk_from: None,
             sleep_effect: 0,
             sleep_show_wait: None,
             warp_inside: 0,

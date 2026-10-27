@@ -227,6 +227,12 @@ pub struct World {
     pub engine_clock: u32,
     #[serde(skip)]
     pub step_clocks: Vec<u32>,
+    /// The game times of this tick's steps, from its start.
+    #[serde(skip)]
+    pub step_times: Vec<f64>,
+    /// The steps walks take now: a tick's first before its logic, the rest after.
+    #[serde(skip)]
+    pub step_range: (usize, usize),
     /// CreateBlightedGoldmine is making the gold mine it hides.
     #[serde(skip)]
     pub hidden_mine: bool,
@@ -715,6 +721,8 @@ impl World {
             steps: 0,
             engine_clock: 0,
             step_clocks: Vec::new(),
+            step_times: Vec::new(),
+            step_range: (0, 0),
             hidden_mine: false,
             cheat_fog: None,
             volume_groups: full_volume(),
@@ -1475,9 +1483,14 @@ impl World {
         }
         // Counted in f64 and read as f32: f32 adding 0.02s drifts, by seconds in an hour.
         let before = self.time_exact.max(self.time as f64);
-        let step = |t: f64| (t * 1000.0 / 30.0 + 1e-6).floor() as i64;
+        // A tick holds the steps at multiples of 30 ms from 10 ms after its start to 10
+        // ms after its end (fitted to the original's traced turns, whose steps go 4, 3, 3
+        // as this game's ticks go 3, 3, 4).
+        let off = 10.0;
+        let step = |t: f64| ((t * 1000.0 - off) / 30.0 + 1e-6).floor() as i64;
         self.steps = (step(before + dt as f64) - step(before)).max(0) as u32;
         self.step_clocks.clear();
+        self.step_times = (step(before) + 1..=step(before + dt as f64)).map(|j| (j as f64 * 30.0) / 1000.0 - before).collect();
         for _ in 0..self.steps {
             self.engine_clock = crate::efloat::add(self.engine_clock, crate::motion::STEP);
             self.step_clocks.push(self.engine_clock);
@@ -1534,6 +1547,10 @@ impl World {
         prof!(self, "update_undead_auras", self.update_undead_auras(vm, dt));
         prof!(self, "update_permanent_immolation", self.update_permanent_immolation(vm, dt));
         prof!(self, "update_corpse_makers", self.update_corpse_makers(dt));
+        // A turn's first movement step comes before its logic (traced in the original:
+        // a wanderer's order is given after it, a walk's end found in it handled then).
+        self.first_steps();
+        self.step_range = (1, self.step_clocks.len());
         prof!(self, "update_wander", self.update_wander(dt));
         prof!(self, "computer_idle_workers", self.computer_idle_workers(dt));
         prof!(self, "update_guards", self.update_guards());

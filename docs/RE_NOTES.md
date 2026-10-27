@@ -509,9 +509,16 @@ these are the findings behind them.
   toward its goal at 0.663 and is done six steps on; the first sheep after its second
   search, done two steps on).  Wanderers walk in this game by these steps
   (`motion.rs` through `World::walk_steps`): the sheep stops at the original's
-  1231.73, -4929.95.  Still to match: when a walk's steps begin and end relative to a
-  turn (the original's turn runs its first step, then its logic, then the rest; this
-  game's tick its logic, then its steps, a walk's end handled at the next tick).
+  1231.73, -4929.95.  A turn runs its first step, then its logic, then the rest of
+  its steps; timers (a wanderer's wait) fire at the first step more than 1e-4 past
+  their time, and a walk ends at its step, its order's objects going then (traced:
+  the third walk given after its turn's third step).  This game's ticks so run walkers'
+  first step before their logic, fire wander waits at their step and start the walk
+  with the next, and end walks at their step; fitted to the traced turns, a tick holds
+  the steps at multiples of 30 ms from 10 ms past its start, and a wait counts from a
+  step before the unit's making.  With these every allocation and free agrees through
+  turn 69; at turn 70 the original replaces two sleeping creeps' spell timers
+  (`` `rtl ``, made at setup by the time of day's change) at the turn's start.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

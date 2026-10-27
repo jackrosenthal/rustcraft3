@@ -1078,6 +1078,21 @@ impl World {
         r
     }
 
+    /// The first movement step of the tick for units walking already, before the tick's
+    /// logic.
+    pub(crate) fn first_steps(&mut self) {
+        self.step_range = (0, self.step_clocks.len().min(1));
+        let walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.mover.is_some() && matches!(u.action, Action::Move { .. }))).collect();
+        for h in walkers {
+            if self.walk_steps(h) {
+                if let Some(u) = self.unit_mut(h) {
+                    u.action = Action::Idle;
+                    u.order = Order::default();
+                }
+            }
+        }
+    }
+
     /// Walks a unit through this tick's movement steps as the original's engine does
     /// (`motion`): toward each waypoint in turn, reached within 0.49 cells with its
     /// heading on it; at the end of a way short of the goal it searches again, and
@@ -1104,8 +1119,13 @@ impl World {
         }
         let clocks = self.step_clocks.clone();
         let n = clocks.len();
+        let (from, until) = self.step_range;
+        let from = if self.unit(h).is_some_and(|u| u.extra.mover.is_none()) { from.max(self.unit_mut(h).and_then(|u| u.extra.walk_from.take()).unwrap_or(0)) } else { from };
+        if let Some(&c) = clocks.get(from.wrapping_sub(1)).filter(|_| from > 0) {
+            m.placed_at = c;
+        }
         let mut done = None;
-        for (k, &clock) in clocks.iter().enumerate() {
+        for (k, &clock) in clocks.iter().enumerate().take(until).skip(from) {
             let Some(&next) = self.unit(h).and_then(|u| u.path.first()) else {
                 done = Some(k);
                 break;
@@ -1136,7 +1156,7 @@ impl World {
                 }
             }
         }
-        let last = clocks.last().copied().unwrap_or(start);
+        let last = clocks.get(until.wrapping_sub(1)).copied().filter(|_| until > from).unwrap_or(m.placed_at);
         let (x, y) = m.at(last);
         let Some(u) = self.unit_mut(h) else { return true };
         u.x = f32::from_bits(x) * crate::pathing::CELL + origin[0];
@@ -1144,10 +1164,15 @@ impl World {
         u.facing = f32::from_bits(m.heading).to_degrees();
         if let Some(k) = done {
             log::debug!("walk of {h} done at step {k} of {n}, time {:.3}", self.time);
+            // The order's objects go as its walk ends, at its step (traced).
+            let late = k + 1 == n;
+            if let Some(slots) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)).filter(|s| s.len() == 18) {
+                self.tags.move_done(&slots, late);
+            }
             let Some(u) = self.unit_mut(h) else { return true };
             u.extra.mover = None;
             u.extra.facing_goal = false;
-            u.extra.arrived_last_step = k + 1 == n;
+            u.extra.arrived_last_step = late;
             u.path.clear();
             set_anim(u, "stand");
             return true;

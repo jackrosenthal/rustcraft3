@@ -175,6 +175,7 @@ impl World {
     /// generator), then walks to a point up to 250 away on each axis (vf190).
     pub fn update_wander(&mut self, dt: f32) {
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.paused && matches!(u.action, Action::Idle))).collect();
+        let mut due: Vec<(usize, u32)> = Vec::new();
         for h in units {
             // A walk ended: its order's objects go (`Tags::move_done`).
             if let Some(slots) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)).filter(|s| s.len() == 18) {
@@ -186,16 +187,24 @@ impl World {
             }
             // The wait runs only while it stands (measured: sheep start a walk every 9 to
             // 11 seconds, walk included).
-            // The first wait counts from the unit's making, and a walk starts on the
-            // first step after its time (traced: Booty Bay's first walk).
-            let left = match self.unit(h).and_then(|u| u.extra.wander_wait) {
-                Some(t) => t - dt,
-                None => self.rng.real(5.0, 10.0) - dt,
+            // The first wait counts from the unit's making, and a walk starts after the
+            // first movement step past its time, more than 1e-4 past it (traced: Booty
+            // Bay's first walks, the third given after its turn's third step).
+            let wait = match self.unit(h).and_then(|u| u.extra.wander_wait) {
+                Some(t) => t,
+                None => self.rng.real(5.0, 10.0),
             };
-            if left > -1e-4 {
-                self.unit_mut(h).unwrap().extra.wander_wait = Some(left);
-                continue;
+            // (Its wait counts from a step before the unit's making: fitted to the traced
+            // turns, the first walks given after the steps the original's are.)
+            let early = 0.03;
+            match self.step_times.iter().position(|&s| s + early - wait as f64 > 1e-4) {
+                Some(k) => due.push((k, h)),
+                None => self.unit_mut(h).unwrap().extra.wander_wait = Some(wait - dt),
             }
+        }
+        // Walks start in the order their steps come.
+        due.sort_by_key(|&(k, _)| k);
+        for (k, h) in due {
             let next = self.rng.real(5.0, 10.0);
             // The point: on each axis, x first, a draw of stream 8 times 500 less 250
             // (CAbilityWander vf190, FUN_6f59af20; its constants read from the running
@@ -203,10 +212,13 @@ impl World {
             let r = &mut self.rand_data.streams[8];
             let dx = r.real(0.0, 1.0) * 500.0 - 250.0;
             let dy = r.real(0.0, 1.0) * 500.0 - 250.0;
+            // The next wait counts from the step it starts after.
+            let since = dt as f64 - self.step_times.get(k).copied().unwrap_or(dt as f64);
             let u = self.unit_mut(h).unwrap();
-            u.extra.wander_wait = Some(next);
+            u.extra.wander_wait = Some(next - since as f32);
+            u.extra.walk_from = Some(k + 1);
             let (x, y) = (u.x + dx, u.y + dy);
-            log::debug!("wander: {h:#x} {} from ({:.1},{:.1}) to ({x:.1},{y:.1})", crate::objects::id_str(u.type_id), u.x, u.y);
+            log::debug!("wander: {h:#x} {} from ({:.1},{:.1}) to ({x:.1},{y:.1}) after step {k}", crate::objects::id_str(u.type_id), u.x, u.y);
             u.action = Action::Move { x, y };
             u.path.clear();
             u.repath_timer = 0.0;

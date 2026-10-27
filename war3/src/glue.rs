@@ -123,11 +123,15 @@ pub struct ScoreState {
     bars: Vec<(String, ModelInstance)>,
 }
 
-/// Where a screen change is: the old screen's panels leave, then the new ones arrive.
+/// Where a screen change is: the old screen's controls fade, its panels leave, then
+/// the new ones arrive.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {
     Birth,
     Stand,
+    /// The controls fade for [Glue] ControlFadeDuration before the panels leave (the
+    /// glue screens' button events, FUN_6f33fd40 timed by FUN_6f047680).
+    Fade(Screen),
     Death(Screen),
 }
 
@@ -137,6 +141,9 @@ pub struct Glue {
     pub screen: Screen,
     pub tree: FrameTree,
     phase: Phase,
+    /// UI\MiscData.txt [Glue] ControlFadeDuration, and what is left of a fade.
+    control_fade: f32,
+    fade_left: f32,
     /// The options' panel: whether it has come out (a page was opened), and the sequence
     /// that follows its morph once that is done.
     options_panel: bool,
@@ -200,6 +207,9 @@ pub struct Glue {
     pub sounds: Vec<String>,
     /// Stop the cinematic scene's sound (a new scene, or the cinematic's end).
     pub stop_scene_sound: bool,
+    /// The background's and panels' animation sound events (e.g., ARPD, the right
+    /// panel's chains as it comes down), for the application to look up and play.
+    pub anim_sounds: Vec<[u8; 4]>,
     /// UI\MiscData.txt, for a cinematic's fog and sounds.
     misc: w3_formats::profile::Profile,
     version: crate::data::Version,
@@ -273,6 +283,8 @@ impl Glue {
             screen: Screen::MainMenu,
             tree: FrameTree::new(4.0 / 3.0),
             phase: Phase::Birth,
+            control_fade: data.misc.get_str("Glue", "ControlFadeDuration").and_then(|v| v.trim().parse().ok()).unwrap_or(0.25),
+            fade_left: 0.0,
             options_panel: false,
             panel_next: None,
             background,
@@ -309,6 +321,7 @@ impl Glue {
             cinematic: None,
             sounds: Vec::new(),
             stop_scene_sound: false,
+            anim_sounds: Vec::new(),
             misc: data.misc.clone(),
             version: data.version,
         };
@@ -340,18 +353,23 @@ impl Glue {
         }
     }
 
-    /// Changes screens: the current panels play their Death, then the new screen's
-    /// panels their Birth.
+    /// Changes screens: a standing screen's controls fade, the current panels play
+    /// their Death, then the new screen's panels their Birth.
     pub fn show(&mut self, screen: Screen, _assets: &mut Assets) {
         if self.screen == screen && self.phase != Phase::Stand {
             return;
         }
-        self.play_layers(&format!("{} Death", self.screen.token()));
-        self.phase = Phase::Death(screen);
         for f in &mut self.tree.frames {
             f.hovered = false;
             f.pushed = false;
         }
+        if self.phase == Phase::Stand && self.control_fade > 0.0 {
+            self.fade_left = self.control_fade;
+            self.phase = Phase::Fade(screen);
+            return;
+        }
+        self.play_layers(&format!("{} Death", self.screen.token()));
+        self.phase = Phase::Death(screen);
     }
 
     /// Builds a screen's frames.
@@ -1240,6 +1258,9 @@ impl Glue {
             l.advance(dt * 1000.0);
             done |= l.finished || l.looped;
         }
+        for i in self.background.iter_mut().chain(self.layers.iter_mut()) {
+            self.anim_sounds.append(&mut i.sound_events);
+        }
         if self.skirmish.rebuild && self.screen == Screen::Skirmish && self.phase == Phase::Stand {
             self.skirmish.rebuild = false;
             self.build(Screen::Skirmish, assets);
@@ -1284,6 +1305,13 @@ impl Glue {
             Phase::Birth if done || self.layers.is_empty() => {
                 self.play_layers(&format!("{} Stand", self.screen.token()));
                 self.phase = Phase::Stand;
+            }
+            Phase::Fade(next) => {
+                self.fade_left -= dt;
+                if self.fade_left <= 0.0 {
+                    self.play_layers(&format!("{} Death", self.screen.token()));
+                    self.phase = Phase::Death(next);
+                }
             }
             Phase::Death(next) if done || self.layers.is_empty() => {
                 self.build(next, assets);
@@ -1630,8 +1658,9 @@ impl Glue {
                 assets.textures.set_dynamic(device, queue, crate::skirmish::MAP_PREVIEW, img.width, img.height, &img.rgba);
             }
         }
-        let mut draws: Vec<Draw> = if self.phase == Phase::Stand { self.tree.draw(&assets.frames) } else { Vec::new() };
-        if self.screen == Screen::MainMenu && self.phase == Phase::Stand {
+        let shown = matches!(self.phase, Phase::Stand | Phase::Fade(_));
+        let mut draws: Vec<Draw> = if shown { self.tree.draw(&assets.frames) } else { Vec::new() };
+        if self.screen == Screen::MainMenu && shown {
             draws.push(self.version_text(assets));
         }
         // A cinematic's black bars, 0.11875 above and below.
@@ -1650,17 +1679,17 @@ impl Glue {
             self.score_draws(&assets.frames, &mut draws);
             self.save_replay.draws(&self.tree, &assets.frames, &mut draws);
         }
-        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign | Screen::ViewReplay | Screen::LanCreate | Screen::LanLoad) && self.phase == Phase::Stand {
+        if matches!(self.screen, Screen::Skirmish | Screen::LoadSaved | Screen::CustomCampaign | Screen::ViewReplay | Screen::LanCreate | Screen::LanLoad) && shown {
             self.skirmish.draws(&self.tree, &assets.frames, &mut draws);
         }
-        if matches!(self.screen, Screen::LanJoin | Screen::LanLobby) && self.phase == Phase::Stand {
+        if matches!(self.screen, Screen::LanJoin | Screen::LanLobby) && shown {
             self.skirmish.preview_draws(&self.tree, &mut draws);
             self.lan.draws(&self.tree, &assets.frames, &mut draws);
         }
-        if self.screen == Screen::SinglePlayer && self.phase == Phase::Stand && self.dialog.is_none() {
+        if self.screen == Screen::SinglePlayer && shown && self.dialog.is_none() {
             self.profile.draws(&self.tree, &assets.frames, &mut draws);
         }
-        if self.screen == Screen::Campaign && self.phase == Phase::Stand {
+        if self.screen == Screen::Campaign && shown {
             let root = self.tree.frames[0].rect.unwrap_or_default();
             let p = self.persist.borrow();
             let hover = self.campaigns.row_at(&p, root, self.pointer.0, self.pointer.1);
@@ -1668,6 +1697,9 @@ impl Glue {
         }
         if self.phase == Phase::Stand {
             self.options_tip_draws(&assets.frames, &mut draws);
+        }
+        if matches!(self.phase, Phase::Fade(_)) {
+            fade_draws(&mut draws, (self.fade_left / self.control_fade).clamp(0.0, 1.0));
         }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("glue interface"),
@@ -1730,6 +1762,27 @@ impl Glue {
             justify_h: w3_ui::Justify::End,
             justify_v: w3_ui::Justify::Start,
             shadow: Some(([0.0, 0.0, 0.0, 1.0], 0.001, -0.001)),
+        }
+    }
+}
+
+/// Fades interface draws to `alpha`; an alpha-keyed image blends instead, as its key
+/// would cut it off whole.
+fn fade_draws(draws: &mut [Draw], alpha: f32) {
+    for d in draws {
+        match d {
+            Draw::Image { color, blend, .. } => {
+                color[3] *= alpha;
+                if *blend == w3_ui::Blend::AlphaKey {
+                    *blend = w3_ui::Blend::Alpha;
+                }
+            }
+            Draw::Text { color, shadow, .. } => {
+                color[3] *= alpha;
+                if let Some((c, _, _)) = shadow {
+                    c[3] *= alpha;
+                }
+            }
         }
     }
 }

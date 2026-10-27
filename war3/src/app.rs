@@ -543,6 +543,7 @@ impl ApplicationHandler for App {
                 if let Some(glue) = r.glue.as_mut() {
                     glue.display = size;
                     glue.update(dt, &mut r.assets);
+                    let anim_sounds = std::mem::take(&mut glue.anim_sounds);
                     if let Some(a) = r.audio.as_mut() {
                         let (sound, music) = glue.options.volumes();
                         a.set_volumes(sound, music);
@@ -553,6 +554,12 @@ impl ApplicationHandler for App {
                         }
                         for label in glue.sounds.drain(..) {
                             r.scene_sound = a.play_label(&label, None);
+                        }
+                        for code in anim_sounds {
+                            let code = String::from_utf8_lossy(&code).to_ascii_uppercase();
+                            if let Some(label) = a.anim_lookups.get(&code).cloned() {
+                                a.play_label(&label, None);
+                            }
                         }
                         a.update([0.0; 3]);
                     }

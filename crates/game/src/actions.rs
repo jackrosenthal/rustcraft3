@@ -98,6 +98,17 @@ impl Codec {
             Command::LearnSkill { hero, id } if self.subgroup.get(&player) == Some(hero) => {
                 acts.push(Action::Order { flags: 0x42, ability: crate::objects::id_to_int(*id) as u32, a: u32::MAX, b: u32::MAX });
             }
+            // An item used: Order with flags 0x60, order useslot (852008 and its slot), and
+            // the item's id in the order's two words (`docs/reference/bootybay_shop.w3g`).
+            Command::UseItem { unit, slot } if self.subgroup.get(&player) == Some(unit) && *slot < 6 => {
+                let item = w.unit(*unit).and_then(|u| u.inventory.get(*slot).copied()).unwrap_or(0);
+                let o = w.oid(item);
+                acts.push(Action::Order { flags: 0x60, ability: 852008 + *slot as u32, a: o.0, b: o.1 });
+            }
+            // A purchase from the shop selected: Order with flags 0x40 and what is bought.
+            Command::BuyItem { shop, id, .. } | Command::HireUnit { shop, id, .. } if self.subgroup.get(&player) == Some(shop) => {
+                acts.push(Action::Order { flags: 0x40, ability: crate::objects::id_to_int(*id) as u32, a: u32::MAX, b: u32::MAX });
+            }
             // An item moved: OrderTarget with flags 0x42, order moveslot (852002 and the
             // slot it goes to), the item as target at the unit's place.
             Command::MoveItem { unit, from, to } if self.subgroup.get(&player) == Some(unit) && *to < 6 => {
@@ -171,6 +182,9 @@ impl Codec {
                     let id = |v: u32| crate::objects::id_from_int(v as i32);
                     let order = |ability: u32, flags: u16, at: Option<(f32, f32)>, target: u32| Command::SelectionOrder { player, order: ability as i32, at, target, queue: flags & 1 != 0, formation: flags & 0x10 != 0 };
                     match other {
+                        Action::Order { flags: 0x60, ability: a @ 852008..=852013, .. } => out.push(Command::UseItem { unit: first, slot: (a - 852008) as usize }),
+                        Action::Order { flags: 0x40, ability, .. } if w.objects.units.get(id(ability)).is_some() => out.push(Command::HireUnit { player, shop: first, id: id(ability) }),
+                        Action::Order { flags: 0x40, ability, .. } => out.push(Command::BuyItem { player, shop: first, id: id(ability) }),
                         Action::Order { flags: 0x42, ability, .. } if w.objects.abilities.get(id(ability)).is_some() => out.push(Command::LearnSkill { hero: first, id: id(ability) }),
                         Action::Order { flags: 0x42, ability, .. } => out.push(Command::Train { building: first, id: id(ability) }),
                         Action::OrderTarget { flags: 0x42, ability: a @ 852002..=852007, target, .. } => {

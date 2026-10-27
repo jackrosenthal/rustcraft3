@@ -29,6 +29,11 @@ pub struct Tags {
     /// function is given to an object (an action, a filter, a timer; `FUN_6f2872f0`).
     #[serde(default)]
     pub handlers: std::collections::BTreeSet<u32>,
+    /// Those given to timers, which have their own (measured: Melee's alliance-change
+    /// action, already a trigger's, takes another handler when a timer is started
+    /// with it).
+    #[serde(default)]
+    pub timer_handlers: std::collections::BTreeSet<u32>,
     /// Objects the engine makes right after the next one tagged (`after_next`).
     #[serde(skip)]
     pending: Vec<Code>,
@@ -36,7 +41,7 @@ pub struct Tags {
 
 impl Tags {
     pub fn new() -> Tags {
-        Tags { next: 0, log: RECORD.load(std::sync::atomic::Ordering::Relaxed).then(Vec::new), camps: Vec::new(), handlers: Default::default(), pending: Vec::new() }
+        Tags { next: 0, log: RECORD.load(std::sync::atomic::Ordering::Relaxed).then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new() }
     }
 
     /// The next tag, for an object of type `code`.
@@ -76,6 +81,13 @@ impl Tags {
         }
     }
 
+    /// The handler of a script function given to a timer, the first time.
+    pub fn timer_handler(&mut self, func: u32) {
+        if self.timer_handlers.insert(func) {
+            self.take(b"hdlr");
+        }
+    }
+
     /// `n` objects of one code.
     pub fn take_n(&mut self, code: &Code, n: usize) {
         for _ in 0..n {
@@ -90,23 +102,34 @@ impl Tags {
 pub struct AbilityObjects {
     by_id: std::collections::HashMap<Code, (Code, Vec<Code>)>,
     by_code: std::collections::HashMap<Code, Vec<Code>>,
+    /// Those the script could not add (the engine's own, measured with nothing made).
+    refused: std::collections::HashSet<Code>,
 }
 
 impl AbilityObjects {
     pub fn get() -> &'static AbilityObjects {
         static TABLE: std::sync::OnceLock<AbilityObjects> = std::sync::OnceLock::new();
         TABLE.get_or_init(|| {
-            let mut t = AbilityObjects { by_id: Default::default(), by_code: Default::default() };
+            let mut t = AbilityObjects { by_id: Default::default(), by_code: Default::default(), refused: Default::default() };
             let code = |s: &str| -> Code { s.as_bytes().try_into().unwrap_or(*b"????") };
             for line in include_str!("../../../docs/reference/ability_tags.txt").lines().filter(|l| !l.starts_with('#')) {
                 let mut f = line.split(' ').filter(|s| !s.is_empty());
                 let (Some(id), Some(c)) = (f.next(), f.next()) else { continue };
-                let objects: Vec<Code> = f.map(code).collect();
+                let words: Vec<&str> = f.collect();
+                if words == ["-"] {
+                    t.refused.insert(code(id));
+                }
+                let objects: Vec<Code> = words.iter().filter(|w| **w != "-").map(|w| code(w)).collect();
                 t.by_code.entry(code(c)).or_insert_with(|| objects.clone());
                 t.by_id.insert(code(id), (code(c), objects));
             }
             t
         })
+    }
+
+    /// Whether the script's UnitAddAbility made nothing of it in the original.
+    pub fn refused(&self, id: &Code) -> bool {
+        self.refused.contains(id)
     }
 
     /// The objects after an ability of this id and code.
@@ -197,7 +220,6 @@ impl crate::world::World {
             codes.push(*b"Amov");
         }
         let weapons = o.int("weapsOn");
-        let ranged = !matches!(field("weapTp1").as_str(), "normal" | "instant" | "_" | "");
         if weapons != 0 {
             codes.push(*b"Aatk");
             // One more object for each splashing weapon, enabled or not.
@@ -210,11 +232,8 @@ impl crate::world::World {
         if type_id[0].is_ascii_uppercase() {
             codes.extend([*b"AHer", *b"`flg", *b"`flg", *b"`rcm", *b"`rcm", *b"`rcm", *b"`rcm"]);
         }
-        // The type's list, each with its objects; an aura's buff on its bearer only when
-        // the aura serves it (measured: on a sheep, without attack or mana, Trueshot,
-        // Vampiric, War Drums, Command, and Brilliance Aura gave none).
+        // The type's list, each with its objects.
         let list = ids("abilList");
-        let table = AbilityObjects::get();
         let mut had: Vec<Code> = Vec::new();
         for id in &list {
             let Some(code) = ability(id) else { continue };
@@ -222,58 +241,7 @@ impl crate::world::World {
                 continue;
             }
             had.push(code);
-            codes.push(code);
-            let objects = table.objects(id, &code);
-            let buff = self.objects.abilities.get(*id).map(|a| crate::objects::id_from_str(a.level_str("BuffID", 1).trim())).filter(|b| b[0] != 0);
-            let serves = match &code {
-                b"AEar" => weapons != 0 && ranged,
-                b"AUav" => weapons != 0 && !ranged,
-                b"Aakb" | b"AOac" => weapons != 0,
-                b"AHab" => o.real("manaN") > 0.0,
-                _ => true,
-            };
-            let aura = matches!(&code, b"AHad" | b"AHab" | b"AUau" | b"AOae" | b"AEar" | b"AUav" | b"AEah" | b"Aakb" | b"AOac");
-            // A morph's object on the unit it makes (measured: Amil's buff Bmil on a
-            // militia, Aphx's Bphx on a phoenix egg, and Stone Form's regeneration timer
-            // on a gargoyle of stone).
-            let made = self.objects.abilities.get(*id).is_some_and(|a| match &code {
-                b"Amil" => crate::objects::id_from_str(a.level_str("DataB", 1).trim()) == type_id,
-                b"Aphx" | b"Astn" => crate::objects::id_from_str(a.level_str("UnitID", 1).trim()) == type_id,
-                _ => false,
-            });
-            let mut k = 0;
-            while k < objects.len() {
-                let c = objects[k];
-                if aura && Some(c) == buff {
-                    // The buff and its own objects, up to the next of the ability's.
-                    let end = objects[k + 1..].iter().position(|c| c[0] == b'A' || c[0] == b'X').map_or(objects.len(), |n| k + 1 + n);
-                    if serves {
-                        codes.extend_from_slice(&objects[k..end]);
-                    }
-                    k = end;
-                    continue;
-                }
-                codes.push(c);
-                k += 1;
-                // An aura measured without its buff (the sheep it was measured on did
-                // not take it) gives it after its own object when it serves the bearer.
-                if aura && serves && k == 1 && c == *b"`pil" && !objects.iter().any(|o| Some(*o) == buff) {
-                    if let Some(b) = buff {
-                        codes.push(b);
-                        // Brilliance's buff has its own (measured: a dark wizard's).
-                        if b == *b"BHab" {
-                            codes.push(*b"`rcm");
-                        }
-                    }
-                }
-            }
-            if made {
-                codes.push(match &code {
-                    b"Amil" => *b"Bmil",
-                    b"Aphx" => *b"Bphx",
-                    _ => *b"`rcm",
-                });
-            }
+            codes.extend(self.ability_tags(type_id, id));
         }
         // Rally (when it trains or revives), the inventory of a hero of an old map, fire
         // (a structure or a machine), detection of the burrowed (a flyer), the order for
@@ -344,5 +312,80 @@ impl crate::world::World {
         if let Some(u) = self.unit_mut(h) {
             u.extra.mana_watched = true;
         }
+    }
+}
+
+impl crate::world::World {
+    /// A new location handle, which the original tags (`+loc`).
+    pub fn insert_location(&mut self, x: f32, y: f32) -> u32 {
+        self.tags.take(b"+loc");
+        self.handles.insert(crate::types::Obj::Location(x, y))
+    }
+}
+
+impl crate::world::World {
+    /// The codes of an ability a unit of a type gains, and of the objects it makes; an
+    /// aura's buff on its bearer only when the aura serves it (measured: on a sheep,
+    /// without attack or mana, Trueshot, Vampiric, War Drums, Command, and Brilliance
+    /// Aura gave none).
+    pub(crate) fn ability_tags(&self, type_id: Code, id: &Code) -> Vec<Code> {
+        let Some(a) = self.objects.abilities.get(*id) else { return Vec::new() };
+        let code = crate::objects::id_from_str(a.str("code").trim());
+        let Some(o) = self.objects.units.get(type_id) else { return Vec::new() };
+        let weapons = o.int("weapsOn");
+        let ranged = !matches!(o.str("weapTp1").trim(), "normal" | "instant" | "_" | "");
+        let objects = AbilityObjects::get().objects(id, &code);
+        let buff = Some(crate::objects::id_from_str(a.level_str("BuffID", 1).trim())).filter(|b| b[0] != 0);
+        let serves = match &code {
+            b"AEar" => weapons != 0 && ranged,
+            b"AUav" => weapons != 0 && !ranged,
+            b"Aakb" | b"AOac" => weapons != 0,
+            b"AHab" => o.real("manaN") > 0.0,
+            _ => true,
+        };
+        let aura = matches!(&code, b"AHad" | b"AHab" | b"AUau" | b"AOae" | b"AEar" | b"AUav" | b"AEah" | b"Aakb" | b"AOac");
+        // A morph's object on the unit it makes (measured: Amil's buff Bmil on a militia,
+        // Aphx's Bphx on a phoenix egg, and Stone Form's regeneration timer on a gargoyle
+        // of stone).
+        let made = match &code {
+            b"Amil" => crate::objects::id_from_str(a.level_str("DataB", 1).trim()) == type_id,
+            b"Aphx" | b"Astn" => crate::objects::id_from_str(a.level_str("UnitID", 1).trim()) == type_id,
+            _ => false,
+        };
+        let mut codes = vec![code];
+        let mut k = 0;
+        while k < objects.len() {
+            let c = objects[k];
+            if aura && Some(c) == buff {
+                // The buff and its own objects, up to the next of the ability's.
+                let end = objects[k + 1..].iter().position(|c| c[0] == b'A' || c[0] == b'X').map_or(objects.len(), |n| k + 1 + n);
+                if serves {
+                    codes.extend_from_slice(&objects[k..end]);
+                }
+                k = end;
+                continue;
+            }
+            codes.push(c);
+            k += 1;
+            // An aura measured without its buff (the sheep it was measured on did not
+            // take it) gives it after its own object when it serves the bearer.
+            if aura && serves && k == 1 && c == *b"`pil" && !objects.iter().any(|o| Some(*o) == buff) {
+                if let Some(b) = buff {
+                    codes.push(b);
+                    // Brilliance's buff has its own (measured: a dark wizard's).
+                    if b == *b"BHab" {
+                        codes.push(*b"`rcm");
+                    }
+                }
+            }
+        }
+        if made {
+            codes.push(match &code {
+                b"Amil" => *b"Bmil",
+                b"Aphx" => *b"Bphx",
+                _ => *b"`rcm",
+            });
+        }
+        codes
     }
 }

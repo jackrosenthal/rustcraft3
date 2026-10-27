@@ -73,7 +73,7 @@ fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
         t.callback = cb;
     }
     if let Some(f) = cb {
-        w.tags.handler(f);
+        w.tags.timer_handler(f);
     }
     none()
 }
@@ -239,7 +239,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetSpellAbilityUnit => |w, _, _| handle(w.ctx.unit),
         GetSpellAbilityId => |w, _, _| int(w.ctx.spell_ability),
         GetSpellAbility => |_, _, _| handle(0),
-        GetSpellTargetLoc => |w, _, _| { let (x, y) = (w.ctx.order_x, w.ctx.order_y); handle(w.handles.insert(Obj::Location(x, y))) },
+        GetSpellTargetLoc => |w, _, _| { let (x, y) = (w.ctx.order_x, w.ctx.order_y); handle(w.insert_location(x, y)) },
         GetSpellTargetX => |w, _, _| real(w.ctx.order_x),
         GetSpellTargetY => |w, _, _| real(w.ctx.order_y),
         GetSpellTargetDestructable => |w, _, _| handle(w.ctx.destructable),

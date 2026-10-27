@@ -84,7 +84,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetStartLocationY => |w, _, a| real(w.start_locations.get(a.i(0).max(0) as usize).map_or(0.0, |s| s.y)),
         GetStartLocationLoc => |w, _, a| {
             let (x, y) = w.start_locations.get(a.i(0).max(0) as usize).map_or((0.0, 0.0), |s| (s.x, s.y));
-            super::handle(w.handles.insert(Obj::Location(x, y)))
+            super::handle(w.insert_location(x, y))
         },
         GetFloatGameState => |w, _, a| real(match a.h(0) as i32 {
             GAME_STATE_TIME_OF_DAY => w.time_of_day,

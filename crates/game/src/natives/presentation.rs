@@ -349,8 +349,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetCameraTargetPositionX => |w, _, _| real(w.camera.x),
         GetCameraTargetPositionY => |w, _, _| real(w.camera.y),
         GetCameraTargetPositionZ => |w, _, _| { let (x, y) = (w.camera.x, w.camera.y); real(w.ground_z(x, y) + w.camera.fields[crate::camera::FIELD_ZOFFSET]) },
-        GetCameraTargetPositionLoc => |w, _, _| { let (x, y) = (w.camera.x, w.camera.y); handle(w.handles.insert(Obj::Location(x, y))) },
-        GetCameraEyePositionLoc => |w, _, _| { let (x, y, _) = camera_eye(w); handle(w.handles.insert(Obj::Location(x, y))) },
+        GetCameraTargetPositionLoc => |w, _, _| { let (x, y) = (w.camera.x, w.camera.y); handle(w.insert_location(x, y)) },
+        GetCameraEyePositionLoc => |w, _, _| { let (x, y, _) = camera_eye(w); handle(w.insert_location(x, y)) },
         GetCameraEyePositionX => |w, _, _| real(camera_eye(w).0),
         GetCameraEyePositionY => |w, _, _| real(camera_eye(w).1),
         GetCameraEyePositionZ => |w, _, _| real(camera_eye(w).2),
@@ -371,7 +371,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         CameraSetupGetDestPositionY => |w, _, a| real(match w.handles.get(a.h(0)) { Some(Obj::CameraSetup(c)) => c.y, _ => 0.0 }),
         CameraSetupGetDestPositionLoc => |w, _, a| {
             let (x, y) = match w.handles.get(a.h(0)) { Some(Obj::CameraSetup(c)) => (c.x, c.y), _ => (0.0, 0.0) };
-            handle(w.handles.insert(Obj::Location(x, y)))
+            handle(w.insert_location(x, y))
         },
         CameraSetupApply => |w, _, a| { w.apply_camera_setup(a.h(0), a.b(1), a.b(2), None); none() },
         CameraSetupApplyWithZ => |w, _, a| { w.apply_camera_setup(a.h(0), true, false, None); none() },

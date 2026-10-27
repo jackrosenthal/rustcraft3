@@ -3,8 +3,9 @@
 # codes, as for bootybay_tags.txt).  Each line: the ability, its code (AbilityData), and
 # the codes of the objects tagged after the ability's own, in order.  A four-letter code
 # starting with B is the ability's buff on its bearer, followed by the buff's own objects.
-# ANeg is missing: adding it to a sheep crashed the original.  The engine's own abilities
-# (Amov, Aatk, the build abilities, ...) cannot be added by script and show nothing here.
+# A line ending in "-" is an ability the script could not add (the engine's own, or one
+# the sheep had): nothing was made.  ANeg is missing: adding it to a sheep crashed the
+# original.
 AHbz AHbz `rtl
 AHab AHab `pil
 AHmt AHmt `rtl
@@ -163,14 +164,14 @@ ACd2 Aadm `rtl
 Aabs Aabs `rtl
 Aaha Aaha
 ANav AHav `rtl scal `rel
-Aalr Aalr
+Aalr Aalr -
 Aall Aall `pil Anei
 Aast Aast `rtl
 ACad ACad `rtl
 Aams Aams `rtl
 Aam2 Aams `rtl
 ACam Aams `rtl
-Aatk Aatk
+Aatk Aatk -
 ACba AHab `pil
 ACac AOac `pil
 ACav AHad `pil BHad
@@ -209,12 +210,12 @@ ACbl Ablo `rtl
 ACbb Ablo `rtl
 ACbc ANbf `rtl
 ACbf ACbf `rtl
-ANbu ANbu
-AHbu AHbu
-AObu AObu
-AEbu AEbu
-AUbu AUbu
-AGbu AGbu
+ANbu ANbu -
+AHbu AHbu -
+AObu AObu -
+AEbu AEbu -
+AUbu AUbu -
+AGbu AGbu -
 Abur Abur `rtl
 Abu2 Abur `rtl
 Abu3 Abur `rtl
@@ -255,7 +256,7 @@ Acoa Acoa
 Acoh Acoh
 Aco2 Acoi `rtl
 Aco3 Acoi `rtl
-ACsp ACsp
+ACsp ACsp -
 Acri Acri `rtl
 Scri Acri `rtl
 ACcr Acri `rtl
@@ -359,7 +360,7 @@ Ahwd Ahwd `rtl
 AChw Ahwd `rtl
 AChv AOhw `rtl
 Ahnl Aroa `rtl
-AHer AHer
+AHer AHer -
 AChx AOhx `rtl
 Acht ANht `rtl
 ACim AEim `rtl
@@ -407,21 +408,21 @@ Amin Amin `rcm `rtl
 ACmo ANmo `rtl
 Amgl Amgl
 Amgr Amgl
-Amov Amov
+Amov Amov -
 Aneu Aneu `pil Anei
 Ane2 Aneu `pil
 Andt Andt
 ANre Aarm `pil
 ACnr Aoar `pil
 AAns AAns
-Ansp Ansp
+Ansp Ansp -
 Afak Afak `rtl
 ANak Afak `rtl
-Afir Afir
-Afih Afih
-Afio Afio
-Afin Afin
-Afiu Afiu
+Afir Afir -
+Afih Afih -
+Afio Afio -
+Afin Afin -
+Afiu Afiu -
 ANpa ANpa `rtl
 ACpa ANpa `rtl
 ANpi ANpi BNpi
@@ -557,7 +558,7 @@ Auns Auns `rtl
 SCva AIva
 ACvp AUav `pil
 Avng Avng `rtl
-Awan Awan
+Awan Awan -
 Awrs AOws `rtl
 Awrg AOws `rtl
 Awrh AOws `rtl
@@ -665,7 +666,7 @@ Arll Arel `rtl `rcm
 AIsi AIsi `rcm
 AIos Aslo `rtl
 AIso AIso `rtl
-Asou Asou
+Asou Asou -
 AIcf AIcf BIcf
 AIco AIco `rtl
 AIdm AIdm `rtl

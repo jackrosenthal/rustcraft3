@@ -731,6 +731,7 @@ fn enum_units(w: &mut World, vm: &mut Vm, group: u32, filter: u32, limit: i32, p
 
 fn for_group(w: &mut World, vm: &mut Vm, a: &[Value]) -> NativeResult {
     let Some(f) = a.code(1) else { return none() };
+    w.tags.handler(f);
     let units = w.group(a.h(0)).map(|g| g.units.clone()).unwrap_or_default();
     for u in units {
         if w.unit(u).is_none() {
@@ -909,7 +910,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetUnitY => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.y)),
         GetUnitLoc => |w, _, a| {
             let (x, y) = unit_arg(w, a, 0).map_or((0.0, 0.0), |u| (u.x, u.y));
-            handle(w.handles.insert(Obj::Location(x, y)))
+            handle(w.insert_location(x, y))
         },
         GetUnitFacing => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.shown_facing.unwrap_or(u.facing))),
         // The speed it moves at now, with its bonuses (measured: 337.5 for a grunt, 270,
@@ -1288,6 +1289,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let Some(u) = w.unit_mut(a.h(0)) else { return boolean(false) };
             if u.abilities.iter().any(|(x, _)| *x == id) { return boolean(false); }
             u.abilities.push((id, 1));
+            let type_id = u.type_id;
+            if !crate::tags::AbilityObjects::get().refused(&id) {
+                for c in w.ability_tags(type_id, &id) {
+                    w.tags.take(&c);
+                }
+            }
             w.sync_spell_books(a.h(0));
             boolean(true)
         },
@@ -1368,7 +1375,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetIssuedOrderId => |w, _, _| int(w.ctx.order_id),
         GetOrderPointX => |w, _, _| real(w.ctx.order_x),
         GetOrderPointY => |w, _, _| real(w.ctx.order_y),
-        GetOrderPointLoc => |w, _, _| { let (x, y) = (w.ctx.order_x, w.ctx.order_y); handle(w.handles.insert(Obj::Location(x, y))) },
+        GetOrderPointLoc => |w, _, _| { let (x, y) = (w.ctx.order_x, w.ctx.order_y); handle(w.insert_location(x, y)) },
         GetOrderTarget => |w, _, _| handle(w.ctx.target_unit),
         GetOrderTargetUnit => |w, _, _| handle(w.ctx.target_unit),
         GetOrderedUnit => |w, _, _| handle(w.ctx.unit),
@@ -1516,7 +1523,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         GetUnitRallyPoint => |w, _, a| {
             let Some((x, y)) = unit_arg(w, a, 0).and_then(|u| u.rally) else { return none() };
-            handle(w.handles.insert(Obj::Location(x, y)))
+            handle(w.insert_location(x, y))
         },
     );
 }

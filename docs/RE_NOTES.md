@@ -520,8 +520,11 @@ these are the findings behind them.
   turn 69; at turn 70 the original replaces two sleeping creeps' spell timers
   (`` `rtl ``, made at setup by the time of day's change) at the turn's start: the
   Abolish Magic (ACd2) timers of the two creeps that also have Heal (Anh2) and Inner
-  Fire (ACif), not those of the creeps with ACdm (the same data) and Anh1.  Why those,
-  and at that time, is not yet known.
+  Fire (ACif), not those of the creeps with ACdm (the same data) and Anh1.  Traced:
+  the spell abilities' event handler (`FUN_6f425aa0`) re-arms them (`FUN_6f422f40`,
+  `FUN_6f4224e0`: a timer for the length its vf 0x374 gives, clamped by
+  0x6fcd53c4), the old one released by the deferred release; why those, and at that
+  time, is not yet known.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

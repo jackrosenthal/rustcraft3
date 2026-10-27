@@ -528,11 +528,14 @@ these are the findings behind them.
   made at setup) or more 0.1 (mode 1) (measured: 74.9 and 75.1 for Abolish Magic and
   Inner Fire, 4.9 and 5.1 for Heal, 99.9 for Shockwave, 89.9 and 90.1 for ACtc).  The
   turn-70 re-arming comes from the property system, a threshold crossed (backtrace
-  through `FUN_6f1614fc`, `FUN_6f16186c`, the event 0xd01b7 to the spell).  To check:
-  that these creeps' mana starts at 0 and a High Priest's (0.75 a second) crosses
-  Heal's 5.1 at 6.8 seconds (turn 70; a Shadow Priest's, 0.5, at 10.2), the listener
-  replaced being Heal's if the original makes a creep's in the reverse of this game's
-  order (Abolish Magic, Inner Fire, Heal).
+  through `FUN_6f1614fc`, `FUN_6f16186c`, the event 0xd01b7 to the spell).  Measured:
+  the creeps' mana starts at 0; a High Priest's (0.75 a second) passes Heal's 5.1 at
+  6.80 seconds and a Shadow Priest's (0.5) at 10.20, each then re-armed below its cost
+  (4.9); the listeners are made below the costs (Heal, Inner Fire, Abolish Magic) and,
+  the mana gone to none, again above them in the reverse order, so Heal's holds the
+  last slot; listeners falling due together run in the order made, and one due at a
+  turn's end in the next.  With these, every allocation and free agrees through turn
+  76.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

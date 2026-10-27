@@ -376,6 +376,8 @@ impl World {
 
     /// Hero health and mana regeneration and unit regeneration.
     pub fn regenerate(&mut self, dt: f32) {
+        // Listeners on mana passed this tick, at their times (`UnitExtra::mana_listeners`).
+        let mut passed: Vec<(f32, u32, usize)> = Vec::new();
         let str_regen = self.misc_f32("StrRegenBonus", 0.05);
         let int_regen = self.misc_f32("IntRegenBonus", 0.05);
         let hs: Vec<u32> = self.unit_order.clone();
@@ -411,8 +413,38 @@ impl World {
             // seconds; ours added half of its regenMana, 0.05).
             mp *= 1.0 + u.item_bonus.mana_regen + ub.mana_regen;
             let u = self.unit_mut(h).unwrap();
+            // A listener's event falls due as the mana reaches its threshold, run with
+            // the turn it falls in (one due at a turn's end in the next).
+            if mp > 0.0 {
+                for (k, &(thr, _)) in u.extra.mana_listeners.iter().enumerate() {
+                    if u.mana < thr {
+                        let at = (thr - u.mana) / mp;
+                        if dt - at > 1e-4 {
+                            passed.push((at, h, k));
+                        }
+                    }
+                }
+            }
             u.life = (u.life + hp * dt).min(u.max_life);
             u.mana = (u.mana + mp * dt).min(u.max_mana);
+        }
+        // Each passed is replaced by one waiting for the mana to fall back below the
+        // cost (not yet followed), the old released.
+        // (Events falling due together run in the order queued: the listeners' making.)
+        let slot_of = |w: &Self, h: u32, k: usize| w.unit(h).and_then(|u| u.extra.mana_listeners.get(k)).map_or(0, |l| l.1);
+        passed.sort_by(|a, b| a.0.total_cmp(&b.0).then(slot_of(self, a.1, a.2).cmp(&slot_of(self, b.1, b.2))));
+        let mut gone: Vec<(u32, usize)> = Vec::new();
+        for (_, h, k) in passed {
+            let Some(old) = self.unit(h).and_then(|u| u.extra.mana_listeners.get(k)).map(|l| l.1) else { continue };
+            self.tags.take(b"`rtl");
+            self.tags.doom(old);
+            gone.push((h, k));
+        }
+        gone.sort_by(|a, b| b.1.cmp(&a.1));
+        for (h, k) in gone {
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.mana_listeners.remove(k);
+            }
         }
     }
 }

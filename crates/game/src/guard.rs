@@ -318,14 +318,25 @@ impl World {
             }
             let spells: Vec<crate::objects::Id> = u.abilities.iter().map(|(a, _)| *a).collect();
             let table = crate::tags::AbilityObjects::get();
+            // Each spell's listener on its mana (`` `rtl ``): made below its cost, then,
+            // the creep's mana gone to none, again above it in the reverse order, in the
+            // slots the first freed (traced: a High Priest's Heal, Inner Fire, and Abolish
+            // Magic; its Heal's the last, re-armed as its mana passes 5.1).
+            let mut costs = Vec::new();
+            let mut slots = Vec::new();
             for a in spells {
                 let Some(code) = self.objects.abilities.get(a).map(|o| crate::objects::id_from_str(o.str("code").trim())) else { continue };
                 if table.objects(&a, &code).contains(b"`rtl") {
-                    self.tags.take(b"`rtl");
+                    slots.push(self.tags.take(b"`rtl"));
+                    costs.push(self.objects.abilities.get(a).map_or(0.0, |o| o.level_real("Cost", 1)) + 0.1);
                     if code == *b"Aens" {
                         self.tags.take(b"`pil");
                     }
                 }
+            }
+            slots.reverse();
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.mana_listeners = costs.into_iter().zip(slots).collect();
             }
             self.set_asleep(h, false);
         }

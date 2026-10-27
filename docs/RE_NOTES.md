@@ -428,7 +428,11 @@ these are the findings behind them.
   level 0 is built for cells 0 to 384 by 0 to 192 (those past it stay open), from the
   map file's flags and the cells destructables and structures block (refusing layers
   0 and 1; this game's blockers give every cell but around a structure of another
-  race), and levels 1 to 3 follow from it by the rule above, every cell.
+  race), and levels 1 to 3 follow from it by the rule above, every cell.  Its search's
+  nodes are blocks, each remembering the level-0 cell it was first reached from (and
+  its level, +0x22); a step costs isqrt((24 |dx|)^2 + (24 |dy|)^2) between the two
+  nodes' cells, the estimate the same to the goal's cell (`FUN_6f164020`), a warp's
+  step 1 more than its source (`FUN_6f165220`).
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

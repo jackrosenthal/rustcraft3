@@ -396,6 +396,15 @@ these are the findings behind them.
   (measured with Booty Bay's sheep, radius 0.5: two cells each way); its second region
   (types 0x1000000) one cell.  Replayed on the map read about the first wandering sheep,
   the search (`lrpath.rs`) steps only south from 430, 46 and then finds nothing nearer.
+- Paths have two levels (measured: a footman ordered across Booty Bay first searches
+  locally from 142, 262.5 to 143.5, 239.5, a waypoint).  CLrPathingAcc plans over an
+  accelerator map (CAcceleratorMap, cells of 8 bytes at +0x28; its census held four),
+  by the same A* (`FUN_6f164c30` sets it up: start and goal cells, a layer bit
+  1 << n, a pop limit; `FUN_6f163f50` pops; nodes 0x24 bytes at +0x5c, each a cell,
+  expanded by `FUN_6f1643d0`, or a warp, +0x22, by `FUN_6f1644d0`), its step costs
+  integer square roots of squared offsets (`FUN_6f1d58e0`, Newton's method from
+  n / 12 + 1, n / 200 + 21, or n / 26743 + 444, halving toward zero), the same
+  nearest-node fallback; CLrPathingSys then searches between its waypoints.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

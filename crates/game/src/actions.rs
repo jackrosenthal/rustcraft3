@@ -109,6 +109,13 @@ impl Codec {
             Command::BuyItem { shop, id, .. } | Command::HireUnit { shop, id, .. } if self.subgroup.get(&player) == Some(shop) => {
                 acts.push(Action::Order { flags: 0x40, ability: crate::objects::id_to_int(*id) as u32, a: u32::MAX, b: u32::MAX });
             }
+            // A minimap signal: its point and its 5 seconds (measured from the original
+            // joined to a hosted game).
+            Command::Signal { x, y, .. } => acts.push(Action::Signal { x: *x, y: *y, a: 5.0f32.to_bits() }),
+            // A network game saved under a name (measured: 06 and the name).
+            Command::Save { name } => acts.push(Action::SaveGame(name.clone())),
+            // A pause (measured: 01 as the original's game ends) and its resume (02).
+            Command::Pause { on, .. } => acts.push(if *on { Action::Pause } else { Action::Resume }),
             // An item moved: OrderTarget with flags 0x42, order moveslot (852002 and the
             // slot it goes to), the item as target at the unit's place.
             Command::MoveItem { unit, from, to } if self.subgroup.get(&player) == Some(unit) && *to < 6 => {
@@ -201,6 +208,11 @@ impl Codec {
                         Action::OrderPoint { flags: 4, ability, x, y, .. } => out.push(Command::Build { worker: first, id: id(ability), x, y }),
                         Action::OrderPoint { flags, ability, x, y, .. } => out.push(order(ability, flags, Some((x, y)), 0)),
                         Action::Dequeue { slot, .. } => out.push(Command::CancelQueue { building: first, slot: slot as usize }),
+                        Action::Signal { x, y, .. } => out.push(Command::Signal { player, x, y }),
+                        Action::SaveGame(name) => out.push(Command::Save { name }),
+                        Action::SaveDone(_) => {}
+                        Action::Pause => out.push(Command::Pause { player, on: true }),
+                        Action::Resume => out.push(Command::Pause { player, on: false }),
                         Action::BuildMenu => out.push(Command::Submenu { player, build: true }),
                         Action::SkillMenu => out.push(Command::Submenu { player, build: false }),
                         Action::OrderTarget { flags, ability, target, .. } if target.object == ObjectId::NONE => out.push(order(ability, flags, Some((target.x, target.y)), 0)),

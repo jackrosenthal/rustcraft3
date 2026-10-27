@@ -1093,7 +1093,7 @@ impl World {
         // The original makes an object for each execution (measured: Booty Bay's melee
         // initialization, run by ConditionalTriggerExecute, takes a +tex, and the time
         // of day's trigger another when SetFloatGameState fires it).
-        self.tags.take(b"+tex");
+        let execution = self.tags.take(b"+tex");
         for a in actions {
             let f = match self.handles.get(a) {
                 Some(Obj::TriggerAction { func }) => *func,
@@ -1104,6 +1104,8 @@ impl World {
             let t = vm.new_thread(f, &[], true);
             self.run_thread(vm, t, ctx);
         }
+        // Released as its actions end (traced; one that sleeps is taken as ended here).
+        self.tags.doom(execution);
     }
 
     /// Runs a thread with an event context until it finishes or sleeps.
@@ -1406,6 +1408,14 @@ impl World {
     }
 
     pub fn tick(&mut self, vm: &mut Vm, dt: f32) {
+        self.tags.turn();
+        self.tick_inner(vm, dt);
+        // What was released during the turn goes at its end (its destruction falls due
+        // within the same frame), after what fell due during it.
+        self.tags.free_due(self.time_exact);
+    }
+
+    fn tick_inner(&mut self, vm: &mut Vm, dt: f32) {
         self.tech_cache.borrow_mut().clear();
         crate::natives::units::finish_removals(self);
         self.settle_paid_builds();
@@ -1589,11 +1599,12 @@ impl World {
                     continue;
                 }
                 t.remaining -= dt as f64;
-                // What f32 leaves of a timeout after its steps is no time: the original's
-                // timers expire on the step their timeout ends (measured: one started for
-                // 2 seconds with another reads 2.00 of the other's as it expires; ours
-                // read 2.02, 2 less a hundred steps of 0.02 leaving a millionth).
-                if t.remaining <= 1e-4 {
+                // A timer goes off on the first step after its time, what f32 leaves of
+                // a step being no time (traced: Booty Bay's melee setup's 2-second timer
+                // goes off in the turn after 2.0 seconds, as do events due exactly at a
+                // turn's end; a 2-second timer read with another's elapsed shows 2.00, at
+                // two decimals, in the original).
+                if t.remaining < -1e-4 {
                     expired.push((t.remaining, t.seq, id, t.callback));
                     if t.periodic && t.timeout > 0.0 {
                         // A resumed run done, the timer goes on by its timeout.
@@ -1632,7 +1643,7 @@ impl World {
         self.wake_sleepers(vm, dt);
 
         let new_time_of_day = self.time_of_day;
-        self.time_of_day_moved(vm, old_time_of_day, new_time_of_day);
+        self.time_of_day_moved(vm, old_time_of_day, new_time_of_day, false);
         self.check_state_events(vm);
     }
 

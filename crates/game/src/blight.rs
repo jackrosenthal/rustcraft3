@@ -139,27 +139,40 @@ impl World {
             let Some(u) = self.unit(h).filter(|u| !u.dead && !u.hidden) else { continue };
             let Some((a, lvl)) = self.ability_with_code(h, "Abli") else { continue };
             let Some(o) = self.objects.abilities.get(a) else { continue };
-            if o.level_real("DataB", lvl) == 0.0 {
-                continue;
-            }
             let area = o.level_real("Area", lvl);
             if u.extra.blight_radius >= area {
                 continue;
             }
-            grow.push((h, u.x, u.y, o.level_real("DataA", lvl).max(1.0), o.level_real("Dur", lvl).max(0.01), area));
+            let add = o.level_real("DataB", lvl) != 0.0;
+            grow.push((h, u.x, u.y, o.level_real("DataA", lvl).max(1.0), o.level_real("Dur", lvl).max(0.01), area, add));
         }
-        for (h, x, y, step, interval, area) in grow {
+        for (h, x, y, step, interval, area, add) in grow {
+            // Step k falls due k intervals after the structure was made (traced: Booty
+            // Bay's town halls' dispels, 64 every 0.08 to 960, end 1.2 seconds in).
             let mut radius = None;
             if let Some(u) = self.unit_mut(h) {
-                u.extra.blight_timer -= dt;
-                while u.extra.blight_timer <= 0.0 && u.extra.blight_radius < area {
-                    u.extra.blight_timer += interval;
-                    u.extra.blight_radius = (u.extra.blight_radius + step).min(area);
-                    radius = Some(u.extra.blight_radius);
+                u.extra.blight_timer += dt;
+                let steps = ((u.extra.blight_timer - 1e-4) / interval).floor().max(0.0);
+                let r = (steps * step).min(area);
+                if r > u.extra.blight_radius {
+                    u.extra.blight_radius = r;
+                    radius = Some(r);
                 }
             }
             if let Some(r) = radius {
-                self.blight_circle(x, y, r);
+                self.blight_disc(add, x, y, r);
+            }
+            // A dispel (DataB 0, a town hall's Abdl) done releases its objects: the two
+            // regions, the position, Xbli, and itself (traced: both town halls of
+            // Booty Bay, 1.2 seconds in, as 960 is reached 64 every 0.08).
+            let done = self.unit(h).is_some_and(|u| u.extra.blight_radius >= area);
+            if done && !add {
+                let slots = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.blight_slots)).unwrap_or_default();
+                if slots.len() == 5 {
+                    for k in [3, 4, 2, 1, 0] {
+                        self.tags.doom(slots[k]);
+                    }
+                }
             }
         }
     }

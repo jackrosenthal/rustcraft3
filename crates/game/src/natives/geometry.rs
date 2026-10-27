@@ -86,7 +86,13 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetRectMaxX => |w, _, a| real(w.rect(a.h(0)).map_or(0.0, |r| r.max_x)),
         GetRectMaxY => |w, _, a| real(w.rect(a.h(0)).map_or(0.0, |r| r.max_y)),
         Location => |w, _, a| handle(w.insert_location(a.r(0), a.r(1))),
-        RemoveLocation => |w, _, a| { if w.location(a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
+        RemoveLocation => |w, _, a| {
+            if w.location(a.h(0)).is_some() {
+                w.handles.remove(a.h(0));
+                w.tags.doom_handle(a.h(0));
+            }
+            none()
+        },
         MoveLocation => |w, _, a| {
             if let Some(Obj::Location(x, y)) = w.handles.get_mut(a.h(0)) { *x = a.r(1); *y = a.r(2); }
             none()

@@ -14,6 +14,14 @@ use serde::{Deserialize, Serialize};
 /// `^pmr` a region, `Amov` an ability, ...).
 pub type Code = [u8; 4];
 
+/// A tag given (its object's code and slot), a slot given back, or a turn's start.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TagEvent {
+    Take(Code, u32),
+    Free(u32),
+    Turn,
+}
+
 /// While set, a new world records its tags' codes (the `tags` example sets it).
 pub static RECORD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -31,6 +39,10 @@ pub struct Tags {
     /// original's).
     #[serde(skip)]
     pub log: Option<Vec<Code>>,
+    /// While recording, every tag given (code and slot), slot given back, and turn, in
+    /// order (for comparing with a trace of the original's).
+    #[serde(skip)]
+    pub trace: Option<Vec<TagEvent>>,
     /// Where each creep camp's first creep was made (the camps' AI takes tags).
     #[serde(default)]
     pub camps: Vec<(f32, f32)>,
@@ -42,15 +54,35 @@ pub struct Tags {
     /// action, already a trigger's, takes another handler when a timer is started
     /// with it).
     #[serde(default)]
-    pub timer_handlers: std::collections::BTreeSet<u32>,
+    pub timer_handlers: std::collections::BTreeMap<u32, (u32, u32)>,
     /// Objects the engine makes right after the next one tagged (`after_next`).
     #[serde(skip)]
     pending: Vec<Code>,
+    /// Slots whose objects were released, freed in this order as the next turn starts
+    /// (the original queues each object's destruction as an event due at once, which
+    /// its event queue runs at the next frame in the order queued; `FUN_6f15e500`).
+    #[serde(default)]
+    pub doomed: Vec<u32>,
+    /// Slots released after a delay: the game time they fall due, in the order queued.
+    #[serde(default)]
+    pub timed: Vec<(f64, u32)>,
+    /// Script handles' slots (groups, locations, timers, trigger executions, ...), by
+    /// handle.
+    #[serde(default)]
+    pub handle_slots: std::collections::BTreeMap<u32, u32>,
+    /// Game state events' timers' slots, by event handle.
+    #[serde(default)]
+    pub event_timers: std::collections::BTreeMap<u32, u32>,
+    /// The engine's day timer's slot (the `rtl among its objects at load, replaced at
+    /// each change between day and night).
+    #[serde(default)]
+    pub day_timer: Option<u32>,
 }
 
 impl Tags {
     pub fn new() -> Tags {
-        Tags { slots: 0, free: Vec::new(), born: 0, log: RECORD.load(std::sync::atomic::Ordering::Relaxed).then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new() }
+        let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
+        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), event_timers: Default::default(), day_timer: None }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -70,6 +102,9 @@ impl Tags {
         if let Some(l) = self.log.as_mut() {
             l.push(*code);
         }
+        if let Some(l) = self.trace.as_mut() {
+            l.push(TagEvent::Take(*code, t));
+        }
         self.flush();
         (t, birth)
     }
@@ -77,6 +112,63 @@ impl Tags {
     /// Gives a slot back.
     pub fn release(&mut self, slot: u32) {
         self.free.push(slot);
+        if let Some(l) = self.trace.as_mut() {
+            l.push(TagEvent::Free(slot));
+        }
+    }
+
+    /// Notes a turn's start in the trace, and frees the objects released before it.
+    pub fn turn(&mut self) {
+        if let Some(l) = self.trace.as_mut() {
+            l.push(TagEvent::Turn);
+        }
+        for s in std::mem::take(&mut self.doomed) {
+            self.release(s);
+        }
+    }
+
+    /// Queues a slot's release at a game time.
+    pub fn doom_at(&mut self, due: f64, slot: u32) {
+        self.timed.push((due, slot));
+    }
+
+    /// Frees what falls due before `now` (strictly after its time, as the original's
+    /// events run in the turn after a time they fall due on), earliest first, those due
+    /// together in the order queued; then what was released at once.
+    pub fn free_due(&mut self, now: f64) {
+        let mut due: Vec<(f64, u32)> = Vec::new();
+        self.timed.retain(|&(t, s)| {
+            if t < now - 1e-4 {
+                due.push((t, s));
+                false
+            } else {
+                true
+            }
+        });
+        due.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for (_, s) in due {
+            self.release(s);
+        }
+        self.free_doomed();
+    }
+
+    /// Frees what has been released so far.
+    pub fn free_doomed(&mut self) {
+        for s in std::mem::take(&mut self.doomed) {
+            self.release(s);
+        }
+    }
+
+    /// Queues an object's destruction: its slot is freed as the next turn starts.
+    pub fn doom(&mut self, slot: u32) {
+        self.doomed.push(slot);
+    }
+
+    /// Queues a script handle's destruction, when it has a slot.
+    pub fn doom_handle(&mut self, h: u32) {
+        if let Some(s) = self.handle_slots.remove(&h) {
+            self.doom(s);
+        }
     }
 
     /// The slot the next object would take (the checksum's presence term).
@@ -92,7 +184,10 @@ impl Tags {
     /// The objects `after_next` holds, if no object has been tagged since.
     pub fn flush(&mut self) {
         for c in std::mem::take(&mut self.pending) {
-            self.take(&c);
+            let s = self.take(&c);
+            if c == *b"`rtl" && self.day_timer.is_none() {
+                self.day_timer = Some(s);
+            }
         }
     }
 
@@ -112,8 +207,24 @@ impl Tags {
 
     /// The handler of a script function given to a timer, the first time.
     pub fn timer_handler(&mut self, func: u32) {
-        if self.timer_handlers.insert(func) {
-            self.take(b"hdlr");
+        match self.timer_handlers.get_mut(&func) {
+            Some(h) => h.1 += 1,
+            None => {
+                let s = self.take(b"hdlr");
+                self.timer_handlers.insert(func, (s, 1));
+            }
+        }
+    }
+
+    /// A timer no longer holds a function: its handler is released with its last timer.
+    pub fn drop_timer_handler(&mut self, func: u32) {
+        if let Some(h) = self.timer_handlers.get_mut(&func) {
+            h.1 -= 1;
+            if h.1 == 0 {
+                let s = h.0;
+                self.timer_handlers.remove(&func);
+                self.doom(s);
+            }
         }
     }
 
@@ -263,6 +374,10 @@ impl crate::world::World {
         }
         // The type's list, each with its objects.
         let list = ids("abilList");
+        let mut spell_timers: Vec<usize> = Vec::new();
+        let mut autocast: Option<usize> = None;
+        let mut ai: Option<usize> = None;
+        let mut blight: Option<usize> = None;
         let mut had: Vec<Code> = Vec::new();
         for id in &list {
             let Some(code) = ability(id) else { continue };
@@ -270,7 +385,16 @@ impl crate::world::World {
                 continue;
             }
             had.push(code);
-            codes.extend(self.ability_tags(type_id, id));
+            let at = codes.len();
+            let objects = self.ability_tags(type_id, id);
+            if objects.first() == Some(b"Abli") {
+                blight = Some(at);
+            }
+            // A spell's timer (its first `rtl), which sleep and a mana change replace.
+            if let Some(k) = objects.iter().position(|c| c == b"`rtl") {
+                spell_timers.push(at + k);
+            }
+            codes.extend(objects);
         }
         // Rally (when it trains or revives), the inventory of a hero of an old map, fire
         // (a structure or a machine), detection of the burrowed (a flyer), the order for
@@ -298,6 +422,7 @@ impl crate::world::World {
         // FUN_6f48f500; measured: a Shaman's Bloodlust, which requires Rost, has none).
         let auto_ability = list.iter().find(|id| ability(id) == Some(auto));
         if auto[0] != 0 && auto_ability.is_some_and(|a| self.ability_enabled(owner, *a)) {
+            autocast = Some(codes.len());
             codes.push(*b"+ord");
         }
         if o.int("canSleep") != 0 && !building {
@@ -306,6 +431,7 @@ impl crate::world::World {
         if building {
             codes.push(*b"Aalr");
         }
+        let tasks = codes.len();
         codes.extend([*b"task", *b"task"]);
         // A gold mine is a town site for computer players.
         if had.iter().any(|c| c == b"Agld" || c == b"Aegm") {
@@ -319,14 +445,42 @@ impl crate::world::World {
                 self.tags.camps.push((x, y));
                 codes.push(*b"AIcs");
             }
+            ai = Some(codes.len() + 2);
             codes.extend([*b"uref", *b"AI-U", *b"+ord", *b"tskA", *b"task", *b"task", *b"task", *b"task", *b"tskA", *b"+ord", *b"task"]);
         }
         let oid = self.tags.take_id(&codes[0]);
+        let mut slots = vec![oid.0];
         for c in &codes[1..] {
-            self.tags.take(c);
+            slots.push(self.tags.take(c));
+        }
+        // What it releases as it is made, each freed as the next turn starts, in this
+        // order (traced in the original's event queue): a creep that falls asleep, its
+        // autocast's order and its spells' timers, the last first; then the two tasks
+        // of its making, the second first; then a creep's first AI orders and tasks.
+        let sleeps = owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE
+            && !building
+            && o.int("canSleep") != 0
+            && self.is_night()
+            && self.players.get(owner as usize).is_none_or(|p| p.get_state(crate::types::player_state::NO_CREEP_SLEEP) == 0);
+        if sleeps {
+            for k in autocast.into_iter().chain(spell_timers.iter().rev().copied()) {
+                self.tags.doom(slots[k]);
+            }
+        }
+        for k in [tasks + 1, tasks] {
+            self.tags.doom(slots[k]);
+        }
+        if let Some(a) = ai {
+            for d in [1, 6, 5, 4, 3, 2, 0, 8, 7] {
+                self.tags.doom(slots[a + d]);
+            }
         }
         if let Some(u) = self.unit_mut(h) {
             u.extra.oid = oid;
+            u.extra.spell_timers = spell_timers.iter().map(|&k| slots[k]).collect();
+            // Blight growth's objects (Abli, Xbli, `pos, two ^pmr), released as its
+            // dispel ends (`World::update_blight`).
+            u.extra.blight_slots = blight.map(|b| slots[b..b + 5].to_vec()).unwrap_or_default();
         }
     }
 }
@@ -341,9 +495,15 @@ impl crate::world::World {
         if n == 0 {
             return;
         }
-        self.tags.take_n(b"`rtl", n);
+        // The new timers replace the spells' first ones, released the last first.
+        let old = u.extra.spell_timers.clone();
+        let new: Vec<u32> = (0..n).map(|_| self.tags.take(b"`rtl")).collect();
+        for &s in old.iter().rev() {
+            self.tags.doom(s);
+        }
         if let Some(u) = self.unit_mut(h) {
             u.extra.mana_watched = true;
+            u.extra.spell_timers = new;
         }
     }
 }
@@ -351,8 +511,10 @@ impl crate::world::World {
 impl crate::world::World {
     /// A new location handle, which the original tags (`+loc`).
     pub fn insert_location(&mut self, x: f32, y: f32) -> u32 {
-        self.tags.take(b"+loc");
-        self.handles.insert(crate::types::Obj::Location(x, y))
+        let slot = self.tags.take(b"+loc");
+        let h = self.handles.insert(crate::types::Obj::Location(x, y));
+        self.tags.handle_slots.insert(h, slot);
+        h
     }
 }
 

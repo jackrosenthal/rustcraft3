@@ -17,13 +17,30 @@ fn main() -> anyhow::Result<()> {
     g.config()?;
     g.world.seed = seed;
     g.start_lobby(&lobby, war3::advanced::DEFAULT_FLAGS)?;
-    g.tick(0.1);
+    // TAGS_TURNS: how many turns of 0.1 seconds to play (one by default).
+    let turns: usize = std::env::var("TAGS_TURNS").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
+    // TAGS_FIRST: the first turn's length (the original's first turn runs what falls
+    // due at once without its clock moving, it seems).
+    let first: f32 = std::env::var("TAGS_FIRST").ok().and_then(|v| v.parse().ok()).unwrap_or(0.1);
+    for k in 0..turns {
+        g.tick(if k == 0 { first } else { 0.1 });
+    }
     let ours: Vec<String> = g.world.tags.log.clone().unwrap_or_default().iter().map(|c| String::from_utf8_lossy(c).to_string()).collect();
     println!("ours {} tags, the original's {}", ours.len(), reference.len());
     // TAGS_OUT names a file for ours, one per line, to compare further than the first
     // difference.
     if let Ok(out) = std::env::var("TAGS_OUT") {
         std::fs::write(out, ours.join("\n") + "\n")?;
+    }
+    // TAGS_TRACE names a file for every tag given and freed, by turn: "A code slot",
+    // "F slot", "T".
+    if let Ok(out) = std::env::var("TAGS_TRACE") {
+        let lines: Vec<String> = g.world.tags.trace.clone().unwrap_or_default().iter().map(|e| match e {
+            w3_game::tags::TagEvent::Take(c, s) => format!("A {} {s:#x}", String::from_utf8_lossy(c)),
+            w3_game::tags::TagEvent::Free(s) => format!("F {s:#x}"),
+            w3_game::tags::TagEvent::Turn => "T".into(),
+        }).collect();
+        std::fs::write(out, lines.join("\n") + "\n")?;
     }
     match ours.iter().zip(&reference).position(|(a, b)| a != b) {
         Some(k) => {

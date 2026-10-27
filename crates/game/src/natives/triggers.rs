@@ -37,10 +37,20 @@ fn register_event_tagged(w: &mut World, trig: u32, kind: EventKind, tagged: bool
         EventKind::TimerExpire(_) => &[b"tmet"],
         _ => &[],
     };
+    let mut timer = None;
     if tagged {
-        w.tags.take_all(codes);
+        for c in codes {
+            let s = w.tags.take(c);
+            if *c == b"`rtl" {
+                timer = Some(s);
+            }
+        }
     }
+    let game_state = matches!(kind, EventKind::GameState { .. });
     let e = w.handles.insert(Obj::Event(EventReg { trigger: trig, kind }));
+    if let (true, Some(s)) = (game_state, timer) {
+        w.tags.event_timers.insert(e, s);
+    }
     w.events.push(e);
     if let Some(t) = w.trigger_mut(trig) {
         t.events.push(e);
@@ -76,6 +86,7 @@ fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
     let (timeout, periodic, cb) = (a.r(1), a.b(2), a.code(3));
     w.timer_seq += 1;
     let seq = w.timer_seq;
+    let before = w.timer_mut(a.h(0)).and_then(|t| t.callback);
     if let Some(t) = w.timer_mut(a.h(0)) {
         t.seq = seq;
         t.timeout = timeout;
@@ -85,8 +96,13 @@ fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
         t.running = true;
         t.callback = cb;
     }
-    if let Some(f) = cb {
-        w.tags.timer_handler(f);
+    if w.timer_mut(a.h(0)).is_some() && before != cb {
+        if let Some(f) = cb {
+            w.tags.timer_handler(f);
+        }
+        if let Some(f) = before {
+            w.tags.drop_timer_handler(f);
+        }
     }
     none()
 }
@@ -318,10 +334,22 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         TriggerRegisterFilterUnitEvent => |w, _, a| register_event_tagged(w, a.h(0), EventKind::Unit { unit: a.h(1), event: a.h(2) as i32 }, false),
         TriggerRegisterUnitInRange => |w, _, a| register_event(w, a.h(0), EventKind::UnitInRange { unit: a.h(1), range: a.r(2), filter: opt(a.h(3)) }),
         CreateTimer => |w, _, _| {
-            w.tags.take(b"+tmr");
-            handle(w.handles.insert(Obj::Timer(Timer::default())))
+            let slot = w.tags.take(b"+tmr");
+            let h = w.handles.insert(Obj::Timer(Timer::default()));
+            w.tags.handle_slots.insert(h, slot);
+            handle(h)
         },
-        DestroyTimer => |w, _, a| { if w.timer_mut(a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
+        // The timer is released, then its function's handler with its last timer (traced:
+        // the game-started timer and its handler, the turn MarkGameStarted destroys it).
+        DestroyTimer => |w, _, a| {
+            let Some(cb) = w.timer_mut(a.h(0)).map(|t| t.callback) else { return none() };
+            w.handles.remove(a.h(0));
+            w.tags.doom_handle(a.h(0));
+            if let Some(f) = cb {
+                w.tags.drop_timer_handler(f);
+            }
+            none()
+        },
         TimerStart => timer_start,
         // Pausing keeps what is left (FUN_6f240420); resuming a stopped timer runs it
         // for that (FUN_6f245ac0), whether it was paused or had fired since.

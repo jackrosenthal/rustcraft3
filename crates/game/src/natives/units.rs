@@ -1421,10 +1421,18 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetEnumUnit => |w, _, _| handle(w.enum_ctx.enum_unit),
         GetFilterUnit => |w, _, _| handle(w.enum_ctx.filter_unit),
         CreateGroup => |w, _, _| {
-            w.tags.take(b"+grp");
-            handle(w.handles.insert(Obj::Group(Group::default())))
+            let slot = w.tags.take(b"+grp");
+            let h = w.handles.insert(Obj::Group(Group::default()));
+            w.tags.handle_slots.insert(h, slot);
+            handle(h)
         },
-        DestroyGroup => |w, _, a| { if w.group(a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
+        DestroyGroup => |w, _, a| {
+            if w.group(a.h(0)).is_some() {
+                w.handles.remove(a.h(0));
+                w.tags.doom_handle(a.h(0));
+            }
+            none()
+        },
         GroupAddUnit => |w, _, a| {
             let u = a.h(1);
             if w.unit(u).is_none() { return none(); }

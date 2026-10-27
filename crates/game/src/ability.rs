@@ -384,7 +384,14 @@ impl World {
     }
 
     /// Adds or refreshes a buff of the same type from the same ability.
-    pub fn apply_buff(&mut self, target: u32, mut b: Buff) {
+    pub fn apply_buff(&mut self, target: u32, b: Buff) {
+        self.apply_buff_tagged(target, b, true);
+    }
+
+    /// As `apply_buff`; a new buff takes the original's tags when `tagged` (its own and,
+    /// with target art, its effect's: traced as the auras' first scan reaches others;
+    /// an aura's bearer took its own as it was made).
+    pub fn apply_buff_tagged(&mut self, target: u32, mut b: Buff, tagged: bool) {
         if self.unit(target).is_none_or(|u| u.dead) {
             return;
         }
@@ -399,6 +406,12 @@ impl World {
             }
             existing.level = b.level;
             return;
+        }
+        if tagged && b.id != [0; 4] {
+            self.tags.take(&b.id);
+            if art.as_ref().is_some_and(|(m, _)| !m.is_empty()) {
+                self.tags.take(b"+EIm");
+            }
         }
         if let Some((model, attach)) = art {
             if !model.is_empty() {
@@ -739,7 +752,7 @@ impl World {
                 })
                 .collect();
             for t in targets {
-                self.apply_buff(t, b.clone());
+                self.apply_buff_tagged(t, b.clone(), t != src || area > 0.0 && false);
             }
         }
         // The sweeps, and the buffs of bearers that are gone once lapsed.

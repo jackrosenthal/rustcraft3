@@ -293,6 +293,25 @@ these are the findings behind them.
   turn every event is due at 0.0001: the units' periodic timers (`` `rtl ``, flags
   0x10001) and the self-destructions, in insertion order, units in creation order.  To
   free as the original does, a game must queue the same events in the same order.
+- What a trace of the queue's insertions shows (Booty Bay, breakpoints on the push and
+  dispatch with each event's due time, serial, and target): an object queues its own
+  destruction as it is released, due at once, and the next frame runs them in that
+  order.  A new unit releases, in order: if a creep falling asleep as it is made, its
+  autocast's order and its spells' first timers, the last first; its making's two
+  tasks, the second first; a creep's first AI orders and tasks (`tskA` +1 and +6,
+  `task` +5 to +2, `+ord` +0, `task` +8, `+ord` +7).  A creep's mana set replaces its
+  spells' timers (the old released, the last first).  A trigger's execution is
+  released as its actions end, a fired time-of-day event's timer as it is replaced, the
+  engine's day timer at the change of day, a group or location as the script destroys
+  it, a timer as DestroyTimer runs and its function's handler with its last timer.
+  The day's change gives each unit an object lasting 3 seconds.  A town hall's blight
+  dispel (Abdl: 64 every 0.08 to 960) releases its objects (its two regions, position,
+  Xbli, then itself) as it ends.  An event due exactly at a turn's end runs in the next
+  turn (the melee setup's 2-second timer, the dispels' end at 1.2).  ForForce's and the
+  enumerations' functions take handlers as ForGroup's do.  With these, every allocation
+  and free agrees with the original's for Booty Bay's first 51 turns (5.1 seconds);
+  then the critters' wandering begins, each order with its own tasks (`ordt`, `tskA`,
+  `tskO`, `tsk.`, `task`).
 - The script's globals run before the map's destructables: Blizzard.j's first timer,
   then the engine's `+gam` `` `flg `` `` `flg `` `` `rel `` `` `rel `` `` `flg ``
   `` `rtl `` `+qum`, then the other globals.

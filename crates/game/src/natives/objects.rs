@@ -320,7 +320,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let n = dest(w, a.h(0)).and_then(|d| w.objects.destructables.get(d.type_id)).map(|o| o.str("Name")).unwrap_or_default();
             super::string(w.localized(&n))
         },
-        EnumDestructablesInRect => |w, vm, a| enum_destructables(w, vm, a.h(0), a.h(1), a.code(2)),
+        EnumDestructablesInRect => |w, vm, a| {
+            if let Some(f) = a.code(2) {
+                w.tags.handler(f);
+            }
+            enum_destructables(w, vm, a.h(0), a.h(1), a.code(2))
+        },
         GetEnumDestructable => |w, _, _| handle(w.enum_ctx.enum_destructable),
         GetFilterDestructable => |w, _, _| handle(w.enum_ctx.filter_destructable),
         CreateItem => |w, _, a| handle(create_item(w, id_from_int(a.i(0)), a.r(1), a.r(2))),
@@ -474,7 +479,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let n = item(w, a.h(0)).and_then(|i| w.objects.items.get(i.type_id)).map(|o| o.str("Name")).unwrap_or_default();
             super::string(w.localized(&n))
         },
-        EnumItemsInRect => |w, vm, a| enum_items(w, vm, a.h(0), a.h(1), a.code(2)),
+        EnumItemsInRect => |w, vm, a| {
+            if let Some(f) = a.code(2) {
+                w.tags.handler(f);
+            }
+            enum_items(w, vm, a.h(0), a.h(1), a.code(2))
+        },
         GetEnumItem => |w, _, _| handle(w.enum_ctx.enum_item),
         GetFilterItem => |w, _, _| handle(w.enum_ctx.filter_item),
         AddSpecialEffect => |w, _, a| {

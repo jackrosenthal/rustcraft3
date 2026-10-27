@@ -294,7 +294,14 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let Some(p) = player_arg(w, a, 1) else { return none() };
             enum_players(w, vm, a.h(0), a.h(2), move |w, o| !is_ally(w, p, o))
         },
-        ForForce => |w, vm, a| for_force(w, vm, a.h(0), a.code(1)),
+        // Its function takes a handler, as ForGroup's does (traced: Melee's alliance
+        // check's ForForce calls).
+        ForForce => |w, vm, a| {
+            if let Some(f) = a.code(1) {
+                w.tags.handler(f);
+            }
+            for_force(w, vm, a.h(0), a.code(1))
+        },
         StartMeleeAI => |w, _, a| {
             if let Some(p) = w.player_of(a.h(0)) { let s = a.s(1); w.start_ai(p, &s, true); }
             none()

@@ -425,6 +425,12 @@ pub struct UnitExtra {
     /// Its creep spells have made their timers (`World::mana_changed`).
     #[serde(default)]
     pub mana_watched: bool,
+    /// The slots of its spells' timers (`World::tag_unit`).
+    #[serde(default)]
+    pub spell_timers: Vec<u32>,
+    /// The slots of its blight growth's objects (`World::tag_unit`).
+    #[serde(default)]
+    pub blight_slots: Vec<u32>,
     /// The original's id for it: its tag's slot and birth count (`Tags::take_id`).
     #[serde(default)]
     pub oid: (u32, u32),
@@ -638,6 +644,8 @@ impl Default for UnitExtra {
             still_since: 0.0,
             split: None,
             mana_watched: false,
+            spell_timers: Vec::new(),
+            blight_slots: Vec::new(),
             oid: (0, 0),
         }
     }

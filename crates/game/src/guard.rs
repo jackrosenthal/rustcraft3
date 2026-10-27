@@ -254,21 +254,53 @@ impl World {
     /// timer; the change makes two timers for day, one for night; then each unit a
     /// timer (`rcm), and a creep that wakes one for each spell it casts (Ensnare a
     /// region too), after its own.
-    pub(crate) fn time_of_day_moved(&mut self, vm: &mut w3_jass::Vm, old: f32, new: f32) {
+    /// An event of the time of day fires: one for equal when the time passes its value
+    /// (forward, through midnight too), the others when they become true as the clock
+    /// runs (traced: setting the time from 0 to 8 fires Blizzard.j's dawn trigger, equal
+    /// to 6, and not its day trigger, greater than or equal to 6).
+    fn time_event_fires(op: i32, value: f32, old: f32, new: f32, set: bool) -> bool {
+        const EQUAL: i32 = 2;
+        if op == EQUAL {
+            return if old <= new { old < value && value <= new } else { value > old || value <= new };
+        }
+        !set && crate::world::compare(op, new, value) && !crate::world::compare(op, old, value)
+    }
+
+    pub(crate) fn time_of_day_moved(&mut self, vm: &mut w3_jass::Vm, old: f32, new: f32, set: bool) {
         use crate::types::EventKind;
-        let fired = self.events.iter().filter(|&&e| matches!(self.handles.get(e), Some(crate::types::Obj::Event(r)) if matches!(r.kind, EventKind::GameState { state: 2, op, value } if crate::world::compare(op, new, value) && !crate::world::compare(op, old, value)))).count();
-        self.fire(vm, crate::types::EventCtx::default(), |_, k| matches!(k, EventKind::GameState { state: 2, op, value } if crate::world::compare(*op, new, *value) && !crate::world::compare(*op, old, *value)));
-        self.tags.take_n(b"`rtl", fired);
+        let fires = |k: &EventKind| matches!(*k, EventKind::GameState { state: 2, op, value } if Self::time_event_fires(op, value, old, new, set));
+        let fired: Vec<u32> = self.events.iter().copied().filter(|&e| matches!(self.handles.get(e), Some(crate::types::Obj::Event(r)) if fires(&r.kind))).collect();
+        self.fire(vm, crate::types::EventCtx::default(), |_, k| fires(k));
+        // Each fired event's timer is replaced, the old one released (traced).
+        for e in fired {
+            let s = self.tags.take(b"`rtl");
+            if let Some(old) = self.tags.event_timers.insert(e, s) {
+                self.tags.doom(old);
+            }
+        }
         let night = |t: f32| !(6.0..18.0).contains(&t);
         if night(old) == night(new) {
             return;
         }
         let day = !night(new);
-        self.tags.take_n(b"`rtl", if day { 2 } else { 1 });
+        // The change's timers; the engine's day timer before them is released (traced:
+        // slot 0x287 at Booty Bay's first day; which new one takes its place is not yet
+        // measured, the first here).
+        let first = self.tags.take(b"`rtl");
+        if day {
+            self.tags.take(b"`rtl");
+        }
+        if let Some(old) = self.tags.day_timer.replace(first) {
+            self.tags.doom(old);
+        }
         // Dead ones too, while their corpses remain (measured: a creep killed by script).
         let units: Vec<u32> = self.unit_order.iter().rev().copied().filter(|&h| self.unit(h).is_some()).collect();
+        // Each unit's object of the change lasts three seconds (traced: queued with an
+        // event 3.0 seconds on, freed in the turn after, in the order made).
+        let now = self.time_exact;
         for h in units {
-            self.tags.take(b"`rcm");
+            let s = self.tags.take(b"`rcm");
+            self.tags.doom_at(now + 3.0, s);
             let Some(u) = self.unit(h).filter(|u| !u.dead) else { continue };
             // With the night an idle creep that may sleep falls asleep at once
             // (measured: a creep made by day, after a night set by script, wakes making

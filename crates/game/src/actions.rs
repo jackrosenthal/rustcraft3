@@ -118,6 +118,21 @@ impl Codec {
             Command::BuyItem { shop, id, .. } | Command::HireUnit { shop, id, .. } if self.subgroup.get(&player) == Some(shop) => {
                 acts.push(Action::Order { flags: 0x40, ability: crate::objects::id_to_int(*id) as u32, a: u32::MAX, b: u32::MAX });
             }
+            // An item given: a drop (OrderItem, flags 0x44, dropitem) on the unit taking it;
+            // an item used on a target: OrderTarget with flags 0x44, useslot, the item's
+            // id in the order's two words, and the target (`docs/reference/bootybay_give.w3g`).
+            Command::GiveItemTo { unit, slot, target } if self.subgroup.get(&player) == Some(unit) => {
+                let item = w.unit(*unit).and_then(|u| u.inventory.get(*slot).copied()).unwrap_or(0);
+                let (x, y) = w.widget_pos(*target).unwrap_or((0.0, 0.0));
+                acts.push(Action::OrderItem { flags: 0x44, ability: 852001, a: u32::MAX, b: u32::MAX, target: Target { x, y, object: w.oid(*target) }, item: w.oid(item) });
+            }
+            Command::UseItemAt { unit, slot, target, x, y } if self.subgroup.get(&player) == Some(unit) && *slot < 6 => {
+                let item = w.unit(*unit).and_then(|u| u.inventory.get(*slot).copied()).unwrap_or(0);
+                let o = w.oid(item);
+                let (tx, ty) = if *target != 0 { w.widget_pos(*target).unwrap_or((*x, *y)) } else { (*x, *y) };
+                let object = if *target != 0 { w.oid(*target) } else { ObjectId::NONE };
+                acts.push(Action::OrderTarget { flags: 0x44, ability: 852008 + *slot as u32, a: o.0, b: o.1, target: Target { x: tx, y: ty, object } });
+            }
             // A minimap signal: its point and its 5 seconds (measured from the original
             // joined to a hosted game).
             Command::Signal { x, y, .. } => acts.push(Action::Signal { x: *x, y: *y, a: 5.0f32.to_bits() }),
@@ -209,6 +224,15 @@ impl Codec {
                             let item = w.by_oid(target.object).unwrap_or(0);
                             let from = w.unit(first).and_then(|u| u.inventory.iter().position(|&i| i == item && i != 0)).unwrap_or(6);
                             out.push(Command::MoveItem { unit: first, from, to: (a - 852002) as usize });
+                        }
+                        Action::OrderItem { flags: 0x44, ability: 852001, target, item, .. } if target.object != ObjectId::NONE => {
+                            let h = w.by_oid(item).unwrap_or(0);
+                            let slot = w.unit(first).and_then(|u| u.inventory.iter().position(|&i| i == h && i != 0)).unwrap_or(6);
+                            out.push(Command::GiveItemTo { unit: first, slot, target: w.by_oid(target.object).unwrap_or(0) });
+                        }
+                        Action::OrderTarget { flags: 0x44, ability: a @ 852008..=852013, target, .. } => {
+                            let t = if target.object == ObjectId::NONE { 0 } else { w.by_oid(target.object).unwrap_or(0) };
+                            out.push(Command::UseItemAt { unit: first, slot: (a - 852008) as usize, target: t, x: target.x, y: target.y });
                         }
                         Action::OrderItem { flags: 0x44, ability: 852001, target, item, .. } if target.object == ObjectId::NONE => {
                             let h = w.by_oid(item).unwrap_or(0);

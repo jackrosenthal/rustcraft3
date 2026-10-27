@@ -178,16 +178,12 @@ impl std::fmt::Debug for Role {
     }
 }
 
-/// A turn's commands as one person's actions: each with the player who gave it.
-fn encode(commands: &[(u8, Command)]) -> Vec<u8> {
-    postcard::to_allocvec(commands).unwrap_or_default()
-}
 
-fn decode(data: &[u8]) -> Vec<(u8, Command)> {
-    postcard::from_bytes(data).unwrap_or_else(|e| {
-        log::warn!("net: unreadable actions: {e}");
-        Vec::new()
-    })
+/// A turn's blocks as a frame: each person's actions as their player's, which the game
+/// reads as it plays the frame.
+fn frame(players: &[(u8, u8)], dt: f32, blocks: &[(u8, Vec<u8>)]) -> Frame {
+    let actions = blocks.iter().filter_map(|(pid, data)| players.iter().find(|p| p.0 == *pid).map(|p| (p.1, data.clone()))).collect();
+    Frame { dt, commands: Vec::new(), actions: Some(actions) }
 }
 
 /// A network game under way.
@@ -196,6 +192,8 @@ pub struct Session {
     /// The host's: each person's actions for the next turn, and each player's turns
     /// played (keepalives).
     pending: Vec<(u8, Vec<u8>)>,
+    /// The local player's commands as the original's actions (`actions::Codec`).
+    codec: w3_game::actions::Codec,
     played_by: HashMap<u8, u32>,
     /// Frames to play, in order, and the number of the next to come.
     pub queue: VecDeque<Frame>,
@@ -238,6 +236,7 @@ impl Session {
         Session {
             role,
             pending: Vec::new(),
+            codec: Default::default(),
             played_by,
             queue: VecDeque::new(),
             next: 0,
@@ -270,16 +269,19 @@ impl Session {
 
     /// The local player's commands: the host keeps its own for the next turn; a player
     /// sends them to the host.
-    pub fn send_commands(&mut self, local: u8, commands: Vec<Command>) {
-        if commands.is_empty() {
+    /// They go as the original's actions (`actions::Codec`), as the world stands.
+    pub fn send_commands(&mut self, w: &w3_game::world::World, local: u8, commands: Vec<Command>) {
+        let data: Vec<u8> = commands.iter().flat_map(|c| self.codec.encode(w, local, c)).collect();
+        if data.is_empty() {
             return;
         }
-        let commands: Vec<(u8, Command)> = commands.into_iter().map(|c| (local, c)).collect();
         match &mut self.role.link {
-            Link::Host(_) => self.pending.push((HOST_PID, encode(&commands))),
-            Link::Client(c) => c.send_actions(encode(&commands)),
+            Link::Host(_) => self.pending.push((HOST_PID, data)),
+            Link::Client(c) => c.send_actions(data),
         }
     }
+
+
 
     /// Takes in what has come; the host makes turns as game time passes.  Returns the
     /// chat lines that came (name and text).
@@ -313,14 +315,8 @@ impl Session {
                 for e in c.poll() {
                     match e {
                         client::Event::Turn { interval, actions } => {
-                            let mut commands = Vec::new();
-                            for (pid, data) in actions {
-                                let player = self.role.players.iter().find(|p| p.0 == pid).map(|p| p.1);
-                                // A person's commands are their own; the host's may speak for
-                                // anyone (a player who left).
-                                commands.extend(decode(&data).into_iter().filter(|(p, _)| pid == HOST_PID || Some(*p) == player));
-                            }
-                            self.queue.push_back(Frame { dt: interval as f32 / 1000.0, commands, actions: None });
+                            let f = frame(&self.role.players, interval as f32 / 1000.0, &actions);
+                            self.queue.push_back(f);
                             self.next += 1;
                             self.last_frame = Instant::now();
                         }
@@ -375,25 +371,24 @@ impl Session {
         self.clock += dt;
         while self.clock >= TURN {
             self.clock -= TURN;
-            // Those who left: the host's own actions say so.
-            let left: Vec<(u8, Command)> = self.left.drain(..).map(|p| (p, Command::PlayerLeft { player: p })).collect();
-            if !left.is_empty() {
-                self.pending.push((HOST_PID, encode(&left)));
-            }
-            // Each person's commands as one block.
-            let mut blocks: Vec<(u8, Vec<(u8, Command)>)> = Vec::new();
-            for (pid, data) in std::mem::take(&mut self.pending) {
-                let player = self.role.players.iter().find(|p| p.0 == pid).map(|p| p.1);
-                let commands = decode(&data).into_iter().filter(|(p, _)| pid == HOST_PID || Some(*p) == player);
-                match blocks.iter_mut().find(|b| b.0 == pid) {
-                    Some(b) => b.1.extend(commands),
-                    None => blocks.push((pid, commands.collect())),
+            // Those who left: the host says so in their name.
+            for p in self.left.drain(..).collect::<Vec<_>>() {
+                if let Some(pid) = self.role.players.iter().find(|x| x.1 == p).map(|x| x.0) {
+                    let data = w3_game::actions::Codec::default().encode_private(&Command::PlayerLeft { player: p });
+                    self.pending.push((pid, data));
                 }
             }
-            let commands: Vec<(u8, Command)> = blocks.iter().flat_map(|b| b.1.iter().cloned()).collect();
-            let actions = blocks.iter().map(|(pid, c)| (*pid, encode(c))).collect();
-            h.send_turn((TURN * 1000.0) as u16, actions);
-            self.queue.push_back(Frame { dt: TURN, commands, actions: None });
+            // Each person's actions as one block.
+            let mut blocks: Vec<(u8, Vec<u8>)> = Vec::new();
+            for (pid, data) in std::mem::take(&mut self.pending) {
+                match blocks.iter_mut().find(|b| b.0 == pid) {
+                    Some(b) => b.1.extend(data),
+                    None => blocks.push((pid, data)),
+                }
+            }
+            let f = frame(&self.role.players, TURN, &blocks);
+            h.send_turn((TURN * 1000.0) as u16, blocks);
+            self.queue.push_back(f);
             self.next += 1;
         }
     }

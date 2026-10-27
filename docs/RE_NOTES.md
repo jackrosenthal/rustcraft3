@@ -323,8 +323,11 @@ Formats the port made its own, to be replaced by the original's:
   object ids are (slot, birth), equal for the peasants at the start.
 - Options and profiles: JSON files (`options.json`, `profiles.json`,
   `profile_vN.json`), not the original's registry settings and `Save\ProfileN`.
-- Network games' commands: the port's own inside W3GS's actions, not the original's
-  actions (`crates/net/src/action.rs` reads and writes those).
+- Network games' commands: the original's actions for selection changes and orders to
+  the selection (`crates/game/src/actions.rs`), the rest still the port's own commands
+  in a private action (0x7F) until each is measured; the objects' ids come from the
+  port's tags, which match the original's at a game's start but not yet once objects
+  are freed (see the event queue above).
 
 ## Tooling
 

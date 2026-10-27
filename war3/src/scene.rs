@@ -4139,7 +4139,7 @@ impl Scene {
         if let (Some(g), Some(s)) = (self.game.as_mut(), self.net.as_mut()) {
             let local = g.world.local_player;
             let out = g.outbox.as_mut().map(std::mem::take).unwrap_or_default();
-            s.send_commands(local, out);
+            s.send_commands(&g.world, local, out);
             s.pump(gdt);
             let mut errors = Vec::new();
             let frames = s.due(gdt);

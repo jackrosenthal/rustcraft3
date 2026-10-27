@@ -78,19 +78,22 @@ impl Codec {
                     (None, _) => Action::Order { flags, ability, a, b },
                 });
             }
-            _ => {
-                let body = postcard::to_allocvec(c).unwrap_or_default();
-                let mut out = vec![COMMAND_ACTION];
-                out.extend((body.len() as u16).to_le_bytes());
-                out.extend(body);
-                return out;
-            }
+            _ => return self.encode_private(c),
         }
         let mut wr = w3_net::wire::Writer::default();
         for a in &acts {
             a.write(&mut wr);
         }
         wr.0
+    }
+
+    /// A command as the private action holding it.
+    pub fn encode_private(&self, c: &Command) -> Vec<u8> {
+        let body = postcard::to_allocvec(c).unwrap_or_default();
+        let mut out = vec![COMMAND_ACTION];
+        out.extend((body.len() as u16).to_le_bytes());
+        out.extend(body);
+        out
     }
 
     /// A player's block of actions as commands.

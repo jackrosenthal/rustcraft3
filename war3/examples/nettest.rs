@@ -166,15 +166,16 @@ fn main() -> anyhow::Result<()> {
             for (g, p) in [(&mut gh, 0u8), (&mut gc, 1u8)] {
                 let (sx, sy) = g.world.start_of(p);
                 let r = (step / 300) as f32;
-                for u in units(g, p) {
-                    g.apply(w3_game::replay::Command::Order { unit: u, order: move_order, x: sx + 300.0 * r.cos(), y: sy + 300.0 * r.sin(), target: 0 });
-                }
+                // As the interface sends them: the selection, then an order to it.
+                let sel = units(g, p);
+                g.apply(w3_game::replay::Command::Select { player: p, units: sel });
+                g.apply(w3_game::replay::Command::SelectionOrder { player: p, order: move_order, at: Some((sx + 300.0 * r.cos(), sy + 300.0 * r.sin())), target: 0, queue: false, formation: false });
                 g.apply(w3_game::replay::Command::Chat { player: p, text: format!("step {step}"), to: 0 });
             }
         }
         for (g, s, p) in [(&mut gh, &mut hs, 0u8), (&mut gc, &mut cs, 1u8)] {
             let out = g.outbox.as_mut().map(std::mem::take).unwrap_or_default();
-            s.send_commands(p, out);
+            s.send_commands(&g.world, p, out);
             s.pump(dt);
             let frames = s.due(dt);
             let first = s.played - frames.len() as u32;
@@ -201,6 +202,12 @@ fn main() -> anyhow::Result<()> {
     let (dh, dc) = (digest(&gh), digest(&gc));
     if dh == dc {
         println!("SAME ({} units)", dh.lines().count() - 4);
+        // The orders came through: each side's units left their start.
+        for (g, p) in [(&gh, 0u8), (&gc, 1u8)] {
+            let (sx, sy) = g.world.start_of(p);
+            let away = units(g, p).iter().filter(|&&u| g.world.unit(u).is_some_and(|x| (x.x - sx).hypot(x.y - sy) > 250.0)).count();
+            println!("player {p}: {away} of {} units moved off", units(g, p).len());
+        }
     } else {
         println!("DIFFERENT");
         for (l, r) in dh.lines().zip(dc.lines()).filter(|(l, r)| l != r).take(10) {

@@ -56,6 +56,7 @@ pub mod orders;
 pub mod paint;
 pub mod preload;
 pub mod spellbook;
+pub mod lrpath;
 pub mod pathing;
 pub mod placement;
 pub mod repair;

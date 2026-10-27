@@ -389,6 +389,13 @@ these are the findings behind them.
   the goal when found; otherwise to the middle of the nearest node reached, or, when
   that is the start, nowhere: the unit stays.  Searches are also spaced in time per
   kind (`FUN_6f168910`) and counted against per-class budgets.
+- The pathing map's static byte is the map file's flags with 0x01 added, and 0x10 where
+  0x02 (unwalkable) is set (measured: 0x40 reads 0x41, 0xca 0xdb, 0xce 0xdf).  A
+  unit's collision region (types 0xca for a sheep) covers, on each axis, cells
+  floor(p - 0.5 - r) to floor(p - 0.5 + r) for its position p and radius r in cells
+  (measured with Booty Bay's sheep, radius 0.5: two cells each way); its second region
+  (types 0x1000000) one cell.  Replayed on the map read about the first wandering sheep,
+  the search (`lrpath.rs`) steps only south from 430, 46 and then finds nothing nearer.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

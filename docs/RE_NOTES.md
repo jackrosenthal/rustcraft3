@@ -333,8 +333,20 @@ Formats the port made its own, to be replaced by the original's:
   written byte for byte as the reference install's).  Still the port's own: the profile
   list (`profiles.json`; the original scans `Save\ProfileN` and reads each PlayerName,
   with the current one in the registry's Misc\campaignprofile), the profile folders'
-  names, saved game caches (the original's `.w3v`, a game cache in the replay
-  container), and the custom campaign buttons (`profile_vN.json`).
+  names, saved game caches, and the custom campaign buttons (`profile_vN.json`).
+- Saved game caches: SaveGameCache writes every saved cache into the profile's one
+  `Campaigns.w3v`, in the replay container (header, zlib blocks; sub-header product
+  PX3W, version 27, build 6059).  Its record (`docs/reference/cache_sample.w3v`, from a
+  test map storing each kind): u32 1, u32 the caches; each cache its name (C string),
+  u32 3 and u32 its missions (3 for three); each mission its name, five zero words,
+  then lists, each a u32 count and its entries: integers (name, i32), reals (name,
+  f32), flags (name, u32), units (name and a record), strings (name, C string).  The
+  unit record (built by `FUN_6f24abc0`, CItemCacheEntry for its items): its type, u32
+  6 and six item slots of three words (type, charges, a third from `FUN_6f6581f0`), the
+  hero's experience and level, its attributes with their gains per level (a Paladin's
+  22 and 2.7, 13 and 1.5, 17 and 1.8), its abilities (5 entries), a position (1800.0
+  for the y it was made at), and a ten-bit mask of `FUN_6f2907e0`'s answers; its exact
+  layout is still to be read from the writer.
 - Network games' commands: the original's actions for selection changes and orders to
   the selection (`crates/game/src/actions.rs`), the rest still the port's own commands
   in a private action (0x7F) until each is measured; the objects' ids come from the

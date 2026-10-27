@@ -465,7 +465,14 @@ these are the findings behind them.
   the waypoint, `FUN_6f16fbd0`), the others' regions flagged 0x40000000 meanwhile (so
   excused); then each position's turn toward its heading (`FUN_6f1705c0`, its rates
   from a table by class at 0x6fd541e0); and every other step separation
-  (`FUN_6f1702f0`).
+  (`FUN_6f1702f0`).  The steering (`FUN_6f170880`): the speed is 0 when stopping or
+  while the angle to the way on is at least the window at +0xbc, else grows by +0xb4,
+  and the heading turns toward the way by at most +0xb8 (`FUN_6f173720` the angle
+  difference wrapped to -pi to pi).  The sheep sampled each step fits it: its heading
+  (not its shown facing, which turns on its own) turning 0.5 a step (its turn rate),
+  moving from the step after the angle left fell under 60 degrees, its first step
+  about the cosine of the angle still to turn.  tools/ghidra/Sigs.java gives the
+  float routines their signatures before decompiling, so their arithmetic reads.
 - The first wandering sheep ordered by script, sampled each step (its facing; place):
   facing 116.2, turning 4, then 8, then 11.46 (0.2 radians) each step; still for 5
   steps, then moving 0.98 units, then 3 a step (speed 100), its heading bending from

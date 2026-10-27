@@ -209,6 +209,21 @@ these are the findings behind them.
   that moves), `` `rtl ``, then each ability (some with a `` `rel ``, `` `rtl `` or `` `pil ``
   after it), then two `task`; the script's handles as it makes them (a trigger `+trg`, two
   `` `flg ``, its event, `+tac`, `hdlr`; locations, groups, timers, sounds, forces).
+- A unit's tags (Booty Bay): `+w3u` `` `pcu `` two `^pmr` five `` `rel `` `l^pa`, `` `rcm `` for
+  one that moves, `` `rtl ``, three more `^pmr` for a structure; then its abilities as the
+  unit's initialization makes them (`FUN_6f68a060`), some with objects of their own
+  (`AHbu`, `AObu`, `Aque`, `Aupg` a `` `rel ``; `Arep` a `` `rtl ``; `Aneu` a `` `pil ``; an
+  aura its buff, `AEar` `` `pil `` `BEar`; `Xbli` `` `pos `` and two `^pmr`); then two `task`.
+  A creep then has its AI (`AIcs` for some, `uref`, `AI-U`, `+ord`, `tskA`, four `task`,
+  `tskA`, `+ord`, `task`).  The initialization's order: the race's build ability
+  (`FUN_6f686570`: 1 AHbu, 2 AObu, 3 AUbu, 4 AEbu, 11 its own, else ANbu) when it builds
+  anything; `Aque` when it trains, researches, or upgrades; then abilities for further
+  lists (`FUN_6f341da0`, `FUN_6f343860`, `FUN_6f3438e0`, `FUN_6f344a20`); `Amov` when its
+  speed is not 0; `Aatk` when it has a weapon; the hero's when its id is upper case; and
+  more after (`FUN_6f670950` adds creep sleep, the alarm, and fire, among others).
+- A trigger's tags: `+trg`, two `` `flg ``, its event (`gevt`, `pevt`, `uevt`, `alvt` and
+  `psvt` each with an `` `fcl ``), `+tac` for its action, and `hdlr` the first time an
+  event of its kind is registered.
 - Script handle ids (GetHandleId) are another table's (the object manager's at +0x20,
   0x45d entries at that turn; Player(0) is 0x100008): the tags above are the engine's
   own ids for all its objects, which actions (two words each) and the checksum use.

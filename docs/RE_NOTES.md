@@ -491,7 +491,11 @@ these are the findings behind them.
   length 300 at + 0x5c) gains 0.03 each step by the engine's addition (read:
   1.019999, 1.049999, 1.079999, ...); a time difference (`FUN_6f15cea0`) is the floats'
   difference (tiny ones 0) plus whole epochs times their length.  A second clock (+0xa8,
-  real time) serves objects flagged 0x80000000 (local ones).  tools/ghidra/Sigs.java gives the
+  real time) serves objects flagged 0x80000000 (local ones).  A waypoint is reached
+  (`FUN_6f16e910`) within the radius at +0xb0 (0.49 cells for the sheep's, 0x6fcd53f0)
+  with the heading off it by at most 0.2 (0x6fcd53d4; angles under 2e-7, 0x6fcd5470,
+  count as 0): the sheep's last step put it 14.05 units from its node's middle (one
+  earlier, 17.05), where it searched again and stopped.  tools/ghidra/Sigs.java gives the
   float routines their signatures before decompiling, so their arithmetic reads.
 - The first wandering sheep ordered by script, sampled each step (its facing; place):
   facing 116.2, turning 4, then 8, then 11.46 (0.2 radians) each step; still for 5

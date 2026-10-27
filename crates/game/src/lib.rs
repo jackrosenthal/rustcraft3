@@ -57,6 +57,8 @@ pub mod paint;
 pub mod preload;
 pub mod spellbook;
 pub mod accel;
+pub mod efloat;
+mod efloat_recip;
 pub mod lrpath;
 pub mod pathing;
 pub mod placement;

@@ -446,6 +446,14 @@ these are the findings behind them.
   step (a wanderer's order issued there, its objects made and nine freed at once); a
   move ends after the step where it does, its path's `l^pa` and `^clu` freed after
   the next step (in the next turn when the move ended in its turn's last).
+- The engine simulates with its own float routines (`efloat.rs`): add and subtract
+  (`FUN_6f06fbb0`, `FUN_6f06fa90`) on doubled signed mantissas, the smaller exponent's
+  shifted right arithmetically (so truncating, and down for negatives), dropped 24
+  or more apart; multiply (`FUN_6f06f9c0`) keeping the product's high word; divide
+  (`FUN_6f06fcd0`) as a times b's reciprocal (`FUN_6f0711e0`, a 1024-step table at
+  0x6fa810c0, interpolated by the mantissa's low 13 bits spread over a word), 1 when
+  a equals b; integer to single truncating (`FUN_6f070d80`); single to integer
+  toward zero (`FUN_6f070120`); floor (`FUN_6f070c80`); a zero exponent read as 0.
 - The first wandering sheep ordered by script, sampled each step (its facing; place):
   facing 116.2, turning 4, then 8, then 11.46 (0.2 radians) each step; still for 5
   steps, then moving 0.98 units, then 3 a step (speed 100), its heading bending from

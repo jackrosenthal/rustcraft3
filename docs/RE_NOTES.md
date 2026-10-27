@@ -98,6 +98,37 @@ original images.
 - Loading: `LoadingMeleeBackground` per race skin, `LoadingProgressBar` stepped through
   its Birth; custom maps use the w3i model or `[LoadingScreens]`.
 
+## Network (W3GS)
+
+The packets as `crates/net` reads them were captured from the original under Wine;
+these are the findings behind them.
+
+- Dispatch: the host's handlers by packet id in `FUN_6f99b870` (`Net::NetRouter`),
+  the player's in `FUN_6f98a8e0` (`Net::NetClient`).  0x0E (`FUN_6f98b5d0`) is the host's
+  desync notice: it groups players by agreement with a majority rule.
+- GAMEINFO's settings word is the setup's map flags (as CAdvancedOptionsPane keeps them)
+  shifted left 8, the speed in the low 2 bits; 1.27b's default fast game is 0x64802.
+  Its game type is 1 for a custom map, 9 for a Blizzard map, 0x200 for a saved game.
+  The list shows `slots - player slots + players` of `slots`.
+- A saved game is offered by its save (`Save\Multiplayer\<name>.w3z` in the stat
+  string, size 0, SHA-1 zero) and a 32-bit identifier the original stores in the save's
+  decompressed header (offset 140 in one sample), in the map checksum's place; MAPCHECK
+  still checks the map.  PLAYERINFO carries 0x0101 after the name in its lobby, else
+  0x0001.
+- Map checks: size, CRC-32 of the file, the xoro of common.j, blizzard.j, 0x03F1379E,
+  and the map's game files, and their SHA-1 (verified against the original's values).
+- 1.27b will not join a game at its own address on its own game port.
+- Save actions: `06 <name>\0` saves, `07 01000000` says the save is done.
+- The keepalive's checksum (`FUN_6f330830`, sent by `FUN_6f32e3f0` through
+  `FUN_6f96a4e0`): `c = t ^ rol(m ^ 0x17ab, 3)`, `c = rol(c, 3) ^ presence`,
+  `c = rol(c, 3) ^ birth`, sent `rol(c, 6)`.  `m` combines the game state's (TLS slot
+  0xd) modules from last to first, `m = rol(m ^ module.vf0(), 3)` (`FUN_6f042dd0`); the
+  debug dump `FUN_6f328d70` names module 0 cheat, 1 combat, 2 net, 3 rand, 4 unit, and 6
+  game.  `t` is the game's field 0x1c70, or the Tempest checksum (`FUN_6f324930`) when
+  field 0x2f8 is set.  `presence` and `birth` are the next presence and birth tags
+  (`[DAT_6fd6860c + 0x40]`, or `+0x1c` when that is -1, and `+0x50`): counters of the
+  objects created.  0x17ab is the build, 6059.
+
 ## Tooling
 
 The decompilation is produced by headless Ghidra 12.1.2 with MSVC RTTI applied,

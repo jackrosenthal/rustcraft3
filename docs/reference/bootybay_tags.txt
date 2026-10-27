@@ -1,6 +1,7 @@
 # The original's tagged objects at Booty Bay's first turn (seed 0x35000000, two players
 # of random race), in tag order: each object's type code (its +0x10), read under winedbg
-# through the object manager's table (DAT_6fd6860c).  One per line; line n is tag n - 1.
+# through the object manager's table (DAT_6fd6860c).  One per line after these comments,
+# from tag 0.
 +ply
 `flg
 `flg

@@ -35,6 +35,9 @@ pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>
     };
     let path_tex = o.str("pathTex");
     let h = w.handles.insert(Obj::Destructable(Box::new(d)));
+    // Its tags (read under Wine): itself, its position, five regions.
+    w.tags.take_all(&[b"+w3d", b"`pos"]);
+    w.tags.take_n(b"^pmr", 5);
     if let Some(Obj::Destructable(d)) = w.handles.get_mut(h) {
         d.handle = h;
     }

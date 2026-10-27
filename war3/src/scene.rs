@@ -692,11 +692,14 @@ impl Scene {
             }
             for d in &doodads.doodads {
                 let id = fourcc_str(d.id);
-                // Destructables are game objects; the scene draws them from the world.
-                if dest_slk.rows.contains_key(&id) {
+                // Destructables are game objects; the scene draws them from the world,
+                // and here only those placed as scenery (flags 3, which the game does
+                // not make).
+                let is_dest = dest_slk.rows.contains_key(&id);
+                if is_dest && d.flags != 3 {
                     continue;
                 }
-                let (table, is_dest) = (&doodad_slk, false);
+                let table = if is_dest { &dest_slk } else { &doodad_slk };
                 let ty = doodad_types.get(d.id);
                 let field = |f: &str| ty.map(|o| o.str(f)).unwrap_or_else(|| text(table, &id, f));
                 let file = field("file");
@@ -733,7 +736,10 @@ impl Scene {
                 // The type's color for this variation (vertR01 to vertB10) tints it
                 // (measured: NightElfX03 zeroes its Magic Runes' blue, and the original
                 // shows nothing of their blue glow).
-                if let Some(o) = doodad_types.get(d.id) {
+                if is_dest {
+                    let c = |f: &str| text(table, &id, f).trim().parse::<f32>().map_or(1.0, |v| v / 255.0);
+                    inst.tint = glam::Vec4::new(c("colorR"), c("colorG"), c("colorB"), 1.0);
+                } else if let Some(o) = doodad_types.get(d.id) {
                     let k = d.variation as usize + 1;
                     let c = |ch: &str| o.str(&format!("vert{ch}{k:02}")).trim().parse::<f32>().map_or(1.0, |v| v / 255.0);
                     inst.tint = glam::Vec4::new(c("R"), c("G"), c("B"), 1.0);

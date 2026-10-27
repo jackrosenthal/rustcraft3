@@ -59,6 +59,7 @@ pub mod pathing;
 pub mod placement;
 pub mod repair;
 pub mod rng;
+pub mod tags;
 pub mod score;
 pub mod sim;
 pub mod types;
@@ -214,6 +215,10 @@ impl Game {
         if let (Ok(wpm), Some(t)) = (chain.read("war3map.wpm"), world.terrain_heights.as_ref()) {
             world.pathing = pathing::PathingMap::parse(&wpm, t.offset);
         }
+        // The engine's own objects made before the map's (read under Wine): timers, the
+        // game, flags and properties, the queue, groups, the pathing and acceleration
+        // maps, the pathing system, the game cache, the AI.
+        world.tags.take_all(&[b"+tmr", b"+gam", b"`flg", b"`flg", b"`rel", b"`rel", b"`flg", b"`rtl", b"+qum", b"+tmr", b"+grp", b"+grp", b"+tmr", b"+grp", b"+tmr", b"^pma", b"^pma", b"^ama", b"^ama", b"^ama", b"^ama", b"l^sy", b"l^ac", b"gccm", b"AI-1"]);
         if let Ok(bytes) = chain.read("war3map.doo") {
             match w3_formats::map::Doodads::parse(&bytes) {
                 Ok(doo) => {
@@ -228,6 +233,13 @@ impl Game {
                         // killed gate standing closed over the dead one; every campaign
                         // map has as many such entries as it has destructables made so).
                         if d.flags & 3 == 0 {
+                            continue;
+                        }
+                        // One flagged 3 is scenery: drawn, but not a destructable
+                        // (measured: Booty Bay's three such trees are not found by
+                        // EnumDestructablesInRect and take no tags in the original,
+                        // which draws them).
+                        if d.flags == 3 {
                             continue;
                         }
                         let h = natives::objects::create_destructable(

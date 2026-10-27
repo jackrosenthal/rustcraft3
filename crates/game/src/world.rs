@@ -146,6 +146,8 @@ pub struct World {
     #[serde(skip)]
     pub objects: ObjectDb,
     pub handles: Handles<Obj>,
+    /// The original engine's tags given so far (`tags`).
+    pub tags: crate::tags::Tags,
     pub players: Vec<Player>,
     pub start_locations: Vec<StartLocation>,
     pub events: Vec<u32>,
@@ -632,9 +634,16 @@ impl World {
         // The player handles come after eight the original makes first (measured:
         // Player(0) is 0x100008, Player(1) 0x100009; its neutral players come later).
         handles.reserve(8);
+        let mut tags = crate::tags::Tags::new();
         for i in 0..PLAYER_COUNT as u8 {
             let h = handles.insert(Obj::Player(i));
             players.push(Player::new(i, h));
+            // Each player's tags (read under Wine): the player, 26 flags, a flag
+            // listener, its alliances, 11 flags.
+            tags.take(b"+ply");
+            tags.take_n(b"`flg", 26);
+            tags.take_all(&[b"`fcl", b"ally"]);
+            tags.take_n(b"`flg", 11);
         }
         for (i, p) in players.iter_mut().enumerate() {
             for j in 0..PLAYER_COUNT {
@@ -647,6 +656,7 @@ impl World {
             chain,
             objects,
             handles,
+            tags,
             players,
             start_locations: Vec::new(),
             events: Vec::new(),

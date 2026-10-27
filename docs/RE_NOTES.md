@@ -85,6 +85,13 @@ original images.
   with z flipped, model origin at the frame's lower left; a frame without a size
   takes the model's bounds (`FUN_6f0f7080`, `FUN_6f0f6fc0`).
 - The menu background camera's field of view spans the 4:3 diagonal, as in game.
+- A glue button plays `GlueScreenClick` (`FUN_6f358c30`) and fades the screen's controls
+  for `UI\MiscData.txt [Glue] ControlFadeDuration` (0.25); the timer it starts
+  (`FUN_6f33fd40`, duration from `FUN_6f047680`) then changes screens, and only then do
+  the panels play their Death.
+- Sprite models' event objects all go through `FUN_6f782860`; `SND` events play their
+  `AnimLookups` label unpositioned (`FUN_6f358940(code, 0, 0)`).  The glue panels' events
+  (`ARPD`, `ABPU`, ...) are the chains' sounds.
 - Map size names: `UI\WorldEditData.txt [MapSizes]`, the first area bound at or above
   the playable area (`FUN_6f71f720`); tileset names `[TileSets]`; strings from
   `UI\WorldEditGameStrings.txt`.
@@ -97,3 +104,27 @@ The decompilation is produced by headless Ghidra 12.1.2 with MSVC RTTI applied,
 virtual methods named `Class::vfN`, native implementations named `jass_<Name>` and
 `ai_<Name>`, and the Decompiler Parameter ID analyzer enabled.  Reference frames are
 captured by running the original under Wine on a private Xvfb display.
+
+An analyzed Ghidra project is kept in `ghidra/` at the repository root (ignored by
+git).  The analysis takes about 15 minutes, longer than REA's Ghidra startup allows,
+so build it once from the repository root with Ghidra's default auto-analysis:
+
+    mkdir -p ghidra
+    GHIDRA_MAXMEM=8G /opt/ghidra/support/analyzeHeadless ghidra war3 \
+        -import "Warcraft III/game.dll" -analysisTimeoutPerFile 7200
+
+Its names are Ghidra's own (`FUN_<address>`), which the addresses in these notes use.
+Query it headlessly with the scripts in `tools/ghidra`:
+
+    /opt/ghidra/support/analyzeHeadless ghidra war3 -process game.dll -noanalysis \
+        -readOnly -scriptPath tools/ghidra -postScript StrRefs.java \
+        GlueScreenClick fn:6f301cf0 asm:6f301a00 callers:6f306dd0
+
+- `StrRefs`: each string's references and their decompilation; `fn:<addr>` decompiles a
+  function, `asm:<addr>` lists its instructions, `callers:<addr>` its callers.
+- `Refs <addr>...`: the functions referencing an address (a global, say), decompiled.
+- `Range <from> <to> [text]`: decompiles every function in a range, or only those whose
+  C contains the text.
+- `Vt <addr>`: for a function, the vtables pointing at it, with their neighbors.
+
+The output is on stdout, each line prefixed `INFO  <Script>.java> `.

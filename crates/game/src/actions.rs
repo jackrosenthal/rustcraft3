@@ -208,9 +208,9 @@ impl Codec {
                 acts.push(Action::ArrowKey((event - crate::event_ids::EVENT_PLAYER_ARROW_LEFT_DOWN) as u8));
             }
             // A game cache value: 6B to 6E with the file, mission, and key and the value
-            // (an integer, a real, a boolean as a word, a unit's record); a missing integer
-            // 70 with none; a string a bare 6F (measured: SyncStoredString sends nothing
-            // more).
+            // (an integer, a real, a boolean as a word, a unit's record), 70 to 73 for one
+            // not had with none; a string a bare 6F, 74 for one not had (measured:
+            // SyncStoredString sends nothing more).
             Command::CacheValue { cache, mission, key, value } => {
                 use crate::replay::CacheValue as V;
                 let entry = |id: u8, value: Vec<u8>| Action::Cache { id, file: cache.clone(), mission: mission.clone(), key: key.clone(), value };
@@ -220,8 +220,11 @@ impl Codec {
                     V::Bool(Some(v)) => entry(0x6D, (*v as u32).to_le_bytes().to_vec()),
                     V::Unit(Some(u)) => entry(0x6E, unit_record(w, u)),
                     V::Int(None) => entry(0x70, Vec::new()),
-                    V::Str(_) => Action::CacheString,
-                    _ => return self.encode_private(c),
+                    V::Real(None) => entry(0x71, Vec::new()),
+                    V::Bool(None) => entry(0x72, Vec::new()),
+                    V::Unit(None) => entry(0x73, Vec::new()),
+                    V::Str(Some(_)) => Action::CacheString(0x6F),
+                    V::Str(None) => Action::CacheString(0x74),
                 });
             }
             // A network game saved under a name (measured: 06 and the name).
@@ -351,11 +354,14 @@ impl Codec {
                                 0x6C => V::Real(word.map(f32::from_le_bytes)),
                                 0x6D => V::Bool(word.map(|b| u32::from_le_bytes(b) != 0)),
                                 0x6E => V::Unit(stored_unit(&value)),
+                                0x71 => V::Real(None),
+                                0x72 => V::Bool(None),
+                                0x73 => V::Unit(None),
                                 _ => V::Int(None),
                             };
                             out.push(Command::CacheValue { cache: file, mission, key, value });
                         }
-                        Action::CacheString => {}
+                        Action::CacheString(_) => {}
                         Action::Trade { player: other, gold, lumber } => out.push(Command::Trade { player, other, gold: gold as i32, lumber: lumber as i32 }),
                         Action::SaveGame(name) => out.push(Command::Save { name }),
                         Action::SaveDone(_) => {}

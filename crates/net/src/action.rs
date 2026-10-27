@@ -86,11 +86,13 @@ pub enum Action {
     /// (measured: both for each click, 0x6A's naming the dialog first).
     DialogButton { button: ObjectId, dialog: ObjectId },
     DialogClick { dialog: ObjectId, button: ObjectId },
-    /// 0x6B to 0x6E and 0x70: a game cache value (Sync Stored*): its file, mission, and
-    /// key, and the value's bytes as sent (a unit's record for 0x6E, `unit_record_len`).
+    /// 0x6B to 0x6E: a game cache value (Sync Stored*): its file, mission, and key, and
+    /// the value's bytes as sent (a unit's record for 0x6E, `unit_record_len`); 0x70 to
+    /// 0x73: an integer, real, boolean, or unit the sender did not have, with none.
     Cache { id: u8, file: String, mission: String, key: String, value: Vec<u8> },
-    /// 0x6F: SyncStoredString, sent bare: no file, mission, key, or value (measured).
-    CacheString,
+    /// 0x6F and 0x74: SyncStoredString of a string had and not had, sent bare: no file,
+    /// mission, key, or value (measured).
+    CacheString(u8),
     /// 0x75: an arrow key's press or release (left, right, down, up; each a press then
     /// a release), sent only for events registered (measured).
     ArrowKey(u8),
@@ -195,8 +197,8 @@ impl Action {
             0x65 => A::TrackableTrack(object(r)?),
             0x69 => A::DialogButton { button: object(r)?, dialog: object(r)? },
             0x6A => A::DialogClick { dialog: object(r)?, button: object(r)? },
-            0x6F => A::CacheString,
-            0x6B..=0x70 => {
+            0x6F | 0x74 => A::CacheString(id),
+            0x6B..=0x73 => {
                 let (file, mission, key) = (r.cstr()?, r.cstr()?, r.cstr()?);
                 // Integers, reals, and booleans carry four bytes; a clear none.
                 let n = match id {
@@ -339,8 +341,8 @@ impl Action {
             A::Cache { id, file, mission, key, value } => {
                 w.u8(*id).cstr(file).cstr(mission).cstr(key).bytes(value);
             }
-            A::CacheString => {
-                w.u8(0x6F);
+            A::CacheString(id) => {
+                w.u8(*id);
             }
             A::ArrowKey(k) => {
                 w.u8(0x75).u8(*k);
@@ -429,12 +431,15 @@ mod measured {
         assert_eq!(round_trip(&hex("6a762f0000762f00005c300000473a0000695c300000473a0000762f0000762f0000")), vec![Action::DialogClick { dialog: d, button: b }, Action::DialogButton { button: b, dialog: d }]);
         let cache = round_trip(&hex(&("6b65762e773376006d69006b6900d20400006c65762e773376006d72006b7200000020406d65762e773376006d62006b6200010000006f6e65762e77337600".to_owned() + "6d75006b75006f65706f" + &"00".repeat(68) + "02" + &"00".repeat(17))));
         assert_eq!(cache.len(), 5);
-        assert_eq!(cache[3], Action::CacheString);
+        assert_eq!(cache[3], Action::CacheString(0x6F));
         let Action::Cache { id: 0x6E, value, .. } = &cache[4] else { panic!() };
         assert_eq!(value.len(), 90);
         let hero = round_trip(&hex("6b65762e773376006d69006b6900d20400006c65762e773376006d72006b7200000020406d65762e773376006d62006b6200010000007065762e773376006d69006e6f6e65006e65762e773376006d75006b75006c617048060000000000000000000000000000000000000000000000000000006568677001000000402700000000000000000000000000006674617200000000003500000000000000000000000000001902000002000000010000000a00010016000000cdcc2c400d000000000000000bd7a33e0100c03f110000006766e63f050000006268484102000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000e144020000000000000000000000000000000000"));
         assert!(matches!(&hero[3], Action::Cache { id: 0x70, key, value, .. } if key == "none" && value.is_empty()));
         let Action::Cache { id: 0x6E, value, .. } = &hero[4] else { panic!() };
         assert_eq!(&value[..4], b"lapH");
+        // A real, a boolean, a unit, and a string not stored, then the rest as before.
+        let missing = round_trip(&hex("7165762e773376006d69006e72007265762e773376006d69006e62007365762e773376006d69006e7500746b65762e773376006d69006b6900d20400006c65762e773376006d72006b7200000020406d65762e773376006d62006b6200010000006f"));
+        assert_eq!(missing.iter().take(4).map(|a| match a { Action::Cache { id, value, .. } if value.is_empty() => *id, Action::CacheString(id) => *id, _ => 0 }).collect::<Vec<_>>(), [0x71, 0x72, 0x73, 0x74]);
     }
 }

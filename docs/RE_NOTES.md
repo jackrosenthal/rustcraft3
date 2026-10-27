@@ -632,8 +632,9 @@ Formats the port made its own, to be replaced by the original's:
   dialog and the button, then 0x69 with the button and the dialog), an arrow key (0x75
   and its number, only when its event is registered), and game cache syncs (0x6B to
   0x6E with the file, mission, and key, then an integer, a real, a boolean as a word,
-  or a unit's record; 0x70 with none for an integer not stored, which removes it from
-  the mission's first table; SyncStoredString a bare 0x6F).  Measured too: the card's
+  or a unit's record; 0x70 to 0x73 with none for an integer, real, boolean, or unit
+  not stored, 0x70's handler removing it from the mission's first table;
+  SyncStoredString a bare 0x6F, or 0x74 for a string not stored).  Measured too: the card's
   Cancel while training (Order, flags 0x40, cancel 851976), a cargo slot clicked
   (OrderTarget, flags 2, unload 852047, the passenger as target; its point, 8640, 1664
   then 8576, 1664 for a Zeppelin's peon, multiples of 64 near where it boarded, not yet

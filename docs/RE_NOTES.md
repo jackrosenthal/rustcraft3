@@ -380,6 +380,23 @@ these are the findings behind them.
   excused by its flags (+0x40: none of 0x8fffffff, and none of 0x60000000 unless the
   search counts those, +0xd4).  Units' and structures' regions so block the search:
   the standing flock that stops Booty Bay's first wandering sheep.
+- A search (`FUN_6f14ad50`) starts and ends at the cells of points in cell units, its
+  class from the unit's collision in cells (below 0.5, 1, 1.5, or more), its pops
+  limited by the path's word (+0x84 of CLrPath, which holds two paths at +0x50 and
+  +0x70, each with a limit word, +0x84 and +0x86: 700 and 400 by default), a new
+  search id each time.  The path (`FUN_6f148100`, from CLrPath's `FUN_6f166e90`, the
+  unit's own two regions excused meanwhile by raising their counts at +0x40) runs to
+  the goal when found; otherwise to the middle of the nearest node reached, or, when
+  that is the start, nowhere: the unit stays.  Searches are also spaced in time per
+  kind (`FUN_6f168910`) and counted against per-class budgets.
+- A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
+  1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
+  wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to
+  32 (CAbilityWander's `FUN_6f5a6d40`: `FUN_6f0594a0(0)`, `FUN_6f05c720(0, 0x20)`;
+  other owners keep 700): measured, Booty Bay's sheep and pigs search 32 nodes deep,
+  player 0's sheep and Neutral Passive's footmen 700.  Booty Bay's sheep's searches:
+  from 430.5, 46.5 to 426.56, 40.48 (mask 0x2000002, radius 0.5), then from 430.49,
+  45.94 after 18 units.
 - New units on walkable ground need room by their size class (collision in cells below
   0.5, 1, 1.5, or more; `FUN_6f170080` with `FUN_6f149370`): sheep (16) made in the cell
   row next to unwalkable ground move up a row; Booty Bay's fifth pig stands at -5456,

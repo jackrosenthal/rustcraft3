@@ -4,7 +4,7 @@
 //! zero exponent to zero, and divides by an interpolated reciprocal.  Values are the
 //! singles' bits.
 
-use crate::efloat_recip::{ACOS, ACOS_NEAR_ONE, PI, RECIP, TWO_PI};
+use crate::efloat_recip::{ACOS, ACOS_NEAR_ONE, PI, RECIP, SIN, SIN_STEPS, TWO_PI};
 
 const EXP: u32 = 0x7f80_0000;
 const FRAC: u32 = 0x007f_ffff;
@@ -246,6 +246,37 @@ pub fn heading(x: u32, y: u32, len: u32) -> u32 {
     }
 }
 
+/// One of `sin_cos`'s values: quadrant `q` (odd ones reading the table backward, the
+/// third and fourth negative) at step `i` and fraction `frac`, scaled by 2^-31.
+fn sine_at(q: i32, i: usize, frac: u32) -> u32 {
+    let v = if q & 1 != 0 {
+        let e = SIN[1024 - i];
+        let hi = ((e.wrapping_sub(SIN[1023 - i]) as u64 * frac as u64) >> 32) as u32;
+        e.wrapping_sub(hi)
+    } else {
+        let e = SIN[i];
+        let hi = ((SIN[i + 1].wrapping_sub(e) as u64 * frac as u64) >> 32) as u32;
+        e.wrapping_add(hi)
+    };
+    let neg = (q << 30) >> 31;
+    let f = from_int(((v as i32) ^ neg).wrapping_sub(neg));
+    f.wrapping_sub(if f & EXP != 0 { 0x0f80_0000 } else { 0 })
+}
+
+/// The sine and cosine of an angle in radians (`FUN_6f071340`), from a quarter-wave
+/// table: the angle times 2^20 / (2 pi) as an integer, its bits 18 and 19 the quadrant,
+/// 8 to 17 the step, and 0 to 7, spread over a word, between steps; the cosine a
+/// quadrant on.
+pub fn sin_cos(a: u32) -> (u32, u32) {
+    let n = to_int(mul(a, SIN_STEPS));
+    let i = ((n >> 8) & 0x3ff) as usize;
+    let b = (n & 0xff) as u32;
+    let b = b | (b << 8);
+    let frac = b | (b << 16);
+    let q = n >> 18;
+    (sine_at(q, i, frac), sine_at(q + 1, i, frac))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,6 +323,15 @@ mod tests {
         assert!((h(0.0, 1.0) - std::f32::consts::FRAC_PI_2).abs() < 1e-3);
         assert!((h(-1.0, 0.0) - std::f32::consts::PI).abs() < 1e-3);
         assert!((h(0.0, -1.0) - 3.0 * std::f32::consts::FRAC_PI_2).abs() < 1e-3);
+    }
+
+    #[test]
+    fn sines_and_cosines_are_close() {
+        for v in [0.0f32, 0.3, 1.0, 1.5707964, 2.0, 3.1415927, 4.0, 4.7314, 5.5, 6.2, -1.0] {
+            let (s, c) = sin_cos(f(v));
+            let (s, c) = (f32::from_bits(s), f32::from_bits(c));
+            assert!((s - v.sin()).abs() < 1e-4 && (c - v.cos()).abs() < 1e-4, "{v}: {s} {c}");
+        }
     }
 
     /// Its roots come within a part in ten thousand of the processor's.

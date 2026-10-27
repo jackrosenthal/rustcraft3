@@ -641,23 +641,26 @@ impl Game {
             }
         }
         self.world.requests.push(world::Request::Chat { player, text: text.to_string(), to });
-        let regs: Vec<(u32, String)> = self
-            .world
-            .events
-            .iter()
-            .filter_map(|&e| match self.world.handles.get(e) {
-                Some(types::Obj::Event(r)) => match &r.kind {
-                    types::EventKind::PlayerChat { player: p, text: t, exact } if *p == player && if *exact { t == text } else { text.contains(t.as_str()) } => Some((r.trigger, t.clone())),
-                    _ => None,
-                },
-                _ => None,
-            })
-            .collect();
-        for (trig, matched) in regs {
-            let ctx = types::EventCtx { player, has_player: true, event_id: event_ids::EVENT_PLAYER_CHAT, chat: text.to_string(), matched_chat: matched, ..Default::default() };
-            self.world.fire_trigger(&mut self.vm, trig, ctx);
+        for e in self.world.chat_hearers(player, text) {
+            self.event_heard(player, e, text);
         }
         true
+    }
+
+    /// One event registration hears a player's input: a chat line it matches, or its
+    /// trackable's hit or track.
+    pub fn event_heard(&mut self, player: u8, event: u32, text: &str) {
+        let Some(types::Obj::Event(r)) = self.world.handles.get(event) else { return };
+        let trig = r.trigger;
+        let ctx = match &r.kind {
+            types::EventKind::PlayerChat { text: t, .. } => types::EventCtx { player, has_player: true, event_id: event_ids::EVENT_PLAYER_CHAT, chat: text.to_string(), matched_chat: t.clone(), ..Default::default() },
+            types::EventKind::Trackable { trackable, hit } => {
+                let event_id = if *hit { event_ids::EVENT_GAME_TRACKABLE_HIT } else { event_ids::EVENT_GAME_TRACKABLE_TRACK };
+                types::EventCtx { player, has_player: true, trackable: *trackable, event_id, ..Default::default() }
+            }
+            _ => return,
+        };
+        self.world.fire_trigger(&mut self.vm, trig, ctx);
     }
 
     pub fn click_dialog_button(&mut self, player: u8, button: u32) {
@@ -993,9 +996,13 @@ impl Game {
                 O::Done
             }
             C::Trackable { player, trackable, hit } => {
-                let event = if hit { event_ids::EVENT_GAME_TRACKABLE_HIT } else { event_ids::EVENT_GAME_TRACKABLE_TRACK };
-                let ctx = types::EventCtx { player, has_player: true, trackable, event_id: event, ..Default::default() };
-                self.world.fire(&mut self.vm, ctx, move |_, k| matches!(k, types::EventKind::Trackable { trackable: t, hit: h } if *t == trackable && *h == hit));
+                for e in self.world.trackable_hearers(trackable, hit) {
+                    self.event_heard(player, e, "");
+                }
+                O::Done
+            }
+            C::EventHeard { player, event, text } => {
+                self.event_heard(player, event, &text);
                 O::Done
             }
             // A player opened the hero skill menu or the build menu: the game events

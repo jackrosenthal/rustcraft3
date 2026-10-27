@@ -73,6 +73,10 @@ pub struct Tags {
     /// handle.
     #[serde(default)]
     pub handle_slots: std::collections::BTreeMap<u32, u32>,
+    /// The ids (slot and birth count) the original's actions name script objects by:
+    /// dialogs, their buttons, trackables, and event registrations, by handle.
+    #[serde(default)]
+    pub handle_ids: std::collections::BTreeMap<u32, (u32, u32)>,
     /// Game state events' timers' slots, by event handle.
     #[serde(default)]
     pub event_timers: std::collections::BTreeMap<u32, u32>,
@@ -85,7 +89,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), later: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), event_timers: Default::default(), day_timer: None }
+        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), later: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None }
     }
 
     /// The next tag, for an object of type `code`: its slot.

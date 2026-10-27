@@ -75,6 +75,9 @@ pub enum Command {
     /// a target, or neither; queued behind its orders when `queue`; those sent to a
     /// point in formation when `formation`.
     SelectionOrder { player: u8, order: i32, at: Option<(f32, f32)>, target: u32, queue: bool, formation: bool },
+    /// One event registration hears a player's input, as the original sends it: a chat
+    /// line (`text`) a chat event registration matches, or a trackable's hit or track.
+    EventHeard { player: u8, event: u32, text: String },
 }
 
 impl Command {
@@ -107,6 +110,7 @@ impl Command {
             | C::Select { player, .. }
             | C::PlayerEvent { player, .. }
             | C::DialogButton { player, .. }
+            | C::EventHeard { player, .. }
             | C::Chat { player, .. }
             | C::PlayerLeft { player }
             | C::Submenu { player, .. }

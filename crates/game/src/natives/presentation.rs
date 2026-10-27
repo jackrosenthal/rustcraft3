@@ -504,8 +504,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetTextTagLifespan => |w, _, a| { let v = a.r(1); if let Some(t) = tag_mut(w, a.h(0)) { t.lifespan = v; } none() },
         SetTextTagFadepoint => |w, _, a| { let v = a.r(1); if let Some(t) = tag_mut(w, a.h(0)) { t.fadepoint = v; } none() },
         DialogCreate => |w, _, _| {
-            w.tags.take(b"+dlg");
-            handle(w.handles.insert(Obj::Dialog(Dialog::default())))
+            let id = w.tags.take_id(b"+dlg");
+            let h = w.handles.insert(Obj::Dialog(Dialog::default()));
+            log::debug!("dialog {h} id {id:x?}");
+            w.tags.handle_ids.insert(h, id);
+            handle(h)
         },
         DialogDestroy => |w, _, a| {
             if let Some(Obj::Dialog(d)) = w.handles.get(a.h(0)) {
@@ -532,9 +535,14 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         DialogAddButton => |w, _, a| {
-            w.tags.take(b"+dlb");
+            let id = w.tags.take_id(b"+dlb");
             let (dialog, text, hotkey) = (a.h(0), w.localized(&a.s(1)), a.i(2));
-            add_dialog_button(w, DialogButton { dialog, text, hotkey, quit: None })
+            let r = add_dialog_button(w, DialogButton { dialog, text, hotkey, quit: None });
+            if let w3_jass::NativeResult::Return(w3_jass::Value::Handle(h)) = &r {
+                log::debug!("button {h} id {id:x?}");
+                w.tags.handle_ids.insert(*h, id);
+            }
+            r
         },
         DialogAddQuitButton => |w, _, a| {
             let (dialog, score, text, hotkey) = (a.h(0), a.b(1), w.localized(&a.s(2)), a.i(3));
@@ -619,11 +627,13 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         // A trackable: its model standing at a point, which the mouse hits and tracks
         // (TriggerRegisterTrackableHitEvent, ...TrackEvent).
         CreateTrackable => |w, _, a| {
-            w.tags.take(b"+trk");
+            let id = w.tags.take_id(b"+trk");
             let (x, y) = (a.r(1), a.r(2));
             let z = w.ground_z(x, y);
             let h = w.handles.insert(Obj::Effect(crate::types::Effect { model: a.s(0), x, y, z, target: None, destroyed: false, facing: a.r(3) }));
             w.trackables.push(h);
+            log::debug!("trackable {h} id {id:x?}");
+            w.tags.handle_ids.insert(h, id);
             handle(h)
         },
         // The files preloaded since PreloadGenClear, for PreloadGenEnd (FUN_6f2407c0).

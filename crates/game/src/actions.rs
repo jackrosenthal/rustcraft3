@@ -32,7 +32,7 @@ impl World {
             Some(crate::types::Obj::Unit(u)) => ObjectId(u.extra.oid.0, u.extra.oid.1),
             Some(crate::types::Obj::Item(i)) => ObjectId(i.oid.0, i.oid.1),
             Some(crate::types::Obj::Destructable(d)) => ObjectId(d.oid.0, d.oid.1),
-            _ => ObjectId::NONE,
+            _ => self.tags.handle_ids.get(&h).map_or(ObjectId::NONE, |&(a, b)| ObjectId(a, b)),
         }
     }
 
@@ -45,6 +45,7 @@ impl World {
             .find(|&h| self.unit(h).is_some_and(|u| u.extra.oid == want))
             .or_else(|| self.item_order.iter().copied().find(|&h| self.item(h).is_some_and(|i| i.oid == want)))
             .or_else(|| self.destructable_order.iter().copied().find(|&h| matches!(self.handles.get(h), Some(crate::types::Obj::Destructable(d)) if d.oid == want)))
+            .or_else(|| self.tags.handle_ids.iter().find(|&(&h, &v)| v == want && self.handles.get(h).is_some()).map(|(&h, _)| h))
     }
 }
 
@@ -148,6 +149,62 @@ impl Codec {
             // (measured: 200 gold to player 0, after the alliances in the same block).
             Command::Alliance { other, flags, .. } => acts.push(Action::Alliance { player: *other, flags: *flags }),
             Command::Trade { other, gold, lumber, .. } => acts.push(Action::Trade { player: *other, gold: *gold as u32, lumber: *lumber as u32 }),
+            // A chat line: 60 for each chat event registration it matches, in their order,
+            // naming it (measured with one and with three); the line itself goes as the
+            // game's chat (`crate::world::Request::Chat`, W3GS chat to all as scope 0).
+            Command::Chat { text, .. } => {
+                for e in w.chat_hearers(player, text) {
+                    acts.push(Action::TriggerChat { event: w.oid(e), text: text.clone() });
+                }
+                if acts.is_empty() {
+                    return Vec::new();
+                }
+            }
+            // A trackable clicked (64) or moved onto (65): one for each registration of
+            // its event, naming it (measured with one and with two).
+            Command::Trackable { trackable, hit, .. } => {
+                for e in w.trackable_hearers(*trackable, *hit) {
+                    acts.push(if *hit { Action::TrackableHit(w.oid(e)) } else { Action::TrackableTrack(w.oid(e)) });
+                }
+                if acts.is_empty() {
+                    return Vec::new();
+                }
+            }
+            // A dialog's button: 6A with the dialog and the button, then 69 with the button
+            // and the dialog (measured).
+            Command::DialogButton { button, .. } => {
+                let Some(crate::types::Obj::DialogButton(b)) = w.handles.get(*button) else { return Vec::new() };
+                let (dialog, button) = (w.oid(b.dialog), w.oid(*button));
+                acts.push(Action::DialogClick { dialog, button });
+                acts.push(Action::DialogButton { button, dialog });
+            }
+            // Escape: 61, registered or not; an arrow key's press or release: 75 and its
+            // number (left, right, down, up, a press then a release each), only when the
+            // player has its event registered (measured).
+            Command::PlayerEvent { event, .. } if *event == crate::event_ids::EVENT_PLAYER_END_CINEMATIC => acts.push(Action::Escape),
+            Command::PlayerEvent { event, .. } if (crate::event_ids::EVENT_PLAYER_ARROW_LEFT_DOWN..=crate::event_ids::EVENT_PLAYER_ARROW_UP_UP).contains(event) => {
+                if !w.hears_player_event(player, *event) {
+                    return Vec::new();
+                }
+                acts.push(Action::ArrowKey((event - crate::event_ids::EVENT_PLAYER_ARROW_LEFT_DOWN) as u8));
+            }
+            // A game cache value: 6B to 6E with the file, mission, and key and the value
+            // (an integer, a real, a boolean as a word, a unit's record); a missing integer
+            // 70 with none; a string a bare 6F (measured: SyncStoredString sends nothing
+            // more).
+            Command::CacheValue { cache, mission, key, value } => {
+                use crate::replay::CacheValue as V;
+                let entry = |id: u8, value: Vec<u8>| Action::Cache { id, file: cache.clone(), mission: mission.clone(), key: key.clone(), value };
+                acts.push(match value {
+                    V::Int(Some(v)) => entry(0x6B, v.to_le_bytes().to_vec()),
+                    V::Real(Some(v)) => entry(0x6C, v.to_le_bytes().to_vec()),
+                    V::Bool(Some(v)) => entry(0x6D, (*v as u32).to_le_bytes().to_vec()),
+                    V::Unit(Some(u)) => entry(0x6E, unit_record(w, u)),
+                    V::Int(None) => entry(0x70, Vec::new()),
+                    V::Str(_) => Action::CacheString,
+                    _ => return self.encode_private(c),
+                });
+            }
             // A network game saved under a name (measured: 06 and the name).
             Command::Save { name } => acts.push(Action::SaveGame(name.clone())),
             // A pause (measured: 01 as the original's game ends) and its resume (02).
@@ -258,6 +315,26 @@ impl Codec {
                         Action::Dequeue { slot, .. } => out.push(Command::CancelQueue { building: first, slot: slot as usize }),
                         Action::Signal { x, y, .. } => out.push(Command::Signal { player, x, y }),
                         Action::Alliance { player: other, flags } => out.push(Command::Alliance { player, other, flags }),
+                        Action::TriggerChat { event, text } => out.push(Command::EventHeard { player, event: w.by_oid(event).unwrap_or(0), text }),
+                        Action::TrackableHit(event) | Action::TrackableTrack(event) => out.push(Command::EventHeard { player, event: w.by_oid(event).unwrap_or(0), text: String::new() }),
+                        // The click is taken once, from 6A; 69 always follows it.
+                        Action::DialogClick { button, .. } => out.push(Command::DialogButton { player, button: w.by_oid(button).unwrap_or(0) }),
+                        Action::DialogButton { .. } => {}
+                        Action::Escape => out.push(Command::PlayerEvent { player, event: crate::event_ids::EVENT_PLAYER_END_CINEMATIC }),
+                        Action::ArrowKey(k) => out.push(Command::PlayerEvent { player, event: crate::event_ids::EVENT_PLAYER_ARROW_LEFT_DOWN + k as i32 }),
+                        Action::Cache { id, file, mission, key, value } => {
+                            use crate::replay::CacheValue as V;
+                            let word = value.get(..4).map(|b| [b[0], b[1], b[2], b[3]]);
+                            let value = match id {
+                                0x6B => V::Int(word.map(i32::from_le_bytes)),
+                                0x6C => V::Real(word.map(f32::from_le_bytes)),
+                                0x6D => V::Bool(word.map(|b| u32::from_le_bytes(b) != 0)),
+                                0x6E => V::Unit(stored_unit(&value)),
+                                _ => V::Int(None),
+                            };
+                            out.push(Command::CacheValue { cache: file, mission, key, value });
+                        }
+                        Action::CacheString => {}
                         Action::Trade { player: other, gold, lumber } => out.push(Command::Trade { player, other, gold: gold as i32, lumber: lumber as i32 }),
                         Action::SaveGame(name) => out.push(Command::Save { name }),
                         Action::SaveDone(_) => {}
@@ -275,5 +352,97 @@ impl Codec {
         let sel = self.selection.get(&player).cloned().unwrap_or_default();
         flush(&mut changed, &sel, &mut out);
         Ok(out)
+    }
+}
+
+/// A stored unit as the original's record (`w3_net::action::unit_record_len`): the one it
+/// came in when it came from one; else its type, six item slots (type, charges, and a
+/// third word, 0 here), and hero data: experience, its level less one, its skill points,
+/// a word (its low half 10 for one Paladin, 0 for another, its high half 1 for both;
+/// 0x10000 here), strength and its gain per level, agility, two reals (0, and 0.26 and
+/// 0.32 for a Paladin of 13 and 16 agility; 0 here), its gain, intelligence and its gain,
+/// five hero abilities and their levels, three reals (0, 0, and 1800 for the Paladins),
+/// two words, a real, and a ten-bit mask (all 0 here).  Measured: a peon's and Paladins'
+/// at level 1 and at level 3 with 537 experience, an item, and a skill learned twice.
+fn unit_record(w: &World, u: &crate::types::StoredUnit) -> Vec<u8> {
+    if !u.record.is_empty() {
+        return u.record.clone();
+    }
+    let mut r = w3_net::wire::Writer::default();
+    r.u32(u32::from_be_bytes(u.type_id)).u32(6);
+    for k in 0..6 {
+        let (t, charges) = u.items.get(k).copied().flatten().unwrap_or(([0; 4], 0));
+        r.u32(u32::from_be_bytes(t)).u32(charges as u32).u32(0);
+    }
+    let data = w.objects.units.get(u.type_id);
+    let gain = |k: &str| data.map_or(0.0f32, |o| o.real(k)).to_bits();
+    let hero = data.map(|o| o.list("heroAbilList")).unwrap_or_default();
+    r.u32(u.xp as u32).u32((u.level - 1).max(0) as u32).u32(u.skill_points as u32).u32(0x1_0000);
+    r.u32(u.str_ as u32).u32(gain("STRplus")).u32(u.agi as u32).u32(0).u32(0).u32(gain("AGIplus")).u32(u.int as u32).u32(gain("INTplus"));
+    let abilities: Vec<_> = u.abilities.iter().filter(|(id, _)| hero.iter().any(|s| crate::objects::id_from_str(s.trim()) == *id)).take(5).collect();
+    r.u32(5);
+    for k in 0..5 {
+        let (id, level) = abilities.get(k).map_or(([0; 4], 0), |&&(id, l)| (id, l));
+        r.u32(u32::from_be_bytes(id)).u32(level as u32);
+    }
+    r.u32(0).u32(0).u32(0).u32(2).u32(0).u32(0).u32(0).u16(0);
+    r.0
+}
+
+/// A stored unit from the original's record, its fields this game reads taken and the
+/// record kept.
+fn stored_unit(b: &[u8]) -> Option<crate::types::StoredUnit> {
+    let mut r = w3_net::wire::Reader::new(b);
+    let word = |r: &mut w3_net::wire::Reader| r.u32().ok();
+    let type_id = word(&mut r)?.to_be_bytes();
+    let n = word(&mut r)? as usize;
+    let mut items = Vec::new();
+    for _ in 0..n {
+        let (t, charges, _) = (word(&mut r)?, word(&mut r)?, word(&mut r)?);
+        items.push((t != 0).then(|| (t.to_be_bytes(), charges as i32)));
+    }
+    let h: Vec<u32> = (0..12).map(|_| word(&mut r)).collect::<Option<_>>()?;
+    let n = word(&mut r)? as usize;
+    let mut abilities = Vec::new();
+    for _ in 0..n {
+        let (id, level) = (word(&mut r)?, word(&mut r)?);
+        if id != 0 {
+            abilities.push((id.to_be_bytes(), level as i32));
+        }
+    }
+    Some(crate::types::StoredUnit {
+        type_id,
+        level: h[1] as i32 + 1,
+        xp: h[0] as i32,
+        skill_points: h[2] as i32,
+        str_: h[4] as f32,
+        agi: h[6] as f32,
+        int: h[10] as f32,
+        proper_name: String::new(),
+        abilities,
+        items,
+        record: b.to_vec(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The original's record of a Paladin made at level 3, given 37 experience, Holy
+    /// Light learned twice, a potion in its third slot and claws in its fifth, as
+    /// SyncStoredUnit sent it.
+    #[test]
+    fn the_paladins_record_reads() {
+        let s = "6c617048060000000000000000000000000000000000000000000000000000006568677001000000402700000000000000000000000000006674617200000000003500000000000000000000000000001902000002000000010000000a00010016000000cdcc2c400d000000000000000bd7a33e0100c03f110000006766e63f050000006268484102000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000e144020000000000000000000000000000000000";
+        let b: Vec<u8> = (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect();
+        let u = stored_unit(&b).unwrap();
+        assert_eq!((&u.type_id, u.level, u.xp, u.skill_points), (b"Hpal", 3, 537, 1));
+        assert_eq!((u.str_, u.agi, u.int), (22.0, 13.0, 17.0));
+        assert_eq!(u.abilities, vec![(*b"AHhb", 2)]);
+        assert_eq!(u.items[2], Some((*b"pghe", 1)));
+        assert_eq!(u.items[4], Some((*b"ratf", 0)));
+        assert_eq!(u.items.iter().filter(|i| i.is_some()).count(), 2);
+        assert_eq!(u.record, b);
     }
 }

@@ -38,16 +38,22 @@ fn register_event_tagged(w: &mut World, trig: u32, kind: EventKind, tagged: bool
         _ => &[],
     };
     let mut timer = None;
+    let mut id = None;
     if tagged {
         for c in codes {
-            let s = w.tags.take(c);
+            let t = w.tags.take_id(c);
+            id.get_or_insert(t);
             if *c == b"`rtl" {
-                timer = Some(s);
+                timer = Some(t.0);
             }
         }
     }
     let game_state = matches!(kind, EventKind::GameState { .. });
     let e = w.handles.insert(Obj::Event(EventReg { trigger: trig, kind }));
+    if let Some(id) = id {
+        log::debug!("event {e} {:?} id {id:x?}", codes.first().map(|c| String::from_utf8_lossy(&c[..])));
+        w.tags.handle_ids.insert(e, id);
+    }
     if let (true, Some(s)) = (game_state, timer) {
         w.tags.event_timers.insert(e, s);
     }

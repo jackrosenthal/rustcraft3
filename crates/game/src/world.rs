@@ -1162,6 +1162,32 @@ impl World {
     /// Fires every enabled trigger registered for events matching `pred`, evaluating
     /// conditions first.
     /// Runs one trigger for an event: its conditions, then its actions if they pass.
+    /// The chat event registrations a player's line matches, in their order.
+    pub fn chat_hearers(&self, player: u8, text: &str) -> Vec<u32> {
+        self.events
+            .iter()
+            .copied()
+            .filter(|&e| match self.handles.get(e) {
+                Some(Obj::Event(r)) => matches!(&r.kind, EventKind::PlayerChat { player: p, text: t, exact } if *p == player && if *exact { t == text } else { text.contains(t.as_str()) }),
+                _ => false,
+            })
+            .collect()
+    }
+
+    /// A trackable's hit (or track) event registrations, in their order.
+    pub fn trackable_hearers(&self, trackable: u32, hit: bool) -> Vec<u32> {
+        self.events
+            .iter()
+            .copied()
+            .filter(|&e| matches!(self.handles.get(e), Some(Obj::Event(r)) if matches!(r.kind, EventKind::Trackable { trackable: t, hit: h } if t == trackable && h == hit)))
+            .collect()
+    }
+
+    /// Whether a player has a registration for a player event.
+    pub fn hears_player_event(&self, player: u8, event: i32) -> bool {
+        self.events.iter().any(|&e| matches!(self.handles.get(e), Some(Obj::Event(r)) if matches!(r.kind, EventKind::Player { player: p, event: v } if p == player && v == event)))
+    }
+
     pub fn fire_trigger(&mut self, vm: &mut Vm, trig: u32, ctx: EventCtx) {
         if !self.trigger(trig).is_some_and(|t| t.enabled) {
             return;

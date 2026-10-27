@@ -3,6 +3,7 @@
 use crate::Error;
 
 /// Reads a packet body's fields in order.
+#[derive(Clone)]
 pub struct Reader<'a> {
     b: &'a [u8],
     at: usize,

@@ -259,33 +259,43 @@ impl Session {
         self.role.players.iter().find(|p| p.0 == pid).map(|p| p.1)
     }
 
-    fn name_of(&self, pid: u8) -> String {
-        let players = match &self.role.link {
-            Link::Host(h) => h.players(),
-            Link::Client(c) => c.players.clone(),
-        };
-        players.into_iter().find(|p| p.0 == pid).map(|p| p.1).unwrap_or_default()
-    }
-
     /// The local player's commands: the host keeps its own for the next turn; a player
     /// sends them to the host.
     /// They go as the original's actions (`actions::Codec`), as the world stands.
-    pub fn send_commands(&mut self, w: &w3_game::world::World, local: u8, commands: Vec<Command>) {
+    /// A chat line goes as the game's chat to everyone (W3GS chat, scope 0 for all as
+    /// the original sends it), its trigger events as actions; the lines are returned for
+    /// this computer to show.
+    pub fn send_commands(&mut self, w: &w3_game::world::World, local: u8, commands: Vec<Command>) -> Vec<(u8, String, u8)> {
+        let mut said = Vec::new();
+        for c in &commands {
+            if let Command::Chat { text, to, .. } = c {
+                let chat = w3_net::Chat::Game { scope: *to as u32, text: text.clone() };
+                match &mut self.role.link {
+                    Link::Host(h) => {
+                        let all: Vec<u8> = h.players().iter().map(|p| p.0).collect();
+                        h.chat(&all, chat);
+                    }
+                    Link::Client(c) => c.chat(chat),
+                }
+                said.push((local, text.clone(), *to));
+            }
+        }
         let data: Vec<u8> = commands.iter().flat_map(|c| self.codec.encode(w, local, c)).collect();
         if data.is_empty() {
-            return;
+            return said;
         }
         match &mut self.role.link {
             Link::Host(_) => self.pending.push((HOST_PID, data)),
             Link::Client(c) => c.send_actions(data),
         }
+        said
     }
 
 
 
     /// Takes in what has come; the host makes turns as game time passes.  Returns the
-    /// chat lines that came (name and text).
-    pub fn pump(&mut self, dt: f32) -> Vec<(String, String)> {
+    /// chat lines that came (player, text, and scope).
+    pub fn pump(&mut self, dt: f32) -> Vec<(u8, String, u8)> {
         let mut chat = Vec::new();
         match &mut self.role.link {
             Link::Host(h) => {
@@ -305,7 +315,11 @@ impl Session {
                                 self.left.push(p);
                             }
                         }
-                        host::Event::Chat { from, chat: w3_net::Chat::Game { text, .. } } => chat.push((self.name_of(from), text)),
+                        host::Event::Chat { from, chat: w3_net::Chat::Game { text, scope } } => {
+                            if let Some(p) = self.player_of(from) {
+                                chat.push((p, text, scope as u8));
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -328,9 +342,10 @@ impl Session {
                                 self.lag.retain(|&q| q != p);
                             }
                         }
-                        client::Event::Chat { from, chat: w3_net::Chat::Game { text, .. } } => {
-                            let name = c.players.iter().find(|p| p.0 == from).map(|p| p.1.clone()).unwrap_or_default();
-                            chat.push((name, text));
+                        client::Event::Chat { from, chat: w3_net::Chat::Game { text, scope } } => {
+                            if let Some(p) = self.role.players.iter().find(|p| p.0 == from).map(|p| p.1) {
+                                chat.push((p, text, scope as u8));
+                            }
                         }
                         client::Event::Desync(_) => log::warn!("net: the host finds this game out of step"),
                         client::Event::Closed => self.lost = true,

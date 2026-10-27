@@ -297,6 +297,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 proper_name: u.proper_name.clone(),
                 abilities: u.abilities.clone(),
                 items: u.inventory.iter().map(|&i| w.item(i).map(|it| (it.type_id, it.charges))).collect(),
+                record: Vec::new(),
             });
             match (stored, gamecache(w, a.h(0))) {
                 (Some(s), Some(c)) => { c.units.insert(key, s); boolean(true) }

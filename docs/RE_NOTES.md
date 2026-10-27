@@ -613,11 +613,28 @@ Formats the port made its own, to be replaced by the original's:
   6 and six item slots of three words (type, charges, a third from `FUN_6f6581f0`), the
   hero's experience and level, its attributes with their gains per level (a Paladin's
   22 and 2.7, 13 and 1.5, 17 and 1.8), its abilities (5 entries), a position (1800.0
-  for the y it was made at), and a ten-bit mask of `FUN_6f2907e0`'s answers; its exact
-  layout is still to be read from the writer.
+  for the y it was made at), and a ten-bit mask of `FUN_6f2907e0`'s answers.  Its
+  layout, read from the writer SyncStoredUnit's action uses (`FUN_6f331530`,
+  `FUN_6f21b560`, `FUN_6f224e20`, `FUN_6f21b4d0`) and the same in the file: the type; a
+  count of item slots (6, or 0 for a unit with no inventory) and each slot's type,
+  charges, and third word; experience, the level less one, skill points, a word (its
+  high half 1 in each seen, its low half 0 or 10), strength and its gain, agility, two
+  reals (0, and 0.26 or 0.32 as agility was 13 or 16), its gain, intelligence and its
+  gain; a count of abilities (5) and each one's id and level; three reals; a count of
+  words (2) and the words; a real; and the mask as 16 bits.  A peon's is 90 bytes.
 - Network games' commands: the original's actions for selection changes and orders to
-  the selection (`crates/game/src/actions.rs`), the rest still the port's own commands
-  in a private action (0x7F) until each is measured; the objects' ids come from the
+  the selection (`crates/game/src/actions.rs`), alliances and trades (0x50, 0x51: the
+  Allies dialog's flags with 0x400 the sender's own Allied Victory), and the script's
+  inputs, measured on a test map with a trigger on each: a chat line (0x60, one for
+  each chat event registration it matches, naming the registration by its id; the line
+  itself goes as W3GS chat, scope 0 for all), Escape (0x61, always), a trackable's hit
+  or track (0x64, 0x65, one for each registration), a dialog's button (0x6A with the
+  dialog and the button, then 0x69 with the button and the dialog), an arrow key (0x75
+  and its number, only when its event is registered), and game cache syncs (0x6B to
+  0x6E with the file, mission, and key, then an integer, a real, a boolean as a word,
+  or a unit's record; 0x70 with none for an integer not stored, which removes it from
+  the mission's first table; SyncStoredString a bare 0x6F).  The rest are still the
+  port's own commands in a private action (0x7F) until each is measured; the objects' ids come from the
   port's tags, which match the original's at a game's start but not yet once objects
   are freed (see the event queue above).
 

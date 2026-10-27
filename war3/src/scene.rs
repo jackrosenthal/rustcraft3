@@ -4151,8 +4151,12 @@ impl Scene {
         if let (Some(g), Some(s)) = (self.game.as_mut(), self.net.as_mut()) {
             let local = g.world.local_player;
             let out = g.outbox.as_mut().map(std::mem::take).unwrap_or_default();
-            s.send_commands(&g.world, local, out);
-            s.pump(gdt);
+            // Chat lines, sent and come, show as the game's (`Request::Chat`).
+            let mut said = s.send_commands(&g.world, local, out);
+            said.extend(s.pump(gdt));
+            for (player, text, to) in said {
+                g.world.requests.push(w3_game::world::Request::Chat { player, text, to });
+            }
             let mut errors = Vec::new();
             let frames = s.due(gdt);
             let first = s.played - frames.len() as u32;

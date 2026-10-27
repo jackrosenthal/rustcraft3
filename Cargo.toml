@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/mpq", "crates/formats", "crates/jass", "crates/render", "crates/game", "crates/ui", "crates/audio", "war3"]
+members = ["crates/mpq", "crates/formats", "crates/jass", "crates/render", "crates/game", "crates/ui", "crates/audio", "crates/net", "war3"]
 
 [workspace.package]
 version = "0.1.0"
@@ -15,6 +15,7 @@ w3-render = { path = "crates/render" }
 w3-game = { path = "crates/game" }
 w3-ui = { path = "crates/ui" }
 w3-audio = { path = "crates/audio" }
+w3-net = { path = "crates/net" }
 anyhow = "1"
 thiserror = "2"
 log = "0.4"

@@ -1,0 +1,16 @@
+[package]
+name = "w3-net"
+description = "Warcraft III's local area network protocol (W3GS) as version 1.27 speaks it"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+log.workspace = true
+crc32fast = "1"
+sha1_smol = "1"
+
+[dev-dependencies]
+w3-mpq.workspace = true
+env_logger.workspace = true

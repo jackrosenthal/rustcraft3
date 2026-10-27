@@ -325,8 +325,17 @@ these are the findings behind them.
   engine's float arithmetic here is its own (`FUN_6f06f9c0` multiplies, `FUN_6f06fa90`
   subtracts, `FUN_6f06fbb0` adds).  Booty Bay's fourteen first walks start in the same
   turns as the original's; the first (a sheep near the map's south edge) ends 0.4
-  seconds in for the original but not for this game, whose pathing does not yet give
-  up on that point as the original's does.
+  seconds in for the original but not for this game.  Measured (that sheep ordered to
+  its point by script): with its flock about it, the original's moves 18 and stops by
+  0.4 seconds, the standing sheep blocking its path; with the flock removed it walks
+  straight southwest and stops at 1108.4, -5059.2 by 3.5 seconds, the closest it can
+  reach.  This game's goes west then south through the flock and stops at 1108.8,
+  -5091.3: its pathfinding (units as obstacles, the route, and the closest reachable
+  point) is not yet the original's, and every lifetime after this follows from it.
+- New units on walkable ground need room by their size class (collision in cells below
+  0.5, 1, 1.5, or more; `FUN_6f170080` with `FUN_6f149370`): sheep (16) made in the cell
+  row next to unwalkable ground move up a row; Booty Bay's fifth pig stands at -5456,
+  -4432.
 - The script's globals run before the map's destructables: Blizzard.j's first timer,
   then the engine's `+gam` `` `flg `` `` `flg `` `` `rel `` `` `rel `` `` `flg ``
   `` `rtl `` `+qum`, then the other globals.

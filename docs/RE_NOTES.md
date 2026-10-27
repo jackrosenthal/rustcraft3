@@ -601,7 +601,12 @@ Formats the port made its own, to be replaced by the original's:
   written byte for byte as the reference install's).  Profiles are `Save\ProfileN`
   folders named by their PlayerName, the chosen one in the registry's
   Misc\campaignprofile (a list kept before in `profiles.json` still serves).  Still the
-  port's own: the custom campaign buttons (`profile_vN.json`).
+  port's own: the custom campaign buttons (`profile_vN.json`).  The original's
+  SetCustomCampaignButtonVisible (`FUN_6f2125b0`) acts only within a custom campaign
+  (`FUN_6f219630`), setting key `Button%02d` (`FUN_6f24d3b0`) to the value in section
+  `Version%06d` (`FUN_6f247390`) of a table it writes to a file of the campaign's
+  (`FUN_6f247160`, `FUN_6f2325c0`); a plain map's call changed nothing on disk or in the
+  registry (measured).  Which file is still to be measured with a custom campaign.
 - Saved game caches: SaveGameCache writes every saved cache into the profile's one
   `Campaigns.w3v`, in the replay container (header, zlib blocks; sub-header product
   PX3W, version 27, build 6059).  Its record (`docs/reference/cache_sample.w3v`, from a

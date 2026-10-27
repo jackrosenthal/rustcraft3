@@ -1,9 +1,12 @@
 //! The original engine's tags: every object it makes (a game object, an ability, a
-//! script handle, and the engine's own regions, positions, and properties) takes the
-//! next tag from its object manager (Tempest's, `DAT_6fd6860c`).  A tag names an object
-//! in the network's actions (as two words), and the tags given so far go into the
-//! game's checksum, so this game counts the same tags at the same moments
-//! (`docs/reference/bootybay_tags.txt` is the original's sequence for a map's start).
+//! script handle, and the engine's own regions, positions, and properties) takes a slot
+//! in its object manager's table (Tempest's, `DAT_6fd6860c`; `FUN_6f1c53f0`): the last
+//! slot given back (`FUN_6f1cbff0` keeps them as a list, the last freed first), else a
+//! new one at the table's end (`FUN_6f1cbf40`), and a birth count that only grows
+//! (+0x50).  The two name an object in the network's actions, and the next slot and the
+//! birth count go into the game's checksum, so this game takes the same tags at the
+//! same moments (`docs/reference/bootybay_tags.txt` is the original's sequence for a
+//! map's start).
 
 use serde::{Deserialize, Serialize};
 
@@ -16,8 +19,14 @@ pub static RECORD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Tags {
-    /// Tags given so far (the next presence tag, while none has been given back).
-    pub next: u32,
+    /// The table's slots (given and given back).
+    pub slots: u32,
+    /// Slots given back, the last one first to be given again.
+    #[serde(default)]
+    pub free: Vec<u32>,
+    /// The birth count: tags given so far.
+    #[serde(default)]
+    pub born: u32,
     /// The objects' codes in the order tagged, while recording (for comparing with the
     /// original's).
     #[serde(skip)]
@@ -41,18 +50,31 @@ pub struct Tags {
 
 impl Tags {
     pub fn new() -> Tags {
-        Tags { next: 0, log: RECORD.load(std::sync::atomic::Ordering::Relaxed).then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new() }
+        Tags { slots: 0, free: Vec::new(), born: 0, log: RECORD.load(std::sync::atomic::Ordering::Relaxed).then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new() }
     }
 
-    /// The next tag, for an object of type `code`.
+    /// The next tag, for an object of type `code`: its slot.
     pub fn take(&mut self, code: &Code) -> u32 {
-        let t = self.next;
-        self.next += 1;
+        let t = self.free.pop().unwrap_or_else(|| {
+            self.slots += 1;
+            self.slots - 1
+        });
+        self.born += 1;
         if let Some(l) = self.log.as_mut() {
             l.push(*code);
         }
         self.flush();
         t
+    }
+
+    /// Gives a slot back.
+    pub fn release(&mut self, slot: u32) {
+        self.free.push(slot);
+    }
+
+    /// The slot the next object would take (the checksum's presence term).
+    pub fn presence(&self) -> u32 {
+        self.free.last().copied().unwrap_or(self.slots)
     }
 
     /// Objects the engine makes right after the next object tagged.

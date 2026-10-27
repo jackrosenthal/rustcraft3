@@ -352,6 +352,34 @@ these are the findings behind them.
   abilities' AI; AInv's `FUN_6f606a20`).  Next, StartMeleeAI makes `AItr`, two
   captains (`AI-C` `` `pcu `` `^pmr` `^pmr` `l^pa` and four `` `pil `` each), and the
   AI script's first orders, among them a move.
+- Pathing (NIpse, the engine's pathing and motion; read from game.dll).  A move asks
+  through `FUN_6f05b970`: the goal clamped to the map and divided by 32 (adding
+  0xfd800000 to a float's bits), set on the unit's position behavior (`FUN_6f16db30`,
+  `FUN_6f171340`, ...), and searched later, in the engine's step.  The long-range
+  search (CLrPathingSys) is A* over pathing cells, its nodes (CLrCellNode, 0x24 bytes
+  at +0x30: x, y, a stamp, state -1 new / -2 open / else on the expanded list, g, h,
+  parent) made per search as reached (`FUN_6f147af0`, at most 0x8000).  Its open
+  list is a binary heap from 1 on unsigned keys g + h (push `FUN_6f1483f0`, pop
+  `FUN_6f148240`: the right child taken when its key is no greater, the sift stopping
+  at a key no greater than the moved one), entries checked by stamp as popped
+  (`FUN_6f14a4c0`, which stops at the goal node +0x94, after +0x68 pops, or when the
+  goal's region is touched, +0xcc).  Costs are 15 a side and 21 a diagonal; the
+  heuristic, over cell offsets times 15 from the goal (+0x88, +0x8c), is max(a, b),
+  or when min > max/4, with m = min * 1.5: max + max/64 + m/4 + m/128 - max/16 (all
+  integer).  Relaxing (`FUN_6f14a560`) a node first reached keeps the one nearest
+  the goal by squared cell distance (+0x98, +0x9c), where a search that cannot reach
+  it ends.  Expansion (`FUN_6f14b760`) tries eight neighbors in the order SW, S, SE,
+  W, E, NW, N, NE; which are open comes from a ring of cells about the node, sized by
+  the unit's class (+0xa0: 3x3, 4x4, ...; `FUN_6f148d00` reading the ring's bottom
+  row left to right, right column up, top row right to left, left column down, a bit
+  for each cell refused), a diagonal needing its two sides open too.  A cell
+  (`FUN_6f1489a0`) is refused for its static flags (the high byte of the map's word,
+  against the search's mask +0xa4), or for a region on it (CPmRegion, `^pmr`; the low
+  24 bits link the cell's tokens, records of 8 bytes, type 0x1000000) that is active
+  (+0x37 bit 0), of a pathing type the search minds (+0x34 against +0xa4), and not
+  excused by its flags (+0x40: none of 0x8fffffff, and none of 0x60000000 unless the
+  search counts those, +0xd4).  Units' and structures' regions so block the search:
+  the standing flock that stops Booty Bay's first wandering sheep.
 - New units on walkable ground need room by their size class (collision in cells below
   0.5, 1, 1.5, or more; `FUN_6f170080` with `FUN_6f149370`): sheep (16) made in the cell
   row next to unwalkable ground move up a row; Booty Bay's fifth pig stands at -5456,

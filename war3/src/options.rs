@@ -43,6 +43,9 @@ pub struct Options {
     pub occlusion: bool,
     /// The name typed on the Local Area Network screen (setting 0x41, empty at first).
     pub lanname: String,
+    /// The chosen profile's name (Misc\campaignprofile).
+    #[serde(default)]
+    pub campaignprofile: String,
 }
 
 impl Default for Options {
@@ -75,6 +78,7 @@ impl Default for Options {
             unitshadows: true,
             occlusion: true,
             lanname: String::new(),
+            campaignprofile: String::new(),
         }
     }
 }
@@ -83,7 +87,7 @@ impl Default for Options {
 const KEY: &str = "Software\\Blizzard Entertainment\\Warcraft III";
 
 /// Each setting's key (below `KEY`) and value name, as the original's registry has them.
-const PLACES: [(&str, &str); 25] = [
+const PLACES: [(&str, &str); 26] = [
     ("Gameplay", "mousescroll"),
     ("Gameplay", "mousescrolldisable"),
     ("Gameplay", "keyscroll"),
@@ -95,6 +99,7 @@ const PLACES: [(&str, &str); 25] = [
     ("Gameplay", "netgameport"),
     ("Gameplay", "autosaveReplay"),
     ("Misc", "chatsupport"),
+    ("Misc", "campaignprofile"),
     ("Sound", "sfx"),
     ("Sound", "sfxvolume"),
     ("Sound", "music"),
@@ -163,6 +168,10 @@ impl Options {
                 let n = match v.get(*name) {
                     Some(serde_json::Value::Bool(b)) => *b as u64,
                     Some(serde_json::Value::Number(n)) => n.as_u64().unwrap_or(0),
+                    Some(serde_json::Value::String(s)) => {
+                        out += &format!("\"{name}\"=\"{}\"\r\n", s.replace('\\', "\\\\").replace('"', "\\\""));
+                        continue;
+                    }
                     _ => continue,
                 };
                 out += &format!("\"{name}\"=dword:{n:08x}\r\n");
@@ -189,6 +198,11 @@ impl Options {
                 continue;
             }
             if !PLACES.iter().any(|p| p.0 == section && p.1 == name) {
+                continue;
+            }
+            if let Some(serde_json::Value::String(_)) = v.get(name) {
+                let s = value.strip_prefix('"').and_then(|v| v.strip_suffix('"')).unwrap_or(value).replace("\\\"", "\"").replace("\\\\", "\\");
+                v.insert(name.into(), serde_json::Value::String(s));
                 continue;
             }
             let Some(n) = value.strip_prefix("dword:").and_then(|h| u32::from_str_radix(h, 16).ok()) else { continue };

@@ -126,6 +126,9 @@ impl W3p {
         if self.get(NOTE, magic).and_then(|m| m.parse::<i32>().ok()) != Some(h.finalize() as i32) {
             return false;
         }
+        if !self.sections.iter().any(|s| s.0 == section) {
+            return false;
+        }
         p.campaigns.clear();
         for ((i, _), v) in campaigns.iter().zip(vals) {
             *p.campaign(*i) = state(v);
@@ -135,6 +138,12 @@ impl W3p {
         p.tutorial_cleared = num("TutorialCleared").unwrap_or(0) != 0;
         p.difficulty = num("Difficulty").unwrap_or(1);
         true
+    }
+
+    /// Whether a data set's section holds progress (more than a profile's name).
+    pub fn has_progress(&self, version: u32) -> bool {
+        let (section, _) = names(version);
+        self.sections.iter().any(|s| s.0 == section && s.1.iter().any(|(k, _)| k != "PlayerName"))
     }
 
     pub fn player_name(&self) -> Option<&str> {

@@ -67,8 +67,10 @@ pub struct GameData {
     pub setup_seed: std::cell::Cell<u32>,
 }
 
-/// The player profiles (the original keeps their names in the registry's userlocal
-/// list): each one's campaign progress and saved games live in its own folder.
+/// The player profiles, as the original keeps them: a folder each, `Save\ProfileN`,
+/// named by its Campaigns.w3p's PlayerName, the chosen one's name in the registry's
+/// Misc\campaignprofile (FUN_6f22b790 makes the first free folder).  A list this port
+/// kept before (`profiles.json`) still serves.
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Profiles {
     pub entries: Vec<ProfileEntry>,
@@ -101,6 +103,9 @@ impl Profiles {
         if let Some(p) = Self::path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()) {
             return p;
         }
+        if let Some(p) = Self::scan() {
+            return p;
+        }
         let root = data_root();
         let legacy = root.as_ref().is_some_and(|r| ["profile_v0.json", "profile_v1.json", "Save"].iter().any(|f| r.join(f).exists()));
         if legacy {
@@ -109,7 +114,39 @@ impl Profiles {
         Profiles::default()
     }
 
+    /// The profiles in `Save\ProfileN`, in folder order, and the chosen one by the
+    /// registry's name; none when there are none.
+    fn scan() -> Option<Profiles> {
+        let save = data_root()?.join("Save");
+        let mut found: Vec<(u32, ProfileEntry)> = std::fs::read_dir(&save)
+            .ok()?
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let n: u32 = e.file_name().to_string_lossy().strip_prefix("Profile")?.parse().ok()?;
+                let w3p = std::fs::read_to_string(e.path().join("Campaigns.w3p")).ok()?;
+                let name = crate::w3p::W3p::parse(&w3p).player_name()?.to_string();
+                Some((n, ProfileEntry { name, dir: format!("Save\\Profile{n}") }))
+            })
+            .collect();
+        if found.is_empty() {
+            return None;
+        }
+        found.sort_by_key(|f| f.0);
+        let entries: Vec<ProfileEntry> = found.into_iter().map(|f| f.1).collect();
+        let chosen = crate::options::Options::load().campaignprofile;
+        let current = entries.iter().position(|e| e.name.eq_ignore_ascii_case(&chosen));
+        Some(Profiles { entries, current })
+    }
+
     pub fn store(&self) {
+        // The chosen one's name goes to the registry, as the original keeps it.
+        let mut o = crate::options::Options::load();
+        o.campaignprofile = self.current().map(|p| p.name.clone()).unwrap_or_default();
+        o.store();
+        // A list kept before the original's folders goes on being kept.
+        if !Self::path().is_some_and(|p| p.exists()) {
+            return;
+        }
         let Some(path) = Self::path() else { return };
         if let Some(d) = path.parent() {
             let _ = std::fs::create_dir_all(d);
@@ -129,10 +166,20 @@ impl Profiles {
         self.entries.iter().position(|e| e.name.eq_ignore_ascii_case(name))
     }
 
-    /// Adds a profile in a folder of its own and chooses it.
+    /// Adds a profile in the first free `Save\ProfileN` and chooses it; its
+    /// Campaigns.w3p names it until its progress is first saved.
     pub fn add(&mut self, name: &str) -> usize {
-        let n = (1..).find(|n| !self.entries.iter().any(|e| e.dir == format!("Profiles\\Profile{n}"))).unwrap();
-        self.entries.push(ProfileEntry { name: name.to_string(), dir: format!("Profiles\\Profile{n}") });
+        let root = data_root();
+        let free = |n: &u32| !self.entries.iter().any(|e| e.dir == format!("Save\\Profile{n}")) && !root.as_ref().is_some_and(|r| r.join("Save").join(format!("Profile{n}")).exists());
+        let n = (1..).find(free).unwrap();
+        let dir = format!("Save\\Profile{n}");
+        if let Some(d) = root.map(|r| r.join("Save").join(format!("Profile{n}"))) {
+            let _ = std::fs::create_dir_all(&d);
+            let mut w = crate::w3p::W3p::default();
+            w.sections.push(("Campaign1".into(), vec![("PlayerName".into(), name.to_string())]));
+            let _ = std::fs::write(d.join("Campaigns.w3p"), w.to_text());
+        }
+        self.entries.push(ProfileEntry { name: name.to_string(), dir });
         self.current = Some(self.entries.len() - 1);
         self.entries.len() - 1
     }
@@ -203,7 +250,9 @@ pub fn load_persist(version: Version, chain: &Chain) -> w3_game::persist::Persis
         .unwrap_or_else(|| w3_game::persist::Persist { difficulty: 1, ..Default::default() });
     if let Some(w) = profile_dir().and_then(|d| std::fs::read_to_string(d.join("Campaigns.w3p")).ok()) {
         let w = crate::w3p::W3p::parse(&w);
-        if !w.take(version as u32, &campaign_names(chain, version), &mut p) {
+        // A file with no progress yet (a profile just made) or a broken Magic leaves
+        // the port's own.
+        if w.has_progress(version as u32) && !w.take(version as u32, &campaign_names(chain, version), &mut p) {
             log::warn!("Campaigns.w3p: its Magic does not match; progress from the port's own file");
         }
     }

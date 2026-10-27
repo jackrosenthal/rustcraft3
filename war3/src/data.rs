@@ -62,6 +62,9 @@ pub struct GameData {
     pub campaign_game: std::cell::Cell<bool>,
     /// The game setup's advanced options for the next game (crate::advanced).
     pub setup_flags: std::cell::Cell<u32>,
+    /// The seed the next game starts its generators from (a network game's slot table's;
+    /// 0 for one played alone).
+    pub setup_seed: std::cell::Cell<u32>,
 }
 
 /// The player profiles (the original keeps their names in the registry's userlocal
@@ -235,7 +238,7 @@ impl GameData {
         let version = if classic || war3x.is_none() { Version::ReignOfChaos } else { Version::FrozenThrone };
         let misc = Profile::parse(&chain.read_string("UI\\MiscData.txt").unwrap_or_default());
         let persist = load_persist(version);
-        let data = GameData { dir: dir.to_path_buf(), version, chain, war3x, war3x_local, patch, misc, persist: std::rc::Rc::new(std::cell::RefCell::new(persist)), campaign_game: std::cell::Cell::new(false), setup_flags: std::cell::Cell::new(crate::advanced::DEFAULT_FLAGS) };
+        let data = GameData { dir: dir.to_path_buf(), version, chain, war3x, war3x_local, patch, misc, persist: std::rc::Rc::new(std::cell::RefCell::new(persist)), campaign_game: std::cell::Cell::new(false), setup_flags: std::cell::Cell::new(crate::advanced::DEFAULT_FLAGS), setup_seed: std::cell::Cell::new(0) };
         data.select_data_set(DataSet::Melee);
         Ok(data)
     }

@@ -245,6 +245,7 @@ fn shot(device: &wgpu::Device, queue: &wgpu::Queue, glue: &mut Glue, assets: &mu
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_arguments)]
 fn net_game(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, data: &GameData, assets: &mut Assets, map: &Path, lobby: &[w3_game::LobbySlot], role: Option<war3::net::Role>, speed: u8, w: u32, h: u32) -> anyhow::Result<()> {
+    data.setup_seed.set(role.as_ref().map_or(0, |r| r.seed));
     let scene = war3::scene::Scene::load(device, queue, format, data, assets, map, w as f32 / h as f32, Some(lobby), None, None)?;
     play_net(scene, role, speed)
 }

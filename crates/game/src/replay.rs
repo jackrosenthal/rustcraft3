@@ -148,10 +148,27 @@ pub struct Replay {
     /// The local player's name in a game begun without a setup screen (the profile's).
     pub local_name: Option<String>,
     pub frames: Vec<Frame>,
+    /// The seed the game's generators started from (a network game's slot table's).
+    pub seed: u32,
 }
 
 /// The file's first bytes, before its compressed body.
-pub const MAGIC: &[u8; 8] = b"W3RRPLY4";
+pub const MAGIC: &[u8; 8] = b"W3RRPLY5";
+/// Replays recorded before the seed was kept, which played from seed 0.
+const MAGIC_4: &[u8; 8] = b"W3RRPLY4";
+
+/// A replay as format 4 laid it out: all but the seed.
+#[derive(Deserialize)]
+struct Replay4 {
+    map: String,
+    lobby: Option<Vec<crate::LobbySlot>>,
+    persist: crate::persist::Persist,
+    campaign: bool,
+    version: i32,
+    flags: u32,
+    local_name: Option<String>,
+    frames: Vec<Frame>,
+}
 
 impl Replay {
     /// The replay as a file: the magic, then the replay compressed.
@@ -167,9 +184,17 @@ impl Replay {
 
     pub fn parse(b: &[u8]) -> anyhow::Result<Replay> {
         use std::io::Read;
-        let body = b.strip_prefix(MAGIC.as_slice()).ok_or_else(|| anyhow::anyhow!("not a replay this game recorded"))?;
+        let (body, old) = match (b.strip_prefix(MAGIC.as_slice()), b.strip_prefix(MAGIC_4.as_slice())) {
+            (Some(body), _) => (body, false),
+            (None, Some(body)) => (body, true),
+            _ => anyhow::bail!("not a replay this game recorded"),
+        };
         let mut json = Vec::new();
         flate2::read::ZlibDecoder::new(body).read_to_end(&mut json)?;
+        if old {
+            let r: Replay4 = postcard::from_bytes(&json)?;
+            return Ok(Replay { map: r.map, lobby: r.lobby, persist: r.persist, campaign: r.campaign, version: r.version, flags: r.flags, local_name: r.local_name, frames: r.frames, seed: 0 });
+        }
         Ok(postcard::from_bytes(&json)?)
     }
 

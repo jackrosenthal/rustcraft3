@@ -144,6 +144,18 @@ these are the findings behind them.
   under `winedbg --file` with `$BreakOnFirstChance = 0`, `$CanDeferOnBPByAddr = 1`, and
   breakpoints at the relocated addresses.  The reference install's RenderEdge plugin
   shows a version error once when war3.exe starts on its own; dismissing it goes on.
+- Generators: besides the main one (`[0x6fd53a48]`, GetRandomInt's), CRandData
+  (`FUN_6f65c7c0`) holds 45, each drawn on by index through `FUN_6f693660(index, n)`
+  (an integer below n), `FUN_6f6936a0(out, index)` (a real), or `FUN_6f695c70(out, index,
+  dice)`.  The game starts (`FUN_6f29e300`) by seeding the main one with the setup's seed
+  ('war3', 0x77617233, under MAP_LOCK_RANDOM_SEED 0x8000) and the 45 from it
+  (`FUN_6f693710`: a generator seeded with it gives each its seed in turn).
+  SetRandomSeed (`FUN_6f214140`) seeds the main one, draws once, and seeds the 45 from the
+  draw.  In Booty Bay with seed 0x35000000, by the first turn the main one had drawn 27
+  times and streams 2, 21, and 37 46, 10, and 34 times; 37 is drawn on by
+  `FUN_6f524e00` (a unit with Ahid, Ashm, Amim, Apiv, or Adet, a delay), 21 by
+  `FUN_6f41ae70`, and 2 by `FUN_6f4993b0`, `FUN_6f6d48b0`, `FUN_6f4ccb80`,
+  `FUN_6f508730`, `FUN_6f5d0410`, `FUN_6f5d9d60`, and (dice) `FUN_6f498960`.
 - Replays (.w3g) record each turn's actions as W3GS carries them, and after each turn
   (0x22) the same checksum, so a replay is a turn-by-turn reference.
 

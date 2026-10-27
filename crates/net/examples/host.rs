@@ -29,12 +29,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut loading = false;
     let mut next_turn = Instant::now();
     let mut actions: Vec<(u8, Vec<u8>)> = Vec::new();
+    let mut keepalives = std::collections::HashMap::new();
     loop {
         for e in host.poll() {
             if !matches!(e, Event::Keepalive { .. } | Event::Actions { .. }) {
                 println!("{e:?}");
             }
             match e {
+                Event::Keepalive { pid, checksum } => {
+                    let n = keepalives.entry(pid).or_insert(0u32);
+                    *n += 1;
+                    println!("keepalive {pid} turn {n}: {checksum:08x}");
+                }
                 Event::Actions { pid, data } => {
                     println!("actions from {pid}: {data:02x?}");
                     actions.push((pid, data));

@@ -205,8 +205,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetRandomReal => |w, _, a| {
             real(w.rng.real(a.r(0), a.r(1)))
         },
+        // The main generator is seeded and drawn once, the draw seeding the other 45
+        // (FUN_6f214140).
         SetRandomSeed => |w, _, a| {
             w.rng = crate::rng::Rng::new(a.i(0) as u32);
+            let v = w.rng.next_u32();
+            w.rand_data = crate::rng::RandData::new(v);
             none()
         },
         InitHashtable => |w, _, _| handle(w.handles.insert(Obj::Hashtable(Box::default()))),

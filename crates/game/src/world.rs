@@ -231,6 +231,10 @@ pub struct World {
     #[serde(skip)]
     pub misc: w3_formats::profile::Profile,
     pub rng: crate::rng::Rng,
+    /// The 45 generators beside `rng` (the original's CRandData), and the seed the game
+    /// starts both from (the setup's).
+    pub rand_data: crate::rng::RandData,
+    pub seed: u32,
     /// `TRIGSTR_n` strings from war3map.wts.
     #[serde(skip)]
     pub trigger_strings: HashMap<u32, String>,
@@ -694,6 +698,8 @@ impl World {
             global_variables_changed: HashMap::default(),
             misc,
             rng: crate::rng::Rng::new(0),
+            rand_data: crate::rng::RandData::default(),
+            seed: 0,
             trigger_strings: HashMap::default(),
             strings: HashMap::default(),
             local_player: 0,

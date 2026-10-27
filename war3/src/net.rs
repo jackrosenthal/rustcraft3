@@ -161,10 +161,12 @@ pub enum Link {
     Client(Box<Client>),
 }
 
-/// A network game's connection and its people: each one's protocol id and player.
+/// A network game's connection, its people (each one's protocol id and player), and the
+/// slot table's seed, which every computer's game starts its generators from.
 pub struct Role {
     pub link: Link,
     pub players: Vec<(u8, u8)>,
+    pub seed: u32,
 }
 
 impl std::fmt::Debug for Role {

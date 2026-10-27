@@ -277,6 +277,7 @@ impl Game {
     pub fn start_lobby(&mut self, slots: &[LobbySlot], flags: u32) -> anyhow::Result<()> {
         self.world.map_flags = flags as i32;
         self.world.lobby_teams = true;
+        self.seed_generators();
         if flags & 4 != 0 {
             self.world.fog_enabled = false;
             self.world.fog_mask_enabled = false;
@@ -330,7 +331,18 @@ impl Game {
     }
 
     /// Fills player slots as the lobby would, then runs the map's `main`.
+    /// The generators start from the game's seed (FUN_6f29e300): the main one seeded with
+    /// it, and the other 45 from it.
+    fn seed_generators(&mut self) {
+        let seed = rng::Rng::game_seed(self.world.seed, self.world.map_flags);
+        self.world.rng = rng::Rng::new(seed);
+        self.world.rand_data = rng::RandData::new(seed);
+    }
+
     pub fn start(&mut self, mut fill: impl FnMut(u8, i32) -> SlotFill) -> anyhow::Result<()> {
+        if !self.world.lobby_teams {
+            self.seed_generators();
+        }
         // Each player's start (FUN_6f1e7c20): passive toward Neutral Passive and it
         // toward them; food capped at [Misc] FoodCeiling (90 for Reign of Chaos, 100 for
         // The Frozen Throne, kept to 1 to 300: FUN_6f047250); the game's result neutral

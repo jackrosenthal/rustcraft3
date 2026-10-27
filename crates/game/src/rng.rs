@@ -13,7 +13,7 @@ const TABLE: [u32; 64] = [
     0x5603325A, 0x932BC5A3, 0x434B0F80, 0x3CE0A8F7, 0x2664D196, 0x4FCC45D7, 0xB5E9B0C8, 0xEA31D600,
 ];
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Rng {
     value: u32,
     /// Four byte offsets into the table.
@@ -36,6 +36,12 @@ impl Rng {
             | (seed % 0x35).wrapping_mul(0x40000)
             | (seed / 0x2f).wrapping_mul(0x11).wrapping_add(seed).wrapping_mul(0x400_0000);
         Rng { value: seed, taps }
+    }
+
+    /// The seed a game starts from (FUN_6f29e300): the setup's, or 'war3' when the map
+    /// locks its random seed (MAP_LOCK_RANDOM_SEED).
+    pub fn game_seed(seed: u32, map_flags: i32) -> u32 {
+        if map_flags & 0x8000 != 0 { 0x7761_7233 } else { seed }
     }
 
     pub fn next_u32(&mut self) -> u32 {
@@ -75,6 +81,47 @@ impl Rng {
         let span = if hi < lo { lo.wrapping_sub(hi) } else { hi.wrapping_sub(lo) };
         let r = self.next_u32() as u64;
         lo.wrapping_add(((r * (span as u32 as u64).wrapping_add(1)) >> 32) as i32)
+    }
+}
+
+/// The original's CRandData (game.dll FUN_6f65c7c0): 45 generators beside the main one,
+/// each drawn on by one of the game's purposes through FUN_6f693660 (an integer below a
+/// bound), FUN_6f6936a0 (a real), or FUN_6f695c70 (dice), by its index.  They are seeded
+/// together from one value (FUN_6f693710): a generator seeded with it gives each its
+/// seed in turn.  Measured under Wine: with the game's seed 0x35000000, 42 of the 45
+/// were as so seeded at the first turn of Booty Bay, and the other three as many draws
+/// on.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct RandData {
+    pub streams: Vec<Rng>,
+}
+
+impl Default for RandData {
+    /// As constructed, before the game seeds them: each seeded with 0.
+    fn default() -> RandData {
+        RandData { streams: vec![Rng::new(0); RandData::COUNT] }
+    }
+}
+
+impl RandData {
+    pub const COUNT: usize = 45;
+
+    pub fn new(seed: u32) -> RandData {
+        let mut master = Rng::new(seed);
+        RandData { streams: (0..RandData::COUNT).map(|_| Rng::new(master.next_u32())).collect() }
+    }
+
+    /// The generators' part of the game's checksum (the rand module's, FUN_6f672050):
+    /// `b * 0x7a2d ^ b` summed over every byte of every generator's value and taps.
+    pub fn checksum(&self) -> u32 {
+        let mut sum = 0u32;
+        for r in &self.streams {
+            for b in r.value.to_le_bytes().into_iter().chain(r.taps.to_le_bytes()) {
+                let b = b as u32;
+                sum = sum.wrapping_add(b.wrapping_mul(0x7a2d) ^ b);
+            }
+        }
+        sum
     }
 }
 
@@ -132,4 +179,25 @@ fn lookup2(k: &[u8], init: u32) -> u32 {
     if n > 0 { a = a.wrapping_add(byte(0)); }
     mix(&mut a, &mut b, &mut c);
     c
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The original's generators at the first turn of Booty Bay with the game's seed
+    /// 0x35000000 (read under Wine): the main one 27 draws on, and the others as seeded
+    /// (all but three, which had been drawn on).
+    #[test]
+    fn the_generators_seed_as_the_originals() {
+        let mut main = Rng::new(0x3500_0000);
+        for _ in 0..27 {
+            main.next_u32();
+        }
+        assert_eq!((main.value, main.taps), (0x0d5a_5d0a, 0x8064_a444));
+        let r = RandData::new(0x3500_0000);
+        assert_eq!((r.streams[0].value, r.streams[0].taps), (0x213e_e20d, 0x4c98_b0d0));
+        assert_eq!((r.streams[1].value, r.streams[1].taps), (0x5a78_9536, 0x6028_58f0));
+        assert_eq!((r.streams[44].value, r.streams[44].taps), (0xecd1_333d, 0x20a8_40c0));
+    }
 }

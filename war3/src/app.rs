@@ -572,6 +572,7 @@ impl ApplicationHandler for App {
                             // Draw the loading screen first; the map loads next frame.
                             self.data.campaign_game.set(false);
                             self.data.setup_flags.set(flags);
+                            self.data.setup_seed.set(0);
                             glue.show_loading(&mut r.assets);
                             r.pending = Some((path, Some(slots), None));
                         }
@@ -611,6 +612,7 @@ impl ApplicationHandler for App {
                             glue.show_loading(&mut r.assets);
                             r.pending = Some((path, Some(slots), None));
                             r.pending_net = role.borrow_mut().take().map(|r| (r, speed));
+                            self.data.setup_seed.set(r.pending_net.as_ref().map_or(0, |n| n.0.seed));
                         }
                         Some(crate::glue::GlueAction::PlayNetSave(path, bytes, role, speed, me)) => match w3_game::save::SaveGame::parse(&bytes) {
                             Ok(save) => {

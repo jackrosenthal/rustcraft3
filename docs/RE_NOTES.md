@@ -601,7 +601,7 @@ Formats the port made its own, to be replaced by the original's:
   written byte for byte as the reference install's).  Profiles are `Save\ProfileN`
   folders named by their PlayerName, the chosen one in the registry's
   Misc\campaignprofile (a list kept before in `profiles.json` still serves).  Still the
-  port's own: saved game caches and the custom campaign buttons (`profile_vN.json`).
+  port's own: the custom campaign buttons (`profile_vN.json`).
 - Saved game caches: SaveGameCache writes every saved cache into the profile's one
   `Campaigns.w3v`, in the replay container (header, zlib blocks; sub-header product
   PX3W, version 27, build 6059).  Its record (`docs/reference/cache_sample.w3v`, from a
@@ -622,6 +622,14 @@ Formats the port made its own, to be replaced by the original's:
   reals (0, and 0.26 or 0.32 as agility was 13 or 16), its gain, intelligence and its
   gain; a count of abilities (5) and each one's id and level; three reals; a count of
   words (2) and the words; a real; and the mask as 16 bits.  A peon's is 90 bytes.
+  The file (`FUN_6f246fe0`, `crates/formats/src/w3v.rs`) is written in blocks of 2048
+  bytes, product W3XP (WAR3 for Reign of Chaos), version 27, build 6059, its length
+  field never set; the record a word, then each cache's name, a word, and missions,
+  each mission's name, five words, and its lists.  The words are the tables' counters
+  (+0x28): 1 and 3 for the sample's one cache and three missions, 0 for each
+  mission's tables though they held entries.  The port writes it from its profile's
+  caches, missions and keys in name order, and the original reads it (checked: a
+  value changed by the port read back in the original, its Paladin restored).
 - Network games' commands: the original's actions for selection changes and orders to
   the selection (`crates/game/src/actions.rs`), alliances and trades (0x50, 0x51: the
   Allies dialog's flags with 0x400 the sender's own Allied Victory), and the script's

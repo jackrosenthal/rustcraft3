@@ -98,25 +98,12 @@ pub enum Action {
     ArrowKey(u8),
 }
 
-/// The length of a stored unit's record as SyncStoredUnit sends it (`FUN_6f331530`): its
-/// type; a count of items and each item's type, charges, and a third word
-/// (`FUN_6f21b560`); then its hero data (`FUN_6f224e20`): five words, a real, a word,
-/// three reals, a word, a real, a count of abilities and each one's two words
-/// (`FUN_6f21b4d0`), three reals, a count of words and the words, a real, and a 16-bit
-/// mask.  A peon's is 90 bytes (measured).
+/// The length of a stored unit's record as SyncStoredUnit sends it, the same as a
+/// saved cache holds (`w3_formats::w3v::unit_record_len`).  A peon's is 90 bytes
+/// (measured).
 pub fn unit_record_len(mut r: Reader) -> Result<usize, Error> {
-    let start = r.rest_len();
-    r.u32()?;
-    let items = r.u32()? as usize;
-    r.bytes(items * 12)?;
-    r.bytes(4 * 12)?;
-    let abilities = r.u32()? as usize;
-    r.bytes(abilities * 8)?;
-    r.bytes(4 * 3)?;
-    let words = r.u32()? as usize;
-    r.bytes(words * 4)?;
-    r.bytes(4 + 2)?;
-    Ok(start - r.rest_len())
+    let rest = r.rest();
+    w3_formats::w3v::unit_record_len(rest).ok_or(Error::Short)
 }
 
 fn object(r: &mut Reader) -> Result<ObjectId, Error> {

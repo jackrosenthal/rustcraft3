@@ -256,6 +256,13 @@ pub fn load_persist(version: Version, chain: &Chain) -> w3_game::persist::Persis
             log::warn!("Campaigns.w3p: its Magic does not match; progress from the port's own file");
         }
     }
+    // The saved game caches from the original's Campaigns.w3v when it is there.
+    if let Some(b) = profile_dir().and_then(|d| std::fs::read(d.join("Campaigns.w3v")).ok()) {
+        match w3_formats::w3v::Caches::parse(&b) {
+            Ok(c) => p.take_caches_w3v(&c),
+            Err(e) => log::warn!("Campaigns.w3v: {e}; caches from the port's own file"),
+        }
+    }
     p
 }
 
@@ -321,6 +328,14 @@ impl GameData {
             w.put(self.version as u32, &campaign_names(&self.chain, self.version), &name, &self.persist.borrow());
             if let Err(e) = std::fs::write(&w3p, w.to_text()) {
                 log::warn!("saving {}: {e}", w3p.display());
+            }
+            // The saved game caches as the original's Campaigns.w3v.
+            let persist = self.persist.borrow();
+            if !persist.caches.is_empty() {
+                let w3v = dir.join("Campaigns.w3v");
+                if let Err(e) = std::fs::write(&w3v, persist.caches_w3v().to_bytes(self.version != Version::ReignOfChaos)) {
+                    log::warn!("saving {}: {e}", w3v.display());
+                }
             }
         }
         match serde_json::to_string_pretty(&*self.persist.borrow()) {

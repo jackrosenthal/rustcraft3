@@ -1284,7 +1284,7 @@ pub struct StoredUnit {
     pub abilities: Vec<([u8; 4], i32)>,
     /// Items by slot: type and charges.
     pub items: Vec<Option<([u8; 4], i32)>>,
-    /// The original's record of it (`w3_net::action::unit_record_len`), when it came
+    /// The original's record of it (`w3_formats::w3v::unit_record_len`), when it came
     /// from one: sent on as it came, its fields this game does not read kept.
     #[serde(default)]
     pub record: Vec<u8>,

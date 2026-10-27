@@ -2,11 +2,13 @@
 
 pub mod blp;
 pub mod campaign;
+pub mod container;
 pub mod map;
 pub mod mdx;
 pub mod profile;
 pub mod slk;
 pub mod w3g;
+pub mod w3v;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

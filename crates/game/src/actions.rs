@@ -382,7 +382,7 @@ impl Codec {
     }
 }
 
-/// A stored unit as the original's record (`w3_net::action::unit_record_len`): the one it
+/// A stored unit as the original's record (`w3_formats::w3v::unit_record_len`): the one it
 /// came in when it came from one; else its type, six item slots (type, charges, and a
 /// third word, 0 here), and hero data: experience, its level less one, its skill points,
 /// a word (its low half 10 for one Paladin, 0 for another, its high half 1 for both;
@@ -391,7 +391,7 @@ impl Codec {
 /// five hero abilities and their levels, three reals (0, 0, and 1800 for the Paladins),
 /// two words, a real, and a ten-bit mask (all 0 here).  Measured: a peon's and Paladins'
 /// at level 1 and at level 3 with 537 experience, an item, and a skill learned twice.
-fn unit_record(w: &World, u: &crate::types::StoredUnit) -> Vec<u8> {
+pub fn unit_record(w: &World, u: &crate::types::StoredUnit) -> Vec<u8> {
     if !u.record.is_empty() {
         return u.record.clone();
     }
@@ -418,7 +418,7 @@ fn unit_record(w: &World, u: &crate::types::StoredUnit) -> Vec<u8> {
 
 /// A stored unit from the original's record, its fields this game reads taken and the
 /// record kept.
-fn stored_unit(b: &[u8]) -> Option<crate::types::StoredUnit> {
+pub fn stored_unit(b: &[u8]) -> Option<crate::types::StoredUnit> {
     let mut r = w3_net::wire::Reader::new(b);
     let word = |r: &mut w3_net::wire::Reader| r.u32().ok();
     let type_id = word(&mut r)?.to_be_bytes();

@@ -5,7 +5,7 @@
 
 use crate::{Error, Reader};
 
-pub const MAGIC: &[u8; 28] = b"Warcraft III recorded game\x1a\0";
+pub use crate::container::MAGIC;
 
 /// A player's record: the host's first, then one per other player.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -71,37 +71,8 @@ pub struct Replay {
 
 impl Replay {
     pub fn parse(file: &[u8]) -> Result<Replay, Error> {
-        let mut r = Reader::new(file);
-        if r.bytes(28)? != MAGIC {
-            return Err(Error::Format("not a recorded game"));
-        }
-        let header_size = r.u32()? as usize;
-        let _compressed = r.u32()?;
-        let _header_version = r.u32()?;
-        let size = r.u32()? as usize;
-        let blocks = r.u32()?;
-        let product = r.tag()?;
-        let version = r.u32()?;
-        let build = r.u16()?;
-        let flags = r.u16()?;
-        let length_ms = r.u32()?;
-        r.pos = header_size;
-        // Each block is its own zlib stream, flushed but not finished.
-        let mut data = Vec::with_capacity(size);
-        for _ in 0..blocks {
-            let packed = r.u16()? as usize;
-            let unpacked = r.u16()? as usize;
-            r.u32()?;
-            let mut out = Vec::with_capacity(unpacked);
-            let mut z = flate2::Decompress::new(true);
-            let _ = z.decompress_vec(r.bytes(packed)?, &mut out, flate2::FlushDecompress::Sync);
-            if out.len() < unpacked {
-                return Err(Error::Format("short replay block"));
-            }
-            data.extend_from_slice(&out[..unpacked]);
-        }
-        data.truncate(size);
-        Replay::read_data(&data, product, version, build, flags, length_ms)
+        let (h, data) = crate::container::unpack(file)?;
+        Replay::read_data(&data, h.product, h.version, h.build, h.flags, h.length_ms)
     }
 
     fn read_data(data: &[u8], product: [u8; 4], version: u32, build: u16, flags: u16, length_ms: u32) -> Result<Replay, Error> {
@@ -193,45 +164,11 @@ impl Replay {
         Ok(Replay { product, version, build, flags, length_ms, host, game_name, stat, player_count, game_type, language, players, slots, seed, select_mode, start_spots, records })
     }
 
-    /// The replay as the original writes it: the header (its CRC-32 over itself with the
-    /// field zeroed), then the record in blocks of 8192 bytes, the last padded with
-    /// zeros, each compressed alone and checked by the CRC-32s of its header and its
-    /// data, each folded to 16 bits (both verified against a replay the original wrote).
+    /// The replay as the original writes it (`crate::container`), in blocks of 8192
+    /// bytes.
     pub fn to_bytes(&self) -> Vec<u8> {
-        let data = self.data();
-        let mut blocks = Vec::new();
-        for chunk in data.chunks(8192) {
-            let mut plain = chunk.to_vec();
-            plain.resize(8192, 0);
-            let mut z = flate2::Compress::new(flate2::Compression::default(), true);
-            let mut packed = Vec::with_capacity(8192 + 64);
-            let _ = z.compress_vec(&plain, &mut packed, flate2::FlushCompress::Sync);
-            let fold = |c: u32| (c ^ (c >> 16)) & 0xffff;
-            let mut head = Vec::new();
-            head.extend((packed.len() as u16).to_le_bytes());
-            head.extend(8192u16.to_le_bytes());
-            let c1 = crc(&[&head[..], &[0u8; 4][..]].concat());
-            let c2 = crc(&packed);
-            head.extend((fold(c1) | fold(c2) << 16).to_le_bytes());
-            blocks.push((head, packed));
-        }
-        let body_len: usize = blocks.iter().map(|(h, p)| h.len() + p.len()).sum();
-        let mut out = MAGIC.to_vec();
-        for v in [0x44u32, (0x44 + body_len) as u32, 1, data.len() as u32, blocks.len() as u32] {
-            out.extend(v.to_le_bytes());
-        }
-        out.extend(self.product);
-        out.extend(self.version.to_le_bytes());
-        out.extend(self.build.to_le_bytes());
-        out.extend(self.flags.to_le_bytes());
-        out.extend(self.length_ms.to_le_bytes());
-        let c = crc(&[&out[..], &[0u8; 4][..]].concat());
-        out.extend(c.to_le_bytes());
-        for (h, p) in blocks {
-            out.extend(h);
-            out.extend(p);
-        }
-        out
+        let h = crate::container::Header { product: self.product, version: self.version, build: self.build, flags: self.flags, length_ms: self.length_ms };
+        crate::container::pack(&h, &self.data(), 8192)
     }
 
     /// The record, uncompressed, as `read_data` reads it.
@@ -329,12 +266,6 @@ impl Replay {
             _ => None,
         })
     }
-}
-
-fn crc(b: &[u8]) -> u32 {
-    let mut h = crc32fast::Hasher::new();
-    h.update(b);
-    h.finalize()
 }
 
 #[cfg(test)]

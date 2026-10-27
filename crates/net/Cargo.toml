@@ -10,8 +10,8 @@ thiserror.workspace = true
 log.workspace = true
 crc32fast = "1"
 sha1_smol = "1"
+w3-formats.workspace = true
 
 [dev-dependencies]
-w3-formats.workspace = true
 w3-mpq.workspace = true
 env_logger.workspace = true

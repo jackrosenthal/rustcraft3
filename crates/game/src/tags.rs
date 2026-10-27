@@ -198,7 +198,7 @@ impl Tags {
         const CODES: [&Code; 18] = [b"ordt", b"tskA", b"tskA", b"tskO", b"task", b"task", b"task", b"tsk.", b"task", b"task", b"task", b"task", b"task", b"task", b"tskA", b"^clg", b"^clu", b"l^pa"];
         let slots: Vec<u32> = CODES.iter().map(|c| self.take(c)).collect();
         for k in [15, 1, 14, 13, 12, 11, 10, 9, 8] {
-            self.doom(slots[k]);
+            self.release(slots[k]);
         }
         slots
     }
@@ -227,7 +227,7 @@ impl Tags {
         let b = self.take(b"task");
         let c = self.take(b"task");
         for s in [slots[7], c, b, a, slots[6], slots[5], slots[4], slots[3], slots[2], slots[0]] {
-            self.doom(s);
+            self.release(s);
         }
         for s in [slots[17], slots[16]] {
             if late {

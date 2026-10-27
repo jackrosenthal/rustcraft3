@@ -542,15 +542,18 @@ these are the findings behind them.
   turn's logic, only `tsk.`, three `task`, `tskO`, `tskA`, and `ordt` freed (no end
   objects made; the issue's nine went in turn 84 as usual), and its path (`l^pa`,
   `^clu`) as turn 86 starts.  Through turn 85 the port now agrees.
-- A cleaner reading of the traced turns, not yet carried through: turn N holds game
-  time [(N - 2) * 0.1, (N - 1) * 0.1), its steps the multiples of 30 ms in it (giving
-  every measured four-step turn), its events (a wanderer's wait, at its exact due time:
-  read in the original, a wait drawn at the clock 5.444844 as the last fell due) among
-  the steps by time: the first sheep (due 5.0359) given after step 5.01, the third walk
-  (6.4944) after 6.48, the pig (7.6012) at turn 78's start, as measured.  Tried here:
-  the first sheep's walk then ends a step early, unless a wander's walk starts a step
-  later, which makes the boxed-in pig's end a step late; what separates them is not
-  yet known (perhaps when path searches run within a step).
+- The turns and their events, as the port now runs them (agreeing through turn 100):
+  turn N holds game time [(N - 2) * 0.1, (N - 1) * 0.1), its movement steps the
+  multiples of 30 ms in it (three or four).  A wanderer's order is given at its wait's
+  exact end, among the steps by time (a step within 1e-4 of it first, as with timers):
+  the first sheep (due 5.0359) after the step at 5.01, the third walk (6.4944) after
+  6.48, a pig (8.4944) after the turn's last step, in that turn.  Its walk moves from
+  the first step after it, but one given before a turn's first step moves from the
+  second (a pig due 7.6012 walks from 7.65, not 7.62).  The next wait counts from the
+  order's time (read in the original: a wait drawn at the clock 5.444844 as the last
+  fell due).  An order's nine objects (`Tags::move_issued`) and a walk's tree at its end
+  are freed at once, before the next order in the same turn (traced: two orders in turn
+  99, a walk's end then an order in turn 101).
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

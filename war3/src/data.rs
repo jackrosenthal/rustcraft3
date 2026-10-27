@@ -193,12 +193,29 @@ pub fn multiplayer_save_dir() -> Option<PathBuf> {
     Some(data_root()?.join("Save").join("Multiplayer"))
 }
 
-/// The current profile's progress (a fresh one at Normal difficulty when it has none).
-pub fn load_persist(version: Version) -> w3_game::persist::Persist {
-    profile_path(version)
+/// The current profile's progress (a fresh one at Normal difficulty when it has none):
+/// the campaigns, menu race, tutorial, and difficulty from the original's
+/// Campaigns.w3p when it is there, the rest from this port's own file.
+pub fn load_persist(version: Version, chain: &Chain) -> w3_game::persist::Persist {
+    let mut p = profile_path(version)
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| w3_game::persist::Persist { difficulty: 1, ..Default::default() })
+        .unwrap_or_else(|| w3_game::persist::Persist { difficulty: 1, ..Default::default() });
+    if let Some(w) = profile_dir().and_then(|d| std::fs::read_to_string(d.join("Campaigns.w3p")).ok()) {
+        let w = crate::w3p::W3p::parse(&w);
+        if !w.take(version as u32, &campaign_names(chain, version), &mut p) {
+            log::warn!("Campaigns.w3p: its Magic does not match; progress from the port's own file");
+        }
+    }
+    p
+}
+
+/// The campaigns as CampaignList (the data set's campaign strings) names them: their
+/// places and names, the empty entries left out.
+pub fn campaign_names(chain: &Chain, version: Version) -> Vec<(usize, String)> {
+    let file = if version == Version::ReignOfChaos { "UI\\CampaignStrings.txt" } else { "UI\\CampaignStrings_exp.txt" };
+    let p = w3_formats::profile::Profile::parse(&chain.read_string(file).unwrap_or_default());
+    p.get_list("Index", "CampaignList").iter().map(|s| s.trim().trim_matches('"').to_string()).enumerate().filter(|(_, s)| !s.is_empty()).collect()
 }
 
 fn open_optional(dir: &Path, name: &str) -> anyhow::Result<Option<Arc<Archive>>> {
@@ -237,17 +254,25 @@ impl GameData {
         // FUN_6f046800: the expansion is used when installed unless -classic is given.
         let version = if classic || war3x.is_none() { Version::ReignOfChaos } else { Version::FrozenThrone };
         let misc = Profile::parse(&chain.read_string("UI\\MiscData.txt").unwrap_or_default());
-        let persist = load_persist(version);
+        let persist = load_persist(version, &chain);
         let data = GameData { dir: dir.to_path_buf(), version, chain, war3x, war3x_local, patch, misc, persist: std::rc::Rc::new(std::cell::RefCell::new(persist)), campaign_game: std::cell::Cell::new(false), setup_flags: std::cell::Cell::new(crate::advanced::DEFAULT_FLAGS), setup_seed: std::cell::Cell::new(0) };
         data.select_data_set(DataSet::Melee);
         Ok(data)
     }
 
-    /// Writes the profile to disk.
+    /// Writes the profile to disk: the original's Campaigns.w3p (this data set's
+    /// section; the other's kept), and the port's own file for the rest.
     pub fn save_profile(&self) {
         let Some(path) = profile_path(self.version) else { return };
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
+            let w3p = dir.join("Campaigns.w3p");
+            let mut w = crate::w3p::W3p::parse(&std::fs::read_to_string(&w3p).unwrap_or_default());
+            let name = Profiles::load("").current().map(|p| p.name.clone()).unwrap_or_default();
+            w.put(self.version as u32, &campaign_names(&self.chain, self.version), &name, &self.persist.borrow());
+            if let Err(e) = std::fs::write(&w3p, w.to_text()) {
+                log::warn!("saving {}: {e}", w3p.display());
+            }
         }
         match serde_json::to_string_pretty(&*self.persist.borrow()) {
             Ok(s) => {

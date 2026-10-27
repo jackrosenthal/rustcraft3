@@ -325,9 +325,16 @@ Formats the port made its own, to be replaced by the original's:
   Entertainment\Warcraft III, its Gameplay, Misc, Sound, Video, and String keys, as the
   reference install's Wine registry has them), kept in a registry file (REGEDIT4,
   `Warcraft III.reg` in the data folder) since the port has no Windows registry.
-- Profiles: JSON files (`profiles.json`, `profile_vN.json`), not the original's
-  `Save\ProfileN\Campaigns.w3p` (an INI whose campaign progress is obfuscated and
-  checked by Magic values) and `Campaigns.w3v` (a game cache in the replay container).
+- Profiles: campaign progress, the menu's race, the tutorial, and the difficulty are in
+  the original's `Campaigns.w3p` (`war3/src/w3p.rs`: `[Campaign]` for Reign of Chaos and
+  `[Campaign1]` for The Frozen Throne, a 64-bit mask per campaign named as CampaignList
+  has it, mission n at bit n, 63 available, 62 opening and 61 ending cinematic, 59 and
+  60 the menu's; `Magic` and `Magic1` the CRC-32 of each section's masks; read and
+  written byte for byte as the reference install's).  Still the port's own: the profile
+  list (`profiles.json`; the original scans `Save\ProfileN` and reads each PlayerName,
+  with the current one in the registry's Misc\campaignprofile), the profile folders'
+  names, saved game caches (the original's `.w3v`, a game cache in the replay
+  container), and the custom campaign buttons (`profile_vN.json`).
 - Network games' commands: the original's actions for selection changes and orders to
   the selection (`crates/game/src/actions.rs`), the rest still the port's own commands
   in a private action (0x7F) until each is measured; the objects' ids come from the

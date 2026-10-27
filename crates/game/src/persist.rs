@@ -10,6 +10,10 @@ use crate::types::{GameCache, StoredUnit};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct CampaignState {
+    /// The original's other flags for it (bits 59 and 60 of its progress value, which
+    /// its campaign menu keeps; bit 59 is set as a profile is made).
+    #[serde(default)]
+    pub other_bits: Option<u64>,
     pub available: bool,
     /// Open missions by index.
     pub missions: Vec<bool>,

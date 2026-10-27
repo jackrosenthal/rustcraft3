@@ -3,6 +3,7 @@
 pub mod advanced;
 pub mod alliance;
 pub mod app;
+pub mod w3p;
 pub mod boards;
 pub mod campaign;
 pub mod card;

@@ -873,7 +873,7 @@ impl Glue {
     fn profile_event(&mut self, e: crate::profiles::Event, assets: &mut Assets) {
         match e {
             crate::profiles::Event::Chosen => {
-                *self.persist.borrow_mut() = crate::data::load_persist(self.version);
+                *self.persist.borrow_mut() = crate::data::load_persist(self.version, &self.chain);
                 self.saves_dir = crate::data::save_dir(self.version).unwrap_or_default();
                 self.skirmish.player_name = self.profile.name().unwrap_or_else(|| assets.frames.string("LOCAL_PLAYER"));
             }

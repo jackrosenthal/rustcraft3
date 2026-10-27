@@ -21,6 +21,13 @@ fn main() -> anyhow::Result<()> {
     g.tick(0.1);
     w3_game::rng::TRACE.store(false, std::sync::atomic::Ordering::Relaxed);
     eprintln!("main after the first turn {:?}", g.world.rng);
+    for k in 0..w3_game::rng::RandData::COUNT {
+        let r = g.world.rand_data.streams[k];
+        let fresh = w3_game::rng::RandData::new(w3_game::rng::Rng::game_seed(seed, g.world.map_flags)).streams[k];
+        if r != fresh {
+            eprintln!("stream {k} after the first turn {r:?}");
+        }
+    }
     eprintln!("races {:?}", (0..12).map(|p| g.world.players[p].race).collect::<Vec<_>>());
     Ok(())
 }

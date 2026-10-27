@@ -418,6 +418,10 @@ pub struct UnitExtra {
     /// The creep sleep effect over a sleeping unit's head.
     #[serde(default)]
     pub sleep_effect: u32,
+    /// A creep fallen asleep shows it after a random wait of up to three seconds
+    /// (FUN_6f524e00, event 0xd01c1 for FUN_6f524b40); what remains of it.
+    #[serde(default)]
+    pub sleep_show_wait: Option<f32>,
     /// The waygate whose box the unit is in after coming through one.
     #[serde(default)]
     pub warp_inside: u32,
@@ -592,6 +596,7 @@ impl Default for UnitExtra {
             was_idle: false,
             detour: None,
             sleep_effect: 0,
+            sleep_show_wait: None,
             warp_inside: 0,
             born: 0.0,
             mine_fuse: None,

@@ -89,9 +89,21 @@ impl World {
     /// Creep sleep (CAbilityCreepSleep): at night an idle creep at its camp that may
     /// sleep falls asleep, CreepSleepTarget over its head, unless its owner has
     /// PLAYER_STATE_NO_CREEP_SLEEP; one that sleeps always (UnitAddSleepPerm) sleeps
-    /// whenever idle.  Day, damage, or a friend's call wakes it.
-    pub fn update_creep_sleep(&mut self) {
-        let night = !(6.0..18.0).contains(&self.time_of_day);
+    /// whenever idle.  Day, damage, or a friend's call wakes it.  One falling asleep
+    /// shows it (its effect) after a random wait (`fall_asleep`).
+    pub fn update_creep_sleep(&mut self, dt: f32) {
+        let showing: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.extra.sleeping && u.extra.sleep_show_wait.is_some())).collect();
+        for h in showing {
+            let u = self.unit_mut(h).unwrap();
+            let left = u.extra.sleep_show_wait.unwrap_or(0.0) - dt;
+            if left > 0.0 {
+                u.extra.sleep_show_wait = Some(left);
+            } else {
+                u.extra.sleep_show_wait = None;
+                self.show_asleep(h);
+            }
+        }
+        let night = self.is_night();
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && (u.extra.can_sleep || u.extra.sleep_perm))).collect();
         for h in units {
             let u = self.unit(h).unwrap();
@@ -99,11 +111,40 @@ impl World {
             let idle = matches!(u.action, Action::Idle) && !u.extra.returning && u.swing.is_none();
             let want = idle && (u.extra.sleep_perm || night && allowed);
             if want && !u.extra.sleeping {
-                self.set_asleep(h, true);
+                self.fall_asleep(h);
             } else if u.extra.sleeping && !u.extra.sleep_perm && !(night && allowed) {
                 self.set_asleep(h, false);
             }
         }
+    }
+
+    /// Night, when creeps sleep.
+    pub(crate) fn is_night(&self) -> bool {
+        !(6.0..18.0).contains(&self.time_of_day)
+    }
+
+    /// A newly made creep that may sleep falls asleep if it is night (the original's
+    /// creep sleep checks as it starts; units made as the map starts, at midnight before
+    /// the melee setup's 8:00, fall asleep and wake with the day).
+    pub(crate) fn creep_made(&mut self, h: u32) {
+        let Some(u) = self.unit(h) else { return };
+        let allowed = self.players.get(u.owner as usize).is_none_or(|p| p.get_state(player_state::NO_CREEP_SLEEP) == 0);
+        if u.extra.can_sleep && !u.extra.sleeping && self.is_night() && allowed {
+            self.fall_asleep(h);
+        }
+    }
+
+    /// A creep falls asleep at once and shows it after a random wait of up to three
+    /// seconds, drawn on creep sleep's own generator (FUN_6f524e00, stream 37, times the
+    /// 3.0 at 0x6fd3c750).
+    pub(crate) fn fall_asleep(&mut self, h: u32) {
+        if self.unit(h).is_none_or(|u| u.extra.sleeping) {
+            return;
+        }
+        let wait = self.rand_data.streams[crate::rng::stream::CREEP_SLEEP].real(0.0, 3.0);
+        let u = self.unit_mut(h).unwrap();
+        u.extra.sleeping = true;
+        u.extra.sleep_show_wait = Some(wait);
     }
 
     pub(crate) fn set_asleep(&mut self, h: u32, on: bool) {
@@ -112,11 +153,19 @@ impl World {
             return;
         }
         u.extra.sleeping = on;
+        u.extra.sleep_show_wait = None;
         let old = std::mem::take(&mut u.extra.sleep_effect);
         if old != 0 {
             self.handles.remove(old);
         }
         if on {
+            self.show_asleep(h);
+        }
+    }
+
+    /// The sleep effect over a sleeping unit's head.
+    fn show_asleep(&mut self, h: u32) {
+        if self.unit(h).is_some_and(|u| u.extra.sleeping && u.extra.sleep_effect == 0) {
             let art = self.objects.abilities.get(*b"ACsp").map(|o| (o.list("Casterart").first().cloned().unwrap_or_default(), o.list("Casterattach").first().cloned().unwrap_or_default()));
             if let Some((model, attach)) = art.filter(|a| !a.0.is_empty()) {
                 let e = self.handles.insert(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((h, attach)), destroyed: false, facing: 0.0 }));

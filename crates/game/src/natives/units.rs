@@ -347,6 +347,14 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
             u.acquire_timer = t;
         }
     }
+    w.creep_made(h);
+    // Every structure has an alarm (CAbilityAlarm, measured: town halls, gold mines, and
+    // shops each start one), which waits a random moment, drawn on its own generator,
+    // before watching for enemies.  The watch is not played here; the draw is kept, so
+    // the generator stays the original's.
+    if w.unit(h).is_some_and(|u| u.is_building) {
+        w.rand_data.streams[crate::rng::stream::ALARM].next_u32();
+    }
     // Computer players' and creeps' units start with their autocast on.
     if w.players.get(owner as usize).is_some_and(|p| p.controller == map_control::COMPUTER || p.controller == map_control::CREEP) {
         let auto: Vec<Id> = w.unit(h).map(|u| u.abilities.iter().map(|a| a.0).filter(|&a| w.objects.abilities.get(a).is_some_and(|o| !o.str("Orderon").is_empty())).collect()).unwrap_or_default();

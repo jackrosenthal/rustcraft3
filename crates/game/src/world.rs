@@ -1486,7 +1486,7 @@ impl World {
         prof!(self, "update_wander", self.update_wander(dt));
         prof!(self, "computer_idle_workers", self.computer_idle_workers(dt));
         prof!(self, "update_guards", self.update_guards());
-        prof!(self, "update_creep_sleep", self.update_creep_sleep());
+        prof!(self, "update_creep_sleep", self.update_creep_sleep(dt));
         prof!(self, "update_waygates", self.update_waygates());
         prof!(self, "update_mines_armed", self.update_mines_armed(vm));
         prof!(self, "update_swarms", self.update_swarms());

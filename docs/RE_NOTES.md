@@ -166,6 +166,18 @@ these are the findings behind them.
   CAbilitySleepAlways vf32 and vf3, `FUN_6f524e00`: a delay to the next sleep check,
   drawn when the ability starts and at each check).  Checksum module 6 is CGameWar3.
   The `draws` example prints this game's draws to compare.
+- Creep sleep: the ability checks as it starts (unit creation) and on the day's change
+  (event 0x80261): a creep of Neutral Hostile (or one that sleeps always), at night,
+  falls asleep at once (flag 0x80) and draws on stream 37 a wait of up to 3.0 (the
+  constants at 0x6fd3c740 are -1, 0, 1, 2, 3, 4, 5, 6) before it shows it (event
+  0xd01c1, `FUN_6f524b40`: the sleep effect and animation).  Units made by the map
+  script are made at midnight, before the melee setup's 8:00, so every creep falls
+  asleep as it is made and wakes with the day.
+- Alarm (CAbilityAlarm): every structure has one (town halls, gold mines, shops; not in
+  the unit data), which as it starts draws on stream 21 a wait before it watches for
+  enemies (event 0xd01c1, `FUN_6f436510`, an area watch for 0xd01c8).
+- With these, all 46 generators stand as the original's after the first turn of Booty
+  Bay from seed 0x35000000.
 - Replays (.w3g) record each turn's actions as W3GS carries them, and after each turn
   (0x22) the same checksum, so a replay is a turn-by-turn reference.
 

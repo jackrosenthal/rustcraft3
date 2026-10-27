@@ -116,6 +116,12 @@ impl Default for RandData {
 pub mod stream {
     /// CAbilityAttack vf194 (FUN_6f4993b0): a new armed unit's first look for a target.
     pub const ATTACK: usize = 2;
+    /// A structure's alarm (CAbilityAlarm vf32, FUN_6f41ae70): the wait before it starts
+    /// watching for enemies (event 0xd01c1, FUN_6f436510).
+    pub const ALARM: usize = 21;
+    /// Creep sleep (CAbilityCreepSleep and CAbilitySleepAlways, FUN_6f524e00): the wait
+    /// before a creep falling asleep shows it.
+    pub const CREEP_SLEEP: usize = 37;
 }
 
 impl RandData {

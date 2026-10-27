@@ -284,6 +284,15 @@ these are the findings behind them.
   then the melee starting units likewise; then the melee initialization's execution and
   the game-started timer and its handler.  From the third turn the creep AI and aura
   scans make and free objects every few turns.
+- Those frees are Tempest events: an object destroys itself (event `^sig`,
+  `FUN_6f15e500`, vf 0x10) when its event is dispatched from the engine's event queue,
+  a binary heap (`FUN_6f04f990` push, `FUN_6f04f3c0` pop; array at +0xc, count at
+  +0x1c) ordered by due time (+4) and, between equal times, by a serial (+0x14) that
+  grows with each insertion; `FUN_6f054190` dispatches everything due each frame
+  (`FUN_6f052380`, `FUN_6f054370` calls the target's vf 0x48).  In Booty Bay's second
+  turn every event is due at 0.0001: the units' periodic timers (`` `rtl ``, flags
+  0x10001) and the self-destructions, in insertion order, units in creation order.  To
+  free as the original does, a game must queue the same events in the same order.
 - The script's globals run before the map's destructables: Blizzard.j's first timer,
   then the engine's `+gam` `` `flg `` `` `flg `` `` `rel `` `` `rel `` `` `flg ``
   `` `rtl `` `+qum`, then the other globals.

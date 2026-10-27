@@ -425,6 +425,9 @@ pub struct UnitExtra {
     /// Its creep spells have made their timers (`World::mana_changed`).
     #[serde(default)]
     pub mana_watched: bool,
+    /// The original's id for it: its tag's slot and birth count (`Tags::take_id`).
+    #[serde(default)]
+    pub oid: (u32, u32),
     /// The waygate whose box the unit is in after coming through one.
     #[serde(default)]
     pub warp_inside: u32,
@@ -635,6 +638,7 @@ impl Default for UnitExtra {
             still_since: 0.0,
             split: None,
             mana_watched: false,
+            oid: (0, 0),
         }
     }
 }
@@ -862,6 +866,9 @@ pub struct Swing {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Destructable {
     pub handle: u32,
+    /// The original's id for it: its tag's slot and birth count (`Tags::take_id`).
+    #[serde(default)]
+    pub oid: (u32, u32),
     pub type_id: Id,
     pub x: f32,
     pub y: f32,
@@ -893,6 +900,9 @@ fn one() -> f32 {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Item {
     pub handle: u32,
+    /// The original's id for it: its tag's slot and birth count (`Tags::take_id`).
+    #[serde(default)]
+    pub oid: (u32, u32),
     pub type_id: Id,
     pub x: f32,
     pub y: f32,

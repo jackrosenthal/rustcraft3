@@ -15,6 +15,7 @@ pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>
     let nvar = o.int("numVar").max(1) as u32;
     let z = z.unwrap_or_else(|| w.ground_z(x, y));
     let d = Destructable {
+        oid: (0, 0),
         handle: 0,
         type_id: id,
         x,
@@ -36,10 +37,12 @@ pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>
     let path_tex = o.str("pathTex");
     let h = w.handles.insert(Obj::Destructable(Box::new(d)));
     // Its tags (read under Wine): itself, its position, five regions.
-    w.tags.take_all(&[b"+w3d", b"`pos"]);
+    let oid = w.tags.take_id(b"+w3d");
+    w.tags.take(b"`pos");
     w.tags.take_n(b"^pmr", 5);
     if let Some(Obj::Destructable(d)) = w.handles.get_mut(h) {
         d.handle = h;
+        d.oid = oid;
     }
     w.destructable_order.push(h);
     // A pathing texture is drawn for the facing structures stand at (270, as
@@ -104,9 +107,11 @@ fn dest_mut(w: &mut World, h: u32) -> Option<&mut Destructable> {
 pub fn create_item(w: &mut World, id: Id, x: f32, y: f32) -> u32 {
     let Some(o) = w.objects.items.get(id) else { return 0 };
     // Its tags (measured: CreateItem and UnitAddItemById each make these).
-    w.tags.take_all(&[b"item", b"`pos", b"^pmr", b"^pmr"]);
+    let oid = w.tags.take_id(b"item");
+    w.tags.take_all(&[b"`pos", b"^pmr", b"^pmr"]);
     let item = Item {
         handle: 0,
+        oid,
         type_id: id,
         x,
         y,

@@ -55,16 +55,23 @@ impl Tags {
 
     /// The next tag, for an object of type `code`: its slot.
     pub fn take(&mut self, code: &Code) -> u32 {
+        self.take_id(code).0
+    }
+
+    /// The next tag, for an object of type `code`: its slot and its birth count, the two
+    /// words that name it in the original's actions.
+    pub fn take_id(&mut self, code: &Code) -> (u32, u32) {
         let t = self.free.pop().unwrap_or_else(|| {
             self.slots += 1;
             self.slots - 1
         });
+        let birth = self.born;
         self.born += 1;
         if let Some(l) = self.log.as_mut() {
             l.push(*code);
         }
         self.flush();
-        t
+        (t, birth)
     }
 
     /// Gives a slot back.
@@ -314,8 +321,12 @@ impl crate::world::World {
             }
             codes.extend([*b"uref", *b"AI-U", *b"+ord", *b"tskA", *b"task", *b"task", *b"task", *b"task", *b"tskA", *b"+ord", *b"task"]);
         }
-        for c in &codes {
+        let oid = self.tags.take_id(&codes[0]);
+        for c in &codes[1..] {
             self.tags.take(c);
+        }
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.oid = oid;
         }
     }
 }

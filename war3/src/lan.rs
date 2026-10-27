@@ -154,22 +154,38 @@ impl Lan {
         }
     }
 
-    /// Hosts a game on a map, its user slots open for others, the host in the first.
+    /// Hosts a game on a map, its user slots open for others, the host in the first,
+    /// its computers' slots computers.  With custom forces each slot's team is its
+    /// player's force, the slots in force order; with fixed player settings the map's
+    /// races hold and its computers are locked.
     pub fn host_game(&mut self, map: &Path, summary: &crate::skirmish::MapSummary, game: &str, expansion: bool, speed: u8, flags: u32) -> Result<(), &'static str> {
-        let slots: Vec<NetSlot> = summary
-            .info
-            .players
+        let info = &summary.info;
+        let fixed = info.flags & 0x20 != 0;
+        let forces: Vec<String> = if info.flags & 0x40 != 0 { info.forces.iter().map(|f| summary.text(&f.name)).collect() } else { Vec::new() };
+        let force = |id: u32| info.forces.iter().position(|f| f.players & (1 << id) != 0).unwrap_or(0) as i32;
+        let mut players: Vec<_> = info.players.iter().filter(|p| p.kind == 1 || p.kind == 2).collect();
+        if !forces.is_empty() {
+            players.sort_by_key(|p| force(p.id));
+        }
+        let host = players.iter().position(|p| p.kind == 1);
+        let slots: Vec<NetSlot> = players
             .iter()
-            .filter(|p| p.kind == 1)
             .enumerate()
             .map(|(k, p)| NetSlot {
                 player: p.id as u8,
-                holder: if k == 0 { Holder::Human(0) } else { Holder::Open },
-                name: if k == 0 { self.name.clone() } else { String::new() },
-                race: 0,
-                team: k as i32,
+                holder: if Some(k) == host {
+                    Holder::Human(0)
+                } else if p.kind == 2 {
+                    Holder::Computer(1)
+                } else {
+                    Holder::Open
+                },
+                name: if Some(k) == host { self.name.clone() } else { String::new() },
+                race: if fixed { p.race.min(4) as usize } else { 0 },
+                team: if forces.is_empty() { k as i32 } else { force(p.id) },
                 color: p.id as i32,
                 handicap: 0,
+                locked: fixed && p.kind == 2,
             })
             .collect();
         // With full observers or referees, the players the map leaves unused are the
@@ -178,7 +194,7 @@ impl Lan {
         if flags & 0x10 != 0 || flags & 0x400000 != 0 {
             let used: Vec<u8> = slots.iter().map(|s| s.player).collect();
             for id in (0..12u8).filter(|id| !used.contains(id)) {
-                slots.push(NetSlot { player: id, holder: Holder::Open, name: String::new(), race: 0, team: OBSERVERS, color: id as i32, handicap: 0 });
+                slots.push(NetSlot { player: id, holder: Holder::Open, name: String::new(), race: 0, team: OBSERVERS, color: id as i32, handicap: 0, locked: false });
             }
         }
         let ad = GameAd { name: game.to_string(), host: self.name.clone(), map: self.map_name(map), players: 1, slots: slots.len() as u8, port: self.port, expansion, speed, flags };
@@ -186,7 +202,7 @@ impl Lan {
             log::warn!("lan: hosting: {e}");
             "NETERROR_CREATEGAMEFAILED"
         })?;
-        self.setup = Setup { game: game.to_string(), map: ad.map, slots, speed, flags, saved: false };
+        self.setup = Setup { game: game.to_string(), map: ad.map, slots, speed, flags, saved: false, fixed, forces };
         self.host = Some(host);
         self.me = 0;
         self.chat.clear();
@@ -221,6 +237,7 @@ impl Lan {
                 team: if p.observer { OBSERVERS } else { p.team },
                 color: p.color,
                 handicap: 0,
+                locked: false,
             })
             .collect();
         let game = game.to_string();
@@ -229,7 +246,7 @@ impl Lan {
             log::warn!("lan: hosting: {e}");
             "NETERROR_CREATEGAMEFAILED"
         })?;
-        self.setup = Setup { game, map, slots, speed: 2, flags: crate::advanced::DEFAULT_FLAGS, saved: true };
+        self.setup = Setup { game, map, slots, speed: 2, flags: crate::advanced::DEFAULT_FLAGS, saved: true, ..Default::default() };
         self.host = Some(host);
         self.save = Some(bytes);
         self.me = 0;
@@ -312,8 +329,12 @@ impl Lan {
                     }
                 }
                 Msg::Choose { race, team, color, handicap } => {
+                    let fixed = self.setup.fixed;
                     if let Some(s) = self.setup.slots.iter_mut().find(|s| s.holder == Holder::Human(id)) {
-                        (s.race, s.color, s.handicap) = (race, color, handicap);
+                        if !fixed {
+                            (s.race, s.color) = (race, color);
+                        }
+                        s.handicap = handicap;
                         changed = true;
                     }
                     choose_team(&mut self.setup, Holder::Human(id), team);
@@ -557,14 +578,33 @@ impl Lan {
         let Some(team_setup) = tree.get("TeamSetup") else { return };
         let width = tree.get("TeamSetupContainer").and_then(|i| tree.frames[i].width);
         let host = self.is_host();
-        let n = self.setup.slots.len();
+        let forces = &self.setup.forces;
+        // With custom forces each force's slots come under its name (measured under
+        // Wine: a 0.01 heading, 0.004 between forces).
+        let mut y = 0.0;
+        let mut heading = None;
         for (k, s) in self.setup.slots.iter().enumerate() {
+            if !forces.is_empty() && s.team != OBSERVERS && heading != Some(s.team) {
+                if heading.is_some() {
+                    y += 0.004;
+                }
+                heading = Some(s.team);
+                let scope = format!("#f{}", s.team);
+                if tree.create_scoped(db, "StandardSmallTextTemplate", team_setup, &scope).is_some() {
+                    let label = format!("StandardSmallTextTemplate{scope}");
+                    tree.set_point(&label, P::TopLeft, "TeamSetup", P::TopLeft, 0.0, -y);
+                    tree.set_size(&label, width, Some(0.01));
+                    tree.set_text(&label, forces.get(s.team as usize).map_or("", |f| f.as_str()));
+                }
+                y += 0.01;
+            }
             let scope = format!("#{k}");
             if tree.create_scoped(db, "PlayerSlot", team_setup, &scope).is_none() {
                 continue;
             }
             let row = format!("PlayerSlot{scope}");
-            tree.set_point(&row, P::TopLeft, "TeamSetup", P::TopLeft, 0.0, -(k as f32) * 0.025);
+            tree.set_point(&row, P::TopLeft, "TeamSetup", P::TopLeft, 0.0, -y);
+            y += 0.025;
             tree.set_size(&row, width, None);
             let name_menu = format!("NameMenu{scope}");
             let observer = s.team == OBSERVERS;
@@ -588,7 +628,7 @@ impl Lan {
                         _ => 0,
                     };
                     tree.set_items(&name_menu, items, sel);
-                    tree.set_enabled(&name_menu, host && !self.setup.saved);
+                    tree.set_enabled(&name_menu, host && !self.setup.saved && !s.locked);
                 }
             }
             tree.set_selected(&format!("RaceMenu{scope}"), s.race);
@@ -601,8 +641,8 @@ impl Lan {
             };
             tree.set_text(&format!("TeamButtonTitle{scope}"), &team);
             // The team button opens the list of teams, "TEAM %u", then the Observers
-            // (FUN_6f2bc6e0).
-            let teams_n = self.setup.slots.iter().filter(|s| s.team != OBSERVERS).count();
+            // (FUN_6f2bc6e0); with custom forces a team is a force.
+            let teams_n = if forces.is_empty() { self.setup.slots.iter().filter(|s| s.team != OBSERVERS).count() } else { forces.len() };
             let mut teams: Vec<String> = (1..=teams_n).map(|t| format!("{} {t}", db.string("TEAM"))).collect();
             if self.setup.slots.iter().any(|s| s.team == OBSERVERS) && matches!(s.holder, Holder::Human(_)) {
                 teams.push(db.string(if self.setup.flags & 0x400000 != 0 { "REFEREE" } else { "OBSERVER" }));
@@ -612,14 +652,20 @@ impl Lan {
             // The color button opens the player colors' swatches.
             let swatches = (0..12).map(|c| format!("ReplaceableTextures\\TeamColor\\TeamColor{c:02}.blp")).collect();
             tree.set_pulldown_images(&format!("ColorButton{scope}"), &format!("RacePopupMenuMenu{scope}"), swatches, s.color.clamp(0, 11) as usize);
-            let open = matches!(s.holder, Holder::Open | Holder::Closed) && !(self.setup.saved && !s.name.is_empty());
-            // A loaded game's slots are as they were saved.
-            let mine = !self.setup.saved && (s.holder == Holder::Human(self.me) || (host && matches!(s.holder, Holder::Computer(_))));
+            // Fixed player settings show even an open slot's race, team, and color.
+            let open = matches!(s.holder, Holder::Open | Holder::Closed) && !(self.setup.saved && !s.name.is_empty()) && !(self.setup.fixed && !observer);
+            // A loaded game's slots are as they were saved, and a locked computer as the
+            // map sets it.
+            let mine = !self.setup.saved && !s.locked && (s.holder == Holder::Human(self.me) || (host && matches!(s.holder, Holder::Computer(_))));
             for f in ["RaceMenu", "TeamButton", "ColorButton", "HandicapMenu"] {
                 tree.set_visible(&format!("{f}{scope}"), !open && (f == "TeamButton" || !observer));
-                tree.set_enabled(&format!("{f}{scope}"), mine);
+                let fixed = self.setup.fixed && matches!(f, "RaceMenu" | "ColorButton");
+                tree.set_enabled(&format!("{f}{scope}"), mine && !fixed);
+                // A disabled team or color button shows no arrow (seen under Wine).
+                if matches!(f, "TeamButton" | "ColorButton") {
+                    tree.set_visible(&format!("{f}Arrow{scope}"), mine && !fixed);
+                }
             }
-            let _ = n;
         }
         tree.set_text("GameNameValue", &self.setup.game);
         tree.place_text_area_scroll_bars();
@@ -640,8 +686,9 @@ impl Lan {
     pub fn button(&mut self, tree: &mut FrameTree, db: &FrameDb, name: &str) {
         let Some((part, k)) = name.split_once('#') else { return };
         let Ok(k) = k.parse::<usize>() else { return };
-        // The map's teams: one a player slot.
-        let n = self.setup.slots.iter().filter(|s| s.team != OBSERVERS).count() as i32;
+        // The map's teams: its forces, or one a player slot.
+        let n = if self.setup.forces.is_empty() { self.setup.slots.iter().filter(|s| s.team != OBSERVERS).count() } else { self.setup.forces.len() } as i32;
+        let (fixed, forces) = (self.setup.fixed, !self.setup.forces.is_empty());
         let observers = self.setup.slots.iter().any(|s| s.team == OBSERVERS);
         let chosen = tree.get(name).map_or(0, |i| tree.frames[i].selected);
         let me = self.me;
@@ -649,16 +696,16 @@ impl Lan {
         let mut move_to = None;
         let saved = self.setup.saved;
         let Some(s) = self.setup.slots.get_mut(k) else { return };
-        let mine = s.holder == Holder::Human(me) || (host && matches!(s.holder, Holder::Computer(_)));
+        let mine = !s.locked && (s.holder == Holder::Human(me) || (host && matches!(s.holder, Holder::Computer(_))));
         match part {
-            "NameMenu" if host && !saved && !matches!(s.holder, Holder::Human(_)) => {
+            "NameMenu" if host && !saved && !s.locked && !matches!(s.holder, Holder::Human(_)) => {
                 s.holder = match chosen {
                     0 => Holder::Open,
                     1 => Holder::Closed,
                     d => Holder::Computer(d as i32 - 2),
                 };
             }
-            "RaceMenu" if mine => s.race = chosen,
+            "RaceMenu" if mine && !fixed => s.race = chosen,
             "HandicapMenu" if mine => s.handicap = chosen,
             // The team list runs through the map's teams, then the Observers.
             "TeamButton" if mine => {
@@ -666,11 +713,11 @@ impl Lan {
                 let next = if chosen as i32 >= n && observers && matches!(s.holder, Holder::Human(_)) { OBSERVERS } else { (chosen as i32).min(n - 1).max(0) };
                 if host {
                     move_to = Some((s.holder, next));
-                } else {
+                } else if !forces {
                     s.team = next;
                 }
             }
-            "ColorButton" if mine => s.color = chosen.min(11) as i32,
+            "ColorButton" if mine && !fixed => s.color = chosen.min(11) as i32,
             _ => return,
         }
         let s = s.clone();
@@ -739,23 +786,28 @@ pub const OBSERVERS: i32 = 12;
 
 /// A team chosen for the slot `holder` holds: moving to the Observers team takes the
 /// first open observer's slot, and leaving it the first open player's slot, the old
-/// slot left open; otherwise the slot's team changes.
+/// slot left open; otherwise the slot's team changes.  With custom forces a slot's team
+/// is its force, so another team means the first open slot of that force.
 fn choose_team(setup: &mut net::Setup, holder: Holder, team: i32) {
     let Some(k) = setup.slots.iter().position(|s| s.holder == holder) else { return };
     let observer = setup.slots[k].team == OBSERVERS;
-    if (team == OBSERVERS) == observer {
+    let forces = !setup.forces.is_empty();
+    if setup.slots[k].team == team || (!forces && (team == OBSERVERS) == observer) {
         if !observer {
             setup.slots[k].team = team;
         }
         return;
     }
-    let to = setup.slots.iter().position(|s| s.holder == Holder::Open && (s.team == OBSERVERS) == (team == OBSERVERS));
+    let to = setup.slots.iter().position(|s| s.holder == Holder::Open && if forces { s.team == team } else { (s.team == OBSERVERS) == (team == OBSERVERS) });
     let Some(to) = to else { return };
     let old = setup.slots[k].clone();
     let slot = &mut setup.slots[to];
     slot.holder = old.holder;
     slot.name = old.name;
-    slot.race = old.race;
+    // Fixed player settings keep the new slot's race.
+    if !setup.fixed {
+        slot.race = old.race;
+    }
     slot.handicap = old.handicap;
     let old_slot = &mut setup.slots[k];
     old_slot.holder = Holder::Open;
@@ -767,7 +819,7 @@ mod tests {
     use super::*;
 
     fn slot(player: u8, holder: Holder, team: i32) -> NetSlot {
-        NetSlot { player, holder, name: if let Holder::Human(_) = holder { format!("p{player}") } else { String::new() }, race: 1, team, color: player as i32, handicap: 0 }
+        NetSlot { player, holder, name: if let Holder::Human(_) = holder { format!("p{player}") } else { String::new() }, race: 1, team, color: player as i32, handicap: 0, locked: false }
     }
 
     #[test]
@@ -784,5 +836,28 @@ mod tests {
         // A team change among the map's teams stays in the slot.
         choose_team(&mut setup, Holder::Human(0), 1);
         assert_eq!(setup.slots[0].team, 1);
+    }
+
+    #[test]
+    fn with_custom_forces_a_team_change_takes_an_open_slot_of_that_force() {
+        let mut setup = net::Setup {
+            slots: vec![slot(0, Holder::Human(0), 0), slot(1, Holder::Open, 0), slot(2, Holder::Open, 1), slot(3, Holder::Computer(1), 1)],
+            fixed: true,
+            forces: vec!["A".into(), "B".into()],
+            ..Default::default()
+        };
+        setup.slots[2].race = 3;
+        choose_team(&mut setup, Holder::Human(0), 1);
+        assert_eq!(setup.slots[0].holder, Holder::Open);
+        assert_eq!(setup.slots[2].holder, Holder::Human(0));
+        assert_eq!(setup.slots[2].team, 1);
+        // The map fixes the race.
+        assert_eq!(setup.slots[2].race, 3);
+        // No open slot in the force: nothing changes.
+        setup.slots[0].holder = Holder::Closed;
+        setup.slots[1].holder = Holder::Closed;
+        choose_team(&mut setup, Holder::Human(0), 0);
+        assert_eq!(setup.slots[2].holder, Holder::Human(0));
+        assert_eq!(setup.slots[2].team, 1);
     }
 }

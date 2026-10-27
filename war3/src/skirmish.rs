@@ -94,7 +94,7 @@ pub struct MapSummary {
 }
 
 impl MapSummary {
-    fn text(&self, s: &str) -> String {
+    pub fn text(&self, s: &str) -> String {
         match s.strip_prefix("TRIGSTR_").and_then(|n| n.parse::<u32>().ok()) {
             Some(n) => self.strings.get(&n).cloned().unwrap_or_default(),
             None => s.to_string(),

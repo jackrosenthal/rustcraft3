@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use w3_game::replay::{Command, Frame};
 
 /// Messages of this protocol's version only are understood.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 /// The game port when the options name none (netgameport).
 pub const DEFAULT_PORT: u16 = 6112;
 const MAGIC: &[u8; 4] = b"W3RN";
@@ -61,6 +61,8 @@ pub struct NetSlot {
     pub color: i32,
     /// Index into HandicapMenu: 100% down to 50%.
     pub handicap: usize,
+    /// The map's own computer under fixed player settings: no one changes it.
+    pub locked: bool,
 }
 
 /// The game setup everyone sees.
@@ -76,6 +78,11 @@ pub struct Setup {
     /// A saved game is being loaded: only those who were in it may join, each to their
     /// own slot (LOAD_BATTLENET_INFO).
     pub saved: bool,
+    /// The map fixes its players' races and colors (w3i flag 0x20).
+    pub fixed: bool,
+    /// The map's forces' names, each slot's team its force (w3i flag 0x40); empty
+    /// without custom forces.
+    pub forces: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

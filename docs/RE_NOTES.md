@@ -312,6 +312,21 @@ these are the findings behind them.
   and free agrees with the original's for Booty Bay's first 51 turns (5.1 seconds);
   then the critters' wandering begins, each order with its own tasks (`ordt`, `tskA`,
   `tskO`, `tsk.`, `task`).
+- A move order's objects (traced with the wanderers): issued, eighteen (`ordt`, `tskA`,
+  `tskA`, `tskO`, three `task`, `tsk.`, six `task`, `tskA`, `^clg`, `^clu`, `l^pa`), nine
+  freed at once (`^clg`, the second, the fifteenth, the six tasks from the last); done,
+  three more (`tskA`, `task`, `task`), then `tsk.`, those three from the last, the three
+  tasks before `tsk.` from the last, `tskO`, the third, `ordt`, and the path's `l^pa`
+  and `^clu` (the same turn or the next).
+- Wander (CAbilityWander): the wait is the main generator's, 5 to 10 seconds (vf189,
+  `FUN_6f59b070`), counted from the unit's making; the point is the unit's place plus,
+  on each axis (x first), stream 8's draw times 500 less 250 (vf190, `FUN_6f59af20`;
+  1000 and 2000 for units with flag 0x20000000 at +0x5c and +0x200 below 1).  The
+  engine's float arithmetic here is its own (`FUN_6f06f9c0` multiplies, `FUN_6f06fa90`
+  subtracts, `FUN_6f06fbb0` adds).  Booty Bay's fourteen first walks start in the same
+  turns as the original's; the first (a sheep near the map's south edge) ends 0.4
+  seconds in for the original but not for this game, whose pathing does not yet give
+  up on that point as the original's does.
 - The script's globals run before the map's destructables: Blizzard.j's first timer,
   then the engine's `+gam` `` `flg `` `` `flg `` `` `rel `` `` `rel `` `` `flg ``
   `` `rtl `` `+qum`, then the other globals.

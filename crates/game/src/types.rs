@@ -431,6 +431,9 @@ pub struct UnitExtra {
     /// The slots of its blight growth's objects (`World::tag_unit`).
     #[serde(default)]
     pub blight_slots: Vec<u32>,
+    /// The slots of its current move order's objects (`Tags::move_issued`).
+    #[serde(default)]
+    pub order_tags: Vec<u32>,
     /// The original's id for it: its tag's slot and birth count (`Tags::take_id`).
     #[serde(default)]
     pub oid: (u32, u32),
@@ -646,6 +649,7 @@ impl Default for UnitExtra {
             mana_watched: false,
             spell_timers: Vec::new(),
             blight_slots: Vec::new(),
+            order_tags: Vec::new(),
             oid: (0, 0),
         }
     }

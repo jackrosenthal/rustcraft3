@@ -5,6 +5,7 @@
 //! tags <game dir> <map> <seed> <reference>
 use std::path::Path;
 fn main() -> anyhow::Result<()> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("error")).init();
     let a: Vec<String> = std::env::args().collect();
     let data = war3::data::GameData::open(Path::new(&a[1]), false)?;
     let map = std::sync::Arc::new(w3_mpq::Archive::open(&a[2])?);

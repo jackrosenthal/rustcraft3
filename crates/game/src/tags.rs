@@ -176,6 +176,30 @@ impl Tags {
         self.free.last().copied().unwrap_or(self.slots)
     }
 
+    /// A move order's objects as it is issued (traced with Booty Bay's wandering
+    /// critters): its order, task tree, path cluster, and path, eighteen, nine of which
+    /// go at once (the cluster's `^clg`, the second, the fifteenth, and six tasks, the
+    /// last first).  The slots, by place.
+    pub fn move_issued(&mut self) -> Vec<u32> {
+        const CODES: [&Code; 18] = [b"ordt", b"tskA", b"tskA", b"tskO", b"task", b"task", b"task", b"tsk.", b"task", b"task", b"task", b"task", b"task", b"task", b"tskA", b"^clg", b"^clu", b"l^pa"];
+        let slots: Vec<u32> = CODES.iter().map(|c| self.take(c)).collect();
+        for k in [15, 1, 14, 13, 12, 11, 10, 9, 8] {
+            self.doom(slots[k]);
+        }
+        slots
+    }
+
+    /// A move order done: three more objects, then the rest of its tree, last made
+    /// first in parts, and its path.
+    pub fn move_done(&mut self, slots: &[u32]) {
+        let a = self.take(b"tskA");
+        let b = self.take(b"task");
+        let c = self.take(b"task");
+        for s in [slots[7], c, b, a, slots[6], slots[5], slots[4], slots[3], slots[2], slots[0], slots[17], slots[16]] {
+            self.doom(s);
+        }
+    }
+
     /// Objects the engine makes right after the next object tagged.
     pub fn after_next(&mut self, codes: &[&Code]) {
         self.pending = codes.iter().map(|c| **c).collect();

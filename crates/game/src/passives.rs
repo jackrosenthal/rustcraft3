@@ -171,32 +171,48 @@ impl World {
 }
 
 impl World {
-    /// Wander (CAbilityWander): an idle wanderer waits 5 to 10 seconds (vf189), then
-    /// walks to a point up to 250 away on each axis (vf190).
+    /// Wander (CAbilityWander): an idle wanderer waits 5 to 10 seconds (vf189, the main
+    /// generator), then walks to a point up to 250 away on each axis (vf190).
     pub fn update_wander(&mut self, dt: f32) {
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.paused && matches!(u.action, Action::Idle))).collect();
         for h in units {
+            // A walk ended: its order's objects go (`Tags::move_done`).
+            if let Some(slots) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)).filter(|s| s.len() == 18) {
+                self.tags.move_done(&slots);
+            }
             if self.ability_with_code(h, "Awan").is_none() {
                 continue;
             }
             // The wait runs only while it stands (measured: sheep start a walk every 9 to
             // 11 seconds, walk included).
+            // The first wait counts from the unit's making, and a walk starts on the
+            // first step after its time (traced: Booty Bay's first walk).
             let left = match self.unit(h).and_then(|u| u.extra.wander_wait) {
                 Some(t) => t - dt,
-                None => self.rng.real(5.0, 10.0),
+                None => self.rng.real(5.0, 10.0) - dt,
             };
-            if left > 0.0 {
+            if left > -1e-4 {
                 self.unit_mut(h).unwrap().extra.wander_wait = Some(left);
                 continue;
             }
             let next = self.rng.real(5.0, 10.0);
-            let (dx, dy) = (self.rng.real(0.0, 500.0) - 250.0, self.rng.real(0.0, 500.0) - 250.0);
+            // The point: on each axis, x first, a draw of stream 8 times 500 less 250
+            // (CAbilityWander vf190, FUN_6f59af20; its constants read from the running
+            // original: 250 and 500).
+            let r = &mut self.rand_data.streams[8];
+            let dx = r.real(0.0, 1.0) * 500.0 - 250.0;
+            let dy = r.real(0.0, 1.0) * 500.0 - 250.0;
             let u = self.unit_mut(h).unwrap();
             u.extra.wander_wait = Some(next);
             let (x, y) = (u.x + dx, u.y + dy);
+            log::debug!("wander: {h:#x} {} from ({:.1},{:.1}) to ({x:.1},{y:.1})", crate::objects::id_str(u.type_id), u.x, u.y);
             u.action = Action::Move { x, y };
             u.path.clear();
             u.repath_timer = 0.0;
+            let slots = self.tags.move_issued();
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.order_tags = slots;
+            }
         }
     }
 }

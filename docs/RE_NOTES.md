@@ -526,8 +526,13 @@ these are the findings behind them.
   objects are not timers but threshold listeners on the creep's mana
   (CPoReThresholdLis; `FUN_6f27c060`), one a spell, at its cost less 0.1 (mode 0,
   made at setup) or more 0.1 (mode 1) (measured: 74.9 and 75.1 for Abolish Magic and
-  Inner Fire, 4.9 and 5.1 for Heal, 99.9 for Shockwave, 89.9 and 90.1 for ACtc); why
-  the High Priests' Abolish Magic ones are re-armed at turn 70 is not yet known.
+  Inner Fire, 4.9 and 5.1 for Heal, 99.9 for Shockwave, 89.9 and 90.1 for ACtc).  The
+  turn-70 re-arming comes from the property system, a threshold crossed (backtrace
+  through `FUN_6f1614fc`, `FUN_6f16186c`, the event 0xd01b7 to the spell).  To check:
+  that these creeps' mana starts at 0 and a High Priest's (0.75 a second) crosses
+  Heal's 5.1 at 6.8 seconds (turn 70; a Shadow Priest's, 0.5, at 10.2), the listener
+  replaced being Heal's if the original makes a creep's in the reverse of this game's
+  order (Abolish Magic, Inner Fire, Heal).
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

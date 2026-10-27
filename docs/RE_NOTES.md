@@ -156,8 +156,30 @@ these are the findings behind them.
   `FUN_6f524e00` (a unit with Ahid, Ashm, Amim, Apiv, or Adet, a delay), 21 by
   `FUN_6f41ae70`, and 2 by `FUN_6f4993b0`, `FUN_6f6d48b0`, `FUN_6f4ccb80`,
   `FUN_6f508730`, `FUN_6f5d0410`, `FUN_6f5d9d60`, and (dice) `FUN_6f498960`.
+- The main generator's draws before the first turn of Booty Bay (seed 0x35000000, both
+  players random): 12 random races (`FUN_6f1e9dd0`: each of the 12 players whose
+  preference is random, in order, `(r >> 30) + 1`), the start locations' shuffle
+  (`FUN_6f1d1460`, from `FUN_6f1ea2f0`: for i from 1, `j = r * (i + 1) >> 32`, swap), and
+  14 wander waits (CAbilityWander vf189, `FUN_6f59b070`).  The streams: 2 by
+  CAbilityAttack vf194 (`FUN_6f4993b0`, a new armed unit's first look for a target), 21
+  by CAbilityAlarm vf32 (`FUN_6f41ae70`), 37 by creep sleep (CAbilityCreepSleep and
+  CAbilitySleepAlways vf32 and vf3, `FUN_6f524e00`: a delay to the next sleep check,
+  drawn when the ability starts and at each check).  Checksum module 6 is CGameWar3.
+  The `draws` example prints this game's draws to compare.
 - Replays (.w3g) record each turn's actions as W3GS carries them, and after each turn
   (0x22) the same checksum, so a replay is a turn-by-turn reference.
+
+## Where the port departs from the original
+
+Formats the port made its own, to be replaced by the original's:
+
+- Saved games: the port's world state (`crates/game/src/save.rs`), not the original's
+  .w3z.
+- Replays: `W3RRPLY` (`crates/game/src/replay.rs`), not .w3g (which it now reads).
+- Options and profiles: JSON files (`options.json`, `profiles.json`,
+  `profile_vN.json`), not the original's registry settings and `Save\ProfileN`.
+- Network games' commands: the port's own inside W3GS's actions, not the original's
+  actions (`crates/net/src/action.rs` reads and writes those).
 
 ## Tooling
 

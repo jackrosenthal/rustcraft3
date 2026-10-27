@@ -307,16 +307,27 @@ impl Game {
                     p.race = r;
                     p.race_preference = [0, 1, 2, 8, 4].get(r as usize).copied().unwrap_or(0);
                 }
-                None => {
-                    // A random race is drawn when the game starts.
-                    let r = self.world.rng.int(1, 4);
-                    let p = &mut self.world.players[s.player as usize];
-                    p.race = r;
-                    p.race_preference = PREF_RANDOM;
-                }
+                None => p.race_preference = PREF_RANDOM,
             }
             if matches!(s.fill, SlotFill::Computer) {
                 self.world.ai_difficulty.insert(s.player, s.difficulty);
+            }
+        }
+        // Random races are drawn as the game starts (FUN_6f1e9dd0): for each of the 12
+        // players in turn whose preference is random, the main generator's next number's
+        // top two bits plus one.  A player the setup leaves out is random unless the map
+        // fixes its race (measured: all 12 drew in a two-player Booty Bay).
+        let fixed = self.info.flags & 0x20 != 0;
+        for id in 0..12u8 {
+            let random = match slots.iter().find(|s| s.player == id) {
+                Some(s) => s.race.is_none() || random_races,
+                None => !(fixed && self.info.players.iter().any(|i| i.id == id as u32 && i.race != 0)),
+            };
+            if random {
+                let r = (self.world.rng.next_u32() >> 30) as i32 + 1;
+                let p = &mut self.world.players[id as usize];
+                p.race = r;
+                p.race_preference = PREF_RANDOM;
             }
         }
         // Observers hold player slots the map leaves unused: they are users who do not

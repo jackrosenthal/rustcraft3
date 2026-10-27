@@ -13,6 +13,10 @@ const TABLE: [u32; 64] = [
     0x5603325A, 0x932BC5A3, 0x434B0F80, 0x3CE0A8F7, 0x2664D196, 0x4FCC45D7, 0xB5E9B0C8, 0xEA31D600,
 ];
 
+/// While set, each draw is printed with where it came from (for comparing the game's
+/// draws with the original's; the `draws` example sets it).
+pub static TRACE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Rng {
     value: u32,
@@ -45,6 +49,11 @@ impl Rng {
     }
 
     pub fn next_u32(&mut self) -> u32 {
+        if TRACE.load(std::sync::atomic::Ordering::Relaxed) {
+            let bt = std::backtrace::Backtrace::force_capture().to_string();
+            let frames: Vec<&str> = bt.lines().filter(|l| l.contains("w3_game::") && !l.contains("rng::")).take(3).map(|l| l.trim()).collect();
+            eprintln!("DRAW {:08x} {}", self.value, frames.join(" <- "));
+        }
         let t = self.taps;
         let b2 = (t >> 16) & 0xff;
         let b1 = (t >> 8) & 0xff;
@@ -101,6 +110,12 @@ impl Default for RandData {
     fn default() -> RandData {
         RandData { streams: vec![Rng::new(0); RandData::COUNT] }
     }
+}
+
+/// Which of the 45 a purpose draws on, as the original's callers name them.
+pub mod stream {
+    /// CAbilityAttack vf194 (FUN_6f4993b0): a new armed unit's first look for a target.
+    pub const ATTACK: usize = 2;
 }
 
 impl RandData {

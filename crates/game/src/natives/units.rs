@@ -339,9 +339,10 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
     // An armed unit first looks for a target after a random moment of up to a second
     // (CAbilityAttack::Initialize's timer, the random times 1.0 at 0x6fd6bf44; measured:
     // five riflemen made beside paused footmen first strike 0.16 to 0.73 seconds later
-    // than an immediate look allows).
+    // than an immediate look allows), drawn on the attack's own generator (vf194,
+    // FUN_6f4993b0, stream 2).
     if w.unit(h).is_some_and(|u| !crate::sim::unit_weapons(w, u).is_empty()) {
-        let t = w.rng.real(0.0, 1.0);
+        let t = w.rand_data.streams[crate::rng::stream::ATTACK].real(0.0, 1.0);
         if let Some(u) = w.unit_mut(h) {
             u.acquire_timer = t;
         }

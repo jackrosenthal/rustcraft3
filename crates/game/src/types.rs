@@ -415,6 +415,13 @@ pub struct UnitExtra {
     /// The turn a walker took to go around a unit standing in its way.
     #[serde(default)]
     pub detour: Option<(f32, f32)>,
+    /// Its paths are searched near at hand only, without the accelerator's plan, 32
+    /// nodes deep (a wanderer of Neutral Passive's: `World::local_path`).
+    #[serde(default)]
+    pub local_paths: bool,
+    /// The cell where its way, short of the goal, ends: reaching it searches again.
+    #[serde(default)]
+    pub path_end_cell: Option<(i32, i32)>,
     /// The creep sleep effect over a sleeping unit's head.
     #[serde(default)]
     pub sleep_effect: u32,
@@ -614,6 +621,8 @@ impl Default for UnitExtra {
             cannibal_wait: None,
             was_idle: false,
             detour: None,
+            local_paths: false,
+            path_end_cell: None,
             sleep_effect: 0,
             sleep_show_wait: None,
             warp_inside: 0,

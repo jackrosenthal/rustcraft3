@@ -340,6 +340,7 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
         }
     }
     w.tag_unit(h);
+    w.wander_paths(h);
     w.start_stock(h);
     w.attach_ability_art(h);
     w.sync_spell_books(h);
@@ -1342,6 +1343,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 }
             }
             w.sync_spell_books(a.h(0));
+            w.wander_paths(a.h(0));
             boolean(true)
         },
         UnitRemoveAbility => |w, _, a| {

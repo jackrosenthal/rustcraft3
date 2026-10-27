@@ -735,7 +735,83 @@ impl World {
         }
     }
 
+    /// A wander ability given to a unit sets how it searches: Neutral Passive's search
+    /// near at hand only, 32 nodes deep, others as before (CAbilityWander's
+    /// `FUN_6f5a6d40`; measured: Booty Bay's sheep and pigs search 32 deep even with
+    /// the ability taken away again, player 0's sheep and Neutral Passive's footmen
+    /// 700).
+    pub(crate) fn wander_paths(&mut self, h: u32) {
+        if self.ability_with_code(h, "Awan").is_none() {
+            return;
+        }
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.local_paths = u.owner == crate::types::PLAYER_NEUTRAL_PASSIVE;
+        }
+    }
+
+    /// The way of a unit searching near at hand only (`UnitExtra::local_paths`): the
+    /// original's long-range search (`lrpath`) straight toward the goal, 32 nodes deep,
+    /// other ground units' regions refusing their cells; the cells' middles to the goal,
+    /// or to the node reached nearest it (searched again from there on reaching its
+    /// cell), or none.
+    fn local_path(&self, h: u32, goal: (f32, f32)) -> Option<(Vec<(f32, f32)>, Option<(i32, i32)>)> {
+        let u = self.unit(h).filter(|u| u.extra.local_paths)?;
+        let p = self.pathing.as_ref()?;
+        let kind = self.move_kind(h);
+        if kind == crate::pathing::Move::Fly {
+            return None;
+        }
+        // Each other ground unit's collision region: on each axis the cells from
+        // floor(p - 0.5 - r) to floor(p - 0.5 + r), p its place and r its collision in
+        // cells (measured with Booty Bay's sheep).
+        let mut taken = std::collections::HashSet::new();
+        for &o in &self.unit_order {
+            let Some(v) = self.unit(o).filter(|v| o != h && !v.dead && !v.hidden && !v.is_building && v.collision > 0.0 && (v.x - u.x).abs() < 2048.0 && (v.y - u.y).abs() < 2048.0) else { continue };
+            if self.move_kind(o) == crate::pathing::Move::Fly {
+                continue;
+            }
+            let (px, py) = ((v.x - p.origin[0]) / crate::pathing::CELL, (v.y - p.origin[1]) / crate::pathing::CELL);
+            let r = v.collision / crate::pathing::CELL;
+            for cy in (py - 0.5 - r).floor() as i32..=(py - 0.5 + r).floor() as i32 {
+                for cx in (px - 0.5 - r).floor() as i32..=(px - 0.5 + r).floor() as i32 {
+                    taken.insert((cx, cy));
+                }
+            }
+        }
+        struct Local<'a> {
+            p: &'a crate::pathing::PathingMap,
+            kind: crate::pathing::Move,
+            taken: std::collections::HashSet<(i32, i32)>,
+        }
+        impl crate::lrpath::Cells for Local<'_> {
+            fn open(&self, x: i32, y: i32) -> bool {
+                self.p.passable((x, y), self.kind) && !self.taken.contains(&(x, y))
+            }
+        }
+        let cells = Local { p, kind, taken };
+        let class = crate::lrpath::class_of(u.collision / crate::pathing::CELL);
+        let (start, end) = (p.cell_of(u.x, u.y), p.cell_of(goal.0, goal.1));
+        Some(match crate::lrpath::search(&cells, start, end, class, 32) {
+            crate::lrpath::Outcome::Found(c) => {
+                let mut way: Vec<(f32, f32)> = c[1..].iter().map(|&c| p.center(c)).collect();
+                way.pop();
+                way.push(goal);
+                (way, None)
+            }
+            crate::lrpath::Outcome::Nearest(c) => (c[1..].iter().map(|&c| p.center(c)).collect(), c.last().copied()),
+            crate::lrpath::Outcome::Stay => (Vec::new(), None),
+        })
+    }
+
     fn path_to_inner(&mut self, h: u32, goal: (f32, f32)) {
+        if let Some((way, end)) = self.local_path(h, goal) {
+            if let Some(u) = self.unit_mut(h) {
+                u.path = way;
+                u.extra.path_end_cell = end;
+                u.repath_timer = f32::INFINITY;
+            }
+            return;
+        }
         let Some(u) = self.unit(h) else { return };
         // Paths keep a unit's center a whole cell clear of what blocks it, at least one
         // (measured: a peasant, a footman, and a knight, collision 16, 31, and 32, all
@@ -999,6 +1075,26 @@ impl World {
     }
 
     fn walk_inner(&mut self, h: u32, dt: f32) -> bool {
+        // A way short of its goal is searched again on reaching its last cell.
+        if let (Some(end), Some(p)) = (self.unit(h).and_then(|u| u.extra.path_end_cell), self.pathing.as_ref()) {
+            let here = self.unit(h).map(|u| p.cell_of(u.x, u.y));
+            if here == Some(end) {
+                let Some(u) = self.unit_mut(h) else { return true };
+                u.extra.path_end_cell = None;
+                let goal = match u.action {
+                    Action::Move { x, y, .. } => Some((x, y)),
+                    _ => None,
+                };
+                if let Some(goal) = goal {
+                    self.path_to(h, goal);
+                    if self.unit(h).is_some_and(|u| u.path.is_empty()) {
+                        let Some(u) = self.unit_mut(h) else { return true };
+                        set_anim(u, "stand");
+                        return true;
+                    }
+                }
+            }
+        }
         self.steer_around(h);
         let Some(u) = self.unit_mut(h) else { return true };
         let Some(&next) = u.path.first() else {

@@ -433,6 +433,15 @@ these are the findings behind them.
   its level, +0x22); a step costs isqrt((24 |dx|)^2 + (24 |dy|)^2) between the two
   nodes' cells, the estimate the same to the goal's cell (`FUN_6f164020`), a warp's
   step 1 more than its source (`FUN_6f165220`).
+- A path searches its accelerator plan only with +0x88's 0x200000 (`FUN_6f167120`,
+  `FUN_6f165b60`); without it (Neutral Passive's wanderers) its plan is the goal
+  itself, and the local search runs straight for it; a local path is searched again
+  once its points are used up (`FUN_6f167ce0`).  With this, the first wandering
+  sheep's walk ends as the original's: 18 units south, stopping as it enters the
+  cell its search reached (this game's at 1232, -4930, the original's 1231.73,
+  -4929.95, its turn on the way bending it).
+- The engine steps movement every 30 ms of game time (`FUN_6f15aa80` counting the
+  steps at +0x538; measured: 4, 3, 3 steps a 100 ms turn, ten each 300 ms).
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

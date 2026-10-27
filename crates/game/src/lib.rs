@@ -1,6 +1,7 @@
 //! The game: object data, world state, and the JASS host that runs map scripts.
 
 pub mod ability;
+pub mod actions;
 pub mod ai;
 pub mod aiferry;
 pub mod aimisc;
@@ -90,6 +91,8 @@ pub struct Game {
     /// from the host; the last selection sent, so an unchanged one is not sent again.
     pub outbox: Option<Vec<replay::Command>>,
     sent_selection: Option<Vec<u32>>,
+    /// Each player's selection as the actions played so far left it.
+    codec: actions::Codec,
 }
 
 /// How a player slot is filled when the game starts.
@@ -276,7 +279,7 @@ impl Game {
                 pl.name = name;
             }
         }
-        Ok(Game { vm, world, info, recorder: None, locked: false, outbox: None, sent_selection: None })
+        Ok(Game { vm, world, info, recorder: None, locked: false, outbox: None, sent_selection: None, codec: Default::default() })
     }
 
     /// Runs the map's `config` function, which declares players and start locations.
@@ -730,7 +733,17 @@ impl Game {
     /// Plays one frame (of a replay or from a network game's host): its commands, then
     /// its step; returns what each command answered, with its player.
     pub fn play_frame(&mut self, f: &replay::Frame) -> Vec<(u8, replay::Outcome)> {
-        let out = f.commands.iter().map(|(p, c)| (*p, self.execute(*p, c.clone()))).collect();
+        // A frame read from a file has the original's actions, read as they come.
+        let mut commands = f.commands.clone();
+        if let Some(actions) = f.actions.as_ref().filter(|_| commands.is_empty()) {
+            for (p, bytes) in actions {
+                match self.codec.decode(&self.world, *p, bytes) {
+                    Ok(cs) => commands.extend(cs.into_iter().map(|c| (*p, c))),
+                    Err(e) => log::warn!("player {p}'s actions: {e}"),
+                }
+            }
+        }
+        let out = commands.into_iter().map(|(p, c)| (p, self.execute(p, c))).collect();
         if let Some(r) = self.recorder.as_mut() {
             r.step(f.dt);
         }
@@ -793,7 +806,7 @@ impl Game {
             }
         }
         if let Some(r) = self.recorder.as_mut() {
-            r.command(player, c.clone());
+            r.command(&self.world, player, c.clone());
         }
         let res = |r: Result<(), &'static str>| r.map_or_else(O::Error, |_| O::Done);
         match c {

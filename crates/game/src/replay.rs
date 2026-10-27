@@ -135,6 +135,10 @@ pub enum Outcome {
 pub struct Frame {
     pub dt: f32,
     pub commands: Vec<(u8, Command)>,
+    /// The commands as the original's actions, each player's block (`actions::Codec`),
+    /// when they were recorded so; a replay read from a file plays from them.
+    #[serde(default)]
+    pub actions: Option<Vec<(u8, Vec<u8>)>>,
 }
 
 /// A replay: the game it was, and its frames.
@@ -182,7 +186,7 @@ struct Replay4 {
 const SETUP_RECORD: u8 = 0x7E;
 /// The private action carrying one of this game's commands, until each has its
 /// original action (`Command` in postcard).
-const COMMAND_ACTION: u8 = 0x7F;
+const COMMAND_ACTION: u8 = crate::actions::COMMAND_ACTION;
 /// The private action giving a turn's exact length (an f32), from player 0, as this
 /// game's steps need not be whole milliseconds.
 const STEP_ACTION: u8 = 0x7D;
@@ -243,6 +247,12 @@ impl Replay {
         ];
         for f in &self.frames {
             let mut actions = vec![(0u8, [&[STEP_ACTION][..], &f.dt.to_le_bytes()].concat())];
+            if let Some(acts) = &f.actions {
+                actions.extend(acts.iter().map(|(p, b)| (p + 1, b.clone())));
+                records.push(w3g::Record::Turn { ms: (f.dt * 1000.0).round() as u16, actions });
+                records.push(w3g::Record::Checksum(vec![0; 4]));
+                continue;
+            }
             for (player, c) in &f.commands {
                 let body = postcard::to_allocvec(c)?;
                 let mut a = vec![COMMAND_ACTION];
@@ -315,24 +325,15 @@ impl Replay {
         let mut frames = Vec::new();
         for rec in &r.records {
             let w3g::Record::Turn { ms, actions } = rec else { continue };
-            let mut f = Frame { dt: *ms as f32 / 1000.0, commands: Vec::new() };
+            let mut f = Frame { dt: *ms as f32 / 1000.0, commands: Vec::new(), actions: Some(Vec::new()) };
             for (pid, bytes) in actions {
-                let mut k = 0;
-                while k < bytes.len() {
-                    match bytes[k] {
-                        STEP_ACTION if *pid == 0 && k + 5 <= bytes.len() => {
-                            f.dt = f32::from_le_bytes(bytes[k + 1..k + 5].try_into().unwrap());
-                            k += 5;
-                        }
-                        COMMAND_ACTION if k + 3 <= bytes.len() => {
-                            let n = u16::from_le_bytes([bytes[k + 1], bytes[k + 2]]) as usize;
-                            let body = bytes.get(k + 3..k + 3 + n).ok_or_else(|| anyhow::anyhow!("short command"))?;
-                            f.commands.push((pid.saturating_sub(1), postcard::from_bytes(body)?));
-                            k += 3 + n;
-                        }
-                        _ => anyhow::bail!("an action this game does not read yet"),
+                if *pid == 0 {
+                    if bytes.len() == 5 && bytes[0] == STEP_ACTION {
+                        f.dt = f32::from_le_bytes(bytes[1..5].try_into().unwrap());
                     }
+                    continue;
                 }
+                f.actions.get_or_insert_with(Vec::new).push((pid - 1, bytes.clone()));
             }
             frames.push(f);
         }
@@ -351,20 +352,32 @@ pub struct Recorder {
     pub replay: Replay,
     /// The commands since the last step.
     pending: Vec<(u8, Command)>,
+    /// Those commands as actions.
+    actions: Vec<(u8, Vec<u8>)>,
+    codec: crate::actions::Codec,
 }
 
 impl Recorder {
     pub fn new(replay: Replay) -> Recorder {
-        Recorder { replay, pending: Vec::new() }
+        Recorder { replay, pending: Vec::new(), actions: Vec::new(), codec: Default::default() }
     }
 
-    pub fn command(&mut self, player: u8, c: Command) {
+    /// Notes a command, as the world stands before it is carried out.
+    pub fn command(&mut self, w: &crate::world::World, player: u8, c: Command) {
+        let bytes = self.codec.encode(w, player, &c);
+        if !bytes.is_empty() {
+            match self.actions.iter_mut().find(|(p, _)| *p == player) {
+                Some((_, b)) => b.extend(bytes),
+                None => self.actions.push((player, bytes)),
+            }
+        }
         self.pending.push((player, c));
     }
 
     pub fn step(&mut self, dt: f32) {
         let commands = std::mem::take(&mut self.pending);
-        self.replay.frames.push(Frame { dt, commands });
+        let actions = std::mem::take(&mut self.actions);
+        self.replay.frames.push(Frame { dt, commands, actions: Some(actions) });
     }
 }
 
@@ -416,15 +429,27 @@ mod tests {
             flags: 0x64802,
             seed: 0x35000000,
             frames: vec![
-                Frame { dt: 0.0166, commands: vec![] },
-                Frame { dt: 0.05, commands: vec![(0, Command::Order { unit: 42, order: 851971, x: 1.5, y: -2.0, target: 0 }), (0, Command::Chat { player: 0, text: "hi".into(), to: 0 })] },
-                Frame { dt: 0.1, commands: vec![(1, Command::Train { building: 7, id: *b"hpea" })] },
+                Frame { dt: 0.0166, commands: vec![], actions: None },
+                Frame { dt: 0.05, commands: vec![(0, Command::Order { unit: 42, order: 851971, x: 1.5, y: -2.0, target: 0 }), (0, Command::Chat { player: 0, text: "hi".into(), to: 0 })], actions: None },
+                Frame { dt: 0.1, commands: vec![(1, Command::Train { building: 7, id: *b"hpea" })], actions: None },
             ],
             ..Default::default()
         };
         let b = r.to_bytes().unwrap();
         assert!(b.starts_with(w3_formats::w3g::MAGIC));
-        let back = Replay::parse(&b).unwrap();
+        let mut back = Replay::parse(&b).unwrap();
+        // The commands come back as their private actions; read them as play does.
+        for f in &mut back.frames {
+            for (p, bytes) in f.actions.take().unwrap_or_default() {
+                let mut k = 0;
+                while k < bytes.len() {
+                    assert_eq!(bytes[k], COMMAND_ACTION);
+                    let n = u16::from_le_bytes([bytes[k + 1], bytes[k + 2]]) as usize;
+                    f.commands.push((p, postcard::from_bytes(&bytes[k + 3..k + 3 + n]).unwrap()));
+                    k += 3 + n;
+                }
+            }
+        }
         assert_eq!(postcard::to_allocvec(&back).unwrap(), postcard::to_allocvec(&r).unwrap());
         let w = w3_formats::w3g::Replay::parse(&b).unwrap();
         assert_eq!((w.seed, w.slots.len(), w.host.name.as_str()), (0x35000000, 2, "Jack"));

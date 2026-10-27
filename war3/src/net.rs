@@ -320,7 +320,7 @@ impl Session {
                                 // anyone (a player who left).
                                 commands.extend(decode(&data).into_iter().filter(|(p, _)| pid == HOST_PID || Some(*p) == player));
                             }
-                            self.queue.push_back(Frame { dt: interval as f32 / 1000.0, commands });
+                            self.queue.push_back(Frame { dt: interval as f32 / 1000.0, commands, actions: None });
                             self.next += 1;
                             self.last_frame = Instant::now();
                         }
@@ -393,7 +393,7 @@ impl Session {
             let commands: Vec<(u8, Command)> = blocks.iter().flat_map(|b| b.1.iter().cloned()).collect();
             let actions = blocks.iter().map(|(pid, c)| (*pid, encode(c))).collect();
             h.send_turn((TURN * 1000.0) as u16, actions);
-            self.queue.push_back(Frame { dt: TURN, commands });
+            self.queue.push_back(Frame { dt: TURN, commands, actions: None });
             self.next += 1;
         }
     }

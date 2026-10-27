@@ -49,6 +49,11 @@ impl<'a> Reader<'a> {
         s
     }
 
+    /// The bytes not yet read.
+    pub fn rest_len(&self) -> usize {
+        self.b.len().saturating_sub(self.at)
+    }
+
     pub fn is_empty(&self) -> bool {
         self.at >= self.b.len()
     }

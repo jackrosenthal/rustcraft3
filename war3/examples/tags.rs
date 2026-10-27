@@ -20,6 +20,11 @@ fn main() -> anyhow::Result<()> {
     g.tick(0.1);
     let ours: Vec<String> = g.world.tags.log.clone().unwrap_or_default().iter().map(|c| String::from_utf8_lossy(c).to_string()).collect();
     println!("ours {} tags, the original's {}", ours.len(), reference.len());
+    // TAGS_OUT names a file for ours, one per line, to compare further than the first
+    // difference.
+    if let Ok(out) = std::env::var("TAGS_OUT") {
+        std::fs::write(out, ours.join("\n") + "\n")?;
+    }
     match ours.iter().zip(&reference).position(|(a, b)| a != b) {
         Some(k) => {
             println!("first difference at tag {k}:");

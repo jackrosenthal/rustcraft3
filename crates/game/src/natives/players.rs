@@ -268,7 +268,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             with_player(w, a, |p| { if on { p.abilities_unavailable.remove(&id); } else { p.abilities_unavailable.insert(id); } })
         },
         GetPlayerScore => |w, _, a| int(player_arg(w, a, 0).map_or(0, |p| w.player_score(p, a.h(1) as i32))),
-        CreateForce => |w, _, _| handle(w.handles.insert(Obj::Force(Force::default()))),
+        CreateForce => |w, _, _| {
+            w.tags.take_all(&[b"+frc", b"`flg", b"`flg"]);
+            handle(w.handles.insert(Obj::Force(Force::default())))
+        },
         DestroyForce => |w, _, a| { if w.force(a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
         ForceAddPlayer => |w, _, a| {
             let Some(p) = player_arg(w, a, 1) else { return none() };

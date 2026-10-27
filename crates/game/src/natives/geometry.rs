@@ -42,7 +42,10 @@ fn camera_margin(w: &World, which: u32) -> f32 {
 
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
     reg!(t,
-        Rect => |w, _, a| handle(w.handles.insert(Obj::Rect(Rect { min_x: a.r(0), min_y: a.r(1), max_x: a.r(2), max_y: a.r(3) }))),
+        Rect => |w, _, a| {
+            w.tags.take(b"+rct");
+            handle(w.handles.insert(Obj::Rect(Rect { min_x: a.r(0), min_y: a.r(1), max_x: a.r(2), max_y: a.r(3) })))
+        },
         RectFromLoc => |w, _, a| {
             let (x0, y0) = w.location(a.h(0)).unwrap_or_default();
             let (x1, y1) = w.location(a.h(1)).unwrap_or_default();
@@ -82,7 +85,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetRectMinY => |w, _, a| real(w.rect(a.h(0)).map_or(0.0, |r| r.min_y)),
         GetRectMaxX => |w, _, a| real(w.rect(a.h(0)).map_or(0.0, |r| r.max_x)),
         GetRectMaxY => |w, _, a| real(w.rect(a.h(0)).map_or(0.0, |r| r.max_y)),
-        Location => |w, _, a| handle(w.handles.insert(Obj::Location(a.r(0), a.r(1)))),
+        Location => |w, _, a| {
+            w.tags.take(b"+loc");
+            handle(w.handles.insert(Obj::Location(a.r(0), a.r(1))))
+        },
         RemoveLocation => |w, _, a| { if w.location(a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
         MoveLocation => |w, _, a| {
             if let Some(Obj::Location(x, y)) = w.handles.get_mut(a.h(0)) { *x = a.r(1); *y = a.r(2); }

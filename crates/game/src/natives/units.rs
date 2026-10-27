@@ -319,6 +319,15 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
         }
     }
     w.unit_order.push(h);
+    // A structure that spreads blight blights the four cells about it at once, its
+    // growth following (measured: a Necropolis made by script has blighted 0 to 96 to
+    // its right before the script's next line, and 768 a second later).
+    if let Some((a, lvl)) = w.ability_with_code(h, "Abli") {
+        if w.objects.abilities.get(a).is_some_and(|o| o.level_real("DataB", lvl) != 0.0) {
+            w.blight_circle(x, y, 0.0);
+        }
+    }
+    w.tag_unit(h);
     w.start_stock(h);
     w.attach_ability_art(h);
     w.sync_spell_books(h);
@@ -859,6 +868,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 unit_state::MAX_MANA => u.max_mana = v,
                 _ => {}
             });
+            if s == unit_state::MANA {
+                w.mana_changed(a.h(0));
+            }
             // Life set to none kills (measured: -5 reads 0, and the unit is dead).
             if s == unit_state::LIFE && w.unit(a.h(0)).is_some_and(|u| !u.dead && u.life <= 0.405) {
                 kill_unit(w, vm, a.h(0), 0);
@@ -1365,7 +1377,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetAttacker => |w, _, _| handle(w.ctx.other_unit),
         GetEnumUnit => |w, _, _| handle(w.enum_ctx.enum_unit),
         GetFilterUnit => |w, _, _| handle(w.enum_ctx.filter_unit),
-        CreateGroup => |w, _, _| handle(w.handles.insert(Obj::Group(Group::default()))),
+        CreateGroup => |w, _, _| {
+            w.tags.take(b"+grp");
+            handle(w.handles.insert(Obj::Group(Group::default())))
+        },
         DestroyGroup => |w, _, a| { if w.group(a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
         GroupAddUnit => |w, _, a| {
             let u = a.h(1);

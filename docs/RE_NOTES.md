@@ -209,21 +209,51 @@ these are the findings behind them.
   that moves), `` `rtl ``, then each ability (some with a `` `rel ``, `` `rtl `` or `` `pil ``
   after it), then two `task`; the script's handles as it makes them (a trigger `+trg`, two
   `` `flg ``, its event, `+tac`, `hdlr`; locations, groups, timers, sounds, forces).
-- A unit's tags (Booty Bay): `+w3u` `` `pcu `` two `^pmr` five `` `rel `` `l^pa`, `` `rcm `` for
-  one that moves, `` `rtl ``, three more `^pmr` for a structure; then its abilities as the
-  unit's initialization makes them (`FUN_6f68a060`), some with objects of their own
-  (`AHbu`, `AObu`, `Aque`, `Aupg` a `` `rel ``; `Arep` a `` `rtl ``; `Aneu` a `` `pil ``; an
-  aura its buff, `AEar` `` `pil `` `BEar`; `Xbli` `` `pos `` and two `^pmr`); then two `task`.
-  A creep then has its AI (`AIcs` for some, `uref`, `AI-U`, `+ord`, `tskA`, four `task`,
-  `tskA`, `+ord`, `task`).  The initialization's order: the race's build ability
-  (`FUN_6f686570`: 1 AHbu, 2 AObu, 3 AUbu, 4 AEbu, 11 its own, else ANbu) when it builds
-  anything; `Aque` when it trains, researches, or upgrades; then abilities for further
-  lists (`FUN_6f341da0`, `FUN_6f343860`, `FUN_6f3438e0`, `FUN_6f344a20`); `Amov` when its
-  speed is not 0; `Aatk` when it has a weapon; the hero's when its id is upper case; and
-  more after (`FUN_6f670950` adds creep sleep, the alarm, and fire, among others).
-- A trigger's tags: `+trg`, two `` `flg ``, its event (`gevt`, `pevt`, `uevt`, `alvt` and
-  `psvt` each with an `` `fcl ``), `+tac` for its action, and `hdlr` the first time an
-  event of its kind is registered.
+- A unit's tags (`FUN_6f68a060`; measured by a census of every unit type, made by
+  script for an empty slot and for Neutral Hostile, under Wine): `+w3u` `` `pcu `` two
+  `^pmr` five `` `rel `` `l^pa`; its life regeneration's `` `rcm `` (regenType always or
+  night; for blight, `Ablr`, with an `` `rcm `` when made on blight); `` `rtl ``; its
+  mana's `` `rcm `` (manaN above 0); three `^pmr` for a structure.  Then its abilities:
+  the race's build ability when it builds a unit type (`FUN_6f686570`: AHbu, AObu, AUbu,
+  AEbu, AGbu for naga, else ANbu) and `` `rel ``; `Aque` `` `rel `` when it trains or
+  researches anything; `Amai`, `Asei`, `Asel`, `Aupg`, each with a `` `rel ``, for items
+  made and sold, units sold, and upgrades; `Amov` when it moves; `Aatk` when it has a
+  weapon, with a `spla` for each weapon slot of a splash kind (msplash, artillery, aline,
+  mline, mbounce, enabled or not); a hero's `AHer` `` `flg `` `` `flg `` and four
+  `` `rcm ``; the type's list (`FUN_6f4725f0`), each ability's code with the objects in
+  `docs/reference/ability_tags.txt` (measured by adding each ability to a sheep);
+  `ARal` when it trains or revives; `AInv` for a hero of an old map; fire (Afih, Afio,
+  Afiu, Afin by race) for a structure or a machine; `Abdt` `` `pil `` for a flyer
+  (`FUN_6f3f69b0`); `+ord` when its type's autocast ability (UnitAbilities auto, by code)
+  may be on (`FUN_6f48b230`: its research done, when AbilityData checkDep asks); `ACsp`
+  for a sleeper that is not a structure (`FUN_6f501130`); the alarm `Aalr` for a
+  structure (`FUN_6f3f5a20`); then two `task`; `AIts` for a gold mine.  A creep then
+  has its AI: `AIcs` when it starts a camp (no camp's first creep within 26 pathing
+  cells, CreepCampPathingCellDistance, `FUN_6f9ba6d0`), `uref`, `AI-U`, `+ord`, `tskA`,
+  four `task`, `tskA`, `+ord`, `task`.
+- An aura gives its bearer its buff (and the buff's objects) at once when it serves it:
+  on a sheep, without attack or mana, Trueshot, Vampiric, War Drums, Command, and
+  Brilliance Aura gave none.  A morph gives its result an object: Amil's Bmil on a
+  militia, Aphx's Bphx on an egg, Stone Form's `` `rcm `` on a gargoyle of stone.
+- A creep's Hurl Boulder and Thunder Clap (ACtb, ACtc) each make a timer the first time
+  its mana is set (Booty Bay's Granite Golems, after SetUnitState).
+- A new structure with blight growth (Abli) blights the four 128 cells about it at once
+  (a Necropolis made by script: blighted to 96 on its right before the next line, to 768
+  a second later).
+- The script's objects: a trigger `+trg` and two `` `flg ``; its events `uevt` (unit),
+  `pevt` (player, player-unit), `tmet` (a timer's expiry), `gfvt` `` `rtl `` (game
+  state), `gevt` (game), `alvt` `` `fcl `` (alliance), `psvt` `` `fcl `` (player state);
+  `+tac` for an action; `+flt` for a filter or condition; `+tmr`, `+grp`, `+loc`,
+  `+rct`, `+frc` with two `` `flg ``, `+tid`, `+tex`, `+snd` for every sound.  A script
+  function given to an object (an action, a filter, a timer) has a handler `hdlr` the
+  first time (`FUN_6f2872f0`, a table keyed by the function).  The other event classes'
+  codes (`FUN_6f278000` on: bevt, devt, ievt, pcvt, rgvt, tmvt, usvt, vevt, wdvt, ...)
+  are not yet matched to their natives.
+- The script's globals run before the map's destructables: Blizzard.j's first timer,
+  then the engine's `+gam` `` `flg `` `` `flg `` `` `rel `` `` `rel `` `` `flg ``
+  `` `rtl `` `+qum`, then the other globals.
+- A destructable placed with flags 3 is scenery, drawn but not made (Booty Bay's three
+  such trees are not found by EnumDestructablesInRect and take no tags).
 - Script handle ids (GetHandleId) are another table's (the object manager's at +0x20,
   0x45d entries at that turn; Player(0) is 0x100008): the tags above are the engine's
   own ids for all its objects, which actions (two words each) and the checksum use.

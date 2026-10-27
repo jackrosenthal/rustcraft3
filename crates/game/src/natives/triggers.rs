@@ -12,6 +12,21 @@ fn register_event(w: &mut World, trig: u32, kind: EventKind) -> NativeResult {
     if w.trigger(trig).is_none() {
         return none();
     }
+    // The original's event object for the kind, with the objects it makes (measured in
+    // Booty Bay's start: a unit's, a player's, a timer's expiry, the time of day's, a
+    // game's, an alliance's, and a player state's).  TriggerRegisterTimerEvent's is not
+    // measured yet and takes none here.
+    let codes: &[&crate::tags::Code] = match &kind {
+        EventKind::Unit { .. } => &[b"uevt"],
+        EventKind::Player { event, .. } if *event == crate::event_ids::EVENT_PLAYER_ALLIANCE_CHANGED => &[b"alvt", b"`fcl"],
+        EventKind::Player { .. } | EventKind::PlayerUnit { .. } => &[b"pevt"],
+        EventKind::PlayerState { .. } => &[b"psvt", b"`fcl"],
+        EventKind::GameState { .. } => &[b"gfvt", b"`rtl"],
+        EventKind::Game(_) => &[b"gevt"],
+        EventKind::TimerExpire(_) => &[b"tmet"],
+        _ => &[],
+    };
+    w.tags.take_all(codes);
     let e = w.handles.insert(Obj::Event(EventReg { trigger: trig, kind }));
     w.events.push(e);
     if let Some(t) = w.trigger_mut(trig) {
@@ -21,6 +36,10 @@ fn register_event(w: &mut World, trig: u32, kind: EventKind) -> NativeResult {
 }
 
 fn boolexpr(w: &mut World, e: BoolExpr) -> NativeResult {
+    if let BoolExpr::Func(f) = e {
+        w.tags.take(b"+flt");
+        w.tags.handler(f);
+    }
     handle(w.handles.insert(Obj::BoolExpr(e)))
 }
 
@@ -53,12 +72,18 @@ fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
         t.running = true;
         t.callback = cb;
     }
+    if let Some(f) = cb {
+        w.tags.handler(f);
+    }
     none()
 }
 
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
     reg!(t,
-        CreateTrigger => |w, _, _| handle(w.handles.insert(Obj::Trigger(Trigger::default()))),
+        CreateTrigger => |w, _, _| {
+            w.tags.take_all(&[b"+trg", b"`flg", b"`flg"]);
+            handle(w.handles.insert(Obj::Trigger(Trigger::default())))
+        },
         DestroyTrigger => |w, _, a| {
             let h = a.h(0);
             let Some(tr) = w.trigger(h).cloned() else { return none() };
@@ -102,6 +127,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let trig = a.h(0);
             let Some(func) = a.code(1) else { return none() };
             if w.trigger(trig).is_none() { return none(); }
+            w.tags.take(b"+tac");
+            w.tags.handler(func);
             let h = w.handles.insert(Obj::TriggerAction { func });
             if let Some(t) = w.trigger_mut(trig) { t.actions.push(h); }
             handle(h)
@@ -265,7 +292,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         TriggerRegisterUnitEvent => |w, _, a| register_event(w, a.h(0), EventKind::Unit { unit: a.h(1), event: a.h(2) as i32 }),
         TriggerRegisterFilterUnitEvent => |w, _, a| register_event(w, a.h(0), EventKind::Unit { unit: a.h(1), event: a.h(2) as i32 }),
         TriggerRegisterUnitInRange => |w, _, a| register_event(w, a.h(0), EventKind::UnitInRange { unit: a.h(1), range: a.r(2), filter: opt(a.h(3)) }),
-        CreateTimer => |w, _, _| handle(w.handles.insert(Obj::Timer(Timer::default()))),
+        CreateTimer => |w, _, _| {
+            w.tags.take(b"+tmr");
+            handle(w.handles.insert(Obj::Timer(Timer::default())))
+        },
         DestroyTimer => |w, _, a| { if w.timer_mut(a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
         TimerStart => timer_start,
         // Pausing keeps what is left (FUN_6f240420); resuming a stopped timer runs it

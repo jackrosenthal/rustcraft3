@@ -1,0 +1,805 @@
+# The objects the original makes when a unit gains each ability (UnitAddAbility on a
+# sheep, in Booty Bay's main, under Wine; tools: a census of the object manager's type
+# codes, as for bootybay_tags.txt).  Each line: the ability, its code (AbilityData), and
+# the codes of the objects tagged after the ability's own, in order.  A four-letter code
+# starting with B is the ability's buff on its bearer, followed by the buff's own objects.
+# ANeg is missing: adding it to a sheep crashed the original.  The engine's own abilities
+# (Amov, Aatk, the build abilities, ...) cannot be added by script and show nothing here.
+AHbz AHbz `rtl
+AHab AHab `pil
+AHmt AHmt `rtl
+AHwe AHwe `rtl
+ANst ANst `rtl
+ANsg ANsg `rtl
+ANsq ANsq `rtl
+ANsw ANsw `rtl
+AOww AOww `rtl
+AOcr AOcr
+AOmi AOmi `rtl
+AOwk AOwk `rtl
+AHbn AHbn `rtl
+AHfs AHfs `rtl
+AHdr AHdr `rtl
+AHpx AHpx `rtl
+AUcb AUcb `rtl
+AUim AUim `rtl
+AUls AUls `rtl
+AUts AUts BUts
+ANba ANba `rtl
+ANch ANch `rtl
+ANdr AHdr `rtl
+ANsi ANsi `rtl
+AUan AUan `rtl
+AUdc AUdc `rtl
+AUdp AUdp `rtl
+AUau AUau `pil BUau `rcm
+AEev AEev
+AEim AEim `rtl
+AEmb AEmb `rtl
+AEme AEme `rtl
+AUsl AUsl `rtl
+AUav AUav `pil
+AUcs AUcs `rtl
+AUin AUin `rtl
+AOcl AOcl `rtl
+AOeq AOeq `rtl
+AOfs AOfs `rtl
+AOsf AOsf `rtl
+AEer AEer `rtl
+AEfn AEfn `rtl
+AEah AEah `pil BEah
+AEtq AEtq `rtl
+AUdr AUdr `rtl
+AUdd AUdd `rtl
+AUfa AUfa `rtl
+AUfu AUfu `rtl
+AUfn AUfn `rtl
+AHav AHav `rtl scal `rel
+AHbh AHbh
+AHtb AHtb `rtl
+AHtc AHtc `rtl
+ANfl ANfl `rtl
+ANfa AHca `rtl
+ANto ANto `rtl
+ANms ANms `rtl
+AHad AHad `pil BHad
+AHds AHds `rtl
+AHhb AHhb `rtl
+AHre AHre `rtl
+ANbf ANbf `rtl
+ANdb ANdb
+ANdh ANdh `rtl
+ANef ANef `rtl
+ANdo ANdo `rtl
+ANht ANht `rtl
+ANca ANca
+ANrf ANrf `rtl
+AHfa AHfa `rtl
+AEst AEst `rtl
+AEsf AEsf `rtl
+AEar AEar `pil
+AOae AOae `pil BOae
+AOre AOre `rtl
+AOsh AOsh `rtl
+AOws AOws `rtl
+AOhw AOhw `rtl
+AOhx AOhx `rtl
+AOsw AOwd `rtl
+AOvd AOvd `rtl
+AEbl AEbl `rtl
+AEfk AEfk `rtl
+AEsh AEsh `rtl
+AEsv AEsv `rtl
+ANab ANab `rtl
+ANcr ANcr `rtl
+ANhs ANhs `rtl
+ANtm ANtm `rtl
+ANcs ANcs `rtl
+ANc1 ANcs `rtl
+ANc2 ANcs `rtl
+ANc3 ANcs `rtl
+ANrg ANrg `rtl
+ANg1 ANrg `rtl
+ANg2 ANrg `rtl
+ANg3 ANrg `rtl
+ANsy ANsy `rtl
+ANs1 ANsy `rtl
+ANs2 ANsy `rtl
+ANs3 ANsy `rtl
+ANde ANde
+ANd1 ANde
+ANd2 ANde
+ANd3 ANde
+ANic ANic
+ANia ANia `rtl
+ANso ANso `rtl
+ANlm ANlm `rtl
+ANvc ANvc `rtl
+ANin ANin `rtl
+SNin AUin `rtl
+ANfb ANfb `rtl
+ANfd ANfd `rtl
+ACfd ANfd `rtl
+ACf3 ANfd `rtl
+ANdp ANdp `rtl
+ANrc ANrc `rtl
+ANr3 ANrc `rtl
+AEsb AEsf `rtl
+ANrn AOre `rtl
+ANdc ANdc `rtl
+SNdc ANdc `rtl
+ANsl ANsl `rtl
+AEIl AEme `rtl
+AEvi AEme `rtl
+SNeq AOeq `rtl
+SNdd AUdd `rtl
+ANmo ANmo `rtl
+AEpa AEpa `rtl
+ANwm ANwm `rtl
+AHca AHca `rtl
+ANbr ANbr `rtl
+Arsg AOsf `rtl
+Aamk Aamk
+Arsq ANsq `rtl
+Arsp ANst `rtl
+ANsb AHtb `rtl
+ANhw AOhw `rtl
+Arsw AOwd `rtl
+ANhx AOhx `rtl
+AOls AUls `rtl
+ANcf ANbf `rtl
+Acdb ANdb
+Acdh ANdh `rtl
+Acef ANef `rtl
+AOr2 AOae `pil BOae
+AOr3 AOre `rtl
+AOs2 AOsh `rtl
+AOw2 AOws `rtl
+ANcl ANcl `rtl
+Aadm Aadm `rtl
+Andm Aadm `rtl
+ACdm Aadm `rtl
+ACd2 Aadm `rtl
+Aabs Aabs `rtl
+Aaha Aaha
+ANav AHav `rtl scal `rel
+Aalr Aalr
+Aall Aall `pil Anei
+Aast Aast `rtl
+ACad ACad `rtl
+Aams Aams `rtl
+Aam2 Aams `rtl
+ACam Aams `rtl
+Aatk Aatk
+ACba AHab `pil
+ACac AOac `pil
+ACav AHad `pil BHad
+SCae AOae `pil BOae
+Aap1 Aapl `pil
+Aap2 Aapl `pil
+Aap3 Aapl `pil
+Aap4 Aapl `pil
+Aoar Aoar `pil
+Aabr Aabr `pil
+Aasl Aasl `pil
+ACat AEar `pil
+Aakb Aakb `pil
+Aave Aave `rtl
+Aawa Aawa
+Abof Abof
+ACbn AHbn `rtl
+ACbh AHbh
+ANbh AHbh
+ANb2 AHbh
+Abtl Abtl `rtl
+Sbtl Abtl `rtl
+Abrf Abrf `rtl
+Absk Absk `rtl
+Sbsk Acha
+ACbk ANba `rtl
+Abds Abli Xbli `pos ^pmr ^pmr
+Abdl Abli Xbli `pos ^pmr ^pmr
+Abgs Abli Xbli `pos ^pmr ^pmr
+Abgl Abli Xbli `pos ^pmr ^pmr
+Abgm Abgm `rel `rel rslt rslt rslt rslt rslt +EIP `pos ^pmr ^pmr +EIP `pos ^pmr ^pmr +EIP `pos ^pmr ^pmr +EIP `pos ^pmr ^pmr +EIP `pos ^pmr ^pmr
+ANbl AEbl `rtl
+ACbz AHbz `rtl
+Ablo Ablo `rtl
+ACbl Ablo `rtl
+ACbb Ablo `rtl
+ACbc ANbf `rtl
+ACbf ACbf `rtl
+ANbu ANbu
+AHbu AHbu
+AObu AObu
+AEbu AEbu
+AUbu AUbu
+AGbu AGbu
+Abur Abur `rtl
+Abu2 Abur `rtl
+Abu3 Abur `rtl
+Abu5 Abur `rtl
+Abdt Abdt `pil
+Acan Acan `rtl
+Acn2 Acan `rtl
+ACcn Acan `rtl
+Abun Abun
+Advc Advc
+Sch2 Amtc
+Sch5 Acar
+Sch4 Acar
+Sch3 Acar
+Aenc Aenc
+Achd Achd `rtl
+ACca AUcs `rtl
+ACcv AUcs `rtl
+ACc2 AUcs `rtl
+ACc3 AUcs `rtl
+ACcl AOcl `rtl
+Ache AIdc `rtl
+Sca1 Acha
+Sca2 Acha
+Sca3 Acha
+Sca4 Acha
+Sca5 Acha
+Sca6 Acha
+Achl Achl
+ACch ANch `rtl
+ACce ANca
+Aclf Aclf `rtl
+ACcw AHca `rtl
+Acmg Acmg `rtl
+Acpf Acpf `rtl
+Acor Acor
+Acoa Acoa
+Acoh Acoh
+Aco2 Acoi `rtl
+Aco3 Acoi `rtl
+ACsp ACsp
+Acri Acri `rtl
+Scri Acri `rtl
+ACcr Acri `rtl
+ACct AOcr
+Acrs Acrs `rtl
+ACcs Acrs `rtl
+Acyc Acyc `rtl
+Acny Acyc `rtl
+ACcy Acyc `rtl
+SCc1 Acyc `rtl
+ACdc AUdc `rtl
+Adda Adda
+Amnx Adda
+Amnz Adda
+Adec Adec `rtl
+Adef Adef
+Adt1 Adet `pil
+Atru Atru `pil
+Adtg Atru `pil
+ANtr Atru `pil
+Agyv Agyv `pil
+Adts Adts
+Adtn Adtn `rtl
+Adev Adev `rtl
+ACdv ACdv `rtl
+Advm Advm `rtl
+ACde Advm `rtl
+Adch Adch `rtl
+Adcn Adis `rtl
+Adis Adis `rtl
+Adsm Adis `rtl
+ACds AHds `rtl
+ACdr AHdr `rtl
+Adri Adri `rtl
+Adro Adro `rtl
+Sdro Adro `rtl
+Atdp Atdp `rtl
+Aeat Aeat `rtl
+Aegr AIdd
+ANen Aens `rtl
+Aens Aens `rtl
+ACen Aens `rtl
+Aent Aent
+Aegm Aegm `rel `rel
+Aenr AEer `rtl
+Aenw AEer `rtl
+Aetl Aetl
+Aetf Aetf `rtl
+ACev AEev
+ACes AEev
+Aexh Aexh `rtl
+ANfy ANfy
+Afae Afae `rtl
+Afa2 Afae `rtl
+ACff Afae `rtl
+Afbk Afbk
+Afbt Afbk
+Afbb Afbk
+ACsf AOsf `rtl
+ACs9 AOsf `rtl
+ACs8 AOsf `rtl
+ACs7 AOsf `rtl
+Afod ANfd `rtl
+Awfb ANfb `rtl
+ACfb ANfb `rtl
+Aflk Aflk
+Afla Afla `rtl
+ACfs AHfs `rtl
+ANfs AHfs `rtl
+ACfr AEfn `rtl
+ACfl ANfl `rtl
+Afsh Afsh
+Afrz Afrz
+Afzy Afzy `rtl
+ACfa AUfa `rtl
+ACf2 AUfu `rtl
+ACfu AUfu `rtl
+Afra Afra
+Afr2 Afra
+Afrb Afrb
+ACfn AUfn `rtl
+ACcb AHtb `rtl
+Agho Agho
+Aeth Aeth
+Agld Agld `rel shft
+Agra Agra `rtl
+Agyd Agyd +EIP `pos ^pmr ^pmr +EIP `pos ^pmr ^pmr +EIP `pos ^pmr ^pmr +EIP `pos ^pmr ^pmr +EIP `pos ^pmr ^pmr
+Agyb Agyb
+Assk Assk
+Ansk Assk
+Ahar Ahar
+ANha Ahar
+Ahrl Ahrl
+Ahr3 Ahrl
+Ahr2 Ahrl
+Ahea Ahea `rtl
+Anhe Anhe `rtl
+Anh1 Anhe `rtl
+Anh2 Anhe `rtl
+Ahwd Ahwd `rtl
+AChw Ahwd `rtl
+AChv AOhw `rtl
+Ahnl Aroa `rtl
+AHer AHer
+AChx AOhx `rtl
+Acht ANht `rtl
+ACim AEim `rtl
+ACmp AUim `rtl
+Aimp Aimp
+Ainf Ainf `rtl
+ACif Ainf `rtl
+Aivs Aivs `rtl
+AInv AInv
+Apak AInv
+Aion AInv
+Aihn AInv
+Aien AInv
+Aiun AInv
+Avul Avul
+Alit Alit
+Alsh Alsh `rtl
+ACls Alsh `rtl
+Aliq Aliq
+Aloa Aloa `rtl
+Sloa Aloa `rtl
+Slo2 Aloa `rtl
+Slo3 Aloa `rtl
+Atlp Atlp `rtl
+Aloc Aloc
+Amdf Amdf
+Amim Amim
+ACmi Amim
+ACm2 Amim
+ACm3 Amim
+Amls Amls `rtl
+Ambt Ambt +EIP `pos ^pmr ^pmr `rtl
+Amb2 Ambt `rtl
+Amnb AEmb `rtl
+Ambd AEmb `rtl
+Ambb AEmb `rtl
+Amfl Amfl `rtl
+ACmf ANms `rtl
+Amed Amed `rtl
+Amel Amel `rtl
+Amil Amil
+Amic Amic
+ANmr ANmr `rtl
+Amin Amin `rcm `rtl
+ACmo ANmo `rtl
+Amgl Amgl
+Amgr Amgl
+Amov Amov
+Aneu Aneu `pil Anei
+Ane2 Aneu `pil
+Andt Andt
+ANre Aarm `pil
+ACnr Aoar `pil
+AAns AAns
+Ansp Ansp
+Afak Afak `rtl
+ANak Afak `rtl
+Afir Afir
+Afih Afih
+Afio Afio
+Afin Afin
+Afiu Afiu
+ANpa ANpa `rtl
+ACpa ANpa `rtl
+ANpi ANpi BNpi
+Apmf ANpi BNpi
+Apig Apig Bpig
+Apiv Apiv `rcm `rtl
+Apsh Apsh `rtl
+Aphx Aphx `rtl
+Apxf Apxf
+Apts Apts
+Apoi Apoi
+Aply Aply `rtl
+ACpy Aply `rtl
+Apos Apos `rtl
+ACps Apos `rtl
+Aps2 Aps2 `rtl
+Awar Awar
+ACpv Awar
+Apit Apit `pil
+Aprg Aprg `rtl
+Apg2 Aprg `rtl
+ACpu Aprg `rtl
+ACrf ANrf `rtl
+ACrg ANrf `rtl
+Arai Arai `rtl
+ACrd Arai `rtl
+ARal ARal
+Arav Arav `rtl
+Amrf Arav `rtl
+ACrn ACrn `rtl
+ANr2 AOre `rtl
+Arbr Arbr
+Arej Arej `rtl
+ACrj Arej `rtl
+ACr2 Arej `rtl
+Aren Aren `rtl
+Ahrp Arep `rtl
+Arep Arep `rtl
+Arpb Arpb `rtl
+Arpl Arpl `rtl
+Arpm Arpm `rtl
+Arsk Arsk
+ACrk Arsk
+ACsk Arsk
+Arst Arst `rtl
+Argd Artn
+Argl Artn
+Arlm Artn
+AHta AIta `rtl
+Arng Arng `rtl
+Arev Arev `rel ARal
+Aroa Aroa `rtl
+Ara2 Aroa `rtl
+ACr1 Aroa `rtl
+ACro Aroa `rtl
+Aroc Aroc
+Aro1 Aroo
+Aro2 Aroo
+Asac Asac `rel ARal
+Asal Asal
+Alam Alam `rtl
+ACsa AHfa `rtl
+Asds Asds `rtl
+Asdg Asds `rtl
+Asd2 Asds `rtl
+Asd3 Asds `rtl
+Asid Asid `rel
+Asud Asud `rel
+Aesn Aesn `rtl
+Aesr Aesn `rtl
+Aeye Aeye `rtl
+ACtn AOwd `rtl
+Ashm Ashm
+Sshm Ashm
+Ahid Ahid
+ACss AEsh `rtl
+ACsh AOsh `rtl
+ACst AOsh `rtl
+ANsh AOsh `rtl
+ACsi ANsi `rtl
+ACsm AHdr `rtl
+ACsl AUsl `rtl
+Asla Asla
+Aslo Aslo `rtl
+ACsw Aslo `rtl
+Aspo Aspo
+Asod Asod
+Assp Assp
+Aspd Aspd
+Aspy Aspd
+Aspt Aspd
+Asps Asps `rtl
+Asph Asph
+Asp1 Asph
+Asp2 Asph
+Asp3 Asph
+Asp4 Asph
+Asp5 Asph
+Asp6 Asph
+Aspa Aspa
+Aspi Aspi
+Aspl Aspl `rtl
+Astd Astd `rtl
+Asta Asta `rtl
+Astn Astn `rtl
+Asth Asth
+Asb1 ANsu `rtl
+Asb2 ANsu `rtl
+Asb3 ANsu `rtl
+Aslp ANwm `rtl
+ACwe AHwe `rtl
+Attu Attu
+Srtt Acha
+Atau Atau `rtl
+ANta Atau `rtl
+ANth AUts BUts
+ANt2 AUts BUts
+ACah AEah `pil BEah
+ACtb ACtb `rtl
+ACtc ACtc `rtl
+ACt2 ACtc `rtl
+Atdg Atdg
+Atsp Atsp
+Atwa Atwa
+Atol Atol
+Ault Ault
+ACua AUau `pil BUau `rcm
+Auhf Auhf `rtl
+Suhf Auhf `rtl
+ACuf Auhf `rtl
+Auco Auco `rtl
+Auns Auns `rtl
+SCva AIva
+ACvp AUav `pil
+Avng Avng `rtl
+Awan Awan
+Awrs AOws `rtl
+Awrg AOws `rtl
+Awrh AOws `rtl
+ANwk AOwk `rtl
+Awha Awha
+Awh2 Awha
+Aven Aven
+ACvs Aven
+Awrp Awrp
+Aweb Aweb `rtl
+ACwb Aweb `rtl
+AIa1 AIab
+AIa3 AIab
+AIa4 AIab
+AIa6 AIab
+AIx5 AIab
+AIx1 AIab
+AIx2 AIab
+AIs1 AIab
+AIs3 AIab
+AIs4 AIab
+AIs6 AIab
+AIi1 AIab
+AIi3 AIab
+AIi4 AIab
+AIi6 AIab
+AIxm AIxm `rtl
+AIam AIam `rtl
+AIim AIim `rtl
+AIsm AIsm `rtl
+AIgm AIam `rtl
+AItm AIim `rtl
+AInm AIsm `rtl
+AIaa AIaa `rtl
+AIat AIat
+AIt6 AIat
+AIt9 AIat
+AItc AIat
+AItf AIat
+AItg AIat
+AIth AIat
+AIti AIat
+AItj AIat
+AItk AIat
+AItl AIat
+AItn AIat
+AIva AIva
+AIbk AEbl `rtl
+AIbl AIbl `rtl
+AIbg AIbl `rtl
+AIbt AIbl `rtl
+AIbb AIbl `rtl
+AIbf AIbl `rtl
+AIbr AIbl `rtl
+AIbs AIbl `rtl
+AIbh AIbl `rtl
+AIcy Acyc `rtl
+AId1 AIde
+AId2 AIde
+AId3 AIde
+AId4 AIde
+AId5 AIde
+AIgf AIgl `rtl
+AIgu AIgl `rtl
+AIem AIem `rtl
+AIe2 AIem `rtl
+AIfd AIfs `rtl
+AIff AIfs `rtl
+AIfr AIfs `rtl
+AIfu AIfs `rtl
+AIfh AIfs `rtl
+AIfs AIfs `rtl
+AIir AIfs `rtl
+AIuw AIfs `rtl
+AIfl AIfl
+AIfm AIfm
+AIfo AIfo
+AIfn AIfn
+AIfe AIfe
+AIfx AIfl
+AIfa AIfa `rtl
+AIin AUin `rtl
+AIlm AIlm `rtl
+AIlp AIlp `rtl
+AIlf AIml
+AIl1 AIml
+AIl2 AIml
+AIms AIms
+ANbs ANbs `rtl
+AIdf AIsb ANbs `rtl
+AIcb AIcb
+AIdn AIfb
+AIfb AIfb
+AIgd AIfb
+AIzb AIzb
+AIob AIob
+AIll AIsb Aprg `rtl
+AIlb AIlb
+AIsb AIsb Aslo `rtl
+AIpb AIpb
+Apo2 Apo2
+AInd ACad `rtl
+Arel Arel `rtl `rcm
+Arll Arel `rtl `rcm
+AIsi AIsi `rcm
+AIos Aslo `rtl
+AIso AIso `rtl
+Asou Asou
+AIcf AIcf BIcf
+AIco AIco `rtl
+AIdm AIdm `rtl
+AIda AIda `rtl
+AIdb AIda `rtl
+AIta AIta `rtl
+AIdi AIdi `rtl
+AIds AIdi `rtl
+APdi AIdi `rtl
+AIh1 AIhe `rtl
+AIh2 AIhe `rtl
+AIh3 AIhe `rtl
+AIha AIha `rtl
+AIhb AIha `rtl
+APh1 AIha `rtl
+APh2 AIha `rtl
+APh3 AIha `rtl
+AIhw Ahwd `rtl
+AIsw Aeye `rtl
+AIil AIil `rtl
+AIv1 AIvi `rtl
+AIv2 AIvi `rtl
+AIvu AIvu `rtl
+AIvl AIvu `rtl
+AIm1 AIma `rtl
+AIm2 AIma `rtl
+AImr AImr `rtl
+APmr AImr `rtl
+APmg AImr `rtl
+AIpm AIpm `rtl
+AIrt AIrt `rtl
+AIrm AIrm `rtl
+AIrn AIrm `rtl
+AIrc AIrc
+AIre AIre `rtl
+AIra AIra `rtl
+APra AIra `rtl
+AIsp AIsp `rtl
+AIsa AIsa `rtl
+APsa AIsa `rtl
+AItp AItp `rtl
+AIad AHad `pil BHad
+AIcd AOac `pil
+AIba AHab `pil
+AIav AUav `pil
+AIar AEar `pil
+AIae AOae `pil BOae
+AIau AUau `pil BUau `rcm
+AIuv Ault `rcm
+AIls Alsh `rtl
+AIxs Aami `rtl
+AIan AIan `rtl
+AIrs AIrs `rtl
+AIrr Aroa `rtl
+AIev AEev
+AImx Amim
+AImh AImi `rtl
+AImb AImm
+AIbm AImm
+AIsx AIas
+AIs2 AIas
+AIrl AIrg `rtl
+AIpr AIrg `rtl
+AIsl AIrg `rtl
+AIpl AIrg `rtl
+AIp1 AIrg `rtl
+AIp2 AIrg `rtl
+AIp3 AIrg `rtl
+AIp4 AIrg `rtl
+AIp5 AIrg `rtl
+AIp6 AIrg `rtl
+AIgo AIgo `rtl
+AIlu AIlu `rtl
+AIrv AIrv `rtl
+AIdc AIdc `rtl
+AIwb AIwb `rtl
+AImo AImo `rtl
+AIct AIct `rtl
+AIri AIri `rtl
+AIsr AIsr
+Ablp Ablp `rtl
+AIpv AIpv `rtl
+Aste Aste `rtl
+Amec Amec `rtl
+Ashs Ashs `rtl
+ANpr ANpr `rtl
+ANsa ANsa `rtl
+ANss ANss `rtl
+ANse ANse `rtl
+Aret Aret `rtl
+AImt AHmt `rtl
+Aspb Aspb `rtl AEer `rtl Adis `rtl Aroa `rtl
+AIrd AIrd `rtl
+AItb AItb `rtl
+AIdv AHds `rtl
+AIse ANsi `rtl
+AIpg Aprg `rtl
+AIps Aprg `rtl
+AIfg Aclf `rtl
+APrl AHre `rtl
+APrr AHre `rtl
+AIrb AIrb `rtl
+Aspp Aspl `rtl
+AUds AUds `pcu ^pmr ^pmr `rtl
+APwt Aeye `rtl
+AIuf Auhf `rtl
+AId0 AIde
+AIcm Acmg `rtl
+AImz AImm
+AIfz ANfd `rtl
+AIdp AUdp `rtl
+AImv AImm
+AIpx AImi `rtl
+AIdd AIdd
+AId8 AIde
+AId7 AIde
+AIlz AIml
+AIhx AIhe `rtl
+AIaz AIab
+AIrx AHre `rtl
+AIbx AHbh
+AItx AIat
+AIwm ANwm `rtl
+AIsh AIsh `rtl
+AI2m AImm
+AIgx Aoar `pil
+AIhl AHhb `rtl
+AIsz Aspo
+AIpz AIha `rtl
+AIfw AIfb
+AIft AIob
+AIlx AIsb Aprg `rtl
+AIcs AOcr
+AIcl AOcl `rtl
+AIx3 AIab
+AIx4 AIab
+AIxk Absk `rtl

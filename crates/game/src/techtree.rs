@@ -99,12 +99,15 @@ impl World {
     }
 
     /// Whether an ability works for its owner: available (SetPlayerAbilityAvailable)
-    /// and its research done.
+    /// and its research done, when its type checks it (AbilityData checkDep; measured:
+    /// an Eredar Sorcerer's creep Abolish Magic, ACdm, which lists Resi but does not
+    /// check it, starts on for an empty slot's, as a Dryad's Aadm, which checks it,
+    /// does not).
     pub fn ability_enabled(&self, owner: u8, a: Id) -> bool {
         if self.players.get(owner as usize).is_some_and(|p| p.abilities_unavailable.contains(&a)) {
             return false;
         }
-        self.objects.abilities.get(a).is_none_or(|o| o.list("Requires").is_empty()) || self.missing_requirements(owner, a, 1).is_empty()
+        self.objects.abilities.get(a).is_none_or(|o| o.list("Requires").is_empty() || o.int("checkDep") == 0) || self.missing_requirements(owner, a, 1).is_empty()
     }
 
     /// SetPlayerTechMaxAllowed's limit for `id` (unset is -1), plus what research adds

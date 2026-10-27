@@ -144,7 +144,7 @@ impl Game {
         let blizzard = read_script(&chain, &["Scripts\\Blizzard.j"])?;
         let map = read_script(&chain, &["war3map.j", "Scripts\\war3map.j"])?;
         let module = w3_jass::compile([("common.j", &*common), ("Blizzard.j", &*blizzard), ("war3map.j", &*map)])?;
-        let vm = Vm::new(module);
+        let mut vm = Vm::new(module);
         let mut objects = ObjectDb::load(&chain);
         if let Some(k) = custom_keys {
             objects.apply_custom_keys(k);
@@ -215,10 +215,14 @@ impl Game {
         if let (Ok(wpm), Some(t)) = (chain.read("war3map.wpm"), world.terrain_heights.as_ref()) {
             world.pathing = pathing::PathingMap::parse(&wpm, t.offset);
         }
-        // The engine's own objects made before the map's (read under Wine): timers, the
-        // game, flags and properties, the queue, groups, the pathing and acceleration
-        // maps, the pathing system, the game cache, the AI.
-        world.tags.take_all(&[b"+tmr", b"+gam", b"`flg", b"`flg", b"`rel", b"`rel", b"`flg", b"`rtl", b"+qum", b"+tmr", b"+grp", b"+grp", b"+tmr", b"+grp", b"+tmr", b"^pma", b"^pma", b"^ama", b"^ama", b"^ama", b"^ama", b"l^sy", b"l^ac", b"gccm", b"AI-1"]);
+        // The script's globals come first, and the engine's own objects (read under
+        // Wine): the game, flags and properties, and the queue after the globals' first
+        // (Blizzard.j's first timer); then the pathing and acceleration maps, the
+        // pathing system, the game cache, and the AI.
+        world.tags.after_next(&[b"+gam", b"`flg", b"`flg", b"`rel", b"`rel", b"`flg", b"`rtl", b"+qum"]);
+        vm.init_globals(&mut world).map_err(anyhow::Error::msg)?;
+        world.tags.flush();
+        world.tags.take_all(&[b"^pma", b"^pma", b"^ama", b"^ama", b"^ama", b"^ama", b"l^sy", b"l^ac", b"gccm", b"AI-1"]);
         if let Ok(bytes) = chain.read("war3map.doo") {
             match w3_formats::map::Doodads::parse(&bytes) {
                 Ok(doo) => {
@@ -277,8 +281,6 @@ impl Game {
 
     /// Runs the map's `config` function, which declares players and start locations.
     pub fn config(&mut self) -> anyhow::Result<()> {
-        let w = &mut self.world;
-        self.vm.init_globals(w).map_err(anyhow::Error::msg)?;
         self.call("config")
     }
 

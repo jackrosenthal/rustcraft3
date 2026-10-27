@@ -422,6 +422,9 @@ pub struct UnitExtra {
     /// (FUN_6f524e00, event 0xd01c1 for FUN_6f524b40); what remains of it.
     #[serde(default)]
     pub sleep_show_wait: Option<f32>,
+    /// Its creep spells have made their timers (`World::mana_changed`).
+    #[serde(default)]
+    pub mana_watched: bool,
     /// The waygate whose box the unit is in after coming through one.
     #[serde(default)]
     pub warp_inside: u32,
@@ -631,6 +634,7 @@ impl Default for UnitExtra {
             trap: None,
             still_since: 0.0,
             split: None,
+            mana_watched: false,
         }
     }
 }

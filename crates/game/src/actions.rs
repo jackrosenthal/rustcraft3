@@ -93,6 +93,24 @@ impl Codec {
                 acts.push(Action::Dequeue { slot: *slot as u8, kind });
             }
             Command::Submenu { build, .. } => acts.push(if *build { Action::BuildMenu } else { Action::SkillMenu }),
+            // A skill learned: Order with flags 0x42 and the ability, as training is
+            // (`docs/reference/bootybay_hero.w3g`).
+            Command::LearnSkill { hero, id } if self.subgroup.get(&player) == Some(hero) => {
+                acts.push(Action::Order { flags: 0x42, ability: crate::objects::id_to_int(*id) as u32, a: u32::MAX, b: u32::MAX });
+            }
+            // An item moved: OrderTarget with flags 0x42, order moveslot (852002 and the
+            // slot it goes to), the item as target at the unit's place.
+            Command::MoveItem { unit, from, to } if self.subgroup.get(&player) == Some(unit) && *to < 6 => {
+                let item = w.unit(*unit).and_then(|u| u.inventory.get(*from).copied()).unwrap_or(0);
+                let (x, y) = w.widget_pos(*unit).unwrap_or((0.0, 0.0));
+                acts.push(Action::OrderTarget { flags: 0x42, ability: 852002 + *to as u32, a: u32::MAX, b: u32::MAX, target: Target { x, y, object: w.oid(item) } });
+            }
+            // An item dropped: OrderItem with flags 0x44, order dropitem (852001), the
+            // point and the item.
+            Command::DropItemAt { unit, slot, x, y } if self.subgroup.get(&player) == Some(unit) => {
+                let item = w.unit(*unit).and_then(|u| u.inventory.get(*slot).copied()).unwrap_or(0);
+                acts.push(Action::OrderItem { flags: 0x44, ability: 852001, a: u32::MAX, b: u32::MAX, target: Target { x: *x, y: *y, object: ObjectId::NONE }, item: w.oid(item) });
+            }
             _ => return self.encode_private(c),
         }
         let mut wr = w3_net::wire::Writer::default();
@@ -153,7 +171,18 @@ impl Codec {
                     let id = |v: u32| crate::objects::id_from_int(v as i32);
                     let order = |ability: u32, flags: u16, at: Option<(f32, f32)>, target: u32| Command::SelectionOrder { player, order: ability as i32, at, target, queue: flags & 1 != 0, formation: flags & 0x10 != 0 };
                     match other {
+                        Action::Order { flags: 0x42, ability, .. } if w.objects.abilities.get(id(ability)).is_some() => out.push(Command::LearnSkill { hero: first, id: id(ability) }),
                         Action::Order { flags: 0x42, ability, .. } => out.push(Command::Train { building: first, id: id(ability) }),
+                        Action::OrderTarget { flags: 0x42, ability: a @ 852002..=852007, target, .. } => {
+                            let item = w.by_oid(target.object).unwrap_or(0);
+                            let from = w.unit(first).and_then(|u| u.inventory.iter().position(|&i| i == item && i != 0)).unwrap_or(6);
+                            out.push(Command::MoveItem { unit: first, from, to: (a - 852002) as usize });
+                        }
+                        Action::OrderItem { flags: 0x44, ability: 852001, target, item, .. } if target.object == ObjectId::NONE => {
+                            let h = w.by_oid(item).unwrap_or(0);
+                            let slot = w.unit(first).and_then(|u| u.inventory.iter().position(|&i| i == h && i != 0)).unwrap_or(6);
+                            out.push(Command::DropItemAt { unit: first, slot, x: target.x, y: target.y });
+                        }
                         Action::Order { flags, ability, .. } => out.push(order(ability, flags, None, 0)),
                         Action::OrderPoint { flags: 4, ability, x, y, .. } => out.push(Command::Build { worker: first, id: id(ability), x, y }),
                         Action::OrderPoint { flags, ability, x, y, .. } => out.push(order(ability, flags, Some((x, y)), 0)),

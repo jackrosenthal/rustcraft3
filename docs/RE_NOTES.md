@@ -518,7 +518,10 @@ these are the findings behind them.
   the steps at multiples of 30 ms from 10 ms past its start, and a wait counts from a
   step before the unit's making.  With these every allocation and free agrees through
   turn 69; at turn 70 the original replaces two sleeping creeps' spell timers
-  (`` `rtl ``, made at setup by the time of day's change) at the turn's start.
+  (`` `rtl ``, made at setup by the time of day's change) at the turn's start: the
+  Abolish Magic (ACd2) timers of the two creeps that also have Heal (Anh2) and Inner
+  Fire (ACif), not those of the creeps with ACdm (the same data) and Anh1.  Why those,
+  and at that time, is not yet known.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

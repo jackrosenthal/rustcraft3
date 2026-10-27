@@ -17,7 +17,13 @@ fn main() -> anyhow::Result<()> {
     g.world.seed = seed;
     w3_game::rng::TRACE.store(true, std::sync::atomic::Ordering::Relaxed);
     g.start_lobby(&lobby, war3::advanced::DEFAULT_FLAGS)?;
+    for &h in &g.world.unit_order {
+        if let Some(u) = g.world.unit(h) {
+            eprintln!("UNIT {} owner {} abilities {} {}", String::from_utf8_lossy(&u.type_id), u.owner, u.abilities.len(), u.abilities.iter().map(|a| String::from_utf8_lossy(&a.0).to_string()).collect::<Vec<_>>().join(","));
+        }
+    }
     eprintln!("TURN");
+    eprintln!("destructables made {}, units {}", g.world.handles.iter().filter(|(_, o)| matches!(o, w3_game::types::Obj::Destructable(_))).count(), g.world.unit_order.len());
     g.tick(0.1);
     w3_game::rng::TRACE.store(false, std::sync::atomic::Ordering::Relaxed);
     eprintln!("main after the first turn {:?}", g.world.rng);

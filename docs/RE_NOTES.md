@@ -200,6 +200,18 @@ these are the findings behind them.
   CAcceleratorMap, 2 CProximityMap, a CLrPathingSys and a CLrPathingAcc (all NIpse).
   The tags, and so the object ids the actions name, follow the engine's pathing regions
   and property objects as much as the game's objects.
+- Every tagged object carries type codes at +0xc and +0x10 and its tag at +0x14 and +0x18
+  (equal for a new object).  The whole sequence at Booty Bay's first turn is in
+  `docs/reference/bootybay_tags.txt`.  In it: each player `+ply`, 26 `` `flg ``, `` `fcl ``,
+  `ally`, 11 `` `flg ``; then system objects (`+tmr`, `+gam`, `+qum`, groups, timers,
+  `^pma`, `^ama`, `l^sy`, `l^ac`, `gccm`, `AI-1`); each destructable `+w3d`, `` `pos ``, five
+  `^pmr`; each unit `+w3u`, `` `pcu ``, two `^pmr`, five `` `rel ``, `l^pa`, `` `rcm `` (one
+  that moves), `` `rtl ``, then each ability (some with a `` `rel ``, `` `rtl `` or `` `pil ``
+  after it), then two `task`; the script's handles as it makes them (a trigger `+trg`, two
+  `` `flg ``, its event, `+tac`, `hdlr`; locations, groups, timers, sounds, forces).
+- Script handle ids (GetHandleId) are another table's (the object manager's at +0x20,
+  0x45d entries at that turn; Player(0) is 0x100008): the tags above are the engine's
+  own ids for all its objects, which actions (two words each) and the checksum use.
 - Replays (.w3g) record each turn's actions as W3GS carries them, and after each turn
   (0x22) the same checksum, so a replay is a turn-by-turn reference.
 

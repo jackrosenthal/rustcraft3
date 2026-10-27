@@ -414,7 +414,16 @@ these are the findings behind them.
   cell is open); a block's expansion (`FUN_6f1644d0`) walks the cells along its four
   sides and its corners, a single cell's (`FUN_6f1643d0`) its four sides, then its
   corners when both sides beside them were open, then a warp (+0x3c, 12 bytes:
-  flags, x, y) when it has one.
+  flags, x, y) when it has one.  Its level-0 cell x, y stands for the pathing cells
+  2x to 2x + 1 by 2y to 2y + 1 (`FUN_6f15cf80` with `FUN_6f15d0e0`): for each of four
+  layers (shifts 0, 2, 4, 6; masks 0x06000006, 0x80000080, 0x40000040, 0x04000004)
+  open when none of the four is refused, blocked when all are, else mixed.  A pathing
+  cell is refused there (`FUN_6f148e90`) for its static byte against the mask's high
+  byte, or for a region on it that is static (flags 0x10000000, types 0x1000000;
+  structures', destructables', doodads': not units') and of the mask's low types.  A
+  higher level's cell (`FUN_6f15d470` with `FUN_6f15d1c0`) is mixed when one of its
+  four children is mixed or marked (byte +6), else open or blocked when all four are,
+  else mixed, the map's outside counting as blocked.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

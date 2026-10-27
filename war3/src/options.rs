@@ -79,13 +79,55 @@ impl Default for Options {
     }
 }
 
+/// The registry key the original keeps its settings under (HKEY_CURRENT_USER).
+const KEY: &str = "Software\\Blizzard Entertainment\\Warcraft III";
+
+/// Each setting's key (below `KEY`) and value name, as the original's registry has them.
+const PLACES: [(&str, &str); 25] = [
+    ("Gameplay", "mousescroll"),
+    ("Gameplay", "mousescrolldisable"),
+    ("Gameplay", "keyscroll"),
+    ("Gameplay", "tooltips"),
+    ("Gameplay", "healthbars"),
+    ("Gameplay", "formationtoggle"),
+    ("Gameplay", "subgrouporder"),
+    ("Gameplay", "customkeys"),
+    ("Gameplay", "netgameport"),
+    ("Gameplay", "autosaveReplay"),
+    ("Misc", "chatsupport"),
+    ("Sound", "sfx"),
+    ("Sound", "sfxvolume"),
+    ("Sound", "music"),
+    ("Sound", "musicvolume"),
+    ("Sound", "ambient"),
+    ("Sound", "movement"),
+    ("Sound", "unit"),
+    ("Sound", "subtitles"),
+    ("Sound", "environmental"),
+    ("Sound", "positional"),
+    ("Video", "gamma"),
+    ("Video", "particles"),
+    ("Video", "lights"),
+    ("Video", "unitshadows"),
+];
+
 impl Options {
+    /// The settings as the original keeps them: its registry keys and values, written as
+    /// a registry file (REGEDIT4) under the user's data folder.
     fn path() -> Option<PathBuf> {
+        Some(dirs::data_dir()?.join("war3-remaster").join("Warcraft III.reg"))
+    }
+
+    /// Before the registry file, the settings were JSON.
+    fn old_path() -> Option<PathBuf> {
         Some(dirs::data_dir()?.join("war3-remaster").join("options.json"))
     }
 
     pub fn load() -> Options {
-        Self::path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+        if let Some(text) = Self::path().and_then(|p| std::fs::read_to_string(p).ok()) {
+            return Self::from_reg(&text);
+        }
+        Self::old_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
     }
 
     pub fn store(&self) {
@@ -93,14 +135,70 @@ impl Options {
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
-        match serde_json::to_vec_pretty(self) {
-            Ok(b) => {
-                if let Err(e) = std::fs::write(&path, b) {
-                    log::warn!("writing {}: {e}", path.display());
-                }
-            }
-            Err(e) => log::warn!("options: {e}"),
+        if let Err(e) = std::fs::write(&path, self.to_reg()) {
+            log::warn!("writing {}: {e}", path.display());
         }
+    }
+
+    /// The settings by name, as serde has them (numbers, flags, and strings).
+    fn values(&self) -> serde_json::Map<String, serde_json::Value> {
+        match serde_json::to_value(self) {
+            Ok(serde_json::Value::Object(m)) => m,
+            _ => Default::default(),
+        }
+    }
+
+    /// The registry file: a key per section, flags and numbers as DWORDs, and the LAN
+    /// screen's name as the String key's "userlocal".
+    fn to_reg(&self) -> String {
+        let v = self.values();
+        let mut out = String::from("REGEDIT4\r\n");
+        let mut sections: Vec<&str> = PLACES.iter().map(|p| p.0).collect();
+        sections.dedup();
+        sections.sort();
+        sections.dedup();
+        for sec in sections {
+            out += &format!("\r\n[HKEY_CURRENT_USER\\{KEY}\\{sec}]\r\n");
+            for (_, name) in PLACES.iter().filter(|p| p.0 == sec) {
+                let n = match v.get(*name) {
+                    Some(serde_json::Value::Bool(b)) => *b as u64,
+                    Some(serde_json::Value::Number(n)) => n.as_u64().unwrap_or(0),
+                    _ => continue,
+                };
+                out += &format!("\"{name}\"=dword:{n:08x}\r\n");
+            }
+        }
+        out += &format!("\r\n[HKEY_CURRENT_USER\\{KEY}\\String]\r\n\"userlocal\"=\"{}\"\r\n", self.lanname.replace('\\', "\\\\").replace('"', "\\\""));
+        out
+    }
+
+    /// Reads a registry file; settings it lacks keep their defaults.
+    fn from_reg(text: &str) -> Options {
+        let mut v = Options::default().values();
+        let mut section = String::new();
+        for line in text.lines().map(str::trim) {
+            if let Some(key) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+                section = key.rsplit('\\').next().unwrap_or_default().to_string();
+                continue;
+            }
+            let Some((name, value)) = line.split_once('=') else { continue };
+            let name = name.trim_matches('"');
+            if section == "String" && name == "userlocal" {
+                let s = value.strip_prefix('"').and_then(|v| v.strip_suffix('"')).unwrap_or(value).replace("\\\"", "\"").replace("\\\\", "\\");
+                v.insert("lanname".into(), serde_json::Value::String(s));
+                continue;
+            }
+            if !PLACES.iter().any(|p| p.0 == section && p.1 == name) {
+                continue;
+            }
+            let Some(n) = value.strip_prefix("dword:").and_then(|h| u32::from_str_radix(h, 16).ok()) else { continue };
+            let new = match v.get(name) {
+                Some(serde_json::Value::Bool(_)) => serde_json::Value::Bool(n != 0),
+                _ => serde_json::Value::from(n),
+            };
+            v.insert(name.into(), new);
+        }
+        serde_json::from_value(serde_json::Value::Object(v)).unwrap_or_default()
     }
 
     /// The scroll rate multipliers (keyboard, mouse): a setting of 0 to 100 is 0.5 to
@@ -361,5 +459,21 @@ pub mod menu {
         o.subtitles = tree.checked("SubtitlesCheckBox");
         o.environmental = tree.checked("EnviroCheckBox");
         o.positional = tree.checked("PositionalCheckBox");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Settings go to the registry file and back as they were.
+    #[test]
+    fn settings_keep_through_the_registry_file() {
+        let o = Options { mousescroll: 70, healthbars: true, musicvolume: 12, chatsupport: 2, lanname: "Jack \"J\"".into(), ..Default::default() };
+        let reg = o.to_reg();
+        assert!(reg.contains("[HKEY_CURRENT_USER\\Software\\Blizzard Entertainment\\Warcraft III\\Gameplay]"));
+        assert!(reg.contains("\"mousescroll\"=dword:00000046"));
+        let back = Options::from_reg(&reg);
+        assert_eq!(serde_json::to_value(&back).unwrap(), serde_json::to_value(&o).unwrap());
     }
 }

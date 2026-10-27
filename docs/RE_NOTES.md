@@ -321,8 +321,13 @@ Formats the port made its own, to be replaced by the original's:
   a right-click is `OrderTarget` with order 851971 (smart), flags 0 on the ground with
   no object, 8 on a gold mine; training is `Order` with flags 0x42 and the unit type;
   object ids are (slot, birth), equal for the peasants at the start.
-- Options and profiles: JSON files (`options.json`, `profiles.json`,
-  `profile_vN.json`), not the original's registry settings and `Save\ProfileN`.
+- Options: the original's registry keys and values (HKEY_CURRENT_USER\Software\Blizzard
+  Entertainment\Warcraft III, its Gameplay, Misc, Sound, Video, and String keys, as the
+  reference install's Wine registry has them), kept in a registry file (REGEDIT4,
+  `Warcraft III.reg` in the data folder) since the port has no Windows registry.
+- Profiles: JSON files (`profiles.json`, `profile_vN.json`), not the original's
+  `Save\ProfileN\Campaigns.w3p` (an INI whose campaign progress is obfuscated and
+  checked by Magic values) and `Campaigns.w3v` (a game cache in the replay container).
 - Network games' commands: the original's actions for selection changes and orders to
   the selection (`crates/game/src/actions.rs`), the rest still the port's own commands
   in a private action (0x7F) until each is measured; the objects' ids come from the

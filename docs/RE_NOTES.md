@@ -404,7 +404,17 @@ these are the findings behind them.
   expanded by `FUN_6f1643d0`, or a warp, +0x22, by `FUN_6f1644d0`), its step costs
   integer square roots of squared offsets (`FUN_6f1d58e0`, Newton's method from
   n / 12 + 1, n / 200 + 21, or n / 26743 + 444, halving toward zero), the same
-  nearest-node fallback; CLrPathingSys then searches between its waypoints.
+  nearest-node fallback; CLrPathingSys then searches between its waypoints.  The
+  accelerator is a pyramid of four maps (at +0x1c + 4 * level, coordinates shifted
+  right by the level; CAcceleratorMap's size the pathing map's, `FUN_6f151760`), each
+  cell [stamp, word]: the word's two bits for the search's layer (shifted left by
+  +0xd4 into bits 30 and 31) 0 open, 1 blocked, 2 mixed; its low 16 bits the cell's
+  node in the current search (made again when the stamp is old, `FUN_6f163ef0`).  A
+  cell's node is its largest open block (`FUN_6f1625f0` climbs while the next level's
+  cell is open); a block's expansion (`FUN_6f1644d0`) walks the cells along its four
+  sides and its corners, a single cell's (`FUN_6f1643d0`) its four sides, then its
+  corners when both sides beside them were open, then a warp (+0x3c, 12 bytes:
+  flags, x, y) when it has one.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

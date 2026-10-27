@@ -245,3 +245,56 @@ impl World {
         true
     }
 }
+
+impl World {
+    /// The time of day moved from `old` to `new` (the clock, or SetFloatGameState): its
+    /// events that became true fire, and at a change between day and night every unit
+    /// takes it, the last made first, and sleeping creeps wake with the day.  Measured
+    /// in the original's tags: each time-of-day event fired runs its trigger and makes a
+    /// timer; the change makes two timers for day, one for night; then each unit a
+    /// timer (`rcm), and a creep that wakes one for each spell it casts (Ensnare a
+    /// region too), after its own.
+    pub(crate) fn time_of_day_moved(&mut self, vm: &mut w3_jass::Vm, old: f32, new: f32) {
+        use crate::types::EventKind;
+        let fired = self.events.iter().filter(|&&e| matches!(self.handles.get(e), Some(crate::types::Obj::Event(r)) if matches!(r.kind, EventKind::GameState { state: 2, op, value } if crate::world::compare(op, new, value) && !crate::world::compare(op, old, value)))).count();
+        self.fire(vm, crate::types::EventCtx::default(), |_, k| matches!(k, EventKind::GameState { state: 2, op, value } if crate::world::compare(*op, new, *value) && !crate::world::compare(*op, old, *value)));
+        self.tags.take_n(b"`rtl", fired);
+        let night = |t: f32| !(6.0..18.0).contains(&t);
+        if night(old) == night(new) {
+            return;
+        }
+        let day = !night(new);
+        self.tags.take_n(b"`rtl", if day { 2 } else { 1 });
+        let units: Vec<u32> = self.unit_order.iter().rev().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead)).collect();
+        for h in units {
+            self.tags.take(b"`rcm");
+            let Some(u) = self.unit(h) else { continue };
+            // With the night an idle creep that may sleep falls asleep at once
+            // (measured: a creep made by day, after a night set by script, wakes making
+            // its spells' timers when the day is set again).
+            if !day {
+                let allowed = self.players.get(u.owner as usize).is_none_or(|p| p.get_state(player_state::NO_CREEP_SLEEP) == 0);
+                let idle = matches!(u.action, Action::Idle) && !u.extra.returning && u.swing.is_none();
+                if u.extra.can_sleep && !u.hidden && allowed && idle {
+                    self.fall_asleep(h);
+                }
+                continue;
+            }
+            if !u.extra.sleeping || u.extra.sleep_perm {
+                continue;
+            }
+            let spells: Vec<crate::objects::Id> = u.abilities.iter().map(|(a, _)| *a).collect();
+            let table = crate::tags::AbilityObjects::get();
+            for a in spells {
+                let Some(code) = self.objects.abilities.get(a).map(|o| crate::objects::id_from_str(o.str("code").trim())) else { continue };
+                if table.objects(&a, &code).contains(b"`rtl") {
+                    self.tags.take(b"`rtl");
+                    if code == *b"Aens" {
+                        self.tags.take(b"`pil");
+                    }
+                }
+            }
+            self.set_asleep(h, false);
+        }
+    }
+}

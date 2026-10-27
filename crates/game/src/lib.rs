@@ -479,7 +479,11 @@ impl Game {
                 self.world.players[u].alliances[n][PASSIVE] = true;
             }
         }
-        self.call("main")
+        self.call("main")?;
+        // The engine's own objects after main, by the first turn (read under Wine, the
+        // same with or without the map's units).
+        self.world.tags.take_all(&[b"`rcm", b"`rtl"]);
+        Ok(())
     }
 
     /// Teammates ally as the game begins (FUN_6f29e300): each pair of playing,

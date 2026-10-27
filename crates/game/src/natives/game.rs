@@ -90,8 +90,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             GAME_STATE_TIME_OF_DAY => w.time_of_day,
             _ => 0.0,
         }),
-        SetFloatGameState => |w, _, a| {
-            if a.h(0) as i32 == GAME_STATE_TIME_OF_DAY { w.time_of_day = a.r(1); }
+        SetFloatGameState => |w, vm, a| {
+            if a.h(0) as i32 == GAME_STATE_TIME_OF_DAY {
+                let old = w.time_of_day;
+                w.time_of_day = a.r(1);
+                w.time_of_day_moved(vm, old, a.r(1));
+            }
             none()
         },
         // The two integer game states, which scripts may set (divine intervention and

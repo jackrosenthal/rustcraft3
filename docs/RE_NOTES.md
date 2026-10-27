@@ -244,11 +244,19 @@ these are the findings behind them.
   `pevt` (player, player-unit), `tmet` (a timer's expiry), `gfvt` `` `rtl `` (game
   state), `gevt` (game), `alvt` `` `fcl `` (alliance), `psvt` `` `fcl `` (player state);
   `+tac` for an action; `+flt` for a filter or condition; `+tmr`, `+grp`, `+loc`,
-  `+rct`, `+frc` with two `` `flg ``, `+tid`, `+tex`, `+snd` for every sound.  A script
+  `+rct`, `+frc` with two `` `flg ``, `+tid`, `+snd` for every sound.  A script
   function given to an object (an action, a filter, a timer) has a handler `hdlr` the
   first time (`FUN_6f2872f0`, a table keyed by the function).  The other event classes'
   codes (`FUN_6f278000` on: bevt, devt, ievt, pcvt, rgvt, tmvt, usvt, vevt, wdvt, ...)
   are not yet matched to their natives.
+- A trigger's execution is a `+tex` (ConditionalTriggerExecute, or an event firing it).
+  A time-of-day event that becomes true fires, its run followed by a `` `rtl ``.  A change
+  between day (6 to 18) and night makes two `` `rtl `` for day, one for night, then each
+  living unit, the last made first, an `` `rcm ``; at night an idle creep that may sleep
+  falls asleep at once, and with the day a sleeping one wakes, a `` `rtl `` for each of
+  its spells that has one (Ensnare a `` `pil `` too).  After main, by the first turn, the
+  engine makes an `` `rcm `` and a `` `rtl ``.  Measured with Booty Bay with and without
+  MeleeStartingVisibility, and a map that changes the time between making units.
 - The script's globals run before the map's destructables: Blizzard.j's first timer,
   then the engine's `+gam` `` `flg `` `` `flg `` `` `rel `` `` `rel `` `` `flg ``
   `` `rtl `` `+qum`, then the other globals.

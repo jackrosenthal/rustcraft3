@@ -484,10 +484,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         // Whether the player has the unit in its detection (FUN_6f68bae0).
         IsUnitDetected => |w, _, a| { let (h, p) = (a.h(0), w.player_of(a.h(1)).unwrap_or(0)); boolean(w.detected_by(h, p)) },
         IsUnitInvisible => |w, _, a| { let (h, p) = (a.h(0), w.player_of(a.h(1)).unwrap_or(0)); boolean(w.is_invisible(h) && !w.detected_by(h, p)) },
-        CreateTextTag => |w, _, _| {
-            w.tags.take(b"+tex");
-            handle(w.handles.insert(Obj::TextTag(Box::new(TextTag { visible: true, color: [255; 4], permanent: true, ..Default::default() }))))
-        },
+        CreateTextTag => |w, _, _| handle(w.handles.insert(Obj::TextTag(Box::new(TextTag { visible: true, color: [255; 4], permanent: true, ..Default::default() })))),
         DestroyTextTag => |w, _, a| { if tag_mut(w, a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
         SetTextTagText => |w, _, a| { let (s, h) = (w.localized(&a.s(1)), a.r(2)); if let Some(t) = tag_mut(w, a.h(0)) { t.text = s; t.height = h; } none() },
         SetTextTagPos => |w, _, a| { let p = (a.r(1), a.r(2), a.r(3)); if let Some(t) = tag_mut(w, a.h(0)) { t.x = p.0; t.y = p.1; t.z = p.2; t.unit = None; } none() },

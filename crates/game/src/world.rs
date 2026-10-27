@@ -1090,6 +1090,10 @@ impl World {
             }
             None => return,
         };
+        // The original makes an object for each execution (measured: Booty Bay's melee
+        // initialization, run by ConditionalTriggerExecute, takes a +tex, and the time
+        // of day's trigger another when SetFloatGameState fires it).
+        self.tags.take(b"+tex");
         for a in actions {
             let f = match self.handles.get(a) {
                 Some(Obj::TriggerAction { func }) => *func,
@@ -1447,6 +1451,7 @@ impl World {
         let day_hours = self.misc_f32("DayHours", 24.0);
         let day_length = self.misc_f32("DayLength", 480.0);
         let hours_per_second = day_hours / day_length * self.time_of_day_scale;
+        let old_time_of_day = self.time_of_day;
         if !self.time_of_day_suspended {
             self.time_of_day = (self.time_of_day + dt * hours_per_second) % day_hours;
         }
@@ -1626,12 +1631,8 @@ impl World {
 
         self.wake_sleepers(vm, dt);
 
-        // Elapsed-time game state events.
-        let t = self.time;
-        self.fire(vm, EventCtx::default(), |_, k| match k {
-            EventKind::GameState { state: 2, op, value } => compare(*op, t, *value) && !compare(*op, t - dt, *value),
-            _ => false,
-        });
+        let new_time_of_day = self.time_of_day;
+        self.time_of_day_moved(vm, old_time_of_day, new_time_of_day);
         self.check_state_events(vm);
     }
 

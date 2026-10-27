@@ -106,6 +106,19 @@ impl Codec {
                 let o = w.oid(item);
                 acts.push(Action::Order { flags: 0x60, ability: 852008 + *slot as u32, a: o.0, b: o.1 });
             }
+            // The command card's Cancel while training: Order with flags 0x40 and cancel
+            // (851976; measured).
+            Command::CancelLast { building } if self.subgroup.get(&player) == Some(building) => {
+                acts.push(Action::Order { flags: 0x40, ability: 851976, a: u32::MAX, b: u32::MAX });
+            }
+            // A cargo slot clicked: OrderTarget with flags 2, unload (852047), and the
+            // passenger as the target (measured; the original's point, 8640, 1664 and
+            // 8576, 1664 for a Zeppelin's peon, is not yet understood: the passenger's
+            // place goes here).
+            Command::Order { unit, order: 852047, target, .. } if self.subgroup.get(&player) == Some(unit) && *target != 0 => {
+                let (x, y) = w.widget_pos(*target).unwrap_or((0.0, 0.0));
+                acts.push(Action::OrderTarget { flags: 0x02, ability: 852047, a: u32::MAX, b: u32::MAX, target: Target { x, y, object: w.oid(*target) } });
+            }
             // Research: Order with flags 0x46 and the research; an upgrade (a town hall's
             // to a keep): Order with flags 0x40 and what it becomes
             // (`docs/reference/bootybay_research.w3g`).
@@ -120,6 +133,12 @@ impl Codec {
             Command::StartRevive { altar, hero } if self.subgroup.get(&player) == Some(altar) => {
                 let (x, y) = w.unit(*hero).map(|u| (u.x, u.y)).unwrap_or((0.0, 0.0));
                 acts.push(Action::OrderTarget { flags: 0x46, ability: 852027, a: u32::MAX, b: u32::MAX, target: Target { x, y, object: w.oid(*hero) } });
+            }
+            // A dead hero awakened at a tavern: OrderTarget with flags 0x46, the order
+            // 852462 (unnamed; "awaken" is 852466), and the hero where it lies (measured).
+            Command::Awaken { tavern, hero, .. } if self.subgroup.get(&player) == Some(tavern) => {
+                let (x, y) = w.unit(*hero).map(|u| (u.x, u.y)).unwrap_or((0.0, 0.0));
+                acts.push(Action::OrderTarget { flags: 0x46, ability: 852462, a: u32::MAX, b: u32::MAX, target: Target { x, y, object: w.oid(*hero) } });
             }
             // A purchase from the shop selected: Order with flags 0x40 and what is bought.
             Command::BuyItem { shop, id, .. } | Command::HireUnit { shop, id, .. } if self.subgroup.get(&player) == Some(shop) => {
@@ -284,7 +303,9 @@ impl Codec {
                     match other {
                         Action::Order { flags: 0x60, ability: a @ 852008..=852013, .. } => out.push(Command::UseItem { unit: first, slot: (a - 852008) as usize }),
                         Action::OrderTarget { flags: 0x46, ability: 852027, target, .. } => out.push(Command::StartRevive { altar: first, hero: w.by_oid(target.object).unwrap_or(0) }),
+                        Action::OrderTarget { flags: 0x46, ability: 852462, target, .. } => out.push(Command::Awaken { player, tavern: first, hero: w.by_oid(target.object).unwrap_or(0) }),
                         Action::Order { flags: 0x46, ability, .. } => out.push(Command::Research { building: first, id: id(ability) }),
+                        Action::Order { flags: 0x40, ability: 851976, .. } => out.push(Command::CancelLast { building: first }),
                         Action::Order { flags: 0x40, ability, .. } if w.unit(first).and_then(|u| w.objects.units.get(u.type_id)).is_some_and(|o| o.list("Upgrade").iter().any(|s| crate::objects::id_from_str(s.trim()) == id(ability))) => out.push(Command::Upgrade { building: first, id: id(ability) }),
                         Action::Order { flags: 0x40, ability, .. } if w.objects.units.get(id(ability)).is_some() => out.push(Command::HireUnit { player, shop: first, id: id(ability) }),
                         Action::Order { flags: 0x40, ability, .. } => out.push(Command::BuyItem { player, shop: first, id: id(ability) }),

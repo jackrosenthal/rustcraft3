@@ -633,7 +633,12 @@ Formats the port made its own, to be replaced by the original's:
   and its number, only when its event is registered), and game cache syncs (0x6B to
   0x6E with the file, mission, and key, then an integer, a real, a boolean as a word,
   or a unit's record; 0x70 with none for an integer not stored, which removes it from
-  the mission's first table; SyncStoredString a bare 0x6F).  The rest are still the
+  the mission's first table; SyncStoredString a bare 0x6F).  Measured too: the card's
+  Cancel while training (Order, flags 0x40, cancel 851976), a cargo slot clicked
+  (OrderTarget, flags 2, unload 852047, the passenger as target; its point, 8640, 1664
+  then 8576, 1664 for a Zeppelin's peon, multiples of 64 near where it boarded, not yet
+  understood), and a dead hero awakened at a tavern (OrderTarget, flags 0x46, the
+  unnamed order 852462, the hero where it lies).  The rest are still the
   port's own commands in a private action (0x7F) until each is measured; the objects' ids come from the
   port's tags, which match the original's at a game's start but not yet once objects
   are freed (see the event queue above).

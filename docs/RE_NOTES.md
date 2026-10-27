@@ -503,6 +503,15 @@ these are the findings behind them.
   259.6 to the waypoint (the middle of cell 430, 45, at 1232, -4944) whatever it
   faces; its last step 2 units, to 1231.73, -4929.95, and its order done two steps
   later.
+- After a search finds nothing nearer, the unit stands (speed 0, the steering's stop
+  flag) and turns toward its order's goal, done at the first step its heading is
+  within 0.2 of it (traced: a pig boxed in by its herd, facing 246.7 degrees, turns
+  toward its goal at 0.663 and is done six steps on; the first sheep after its second
+  search, done two steps on).  Wanderers walk in this game by these steps
+  (`motion.rs` through `World::walk_steps`): the sheep stops at the original's
+  1231.73, -4929.95.  Still to match: when a walk's steps begin and end relative to a
+  turn (the original's turn runs its first step, then its logic, then the rest; this
+  game's tick its logic, then its steps, a walk's end handled at the next tick).
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

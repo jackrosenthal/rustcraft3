@@ -799,7 +799,8 @@ impl World {
                 (way, None)
             }
             crate::lrpath::Outcome::Nearest(c) => (c[1..].iter().map(|&c| p.center(c)).collect(), c.last().copied()),
-            crate::lrpath::Outcome::Stay => (Vec::new(), None),
+            // Nowhere nearer: it turns toward the goal where it stands (`Mover::face`).
+            crate::lrpath::Outcome::Stay => (vec![goal], Some((i32::MIN, i32::MIN))),
         })
     }
 
@@ -807,7 +808,8 @@ impl World {
         if let Some((way, end)) = self.local_path(h, goal) {
             if let Some(u) = self.unit_mut(h) {
                 u.path = way;
-                u.extra.path_end_cell = end;
+                u.extra.facing_goal = end == Some((i32::MIN, i32::MIN));
+                u.extra.path_end_cell = end.filter(|&e| e != (i32::MIN, i32::MIN));
                 u.repath_timer = f32::INFINITY;
             }
             return;
@@ -1067,34 +1069,95 @@ impl World {
         }
     }
 
+    /// Walks a unit through the engine's movement steps of this tick, 30 ms each (the
+    /// original's NIpse steps), noting when it arrives at the last of them.
     pub(crate) fn walk(&mut self, h: u32, dt: f32) -> bool {
         let t0 = self.profile.is_some().then(std::time::Instant::now);
-        let r = self.walk_inner(h, dt);
+        let r = if self.unit(h).is_some_and(|u| u.extra.local_paths) { self.walk_steps(h) } else { self.walk_inner(h, dt) };
         self.prof_add("walk", t0);
         r
     }
 
-    fn walk_inner(&mut self, h: u32, dt: f32) -> bool {
-        // A way short of its goal is searched again on reaching its last cell.
-        if let (Some(end), Some(p)) = (self.unit(h).and_then(|u| u.extra.path_end_cell), self.pathing.as_ref()) {
-            let here = self.unit(h).map(|u| p.cell_of(u.x, u.y));
-            if here == Some(end) {
-                let Some(u) = self.unit_mut(h) else { return true };
-                u.extra.path_end_cell = None;
-                let goal = match u.action {
-                    Action::Move { x, y, .. } => Some((x, y)),
-                    _ => None,
-                };
-                if let Some(goal) = goal {
+    /// Walks a unit through this tick's movement steps as the original's engine does
+    /// (`motion`): toward each waypoint in turn, reached within 0.49 cells with its
+    /// heading on it; at the end of a way short of the goal it searches again, and
+    /// stops when nothing nearer is found.  Notes whether it stopped in the last step.
+    fn walk_steps(&mut self, h: u32) -> bool {
+        use crate::efloat as ef;
+        let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return true };
+        let f = |v: f32| v.to_bits();
+        let cell = |w: f32, o: f32| f((w - o) / crate::pathing::CELL);
+        let Some(u) = self.unit(h) else { return true };
+        let top = self.current_move_speed(h) / crate::pathing::CELL;
+        let o = self.objects.units.get(u.type_id);
+        let turn = o.map_or(0.5, |o| o.real("turnRate"));
+        let window = o.map_or(60.0, |o| o.real("propWin")).to_radians();
+        let gait = crate::motion::Gait { top: f(top), grow: f(top), turn: f(turn), window: f(window), reach: f(0.49) };
+        let start = self.step_clocks.first().map_or(self.engine_clock, |&c| ef::sub(c, crate::motion::STEP));
+        let mut m = u.extra.mover.unwrap_or(crate::motion::Mover { x: cell(u.x, origin[0]), y: cell(u.y, origin[1]), heading: f(u.facing.to_radians()), placed_at: start, ..Default::default() });
+        let goal = match u.action {
+            Action::Move { x, y } => Some((x, y)),
+            _ => None,
+        };
+        if u.extra.mover.is_none() {
+            log::debug!("walk of {h} from {:.2}, {:.2} facing {:.2} by {:?} to {goal:?}", u.x, u.y, u.facing, u.path);
+        }
+        let clocks = self.step_clocks.clone();
+        let n = clocks.len();
+        let mut done = None;
+        for (k, &clock) in clocks.iter().enumerate() {
+            let Some(&next) = self.unit(h).and_then(|u| u.path.first()) else {
+                done = Some(k);
+                break;
+            };
+            let facing = self.unit(h).is_some_and(|u| u.extra.facing_goal);
+            let to = (cell(next.0, origin[0]), cell(next.1, origin[1]));
+            let r = if facing { m.face(&gait, to, clock) } else { m.step(&gait, to, clock) };
+            log::trace!("walk of {h} step {k}: {:?} heading {:.4} to {next:?}", r, f32::from_bits(m.heading));
+            if r == crate::motion::Step::Moving {
+                continue;
+            }
+            let (x, y) = m.at(clock);
+            let Some(u) = self.unit_mut(h) else { return true };
+            u.x = f32::from_bits(x) * crate::pathing::CELL + origin[0];
+            u.y = f32::from_bits(y) * crate::pathing::CELL + origin[1];
+            u.path.remove(0);
+            if !u.path.is_empty() {
+                continue;
+            }
+            let partial = u.extra.path_end_cell.take().is_some();
+            match goal.filter(|_| partial) {
+                Some(goal) => {
                     self.path_to(h, goal);
-                    if self.unit(h).is_some_and(|u| u.path.is_empty()) {
-                        let Some(u) = self.unit_mut(h) else { return true };
-                        set_anim(u, "stand");
-                        return true;
-                    }
+                }
+                None => {
+                    done = Some(k);
+                    break;
                 }
             }
         }
+        let last = clocks.last().copied().unwrap_or(start);
+        let (x, y) = m.at(last);
+        let Some(u) = self.unit_mut(h) else { return true };
+        u.x = f32::from_bits(x) * crate::pathing::CELL + origin[0];
+        u.y = f32::from_bits(y) * crate::pathing::CELL + origin[1];
+        u.facing = f32::from_bits(m.heading).to_degrees();
+        if let Some(k) = done {
+            log::debug!("walk of {h} done at step {k} of {n}, time {:.3}", self.time);
+            let Some(u) = self.unit_mut(h) else { return true };
+            u.extra.mover = None;
+            u.extra.facing_goal = false;
+            u.extra.arrived_last_step = k + 1 == n;
+            u.path.clear();
+            set_anim(u, "stand");
+            return true;
+        }
+        u.extra.mover = Some(m);
+        set_anim(u, "walk");
+        false
+    }
+
+    fn walk_inner(&mut self, h: u32, dt: f32) -> bool {
         self.steer_around(h);
         let Some(u) = self.unit_mut(h) else { return true };
         let Some(&next) = u.path.first() else {

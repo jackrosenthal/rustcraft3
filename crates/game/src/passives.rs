@@ -178,7 +178,8 @@ impl World {
         for h in units {
             // A walk ended: its order's objects go (`Tags::move_done`).
             if let Some(slots) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)).filter(|s| s.len() == 18) {
-                self.tags.move_done(&slots);
+                let late = self.unit(h).is_some_and(|u| u.extra.arrived_last_step);
+                self.tags.move_done(&slots, late);
             }
             if self.ability_with_code(h, "Awan").is_none() {
                 continue;

@@ -63,6 +63,9 @@ pub struct Tags {
     /// its event queue runs at the next frame in the order queued; `FUN_6f15e500`).
     #[serde(default)]
     pub doomed: Vec<u32>,
+    /// Released a turn after those `doomed`.
+    #[serde(default)]
+    pub later: Vec<u32>,
     /// Slots released after a delay: the game time they fall due, in the order queued.
     #[serde(default)]
     pub timed: Vec<(f64, u32)>,
@@ -82,7 +85,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), event_timers: Default::default(), day_timer: None }
+        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), later: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), event_timers: Default::default(), day_timer: None }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -125,6 +128,7 @@ impl Tags {
         for s in std::mem::take(&mut self.doomed) {
             self.release(s);
         }
+        self.doomed = std::mem::take(&mut self.later);
     }
 
     /// Queues a slot's release at a game time.
@@ -191,12 +195,21 @@ impl Tags {
 
     /// A move order done: three more objects, then the rest of its tree, last made
     /// first in parts, and its path.
-    pub fn move_done(&mut self, slots: &[u32]) {
+    /// The path's (`l^pa`, `^clu`) go a movement step after the rest (traced: in the
+    /// next turn when the walk ended in its turn's last step).
+    pub fn move_done(&mut self, slots: &[u32], late: bool) {
         let a = self.take(b"tskA");
         let b = self.take(b"task");
         let c = self.take(b"task");
-        for s in [slots[7], c, b, a, slots[6], slots[5], slots[4], slots[3], slots[2], slots[0], slots[17], slots[16]] {
+        for s in [slots[7], c, b, a, slots[6], slots[5], slots[4], slots[3], slots[2], slots[0]] {
             self.doom(s);
+        }
+        for s in [slots[17], slots[16]] {
+            if late {
+                self.later.push(s);
+            } else {
+                self.doom(s);
+            }
         }
     }
 

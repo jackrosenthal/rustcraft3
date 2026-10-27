@@ -422,6 +422,15 @@ pub struct UnitExtra {
     /// The cell where its way, short of the goal, ends: reaching it searches again.
     #[serde(default)]
     pub path_end_cell: Option<(i32, i32)>,
+    /// Its last walk ended in the last movement step of its tick.
+    #[serde(default)]
+    pub arrived_last_step: bool,
+    /// Its search found no way: it turns toward its goal and is done (`Mover::face`).
+    #[serde(default)]
+    pub facing_goal: bool,
+    /// Its walk by the original's movement steps (`motion`), while it walks.
+    #[serde(default)]
+    pub mover: Option<crate::motion::Mover>,
     /// The creep sleep effect over a sleeping unit's head.
     #[serde(default)]
     pub sleep_effect: u32,
@@ -623,6 +632,9 @@ impl Default for UnitExtra {
             detour: None,
             local_paths: false,
             path_end_cell: None,
+            arrived_last_step: false,
+            mover: None,
+            facing_goal: false,
             sleep_effect: 0,
             sleep_show_wait: None,
             warp_inside: 0,

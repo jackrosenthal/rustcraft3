@@ -30,7 +30,7 @@ pub struct Gait {
 
 /// A moving unit's state: its place when last placed and the clock then, its velocity,
 /// and its heading when still.
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Mover {
     pub x: u32,
     pub y: u32,
@@ -98,6 +98,25 @@ pub enum Step {
 }
 
 impl Mover {
+    /// One step of turning in place toward a point, its search having found no way
+    /// (traced: a pig boxed in by its herd and Booty Bay's first sheep, their speeds 0,
+    /// turn toward their orders' goals and are done once within 0.2 of them).
+    pub fn face(&mut self, gait: &Gait, to: (u32, u32), now: u32) -> Step {
+        let (x, y) = self.at(now);
+        let (dx, dy) = (ef::sub(to.0, x), ef::sub(to.1, y));
+        let dist = ef::sqrt(ef::add(ef::mul(dx, dx), ef::mul(dy, dy)));
+        let angle = turn_to(self.heading, ef::heading(dx, dy, dist));
+        let angle = if lt(abs(angle), TINY_ANGLE) { ZERO } else { angle };
+        if !lt(ON_HEADING, abs(angle)) {
+            self.set_velocity(now, ZERO, ZERO);
+            return Step::Reached;
+        }
+        let t = if !lt(abs(angle), gait.turn) { gait.turn } else { abs(angle) };
+        self.heading = wrap(ef::add(self.heading, if lt(angle, ZERO) { t | 0x8000_0000 } else { t }));
+        self.set_velocity(now, ZERO, ZERO);
+        Step::Moving
+    }
+
     /// Its place at a clock reading.
     pub fn at(&self, now: u32) -> (u32, u32) {
         let dt = since(now, self.placed_at);
@@ -126,12 +145,15 @@ impl Mover {
         let dist = ef::sqrt(ef::add(ef::mul(dx, dx), ef::mul(dy, dy)));
         let angle = turn_to(heading, ef::heading(dx, dy, dist));
         let angle = if lt(abs(angle), TINY_ANGLE) { ZERO } else { angle };
-        if !lt(gait.reach, dist) && !lt(ON_HEADING, abs(angle)) {
+        // Within reach it only turns (`FUN_6f16fbd0` steering with the stop flag), and
+        // with its heading on the way it is there.
+        let within = !lt(gait.reach, dist);
+        if within && !lt(ON_HEADING, abs(angle)) {
             self.heading = heading;
             self.set_velocity(now, ZERO, ZERO);
             return Step::Reached;
         }
-        let mut speed = if !lt(abs(angle), gait.window) { ZERO } else { ef::add(speed, gait.grow) };
+        let mut speed = if within || !lt(abs(angle), gait.window) { ZERO } else { ef::add(speed, gait.grow) };
         if lt(gait.top, speed) {
             speed = gait.top;
         }

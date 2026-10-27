@@ -216,6 +216,17 @@ pub struct World {
     /// A game over the network (no cheats, no saving).
     #[serde(default)]
     pub network: bool,
+    /// How many of the engine's 30 ms movement steps fall in this tick (multiples of 30
+    /// ms of game time after its start, up to and with its end: 4, 3, 3 in successive
+    /// 100 ms turns; `FUN_6f15aa80`).
+    #[serde(skip)]
+    pub steps: u32,
+    /// The engine's game clock (its single's bits), 0.03 more each movement step by the
+    /// engine's addition (`motion`), and its readings at this tick's steps.
+    #[serde(default)]
+    pub engine_clock: u32,
+    #[serde(skip)]
+    pub step_clocks: Vec<u32>,
     /// CreateBlightedGoldmine is making the gold mine it hides.
     #[serde(skip)]
     pub hidden_mine: bool,
@@ -701,6 +712,9 @@ impl World {
             time_of_day_suspended: false,
             cheat_flags: 0,
             network: false,
+            steps: 0,
+            engine_clock: 0,
+            step_clocks: Vec::new(),
             hidden_mine: false,
             cheat_fog: None,
             volume_groups: full_volume(),
@@ -1460,6 +1474,14 @@ impl World {
             }
         }
         // Counted in f64 and read as f32: f32 adding 0.02s drifts, by seconds in an hour.
+        let before = self.time_exact.max(self.time as f64);
+        let step = |t: f64| (t * 1000.0 / 30.0 + 1e-6).floor() as i64;
+        self.steps = (step(before + dt as f64) - step(before)).max(0) as u32;
+        self.step_clocks.clear();
+        for _ in 0..self.steps {
+            self.engine_clock = crate::efloat::add(self.engine_clock, crate::motion::STEP);
+            self.step_clocks.push(self.engine_clock);
+        }
         self.time_exact = self.time_exact.max(self.time as f64) + dt as f64;
         self.time = self.time_exact as f32;
         let day_hours = self.misc_f32("DayHours", 24.0);

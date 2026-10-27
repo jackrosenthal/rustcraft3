@@ -328,3 +328,22 @@ mod tests {
         eprintln!("actions seen by first id: {seen:x?}");
     }
 }
+
+#[cfg(test)]
+mod measured {
+    use super::*;
+
+    /// The original's block as it accepted its Allies dialog toward player 0 (Ally,
+    /// Share Vision, and Allied Victory ticked, 200 gold offered), sent to a hosted game.
+    #[test]
+    fn the_allies_dialog_sends_alliances_then_resources() {
+        let block = [0x50, 0x00, 0x3f, 0x04, 0x00, 0x00, 0x51, 0x00, 0xc8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let all = Action::read_all(&block).unwrap();
+        assert_eq!(all, vec![Action::Alliance { player: 0, flags: 0x43f }, Action::Trade { player: 0, gold: 200, lumber: 0 }]);
+        let mut w = Writer::default();
+        for a in &all {
+            a.write(&mut w);
+        }
+        assert_eq!(w.0, block);
+    }
+}

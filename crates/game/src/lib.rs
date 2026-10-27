@@ -1026,6 +1026,10 @@ impl Game {
                             a[t] = flags & (1 << t) != 0;
                         }
                     }
+                    // Bit 10 is the sender's own allied victory, sent with every row the
+                    // dialog changes (measured: ticked, then unticked, in the original's
+                    // Allies dialog; FUN_6f3ab370).
+                    p.state.insert(types::player_state::ALLIED_VICTORY, (flags & 0x400 != 0) as i32);
                 }
                 self.player_event(player, event_ids::EVENT_PLAYER_ALLIANCE_CHANGED);
                 O::Done

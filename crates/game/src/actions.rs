@@ -142,6 +142,12 @@ impl Codec {
             // A minimap signal: its point and its 5 seconds (measured from the original
             // joined to a hosted game).
             Command::Signal { x, y, .. } => acts.push(Action::Signal { x: *x, y: *y, a: 5.0f32.to_bits() }),
+            // Alliances toward a player: 50, the player, and the alliance types' bits
+            // (measured: Ally, Share Vision, and Allied Victory ticked gave 0x43f, bit 10
+            // the allied victory); resources sent: 51, the player, gold, and lumber
+            // (measured: 200 gold to player 0, after the alliances in the same block).
+            Command::Alliance { other, flags, .. } => acts.push(Action::Alliance { player: *other, flags: *flags }),
+            Command::Trade { other, gold, lumber, .. } => acts.push(Action::Trade { player: *other, gold: *gold as u32, lumber: *lumber as u32 }),
             // A network game saved under a name (measured: 06 and the name).
             Command::Save { name } => acts.push(Action::SaveGame(name.clone())),
             // A pause (measured: 01 as the original's game ends) and its resume (02).
@@ -251,6 +257,8 @@ impl Codec {
                         Action::OrderPoint { flags, ability, x, y, .. } => out.push(order(ability, flags, Some((x, y)), 0)),
                         Action::Dequeue { slot, .. } => out.push(Command::CancelQueue { building: first, slot: slot as usize }),
                         Action::Signal { x, y, .. } => out.push(Command::Signal { player, x, y }),
+                        Action::Alliance { player: other, flags } => out.push(Command::Alliance { player, other, flags }),
+                        Action::Trade { player: other, gold, lumber } => out.push(Command::Trade { player, other, gold: gold as i32, lumber: lumber as i32 }),
                         Action::SaveGame(name) => out.push(Command::Save { name }),
                         Action::SaveDone(_) => {}
                         Action::Pause => out.push(Command::Pause { player, on: true }),

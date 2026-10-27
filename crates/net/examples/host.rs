@@ -19,7 +19,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let archive = w3_mpq::Archive::open(std::path::Path::new(&a[1]))?;
     let checksums = w3_net::map::Checksums::compute(&bytes, &std::fs::read(&a[3])?, &std::fs::read(&a[4])?, |n| archive.read(n).ok());
     let port: u16 = a.get(7).map_or(Ok(6112), |p| p.parse())?;
-    let stat = GameStat { settings: 0x00064802, map_width: a[5].parse()?, map_height: a[6].parse()?, map_xoro: checksums.xoro, map_path: a[2].clone(), host: "Host".into(), map_sha1: checksums.sha1 };
+    // W3HOSTSETTINGS: the game's settings word in hex (0x64802, locked teams, by default).
+    let settings = std::env::var("W3HOSTSETTINGS").ok().and_then(|v| u32::from_str_radix(v.trim_start_matches("0x"), 16).ok()).unwrap_or(0x0006_4802);
+    let stat = GameStat { settings, map_width: a[5].parse()?, map_height: a[6].parse()?, map_xoro: checksums.xoro, map_path: a[2].clone(), host: "Host".into(), map_sha1: checksums.sha1 };
     let info = GameInfo { product: TFT, version: VERSION, host_counter: 1, entry_key: 0, name: "w3-net host".into(), stat, slots_total: 2, game_type: 9, players: 1, player_slots: 2, uptime: 0, port };
     let slot = |pid, st, team, color| Slot { pid, download: if pid == 1 { 100 } else { DOWNLOAD_UNKNOWN }, status: st, computer: false, team, color, race: race::RANDOM | race::SELECTABLE, ai: 1, handicap: 100 };
     let slots = SlotTable { slots: vec![slot(1, status::OCCUPIED, 0, 0), slot(0, status::OPEN, 1, 1)], seed: 0x35000000, layout: layout::MELEE, player_slots: 2 };

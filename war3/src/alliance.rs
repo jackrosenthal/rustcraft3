@@ -7,8 +7,10 @@
 //! TradingIncSmall (TradingIncLarge with Shift), a right click takes it away, and all
 //! the gold (or lumber) offered stays within what the player has (FUN_6f3c2f30).
 //! Accept sends it (CNetCommandTeamTradeResources), and changed alliances
-//! (CNetCommandTeamChangeAlliance: ally 0x1F, vision 0x20, units 0x40); shared units
-//! need the alliance and shared vision (FUN_6f3bc530).
+//! (CNetCommandTeamChangeAlliance: ally 0x1F, vision 0x20, units 0x40, and the
+//! player's own Allied Victory 0x400 in every row, FUN_6f3ab370); shared units need
+//! the alliance and shared vision (FUN_6f3bc530).  The Allied Victory box shows the
+//! player's state and is locked with the alliances.
 
 use w3_game::World;
 use w3_game::types::{ALLIANCE_TYPES, player_state, slot_state};
@@ -75,7 +77,8 @@ impl AllianceDialog {
                 tree.set_checked(&n, on);
                 tree.set_enabled(&n, !locked);
             }
-            let held = (0..=UNITS).filter(|&t| get(t)).fold(0u32, |f, t| f | 1 << t);
+            let victory = if me.get_state(player_state::ALLIED_VICTORY) != 0 { 0x400 } else { 0 };
+            let held = (0..=UNITS).filter(|&t| get(t)).fold(victory, |f, t| f | 1 << t);
             let flags = w.map_flags;
             let trade = flags & 0x100 == 0 && (flags & 0x200 == 0 || ally);
             for (backdrop, key) in [("GoldBackdrop", "AllianceGold"), ("LumberBackdrop", "AllianceLumber")] {
@@ -85,7 +88,8 @@ impl AllianceDialog {
             }
             rows.push(Row { player: p, gold: 0, lumber: 0, trade, flags: held });
         }
-        tree.set_enabled("AlliedVictoryCheckBox", false);
+        tree.set_checked("AlliedVictoryCheckBox", me.get_state(player_state::ALLIED_VICTORY) != 0);
+        tree.set_enabled("AlliedVictoryCheckBox", w.map_flags & 0x400 == 0);
         let misc = |k: &str, d: i32| w.misc.get_str("Misc", k).and_then(|v| v.trim().parse().ok()).unwrap_or(d);
         let steps = (misc("TradingIncSmall", 100), misc("TradingIncLarge", 200));
         let have = (me.get_state(player_state::RESOURCE_GOLD), me.get_state(player_state::RESOURCE_LUMBER));
@@ -144,13 +148,14 @@ impl AllianceDialog {
         match self.tree.frames[i].name.as_str() {
             "AllianceAcceptButton" => {
                 let sends = self.rows.iter().filter(|r| r.gold > 0 || r.lumber > 0).map(|r| (r.player, r.gold, r.lumber)).collect();
+                let victory = if self.tree.checked("AlliedVictoryCheckBox") { 0x400 } else { 0 };
                 let changes = self
                     .rows
                     .iter()
                     .enumerate()
                     .filter_map(|(k, r)| {
                         let on = |n: &str| self.tree.checked(&format!("{n}#{k}"));
-                        let f = if on("AllyCheckBox") { 0x1f } else { 0 } | if on("VisionCheckBox") { 0x20 } else { 0 } | if on("UnitsCheckBox") { 0x40 } else { 0 };
+                        let f = if on("AllyCheckBox") { 0x1f } else { 0 } | if on("VisionCheckBox") { 0x20 } else { 0 } | if on("UnitsCheckBox") { 0x40 } else { 0 } | victory;
                         (f != r.flags).then_some((r.player, f))
                     })
                     .collect();

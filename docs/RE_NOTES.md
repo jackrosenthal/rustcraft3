@@ -330,10 +330,10 @@ Formats the port made its own, to be replaced by the original's:
   `[Campaign1]` for The Frozen Throne, a 64-bit mask per campaign named as CampaignList
   has it, mission n at bit n, 63 available, 62 opening and 61 ending cinematic, 59 and
   60 the menu's; `Magic` and `Magic1` the CRC-32 of each section's masks; read and
-  written byte for byte as the reference install's).  Still the port's own: the profile
-  list (`profiles.json`; the original scans `Save\ProfileN` and reads each PlayerName,
-  with the current one in the registry's Misc\campaignprofile), the profile folders'
-  names, saved game caches, and the custom campaign buttons (`profile_vN.json`).
+  written byte for byte as the reference install's).  Profiles are `Save\ProfileN`
+  folders named by their PlayerName, the chosen one in the registry's
+  Misc\campaignprofile (a list kept before in `profiles.json` still serves).  Still the
+  port's own: saved game caches and the custom campaign buttons (`profile_vN.json`).
 - Saved game caches: SaveGameCache writes every saved cache into the profile's one
   `Campaigns.w3v`, in the replay container (header, zlib blocks; sub-header product
   PX3W, version 27, build 6059).  Its record (`docs/reference/cache_sample.w3v`, from a

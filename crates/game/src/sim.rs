@@ -1116,7 +1116,14 @@ impl World {
         };
         if u.extra.mover.is_none() {
             log::debug!("walk of {h} from {:.2}, {:.2} facing {:.2} by {:?} to {goal:?}", u.x, u.y, u.facing, u.path);
+            // A goal within reach as it starts ends the walk without its usual objects
+            // (`Tags::move_done_in_place`).
+            let moves = goal.is_none_or(|g| (g.0 - u.x).hypot(g.1 - u.y) > 0.49 * crate::pathing::CELL);
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.walk_moved = moves;
+            }
         }
+        let Some(_) = self.unit(h) else { return true };
         let clocks = self.step_clocks.clone();
         let n = clocks.len();
         let (from, until) = self.step_range;
@@ -1125,7 +1132,12 @@ impl World {
             m.placed_at = c;
         }
         let mut done = None;
-        for (k, &clock) in clocks.iter().enumerate().take(until).skip(from) {
+        // A goal within reach as the walk starts ends it at its first step, unturned.
+        let in_place = self.unit(h).is_some_and(|u| !u.extra.walk_moved);
+        if in_place && from < until {
+            done = Some(from);
+        }
+        for (k, &clock) in clocks.iter().enumerate().take(until).skip(from).take(if done.is_some() { 0 } else { usize::MAX }) {
             let Some(&next) = self.unit(h).and_then(|u| u.path.first()) else {
                 done = Some(k);
                 break;
@@ -1166,8 +1178,13 @@ impl World {
             log::debug!("walk of {h} done at step {k} of {n}, time {:.3}", self.time);
             // The order's objects go as its walk ends, at its step (traced).
             let late = k + 1 == n;
+            let moved = self.unit_mut(h).is_some_and(|u| std::mem::take(&mut u.extra.walk_moved));
             if let Some(slots) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)).filter(|s| s.len() == 18) {
-                self.tags.move_done(&slots, late);
+                if moved {
+                    self.tags.move_done(&slots, late);
+                } else {
+                    self.tags.move_done_in_place(&slots);
+                }
             }
             let Some(u) = self.unit_mut(h) else { return true };
             u.extra.mover = None;

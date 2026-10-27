@@ -537,9 +537,11 @@ these are the findings behind them.
   turn's end in the next.  With these, every allocation and free agrees through turn
   76; with a wanderer's wait due at the last of a tick's four steps given in the next
   tick (that step being, it seems, the original's next turn's first), through turn 84.
-  At turn 85 the original ends a walk given at turn 84 whose goal (13.7 away) was
-  within reach: only `tsk.`, three `task`, `tskO`, `tskA`, and `ordt` freed at the
-  turn's start, no end objects, its path the next turn.
+  At turn 85 the original ends a walk given in turn 84's last step whose goal (13.7
+  away) was within reach: at its first step, turn 85's first, unturned and before the
+  turn's logic, only `tsk.`, three `task`, `tskO`, `tskA`, and `ordt` freed (no end
+  objects made; the issue's nine went in turn 84 as usual), and its path (`l^pa`,
+  `^clu`) as turn 86 starts.  Through turn 85 the port now agrees.
 - A cleaner reading of the traced turns, not yet carried through: turn N holds game
   time [(N - 2) * 0.1, (N - 1) * 0.1), its steps the multiples of 30 ms in it (giving
   every measured four-step turn), its events (a wanderer's wait, at its exact due time:

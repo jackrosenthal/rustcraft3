@@ -422,6 +422,9 @@ pub struct UnitExtra {
     /// The cell where its way, short of the goal, ends: reaching it searches again.
     #[serde(default)]
     pub path_end_cell: Option<(i32, i32)>,
+    /// Its walk has had a goal beyond reach (so it moves).
+    #[serde(default)]
+    pub walk_moved: bool,
     /// Its last walk ended in the last movement step of its tick.
     #[serde(default)]
     pub arrived_last_step: bool,
@@ -640,6 +643,7 @@ impl Default for UnitExtra {
             local_paths: false,
             path_end_cell: None,
             arrived_last_step: false,
+            walk_moved: false,
             mover: None,
             facing_goal: false,
             walk_from: None,

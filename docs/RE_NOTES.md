@@ -471,7 +471,16 @@ these are the findings behind them.
   difference wrapped to -pi to pi).  The sheep sampled each step fits it: its heading
   (not its shown facing, which turns on its own) turning 0.5 a step (its turn rate),
   moving from the step after the angle left fell under 60 degrees, its first step
-  about the cosine of the angle still to turn.  tools/ghidra/Sigs.java gives the
+  about the cosine of the angle still to turn.  Read in its steering object
+  (measured, cell units): the sheep's top speed 3.125 a second (100 units) at +0x88,
+  its speed's growth +0xb4 the same (full speed at once), its turn +0xb8 0.5 a step,
+  its window +0xbc 1.047197 (60 degrees); its heading 2.027 turning 0.5 a step to
+  4.527, its speed 3.125 from the step the angle left (0.685) fell inside the window,
+  its heading then 4.7314 toward the waypoint.  A step at full speed moves 3.125 *
+  0.03 cells, the 3 units measured.  A unit's place read by the script (GetUnitX)
+  is its step's place carried on by its velocity for the time since that step (the
+  script's samples, 10 ms after each step, a third of a step on: the first moving
+  sample 1 unit).  tools/ghidra/Sigs.java gives the
   float routines their signatures before decompiling, so their arithmetic reads.
 - The first wandering sheep ordered by script, sampled each step (its facing; place):
   facing 116.2, turning 4, then 8, then 11.46 (0.2 radians) each step; still for 5

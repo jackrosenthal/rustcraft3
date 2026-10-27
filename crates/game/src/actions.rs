@@ -1,7 +1,12 @@
 //! The players' commands as the original's actions (`w3_net::action`), which network
-//! games and replays carry: each player's selection as `Select` changes, and an order to
-//! it as the order actions, naming objects by the original's ids (their tags' slot and
-//! birth).  A command with no action of the original's yet travels as a private action
+//! games and replays carry: each player's selection as `Select` changes, an order to it
+//! as the order actions, and training, building, cancelling, and the build and skill
+//! menus as the original sends them for its subgroup's unit, naming objects by the
+//! original's ids (their tags' slot and birth).  Measured in replays the original wrote
+//! (`docs/reference/bootybay_orders.w3g`, `bootybay_commands.w3g`): orders at a point
+//! go as OrderTarget with no object, a build as OrderPoint with flags 4, training as
+//! Order with flags 0x42, a cancel as Dequeue by place and type, and a queued order with
+//! flag 1.  A command with no action of the original's yet travels as a private action
 //! holding it (0x7F).  Both sides keep each player's selection as the actions left it.
 
 use crate::collections::HashMap;
@@ -12,13 +17,12 @@ use w3_net::action::{Action, ObjectId, Target};
 /// The private action carrying a command (postcard), until it has the original's.
 pub const COMMAND_ACTION: u8 = 0x7F;
 
-/// The order the original sends for a right-click (smart).
-const SMART: u32 = 851971;
-
 #[derive(Clone, Debug, Default)]
 pub struct Codec {
     /// Each player's selection, as its actions have left it.
     selection: HashMap<u8, Vec<u32>>,
+    /// Each player's subgroup unit (the selection's first, as SelectSubgroup names it).
+    subgroup: HashMap<u8, u32>,
 }
 
 impl World {
@@ -64,6 +68,7 @@ impl Codec {
                     acts.push(Action::SelectSubgroup { kind, object: w.oid(first) });
                 }
                 self.selection.insert(player, units.clone());
+                self.subgroup.insert(player, units.first().copied().unwrap_or(0));
             }
             Command::SelectionOrder { order, at, target, queue, formation, .. } => {
                 let flags = (*queue as u16) | if *formation { 0x10 } else { 0 };
@@ -73,11 +78,21 @@ impl Codec {
                         let (x, y) = w.widget_pos(t).unwrap_or((0.0, 0.0));
                         Action::OrderTarget { flags, ability, a, b, target: Target { x, y, object: w.oid(t) } }
                     }
-                    (Some((x, y)), _) if ability == SMART => Action::OrderTarget { flags, ability, a, b, target: Target { x: *x, y: *y, object: ObjectId::NONE } },
-                    (Some((x, y)), _) => Action::OrderPoint { flags, ability, a, b, x: *x, y: *y },
+                    (Some((x, y)), _) => Action::OrderTarget { flags, ability, a, b, target: Target { x: *x, y: *y, object: ObjectId::NONE } },
                     (None, _) => Action::Order { flags, ability, a, b },
                 });
             }
+            Command::Train { building, id } if self.subgroup.get(&player) == Some(building) => {
+                acts.push(Action::Order { flags: 0x42, ability: crate::objects::id_to_int(*id) as u32, a: u32::MAX, b: u32::MAX });
+            }
+            Command::Build { worker, id, x, y } if self.subgroup.get(&player) == Some(worker) => {
+                acts.push(Action::OrderPoint { flags: 4, ability: crate::objects::id_to_int(*id) as u32, a: u32::MAX, b: u32::MAX, x: *x, y: *y });
+            }
+            Command::CancelQueue { building, slot } if self.subgroup.get(&player) == Some(building) && *slot < 256 => {
+                let kind = w.unit(*building).and_then(|u| u.queue.get(*slot)).map_or(0, |id| crate::objects::id_to_int(*id) as u32);
+                acts.push(Action::Dequeue { slot: *slot as u8, kind });
+            }
+            Command::Submenu { build, .. } => acts.push(if *build { Action::BuildMenu } else { Action::SkillMenu }),
             _ => return self.encode_private(c),
         }
         let mut wr = w3_net::wire::Writer::default();
@@ -127,14 +142,24 @@ impl Codec {
                     }
                     changed = true;
                 }
-                Action::PreSubselection | Action::SelectSubgroup { .. } => {}
+                Action::PreSubselection => {}
+                Action::SelectSubgroup { object, .. } => {
+                    self.subgroup.insert(player, w.by_oid(object).unwrap_or(0));
+                }
                 other => {
                     let sel = sel.clone();
                     flush(&mut changed, &sel, &mut out);
+                    let first = self.subgroup.get(&player).copied().unwrap_or(0);
+                    let id = |v: u32| crate::objects::id_from_int(v as i32);
                     let order = |ability: u32, flags: u16, at: Option<(f32, f32)>, target: u32| Command::SelectionOrder { player, order: ability as i32, at, target, queue: flags & 1 != 0, formation: flags & 0x10 != 0 };
                     match other {
+                        Action::Order { flags: 0x42, ability, .. } => out.push(Command::Train { building: first, id: id(ability) }),
                         Action::Order { flags, ability, .. } => out.push(order(ability, flags, None, 0)),
+                        Action::OrderPoint { flags: 4, ability, x, y, .. } => out.push(Command::Build { worker: first, id: id(ability), x, y }),
                         Action::OrderPoint { flags, ability, x, y, .. } => out.push(order(ability, flags, Some((x, y)), 0)),
+                        Action::Dequeue { slot, .. } => out.push(Command::CancelQueue { building: first, slot: slot as usize }),
+                        Action::BuildMenu => out.push(Command::Submenu { player, build: true }),
+                        Action::SkillMenu => out.push(Command::Submenu { player, build: false }),
                         Action::OrderTarget { flags, ability, target, .. } if target.object == ObjectId::NONE => out.push(order(ability, flags, Some((target.x, target.y)), 0)),
                         Action::OrderTarget { flags, ability, target, .. } => out.push(order(ability, flags, None, w.by_oid(target.object).unwrap_or(0))),
                         a => log::warn!("an action this game does not take yet: {a:?}"),

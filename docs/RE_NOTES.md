@@ -310,7 +310,17 @@ Formats the port made its own, to be replaced by the original's:
 
 - Saved games: the port's world state (`crates/game/src/save.rs`), not the original's
   .w3z.
-- Replays: `W3RRPLY` (`crates/game/src/replay.rs`), not .w3g (which it now reads).
+- Replays: .w3g files as the original writes them (header and its CRC, 8192-byte
+  zlib blocks with their checksums, the record of host, players, slots, and seed, a
+  turn per frame, verified by writing back a replay of the original's), but each
+  command still the port's own in a private action (0x7F), each turn's exact length
+  in another (0x7D, from player 0), and the port's setup in a private record (0x7E);
+  older `W3RRPLY` files still play.  The original's own encodings measured so far
+  (`docs/reference/bootybay_orders.w3g`): a selection change is `Select` (remove the
+  old, add the new), `PreSubselection`, and `SelectSubgroup` by the first unit's type;
+  a right-click is `OrderTarget` with order 851971 (smart), flags 0 on the ground with
+  no object, 8 on a gold mine; training is `Order` with flags 0x42 and the unit type;
+  object ids are (slot, birth), equal for the peasants at the start.
 - Options and profiles: JSON files (`options.json`, `profiles.json`,
   `profile_vN.json`), not the original's registry settings and `Save\ProfileN`.
 - Network games' commands: the port's own inside W3GS's actions, not the original's

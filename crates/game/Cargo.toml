@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 w3-mpq.workspace = true
 w3-formats.workspace = true
+w3-net.workspace = true
 w3-jass.workspace = true
 w3-ui.workspace = true
 thiserror.workspace = true

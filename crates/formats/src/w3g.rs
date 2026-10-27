@@ -180,11 +180,146 @@ impl Replay {
                 0x1A..=0x1C => Record::Other { id, body: r.bytes(4)?.to_vec() },
                 0x23 => Record::Other { id, body: r.bytes(10)?.to_vec() },
                 0x2F => Record::Other { id, body: r.bytes(8)?.to_vec() },
+                // A record of another program's (the remastered game's setup): its length,
+                // then its bytes.
+                0x7E => {
+                    let n = r.u32()?;
+                    Record::Other { id, body: [&n.to_le_bytes()[..], r.bytes(n as usize)?].concat() }
+                }
                 _ => return Err(Error::Format("unknown replay record")),
             };
             records.push(rec);
         }
         Ok(Replay { product, version, build, flags, length_ms, host, game_name, stat, player_count, game_type, language, players, slots, seed, select_mode, start_spots, records })
+    }
+
+    /// The replay as the original writes it: the header (its CRC-32 over itself with the
+    /// field zeroed), then the record in blocks of 8192 bytes, the last padded with
+    /// zeros, each compressed alone and checked by the CRC-32s of its header and its
+    /// data, each folded to 16 bits (both verified against a replay the original wrote).
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let data = self.data();
+        let mut blocks = Vec::new();
+        for chunk in data.chunks(8192) {
+            let mut plain = chunk.to_vec();
+            plain.resize(8192, 0);
+            let mut z = flate2::Compress::new(flate2::Compression::default(), true);
+            let mut packed = Vec::with_capacity(8192 + 64);
+            let _ = z.compress_vec(&plain, &mut packed, flate2::FlushCompress::Sync);
+            let fold = |c: u32| (c ^ (c >> 16)) & 0xffff;
+            let mut head = Vec::new();
+            head.extend((packed.len() as u16).to_le_bytes());
+            head.extend(8192u16.to_le_bytes());
+            let c1 = crc(&[&head[..], &[0u8; 4][..]].concat());
+            let c2 = crc(&packed);
+            head.extend((fold(c1) | fold(c2) << 16).to_le_bytes());
+            blocks.push((head, packed));
+        }
+        let body_len: usize = blocks.iter().map(|(h, p)| h.len() + p.len()).sum();
+        let mut out = MAGIC.to_vec();
+        for v in [0x44u32, (0x44 + body_len) as u32, 1, data.len() as u32, blocks.len() as u32] {
+            out.extend(v.to_le_bytes());
+        }
+        out.extend(self.product);
+        out.extend(self.version.to_le_bytes());
+        out.extend(self.build.to_le_bytes());
+        out.extend(self.flags.to_le_bytes());
+        out.extend(self.length_ms.to_le_bytes());
+        let c = crc(&[&out[..], &[0u8; 4][..]].concat());
+        out.extend(c.to_le_bytes());
+        for (h, p) in blocks {
+            out.extend(h);
+            out.extend(p);
+        }
+        out
+    }
+
+    /// The record, uncompressed, as `read_data` reads it.
+    fn data(&self) -> Vec<u8> {
+        let mut d = Vec::new();
+        let cstr = |d: &mut Vec<u8>, s: &str| {
+            d.extend(s.bytes());
+            d.push(0);
+        };
+        let player = |d: &mut Vec<u8>, kind: u8, p: &PlayerRecord| {
+            d.push(kind);
+            d.push(p.pid);
+            d.extend(p.name.bytes());
+            d.push(0);
+            d.push(p.extra.len() as u8);
+            d.extend(&p.extra);
+        };
+        d.extend(0x110u32.to_le_bytes());
+        player(&mut d, 0, &self.host);
+        cstr(&mut d, &self.game_name);
+        d.push(0);
+        d.extend(&self.stat);
+        d.push(0);
+        d.extend(self.player_count.to_le_bytes());
+        d.extend(self.game_type.to_le_bytes());
+        d.extend(self.language.to_le_bytes());
+        for p in &self.players {
+            player(&mut d, 0x16, p);
+            d.extend(0u32.to_le_bytes());
+        }
+        d.push(0x19);
+        let mut start = vec![self.slots.len() as u8];
+        for s in &self.slots {
+            start.extend([s.pid, s.download, s.status, s.computer as u8, s.team, s.color, s.race, s.ai, s.handicap]);
+        }
+        start.extend(self.seed.to_le_bytes());
+        start.push(self.select_mode);
+        start.push(self.start_spots);
+        d.extend((start.len() as u16).to_le_bytes());
+        d.extend(start);
+        for rec in &self.records {
+            match rec {
+                Record::Turn { ms, actions } => {
+                    let mut body = ms.to_le_bytes().to_vec();
+                    for (pid, a) in actions {
+                        body.push(*pid);
+                        body.extend((a.len() as u16).to_le_bytes());
+                        body.extend(a);
+                    }
+                    d.push(0x1F);
+                    d.extend((body.len() as u16).to_le_bytes());
+                    d.extend(body);
+                }
+                Record::Checksum(b) => {
+                    d.push(0x22);
+                    d.push(b.len() as u8);
+                    d.extend(b);
+                }
+                Record::Chat { pid, scope, text } => {
+                    let mut body = Vec::new();
+                    match scope {
+                        Some(s) => {
+                            body.push(0x20);
+                            body.extend(s.to_le_bytes());
+                        }
+                        None => body.push(0x10),
+                    }
+                    body.extend(text.bytes());
+                    body.push(0);
+                    d.push(0x20);
+                    d.push(*pid);
+                    d.extend((body.len() as u16).to_le_bytes());
+                    d.extend(body);
+                }
+                Record::Leave { reason, pid, result, unknown } => {
+                    d.push(0x17);
+                    d.extend(reason.to_le_bytes());
+                    d.push(*pid);
+                    d.extend(result.to_le_bytes());
+                    d.extend(unknown.to_le_bytes());
+                }
+                Record::Other { id, body } => {
+                    d.push(*id);
+                    d.extend(body);
+                }
+            }
+        }
+        d
     }
 
     /// The checksums after each turn, in order.
@@ -194,6 +329,12 @@ impl Replay {
             _ => None,
         })
     }
+}
+
+fn crc(b: &[u8]) -> u32 {
+    let mut h = crc32fast::Hasher::new();
+    h.update(b);
+    h.finalize()
 }
 
 #[cfg(test)]
@@ -211,5 +352,21 @@ mod tests {
         assert!(turns > 0);
         assert_eq!(r.checksums().count(), turns);
         assert_eq!(r.slots.len(), r.start_spots as usize);
+    }
+
+    /// A replay the original wrote reads back the same after this writes it, its record
+    /// byte for byte.
+    #[test]
+    fn replays_write_as_the_original_does() {
+        let b = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/reference/bootybay_orders.w3g")).unwrap();
+        let r = Replay::parse(&b).unwrap();
+        let again = r.to_bytes();
+        // The header's sizes but the compressed one (zlib's output may differ).
+        assert_eq!(&again[..32], &b[..32]);
+        assert_eq!(&again[36..64], &b[36..64]);
+        assert_eq!(r.data().len() as u32, u32::from_le_bytes(b[40..44].try_into().unwrap()));
+        let r2 = Replay::parse(&again).unwrap();
+        assert_eq!(r.data(), r2.data());
+        assert_eq!(format!("{:?}", r.records), format!("{:?}", r2.records));
     }
 }

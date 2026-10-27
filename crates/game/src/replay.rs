@@ -152,8 +152,9 @@ pub struct Replay {
     pub seed: u32,
 }
 
-/// The file's first bytes, before its compressed body.
-pub const MAGIC: &[u8; 8] = b"W3RRPLY5";
+/// The first bytes of replays this game recorded in its own format before it wrote the
+/// original's (.w3g); they still play.
+const MAGIC_5: &[u8; 8] = b"W3RRPLY5";
 /// Replays recorded before the seed was kept, which played from seed 0.
 const MAGIC_4: &[u8; 8] = b"W3RRPLY4";
 
@@ -170,21 +171,115 @@ struct Replay4 {
     frames: Vec<Frame>,
 }
 
+/// The private record (after the start records) holding what the original's record has
+/// no place for: the setup as this game keeps it and the campaign's progress.
+const SETUP_RECORD: u8 = 0x7E;
+/// The private action carrying one of this game's commands, until each has its
+/// original action (`Command` in postcard).
+const COMMAND_ACTION: u8 = 0x7F;
+/// The private action giving a turn's exact length (an f32), from player 0, as this
+/// game's steps need not be whole milliseconds.
+const STEP_ACTION: u8 = 0x7D;
+
+/// The setup kept in the private record.
+#[derive(Serialize, Deserialize)]
+struct Setup {
+    map: String,
+    lobby: Option<Vec<crate::LobbySlot>>,
+    persist: crate::persist::Persist,
+    campaign: bool,
+    version: i32,
+    flags: u32,
+    local_name: Option<String>,
+}
+
 impl Replay {
-    /// The replay as a file: the magic, then the replay compressed.
+    /// The replay as the original's file (.w3g): its header and record (the host and
+    /// players, the slots, the seed), then a turn per frame with each player's actions
+    /// and a checksum.  The players' commands go as private actions, and the setup this
+    /// game needs beyond the record in a private record.
     pub fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        use std::io::Write;
-        let json = postcard::to_allocvec(self)?;
-        let mut e = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
-        e.write_all(&json)?;
-        let mut out = MAGIC.to_vec();
-        out.extend(e.finish()?);
-        Ok(out)
+        use w3_formats::w3g;
+        let lobby = self.lobby.clone().unwrap_or_default();
+        let name_of = |s: &crate::LobbySlot| s.name.clone().unwrap_or_else(|| format!("Player {}", s.player + 1));
+        let host_slot = lobby.iter().find(|s| matches!(s.fill, crate::SlotFill::Local)).or(lobby.first());
+        let host = w3g::PlayerRecord { pid: host_slot.map_or(1, |s| s.player + 1), name: host_slot.map(name_of).or(self.local_name.clone()).unwrap_or_default(), extra: vec![0] };
+        let players = lobby
+            .iter()
+            .filter(|s| matches!(s.fill, crate::SlotFill::Remote) || matches!(s.fill, crate::SlotFill::Observer(false)))
+            .map(|s| w3g::PlayerRecord { pid: s.player + 1, name: name_of(s), extra: vec![0] })
+            .collect();
+        // Races as the slot table has them: human 1, orc 2, night elf 4, undead 8, random
+        // 0x20, each selectable (0x40).
+        let race = |r: Option<i32>| 0x40 | match r {
+            Some(1) => 1,
+            Some(2) => 2,
+            Some(3) => 8,
+            Some(4) => 4,
+            _ => 0x20,
+        };
+        let slots = lobby
+            .iter()
+            .map(|s| {
+                let used = !matches!(s.fill, crate::SlotFill::Empty);
+                let computer = matches!(s.fill, crate::SlotFill::Computer);
+                w3g::Slot { pid: if used && !computer { s.player + 1 } else { 0 }, download: 100, status: if used { 2 } else { 0 }, computer, team: s.team as u8, color: s.color as u8, race: race(s.race), ai: s.difficulty as u8, handicap: s.handicap as u8 }
+            })
+            .collect::<Vec<_>>();
+        let stat = w3_net::stat::encode(&w3_net::GameStat { settings: self.flags, map_width: 0, map_height: 0, map_xoro: 0, map_path: self.map.clone(), host: host.name.clone(), map_sha1: [0; 20] }.to_bytes());
+        let setup = Setup { map: self.map.clone(), lobby: self.lobby.clone(), persist: self.persist.clone(), campaign: self.campaign, version: self.version, flags: self.flags, local_name: self.local_name.clone() };
+        let setup = postcard::to_allocvec(&setup)?;
+        let mut records = vec![
+            w3g::Record::Other { id: SETUP_RECORD, body: [&(setup.len() as u32).to_le_bytes()[..], &setup].concat() },
+            w3g::Record::Other { id: 0x1A, body: 1u32.to_le_bytes().to_vec() },
+            w3g::Record::Other { id: 0x1B, body: 1u32.to_le_bytes().to_vec() },
+            w3g::Record::Other { id: 0x1C, body: 1u32.to_le_bytes().to_vec() },
+        ];
+        for f in &self.frames {
+            let mut actions = vec![(0u8, [&[STEP_ACTION][..], &f.dt.to_le_bytes()].concat())];
+            for (player, c) in &f.commands {
+                let body = postcard::to_allocvec(c)?;
+                let mut a = vec![COMMAND_ACTION];
+                a.extend((body.len() as u16).to_le_bytes());
+                a.extend(body);
+                match actions.iter_mut().find(|(p, _)| *p == player + 1) {
+                    Some((_, bytes)) => bytes.extend(a),
+                    None => actions.push((player + 1, a)),
+                }
+            }
+            records.push(w3g::Record::Turn { ms: (f.dt * 1000.0).round() as u16, actions });
+            records.push(w3g::Record::Checksum(vec![0; 4]));
+        }
+        let length_ms = (self.length() * 1000.0).round() as u32;
+        let multiplayer = lobby.iter().any(|s| matches!(s.fill, crate::SlotFill::Remote));
+        let r = w3g::Replay {
+            product: if self.version == 0 { *b"3RAW" } else { *b"PX3W" },
+            version: 27,
+            build: 6059,
+            flags: if multiplayer { 0x8000 } else { 0 },
+            length_ms,
+            host,
+            game_name: if multiplayer { self.map.clone() } else { "Local Game".into() },
+            stat,
+            player_count: lobby.len().max(1) as u32,
+            game_type: 1,
+            language: 0,
+            players,
+            start_spots: slots.len() as u8,
+            slots,
+            seed: self.seed,
+            select_mode: 0,
+            records,
+        };
+        Ok(r.to_bytes())
     }
 
     pub fn parse(b: &[u8]) -> anyhow::Result<Replay> {
         use std::io::Read;
-        let (body, old) = match (b.strip_prefix(MAGIC.as_slice()), b.strip_prefix(MAGIC_4.as_slice())) {
+        if b.starts_with(w3_formats::w3g::MAGIC) {
+            return Self::from_w3g(b);
+        }
+        let (body, old) = match (b.strip_prefix(MAGIC_5.as_slice()), b.strip_prefix(MAGIC_4.as_slice())) {
             (Some(body), _) => (body, false),
             (None, Some(body)) => (body, true),
             _ => anyhow::bail!("not a replay this game recorded"),
@@ -196,6 +291,46 @@ impl Replay {
             return Ok(Replay { map: r.map, lobby: r.lobby, persist: r.persist, campaign: r.campaign, version: r.version, flags: r.flags, local_name: r.local_name, frames: r.frames, seed: 0 });
         }
         Ok(postcard::from_bytes(&json)?)
+    }
+
+    /// A replay this game wrote as the original's file.
+    fn from_w3g(b: &[u8]) -> anyhow::Result<Replay> {
+        use w3_formats::w3g;
+        let r = w3g::Replay::parse(b)?;
+        let setup = r
+            .records
+            .iter()
+            .find_map(|rec| match rec {
+                w3g::Record::Other { id: SETUP_RECORD, body } => body.get(4..),
+                _ => None,
+            })
+            .ok_or_else(|| anyhow::anyhow!("a replay of the original's, not this game's"))?;
+        let s: Setup = postcard::from_bytes(setup)?;
+        let mut frames = Vec::new();
+        for rec in &r.records {
+            let w3g::Record::Turn { ms, actions } = rec else { continue };
+            let mut f = Frame { dt: *ms as f32 / 1000.0, commands: Vec::new() };
+            for (pid, bytes) in actions {
+                let mut k = 0;
+                while k < bytes.len() {
+                    match bytes[k] {
+                        STEP_ACTION if *pid == 0 && k + 5 <= bytes.len() => {
+                            f.dt = f32::from_le_bytes(bytes[k + 1..k + 5].try_into().unwrap());
+                            k += 5;
+                        }
+                        COMMAND_ACTION if k + 3 <= bytes.len() => {
+                            let n = u16::from_le_bytes([bytes[k + 1], bytes[k + 2]]) as usize;
+                            let body = bytes.get(k + 3..k + 3 + n).ok_or_else(|| anyhow::anyhow!("short command"))?;
+                            f.commands.push((pid.saturating_sub(1), postcard::from_bytes(body)?));
+                            k += 3 + n;
+                        }
+                        _ => anyhow::bail!("an action this game does not read yet"),
+                    }
+                }
+            }
+            frames.push(f);
+        }
+        Ok(Replay { map: s.map, lobby: s.lobby, persist: s.persist, campaign: s.campaign, version: s.version, flags: s.flags, local_name: s.local_name, frames, seed: r.seed })
     }
 
     /// The game's length in seconds.
@@ -253,5 +388,39 @@ impl Outcome {
 
     pub fn flag(self) -> bool {
         matches!(self, Outcome::Flag(true))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A replay written as the original's file reads back as it was: its setup, each
+    /// frame's exact length, and each command.
+    #[test]
+    fn replays_keep_everything_in_the_originals_file() {
+        let lobby = vec![
+            crate::LobbySlot { player: 0, fill: crate::SlotFill::Local, name: Some("Jack".into()), race: Some(1), team: 0, color: 0, handicap: 100.0, difficulty: 1 },
+            crate::LobbySlot { player: 1, fill: crate::SlotFill::Computer, name: None, race: None, team: 1, color: 1, handicap: 90.0, difficulty: 2 },
+        ];
+        let r = Replay {
+            map: "Maps\\(2)BootyBay.w3m".into(),
+            lobby: Some(lobby),
+            version: 1,
+            flags: 0x64802,
+            seed: 0x35000000,
+            frames: vec![
+                Frame { dt: 0.0166, commands: vec![] },
+                Frame { dt: 0.05, commands: vec![(0, Command::Order { unit: 42, order: 851971, x: 1.5, y: -2.0, target: 0 }), (0, Command::Chat { player: 0, text: "hi".into(), to: 0 })] },
+                Frame { dt: 0.1, commands: vec![(1, Command::Train { building: 7, id: *b"hpea" })] },
+            ],
+            ..Default::default()
+        };
+        let b = r.to_bytes().unwrap();
+        assert!(b.starts_with(w3_formats::w3g::MAGIC));
+        let back = Replay::parse(&b).unwrap();
+        assert_eq!(postcard::to_allocvec(&back).unwrap(), postcard::to_allocvec(&r).unwrap());
+        let w = w3_formats::w3g::Replay::parse(&b).unwrap();
+        assert_eq!((w.seed, w.slots.len(), w.host.name.as_str()), (0x35000000, 2, "Jack"));
     }
 }

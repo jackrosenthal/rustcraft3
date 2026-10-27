@@ -4,7 +4,7 @@
 //! zero exponent to zero, and divides by an interpolated reciprocal.  Values are the
 //! singles' bits.
 
-use crate::efloat_recip::RECIP;
+use crate::efloat_recip::{ACOS, ACOS_NEAR_ONE, PI, RECIP};
 
 const EXP: u32 = 0x7f80_0000;
 const FRAC: u32 = 0x007f_ffff;
@@ -186,6 +186,48 @@ pub fn sqrt(a: u32) -> u32 {
     mul(m, scale)
 }
 
+/// The arc cosine (`FUN_6f06ffa0`), from tables: below 0.99414 by x times 2^30, its
+/// table's step interpolated by the low bits (mirrored about pi for a negative x),
+/// scaled by 2^-29; nearer 1 by the distance from 1, normalized, its table found by
+/// the leading zeros and the next four bits, scaled by 2^-34, and taken from pi for a
+/// negative x.
+pub fn acos(a: u32) -> u32 {
+    let ab = a & 0x7fff_ffff;
+    if ab <= 0x3f7e_8000 {
+        let mut v = to_int(a.wrapping_add(0x0f00_0000));
+        let t = v.wrapping_add(0x3fff_ffff);
+        if t as u32 > 0x7fff_fffe {
+            v = ((!(t >> 31)) & 0x7fff_fffe).wrapping_sub(0x3fff_ffff);
+        }
+        let lo = ((v as u32) << 12) | (((v as u32) << 12) >> 20);
+        let i = ((v >> 20) & 0x3ff) as usize;
+        let (base, step) = if v >= 0 {
+            (ACOS[i], ACOS[i].wrapping_sub(ACOS[i + 1]))
+        } else {
+            let e = ACOS[1024 - i];
+            (0x6487_ed51u32.wrapping_sub(e), ACOS[1023 - i].wrapping_sub(e))
+        };
+        let hi = ((step as u64 * lo as u64) >> 32) as u32;
+        let f = from_int(base.wrapping_sub(hi) as i32);
+        return f.wrapping_sub(if f & EXP != 0 { 0x0e80_0000 } else { 0 });
+    }
+    let one = if ab > 0x3f80_0000 { 0x3f80_0000 } else { ab };
+    let mut d = 0x3f80_0000 - one;
+    let lz = clz(d);
+    d = if lz < 32 { (!d) << lz } else { 0 };
+    let i = ((lz * 8 - 0x78) as u32 | (d >> 28)) as usize;
+    let lo = d << 4;
+    let s = ACOS_NEAR_ONE[i];
+    let hi = ((s.wrapping_sub(ACOS_NEAR_ONE[i + 1]) as u64 * lo as u64) >> 32) as u32;
+    let f = from_int(s.wrapping_sub(hi) as i32);
+    let f = f.wrapping_sub(if f & EXP != 0 { 0x1100_0000 } else { 0 });
+    if a & SIGN != 0 {
+        sub(PI, f)
+    } else {
+        f
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,6 +256,15 @@ mod tests {
         assert_eq!(floor(f(-0.25)), f(-1.0));
         assert_eq!(sqrt(0), 0);
         assert_eq!(sqrt(f(-4.0)), 0);
+    }
+
+    /// Its arc cosines come within a thousandth of the processor's.
+    #[test]
+    fn arc_cosines_are_close() {
+        for v in [0.0f32, 0.25, 0.5, -0.5, 0.9, -0.9, 0.99, 0.995, 0.9999, 1.0, -1.0, -0.999] {
+            let r = f32::from_bits(acos(f(v)));
+            assert!((r - v.acos()).abs() < 1e-3, "{v}: {r} against {}", v.acos());
+        }
     }
 
     /// Its roots come within a part in ten thousand of the processor's.

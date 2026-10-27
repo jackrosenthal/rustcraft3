@@ -9,15 +9,26 @@ use crate::types::*;
 use crate::world::{NativeFn, World};
 
 fn register_event(w: &mut World, trig: u32, kind: EventKind) -> NativeResult {
+    register_event_tagged(w, trig, kind, true)
+}
+
+fn register_event_tagged(w: &mut World, trig: u32, kind: EventKind, tagged: bool) -> NativeResult {
     if w.trigger(trig).is_none() {
         return none();
     }
     // The original's event object for the kind, with the objects it makes (measured in
-    // Booty Bay's start: a unit's, a player's, a timer's expiry, the time of day's, a
-    // game's, an alliance's, and a player state's).  TriggerRegisterTimerEvent's is not
-    // measured yet and takes none here.
+    // Booty Bay's start and a census of each registration native).
     let codes: &[&crate::tags::Code] = match &kind {
         EventKind::Unit { .. } => &[b"uevt"],
+        EventKind::Death(_) => &[b"wdvt"],
+        EventKind::UnitState { .. } => &[b"usvt", b"`rtl"],
+        EventKind::EnterRegion { .. } | EventKind::LeaveRegion { .. } => &[b"+rev"],
+        EventKind::PlayerChat { .. } => &[b"pcvt"],
+        EventKind::Variable { .. } => &[b"vevt"],
+        EventKind::Dialog(_) => &[b"devt"],
+        EventKind::DialogButton(_) => &[b"bevt"],
+        EventKind::UnitInRange { .. } => &[b"rgvt", b"`pil"],
+        EventKind::Trackable { .. } => &[b"+tev"],
         EventKind::Player { event, .. } if *event == crate::event_ids::EVENT_PLAYER_ALLIANCE_CHANGED => &[b"alvt", b"`fcl"],
         EventKind::Player { .. } | EventKind::PlayerUnit { .. } => &[b"pevt"],
         EventKind::PlayerState { .. } => &[b"psvt", b"`fcl"],
@@ -26,7 +37,9 @@ fn register_event(w: &mut World, trig: u32, kind: EventKind) -> NativeResult {
         EventKind::TimerExpire(_) => &[b"tmet"],
         _ => &[],
     };
-    w.tags.take_all(codes);
+    if tagged {
+        w.tags.take_all(codes);
+    }
     let e = w.handles.insert(Obj::Event(EventReg { trigger: trig, kind }));
     w.events.push(e);
     if let Some(t) = w.trigger_mut(trig) {
@@ -108,6 +121,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         TriggerAddCondition => |w, _, a| {
             let (trig, expr) = (a.h(0), a.h(1));
             if w.trigger(trig).is_none() { return none(); }
+            w.tags.take(b"tcnd");
             let c = w.handles.insert(Obj::TriggerCondition { expr });
             if let Some(t) = w.trigger_mut(trig) { t.conditions.push(c); }
             handle(c)
@@ -183,9 +197,15 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         Condition => |w, _, a| match a.code(0) { Some(f) => boolexpr(w, BoolExpr::Func(f)), None => none() },
         Filter => |w, _, a| match a.code(0) { Some(f) => boolexpr(w, BoolExpr::Func(f)), None => none() },
-        And => |w, _, a| boolexpr(w, BoolExpr::And(a.h(0), a.h(1))),
+        And => |w, _, a| {
+            w.tags.take(b"bAnd");
+            boolexpr(w, BoolExpr::And(a.h(0), a.h(1)))
+        },
         Or => |w, _, a| boolexpr(w, BoolExpr::Or(a.h(0), a.h(1))),
-        Not => |w, _, a| boolexpr(w, BoolExpr::Not(a.h(0))),
+        Not => |w, _, a| {
+            w.tags.take(b"bNot");
+            boolexpr(w, BoolExpr::Not(a.h(0)))
+        },
         DestroyBoolExpr => destroy_boolexpr,
         DestroyCondition => destroy_boolexpr,
         DestroyFilter => destroy_boolexpr,
@@ -247,10 +267,14 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetSpellTargetUnit => |w, _, _| handle(w.ctx.target_unit),
         GetEventDetectingPlayer => |w, _, _| NativeResult::Return(w.player_handle(w.ctx.player)),
         GetWinningPlayer => |w, _, _| NativeResult::Return(w.player_handle(w.ctx.player)),
+        // A private timer drives the event; the original makes its own event object for
+        // it, which is all it tags (measured).
         TriggerRegisterTimerEvent => |w, _, a| {
-            // A private timer drives the event.
+            if w.trigger(a.h(0)).is_some() {
+                w.tags.take(b"tmvt");
+            }
             let timer = w.handles.insert(Obj::Timer(Timer { remaining: a.r(1) as f64, timeout: a.r(1), period: a.r(1) as f64, periodic: a.b(2), running: true, ..Default::default() }));
-            register_event(w, a.h(0), EventKind::TimerExpire(timer))
+            register_event_tagged(w, a.h(0), EventKind::TimerExpire(timer), false)
         },
         TriggerRegisterTimerExpireEvent => |w, _, a| register_event(w, a.h(0), EventKind::TimerExpire(a.h(1))),
         TriggerRegisterGameStateEvent => |w, _, a| register_event(w, a.h(0), EventKind::GameState { state: a.h(1) as i32, op: a.h(2) as i32, value: a.r(3) }),
@@ -290,7 +314,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         TriggerRegisterDeathEvent => |w, _, a| register_event(w, a.h(0), EventKind::Death(a.h(1))),
         TriggerRegisterUnitStateEvent => |w, _, a| register_event(w, a.h(0), EventKind::UnitState { unit: a.h(1), state: a.h(2) as i32, op: a.h(3) as i32, value: a.r(4) }),
         TriggerRegisterUnitEvent => |w, _, a| register_event(w, a.h(0), EventKind::Unit { unit: a.h(1), event: a.h(2) as i32 }),
-        TriggerRegisterFilterUnitEvent => |w, _, a| register_event(w, a.h(0), EventKind::Unit { unit: a.h(1), event: a.h(2) as i32 }),
+        // The original makes no object for it (measured with a death event and no filter).
+        TriggerRegisterFilterUnitEvent => |w, _, a| register_event_tagged(w, a.h(0), EventKind::Unit { unit: a.h(1), event: a.h(2) as i32 }, false),
         TriggerRegisterUnitInRange => |w, _, a| register_event(w, a.h(0), EventKind::UnitInRange { unit: a.h(1), range: a.r(2), filter: opt(a.h(3)) }),
         CreateTimer => |w, _, _| {
             w.tags.take(b"+tmr");

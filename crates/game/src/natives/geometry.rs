@@ -94,7 +94,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetLocationX => |w, _, a| real(w.location(a.h(0)).map_or(0.0, |l| l.0)),
         GetLocationY => |w, _, a| real(w.location(a.h(0)).map_or(0.0, |l| l.1)),
         GetLocationZ => |w, _, a| real(w.location(a.h(0)).map_or(0.0, |(x, y)| w.ground_z(x, y))),
-        CreateRegion => |w, _, _| handle(w.handles.insert(Obj::Region(Region::default()))),
+        CreateRegion => |w, _, _| {
+            w.tags.take_all(&[b"+agr", b"^pmr"]);
+            handle(w.handles.insert(Obj::Region(Region::default())))
+        },
         RemoveRegion => |w, _, a| { if w.region(a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
         RegionAddRect => |w, _, a| {
             let Some(r) = w.rect(a.h(1)) else { return none() };

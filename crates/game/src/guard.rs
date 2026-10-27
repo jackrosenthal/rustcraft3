@@ -265,10 +265,11 @@ impl World {
         }
         let day = !night(new);
         self.tags.take_n(b"`rtl", if day { 2 } else { 1 });
-        let units: Vec<u32> = self.unit_order.iter().rev().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead)).collect();
+        // Dead ones too, while their corpses remain (measured: a creep killed by script).
+        let units: Vec<u32> = self.unit_order.iter().rev().copied().filter(|&h| self.unit(h).is_some()).collect();
         for h in units {
             self.tags.take(b"`rcm");
-            let Some(u) = self.unit(h) else { continue };
+            let Some(u) = self.unit(h).filter(|u| !u.dead) else { continue };
             // With the night an idle creep that may sleep falls asleep at once
             // (measured: a creep made by day, after a night set by script, wakes making
             // its spells' timers when the day is set again).

@@ -213,7 +213,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             w.rand_data = crate::rng::RandData::new(v);
             none()
         },
-        InitHashtable => |w, _, _| handle(w.handles.insert(Obj::Hashtable(Box::default()))),
+        InitHashtable => |w, _, _| {
+            w.tags.take(b"ghth");
+            handle(w.handles.insert(Obj::Hashtable(Box::default())))
+        },
         SaveInteger => |w, _, a| {
             if let Some(t) = hashtable(w, a.h(0)) { t.ints.insert((a.i(1), a.i(2)), a.i(3)); }
             none()
@@ -261,6 +264,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         InitGameCache => |w, _, a| {
+            w.tags.take(b"gcch");
             // A cache already open by that name is shared, under a new handle (measured:
             // two InitGameCache("Test.w3v") differ but read the same values).
             let name = a.s(0);

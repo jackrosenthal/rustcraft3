@@ -762,6 +762,18 @@ fn issue_neutral(w: &mut World, vm: &mut Vm, a: &[Value], order: i32, x: f32, y:
     issue_order(w, vm, shop, order, x, y, target)
 }
 
+/// The objects an immediate order makes (measured: a creep ordered to stop makes an
+/// order and its tasks; a Shadow Priest's autodispeloff, which only turns its
+/// autocast off, none).
+fn tag_immediate_order(w: &mut World, unit: u32, order: i32) {
+    let Some(u) = w.unit(unit) else { return };
+    let name = crate::natives::basic::order_name(order).unwrap_or_default();
+    let toggle = u.abilities.iter().any(|(a, _)| w.objects.abilities.get(*a).is_some_and(|o| o.str("Orderon") == name || o.str("Orderoff") == name));
+    if !toggle {
+        w.tags.take_all(&[b"+ord", b"tskA", b"task", b"task", b"task", b"task", b"tskA"]);
+    }
+}
+
 fn issue_order(w: &mut World, vm: &mut Vm, unit: u32, order: i32, x: f32, y: f32, target: u32) -> NativeResult {
     let Some(owner) = w.unit(unit).map(|u| u.owner) else { return boolean(false) };
     // An order that is a unit type or a research: a structure trains it, researches it,
@@ -856,8 +868,25 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             if let Some(u) = w.unit_mut(h) { u.dead = true; u.life = 0.0; }
             handle(h)
         },
-        KillUnit => |w, vm, a| { kill_unit(w, vm, a.h(0), 0); none() },
-        RemoveUnit => |w, _, a| { script_remove_unit(w, a.h(0)); none() },
+        // Each makes its tasks (measured by script: a creep's).
+        KillUnit => |w, vm, a| {
+            if w.unit(a.h(0)).is_some_and(|u| !u.dead) {
+                w.tags.take(b"tskA");
+                w.tags.take_n(b"task", 7);
+                w.tags.take(b"tskA");
+            }
+            kill_unit(w, vm, a.h(0), 0);
+            none()
+        },
+        RemoveUnit => |w, _, a| {
+            if w.unit(a.h(0)).is_some() {
+                w.tags.take(b"tskA");
+                w.tags.take_n(b"task", 5);
+                w.tags.take(b"tskA");
+            }
+            script_remove_unit(w, a.h(0));
+            none()
+        },
         ShowUnit => |w, _, a| { let v = a.b(1); with_unit(w, a, |u| u.hidden = !v) },
         IsUnitHidden => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| u.hidden)),
         SetUnitState => |w, vm, a| {
@@ -1358,8 +1387,15 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             boolean(true)
         },
         GetUnitCurrentOrder => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.order.id)),
-        IssueImmediateOrder => |w, vm, a| issue_order(w, vm, a.h(0), crate::natives::basic::issue_order_id(w, &a.s(1)), 0.0, 0.0, 0),
-        IssueImmediateOrderById => |w, vm, a| issue_order(w, vm, a.h(0), a.i(1), 0.0, 0.0, 0),
+        IssueImmediateOrder => |w, vm, a| {
+            let order = crate::natives::basic::issue_order_id(w, &a.s(1));
+            tag_immediate_order(w, a.h(0), order);
+            issue_order(w, vm, a.h(0), order, 0.0, 0.0, 0)
+        },
+        IssueImmediateOrderById => |w, vm, a| {
+            tag_immediate_order(w, a.h(0), a.i(1));
+            issue_order(w, vm, a.h(0), a.i(1), 0.0, 0.0, 0)
+        },
         IssuePointOrder => |w, vm, a| issue_order(w, vm, a.h(0), crate::natives::basic::issue_order_id(w, &a.s(1)), a.r(2), a.r(3), 0),
         IssuePointOrderById => |w, vm, a| issue_order(w, vm, a.h(0), a.i(1), a.r(2), a.r(3), 0),
         IssuePointOrderLoc => |w, vm, a| {

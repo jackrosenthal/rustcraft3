@@ -125,7 +125,10 @@ fn ability_sound(w: &World, id: Id, kind: i32) -> String {
 
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
     reg!(t,
-        CreateUnitPool => |w, _, _| handle(w.handles.insert(Obj::UnitPool(Vec::new()))),
+        CreateUnitPool => |w, _, _| {
+            w.tags.take(b"pool");
+            handle(w.handles.insert(Obj::UnitPool(Vec::new())))
+        },
         DestroyUnitPool => |w, _, a| { if matches!(w.handles.get(a.h(0)), Some(Obj::UnitPool(_))) { w.handles.remove(a.h(0)); } none() },
         UnitPoolAddUnitType => |w, _, a| { pool_add(w, a.h(0), id_from_int(a.i(1)), a.r(2)); none() },
         UnitPoolRemoveUnitType => |w, _, a| { let id = id_from_int(a.i(1)); if let Some(p) = pool(w, a.h(0)) { p.retain(|e| e.0 != id); } none() },
@@ -136,7 +139,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let _ = vm;
             handle(u)
         },
-        CreateItemPool => |w, _, _| handle(w.handles.insert(Obj::ItemPool(Vec::new()))),
+        CreateItemPool => |w, _, _| {
+            w.tags.take(b"ipol");
+            handle(w.handles.insert(Obj::ItemPool(Vec::new())))
+        },
         DestroyItemPool => |w, _, a| { if matches!(w.handles.get(a.h(0)), Some(Obj::ItemPool(_))) { w.handles.remove(a.h(0)); } none() },
         ItemPoolAddItemType => |w, _, a| { pool_add(w, a.h(0), id_from_int(a.i(1)), a.r(2)); none() },
         ItemPoolRemoveItemType => |w, _, a| { let id = id_from_int(a.i(1)); if let Some(p) = pool(w, a.h(0)) { p.retain(|e| e.0 != id); } none() },

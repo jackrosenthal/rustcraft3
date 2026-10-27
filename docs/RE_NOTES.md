@@ -246,9 +246,18 @@ these are the findings behind them.
   `+tac` for an action; `+flt` for a filter or condition; `+tmr`, `+grp`, `+loc`,
   `+rct`, `+frc` with two `` `flg ``, `+tid`, `+snd` for every sound.  A script
   function given to an object (an action, a filter, a timer) has a handler `hdlr` the
-  first time (`FUN_6f2872f0`, a table keyed by the function).  The other event classes'
-  codes (`FUN_6f278000` on: bevt, devt, ievt, pcvt, rgvt, tmvt, usvt, vevt, wdvt, ...)
-  are not yet matched to their natives.
+  first time (`FUN_6f2872f0`, a table keyed by the function; a timer's apart).
+  Measured by a census calling each native once between marker timers: events `tmvt`
+  (TriggerRegisterTimerEvent), `wdvt` (death), `usvt` `` `rtl `` (unit state), `+rev`
+  (enter and leave region), `pcvt` (chat), `vevt` (variable), `devt` (dialog), `bevt`
+  (dialog button), `rgvt` `` `pil `` (unit in range), `+tev` (trackable), none for
+  TriggerRegisterFilterUnitEvent; `tcnd` for TriggerAddCondition, `bAnd`, `bNot`;
+  CreateRegion `+agr` `^pmr`; pools `pool` and `ipol`; `+dlg`, `+dlb`, `+ldb`, `+mdb`,
+  `+que`, `+qui`, `+dfc`, `+fgm`, `+trk`, `+cst`; InitHashtable `ghth`, InitGameCache
+  `gcch`; an item `item` `` `pos `` and two `^pmr`; AddSpecialEffect `+EIP` `` `pos ``
+  and two `^pmr`; none for weather, images, ubersplats, lightning, and text tags.  An
+  immediate order makes `+ord` `tskA`, four `task`, `tskA` (an autocast toggle none);
+  KillUnit `tskA`, seven `task`, `tskA`; RemoveUnit `tskA`, five `task`, `tskA`.
 - A trigger's execution is a `+tex` (ConditionalTriggerExecute, or an event firing it).
   A time-of-day event that becomes true fires, its run followed by a `` `rtl ``.  A change
   between day (6 to 18) and night makes two `` `rtl `` for day, one for night, then each

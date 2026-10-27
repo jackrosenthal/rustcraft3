@@ -103,6 +103,8 @@ fn dest_mut(w: &mut World, h: u32) -> Option<&mut Destructable> {
 
 pub fn create_item(w: &mut World, id: Id, x: f32, y: f32) -> u32 {
     let Some(o) = w.objects.items.get(id) else { return 0 };
+    // Its tags (measured: CreateItem and UnitAddItemById each make these).
+    w.tags.take_all(&[b"item", b"`pos", b"^pmr", b"^pmr"]);
     let item = Item {
         handle: 0,
         type_id: id,
@@ -470,8 +472,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         EnumItemsInRect => |w, vm, a| enum_items(w, vm, a.h(0), a.h(1), a.code(2)),
         GetEnumItem => |w, _, _| handle(w.enum_ctx.enum_item),
         GetFilterItem => |w, _, _| handle(w.enum_ctx.filter_item),
-        AddSpecialEffect => |w, _, a| add_effect(w, a.s(0), a.r(1), a.r(2), None),
-        AddSpecialEffectLoc => |w, _, a| { let (x, y) = w.location(a.h(1)).unwrap_or_default(); add_effect(w, a.s(0), x, y, None) },
+        AddSpecialEffect => |w, _, a| {
+            w.tags.take_all(&[b"+EIP", b"`pos", b"^pmr", b"^pmr"]);
+            add_effect(w, a.s(0), a.r(1), a.r(2), None)
+        },
+        AddSpecialEffectLoc => |w, _, a| { w.tags.take_all(&[b"+EIP", b"`pos", b"^pmr", b"^pmr"]);  let (x, y) = w.location(a.h(1)).unwrap_or_default(); add_effect(w, a.s(0), x, y, None) },
         AddSpecialEffectTarget => |w, _, a| add_effect(w, a.s(0), 0.0, 0.0, Some((a.h(1), a.s(2)))),
         DestroyEffect => |w, _, a| {
             if let Some(Obj::Effect(e)) = w.handles.get_mut(a.h(0)) { e.destroyed = true; }

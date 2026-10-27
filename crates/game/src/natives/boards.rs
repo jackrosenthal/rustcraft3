@@ -72,7 +72,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         IsTimerDialogDisplayed => |w, _, a| boolean(timer_dialog(w, a.h(0)).is_some_and(|d| d.displayed)),
         TimerDialogSetRealTimeRemaining => |w, _, a| { let r = a.r(1); if let Some(d) = timer_dialog(w, a.h(0)) { d.real_time = Some(r); } none() },
 
-        CreateLeaderboard => |w, _, _| handle(w.handles.insert(Obj::Leaderboard(Leaderboard::default()))),
+        CreateLeaderboard => |w, _, _| {
+            w.tags.take(b"+ldb");
+            handle(w.handles.insert(Obj::Leaderboard(Leaderboard::default())))
+        },
         DestroyLeaderboard => |w, _, a| { if leaderboard(w, a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
         LeaderboardDisplay => |w, _, a| { let on = a.b(1); if let Some(b) = leaderboard(w, a.h(0)) { b.displayed = on; } none() },
         IsLeaderboardDisplayed => |w, _, a| boolean(leaderboard_ref(w, a.h(0)).is_some_and(|b| b.displayed)),
@@ -118,7 +121,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         LeaderboardSetItemLabelColor => |w, _, a| { let (i, c) = (a.i(1), rgba(a, 2)); if let Some(it) = leaderboard(w, a.h(0)).and_then(|b| b.items.get_mut(i.max(0) as usize)) { it.label_color = Some(c); } none() },
         LeaderboardSetItemValueColor => |w, _, a| { let (i, c) = (a.i(1), rgba(a, 2)); if let Some(it) = leaderboard(w, a.h(0)).and_then(|b| b.items.get_mut(i.max(0) as usize)) { it.value_color = Some(c); } none() },
 
-        CreateMultiboard => |w, _, _| handle(w.handles.insert(Obj::Multiboard(Multiboard::default()))),
+        CreateMultiboard => |w, _, _| {
+            w.tags.take(b"+mdb");
+            handle(w.handles.insert(Obj::Multiboard(Multiboard::default())))
+        },
         DestroyMultiboard => |w, _, a| { if multiboard(w, a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
         MultiboardDisplay => |w, _, a| {
             let (h, on) = (a.h(0), a.b(1));

@@ -354,7 +354,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetCameraEyePositionX => |w, _, _| real(camera_eye(w).0),
         GetCameraEyePositionY => |w, _, _| real(camera_eye(w).1),
         GetCameraEyePositionZ => |w, _, _| real(camera_eye(w).2),
-        CreateCameraSetup => |w, _, _| handle(w.handles.insert(Obj::CameraSetup(Box::default()))),
+        CreateCameraSetup => |w, _, _| {
+            w.tags.take(b"+cst");
+            handle(w.handles.insert(Obj::CameraSetup(Box::default())))
+        },
         CameraSetupSetField => |w, _, a| {
             if let Some(Obj::CameraSetup(c)) = w.handles.get_mut(a.h(0)) { c.fields.insert(a.h(1) as i32, a.r(2)); c.durations.insert(a.h(1) as i32, a.r(3)); }
             none()
@@ -411,14 +414,17 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         RemoveWeatherEffect => |w, _, a| { if matches!(w.handles.get(a.h(0)), Some(Obj::Weather(_))) { w.handles.remove(a.h(0)); } none() },
         EnableWeatherEffect => |w, _, a| { let on = a.b(1); if let Some(Obj::Weather(x)) = w.handles.get_mut(a.h(0)) { x.enabled = on; } none() },
         CreateFogModifierRect => |w, _, a| {
+            w.tags.take(b"+fgm");
             let (Some(p), Some(r)) = (w.player_of(a.h(0)), w.rect(a.h(2))) else { return none() };
             fog_modifier(w, p, a.i(1), FogShape::Rect(r), a.b(3), a.b(4))
         },
         CreateFogModifierRadius => |w, _, a| {
+            w.tags.take(b"+fgm");
             let Some(p) = w.player_of(a.h(0)) else { return none() };
             fog_modifier(w, p, a.i(1), FogShape::Circle(a.r(2), a.r(3), a.r(4)), a.b(5), a.b(6))
         },
         CreateFogModifierRadiusLoc => |w, _, a| {
+            w.tags.take(b"+fgm");
             let (Some(p), Some((x, y))) = (w.player_of(a.h(0)), w.location(a.h(2))) else { return none() };
             fog_modifier(w, p, a.i(1), FogShape::Circle(x, y, a.r(3)), a.b(4), a.b(5))
         },
@@ -497,7 +503,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetTextTagAge => |w, _, a| { let v = a.r(1); if let Some(t) = tag_mut(w, a.h(0)) { t.age = v; } none() },
         SetTextTagLifespan => |w, _, a| { let v = a.r(1); if let Some(t) = tag_mut(w, a.h(0)) { t.lifespan = v; } none() },
         SetTextTagFadepoint => |w, _, a| { let v = a.r(1); if let Some(t) = tag_mut(w, a.h(0)) { t.fadepoint = v; } none() },
-        DialogCreate => |w, _, _| handle(w.handles.insert(Obj::Dialog(Dialog::default()))),
+        DialogCreate => |w, _, _| {
+            w.tags.take(b"+dlg");
+            handle(w.handles.insert(Obj::Dialog(Dialog::default())))
+        },
         DialogDestroy => |w, _, a| {
             if let Some(Obj::Dialog(d)) = w.handles.get(a.h(0)) {
                 for b in d.buttons.clone() {
@@ -523,6 +532,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         DialogAddButton => |w, _, a| {
+            w.tags.take(b"+dlb");
             let (dialog, text, hotkey) = (a.h(0), w.localized(&a.s(1)), a.i(2));
             add_dialog_button(w, DialogButton { dialog, text, hotkey, quit: None })
         },
@@ -538,6 +548,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         CreateQuest => |w, _, _| {
+            w.tags.take(b"+que");
             let q = w.handles.insert(Obj::Quest(Quest::default()));
             w.quests.push(q);
             handle(q)
@@ -567,6 +578,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         IsQuestFailed => |w, _, a| boolean(quest_get(w, a.h(0)).is_some_and(|q| q.failed)),
         IsQuestEnabled => |w, _, a| boolean(quest_get(w, a.h(0)).is_some_and(|q| q.enabled)),
         QuestCreateItem => |w, _, a| {
+            w.tags.take(b"+qui");
             let q = a.h(0);
             let i = w.handles.insert(Obj::QuestItem(QuestItem { quest: q, ..Default::default() }));
             if let Some(Obj::Quest(qu)) = w.handles.get_mut(q) {
@@ -586,6 +598,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         IsQuestItemCompleted => |w, _, a| boolean(matches!(w.handles.get(a.h(0)), Some(Obj::QuestItem(i)) if i.completed)),
         CreateDefeatCondition => |w, _, _| {
+            w.tags.take(b"+dfc");
             let d = w.handles.insert(Obj::DefeatCondition(String::new()));
             w.defeat_conditions.push(d);
             handle(d)
@@ -606,6 +619,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         // A trackable: its model standing at a point, which the mouse hits and tracks
         // (TriggerRegisterTrackableHitEvent, ...TrackEvent).
         CreateTrackable => |w, _, a| {
+            w.tags.take(b"+trk");
             let (x, y) = (a.r(1), a.r(2));
             let z = w.ground_z(x, y);
             let h = w.handles.insert(Obj::Effect(crate::types::Effect { model: a.s(0), x, y, z, target: None, destroyed: false, facing: a.r(3) }));

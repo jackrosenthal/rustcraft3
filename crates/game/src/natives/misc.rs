@@ -244,12 +244,20 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetAbilityEffectById => |w, _, a| string(ability_effect(w, id_from_int(a.i(0)), a.h(1) as i32, a.i(2))),
         GetAbilitySound => |w, _, a| string(ability_sound(w, crate::objects::id_from_str(&a.s(0)), a.h(1) as i32)),
         GetAbilitySoundById => |w, _, a| string(ability_sound(w, id_from_int(a.i(0)), a.h(1) as i32)),
-        // A neutral passive gold mine ('ngol', hidden) under the player's haunted mine ('ugol').
+        // A neutral passive gold mine ('ngol', hidden) under the player's haunted mine
+        // ('ugol'); the hidden one's footprint is released as it is hidden (measured
+        // under Wine: its three regions freed before the haunted mine is made).
         CreateBlightedGoldmine => |w, _, a| {
             let (Some(p), x, y, face) = (w.player_of(a.h(0)), a.r(1), a.r(2), a.r(3)) else { return handle(0) };
+            w.hidden_mine = true;
             let mine = super::units::create_unit(w, 15, *b"ngol", x, y, face);
-            if let Some(m) = w.unit_mut(mine) {
+            w.hidden_mine = false;
+            let footprint = w.unit_mut(mine).map(|m| {
                 m.hidden = true;
+                std::mem::take(&mut m.extra.footprint_slots)
+            });
+            for s in footprint.unwrap_or_default() {
+                w.tags.release(s);
             }
             let h = super::units::create_unit(w, p, *b"ugol", x, y, face);
             let gold = w.unit(mine).map_or(0, |m| m.resource);

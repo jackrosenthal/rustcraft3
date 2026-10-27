@@ -891,7 +891,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         RemoveUnit => |w, _, a| {
-            if w.unit(a.h(0)).is_some() {
+            // A structure's footprint goes at once (measured: a gold mine's three
+            // regions freed before the removal's tasks).
+            if let Some(footprint) = w.unit_mut(a.h(0)).map(|u| std::mem::take(&mut u.extra.footprint_slots)) {
+                for s in footprint {
+                    w.tags.release(s);
+                }
                 w.tags.take(b"tskA");
                 w.tags.take_n(b"task", 5);
                 w.tags.take(b"tskA");

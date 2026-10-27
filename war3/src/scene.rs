@@ -765,7 +765,19 @@ impl Scene {
         // The customkeys option lays the player's CustomKeys.txt, beside the game's
         // archives, over the game's hotkeys, tips, and button positions.
         let custom_keys = crate::options::Options::load().customkeys.then(|| std::fs::read(data.dir.join("CustomKeys.txt")).ok()).flatten().map(|b| w3_game::objects::custom_keys(&String::from_utf8_lossy(&b)));
-        let mut game = match w3_game::Game::load_with_keys(data.chain.clone(), data.version as i32, custom_keys.as_ref()) {
+        // The computers the game will start with, for the objects the engine makes for
+        // them as the map loads: the lobby's, or as the slots are filled below, from the
+        // map's player kinds (1 a user, 2 a computer), which its config script follows.
+        let start = match lobby {
+            Some(slots) => w3_game::Start::of(slots),
+            None => {
+                let kinds: Vec<u32> = data.chain.read("war3map.w3i").ok().and_then(|b| w3_formats::map::MapInfo::parse(&b).ok()).map(|i| i.players.iter().map(|p| p.kind).collect()).unwrap_or_default();
+                let (users, computers) = (kinds.iter().filter(|&&k| k == 1).count(), kinds.iter().filter(|&&k| k == 2).count());
+                let extra = if campaign { users.saturating_sub(1) } else { (computers == 0 && users >= 2) as usize };
+                w3_game::Start { computers: computers + extra }
+            }
+        };
+        let mut game = match w3_game::Game::load_for(data.chain.clone(), data.version as i32, custom_keys.as_ref(), start) {
             Ok(mut g) if restore.is_some() => {
                 g.restore(restore.unwrap())?;
                 // The loaded game's triggers hear it (EVENT_GAME_LOADED).

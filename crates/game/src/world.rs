@@ -216,6 +216,9 @@ pub struct World {
     /// A game over the network (no cheats, no saving).
     #[serde(default)]
     pub network: bool,
+    /// CreateBlightedGoldmine is making the gold mine it hides.
+    #[serde(skip)]
+    pub hidden_mine: bool,
     /// The fog settings iseedeadpeople put aside.
     #[serde(default)]
     pub cheat_fog: Option<(bool, bool)>,
@@ -698,6 +701,7 @@ impl World {
             time_of_day_suspended: false,
             cheat_flags: 0,
             network: false,
+            hidden_mine: false,
             cheat_fog: None,
             volume_groups: full_volume(),
             select_allowed: selection_allowed(),

@@ -107,6 +107,21 @@ pub enum SlotFill {
     Observer(bool),
 }
 
+/// What the engine makes as a game starts, before the map's objects: by default (no
+/// computers), nothing beyond what every game makes.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Start {
+    /// Computer players playing.
+    pub computers: usize,
+}
+
+impl Start {
+    /// As a lobby starts its game.
+    pub fn of(lobby: &[LobbySlot]) -> Start {
+        Start { computers: lobby.iter().filter(|s| matches!(s.fill, SlotFill::Computer)).count() }
+    }
+}
+
 /// One player's choices from the game setup screen.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct LobbySlot {
@@ -142,6 +157,12 @@ impl Game {
     /// As `load`, with the player's CustomKeys.txt (already filtered by
     /// `objects::custom_keys`) laid over the game's strings before the map's own changes.
     pub fn load_with_keys(chain: Arc<Chain>, version: i32, custom_keys: Option<&w3_formats::profile::Profile>) -> anyhow::Result<Game> {
+        Self::load_for(chain, version, custom_keys, Start::default())
+    }
+
+    /// As `load_with_keys`, for a game started as `start` says: the engine makes objects
+    /// for its computers and its interface as the map loads, before the map's own.
+    pub fn load_for(chain: Arc<Chain>, version: i32, custom_keys: Option<&w3_formats::profile::Profile>, start: Start) -> anyhow::Result<Game> {
         let info = MapInfo::parse(&chain.read("war3map.w3i")?).context("war3map.w3i")?;
         let common = read_script(&chain, &["Scripts\\common.j"])?;
         let blizzard = read_script(&chain, &["Scripts\\Blizzard.j"])?;
@@ -225,7 +246,12 @@ impl Game {
         world.tags.after_next(&[b"+gam", b"`flg", b"`flg", b"`rel", b"`rel", b"`flg", b"`rtl", b"+qum"]);
         vm.init_globals(&mut world).map_err(anyhow::Error::msg)?;
         world.tags.flush();
-        world.tags.take_all(&[b"^pma", b"^pma", b"^ama", b"^ama", b"^ama", b"^ama", b"l^sy", b"l^ac", b"gccm", b"AI-1"]);
+        world.tags.take_all(&[b"^pma", b"^pma", b"^ama", b"^ama", b"^ama", b"^ama", b"l^sy", b"l^ac", b"gccm"]);
+        // An AI for each computer playing, then Neutral Hostile's (FUN_6f1e9a40;
+        // measured under Wine against one computer).
+        for _ in 0..start.computers + 1 {
+            world.tags.take(b"AI-1");
+        }
         if let Ok(bytes) = chain.read("war3map.doo") {
             match w3_formats::map::Doodads::parse(&bytes) {
                 Ok(doo) => {

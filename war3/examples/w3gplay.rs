@@ -44,7 +44,7 @@ fn main() -> anyhow::Result<()> {
     let trace = std::env::var("W3GPLAY_TRACE").ok();
     w3_game::tags::RECORD.store(trace.is_some(), std::sync::atomic::Ordering::Relaxed);
     let stop: u32 = std::env::var("W3GPLAY_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(u32::MAX);
-    let mut g = w3_game::Game::load_with_keys(data.chain.clone(), data.version as i32, None)?;
+    let mut g = w3_game::Game::load_for(data.chain.clone(), data.version as i32, None, w3_game::Start::of(&lobby))?;
     g.config()?;
     g.world.seed = r.seed;
     // The game's options are the settings word of its description.

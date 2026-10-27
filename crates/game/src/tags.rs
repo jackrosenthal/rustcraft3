@@ -346,6 +346,7 @@ impl crate::world::World {
         if o.real("manaN") > 0.0 {
             codes.push(*b"`rcm");
         }
+        let footprint = building.then_some(codes.len());
         if building {
             codes.extend([*b"^pmr"; 3]);
         }
@@ -457,18 +458,25 @@ impl crate::world::World {
         }
         let tasks = codes.len();
         codes.extend([*b"task", *b"task"]);
-        // A gold mine is a town site for computer players.
-        if had.iter().any(|c| c == b"Agld" || c == b"Aegm") {
+        // A gold mine is a town site for computer players (not the one a haunted mine
+        // hides: measured, CreateBlightedGoldmine's has none).
+        if had.iter().any(|c| c == b"Agld" || c == b"Aegm") && !self.hidden_mine {
             codes.push(*b"AIts");
         }
         // A creep joins the nearest camp whose first creep is near enough, or makes one,
         // and takes its AI.
+        // A computer's units, structures among them, take the same AI (measured under
+        // Wine against an undead computer: its Necropolis, Haunted Gold Mine, and
+        // workers each have it after their tasks).
+        let computer = self.players.get(owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER && p.slot_state == crate::types::slot_state::PLAYING);
         if owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !building {
             let reach = CAMP_CELLS * 32.0;
             if !self.tags.camps.iter().any(|&(cx, cy)| (cx - x).hypot(cy - y) < reach) {
                 self.tags.camps.push((x, y));
                 codes.push(*b"AIcs");
             }
+        }
+        if (owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !building) || computer {
             ai = Some(codes.len() + 2);
             codes.extend([*b"uref", *b"AI-U", *b"+ord", *b"tskA", *b"task", *b"task", *b"task", *b"task", *b"tskA", *b"+ord", *b"task"]);
         }
@@ -505,6 +513,7 @@ impl crate::world::World {
             // Blight growth's objects (Abli, Xbli, `pos, two ^pmr), released as its
             // dispel ends (`World::update_blight`).
             u.extra.blight_slots = blight.map(|b| slots[b..b + 5].to_vec()).unwrap_or_default();
+            u.extra.footprint_slots = footprint.map(|f| slots[f..f + 3].to_vec()).unwrap_or_default();
         }
     }
 }

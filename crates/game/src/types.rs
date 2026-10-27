@@ -431,6 +431,10 @@ pub struct UnitExtra {
     /// The slots of its blight growth's objects (`World::tag_unit`).
     #[serde(default)]
     pub blight_slots: Vec<u32>,
+    /// A structure's footprint's three regions (`World::tag_unit`), released as it is
+    /// removed.
+    #[serde(default)]
+    pub footprint_slots: Vec<u32>,
     /// The slots of its current move order's objects (`Tags::move_issued`).
     #[serde(default)]
     pub order_tags: Vec<u32>,
@@ -649,6 +653,7 @@ impl Default for UnitExtra {
             mana_watched: false,
             spell_timers: Vec::new(),
             blight_slots: Vec::new(),
+            footprint_slots: Vec::new(),
             order_tags: Vec::new(),
             oid: (0, 0),
         }

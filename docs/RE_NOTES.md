@@ -332,6 +332,22 @@ these are the findings behind them.
   reach.  This game's goes west then south through the flock and stops at 1108.8,
   -5091.3: its pathfinding (units as obstacles, the route, and the closest reachable
   point) is not yet the original's, and every lifetime after this follows from it.
+- The object manager's second table (+0x20, its births at +0x54) holds the engine's
+  private objects, which the actions' ids and the checksum never see: effect images
+  (`+EIm`, a buff's art), the game interface's camera (`+cam` with eleven `` `rel ``,
+  two `` `pos `` `^pmr` `^pmr`, and a `` `rel ``, made by `FUN_6f36cb20` as slots are
+  assigned in a game on one computer), and the computer AI's camp records (`+ccu`,
+  `+ccp`).  The allocator (`FUN_6f1cbf40`) names the table in its second argument, the
+  free (`FUN_6f1cbff0`) in its third.
+- Against a computer (measured under Wine, alone with an undead computer on Booty
+  Bay): an `AI-1` for each computer playing before Neutral Hostile's (`FUN_6f1e9a40`);
+  each of the computer's units, structures among them, takes the creep's AI after its
+  two tasks; a structure removed releases its footprint's three `^pmr` at once, before
+  the removal's tasks; CreateBlightedGoldmine's hidden gold mine takes no `AIts` and
+  releases its footprint as it is made.  Each new worker's AI block then carries one
+  more `+ord` `tskA` `task` than the last (two for the first acolyte, three for the
+  second, four for the third): the computer's AI orders its workers as each arrives,
+  which this game does not yet do.
 - New units on walkable ground need room by their size class (collision in cells below
   0.5, 1, 1.5, or more; `FUN_6f170080` with `FUN_6f149370`): sheep (16) made in the cell
   row next to unwalkable ground move up a row; Booty Bay's fifth pig stands at -5456,

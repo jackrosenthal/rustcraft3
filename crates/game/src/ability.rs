@@ -407,11 +407,10 @@ impl World {
             existing.level = b.level;
             return;
         }
+        // Its art's image (`+EIm`) is the engine's private object, outside the tags the
+        // game's objects share (measured: its allocation names the second table).
         if tagged && b.id != [0; 4] {
             self.tags.take(&b.id);
-            if art.as_ref().is_some_and(|(m, _)| !m.is_empty()) {
-                self.tags.take(b"+EIm");
-            }
         }
         if let Some((model, attach)) = art {
             if !model.is_empty() {

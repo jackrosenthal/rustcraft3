@@ -345,9 +345,13 @@ these are the findings behind them.
   two tasks; a structure removed releases its footprint's three `^pmr` at once, before
   the removal's tasks; CreateBlightedGoldmine's hidden gold mine takes no `AIts` and
   releases its footprint as it is made.  Each new worker's AI block then carries one
-  more `+ord` `tskA` `task` than the last (two for the first acolyte, three for the
-  second, four for the third): the computer's AI orders its workers as each arrives,
-  which this game does not yet do.
+  more `+ord` `tskA` `task`: a worker's AI setup (`FUN_6f9c3660`) orders each of its
+  owner's idle workers, itself among them (`FUN_6f9c9cc0`, `FUN_6f6802f0`), each such
+  order freed next turn `tskA`, `task`, `+ord` before the usual nine.  A unit with an
+  inventory then takes its item pickup range, a `` `pil `` (`FUN_6f67dff0` starting its
+  abilities' AI; AInv's `FUN_6f606a20`).  Next, StartMeleeAI makes `AItr`, two
+  captains (`AI-C` `` `pcu `` `^pmr` `^pmr` `l^pa` and four `` `pil `` each), and the
+  AI script's first orders, among them a move.
 - New units on walkable ground need room by their size class (collision in cells below
   0.5, 1, 1.5, or more; `FUN_6f170080` with `FUN_6f149370`): sheep (16) made in the cell
   row next to unwalkable ground move up a row; Booty Bay's fifth pig stands at -5456,

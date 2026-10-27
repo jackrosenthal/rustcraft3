@@ -476,9 +476,25 @@ impl crate::world::World {
                 codes.push(*b"AIcs");
             }
         }
+        // A worker's AI first orders each of its owner's idle workers, itself among
+        // them (FUN_6f9c3660 through FUN_6f9c9cc0: FUN_6f6802f0 for each with no order;
+        // measured: an undead computer's three acolytes take one, two, and three such
+        // orders).  A unit with an inventory then takes its item pickup range (its
+        // abilities' AI start, FUN_6f67dff0; AInv's at FUN_6f606a20).
+        let mut extra = 0;
         if (owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !building) || computer {
-            ai = Some(codes.len() + 2);
-            codes.extend([*b"uref", *b"AI-U", *b"+ord", *b"tskA", *b"task", *b"task", *b"task", *b"task", *b"tskA", *b"+ord", *b"task"]);
+            codes.extend([*b"uref", *b"AI-U"]);
+            if self.unit_class(self.unit(h).unwrap(), "peon") {
+                extra = self.unit_order.iter().filter_map(|&v| self.unit(v)).filter(|v| v.owner == owner && !v.dead && v.order.id == 0 && self.unit_class(v, "peon")).count();
+                for _ in 0..extra {
+                    codes.extend([*b"+ord", *b"tskA", *b"task"]);
+                }
+            }
+            ai = Some(codes.len());
+            codes.extend([*b"+ord", *b"tskA", *b"task", *b"task", *b"task", *b"task", *b"tskA", *b"+ord", *b"task"]);
+            if codes.contains(b"AInv") {
+                codes.push(*b"`pil");
+            }
         }
         let oid = self.tags.take_id(&codes[0]);
         let mut slots = vec![oid.0];
@@ -503,6 +519,12 @@ impl crate::world::World {
             self.tags.doom(slots[k]);
         }
         if let Some(a) = ai {
+            for k in 0..extra {
+                let e = a - 3 * (extra - k);
+                for d in [1, 2, 0] {
+                    self.tags.doom(slots[e + d]);
+                }
+            }
             for d in [1, 6, 5, 4, 3, 2, 0, 8, 7] {
                 self.tags.doom(slots[a + d]);
             }

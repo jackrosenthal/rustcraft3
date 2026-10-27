@@ -423,7 +423,12 @@ these are the findings behind them.
   structures', destructables', doodads': not units') and of the mask's low types.  A
   higher level's cell (`FUN_6f15d470` with `FUN_6f15d1c0`) is mixed when one of its
   four children is mixed or marked (byte +6), else open or blocked when all four are,
-  else mixed, the map's outside counting as blocked.
+  else mixed, the map's outside counting as blocked.  Measured against Booty Bay's
+  (read whole under Wine, its levels 393 by 201, 196 by 100, 98 by 50, 49 by 25):
+  level 0 is built for cells 0 to 384 by 0 to 192 (those past it stay open), from the
+  map file's flags and the cells destructables and structures block (refusing layers
+  0 and 1; this game's blockers give every cell but around a structure of another
+  race), and levels 1 to 3 follow from it by the rule above, every cell.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

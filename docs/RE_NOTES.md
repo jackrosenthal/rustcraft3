@@ -454,6 +454,18 @@ these are the findings behind them.
   0x6fa810c0, interpolated by the mantissa's low 13 bits spread over a word), 1 when
   a equals b; integer to single truncating (`FUN_6f070d80`); single to integer
   toward zero (`FUN_6f070120`); floor (`FUN_6f070c80`); a zero exponent read as 0.
+  Also its own square root (`FUN_6f071480`, from a bitwise integer root,
+  `FUN_6f071530`, and the constants 0xb504 and 0xb505), a bounded single to integer
+  (`FUN_6f070170`), and an exponent-based helper (`FUN_6f06ffa0`); the math routines
+  lie in 0x6f06f000 to 0x6f072000 and 0x6f1d4000 to 0x6f1d6000.
+- Movement, each step (`FUN_6f15aa80`): the paths' budgets (`FUN_6f167310`), then each
+  move's cluster group and cluster (`^clg`, `^clu`; `FUN_6f16c220`, `FUN_6f16e1f0`,
+  `FUN_6f16c150`), each cluster's members (0x2c bytes at +0x28, `FUN_6f16c250`) moved
+  one by one (`FUN_6f16a790`: the velocity's length and heading, then steering toward
+  the waypoint, `FUN_6f16fbd0`), the others' regions flagged 0x40000000 meanwhile (so
+  excused); then each position's turn toward its heading (`FUN_6f1705c0`, its rates
+  from a table by class at 0x6fd541e0); and every other step separation
+  (`FUN_6f1702f0`).
 - The first wandering sheep ordered by script, sampled each step (its facing; place):
   facing 116.2, turning 4, then 8, then 11.46 (0.2 radians) each step; still for 5
   steps, then moving 0.98 units, then 3 a step (speed 100), its heading bending from

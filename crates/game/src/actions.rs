@@ -114,6 +114,12 @@ impl Codec {
             Command::Upgrade { building, id } if self.subgroup.get(&player) == Some(building) => {
                 acts.push(Action::Order { flags: 0x40, ability: crate::objects::id_to_int(*id) as u32, a: u32::MAX, b: u32::MAX });
             }
+            // A revival: OrderTarget with flags 0x46, revive, and the dead hero where it
+            // lies (`docs/reference/bootybay_revive.w3g`).
+            Command::StartRevive { altar, hero } if self.subgroup.get(&player) == Some(altar) => {
+                let (x, y) = w.unit(*hero).map(|u| (u.x, u.y)).unwrap_or((0.0, 0.0));
+                acts.push(Action::OrderTarget { flags: 0x46, ability: 852027, a: u32::MAX, b: u32::MAX, target: Target { x, y, object: w.oid(*hero) } });
+            }
             // A purchase from the shop selected: Order with flags 0x40 and what is bought.
             Command::BuyItem { shop, id, .. } | Command::HireUnit { shop, id, .. } if self.subgroup.get(&player) == Some(shop) => {
                 acts.push(Action::Order { flags: 0x40, ability: crate::objects::id_to_int(*id) as u32, a: u32::MAX, b: u32::MAX });
@@ -214,6 +220,7 @@ impl Codec {
                     let order = |ability: u32, flags: u16, at: Option<(f32, f32)>, target: u32| Command::SelectionOrder { player, order: ability as i32, at, target, queue: flags & 1 != 0, formation: flags & 0x10 != 0 };
                     match other {
                         Action::Order { flags: 0x60, ability: a @ 852008..=852013, .. } => out.push(Command::UseItem { unit: first, slot: (a - 852008) as usize }),
+                        Action::OrderTarget { flags: 0x46, ability: 852027, target, .. } => out.push(Command::StartRevive { altar: first, hero: w.by_oid(target.object).unwrap_or(0) }),
                         Action::Order { flags: 0x46, ability, .. } => out.push(Command::Research { building: first, id: id(ability) }),
                         Action::Order { flags: 0x40, ability, .. } if w.unit(first).and_then(|u| w.objects.units.get(u.type_id)).is_some_and(|o| o.list("Upgrade").iter().any(|s| crate::objects::id_from_str(s.trim()) == id(ability))) => out.push(Command::Upgrade { building: first, id: id(ability) }),
                         Action::Order { flags: 0x40, ability, .. } if w.objects.units.get(id(ability)).is_some() => out.push(Command::HireUnit { player, shop: first, id: id(ability) }),

@@ -743,7 +743,15 @@ impl Game {
                 }
             }
         }
-        let out = commands.into_iter().map(|(p, c)| (p, self.execute(p, c))).collect();
+        let out = commands
+            .into_iter()
+            .map(|(p, c)| {
+                log::debug!("player {p}: {c:?}");
+                let o = self.execute(p, c);
+                log::debug!("  answered {o:?}");
+                (p, o)
+            })
+            .collect();
         if let Some(r) = self.recorder.as_mut() {
             r.step(f.dt);
         }

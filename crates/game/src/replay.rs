@@ -70,6 +70,11 @@ pub enum Command {
     Pause { player: u8, on: bool },
     /// A game cache value one computer had, for all (SyncStoredInteger and the rest).
     CacheValue { cache: String, mission: String, key: String, value: CacheValue },
+    /// An order to the player's selection, as the original sends one (its order
+    /// actions): each selected unit the player commands takes it, at a point (`at`), on
+    /// a target, or neither; queued behind its orders when `queue`; those sent to a
+    /// point in formation when `formation`.
+    SelectionOrder { player: u8, order: i32, at: Option<(f32, f32)>, target: u32, queue: bool, formation: bool },
 }
 
 impl Command {
@@ -108,7 +113,8 @@ impl Command {
             | C::Trackable { player, .. }
             | C::Signal { player, .. }
             | C::Alliance { player, .. }
-            | C::Trade { player, .. } => Some(*player),
+            | C::Trade { player, .. }
+            | C::SelectionOrder { player, .. } => Some(*player),
             _ => None,
         }
     }

@@ -761,6 +761,21 @@ impl Game {
         self.execute(local, c)
     }
 
+    /// Units sent together to one point take places in a formation there.
+    fn formation(&mut self, player: u8, units: Vec<u32>) {
+        let mine: Vec<u32> = units.into_iter().filter(|&u| natives::players::controls(&self.world, player, u)).collect();
+        let goals: Vec<(f32, f32)> = mine.iter().filter_map(|&u| self.world.unit(u)).filter_map(|u| match u.action {
+            types::Action::Move { x, y } | types::Action::AttackMove { x, y } => Some((x, y)),
+            _ => None,
+        }).collect();
+        if goals.len() == mine.len() && goals.windows(2).all(|w| (w[0].0 - w[1].0).hypot(w[0].1 - w[1].1) < 1.0) {
+            if let Some(&g) = goals.first() {
+                self.world.take_formation_places(&mine, g);
+            }
+        }
+        self.world.form_group(&mine);
+    }
+
     fn execute(&mut self, player: u8, c: replay::Command) -> replay::Outcome {
         use replay::{Command as C, Outcome as O};
         // A command speaks only for the player who gave it, and orders only the units
@@ -792,19 +807,40 @@ impl Game {
                 self.world.issue_order(unit, order, x, y, target, queue);
                 O::Done
             }
-            C::Formation { units } => {
-                let mine: Vec<u32> = units.into_iter().filter(|&u| natives::players::controls(&self.world, player, u)).collect();
-                // Sent together to one point, they take places in a formation there.
-                let goals: Vec<(f32, f32)> = mine.iter().filter_map(|&u| self.world.unit(u)).filter_map(|u| match u.action {
-                    types::Action::Move { x, y } | types::Action::AttackMove { x, y } => Some((x, y)),
-                    _ => None,
-                }).collect();
-                if goals.len() == mine.len() && goals.windows(2).all(|w| (w[0].0 - w[1].0).hypot(w[0].1 - w[1].1) < 1.0) {
-                    if let Some(&g) = goals.first() {
-                        self.world.take_formation_places(&mine, g);
+            C::SelectionOrder { order, at, target, queue, formation, .. } => {
+                let units: Vec<u32> = self.world.selection.get(&player).cloned().unwrap_or_default().into_iter().filter(|&u| natives::players::controls(&self.world, player, u)).collect();
+                let smart = natives::basic::order_id("smart");
+                let (x, y) = at.unwrap_or((0.0, 0.0));
+                let (mut ordered, mut error, mut moved) = (false, None, Vec::new());
+                for u in units {
+                    // A unit right-clicked does not take its own click, but goes to the
+                    // ground there.
+                    let target = if order == smart && target == u { 0 } else { target };
+                    if order == smart && target == 0 && at.is_none() {
+                        continue;
+                    }
+                    let (x, y) = if target != 0 { (0.0, 0.0) } else { (x, y) };
+                    self.world.order_error = None;
+                    self.world.leave_formation(u);
+                    self.world.issue_order(u, order, x, y, target, queue);
+                    match self.world.order_error.take() {
+                        Some(e) => error = Some(e),
+                        None => ordered = true,
+                    }
+                    if at.is_some() && target == 0 {
+                        moved.push(u);
                     }
                 }
-                self.world.form_group(&mine);
+                if formation && moved.len() > 1 {
+                    self.formation(player, moved);
+                }
+                match (ordered, error) {
+                    (false, Some(e)) => O::Error(e),
+                    _ => O::Done,
+                }
+            }
+            C::Formation { units } => {
+                self.formation(player, units);
                 O::Done
             }
             C::Build { worker, id, x, y } => res(self.world.order_build(worker, id, x, y)),

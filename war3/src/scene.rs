@@ -2379,15 +2379,11 @@ impl Scene {
             A::OrderId { order, targeted: true } => self.targeting = Some(order),
             A::Order { order, targeted: false } if !order.is_empty() => {
                 let id = w3_game::natives::basic::order_id(order);
-                for h in mine {
-                    g.apply(w3_game::replay::Command::Order { unit: h, order: id, x: 0.0, y: 0.0, target: 0 });
-                }
+                selection_order(g, &self.selection, id, None, 0, false, false);
                 self.order_ack();
             }
             A::OrderId { order, targeted: false } => {
-                for h in mine {
-                    g.apply(w3_game::replay::Command::Order { unit: h, order, x: 0.0, y: 0.0, target: 0 });
-                }
+                selection_order(g, &self.selection, order, None, 0, false, false);
                 self.order_ack();
             }
             A::Order { .. } => {}
@@ -2778,38 +2774,21 @@ impl Scene {
         if let Some(order) = self.targeting.take() {
             let target = if on_minimap { None } else { portrait_target.or_else(|| self.pick_unit(sx, sy, size)).or_else(|| self.pick_destructable(sx, sy, size)) };
             let point = if on_minimap { minimap_point } else { self.ground_at(sx, sy, size) };
-            let (mut ordered, mut error) = (false, None);
             let formation = self.formation_on();
+            let mut refused = None;
             if let Some(g) = self.game.as_mut() {
-                let id = order;
-                let mut moved = Vec::new();
-                for &h in &self.selection {
-                    if !w3_game::natives::players::controls(&g.world, g.world.local_player, h) {
-                        continue;
-                    }
-                    g.world.order_error = None;
-                    match (target, point) {
-                        (Some(t), _) => {
-                            g.apply(w3_game::replay::Command::Issue { unit: h, order: id, x: 0.0, y: 0.0, target: t, queue: self.shift_held });
-                        }
-                        (None, Some((x, y))) => {
-                            g.apply(w3_game::replay::Command::Issue { unit: h, order: id, x, y, target: 0, queue: self.shift_held });
-                            moved.push(h);
-                        }
-                        _ => {}
-                    }
-                    match g.world.order_error.take() {
-                        Some(e) => error = Some(e),
-                        None => ordered = true,
-                    }
-                }
-                if formation && moved.len() > 1 {
-                    g.apply(w3_game::replay::Command::Formation { units: moved });
+                let (at, t) = match (target, point) {
+                    (Some(t), _) => (None, t),
+                    (None, Some(p)) => (Some(p), 0),
+                    _ => (None, 0),
+                };
+                if at.is_some() || t != 0 {
+                    refused = selection_order(g, &self.selection, order, at, t, self.shift_held, formation).ok().err();
                 }
             }
             // A target no selected unit may take is refused with its error, and the
             // targeting goes on.
-            if let (false, Some(e)) = (ordered, error) {
+            if let Some(e) = refused {
                 self.targeting = Some(order);
                 self.error(e);
                 return true;
@@ -3488,16 +3467,7 @@ impl Scene {
             let formation = self.formation_on();
             if let Some(g) = self.game.as_mut() {
                 let smart = w3_game::natives::basic::order_id("smart");
-                let mut moved = Vec::new();
-                for &h in &self.selection {
-                    if w3_game::natives::players::controls(&g.world, g.world.local_player, h) {
-                        g.apply(w3_game::replay::Command::Order { unit: h, order: smart, x: wx, y: wy, target: 0 });
-                        moved.push(h);
-                    }
-                }
-                if formation && moved.len() > 1 {
-                    g.apply(w3_game::replay::Command::Formation { units: moved });
-                }
+                selection_order(g, &self.selection, smart, Some((wx, wy)), 0, false, formation);
             }
             return;
         }
@@ -3505,12 +3475,7 @@ impl Scene {
         if let Some((on, off, state)) = self.hud.as_ref().and_then(|h| h.button_at(ux, uy)).and_then(|b| b.autocast) {
             if let Some(g) = self.game.as_mut() {
                 let order = w3_game::natives::basic::order_id(if state { off } else { on });
-                let local = g.world.local_player;
-                for &h in &self.selection {
-                    if w3_game::natives::players::controls(&g.world, local, h) {
-                        g.apply(w3_game::replay::Command::Order { unit: h, order, x: 0.0, y: 0.0, target: 0 });
-                    }
-                }
+                selection_order(g, &self.selection, order, None, 0, false, false);
             }
             return;
         }
@@ -3523,26 +3488,9 @@ impl Scene {
         let Some(g) = self.game.as_mut() else { return };
         let local = g.world.local_player;
         let smart = w3_game::natives::basic::order_id("smart");
-        let mut ordered = false;
-        let mut moved = Vec::new();
-        for &h in &self.selection {
-            if !w3_game::natives::players::controls(&g.world, local, h) {
-                continue;
-            }
-            match (target, point) {
-                (Some(t), _) if t != h => {
-                    g.apply(w3_game::replay::Command::Issue { unit: h, order: smart, x: 0.0, y: 0.0, target: t, queue: self.shift_held });
-                    ordered = true;
-                }
-                (_, Some((x, y))) => {
-                    g.apply(w3_game::replay::Command::Issue { unit: h, order: smart, x, y, target: 0, queue: self.shift_held });
-                    moved.push(h);
-                }
-                _ => {}
-            }
-        }
-        if formation && moved.len() > 1 {
-            g.apply(w3_game::replay::Command::Formation { units: moved });
+        let ordered = target.is_some_and(|t| self.selection.iter().any(|&h| h != t && w3_game::natives::players::controls(&g.world, local, h)));
+        if target.is_some() || point.is_some() {
+            selection_order(g, &self.selection, smart, point, target.unwrap_or(0), self.shift_held, formation);
         }
         // The target flashes in SelTargetColor (FUN_6f3814e0).
         if let (Some(t), true) = (target, ordered) {
@@ -5393,4 +5341,13 @@ impl LightGrid {
         }
         out
     }
+}
+
+/// An order to the selection, as the original sends one: the selection goes first, so
+/// the game's is the interface's, then the order, which each selected unit the player
+/// commands takes.
+fn selection_order(g: &mut w3_game::Game, selection: &[u32], order: i32, at: Option<(f32, f32)>, target: u32, queue: bool, formation: bool) -> w3_game::replay::Outcome {
+    let player = g.world.local_player;
+    g.apply(w3_game::replay::Command::Select { player, units: selection.to_vec() });
+    g.apply(w3_game::replay::Command::SelectionOrder { player, order, at, target, queue, formation })
 }

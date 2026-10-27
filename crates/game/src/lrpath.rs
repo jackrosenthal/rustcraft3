@@ -166,7 +166,7 @@ pub fn search(cells: &impl Cells, start: (i32, i32), goal: (i32, i32), class: u8
     let mut heap = Heap(vec![(0, (0, 0), 0)]);
     let dist2 = |c: (i32, i32)| ((c.0 - goal.0) as i64).pow(2) + ((c.1 - goal.1) as i64).pow(2);
     let mut best = (dist2(start), start);
-    let mut push = |nodes: &mut HashMap<(i32, i32), Node>, heap: &mut Heap, c: (i32, i32)| {
+    let push = |nodes: &mut HashMap<(i32, i32), Node>, heap: &mut Heap, c: (i32, i32)| {
         let nd = nodes.get_mut(&c).unwrap();
         nd.stamp += 1;
         nd.state = State::Open;

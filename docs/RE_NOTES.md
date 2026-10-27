@@ -441,7 +441,17 @@ these are the findings behind them.
   cell its search reached (this game's at 1232, -4930, the original's 1231.73,
   -4929.95, its turn on the way bending it).
 - The engine steps movement every 30 ms of game time (`FUN_6f15aa80` counting the
-  steps at +0x538; measured: 4, 3, 3 steps a 100 ms turn, ten each 300 ms).
+  steps at +0x538; measured: 4, 3, 3 steps a 100 ms turn, ten each 300 ms).  Traced at
+  that resolution (Booty Bay, two players): a turn's game logic runs after its first
+  step (a wanderer's order issued there, its objects made and nine freed at once); a
+  move ends after the step where it does, its path's `l^pa` and `^clu` freed after
+  the next step (in the next turn when the move ended in its turn's last).
+- The first wandering sheep ordered by script, sampled each step (its facing; place):
+  facing 116.2, turning 4, then 8, then 11.46 (0.2 radians) each step; still for 5
+  steps, then moving 0.98 units, then 3 a step (speed 100), its heading bending from
+  259.6 to the waypoint (the middle of cell 430, 45, at 1232, -4944) whatever it
+  faces; its last step 2 units, to 1231.73, -4929.95, and its order done two steps
+  later.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

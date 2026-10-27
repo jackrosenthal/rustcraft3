@@ -2748,6 +2748,7 @@ dependencies = [
 name = "w3-formats"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "image",
  "jpeg-decoder",
  "log",
@@ -2801,6 +2802,7 @@ dependencies = [
  "log",
  "sha1_smol",
  "thiserror 2.0.21",
+ "w3-formats",
  "w3-mpq",
 ]
 

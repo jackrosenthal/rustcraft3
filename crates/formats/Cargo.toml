@@ -10,6 +10,7 @@ thiserror.workspace = true
 log.workspace = true
 jpeg-decoder = "0.3"
 image.workspace = true
+flate2.workspace = true
 
 [dev-dependencies]
 w3-mpq.workspace = true

@@ -5,6 +5,7 @@
 //! `host` and `client` speak the protocol's sequences, leaving the game's rules and
 //! its actions' meaning to the program.
 
+pub mod action;
 pub mod client;
 pub mod conn;
 pub mod host;

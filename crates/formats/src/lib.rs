@@ -6,6 +6,7 @@ pub mod map;
 pub mod mdx;
 pub mod profile;
 pub mod slk;
+pub mod w3g;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

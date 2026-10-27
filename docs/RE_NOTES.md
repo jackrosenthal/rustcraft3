@@ -128,6 +128,24 @@ these are the findings behind them.
   field 0x2f8 is set.  `presence` and `birth` are the next presence and birth tags
   (`[DAT_6fd6860c + 0x40]`, or `+0x1c` when that is -1, and `+0x50`): counters of the
   objects created.  0x17ab is the build, 6059.
+- The modules, read under winedbg in a Booty Bay game (20 of them; game.dll was
+  relocated to 0x75d70000, so subtract 0x6d70000 from what a debugger shows), by their
+  vf0: 0 `FUN_6f379b10` (a flags word less bit 0x1000: cheats); 2 `FUN_6f3248c0` (a
+  sub-object's vf1: net); 3 `FUN_6f672050` (rand: `b * 0x7a2d ^ b` summed over 45 pairs
+  of words of state, all eight bytes of each); 4, 5, 7, 9 `FUN_6f042da0` (once a turn,
+  when enabled, mixes in `FUN_6f1996c0`, a hash of a store of typed values, `I`, `F`, and
+  `S`, by the same byte sum); 6 `FUN_6f1de210` (game: for each of the 12 players
+  present, `FUN_6f25c560`: fields 0x29c and 0x2a4, each entry's 0xc ^ 0x10, and
+  `FUN_6f2292c0` and `FUN_6f28e740`); 12 to 14 and 17 to 19 `FUN_6f6a80e0` (the
+  typed-value hash again, and `FUN_6f6e50d0` over 0x18-byte entries); 1, 8, 10, 11, 15,
+  16 empty in that game.
+- Debugging the original under Wine: `Frozen Throne.exe` only starts `war3.exe`, and
+  attaching or breaking in crashes the injected thread under WoW64; start `war3.exe`
+  under `winedbg --file` with `$BreakOnFirstChance = 0`, `$CanDeferOnBPByAddr = 1`, and
+  breakpoints at the relocated addresses.  The reference install's RenderEdge plugin
+  shows a version error once when war3.exe starts on its own; dismissing it goes on.
+- Replays (.w3g) record each turn's actions as W3GS carries them, and after each turn
+  (0x22) the same checksum, so a replay is a turn-by-turn reference.
 
 ## Tooling
 

@@ -153,6 +153,39 @@ pub fn floor(a: u32) -> u32 {
     a
 }
 
+/// The integer square root of a word, bit by bit (`FUN_6f071530`).
+fn isqrt(mut v: u32) -> u32 {
+    let (mut root, mut rem) = (0u32, 0u32);
+    for _ in 0..16 {
+        let mut next = root.wrapping_mul(2);
+        rem = rem.wrapping_mul(4) | (v >> 30);
+        v <<= 2;
+        if next < rem {
+            rem = rem.wrapping_sub(root.wrapping_mul(2)).wrapping_sub(1);
+            next = next.wrapping_add(2);
+        }
+        root = next;
+    }
+    root >> 1
+}
+
+/// The square root (`FUN_6f071480`): the integer root of the mantissa (its leading one
+/// at the top), mapped onto 1 to 2, times 2 to half the exponent (times the square root
+/// of 2 for an odd one); 0 for 0 or less.
+pub fn sqrt(a: u32) -> u32 {
+    if a.wrapping_mul(2) & !((a as i32 >> 31) as u32) == 0 {
+        return 0;
+    }
+    let f = a & FRAC;
+    let e = (((a as i32) >> 23) & 0xff) - 0x7f;
+    let r = isqrt(((f | 0xff80_0000) << 8) | (f >> 15));
+    let m = (r.wrapping_sub(0xb504).wrapping_mul(0xb505) >> 8) | 0x3f80_0000;
+    let odd = (e << 31) >> 31;
+    let half = (odd + e) / 2 + 0x7f;
+    let scale = ((half as u32) << 23) | (odd as u32 & 0x0035_04f3);
+    mul(m, scale)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,6 +212,17 @@ mod tests {
         assert_eq!(floor(f(-2.5)), f(-3.0));
         assert_eq!(floor(f(0.25)), 0);
         assert_eq!(floor(f(-0.25)), f(-1.0));
+        assert_eq!(sqrt(0), 0);
+        assert_eq!(sqrt(f(-4.0)), 0);
+    }
+
+    /// Its roots come within a part in ten thousand of the processor's.
+    #[test]
+    fn roots_are_close() {
+        for v in [1.0f32, 2.0, 3.0, 4.0, 9.0, 10.0, 100.0, 0.25, 0.5, 12345.0, 1e-3] {
+            let r = f32::from_bits(sqrt(f(v)));
+            assert!((r - v.sqrt()).abs() <= v.sqrt() * 1e-4, "{v}: {r}");
+        }
     }
 
     /// The engine truncates: 1 + 2^-24 stays 1, and 0.1 + 0.2 lands a bit below the

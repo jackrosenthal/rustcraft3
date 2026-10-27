@@ -266,6 +266,24 @@ these are the findings behind them.
   its spells that has one (Ensnare a `` `pil `` too).  After main, by the first turn, the
   engine makes an `` `rcm `` and a `` `rtl ``.  Measured with Booty Bay with and without
   MeleeStartingVisibility, and a map that changes the time between making units.
+- Slots and frees (`FUN_6f1c53f0`, `FUN_6f1cbf40`, `FUN_6f1cbff0`): the manager holds two
+  tables (+0, and +0x20 for objects with the high bit), each with a free head (+0x40,
+  +0x44) and a live count (+0x48, +0x4c); an object takes the head's slot (whose word
+  is the next free one), else a new slot, and a birth count (+0x50, +0x54) into +0x18.
+  A freed slot becomes the head.  Booty Bay at turn 200: 12805 slots, 509 free, 12296
+  live, 13338 born: 533 objects made and 1042 freed in ten seconds, mostly orders and
+  tasks, timers, and others' aura buffs.
+- A trace of every allocation and free after the first turn (breakpoints at 0x75f3bf40
+  and 0x75f3bff0 with game.dll at 0x75d70000, the keepalive as a turn marker) shows the
+  frees deferred to the next turn, all at once: units in creation order, each freeing
+  the timers its abilities replaced (a waking creep's spells', a golem's after its mana
+  was set), then its creation's two tasks, the second first, then a creep's initial AI
+  order block (`tskA` +1, `tskA` +6, `task` +5 to +2, `+ord` +0, `task` +8, `+ord` +7);
+  after the map's units the time of day's trigger execution, its fired event's timer, the
+  engine's timer at slot 0x287, and the melee setup's destroyed groups and locations;
+  then the melee starting units likewise; then the melee initialization's execution and
+  the game-started timer and its handler.  From the third turn the creep AI and aura
+  scans make and free objects every few turns.
 - The script's globals run before the map's destructables: Blizzard.j's first timer,
   then the engine's `+gam` `` `flg `` `` `flg `` `` `rel `` `` `rel `` `` `flg ``
   `` `rtl `` `+qum`, then the other globals.

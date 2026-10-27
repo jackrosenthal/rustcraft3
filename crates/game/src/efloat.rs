@@ -4,7 +4,7 @@
 //! zero exponent to zero, and divides by an interpolated reciprocal.  Values are the
 //! singles' bits.
 
-use crate::efloat_recip::{ACOS, ACOS_NEAR_ONE, PI, RECIP};
+use crate::efloat_recip::{ACOS, ACOS_NEAR_ONE, PI, RECIP, TWO_PI};
 
 const EXP: u32 = 0x7f80_0000;
 const FRAC: u32 = 0x007f_ffff;
@@ -228,6 +228,24 @@ pub fn acos(a: u32) -> u32 {
     }
 }
 
+/// A vector's heading, 0 to two pi (`FUN_6f1d4c80`): the arc cosine of x over its
+/// length (given), from two pi for a negative y; 0 for a length or an angle at most
+/// 1e-5 (0x3727c5ac).
+pub fn heading(x: u32, y: u32, len: u32) -> u32 {
+    if len & 0x7fff_ffff <= 0x3727_c5ac {
+        return 0;
+    }
+    let a = acos(div(x, len));
+    if a & 0x7fff_ffff <= 0x3727_c5ac {
+        return 0;
+    }
+    if (y as i32) < 0 && y & 0x7fff_ffff != 0 {
+        sub(TWO_PI, a)
+    } else {
+        a
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,6 +283,15 @@ mod tests {
             let r = f32::from_bits(acos(f(v)));
             assert!((r - v.acos()).abs() < 1e-3, "{v}: {r} against {}", v.acos());
         }
+    }
+
+    #[test]
+    fn headings_go_round() {
+        let h = |x: f32, y: f32| f32::from_bits(heading(f(x), f(y), sqrt(add(mul(f(x), f(x)), mul(f(y), f(y))))));
+        assert!((h(1.0, 0.0) - 0.0).abs() < 1e-3);
+        assert!((h(0.0, 1.0) - std::f32::consts::FRAC_PI_2).abs() < 1e-3);
+        assert!((h(-1.0, 0.0) - std::f32::consts::PI).abs() < 1e-3);
+        assert!((h(0.0, -1.0) - 3.0 * std::f32::consts::FRAC_PI_2).abs() < 1e-3);
     }
 
     /// Its roots come within a part in ten thousand of the processor's.

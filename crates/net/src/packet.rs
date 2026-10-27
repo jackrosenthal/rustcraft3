@@ -79,8 +79,9 @@ pub enum Packet {
     SlotInfoJoin { slots: SlotTable, pid: u8, addr: SockAddr },
     /// 0x05
     RejectJoin { reason: u32 },
-    /// 0x06: another player in the game.
-    PlayerInfo { join_counter: u32, pid: u8, name: String, external: SockAddr, internal: SockAddr },
+    /// 0x06: another player in the game.  `marks` is 0x0001, or 0x0101 in a loaded
+    /// game's setup (as 1.27b sends them).
+    PlayerInfo { join_counter: u32, pid: u8, name: String, marks: u16, external: SockAddr, internal: SockAddr },
     /// 0x07
     PlayerLeft { pid: u8, reason: u32 },
     /// 0x08: a player has loaded the map.
@@ -247,8 +248,8 @@ impl Packet {
             P::RejectJoin { reason } | P::LeaveGame { reason } => {
                 w.u32(*reason);
             }
-            P::PlayerInfo { join_counter, pid, name, external, internal } => {
-                w.u32(*join_counter).u8(*pid).cstr(name).u16(1).bytes(&external.0).bytes(&internal.0);
+            P::PlayerInfo { join_counter, pid, name, marks, external, internal } => {
+                w.u32(*join_counter).u8(*pid).cstr(name).u16(*marks).bytes(&external.0).bytes(&internal.0);
             }
             P::PlayerLeft { pid, reason } => {
                 w.u8(*pid).u32(*reason);
@@ -359,9 +360,8 @@ impl Packet {
             0x04 => P::SlotInfoJoin { slots: SlotTable::read_sized(&mut r)?, pid: r.u8()?, addr: SockAddr(r.array()?) },
             0x05 => P::RejectJoin { reason: r.u32()? },
             0x06 => {
-                let (join_counter, pid, name) = (r.u32()?, r.u8()?, r.cstr()?);
-                r.u16()?;
-                P::PlayerInfo { join_counter, pid, name, external: SockAddr(r.array()?), internal: SockAddr(r.array()?) }
+                let (join_counter, pid, name, marks) = (r.u32()?, r.u8()?, r.cstr()?, r.u16()?);
+                P::PlayerInfo { join_counter, pid, name, marks, external: SockAddr(r.array()?), internal: SockAddr(r.array()?) }
             }
             0x07 => P::PlayerLeft { pid: r.u8()?, reason: r.u32()? },
             0x08 => P::PlayerLoaded { pid: r.u8()? },
@@ -494,6 +494,8 @@ mod tests {
             // SLOTINFOJOIN, PLAYERINFO, MAPCHECK, SLOTINFO for Booty Bay.
             "f7 04 30 00 19 00 02 01 64 02 00 00 00 60 01 64 00 ff 00 00 01 0c 60 01 64 e3 44 9b 35 00 02 02 02 00 d9 d4 7f 00 00 01 00 00 00 00 00 00 00 00",
             "f7 06 30 00 03 00 00 00 01 4a 61 63 6b 00 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+            // A loaded game's PLAYERINFO.
+            "f7 06 30 00 01 00 00 00 01 4a 61 63 6b 00 01 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
             "f7 3d 3d 00 01 00 00 00 4d 61 70 73 5c 28 32 29 42 6f 6f 74 79 42 61 79 2e 77 33 6d 00 d1 e7 01 00 00 5a ef d8 13 8f e7 6e 76 e3 3a 25 fc 80 5c 43 76 38 53 93 41 d0 72 ac cb 3f 77 20",
             "f7 09 1f 00 19 00 02 01 64 02 00 00 00 60 01 64 02 ff 02 00 01 01 60 01 64 7d 60 9b 35 00 02",
             // Chat, ping, countdown, loaded.

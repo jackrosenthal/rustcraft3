@@ -138,6 +138,8 @@ impl Setup {
             };
             s.name = match s.holder {
                 Holder::Human(pid) => players.iter().find(|p| p.0 == pid).map(|p| p.1.clone()).unwrap_or_default(),
+                // A loaded game's open slot is kept for its player, by name.
+                Holder::Open if self.saved => std::mem::take(&mut s.name),
                 _ => String::new(),
             };
             s.team = t.team as i32;

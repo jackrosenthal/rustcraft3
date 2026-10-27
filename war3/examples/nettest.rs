@@ -141,7 +141,11 @@ fn main() -> anyhow::Result<()> {
             }
         }
         if Some(step) == save_at {
-            let bytes = gh.save("test")?;
+            let bytes = gh.save(&a[2])?;
+            // NETTEST_SAVE_FILE: the saved game is also written there.
+            if let Ok(f) = std::env::var("NETTEST_SAVE_FILE") {
+                std::fs::write(f, &bytes)?;
+            }
             gh = restored(&data, &bytes, 0)?;
             gc = restored(&data, &bytes, 1)?;
             println!("saved and loaded at frame {} ({} bytes)", hs.played, bytes.len());

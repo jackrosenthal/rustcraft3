@@ -202,16 +202,17 @@ impl Host {
         };
         let pid = (2..=12u8).find(|id| !self.players.iter().any(|p| p.pid == *id))?;
         self.joins += 1;
+        let marks = if self.info.game_type & 0x200 != 0 { 0x0101 } else { 0x0001 };
         let external = match conn.peer {
             Some(SocketAddr::V4(a)) => SockAddr::new(a),
             _ => SockAddr::default(),
         };
         conn.send(&Packet::SlotInfoJoin { slots: self.slots.clone(), pid, addr: external });
-        conn.send(&Packet::PlayerInfo { join_counter: self.joins, pid: HOST_PID, name: self.name.clone(), external: SockAddr::default(), internal: SockAddr::default() });
+        conn.send(&Packet::PlayerInfo { join_counter: self.joins, pid: HOST_PID, name: self.name.clone(), marks, external: SockAddr::default(), internal: SockAddr::default() });
         for p in &self.players {
-            conn.send(&Packet::PlayerInfo { join_counter: self.joins, pid: p.pid, name: p.name.clone(), external: p.external, internal: p.internal });
+            conn.send(&Packet::PlayerInfo { join_counter: self.joins, pid: p.pid, name: p.name.clone(), marks, external: p.external, internal: p.internal });
         }
-        let info = Packet::PlayerInfo { join_counter: self.joins, pid, name: name.clone(), external, internal };
+        let info = Packet::PlayerInfo { join_counter: self.joins, pid, name: name.clone(), marks, external, internal };
         for p in self.players.iter_mut() {
             p.conn.send(&info);
         }

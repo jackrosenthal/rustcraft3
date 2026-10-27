@@ -233,12 +233,14 @@ impl Lan {
         setup.speed = speed;
         let users = summary.info.players.iter().filter(|p| p.kind == 1).count() as u32;
         let game_type = GAME_CUSTOM | if summary.signed { GAME_BLIZZARD } else { 0 };
-        self.host_setup(map, setup, summary, expansion, game_type, users, chain)
+        self.host_setup(map, setup, summary, expansion, game_type, users, None, chain)
     }
 
-    /// Offers the setup's game.
+    /// Offers the setup's game.  A loaded game is offered as 1.27b offers one: by its
+    /// save's path and an identifier of the save in place of the map's, its size and
+    /// SHA-1 zero (the map itself is still checked as a joining player's MAPCHECK).
     #[allow(clippy::too_many_arguments)]
-    fn host_setup(&mut self, map: &Path, setup: Setup, summary: &crate::skirmish::MapSummary, expansion: bool, game_type: u32, users: u32, chain: &w3_mpq::Chain) -> Result<(), &'static str> {
+    fn host_setup(&mut self, map: &Path, setup: Setup, summary: &crate::skirmish::MapSummary, expansion: bool, game_type: u32, users: u32, save: Option<(String, u32)>, chain: &w3_mpq::Chain) -> Result<(), &'static str> {
         let failed = |e: &dyn std::fmt::Display| {
             log::warn!("lan: hosting: {e}");
             "NETERROR_CREATEGAMEFAILED"
@@ -247,14 +249,17 @@ impl Lan {
         let archive = w3_mpq::Archive::open(map).map_err(|e| failed(&e))?;
         let (common, blizzard) = (chain.read("Scripts\\common.j").unwrap_or_default(), chain.read("Scripts\\blizzard.j").unwrap_or_default());
         let checksums = w3_net::map::Checksums::compute(&bytes, &common, &blizzard, |n| archive.read(n).ok());
-        let stat = GameStat {
-            settings: net::settings(setup.flags, setup.speed),
-            map_width: summary.info.playable_width as u16,
-            map_height: summary.info.playable_height as u16,
-            map_xoro: checksums.xoro,
-            map_path: setup.map.clone(),
-            host: self.name.clone(),
-            map_sha1: checksums.sha1,
+        let stat = match save {
+            Some((path, id)) => GameStat { settings: net::settings(setup.flags, setup.speed), map_width: 0, map_height: 0, map_xoro: id, map_path: path, host: self.name.clone(), map_sha1: [0; 20] },
+            None => GameStat {
+                settings: net::settings(setup.flags, setup.speed),
+                map_width: summary.info.playable_width as u16,
+                map_height: summary.info.playable_height as u16,
+                map_xoro: checksums.xoro,
+                map_path: setup.map.clone(),
+                host: self.name.clone(),
+                map_sha1: checksums.sha1,
+            },
         };
         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_nanos() ^ d.as_secs() as u32);
         let table = setup.table(seed, None);
@@ -283,28 +288,15 @@ impl Lan {
         Ok(())
     }
 
-    /// Hosts a saved network game (CLocalMultiplayerLoad): its map and speed, its
-    /// people's slots kept for them by name, its computers as they were.
-    pub fn host_saved(&mut self, file: &Path, game: &str, expansion: bool, chain: &w3_mpq::Chain) -> Result<(), &'static str> {
-        let bytes = std::fs::read(file).map_err(|_| "SAVE_ERROR_BAD_SAVE")?;
-        let save = w3_game::save::SaveGame::parse(&bytes).map_err(|_| "SAVE_ERROR_BAD_SAVE")?;
-        let players = save.players();
-        if !players.iter().any(|p| p.human && p.name.eq_ignore_ascii_case(&self.name)) {
-            return Err("NETERROR_JOINGAMEFAILED");
-        }
-        let map = self.map_path(&save.map);
-        let summary = crate::skirmish::summarize_path(&map).ok_or("NETERROR_MAPFILENOTFOUND")?;
-        let slots: Vec<NetSlot> = players
+    /// A saved network game's setup: its people's slots kept for them by name, its
+    /// computers as they were.
+    fn saved_setup(save: &w3_game::save::SaveGame) -> Setup {
+        let slots = save
+            .players()
             .iter()
             .map(|p| NetSlot {
                 player: p.id,
-                holder: if p.computer {
-                    Holder::Computer(1)
-                } else if p.name.eq_ignore_ascii_case(&self.name) {
-                    Holder::Human(HOST_PID)
-                } else {
-                    Holder::Open
-                },
+                holder: if p.computer { Holder::Computer(1) } else { Holder::Open },
                 name: if p.computer { String::new() } else { p.name.clone() },
                 race: p.race.clamp(0, 4) as usize,
                 team: if p.observer { OBSERVERS } else { p.team },
@@ -313,9 +305,32 @@ impl Lan {
                 locked: false,
             })
             .collect();
-        let setup = Setup { game: game.to_string(), map: self.map_name(&map), slots, speed: 2, flags: crate::advanced::DEFAULT_FLAGS, saved: true, ..Default::default() };
-        let users = players.iter().filter(|p| p.human).count() as u32;
-        self.host_setup(&map, setup, &summary, expansion, GAME_CUSTOM | GAME_SAVED, users, chain)?;
+        Setup { slots, speed: 2, flags: crate::advanced::DEFAULT_FLAGS, saved: true, ..Default::default() }
+    }
+
+    /// A save's identifier, as GAMEINFO carries it in place of the map's checksum.
+    fn save_id(bytes: &[u8]) -> u32 {
+        crc32fast::hash(bytes)
+    }
+
+    /// Hosts a saved network game (CLocalMultiplayerLoad): its map and speed, its
+    /// people's slots kept for them by name, its computers as they were.  Everyone
+    /// loads their own copy of the save (each computer saved it).
+    pub fn host_saved(&mut self, file: &Path, game: &str, expansion: bool, chain: &w3_mpq::Chain) -> Result<(), &'static str> {
+        let bytes = std::fs::read(file).map_err(|_| "SAVE_ERROR_BAD_SAVE")?;
+        let save = w3_game::save::SaveGame::parse(&bytes).map_err(|_| "SAVE_ERROR_BAD_SAVE")?;
+        let mut setup = Lan::saved_setup(&save);
+        let mine = setup.slots.iter_mut().find(|s| s.holder == Holder::Open && s.name.eq_ignore_ascii_case(&self.name)).ok_or("NETERROR_JOINGAMEFAILED")?;
+        mine.holder = Holder::Human(HOST_PID);
+        // The save names its map as the game loaded it: a file, or one in the game's
+        // folder.
+        let map = Some(PathBuf::from(&save.map)).filter(|p| p.is_file()).unwrap_or_else(|| self.map_path(&save.map));
+        let summary = crate::skirmish::summarize_path(&map).ok_or("NETERROR_MAPFILENOTFOUND")?;
+        setup.game = game.to_string();
+        setup.map = self.map_name(&map);
+        let users = save.players().iter().filter(|p| p.human).count() as u32;
+        let path = format!("Save\\Multiplayer\\{}", file.file_name().unwrap_or_default().to_string_lossy());
+        self.host_setup(&map, setup, &summary, expansion, GAME_SAVED, users, Some((path, Lan::save_id(&bytes))), chain)?;
         self.save = Some(bytes);
         Ok(())
     }
@@ -325,9 +340,20 @@ impl Lan {
         self.local_map = None;
         self.table = None;
         let Some((addr, game, _)) = self.selected.and_then(|k| self.games().get(k)).cloned() else { return Err("NETERROR_NOGAMESPECIFIED") };
+        // A loaded game is joined with this computer's own copy of its save.
+        let saved = game.game_type & GAME_SAVED != 0;
+        self.save = None;
+        if saved {
+            let file = Path::new(&game.stat.map_path.replace('\\', "/")).file_name().map(|f| f.to_owned()).unwrap_or_default();
+            let bytes = crate::data::multiplayer_save_dir().and_then(|d| std::fs::read(d.join(file)).ok());
+            match bytes {
+                Some(b) if Lan::save_id(&b) == game.stat.map_xoro => self.save = Some(b),
+                _ => return Err("NETERROR_DIFFERENTSAVEFILE"),
+            }
+        }
         let c = Client::join(addr, &game, &self.name, self.port).map_err(|_| "NETERROR_JOINGAMEFAILED")?;
         let (flags, speed) = net::from_settings(game.stat.settings);
-        self.setup = Setup { game: game.name.clone(), map: game.stat.map_path.clone(), speed, flags, saved: game.game_type & GAME_SAVED != 0, ..Default::default() };
+        self.setup = Setup { game: game.name.clone(), speed, flags, saved, ..Default::default() };
         self.joined = Some(game);
         self.client = Some(Box::new(c));
         self.chat.clear();
@@ -420,16 +446,7 @@ impl Lan {
         if changed {
             let h = self.host.as_ref()?;
             let (table, people) = (h.slots.clone(), h.players());
-            let names: Vec<String> = self.setup.slots.iter().map(|s| s.name.clone()).collect();
             self.setup.take_table(&table, &people);
-            // A loaded game's open slots keep their players' names.
-            if self.setup.saved {
-                for (s, name) in self.setup.slots.iter_mut().zip(names) {
-                    if s.holder == Holder::Open {
-                        s.name = name;
-                    }
-                }
-            }
             self.rebuild = true;
         }
         None
@@ -496,6 +513,7 @@ impl Lan {
                     self.chat.push(format!("{name}: {text}"));
                 }
                 client::Event::MapCheck { path, size, crc32, .. } => {
+                    self.setup.map = path.clone();
                     let have = self.find_map(&path, size, crc32);
                     if let Some(c) = self.client.as_mut() {
                         c.map_status(have.is_some());
@@ -539,7 +557,10 @@ impl Lan {
 
     /// This computer has the host's map: the setup takes its slots.
     fn have_map(&mut self, path: PathBuf) {
-        if let Some(summary) = crate::skirmish::summarize_path(&path) {
+        let saved = self.save.as_ref().and_then(|b| w3_game::save::SaveGame::parse(b).ok());
+        if let Some(save) = saved {
+            self.setup.slots = Lan::saved_setup(&save).slots;
+        } else if let Some(summary) = crate::skirmish::summarize_path(&path) {
             let base = Lan::map_setup(&summary, self.setup.flags);
             (self.setup.slots, self.setup.fixed, self.setup.forces) = (base.slots, base.fixed, base.forces);
         }
@@ -654,12 +675,8 @@ impl Lan {
         let c = self.client.take()?;
         let role = net::Role { link: net::Link::Client(c), players: self.players() };
         if self.setup.saved {
-            // A loaded game's state is this computer's own copy of the save, by the
-            // game's name, in Save\Multiplayer.
             let me = self.setup.slot_of(self.me).map_or(0, |s| s.player);
-            let file = crate::data::save_dir(crate::data::Version::FrozenThrone).unwrap_or_default().join("Multiplayer").join(format!("{}.w3z", self.setup.game));
-            let Ok(save) = std::fs::read(&file) else { return Some(Event::Joining(Some("NETERROR_DIFFERENTSAVEFILE"))) };
-            return Some(Event::StartSaved(self.map(), save, role, self.setup.speed, me));
+            return Some(Event::StartSaved(self.map(), self.save.take().unwrap_or_default(), role, self.setup.speed, me));
         }
         let (map, lobby) = self.start_setup();
         Some(Event::Start(map, lobby, role, self.setup.speed, self.setup.flags))

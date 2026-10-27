@@ -1,6 +1,6 @@
 //! Offers a two-player melee game on a map and plays it with whoever joins, without the
-//! game: chat is echoed back, the game starts when a player says "go", and the turns
-//! carry no actions.  Prints what the players send, their keepalives'
+//! game: chat is echoed back, the game starts when a player says "go", and each turn
+//! carries the players' actions as they sent them.  Prints what the players send, their keepalives'
 //! checksums among it.
 //!
 //! host <map file> <map path as the game names it> <common.j> <blizzard.j> <width>
@@ -28,10 +28,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut countdown: Option<Instant> = None;
     let mut loading = false;
     let mut next_turn = Instant::now();
+    let mut actions: Vec<(u8, Vec<u8>)> = Vec::new();
     loop {
         for e in host.poll() {
-            println!("{e:?}");
+            if !matches!(e, Event::Keepalive { .. } | Event::Actions { .. }) {
+                println!("{e:?}");
+            }
             match e {
+                Event::Actions { pid, data } => {
+                    println!("actions from {pid}: {data:02x?}");
+                    actions.push((pid, data));
+                }
                 Event::Chat { from, chat: Chat::Lobby(text) } if text == "go" && countdown.is_none() => {
                     host.start_countdown();
                     countdown = Some(Instant::now());
@@ -48,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             loading = true;
         }
         if loading && host.all_loaded() && Instant::now() >= next_turn {
-            host.send_turn(100, Vec::new());
+            host.send_turn(100, std::mem::take(&mut actions));
             next_turn += Duration::from_millis(100);
         }
         std::thread::sleep(Duration::from_millis(10));

@@ -2847,6 +2847,7 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "clap",
+ "crc32fast",
  "dirs",
  "env_logger",
  "glam",

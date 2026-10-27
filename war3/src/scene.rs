@@ -4193,12 +4193,9 @@ impl Scene {
                         errors.push(e);
                     }
                 }
-                // Every 50 frames the games are compared (a player out of step is
-                // dropped).
-                let n = first + k as u32 + 1;
-                if n % 50 == 0 {
-                    s.check(n, g.world.checksum());
-                }
+                // After each turn the games are compared (a player out of step is
+                // dropped); a player's checksum is its keepalive.
+                s.check(first + k as u32 + 1, g.world.checksum());
             }
             let lost = s.lost;
             // The host waits on players who fall behind; a player waits on a silent host.

@@ -1142,7 +1142,7 @@ impl Glue {
             (Screen::LanLoad, "OKButton") => {
                 let Some(file) = self.skirmish.selected_save() else { return };
                 let game = self.lan.game_name(&assets.frames);
-                match self.lan.host_saved(&file, &game, self.version == crate::data::Version::FrozenThrone) {
+                match self.lan.host_saved(&file, &game, self.version == crate::data::Version::FrozenThrone, &self.chain) {
                     Ok(()) => self.show(Screen::LanLobby, assets),
                     Err(key) => {
                         let text = assets.frames.string(key);
@@ -1162,7 +1162,7 @@ impl Glue {
                 let (Some(map), Some(summary)) = (self.skirmish.selected_map(), self.skirmish.summary.clone()) else { return };
                 let game = self.lan.game_name(&assets.frames);
                 let speed = self.tree.value("GameSpeedSlider").round().clamp(0.0, 2.0) as u8;
-                match self.lan.host_game(&map, &summary, &game, self.version == crate::data::Version::FrozenThrone, speed, self.skirmish.flags) {
+                match self.lan.host_game(&map, &summary, &game, self.version == crate::data::Version::FrozenThrone, speed, self.skirmish.flags, &self.chain) {
                     Ok(()) => self.show(Screen::LanLobby, assets),
                     Err(key) => {
                         let text = assets.frames.string(key);

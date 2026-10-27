@@ -6,7 +6,9 @@
 
 use std::path::Path;
 
-use war3::net::{Conn, GameAd, Host, Role, Session};
+use war3::net::{Link, Role, Session};
+use w3_net::client::{Browser, Client};
+use w3_net::host::{HOST_PID, Host, HostMap, TFT, VERSION};
 
 /// Two people, and NETTEST_AI computers after them.
 fn lobby(local: u8) -> Vec<w3_game::LobbySlot> {
@@ -72,14 +74,24 @@ fn main() -> anyhow::Result<()> {
     let a: Vec<String> = std::env::args().collect();
     let data = war3::data::GameData::open(Path::new(&a[1]), false)?;
     let map = std::sync::Arc::new(w3_mpq::Archive::open(&a[2])?);
-    data.chain.mount(map, None, war3::data::PRIORITY_MAP);
+    data.chain.mount(map.clone(), None, war3::data::PRIORITY_MAP);
     let secs: f32 = a.get(3).and_then(|s| s.parse().ok()).unwrap_or(30.0);
     let port: u16 = a.get(4).and_then(|s| s.parse().ok()).unwrap_or(6290);
 
-    let ad = GameAd { name: "test".into(), host: "Player 1".into(), map: a[2].clone(), players: 1, slots: 2, port, expansion: false, flags: war3::advanced::DEFAULT_FLAGS, speed: 2 };
-    let mut host = Host::new(ad)?;
-    // The game is found by searching.
-    let mut browser = war3::net::Browser::new(port)?;
+    // The host offers the map over the protocol; the player finds it by searching,
+    // joins, and says it has the map.
+    let bytes = std::fs::read(&a[2])?;
+    let (common, blizzard) = (data.chain.read("Scripts\\common.j")?, data.chain.read("Scripts\\blizzard.j")?);
+    let checksums = w3_net::map::Checksums::compute(&bytes, &common, &blizzard, |n| map.read(n).ok());
+    let mut setup = war3::net::Setup { game: "test".into(), map: a[2].clone(), speed: 2, flags: war3::advanced::DEFAULT_FLAGS, ..Default::default() };
+    for p in 0..2u8 {
+        let holder = if p == 0 { war3::net::Holder::Human(HOST_PID) } else { war3::net::Holder::Open };
+        setup.slots.push(war3::net::NetSlot { player: p, holder, name: format!("Player {}", p + 1), race: 0, team: p as i32, color: p as i32, handicap: 0, locked: false });
+    }
+    let stat = w3_net::GameStat { settings: war3::net::settings(setup.flags, 2), map_width: 0, map_height: 0, map_xoro: checksums.xoro, map_path: a[2].clone(), host: "Player 1".into(), map_sha1: checksums.sha1 };
+    let info = w3_net::GameInfo { product: TFT, version: VERSION, host_counter: 0, entry_key: 0, name: "test".into(), stat, slots_total: 2, game_type: 1, players: 1, player_slots: 2, uptime: 0, port };
+    let mut host = Host::new(port, info, HostMap { path: a[2].clone(), bytes, checksums }, setup.table(0, None), "Player 1".into())?;
+    let mut browser = Browser::new(port, TFT, VERSION)?;
     for _ in 0..300 {
         browser.poll();
         host.poll();
@@ -89,19 +101,28 @@ fn main() -> anyhow::Result<()> {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     println!("found {:?}", browser.games.iter().map(|g| (g.0, g.1.name.clone())).collect::<Vec<_>>());
-    let client = Conn::connect(([127, 0, 0, 1], port).into())?;
-    // The player's connection arrives.
-    for _ in 0..100 {
-        host.poll();
-        if !host.peers.is_empty() {
+    let (from, game_info, _) = browser.games.first().cloned().ok_or_else(|| anyhow::anyhow!("no game found"))?;
+    let mut client = Client::join(from, &game_info, "Player 2", port)?;
+    let mut ready = false;
+    for _ in 0..300 {
+        for e in client.poll() {
+            if let w3_net::client::Event::MapCheck { .. } = e {
+                client.map_status(true);
+            }
+        }
+        ready |= host.poll().iter().any(|e| matches!(e, w3_net::host::Event::MapReady { .. }));
+        if ready {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    let id = host.peers.first().map(|p| p.0).ok_or_else(|| anyhow::anyhow!("no connection"))?;
-    host.peers[0].2 = Some("Player 2".into());
-    let mut hs = Session::new(Role::Host { host, pending: Vec::new(), peers: vec![(id, 1, 0)] });
-    let mut cs = Session::new(Role::Client { conn: client });
+    anyhow::ensure!(ready, "the player was not seated");
+    let pid = client.pid;
+    host.start_countdown();
+    host.end_countdown();
+    let players = vec![(HOST_PID, 0), (pid, 1)];
+    let mut hs = Session::new(Role { link: Link::Host(Box::new(host)), players: players.clone() });
+    let mut cs = Session::new(Role { link: Link::Client(Box::new(client)), players });
 
     let mut gh = game(&data, 0)?;
     let mut gc = game(&data, 1)?;
@@ -155,10 +176,7 @@ fn main() -> anyhow::Result<()> {
             let first = s.played - frames.len() as u32;
             for (k, f) in frames.iter().enumerate() {
                 g.play_frame(f);
-                let n = first + k as u32 + 1;
-                if n % 50 == 0 {
-                    s.check(n, g.world.checksum());
-                }
+                s.check(first + k as u32 + 1, g.world.checksum());
             }
         }
         std::thread::sleep(std::time::Duration::from_micros(500));

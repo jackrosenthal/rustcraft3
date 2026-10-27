@@ -89,8 +89,12 @@ impl Host {
     /// Offers a game on `port` (TCP), its description in `info` (whose players, uptime,
     /// port, host counter, and entry key the host fills in).
     pub fn new(port: u16, mut info: GameInfo, map: HostMap, slots: SlotTable, name: String) -> std::io::Result<Host> {
-        let listener = Listener::bind(port).or_else(|_| Listener::bind(0))?;
         let discovery = Discovery::new(port).map_err(|e| log::warn!("w3gs: discovery: {e}")).ok();
+        // Another game on this computer holding the game port is at this address on
+        // that port, so this one is offered on another (1.27b will not join a game at
+        // its own address and port, taking it for its own).
+        let shared = !discovery.as_ref().is_some_and(|d| d.listening);
+        let listener = if shared { Listener::bind(0)? } else { Listener::bind(port).or_else(|_| Listener::bind(0))? };
         info.port = listener.port();
         info.entry_key = random_u32();
         if info.host_counter == 0 {
@@ -126,6 +130,7 @@ impl Host {
         let mut events = Vec::new();
         self.discover();
         while let Some(c) = self.listener.accept() {
+            log::debug!("w3gs: host: connection from {:?}", c.peer);
             self.joining.push((c, Instant::now()));
         }
         // Connections that have not asked to join after ten seconds are dropped.
@@ -186,6 +191,7 @@ impl Host {
     }
 
     fn join(&mut self, mut conn: Conn, name: String, internal: SockAddr) -> Option<Event> {
+        log::debug!("w3gs: host: {name} asks to join from {:?}", conn.peer);
         if self.phase != Phase::Lobby {
             conn.send(&Packet::RejectJoin { reason: reject::STARTED });
             return None;
@@ -222,6 +228,7 @@ impl Host {
 
     fn handle(&mut self, k: usize, p: Packet, events: &mut Vec<Event>, gone: &mut Vec<(u8, u32)>) {
         let pid = self.players[k].pid;
+        log::trace!("w3gs: host: from {pid}: {p:?}");
         match p {
             Packet::PongToHost(_) => {}
             Packet::LeaveGame { reason } => gone.push((pid, reason)),

@@ -14,6 +14,7 @@ w3-game.workspace = true
 w3-ui = { path = "../crates/ui" }
 w3-audio.workspace = true
 w3-net.workspace = true
+crc32fast = "1"
 clap.workspace = true
 winit.workspace = true
 wgpu.workspace = true

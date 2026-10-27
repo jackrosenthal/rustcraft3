@@ -206,7 +206,7 @@ pub struct Browser {
 
 impl Browser {
     pub fn new(port: u16, product: [u8; 4], version: u32) -> std::io::Result<Browser> {
-        Ok(Browser { discovery: Discovery::new(port)?, product, version, last_search: None, games: Vec::new() })
+        Ok(Browser { discovery: Discovery::seeker(port)?, product, version, last_search: None, games: Vec::new() })
     }
 
     /// Returns whether the list changed.

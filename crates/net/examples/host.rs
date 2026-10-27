@@ -1,6 +1,6 @@
 //! Offers a two-player melee game on a map and plays it with whoever joins, without the
-//! game: chat is echoed back, the game starts once a second player has the map, and
-//! the turns carry no actions.  Prints what the players send, their keepalives'
+//! game: chat is echoed back, the game starts when a player says "go", and the turns
+//! carry no actions.  Prints what the players send, their keepalives'
 //! checksums among it.
 //!
 //! host <map file> <map path as the game names it> <common.j> <blizzard.j> <width>
@@ -32,11 +32,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for e in host.poll() {
             println!("{e:?}");
             match e {
-                Event::Chat { from, chat: Chat::Lobby(text) } => host.chat(&[from], Chat::Lobby(format!("you said: {text}"))),
-                Event::MapReady { .. } if countdown.is_none() => {
+                Event::Chat { from, chat: Chat::Lobby(text) } if text == "go" && countdown.is_none() => {
                     host.start_countdown();
                     countdown = Some(Instant::now());
+                    let _ = from;
                 }
+                Event::Chat { from, chat: Chat::Lobby(text) } => host.chat(&[from], Chat::Lobby(format!("you said: {text}"))),
                 Event::Left { .. } if host.players().len() == 1 => return Ok(()),
                 _ => {}
             }

@@ -60,6 +60,7 @@ pub mod accel;
 pub mod efloat;
 mod efloat_recip;
 pub mod lrpath;
+pub mod motion;
 pub mod pathing;
 pub mod placement;
 pub mod repair;

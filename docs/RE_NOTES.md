@@ -178,6 +178,28 @@ these are the findings behind them.
   enemies (event 0xd01c1, `FUN_6f436510`, an area watch for 0xd01c8).
 - With these, all 46 generators stand as the original's after the first turn of Booty
   Bay from seed 0x35000000.
+- The keepalive checksum exactly (`FUN_6f330830`, from its instructions; verified
+  against the original's turn-1 keepalive 0x610c6f3a): `c = t ^ rol(m ^ 0x17ab, 3)`,
+  then `c = rol(c, 3) ^ presence`, `rol(c, 3) ^ birth`, `rol(c, 3) ^ h`, sent `rol(c,
+  3)`, where `h` is the byte hash (`b * 0x7a2d ^ b` summed) of the main generator's
+  value and taps (`FUN_6f330910`).  The modules by class: 0 CCheatData, 2 CNetData, 3
+  CRandData, 4 and 7 CWar3SlkDatabase, 5 CAbilityDatabase, 6 CGameWar3, 9
+  CUpgradeDatabase, 12 to 19 the map's custom data (unit, item, destructable, ability,
+  buff, upgrade).  Their values at Booty Bay's first turn: 19 0, 18 c7d37d14, 17
+  50bc09d8, 16 a4fc2e24, 14 68b89b88, 13 and 12 38eb3c00, 9 d85c9c00, 7 98054236, 6
+  aa436eb2, 5 a996f046, 4 b5891e1b, 3 4c0afd48, 2 00c0cec0, 0 0; t 0, both tags 0x3205.
+  The databases' and custom data's values are made once as the data loads
+  (`FUN_6f658a20`), the typed-value hash being a sum over cells (order does not
+  matter).  The player module (`FUN_6f25c560`) mixes objects' tag pairs (`+0xc ^ +0x10`).
+- The object manager (`DAT_6fd6860c`, Tempest's) keeps two tag tables: at +0 entries of
+  8 bytes (-2, object), its count at +0x1c (the presence tag unless +0x40 is set), and
+  at +0x20 another (its next tag at +0x50).  Its 12805 objects at Booty Bay's first turn
+  (read under winedbg through the table): 7216 CPmRegion (pathing map regions), 2636
+  CAgentBaseAbs, 1410 CPoPos, 725 CPoFlag, 378 CPoReal, 134 CPoReThresholdLis, 130
+  CPoReContinuousMod, 71 CPoPosCl, 71 CLrPath, 20 CPoFgLis, 6 CPoPoInterfLis, 4
+  CAcceleratorMap, 2 CProximityMap, a CLrPathingSys and a CLrPathingAcc (all NIpse).
+  The tags, and so the object ids the actions name, follow the engine's pathing regions
+  and property objects as much as the game's objects.
 - Replays (.w3g) record each turn's actions as W3GS carries them, and after each turn
   (0x22) the same checksum, so a replay is a turn-by-turn reference.
 

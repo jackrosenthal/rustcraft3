@@ -535,7 +535,12 @@ these are the findings behind them.
   the mana gone to none, again above them in the reverse order, so Heal's holds the
   last slot; listeners falling due together run in the order made, and one due at a
   turn's end in the next.  With these, every allocation and free agrees through turn
-  76.
+  76; with a wanderer's wait due at the last of a tick's four steps given in the next
+  tick (that step being, it seems, the original's next turn's first), through turn 84.
+  At turn 85 the original frees seven creeps' objects of the day's change (`` `rcm ``,
+  which this game frees after 3.0 seconds as it does the rest: a Granite Golem's, a
+  Shadow Priest's, sleeping and waking creeps among them); why those last longer is
+  not yet known.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

@@ -197,7 +197,10 @@ impl World {
             // (Its wait counts from a step before the unit's making: fitted to the traced
             // turns, the first walks given after the steps the original's are.)
             let early = 0.03;
-            match self.step_times.iter().position(|&s| s + early - wait as f64 > 1e-4) {
+            // (One due at a tick's last step of four is the next turn's first, given with
+            // that turn's logic: fitted, a pig's walk.)
+            let n = self.step_times.len();
+            match self.step_times.iter().position(|&s| s + early - wait as f64 > 1e-4).filter(|&k| !(n == 4 && k == n - 1)) {
                 Some(k) => due.push((k, h)),
                 None => self.unit_mut(h).unwrap().extra.wander_wait = Some(wait - dt),
             }

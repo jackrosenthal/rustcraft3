@@ -522,9 +522,12 @@ these are the findings behind them.
   Abolish Magic (ACd2) timers of the two creeps that also have Heal (Anh2) and Inner
   Fire (ACif), not those of the creeps with ACdm (the same data) and Anh1.  Traced:
   the spell abilities' event handler (`FUN_6f425aa0`) re-arms them (`FUN_6f422f40`,
-  `FUN_6f4224e0`: a timer for the length its vf 0x374 gives, clamped by
-  0x6fcd53c4), the old one released by the deferred release; why those, and at that
-  time, is not yet known.
+  `FUN_6f4224e0`), the old one released by the deferred release.  These `` `rtl ``
+  objects are not timers but threshold listeners on the creep's mana
+  (CPoReThresholdLis; `FUN_6f27c060`), one a spell, at its cost less 0.1 (mode 0,
+  made at setup) or more 0.1 (mode 1) (measured: 74.9 and 75.1 for Abolish Magic and
+  Inner Fire, 4.9 and 5.1 for Heal, 99.9 for Shockwave, 89.9 and 90.1 for ACtc); why
+  the High Priests' Abolish Magic ones are re-armed at turn 70 is not yet known.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

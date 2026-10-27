@@ -145,12 +145,24 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32, facing: f32)
     let span = ((radius - 16.0) / 32.0).ceil().max(0.0) as i32;
     let open = |c: (i32, i32)| (-span..=span).all(|ey| (-span..=span).all(|ex| p.clear_of_destructables((c.0 + ex, c.1 + ey)) || p.index_pub((c.0 + ex, c.1 + ey)).is_none()));
     let (cx, cy) = p.cell_of(x, y);
-    if apart((cx, cy)) && open((cx, cy)) {
+    // On walkable ground the cells about it must be walkable too, as far as its size
+    // class reaches (FUN_6f170080 asks FUN_6f149370 with the class: collision in cells
+    // below 0.5, below 1, below 1.5, or more; measured with sheep, collision 16, made
+    // above unwalkable ground in Booty Bay: in the next cell row they move up to the
+    // row above, one row higher they stay; the fifth pig so stands at -5456,-4432).
+    // One asked on ground a map marks unwalkable stays.
+    let class = {
+        let c = collision / crate::pathing::CELL;
+        if c < 0.5 { 0.0 } else if c < 1.0 { 1.0 } else if c < 1.5 { 2.0 } else { 3.0 }
+    };
+    let reach = class * crate::pathing::CELL;
+    let room = |c: (i32, i32)| p.fits_kind(c, reach, kind);
+    if apart((cx, cy)) && open((cx, cy)) && (!p.walkable((cx, cy)) || room((cx, cy))) {
         return (x, y);
     }
     for k in 1..=64i32 {
         for c in ring_order(2, cy - k, cx - k, cy + 1 + k, cx + 1 + k) {
-            if apart(c) && open(c) && p.fits_kind(c, radius, kind) {
+            if apart(c) && open(c) && p.fits_kind(c, radius, kind) && room(c) {
                 return p.center(c);
             }
         }

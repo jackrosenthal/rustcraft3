@@ -563,8 +563,14 @@ these are the findings behind them.
   node agree with `lrpath`.  Yet at the clock 8.55 one pig stands on the straight line
   from its start (216.4, 59.4) to its way's last node (210.5, 61.5), not on the nodes'
   route: the way (`FUN_6f147dc0`) holds every node, from the start point to the end
-  point, but the steering's waypoint provider (`FUN_6f165ae0`, `FUN_6f165d10`) skips
-  ahead by a count (`FUN_6f166030`), still to be read.
+  point, but the steering's waypoint provider (`FUN_6f165ae0`, `FUN_6f165b60`,
+  `FUN_6f165f10`, `FUN_6f165d10`) resets the way's remaining count (+0x78 over the
+  points at +0x60, the end first) to `FUN_6f167ae0`'s index: from the current point
+  toward the end, the first at which the length summed along the way reaches 10 cells
+  (`0x6fd54194`, set to 10 at startup; the sum from `0x6fd3c744`, 0), or 0.  Taken as
+  "head for that point" it makes the pig's run straight but a sheep's longer way end
+  33 turns early (its tree freed at turn 129 in the original), so what the count
+  governs is still to be read (CLrPath keeps two ways, +0x50 and +0x70).
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

@@ -1292,13 +1292,22 @@ impl World {
             u.extra.walk_blocked = if near { 2 } else { 8 };
         }
         if u.extra.walk_blocked == 1 {
+            // It searches again and goes on in the same step toward its new way, checked
+            // as any step is (traced: a sheep's search at 7.56 and its move in that step;
+            // a pig's at 8.73, held by a walker in its new way).
             u.extra.walk_blocked = 0;
             if let Some(g) = goal {
                 u.path.clear();
                 u.extra.path_end_cell = None;
                 self.path_to(h, g);
             }
-            return true;
+            let Some(u) = self.unit(h) else { return false };
+            if u.extra.facing_goal {
+                return false;
+            }
+            let Some(&next) = u.path.first() else { return false };
+            let to = (((next.0 - origin[0]) / crate::pathing::CELL).to_bits(), ((next.1 - origin[1]) / crate::pathing::CELL).to_bits());
+            return self.held_back(h, m, to, clock);
         }
         u.extra.walk_blocked -= 1;
         true
@@ -1370,7 +1379,16 @@ impl World {
                     to = (cell(next.0, origin[0]), cell(next.1, origin[1]));
                 }
             }
-            if !facing && self.held_back(h, &m, to, clock) {
+            let held = !facing && self.held_back(h, &m, to, clock);
+            // A new search there gives a new waypoint.
+            let Some(u) = self.unit(h) else { return true };
+            let facing = u.extra.facing_goal;
+            let Some(&next) = u.path.first() else {
+                done = Some(k);
+                break;
+            };
+            let to = (cell(next.0, origin[0]), cell(next.1, origin[1]));
+            if held {
                 // Held, it turns toward its order's goal (read: a held pig's heading the
                 // goal's bearing, 2.0233, its waypoint's 2.886).
                 let toward = goal.map_or(to, |g| (cell(g.0, origin[0]), cell(g.1, origin[1])));

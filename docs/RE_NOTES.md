@@ -571,6 +571,14 @@ these are the findings behind them.
   "head for that point" it makes the pig's run straight but a sheep's longer way end
   33 turns early (its tree freed at turn 129 in the original), so what the count
   governs is still to be read (CLrPath keeps two ways, +0x50 and +0x70).
+- Searches run within the movement steps, between units' steps: a wanderer's order is
+  searched in the first step after it (read: the clocks 7.2597, 7.6197, and 8.5496 for
+  orders due between the steps before them), so the port now steps wanderers step by
+  step, each walker in turn, a new order's search in its step.  A sheep's region read
+  at another's search (7.26) was unflagged (flags 0) though in the port that sheep had
+  begun moving a step earlier (from 7.23, after turning from 4.33 toward 6.14): when the
+  original's starts, or from what heading, is still to be found; the original's sheep
+  then went east and searched again from (433, 46) at 7.56, its walk ending in turn 129.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

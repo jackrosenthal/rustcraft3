@@ -1087,8 +1087,24 @@ impl World {
     /// logic.
     pub(crate) fn first_steps(&mut self) {
         self.step_range = (0, self.step_clocks.len().min(1));
-        let walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.mover.is_some() && matches!(u.action, Action::Move { .. }))).collect();
+        let walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.local_paths && matches!(u.action, Action::Move { .. }))).collect();
         for h in walkers {
+            // A new order has its way found in this step: one given before it (this
+            // tick's) walks from the next, one given after the last tick's steps from this
+            // one (`World::update_wander`).
+            let Some(u) = self.unit(h) else { continue };
+            if u.extra.mover.is_none() {
+                let early = u.extra.walk_from == Some(1);
+                if let (true, &Action::Move { x, y }) = (u.path.is_empty(), &u.action) {
+                    self.path_to(h, (x, y));
+                }
+                if early {
+                    continue;
+                }
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.walk_from = None;
+                }
+            }
             if self.walk_steps(h) {
                 if let Some(u) = self.unit_mut(h) {
                     u.action = Action::Idle;
@@ -1096,6 +1112,35 @@ impl World {
                 }
             }
         }
+    }
+
+    /// The tick's movement steps after its first for wanderers, step by step, each
+    /// walker in turn: a new order's way found in its first step (its search in the
+    /// step after its order, traced), then its steps.
+    pub(crate) fn step_walkers(&mut self) {
+        let n = self.step_clocks.len();
+        for k in 1..n {
+            self.step_range = (k, k + 1);
+            let walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.local_paths && matches!(u.action, Action::Move { .. }))).collect();
+            for h in walkers {
+                let Some(u) = self.unit(h) else { continue };
+                if u.extra.mover.is_none() {
+                    if u.extra.walk_from.is_some_and(|f| f > k) {
+                        continue;
+                    }
+                    if let (true, &Action::Move { x, y }) = (u.path.is_empty(), &u.action) {
+                        self.path_to(h, (x, y));
+                    }
+                }
+                if self.walk_steps(h) {
+                    if let Some(u) = self.unit_mut(h) {
+                        u.action = Action::Idle;
+                        u.order = Order::default();
+                    }
+                }
+            }
+        }
+        self.step_range = (1, n);
     }
 
     /// Walks a unit through this tick's movement steps as the original's engine does
@@ -1944,6 +1989,8 @@ impl World {
                         }
                     }
                 }
+                // A wanderer walks step by step with the others (`World::step_walkers`).
+                Action::Move { .. } if self.unit(h).is_some_and(|u| u.extra.local_paths) => {}
                 Action::Move { x, y } => {
                     if self.unit(h).is_some_and(|u| u.path.is_empty()) {
                         self.path_to(h, (x, y));

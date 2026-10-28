@@ -1579,6 +1579,7 @@ impl World {
         self.first_steps();
         self.step_range = (1, self.step_clocks.len());
         prof!(self, "update_wander", self.update_wander(dt, false));
+        self.step_walkers();
         prof!(self, "computer_idle_workers", self.computer_idle_workers(dt));
         prof!(self, "update_guards", self.update_guards());
         prof!(self, "update_creep_sleep", self.update_creep_sleep(dt));

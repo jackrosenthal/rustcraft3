@@ -579,6 +579,15 @@ these are the findings behind them.
   begun moving a step earlier (from 7.23, after turning from 4.33 toward 6.14): when the
   original's starts, or from what heading, is still to be found; the original's sheep
   then went east and searched again from (433, 46) at 7.56, its walk ending in turn 129.
+  With a step's searches before its movement and only units with a velocity excused,
+  the port's search now heads east too.  But the other sheep (1050117, searching from
+  (431, 48) at 7.17 in both) still stood unflagged at 7.56 in the original and next
+  searched from (432, 49) at 9.42, (431, 50) at 9.87, and (430, 50) at 10.29, where the
+  port's reaches (432, 49) by 7.65: the two sheep's ways cross, and the original holds
+  one back (its unit collision, not yet in the port).  Searches are spaced per path
+  (`FUN_6f168910`: 10 counter units for kinds 0 and 1, 64 and 32 for others), the
+  spacing reset when the class's nodes searched in the step stay under 64
+  (`FUN_6f166e90`); a way ending short of its goal sets the path's flag 0x10000000.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

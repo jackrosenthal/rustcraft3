@@ -646,7 +646,8 @@ these are the findings behind them.
     in the step before and was then held.  But pig 1050124 at 9.57 was not blocked by
     pig 1050127 moving on steadily, whose place before that step lay on the cells
     checked.  A region spanning both places only while its unit is held after moving
-    fits all three; not yet tried.
+    fits all three, and the port now takes it so (the trace agreement then reaching
+    turn 118).
   - Wanderers' orders due between steps are given just before the step after them,
     among the walkers' steps, and a walk's path (`l^pa`, `^clu`) goes as the next step
     starts (traced at turn 101: a pig's walk ending in step 1, an order due before step

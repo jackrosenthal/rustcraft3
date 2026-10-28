@@ -429,6 +429,9 @@ pub struct UnitExtra {
     /// step newest first.
     #[serde(default)]
     pub walk_serial: u32,
+    /// Where it stood before its last movement step that moved it.
+    #[serde(default)]
+    pub step_from: Option<(f32, f32)>,
     /// Steps it waits, held back by another walker (the path's +0x94).
     #[serde(default)]
     pub walk_wait: u32,
@@ -659,6 +662,7 @@ impl Default for UnitExtra {
             arrived_last_step: false,
             walk_moved: false,
             walk_wait: 0,
+            step_from: None,
             walk_blocked: 0,
             walk_serial: 0,
             yields_to: None,

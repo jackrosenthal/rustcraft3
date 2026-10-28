@@ -1249,10 +1249,15 @@ impl World {
                     continue;
                 }
                 let Some(v) = self.unit(o).filter(|v| !v.dead && !v.hidden && !v.is_building && v.collision > 0.0) else { continue };
+                // A walker held after moving holds the cells of both its last places (read:
+                // a held sheep's region three cells wide, another's still on a row it had
+                // just left; a pig moving on steadily held only its place).
                 let (px, py) = ((v.x - origin[0]) / crate::pathing::CELL, (v.y - origin[1]) / crate::pathing::CELL);
+                let held = v.extra.mover.is_some_and(|m| m.vx & 0x7fff_ffff == 0 && m.vy & 0x7fff_ffff == 0);
+                let (qx, qy) = v.extra.step_from.filter(|_| held).map_or((px, py), |f| ((f.0 - origin[0]) / crate::pathing::CELL, (f.1 - origin[1]) / crate::pathing::CELL));
                 let r = v.collision / crate::pathing::CELL;
-                let on = |a: f32, c: i32| (a - 0.5 - r).floor() as i32 <= c && c <= (a - 0.5 + r).floor() as i32;
-                if on(px, c.0) && on(py, c.1) {
+                let on = |a: f32, b: f32, c: i32| (a.min(b) - 0.5 - r).floor() as i32 <= c && c <= (a.max(b) - 0.5 + r).floor() as i32;
+                if on(px, qx, c.0) && on(py, qy, c.1) {
                     seen.push(o);
                 }
             }
@@ -1428,8 +1433,12 @@ impl World {
         let last = clocks.get(until.wrapping_sub(1)).copied().filter(|_| until > from).unwrap_or(m.placed_at);
         let (x, y) = m.at(last);
         let Some(u) = self.unit_mut(h) else { return true };
+        let was = (u.x, u.y);
         u.x = f32::from_bits(x) * crate::pathing::CELL + origin[0];
         u.y = f32::from_bits(y) * crate::pathing::CELL + origin[1];
+        if (u.x, u.y) != was {
+            u.extra.step_from = Some(was);
+        }
         u.facing = f32::from_bits(m.heading).to_degrees();
         if let Some(k) = done {
             log::debug!("walk of {h} done at step {k} of {n}, time {:.3}", self.time);
@@ -1445,6 +1454,7 @@ impl World {
             }
             let Some(u) = self.unit_mut(h) else { return true };
             u.extra.mover = None;
+            u.extra.step_from = None;
             u.extra.facing_goal = false;
             u.extra.arrived_last_step = late;
             u.path.clear();

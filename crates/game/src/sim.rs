@@ -1356,13 +1356,17 @@ impl World {
         let window = o.map_or(60.0, |o| o.real("propWin")).to_radians();
         let gait = crate::motion::Gait { top: f(top), grow: f(top), turn: f(turn), window: f(window), reach: f(0.49) };
         let start = if self.step_clocks.is_empty() { self.last_step_clock } else { self.step_base };
-        let mut m = u.extra.mover.unwrap_or(crate::motion::Mover { x: cell(u.x, origin[0]), y: cell(u.y, origin[1]), heading: f(u.facing.to_radians()), placed_at: start, ..Default::default() });
+        let (cx, cy) = match u.extra.cell_at {
+            Some((cx, cy, wx, wy)) if wx == u.x && wy == u.y => (cx, cy),
+            _ => (cell(u.x, origin[0]), cell(u.y, origin[1])),
+        };
+        let mut m = u.extra.mover.unwrap_or(crate::motion::Mover { x: cx, y: cy, heading: f(u.facing.to_radians()), placed_at: start, ..Default::default() });
         let goal = match u.action {
             Action::Move { x, y } => Some((x, y)),
             _ => None,
         };
         if u.extra.mover.is_none() {
-            log::debug!("walk of {h} from {:.2}, {:.2} facing {:.2} by {:?} to {goal:?}", u.x, u.y, u.facing, u.path);
+            log::debug!("walk of {h} from {:.2}, {:.2} facing {:.2} by {:?} to {goal:?}, time {:.3}, tsk. {:?}", u.x, u.y, u.facing, u.path, self.time, u.extra.order_tags.get(7));
             // A goal within reach as it starts ends the walk without its usual objects
             // (`Tags::move_done_in_place`).
             let moves = goal.is_none_or(|g| (g.0 - u.x).hypot(g.1 - u.y) > 0.49 * crate::pathing::CELL);
@@ -1379,10 +1383,24 @@ impl World {
             m.placed_at = c;
         }
         let mut done = None;
-        // A goal within reach as the walk starts ends it at its first step, unturned.
-        let in_place = self.unit(h).is_some_and(|u| !u.extra.walk_moved);
+        // A goal within reach as the walk starts: its order's objects go at its first
+        // step (traced: before the turn's logic), and it turns toward the goal until
+        // its heading is on it, the walk then done (read: a sheep 0.81 off its goal's
+        // bearing drew its next wait two steps later, as the order ended).
+        let in_place = self.unit(h).is_some_and(|u| !u.extra.walk_moved && u.extra.order_tags.len() == 18);
         if in_place && from < until {
-            done = Some(from);
+            if let Some(slots) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)) {
+                self.tags.move_done_in_place(&slots);
+            }
+        }
+        // A new walk whose search found nothing nearer turns toward its goal in its
+        // search step and the next, judged facing it from the step after (read: a pig
+        // searched at 18.117960, on its goal's bearing at 18.147955 but still walking,
+        // done at 18.177950; a walker searching again is judged the step after).
+        if self.unit(h).is_some_and(|u| u.extra.mover.is_none() && u.extra.facing_goal) && from < until {
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.face_hold = 2;
+            }
         }
         for (k, &clock) in clocks.iter().enumerate().take(until).skip(from).take(if done.is_some() { 0 } else { usize::MAX }) {
             // A dropped way is searched for again first; finding nothing nearer, the
@@ -1404,6 +1422,13 @@ impl World {
                     m.hold(&gait, (cell(g.0, origin[0]), cell(g.1, origin[1])), clock);
                     continue;
                 }
+            }
+            if let (true, Some(g)) = (self.unit(h).is_some_and(|u| u.extra.facing_goal && u.extra.face_hold > 0), goal) {
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.face_hold -= 1;
+                }
+                m.hold(&gait, (cell(g.0, origin[0]), cell(g.1, origin[1])), clock);
+                continue;
             }
             let Some(&next) = self.unit(h).and_then(|u| u.path.first()) else {
                 done = Some(k);
@@ -1477,6 +1502,7 @@ impl World {
         let was = (u.x, u.y);
         u.x = f32::from_bits(x) * crate::pathing::CELL + origin[0];
         u.y = f32::from_bits(y) * crate::pathing::CELL + origin[1];
+        u.extra.cell_at = Some((x, y, u.x, u.y));
         if (u.x, u.y) != was {
             u.extra.step_from = Some(was);
         }

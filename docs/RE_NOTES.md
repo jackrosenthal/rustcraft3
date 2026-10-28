@@ -682,6 +682,15 @@ these are the findings behind them.
     `FUN_6f5af350`).  Read on the main generator (the object at DAT_6fd53a48): the first
     sheep's order drew at 5.034873 and its walk's end at 5.399847, the next wanderer's
     order at 5.619831 and its end at 5.789819, its next order 6.42 later (12.209).
+  - A walk whose goal is within reach as it starts frees its order's objects at its
+    first step (traced) but turns toward the goal until judged on it, as any arrival,
+    and only then ends (read: a sheep 0.81 off its goal's bearing drew its next wait at
+    8.369596, two steps after its first, 8.309607).  A new walk whose search finds
+    nothing nearer turns in its search step and the next, judged facing from the third
+    (read: a pig searched at 18.117960, on its goal's bearing at 18.147955 and still
+    walking, done at 18.177950); one searching again is judged the step after.
+  - A unit's place is kept in cells: a walk starts where the last left it, not from
+    the world point converted back (which was one unit in the last place off).
   - The blocked count's draw (`FUN_6f1689d0`: 2 for a goal within 12 cells and a walker
     alone, else 7 plus `FUN_6f1d62b0(2)`, 0 or 1) is on the generator at DAT_6fd53a48.
   - Open: which cells a walker's region holds as it moves.  Read: sheep 1050120, held at

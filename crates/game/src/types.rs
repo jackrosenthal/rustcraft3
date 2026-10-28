@@ -440,6 +440,15 @@ pub struct UnitExtra {
     /// +0x7c): none once a search leaves its class's budget under 64 passes.
     #[serde(default)]
     pub search_at: Option<u64>,
+    /// Steps it turns toward its goal before it is judged facing it, its walk's first
+    /// search having found nothing nearer.
+    #[serde(default)]
+    pub face_hold: u8,
+    /// Where its last walk left it, in cells (its single's bits), with the world point
+    /// that was set from it: the engine keeps a unit's place in cells, so a walk from
+    /// there starts from these, not from the world point converted back.
+    #[serde(default)]
+    pub cell_at: Option<(u32, u32, f32, f32)>,
     /// Steps it waits, held back by another walker (the path's +0x94).
     #[serde(default)]
     pub walk_wait: u32,
@@ -672,6 +681,8 @@ impl Default for UnitExtra {
             walk_wait: 0,
             walk_research: false,
             search_at: None,
+            face_hold: 0,
+            cell_at: None,
             step_from: None,
             walk_blocked: 0,
             walk_serial: 0,

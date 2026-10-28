@@ -828,6 +828,7 @@ impl World {
         let class = crate::lrpath::class_of(u.collision / crate::pathing::CELL);
         let (start, end) = (p.cell_of(u.x, u.y), p.cell_of(goal.0, goal.1));
         let (out, refused) = crate::lrpath::search_seeing(&cells, start, end, class, 32);
+        log::debug!("search for {h} from {start:?} to {end:?}: {:?} refused {refused}", match &out { crate::lrpath::Outcome::Found(c) => format!("found {}", c.len()), crate::lrpath::Outcome::Nearest(c) => format!("nearest {:?}", c.last()), crate::lrpath::Outcome::Stay => "stay".into() });
         // A search that met no refused cell sends the walker straight to its way's end
         // (`FUN_6f166e90`: the way's index set to its end, else to its first node).
         let straight = |way: Vec<(f32, f32)>| if refused { way } else { way.last().map(|&w| vec![w]).unwrap_or_default() };
@@ -1441,15 +1442,18 @@ impl World {
         }
         u.facing = f32::from_bits(m.heading).to_degrees();
         if let Some(k) = done {
-            log::debug!("walk of {h} done at step {k} of {n}, time {:.3}", self.time);
+            log::debug!("walk of {h} done at step {k} of {n}, time {:.3}, tsk. {:?}", self.time, self.unit(h).and_then(|u| u.extra.order_tags.get(7).copied()));
             // The order's objects go as its walk ends, at its step (traced).
             let late = k + 1 == n;
             let moved = self.unit_mut(h).is_some_and(|u| std::mem::take(&mut u.extra.walk_moved));
+            let gave_up = self.unit(h).is_some_and(|u| u.extra.facing_goal);
             if let Some(slots) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)).filter(|s| s.len() == 18) {
-                if moved {
+                if !moved {
+                    self.tags.move_done_in_place(&slots);
+                } else if gave_up {
                     self.tags.move_done(&slots, late);
                 } else {
-                    self.tags.move_done_in_place(&slots);
+                    self.tags.move_arrived(&slots);
                 }
             }
             let Some(u) = self.unit_mut(h) else { return true };

@@ -224,6 +224,16 @@ impl Tags {
     /// next turn starts (traced: a sheep sent 13.7 away in a turn's last step, its tree
     /// freed in the next turn's first step, before its logic, and its path as the one
     /// after starts).
+    /// A walk that reached its goal: no objects made, its tree but the issue's nine and
+    /// then its path freed at once (traced: sheep arriving at their goals in turns 119
+    /// and 129).  `move_done` is for a walk ended facing a goal it could not come
+    /// nearer.
+    pub fn move_arrived(&mut self, slots: &[u32]) {
+        for k in [7, 6, 5, 4, 3, 2, 0, 17, 16] {
+            self.release(slots[k]);
+        }
+    }
+
     pub fn move_done_in_place(&mut self, slots: &[u32]) {
         for k in [7, 6, 5, 4, 3, 2, 0] {
             self.release(slots[k]);

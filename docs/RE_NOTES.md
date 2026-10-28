@@ -691,6 +691,17 @@ these are the findings behind them.
     walking, done at 18.177950); one searching again is judged the step after.
   - A unit's place is kept in cells: a walk starts where the last left it, not from
     the world point converted back (which was one unit in the last place off).
+  - A move order's objects (`Tags::move_issued`): its `^clg` is freed as it is given,
+    the other eight after the engine clock's tick in which it was given (read: two
+    wanderers' orders fired at the same tick, 19.867666, freed their eights together
+    after both; two fired three ticks apart, 25.511719 and 25.526716, each after its
+    own).  A wander timer fires at the 0.005s tick nearest its due time when its wait
+    was drawn in play (due 0.66 and 0.28 of a tick past one: both at the next), at or
+    before it for a first wait (0.86 past: at it); which of an order and a step at the
+    same tick comes first is not settled (a first wait's order came after the step, an
+    in-play one before).
+  - An arrival's path goes a step after its tree, as a give-up's does (read: an arrival
+    at a turn's last step, its path freed as the next turn starts).
   - The blocked count's draw (`FUN_6f1689d0`: 2 for a goal within 12 cells and a walker
     alone, else 7 plus `FUN_6f1d62b0(2)`, 0 or 1) is on the generator at DAT_6fd53a48.
   - Open: which cells a walker's region holds as it moves.  Read: sheep 1050120, held at

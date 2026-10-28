@@ -72,6 +72,10 @@ pub struct Tags {
     /// Freed as the next movement step starts (`World::step_walkers`).
     #[serde(default)]
     pub next_step: Vec<u32>,
+    /// Issued orders' objects freed once the orders due together are all given
+    /// (`flush_issued`).
+    #[serde(default)]
+    pub issued: Vec<u32>,
     /// Slots released after a delay: the game time they fall due, in the order queued.
     #[serde(default)]
     pub timed: Vec<(f64, u32)>,
@@ -95,7 +99,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), later: Vec::new(), next_turn: Vec::new(), next_step: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None }
+        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), later: Vec::new(), next_turn: Vec::new(), next_step: Vec::new(), issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -208,10 +212,19 @@ impl Tags {
     pub fn move_issued(&mut self) -> Vec<u32> {
         const CODES: [&Code; 18] = [b"ordt", b"tskA", b"tskA", b"tskO", b"task", b"task", b"task", b"tsk.", b"task", b"task", b"task", b"task", b"task", b"task", b"tskA", b"^clg", b"^clu", b"l^pa"];
         let slots: Vec<u32> = CODES.iter().map(|c| self.take(c)).collect();
-        for k in [15, 1, 14, 13, 12, 11, 10, 9, 8] {
-            self.release(slots[k]);
-        }
+        // Its `^clg` goes at once, the other eight once the orders given with it are
+        // (traced: two wanderers' orders between the same steps, each `^clg` freed after
+        // its order, then the first's eight and the second's).
+        self.release(slots[15]);
+        self.issued.extend([1, 14, 13, 12, 11, 10, 9, 8].map(|k| slots[k]));
         slots
+    }
+
+    /// Frees the objects of the orders just given (`move_issued`).
+    pub fn flush_issued(&mut self) {
+        for s in std::mem::take(&mut self.issued) {
+            self.release(s);
+        }
     }
 
     /// A move order done: three more objects, then the rest of its tree, last made
@@ -224,13 +237,21 @@ impl Tags {
     /// next turn starts (traced: a sheep sent 13.7 away in a turn's last step, its tree
     /// freed in the next turn's first step, before its logic, and its path as the one
     /// after starts).
-    /// A walk that reached its goal: no objects made, its tree but the issue's nine and
-    /// then its path freed at once (traced: sheep arriving at their goals in turns 119
-    /// and 129).  `move_done` is for a walk ended facing a goal it could not come
-    /// nearer.
-    pub fn move_arrived(&mut self, slots: &[u32]) {
-        for k in [7, 6, 5, 4, 3, 2, 0, 17, 16] {
+    /// A walk that reached its goal: no objects made, its tree but the issue's nine
+    /// freed at once, its path a step later as `move_done`'s (traced: sheep arriving at
+    /// their goals in turns 119 and 129, the path right after; one arriving at a turn's
+    /// last step, the path as the next turn starts).  `move_done` is for a walk ended
+    /// facing a goal it could not come nearer.
+    pub fn move_arrived(&mut self, slots: &[u32], late: bool) {
+        for k in [7, 6, 5, 4, 3, 2, 0] {
             self.release(slots[k]);
+        }
+        for s in [slots[17], slots[16]] {
+            if late {
+                self.later.push(s);
+            } else {
+                self.next_step.push(s);
+            }
         }
     }
 

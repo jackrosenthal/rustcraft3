@@ -1186,9 +1186,8 @@ impl World {
         for k in 1..n {
             // The orders due before this step are given first (traced: a pig's walk ended
             // in a turn's second step, before an order due after it).
-            for &(kd, wait, h) in due.iter().filter(|e| e.0 == k) {
-                self.issue_wander(kd, wait, h, dt);
-            }
+            let now: Vec<(usize, f32, u32)> = due.iter().copied().filter(|e| e.0 == k).collect();
+            self.issue_wanders(&now, dt);
             // A walk's path goes a step after it ends (traced: freed after an order due
             // before the next step, before another walk's end in that step).
             self.tags.free_step();
@@ -1220,9 +1219,8 @@ impl World {
                 }
             }
         }
-        for &(kd, wait, h) in due.iter().filter(|e| e.0 >= n.max(1)) {
-            self.issue_wander(kd, wait, h, dt);
-        }
+        let rest: Vec<(usize, f32, u32)> = due.iter().copied().filter(|e| e.0 >= n.max(1)).collect();
+        self.issue_wanders(&rest, dt);
         self.step_range = (1, n);
     }
 
@@ -1519,7 +1517,7 @@ impl World {
                 } else if gave_up {
                     self.tags.move_done(&slots, late);
                 } else {
-                    self.tags.move_arrived(&slots);
+                    self.tags.move_arrived(&slots, late);
                 }
             }
             // A wanderer left without an order draws its wait anew, counted from this

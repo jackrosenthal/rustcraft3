@@ -222,9 +222,27 @@ impl World {
             self.wander_due = due;
             return;
         }
-        for (k, wait, h) in due {
+        self.issue_wanders(&due, dt);
+    }
+
+    /// Gives the orders due together, in order, their issues' objects freed after each
+    /// clock tick's (`Tags::flush_issued`; read: two orders fired at the same tick,
+    /// 19.867666, freed theirs together after both; two fired three ticks apart each
+    /// after its own).  The tick: the engine clock's 0.005s one nearest the due time
+    /// (read: due 0.66 and 0.28 of a tick past one, both fired at the next), the
+    /// game's times running 0.1 ahead of the engine clock's.
+    pub(crate) fn issue_wanders(&mut self, due: &[(usize, f32, u32)], dt: f32) {
+        let tick = |w: &World, wait: f32| ((w.time as f64 + wait as f64 - 0.1) / 0.005).round() as i64;
+        let mut last = None;
+        for &(k, wait, h) in due {
+            let t = tick(self, wait);
+            if last.is_some_and(|l| l != t) {
+                self.tags.flush_issued();
+            }
+            last = Some(t);
             self.issue_wander(k, wait, h, dt);
         }
+        self.tags.flush_issued();
     }
 
     /// A wanderer's order given at its time (`update_wander`): the walk to its point, its

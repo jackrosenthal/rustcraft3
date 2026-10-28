@@ -189,8 +189,10 @@ impl World {
             if self.ability_with_code(h, "Awan").is_none() {
                 continue;
             }
-            // The wait runs only while it stands (measured: sheep start a walk every 9 to
-            // 11 seconds, walk included).
+            // The wait runs only while it stands, and is drawn anew as a walk ends
+            // (`World::walk_steps`; read: the wander timer restarts as its order begins,
+            // event 0xd0178, and as it ends leaving the unit no order, 0xd0148; whether
+            // the timer firing mid-walk gives an order is not yet followed).
             // The first wait counts from the unit's making, and a walk starts after the
             // first movement step past its time, more than 1e-4 past it (traced: Booty
             // Bay's first walks, the third given after its turn's third step).

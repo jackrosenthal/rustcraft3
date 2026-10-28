@@ -23,6 +23,10 @@ fn main() -> anyhow::Result<()> {
     // TAGS_FIRST: the first turn's length (the original's first turn runs what falls
     // due at once without its clock moving, it seems).
     let first: f32 = std::env::var("TAGS_FIRST").ok().and_then(|v| v.parse().ok()).unwrap_or(0.1);
+    // TAGS_DRAWS: print each of the main generator's draws as it is made.
+    if std::env::var("TAGS_DRAWS").is_ok() {
+        w3_game::rng::TRACE.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     for k in 0..turns {
         g.tick(if k == 0 { first } else { 0.1 });
     }

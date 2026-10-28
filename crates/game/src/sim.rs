@@ -1496,6 +1496,17 @@ impl World {
                     self.tags.move_arrived(&slots);
                 }
             }
+            // A wanderer left without an order draws its wait anew, counted from this
+            // step (`FUN_6f5af350` on the order's end, event 0xd0148: read, the first
+            // sheep's walk ended at 5.399847 and the main generator drew for it there,
+            // between its order's draw and the next wanderer's).
+            if self.ability_with_code(h, "Awan").is_some() {
+                let next = self.rng.real(5.0, 10.0);
+                let at = self.step_times.get(k).copied().unwrap_or(0.0) as f32 - self.wander_counted;
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.wander_wait = Some(at + next);
+                }
+            }
             let Some(u) = self.unit_mut(h) else { return true };
             u.extra.mover = None;
             u.extra.step_from = None;

@@ -236,6 +236,10 @@ pub struct World {
     pub steps_total: u64,
     #[serde(skip)]
     pub step_index: u64,
+    /// How much of this tick wanderers' waits have been counted down already (all of
+    /// it once `update_wander` has run after the first step).
+    #[serde(skip)]
+    pub wander_counted: f32,
     /// The local searches' budget for the walkers' class (`DAT_6fd53ae4` + 15 * 0x70:
     /// 1100 passes, renewed every other step, at odd steps): its two steps' window and
     /// the passes searches have used in it.
@@ -745,6 +749,7 @@ impl World {
             last_step_clock: 0,
             steps_total: 0,
             step_index: 0,
+            wander_counted: 0.0,
             search_budget: (0, 0),
             step_base: 0,
             step_clocks: Vec::new(),
@@ -1608,9 +1613,11 @@ impl World {
         // A turn's first movement step comes before its logic (traced in the original:
         // a wanderer's order is given after it, a walk's end found in it handled then).
         self.update_wander(dt, true);
+        self.wander_counted = 0.0;
         self.first_steps();
         self.step_range = (1, self.step_clocks.len());
         prof!(self, "update_wander", self.update_wander(dt, false));
+        self.wander_counted = dt;
         self.step_walkers(dt);
         prof!(self, "computer_idle_workers", self.computer_idle_workers(dt));
         prof!(self, "update_guards", self.update_guards());

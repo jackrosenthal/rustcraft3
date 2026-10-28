@@ -675,6 +675,13 @@ these are the findings behind them.
     (read: sheep 1050122's search at step 0x54c took the budget to 66; it was refused
     at 0x553 to 0x555 and searched at 0x556; under the budget's limit check,
     `FUN_6f168310`, a walker over it is queued, not yet followed).
+  - A wanderer's wait (CAbilityWander, handler `FUN_6f5a5b40`) is a timer, event
+    0xd01bf, whose firing gives the walk (`FUN_6f5b03d0`); it is restarted, its wait
+    drawn on the main generator (`FUN_6f5aa910`, vf189 `FUN_6f59b070`), as an order
+    begins (0xd0178, `FUN_6f5af310`) and as one ends leaving the unit no order (0xd0148,
+    `FUN_6f5af350`).  Read on the main generator (the object at DAT_6fd53a48): the first
+    sheep's order drew at 5.034873 and its walk's end at 5.399847, the next wanderer's
+    order at 5.619831 and its end at 5.789819, its next order 6.42 later (12.209).
   - The blocked count's draw (`FUN_6f1689d0`: 2 for a goal within 12 cells and a walker
     alone, else 7 plus `FUN_6f1d62b0(2)`, 0 or 1) is on the generator at DAT_6fd53a48.
   - Open: which cells a walker's region holds as it moves.  Read: sheep 1050120, held at

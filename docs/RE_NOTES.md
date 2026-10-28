@@ -640,6 +640,16 @@ these are the findings behind them.
     heading 2.0233, its goal's bearing, its waypoint's 2.886), and arriving at the end
     of a way short of its goal it turns toward the goal too (`FUN_6f16e910` compares the
     heading with that bearing).
+  - Blocked (not yielding), a walker sets its count and drops its way (`FUN_6f168740`:
+    index -1, count 0, read at 9.42 after a block at 9.39), holding; the search runs as
+    its next step starts (`FUN_6f167ce0`, the way used up) and it goes on if the new way
+    is clear (sheep 1050117 searched and moved at 9.42).  With this the port follows
+    1050117 and 1050120 through 10.26; at 10.26 1050117's and 1050120's speeds squared
+    differ by one unit in the last place, and the original's 1050117 is the faster.
+    The port's positions drift from the original's by 3e-6 from the step at 8.85, where
+    its bearing to (432.5, 48.5) from (431.967072, 48.593716) is 6.1091104 and its
+    velocity (3.0777721, -0.5412371) against the original's (3.077775, -0.541219): the
+    acos and sine tables' emulation (`efloat`) wants checking bit for bit there.
   - Open: which cells a walker's region holds as it moves.  Read: sheep 1050120, held at
     7.53 to 7.56 after moving from 432.97 to 433.06, held cells 431 to 433 (both
     places); sheep 1050117 at 9.42 was blocked by 1050120, which had moved off that row

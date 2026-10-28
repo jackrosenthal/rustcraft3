@@ -1258,8 +1258,7 @@ impl World {
                 // a held sheep's region three cells wide, another's still on a row it had
                 // just left; a pig moving on steadily held only its place).
                 let (px, py) = ((v.x - origin[0]) / crate::pathing::CELL, (v.y - origin[1]) / crate::pathing::CELL);
-                let held = v.extra.mover.is_some_and(|m| m.vx & 0x7fff_ffff == 0 && m.vy & 0x7fff_ffff == 0);
-                let (qx, qy) = v.extra.step_from.filter(|_| held).map_or((px, py), |f| ((f.0 - origin[0]) / crate::pathing::CELL, (f.1 - origin[1]) / crate::pathing::CELL));
+                let (qx, qy) = (px, py);
                 let r = v.collision / crate::pathing::CELL;
                 let on = |a: f32, b: f32, c: i32| (a.min(b) - 0.5 - r).floor() as i32 <= c && c <= (a.max(b) - 0.5 + r).floor() as i32;
                 if on(px, qx, c.0) && on(py, qy, c.1) {
@@ -1301,28 +1300,15 @@ impl World {
             // known; 8 here.)
             u.extra.walk_blocked = if near { 2 } else { 8 };
         }
-        if u.extra.walk_blocked == 1 {
-            // It searches again and goes on in the same step toward its new way, checked
-            // as any step is (traced: a sheep's search at 7.56 and its move in that step;
-            // a pig's at 8.73, held by a walker in its new way).
-            u.extra.walk_blocked = 0;
-            if let Some(g) = goal {
-                u.path.clear();
-                u.extra.path_end_cell = None;
-                self.path_to(h, g);
-            }
-            let Some(u) = self.unit(h) else { return false };
-            // Nothing nearer: this step it only turns toward its goal, facing it from the
-            // next (traced: the first sheep turned 4.2315 to 4.0887 in its search step at
-            // 5.37 and ended in turn 56).
-            if u.extra.facing_goal {
-                return true;
-            }
-            let Some(&next) = u.path.first() else { return false };
-            let to = (((next.0 - origin[0]) / crate::pathing::CELL).to_bits(), ((next.1 - origin[1]) / crate::pathing::CELL).to_bits());
-            return self.held_back(h, m, to, clock);
+        // Blocked again just after searching again (the provider's answer 4): it holds,
+        // to search once more (what the original does then is not yet read).
+        if u.extra.walk_blocked > 1 {
+            u.extra.walk_blocked -= 1;
         }
-        u.extra.walk_blocked -= 1;
+        // Its way is dropped, to be searched again as the next step starts (read: index
+        // -1 and count 0 at 9.42 after a block at 9.39, the search then, and a move in
+        // that step when the new way is clear).
+        u.extra.walk_research = true;
         true
     }
 
@@ -1371,6 +1357,23 @@ impl World {
             done = Some(from);
         }
         for (k, &clock) in clocks.iter().enumerate().take(until).skip(from).take(if done.is_some() { 0 } else { usize::MAX }) {
+            // A dropped way is searched for again first; finding nothing nearer, the
+            // walker only turns toward its goal in this step (traced: the first sheep
+            // turned 4.2315 to 4.0887 in its search step at 5.37 and ended in turn 56).
+            if self.unit(h).is_some_and(|u| u.extra.walk_research) {
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.walk_research = false;
+                    u.path.clear();
+                    u.extra.path_end_cell = None;
+                }
+                if let Some(g) = goal {
+                    self.path_to(h, g);
+                }
+                if let (true, Some(g)) = (self.unit(h).is_some_and(|u| u.extra.facing_goal), goal) {
+                    m.hold(&gait, (cell(g.0, origin[0]), cell(g.1, origin[1])), clock);
+                    continue;
+                }
+            }
             let Some(&next) = self.unit(h).and_then(|u| u.path.first()) else {
                 done = Some(k);
                 break;

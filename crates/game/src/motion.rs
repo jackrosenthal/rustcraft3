@@ -137,6 +137,21 @@ impl Mover {
     /// One step toward a waypoint at a clock reading (`FUN_6f16a790`, `FUN_6f16e910`,
     /// `FUN_6f170880`, `FUN_6f16fe20`).
     pub fn step(&mut self, gait: &Gait, to: (u32, u32), now: u32) -> Step {
+        self.steer(gait, to, now, false)
+    }
+
+    /// Its speed squared, as the engine compares two units' (`FUN_6f168360`).
+    pub fn speed2(&self) -> u32 {
+        ef::add(ef::mul(self.vx, self.vx), ef::mul(self.vy, self.vy))
+    }
+
+    /// One step of a unit held back (`FUN_6f16fbd0` with its stop flag): it turns toward
+    /// its waypoint and does not move.
+    pub fn hold(&mut self, gait: &Gait, to: (u32, u32), now: u32) {
+        self.steer(gait, to, now, true);
+    }
+
+    fn steer(&mut self, gait: &Gait, to: (u32, u32), now: u32, stop: bool) -> Step {
         let (x, y) = self.at(now);
         let speed = ef::sqrt(ef::add(ef::mul(self.vx, self.vx), ef::mul(self.vy, self.vy)));
         let speed = if lt(abs(speed), TINY_ANGLE) { ZERO } else { speed };
@@ -148,12 +163,12 @@ impl Mover {
         // Within reach it only turns (`FUN_6f16fbd0` steering with the stop flag), and
         // with its heading on the way it is there.
         let within = !lt(gait.reach, dist);
-        if within && !lt(ON_HEADING, abs(angle)) {
+        if within && !stop && !lt(ON_HEADING, abs(angle)) {
             self.heading = heading;
             self.set_velocity(now, ZERO, ZERO);
             return Step::Reached;
         }
-        let mut speed = if within || !lt(abs(angle), gait.window) { ZERO } else { ef::add(speed, gait.grow) };
+        let mut speed = if stop || within || !lt(abs(angle), gait.window) { ZERO } else { ef::add(speed, gait.grow) };
         if lt(gait.top, speed) {
             speed = gait.top;
         }

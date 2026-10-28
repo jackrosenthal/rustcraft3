@@ -235,9 +235,11 @@ impl World {
             u.action = Action::Move { x, y };
             u.path.clear();
             u.repath_timer = 0.0;
+            let serial = self.tags.born;
             let slots = self.tags.move_issued();
             if let Some(u) = self.unit_mut(h) {
                 u.extra.order_tags = slots;
+                u.extra.walk_serial = serial;
             }
         }
     }

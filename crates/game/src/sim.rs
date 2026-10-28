@@ -754,20 +754,16 @@ impl World {
     /// other ground units' regions refusing their cells; the cells' middles to the goal,
     /// or to the node reached nearest it (searched again from there on reaching its
     /// cell), or none.
-    fn local_path(&self, h: u32, goal: (f32, f32)) -> Option<(Vec<(f32, f32)>, Option<(i32, i32)>)> {
-        let u = self.unit(h).filter(|u| u.extra.local_paths)?;
-        let p = self.pathing.as_ref()?;
-        let kind = self.move_kind(h);
-        if kind == crate::pathing::Move::Fly {
-            return None;
-        }
-        // Each other ground unit's collision region: on each axis the cells from
-        // floor(p - 0.5 - r) to floor(p - 0.5 + r), p its place and r its collision in
-        // cells (measured with Booty Bay's sheep).  A moving unit's region is excused
-        // (its flags hold 0x20000000, which the search does not count: read in the
-        // original, a pig's search past two moving pigs and one standing; a sheep whose
-        // walk had begun but who had not yet moved, turning, still blocked).
+    /// The cells other ground units' collision regions cover, as a search or a line
+    /// test sees them: on each axis the cells from floor(p - 0.5 - r) to
+    /// floor(p - 0.5 + r), p its place and r its collision in cells (measured with
+    /// Booty Bay's sheep).  A moving unit's region is excused (its flags hold
+    /// 0x20000000, which the test does not count: read in the original, a pig's search
+    /// past two moving pigs and one standing; a sheep whose walk had begun but who had
+    /// not yet moved, turning, still blocked).
+    fn regions_taken(&self, h: u32) -> std::collections::HashSet<(i32, i32)> {
         let mut taken = std::collections::HashSet::new();
+        let (Some(u), Some(p)) = (self.unit(h), self.pathing.as_ref()) else { return taken };
         for &o in &self.unit_order {
             let Some(v) = self.unit(o).filter(|v| o != h && !v.dead && !v.hidden && !v.is_building && v.collision > 0.0 && (v.x - u.x).abs() < 2048.0 && (v.y - u.y).abs() < 2048.0) else { continue };
             if v.extra.local_paths && v.extra.mover.is_some_and(|m| m.vx & 0x7fff_ffff != 0 || m.vy & 0x7fff_ffff != 0) {
@@ -784,6 +780,40 @@ impl World {
                 }
             }
         }
+        taken
+    }
+
+    /// The waypoints left once a walker at `from` (in cells) picks its target
+    /// (`FUN_6f167bf0`): the next waypoint, then each one after it while a straight line
+    /// from it to that one is clear (`line_clear`), stopping at the first that is not.
+    fn way_ahead(&self, h: u32, from: (u32, u32), way: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
+        let (Some(u), Some(p)) = (self.unit(h), self.pathing.as_ref()) else { return way };
+        if way.len() < 2 {
+            return way;
+        }
+        let class = crate::lrpath::class_of(u.collision / crate::pathing::CELL);
+        let kind = self.move_kind(h);
+        let taken = self.regions_taken(h);
+        let open = |c: (i32, i32)| p.passable(c, kind) && !taken.contains(&c);
+        let cell = |w: f32, o: f32| ((w - o) / crate::pathing::CELL).to_bits();
+        let mut k = 0;
+        for (j, w) in way.iter().enumerate().skip(1) {
+            if !line_clear(from, (cell(w.0, p.origin[0]), cell(w.1, p.origin[1])), class, &open) {
+                break;
+            }
+            k = j;
+        }
+        way[k..].to_vec()
+    }
+
+    fn local_path(&self, h: u32, goal: (f32, f32)) -> Option<(Vec<(f32, f32)>, Option<(i32, i32)>)> {
+        let u = self.unit(h).filter(|u| u.extra.local_paths)?;
+        let p = self.pathing.as_ref()?;
+        let kind = self.move_kind(h);
+        if kind == crate::pathing::Move::Fly {
+            return None;
+        }
+        let taken = self.regions_taken(h);
         struct Local<'a> {
             p: &'a crate::pathing::PathingMap,
             kind: crate::pathing::Move,
@@ -812,6 +842,11 @@ impl World {
 
     fn path_to_inner(&mut self, h: u32, goal: (f32, f32)) {
         if let Some((way, end)) = self.local_path(h, goal) {
+            let from = self.pathing.as_ref().zip(self.unit(h)).map(|(p, u)| (((u.x - p.origin[0]) / crate::pathing::CELL).to_bits(), ((u.y - p.origin[1]) / crate::pathing::CELL).to_bits()));
+            let way = match from {
+                Some(from) if end.is_none_or(|e| e != (i32::MIN, i32::MIN)) => self.way_ahead(h, from, way),
+                _ => way,
+            };
             if let Some(u) = self.unit_mut(h) {
                 u.path = way;
                 u.extra.facing_goal = end == Some((i32::MIN, i32::MIN));
@@ -1088,7 +1123,10 @@ impl World {
     /// logic.
     pub(crate) fn first_steps(&mut self) {
         self.step_range = (0, self.step_clocks.len().min(1));
-        let walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.local_paths && matches!(u.action, Action::Move { .. }))).collect();
+        let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.local_paths && matches!(u.action, Action::Move { .. }))).collect();
+        // The newest walk first (traced: a sheep whose order came later held another
+        // back before that one moved in the same step).
+        walkers.sort_by_key(|&h| std::cmp::Reverse(self.unit(h).map_or(0, |u| u.extra.walk_serial)));
         // New orders have their ways found in this step, before its movement.
         for &h in &walkers {
             let Some(u) = self.unit(h) else { continue };
@@ -1127,7 +1165,10 @@ impl World {
         let n = self.step_clocks.len();
         for k in 1..n {
             self.step_range = (k, k + 1);
-            let walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.local_paths && matches!(u.action, Action::Move { .. }))).collect();
+            let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.local_paths && matches!(u.action, Action::Move { .. }))).collect();
+        // The newest walk first (traced: a sheep whose order came later held another
+        // back before that one moved in the same step).
+        walkers.sort_by_key(|&h| std::cmp::Reverse(self.unit(h).map_or(0, |u| u.extra.walk_serial)));
             // The step's searches come before its movement (read: a sheep about to move
             // in the step still blocks another's search in it).
             for &h in &walkers {
@@ -1152,6 +1193,74 @@ impl World {
             }
         }
         self.step_range = (1, n);
+    }
+
+    /// Whether a walker is held back this step (the waypoint provider, `FUN_6f165ae0`):
+    /// while it waits it counts its wait down; else, short of its waypoint (beyond 0.49),
+    /// it looks at the cells it moves into (`FUN_6f166140`) for other walkers moving
+    /// there and settles who gives way (`FUN_6f168360`): it waits at least 4 steps for
+    /// one no slower than it (or of another size class), else that one waits at least
+    /// 20.  (Standing units and walls in the way, which the original steps around or
+    /// waits out, `FUN_6f167290`, are not yet taken.)
+    fn held_back(&mut self, h: u32, m: &crate::motion::Mover, to: (u32, u32), clock: u32) -> bool {
+        use crate::efloat as ef;
+        let Some(u) = self.unit_mut(h) else { return false };
+        if u.extra.walk_wait > 0 {
+            u.extra.walk_wait -= 1;
+            return true;
+        }
+        let (x, y) = m.at(clock);
+        let (dx, dy) = (ef::sub(to.0, x), ef::sub(to.1, y));
+        let d2 = f32::from_bits(ef::add(ef::mul(dx, dx), ef::mul(dy, dy)));
+        let reach = f32::from_bits(ef::mul(0.49f32.to_bits(), 0.49f32.to_bits()));
+        u.extra.yields_to = None;
+        if d2 <= reach {
+            return false;
+        }
+        let class = crate::lrpath::class_of(u.collision / crate::pathing::CELL);
+        let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return false };
+        // The cells a step ahead: the place at most a cell toward the waypoint
+        // (`FUN_6f168280`).
+        let (dx, dy) = unit_dir(ef::sub(to.0, x), ef::sub(to.1, y));
+        let (ax, ay) = (ef::add(x, dx), ef::add(y, dy));
+        let (cx, cy) = (f32::from_bits(x).floor() as i32, f32::from_bits(y).floor() as i32);
+        let (tx, ty) = (f32::from_bits(ax).floor() as i32, f32::from_bits(ay).floor() as i32);
+        let cells = edge_cells(class, (cx, cy), (tx, ty));
+        let mine = m.speed2();
+        // Each other walker whose region lies on those cells, in their order.
+        let mut seen = Vec::new();
+        for c in cells {
+            for &o in &self.unit_order {
+                if o == h || seen.contains(&o) {
+                    continue;
+                }
+                let Some(v) = self.unit(o).filter(|v| !v.dead && !v.hidden && !v.is_building && v.collision > 0.0) else { continue };
+                let (px, py) = ((v.x - origin[0]) / crate::pathing::CELL, (v.y - origin[1]) / crate::pathing::CELL);
+                let r = v.collision / crate::pathing::CELL;
+                let on = |a: f32, c: i32| (a - 0.5 - r).floor() as i32 <= c && c <= (a - 0.5 + r).floor() as i32;
+                if on(px, c.0) && on(py, c.1) {
+                    seen.push(o);
+                }
+            }
+        }
+        for o in seen {
+            let Some(v) = self.unit(o) else { continue };
+            let Some(theirs) = v.extra.mover.filter(|_| v.extra.local_paths).map(|m| m.speed2()) else { continue };
+            if theirs & 0x7fff_ffff == 0 || v.extra.yields_to.is_some_and(|w| self.unit(w).is_some_and(|w| !w.dead)) {
+                continue;
+            }
+            let other_class = crate::lrpath::class_of(v.collision / crate::pathing::CELL);
+            if !(f32::from_bits(theirs) < f32::from_bits(mine)) || other_class != class {
+                let u = self.unit_mut(h).unwrap();
+                u.extra.walk_wait = u.extra.walk_wait.max(4);
+                u.extra.yields_to = Some(o);
+                return true;
+            }
+            let v = self.unit_mut(o).unwrap();
+            v.extra.walk_wait = v.extra.walk_wait.max(20);
+            v.extra.yields_to = Some(h);
+        }
+        false
     }
 
     /// Walks a unit through this tick's movement steps as the original's engine does
@@ -1204,7 +1313,26 @@ impl World {
                 break;
             };
             let facing = self.unit(h).is_some_and(|u| u.extra.facing_goal);
-            let to = (cell(next.0, origin[0]), cell(next.1, origin[1]));
+            let mut to = (cell(next.0, origin[0]), cell(next.1, origin[1]));
+            // A waypoint short of the last, within 0.49, gives way to the next target at
+            // once, the walker not stopping (`FUN_6f167070`, `FUN_6f165e60`).
+            if !facing && self.unit(h).is_some_and(|u| u.path.len() > 1) {
+                let (x, y) = m.at(clock);
+                let (dx, dy) = (ef::sub(to.0, x), ef::sub(to.1, y));
+                let d2 = f32::from_bits(ef::add(ef::mul(dx, dx), ef::mul(dy, dy)));
+                if d2 <= f32::from_bits(ef::mul(0.49f32.to_bits(), 0.49f32.to_bits())) {
+                    let rest = self.unit_mut(h).map(|u| u.path.split_off(1)).unwrap_or_default();
+                    let way = self.way_ahead(h, (x, y), rest);
+                    let Some(u) = self.unit_mut(h) else { return true };
+                    u.path = way;
+                    let next = u.path[0];
+                    to = (cell(next.0, origin[0]), cell(next.1, origin[1]));
+                }
+            }
+            if !facing && self.held_back(h, &m, to, clock) {
+                m.hold(&gait, to, clock);
+                continue;
+            }
             let r = if facing { m.face(&gait, to, clock) } else { m.step(&gait, to, clock) };
             log::trace!("walk of {h} step {k}: {:?} heading {:.4} to {next:?}", r, f32::from_bits(m.heading));
             if r == crate::motion::Step::Moving {
@@ -3844,4 +3972,80 @@ impl World {
         }
         has("enemy")
     }
+}
+
+/// The cells a walker of a size class moves into on its way from cell `from` to cell
+/// `to`, by the way's direction (`FUN_6f167940`: 2 east, 8 west, 4 north, 1 south): its
+/// footprint's leading edge at `to` (`FUN_6f149560`, `FUN_6f1497c0`; larger classes,
+/// `FUN_6f149b00` and `FUN_6f149e60`, taken as class 1's).
+fn edge_cells(class: u8, from: (i32, i32), to: (i32, i32)) -> Vec<(i32, i32)> {
+    let mut dir = if to.0 < from.0 { 8 } else if from.0 < to.0 { 2 } else { 0 };
+    if to.1 < from.1 {
+        dir |= 1;
+    } else if from.1 < to.1 {
+        dir |= 4;
+    }
+    let (x, y) = to;
+    let row = |x0: i32, y: i32, n: i32| (x0..x0 + n).map(move |x| (x, y));
+    let col = |x: i32, y0: i32, n: i32| (y0..y0 + n).map(move |y| (x, y));
+    if class == 0 {
+        let mut v = vec![(x, y)];
+        match dir {
+            3 => v.extend([(x - 1, y), (x, y + 1)]),
+            6 => v.extend([(x - 1, y), (x, y - 1)]),
+            9 => v.extend([(x + 1, y), (x, y + 1)]),
+            12 => v.extend([(x + 1, y), (x, y - 1)]),
+            _ => {}
+        }
+        return v;
+    }
+    match dir {
+        1 => row(x - 1, y - 1, 2).collect(),
+        2 => col(x, y - 1, 2).collect(),
+        3 => row(x - 2, y - 1, 3).chain(col(x, y, 2)).collect(),
+        4 => row(x - 1, y, 2).collect(),
+        6 => row(x - 2, y, 3).chain(col(x, y - 2, 2)).collect(),
+        8 => col(x - 1, y - 1, 2).collect(),
+        9 => row(x - 1, y - 1, 3).chain(col(x - 1, y, 2)).collect(),
+        12 => row(x - 1, y, 3).chain(col(x - 1, y - 2, 2)).collect(),
+        _ => (y - 1..y + 1).flat_map(|y| (x - 1..x + 1).map(move |x| (x, y))).collect(),
+    }
+}
+
+/// A vector scaled to length 1 when longer (`FUN_6f168280`, engine floats).
+fn unit_dir(dx: u32, dy: u32) -> (u32, u32) {
+    use crate::efloat as ef;
+    let len = ef::sqrt(ef::add(ef::mul(dx, dx), ef::mul(dy, dy)));
+    if f32::from_bits(len) > 1.0 {
+        (ef::div(dx, len), ef::div(dy, len))
+    } else {
+        (dx, dy)
+    }
+}
+
+/// Whether a walker of a size class could go straight from `from` to `to` (in cells,
+/// `FUN_6f168d30`): at each whole cell's distance along the line short of its end, the
+/// leading edge of its footprint in the cell reached is open (`FUN_6f149630` for class
+/// 1), the edge's direction from the cell last tested (from cell 0, 0 at first: the
+/// original drops the start cell it works out).
+fn line_clear(from: (u32, u32), to: (u32, u32), class: u8, open: &impl Fn((i32, i32)) -> bool) -> bool {
+    use crate::efloat as ef;
+    let (dx, dy) = (ef::sub(to.0, from.0), ef::sub(to.1, from.1));
+    let len = ef::sqrt(ef::add(ef::mul(dx, dx), ef::mul(dy, dy)));
+    let (ux, uy) = unit_dir(dx, dy);
+    let one = 1.0f32.to_bits();
+    let mut t = one;
+    let mut prev = (0, 0);
+    while f32::from_bits(t) < f32::from_bits(len) {
+        let (px, py) = (ef::add(from.0, ef::mul(ux, t)), ef::add(from.1, ef::mul(uy, t)));
+        let c = (f32::from_bits(px).floor() as i32, f32::from_bits(py).floor() as i32);
+        if c != prev {
+            if !edge_cells(class, prev, c).into_iter().all(open) {
+                return false;
+            }
+            prev = c;
+        }
+        t = ef::add(t, one);
+    }
+    true
 }

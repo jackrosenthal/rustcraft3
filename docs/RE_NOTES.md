@@ -605,8 +605,26 @@ these are the findings behind them.
   each moving one `FUN_6f168360` settles who yields: the unit no faster than the other
   (or of another class, or with flags that differ) notes it and waits at least 4 steps
   (`FUN_6f168070`), otherwise a wait of 20 (0x14) is set the other way.  Blocked and not
-  waiting, it goes on to `FUN_6f167290`.  This is likely what holds Booty Bay's sheep
-  1050117 back from 7.17 to past 7.56 while 1050120 passes.
+  waiting, it goes on to `FUN_6f167290`.  Traced in the original: sheep 1050117's
+  path got the wait 20 before its step at 7.53 (its place 431.8735, 48.5884, as the
+  port's), set by sheep 1050120 moving east at (3.1247, 0.0414), strictly faster in
+  engine floats; then waits of 4 again and again as 1050120 passed.  The port now
+  holds walkers back this way (standing units and walls in the way are not yet
+  taken).  Read with it:
+  - The cells checked are those a step ahead: the place plus at most one cell toward
+    the target (`FUN_6f168280`, scaling to length 1 by the reciprocal), the footprint's
+    leading edge there by the direction from the unit's cell (`FUN_6f167940`: 2 east,
+    8 west, 4 north, 1 south; class 1's cells from `FUN_6f1497c0`).
+  - A walker's target is not its next node: at the start and whenever a target is
+    reached (within 0.49), it takes the next node, then each further node while a
+    straight line to it is clear (`FUN_6f167bf0`, `FUN_6f168d30`: probes at whole
+    cells along the line short of its end, each new cell's leading edge tested as a
+    search tests cells, the first against cell 0, 0, since the original drops the start
+    cell it works out).  It does not stop at a node it passes; only the way's end needs
+    the heading on it (sheep 1050120's target at 7.53 was (432.5, 52.5), six cells
+    on).
+  - Walkers take each step newest walk first (1050120, ordered after 1050117, held it
+    back before it moved in that step).
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

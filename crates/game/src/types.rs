@@ -425,6 +425,16 @@ pub struct UnitExtra {
     /// Its walk has had a goal beyond reach (so it moves).
     #[serde(default)]
     pub walk_moved: bool,
+    /// When its walk's order was given (the tags' birth count then): walkers take each
+    /// step newest first.
+    #[serde(default)]
+    pub walk_serial: u32,
+    /// Steps it waits, held back by another walker (the path's +0x94).
+    #[serde(default)]
+    pub walk_wait: u32,
+    /// The walker it waits for (the path's +0xa8, +0xac).
+    #[serde(default)]
+    pub yields_to: Option<u32>,
     /// Its last walk ended in the last movement step of its tick.
     #[serde(default)]
     pub arrived_last_step: bool,
@@ -644,6 +654,9 @@ impl Default for UnitExtra {
             path_end_cell: None,
             arrived_last_step: false,
             walk_moved: false,
+            walk_wait: 0,
+            walk_serial: 0,
+            yields_to: None,
             mover: None,
             facing_goal: false,
             walk_from: None,

@@ -588,6 +588,14 @@ these are the findings behind them.
   (`FUN_6f168910`: 10 counter units for kinds 0 and 1, 64 and 32 for others), the
   spacing reset when the class's nodes searched in the step stay under 64
   (`FUN_6f166e90`); a way ending short of its goal sets the path's flag 0x10000000.
+- A path (CLrPath) holds two ways: a coarse one (points at +0x60, count +0x70, index
+  +0x78), whose next target is the point some 10 cells along (`FUN_6f167ae0`) or else
+  the goal (+0x1c, `FUN_6f167d70`), and the local search's (points at +0x40, count
+  +0x50, index +0x74), searched afresh toward that target when used up
+  (`FUN_6f167ce0`).  A wanderer's coarse way is empty, so its local search runs to its
+  goal, as the port has it.  The member step (`FUN_6f16a790`) takes the unit's
+  velocity (+0x80, +0x84 of its mover), steers (`FUN_6f16fbd0`), caps the speed at
+  +0x88, and sets the member's flags 0x10000 and 0x20000 from the steering's answers.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

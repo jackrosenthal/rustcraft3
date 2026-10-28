@@ -636,8 +636,14 @@ these are the findings behind them.
     -5627.1, -4500.0 stand at -5719.5, -4560.25 and -5627.25, -4500.0).
   - A walk given before a turn's first step searches and moves in that step (the pig
     given at 7.6012 moved in the step at 7.62).
-  - Still open: after its hold, pig 1050124 leaves at 144 degrees in the original, 165
-    in the port (a nearer target chosen after waiting).
+  - A held walker turns toward its order's goal (the member's +0x18; read: a held pig's
+    heading 2.0233, its goal's bearing, its waypoint's 2.886), and arriving at the end
+    of a way short of its goal it turns toward the goal too (`FUN_6f16e910` compares the
+    heading with that bearing).
+  - Wanderers' orders due between steps are given just before the step after them,
+    among the walkers' steps, and a walk's path (`l^pa`, `^clu`) goes as the next step
+    starts (traced at turn 101: a pig's walk ending in step 1, an order due before step
+    2, the pig's path, then another walk's end in step 2).
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

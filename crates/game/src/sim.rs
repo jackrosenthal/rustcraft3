@@ -1156,9 +1156,18 @@ impl World {
     /// The tick's movement steps after its first for wanderers, step by step, each
     /// walker in turn: a new order's way found in its first step (its search in the
     /// step after its order, traced), then its steps.
-    pub(crate) fn step_walkers(&mut self) {
+    pub(crate) fn step_walkers(&mut self, dt: f32) {
         let n = self.step_clocks.len();
+        let due = std::mem::take(&mut self.wander_due);
         for k in 1..n {
+            // The orders due before this step are given first (traced: a pig's walk ended
+            // in a turn's second step, before an order due after it).
+            for &(kd, wait, h) in due.iter().filter(|e| e.0 == k) {
+                self.issue_wander(kd, wait, h, dt);
+            }
+            // A walk's path goes a step after it ends (traced: freed after an order due
+            // before the next step, before another walk's end in that step).
+            self.tags.free_step();
             self.step_range = (k, k + 1);
             let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.local_paths && matches!(u.action, Action::Move { .. }))).collect();
         // The newest walk first (traced: sheep 1050120, given its order after 1050117,
@@ -1186,6 +1195,9 @@ impl World {
                     }
                 }
             }
+        }
+        for &(kd, wait, h) in due.iter().filter(|e| e.0 >= n.max(1)) {
+            self.issue_wander(kd, wait, h, dt);
         }
         self.step_range = (1, n);
     }
@@ -1359,10 +1371,19 @@ impl World {
                 }
             }
             if !facing && self.held_back(h, &m, to, clock) {
-                m.hold(&gait, to, clock);
+                // Held, it turns toward its order's goal (read: a held pig's heading the
+                // goal's bearing, 2.0233, its waypoint's 2.886).
+                let toward = goal.map_or(to, |g| (cell(g.0, origin[0]), cell(g.1, origin[1])));
+                m.hold(&gait, toward, clock);
                 continue;
             }
-            let r = if facing { m.face(&gait, to, clock) } else { m.step(&gait, to, clock) };
+            // The last waypoint of a way short of its goal is arrived at facing the goal.
+            let beyond = goal.filter(|_| self.unit(h).is_some_and(|u| u.path.len() == 1 && u.extra.path_end_cell.is_some()));
+            let r = match (facing, beyond) {
+                (true, _) => m.face(&gait, to, clock),
+                (false, Some(g)) => m.step_facing(&gait, to, (cell(g.0, origin[0]), cell(g.1, origin[1])), clock),
+                (false, None) => m.step(&gait, to, clock),
+            };
             log::trace!("walk of {h} step {k}: {:?} heading {:.4} to {next:?}", r, f32::from_bits(m.heading));
             if r == crate::motion::Step::Moving {
                 continue;

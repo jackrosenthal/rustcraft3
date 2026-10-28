@@ -215,32 +215,43 @@ impl World {
             }
         }
         due.sort_by(|a, b| a.1.total_cmp(&b.1));
+        // Those after the first step go among the steps (`World::step_walkers`).
+        if !before_steps {
+            self.wander_due = due;
+            return;
+        }
         for (k, wait, h) in due {
-            let next = self.rng.real(5.0, 10.0);
-            // The point: on each axis, x first, a draw of stream 8 times 500 less 250
-            // (CAbilityWander vf190, FUN_6f59af20; its constants read from the running
-            // original: 250 and 500).
-            let r = &mut self.rand_data.streams[8];
-            let dx = r.real(0.0, 1.0) * 500.0 - 250.0;
-            let dy = r.real(0.0, 1.0) * 500.0 - 250.0;
-            // The next wait counts from this one's time (read in the original: a wait
-            // drawn at the clock 5.444844 as the last fell due).
-            let u = self.unit_mut(h).unwrap();
-            u.extra.wander_wait = Some(next - (dt - wait));
-            // One given before the tick's first step walks in it (traced: a pig given at
-            // 7.6012 searched and moved in the step at 7.62).
-            u.extra.walk_from = Some(k);
-            let (x, y) = (u.x + dx, u.y + dy);
-            log::debug!("wander: {h:#x} {} from ({:.1},{:.1}) to ({x:.1},{y:.1}) before step {k}", crate::objects::id_str(u.type_id), u.x, u.y);
-            u.action = Action::Move { x, y };
-            u.path.clear();
-            u.repath_timer = 0.0;
-            let serial = self.tags.born;
-            let slots = self.tags.move_issued();
-            if let Some(u) = self.unit_mut(h) {
-                u.extra.order_tags = slots;
-                u.extra.walk_serial = serial;
-            }
+            self.issue_wander(k, wait, h, dt);
+        }
+    }
+
+    /// A wanderer's order given at its time (`update_wander`): the walk to its point, its
+    /// next wait drawn.
+    pub(crate) fn issue_wander(&mut self, k: usize, wait: f32, h: u32, dt: f32) {
+        let next = self.rng.real(5.0, 10.0);
+        // The point: on each axis, x first, a draw of stream 8 times 500 less 250
+        // (CAbilityWander vf190, FUN_6f59af20; its constants read from the running
+        // original: 250 and 500).
+        let r = &mut self.rand_data.streams[8];
+        let dx = r.real(0.0, 1.0) * 500.0 - 250.0;
+        let dy = r.real(0.0, 1.0) * 500.0 - 250.0;
+        // The next wait counts from this one's time (read in the original: a wait
+        // drawn at the clock 5.444844 as the last fell due).
+        let u = self.unit_mut(h).unwrap();
+        u.extra.wander_wait = Some(next - (dt - wait));
+        // One given before the tick's first step walks in it (traced: a pig given at
+        // 7.6012 searched and moved in the step at 7.62).
+        u.extra.walk_from = Some(k);
+        let (x, y) = (u.x + dx, u.y + dy);
+        log::debug!("wander: {h:#x} {} from ({:.1},{:.1}) to ({x:.1},{y:.1}) before step {k}", crate::objects::id_str(u.type_id), u.x, u.y);
+        u.action = Action::Move { x, y };
+        u.path.clear();
+        u.repath_timer = 0.0;
+        let serial = self.tags.born;
+        let slots = self.tags.move_issued();
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.order_tags = slots;
+            u.extra.walk_serial = serial;
         }
     }
 }

@@ -233,6 +233,10 @@ pub struct World {
     /// The steps walks take now: a tick's first before its logic, the rest after.
     #[serde(skip)]
     pub step_range: (usize, usize),
+    /// Wanderers' orders due among this tick's steps after its first: the step each
+    /// comes before, its wait, the unit (`World::update_wander`).
+    #[serde(skip)]
+    pub wander_due: Vec<(usize, f32, u32)>,
     /// CreateBlightedGoldmine is making the gold mine it hides.
     #[serde(skip)]
     pub hidden_mine: bool,
@@ -723,6 +727,7 @@ impl World {
             step_clocks: Vec::new(),
             step_times: Vec::new(),
             step_range: (0, 0),
+            wander_due: Vec::new(),
             hidden_mine: false,
             cheat_fog: None,
             volume_groups: full_volume(),
@@ -1579,7 +1584,7 @@ impl World {
         self.first_steps();
         self.step_range = (1, self.step_clocks.len());
         prof!(self, "update_wander", self.update_wander(dt, false));
-        self.step_walkers();
+        self.step_walkers(dt);
         prof!(self, "computer_idle_workers", self.computer_idle_workers(dt));
         prof!(self, "update_guards", self.update_guards());
         prof!(self, "update_creep_sleep", self.update_creep_sleep(dt));

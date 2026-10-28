@@ -69,6 +69,9 @@ pub struct Tags {
     /// Freed as the next turn starts.
     #[serde(default)]
     pub next_turn: Vec<u32>,
+    /// Freed as the next movement step starts (`World::step_walkers`).
+    #[serde(default)]
+    pub next_step: Vec<u32>,
     /// Slots released after a delay: the game time they fall due, in the order queued.
     #[serde(default)]
     pub timed: Vec<(f64, u32)>,
@@ -92,7 +95,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), later: Vec::new(), next_turn: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None }
+        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), later: Vec::new(), next_turn: Vec::new(), next_step: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -166,8 +169,16 @@ impl Tags {
         self.free_doomed();
     }
 
+    /// Frees what waits for the next movement step.
+    pub fn free_step(&mut self) {
+        for s in std::mem::take(&mut self.next_step) {
+            self.release(s);
+        }
+    }
+
     /// Frees what has been released so far.
     pub fn free_doomed(&mut self) {
+        self.free_step();
         for s in std::mem::take(&mut self.doomed) {
             self.release(s);
         }
@@ -233,7 +244,7 @@ impl Tags {
             if late {
                 self.later.push(s);
             } else {
-                self.doom(s);
+                self.next_step.push(s);
             }
         }
     }

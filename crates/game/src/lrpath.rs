@@ -166,9 +166,17 @@ pub fn search(cells: &impl Cells, start: (i32, i32), goal: (i32, i32), class: u8
 /// searcher's +0xd0 as it refuses one; a walker whose search met none heads straight
 /// for its way's end, `FUN_6f166e90`).
 pub fn search_seeing(cells: &impl Cells, start: (i32, i32), goal: (i32, i32), class: u8, limit: u32) -> (Outcome, bool) {
+    let (out, refused, _) = search_costing(cells, start, goal, class, limit);
+    (out, refused)
+}
+
+/// `search_seeing`, and its cost: the passes of its loop (the searcher's +0x6c, counted
+/// as each pass begins with nodes open, the one that finds its limit reached too; read:
+/// a sheep's search stopped by its 32 cost 33).
+pub fn search_costing(cells: &impl Cells, start: (i32, i32), goal: (i32, i32), class: u8, limit: u32) -> (Outcome, bool, u32) {
     let mut refused = false;
     if start == goal {
-        return (Outcome::Found(vec![start]), refused);
+        return (Outcome::Found(vec![start]), refused, 1);
     }
     let (r, n, masks) = RINGS[class.min(3) as usize];
     let mut nodes: HashMap<(i32, i32), Node> = HashMap::new();
@@ -245,7 +253,8 @@ pub fn search_seeing(cells: &impl Cells, start: (i32, i32), goal: (i32, i32), cl
     } else {
         Outcome::Nearest(path(best.1))
     };
-    (out, refused)
+    let cost = pops + u32::from(!found && heap.len() >= 2);
+    (out, refused, cost)
 }
 
 #[cfg(test)]

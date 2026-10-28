@@ -436,6 +436,10 @@ pub struct UnitExtra {
     /// (`FUN_6f168740`, then `FUN_6f167ce0`).
     #[serde(default)]
     pub walk_research: bool,
+    /// The step of its last local search, while searches are spaced for it (the path's
+    /// +0x7c): none once a search leaves its class's budget under 64 passes.
+    #[serde(default)]
+    pub search_at: Option<u64>,
     /// Steps it waits, held back by another walker (the path's +0x94).
     #[serde(default)]
     pub walk_wait: u32,
@@ -667,6 +671,7 @@ impl Default for UnitExtra {
             walk_moved: false,
             walk_wait: 0,
             walk_research: false,
+            search_at: None,
             step_from: None,
             walk_blocked: 0,
             walk_serial: 0,

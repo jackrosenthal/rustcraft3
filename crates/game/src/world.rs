@@ -221,10 +221,28 @@ pub struct World {
     /// 100 ms turns; `FUN_6f15aa80`).
     #[serde(skip)]
     pub steps: u32,
-    /// The engine's game clock (its single's bits), 0.03 more each movement step by the
-    /// engine's addition (`motion`), and its readings at this tick's steps.
+    /// The engine's game clock (its single's bits) at the next movement step, six 0.005s
+    /// more each step by the engine's addition (`motion::next_step`); its reading at the
+    /// last step before this tick's, and its readings at them.  A step reads the clock
+    /// before it moves on (read: sheep 1050120's velocity set at 7.949662 is the one the
+    /// port set a step's clock later; its place's step over 8.0 then differs).
     #[serde(default)]
     pub engine_clock: u32,
+    #[serde(default)]
+    pub last_step_clock: u32,
+    /// Movement steps since the game began, and the first of this tick's (the engine's
+    /// step count at DAT_6fd53a48 + 0x538 counts on from 1024).
+    #[serde(default)]
+    pub steps_total: u64,
+    #[serde(skip)]
+    pub step_index: u64,
+    /// The local searches' budget for the walkers' class (`DAT_6fd53ae4` + 15 * 0x70:
+    /// 1100 passes, renewed every other step, at odd steps): its two steps' window and
+    /// the passes searches have used in it.
+    #[serde(default)]
+    pub search_budget: (u64, u32),
+    #[serde(skip)]
+    pub step_base: u32,
     #[serde(skip)]
     pub step_clocks: Vec<u32>,
     /// The game times of this tick's steps, from its start.
@@ -724,6 +742,11 @@ impl World {
             network: false,
             steps: 0,
             engine_clock: 0,
+            last_step_clock: 0,
+            steps_total: 0,
+            step_index: 0,
+            search_budget: (0, 0),
+            step_base: 0,
             step_clocks: Vec::new(),
             step_times: Vec::new(),
             step_range: (0, 0),
@@ -1521,10 +1544,14 @@ impl World {
         let step = |t: f64| ((t * 1000.0 - off) / 30.0 + 1e-6).floor() as i64;
         self.steps = (step(before + dt as f64) - step(before)).max(0) as u32;
         self.step_clocks.clear();
+        self.step_base = self.last_step_clock;
+        self.step_index = self.steps_total;
+        self.steps_total += self.steps as u64;
         self.step_times = (step(before) + 1..=step(before + dt as f64)).map(|j| (j as f64 * 30.0) / 1000.0 - before).collect();
         for _ in 0..self.steps {
-            self.engine_clock = crate::efloat::add(self.engine_clock, crate::motion::STEP);
             self.step_clocks.push(self.engine_clock);
+            self.last_step_clock = self.engine_clock;
+            self.engine_clock = crate::motion::next_step(self.engine_clock);
         }
         self.time_exact = self.time_exact.max(self.time as f64) + dt as f64;
         self.time = self.time_exact as f32;

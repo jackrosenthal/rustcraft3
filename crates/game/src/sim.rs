@@ -806,7 +806,7 @@ impl World {
         way[k..].to_vec()
     }
 
-    fn local_path(&self, h: u32, goal: (f32, f32)) -> Option<(Vec<(f32, f32)>, Option<(i32, i32)>)> {
+    fn local_path(&self, h: u32, goal: (f32, f32)) -> Option<(Vec<(f32, f32)>, Option<(i32, i32)>, u32)> {
         let u = self.unit(h).filter(|u| u.extra.local_paths)?;
         let p = self.pathing.as_ref()?;
         let kind = self.move_kind(h);
@@ -827,7 +827,7 @@ impl World {
         let cells = Local { p, kind, taken };
         let class = crate::lrpath::class_of(u.collision / crate::pathing::CELL);
         let (start, end) = (p.cell_of(u.x, u.y), p.cell_of(goal.0, goal.1));
-        let (out, refused) = crate::lrpath::search_seeing(&cells, start, end, class, 32);
+        let (out, refused, cost) = crate::lrpath::search_costing(&cells, start, end, class, 32);
         log::debug!("search for {h} from {start:?} to {end:?}: {:?} refused {refused}", match &out { crate::lrpath::Outcome::Found(c) => format!("found {}", c.len()), crate::lrpath::Outcome::Nearest(c) => format!("nearest {:?}", c.last()), crate::lrpath::Outcome::Stay => "stay".into() });
         // A search that met no refused cell sends the walker straight to its way's end
         // (`FUN_6f166e90`: the way's index set to its end, else to its first node).
@@ -837,17 +837,40 @@ impl World {
                 let mut way: Vec<(f32, f32)> = c[1..].iter().map(|&c| p.center(c)).collect();
                 way.pop();
                 way.push(goal);
-                (straight(way), None)
+                (straight(way), None, cost)
             }
-            crate::lrpath::Outcome::Nearest(c) => (straight(c[1..].iter().map(|&c| p.center(c)).collect()), c.last().copied()),
+            crate::lrpath::Outcome::Nearest(c) => (straight(c[1..].iter().map(|&c| p.center(c)).collect()), c.last().copied(), cost),
             // Nowhere nearer: it turns toward the goal where it stands (`Mover::face`).
-            crate::lrpath::Outcome::Stay => (vec![goal], Some((i32::MIN, i32::MIN))),
+            crate::lrpath::Outcome::Stay => (vec![goal], Some((i32::MIN, i32::MIN)), cost),
         })
     }
 
     fn path_to_inner(&mut self, h: u32, goal: (f32, f32)) {
-        if let Some((way, end)) = self.local_path(h, goal) {
+        // A walker's local search waits ten steps after its last while its class's
+        // budget is spent past 64 passes (`FUN_6f166e90`, `FUN_6f168910`: read, sheep
+        // 1050122's search at step 0x54c took the budget to 66, and its tries at 0x553
+        // to 0x555 were refused, at 0x556 allowed); refused, its way stays dropped and
+        // it tries again the next step.
+        let now = self.step_index + self.step_range.0 as u64;
+        let local = self.unit(h).is_some_and(|u| u.extra.local_paths) && self.move_kind(h) != crate::pathing::Move::Fly;
+        if local && self.unit(h).and_then(|u| u.extra.search_at).is_some_and(|t| now.wrapping_sub(t) < 10) {
             if let Some(u) = self.unit_mut(h) {
+                u.path.clear();
+                u.extra.path_end_cell = None;
+                u.extra.facing_goal = false;
+                u.extra.walk_research = true;
+            }
+            return;
+        }
+        if let Some((way, end, cost)) = self.local_path(h, goal) {
+            let window = (now + 1) / 2;
+            if self.search_budget.0 != window {
+                self.search_budget = (window, 0);
+            }
+            self.search_budget.1 += cost;
+            let spaced = self.search_budget.1 >= 64;
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.search_at = spaced.then_some(now);
                 u.path = way;
                 u.extra.facing_goal = end == Some((i32::MIN, i32::MIN));
                 u.extra.path_end_cell = end.filter(|&e| e != (i32::MIN, i32::MIN));
@@ -1284,22 +1307,27 @@ impl World {
             v.extra.walk_wait = v.extra.walk_wait.max(20);
             v.extra.yields_to = Some(h);
         }
-        let Some(u) = self.unit_mut(h) else { return false };
         if !blocked {
             // A free step clears the count (`FUN_6f1687e0`).
-            u.extra.walk_blocked = 0;
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.walk_blocked = 0;
+            }
             return false;
         }
-        if u.extra.walk_blocked == 0 {
+        if self.unit(h).is_some_and(|u| u.extra.walk_blocked == 0) {
             let near = goal.is_some_and(|g| {
                 let (gx, gy) = ((g.0 - origin[0]) / crate::pathing::CELL, (g.1 - origin[1]) / crate::pathing::CELL);
                 let (px, py) = (f32::from_bits(x), f32::from_bits(y));
                 (gx - px) * (gx - px) + (gy - py) * (gy - py) <= 144.0
             });
-            // (The original draws 7 to 9 for a far goal, from a generator not yet
-            // known; 8 here.)
-            u.extra.walk_blocked = if near { 2 } else { 8 };
+            // (The original draws 7 or 8 for a far goal, `FUN_6f1d62b0(2)` on the
+            // generator at DAT_6fd53a48, whose draws are not yet followed; 8 here.)
+            let k = if near { 2 } else { 8 };
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.walk_blocked = k;
+            }
         }
+        let Some(u) = self.unit_mut(h) else { return false };
         // Blocked again just after searching again (the provider's answer 4): it holds,
         // to search once more (what the original does then is not yet read).
         if u.extra.walk_blocked > 1 {
@@ -1320,14 +1348,14 @@ impl World {
         use crate::efloat as ef;
         let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return true };
         let f = |v: f32| v.to_bits();
-        let cell = |w: f32, o: f32| f((w - o) / crate::pathing::CELL);
+        let cell = |w: f32, o: f32| ef::div(ef::sub(f(w), f(o)), f(crate::pathing::CELL));
         let Some(u) = self.unit(h) else { return true };
         let top = self.current_move_speed(h) / crate::pathing::CELL;
         let o = self.objects.units.get(u.type_id);
         let turn = o.map_or(0.5, |o| o.real("turnRate"));
         let window = o.map_or(60.0, |o| o.real("propWin")).to_radians();
         let gait = crate::motion::Gait { top: f(top), grow: f(top), turn: f(turn), window: f(window), reach: f(0.49) };
-        let start = self.step_clocks.first().map_or(self.engine_clock, |&c| ef::sub(c, crate::motion::STEP));
+        let start = if self.step_clocks.is_empty() { self.last_step_clock } else { self.step_base };
         let mut m = u.extra.mover.unwrap_or(crate::motion::Mover { x: cell(u.x, origin[0]), y: cell(u.y, origin[1]), heading: f(u.facing.to_radians()), placed_at: start, ..Default::default() });
         let goal = match u.action {
             Action::Move { x, y } => Some((x, y)),
@@ -1369,7 +1397,10 @@ impl World {
                 if let Some(g) = goal {
                     self.path_to(h, g);
                 }
-                if let (true, Some(g)) = (self.unit(h).is_some_and(|u| u.extra.facing_goal), goal) {
+                // Refused its search, it holds toward its goal (read: sheep 1050122,
+                // refused three steps, turned toward its goal meanwhile).
+                let waits = self.unit(h).is_some_and(|u| u.extra.facing_goal || u.extra.walk_research);
+                if let (true, Some(g)) = (waits, goal) {
                     m.hold(&gait, (cell(g.0, origin[0]), cell(g.1, origin[1])), clock);
                     continue;
                 }

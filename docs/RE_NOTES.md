@@ -650,6 +650,33 @@ these are the findings behind them.
     its bearing to (432.5, 48.5) from (431.967072, 48.593716) is 6.1091104 and its
     velocity (3.0777721, -0.5412371) against the original's (3.077775, -0.541219): the
     acos and sine tables' emulation (`efloat`) wants checking bit for bit there.
+  - The game clock moves by 0.005 at a time: its timer queue (`FUN_6f054190` adds the
+    frame's time; `FUN_6f052380` sets the clock to each due event's time as it fires;
+    `FUN_6f053710` reschedules a periodic timer at its time plus its period, by the
+    engine's addition) has a timer every 0.005, so a movement step's clock is six such
+    additions on from the last (read: the clock at steps 5.069871, 8.849516, 11.069143,
+    32.395412, and 46.017925, each bit for bit the 0.005s summed from 0; the steps
+    0.029998 apart from 4 to 8 seconds, 0.029995 from 8 to 32, 0.029983 from 32).  A
+    step reads the clock before it moves on: the first step's clock is 0.
+  - A step's velocity is the speed times the cosine and sine of the heading before it is
+    wrapped into 0 to two pi (read: sheep 1050117 turned to -0.174075 at 8.85, its
+    velocity (3.077775, -0.541219) that angle's; 6.1091104's table step truncates the
+    other way).  A walker's goal in cells is the engine's difference of world points,
+    divided (read: 427.847565, not the rounded 427.8475952).
+  - A walker's local search (`FUN_6f166e90`) is spaced and budgeted: `FUN_6f168910`
+    refuses it when fewer than 10 steps (the table at 0x6fa91c14, kind 0) have passed
+    since the walker's last (the path's +0x7c, the engine's step count at
+    DAT_6fd53a48 + 0x538); after it, its cost (the searcher's +0x6c, its loop's passes:
+    33 for a sheep's search stopped by its limit of 32) is added to its class's budget
+    (`DAT_6fd53ae4` + class * 0x70: the sheep's and pigs' class 15, word 0x000102bc,
+    limit 1100 at +4, used at +8, renewed every other step by `FUN_6f167fa0` from
+    `FUN_6f167310`), and the walker's +0x7c is cleared while the budget's use stays
+    under 64.  Refused, its way stays dropped and it holds, turning toward its goal
+    (read: sheep 1050122's search at step 0x54c took the budget to 66; it was refused
+    at 0x553 to 0x555 and searched at 0x556; under the budget's limit check,
+    `FUN_6f168310`, a walker over it is queued, not yet followed).
+  - The blocked count's draw (`FUN_6f1689d0`: 2 for a goal within 12 cells and a walker
+    alone, else 7 plus `FUN_6f1d62b0(2)`, 0 or 1) is on the generator at DAT_6fd53a48.
   - Open: which cells a walker's region holds as it moves.  Read: sheep 1050120, held at
     7.53 to 7.56 after moving from 432.97 to 433.06, held cells 431 to 433 (both
     places); sheep 1050117 at 9.42 was blocked by 1050120, which had moved off that row

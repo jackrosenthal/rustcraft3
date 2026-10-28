@@ -237,13 +237,14 @@ impl World {
         let dy = r.real(0.0, 1.0) * 500.0 - 250.0;
         // The next wait counts from this one's time (read in the original: a wait
         // drawn at the clock 5.444844 as the last fell due).
+        let at = self.time + wait;
         let u = self.unit_mut(h).unwrap();
         u.extra.wander_wait = Some(next - (dt - wait));
         // One given before the tick's first step walks in it (traced: a pig given at
         // 7.6012 searched and moved in the step at 7.62).
         u.extra.walk_from = Some(k);
         let (x, y) = (u.x + dx, u.y + dy);
-        log::debug!("wander: {h:#x} {} from ({:.1},{:.1}) to ({x:.1},{y:.1}) before step {k}", crate::objects::id_str(u.type_id), u.x, u.y);
+        log::debug!("wander: {h:#x} {} from ({:.1},{:.1}) to ({x:.1},{y:.1}) before step {k} at {at:.4}, next {next:.4}", crate::objects::id_str(u.type_id), u.x, u.y);
         u.action = Action::Move { x, y };
         u.path.clear();
         u.repath_timer = 0.0;

@@ -6,8 +6,18 @@
 
 use crate::efloat as ef;
 
-/// The game clock's step, 0.03 seconds.
-pub const STEP: u32 = 0x3cf5_c28f;
+/// The game clock's tick, 0.005 seconds: its timer queue's clock moves from event to
+/// event, and a timer every tick sets it to 0.005 more by the engine's addition each
+/// time (watched: the first write 0.005; `FUN_6f053710` reschedules a periodic timer at
+/// its time plus its period, `FUN_6f052380` sets the clock to each event's time).
+pub const TICK: u32 = 0x3ba3_d70a;
+
+/// The clock at the next movement step, six ticks on (read: the clock at the steps
+/// 5.069871, 8.849516, 11.069143, 32.395412, and 46.017925, each bit for bit the
+/// 0.005s summed; the steps 0.029995 apart from 8 to 32 seconds, not 0.03).
+pub fn next_step(clock: u32) -> u32 {
+    (0..6).fold(clock, |c, _| ef::add(c, TICK))
+}
 /// Angles under this count as none (0x6fcd5470).
 const TINY_ANGLE: u32 = 0x3456_bf95;
 /// A heading this near its way's counts as on it (0x6fcd53d4).
@@ -200,8 +210,11 @@ impl Mover {
             heading = ef::add(heading, if lt(angle, ZERO) { t | 0x8000_0000 } else { t });
         }
         self.heading = wrap(heading);
+        // The velocity is taken from the heading before it is wrapped (read: sheep
+        // 1050117 at 8.85 turned to -0.174075, its velocity (3.077775, -0.541219) that
+        // angle's, not 6.1091104's, whose table step truncates the other way).
         if lt(ZERO, speed) {
-            let (s, c) = ef::sin_cos(self.heading);
+            let (s, c) = ef::sin_cos(heading);
             self.set_velocity(now, ef::mul(speed, c), ef::mul(speed, s));
         } else {
             self.set_velocity(now, ZERO, ZERO);
@@ -245,7 +258,7 @@ mod tests {
         ];
         let mut reached = None;
         for (k, &(sx, sy)) in samples.iter().enumerate() {
-            clock = ef::add(clock, STEP);
+            clock = next_step(clock);
             if reached.is_none() && m.step(&gait, to, clock) == Step::Reached {
                 reached = Some(k);
             }

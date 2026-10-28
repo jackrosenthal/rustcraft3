@@ -1529,6 +1529,7 @@ impl World {
                 let at = self.step_times.get(k).copied().unwrap_or(0.0) as f32 - self.wander_counted;
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.wander_wait = Some(at + next);
+                    u.extra.wander_in_play = true;
                 }
             }
             let Some(u) = self.unit_mut(h) else { return true };

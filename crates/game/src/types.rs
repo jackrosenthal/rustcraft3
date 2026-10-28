@@ -449,6 +449,9 @@ pub struct UnitExtra {
     /// there starts from these, not from the world point converted back.
     #[serde(default)]
     pub cell_at: Option<(u32, u32, f32, f32)>,
+    /// Its wander wait was drawn in play (`World::WANDER_TICK`).
+    #[serde(default)]
+    pub wander_in_play: bool,
     /// Steps it waits, held back by another walker (the path's +0x94).
     #[serde(default)]
     pub walk_wait: u32,
@@ -683,6 +686,7 @@ impl Default for UnitExtra {
             search_at: None,
             face_hold: 0,
             cell_at: None,
+            wander_in_play: false,
             step_from: None,
             walk_blocked: 0,
             walk_serial: 0,

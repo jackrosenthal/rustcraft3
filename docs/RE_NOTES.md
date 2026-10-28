@@ -695,11 +695,13 @@ these are the findings behind them.
     the other eight after the engine clock's tick in which it was given (read: two
     wanderers' orders fired at the same tick, 19.867666, freed their eights together
     after both; two fired three ticks apart, 25.511719 and 25.526716, each after its
-    own).  A wander timer fires at the 0.005s tick nearest its due time when its wait
-    was drawn in play (due 0.66 and 0.28 of a tick past one: both at the next), at or
-    before it for a first wait (0.86 past: at it); which of an order and a step at the
-    same tick comes first is not settled (a first wait's order came after the step, an
-    in-play one before).
+    own).  A wander timer's order shows the 0.005s tick nearest its due time when its
+    wait was drawn in play (due 0.66 and 0.28 of a tick past one: both at the next;
+    0.78 short of a turn's end: in the next turn), at or before it for a first wait
+    (0.86 past: at it); yet among the steps it falls by its due time itself (0.36 of a
+    tick past a step's: after it; 0.70 short of one: before it).  The mechanism (the
+    agent's timer, `FUN_6f0608d0`, vtable slot 2) is not yet read; the port models
+    the three observations as they are.
   - An arrival's path goes a step after its tree, as a give-up's does (read: an arrival
     at a turn's last step, its path freed as the next turn starts).
   - The blocked count's draw (`FUN_6f1689d0`: 2 for a goal within 12 cells and a walker

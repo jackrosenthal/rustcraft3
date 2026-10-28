@@ -205,7 +205,12 @@ impl World {
             // multiples of 30 ms in it, the orders between them by their times; a step
             // within 1e-4 of the time comes first, as with timers); its walk starts with
             // the first step after it, in the next tick when none is left in this one.
-            if (wait as f64) >= dt as f64 {
+            // An in-play wait whose nearest clock tick is the next turn's is given then
+            // (read: one 0.78 of a tick short of a turn's end walked in the next turn).
+            let in_play = self.unit(h).is_some_and(|u| u.extra.wander_in_play);
+            let start = (self.time as f64 * 10.0).round() / 10.0;
+            let tick_end = in_play && ((start + wait as f64 - 0.1) / 0.005).round() * 0.005 + 0.1 >= start + dt as f64 - 1e-6;
+            if (wait as f64) >= dt as f64 || tick_end {
                 if !before_steps {
                     self.unit_mut(h).unwrap().extra.wander_wait = Some(wait - dt);
                 }
@@ -228,11 +233,13 @@ impl World {
     /// Gives the orders due together, in order, their issues' objects freed after each
     /// clock tick's (`Tags::flush_issued`; read: two orders fired at the same tick,
     /// 19.867666, freed theirs together after both; two fired three ticks apart each
-    /// after its own).  The tick: the engine clock's 0.005s one nearest the due time
-    /// (read: due 0.66 and 0.28 of a tick past one, both fired at the next), the
-    /// game's times running 0.1 ahead of the engine clock's.
+    /// after its own).  The tick: the engine clock's 0.005s one nearest (read: due 0.66
+    /// and 0.28 of a tick past one, both fired at 19.867666, the next; 0.74 and 0.70
+    /// past, at the next ticks), the game's times running 0.1 ahead of the clock's.
+    /// (Where an order falls among the steps follows its time itself: due 0.36 of a
+    /// tick past a step's, after it; 0.70 short of one, before it.)
     pub(crate) fn issue_wanders(&mut self, due: &[(usize, f32, u32)], dt: f32) {
-        let tick = |w: &World, wait: f32| ((w.time as f64 + wait as f64 - 0.1) / 0.005).round() as i64;
+        let tick = |w: &World, wait: f32| (((w.time as f64 * 10.0).round() / 10.0 + wait as f64 - 0.1) / 0.005).round() as i64;
         let mut last = None;
         for &(k, wait, h) in due {
             let t = tick(self, wait);
@@ -244,6 +251,7 @@ impl World {
         }
         self.tags.flush_issued();
     }
+
 
     /// A wanderer's order given at its time (`update_wander`): the walk to its point, its
     /// next wait drawn.
@@ -260,6 +268,7 @@ impl World {
         let at = self.time + wait;
         let u = self.unit_mut(h).unwrap();
         u.extra.wander_wait = Some(next - (dt - wait));
+        u.extra.wander_in_play = true;
         // One given before the tick's first step walks in it (traced: a pig given at
         // 7.6012 searched and moved in the step at 7.62).
         u.extra.walk_from = Some(k);

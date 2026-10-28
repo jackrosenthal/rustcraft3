@@ -47,13 +47,14 @@ const STEPS: [(i32, i32, u32); 8] = [(-1, -1, 21), (0, -1, 15), (1, -1, 21), (-1
 
 /// The ring's refused cells as bits: its bottom row left to right, its right column
 /// upward, its top row right to left, its left column downward.
-fn ring(cells: &impl Cells, x: i32, y: i32, r: i32, n: i32) -> u32 {
+fn ring(cells: &impl Cells, x: i32, y: i32, r: i32, n: i32, refused: &mut bool) -> u32 {
     let (x0, y0) = (x - r, y - r);
     let mut bits = 0;
     let mut bit = 1;
     let mut test = |cx: i32, cy: i32| {
         if !cells.open(cx, cy) {
             bits |= bit;
+            *refused = true;
         }
         bit <<= 1;
     };
@@ -158,8 +159,16 @@ impl Heap {
 /// Searches from the start's cell toward the goal's for a unit of `class`, popping at
 /// most `limit` nodes (`FUN_6f14aa10`, `FUN_6f14a4c0`, `FUN_6f148100`).
 pub fn search(cells: &impl Cells, start: (i32, i32), goal: (i32, i32), class: u8, limit: u32) -> Outcome {
+    search_seeing(cells, start, goal, class, limit).0
+}
+
+/// `search`, and whether it found any cell refused on its way (`FUN_6f1489a0` sets the
+/// searcher's +0xd0 as it refuses one; a walker whose search met none heads straight
+/// for its way's end, `FUN_6f166e90`).
+pub fn search_seeing(cells: &impl Cells, start: (i32, i32), goal: (i32, i32), class: u8, limit: u32) -> (Outcome, bool) {
+    let mut refused = false;
     if start == goal {
-        return Outcome::Found(vec![start]);
+        return (Outcome::Found(vec![start]), refused);
     }
     let (r, n, masks) = RINGS[class.min(3) as usize];
     let mut nodes: HashMap<(i32, i32), Node> = HashMap::new();
@@ -190,7 +199,7 @@ pub fn search(cells: &impl Cells, start: (i32, i32), goal: (i32, i32), class: u8
             break;
         }
         let g = nd.g;
-        let bits = ring(cells, c.0, c.1, r, n);
+        let bits = ring(cells, c.0, c.1, r, n, &mut refused);
         for (k, &(dx, dy, cost)) in STEPS.iter().enumerate() {
             if bits & masks[k] != 0 {
                 continue;
@@ -229,13 +238,14 @@ pub fn search(cells: &impl Cells, start: (i32, i32), goal: (i32, i32), class: u8
         out.reverse();
         out
     };
-    if found {
+    let out = if found {
         Outcome::Found(path(goal))
     } else if best.1 == start {
         Outcome::Stay
     } else {
         Outcome::Nearest(path(best.1))
-    }
+    };
+    (out, refused)
 }
 
 #[cfg(test)]

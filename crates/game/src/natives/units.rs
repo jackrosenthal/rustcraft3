@@ -180,6 +180,9 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
 /// A unit made just where asked, without looking for room.
 pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing: f32) -> u32 {
     let (x, y) = w.clamp_to_map(x, y);
+    // Placed on a quarter-unit grid, rounding down (measured: pigs made at -5719.4,
+    // -4560.2 and -5627.1, -4500.0 stand at -5719.5, -4560.25 and -5627.25, -4500.0).
+    let (x, y) = ((x * 4.0).floor() / 4.0, (y * 4.0).floor() / 4.0);
     let facing = facing.rem_euclid(360.0);
     let Some(o) = w.objects.units.get(type_id) else {
         log::warn!("CreateUnit: unknown unit type {}", crate::objects::id_str(type_id));

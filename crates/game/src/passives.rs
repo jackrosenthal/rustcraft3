@@ -227,9 +227,9 @@ impl World {
             // drawn at the clock 5.444844 as the last fell due).
             let u = self.unit_mut(h).unwrap();
             u.extra.wander_wait = Some(next - (dt - wait));
-            // One given before the tick's first step starts with its second (traced: a
-            // pig given at 7.6012 walks from 7.65, not 7.62).
-            u.extra.walk_from = Some(k.max(1));
+            // One given before the tick's first step walks in it (traced: a pig given at
+            // 7.6012 searched and moved in the step at 7.62).
+            u.extra.walk_from = Some(k);
             let (x, y) = (u.x + dx, u.y + dy);
             log::debug!("wander: {h:#x} {} from ({:.1},{:.1}) to ({x:.1},{y:.1}) before step {k}", crate::objects::id_str(u.type_id), u.x, u.y);
             u.action = Action::Move { x, y };

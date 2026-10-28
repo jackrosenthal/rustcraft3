@@ -827,14 +827,18 @@ impl World {
         let cells = Local { p, kind, taken };
         let class = crate::lrpath::class_of(u.collision / crate::pathing::CELL);
         let (start, end) = (p.cell_of(u.x, u.y), p.cell_of(goal.0, goal.1));
-        Some(match crate::lrpath::search(&cells, start, end, class, 32) {
+        let (out, refused) = crate::lrpath::search_seeing(&cells, start, end, class, 32);
+        // A search that met no refused cell sends the walker straight to its way's end
+        // (`FUN_6f166e90`: the way's index set to its end, else to its first node).
+        let straight = |way: Vec<(f32, f32)>| if refused { way } else { way.last().map(|&w| vec![w]).unwrap_or_default() };
+        Some(match out {
             crate::lrpath::Outcome::Found(c) => {
                 let mut way: Vec<(f32, f32)> = c[1..].iter().map(|&c| p.center(c)).collect();
                 way.pop();
                 way.push(goal);
-                (way, None)
+                (straight(way), None)
             }
-            crate::lrpath::Outcome::Nearest(c) => (c[1..].iter().map(|&c| p.center(c)).collect(), c.last().copied()),
+            crate::lrpath::Outcome::Nearest(c) => (straight(c[1..].iter().map(|&c| p.center(c)).collect()), c.last().copied()),
             // Nowhere nearer: it turns toward the goal where it stands (`Mover::face`).
             crate::lrpath::Outcome::Stay => (vec![goal], Some((i32::MIN, i32::MIN))),
         })
@@ -842,11 +846,6 @@ impl World {
 
     fn path_to_inner(&mut self, h: u32, goal: (f32, f32)) {
         if let Some((way, end)) = self.local_path(h, goal) {
-            let from = self.pathing.as_ref().zip(self.unit(h)).map(|(p, u)| (((u.x - p.origin[0]) / crate::pathing::CELL).to_bits(), ((u.y - p.origin[1]) / crate::pathing::CELL).to_bits()));
-            let way = match from {
-                Some(from) if end.is_none_or(|e| e != (i32::MIN, i32::MIN)) => self.way_ahead(h, from, way),
-                _ => way,
-            };
             if let Some(u) = self.unit_mut(h) {
                 u.path = way;
                 u.extra.facing_goal = end == Some((i32::MIN, i32::MIN));
@@ -1124,8 +1123,8 @@ impl World {
     pub(crate) fn first_steps(&mut self) {
         self.step_range = (0, self.step_clocks.len().min(1));
         let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.local_paths && matches!(u.action, Action::Move { .. }))).collect();
-        // The newest walk first (traced: a sheep whose order came later held another
-        // back before that one moved in the same step).
+        // The newest walk first (traced: sheep 1050120, given its order after 1050117,
+        // held it back before it moved in a step; pig 1050123 likewise held 1050124).
         walkers.sort_by_key(|&h| std::cmp::Reverse(self.unit(h).map_or(0, |u| u.extra.walk_serial)));
         // New orders have their ways found in this step, before its movement.
         for &h in &walkers {
@@ -1141,10 +1140,6 @@ impl World {
             // after the last tick's steps from this one (`World::update_wander`).
             let Some(u) = self.unit(h) else { continue };
             if u.extra.mover.is_none() {
-                let early = u.extra.walk_from == Some(1);
-                if early {
-                    continue;
-                }
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.walk_from = None;
                 }
@@ -1166,8 +1161,8 @@ impl World {
         for k in 1..n {
             self.step_range = (k, k + 1);
             let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.local_paths && matches!(u.action, Action::Move { .. }))).collect();
-        // The newest walk first (traced: a sheep whose order came later held another
-        // back before that one moved in the same step).
+        // The newest walk first (traced: sheep 1050120, given its order after 1050117,
+        // held it back before it moved in a step; pig 1050123 likewise held 1050124).
         walkers.sort_by_key(|&h| std::cmp::Reverse(self.unit(h).map_or(0, |u| u.extra.walk_serial)));
             // The step's searches come before its movement (read: a sheep about to move
             // in the step still blocks another's search in it).
@@ -1200,8 +1195,9 @@ impl World {
     /// it looks at the cells it moves into (`FUN_6f166140`) for other walkers moving
     /// there and settles who gives way (`FUN_6f168360`): it waits at least 4 steps for
     /// one no slower than it (or of another size class), else that one waits at least
-    /// 20.  (Standing units and walls in the way, which the original steps around or
-    /// waits out, `FUN_6f167290`, are not yet taken.)
+    /// 20.  Blocked by a unit standing there or a wall, and not waiting, it counts down
+    /// (`FUN_6f167290`, `FUN_6f1689d0`: from 2 when its goal is within 12 cells, else 7
+    /// to 9) and then searches again from where it is (the provider's answer 4).
     fn held_back(&mut self, h: u32, m: &crate::motion::Mover, to: (u32, u32), clock: u32) -> bool {
         use crate::efloat as ef;
         let Some(u) = self.unit_mut(h) else { return false };
@@ -1217,6 +1213,10 @@ impl World {
         if d2 <= reach {
             return false;
         }
+        let goal = match u.action {
+            Action::Move { x, y } => Some((x, y)),
+            _ => None,
+        };
         let class = crate::lrpath::class_of(u.collision / crate::pathing::CELL);
         let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return false };
         // The cells a step ahead: the place at most a cell toward the waypoint
@@ -1226,10 +1226,12 @@ impl World {
         let (cx, cy) = (f32::from_bits(x).floor() as i32, f32::from_bits(y).floor() as i32);
         let (tx, ty) = (f32::from_bits(ax).floor() as i32, f32::from_bits(ay).floor() as i32);
         let cells = edge_cells(class, (cx, cy), (tx, ty));
+        let kind = self.move_kind(h);
+        let wall = self.pathing.as_ref().is_some_and(|p| cells.iter().any(|&c| !p.passable(c, kind)));
         let mine = m.speed2();
         // Each other walker whose region lies on those cells, in their order.
         let mut seen = Vec::new();
-        for c in cells {
+        for &c in &cells {
             for &o in &self.unit_order {
                 if o == h || seen.contains(&o) {
                     continue;
@@ -1243,6 +1245,7 @@ impl World {
                 }
             }
         }
+        let blocked = wall || !seen.is_empty();
         for o in seen {
             let Some(v) = self.unit(o) else { continue };
             let Some(theirs) = v.extra.mover.filter(|_| v.extra.local_paths).map(|m| m.speed2()) else { continue };
@@ -1260,7 +1263,33 @@ impl World {
             v.extra.walk_wait = v.extra.walk_wait.max(20);
             v.extra.yields_to = Some(h);
         }
-        false
+        let Some(u) = self.unit_mut(h) else { return false };
+        if !blocked {
+            // A free step clears the count (`FUN_6f1687e0`).
+            u.extra.walk_blocked = 0;
+            return false;
+        }
+        if u.extra.walk_blocked == 0 {
+            let near = goal.is_some_and(|g| {
+                let (gx, gy) = ((g.0 - origin[0]) / crate::pathing::CELL, (g.1 - origin[1]) / crate::pathing::CELL);
+                let (px, py) = (f32::from_bits(x), f32::from_bits(y));
+                (gx - px) * (gx - px) + (gy - py) * (gy - py) <= 144.0
+            });
+            // (The original draws 7 to 9 for a far goal, from a generator not yet
+            // known; 8 here.)
+            u.extra.walk_blocked = if near { 2 } else { 8 };
+        }
+        if u.extra.walk_blocked == 1 {
+            u.extra.walk_blocked = 0;
+            if let Some(g) = goal {
+                u.path.clear();
+                u.extra.path_end_cell = None;
+                self.path_to(h, g);
+            }
+            return true;
+        }
+        u.extra.walk_blocked -= 1;
+        true
     }
 
     /// Walks a unit through this tick's movement steps as the original's engine does

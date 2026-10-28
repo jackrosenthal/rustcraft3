@@ -432,6 +432,10 @@ pub struct UnitExtra {
     /// Steps it waits, held back by another walker (the path's +0x94).
     #[serde(default)]
     pub walk_wait: u32,
+    /// Steps left before a walker blocked by a standing unit or a wall searches again
+    /// (the path's +0x98).
+    #[serde(default)]
+    pub walk_blocked: u32,
     /// The walker it waits for (the path's +0xa8, +0xac).
     #[serde(default)]
     pub yields_to: Option<u32>,
@@ -655,6 +659,7 @@ impl Default for UnitExtra {
             arrived_last_step: false,
             walk_moved: false,
             walk_wait: 0,
+            walk_blocked: 0,
             walk_serial: 0,
             yields_to: None,
             mover: None,

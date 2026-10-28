@@ -624,7 +624,20 @@ these are the findings behind them.
     the heading on it (sheep 1050120's target at 7.53 was (432.5, 52.5), six cells
     on).
   - Walkers take each step newest walk first (1050120, ordered after 1050117, held it
-    back before it moved in that step).
+    back before it moved in that step; pig 1050123 likewise held 1050124 at 8.70).
+  - After a search the target is the way's end if the search refused no cell (the
+    searcher's +0xd0, set by `FUN_6f1489a0`), else the node after the start
+    (`FUN_6f168870`); the line test applies as each node is reached.
+  - A walker blocked by a unit standing there or by a wall, and not waiting, counts down
+    (+0x98, from 2 when its goal is within 12 cells and it walks alone, else 7 to 9 by
+    a random draw, `FUN_6f1689d0`), holding, then searches again (traced: pig 1050124's
+    count 1 at 9.93 and its new search from (211, 61)).
+  - Units are placed on a quarter-unit grid, rounding down (pigs at -5719.4, -4560.2 and
+    -5627.1, -4500.0 stand at -5719.5, -4560.25 and -5627.25, -4500.0).
+  - A walk given before a turn's first step searches and moves in that step (the pig
+    given at 7.6012 moved in the step at 7.62).
+  - Still open: after its hold, pig 1050124 leaves at 144 degrees in the original, 165
+    in the port (a nearer target chosen after waiting).
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

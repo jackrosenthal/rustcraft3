@@ -640,6 +640,13 @@ these are the findings behind them.
     heading 2.0233, its goal's bearing, its waypoint's 2.886), and arriving at the end
     of a way short of its goal it turns toward the goal too (`FUN_6f16e910` compares the
     heading with that bearing).
+  - Open: which cells a walker's region holds as it moves.  Read: sheep 1050120, held at
+    7.53 to 7.56 after moving from 432.97 to 433.06, held cells 431 to 433 (both
+    places); sheep 1050117 at 9.42 was blocked by 1050120, which had moved off that row
+    in the step before and was then held.  But pig 1050124 at 9.57 was not blocked by
+    pig 1050127 moving on steadily, whose place before that step lay on the cells
+    checked.  A region spanning both places only while its unit is held after moving
+    fits all three; not yet tried.
   - Wanderers' orders due between steps are given just before the step after them,
     among the walkers' steps, and a walk's path (`l^pa`, `^clu`) goes as the next step
     starts (traced at turn 101: a pig's walk ending in step 1, an order due before step

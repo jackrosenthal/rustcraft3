@@ -417,7 +417,10 @@ impl World {
             // the turn it falls in (one due at a turn's end in the next).
             if mp > 0.0 {
                 for (k, &(thr, _)) in u.extra.mana_listeners.iter().enumerate() {
-                    if u.mana < thr {
+                    // One due just at a turn's end runs with the next turn, though the
+                    // summed mana may have edged past it (a creep at 0.5 a second
+                    // reaching 5.1 at 10.2: traced, turn 104).
+                    if u.mana < thr + 1e-4 {
                         let at = (thr - u.mana) / mp;
                         if dt - at > 1e-4 {
                             passed.push((at, h, k));

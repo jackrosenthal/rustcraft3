@@ -763,13 +763,14 @@ impl World {
         }
         // Each other ground unit's collision region: on each axis the cells from
         // floor(p - 0.5 - r) to floor(p - 0.5 + r), p its place and r its collision in
-        // cells (measured with Booty Bay's sheep).  A walking unit's region is excused
+        // cells (measured with Booty Bay's sheep).  A moving unit's region is excused
         // (its flags hold 0x20000000, which the search does not count: read in the
-        // original, a pig's search past two walking pigs and one standing).
+        // original, a pig's search past two moving pigs and one standing; a sheep whose
+        // walk had begun but who had not yet moved, turning, still blocked).
         let mut taken = std::collections::HashSet::new();
         for &o in &self.unit_order {
             let Some(v) = self.unit(o).filter(|v| o != h && !v.dead && !v.hidden && !v.is_building && v.collision > 0.0 && (v.x - u.x).abs() < 2048.0 && (v.y - u.y).abs() < 2048.0) else { continue };
-            if v.extra.local_paths && v.extra.mover.is_some() {
+            if v.extra.local_paths && v.extra.mover.is_some_and(|m| m.vx & 0x7fff_ffff != 0 || m.vy & 0x7fff_ffff != 0) {
                 continue;
             }
             if self.move_kind(o) == crate::pathing::Move::Fly {
@@ -1088,16 +1089,21 @@ impl World {
     pub(crate) fn first_steps(&mut self) {
         self.step_range = (0, self.step_clocks.len().min(1));
         let walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.local_paths && matches!(u.action, Action::Move { .. }))).collect();
-        for h in walkers {
-            // A new order has its way found in this step: one given before it (this
-            // tick's) walks from the next, one given after the last tick's steps from this
-            // one (`World::update_wander`).
+        // New orders have their ways found in this step, before its movement.
+        for &h in &walkers {
             let Some(u) = self.unit(h) else { continue };
             if u.extra.mover.is_none() {
-                let early = u.extra.walk_from == Some(1);
                 if let (true, &Action::Move { x, y }) = (u.path.is_empty(), &u.action) {
                     self.path_to(h, (x, y));
                 }
+            }
+        }
+        for h in walkers {
+            // One given before this step (this tick's) walks from the next, one given
+            // after the last tick's steps from this one (`World::update_wander`).
+            let Some(u) = self.unit(h) else { continue };
+            if u.extra.mover.is_none() {
+                let early = u.extra.walk_from == Some(1);
                 if early {
                     continue;
                 }
@@ -1122,15 +1128,20 @@ impl World {
         for k in 1..n {
             self.step_range = (k, k + 1);
             let walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.local_paths && matches!(u.action, Action::Move { .. }))).collect();
-            for h in walkers {
+            // The step's searches come before its movement (read: a sheep about to move
+            // in the step still blocks another's search in it).
+            for &h in &walkers {
                 let Some(u) = self.unit(h) else { continue };
-                if u.extra.mover.is_none() {
-                    if u.extra.walk_from.is_some_and(|f| f > k) {
-                        continue;
-                    }
+                if u.extra.mover.is_none() && u.extra.walk_from.is_none_or(|f| f <= k) {
                     if let (true, &Action::Move { x, y }) = (u.path.is_empty(), &u.action) {
                         self.path_to(h, (x, y));
                     }
+                }
+            }
+            for h in walkers {
+                let Some(u) = self.unit(h) else { continue };
+                if u.extra.mover.is_none() && u.extra.walk_from.is_some_and(|f| f > k) {
+                    continue;
                 }
                 if self.walk_steps(h) {
                     if let Some(u) = self.unit_mut(h) {

@@ -1312,8 +1312,11 @@ impl World {
                 self.path_to(h, g);
             }
             let Some(u) = self.unit(h) else { return false };
+            // Nothing nearer: this step it only turns toward its goal, facing it from the
+            // next (traced: the first sheep turned 4.2315 to 4.0887 in its search step at
+            // 5.37 and ended in turn 56).
             if u.extra.facing_goal {
-                return false;
+                return true;
             }
             let Some(&next) = u.path.first() else { return false };
             let to = (((next.0 - origin[0]) / crate::pathing::CELL).to_bits(), ((next.1 - origin[1]) / crate::pathing::CELL).to_bits());
@@ -1390,7 +1393,6 @@ impl World {
                 }
             }
             let counting = self.unit(h).is_some_and(|u| u.extra.walk_wait > 0);
-            let short_end = self.unit(h).is_some_and(|u| u.path.len() == 1 && u.extra.path_end_cell.is_some());
             let held = !facing && self.held_back(h, &m, to, clock);
             let yielding = self.unit(h).is_some_and(|u| u.extra.yields_to.is_some());
             // A new search there gives a new waypoint.
@@ -1406,12 +1408,7 @@ impl World {
                 // a held pig's heading the goal's bearing, 2.0233, its waypoint's 2.886);
                 // held otherwise (as it yields, or blocked), toward its waypoint (the
                 // provider has put that in its target: a blocked sheep kept its heading).
-                let near_end = short_end && {
-                    let (x, y) = m.at(clock);
-                    let (dx, dy) = (ef::sub(to.0, x), ef::sub(to.1, y));
-                    f32::from_bits(ef::add(ef::mul(dx, dx), ef::mul(dy, dy))) <= f32::from_bits(ef::mul(0.49f32.to_bits(), 0.49f32.to_bits()))
-                };
-                let toward = if counting || (!yielding && !near_end) { goal.map_or(to, |g| (cell(g.0, origin[0]), cell(g.1, origin[1]))) } else { to };
+                let toward = if counting || !yielding { goal.map_or(to, |g| (cell(g.0, origin[0]), cell(g.1, origin[1]))) } else { to };
                 m.hold(&gait, toward, clock);
                 continue;
             }

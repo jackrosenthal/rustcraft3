@@ -596,6 +596,17 @@ these are the findings behind them.
   goal, as the port has it.  The member step (`FUN_6f16a790`) takes the unit's
   velocity (+0x80, +0x84 of its mover), steers (`FUN_6f16fbd0`), caps the speed at
   +0x88, and sets the member's flags 0x10000 and 0x20000 from the steering's answers.
+- Units hold each other back (read, not yet in the port): the waypoint provider
+  (`FUN_6f165ae0`) answers 1 while the path's wait counter (+0x94) runs down, a step at
+  a time, and the steering then only turns (`FUN_6f16fbd0`, its stop flag).  Each step
+  `FUN_6f165c60` asks `FUN_6f166140` whether the cells between the unit's place and
+  where its velocity takes it hold other units' regions (by size class,
+  `FUN_6f149560`, `FUN_6f1497c0`, `FUN_6f149b00`, `FUN_6f149e60`, into a list); for
+  each moving one `FUN_6f168360` settles who yields: the unit no faster than the other
+  (or of another class, or with flags that differ) notes it and waits at least 4 steps
+  (`FUN_6f168070`), otherwise a wait of 20 (0x14) is set the other way.  Blocked and not
+  waiting, it goes on to `FUN_6f167290`.  This is likely what holds Booty Bay's sheep
+  1050117 back from 7.17 to past 7.56 while 1050120 passes.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

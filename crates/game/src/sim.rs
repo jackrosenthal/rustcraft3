@@ -763,10 +763,15 @@ impl World {
         }
         // Each other ground unit's collision region: on each axis the cells from
         // floor(p - 0.5 - r) to floor(p - 0.5 + r), p its place and r its collision in
-        // cells (measured with Booty Bay's sheep).
+        // cells (measured with Booty Bay's sheep).  A walking unit's region is excused
+        // (its flags hold 0x20000000, which the search does not count: read in the
+        // original, a pig's search past two walking pigs and one standing).
         let mut taken = std::collections::HashSet::new();
         for &o in &self.unit_order {
             let Some(v) = self.unit(o).filter(|v| o != h && !v.dead && !v.hidden && !v.is_building && v.collision > 0.0 && (v.x - u.x).abs() < 2048.0 && (v.y - u.y).abs() < 2048.0) else { continue };
+            if v.extra.local_paths && v.extra.mover.is_some() {
+                continue;
+            }
             if self.move_kind(o) == crate::pathing::Move::Fly {
                 continue;
             }

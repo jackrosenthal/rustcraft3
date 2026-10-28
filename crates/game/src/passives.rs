@@ -239,10 +239,6 @@ impl World {
             if let Some(u) = self.unit_mut(h) {
                 u.extra.order_tags = slots;
             }
-            // One given before the first step walks in it: its way is found now.
-            if before_steps && self.unit(h).is_some_and(|u| u.extra.local_paths) {
-                self.path_to(h, (x, y));
-            }
         }
     }
 }

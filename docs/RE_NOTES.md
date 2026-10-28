@@ -554,6 +554,17 @@ these are the findings behind them.
   fell due).  An order's nine objects (`Tags::move_issued`) and a walk's tree at its end
   are freed at once, before the next order in the same turn (traced: two orders in turn
   99, a walk's end then an order in turn 101).
+- At turn 101 the port ends two pigs' walks in the other order.  Read in the original
+  (cells dumped at each search, `FUN_6f14ad50`): its searches see the same static cells,
+  the same standing pigs (region flags 0), and walking pigs' regions with flags
+  0x20000000 (which a wanderer's search excuses; the port now leaves walking units
+  out); a search runs in the first step after its order (a pig's at the clock 7.6197
+  for an order due 7.6012); and its relaxation, open and closed states, and nearest
+  node agree with `lrpath`.  Yet at the clock 8.55 one pig stands on the straight line
+  from its start (216.4, 59.4) to its way's last node (210.5, 61.5), not on the nodes'
+  route: the way (`FUN_6f147dc0`) holds every node, from the start point to the end
+  point, but the steering's waypoint provider (`FUN_6f165ae0`, `FUN_6f165d10`) skips
+  ahead by a count (`FUN_6f166030`), still to be read.
 - A path's +0x88 holds its class in bits 16 to 19 (measured: 0 for player 0's units,
   1 for creeps, 15 for Neutral Passive's) and flags (0x200000, 0x800000, ...).  A
   wanderer owned by Neutral Passive has 0x200000 cleared and its search limit set to

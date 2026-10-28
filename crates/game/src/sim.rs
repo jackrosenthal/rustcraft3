@@ -1223,13 +1223,17 @@ impl World {
         let d2 = f32::from_bits(ef::add(ef::mul(dx, dx), ef::mul(dy, dy)));
         let reach = f32::from_bits(ef::mul(0.49f32.to_bits(), 0.49f32.to_bits()));
         u.extra.yields_to = None;
-        if d2 <= reach {
-            return false;
-        }
         let goal = match u.action {
             Action::Move { x, y } => Some((x, y)),
             _ => None,
         };
+        // Within reach of the end of a way short of its goal, it is as one blocked: it
+        // holds and then searches again (traced: a sheep at 0.42 from its way's end held
+        // a step at 11.70 and searched at 11.73).
+        let short_end = u.path.len() == 1 && u.extra.path_end_cell.is_some();
+        if d2 <= reach && !short_end {
+            return false;
+        }
         let class = crate::lrpath::class_of(u.collision / crate::pathing::CELL);
         let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return false };
         // The cells a step ahead: the place at most a cell toward the waypoint
@@ -1263,7 +1267,7 @@ impl World {
                 }
             }
         }
-        let blocked = wall || !seen.is_empty();
+        let blocked = wall || !seen.is_empty() || d2 <= reach;
         for o in seen {
             let Some(v) = self.unit(o) else { continue };
             let Some(theirs) = v.extra.mover.filter(|_| v.extra.local_paths).map(|m| m.speed2()) else { continue };
@@ -1385,7 +1389,10 @@ impl World {
                     to = (cell(next.0, origin[0]), cell(next.1, origin[1]));
                 }
             }
+            let counting = self.unit(h).is_some_and(|u| u.extra.walk_wait > 0);
+            let short_end = self.unit(h).is_some_and(|u| u.path.len() == 1 && u.extra.path_end_cell.is_some());
             let held = !facing && self.held_back(h, &m, to, clock);
+            let yielding = self.unit(h).is_some_and(|u| u.extra.yields_to.is_some());
             // A new search there gives a new waypoint.
             let Some(u) = self.unit(h) else { return true };
             let facing = u.extra.facing_goal;
@@ -1395,19 +1402,21 @@ impl World {
             };
             let to = (cell(next.0, origin[0]), cell(next.1, origin[1]));
             if held {
-                // Held, it turns toward its order's goal (read: a held pig's heading the
-                // goal's bearing, 2.0233, its waypoint's 2.886).
-                let toward = goal.map_or(to, |g| (cell(g.0, origin[0]), cell(g.1, origin[1])));
+                // Held while its wait counts down, it turns toward its order's goal (read:
+                // a held pig's heading the goal's bearing, 2.0233, its waypoint's 2.886);
+                // held otherwise (as it yields, or blocked), toward its waypoint (the
+                // provider has put that in its target: a blocked sheep kept its heading).
+                let near_end = short_end && {
+                    let (x, y) = m.at(clock);
+                    let (dx, dy) = (ef::sub(to.0, x), ef::sub(to.1, y));
+                    f32::from_bits(ef::add(ef::mul(dx, dx), ef::mul(dy, dy))) <= f32::from_bits(ef::mul(0.49f32.to_bits(), 0.49f32.to_bits()))
+                };
+                let toward = if counting || (!yielding && !near_end) { goal.map_or(to, |g| (cell(g.0, origin[0]), cell(g.1, origin[1]))) } else { to };
                 m.hold(&gait, toward, clock);
                 continue;
             }
             // The last waypoint of a way short of its goal is arrived at facing the goal.
-            let beyond = goal.filter(|_| self.unit(h).is_some_and(|u| u.path.len() == 1 && u.extra.path_end_cell.is_some()));
-            let r = match (facing, beyond) {
-                (true, _) => m.face(&gait, to, clock),
-                (false, Some(g)) => m.step_facing(&gait, to, (cell(g.0, origin[0]), cell(g.1, origin[1])), clock),
-                (false, None) => m.step(&gait, to, clock),
-            };
+            let r = if facing { m.face(&gait, to, clock) } else { m.step(&gait, to, clock) };
             log::trace!("walk of {h} step {k}: {:?} heading {:.4} to {next:?}", r, f32::from_bits(m.heading));
             if r == crate::motion::Step::Moving {
                 continue;

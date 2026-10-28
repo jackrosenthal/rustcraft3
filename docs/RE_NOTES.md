@@ -648,6 +648,14 @@ these are the findings behind them.
     checked.  A region spanning both places only while its unit is held after moving
     fits all three, and the port now takes it so (the trace agreement then reaching
     turn 118).
+  - Within reach of the end of a way short of its goal, a walker does not arrive: it
+    holds a step and searches again (traced: sheep 1050121 0.42 from its way's end held
+    at 11.70 and searched at 11.73; the first sheep, 0.44 from it, held at 5.34 and
+    searched at 5.37), then faces its goal.  Which way it turns while so held is not
+    settled: the first sheep must keep its heading (it ends in turn 56), sheep 1050121
+    must turn toward its goal (it ends in turn 119), as must pig 1050124 held by a
+    standing pig at 9.90.  The provider restores its entry target before the blocked
+    count (`FUN_6f165c60`), which reads as toward the goal for both.
   - Wanderers' orders due between steps are given just before the step after them,
     among the walkers' steps, and a walk's path (`l^pa`, `^clu`) goes as the next step
     starts (traced at turn 101: a pig's walk ending in step 1, an order due before step

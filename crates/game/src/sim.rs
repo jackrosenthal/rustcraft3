@@ -780,9 +780,10 @@ impl World {
     fn regions_taken(&self, h: u32) -> std::collections::HashSet<(i32, i32)> {
         let mut taken = std::collections::HashSet::new();
         let (Some(u), Some(p)) = (self.unit(h), self.pathing.as_ref()) else { return taken };
+        let mask = u.region_mask();
         for &o in &self.unit_order {
             let Some(v) = self.unit(o).filter(|v| o != h && !v.dead && !v.hidden && !v.is_building && v.collision > 0.0 && (v.x - u.x).abs() < 2048.0 && (v.y - u.y).abs() < 2048.0) else { continue };
-            if (v.extra.local_paths || v.extra.gold_run.is_some()) && v.extra.mover.is_some_and(|m| m.vx & 0x7fff_ffff != 0 || m.vy & 0x7fff_ffff != 0) {
+            if (v.extra.local_paths || v.extra.gold_run.is_some()) && v.extra.mover.is_some_and(|m| m.vx & 0x7fff_ffff != 0 || m.vy & 0x7fff_ffff != 0) || v.region_flags() & mask == 0 {
                 continue;
             }
             if self.move_kind(o) == crate::pathing::Move::Fly {
@@ -809,10 +810,10 @@ impl World {
         }
         let class = crate::lrpath::class_of(u.collision / crate::pathing::CELL);
         let kind = self.move_kind(h);
-        // A harvest walking past units sees through them (read: a peon home from the mine
-        // heading for its way's far end past an idle peon).
-        let ghost = u.extra.gold_run.as_ref().is_some_and(|r| r.entered);
-        let taken = if ghost { Default::default() } else { self.regions_taken(h) };
+        // A harvest walking past units sees through those its mask does not meet (read: a
+        // peon home from the mine heading for its way's far end past an idle peon;
+        // `Unit::region_blocks`).
+        let taken = self.regions_taken(h);
         let open = |c: (i32, i32)| p.passable(c, kind) && !taken.contains(&c);
         let cell = |w: f32, o: f32| ((w - o) / crate::pathing::CELL).to_bits();
         let mut k = 0;
@@ -837,9 +838,9 @@ impl World {
         // (its orders' task 0xd0150 sets the search's mask, the path's +0x9c, to
         // 0x10000010 from 0x02000002, and units' regions, +0x34 0xca, do not meet it;
         // read: a peon's way home along row 265 past an idle peon whose region covers
-        // 672, 264, where its first walk's search was refused by them).
-        let ghost = u.extra.gold_run.as_ref().is_some_and(|r| r.entered);
-        let taken = if ghost { Default::default() } else { self.regions_taken(h) };
+        // 672, 264, where its first walk's search was refused by them), but for workers
+        // stopped at a mine (`Unit::region_blocks`).
+        let taken = self.regions_taken(h);
         struct Local<'a> {
             p: &'a crate::pathing::PathingMap,
             kind: crate::pathing::Move,
@@ -1317,8 +1318,8 @@ impl World {
         u.extra.yields_to = None;
         // A worker whose harvest searches past units walks past them too (read: a peon
         // home from the mine along row 265 never held by the idle peon whose region
-        // covers 672, 264, nor drawing for a block).
-        let ghost = u.extra.gold_run.as_ref().is_some_and(|r| r.entered);
+        // covers 672, 264, nor drawing for a block; `Unit::region_mask`).
+        let mask = u.region_mask();
         let goal = self.walk_goal(h);
         let Some(u) = self.unit_mut(h) else { return false };
         // Within reach of the end of a way short of its goal, it is as one blocked: it
@@ -1342,12 +1343,12 @@ impl World {
         let mine = m.speed2();
         // Each other walker whose region lies on those cells, in their order.
         let mut seen = Vec::new();
-        for &c in cells.iter().filter(|_| !ghost) {
+        for &c in &cells {
             for &o in &self.unit_order {
                 if o == h || seen.contains(&o) {
                     continue;
                 }
-                let Some(v) = self.unit(o).filter(|v| !v.dead && !v.hidden && !v.is_building && v.collision > 0.0) else { continue };
+                let Some(v) = self.unit(o).filter(|v| !v.dead && !v.hidden && !v.is_building && v.collision > 0.0 && v.region_flags() & mask != 0) else { continue };
                 // A walker held after moving holds the cells of both its last places (read:
                 // a held sheep's region three cells wide, another's still on a row it had
                 // just left; a pig moving on steadily held only its place).
@@ -1457,6 +1458,11 @@ impl World {
         let from = if self.unit(h).is_some_and(|u| u.extra.mover.is_none()) { from.max(self.unit_mut(h).and_then(|u| u.extra.walk_from.take()).unwrap_or(0)) } else { from };
         if let Some(&c) = clocks.get(from.wrapping_sub(1)).filter(|_| from > 0) {
             m.placed_at = c;
+        }
+        if to_structure {
+            if let Some(&c) = clocks.get(from).filter(|_| from < until) {
+                log::trace!("gold walker {h} at {:.6} {:.6} v {:.6} {:.6} hd {:.6} clock {:.6}", f32::from_bits(m.x), f32::from_bits(m.y), f32::from_bits(m.vx), f32::from_bits(m.vy), f32::from_bits(m.heading), f32::from_bits(c));
+            }
         }
         let mut done = None;
         // A goal within reach as the walk starts: its order's objects go at its first

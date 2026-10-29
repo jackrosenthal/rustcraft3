@@ -12,12 +12,13 @@ use crate::efloat as ef;
 /// its time plus its period, `FUN_6f052380` sets the clock to each event's time).
 pub const TICK: u32 = 0x3ba3_d70a;
 
-/// The movement steps' period on the agent queue, 0.03 seconds (read: its clock at
-/// steps 180 and 1151, 5.399984 and 34.529137, the sums of 0.03s by the engine's
-/// addition).  The main clock at the steps runs by the 0.005s ticks instead (read:
-/// 5.069871, 8.849516, 11.069143, 32.395412, and 46.017925, each bit for bit the
-/// 0.005s summed).
-pub const STEP: u32 = 0x3cf5_c28f;
+/// The movement steps' period on the agent queue, 30 milliseconds in seconds by the
+/// engine's arithmetic (0x3cf5c290, a bit above the single nearest 0.03; read: its
+/// clock at all of 2600 steps, 0.03 to 77.997368, the sums of it by the engine's
+/// addition, where 0.03's sums part from step 24).  The main clock at the steps runs by
+/// the 0.005s ticks instead (read: 5.069871, 8.849516, 11.069143, 32.395412, and
+/// 46.017925, each bit for bit the 0.005s summed).
+pub const STEP: u32 = 0x3cf5_c290;
 
 /// The clock six ticks on.
 pub fn next_step(clock: u32) -> u32 {
@@ -158,6 +159,27 @@ impl Mover {
         self.vy = ef::add(self.vy, ef::sub(vy, self.vy));
     }
 
+    /// `set_velocity` held to a top speed as the engine does it (`FUN_6f1606e0`): one
+    /// whose length passes the top is scaled to it by the reciprocal of its length
+    /// (`FUN_6f15fc70`, `FUN_6f071570`), which falls a little short (read: peons whose
+    /// tuned speeds were 5.907512 and 6.486394 walking at 5.907436 and 6.486344, those at
+    /// 5.9375, 7.125, and 6.025506 at theirs), and one too short to measure stops.
+    fn set_velocity_within(&mut self, now: u32, vx: u32, vy: u32, top: u32) {
+        self.set_velocity(now, vx, vy);
+        let len2 = || ef::add(ef::mul(self.vx, self.vx), ef::mul(self.vy, self.vy));
+        let l2 = len2();
+        if lt(abs(l2), TINY_ANGLE) {
+            self.vx = ZERO;
+            self.vy = ZERO;
+            return;
+        }
+        if lt(top, ef::sqrt(l2)) {
+            let k = ef::mul(top, ef::recip(ef::sqrt(len2())));
+            self.vx = ef::mul(self.vx, k);
+            self.vy = ef::mul(self.vy, k);
+        }
+    }
+
     /// One step toward a waypoint at a clock reading (`FUN_6f16a790`, `FUN_6f16e910`,
     /// `FUN_6f170880`, `FUN_6f16fe20`).
     pub fn step(&mut self, gait: &Gait, to: (u32, u32), now: u32) -> Step {
@@ -202,12 +224,18 @@ impl Mover {
         Step::Moving
     }
 
-    /// Whether `arrive` would find it there now.
+    /// Whether its walk is over there now: within reach on the goal's bearing, or stopped
+    /// there (`arrive`) within a step's turn of it (read: a peon stopped at a gold mine
+    /// 0.069 short of its bearing, its turn 0.6, went in at the next step with its
+    /// heading as it was; one walking home straight at its hall arrived as it came
+    /// within reach).
     pub fn arrived(&self, gait: &Gait, to: (u32, u32), goal: (u32, u32), now: u32) -> bool {
         let (x, y) = self.at(now);
         let (dx, dy) = (ef::sub(to.0, x), ef::sub(to.1, y));
         let dist = ef::sqrt(ef::add(ef::mul(dx, dx), ef::mul(dy, dy)));
-        !lt(gait.reach, dist) && self.goal_angle(goal, now) == ZERO
+        let stopped = self.vx & 0x7fff_ffff == 0 && self.vy & 0x7fff_ffff == 0;
+        let angle = self.goal_angle(goal, now);
+        !lt(gait.reach, dist) && (angle == ZERO || (stopped && lt(abs(angle), gait.turn)))
     }
 
     /// A point's bearing from its place now.
@@ -288,7 +316,7 @@ impl Mover {
         // angle's, not 6.1091104's, whose table step truncates the other way).
         if lt(ZERO, speed) {
             let (s, c) = ef::sin_cos(heading);
-            self.set_velocity(now, ef::mul(speed, c), ef::mul(speed, s));
+            self.set_velocity_within(now, ef::mul(speed, c), ef::mul(speed, s), gait.top);
         } else {
             self.set_velocity(now, ZERO, ZERO);
         }
@@ -302,6 +330,25 @@ mod tests {
 
     fn f(v: f32) -> u32 {
         v.to_bits()
+    }
+
+    /// The agent queue's clock at movement steps as read under winedbg: the sums of the
+    /// 30-millisecond period by the engine's addition.
+    #[test]
+    fn the_steps_clocks_are_the_originals() {
+        let mut s = 0;
+        for k in 1..=2600 {
+            s = ef::add(s, STEP);
+            let want = match k {
+                24 => "0.720000",
+                180 => "5.399984",
+                1151 => "34.529137",
+                1540 => "46.198662",
+                2600 => "77.997368",
+                _ => continue,
+            };
+            assert_eq!(format!("{:.6}", f32::from_bits(s)), want, "step {k}");
+        }
     }
 
     /// Booty Bay's first wandering sheep ordered south by script, sampled each step 10

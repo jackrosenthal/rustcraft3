@@ -1563,6 +1563,7 @@ impl World {
             let s = self.agent_step;
             let t = (first..=last).rev().find(|&t| !lt(s, clocks[(t - first) as usize])).unwrap_or(first);
             let c = clocks[(t - first) as usize];
+            log::trace!("step clocks {:.6} {:.6}", f32::from_bits(c), f32::from_bits(s));
             self.step_clocks.push(c);
             self.step_agent.push(s);
             self.step_ticks.push(t);

@@ -33,6 +33,9 @@ pub enum Phase {
     ToMine,
     /// In the mine until the agent queue's clock reaches this (f32 bits).
     InMine(u32),
+    /// At the mine, waiting in its queue for room, with its place there (the `uref`'s
+    /// slot).
+    Waiting(u32),
     /// Walking home with the gold to this structure.
     ToHall(u32),
 }
@@ -52,8 +55,17 @@ pub struct GoldRun {
     pub kind: Kind,
     /// The order's objects' slots, by place in its list (those freed already kept).
     pub order: Vec<u32>,
-    /// Whether this worker has been in a mine (its first entry makes a `+fgm`).
+    /// Whether this worker has been in a mine (its harvest's flag 0x40000000: its walks
+    /// since ghost).
     pub entered: bool,
+    /// Whether a walk of its run has ghosted (its region's 0xd6 cleared:
+    /// `Unit::region_flags`).
+    #[serde(default)]
+    pub ghosted: bool,
+    /// Whether its ghosting ended at the mine since its last walk began (its region's
+    /// 0x10: `Unit::region_flags`).
+    #[serde(default)]
+    pub at_mine: bool,
     /// The round trip's timer (CAgentTimer at +0x204): its due on the agent queue.
     pub timer_due: Option<u32>,
     /// The speed bonus now (+0x21c), the last trip's travel time (+0x224), and the bonus
@@ -140,9 +152,11 @@ impl World {
                 r.phase = Phase::ToMine;
                 r.kind = if player { Kind::Player } else { Kind::Own };
                 r.order = order;
+                r.ghosted |= r.entered;
+                r.at_mine &= !r.entered;
                 r
             }
-            None => GoldRun { mine, phase: Phase::ToMine, kind: if player { Kind::Player } else { Kind::Own }, order, entered: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits() },
+            None => GoldRun { mine, phase: Phase::ToMine, kind: if player { Kind::Player } else { Kind::Own }, order, entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits() },
         };
         let Some(u) = self.unit_mut(h) else { return };
         u.extra.gold_run = Some(run);
@@ -159,7 +173,7 @@ impl World {
         match r.phase {
             Phase::ToMine => Some(r.mine),
             Phase::ToHall(hall) => Some(hall),
-            Phase::InMine(_) => None,
+            Phase::InMine(_) | Phase::Waiting(_) => None,
         }
     }
 
@@ -185,21 +199,35 @@ impl World {
         let path = [run.order[run.order.len() - 1], run.order[run.order.len() - 2]];
         let agent = self.step_agent.get(k).copied().unwrap_or(self.agent_step);
         match run.phase {
-            Phase::ToMine => self.enter_mine(h, run, path, agent),
+            Phase::ToMine => {
+                let mut run = run;
+                run.at_mine = true;
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.gold_run = Some(run.clone());
+                }
+                self.push_off_ghosts(h);
+                self.enter_mine(h, run, path, agent)
+            }
             Phase::ToHall(hall) => self.drop_gold(h, run, hall, path),
-            Phase::InMine(_) => {}
+            Phase::InMine(_) | Phase::Waiting(_) => {}
         }
     }
 
     /// At the mine (`FUN_6f437ae0`): a worker's first entry makes a `+fgm`; the move's
-    /// target task and the task before it go as the step ends, in the walkers' order,
-    /// and its path in the next step (`Tags::walk_ended`); the round trip's timing tunes its speed; it goes in for the
-    /// mine's time (Agld DataB), taking its load.
+    /// target task and the task before it go as the step ends, in the walkers' order, and
+    /// its path in the next step (`Tags::walk_ended`); the round trip's timing tunes its
+    /// speed; it goes in for the mine's time (Agld DataB), taking its load, when the mine
+    /// has room (Agld DataC workers), and else waits where it stands at the end of the
+    /// mine's queue, a `uref` its place there (`FUN_6f5c72c0`, `FUN_6f5c75e0`).
     fn enter_mine(&mut self, h: u32, mut run: GoldRun, path: [u32; 2], agent: u32) {
-        if !run.entered {
+        // The mine's first worker in makes its `+fgm` (read: one for five peons).
+        if !self.unit(run.mine).is_some_and(|m| m.extra.mine_shaft) {
             self.tags.take(b"+fgm");
-            run.entered = true;
+            if let Some(m) = self.unit_mut(run.mine) {
+                m.extra.mine_shaft = true;
+            }
         }
+        run.entered = true;
         let (target_task, task) = match run.kind {
             Kind::Player => (11, 10),
             _ => (10, 9),
@@ -209,12 +237,74 @@ impl World {
         let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
         self.tags.walk_ended(path, serial);
         let mine = run.mine;
-        let (dur, gold_cap) = match (self.ability_with_code(mine, "Agld"), self.ability_with_code(h, "Ahar")) {
-            (Some((m, ml)), Some((a, al))) => (self.ability_real(m, "DataB", ml), self.ability_real(a, "DataC", al) as i32),
-            _ => (1.0, 10),
-        };
+        let (dur, room) = self.mine_time_and_room(mine);
         run.tune(agent, dur.to_bits());
-        run.phase = Phase::InMine(ef::add(agent, dur.to_bits()));
+        if self.unit(mine).is_some_and(|m| m.inside >= room) {
+            run.phase = Phase::Waiting(self.tags.take(b"uref"));
+            if let Some(m) = self.unit_mut(mine) {
+                m.extra.mine_queue.push(h);
+            }
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.gold_run = Some(run);
+            }
+            return;
+        }
+        self.into_mine(h, run, ef::add(agent, dur.to_bits()));
+    }
+
+    /// As its walk to the mine ends its ghosting ends (task 0xd0151, `FUN_6f43b7e0`,
+    /// whether it ghosted or not): its owner's units within 0.1 of touching it that
+    /// ghost, or have, are each placed again where they stand, clear of the units about
+    /// them (`FUN_6f427510`, `FUN_6f427870`; read: a peon walking home through the cell
+    /// where another stopped at the mine moved, still walking, to the next cell clear of
+    /// that one and the one waiting beside it).
+    fn push_off_ghosts(&mut self, h: u32) {
+        let Some((owner, x, y, c)) = self.unit(h).map(|u| (u.owner, u.x, u.y, u.collision)) else { return };
+        let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return };
+        let near: Vec<u32> = self
+            .unit_order
+            .iter()
+            .copied()
+            .filter(|&o| o != h)
+            .filter(|&o| self.unit(o).is_some_and(|v| !v.dead && !v.hidden && v.owner == owner && v.extra.gold_run.as_ref().is_some_and(|r| r.entered) && (v.x - x).hypot(v.y - y) <= 0.1 + c + v.collision))
+            .collect();
+        for o in near {
+            let Some((ox, oy)) = self.unit(o).map(|v| (v.x, v.y)) else { continue };
+            let (nx, ny) = crate::natives::units::shown_at(self, o);
+            if (nx, ny) == (ox, oy) {
+                continue;
+            }
+            let cell = |w: f32, o: f32| ef::div(ef::sub(w.to_bits(), o.to_bits()), crate::pathing::CELL.to_bits());
+            let (cx, cy) = (cell(nx, origin[0]), cell(ny, origin[1]));
+            if let Some(v) = self.unit_mut(o) {
+                v.x = nx;
+                v.y = ny;
+                v.extra.cell_at = Some((cx, cy, nx, ny));
+                if let Some(m) = v.extra.mover.as_mut() {
+                    m.x = cx;
+                    m.y = cy;
+                }
+            }
+        }
+    }
+
+    /// A gold mine's time inside (Agld DataB) and the workers it holds at once (DataC).
+    fn mine_time_and_room(&self, mine: u32) -> (f32, u32) {
+        match self.ability_with_code(mine, "Agld") {
+            Some((m, ml)) => (self.ability_real(m, "DataB", ml), self.ability_real(m, "DataC", ml).max(1.0) as u32),
+            None => (1.0, 1),
+        }
+    }
+
+    /// Into its mine, out of sight, until the agent queue's clock reaches `due`, with its
+    /// load (Ahar DataC) taken from the mine's gold.
+    fn into_mine(&mut self, h: u32, mut run: GoldRun, due: u32) {
+        let mine = run.mine;
+        let gold_cap = match self.ability_with_code(h, "Ahar") {
+            Some((a, al)) => self.ability_real(a, "DataC", al) as i32,
+            None => 10,
+        };
+        run.phase = Phase::InMine(due);
         let before = self.unit(mine).map_or(0, |m| m.resource);
         let take = gold_cap.min(before);
         if let Some(m) = self.unit_mut(mine) {
@@ -230,11 +320,36 @@ impl World {
         }
     }
 
-    /// The mine's timer is up (`h`'s due on the agent queue): out at the place it went
-    /// in, its order home given (`RETURN`: its `^clg` at once, the harvest order's tree
-    /// and its own five with the tick's orders' objects), walking from step `k`.
+    /// The mine's timer is up (`h`'s due on the agent queue; `FUN_6f5eee60`): out where
+    /// it went in, or at the nearest place clear of the units about it when one stands
+    /// there (`FUN_6f699c00`'s placing; read: a peon out at the next cell but one when
+    /// the next in the queue stood where it went in); the queue's first worker in, its
+    /// time from this one's due (read: the agent clock at each let-in a whole second
+    /// past the first entry's) and its `uref` going with the tick's orders' objects; and
+    /// its order home given (`RETURN`: its `^clg` at once, the harvest order's tree and
+    /// its own five with the tick's orders' objects), walking from step `k`.
     pub fn leave_gold_mine(&mut self, h: u32, k: usize) {
         let Some(mut run) = self.unit(h).and_then(|u| u.extra.gold_run.clone()) else { return };
+        let mine = run.mine;
+        let due = match run.phase {
+            Phase::InMine(at) => at,
+            _ => self.step_agent.get(k).copied().unwrap_or(self.agent_step),
+        };
+        if self.unit(h).is_some() {
+            let (x, y) = crate::natives::units::shown_at(self, h);
+            if let Some(u) = self.unit_mut(h) {
+                u.x = x;
+                u.y = y;
+                u.inside = 0;
+                u.hidden = false;
+            }
+        }
+        if let Some(m) = self.unit_mut(mine) {
+            m.inside = m.inside.saturating_sub(1);
+        }
+        self.let_in_next(mine, due);
+        let now = self.step_clocks.get(k).map_or(self.time_exact, |&c| f32::from_bits(c) as f64);
+        self.mine_still_queued(mine, now);
         let order: Vec<u32> = RETURN.iter().map(|c| self.tags.take(c)).collect();
         self.tags.release(order[13]);
         let rest: &[usize] = match run.kind {
@@ -250,23 +365,50 @@ impl World {
         for i in [12, 11, 10, 9, 8] {
             self.tags.issued.push(order[i]);
         }
-        let mine = run.mine;
         let hall = self.drop_off(h).unwrap_or(0);
         run.phase = Phase::ToHall(hall);
         run.kind = Kind::Return;
+        run.ghosted = true;
+        run.at_mine = false;
         run.order = order;
         let serial = self.tags.born;
-        if let Some(m) = self.unit_mut(mine) {
-            m.inside = m.inside.saturating_sub(1);
-        }
         if let Some(u) = self.unit_mut(h) {
-            u.inside = 0;
-            u.hidden = false;
             u.extra.gold_run = Some(run);
             u.extra.walk_from = Some(k);
             u.extra.walk_serial = serial;
             u.path.clear();
             u.order = Order { id: crate::natives::basic::order_id("resumeharvesting"), target_x: 0.0, target_y: 0.0, target: 0 };
+        }
+    }
+
+    /// The gold taken out as a worker leaves with others still queued (`FUN_6f4382c0`,
+    /// `FUN_6f5e64b0`): the mine's FloatModifier (`FUN_6f058120`, its `` `rcm ``) made,
+    /// or its end put off, to a second on; it is freed ten seconds after its end (read:
+    /// made at turn 602 and put off at 612 and 622, freed at turn 732), `now` the leave's
+    /// step's clock.
+    fn mine_still_queued(&mut self, mine: u32, now: f64) {
+        let Some(m) = self.unit(mine).filter(|m| !m.extra.mine_queue.is_empty()) else { return };
+        let slot = match m.extra.mine_busy {
+            Some((s, end)) if now <= end + 10.0 => s,
+            _ => self.tags.take(b"`rcm"),
+        };
+        self.tags.redoom_at(now + 1.0 + 10.0, slot);
+        if let Some(m) = self.unit_mut(mine) {
+            m.extra.mine_busy = Some((slot, now + 1.0));
+        }
+    }
+
+    /// The first worker still waiting in a mine's queue goes in, its time from `from`
+    /// (`FUN_6f5eed80`, `FUN_6f5f4810`).
+    fn let_in_next(&mut self, mine: u32, from: u32) {
+        loop {
+            let Some(w) = self.unit_mut(mine).and_then(|m| (!m.extra.mine_queue.is_empty()).then(|| m.extra.mine_queue.remove(0))) else { return };
+            let Some(run) = self.unit(w).filter(|u| !u.dead).and_then(|u| u.extra.gold_run.clone()).filter(|r| r.mine == mine) else { continue };
+            let Phase::Waiting(uref) = run.phase else { continue };
+            self.tags.issued.push(uref);
+            let (dur, _) = self.mine_time_and_room(mine);
+            self.into_mine(w, run, ef::add(from, dur.to_bits()));
+            return;
         }
     }
 
@@ -296,6 +438,8 @@ impl World {
         let mut run = run;
         run.phase = Phase::ToMine;
         run.kind = Kind::Own;
+        run.ghosted = true;
+        run.at_mine = false;
         run.order = order;
         let serial = self.tags.born;
         if let Some(u) = self.unit_mut(h) {
@@ -329,7 +473,8 @@ impl World {
             let m = u.extra.mover?;
             let to = *u.path.first().filter(|_| u.path.len() == 1)?;
             let g = self.gold_run_goal(h)?;
-            let gait = crate::motion::Gait { top: 0, grow: 0, turn: 0, window: 0, reach: 0.49f32.to_bits() };
+            let turn = self.objects.units.get(u.type_id).map_or(0.5, |o| o.real("turnRate"));
+            let gait = crate::motion::Gait { top: 0, grow: 0, turn: turn.to_bits(), window: 0, reach: 0.49f32.to_bits() };
             m.arrived(&gait, (cell(to.0, origin[0]), cell(to.1, origin[1])), (cell(g.0, origin[0]), cell(g.1, origin[1])), clock).then_some(m)
         })();
         let Some(m) = ends else { return false };
@@ -363,7 +508,7 @@ mod tests {
     /// original set them (`FUN_6f15ff40`'s writes, cells a second).
     #[test]
     fn a_peons_speed_is_tuned_as_the_originals() {
-        let mut run = GoldRun { mine: 0, phase: Phase::ToMine, kind: Kind::Player, order: Vec::new(), entered: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits() };
+        let mut run = GoldRun { mine: 0, phase: Phase::ToMine, kind: Kind::Player, order: Vec::new(), entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits() };
         // As winedbg printed them, to six places.
         let speed = |r: &GoldRun| (f32::from_bits(ef::mul(190f32.to_bits(), r.factor)) as f64 / 32.0 * 1e6).round() / 1e6;
         run.tune(42.838799f32.to_bits(), 1f32.to_bits());
@@ -372,5 +517,11 @@ mod tests {
         assert_eq!(speed(&run), 6.041100);
         run.tune(52.888390f32.to_bits(), 1f32.to_bits());
         assert_eq!(speed(&run), 6.025844);
+        // One of five peons at a mine, its trips longer and shorter (read: its speeds
+        // after, at its walks' steps).
+        let mut run = GoldRun { factor: 1f32.to_bits(), ..run };
+        (run.timer_due, run.bonus, run.travel, run.bonus_before) = (None, 0, 0, 0);
+        let speeds: Vec<f64> = [51.688438f32, 56.668236, 61.828026, 66.957817].iter().map(|c| { run.tune(c.to_bits(), 1f32.to_bits()); speed(&run) }).collect();
+        assert_eq!(speeds, [5.9375, 5.907512, 6.025506, 6.182261]);
     }
 }

@@ -151,6 +151,12 @@ impl Tags {
         self.timed.push((due, slot));
     }
 
+    /// A timed free put off to `due`, the slot's earlier one dropped.
+    pub fn redoom_at(&mut self, due: f64, slot: u32) {
+        self.timed.retain(|&(_, s)| s != slot);
+        self.timed.push((due, slot));
+    }
+
     /// Frees what falls due before `now` (strictly after its time, as the original's
     /// events run in the turn after a time they fall due on), earliest first, those due
     /// together in the order queued; then what was released at once.

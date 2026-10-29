@@ -1,0 +1,3 @@
+# Booty Bay with the original's actions as player 2 (crates/net/examples/host.rs, under winedbg tracing tags and steps): turn pid hex.  Five peons selected and sent to their gold mine together.
+397 2 1601050038310000383100004e3100004e31000064310000643100007a3100007a31000090310000903100001a196f65706f3831000038310000
+585 2 12080003000d00ffffffffffffffff00001046000000455f2900005f290000

@@ -120,7 +120,30 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32, facing: f32)
         }
         return (sx, sy);
     }
-    let kind = crate::pathing::Move::from_movetp(&movetp);
+    ground_place(w, &movetp, collision, x, y, true, None, 0x02)
+}
+
+/// A unit shown again where it stood (out of a gold mine; `FUN_6f699c00`'s placing): as
+/// one made there, without the room its size class asks for about it (read: peons out
+/// of a gold mine beside its footprint stay there, and one whose place another stood on
+/// came out at the next cell but one, by the mine too).
+/// Kept clear of the units whose regions its mask meets (`Unit::region_mask`).
+pub(crate) fn shown_at(w: &World, h: u32) -> (f32, f32) {
+    let Some(u) = w.unit(h) else { return (0.0, 0.0) };
+    let Some(o) = w.objects.units.get(u.type_id) else { return (u.x, u.y) };
+    if w.pathing.is_none() {
+        return (u.x, u.y);
+    }
+    let (movetp, collision) = (o.str("movetp"), o.real("collision"));
+    ground_place(w, &movetp, collision, u.x, u.y, false, Some(h), u.region_mask())
+}
+
+/// A ground unit's place at or near x, y (`placed_at`); `room`: the cells about it must
+/// be walkable as far as its size class reaches; `except`: a unit not to keep clear of;
+/// `mask`: the region flags of the units it keeps clear of (`Unit::region_flags`).
+#[allow(clippy::too_many_arguments)]
+fn ground_place(w: &World, movetp: &str, collision: f32, x: f32, y: f32, room_about: bool, except: Option<u32>, mask: u32) -> (f32, f32) {
+    let kind = crate::pathing::Move::from_movetp(movetp);
     let radius = collision * 0.5;
     if kind == crate::pathing::Move::Fly || radius <= 0.0 {
         return (x, y);
@@ -134,7 +157,7 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32, facing: f32)
     // footmen, 16 and 31, made on one spot stand 2 cells apart, knights, 32, 3, and meat
     // wagons, 48, 4, the second each time at the ring's first cell; Human01's bandits
     // made 2 cells apart keep their places).
-    let others: Vec<(f32, f32, f32)> = w.unit_order.iter().filter_map(|&o| w.unit(o)).filter(|u| !u.dead && !u.hidden && !u.is_building && u.collision > 0.0 && (u.x - x).abs() < 1024.0 && (u.y - y).abs() < 1024.0).filter(|u| w.move_kind(u.handle) != crate::pathing::Move::Fly).map(|u| (u.x, u.y, u.collision)).collect();
+    let others: Vec<(f32, f32, f32)> = w.unit_order.iter().filter(|&&o| Some(o) != except).filter_map(|&o| w.unit(o)).filter(|u| u.region_flags() & mask != 0).filter(|u| !u.dead && !u.hidden && !u.is_building && u.collision > 0.0 && (u.x - x).abs() < 1024.0 && (u.y - y).abs() < 1024.0).filter(|u| w.move_kind(u.handle) != crate::pathing::Move::Fly).map(|u| (u.x, u.y, u.collision)).collect();
     let p = w.pathing.as_ref().unwrap();
     let near: Vec<((i32, i32), i32)> = others.iter().map(|&(ox, oy, oc)| (p.cell_of(ox, oy), ((collision + oc) / crate::pathing::CELL).floor() as i32)).collect();
     let apart = |c: (i32, i32)| near.iter().all(|&(o, t)| (c.0 - o.0).abs().max((c.1 - o.1).abs()) > t);
@@ -157,12 +180,12 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32, facing: f32)
     };
     let reach = class * crate::pathing::CELL;
     let room = |c: (i32, i32)| p.fits_kind(c, reach, kind);
-    if apart((cx, cy)) && open((cx, cy)) && (!p.walkable((cx, cy)) || room((cx, cy))) {
+    if apart((cx, cy)) && open((cx, cy)) && (!room_about || !p.walkable((cx, cy)) || room((cx, cy))) {
         return (x, y);
     }
     for k in 1..=64i32 {
         for c in ring_order(2, cy - k, cx - k, cy + 1 + k, cx + 1 + k) {
-            if apart(c) && open(c) && p.fits_kind(c, radius, kind) && room(c) {
+            if apart(c) && open(c) && p.fits_kind(c, radius, kind) && (!room_about || room(c)) {
                 return p.center(c);
             }
         }

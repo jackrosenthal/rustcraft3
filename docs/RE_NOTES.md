@@ -348,30 +348,65 @@ these are the findings behind them.
     675, 265; home from 675, 265 to the great hall (650 to 661 by 258 to 269) at 663,
     265.  The path's goal (+0x1c) is the structure's middle, its last point the end
     node's middle.  The walk ends at that point as the wanderers' do (within 0.49,
-    the provider's answer 3); within reach the walker stops and turns onto the
-    structure's bearing, its heading then exactly that bearing (a turn within its rate
-    sets it, read across 0: 5.990847), and arrives the next step.  The range tests
+    the provider's answer 3); within reach the walker stops and turns toward the
+    structure's bearing (a turn within its rate sets it exactly, read across 0:
+    5.990847), and arrives the next step, its heading within a step's turn of the
+    bearing, or at once when it comes within reach on it (read: a peon stopped at a
+    mine 0.069 short of its bearing, its turn 0.6, went in at the next step with its
+    heading as it was; one walking straight at its hall arrived as it came within
+    reach).  The range tests
     after (`FUN_6f05b580`: range over 32 plus both position objects' +0x90 radii,
     0.5, 1.5625 for the mine, 5.5 for the hall, the places extrapolated) fail at both
     structures; their contact test (`FUN_6f058cb0`, the ring touching the footprint)
     passes.
   - The first walk, from the player's order, searches as other walks do (its path's
-    mask +0x9c 0x02000002; the idle peons' regions, +0x34 0x10000ca, refuse cells).
-    After the worker's first entry its orders carry task 0xd0150 and their walks'
-    mask is 0x10000010, which no unit's region meets: the search, the line test of
-    `World::way_ahead`, and the hold for units ahead all pass through other units
-    (read: the walk home along row 265 past the idle peon whose region covers 672,
-    264, never held and drawing nothing).
+    mask +0x9c 0x02000002; the idle peons' regions, +0x34 0x010000ca, refuse cells).
+    After the worker's first arrival its harvest's flag 0x40000000 is set and its
+    orders carry task 0xd0150 (ghosting, `FUN_6f422890`, `FUN_6f699220`): its region
+    loses 0xd6 and its mask 0xc6 and gains 0x10 (the walks' mask 0x10000010).  The
+    walk to the mine always ends with task 0xd0151 (`FUN_6f43b7e0`, `FUN_6f699260`),
+    which sets 0x10 in both; the walk home has none.  So a ghosting search, line test
+    (`World::way_ahead`), and hold pass through all units but workers stopped at a
+    mine, and other walks pass through workers that have ghosted on their run
+    (`Unit::region_flags`, `Unit::region_mask`; read: the walk home along row 265 past
+    the idle peon whose region covers 672, 264, never held and drawing nothing;
+    workers waiting at a mine after their first walk turned another's first walk
+    aside, and one waiting after an arrival a ghosting way off row 263; a peon just
+    out of a mine, turning to walk home, let one walking into its cell on).  As the
+    walk to the mine ends (0xd0151), its owner's units within 0.1 of touching it whose
+    mask holds 0x10 (`FUN_6f427510`; workers that have been in a mine) are each placed
+    again where they stand, clear of the units their masks meet, still walking (read:
+    a peon walking home through the cell where another stopped moved to the next cell
+    clear of that one and the one waiting beside it, 673.5, 263.5).
   - The walk's end is taken in the walkers' order (newest walk first) in its step:
     the objects an arrival makes are made then and those it frees wait for the step's
     end, in that order with the others' walk ends' (read: a hall arrival's freed
     order before a newer wanderer's walk end's tree, after an older one's).  Its path
     goes in the next step as any walk's (above).
-  - At the mine (`FUN_6f437ae0`, in the step the walk ends): a worker's first entry
-    makes a `+fgm`; the harvest order's move task and the task before it go as the
-    step ends.  It goes in for the mine's Agld DataB (1 second) on the agent queue,
-    comes out where it went in when that is up (its walk home's first step the first
-    step after), and its harvest order's tree goes with the order home's making.
+  - At the mine (`FUN_6f437ae0`, in the step the walk ends): the mine's first worker
+    in makes a `+fgm` (one for five peons); the harvest order's move task and the
+    task before it go as the step ends.  It goes in for the mine's Agld DataB (1
+    second) on the agent queue when the mine has room (Agld DataC, one: its slots
+    +0xec, their count +0x90 under +0x8c, `FUN_6f5c74c0`), and else waits where it
+    stands, a `uref` its place at the end of the mine's queue (+0x94 to +0xa0,
+    `FUN_6f5c75e0`).  Its speed is tuned either way.  When the occupant's time is up
+    (the mine's timer, event 0xd01c1, `FUN_6f5eee60`): the occupant is shown again
+    where it went in, or at the nearest cell clear of the units its mask meets
+    (`FUN_6f699c00`'s placing, without the size class's room the made units ask for:
+    read, the first out at the next cell but one as another stood where it went in,
+    later ones by the mine's footprint staying); then the queue's first goes in, its
+    time from the occupant's due (`FUN_6f5eed80`; read: the agent clock at each
+    let-in a whole second past the first entry's), its `uref` freed with the tick's
+    orders' objects; then the occupant takes its gold (`FUN_6f4382c0`): with workers
+    still queued the mine's FloatModifier (`FUN_6f5e64b0`, `FUN_6f058120`, a
+    `` `rcm ``) is made, or its end put off, to a second after that step's clock, and
+    is freed ten seconds after its end (read: made at turn 602, put off at 612 and
+    622, freed at 732); then the order home.  Its walk home's first step is the first
+    step after, and its harvest order's tree goes with the order home's making.
+  - A player's order to more than one unit has two cluster groups of its own while
+    its units take it, and they take it nearest the target first (read: five peons
+    sent to a gold mine, two `^clg` made before their five orders and freed after;
+    the orders made by the peons' distances to the mine, 8.0 to 12.0 cells).
   - Its speed is tuned at each arrival (constants read under winedbg: 10, 0.5, 1.2,
     5): a 10-second timer started at the last arrival gives the trip's time, less the
     mine's 1 second the travel; the factor that would have made the travel (and the
@@ -393,12 +428,15 @@ these are the findings behind them.
     `l^pa`), five of them freed as the next turn starts; the worker's own from the
     hall 19 (one `tskA` at its head, four tasks at its tail); the order home 16.
   With this the mining game (`docs/reference/bootybay_mining_*`) agrees with the
-  original's trace and keepalives through turn 1341 (at 1342 a give-up's path is
-  freed after the worker's order home, given at the step after it, where the port's
-  give-up falls a step earlier: open); step-marked games of mining and a training
+  original's trace and keepalives through turn 1487 (at 1488 as the game without
+  actions does); step-marked games of mining and a training
   (`docs/reference/bootybay_mining_training_*`, and one with selections and a control
   group too) to their ends (turns 1234 and 1400); a game trained before and during
-  mining to turn 1203; the game of selections, a training, and mining to turn 960.
+  mining to turn 1253; the game of selections, a training, and mining for all its
+  1056 turns; five peons sent to the mine together
+  (`docs/reference/bootybay_mining5_*`) to turn 1109, their steps (read in three
+  games) bit for bit.  Open: at 1110 a worker's arrival at the mine falls a step
+  later than the original's.
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which
@@ -693,8 +731,12 @@ these are the findings behind them.
   is its step's place carried on by its velocity for the time since that step (the
   script's samples, 10 ms after each step, a third of a step on: the first moving
   sample 1 unit).  Positions are not integrated each step: a position object keeps a
-  place (+0x78, +0x7c), a velocity (+0x80, +0x84; its speed +0x88 clamped to the top,
-  `FUN_6f15fc70`), and the clock when last placed (+0x70 float, +0x74 epoch); a change
+  place (+0x78, +0x7c), a velocity (+0x80, +0x84; once its length passes the top
+  speed at +0x88 it is scaled to it by the top times the reciprocal of its length's
+  square root, `FUN_6f15fc70`, `FUN_6f071570`, which falls a little short: read,
+  peons whose tuned speeds were 5.907512 and 6.486394 walking at 5.907436 and
+  6.486344, those at 5.9375, 7.125, and 6.025506 at theirs), and the clock when last
+  placed (+0x70 float, +0x74 epoch); a change
   of velocity (`FUN_6f15f7e0`, each step from the steering, `FUN_6f16fe20`: speed
   times the cosine and sine of the heading, less the velocity now) first moves the
   place on by velocity times the time since (`FUN_6f1603d0`, engine floats), then
@@ -921,7 +963,12 @@ these are the findings behind them.
   - The agent queue runs one main tick ahead: while the main clock stands at a tick,
     the agent queue is brought to the next tick's clock (read: its clock written to
     10.009321 at the main clock 10.004322, the next tick's value, and to its events'
-    times as they fire between).  The movement steps are a 0.03s timer on it, so a step
+    times as they fire between).  The movement steps are a timer on it every 30
+    milliseconds in seconds by the engine's arithmetic (0x3cf5c290, a bit above the
+    single nearest 0.03, which 30 times 0.001, 30 over 1000, and 3 over 100 all give;
+    read: its clock at all of 2600 steps, 0.03 to 77.997368, the sums of it, where
+    the nearest 0.03's sums part from step 24 by an ulp, as the tuned speeds of
+    workers timed by it showed), so a step
     is taken at the last main tick whose clock is short of the step's time, and moves
     units by that tick's clock: as the main clock trails more, from step 1164 (34.92s)
     on at tick 6k + 1 (read: step 1164 at main tick 6985; 1223 at 7339).  A turn holds

@@ -246,13 +246,39 @@ pub struct Unit {
 }
 
 impl Unit {
+    /// Its collision region's flags as others' searches and placings meet them: a
+    /// unit's region holds 0x02 (+0x34 0x010000ca), cleared once a worker's walk ghosts
+    /// (task 0xd0150 clears 0xd6, `FUN_6f699220`), and 0x10 once a worker stops at a mine
+    /// until its next walk (0xd0151 sets it, `FUN_6f699260`).  Read: workers waiting at a
+    /// mine after their first walk turned another's first walk aside, and one waiting
+    /// after its arrival a ghosting way past its cells; a peon just out of a mine,
+    /// turning to walk home, let one walking into its cell on.
+    pub fn region_flags(&self) -> u32 {
+        match self.extra.gold_run.as_ref() {
+            None => 0x02,
+            Some(r) => (if r.ghosted { 0 } else { 0x02 }) | (if r.at_mine { 0x10 } else { 0 }),
+        }
+    }
+
+    /// The flags of others' regions that turn it aside or keep it off a place: 0x02,
+    /// and 0x10 once its harvest has been in a mine (both tasks set it; 0xd0150 clears
+    /// 0xc6, so a ghosting worker meets only workers stopped at a mine: its searches'
+    /// mask 0x10000010).  Read: peons out of a mine on later trips staying where they
+    /// went in by others walking past, where the first came out clear of all.
+    pub fn region_mask(&self) -> u32 {
+        match self.extra.gold_run.as_ref() {
+            Some(r) if r.entered => (if r.ghosted { 0 } else { 0x02 }) | 0x10,
+            _ => 0x02,
+        }
+    }
+
     /// Whether it walks by the engine's movement steps with the others
     /// (`World::first_steps`, `World::step_walkers`): a wanderer under a move order, or
     /// a worker on a gold run between the mine and home.
     pub fn steps_walker(&self) -> bool {
         !self.dead
             && ((self.extra.local_paths && matches!(self.action, Action::Move { .. }))
-                || (matches!(self.action, Action::Harvest { .. }) && self.extra.gold_run.as_ref().is_some_and(|r| !matches!(r.phase, crate::goldrun::Phase::InMine(_)))))
+                || (matches!(self.action, Action::Harvest { .. }) && self.extra.gold_run.as_ref().is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::ToMine | crate::goldrun::Phase::ToHall(_)))))
     }
 }
 
@@ -522,6 +548,16 @@ pub struct UnitExtra {
     /// (`crate::goldrun`).
     #[serde(default)]
     pub gold_run: Option<crate::goldrun::GoldRun>,
+    /// A gold mine a worker has been in (its `+fgm` made; `crate::goldrun`).
+    #[serde(default)]
+    pub mine_shaft: bool,
+    /// A gold mine's workers waiting at it for room, first come first (`crate::goldrun`).
+    #[serde(default)]
+    pub mine_queue: Vec<u32>,
+    /// A gold mine's FloatModifier while workers queue at it (its `` `rcm ``) and when it
+    /// ends (`crate::goldrun`).
+    #[serde(default)]
+    pub mine_busy: Option<(u32, f64)>,
     /// Its heading in the engine's movement when its last walk ended (`Mover::heading`),
     /// kept for the next walk (its facing in degrees loses the low bits).
     #[serde(default)]
@@ -762,6 +798,9 @@ impl Default for UnitExtra {
             footprint_slots: Vec::new(),
             order_tags: Vec::new(),
             gold_run: None,
+            mine_shaft: false,
+            mine_queue: Vec::new(),
+            mine_busy: None,
             walk_heading: None,
             oid: (0, 0),
         }

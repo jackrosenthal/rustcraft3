@@ -901,6 +901,20 @@ impl Game {
                 let smart = natives::basic::order_id("smart");
                 let (x, y) = at.unwrap_or((0.0, 0.0));
                 let (mut ordered, mut error, mut moved) = (false, None, Vec::new());
+                // An order to more than one unit has two cluster groups of its own while
+                // its units take it (read: five peons sent to a gold mine, two `^clg`
+                // made before their five orders and freed after them).
+                let groups = (units.len() > 1).then(|| [self.world.tags.take(b"^clg"), self.world.tags.take(b"^clg")]);
+                // Its units take it nearest the target first (read: five peons sent to a
+                // gold mine took their orders by their distance to it, 8.0 to 12.0 cells).
+                let mut units = units;
+                if units.len() > 1 {
+                    let to = if target != 0 { self.world.widget_pos(target) } else { at };
+                    if let Some((tx, ty)) = to {
+                        let d2 = |w: &World, u: u32| w.unit(u).map_or(f32::MAX, |u| (u.x - tx) * (u.x - tx) + (u.y - ty) * (u.y - ty));
+                        units.sort_by(|&a, &b| d2(&self.world, a).total_cmp(&d2(&self.world, b)));
+                    }
+                }
                 for u in units {
                     // A unit right-clicked does not take its own click, but goes to the
                     // ground there.
@@ -921,6 +935,9 @@ impl Game {
                     if at.is_some() && target == 0 {
                         moved.push(u);
                     }
+                }
+                for g in groups.into_iter().flatten() {
+                    self.world.tags.release(g);
                 }
                 if formation && moved.len() > 1 {
                     self.formation(player, moved);

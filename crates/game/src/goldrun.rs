@@ -134,6 +134,11 @@ impl World {
     /// orders).
     pub fn start_gold_run(&mut self, h: u32, mine: u32, player: bool) {
         let codes: &[&Code] = if player { &HARVEST_PLAYER } else { &HARVEST_OWN };
+        // Its walk is newer than any before it: its serial is taken before its order's
+        // objects, as a wanderer's is (read: a wanderer's path, its walk begun at the
+        // tick a worker left the mine and ended before the worker's walk home, freed
+        // before the worker's arrival).
+        let serial = self.tags.born;
         let order: Vec<u32> = codes.iter().map(|c| self.tags.take(c)).collect();
         self.tags.release(order[16]);
         let five: [usize; 5] = if player { [1, 15, 14, 13, 12] } else { [15, 14, 13, 12, 11] };
@@ -144,7 +149,6 @@ impl World {
                 self.tags.issued.push(order[k]);
             }
         }
-        let serial = self.tags.born;
         let old = self.unit(h).and_then(|u| u.extra.gold_run.clone());
         let run = match old {
             Some(mut r) => {
@@ -350,6 +354,7 @@ impl World {
         self.let_in_next(mine, due);
         let now = self.step_clocks.get(k).map_or(self.time_exact, |&c| f32::from_bits(c) as f64);
         self.mine_still_queued(mine, now);
+        let serial = self.tags.born;
         let order: Vec<u32> = RETURN.iter().map(|c| self.tags.take(c)).collect();
         self.tags.release(order[13]);
         let rest: &[usize] = match run.kind {
@@ -371,7 +376,6 @@ impl World {
         run.ghosted = true;
         run.at_mine = false;
         run.order = order;
-        let serial = self.tags.born;
         if let Some(u) = self.unit_mut(h) {
             u.extra.gold_run = Some(run);
             u.extra.walk_from = Some(k);
@@ -425,6 +429,7 @@ impl World {
             u.carry_gold = 0;
         }
         let codes = &HARVEST_OWN;
+        let next_serial = self.tags.born;
         let order: Vec<u32> = codes.iter().map(|c| self.tags.take(c)).collect();
         self.tags.release(order[16]);
         for i in [7, 6, 5, 4, 3, 2, 1, 0] {
@@ -441,10 +446,9 @@ impl World {
         run.ghosted = true;
         run.at_mine = false;
         run.order = order;
-        let serial = self.tags.born;
         if let Some(u) = self.unit_mut(h) {
             u.extra.gold_run = Some(run);
-            u.extra.walk_serial = serial;
+            u.extra.walk_serial = next_serial;
             u.path.clear();
             u.order = Order { id: crate::natives::basic::order_id("harvest"), target_x: 0.0, target_y: 0.0, target: 0 };
         }

@@ -1539,10 +1539,10 @@ impl World {
     /// then taking place in time order (read: the agent queue's clock written to the
     /// main clock's next value at each tick, and to its events' times as they fire,
     /// 10.019943 between 10.019320 and 10.024319).  So step k, due at the sum of k
-    /// 0.03s, is taken at the last tick whose clock is short of it, and moves units by
-    /// that tick's clock, or at the tick whose clock it equals (read: step 2468, due
-    /// 74.037521, the clock at tick 14813, taken there); as the main clock trails the
-    /// agent queue's more, a step comes
+    /// 30ms, is taken at the last tick whose clock is short of it, and moves units by
+    /// that tick's clock (read: step 2468, due 74.037529, at tick 14813, 74.037521;
+    /// step 4390, due 131.695175, at tick 26351, the clock of 26352 its due); as the
+    /// main clock trails the agent queue's more, a step comes
     /// a tick later from about 35 seconds in (read: step 1164 at main tick 6985, not
     /// 6984).  A tick of the game holds the engine's ticks that start within it (read:
     /// step 1223, taken at main tick 7339, in the turn of ticks 7320 to 7339).
@@ -1561,7 +1561,7 @@ impl World {
         self.step_index = self.steps_total;
         while !lt(clocks[clocks.len() - 1], self.agent_step) {
             let s = self.agent_step;
-            let t = (first..=last).rev().find(|&t| !lt(s, clocks[(t - first) as usize])).unwrap_or(first);
+            let t = (first..=last).rev().find(|&t| lt(clocks[(t - first) as usize], s)).unwrap_or(first);
             let c = clocks[(t - first) as usize];
             log::trace!("step clocks {:.6} {:.6}", f32::from_bits(c), f32::from_bits(s));
             self.step_clocks.push(c);
@@ -1598,7 +1598,7 @@ impl World {
         if clocks.is_empty() || lt(*clocks.last().unwrap(), at) {
             return None;
         }
-        Some((0..clocks.len() - 1).rev().find(|&k| !lt(at, clocks[k])).map_or(*first, |k| first + k as i64))
+        Some((0..clocks.len() - 1).rev().find(|&k| lt(clocks[k], at)).map_or(*first, |k| first + k as i64))
     }
 
     pub fn tick(&mut self, vm: &mut Vm, dt: f32) {

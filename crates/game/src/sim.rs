@@ -1459,10 +1459,8 @@ impl World {
         if let Some(&c) = clocks.get(from.wrapping_sub(1)).filter(|_| from > 0) {
             m.placed_at = c;
         }
-        if to_structure {
-            if let Some(&c) = clocks.get(from).filter(|_| from < until) {
-                log::trace!("gold walker {h} at {:.6} {:.6} v {:.6} {:.6} hd {:.6} clock {:.6}", f32::from_bits(m.x), f32::from_bits(m.y), f32::from_bits(m.vx), f32::from_bits(m.vy), f32::from_bits(m.heading), f32::from_bits(c));
-            }
+        if let Some(&c) = clocks.get(from).filter(|_| from < until) {
+            log::trace!("walker {h} at {:.6} {:.6} v {:.6} {:.6} hd {:.6} clock {:.6}", f32::from_bits(m.x), f32::from_bits(m.y), f32::from_bits(m.vx), f32::from_bits(m.vy), f32::from_bits(m.heading), f32::from_bits(c));
         }
         let mut done = None;
         // A goal within reach as the walk starts: its order's objects go at its first

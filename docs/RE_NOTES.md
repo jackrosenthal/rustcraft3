@@ -334,8 +334,12 @@ these are the findings behind them.
   step's end then frees the objects of the orders given at its tick, then its walk
   ends' objects (read: turn 1343, an order's eight after its step's give-up made its
   three and before that give-up's tree; the mining game's turn 932, after a peon's
-  path).  With that the game without actions agrees with the original's trace to its
-  end (turn 1361) and its keepalives through turn 1487.  The tags example prints each
+  path).  The walks' order is their serials': a wanderer's and a gold run's each
+  taken before its order's objects, so a walk begun later is newer (read: a
+  wanderer's path, its walk begun at the tick a worker left its mine and ended
+  first, freed before the worker's hall arrival).  With that the game without actions
+  agrees with the original's trace to its end (turn 1361) and its keepalives for all
+  1615 turns recorded.  The tags example prints each
   turn's steps with their main ticks (TAGS_STEPS), and its tag trace marks each step
   (`S k`).
 - Gold mining (traced: a Booty Bay peon sent by a smart order to its gold mine, its
@@ -427,16 +431,13 @@ these are the findings behind them.
     tasks, three `tskt`, a task, a `tskt`, three tasks, `tskA`, `^clg`, `^clu`,
     `l^pa`), five of them freed as the next turn starts; the worker's own from the
     hall 19 (one `tskA` at its head, four tasks at its tail); the order home 16.
-  With this the mining game (`docs/reference/bootybay_mining_*`) agrees with the
-  original's trace and keepalives through turn 1487 (at 1488 as the game without
-  actions does); step-marked games of mining and a training
-  (`docs/reference/bootybay_mining_training_*`, and one with selections and a control
-  group too) to their ends (turns 1234 and 1400); a game trained before and during
-  mining to turn 1253; the game of selections, a training, and mining for all its
-  1056 turns; five peons sent to the mine together
-  (`docs/reference/bootybay_mining5_*`) to turn 1109, their steps (read in three
-  games) bit for bit.  Open: at 1110 a worker's arrival at the mine falls a step
-  later than the original's.
+  With this every recorded game agrees with the original's trace and keepalives to
+  its end: the mining game (`docs/reference/bootybay_mining_*`, 1615 turns);
+  step-marked games of mining and a training (`docs/reference/bootybay_mining_training_*`,
+  1234, and one with selections and a control group too, 1400); a game trained
+  before and during mining (1303); the game of selections, a training, and mining
+  (1056); five peons sent to the mine together (`docs/reference/bootybay_mining5_*`,
+  1141), their steps (read in three games) bit for bit.
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which
@@ -969,7 +970,9 @@ these are the findings behind them.
     read: its clock at all of 2600 steps, 0.03 to 77.997368, the sums of it, where
     the nearest 0.03's sums part from step 24 by an ulp, as the tuned speeds of
     workers timed by it showed), so a step
-    is taken at the last main tick whose clock is short of the step's time, and moves
+    is taken at the last main tick whose clock is short of the step's time (strictly:
+    read, step 4390, due 131.695175, at the tick before the one whose clock is its
+    due; step 2468, due 74.037529, at tick 14813, 74.037521), and moves
     units by that tick's clock: as the main clock trails more, from step 1164 (34.92s)
     on at tick 6k + 1 (read: step 1164 at main tick 6985; 1223 at 7339).  A turn holds
     the main ticks 20m to 20m + 19 (read: step 1223, at tick 7339, in turn 368, with

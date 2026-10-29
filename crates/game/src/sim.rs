@@ -1468,6 +1468,10 @@ impl World {
         let mut m = u.extra.mover.unwrap_or(crate::motion::Mover { x: cx, y: cy, heading: u.extra.walk_heading.unwrap_or(f(u.facing.to_radians())), placed_at: start, ..Default::default() });
         let to_structure = u.extra.gold_run.is_some();
         let goal = self.walk_goal(h);
+        if u.extra.mover.is_none() && u.extra.group_walk.is_some() {
+            self.group_member_steps(h);
+        }
+        let Some(u) = self.unit(h) else { return true };
         if u.extra.mover.is_none() {
             log::debug!("walk of {h} from {:.2}, {:.2} facing {:.2} by {:?} to {goal:?}, time {:.3}, tsk. {:?}", u.x, u.y, u.facing, u.path, self.time, u.extra.order_tags.get(7));
             // A goal within reach as it starts ends the walk without its usual objects

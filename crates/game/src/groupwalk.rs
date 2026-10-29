@@ -17,6 +17,9 @@ use crate::world::World;
 pub struct GroupWalk {
     pub path: [u32; 2],
     pub members: Vec<u32>,
+    /// Whether its walk has begun.
+    #[serde(default)]
+    pub started: bool,
 }
 
 /// Units in a row of a rank by how many it holds, small units' then those of radius
@@ -188,7 +191,18 @@ impl World {
                 u.extra.group_walk = Some(path);
             }
         }
-        self.group_walks.push(GroupWalk { path, members });
+        self.group_walks.push(GroupWalk { path, members, started: false });
+    }
+
+    /// A member's first step: the cluster's first draws from the main generator once
+    /// (read: the keepalives agree only with one draw as its walk begins, the turn after
+    /// the order, none at the order).
+    pub(crate) fn group_member_steps(&mut self, h: u32) {
+        let Some(path) = self.unit(h).and_then(|u| u.extra.group_walk) else { return };
+        if let Some(g) = self.group_walks.iter_mut().find(|g| g.path == path && !g.started) {
+            g.started = true;
+            self.rng.next_u32();
+        }
     }
 
     /// A member's walk ended: its order's objects as an arrival's, without a path; the

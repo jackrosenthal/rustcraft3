@@ -466,12 +466,13 @@ these are the findings behind them.
   stepped back by the diameter and 2.5, ranks by 5.5000005 (the gaps read in the
   running game, `DAT_6fd541c0`, `541c4`, `541bc`); the whole centered on its middle
   and turned back (`FUN_6f169e10`).  Read: five peons' targets, bit for bit to six
-  places.  The moves game agrees with the original's trace to turn 1726 and its
-  keepalives to 1703.  Open: from 1704 the keepalive differs by a fixed amount while
-  the objects agree (no random stream's draw, nor a selection order, accounts for
-  it); and the members' starts (the rear ones wait some steps, the front ones swerve
-  at the first) are not yet the original's, likely its cluster's separation
-  (`FUN_6f1702f0`).
+  places.  As the cluster's walk begins (its first member's first step, the turn
+  after the order) the main generator is drawn once (read: the keepalives agree only
+  so; the players' parts of the game module, read under winedbg, did not change).
+  The moves game agrees with the original's trace to turn 1726 and its keepalives to
+  1725.  Open: the members' starts (the rear ones wait some steps, the front ones
+  swerve at the first) are not yet the original's, likely its cluster's separation
+  (`FUN_6f1702f0`), and a member arrives a turn early at 1727.
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

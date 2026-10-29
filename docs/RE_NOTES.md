@@ -765,6 +765,15 @@ these are the findings behind them.
     re-armed in turn 803 before its first step, the clock then 0.025 short).  The
     listeners of a tick are all re-armed, then the old ones released (read: two High
     Priests' in turn 70, two made then two freed; the Ogre Lord's, one then one).
+  - In a tick's later steps a walk's path is freed as the step after its end starts,
+    and a walk end's objects at once.  In a tick's first step the walk ends' objects
+    wait for the step's end, after the paths carried from the last tick (read: turn
+    812, a give-up's three new objects made, then the last turn's path freed, then its
+    tree; turn 668, the last turn's path before an arrival's tree; turn 101, in a
+    later step, a path before a give-up's new objects).  Why the first step differs is
+    not read.
+  - Steps and orders tie: one due exactly at a main tick's clock is taken at that tick
+    (read: step 2468, due 74.037521, the clock at tick 14813).
   - The blocked count's draw (`FUN_6f1689d0`: 2 for a goal within 12 cells and a walker
     alone, else 7 plus `FUN_6f1d62b0(2)`, 0 or 1) is on the generator at DAT_6fd53a48,
     the main one (read: the game object there, 0x2b300c0 in the traced run, is the

@@ -66,9 +66,14 @@ pub struct Tags {
     /// Freed as the next turn starts.
     #[serde(default)]
     pub next_turn: Vec<u32>,
-    /// Freed as the next movement step starts (`World::step_walkers`).
+    /// Ended walks' paths (`l^pa`, `^clu`), freed in the next movement step
+    /// (`World::first_steps`, `World::step_walkers`).
     #[serde(default)]
-    pub next_step: Vec<u32>,
+    pub step_paths: Vec<[u32; 2]>,
+    /// Walk ends' objects released in a tick's first step, while it runs: freed in
+    /// order as it ends, after the paths of the last tick's ends (`Tags::end_step`).
+    #[serde(default)]
+    pub step_frees: Option<Vec<u32>>,
     /// Issued orders' objects freed once the orders due together are all given
     /// (`flush_issued`).
     #[serde(default)]
@@ -96,7 +101,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), next_step: Vec::new(), issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None }
+        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -169,9 +174,42 @@ impl Tags {
         self.free_doomed();
     }
 
-    /// Frees what waits for the next movement step.
-    pub fn free_step(&mut self) {
-        for s in std::mem::take(&mut self.next_step) {
+    /// A walk end's object released: at once, or as a tick's first step ends.
+    fn release_in_step(&mut self, s: u32) {
+        match self.step_frees.as_mut() {
+            Some(q) => q.push(s),
+            None => self.release(s),
+        }
+    }
+
+    /// A tick's first step begins: its walk ends' objects wait for its end.
+    pub fn begin_first_step(&mut self) {
+        self.step_frees = Some(Vec::new());
+    }
+
+    /// A tick's first step's end: the paths of the last tick's walk ends, then this
+    /// step's walk ends' objects, freed in that order (read: a give-up's three new
+    /// objects made, then the last turn's path freed, then its tree; the last turn's
+    /// path freed before an arrival's tree).  In a tick's later steps a path goes as
+    /// the step starts and a walk end's objects at once (read: a path freed before a
+    /// give-up's new objects, and before an arrival's tree).
+    pub fn end_first_step(&mut self, paths: Vec<[u32; 2]>) {
+        for s in paths.into_iter().flatten() {
+            self.release(s);
+        }
+        for s in self.step_frees.take().unwrap_or_default() {
+            self.release(s);
+        }
+    }
+
+    /// The ended walks' paths waiting for this step.
+    pub fn take_step_paths(&mut self) -> Vec<[u32; 2]> {
+        std::mem::take(&mut self.step_paths)
+    }
+
+    /// Frees a step's waiting paths at once.
+    pub fn free_step_paths(&mut self, paths: Vec<[u32; 2]>) {
+        for s in paths.into_iter().flatten() {
             self.release(s);
         }
     }
@@ -241,9 +279,9 @@ impl Tags {
     /// ended facing a goal it could not come nearer.
     pub fn move_arrived(&mut self, slots: &[u32]) {
         for k in [7, 6, 5, 4, 3, 2, 0] {
-            self.release(slots[k]);
+            self.release_in_step(slots[k]);
         }
-        self.next_step.extend([slots[17], slots[16]]);
+        self.step_paths.push([slots[17], slots[16]]);
     }
 
     pub fn move_done_in_place(&mut self, slots: &[u32]) {
@@ -260,9 +298,9 @@ impl Tags {
         let b = self.take(b"task");
         let c = self.take(b"task");
         for s in [slots[7], c, b, a, slots[6], slots[5], slots[4], slots[3], slots[2], slots[0]] {
-            self.release(s);
+            self.release_in_step(s);
         }
-        self.next_step.extend([slots[17], slots[16]]);
+        self.step_paths.push([slots[17], slots[16]]);
     }
 
     /// Objects the engine makes right after the next object tagged.

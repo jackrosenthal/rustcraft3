@@ -1145,15 +1145,15 @@ impl World {
     /// The first movement step of the tick for units walking already, before the tick's
     /// logic.
     pub(crate) fn first_steps(&mut self) {
-        // A walk's path goes as the step after its end starts, the next tick's first
-        // after its last (read: a give-up's at a turn's last step freed after an order
-        // due ahead of the next turn's first step).
         if let Some(&t) = self.step_ticks.first() {
             self.fire_mana_listeners(Some(t));
         }
-        if !self.step_clocks.is_empty() {
-            self.tags.free_step();
-        }
+        // A walk's path goes in the step after its end; after the next turn's first, one
+        // ended in a turn's last step (read: freed after an order due ahead of the next
+        // turn's first step, and after a walk's end at that step, before the order's
+        // objects).
+        let paths = if self.step_clocks.is_empty() { Vec::new() } else { self.tags.take_step_paths() };
+        self.tags.begin_first_step();
         self.step_range = (0, self.step_clocks.len().min(1));
         let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.local_paths && matches!(u.action, Action::Move { .. }))).collect();
         // The newest walk first (traced: sheep 1050120, given its order after 1050117,
@@ -1184,6 +1184,7 @@ impl World {
                 }
             }
         }
+        self.tags.end_first_step(paths);
         // Orders given at this step's tick free their objects after it.
         self.tags.flush_issued();
     }
@@ -1201,9 +1202,11 @@ impl World {
             let next = self.step_ticks.get(k).copied();
             self.issue_wanders(&now, next);
             self.fire_mana_listeners(next);
-            // A walk's path goes a step after it ends (traced: freed after an order due
-            // before the next step, before another walk's end in that step).
-            self.tags.free_step();
+            // A walk's path goes as the step after its end starts (traced: freed after an
+            // order due before the next step, before another walk's end in that step,
+            // older or newer).
+            let paths = self.tags.take_step_paths();
+            self.tags.free_step_paths(paths);
             self.step_range = (k, k + 1);
             let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.local_paths && matches!(u.action, Action::Move { .. }))).collect();
         // The newest walk first (traced: sheep 1050120, given its order after 1050117,

@@ -58,10 +58,17 @@ fn main() -> anyhow::Result<()> {
     for k in 0..turns {
         let n = k as u32 + 1;
         let acts = played.get(&n).cloned().unwrap_or_default();
+        let dt = if k == 0 { first } else { 0.1 };
         if acts.is_empty() {
             g.world.net_turn(100);
         } else {
+            // Carried out as the message comes in, before the keepalive.
             g.world.net_turn_actions(100, &acts);
+            let actions = acts.iter().map(|(pid, b)| (pid - 1, b.clone())).collect();
+            g.play_commands(&w3_game::replay::Frame { dt, commands: Vec::new(), actions: Some(actions) });
+            if std::env::var("TAGS_MODULE").is_ok() {
+                println!("turn {n}: game module {:08x}", g.world.game_module());
+            }
         }
         if let (Some(&want), None) = (keepalives.get(&n), first_off) {
             let ours = g.world.keepalive();
@@ -69,16 +76,7 @@ fn main() -> anyhow::Result<()> {
                 first_off = Some((n, ours, want));
             }
         }
-        let dt = if k == 0 { first } else { 0.1 };
-        if acts.is_empty() {
-            g.tick(dt);
-        } else {
-            let actions = acts.iter().map(|(pid, b)| (pid - 1, b.clone())).collect();
-            g.play_frame(&w3_game::replay::Frame { dt, commands: Vec::new(), actions: Some(actions) });
-            if std::env::var("TAGS_MODULE").is_ok() {
-                println!("turn {n}: game module {:08x}", g.world.game_module());
-            }
-        }
+        g.tick(dt);
         let t = &g.world.tags;
         let presence = t.free.last().copied().unwrap_or(t.slots);
         cks.push(format!("{} {:08x} {:08x} {:016x} {:08x}", k + 1, presence, t.born, g.world.rng.state(), g.world.rand_data.checksum()));

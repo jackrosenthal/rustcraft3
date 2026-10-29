@@ -281,6 +281,15 @@ these are the findings behind them.
   (the filter `FUN_6f391390` and the hero term not modeled); driven by the bbs3
   run's actions (`docs/reference/bootybay_selection_actions.txt`, the tags example's
   TAGS_ACTIONS), it gives the four module values the original had.
+- A turn's actions are carried out as its message is handled, before that turn's
+  keepalive is made (and before the turn's time passes): a selection made in turn n
+  is in turn n's game module (read by inverting the original's keepalive at a turn
+  with a selection; its net module then grew by just the message's hash).  With the
+  port so (`Game::play_commands`, then the keepalive, then the step), a game in which
+  the original selected units (`crates/net/examples/host.rs` now prints each turn's
+  actions as "turn N carries pid hex") gives the original's keepalives through its
+  selection turns; the first training order (turn 425 of that game) is the first
+  turn they part.
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

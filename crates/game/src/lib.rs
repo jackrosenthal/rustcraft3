@@ -771,6 +771,21 @@ impl Game {
     /// Plays one frame (of a replay or from a network game's host): its commands, then
     /// its step; returns what each command answered, with its player.
     pub fn play_frame(&mut self, f: &replay::Frame) -> Vec<(u8, replay::Outcome)> {
+        let out = self.play_commands(f);
+        if let Some(r) = self.recorder.as_mut() {
+            r.step(f.dt);
+        }
+        // A paused game takes commands (a resume among them) but no time passes.
+        if self.world.net_paused.is_none() {
+            self.world.tick(&mut self.vm, f.dt);
+        }
+        out
+    }
+
+    /// A frame's commands without its step: the original carries out a turn's actions
+    /// as its message comes in, before the turn's keepalive and its time (read: a
+    /// selection is in the game module of the keepalive its turn's message makes).
+    pub fn play_commands(&mut self, f: &replay::Frame) -> Vec<(u8, replay::Outcome)> {
         // A frame read from a file has the original's actions, read as they come.
         let mut commands = f.commands.clone();
         if let Some(actions) = f.actions.as_ref().filter(|_| commands.is_empty()) {
@@ -781,7 +796,7 @@ impl Game {
                 }
             }
         }
-        let out = commands
+        commands
             .into_iter()
             .map(|(p, c)| {
                 log::debug!("player {p}: {c:?}");
@@ -789,15 +804,7 @@ impl Game {
                 log::debug!("  answered {o:?}");
                 (p, o)
             })
-            .collect();
-        if let Some(r) = self.recorder.as_mut() {
-            r.step(f.dt);
-        }
-        // A paused game takes commands (a resume among them) but no time passes.
-        if self.world.net_paused.is_none() {
-            self.world.tick(&mut self.vm, f.dt);
-        }
-        out
+            .collect()
     }
 
     /// A command from the interface (noted for the replay); none while a replay plays,

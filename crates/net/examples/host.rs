@@ -1,7 +1,7 @@
 //! Offers a two-player melee game on a map and plays it with whoever joins, without the
 //! game: chat is echoed back, the game starts when a player says "go", and each turn
 //! carries the players' actions as they sent them.  Prints what the players send, their keepalives'
-//! checksums among it.
+//! checksums among it, and each turn's actions as "turn N carries pid hex".
 //!
 //! host <map file> <map path as the game names it> <common.j> <blizzard.j> <width>
 //!     <height> [port]
@@ -32,6 +32,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut next_turn = Instant::now();
     let mut actions: Vec<(u8, Vec<u8>)> = Vec::new();
     let mut keepalives = std::collections::HashMap::new();
+    // Turns sent, the first being 1 (as the keepalives count them).
+    let mut sent = 0u32;
     loop {
         for e in host.poll() {
             if !matches!(e, Event::Keepalive { .. } | Event::Actions { .. }) {
@@ -63,6 +65,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             loading = true;
         }
         if loading && host.all_loaded() && Instant::now() >= next_turn {
+            sent += 1;
+            for (pid, data) in &actions {
+                println!("turn {sent} carries {pid} {}", data.iter().map(|b| format!("{b:02x}")).collect::<String>());
+            }
             host.send_turn(100, std::mem::take(&mut actions));
             next_turn += Duration::from_millis(100);
         }

@@ -203,7 +203,13 @@ these are the findings behind them.
   without actions is one net message of kind 0x1f whose payload is the turn's time in
   milliseconds, two bytes: `FUN_6f328550` adds `bytehash(kind + bytehash(H(payload)))`,
   `H` xoring in the payload's words, then its bytes, rotating by 3 each time; 0x64 0x00
-  gives 0x00c0cec0.  (With actions the payload is not yet read.)  The wanderers' first
+  gives 0x00c0cec0.  A turn with actions is one such message whose payload is the
+  turn's time, then each player's block as INCOMING_ACTION carries it (id, length,
+  actions); read under winedbg at `FUN_6f328550` (relocated 0x76098622) for turns
+  with a selection, a control group, a training order, and a rally point, each sum
+  as predicted.  Messages of kinds 0x17, 0x21, and 0x2f add the byte hash of the
+  kind plus their fields' byte hashes (`FUN_6f14eb60`); a call with its argument 0
+  (every 40 turns) looks at a message without adding or taking it.  The wanderers' first
   waits are drawn before the first keepalive, as the game is made.  `crate::keepalive`
   computes it; the tags example's TAGS_KEEPALIVE compares the port's with
   `docs/reference/bootybay_keepalives.txt`, the original's for 978 turns.
@@ -211,6 +217,9 @@ these are the findings behind them.
   milliseconds, the port's keepalives equal the original's for all 978 recorded turns
   of Booty Bay (no actions, the game and data modules given), and its tags trace
   agrees through the recording's last full turn.
+- On Harrow (two players, the same seed) the original's modules 4 to 19 at each
+  keepalive equal Booty Bay's, the game module 6 among them: with nobody acting they
+  do not depend on the map (a map's own data or object changes would).
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

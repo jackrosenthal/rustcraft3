@@ -56,7 +56,8 @@ impl World {
 
     /// The net module's part of a turn with its players' actions: its message carries
     /// the turn's time, then each player's block (id, length, actions), as a replay's
-    /// turn record does.
+    /// turn record does (read: the original's messages and sums for turns with a
+    /// selection, a control group, a training order, and a rally point).
     pub fn net_turn_actions(&mut self, ms: u16, actions: &[(u8, Vec<u8>)]) {
         let mut payload = ms.to_le_bytes().to_vec();
         for (pid, a) in actions {
@@ -99,6 +100,24 @@ mod tests {
     #[test]
     fn an_empty_turn_adds_what_the_original_adds() {
         assert_eq!(net_message(0x1f, &100u16.to_le_bytes()), 0x00c0_cec0);
+    }
+
+    /// What the original's net module grew by for turns with a player's actions: a
+    /// selection (`16 ... 1a 19 ...`) and a control group (`17 ...`), from player 2.
+    #[test]
+    fn a_turn_with_actions_adds_what_the_original_adds() {
+        let select = [
+            0x16, 0x01, 0x01, 0x00, 0x38, 0x31, 0x00, 0x00, 0x38, 0x31, 0x00, 0x00, 0x1a, 0x19, 0x6f, 0x65, 0x70, 0x6f,
+            0x38, 0x31, 0x00, 0x00, 0x38, 0x31, 0x00, 0x00,
+        ];
+        let group = [0x17, 0x00, 0x01, 0x00, 0x18, 0x31, 0x00, 0x00, 0x18, 0x31, 0x00, 0x00];
+        for (actions, grew) in [(&select[..], 0x0097_c380), (&group[..], 0x008f_2c30)] {
+            let mut payload = 100u16.to_le_bytes().to_vec();
+            payload.push(2);
+            payload.extend((actions.len() as u16).to_le_bytes());
+            payload.extend(actions);
+            assert_eq!(net_message(0x1f, &payload), grew);
+        }
     }
 
     /// Booty Bay's first keepalive from the original's module values there.

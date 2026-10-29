@@ -207,6 +207,10 @@ these are the findings behind them.
   waits are drawn before the first keepalive, as the game is made.  `crate::keepalive`
   computes it; the tags example's TAGS_KEEPALIVE compares the port's with
   `docs/reference/bootybay_keepalives.txt`, the original's for 978 turns.
+- With the engine's clocks kept exactly and the game time counted in whole
+  milliseconds, the port's keepalives equal the original's for all 978 recorded turns
+  of Booty Bay (no actions, the game and data modules given), and its tags trace
+  agrees through the recording's last full turn.
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

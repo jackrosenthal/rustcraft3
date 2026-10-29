@@ -78,7 +78,7 @@ impl World {
         modules.insert(2, self.net_sum);
         modules.insert(3, self.rand_data.checksum());
         let m = modules.iter().rev().fold(0u32, |m, (_, &v)| (m ^ v).rotate_left(3));
-        let t = (self.time_exact.max(self.time as f64) * 1000.0).round() as u32;
+        let t = self.game_ms;
         let presence = self.tags.free.last().copied().unwrap_or(self.tags.slots);
         let state = self.rng.state();
         let h = byte_hash((state >> 32) as u32).wrapping_add(byte_hash(state as u32));

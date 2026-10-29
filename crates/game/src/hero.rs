@@ -417,7 +417,7 @@ impl World {
     /// a creep at 0.5 a second reaching 5.1 at 10.2, in turn 104).  The port's mana
     /// passes a threshold before the clock does, so a listener stays due until then.
     pub fn plan_mana_listeners(&mut self, dt: f32) {
-        let start = self.time_exact - dt as f64;
+        let start = (self.game_ms as f64 - (dt as f64 * 1000.0).round()) / 1000.0;
         let mut due = Vec::new();
         for &h in &self.unit_order {
             let Some((_, mp)) = self.regen_rates(h).filter(|r| r.1 > 0.0) else { continue };

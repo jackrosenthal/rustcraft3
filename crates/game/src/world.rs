@@ -246,6 +246,9 @@ pub struct World {
     /// The net module's sum of the messages handled (`keepalive`).
     #[serde(default)]
     pub net_sum: u32,
+    /// The game time in whole milliseconds, each tick's added (the keepalive's `t`).
+    #[serde(default)]
+    pub game_ms: u32,
     /// Keepalive checksum modules the port does not compute, by index: values read from
     /// the original (`keepalive`).
     #[serde(default)]
@@ -769,6 +772,7 @@ impl World {
             step_index: 0,
             search_budget: (0, 0),
             net_sum: 0,
+            game_ms: 0,
             keepalive_modules: Default::default(),
             step_base: 0,
             step_clocks: Vec::new(),
@@ -1528,9 +1532,7 @@ impl World {
     /// a tick later from about 35 seconds in (read: step 1164 at main tick 6985, not
     /// 6984).  A tick of the game holds the engine's ticks that start within it (read:
     /// step 1223, taken at main tick 7339, in the turn of ticks 7320 to 7339).
-    fn plan_steps(&mut self, before: f64, dt: f32) {
-        let before_ms = (before * 1000.0).round() as i64;
-        let end_ms = ((before + dt as f64) * 1000.0).round() as i64;
+    fn plan_steps(&mut self, before_ms: i64, end_ms: i64) {
         let first = (before_ms + 4).div_euclid(5);
         let last = (end_ms + 4).div_euclid(5) - 1;
         let mut clocks = Vec::new();
@@ -1632,11 +1634,14 @@ impl World {
                 eprintln!("profile at {:.0}s: {}", self.time, v.iter().take(40).map(|(k, t)| format!("{k} {:.2}s", t)).collect::<Vec<_>>().join(", "));
             }
         }
+        // The engine's clocks are planned from the time in whole milliseconds (the f64
+        // time drifts by a part of one, enough to move a step across a tick in time).
+        let dt_ms = (dt as f64 * 1000.0).round() as u32;
+        self.plan_steps(self.game_ms as i64, (self.game_ms + dt_ms) as i64);
         // Counted in f64 and read as f32: f32 adding 0.02s drifts, by seconds in an hour.
-        let before = self.time_exact.max(self.time as f64);
-        self.plan_steps(before, dt);
         self.time_exact = self.time_exact.max(self.time as f64) + dt as f64;
         self.time = self.time_exact as f32;
+        self.game_ms = self.game_ms.wrapping_add(dt_ms);
         self.plan_mana_listeners(dt);
         let day_hours = self.misc_f32("DayHours", 24.0);
         let day_length = self.misc_f32("DayLength", 480.0);

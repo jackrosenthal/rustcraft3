@@ -268,6 +268,10 @@ pub struct World {
     /// The steps walks take now: a tick's first before its logic, the rest after.
     #[serde(skip)]
     pub step_range: (usize, usize),
+    /// Listeners on mana falling in this tick: the main tick, the time from its start,
+    /// the unit, the listener's slot (`World::plan_mana_listeners`).
+    #[serde(skip)]
+    pub mana_due: Vec<(i64, f32, u32, u32)>,
     /// Wanderers' orders due among this tick's steps after its first: the step each
     /// comes before, its due time on the agent queue, the unit (`World::update_wander`).
     #[serde(skip)]
@@ -773,6 +777,7 @@ impl World {
             tick_clocks: (0, Vec::new()),
             step_range: (0, 0),
             wander_due: Vec::new(),
+            mana_due: Vec::new(),
             hidden_mine: false,
             cheat_fog: None,
             volume_groups: full_volume(),
@@ -1630,6 +1635,7 @@ impl World {
         self.plan_steps(before, dt);
         self.time_exact = self.time_exact.max(self.time as f64) + dt as f64;
         self.time = self.time_exact as f32;
+        self.plan_mana_listeners(dt);
         let day_hours = self.misc_f32("DayHours", 24.0);
         let day_length = self.misc_f32("DayLength", 480.0);
         let hours_per_second = day_hours / day_length * self.time_of_day_scale;

@@ -1148,6 +1148,9 @@ impl World {
         // A walk's path goes as the step after its end starts, the next tick's first
         // after its last (read: a give-up's at a turn's last step freed after an order
         // due ahead of the next turn's first step).
+        if let Some(&t) = self.step_ticks.first() {
+            self.fire_mana_listeners(Some(t));
+        }
         if !self.step_clocks.is_empty() {
             self.tags.free_step();
         }
@@ -1197,6 +1200,7 @@ impl World {
             let now: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 == k).collect();
             let next = self.step_ticks.get(k).copied();
             self.issue_wanders(&now, next);
+            self.fire_mana_listeners(next);
             // A walk's path goes a step after it ends (traced: freed after an order due
             // before the next step, before another walk's end in that step).
             self.tags.free_step();
@@ -1231,6 +1235,7 @@ impl World {
         }
         let rest: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 >= n.max(1)).collect();
         self.issue_wanders(&rest, None);
+        self.fire_mana_listeners(None);
         self.step_range = (1, n);
     }
 

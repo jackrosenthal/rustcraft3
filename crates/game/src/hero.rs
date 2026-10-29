@@ -374,80 +374,97 @@ impl World {
         true
     }
 
-    /// Hero health and mana regeneration and unit regeneration.
-    pub fn regenerate(&mut self, dt: f32) {
-        // Listeners on mana passed this tick, at their times (`UnitExtra::mana_listeners`).
-        let mut passed: Vec<(f32, u32, usize)> = Vec::new();
-        let str_regen = self.misc_f32("StrRegenBonus", 0.05);
-        let int_regen = self.misc_f32("IntRegenBonus", 0.05);
-        let hs: Vec<u32> = self.unit_order.clone();
-        for h in hs {
+    /// A unit's life and mana regeneration a second.
+    fn regen_rates(&self, h: u32) -> Option<(f32, f32)> {
+        let u = self.unit(h)?;
+        if u.dead || u.constructing.is_some() {
+            return None;
+        }
+        let o = self.objects.units.get(u.type_id)?;
+        let mut hp = o.real("regenHP");
+        let mut mp = o.real("regenMana");
+        // regenType: "always", "night", "day", "blight", or "none".
+        let rt = o.str("regenType").to_ascii_lowercase();
+        let day = (6.0..18.0).contains(&self.time_of_day);
+        // An Undead's life comes back only on blight (measured: a ghoul off blight
+        // stays at 100 for ten seconds).
+        let off_blight = rt == "blight" && !self.point_blighted(u.x, u.y);
+        if rt == "none" || (rt == "night" && day) || (rt == "day" && !day) || off_blight {
+            hp = 0.0;
+        }
+        let ub = self.upgrade_bonus(u.owner, u.type_id);
+        hp += ub.hp_regen + u.item_bonus.life_regen;
+        if u.is_hero {
+            hp += (u.str_ + u.item_bonus.str_).floor() * self.misc_f32("StrRegenBonus", 0.05);
+            // A hero's mana comes from its intelligence alone, without its type's
+            // regenMana (measured: a Paladin of 17 intelligence regains 8.50 in 10
+            // seconds, its regenMana 0.01 not added; its life 13.50, regenHP 0.25
+            // with 22 strength's 1.1).
+            mp = (u.int + u.item_bonus.int).floor() * self.misc_f32("IntRegenBonus", 0.05);
+        }
+        // Mana regeneration items and research add a fraction of that rate (measured:
+        // a Sobi Mask, half again, gives a Paladin of 17 intelligence 4.3 more in 10
+        // seconds; ours added half of its regenMana, 0.05).
+        mp *= 1.0 + u.item_bonus.mana_regen + ub.mana_regen;
+        Some((hp, mp))
+    }
+
+    /// The listeners on mana (`UnitExtra::mana_listeners`) whose thresholds the mana
+    /// reaches in this tick, by the main tick they fall in: their due times are on the
+    /// game clock, which trails exact time, so each falls in the main tick whose clock
+    /// first reaches it (read: an Ogre Lord's 100.1 at 1.25 a second, due at 80.08,
+    /// re-armed in turn 803, the clock then 0.025 short, before that turn's first step;
+    /// a creep at 0.5 a second reaching 5.1 at 10.2, in turn 104).  The port's mana
+    /// passes a threshold before the clock does, so a listener stays due until then.
+    pub fn plan_mana_listeners(&mut self, dt: f32) {
+        let start = self.time_exact - dt as f64;
+        let mut due = Vec::new();
+        for &h in &self.unit_order {
+            let Some((_, mp)) = self.regen_rates(h).filter(|r| r.1 > 0.0) else { continue };
             let Some(u) = self.unit(h) else { continue };
-            if u.dead || u.constructing.is_some() {
-                continue;
-            }
-            let Some(o) = self.objects.units.get(u.type_id) else { continue };
-            let mut hp = o.real("regenHP");
-            let mut mp = o.real("regenMana");
-            // regenType: "always", "night", "day", "blight", or "none".
-            let rt = o.str("regenType").to_ascii_lowercase();
-            let day = (6.0..18.0).contains(&self.time_of_day);
-            // An Undead's life comes back only on blight (measured: a ghoul off blight
-            // stays at 100 for ten seconds).
-            let off_blight = rt == "blight" && !self.point_blighted(u.x, u.y);
-            if rt == "none" || (rt == "night" && day) || (rt == "day" && !day) || off_blight {
-                hp = 0.0;
-            }
-            let ub = self.upgrade_bonus(u.owner, u.type_id);
-            hp += ub.hp_regen + u.item_bonus.life_regen;
-            if u.is_hero {
-                hp += (u.str_ + u.item_bonus.str_).floor() * str_regen;
-                // A hero's mana comes from its intelligence alone, without its type's
-                // regenMana (measured: a Paladin of 17 intelligence regains 8.50 in 10
-                // seconds, its regenMana 0.01 not added; its life 13.50, regenHP 0.25
-                // with 22 strength's 1.1).
-                mp = (u.int + u.item_bonus.int).floor() * int_regen;
-            }
-            // Mana regeneration items and research add a fraction of that rate (measured:
-            // a Sobi Mask, half again, gives a Paladin of 17 intelligence 4.3 more in 10
-            // seconds; ours added half of its regenMana, 0.05).
-            mp *= 1.0 + u.item_bonus.mana_regen + ub.mana_regen;
-            let u = self.unit_mut(h).unwrap();
-            // A listener's event falls due as the mana reaches its threshold, run with
-            // the turn it falls in (one due at a turn's end in the next).
-            if mp > 0.0 {
-                for (k, &(thr, _)) in u.extra.mana_listeners.iter().enumerate() {
-                    // One due just at a turn's end runs with the next turn, though the
-                    // summed mana may have edged past it (a creep at 0.5 a second
-                    // reaching 5.1 at 10.2: traced, turn 104).
-                    if u.mana < thr + 1e-4 {
-                        let at = (thr - u.mana) / mp;
-                        if dt - at > 1e-4 {
-                            passed.push((at, h, k));
-                        }
-                    }
+            let (first, clocks) = &self.tick_clocks;
+            for &(thr, slot) in &u.extra.mana_listeners {
+                let at = (thr - u.mana) / mp;
+                let when = (start + at as f64) as f32;
+                if let Some(i) = clocks.iter().position(|&c| f32::from_bits(c) >= when).filter(|&i| i + 1 < clocks.len()) {
+                    due.push((first + i as i64, at, h, slot));
                 }
             }
+        }
+        // (Events falling due together run in the order queued: the listeners' making.)
+        due.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)).then(a.3.cmp(&b.3)));
+        self.mana_due = due;
+    }
+
+    /// The planned listeners falling in main ticks up to `upto` (all, without it), each
+    /// replaced by one waiting for the mana to fall back below the cost (not yet
+    /// followed), the old released once those of their main tick are made (read: an
+    /// Ogre Lord's re-armed in turn 803, the old freed right after the new was made;
+    /// two High Priests' in turn 70, both new made, then both old freed).
+    pub fn fire_mana_listeners(&mut self, upto: Option<i64>) {
+        let n = self.mana_due.iter().take_while(|e| upto.is_none_or(|t| e.0 <= t)).count();
+        let fired: Vec<(i64, f32, u32, u32)> = self.mana_due.drain(..n).collect();
+        for group in fired.chunk_by(|a, b| a.0 == b.0) {
+            for _ in group {
+                self.tags.take(b"`rtl");
+            }
+            for &(_, _, h, slot) in group {
+                self.tags.release(slot);
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.mana_listeners.retain(|l| l.1 != slot);
+                }
+            }
+        }
+    }
+
+    /// Hero health and mana regeneration and unit regeneration.
+    pub fn regenerate(&mut self, dt: f32) {
+        let hs: Vec<u32> = self.unit_order.clone();
+        for h in hs {
+            let Some((hp, mp)) = self.regen_rates(h) else { continue };
+            let u = self.unit_mut(h).unwrap();
             u.life = (u.life + hp * dt).min(u.max_life);
             u.mana = (u.mana + mp * dt).min(u.max_mana);
-        }
-        // Each passed is replaced by one waiting for the mana to fall back below the
-        // cost (not yet followed), the old released.
-        // (Events falling due together run in the order queued: the listeners' making.)
-        let slot_of = |w: &Self, h: u32, k: usize| w.unit(h).and_then(|u| u.extra.mana_listeners.get(k)).map_or(0, |l| l.1);
-        passed.sort_by(|a, b| a.0.total_cmp(&b.0).then(slot_of(self, a.1, a.2).cmp(&slot_of(self, b.1, b.2))));
-        let mut gone: Vec<(u32, usize)> = Vec::new();
-        for (_, h, k) in passed {
-            let Some(old) = self.unit(h).and_then(|u| u.extra.mana_listeners.get(k)).map(|l| l.1) else { continue };
-            self.tags.take(b"`rtl");
-            self.tags.doom(old);
-            gone.push((h, k));
-        }
-        gone.sort_by(|a, b| b.1.cmp(&a.1));
-        for (h, k) in gone {
-            if let Some(u) = self.unit_mut(h) {
-                u.extra.mana_listeners.remove(k);
-            }
         }
     }
 }

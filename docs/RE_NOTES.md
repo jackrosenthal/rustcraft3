@@ -759,6 +759,12 @@ these are the findings behind them.
     the engine's arithmetic, and a unit's place in world units is its place in cells
     times 32 plus the map's origin, likewise (read: a pig's goal 54.040680 in cells;
     rounded arithmetic gave 54.04065, one world unit in the last place off).
+  - A listener on mana falls due on the game clock, which trails exact time: it fires
+    in the main tick whose clock first reaches its due, among the turn's orders and
+    steps by that tick (read: an Ogre Lord's 100.1 at 1.25 a second, due 80.08,
+    re-armed in turn 803 before its first step, the clock then 0.025 short).  The
+    listeners of a tick are all re-armed, then the old ones released (read: two High
+    Priests' in turn 70, two made then two freed; the Ogre Lord's, one then one).
   - The blocked count's draw (`FUN_6f1689d0`: 2 for a goal within 12 cells and a walker
     alone, else 7 plus `FUN_6f1d62b0(2)`, 0 or 1) is on the generator at DAT_6fd53a48,
     the main one (read: the game object there, 0x2b300c0 in the traced run, is the

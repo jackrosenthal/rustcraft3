@@ -232,6 +232,10 @@ impl World {
         let mut last = None;
         for &(k, at, h) in due {
             let t = self.agent_tick(at);
+            // Listeners on mana falling in main ticks up to this one come first.
+            if let Some(t) = t {
+                self.fire_mana_listeners(Some(t));
+            }
             if last.is_some_and(|l| l != t) {
                 self.tags.flush_issued();
             }

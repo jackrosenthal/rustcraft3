@@ -323,23 +323,21 @@ these are the findings behind them.
   at 120 seconds by StartStockUpdates with PerformStockUpdates, takes and frees
   nothing), and released after it when it is destroyed.  With that the keepalives
   agree without actions through turn 1287.
-- The trace parted at turn 1219: a wanderer's arrival in a tick's first step had its
-  path freed in the next step after a give-up there made its new objects.  An
-  arrival's path (a wanderer's at its goal, a worker's at a structure) goes as the
-  next step ends, before that step's walk ends' objects, the arrivals' paths in the
-  order their walks ended; a give-up's as the next step starts (read with step
-  marks, `trstep.sh`: turn 890, a give-up's path freed in the next step before
-  another give-up's three objects; turn 1219, an arrival's after them).  A later
-  step's end frees the last step's arrivals' paths, then the objects of the orders
-  given at its tick, then its walk ends' objects (read: turn 1343, an order's eight
-  freed after its step's give-up made its three and before that give-up's tree; turn
-  932, after a peon's path).  A give-up's path from a tick's last step goes first
-  thing in the next tick's first step, after the orders due before it (read: before
-  a peon's new order at a hall arrival in that step); an arrival's at that step's
-  end.  With that the game without actions agrees with the original's trace to its
-  end (turn 1361) and its keepalives through turn 1487.  The tags
-  example prints each turn's steps with their main ticks (TAGS_STEPS), and its tag
-  trace marks each step (`S k`).
+- A walk's end, a wanderer's give-up or arrival or a worker's arrival at a structure,
+  frees its path in the next step at the place its walk would take among that step's
+  walkers, newest walk first, or after them all when older (read with step marks,
+  `trstep.sh`: turn 890 of the game without actions, a give-up's path freed before an
+  older walker's give-up made its three objects; turn 1219, an arrival's after a newer
+  one's; a peon's and a wanderer's paths, ended in the same step, newest walk first,
+  each way round; a give-up's carried from a tick's last step freed before an older
+  peon's hall arrival in the next tick's first step, after a newer one's).  A later
+  step's end then frees the objects of the orders given at its tick, then its walk
+  ends' objects (read: turn 1343, an order's eight after its step's give-up made its
+  three and before that give-up's tree; the mining game's turn 932, after a peon's
+  path).  With that the game without actions agrees with the original's trace to its
+  end (turn 1361) and its keepalives through turn 1487.  The tags example prints each
+  turn's steps with their main ticks (TAGS_STEPS), and its tag trace marks each step
+  (`S k`).
 - Gold mining (traced: a Booty Bay peon sent by a smart order to its gold mine, its
   tags, movement steps, waypoint provider, range tests, and speed writes read under
   winedbg in separate games; `crate::goldrun`):
@@ -367,10 +365,11 @@ these are the findings behind them.
   - The walk's end is taken in the walkers' order (newest walk first) in its step:
     the objects an arrival makes are made then and those it frees wait for the step's
     end, in that order with the others' walk ends' (read: a hall arrival's freed
-    order before a newer wanderer's walk end's tree, after an older one's).
+    order before a newer wanderer's walk end's tree, after an older one's).  Its path
+    goes in the next step as any walk's (above).
   - At the mine (`FUN_6f437ae0`, in the step the walk ends): a worker's first entry
     makes a `+fgm`; the harvest order's move task and the task before it go as the
-    step ends; its path as the next step ends (an arrival's).  It goes in for the mine's Agld DataB (1 second) on the agent queue,
+    step ends.  It goes in for the mine's Agld DataB (1 second) on the agent queue,
     comes out where it went in when that is up (its walk home's first step the first
     step after), and its harvest order's tree goes with the order home's making.
   - Its speed is tuned at each arrival (constants read under winedbg: 10, 0.5, 1.2,
@@ -383,8 +382,9 @@ these are the findings behind them.
     5.069793 and 4.979798 seconds.
   - At the hall, in the step the walk ends (`FUN_6f438880`): the gold is given and
     the worker's own harvest order made, its `^clg` freed at once; the order home's
-    tree, then the new order's five, go as the step ends; the walk home's path as the
-    next step ends.
+    tree, then the new order's five, go as the step ends.  At the mine's timer the
+    harvest order's tree and the order home's five go with the objects of the orders
+    given at that tick (read: after a wanderer's order given then, before its eight).
   - A unit trained is made before the tick's first movement step (read with step
     marks: a peon trained made as its turn began, a worker's arrival and a
     wanderer's walk end in that turn's last step freeing theirs after).
@@ -395,12 +395,10 @@ these are the findings behind them.
   With this the mining game (`docs/reference/bootybay_mining_*`) agrees with the
   original's trace and keepalives through turn 1341 (at 1342 a give-up's path is
   freed after the worker's order home, given at the step after it, where the port's
-  give-up falls a step earlier: open); a step-marked
-  game of mining and a training (`docs/reference/bootybay_mining_training_*`) to its
-  end (turn 1234); the game of selections, a training, and mining to turn 960.
-  Open: a game trained before and during mining parts at turn 1125, a worker's
-  arrival in a tick's first step freeing its path before a give-up's new objects in
-  the next step (no step marks in that capture to place them).
+  give-up falls a step earlier: open); step-marked games of mining and a training
+  (`docs/reference/bootybay_mining_training_*`, and one with selections and a control
+  group too) to their ends (turns 1234 and 1400); a game trained before and during
+  mining to turn 1203; the game of selections, a training, and mining to turn 960.
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

@@ -407,6 +407,13 @@ pub struct UnitExtra {
     /// When the creep last stood idle away from home, if it has since.
     #[serde(default)]
     pub idle_away: Option<f32>,
+    /// The training under way's `rcm and `rtl (taken as the order was given to an empty
+    /// queue), released as it finishes; and whether its time has yet to start (it
+    /// counts from the turn after the order's).
+    #[serde(default)]
+    pub training_tags: Option<(u32, u32)>,
+    #[serde(default)]
+    pub training_waits: bool,
     /// A wanderer's next walk (Awan): its timer's due time on the agent queue (its
     /// single's bits; `World::update_wander`).
     #[serde(default)]
@@ -672,6 +679,8 @@ impl Default for UnitExtra {
             returning: false,
             strayed: None,
             idle_away: None,
+            training_tags: None,
+            training_waits: false,
             wander_at: None,
             cannibal_wait: None,
             was_idle: false,

@@ -658,8 +658,13 @@ pub const VOLUME_GROUP_CHANNELS: [u32; 8] = [0x200, 0x101e, 0x20, 0x800, 0x100, 
 /// The filter a registration carries, if its kind takes one.
 fn event_filter(k: &EventKind) -> Option<u32> {
     match k {
-        // A player-unit event's filter is never asked (measured: one always false still
-        // fires, and is not called).
+        // A player-unit event's filter is otherwise not asked (measured: one always false
+        // still fires, and is not called), but a finished training's is, of the unit
+        // trained (traced: melee's hero-items trigger, its filter
+        // filterMeleeTrainedUnitIsHeroBJ, does not run for a trained peon; the
+        // registration keeps its filter, TriggerRegisterPlayerUnitEvent passing it to
+        // FUN_6f27a530, which sets +0x48).
+        EventKind::PlayerUnit { event: crate::event_ids::EVENT_PLAYER_UNIT_TRAIN_FINISH, filter, .. } => *filter,
         EventKind::UnitInRange { filter, .. } | EventKind::EnterRegion { filter, .. } | EventKind::LeaveRegion { filter, .. } => *filter,
         _ => None,
     }
@@ -1391,10 +1396,11 @@ impl World {
             if !self.trigger(trig).is_some_and(|t| t.enabled) {
                 continue;
             }
-            // A registration's filter sees the unit as GetFilterUnit.
+            // A registration's filter sees the unit as GetFilterUnit (a finished
+            // training's the unit trained).
             if let Some(f) = filter.filter(|&f| filters && f != 0) {
                 let saved = self.enum_ctx;
-                self.enum_ctx.filter_unit = ctx.unit;
+                self.enum_ctx.filter_unit = if ctx.event_id == crate::event_ids::EVENT_PLAYER_UNIT_TRAIN_FINISH { ctx.target_unit } else { ctx.unit };
                 let ok = self.eval_boolexpr(vm, f);
                 self.enum_ctx = saved;
                 if !ok {

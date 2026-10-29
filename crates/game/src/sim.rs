@@ -2571,11 +2571,25 @@ impl World {
         }
         let token = self.spend(owner, id, true)?;
         let u = self.unit_mut(h).unwrap();
+        let first = u.queue.is_empty();
         u.extra.queue_tokens.resize(u.queue.len(), false);
         u.queue.push(id);
         u.extra.queue_tokens.push(token);
         // Queued, it starts in its owner's tech tree (FUN_6f3f7f70: as it takes a slot).
         self.tech_reg(owner, id).producing += 1;
+        // The order's object, freed as the turn's run starts; to an empty queue, the
+        // training's `rcm and `rtl, its time counting from the next turn (traced: a
+        // peon ordered at turn 991 is made in turn 1141's run; one queued behind
+        // another not yet traced).
+        let order = self.tags.take(b"+ord");
+        self.tags.doom(order);
+        if first {
+            let rcm = self.tags.take(b"`rcm");
+            let rtl = self.tags.take(b"`rtl");
+            let u = self.unit_mut(h).unwrap();
+            u.extra.training_tags = Some((rcm, rtl));
+            u.extra.training_waits = true;
+        }
         Ok(())
     }
 
@@ -2876,6 +2890,9 @@ impl World {
         }
         let build_time = self.objects.units.get(id).map_or(1.0, |o| o.real("bldtm")).max(0.01);
         let u = self.unit_mut(h).unwrap();
+        if std::mem::take(&mut u.extra.training_waits) {
+            return;
+        }
         u.queue_progress += dt;
         if u.queue_progress < build_time {
             return;
@@ -2903,6 +2920,20 @@ impl World {
         let new = crate::natives::units::create_unit(self, owner, id, x, y, 270.0);
         // Made finished from training: no longer in production (FUN_6f677870 with 4).
         self.tech_reg(owner, id).producing -= 1;
+        // Then a ptcf, and freed at once, in order: the training's `rtl and `rcm, the
+        // two tasks of the unit's making (the second first), and the ptcf (traced).
+        let ptcf = self.tags.take(b"ptcf");
+        if let Some((rcm, rtl)) = self.unit_mut(h).and_then(|u| u.extra.training_tags.take()) {
+            self.tags.release(rtl);
+            self.tags.release(rcm);
+        }
+        if new != 0 {
+            let tasks: Vec<u32> = (0..2).filter_map(|_| self.tags.doomed.pop()).collect();
+            for t in tasks.into_iter().rev() {
+                self.tags.release(t);
+            }
+        }
+        self.tags.release(ptcf);
         self.requests.push(Request::Ack { unit: new, kind: "Ready" });
         self.requests.push(Request::UnitReady { unit: new });
         // The rally point (FUN_6f429790): a unit or widget there is followed or worked

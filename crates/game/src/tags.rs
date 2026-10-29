@@ -611,18 +611,22 @@ impl crate::world::World {
     /// after SetUnitState sets their mana to 0, and creeps with other spells none).
     pub(crate) fn mana_changed(&mut self, h: u32) {
         let Some(u) = self.unit(h).filter(|u| !u.extra.mana_watched) else { return };
-        let n = u.abilities.iter().filter(|(a, _)| self.objects.abilities.get(*a).is_some_and(|o| matches!(o.str("code").trim(), "ACtb" | "ACtc"))).count();
-        if n == 0 {
+        let costs: Vec<f32> = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a).filter(|o| matches!(o.str("code").trim(), "ACtb" | "ACtc")).map(|o| o.level_real("Cost", 1))).collect();
+        if costs.is_empty() {
             return;
         }
         // The new timers replace the spells' first ones, released the last first.
         let old = u.extra.spell_timers.clone();
-        let new: Vec<u32> = (0..n).map(|_| self.tags.take(b"`rtl")).collect();
+        let new: Vec<u32> = costs.iter().map(|_| self.tags.take(b"`rtl")).collect();
         for &s in old.iter().rev() {
             self.tags.doom(s);
         }
+        // They are listeners on the mana rising past each spell's cost, the last spell's
+        // in the first slot (read: both golems' Hurl Boulder ones, 75.1 at 1.5 a second,
+        // in their second slots, replaced at 50.07 seconds).
         if let Some(u) = self.unit_mut(h) {
             u.extra.mana_watched = true;
+            u.extra.mana_listeners = costs.iter().map(|c| c + 0.1).zip(new.iter().rev().copied()).collect();
             u.extra.spell_timers = new;
         }
     }

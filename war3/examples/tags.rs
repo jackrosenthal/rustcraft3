@@ -77,6 +77,10 @@ fn main() -> anyhow::Result<()> {
             }
         }
         g.tick(dt);
+        // TAGS_STEPS: each turn's movement steps' clocks.
+        if std::env::var("TAGS_STEPS").is_ok() {
+            println!("turn {n} steps {:?}", g.world.step_clocks.iter().map(|&c| f32::from_bits(c)).collect::<Vec<_>>());
+        }
         let t = &g.world.tags;
         let presence = t.free.last().copied().unwrap_or(t.slots);
         cks.push(format!("{} {:08x} {:08x} {:016x} {:08x}", k + 1, presence, t.born, g.world.rng.state(), g.world.rand_data.checksum()));

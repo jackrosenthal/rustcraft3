@@ -1222,6 +1222,9 @@ impl World {
                     }
                 }
             }
+            // Its walk ends' objects wait for its end as a first step's do (traced: two
+            // give-ups in a turn's second step make their new objects, then free all).
+            self.tags.begin_step();
             for h in walkers {
                 let Some(u) = self.unit(h) else { continue };
                 if u.extra.mover.is_none() && u.extra.walk_from.is_some_and(|f| f > k) {
@@ -1234,6 +1237,7 @@ impl World {
                     }
                 }
             }
+            self.tags.end_step();
             self.tags.flush_issued();
         }
         let rest: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 >= n.max(1)).collect();

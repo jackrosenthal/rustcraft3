@@ -191,12 +191,25 @@ impl Tags {
     /// step's walk ends' objects, freed in that order (read: a give-up's three new
     /// objects made, then the last turn's path freed, then its tree; the last turn's
     /// path freed before an arrival's tree).  In a tick's later steps a path goes as
-    /// the step starts and a walk end's objects at once (read: a path freed before a
-    /// give-up's new objects, and before an arrival's tree).
+    /// the step starts (read: a path freed before a give-up's new objects, and before
+    /// an arrival's tree) and the walk ends' objects at the step's end (`end_step`).
     pub fn end_first_step(&mut self, paths: Vec<[u32; 2]>) {
         for s in paths.into_iter().flatten() {
             self.release(s);
         }
+        for s in self.step_frees.take().unwrap_or_default() {
+            self.release(s);
+        }
+    }
+
+    /// A tick's later step begins: its walk ends' objects too wait for its end (traced:
+    /// two give-ups in a turn's second step make their new objects, then free all).
+    pub fn begin_step(&mut self) {
+        self.step_frees = Some(Vec::new());
+    }
+
+    /// A tick's later step's end: its walk ends' objects freed in order.
+    pub fn end_step(&mut self) {
         for s in self.step_frees.take().unwrap_or_default() {
             self.release(s);
         }

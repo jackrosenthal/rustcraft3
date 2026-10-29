@@ -313,8 +313,11 @@ these are the findings behind them.
   `bootybay_actions_keepalives.txt`) agrees to turn 518; its turn 519 sends a peon to
   mine (not yet carried out as the original does).  The traced training game agrees
   to turn 1141, parting at 1142 as the game without actions parts: at turn 1128's
-  steps two walks end in the first step in the original (both walkers' tasks, then
-  every free) and in the second in the port.
+  second step two walks give up (read under winedbg: the two sheep's searches found
+  nothing nearer at 112.641 and 112.671, each then turned and held, and neither moved
+  from 112.731), and the original makes both walkers' new objects and only then frees
+  their objects.  A later step's walk ends' objects too wait for the step's end; with
+  that the port's keepalives and trace agree without actions through turn 1201.
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

@@ -41,6 +41,8 @@ pub enum Command {
     DropItemAt { unit: u32, slot: usize, x: f32, y: f32 },
     GiveItemTo { unit: u32, slot: usize, target: u32 },
     Select { player: u8, units: Vec<u32> },
+    /// A selection action as the original keeps it in step (`crate::selection`).
+    SyncSelection { player: u8, op: crate::selection::SelOp },
     PlayerEvent { player: u8, event: i32 },
     DialogButton { player: u8, button: u32 },
     /// A chat line, to everyone (0), allies (1), observers (2), or a player (3 on).
@@ -108,6 +110,7 @@ impl Command {
             | C::HireUnit { player, .. }
             | C::Awaken { player, .. }
             | C::Select { player, .. }
+            | C::SyncSelection { player, .. }
             | C::PlayerEvent { player, .. }
             | C::DialogButton { player, .. }
             | C::EventHeard { player, .. }

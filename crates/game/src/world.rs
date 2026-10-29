@@ -253,6 +253,9 @@ pub struct World {
     /// the original (`keepalive`).
     #[serde(default)]
     pub keepalive_modules: std::collections::BTreeMap<u8, u32>,
+    /// Each player's selection as the original keeps it in step (`crate::selection`).
+    #[serde(default)]
+    pub sync_selections: Vec<crate::selection::SyncSelection>,
     #[serde(skip)]
     pub step_base: u32,
     /// This tick's steps' main clocks (which they move units by) and agent times (by
@@ -774,6 +777,7 @@ impl World {
             net_sum: 0,
             game_ms: 0,
             keepalive_modules: Default::default(),
+            sync_selections: Vec::new(),
             step_base: 0,
             step_clocks: Vec::new(),
             step_agent: Vec::new(),

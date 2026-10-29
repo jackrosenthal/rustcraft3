@@ -261,6 +261,26 @@ these are the findings behind them.
   and workers; the port keeps the same registrations (`crate::techreg`) and computes
   the game module from them, the handicaps (+0x29c SetPlayerHandicap, +0x2a4
   SetPlayerHandicapXP), and empty selections: the 978 keepalives still agree.
+- The synchronized selection (CSelectionWar3, a CUnitSet; its debug log names each
+  step, "Sync add", "Sync subgroup add ... to like subgroup", and so on): the
+  dispatchers DispatchUnitSelectionModify (0x16, `FUN_6f6bc7c0`: 1 add, 2 remove, 3
+  replace, at most 12), DispatchUnitDefineControlGroup (0x17, `FUN_6f6b90d0`: the
+  group cleared and its units added, at most 12), DispatchUnitSelectControlGroup
+  (0x18, `FUN_6f6bc0f0`: the group's units, 1 added or 3 replacing, then the first
+  subgroup selected), DispatchUnitSelectSubGroup (0x19, `FUN_6f6bc560`: the first
+  subgroup led by the type), and DispatchUnitRefreshSubGroup (0x1a, `FUN_6f6bc040`:
+  the subgroups made again, the one led by the old lead's unit selected), each first
+  dropping units gone or dead (`FUN_6f28e960`).  A CUnitSet adds a unit before the
+  first of its type with a higher slot, else a hero first and another last
+  (`FUN_6f28d7c0`); subgroups join a like one (same type, neither a hero, the same
+  illusion state) or come in order of priority, then type, then slot
+  (`FUN_6f28de20`); the active unit is the highest priority, the lower type between
+  equals (`FUN_6f28d660`, `FUN_6f292360`), priority being UnitData prio (the data's
+  +0x1cc), plus for a hero its owner's +0x334 less its hero data's +0x138 plus one,
+  plus a constant for an illusion (`FUN_6f691980`).  `crate::selection` keeps it
+  (the filter `FUN_6f391390` and the hero term not modeled); driven by the bbs3
+  run's actions (`docs/reference/bootybay_selection_actions.txt`, the tags example's
+  TAGS_ACTIONS), it gives the four module values the original had.
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

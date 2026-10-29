@@ -41,17 +41,44 @@ fn main() -> anyhow::Result<()> {
         }).collect()
     }).unwrap_or_default();
     g.world.keepalive_modules = w3_game::keepalive::BOOTY_BAY_MODULES.into_iter().collect();
+    // TAGS_ACTIONS names a file of actions to play, "turn pid hex" a line (the turn as
+    // the keepalives count them, the player as the network numbers them, from 1, and
+    // the block's actions as the original sent them); TAGS_MODULE prints the game
+    // module after each turn with actions.
+    let mut played: std::collections::BTreeMap<u32, Vec<(u8, Vec<u8>)>> = std::collections::BTreeMap::new();
+    if let Ok(f) = std::env::var("TAGS_ACTIONS") {
+        for l in std::fs::read_to_string(f)?.lines().filter(|l| !l.starts_with('#')) {
+            let mut w = l.split_whitespace();
+            let (Some(turn), Some(pid), Some(hex)) = (w.next(), w.next(), w.next()) else { continue };
+            let bytes = (0..hex.len() / 2).map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16)).collect::<Result<Vec<u8>, _>>()?;
+            played.entry(turn.parse()?).or_default().push((pid.parse()?, bytes));
+        }
+    }
     let mut first_off = None;
     for k in 0..turns {
-        g.world.net_turn(100);
         let n = k as u32 + 1;
+        let acts = played.get(&n).cloned().unwrap_or_default();
+        if acts.is_empty() {
+            g.world.net_turn(100);
+        } else {
+            g.world.net_turn_actions(100, &acts);
+        }
         if let (Some(&want), None) = (keepalives.get(&n), first_off) {
             let ours = g.world.keepalive();
             if ours != want {
                 first_off = Some((n, ours, want));
             }
         }
-        g.tick(if k == 0 { first } else { 0.1 });
+        let dt = if k == 0 { first } else { 0.1 };
+        if acts.is_empty() {
+            g.tick(dt);
+        } else {
+            let actions = acts.iter().map(|(pid, b)| (pid - 1, b.clone())).collect();
+            g.play_frame(&w3_game::replay::Frame { dt, commands: Vec::new(), actions: Some(actions) });
+            if std::env::var("TAGS_MODULE").is_ok() {
+                println!("turn {n}: game module {:08x}", g.world.game_module());
+            }
+        }
         let t = &g.world.tags;
         let presence = t.free.last().copied().unwrap_or(t.slots);
         cks.push(format!("{} {:08x} {:08x} {:016x} {:08x}", k + 1, presence, t.born, g.world.rng.state(), g.world.rand_data.checksum()));

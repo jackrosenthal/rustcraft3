@@ -89,14 +89,14 @@ impl World {
     /// The game module (6, CGameWar3, `FUN_6f1de210`): from 0xc, each of the 12
     /// players' parts, `m = rol(m ^ part, 3)`.  A player's part (`FUN_6f25c560`): its
     /// handicap (+0x29c) and tech tree hash, then its experience handicap (+0x2a4), its
-    /// 7 slots at +0x2b4 (empty in the games read), and its selection.  The port keeps
-    /// no selections yet: each is empty.
+    /// 7 slots at +0x2b4 (empty in the games read), and its selection
+    /// (`crate::selection`).
     pub fn game_module(&self) -> u32 {
         (0..12u8).fold(0xc, |m, p| {
             let Some(pl) = self.players.get(p as usize) else { return m };
             let mut u = (pl.handicap.to_bits() ^ self.tech_hash(p)).rotate_left(3);
             u = (u ^ pl.handicap_xp.to_bits()).rotate_left(3);
-            let part = (Selection::default().hash() ^ u).rotate_left(3);
+            let part = (self.sync_selection_hash(p) ^ u).rotate_left(3);
             (m ^ part).rotate_left(3)
         })
     }

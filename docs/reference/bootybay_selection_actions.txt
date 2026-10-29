@@ -1,0 +1,7 @@
+# Booty Bay selection actions of player 2 (read from the original under winedbg, bbs3 run): turn pid hex.
+# With TAGS_MODULE the tags example prints the game module after each; the original had 55b4b14d,
+# 55fd914d, d5bc894c, and d7bc914d after them.
+300 2 1601010038310000383100001a196f65706f3831000038310000
+310 2 170001003831000038310000
+320 2 160102004e3100004e31000064310000643100001701030038310000383100004e3100004e3100006431000064310000
+330 2 180003

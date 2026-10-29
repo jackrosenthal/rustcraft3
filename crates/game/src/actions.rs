@@ -282,6 +282,19 @@ impl Codec {
                 continue;
             }
             let act = Action::read(&mut r).map_err(anyhow::Error::msg)?;
+            let handles = |objects: &[ObjectId]| objects.iter().filter_map(|&o| w.by_oid(o)).collect::<Vec<u32>>();
+            use crate::selection::SelOp;
+            let sync = match &act {
+                Action::Select { add, objects } => Some(SelOp::Modify { mode: if *add { 1 } else { 2 }, units: handles(objects) }),
+                Action::AssignGroup { group, objects } => Some(SelOp::DefineGroup { group: *group, units: handles(objects) }),
+                Action::SelectGroup { group, unknown } => Some(SelOp::SelectGroup { group: *group, mode: *unknown }),
+                Action::SelectSubgroup { kind, .. } => Some(SelOp::Subgroup { kind: *kind }),
+                Action::PreSubselection => Some(SelOp::Refresh),
+                _ => None,
+            };
+            if let Some(op) = sync {
+                out.push(Command::SyncSelection { player, op });
+            }
             let sel = self.selection.entry(player).or_default();
             match act {
                 Action::Select { add, objects } => {

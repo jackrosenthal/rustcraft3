@@ -65,6 +65,7 @@ pub mod pathing;
 pub mod placement;
 pub mod repair;
 pub mod keepalive;
+pub mod selection;
 pub mod techreg;
 pub mod rng;
 pub mod tags;
@@ -992,6 +993,10 @@ impl Game {
             }
             C::GiveItemTo { unit, slot, target } => {
                 self.give_item_to(unit, slot, target);
+                O::Done
+            }
+            C::SyncSelection { player, op } => {
+                self.world.sync_selection(player, op);
                 O::Done
             }
             C::Select { player, units } => {

@@ -751,6 +751,10 @@ these are the findings behind them.
     clock does (0.000863 at 34.53).  An order fires when that clock reaches its due
     (the queue's clock then the due itself: 5.035873 for a first wait of 5.035860),
     and the main clock then shows the tick during which it fired (see above).
+  - The timers a creep's Hurl Boulder and Thunder Clap (ACtb, ACtc) make as its mana is
+    first set are listeners on its mana rising past each spell's cost plus 0.1, the
+    last spell's in the first slot (read: both Granite Golems' Hurl Boulder listeners,
+    75.1 at 1.5 a second, replaced at 50.07 seconds, turn 502).
   - The blocked count's draw (`FUN_6f1689d0`: 2 for a goal within 12 cells and a walker
     alone, else 7 plus `FUN_6f1d62b0(2)`, 0 or 1) is on the generator at DAT_6fd53a48,
     the main one (read: the game object there, 0x2b300c0 in the traced run, is the

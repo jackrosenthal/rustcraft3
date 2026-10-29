@@ -74,7 +74,7 @@ fn main() -> anyhow::Result<()> {
             if !actions.is_empty() {
                 log::debug!("at {t} ms");
             }
-            let f = w3_game::replay::Frame { dt: *ms as f32 / 1000.0, commands: Vec::new(), actions: Some(actions) };
+            let f = w3_game::replay::Frame { dt: *ms as f32 / 1000.0, commands: Vec::new(), actions: Some(actions), turn: None };
             g.play_frame(&f);
         }
     }

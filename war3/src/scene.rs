@@ -3285,6 +3285,9 @@ impl Scene {
             g.outbox = Some(Vec::new());
             g.world.network = true;
             g.world.game_speed = speed as i32;
+            // The keepalive's modules the port does not compute: the databases' and the
+            // map's custom data, as the original has them for a map without custom data.
+            g.world.keepalive_modules = w3_game::keepalive::BOOTY_BAY_MODULES.into_iter().collect();
         }
         self.net = Some(crate::net::Session::new(role));
     }
@@ -4161,14 +4164,16 @@ impl Scene {
             let frames = s.due(gdt);
             let first = s.played - frames.len() as u32;
             for (k, f) in frames.iter().enumerate() {
-                for (p, o) in g.play_frame(f) {
+                // Each turn's keepalive is the original's, made after its actions and
+                // before its time passes; the games are compared by it (a player out of
+                // step is dropped).
+                let (outcomes, keepalive) = g.play_turn(f);
+                for (p, o) in outcomes {
                     if let (true, w3_game::replay::Outcome::Error(e)) = (p == local, o) {
                         errors.push(e);
                     }
                 }
-                // After each turn the games are compared (a player out of step is
-                // dropped); a player's checksum is its keepalive.
-                s.check(first + k as u32 + 1, g.world.checksum());
+                s.check(first + k as u32 + 1, keepalive as u64);
             }
             let lost = s.lost;
             // The host waits on players who fall behind; a player waits on a silent host.

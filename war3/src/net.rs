@@ -181,9 +181,9 @@ impl std::fmt::Debug for Role {
 
 /// A turn's blocks as a frame: each person's actions as their player's, which the game
 /// reads as it plays the frame.
-fn frame(players: &[(u8, u8)], dt: f32, blocks: &[(u8, Vec<u8>)]) -> Frame {
+fn frame(players: &[(u8, u8)], ms: u16, blocks: &[(u8, Vec<u8>)]) -> Frame {
     let actions = blocks.iter().filter_map(|(pid, data)| players.iter().find(|p| p.0 == *pid).map(|p| (p.1, data.clone()))).collect();
-    Frame { dt, commands: Vec::new(), actions: Some(actions) }
+    Frame { dt: ms as f32 / 1000.0, commands: Vec::new(), actions: Some(actions), turn: Some((ms, blocks.to_vec())) }
 }
 
 /// A network game under way.
@@ -329,7 +329,7 @@ impl Session {
                 for e in c.poll() {
                     match e {
                         client::Event::Turn { interval, actions } => {
-                            let f = frame(&self.role.players, interval as f32 / 1000.0, &actions);
+                            let f = frame(&self.role.players, interval, &actions);
                             self.queue.push_back(f);
                             self.next += 1;
                             self.last_frame = Instant::now();
@@ -401,7 +401,7 @@ impl Session {
                     None => blocks.push((pid, data)),
                 }
             }
-            let f = frame(&self.role.players, TURN, &blocks);
+            let f = frame(&self.role.players, (TURN * 1000.0) as u16, &blocks);
             h.send_turn((TURN * 1000.0) as u16, blocks);
             self.queue.push_back(f);
             self.next += 1;

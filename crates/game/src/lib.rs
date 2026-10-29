@@ -772,6 +772,29 @@ impl Game {
     /// its step; returns what each command answered, with its player.
     pub fn play_frame(&mut self, f: &replay::Frame) -> Vec<(u8, replay::Outcome)> {
         let out = self.play_commands(f);
+        self.play_step(f);
+        out
+    }
+
+    /// A network turn as the original plays it: its message hashed into the
+    /// keepalive's net module, its actions carried out, the keepalive made (returned),
+    /// then its step.
+    pub fn play_turn(&mut self, f: &replay::Frame) -> (Vec<(u8, replay::Outcome)>, u32) {
+        if let Some((ms, blocks)) = &f.turn {
+            if blocks.is_empty() {
+                self.world.net_turn(*ms);
+            } else {
+                self.world.net_turn_actions(*ms, blocks);
+            }
+        }
+        let out = self.play_commands(f);
+        let keepalive = self.world.keepalive();
+        self.play_step(f);
+        (out, keepalive)
+    }
+
+    /// A frame's step: its time passes.
+    pub fn play_step(&mut self, f: &replay::Frame) {
         if let Some(r) = self.recorder.as_mut() {
             r.step(f.dt);
         }
@@ -779,7 +802,6 @@ impl Game {
         if self.world.net_paused.is_none() {
             self.world.tick(&mut self.vm, f.dt);
         }
-        out
     }
 
     /// A frame's commands without its step: the original carries out a turn's actions

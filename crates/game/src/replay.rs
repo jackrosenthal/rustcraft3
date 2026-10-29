@@ -146,6 +146,10 @@ pub struct Frame {
     /// when they were recorded so; a replay read from a file plays from them.
     #[serde(default)]
     pub actions: Option<Vec<(u8, Vec<u8>)>>,
+    /// A network game's turn message as the host sent it: its time in milliseconds and
+    /// each player's block by network id, as the keepalive's net module hashes it.
+    #[serde(default)]
+    pub turn: Option<(u16, Vec<(u8, Vec<u8>)>)>,
 }
 
 /// A replay: the game it was, and its frames.
@@ -332,7 +336,7 @@ impl Replay {
         let mut frames = Vec::new();
         for rec in &r.records {
             let w3g::Record::Turn { ms, actions } = rec else { continue };
-            let mut f = Frame { dt: *ms as f32 / 1000.0, commands: Vec::new(), actions: Some(Vec::new()) };
+            let mut f = Frame { dt: *ms as f32 / 1000.0, commands: Vec::new(), actions: Some(Vec::new()), turn: None };
             for (pid, bytes) in actions {
                 if *pid == 0 {
                     if bytes.len() == 5 && bytes[0] == STEP_ACTION {
@@ -384,7 +388,7 @@ impl Recorder {
     pub fn step(&mut self, dt: f32) {
         let commands = std::mem::take(&mut self.pending);
         let actions = std::mem::take(&mut self.actions);
-        self.replay.frames.push(Frame { dt, commands, actions: Some(actions) });
+        self.replay.frames.push(Frame { dt, commands, actions: Some(actions), turn: None });
     }
 }
 
@@ -436,9 +440,9 @@ mod tests {
             flags: 0x64802,
             seed: 0x35000000,
             frames: vec![
-                Frame { dt: 0.0166, commands: vec![], actions: None },
-                Frame { dt: 0.05, commands: vec![(0, Command::Order { unit: 42, order: 851971, x: 1.5, y: -2.0, target: 0 }), (0, Command::Chat { player: 0, text: "hi".into(), to: 0 })], actions: None },
-                Frame { dt: 0.1, commands: vec![(1, Command::Train { building: 7, id: *b"hpea" })], actions: None },
+                Frame { dt: 0.0166, commands: vec![], actions: None, turn: None },
+                Frame { dt: 0.05, commands: vec![(0, Command::Order { unit: 42, order: 851971, x: 1.5, y: -2.0, target: 0 }), (0, Command::Chat { player: 0, text: "hi".into(), to: 0 })], actions: None, turn: None },
+                Frame { dt: 0.1, commands: vec![(1, Command::Train { building: 7, id: *b"hpea" })], actions: None, turn: None },
             ],
             ..Default::default()
         };

@@ -1190,9 +1190,7 @@ impl World {
         // The newest walk first (traced: sheep 1050120, given its order after 1050117,
         // held it back before it moved in a step; pig 1050123 likewise held 1050124).
         walkers.sort_by_key(|&h| std::cmp::Reverse(self.unit(h).map_or(0, |u| u.extra.walk_serial)));
-        // New orders have their ways found in this step, before its movement; a walk to a
-        // structure ends here, in the provider's turn (`World::gold_run_step_end`).
-        let mut walkers = self.gold_run_step_ends(walkers, 0);
+        // New orders have their ways found in this step, before its movement.
         for &h in &walkers {
             let Some(u) = self.unit(h) else { continue };
             if u.extra.mover.is_none() && u.path.is_empty() {
@@ -1201,8 +1199,11 @@ impl World {
                 }
             }
         }
-        walkers.retain(|&h| self.unit(h).is_some_and(|u| u.steps_walker()));
         for h in walkers {
+            // A walk to a structure ends in the walkers' order (`World::gold_run_step_end`).
+            if self.gold_run_step_end(h, 0) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
+                continue;
+            }
             // One given before this step (this tick's) walks from the next, one given
             // after the last tick's steps from this one (`World::update_wander`).
             let Some(u) = self.unit(h) else { continue };
@@ -1252,7 +1253,6 @@ impl World {
             self.tags.begin_step();
             // The step's searches come before its movement (read: a sheep about to move
             // in the step still blocks another's search in it).
-            let mut walkers = self.gold_run_step_ends(walkers, k);
             for &h in &walkers {
                 let Some(u) = self.unit(h) else { continue };
                 if u.extra.mover.is_none() && u.extra.walk_from.is_none_or(|f| f <= k) && u.path.is_empty() {
@@ -1261,8 +1261,10 @@ impl World {
                     }
                 }
             }
-            walkers.retain(|&h| self.unit(h).is_some_and(|u| u.steps_walker()));
             for h in walkers {
+                if self.gold_run_step_end(h, k) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
+                    continue;
+                }
                 let Some(u) = self.unit(h) else { continue };
                 if u.extra.mover.is_none() && u.extra.walk_from.is_some_and(|f| f > k) {
                     continue;
@@ -2914,6 +2916,9 @@ impl World {
         }
         // Production.
         let Some(&id) = self.unit(h).and_then(|u| u.queue.first()) else { return };
+        if self.objects.units.get(id).is_some() {
+            return;
+        }
         self.start_production(vm, h);
         if let Some(up) = self.objects.upgrades.get(id) {
             let owner = self.unit(h).unwrap().owner;
@@ -2937,6 +2942,29 @@ impl World {
             }
             return;
         }
+        // A unit trained (or an upgrade into one) goes on in its own pass, before the
+        // tick's first movement step (`World::train_before_steps`).
+    }
+
+    /// Structures' training, before the tick's first movement step (read: a peon trained
+    /// made as the turn begins, before the turn's steps, a peon's arrival at the mine
+    /// and a wanderer's walk end in its last step freeing theirs after).
+    pub(crate) fn train_before_steps(&mut self, vm: &mut Vm, dt: f32) {
+        let structures: Vec<u32> = self.unit_order.iter().copied().filter(|&h| {
+            self.unit(h).is_some_and(|u| u.is_building && !u.dead && !u.paused && u.constructing.is_none() && u.queue.first().is_some_and(|&id| self.objects.units.get(id).is_some()))
+        }).collect();
+        for h in structures {
+            if self.buff_mods(h).4 {
+                continue;
+            }
+            let dt = if self.cheat(crate::cheats::flag::FAST_BUILD) { dt * crate::cheats::FAST } else { dt };
+            self.start_production(vm, h);
+            self.update_training(vm, h, dt);
+        }
+    }
+
+    fn update_training(&mut self, vm: &mut Vm, h: u32, dt: f32) {
+        let Some(&id) = self.unit(h).and_then(|u| u.queue.first()) else { return };
         let build_time = self.objects.units.get(id).map_or(1.0, |o| o.real("bldtm")).max(0.01);
         let u = self.unit_mut(h).unwrap();
         if std::mem::take(&mut u.extra.training_waits) {

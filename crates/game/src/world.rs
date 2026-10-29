@@ -1709,6 +1709,7 @@ impl World {
         prof!(self, "update_corpse_makers", self.update_corpse_makers(dt));
         // A turn's first movement step comes before its logic (traced in the original:
         // a wanderer's order is given after it, a walk's end found in it handled then).
+        self.train_before_steps(vm, dt);
         self.update_wander(true);
         self.first_steps();
         self.step_range = (1, self.step_clocks.len());

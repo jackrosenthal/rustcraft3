@@ -192,8 +192,8 @@ impl World {
     }
 
     /// At the mine (`FUN_6f437ae0`): a worker's first entry makes a `+fgm`; the move's
-    /// target task and the task before it go at once and its path as the next step ends
-    /// (`Tags::late_path`); the round trip's timing tunes its speed; it goes in for the
+    /// target task and the task before it go as the step ends, in the walkers' order,
+    /// and its path as the next step ends (`Tags::late_path`); the round trip's timing tunes its speed; it goes in for the
     /// mine's time (Agld DataB), taking its load.
     fn enter_mine(&mut self, h: u32, mut run: GoldRun, path: [u32; 2], agent: u32) {
         if !run.entered {
@@ -204,8 +204,8 @@ impl World {
             Kind::Player => (11, 10),
             _ => (10, 9),
         };
-        self.tags.release(run.order[target_task]);
-        self.tags.release(run.order[task]);
+        self.tags.release_in_step(run.order[target_task]);
+        self.tags.release_in_step(run.order[task]);
         self.tags.late_path(path);
         let mine = run.mine;
         let (dur, gold_cap) = match (self.ability_with_code(mine, "Agld"), self.ability_with_code(h, "Ahar")) {
@@ -267,9 +267,9 @@ impl World {
     }
 
     /// Home with the gold (`FUN_6f438880`): given, and its harvest order back to the mine
-    /// at once (`HARVEST_OWN`, its `^clg` freed then); the order home's tree goes as the
-    /// step ends, after its walk ends' objects (`Tags::after_step`), then the new order's
-    /// five; the walk home's path as the next step ends.
+    /// at once (`HARVEST_OWN`, its `^clg` freed then); the order home's tree, then the new
+    /// order's five, go as the step ends in the walkers' order; the walk home's path as
+    /// the next step ends.
     fn drop_gold(&mut self, h: u32, run: GoldRun, _hall: u32, path: [u32; 2]) {
         let (owner, gold) = self.unit(h).map_or((0, 0), |u| (u.owner, u.carry_gold));
         if gold > 0 {
@@ -282,10 +282,10 @@ impl World {
         let order: Vec<u32> = codes.iter().map(|c| self.tags.take(c)).collect();
         self.tags.release(order[16]);
         for i in [7, 6, 5, 4, 3, 2, 1, 0] {
-            self.tags.after_step(run.order[i]);
+            self.tags.release_in_step(run.order[i]);
         }
         for i in [15, 14, 13, 12, 11] {
-            self.tags.issued.push(order[i]);
+            self.tags.release_in_step(order[i]);
         }
         self.tags.late_path(path);
         let mut run = run;
@@ -310,45 +310,33 @@ impl World {
         }
     }
 
-    /// The walkers of step `k` whose walks to a structure end as it starts (their way's
-    /// last point within reach, on the structure's bearing: the provider's answer 3, in
-    /// its pass before the walkers move) arrive; the others are left.
-    pub(crate) fn gold_run_step_ends(&mut self, walkers: Vec<u32>, k: usize) -> Vec<u32> {
-        let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return walkers };
-        let Some(&clock) = self.step_clocks.get(k) else { return walkers };
+    /// Whether a walker's walk to a structure ends in step `k` (its way's last point within
+    /// reach, on the structure's bearing: the provider's answer 3), and if so its
+    /// arrival, taken in the walkers' order (read: a hall arrival's order freed before a
+    /// newer wanderer's walk end's objects, after an older one's).
+    pub(crate) fn gold_run_step_end(&mut self, h: u32, k: usize) -> bool {
+        let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return false };
+        let Some(&clock) = self.step_clocks.get(k) else { return false };
         let cell = |w: f32, o: f32| ef::div(ef::sub(w.to_bits(), o.to_bits()), crate::pathing::CELL.to_bits());
-        let mut left = Vec::with_capacity(walkers.len());
-        for h in walkers {
-            let ends = (|| {
-                let u = self.unit(h)?;
-                u.extra.gold_run.as_ref()?;
-                let m = u.extra.mover?;
-                let to = *u.path.first().filter(|_| u.path.len() == 1)?;
-                let g = self.gold_run_goal(h)?;
-                let gait = crate::motion::Gait { top: 0, grow: 0, turn: 0, window: 0, reach: 0.49f32.to_bits() };
-                m.arrived(&gait, (cell(to.0, origin[0]), cell(to.1, origin[1])), (cell(g.0, origin[0]), cell(g.1, origin[1])), clock).then_some(m)
-            })();
-            if let (Some(u), Some(m)) = (self.unit(h), self.unit(h).and_then(|u| u.extra.mover)) {
-                if u.extra.gold_run.is_some() {
-                    let (x, y) = m.at(clock);
-                    log::debug!("gold run {h} step {k} clock {:.6} at {:.6} {:.6} heading {:.6} v {:.6} {:.6} path {:?} ends {}", f32::from_bits(clock), f32::from_bits(x), f32::from_bits(y), f32::from_bits(m.heading), f32::from_bits(m.vx), f32::from_bits(m.vy), u.path, ends.is_some());
-                }
-            }
-            match ends {
-                Some(m) => {
-                    if let Some(u) = self.unit_mut(h) {
-                        u.extra.walk_heading = Some(m.heading);
-                        u.extra.mover = None;
-                        u.extra.step_from = None;
-                        u.path.clear();
-                        crate::sim::set_anim(u, "stand");
-                    }
-                    self.gold_run_arrive(h, k);
-                }
-                None => left.push(h),
-            }
+        let ends = (|| {
+            let u = self.unit(h)?;
+            u.extra.gold_run.as_ref()?;
+            let m = u.extra.mover?;
+            let to = *u.path.first().filter(|_| u.path.len() == 1)?;
+            let g = self.gold_run_goal(h)?;
+            let gait = crate::motion::Gait { top: 0, grow: 0, turn: 0, window: 0, reach: 0.49f32.to_bits() };
+            m.arrived(&gait, (cell(to.0, origin[0]), cell(to.1, origin[1])), (cell(g.0, origin[0]), cell(g.1, origin[1])), clock).then_some(m)
+        })();
+        let Some(m) = ends else { return false };
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.walk_heading = Some(m.heading);
+            u.extra.mover = None;
+            u.extra.step_from = None;
+            u.path.clear();
+            crate::sim::set_anim(u, "stand");
         }
-        left
+        self.gold_run_arrive(h, k);
+        true
     }
 
     /// A gold run's way to its structure (`World::local_path`'s search, 700 nodes deep,

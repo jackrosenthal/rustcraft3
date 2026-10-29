@@ -1,0 +1,5 @@
+# Booty Bay with the original's actions as player 2 (crates/net/examples/host.rs, under winedbg tracing tags and steps): turn pid hex.  A peon sent to mine, then a peon trained.
+306 2 1601010038310000383100001a196f65706f3831000038310000
+453 2 12000003000d00ffffffffffffffff00001046000000455f2900005f290000
+656 2 1602010038310000383100001601010018310000183100001a196572676f1831000018310000
+764 2 1042006f65706fffffffffffffffff

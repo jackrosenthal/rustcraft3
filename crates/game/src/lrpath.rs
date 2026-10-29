@@ -174,8 +174,28 @@ pub fn search_seeing(cells: &impl Cells, start: (i32, i32), goal: (i32, i32), cl
 /// as each pass begins with nodes open, the one that finds its limit reached too; read:
 /// a sheep's search stopped by its 32 cost 33).
 pub fn search_costing(cells: &impl Cells, start: (i32, i32), goal: (i32, i32), class: u8, limit: u32) -> (Outcome, bool, u32) {
+    search_until(cells, start, goal, class, limit, |c| c == goal)
+}
+
+/// Whether a node's ring for `class` (its cells' border, as `ring` walks it) holds a
+/// cell of `region` (`FUN_6f148790`, the contact test of `FUN_6f166310`).
+pub fn ring_touches(c: (i32, i32), class: u8, region: impl Fn(i32, i32) -> bool) -> bool {
+    let (r, n, _) = RINGS[class.min(3) as usize];
+    let (x0, y0) = (c.0 - r, c.1 - r);
+    (0..n).any(|i| region(x0 + i, y0) || region(x0 + i, y0 + n - 1)) || (1..n - 1).any(|j| region(x0, y0 + j) || region(x0 + n - 1, y0 + j))
+}
+
+/// `search_costing` toward a structure: the goal its middle's cell, found at the first
+/// node popped whose ring touches its footprint (read: a peon from cell 670, 266 to a
+/// gold mine whose footprint is 676 to 683 by 260 to 267, its way's end at 675, 265; from
+/// 675, 265 to a great hall's, 650 to 661 by 258 to 269, at 663, 265).
+pub fn search_to_region(cells: &impl Cells, start: (i32, i32), goal: (i32, i32), class: u8, limit: u32, region: impl Fn(i32, i32) -> bool) -> (Outcome, bool, u32) {
+    search_until(cells, start, goal, class, limit, |c| ring_touches(c, class, &region))
+}
+
+fn search_until(cells: &impl Cells, start: (i32, i32), goal: (i32, i32), class: u8, limit: u32, reached: impl Fn((i32, i32)) -> bool) -> (Outcome, bool, u32) {
     let mut refused = false;
-    if start == goal {
+    if reached(start) {
         return (Outcome::Found(vec![start]), refused, 1);
     }
     let (r, n, masks) = RINGS[class.min(3) as usize];
@@ -192,7 +212,7 @@ pub fn search_costing(cells: &impl Cells, start: (i32, i32), goal: (i32, i32), c
     nodes.insert(start, Node { stamp: 0, state: State::New, g: 0, h: estimate(start, goal), parent: None });
     push(&mut nodes, &mut heap, start);
     let mut pops = 0;
-    let mut found = false;
+    let mut found = None;
     while heap.len() >= 2 && pops < limit {
         pops += 1;
         let (_, c, stamp) = heap.pop();
@@ -202,8 +222,8 @@ pub fn search_costing(cells: &impl Cells, start: (i32, i32), goal: (i32, i32), c
         }
         nd.stamp += 1;
         nd.state = State::New;
-        if c == goal {
-            found = true;
+        if reached(c) {
+            found = Some(c);
             break;
         }
         let g = nd.g;
@@ -246,14 +266,14 @@ pub fn search_costing(cells: &impl Cells, start: (i32, i32), goal: (i32, i32), c
         out.reverse();
         out
     };
-    let out = if found {
-        Outcome::Found(path(goal))
+    let out = if let Some(end) = found {
+        Outcome::Found(path(end))
     } else if best.1 == start {
         Outcome::Stay
     } else {
         Outcome::Nearest(path(best.1))
     };
-    let cost = pops + u32::from(!found && heap.len() >= 2);
+    let cost = pops + u32::from(found.is_none() && heap.len() >= 2);
     (out, refused, cost)
 }
 
@@ -312,6 +332,32 @@ mod tests {
         assert_eq!(class_of(0.5), 1);
         assert_eq!(search(&cells, (430, 46), (426, 40), 1, 32), Outcome::Nearest(vec![(430, 46), (430, 45)]));
         assert_eq!(search(&cells, (430, 45), (426, 40), 1, 32), Outcome::Stay);
+    }
+
+    /// Booty Bay's north-east base: a peon at cell 670, 266 sent to the gold mine (its
+    /// footprint 676 to 683 by 260 to 267), the four other peons' regions refusing their
+    /// cells; the original's way (read from its path's points under Wine) runs east
+    /// along row 266 and ends at 675, 265, whose ring touches the footprint.  Home from
+    /// there to the great hall (650 to 661 by 258 to 269), searching past the peons, it
+    /// runs west along row 265 to 663.
+    #[test]
+    fn a_peons_ways_end_at_the_footprints() {
+        struct Base(bool);
+        impl Cells for Base {
+            fn open(&self, x: i32, y: i32) -> bool {
+                let mine = (676..=683).contains(&x) && (260..=267).contains(&y);
+                let hall = (650..=661).contains(&x) && (258..=269).contains(&y);
+                let peons = [(671, 263), (667, 263), (670, 261), (667, 261)].iter().any(|&(px, py)| (px..=px + 1).contains(&x) && (py..=py + 1).contains(&y));
+                !mine && !hall && !(self.0 && peons)
+            }
+        }
+        let mine = |x: i32, y: i32| (676..=683).contains(&x) && (260..=267).contains(&y);
+        let hall = |x: i32, y: i32| (650..=661).contains(&x) && (258..=269).contains(&y);
+        let (out, refused, _) = search_to_region(&Base(true), (670, 266), (680, 264), 1, 700, mine);
+        assert_eq!(out, Outcome::Found(vec![(670, 266), (671, 266), (672, 266), (673, 266), (674, 266), (675, 265)]));
+        assert!(refused);
+        let (out, _, _) = search_to_region(&Base(false), (675, 265), (656, 264), 1, 700, hall);
+        assert_eq!(out, Outcome::Found((663..=675).rev().map(|x| (x, 265)).collect()));
     }
 
     #[test]

@@ -1,0 +1,12663 @@
+# The original's tag trace in that game (from turn 2): T a turn, A code an allocation, F slot code a free.
+T
+F 0x2932 task
+F 0x2931 task
+F 0x2947 task
+F 0x2946 task
+F 0x295d task
+F 0x295c task
+F 0x2974 task
+F 0x2973 task
+F 0x298b task
+F 0x298a task
+F 0x29a2 task
+F 0x29a1 task
+F 0x29b9 task
+F 0x29b8 task
+F 0x29d0 task
+F 0x29cf task
+F 0x29e3 task
+F 0x29e2 task
+F 0x29e8 tskA
+F 0x29ed tskA
+F 0x29ec task
+F 0x29eb task
+F 0x29ea task
+F 0x29e9 task
+F 0x29e7 +ord
+F 0x29ef task
+F 0x29ee +ord
+F 0x2a03 task
+F 0x2a02 task
+F 0x2a08 tskA
+F 0x2a0d tskA
+F 0x2a0c task
+F 0x2a0b task
+F 0x2a0a task
+F 0x2a09 task
+F 0x2a07 +ord
+F 0x2a0f task
+F 0x2a0e +ord
+F 0x2a27 task
+F 0x2a26 task
+F 0x2a2b tskA
+F 0x2a30 tskA
+F 0x2a2f task
+F 0x2a2e task
+F 0x2a2d task
+F 0x2a2c task
+F 0x2a2a +ord
+F 0x2a32 task
+F 0x2a31 +ord
+F 0x2a43 task
+F 0x2a42 task
+F 0x2a47 tskA
+F 0x2a4c tskA
+F 0x2a4b task
+F 0x2a4a task
+F 0x2a49 task
+F 0x2a48 task
+F 0x2a46 +ord
+F 0x2a4e task
+F 0x2a4d +ord
+F 0x2a5f task
+F 0x2a5e task
+F 0x2a63 tskA
+F 0x2a68 tskA
+F 0x2a67 task
+F 0x2a66 task
+F 0x2a65 task
+F 0x2a64 task
+F 0x2a62 +ord
+F 0x2a6a task
+F 0x2a69 +ord
+F 0x2a7b task
+F 0x2a7a task
+F 0x2a7f tskA
+F 0x2a84 tskA
+F 0x2a83 task
+F 0x2a82 task
+F 0x2a81 task
+F 0x2a80 task
+F 0x2a7e +ord
+F 0x2a86 task
+F 0x2a85 +ord
+F 0x2aa1 `rtl
+F 0x2aa4 task
+F 0x2aa3 task
+F 0x2aa9 tskA
+F 0x2aae tskA
+F 0x2aad task
+F 0x2aac task
+F 0x2aab task
+F 0x2aaa task
+F 0x2aa8 +ord
+F 0x2ab0 task
+F 0x2aaf +ord
+F 0x2ac8 task
+F 0x2ac7 task
+F 0x2acc tskA
+F 0x2ad1 tskA
+F 0x2ad0 task
+F 0x2acf task
+F 0x2ace task
+F 0x2acd task
+F 0x2acb +ord
+F 0x2ad3 task
+F 0x2ad2 +ord
+F 0x2ae4 task
+F 0x2ae3 task
+F 0x2ae8 tskA
+F 0x2aed tskA
+F 0x2aec task
+F 0x2aeb task
+F 0x2aea task
+F 0x2ae9 task
+F 0x2ae7 +ord
+F 0x2aef task
+F 0x2aee +ord
+F 0x2b05 +ord
+F 0x2b04 `rtl
+F 0x2b02 `rtl
+F 0x2b00 `rtl
+F 0x2b08 task
+F 0x2b07 task
+F 0x2b0d tskA
+F 0x2b12 tskA
+F 0x2b11 task
+F 0x2b10 task
+F 0x2b0f task
+F 0x2b0e task
+F 0x2b0c +ord
+F 0x2b14 task
+F 0x2b13 +ord
+F 0x2b2f +ord
+F 0x2b2e `rtl
+F 0x2b2c `rtl
+F 0x2b32 task
+F 0x2b31 task
+F 0x2b37 tskA
+F 0x2b3c tskA
+F 0x2b3b task
+F 0x2b3a task
+F 0x2b39 task
+F 0x2b38 task
+F 0x2b36 +ord
+F 0x2b3e task
+F 0x2b3d +ord
+F 0x2b56 task
+F 0x2b55 task
+F 0x2b5a tskA
+F 0x2b5f tskA
+F 0x2b5e task
+F 0x2b5d task
+F 0x2b5c task
+F 0x2b5b task
+F 0x2b59 +ord
+F 0x2b61 task
+F 0x2b60 +ord
+F 0x2b72 task
+F 0x2b71 task
+F 0x2b76 tskA
+F 0x2b7b tskA
+F 0x2b7a task
+F 0x2b79 task
+F 0x2b78 task
+F 0x2b77 task
+F 0x2b75 +ord
+F 0x2b7d task
+F 0x2b7c +ord
+F 0x2b93 +ord
+F 0x2b92 `rtl
+F 0x2b90 `rtl
+F 0x2b8e `rtl
+F 0x2b96 task
+F 0x2b95 task
+F 0x2b9b tskA
+F 0x2ba0 tskA
+F 0x2b9f task
+F 0x2b9e task
+F 0x2b9d task
+F 0x2b9c task
+F 0x2b9a +ord
+F 0x2ba2 task
+F 0x2ba1 +ord
+F 0x2bb9 `rtl
+F 0x2bbc task
+F 0x2bbb task
+F 0x2bc1 tskA
+F 0x2bc6 tskA
+F 0x2bc5 task
+F 0x2bc4 task
+F 0x2bc3 task
+F 0x2bc2 task
+F 0x2bc0 +ord
+F 0x2bc8 task
+F 0x2bc7 +ord
+F 0x2bd9 task
+F 0x2bd8 task
+F 0x2bdd tskA
+F 0x2be2 tskA
+F 0x2be1 task
+F 0x2be0 task
+F 0x2bdf task
+F 0x2bde task
+F 0x2bdc +ord
+F 0x2be4 task
+F 0x2be3 +ord
+F 0x2bf5 task
+F 0x2bf4 task
+F 0x2bf9 tskA
+F 0x2bfe tskA
+F 0x2bfd task
+F 0x2bfc task
+F 0x2bfb task
+F 0x2bfa task
+F 0x2bf8 +ord
+F 0x2c00 task
+F 0x2bff +ord
+F 0x2c11 task
+F 0x2c10 task
+F 0x2c15 tskA
+F 0x2c1a tskA
+F 0x2c19 task
+F 0x2c18 task
+F 0x2c17 task
+F 0x2c16 task
+F 0x2c14 +ord
+F 0x2c1c task
+F 0x2c1b +ord
+F 0x2c30 +ord
+F 0x2c2f `rtl
+F 0x2c2d `rtl
+F 0x2c33 task
+F 0x2c32 task
+F 0x2c37 tskA
+F 0x2c3c tskA
+F 0x2c3b task
+F 0x2c3a task
+F 0x2c39 task
+F 0x2c38 task
+F 0x2c36 +ord
+F 0x2c3e task
+F 0x2c3d +ord
+F 0x2c4f task
+F 0x2c4e task
+F 0x2c53 tskA
+F 0x2c58 tskA
+F 0x2c57 task
+F 0x2c56 task
+F 0x2c55 task
+F 0x2c54 task
+F 0x2c52 +ord
+F 0x2c5a task
+F 0x2c59 +ord
+F 0x2c71 `rtl
+F 0x2c74 task
+F 0x2c73 task
+F 0x2c78 tskA
+F 0x2c7d tskA
+F 0x2c7c task
+F 0x2c7b task
+F 0x2c7a task
+F 0x2c79 task
+F 0x2c77 +ord
+F 0x2c7f task
+F 0x2c7e +ord
+F 0x2c95 task
+F 0x2c94 task
+F 0x2c99 tskA
+F 0x2c9e tskA
+F 0x2c9d task
+F 0x2c9c task
+F 0x2c9b task
+F 0x2c9a task
+F 0x2c98 +ord
+F 0x2ca0 task
+F 0x2c9f +ord
+F 0x2c93 `rtl
+F 0x2c91 `rtl
+F 0x2cba task
+F 0x2cb9 task
+F 0x2cbf tskA
+F 0x2cc4 tskA
+F 0x2cc3 task
+F 0x2cc2 task
+F 0x2cc1 task
+F 0x2cc0 task
+F 0x2cbe +ord
+F 0x2cc6 task
+F 0x2cc5 +ord
+F 0x2cdf task
+F 0x2cde task
+F 0x2ce3 tskA
+F 0x2ce8 tskA
+F 0x2ce7 task
+F 0x2ce6 task
+F 0x2ce5 task
+F 0x2ce4 task
+F 0x2ce2 +ord
+F 0x2cea task
+F 0x2ce9 +ord
+F 0x2d00 task
+F 0x2cff task
+F 0x2d05 tskA
+F 0x2d0a tskA
+F 0x2d09 task
+F 0x2d08 task
+F 0x2d07 task
+F 0x2d06 task
+F 0x2d04 +ord
+F 0x2d0c task
+F 0x2d0b +ord
+F 0x2cfe `rtl
+F 0x2cfc `rtl
+F 0x2d27 task
+F 0x2d26 task
+F 0x2d2b tskA
+F 0x2d30 tskA
+F 0x2d2f task
+F 0x2d2e task
+F 0x2d2d task
+F 0x2d2c task
+F 0x2d2a +ord
+F 0x2d32 task
+F 0x2d31 +ord
+F 0x2d44 task
+F 0x2d43 task
+F 0x2d48 tskA
+F 0x2d4d tskA
+F 0x2d4c task
+F 0x2d4b task
+F 0x2d4a task
+F 0x2d49 task
+F 0x2d47 +ord
+F 0x2d4f task
+F 0x2d4e +ord
+F 0x2d60 task
+F 0x2d5f task
+F 0x2d65 tskA
+F 0x2d6a tskA
+F 0x2d69 task
+F 0x2d68 task
+F 0x2d67 task
+F 0x2d66 task
+F 0x2d64 +ord
+F 0x2d6c task
+F 0x2d6b +ord
+F 0x2d7d task
+F 0x2d7c task
+F 0x2d81 tskA
+F 0x2d86 tskA
+F 0x2d85 task
+F 0x2d84 task
+F 0x2d83 task
+F 0x2d82 task
+F 0x2d80 +ord
+F 0x2d88 task
+F 0x2d87 +ord
+F 0x2d9c +ord
+F 0x2d9b `rtl
+F 0x2d99 `rtl
+F 0x2d9f task
+F 0x2d9e task
+F 0x2da3 tskA
+F 0x2da8 tskA
+F 0x2da7 task
+F 0x2da6 task
+F 0x2da5 task
+F 0x2da4 task
+F 0x2da2 +ord
+F 0x2daa task
+F 0x2da9 +ord
+F 0x2dc2 task
+F 0x2dc1 task
+F 0x2dc6 tskA
+F 0x2dcb tskA
+F 0x2dca task
+F 0x2dc9 task
+F 0x2dc8 task
+F 0x2dc7 task
+F 0x2dc5 +ord
+F 0x2dcd task
+F 0x2dcc +ord
+F 0x2dde task
+F 0x2ddd task
+F 0x2de2 tskA
+F 0x2de7 tskA
+F 0x2de6 task
+F 0x2de5 task
+F 0x2de4 task
+F 0x2de3 task
+F 0x2de1 +ord
+F 0x2de9 task
+F 0x2de8 +ord
+F 0x2e04 +ord
+F 0x2e03 `rtl
+F 0x2e01 `rtl
+F 0x2e07 task
+F 0x2e06 task
+F 0x2e0b tskA
+F 0x2e10 tskA
+F 0x2e0f task
+F 0x2e0e task
+F 0x2e0d task
+F 0x2e0c task
+F 0x2e0a +ord
+F 0x2e12 task
+F 0x2e11 +ord
+F 0x2e23 task
+F 0x2e22 task
+F 0x2e27 tskA
+F 0x2e2c tskA
+F 0x2e2b task
+F 0x2e2a task
+F 0x2e29 task
+F 0x2e28 task
+F 0x2e26 +ord
+F 0x2e2e task
+F 0x2e2d +ord
+F 0x2e46 task
+F 0x2e45 task
+F 0x2e4a tskA
+F 0x2e4f tskA
+F 0x2e4e task
+F 0x2e4d task
+F 0x2e4c task
+F 0x2e4b task
+F 0x2e49 +ord
+F 0x2e51 task
+F 0x2e50 +ord
+F 0x2e62 task
+F 0x2e61 task
+F 0x2e66 tskA
+F 0x2e6b tskA
+F 0x2e6a task
+F 0x2e69 task
+F 0x2e68 task
+F 0x2e67 task
+F 0x2e65 +ord
+F 0x2e6d task
+F 0x2e6c +ord
+F 0x2e7c task
+F 0x2e7b task
+F 0x2e8c task
+F 0x2e8b task
+F 0x2e9c task
+F 0x2e9b task
+F 0x2eac task
+F 0x2eab task
+F 0x2ebc task
+F 0x2ebb task
+F 0x2ecc task
+F 0x2ecb task
+F 0x2edc task
+F 0x2edb task
+F 0x2eec task
+F 0x2eeb task
+F 0x2efc task
+F 0x2efb task
+F 0x2f0c task
+F 0x2f0b task
+F 0x2f1c task
+F 0x2f1b task
+F 0x2f2c task
+F 0x2f2b task
+F 0x2f3c task
+F 0x2f3b task
+F 0x2f4c task
+F 0x2f4b task
+F 0x2f5c task
+F 0x2f5b task
+F 0x2fe9 +tex
+F 0x2fbb `rtl
+F 0x287 `rtl
+F 0x307e +grp
+F 0x3080 +grp
+F 0x3084 +loc
+F 0x3082 +grp
+F 0x30a1 task
+F 0x30a0 task
+F 0x30b9 task
+F 0x30b8 task
+F 0x30cf task
+F 0x30ce task
+F 0x30e5 task
+F 0x30e4 task
+F 0x30fb task
+F 0x30fa task
+F 0x3111 task
+F 0x3110 task
+F 0x3117 +loc
+F 0x3116 +grp
+F 0x3135 task
+F 0x3134 task
+F 0x314d task
+F 0x314c task
+F 0x3163 task
+F 0x3162 task
+F 0x3179 task
+F 0x3178 task
+F 0x318f task
+F 0x318e task
+F 0x31a5 task
+F 0x31a4 task
+F 0x2fe8 +tex
+F 0x2fe1 +tmr
+F 0x2fe2 hdlr
+T
+T
+T
+T
+T
+A BEar
+A BEar
+A BEar
+A BEar
+A BHad
+A BHad
+T
+T
+T
+T
+T
+T
+T
+F 0x309a ^pmr
+F 0x309b ^pmr
+F 0x3099 `pos
+F 0x3098 Xbli
+F 0x3097 Abli
+F 0x312d ^pmr
+F 0x312e ^pmr
+F 0x312c `pos
+F 0x312b Xbli
+F 0x312a Abli
+T
+T
+T
+T
+T
+T
+T
+T
+A +frc
+A `flg
+A `flg
+A +frc
+A `flg
+A `flg
+A +frc
+A `flg
+A `flg
+A hdlr
+A hdlr
+A +frc
+A `flg
+A `flg
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+F 0x2fed `rcm
+F 0x2fee `rcm
+F 0x2fef `rcm
+F 0x2ff0 `rcm
+F 0x2ff1 `rcm
+F 0x2ff2 `rcm
+F 0x2ff3 `rcm
+F 0x2ff4 `rcm
+F 0x2ff5 `rcm
+F 0x2ff6 `rcm
+F 0x2ff7 `rcm
+F 0x2ff8 `rcm
+F 0x2ff9 `rcm
+F 0x2ffa `rcm
+F 0x2ffb `rcm
+F 0x2ffc `rcm
+F 0x2ffd `rcm
+F 0x2ffe `rcm
+F 0x2fff `rcm
+F 0x3002 `rcm
+F 0x3003 `rcm
+F 0x3004 `rcm
+F 0x3007 `rcm
+F 0x3008 `rcm
+F 0x3009 `rcm
+F 0x300a `rcm
+F 0x300b `rcm
+F 0x300c `rcm
+F 0x300d `rcm
+F 0x300e `rcm
+F 0x300f `rcm
+F 0x3012 `rcm
+F 0x3013 `rcm
+F 0x3016 `rcm
+F 0x3017 `rcm
+F 0x3018 `rcm
+F 0x3019 `rcm
+F 0x301c `rcm
+F 0x3020 `rcm
+F 0x3021 `rcm
+F 0x3022 `rcm
+F 0x3025 `rcm
+F 0x3029 `rcm
+F 0x302a `rcm
+F 0x302b `rcm
+F 0x302d `rcm
+F 0x302e `rcm
+F 0x302f `rcm
+F 0x3030 `rcm
+F 0x3031 `rcm
+F 0x3032 `rcm
+F 0x3033 `rcm
+F 0x3034 `rcm
+F 0x3035 `rcm
+F 0x3036 `rcm
+F 0x3037 `rcm
+F 0x3038 `rcm
+F 0x3039 `rcm
+F 0x303a `rcm
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x302a ^clg
+F 0x3039 tskA
+F 0x302b tskA
+F 0x302d task
+F 0x302e task
+F 0x302f task
+F 0x3030 task
+F 0x3031 task
+F 0x3032 task
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3033 tsk.
+F 0x3030 task
+F 0x3031 task
+F 0x3032 tskA
+F 0x3034 task
+F 0x3035 task
+F 0x3036 task
+F 0x3037 tskO
+F 0x3038 tskA
+F 0x303a ordt
+F 0x3025 l^pa
+F 0x3029 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x302b ^clg
+F 0x3025 tskA
+F 0x302d tskA
+F 0x302e task
+F 0x302f task
+F 0x3033 task
+F 0x3030 task
+F 0x3031 task
+F 0x3032 task
+T
+A tskA
+A task
+A task
+F 0x3034 tsk.
+F 0x3030 task
+F 0x3031 task
+F 0x3032 tskA
+F 0x3035 task
+F 0x3036 task
+F 0x3037 task
+F 0x3038 tskO
+F 0x303a tskA
+F 0x3029 ordt
+T
+F 0x302a l^pa
+F 0x3039 ^clu
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x302d ^clg
+F 0x302a tskA
+F 0x302e tskA
+F 0x302f task
+F 0x3033 task
+F 0x3034 task
+F 0x3030 task
+F 0x3031 task
+F 0x3032 task
+T
+T
+A tskA
+A task
+A task
+F 0x3035 tsk.
+F 0x3030 task
+F 0x3031 task
+F 0x3032 tskA
+F 0x3036 task
+F 0x3037 task
+F 0x3038 task
+F 0x303a tskO
+F 0x3029 tskA
+F 0x3039 ordt
+F 0x302b l^pa
+F 0x3025 ^clu
+T
+T
+A `rtl
+A `rtl
+F 0x301f `rtl
+F 0x3028 `rtl
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x302e ^clg
+F 0x301f tskA
+F 0x302f tskA
+F 0x3033 task
+F 0x3034 task
+F 0x3035 task
+F 0x3030 task
+F 0x3031 task
+F 0x3032 task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3017 ^clg
+F 0x3031 tskA
+F 0x3018 tskA
+F 0x3019 task
+F 0x301c task
+F 0x3020 task
+F 0x3021 task
+F 0x3022 task
+F 0x302e task
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x300a ^clg
+F 0x3022 tskA
+F 0x300b tskA
+F 0x300c task
+F 0x300d task
+F 0x300e task
+F 0x300f task
+F 0x3012 task
+F 0x3017 task
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ffd ^clg
+F 0x3012 tskA
+F 0x2ffe tskA
+F 0x2fff task
+F 0x3002 task
+F 0x3003 task
+F 0x3004 task
+F 0x3007 task
+F 0x300a task
+T
+F 0x3022 tsk.
+F 0x300b task
+F 0x300c task
+F 0x300d task
+F 0x300e tskO
+F 0x300f tskA
+F 0x3017 ordt
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ffd ^clg
+F 0x300f tskA
+F 0x3012 tskA
+F 0x2ffe task
+F 0x2fff task
+F 0x3002 task
+F 0x3003 task
+F 0x3004 task
+F 0x3007 task
+T
+F 0x2ffb l^pa
+F 0x2ffc ^clu
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff4 ^clg
+F 0x2ffb tskA
+F 0x2ff5 tskA
+F 0x2ff6 task
+F 0x2ff7 task
+F 0x2ff8 task
+F 0x2ffd task
+F 0x300f task
+F 0x3012 task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x314c ^clg
+F 0x300f tskA
+F 0x3163 tskA
+F 0x2fed task
+F 0x2fee task
+F 0x2fef task
+F 0x2ff0 task
+F 0x2ff1 task
+F 0x2ff4 task
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30fb ^clg
+F 0x2ff1 tskA
+F 0x30fa tskA
+F 0x3111 task
+F 0x3110 task
+F 0x3117 task
+F 0x3116 task
+F 0x3135 task
+F 0x314c task
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3082 ^clg
+F 0x3135 tskA
+F 0x30a1 tskA
+F 0x30a0 task
+F 0x30b9 task
+F 0x30b8 task
+F 0x30cf task
+F 0x30ce task
+F 0x30fb task
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2f4b ^clg
+F 0x30ce tskA
+F 0x2f5c tskA
+F 0x2f5b task
+F 0x2fe9 task
+F 0x2fbb task
+F 0x287 task
+F 0x307e task
+F 0x3082 task
+T
+T
+A tskA
+A task
+A task
+F 0x2ffb tsk.
+F 0x287 task
+F 0x307e task
+F 0x3082 tskA
+F 0x2ff5 task
+F 0x2ff6 task
+F 0x2ff7 task
+F 0x2ff8 tskO
+F 0x2ffd tskA
+F 0x3012 ordt
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2f4b ^clg
+F 0x2ffd tskA
+F 0x30ce tskA
+F 0x2f5c task
+F 0x2f5b task
+F 0x2fe9 task
+F 0x2fbb task
+F 0x2ffb task
+F 0x287 task
+F 0x3134 l^pa
+F 0x314d ^clu
+A tskA
+A task
+A task
+F 0x3031 tsk.
+F 0x287 task
+F 0x3134 task
+F 0x314d tskA
+F 0x3018 task
+F 0x3019 task
+F 0x301c task
+F 0x3020 tskO
+F 0x3021 tskA
+F 0x302e ordt
+F 0x3008 l^pa
+F 0x3009 ^clu
+T
+T
+T
+A `rtl
+A `rtl
+A `rtl
+A `rtl
+F 0x3001 `rtl
+F 0x3006 `rtl
+F 0x3015 `rtl
+F 0x3024 `rtl
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x300a tsk.
+F 0x3006 task
+F 0x3015 task
+F 0x3024 tskA
+F 0x3022 task
+F 0x300b task
+F 0x300c task
+F 0x300d tskO
+F 0x300e tskA
+F 0x3017 ordt
+F 0x2ff9 l^pa
+F 0x2ffa ^clu
+T
+T
+T
+T
+T
+T
+F 0x2ff1 tsk.
+F 0x30fa task
+F 0x3111 task
+F 0x3110 task
+F 0x3117 tskO
+F 0x3116 tskA
+F 0x314c ordt
+F 0x3080 l^pa
+F 0x3084 ^clu
+A tskA
+A task
+A task
+F 0x300f tsk.
+F 0x314c task
+F 0x3080 task
+F 0x3084 tskA
+F 0x3163 task
+F 0x2fed task
+F 0x2fee task
+F 0x2fef tskO
+F 0x2ff0 tskA
+F 0x2ff4 ordt
+T
+F 0x30e5 l^pa
+F 0x30e4 ^clu
+T
+F 0x3135 tsk.
+F 0x30a1 task
+F 0x30a0 task
+F 0x30b9 task
+F 0x30b8 tskO
+F 0x30cf tskA
+F 0x30fb ordt
+F 0x2f3b l^pa
+F 0x2f4c ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2fed ^clg
+F 0x2f3b tskA
+F 0x2fee tskA
+F 0x2fef task
+F 0x2ff0 task
+F 0x2ff4 task
+F 0x30e5 task
+F 0x30e4 task
+F 0x3135 task
+T
+F 0x3036 tsk.
+F 0x3037 task
+F 0x3038 task
+F 0x303a task
+F 0x3029 tskO
+F 0x3039 tskA
+F 0x3028 ordt
+F 0x302d l^pa
+F 0x302a ^clu
+T
+T
+A tskA
+A task
+A task
+F 0x30a1 tsk.
+F 0x3028 task
+F 0x302d task
+F 0x302a tskA
+F 0x30a0 task
+F 0x30b9 task
+F 0x30b8 task
+F 0x30cf tskO
+F 0x30fb tskA
+F 0x2f4c ordt
+F 0x3084 l^pa
+F 0x3163 ^clu
+T
+A tskA
+A task
+A task
+F 0x307e tsk.
+F 0x2f4c task
+F 0x3084 task
+F 0x3163 tskA
+F 0x3082 task
+F 0x2ff5 task
+F 0x2ff6 task
+F 0x2ff7 tskO
+F 0x2ff8 tskA
+F 0x3012 ordt
+F 0x2f2b l^pa
+F 0x2f3c ^clu
+T
+F 0x301f tsk.
+F 0x302f task
+F 0x3033 task
+F 0x3034 task
+F 0x3035 tskO
+F 0x3030 tskA
+F 0x3032 ordt
+F 0x3013 l^pa
+F 0x3016 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff5 ^clg
+F 0x3013 tskA
+F 0x2ff6 tskA
+F 0x2ff7 task
+F 0x2ff8 task
+F 0x3012 task
+F 0x2f2b task
+F 0x2f3c task
+F 0x301f task
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30b9 ^clg
+F 0x2f3c tskA
+F 0x30b8 tskA
+F 0x30cf task
+F 0x30fb task
+F 0x307e task
+F 0x2f4c task
+F 0x3084 task
+F 0x2ff5 task
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+F 0x2ffe tsk.
+F 0x2fff task
+F 0x3002 task
+F 0x3003 task
+F 0x3004 tskO
+F 0x3007 tskA
+F 0x2ffc ordt
+F 0x2ff2 l^pa
+F 0x2ff3 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30b8 ^clg
+F 0x2ff2 tskA
+F 0x30cf tskA
+F 0x30fb task
+F 0x307e task
+F 0x2f4c task
+F 0x3084 task
+F 0x2ff5 task
+F 0x2ffe task
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3038 ^clg
+F 0x2ff5 tskA
+F 0x303a tskA
+F 0x3029 task
+F 0x3039 task
+F 0x30a1 task
+F 0x3028 task
+F 0x302d task
+F 0x30b8 task
+T
+T
+T
+T
+F 0x3013 tsk.
+F 0x2ff6 task
+F 0x2ff7 task
+F 0x2ff8 task
+F 0x3012 tskO
+F 0x2f2b tskA
+F 0x301f ordt
+F 0x302a l^pa
+F 0x30a0 ^clu
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x303a ^clg
+F 0x302a tskA
+F 0x3029 tskA
+F 0x3039 task
+F 0x30a1 task
+F 0x3028 task
+F 0x302d task
+F 0x30b8 task
+F 0x3013 task
+T
+F 0x2fff tsk.
+F 0x3002 task
+F 0x3003 task
+F 0x3004 task
+F 0x3007 tskO
+F 0x2ffc tskA
+F 0x2ff3 ordt
+F 0x30b9 l^pa
+F 0x2f3c ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3029 ^clg
+F 0x30b9 tskA
+F 0x3039 tskA
+F 0x30a1 task
+F 0x3028 task
+F 0x302d task
+F 0x30b8 task
+F 0x3013 task
+F 0x2fff task
+A tskA
+A task
+A task
+F 0x3002 tsk.
+F 0x30b8 task
+F 0x3013 task
+F 0x2fff tskA
+F 0x3003 task
+F 0x3004 task
+F 0x3007 task
+F 0x2ffc tskO
+F 0x2ff3 tskA
+F 0x2f3c ordt
+T
+F 0x303a l^pa
+F 0x302a ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3039 ^clg
+F 0x303a tskA
+F 0x30a1 tskA
+F 0x3028 task
+F 0x302d task
+F 0x3002 task
+F 0x30b8 task
+F 0x3013 task
+F 0x2fff task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2fee ^clg
+F 0x3013 tskA
+F 0x2fef tskA
+F 0x2ff0 task
+F 0x2ff4 task
+F 0x30e5 task
+F 0x30e4 task
+F 0x3135 task
+F 0x3039 task
+T
+A tskA
+A task
+A task
+F 0x2ff2 tsk.
+F 0x30e4 task
+F 0x3135 task
+F 0x3039 tskA
+F 0x30cf task
+F 0x30fb task
+F 0x307e task
+F 0x2f4c tskO
+F 0x3084 tskA
+F 0x2ffe ordt
+T
+F 0x3036 l^pa
+F 0x3037 ^clu
+T
+A tskA
+A task
+A task
+F 0x302f tsk.
+F 0x2ffe task
+F 0x3036 task
+F 0x3037 tskA
+F 0x3033 task
+F 0x3034 task
+F 0x3035 task
+F 0x3030 tskO
+F 0x3032 tskA
+F 0x3016 ordt
+F 0x3163 l^pa
+F 0x3082 ^clu
+A tskA
+A task
+A task
+F 0x2ff6 tsk.
+F 0x3016 task
+F 0x3163 task
+F 0x3082 tskA
+F 0x2ff7 task
+F 0x2ff8 task
+F 0x3012 task
+F 0x2f2b tskO
+F 0x301f tskA
+F 0x30a0 ordt
+T
+F 0x3038 l^pa
+F 0x2ff5 ^clu
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3034 ^clg
+F 0x3038 tskA
+F 0x3035 tskA
+F 0x3030 task
+F 0x3032 task
+F 0x2ff6 task
+F 0x3016 task
+F 0x3163 task
+F 0x3082 task
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30fb ^clg
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3110 ^clg
+F 0x3163 tskA
+F 0x307e tskA
+F 0x2f4c task
+F 0x3084 task
+F 0x302f task
+F 0x2ffe task
+F 0x3036 task
+F 0x3034 task
+F 0x3135 tskA
+F 0x3117 tskA
+F 0x3116 task
+F 0x300f task
+F 0x314c task
+F 0x3080 task
+F 0x2fee task
+F 0x3013 task
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3163 ^clg
+F 0x2fee tskA
+F 0x307e tskA
+F 0x2f4c task
+F 0x3084 task
+F 0x302f task
+F 0x2ffe task
+F 0x3036 task
+F 0x3034 task
+A tskA
+A task
+A task
+F 0x303a tsk.
+F 0x2ffe task
+F 0x3036 task
+F 0x3034 tskA
+F 0x30a1 task
+F 0x3028 task
+F 0x302d task
+F 0x3002 tskO
+F 0x30b8 tskA
+F 0x2fff ordt
+F 0x2fed l^pa
+F 0x2f3b ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x307e ^clg
+F 0x2fed tskA
+F 0x2f4c tskA
+F 0x3084 task
+F 0x302f task
+F 0x303a task
+F 0x2ffe task
+F 0x3036 task
+F 0x3034 task
+T
+F 0x3003 tsk.
+F 0x3004 task
+F 0x3007 task
+F 0x2ffc task
+F 0x2ff3 tskO
+F 0x2f3c tskA
+F 0x302a ordt
+T
+F 0x3029 l^pa
+F 0x30b9 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2f4c ^clg
+F 0x3029 tskA
+F 0x3084 tskA
+F 0x302f task
+F 0x303a task
+F 0x2ffe task
+F 0x3036 task
+F 0x3034 task
+F 0x3003 task
+T
+A tskA
+A task
+A task
+F 0x2ff7 tsk.
+F 0x3036 task
+F 0x3034 task
+F 0x3003 tskA
+F 0x2ff8 task
+F 0x3012 task
+F 0x2f2b task
+F 0x301f tskO
+F 0x30a0 tskA
+F 0x2ff5 ordt
+T
+F 0x3037 l^pa
+F 0x3033 ^clu
+T
+T
+T
+T
+F 0x2fef tsk.
+F 0x2ff0 task
+F 0x2ff4 task
+F 0x30e5 task
+F 0x2ff2 tskO
+F 0x30e4 tskA
+F 0x30fb ordt
+F 0x30fa l^pa
+F 0x3111 ^clu
+T
+F 0x3038 tsk.
+F 0x3035 task
+F 0x3030 task
+F 0x3032 task
+F 0x2ff6 tskO
+F 0x3016 tskA
+F 0x3082 ordt
+T
+F 0x3039 l^pa
+F 0x30cf ^clu
+T
+T
+A tskA
+A task
+A task
+F 0x3135 tsk.
+F 0x3082 task
+F 0x3039 task
+F 0x30cf tskA
+F 0x3117 task
+F 0x3116 task
+F 0x300f task
+F 0x314c tskO
+F 0x3080 tskA
+F 0x3013 ordt
+F 0x2ff1 l^pa
+F 0x3110 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3004 tsk.
+F 0x3013 task
+F 0x2ff1 task
+F 0x3110 tskA
+F 0x3007 task
+F 0x2ffc task
+F 0x2ff3 task
+F 0x2f3c tskO
+F 0x302a tskA
+F 0x30b9 ordt
+F 0x307e l^pa
+F 0x2fed ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+F 0x30a1 tsk.
+F 0x3028 task
+F 0x302d task
+F 0x3002 task
+F 0x30b8 tskO
+F 0x2fff tskA
+F 0x2f3b ordt
+F 0x3163 l^pa
+F 0x2fee ^clu
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ffc ^clg
+F 0x3163 tskA
+F 0x2ff3 tskA
+F 0x2f3c task
+F 0x302a task
+F 0x30b9 task
+F 0x307e task
+F 0x2fed task
+F 0x30a1 task
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3116 ^clg
+F 0x2fed tskA
+F 0x300f tskA
+F 0x314c task
+F 0x3080 task
+F 0x3004 task
+F 0x3013 task
+F 0x2ff1 task
+F 0x2ffc task
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3030 ^clg
+F 0x2ff1 tskA
+F 0x3032 tskA
+F 0x2ff6 task
+F 0x3016 task
+F 0x3135 task
+F 0x3082 task
+F 0x3039 task
+F 0x3116 task
+T
+T
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x2fed tsk.
+F 0x3082 task
+F 0x3039 task
+F 0x3116 tskA
+F 0x300f task
+F 0x314c task
+F 0x3080 task
+F 0x3004 tskO
+F 0x3013 tskA
+F 0x2ffc ordt
+F 0x3038 l^pa
+F 0x3035 ^clu
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3032 ^clg
+F 0x3038 tskA
+F 0x2ff6 tskA
+F 0x3016 task
+F 0x3135 task
+F 0x2fed task
+F 0x3082 task
+F 0x3039 task
+F 0x3116 task
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff4 ^clg
+F 0x3039 tskA
+F 0x30e5 tskA
+F 0x2ff2 task
+F 0x30e4 task
+F 0x30fb task
+F 0x30fa task
+F 0x3111 task
+F 0x3032 task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3012 ^clg
+F 0x3111 tskA
+F 0x2f2b tskA
+F 0x301f task
+F 0x30a0 task
+F 0x2ff5 task
+F 0x3037 task
+F 0x3033 task
+F 0x2ff4 task
+T
+A tskA
+A task
+A task
+F 0x3039 tsk.
+F 0x3037 task
+F 0x3033 task
+F 0x2ff4 tskA
+F 0x30e5 task
+F 0x2ff2 task
+F 0x30e4 task
+F 0x30fb tskO
+F 0x30fa tskA
+F 0x3032 ordt
+F 0x3003 l^pa
+F 0x2ff8 ^clu
+T
+T
+F 0x3028 tsk.
+F 0x302d task
+F 0x3002 task
+F 0x30b8 task
+F 0x2fff tskO
+F 0x2f3b tskA
+F 0x2fee ordt
+F 0x3110 l^pa
+F 0x3007 ^clu
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff2 ^clg
+F 0x3110 tskA
+F 0x30e4 tskA
+F 0x30fb task
+F 0x30fa task
+F 0x3032 task
+F 0x3003 task
+F 0x2ff8 task
+F 0x3028 task
+T
+A tskA
+A task
+A task
+F 0x3163 tsk.
+F 0x3003 task
+F 0x2ff8 task
+F 0x3028 tskA
+F 0x2ff3 task
+F 0x2f3c task
+F 0x302a task
+F 0x30b9 tskO
+F 0x307e tskA
+F 0x30a1 ordt
+F 0x30cf l^pa
+F 0x3117 ^clu
+T
+T
+T
+T
+T
+T
+T
+F 0x302d tsk.
+F 0x3002 task
+F 0x30b8 task
+F 0x2fff task
+F 0x2f3b tskO
+F 0x2fee tskA
+F 0x3007 ordt
+F 0x2ff4 l^pa
+F 0x30e5 ^clu
+T
+A tskA
+A task
+A task
+F 0x3038 tsk.
+F 0x3007 task
+F 0x2ff4 task
+F 0x30e5 tskA
+F 0x2ff6 task
+F 0x3016 task
+F 0x3135 task
+F 0x2fed tskO
+F 0x3082 tskA
+F 0x3116 ordt
+F 0x2fef l^pa
+F 0x2ff0 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30b8 ^clg
+F 0x2fef tskA
+F 0x2fff tskA
+F 0x2f3b task
+F 0x2fee task
+F 0x3038 task
+F 0x3007 task
+F 0x2ff4 task
+F 0x30e5 task
+T
+T
+T
+A tskA
+A task
+A task
+F 0x2ff6 tsk.
+F 0x3007 task
+F 0x2ff4 task
+F 0x30e5 tskA
+F 0x3016 task
+F 0x3135 task
+F 0x2fed task
+F 0x3082 tskO
+F 0x3116 tskA
+F 0x2ff0 ordt
+F 0x302d l^pa
+F 0x3002 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2fff ^clg
+F 0x302d tskA
+F 0x2f3b tskA
+F 0x2fee task
+F 0x3038 task
+F 0x2ff6 task
+F 0x3007 task
+F 0x2ff4 task
+F 0x30e5 task
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2f3c ^clg
+F 0x2ff4 tskA
+F 0x302a tskA
+F 0x30b9 task
+F 0x307e task
+F 0x30a1 task
+F 0x30cf task
+F 0x3117 task
+F 0x2fff task
+T
+A tskA
+A task
+A task
+F 0x3016 tsk.
+F 0x30cf task
+F 0x3117 task
+F 0x2fff tskA
+F 0x3135 task
+F 0x2fed task
+F 0x3082 task
+F 0x3116 tskO
+F 0x2ff0 tskA
+F 0x3002 ordt
+F 0x30b8 l^pa
+F 0x2fef ^clu
+T
+T
+T
+F 0x300f tsk.
+F 0x314c task
+F 0x3080 task
+F 0x3004 task
+F 0x3013 tskO
+F 0x2ffc tskA
+F 0x3035 ordt
+T
+F 0x3030 l^pa
+F 0x2ff1 ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2fed ^clg
+F 0x3030 tskA
+F 0x3082 tskA
+F 0x3116 task
+F 0x2ff0 task
+F 0x3002 task
+F 0x30b8 task
+F 0x2fef task
+F 0x300f task
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x302a ^clg
+F 0x2fef tskA
+F 0x30b9 tskA
+F 0x307e task
+F 0x30a1 task
+F 0x3016 task
+F 0x30cf task
+F 0x3117 task
+F 0x2fed task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30e4 ^clg
+F 0x3117 tskA
+F 0x30fb tskA
+F 0x30fa task
+F 0x3032 task
+F 0x3163 task
+F 0x3003 task
+F 0x2ff8 task
+F 0x302a task
+T
+F 0x302d tsk.
+F 0x2f3b task
+F 0x2fee task
+F 0x3038 task
+F 0x2ff6 tskO
+F 0x3007 tskA
+F 0x30e5 ordt
+F 0x3028 l^pa
+F 0x2ff3 ^clu
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x314c tsk.
+F 0x30e5 task
+F 0x3028 task
+F 0x2ff3 tskA
+F 0x3080 task
+F 0x3004 task
+F 0x3013 task
+F 0x2ffc tskO
+F 0x3035 tskA
+F 0x2ff1 ordt
+F 0x2fff l^pa
+F 0x3135 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2fee ^clg
+F 0x2fff tskA
+F 0x3038 tskA
+F 0x2ff6 task
+F 0x3007 task
+F 0x314c task
+F 0x30e5 task
+F 0x3028 task
+F 0x2ff3 task
+T
+T
+F 0x3030 tsk.
+F 0x3082 task
+F 0x3116 task
+F 0x2ff0 task
+F 0x3002 tskO
+F 0x30b8 tskA
+F 0x300f ordt
+F 0x2f3c l^pa
+F 0x2ff4 ^clu
+T
+T
+T
+A tskA
+A task
+A task
+F 0x2fef tsk.
+F 0x300f task
+F 0x2f3c task
+F 0x2ff4 tskA
+F 0x30b9 task
+F 0x307e task
+F 0x30a1 task
+F 0x3016 tskO
+F 0x30cf tskA
+F 0x2fed ordt
+F 0x2ff2 l^pa
+F 0x3110 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3116 ^clg
+F 0x2ff2 tskA
+F 0x2ff0 tskA
+F 0x3002 task
+F 0x30b8 task
+F 0x2fef task
+F 0x300f task
+F 0x2f3c task
+F 0x2ff4 task
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3038 ^clg
+F 0x2f3c tskA
+F 0x2ff6 tskA
+F 0x3007 task
+F 0x314c task
+F 0x30e5 task
+F 0x3028 task
+F 0x2ff3 task
+F 0x3116 task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30fb ^clg
+F 0x2ff3 tskA
+F 0x30fa tskA
+F 0x3032 task
+F 0x3163 task
+F 0x3003 task
+F 0x2ff8 task
+F 0x302a task
+F 0x3038 task
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2f2b ^clg
+F 0x302a tskA
+F 0x301f tskA
+F 0x30a0 task
+F 0x2ff5 task
+F 0x3039 task
+F 0x3037 task
+F 0x3033 task
+F 0x30fb task
+T
+A tskA
+A task
+A task
+F 0x2f3c tsk.
+F 0x3037 task
+F 0x3033 task
+F 0x30fb tskA
+F 0x2ff6 task
+F 0x3007 task
+F 0x314c task
+F 0x30e5 tskO
+F 0x3028 tskA
+F 0x3116 ordt
+F 0x30e4 l^pa
+F 0x3117 ^clu
+T
+T
+T
+T
+F 0x2ff2 tsk.
+F 0x2ff0 task
+F 0x3002 task
+F 0x30b8 task
+F 0x2fef tskO
+F 0x300f tskA
+F 0x2ff4 ordt
+F 0x2fee l^pa
+F 0x2fff ^clu
+T
+T
+A tskA
+A task
+A task
+F 0x2ff3 tsk.
+F 0x2ff4 task
+F 0x2fee task
+F 0x2fff tskA
+F 0x30fa task
+F 0x3032 task
+F 0x3163 task
+F 0x3003 tskO
+F 0x2ff8 tskA
+F 0x3038 ordt
+F 0x3012 l^pa
+F 0x3111 ^clu
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3002 ^clg
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30a0 ^clg
+F 0x3012 tskA
+F 0x30b8 tskA
+F 0x2fef task
+F 0x300f task
+F 0x2ff3 task
+F 0x2ff4 task
+F 0x2fee task
+F 0x2fff task
+F 0x3117 tskA
+F 0x2ff5 tskA
+F 0x3039 task
+F 0x2f3c task
+F 0x3037 task
+F 0x3033 task
+F 0x30fb task
+F 0x2ff6 task
+T
+T
+T
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x30b9 tsk.
+F 0x3033 task
+F 0x30fb task
+F 0x2ff6 tskA
+F 0x307e task
+F 0x30a1 task
+F 0x3016 task
+F 0x30cf tskO
+F 0x2fed tskA
+F 0x3110 ordt
+F 0x3030 l^pa
+F 0x3082 ^clu
+T
+T
+A tskA
+A task
+A task
+F 0x3080 tsk.
+F 0x3110 task
+F 0x3030 task
+F 0x3082 tskA
+F 0x3004 task
+F 0x3013 task
+F 0x2ffc task
+F 0x3035 tskO
+F 0x2ff1 tskA
+F 0x3135 ordt
+F 0x302d l^pa
+F 0x2f3b ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30a1 ^clg
+F 0x302d tskA
+F 0x3016 tskA
+F 0x30cf task
+F 0x2fed task
+F 0x3080 task
+F 0x3110 task
+F 0x3030 task
+F 0x3082 task
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3007 tsk.
+F 0x3110 task
+F 0x3030 task
+F 0x3082 tskA
+F 0x314c task
+F 0x30e5 task
+F 0x3028 task
+F 0x3116 tskO
+F 0x30e4 tskA
+F 0x3002 ordt
+T
+F 0x302a l^pa
+F 0x301f ^clu
+T
+T
+F 0x30fa tsk.
+F 0x3032 task
+F 0x3163 task
+F 0x3003 task
+F 0x2ff8 tskO
+F 0x3038 tskA
+F 0x3111 ordt
+F 0x2ff2 l^pa
+F 0x2ff0 ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30e5 ^clg
+F 0x2ff2 tskA
+F 0x3028 tskA
+F 0x3116 task
+F 0x30e4 task
+F 0x3002 task
+F 0x302a task
+F 0x301f task
+F 0x30fa task
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+F 0x3032 tsk.
+F 0x3163 task
+F 0x3003 task
+F 0x2ff8 task
+F 0x3038 tskO
+F 0x3111 tskA
+F 0x2ff0 ordt
+F 0x3082 l^pa
+F 0x314c ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3028 ^clg
+F 0x3082 tskA
+F 0x3116 tskA
+F 0x30e4 task
+F 0x3002 task
+F 0x302a task
+F 0x301f task
+F 0x30fa task
+F 0x3032 task
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3016 ^clg
+F 0x30fa tskA
+F 0x30cf tskA
+F 0x2fed task
+F 0x3080 task
+F 0x3007 task
+F 0x3110 task
+F 0x3030 task
+F 0x3028 task
+T
+F 0x3004 tsk.
+F 0x3013 task
+F 0x2ffc task
+F 0x3035 task
+F 0x2ff1 tskO
+F 0x3135 tskA
+F 0x2f3b ordt
+F 0x2ff6 l^pa
+F 0x307e ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30cf ^clg
+F 0x2ff6 tskA
+F 0x2fed tskA
+F 0x3080 task
+F 0x3007 task
+F 0x3110 task
+F 0x3030 task
+F 0x3028 task
+F 0x3004 task
+T
+A tskA
+A task
+A task
+F 0x3013 tsk.
+F 0x3030 task
+F 0x3028 task
+F 0x3004 tskA
+F 0x2ffc task
+F 0x3035 task
+F 0x2ff1 task
+F 0x3135 tskO
+F 0x2f3b tskA
+F 0x307e ordt
+T
+F 0x3016 l^pa
+F 0x30fa ^clu
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2fed ^clg
+F 0x3016 tskA
+F 0x3080 tskA
+F 0x3007 task
+F 0x3110 task
+F 0x3013 task
+F 0x3030 task
+F 0x3028 task
+F 0x3004 task
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff5 ^clg
+F 0x3028 tskA
+F 0x3039 tskA
+F 0x2f3c task
+F 0x3037 task
+F 0x30b9 task
+F 0x3033 task
+F 0x30fb task
+F 0x2fed task
+T
+A tskA
+A task
+A task
+F 0x3163 tsk.
+F 0x3033 task
+F 0x30fb task
+F 0x2fed tskA
+F 0x3003 task
+F 0x2ff8 task
+F 0x3038 task
+F 0x3111 tskO
+F 0x2ff0 tskA
+F 0x314c ordt
+F 0x30e5 l^pa
+F 0x2ff2 ^clu
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3082 tsk.
+F 0x314c task
+F 0x30e5 task
+F 0x2ff2 tskA
+F 0x3116 task
+F 0x30e4 task
+F 0x3002 task
+F 0x302a tskO
+F 0x301f tskA
+F 0x3032 ordt
+F 0x30a1 l^pa
+F 0x302d ^clu
+T
+T
+T
+T
+T
+T
+T
+F 0x2ffc tsk.
+F 0x3035 task
+F 0x2ff1 task
+F 0x3135 task
+F 0x2f3b tskO
+F 0x307e tskA
+F 0x30fa ordt
+F 0x30cf l^pa
+F 0x2ff6 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+F 0x3016 tsk.
+F 0x3080 task
+F 0x3007 task
+F 0x3110 task
+F 0x3013 tskO
+F 0x3030 tskA
+F 0x3004 ordt
+F 0x2fff l^pa
+F 0x3117 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff1 ^clg
+F 0x2fff tskA
+F 0x3135 tskA
+F 0x2f3b task
+F 0x307e task
+F 0x30fa task
+F 0x30cf task
+F 0x2ff6 task
+F 0x3016 task
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30e4 ^clg
+F 0x2ff6 tskA
+F 0x3002 tskA
+F 0x302a task
+F 0x301f task
+F 0x3032 task
+F 0x30a1 task
+F 0x302d task
+F 0x2ff1 task
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff8 ^clg
+F 0x302d tskA
+F 0x3038 tskA
+F 0x3111 task
+F 0x2ff0 task
+F 0x3082 task
+F 0x314c task
+F 0x30e5 task
+F 0x30e4 task
+T
+T
+A tskA
+A task
+A task
+F 0x2fff tsk.
+F 0x314c task
+F 0x30e5 task
+F 0x30e4 tskA
+F 0x3135 task
+F 0x2f3b task
+F 0x307e task
+F 0x30fa tskO
+F 0x30cf tskA
+F 0x3016 ordt
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff8 ^clg
+F 0x2ff2 l^pa
+F 0x3116 ^clu
+F 0x30cf tskA
+F 0x302d tskA
+F 0x3038 task
+F 0x3111 task
+F 0x2ff0 task
+F 0x3082 task
+F 0x2fff task
+F 0x314c task
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3039 ^clg
+F 0x2fff tskA
+F 0x2f3c tskA
+F 0x3037 task
+F 0x30b9 task
+F 0x3163 task
+F 0x2ff8 task
+F 0x2ff2 task
+F 0x3116 task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3012 ^clg
+F 0x2ff2 tskA
+F 0x30b8 tskA
+F 0x2fef task
+F 0x300f task
+F 0x2ff3 task
+F 0x2ff4 task
+F 0x2fee task
+F 0x3039 task
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3084 ^clg
+F 0x2fee tskA
+F 0x302f tskA
+F 0x303a task
+F 0x2ffe task
+F 0x2ff7 task
+F 0x3036 task
+F 0x3034 task
+F 0x3012 task
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x300b ^clg
+F 0x3034 tskA
+F 0x300c tskA
+F 0x300d task
+F 0x300e task
+F 0x3017 task
+F 0x2ff9 task
+F 0x2ffa task
+F 0x3084 task
+A tskA
+A task
+A task
+F 0x30e5 tsk.
+F 0x2ff9 task
+F 0x2ffa task
+F 0x3084 tskA
+F 0x30e4 task
+F 0x3135 task
+F 0x2f3b task
+F 0x307e tskO
+F 0x30fa tskA
+F 0x3016 ordt
+F 0x3033 l^pa
+F 0x30fb ^clu
+T
+T
+A tskA
+A task
+A task
+F 0x2ff6 tsk.
+F 0x3016 task
+F 0x3033 task
+F 0x30fb tskA
+F 0x3002 task
+F 0x302a task
+F 0x301f task
+F 0x3032 tskO
+F 0x30a1 tskA
+F 0x2ff1 ordt
+F 0x2fed l^pa
+F 0x3003 ^clu
+T
+T
+A tskA
+A task
+A task
+F 0x3080 tsk.
+F 0x2ff1 task
+F 0x2fed task
+F 0x3003 tskA
+F 0x3007 task
+F 0x3110 task
+F 0x3013 task
+F 0x3030 tskO
+F 0x3004 tskA
+F 0x3117 ordt
+F 0x2ffc l^pa
+F 0x3035 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x302a ^clg
+F 0x2ffc tskA
+F 0x301f tskA
+F 0x3032 task
+F 0x30a1 task
+F 0x3080 task
+F 0x2ff1 task
+F 0x2fed task
+F 0x3003 task
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3135 ^clg
+F 0x2fed tskA
+F 0x2f3b tskA
+F 0x307e task
+F 0x30fa task
+F 0x2ff6 task
+F 0x3016 task
+F 0x3033 task
+F 0x302a task
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x300c ^clg
+F 0x3033 tskA
+F 0x300d tskA
+F 0x300e task
+F 0x3017 task
+F 0x30e5 task
+F 0x2ff9 task
+F 0x2ffa task
+F 0x3135 task
+T
+T
+F 0x2ff2 tsk.
+F 0x30b8 task
+F 0x2fef task
+F 0x300f task
+F 0x2ff3 tskO
+F 0x2ff4 tskA
+F 0x3039 ordt
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x300c ^clg
+F 0x2ff4 tskA
+F 0x3033 tskA
+F 0x300d task
+F 0x300e task
+F 0x3017 task
+F 0x30e5 task
+F 0x2ff9 task
+F 0x2ffa task
+F 0x2f4c l^pa
+F 0x3029 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3019 ^clg
+F 0x2f4c tskA
+F 0x301c tskA
+F 0x3020 task
+F 0x3001 task
+F 0x300a task
+F 0x300c task
+F 0x2ff4 task
+F 0x3033 task
+A tskA
+A task
+A task
+F 0x3007 tsk.
+F 0x300c task
+F 0x2ff4 task
+F 0x3033 tskA
+F 0x3110 task
+F 0x3013 task
+F 0x3030 task
+F 0x3004 tskO
+F 0x3117 tskA
+F 0x3035 ordt
+F 0x30fb l^pa
+F 0x3002 ^clu
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x2ffc tsk.
+F 0x3035 task
+F 0x30fb task
+F 0x3002 tskA
+F 0x301f task
+F 0x3032 task
+F 0x30a1 task
+F 0x3080 tskO
+F 0x2ff1 tskA
+F 0x3003 ordt
+T
+F 0x3084 l^pa
+F 0x30e4 ^clu
+T
+T
+T
+F 0x30cf tsk.
+F 0x302d task
+F 0x3038 task
+F 0x3111 task
+F 0x2ff0 tskO
+F 0x3082 tskA
+F 0x314c ordt
+F 0x2ff5 l^pa
+F 0x3028 ^clu
+T
+T
+F 0x2fed tsk.
+F 0x2f3b task
+F 0x307e task
+F 0x30fa task
+F 0x2ff6 tskO
+F 0x3016 tskA
+F 0x302a ordt
+T
+F 0x300b l^pa
+F 0x3034 ^clu
+F 0x2fff tsk.
+F 0x2f3c task
+F 0x3037 task
+F 0x30b9 task
+F 0x3163 tskO
+F 0x2ff8 tskA
+F 0x3116 ordt
+F 0x2f2b l^pa
+F 0x30a0 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+F 0x300d tsk.
+F 0x300e task
+F 0x3017 task
+F 0x30e5 task
+F 0x2ff9 tskO
+F 0x2ffa tskA
+F 0x3029 ordt
+F 0x314d l^pa
+F 0x3018 ^clu
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3037 ^clg
+F 0x314d tskA
+F 0x30b9 tskA
+F 0x3163 task
+F 0x2ff8 task
+F 0x3116 task
+F 0x2f2b task
+F 0x30a0 task
+F 0x300d task
+F 0x3135 tsk.
+F 0x2ff2 task
+F 0x30b8 task
+F 0x2fef task
+F 0x300f tskO
+F 0x2ff3 tskA
+F 0x3039 ordt
+F 0x3006 l^pa
+F 0x3015 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30b9 ^clg
+F 0x3006 tskA
+F 0x3163 tskA
+F 0x2ff8 task
+F 0x3116 task
+F 0x2f2b task
+F 0x30a0 task
+F 0x300d task
+F 0x3135 task
+T
+A `rtl
+A `rtl
+F 0x2ca2 `rtl
+F 0x2d0e `rtl
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x300e tsk.
+F 0x30a0 task
+F 0x2ca2 task
+F 0x2d0e tskA
+F 0x3017 task
+F 0x30e5 task
+F 0x2ff9 task
+F 0x2ffa tskO
+F 0x3029 tskA
+F 0x3018 ordt
+F 0x2fff l^pa
+F 0x2f3c ^clu
+T
+T
+T
+T
+T
+F 0x2fee tsk.
+F 0x302f task
+F 0x303a task
+F 0x2ffe task
+F 0x2ff7 tskO
+F 0x3036 tskA
+F 0x3012 ordt
+F 0x3024 l^pa
+F 0x3022 ^clu
+T
+T
+T
+F 0x2ff2 tsk.
+F 0x30b8 task
+F 0x2fef task
+F 0x300f task
+F 0x2ff3 tskO
+F 0x3039 tskA
+F 0x3015 ordt
+F 0x3037 l^pa
+F 0x314d ^clu
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x303a ^clg
+F 0x3037 tskA
+F 0x2ffe tskA
+F 0x2ff7 task
+F 0x3036 task
+F 0x3012 task
+F 0x3024 task
+F 0x3022 task
+F 0x2ff2 task
+A tskA
+A task
+A task
+F 0x30b8 tsk.
+F 0x3024 task
+F 0x3022 task
+F 0x2ff2 tskA
+F 0x2fef task
+F 0x300f task
+F 0x2ff3 task
+F 0x3039 tskO
+F 0x3015 tskA
+F 0x314d ordt
+T
+F 0x2fee l^pa
+F 0x302f ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ffe ^clg
+F 0x2fee tskA
+F 0x2ff7 tskA
+F 0x3036 task
+F 0x3012 task
+F 0x30b8 task
+F 0x3024 task
+F 0x3022 task
+F 0x2ff2 task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30e5 ^clg
+F 0x3022 tskA
+F 0x2ff9 tskA
+F 0x2ffa task
+F 0x3029 task
+F 0x3018 task
+F 0x2fff task
+F 0x2f3c task
+F 0x2ffe task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3163 ^clg
+F 0x2f3c tskA
+F 0x2ff8 tskA
+F 0x3116 task
+F 0x2f2b task
+F 0x300e task
+F 0x30a0 task
+F 0x2ca2 task
+F 0x30e5 task
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x307e ^clg
+F 0x2ca2 tskA
+F 0x30fa tskA
+F 0x2ff6 task
+F 0x3016 task
+F 0x302a task
+F 0x300b task
+F 0x3034 task
+F 0x3163 task
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3038 ^clg
+F 0x3034 tskA
+F 0x3111 tskA
+F 0x2ff0 task
+F 0x3082 task
+F 0x314c task
+F 0x2ff5 task
+F 0x3028 task
+F 0x307e task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3032 ^clg
+F 0x3028 tskA
+F 0x30a1 tskA
+F 0x3080 task
+F 0x2ff1 task
+F 0x3003 task
+F 0x3084 task
+F 0x30e4 task
+F 0x3038 task
+T
+A tskA
+A task
+A task
+F 0x2f3c tsk.
+F 0x3084 task
+F 0x30e4 task
+F 0x3038 tskA
+F 0x2ff8 task
+F 0x3116 task
+F 0x2f2b task
+F 0x300e tskO
+F 0x30a0 tskA
+F 0x30e5 ordt
+F 0x2fed l^pa
+F 0x2f3b ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30a1 ^clg
+F 0x2fed tskA
+F 0x3080 tskA
+F 0x2ff1 task
+F 0x3003 task
+F 0x2f3c task
+F 0x3084 task
+F 0x30e4 task
+F 0x3038 task
+T
+T
+T
+F 0x3022 tsk.
+F 0x2ff9 task
+F 0x2ffa task
+F 0x3029 task
+F 0x3018 tskO
+F 0x2fff tskA
+F 0x2ffe ordt
+F 0x30b9 l^pa
+F 0x3006 ^clu
+F 0x3034 tsk.
+F 0x3111 task
+F 0x2ff0 task
+F 0x3082 task
+F 0x314c tskO
+F 0x2ff5 tskA
+F 0x307e ordt
+F 0x3002 l^pa
+F 0x301f ^clu
+T
+A tskA
+A task
+A task
+F 0x2fef tsk.
+F 0x307e task
+F 0x3002 task
+F 0x301f tskA
+F 0x300f task
+F 0x2ff3 task
+F 0x3039 task
+F 0x3015 tskO
+F 0x314d tskA
+F 0x302f ordt
+T
+F 0x303a l^pa
+F 0x3037 ^clu
+T
+F 0x2ca2 tsk.
+F 0x30fa task
+F 0x2ff6 task
+F 0x3016 task
+F 0x302a tskO
+F 0x300b tskA
+F 0x3163 ordt
+F 0x30cf l^pa
+F 0x302d ^clu
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff3 ^clg
+F 0x30cf tskA
+F 0x3039 tskA
+F 0x3015 task
+F 0x314d task
+F 0x302f task
+F 0x303a task
+F 0x3037 task
+F 0x2ca2 task
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff0 ^clg
+F 0x3037 tskA
+F 0x3082 tskA
+F 0x314c task
+F 0x2ff5 task
+F 0x2fef task
+F 0x307e task
+F 0x3002 task
+F 0x2ff3 task
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x2ff8 tsk.
+F 0x307e task
+F 0x3002 task
+F 0x2ff3 tskA
+F 0x3116 task
+F 0x2f2b task
+F 0x300e task
+F 0x30a0 tskO
+F 0x30e5 tskA
+F 0x2f3b ordt
+F 0x3032 l^pa
+F 0x3028 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3082 ^clg
+F 0x3032 tskA
+F 0x314c tskA
+F 0x2ff5 task
+F 0x2fef task
+F 0x2ff8 task
+F 0x307e task
+F 0x3002 task
+F 0x2ff3 task
+T
+T
+T
+F 0x30fa tsk.
+F 0x2ff6 task
+F 0x3016 task
+F 0x302a task
+F 0x300b tskO
+F 0x3163 tskA
+F 0x302d ordt
+T
+F 0x301f l^pa
+F 0x300f ^clu
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3116 tsk.
+F 0x302d task
+F 0x301f task
+F 0x300f tskA
+F 0x2f2b task
+F 0x300e task
+F 0x30a0 task
+F 0x30e5 tskO
+F 0x2f3b tskA
+F 0x3028 ordt
+F 0x2ff0 l^pa
+F 0x3037 ^clu
+T
+T
+T
+F 0x2fee tsk.
+F 0x2ff7 task
+F 0x3036 task
+F 0x3012 task
+F 0x30b8 tskO
+F 0x3024 tskA
+F 0x2ff2 ordt
+F 0x2d0e l^pa
+F 0x3017 ^clu
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x300e ^clg
+F 0x2d0e tskA
+F 0x30a0 tskA
+F 0x30e5 task
+F 0x2f3b task
+F 0x3028 task
+F 0x2ff0 task
+F 0x3037 task
+F 0x2fee task
+T
+T
+F 0x30cf tsk.
+F 0x3039 task
+F 0x3015 task
+F 0x314d task
+F 0x302f tskO
+F 0x303a tskA
+F 0x2ca2 ordt
+F 0x3034 l^pa
+F 0x3111 ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30a0 ^clg
+F 0x3034 tskA
+F 0x30e5 tskA
+F 0x2f3b task
+F 0x3028 task
+F 0x2ff0 task
+F 0x3037 task
+F 0x2fee task
+F 0x30cf task
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3016 ^clg
+F 0x2fee tskA
+F 0x302a tskA
+F 0x300b task
+F 0x3163 task
+F 0x3116 task
+F 0x302d task
+F 0x301f task
+F 0x30a0 task
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x314c ^clg
+F 0x301f tskA
+F 0x2ff5 tskA
+F 0x2fef task
+F 0x2ff8 task
+F 0x307e task
+F 0x3002 task
+F 0x2ff3 task
+F 0x3016 task
+A `rtl
+A `rtl
+F 0x2ca1 `rtl
+F 0x2d0d `rtl
+T
+F 0x2ff7 tsk.
+F 0x3036 task
+F 0x3012 task
+F 0x30b8 task
+F 0x3024 tskO
+F 0x2ff2 tskA
+F 0x3017 ordt
+F 0x300f l^pa
+F 0x2f2b ^clu
+T
+T
+A tskA
+A task
+A task
+F 0x2fee tsk.
+F 0x3017 task
+F 0x300f task
+F 0x2f2b tskA
+F 0x302a task
+F 0x300b task
+F 0x3163 task
+F 0x3116 tskO
+F 0x302d tskA
+F 0x30a0 ordt
+F 0x3082 l^pa
+F 0x3032 ^clu
+T
+T
+T
+T
+T
+F 0x3039 tsk.
+F 0x3015 task
+F 0x314d task
+F 0x302f task
+F 0x303a tskO
+F 0x2ca2 tskA
+F 0x3111 ordt
+F 0x300e l^pa
+F 0x2d0e ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x300b ^clg
+F 0x300e tskA
+F 0x3163 tskA
+F 0x3116 task
+F 0x302d task
+F 0x30a0 task
+F 0x3082 task
+F 0x3032 task
+F 0x3039 task
+T
+T
+T
+T
+F 0x3034 tsk.
+F 0x30e5 task
+F 0x2f3b task
+F 0x3028 task
+F 0x2ff0 tskO
+F 0x3037 tskA
+F 0x30cf ordt
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x300b ^clg
+F 0x3037 tskA
+F 0x300e tskA
+F 0x3163 task
+F 0x3116 task
+F 0x302d task
+F 0x30a0 task
+F 0x3082 task
+F 0x3032 task
+F 0x30fa l^pa
+F 0x2ff6 ^clu
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3012 ^clg
+F 0x30fa tskA
+F 0x30b8 tskA
+F 0x3024 task
+F 0x2ff2 task
+F 0x2fee task
+F 0x300b task
+F 0x3037 task
+F 0x300e task
+T
+T
+A tskA
+A task
+A task
+F 0x3039 tsk.
+F 0x300b task
+F 0x3037 task
+F 0x300e tskA
+F 0x3034 task
+F 0x30e5 task
+F 0x2f3b task
+F 0x3028 tskO
+F 0x2ff0 tskA
+F 0x30cf ordt
+F 0x3017 l^pa
+F 0x300f ^clu
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30b8 ^clg
+F 0x3017 tskA
+F 0x3024 tskA
+F 0x2ff2 task
+F 0x2fee task
+F 0x3039 task
+F 0x300b task
+F 0x3037 task
+F 0x300e task
+F 0x3163 tsk.
+F 0x3116 task
+F 0x302d task
+F 0x30a0 task
+F 0x3082 tskO
+F 0x3032 tskA
+F 0x2ff6 ordt
+F 0x2ff7 l^pa
+F 0x3036 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+F 0x3015 tsk.
+F 0x314d task
+F 0x302f task
+F 0x303a task
+F 0x2ca2 tskO
+F 0x3111 tskA
+F 0x2d0e ordt
+T
+F 0x2f2b l^pa
+F 0x302a ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x302d ^clg
+F 0x2f2b tskA
+F 0x30a0 tskA
+F 0x3082 task
+F 0x3032 task
+F 0x2ff6 task
+F 0x2ff7 task
+F 0x3036 task
+F 0x3015 task
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3024 ^clg
+F 0x3036 tskA
+F 0x2ff2 tskA
+F 0x2fee task
+F 0x3039 task
+F 0x300b task
+F 0x3037 task
+F 0x300e task
+F 0x302d task
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff5 ^clg
+F 0x300e tskA
+F 0x2fef tskA
+F 0x2ff8 task
+F 0x307e task
+F 0x3002 task
+F 0x2ca1 task
+F 0x2d0d task
+F 0x3024 task
+T
+F 0x3034 tsk.
+F 0x30e5 task
+F 0x2f3b task
+F 0x3028 task
+F 0x2ff0 tskO
+F 0x30cf tskA
+F 0x300f ordt
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff5 ^clg
+F 0x30cf tskA
+F 0x300e tskA
+F 0x2fef task
+F 0x2ff8 task
+F 0x307e task
+F 0x3002 task
+F 0x2ca1 task
+F 0x2d0d task
+T
+F 0x3012 l^pa
+F 0x30fa ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ffa ^clg
+F 0x3012 tskA
+F 0x3029 tskA
+F 0x3018 task
+F 0x2fff task
+F 0x2ffe task
+F 0x2ff5 task
+F 0x30cf task
+F 0x300e task
+A tskA
+A task
+A task
+F 0x314d tsk.
+F 0x2ff5 task
+F 0x30cf task
+F 0x300e tskA
+F 0x302f task
+F 0x303a task
+F 0x2ca2 task
+F 0x3111 tskO
+F 0x2d0e tskA
+F 0x302a ordt
+F 0x3163 l^pa
+F 0x3116 ^clu
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3029 ^clg
+F 0x3163 tskA
+F 0x3018 tskA
+F 0x2fff task
+F 0x2ffe task
+F 0x314d task
+F 0x2ff5 task
+F 0x30cf task
+F 0x300e task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3080 ^clg
+F 0x30cf tskA
+F 0x2ff1 tskA
+F 0x3003 task
+F 0x2f3c task
+F 0x3084 task
+F 0x30e4 task
+F 0x3038 task
+F 0x3029 task
+T
+A tskA
+A task
+A task
+F 0x3163 tsk.
+F 0x30e4 task
+F 0x3038 task
+F 0x3029 tskA
+F 0x3018 task
+F 0x2fff task
+F 0x2ffe task
+F 0x314d tskO
+F 0x2ff5 tskA
+F 0x300e ordt
+T
+F 0x30a1 l^pa
+F 0x2fed ^clu
+F 0x2f2b tsk.
+F 0x30a0 task
+F 0x3082 task
+F 0x3032 task
+F 0x2ff6 tskO
+F 0x2ff7 tskA
+F 0x3015 ordt
+F 0x30b8 l^pa
+F 0x3017 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+F 0x3024 tsk.
+F 0x3034 task
+F 0x30e5 task
+F 0x2f3b task
+F 0x3028 tskO
+F 0x2ff0 tskA
+F 0x300f ordt
+F 0x30b9 l^pa
+F 0x3006 ^clu
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3082 ^clg
+F 0x30b9 tskA
+F 0x3032 tskA
+F 0x2ff6 task
+F 0x2ff7 task
+F 0x3015 task
+F 0x30b8 task
+F 0x3017 task
+F 0x3024 task
+T
+T
+A tskA
+A task
+A task
+F 0x3036 tsk.
+F 0x30b8 task
+F 0x3017 task
+F 0x3024 tskA
+F 0x2ff2 task
+F 0x2fee task
+F 0x3039 task
+F 0x300b tskO
+F 0x3037 tskA
+F 0x302d ordt
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3082 ^clg
+F 0x3037 tskA
+F 0x30b9 tskA
+F 0x3032 task
+F 0x2ff6 task
+F 0x2ff7 task
+F 0x3015 task
+F 0x3036 task
+F 0x30b8 task
+F 0x314c l^pa
+F 0x301f ^clu
+T
+T
+T
+T
+T
+T
+T
+F 0x2fef tsk.
+F 0x2ff8 task
+F 0x307e task
+F 0x3002 task
+F 0x2ca1 tskO
+F 0x2d0d tskA
+F 0x30fa ordt
+F 0x3022 l^pa
+F 0x2ff9 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff6 ^clg
+F 0x3022 tskA
+F 0x2ff7 tskA
+F 0x3015 task
+F 0x3036 task
+F 0x30b8 task
+F 0x314c task
+F 0x301f task
+F 0x2fef task
+T
+T
+F 0x302f tsk.
+F 0x303a task
+F 0x2ca2 task
+F 0x3111 task
+F 0x2d0e tskO
+F 0x302a tskA
+F 0x3116 ordt
+F 0x2ffa l^pa
+F 0x3012 ^clu
+T
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3034 tsk.
+F 0x3116 task
+F 0x2ffa task
+F 0x3012 tskA
+F 0x30e5 task
+F 0x2f3b task
+F 0x3028 task
+F 0x2ff0 tskO
+F 0x300f tskA
+F 0x3006 ordt
+T
+F 0x2f2b l^pa
+F 0x30a0 ^clu
+T
+F 0x3017 tsk.
+F 0x3024 task
+F 0x2ff2 task
+F 0x2fee task
+F 0x3039 tskO
+F 0x300b tskA
+F 0x302d ordt
+F 0x30a1 l^pa
+F 0x2fed ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2f3b ^clg
+F 0x30a1 tskA
+F 0x3028 tskA
+F 0x2ff0 task
+F 0x300f task
+F 0x3006 task
+F 0x2f2b task
+F 0x30a0 task
+F 0x3017 task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ca2 ^clg
+F 0x30a0 tskA
+F 0x3111 tskA
+F 0x2d0e task
+F 0x302a task
+F 0x3034 task
+F 0x3116 task
+F 0x2ffa task
+F 0x2f3b task
+T
+T
+F 0x2ff8 tsk.
+F 0x307e task
+F 0x3002 task
+F 0x2ca1 task
+F 0x2d0d tskO
+F 0x30fa tskA
+F 0x2ff9 ordt
+F 0x30b9 l^pa
+F 0x3032 ^clu
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3111 ^clg
+F 0x30b9 tskA
+F 0x2d0e tskA
+F 0x302a task
+F 0x3034 task
+F 0x3116 task
+F 0x2ffa task
+F 0x2f3b task
+F 0x2ff8 task
+T
+T
+T
+A tskA
+A task
+A task
+F 0x307e tsk.
+F 0x2ffa task
+F 0x2f3b task
+F 0x2ff8 tskA
+F 0x3002 task
+F 0x2ca1 task
+F 0x2d0d task
+F 0x30fa tskO
+F 0x2ff9 tskA
+F 0x3032 ordt
+F 0x2ca2 l^pa
+F 0x30a0 ^clu
+F 0x3024 tsk.
+F 0x2ff2 task
+F 0x2fee task
+F 0x3039 task
+F 0x300b tskO
+F 0x302d tskA
+F 0x2fed ordt
+F 0x3012 l^pa
+F 0x30e5 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ca1 ^clg
+F 0x3012 tskA
+F 0x2d0d tskA
+F 0x30fa task
+F 0x2ff9 task
+F 0x3032 task
+F 0x2ca2 task
+F 0x30a0 task
+F 0x3024 task
+A tskA
+A task
+A task
+F 0x30a1 tsk.
+F 0x2ca2 task
+F 0x30a0 task
+F 0x3024 tskA
+F 0x3028 task
+F 0x2ff0 task
+F 0x300f task
+F 0x3006 tskO
+F 0x2f2b tskA
+F 0x3017 ordt
+T
+F 0x302f l^pa
+F 0x303a ^clu
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2d0d ^clg
+F 0x302f tskA
+F 0x30fa tskA
+F 0x2ff9 task
+F 0x3032 task
+F 0x30a1 task
+F 0x2ca2 task
+F 0x30a0 task
+F 0x3024 task
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2d0e ^clg
+F 0x30a0 tskA
+F 0x302a tskA
+F 0x3034 task
+F 0x3116 task
+F 0x307e task
+F 0x2ffa task
+F 0x2f3b task
+F 0x2d0d task
+T
+T
+T
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x2ff2 tsk.
+F 0x2ffa task
+F 0x2f3b task
+F 0x2d0d tskA
+F 0x2fee task
+F 0x3039 task
+F 0x300b task
+F 0x302d tskO
+F 0x2fed tskA
+F 0x30e5 ordt
+F 0x2ff8 l^pa
+F 0x3002 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x302a ^clg
+F 0x2ff8 tskA
+F 0x3034 tskA
+F 0x3116 task
+F 0x307e task
+F 0x2ff2 task
+F 0x2ffa task
+F 0x2f3b task
+F 0x2d0d task
+T
+T
+T
+A tskA
+A task
+A task
+F 0x2fee tsk.
+F 0x2ffa task
+F 0x2f3b task
+F 0x2d0d tskA
+F 0x3039 task
+F 0x300b task
+F 0x302d task
+F 0x2fed tskO
+F 0x30e5 tskA
+F 0x3002 ordt
+F 0x2d0e l^pa
+F 0x30a0 ^clu
+T
+A tskA
+A task
+A task
+F 0x3028 tsk.
+F 0x3002 task
+F 0x2d0e task
+F 0x30a0 tskA
+F 0x2ff0 task
+F 0x300f task
+F 0x3006 task
+F 0x2f2b tskO
+F 0x3017 tskA
+F 0x303a ordt
+T
+F 0x2ca1 l^pa
+F 0x3012 ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x300b ^clg
+F 0x2ca1 tskA
+F 0x302d tskA
+F 0x2fed task
+F 0x30e5 task
+F 0x3028 task
+F 0x3002 task
+F 0x2d0e task
+F 0x30a0 task
+T
+T
+T
+T
+T
+F 0x2ff0 tsk.
+F 0x300f task
+F 0x3006 task
+F 0x2f2b task
+F 0x3017 tskO
+F 0x303a tskA
+F 0x3012 ordt
+F 0x2d0d l^pa
+F 0x3039 ^clu
+T
+T
+T
+F 0x302f tsk.
+F 0x30fa task
+F 0x2ff9 task
+F 0x3032 task
+F 0x30a1 tskO
+F 0x2ca2 tskA
+F 0x3024 ordt
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff0 ^clg
+F 0x2ca2 tskA
+F 0x300f tskA
+F 0x3006 task
+F 0x2f2b task
+F 0x3017 task
+F 0x303a task
+F 0x3012 task
+F 0x2d0d task
+F 0x3111 l^pa
+F 0x30b9 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x302d ^clg
+F 0x3111 tskA
+F 0x2fed tskA
+F 0x30e5 task
+F 0x3028 task
+F 0x3002 task
+F 0x2ff0 task
+F 0x2ca2 task
+F 0x300f task
+A tskA
+A task
+A task
+F 0x3006 tsk.
+F 0x2ff0 task
+F 0x2ca2 task
+F 0x300f tskA
+F 0x2f2b task
+F 0x3017 task
+F 0x303a task
+F 0x3012 tskO
+F 0x2d0d tskA
+F 0x30b9 ordt
+T
+F 0x300b l^pa
+F 0x2ca1 ^clu
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2fed ^clg
+F 0x300b tskA
+F 0x30e5 tskA
+F 0x3028 task
+F 0x3002 task
+F 0x3006 task
+F 0x2ff0 task
+F 0x2ca2 task
+F 0x300f task
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3034 ^clg
+F 0x2ca2 tskA
+F 0x3116 tskA
+F 0x307e task
+F 0x2ff2 task
+F 0x2fee task
+F 0x2ffa task
+F 0x2f3b task
+F 0x2fed task
+T
+F 0x3039 tsk.
+F 0x302f task
+F 0x30fa task
+F 0x2ff9 task
+F 0x3032 tskO
+F 0x30a1 tskA
+F 0x3024 ordt
+T
+F 0x2d0e l^pa
+F 0x30a0 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3116 ^clg
+F 0x2d0e tskA
+F 0x307e tskA
+F 0x2ff2 task
+F 0x2fee task
+F 0x2ffa task
+F 0x2f3b task
+F 0x2fed task
+F 0x3039 task
+T
+T
+A tskA
+A task
+A task
+F 0x2f2b tsk.
+F 0x2f3b task
+F 0x2fed task
+F 0x3039 tskA
+F 0x3017 task
+F 0x303a task
+F 0x3012 task
+F 0x2d0d tskO
+F 0x30b9 tskA
+F 0x2ca1 ordt
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3116 ^clg
+F 0x30b9 tskA
+F 0x2d0e tskA
+F 0x307e task
+F 0x2ff2 task
+F 0x2fee task
+F 0x2ffa task
+F 0x2f2b task
+F 0x2f3b task
+F 0x302d l^pa
+F 0x3111 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+F 0x302f tsk.
+F 0x30fa task
+F 0x2ff9 task
+F 0x3032 task
+F 0x30a1 tskO
+F 0x3024 tskA
+F 0x30a0 ordt
+F 0x3034 l^pa
+F 0x2ca2 ^clu
+T
+F 0x300b tsk.
+F 0x30e5 task
+F 0x3028 task
+F 0x3002 task
+F 0x3006 tskO
+F 0x2ff0 tskA
+F 0x300f ordt
+F 0x302a l^pa
+F 0x2ff8 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff9 ^clg
+F 0x302a tskA
+F 0x3032 tskA
+F 0x30a1 task
+F 0x3024 task
+F 0x30a0 task
+F 0x3034 task
+F 0x2ca2 task
+F 0x300b task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff2 ^clg
+F 0x2ca2 tskA
+F 0x2fee tskA
+F 0x2ffa task
+F 0x2f2b task
+F 0x2f3b task
+F 0x302d task
+F 0x3111 task
+F 0x2ff9 task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff7 ^clg
+F 0x3111 tskA
+F 0x3015 tskA
+F 0x3036 task
+F 0x30b8 task
+F 0x314c task
+F 0x3116 task
+F 0x30b9 task
+F 0x2ff2 task
+T
+A `rtl
+F 0x302c `rtl
+A tskA
+A task
+A task
+F 0x2fed tsk.
+F 0x3116 task
+F 0x30b9 task
+F 0x302c tskA
+F 0x3039 task
+F 0x3017 task
+F 0x303a task
+F 0x3012 tskO
+F 0x2d0d tskA
+F 0x2ca1 ordt
+F 0x301f l^pa
+F 0x2fef ^clu
+T
+A tskA
+A task
+A task
+F 0x302a tsk.
+F 0x2ca1 task
+F 0x301f task
+F 0x2fef tskA
+F 0x3032 task
+F 0x30a1 task
+F 0x3024 task
+F 0x30a0 tskO
+F 0x3034 tskA
+F 0x300b ordt
+F 0x2d0e l^pa
+F 0x307e ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3017 ^clg
+F 0x2d0e tskA
+F 0x303a tskA
+F 0x3012 task
+F 0x2d0d task
+F 0x302a task
+F 0x2ca1 task
+F 0x301f task
+F 0x2fef task
+T
+A tskA
+A task
+A task
+F 0x3032 tsk.
+F 0x2ca1 task
+F 0x301f task
+F 0x2fef tskA
+F 0x30a1 task
+F 0x3024 task
+F 0x30a0 task
+F 0x3034 tskO
+F 0x300b tskA
+F 0x307e ordt
+F 0x302c l^pa
+F 0x3039 ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x303a ^clg
+F 0x302c tskA
+F 0x3012 tskA
+F 0x2d0d task
+F 0x302a task
+F 0x3032 task
+F 0x2ca1 task
+F 0x301f task
+F 0x2fef task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3015 ^clg
+F 0x301f tskA
+F 0x3036 tskA
+F 0x30b8 task
+F 0x314c task
+F 0x2fed task
+F 0x3116 task
+F 0x30b9 task
+F 0x303a task
+T
+F 0x30e5 tsk.
+F 0x3028 task
+F 0x3002 task
+F 0x3006 task
+F 0x2ff0 tskO
+F 0x300f tskA
+F 0x2ff8 ordt
+T
+A tskA
+A task
+A task
+F 0x302f l^pa
+F 0x30fa ^clu
+F 0x302c tsk.
+F 0x2ff0 task
+F 0x300f task
+F 0x2ff8 tskA
+F 0x3012 task
+F 0x2d0d task
+F 0x302a task
+F 0x3032 tskO
+F 0x2ca1 tskA
+F 0x2fef ordt
+F 0x2ff7 l^pa
+F 0x3111 ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3002 ^clg
+F 0x2ff7 tskA
+F 0x3006 tskA
+F 0x302f task
+F 0x30fa task
+F 0x302c task
+F 0x2ff0 task
+F 0x300f task
+F 0x2ff8 task
+T
+T
+T
+F 0x30a1 tsk.
+F 0x3024 task
+F 0x30a0 task
+F 0x3034 task
+F 0x300b tskO
+F 0x307e tskA
+F 0x3039 ordt
+F 0x3017 l^pa
+F 0x2d0e ^clu
+T
+T
+T
+T
+T
+F 0x2ca2 tsk.
+F 0x2fee task
+F 0x2ffa task
+F 0x2f2b task
+F 0x2f3b tskO
+F 0x302d tskA
+F 0x2ff9 ordt
+F 0x2ff6 l^pa
+F 0x3022 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+F 0x3012 tsk.
+F 0x2d0d task
+F 0x302a task
+F 0x3032 task
+F 0x2ca1 tskO
+F 0x2fef tskA
+F 0x3111 ordt
+F 0x30e5 l^pa
+F 0x3028 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ffa ^clg
+F 0x30e5 tskA
+F 0x2f2b tskA
+F 0x2f3b task
+F 0x302d task
+F 0x2ff9 task
+F 0x2ff6 task
+F 0x3022 task
+F 0x3012 task
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30a0 ^clg
+F 0x3022 tskA
+F 0x3034 tskA
+F 0x300b task
+F 0x307e task
+F 0x3039 task
+F 0x3017 task
+F 0x2d0e task
+F 0x2ffa task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3006 ^clg
+F 0x2d0e tskA
+F 0x302f tskA
+F 0x30fa task
+F 0x302c task
+F 0x2ff0 task
+F 0x300f task
+F 0x2ff8 task
+F 0x30a0 task
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3036 ^clg
+F 0x2ff8 tskA
+F 0x30b8 tskA
+F 0x314c task
+F 0x2fed task
+F 0x3116 task
+F 0x30b9 task
+F 0x303a task
+F 0x3006 task
+F 0x3022 tsk.
+F 0x3034 task
+F 0x300b task
+F 0x307e task
+F 0x3039 tskO
+F 0x3017 tskA
+F 0x2ffa ordt
+F 0x3002 l^pa
+F 0x2ff7 ^clu
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A tskt
+A task
+A tskt
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff8 ^clg
+T
+F 0x3002 tskA
+F 0x30b8 tskA
+F 0x314c task
+F 0x2fed task
+F 0x3116 task
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30e4 ^clg
+F 0x2fed tskA
+F 0x3038 tskA
+F 0x3029 task
+F 0x3018 task
+F 0x2fff task
+F 0x2ffe task
+F 0x314d task
+F 0x2ff5 task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3035 ^clg
+F 0x314d tskA
+F 0x30fb tskA
+F 0x3080 task
+F 0x30cf task
+F 0x2ff1 task
+F 0x3003 task
+F 0x2f3c task
+F 0x30e4 task
+F 0x30e5 tsk.
+F 0x2f2b task
+F 0x2f3b task
+F 0x302d task
+F 0x2ff9 tskO
+F 0x2ff6 tskA
+F 0x3012 ordt
+F 0x30a1 l^pa
+F 0x3024 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30fb ^clg
+F 0x30a1 tskA
+F 0x3080 tskA
+F 0x30cf task
+F 0x2ff1 task
+F 0x3003 task
+F 0x2f3c task
+F 0x30e4 task
+F 0x30e5 task
+T
+F 0x2d0d tsk.
+F 0x302a task
+F 0x3032 task
+F 0x2ca1 task
+F 0x2fef tskO
+F 0x3111 tskA
+F 0x3028 ordt
+F 0x2ca2 l^pa
+F 0x2fee ^clu
+T
+T
+T
+T
+T
+A +fgm
+F 0x30b9 tskt
+F 0x303a task
+A tskA
+A task
+A task
+F 0x3037 l^pa
+F 0x3036 ^clu
+F 0x2f2b tsk.
+F 0x2ca2 task
+F 0x30b9 task
+F 0x303a tskA
+F 0x2f3b task
+F 0x302d task
+F 0x2ff9 task
+F 0x2ff6 tskO
+F 0x3012 tskA
+F 0x3024 ordt
+F 0x3035 l^pa
+F 0x314d ^clu
+T
+A tskA
+A task
+A task
+F 0x2fed tsk.
+F 0x3024 task
+F 0x3035 task
+F 0x314d tskA
+F 0x3038 task
+F 0x3029 task
+F 0x3018 task
+F 0x2fff tskO
+F 0x2ffe tskA
+F 0x2ff5 ordt
+F 0x3117 l^pa
+F 0x2ffc ^clu
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x302d ^clg
+F 0x3117 tskA
+F 0x2ff9 tskA
+F 0x2ff6 task
+F 0x3012 task
+F 0x2fed task
+F 0x3024 task
+F 0x3035 task
+F 0x314d task
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3111 ^clg
+F 0x3035 tskA
+F 0x3028 tskA
+F 0x3037 task
+F 0x3036 task
+F 0x2f2b task
+F 0x2ca2 task
+F 0x30b9 task
+F 0x302d task
+T
+A tskA
+A task
+A task
+F 0x300e tsk.
+F 0x2ca2 task
+F 0x30b9 task
+F 0x302d tskA
+F 0x3082 task
+F 0x2ff8 task
+F 0x3002 task
+F 0x30b8 tskO
+F 0x314c tskA
+F 0x3116 ordt
+F 0x3084 l^pa
+F 0x3163 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3028 ^clg
+F 0x3084 tskA
+F 0x3037 tskA
+F 0x3036 task
+F 0x2f2b task
+F 0x300e task
+F 0x2ca2 task
+F 0x30b9 task
+F 0x302d task
+T
+A tskA
+A task
+A task
+F 0x3082 tsk.
+F 0x2ca2 task
+F 0x30b9 task
+F 0x302d tskA
+F 0x2ff8 task
+F 0x3002 task
+F 0x30b8 task
+F 0x314c tskO
+F 0x3116 tskA
+F 0x3163 ordt
+F 0x3111 l^pa
+F 0x3035 ^clu
+A tskA
+A task
+A task
+F 0x3038 tsk.
+F 0x3163 task
+F 0x3111 task
+F 0x3035 tskA
+F 0x3029 task
+F 0x3018 task
+F 0x2fff task
+F 0x2ffe tskO
+F 0x2ff5 tskA
+F 0x2ffc ordt
+F 0x303a l^pa
+F 0x2f3b ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3002 ^clg
+F 0x303a tskA
+F 0x30b8 tskA
+F 0x314c task
+F 0x3116 task
+F 0x3038 task
+F 0x3163 task
+F 0x3111 task
+F 0x3035 task
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2f2b ^clg
+F 0x3006 tskt
+F 0x3022 tskt
+F 0x3034 tskt
+F 0x300b task
+F 0x307e task
+F 0x3039 task
+F 0x3017 task
+F 0x2ffa tskA
+F 0x2ff7 ordt
+F 0x300e tskA
+F 0x3082 task
+F 0x2ca2 task
+F 0x30b9 task
+F 0x3002 task
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3084 ^clg
+F 0x30b9 tskA
+F 0x2f2b tskA
+F 0x3006 task
+F 0x3022 task
+F 0x3034 task
+F 0x300b task
+F 0x307e task
+F 0x3039 task
+T
+T
+T
+A tskA
+A task
+A task
+F 0x2d0e tsk.
+F 0x300b task
+F 0x307e task
+F 0x3039 tskA
+F 0x302f task
+F 0x30fa task
+F 0x302c task
+F 0x2ff0 tskO
+F 0x300f tskA
+F 0x30a0 ordt
+T
+F 0x3015 l^pa
+F 0x301f ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A tskt
+A task
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30b9 ^clg
+F 0x303a tskt
+F 0x30b8 tskt
+F 0x314c task
+F 0x3116 task
+F 0x3038 task
+F 0x3163 task
+F 0x3111 tskA
+F 0x3035 ordt
+F 0x2f2b tskA
+F 0x3006 task
+F 0x3022 task
+F 0x3034 task
+F 0x2d0e task
+T
+F 0x3037 l^pa
+F 0x3036 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30b9 ^clg
+F 0x3037 tskA
+F 0x303a tskA
+F 0x30b8 task
+F 0x314c task
+F 0x3116 task
+F 0x3038 task
+F 0x3163 task
+F 0x3111 task
+T
+F 0x3117 tsk.
+F 0x2ff9 task
+F 0x2ff6 task
+F 0x3012 task
+F 0x2fed tskO
+F 0x3024 tskA
+F 0x314d ordt
+F 0x2ca1 l^pa
+F 0x2fef ^clu
+T
+F 0x3017 tsk.
+F 0x2ffa task
+F 0x2ff7 task
+F 0x300e task
+F 0x3082 tskO
+F 0x2ca2 tskA
+F 0x3002 ordt
+T
+F 0x3032 l^pa
+F 0x3028 ^clu
+A tskA
+A task
+A task
+F 0x3029 tsk.
+F 0x3002 task
+F 0x3032 task
+F 0x3028 tskA
+F 0x3018 task
+F 0x2fff task
+F 0x2ffe task
+F 0x2ff5 tskO
+F 0x2ffc tskA
+F 0x2f3b ordt
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3017 ^clg
+F 0x2ffc tskA
+F 0x2ffa tskA
+F 0x2ff7 task
+F 0x300e task
+F 0x3082 task
+F 0x2ca2 task
+F 0x3029 task
+F 0x3002 task
+F 0x302d l^pa
+F 0x2ff8 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+F 0x3032 tsk.
+F 0x3028 task
+F 0x3018 task
+F 0x2fff task
+F 0x2ffe tskO
+F 0x2ff5 tskA
+F 0x2f3b ordt
+T
+F 0x2ca1 l^pa
+F 0x2fef ^clu
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x300e ^clg
+F 0x2ca1 tskA
+F 0x3082 tskA
+F 0x2ca2 task
+F 0x3029 task
+F 0x3002 task
+F 0x302d task
+F 0x2ff8 task
+F 0x3032 task
+T
+T
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3028 tsk.
+F 0x302d task
+F 0x2ff8 task
+F 0x3032 tskA
+F 0x3018 task
+F 0x2fff task
+F 0x2ffe task
+F 0x2ff5 tskO
+F 0x2f3b tskA
+F 0x2fef ordt
+F 0x2ffa l^pa
+F 0x2ff7 ^clu
+F 0x300b tskt
+F 0x307e task
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3029 ^clg
+F 0x302a l^pa
+F 0x3084 ^clu
+F 0x300b tskA
+F 0x3002 tskA
+F 0x3028 task
+F 0x302d task
+F 0x2ff8 task
+F 0x3032 task
+F 0x3018 task
+F 0x2fff task
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x314d ^clg
+F 0x3018 tskA
+F 0x3017 tskA
+F 0x2ffc task
+F 0x300e task
+F 0x2ca1 task
+F 0x3029 task
+F 0x302a task
+F 0x3084 task
+T
+A tskA
+A task
+A task
+F 0x300b tsk.
+F 0x3029 task
+F 0x302a task
+F 0x3084 tskA
+F 0x3002 task
+F 0x3028 task
+F 0x302d task
+F 0x2ff8 tskO
+F 0x3032 tskA
+F 0x2fff ordt
+F 0x2fed l^pa
+F 0x3024 ^clu
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3035 tsk.
+F 0x2fff task
+F 0x2fed task
+F 0x3024 tskA
+F 0x2f2b task
+F 0x3006 task
+F 0x3022 task
+F 0x3034 tskO
+F 0x2d0e tskA
+F 0x3036 ordt
+F 0x30e5 l^pa
+F 0x2d0d ^clu
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff8 ^clg
+F 0x3039 tskt
+F 0x302f tskt
+F 0x30fa tskt
+F 0x302c task
+F 0x2ff0 task
+F 0x300f task
+F 0x30a0 task
+F 0x3015 tskA
+F 0x301f ordt
+F 0x3032 tskA
+F 0x3035 task
+F 0x2fff task
+F 0x2fed task
+F 0x3024 task
+T
+T
+T
+F 0x2ffe tsk.
+F 0x2ff5 task
+F 0x2f3b task
+F 0x2fef task
+F 0x2ffa tskO
+F 0x2ff7 tskA
+F 0x307e ordt
+T
+F 0x3082 l^pa
+F 0x2ca2 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3015 ^clg
+F 0x3082 tskA
+F 0x301f tskA
+F 0x3032 task
+F 0x3035 task
+F 0x2fff task
+F 0x2fed task
+F 0x3024 task
+F 0x2ffe task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3002 ^clg
+F 0x3024 tskA
+F 0x2ff8 tskA
+F 0x3039 task
+F 0x302f task
+F 0x30fa task
+F 0x302c task
+F 0x2ff0 task
+F 0x3015 task
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A tskt
+A task
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x314d ^clg
+F 0x2f2b tskt
+F 0x3006 tskt
+F 0x3022 task
+F 0x3034 task
+F 0x2d0e task
+F 0x3036 task
+F 0x30e5 tskA
+F 0x2d0d ordt
+F 0x3018 tskA
+F 0x3017 task
+F 0x2ffc task
+F 0x300e task
+F 0x2ca1 task
+F 0x3028 l^pa
+F 0x302d ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x314d ^clg
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3080 ^clg
+F 0x3028 tskA
+F 0x2f2b tskA
+F 0x3006 task
+F 0x3022 task
+F 0x3034 task
+F 0x2d0e task
+F 0x3036 task
+F 0x30e5 task
+F 0x3111 tskA
+F 0x30cf tskA
+F 0x2ff1 task
+F 0x3003 task
+F 0x2f3c task
+F 0x30e4 task
+F 0x30b9 task
+F 0x3037 task
+T
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x2ff5 tsk.
+F 0x30e4 task
+F 0x30b9 task
+F 0x3037 tskA
+F 0x2f3b task
+F 0x2fef task
+F 0x2ffa task
+F 0x2ff7 tskO
+F 0x307e tskA
+F 0x2ca2 ordt
+T
+F 0x300f l^pa
+F 0x30a0 ^clu
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30cf ^clg
+F 0x300f tskA
+F 0x2ff1 tskA
+F 0x3003 task
+F 0x2f3c task
+F 0x2ff5 task
+F 0x30e4 task
+F 0x30b9 task
+F 0x3037 task
+A tskA
+A task
+A task
+F 0x2d0d tsk.
+F 0x30e4 task
+F 0x30b9 task
+F 0x3037 tskA
+F 0x3018 task
+F 0x3017 task
+F 0x2ffc task
+F 0x300e tskO
+F 0x2ca1 tskA
+F 0x302d ordt
+T
+F 0x3117 l^pa
+F 0x2ff9 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff1 ^clg
+F 0x3117 tskA
+F 0x3003 tskA
+F 0x2f3c task
+F 0x2ff5 task
+F 0x2d0d task
+F 0x30e4 task
+F 0x30b9 task
+F 0x3037 task
+T
+F 0x3082 tsk.
+F 0x301f task
+F 0x3032 task
+F 0x3035 task
+F 0x2fff tskO
+F 0x2fed tskA
+F 0x2ffe ordt
+F 0x302a l^pa
+F 0x3084 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3003 ^clg
+F 0x302a tskA
+F 0x2f3c tskA
+F 0x2ff5 task
+F 0x2d0d task
+F 0x30e4 task
+F 0x30b9 task
+F 0x3037 task
+F 0x3082 task
+T
+T
+T
+F 0x300b tskt
+F 0x3029 task
+T
+F 0x2ff6 l^pa
+F 0x3012 ^clu
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3018 tsk.
+F 0x3029 task
+F 0x2ff6 task
+F 0x3012 tskA
+F 0x3017 task
+F 0x2ffc task
+F 0x300e task
+F 0x2ca1 tskO
+F 0x302d tskA
+F 0x2ff9 ordt
+F 0x30cf l^pa
+F 0x300f ^clu
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30b9 ^clg
+F 0x30cf tskA
+F 0x3037 tskA
+F 0x3082 task
+F 0x300b task
+F 0x3018 task
+F 0x3029 task
+F 0x2ff6 task
+F 0x3012 task
+F 0x2f3b tsk.
+F 0x2fef task
+F 0x2ffa task
+F 0x2ff7 task
+F 0x307e tskO
+F 0x2ca2 tskA
+F 0x30a0 ordt
+F 0x30e5 l^pa
+F 0x3111 ^clu
+T
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x300b ^clg
+F 0x3002 tskt
+F 0x3024 tskt
+F 0x2ff8 tskt
+F 0x3039 task
+F 0x302f task
+F 0x30fa task
+F 0x302c task
+F 0x2ff0 tskA
+F 0x3015 ordt
+F 0x3018 tskA
+F 0x3029 task
+F 0x2ff6 task
+F 0x3012 task
+F 0x2f3b task
+T
+T
+T
+T
+T
+T
+F 0x301f tsk.
+F 0x3032 task
+F 0x3035 task
+F 0x2fff task
+F 0x2fed tskO
+F 0x2ffe tskA
+F 0x3084 ordt
+F 0x2ff1 l^pa
+F 0x3117 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff0 ^clg
+F 0x2ff1 tskA
+F 0x3015 tskA
+F 0x3018 task
+F 0x3029 task
+F 0x2ff6 task
+F 0x3012 task
+F 0x2f3b task
+F 0x301f task
+T
+T
+A tskA
+A task
+A task
+F 0x3017 tsk.
+F 0x3012 task
+F 0x2f3b task
+F 0x301f tskA
+F 0x2ffc task
+F 0x300e task
+F 0x2ca1 task
+F 0x302d tskO
+F 0x2ff9 tskA
+F 0x300f ordt
+F 0x2d0d l^pa
+F 0x30e4 ^clu
+A tskA
+A task
+A task
+F 0x303a tsk.
+F 0x300f task
+F 0x2d0d task
+F 0x30e4 tskA
+F 0x30b8 task
+F 0x314c task
+F 0x3116 task
+F 0x3038 tskO
+F 0x3163 tskA
+F 0x314d ordt
+F 0x30fb l^pa
+F 0x30a1 ^clu
+T
+T
+A `rtl
+A `rtl
+A `rtl
+A `rtl
+F 0x301d `rtl
+F 0x301e `rtl
+F 0x3026 `rtl
+F 0x3027 `rtl
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x300e ^clg
+F 0x3026 tskA
+F 0x2ca1 tskA
+F 0x302d task
+F 0x2ff9 task
+F 0x303a task
+F 0x300f task
+F 0x2d0d task
+F 0x30e4 task
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3015 ^clg
+F 0x2d0d tskA
+F 0x3018 tskA
+F 0x3029 task
+F 0x2ff6 task
+F 0x3017 task
+F 0x3012 task
+F 0x2f3b task
+F 0x300e task
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30cf ^clg
+F 0x2f3b tskA
+F 0x300b tskA
+F 0x3002 task
+F 0x3024 task
+F 0x2ff8 task
+F 0x3039 task
+F 0x302f task
+F 0x3015 task
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3022 ^clg
+F 0x302f tskA
+F 0x3034 tskA
+F 0x2d0e task
+F 0x3036 task
+F 0x3003 task
+F 0x302a task
+F 0x2f3c task
+F 0x30cf task
+A tskA
+A task
+A task
+F 0x30b8 tsk.
+F 0x302a task
+F 0x2f3c task
+F 0x30cf tskA
+F 0x314c task
+F 0x3116 task
+F 0x3038 task
+F 0x301d tskO
+F 0x301e tskA
+F 0x3027 ordt
+T
+F 0x301f l^pa
+F 0x2ffc ^clu
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A tskt
+A task
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x302f ^clg
+F 0x2fef tskt
+F 0x2ffa tskt
+F 0x2ff7 task
+F 0x307e task
+F 0x2ca2 task
+F 0x30a0 task
+F 0x30e5 tskA
+F 0x3111 ordt
+F 0x3034 tskA
+F 0x2d0e task
+F 0x3036 task
+F 0x3003 task
+F 0x30b8 task
+T
+F 0x3037 l^pa
+F 0x3082 ^clu
+T
+T
+T
+T
+T
+F 0x3026 tsk.
+F 0x2ca1 task
+F 0x302d task
+F 0x2ff9 task
+F 0x303a tskO
+F 0x300f tskA
+F 0x30e4 ordt
+F 0x2ff0 l^pa
+F 0x2ff1 ^clu
+T
+A tskA
+A task
+A task
+F 0x2d0d tsk.
+F 0x30e4 task
+F 0x2ff0 task
+F 0x2ff1 tskA
+F 0x3018 task
+F 0x3029 task
+F 0x2ff6 task
+F 0x3017 tskO
+F 0x3012 tskA
+F 0x300e ordt
+T
+F 0x2ff5 l^pa
+F 0x30b9 ^clu
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x302d ^clg
+F 0x2ff5 tskA
+F 0x2ff9 tskA
+F 0x303a task
+F 0x300f task
+F 0x2d0d task
+F 0x30e4 task
+F 0x2ff0 task
+F 0x2ff1 task
+F 0x3032 tsk.
+F 0x3035 task
+F 0x2fff task
+F 0x2fed task
+F 0x2ffe tskO
+F 0x3084 tskA
+F 0x3117 ordt
+F 0x30fa l^pa
+F 0x302c ^clu
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff9 ^clg
+F 0x30fa tskA
+F 0x303a tskA
+F 0x300f task
+F 0x2d0d task
+F 0x30e4 task
+F 0x2ff0 task
+F 0x2ff1 task
+F 0x3032 task
+T
+T
+F 0x302a tskt
+F 0x2f3c task
+T
+F 0x3028 l^pa
+F 0x3022 ^clu
+T
+F 0x3035 tsk.
+F 0x2fff task
+F 0x2fed task
+F 0x2ffe task
+F 0x3084 tskO
+F 0x3117 tskA
+F 0x302c ordt
+F 0x302d l^pa
+F 0x2ff5 ^clu
+F 0x2f3b tsk.
+F 0x300b task
+F 0x3002 task
+F 0x3024 task
+F 0x2ff8 tskO
+F 0x3039 tskA
+F 0x3015 ordt
+T
+F 0x2f2b l^pa
+F 0x3006 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2fed ^clg
+F 0x2f2b tskA
+F 0x2ffe tskA
+F 0x3084 task
+F 0x3117 task
+F 0x302c task
+F 0x302d task
+F 0x2ff5 task
+F 0x2f3b task
+T
+T
+T
+A tskA
+A task
+A task
+F 0x300b tsk.
+F 0x302d task
+F 0x2ff5 task
+F 0x2f3b tskA
+F 0x3002 task
+F 0x3024 task
+F 0x2ff8 task
+F 0x3039 tskO
+F 0x3015 tskA
+F 0x3006 ordt
+F 0x3035 l^pa
+F 0x2fff ^clu
+T
+F 0x3018 tsk.
+F 0x3029 task
+F 0x2ff6 task
+F 0x3017 task
+F 0x3012 tskO
+F 0x300e tskA
+F 0x30b9 ordt
+F 0x3026 l^pa
+F 0x2ca1 ^clu
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3039 ^clg
+F 0x30cf tskt
+F 0x314c tskt
+F 0x3116 tskt
+F 0x3038 task
+F 0x301d task
+F 0x301e task
+F 0x3027 task
+F 0x301f tskA
+F 0x2ffc ordt
+F 0x3015 tskA
+F 0x3006 task
+F 0x3035 task
+F 0x2fff task
+F 0x3018 task
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3002 ^clg
+F 0x2fff tskA
+F 0x3039 tskA
+F 0x30cf task
+F 0x314c task
+F 0x3116 task
+F 0x3038 task
+F 0x301d task
+F 0x301e task
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A tskt
+A task
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2fed ^clg
+F 0x3029 tskt
+F 0x2ff6 tskt
+F 0x3017 task
+F 0x3012 task
+F 0x300e task
+F 0x30b9 task
+F 0x3026 tskA
+F 0x2ca1 ordt
+F 0x2f2b tskA
+F 0x2ffe task
+F 0x3084 task
+F 0x3117 task
+F 0x302c task
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x302a ^clg
+F 0x3117 tskA
+F 0x2f3c tskA
+F 0x2fed task
+F 0x3029 task
+F 0x2ff6 task
+F 0x3017 task
+F 0x3012 task
+F 0x300e task
+F 0x3024 l^pa
+F 0x2ff8 ^clu
+T
+A tskA
+A task
+A task
+F 0x30b9 tsk.
+F 0x300e task
+F 0x3024 task
+F 0x2ff8 tskA
+F 0x3026 task
+F 0x2ca1 task
+F 0x2f2b task
+F 0x2ffe tskO
+F 0x3084 tskA
+F 0x302c ordt
+F 0x2ff1 l^pa
+F 0x3032 ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3029 ^clg
+F 0x2ff1 tskA
+F 0x2ff6 tskA
+F 0x3017 task
+F 0x3012 task
+F 0x30b9 task
+F 0x300e task
+F 0x3024 task
+F 0x2ff8 task
+A tskA
+A task
+A task
+F 0x3027 tsk.
+F 0x300e task
+F 0x3024 task
+F 0x2ff8 tskA
+F 0x301f task
+F 0x2ffc task
+F 0x3015 task
+F 0x3006 tskO
+F 0x3035 tskA
+F 0x3018 ordt
+T
+F 0x2ff5 l^pa
+F 0x2f3b ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff6 ^clg
+F 0x2ff5 tskA
+F 0x3017 tskA
+F 0x3012 task
+F 0x30b9 task
+F 0x3027 task
+F 0x300e task
+F 0x3024 task
+F 0x2ff8 task
+T
+A tskA
+A task
+A task
+F 0x301f tsk.
+F 0x300e task
+F 0x3024 task
+F 0x2ff8 tskA
+F 0x2ffc task
+F 0x3015 task
+F 0x3006 task
+F 0x3035 tskO
+F 0x3018 tskA
+F 0x2f3b ordt
+F 0x3029 l^pa
+F 0x2ff1 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3017 ^clg
+F 0x3029 tskA
+F 0x3012 tskA
+F 0x30b9 task
+F 0x3027 task
+F 0x301f task
+F 0x300e task
+F 0x3024 task
+F 0x2ff8 task
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x303a ^clg
+F 0x3024 tskA
+F 0x300f tskA
+F 0x2d0d task
+F 0x30e4 task
+F 0x2ff0 task
+F 0x302a task
+F 0x3117 task
+F 0x3017 task
+T
+T
+T
+T
+T
+T
+T
+F 0x300b tskt
+F 0x302d task
+F 0x3028 l^pa
+F 0x3022 ^clu
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30b8 ^clg
+F 0x3028 tskA
+F 0x3037 tskA
+F 0x3082 task
+F 0x303a task
+F 0x3024 task
+F 0x300f task
+F 0x2d0d task
+F 0x30e4 task
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x307e ^clg
+F 0x2d0d tskA
+F 0x2ca2 tskA
+F 0x30a0 task
+F 0x30e5 task
+F 0x3111 task
+F 0x3034 task
+F 0x2d0e task
+F 0x30b8 task
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3030 ^clg
+F 0x3002 tskt
+F 0x2fff tskt
+F 0x3039 tskt
+F 0x30cf task
+F 0x314c task
+F 0x3116 task
+F 0x3038 task
+F 0x301d tskA
+F 0x301e ordt
+F 0x3004 tskA
+F 0x3080 task
+F 0x302f task
+F 0x2fef task
+F 0x307e task
+T
+T
+A tskA
+A task
+A task
+F 0x2ffc tsk.
+F 0x302f task
+F 0x2fef task
+F 0x307e tskA
+F 0x3015 task
+F 0x3006 task
+F 0x3035 task
+F 0x3018 tskO
+F 0x2f3b tskA
+F 0x2ff1 ordt
+T
+F 0x2ff6 l^pa
+F 0x2ff5 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x301d ^clg
+F 0x2ff6 tskA
+F 0x301e tskA
+F 0x3004 task
+F 0x3080 task
+F 0x2ffc task
+F 0x302f task
+F 0x2fef task
+F 0x307e task
+T
+A tskA
+A task
+A task
+F 0x3026 tsk.
+F 0x302f task
+F 0x2fef task
+F 0x307e tskA
+F 0x2ca1 task
+F 0x2f2b task
+F 0x2ffe task
+F 0x3084 tskO
+F 0x302c tskA
+F 0x3032 ordt
+F 0x2f3c l^pa
+F 0x2fed ^clu
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x301e ^clg
+F 0x2f3c tskA
+F 0x3004 tskA
+F 0x3080 task
+F 0x2ffc task
+F 0x3026 task
+F 0x302f task
+F 0x2fef task
+F 0x307e task
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3033 ^clg
+F 0x2fef tskA
+F 0x3030 tskA
+F 0x3002 task
+F 0x2fff task
+F 0x3039 task
+F 0x30cf task
+F 0x314c task
+F 0x301e task
+T
+A tskA
+A task
+A task
+F 0x2f3c tsk.
+F 0x30cf task
+F 0x314c task
+F 0x301e tskA
+F 0x3004 task
+F 0x3080 task
+F 0x2ffc task
+F 0x3026 tskO
+F 0x302f tskA
+F 0x307e ordt
+F 0x300c l^pa
+F 0x2ff4 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3030 ^clg
+F 0x300c tskA
+F 0x3002 tskA
+F 0x2fff task
+F 0x3039 task
+F 0x2f3c task
+F 0x30cf task
+F 0x314c task
+F 0x301e task
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A tskt
+A task
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3134 ^clg
+F 0x2d0d tskt
+F 0x2ca2 tskt
+F 0x30a0 task
+F 0x30e5 task
+F 0x3111 task
+F 0x3034 task
+F 0x2d0e tskA
+F 0x30b8 ordt
+F 0x3019 tskA
+F 0x2f4c task
+F 0x301c task
+F 0x3020 task
+F 0x3001 task
+F 0x3110 l^pa
+F 0x3013 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3134 ^clg
+F 0x3110 tskA
+F 0x2d0d tskA
+F 0x2ca2 task
+F 0x30a0 task
+F 0x30e5 task
+F 0x3111 task
+F 0x3034 task
+F 0x2d0e task
+T
+T
+T
+F 0x3015 tsk.
+F 0x3006 task
+F 0x3035 task
+F 0x3018 task
+F 0x2f3b tskO
+F 0x2ff1 tskA
+F 0x2ff5 ordt
+T
+F 0x3116 l^pa
+F 0x3038 ^clu
+F 0x2ff0 tsk.
+F 0x302a task
+F 0x3117 task
+F 0x3017 task
+F 0x300b tskO
+F 0x302d tskA
+F 0x3022 ordt
+T
+F 0x3036 l^pa
+F 0x3003 ^clu
+T
+T
+T
+T
+T
+F 0x3004 tsk.
+F 0x3080 task
+F 0x2ffc task
+F 0x3026 task
+F 0x302f tskO
+F 0x307e tskA
+F 0x2ff4 ordt
+F 0x3033 l^pa
+F 0x2fef ^clu
+T
+A tskA
+A task
+A task
+F 0x3029 tsk.
+F 0x2ff4 task
+F 0x3033 task
+F 0x2fef tskA
+F 0x3012 task
+F 0x30b9 task
+F 0x3027 task
+F 0x301f tskO
+F 0x300e tskA
+F 0x2ff8 ordt
+F 0x2ff9 l^pa
+F 0x30fa ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ffc ^clg
+F 0x2ff9 tskA
+F 0x3026 tskA
+F 0x302f task
+F 0x307e task
+F 0x3029 task
+F 0x2ff4 task
+F 0x3033 task
+F 0x2fef task
+T
+A tskA
+A task
+A task
+A tskA
+A task
+A task
+F 0x3012 tsk.
+F 0x2ff4 task
+F 0x3033 task
+F 0x2fef tskA
+F 0x30b9 task
+F 0x3027 task
+F 0x301f task
+F 0x300e tskO
+F 0x2ff8 tskA
+F 0x30fa ordt
+F 0x2ca1 tsk.
+F 0x302f task
+F 0x307e task
+F 0x3029 tskA
+F 0x2f2b task
+F 0x2ffe task
+F 0x3084 task
+F 0x302c tskO
+F 0x3032 tskA
+F 0x2fed ordt
+F 0x3004 l^pa
+F 0x3080 ^clu
+F 0x301d l^pa
+F 0x2ff6 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff8 ^clg
+F 0x301d tskA
+F 0x30fa tskA
+F 0x2ca1 task
+F 0x302f task
+F 0x307e task
+F 0x3029 task
+F 0x2f2b task
+F 0x2ffe task
+T
+F 0x30b8 tsk.
+F 0x3019 task
+F 0x2f4c task
+F 0x301c task
+F 0x3020 tskO
+F 0x3001 tskA
+F 0x3013 ordt
+F 0x2fbb l^pa
+F 0x2ffb ^clu
+T
+F 0x300a tskt
+F 0x3007 task
+F 0x3031 l^pa
+F 0x287 ^clu
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3028 tsk.
+F 0x3007 task
+F 0x3031 task
+F 0x287 tskA
+F 0x3037 task
+F 0x3082 task
+F 0x303a task
+F 0x3024 tskO
+F 0x300f tskA
+F 0x30e4 ordt
+T
+F 0x2ffa l^pa
+F 0x2ff7 ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3013 ^clg
+F 0x2ffa tskA
+F 0x2fbb tskA
+F 0x2ffb task
+F 0x300a task
+F 0x3028 task
+F 0x3007 task
+F 0x3031 task
+F 0x287 task
+T
+T
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ffe ^clg
+F 0x3030 tskt
+F 0x300c tskt
+F 0x3002 tskt
+F 0x2fff task
+F 0x3039 task
+F 0x2f3c task
+F 0x30cf task
+F 0x314c tskA
+F 0x301e ordt
+F 0x30b8 tskA
+F 0x3019 task
+F 0x2f4c task
+F 0x301c task
+F 0x3013 task
+T
+A tskA
+A task
+A task
+F 0x3084 tsk.
+F 0x2f4c task
+F 0x301c task
+F 0x3013 tskA
+F 0x302c task
+F 0x3032 task
+F 0x2fed task
+F 0x3004 tskO
+F 0x3080 tskA
+F 0x2ff6 ordt
+T
+F 0x301f l^pa
+F 0x300e ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x314c ^clg
+F 0x301f tskA
+F 0x301e tskA
+F 0x30b8 task
+F 0x3019 task
+F 0x3084 task
+F 0x2f4c task
+F 0x301c task
+F 0x3013 task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x307e ^clg
+F 0x301c tskA
+F 0x2ffe tskA
+F 0x3030 task
+F 0x300c task
+F 0x3002 task
+F 0x2fff task
+F 0x3039 task
+F 0x314c task
+T
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A tskt
+A task
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff4 ^clg
+F 0x301f tsk.
+F 0x301e task
+F 0x30b8 task
+F 0x3019 task
+F 0x3084 tskO
+F 0x2f4c tskA
+F 0x3013 ordt
+F 0x2ffa tskt
+F 0x2fbb tskt
+F 0x2ffb task
+F 0x300a task
+F 0x3028 task
+F 0x3007 task
+F 0x3031 tskA
+F 0x287 ordt
+F 0x3033 tskA
+F 0x2fef task
+F 0x30b9 task
+F 0x3027 task
+F 0x2ff8 task
+F 0x2ca1 l^pa
+F 0x302f ^clu
+F 0x3029 l^pa
+F 0x2f2b ^clu
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3037 tsk.
+F 0x302f task
+F 0x3029 task
+F 0x2f2b tskA
+F 0x3082 task
+F 0x303a task
+F 0x3024 task
+F 0x300f tskO
+F 0x30e4 tskA
+F 0x2ff7 ordt
+F 0x3020 l^pa
+F 0x3001 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30b9 ^clg
+F 0x3020 tskA
+F 0x3027 tskA
+F 0x2ff8 task
+F 0x2ca1 task
+F 0x3037 task
+F 0x302f task
+F 0x3029 task
+F 0x2f2b task
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2fbb ^clg
+F 0x3029 tskA
+F 0x2ffb tskA
+F 0x300a task
+F 0x3028 task
+F 0x3007 task
+F 0x3031 task
+F 0x287 task
+F 0x30b9 task
+T
+F 0x301d tskt
+F 0x30fa task
+F 0x3026 l^pa
+F 0x3012 ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3019 ^clg
+F 0x3026 tskA
+F 0x3084 tskA
+F 0x2f4c task
+F 0x2fbb task
+F 0x3029 task
+F 0x2ffb task
+F 0x300a task
+F 0x3028 task
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3022 ^clg
+F 0x300a tskA
+F 0x3036 tskA
+F 0x3003 task
+F 0x2ffc task
+F 0x2ff9 task
+F 0x2ff4 task
+F 0x301f task
+F 0x3019 task
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3038 ^clg
+F 0x307e tskt
+F 0x301c tskt
+F 0x2ffe tskt
+F 0x3030 task
+F 0x300c task
+F 0x3002 task
+F 0x2fff task
+F 0x3039 tskA
+F 0x314c ordt
+F 0x2ff0 tskA
+F 0x302a task
+F 0x3117 task
+F 0x3017 task
+F 0x3022 task
+A tskA
+A task
+A task
+F 0x3026 tsk.
+F 0x3117 task
+F 0x3017 task
+F 0x3022 tskA
+F 0x3084 task
+F 0x2f4c task
+F 0x2fbb task
+F 0x3029 tskO
+F 0x2ffb tskA
+F 0x3028 ordt
+T
+F 0x300b l^pa
+F 0x302d ^clu
+F 0x3082 tsk.
+F 0x303a task
+F 0x3024 task
+F 0x300f task
+F 0x30e4 tskO
+F 0x2ff7 tskA
+F 0x3001 ordt
+F 0x3033 l^pa
+F 0x2fef ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2f4c ^clg
+F 0x3033 tskA
+F 0x2fbb tskA
+F 0x3029 task
+F 0x2ffb task
+F 0x3028 task
+F 0x300b task
+F 0x302d task
+F 0x3082 task
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3020 tsk.
+F 0x300b task
+F 0x302d task
+F 0x3082 tskA
+F 0x3027 task
+F 0x2ff8 task
+F 0x2ca1 task
+F 0x3037 tskO
+F 0x302f tskA
+F 0x2f2b ordt
+F 0x3013 l^pa
+F 0x2ffa ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2fbb ^clg
+F 0x3013 tskA
+F 0x3029 tskA
+F 0x2ffb task
+F 0x3028 task
+F 0x3020 task
+F 0x300b task
+F 0x302d task
+F 0x3082 task
+F 0x3007 tsk.
+F 0x3031 task
+F 0x287 task
+F 0x30b9 task
+F 0x301d tskO
+F 0x30fa tskA
+F 0x3012 ordt
+F 0x301e l^pa
+F 0x30b8 ^clu
+T
+A tskA
+A task
+A task
+F 0x302c tsk.
+F 0x3012 task
+F 0x301e task
+F 0x30b8 tskA
+F 0x3032 task
+F 0x2fed task
+F 0x3004 task
+F 0x3080 tskO
+F 0x2ff6 tskA
+F 0x300e ordt
+F 0x2f3c l^pa
+F 0x30cf ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x287 ^clg
+F 0x2f3c tskA
+F 0x30b9 tskA
+F 0x301d task
+F 0x30fa task
+F 0x302c task
+F 0x3012 task
+F 0x301e task
+F 0x30b8 task
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3029 ^clg
+F 0x301e tskA
+F 0x2ffb tskA
+F 0x3028 task
+F 0x3020 task
+F 0x300b task
+F 0x302d task
+F 0x3082 task
+F 0x287 task
+T
+T
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x2f3c tsk.
+F 0x302d task
+F 0x3082 task
+F 0x287 tskA
+F 0x30b9 task
+F 0x301d task
+F 0x30fa task
+F 0x302c tskO
+F 0x3012 tskA
+F 0x30b8 ordt
+F 0x2fbb l^pa
+F 0x3013 ^clu
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A tskt
+A task
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x301e ^clg
+F 0x300a tskt
+F 0x3036 tskt
+F 0x3003 task
+F 0x2ffc task
+F 0x2ff9 task
+F 0x2ff4 task
+F 0x301f tskA
+F 0x3019 ordt
+F 0x2ffb tskA
+F 0x3028 task
+F 0x3020 task
+F 0x300b task
+F 0x2f3c task
+F 0x2ff5 l^pa
+F 0x3116 ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x301e ^clg
+F 0x2ff5 tskA
+F 0x300a tskA
+F 0x3036 task
+F 0x3003 task
+F 0x2ffc task
+F 0x2ff9 task
+F 0x2ff4 task
+F 0x301f task
+T
+T
+T
+T
+F 0x303a tsk.
+F 0x3024 task
+F 0x300f task
+F 0x30e4 task
+F 0x2ff7 tskO
+F 0x3001 tskA
+F 0x2fef ordt
+A tskA
+A task
+A task
+F 0x3022 l^pa
+F 0x3084 ^clu
+F 0x3019 tsk.
+F 0x2ff7 task
+F 0x3001 task
+F 0x2fef tskA
+F 0x2ffb task
+F 0x3028 task
+F 0x3020 task
+F 0x300b tskO
+F 0x2f3c tskA
+F 0x3116 ordt
+F 0x3026 l^pa
+F 0x3117 ^clu
+T
+T
+T
+T
+T
+T
+T
+F 0x3032 tsk.
+F 0x2fed task
+F 0x3004 task
+F 0x3080 task
+F 0x2ff6 tskO
+F 0x300e tskA
+F 0x30cf ordt
+F 0x3007 l^pa
+F 0x3031 ^clu
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3028 ^clg
+F 0x3007 tskA
+F 0x3020 tskA
+F 0x300b task
+F 0x2f3c task
+F 0x3116 task
+F 0x3026 task
+F 0x3117 task
+F 0x3032 task
+T
+T
+T
+T
+T
+T
+F 0x302d tskt
+F 0x3082 task
+F 0x3017 l^pa
+F 0x3029 ^clu
+F 0x3027 tsk.
+F 0x2ff8 task
+F 0x2ca1 task
+F 0x3037 task
+F 0x302f tskO
+F 0x2f2b tskA
+F 0x2ffa ordt
+T
+F 0x2f4c l^pa
+F 0x3033 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3026 ^clg
+F 0x2f4c tskA
+F 0x3117 tskA
+F 0x3032 task
+F 0x302d task
+F 0x3082 task
+F 0x3017 task
+F 0x3029 task
+F 0x3027 task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3019 ^clg
+F 0x3029 tskA
+F 0x2ff7 tskA
+F 0x3001 task
+F 0x3028 task
+F 0x3007 task
+F 0x3020 task
+F 0x300b task
+F 0x3026 task
+T
+A tskA
+A task
+A task
+F 0x2fed tsk.
+F 0x3020 task
+F 0x300b task
+F 0x3026 tskA
+F 0x3004 task
+F 0x3080 task
+F 0x2ff6 task
+F 0x300e tskO
+F 0x30cf tskA
+F 0x3031 ordt
+T
+F 0x2fef l^pa
+F 0x2ffb ^clu
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3028 ^clg
+F 0x287 tskt
+F 0x30b9 tskt
+F 0x301d tskt
+F 0x30fa task
+F 0x302c task
+F 0x3012 task
+F 0x30b8 task
+F 0x2fbb tskA
+F 0x3013 ordt
+F 0x3007 tskA
+F 0x2fed task
+F 0x3020 task
+F 0x300b task
+F 0x3026 task
+T
+T
+T
+T
+F 0x2ff8 tsk.
+F 0x2ca1 task
+F 0x3037 task
+F 0x302f task
+F 0x2f2b tskO
+F 0x2ffa tskA
+F 0x3033 ordt
+F 0x2f3c l^pa
+F 0x3116 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+F 0x2f4c tsk.
+F 0x3117 task
+F 0x3032 task
+F 0x302d task
+F 0x3082 tskO
+F 0x3017 tskA
+F 0x3027 ordt
+F 0x3022 l^pa
+F 0x3084 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3037 ^clg
+F 0x3022 tskA
+F 0x302f tskA
+F 0x2f2b task
+F 0x2ffa task
+F 0x3033 task
+F 0x2f3c task
+F 0x3116 task
+F 0x2f4c task
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2fbb ^clg
+F 0x3116 tskA
+F 0x3013 tskA
+F 0x3007 task
+F 0x2fed task
+F 0x3020 task
+F 0x300b task
+F 0x3026 task
+F 0x3037 task
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3029 ^clg
+F 0x3026 tskA
+F 0x3028 tskA
+F 0x287 task
+F 0x30b9 task
+F 0x301d task
+F 0x30fa task
+F 0x302c task
+F 0x2fbb task
+A tskA
+A task
+A task
+F 0x3116 tsk.
+F 0x30fa task
+F 0x302c task
+F 0x2fbb tskA
+F 0x3013 task
+F 0x3007 task
+F 0x2fed task
+F 0x3020 tskO
+F 0x300b tskA
+F 0x3037 ordt
+T
+F 0x30e4 l^pa
+F 0x3019 ^clu
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A tskt
+A task
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3026 ^clg
+F 0x3004 tskt
+F 0x3080 tskt
+F 0x2ff6 task
+F 0x300e task
+F 0x30cf task
+F 0x3031 task
+F 0x2fef tskA
+F 0x2ffb ordt
+F 0x3028 tskA
+F 0x287 task
+F 0x30b9 task
+F 0x301d task
+F 0x3116 task
+F 0x2ff7 l^pa
+F 0x3001 ^clu
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3026 ^clg
+F 0x2ff7 tskA
+F 0x3004 tskA
+F 0x3080 task
+F 0x2ff6 task
+F 0x300e task
+F 0x30cf task
+F 0x3031 task
+F 0x2fef task
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3022 tsk.
+F 0x30cf task
+F 0x3031 task
+F 0x2fef tskA
+F 0x302f task
+F 0x2f2b task
+F 0x2ffa task
+F 0x3033 tskO
+F 0x2f3c tskA
+F 0x2f4c ordt
+F 0x3012 l^pa
+F 0x30b8 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3004 ^clg
+F 0x3012 tskA
+F 0x3080 tskA
+F 0x2ff6 task
+F 0x300e task
+F 0x3022 task
+F 0x30cf task
+F 0x3031 task
+F 0x2fef task
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+F 0x30fa tskt
+F 0x302c task
+F 0x300f l^pa
+F 0x3029 ^clu
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff9 ^clg
+F 0x300f tskA
+F 0x2ff4 tskA
+F 0x301f task
+F 0x3004 task
+F 0x3012 task
+F 0x3080 task
+F 0x2ff6 task
+F 0x300e task
+T
+A tskA
+A task
+A task
+F 0x302f tsk.
+F 0x3080 task
+F 0x2ff6 task
+F 0x300e tskA
+F 0x2f2b task
+F 0x2ffa task
+F 0x3033 task
+F 0x2f3c tskO
+F 0x2f4c tskA
+F 0x30b8 ordt
+F 0x3026 l^pa
+F 0x2ff7 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff4 ^clg
+F 0x3026 tskA
+F 0x301f tskA
+F 0x3004 task
+F 0x3012 task
+F 0x302f task
+F 0x3080 task
+F 0x2ff6 task
+F 0x300e task
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x302a ^clg
+F 0x2fbb tskt
+F 0x3013 tskt
+F 0x3007 tskt
+F 0x2fed task
+F 0x3020 task
+F 0x300b task
+F 0x3037 task
+F 0x30e4 tskA
+F 0x3019 ordt
+F 0x301e tskA
+F 0x2ff5 task
+F 0x300a task
+F 0x3036 task
+F 0x2ff4 task
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3039 ^clg
+F 0x3036 tskA
+F 0x302a tskA
+F 0x2fbb task
+F 0x3013 task
+F 0x3007 task
+F 0x2fed task
+F 0x3020 task
+F 0x300b task
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff1 ^clg
+F 0x3020 tskA
+F 0x3038 tskA
+F 0x307e task
+F 0x301c task
+F 0x2ffe task
+F 0x3030 task
+F 0x300c task
+F 0x3039 task
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3117 tsk.
+F 0x3030 task
+F 0x300c task
+F 0x3039 tskA
+F 0x3032 task
+F 0x302d task
+F 0x3082 task
+F 0x3017 tskO
+F 0x3027 tskA
+F 0x3084 ordt
+F 0x2ff8 l^pa
+F 0x2ca1 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3038 ^clg
+F 0x2ff8 tskA
+F 0x307e tskA
+F 0x301c task
+F 0x2ffe task
+F 0x3117 task
+F 0x3030 task
+F 0x300c task
+F 0x3039 task
+T
+F 0x2ffb tsk.
+F 0x3028 task
+F 0x287 task
+F 0x30b9 task
+F 0x301d tskO
+F 0x3116 tskA
+F 0x3001 ordt
+F 0x303a l^pa
+F 0x3024 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x307e ^clg
+F 0x303a tskA
+F 0x301c tskA
+F 0x2ffe task
+F 0x3117 task
+F 0x3030 task
+F 0x300c task
+F 0x3039 task
+F 0x2ffb task
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30e5 ^clg
+F 0x3039 tskA
+F 0x3111 tskA
+F 0x3034 task
+F 0x2d0e task
+F 0x3015 task
+F 0x3006 task
+F 0x3035 task
+F 0x307e task
+T
+T
+T
+T
+T
+T
+F 0x3022 tsk.
+F 0x30cf task
+F 0x3031 task
+F 0x2fef task
+F 0x30fa tskO
+F 0x302c tskA
+F 0x3029 ordt
+F 0x3003 l^pa
+F 0x2ffc ^clu
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3111 ^clg
+F 0x3003 tskA
+F 0x3034 tskA
+F 0x2d0e task
+F 0x3015 task
+F 0x3006 task
+F 0x3035 task
+F 0x307e task
+F 0x3022 task
+T
+T
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A tskt
+A task
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ffd ^clg
+F 0x3026 tskt
+F 0x301f tskt
+F 0x3004 task
+F 0x3012 task
+F 0x302f task
+F 0x3080 task
+F 0x2ff6 tskA
+F 0x300e ordt
+F 0x30ce tskA
+F 0x2f5c task
+F 0x2f5b task
+F 0x2fe9 task
+F 0x3134 task
+F 0x314c l^pa
+F 0x2ff0 ^clu
+T
+T
+T
+T
+F 0x3036 tsk.
+F 0x302a task
+F 0x2fbb task
+F 0x3013 task
+F 0x3007 tskO
+F 0x2fed tskA
+F 0x300b ordt
+F 0x3018 l^pa
+F 0x2f3b ^clu
+A tskA
+A task
+A task
+F 0x3037 tsk.
+F 0x300b task
+F 0x3018 task
+F 0x2f3b tskA
+F 0x30e4 task
+F 0x3019 task
+F 0x301e task
+F 0x2ff5 tskO
+F 0x300a tskA
+F 0x2ff4 ordt
+F 0x2f2b tsk.
+F 0x2ffa task
+F 0x3033 task
+F 0x2f3c task
+F 0x2f4c tskO
+F 0x30b8 tskA
+F 0x2ff7 ordt
+T
+F 0x3002 l^pa
+F 0x2fff ^clu
+F 0x2ff9 l^pa
+F 0x300f ^clu
+T
+T
+T
+F 0x303a tsk.
+F 0x301c task
+F 0x2ffe task
+F 0x3117 task
+F 0x3030 tskO
+F 0x300c tskA
+F 0x2ffb ordt
+T
+F 0x2ca2 l^pa
+F 0x30a0 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+F 0x30cf tsk.
+F 0x3031 task
+F 0x2fef task
+F 0x30fa task
+F 0x302c tskO
+F 0x3029 tskA
+F 0x2ffc ordt
+F 0x30e5 l^pa
+F 0x3039 ^clu
+T
+F 0x3110 tskt
+F 0x2d0d task
+F 0x2f2c l^pa
+F 0x2f4b ^clu
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ffb ^clg
+F 0x2f2c tskA
+F 0x2ca2 tskA
+F 0x30a0 task
+F 0x30cf task
+F 0x3031 task
+F 0x2fef task
+F 0x30fa task
+F 0x302c task
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3032 tsk.
+F 0x2fef task
+F 0x30fa task
+F 0x302c tskA
+F 0x302d task
+F 0x3082 task
+F 0x3017 task
+F 0x3027 tskO
+F 0x3084 tskA
+F 0x2ca1 ordt
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ca2 ^clg
+F 0x3111 tskt
+F 0x3003 tskt
+F 0x3034 tskt
+F 0x2d0e task
+F 0x3015 task
+F 0x3006 task
+F 0x3035 task
+F 0x307e tskA
+F 0x3022 ordt
+F 0x30a0 tskA
+F 0x30cf task
+F 0x3031 task
+F 0x3032 task
+F 0x2fef task
+F 0x2ff1 l^pa
+F 0x3020 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3111 ^clg
+F 0x2ff1 tskA
+F 0x3003 tskA
+F 0x3034 task
+F 0x2d0e task
+F 0x3015 task
+F 0x3006 task
+F 0x3035 task
+F 0x307e task
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3002 ^clg
+A tskA
+A task
+A task
+F 0x3035 tskA
+F 0x2fff tskA
+F 0x2ff9 task
+F 0x300f task
+F 0x303a task
+F 0x301c task
+F 0x2ffe task
+F 0x3111 task
+F 0x3028 tsk.
+F 0x2f3c task
+F 0x2f4c task
+F 0x3002 tskA
+F 0x287 task
+F 0x30b9 task
+F 0x301d task
+F 0x3116 tskO
+F 0x3001 tskA
+F 0x3024 ordt
+T
+F 0x3038 l^pa
+F 0x2ff8 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x303a ^clg
+F 0x3038 tskA
+F 0x301c tskA
+F 0x2ffe task
+F 0x3111 task
+F 0x3028 task
+F 0x2f3c task
+F 0x2f4c task
+F 0x3002 task
+T
+T
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x2ff1 tsk.
+F 0x2f3c task
+F 0x2f4c task
+F 0x3002 tskA
+F 0x3003 task
+F 0x3034 task
+F 0x2d0e task
+F 0x3015 tskO
+F 0x3006 tskA
+F 0x307e ordt
+F 0x30b8 l^pa
+F 0x2ff7 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A tskt
+A task
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3038 ^clg
+F 0x30fa tskt
+F 0x302c tskt
+F 0x302d task
+F 0x3082 task
+F 0x3017 task
+F 0x3027 task
+F 0x3084 tskA
+F 0x2ca1 ordt
+F 0x301c tskA
+F 0x2ffe task
+F 0x3111 task
+F 0x3028 task
+F 0x2ff1 task
+F 0x2ffb l^pa
+F 0x2f2c ^clu
+A tskA
+A task
+A task
+F 0x3029 tsk.
+F 0x2ff1 task
+F 0x2ffb task
+F 0x2f2c tskA
+F 0x2ffc task
+F 0x30e5 task
+F 0x3039 task
+F 0x3110 tskO
+F 0x2d0d tskA
+F 0x2f4b ordt
+T
+F 0x3030 l^pa
+F 0x300c ^clu
+T
+T
+A tskA
+A task
+A task
+F 0x3022 tsk.
+F 0x2f4b task
+F 0x3030 task
+F 0x300c tskA
+F 0x30a0 task
+F 0x30cf task
+F 0x3031 task
+F 0x3032 tskO
+F 0x2fef tskA
+F 0x3020 ordt
+F 0x3117 l^pa
+F 0x2ca2 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30e5 ^clg
+F 0x3117 tskA
+F 0x3039 tskA
+F 0x3110 task
+F 0x2d0d task
+F 0x3022 task
+F 0x2f4b task
+F 0x3030 task
+F 0x300c task
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x301c ^clg
+F 0x3030 tskA
+F 0x2ffe tskA
+F 0x3111 task
+F 0x3028 task
+F 0x3029 task
+F 0x2ff1 task
+F 0x2ffb task
+F 0x30e5 task
+T
+T
+T
+A tskA
+A task
+A task
+F 0x287 tsk.
+F 0x2ff1 task
+F 0x2ffb task
+F 0x30e5 tskA
+F 0x30b9 task
+F 0x301d task
+F 0x3116 task
+F 0x3001 tskO
+F 0x3024 tskA
+F 0x2ff8 ordt
+F 0x2ff9 l^pa
+F 0x300f ^clu
+T
+T
+T
+F 0x3117 tsk.
+F 0x3039 task
+F 0x3110 task
+F 0x2d0d task
+F 0x3022 tskO
+F 0x2f4b tskA
+F 0x300c ordt
+F 0x3084 l^pa
+F 0x2ca1 ^clu
+T
+T
+T
+F 0x30a0 tsk.
+F 0x30cf task
+F 0x3031 task
+F 0x3032 task
+F 0x2fef tskO
+F 0x3020 tskA
+F 0x2ca2 ordt
+F 0x2f2c l^pa
+F 0x2ffc ^clu
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3110 ^clg
+F 0x2f2c tskA
+F 0x2d0d tskA
+F 0x3022 task
+F 0x2f4b task
+F 0x300c task
+F 0x3084 task
+F 0x2ca1 task
+F 0x30a0 task
+T
+F 0x2f3c tskt
+F 0x2f4c task
+F 0x2fff l^pa
+F 0x303a ^clu
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff8 ^clg
+F 0x2fff tskA
+F 0x2ff9 tskA
+F 0x300f task
+F 0x3110 task
+F 0x2f2c task
+F 0x2d0d task
+F 0x3022 task
+F 0x2f4b task
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x300c tsk.
+F 0x2d0d task
+F 0x3022 task
+F 0x2f4b tskA
+F 0x3084 task
+F 0x2ca1 task
+F 0x30a0 task
+F 0x2f3c tskO
+F 0x2f4c tskA
+F 0x303a ordt
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff8 ^clg
+F 0x2f4c tskA
+F 0x2fff tskA
+F 0x2ff9 task
+F 0x300f task
+F 0x3110 task
+F 0x2f2c task
+F 0x300c task
+F 0x2d0d task
+F 0x3001 l^pa
+F 0x3024 ^clu
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ffb ^clg
+F 0x3002 tskt
+F 0x3003 tskt
+F 0x3034 tskt
+F 0x2d0e task
+F 0x3015 task
+F 0x3006 task
+F 0x307e task
+F 0x30b8 tskA
+F 0x2ff7 ordt
+F 0x30e5 tskA
+F 0x30b9 task
+F 0x2ff8 task
+F 0x2f4c task
+F 0x2fff task
+T
+T
+T
+T
+T
+T
+F 0x30cf tsk.
+F 0x3031 task
+F 0x3032 task
+F 0x2fef task
+F 0x3020 tskO
+F 0x2ca2 tskA
+F 0x2ffc ordt
+F 0x3117 l^pa
+F 0x3039 ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30b8 ^clg
+F 0x3117 tskA
+F 0x2ff7 tskA
+F 0x30e5 task
+F 0x30b9 task
+F 0x2ff8 task
+F 0x2f4c task
+F 0x2fff task
+F 0x30cf task
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3029 ^clg
+F 0x2fff tskA
+F 0x2ffb tskA
+F 0x3002 task
+F 0x3003 task
+F 0x3034 task
+F 0x2d0e task
+F 0x3015 task
+F 0x30b8 task
+T
+A tskA
+A task
+A task
+F 0x3117 tsk.
+F 0x2d0e task
+F 0x3015 task
+F 0x30b8 tskA
+F 0x2ff7 task
+F 0x30e5 task
+F 0x30b9 task
+F 0x2ff8 tskO
+F 0x2f4c tskA
+F 0x30cf ordt
+F 0x3111 l^pa
+F 0x3028 ^clu
+F 0x3022 tsk.
+F 0x2f4b task
+F 0x3084 task
+F 0x2ca1 task
+F 0x30a0 tskO
+F 0x2f3c tskA
+F 0x303a ordt
+T
+F 0x301d l^pa
+F 0x3116 ^clu
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A tskt
+A task
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff7 ^clg
+F 0x2ff9 tskt
+F 0x300f tskt
+F 0x3110 task
+F 0x2f2c task
+F 0x300c task
+F 0x2d0d task
+F 0x3001 tskA
+F 0x3024 ordt
+F 0x30e5 tskA
+F 0x30b9 task
+F 0x2ff8 task
+F 0x2f4c task
+F 0x30cf task
+F 0x287 l^pa
+F 0x2ff1 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff7 ^clg
+F 0x287 tskA
+F 0x2ff9 tskA
+F 0x300f task
+F 0x3110 task
+F 0x2f2c task
+F 0x300c task
+F 0x2d0d task
+F 0x3001 task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ffe ^clg
+F 0x2d0d tskA
+F 0x3029 tskA
+F 0x2fff task
+F 0x2ffb task
+F 0x3002 task
+F 0x3003 task
+F 0x3034 task
+F 0x2ff7 task
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3038 ^clg
+F 0x3034 tskA
+F 0x30fa tskA
+F 0x302c task
+F 0x302d task
+F 0x3082 task
+F 0x3017 task
+F 0x3027 task
+F 0x2ffe task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3019 ^clg
+F 0x3027 tskA
+F 0x301e tskA
+F 0x2ff5 task
+F 0x300a task
+F 0x2ff4 task
+F 0x2f2b task
+F 0x2ffa task
+F 0x3038 task
+T
+A tskA
+A task
+A task
+F 0x2d0d tsk.
+F 0x2f2b task
+F 0x2ffa task
+F 0x3038 tskA
+F 0x3029 task
+F 0x2fff task
+F 0x2ffb task
+F 0x3002 tskO
+F 0x3003 tskA
+F 0x2ff7 ordt
+F 0x3033 l^pa
+F 0x3035 ^clu
+T
+F 0x3031 tsk.
+F 0x3032 task
+F 0x2fef task
+F 0x3020 task
+F 0x2ca2 tskO
+F 0x2ffc tskA
+F 0x3039 ordt
+F 0x3006 l^pa
+F 0x307e ^clu
+T
+T
+T
+A tskA
+A task
+A task
+F 0x287 tsk.
+F 0x3039 task
+F 0x3006 task
+F 0x307e tskA
+F 0x2ff9 task
+F 0x300f task
+F 0x3110 task
+F 0x2f2c tskO
+F 0x300c tskA
+F 0x3001 ordt
+F 0x301c l^pa
+F 0x3030 ^clu
+T
+T
+T
+F 0x3111 tskt
+F 0x3028 task
+T
+F 0x3015 l^pa
+F 0x30b8 ^clu
+T
+T
+T
+T
+F 0x3024 tsk.
+F 0x30e5 task
+F 0x30b9 task
+F 0x2ff8 task
+F 0x2f4c tskO
+F 0x30cf tskA
+F 0x2ff1 ordt
+F 0x3117 l^pa
+F 0x2d0e ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3001 ^clg
+F 0x3117 tskA
+F 0x301c tskA
+F 0x3030 task
+F 0x3111 task
+F 0x3028 task
+F 0x3015 task
+F 0x30b8 task
+F 0x3024 task
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3034 tsk.
+F 0x3015 task
+F 0x30b8 task
+F 0x3024 tskA
+F 0x30fa task
+F 0x302c task
+F 0x302d task
+F 0x3082 tskO
+F 0x3017 tskA
+F 0x2ffe ordt
+F 0x2f3b l^pa
+F 0x30e4 ^clu
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3111 ^clg
+F 0x3022 tskt
+F 0x2f4b tskt
+F 0x3084 tskt
+F 0x2ca1 task
+F 0x30a0 task
+F 0x2f3c task
+F 0x303a task
+F 0x301d tskA
+F 0x3116 ordt
+F 0x3028 tskA
+F 0x3034 task
+F 0x3015 task
+F 0x30b8 task
+F 0x3024 task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3117 ^clg
+F 0x30b8 tskA
+F 0x3111 tskA
+F 0x3022 task
+F 0x2f4b task
+F 0x3084 task
+F 0x2ca1 task
+F 0x30a0 task
+F 0x2f3c task
+T
+T
+T
+T
+F 0x303a tsk.
+F 0x301d task
+F 0x3116 task
+F 0x3028 task
+F 0x3034 tskO
+F 0x3015 tskA
+F 0x3024 ordt
+T
+F 0x3110 l^pa
+F 0x3001 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3111 ^clg
+F 0x3110 tskA
+F 0x3022 tskA
+F 0x2f4b task
+F 0x3084 task
+F 0x2ca1 task
+F 0x30a0 task
+F 0x2f3c task
+F 0x303a task
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ffc ^clg
+F 0x2f3c tskA
+F 0x287 tskA
+F 0x3039 task
+F 0x3006 task
+F 0x307e task
+F 0x2ff9 task
+F 0x300f task
+F 0x3111 task
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3003 ^clg
+F 0x300f tskA
+F 0x2ff7 tskA
+F 0x3033 task
+F 0x3035 task
+F 0x3031 task
+F 0x3032 task
+F 0x2fef task
+F 0x2ffc task
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A tskt
+A task
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x300a ^clg
+F 0x30fa tskt
+F 0x302c tskt
+F 0x302d task
+F 0x3082 task
+F 0x3017 task
+F 0x2ffe task
+F 0x2f3b tskA
+F 0x30e4 ordt
+F 0x2ff4 tskA
+F 0x2d0d task
+F 0x2f2b task
+F 0x2ffa task
+F 0x3038 task
+F 0x301c l^pa
+F 0x3030 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x300a ^clg
+F 0x301c tskA
+F 0x30fa tskA
+F 0x302c task
+F 0x302d task
+F 0x3082 task
+F 0x3017 task
+F 0x2ffe task
+F 0x2f3b task
+T
+T
+T
+T
+T
+T
+F 0x3110 tsk.
+F 0x3022 task
+F 0x2f4b task
+F 0x3084 task
+F 0x2ca1 tskO
+F 0x30a0 tskA
+F 0x303a ordt
+F 0x3020 l^pa
+F 0x2ca2 ^clu
+T
+A tskA
+A task
+A task
+F 0x30e4 tsk.
+F 0x303a task
+F 0x3020 task
+F 0x2ca2 tskA
+F 0x2ff4 task
+F 0x2d0d task
+F 0x2f2b task
+F 0x2ffa tskO
+F 0x3038 tskA
+F 0x3030 ordt
+F 0x3019 l^pa
+F 0x3027 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2f4b ^clg
+F 0x3019 tskA
+F 0x3084 tskA
+F 0x2ca1 task
+F 0x30a0 task
+F 0x30e4 task
+F 0x303a task
+F 0x3020 task
+F 0x2ca2 task
+T
+F 0x301d tsk.
+F 0x3116 task
+F 0x3028 task
+F 0x3034 task
+F 0x3015 tskO
+F 0x3024 tskA
+F 0x3001 ordt
+T
+F 0x3117 l^pa
+F 0x30b8 ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3084 ^clg
+F 0x3117 tskA
+F 0x2ca1 tskA
+F 0x30a0 task
+F 0x30e4 task
+F 0x303a task
+F 0x3020 task
+F 0x2ca2 task
+F 0x301d task
+T
+F 0x3029 tskt
+F 0x2fff task
+T
+F 0x301e l^pa
+F 0x2ff5 ^clu
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3017 ^clg
+F 0x301e tskA
+F 0x2ffe tskA
+F 0x2f3b task
+F 0x3084 task
+F 0x3117 task
+F 0x2ca1 task
+F 0x30a0 task
+F 0x30e4 task
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3037 ^clg
+F 0x30a0 tskA
+F 0x300b tskA
+F 0x3018 task
+F 0x300a task
+F 0x301c task
+F 0x30fa task
+F 0x302c task
+F 0x3017 task
+T
+F 0x30e5 tsk.
+F 0x30b9 task
+F 0x2ff8 task
+F 0x2f4c task
+F 0x30cf tskO
+F 0x2ff1 tskA
+F 0x2d0e ordt
+F 0x2f2c l^pa
+F 0x300c ^clu
+F 0x2ff4 tsk.
+F 0x2d0d task
+F 0x2f2b task
+F 0x2ffa task
+F 0x3038 tskO
+F 0x3030 tskA
+F 0x3027 ordt
+T
+F 0x3110 l^pa
+F 0x3022 ^clu
+T
+T
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30cf ^clg
+F 0x3003 tskt
+F 0x300f tskt
+F 0x2ff7 tskt
+F 0x3033 task
+F 0x3035 task
+F 0x3031 task
+F 0x3032 task
+F 0x2fef tskA
+F 0x2ffc ordt
+F 0x2ff1 tskA
+F 0x2d0e task
+F 0x2f2c task
+F 0x300c task
+F 0x2ff4 task
+T
+T
+T
+A tskA
+A task
+A task
+F 0x2f3c tsk.
+F 0x2f2c task
+F 0x300c task
+F 0x2ff4 tskA
+F 0x287 task
+F 0x3039 task
+F 0x3006 task
+F 0x307e tskO
+F 0x2ff9 tskA
+F 0x3111 ordt
+F 0x2ffb l^pa
+F 0x3002 ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2fef ^clg
+F 0x2ffb tskA
+F 0x2ffc tskA
+F 0x2ff1 task
+F 0x2d0e task
+F 0x2f3c task
+F 0x2f2c task
+F 0x300c task
+F 0x2ff4 task
+T
+T
+F 0x303a tsk.
+F 0x3020 task
+F 0x2ca2 task
+F 0x301d task
+F 0x3029 tskO
+F 0x2fff tskA
+F 0x2ff5 ordt
+T
+F 0x302d l^pa
+F 0x3082 ^clu
+T
+A tskA
+A task
+A task
+F 0x287 tsk.
+F 0x2ff5 task
+F 0x302d task
+F 0x3082 tskA
+F 0x3039 task
+F 0x3006 task
+F 0x307e task
+F 0x2ff9 tskO
+F 0x3111 tskA
+F 0x3002 ordt
+T
+F 0x3031 l^pa
+F 0x3032 ^clu
+T
+T
+F 0x3116 tsk.
+F 0x3028 task
+F 0x3034 task
+F 0x3015 task
+F 0x3024 tskO
+F 0x3001 tskA
+F 0x30b8 ordt
+F 0x2f4b l^pa
+F 0x3019 ^clu
+T
+A `rtl
+A `rtl
+A `rtl
+A `rtl
+F 0x3000 `rtl
+F 0x3005 `rtl
+F 0x3014 `rtl
+F 0x3023 `rtl
+T
+T
+T
+T
+T
+F 0x301e tsk.
+F 0x2ffe task
+F 0x2f3b task
+F 0x3084 task
+F 0x3117 tskO
+F 0x2ca1 tskA
+F 0x30e4 ordt
+T
+F 0x3007 l^pa
+F 0x2fed ^clu
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A tskt
+A task
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3028 ^clg
+F 0x2d0d tskt
+F 0x2f2b tskt
+F 0x2ffa task
+F 0x3038 task
+F 0x3030 task
+F 0x3027 task
+F 0x3110 tskA
+F 0x3022 ordt
+F 0x3034 tskA
+F 0x3015 task
+F 0x3024 task
+F 0x3000 task
+F 0x3005 task
+T
+F 0x2ff8 l^pa
+F 0x2f4c ^clu
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3028 ^clg
+F 0x2ff8 tskA
+F 0x2d0d tskA
+F 0x2f2b task
+F 0x2ffa task
+F 0x3038 task
+F 0x3030 task
+F 0x3027 task
+F 0x3110 task
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x302d ^clg
+F 0x3027 tskA
+F 0x3082 tskA
+F 0x3039 task
+F 0x3006 task
+F 0x307e task
+F 0x2ff9 task
+F 0x3111 task
+F 0x3028 task
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff4 ^clg
+F 0x3111 tskA
+F 0x303a tskA
+F 0x3020 task
+F 0x2ca2 task
+F 0x301d task
+F 0x3029 task
+F 0x2fff task
+F 0x302d task
+T
+A tskA
+A task
+A task
+F 0x3022 tsk.
+F 0x3029 task
+F 0x2fff task
+F 0x302d tskA
+F 0x3034 task
+F 0x3015 task
+F 0x3024 task
+F 0x3000 tskO
+F 0x3005 tskA
+F 0x2f4c ordt
+F 0x3002 l^pa
+F 0x3031 ^clu
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x303a ^clg
+F 0x3002 tskA
+F 0x3020 tskA
+F 0x2ca2 task
+F 0x301d task
+F 0x3022 task
+F 0x3029 task
+F 0x2fff task
+F 0x302d task
+T
+F 0x3014 tskt
+F 0x3023 task
+F 0x3032 l^pa
+F 0x3116 ^clu
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ff1 ^clg
+F 0x3032 tskA
+F 0x2d0e tskA
+F 0x2f3c task
+F 0x303a task
+F 0x3002 task
+F 0x3020 task
+F 0x2ca2 task
+F 0x301d task
+T
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x300f ^clg
+F 0x301e tskt
+F 0x2ffe tskt
+F 0x2f3b tskt
+F 0x3084 task
+F 0x3117 task
+F 0x2ca1 task
+F 0x30e4 task
+F 0x3007 tskA
+F 0x2fed ordt
+F 0x2ff7 tskA
+F 0x3033 task
+F 0x3035 task
+F 0x2fef task
+F 0x2ff1 task
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3034 tsk.
+F 0x3015 task
+F 0x3024 task
+F 0x3000 task
+F 0x3005 tskO
+F 0x2f4c tskA
+F 0x3031 ordt
+F 0x3027 tsk.
+F 0x3035 task
+F 0x2fef task
+F 0x2ff1 tskA
+F 0x3082 task
+F 0x3039 task
+F 0x3006 task
+F 0x307e tskO
+F 0x2ff9 tskA
+F 0x3028 ordt
+F 0x2ff4 l^pa
+F 0x3111 ^clu
+F 0x2f2c l^pa
+F 0x300c ^clu
+T
+F 0x2ff8 tsk.
+F 0x2d0d task
+F 0x2f2b task
+F 0x2ffa task
+F 0x3038 tskO
+F 0x3030 tskA
+F 0x3110 ordt
+F 0x287 l^pa
+F 0x2ff5 ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x307e ^clg
+F 0x287 tskA
+F 0x2ff9 tskA
+F 0x3028 task
+F 0x2ff4 task
+F 0x3111 task
+F 0x2f2c task
+F 0x300c task
+F 0x2ff8 task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2f4c ^clg
+F 0x300c tskA
+F 0x3031 tskA
+F 0x3027 task
+F 0x3035 task
+F 0x2fef task
+F 0x2ff1 task
+F 0x3082 task
+F 0x307e task
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3007 ^clg
+F 0x3082 tskA
+F 0x2fed tskA
+F 0x2ff7 task
+F 0x3033 task
+F 0x3034 task
+F 0x3015 task
+F 0x3024 task
+F 0x2f4c task
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30b9 ^clg
+F 0x3024 tskA
+F 0x300f tskA
+F 0x301e task
+F 0x2ffe task
+F 0x2f3b task
+F 0x3084 task
+F 0x3117 task
+F 0x3007 task
+T
+A tskA
+A task
+A task
+F 0x3082 tsk.
+F 0x3084 task
+F 0x3117 task
+F 0x3007 tskA
+F 0x2fed task
+F 0x2ff7 task
+F 0x3033 task
+F 0x3034 tskO
+F 0x3015 tskA
+F 0x2f4c ordt
+F 0x3017 l^pa
+F 0x30e5 ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x300f ^clg
+F 0x3017 tskA
+F 0x301e tskA
+F 0x2ffe task
+F 0x2f3b task
+F 0x3082 task
+F 0x3084 task
+F 0x3117 task
+F 0x3007 task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30a0 ^clg
+F 0x3117 tskA
+F 0x300b tskA
+F 0x3018 task
+F 0x300a task
+F 0x301c task
+F 0x30fa task
+F 0x302c task
+F 0x300f task
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A tskt
+A task
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2f5b ^clg
+F 0x3032 tskt
+F 0x2d0e tskt
+F 0x2f3c task
+F 0x303a task
+F 0x3002 task
+F 0x3020 task
+F 0x2ca2 tskA
+F 0x301d ordt
+F 0x2fe9 tskA
+F 0x3134 task
+F 0x314c task
+F 0x2ff0 task
+F 0x3036 task
+T
+F 0x30cf l^pa
+F 0x3003 ^clu
+T
+T
+T
+T
+T
+A tskA
+A task
+A task
+F 0x3017 tsk.
+F 0x3036 task
+F 0x30cf task
+F 0x3003 tskA
+F 0x301e task
+F 0x2ffe task
+F 0x2f3b task
+F 0x3082 tskO
+F 0x3084 tskA
+F 0x3007 ordt
+F 0x3013 l^pa
+F 0x3037 ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2fe9 ^clg
+F 0x3013 tskA
+F 0x3134 tskA
+F 0x314c task
+F 0x2ff0 task
+F 0x3017 task
+F 0x3036 task
+F 0x30cf task
+F 0x3003 task
+T
+A tskA
+A task
+A task
+F 0x2d0d tsk.
+F 0x3036 task
+F 0x30cf task
+F 0x3003 tskA
+F 0x2f2b task
+F 0x2ffa task
+F 0x3038 task
+F 0x3030 tskO
+F 0x3110 tskA
+F 0x2ff5 ordt
+F 0x3039 l^pa
+F 0x3006 ^clu
+T
+T
+T
+F 0x3022 tsk.
+F 0x3029 task
+F 0x2fff task
+F 0x302d task
+F 0x3014 tskO
+F 0x3023 tskA
+F 0x3116 ordt
+T
+F 0x2ffb l^pa
+F 0x2ffc ^clu
+F 0x2fed tsk.
+F 0x2ff7 task
+F 0x3033 task
+F 0x3034 task
+F 0x3015 tskO
+F 0x2f4c tskA
+F 0x30e5 ordt
+F 0x30b9 l^pa
+F 0x3024 ^clu
+T
+T
+T
+F 0x287 tsk.
+F 0x2ff9 task
+F 0x3028 task
+F 0x2ff4 task
+F 0x3111 tskO
+F 0x2f2c tskA
+F 0x2ff8 ordt
+F 0x3000 l^pa
+F 0x3005 ^clu
+T
+T
+T
+F 0x302a tskt
+F 0x2fbb task
+T
+F 0x30ce l^pa
+F 0x2f5c ^clu
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x30e5 ^clg
+F 0x30ce tskA
+F 0x30b9 tskA
+F 0x3024 task
+F 0x287 task
+F 0x2ff9 task
+F 0x3028 task
+F 0x2ff4 task
+F 0x3111 task
+T
+T
+T
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x2ffc ^clg
+F 0x30a0 tskt
+F 0x3117 tskt
+F 0x300b tskt
+F 0x3018 task
+F 0x300a task
+F 0x301c task
+F 0x30fa task
+F 0x302c tskA
+F 0x300f ordt
+F 0x2fed tskA
+F 0x2ff7 task
+F 0x3033 task
+F 0x3034 task
+F 0x30e5 task
+T
+T
+A tskA
+A task
+A task
+F 0x300c tsk.
+F 0x3033 task
+F 0x3034 task
+F 0x30e5 tskA
+F 0x3031 task
+F 0x3027 task
+F 0x3035 task
+F 0x2fef tskO
+F 0x2ff1 tskA
+F 0x307e ordt
+F 0x2ca1 l^pa
+F 0x30e4 ^clu
+T
+T
+F 0x301e tsk.
+F 0x2ffe task
+F 0x2f3b task
+F 0x3082 task
+F 0x3084 tskO
+F 0x3007 tskA
+F 0x3037 ordt
+F 0x2ca2 l^pa
+F 0x301d ^clu
+T
+T
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3027 ^clg
+F 0x2ca2 tskA
+F 0x3035 tskA
+F 0x2fef task
+F 0x2ff1 task
+F 0x307e task
+F 0x2ca1 task
+F 0x30e4 task
+F 0x301e task
+T
+T
+F 0x2f2c tsk.
+F 0x2ff8 task
+F 0x3000 task
+F 0x3005 task
+F 0x302a tskO
+F 0x2fbb tskA
+F 0x2f5c ordt
+F 0x3015 l^pa
+F 0x2f4c ^clu
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3035 ^clg
+F 0x3015 tskA
+F 0x2fef tskA
+F 0x2ff1 task
+F 0x307e task
+F 0x2ca1 task
+F 0x30e4 task
+F 0x301e task
+F 0x2f2c task
+T
+A ordt
+A tskA
+A tskA
+A tskO
+A task
+A task
+A task
+A tsk.
+A task
+A task
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x302c ^clg
+F 0x301e tskA
+F 0x300f tskA
+F 0x2fed task
+F 0x2ff7 task
+F 0x300c task
+F 0x3033 task
+F 0x3034 task
+F 0x3035 task
+T
+T
+T
+T
+T
+T
+T
+T
+T
+A ordt
+A tskA
+A task
+A task
+A task
+A task
+A tskt
+A tskt
+A tskt
+A task
+A tskt
+A task
+A task
+A task
+A task
+A tskA
+A ^clg
+A ^clu
+A l^pa
+F 0x3014 ^clg
+F 0x2ffe tsk.
+F 0x2f3b task
+F 0x3082 task
+F 0x3084 task
+F 0x3007 tskO
+F 0x3037 tskA
+F 0x301d ordt
+F 0x30ce tskt
+F 0x30b9 tskt
+F 0x3024 task
+F 0x287 task
+F 0x2ff9 task
+F 0x3028 task
+F 0x2ff4 tskA
+F 0x3111 ordt
+F 0x3023 tskA
+F 0x2ffc task
+F 0x30a0 task
+F 0x3117 task
+F 0x300b task
+T
+F 0x30e5 l^pa
+F 0x3031 ^clu
+F 0x3116 l^pa
+F 0x2ffb ^clu
+T
+T
+A tskA
+A task
+A task
+F 0x3015 tsk.
+F 0x3031 task
+F 0x3116 task
+F 0x2ffb tskA
+F 0x2fef task
+F 0x2ff1 task
+F 0x307e task
+F 0x2ca1 tskO
+F 0x30e4 tskA
+F 0x2f2c ordt
+T
+F 0x301c l^pa
+F 0x30fa ^clu

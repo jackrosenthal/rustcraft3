@@ -329,6 +329,56 @@ these are the findings behind them.
   frees them in turn 1217.  Not explained yet: an arrival at a turn's last tick in
   turn 570, and give-ups at a last tick (turns 59 and 368), free in their turn.  The
   tags example prints each turn's steps with their main ticks (TAGS_STEPS).
+- Gold mining (traced: a Booty Bay peon sent by a smart order to its gold mine, its
+  tags, movement steps, waypoint provider, range tests, and speed writes read under
+  winedbg in separate games; `crate::goldrun`):
+  - Its walks are the engine's (`World::walk_steps`).  The way is searched toward the
+    structure's middle cell and ends at the first node popped whose ring for the
+    walker's class touches the structure's footprint (`FUN_6f148790` as
+    `FUN_6f166310` uses it): from 670, 266 to the mine (676 to 683 by 260 to 267) at
+    675, 265; home from 675, 265 to the great hall (650 to 661 by 258 to 269) at 663,
+    265.  The path's goal (+0x1c) is the structure's middle, its last point the end
+    node's middle.  The walk ends at that point as the wanderers' do (within 0.49,
+    the provider's answer 3); within reach the walker stops and turns onto the
+    structure's bearing, its heading then exactly that bearing (a turn within its rate
+    sets it, read across 0: 5.990847), and arrives the next step.  The range tests
+    after (`FUN_6f05b580`: range over 32 plus both position objects' +0x90 radii,
+    0.5, 1.5625 for the mine, 5.5 for the hall, the places extrapolated) fail at both
+    structures; their contact test (`FUN_6f058cb0`, the ring touching the footprint)
+    passes.
+  - The first walk, from the player's order, searches as other walks do (its path's
+    mask +0x9c 0x02000002; the idle peons' regions, +0x34 0x10000ca, refuse cells).
+    After the worker's first entry its orders carry task 0xd0150 and their walks'
+    mask is 0x10000010, which no unit's region meets: the search, the line test of
+    `World::way_ahead`, and the hold for units ahead all pass through other units
+    (read: the walk home along row 265 past the idle peon whose region covers 672,
+    264, never held and drawing nothing).
+  - At the mine (`FUN_6f437ae0`, in the step the walk ends): a worker's first entry
+    makes a `+fgm`; the harvest order's move task and the task before it are freed at
+    once; its path at the end of the next step, before that step's walk ends'
+    objects.  It goes in for the mine's Agld DataB (1 second) on the agent queue,
+    comes out where it went in when that is up (its walk home's first step the first
+    step after), and its harvest order's tree goes with the order home's making.
+  - Its speed is tuned at each arrival (constants read under winedbg: 10, 0.5, 1.2,
+    5): a 10-second timer started at the last arrival gives the trip's time, less the
+    mine's 1 second the travel; the factor that would have made the travel (and the
+    last trip's, when there was one, each times its own factor) take 5 seconds less
+    the mine's, clamped to 0.5 to 1.2, less 1, is the new bonus, added to the
+    movement ability's factor (+0x78; `FUN_6f5fb7c0`, `FUN_6f5fc900`).  No tuning at
+    the first arrival.  Read: 6.041100 and 6.025844 cells a second after trips of
+    5.069793 and 4.979798 seconds.
+  - At the hall, in the step the walk ends (`FUN_6f438880`): the gold is given and
+    the worker's own harvest order made, its `^clg` freed at once; the order home's
+    tree goes as the step ends, after the step's walk ends' objects, then the new
+    order's five; the walk home's path at the end of the next step.
+  - The orders' objects: a player's harvest order 19 (`ordt`, two `tskA`, four
+    tasks, three `tskt`, a task, a `tskt`, three tasks, `tskA`, `^clg`, `^clu`,
+    `l^pa`), five of them freed as the next turn starts; the worker's own from the
+    hall 19 (one `tskA` at its head, four tasks at its tail); the order home 16.
+  With this the mining game (`docs/reference/bootybay_mining_*`) agrees with the
+  original's trace through turn 1218 (parting at 1219 as the game without actions
+  does) and its keepalives through 1253; the game of selections, a training, and
+  mining agrees to turn 575.
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

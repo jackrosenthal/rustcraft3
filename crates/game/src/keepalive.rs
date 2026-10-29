@@ -126,6 +126,29 @@ impl World {
     /// 4, 5, 7, and 9; the map's custom data, 12 to 19) are taken from
     /// `keepalive_modules`, values read from the original; module 0 is the cheat
     /// flags, 0 without cheats.
+    /// The game module (6) that would make this keepalive `want`, the other inputs as
+    /// they are: for reading which part of a differing keepalive differs.
+    pub fn game_module_for(&self, want: u32) -> u32 {
+        let state = self.rng.state();
+        let h = byte_hash((state >> 32) as u32).wrapping_add(byte_hash(state as u32));
+        let presence = self.tags.free.last().copied().unwrap_or(self.tags.slots);
+        let mut c = want.rotate_right(3) ^ h;
+        c = c.rotate_right(3) ^ self.tags.born;
+        c = c.rotate_right(3) ^ presence;
+        let m = c.rotate_right(3) ^ self.game_ms;
+        let mut a = m.rotate_right(3) ^ 0x17ab;
+        let mut modules = self.keepalive_modules.clone();
+        modules.insert(0, 0);
+        modules.insert(2, self.net_sum);
+        modules.insert(3, self.rand_data.checksum());
+        // Peel the modules below 6 off the fold (it runs from the last to the first).
+        for (_, &v) in modules.range(..6) {
+            a = a.rotate_right(3) ^ v;
+        }
+        let above = modules.range(7..).rev().fold(0u32, |m, (_, &v)| (m ^ v).rotate_left(3));
+        a.rotate_right(3) ^ above
+    }
+
     pub fn keepalive(&self) -> u32 {
         let mut modules = self.keepalive_modules.clone();
         modules.insert(0, 0);

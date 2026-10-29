@@ -65,6 +65,7 @@ pub mod pathing;
 pub mod placement;
 pub mod repair;
 pub mod keepalive;
+pub mod goldrun;
 pub mod selection;
 pub mod techreg;
 pub mod rng;
@@ -910,7 +911,9 @@ impl Game {
                     let (x, y) = if target != 0 { (0.0, 0.0) } else { (x, y) };
                     self.world.order_error = None;
                     self.world.leave_formation(u);
+                    self.world.ordering_player = true;
                     self.world.issue_order(u, order, x, y, target, queue);
+                    self.world.ordering_player = false;
                     match self.world.order_error.take() {
                         Some(e) => error = Some(e),
                         None => ordered = true,

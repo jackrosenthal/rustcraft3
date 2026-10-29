@@ -648,6 +648,10 @@ impl World {
         // that take up the same target on their own strike on time).
         let fresh_attack = matches!(action, Action::Attack { .. }) && self.unit(h).is_some_and(|u| !(u.order.id == order && u.order.target == target));
         let reaction = if fresh_attack { self.rng.real(0.0, self.misc_f32("ReactionDelay", 0.25)) } else { 0.0 };
+        let harvest = match action {
+            Action::Harvest { target } => Some(target),
+            _ => None,
+        };
         if let Some(u) = self.unit_mut(h) {
             u.action = action;
             u.extra.reaction = reaction;
@@ -668,6 +672,18 @@ impl World {
             u.path.clear();
             u.repath_timer = 0.0;
             u.order = Order { id: order, target_x: x, target_y: y, target };
+        }
+        // A gold mine's harvest runs by the original's engine (`crate::goldrun`).
+        match harvest {
+            Some(target) if self.gold_run_eligible(h, target) => {
+                let player = self.ordering_player;
+                self.start_gold_run(h, target, player);
+            }
+            _ => {
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.gold_run = None;
+                }
+            }
         }
     }
 
@@ -766,7 +782,7 @@ impl World {
         let (Some(u), Some(p)) = (self.unit(h), self.pathing.as_ref()) else { return taken };
         for &o in &self.unit_order {
             let Some(v) = self.unit(o).filter(|v| o != h && !v.dead && !v.hidden && !v.is_building && v.collision > 0.0 && (v.x - u.x).abs() < 2048.0 && (v.y - u.y).abs() < 2048.0) else { continue };
-            if v.extra.local_paths && v.extra.mover.is_some_and(|m| m.vx & 0x7fff_ffff != 0 || m.vy & 0x7fff_ffff != 0) {
+            if (v.extra.local_paths || v.extra.gold_run.is_some()) && v.extra.mover.is_some_and(|m| m.vx & 0x7fff_ffff != 0 || m.vy & 0x7fff_ffff != 0) {
                 continue;
             }
             if self.move_kind(o) == crate::pathing::Move::Fly {
@@ -793,7 +809,10 @@ impl World {
         }
         let class = crate::lrpath::class_of(u.collision / crate::pathing::CELL);
         let kind = self.move_kind(h);
-        let taken = self.regions_taken(h);
+        // A harvest walking past units sees through them (read: a peon home from the mine
+        // heading for its way's far end past an idle peon).
+        let ghost = u.extra.gold_run.as_ref().is_some_and(|r| r.entered);
+        let taken = if ghost { Default::default() } else { self.regions_taken(h) };
         let open = |c: (i32, i32)| p.passable(c, kind) && !taken.contains(&c);
         let cell = |w: f32, o: f32| ((w - o) / crate::pathing::CELL).to_bits();
         let mut k = 0;
@@ -807,13 +826,20 @@ impl World {
     }
 
     fn local_path(&self, h: u32, goal: (f32, f32)) -> Option<(Vec<(f32, f32)>, Option<(i32, i32)>, u32)> {
-        let u = self.unit(h).filter(|u| u.extra.local_paths)?;
+        let u = self.unit(h).filter(|u| u.extra.local_paths || u.extra.gold_run.is_some())?;
+        let to_structure = u.extra.gold_run.is_some();
         let p = self.pathing.as_ref()?;
         let kind = self.move_kind(h);
         if kind == crate::pathing::Move::Fly {
             return None;
         }
-        let taken = self.regions_taken(h);
+        // Once a worker has been in the mine its harvest's walks search past other units
+        // (its orders' task 0xd0150 sets the search's mask, the path's +0x9c, to
+        // 0x10000010 from 0x02000002, and units' regions, +0x34 0xca, do not meet it;
+        // read: a peon's way home along row 265 past an idle peon whose region covers
+        // 672, 264, where its first walk's search was refused by them).
+        let ghost = u.extra.gold_run.as_ref().is_some_and(|r| r.entered);
+        let taken = if ghost { Default::default() } else { self.regions_taken(h) };
         struct Local<'a> {
             p: &'a crate::pathing::PathingMap,
             kind: crate::pathing::Move,
@@ -827,12 +853,17 @@ impl World {
         let cells = Local { p, kind, taken };
         let class = crate::lrpath::class_of(u.collision / crate::pathing::CELL);
         let (start, end) = (p.cell_of(u.x, u.y), p.cell_of(goal.0, goal.1));
-        let (out, refused, cost) = crate::lrpath::search_costing(&cells, start, end, class, 32);
+        let (out, refused, cost) = match self.gold_run_search(h, &cells, start, end, class) {
+            Some(r) => r,
+            None => crate::lrpath::search_costing(&cells, start, end, class, 32),
+        };
         log::debug!("search for {h} from {start:?} to {end:?}: {:?} refused {refused}", match &out { crate::lrpath::Outcome::Found(c) => format!("found {}", c.len()), crate::lrpath::Outcome::Nearest(c) => format!("nearest {:?}", c.last()), crate::lrpath::Outcome::Stay => "stay".into() });
         // A search that met no refused cell sends the walker straight to its way's end
         // (`FUN_6f166e90`: the way's index set to its end, else to its first node).
         let straight = |way: Vec<(f32, f32)>| if refused { way } else { way.last().map(|&w| vec![w]).unwrap_or_default() };
         Some(match out {
+            // A way to a structure ends at its last node's middle.
+            crate::lrpath::Outcome::Found(c) if to_structure => (straight(c[1..].iter().map(|&c| p.center(c)).collect()), None, cost),
             crate::lrpath::Outcome::Found(c) => {
                 let mut way: Vec<(f32, f32)> = c[1..].iter().map(|&c| p.center(c)).collect();
                 way.pop();
@@ -852,7 +883,7 @@ impl World {
         // to 0x555 were refused, at 0x556 allowed); refused, its way stays dropped and
         // it tries again the next step.
         let now = self.step_index + self.step_range.0 as u64;
-        let local = self.unit(h).is_some_and(|u| u.extra.local_paths) && self.move_kind(h) != crate::pathing::Move::Fly;
+        let local = self.unit(h).is_some_and(|u| u.extra.local_paths || u.extra.gold_run.is_some()) && self.move_kind(h) != crate::pathing::Move::Fly;
         if local && self.unit(h).and_then(|u| u.extra.search_at).is_some_and(|t| now.wrapping_sub(t) < 10) {
             if let Some(u) = self.unit_mut(h) {
                 u.path.clear();
@@ -1155,19 +1186,22 @@ impl World {
         let paths = if self.step_clocks.is_empty() { Vec::new() } else { self.tags.take_step_paths() };
         self.tags.begin_first_step();
         self.step_range = (0, self.step_clocks.len().min(1));
-        let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.local_paths && matches!(u.action, Action::Move { .. }))).collect();
+        let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.steps_walker())).collect();
         // The newest walk first (traced: sheep 1050120, given its order after 1050117,
         // held it back before it moved in a step; pig 1050123 likewise held 1050124).
         walkers.sort_by_key(|&h| std::cmp::Reverse(self.unit(h).map_or(0, |u| u.extra.walk_serial)));
-        // New orders have their ways found in this step, before its movement.
+        // New orders have their ways found in this step, before its movement; a walk to a
+        // structure ends here, in the provider's turn (`World::gold_run_step_end`).
+        let mut walkers = self.gold_run_step_ends(walkers, 0);
         for &h in &walkers {
             let Some(u) = self.unit(h) else { continue };
-            if u.extra.mover.is_none() {
-                if let (true, &Action::Move { x, y }) = (u.path.is_empty(), &u.action) {
-                    self.path_to(h, (x, y));
+            if u.extra.mover.is_none() && u.path.is_empty() {
+                if let Some(g) = self.walk_goal(h) {
+                    self.path_to(h, g);
                 }
             }
         }
+        walkers.retain(|&h| self.unit(h).is_some_and(|u| u.steps_walker()));
         for h in walkers {
             // One given before this step (this tick's) walks from the next, one given
             // after the last tick's steps from this one (`World::update_wander`).
@@ -1198,6 +1232,7 @@ impl World {
         for k in 1..n {
             // The orders due before this step are given first (traced: a pig's walk ended
             // in a turn's second step, before an order due after it).
+            self.tags.mark_step(k);
             let now: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 == k).collect();
             let next = self.step_ticks.get(k).copied();
             self.issue_wanders(&now, next);
@@ -1208,23 +1243,25 @@ impl World {
             let paths = self.tags.take_step_paths();
             self.tags.free_step_paths(paths);
             self.step_range = (k, k + 1);
-            let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.local_paths && matches!(u.action, Action::Move { .. }))).collect();
+            let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.steps_walker())).collect();
         // The newest walk first (traced: sheep 1050120, given its order after 1050117,
         // held it back before it moved in a step; pig 1050123 likewise held 1050124).
         walkers.sort_by_key(|&h| std::cmp::Reverse(self.unit(h).map_or(0, |u| u.extra.walk_serial)));
-            // The step's searches come before its movement (read: a sheep about to move
-            // in the step still blocks another's search in it).
-            for &h in &walkers {
-                let Some(u) = self.unit(h) else { continue };
-                if u.extra.mover.is_none() && u.extra.walk_from.is_none_or(|f| f <= k) {
-                    if let (true, &Action::Move { x, y }) = (u.path.is_empty(), &u.action) {
-                        self.path_to(h, (x, y));
-                    }
-                }
-            }
             // Its walk ends' objects wait for its end as a first step's do (traced: two
             // give-ups in a turn's second step make their new objects, then free all).
             self.tags.begin_step();
+            // The step's searches come before its movement (read: a sheep about to move
+            // in the step still blocks another's search in it).
+            let mut walkers = self.gold_run_step_ends(walkers, k);
+            for &h in &walkers {
+                let Some(u) = self.unit(h) else { continue };
+                if u.extra.mover.is_none() && u.extra.walk_from.is_none_or(|f| f <= k) && u.path.is_empty() {
+                    if let Some(g) = self.walk_goal(h) {
+                        self.path_to(h, g);
+                    }
+                }
+            }
+            walkers.retain(|&h| self.unit(h).is_some_and(|u| u.steps_walker()));
             for h in walkers {
                 let Some(u) = self.unit(h) else { continue };
                 if u.extra.mover.is_none() && u.extra.walk_from.is_some_and(|f| f > k) {
@@ -1266,10 +1303,12 @@ impl World {
         let d2 = f32::from_bits(ef::add(ef::mul(dx, dx), ef::mul(dy, dy)));
         let reach = f32::from_bits(ef::mul(0.49f32.to_bits(), 0.49f32.to_bits()));
         u.extra.yields_to = None;
-        let goal = match u.action {
-            Action::Move { x, y } => Some((x, y)),
-            _ => None,
-        };
+        // A worker whose harvest searches past units walks past them too (read: a peon
+        // home from the mine along row 265 never held by the idle peon whose region
+        // covers 672, 264, nor drawing for a block).
+        let ghost = u.extra.gold_run.as_ref().is_some_and(|r| r.entered);
+        let goal = self.walk_goal(h);
+        let Some(u) = self.unit_mut(h) else { return false };
         // Within reach of the end of a way short of its goal, it is as one blocked: it
         // holds and then searches again (traced: a sheep at 0.42 from its way's end held
         // a step at 11.70 and searched at 11.73).
@@ -1291,7 +1330,7 @@ impl World {
         let mine = m.speed2();
         // Each other walker whose region lies on those cells, in their order.
         let mut seen = Vec::new();
-        for &c in &cells {
+        for &c in cells.iter().filter(|_| !ghost) {
             for &o in &self.unit_order {
                 if o == h || seen.contains(&o) {
                     continue;
@@ -1312,7 +1351,7 @@ impl World {
         let blocked = wall || !seen.is_empty() || d2 <= reach;
         for o in seen {
             let Some(v) = self.unit(o) else { continue };
-            let Some(theirs) = v.extra.mover.filter(|_| v.extra.local_paths).map(|m| m.speed2()) else { continue };
+            let Some(theirs) = v.extra.mover.filter(|_| v.extra.local_paths || v.extra.gold_run.is_some()).map(|m| m.speed2()) else { continue };
             if theirs & 0x7fff_ffff == 0 || v.extra.yields_to.is_some_and(|w| self.unit(w).is_some_and(|w| !w.dead)) {
                 continue;
             }
@@ -1377,7 +1416,7 @@ impl World {
         let f = |v: f32| v.to_bits();
         let cell = |w: f32, o: f32| ef::div(ef::sub(f(w), f(o)), f(crate::pathing::CELL));
         let Some(u) = self.unit(h) else { return true };
-        let top = self.current_move_speed(h) / crate::pathing::CELL;
+        let top = self.gold_run_speed(h).unwrap_or_else(|| self.current_move_speed(h)) / crate::pathing::CELL;
         let o = self.objects.units.get(u.type_id);
         let turn = o.map_or(0.5, |o| o.real("turnRate"));
         let window = o.map_or(60.0, |o| o.real("propWin")).to_radians();
@@ -1387,11 +1426,9 @@ impl World {
             Some((cx, cy, wx, wy)) if wx == u.x && wy == u.y => (cx, cy),
             _ => (cell(u.x, origin[0]), cell(u.y, origin[1])),
         };
-        let mut m = u.extra.mover.unwrap_or(crate::motion::Mover { x: cx, y: cy, heading: f(u.facing.to_radians()), placed_at: start, ..Default::default() });
-        let goal = match u.action {
-            Action::Move { x, y } => Some((x, y)),
-            _ => None,
-        };
+        let mut m = u.extra.mover.unwrap_or(crate::motion::Mover { x: cx, y: cy, heading: u.extra.walk_heading.unwrap_or(f(u.facing.to_radians())), placed_at: start, ..Default::default() });
+        let to_structure = u.extra.gold_run.is_some();
+        let goal = self.walk_goal(h);
         if u.extra.mover.is_none() {
             log::debug!("walk of {h} from {:.2}, {:.2} facing {:.2} by {:?} to {goal:?}, time {:.3}, tsk. {:?}", u.x, u.y, u.facing, u.path, self.time, u.extra.order_tags.get(7));
             // A goal within reach as it starts ends the walk without its usual objects
@@ -1498,8 +1535,14 @@ impl World {
                 m.hold(&gait, toward, clock);
                 continue;
             }
-            // The last waypoint of a way short of its goal is arrived at facing the goal.
-            let r = if facing { m.face(&gait, to, clock) } else { m.step(&gait, to, clock) };
+            // The last waypoint of a way short of its goal is arrived at facing the goal,
+            // as is a structure walked to.
+            let last = self.unit(h).is_some_and(|u| u.path.len() == 1);
+            let r = match goal {
+                _ if facing => m.face(&gait, to, clock),
+                Some(g) if to_structure && last => m.arrive(&gait, to, (cell(g.0, origin[0]), cell(g.1, origin[1])), clock),
+                _ => m.step(&gait, to, clock),
+            };
             log::trace!("walk of {h} step {k}: {:?} heading {:.4} to {next:?}", r, f32::from_bits(m.heading));
             if r == crate::motion::Step::Moving {
                 continue;
@@ -2416,6 +2459,8 @@ impl World {
                         u.order = Order::default();
                     }
                 }
+                // A gold run walks with the walkers and goes in and out by its timer.
+                Action::Harvest { .. } if self.unit(h).is_some_and(|u| u.extra.gold_run.is_some()) => {}
                 Action::Harvest { target } => self.harvest(vm, h, target, dt),
                 Action::Build { id, x, y } => self.build(vm, h, id, x, y, dt),
                 Action::Construct { target } => {
@@ -3107,7 +3152,7 @@ impl World {
         })
     }
 
-    fn ability_real(&self, id: Id, field: &str, level: u32) -> f32 {
+    pub(crate) fn ability_real(&self, id: Id, field: &str, level: u32) -> f32 {
         self.objects.abilities.get(id).map_or(0.0, |a| a.level_real(field, level))
     }
 
@@ -3466,7 +3511,7 @@ impl World {
 
     /// The closest friendly structure that accepts what the unit carries (Artn DataA gold,
     /// DataB lumber).
-    fn drop_off(&self, h: u32) -> Option<u32> {
+    pub(crate) fn drop_off(&self, h: u32) -> Option<u32> {
         let u = self.unit(h)?;
         let (gold, lumber) = (u.carry_gold > 0, u.carry_lumber > 0);
         let mut best: Option<(f32, u32)> = None;

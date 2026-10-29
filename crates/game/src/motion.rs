@@ -170,6 +170,74 @@ impl Mover {
         self.steer(gait, to, now, false, Some(goal))
     }
 
+    /// One step toward the last waypoint of a walk to a structure (`goal` its middle):
+    /// once within reach it stops and turns toward the goal, at once when the turn is
+    /// within its rate, and is there when on that bearing (read: a peon 0.25 and 0.18 off
+    /// the bearings of a gold mine and a great hall turned onto them in the step it came
+    /// within reach, stopped, and arrived in the next).
+    pub fn arrive(&mut self, gait: &Gait, to: (u32, u32), goal: (u32, u32), now: u32) -> Step {
+        let (x, y) = self.at(now);
+        let (dx, dy) = (ef::sub(to.0, x), ef::sub(to.1, y));
+        let dist = ef::sqrt(ef::add(ef::mul(dx, dx), ef::mul(dy, dy)));
+        if lt(gait.reach, dist) {
+            return self.steer(gait, to, now, false, None);
+        }
+        let angle = self.goal_angle(goal, now);
+        if angle == ZERO {
+            self.set_velocity(now, ZERO, ZERO);
+            return Step::Reached;
+        }
+        // A turn within its rate puts its heading on the bearing itself (read: a peon's
+        // headings at a gold mine and a hall each its bearing to them, 5.990847 and
+        // 3.327624, also where the turn crossed 0).
+        if lt(abs(angle), gait.turn) {
+            self.heading = self.goal_bearing(goal, now);
+        } else {
+            let speed = ef::sqrt(ef::add(ef::mul(self.vx, self.vx), ef::mul(self.vy, self.vy)));
+            let speed = if lt(abs(speed), TINY_ANGLE) { ZERO } else { speed };
+            let heading = if speed == ZERO { self.heading } else { ef::heading(self.vx, self.vy, speed) };
+            self.heading = wrap(ef::add(heading, if lt(angle, ZERO) { gait.turn | 0x8000_0000 } else { gait.turn }));
+        }
+        self.set_velocity(now, ZERO, ZERO);
+        Step::Moving
+    }
+
+    /// Whether `arrive` would find it there now.
+    pub fn arrived(&self, gait: &Gait, to: (u32, u32), goal: (u32, u32), now: u32) -> bool {
+        let (x, y) = self.at(now);
+        let (dx, dy) = (ef::sub(to.0, x), ef::sub(to.1, y));
+        let dist = ef::sqrt(ef::add(ef::mul(dx, dx), ef::mul(dy, dy)));
+        !lt(gait.reach, dist) && self.goal_angle(goal, now) == ZERO
+    }
+
+    /// A point's bearing from its place now.
+    fn goal_bearing(&self, goal: (u32, u32), now: u32) -> u32 {
+        let (x, y) = self.at(now);
+        let (gx, gy) = (ef::sub(goal.0, x), ef::sub(goal.1, y));
+        let gd = ef::sqrt(ef::add(ef::mul(gx, gx), ef::mul(gy, gy)));
+        ef::heading(gx, gy, gd)
+    }
+
+    /// The turn from its heading (or its velocity's, when moving) to a point's bearing,
+    /// 0 when tiny.
+    fn goal_angle(&self, goal: (u32, u32), now: u32) -> u32 {
+        let (x, y) = self.at(now);
+        let speed = ef::sqrt(ef::add(ef::mul(self.vx, self.vx), ef::mul(self.vy, self.vy)));
+        let speed = if lt(abs(speed), TINY_ANGLE) { ZERO } else { speed };
+        let heading = if speed == ZERO { self.heading } else { ef::heading(self.vx, self.vy, speed) };
+        let (gx, gy) = (ef::sub(goal.0, x), ef::sub(goal.1, y));
+        let gd = ef::sqrt(ef::add(ef::mul(gx, gx), ef::mul(gy, gy)));
+        if gd == ZERO {
+            return ZERO;
+        }
+        let angle = turn_to(heading, ef::heading(gx, gy, gd));
+        if lt(abs(angle), TINY_ANGLE) {
+            ZERO
+        } else {
+            angle
+        }
+    }
+
     /// Its speed squared, as the engine compares two units' (`FUN_6f168360`).
     pub fn speed2(&self) -> u32 {
         ef::add(ef::mul(self.vx, self.vx), ef::mul(self.vy, self.vy))

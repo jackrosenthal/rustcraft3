@@ -70,16 +70,52 @@ fn main() -> anyhow::Result<()> {
                 println!("turn {n}: game module {:08x}", g.world.game_module());
             }
         }
+        if std::env::var("TAGS_MODULE").is_ok_and(|v| v == "all") {
+            println!("turn {n}: game module {:08x}", g.world.game_module());
+        }
         if let (Some(&want), None) = (keepalives.get(&n), first_off) {
             let ours = g.world.keepalive();
             if ours != want {
                 first_off = Some((n, ours, want));
+                println!("turn {n}: the original's keepalive wants game module {:08x}, ours {:08x}", g.world.game_module_for(want), g.world.game_module());
+                for p in 0..2u8 {
+                    let pl = &g.world.players[p as usize];
+                    println!("  player {p}: handicap {:08x} xp {:08x} tech {:08x} selection {:08x}", pl.handicap.to_bits(), pl.handicap_xp.to_bits(), g.world.tech_hash(p), g.world.sync_selection_hash(p));
+                }
             }
         }
         g.tick(dt);
         // TAGS_STEPS: each turn's movement steps' clocks.
         if std::env::var("TAGS_STEPS").is_ok() {
             println!("turn {n} steps {:?} ticks {:?} of {:?}", g.world.step_clocks.iter().map(|&c| f32::from_bits(c)).collect::<Vec<_>>(), g.world.step_ticks, (g.world.tick_clocks.0, g.world.tick_clocks.0 + g.world.tick_clocks.1.len() as i64 - 2));
+        }
+        // TAGS_UNITS: at the first turn, every unit near the watched place (x y, world):
+        // its id, type, place, collision, and footprint's cells' bounds.
+        if let (0, Ok(v)) = (k, std::env::var("TAGS_UNITS")) {
+            let w = &g.world;
+            let at: Vec<f32> = v.split(',').filter_map(|s| s.parse().ok()).collect();
+            let o = w.pathing.as_ref().map_or([0.0; 2], |p| p.origin);
+            for u in w.unit_order.iter().filter_map(|&h| w.unit(h)).filter(|u| (u.x - at[0]).hypot(u.y - at[1]) < 800.0) {
+                let (x0, x1) = (u.pathing_cells.iter().map(|c| c.0).min(), u.pathing_cells.iter().map(|c| c.0).max());
+                let (y0, y1) = (u.pathing_cells.iter().map(|c| c.1).min(), u.pathing_cells.iter().map(|c| c.1).max());
+                println!("unit {:x} {} owner {} at {} {} (cells {} {}) collision {} footprint x {x0:?}-{x1:?} y {y0:?}-{y1:?}", u.extra.oid.0, w3_game::objects::id_str(u.type_id), u.owner, u.x, u.y, (u.x - o[0]) / 32.0, (u.y - o[1]) / 32.0, u.collision);
+            }
+        }
+        // TAGS_OIDS: at the given turn, every unit's id and type.
+        if std::env::var("TAGS_OIDS").ok().and_then(|v| v.parse::<u32>().ok()) == Some(n) {
+            let w = &g.world;
+            for u in w.unit_order.iter().filter_map(|&h| w.unit(h)) {
+                println!("oid {:x} {:x} {} owner {}", u.extra.oid.0, u.extra.oid.1, w3_game::objects::id_str(u.type_id), u.owner);
+            }
+        }
+        // TAGS_WATCH: a unit's place, action, and hiding after each turn, by its id's
+        // slot (hex).
+        if let Some(slot) = std::env::var("TAGS_WATCH").ok().and_then(|v| u32::from_str_radix(&v, 16).ok()) {
+            let w = &g.world;
+            if let Some(u) = w.unit_order.iter().filter_map(|&h| w.unit(h)).find(|u| u.extra.oid.0 == slot) {
+                let o = w.pathing.as_ref().map_or([0.0; 2], |p| p.origin);
+                println!("turn {n} watch {:.3} {:.3} (cells {:.4} {:.4}) facing {:.2} {:?} hidden {} gold {}", u.x, u.y, (u.x - o[0]) / 32.0, (u.y - o[1]) / 32.0, u.facing, u.action, u.hidden, u.carry_gold);
+            }
         }
         let t = &g.world.tags;
         let presence = t.free.last().copied().unwrap_or(t.slots);
@@ -108,6 +144,7 @@ fn main() -> anyhow::Result<()> {
             w3_game::tags::TagEvent::Take(c, s) => format!("A {} {s:#x}", String::from_utf8_lossy(c)),
             w3_game::tags::TagEvent::Free(s) => format!("F {s:#x}"),
             w3_game::tags::TagEvent::Turn => "T".into(),
+            w3_game::tags::TagEvent::Step(k) => format!("S {k}"),
         }).collect();
         std::fs::write(out, lines.join("\n") + "\n")?;
     }

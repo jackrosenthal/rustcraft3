@@ -282,6 +282,9 @@ pub struct World {
     /// comes before, its due time on the agent queue, the unit (`World::update_wander`).
     #[serde(skip)]
     pub wander_due: Vec<(usize, u32, u32)>,
+    /// While a player's action gives orders (`Command::SelectionOrder`).
+    #[serde(skip)]
+    pub ordering_player: bool,
     /// CreateBlightedGoldmine is making the gold mine it hides.
     #[serde(skip)]
     pub hidden_mine: bool,
@@ -790,6 +793,7 @@ impl World {
             tick_clocks: (0, Vec::new()),
             step_range: (0, 0),
             wander_due: Vec::new(),
+            ordering_player: false,
             mana_due: Vec::new(),
             hidden_mine: false,
             cheat_fog: None,

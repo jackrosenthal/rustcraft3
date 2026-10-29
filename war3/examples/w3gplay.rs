@@ -94,6 +94,7 @@ fn main() -> anyhow::Result<()> {
             w3_game::tags::TagEvent::Take(c, s) => format!("A {} {s:#x}", String::from_utf8_lossy(c)),
             w3_game::tags::TagEvent::Free(s) => format!("F {s:#x}"),
             w3_game::tags::TagEvent::Turn => "T".into(),
+            w3_game::tags::TagEvent::Step(k) => format!("S {k}"),
         }).collect();
         std::fs::write(out, lines.join("\n") + "\n")?;
     }

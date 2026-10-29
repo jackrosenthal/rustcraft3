@@ -212,6 +212,22 @@ impl World {
                 due.push((k, at, h));
             }
         }
+        // A gold run's mine timer falls due on the agent queue as a wait does, its walk
+        // home starting with the first step after it (read: a peon's first step home
+        // 34 steps after it went in, its timer 1 second).
+        let runners: Vec<(u32, u32)> = self.unit_order.iter().filter_map(|&h| match self.unit(h)?.extra.gold_run.as_ref()?.phase {
+            crate::goldrun::Phase::InMine(at) => Some((h, at)),
+            _ => None,
+        }).collect();
+        for (h, at) in runners {
+            if self.agent_tick(at).is_none() {
+                continue;
+            }
+            let k = self.step_agent.iter().filter(|&&s| f32::from_bits(s) < f32::from_bits(at)).count();
+            if (k == 0) == before_steps {
+                due.push((k, at, h));
+            }
+        }
         due.sort_by(|a, b| f32::from_bits(a.1).total_cmp(&f32::from_bits(b.1)));
         // Those after the first step go among the steps (`World::step_walkers`).
         if !before_steps {
@@ -240,7 +256,11 @@ impl World {
                 self.tags.flush_issued();
             }
             last = Some(t);
-            self.issue_wander(k, at, h);
+            if self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::InMine(_))) {
+                self.leave_gold_mine(h, k);
+            } else {
+                self.issue_wander(k, at, h);
+            }
         }
         if last.flatten().is_none_or(|t| Some(t) != next_step) {
             self.tags.flush_issued();

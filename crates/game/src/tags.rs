@@ -20,6 +20,8 @@ pub enum TagEvent {
     Take(Code, u32),
     Free(u32),
     Turn,
+    /// A movement step's start (its index in the tick), for reading a trace.
+    Step(usize),
 }
 
 /// While set, a new world records its tags' codes (the `tags` example sets it).
@@ -69,6 +71,14 @@ pub struct Tags {
     /// order as it ends, after the paths of the last tick's ends (`Tags::end_step`).
     #[serde(default)]
     pub step_frees: Option<Vec<u32>>,
+    /// The paths of walks to a structure that ended in this step, and of those that
+    /// ended in the last, freed as the next step ends, before its walk ends' objects
+    /// (`Tags::late_path`).
+    #[serde(default)]
+    pub late_paths: (Vec<[u32; 2]>, Vec<[u32; 2]>),
+    /// Objects freed as the step ends, after its walk ends' objects (`Tags::after_step`).
+    #[serde(default)]
+    pub post_step: Vec<u32>,
     /// Issued orders' objects freed once the orders due together are all given
     /// (`flush_issued`).
     #[serde(default)]
@@ -96,7 +106,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None }
+        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), step_paths: Vec::new(), step_frees: None, late_paths: Default::default(), post_step: Vec::new(), issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -170,7 +180,7 @@ impl Tags {
     }
 
     /// A walk end's object released: at once, or as a tick's first step ends.
-    fn release_in_step(&mut self, s: u32) {
+    pub(crate) fn release_in_step(&mut self, s: u32) {
         match self.step_frees.as_mut() {
             Some(q) => q.push(s),
             None => self.release(s),
@@ -180,6 +190,47 @@ impl Tags {
     /// A tick's first step begins: its walk ends' objects wait for its end.
     pub fn begin_first_step(&mut self) {
         self.step_frees = Some(Vec::new());
+        self.late_paths.1 = std::mem::take(&mut self.late_paths.0);
+        self.mark_step(0);
+    }
+
+    /// A walk to a structure ended in this step: its path (`l^pa`, `^clu`) goes as the
+    /// next step ends, before that step's walk ends' objects (read: a peon's walk to a
+    /// gold mine ended, its tree's two freed then; in the next step a wanderer's give-up
+    /// made its three objects, then the peon's path was freed, then the wanderer's
+    /// tree; another time an order due before the next step came between).
+    pub fn late_path(&mut self, path: [u32; 2]) {
+        self.late_paths.0.push(path);
+    }
+
+    /// An object freed as this step ends, after its walk ends' objects (read: a peon's
+    /// order home freed as it came to the hall and took its next order, after a
+    /// wanderer's walk end's objects in the same step).
+    pub fn after_step(&mut self, slot: u32) {
+        if self.step_frees.is_some() {
+            self.post_step.push(slot);
+        } else {
+            self.release(slot);
+        }
+    }
+
+    fn free_post_step(&mut self) {
+        for s in std::mem::take(&mut self.post_step) {
+            self.release(s);
+        }
+    }
+
+    fn free_late_paths(&mut self) {
+        for s in std::mem::take(&mut self.late_paths.1).into_iter().flatten() {
+            self.release(s);
+        }
+    }
+
+    /// Notes a movement step's start in the trace.
+    pub fn mark_step(&mut self, k: usize) {
+        if let Some(l) = self.trace.as_mut() {
+            l.push(TagEvent::Step(k));
+        }
     }
 
     /// A tick's first step's end: the paths of the last tick's walk ends, then this
@@ -192,22 +243,27 @@ impl Tags {
         for s in paths.into_iter().flatten() {
             self.release(s);
         }
+        self.free_late_paths();
         for s in self.step_frees.take().unwrap_or_default() {
             self.release(s);
         }
+        self.free_post_step();
     }
 
     /// A tick's later step begins: its walk ends' objects too wait for its end (traced:
     /// two give-ups in a turn's second step make their new objects, then free all).
     pub fn begin_step(&mut self) {
         self.step_frees = Some(Vec::new());
+        self.late_paths.1 = std::mem::take(&mut self.late_paths.0);
     }
 
     /// A tick's later step's end: its walk ends' objects freed in order.
     pub fn end_step(&mut self) {
+        self.free_late_paths();
         for s in self.step_frees.take().unwrap_or_default() {
             self.release(s);
         }
+        self.free_post_step();
     }
 
     /// The ended walks' paths waiting for this step.

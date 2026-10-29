@@ -1,0 +1,7 @@
+# Booty Bay with the original's actions as player 2 (crates/net/examples/host.rs, under winedbg tracing tags and steps): turn pid hex.  A peon selected and sent across the ground twice, then all five peons sent together.
+549 2 160101007a3100007a3100001a196f65706f7a3100007a310000
+604 2 12000003000d00ffffffffffffffffb69007464e75d944ffffffffffffffff
+980 2 12000003000d00ffffffffffffffff0d680d463bcfd944ffffffffffffffff
+1367 2 160201007a3100007a3100001601040038310000383100004e3100004e310000643100006431000090310000903100001a196f65706f3831000038310000
+1468 2 160101007a3100007a310000
+1703 2 12080003000d00ffffffffffffffffbfc907462d1dd744ffffffffffffffff

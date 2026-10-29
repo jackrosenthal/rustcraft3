@@ -287,6 +287,20 @@ impl Tags {
         slots
     }
 
+    /// A player's order to walk to a point (traced: one peon sent across the ground):
+    /// as `move_issued`'s but one task fewer (17), its `^clg` freed at once and its
+    /// two blocks and five tasks as the next turn starts, as a player's harvest
+    /// order's are.
+    pub fn player_move_issued(&mut self) -> Vec<u32> {
+        const CODES: [&Code; 17] = [b"ordt", b"tskA", b"tskA", b"tskO", b"task", b"task", b"task", b"tsk.", b"task", b"task", b"task", b"task", b"task", b"tskA", b"^clg", b"^clu", b"l^pa"];
+        let slots: Vec<u32> = CODES.iter().map(|c| self.take(c)).collect();
+        self.release(slots[14]);
+        for k in [1, 13, 12, 11, 10, 9, 8] {
+            self.doom(slots[k]);
+        }
+        slots
+    }
+
     /// Frees the objects of the orders just given (`move_issued`).
     pub fn flush_issued(&mut self) {
         for s in std::mem::take(&mut self.issued) {
@@ -314,14 +328,14 @@ impl Tags {
         for k in [7, 6, 5, 4, 3, 2, 0] {
             self.release_in_step(slots[k]);
         }
-        self.walk_ended([slots[17], slots[16]], serial);
+        self.walk_ended([slots[slots.len() - 1], slots[slots.len() - 2]], serial);
     }
 
     pub fn move_done_in_place(&mut self, slots: &[u32]) {
         for k in [7, 6, 5, 4, 3, 2, 0] {
             self.release(slots[k]);
         }
-        for k in [17, 16] {
+        for k in [slots.len() - 1, slots.len() - 2] {
             self.next_turn.push(slots[k]);
         }
     }
@@ -333,7 +347,7 @@ impl Tags {
         for s in [slots[7], c, b, a, slots[6], slots[5], slots[4], slots[3], slots[2], slots[0]] {
             self.release_in_step(s);
         }
-        self.walk_ended([slots[17], slots[16]], serial);
+        self.walk_ended([slots[slots.len() - 1], slots[slots.len() - 2]], serial);
     }
 
     /// Objects the engine makes right after the next object tagged.

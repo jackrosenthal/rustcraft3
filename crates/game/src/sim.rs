@@ -685,6 +685,28 @@ impl World {
                 }
             }
         }
+        // So does a player's order to walk to a point.
+        let walks = self.unit(h).is_some_and(|u| matches!(u.action, Action::Move { .. }) && !u.extra.local_paths);
+        if walks && self.ordering_player && self.pathing.is_some() && self.move_kind(h) == crate::pathing::Move::Foot {
+            self.start_player_walk(h);
+        } else if let Some(u) = self.unit_mut(h) {
+            u.extra.player_walk = false;
+        }
+    }
+
+    /// A player's order to walk to a point (traced: a peon sent across the ground): its
+    /// objects (`Tags::player_move_issued`), and the engine's walk from the next step,
+    /// its way searched 700 nodes deep.
+    pub(crate) fn start_player_walk(&mut self, h: u32) {
+        let serial = self.tags.born;
+        let slots = self.tags.player_move_issued();
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.order_tags = slots;
+            u.extra.walk_serial = serial;
+            u.extra.player_walk = true;
+            u.extra.mover = None;
+            u.path.clear();
+        }
     }
 
     pub fn widget_pos(&self, h: u32) -> Option<(f32, f32)> {
@@ -783,7 +805,7 @@ impl World {
         let mask = u.region_mask();
         for &o in &self.unit_order {
             let Some(v) = self.unit(o).filter(|v| o != h && !v.dead && !v.hidden && !v.is_building && v.collision > 0.0 && (v.x - u.x).abs() < 2048.0 && (v.y - u.y).abs() < 2048.0) else { continue };
-            if (v.extra.local_paths || v.extra.gold_run.is_some()) && v.extra.mover.is_some_and(|m| m.vx & 0x7fff_ffff != 0 || m.vy & 0x7fff_ffff != 0) || v.region_flags() & mask == 0 {
+            if v.engine_walker() && v.extra.mover.is_some_and(|m| m.vx & 0x7fff_ffff != 0 || m.vy & 0x7fff_ffff != 0) || v.region_flags() & mask == 0 {
                 continue;
             }
             if self.move_kind(o) == crate::pathing::Move::Fly {
@@ -827,7 +849,7 @@ impl World {
     }
 
     fn local_path(&self, h: u32, goal: (f32, f32)) -> Option<(Vec<(f32, f32)>, Option<(i32, i32)>, u32)> {
-        let u = self.unit(h).filter(|u| u.extra.local_paths || u.extra.gold_run.is_some())?;
+        let u = self.unit(h).filter(|u| u.engine_walker())?;
         let to_structure = u.extra.gold_run.is_some();
         let p = self.pathing.as_ref()?;
         let kind = self.move_kind(h);
@@ -856,7 +878,7 @@ impl World {
         let (start, end) = (p.cell_of(u.x, u.y), p.cell_of(goal.0, goal.1));
         let (out, refused, cost) = match self.gold_run_search(h, &cells, start, end, class) {
             Some(r) => r,
-            None => crate::lrpath::search_costing(&cells, start, end, class, 32),
+            None => crate::lrpath::search_costing(&cells, start, end, class, if u.extra.local_paths { 32 } else { 700 }),
         };
         log::debug!("search for {h} from {start:?} to {end:?}: {:?} refused {refused}", match &out { crate::lrpath::Outcome::Found(c) => format!("found {}", c.len()), crate::lrpath::Outcome::Nearest(c) => format!("nearest {:?}", c.last()), crate::lrpath::Outcome::Stay => "stay".into() });
         // A search that met no refused cell sends the walker straight to its way's end
@@ -884,7 +906,7 @@ impl World {
         // to 0x555 were refused, at 0x556 allowed); refused, its way stays dropped and
         // it tries again the next step.
         let now = self.step_index + self.step_range.0 as u64;
-        let local = self.unit(h).is_some_and(|u| u.extra.local_paths || u.extra.gold_run.is_some()) && self.move_kind(h) != crate::pathing::Move::Fly;
+        let local = self.unit(h).is_some_and(|u| u.engine_walker()) && self.move_kind(h) != crate::pathing::Move::Fly;
         if local && self.unit(h).and_then(|u| u.extra.search_at).is_some_and(|t| now.wrapping_sub(t) < 10) {
             if let Some(u) = self.unit_mut(h) {
                 u.path.clear();
@@ -1169,7 +1191,7 @@ impl World {
     /// original's NIpse steps), noting when it arrives at the last of them.
     pub(crate) fn walk(&mut self, h: u32, dt: f32) -> bool {
         let t0 = self.profile.is_some().then(std::time::Instant::now);
-        let r = if self.unit(h).is_some_and(|u| u.extra.local_paths) { self.walk_steps(h) } else { self.walk_inner(h, dt) };
+        let r = if self.unit(h).is_some_and(|u| u.extra.local_paths || u.extra.player_walk) { self.walk_steps(h) } else { self.walk_inner(h, dt) };
         self.prof_add("walk", t0);
         r
     }
@@ -1364,7 +1386,7 @@ impl World {
         let blocked = wall || !seen.is_empty() || d2 <= reach;
         for o in seen {
             let Some(v) = self.unit(o) else { continue };
-            let Some(theirs) = v.extra.mover.filter(|_| v.extra.local_paths || v.extra.gold_run.is_some()).map(|m| m.speed2()) else { continue };
+            let Some(theirs) = v.extra.mover.filter(|_| v.engine_walker()).map(|m| m.speed2()) else { continue };
             if theirs & 0x7fff_ffff == 0 || v.extra.yields_to.is_some_and(|w| self.unit(w).is_some_and(|w| !w.dead)) {
                 continue;
             }
@@ -1598,7 +1620,7 @@ impl World {
             // The order's objects go as its walk ends, at its step (traced).
             let moved = self.unit_mut(h).is_some_and(|u| std::mem::take(&mut u.extra.walk_moved));
             let gave_up = self.unit(h).is_some_and(|u| u.extra.facing_goal);
-            if let Some(slots) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)).filter(|s| s.len() == 18) {
+            if let Some(slots) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)).filter(|s| s.len() == 18 || s.len() == 17) {
                 if !moved {
                     self.tags.move_done_in_place(&slots);
                 } else if gave_up {
@@ -2375,7 +2397,7 @@ impl World {
                     }
                 }
                 // A wanderer walks step by step with the others (`World::step_walkers`).
-                Action::Move { .. } if self.unit(h).is_some_and(|u| u.extra.local_paths) => {}
+                Action::Move { .. } if self.unit(h).is_some_and(|u| u.extra.local_paths || u.extra.player_walk) => {}
                 Action::Move { x, y } => {
                     if self.unit(h).is_some_and(|u| u.path.is_empty()) {
                         self.path_to(h, (x, y));

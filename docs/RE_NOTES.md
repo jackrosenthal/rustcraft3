@@ -438,6 +438,18 @@ these are the findings behind them.
   before and during mining (1303); the game of selections, a training, and mining
   (1056); five peons sent to the mine together (`docs/reference/bootybay_mining5_*`,
   1141), their steps (read in three games) bit for bit.
+- A player's order to walk to a point (traced: a Booty Bay peon sent across the
+  ground, `docs/reference/bootybay_moves_*`) is the engine's walk, as a wanderer's
+  with its way searched 700 nodes deep (`World::start_player_walk`).  Its order has
+  the wanderer's objects but one task fewer, 17 (`ordt`, two `tskA`, `tskO`, three
+  tasks, `tsk.`, five tasks, `tskA`, `^clg`, `^clu`, `l^pa`): its `^clg` freed at once,
+  its two blocks and five tasks as the next turn starts (as a player's harvest
+  order's), and the rest as a wanderer's arrival frees them (read: its tree but those
+  freed at its goal, its path the next step).  The game agrees with the original to
+  turn 1702.  Open: an order to five peons at once (1703) gives each 14 objects (no
+  cluster or path of its own), then one `^clu` and `l^pa` for them all, freed the step
+  after the last of them arrives; they walk as one cluster, each ending its walk as
+  an arrival on its own (turns 1719 to 1731).
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

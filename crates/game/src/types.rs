@@ -272,12 +272,19 @@ impl Unit {
         }
     }
 
+    /// Whether its walks are the engine's (a wanderer's, a player's move's, or a gold
+    /// run's), whose ways are searched near at hand (`World::local_path`).
+    pub fn engine_walker(&self) -> bool {
+        self.extra.local_paths || self.extra.player_walk || self.extra.gold_run.is_some()
+    }
+
     /// Whether it walks by the engine's movement steps with the others
-    /// (`World::first_steps`, `World::step_walkers`): a wanderer under a move order, or
-    /// a worker on a gold run between the mine and home.
+    /// (`World::first_steps`, `World::step_walkers`): a wanderer or a unit a player sent
+    /// to a point under a move order, or a worker on a gold run between the mine and
+    /// home.
     pub fn steps_walker(&self) -> bool {
         !self.dead
-            && ((self.extra.local_paths && matches!(self.action, Action::Move { .. }))
+            && (((self.extra.local_paths || self.extra.player_walk) && matches!(self.action, Action::Move { .. }))
                 || (matches!(self.action, Action::Harvest { .. }) && self.extra.gold_run.as_ref().is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::ToMine | crate::goldrun::Phase::ToHall(_)))))
     }
 }
@@ -468,6 +475,10 @@ pub struct UnitExtra {
     /// nodes deep (a wanderer of Neutral Passive's: `World::local_path`).
     #[serde(default)]
     pub local_paths: bool,
+    /// It walks to a point by a player's order with the engine's steps, its way
+    /// searched 700 nodes deep (`World::start_player_walk`).
+    #[serde(default)]
+    pub player_walk: bool,
     /// The cell where its way, short of the goal, ends: reaching it searches again.
     #[serde(default)]
     pub path_end_cell: Option<(i32, i32)>,
@@ -741,6 +752,7 @@ impl Default for UnitExtra {
             was_idle: false,
             detour: None,
             local_paths: false,
+            player_walk: false,
             path_end_cell: None,
             walk_moved: false,
             walk_wait: 0,

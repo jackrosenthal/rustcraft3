@@ -726,6 +726,20 @@ these are the findings behind them.
     last step, it goes first thing in the next turn, before that turn's orders (read:
     an arrival at a turn's last step; a give-up's path freed before an order due ahead
     of the next turn's first step).
+  - The wander timer is a CAgentTimer (embedded in the ability at +0x6c; started by
+    vf2, `FUN_6f060190`: its due is its queue's clock plus the wait by the engine's
+    addition, with a serial).  Its queue (`[DAT_6fd3c82c + 0x40]`, 0x2dc0088 in the
+    traced run) is not the main one: its clock at a step is the sum of 0.03 per step
+    by the engine's addition (read: 5.399984 at step 180, 34.529137 at step 1151, to
+    within a unit in the last place), so it trails exact time by less than the main
+    clock does (0.000863 at 34.53).  An order fires when that clock reaches its due
+    (the queue's clock then the due itself: 5.035873 for a first wait of 5.035860),
+    and the main clock then shows the last 0.005s tick passed.  How that clock moves
+    between steps is not settled: most orders show the tick before the one at which
+    "step value plus 0.005 a tick" reaches their due, a few near steps the tick
+    after; and two due in a turn's last ticks, after its last step (agent clock
+    43.090098, 34.398251), fired at the next turn's first tick, which the port does
+    not yet model for the first of them (Booty Bay's turn 432).
   - The blocked count's draw (`FUN_6f1689d0`: 2 for a goal within 12 cells and a walker
     alone, else 7 plus `FUN_6f1d62b0(2)`, 0 or 1) is on the generator at DAT_6fd53a48,
     the main one (read: the game object there, 0x2b300c0 in the traced run, is the

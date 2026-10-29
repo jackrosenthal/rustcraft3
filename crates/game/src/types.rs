@@ -479,6 +479,9 @@ pub struct UnitExtra {
     /// searched 700 nodes deep (`World::start_player_walk`).
     #[serde(default)]
     pub player_walk: bool,
+    /// The path of the cluster it walks in, sent with others (`crate::groupwalk`).
+    #[serde(default)]
+    pub group_walk: Option<[u32; 2]>,
     /// The cell where its way, short of the goal, ends: reaching it searches again.
     #[serde(default)]
     pub path_end_cell: Option<(i32, i32)>,
@@ -753,6 +756,7 @@ impl Default for UnitExtra {
             detour: None,
             local_paths: false,
             player_walk: false,
+            group_walk: None,
             path_end_cell: None,
             walk_moved: false,
             walk_wait: 0,

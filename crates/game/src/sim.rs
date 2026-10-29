@@ -688,7 +688,11 @@ impl World {
         // So does a player's order to walk to a point.
         let walks = self.unit(h).is_some_and(|u| matches!(u.action, Action::Move { .. }) && !u.extra.local_paths);
         if walks && self.ordering_player && self.pathing.is_some() && self.move_kind(h) == crate::pathing::Move::Foot {
-            self.start_player_walk(h);
+            if self.group_walk_members.is_some() {
+                self.start_group_member(h);
+            } else {
+                self.start_player_walk(h);
+            }
         } else if let Some(u) = self.unit_mut(h) {
             u.extra.player_walk = false;
         }
@@ -1620,7 +1624,10 @@ impl World {
             // The order's objects go as its walk ends, at its step (traced).
             let moved = self.unit_mut(h).is_some_and(|u| std::mem::take(&mut u.extra.walk_moved));
             let gave_up = self.unit(h).is_some_and(|u| u.extra.facing_goal);
-            if let Some(slots) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)).filter(|s| s.len() == 18 || s.len() == 17) {
+            let slots = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)).unwrap_or_default();
+            if slots.len() == 14 {
+                self.group_member_done(h, &slots, moved);
+            } else if slots.len() == 18 || slots.len() == 17 {
                 if !moved {
                     self.tags.move_done_in_place(&slots);
                 } else if gave_up {

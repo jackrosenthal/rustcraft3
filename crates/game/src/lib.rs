@@ -66,6 +66,7 @@ pub mod placement;
 pub mod repair;
 pub mod keepalive;
 pub mod goldrun;
+pub mod groupwalk;
 pub mod selection;
 pub mod techreg;
 pub mod rng;
@@ -905,6 +906,13 @@ impl Game {
                 // its units take it (read: five peons sent to a gold mine, two `^clg`
                 // made before their five orders and freed after them).
                 let groups = (units.len() > 1).then(|| [self.world.tags.take(b"^clg"), self.world.tags.take(b"^clg")]);
+                // Sent together to a point on foot they walk as one cluster
+                // (`crate::groupwalk`).
+                let move_order = order == smart || order == natives::basic::order_id("move");
+                let group_walk = units.len() > 1 && target == 0 && move_order && self.world.pathing.is_some() && units.iter().all(|&u| self.world.move_kind(u) == pathing::Move::Foot && self.world.unit(u).is_some_and(|v| !v.extra.local_paths));
+                if group_walk {
+                    self.world.group_walk_members = Some(Vec::new());
+                }
                 // Its units take it nearest the target first (read: five peons sent to a
                 // gold mine took their orders by their distance to it, 8.0 to 12.0 cells).
                 let mut units = units;
@@ -936,10 +944,17 @@ impl Game {
                         moved.push(u);
                     }
                 }
+                let walked = match self.world.group_walk_members.take() {
+                    Some(members) if !members.is_empty() => {
+                        self.world.start_group_walk(members, (x, y));
+                        true
+                    }
+                    _ => false,
+                };
                 for g in groups.into_iter().flatten() {
                     self.world.tags.release(g);
                 }
-                if formation && moved.len() > 1 {
+                if formation && moved.len() > 1 && !walked {
                     self.formation(player, moved);
                 }
                 match (ordered, error) {

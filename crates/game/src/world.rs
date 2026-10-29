@@ -264,6 +264,12 @@ pub struct World {
     pub step_clocks: Vec<u32>,
     #[serde(skip)]
     pub step_agent: Vec<u32>,
+    /// The units of a group walk being ordered, as they take it (`crate::groupwalk`).
+    #[serde(skip)]
+    pub group_walk_members: Option<Vec<u32>>,
+    /// The clusters walking to a point.
+    #[serde(default)]
+    pub group_walks: Vec<crate::groupwalk::GroupWalk>,
     /// This tick's steps' main ticks.
     #[serde(skip)]
     pub step_ticks: Vec<i64>,
@@ -789,6 +795,8 @@ impl World {
             step_base: 0,
             step_clocks: Vec::new(),
             step_agent: Vec::new(),
+            group_walk_members: None,
+            group_walks: Vec::new(),
             step_ticks: Vec::new(),
             tick_clocks: (0, Vec::new()),
             step_range: (0, 0),

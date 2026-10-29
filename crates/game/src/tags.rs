@@ -301,6 +301,18 @@ impl Tags {
         slots
     }
 
+    /// A unit's order of several sent together to a point (traced: five peons): as
+    /// `player_move_issued`'s without the cluster and path, 14 objects, its blocks and
+    /// five tasks as the next turn starts.
+    pub fn member_move_issued(&mut self) -> Vec<u32> {
+        const CODES: [&Code; 14] = [b"ordt", b"tskA", b"tskA", b"tskO", b"task", b"task", b"task", b"tsk.", b"task", b"task", b"task", b"task", b"task", b"tskA"];
+        let slots: Vec<u32> = CODES.iter().map(|c| self.take(c)).collect();
+        for k in [1, 13, 12, 11, 10, 9, 8] {
+            self.doom(slots[k]);
+        }
+        slots
+    }
+
     /// Frees the objects of the orders just given (`move_issued`).
     pub fn flush_issued(&mut self) {
         for s in std::mem::take(&mut self.issued) {

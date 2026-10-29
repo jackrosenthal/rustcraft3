@@ -446,10 +446,32 @@ these are the findings behind them.
   its two blocks and five tasks as the next turn starts (as a player's harvest
   order's), and the rest as a wanderer's arrival frees them (read: its tree but those
   freed at its goal, its path the next step).  The game agrees with the original to
-  turn 1702.  Open: an order to five peons at once (1703) gives each 14 objects (no
-  cluster or path of its own), then one `^clu` and `l^pa` for them all, freed the step
-  after the last of them arrives; they walk as one cluster, each ending its walk as
-  an arrival on its own (turns 1719 to 1731).
+  turn 1702.
+- A player's order to several units to walk to a point makes the group's two `^clg`,
+  each unit's order without a cluster or path (14 objects, its blocks and five tasks
+  freed as the next turn starts), then one `^clu` and `l^pa` for them all, the `^clg`
+  freed after (traced: five peons, `crate::groupwalk`).  They walk as one cluster
+  (CLrCluster: members of 0x2c bytes at +0x28, up to 12; `FUN_6f16bcf0`,
+  `FUN_6f16de50`), each straight to its place, its cluster's point (+0x54) plus its
+  own offset (+0xc; `FUN_6f16e250`), and each ends its walk there as an arrival, its
+  tree but the issue's freed and no path; the cluster's path the step after the last
+  (read: turns 1719 to 1732).  The places (`FUN_6f16a5b0`): the members' places
+  turned to the formation's bearing (the line from the first member, the nearest the
+  point, to it: +0x70) and sorted by rank (the steering object's +0xd8 bits 12 to
+  15) and, within a rank, front to back; each rank in rows of the table's width by
+  its count (`DAT_6fa91d20`: 1, 2, 3, 2, 3, 3, 3, 3, 3, 4, 4, 4 for small units; with
+  more ranks `DAT_6fa91d88`), each row's units, by side, spread from half the
+  diameter across the widest row's width (the diameter, twice the largest radius
+  +0x90, times the row's count, plus the diameter and 2.0 times one fewer), rows
+  stepped back by the diameter and 2.5, ranks by 5.5000005 (the gaps read in the
+  running game, `DAT_6fd541c0`, `541c4`, `541bc`); the whole centered on its middle
+  and turned back (`FUN_6f169e10`).  Read: five peons' targets, bit for bit to six
+  places.  The moves game agrees with the original's trace to turn 1726 and its
+  keepalives to 1703.  Open: from 1704 the keepalive differs by a fixed amount while
+  the objects agree (no random stream's draw, nor a selection order, accounts for
+  it); and the members' starts (the rear ones wait some steps, the front ones swerve
+  at the first) are not yet the original's, likely its cluster's separation
+  (`FUN_6f1702f0`).
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

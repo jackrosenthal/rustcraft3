@@ -73,6 +73,12 @@ fn main() -> anyhow::Result<()> {
         if std::env::var("TAGS_MODULE").is_ok_and(|v| v == "all") {
             println!("turn {n}: game module {:08x}", g.world.game_module());
         }
+        // TAGS_KEEPALIVE_ALL: each turn's keepalive against the original's after the first
+        // that differs too.
+        if let (Some(&want), true) = (keepalives.get(&n), first_off.is_some() && std::env::var("TAGS_KEEPALIVE_ALL").is_ok()) {
+            let ours = g.world.keepalive();
+            println!("turn {n}: ours {ours:08x}, the original's {want:08x}{}", if ours == want { "" } else { " (differ)" });
+        }
         if let (Some(&want), None) = (keepalives.get(&n), first_off) {
             let ours = g.world.keepalive();
             if ours != want {

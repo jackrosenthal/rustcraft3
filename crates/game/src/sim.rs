@@ -2574,6 +2574,8 @@ impl World {
         u.extra.queue_tokens.resize(u.queue.len(), false);
         u.queue.push(id);
         u.extra.queue_tokens.push(token);
+        // Queued, it starts in its owner's tech tree (FUN_6f3f7f70: as it takes a slot).
+        self.tech_reg(owner, id).producing += 1;
         Ok(())
     }
 
@@ -2738,6 +2740,9 @@ impl World {
             u.queue_progress = 0.0;
             u.queue_started = false;
         }
+        if pe == EVENT_PLAYER_UNIT_TRAIN_CANCEL {
+            self.tech_reg(owner, id).producing -= 1;
+        }
         self.refund_queued(owner, id, rate, token);
         self.queue_unit_event(h, pe, ue, ctx);
     }
@@ -2767,6 +2772,9 @@ impl World {
         if slot == 0 {
             u.queue_progress = 0.0;
             u.queue_started = false;
+        }
+        if pe == EVENT_PLAYER_UNIT_TRAIN_CANCEL {
+            self.tech_reg(owner, id).producing -= 1;
         }
         self.refund_queued(owner, id, rate, token);
         self.queue_unit_event(h, pe, ue, ctx);
@@ -2893,6 +2901,8 @@ impl World {
         let radius = self.objects.units.get(id).map_or(16.0, |o| o.real("collision"));
         let (x, y) = self.spawn_point(h, radius);
         let new = crate::natives::units::create_unit(self, owner, id, x, y, 270.0);
+        // Made finished from training: no longer in production (FUN_6f677870 with 4).
+        self.tech_reg(owner, id).producing -= 1;
         self.requests.push(Request::Ack { unit: new, kind: "Ready" });
         self.requests.push(Request::UnitReady { unit: new });
         // The rally point (FUN_6f429790): a unit or widget there is followed or worked

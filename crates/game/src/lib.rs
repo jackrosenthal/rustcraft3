@@ -65,6 +65,7 @@ pub mod pathing;
 pub mod placement;
 pub mod repair;
 pub mod keepalive;
+pub mod techreg;
 pub mod rng;
 pub mod tags;
 pub mod score;

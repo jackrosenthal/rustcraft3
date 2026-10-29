@@ -77,6 +77,9 @@ pub struct Player {
     pub state: HashMap<i32, i32>,
     pub tech_max: HashMap<Id, i32>,
     pub tech_researched: HashMap<Id, i32>,
+    /// The original's tech tree registrations, in the order made (`crate::techreg`).
+    #[serde(default)]
+    pub tech_regs: Vec<crate::techreg::TechReg>,
     /// Abilities SetPlayerAbilityAvailable turned off.
     pub abilities_unavailable: crate::collections::HashSet<Id>,
     /// What the score screen and GetPlayerScore report.
@@ -109,6 +112,7 @@ impl Player {
             state: HashMap::default(),
             tech_max: HashMap::default(),
             tech_researched: HashMap::default(),
+            tech_regs: Vec::new(),
             abilities_unavailable: Default::default(),
             score: Default::default(),
             tax_rates: HashMap::default(),

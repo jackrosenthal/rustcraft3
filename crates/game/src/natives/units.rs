@@ -334,6 +334,8 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
         }
     }
     w.unit_order.push(h);
+    // Made finished, it adds itself to its owner's tech tree (FUN_6f677870 with 2).
+    w.tech_add(owner, type_id);
     // A structure that spreads blight blights the four cells about it at once, its
     // growth following (measured: a Necropolis made by script has blighted 0 to 96 to
     // its right before the script's next line, and 768 a second later).

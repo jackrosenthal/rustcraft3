@@ -41,14 +41,66 @@ pub fn net_message(kind: u8, payload: &[u8]) -> u32 {
 }
 
 /// The modules the port does not compute, as the original had them in Booty Bay with
-/// two players (read under winedbg at its first turns; the game's, 6, unchanged while
-/// nobody acts).
-pub const BOOTY_BAY_MODULES: [(u8, u32); 12] = [
+/// two players (read under winedbg at its first turns; the same on Harrow): the
+/// databases and the map's custom data, made as the data loads.
+pub const BOOTY_BAY_MODULES: [(u8, u32); 11] = [
     (19, 0), (18, 0xc7d37d14), (17, 0x50bc09d8), (16, 0xa4fc2e24), (14, 0x68b89b88), (13, 0x38eb3c00), (12, 0x38eb3c00),
-    (9, 0xd85c9c00), (7, 0x98054236), (6, 0xaa436eb2), (5, 0xa996f046), (4, 0xb5891e1b),
+    (9, 0xd85c9c00), (7, 0x98054236), (5, 0xa996f046), (4, 0xb5891e1b),
 ];
 
+/// An object as the game module names it: its slot ^ birth (the handles in a player's
+/// lists carry the unit's tag at +0xc and +0x10), 0 for one in a slot never freed.
+pub type Tagged = u32;
+
+/// A player's selection as the game module reads it (CPlayerWar3 +0x34).
+#[derive(Clone, Debug, Default)]
+pub struct Selection {
+    /// The units selected (+0xc), in order.
+    pub units: Vec<Tagged>,
+    /// The subgroups (+0x1b8), each a type's units, and the one selected (+0x1c0).
+    pub subgroups: Vec<Vec<Tagged>>,
+    pub current: Option<usize>,
+    /// The 10 control groups (+0x20, 0x14 apart).
+    pub groups: [Vec<Tagged>; 10],
+    /// The units at +0x1a4 (set with the first selection) and +0x1a8.
+    pub active: Option<Tagged>,
+    pub other: Option<Tagged>,
+}
+
+impl Selection {
+    /// Its hash (`FUN_6f28e740`): the count, each unit, the selected subgroup's index
+    /// (-1 with none), each subgroup's count and units, the control groups' units, and
+    /// the two units, each `u = rol(u ^ rol(x, 3), 3)` (a count or index `rol(u ^ n, 3)`).
+    pub fn hash(&self) -> u32 {
+        let unit = |u: u32, x: Tagged| (u ^ x.rotate_left(3)).rotate_left(3);
+        let mut u = self.units.iter().fold(self.units.len() as u32, |u, &x| unit(u, x));
+        u = (self.current.map_or(u32::MAX, |i| i as u32) ^ u).rotate_left(3);
+        for g in &self.subgroups {
+            u = g.iter().fold((u ^ g.len() as u32).rotate_left(3), |u, &x| unit(u, x));
+        }
+        for g in &self.groups {
+            u = g.iter().fold(u, |u, &x| unit(u, x));
+        }
+        self.active.iter().chain(self.other.iter()).fold(u, |u, &x| unit(u, x))
+    }
+}
+
 impl World {
+    /// The game module (6, CGameWar3, `FUN_6f1de210`): from 0xc, each of the 12
+    /// players' parts, `m = rol(m ^ part, 3)`.  A player's part (`FUN_6f25c560`): its
+    /// handicap (+0x29c) and tech tree hash, then its experience handicap (+0x2a4), its
+    /// 7 slots at +0x2b4 (empty in the games read), and its selection.  The port keeps
+    /// no selections yet: each is empty.
+    pub fn game_module(&self) -> u32 {
+        (0..12u8).fold(0xc, |m, p| {
+            let Some(pl) = self.players.get(p as usize) else { return m };
+            let mut u = (pl.handicap.to_bits() ^ self.tech_hash(p)).rotate_left(3);
+            u = (u ^ pl.handicap_xp.to_bits()).rotate_left(3);
+            let part = (Selection::default().hash() ^ u).rotate_left(3);
+            (m ^ part).rotate_left(3)
+        })
+    }
+
     /// The net module's part of a turn without actions, as its message comes in.
     pub fn net_turn(&mut self, ms: u16) {
         self.net_sum = self.net_sum.wrapping_add(net_message(0x1f, &ms.to_le_bytes()));
@@ -69,15 +121,16 @@ impl World {
     }
 
     /// The keepalive checksum for the turn whose message came in last, from the state
-    /// after the one before it.  Modules the port does not compute yet (the game's
-    /// players, 6; the databases, 4, 5, 7, and 9; the map's custom data, 12 to 19) are
-    /// taken from `keepalive_modules`, values read from the original; module 0 is the
-    /// cheat flags, 0 without cheats.
+    /// after the one before it.  Modules the port does not compute yet (the databases,
+    /// 4, 5, 7, and 9; the map's custom data, 12 to 19) are taken from
+    /// `keepalive_modules`, values read from the original; module 0 is the cheat
+    /// flags, 0 without cheats.
     pub fn keepalive(&self) -> u32 {
         let mut modules = self.keepalive_modules.clone();
         modules.insert(0, 0);
         modules.insert(2, self.net_sum);
         modules.insert(3, self.rand_data.checksum());
+        modules.insert(6, self.game_module());
         let m = modules.iter().rev().fold(0u32, |m, (_, &v)| (m ^ v).rotate_left(3));
         let t = self.game_ms;
         let presence = self.tags.free.last().copied().unwrap_or(self.tags.slots);
@@ -118,6 +171,26 @@ mod tests {
             payload.extend(actions);
             assert_eq!(net_message(0x1f, &payload), grew);
         }
+    }
+
+    /// The selection hash for the states read from the original (player 1 of Booty
+    /// Bay: a peon selected, then put in group 1, then three peons and group 2, then
+    /// group 1 recalled), as their game module values show them: each the start's
+    /// 0xaa436eb2 with player 1's part changed by `rol(before ^ after, 4)`.
+    #[test]
+    fn selections_hash_as_the_originals() {
+        let module = |s: &Selection| 0xaa43_6eb2 ^ (Selection::default().hash() ^ s.hash()).rotate_left(4);
+        let mut s = Selection { units: vec![0], subgroups: vec![vec![0]], current: Some(0), active: Some(0), ..Default::default() };
+        assert_eq!(module(&s), 0x55b4_b14d);
+        s.groups[0] = vec![0];
+        assert_eq!(module(&s), 0x55fd_914d);
+        s.units = vec![0; 3];
+        s.subgroups = vec![vec![0; 3]];
+        s.groups[1] = vec![0; 3];
+        assert_eq!(module(&s), 0xd5bc_894c);
+        s.units = vec![0];
+        s.subgroups = vec![vec![0]];
+        assert_eq!(module(&s), 0xd7bc_914d);
     }
 
     /// Booty Bay's first keepalive from the original's module values there.

@@ -220,6 +220,47 @@ these are the findings behind them.
 - On Harrow (two players, the same seed) the original's modules 4 to 19 at each
   keepalive equal Booty Bay's, the game module 6 among them: with nobody acting they
   do not depend on the map (a map's own data or object changes would).
+- The game module (6, CGameWar3, `FUN_6f1de210`): `m = 0xc`, then for each of the
+  12 players `m = rol(m ^ f, 3)`, so player p's part enters rotated by 3 * (12 - p).
+  A player's part (`FUN_6f25c560`): `u = rol(rol(+0x29c ^ tech, 3) ^ +0x2a4, 3)`,
+  where the two are floats (1.0 at handicap 100) and `tech` the tech tree's hash
+  (+0x2d0, CTechTree, `FUN_6f2292c0`); then `u = rol(u ^ rol(x, 3), 3)` for each
+  object of the array at +0x2b4 (+0x2b0 slots, 7, all empty at the start); then `f =
+  rol(sel ^ u, 3)` with `sel` the selection hash (`FUN_6f28e740` of +0x34).  `x` is an
+  object's slot ^ birth (the list entries are handles carrying the unit's tag at +0xc
+  and +0x10), so 0 for an object in a slot never freed.  The selection hash: `u = n`
+  (the count selected, +0x10); for each selected unit `u = rol(u ^ rol(x, 3), 3)`;
+  `u = rol(i ^ u, 3)` with i the selected subgroup's index (+0x1c0 in the subgroup
+  list, -1 with none); for each subgroup (+0x1b8, a type's units) `u = rol(u ^
+  count, 3)` and its units as above; the 10 control groups' units (+0x20, 0x14 apart);
+  then the units at +0x1a4 (set with the first selection) and +0x1a8 if set.  Read
+  under winedbg (`FUN_6f1de210`'s player 1, relocated 0x75f4e210) through a peon's
+  selection, a control group, three peons and a second group, and recalling the
+  first: each module value as computed.  At Booty Bay's start the two players' tech
+  hashes are 0x4086ca18 and the ten empty players' 0x61021200, giving 0xaa436eb2.
+  Training a peon flips one bit of its tech-tree entry while it trains.
+- The tech tree (CTechTree): a registration per type code, in the order first touched
+  (`FUN_6f22f5c0`), of +0x18 the limit (SetPlayerTechMaxAllowed, `FUN_6f2498a0`;
+  0x7fffffff unset), +0x1c made, +0x20 in production, +0x24 in production of the
+  second kind, +0x28 present, +0x2c killed, and +0x30 flags set as it is made (2 a
+  research type, 4 a structure, 8 another unit type, 0 otherwise, 'HERO').  Its hash
+  per registration (`FUN_6f229360`): `rol(p ^ m, 12) ^ rol(n ^ l, 12) ^ rol(k ^ c, 9)
+  ^ rol(flags, 3)` (p in production, m made, n present, l limit, k killed, c the
+  second kind), folded `t = rol(t ^ reg, 3)`.  Changes: a unit made finished adds
+  (present and made, `FUN_6f227b40`; `FUN_6f677870` with 2); a start (`FUN_6f249cf0`)
+  adds to in production, of a queued item as it takes its slot (`FUN_6f3f7f70`) or
+  of a structure placed (unit made with 1); a finish (`FUN_6f22f6a0`; a unit made
+  with 4, as from training) takes one from in production and adds present and made;
+  a cancel (`FUN_6f228ed0`) takes one from in production; a unit removed
+  (`FUN_6f6744d0`) cancels if it was started and takes one from present if it was
+  added (its +0x64 bits 8 and 0x10); a change of type (`FUN_6f6703b0`) does both for
+  the old type and starts or adds the new; a unit killed (`FUN_6f69c210`) by another
+  player's unit adds one killed to the killer's owner's registration of its type.  At
+  Booty Bay's start each slot has hrtt, otbk, and uske (InitSummonableCaps), HERO
+  and the 24 hero types (MeleeStartingHeroLimit), and a playing slot its town hall
+  and workers; the port keeps the same registrations (`crate::techreg`) and computes
+  the game module from them, the handicaps (+0x29c SetPlayerHandicap, +0x2a4
+  SetPlayerHandicapXP), and empty selections: the 978 keepalives still agree.
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

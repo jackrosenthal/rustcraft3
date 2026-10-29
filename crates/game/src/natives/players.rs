@@ -232,6 +232,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         SetPlayerTechMaxAllowed => |w, _, a| {
             let (id, v) = (id_from_int(a.i(1)), a.i(2));
+            if let Some(p) = player_arg(w, a, 0) {
+                w.tech_reg(p, id).max = v;
+            }
             with_player(w, a, |p| { p.tech_max.insert(id, v); })
         },
         GetPlayerTechMaxAllowed => |w, _, a| {

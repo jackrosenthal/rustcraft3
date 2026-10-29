@@ -470,9 +470,17 @@ these are the findings behind them.
   after the order) the main generator is drawn once (read: the keepalives agree only
   so; the players' parts of the game module, read under winedbg, did not change).
   The moves game agrees with the original's trace to turn 1726 and its keepalives to
-  1725.  Open: the members' starts (the rear ones wait some steps, the front ones
-  swerve at the first) are not yet the original's, likely its cluster's separation
-  (`FUN_6f1702f0`), and a member arrives a turn early at 1727.
+  1725.  Open: the members' starts.  Read in two games: the two ahead start at the
+  first step (the nearest swerving 0.03 at it, likely the separation of
+  `FUN_6f1702f0`: neighbours within a radius by class, `DAT_6fd54398`, push by
+  (1 - d/r) squared), the two behind them ten steps later, and the last, behind one of
+  those, six after that; each holds with its heading on its place, its member flags
+  (+0x28) 0x100000 throughout.  The hold is the provider's count (+0x94,
+  `FUN_6f165ae0`: held while it counts down); the port's counts for a block (2 near,
+  7 or 8 far, drawn) neither give those waits nor the draws the keepalives ask for,
+  whether near is judged by the member's place or the cluster's point, and whether a
+  blocked member searches again or holds.  The one draw as the walk begins likely
+  stands for a third such count.
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

@@ -64,6 +64,7 @@ pub mod motion;
 pub mod pathing;
 pub mod placement;
 pub mod repair;
+pub mod keepalive;
 pub mod rng;
 pub mod tags;
 pub mod score;
@@ -517,6 +518,7 @@ impl Game {
         // The engine's own objects after main, by the first turn (read under Wine, the
         // same with or without the map's units).
         self.world.tags.take_all(&[b"`rcm", b"`rtl"]);
+        self.world.draw_first_wander_waits();
         Ok(())
     }
 

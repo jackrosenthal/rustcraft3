@@ -31,11 +31,36 @@ fn main() -> anyhow::Result<()> {
     // port has: the next tag (presence), the birth count, the main generator's state,
     // and the rand module's value.
     let mut cks = Vec::new();
+    // TAGS_KEEPALIVE names the original's keepalives (turn and checksum a line) to
+    // compare the port's with, the modules it does not compute taken as the original's
+    // in Booty Bay (read under winedbg at its first turns).
+    let keepalives: std::collections::BTreeMap<u32, u32> = std::env::var("TAGS_KEEPALIVE").ok().map(|f| {
+        std::fs::read_to_string(f).unwrap_or_default().lines().filter(|l| !l.starts_with('#')).filter_map(|l| {
+            let mut w = l.split_whitespace();
+            Some((w.next()?.parse().ok()?, u32::from_str_radix(w.next()?, 16).ok()?))
+        }).collect()
+    }).unwrap_or_default();
+    g.world.keepalive_modules = [(19, 0), (18, 0xc7d37d14), (17, 0x50bc09d8), (16, 0xa4fc2e24), (14, 0x68b89b88), (13, 0x38eb3c00), (12, 0x38eb3c00), (9, 0xd85c9c00), (7, 0x98054236), (6, 0xaa436eb2), (5, 0xa996f046), (4, 0xb5891e1b)].into_iter().collect();
+    let mut first_off = None;
     for k in 0..turns {
+        g.world.net_turn(100);
+        let n = k as u32 + 1;
+        if let (Some(&want), None) = (keepalives.get(&n), first_off) {
+            let ours = g.world.keepalive();
+            if ours != want {
+                first_off = Some((n, ours, want));
+            }
+        }
         g.tick(if k == 0 { first } else { 0.1 });
         let t = &g.world.tags;
         let presence = t.free.last().copied().unwrap_or(t.slots);
         cks.push(format!("{} {:08x} {:08x} {:016x} {:08x}", k + 1, presence, t.born, g.world.rng.state(), g.world.rand_data.checksum()));
+    }
+    if !keepalives.is_empty() {
+        match first_off {
+            Some((n, ours, want)) => println!("keepalives agree to turn {}; turn {n}: ours {ours:08x}, the original's {want:08x}", n - 1),
+            None => println!("keepalives agree for all {} turns compared", keepalives.len().min(turns)),
+        }
     }
     if let Ok(out) = std::env::var("TAGS_CKS") {
         std::fs::write(out, cks.join("\n") + "\n")?;

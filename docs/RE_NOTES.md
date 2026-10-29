@@ -199,7 +199,18 @@ these are the findings behind them.
   tag is the slot the allocator gives next (the last freed, or the count), the birth
   tag the count of tags given.  With the game (6) and data modules (4, 5, 7, 9, 12 to
   19) at their first-turn values, the port's state gives the original's keepalives
-  for Booty Bay's turns 1 to 431 exactly (the run's trace parts there).
+  for Booty Bay's turns 1 to 431 exactly (the run's trace parts there).  A turn
+  without actions is one net message of kind 0x1f whose payload is the turn's time in
+  milliseconds, two bytes: `FUN_6f328550` adds `bytehash(kind + bytehash(H(payload)))`,
+  `H` xoring in the payload's words, then its bytes, rotating by 3 each time; 0x64 0x00
+  gives 0x00c0cec0.  (With actions the payload is not yet read.)  The wanderers' first
+  waits are drawn before the first keepalive, as the game is made.  `crate::keepalive`
+  computes it; the tags example's TAGS_KEEPALIVE compares the port's with
+  `docs/reference/bootybay_keepalives.txt`, the original's for 978 turns.
+- The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
+  byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
+  four bytes, an `S` by its characters).  No single SLK file's sum matches; which
+  tables and how their cells are typed is not yet read.
 - The object manager (`DAT_6fd6860c`, Tempest's) keeps two tag tables: at +0 entries of
   8 bytes (-2, object), its count at +0x1c (the presence tag unless +0x40 is set), and
   at +0x20 another (its next tag at +0x50).  Its 12805 objects at Booty Bay's first turn

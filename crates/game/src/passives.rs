@@ -253,6 +253,20 @@ impl World {
     }
 
 
+    /// The wanderers' first waits, drawn as the game is made (read: the original's first
+    /// keepalive has the main generator past them, the setup's last draws).
+    pub fn draw_first_wander_waits(&mut self) {
+        let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.paused && matches!(u.action, Action::Idle) && u.extra.wander_wait.is_none())).collect();
+        for h in units {
+            if self.ability_with_code(h, "Awan").is_some() {
+                let w = self.rng.real(5.0, 10.0);
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.wander_wait = Some(w);
+                }
+            }
+        }
+    }
+
     /// A wanderer's order given at its time (`update_wander`): the walk to its point, its
     /// next wait drawn.
     pub(crate) fn issue_wander(&mut self, k: usize, wait: f32, h: u32, dt: f32) {

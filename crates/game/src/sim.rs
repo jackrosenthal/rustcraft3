@@ -1533,6 +1533,7 @@ impl World {
             // between its order's draw and the next wanderer's).
             if self.ability_with_code(h, "Awan").is_some() {
                 let next = self.rng.real(5.0, 10.0);
+                log::debug!("wander redraw: {h} at step {k}, clock {:.6}, next {next:.6}", f32::from_bits(clocks.get(k).copied().unwrap_or(0)));
                 let at = self.step_times.get(k).copied().unwrap_or(0.0) as f32 - self.wander_counted;
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.wander_wait = Some(at + next);

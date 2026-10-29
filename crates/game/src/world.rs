@@ -245,6 +245,13 @@ pub struct World {
     /// the passes searches have used in it.
     #[serde(default)]
     pub search_budget: (u64, u32),
+    /// The net module's sum of the messages handled (`keepalive`).
+    #[serde(default)]
+    pub net_sum: u32,
+    /// Keepalive checksum modules the port does not compute, by index: values read from
+    /// the original (`keepalive`).
+    #[serde(default)]
+    pub keepalive_modules: std::collections::BTreeMap<u8, u32>,
     #[serde(skip)]
     pub step_base: u32,
     #[serde(skip)]
@@ -751,6 +758,8 @@ impl World {
             step_index: 0,
             wander_counted: 0.0,
             search_budget: (0, 0),
+            net_sum: 0,
+            keepalive_modules: Default::default(),
             step_base: 0,
             step_clocks: Vec::new(),
             step_times: Vec::new(),

@@ -191,6 +191,15 @@ these are the findings behind them.
   The databases' and custom data's values are made once as the data loads
   (`FUN_6f658a20`), the typed-value hash being a sum over cells (order does not
   matter).  The player module (`FUN_6f25c560`) mixes objects' tag pairs (`+0xc ^ +0x10`).
+- The keepalive for turn n is made before the turn runs, from the state after turn
+  n - 1: `t` (the game's +0x1c70) is the game time in milliseconds then, (n - 1) * 100
+  (read: 0x12c0 at turn 49).  The net module (CNetData's vf0 reads its +0x227c, which
+  `FUN_6f328550` adds each handled message's hash to) grows by 0x00c0cec0 a turn
+  without actions, so is n * 0x00c0cec0 (read: 0x24e792c0 at turn 49).  The presence
+  tag is the slot the allocator gives next (the last freed, or the count), the birth
+  tag the count of tags given.  With the game (6) and data modules (4, 5, 7, 9, 12 to
+  19) at their first-turn values, the port's state gives the original's keepalives
+  for Booty Bay's turns 1 to 431 exactly (the run's trace parts there).
 - The object manager (`DAT_6fd6860c`, Tempest's) keeps two tag tables: at +0 entries of
   8 bytes (-2, object), its count at +0x1c (the presence tag unless +0x40 is set), and
   at +0x20 another (its next tag at +0x50).  Its 12805 objects at Booty Bay's first turn
@@ -702,8 +711,10 @@ these are the findings behind them.
     tick past a step's: after it; 0.70 short of one: before it).  The mechanism (the
     agent's timer, `FUN_6f0608d0`, vtable slot 2) is not yet read; the port models
     the three observations as they are.
-  - An arrival's path goes a step after its tree, as a give-up's does (read: an arrival
-    at a turn's last step, its path freed as the next turn starts).
+  - An arrival's path goes a step after its tree, as a give-up's does; after a turn's
+    last step, it goes first thing in the next turn, before that turn's orders (read:
+    an arrival at a turn's last step; a give-up's path freed before an order due ahead
+    of the next turn's first step).
   - The blocked count's draw (`FUN_6f1689d0`: 2 for a goal within 12 cells and a walker
     alone, else 7 plus `FUN_6f1d62b0(2)`, 0 or 1) is on the generator at DAT_6fd53a48,
     the main one (read: the game object there, 0x2b300c0 in the traced run, is the

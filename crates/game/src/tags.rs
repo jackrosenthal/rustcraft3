@@ -248,7 +248,7 @@ impl Tags {
         }
         for s in [slots[17], slots[16]] {
             if late {
-                self.later.push(s);
+                self.next_turn.push(s);
             } else {
                 self.next_step.push(s);
             }
@@ -273,7 +273,7 @@ impl Tags {
         }
         for s in [slots[17], slots[16]] {
             if late {
-                self.later.push(s);
+                self.next_turn.push(s);
             } else {
                 self.next_step.push(s);
             }

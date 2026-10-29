@@ -27,8 +27,18 @@ fn main() -> anyhow::Result<()> {
     if std::env::var("TAGS_DRAWS").is_ok() {
         w3_game::rng::TRACE.store(true, std::sync::atomic::Ordering::Relaxed);
     }
+    // TAGS_CKS names a file for, after each turn, the keepalive checksum's inputs the
+    // port has: the next tag (presence), the birth count, the main generator's state,
+    // and the rand module's value.
+    let mut cks = Vec::new();
     for k in 0..turns {
         g.tick(if k == 0 { first } else { 0.1 });
+        let t = &g.world.tags;
+        let presence = t.free.last().copied().unwrap_or(t.slots);
+        cks.push(format!("{} {:08x} {:08x} {:016x} {:08x}", k + 1, presence, t.born, g.world.rng.state(), g.world.rand_data.checksum()));
+    }
+    if let Ok(out) = std::env::var("TAGS_CKS") {
+        std::fs::write(out, cks.join("\n") + "\n")?;
     }
     let ours: Vec<String> = g.world.tags.log.clone().unwrap_or_default().iter().map(|c| String::from_utf8_lossy(c).to_string()).collect();
     println!("ours {} tags, the original's {}", ours.len(), reference.len());

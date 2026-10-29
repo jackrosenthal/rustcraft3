@@ -181,8 +181,9 @@ impl World {
         for h in units {
             // A walk ended: its order's objects go (`Tags::move_done`).
             if !before_steps {
+                let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
                 if let Some(slots) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)).filter(|s| s.len() == 18) {
-                    self.tags.move_done(&slots);
+                    self.tags.move_done(&slots, serial);
                 }
             }
             if self.ability_with_code(h, "Awan").is_none() {

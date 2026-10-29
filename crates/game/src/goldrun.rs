@@ -193,7 +193,7 @@ impl World {
 
     /// At the mine (`FUN_6f437ae0`): a worker's first entry makes a `+fgm`; the move's
     /// target task and the task before it go as the step ends, in the walkers' order,
-    /// and its path as the next step ends (`Tags::late_path`); the round trip's timing tunes its speed; it goes in for the
+    /// and its path in the next step (`Tags::walk_ended`); the round trip's timing tunes its speed; it goes in for the
     /// mine's time (Agld DataB), taking its load.
     fn enter_mine(&mut self, h: u32, mut run: GoldRun, path: [u32; 2], agent: u32) {
         if !run.entered {
@@ -206,7 +206,8 @@ impl World {
         };
         self.tags.release_in_step(run.order[target_task]);
         self.tags.release_in_step(run.order[task]);
-        self.tags.late_path(path);
+        let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
+        self.tags.walk_ended(path, serial);
         let mine = run.mine;
         let (dur, gold_cap) = match (self.ability_with_code(mine, "Agld"), self.ability_with_code(h, "Ahar")) {
             (Some((m, ml)), Some((a, al))) => (self.ability_real(m, "DataB", ml), self.ability_real(a, "DataC", al) as i32),
@@ -231,7 +232,7 @@ impl World {
 
     /// The mine's timer is up (`h`'s due on the agent queue): out at the place it went
     /// in, its order home given (`RETURN`: its `^clg` at once, the harvest order's tree
-    /// after, its own five with the tick's orders), walking from step `k`.
+    /// and its own five with the tick's orders' objects), walking from step `k`.
     pub fn leave_gold_mine(&mut self, h: u32, k: usize) {
         let Some(mut run) = self.unit(h).and_then(|u| u.extra.gold_run.clone()) else { return };
         let order: Vec<u32> = RETURN.iter().map(|c| self.tags.take(c)).collect();
@@ -240,8 +241,11 @@ impl World {
             Kind::Player => &[9, 8, 7, 6, 5, 4, 3, 2, 0],
             _ => &[8, 7, 6, 5, 4, 3, 2, 1, 0],
         };
+        // The harvest order's tree goes with the new order's five, with the objects of
+        // the orders given at the same tick (read: after a wanderer's order given at
+        // that tick and before its eight).
         for &i in rest {
-            self.tags.release(run.order[i]);
+            self.tags.issued.push(run.order[i]);
         }
         for i in [12, 11, 10, 9, 8] {
             self.tags.issued.push(order[i]);
@@ -287,7 +291,8 @@ impl World {
         for i in [15, 14, 13, 12, 11] {
             self.tags.release_in_step(order[i]);
         }
-        self.tags.late_path(path);
+        let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
+        self.tags.walk_ended(path, serial);
         let mut run = run;
         run.phase = Phase::ToMine;
         run.kind = Kind::Own;

@@ -1179,13 +1179,10 @@ impl World {
         if let Some(&t) = self.step_ticks.first() {
             self.fire_mana_listeners(Some(t));
         }
-        // A give-up's path goes as the next step starts, the next tick's first for one in a
-        // tick's last step, after the orders due before it (read: a give-up's path in a
-        // tick's last step freed first thing in the next, before a peon's arrival's new
-        // order there); an arrival's as the next step ends (`Tags::late_path`).
-        let paths = if self.step_clocks.is_empty() { Vec::new() } else { self.tags.take_step_paths() };
+        // The paths of the walks ended in the last step go in this one, in the walkers'
+        // order (`Tags::walk_ended`).
+        let mut carried = if self.step_clocks.is_empty() { Vec::new() } else { self.tags.take_step_paths() };
         self.tags.begin_first_step();
-        self.tags.free_step_paths(paths);
         self.step_range = (0, self.step_clocks.len().min(1));
         let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.steps_walker())).collect();
         // The newest walk first (traced: sheep 1050120, given its order after 1050117,
@@ -1201,6 +1198,11 @@ impl World {
             }
         }
         for h in walkers {
+            // The ended walks' paths newer than this walker's go before it.
+            let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
+            let (now, later): (Vec<_>, Vec<_>) = std::mem::take(&mut carried).into_iter().partition(|&(_, s)| s > serial);
+            self.tags.free_step_paths(now);
+            carried = later;
             // A walk to a structure ends in the walkers' order (`World::gold_run_step_end`).
             if self.gold_run_step_end(h, 0) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
                 continue;
@@ -1220,6 +1222,7 @@ impl World {
                 }
             }
         }
+        self.tags.free_step_paths(carried);
         self.tags.end_first_step();
         // Orders given at this step's tick free their objects after it.
         self.tags.flush_issued();
@@ -1239,11 +1242,9 @@ impl World {
             let next = self.step_ticks.get(k).copied();
             self.issue_wanders(&now, next);
             self.fire_mana_listeners(next);
-            // A walk's path goes as the step after its end starts (traced: freed after an
-            // order due before the next step, before another walk's end in that step,
-            // older or newer).
-            let paths = self.tags.take_step_paths();
-            self.tags.free_step_paths(paths);
+            // The paths of the walks ended in the last step go in this one, in the walkers'
+            // order (`Tags::walk_ended`).
+            let mut carried = self.tags.take_step_paths();
             self.step_range = (k, k + 1);
             let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.steps_walker())).collect();
         // The newest walk first (traced: sheep 1050120, given its order after 1050117,
@@ -1263,6 +1264,10 @@ impl World {
                 }
             }
             for h in walkers {
+                let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
+                let (now, later): (Vec<_>, Vec<_>) = std::mem::take(&mut carried).into_iter().partition(|&(_, s)| s > serial);
+                self.tags.free_step_paths(now);
+                carried = later;
                 if self.gold_run_step_end(h, k) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
                     continue;
                 }
@@ -1277,10 +1282,11 @@ impl World {
                     }
                 }
             }
-            // As the step ends: the paths of the last step's arrivals, then the objects of
-            // orders given at this step's tick, then its walk ends' (read: a wanderer's
-            // order's eight freed after a peon's path and before a give-up's tree in the
-            // same step).
+            // As the step ends: the paths of the walks older than its walkers, then the
+            // objects of orders given at this step's tick, then its walk ends' (read: a
+            // wanderer's order's eight freed after a peon's path and before a give-up's
+            // tree in the same step).
+            self.tags.free_step_paths(carried);
             self.tags.end_step();
         }
         let rest: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 >= n.max(1)).collect();
@@ -1592,9 +1598,11 @@ impl World {
                 if !moved {
                     self.tags.move_done_in_place(&slots);
                 } else if gave_up {
-                    self.tags.move_done(&slots);
+                    let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
+                    self.tags.move_done(&slots, serial);
                 } else {
-                    self.tags.move_arrived(&slots);
+                    let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
+                    self.tags.move_arrived(&slots, serial);
                 }
             }
             // A wanderer left without an order draws its wait anew, counted from this

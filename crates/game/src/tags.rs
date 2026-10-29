@@ -66,19 +66,11 @@ pub struct Tags {
     /// Ended walks' paths (`l^pa`, `^clu`), freed in the next movement step
     /// (`World::first_steps`, `World::step_walkers`).
     #[serde(default)]
-    pub step_paths: Vec<[u32; 2]>,
+    pub step_paths: Vec<([u32; 2], u32)>,
     /// Walk ends' objects released in a tick's first step, while it runs: freed in
     /// order as it ends, after the paths of the last tick's ends (`Tags::end_step`).
     #[serde(default)]
     pub step_frees: Option<Vec<u32>>,
-    /// The paths of walks to a structure that ended in this step, and of those that
-    /// ended in the last, freed as the next step ends, before its walk ends' objects
-    /// (`Tags::late_path`).
-    #[serde(default)]
-    pub late_paths: (Vec<[u32; 2]>, Vec<[u32; 2]>),
-    /// While a tick's first step runs (`begin_first_step` to `end_first_step`).
-    #[serde(default)]
-    pub in_first_step: bool,
     /// Issued orders' objects freed once the orders due together are all given
     /// (`flush_issued`).
     #[serde(default)]
@@ -106,7 +98,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), step_paths: Vec::new(), step_frees: None, late_paths: Default::default(), in_first_step: false, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None }
+        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -190,28 +182,7 @@ impl Tags {
     /// A tick's first step begins: its walk ends' objects wait for its end.
     pub fn begin_first_step(&mut self) {
         self.step_frees = Some(Vec::new());
-        self.late_paths.1 = std::mem::take(&mut self.late_paths.0);
-        self.in_first_step = true;
         self.mark_step(0);
-    }
-
-    /// A walk arrived in this step (a wanderer at its goal, a worker at a structure): its
-    /// path (`l^pa`, `^clu`) goes as the next step ends, before that step's walk ends'
-    /// objects, the arrivals' paths in the order the walks ended (read: a peon's walk to
-    /// a gold mine ended; in the next step a wanderer's give-up made its three objects,
-    /// then the peon's path was freed, then the wanderer's tree; a wanderer's arrival in
-    /// a tick's first step, its path likewise after a give-up's three in the next; a
-    /// peon's at a hall and a wanderer's arrival in the same step, the two paths freed
-    /// newest walk first, each way round).  A give-up's path goes as the next step
-    /// starts (`step_paths`; read: before another give-up's three).
-    pub fn late_path(&mut self, path: [u32; 2]) {
-        self.late_paths.0.push(path);
-    }
-
-    fn free_late_paths(&mut self) {
-        for s in std::mem::take(&mut self.late_paths.1).into_iter().flatten() {
-            self.release(s);
-        }
     }
 
     /// Notes a movement step's start in the trace.
@@ -221,13 +192,22 @@ impl Tags {
         }
     }
 
-    /// A tick's first step's end: the last tick's arrivals' paths, then this step's walk
-    /// ends' objects, freed in that order (read: a give-up's three new objects made, then
-    /// the last turn's arrival's path freed, then the give-up's tree).  In a tick's later
-    /// steps the orders' objects come between (`end_step`).
+    /// A walk ended in this step (a wanderer's give-up or arrival, a worker's arrival at a
+    /// structure): its path (`l^pa`, `^clu`) goes in the next step where the walk would
+    /// come in the walkers' order, newest first, and at that step's end after the
+    /// walkers when older than them all (`World::first_steps`, `World::step_walkers`;
+    /// read: a give-up's path freed before an older walker's give-up made its three, an
+    /// arrival's after a newer one's; a peon's and a wanderer's paths, ended in the same
+    /// step, newest walk first, each way round; a peon's after an order given as the
+    /// next step began and before that order's eight).
+    pub fn walk_ended(&mut self, path: [u32; 2], serial: u32) {
+        self.step_paths.push((path, serial));
+    }
+
+    /// A tick's first step's end: its walk ends' objects (read: a give-up's three new
+    /// objects made, then the last turn's arrival's path freed, then the give-up's
+    /// tree).  In a tick's later steps the orders' objects come first (`end_step`).
     pub fn end_first_step(&mut self) {
-        self.in_first_step = false;
-        self.free_late_paths();
         for s in self.step_frees.take().unwrap_or_default() {
             self.release(s);
         }
@@ -237,12 +217,10 @@ impl Tags {
     /// two give-ups in a turn's second step make their new objects, then free all).
     pub fn begin_step(&mut self) {
         self.step_frees = Some(Vec::new());
-        self.late_paths.1 = std::mem::take(&mut self.late_paths.0);
     }
 
     /// A tick's later step's end: its walk ends' objects freed in order.
     pub fn end_step(&mut self) {
-        self.free_late_paths();
         self.flush_issued();
         for s in self.step_frees.take().unwrap_or_default() {
             self.release(s);
@@ -250,14 +228,16 @@ impl Tags {
     }
 
     /// The ended walks' paths waiting for this step.
-    pub fn take_step_paths(&mut self) -> Vec<[u32; 2]> {
+    pub fn take_step_paths(&mut self) -> Vec<([u32; 2], u32)> {
         std::mem::take(&mut self.step_paths)
     }
 
     /// Frees a step's waiting paths at once.
-    pub fn free_step_paths(&mut self, paths: Vec<[u32; 2]>) {
-        for s in paths.into_iter().flatten() {
-            self.release(s);
+    pub fn free_step_paths(&mut self, paths: Vec<([u32; 2], u32)>) {
+        for (p, _) in paths {
+            for s in p {
+                self.release(s);
+            }
         }
     }
 
@@ -324,11 +304,11 @@ impl Tags {
     /// arriving at their goals in turns 119 and 129, the path right after; one arriving
     /// at a turn's last step, the path in the next turn).  `move_done` is for a walk
     /// ended facing a goal it could not come nearer.
-    pub fn move_arrived(&mut self, slots: &[u32]) {
+    pub fn move_arrived(&mut self, slots: &[u32], serial: u32) {
         for k in [7, 6, 5, 4, 3, 2, 0] {
             self.release_in_step(slots[k]);
         }
-        self.late_path([slots[17], slots[16]]);
+        self.walk_ended([slots[17], slots[16]], serial);
     }
 
     pub fn move_done_in_place(&mut self, slots: &[u32]) {
@@ -340,14 +320,14 @@ impl Tags {
         }
     }
 
-    pub fn move_done(&mut self, slots: &[u32]) {
+    pub fn move_done(&mut self, slots: &[u32], serial: u32) {
         let a = self.take(b"tskA");
         let b = self.take(b"task");
         let c = self.take(b"task");
         for s in [slots[7], c, b, a, slots[6], slots[5], slots[4], slots[3], slots[2], slots[0]] {
             self.release_in_step(s);
         }
-        self.step_paths.push([slots[17], slots[16]]);
+        self.walk_ended([slots[17], slots[16]], serial);
     }
 
     /// Objects the engine makes right after the next object tagged.

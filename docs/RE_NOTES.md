@@ -290,6 +290,21 @@ these are the findings behind them.
   actions as "turn N carries pid hex") gives the original's keepalives through its
   selection turns; the first training order (turn 425 of that game) is the first
   turn they part.
+- Without actions the port's keepalives agree with the original's (recorded again to
+  turn 1615, `docs/reference/bootybay_keepalives.txt`) through turn 1143; turn 1144
+  is the first to part.
+- A training order (a traced game, `trace2.sh` with its actions, the order at turn
+  991): its dispatch, before the turn's keepalive, makes a +ord, a `` `rcm ``, and a
+  `` `rtl `` (the original's keepalive there is the port's with the peon's
+  registration in production, the birth count 3 higher, and the next slot 3 freed
+  slots on); the +ord is freed first thing in the turn's run.  The peon is made in the
+  run of turn 1141 (the port's in 1140): its tags as a unit made by script, then a
+  `ptcf`, then the training's `` `rtl `` and `` `rcm ``, its two tasks, and the `ptcf`
+  freed.  The melee hero-items trigger (TRAIN_FINISH, filterMeleeTrainedUnitIsHeroBJ)
+  does not run for the peon in the original (no +tex), though the port runs it, its
+  player-unit filters being taken as never asked; TriggerRegisterPlayerUnitEvent
+  (`FUN_6f2178f0`) does keep the filter with the registration (`FUN_6f1ec650` of its
+  fourth argument into `FUN_6f27a530`).
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

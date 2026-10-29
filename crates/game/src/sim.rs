@@ -1494,8 +1494,8 @@ impl World {
             }
             let (x, y) = m.at(clock);
             let Some(u) = self.unit_mut(h) else { return true };
-            u.x = f32::from_bits(x) * crate::pathing::CELL + origin[0];
-            u.y = f32::from_bits(y) * crate::pathing::CELL + origin[1];
+            u.x = f32::from_bits(ef::add(ef::mul(x, crate::pathing::CELL.to_bits()), origin[0].to_bits()));
+            u.y = f32::from_bits(ef::add(ef::mul(y, crate::pathing::CELL.to_bits()), origin[1].to_bits()));
             u.path.remove(0);
             if !u.path.is_empty() {
                 continue;
@@ -1515,8 +1515,8 @@ impl World {
         let (x, y) = m.at(last);
         let Some(u) = self.unit_mut(h) else { return true };
         let was = (u.x, u.y);
-        u.x = f32::from_bits(x) * crate::pathing::CELL + origin[0];
-        u.y = f32::from_bits(y) * crate::pathing::CELL + origin[1];
+        u.x = f32::from_bits(ef::add(ef::mul(x, crate::pathing::CELL.to_bits()), origin[0].to_bits()));
+        u.y = f32::from_bits(ef::add(ef::mul(y, crate::pathing::CELL.to_bits()), origin[1].to_bits()));
         u.extra.cell_at = Some((x, y, u.x, u.y));
         if (u.x, u.y) != was {
             u.extra.step_from = Some(was);

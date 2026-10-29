@@ -262,12 +262,15 @@ impl World {
     /// next wait drawn.
     pub(crate) fn issue_wander(&mut self, k: usize, at: u32, h: u32) {
         let next = self.rng.real(5.0, 10.0);
-        // The point: on each axis, x first, a draw of stream 8 times 500 less 250
-        // (CAbilityWander vf190, FUN_6f59af20; its constants read from the running
-        // original: 250 and 500).
+        // The point: on each axis, x first, a draw of stream 8 times 500 less 250, added
+        // to the unit's place, by the engine's arithmetic (CAbilityWander vf190,
+        // FUN_6f59af20; its constants read from the running original: 250 and 500; read:
+        // a pig's goal 54.040680 in cells, not the 54.04065 of rounded arithmetic).
+        use crate::efloat as ef;
         let r = &mut self.rand_data.streams[8];
-        let dx = r.real(0.0, 1.0) * 500.0 - 250.0;
-        let dy = r.real(0.0, 1.0) * 500.0 - 250.0;
+        let off = |r: f32| ef::sub(ef::mul(500f32.to_bits(), r.to_bits()), 250f32.to_bits());
+        let dx = off(r.real(0.0, 1.0));
+        let dy = off(r.real(0.0, 1.0));
         // The next wait counts from this one's time, the agent queue's clock as it
         // fires (read: 5.035873 as a first wait of 5.035860 fell due).
         let u = self.unit_mut(h).unwrap();
@@ -275,7 +278,7 @@ impl World {
         // One given before the tick's first step walks in it (traced: a pig given at
         // 7.6012 searched and moved in the step at 7.62).
         u.extra.walk_from = Some(k);
-        let (x, y) = (u.x + dx, u.y + dy);
+        let (x, y) = (f32::from_bits(ef::add(u.x.to_bits(), dx)), f32::from_bits(ef::add(u.y.to_bits(), dy)));
         log::debug!("wander: {h:#x} {} from ({:.1},{:.1}) to ({x:.1},{y:.1}) before step {k} at {:.6}, next {next:.4}", crate::objects::id_str(u.type_id), u.x, u.y, f32::from_bits(at));
         u.action = Action::Move { x, y };
         u.path.clear();

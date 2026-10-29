@@ -40,10 +40,31 @@ pub fn net_message(kind: u8, payload: &[u8]) -> u32 {
     byte_hash(x)
 }
 
+/// The modules the port does not compute, as the original had them in Booty Bay with
+/// two players (read under winedbg at its first turns; the game's, 6, unchanged while
+/// nobody acts).
+pub const BOOTY_BAY_MODULES: [(u8, u32); 12] = [
+    (19, 0), (18, 0xc7d37d14), (17, 0x50bc09d8), (16, 0xa4fc2e24), (14, 0x68b89b88), (13, 0x38eb3c00), (12, 0x38eb3c00),
+    (9, 0xd85c9c00), (7, 0x98054236), (6, 0xaa436eb2), (5, 0xa996f046), (4, 0xb5891e1b),
+];
+
 impl World {
     /// The net module's part of a turn without actions, as its message comes in.
     pub fn net_turn(&mut self, ms: u16) {
         self.net_sum = self.net_sum.wrapping_add(net_message(0x1f, &ms.to_le_bytes()));
+    }
+
+    /// The net module's part of a turn with its players' actions: its message carries
+    /// the turn's time, then each player's block (id, length, actions), as a replay's
+    /// turn record does.
+    pub fn net_turn_actions(&mut self, ms: u16, actions: &[(u8, Vec<u8>)]) {
+        let mut payload = ms.to_le_bytes().to_vec();
+        for (pid, a) in actions {
+            payload.push(*pid);
+            payload.extend((a.len() as u16).to_le_bytes());
+            payload.extend(a);
+        }
+        self.net_sum = self.net_sum.wrapping_add(net_message(0x1f, &payload));
     }
 
     /// The keepalive checksum for the turn whose message came in last, from the state

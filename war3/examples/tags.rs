@@ -40,7 +40,7 @@ fn main() -> anyhow::Result<()> {
             Some((w.next()?.parse().ok()?, u32::from_str_radix(w.next()?, 16).ok()?))
         }).collect()
     }).unwrap_or_default();
-    g.world.keepalive_modules = [(19, 0), (18, 0xc7d37d14), (17, 0x50bc09d8), (16, 0xa4fc2e24), (14, 0x68b89b88), (13, 0x38eb3c00), (12, 0x38eb3c00), (9, 0xd85c9c00), (7, 0x98054236), (6, 0xaa436eb2), (5, 0xa996f046), (4, 0xb5891e1b)].into_iter().collect();
+    g.world.keepalive_modules = w3_game::keepalive::BOOTY_BAY_MODULES.into_iter().collect();
     let mut first_off = None;
     for k in 0..turns {
         g.world.net_turn(100);

@@ -50,6 +50,11 @@ fn main() -> anyhow::Result<()> {
     // The game's options are the settings word of its description.
     let (flags, _) = war3::net::from_settings(w3_net::stat::GameStat::parse(&r.stat)?.settings);
     g.start_lobby(&lobby, flags)?;
+    // W3GPLAY_KEEPALIVE: compare the port's keepalive checksum with the replay's after
+    // each turn (the modules the port does not compute taken as Booty Bay's).
+    let keepalive = std::env::var("W3GPLAY_KEEPALIVE").is_ok();
+    g.world.keepalive_modules = w3_game::keepalive::BOOTY_BAY_MODULES.into_iter().collect();
+    let mut ours = Vec::new();
     let mut t = 0u32;
     for rec in &r.records {
         if let w3g::Record::Turn { ms, actions } = rec {
@@ -57,12 +62,31 @@ fn main() -> anyhow::Result<()> {
             if t > stop {
                 break;
             }
+            g.world.net_turn_actions(*ms, actions);
+            ours.push((t, actions.len(), g.world.keepalive()));
+            if let Ok(out) = std::env::var("W3GPLAY_CKS") {
+                let tg = &g.world.tags;
+                use std::io::Write;
+                let mut f = std::fs::OpenOptions::new().create(true).append(true).open(out)?;
+                writeln!(f, "{} {} {:08x} {:08x} {:016x} {:08x} {:08x}", t - *ms as u32, actions.len(), tg.free.last().copied().unwrap_or(tg.slots), tg.born, g.world.rng.state(), g.world.rand_data.checksum(), g.world.net_sum)?;
+            }
             let actions = actions.iter().filter_map(|(pid, b)| Some((player_of(*pid)?, b.clone()))).collect::<Vec<_>>();
             if !actions.is_empty() {
                 log::debug!("at {t} ms");
             }
             let f = w3_game::replay::Frame { dt: *ms as f32 / 1000.0, commands: Vec::new(), actions: Some(actions) };
             g.play_frame(&f);
+        }
+    }
+    if keepalive {
+        let theirs: Vec<u32> = r.checksums().collect();
+        if let Ok(out) = std::env::var("W3GPLAY_THEIRS") {
+            std::fs::write(out, theirs.iter().map(|c| format!("{c:08x}")).collect::<Vec<_>>().join("\n") + "\n")?;
+        }
+        let n = ours.len().min(theirs.len());
+        match (0..n).find(|&k| ours[k].2 != theirs[k]) {
+            Some(k) => println!("keepalives agree for {k} turns; turn {} (at {} ms, {} with actions): ours {:08x}, the replay's {:08x}", k + 1, ours[k].0, ours[k].1, ours[k].2, theirs[k]),
+            None => println!("keepalives agree for all {n} turns"),
         }
     }
     if let Some(out) = trace {

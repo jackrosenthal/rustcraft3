@@ -705,7 +705,9 @@ these are the findings behind them.
   - An arrival's path goes a step after its tree, as a give-up's does (read: an arrival
     at a turn's last step, its path freed as the next turn starts).
   - The blocked count's draw (`FUN_6f1689d0`: 2 for a goal within 12 cells and a walker
-    alone, else 7 plus `FUN_6f1d62b0(2)`, 0 or 1) is on the generator at DAT_6fd53a48.
+    alone, else 7 plus `FUN_6f1d62b0(2)`, 0 or 1) is on the generator at DAT_6fd53a48,
+    the main one (read: the game object there, 0x2b300c0 in the traced run, is the
+    generator every wander wait is drawn on).
   - Open: which cells a walker's region holds as it moves.  Read: sheep 1050120, held at
     7.53 to 7.56 after moving from 432.97 to 433.06, held cells 431 to 433 (both
     places); sheep 1050117 at 9.42 was blocked by 1050120, which had moved off that row

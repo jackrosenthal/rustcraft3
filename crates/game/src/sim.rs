@@ -1318,9 +1318,16 @@ impl World {
                 let (px, py) = (f32::from_bits(x), f32::from_bits(y));
                 (gx - px) * (gx - px) + (gy - py) * (gy - py) <= 144.0
             });
-            // (The original draws 7 or 8 for a far goal, `FUN_6f1d62b0(2)` on the
-            // generator at DAT_6fd53a48, whose draws are not yet followed; 8 here.)
-            let k = if near { 2 } else { 8 };
+            // A far goal: 7 or 8, drawn on the main generator (`FUN_6f1d62b0(2)`: the
+            // draw's mantissa as a single in 1 to 2, less 1, times 2, truncated; the
+            // generator is the object at DAT_6fd53a48, read: the wanderers' waits are
+            // drawn on it too).
+            let k = if near {
+                2
+            } else {
+                let r = f32::from_bits((self.rng.next_u32() & 0x7f_ffff) | 0x3f80_0000) - 1.0;
+                7 + (r * 2.0) as u32
+            };
             if let Some(u) = self.unit_mut(h) {
                 u.extra.walk_blocked = k;
             }

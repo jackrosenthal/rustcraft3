@@ -12,9 +12,14 @@ use crate::efloat as ef;
 /// its time plus its period, `FUN_6f052380` sets the clock to each event's time).
 pub const TICK: u32 = 0x3ba3_d70a;
 
-/// The clock at the next movement step, six ticks on (read: the clock at the steps
+/// The movement steps' period on the agent queue, 0.03 seconds (read: its clock at
+/// steps 180 and 1151, 5.399984 and 34.529137, the sums of 0.03s by the engine's
+/// addition).  The main clock at the steps runs by the 0.005s ticks instead (read:
 /// 5.069871, 8.849516, 11.069143, 32.395412, and 46.017925, each bit for bit the
-/// 0.005s summed; the steps 0.029995 apart from 8 to 32 seconds, not 0.03).
+/// 0.005s summed).
+pub const STEP: u32 = 0x3cf5_c28f;
+
+/// The clock six ticks on.
 pub fn next_step(clock: u32) -> u32 {
     (0..6).fold(clock, |c, _| ef::add(c, TICK))
 }

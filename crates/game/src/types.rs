@@ -403,9 +403,10 @@ pub struct UnitExtra {
     /// When the creep last stood idle away from home, if it has since.
     #[serde(default)]
     pub idle_away: Option<f32>,
-    /// A wanderer's wait (Awan): it runs only while the unit stands idle.
+    /// A wanderer's next walk (Awan): its timer's due time on the agent queue (its
+    /// single's bits; `World::update_wander`).
     #[serde(default)]
-    pub wander_wait: Option<f32>,
+    pub wander_at: Option<u32>,
     /// Cannibalize's own look for a corpse (every 2 seconds), and whether the unit
     /// stood idle when it last looked.
     #[serde(default)]
@@ -449,9 +450,6 @@ pub struct UnitExtra {
     /// there starts from these, not from the world point converted back.
     #[serde(default)]
     pub cell_at: Option<(u32, u32, f32, f32)>,
-    /// Its wander wait was drawn in play (`World::WANDER_TICK`).
-    #[serde(default)]
-    pub wander_in_play: bool,
     /// Steps it waits, held back by another walker (the path's +0x94).
     #[serde(default)]
     pub walk_wait: u32,
@@ -462,9 +460,6 @@ pub struct UnitExtra {
     /// The walker it waits for (the path's +0xa8, +0xac).
     #[serde(default)]
     pub yields_to: Option<u32>,
-    /// Its last walk ended in the last movement step of its tick.
-    #[serde(default)]
-    pub arrived_last_step: bool,
     /// Its spells' listeners on its mana waiting for it to rise past their costs and
     /// 0.1 (CPoReThresholdLis, `` `rtl ``): each threshold with its slot.
     #[serde(default)]
@@ -673,20 +668,18 @@ impl Default for UnitExtra {
             returning: false,
             strayed: None,
             idle_away: None,
-            wander_wait: None,
+            wander_at: None,
             cannibal_wait: None,
             was_idle: false,
             detour: None,
             local_paths: false,
             path_end_cell: None,
-            arrived_last_step: false,
             walk_moved: false,
             walk_wait: 0,
             walk_research: false,
             search_at: None,
             face_hold: 0,
             cell_at: None,
-            wander_in_play: false,
             step_from: None,
             walk_blocked: 0,
             walk_serial: 0,

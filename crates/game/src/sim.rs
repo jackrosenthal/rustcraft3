@@ -1145,6 +1145,12 @@ impl World {
     /// The first movement step of the tick for units walking already, before the tick's
     /// logic.
     pub(crate) fn first_steps(&mut self) {
+        // A walk's path goes as the step after its end starts, the next tick's first
+        // after its last (read: a give-up's at a turn's last step freed after an order
+        // due ahead of the next turn's first step).
+        if !self.step_clocks.is_empty() {
+            self.tags.free_step();
+        }
         self.step_range = (0, self.step_clocks.len().min(1));
         let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.local_paths && matches!(u.action, Action::Move { .. }))).collect();
         // The newest walk first (traced: sheep 1050120, given its order after 1050117,
@@ -1175,19 +1181,22 @@ impl World {
                 }
             }
         }
+        // Orders given at this step's tick free their objects after it.
+        self.tags.flush_issued();
     }
 
     /// The tick's movement steps after its first for wanderers, step by step, each
     /// walker in turn: a new order's way found in its first step (its search in the
     /// step after its order, traced), then its steps.
-    pub(crate) fn step_walkers(&mut self, dt: f32) {
+    pub(crate) fn step_walkers(&mut self) {
         let n = self.step_clocks.len();
         let due = std::mem::take(&mut self.wander_due);
         for k in 1..n {
             // The orders due before this step are given first (traced: a pig's walk ended
             // in a turn's second step, before an order due after it).
-            let now: Vec<(usize, f32, u32)> = due.iter().copied().filter(|e| e.0 == k).collect();
-            self.issue_wanders(&now, dt);
+            let now: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 == k).collect();
+            let next = self.step_ticks.get(k).copied();
+            self.issue_wanders(&now, next);
             // A walk's path goes a step after it ends (traced: freed after an order due
             // before the next step, before another walk's end in that step).
             self.tags.free_step();
@@ -1218,9 +1227,10 @@ impl World {
                     }
                 }
             }
+            self.tags.flush_issued();
         }
-        let rest: Vec<(usize, f32, u32)> = due.iter().copied().filter(|e| e.0 >= n.max(1)).collect();
-        self.issue_wanders(&rest, dt);
+        let rest: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 >= n.max(1)).collect();
+        self.issue_wanders(&rest, None);
         self.step_range = (1, n);
     }
 
@@ -1515,16 +1525,15 @@ impl World {
         if let Some(k) = done {
             log::debug!("walk of {h} done at step {k} of {n}, time {:.3}, tsk. {:?}", self.time, self.unit(h).and_then(|u| u.extra.order_tags.get(7).copied()));
             // The order's objects go as its walk ends, at its step (traced).
-            let late = k + 1 == n;
             let moved = self.unit_mut(h).is_some_and(|u| std::mem::take(&mut u.extra.walk_moved));
             let gave_up = self.unit(h).is_some_and(|u| u.extra.facing_goal);
             if let Some(slots) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)).filter(|s| s.len() == 18) {
                 if !moved {
                     self.tags.move_done_in_place(&slots);
                 } else if gave_up {
-                    self.tags.move_done(&slots, late);
+                    self.tags.move_done(&slots);
                 } else {
-                    self.tags.move_arrived(&slots, late);
+                    self.tags.move_arrived(&slots);
                 }
             }
             // A wanderer left without an order draws its wait anew, counted from this
@@ -1534,17 +1543,15 @@ impl World {
             if self.ability_with_code(h, "Awan").is_some() {
                 let next = self.rng.real(5.0, 10.0);
                 log::debug!("wander redraw: {h} at step {k}, clock {:.6}, next {next:.6}", f32::from_bits(clocks.get(k).copied().unwrap_or(0)));
-                let at = self.step_times.get(k).copied().unwrap_or(0.0) as f32 - self.wander_counted;
+                let at = self.step_agent.get(k).copied().unwrap_or(self.agent_step);
                 if let Some(u) = self.unit_mut(h) {
-                    u.extra.wander_wait = Some(at + next);
-                    u.extra.wander_in_play = true;
+                    u.extra.wander_at = Some(crate::efloat::add(at, next.to_bits()));
                 }
             }
             let Some(u) = self.unit_mut(h) else { return true };
             u.extra.mover = None;
             u.extra.step_from = None;
             u.extra.facing_goal = false;
-            u.extra.arrived_last_step = late;
             u.path.clear();
             set_anim(u, "stand");
             return true;

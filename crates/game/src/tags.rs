@@ -63,9 +63,6 @@ pub struct Tags {
     /// its event queue runs at the next frame in the order queued; `FUN_6f15e500`).
     #[serde(default)]
     pub doomed: Vec<u32>,
-    /// Released a turn after those `doomed`.
-    #[serde(default)]
-    pub later: Vec<u32>,
     /// Freed as the next turn starts.
     #[serde(default)]
     pub next_turn: Vec<u32>,
@@ -99,7 +96,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), later: Vec::new(), next_turn: Vec::new(), next_step: Vec::new(), issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None }
+        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), next_step: Vec::new(), issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -145,7 +142,6 @@ impl Tags {
         for s in std::mem::take(&mut self.doomed) {
             self.release(s);
         }
-        self.doomed = std::mem::take(&mut self.later);
     }
 
     /// Queues a slot's release at a game time.
@@ -180,9 +176,9 @@ impl Tags {
         }
     }
 
-    /// Frees what has been released so far.
+    /// Frees what has been released so far (what waits for a step waits for the next
+    /// tick's first).
     pub fn free_doomed(&mut self) {
-        self.free_step();
         for s in std::mem::take(&mut self.doomed) {
             self.release(s);
         }
@@ -229,8 +225,9 @@ impl Tags {
 
     /// A move order done: three more objects, then the rest of its tree, last made
     /// first in parts, and its path.
-    /// The path's (`l^pa`, `^clu`) go a movement step after the rest (traced: in the
-    /// next turn when the walk ended in its turn's last step).
+    /// The path's (`l^pa`, `^clu`) go as the next movement step starts (traced: in the
+    /// next turn when the walk ended in its turn's last step, after an order due ahead
+    /// of that turn's first step).
     /// A walk done where it began, never moving (its goal within reach as it started,
     /// done at its first step): no objects made, its tree but the issue's nine
     /// (`move_issued`) freed then, `tsk.` first and `ordt` last, and its path as the
@@ -238,21 +235,15 @@ impl Tags {
     /// freed in the next turn's first step, before its logic, and its path as the one
     /// after starts).
     /// A walk that reached its goal: no objects made, its tree but the issue's nine
-    /// freed at once, its path a step later as `move_done`'s (traced: sheep arriving at
-    /// their goals in turns 119 and 129, the path right after; one arriving at a turn's
-    /// last step, the path as the next turn starts).  `move_done` is for a walk ended
-    /// facing a goal it could not come nearer.
-    pub fn move_arrived(&mut self, slots: &[u32], late: bool) {
+    /// freed at once, its path as the next step starts, as `move_done`'s (traced: sheep
+    /// arriving at their goals in turns 119 and 129, the path right after; one arriving
+    /// at a turn's last step, the path in the next turn).  `move_done` is for a walk
+    /// ended facing a goal it could not come nearer.
+    pub fn move_arrived(&mut self, slots: &[u32]) {
         for k in [7, 6, 5, 4, 3, 2, 0] {
             self.release(slots[k]);
         }
-        for s in [slots[17], slots[16]] {
-            if late {
-                self.next_turn.push(s);
-            } else {
-                self.next_step.push(s);
-            }
-        }
+        self.next_step.extend([slots[17], slots[16]]);
     }
 
     pub fn move_done_in_place(&mut self, slots: &[u32]) {
@@ -264,20 +255,14 @@ impl Tags {
         }
     }
 
-    pub fn move_done(&mut self, slots: &[u32], late: bool) {
+    pub fn move_done(&mut self, slots: &[u32]) {
         let a = self.take(b"tskA");
         let b = self.take(b"task");
         let c = self.take(b"task");
         for s in [slots[7], c, b, a, slots[6], slots[5], slots[4], slots[3], slots[2], slots[0]] {
             self.release(s);
         }
-        for s in [slots[17], slots[16]] {
-            if late {
-                self.next_turn.push(s);
-            } else {
-                self.next_step.push(s);
-            }
-        }
+        self.next_step.extend([slots[17], slots[16]]);
     }
 
     /// Objects the engine makes right after the next object tagged.

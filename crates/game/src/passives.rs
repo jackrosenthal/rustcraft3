@@ -175,93 +175,84 @@ impl World {
     /// generator), then walks to a point up to 250 away on each axis (vf190).
     /// `before_steps`: those falling due before the tick's first movement step, given
     /// before it; else the rest, given after it (with the tick's logic).
-    pub fn update_wander(&mut self, dt: f32, before_steps: bool) {
+    pub fn update_wander(&mut self, before_steps: bool) {
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.paused && matches!(u.action, Action::Idle))).collect();
-        let mut due: Vec<(usize, f32, u32)> = Vec::new();
+        let mut due: Vec<(usize, u32, u32)> = Vec::new();
         for h in units {
             // A walk ended: its order's objects go (`Tags::move_done`).
             if !before_steps {
                 if let Some(slots) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)).filter(|s| s.len() == 18) {
-                    let late = self.unit(h).is_some_and(|u| u.extra.arrived_last_step);
-                    self.tags.move_done(&slots, late);
+                    self.tags.move_done(&slots);
                 }
             }
             if self.ability_with_code(h, "Awan").is_none() {
                 continue;
             }
-            // The wait runs only while it stands, and is drawn anew as a walk ends
-            // (`World::walk_steps`; read: the wander timer restarts as its order begins,
-            // event 0xd0178, and as it ends leaving the unit no order, 0xd0148; whether
-            // the timer firing mid-walk gives an order is not yet followed).
-            // The first wait counts from the unit's making, and a walk starts after the
-            // first movement step past its time, more than 1e-4 past it (traced: Booty
-            // Bay's first walks, the third given after its turn's third step).
-            let wait = match self.unit(h).and_then(|u| u.extra.wander_wait) {
+            // The wait is a timer on the agent queue (CAgentTimer), its due time the
+            // queue's clock when started plus the wait: drawn as the game is made (the
+            // clock 0), as an order begins, and as a walk ends (`World::walk_steps`;
+            // read: event 0xd0178, and 0xd0148 leaving the unit no order).  It falls in
+            // the main tick whose next clock first reaches it, and among the steps by
+            // its time (`World::plan_steps`; read: 0x100609's due 43.090098 fired at the
+            // next turn's first tick, 43.089535; two due 19.868235 and 19.871306 at the
+            // same tick, 19.867666).  The port checks it only while the unit stands;
+            // whether the timer firing mid-walk gives an order is not yet followed.
+            let at = match self.unit(h).and_then(|u| u.extra.wander_at) {
                 Some(t) => t,
-                None => self.rng.real(5.0, 10.0),
+                None => self.rng.real(5.0, 10.0).to_bits(),
             };
-            self.unit_mut(h).unwrap().extra.wander_wait = Some(wait);
-            // Given at its time, among the tick's steps (traced: the turn's steps at the
-            // multiples of 30 ms in it, the orders between them by their times; a step
-            // within 1e-4 of the time comes first, as with timers); its walk starts with
-            // the first step after it, in the next tick when none is left in this one.
-            // An in-play wait whose nearest clock tick is the next turn's is given then
-            // (read: one 0.78 of a tick short of a turn's end walked in the next turn).
-            let in_play = self.unit(h).is_some_and(|u| u.extra.wander_in_play);
-            let start = (self.time as f64 * 10.0).round() / 10.0;
-            let tick_end = in_play && ((start + wait as f64 - 0.1) / 0.005).round() * 0.005 + 0.1 >= start + dt as f64 - 1e-6;
-            if (wait as f64) >= dt as f64 || tick_end {
-                if !before_steps {
-                    self.unit_mut(h).unwrap().extra.wander_wait = Some(wait - dt);
-                }
+            self.unit_mut(h).unwrap().extra.wander_at = Some(at);
+            if self.agent_tick(at).is_none() {
                 continue;
             }
-            let k = self.step_times.iter().filter(|&&s| s - wait as f64 <= 1e-4).count();
+            // Its walk starts with the first step after it, in the next tick when none
+            // is left in this one.
+            let k = self.step_agent.iter().filter(|&&s| f32::from_bits(s) < f32::from_bits(at)).count();
             if (k == 0) == before_steps {
-                due.push((k, wait, h));
+                due.push((k, at, h));
             }
         }
-        due.sort_by(|a, b| a.1.total_cmp(&b.1));
+        due.sort_by(|a, b| f32::from_bits(a.1).total_cmp(&f32::from_bits(b.1)));
         // Those after the first step go among the steps (`World::step_walkers`).
         if !before_steps {
             self.wander_due = due;
             return;
         }
-        self.issue_wanders(&due, dt);
+        let next = self.step_ticks.first().copied();
+        self.issue_wanders(&due, next);
     }
 
     /// Gives the orders due together, in order, their issues' objects freed after each
-    /// clock tick's (`Tags::flush_issued`; read: two orders fired at the same tick,
+    /// main tick's (`Tags::flush_issued`; read: two orders fired at the same tick,
     /// 19.867666, freed theirs together after both; two fired three ticks apart each
-    /// after its own).  The tick: the engine clock's 0.005s one nearest (read: due 0.66
-    /// and 0.28 of a tick past one, both fired at 19.867666, the next; 0.74 and 0.70
-    /// past, at the next ticks), the game's times running 0.1 ahead of the clock's.
-    /// (Where an order falls among the steps follows its time itself: due 0.36 of a
-    /// tick past a step's, after it; 0.70 short of one, before it.)
-    pub(crate) fn issue_wanders(&mut self, due: &[(usize, f32, u32)], dt: f32) {
-        let tick = |w: &World, wait: f32| (((w.time as f64 * 10.0).round() / 10.0 + wait as f64 - 0.1) / 0.005).round() as i64;
+    /// after its own).  Those of the tick of the step that follows wait for that step
+    /// (read: an order at a turn's first step's tick, its eight freed after the path
+    /// that step frees).
+    pub(crate) fn issue_wanders(&mut self, due: &[(usize, u32, u32)], next_step: Option<i64>) {
         let mut last = None;
-        for &(k, wait, h) in due {
-            let t = tick(self, wait);
+        for &(k, at, h) in due {
+            let t = self.agent_tick(at);
             if last.is_some_and(|l| l != t) {
                 self.tags.flush_issued();
             }
             last = Some(t);
-            self.issue_wander(k, wait, h, dt);
+            self.issue_wander(k, at, h);
         }
-        self.tags.flush_issued();
+        if last.flatten().is_none_or(|t| Some(t) != next_step) {
+            self.tags.flush_issued();
+        }
     }
 
 
     /// The wanderers' first waits, drawn as the game is made (read: the original's first
     /// keepalive has the main generator past them, the setup's last draws).
     pub fn draw_first_wander_waits(&mut self) {
-        let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.paused && matches!(u.action, Action::Idle) && u.extra.wander_wait.is_none())).collect();
+        let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.paused && matches!(u.action, Action::Idle) && u.extra.wander_at.is_none())).collect();
         for h in units {
             if self.ability_with_code(h, "Awan").is_some() {
                 let w = self.rng.real(5.0, 10.0);
                 if let Some(u) = self.unit_mut(h) {
-                    u.extra.wander_wait = Some(w);
+                    u.extra.wander_at = Some(w.to_bits());
                 }
             }
         }
@@ -269,7 +260,7 @@ impl World {
 
     /// A wanderer's order given at its time (`update_wander`): the walk to its point, its
     /// next wait drawn.
-    pub(crate) fn issue_wander(&mut self, k: usize, wait: f32, h: u32, dt: f32) {
+    pub(crate) fn issue_wander(&mut self, k: usize, at: u32, h: u32) {
         let next = self.rng.real(5.0, 10.0);
         // The point: on each axis, x first, a draw of stream 8 times 500 less 250
         // (CAbilityWander vf190, FUN_6f59af20; its constants read from the running
@@ -277,17 +268,15 @@ impl World {
         let r = &mut self.rand_data.streams[8];
         let dx = r.real(0.0, 1.0) * 500.0 - 250.0;
         let dy = r.real(0.0, 1.0) * 500.0 - 250.0;
-        // The next wait counts from this one's time (read in the original: a wait
-        // drawn at the clock 5.444844 as the last fell due).
-        let at = self.time + wait;
+        // The next wait counts from this one's time, the agent queue's clock as it
+        // fires (read: 5.035873 as a first wait of 5.035860 fell due).
         let u = self.unit_mut(h).unwrap();
-        u.extra.wander_wait = Some(next - (dt - wait));
-        u.extra.wander_in_play = true;
+        u.extra.wander_at = Some(crate::efloat::add(at, next.to_bits()));
         // One given before the tick's first step walks in it (traced: a pig given at
         // 7.6012 searched and moved in the step at 7.62).
         u.extra.walk_from = Some(k);
         let (x, y) = (u.x + dx, u.y + dy);
-        log::debug!("wander: {h:#x} {} from ({:.1},{:.1}) to ({x:.1},{y:.1}) before step {k} at {at:.4}, next {next:.4}", crate::objects::id_str(u.type_id), u.x, u.y);
+        log::debug!("wander: {h:#x} {} from ({:.1},{:.1}) to ({x:.1},{y:.1}) before step {k} at {:.6}, next {next:.4}", crate::objects::id_str(u.type_id), u.x, u.y, f32::from_bits(at));
         u.action = Action::Move { x, y };
         u.path.clear();
         u.repath_timer = 0.0;

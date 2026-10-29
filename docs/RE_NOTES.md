@@ -726,6 +726,22 @@ these are the findings behind them.
     last step, it goes first thing in the next turn, before that turn's orders (read:
     an arrival at a turn's last step; a give-up's path freed before an order due ahead
     of the next turn's first step).
+  - The agent queue runs one main tick ahead: while the main clock stands at a tick,
+    the agent queue is brought to the next tick's clock (read: its clock written to
+    10.009321 at the main clock 10.004322, the next tick's value, and to its events'
+    times as they fire between).  The movement steps are a 0.03s timer on it, so a step
+    is taken at the last main tick whose clock is short of the step's time, and moves
+    units by that tick's clock: as the main clock trails more, from step 1164 (34.92s)
+    on at tick 6k + 1 (read: step 1164 at main tick 6985; 1223 at 7339).  A turn holds
+    the main ticks 20m to 20m + 19 (read: step 1223, at tick 7339, in turn 368, with
+    the steps of 36.60 to 36.69).  A wander order falls likewise, in the main tick whose
+    next clock first reaches its due, and among the steps by its time (read: due
+    43.090098 at the next turn's first tick, 43.089535; due 19.868235 and 19.871306
+    both at 19.867666).  An order's eight objects are freed after its tick's events,
+    so after a step at that tick and the path the step frees (read: turn 436).  A
+    walk's path goes as the next step starts, the next tick's first after its last.
+    The port models all this (`World::plan_steps`, `World::agent_tick`); the trace and
+    the keepalives agree through turn 501.
   - The wander timer is a CAgentTimer (embedded in the ability at +0x6c; started by
     vf2, `FUN_6f060190`: its due is its queue's clock plus the wait by the engine's
     addition, with a serial).  Its queue (`[DAT_6fd3c82c + 0x40]`, 0x2dc0088 in the
@@ -734,12 +750,7 @@ these are the findings behind them.
     within a unit in the last place), so it trails exact time by less than the main
     clock does (0.000863 at 34.53).  An order fires when that clock reaches its due
     (the queue's clock then the due itself: 5.035873 for a first wait of 5.035860),
-    and the main clock then shows the last 0.005s tick passed.  How that clock moves
-    between steps is not settled: most orders show the tick before the one at which
-    "step value plus 0.005 a tick" reaches their due, a few near steps the tick
-    after; and two due in a turn's last ticks, after its last step (agent clock
-    43.090098, 34.398251), fired at the next turn's first tick, which the port does
-    not yet model for the first of them (Booty Bay's turn 432).
+    and the main clock then shows the tick during which it fired (see above).
   - The blocked count's draw (`FUN_6f1689d0`: 2 for a goal within 12 cells and a walker
     alone, else 7 plus `FUN_6f1d62b0(2)`, 0 or 1) is on the generator at DAT_6fd53a48,
     the main one (read: the game object there, 0x2b300c0 in the traced run, is the

@@ -221,13 +221,15 @@ pub struct World {
     /// 100 ms turns; `FUN_6f15aa80`).
     #[serde(skip)]
     pub steps: u32,
-    /// The engine's game clock (its single's bits) at the next movement step, six 0.005s
-    /// more each step by the engine's addition (`motion::next_step`); its reading at the
-    /// last step before this tick's, and its readings at them.  A step reads the clock
-    /// before it moves on (read: sheep 1050120's velocity set at 7.949662 is the one the
-    /// port set a step's clock later; its place's step over 8.0 then differs).
+    /// The engine's main clock (its single's bits) at a 0.005s tick: the tick and its
+    /// clock, the sum of 0.005s so far by the engine's addition (`motion::TICK`).
     #[serde(default)]
-    pub engine_clock: u32,
+    pub main_clock: (i64, u32),
+    /// The agent queue's time for the next movement step: the sum of 0.03s a step by
+    /// the engine's addition (`motion::STEP`).
+    #[serde(default)]
+    pub agent_step: u32,
+    /// The main clock at the last step before this tick's.
     #[serde(default)]
     pub last_step_clock: u32,
     /// Movement steps since the game began, and the first of this tick's (the engine's
@@ -236,10 +238,6 @@ pub struct World {
     pub steps_total: u64,
     #[serde(skip)]
     pub step_index: u64,
-    /// How much of this tick wanderers' waits have been counted down already (all of
-    /// it once `update_wander` has run after the first step).
-    #[serde(skip)]
-    pub wander_counted: f32,
     /// The local searches' budget for the walkers' class (`DAT_6fd53ae4` + 15 * 0x70:
     /// 1100 passes, renewed every other step, at odd steps): its two steps' window and
     /// the passes searches have used in it.
@@ -254,18 +252,26 @@ pub struct World {
     pub keepalive_modules: std::collections::BTreeMap<u8, u32>,
     #[serde(skip)]
     pub step_base: u32,
+    /// This tick's steps' main clocks (which they move units by) and agent times (by
+    /// which events on the agent queue fall among them).
     #[serde(skip)]
     pub step_clocks: Vec<u32>,
-    /// The game times of this tick's steps, from its start.
     #[serde(skip)]
-    pub step_times: Vec<f64>,
+    pub step_agent: Vec<u32>,
+    /// This tick's steps' main ticks.
+    #[serde(skip)]
+    pub step_ticks: Vec<i64>,
+    /// This tick's main ticks: the first, and the clock at each through the one after
+    /// the last.
+    #[serde(skip)]
+    pub tick_clocks: (i64, Vec<u32>),
     /// The steps walks take now: a tick's first before its logic, the rest after.
     #[serde(skip)]
     pub step_range: (usize, usize),
     /// Wanderers' orders due among this tick's steps after its first: the step each
-    /// comes before, its wait, the unit (`World::update_wander`).
+    /// comes before, its due time on the agent queue, the unit (`World::update_wander`).
     #[serde(skip)]
-    pub wander_due: Vec<(usize, f32, u32)>,
+    pub wander_due: Vec<(usize, u32, u32)>,
     /// CreateBlightedGoldmine is making the gold mine it hides.
     #[serde(skip)]
     pub hidden_mine: bool,
@@ -752,17 +758,19 @@ impl World {
             cheat_flags: 0,
             network: false,
             steps: 0,
-            engine_clock: 0,
+            main_clock: (0, 0),
+            agent_step: 0,
             last_step_clock: 0,
             steps_total: 0,
             step_index: 0,
-            wander_counted: 0.0,
             search_budget: (0, 0),
             net_sum: 0,
             keepalive_modules: Default::default(),
             step_base: 0,
             step_clocks: Vec::new(),
-            step_times: Vec::new(),
+            step_agent: Vec::new(),
+            step_ticks: Vec::new(),
+            tick_clocks: (0, Vec::new()),
             step_range: (0, 0),
             wander_due: Vec::new(),
             hidden_mine: false,
@@ -1501,6 +1509,74 @@ impl World {
         }
     }
 
+    /// This tick's main clock ticks and movement steps.  The engine's main clock moves
+    /// by 0.005s ticks; the movement steps are a timer every 0.03s on the agent queue,
+    /// which runs one tick ahead of the main clock: while the main clock stands at a
+    /// tick, the agent queue is brought to the next tick's clock, its events due by
+    /// then taking place in time order (read: the agent queue's clock written to the
+    /// main clock's next value at each tick, and to its events' times as they fire,
+    /// 10.019943 between 10.019320 and 10.024319).  So step k, due at the sum of k
+    /// 0.03s, is taken at the last tick whose clock is short of it, and moves units by
+    /// that tick's clock; as the main clock trails the agent queue's more, a step comes
+    /// a tick later from about 35 seconds in (read: step 1164 at main tick 6985, not
+    /// 6984).  A tick of the game holds the engine's ticks that start within it (read:
+    /// step 1223, taken at main tick 7339, in the turn of ticks 7320 to 7339).
+    fn plan_steps(&mut self, before: f64, dt: f32) {
+        let before_ms = (before * 1000.0).round() as i64;
+        let end_ms = ((before + dt as f64) * 1000.0).round() as i64;
+        let first = (before_ms + 4).div_euclid(5);
+        let last = (end_ms + 4).div_euclid(5) - 1;
+        let mut clocks = Vec::new();
+        for t in first..=last + 1 {
+            clocks.push(self.main_clock_at(t));
+        }
+        let lt = |a: u32, b: u32| f32::from_bits(a) < f32::from_bits(b);
+        self.step_clocks.clear();
+        self.step_agent.clear();
+        self.step_ticks.clear();
+        self.step_base = self.last_step_clock;
+        self.step_index = self.steps_total;
+        while !lt(clocks[clocks.len() - 1], self.agent_step) {
+            let s = self.agent_step;
+            let t = (first..=last).rev().find(|&t| lt(clocks[(t - first) as usize], s)).unwrap_or(first);
+            let c = clocks[(t - first) as usize];
+            self.step_clocks.push(c);
+            self.step_agent.push(s);
+            self.step_ticks.push(t);
+            self.last_step_clock = c;
+            self.agent_step = crate::efloat::add(s, crate::motion::STEP);
+        }
+        self.steps = self.step_clocks.len() as u32;
+        self.steps_total += self.steps as u64;
+        self.tick_clocks = (first, clocks);
+    }
+
+    /// The main clock at a tick (0 before the first), from the last read on.
+    fn main_clock_at(&mut self, t: i64) -> u32 {
+        if t <= 0 {
+            return 0;
+        }
+        if t < self.main_clock.0 {
+            self.main_clock = (0, 0);
+        }
+        while self.main_clock.0 < t {
+            self.main_clock = (self.main_clock.0 + 1, crate::efloat::add(self.main_clock.1, crate::motion::TICK));
+        }
+        self.main_clock.1
+    }
+
+    /// The main tick in which an event due at `at` on the agent queue takes place: the
+    /// last of this tick's whose clock is short of it (the first, if none), or none if
+    /// it falls due after this tick.
+    pub fn agent_tick(&self, at: u32) -> Option<i64> {
+        let (first, clocks) = &self.tick_clocks;
+        let lt = |a: u32, b: u32| f32::from_bits(a) < f32::from_bits(b);
+        if clocks.is_empty() || lt(*clocks.last().unwrap(), at) {
+            return None;
+        }
+        Some((0..clocks.len() - 1).rev().find(|&k| lt(clocks[k], at)).map_or(*first, |k| first + k as i64))
+    }
+
     pub fn tick(&mut self, vm: &mut Vm, dt: f32) {
         self.tags.turn();
         self.tick_inner(vm, dt);
@@ -1551,22 +1627,7 @@ impl World {
         }
         // Counted in f64 and read as f32: f32 adding 0.02s drifts, by seconds in an hour.
         let before = self.time_exact.max(self.time as f64);
-        // A tick holds the steps at multiples of 30 ms from 10 ms after its start to 10
-        // ms after its end (fitted to the original's traced turns, whose steps go 4, 3, 3
-        // as this game's ticks go 3, 3, 4).
-        let off = 10.0;
-        let step = |t: f64| ((t * 1000.0 - off) / 30.0 + 1e-6).floor() as i64;
-        self.steps = (step(before + dt as f64) - step(before)).max(0) as u32;
-        self.step_clocks.clear();
-        self.step_base = self.last_step_clock;
-        self.step_index = self.steps_total;
-        self.steps_total += self.steps as u64;
-        self.step_times = (step(before) + 1..=step(before + dt as f64)).map(|j| (j as f64 * 30.0) / 1000.0 - before).collect();
-        for _ in 0..self.steps {
-            self.step_clocks.push(self.engine_clock);
-            self.last_step_clock = self.engine_clock;
-            self.engine_clock = crate::motion::next_step(self.engine_clock);
-        }
+        self.plan_steps(before, dt);
         self.time_exact = self.time_exact.max(self.time as f64) + dt as f64;
         self.time = self.time_exact as f32;
         let day_hours = self.misc_f32("DayHours", 24.0);
@@ -1621,13 +1682,11 @@ impl World {
         prof!(self, "update_corpse_makers", self.update_corpse_makers(dt));
         // A turn's first movement step comes before its logic (traced in the original:
         // a wanderer's order is given after it, a walk's end found in it handled then).
-        self.update_wander(dt, true);
-        self.wander_counted = 0.0;
+        self.update_wander(true);
         self.first_steps();
         self.step_range = (1, self.step_clocks.len());
-        prof!(self, "update_wander", self.update_wander(dt, false));
-        self.wander_counted = dt;
-        self.step_walkers(dt);
+        prof!(self, "update_wander", self.update_wander(false));
+        self.step_walkers();
         prof!(self, "computer_idle_workers", self.computer_idle_workers(dt));
         prof!(self, "update_guards", self.update_guards());
         prof!(self, "update_creep_sleep", self.update_creep_sleep(dt));

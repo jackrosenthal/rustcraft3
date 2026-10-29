@@ -1034,6 +1034,11 @@ pub struct Timer {
     pub periodic: bool,
     pub running: bool,
     pub callback: Option<FuncId>,
+    /// The handler object (hdlr) it took with its first function, kept as it is
+    /// started again with another (traced: the restock timer, started at 120 seconds by
+    /// its own function with PerformStockUpdates, takes and frees nothing).
+    #[serde(default)]
+    pub handler: Option<u32>,
     /// The length of the current run: the timeout, or what was left when it was resumed.
     #[serde(default)]
     pub period: f64,

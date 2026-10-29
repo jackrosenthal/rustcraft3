@@ -318,6 +318,11 @@ these are the findings behind them.
   from 112.731), and the original makes both walkers' new objects and only then frees
   their objects.  A later step's walk ends' objects too wait for the step's end; with
   that the port's keepalives and trace agree without actions through turn 1201.
+- A timer's handler (hdlr) is the timer's: taken with its first function and kept
+  when it is started again with another (traced: Blizzard.j's restock timer, started
+  at 120 seconds by StartStockUpdates with PerformStockUpdates, takes and frees
+  nothing), and released after it when it is destroyed.  With that the keepalives
+  agree without actions through turn 1287.
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

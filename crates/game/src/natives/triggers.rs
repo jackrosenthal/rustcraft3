@@ -92,7 +92,6 @@ fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
     let (timeout, periodic, cb) = (a.r(1), a.b(2), a.code(3));
     w.timer_seq += 1;
     let seq = w.timer_seq;
-    let before = w.timer_mut(a.h(0)).and_then(|t| t.callback);
     if let Some(t) = w.timer_mut(a.h(0)) {
         t.seq = seq;
         t.timeout = timeout;
@@ -102,12 +101,11 @@ fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
         t.running = true;
         t.callback = cb;
     }
-    if w.timer_mut(a.h(0)).is_some() && before != cb {
-        if let Some(f) = cb {
-            w.tags.timer_handler(f);
-        }
-        if let Some(f) = before {
-            w.tags.drop_timer_handler(f);
+    // A timer takes a handler with its first function and keeps it.
+    if cb.is_some() && w.timer_mut(a.h(0)).is_some_and(|t| t.handler.is_none()) {
+        let s = w.tags.take(b"hdlr");
+        if let Some(t) = w.timer_mut(a.h(0)) {
+            t.handler = Some(s);
         }
     }
     none()
@@ -348,11 +346,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         // The timer is released, then its function's handler with its last timer (traced:
         // the game-started timer and its handler, the turn MarkGameStarted destroys it).
         DestroyTimer => |w, _, a| {
-            let Some(cb) = w.timer_mut(a.h(0)).map(|t| t.callback) else { return none() };
+            let Some(handler) = w.timer_mut(a.h(0)).map(|t| t.handler) else { return none() };
             w.handles.remove(a.h(0));
             w.tags.doom_handle(a.h(0));
-            if let Some(f) = cb {
-                w.tags.drop_timer_handler(f);
+            if let Some(s) = handler {
+                w.tags.doom(s);
             }
             none()
         },

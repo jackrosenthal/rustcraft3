@@ -50,11 +50,6 @@ pub struct Tags {
     /// function is given to an object (an action, a filter, a timer; `FUN_6f2872f0`).
     #[serde(default)]
     pub handlers: std::collections::BTreeSet<u32>,
-    /// Those given to timers, which have their own (measured: Melee's alliance-change
-    /// action, already a trigger's, takes another handler when a timer is started
-    /// with it).
-    #[serde(default)]
-    pub timer_handlers: std::collections::BTreeMap<u32, (u32, u32)>,
     /// Objects the engine makes right after the next one tagged (`after_next`).
     #[serde(skip)]
     pending: Vec<Code>,
@@ -101,7 +96,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None }
+        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -342,29 +337,6 @@ impl Tags {
     pub fn handler(&mut self, func: u32) {
         if self.handlers.insert(func) {
             self.take(b"hdlr");
-        }
-    }
-
-    /// The handler of a script function given to a timer, the first time.
-    pub fn timer_handler(&mut self, func: u32) {
-        match self.timer_handlers.get_mut(&func) {
-            Some(h) => h.1 += 1,
-            None => {
-                let s = self.take(b"hdlr");
-                self.timer_handlers.insert(func, (s, 1));
-            }
-        }
-    }
-
-    /// A timer no longer holds a function: its handler is released with its last timer.
-    pub fn drop_timer_handler(&mut self, func: u32) {
-        if let Some(h) = self.timer_handlers.get_mut(&func) {
-            h.1 -= 1;
-            if h.1 == 0 {
-                let s = h.0;
-                self.timer_handlers.remove(&func);
-                self.doom(s);
-            }
         }
     }
 

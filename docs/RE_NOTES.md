@@ -329,8 +329,12 @@ these are the findings behind them.
   next step ends, before that step's walk ends' objects, the arrivals' paths in the
   order their walks ended; a give-up's as the next step starts (read with step
   marks, `trstep.sh`: turn 890, a give-up's path freed in the next step before
-  another give-up's three objects; turn 1219, an arrival's after them).  With that the
-  game without actions agrees through turn 1342, trace and keepalives.  The tags
+  another give-up's three objects; turn 1219, an arrival's after them).  A later
+  step's end frees the last step's arrivals' paths, then the objects of the orders
+  given at its tick, then its walk ends' objects (read: turn 1343, an order's eight
+  freed after its step's give-up made its three and before that give-up's tree; turn
+  932, after a peon's path).  With that the game without actions agrees with the
+  original's trace to its end (turn 1361) and its keepalives through turn 1487.  The tags
   example prints each turn's steps with their main ticks (TAGS_STEPS), and its tag
   trace marks each step (`S k`).
 - Gold mining (traced: a Booty Bay peon sent by a smart order to its gold mine, its

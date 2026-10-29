@@ -1276,8 +1276,11 @@ impl World {
                     }
                 }
             }
+            // As the step ends: the paths of the last step's arrivals, then the objects of
+            // orders given at this step's tick, then its walk ends' (read: a wanderer's
+            // order's eight freed after a peon's path and before a give-up's tree in the
+            // same step).
             self.tags.end_step();
-            self.tags.flush_issued();
         }
         let rest: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 >= n.max(1)).collect();
         self.issue_wanders(&rest, None);

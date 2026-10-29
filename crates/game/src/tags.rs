@@ -248,6 +248,7 @@ impl Tags {
     /// A tick's later step's end: its walk ends' objects freed in order.
     pub fn end_step(&mut self) {
         self.free_late_paths();
+        self.flush_issued();
         for s in self.step_frees.take().unwrap_or_default() {
             self.release(s);
         }

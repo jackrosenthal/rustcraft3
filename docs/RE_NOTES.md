@@ -304,7 +304,17 @@ these are the findings behind them.
   does not run for the peon in the original (no +tex), though the port runs it, its
   player-unit filters being taken as never asked; TriggerRegisterPlayerUnitEvent
   (`FUN_6f2178f0`) does keep the filter with the registration (`FUN_6f1ec650` of its
-  fourth argument into `FUN_6f27a530`).
+  fourth argument into `FUN_6f27a530`).  The port now does the same: the order's
+  three objects as it is given to an empty queue, the time counting from the next
+  turn, the made unit's objects freed at once with the ptcf, and a finished
+  training's filter asked of the unit trained.  With that, a game where the original
+  selected, trained a peon, put a unit in a group, and selected again
+  (`docs/reference/bootybay_actions_game.txt`, its keepalives
+  `bootybay_actions_keepalives.txt`) agrees to turn 518; its turn 519 sends a peon to
+  mine (not yet carried out as the original does).  The traced training game agrees
+  to turn 1141, parting at 1142 as the game without actions parts: at turn 1128's
+  steps two walks end in the first step in the original (both walkers' tasks, then
+  every free) and in the second in the port.
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

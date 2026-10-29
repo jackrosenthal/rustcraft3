@@ -1179,12 +1179,13 @@ impl World {
         if let Some(&t) = self.step_ticks.first() {
             self.fire_mana_listeners(Some(t));
         }
-        // A walk's path goes in the step after its end; after the next turn's first, one
-        // ended in a turn's last step (read: freed after an order due ahead of the next
-        // turn's first step, and after a walk's end at that step, before the order's
-        // objects).
+        // A give-up's path goes as the next step starts, the next tick's first for one in a
+        // tick's last step, after the orders due before it (read: a give-up's path in a
+        // tick's last step freed first thing in the next, before a peon's arrival's new
+        // order there); an arrival's as the next step ends (`Tags::late_path`).
         let paths = if self.step_clocks.is_empty() { Vec::new() } else { self.tags.take_step_paths() };
         self.tags.begin_first_step();
+        self.tags.free_step_paths(paths);
         self.step_range = (0, self.step_clocks.len().min(1));
         let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.steps_walker())).collect();
         // The newest walk first (traced: sheep 1050120, given its order after 1050117,
@@ -1219,7 +1220,7 @@ impl World {
                 }
             }
         }
-        self.tags.end_first_step(paths);
+        self.tags.end_first_step();
         // Orders given at this step's tick free their objects after it.
         self.tags.flush_issued();
     }

@@ -224,6 +224,7 @@ impl World {
                 continue;
             }
             let k = self.step_agent.iter().filter(|&&s| f32::from_bits(s) < f32::from_bits(at)).count();
+            log::debug!("gold run {h} mine timer due {:.6} step {k} of agent clocks {:?}", f32::from_bits(at), self.step_agent.iter().map(|&c| f32::from_bits(c)).collect::<Vec<_>>());
             if (k == 0) == before_steps {
                 due.push((k, at, h));
             }

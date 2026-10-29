@@ -333,8 +333,11 @@ these are the findings behind them.
   step's end frees the last step's arrivals' paths, then the objects of the orders
   given at its tick, then its walk ends' objects (read: turn 1343, an order's eight
   freed after its step's give-up made its three and before that give-up's tree; turn
-  932, after a peon's path).  With that the game without actions agrees with the
-  original's trace to its end (turn 1361) and its keepalives through turn 1487.  The tags
+  932, after a peon's path).  A give-up's path from a tick's last step goes first
+  thing in the next tick's first step, after the orders due before it (read: before
+  a peon's new order at a hall arrival in that step); an arrival's at that step's
+  end.  With that the game without actions agrees with the original's trace to its
+  end (turn 1361) and its keepalives through turn 1487.  The tags
   example prints each turn's steps with their main ticks (TAGS_STEPS), and its tag
   trace marks each step (`S k`).
 - Gold mining (traced: a Booty Bay peon sent by a smart order to its gold mine, its
@@ -390,7 +393,9 @@ these are the findings behind them.
     `l^pa`), five of them freed as the next turn starts; the worker's own from the
     hall 19 (one `tskA` at its head, four tasks at its tail); the order home 16.
   With this the mining game (`docs/reference/bootybay_mining_*`) agrees with the
-  original's trace through turn 1261 and its keepalives through 1281; a step-marked
+  original's trace and keepalives through turn 1341 (at 1342 a give-up's path is
+  freed after the worker's order home, given at the step after it, where the port's
+  give-up falls a step earlier: open); a step-marked
   game of mining and a training (`docs/reference/bootybay_mining_training_*`) to its
   end (turn 1234); the game of selections, a training, and mining to turn 960.
   Open: a game trained before and during mining parts at turn 1125, a worker's

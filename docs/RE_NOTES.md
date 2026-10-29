@@ -474,13 +474,17 @@ these are the findings behind them.
   first step (the nearest swerving 0.03 at it, likely the separation of
   `FUN_6f1702f0`: neighbours within a radius by class, `DAT_6fd54398`, push by
   (1 - d/r) squared), the two behind them ten steps later, and the last, behind one of
-  those, six after that; each holds with its heading on its place, its member flags
-  (+0x28) 0x100000 throughout.  The hold is the provider's count (+0x94,
-  `FUN_6f165ae0`: held while it counts down); the port's counts for a block (2 near,
-  7 or 8 far, drawn) neither give those waits nor the draws the keepalives ask for,
-  whether near is judged by the member's place or the cluster's point, and whether a
-  blocked member searches again or holds.  The one draw as the walk begins likely
-  stands for a third such count.
+  those, six after that; each waits with its heading on its place, its member flags
+  (+0x28) 0x100000 throughout.  Each member has a path provider of its own (steering
+  +0xa8; read: five of them, their hold counts, +0x94, 0 throughout) with a way of
+  its own to its place (+0x70: 2 nodes for the two ahead, 3 and 4 behind); a waiting
+  member's way index (+0x74) is -1 until its search succeeds, so the waits are the
+  searches' (their budget and the ten steps a refused or blocked one waits,
+  `World::path_to_inner`), not holds.  The port's rules for wanderers' searches, given
+  the members, start them at steps 4, 3, 3, 1, and 2 where the original's were 17,
+  11, 11, 1, and 1; the port so far walks members straight to their places, with one
+  draw from the main generator as the walk begins standing in for the searches'
+  (which keep the keepalives agreeing to 1725).
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

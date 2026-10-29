@@ -323,6 +323,12 @@ these are the findings behind them.
   at 120 seconds by StartStockUpdates with PerformStockUpdates, takes and frees
   nothing), and released after it when it is destroyed.  With that the keepalives
   agree without actions through turn 1287.
+- The trace parts first at turn 1219 (its keepalives later): an arrival at turn
+  1217's last step, which is that turn's last main tick, frees its objects as turn
+  1218's first step starts, before a give-up there makes its new objects; the port
+  frees them in turn 1217.  Not explained yet: an arrival at a turn's last tick in
+  turn 570, and give-ups at a last tick (turns 59 and 368), free in their turn.  The
+  tags example prints each turn's steps with their main ticks (TAGS_STEPS).
 - The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
   byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
   four bytes, an `S` by its characters).  No single SLK file's sum matches; which

@@ -79,7 +79,7 @@ fn main() -> anyhow::Result<()> {
         g.tick(dt);
         // TAGS_STEPS: each turn's movement steps' clocks.
         if std::env::var("TAGS_STEPS").is_ok() {
-            println!("turn {n} steps {:?}", g.world.step_clocks.iter().map(|&c| f32::from_bits(c)).collect::<Vec<_>>());
+            println!("turn {n} steps {:?} ticks {:?} of {:?}", g.world.step_clocks.iter().map(|&c| f32::from_bits(c)).collect::<Vec<_>>(), g.world.step_ticks, (g.world.tick_clocks.0, g.world.tick_clocks.0 + g.world.tick_clocks.1.len() as i64 - 2));
         }
         let t = &g.world.tags;
         let presence = t.free.last().copied().unwrap_or(t.slots);

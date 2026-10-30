@@ -1374,7 +1374,13 @@ Formats the port made its own, to be replaced by the original's:
   player's sight, 0x404060 and 0x2e2e46 for three), a sprite word (0x38c0025,
   0x3ac0025, 0x3a40025) and short (-2 or -1), the widget's shorts (4095 or 4094,
   32769 or 0); and for 101 trees by the east start the own word 0x106, its first
-  short 4094, and its first byte 0: not yet understood.
+  short 4094, and its first byte 0, in every save of the map: not yet understood.
+  The own word is CDestructable +0x20 (`FUN_6f6c39b0`; after the handlers and widget,
+  `FUN_6f6c3940` writes +0x54 the variation, +0x55, +0x80 the z, +0x84, and +0x5c).
+  Its 0x100 is set by `FUN_6f6c3b30` (its vf 0x98 called first, then
+  `FUN_6f6c44a0(0)`), which a chop calls (`FUN_6f405110`), `FUN_6f48ffc0`, and the
+  destructable's making (`FUN_6f6c0d90`, where `FUN_6f04e060(0x20, 0)` is not 0; else
+  `FUN_6f6c44a0(1)`).
   An agent's entry is its
   CAgentBaseAbs: its first record `FUN_6f146480` (its base's, a reference, a counted
   list of references, four more), its second its agent's vf 0x38 (CAgent's

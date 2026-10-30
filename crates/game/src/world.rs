@@ -1718,6 +1718,20 @@ impl World {
         self.time_of_day_moved(vm, old, new, false);
     }
 
+    /// The timed releases falling due by the main clock at this tick's main tick `tick`,
+    /// freed as the step there begins (read: the objects of a change between day and
+    /// night freed after a turn's first step, before an order given at its second).
+    pub(crate) fn timed_frees_to(&mut self, tick: Option<i64>) {
+        let n = self.tick_clocks.1.len();
+        let i = match tick {
+            Some(t) => (t - self.tick_clocks.0).clamp(0, n as i64 - 1).max(0) as usize,
+            None => n.saturating_sub(1),
+        };
+        if let Some(now) = self.tick_abs(i) {
+            self.tags.free_timed(now);
+        }
+    }
+
     /// A kept clock reading (a due on the agent queue, a placing) in seconds since the
     /// game began.
     pub fn kept_abs(&self, v: u32) -> f64 {
@@ -1807,8 +1821,9 @@ impl World {
         self.tags.turn();
         self.tick_inner(vm, dt);
         // What was released during the turn goes at its end (its destruction falls due
-        // within the same frame), after what fell due during it.
-        self.tags.free_due(self.time_exact);
+        // within the same frame), after what fell due during it, by the main clock.
+        let now = self.tick_abs(self.tick_clocks.1.len().saturating_sub(1)).unwrap_or(self.time_exact);
+        self.tags.free_due(now);
     }
 
     fn tick_inner(&mut self, vm: &mut Vm, dt: f32) {

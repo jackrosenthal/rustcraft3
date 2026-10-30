@@ -1163,8 +1163,18 @@ these are the findings behind them.
     ranged weapon, Vampiric those with a melee one, War Drums and Command those with
     a weapon, Brilliance those with mana (read: Trueshot's buff on no critter passing
     a bearer; `World::aura_serves`).
+  - The objects timed by the main clock (each unit's of a change between day and
+    night, three seconds; a mine's FloatModifier) are freed as the main clock passes
+    their time: before the step whose tick it reaches, and before an order on the agent
+    queue due after them (read: those of a nightfall, due 683.2, freed before a
+    wanderer's order due 683.2195, both before a turn's second step;
+    `World::timed_frees_to`).
+  - A replay's checksum records are the keepalives (read: a LAN game's
+    TempReplay.w3g, turn for turn).
   With these Booty Bay without actions (`docs/reference/bootybay_quiet_long_*`) agrees
-  with the original's keepalives to turn 6844 and the long lumber game to 5663.
+  with the original's trace and keepalives for all 7300 turns compared, its replay
+  (`docs/reference/bootybay_quiet_long.w3g`, `w3gplay`) to turn 9014, and the long
+  lumber game to 5663.
   - The timers a creep's Hurl Boulder and Thunder Clap (ACtb, ACtc) make as its mana is
     first set are listeners on its mana rising past each spell's cost plus 0.1, the
     last spell's in the first slot (read: both Granite Golems' Hurl Boulder listeners,

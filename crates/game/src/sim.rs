@@ -1207,6 +1207,7 @@ impl World {
         if let Some(&t) = self.step_ticks.first() {
             self.fire_mana_listeners(Some(t));
             self.time_of_day_to(vm, Some(t));
+            self.timed_frees_to(Some(t));
         }
         // The paths of the walks ended in the last step go in this one, in the walkers'
         // order (`Tags::walk_ended`).
@@ -1284,6 +1285,7 @@ impl World {
             }
             self.fire_mana_listeners(next);
             self.time_of_day_to(vm, next);
+            self.timed_frees_to(next);
             // The paths of the walks ended in the last step go in this one, in the walkers'
             // order (`Tags::walk_ended`).
             let mut carried = self.tags.take_step_paths();

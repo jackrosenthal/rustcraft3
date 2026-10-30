@@ -278,6 +278,11 @@ impl World {
         let mut last = None;
         for &(k, at, h) in due {
             let t = self.agent_tick(at);
+            // The timed releases falling due before it go first (read: the objects of a
+            // change between day and night three seconds before, due 683.2, freed before
+            // a wanderer's order due 683.2195, both before the turn's second step).
+            let abs = self.kept_abs(at);
+            self.tags.free_timed(abs);
             // Listeners on mana falling in main ticks up to this one come first.
             if let Some(t) = t {
                 self.fire_mana_listeners(Some(t));

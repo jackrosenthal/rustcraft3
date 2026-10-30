@@ -156,7 +156,8 @@ impl Tags {
         }
     }
 
-    /// Queues a slot's release at a game time.
+    /// Queues a slot's release at a time of the main clock (seconds since the game
+    /// began, `World::tick_abs`).
     pub fn doom_at(&mut self, due: f64, slot: u32) {
         self.timed.push((due, slot));
     }
@@ -171,6 +172,12 @@ impl Tags {
     /// events run in the turn after a time they fall due on), earliest first, those due
     /// together in the order queued; then what was released at once.
     pub fn free_due(&mut self, now: f64) {
+        self.free_timed(now);
+        self.free_doomed();
+    }
+
+    /// Frees the timed releases falling due before `now`, earliest first.
+    pub fn free_timed(&mut self, now: f64) {
         let mut due: Vec<(f64, u32)> = Vec::new();
         self.timed.retain(|&(t, s)| {
             if t < now - 1e-4 {
@@ -184,7 +191,6 @@ impl Tags {
         for (_, s) in due {
             self.release(s);
         }
-        self.free_doomed();
     }
 
     /// A walk end's object released: at once, or as a tick's first step ends.

@@ -385,9 +385,10 @@ impl World {
         let old: Vec<u32> = [self.tags.day_timer.replace(first), std::mem::replace(&mut self.tags.day_timer_2, second)].into_iter().flatten().collect();
         // Dead ones too, while their corpses remain (measured: a creep killed by script).
         let units: Vec<u32> = self.unit_order.iter().rev().copied().filter(|&h| self.unit(h).is_some()).collect();
-        // Each unit's object of the change lasts three seconds (traced: queued with an
-        // event 3.0 seconds on, freed in the turn after, in the order made).
-        let now = self.time_exact;
+        // Each unit's object of the change lasts three seconds of the main clock (traced:
+        // queued with an event 3.0 seconds on, freed in the turn after, in the order
+        // made).
+        let now = self.time_of_day_clock;
         for h in units {
             let s = self.tags.take(b"`rcm");
             self.tags.doom_at(now + 3.0, s);

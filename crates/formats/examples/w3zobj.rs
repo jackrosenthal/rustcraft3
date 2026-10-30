@@ -135,6 +135,38 @@ fn main() {
         for r in p.refs.iter().chain(&p.tail) {
             println!("ref {r:?}: {:?}", kinds.get(&r.0));
         }
+        // Each region's cells as the pathing map lists them, against its record.
+        let mut listed: std::collections::HashMap<u32, Vec<(u32, u32)>> = Default::default();
+        for c in &p.proximity[1].cells {
+            for r in &c.3 {
+                listed.entry(r.0).or_default().push((c.0, c.1));
+            }
+        }
+        let mut census = std::collections::BTreeMap::new();
+        let mut shown = 0;
+        for o in &all {
+            let Ok(w3_formats::w3z::First::Region { refs, word, bounds, words }) = o.first() else { continue };
+            let cells = listed.get(&o.entry.tag).cloned().unwrap_or_default();
+            let span = (bounds[2] - bounds[0]) * (bounds[3] - bounds[1]);
+            let inside = cells.iter().all(|&(x, y)| y >= bounds[0] && y < bounds[2] && x >= bounds[1] && x < bounds[3]);
+            let key = (refs[0].0, word >> 24, cells.is_empty(), cells.len() as u32 == span, inside);
+            *census.entry(key).or_insert(0) += 1;
+            if !cells.is_empty() && cells.len() as u32 != span && shown < 4 {
+                shown += 1;
+                println!("region {} {word:x} {bounds:?} {words:x?}: {} cells of {span}: {:?}", o.entry.tag, cells.len(), &cells[..cells.len().min(12)]);
+            }
+        }
+        for (k, v) in census {
+            println!("map {} kind {:x} none {} full {} inside {}: {v}", k.0, k.1, k.2, k.3, k.4);
+        }
+        // The order of a cell's objects.
+        let mut orders = std::collections::BTreeMap::new();
+        for c in p.proximity[1].cells.iter().filter(|c| c.3.len() > 1) {
+            let up = c.3.windows(2).all(|w| w[0].0 < w[1].0);
+            let down = c.3.windows(2).all(|w| w[0].0 > w[1].0);
+            *orders.entry((up, down)).or_insert(0) += 1;
+        }
+        println!("cells' orders (ascending, descending): {orders:?}");
         return;
     }
     // "section <k> <file>": the object manager's data section k written to a file.

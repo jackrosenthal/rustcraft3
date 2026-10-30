@@ -1354,6 +1354,15 @@ Formats the port made its own, to be replaced by the original's:
   with 0x01 set, 0x10 where 0x02 is (not walkable), and 0x20 where blighted (5824
   cells by an undead player's start at 5 seconds); its objects are only `^pmr`
   (a pathing footprint's region, listed in each cell it covers: 71616 at 5 seconds).
+  A cell lists its regions newest first (23236 of 23300 cells with more than one).
+  A region's record (`FUN_6f14d430`) is its map and owner, a word (+0x34: its kind in
+  the top byte, the pathing flags it sets below, e.g., 0xc2, 0x10, and 0x08 for a
+  tree's three), its bounds (+0x1c to +0x28: first row, first column, and one past
+  the last of each, a row and column beyond the cells it lists: a tree's 16 within
+  5 by 5), the map's search mark when last met (+0x38, below the map's own, its
+  first word), the cells listing it (+0x3c, in its low bits), and a word (+0x40).
+  On the pathing map 4254 regions are listed in cells and 1491 of kind 1 in none;
+  those on the first map (1597) and 106 of kind 0 are listed nowhere.
   An agent's entry is its
   CAgentBaseAbs: its first record `FUN_6f146480` (its base's, a reference, a counted
   list of references, four more), its second its agent's vf 0x38 (CAgent's

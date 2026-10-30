@@ -380,7 +380,6 @@ impl World {
                     true
                 };
                 if runs {
-                    self.tags.bump_prop(1, "trig");
                     self.fire_registrations_pub(vm, crate::types::EventCtx::default(), vec![e]);
                 }
             }

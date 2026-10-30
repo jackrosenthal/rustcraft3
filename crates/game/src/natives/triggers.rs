@@ -204,6 +204,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         TriggerExecute => |w, vm, a| {
             let ctx = EventCtx { trigger: a.h(0), ..w.ctx.clone() };
             w.trigger_execute(vm, a.h(0), ctx);
+            // (Its execution let go as it ends takes a count of the property module's,
+            // 0x6f297997; read: the melee setup's, at its end.)
+            if w.trigger(a.h(0)).is_some() {
+                w.tags.bump_prop(1, "texd");
+            }
             none()
         },
         TriggerExecuteWait => |w, vm, a| {

@@ -1331,6 +1331,7 @@ impl World {
         let pass = self.trigger_evaluate(vm, trig);
         self.ctx = saved;
         if pass {
+            self.tags.bump_prop(1, "texe");
             self.trigger_execute(vm, trig, c);
         }
     }
@@ -1483,6 +1484,11 @@ impl World {
             let pass = self.trigger_evaluate(vm, trig);
             self.ctx = saved;
             if pass {
+                // (An execution from an event queues its actions, `FUN_6f298250`, taking
+                // a count of the property module's; TriggerExecute's runs them at once and
+                // takes none: read, the Day trigger at the melee setup's 8:00, not the
+                // setup's own.)
+                self.tags.bump_prop(1, "texe");
                 self.trigger_execute(vm, trig, c);
             }
         }
@@ -2155,6 +2161,11 @@ impl World {
             let pass = self.trigger_evaluate(vm, trig);
             self.ctx = saved;
             if pass {
+                // (An execution from an event queues its actions, `FUN_6f298250`, taking
+                // a count of the property module's; TriggerExecute's runs them at once and
+                // takes none: read, the Day trigger at the melee setup's 8:00, not the
+                // setup's own.)
+                self.tags.bump_prop(1, "texe");
                 self.trigger_execute(vm, trig, c);
             }
         }

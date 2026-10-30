@@ -1622,9 +1622,19 @@ Formats the port made its own, to be replaced by the original's:
   reading the native the VM called at each count, `*(ebp-0x80)` in its frame).  A
   unit removed takes four (`FUN_6f673610`, then three by `FUN_6f694690` as its
   orders clear), not one for each of its removal's seven tasks.  With these the
-  quiet test map's counts agree through 1022, the players' units included; then the
-  running game's (a trigger run from its event, `FUN_6f298250`, releases by
-  `FUN_6f161800`, and more) are next.
+  quiet test map's counts agree through 1022, the players' units included.  A
+  trigger's execution from an event queues its actions (`FUN_6f298250`), a count
+  (the Day trigger's at the melee setup's 8:00); TriggerExecute runs them at once and
+  takes one as its execution is let go (0x6f297997: the melee setup's, at its end).
+  The setup's end, as `FUN_6f28bc9d` makes the engine's own `` `rcm `` and `` `rtl ``,
+  takes three before the modifier and one after the listener (`FUN_6f161800`).
+  Through 1030 they agree; then the running game's first tick, its timers due at 0
+  firing (`FUN_6f060ca0`), units' order and animation events (`FUN_6f69c510`,
+  `FUN_6f690490`, `FUN_6f48e860`), a native, thirteen counts in all before two
+  in-range listeners, the undead's blight modifiers at 1052 to 1055, and each tick's
+  reschedulings (`FUN_6f15dfc0` from `FUN_6f15d7a0`), are not yet followed: past 1030
+  the port's counts are provisional.  They only order the property timers due at one
+  moment, so a save loads all the same.
 - A property's base real and word (+0x70, +0x74) are a time stamp, its clock group's
   time and word (`FUN_6f161090`, from the group `FUN_6f15c650` picks; `FUN_6f161040`
   measures from it): flags stamped as made (0 at the map's start; forces made by a

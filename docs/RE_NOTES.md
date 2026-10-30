@@ -493,17 +493,21 @@ these are the findings behind them.
     footprint (equal for the trees about the felled, as the engine's), and does not
     yet run a tree's death events; a tree felled short of a full load is not yet
     read.
-  Not yet: a tree felled short of a full load (the lumber long game's second, turn
-  5663).  Read by tracing the original playing the game back (`w3gsplice`): its peon
-  left the felled tree, dropped its partial load at the hall, and went east to a tree
-  about cell 677, 275 (world about 9100, 2400), its walk's objects 0.76 seconds after
-  the drop's; the port's picks 670, 282 (cost 1 from the felled tree's cell) at the
-  drop, and the original's tree is not among its candidates.  Its search's start or
-  candidates differ there.
+  The search is about the tree the worker's order named, not the last felled
+  (`FUN_6f416740` tries Ahar's +0x174, then +0x180, each kept by an order,
+  `FUN_6f418660`, the second only while the worker carries nothing; the search's own
+  pick is ordered without them): read by tracing the original playing the lumber long
+  game back (`trchop.sh`, `treeqr.sh`): five trees felled, each by five full loads of
+  ten chops, as the port's; the sixth, 0x1f72, the cheapest from the first (9024,
+  2368: 9216, 2496 at cost 7), where the fifth's cheapest was 8896, 2624 at cost 1;
+  and the search at the next drop again about the first, its candidates the live
+  trees about it.  (An earlier note had the fifth felled short of a full load: it
+  was not.)
   The lumber game (`docs/reference/bootybay_lumber_*`) agrees with the original's trace
   and keepalives to its end, 1422 turns, and a longer one
   (`docs/reference/bootybay_lumber_long_*`: three trees, two felled, the clocks set
-  back at 300 seconds, dusk, night, and midnight) for all 4120 turns of its trace.
+  back at 300 seconds, dusk, night, and midnight) for all 4120 turns of its trace, and
+  with its keepalives for all 7300 turns (six trees).
 - A player's order to walk to a point (traced: a Booty Bay peon sent across the
   ground, `docs/reference/bootybay_moves_*`) is the engine's walk, as a wanderer's
   with its way searched 700 nodes deep (`World::start_player_walk`).  Its order has

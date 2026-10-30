@@ -110,6 +110,10 @@ pub struct GoldRun {
     pub bonus_before: u32,
     /// The worker's speed factor (its movement ability's +0x78), 1 and the bonuses added.
     pub factor: u32,
+    /// The tree its harvest order named, about which it looks for the next (Ahar's
+    /// tree, set by an order, `FUN_6f418660`, and not by its own search).
+    #[serde(default)]
+    pub ordered: u32,
 }
 
 impl GoldRun {
@@ -256,6 +260,7 @@ impl World {
             Some(mut r) => {
                 r.mine = mine;
                 r.lumber = lumber;
+                r.ordered = mine;
                 r.phase = Phase::ToMine;
                 r.kind = if player { Kind::Player } else { Kind::Own };
                 r.order = order;
@@ -263,7 +268,7 @@ impl World {
                 r.at_mine &= !r.entered;
                 r
             }
-            None => GoldRun { mine, lumber, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: if player { Kind::Player } else { Kind::Own }, order, entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits() },
+            None => GoldRun { mine, lumber, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: if player { Kind::Player } else { Kind::Own }, order, entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits(), ordered: mine },
         };
         let Some(u) = self.unit_mut(h) else { return };
         u.extra.gold_run = Some(run);
@@ -699,13 +704,15 @@ impl World {
             u.carry_gold = 0;
             u.carry_lumber = 0;
         }
-        // A felled tree's worker goes to the live tree nearest it within Ahar's Area
-        // (`FUN_6f416740`, `FUN_6f4153a0`: its search, by a path search from it to each,
-        // here by distance; read: a Booty Bay peon's next tree, 128 from the felled one,
-        // where four others lay nearer the hall).
+        // A worker whose tree is felled goes to the live tree cheapest to reach from the
+        // tree its order named, within Ahar's Area (`FUN_6f416740`, `FUN_6f4153a0`;
+        // read: a Booty Bay peon's sixth tree, after five felled, the cheapest from its
+        // first, not from its fifth).
         let mut run = run;
         if run.lumber && !self.is_tree_pub(run.mine) {
-            match self.next_tree(h, run.mine) {
+            let about = if run.ordered != 0 { run.ordered } else { run.mine };
+            let found = if self.is_tree_pub(about) { Some(about) } else { self.next_tree(h, about) };
+            match found {
                 Some(t) => {
                     run.mine = t;
                     if let Some(u) = self.unit_mut(h) {
@@ -928,7 +935,7 @@ mod tests {
     /// original set them (`FUN_6f15ff40`'s writes, cells a second).
     #[test]
     fn a_peons_speed_is_tuned_as_the_originals() {
-        let mut run = GoldRun { mine: 0, lumber: false, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: Kind::Player, order: Vec::new(), entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits() };
+        let mut run = GoldRun { mine: 0, lumber: false, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: Kind::Player, order: Vec::new(), entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits(), ordered: 0 };
         // As winedbg printed them, to six places.
         let speed = |r: &GoldRun| (f32::from_bits(ef::mul(190f32.to_bits(), r.factor)) as f64 / 32.0 * 1e6).round() / 1e6;
         run.tune(42.838799f32.to_bits(), 1f32.to_bits());

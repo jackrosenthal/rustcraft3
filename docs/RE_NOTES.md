@@ -1378,7 +1378,21 @@ Formats the port made its own, to be replaced by the original's:
   sleeping flyer waking makes its detection's in-range object again (`Abdt`'s
   `` `pil ``, `FUN_6f40bb00`, `FUN_6f3f8640`, after its spells' listeners; the old freed
   as the next turn starts).  With these the port's births agree with the original's
-  first keepalive (0x73d5) in a game of two people; the main generator then differs.
+  first keepalive (0x73d5) in a game of two people.  The main generator's draws there
+  (traced at `FUN_6f1b7130` in the network game): a random race for each player but
+  one the map has whose slot is closed (11 with Forestwalk's third closed), three for
+  the start locations, then each wanderer's first wait as it is made (Awan, from
+  0x6f5aa925 by `FUN_6f9a9d90`: the thirteen deer, each within its making), and again
+  for a wanderer removed (Blizzard.j's MeleeClearExcessUnits taking each start's
+  deer, the draw before its removal's last `tskA`).  The units a range search finds
+  come in the original's spatial order (each start's deer, made last, removed first:
+  by 256-unit blocks, each block's latest first, as its trees).  With these the
+  keepalives agree to turn 6.  At 0.5 seconds the original then makes 48 objects to
+  the port's 15: each Unholy Aura buff (`BUau`) with a timer (`` `rcm ``, from
+  `FUN_6f4bb8c0`, `FUN_6f41def0`), and 15 `Cdet` from the flyers' burrow detection
+  (`Abdt`, CAbilityBurrowDetector of the CAbilityDetector family: its in-range object,
+  event 0xd01b4, makes a detection, `FUN_6f407060`, `FUN_6f688990`, for each unit
+  come in range whose +0x164 list it is not yet in).  Not yet modeled.
 - A destructable's records (`+w3d`, 1408 trees of Booty Bay at 5 seconds, read against
   its war3map.doo): its first the agent's (its class's `^adf`, its `` `pos ``); its
   second its own (a word, 6 or 0x106, then life, 0, and maximum), handlers (one

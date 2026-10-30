@@ -400,6 +400,15 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
         }
     }
     w.creep_made(h);
+    // A wanderer draws its first wait as it is made, on the main generator (Awan's
+    // timer, `FUN_6f9a9d90` from 0x6f5aa925; read: Forestwalk's thirteen deer, each
+    // drawing within its making).
+    if w.ability_with_code(h, "Awan").is_some() && w.unit(h).is_some_and(|u| w.wanders_at_start(u)) {
+        let wait = w.rng.real(5.0, 10.0);
+        if let Some(u) = w.unit_mut(h) {
+            u.extra.wander_at = Some(wait.to_bits());
+        }
+    }
     // Every structure has an alarm (CAbilityAlarm, measured: town halls, gold mines, and
     // shops each start one), which waits a random moment, drawn on its own generator
     // (FUN_6f6936a0: a real from 0 to 1), before watching for enemies (`World::alarms`).
@@ -750,12 +759,32 @@ fn is_unit_type_base(w: &World, u: &Unit, t: i32) -> bool {
 
 /// Clears a group and fills it with units passing `pred` and the filter.
 fn enum_units(w: &mut World, vm: &mut Vm, group: u32, filter: u32, limit: i32, pred: impl Fn(&World, &Unit) -> bool) {
+    enum_units_in(w, vm, group, filter, limit, false, pred)
+}
+
+/// The units a search of the map finds, in the order the original's finds them: by the
+/// 256-unit blocks from the map's corner, row by row, each block's latest made first
+/// (as its trees, `FUN_6f651170`; read: Blizzard.j's MeleeClearExcessUnits on
+/// Forestwalk removing each start's deer, made last, first).
+fn spatial_order(w: &World, mut units: Vec<u32>) -> Vec<u32> {
+    let Some(origin) = w.pathing.as_ref().map(|p| p.origin) else { return units };
+    let index: std::collections::HashMap<u32, usize> = w.unit_order.iter().enumerate().map(|(i, &h)| (h, i)).collect();
+    let block = |h: u32| w.unit(h).map_or((0, 0), |u| (((u.y - origin[1]) / 256.0).floor() as i32, ((u.x - origin[0]) / 256.0).floor() as i32));
+    units.sort_by(|&a, &b| block(a).cmp(&block(b)).then(index.get(&b).cmp(&index.get(&a))));
+    units
+}
+
+/// `spatial`: found by a search of the map (`spatial_order`), else in the order made.
+fn enum_units_in(w: &mut World, vm: &mut Vm, group: u32, filter: u32, limit: i32, spatial: bool, pred: impl Fn(&World, &Unit) -> bool) {
     if let Some(g) = w.group_mut(group) {
         g.units.clear();
     } else {
         return;
     }
-    let candidates: Vec<u32> = w.unit_order.iter().copied().filter(|&h| w.unit(h).is_some_and(|u| pred(w, u))).collect();
+    let mut candidates: Vec<u32> = w.unit_order.iter().copied().filter(|&h| w.unit(h).is_some_and(|u| pred(w, u))).collect();
+    if spatial {
+        candidates = spatial_order(w, candidates);
+    }
     let mut count = 0;
     for h in candidates {
         if limit >= 0 && count >= limit {
@@ -930,7 +959,17 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 for s in footprint {
                     w.tags.release(s);
                 }
-                let t: Vec<u32> = [b"tskA", b"task", b"task", b"task", b"task", b"task", b"tskA"].iter().map(|c| w.tags.take(c)).collect();
+                let mut t: Vec<u32> = [b"tskA", b"task", b"task", b"task", b"task", b"task"].iter().map(|c| w.tags.take(c)).collect();
+                // A wanderer draws its wait again before the last (read: Forestwalk's
+                // deer removed by MeleeClearExcessUnits, the main generator's draw
+                // between their removals' sixth and seventh objects).
+                if w.ability_with_code(a.h(0), "Awan").is_some() {
+                    let wait = w.rng.real(5.0, 10.0);
+                    if let Some(u) = w.unit_mut(a.h(0)) {
+                        u.extra.wander_at = Some(wait.to_bits());
+                    }
+                }
+                t.push(w.tags.take(b"tskA"));
                 // The removal's tasks and the unit's own objects freed as the next turn
                 // starts, in this order (traced for a gold mine Blizzard.j removes): the
                 // first and last tasks, the sixth and fifth; then, after what is
@@ -1555,24 +1594,24 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         GroupEnumUnitsInRange => |w, vm, a| {
             let (x, y, r) = (a.r(1), a.r(2), a.r(3));
-            enum_units(w, vm, a.h(0), a.h(4), -1, |w, u| (u.x - x).hypot(u.y - y) <= r && !w.is_locust(u));
+            enum_units_in(w, vm, a.h(0), a.h(4), -1, true, |w, u| (u.x - x).hypot(u.y - y) <= r && !w.is_locust(u));
             none()
         },
         GroupEnumUnitsInRangeOfLoc => |w, vm, a| {
             let (x, y) = w.location(a.h(1)).unwrap_or_default();
             let r = a.r(2);
-            enum_units(w, vm, a.h(0), a.h(3), -1, |w, u| (u.x - x).hypot(u.y - y) <= r && !w.is_locust(u));
+            enum_units_in(w, vm, a.h(0), a.h(3), -1, true, |w, u| (u.x - x).hypot(u.y - y) <= r && !w.is_locust(u));
             none()
         },
         GroupEnumUnitsInRangeOfLocCounted => |w, vm, a| {
             let (x, y) = w.location(a.h(1)).unwrap_or_default();
             let r = a.r(2);
-            enum_units(w, vm, a.h(0), a.h(3), a.i(4), |w, u| (u.x - x).hypot(u.y - y) <= r && !w.is_locust(u));
+            enum_units_in(w, vm, a.h(0), a.h(3), a.i(4), true, |w, u| (u.x - x).hypot(u.y - y) <= r && !w.is_locust(u));
             none()
         },
         GroupEnumUnitsInRangeCounted => |w, vm, a| {
             let (x, y, r) = (a.r(1), a.r(2), a.r(3));
-            enum_units(w, vm, a.h(0), a.h(4), a.i(5), |w, u| (u.x - x).hypot(u.y - y) <= r && !w.is_locust(u));
+            enum_units_in(w, vm, a.h(0), a.h(4), a.i(5), true, |w, u| (u.x - x).hypot(u.y - y) <= r && !w.is_locust(u));
             none()
         },
         GroupEnumUnitsSelected => |w, vm, a| {

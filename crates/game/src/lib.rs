@@ -378,13 +378,13 @@ impl Game {
         }
         // Random races are drawn as the game starts (FUN_6f1e9dd0): for each of the 12
         // players in turn whose preference is random, the main generator's next number's
-        // top two bits plus one.  A player the setup leaves out is random unless the map
-        // fixes its race (measured: all 12 drew in a two-player Booty Bay).
-        let fixed = self.info.flags & 0x20 != 0;
+        // top two bits plus one.  A player the map does not have is random; one it has
+        // whose slot the setup closed draws none (measured: all 12 drew in a two-player
+        // Booty Bay, 11 in Forestwalk with its third slot closed).
         for id in 0..12u8 {
             let random = match slots.iter().find(|s| s.player == id) {
                 Some(s) => s.race.is_none() || random_races,
-                None => !(fixed && self.info.players.iter().any(|i| i.id == id as u32 && i.race != 0)),
+                None => !self.info.players.iter().any(|i| i.id == id as u32),
             };
             if random {
                 let r = (self.world.rng.next_u32() >> 30) as i32 + 1;

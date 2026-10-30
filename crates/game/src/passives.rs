@@ -310,10 +310,16 @@ impl World {
     }
 
 
-    /// The wanderers' first waits, drawn as the game is made (read: the original's first
-    /// keepalive has the main generator past them, the setup's last draws).
+    /// Whether a unit draws its first wait as it is made.
+    pub(crate) fn wanders_at_start(&self, u: &crate::types::Unit) -> bool {
+        !u.dead && !u.hidden && !u.paused && matches!(u.action, Action::Idle) && u.extra.wander_at.is_none()
+    }
+
+    /// The wanderers' first waits not yet drawn, as the game is made (each draws as it
+    /// is made, `create_unit_exact`; read: the original's first keepalive has the main
+    /// generator past them, the setup's last draws).
     pub fn draw_first_wander_waits(&mut self) {
-        let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.paused && matches!(u.action, Action::Idle) && u.extra.wander_at.is_none())).collect();
+        let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| self.wanders_at_start(u))).collect();
         for h in units {
             if self.ability_with_code(h, "Awan").is_some() {
                 let w = self.rng.real(5.0, 10.0);

@@ -96,7 +96,7 @@ fn main() -> anyhow::Result<()> {
                 println!("  time {} presence {presence:#x} born {:#x} rng {h:#x} net {:08x} rand {:08x} modules {:x?}", g.world.game_ms, g.world.tags.born, g.world.net_sum, g.world.rand_data.checksum(), g.world.keepalive_modules);
                 for p in 0..2u8 {
                     let pl = &g.world.players[p as usize];
-                    println!("  player {p}: handicap {:08x} xp {:08x} tech {:08x} selection {:08x}", pl.handicap.to_bits(), pl.handicap_xp.to_bits(), g.world.tech_hash(p), g.world.sync_selection_hash(p));
+                    println!("  player {p}: race {} handicap {:08x} xp {:08x} tech {:08x} selection {:08x}", pl.race, pl.handicap.to_bits(), pl.handicap_xp.to_bits(), g.world.tech_hash(p), g.world.sync_selection_hash(p));
                 }
             }
         }

@@ -455,6 +455,9 @@ pub enum Second {
     /// 0x80319 to 0x80329, then its fields in the order written (timers, references,
     /// words, and reals).
     Unit { own: u32, handlers: Handlers, widget: Widget, lists: Vec<Vec<(Ref, u32)>>, fields: Vec<Field> },
+    /// An agent whose record is its own fields, its handlers, and its class's fields
+    /// after them, read by layout (`AGENTS`), the fields not yet named.
+    Agent { own: Vec<Field>, handlers: Handlers, tail: Vec<Field> },
     /// No record (an engine object, or an agent without one).
     Empty,
     /// Not yet read.
@@ -472,27 +475,69 @@ pub enum Field {
     Short(u16),
     Ref(Ref),
     Timer(Ref, u32, Timing),
+    /// A word count, then that many groups.
+    List(Vec<Vec<Field>>),
 }
 
 /// Reads fields by a layout: 'w' a word, 'f' a real, 'b' a byte, 's' a short, 'r' a
-/// reference, 't' a timer.
+/// reference, 't' a timer, and "[...]" a word count and that many groups.
 fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
-    layout
-        .chars()
-        .filter(|c| !c.is_whitespace())
-        .map(|c| {
-            Ok(match c {
-                'w' => Field::Word(r.u32()?),
-                'f' => Field::Real(r.f32()?),
-                'b' => Field::Byte(r.u8()?),
-                's' => Field::Short(r.u16()?),
-                'r' => Field::Ref(Ref::read(r)?),
-                't' => Field::Timer(Ref::read(r)?, r.u32()?, Timing::read(r)?),
-                _ => unreachable!("layout {c}"),
-            })
-        })
-        .collect()
+    let chars: Vec<char> = layout.chars().filter(|c| !c.is_whitespace()).collect();
+    let mut out = Vec::new();
+    let mut k = 0;
+    while k < chars.len() {
+        out.push(match chars[k] {
+            'w' => Field::Word(r.u32()?),
+            'f' => Field::Real(r.f32()?),
+            'b' => Field::Byte(r.u8()?),
+            's' => Field::Short(r.u16()?),
+            'r' => Field::Ref(Ref::read(r)?),
+            't' => Field::Timer(Ref::read(r)?, r.u32()?, Timing::read(r)?),
+            '[' => {
+                let end = k + chars[k..].iter().position(|&c| c == ']').expect("layout group");
+                let group: String = chars[k + 1..end].iter().collect();
+                k = end;
+                Field::List((0..r.u32()?).map(|_| fields(r, &group)).collect::<Result<_, _>>()?)
+            }
+            c => unreachable!("layout {c}"),
+        });
+        k += 1;
+    }
+    Ok(out)
 }
+
+/// An ability's own fields (CAbility's vf 0x48, `FUN_6f42e830`): four words, seven
+/// words, its timer (+0x58), and a word.
+const ABILITY_OWN: &str = "wwww wwwwwww t w";
+
+/// Agents whose second record is their own fields (vf 0x48), their handlers, and their
+/// class's fields after (vf 0x38 after `FUN_6f0562b0` and the 1024 event lists), by
+/// kind: (own, tail) as `fields` layouts.
+const AGENTS: &[(&[u8; 4], &str, &str)] = &[
+    // CAbilityAlarm (`FUN_6f42d040`): a timer and a reference.
+    (b"Aalr", ABILITY_OWN, "t r"),
+    // CAbilityWander (`FUN_6f5ab430`): a timer.
+    (b"Awan", ABILITY_OWN, "t"),
+    // `FUN_6f42dea0`: three words and a timer.
+    (b"Afih", ABILITY_OWN, "www t"),
+    (b"Afiu", ABILITY_OWN, "www t"),
+    // Those whose class's fields are all their own (CAgent's vf 0x38, `FUN_6f03eda0`).
+    // CAlliances: a word (`FUN_6f03edf0`).
+    (b"ally", "w", ""),
+    (b"Artn", ABILITY_OWN, ""),
+    // CUnitAI (`FUN_6f9ce510`): fourteen words.
+    (b"AI-U", "wwwwwwwwwwwwww", ""),
+    // CTask (`FUN_6f696dd0`): five words; `tskA` (`FUN_6f696ec0`): six.
+    (b"task", "wwwww", ""),
+    (b"tskA", "wwwwww", ""),
+    // CCreepSpot (`FUN_6f9bef80`): two words and a counted list of three words each.
+    (b"AIcs", "ww [www]", ""),
+    // `FUN_6f9ca630`: two words, four reals, nine words.
+    (b"AIts", "ww ffff wwwwwwwww", ""),
+    // `FUN_6f649220`: the ability's and two words; `FUN_6f42e9b0`: a real and three words.
+    (b"Amil", "wwww wwwwwww t w ww", ""),
+    (b"Abli", "wwww wwwwwww t w f www", ""),
+];
 
 /// CUnit's fields after its event lists, in the order `FUN_6f696490` writes them.
 const UNIT_FIELDS: &str = "t wwwwwww r s www t wwwwww www wwwwwwwwwwww www www rf rf rff wwwwwwwwwwwwwwwwwwwww fff wwwww rrr ffff bb w www r b ww wwwwww www wwwww w";
@@ -586,7 +631,10 @@ impl SavedObject {
                 let (handlers, widget) = (Handlers::read(&mut r)?, Widget::read(&mut r)?);
                 Second::Destructable { own, handlers, widget, bytes: [r.u8()?, r.u8()?], words: words(&mut r)? }
             }
-            _ => return Ok(Second::Raw(self.second.clone())),
+            kind => match AGENTS.iter().find(|(k, _, _)| *k == kind) {
+                Some((_, own, tail)) => Second::Agent { own: fields(&mut r, own)?, handlers: Handlers::read(&mut r)?, tail: fields(&mut r, tail)? },
+                None => return Ok(Second::Raw(self.second.clone())),
+            },
         };
         if r.remaining() != 0 {
             return Err(Error::Format("an object's second record longer than its class's fields"));

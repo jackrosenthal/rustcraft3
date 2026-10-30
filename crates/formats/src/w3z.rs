@@ -477,32 +477,58 @@ pub enum Field {
     Short(u16),
     Ref(Ref),
     Timer(Ref, u32, Timing),
-    /// A word count, then that many groups.
+    /// A count, then that many groups.
     List(Vec<Vec<Field>>),
+    /// A NUL-terminated string.
+    Text(String),
 }
 
 /// Reads fields by a layout: 'w' a word, 'f' a real, 'b' a byte, 's' a short, 'r' a
-/// reference, 't' a timer, and "[...]" a word count and that many groups.
+/// reference, 't' a timer, 'z' a string, 'e' an event's handler list (as "[rw]"),
+/// "[...]" a word count and that many groups, "{...}" a short count and that many; a
+/// number before a token repeats it.
 fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
     let chars: Vec<char> = layout.chars().filter(|c| !c.is_whitespace()).collect();
     let mut out = Vec::new();
     let mut k = 0;
     while k < chars.len() {
-        out.push(match chars[k] {
-            'w' => Field::Word(r.u32()?),
-            'f' => Field::Real(r.f32()?),
-            'b' => Field::Byte(r.u8()?),
-            's' => Field::Short(r.u16()?),
-            'r' => Field::Ref(Ref::read(r)?),
-            't' => Field::Timer(Ref::read(r)?, r.u32()?, Timing::read(r)?),
-            '[' => {
-                let end = k + chars[k..].iter().position(|&c| c == ']').expect("layout group");
-                let group: String = chars[k + 1..end].iter().collect();
-                k = end;
-                Field::List((0..r.u32()?).map(|_| fields(r, &group)).collect::<Result<_, _>>()?)
+        let mut times = 0usize;
+        while chars[k].is_ascii_digit() {
+            times = times * 10 + chars[k].to_digit(10).unwrap() as usize;
+            k += 1;
+        }
+        let start = k;
+        if matches!(chars[k], '[' | '{') {
+            let (open, close) = (chars[k], if chars[k] == '[' { ']' } else { '}' });
+            let mut depth = 0;
+            loop {
+                if chars[k] == open {
+                    depth += 1;
+                } else if chars[k] == close {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                k += 1;
             }
-            c => unreachable!("layout {c}"),
-        });
+        }
+        let token: String = chars[start..=k].iter().collect();
+        for _ in 0..times.max(1) {
+            out.push(match token.chars().next().unwrap() {
+                'w' => Field::Word(r.u32()?),
+                'f' => Field::Real(r.f32()?),
+                'b' => Field::Byte(r.u8()?),
+                's' => Field::Short(r.u16()?),
+                'r' => Field::Ref(Ref::read(r)?),
+                't' => Field::Timer(Ref::read(r)?, r.u32()?, Timing::read(r)?),
+                'z' => Field::Text(r.cstr()?),
+                'e' => Field::List((0..r.u32()?).map(|_| fields(r, "rw")).collect::<Result<_, _>>()?),
+                '[' => Field::List((0..r.u32()?).map(|_| fields(r, &token[1..token.len() - 1])).collect::<Result<_, _>>()?),
+                '{' => Field::List((0..r.u16()?).map(|_| fields(r, &token[1..token.len() - 1])).collect::<Result<_, _>>()?),
+                c => unreachable!("layout {c}"),
+            });
+        }
         k += 1;
     }
     Ok(out)
@@ -563,6 +589,14 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (b"uevt", "wwwww", "wwww r [rw]"),
     (b"pevt", "wwwwwwwwww", "r [rw]"),
     (b"gevt", "wwwww", "[rw]"),
+    // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to
+    // 0x80318, 0x80260 and 0x80261; its name and a byte; its selection
+    // (`FUN_6f292c10`: a list, ten control groups' two lists each, references, lists of
+    // lists, words); a reference; two counted lists of words; twelve words; seven
+    // references; two reals; counted references and words; a word; `FUN_6f246a30`
+    // (short-counted lists of eight words and of two, four words); words, a counted list
+    // of three words, words, its timer, words, a string, and six words.
+    (b"+ply", "w", "63e zb [r] w 20[r] r r [r] [[r]] w [r] r r [[r]] w w w r w r [w] [w] 12w 7r ff [r] [w] w {wfffffff} {ww} wwww wwww [www] www t www z wwwwww"),
 ];
 
 /// Agents whose class writes its whole second record itself, without the agent's

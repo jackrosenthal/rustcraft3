@@ -565,6 +565,9 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // `FUN_6f649220`: the ability's and two words; `FUN_6f42e9b0`: a real and three words.
     (b"Amil", "wwww wwwwwww t w ww", ""),
     (b"Abli", "wwww wwwwwww t w f www", ""),
+    // CAbilityMove (`FUN_6f5fec20`, own `FUN_6f5fec80`: the ability's, then words and
+    // reals, three words from build 6000, a word from 6029): two timers.
+    (b"Amov", "wwww wwwwwww t w www ff wwwww ff www w", "t t"),
     // CJassFunc (`FUN_6f211180`): a word.
     (b"hdlr", "w", "w"),
     // CMapLocation (`FUN_6f27e7d0`): two reals; CRect (`FUN_6f246870`): four.

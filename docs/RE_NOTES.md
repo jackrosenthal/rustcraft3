@@ -1368,6 +1368,17 @@ Formats the port made its own, to be replaced by the original's:
   first word), the cells listing it (+0x3c, in its low bits), and a word (+0x40).
   On the pathing map 4254 regions are listed in cells and 1491 of kind 1 in none;
   those on the first map (1597) and 106 of kind 0 are listed nowhere.
+- Forestwalk ((3)Forestwalk.w3m, read against the original's save at its first timer,
+  `fws.w3x`, and its first network keepalive): a tree placed dead (life 0 in
+  war3map.doo, its "D" model) takes its `` `pos `` and that's two `^pmr` but not its
+  footprint's three, and blocks no pathing; at the first dawn (MeleeStartingVisibility
+  setting 8:00) a melded creep's meld ends (Shadowmeld's day event, `FUN_6f508ae0`,
+  `FUN_6f509170`, `FUN_6f694b20`: its fade-in's `` `rcm `` and `` `rtl `` after the
+  unit's own `` `rcm `` of the change, both freed DataB, 2.5 seconds, on), and a
+  sleeping flyer waking makes its detection's in-range object again (`Abdt`'s
+  `` `pil ``, `FUN_6f40bb00`, `FUN_6f3f8640`, after its spells' listeners; the old freed
+  as the next turn starts).  With these the port's births agree with the original's
+  first keepalive (0x73d5) in a game of two people; the main generator then differs.
 - A destructable's records (`+w3d`, 1408 trees of Booty Bay at 5 seconds, read against
   its war3map.doo): its first the agent's (its class's `^adf`, its `` `pos ``); its
   second its own (a word, 6 or 0x106, then life, 0, and maximum), handlers (one

@@ -627,8 +627,10 @@ impl crate::world::World {
                 _ => *b"Afih",
             });
         }
+        let mut flyer = None;
         if field("movetp").eq_ignore_ascii_case("fly") && !had.contains(b"Abdt") {
             codes.extend([*b"Abdt", *b"`pil"]);
+            flyer = Some(codes.len() - 1);
         }
         let auto = crate::objects::id_from_str(field("auto").as_str());
         // (The type's auto names the ability by its code: nfsh's Anhe for its Anh2.)  It
@@ -726,6 +728,7 @@ impl crate::world::World {
             // dispel ends (`World::update_blight`).
             u.extra.blight_slots = blight.map(|b| slots[b..b + 5].to_vec()).unwrap_or_default();
             u.extra.footprint_slots = footprint.map(|f| slots[f..f + 3].to_vec()).unwrap_or_default();
+            u.extra.flyer_pil = flyer.map(|k| slots[k]);
             let rest_start = mods_end + if building { 3 } else { 0 };
             let pair = |k: usize| (slots[k], births[k]);
             u.extra.object_slots = [(0..BASE).map(pair).collect(), (BASE..mods_end).map(pair).collect(), (rest_start..tasks).map(pair).collect()];

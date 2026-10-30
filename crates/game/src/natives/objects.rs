@@ -9,7 +9,8 @@ use crate::objects::{Id, id_from_int, id_to_int};
 use crate::types::*;
 use crate::world::{NativeFn, World};
 
-pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>, facing: f32, scale: f32, variation: u32) -> u32 {
+/// A destructable made; `dead`, made dead (its life 0, no footprint).
+pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>, facing: f32, scale: f32, variation: u32, dead: bool) -> u32 {
     let Some(o) = w.objects.destructables.get(id) else { return 0 };
     let hp = o.real("HP");
     let nvar = o.int("numVar").max(1) as u32;
@@ -24,7 +25,7 @@ pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>
         facing,
         scale,
         variation: variation % nvar,
-        life: hp,
+        life: if dead { 0.0 } else { hp },
         max_life: hp,
         invulnerable: false,
         visible: true,
@@ -36,10 +37,12 @@ pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>
     };
     let path_tex = o.str("pathTex");
     let h = w.handles.insert(Obj::Destructable(Box::new(d)));
-    // Its tags (read under Wine): itself, its position, five regions.
+    // Its tags (read under Wine): itself, its position, five regions; one made dead
+    // only its position's two (read: Forestwalk's four trees placed dead, its pathing
+    // map listing none of their cells).
     let oid = w.tags.take_id(b"+w3d");
     w.tags.take(b"`pos");
-    w.tags.take_n(b"^pmr", 5);
+    w.tags.take_n(b"^pmr", if dead { 2 } else { 5 });
     if let Some(Obj::Destructable(d)) = w.handles.get_mut(h) {
         d.handle = h;
         d.oid = oid;
@@ -47,6 +50,9 @@ pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>
     w.destructable_order.push(h);
     // A pathing texture is drawn for the facing structures stand at (270, as
     // BuildingAngle), and turns from there.
+    if dead {
+        return h;
+    }
     let cells = w.pathing_cells(&path_tex, x, y, facing - 270.0);
     if let Some(p) = w.pathing.as_mut() {
         p.stamp_destructable(&cells, 1);
@@ -254,19 +260,16 @@ fn add_effect(w: &mut World, model: String, x: f32, y: f32, target: Option<(u32,
 
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
     reg!(t,
-        CreateDestructable => |w, _, a| { let (x, y) = snapped(w, a.i(0), a.r(1), a.r(2)); handle(create_destructable(w, id_from_int(a.i(0)), x, y, None, a.r(3), a.r(4), a.i(5) as u32)) },
-        CreateDestructableZ => |w, _, a| { let (x, y) = snapped(w, a.i(0), a.r(1), a.r(2)); handle(create_destructable(w, id_from_int(a.i(0)), x, y, Some(a.r(3)), a.r(4), a.r(5), a.i(6) as u32)) },
+        CreateDestructable => |w, _, a| { let (x, y) = snapped(w, a.i(0), a.r(1), a.r(2)); handle(create_destructable(w, id_from_int(a.i(0)), x, y, None, a.r(3), a.r(4), a.i(5) as u32, false)) },
+        CreateDestructableZ => |w, _, a| { let (x, y) = snapped(w, a.i(0), a.r(1), a.r(2)); handle(create_destructable(w, id_from_int(a.i(0)), x, y, Some(a.r(3)), a.r(4), a.r(5), a.i(6) as u32, false)) },
         CreateDeadDestructable => |w, _, a| {
             let (x, y) = snapped(w, a.i(0), a.r(1), a.r(2));
-            let h = create_destructable(w, id_from_int(a.i(0)), x, y, None, a.r(3), a.r(4), a.i(5) as u32);
-            if let Some(d) = dest_mut(w, h) { d.life = 0.0; }
-            handle(h)
+            // Made dead as a map's dead tree is (provisional: not measured for the native).
+            handle(create_destructable(w, id_from_int(a.i(0)), x, y, None, a.r(3), a.r(4), a.i(5) as u32, true))
         },
         CreateDeadDestructableZ => |w, _, a| {
             let (x, y) = snapped(w, a.i(0), a.r(1), a.r(2));
-            let h = create_destructable(w, id_from_int(a.i(0)), x, y, Some(a.r(3)), a.r(4), a.r(5), a.i(6) as u32);
-            if let Some(d) = dest_mut(w, h) { d.life = 0.0; }
-            handle(h)
+            handle(create_destructable(w, id_from_int(a.i(0)), x, y, Some(a.r(3)), a.r(4), a.r(5), a.i(6) as u32, true))
         },
         RemoveDestructable => |w, _, a| {
             let h = a.h(0);

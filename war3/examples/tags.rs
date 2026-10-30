@@ -12,8 +12,18 @@ fn main() -> anyhow::Result<()> {
     data.chain.mount(map, None, war3::data::PRIORITY_MAP);
     let seed = u32::from_str_radix(&a[3], 16)?;
     let reference: Vec<String> = std::fs::read_to_string(&a[4])?.lines().filter(|l| !l.starts_with('#')).map(|l| l.to_string()).collect();
-    let lobby: Vec<w3_game::LobbySlot> = (0..2u8).map(|p| w3_game::LobbySlot { player: p, fill: if p == 0 { w3_game::SlotFill::Remote } else { w3_game::SlotFill::Local }, name: Some(format!("P{p}")), race: None, team: p as i32, color: p as i32, handicap: 100.0, difficulty: 1 }).collect();
+    let mut lobby: Vec<w3_game::LobbySlot> = (0..2u8).map(|p| w3_game::LobbySlot { player: p, fill: if p == 0 { w3_game::SlotFill::Remote } else { w3_game::SlotFill::Local }, name: Some(format!("P{p}")), race: None, team: p as i32, color: p as i32, handicap: 100.0, difficulty: 1 }).collect();
+    // TAGS_COMPUTER="<race>,<level>": a computer player in the third slot, as the host's
+    // W3HOSTCOMPUTER has it (race 1 human, 2 orc, 3 undead, 4 night elf as the script
+    // numbers them; level 0 easy, 1 normal, 2 insane).
+    if let Some((r, l)) = std::env::var("TAGS_COMPUTER").ok().and_then(|v| v.split_once(',').map(|(r, l)| (r.parse::<i32>().ok(), l.parse::<i32>().ok()))) {
+        lobby.push(w3_game::LobbySlot { player: 2, fill: w3_game::SlotFill::Computer, name: None, race: r, team: 2, color: 2, handicap: 100.0, difficulty: l.unwrap_or(1) });
+    }
     w3_game::tags::RECORD.store(true, std::sync::atomic::Ordering::Relaxed);
+    // TAGS_DRAWS: print each of the main generator's draws as it is made, from the load.
+    if std::env::var("TAGS_DRAWS").is_ok() {
+        w3_game::rng::TRACE.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     let mut g = w3_game::Game::load_with_keys(data.chain.clone(), data.version as i32, None)?;
     g.config()?;
     g.world.seed = seed;
@@ -23,10 +33,6 @@ fn main() -> anyhow::Result<()> {
     // TAGS_FIRST: the first turn's length (the original's first turn runs what falls
     // due at once without its clock moving, it seems).
     let first: f32 = std::env::var("TAGS_FIRST").ok().and_then(|v| v.parse().ok()).unwrap_or(0.1);
-    // TAGS_DRAWS: print each of the main generator's draws as it is made.
-    if std::env::var("TAGS_DRAWS").is_ok() {
-        w3_game::rng::TRACE.store(true, std::sync::atomic::Ordering::Relaxed);
-    }
     // TAGS_CKS names a file for, after each turn, the keepalive checksum's inputs the
     // port has: the next tag (presence), the birth count, the main generator's state,
     // and the rand module's value.
@@ -84,6 +90,10 @@ fn main() -> anyhow::Result<()> {
             if ours != want {
                 first_off = Some((n, ours, want));
                 println!("turn {n}: the original's keepalive wants game module {:08x}, ours {:08x}", g.world.game_module_for(want), g.world.game_module());
+                let presence = g.world.tags.free.last().copied().unwrap_or(g.world.tags.slots);
+                let state = g.world.rng.state();
+                let h = w3_game::keepalive::byte_hash((state >> 32) as u32).wrapping_add(w3_game::keepalive::byte_hash(state as u32));
+                println!("  time {} presence {presence:#x} born {:#x} rng {h:#x} net {:08x} rand {:08x} modules {:x?}", g.world.game_ms, g.world.tags.born, g.world.net_sum, g.world.rand_data.checksum(), g.world.keepalive_modules);
                 for p in 0..2u8 {
                     let pl = &g.world.players[p as usize];
                     println!("  player {p}: handicap {:08x} xp {:08x} tech {:08x} selection {:08x}", pl.handicap.to_bits(), pl.handicap_xp.to_bits(), g.world.tech_hash(p), g.world.sync_selection_hash(p));

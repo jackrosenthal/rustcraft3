@@ -43,7 +43,7 @@ impl World {
     /// The volcano rises where the spell was cast.
     pub(crate) fn begin_volcano(&mut self, h: u32, a: Id, lvl: u32, x: f32, y: f32) {
         let kind = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
-        let dest = crate::natives::objects::create_destructable(self, kind, x, y, None, 270.0, 1.0, 0);
+        let dest = crate::natives::objects::create_destructable(self, kind, x, y, None, 270.0, 1.0, 0, false);
         self.volcanoes.push(Volcano { caster: h, ability: a, level: lvl, x, y, dest, rocks: Vec::new(), next: 0.0, every: 0.0 });
     }
 

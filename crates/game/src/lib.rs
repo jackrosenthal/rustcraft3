@@ -320,6 +320,7 @@ impl Game {
                             d.angle.to_degrees(),
                             d.scale[0],
                             d.variation,
+                            d.life == 0,
                         );
                         // The placed life is a percentage of the type's maximum.
                         if let Some(types::Obj::Destructable(x)) = self.world.handles.get_mut(h) {

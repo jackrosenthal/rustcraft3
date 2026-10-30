@@ -421,6 +421,28 @@ impl World {
                 }
                 continue;
             }
+            // A melded unit's meld ends with the day: it fades in over Shadowmeld's DataB,
+            // its timer and a listener made as the day's object of it, freed together
+            // as the fade ends (`FUN_6f508ae0`, `FUN_6f509170`, `FUN_6f694b20`; read:
+            // Forestwalk's Satyr Shadowdancers at the first dawn, freed 2.5 seconds on).
+            if let Some((a, lvl)) = self.ability_with_code(h, "Ashm") {
+                let idle = matches!(u.action, Action::Idle | Action::Hold) && u.swing.is_none() && u.casting.is_none();
+                let melded = u.buffs.iter().any(|b| b.ability == a) || (u.extra.meld_active_since.is_none() && !u.extra.meld_acting && idle);
+                if melded {
+                    let fade = self.data(a, "DataB", lvl) as f64;
+                    for c in [b"`rcm", b"`rtl"] {
+                        let s = self.tags.take(c);
+                        self.tags.doom_at(now + fade, s);
+                    }
+                    let t = self.time;
+                    if let Some(u) = self.unit_mut(h) {
+                        u.buffs.retain(|b| b.ability != a);
+                        u.extra.meld_acting = true;
+                        u.extra.meld_active_since = Some(t);
+                    }
+                }
+            }
+            let Some(u) = self.unit(h) else { continue };
             if !u.extra.sleeping || u.extra.sleep_perm {
                 continue;
             }
@@ -452,6 +474,16 @@ impl World {
             if let Some(u) = self.unit_mut(h) {
                 u.extra.mana_listeners = costs.into_iter().zip(slots).collect();
                 u.extra.ensnare_pil = pil;
+            }
+            // A flyer's detection makes its in-range object again, the old one freed as
+            // the next turn starts (`FUN_6f40bb00`, `FUN_6f3f8640`; read: Forestwalk's
+            // Green Dragon Whelps at the first dawn).
+            if let Some(old) = self.unit(h).and_then(|u| u.extra.flyer_pil) {
+                let s = self.tags.take(b"`pil");
+                self.tags.doom(old);
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.flyer_pil = Some(s);
+                }
             }
             self.set_asleep(h, false);
         }

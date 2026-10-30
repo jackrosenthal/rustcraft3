@@ -530,6 +530,9 @@ pub struct UnitExtra {
     /// just before it.
     #[serde(default)]
     pub ensnare_pil: Option<(u32, u32)>,
+    /// A flyer's in-range object (its `Abdt`'s `` `pil ``), made again as it wakes.
+    #[serde(default)]
+    pub flyer_pil: Option<u32>,
     /// The step of this tick its walk begins with (its order given after the one before).
     #[serde(default)]
     pub walk_from: Option<usize>,
@@ -795,6 +798,7 @@ impl Default for UnitExtra {
             walk_from: None,
             mana_listeners: Vec::new(),
             ensnare_pil: None,
+            flyer_pil: None,
             sleep_effect: 0,
             sleep_show_wait: None,
             warp_inside: 0,

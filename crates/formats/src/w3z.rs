@@ -495,12 +495,36 @@ pub enum Field {
 }
 
 /// Reads fields by a layout: 'w' a word, 'f' a real, 'b' a byte, 's' a short, 'r' a
-/// reference, 't' a timer, 'z' a string, 'p' a sprite, 'e' an event's handler list (as "[rw]"),
-/// "[...]" a word count and that many groups, "{...}" a short count and that many,
-/// "(...)" a group; a number before a token repeats it.
+/// reference, 't' a timer, 'z' a string, 'p' a sprite, 'e' an event's handler list (as
+/// "[rw]"), "[...]" a word count and that many groups, "{...}" a short count and that
+/// many, "(...)" a group, "?(X)" a word and X when it is not 0, "?(X)(Y)" Y when it is,
+/// 'm' a word kept as a mask and "&h(X)" X when the mask has the bits h (hex); a number
+/// before a token repeats it.
 fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
     let chars: Vec<char> = layout.chars().filter(|c| !c.is_whitespace()).collect();
+    // The index of the bracket closing the one at `k`.
+    let close = |k: usize| {
+        let (open, close) = match chars[k] {
+            '[' => ('[', ']'),
+            '{' => ('{', '}'),
+            _ => ('(', ')'),
+        };
+        let (mut depth, mut j) = (0, k);
+        loop {
+            if chars[j] == open {
+                depth += 1;
+            } else if chars[j] == close {
+                depth -= 1;
+                if depth == 0 {
+                    return j;
+                }
+            }
+            j += 1;
+        }
+    };
+    let inner = |a: usize, b: usize| -> String { chars[a + 1..b].iter().collect() };
     let mut out = Vec::new();
+    let mut mask = 0u32;
     let mut k = 0;
     while k < chars.len() {
         let mut times = 0usize;
@@ -508,30 +532,44 @@ fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
             times = times * 10 + chars[k].to_digit(10).unwrap() as usize;
             k += 1;
         }
+        match chars[k] {
+            '?' => {
+                let x = close(k + 1);
+                let y = (chars.get(x + 1) == Some(&'(')).then(|| close(x + 1));
+                let flag = r.u32()?;
+                out.push(Field::Word(flag));
+                if flag != 0 {
+                    out.push(Field::List(vec![fields(r, &inner(k + 1, x))?]));
+                } else if let Some(y) = y {
+                    out.push(Field::List(vec![fields(r, &inner(x + 1, y))?]));
+                }
+                k = y.unwrap_or(x) + 1;
+                continue;
+            }
+            '&' => {
+                let open = k + 1 + chars[k + 1..].iter().position(|&c| c == '(').expect("layout bits");
+                let bits = u32::from_str_radix(&chars[k + 1..open].iter().collect::<String>(), 16).expect("layout bits");
+                let end = close(open);
+                if mask & bits != 0 {
+                    out.push(Field::List(vec![fields(r, &inner(open, end))?]));
+                }
+                k = end + 1;
+                continue;
+            }
+            _ => {}
+        }
         let start = k;
         if matches!(chars[k], '[' | '{' | '(') {
-            let (open, close) = (chars[k], match chars[k] {
-                '[' => ']',
-                '{' => '}',
-                _ => ')',
-            });
-            let mut depth = 0;
-            loop {
-                if chars[k] == open {
-                    depth += 1;
-                } else if chars[k] == close {
-                    depth -= 1;
-                    if depth == 0 {
-                        break;
-                    }
-                }
-                k += 1;
-            }
+            k = close(k);
         }
         let token: String = chars[start..=k].iter().collect();
         for _ in 0..times.max(1) {
             out.push(match token.chars().next().unwrap() {
                 'w' => Field::Word(r.u32()?),
+                'm' => {
+                    mask = r.u32()?;
+                    Field::Word(mask)
+                }
                 'f' => Field::Real(r.f32()?),
                 'b' => Field::Byte(r.u8()?),
                 's' => Field::Short(r.u16()?),
@@ -733,6 +771,11 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // CThreadAI (`FUN_6f9bef30`, own `FUN_6f9bf070`: six words and a real): an extended
     // timer and a word.
     (b"AItr", "wwwwww f", "t ss f w"),
+    // CSoundWar3 (`FUN_6f2469a0`): its extended timer, then a flag and a sound's
+    // (`FUN_6f359e90`: its file, three reals, six words), or else another flag and a
+    // sound's (`FUN_6f359fa0`: its file, a reference, words and reals, a second string,
+    // with a flag sixteen words more, and words by the bits of a mask).
+    (b"+snd", "w", "t ss f ?(z fff www w)(?(z r w fff w z ?(f ww fff wwwwww f www) m &1(ww) &2(www) &4(www) &8(www) &10(www) &20(w) &40(w) &80(w) &100(w)))"),
     (b"tsk.", "wwwww fff", "r"),
     (b"tskt", "wwwwwwww f", "r"),
     // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to

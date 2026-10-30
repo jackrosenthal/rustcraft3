@@ -1447,7 +1447,13 @@ Formats the port made its own, to be replaced by the original's:
   loading and playing.  The port writes saves from its own state piece by piece
   (`w3_game::w3zsave`, checked by playtest's `w3zcompare` against the original's save
   of the same moment): so far the first table, its free list, the classes, and their
-  definitions, each byte for byte on the quiet test map at 5 seconds.
+  definitions, each byte for byte on the quiet test map at 5 seconds; then the
+  destructables' positions and regions (8448 records, the regions' search marks set
+  aside: the running game's, written 0): a tree's position its cell as reals, its
+  type's fixed rotation in radians (fixedRot 270 saved 0x4096cbe3, which 270 times
+  0.01745329 gives; war3map.doo's angle, 0x4096cbe5, is not what it keeps), its two
+  regions; the regions as noted above.  The original loads the save so made (with
+  the object manager's header from the port as well) and plays.
   An agent's entry is its
   CAgentBaseAbs: its first record `FUN_6f146480` (its base's, a reference, a counted
   list of references, four more), its second its agent's vf 0x38 (CAgent's

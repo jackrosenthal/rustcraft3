@@ -2,7 +2,9 @@
 //! state: built piece by piece, each checked against the original's save of the same
 //! moment (`World::compare_save`).
 
-use w3_formats::w3z::{Array, First, Link, ObjectBase, Ref, SaveGame, SavedObject, Tagged, Timing};
+use w3_formats::w3z::{Array, First, Link, ObjectBase, PropertyBase, Ref, SaveGame, SavedObject, Tagged, Timing};
+
+use crate::types::Obj;
 
 use crate::tags::Code;
 use crate::world::World;
@@ -78,7 +80,90 @@ pub fn class_definitions() -> Vec<SavedObject> {
     defs
 }
 
+/// A property's base as saved: its object's words 0 and 0x80000000, its own tag and
+/// its owner's in its first link set, its own in its second.
+fn property_base(tag: (u32, u32), owner: (u32, u32)) -> PropertyBase {
+    let none = Ref(u32::MAX, u32::MAX);
+    let object = ObjectBase {
+        real: 0.0,
+        words: [0, 0x8000_0000],
+        links: [(Link(none, 0), Link(none, 0), Ref(tag.0, tag.1), Ref(owner.0, owner.1)), (Link(none, 0), Link(none, 0), Ref(tag.0, tag.1), none)],
+        timings: [Timing(None), Timing(None)],
+    };
+    PropertyBase { object, links: [Link(none, 0), Link(none, 0)], real: 0.0, word: 0 }
+}
+
 impl World {
+    /// An object's slot with its birth, as references name it.
+    fn tagged(&self, slot: u32) -> (u32, u32) {
+        (slot, self.tags.live.get(&slot).map_or(0, |e| e.1))
+    }
+
+    /// The two pathing maps' objects (`^pma`): the coarse one of 8-cell blocks, then the
+    /// pathing map itself.
+    fn pathing_map_objects(&self) -> [(u32, u32); 2] {
+        let mut maps = self.tags.live.iter().filter(|(_, (c, _))| c == b"^pma").map(|(&s, (_, b))| (s, *b));
+        let a = maps.next().unwrap_or_default();
+        [a, maps.next().unwrap_or_default()]
+    }
+
+    /// A destructable's records besides its own, by slot (read against the quiet test
+    /// map's trees): its position (`` `pos ``: its cell, x then y, as reals, 0, 0, the
+    /// largest real, its facing in radians, 0, and its two regions), the regions of its
+    /// position, a cell each (the coarse map's of 8-cell blocks, kind 4, and the
+    /// pathing map's, kind 1), and its footprint's three (kind 1, flags 0xc2, 0x10, and
+    /// 0x08 for a tree, bounds its cells' first row and column and their last plus 2,
+    /// the count of its cells and 0x10000000).  A region's first word is its map's
+    /// search mark when it was last met, the running game's (left 0).
+    pub fn destructable_records(&self, h: u32) -> Vec<(u32, First)> {
+        let Some(Obj::Destructable(d)) = self.handles.get(h) else { return Vec::new() };
+        let Some(p) = self.pathing.as_ref() else { return Vec::new() };
+        if d.object_slots.len() < 3 {
+            return Vec::new();
+        }
+        let [coarse, fine] = self.pathing_map_objects();
+        let own = self.tagged(d.oid.0);
+        let pos = self.tagged(d.object_slots[0]);
+        let (cx, cy) = ((d.x - p.origin[0]) / crate::pathing::CELL, (d.y - p.origin[1]) / crate::pathing::CELL);
+        let (row, col) = (cy.floor() as u32, cx.floor() as u32);
+        let r = |s: u32| Ref(self.tagged(s).0, self.tagged(s).1);
+        let mut out = vec![(
+            pos.0,
+            First::Pos {
+                base: property_base(pos, own),
+                values: [cx, cy, 0.0, 0.0, f32::MAX, self.saved_destructable_facing(d), 0.0],
+                refs: [r(d.object_slots[1]), r(d.object_slots[2])],
+            },
+        )];
+        let region = |map: (u32, u32), owner: (u32, u32), word: u32, bounds: [u32; 4], words: [u32; 3]| First::Region { refs: [Ref(map.0, map.1), Ref(owner.0, owner.1)], word, bounds, words };
+        out.push((d.object_slots[1], region(coarse, pos, 0x0400_0000, [row >> 3, col >> 3, (row >> 3) + 1, (col >> 3) + 1], [0, 0x2000_0001, 0])));
+        out.push((d.object_slots[2], region(fine, pos, 0x0100_0000, [row, col, row + 1, col + 1], [0, 1, 0])));
+        if d.object_slots.len() == 6 && !d.pathing_cells.is_empty() {
+            let rows = d.pathing_cells.iter().map(|c| c.1 as u32);
+            let cols = d.pathing_cells.iter().map(|c| c.0 as u32);
+            let bounds = [rows.clone().min().unwrap_or(0), cols.clone().min().unwrap_or(0), rows.max().unwrap_or(0) + 2, cols.max().unwrap_or(0) + 2];
+            let n = d.pathing_cells.len() as u32;
+            for (k, flags) in [0xc2, 0x10, 0x08].into_iter().enumerate() {
+                out.push((d.object_slots[3 + k], region(fine, own, 0x0100_0000 | flags, bounds, [0, n, 0x1000_0000])));
+            }
+        }
+        out
+    }
+
+    /// A destructable's facing as its position saves it: its type's fixed rotation if
+    /// it has one, else as placed, in radians (read: every tree of Booty Bay and
+    /// Forestwalk, fixedRot 270, saves 0x4096cbe3, which 270 times 0.01745329 gives;
+    /// provisional: that constant, which the binary does not hold as such, and the
+    /// placed facing of a type without one).
+    fn saved_destructable_facing(&self, d: &crate::types::Destructable) -> f32 {
+        let fixed = self.objects.destructables.get(d.type_id).map_or(-1.0, |o| o.real("fixedRot"));
+        if fixed >= 0.0 {
+            fixed * 0.017_453_29
+        } else {
+            d.placed_facing.unwrap_or(d.facing * 0.017_453_292)
+        }
+    }
+
     /// The object manager's header as saved (`FUN_6f15c9b0`): two words, two reals (25
     /// and 0.2), its update counter and that's parity, each table's births, four
     /// groups of a clock (a time, a word, its wrap 300, a word, a count), and "espi".
@@ -130,6 +215,15 @@ impl World {
                 o.entry = e;
             }
         }
+        let mut records: std::collections::HashMap<u32, First> = std::collections::HashMap::new();
+        for &h in &self.destructable_order {
+            records.extend(self.destructable_records(h));
+        }
+        for o in objects[0].iter_mut() {
+            if let Some(r) = records.get(&o.entry.tag) {
+                o.first = r.to_bytes();
+            }
+        }
         m.set_objects(&objects);
         m.free[0] = self.saved_free_list();
         s
@@ -179,6 +273,32 @@ impl World {
                 None => format!("class definitions: ours {}, the original's {}", defs.len(), theirs.len()),
                 Some(k) => format!("class definitions: part at {k}, tag {:x}", defs[k].entry.tag),
             });
+        }
+        if let Ok(objects) = m.objects() {
+            // The destructables' positions and regions, the regions' marks set aside.
+            let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();
+            let (mut same, mut differ, mut first) = (0, 0, None);
+            for &h in &self.destructable_order {
+                for (slot, rec) in self.destructable_records(h) {
+                    let ours = match &rec {
+                        First::Region { refs, word, bounds, words } => First::Region { refs: *refs, word: *word, bounds: *bounds, words: [0, words[1], words[2]] },
+                        other => other.clone(),
+                    };
+                    let theirs = by_slot.get(&slot).and_then(|o| o.first().ok()).map(|f| match f {
+                        First::Region { refs, word, bounds, words } => First::Region { refs, word, bounds, words: [0, words[1], words[2]] },
+                        other => other,
+                    });
+                    if theirs.as_ref() == Some(&ours) {
+                        same += 1;
+                    } else {
+                        differ += 1;
+                        if first.is_none() {
+                            first = Some(format!("slot {slot}: ours {ours:?}, the original's {theirs:?}"));
+                        }
+                    }
+                }
+            }
+            out.push(format!("destructables' positions and regions: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
         }
         out.push(match free.chunks(4).zip(m.free[0].chunks(4)).position(|(a, b)| a != b) {
             None if free.len() == m.free[0].len() => format!("free list: the same, {} slots", free.len() / 4 - 1),

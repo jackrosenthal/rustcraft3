@@ -326,6 +326,7 @@ impl Game {
                         // The placed life is a percentage of the type's maximum.
                         if let Some(types::Obj::Destructable(x)) = self.world.handles.get_mut(h) {
                             x.life = x.max_life * d.life as f32 / 100.0;
+                            x.placed_facing = Some(d.angle);
                         }
                     }
                 }

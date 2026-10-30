@@ -1125,6 +1125,14 @@ pub struct Destructable {
     #[serde(default = "one")]
     pub anim_speed: f32,
     pub pathing_cells: Vec<(i32, i32)>,
+    /// Its engine objects' slots after its own: its position and its regions (the
+    /// position's two, then its footprint's three).
+    #[serde(default)]
+    pub object_slots: Vec<u32>,
+    /// Its facing in radians as war3map.doo placed it (the original keeps that, not
+    /// the degrees: read, a tree's 4.7123885 in its save).
+    #[serde(default)]
+    pub placed_facing: Option<f32>,
     /// SetDestructableOccluderHeight: the occlusion height in place of the type's.
     #[serde(default)]
     pub occluder_height: Option<f32>,

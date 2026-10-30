@@ -33,6 +33,8 @@ pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>
         anim_serial: 0,
         anim_speed: 1.0,
         pathing_cells: Vec::new(),
+        object_slots: Vec::new(),
+        placed_facing: None,
         occluder_height: None,
     };
     let path_tex = o.str("pathTex");
@@ -41,11 +43,14 @@ pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>
     // only its position's two (read: Forestwalk's four trees placed dead, its pathing
     // map listing none of their cells).
     let oid = w.tags.take_id(b"+w3d");
-    w.tags.take(b"`pos");
-    w.tags.take_n(b"^pmr", if dead { 2 } else { 5 });
+    let mut slots = vec![w.tags.take(b"`pos")];
+    for _ in 0..if dead { 2 } else { 5 } {
+        slots.push(w.tags.take(b"^pmr"));
+    }
     if let Some(Obj::Destructable(d)) = w.handles.get_mut(h) {
         d.handle = h;
         d.oid = oid;
+        d.object_slots = slots;
     }
     w.destructable_order.push(h);
     // A pathing texture is drawn for the facing structures stand at (270, as

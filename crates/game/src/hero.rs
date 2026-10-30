@@ -457,9 +457,63 @@ impl World {
         }
     }
 
+    /// Structures' alarms: their wait over, a computer player's structure watches for
+    /// enemies, a position listener for event 0xd01c8 (traced: an undead computer's
+    /// Necropolis at 0.72 seconds and Haunted Gold Mine at 0.745, `FUN_6f436510` on event
+    /// 0xd01c1; a user's Town Hall and the neutral gold mines none; provisional: the
+    /// condition, the unit's flags 4 and not 0x100 at +0x5c, read as its owner a
+    /// computer).
+    pub fn alarms(&mut self, dt: f32) {
+        let hs: Vec<u32> = self.unit_order.clone();
+        for h in hs {
+            let Some(u) = self.unit_mut(h) else { continue };
+            let Some(w) = u.extra.alarm_wait.as_mut() else { continue };
+            *w -= dt;
+            if *w > 0.0 {
+                continue;
+            }
+            u.extra.alarm_wait = None;
+            let owner = u.owner;
+            let computer = self.players.get(owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER && p.slot_state == crate::types::slot_state::PLAYING);
+            if computer && self.unit(h).is_some_and(|u| !u.dead) {
+                self.tags.take(b"`pil");
+            }
+        }
+    }
+
     /// Hero health and mana regeneration and unit regeneration.
     pub fn regenerate(&mut self, dt: f32) {
         let hs: Vec<u32> = self.unit_order.clone();
+        // Regeneration on blight looks at the ground every two seconds from the unit's
+        // making, its timer made as it finds blight (traced: an undead start's ghoul and
+        // three acolytes each take one at 2.0 seconds, the haunted mine's blight under
+        // them since its making; event 0xd01c1, `FUN_6f43a200`; provisional: the period,
+        // and leaving blight frees it).
+        for &h in &hs {
+            let Some(u) = self.unit_mut(h) else { continue };
+            let Some(c) = u.extra.blight_check.as_mut() else { continue };
+            *c -= dt;
+            if *c > 1e-4 {
+                continue;
+            }
+            *c += 2.0;
+            let (x, y, had) = (u.x, u.y, u.extra.blight_rcm);
+            match (self.point_blighted(x, y), had) {
+                (true, None) => {
+                    let s = self.tags.take(b"`rcm");
+                    if let Some(u) = self.unit_mut(h) {
+                        u.extra.blight_rcm = Some(s);
+                    }
+                }
+                (false, Some(s)) => {
+                    self.tags.release(s);
+                    if let Some(u) = self.unit_mut(h) {
+                        u.extra.blight_rcm = None;
+                    }
+                }
+                _ => {}
+            }
+        }
         for h in hs {
             let Some((hp, mp)) = self.regen_rates(h) else { continue };
             let u = self.unit_mut(h).unwrap();

@@ -513,6 +513,8 @@ impl crate::world::World {
 
         let mut codes: Vec<Code> = vec![*b"+w3u", *b"`pcu", *b"^pmr", *b"^pmr", *b"`rel", *b"`rel", *b"`rel", *b"`rel", *b"`rel", *b"l^pa"];
         const BASE: usize = 10;
+        let mut blight_rcm: Option<usize> = None;
+        let blight_regen = field("regenType").eq_ignore_ascii_case("blight");
         // Life regeneration: a timer, or for regeneration on blight its ability.
         match field("regenType").to_ascii_lowercase().as_str() {
             "always" | "night" | "day" => codes.push(*b"`rcm"),
@@ -522,6 +524,7 @@ impl crate::world::World {
             "blight" => {
                 codes.push(*b"Ablr");
                 if self.point_blighted(x, y) {
+                    blight_rcm = Some(codes.len());
                     codes.push(*b"`rcm");
                 }
             }
@@ -726,6 +729,10 @@ impl crate::world::World {
             let rest_start = mods_end + if building { 3 } else { 0 };
             let pair = |k: usize| (slots[k], births[k]);
             u.extra.object_slots = [(0..BASE).map(pair).collect(), (BASE..mods_end).map(pair).collect(), (rest_start..tasks).map(pair).collect()];
+            if blight_regen {
+                u.extra.blight_check = Some(2.0);
+                u.extra.blight_rcm = blight_rcm.map(|k| slots[k]);
+            }
         }
     }
 }

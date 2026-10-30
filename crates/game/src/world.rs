@@ -1986,6 +1986,7 @@ impl World {
         prof!(self, "update_units", self.update_units(vm, dt));
         prof!(self, "update_region_events", self.update_region_events(vm));
         prof!(self, "regenerate", self.regenerate(dt));
+        self.alarms(dt);
         prof!(self, "update_buffs", self.update_buffs(vm, dt));
         prof!(self, "update_fires", self.update_fires(dt));
         prof!(self, "update_area_buffs", self.update_area_buffs(vm, dt));

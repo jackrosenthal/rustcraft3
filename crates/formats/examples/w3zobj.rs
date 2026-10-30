@@ -99,6 +99,13 @@ fn main() {
         }
         return;
     }
+    // "seed": the slot table's random seed (after its slots, nine bytes each).
+    if a[2] == "seed" {
+        let n = s.slots[0] as usize;
+        let at = 1 + 9 * n;
+        println!("{:08x}", u32::from_le_bytes(s.slots[at..at + 4].try_into().unwrap()));
+        return;
+    }
     // "free": the object manager's free sections, as words.
     if a[2] == "free" {
         let m = s.objects.as_ref().unwrap();

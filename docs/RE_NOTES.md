@@ -1420,13 +1420,19 @@ Formats the port made its own, to be replaced by the original's:
   (each unit's `` `rcm ``, freed 3 seconds on) goes on the frame after.  The port does
   so (`Tags::removed`, `day_rcm`): 12297 agree, and its free list's top is the
   original's.  The creeps' auras first apply at 0.5 seconds (each a `+EIm` of the
-  second table, then the buff).  Not yet: two `` `pil `` the original makes at 0.72
-  and 0.745 seconds and four `` `rcm `` at 2.0, so six births fewer by five seconds
-  (traced, `takebt.sh`: the `` `pil `` by `FUN_6f436510`, a position listener for event
-  0xd01c8, called from 0x6f423881; the `` `rcm `` by a unit's `FUN_6f69d360`, its
-  regeneration modifier at +0xb4 as its flags allow, which creep sleep's
-  `FUN_6f670950` also calls, here from `FUN_6f43a200`, which FUN_6f418f00,
-  FUN_6f436780, FUN_6f43b150, and 0x6f423c8c call).
+  second table, then the buff).  A computer player's structure's alarm, its wait
+  over (a real from 0 to 1 on stream 21, `FUN_6f6936a0`; read as drawn: 0.723 for the
+  Necropolis, 0.746 for the Haunted Gold Mine), starts its watch, a position listener
+  for event 0xd01c8 (`FUN_6f436510`, the ability's event 0xd01c1); the user's Town Hall
+  and the neutral gold mines make none.  A unit regenerating on blight looks at the
+  ground two seconds after its making (event 0xd01c1 in the unit's handler at
+  0x6f423c40, `FUN_6f43a200`: on blight against its flag 0x80, `FUN_6f69d360` making
+  its `` `rcm ``; the undead start's ghoul and three acolytes at 2.0).  A map loaded
+  directly runs with its random seed locked ('war3'): its alarms' waits are that
+  seed's draws, whatever its slot table's seed.  With these the port's object table
+  at five seconds is the original's, all 12314 (slot, kind, birth), and its birth
+  count too (provisional: the alarm's condition, read as the owner a computer; the
+  blight look's period after the first).
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

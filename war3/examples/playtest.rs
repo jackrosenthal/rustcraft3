@@ -14,6 +14,10 @@ fn main() -> anyhow::Result<()> {
     let a: Vec<String> = std::env::args().collect();
     let (w, h): (u32, u32) = if a.len() > 5 { (a[4].parse()?, a[5].parse()?) } else { (1920, 1080) };
     let data = GameData::open(Path::new(&a[1]), std::env::var("W3CLASSIC").is_ok())?;
+    // W3SEED: the game's random seed (hex), as a save's slot table has it.
+    if let Ok(v) = std::env::var("W3SEED") {
+        data.setup_seed.set(u32::from_str_radix(v.trim_start_matches("0x"), 16)?);
+    }
     // W3TAGTRACE: record the engine objects' tags as taken and freed (for `tagtrace`).
     if std::env::var("W3TAGTRACE").is_ok() {
         w3_game::tags::RECORD.store(true, std::sync::atomic::Ordering::Relaxed);

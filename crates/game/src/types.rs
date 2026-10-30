@@ -568,6 +568,15 @@ pub struct UnitExtra {
     /// Its object of the last day change (`World::time_of_day_moved`), while it lasts.
     #[serde(default)]
     pub day_rcm: Option<u32>,
+    /// Regeneration on blight (Ablr): the time to its next look at the ground, and its
+    /// timer while on blight (`World::regenerate`).
+    #[serde(default)]
+    pub blight_check: Option<f32>,
+    #[serde(default)]
+    pub blight_rcm: Option<u32>,
+    /// A structure's alarm's wait before it watches for enemies (`World::alarms`).
+    #[serde(default)]
+    pub alarm_wait: Option<f32>,
     /// The slots of its current move order's objects (`Tags::move_issued`).
     #[serde(default)]
     pub order_tags: Vec<u32>,
@@ -828,6 +837,9 @@ impl Default for UnitExtra {
             footprint_slots: Vec::new(),
             object_slots: Default::default(),
             day_rcm: None,
+            blight_check: None,
+            blight_rcm: None,
+            alarm_wait: None,
             order_tags: Vec::new(),
             gold_run: None,
             mine_shaft: false,

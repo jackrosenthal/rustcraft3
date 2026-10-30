@@ -818,6 +818,12 @@ impl Scene {
                     // and Player(3) empty).
                     None => {
                         g.world.fixed_starts = !campaign;
+                        // A map loaded directly runs with its random seed locked ('war3',
+                        // MAP_LOCK_RANDOM_SEED; measured: a test map's structures' alarm
+                        // waits are the locked seed's draws, whatever the setup's seed).
+                        if !campaign {
+                            g.world.map_flags |= 0x8000;
+                        }
                         // A map with a computer slot of its own gets no other (measured: a
                         // test map whose Player(1) is a computer slot leaves its user slots
                         // Player(2) and Player(3) empty).

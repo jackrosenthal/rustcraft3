@@ -1317,7 +1317,22 @@ Formats the port made its own, to be replaced by the original's:
   `FUN_6f0425d0`); then the object manager (`FUN_6f04dd30`), the game's objects (its
   vf 0x10), and each subsystem's state.  Its object table is every tagged object, 16
   bytes each (its two codes, byte-reversed, and two tags): 12403 at 5 seconds of
-  Booty Bay.  `w3_formats::w3z` reads the header so far.
+  Booty Bay.  After the header: the game time (ms) and a word (`FUN_6f32fa00`), then
+  the object manager (`FUN_6f04dd30`): five size-prefixed sections (`FUN_6f15b3e0`: a
+  116-byte header, the two tag tables, their free lists), the 1077 classes it
+  registers (a word count, then code, parent code, and two tags each), the main and
+  agent clocks (time, a word, the wrap 300, two words), 256 bytes, a word, and six
+  size-prefixed sections (`FUN_6f15b4f0`: regions `FUN_6f15c750`, pathing
+  `FUN_6f167500`, then each table's objects' first records `FUN_6f15c8b0`, vf 0x24, and
+  second `FUN_6f15c930`, vf 0x2c: each record size-prefixed and ended by "espi", one
+  per entry in order), two words, and the map's bounds.  An agent's entry is its
+  CAgentBaseAbs: its first record `FUN_6f146480` (its base's, a reference, a counted
+  list of references, four more), its second its agent's vf 0x38 (CAgent's
+  `FUN_6f03eda0`: the agent base's `FUN_6f0562b0`, then a word for each event id
+  0xd0000 to 0xd03ff, vf 0x50, the 4 KB every agent's record has).  Classes are
+  decoded one by one from here (587 game classes' names alone in the agent families).
+  `w3_formats::w3z` reads the header and the object manager, pairing each object's
+  records with its entry.
 - Replays: .w3g files as the original writes them (header and its CRC, 8192-byte
   zlib blocks with their checksums, the record of host, players, slots, and seed, a
   turn per frame, verified by writing back a replay of the original's), but each

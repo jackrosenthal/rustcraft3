@@ -563,8 +563,18 @@ these are the findings behind them.
   (`FUN_6f688f70`, CUnitDatabase's `FUN_6f6a8110`: UnitData, UnitAbilities,
   UnitWeapons, UnitBalance chained `h = rol(h, 3) ^ next`, rotated again; unitUI not
   hashed), 5 AbilityData, 7 ItemData (hashed in a temporary table first, so rotated
-  twice), 9 UpgradeData.  Read under winedbg in a game of Booty Bay played alone: each
-  table's hash and each module as the port computes them (`datahash`).
+  twice), 9 UpgradeData.  Modules 12 to 19 are the object data's (CCustomData by kind,
+  `FUN_6f69fba0`; vf0 `FUN_6f6a80e0`): its kind's meta table's hash (CObjectMetaDB,
+  `FUN_6f6dd470`; `FUN_6f6e5150` chains any tables added to it, `h = rol(hash ^ h,
+  3)`), and with the map's own object data `rol(that ^ meta, 3)` (`FUN_6f6e50d0`: each
+  object, original then custom, `FUN_6f6fb170`: `rol(rol(old, 3) ^ new, 3)` then each
+  modification `u = rol(u ^ m, 3)`, a modification `FUN_6f6e8790`: its field and type,
+  its level and data column for kinds with levels, then its value: an integer's or
+  real's bits, an unreal's `to_int`, a string's hash).  12 units and 13 items (both
+  UnitMetaData), 14 destructables, 15 doodads (Doodads\DoodadMetaData; not made in a
+  game), 16 abilities, 17 buffs, 18 upgrades; 19 was 0.  Read under winedbg in a game
+  of Booty Bay played alone: each table's hash and each module as the port computes
+  them (`datahash`).
 - The object manager (`DAT_6fd6860c`, Tempest's) keeps two tag tables: at +0 entries of
   8 bytes (-2, object), its count at +0x1c (the presence tag unless +0x40 is set), and
   at +0x20 another (its next tag at +0x50).  Its 12805 objects at Booty Bay's first turn

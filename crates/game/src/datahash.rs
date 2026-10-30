@@ -153,15 +153,32 @@ pub fn slot(hash: u32) -> u32 {
     hash.rotate_left(3)
 }
 
-/// The data tables' modules from their files as the game's archives give them (the
-/// map's own over the data set's; `read` by path): 4 the unit tables (`FUN_6f688f70`),
-/// 5 AbilityData (`FUN_6f6ac4f0`), 7 ItemData (`FUN_6f658a20`: hashed in a table of its
-/// own first, `rol` once more), 9 UpgradeData (`FUN_6f6ae8d0`).  Read: Booty Bay's,
-/// each as the original's.
-pub fn modules(read: impl Fn(&str) -> Vec<u8>) -> [(u8, u32); 4] {
+/// The data modules from the tables as the game's archives give them (the map's own
+/// over the data set's; `read` by path).  The data tables': 4 the unit tables
+/// (`FUN_6f688f70`), 5 AbilityData (`FUN_6f6ac4f0`), 7 ItemData (`FUN_6f658a20`: hashed
+/// in a table of its own first, `rol` once more), 9 UpgradeData (`FUN_6f6ae8d0`).  The
+/// object data's, one per kind (CCustomData, `FUN_6f69fba0`; its vf0 `FUN_6f6a80e0`),
+/// for a map without object data of its own each its kind's meta table's hash
+/// (CObjectMetaDB, `FUN_6f6dd470`, hashed by `FUN_6f6e5150`): 12 units and 13 items
+/// (both UnitMetaData), 14 destructables, 16 abilities, 17 buffs, 18 upgrades (15, the
+/// doodads', is not made in a game; 19 is 0).  Read: Booty Bay's, each as the original's.
+pub fn modules(read: impl Fn(&str) -> Vec<u8>) -> [(u8, u32); 11] {
     let table = |n: &str| Slk::parse(&read(n)).hash();
     let units = unit_tables(&read("Units\\UnitData.slk"), &read("Units\\UnitAbilities.slk"), &read("Units\\UnitWeapons.slk"), &read("Units\\UnitBalance.slk"));
-    [(4, slot(units)), (5, slot(table("Units\\AbilityData.slk"))), (7, slot(slot(table("Units\\ItemData.slk")))), (9, slot(table("Units\\UpgradeData.slk")))]
+    let unit_meta = table("Units\\UnitMetaData.slk");
+    [
+        (4, slot(units)),
+        (5, slot(table("Units\\AbilityData.slk"))),
+        (7, slot(slot(table("Units\\ItemData.slk")))),
+        (9, slot(table("Units\\UpgradeData.slk"))),
+        (12, unit_meta),
+        (13, unit_meta),
+        (14, table("Units\\DestructableMetaData.slk")),
+        (16, table("Units\\AbilityMetaData.slk")),
+        (17, table("Units\\AbilityBuffMetaData.slk")),
+        (18, table("Units\\UpgradeMetaData.slk")),
+        (19, 0),
+    ]
 }
 
 #[cfg(test)]

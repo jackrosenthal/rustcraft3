@@ -280,8 +280,8 @@ pub struct World {
     /// The game time in whole milliseconds, each tick's added (the keepalive's `t`).
     #[serde(default)]
     pub game_ms: u32,
-    /// Keepalive checksum modules the port does not compute, by index: values read from
-    /// the original (`keepalive`).
+    /// The keepalive's data modules, by index, as the game's data loaded
+    /// (`datahash::modules`).
     #[serde(default)]
     pub keepalive_modules: std::collections::BTreeMap<u8, u32>,
     /// Each player's selection as the original keeps it in step (`crate::selection`).

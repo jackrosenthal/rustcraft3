@@ -40,16 +40,6 @@ pub fn net_message(kind: u8, payload: &[u8]) -> u32 {
     byte_hash(x)
 }
 
-/// The data modules as the original had them in Booty Bay with two players (read under
-/// winedbg at its first turns; the same on Harrow): the databases (4, 5, 7, 9, which
-/// `datahash::modules` computes from the tables) and the map's custom data (12 to 19,
-/// not yet computed), made as the data loads.  A map with its own object data would
-/// have others.
-pub const BOOTY_BAY_MODULES: [(u8, u32); 11] = [
-    (19, 0), (18, 0xc7d37d14), (17, 0x50bc09d8), (16, 0xa4fc2e24), (14, 0x68b89b88), (13, 0x38eb3c00), (12, 0x38eb3c00),
-    (9, 0xd85c9c00), (7, 0x98054236), (5, 0xa996f046), (4, 0xb5891e1b),
-];
-
 /// An object as the game module names it: its slot ^ birth (the handles in a player's
 /// lists carry the unit's tag at +0xc and +0x10), 0 for one in a slot never freed.
 pub type Tagged = u32;
@@ -122,11 +112,6 @@ impl World {
         self.net_sum = self.net_sum.wrapping_add(net_message(0x1f, &payload));
     }
 
-    /// The keepalive checksum for the turn whose message came in last, from the state
-    /// after the one before it.  Modules the port does not compute yet (the databases,
-    /// 4, 5, 7, and 9; the map's custom data, 12 to 19) are taken from
-    /// `keepalive_modules`, values read from the original; module 0 is the cheat
-    /// flags, 0 without cheats.
     /// The game module (6) that would make this keepalive `want`, the other inputs as
     /// they are: for reading which part of a differing keepalive differs.
     pub fn game_module_for(&self, want: u32) -> u32 {
@@ -150,6 +135,10 @@ impl World {
         a.rotate_right(3) ^ above
     }
 
+    /// The keepalive checksum for the turn whose message came in last, from the state
+    /// after the one before it: the data modules (4, 5, 7, 9, and 12 to 19) as the game
+    /// loaded them (`keepalive_modules`, `datahash::modules`), module 0 the cheat flags
+    /// (0 without cheats), 2 the net module, 3 the random data, 6 the game module.
     pub fn keepalive(&self) -> u32 {
         let mut modules = self.keepalive_modules.clone();
         modules.insert(0, 0);

@@ -105,11 +105,13 @@ impl ObjectManager {
     }
 }
 
-/// A tagged object's entry: its two codes (as the engine holds them) and its tags.
+/// A tagged object's entry: its family's code and its kind's (as the engine holds
+/// them: "+agl" and "+ply" for a player's agent, "^pma" and "^pmr" for a pathing
+/// region), and its tags.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Tagged {
-    pub code: u32,
-    pub class: u32,
+    pub family: u32,
+    pub kind: u32,
     pub tag: u32,
     pub birth: u32,
 }
@@ -127,7 +129,7 @@ impl ObjectManager {
             let mut s = Reader::new(&b);
             let n = s.u32()?;
             for _ in 0..n {
-                t.push(Tagged { code: s.u32()?, class: s.u32()?, tag: s.u32()?, birth: s.u32()? });
+                t.push(Tagged { family: s.u32()?, kind: s.u32()?, tag: s.u32()?, birth: s.u32()? });
             }
         }
         m.free = [section(r)?, section(r)?];
@@ -186,5 +188,135 @@ impl SaveGame {
     pub fn read(file: &[u8]) -> Result<SaveGame, Error> {
         let (_, record) = crate::container::unpack(file)?;
         SaveGame::parse(&record)
+    }
+}
+
+/// A reference to a tagged object as saved (`FUN_6f1c5630`): its two tags, or -1 and
+/// -1 for none.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Ref(pub u32, pub u32);
+
+impl Ref {
+    fn read(r: &mut Reader) -> Result<Ref, Error> {
+        Ok(Ref(r.u32()?, r.u32()?))
+    }
+}
+
+/// A reference with a word (`FUN_6f15df60`: 1 when it is the owner's own link).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Link(pub Ref, pub u32);
+
+impl Link {
+    fn read(r: &mut Reader) -> Result<Link, Error> {
+        Ok(Link(Ref::read(r)?, r.u32()?))
+    }
+}
+
+/// An optional block (`FUN_6f15de50`): present, then two reals and three words.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Timing(pub Option<(f32, f32, u32, u32, u32)>);
+
+impl Timing {
+    fn read(r: &mut Reader) -> Result<Timing, Error> {
+        Ok(Timing(match r.u32()? {
+            0 => None,
+            _ => Some((r.f32()?, r.f32()?, r.u32()?, r.u32()?, r.u32()?)),
+        }))
+    }
+}
+
+/// Every engine object's first fields (`FUN_6f15dec0`): a real, two words, two pairs
+/// of links with two references (`FUN_6f15df20`), and two optional blocks.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ObjectBase {
+    pub real: f32,
+    pub words: [u32; 2],
+    pub links: [(Link, Link, Ref, Ref); 2],
+    pub timings: [Timing; 2],
+}
+
+impl ObjectBase {
+    fn read(r: &mut Reader) -> Result<ObjectBase, Error> {
+        let mut b = ObjectBase { real: r.f32()?, words: [r.u32()?, r.u32()?], ..Default::default() };
+        for l in &mut b.links {
+            *l = (Link::read(r)?, Link::read(r)?, Ref::read(r)?, Ref::read(r)?);
+        }
+        for t in &mut b.timings {
+            *t = Timing::read(r)?;
+        }
+        Ok(b)
+    }
+}
+
+/// A property's first fields (`FUN_6f160ff0`): the object's, two links, a real and a
+/// word.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PropertyBase {
+    pub object: ObjectBase,
+    pub links: [Link; 2],
+    pub real: f32,
+    pub word: u32,
+}
+
+impl PropertyBase {
+    fn read(r: &mut Reader) -> Result<PropertyBase, Error> {
+        Ok(PropertyBase { object: ObjectBase::read(r)?, links: [Link::read(r)?, Link::read(r)?], real: r.f32()?, word: r.u32()? })
+    }
+}
+
+/// An engine object's first record, as far as its class is read.
+#[derive(Clone, Debug, PartialEq)]
+pub enum First {
+    /// A pathing map region (`^pmr`, CPmRegion's `FUN_6f14d430`): two references, a
+    /// word, four words (its bounds), and three words.
+    Region { refs: [Ref; 2], word: u32, bounds: [u32; 4], words: [u32; 3] },
+    /// A flag property (`` `flg ``, CPoFlag's `FUN_6f160ca0`): its value.
+    Flag { base: PropertyBase, value: u32 },
+    /// A real property (`` `rel ``, CPoReal's `FUN_6f161710`): four reals.
+    Real { base: PropertyBase, values: [f32; 4] },
+    /// A position property (`` `pos ``, CPoPos's `FUN_6f15f180`): seven reals and two
+    /// references.
+    Pos { base: PropertyBase, values: [f32; 7], refs: [Ref; 2] },
+    /// An agent's wrapper (CAgentBaseAbs's `FUN_6f146480`): the object's fields, its
+    /// agent, a counted list of references, and four links.
+    Agent { object: ObjectBase, agent: Ref, refs: Vec<Ref>, links: [Link; 4] },
+    /// Not yet read.
+    Raw(Vec<u8>),
+}
+
+impl SavedObject {
+    /// Its first record read by its kind.
+    pub fn first(&self) -> Result<First, Error> {
+        let mut r = Reader::new(&self.first);
+        let (kind, family) = (&self.entry.kind.to_be_bytes(), &self.entry.family.to_be_bytes());
+        let out = match (kind, family) {
+            (b"^pmr", _) => {
+                let refs = [Ref::read(&mut r)?, Ref::read(&mut r)?];
+                let word = r.u32()?;
+                let bounds = [r.u32()?, r.u32()?, r.u32()?, r.u32()?];
+                First::Region { refs, word, bounds, words: [r.u32()?, r.u32()?, r.u32()?] }
+            }
+            (b"`flg", _) => First::Flag { base: PropertyBase::read(&mut r)?, value: r.u32()? },
+            (b"`rel", _) => First::Real { base: PropertyBase::read(&mut r)?, values: [r.f32()?, r.f32()?, r.f32()?, r.f32()?] },
+            (b"`pos", _) => {
+                let base = PropertyBase::read(&mut r)?;
+                let mut values = [0f32; 7];
+                for v in &mut values {
+                    *v = r.f32()?;
+                }
+                First::Pos { base, values, refs: [Ref::read(&mut r)?, Ref::read(&mut r)?] }
+            }
+            (_, b"+agl") => {
+                let object = ObjectBase::read(&mut r)?;
+                let agent = Ref::read(&mut r)?;
+                let refs = (0..r.u32()?).map(|_| Ref::read(&mut r)).collect::<Result<_, _>>()?;
+                First::Agent { object, agent, refs, links: [Link::read(&mut r)?, Link::read(&mut r)?, Link::read(&mut r)?, Link::read(&mut r)?] }
+            }
+            _ => return Ok(First::Raw(self.first.clone())),
+        };
+        if r.remaining() != 0 {
+            return Err(Error::Format("an object's first record longer than its class's fields"));
+        }
+        Ok(out)
     }
 }

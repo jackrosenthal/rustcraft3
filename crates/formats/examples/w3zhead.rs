@@ -6,9 +6,45 @@ fn main() {
     println!("slots {:02x?}", s.slots);
     println!("objects word {:08x} map xoro {:08x} sha1 {}", s.objects_word, s.map_xoro, s.map_sha1.iter().map(|b| format!("{b:02x}")).collect::<String>());
     println!("local slot {} player {} name {:?} preferences {:?}, game time {} ms", s.local_slot, s.local_player, s.player_name, s.preferences, s.game_ms);
-    let m = &s.objects;
+    let Some(m) = &s.objects else {
+        println!("no object manager read (not 1.27b's layout), {} bytes after", s.rest.len());
+        return;
+    };
     println!("objects {} and {}, classes {}, clocks {:?}", m.tables[0].len(), m.tables[1].len(), m.classes.len(), m.clocks);
     println!("data sections {:?}, bounds {:?}, {} bytes after", m.data.iter().map(|d| d.len()).collect::<Vec<_>>(), m.bounds, s.rest.len());
+    // The record written back: whole, then from each part as read.
+    let record = w3_formats::container::unpack(&std::fs::read(&a[1]).unwrap()).unwrap().1;
+    println!("record written back: {}", if s.to_record() == record { "the same" } else { "differs" });
+    if let Ok(objects) = m.objects() {
+        let mut back = objects.clone();
+        let (mut same, mut differ) = (0, 0);
+        for o in back.iter_mut().flatten() {
+            let (first, second) = (o.first().unwrap().to_bytes(), o.second().unwrap().to_bytes(o.entry.kind).unwrap());
+            if first == o.first && second == o.second {
+                same += 1;
+            } else {
+                if differ < 5 {
+                    let code = |c: u32| String::from_utf8_lossy(&c.to_be_bytes()).into_owned();
+                    println!("  {} written back differs: first {} of {}, second {} of {}", code(o.entry.kind), first.len(), o.first.len(), second.len(), o.second.len());
+                }
+                differ += 1;
+            }
+            (o.first, o.second) = (first, second);
+        }
+        let mut m2 = m.clone();
+        m2.set_objects(&back);
+        let mut s2 = s.clone();
+        s2.objects = Some(m2);
+        let g = s.state().unwrap();
+        s2.rest = g.to_bytes().unwrap();
+        println!("records written back: {same} the same, {differ} differ; state written back: {}; whole: {}", if s2.rest == s.rest { "the same" } else { "differs" }, if s2.to_record() == record { "the same" } else { "differs" });
+        if let Some((_, f)) = g.parts.iter().find(|(n, _)| *n == "script data") {
+            if let [w3_formats::w3z::Field::Bytes(b)] = &f[..] {
+                let d = w3_formats::w3z::ScriptData::parse(b).unwrap();
+                println!("script data written back: {}", if &d.to_bytes().unwrap() == b { "the same" } else { "differs" });
+            }
+        }
+    }
     if let Ok(objects) = m.objects() {
         // Each class's count and its records' sizes.
         let mut by: std::collections::BTreeMap<String, (usize, usize, usize)> = Default::default();

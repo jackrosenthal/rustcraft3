@@ -39,8 +39,9 @@ pub struct SaveGame {
     /// game's +0x1c70 and +0x1c74).
     pub game_ms: u32,
     pub game_word: u32,
-    /// The engine's object manager (`FUN_6f04dd30`).
-    pub objects: ObjectManager,
+    /// The engine's object manager (`FUN_6f04dd30`), when the record has 1.27b's layout
+    /// (1.22's differs, and is kept whole in `rest`, from the game time on).
+    pub objects: Option<ObjectManager>,
     /// The rest of the record, the game's own state (read by `state`).
     pub rest: Vec<u8>,
 }
@@ -178,7 +179,7 @@ impl SaveGame {
         // 1.27b's layout from here (1.22's differs: kept whole).
         let mut t = r.clone();
         if let (Ok(ms), Ok(word), Ok(objects)) = (t.u32(), t.u32(), ObjectManager::parse(&mut t)) {
-            (s.game_ms, s.game_word, s.objects) = (ms, word, objects);
+            (s.game_ms, s.game_word, s.objects) = (ms, word, Some(objects));
             r = t;
         }
         s.rest = r.data[r.pos..].to_vec();
@@ -1274,5 +1275,733 @@ impl ScriptData {
             return Err(Error::Format("script data not read to its end"));
         }
         Ok(d)
+    }
+}
+
+/// A record being written, as the original's data store writes (little-endian).
+#[derive(Default)]
+struct Out(Vec<u8>);
+
+impl Out {
+    fn u8(&mut self, v: u8) {
+        self.0.push(v);
+    }
+    fn u16(&mut self, v: u16) {
+        self.0.extend(v.to_le_bytes());
+    }
+    fn u32(&mut self, v: u32) {
+        self.0.extend(v.to_le_bytes());
+    }
+    fn f32(&mut self, v: f32) {
+        self.0.extend(v.to_le_bytes());
+    }
+    fn cstr(&mut self, s: &str) {
+        self.0.extend(s.as_bytes());
+        self.0.push(0);
+    }
+    fn words(&mut self, w: &[u32]) {
+        for &v in w {
+            self.u32(v);
+        }
+    }
+    fn reals(&mut self, w: &[f32]) {
+        for &v in w {
+            self.f32(v);
+        }
+    }
+    /// A section, its size first, as `f` writes it.
+    fn sized(&mut self, f: impl FnOnce(&mut Out) -> Result<(), Error>) -> Result<(), Error> {
+        let at = self.0.len();
+        self.u32(0);
+        f(self)?;
+        let n = (self.0.len() - at - 4) as u32;
+        self.0[at..at + 4].copy_from_slice(&n.to_le_bytes());
+        Ok(())
+    }
+}
+
+impl Ref {
+    fn write(&self, o: &mut Out) {
+        o.words(&[self.0, self.1]);
+    }
+}
+
+impl Link {
+    fn write(&self, o: &mut Out) {
+        self.0.write(o);
+        o.u32(self.1);
+    }
+}
+
+impl Timing {
+    fn write(&self, o: &mut Out) {
+        match self.0 {
+            None => o.u32(0),
+            Some((a, b, c, d, e)) => {
+                o.u32(1);
+                o.reals(&[a, b]);
+                o.words(&[c, d, e]);
+            }
+        }
+    }
+}
+
+impl ObjectBase {
+    fn write(&self, o: &mut Out) {
+        o.f32(self.real);
+        o.words(&self.words);
+        for (a, b, c, d) in &self.links {
+            a.write(o);
+            b.write(o);
+            c.write(o);
+            d.write(o);
+        }
+        for t in &self.timings {
+            t.write(o);
+        }
+    }
+}
+
+impl PropertyBase {
+    fn write(&self, o: &mut Out) {
+        self.object.write(o);
+        self.links[0].write(o);
+        self.links[1].write(o);
+        o.f32(self.real);
+        o.u32(self.word);
+    }
+}
+
+impl<T> Array<T> {
+    fn write(&self, o: &mut Out, entry: impl Fn(&mut Out, &T)) {
+        o.words(&self.words);
+        o.u32(self.entries.len() as u32);
+        for e in &self.entries {
+            entry(o, e);
+        }
+    }
+}
+
+impl First {
+    /// The record as its class writes it.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut o = Out::default();
+        let refs = |o: &mut Out, r: &[Ref]| r.iter().for_each(|r| r.write(o));
+        match self {
+            First::Region { refs: r, word, bounds, words } => {
+                refs(&mut o, r);
+                o.u32(*word);
+                o.words(bounds);
+                o.words(words);
+            }
+            First::Flag { base, value } => {
+                base.write(&mut o);
+                o.u32(*value);
+            }
+            First::Real { base, values } => {
+                base.write(&mut o);
+                o.reals(values);
+            }
+            First::Pos { base, values, refs: r } => {
+                base.write(&mut o);
+                o.reals(values);
+                refs(&mut o, r);
+            }
+            First::Agent { object, agent, refs: r, links } => {
+                object.write(&mut o);
+                agent.write(&mut o);
+                o.u32(r.len() as u32);
+                refs(&mut o, r);
+                links.iter().for_each(|l| l.write(&mut o));
+            }
+            First::Threshold { object, real, word } => {
+                object.write(&mut o);
+                o.f32(*real);
+                o.u32(*word);
+            }
+            First::FlagListener { object, word } => {
+                object.write(&mut o);
+                o.u32(*word);
+            }
+            First::Interference { object, real, word, array } => {
+                object.write(&mut o);
+                o.f32(*real);
+                o.u32(*word);
+                array.write(&mut o, |o, e| o.words(e));
+            }
+            First::Continuous { object, values } => {
+                object.write(&mut o);
+                o.reals(values);
+            }
+            First::Cluster { base, values, refs: r, words, reals, more, flags, last } => {
+                base.write(&mut o);
+                o.reals(values);
+                refs(&mut o, r);
+                o.words(words);
+                o.reals(reals);
+                o.words(more);
+                o.words(flags);
+                last.write(&mut o);
+            }
+            First::Path { reals, words, real, word, ways, refs: r } => {
+                o.reals(reals);
+                o.words(words);
+                o.f32(*real);
+                o.u32(*word);
+                for (a, b, c, d) in ways {
+                    a.write(&mut o, |o, e| o.reals(e));
+                    o.words(&[*b, *c]);
+                    o.u16(*d);
+                }
+                refs(&mut o, r);
+            }
+            First::Accelerator { refs: r, array, word } => {
+                refs(&mut o, r);
+                array.write(&mut o, |o, e| o.words(e));
+                o.u32(*word);
+            }
+            First::System { owner, short } => {
+                owner.write(&mut o);
+                o.u16(*short);
+            }
+            First::AgentDef { object, array } => {
+                object.write(&mut o);
+                array.write(&mut o, |o, e| o.words(e));
+            }
+            First::Cluster2 { array, words, reals, more, last_reals, word, refs: r } => {
+                array.write(&mut o, |o, (a, b, c)| {
+                    o.words(a);
+                    o.reals(b);
+                    o.u32(*c);
+                });
+                o.words(words);
+                o.reals(reals);
+                o.words(more);
+                o.reals(last_reals);
+                o.u32(*word);
+                refs(&mut o, r);
+            }
+            First::Empty => {}
+            First::Raw(b) => o.0.extend(b),
+        }
+        o.0
+    }
+}
+
+impl Handlers {
+    fn write(&self, o: &mut Out) {
+        let list = |o: &mut Out, l: &[(Ref, u32)]| {
+            o.u32(l.len() as u32);
+            for (r, w) in l {
+                r.write(o);
+                o.u32(*w);
+            }
+        };
+        o.u32(self.keyed.len() as u32);
+        for (k, l) in &self.keyed {
+            o.u32(*k);
+            list(o, l);
+        }
+        for l in self.fixed.iter().chain(&self.events) {
+            list(o, l);
+        }
+    }
+}
+
+impl Sprite {
+    fn write(s: &Option<Sprite>, o: &mut Out) {
+        let Some(s) = s else {
+            o.u8(0);
+            return;
+        };
+        o.u8(1);
+        o.cstr(&s.model);
+        o.f32(s.real);
+        o.u16(s.short);
+        o.u8(s.byte);
+        o.u32(s.word);
+        o.reals(&s.reals);
+        o.words(&s.words);
+        o.f32(s.last_real);
+        o.u8(s.last_byte);
+        s.flags.iter().for_each(|&b| o.u8(b));
+        o.u32(s.entries.len() as u32);
+        for (real, word, list) in &s.entries {
+            o.f32(*real);
+            o.u32(*word);
+            o.u32(list.len() as u32);
+            o.words(list);
+        }
+    }
+}
+
+impl Widget {
+    fn write(&self, o: &mut Out) {
+        Sprite::write(&self.sprite, o);
+        o.f32(self.real);
+        o.u32(self.word);
+        o.u16(self.shorts[0]);
+        o.u16(self.shorts[1]);
+        match &self.refs {
+            None => o.u8(0),
+            Some((refs, reals)) => {
+                o.u8(1);
+                o.u16(refs.len() as u16);
+                refs.iter().for_each(|r| r.write(o));
+                o.reals(reals);
+            }
+        }
+        o.u8(self.bytes[0]);
+        o.u8(self.bytes[1]);
+        o.f32(self.last_real);
+        o.u8(self.byte);
+    }
+}
+
+impl Second {
+    /// The record as the kind's class writes it.
+    pub fn to_bytes(&self, kind: u32) -> Result<Vec<u8>, Error> {
+        let mut o = Out::default();
+        let kind = &kind.to_be_bytes();
+        match self {
+            Second::UnitRefs { words, handlers } => {
+                o.words(words);
+                handlers.write(&mut o);
+            }
+            Second::Unit { own, handlers, widget, lists, fields } => {
+                o.u32(*own);
+                handlers.write(&mut o);
+                widget.write(&mut o);
+                for l in lists {
+                    o.u32(l.len() as u32);
+                    for (r, w) in l {
+                        r.write(&mut o);
+                        o.u32(*w);
+                    }
+                }
+                put_fields(&mut o, UNIT_FIELDS, fields)?;
+            }
+            Second::Destructable { own, handlers, widget, bytes, words } => {
+                o.u32(own.0);
+                o.reals(&own.1);
+                handlers.write(&mut o);
+                widget.write(&mut o);
+                o.u8(bytes[0]);
+                o.u8(bytes[1]);
+                o.words(words);
+            }
+            Second::Agent { own, handlers, tail } => {
+                let (_, own_layout, tail_layout) = AGENTS.iter().find(|(k, _, _)| *k == kind).ok_or(Error::Format("no layout for the agent's kind"))?;
+                put_fields(&mut o, own_layout.trim_start_matches('!'), own)?;
+                handlers.write(&mut o);
+                put_fields(&mut o, tail_layout, tail)?;
+            }
+            Second::Whole(f) => {
+                let (_, layout) = WHOLE.iter().find(|(k, _)| *k == kind).ok_or(Error::Format("no layout for the kind"))?;
+                put_fields(&mut o, layout, f)?;
+            }
+            Second::Empty => {}
+            Second::Raw(b) => o.0.extend(b),
+        }
+        Ok(o.0)
+    }
+}
+
+/// Writes fields by the layout `fields` read them with.
+fn put_fields(o: &mut Out, layout: &str, f: &[Field]) -> Result<(), Error> {
+    let bad = || Error::Format("fields not as their layout has them");
+    let chars: Vec<char> = layout.chars().filter(|c| !c.is_whitespace()).collect();
+    let close = |k: usize| {
+        let (open, close) = match chars[k] {
+            '[' => ('[', ']'),
+            '{' => ('{', '}'),
+            _ => ('(', ')'),
+        };
+        let (mut depth, mut j) = (0, k);
+        loop {
+            if chars[j] == open {
+                depth += 1;
+            } else if chars[j] == close {
+                depth -= 1;
+                if depth == 0 {
+                    return j;
+                }
+            }
+            j += 1;
+        }
+    };
+    let inner = |a: usize, b: usize| -> String { chars[a + 1..b].iter().collect() };
+    // The single group a conditional or plain group holds.
+    fn group(f: Option<&Field>) -> Result<&[Field], Error> {
+        match f {
+            Some(Field::List(g)) if g.len() == 1 => Ok(&g[0]),
+            _ => Err(Error::Format("fields not as their layout has them")),
+        }
+    }
+    let mut it = f.iter();
+    let (mut mask, mut last) = (0u32, 0u32);
+    let mut k = 0;
+    while k < chars.len() {
+        let mut times = 0usize;
+        while chars[k].is_ascii_digit() {
+            times = times * 10 + chars[k].to_digit(10).unwrap() as usize;
+            k += 1;
+        }
+        match chars[k] {
+            '?' => {
+                let byte = chars[k + 1] == 'b';
+                let open = if byte { k + 2 } else { k + 1 };
+                let x = close(open);
+                let y = (chars.get(x + 1) == Some(&'(')).then(|| close(x + 1));
+                let flag = match (byte, it.next()) {
+                    (true, Some(Field::Byte(b))) => {
+                        o.u8(*b);
+                        *b as u32
+                    }
+                    (false, Some(Field::Word(w))) => {
+                        o.u32(*w);
+                        *w
+                    }
+                    _ => return Err(bad()),
+                };
+                if flag != 0 {
+                    put_fields(o, &inner(open, x), group(it.next())?)?;
+                } else if let Some(y) = y {
+                    put_fields(o, &inner(x + 1, y), group(it.next())?)?;
+                }
+                k = y.unwrap_or(x) + 1;
+                continue;
+            }
+            '~' => {
+                let end = close(k + 1);
+                if last != 0 {
+                    put_fields(o, &inner(k + 1, end), group(it.next())?)?;
+                }
+                k = end + 1;
+                continue;
+            }
+            '#' => {
+                let end = close(k + 1);
+                let Some(Field::List(groups)) = it.next() else { return Err(bad()) };
+                if groups.len() != last as usize {
+                    return Err(bad());
+                }
+                for g in groups {
+                    put_fields(o, &inner(k + 1, end), g)?;
+                }
+                k = end + 1;
+                continue;
+            }
+            '&' => {
+                let open = k + 1 + chars[k + 1..].iter().position(|&c| c == '(').expect("layout bits");
+                let bits = u32::from_str_radix(&chars[k + 1..open].iter().collect::<String>(), 16).expect("layout bits");
+                let end = close(open);
+                if mask & bits != 0 {
+                    put_fields(o, &inner(open, end), group(it.next())?)?;
+                }
+                k = end + 1;
+                continue;
+            }
+            _ => {}
+        }
+        let start = k;
+        if matches!(chars[k], '[' | '{' | '(') {
+            k = close(k);
+        }
+        let token: String = chars[start..=k].iter().collect();
+        let body = || token[1..token.len() - 1].to_string();
+        for _ in 0..times.max(1) {
+            match (token.chars().next().unwrap(), it.next()) {
+                ('w', Some(Field::Word(v))) => {
+                    last = *v;
+                    o.u32(*v);
+                }
+                ('m', Some(Field::Word(v))) => {
+                    mask = *v;
+                    o.u32(*v);
+                }
+                ('f', Some(Field::Real(v))) => o.f32(*v),
+                ('b', Some(Field::Byte(v))) => o.u8(*v),
+                ('s', Some(Field::Short(v))) => o.u16(*v),
+                ('r', Some(Field::Ref(v))) => v.write(o),
+                ('t', Some(Field::Timer(r, w, t))) => {
+                    r.write(o);
+                    o.u32(*w);
+                    t.write(o);
+                }
+                ('z', Some(Field::Text(s))) => o.cstr(s),
+                ('n', Some(Field::Bytes(b))) => {
+                    o.u32(b.len() as u32);
+                    o.0.extend(b);
+                }
+                ('p', Some(Field::Sprite(s))) => Sprite::write(s, o),
+                ('e', Some(Field::List(groups))) => {
+                    o.u32(groups.len() as u32);
+                    for g in groups {
+                        put_fields(o, "rw", g)?;
+                    }
+                }
+                ('[', Some(Field::List(groups))) => {
+                    o.u32(groups.len() as u32);
+                    for g in groups {
+                        put_fields(o, &body(), g)?;
+                    }
+                }
+                ('{', Some(Field::List(groups))) => {
+                    o.u16(groups.len() as u16);
+                    for g in groups {
+                        put_fields(o, &body(), g)?;
+                    }
+                }
+                ('(', Some(Field::List(groups))) if groups.len() == 1 => put_fields(o, &body(), &groups[0])?,
+                _ => return Err(bad()),
+            }
+        }
+        k += 1;
+    }
+    if it.next().is_some() {
+        return Err(bad());
+    }
+    Ok(())
+}
+
+impl ObjectManager {
+    fn write(&self, o: &mut Out) {
+        let section = |o: &mut Out, b: &[u8]| {
+            o.u32(b.len() as u32);
+            o.0.extend(b);
+        };
+        section(o, &self.header);
+        for t in &self.tables {
+            o.u32((4 + 16 * t.len()) as u32);
+            o.u32(t.len() as u32);
+            for e in t {
+                o.words(&[e.family, e.kind, e.tag, e.birth]);
+            }
+        }
+        section(o, &self.free[0]);
+        section(o, &self.free[1]);
+        o.u16(self.classes.len() as u16);
+        for c in &self.classes {
+            o.words(c);
+        }
+        for &(a, b, c, d, e) in &self.clocks {
+            o.f32(a);
+            o.u32(b);
+            o.f32(c);
+            o.words(&[d, e]);
+        }
+        section(o, &self.block);
+        o.u32(self.word);
+        for d in &self.data {
+            section(o, d);
+        }
+        o.words(&self.words);
+        o.reals(&self.bounds);
+    }
+
+    /// Sets each table's objects: their entries, and their records' data sections.
+    pub fn set_objects(&mut self, objects: &[Vec<SavedObject>; 2]) {
+        for (k, list) in objects.iter().enumerate() {
+            self.tables[k] = list.iter().map(|o| o.entry).collect();
+            let records = |b: fn(&SavedObject) -> &Vec<u8>| {
+                let mut out = Vec::new();
+                for o in list {
+                    out.extend((b(o).len() as u32).to_le_bytes());
+                    out.extend(b(o));
+                    out.extend(b"espi");
+                }
+                out
+            };
+            self.data[2 + k] = records(|o| &o.first);
+            self.data[4 + k] = records(|o| &o.second);
+        }
+    }
+}
+
+impl SaveGame {
+    /// The record as the original writes it.
+    pub fn to_record(&self) -> Vec<u8> {
+        let mut o = Out::default();
+        o.cstr(&self.map);
+        o.cstr(&self.game_name);
+        o.cstr(&self.info_name);
+        o.cstr(&self.info_password);
+        o.0.extend(&self.info_stat);
+        o.u8(0);
+        o.words(&self.info_words);
+        o.u16(self.slots.len() as u16);
+        o.0.extend(&self.slots);
+        o.words(&[self.objects_word, self.map_xoro]);
+        o.0.extend(self.map_sha1);
+        o.u32(self.local_slot as u32);
+        o.u32(self.local_player);
+        o.cstr(&self.player_name);
+        o.words(&self.preferences);
+        if let Some(m) = &self.objects {
+            o.words(&[self.game_ms, self.game_word]);
+            m.write(&mut o);
+        }
+        o.0.extend(&self.rest);
+        o.0
+    }
+
+    /// The file: the record in the recorded-game container, in blocks of 0xffff bytes
+    /// as the original's saves are, with the header the original's (`h`).
+    pub fn to_file(&self, h: &crate::container::Header) -> Vec<u8> {
+        crate::container::pack(h, &self.to_record(), 0xffff)
+    }
+}
+
+impl GameState {
+    /// The state's bytes as the original writes them.
+    pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut o = Out::default();
+        for (name, f) in &self.parts {
+            if *name == "fog" {
+                put_fields(&mut o, "bb wwww", &f[..6])?;
+                for m in &f[6..10] {
+                    let Field::List(m) = m else { return Err(Error::Format("a fog map not a list")) };
+                    for v in m {
+                        put_fields(&mut o, "s", v)?;
+                    }
+                }
+                put_fields(&mut o, "ffffff sss w", &f[10..])?;
+            } else {
+                let (_, layout) = STATE.iter().find(|(n, _)| n == name).ok_or(Error::Format("no such part"))?;
+                put_fields(&mut o, layout, f)?;
+            }
+        }
+        o.0.extend(&self.rest);
+        Ok(o.0)
+    }
+}
+
+impl Value {
+    fn write(&self, o: &mut Out) -> Result<(), Error> {
+        o.sized(|o| {
+            o.words(&[self.kind, self.word, matches!(self.value, Contents::Array(_)) as u32, self.length]);
+            match &self.value {
+                Contents::One(v) => o.u32(*v),
+                Contents::Array(a) => {
+                    o.u32(a.len() as u32);
+                    o.words(a);
+                }
+            }
+            Ok(())
+        })
+    }
+}
+
+/// Named values: a count, then each name and value.
+fn put_named(o: &mut Out, v: &[(String, Value)]) -> Result<(), Error> {
+    o.u32(v.len() as u32);
+    for (n, v) in v {
+        o.cstr(n);
+        v.write(o)?;
+    }
+    Ok(())
+}
+
+/// Values: a count, then each.
+fn put_values(o: &mut Out, v: &[Value]) -> Result<(), Error> {
+    o.u32(v.len() as u32);
+    v.iter().try_for_each(|v| v.write(o))
+}
+
+impl Frame {
+    fn write(&self, o: &mut Out) -> Result<(), Error> {
+        o.sized(|o| {
+            put_values(o, &self.arguments)?;
+            o.u32(self.word);
+            o.sized(|o| put_named(o, &self.locals))
+        })
+    }
+}
+
+/// Frames: a count, then each.
+fn put_frames(o: &mut Out, f: &[Frame]) -> Result<(), Error> {
+    o.u32(f.len() as u32);
+    f.iter().try_for_each(|f| f.write(o))
+}
+
+impl ScriptData {
+    /// The script data as `FUN_6f90d350` writes it (without the size before it).
+    pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut o = Out::default();
+        o.words(&[self.code_places, self.thread_places]);
+        o.sized(|o| {
+            for (k, c) in self.code.iter().enumerate() {
+                match c {
+                    None => o.u32(0),
+                    Some(c) => {
+                        o.u32(k as u32 + 1);
+                        o.sized(|o| {
+                            o.u32(c.words.len() as u32);
+                            o.words(&c.words);
+                            o.u32(c.strings.len() as u32 + 1);
+                            c.strings.iter().for_each(|s| o.cstr(s));
+                            Ok(())
+                        })?;
+                    }
+                }
+            }
+            Ok(())
+        })?;
+        o.sized(|o| {
+            o.u32(self.machines.len() as u32);
+            for (place, m) in &self.machines {
+                o.words(&[*place, m.code]);
+                o.sized(|o| {
+                    o.u32(m.flag);
+                    o.f32(m.real);
+                    o.words(&[m.word, m.at]);
+                    o.u32(m.returns.len() as u32);
+                    o.words(&m.returns);
+                    o.sized(|o| {
+                        o.u32(m.functions.len() as u32 + 1);
+                        for (n, w) in &m.functions {
+                            o.cstr(n);
+                            o.u32(*w);
+                        }
+                        Ok(())
+                    })?;
+                    o.sized(|o| put_named(o, &m.globals))?;
+                    o.sized(|o| put_frames(o, &m.frames))?;
+                    o.sized(|o| put_values(o, &m.stack))?;
+                    o.sized(|o| {
+                        o.u32(m.strings.len() as u32 + 1);
+                        m.strings.iter().for_each(|s| o.cstr(s));
+                        Ok(())
+                    })
+                })?;
+            }
+            Ok(())
+        })?;
+        o.sized(|o| {
+            for threads in &self.threads {
+                o.sized(|o| {
+                    o.u32(threads.len() as u32);
+                    for t in threads {
+                        o.sized(|o| {
+                            o.words(&[t.machine, t.at]);
+                            o.sized(|o| put_frames(o, &t.frames))?;
+                            o.u32(t.flag);
+                            o.f32(t.real);
+                            o.u32(t.word);
+                            o.sized(|o| put_values(o, &t.stack))
+                        })?;
+                    }
+                    Ok(())
+                })?;
+            }
+            Ok(())
+        })?;
+        o.sized(|o| {
+            o.u32(self.owners.len() as u32 + 1);
+            o.words(&self.owners);
+            Ok(())
+        })?;
+        Ok(o.0)
     }
 }

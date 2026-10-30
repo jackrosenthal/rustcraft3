@@ -1,110 +1,89 @@
-//! Plays a replay the original wrote (.w3g) on its map without drawing: the game starts
-//! with the replay's slots and seed, and each turn's actions are read as a network
-//! game's are.  With RUST_LOG=w3_game=debug, each command read and its answer print.
+//! Plays one of the original's replays (.w3g) on the port: the game set up from its record
+//! (the map its description names, its slots, its seed), each turn's actions carried out
+//! as the network gives them, and each of its checksums compared with the port's.
 //!
-//! w3gplay <game dir> <map> <replay>
+//! w3gplay <game dir> <replay> [map file]
 use std::path::Path;
-use w3_formats::w3g;
-
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("error")).init();
     let a: Vec<String> = std::env::args().collect();
+    let replay = w3_formats::w3g::Replay::parse(&std::fs::read(&a[2])?)?;
+    let stat = w3_net::GameStat::parse(&replay.stat)?;
+    println!("version {} build {}, map {}, seed {:08x}, settings {:08x}, {} slots", replay.version, replay.build, stat.map_path, replay.seed, stat.settings, replay.slots.len());
     let data = war3::data::GameData::open(Path::new(&a[1]), false)?;
-    let map = std::sync::Arc::new(w3_mpq::Archive::open(&a[2])?);
+    let map_file = match a.get(3) {
+        Some(m) => m.clone(),
+        None => Path::new(&a[1]).join(stat.map_path.replace('\\', "/")).to_string_lossy().to_string(),
+    };
+    let map = std::sync::Arc::new(w3_mpq::Archive::open(&map_file)?);
     data.chain.mount(map, None, war3::data::PRIORITY_MAP);
-    let r = w3g::Replay::parse(&std::fs::read(&a[3])?)?;
-    // Slot flags: race bits (human, orc, night elf, undead, random), occupied status 2,
-    // computer difficulty 0 to 2.
-    let race = |bits: u8| [(0x01, 1), (0x02, 2), (0x08, 3), (0x04, 4)].iter().find(|&&(b, _)| bits & b != 0).map(|&(_, r)| r);
-    let lobby: Vec<w3_game::LobbySlot> = r
+    // The slots as the record has them: its players by their ids, the host's on this
+    // computer; races by their bits (human 1, orc 2, night elf 4, undead 8, random 0x20).
+    // W3G_LOCAL: the player whose computer the game is played on (the host's by default).
+    let local: u8 = std::env::var("W3G_LOCAL").ok().and_then(|v| v.parse().ok()).unwrap_or(replay.host.pid);
+    let lobby: Vec<w3_game::LobbySlot> = replay
         .slots
         .iter()
         .enumerate()
-        .map(|(k, s)| w3_game::LobbySlot {
-            player: k as u8,
-            fill: match (s.status, s.computer) {
-                // W3GPLAY_HUMANS: computers played as remote people instead.
-                (2, true) if std::env::var("W3GPLAY_HUMANS").is_ok() => w3_game::SlotFill::Remote,
-                (2, true) => w3_game::SlotFill::Computer,
-                (2, false) if s.pid == r.host.pid => w3_game::SlotFill::Local,
-                (2, false) => w3_game::SlotFill::Remote,
-                _ => w3_game::SlotFill::Empty,
-            },
-            name: (s.status == 2 && !s.computer).then(|| r.players.iter().chain([&r.host]).find(|p| p.pid == s.pid).map_or_else(String::new, |p| p.name.clone())),
-            race: race(s.race),
-            team: s.team as i32,
-            color: s.color as i32,
-            handicap: s.handicap as f32,
-            difficulty: s.ai as i32,
+        .map(|(k, s)| {
+            let name = std::iter::once(&replay.host).chain(&replay.players).find(|p| p.pid == s.pid && s.pid != 0).map(|p| p.name.clone());
+            let fill = if s.status != 2 {
+                w3_game::SlotFill::Empty
+            } else if s.computer {
+                w3_game::SlotFill::Computer
+            } else if s.pid == local {
+                w3_game::SlotFill::Local
+            } else {
+                w3_game::SlotFill::Remote
+            };
+            let race = match s.race & 0x3f {
+                1 => Some(1),
+                2 => Some(2),
+                8 => Some(3),
+                4 => Some(4),
+                _ => None,
+            };
+            w3_game::LobbySlot { player: k as u8, fill, name, race, team: s.team as i32, color: s.color as i32, handicap: s.handicap as f32, difficulty: s.ai as i32 }
         })
         .collect();
-    let player_of = |pid: u8| r.slots.iter().position(|s| s.pid == pid && s.status == 2 && !s.computer).map(|k| k as u8);
-    // W3GPLAY_TRACE names a file for every tag given and freed, by turn, as the tags
-    // example writes it; W3GPLAY_MS stops the game that far in.
-    let trace = std::env::var("W3GPLAY_TRACE").ok();
-    w3_game::tags::RECORD.store(trace.is_some(), std::sync::atomic::Ordering::Relaxed);
-    let stop: u32 = std::env::var("W3GPLAY_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(u32::MAX);
-    let mut g = w3_game::Game::load_for(data.chain.clone(), data.version as i32, None, w3_game::Start::of(&lobby))?;
+    let mut g = w3_game::Game::load_with_keys(data.chain.clone(), data.version as i32, None)?;
     g.config()?;
-    g.world.seed = r.seed;
-    // The game's options are the settings word of its description.
-    let (flags, _) = war3::net::from_settings(w3_net::stat::GameStat::parse(&r.stat)?.settings);
+    g.world.seed = replay.seed;
+    // The settings word holds the advanced options eight bits up.
+    let (flags, _speed) = war3::net::from_settings(stat.settings);
     g.start_lobby(&lobby, flags)?;
-    // W3GPLAY_KEEPALIVE: compare the port's keepalive checksum with the replay's after
-    // each turn (the modules the port does not compute taken as Booty Bay's).
-    let keepalive = std::env::var("W3GPLAY_KEEPALIVE").is_ok();
     g.world.keepalive_modules = w3_game::keepalive::BOOTY_BAY_MODULES.into_iter().collect();
-    let mut ours = Vec::new();
-    let mut t = 0u32;
-    for rec in &r.records {
-        if let w3g::Record::Turn { ms, actions } = rec {
-            t += *ms as u32;
-            if t > stop {
-                break;
+    // Each checksum record follows the turn whose state it sums; the port's keepalive for
+    // the next turn is made from that state.
+    let (mut turn, mut checked, mut first_off) = (0u32, 0u32, None);
+    let mut last = None;
+    for rec in &replay.records {
+        match rec {
+            w3_formats::w3g::Record::Turn { ms, actions } => {
+                turn += 1;
+                if actions.is_empty() {
+                    g.world.net_turn(*ms);
+                } else {
+                    g.world.net_turn_actions(*ms, actions);
+                    let acts = actions.iter().map(|(pid, b)| (pid - 1, b.clone())).collect();
+                    g.play_commands(&w3_game::replay::Frame { dt: *ms as f32 / 1000.0, commands: Vec::new(), actions: Some(acts), turn: None });
+                }
+                last = Some(g.world.keepalive());
+                g.tick(*ms as f32 / 1000.0);
             }
-            g.world.net_turn_actions(*ms, actions);
-            ours.push((t, actions.len(), g.world.keepalive()));
-            if let Ok(out) = std::env::var("W3GPLAY_CKS") {
-                let tg = &g.world.tags;
-                use std::io::Write;
-                let mut f = std::fs::OpenOptions::new().create(true).append(true).open(out)?;
-                writeln!(f, "{} {} {:08x} {:08x} {:016x} {:08x} {:08x}", t - *ms as u32, actions.len(), tg.free.last().copied().unwrap_or(tg.slots), tg.born, g.world.rng.state(), g.world.rand_data.checksum(), g.world.net_sum)?;
+            w3_formats::w3g::Record::Checksum(b) if b.len() == 4 => {
+                let want = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+                checked += 1;
+                if first_off.is_none() && last != Some(want) {
+                    first_off = Some((turn, last, want));
+                }
             }
-            let actions = actions.iter().filter_map(|(pid, b)| Some((player_of(*pid)?, b.clone()))).collect::<Vec<_>>();
-            if !actions.is_empty() {
-                log::debug!("at {t} ms");
-            }
-            let f = w3_game::replay::Frame { dt: *ms as f32 / 1000.0, commands: Vec::new(), actions: Some(actions), turn: None };
-            g.play_frame(&f);
+            _ => {}
         }
     }
-    if keepalive {
-        let theirs: Vec<u32> = r.checksums().collect();
-        if let Ok(out) = std::env::var("W3GPLAY_THEIRS") {
-            std::fs::write(out, theirs.iter().map(|c| format!("{c:08x}")).collect::<Vec<_>>().join("\n") + "\n")?;
-        }
-        let n = ours.len().min(theirs.len());
-        match (0..n).find(|&k| ours[k].2 != theirs[k]) {
-            Some(k) => println!("keepalives agree for {k} turns; turn {} (at {} ms, {} with actions): ours {:08x}, the replay's {:08x}", k + 1, ours[k].0, ours[k].1, ours[k].2, theirs[k]),
-            None => println!("keepalives agree for all {n} turns"),
-        }
-    }
-    if let Some(out) = trace {
-        let lines: Vec<String> = g.world.tags.trace.clone().unwrap_or_default().iter().map(|e| match e {
-            w3_game::tags::TagEvent::Take(c, s) => format!("A {} {s:#x}", String::from_utf8_lossy(c)),
-            w3_game::tags::TagEvent::Free(s) => format!("F {s:#x}"),
-            w3_game::tags::TagEvent::Turn => "T".into(),
-            w3_game::tags::TagEvent::Step(k) => format!("S {k}"),
-        }).collect();
-        std::fs::write(out, lines.join("\n") + "\n")?;
-    }
-    // W3GPLAY_UNITS: unit types (comma separated) whose ids to print at the end.
-    if let Ok(types) = std::env::var("W3GPLAY_UNITS") {
-        for &h in &g.world.unit_order {
-            if let Some(u) = g.world.unit(h).filter(|u| types.split(',').any(|t| t.as_bytes() == u.type_id)) {
-                println!("{} {:?} at {:.0},{:.0} dead {}", String::from_utf8_lossy(&u.type_id), u.extra.oid, u.x, u.y, u.dead);
-            }
-        }
+    match first_off {
+        Some((t, ours, want)) => println!("checksums agree to turn {}; turn {t}: ours {:08x?}, the replay's {want:08x}", t.saturating_sub(1), ours),
+        None => println!("checksums agree for all {checked} of {turn} turns"),
     }
     Ok(())
 }

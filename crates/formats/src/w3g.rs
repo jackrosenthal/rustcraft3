@@ -117,10 +117,12 @@ impl Replay {
         let select_mode = start.u8()?;
         let start_spots = start.u8()?;
         let mut records = Vec::new();
+        // A replay cut short (the original's TempReplay.w3g of a game that never ended)
+        // ends at its last whole record.
         while r.remaining() > 0 {
             let id = r.u8()?;
-            let rec = match id {
-                0 => break,
+            let read = |r: &mut Reader| -> Result<Option<Record>, Error> { Ok(Some(match id {
+                0 => return Ok(None),
                 0x1E | 0x1F => {
                     let n = r.u16()? as usize;
                     let ms = r.u16()?;
@@ -158,8 +160,12 @@ impl Replay {
                     Record::Other { id, body: [&n.to_le_bytes()[..], r.bytes(n as usize)?].concat() }
                 }
                 _ => return Err(Error::Format("unknown replay record")),
-            };
-            records.push(rec);
+            })) };
+            match read(&mut r) {
+                Ok(Some(rec)) => records.push(rec),
+                Ok(None) | Err(Error::Eof) => break,
+                Err(e) => return Err(e),
+            }
         }
         Ok(Replay { product, version, build, flags, length_ms, host, game_name, stat, player_count, game_type, language, players, slots, seed, select_mode, start_spots, records })
     }

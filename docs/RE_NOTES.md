@@ -1559,9 +1559,14 @@ Formats the port made its own, to be replaced by the original's:
   half a second on (DAT_6fd6bf40; a second, DAT_6fd6bf44, by its flags), a worker's
   look starting no timer (37 a half second of the 45 looks).  The original's looks
   each fall once a half second, the creeps' first within the first half second after
-  they wake; the port's per-tick model (`acquire_timer`) has its casters and ghoul
-  look twice a half second and some units first later, its play agreeing all the
-  same: the looks' own timing is the next to follow.
+  they wake.  The first look's wait is a draw on stream 2 times DAT_6fd6bf40, 0.5
+  (`FUN_6f6936a0` from `FUN_6f4993b0`; DAT_6fd6bf44's 1.0 only for a unit with a
+  target), not up to a second; an autocast toggle (heal off, say), or an order to
+  harvest gold a unit without Ahar cannot take, does not end the wait (the port's
+  `order_unit` had, its casters and the computer's ghoul looking twice a half
+  second).  With these every kind agrees in number in each half second through 4.5
+  seconds, and the first 478 in order; after, starts in one port tick come in the
+  port's order (its units' looks, then the auras' sweep), not by their dues.
 - A property's base real and word (+0x70, +0x74) are a time stamp, its clock group's
   time and word (`FUN_6f161090`, from the group `FUN_6f15c650` picks; `FUN_6f161040`
   measures from it): flags stamped as made (0 at the map's start; forces made by a

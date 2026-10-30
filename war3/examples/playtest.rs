@@ -331,8 +331,8 @@ fn main() -> anyhow::Result<()> {
             // "timerlog": each agent timer start the port counted, with its kind (W3_TIMERLOG).
             "timerlog" => {
                 if let Some(g) = &scene.game {
-                    for (n, k) in g.world.tags.timer_log.iter().flatten() {
-                        eprintln!("timer {n} {k}");
+                    for (n, k, c) in g.world.tags.timer_log.iter().flatten() {
+                        eprintln!("timer {n} {k} {:.6}", f32::from_bits(*c));
                     }
                 }
                 i += 1;

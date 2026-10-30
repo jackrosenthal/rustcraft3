@@ -377,9 +377,18 @@ impl World {
         // An order ends a new unit's first wait to look for targets (measured: a Demon
         // Hunter and a Blademaster ordered to Immolation and Bladestorm as they are made
         // strike the footman beside them 0.35 seconds in).
-        if let Some(u) = self.unit_mut(h) {
-            u.extra.acquired = 0;
-            u.acquire_timer = 0.0;
+        // (Not an autocast toggle, nor a harvest of gold the unit cannot take: neither
+        // stops its look, read: the quiet test map's priests turned to heal off and its
+        // computer's ghoul told to harvest gold every quarter second each look once a
+        // half second.)
+        let name = crate::natives::basic::order_name(order).unwrap_or_default();
+        let toggle = self.unit(h).is_some_and(|u| u.abilities.iter().any(|&(a, _)| self.objects.abilities.get(a).is_some_and(|o| o.str("Orderon").eq_ignore_ascii_case(name) || o.str("Orderoff").eq_ignore_ascii_case(name))));
+        let no_gold = name == "autoharvestgold" && self.ability_with_code(h, "Ahar").is_none();
+        if !toggle && !no_gold {
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.acquired = 0;
+                u.acquire_timer = 0.0;
+            }
         }
         let smart = crate::natives::basic::order_id("smart");
         let mv = crate::natives::basic::order_id("move");

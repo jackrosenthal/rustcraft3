@@ -1576,6 +1576,16 @@ Formats the port made its own, to be replaced by the original's:
   shorts, the timeout beyond them in the real (Blizzard.j's stock timer, 120 seconds
   one-shot, so saved: flag 16, node periodic, shorts 1 and 1, real 0); a shorter one
   a plain node, its shorts 0, its timeout in the real.
+- Properties' and listeners' timing blocks (an object base's two `Timing`s, the
+  `FUN_6f15de50` node: due, period, count, word, periodic) count by the property
+  module's own counter (its +0x50, taken at 0x6f15d735, 0x6f15dc58, 0x6f15e127): one
+  sequence, 3 and on at the quiet test map's start, taken as listeners and modifiers
+  are made (`FUN_6f058090` and `FUN_6f062180`, `FUN_6f0616e0`, `FUN_6f062c80`,
+  `FUN_6f15ecb0`) and twice as each unit's tags are made (`FUN_6f68a060`'s at
+  0x6f15e127): a shop and a fountain seven, a gold mine four; a Gnoll's life
+  regeneration's `` `rcm `` (due 150, period 150, count 41).  The port does not count
+  these yet; a unit's `` `rel `` holds its value, a rate, and its bounds (life 320, 0.5,
+  0, 320), linked to its regeneration's `` `rcm `` and death's `` `rtl `` (0.4).
 - A property's base real and word (+0x70, +0x74) are a time stamp, its clock group's
   time and word (`FUN_6f161090`, from the group `FUN_6f15c650` picks; `FUN_6f161040`
   measures from it): flags stamped as made (0 at the map's start; forces made by a

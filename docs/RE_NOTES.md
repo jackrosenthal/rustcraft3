@@ -1364,8 +1364,20 @@ Formats the port made its own, to be replaced by the original's:
   0xffff bytes; read: a test map's script calling LoadGame on it, after which the
   saved game's own 20-second timer saved again, `bbsv20.w3z`, 14029 objects, also
   read and written back whole).  `-loadfile` with a .w3z shows only a black screen,
-  the original's own saves too.  The port's saves are still its own; loading the
-  original's into the port's world, and writing one from it, are not done.
+  the original's own saves too.  Named so far (`SaveGame::units`, `player_states`,
+  `handles`): a unit's type and owner are its widget's word and +0x24; its agent
+  wrapper lists its properties: the position cluster (`` `pcu ``: x and y in pathing
+  cells from the map's origin, facing in radians, move speed and collision radius in
+  cells, the tables' 190 and 16 over 32) and indexed reals (`` `rel `` 1 life and 2
+  mana: value, regeneration, a real, maximum; 5 day sight); a player's `` `flg ``
+  properties are its JASS player states by number, gold and lumber (and gathered) in
+  tenths (5000 for `MeleeStartingResources`' 500); CGameState's record holds the
+  handle table (agent, tag, handle value 0x100000 + n).  The port loads the
+  original's saves (`Load::Original`, `Game::restore_original`): it starts the map
+  as a new game, then replaces the script's units with the saved ones and takes the
+  players' gold and lumber.  Not yet: the time, construction and training, orders,
+  items, trees, and the scripts' variables and threads; and the port still writes
+  its own saves.
 - Replays: .w3g files as the original writes them (header and its CRC, 8192-byte
   zlib blocks with their checksums, the record of host, players, slots, and seed, a
   turn per frame and its checksum, the commands as the original's actions,

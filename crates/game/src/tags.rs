@@ -56,6 +56,13 @@ pub struct Tags {
     /// function is given to an object (an action, a filter, a timer; `FUN_6f2872f0`).
     #[serde(default)]
     pub handlers: std::collections::BTreeSet<u32>,
+    /// The timer queue's count of agent timer starts (`FUN_6f0602a0` and its kin, the
+    /// queue's +0x50): each start takes the next, which its timer keeps.
+    #[serde(default)]
+    pub timer_starts: u32,
+    /// Each start's count and kind, while logged (W3_TIMERLOG).
+    #[serde(skip)]
+    pub timer_log: Option<Vec<(u32, &'static str)>>,
     /// The engine's main clock (its single's bits) as objects are made now (set each
     /// tick: `World::plan_steps`).
     #[serde(default)]
@@ -64,6 +71,10 @@ pub struct Tags {
     /// stamp (`FUN_6f161090`: its clock group's time, +0x70).
     #[serde(default)]
     pub made_at: std::collections::BTreeMap<u32, u32>,
+    /// The buffs that listen to their owner's tech tree changes (Command, War Drums, and
+    /// Trueshot Aura's), each its slot and its unit's owner, in the order made.
+    #[serde(default)]
+    pub tech_buffs: Vec<(u32, u8)>,
     /// Each player's object (`+ply`), by number.
     #[serde(default)]
     pub player_slots: Vec<u32>,
@@ -137,7 +148,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), clock: 0, made_at: Default::default(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -175,6 +186,7 @@ impl Tags {
         self.free.push(slot);
         self.live.remove(&slot);
         self.made_at.remove(&slot);
+        self.tech_buffs.retain(|&(s, _)| s != slot);
         if let Some(l) = self.trace.as_mut() {
             l.push(TagEvent::Free(slot));
         }
@@ -465,6 +477,15 @@ impl Tags {
         }
     }
 
+    /// An agent timer started: the queue's next count, which it keeps.
+    pub fn start_timer(&mut self, kind: &'static str) -> u32 {
+        self.timer_starts += 1;
+        if let Some(l) = self.timer_log.as_mut() {
+            l.push((self.timer_starts, kind));
+        }
+        self.timer_starts
+    }
+
     /// A function's handler number, given it the first time.
     pub fn function_number(&mut self, func: u32) -> u32 {
         let n = self.function_numbers.len() as u32 + 1;
@@ -730,6 +751,75 @@ impl crate::world::World {
         let mut slots = vec![oid.0];
         for c in &codes[1..] {
             slots.push(self.tags.take(c));
+        }
+        // The agent timers its making starts, in its objects' order, named by the
+        // function starting each (traced: the quiet test map's, and a census of every
+        // unit type made for Neutral Hostile at night): its blight regeneration's
+        // (CAbilityBlightRegen); a sold unit's restock each (CAbilitySellUnit vf33, at
+        // most twelve); its attack's, a creep's first (CAbilityAttack vf57) and its first
+        // look for a target (vf194); an aura's (CAbilityAura vf57); a buff's, an aura's on
+        // its bearer or a morph's (CBuff vf211); blight dispel's or growth's; fire's
+        // (CAbilityOnFire vf33); creep sleep's check and, falling asleep, its sleep's
+        // (vf32); the alarm's (CAbilityAlarm vf32).
+        let night_sleeper = owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE
+            && !building
+            && o.int("canSleep") != 0
+            && self.is_night()
+            && self.players.get(owner as usize).is_none_or(|p| p.get_state(crate::types::player_state::NO_CREEP_SLEEP) == 0);
+        let sold = ids("Sellunits").iter().filter(|c| is_unit(c)).take(12).count();
+        let mut last_ability = [0u8; 4];
+        for (k, c) in codes.iter().enumerate() {
+            if c[0] == b'A' {
+                last_ability = *c;
+            }
+            if c[0] == b'B' && matches!(&last_ability, b"AEar" | b"AOac" | b"Aakb") {
+                self.tags.tech_buffs.push((slots[k], owner));
+            }
+            match c {
+                b"Ablr" => {
+                    self.tags.start_timer("436780");
+                }
+                b"Asel" => {
+                    for _ in 0..sold {
+                        self.tags.start_timer("41c010");
+                    }
+                }
+                b"Aatk" => {
+                    if owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE {
+                        self.tags.start_timer("49d220");
+                    }
+                    self.tags.start_timer("4993b0");
+                }
+                b"Abli" => {
+                    self.tags.start_timer("491250");
+                }
+                b"Afih" | b"Afio" | b"Afiu" | b"Afin" => {
+                    self.tags.start_timer("41baf0");
+                }
+                b"Aalr" => {
+                    self.tags.start_timer("41ae70");
+                }
+                b"ACsp" => {
+                    self.tags.start_timer("524e00");
+                    if night_sleeper {
+                        self.tags.start_timer("517be0");
+                    }
+                }
+                b"AHad" | b"AHab" | b"AUau" | b"AOae" | b"AEar" | b"AUav" | b"AEah" | b"Aakb" | b"AOac" | b"Aoar" | b"Aarm" => {
+                    self.tags.start_timer("40b5e0");
+                }
+                c if c[0] == b'B' => {
+                    self.tags.start_timer("532b50");
+                }
+                _ => {}
+            }
+        }
+        // An armed creep that does not fall asleep: two more of its attack's
+        // (`FUN_6f49e880`; read: a golem's, and in the census heroes' and towers').
+        if owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && codes.contains(b"Aatk") && !night_sleeper {
+            for _ in 0..2 {
+                self.tags.start_timer("49d220");
+            }
         }
         let births: Vec<u32> = slots.iter().map(|s| self.tags.live.get(s).map_or(0, |e| e.1)).collect();
         // What it releases as it is made, each freed as the next turn starts, in this

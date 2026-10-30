@@ -1706,6 +1706,7 @@ impl World {
             // between its order's draw and the next wanderer's).
             if self.ability_with_code(h, "Awan").is_some() {
                 let next = self.rng.real(5.0, 10.0);
+                self.tags.start_timer("5aa910");
                 log::debug!("wander redraw: {h} at step {k}, clock {:.6}, next {next:.6}", f32::from_bits(clocks.get(k).copied().unwrap_or(0)));
                 let at = self.step_agent.get(k).copied().unwrap_or(self.agent_step);
                 if let Some(u) = self.unit_mut(h) {
@@ -2735,6 +2736,7 @@ impl World {
         u.extra.queue_tokens.push(token);
         // Queued, it starts in its owner's tech tree (FUN_6f3f7f70: as it takes a slot).
         self.tech_reg(owner, id).producing += 1;
+        self.tech_changed(owner);
         // The order's object, freed as the turn's run starts; to an empty queue, the
         // training's `rcm and `rtl, its time counting from the next turn (traced: a
         // peon ordered at turn 991 is made in turn 1141's run; one queued behind
@@ -2914,6 +2916,7 @@ impl World {
         }
         if pe == EVENT_PLAYER_UNIT_TRAIN_CANCEL {
             self.tech_reg(owner, id).producing -= 1;
+            self.tech_changed(owner);
         }
         self.refund_queued(owner, id, rate, token);
         self.queue_unit_event(h, pe, ue, ctx);
@@ -2947,6 +2950,7 @@ impl World {
         }
         if pe == EVENT_PLAYER_UNIT_TRAIN_CANCEL {
             self.tech_reg(owner, id).producing -= 1;
+            self.tech_changed(owner);
         }
         self.refund_queued(owner, id, rate, token);
         self.queue_unit_event(h, pe, ue, ctx);
@@ -3104,6 +3108,7 @@ impl World {
         let new = crate::natives::units::create_unit(self, owner, id, x, y, 270.0);
         // Made finished from training: no longer in production (FUN_6f677870 with 4).
         self.tech_reg(owner, id).producing -= 1;
+        self.tech_changed(owner);
         // Then a ptcf, and freed at once, in order: the training's `rtl and `rcm, the
         // two tasks of the unit's making (the second first), and the ptcf (traced).
         let ptcf = self.tags.take(b"ptcf");

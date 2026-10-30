@@ -410,7 +410,11 @@ impl World {
         // Its art's image (`+EIm`) is the engine's private object, outside the tags the
         // game's objects share (measured: its allocation names the second table).
         if tagged && b.id != [0; 4] {
-            self.tags.take(&b.id);
+            let slot = self.tags.take(&b.id);
+            if matches!(self.ability_code(b.ability).as_str(), "AEar" | "AOac" | "Aakb") {
+                let owner = self.unit(target).map_or(0, |u| u.owner);
+                self.tags.tech_buffs.push((slot, owner));
+            }
             // Unholy Aura's buff makes a timer as it starts (`FUN_6f4bb8c0`,
             // `FUN_6f41def0`; read: each of Forestwalk's at 0.5 seconds).
             if &b.id == b"BUau" {

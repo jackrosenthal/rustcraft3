@@ -1519,7 +1519,35 @@ Formats the port made its own, to be replaced by the original's:
   one, the map's two), then the players' units'.  Thereafter the most by
   `FUN_6f493ff0`, re-armed as its timer fires (335 from 0.025 seconds).  A periodic
   timer keeps its count as it repeats (creep sleep's 30 to 208 still at 5 seconds, due
-  6.0 every 2.0).  The port does not count these yet: a timer's block is not written.
+  6.0 every 2.0).  The port counts them (`Tags::start_timer`, logged with W3_TIMERLOG,
+  playtest's `timerlog`), named by the function starting each; the first 286 of the
+  quiet test map's agree:
+  - Each `AI-1` three as it is made (`FUN_6f9c7b20`).
+  - A unit's making, in its objects' order (with a census of every unit type made for
+    Neutral Hostile at night): blight regeneration's (CAbilityBlightRegen vf33's
+    `FUN_6f436780`); a sold unit's restock each, at most twelve (CAbilitySellUnit
+    vf33); its attack's, a creep's first (CAbilityAttack vf57's `FUN_6f49d220`), then
+    its first look for a target (vf194); an aura's (CAbilityAura vf57); a buff's, an
+    aura's on its bearer or a morph's (CBuff vf211); blight dispel's or growth's
+    (Abds, Abdl, Abgl: `FUN_6f491250`); fire's (CAbilityOnFire vf33); creep sleep's
+    check and, falling asleep, its sleep's (vf32); the alarm's (CAbilityAlarm vf32);
+    then, for an armed creep that does not fall asleep, two more of its attack's
+    (`FUN_6f49e880`).  Neutral Passive's structures (Avul, no blight ability) have no
+    blight start.
+  - A player's tech tree change (a unit made, `FUN_6f227b40`, and production's start,
+    finish, and cancel) tells the player's listeners (event 0x80261, `FUN_6f260550`),
+    among them Command, War Drums, and Trueshot Aura's buffs (CBuffAuraCommand,
+    CBuffAuraKotoBeast, CBuffAuraTrueshot vf3, `FUN_6f4e36d0`), which start a timer
+    each.  A unit made registers in the tech tree after its abilities: the port's
+    `tech_add` follows `tag_unit` now.
+  - A wanderer's each wait (CAbilityWander's `FUN_6f5aa910`), the script's TimerStart
+    (`FUN_6f249ca0`).
+  - Waking with the day: each auto-target spell (Heal, Inner Fire, Repair,
+    Restoration, Renew, Replenish: CAbilityAutoTargetSpell vf267), the type's autocast
+    ability (vf270), then the attack's, the last made first.
+  - Not yet: the computer's AI's (its Necropolis's `FUN_6f69c620` from an AI native,
+    its workers' spells' through `FUN_6f9b9230`), and the running game's (from 0.015
+    seconds: `FUN_6f42f8b0`, then `FUN_6f493ff0` re-armed as it fires, and more).
 - A property's base real and word (+0x70, +0x74) are a time stamp, its clock group's
   time and word (`FUN_6f161090`, from the group `FUN_6f15c650` picks; `FUN_6f161040`
   measures from it): flags stamped as made (0 at the map's start; forces made by a

@@ -359,8 +359,6 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
         }
     }
     w.unit_order.push(h);
-    // Made finished, it adds itself to its owner's tech tree (FUN_6f677870 with 2).
-    w.tech_add(owner, type_id);
     // A structure that spreads blight blights the four cells about it at once, its
     // growth following (measured: a Necropolis made by script has blighted 0 to 96 to
     // its right before the script's next line, and 768 a second later).
@@ -370,6 +368,10 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
         }
     }
     w.tag_unit(h);
+    // Made finished, it adds itself to its owner's tech tree (FUN_6f677870 with 2),
+    // after its abilities (read: Trueshot Aura's buff restarting its timer after the
+    // creep's own starts, as the tech tree tells its listeners).
+    w.tech_add(owner, type_id);
     w.wander_paths(h);
     w.start_stock(h);
     w.attach_ability_art(h);
@@ -405,6 +407,8 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
     // drawing within its making).
     if w.ability_with_code(h, "Awan").is_some() && w.unit(h).is_some_and(|u| w.wanders_at_start(u)) {
         let wait = w.rng.real(5.0, 10.0);
+        // (Each wait is its timer's start, `FUN_6f5aa910`.)
+        w.tags.start_timer("5aa910");
         if let Some(u) = w.unit_mut(h) {
             u.extra.wander_at = Some(wait.to_bits());
         }

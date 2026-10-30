@@ -328,6 +328,15 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 1;
             }
+            // "timerlog": each agent timer start the port counted, with its kind (W3_TIMERLOG).
+            "timerlog" => {
+                if let Some(g) = &scene.game {
+                    for (n, k) in g.world.tags.timer_log.iter().flatten() {
+                        eprintln!("timer {n} {k}");
+                    }
+                }
+                i += 1;
+            }
             // "unitorder": each unit as made, its type, owner, and object's slot and birth.
             "unitorder" => {
                 if let Some(g) = &scene.game {

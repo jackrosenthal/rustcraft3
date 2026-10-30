@@ -478,6 +478,27 @@ impl World {
                 continue;
             }
             let spells: Vec<crate::objects::Id> = u.abilities.iter().map(|(a, _)| *a).collect();
+            // Waking starts timers: each auto-target spell's (CAbilityAutoTargetSpell
+            // vf267: Heal, Inner Fire, Repair, ...), its autocast one's (vf270), then its
+            // attack's (`FUN_6f49d220`; traced: the quiet test map's creeps at the melee
+            // setup's 8:00, the last made first, a High Priest's Heal and Inner Fire).
+            let armed = self.objects.units.get(u.type_id).is_some_and(|o| o.int("weapsOn") != 0);
+            // (Its type's autocast ability, as its making gave it an order: `tag_unit`.)
+            let auto = self.objects.units.get(u.type_id).map(|o| crate::objects::id_from_str(o.str("auto").trim())).unwrap_or([0; 4]);
+            let owner = u.owner;
+            let autocasting = auto[0] != 0 && spells.iter().any(|a| self.ability_code(*a).as_bytes() == auto && self.ability_enabled(owner, *a));
+            for a in &spells {
+                let code = self.ability_code(*a);
+                if matches!(code.as_str(), "Arep" | "Aren" | "Arst" | "Ahea" | "Anhe" | "Ainf" | "Arpb" | "Arpl" | "Arpm") {
+                    self.tags.start_timer("422820");
+                }
+            }
+            if autocasting {
+                self.tags.start_timer("436a50");
+            }
+            if armed {
+                self.tags.start_timer("49d220");
+            }
             let table = crate::tags::AbilityObjects::get();
             // Each spell's listener on its mana (`` `rtl ``): made below its cost, then,
             // the creep's mana gone to none, again above it in the reverse order, in the

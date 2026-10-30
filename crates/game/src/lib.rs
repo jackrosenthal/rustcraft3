@@ -261,8 +261,13 @@ impl Game {
         world.tags.take_all(&[b"^pma", b"^pma", b"^ama", b"^ama", b"^ama", b"^ama", b"l^sy", b"l^ac", b"gccm"]);
         // An AI for each computer playing, then Neutral Hostile's (FUN_6f1e9a40;
         // measured under Wine against one computer).
+        // Each starts three timers as it is made (`FUN_6f9c7b20`, its +0x154 and +0x15c;
+        // traced on the quiet test map, the game's first six).
         for _ in 0..start.computers + 1 {
             world.tags.take(b"AI-1");
+            for _ in 0..3 {
+                world.tags.start_timer("9c7b20");
+            }
         }
         world.camera_bounds = info.camera_bounds;
         // The map's global weather (w3i) covers the whole map.

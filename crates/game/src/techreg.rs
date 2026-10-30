@@ -72,6 +72,20 @@ impl World {
         let r = self.tech_reg(owner, id);
         r.present += 1;
         r.made += 1;
+        self.tech_changed(owner);
+    }
+
+    /// `owner`'s tech tree changed: it tells its listeners (event 0x80261,
+    /// `FUN_6f260550` after each change), among them Command, War Drums, and Trueshot
+    /// Aura's buffs, whose bonuses its upgrades raise, each starting a timer
+    /// (CBuffAuraCommand's, CBuffAuraKotoBeast's, and CBuffAuraTrueshot's vf3,
+    /// `FUN_6f4e36d0`; traced: one for each creep made after a creep's Trueshot buff,
+    /// on the quiet test map).
+    pub fn tech_changed(&mut self, owner: u8) {
+        let n = self.tags.tech_buffs.iter().filter(|&&(_, o)| o == owner).count();
+        for _ in 0..n {
+            self.tags.start_timer("4e36d0");
+        }
     }
 
     /// `owner`'s tech tree hash (`FUN_6f2292c0`): its registrations in order, `t =

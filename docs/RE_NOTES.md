@@ -1447,8 +1447,18 @@ Formats the port made its own, to be replaced by the original's:
   `RecycleGuardPosition(bj_ghoul[index])` after the undead AI's start, refreshing the
   ghoul's AI (`FUN_6f9bde20`: `FUN_6f9be910`'s order, its abilities' AI stopped, then
   `FUN_6f9b9230` rejoining the AI, `FUN_6f9c3660` its unit AI made anew, its old
-  `uref`, `AI-U`, and item `` `pil `` freed, and a worker's order with its walk).  Not
-  yet modeled.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
+  `uref`, `AI-U`, and item `` `pil `` freed, and a worker's order with its walk).  Its
+  objects, in order (traced, `births.sh`, `frees2.sh`): a stop order (`+ord`, `tskA`,
+  four `task`, `tskA`), a new `uref` and `AI-U`, an idle worker's order (the same
+  seven), a second `uref`, a walk to a target (`+ord`, `task`, `ordt`, `tskA`, `tskO`,
+  three `task`, `tskt`, five `task`, `tskA`, `^clg`, `^clu`, `l^pa`; its `^clg` freed at
+  once), and a new item `` `pil ``; freed on the first frame, after the ghoul's own
+  creation-time order objects: its old `uref` and `AI-U`, the stop order's (first
+  `tskA`, last `tskA`, the tasks from the last, the `+ord`), its old `` `pil ``, the
+  worker order's (so), the walk's `task` and `+ord`, then its last `tskA` and five
+  tasks from the last; the walk's others (and the second `uref`) later.  The port's
+  AI gives the ghoul its orders later and by its own logic, and tags only orders
+  that come over the network: not yet modeled.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,
   so its units join as they are made, the AI script or not.
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on

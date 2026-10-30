@@ -126,6 +126,12 @@ fn main() {
                                     for (n, v) in m.globals.iter().take(4) {
                                         println!("    global {n}: {v:?}");
                                     }
+                                    // W3Z_GLOBALS=<kind>: the globals of a type with a value.
+                                    if let Ok(k) = std::env::var("W3Z_GLOBALS") {
+                                        for (n, v) in m.globals.iter().filter(|(_, v)| v.kind.to_string() == k && v.value != w3_formats::w3z::Contents::One(0)) {
+                                            println!("    global {n}: {v:?}");
+                                        }
+                                    }
                                     for t in t.iter().take(3) {
                                         println!("    thread of {} at {}: {} frames, stack {}", t.machine, t.at, t.frames.len(), t.stack.len());
                                     }

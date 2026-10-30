@@ -498,6 +498,7 @@ pub enum Field {
 /// reference, 't' a timer, 'z' a string, 'p' a sprite, 'e' an event's handler list (as
 /// "[rw]"), "[...]" a word count and that many groups, "{...}" a short count and that
 /// many, "(...)" a group, "?(X)" a word and X when it is not 0, "?(X)(Y)" Y when it is,
+/// "?b(X)" the same with a byte,
 /// 'm' a word kept as a mask and "&h(X)" X when the mask has the bits h (hex), "#(X)" X
 /// as many times as the last word read; a number before a token repeats it.
 fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
@@ -534,12 +535,21 @@ fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
         }
         match chars[k] {
             '?' => {
-                let x = close(k + 1);
+                let byte = chars[k + 1] == 'b';
+                let open = if byte { k + 2 } else { k + 1 };
+                let x = close(open);
                 let y = (chars.get(x + 1) == Some(&'(')).then(|| close(x + 1));
-                let flag = r.u32()?;
-                out.push(Field::Word(flag));
+                let flag = if byte {
+                    let b = r.u8()?;
+                    out.push(Field::Byte(b));
+                    b as u32
+                } else {
+                    let w = r.u32()?;
+                    out.push(Field::Word(w));
+                    w
+                };
                 if flag != 0 {
-                    out.push(Field::List(vec![fields(r, &inner(k + 1, x))?]));
+                    out.push(Field::List(vec![fields(r, &inner(open, x))?]));
                 } else if let Some(y) = y {
                     out.push(Field::List(vec![fields(r, &inner(x + 1, y))?]));
                 }
@@ -792,6 +802,40 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // words; `FUN_6f567ec0` three words more).
     (b"AHbu", "wwww wwwwwww t w ff www", "r r w s #(ww r r r www ?(wwww ff))"),
     (b"AUbu", "wwww wwwwwww t w ff www www", "r r w s #(ww r r r www ?(wwww ff))"),
+    // CAbilityBuildInProgress (`FUN_6f42d4f0`, own `FUN_6f42ea00`: two reals, three
+    // words, seven reals, a real from build 6047): a word, a reference, two timers.
+    (b"ABnP", "wwww wwwwwww t w ff www fffffff f", "r r w r t t"),
+    // CAbilityCannibalize (`FUN_6f4e9db0` on the buff base: a reference, two timers, two
+    // references, a timer; own `FUN_6f4eb120`: `Alam`'s, three words, two from 6011).
+    (b"Acan", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff www ww", "wwwww r t t r r t"),
+    // CQuestManager (`FUN_6f246820`, own `FUN_6f03edf0`: a word): its quests and its
+    // defeat conditions, each a reference.
+    (b"+qum", "w", "[r] [r]"),
+    // CAbilityBlightedGoldMine (`FUN_6f4e9bb0` on `FUN_6f4ea4b0` and `FUN_6f4ea3a0`: a
+    // reference, two more, a timer from build 6037, and a counted list of references;
+    // own `FUN_6f4eb0f0` on `FUN_6f4eb6e0`: three words, a real, a word, two reals, two
+    // words).
+    (b"Abgm", "wwww wwwwwww t w www f w ff ww", "r r r t [r]"),
+    // CTimerDialogWar3 (`FUN_6f246ad0`, own `FUN_6f2472c0`: three words and a real): a
+    // word, two words (`FUN_6f3b6e90`, `FUN_6f3b6fc0`), a string, and a real.
+    (b"+tid", "www f", "w ww z f"),
+    // CCompAI (`FUN_6f9ca100`, own `FUN_6f9ca230`: words, reals, and counted lists):
+    // two words, a counted list of a reference, a word, a reference, a word, and a
+    // reference, a counted list of references, and eight timers.
+    (b"AI-1", "wwww f ww f ww f ww f w [wwf] [f] w ff wwf wwf wwf [w] wwfw w ww [w] [w] [wwf] w wwf wwf w wwwf wwf ww", "ww [rwrwr] [r] 8t"),
+    // CGameCacheManager (`FUN_6f246380`, own `FUN_6f03edf0`: a word): a string and a
+    // word, then its caches (`FUN_6f21acd0`: a name, a word, and its missions,
+    // `FUN_6f21b1d0`: a name, five words, and five lists of named values: words,
+    // reals, words, units (`FUN_6f21b0b0`: a word, a list of three words, and
+    // `FUN_6f224e20`'s fields), and strings).
+    (b"gccm", "w", "z w [z w [z wwwww [zw] [zf] [zw] [zw [www] wwwww f w fff w f [ww] fff [w] f s] [zz]]]"),
+    // CCaptainAI (`FUN_6f9d5cb0` on `FUN_6f6533a0` and `FUN_6f6be8b0`: a sprite and a
+    // word; a word, two shorts, a byte and with it a short-counted list of references
+    // and two reals, two bytes, a real; four references, two timers, a counted list of
+    // references, four words, then its fields through CSave, `FUN_6f9d41a0`: words by
+    // vf 8, reals by vf 4, and two words and a real by vf 0; own `FUN_6f03edf0`: a
+    // word).
+    (b"AI-C", "w", "p w w ss ?b({r} ff) b b f r r r r t t [r] wwww wwww (wwf) wwwwww fffffff ww ff 19(wwf) 12w"),
     (b"tsk.", "wwwww fff", "r"),
     (b"tskt", "wwwwwwww f", "r"),
     // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to

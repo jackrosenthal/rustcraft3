@@ -290,13 +290,29 @@ impl Tags {
     /// A player's order to walk to a point (traced: one peon sent across the ground):
     /// as `move_issued`'s but one task fewer (17), its `^clg` freed at once and its
     /// two blocks and five tasks as the next turn starts, as a player's harvest
-    /// order's are.
-    pub fn player_move_issued(&mut self) -> Vec<u32> {
+    /// order's are.  One given while the unit still walks by such an order (`replaced`,
+    /// its objects) frees that order's rest and its path then too: after the new
+    /// order's first block, the old order's tree, then the new order's other six, then
+    /// the old path (read: two orders to walk given to a peon in one turn).
+    pub fn player_move_issued(&mut self, replaced: Option<&[u32]>) -> Vec<u32> {
         const CODES: [&Code; 17] = [b"ordt", b"tskA", b"tskA", b"tskO", b"task", b"task", b"task", b"tsk.", b"task", b"task", b"task", b"task", b"task", b"tskA", b"^clg", b"^clu", b"l^pa"];
         let slots: Vec<u32> = CODES.iter().map(|c| self.take(c)).collect();
         self.release(slots[14]);
-        for k in [1, 13, 12, 11, 10, 9, 8] {
+        let Some(old) = replaced.filter(|o| o.len() == 17) else {
+            for k in [1, 13, 12, 11, 10, 9, 8] {
+                self.doom(slots[k]);
+            }
+            return slots;
+        };
+        self.doom(slots[1]);
+        for k in [7, 6, 5, 4, 3, 2, 0] {
+            self.doom(old[k]);
+        }
+        for k in [13, 12, 11, 10, 9, 8] {
             self.doom(slots[k]);
+        }
+        for k in [16, 15] {
+            self.doom(old[k]);
         }
         slots
     }

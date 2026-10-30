@@ -703,7 +703,8 @@ impl World {
     /// its way searched 700 nodes deep.
     pub(crate) fn start_player_walk(&mut self, h: u32) {
         let serial = self.tags.born;
-        let slots = self.tags.player_move_issued();
+        let replaced = self.unit(h).filter(|u| u.extra.player_walk).map(|u| u.extra.order_tags.clone());
+        let slots = self.tags.player_move_issued(replaced.as_deref());
         if let Some(u) = self.unit_mut(h) {
             u.extra.order_tags = slots;
             u.extra.walk_serial = serial;

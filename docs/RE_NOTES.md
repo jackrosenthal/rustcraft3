@@ -487,7 +487,10 @@ these are the findings behind them.
   its two blocks and five tasks as the next turn starts (as a player's harvest
   order's), and the rest as a wanderer's arrival frees them (read: its tree but those
   freed at its goal, its path the next step).  The game agrees with the original to
-  turn 1702.
+  turn 1702.  A second such order while the first's walk goes on frees the first's
+  rest and path as the next turn starts too: the new order's first block, the old
+  order's 7 to 2 and 0, the new order's other six, the old path (read: two orders
+  to walk given to a peon in one turn, turn 604).
 - A player's order to several units to walk to a point makes the group's two `^clg`,
   each unit's order without a cluster or path (14 objects, its blocks and five tasks
   freed as the next turn starts), then one `^clu` and `l^pa` for them all, the `^clg`

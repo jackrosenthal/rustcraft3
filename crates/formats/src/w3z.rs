@@ -500,7 +500,8 @@ pub enum Field {
 /// many, "(...)" a group, "?(X)" a word and X when it is not 0, "?(X)(Y)" Y when it is,
 /// "?b(X)" the same with a byte,
 /// 'm' a word kept as a mask and "&h(X)" X when the mask has the bits h (hex), "#(X)" X
-/// as many times as the last word read; a number before a token repeats it.
+/// as many times as the last word read, "~(X)" X when the last word read is not 0; a
+/// number before a token repeats it.
 fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
     let chars: Vec<char> = layout.chars().filter(|c| !c.is_whitespace()).collect();
     // The index of the bracket closing the one at `k`.
@@ -554,6 +555,14 @@ fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
                     out.push(Field::List(vec![fields(r, &inner(x + 1, y))?]));
                 }
                 k = y.unwrap_or(x) + 1;
+                continue;
+            }
+            '~' => {
+                let end = close(k + 1);
+                if last != 0 {
+                    out.push(Field::List(vec![fields(r, &inner(k + 1, end))?]));
+                }
+                k = end + 1;
                 continue;
             }
             '#' => {
@@ -841,6 +850,16 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // two words, a counted list of three reals (`FUN_6f35d3f0`), twenty references, a
     // byte, five references, sixteen reals, and four sets of nine reals.
     (b"+cam", "!", "w f w r fff 9f t ww [fff] 20r b 5r 16f 4(9f)"),
+    // CGameState (`FUN_6f28aad0`, own `FUN_6f28b190`: three words and a real): ten more
+    // event lists; a counted list of counted lists of words; a counted list of words; a
+    // size, and its counted tables (a size, a count, with any a name, and that many
+    // references and words); four references; a size and a counted list of a word, a
+    // reference, and a word (`FUN_6f282260`); a size and a counted list of a reference
+    // and two words; a counted list of a word and its counted shorts; three words and a
+    // real; two timers; and `FUN_6f9a1230`'s: a word, a counted list of words and a word
+    // (`FUN_6f9a0080`), two words, and a counted list of a word, ten reals, a word, a
+    // byte, a word, and a string.
+    (b"+gam", "www f", "10e [[w]] [w] w [w w ~(z) #(rw)] r r r r w [w r w] w [r w w] [w [s]] w w f w t t w [w] w w w [w ffff ffffff w b w z]"),
     (b"tsk.", "wwwww fff", "r"),
     (b"tskt", "wwwwwwww f", "r"),
     // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to

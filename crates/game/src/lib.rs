@@ -57,6 +57,7 @@ pub mod paint;
 pub mod preload;
 pub mod spellbook;
 pub mod accel;
+pub mod datahash;
 pub mod efloat;
 mod efloat_recip;
 pub mod lrpath;

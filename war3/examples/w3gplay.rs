@@ -52,7 +52,7 @@ fn main() -> anyhow::Result<()> {
     // The settings word holds the advanced options eight bits up.
     let (flags, _speed) = war3::net::from_settings(stat.settings);
     g.start_lobby(&lobby, flags)?;
-    g.world.keepalive_modules = w3_game::keepalive::BOOTY_BAY_MODULES.into_iter().collect();
+    g.world.keepalive_modules = war3::net::data_modules(&data.chain);
     // W3G_WRITE names a file for the port's own replay of the game as it plays it.
     let write = std::env::var("W3G_WRITE").ok();
     if write.is_some() {
@@ -68,13 +68,18 @@ fn main() -> anyhow::Result<()> {
             w3_formats::w3g::Record::Turn { ms, actions } => {
                 turn += 1;
                 let acts = actions.iter().map(|(pid, b)| (pid - 1, b.clone())).collect();
-                let frame = w3_game::replay::Frame { dt: *ms as f32 / 1000.0, commands: Vec::new(), actions: Some(acts), turn: Some((*ms, actions.clone())), checksum: None };
+                // W3G_NONET: the turns as a game played alone takes them, no message.
+                let turn = std::env::var("W3G_NONET").is_err().then(|| (*ms, actions.clone()));
+                let frame = w3_game::replay::Frame { dt: *ms as f32 / 1000.0, commands: Vec::new(), actions: Some(acts), turn, checksum: None };
                 let (_, keepalive) = g.play_turn(&frame);
                 last = Some(keepalive);
             }
             w3_formats::w3g::Record::Checksum(b) if b.len() == 4 => {
                 let want = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
                 checked += 1;
+                if first_off.is_none() && last != Some(want) && std::env::var("W3G_DEBUG").is_ok() {
+                    println!("turn {turn}: game module {:08x}, wanted {:08x}; net {:08x} rand {:08x} born {} free {:?} slots {} ms {} rng {:016x}", g.world.game_module(), g.world.game_module_for(want), g.world.net_sum, g.world.rand_data.checksum(), g.world.tags.born, g.world.tags.free.last(), g.world.tags.slots, g.world.game_ms, g.world.rng.state());
+                }
                 if first_off.is_none() && last != Some(want) {
                     first_off = Some((turn, last, want));
                 }

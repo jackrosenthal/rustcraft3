@@ -181,6 +181,16 @@ impl std::fmt::Debug for Role {
 }
 
 
+/// The keepalive's data modules for a game on the archives as mounted (the map's over
+/// the data set's): the data tables' as the original loads them
+/// (`w3_game::datahash::modules`), and the map's custom data as the original has them
+/// for a map without any (not yet computed).
+pub fn data_modules(chain: &w3_mpq::Chain) -> std::collections::BTreeMap<u8, u32> {
+    let mut m: std::collections::BTreeMap<u8, u32> = w3_game::keepalive::BOOTY_BAY_MODULES.into_iter().collect();
+    m.extend(w3_game::datahash::modules(|n| chain.read(n).unwrap_or_default()));
+    m
+}
+
 /// A turn's blocks as a frame: each person's actions as their player's, which the game
 /// reads as it plays the frame.
 fn frame(players: &[(u8, u8)], ms: u16, blocks: &[(u8, Vec<u8>)]) -> Frame {

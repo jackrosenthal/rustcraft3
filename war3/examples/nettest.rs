@@ -121,8 +121,8 @@ fn main() -> anyhow::Result<()> {
     host.start_countdown();
     host.end_countdown();
     let players = vec![(HOST_PID, 0), (pid, 1)];
-    let mut hs = Session::new(Role { link: Link::Host(Box::new(host)), players: players.clone(), seed: 0 });
-    let mut cs = Session::new(Role { link: Link::Client(Box::new(client)), players, seed: 0 });
+    let mut hs = Session::new(Role { link: Link::Host(Box::new(host)), players: players.clone(), seed: 0, game: String::new() });
+    let mut cs = Session::new(Role { link: Link::Client(Box::new(client)), players, seed: 0, game: String::new() });
 
     let mut gh = game(&data, 0)?;
     let mut gc = game(&data, 1)?;

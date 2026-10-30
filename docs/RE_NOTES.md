@@ -547,10 +547,24 @@ these are the findings behind them.
   11, 11, 1, and 1; the port so far walks members straight to their places, with one
   draw from the main generator as the walk begins standing in for the searches'
   (which keep the keepalives agreeing to 1725).
-- The data modules (4, 5, 7, 9; `FUN_6f042da0`) are computed once: `rol(sum, 3)` of the
-  byte hashes of every cell of a database (`FUN_6f1996c0`: an `I` or `F` cell by its
-  four bytes, an `S` by its characters).  No single SLK file's sum matches; which
-  tables and how their cells are typed is not yet read.
+- The data modules are the data store's slots (`FUN_6f06c180(0xd)` +0x10; the
+  keepalive's `FUN_6f042dd0` folds each slot's vf0 from the last).  A table's slot
+  (CWar3SlkDatabase) keeps `rol(hash, 3)` (`FUN_6f042d80`, `FUN_6f042da0`), the hash
+  (`FUN_6f1996c0`) the sum over its cells of `b * 0x7a2d ^ b` for each byte: a
+  string's characters, an integer's or a real's four bytes.  Cells are kept as text
+  and typed as read (`FUN_6f19a070`): empty none, a string unless the first character
+  is a digit, '.', or '-', a real if any of ".dDeE" is in it, else `atoi`.  Reals are
+  the engine's own parse (`FUN_6f070de0`): up to nine significant digits as an
+  integer, `from_int`, then the engine's divide by (or multiply by) ten to a power
+  made by squaring with its truncating multiply (`FUN_6f071180`).  The SLK reader
+  (`FUN_6f198a20`) takes nothing unless the first line is "ID;PWXL;N;E"; B gives the
+  size (at most 96 columns), C and F move the current cell, a C's K stores after a
+  quote up to the next, else to the line's end.  Module 4 is the unit tables
+  (`FUN_6f688f70`, CUnitDatabase's `FUN_6f6a8110`: UnitData, UnitAbilities,
+  UnitWeapons, UnitBalance chained `h = rol(h, 3) ^ next`, rotated again; unitUI not
+  hashed), 5 AbilityData, 7 ItemData (hashed in a temporary table first, so rotated
+  twice), 9 UpgradeData.  Read under winedbg in a game of Booty Bay played alone: each
+  table's hash and each module as the port computes them (`datahash`).
 - The object manager (`DAT_6fd6860c`, Tempest's) keeps two tag tables: at +0 entries of
   8 bytes (-2, object), its count at +0x1c (the presence tag unless +0x40 is set), and
   at +0x20 another (its next tag at +0x50).  Its 12805 objects at Booty Bay's first turn

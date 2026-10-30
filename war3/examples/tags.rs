@@ -40,7 +40,7 @@ fn main() -> anyhow::Result<()> {
             Some((w.next()?.parse().ok()?, u32::from_str_radix(w.next()?, 16).ok()?))
         }).collect()
     }).unwrap_or_default();
-    g.world.keepalive_modules = w3_game::keepalive::BOOTY_BAY_MODULES.into_iter().collect();
+    g.world.keepalive_modules = war3::net::data_modules(&data.chain);
     // TAGS_ACTIONS names a file of actions to play, "turn pid hex" a line (the turn as
     // the keepalives count them, the player as the network numbers them, from 1, and
     // the block's actions as the original sent them); TAGS_MODULE prints the game
@@ -65,7 +65,7 @@ fn main() -> anyhow::Result<()> {
             // Carried out as the message comes in, before the keepalive.
             g.world.net_turn_actions(100, &acts);
             let actions = acts.iter().map(|(pid, b)| (pid - 1, b.clone())).collect();
-            g.play_commands(&w3_game::replay::Frame { dt, commands: Vec::new(), actions: Some(actions), turn: None });
+            g.play_commands(&w3_game::replay::Frame { dt, commands: Vec::new(), actions: Some(actions), turn: None, checksum: None });
             if std::env::var("TAGS_MODULE").is_ok() {
                 println!("turn {n}: game module {:08x}", g.world.game_module());
             }

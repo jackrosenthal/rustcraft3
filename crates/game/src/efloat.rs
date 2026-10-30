@@ -110,6 +110,64 @@ pub fn div(a: u32, b: u32) -> u32 {
     mul(a, recip(b))
 }
 
+/// A single to a whole power (`FUN_6f071180`): by squaring, from 1.
+pub fn powi(base: u32, mut n: i32) -> u32 {
+    let (mut r, mut b) = (0x3f80_0000, base);
+    while n != 0 {
+        if n & 1 != 0 {
+            r = mul(r, b);
+        }
+        b = mul(b, b);
+        n >>= 1;
+    }
+    r
+}
+
+/// A decimal number as the engine reads one (`FUN_6f070de0`): a sign, then digits and
+/// one point up to a space, ';', tab, or anything else; its first nine significant
+/// digits as an integer (`from_int`), the digits after the point among them and those
+/// past the ninth before it moving the point, then divided by ten to the places after
+/// the point (or times ten to the digits dropped).
+pub fn parse(s: &[u8]) -> u32 {
+    let mut s = s;
+    let mut sign = 1;
+    match s.first() {
+        Some(b'-') => {
+            sign = -1;
+            s = &s[1..];
+        }
+        Some(b'+') => s = &s[1..],
+        _ => {}
+    }
+    let (mut mant, mut sig, mut nonzero, mut exp, mut dot, mut point) = (0i32, 0, false, 0i32, false, 0i32);
+    for &c in s.iter().take_while(|&&c| c != 0) {
+        if matches!(c, b' ' | b';' | b'\t') {
+            break;
+        }
+        if c.is_ascii_digit() {
+            nonzero = nonzero || c != b'0';
+            sig += nonzero as i32;
+            if sig <= 9 {
+                exp += point;
+                mant = mant.wrapping_mul(10).wrapping_add((c - b'0') as i32);
+            } else {
+                if sig == 10 {
+                    point -= 1;
+                }
+                exp += point;
+            }
+        } else if c == b'.' && !dot {
+            dot = true;
+            point += 1;
+        } else {
+            break;
+        }
+    }
+    let v = from_int(mant.wrapping_mul(sign));
+    let ten = 0x4120_0000;
+    if exp >= 0 { div(v, powi(ten, exp)) } else { mul(v, powi(ten, -exp)) }
+}
+
 /// An integer as a single (`FUN_6f070d80`), its low bits cut off.
 pub fn from_int(v: i32) -> u32 {
     if v == 0 {
@@ -297,6 +355,9 @@ mod tests {
         assert_eq!(recip(f(2.0)), f(0.5));
         assert_eq!(from_int(250), f(250.0));
         assert_eq!(from_int(-3), f(-3.0));
+        assert_eq!(parse(b"250"), f(250.0));
+        assert_eq!(parse(b"-3"), f(-3.0));
+        assert_eq!(parse(b""), 0);
         assert_eq!(to_int(f(-2.75)), -2);
         assert_eq!(to_int(f(431.9)), 431);
         assert_eq!(floor(f(2.5)), f(2.0));

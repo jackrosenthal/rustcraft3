@@ -40,10 +40,11 @@ pub fn net_message(kind: u8, payload: &[u8]) -> u32 {
     byte_hash(x)
 }
 
-/// The modules the port does not compute, as the original had them in Booty Bay with
-/// two players (read under winedbg at its first turns; the same on Harrow): the
-/// databases and the map's custom data, made as the data loads.  A map with its own
-/// object data or tables would have others.
+/// The data modules as the original had them in Booty Bay with two players (read under
+/// winedbg at its first turns; the same on Harrow): the databases (4, 5, 7, 9, which
+/// `datahash::modules` computes from the tables) and the map's custom data (12 to 19,
+/// not yet computed), made as the data loads.  A map with its own object data would
+/// have others.
 pub const BOOTY_BAY_MODULES: [(u8, u32); 11] = [
     (19, 0), (18, 0xc7d37d14), (17, 0x50bc09d8), (16, 0xa4fc2e24), (14, 0x68b89b88), (13, 0x38eb3c00), (12, 0x38eb3c00),
     (9, 0xd85c9c00), (7, 0x98054236), (5, 0xa996f046), (4, 0xb5891e1b),

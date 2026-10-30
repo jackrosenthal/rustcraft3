@@ -789,6 +789,7 @@ impl Scene {
             Ok(mut g) => {
                 g.world.saves_dir = crate::data::save_dir(data.version);
                 g.world.preload.dir = crate::data::custom_map_data_dir();
+                g.world.keepalive_modules = crate::net::data_modules(&data.chain);
                 // The profile comes in before the script runs (InitGameCache reads saved
                 // caches); campaign games take its difficulty.
                 g.world.persist = replay.as_ref().map_or_else(|| data.persist.borrow().clone(), |r| r.persist.clone());
@@ -3287,9 +3288,6 @@ impl Scene {
             g.outbox = Some(Vec::new());
             g.world.network = true;
             g.world.game_speed = speed as i32;
-            // The keepalive's modules the port does not compute: the databases' and the
-            // map's custom data, as the original has them for a map without custom data.
-            g.world.keepalive_modules = w3_game::keepalive::BOOTY_BAY_MODULES.into_iter().collect();
             if let Some(r) = g.recorder.as_mut() {
                 r.replay.game_name = Some(role.game.clone());
             }

@@ -763,17 +763,32 @@ fn enum_units(w: &mut World, vm: &mut Vm, group: u32, filter: u32, limit: i32, p
 }
 
 /// The units a search of the map finds, in the order the original's finds them
-/// (provisional: by the 256-unit blocks from the map's corner, row by row, each
-/// block's latest made first, as its trees, `FUN_6f651170`; it fits Blizzard.j's
-/// MeleeClearExcessUnits on Forestwalk removing the first start's five, its deer, made
-/// last, first, but not the second's: deer, the creeps made 26286, 26327, 26253,
-/// 26207 by their births).
+/// (`FUN_6f04c5a0`): by the 256-unit blocks from the map's corner that the corner of
+/// each's collision box falls in, row by row, each block's latest made first (as its
+/// trees, `FUN_6f651170`; read: Blizzard.j's MeleeClearExcessUnits on Forestwalk, the
+/// search's callback `FUN_6f233f20` traced at both starts: deer, satyrs, and the gold
+/// mine in that order).
 fn spatial_order(w: &World, mut units: Vec<u32>) -> Vec<u32> {
     let Some(origin) = w.pathing.as_ref().map(|p| p.origin) else { return units };
     let index: std::collections::HashMap<u32, usize> = w.unit_order.iter().enumerate().map(|(i, &h)| (h, i)).collect();
-    let block = |h: u32| w.unit(h).map_or((0, 0), |u| (((u.y - origin[1]) / 256.0).floor() as i32, ((u.x - origin[0]) / 256.0).floor() as i32));
+    let block = |h: u32| w.unit(h).map_or((0, 0), |u| (((u.y - u.collision - origin[1]) / 256.0).floor() as i32, ((u.x - u.collision - origin[0]) / 256.0).floor() as i32));
     units.sort_by(|&a, &b| block(a).cmp(&block(b)).then(index.get(&b).cmp(&index.get(&a))));
     units
+}
+
+/// A unit added to a group (`FUN_6f28d7c0`): placed before the first of its type there
+/// made in a later slot, else last (read: Forestwalk's second start, its creeps found
+/// as deer, Shadowdancer, Hellcaller, then a Satyr in an earlier slot than the first,
+/// which goes before it).
+fn group_add(w: &mut World, group: u32, h: u32) {
+    let (type_id, slot) = w.unit(h).map_or(([0; 4], 0), |u| (u.type_id, u.extra.oid.0));
+    let at = w.group(group).and_then(|g| g.units.iter().position(|&o| w.unit(o).is_some_and(|u| u.type_id == type_id && slot < u.extra.oid.0)));
+    if let Some(g) = w.group_mut(group) {
+        match at {
+            Some(k) => g.units.insert(k, h),
+            None => g.units.push(h),
+        }
+    }
 }
 
 /// `spatial`: found by a search of the map (`spatial_order`), else in the order made.
@@ -797,9 +812,7 @@ fn enum_units_in(w: &mut World, vm: &mut Vm, group: u32, filter: u32, limit: i32
         let ok = filter == 0 || w.eval_boolexpr(vm, filter);
         w.enum_ctx = saved;
         if ok {
-            if let Some(g) = w.group_mut(group) {
-                g.units.push(h);
-            }
+            group_add(w, group, h);
             count += 1;
         }
     }
@@ -1587,7 +1600,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GroupAddUnit => |w, _, a| {
             let u = a.h(1);
             if w.unit(u).is_none() { return none(); }
-            if let Some(g) = w.group_mut(a.h(0)) { if !g.units.contains(&u) { g.units.push(u); } }
+            if w.group(a.h(0)).is_some_and(|g| !g.units.contains(&u)) {
+                group_add(w, a.h(0), u);
+            }
             none()
         },
         GroupRemoveUnit => |w, _, a| { let u = a.h(1); if let Some(g) = w.group_mut(a.h(0)) { g.units.retain(|x| *x != u); } none() },

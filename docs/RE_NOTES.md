@@ -1408,9 +1408,14 @@ Formats the port made its own, to be replaced by the original's:
   `AI-U`), its buffs' objects (each its timer, then itself), the spells' listeners it
   made waking (in the order made), a meld's fade-in not yet over, its regeneration
   timers then its listener, the third task, then its abilities' other objects, the
-  last first, those it released as it fell asleep left out.  1485 frees agree; then
-  the second start's creeps are removed in another order (deer, then those made
-  26286, 26327, 26253, 26207), which no block order of the range search fits.
+  last first, those it released as it fell asleep left out.  The order units are
+  removed in is the group's: a range search (`FUN_6f22f0a0`, `FUN_6f04c5a0`) finds
+  units by the 256-unit blocks from the map's corner that the corner of each's
+  collision box falls in, row by row, each block's latest made first (its callback
+  `FUN_6f233f20` traced at both starts); a unit added to a group (`FUN_6f28d7c0`) goes
+  before the first there of its type in a later slot, else last; and ForGroup walks a
+  copy of the group's list (`FUN_6f22ed70`, `FUN_6f2939f0`).  With these the first
+  1601 frees agree, and the keepalives to turn 482.
 - A destructable's records (`+w3d`, 1408 trees of Booty Bay at 5 seconds, read against
   its war3map.doo): its first the agent's (its class's `^adf`, its `` `pos ``); its
   second its own (a word, 6 or 0x106, then life, 0, and maximum), handlers (one

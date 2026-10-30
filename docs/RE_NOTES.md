@@ -1289,6 +1289,18 @@ these are the findings behind them.
 - Replays (.w3g) record each turn's actions as W3GS carries them, and after each turn
   (0x22) the same checksum, so a replay is a turn-by-turn reference.
 
+- Units' collision regions stand at the middle of the cell the unit is in, not at its
+  exact place: on each axis the cells floor(c - 0.5 - r) to floor(c - 0.5 + r), c =
+  floor(p) + 0.5 and r the collision in cells (read: the original's cells at a
+  sheep's search, a forest troll at 378.28, 122.25 covering 377 to 379 and 121 to
+  123 from the game's start, another at 383.77, 121.60 covering 382 to 384 and 120 to
+  122).  The searches and the walkers' holds both see them so; the quiet game's
+  replay then agrees to turn 13709.
+- A walk to a goal within reach starts in place only when the goal lies near the
+  walker's heading: a sheep 0.81 off did, sheep 0.915 and 3.0 off and a pig 1.40 off
+  did not (each turn 0.5).  The engine's test between 0.81 and 0.915 is not yet read;
+  the port takes 0.86 (not 2 turns, 1.0, which the 0.915 sheep contradicts).
+
 ## Where the port departs from the original
 
 Formats the port made its own, to be replaced by the original's:

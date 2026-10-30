@@ -799,8 +799,10 @@ impl World {
     /// cell), or none.
     /// The cells other ground units' collision regions cover, as a search or a line
     /// test sees them: on each axis the cells from floor(p - 0.5 - r) to
-    /// floor(p - 0.5 + r), p its place and r its collision in cells (measured with
-    /// Booty Bay's sheep).  A moving unit's region is excused (its flags hold
+    /// floor(p - 0.5 + r), p the middle of the cell the unit stands in and r its
+    /// collision in cells (measured with Booty Bay's sheep, and its two forest trolls
+    /// by the original's cells: a troll at 378.28, 122.25 covering 377 to 379 and 121
+    /// to 123, one at 383.77, 121.60 covering 382 to 384 and 120 to 122).  A moving unit's region is excused (its flags hold
     /// 0x20000000, which the test does not count: read in the original, a pig's search
     /// past two moving pigs and one standing; a sheep whose walk had begun but who had
     /// not yet moved, turning, still blocked).
@@ -816,7 +818,7 @@ impl World {
             if self.move_kind(o) == crate::pathing::Move::Fly {
                 continue;
             }
-            let (px, py) = ((v.x - p.origin[0]) / crate::pathing::CELL, (v.y - p.origin[1]) / crate::pathing::CELL);
+            let (px, py) = (((v.x - p.origin[0]) / crate::pathing::CELL).floor() + 0.5, ((v.y - p.origin[1]) / crate::pathing::CELL).floor() + 0.5);
             let r = v.collision / crate::pathing::CELL;
             for cy in (py - 0.5 - r).floor() as i32..=(py - 0.5 + r).floor() as i32 {
                 for cx in (px - 0.5 - r).floor() as i32..=(px - 0.5 + r).floor() as i32 {
@@ -886,6 +888,7 @@ impl World {
             None => crate::lrpath::search_costing(&cells, start, end, class, if u.extra.local_paths { 32 } else { 700 }),
         };
         log::debug!("search for {h} from {start:?} to {end:?}: {:?} refused {refused}", match &out { crate::lrpath::Outcome::Found(c) => format!("found {}", c.len()), crate::lrpath::Outcome::Nearest(c) => format!("nearest {:?}", c.last()), crate::lrpath::Outcome::Stay => "stay".into() });
+        log::trace!("search for {h}: cells {:?}", match &out { crate::lrpath::Outcome::Found(c) | crate::lrpath::Outcome::Nearest(c) => c.clone(), crate::lrpath::Outcome::Stay => Vec::new() });
         // A search that met no refused cell sends the walker straight to its way's end
         // (`FUN_6f166e90`: the way's index set to its end, else to its first node).
         let straight = |way: Vec<(f32, f32)>| if refused { way } else { way.last().map(|&w| vec![w]).unwrap_or_default() };
@@ -1402,7 +1405,8 @@ impl World {
                 // A walker held after moving holds the cells of both its last places (read:
                 // a held sheep's region three cells wide, another's still on a row it had
                 // just left; a pig moving on steadily held only its place).
-                let (px, py) = ((v.x - origin[0]) / crate::pathing::CELL, (v.y - origin[1]) / crate::pathing::CELL);
+                // Its region is at the middle of its cell (`regions_taken`).
+                let (px, py) = (((v.x - origin[0]) / crate::pathing::CELL).floor() + 0.5, ((v.y - origin[1]) / crate::pathing::CELL).floor() + 0.5);
                 let (qx, qy) = (px, py);
                 let r = v.collision / crate::pathing::CELL;
                 let on = |a: f32, b: f32, c: i32| (a.min(b) - 0.5 - r).floor() as i32 <= c && c <= (a.max(b) - 0.5 + r).floor() as i32;
@@ -1412,6 +1416,9 @@ impl World {
             }
         }
         let blocked = wall || !seen.is_empty() || d2 <= reach;
+        if blocked {
+            log::trace!("held {h}: wall {wall} seen {seen:?} near {} cells {cells:?}", d2 <= reach);
+        }
         for o in seen {
             let Some(v) = self.unit(o) else { continue };
             let Some(theirs) = v.extra.mover.filter(|_| v.engine_walker()).map(|m| m.speed2()) else { continue };
@@ -1425,6 +1432,7 @@ impl World {
                 u.extra.yields_to = Some(o);
                 return true;
             }
+            log::trace!("held: {o} waits for {h}");
             let v = self.unit_mut(o).unwrap();
             v.extra.walk_wait = v.extra.walk_wait.max(20);
             v.extra.yields_to = Some(h);
@@ -1499,15 +1507,16 @@ impl World {
         if u.extra.mover.is_none() {
             log::debug!("walk of {h} from {:.2}, {:.2} facing {:.2} by {:?} to {goal:?}, time {:.3}, tsk. {:?}", u.x, u.y, u.facing, u.path, self.time, u.extra.order_tags.get(7));
             // A goal within reach as it starts ends the walk without its usual objects
-            // (`Tags::move_done_in_place`) when its first step's turn leaves it within a
-            // step's turn of the goal's bearing (as a stopped walker is judged there);
-            // else it turns to it and arrives as any walk (read: a sheep 0.81 off, its
-            // turn 0.5, freed at its first step; a pig 1.40 off and a sheep 3.0 off,
-            // their trees freed as their turns ended, their paths the step after).
+            // (`Tags::move_done_in_place`) when it lies near the walker's heading; else it
+            // turns to it and arrives as any walk (read: a sheep 0.81 off, its turn 0.5,
+            // freed at its first step; sheep 0.915 and 3.0 off and a pig 1.40 off, their
+            // trees freed as their turns ended, their paths the step after).  Where the
+            // engine parts them between 0.81 and 0.915 is not yet read: taken as 0.86.
+            const NEAR_HEADING: f32 = 0.86;
             let behind = goal.is_some_and(|g| {
                 let bearing = (g.1 - u.y).atan2(g.0 - u.x);
                 let d = (bearing - f32::from_bits(m.heading)).rem_euclid(std::f32::consts::TAU);
-                d.min(std::f32::consts::TAU - d) >= 2.0 * turn
+                d.min(std::f32::consts::TAU - d) > NEAR_HEADING
             });
             let moves = behind || goal.is_none_or(|g| (g.0 - u.x).hypot(g.1 - u.y) > 0.49 * crate::pathing::CELL);
             if let Some(u) = self.unit_mut(h) {

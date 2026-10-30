@@ -1421,7 +1421,12 @@ Formats the port made its own, to be replaced by the original's:
   so (`Tags::removed`, `day_rcm`): 12297 agree, and its free list's top is the
   original's.  The creeps' auras first apply at 0.5 seconds (each a `+EIm` of the
   second table, then the buff).  Not yet: two `` `pil `` the original makes at 0.72
-  and 0.745 seconds and four `` `rcm `` at 2.0, so six births fewer by five seconds.
+  and 0.745 seconds and four `` `rcm `` at 2.0, so six births fewer by five seconds
+  (traced, `takebt.sh`: the `` `pil `` by `FUN_6f436510`, a position listener for event
+  0xd01c8, called from 0x6f423881; the `` `rcm `` by a unit's `FUN_6f69d360`, its
+  regeneration modifier at +0xb4 as its flags allow, which creep sleep's
+  `FUN_6f670950` also calls, here from `FUN_6f43a200`, which FUN_6f418f00,
+  FUN_6f436780, FUN_6f43b150, and 0x6f423c8c call).
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

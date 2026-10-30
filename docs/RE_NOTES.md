@@ -451,9 +451,11 @@ these are the findings behind them.
   - The walk is searched to the tree's footprint (a Booty Bay tree's 4 by 4 cells) as
     one to a mine, but it ends in range: as a step finds the walker within Ahar's Rng
     over 32 plus its radius of the tree's middle (the tree's radius none: read, 4.134
-    cells walking on, 3.972 stopped, Rng 116), it stops there and turns toward the
-    tree (onto its bearing, the turn within its rate), and the next step its move is
-    done (event 0xd0184, `FUN_6f4377d0`).
+    cells walking on, 3.972 stopped, Rng 116), its course within 0.2 of the tree's
+    bearing, its move is done there in that step (event 0xd0184, `FUN_6f4377d0`; read:
+    a peon 0.102 off, its heading kept); else it stops there and turns toward the
+    tree (onto its bearing when the turn is within its rate), its move done the next
+    step (read: one 0.424 off).
   - Within range but not yet free to chop (the harvest's 0x1000), it walks to reach
     the tree, its tasks counted down from 3: the move to it in range (`tskt`, 0xd0171),
     the end of its ghosting (`task`, 0xd0151, `FUN_6f43b7e0`, which sets 0x1000), a
@@ -478,16 +480,23 @@ these are the findings behind them.
     takes the last fells it (a Booty Bay tree at its fiftieth): its pathing lifted
     and the last three of its five `^pmr` freed at that chop (turn 2775), the worker
     stopping as that chop's backswing ends (its target gone, `FUN_6f40bce0`), full
-    or not.  At the hall a felled tree's worker is ordered to the live tree nearest
-    it within Ahar's Area (`FUN_6f416740`, `FUN_6f4153a0`, `FUN_6f439e00`: the trees
-    about it enumerated, each judged by a path search, the cheapest taken; read: the
-    one 128 from the felled, four others nearer the hall), its order and walk as any
-    trip's.  The port takes the nearest by distance and does not yet run a tree's
-    death events; a tree felled short of a full load is not yet read.
+    or not.  At the hall a felled tree's worker is ordered to the live tree cheapest
+    to reach from it within Ahar's Area (`FUN_6f416740`, `FUN_6f4153a0`,
+    `FUN_6f439e00`): the trees about it are enumerated by 256-unit blocks from the
+    map's corner, row by row, each block's latest made first (`FUN_6f651170`), each
+    judged by a path search from the felled tree to it (`FUN_6f059590`, under a limit
+    of 32 that falls as better ones are found, 0xffffffff past it), and the first of
+    the cheapest is taken (read under winedbg: every candidate's cost in order, the
+    three about the felled tree 4 each and the first of them taken; from the next
+    felled, the one of its three in the earlier block).  Its order and walk are any
+    trip's.  The port judges by the steps of the local search's way to the tree's
+    footprint (equal for the trees about the felled, as the engine's), and does not
+    yet run a tree's death events; a tree felled short of a full load is not yet
+    read.
   The lumber game (`docs/reference/bootybay_lumber_*`) agrees with the original's trace
-  and keepalives to its end, 1422 turns, and a longer one (its tree felled, the
-  worker on to the next, the clocks set back at 300 seconds, a night fallen) to turn
-  3206, midnight.
+  and keepalives to its end, 1422 turns, and a longer one
+  (`docs/reference/bootybay_lumber_long_*`: three trees, two felled, the clocks set
+  back at 300 seconds, dusk, night, and midnight) for all 4120 turns of its trace.
 - A player's order to walk to a point (traced: a Booty Bay peon sent across the
   ground, `docs/reference/bootybay_moves_*`) is the engine's walk, as a wanderer's
   with its way searched 700 nodes deep (`World::start_player_walk`).  Its order has
@@ -1130,9 +1139,15 @@ these are the findings behind them.
     and each that falls asleep then frees its spells' listeners, the last first, a
     fired one's replacement among them (made as its mana passed the cost: one
     waiting for it to fall), Ensnare's `` `pil `` after the listener made before it
-    (read: twenty objects freed at nightfall).  What midnight's wrap fires (three
-    `` `rtl ``, two `+tex`) is not yet read.  With this the long lumber game agrees
-    with the original to turn 2774, where its tree falls.
+    (read: twenty objects freed at nightfall).
+  - Through midnight the time rises to DayHours and falls back from there (its
+    FloatModifier set back, event 0x80262 at main clock 320): the listeners waiting
+    for a fall past their values fire, the latest made first (read under winedbg:
+    the change's, replaced by one on the rise past Dawn and 0.01, it still being
+    night; the equal Dusk and Dawn events', each replaced by one the other way, their
+    triggers not run; then less than's, Day's and Night's, their triggers run), the
+    old listeners and the executions freed at the tick's end in that order
+    (`World::time_listeners_crossed`).
   - The timers a creep's Hurl Boulder and Thunder Clap (ACtb, ACtc) make as its mana is
     first set are listeners on its mana rising past each spell's cost plus 0.1, the
     last spell's in the first slot (read: both Granite Golems' Hurl Boulder listeners,

@@ -753,19 +753,50 @@ impl World {
         }
     }
 
-    /// The live tree nearest a felled one within the worker's Ahar Area, the first in
-    /// the trees' order among those as near.
+    /// The tree a felled one's worker goes on to (`FUN_6f4153a0`, `FUN_6f439e00`): the
+    /// live trees within the worker's Ahar Area of the felled one, enumerated by
+    /// 256-unit blocks from the map's corner, row by row, each block's latest made
+    /// first (`FUN_6f651170`), each judged by a path search from the felled tree to it
+    /// (`FUN_6f059590`), the first of the cheapest taken (read: from one felled tree,
+    /// the three about it each 4 and the first of them taken; from the next, the one
+    /// of its three in the earlier block).  The search's cost here is the steps of the
+    /// way the local search finds to its footprint.
     fn next_tree(&self, h: u32, felled: u32) -> Option<u32> {
         let (fx, fy) = self.widget_pos(felled)?;
         let area = self.ability_with_code(h, "Ahar").map_or(900.0, |(a, l)| self.ability_real(a, "Area", l));
-        self.destructable_order
+        let p = self.pathing.as_ref()?;
+        let u = self.unit(h)?;
+        struct Open<'a>(&'a crate::pathing::PathingMap, crate::pathing::Move);
+        impl crate::lrpath::Cells for Open<'_> {
+            fn open(&self, x: i32, y: i32) -> bool {
+                self.0.passable((x, y), self.1)
+            }
+        }
+        let open = Open(p, self.move_kind(h));
+        let class = crate::lrpath::class_of(u.collision / crate::pathing::CELL);
+        let from = p.cell_of(fx, fy);
+        let block = |x: f32, y: f32| (((y - p.origin[1]) / 256.0).floor() as i32, ((x - p.origin[0]) / 256.0).floor() as i32);
+        let mut trees: Vec<(usize, u32, (i32, i32))> = self
+            .destructable_order
             .iter()
-            .copied()
-            .filter(|&d| d != felled && self.is_tree_pub(d) && !self.footprint(d).is_empty())
-            .filter_map(|d| self.widget_pos(d).map(|(x, y)| ((x - fx).hypot(y - fy), d)))
-            .filter(|&(dist, _)| dist <= area)
-            .min_by(|a, b| a.0.total_cmp(&b.0))
-            .map(|x| x.1)
+            .enumerate()
+            .filter(|&(_, &d)| d != felled && self.is_tree_pub(d) && !self.footprint(d).is_empty())
+            .filter_map(|(i, &d)| self.widget_pos(d).filter(|&(x, y)| (x - fx).hypot(y - fy) <= area).map(|(x, y)| (i, d, block(x, y))))
+            .collect();
+        trees.sort_by(|a, b| a.2.cmp(&b.2).then(b.0.cmp(&a.0)));
+        let mut best: Option<(usize, u32)> = None;
+        for (_, d, _) in trees {
+            let Some((x, y)) = self.widget_pos(d) else { continue };
+            let foot: std::collections::HashSet<(i32, i32)> = self.footprint(d).iter().copied().collect();
+            let (out, _, _) = crate::lrpath::search_to_region(&open, from, p.cell_of(x, y), class, 2000, |a, b| foot.contains(&(a, b)));
+            let crate::lrpath::Outcome::Found(way) = out else { continue };
+            let cost = way.len() - 1;
+            log::debug!("next tree for {h}: ({x}, {y}) cost {cost}");
+            if best.is_none_or(|(c, _)| cost < c) {
+                best = Some((cost, d));
+            }
+        }
+        best.map(|b| b.1)
     }
 
     /// Where a walker walks: a move order's point, or a gold run's structure's middle.
@@ -791,7 +822,13 @@ impl World {
         let cell = |w: f32, o: f32| ef::div(ef::sub(w.to_bits(), o.to_bits()), crate::pathing::CELL.to_bits());
         match self.tree_in_range(h, clock) {
             Some((m, true)) => {
+                // Where it stopped is its place (as `World::walk_steps` keeps it).
+                let (x, y) = m.at(clock);
                 if let Some(u) = self.unit_mut(h) {
+                    u.x = f32::from_bits(ef::add(ef::mul(x, crate::pathing::CELL.to_bits()), origin[0].to_bits()));
+                    u.y = f32::from_bits(ef::add(ef::mul(y, crate::pathing::CELL.to_bits()), origin[1].to_bits()));
+                    u.extra.cell_at = Some((x, y, u.x, u.y));
+                    u.facing = f32::from_bits(m.heading).to_degrees();
                     u.extra.walk_heading = Some(m.heading);
                     u.extra.mover = None;
                     u.extra.step_from = None;
@@ -863,6 +900,8 @@ impl World {
         let turn = self.objects.units.get(u.type_id).map_or(0.5, |o| o.real("turnRate"));
         let gait = crate::motion::Gait { top: 0, grow: 0, turn: turn.to_bits(), window: 0, reach: 0.49f32.to_bits() };
         if m.stopped_facing(&gait, tree, clock) {
+            // It stops where it is.
+            m.halt_facing(&crate::motion::Gait { turn: 0, ..gait }, tree, clock);
             return Some((m, true));
         }
         m.halt_facing(&gait, tree, clock);

@@ -249,11 +249,17 @@ impl Mover {
         self.set_velocity(now, ZERO, ZERO);
     }
 
-    /// Whether it stands facing a point, within a step's turn of its bearing.
+    /// Whether it faces a point: standing within a step's turn of its bearing, or,
+    /// moving, its course within 0.2 of it (read: a peon walking 0.102 off its tree's
+    /// bearing arrived in the step it came within range, one 0.424 off stopped and
+    /// turned first).
     pub fn stopped_facing(&self, gait: &Gait, goal: (u32, u32), now: u32) -> bool {
         let stopped = self.vx & 0x7fff_ffff == 0 && self.vy & 0x7fff_ffff == 0;
         let angle = self.goal_angle(goal, now);
-        stopped && (angle == ZERO || lt(abs(angle), gait.turn))
+        if !stopped {
+            return !lt(ON_HEADING, abs(angle));
+        }
+        angle == ZERO || lt(abs(angle), gait.turn)
     }
 
     /// Whether it is within `range` cells of a point now (`FUN_6f05b580`: the squares

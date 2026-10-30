@@ -267,6 +267,77 @@ impl World {
         !set && crate::world::compare(op, new, value) && !crate::world::compare(op, old, value)
     }
 
+    /// As the time runs each event is a listener on it (`FUN_6f27a110`): those for
+    /// less than or at most fire their triggers as it falls past their values, those
+    /// for at least or greater than as it rises past, one for equal as it rises past,
+    /// replaced by one the other way before its trigger runs, and as it falls past,
+    /// replaced only (`FUN_6f27c5c0`).  Through midnight the time rises to the day's
+    /// end and falls back from there (its FloatModifier set back, event 0x80262), where
+    /// the night's listener of the change between day and night, on its falling below
+    /// dusk, is replaced by one on its rising past dawn, it still being night.  The
+    /// listeners passed fire the latest made first; the old listeners and the
+    /// triggers' executions go at the tick's end, in the order let go (read: at dusk the
+    /// Night trigger's `+tex`, then the Dusk event's `` `rtl `` and `+tex`; at midnight
+    /// the change's `` `rtl ``, Dusk's and Dawn's, then Day's and Night's `+tex`).
+    fn time_listeners_crossed(&mut self, vm: &mut w3_jass::Vm, old: f32, new: f32) {
+        use crate::types::EventKind;
+        let hours = self.misc_f32("DayHours", 24.0);
+        let wrapped = new < old;
+        let rises = |v: f32| if wrapped { (old < v && v <= hours) || v <= new } else { old < v && v <= new };
+        let falls = |v: f32| wrapped && new < v && v < hours;
+        // (listener's making: re-made ones by when, the rest by their registration; what
+        // it does)
+        let mut passed: Vec<((u8, u64), Option<(u32, bool, bool)>)> = Vec::new();
+        for &e in &self.events {
+            let Some(crate::types::Obj::Event(r)) = self.handles.get(e) else { continue };
+            let EventKind::GameState { state: 2, op, value } = r.kind else { continue };
+            let (remake, trigger) = match op {
+                2 => (rises(value) || falls(value), rises(value)),
+                0 | 1 => (false, falls(value)),
+                3 | 4 => (false, rises(value)),
+                _ => (false, false),
+            };
+            if remake || trigger {
+                let made = self.tags.listener_made.get(&e).map_or((0, e as u64), |&b| (1, b));
+                passed.push((made, Some((e, remake, trigger))));
+            }
+        }
+        let (dusk, eps) = (self.misc_f32("Dusk", 18.0), 0.01);
+        if !self.daytime && falls(dusk - eps) {
+            passed.push(((1, self.tags.day_listener_made), None));
+        }
+        passed.sort_by(|a, b| b.0.cmp(&a.0));
+        for (_, what) in passed {
+            match what {
+                Some((e, remake, trigger)) => {
+                    if remake {
+                        let s = self.tags.take(b"`rtl");
+                        self.tags.listener_made.insert(e, self.tags.born as u64);
+                        if let Some(old) = self.tags.event_timers.insert(e, s) {
+                            self.tags.issued.push(old);
+                        }
+                    }
+                    if trigger {
+                        self.exec_at_tick_end = true;
+                        self.fire_registrations_pub(vm, crate::types::EventCtx::default(), vec![e]);
+                        self.exec_at_tick_end = false;
+                    }
+                }
+                None => {
+                    let s = self.tags.take(b"`rtl");
+                    self.tags.day_listener_made = self.tags.born as u64;
+                    if let Some(old) = self.tags.day_timer.replace(s) {
+                        self.tags.issued.push(old);
+                    }
+                    if let Some(old) = self.tags.day_timer_2.take() {
+                        self.tags.issued.push(old);
+                    }
+                }
+            }
+        }
+        self.tags.flush_issued();
+    }
+
     pub(crate) fn time_of_day_moved(&mut self, vm: &mut w3_jass::Vm, old: f32, new: f32, set: bool) {
         use crate::types::EventKind;
         let fires = |k: &EventKind| matches!(*k, EventKind::GameState { state: 2, op, value } if Self::time_event_fires(op, value, old, new, set));
@@ -276,30 +347,14 @@ impl World {
             // Each fired event's timer is replaced, the old one released (traced).
             for e in fired {
                 let s = self.tags.take(b"`rtl");
+                self.tags.listener_made.insert(e, self.tags.born as u64);
                 if let Some(old) = self.tags.event_timers.insert(e, s) {
                     self.tags.doom(old);
                 }
             }
         } else {
-            // As the time runs each event is a listener on it (`FUN_6f27a110`), the
-            // latest made firing first; one for equal is replaced by one the other way
-            // before its trigger runs (`FUN_6f27c5c0`); the old listener and the
-            // triggers' executions go at the tick's end (read: at dusk the Night
-            // trigger's `+tex`, the Dusk event's `` `rtl `` and `+tex`, then those two
-            // `+tex` and the old listener freed, in the order let go).
-            for e in fired.into_iter().rev() {
-                let equal = matches!(self.handles.get(e), Some(crate::types::Obj::Event(r)) if matches!(r.kind, EventKind::GameState { op: 2, .. }));
-                if equal {
-                    let s = self.tags.take(b"`rtl");
-                    if let Some(old) = self.tags.event_timers.insert(e, s) {
-                        self.tags.issued.push(old);
-                    }
-                }
-                self.exec_at_tick_end = true;
-                self.fire_registrations_pub(vm, crate::types::EventCtx::default(), vec![e]);
-                self.exec_at_tick_end = false;
-            }
-            self.tags.flush_issued();
+            let _ = fired;
+            self.time_listeners_crossed(vm, old, new);
         }
         // Day and night change on listeners of their own, 0.01 past dawn and dusk
         // (`FUN_6f283c80`): by day, night comes as the time passes Dusk and 0.01 or
@@ -316,6 +371,7 @@ impl World {
         // slot 0x287 at Booty Bay's first day; which new one takes its place is not yet
         // measured, the first here).
         let first = self.tags.take(b"`rtl");
+        self.tags.day_listener_made = self.tags.born as u64;
         let second = day.then(|| self.tags.take(b"`rtl"));
         // Both of the last change's go (read: the first dawn's two at nightfall).
         if let Some(old) = self.tags.day_timer.replace(first) {

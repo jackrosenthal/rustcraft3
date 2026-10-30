@@ -1,0 +1,4 @@
+# Booty Bay with the original's actions as player 2 (crates/net/examples/host.rs, under winedbg tracing tags and steps): turn pid hex.  A peon selected, sent across the ground (two orders in one turn), then sent to a tree to gather lumber, felling three.
+433 2 1601010038310000383100001a196f65706f3831000038310000
+603 2 12000003000d00ffffffffffffffff9b000a46f8631945ffffffffffffffff12000003000d00ffffffffffffffff9b000a46f8631945ffffffffffffffff
+2121 2 12000003000d00ffffffffffffffff00000d4600001445fa200000fa200000

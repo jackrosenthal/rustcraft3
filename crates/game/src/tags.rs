@@ -97,12 +97,18 @@ pub struct Tags {
     /// falling below dawn and one on its rising past dusk; by night one).
     #[serde(default)]
     pub day_timer_2: Option<u32>,
+    /// When the time of day's listeners were last made (the objects born by then):
+    /// the script events' replaced since their registration, and the change's.
+    #[serde(default)]
+    pub listener_made: std::collections::BTreeMap<u32, u64>,
+    #[serde(default)]
+    pub day_listener_made: u64,
 }
 
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None }
+        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.

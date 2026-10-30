@@ -1617,6 +1617,18 @@ Formats the port made its own, to be replaced by the original's:
   (`` `pil ``) among them (its abilities', a flyer's, its AI's item pickup, Ensnare's,
   and a computer's structure's alarm's as it starts to watch), newest first; each
   real its own.
+- A unit's own record (`+w3u`, CUnit's `FUN_6f696490`): its widget, its event lists
+  (0x80234 to 0x80258, 0x80319 to 0x80329), then 109 fields from CUnit's +0x130 on
+  (words, references, a short, timers).  Across the quiet test map's 71 units 79 are
+  constant (-1, -1, 0 triples; zeros; 0x0f12 at field 50; 1.0 at 102); those that
+  vary, as read: 8 a reference (most units'); 9 a short (3 to 5); 20 and 21 a slot
+  and birth of its last ability before its making's tasks (its creep sleep, a
+  structure's alarm); 38 and 39 its unit AI's (`AI-U`) or -1; 41 its death's
+  `` `rtl ``; 42 its life's rate; 43 its life's `` `rcm ``; 44 its mana's rate; 45 its
+  mana's `` `rcm ``; 46 a real (0, 1, 5); 48 its owner; 49 flags (517, 0x80201, 513);
+  51, 67 a word of 0 or 1; 72 to 74 flags; 80 to 83 reals (60, 120, 80; 0 or -20; 0 or
+  60; 60, 40, 220); 92 its tint (ARGB); 100 and 101 its move speed and its type's (as
+  single precision bits: 270, 200, 250); 104 to 106, 108 flags.
 - A unit's clustered position (`` `pcu ``, CPoPosCl) holds its place in pathing cells
   ((x - the pathing origin) / 32), two zeros, its speed in cells a second (none
   moving: unbounded), its facing in radians, and its collision in cells; its two

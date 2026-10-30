@@ -730,6 +730,9 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // build 6037 a timer more and three reals more.
     (b"Ahrl", "wwww wwwwwww t w wwww wwww ff w", "[www] [t] wwwwww f t t t"),
     (b"Ahar", "wwww wwwwwww t w wwww wwww ff w fff", "[www] [t] wwwwww f t t t t"),
+    // CThreadAI (`FUN_6f9bef30`, own `FUN_6f9bf070`: six words and a real): an extended
+    // timer and a word.
+    (b"AItr", "wwwwww f", "t ss f w"),
     (b"tsk.", "wwwww fff", "r"),
     (b"tskt", "wwwwwwww f", "r"),
     // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to

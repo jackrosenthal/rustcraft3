@@ -1375,9 +1375,23 @@ Formats the port made its own, to be replaced by the original's:
   handle table (agent, tag, handle value 0x100000 + n).  The port loads the
   original's saves (`Load::Original`, `Game::restore_original`): it starts the map
   as a new game, then replaces the script's units with the saved ones and takes the
-  players' gold and lumber.  Not yet: the time, construction and training, orders,
-  items, trees, and the scripts' variables and threads; and the port still writes
-  its own saves.
+  players' gold and lumber, the time of day (CGameState's `` `rel `` 2), the map
+  script's integer, real, and boolean variables, and the handles its units had.  Not
+  yet: the time, construction and training, orders, items, trees, the other
+  variables, timers, and threads; and the port still writes its own saves.
+- JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
+  Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
+  initializers in order (seven timers and groups); a player's handle is made as a
+  script first names it (Player(0) and Player(1) in the map's config, the neutral
+  players as main does); the map's destructables follow the config; a unit takes its
+  handle as a script first has it (a crypt the undead computer begins takes its own
+  after a force the melee check makes), and the engine's own objects never (the
+  hidden gold mine under a haunted mine, its circles, the creeps' aura art); a
+  function's locals (not its parameters) still holding a handle as it returns keep
+  it taken for good (the group MeleeFindNearestMine destroys).  The port does the
+  same (`Handles::handle`, the natives' boundary in `World::call_native`); its
+  handles agree with the original's for all but the last five, where the undead
+  computer starts its crypt sooner in the port.
 - Replays: .w3g files as the original writes them (header and its CRC, 8192-byte
   zlib blocks with their checksums, the record of host, players, slots, and seed, a
   turn per frame and its checksum, the commands as the original's actions,

@@ -457,6 +457,42 @@ impl World {
                     let tail = vec![Field::Ref(handler(f.callback)), Field::Ref(handler(f.filter)), Field::Ref(NONE)];
                     out.push((own.0, agent_first(own, b"+frc", &flags), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail })));
                 }
+                // A timer (CTimerWar3, read against the quiet test map's): its own word,
+                // timeout, and a real; its agent timer (CAgentTimerExtended,
+                // `FUN_6f0602a0`): while running itself, its flags, and its block (due
+                // on the clock its run started by, its period, its start's count,
+                // event 0x80204, a periodic node); the count of 120-second chunks a
+                // timeout of 120 or more runs in (DAT_6fd3c894, set to 120 at load:
+                // such a timer runs as a periodic node of 120, flag 0x10) twice; the
+                // timeout beyond the chunks; its function's handler, and the
+                // registrations of its expiry.  (Provisional: a periodic one's flag 2,
+                // and the shorts as chunks pass.)
+                Some(Obj::Timer(t)) => {
+                    let Some(own) = slot_of(id) else { continue };
+                    const CHUNK: f32 = 120.0;
+                    let chunks = (t.timeout / CHUNK) as u32;
+                    let rest = if chunks > 0 { t.timeout - chunks as f32 * CHUNK } else { t.timeout };
+                    let flags = if chunks > 0 { 0x10 } else { 0 } | if t.periodic { 2 } else { 0 };
+                    let node_periodic = u32::from(chunks > 0 || t.periodic);
+                    let agent = if t.running {
+                        let first = if chunks > 0 { CHUNK } else { t.timeout };
+                        let due = f32::from_bits(crate::efloat::add(t.started_clock, first.to_bits()));
+                        Field::Timer(rf(own), flags, Timing(Some((due, t.timeout, t.agent_seq, 0x8_0204, node_periodic))))
+                    } else {
+                        Field::Timer(NONE, 0, Timing(None))
+                    };
+                    let periodic = chunks.min(0xffff);
+                    let handler = t.handler.map_or(NONE, |s| rf(self.tagged(s)));
+                    let expiries = self
+                        .events
+                        .iter()
+                        .filter(|&&e| matches!(self.handles.get(e), Some(Obj::Event(r)) if matches!(r.kind, EventKind::TimerExpire(x) if x == id)))
+                        .filter_map(|e| self.tags.handle_ids.get(e))
+                        .map(|&r| ((r.0, r.1), 0x8_0204))
+                        .collect();
+                    let tail = vec![agent, Field::Short(periodic as u16), Field::Short(periodic as u16), Field::Real(rest), Field::Ref(handler), handler_list(expiries)];
+                    out.push((own.0, agent_first(own, b"+tmr", &[]), Some(Second::Agent { own: vec![Field::Word(0), Field::Real(t.timeout), Field::Real(0.0)], handlers: game_handlers(self.game_object()), tail })));
+                }
                 Some(Obj::Location(x, y)) => {
                     let Some(own) = slot_of(id) else { continue };
                     out.push((own.0, agent_first(own, b"+loc", &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail: vec![Field::Real(*x), Field::Real(*y)] })));

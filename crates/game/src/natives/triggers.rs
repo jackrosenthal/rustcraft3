@@ -94,7 +94,12 @@ fn player_unit_event(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
 fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
     let (timeout, periodic, cb) = (a.r(1), a.b(2), a.code(3));
     // (Its agent timer's start, `FUN_6f249ca0`.)
-    w.tags.start_timer("249ca0");
+    let agent_seq = w.tags.start_timer("249ca0");
+    let started_clock = w.tags.clock;
+    if let Some(t) = w.timer_mut(a.h(0)) {
+        t.agent_seq = agent_seq;
+        t.started_clock = started_clock;
+    }
     w.timer_seq += 1;
     let seq = w.timer_seq;
     if let Some(t) = w.timer_mut(a.h(0)) {

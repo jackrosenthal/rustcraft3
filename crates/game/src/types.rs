@@ -1190,6 +1190,12 @@ pub struct Timer {
     /// When its run was started, in order among timers' runs.
     #[serde(default)]
     pub seq: u64,
+    /// Its agent timer's count as its run started (`Tags::start_timer`), and the main
+    /// clock then (its single's bits).
+    #[serde(default)]
+    pub agent_seq: u32,
+    #[serde(default)]
+    pub started_clock: u32,
 }
 
 impl Timer {

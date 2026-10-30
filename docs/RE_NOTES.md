@@ -1567,6 +1567,15 @@ Formats the port made its own, to be replaced by the original's:
   second).  With these every kind agrees in number in each half second through 4.5
   seconds, and the first 478 in order; after, starts in one port tick come in the
   port's order (its units' looks, then the auras' sweep), not by their dues.
+- The script's timers agree in the save too (10, with the counts their starts took):
+  CTimerWar3's own (a word, its timeout, a real); its CAgentTimerExtended
+  (`FUN_6f0602a0`): while running itself, its flags, and its node (due, period,
+  count, event 0x80204, a periodic node); then two shorts and a real.  A timeout of
+  120 seconds or more runs in chunks of DAT_6fd3c894 (set to 120 at load by
+  `FUN_6f070d80`): a periodic node of 120, flag 0x10, the count of chunks in the
+  shorts, the timeout beyond them in the real (Blizzard.j's stock timer, 120 seconds
+  one-shot, so saved: flag 16, node periodic, shorts 1 and 1, real 0); a shorter one
+  a plain node, its shorts 0, its timeout in the real.
 - A property's base real and word (+0x70, +0x74) are a time stamp, its clock group's
   time and word (`FUN_6f161090`, from the group `FUN_6f15c650` picks; `FUN_6f161040`
   measures from it): flags stamped as made (0 at the map's start; forces made by a

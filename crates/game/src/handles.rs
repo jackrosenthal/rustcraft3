@@ -77,6 +77,20 @@ impl<T> Handles<T> {
         h
     }
 
+    /// Gives an unseen object a handle chosen for it (as a loaded game's), taking the
+    /// handle out of those free or awaiting a sweep.
+    pub fn alias(&mut self, h: u32, id: u32) {
+        self.free.retain(|&f| f != h);
+        self.pending.retain(|&f| f != h);
+        if h >= self.next {
+            // The ids between stay unused, as the original's table has them free.
+            self.free.extend(self.next..h);
+            self.next = h + 1;
+        }
+        self.aliases.insert(h, id);
+        self.handle_of.insert(id, h);
+    }
+
     /// The object a script's handle names (an unseen object's under its own id).
     pub fn resolve(&self, h: u32) -> u32 {
         self.aliases.get(&h).copied().unwrap_or(h)

@@ -143,14 +143,16 @@ impl Load {
 impl Game {
     /// Puts an original's saved game in place of a game just started on its map (its
     /// script's main run): its units (their type, owner, place, facing, life, and mana),
-    /// its players' gold and lumber (saved in tenths), the time of day, and the map
-    /// script's integer, real, and boolean variables (by name, arrays too).  Not yet:
+    /// the handles scripts had them by, its players' gold and lumber (saved in tenths),
+    /// the time of day, and the map script's integer, real, and boolean variables (by
+    /// name, arrays too).  Not yet:
     /// the rest (the time, which the port's timers and sleeping threads count from;
     /// orders, buildings in progress, items, destructables, the other variables, the
     /// AI scripts', timers, and threads), which stay as the script just made them.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
         use crate::natives::units::{create_unit_exact, remove_unit};
         let units = s.units()?;
+        let handles: std::collections::HashMap<(u32, u32), u32> = s.handles()?.into_iter().map(|(r, h)| ((r.0, r.1), h)).collect();
         let players = s.player_states()?;
         let game_reals = s.game_reals()?;
         let scripts = s.script_data()?;
@@ -162,6 +164,10 @@ impl Game {
         for u in units {
             let (x, y) = (origin[0] + u.cell[0] * crate::pathing::CELL, origin[1] + u.cell[1] * crate::pathing::CELL);
             let h = create_unit_exact(w, u.owner as u8, u.type_id.to_be_bytes(), x, y, u.facing.to_degrees());
+            // The handle scripts had it by, as the save's handle table has it.
+            if let Some(&jass) = handles.get(&(u.tag, u.birth)) {
+                w.handles.alias(jass, h);
+            }
             if let Some(unit) = w.unit_mut(h) {
                 (unit.max_life, unit.max_mana) = (u.life[3], u.mana[3]);
                 (unit.life, unit.mana) = (u.life[0].min(u.life[3]), u.mana[0].min(u.mana[3]));

@@ -1516,6 +1516,7 @@ impl World {
             let behind = goal.is_some_and(|g| {
                 let bearing = (g.1 - u.y).atan2(g.0 - u.x);
                 let d = (bearing - f32::from_bits(m.heading)).rem_euclid(std::f32::consts::TAU);
+                log::trace!("in place? {h}: off {:.4} heading {:.4} distance {:.3}", d.min(std::f32::consts::TAU - d), f32::from_bits(m.heading), (g.0 - u.x).hypot(g.1 - u.y) / crate::pathing::CELL);
                 d.min(std::f32::consts::TAU - d) > NEAR_HEADING
             });
             let moves = behind || goal.is_none_or(|g| (g.0 - u.x).hypot(g.1 - u.y) > 0.49 * crate::pathing::CELL);
@@ -1542,7 +1543,15 @@ impl World {
         // its heading is on it, the walk then done (read: a sheep 0.81 off its goal's
         // bearing drew its next wait two steps later, as the order ended).
         let in_place = self.unit(h).is_some_and(|u| !u.extra.walk_moved && u.extra.order_tags.len() == 18);
-        if in_place && from < until {
+        // One whose first step's turn leaves it within 0.2 of the bearing (done at its
+        // second step) frees them as it ends instead (read: a sheep 0.636 off, its turn
+        // 0.5, freed at its second step, its end; one 0.813 off at its first, done at
+        // its third).  Provisional: the engine's test is not yet read.
+        let quick = goal.zip(self.unit(h)).is_some_and(|(g, u)| {
+            let d = ((g.1 - u.y).atan2(g.0 - u.x) - f32::from_bits(m.heading)).rem_euclid(std::f32::consts::TAU);
+            d.min(std::f32::consts::TAU - d) <= turn + 0.2
+        });
+        if in_place && !quick && from < until {
             if let Some(slots) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)) {
                 self.tags.move_done_in_place(&slots);
             }
@@ -1676,8 +1685,13 @@ impl World {
             if slots.len() == 14 {
                 self.group_member_done(h, &slots, moved);
             } else if slots.len() == 18 || slots.len() == 17 {
+                // An in-place walk still holding its objects here (its first step's turn
+                // left it on the bearing) frees them as an arrival does: its path as the
+                // next step starts (read: a sheep 0.636 off, its path freed the step after
+                // its end).
                 if !moved {
-                    self.tags.move_done_in_place(&slots);
+                    let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
+                    self.tags.move_arrived(&slots, serial);
                 } else if gave_up {
                     let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
                     self.tags.move_done(&slots, serial);

@@ -1299,7 +1299,12 @@ these are the findings behind them.
 - A walk to a goal within reach starts in place only when the goal lies near the
   walker's heading: a sheep 0.81 off did, sheep 0.915 and 3.0 off and a pig 1.40 off
   did not (each turn 0.5).  The engine's test between 0.81 and 0.915 is not yet read;
-  the port takes 0.86 (not 2 turns, 1.0, which the 0.915 sheep contradicts).
+  the port takes 0.86 (not 2 turns, 1.0, which the 0.915 sheep contradicts).  One whose
+  first step's turn leaves it on the bearing (a sheep 0.636 off, 0.419 away, turned
+  0.5 in its first step and done in its second, read in the original's steps) frees
+  its objects as an arrival does, at its end, its path as the next step starts; the
+  port takes "on the bearing" as within 0.2 after one turn (provisional).  With these
+  the quiet game's replay agrees with the original's for all 15624 turns.
 
 ## Where the port departs from the original
 

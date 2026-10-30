@@ -226,6 +226,7 @@ impl World {
             }
             // Its walk starts with the first step after it, in the next tick when none
             // is left in this one.
+            log::trace!("wander due {h:#x} {:.6} step {} tick {:?} of steps' ticks {:?}", f32::from_bits(at), self.steps_before(at), self.agent_tick(at), self.step_ticks);
             due.push((self.steps_before(at), at, h));
         }
         // A gold run's mine timer falls due on the agent queue as a wait does, its walk

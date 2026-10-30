@@ -24,9 +24,13 @@ fn main() {
         }
         // The first records read by class, and those that do not.
         let (mut read, mut raw, mut bad) = (0, 0, 0);
+        let mut raws: std::collections::BTreeMap<String, usize> = Default::default();
         for o in objects.iter().flatten() {
             match o.first() {
-                Ok(w3_formats::w3z::First::Raw(_)) => raw += 1,
+                Ok(w3_formats::w3z::First::Raw(_)) => {
+                    raw += 1;
+                    *raws.entry(format!("{}{}", code(o.entry.kind), code(o.entry.family))).or_insert(0usize) += 1;
+                }
                 Ok(_) => read += 1,
                 Err(e) => {
                     if bad < 5 {
@@ -36,6 +40,6 @@ fn main() {
                 }
             }
         }
-        println!("first records: {read} read, {raw} not yet, {bad} wrong");
+        println!("first records: {read} read, {raw} not yet ({raws:?}), {bad} wrong");
     }
 }

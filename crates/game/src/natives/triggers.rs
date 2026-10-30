@@ -43,18 +43,17 @@ fn register_event_tagged(w: &mut World, trig: u32, kind: EventKind, tagged: bool
         for c in codes {
             let t = w.tags.take_id(c);
             id.get_or_insert(t);
-            if *c == b"`rtl" {
+            if *c == b"`rtl" || *c == b"`fcl" {
                 timer = Some(t.0);
             }
         }
     }
-    let game_state = matches!(kind, EventKind::GameState { .. });
     let e = w.handles.insert(Obj::Event(EventReg { trigger: trig, kind }));
     if let Some(id) = id {
         log::debug!("event {e} {:?} id {id:x?}", codes.first().map(|c| String::from_utf8_lossy(&c[..])));
         w.tags.handle_ids.insert(e, id);
     }
-    if let (true, Some(s)) = (game_state, timer) {
+    if let Some(s) = timer {
         w.tags.event_timers.insert(e, s);
     }
     w.events.push(e);
@@ -65,11 +64,15 @@ fn register_event_tagged(w: &mut World, trig: u32, kind: EventKind, tagged: bool
 }
 
 fn boolexpr(w: &mut World, e: BoolExpr) -> NativeResult {
+    let slot = matches!(e, BoolExpr::Func(_)).then(|| w.tags.take(b"+flt"));
     if let BoolExpr::Func(f) = e {
-        w.tags.take(b"+flt");
         w.tags.handler(f);
     }
-    handle(w.handles.insert(Obj::BoolExpr(e)))
+    let h = w.handles.insert(Obj::BoolExpr(e));
+    if let Some(s) = slot {
+        w.tags.handle_slots.insert(h, s);
+    }
+    handle(h)
 }
 
 fn destroy_boolexpr(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
@@ -320,12 +323,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         TriggerRegisterTrackableTrackEvent => |w, _, a| register_event(w, a.h(0), EventKind::Trackable { trackable: a.h(1), hit: false }),
         TriggerRegisterPlayerEvent => |w, _, a| {
             let Some(p) = w.player_of(a.h(1)) else { return none() };
-            register_event(w, a.h(0), EventKind::Player { player: p, event: a.h(2) as i32 })
+            register_event(w, a.h(0), EventKind::Player { player: p, event: a.h(2) as i32, alliance: 0 })
         },
         TriggerRegisterPlayerUnitEvent => player_unit_event,
         TriggerRegisterPlayerAllianceChange => |w, _, a| {
             let Some(p) = w.player_of(a.h(1)) else { return none() };
-            register_event(w, a.h(0), EventKind::Player { player: p, event: crate::event_ids::EVENT_PLAYER_ALLIANCE_CHANGED })
+            register_event(w, a.h(0), EventKind::Player { player: p, event: crate::event_ids::EVENT_PLAYER_ALLIANCE_CHANGED, alliance: a.h(2) as i32 })
         },
         TriggerRegisterPlayerStateEvent => |w, _, a| {
             let Some(p) = w.player_of(a.h(1)) else { return none() };

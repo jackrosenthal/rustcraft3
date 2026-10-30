@@ -642,7 +642,7 @@ impl Game {
 
     pub fn player_event(&mut self, player: u8, event: i32) {
         let ctx = types::EventCtx { player, has_player: true, event_id: event, ..Default::default() };
-        self.world.fire(&mut self.vm, ctx, move |_, k| matches!(k, types::EventKind::Player { player: p, event: e } if *p == player && *e == event));
+        self.world.fire(&mut self.vm, ctx, move |_, k| matches!(k, types::EventKind::Player { player: p, event: e, .. } if *p == player && *e == event));
     }
 
     /// A line `player` typed: a cheat (see `cheats`), or chat that player chat events hear

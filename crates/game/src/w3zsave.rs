@@ -4,7 +4,7 @@
 
 use w3_formats::w3z::{Array, Field, First, Handlers, Link, ObjectBase, PropertyBase, Ref, SaveGame, Second, SavedObject, Sprite, Tagged, Timing, Widget};
 
-use crate::types::{EventKind, Obj};
+use crate::types::{BoolExpr, EventKind, Obj};
 
 use crate::tags::Code;
 use crate::world::World;
@@ -203,6 +203,109 @@ impl World {
         self.tags.live.iter().find(|(_, (c, _))| c == b"+gam").map_or((0, 0), |(&s, (_, b))| (s, *b))
     }
 
+    /// The records of the script's event registrations, filters, and locations, by
+    /// slot (read against the quiet test map's): a registration's own starts with four
+    /// words (0, -1, -1, 0: provisional, all read so), then its kind's: the engine's
+    /// event id (the script's plus 0x80200), the unit or player named by its slot and
+    /// birth (+0x14, +0x18), its filter, and its handler list, its trigger with the
+    /// event.  A game state's registration of the time of day (`FUN_6f27a110`) holds
+    /// its limit's op (0x80101 on), value, and state, its listeners (one for equal by
+    /// the time's side of its value: the first while past it), and its handler lists:
+    /// itself on 0x80106 and its trigger on 0x80203; an alliance's its player, the
+    /// alliance type, its flag listener, and the same lists, its trigger's on 0x8020c; a
+    /// player state's its op, player, state, and value, and its trigger's on 0x8020b.
+    /// A filter names its function's handler; a location keeps its point.
+    pub fn script_object_records(&self) -> Vec<(u32, First, Option<Second>)> {
+        let mut out = Vec::new();
+        let words = |ws: &[u32]| ws.iter().map(|&w| Field::Word(w)).collect::<Vec<_>>();
+        let handler_list = |pairs: Vec<((u32, u32), u32)>| Field::List(pairs.into_iter().map(|(r, e)| vec![Field::Ref(rf(r)), Field::Word(e)]).collect());
+        let player = |p: u8| self.tags.player_slots.get(p as usize).map_or((u32::MAX, u32::MAX), |&s| self.tagged(s));
+        let slot_of = |h: u32| self.tags.handle_slots.get(&h).map(|&s| self.tagged(s));
+        let hours = self.time_of_day;
+        for id in self.handles.ids() {
+            match self.handles.get(id) {
+                Some(Obj::Event(r)) => {
+                    let Some(&own) = self.tags.handle_ids.get(&id) else { continue };
+                    let Some(Obj::Trigger(t)) = self.handles.get(r.trigger) else { continue };
+                    let Some(&trig) = t.slots.first() else { continue };
+                    let trig = self.tagged(trig);
+                    let base = [0, u32::MAX, u32::MAX, 0];
+                    let (code, own_words, tail): (&[u8; 4], Vec<u32>, Vec<Field>) = match &r.kind {
+                        EventKind::Unit { unit, event } => {
+                            let e = *event as u32 + 0x8_0200;
+                            let u = self.unit(*unit).and_then(|u| u.extra.object_slots[0].first().copied()).unwrap_or((u32::MAX, u32::MAX));
+                            (b"uevt", vec![0], vec![Field::Word(e), Field::Word(u.0), Field::Word(u.1), Field::Word(0), Field::Ref(NONE), handler_list(vec![(trig, e)])])
+                        }
+                        EventKind::Player { player: p, event, alliance } if *event == crate::event_ids::EVENT_PLAYER_ALLIANCE_CHANGED => {
+                            let pl = player(*p);
+                            let listener = self.tags.event_timers.get(&id).map_or(NONE, |&s| rf(self.tagged(s)));
+                            let mut ws = words(&base);
+                            ws.extend([Field::Word(0), Field::Word(0x8_0106), Field::Real(0.0), Field::Word(0), Field::Word(pl.0), Field::Word(pl.1), Field::Word(*alliance as u32)]);
+                            let tail = vec![Field::List(Vec::new()), Field::Ref(listener), handler_list(vec![(own, 0x8_0106)]), handler_list(vec![(trig, 0x8_020c)])];
+                            out.push((own.0, agent_first(own, b"alvt", &[]), Some(Second::Agent { own: ws, handlers: game_handlers(self.game_object()), tail })));
+                            continue;
+                        }
+                        EventKind::Player { player: p, event, .. } | EventKind::PlayerUnit { player: p, event, filter: None } => {
+                            let e = *event as u32 + 0x8_0200;
+                            let pl = player(*p);
+                            (b"pevt", vec![0, e, pl.0, pl.1, 0, 0], vec![Field::Ref(NONE), handler_list(vec![(trig, e)])])
+                        }
+                        EventKind::PlayerUnit { player: p, event, filter: Some(f) } => {
+                            let e = *event as u32 + 0x8_0200;
+                            let pl = player(*p);
+                            let f = slot_of(*f).map_or(NONE, rf);
+                            (b"pevt", vec![0, e, pl.0, pl.1, 0, 0], vec![Field::Ref(f), handler_list(vec![(trig, e)])])
+                        }
+                        EventKind::PlayerState { player: p, state, op, value } => {
+                            let pl = player(*p);
+                            let listener = self.tags.event_timers.get(&id).map_or(NONE, |&s| rf(self.tagged(s)));
+                            let op = *op as u32 + 0x8_0101;
+                            let mut ws = words(&base);
+                            ws.extend(words(&[0, op, pl.0, pl.1, 0, *state as u32, op]));
+                            ws.push(Field::Real(*value));
+                            let tail = vec![Field::Ref(NONE), Field::List(Vec::new()), Field::Ref(listener), handler_list(vec![(trig, 0x8_020b)])];
+                            out.push((own.0, agent_first(own, b"psvt", &[]), Some(Second::Agent { own: ws, handlers: game_handlers(self.game_object()), tail })));
+                            continue;
+                        }
+                        EventKind::Game(event) => {
+                            let e = *event as u32 + 0x8_0200;
+                            (b"gevt", vec![e], vec![handler_list(vec![(trig, e)])])
+                        }
+                        EventKind::TimerExpire(timer) => {
+                            let tm = slot_of(*timer).map_or(NONE, rf);
+                            (b"tmet", vec![0], vec![Field::Ref(tm), handler_list(vec![(trig, 0x8_0204)])])
+                        }
+                        EventKind::GameState { state: 2, op, value } => {
+                            let listener = self.tags.event_timers.get(&id).map_or(NONE, |&s| rf(self.tagged(s)));
+                            let first = *op != 2 || hours > *value;
+                            let (l1, l2) = if first { (listener, NONE) } else { (NONE, listener) };
+                            let mut ws = words(&base);
+                            ws.extend([Field::Word(0x8_0106), Field::Word(*op as u32 + 0x8_0101), Field::Real(*value), Field::Word(2)]);
+                            let tail = vec![Field::List(Vec::new()), Field::Ref(l1), Field::Ref(l2), handler_list(vec![(own, 0x8_0106)]), handler_list(vec![(trig, 0x8_0203)])];
+                            out.push((own.0, agent_first(own, b"gfvt", &[]), Some(Second::Agent { own: ws, handlers: game_handlers(self.game_object()), tail })));
+                            continue;
+                        }
+                        _ => continue,
+                    };
+                    let mut ws = words(&base);
+                    ws.extend(words(&own_words));
+                    out.push((own.0, agent_first(own, code, &[]), Some(Second::Agent { own: ws, handlers: game_handlers(self.game_object()), tail })));
+                }
+                Some(Obj::BoolExpr(BoolExpr::Func(f))) => {
+                    let Some(own) = slot_of(id) else { continue };
+                    let handler = self.tags.handler_objects.iter().find(|(_, g)| *g == f).map_or(NONE, |(&s, _)| rf(self.tagged(s)));
+                    out.push((own.0, agent_first(own, b"+flt", &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail: vec![Field::Ref(handler)] })));
+                }
+                Some(Obj::Location(x, y)) => {
+                    let Some(own) = slot_of(id) else { continue };
+                    out.push((own.0, agent_first(own, b"+loc", &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail: vec![Field::Real(*x), Field::Real(*y)] })));
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
     /// An object's slot with its birth, as references name it.
     fn tagged(&self, slot: u32) -> (u32, u32) {
         (slot, self.tags.live.get(&slot).map_or(0, |e| e.1))
@@ -374,7 +477,7 @@ impl World {
                 seconds.insert(slot, sec);
             }
         }
-        for (slot, f, sec) in self.trigger_records() {
+        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()) {
             records.insert(slot, f);
             if let Some(sec) = sec {
                 seconds.insert(slot, sec);
@@ -529,6 +632,39 @@ impl World {
                 }
             }
             out.push(format!("triggers' objects: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+            // The script's other objects.
+            let (mut same, mut differ, mut first) = (0, 0, None);
+            for (slot, f, sec) in self.script_object_records() {
+                let Some(o) = by_slot.get(&slot) else { continue };
+                let ok1 = o.first().ok().as_ref() == Some(&f);
+                let ok2 = sec.as_ref().is_none_or(|s| o.second().ok().as_ref() == Some(s));
+                if ok1 && ok2 {
+                    same += 1;
+                } else {
+                    differ += 1;
+                    let brief = |s: Option<Second>| match s {
+                        Some(Second::Agent { own, handlers, tail }) => format!("own {own:?} keyed {:?} fixed {:?} events {} tail {tail:?}", handlers.keyed, handlers.fixed, handlers.events.len()),
+                        other => format!("{other:?}"),
+                    };
+                    let detail = if ok1 { format!("ours {}; the original's {}", brief(sec.clone()), brief(o.second().ok())) } else { format!("ours {f:?}; the original's {:?}", o.first()) };
+                    let line = format!("slot {slot} ({}): first {ok1} second {ok2}; {detail}", String::from_utf8_lossy(&o.entry.kind.to_be_bytes()));
+                    if std::env::var("W3Z_ALL").is_ok() {
+                        out.push(line.clone());
+                    }
+                    first.get_or_insert(line);
+                }
+            }
+            if false {
+                for (slot, func) in &self.tags.handler_objects {
+                    let k = self.tags.function_numbers.get(func).copied().unwrap_or(0);
+                    let theirs = by_slot.get(slot).and_then(|o| o.second().ok()).and_then(|s| match s {
+                        Second::Agent { tail, .. } => tail.first().cloned(),
+                        _ => None,
+                    });
+                    out.push(format!("handler slot {slot} birth {} func {func} ours {k} theirs {theirs:?}", self.tagged(*slot).1));
+                }
+            }
+            out.push(format!("script's objects: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
         }
         out.push(match free.chunks(4).zip(m.free[0].chunks(4)).position(|(a, b)| a != b) {
             None if free.len() == m.free[0].len() => format!("free list: the same, {} slots", free.len() / 4 - 1),

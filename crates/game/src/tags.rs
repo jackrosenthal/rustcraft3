@@ -56,6 +56,9 @@ pub struct Tags {
     /// function is given to an object (an action, a filter, a timer; `FUN_6f2872f0`).
     #[serde(default)]
     pub handlers: std::collections::BTreeSet<u32>,
+    /// Each player's object (`+ply`), by number.
+    #[serde(default)]
+    pub player_slots: Vec<u32>,
     /// The handlers' objects (`hdlr`, CJassFunc): each slot's function (an action's
     /// or filter's, made once a function, or a timer's own).
     #[serde(default)]
@@ -103,7 +106,8 @@ pub struct Tags {
     /// dialogs, their buttons, trackables, and event registrations, by handle.
     #[serde(default)]
     pub handle_ids: std::collections::BTreeMap<u32, (u32, u32)>,
-    /// Game state events' timers' slots, by event handle.
+    /// Event registrations' listeners' slots (a game state's `` `rtl ``, an alliance's or
+    /// player state's `` `fcl ``), by event handle.
     #[serde(default)]
     pub event_timers: std::collections::BTreeMap<u32, u32>,
     /// The engine's day timer's slot (the `rtl among its objects at load, replaced at
@@ -125,7 +129,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.

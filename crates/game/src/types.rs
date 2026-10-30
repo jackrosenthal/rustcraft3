@@ -1390,7 +1390,13 @@ pub enum EventKind {
     TimerExpire(u32),
     GameState { state: i32, op: i32, value: f32 },
     Game(i32),
-    Player { player: u8, event: i32 },
+    /// A player's event; an alliance change's names the alliance type besides.
+    Player {
+        player: u8,
+        event: i32,
+        #[serde(default)]
+        alliance: i32,
+    },
     PlayerChat { player: u8, text: String, exact: bool },
     PlayerUnit { player: u8, event: i32, filter: Option<u32> },
     Unit { unit: u32, event: i32 },

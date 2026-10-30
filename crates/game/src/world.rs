@@ -756,7 +756,8 @@ impl World {
             players.push(Player::new(i, 0));
             // Each player's tags (read under Wine): the player, 26 flags, a flag
             // listener, its alliances, 11 flags.
-            tags.take(b"+ply");
+            let s = tags.take(b"+ply");
+            tags.player_slots.push(s);
             tags.take_n(b"`flg", 26);
             tags.take_all(&[b"`fcl", b"ally"]);
             tags.take_n(b"`flg", 11);
@@ -1317,7 +1318,7 @@ impl World {
 
     /// Whether a player has a registration for a player event.
     pub fn hears_player_event(&self, player: u8, event: i32) -> bool {
-        self.events.iter().any(|&e| matches!(self.handles.get(e), Some(Obj::Event(r)) if matches!(r.kind, EventKind::Player { player: p, event: v } if p == player && v == event)))
+        self.events.iter().any(|&e| matches!(self.handles.get(e), Some(Obj::Event(r)) if matches!(r.kind, EventKind::Player { player: p, event: v, .. } if p == player && v == event)))
     }
 
     pub fn fire_trigger(&mut self, vm: &mut Vm, trig: u32, ctx: EventCtx) {

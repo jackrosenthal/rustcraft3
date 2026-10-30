@@ -1472,6 +1472,17 @@ Formats the port made its own, to be replaced by the original's:
   holds the game's registration of event 0x80267, which a timer's own handler lacks.
   Every object outside its family's own records (agents, the trees' widgets) holds
   that registration, it seems: the trees and handlers read so.
+  The event registrations agree too, with the filters and locations (83): each
+  starts its own with four words (0, -1, -1, 0), then its kind's: the engine's event
+  id, the script's plus 0x80200 (the natives add it: `FUN_6f217cf0`); the unit or
+  player it names by slot and birth (`FUN_6f27aa90`: the agent's +0x14 and +0x18);
+  its filter; and the list of its trigger with the event.  The players' objects are
+  the first made, 40 slots each from 0 (Neutral Passive's at 600).
+  TriggerRegisterPlayerEvent for an alliance change makes an alliance's registration
+  (`alvt`, by `FUN_6f217510` for ALLIANCE_PASSIVE), its player, alliance type, and
+  flag listener kept.  A time-of-day registration keeps its op (0x80101 on), value,
+  state, and its listener, one for equal in its first place while the time is past
+  its value, its second while short of it.
 - Setting the time of day (SetFloatGameState) passes the time-of-day events'
   listeners as the clock does, but an event for equal runs its trigger only if the
   time is its value to 0.001 (`FUN_6f27c5c0`: its listener replaced the other way,

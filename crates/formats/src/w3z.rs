@@ -450,11 +450,52 @@ pub enum Second {
     /// three reals, `FUN_6f6c39b0`), its handlers, the widget's state, and two bytes and
     /// three words.
     Destructable { own: (u32, [f32; 3]), handlers: Handlers, widget: Widget, bytes: [u8; 2], words: [u32; 3] },
+    /// A unit (`+w3u`, CUnit's `FUN_6f696490`), not yet named field by field: its own
+    /// word, its handlers, the widget's state, its event lists 0x80234 to 0x80258 and
+    /// 0x80319 to 0x80329, then its fields in the order written (timers, references,
+    /// words, and reals).
+    Unit { own: u32, handlers: Handlers, widget: Widget, lists: Vec<Vec<(Ref, u32)>>, fields: Vec<Field> },
     /// No record (an engine object, or an agent without one).
     Empty,
     /// Not yet read.
     Raw(Vec<u8>),
 }
+
+/// A field of a record not yet named, as written: a word, a real, a byte, a short, a
+/// reference, or a timer (CAgentTimer's `FUN_6f060ba0`: a reference, a word, and an
+/// optional block).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Field {
+    Word(u32),
+    Real(f32),
+    Byte(u8),
+    Short(u16),
+    Ref(Ref),
+    Timer(Ref, u32, Timing),
+}
+
+/// Reads fields by a layout: 'w' a word, 'f' a real, 'b' a byte, 's' a short, 'r' a
+/// reference, 't' a timer.
+fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
+    layout
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .map(|c| {
+            Ok(match c {
+                'w' => Field::Word(r.u32()?),
+                'f' => Field::Real(r.f32()?),
+                'b' => Field::Byte(r.u8()?),
+                's' => Field::Short(r.u16()?),
+                'r' => Field::Ref(Ref::read(r)?),
+                't' => Field::Timer(Ref::read(r)?, r.u32()?, Timing::read(r)?),
+                _ => unreachable!("layout {c}"),
+            })
+        })
+        .collect()
+}
+
+/// CUnit's fields after its event lists, in the order `FUN_6f696490` writes them.
+const UNIT_FIELDS: &str = "t wwwwwww r s www t wwwwww www wwwwwwwwwwww www www rf rf rff wwwwwwwwwwwwwwwwwwwww fff wwwww rrr ffff bb w www r b ww wwwwww www wwwww w";
 
 /// A widget's sprite as saved (`FUN_6f1a4050`): its model's path, a real, a short, a
 /// byte, a word, two reals, two words, a real, a byte, three bytes, and a list of
@@ -533,6 +574,13 @@ impl SavedObject {
         let mut r = Reader::new(&self.second);
         let out = match &self.entry.kind.to_be_bytes() {
             b"uref" => Second::UnitRefs { words: words(&mut r)?, handlers: Handlers::read(&mut r)? },
+            b"+w3u" => {
+                let own = r.u32()?;
+                let (handlers, widget) = (Handlers::read(&mut r)?, Widget::read(&mut r)?);
+                let list = |r: &mut Reader| -> Result<Vec<(Ref, u32)>, Error> { (0..r.u32()?).map(|_| Ok((Ref::read(r)?, r.u32()?))).collect() };
+                let lists = (0..37 + 17).map(|_| list(&mut r)).collect::<Result<_, _>>()?;
+                Second::Unit { own, handlers, widget, lists, fields: fields(&mut r, UNIT_FIELDS)? }
+            }
             b"+w3d" => {
                 let own = (r.u32()?, reals(&mut r)?);
                 let (handlers, widget) = (Handlers::read(&mut r)?, Widget::read(&mut r)?);

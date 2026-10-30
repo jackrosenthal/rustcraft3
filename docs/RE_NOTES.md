@@ -1341,7 +1341,20 @@ Formats the port made its own, to be replaced by the original's:
   size-prefixed sections (`FUN_6f15b4f0`: regions `FUN_6f15c750`, pathing
   `FUN_6f167500`, then each table's objects' first records `FUN_6f15c8b0`, vf 0x24, and
   second `FUN_6f15c930`, vf 0x2c: each record size-prefixed and ended by "espi", one
-  per entry in order), two words, and the map's bounds.  An agent's entry is its
+  per entry in order), two words, and the map's bounds.  The regions section
+  (`w3_formats::w3z::PathingMaps`, written back byte for byte) is the pathing maps:
+  references to two `^pma` and four `^ama` (the proximity maps and the grids), the two
+  proximity maps (`FUN_6f14d620`: a frame, its size in cells, bounds, and cell scale,
+  `FUN_6f14d590`; three words; and each cell with flags or objects, in rows, its
+  column, row, flags in the top byte, and the objects in it, `FUN_6f14d4c0`), the four
+  grids (`FUN_6f163120`: the frame and a word for each cell, at 2, 4, 8, and 16 times
+  the pathing cell), and references to an `l^sy` and an `l^ac`.  On Booty Bay the
+  first proximity map (99 by 51, 8 cells each) holds nothing, the second is the
+  pathing map (768 by 384, every cell written): its flags are the map's own (.wpm)
+  with 0x01 set, 0x10 where 0x02 is (not walkable), and 0x20 where blighted (5824
+  cells by an undead player's start at 5 seconds); its objects are only `^pmr`
+  (a pathing footprint's region, listed in each cell it covers: 71616 at 5 seconds).
+  An agent's entry is its
   CAgentBaseAbs: its first record `FUN_6f146480` (its base's, a reference, a counted
   list of references, four more), its second its agent's vf 0x38 (CAgent's
   `FUN_6f03eda0`: the agent base's `FUN_6f0562b0`, then a word for each event id

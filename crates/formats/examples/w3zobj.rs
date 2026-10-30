@@ -100,6 +100,49 @@ fn main() {
         return;
     }
     // "seed": the slot table's random seed (after its slots, nine bytes each).
+    // "sizes": the object manager's sections' sizes.
+    if a[2] == "sizes" {
+        let m = s.objects.as_ref().unwrap();
+        println!("header {} tables {} {} free {} {} block {}", m.header.len(), m.tables[0].len(), m.tables[1].len(), m.free[0].len(), m.free[1].len(), m.block.len());
+        println!("data {:?}", m.data.iter().map(|d| d.len()).collect::<Vec<_>>());
+        println!("rest {}", s.rest.len());
+        return;
+    }
+    // "pathing": the pathing maps' frames and a census of the pathing map's flags.
+    if a[2] == "pathing" {
+        let m = s.objects.as_ref().unwrap();
+        let p = w3_formats::w3z::PathingMaps::parse(&m.data[0]).unwrap();
+        assert_eq!(p.to_bytes(), m.data[0], "the pathing maps written back differ");
+        println!("refs {:?} tail {:?}", p.refs, p.tail);
+        for x in &p.proximity {
+            let mut flags = std::collections::BTreeMap::new();
+            for c in &x.cells {
+                *flags.entry(c.2 >> 24).or_insert(0) += 1;
+            }
+            println!("proximity {:?} {:?}: {} cells, {} objects, flags {flags:x?}", x.frame, x.words, x.cells.len(), x.cells.iter().map(|c| c.3.len()).sum::<usize>());
+        }
+        for g in &p.grids {
+            println!("grid {:?}", g.frame);
+        }
+        let kinds: std::collections::HashMap<u32, String> = m.tables.iter().flatten().map(|e| (e.tag, format!("{}/{}", code(e.kind), code(e.family)))).collect();
+        let mut census = std::collections::BTreeMap::new();
+        for c in &p.proximity[1].cells {
+            for r in &c.3 {
+                *census.entry(kinds.get(&r.0).cloned().unwrap_or(format!("? {}", r.0))).or_insert(0) += 1;
+            }
+        }
+        println!("objects in cells: {census:?}");
+        for r in p.refs.iter().chain(&p.tail) {
+            println!("ref {r:?}: {:?}", kinds.get(&r.0));
+        }
+        return;
+    }
+    // "section <k> <file>": the object manager's data section k written to a file.
+    if a[2] == "section" {
+        let m = s.objects.as_ref().unwrap();
+        std::fs::write(&a[4], &m.data[a[3].parse::<usize>().unwrap()]).unwrap();
+        return;
+    }
     if a[2] == "seed" {
         let n = s.slots[0] as usize;
         let at = 1 + 9 * n;

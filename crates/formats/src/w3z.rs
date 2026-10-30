@@ -107,6 +107,83 @@ impl ObjectManager {
     }
 }
 
+/// The objects' first data section (`FUN_6f15c750`): the engine's pathing maps, each
+/// referred to by its tags first, then the two proximity maps' cells and the four
+/// grids' (`FUN_6f14d620`, `FUN_6f163120`), then two more references.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PathingMaps {
+    pub refs: [Ref; 6],
+    pub proximity: [ProximityMap; 2],
+    pub grids: [Grid; 4],
+    pub tail: [Ref; 2],
+}
+
+/// A map's frame (`FUN_6f14d590`, `FUN_6f163090`): its size in cells, its bounds as
+/// reals and as words, and its cell's size and that's inverse (in the pathing map's
+/// cells: 8 and 0.125 for a map of a quarter of a tile).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MapFrame {
+    pub width: u32,
+    pub height: u32,
+    pub bounds: [f32; 4],
+    pub cells: [u32; 4],
+    pub scale: [f32; 2],
+}
+
+/// A proximity map (`FUN_6f14d620`): its frame, three words, and each cell with flags
+/// or objects (`FUN_6f14d4c0`), in rows: its column, row, flags (the cell's top byte;
+/// in the pathing map its pathing), and its objects.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ProximityMap {
+    pub frame: MapFrame,
+    pub words: [u32; 3],
+    pub cells: Vec<(u32, u32, u32, Vec<Ref>)>,
+}
+
+/// A grid (`FUN_6f163120`): its frame and each cell's word, in rows.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Grid {
+    pub frame: MapFrame,
+    pub cells: Vec<u16>,
+}
+
+impl MapFrame {
+    fn read(r: &mut Reader) -> Result<MapFrame, Error> {
+        Ok(MapFrame { width: r.u32()?, height: r.u32()?, bounds: reals(r)?, cells: words(r)?, scale: reals(r)? })
+    }
+}
+
+impl PathingMaps {
+    pub fn parse(b: &[u8]) -> Result<PathingMaps, Error> {
+        let mut r = Reader::new(b);
+        let mut m = PathingMaps::default();
+        for x in &mut m.refs {
+            *x = Ref::read(&mut r)?;
+        }
+        for p in &mut m.proximity {
+            p.frame = MapFrame::read(&mut r)?;
+            p.words = words(&mut r)?;
+            let n = r.u32()?;
+            for _ in 0..n {
+                let (x, y, flags, k) = (r.u32()?, r.u32()?, r.u32()?, r.u32()?);
+                let refs = (0..k).map(|_| Ref::read(&mut r)).collect::<Result<_, _>>()?;
+                p.cells.push((x, y, flags, refs));
+            }
+        }
+        for g in &mut m.grids {
+            g.frame = MapFrame::read(&mut r)?;
+            g.cells = (0..g.frame.width * g.frame.height).map(|_| r.u16()).collect::<Result<_, _>>()?;
+        }
+        for x in &mut m.tail {
+            *x = Ref::read(&mut r)?;
+        }
+        if r.remaining() > 0 {
+            return Err(Error::Format("the pathing maps not read to their end"));
+        }
+        Ok(m)
+    }
+}
+
 /// A tagged object's entry: its family's code and its kind's (as the engine holds
 /// them: "+agl" and "+ply" for a player's agent, "^pma" and "^pmr" for a pathing
 /// region), and its tags.
@@ -1772,6 +1849,45 @@ fn put_fields(o: &mut Out, layout: &str, f: &[Field]) -> Result<(), Error> {
         return Err(bad());
     }
     Ok(())
+}
+
+impl MapFrame {
+    fn write(&self, o: &mut Out) {
+        o.words(&[self.width, self.height]);
+        o.reals(&self.bounds);
+        o.words(&self.cells);
+        o.reals(&self.scale);
+    }
+}
+
+impl PathingMaps {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut o = Out::default();
+        for x in &self.refs {
+            x.write(&mut o);
+        }
+        for p in &self.proximity {
+            p.frame.write(&mut o);
+            o.words(&p.words);
+            o.u32(p.cells.len() as u32);
+            for (x, y, flags, refs) in &p.cells {
+                o.words(&[*x, *y, *flags, refs.len() as u32]);
+                for r in refs {
+                    r.write(&mut o);
+                }
+            }
+        }
+        for g in &self.grids {
+            g.frame.write(&mut o);
+            for &c in &g.cells {
+                o.u16(c);
+            }
+        }
+        for x in &self.tail {
+            x.write(&mut o);
+        }
+        o.0
+    }
 }
 
 impl ObjectManager {

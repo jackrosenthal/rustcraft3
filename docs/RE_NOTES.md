@@ -481,7 +481,8 @@ these are the findings behind them.
     and the last three of its five `^pmr` freed at that chop (turn 2775), the worker
     stopping as that chop's backswing ends (its target gone, `FUN_6f40bce0`), full
     or not.  At the hall a felled tree's worker is ordered to the live tree cheapest
-    to reach from it within Ahar's Area (`FUN_6f416740`, `FUN_6f4153a0`,
+    to reach from the tree its order named (the felled one, the first time) within
+    Ahar's Area (`FUN_6f416740`, `FUN_6f4153a0`,
     `FUN_6f439e00`): the trees about it are enumerated by 256-unit blocks from the
     map's corner, row by row, each block's latest made first (`FUN_6f651170`), each
     judged by a path search from the felled tree to it (`FUN_6f059590`, under a limit

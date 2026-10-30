@@ -570,7 +570,12 @@ these are the findings behind them.
   object, original then custom, `FUN_6f6fb170`: `rol(rol(old, 3) ^ new, 3)` then each
   modification `u = rol(u ^ m, 3)`, a modification `FUN_6f6e8790`: its field and type,
   its level and data column for kinds with levels, then its value: an integer's or
-  real's bits, an unreal's `to_int`, a string's hash).  12 units and 13 items (both
+  real's bits, an unreal's `to_int`, a string's hash (`FUN_6f1de250`, the payload
+  hash's form) unless the field's stringExt is set; ids the file's characters as a
+  little-endian word).  Read with a custom map (Mafarazzo TD: 83 units with 2011
+  modifications, an ability with levels): its data tables are the data set's
+  (Custom_V1), the object data not applied to them, and every module as the port
+  computes it.  12 units and 13 items (both
   UnitMetaData), 14 destructables, 15 doodads (Doodads\DoodadMetaData; not made in a
   game), 16 abilities, 17 buffs, 18 upgrades; 19 was 0.  Read under winedbg in a game
   of Booty Bay played alone: each table's hash and each module as the port computes
@@ -1194,7 +1199,11 @@ these are the findings behind them.
     wanderer's order due 683.2195, both before a turn's second step;
     `World::timed_frees_to`).
   - A replay's checksum records are the keepalives (read: a LAN game's
-    TempReplay.w3g, turn for turn).  The original's record: for a network game flags
+    TempReplay.w3g, turn for turn).  A replay played back makes no keepalives (read:
+    the module loop never ran through a whole game's replay), so the original does not
+    check them.  In a game played alone the first keepalive's time is 0 and, with a
+    computer player, 58 more objects were born by then than the port makes (13014,
+    presence 13007): the computer's AI makes engine objects the port's does not yet.  The original's record: for a network game flags
     0x8000, game type 9, its players' count, its host's record and name; for a game
     played alone flags 0, game type 1, 12 players, "Local Game", the profile's name;
     then the start records 0x1A to 0x1C (each 1), each turn followed by its checksum,

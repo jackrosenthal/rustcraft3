@@ -153,6 +153,76 @@ pub fn slot(hash: u32) -> u32 {
     hash.rotate_left(3)
 }
 
+/// A meta table's fields whose strings are left out of the object data's hash: those
+/// with a nonzero stringExt (CObjectMetaDB's column 12, `FUN_6f6e8540`), by id.
+pub fn string_ext(meta: &Slk) -> std::collections::HashSet<[u8; 4]> {
+    let Some(col) = (0..meta.cols).find(|&c| meta.cell(0, c) == b"stringExt") else { return Default::default() };
+    (1..meta.rows).filter(|&r| atoi(meta.cell(r, col)) != 0).filter_map(|r| meta.cell(r, 0).try_into().ok()).collect()
+}
+
+/// A map's object modification file's hash (`FUN_6f6e50d0`): its objects, the original
+/// ones modified then the new ones, each `h = rol(object ^ h, 3)`.  An object
+/// (`FUN_6f6fb170`): `rol(rol(old, 3) ^ new, 3)`, then each modification `u = rol(u ^
+/// m, 3)`.  A modification (`FUN_6f6e8790`): `rol(rol(field, 3) ^ type, 3)`, with its
+/// level and data column in turn for the kinds that have them (`leveled`: abilities,
+/// upgrades, doodads from version 2), then its value: an integer's or a real's bits
+/// (types 0 and 1), an unreal's whole part (2, `efloat::to_int`), a string's hash (3,
+/// `keepalive::payload_hash`, but for fields in `skip`).  Ids are the file's four
+/// characters as a little-endian word.  None when the file does not read.  Read: a
+/// custom map's units (83 objects, 2011 modifications) and abilities, each module as
+/// the original's.
+pub fn object_data(data: &[u8], leveled: Option<bool>, skip: &std::collections::HashSet<[u8; 4]>) -> Option<u32> {
+    struct Rd<'a>(&'a [u8]);
+    impl<'a> Rd<'a> {
+        fn take(&mut self, n: usize) -> Option<&'a [u8]> {
+            let (b, rest) = (self.0.get(..n)?, self.0.get(n..)?);
+            self.0 = rest;
+            Some(b)
+        }
+        fn word(&mut self) -> Option<u32> {
+            self.take(4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        }
+        fn cstr(&mut self) -> Option<&'a [u8]> {
+            let end = self.0.iter().position(|&c| c == 0)?;
+            let s = self.take(end)?;
+            self.take(1)?;
+            Some(s)
+        }
+    }
+    let mut r = Rd(data);
+    let version = r.word()?;
+    let leveled = leveled.unwrap_or(version >= 2);
+    let mut h = 0u32;
+    for _list in 0..2 {
+        let Some(n) = r.word() else { break };
+        for _ in 0..n {
+            let (old, new) = (r.word()?, r.word()?);
+            let mut o = (old.rotate_left(3) ^ new).rotate_left(3);
+            for _ in 0..r.word()? {
+                let field: [u8; 4] = r.take(4)?.try_into().ok()?;
+                let ty = r.word()?;
+                let mut m = (u32::from_le_bytes(field).rotate_left(3) ^ ty).rotate_left(3);
+                if leveled {
+                    let (level, column) = (r.word()?, r.word()?);
+                    m = ((m ^ level).rotate_left(3) ^ column).rotate_left(3);
+                }
+                m = match ty {
+                    0 | 1 => (m ^ r.word()?).rotate_left(3),
+                    2 => (m ^ efloat::to_int(r.word()?) as u32).rotate_left(3),
+                    _ => {
+                        let text = r.cstr()?;
+                        if skip.contains(&field) { m } else { (m ^ crate::keepalive::payload_hash(text)).rotate_left(3) }
+                    }
+                };
+                r.word()?;
+                o = (o ^ m).rotate_left(3);
+            }
+            h = (o ^ h).rotate_left(3);
+        }
+    }
+    Some(h)
+}
+
 /// The data modules from the tables as the game's archives give them (the map's own
 /// over the data set's; `read` by path).  The data tables': 4 the unit tables
 /// (`FUN_6f688f70`), 5 AbilityData (`FUN_6f6ac4f0`), 7 ItemData (`FUN_6f658a20`: hashed
@@ -165,18 +235,27 @@ pub fn slot(hash: u32) -> u32 {
 pub fn modules(read: impl Fn(&str) -> Vec<u8>) -> [(u8, u32); 11] {
     let table = |n: &str| Slk::parse(&read(n)).hash();
     let units = unit_tables(&read("Units\\UnitData.slk"), &read("Units\\UnitAbilities.slk"), &read("Units\\UnitWeapons.slk"), &read("Units\\UnitBalance.slk"));
-    let unit_meta = table("Units\\UnitMetaData.slk");
+    // A kind's module: its meta table's hash, with the map's object file folded in.
+    let custom = |meta: &str, file: &str, leveled: Option<bool>| {
+        let meta = read(meta);
+        let meta = Slk::parse(&meta);
+        let data = read(file);
+        match (data.is_empty(), object_data(&data, leveled, &string_ext(&meta))) {
+            (false, Some(o)) => (o ^ meta.hash()).rotate_left(3),
+            _ => meta.hash(),
+        }
+    };
     [
         (4, slot(units)),
         (5, slot(table("Units\\AbilityData.slk"))),
         (7, slot(slot(table("Units\\ItemData.slk")))),
         (9, slot(table("Units\\UpgradeData.slk"))),
-        (12, unit_meta),
-        (13, unit_meta),
-        (14, table("Units\\DestructableMetaData.slk")),
-        (16, table("Units\\AbilityMetaData.slk")),
-        (17, table("Units\\AbilityBuffMetaData.slk")),
-        (18, table("Units\\UpgradeMetaData.slk")),
+        (12, custom("Units\\UnitMetaData.slk", "war3map.w3u", Some(false))),
+        (13, custom("Units\\UnitMetaData.slk", "war3map.w3t", Some(false))),
+        (14, custom("Units\\DestructableMetaData.slk", "war3map.w3b", Some(false))),
+        (16, custom("Units\\AbilityMetaData.slk", "war3map.w3a", Some(true))),
+        (17, custom("Units\\AbilityBuffMetaData.slk", "war3map.w3h", Some(false))),
+        (18, custom("Units\\UpgradeMetaData.slk", "war3map.w3q", Some(true))),
         (19, 0),
     ]
 }

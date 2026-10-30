@@ -2313,6 +2313,14 @@ pub struct SavedDestructable {
     /// test map kills goes from 50 of 50 to 0).
     pub life: f32,
     pub max_life: f32,
+    /// Its variation, z, and scale (read against Booty Bay's war3map.doo: its last
+    /// bytes' first, its last words' first as a real, and the sprite's first real).
+    pub variation: u8,
+    pub z: f32,
+    pub scale: f32,
+    /// Where it stands (the widget's position).
+    pub x: f32,
+    pub y: f32,
 }
 
 impl SaveGame {
@@ -2321,8 +2329,21 @@ impl SaveGame {
         let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
         let mut out = Vec::new();
         for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == b"+w3d") {
-            let Second::Destructable { own, widget, .. } = o.second()? else { continue };
-            out.push(SavedDestructable { tag: o.entry.tag, birth: o.entry.birth, type_id: widget.word, life: own.1[0], max_life: own.1[2] });
+            let Second::Destructable { own, widget, bytes, words, .. } = o.second()? else { continue };
+            let pos = widget.refs.as_ref().map_or([0.0; 2], |r| r.1);
+            let scale = widget.sprite.as_ref().map_or(1.0, |s| s.reals[0]);
+            out.push(SavedDestructable {
+                tag: o.entry.tag,
+                birth: o.entry.birth,
+                type_id: widget.word,
+                life: own.1[0],
+                max_life: own.1[2],
+                variation: bytes[0],
+                z: f32::from_bits(words[0]),
+                scale,
+                x: pos[0],
+                y: pos[1],
+            });
         }
         Ok(out)
     }

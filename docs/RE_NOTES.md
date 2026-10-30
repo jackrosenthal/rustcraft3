@@ -1363,6 +1363,18 @@ Formats the port made its own, to be replaced by the original's:
   first word), the cells listing it (+0x3c, in its low bits), and a word (+0x40).
   On the pathing map 4254 regions are listed in cells and 1491 of kind 1 in none;
   those on the first map (1597) and 106 of kind 0 are listed nowhere.
+- A destructable's records (`+w3d`, 1408 trees of Booty Bay at 5 seconds, read against
+  its war3map.doo): its first the agent's (its class's `^adf`, its `` `pos ``); its
+  second its own (a word, 6 or 0x106, then life, 0, and maximum), handlers (one
+  fixed, the same for all), the widget (its sprite: model by variation, the doodad's
+  scale as its first real; owner 0; its type; two shorts; three of its five `^pmr`,
+  the footprint's, and its position; 230 as its last real), then its variation
+  and two bytes, and three words: its z (as a real), -2, and 1.0.  What varies
+  besides: the sprite's color (0x202030 for most, 0xffffff for 19 in the local
+  player's sight, 0x404060 and 0x2e2e46 for three), a sprite word (0x38c0025,
+  0x3ac0025, 0x3a40025) and short (-2 or -1), the widget's shorts (4095 or 4094,
+  32769 or 0); and for 101 trees by the east start the own word 0x106, its first
+  short 4094, and its first byte 0: not yet understood.
   An agent's entry is its
   CAgentBaseAbs: its first record `FUN_6f146480` (its base's, a reference, a counted
   list of references, four more), its second its agent's vf 0x38 (CAgent's

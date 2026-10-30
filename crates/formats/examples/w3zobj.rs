@@ -169,6 +169,37 @@ fn main() {
         println!("cells' orders (ascending, descending): {orders:?}");
         return;
     }
+    // "w3d": each destructable's record's fields that vary, a line each, tab-separated.
+    if a[2] == "w3d" {
+        for o in all.iter().filter(|o| code(o.entry.kind) == "+w3d") {
+            let Ok(w3_formats::w3z::Second::Destructable { own, handlers, widget, bytes, words }) = o.second() else { continue };
+            let sp = widget.sprite.as_ref().unwrap();
+            let (rs, pos) = widget.refs.clone().unwrap_or_default();
+            println!(
+                "{}\t{:?}\t{}\t{:x}\t{}\t{}\t{:x}\t{:?}\t{:?}\t{}\t{}\t{:?}\t{:?}\t{}\t{:x}\t{:?}\t{:?}\t{}\t{:?}\t{}\t{:?}\t{:x?}\t{:?}",
+                o.entry.tag, own, sp.model, sp.real.to_bits(), sp.short, sp.byte, sp.word, sp.reals, sp.words, sp.last_real, sp.last_byte, sp.flags, sp.entries,
+                widget.owner, widget.word, widget.shorts, rs.iter().map(|r| r.0).collect::<Vec<_>>(), pos[0], pos[1], widget.last_real, (widget.bytes, widget.byte), (bytes, words), handlers.fixed[0]
+            );
+        }
+        return;
+    }
+    // "census": each kind's objects and their records' bytes, most bytes first.
+    if a[2] == "census" {
+        let mut by: std::collections::HashMap<String, (usize, usize)> = Default::default();
+        for o in &all {
+            let e = by.entry(format!("{}/{}", code(o.entry.kind), code(o.entry.family))).or_default();
+            e.0 += 1;
+            e.1 += o.first.len() + o.second.len() + 16;
+        }
+        let mut v: Vec<_> = by.into_iter().collect();
+        v.sort_by(|a, b| b.1 .1.cmp(&a.1 .1));
+        let total: usize = v.iter().map(|x| x.1 .1).sum();
+        println!("{} kinds, {} bytes", v.len(), total);
+        for (k, (n, b)) in v.iter().take(a.get(3).map_or(40, |n| n.parse().unwrap())) {
+            println!("{k}: {n} objects, {b} bytes");
+        }
+        return;
+    }
     // "section <k> <file>": the object manager's data section k written to a file.
     if a[2] == "section" {
         let m = s.objects.as_ref().unwrap();

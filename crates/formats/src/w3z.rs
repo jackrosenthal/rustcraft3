@@ -2033,11 +2033,24 @@ pub struct SavedUnit {
     pub speed: f32,
     pub collision: f32,
     /// Its life and mana (`` `rel `` 1 and 2): the value, its regeneration a second, a
-    /// real, and the maximum.
+    /// real, and the maximum; the value as of the property's real, an agent clock time
+    /// (read: a peasant's life set to 123.5 at one second is saved as 123.5 at
+    /// 0.99999905, and the others' full life at 0.0), regeneration counting on from it
+    /// (`SavedUnit::now`).
     pub life: [f32; 4],
     pub mana: [f32; 4],
+    pub life_at: f32,
+    pub mana_at: f32,
     /// Its sight by day (`` `rel `` 5's first).
     pub sight: f32,
+}
+
+impl SavedUnit {
+    /// A value (life or mana) at an agent clock time: as saved, plus its regeneration
+    /// since, within its maximum.
+    pub fn now(values: [f32; 4], at: f32, clock: f32) -> f32 {
+        (values[0] + values[1] * (clock - at)).min(values[3])
+    }
 }
 
 impl SaveGame {
@@ -2057,8 +2070,8 @@ impl SaveGame {
                             (u.speed, u.facing, u.collision) = (values[4], values[5], values[6]);
                         }
                         Some(First::Real { base, values }) => match base.object.words[0] {
-                            1 => u.life = values,
-                            2 => u.mana = values,
+                            1 => (u.life, u.life_at) = (values, base.real),
+                            2 => (u.mana, u.mana_at) = (values, base.real),
                             5 => u.sight = values[0],
                             _ => {}
                         },

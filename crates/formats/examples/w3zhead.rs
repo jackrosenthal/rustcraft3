@@ -9,4 +9,18 @@ fn main() {
     let m = &s.objects;
     println!("objects {} and {}, classes {}, clocks {:?}", m.tables[0].len(), m.tables[1].len(), m.classes.len(), m.clocks);
     println!("data sections {:?}, bounds {:?}, {} bytes after", m.data.iter().map(|d| d.len()).collect::<Vec<_>>(), m.bounds, s.rest.len());
+    if let Ok(objects) = m.objects() {
+        // Each class's count and its records' sizes.
+        let mut by: std::collections::BTreeMap<String, (usize, usize, usize)> = Default::default();
+        let code = |c: u32| String::from_utf8_lossy(&c.to_le_bytes()).chars().rev().collect::<String>();
+        for o in &objects[0] {
+            let e = by.entry(format!("{}{}", code(o.entry.code), code(o.entry.class))).or_default();
+            e.0 += 1;
+            e.1 = e.1.max(o.first.len());
+            e.2 = e.2.max(o.second.len());
+        }
+        for (k, (n, a, b)) in by {
+            println!("  {k} {n} records up to {a} and {b} bytes");
+        }
+    }
 }

@@ -68,6 +68,43 @@ pub struct ObjectManager {
     pub bounds: [f32; 5],
 }
 
+/// A saved object: its entry in its table and its two records, each its size first and
+/// "espi" after (`FUN_6f15c8b0`, the object's vf 0x24; `FUN_6f15c930`, its vf 0x2c), in
+/// the table's order.
+#[derive(Clone, Debug, Default)]
+pub struct SavedObject {
+    pub entry: Tagged,
+    pub first: Vec<u8>,
+    pub second: Vec<u8>,
+}
+
+impl ObjectManager {
+    /// Each table's objects with their records.
+    pub fn objects(&self) -> Result<[Vec<SavedObject>; 2], Error> {
+        let records = |b: &[u8]| -> Result<Vec<Vec<u8>>, Error> {
+            let mut r = Reader::new(b);
+            let mut out = Vec::new();
+            while r.remaining() > 0 {
+                let n = r.u32()? as usize;
+                out.push(r.bytes(n)?.to_vec());
+                if r.bytes(4)? != b"espi" {
+                    return Err(Error::Format("an object's record not ended by espi"));
+                }
+            }
+            Ok(out)
+        };
+        let mut out: [Vec<SavedObject>; 2] = Default::default();
+        for (k, o) in out.iter_mut().enumerate() {
+            let (first, second) = (records(&self.data[2 + k])?, records(&self.data[4 + k])?);
+            if first.len() != self.tables[k].len() || second.len() != self.tables[k].len() {
+                return Err(Error::Format("records not one per object"));
+            }
+            *o = self.tables[k].iter().zip(first).zip(second).map(|((&entry, first), second)| SavedObject { entry, first, second }).collect();
+        }
+        Ok(out)
+    }
+}
+
 /// A tagged object's entry: its two codes (as the engine holds them) and its tags.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Tagged {

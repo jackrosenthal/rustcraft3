@@ -254,7 +254,7 @@ fn net_game(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFor
 #[allow(clippy::too_many_arguments)]
 fn net_game_saved(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, data: &GameData, assets: &mut Assets, map: &Path, save: &[u8], role: Option<war3::net::Role>, speed: u8, me: u8, w: u32, h: u32) -> anyhow::Result<()> {
     let save = w3_game::save::SaveGame::parse(save)?;
-    let mut scene = war3::scene::Scene::load(device, queue, format, data, assets, map, w as f32 / h as f32, None, Some(save), None)?;
+    let mut scene = war3::scene::Scene::load(device, queue, format, data, assets, map, w as f32 / h as f32, None, Some(w3_game::save::Load::Port(save)), None)?;
     if let Some(g) = scene.game.as_mut() {
         g.world.local_player = me;
         println!("loaded at {:.1}s", g.world.time);

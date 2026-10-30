@@ -606,9 +606,15 @@ impl Scene {
         map_path: &std::path::Path,
         aspect: f32,
         lobby: Option<&[w3_game::LobbySlot]>,
-        restore: Option<w3_game::save::SaveGame>,
+        restore: Option<w3_game::save::Load>,
         replay: Option<w3_game::replay::Replay>,
     ) -> anyhow::Result<Scene> {
+        // The port's saves restore before the map's script runs; the original's after.
+        let (restore, original) = match restore {
+            Some(w3_game::save::Load::Port(s)) => (Some(s), None),
+            Some(w3_game::save::Load::Original(s)) => (None, Some(s)),
+            None => (None, None),
+        };
         // A replay plays its own setup and profile.
         let replay_lobby = replay.as_ref().and_then(|r| r.lobby.clone());
         let lobby = if replay.is_some() { replay_lobby.as_deref() } else { lobby };
@@ -832,6 +838,11 @@ impl Scene {
                 };
                 if let Err(e) = res {
                     log::error!("main: {e:#}");
+                }
+                if let Some(s) = &original {
+                    if let Err(e) = g.restore_original(s) {
+                        log::error!("loading the saved game: {e:#}");
+                    }
                 }
                 // Without a setup screen the local player is not the map's: a campaign's
                 // goes by the profile's name (LOCAL_PLAYER without one), and a map loaded

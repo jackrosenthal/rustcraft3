@@ -25,10 +25,11 @@ fn main() -> anyhow::Result<()> {
     let (device, queue) = pollster::block_on(adapter.request_device(&Default::default()))?;
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let mut assets = Assets::new(&device, &queue, &data);
-    // A saved game (.w3z) starts its map with the saved state.
+    // A saved game (.w3z, the port's or the original's) starts its map with the saved
+    // state.
     let (map, restore) = if a[2].to_ascii_lowercase().ends_with(".w3z") {
-        let save = w3_game::save::SaveGame::parse(&std::fs::read(&a[2])?)?;
-        (save.map.clone(), Some(save))
+        let save = w3_game::save::Load::parse(&std::fs::read(&a[2])?)?;
+        (data.map_of_save(&save).to_string_lossy().to_string(), Some(save))
     } else {
         (a[2].clone(), None)
     };

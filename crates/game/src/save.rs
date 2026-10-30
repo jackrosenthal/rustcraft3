@@ -115,3 +115,65 @@ impl SaveGame {
         (format == FORMAT).then_some(map)
     }
 }
+
+/// A saved game to load: the port's, or the original's (.w3z in its recorded-game
+/// container, `w3_formats::w3z`).
+pub enum Load {
+    Port(SaveGame),
+    Original(Box<w3_formats::w3z::SaveGame>),
+}
+
+impl Load {
+    pub fn parse(bytes: &[u8]) -> anyhow::Result<Load> {
+        if bytes.starts_with(w3_formats::container::MAGIC) {
+            return Ok(Load::Original(Box::new(w3_formats::w3z::SaveGame::read(bytes)?)));
+        }
+        Ok(Load::Port(SaveGame::parse(bytes)?))
+    }
+
+    /// The map the game is on (an original's from the game's folder).
+    pub fn map(&self) -> &str {
+        match self {
+            Load::Port(s) => &s.map,
+            Load::Original(s) => &s.map,
+        }
+    }
+}
+
+impl Game {
+    /// Puts an original's saved game in place of a game just started on its map (its
+    /// script's main run): its units (their type, owner, place, facing, life, and mana),
+    /// and its players' gold and lumber (saved in tenths).  Not yet: the rest (the time,
+    /// which the port's timers and sleeping threads count from; orders, buildings in
+    /// progress, items, destructables, the scripts' variables, timers, and threads),
+    /// which stay as the script just made them.
+    pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
+        use crate::natives::units::{create_unit_exact, remove_unit};
+        let units = s.units()?;
+        let players = s.player_states()?;
+        let w = &mut self.world;
+        let origin = w.pathing.as_ref().map_or([0.0; 2], |p| p.origin);
+        for h in w.unit_order.clone() {
+            remove_unit(w, h);
+        }
+        for u in units {
+            let (x, y) = (origin[0] + u.cell[0] * crate::pathing::CELL, origin[1] + u.cell[1] * crate::pathing::CELL);
+            let h = create_unit_exact(w, u.owner as u8, u.type_id.to_be_bytes(), x, y, u.facing.to_degrees());
+            if let Some(unit) = w.unit_mut(h) {
+                (unit.max_life, unit.max_mana) = (u.life[3], u.mana[3]);
+                (unit.life, unit.mana) = (u.life[0].min(u.life[3]), u.mana[0].min(u.mana[3]));
+            }
+        }
+        // Gold, lumber, and what was gathered of each (JASS's player states 1, 2, 15,
+        // and 16), the rest as the script set them.
+        for (p, states) in players.into_iter().enumerate() {
+            let Some(player) = w.players.get_mut(p) else { continue };
+            for (k, v) in states {
+                if matches!(k, 1 | 2 | 15 | 16) {
+                    player.state.insert(k as i32, v / 10);
+                }
+            }
+        }
+        Ok(())
+    }
+}

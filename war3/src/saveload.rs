@@ -16,13 +16,13 @@ const ROW_FONT: f32 = 0.0135;
 
 /// Why a saved game chosen in the game cannot load, as the game says it in red for
 /// ten seconds (FUN_6f3b0120): the file does not read as a save, or its map is gone.
-pub fn load_error(chain: &w3_mpq::Chain, db: &FrameDb, file: &Path) -> Option<String> {
-    let save = std::fs::read(file).ok().and_then(|b| w3_game::save::SaveGame::parse(&b).ok());
-    let Some(save) = save.filter(|s| !s.map.is_empty()) else { return Some(db.string("SAVE_ERROR_BAD_SAVE")) };
-    if Path::new(&save.map).is_file() || chain.contains(&save.map) {
+pub fn load_error(data: &crate::data::GameData, db: &FrameDb, file: &Path) -> Option<String> {
+    let save = std::fs::read(file).ok().and_then(|b| w3_game::save::Load::parse(&b).ok());
+    let Some(save) = save.filter(|s| !s.map().is_empty()) else { return Some(db.string("SAVE_ERROR_BAD_SAVE")) };
+    if data.map_of_save(&save).is_file() || data.chain.contains(save.map()) {
         return None;
     }
-    let name = save.map.rsplit(['\\', '/']).next().unwrap_or_default();
+    let name = save.map().rsplit(['\\', '/']).next().unwrap_or_default();
     Some(db.string("SAVE_ERROR_MISSING_MAP").replacen("%s", name, 1))
 }
 

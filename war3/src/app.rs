@@ -25,7 +25,7 @@ struct Running {
     glue_saved: Option<crate::glue::Glue>,
     /// A map to load once the loading screen has been drawn.
     /// The map to load next, with the setup screen's choices or a saved game's state.
-    pending: Option<(std::path::PathBuf, Option<Vec<w3_game::LobbySlot>>, Option<w3_game::save::SaveGame>)>,
+    pending: Option<(std::path::PathBuf, Option<Vec<w3_game::LobbySlot>>, Option<w3_game::save::Load>)>,
     /// A replay to watch on the pending map.
     pending_replay: Option<w3_game::replay::Replay>,
     /// The glue cinematic's scene sound.
@@ -118,8 +118,8 @@ impl App {
         let mut scene = match &self.args.loadfile {
             // A saved game starts its map with the saved state.
             Some(path) if path.extension().is_some_and(|e| e.eq_ignore_ascii_case(crate::saveload::EXTENSION)) => {
-                let save = w3_game::save::SaveGame::parse(&std::fs::read(path)?)?;
-                let map = std::path::PathBuf::from(&save.map);
+                let save = w3_game::save::Load::parse(&std::fs::read(path)?)?;
+                let map = self.data.map_of_save(&save);
                 Some(Scene::load(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets, &map, inner.width as f32 / inner.height.max(1) as f32, None, Some(save), None)?)
             }
             Some(path) => Some(Scene::load(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets, path, inner.width as f32 / inner.height.max(1) as f32, None, None, None)?),
@@ -425,7 +425,7 @@ impl ApplicationHandler for App {
                     });
                     // A save that cannot load stays in the game with the reason.
                     if let Some(file) = scene.load_requested.take() {
-                        match crate::saveload::load_error(&self.data.chain, &r.assets.frames, &file) {
+                        match crate::saveload::load_error(&self.data, &r.assets.frames, &file) {
                             Some(text) => {
                                 if let Some(h) = scene.hud.as_mut() {
                                     h.unit_message(&text, 0.0, 0.0, 10.0);
@@ -589,11 +589,11 @@ impl ApplicationHandler for App {
                             r.pending = Some((path, slots, None));
                         }
                         Some(crate::glue::GlueAction::LoadSave(file)) => {
-                            match std::fs::read(&file).map_err(anyhow::Error::from).and_then(|b| w3_game::save::SaveGame::parse(&b)) {
+                            match std::fs::read(&file).map_err(anyhow::Error::from).and_then(|b| w3_game::save::Load::parse(&b)) {
                                 Ok(save) => {
                                     self.data.campaign_game.set(false);
-                                    let map = save.map.clone();
-                                    let path = std::path::PathBuf::from(&map);
+                                    let map = save.map().to_string();
+                                    let path = self.data.map_of_save(&save);
                                     glue.skirmish.summary = if path.is_file() { crate::skirmish::summarize_path(&path) } else { crate::skirmish::summarize_from(&self.data.chain, &map) };
                                     glue.show_loading(&mut r.assets);
                                     r.pending = Some((path, None, Some(save)));
@@ -619,7 +619,7 @@ impl ApplicationHandler for App {
                                 self.data.campaign_game.set(false);
                                 glue.skirmish.summary = crate::skirmish::summarize_path(&path);
                                 glue.show_loading(&mut r.assets);
-                                r.pending = Some((path, None, Some(save)));
+                                r.pending = Some((path, None, Some(w3_game::save::Load::Port(save))));
                                 r.pending_net = role.borrow_mut().take().map(|r| (r, speed));
                                 r.pending_local = Some(me);
                             }

@@ -810,13 +810,17 @@ impl World {
                 }
                 Due::Grant(src, owner, x, y, area, b, reach, code) => (src, owner, x, y, area, *b, reach, code),
             };
+            // Neutral Passive's units are neither friend nor enemy to another's aura
+            // unless it names them (`neutral`; read: a Neutral Hostile Hellcaller's
+            // Unholy Aura, `friend`, leaving Forestwalk's deer that walk by).
+            let neutral_out = !self.objects.abilities.get(b.ability).is_some_and(|o| o.level_str("targs", b.level).to_ascii_lowercase().split(',').any(|t| t.trim() == "neutral"));
             let targets: Vec<u32> = self
                 .unit_order
                 .iter()
                 .copied()
                 .filter(|&t| {
                     // Without an area (Engineering Upgrade) only the bearer.
-                    (area > 0.0 || t == src) && self.unit(t).is_some_and(|u| !u.dead && !u.is_building && (u.x - x).hypot(u.y - y) <= area && reach.is_none_or(|enemies| crate::natives::players::is_ally(self, owner, u.owner) != enemies) && self.aura_serves(&code, u.type_id))
+                    (area > 0.0 || t == src) && self.unit(t).is_some_and(|u| !u.dead && !u.is_building && (u.x - x).hypot(u.y - y) <= area && reach.is_none_or(|enemies| crate::natives::players::is_ally(self, owner, u.owner) != enemies && !(neutral_out && u.owner == crate::types::PLAYER_NEUTRAL_PASSIVE && owner != u.owner)) && self.aura_serves(&code, u.type_id))
                 })
                 .collect();
             for t in targets {

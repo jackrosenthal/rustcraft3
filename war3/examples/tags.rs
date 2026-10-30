@@ -100,6 +100,9 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        if std::env::var("TAGS_DRAWS").is_ok() {
+            eprintln!("TURN {n} main {:p}", &g.world.rng);
+        }
         // TAGS_DETECT: at that turn, the units within 900 of each flyer's detection.
         if std::env::var("TAGS_DETECT").ok().and_then(|v| v.parse::<u32>().ok()) == Some(n) {
             let w = &g.world;

@@ -1415,7 +1415,11 @@ Formats the port made its own, to be replaced by the original's:
   `FUN_6f233f20` traced at both starts); a unit added to a group (`FUN_6f28d7c0`) goes
   before the first there of its type in a later slot, else last; and ForGroup walks a
   copy of the group's list (`FUN_6f22ed70`, `FUN_6f2939f0`).  With these the first
-  1601 frees agree, and the keepalives to turn 482.
+  1601 frees agree, and the keepalives to turn 482.  There a deer walked within a
+  Neutral Hostile Hellcaller's Unholy Aura (`friend`): the original gives it nothing,
+  Neutral Passive's units counting as neither friend nor enemy to another's aura that
+  does not name `neutral`.  With that, all 530 turns of the capture agree
+  (`docs/reference/forestwalk_keepalives.txt`).
 - A destructable's records (`+w3d`, 1408 trees of Booty Bay at 5 seconds, read against
   its war3map.doo): its first the agent's (its class's `^adf`, its `` `pos ``); its
   second its own (a word, 6 or 0x106, then life, 0, and maximum), handlers (one

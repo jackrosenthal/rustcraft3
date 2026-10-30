@@ -52,7 +52,7 @@ impl Rng {
         if TRACE.load(std::sync::atomic::Ordering::Relaxed) {
             let bt = std::backtrace::Backtrace::force_capture().to_string();
             let frames: Vec<&str> = bt.lines().filter(|l| l.contains("w3_game::") && !l.contains("rng::")).take(3).map(|l| l.trim()).collect();
-            eprintln!("DRAW {:08x} {}", self.value, frames.join(" <- "));
+            eprintln!("DRAW {:08x} {:p} {}", self.value, self, frames.join(" <- "));
         }
         let t = self.taps;
         let b2 = (t >> 16) & 0xff;

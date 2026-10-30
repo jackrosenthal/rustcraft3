@@ -1306,7 +1306,18 @@ these are the findings behind them.
 Formats the port made its own, to be replaced by the original's:
 
 - Saved games: the port's world state (`crates/game/src/save.rs`), not the original's
-  .w3z.
+  .w3z.  The original's (`FUN_6f1e8630`, its SaveGame native `FUN_6f211360`; read with a
+  1.27b save made by a test map's script at 5 seconds, `Save\Profile2\CustomSaves`,
+  and 1.22 ones): the replay container, its record a data store (bytes, words,
+  dwords, NUL-ended strings) holding the map's path, the network game's name (empty
+  alone), its GAMEINFO's name, password, coded description, and two words
+  (`FUN_6f968cf0`), the W3GS slot table (word length first), a word of the objects
+  (`FUN_6f324930`), the map's xoro and SHA-1 (as a LAN game's description has them),
+  the local player's slot index and number, its name, two preferences (6 and 0x38,
+  `FUN_6f0425d0`); then the object manager (`FUN_6f04dd30`), the game's objects (its
+  vf 0x10), and each subsystem's state.  Its object table is every tagged object, 16
+  bytes each (its two codes, byte-reversed, and two tags): 12403 at 5 seconds of
+  Booty Bay.  `w3_formats::w3z` reads the header so far.
 - Replays: .w3g files as the original writes them (header and its CRC, 8192-byte
   zlib blocks with their checksums, the record of host, players, slots, and seed, a
   turn per frame, verified by writing back a replay of the original's), but each

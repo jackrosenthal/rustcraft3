@@ -9,6 +9,7 @@ pub mod profile;
 pub mod slk;
 pub mod w3g;
 pub mod w3v;
+pub mod w3z;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

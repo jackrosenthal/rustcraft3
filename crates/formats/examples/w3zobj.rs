@@ -28,6 +28,9 @@ fn main() {
         let units = s.units().unwrap();
         let with = units.iter().filter(|u| handles.iter().any(|(r, _)| (r.0, r.1) == (u.tag, u.birth))).count();
         println!("{} units, {with} with handles; {} handles", units.len(), handles.len());
+        for u in units.iter().filter(|u| !handles.iter().any(|(r, _)| (r.0, r.1) == (u.tag, u.birth))) {
+            println!("  without a handle: {} owner {} tag {}", code(u.type_id), u.owner, u.tag);
+        }
         for u in units.iter().take(3) {
             println!("  {u:?} handle {:?}", handles.iter().find(|(r, _)| (r.0, r.1) == (u.tag, u.birth)).map(|h| h.1));
         }
@@ -70,6 +73,33 @@ fn main() {
                 }
             }
             println!("{line}");
+        }
+        return;
+    }
+    // "handles [from] [n]": the handle table in handle order, each handle's object's kind.
+    if a[2] == "handles" {
+        let mut hs = s.handles().unwrap();
+        hs.sort_by_key(|h| h.1);
+        let from = a.get(3).map_or(0, |v| u32::from_str_radix(v.trim_start_matches("0x"), 16).unwrap());
+        let n: usize = a.get(4).map_or(40, |v| v.parse().unwrap());
+        for (r, h) in hs.iter().filter(|h| h.1 >= from).take(n) {
+            let kind = by_ref(*r).map(|o| format!("{} {}", code(o.entry.kind), code(o.entry.family))).unwrap_or("none".into());
+            println!("{h:#x} {r:?} {kind}");
+        }
+        return;
+    }
+    // "tag <n>": the object with the tag, its first record, and its owner (its first
+    // link's last reference).
+    if a[2] == "tag" {
+        let t: u32 = a[3].parse().unwrap();
+        for o in all.iter().filter(|o| o.entry.tag == t) {
+            println!("{} {} birth {}: {:?}", code(o.entry.kind), code(o.entry.family), o.entry.birth, o.first());
+            if let Ok(w3_formats::w3z::First::Real { base, .. } | w3_formats::w3z::First::Flag { base, .. }) = o.first() {
+                let owner = base.object.links[0].3;
+                if let Some(p) = by_ref(owner) {
+                    println!("  owner {owner:?}: {} {}", code(p.entry.kind), code(p.entry.family));
+                }
+            }
         }
         return;
     }

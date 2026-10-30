@@ -745,13 +745,15 @@ impl World {
         }
         let mut handles = Handles::default();
         let mut players = Vec::new();
-        // The player handles come after eight the original makes first (measured:
-        // Player(0) is 0x100008, Player(1) 0x100009; its neutral players come later).
-        handles.reserve(8);
+        // The first handle is 0x100001, and a player's is made as a script first has it
+        // (`player_handle`; read in a save's handle table: Blizzard.j's seven global
+        // initializers' timers and groups 0x100001 to 0x100007, then Player(0) and
+        // Player(1) as the map's config names them, the destructables, and the neutral
+        // players as main first names them).
+        handles.reserve(1);
         let mut tags = crate::tags::Tags::new();
         for i in 0..PLAYER_COUNT as u8 {
-            let h = handles.insert(Obj::Player(i));
-            players.push(Player::new(i, h));
+            players.push(Player::new(i, 0));
             // Each player's tags (read under Wine): the player, 26 flags, a flag
             // listener, its alliances, 11 flags.
             tags.take(b"+ply");
@@ -1102,8 +1104,14 @@ impl World {
             _ => None,
         }
     }
-    pub fn player_handle(&self, id: u8) -> Value {
-        self.players.get(id as usize).map_or(Value::Null, |p| Value::Handle(p.handle))
+    /// A player's handle, made as a script first has it.
+    pub fn player_handle(&mut self, id: u8) -> Value {
+        let Some(p) = self.players.get(id as usize) else { return Value::Null };
+        if p.handle == 0 {
+            let h = self.handles.insert(Obj::Player(id));
+            self.players[id as usize].handle = h;
+        }
+        Value::Handle(self.players[id as usize].handle)
     }
     pub fn timer_mut(&mut self, h: u32) -> Option<&mut Timer> {
         match self.handles.get_mut(h) {

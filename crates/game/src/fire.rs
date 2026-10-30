@@ -92,7 +92,7 @@ impl World {
                 (!model.is_empty()).then(|| (model, o.str(&key)))
             })
             .collect();
-        let handles: Vec<u32> = parts.into_iter().map(|(model, attach)| self.handles.insert(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((h, attach)), destroyed: false, facing: 0.0 }))).collect();
+        let handles: Vec<u32> = parts.into_iter().map(|(model, attach)| self.handles.insert_unseen(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((h, attach)), destroyed: false, facing: 0.0 }))).collect();
         if let Some(u) = self.unit_mut(h) {
             u.extra.fire_art = handles;
         }

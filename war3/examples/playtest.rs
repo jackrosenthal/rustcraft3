@@ -1000,6 +1000,42 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // handles <n>: the handles in order as runs of their objects' kinds, the first n
+            // runs.
+            "handles" => {
+                if let Some(g) = &scene.game {
+                    let mut ids = g.world.handles.ids();
+                    ids.extend(g.world.handles.pending());
+                    ids.sort();
+                    let kind = |h: u32| g.world.handles.get(h).map_or("none".to_string(), |o| format!("{o:?}").split(['(', ' ', '{']).next().unwrap_or_default().to_string());
+                    let mut runs: Vec<(String, usize, u32)> = Vec::new();
+                    for h in ids {
+                        let k = kind(h);
+                        match runs.last_mut() {
+                            Some(r) if r.0 == k => r.1 += 1,
+                            _ => runs.push((k, 1, h)),
+                        }
+                    }
+                    for (k, n, from) in runs.iter().take(num(&a[i + 1]) as usize) {
+                        eprintln!("{k} x{n} (from {from:#x})");
+                    }
+                }
+                i += 2;
+            }
+            // effects <from hex>: the effects from a handle on, their models and targets.
+            "effects" => {
+                if let Some(g) = &scene.game {
+                    let from = u32::from_str_radix(a[i + 1].trim_start_matches("0x"), 16).unwrap();
+                    let mut ids = g.world.handles.ids();
+                    ids.sort();
+                    for h in ids.into_iter().filter(|&h| h >= from).take(12) {
+                        if let Some(w3_game::types::Obj::Effect(e)) = g.world.handles.get(h) {
+                            eprintln!("{h:#x} {} at {:.0},{:.0} on {:?} destroyed {}", e.model, e.x, e.y, e.target, e.destroyed);
+                        }
+                    }
+                }
+                i += 2;
+            }
             // global <name>: a map script variable's value, and the time of day.
             "global" => {
                 if let Some(g) = &scene.game {

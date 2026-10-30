@@ -70,7 +70,7 @@ impl World {
                 for (model, attach, on) in arts {
                     if !model.is_empty() {
                         // Shown through the cast's Dur: its birth plays, then it goes.
-                        let e = self.handles.insert(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((on, attach)), destroyed: false, facing: 0.0 }));
+                        let e = self.handles.insert_unseen(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((on, attach)), destroyed: false, facing: 0.0 }));
                         self.effect_destroys.push((e, self.time + self.data(a, "Dur", lvl).max(0.1)));
                     }
                 }

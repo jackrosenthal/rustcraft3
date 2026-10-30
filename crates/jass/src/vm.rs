@@ -80,12 +80,16 @@ pub enum Outcome {
 }
 
 impl Vm {
-    /// Every handle the globals and global arrays hold.
+    /// Every handle the globals and global arrays hold, and those returned functions'
+    /// locals kept (`leaked`).
     pub fn global_handles(&self, out: &mut impl FnMut(u32)) {
         for v in self.globals.iter().chain(self.global_arrays.iter().flatten()) {
             if let Value::Handle(h) = v {
                 out(*h);
             }
+        }
+        for &h in &self.leaked {
+            out(h);
         }
     }
 }
@@ -96,6 +100,11 @@ pub struct Vm {
     pub global_arrays: Vec<Vec<Value>>,
     /// Instruction budget per thread run; exceeding it ends the thread silently.
     pub op_limit: u32,
+    /// Handles a function's locals (not its parameters) held as it returned, which the
+    /// original keeps for good (read: the group MeleeFindNearestMine destroys without
+    /// clearing its local stays taken in a save's handle table, the ids after it not
+    /// reusing it).
+    pub leaked: std::collections::BTreeSet<u32>,
 }
 
 impl Vm {
@@ -110,7 +119,7 @@ impl Vm {
             .iter()
             .map(|g| if g.array { vec![g.base.default_value(); 0] } else { Vec::new() })
             .collect();
-        Vm { module, globals, global_arrays, op_limit: 300_000 }
+        Vm { module, globals, global_arrays, op_limit: 300_000, leaked: Default::default() }
     }
 
     /// The variables a saved game keeps: globals and global arrays.
@@ -401,6 +410,12 @@ impl Vm {
                 Op::Return => {
                     let v = t.stack.pop().unwrap_or(Value::Null);
                     let fr = t.frames.pop().unwrap();
+                    let params = self.module.functions[fr.func as usize].params.len();
+                    for l in fr.locals.iter().skip(params) {
+                        if let Value::Handle(h) = l {
+                            self.leaked.insert(*h);
+                        }
+                    }
                     t.stack.truncate(fr.base);
                     t.stack.push(v);
                 }

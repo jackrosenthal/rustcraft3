@@ -169,7 +169,7 @@ impl World {
         if self.unit(h).is_some_and(|u| u.extra.sleeping && u.extra.sleep_effect == 0) {
             let art = self.objects.abilities.get(*b"ACsp").map(|o| (o.list("Casterart").first().cloned().unwrap_or_default(), o.list("Casterattach").first().cloned().unwrap_or_default()));
             if let Some((model, attach)) = art.filter(|a| !a.0.is_empty()) {
-                let e = self.handles.insert(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((h, attach)), destroyed: false, facing: 0.0 }));
+                let e = self.handles.insert_unseen(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((h, attach)), destroyed: false, facing: 0.0 }));
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.sleep_effect = e;
                 }

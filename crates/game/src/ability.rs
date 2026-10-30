@@ -414,7 +414,7 @@ impl World {
         }
         if let Some((model, attach)) = art {
             if !model.is_empty() {
-                let e = self.handles.insert(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((target, attach)), destroyed: false, facing: 0.0 }));
+                let e = self.handles.insert_unseen(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((target, attach)), destroyed: false, facing: 0.0 }));
                 b.effect = e;
             }
         }
@@ -843,7 +843,7 @@ impl World {
             return;
         }
         let z = self.ground_z(x, y);
-        let e = self.handles.insert(Obj::Effect(Effect { model: model.to_string(), x, y, z, target: None, destroyed: true, facing: 0.0 }));
+        let e = self.handles.insert_unseen(Obj::Effect(Effect { model: model.to_string(), x, y, z, target: None, destroyed: true, facing: 0.0 }));
         self.dying_effects.push((e, self.time));
     }
 
@@ -1073,7 +1073,7 @@ impl World {
         let (model, attach) = (self.profile_art(a, "Casterart"), self.profile_art(a, "Casterattach"));
         if !model.is_empty() {
             // Shown for a second, its stand's length.
-            let e = self.handles.insert(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((target, attach)), destroyed: false, facing: 0.0 }));
+            let e = self.handles.insert_unseen(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((target, attach)), destroyed: false, facing: 0.0 }));
             self.effect_destroys.push((e, self.time + 1.0));
         }
         true

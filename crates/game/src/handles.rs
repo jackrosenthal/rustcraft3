@@ -5,6 +5,12 @@ use crate::collections::HashMap;
 /// Handle ids start here, as GetHandleId shows in the original.
 pub const HANDLE_BASE: u32 = 0x10_0000;
 
+/// Ids of objects no script has been given start here, apart from the handles: the
+/// original gives such an object no handle (read: a save's hidden gold mine under a
+/// haunted mine has none, nor the art the engine shows, as the haunted mine's circles
+/// and the creeps' auras, and the handles after them follow on without a gap).
+pub const UNSEEN_BASE: u32 = 0x7000_0000;
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Handles<T> {
     objects: HashMap<u32, T>,
@@ -17,11 +23,17 @@ pub struct Handles<T> {
     #[serde(default)]
     pending: Vec<u32>,
     next: u32,
+    #[serde(default = "unseen_base")]
+    next_unseen: u32,
+}
+
+fn unseen_base() -> u32 {
+    UNSEEN_BASE
 }
 
 impl<T> Default for Handles<T> {
     fn default() -> Self {
-        Handles { objects: HashMap::default(), free: Vec::new(), pending: Vec::new(), next: HANDLE_BASE }
+        Handles { objects: HashMap::default(), free: Vec::new(), pending: Vec::new(), next: HANDLE_BASE, next_unseen: UNSEEN_BASE }
     }
 }
 
@@ -39,6 +51,14 @@ impl<T> Handles<T> {
         id
     }
 
+    /// An object no script has been given, with an id apart from the handles'.
+    pub fn insert_unseen(&mut self, v: T) -> u32 {
+        let id = self.next_unseen;
+        self.next_unseen += 1;
+        self.objects.insert(id, v);
+        id
+    }
+
     /// Skips ids, as handles the original makes before ours would take them.
     pub fn reserve(&mut self, n: u32) {
         self.next += n;
@@ -46,7 +66,7 @@ impl<T> Handles<T> {
 
     pub fn remove(&mut self, id: u32) -> Option<T> {
         let v = self.objects.remove(&id);
-        if v.is_some() && !self.pending.contains(&id) {
+        if v.is_some() && id < UNSEEN_BASE && !self.pending.contains(&id) {
             self.pending.push(id);
         }
         v
@@ -82,6 +102,11 @@ impl<T> Handles<T> {
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&u32, &mut T)> {
         self.objects.iter_mut()
+    }
+
+    /// Ids of removed objects that scripts may still hold.
+    pub fn pending(&self) -> &[u32] {
+        &self.pending
     }
 
     pub fn ids(&self) -> Vec<u32> {

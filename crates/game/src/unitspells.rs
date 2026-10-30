@@ -259,7 +259,7 @@ impl World {
                 let (px, py) = self.widget_pos(target).unwrap_or((x, y));
                 let z = self.ground_z(px, py) + d(self, "DataC");
                 let model = self.profile_art(a, "Missileart");
-                let e = self.handles.insert(Obj::Effect(Effect { model, x: px, y: py, z, target: None, destroyed: false, facing: 0.0 }));
+                let e = self.handles.insert_unseen(Obj::Effect(Effect { model, x: px, y: py, z, target: None, destroyed: false, facing: 0.0 }));
                 let max = d(self, "DataD").max(1.0) as usize;
                 let mine: Vec<usize> = self.sentinels.iter().enumerate().filter(|(_, s)| s.caster == h).map(|(i, _)| i).collect();
                 if mine.len() >= max {

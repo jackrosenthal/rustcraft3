@@ -1082,7 +1082,7 @@ impl World {
         let Some(id) = self.objects.abilities.get(a).map(|o| o.level_str("EfctID", lvl)).filter(|s| !s.trim().is_empty() && s.trim() != "_") else { return };
         let Some(model) = self.objects.buffs.get(crate::objects::id_from_str(id.trim())).and_then(|o| o.list("Effectart").first().cloned()).filter(|m| !m.is_empty()) else { return };
         let z = self.ground_z(x, y);
-        let e = self.handles.insert(Obj::Effect(Effect { model, x, y, z, target: None, destroyed: false, facing: 0.0 }));
+        let e = self.handles.insert_unseen(Obj::Effect(Effect { model, x, y, z, target: None, destroyed: false, facing: 0.0 }));
         self.timed_removals.push((e, self.time + secs));
     }
 

@@ -263,11 +263,36 @@ impl Game {
         for _ in 0..start.computers + 1 {
             world.tags.take(b"AI-1");
         }
-        if let Ok(bytes) = chain.read("war3map.doo") {
+        world.camera_bounds = info.camera_bounds;
+        // The map's global weather (w3i) covers the whole map.
+        if info.weather != [0; 4] {
+            world.handles.insert(types::Obj::Weather(types::Weather { rect: world.map_bounds, id: info.weather, enabled: true }));
+        }
+        for p in &info.players {
+            let name = world.localized(&p.name);
+            if let Some(pl) = world.players.get_mut(p.id as usize) {
+                pl.name = name;
+            }
+        }
+        Ok(Game { vm, world, info, recorder: None, locked: false, outbox: None, sent_selection: None, codec: Default::default() })
+    }
+
+    /// Runs the map's `config` function, which declares players and start locations,
+    /// then places the map's destructables (read: their handles follow Player(0) and
+    /// Player(1), which the config names, in a save's handle table).
+    pub fn config(&mut self) -> anyhow::Result<()> {
+        let r = self.call("config");
+        self.place_destructables();
+        r
+    }
+
+    /// The destructables war3map.doo places.
+    fn place_destructables(&mut self) {
+        if let Ok(bytes) = self.world.chain.read("war3map.doo") {
             match w3_formats::map::Doodads::parse(&bytes) {
                 Ok(doo) => {
                     for d in &doo.doodads {
-                        if world.objects.destructables.get(d.id).is_none() {
+                        if self.world.objects.destructables.get(d.id).is_none() {
                             continue;
                         }
                         // One neither visible nor solid is the script's to make: the
@@ -287,7 +312,7 @@ impl Game {
                             continue;
                         }
                         let h = natives::objects::create_destructable(
-                            &mut world,
+                            &mut self.world,
                             d.id,
                             d.position[0],
                             d.position[1],
@@ -297,7 +322,7 @@ impl Game {
                             d.variation,
                         );
                         // The placed life is a percentage of the type's maximum.
-                        if let Some(types::Obj::Destructable(x)) = world.handles.get_mut(h) {
+                        if let Some(types::Obj::Destructable(x)) = self.world.handles.get_mut(h) {
                             x.life = x.max_life * d.life as f32 / 100.0;
                         }
                     }
@@ -305,23 +330,6 @@ impl Game {
                 Err(e) => log::warn!("war3map.doo: {e}"),
             }
         }
-        world.camera_bounds = info.camera_bounds;
-        // The map's global weather (w3i) covers the whole map.
-        if info.weather != [0; 4] {
-            world.handles.insert(types::Obj::Weather(types::Weather { rect: world.map_bounds, id: info.weather, enabled: true }));
-        }
-        for p in &info.players {
-            let name = world.localized(&p.name);
-            if let Some(pl) = world.players.get_mut(p.id as usize) {
-                pl.name = name;
-            }
-        }
-        Ok(Game { vm, world, info, recorder: None, locked: false, outbox: None, sent_selection: None, codec: Default::default() })
-    }
-
-    /// Runs the map's `config` function, which declares players and start locations.
-    pub fn config(&mut self) -> anyhow::Result<()> {
-        self.call("config")
     }
 
     /// Applies the setup screen's choices, then runs the map's `main`.  The setup's

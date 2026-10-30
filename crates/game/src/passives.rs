@@ -383,7 +383,7 @@ impl World {
         }
         let mut handles = Vec::new();
         for (model, attach) in out {
-            handles.push(self.handles.insert(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((h, attach)), destroyed: false, facing: 0.0 })));
+            handles.push(self.handles.insert_unseen(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((h, attach)), destroyed: false, facing: 0.0 })));
         }
         if let Some(u) = self.unit_mut(h) {
             u.extra.art = handles;
@@ -434,7 +434,7 @@ impl World {
                     let attach = o.str(&key);
                     let model = models.get(k).or(models.first()).cloned().unwrap_or_default();
                     if !model.is_empty() {
-                        art.push(self.handles.insert(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((h, attach)), destroyed: false, facing: 0.0 })));
+                        art.push(self.handles.insert_unseen(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((h, attach)), destroyed: false, facing: 0.0 })));
                     }
                 }
                 if let Some(u) = self.unit_mut(h) {

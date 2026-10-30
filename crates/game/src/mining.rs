@@ -562,7 +562,7 @@ impl World {
                 // Each marker faces away from the mine, its tail toward it.
                 let z = self.ground_z(x, y);
                 let facing = (y - my).atan2(x - mx).to_degrees();
-                effects.push(self.handles.insert(Obj::Effect(Effect { model: model.clone(), x, y, z, target: None, destroyed: false, facing })));
+                effects.push(self.handles.insert_unseen(Obj::Effect(Effect { model: model.clone(), x, y, z, target: None, destroyed: false, facing })));
             }
             if let Some(u) = self.unit_mut(h) {
                 u.extra.slot_effects = effects;
@@ -607,7 +607,7 @@ impl World {
                     };
                     let model = self.profile_art(a, "Effectart");
                     let model = model.split(',').nth(index).or_else(|| model.split(',').next()).unwrap_or_default().trim().to_string();
-                    let e = self.handles.insert(Obj::Effect(Effect { model, x, y, z, target: None, destroyed: false, facing: 0.0 }));
+                    let e = self.handles.insert_unseen(Obj::Effect(Effect { model, x, y, z, target: None, destroyed: false, facing: 0.0 }));
                     self.unit_mut(h).unwrap().extra.slot_effects = vec![e];
                 }
             }

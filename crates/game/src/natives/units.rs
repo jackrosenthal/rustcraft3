@@ -342,7 +342,8 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
         unit.extra.can_sleep = w.objects.units.get(type_id).is_some_and(|o| o.int("canSleep") != 0);
     }
     unit.extra.born = w.time;
-    let h = w.handles.insert(Obj::Unit(Box::new(unit)));
+    // The hidden gold mine under a haunted mine is the engine's own: no handle.
+    let h = if w.hidden_mine { w.handles.insert_unseen(Obj::Unit(Box::new(unit))) } else { w.handles.insert(Obj::Unit(Box::new(unit))) };
     if let Some(u) = w.unit_mut(h) {
         u.handle = h;
     }

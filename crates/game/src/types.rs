@@ -559,6 +559,12 @@ pub struct UnitExtra {
     /// removed.
     #[serde(default)]
     pub footprint_slots: Vec<u32>,
+    /// Its own objects as made (`World::tag_unit`), each slot with its birth: the ten
+    /// first (itself, position, two regions, five reals, path), its modifiers and
+    /// listener, and the rest kept (its abilities and theirs), for freeing as it is
+    /// removed.
+    #[serde(default)]
+    pub object_slots: [Vec<(u32, u32)>; 3],
     /// The slots of its current move order's objects (`Tags::move_issued`).
     #[serde(default)]
     pub order_tags: Vec<u32>,
@@ -817,6 +823,7 @@ impl Default for UnitExtra {
             spell_timers: Vec::new(),
             blight_slots: Vec::new(),
             footprint_slots: Vec::new(),
+            object_slots: Default::default(),
             order_tags: Vec::new(),
             gold_run: None,
             mine_shaft: false,

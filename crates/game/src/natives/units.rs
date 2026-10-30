@@ -928,9 +928,35 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 for s in footprint {
                     w.tags.release(s);
                 }
-                w.tags.take(b"tskA");
-                w.tags.take_n(b"task", 5);
-                w.tags.take(b"tskA");
+                let t: Vec<u32> = [b"tskA", b"task", b"task", b"task", b"task", b"task", b"tskA"].iter().map(|c| w.tags.take(c)).collect();
+                // The removal's tasks and the unit's own objects freed as the next turn
+                // starts, in this order (traced for a gold mine Blizzard.j removes): the
+                // first and last tasks, the sixth to fourth, its listener (provisional:
+                // its modifiers with it, the last first), the third task, its
+                // abilities' objects (the last first), its five reals (the last first),
+                // its path, its two regions, its position, itself, the second task.
+                let objects = w.unit(a.h(0)).map(|u| u.extra.object_slots.clone()).unwrap_or_default();
+                let live = |w: &World, (s, b): (u32, u32)| w.tags.live.get(&s).is_some_and(|e| e.1 == b);
+                for k in [0, 6, 5, 4, 3] {
+                    w.tags.doom(t[k]);
+                }
+                for &o in objects[1].iter().rev() {
+                    if live(w, o) {
+                        w.tags.doom(o.0);
+                    }
+                }
+                w.tags.doom(t[2]);
+                for &o in objects[2].iter().rev() {
+                    if live(w, o) {
+                        w.tags.doom(o.0);
+                    }
+                }
+                for k in [8, 7, 6, 5, 4, 9, 2, 3, 1, 0] {
+                    if let Some(&o) = objects[0].get(k).filter(|&&o| live(w, o)) {
+                        w.tags.doom(o.0);
+                    }
+                }
+                w.tags.doom(t[1]);
             }
             script_remove_unit(w, a.h(0));
             none()

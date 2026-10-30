@@ -1406,6 +1406,19 @@ Formats the port made its own, to be replaced by the original's:
   then what the code first uses that the sources did not have so ("handle",
   "<init>", a literal with its escapes resolved).  Not yet read: `and` with `or`
   unparenthesized, and the strings scripts make as they run (the table's last two).
+- The engine's objects, read in a save's object table and free list (a quiet test map
+  on Booty Bay without the computer's AI, saved at five seconds; `w3zobj objtable`,
+  `free`, and playtest's `objtable`): the port's live objects (`Tags::live`) agree
+  with the original's for 12290 of 12314 (slot, kind, birth), and its free list
+  agrees at its top.  A structure the script removes (the gold mine
+  BlightGoldMineForPlayerBJ replaces; traced with `slotfree.sh`) frees its footprint
+  at once, then on the first frame its own objects with the removal's seven tasks:
+  the first and last tasks, the sixth to fourth, its listener, the third, its
+  abilities' objects from the last, its five reals from the last, its path, its two
+  regions in order, its position, itself, and the second task last; the port does
+  so.  Not yet: the original frees these between the creeps' auras' first objects
+  (born 12963 and 12964, Trueshot and Devotion), the port all at the turn's start, so
+  the auras' next objects take other slots; and six objects fewer born by then.
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

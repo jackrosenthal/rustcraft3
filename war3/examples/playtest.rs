@@ -1037,6 +1037,15 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // objtable <file>: the engine's live objects, a line each: slot, code, birth.
+            "objtable" => {
+                if let Some(g) = &scene.game {
+                    let text: String = g.world.tags.live.iter().map(|(s, (c, b))| format!("{s} {} {b}\n", String::from_utf8_lossy(c))).collect();
+                    std::fs::write(&a[i + 1], text).unwrap();
+                    eprintln!("born {} slots {} free {} (last freed first) {:?}", g.world.tags.born, g.world.tags.slots, g.world.tags.free.len(), g.world.tags.free.iter().rev().take(40).collect::<Vec<_>>());
+                }
+                i += 2;
+            }
             // global <name>: a map script variable's value, and the time of day.
             "global" => {
                 if let Some(g) = &scene.game {

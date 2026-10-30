@@ -99,6 +99,24 @@ fn main() {
         }
         return;
     }
+    // "free": the object manager's free sections, as words.
+    if a[2] == "free" {
+        let m = s.objects.as_ref().unwrap();
+        for (k, f) in m.free.iter().enumerate() {
+            let words: Vec<u32> = f.chunks(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).collect();
+            println!("free {k}: {} words {:?}", words.len(), &words[..words.len().min(40)]);
+        }
+        let h: Vec<u32> = m.header.chunks(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).collect();
+        println!("header {:?}", h);
+        return;
+    }
+    // "objtable": the first table's objects, a line each: tag, kind, birth.
+    if a[2] == "objtable" {
+        for o in &objects[0] {
+            println!("{} {} {}", o.entry.tag, code(o.entry.kind), o.entry.birth);
+        }
+        return;
+    }
     // "handles [from] [n]": the handle table in handle order, each handle's object's kind.
     if a[2] == "handles" {
         let mut hs = s.handles().unwrap();

@@ -37,6 +37,10 @@ pub struct Tags {
     /// The birth count: tags given so far.
     #[serde(default)]
     pub born: u32,
+    /// The objects tagged and not given back, by slot: each its code and birth (the
+    /// original's object table, as a save keeps it).
+    #[serde(default)]
+    pub live: std::collections::BTreeMap<u32, (Code, u32)>,
     /// The objects' codes in the order tagged, while recording (for comparing with the
     /// original's).
     #[serde(skip)]
@@ -108,7 +112,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -125,6 +129,7 @@ impl Tags {
         });
         let birth = self.born;
         self.born += 1;
+        self.live.insert(t, (*code, birth));
         if let Some(l) = self.log.as_mut() {
             l.push(*code);
         }
@@ -138,6 +143,7 @@ impl Tags {
     /// Gives a slot back.
     pub fn release(&mut self, slot: u32) {
         self.free.push(slot);
+        self.live.remove(&slot);
         if let Some(l) = self.trace.as_mut() {
             l.push(TagEvent::Free(slot));
         }
@@ -499,6 +505,7 @@ impl crate::world::World {
         let ability = |id: &Code| self.objects.abilities.get(*id).map(|a| crate::objects::id_from_str(a.str("code").trim()));
 
         let mut codes: Vec<Code> = vec![*b"+w3u", *b"`pcu", *b"^pmr", *b"^pmr", *b"`rel", *b"`rel", *b"`rel", *b"`rel", *b"`rel", *b"l^pa"];
+        const BASE: usize = 10;
         // Life regeneration: a timer, or for regeneration on blight its ability.
         match field("regenType").to_ascii_lowercase().as_str() {
             "always" | "night" | "day" => codes.push(*b"`rcm"),
@@ -517,6 +524,7 @@ impl crate::world::World {
         if o.real("manaN") > 0.0 {
             codes.push(*b"`rcm");
         }
+        let mods_end = codes.len();
         let footprint = building.then_some(codes.len());
         if building {
             codes.extend([*b"^pmr"; 3]);
@@ -672,6 +680,7 @@ impl crate::world::World {
         for c in &codes[1..] {
             slots.push(self.tags.take(c));
         }
+        let births: Vec<u32> = slots.iter().map(|s| self.tags.live.get(s).map_or(0, |e| e.1)).collect();
         // What it releases as it is made, each freed as the next turn starts, in this
         // order (traced in the original's event queue): a creep that falls asleep, its
         // autocast's order and its spells' timers, the last first; then the two tasks
@@ -707,6 +716,9 @@ impl crate::world::World {
             // dispel ends (`World::update_blight`).
             u.extra.blight_slots = blight.map(|b| slots[b..b + 5].to_vec()).unwrap_or_default();
             u.extra.footprint_slots = footprint.map(|f| slots[f..f + 3].to_vec()).unwrap_or_default();
+            let rest_start = mods_end + if building { 3 } else { 0 };
+            let pair = |k: usize| (slots[k], births[k]);
+            u.extra.object_slots = [(0..BASE).map(pair).collect(), (BASE..mods_end).map(pair).collect(), (rest_start..tasks).map(pair).collect()];
         }
     }
 }

@@ -133,7 +133,149 @@ fn game_handlers(game: (u32, u32)) -> Handlers {
     Handlers { keyed: Vec::new(), fixed, events: vec![Vec::new(); 0x400] }
 }
 
+/// A flag listener (`` `fcl ``): itself, its owner, the flag it listens to, and its word.
+#[derive(Clone, Copy, Debug)]
+pub struct Listener {
+    pub me: (u32, u32),
+    pub owner: (u32, u32),
+    pub flag: (u32, u32),
+    pub word: u32,
+}
+
+/// The local player's interface's flag listeners, in the second table (the resource
+/// bar's), as a save holds them, in the order made.
+pub fn client_listeners(save: &SaveGame) -> Vec<Listener> {
+    let Some(m) = save.objects.as_ref() else { return Vec::new() };
+    let Ok(objects) = m.objects() else { return Vec::new() };
+    let mut out: Vec<Listener> = objects[1]
+        .iter()
+        .filter(|o| &o.entry.kind.to_be_bytes() == b"`fcl")
+        .filter_map(|o| match o.first() {
+            Ok(First::FlagListener { object, word }) => Some(Listener { me: (o.entry.tag, o.entry.birth), owner: (object.links[0].3 .0, object.links[0].3 .1), flag: (object.links[1].3 .0, object.links[1].3 .1), word }),
+            _ => None,
+        })
+        .collect();
+    out.sort_by_key(|l| l.me.1);
+    out
+}
+
+/// A chain of listeners, newest first from its head: each one's link to the one made
+/// after it and to the one before, in its link set `set`.
+fn chain_links(chain: &[(u32, u32)], me: (u32, u32), set: u32) -> (Link, Link) {
+    let k = chain.iter().position(|&c| c == me).unwrap_or(0);
+    let after = chain.get(k + 1).map_or(Link(NONE, 0), |&c| Link(rf(c), set));
+    let before = if k > 0 { Link(rf(chain[k - 1]), set) } else { Link(NONE, 0) };
+    (after, before)
+}
+
 impl World {
+    /// The players' records and their properties' (read against the quiet test map's,
+    /// at 5 seconds): each player's 26 flags, its states by number (gold and lumber in
+    /// tenths), its alliances' 11 (its number, then each alliance type's mask of the
+    /// players it is set toward), and the flag listeners: each player's own on its food
+    /// used, the registrations' of alliance changes (owned by the alliances, on the
+    /// type's flag) and player states (owned by the player, on the state's flag), and
+    /// the interface's, `client`, made after the rest (provisional).  An owner's
+    /// listeners and a flag's chain newest first, the owner's agent's fourth link and
+    /// the flag's second its head.
+    pub fn player_records(&self, client: &[Listener]) -> Vec<(u32, First, Option<Second>)> {
+        let mut out = Vec::new();
+        let mut listeners: Vec<Listener> = Vec::new();
+        let mut alliance_regs: Vec<((u32, u32), Listener)> = Vec::new();
+        for (i, &ps) in self.tags.player_slots.iter().enumerate() {
+            let _ = i;
+            listeners.push(Listener { me: self.tagged(ps + 27), owner: self.tagged(ps), flag: self.tagged(ps + 6), word: 6 });
+        }
+        for id in self.handles.ids() {
+            let Some(Obj::Event(r)) = self.handles.get(id) else { continue };
+            let Some(&l) = self.tags.event_timers.get(&id) else { continue };
+            let Some(&ps) = (match r.kind {
+                EventKind::Player { player, .. } | EventKind::PlayerState { player, .. } => self.tags.player_slots.get(player as usize),
+                _ => None,
+            }) else {
+                continue;
+            };
+            match r.kind {
+                EventKind::Player { event, alliance, .. } if event == crate::event_ids::EVENT_PLAYER_ALLIANCE_CHANGED => {
+                    let li = Listener { me: self.tagged(l), owner: self.tagged(ps + 28), flag: self.tagged(ps + 29 + 1 + alliance as u32), word: 0x8_0268 };
+                    listeners.push(li);
+                    if let Some(&reg) = self.tags.handle_ids.get(&id) {
+                        alliance_regs.push((reg, li));
+                    }
+                }
+                EventKind::PlayerState { state, .. } => {
+                    listeners.push(Listener { me: self.tagged(l), owner: self.tagged(ps), flag: self.tagged(ps + 1 + state as u32), word: 0 });
+                }
+                _ => {}
+            }
+        }
+        listeners.sort_by_key(|l| l.me.1);
+        listeners.extend_from_slice(client);
+        let owned = |o: (u32, u32)| listeners.iter().filter(|l| l.owner == o).map(|l| l.me).collect::<Vec<_>>();
+        let on = |f: (u32, u32)| listeners.iter().filter(|l| l.flag == f).map(|l| l.me).collect::<Vec<_>>();
+        for l in &listeners {
+            if l.me.0 & 0x8000_0000 != 0 {
+                continue;
+            }
+            let (a0, b0) = chain_links(&owned(l.owner), l.me, 0);
+            let (a1, b1) = chain_links(&on(l.flag), l.me, 1);
+            let object = ObjectBase {
+                real: 0.0,
+                words: [l.word, 0x2000_0400],
+                links: [(a0, b0, rf(l.me), rf(l.owner)), (a1, b1, rf(l.me), rf(l.flag))],
+                timings: [Timing(None), Timing(None)],
+            };
+            out.push((l.me.0, First::FlagListener { object, word: u32::MAX }, None));
+        }
+        let flag_records = |out: &mut Vec<(u32, First, Option<Second>)>, owner: (u32, u32), flags: &[(u32, u32)], values: &[u32]| {
+            for (k, &f) in flags.iter().enumerate() {
+                let mut base = listed_property_base(flags, k, owner);
+                if let Some(&head) = on(f).last() {
+                    base.links[1] = Link(rf(head), 1);
+                }
+                out.push((f.0, First::Flag { base, value: values.get(k).copied().unwrap_or(0) }, None));
+            }
+        };
+        for (i, &ps) in self.tags.player_slots.iter().enumerate() {
+            let Some(p) = self.players.get(i) else { continue };
+            let me = self.tagged(ps);
+            let flags: Vec<(u32, u32)> = (1..=26).map(|k| self.tagged(ps + k)).collect();
+            // (The upkeep rates the port derives from food used as they are asked for.)
+            let (gold_tax, lumber_tax) = self.upkeep_tax(i as u8);
+            let values: Vec<u32> = (0..26)
+                .map(|k| match k {
+                    1 | 2 => p.get_state(k) * 10,
+                    crate::types::player_state::GOLD_UPKEEP_RATE => gold_tax,
+                    crate::types::player_state::LUMBER_UPKEEP_RATE => lumber_tax,
+                    _ => p.get_state(k),
+                } as u32)
+                .collect();
+            flag_records(&mut out, me, &flags, &values);
+            let mut first = agent_first(me, b"+ply", &flags);
+            if let (First::Agent { links, .. }, Some(&head)) = (&mut first, owned(me).last()) {
+                links[3] = Link(rf(head), 0);
+            }
+            out.push((me.0, first, None));
+            let ally = self.tagged(ps + 28);
+            let aflags: Vec<(u32, u32)> = (29..=39).map(|k| self.tagged(ps + k)).collect();
+            let mut avalues = vec![i as u32];
+            for t in 0..crate::types::ALLIANCE_TYPES {
+                avalues.push(p.alliances.iter().enumerate().filter(|(_, a)| a[t]).fold(0u32, |m, (j, _)| m | 1 << j));
+            }
+            flag_records(&mut out, ally, &aflags, &avalues);
+            let mut first = agent_first(ally, b"ally", &aflags);
+            if let (First::Agent { links, .. }, Some(&head)) = (&mut first, owned(ally).last()) {
+                links[3] = Link(rf(head), 0);
+            }
+            // (Its handlers: each alliance registration's on event 0x80268, keyed by its
+            // listener, and not the game's.)
+            let keyed = alliance_regs.iter().filter(|(_, l)| l.owner == ally).map(|(reg, l)| (l.me.0, vec![(rf(*reg), 0x8_0268)])).collect();
+            let handlers = Handlers { keyed, fixed: Default::default(), events: vec![Vec::new(); 0x400] };
+            out.push((ally.0, first, Some(Second::Agent { own: vec![Field::Word(0)], handlers, tail: Vec::new() })));
+        }
+        out
+    }
+
     /// The records of the script's triggers, their flags, actions, and handlers, by
     /// slot (read against the quiet test map's): a trigger's agent (its two flags, the
     /// second linked) and its own (CTriggerWar3: its word, its evaluations and
@@ -477,7 +619,7 @@ impl World {
                 seconds.insert(slot, sec);
             }
         }
-        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()) {
+        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))) {
             records.insert(slot, f);
             if let Some(sec) = sec {
                 seconds.insert(slot, sec);
@@ -665,6 +807,39 @@ impl World {
                 }
             }
             out.push(format!("script's objects: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+            // The players' and their properties'.
+            let (mut same, mut differ, mut first) = (0, 0, None);
+            for (slot, f, sec) in self.player_records(&client_listeners(orig)) {
+                let Some(o) = by_slot.get(&slot) else { continue };
+                let ok1 = o.first().ok().as_ref() == Some(&f);
+                let ok2 = sec.as_ref().is_none_or(|s| o.second().ok().as_ref() == Some(s));
+                if ok1 && ok2 {
+                    same += 1;
+                } else {
+                    differ += 1;
+                    let brief = |s: Option<Second>| match s {
+                        Some(Second::Agent { own, handlers, tail }) => format!("own {own:?} keyed {:?} fixed {:?} events {} tail {tail:?}", handlers.keyed, handlers.fixed, handlers.events.len()),
+                        other => format!("{other:?}"),
+                    };
+                    let detail = if ok1 { format!("ours {}; the original's {}", brief(sec.clone()), brief(o.second().ok())) } else { format!("ours {f:?}; the original's {:?}", o.first()) };
+                    let line = format!("slot {slot} ({}): first {ok1} second {ok2}; {detail}", String::from_utf8_lossy(&o.entry.kind.to_be_bytes()));
+                    if std::env::var("W3Z_ALL").is_ok() {
+                        out.push(line.clone());
+                    }
+                    first.get_or_insert(line);
+                }
+            }
+            if false {
+                for (slot, func) in &self.tags.handler_objects {
+                    let k = self.tags.function_numbers.get(func).copied().unwrap_or(0);
+                    let theirs = by_slot.get(slot).and_then(|o| o.second().ok()).and_then(|s| match s {
+                        Second::Agent { tail, .. } => tail.first().cloned(),
+                        _ => None,
+                    });
+                    out.push(format!("handler slot {slot} birth {} func {func} ours {k} theirs {theirs:?}", self.tagged(*slot).1));
+                }
+            }
+            out.push(format!("players' objects: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
         }
         out.push(match free.chunks(4).zip(m.free[0].chunks(4)).position(|(a, b)| a != b) {
             None if free.len() == m.free[0].len() => format!("free list: the same, {} slots", free.len() / 4 - 1),

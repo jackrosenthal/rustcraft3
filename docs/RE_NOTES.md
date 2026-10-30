@@ -1483,6 +1483,20 @@ Formats the port made its own, to be replaced by the original's:
   flag listener kept.  A time-of-day registration keeps its op (0x80101 on), value,
   state, and its listener, one for equal in its first place while the time is past
   its value, its second while short of it.
+  The players' objects agree too (644: each player's first record, flags,
+  alliances, and flag listeners).  A player's 26 flags hold its states by number,
+  gold and lumber in tenths (500 gold saved 5000), the upkeep rates as derived from
+  food used (Neutral Hostile's 60 at 97 food); its alliances' 11 its number, then
+  each alliance type's mask of the players it is set toward.  A player is allied to
+  itself in types 0 to 7 only, not rescuable nor forced shared vision.  Flag
+  listeners (`` `fcl ``) chain twice, by owner and by flag, newest first: a node's
+  first link names the one made after it, its second the one before, the owner's
+  agent's fourth link or the flag's second the newest (each player's own on its food
+  used, word 6; an alliance registration's, owned by the alliances, on the type's
+  flag, word 0x80268; a player state registration's, owned by the player, on the
+  state's flag, word 0; then the local player's resource bar's six in the second
+  table).  The alliances hold no game registration: their handlers are each alliance
+  registration's on event 0x80268, keyed by its listener's slot.
 - Setting the time of day (SetFloatGameState) passes the time-of-day events'
   listeners as the clock does, but an event for equal runs its trigger only if the
   time is its value to 0.001 (`FUN_6f27c5c0`: its listener replaced the other way,

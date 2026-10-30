@@ -762,11 +762,11 @@ impl World {
             tags.take_all(&[b"`fcl", b"ally"]);
             tags.take_n(b"`flg", 11);
         }
+        // Each player is allied to itself in every type but rescuable and forced shared
+        // vision (read: a save's alliance flags, 1 << p for types 0 to 7).
         for (i, p) in players.iter_mut().enumerate() {
-            for j in 0..PLAYER_COUNT {
-                if i == j {
-                    p.alliances[j] = [true; ALLIANCE_TYPES];
-                }
+            for (t, a) in p.alliances[i].iter_mut().enumerate() {
+                *a = t < 8;
             }
         }
         World {

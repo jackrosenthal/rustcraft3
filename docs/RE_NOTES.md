@@ -1561,7 +1561,10 @@ Formats the port made its own, to be replaced by the original's:
   `FUN_6f693450`), the order's task an idle unit's (`FUN_6f9bd6e0`, task 0xd0194,
   `FUN_6f9cd390`): a worker by its harvest ability (Ahar, Awha, Aaha with the AI's
   gold, Ahrl with its wood, `FUN_6f9c9470` and the like), else a walk to the AI's
-  target at +0x30 of its data (`FUN_6f9d8a90`, the `ordt` and the walk's `tskt`).  In
+  target at +0x30 of its data (`FUN_6f9d8a90`, the `ordt` and the walk's `tskt`): for
+  the recycled ghoul, `FUN_6f9d87d0` with order 0xd0012 and target a captain (traced
+  at the order's making, `FUN_6f69bd80`: its target's class CCaptainAI, the `AI-C`
+  CreateCaptains made), so the ghoul walks to its captain.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

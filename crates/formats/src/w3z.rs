@@ -718,6 +718,18 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // `FUN_6f5f5270` on the buff base: a reference, two timers, and from build 6026 a
     // reference (own as `Alam`'s).
     (b"Aens", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t r"),
+    // CAbilityGoldMine (`FUN_6f5f54f0` on `FUN_6f4ea3a0`: a reference; own
+    // `FUN_6f5f62c0`): counted references (`FUN_6f5b0980`) and a timer.
+    (b"Agld", "wwww wwwwwww t w w f wwwww wwww f wwwwww", "r [r] t"),
+    // MineShaft (`FUN_6f5f5f20`, the agent base alone; own `FUN_6f5f7ab0`): a timer.
+    (b"shft", "!wwww f", "t"),
+    // Harvests (`FUN_6f42da60` on `FUN_6f42d950`: a counted list of three words, of
+    // timers, six words, a real; then two timers and from build 6028 a third; own on
+    // `FUN_6f42ee40`: the ability's and eight words, then two reals and a word):
+    // CAbilityHarvestLumber; CAbilityHarvest (`FUN_6f42d8c0`, own `FUN_6f42ec10`) from
+    // build 6037 a timer more and three reals more.
+    (b"Ahrl", "wwww wwwwwww t w wwww wwww ff w", "[www] [t] wwwwww f t t t"),
+    (b"Ahar", "wwww wwwwwww t w wwww wwww ff w fff", "[www] [t] wwwwww f t t t t"),
     (b"tsk.", "wwwww fff", "r"),
     (b"tskt", "wwwwwwww f", "r"),
     // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to

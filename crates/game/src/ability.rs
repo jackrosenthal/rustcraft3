@@ -553,7 +553,6 @@ impl World {
             crate::natives::units::kill_unit(self, vm, h, 0);
         }
         self.update_auras(dt);
-        self.update_detection(dt);
     }
 
     /// A flyer's burrow detection (`Abdt`, CAbilityBurrowDetector): its in-range object
@@ -561,8 +560,11 @@ impl World {
     /// 0.5 seconds), each unit come within its Rng but itself given a record for its
     /// owner (`Cdet`, `FUN_6f407060`, `FUN_6f688990`), one a player (read: the 18 of
     /// three dragons and fifteen whelps each finding the others of its camp).
-    pub(crate) fn update_detection(&mut self, dt: f32) {
+    /// Returns the detectors looking now, each with the birth of its in-range object
+    /// (the queue's order, `update_auras`).
+    pub(crate) fn detection_looks(&mut self, dt: f32) -> Vec<(u32, u32)> {
         let detectors: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.extra.sleeping && u.extra.flyer_pil.is_some())).collect();
+        let mut looks = Vec::new();
         for h in detectors {
             let Some(u) = self.unit_mut(h) else { continue };
             // (Its clock starts at its first look, as an aura's.)
@@ -575,14 +577,22 @@ impl World {
             if (now / 0.5).floor() <= (prev / 0.5).floor() {
                 continue;
             }
-            let (owner, x, y) = (u.owner, u.x, u.y);
-            let range = self.ability_with_code(h, "Abdt").map_or(900.0, |(a, l)| self.ability_real(a, "Rng", l).max(900.0));
-            let found: Vec<u32> = self.unit_order.iter().copied().filter(|&o| o != h && self.unit(o).is_some_and(|t| !t.dead && (t.x - x).hypot(t.y - y) <= range && !t.extra.detected_by.iter().any(|d| d.0 == owner))).collect();
-            for o in found {
-                let s = self.tags.take(b"Cdet");
-                if let Some(t) = self.unit_mut(o) {
-                    t.extra.detected_by.push((owner, s));
-                }
+            let pil = u.extra.flyer_pil.unwrap_or(0);
+            looks.push((h, self.tags.live.get(&pil).map_or(0, |e| e.1)));
+        }
+        looks
+    }
+
+    /// One detector's look (`detection_looks`).
+    fn detection_look(&mut self, h: u32) {
+        let Some(u) = self.unit(h) else { return };
+        let (owner, x, y) = (u.owner, u.x, u.y);
+        let range = self.ability_with_code(h, "Abdt").map_or(900.0, |(a, l)| self.ability_real(a, "Rng", l).max(900.0));
+        let found: Vec<u32> = self.unit_order.iter().copied().filter(|&o| o != h && self.unit(o).is_some_and(|t| !t.dead && (t.x - x).hypot(t.y - y) <= range && !t.extra.detected_by.iter().any(|d| d.0 == owner))).collect();
+        for o in found {
+            let s = self.tags.take(b"Cdet");
+            if let Some(t) = self.unit_mut(o) {
+                t.extra.detected_by.push((owner, s));
             }
         }
     }
@@ -777,7 +787,29 @@ impl World {
                 grants.push((h, u.owner, u.x, u.y, area, b, reach, crate::objects::id_from_str(&code)));
             }
         }
-        for (src, owner, x, y, area, b, reach, code) in grants {
+        // The auras' scans and the detectors' looks fall due together, in the order
+        // their timers were made: a bearer's as it was, a detector's with its in-range
+        // object (read: Forestwalk's half-second objects, a Hellcaller's Unholy Aura
+        // buffs, a dragon's detections, more buffs, two dragons', then the whelps',
+        // theirs made as they woke at dawn).
+        enum Due {
+            Grant(u32, u8, f32, f32, f32, Box<Buff>, Option<bool>, crate::objects::Id),
+            Look(u32),
+        }
+        let mut due: Vec<(u32, Due)> = grants
+            .into_iter()
+            .map(|(src, owner, x, y, area, b, reach, code)| (self.unit(src).map_or(0, |u| u.extra.oid.1), Due::Grant(src, owner, x, y, area, Box::new(b), reach, code)))
+            .collect();
+        due.extend(self.detection_looks(dt).into_iter().map(|(h, k)| (k, Due::Look(h))));
+        due.sort_by_key(|d| d.0);
+        for (_, d) in due {
+            let (src, owner, x, y, area, b, reach, code) = match d {
+                Due::Look(h) => {
+                    self.detection_look(h);
+                    continue;
+                }
+                Due::Grant(src, owner, x, y, area, b, reach, code) => (src, owner, x, y, area, *b, reach, code),
+            };
             let targets: Vec<u32> = self
                 .unit_order
                 .iter()

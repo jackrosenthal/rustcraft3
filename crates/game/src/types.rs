@@ -530,9 +530,18 @@ pub struct UnitExtra {
     /// just before it.
     #[serde(default)]
     pub ensnare_pil: Option<(u32, u32)>,
-    /// A flyer's in-range object (its `Abdt`'s `` `pil ``), made again as it wakes.
+    /// A flyer's in-range object (its `Abdt`'s `` `pil ``), gone as it sleeps and made
+    /// again as it wakes (`flyer_sleeping` meanwhile).
     #[serde(default)]
     pub flyer_pil: Option<u32>,
+    #[serde(default)]
+    pub flyer_sleeping: bool,
+    /// A creep's or computer's unit's AI objects (`uref`, `AI-U`), slot and birth.
+    #[serde(default)]
+    pub ai_slots: Vec<(u32, u32)>,
+    /// A meld's fade-in at dawn: its timer and listener, freed as it ends.
+    #[serde(default)]
+    pub fade_slots: Vec<u32>,
     /// A detector's clock since its in-range object was made, which looks every half
     /// second (`World::update_detection`).
     #[serde(default)]
@@ -806,6 +815,9 @@ impl Default for UnitExtra {
             mana_listeners: Vec::new(),
             ensnare_pil: None,
             flyer_pil: None,
+            flyer_sleeping: false,
+            ai_slots: Vec::new(),
+            fade_slots: Vec::new(),
             detect_clock: None,
             detected_by: Vec::new(),
             sleep_effect: 0,

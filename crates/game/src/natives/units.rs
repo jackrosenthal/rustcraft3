@@ -762,10 +762,12 @@ fn enum_units(w: &mut World, vm: &mut Vm, group: u32, filter: u32, limit: i32, p
     enum_units_in(w, vm, group, filter, limit, false, pred)
 }
 
-/// The units a search of the map finds, in the order the original's finds them: by the
-/// 256-unit blocks from the map's corner, row by row, each block's latest made first
-/// (as its trees, `FUN_6f651170`; read: Blizzard.j's MeleeClearExcessUnits on
-/// Forestwalk removing each start's deer, made last, first).
+/// The units a search of the map finds, in the order the original's finds them
+/// (provisional: by the 256-unit blocks from the map's corner, row by row, each
+/// block's latest made first, as its trees, `FUN_6f651170`; it fits Blizzard.j's
+/// MeleeClearExcessUnits on Forestwalk removing the first start's five, its deer, made
+/// last, first, but not the second's: deer, the creeps made 26286, 26327, 26253,
+/// 26207 by their births).
 fn spatial_order(w: &World, mut units: Vec<u32>) -> Vec<u32> {
     let Some(origin) = w.pathing.as_ref().map(|p| p.origin) else { return units };
     let index: std::collections::HashMap<u32, usize> = w.unit_order.iter().enumerate().map(|(i, &h)| (h, i)).collect();
@@ -973,19 +975,53 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 // The removal's tasks and the unit's own objects freed as the next turn
                 // starts, in this order (traced for a gold mine Blizzard.j removes): the
                 // first and last tasks, the sixth and fifth; then, after what is
-                // released meanwhile, the fourth, its listener (provisional: its
-                // modifiers with it, the last first), the third task, its abilities'
-                // objects (the last first), its five reals (the last first), its path,
-                // its two regions, its position, itself, the second task.
+                // released meanwhile, the fourth, its listener and modifiers in the
+                // order made (read: a Forestwalk deer's `rcm then `rtl), the third task,
+                // its abilities' objects (the last first), its five reals (the last
+                // first), its path, its two regions, its position, itself, the second
+                // task.
                 let objects = w.unit(a.h(0)).map(|u| u.extra.object_slots.clone()).unwrap_or_default();
-                let live = |w: &World, (s, b): (u32, u32)| w.tags.live.get(&s).is_some_and(|e| e.1 == b);
+                let (ai, listeners, fade) = w.unit(a.h(0)).map(|u| (u.extra.ai_slots.clone(), u.extra.mana_listeners.iter().map(|l| l.1).collect::<Vec<u32>>(), u.extra.fade_slots.clone())).unwrap_or_default();
+                // (Those released already, as it fell asleep, are not freed again.)
+                let live = |w: &World, (s, b): (u32, u32)| w.tags.live.get(&s).is_some_and(|e| e.1 == b) && !w.tags.doomed.contains(&s);
+                let code = |w: &World, s: u32| w.tags.live.get(&s).map(|e| e.0);
                 for k in [0, 6, 5, 4] {
                     w.tags.doom(t[k]);
                 }
+                // Then (read: Forestwalk's satyrs removed by MeleeClearExcessUnits) the
+                // fourth task; its abilities' in-range objects (an aura's `pil); its AI
+                // objects; its buffs' objects, each its timer then itself; the spells'
+                // listeners made as it woke, in the order made; its regeneration timers,
+                // then its listener; the third task; its abilities' other objects, the
+                // last first; ...
+                let abilities: Vec<(u32, u32)> = objects[2].iter().copied().filter(|&o| live(w, o)).collect();
+                let pils: Vec<u32> = abilities.iter().filter(|o| code(w, o.0) == Some(*b"`pil")).map(|o| o.0).collect();
+                let mut buffs: Vec<u32> = Vec::new();
+                for (i, o) in abilities.iter().enumerate() {
+                    if code(w, o.0).is_some_and(|c| c[0] == b'B') {
+                        if let Some(n) = abilities.get(i + 1).filter(|n| code(w, n.0) == Some(*b"`rcm")) {
+                            buffs.push(n.0);
+                        }
+                        buffs.push(o.0);
+                    }
+                }
                 let mut later = vec![t[3]];
-                later.extend(objects[1].iter().rev().filter(|&&o| live(w, o)).map(|o| o.0));
+                later.extend(&pils);
+                later.extend(ai.iter().filter(|&&o| live(w, o)).map(|o| o.0));
+                later.extend(&buffs);
+                let mut woke: Vec<u32> = listeners.into_iter().filter(|s| w.tags.live.contains_key(s)).collect();
+                woke.sort_by_key(|s| w.tags.live.get(s).map_or(0, |e| e.1));
+                later.extend(woke);
+                let mods: Vec<u32> = objects[1].iter().filter(|&&o| live(w, o)).map(|o| o.0).collect();
+                later.extend(mods.iter().filter(|&&s| code(w, s) == Some(*b"`rcm")));
+                later.extend(mods.iter().filter(|&&s| code(w, s) != Some(*b"`rcm")));
+                // A meld's fade-in not yet over (read: a Shadowdancer removed after the
+                // first dawn).
+                let fading: Vec<u32> = fade.into_iter().filter(|s| w.tags.timed.iter().any(|&(_, x)| x == *s)).collect();
+                w.tags.timed.retain(|&(_, x)| !fading.contains(&x));
+                later.extend(fading);
                 later.push(t[2]);
-                later.extend(objects[2].iter().rev().filter(|&&o| live(w, o)).map(|o| o.0));
+                later.extend(abilities.iter().rev().map(|o| o.0).filter(|s| !pils.contains(s) && !buffs.contains(s)));
                 later.extend([8, 7, 6, 5, 4, 9, 2, 3, 1, 0].iter().filter_map(|&k| objects[0].get(k).filter(|&&o| live(w, o)).map(|o| o.0)));
                 later.push(t[1]);
                 w.tags.removed.extend(later);

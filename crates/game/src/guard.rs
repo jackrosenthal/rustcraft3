@@ -417,6 +417,14 @@ impl World {
                         let _ = r;
                         self.tags.doom(p);
                     }
+                    // A flyer's detection object goes too (provisional: its place after
+                    // the listeners, read only as a whelp is made asleep).
+                    if let Some(p) = self.unit_mut(h).and_then(|u| u.extra.flyer_pil.take()) {
+                        self.tags.doom(p);
+                        if let Some(u) = self.unit_mut(h) {
+                            u.extra.flyer_sleeping = true;
+                        }
+                    }
                     self.fall_asleep(h);
                 }
                 continue;
@@ -430,12 +438,15 @@ impl World {
                 let melded = u.buffs.iter().any(|b| b.ability == a) || (u.extra.meld_active_since.is_none() && !u.extra.meld_acting && idle);
                 if melded {
                     let fade = self.data(a, "DataB", lvl) as f64;
+                    let mut slots = Vec::new();
                     for c in [b"`rcm", b"`rtl"] {
                         let s = self.tags.take(c);
                         self.tags.doom_at(now + fade, s);
+                        slots.push(s);
                     }
                     let t = self.time;
                     if let Some(u) = self.unit_mut(h) {
+                        u.extra.fade_slots = slots;
                         u.buffs.retain(|b| b.ability != a);
                         u.extra.meld_acting = true;
                         u.extra.meld_active_since = Some(t);
@@ -475,14 +486,14 @@ impl World {
                 u.extra.mana_listeners = costs.into_iter().zip(slots).collect();
                 u.extra.ensnare_pil = pil;
             }
-            // A flyer's detection makes its in-range object again, the old one freed as
-            // the next turn starts (`FUN_6f40bb00`, `FUN_6f3f8640`; read: Forestwalk's
-            // Green Dragon Whelps at the first dawn).
-            if let Some(old) = self.unit(h).and_then(|u| u.extra.flyer_pil) {
+            // A flyer's detection makes its in-range object again, the one it had gone
+            // as it fell asleep (`FUN_6f40bb00`, `FUN_6f3f8640`; read: Forestwalk's Green
+            // Dragon Whelps at the first dawn).
+            if self.unit(h).is_some_and(|u| u.extra.flyer_sleeping) {
                 let s = self.tags.take(b"`pil");
-                self.tags.doom(old);
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.flyer_pil = Some(s);
+                    u.extra.flyer_sleeping = false;
                 }
             }
             self.set_asleep(h, false);

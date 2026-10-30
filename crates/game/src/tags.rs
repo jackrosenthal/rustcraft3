@@ -673,7 +673,9 @@ impl crate::world::World {
         // orders).  A unit with an inventory then takes its item pickup range (its
         // abilities' AI start, FUN_6f67dff0; AInv's at FUN_6f606a20).
         let mut extra = 0;
+        let mut ai_refs = None;
         if (owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !building) || computer {
+            ai_refs = Some(codes.len());
             codes.extend([*b"uref", *b"AI-U"]);
             if self.unit_class(self.unit(h).unwrap(), "peon") {
                 extra = self.unit_order.iter().filter_map(|&v| self.unit(v)).filter(|v| v.owner == owner && !v.dead && v.order.id == 0 && self.unit_class(v, "peon")).count();
@@ -702,8 +704,10 @@ impl crate::world::World {
             && o.int("canSleep") != 0
             && self.is_night()
             && self.players.get(owner as usize).is_none_or(|p| p.get_state(crate::types::player_state::NO_CREEP_SLEEP) == 0);
+        // (A flyer's detection object goes with them, after its autocast's order: read,
+        // Forestwalk's whelps, each its `` `pil `` then its making's tasks.)
         if sleeps {
-            for k in autocast.into_iter().chain(spell_timers.iter().rev().copied()) {
+            for k in autocast.into_iter().chain(flyer).chain(spell_timers.iter().rev().copied()) {
                 self.tags.doom(slots[k]);
             }
         }
@@ -728,7 +732,9 @@ impl crate::world::World {
             // dispel ends (`World::update_blight`).
             u.extra.blight_slots = blight.map(|b| slots[b..b + 5].to_vec()).unwrap_or_default();
             u.extra.footprint_slots = footprint.map(|f| slots[f..f + 3].to_vec()).unwrap_or_default();
-            u.extra.flyer_pil = flyer.map(|k| slots[k]);
+            u.extra.flyer_pil = flyer.filter(|_| !sleeps).map(|k| slots[k]);
+            u.extra.ai_slots = ai_refs.map(|k| vec![(slots[k], births[k]), (slots[k + 1], births[k + 1])]).unwrap_or_default();
+            u.extra.flyer_sleeping = flyer.is_some() && sleeps;
             let rest_start = mods_end + if building { 3 } else { 0 };
             let pair = |k: usize| (slots[k], births[k]);
             u.extra.object_slots = [(0..BASE).map(pair).collect(), (BASE..mods_end).map(pair).collect(), (rest_start..tasks).map(pair).collect()];

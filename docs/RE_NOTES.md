@@ -1398,7 +1398,19 @@ Formats the port made its own, to be replaced by the original's:
   player (18: fifteen whelps and three dragons; the births between 0.5 and 0.6 are
   15 `BUau`, 15 `` `rcm ``, and 18 `Cdet`).  The port does so (`update_detection`,
   each detector's clock started at its first look, as an aura's): its births agree
-  at turn 7; the free list's order then differs.
+  at turn 7; the free list's order then differs.  Read against the original's frees
+  from the load on (`freesfw.sh`, 1650 of them): a whelp made asleep frees its
+  detection's `` `pil `` with its sleep's releases (after its autocast's order, before
+  its spells' timers), and makes it anew as it wakes; the aura scans and detection
+  looks are one queue, in the order their timers were made (a bearer's with it, a
+  detector's with its `` `pil ``); and a creep RemoveUnit takes frees, after its fourth
+  task, its abilities' in-range objects (an aura's `` `pil ``), its AI objects (`uref`,
+  `AI-U`), its buffs' objects (each its timer, then itself), the spells' listeners it
+  made waking (in the order made), a meld's fade-in not yet over, its regeneration
+  timers then its listener, the third task, then its abilities' other objects, the
+  last first, those it released as it fell asleep left out.  1485 frees agree; then
+  the second start's creeps are removed in another order (deer, then those made
+  26286, 26327, 26253, 26207), which no block order of the range search fits.
 - A destructable's records (`+w3d`, 1408 trees of Booty Bay at 5 seconds, read against
   its war3map.doo): its first the agent's (its class's `^adf`, its `` `pos ``); its
   second its own (a word, 6 or 0x106, then life, 0, and maximum), handlers (one

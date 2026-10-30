@@ -224,6 +224,42 @@ impl Mover {
         Step::Moving
     }
 
+    /// Stops where it is and turns toward a point, onto its bearing when the turn is
+    /// within its rate (as `arrive` does; read: a peon coming within range of a tree
+    /// stopped there in that step, its heading the tree's bearing, 0.424 from its
+    /// course, its turn 0.6).
+    pub fn halt_facing(&mut self, gait: &Gait, goal: (u32, u32), now: u32) {
+        let angle = self.goal_angle(goal, now);
+        if angle != ZERO {
+            if lt(abs(angle), gait.turn) {
+                self.heading = self.goal_bearing(goal, now);
+            } else {
+                let speed = ef::sqrt(ef::add(ef::mul(self.vx, self.vx), ef::mul(self.vy, self.vy)));
+                let speed = if lt(abs(speed), TINY_ANGLE) { ZERO } else { speed };
+                let heading = if speed == ZERO { self.heading } else { ef::heading(self.vx, self.vy, speed) };
+                self.heading = wrap(ef::add(heading, if lt(angle, ZERO) { gait.turn | 0x8000_0000 } else { gait.turn }));
+            }
+        }
+        self.set_velocity(now, ZERO, ZERO);
+    }
+
+    /// Whether it stands facing a point, within a step's turn of its bearing.
+    pub fn stopped_facing(&self, gait: &Gait, goal: (u32, u32), now: u32) -> bool {
+        let stopped = self.vx & 0x7fff_ffff == 0 && self.vy & 0x7fff_ffff == 0;
+        let angle = self.goal_angle(goal, now);
+        stopped && (angle == ZERO || lt(abs(angle), gait.turn))
+    }
+
+    /// Whether it is within `range` cells of a point now (`FUN_6f05b580`: the squares
+    /// compared, a thousandth over still within).
+    pub fn within(&self, point: (u32, u32), range: u32, now: u32) -> bool {
+        let (x, y) = self.at(now);
+        let (dx, dy) = (ef::sub(point.0, x), ef::sub(point.1, y));
+        let d2 = ef::add(ef::mul(dx, dx), ef::mul(dy, dy));
+        let r2 = ef::mul(range, range);
+        !lt(r2, d2) || lt(ef::sub(d2, r2), 0.001f32.to_bits())
+    }
+
     /// Whether its walk is over there now: within reach on the goal's bearing, or stopped
     /// there (`arrive`) within a step's turn of it (read: a peon stopped at a gold mine
     /// 0.069 short of its bearing, its turn 0.6, went in at the next step with its

@@ -438,6 +438,47 @@ these are the findings behind them.
   before and during mining (1303); the game of selections, a training, and mining
   (1056); five peons sent to the mine together (`docs/reference/bootybay_mining5_*`,
   1141), their steps (read in three games) bit for bit.
+- Lumber (traced: a Booty Bay peon sent by a smart order to a tree, its tags, steps,
+  and the harvest's handlers read under winedbg in two games; `crate::goldrun`, a gold
+  run whose `lumber` is set) runs as gold does with the tree for the mine:
+  - The orders lack the gold orders' move to the mine and the task before it: a
+    player's 17 (`ordt`, two `tskA`, four tasks, three `tskt`, three tasks, `tskA`,
+    `^clg`, `^clu`, `l^pa`; its `^clg` at once, 1, 13, 12, 11, and 10 as the next turn
+    starts), the worker's own from the hall 17 (one `tskA` at its head, four tasks
+    at its tail).  The order home is the gold one's 16.  Their three `tskt` are the
+    order's tasks 0xd0185, 0xd0184, and 0xd0171 (`FUN_6f419530` pushing them by
+    `FUN_6f6926b0`); the last, the move, is the walk.
+  - The walk is searched to the tree's footprint (a Booty Bay tree's 4 by 4 cells) as
+    one to a mine, but it ends in range: as a step finds the walker within Ahar's Rng
+    over 32 plus its radius of the tree's middle (the tree's radius none: read, 4.134
+    cells walking on, 3.972 stopped, Rng 116), it stops there and turns toward the
+    tree (onto its bearing, the turn within its rate), and the next step its move is
+    done (event 0xd0184, `FUN_6f4377d0`).
+  - Within range but not yet free to chop (the harvest's 0x1000), it walks to reach
+    the tree, its tasks counted down from 3: the move to it in range (`tskt`, 0xd0171),
+    the end of its ghosting (`task`, 0xd0151, `FUN_6f43b7e0`, which sets 0x1000), a
+    block (`tskA`, `FUN_6f6927a0(5)`), and that walk's `^clg` (at once), `^clu`, and
+    `l^pa`.  The move's target task, then the new block and task, go as the step
+    ends, the move's path in the next step.  That walk is done in the next step, its
+    target task going as that step ends and its path in the step after; 0xd0184 again
+    finds it free and it starts to chop (`FUN_6f436400`, the harvest's 0x40000000 set:
+    its later orders ghost).  Read: turns 853 and 854, 990.
+  - Chopping is three events on the harvest's agent timer (+0x1dc, `FUN_6f0608d0`): a
+    swing (`FUN_6f436a90`) chops at its damage point (+0x1cc, event 0xd01b1,
+    `FUN_6f405110`: Ahar DataA lumber, as much of the tree's life), its backswing
+    (+0x1d4, at least 0.01) runs out (0xd01b2, `FUN_6f40bce0`), and the next swing
+    starts after Dur less both (at least 0.01; 0xd01be, `FUN_6f40c4a0`).  Full (DataB),
+    it stops as the last backswing runs out (`FUN_6f436ca0`) and is given its order
+    home at once, walking from the next step.  A peon's 0.5, 0.5, and 1.1 make ten
+    chops 10.899918 seconds on the agent clock (read on three trips, from 212.181900 to
+    223.081818).
+  - At the hall the lumber is given and its own order made as with gold, the order
+    home's tree and the new order's five going as the step ends.
+  The lumber game (`docs/reference/bootybay_lumber_*`) agrees with the original's trace
+  and keepalives to its end, 1422 turns.  A longer one (read, not yet compared) shows
+  the tree felled at its fiftieth chop, the worker's next order on another tree, and
+  the main and agent clocks set back by about 300 seconds past 300 (295.94 at turn
+  2965, 6.83 at 3074).
 - A player's order to walk to a point (traced: a Booty Bay peon sent across the
   ground, `docs/reference/bootybay_moves_*`) is the engine's walk, as a wanderer's
   with its way searched 700 nodes deep (`World::start_player_walk`).  Its order has

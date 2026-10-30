@@ -217,7 +217,7 @@ impl World {
         // home starting with the first step after it (read: a peon's first step home
         // 34 steps after it went in, its timer 1 second).
         let runners: Vec<(u32, u32)> = self.unit_order.iter().filter_map(|&h| match self.unit(h)?.extra.gold_run.as_ref()?.phase {
-            crate::goldrun::Phase::InMine(at) => Some((h, at)),
+            crate::goldrun::Phase::InMine(at) | crate::goldrun::Phase::Chopping(at) => Some((h, at)),
             _ => None,
         }).collect();
         for (h, at) in runners {
@@ -258,8 +258,11 @@ impl World {
                 self.tags.flush_issued();
             }
             last = Some(t);
-            if self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::InMine(_))) {
+            let phase = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).map(|r| r.phase);
+            if matches!(phase, Some(crate::goldrun::Phase::InMine(_))) {
                 self.leave_gold_mine(h, k);
+            } else if matches!(phase, Some(crate::goldrun::Phase::Chopping(_))) {
+                self.leave_tree(h, k);
             } else {
                 self.issue_wander(k, at, h);
             }

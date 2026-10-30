@@ -281,11 +281,11 @@ impl Unit {
     /// Whether it walks by the engine's movement steps with the others
     /// (`World::first_steps`, `World::step_walkers`): a wanderer or a unit a player sent
     /// to a point under a move order, or a worker on a gold run between the mine and
-    /// home.
+    /// home or reaching its tree.
     pub fn steps_walker(&self) -> bool {
         !self.dead
             && (((self.extra.local_paths || self.extra.player_walk) && matches!(self.action, Action::Move { .. }))
-                || (matches!(self.action, Action::Harvest { .. }) && self.extra.gold_run.as_ref().is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::ToMine | crate::goldrun::Phase::ToHall(_)))))
+                || (matches!(self.action, Action::Harvest { .. }) && self.extra.gold_run.as_ref().is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::ToMine | crate::goldrun::Phase::ToHall(_) | crate::goldrun::Phase::Reaching { .. }))))
     }
 }
 

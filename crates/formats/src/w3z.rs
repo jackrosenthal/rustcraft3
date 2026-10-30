@@ -604,6 +604,24 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (b"uevt", "wwwww", "wwww r [rw]"),
     (b"pevt", "wwwwwwwwww", "r [rw]"),
     (b"gevt", "wwwww", "[rw]"),
+    // Registrations on the event-registration base (`FUN_6f27ef60`: event 0x80202's
+    // list): a game state's (`FUN_6f27e630`, own `FUN_6f27f260`) two references and two
+    // lists; an alliance's (`FUN_6f27e330`, own `FUN_6f27eff0`) a reference and two
+    // lists; a player state's (`FUN_6f27e9a0`, own `FUN_6f27f230`) the player
+    // registration's, a reference, and event 0x8020b's list; a timer's (`FUN_6f27ec50`)
+    // a reference and event 0x80204's list.
+    (b"gfvt", "wwwwww f w", "e r r e e"),
+    (b"alvt", "wwwwww f w www", "e r e e"),
+    (b"psvt", "wwwwwwwwww w f", "r e r e"),
+    (b"tmet", "wwwww", "r e"),
+    // Orders (`FUN_6f6960f0`, own `FUN_6f696b40`: six words): three words from build
+    // 6000; a targeted one (`FUN_6f696220`, own `FUN_6f696cf0`) two references more.
+    (b"+ord", "wwwwww", "www"),
+    (b"ordt", "wwwwww ff www wwww ff", "www r r"),
+    // Tasks: `FUN_6f696330` (own `FUN_6f696f50`) and `FUN_6f696410` (own
+    // `FUN_6f6970b0`), a reference each.
+    (b"tsk.", "wwwww fff", "r"),
+    (b"tskt", "wwwwwwww f", "r"),
     // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to
     // 0x80318, 0x80260 and 0x80261; its name and a byte; its selection
     // (`FUN_6f292c10`: a list, ten control groups' two lists each, references, lists of

@@ -1212,8 +1212,12 @@ these are the findings behind them.
     folder, playable size, and checksums.  The port writes its replays so
     (`Replay::to_bytes`), privately only a campaign mission's setup and a frame not
     of whole milliseconds; its replay of the quiet game played from the original's
-    turns is the original's record for record (18032 records, to where the games part),
-    but for the language word, which the original fills from memory.
+    turns is the original's record for record (31252 records, all its turns and
+    checksums), but for the language word, which the original fills from memory, and the
+    leaving record the port adds; the original plays the port's replay back (read: at
+    1x on the hidden display, its replay panel showing the game's time).  A replay can
+    also carry a recorded game's actions in another's record (`w3gsplice`), for tracing
+    the original as it plays one back: no keepalives then, but its objects and steps.
   With these Booty Bay without actions (`docs/reference/bootybay_quiet_long_*`) agrees
   with the original's trace and keepalives for all 7300 turns compared, its replay
   (`docs/reference/bootybay_quiet_long.w3g`, `w3gplay`) to turn 9014, and the long

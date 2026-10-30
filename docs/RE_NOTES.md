@@ -1617,6 +1617,17 @@ Formats the port made its own, to be replaced by the original's:
   (`` `pil ``) among them (its abilities', a flyer's, its AI's item pickup, Ensnare's,
   and a computer's structure's alarm's as it starts to watch), newest first; each
   real its own.
+- A unit's clustered position (`` `pcu ``, CPoPosCl) holds its place in pathing cells
+  ((x - the pathing origin) / 32), two zeros, its speed in cells a second (none
+  moving: unbounded), its facing in radians, and its collision in cells; its two
+  regions; -1, -1, 0; 0.8, its speed again (a structure's 0.75), its turn rate (a
+  structure's 0.001), pi / 3 as 1.0471975, two zeros, its facing, 0; its whole cells
+  and a flag word; two flags; its path; its property's second head its newest
+  in-range listener.  Structures agree (13 of 71).  Not yet: the flag word (0x2000,
+  0x2400, 0x2500, 0x100, 0x4000, 0x5000 among the units read), and a script-made
+  creep's facing, a bit off: neither degrees times 0.01745329 nor over 57.29578 gives
+  every creep's (each gives some), nor through atan2 or a stepwise parse of the
+  script's real.
 - A unit's modifiers (`` `rcm ``: its life's and mana's regeneration, and its life's on
   blight) agree for 56 of 69: two words (-1, 0x60050044), its rate and no limit, a
   timing node due 150 seconds after it was made (its stamp's clock plus 150), every

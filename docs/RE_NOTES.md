@@ -1453,7 +1453,11 @@ Formats the port made its own, to be replaced by the original's:
   type's fixed rotation in radians (fixedRot 270 saved 0x4096cbe3, which 270 times
   0.01745329 gives; war3map.doo's angle, 0x4096cbe5, is not what it keeps), its two
   regions; the regions as noted above.  The original loads the save so made (with
-  the object manager's header from the port as well) and plays.
+  the object manager's header from the port as well) and plays.  The trees' own
+  records (`+w3d`) agree too, all 1408, 357 but for what the local player sees of them
+  (the sprite's tint, word, and short, the widget's shorts and first byte, the own
+  word's 0x100): written with the values most trees have, the original loads the
+  save and draws the trees as before.
   An agent's entry is its
   CAgentBaseAbs: its first record `FUN_6f146480` (its base's, a reference, a counted
   list of references, four more), its second its agent's vf 0x38 (CAgent's

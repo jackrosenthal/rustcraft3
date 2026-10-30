@@ -2,7 +2,7 @@
 //! state: built piece by piece, each checked against the original's save of the same
 //! moment (`World::compare_save`).
 
-use w3_formats::w3z::{Array, First, Link, ObjectBase, PropertyBase, Ref, SaveGame, SavedObject, Tagged, Timing};
+use w3_formats::w3z::{Array, First, Handlers, Link, ObjectBase, PropertyBase, Ref, SaveGame, Second, SavedObject, Sprite, Tagged, Timing, Widget};
 
 use crate::types::Obj;
 
@@ -58,6 +58,12 @@ fn plain_base(tag: u32, birth: u32) -> ObjectBase {
     let none = Ref(u32::MAX, u32::MAX);
     let set = (Link(none, 0), Link(none, 0), Ref(tag, birth), none);
     ObjectBase { real: 0.0, words: [u32::MAX, 0], links: [set, set], timings: [Timing(None), Timing(None)] }
+}
+
+/// A class's definition's tag and birth (an agent's first record names it).
+fn class_ref(code: &[u8; 4]) -> Ref {
+    let c = u32::from_be_bytes(*code);
+    classes().into_iter().find(|k| k.code == c).map_or(Ref(u32::MAX, u32::MAX), |k| Ref(k.tag, k.birth))
 }
 
 /// The registry as saved: each class's code, parent, and definition's tag and birth.
@@ -150,6 +156,48 @@ impl World {
         out
     }
 
+    /// A destructable's own records (`+w3d`; read against the quiet test map's trees):
+    /// the agent's (its class's definition, its position, its position again as its
+    /// second link), and its own (CDestructable: a word, 6, its life, 0, and its
+    /// maximum; its handlers, the game's for event 0x80267; the widget, its sprite's
+    /// model the type's file, variation, and "S" for a lightweight type, its scale,
+    /// its owner 0, its type, its footprint's regions and its place, its occlusion
+    /// height; then its variation, its z, -2, and 1.0).  What the local player sees of
+    /// it (the sprite's tint and a word and short, the widget's shorts and first byte,
+    /// and for some the word's 0x100) is the running game's: these the most of Booty
+    /// Bay's trees have (provisional: whether the original minds them).
+    pub fn destructable_own_records(&self, h: u32) -> Option<(u32, First, Second)> {
+        let Some(Obj::Destructable(d)) = self.handles.get(h) else { return None };
+        if d.object_slots.len() < 3 {
+            return None;
+        }
+        let o = self.objects.destructables.get(d.type_id)?;
+        let own = self.tagged(d.oid.0);
+        let pos = self.tagged(d.object_slots[0]);
+        let none = Ref(u32::MAX, u32::MAX);
+        let first = First::Agent { object: plain_base(own.0, own.1), agent: class_ref(b"+w3d"), refs: vec![Ref(pos.0, pos.1)], links: [Link(none, 0), Link(Ref(pos.0, pos.1), 0), Link(none, 0), Link(none, 0)] };
+        let game = self.tags.live.iter().find(|(_, (c, _))| c == b"+gam").map_or((0, 0), |(&s, (_, b))| (s, *b));
+        let mut fixed: [Vec<(Ref, u32)>; 5] = Default::default();
+        fixed[0].push((Ref(game.0, game.1), 0x8_0267));
+        let handlers = Handlers { keyed: Vec::new(), fixed, events: vec![Vec::new(); 0x400] };
+        let dead = d.life <= 0.0;
+        let model = format!("{}{}{}.mdl", o.str("file"), d.variation, if dead { "D" } else if o.int("lightweight") != 0 { "S" } else { "" });
+        let sprite = Sprite { model, real: f32::from_bits(0x038c_0025), short: 0xfffe, byte: 255, word: 0x0020_2030, reals: [d.scale, 1.0], words: [u32::MAX, 0], last_real: 0.0, last_byte: 0, flags: [0; 3], entries: vec![(0.0, 4, Vec::new())] };
+        let footprint: Vec<Ref> = d.object_slots[3..].iter().map(|&s| self.tagged(s)).map(|t| Ref(t.0, t.1)).collect();
+        let widget = Widget {
+            sprite: Some(sprite),
+            owner: 0,
+            word: u32::from_be_bytes(d.type_id),
+            shorts: [4095, 0x8001],
+            refs: Some((footprint, [d.x, d.y])),
+            bytes: [1, 0],
+            last_real: o.real("occH"),
+            byte: 0,
+        };
+        let second = Second::Destructable { own: (6, [d.life, 0.0, d.max_life]), handlers, widget, bytes: [d.variation as u8, 0], words: [d.z.to_bits(), 0xffff_fffe, 1f32.to_bits()] };
+        Some((own.0, first, second))
+    }
+
     /// A destructable's facing as its position saves it: its type's fixed rotation if
     /// it has one, else as placed, in radians (read: every tree of Booty Bay and
     /// Forestwalk, fixedRot 270, saves 0x4096cbe3, which 270 times 0.01745329 gives;
@@ -219,9 +267,19 @@ impl World {
         for &h in &self.destructable_order {
             records.extend(self.destructable_records(h));
         }
+        let mut seconds: std::collections::HashMap<u32, Second> = std::collections::HashMap::new();
+        for &h in &self.destructable_order {
+            if let Some((slot, f, sec)) = self.destructable_own_records(h) {
+                records.insert(slot, f);
+                seconds.insert(slot, sec);
+            }
+        }
         for o in objects[0].iter_mut() {
             if let Some(r) = records.get(&o.entry.tag) {
                 o.first = r.to_bytes();
+            }
+            if let Some(Ok(b)) = seconds.get(&o.entry.tag).map(|sec| sec.to_bytes(o.entry.kind)) {
+                o.second = b;
             }
         }
         m.set_objects(&objects);
@@ -299,6 +357,39 @@ impl World {
                 }
             }
             out.push(format!("destructables' positions and regions: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+            // Their own records, with what the local player sees set as ours.
+            let (mut same, mut seen, mut differ, mut first) = (0, 0, 0, None);
+            for &h in &self.destructable_order {
+                let Some((slot, f, sec)) = self.destructable_own_records(h) else { continue };
+                let Some(o) = by_slot.get(&slot) else { continue };
+                let theirs = (o.first().ok(), o.second().ok());
+                if theirs.0.as_ref() != Some(&f) {
+                    differ += 1;
+                    first.get_or_insert(format!("slot {slot} first: ours {f:?}, the original's {:?}", theirs.0));
+                    continue;
+                }
+                match theirs.1 {
+                    Some(t) if t == sec => same += 1,
+                    Some(Second::Destructable { own, handlers, mut widget, bytes, words }) => {
+                        if let (Some(ws), Second::Destructable { widget: ours, .. }) = (widget.sprite.as_mut(), &sec) {
+                            let os = ours.sprite.as_ref().unwrap();
+                            (ws.real, ws.short, ws.word) = (os.real, os.short, os.word);
+                            (widget.shorts, widget.bytes[0]) = (ours.shorts, ours.bytes[0]);
+                        }
+                        if (Second::Destructable { own: (own.0 & !0x100, own.1), handlers, widget, bytes, words }) == sec {
+                            seen += 1;
+                        } else {
+                            differ += 1;
+                            first.get_or_insert(format!("slot {slot} second differs"));
+                        }
+                    }
+                    other => {
+                        differ += 1;
+                        first.get_or_insert(format!("slot {slot}: the original's {other:?}"));
+                    }
+                }
+            }
+            out.push(format!("destructables: {same} the same, {seen} but for what the local player sees, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
         }
         out.push(match free.chunks(4).zip(m.free[0].chunks(4)).position(|(a, b)| a != b) {
             None if free.len() == m.free[0].len() => format!("free list: the same, {} slots", free.len() / 4 - 1),

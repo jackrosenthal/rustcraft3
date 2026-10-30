@@ -69,6 +69,31 @@ fn main() {
                     println!("state {name}: {t}");
                 }
                 println!("state: {} bytes after, starting {:02x?}", g.rest.len(), &g.rest[..g.rest.len().min(160)]);
+                if let Some((_, f)) = g.parts.iter().find(|(n, _)| *n == "script data") {
+                    if let [w3_formats::w3z::Field::Bytes(b)] = &f[..] {
+                        match w3_formats::w3z::ScriptData::parse(b) {
+                            Ok(d) => {
+                                println!("scripts: {} code places, {} thread places", d.code_places, d.thread_places);
+                                for (k, c) in d.code.iter().enumerate() {
+                                    if let Some(c) = c {
+                                        println!("  code {}: {} words, {} strings", k + 1, c.words.len(), c.strings.len());
+                                    }
+                                }
+                                for ((place, m), t) in d.machines.iter().zip(&d.threads) {
+                                    println!("  machine {place}: code {} at {} returns {:?} functions {} globals {} frames {} stack {} strings {} threads {}", m.code, m.at, m.returns, m.functions.len(), m.globals.len(), m.frames.len(), m.stack.len(), m.strings.len(), t.len());
+                                    for (n, v) in m.globals.iter().take(4) {
+                                        println!("    global {n}: {v:?}");
+                                    }
+                                    for t in t.iter().take(3) {
+                                        println!("    thread of {} at {}: {} frames, stack {}", t.machine, t.at, t.frames.len(), t.stack.len());
+                                    }
+                                }
+                                println!("  owners {:?}", d.owners);
+                            }
+                            Err(e) => println!("scripts: {e}"),
+                        }
+                    }
+                }
             }
             Err(e) => println!("state: {e}"),
         }

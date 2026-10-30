@@ -1076,3 +1076,203 @@ impl SavedObject {
         Ok(out)
     }
 }
+
+/// The script data as saved (`FUN_6f90d350`): the JASS virtual machines' code, their
+/// states, and their threads, each section its size first.
+#[derive(Clone, Debug, Default)]
+pub struct ScriptData {
+    /// The number of code blocks' places (+0x44, the first unused) and threads' (+0x8c).
+    pub code_places: u32,
+    pub thread_places: u32,
+    /// The code blocks by place (from 1; `None` for an empty one).
+    pub code: Vec<Option<Code>>,
+    /// The machines (`FUN_6f9074d0`), each with its place.
+    pub machines: Vec<(u32, Machine)>,
+    /// Each machine's threads (`FUN_6f91a920`), in the machines' order.
+    pub threads: Vec<Vec<Thread>>,
+    /// The machines' places by thread (`FUN_6f90d350`, each +0x2850), from the second.
+    pub owners: Vec<u32>,
+}
+
+/// A code block (`FUN_6f910730`): its words (two per instruction) and its strings
+/// (from the second).
+#[derive(Clone, Debug, Default)]
+pub struct Code {
+    pub words: Vec<u32>,
+    pub strings: Vec<String>,
+}
+
+/// A JASS machine's state (`FUN_6f91a0d0`).
+#[derive(Clone, Debug, Default)]
+pub struct Machine {
+    /// Its code block's place (`FUN_6f9108a0`).
+    pub code: u32,
+    /// A word (+0x34), a real, and a word (+0x44).
+    pub flag: u32,
+    pub real: f32,
+    pub word: u32,
+    /// Its instruction (in words from its code's start) and its return instructions.
+    pub at: u32,
+    pub returns: Vec<u32>,
+    /// Its functions (from the second): name and a word (+0xc).
+    pub functions: Vec<(String, u32)>,
+    /// Its globals by name.
+    pub globals: Vec<(String, Value)>,
+    /// Its frames (`FUN_6f91a540`).
+    pub frames: Vec<Frame>,
+    /// Its stack's values.
+    pub stack: Vec<Value>,
+    /// Its strings (from the second, `FUN_6f916930`).
+    pub strings: Vec<String>,
+}
+
+/// A JASS value (`FUN_6f91a6e0`): its type (+0x18; above 8 an array), a word (+0x1c),
+/// an array's element count (`FUN_6f916a50`), and its word (a code value an
+/// instruction) or an array's words.
+#[derive(Clone, Debug, Default)]
+pub struct Value {
+    pub kind: u32,
+    pub word: u32,
+    pub length: u32,
+    pub value: Contents,
+}
+
+/// A JASS value's word, or an array's words.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Contents {
+    One(u32),
+    Array(Vec<u32>),
+}
+
+impl Default for Contents {
+    fn default() -> Self {
+        Contents::One(0)
+    }
+}
+
+/// A frame (`FUN_6f91a540`): its arguments, a word (+0xb8), and its locals by name.
+#[derive(Clone, Debug, Default)]
+pub struct Frame {
+    pub arguments: Vec<Value>,
+    pub word: u32,
+    pub locals: Vec<(String, Value)>,
+}
+
+/// A thread (`FUN_6f91a790`): its machine's place, its instruction, its frames, a word,
+/// a real, and a word, and its stack.
+#[derive(Clone, Debug, Default)]
+pub struct Thread {
+    pub machine: u32,
+    pub at: u32,
+    pub frames: Vec<Frame>,
+    pub flag: u32,
+    pub real: f32,
+    pub word: u32,
+    pub stack: Vec<Value>,
+}
+
+/// Reads a section, its size first, by `f`, which must read it all.
+fn sized<T>(r: &mut Reader, f: impl FnOnce(&mut Reader) -> Result<T, Error>) -> Result<T, Error> {
+    let n = r.u32()? as usize;
+    let mut s = Reader::new(r.bytes(n)?);
+    let t = f(&mut s)?;
+    if s.remaining() != 0 {
+        return Err(Error::Format("a script data section not read to its end"));
+    }
+    Ok(t)
+}
+
+/// A word count, then that many by `f`.
+fn counted<T>(r: &mut Reader, mut f: impl FnMut(&mut Reader) -> Result<T, Error>) -> Result<Vec<T>, Error> {
+    let n = r.u32()?;
+    (0..n).map(|_| f(r)).collect()
+}
+
+/// A word count, then one fewer by `f` (the tables whose first entry is not saved).
+fn from_second<T>(r: &mut Reader, mut f: impl FnMut(&mut Reader) -> Result<T, Error>) -> Result<Vec<T>, Error> {
+    let n = r.u32()?;
+    (1..n.max(1)).map(|_| f(r)).collect()
+}
+
+impl Value {
+    fn read(r: &mut Reader) -> Result<Value, Error> {
+        sized(r, |r| {
+            let (kind, word, array, length) = (r.u32()?, r.u32()?, r.u32()?, r.u32()?);
+            let value = if array != 0 { Contents::Array(counted(r, |r| r.u32())?) } else { Contents::One(r.u32()?) };
+            Ok(Value { kind, word, length, value })
+        })
+    }
+}
+
+impl Frame {
+    fn read(r: &mut Reader) -> Result<Frame, Error> {
+        sized(r, |r| {
+            let arguments = counted(r, Value::read)?;
+            let word = r.u32()?;
+            let locals = sized(r, |r| counted(r, |r| Ok((r.cstr()?, Value::read(r)?))))?;
+            Ok(Frame { arguments, word, locals })
+        })
+    }
+}
+
+impl ScriptData {
+    pub fn parse(b: &[u8]) -> Result<ScriptData, Error> {
+        let mut r = Reader::new(b);
+        let mut d = ScriptData { code_places: r.u32()?, thread_places: r.u32()?, ..Default::default() };
+        let places = d.code_places;
+        d.code = sized(&mut r, |r| {
+            (1..places.max(1))
+                .map(|_| {
+                    if r.u32()? == 0 {
+                        return Ok(None);
+                    }
+                    sized(r, |r| {
+                        let words = counted(r, |r| r.u32())?;
+                        let strings = from_second(r, |r| r.cstr())?;
+                        Ok(Some(Code { words, strings }))
+                    })
+                })
+                .collect()
+        })?;
+        d.machines = sized(&mut r, |r| {
+            counted(r, |r| {
+                let place = r.u32()?;
+                let code = r.u32()?;
+                let m = sized(r, |r| {
+                    let mut m = Machine { code, flag: r.u32()?, real: r.f32()?, word: r.u32()?, at: r.u32()?, ..Default::default() };
+                    m.returns = counted(r, |r| r.u32())?;
+                    m.functions = sized(r, |r| from_second(r, |r| Ok((r.cstr()?, r.u32()?))))?;
+                    m.globals = sized(r, |r| counted(r, |r| Ok((r.cstr()?, Value::read(r)?))))?;
+                    m.frames = sized(r, |r| counted(r, Frame::read))?;
+                    m.stack = sized(r, |r| counted(r, Value::read))?;
+                    m.strings = sized(r, |r| from_second(r, |r| r.cstr()))?;
+                    Ok(m)
+                })?;
+                Ok((place, m))
+            })
+        })?;
+        let n = d.machines.len();
+        d.threads = sized(&mut r, |r| {
+            (0..n)
+                .map(|_| {
+                    sized(r, |r| {
+                        counted(r, |r| {
+                            sized(r, |r| {
+                                let (machine, at) = (r.u32()?, r.u32()?);
+                                let frames = sized(r, |r| counted(r, Frame::read))?;
+                                let (flag, real, word) = (r.u32()?, r.f32()?, r.u32()?);
+                                let stack = sized(r, |r| counted(r, Value::read))?;
+                                Ok(Thread { machine, at, frames, flag, real, word, stack })
+                            })
+                        })
+                    })
+                })
+                .collect()
+        })?;
+        d.owners = sized(&mut r, |r| from_second(r, |r| r.u32()))?;
+        if r.remaining() != 0 {
+            return Err(Error::Format("script data not read to its end"));
+        }
+        Ok(d)
+    }
+}

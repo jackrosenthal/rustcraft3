@@ -493,6 +493,13 @@ these are the findings behind them.
     footprint (equal for the trees about the felled, as the engine's), and does not
     yet run a tree's death events; a tree felled short of a full load is not yet
     read.
+  Not yet: a tree felled short of a full load (the lumber long game's second, turn
+  5663).  Read by tracing the original playing the game back (`w3gsplice`): its peon
+  left the felled tree, dropped its partial load at the hall, and went east to a tree
+  about cell 677, 275 (world about 9100, 2400), its walk's objects 0.76 seconds after
+  the drop's; the port's picks 670, 282 (cost 1 from the felled tree's cell) at the
+  drop, and the original's tree is not among its candidates.  Its search's start or
+  candidates differ there.
   The lumber game (`docs/reference/bootybay_lumber_*`) agrees with the original's trace
   and keepalives to its end, 1422 turns, and a longer one
   (`docs/reference/bootybay_lumber_long_*`: three trees, two felled, the clocks set

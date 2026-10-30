@@ -38,6 +38,12 @@ fn main() {
         let g = s.state().unwrap();
         s2.rest = g.to_bytes().unwrap();
         println!("records written back: {same} the same, {differ} differ; state written back: {}; whole: {}", if s2.rest == s.rest { "the same" } else { "differs" }, if s2.to_record() == record { "the same" } else { "differs" });
+        // W3Z_WRITE=<file>: the save as written back, in the port's container.
+        if let Ok(out) = std::env::var("W3Z_WRITE") {
+            let (h, _) = w3_formats::container::unpack(&std::fs::read(&a[1]).unwrap()).unwrap();
+            std::fs::write(&out, s2.to_file(&h)).unwrap();
+            println!("wrote {out}");
+        }
         if let Some((_, f)) = g.parts.iter().find(|(n, _)| *n == "script data") {
             if let [w3_formats::w3z::Field::Bytes(b)] = &f[..] {
                 let d = w3_formats::w3z::ScriptData::parse(b).unwrap();

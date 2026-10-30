@@ -732,6 +732,8 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // CTask (`FUN_6f696dd0`): five words; `tskA` (`FUN_6f696ec0`): six.
     (b"task", "wwwww", ""),
     (b"tskA", "wwwwww", ""),
+    // CTaskOrderParam: CTaskAction's methods (vf 0x38 `FUN_6f03eda0`, own `FUN_6f696ec0`).
+    (b"tskO", "wwwwww", ""),
     // CCreepSpot (`FUN_6f9bef80`): two words and a counted list of three words each.
     (b"AIcs", "ww [www]", ""),
     // `FUN_6f9ca630`: two words, four reals, nine words.

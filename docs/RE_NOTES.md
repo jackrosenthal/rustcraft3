@@ -1357,9 +1357,15 @@ Formats the port made its own, to be replaced by the original's:
   `ScriptData`: the code blocks, each machine's globals by name, frames, stack, and
   strings, and its threads, every part size-prefixed), the hashtables
   (`FUN_6f246430`), a counted list of references (`FUN_6f9ca1e0`), the sounds
-  (`FUN_6f359b50`), and the game UI's, to the record's end.  The port's saves are
-  still its own; writing the original's and loading one into the port's world are
-  not done.
+  (`FUN_6f359b50`), and the game UI's, to the record's end.  Each part writes back
+  byte for byte from what was read (`First::to_bytes`, `Second::to_bytes`,
+  `GameState::to_bytes`, `ScriptData::to_bytes`, `SaveGame::to_record`), and the
+  original loads a save so written in the port's container (`to_file`, blocks of
+  0xffff bytes; read: a test map's script calling LoadGame on it, after which the
+  saved game's own 20-second timer saved again, `bbsv20.w3z`, 14029 objects, also
+  read and written back whole).  `-loadfile` with a .w3z shows only a black screen,
+  the original's own saves too.  The port's saves are still its own; loading the
+  original's into the port's world, and writing one from it, are not done.
 - Replays: .w3g files as the original writes them (header and its CRC, 8192-byte
   zlib blocks with their checksums, the record of host, players, slots, and seed, a
   turn per frame and its checksum, the commands as the original's actions,

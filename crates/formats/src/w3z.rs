@@ -703,6 +703,9 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // COrderPoint (`FUN_6f6961c0`, own `FUN_6f696bd0`): the order's three words and a
     // reference.
     (b"ord.", "wwwwww ff", "www r"),
+    // CGhostImage (`FUN_6f6db1a0`, the agent base alone; own `FUN_6f6db2b0`: three
+    // words): its sprite, two shorts, five words, three words, nine words, a short.
+    (b"+wgh", "!www", "p ss wwwww www 9w s"),
     (b"tsk.", "wwwww fff", "r"),
     (b"tskt", "wwwwwwww f", "r"),
     // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to

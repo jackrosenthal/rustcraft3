@@ -375,7 +375,7 @@ impl World {
     }
 
     /// A unit's life and mana regeneration a second.
-    fn regen_rates(&self, h: u32) -> Option<(f32, f32)> {
+    pub(crate) fn regen_rates(&self, h: u32) -> Option<(f32, f32)> {
         let u = self.unit(h)?;
         if u.dead || u.constructing.is_some() {
             return None;
@@ -489,6 +489,7 @@ impl World {
         // three acolytes each take one at 2.0 seconds, the haunted mine's blight under
         // them since its making; event 0xd01c1, `FUN_6f43a200`; provisional: the period,
         // and leaving blight frees it).
+        let now = self.time;
         for &h in &hs {
             let Some(u) = self.unit_mut(h) else { continue };
             let Some(c) = u.extra.blight_check.as_mut() else { continue };
@@ -496,11 +497,17 @@ impl World {
             if *c > 1e-4 {
                 continue;
             }
+            let due = now + *c;
             *c += 2.0;
             let (x, y, had) = (u.x, u.y, u.extra.blight_rcm);
             match (self.point_blighted(x, y), had) {
                 (true, None) => {
+                    // (Stamped with the main clock at its due, not the tick's start: read,
+                    // 1.9999981.)
+                    let kept = self.tags.clock;
+                    self.tags.clock = self.clock_at_time(due).unwrap_or(kept);
                     let s = self.tags.take(b"`rcm");
+                    self.tags.clock = kept;
                     if let Some(u) = self.unit_mut(h) {
                         u.extra.blight_rcm = Some(s);
                     }

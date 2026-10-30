@@ -1675,6 +1675,13 @@ impl World {
         self.tick_wraps = wraps;
     }
 
+    /// The main clock (its single's bits) at a moment of this tick, its 5 ms tick's.
+    pub(crate) fn clock_at_time(&self, t: f32) -> Option<u32> {
+        let k = (t as f64 * 200.0).round() as i64;
+        let (first, clocks) = (&self.tick_clocks.0, &self.tick_clocks.1);
+        clocks.get(usize::try_from(k - *first).ok()?).copied()
+    }
+
     /// The main clock at a tick (0 before the first), from the last read on, and the
     /// times it has been set back by then.
     fn main_clock_at(&mut self, t: i64) -> (u32, u32) {

@@ -590,6 +590,10 @@ pub struct UnitExtra {
     /// Its object of the last day change (`World::time_of_day_moved`), while it lasts.
     #[serde(default)]
     pub day_rcm: Option<u32>,
+    /// The time stamp of its sight (its `` `rel ``): the main clock as its last day change's
+    /// ramp ends (that change's plus 3 seconds), while it has had one.
+    #[serde(default)]
+    pub sight_stamp: Option<f32>,
     /// Regeneration on blight (Ablr): the time to its next look at the ground, and its
     /// timer while on blight (`World::regenerate`).
     #[serde(default)]
@@ -866,6 +870,7 @@ impl Default for UnitExtra {
             footprint_slots: Vec::new(),
             object_slots: Default::default(),
             day_rcm: None,
+            sight_stamp: None,
             blight_check: None,
             blight_rcm: None,
             alarm_wait: None,

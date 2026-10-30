@@ -1592,9 +1592,18 @@ Formats the port made its own, to be replaced by the original's:
   before its making's tasks, a count each (`FUN_6f48c8c0`).  The game's own `` `rtl ``
   takes 1 and 2.  The port counts so (`Tags::prop_count`), each object's kept: the
   quiet test map's agree through its 373rd (the shop's and fountain's `` `pil `` 7 and
-  14, a Gnoll's `` `rcm `` 41).  A unit's `` `rel `` holds its value, a rate, and its
-  bounds (life 320, 0.5, 0, 320), linked to its regeneration's `` `rcm `` and death's
-  `` `rtl `` (0.4).
+  14, a Gnoll's `` `rcm `` 41).
+- A unit's five reals (`` `rel ``, listed after its `` `pcu ``, its properties) agree in
+  the save (351 of 355): life, mana, two of -0 (bounded 0 to 2048, and 0 to 1), and
+  sight, each its value, rate, and bounds.  Life's heads are its regeneration's
+  `` `rcm `` (or an undead's on blight, made at its check and stamped then) and its
+  death's `` `rtl `` (0.4); mana's its `` `rcm `` and its newest listener on mana (a
+  woken creep's made anew, else its spells' own, a peasant's Repair's).  Regenerating
+  mana is kept as its value at its stamp (the creeps' 0 at the start), mana without a
+  pool as -0.  Sight is stamped with the end of its last day change's 3-second ramp
+  (3.0 for those made before the melee setup's 8:00), a sight of none never changed
+  -0 (the haunted mine's hidden gold mine).  Not yet: a Granite Golem's rates, 1.5 in
+  its data, held as 1.5000001.
 - A property's base real and word (+0x70, +0x74) are a time stamp, its clock group's
   time and word (`FUN_6f161090`, from the group `FUN_6f15c650` picks; `FUN_6f161040`
   measures from it): flags stamped as made (0 at the map's start; forces made by a

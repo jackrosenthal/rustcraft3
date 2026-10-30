@@ -276,6 +276,76 @@ impl World {
         out
     }
 
+    /// A unit's five reals (`` `rel ``, read against the quiet test map's): its life,
+    /// mana, two of -0 (to 2048 and to 1), and sight, each its value, rate, and bounds,
+    /// listed after its `` `pcu `` (the unit's properties); life and mana with their
+    /// modifiers' and listeners' heads (its regeneration's `` `rcm ``, its death's
+    /// `` `rtl ``).
+    pub fn unit_real_records(&self, h: u32) -> Vec<(u32, First, Option<Second>)> {
+        let mut out = Vec::new();
+        let Some(u) = self.unit(h) else { return out };
+        let Some(o) = self.objects.units.get(u.type_id) else { return out };
+        let first = &u.extra.object_slots[0];
+        if first.len() < 10 {
+            return out;
+        }
+        let me = first[0];
+        let props: Vec<(u32, u32)> = vec![first[1], first[4], first[5], first[6], first[7], first[8]];
+        let code_of = |s: u32| self.tags.live.get(&s).map(|e| e.0);
+        let mods: Vec<(u32, u32)> = u.extra.object_slots[1].clone();
+        let rcms: Vec<(u32, u32)> = mods.iter().copied().filter(|&(s, _)| code_of(s) == Some(*b"`rcm")).collect();
+        let rtl = mods.iter().copied().find(|&(s, _)| code_of(s) == Some(*b"`rtl"));
+        let (hp_rate, mp_rate) = self.regen_rates(h).unwrap_or((0.0, 0.0));
+        let regen_life = matches!(o.str("regenType").to_ascii_lowercase().as_str(), "always" | "night" | "day");
+        // (Regeneration on blight: its `` `rcm `` made as the unit stands on blight, the
+        // life stamped then; read, the undead's at 2 seconds.)
+        let blight_rcm = u.extra.blight_rcm.filter(|s| self.tags.live.contains_key(s)).map(|s| self.tagged(s));
+        let life_rcm = if regen_life { rcms.first().copied() } else { blight_rcm };
+        let mana_rcm = if o.real("manaN") > 0.0 { rcms.get(usize::from(regen_life)).copied() } else { None };
+        let night = self.night_sight;
+        let sight = if self.ultravision(u) { o.real("sight") } else { o.real("sight") + (o.real("nsight") - o.real("sight")) * night };
+        // Mana regenerating is kept as its value at its stamp (read: 0 for the creeps'
+        // mana at the start, their rates beside it; provisional: the port's mana, a
+        // tick's regeneration ahead, taken back by its rate since then).
+        let mana_stamp = self.tags.made_at.get(&props[2].0).map_or(0.0, |&c| f32::from_bits(c));
+        let mana = if mp_rate > 0.0 && u.mana < u.max_mana {
+            let base = u.mana - mp_rate * (self.time - mana_stamp);
+            if base.abs() < mp_rate * 0.05 { 0.0 } else { base.max(0.0) }
+        } else {
+            u.mana
+        };
+        // (Its newest listener on mana: a creep's made again as it woke, else its
+        // spells' own.)
+        let mana_heard = u.extra.mana_listeners.iter().map(|&(_, s)| s).chain(u.extra.spell_timers.iter().copied()).filter(|s| self.tags.live.contains_key(s)).max_by_key(|s| self.tagged(*s).1);
+        // (Mana without a pool is -0, read: every unit without mana's.)
+        let mana = if u.max_mana == 0.0 && mana == 0.0 { -0.0 } else { mana };
+        let values: [[f32; 4]; 5] = [
+            [u.life, hp_rate, 0.0, u.max_life],
+            [mana, mp_rate, 0.0, u.max_mana],
+            [-0.0, 0.0, 0.0, 2048.0],
+            [-0.0, 0.0, 0.0, 1.0],
+            // (A sight of none never changed is -0, as made: read, the haunted mine's
+            // hidden gold mine, made after the day's change set the others' to 0.)
+            [if sight == 0.0 && u.extra.sight_stamp.is_none() { -0.0 } else { sight }, 0.0, -f32::MAX, f32::MAX],
+        ];
+        for k in 1..=5 {
+            let mut base = self.stamped(listed_property_base(&props, k, me));
+            if k == 1 {
+                if let Some(r) = life_rcm.filter(|_| !regen_life) {
+                    base.real = self.tags.made_at.get(&r.0).map_or(0.0, |&c| f32::from_bits(c));
+                }
+            }
+            match k {
+                1 => base.links = [life_rcm.map_or(Link(NONE, 0), |r| Link(rf(r), 1)), rtl.map_or(Link(NONE, 0), |r| Link(rf(r), 1))],
+                2 => base.links = [mana_rcm.map_or(Link(NONE, 0), |r| Link(rf(r), 1)), mana_heard.map_or(Link(NONE, 0), |s| Link(rf(self.tagged(s)), 1))],
+                5 => base.real = u.extra.sight_stamp.unwrap_or(0.0),
+                _ => {}
+            }
+            out.push((props[k].0, First::Real { base, values: values[k - 1] }, None));
+        }
+        out
+    }
+
     /// The records of the script's triggers, their flags, actions, and handlers, by
     /// slot (read against the quiet test map's): a trigger's agent (its two flags, the
     /// second linked) and its own (CTriggerWar3: its word, its evaluations and
@@ -674,7 +744,8 @@ impl World {
                 seconds.insert(slot, sec);
             }
         }
-        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))) {
+        let unit_reals: Vec<(u32, First, Option<Second>)> = self.unit_order.iter().flat_map(|&h| self.unit_real_records(h)).collect();
+        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals) {
             records.insert(slot, f);
             if let Some(sec) = sec {
                 seconds.insert(slot, sec);
@@ -800,8 +871,9 @@ impl World {
             let (mut same, mut differ, mut first) = (0, 0, None);
             for (slot, f, sec) in self.trigger_records() {
                 let Some(o) = by_slot.get(&slot) else { continue };
-                let ok1 = o.first().ok().as_ref() == Some(&f);
-                let ok2 = sec.as_ref().is_none_or(|s| o.second().ok().as_ref() == Some(s));
+                // (By the bytes written: -0 is not 0.)
+                let ok1 = f.to_bytes() == o.first;
+                let ok2 = sec.as_ref().is_none_or(|s| s.to_bytes(o.entry.kind).is_ok_and(|b| b == o.second));
                 if ok1 && ok2 {
                     same += 1;
                 } else {
@@ -833,8 +905,9 @@ impl World {
             let (mut same, mut differ, mut first) = (0, 0, None);
             for (slot, f, sec) in self.script_object_records() {
                 let Some(o) = by_slot.get(&slot) else { continue };
-                let ok1 = o.first().ok().as_ref() == Some(&f);
-                let ok2 = sec.as_ref().is_none_or(|s| o.second().ok().as_ref() == Some(s));
+                // (By the bytes written: -0 is not 0.)
+                let ok1 = f.to_bytes() == o.first;
+                let ok2 = sec.as_ref().is_none_or(|s| s.to_bytes(o.entry.kind).is_ok_and(|b| b == o.second));
                 if ok1 && ok2 {
                     same += 1;
                 } else {
@@ -866,8 +939,9 @@ impl World {
             let (mut same, mut differ, mut first) = (0, 0, None);
             for (slot, f, sec) in self.player_records(&client_listeners(orig)) {
                 let Some(o) = by_slot.get(&slot) else { continue };
-                let ok1 = o.first().ok().as_ref() == Some(&f);
-                let ok2 = sec.as_ref().is_none_or(|s| o.second().ok().as_ref() == Some(s));
+                // (By the bytes written: -0 is not 0.)
+                let ok1 = f.to_bytes() == o.first;
+                let ok2 = sec.as_ref().is_none_or(|s| s.to_bytes(o.entry.kind).is_ok_and(|b| b == o.second));
                 if ok1 && ok2 {
                     same += 1;
                 } else {
@@ -895,6 +969,40 @@ impl World {
                 }
             }
             out.push(format!("players' objects: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+            // The units' reals.
+            let (mut same, mut differ, mut first) = (0, 0, None);
+            for (slot, f, sec) in self.unit_order.iter().flat_map(|&h| self.unit_real_records(h)).collect::<Vec<_>>() {
+                let Some(o) = by_slot.get(&slot) else { continue };
+                // (By the bytes written: -0 is not 0.)
+                let ok1 = f.to_bytes() == o.first;
+                let ok2 = sec.as_ref().is_none_or(|s| s.to_bytes(o.entry.kind).is_ok_and(|b| b == o.second));
+                if ok1 && ok2 {
+                    same += 1;
+                } else {
+                    differ += 1;
+                    let brief = |s: Option<Second>| match s {
+                        Some(Second::Agent { own, handlers, tail }) => format!("own {own:?} keyed {:?} fixed {:?} events {} tail {tail:?}", handlers.keyed, handlers.fixed, handlers.events.len()),
+                        other => format!("{other:?}"),
+                    };
+                    let detail = if ok1 { format!("ours {}; the original's {}", brief(sec.clone()), brief(o.second().ok())) } else { format!("ours {f:?}; the original's {:?}", o.first()) };
+                    let line = format!("slot {slot} ({}): first {ok1} second {ok2}; {detail}", String::from_utf8_lossy(&o.entry.kind.to_be_bytes()));
+                    if std::env::var("W3Z_ALL").is_ok() {
+                        out.push(line.clone());
+                    }
+                    first.get_or_insert(line);
+                }
+            }
+            if false {
+                for (slot, func) in &self.tags.handler_objects {
+                    let k = self.tags.function_numbers.get(func).copied().unwrap_or(0);
+                    let theirs = by_slot.get(slot).and_then(|o| o.second().ok()).and_then(|s| match s {
+                        Second::Agent { tail, .. } => tail.first().cloned(),
+                        _ => None,
+                    });
+                    out.push(format!("handler slot {slot} birth {} func {func} ours {k} theirs {theirs:?}", self.tagged(*slot).1));
+                }
+            }
+            out.push(format!("units' reals: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
         }
         out.push(match free.chunks(4).zip(m.free[0].chunks(4)).position(|(a, b)| a != b) {
             None if free.len() == m.free[0].len() => format!("free list: the same, {} slots", free.len() / 4 - 1),

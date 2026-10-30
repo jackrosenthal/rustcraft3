@@ -866,6 +866,8 @@ impl Scene {
                         local_name,
                         frames: Vec::new(),
                         seed,
+                        map_stat: crate::replays::map_stat(&data, &map_path),
+                        game_name: None,
                     }));
                 }
                 Some(g)
@@ -3288,6 +3290,9 @@ impl Scene {
             // The keepalive's modules the port does not compute: the databases' and the
             // map's custom data, as the original has them for a map without custom data.
             g.world.keepalive_modules = w3_game::keepalive::BOOTY_BAY_MODULES.into_iter().collect();
+            if let Some(r) = g.recorder.as_mut() {
+                r.replay.game_name = Some(role.game.clone());
+            }
         }
         self.net = Some(crate::net::Session::new(role));
     }

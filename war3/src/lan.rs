@@ -662,7 +662,7 @@ impl Lan {
         let mut h = self.host.take()?;
         h.end_countdown();
         let seed = h.slots.seed;
-        let role = net::Role { link: net::Link::Host(h), players: self.players(), seed };
+        let role = net::Role { link: net::Link::Host(h), players: self.players(), seed, game: self.setup.game.clone() };
         if self.setup.saved {
             let me = self.setup.slot_of(HOST_PID).map_or(0, |s| s.player);
             return Some(Event::StartSaved(self.map(), self.save.take().unwrap_or_default(), role, self.setup.speed, me));
@@ -675,7 +675,7 @@ impl Lan {
     fn client_start(&mut self) -> Option<Event> {
         let c = self.client.take()?;
         let seed = c.slots.seed;
-        let role = net::Role { link: net::Link::Client(c), players: self.players(), seed };
+        let role = net::Role { link: net::Link::Client(c), players: self.players(), seed, game: self.setup.game.clone() };
         if self.setup.saved {
             let me = self.setup.slot_of(self.me).map_or(0, |s| s.player);
             return Some(Event::StartSaved(self.map(), self.save.take().unwrap_or_default(), role, self.setup.speed, me));

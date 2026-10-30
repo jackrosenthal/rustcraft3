@@ -167,6 +167,8 @@ pub struct Role {
     pub link: Link,
     pub players: Vec<(u8, u8)>,
     pub seed: u32,
+    /// The game's name, as its replay's record keeps it.
+    pub game: String,
 }
 
 impl std::fmt::Debug for Role {
@@ -183,7 +185,7 @@ impl std::fmt::Debug for Role {
 /// reads as it plays the frame.
 fn frame(players: &[(u8, u8)], ms: u16, blocks: &[(u8, Vec<u8>)]) -> Frame {
     let actions = blocks.iter().filter_map(|(pid, data)| players.iter().find(|p| p.0 == *pid).map(|p| (p.1, data.clone()))).collect();
-    Frame { dt: ms as f32 / 1000.0, commands: Vec::new(), actions: Some(actions), turn: Some((ms, blocks.to_vec())) }
+    Frame { dt: ms as f32 / 1000.0, commands: Vec::new(), actions: Some(actions), turn: Some((ms, blocks.to_vec())), checksum: None }
 }
 
 /// A network game under way.

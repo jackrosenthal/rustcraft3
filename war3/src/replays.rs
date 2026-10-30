@@ -19,6 +19,24 @@ fn write(path: &Path, bytes: &[u8]) {
     }
 }
 
+/// A map file as the original's replay record names and checks it: its path from the
+/// game's folder, its playable size, and its checksums over the game's scripts (as a
+/// LAN game's description has them).  None for a map not in a file of its own.
+pub fn map_stat(data: &crate::data::GameData, map: &Path) -> Option<w3_game::replay::MapStat> {
+    let bytes = std::fs::read(map).ok()?;
+    let archive = w3_mpq::Archive::open(map).ok()?;
+    let summary = crate::skirmish::summarize_path(map)?;
+    let (common, blizzard) = (data.chain.read("Scripts\\common.j").unwrap_or_default(), data.chain.read("Scripts\\blizzard.j").unwrap_or_default());
+    let checksums = w3_net::map::Checksums::compute(&bytes, &common, &blizzard, |n| archive.read(n).ok());
+    Some(w3_game::replay::MapStat {
+        path: map.strip_prefix(&data.dir).unwrap_or(map).to_string_lossy().replace('/', "\\"),
+        width: summary.info.playable_width as u16,
+        height: summary.info.playable_height as u16,
+        xoro: checksums.xoro,
+        sha1: checksums.sha1,
+    })
+}
+
 /// Keeps a finished game's replay.
 pub fn keep(replay: &Replay) {
     let bytes = match replay.to_bytes() {

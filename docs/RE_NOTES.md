@@ -1170,7 +1170,17 @@ these are the findings behind them.
     wanderer's order due 683.2195, both before a turn's second step;
     `World::timed_frees_to`).
   - A replay's checksum records are the keepalives (read: a LAN game's
-    TempReplay.w3g, turn for turn).
+    TempReplay.w3g, turn for turn).  The original's record: for a network game flags
+    0x8000, game type 9, its players' count, its host's record and name; for a game
+    played alone flags 0, game type 1, 12 players, "Local Game", the profile's name;
+    then the start records 0x1A to 0x1C (each 1), each turn followed by its checksum,
+    and the local player's leaving (reason 12, result 7, 1) at its end.  The game's
+    description is coded once (it holds no NUL), with the map's path from the game's
+    folder, playable size, and checksums.  The port writes its replays so
+    (`Replay::to_bytes`), privately only a campaign mission's setup and a frame not
+    of whole milliseconds; its replay of the quiet game played from the original's
+    turns is the original's record for record (18032 records, to where the games part),
+    but for the language word, which the original fills from memory.
   With these Booty Bay without actions (`docs/reference/bootybay_quiet_long_*`) agrees
   with the original's trace and keepalives for all 7300 turns compared, its replay
   (`docs/reference/bootybay_quiet_long.w3g`, `w3gplay`) to turn 9014, and the long

@@ -629,7 +629,9 @@ impl ApplicationHandler for App {
                             match Ok::<_, anyhow::Error>(*replay) {
                                 Ok(replay) => {
                                     self.data.campaign_game.set(replay.campaign);
+                                    // The original's replays name the map from the game's folder.
                                     let path = std::path::PathBuf::from(&replay.map);
+                                    let path = if path.is_file() { path } else { Some(self.data.dir.join(replay.map.replace('\\', "/"))).filter(|p| p.is_file()).unwrap_or(path) };
                                     glue.skirmish.summary = if path.is_file() { crate::skirmish::summarize_path(&path) } else { crate::skirmish::summarize_from(&self.data.chain, &replay.map) };
                                     glue.show_loading(&mut r.assets);
                                     r.pending = Some((path, None, None));

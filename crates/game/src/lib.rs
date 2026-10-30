@@ -764,8 +764,11 @@ impl Game {
 
     /// Advances the simulation.
     pub fn tick(&mut self, dt: f32) {
-        if let Some(r) = self.recorder.as_mut() {
-            r.step(dt);
+        if self.recorder.is_some() {
+            let checksum = self.world.keepalive();
+            if let Some(r) = self.recorder.as_mut() {
+                r.step(dt, None, checksum);
+            }
         }
         self.world.tick(&mut self.vm, dt);
     }
@@ -797,8 +800,11 @@ impl Game {
 
     /// A frame's step: its time passes.
     pub fn play_step(&mut self, f: &replay::Frame) {
-        if let Some(r) = self.recorder.as_mut() {
-            r.step(f.dt);
+        if self.recorder.is_some() {
+            let checksum = self.world.keepalive();
+            if let Some(r) = self.recorder.as_mut() {
+                r.step(f.dt, f.turn.clone(), checksum);
+            }
         }
         // A paused game takes commands (a resume among them) but no time passes.
         if self.world.net_paused.is_none() {

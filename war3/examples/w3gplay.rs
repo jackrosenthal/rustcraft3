@@ -53,23 +53,24 @@ fn main() -> anyhow::Result<()> {
     let (flags, _speed) = war3::net::from_settings(stat.settings);
     g.start_lobby(&lobby, flags)?;
     g.world.keepalive_modules = w3_game::keepalive::BOOTY_BAY_MODULES.into_iter().collect();
-    // Each checksum record follows the turn whose state it sums; the port's keepalive for
-    // the next turn is made from that state.
+    // W3G_WRITE names a file for the port's own replay of the game as it plays it.
+    let write = std::env::var("W3G_WRITE").ok();
+    if write.is_some() {
+        let map_stat = Some(w3_game::replay::MapStat { path: stat.map_path.clone(), width: stat.map_width, height: stat.map_height, xoro: stat.map_xoro, sha1: stat.map_sha1 });
+        g.recorder = Some(w3_game::replay::Recorder::new(w3_game::replay::Replay { map: stat.map_path.clone(), lobby: Some(lobby.clone()), version: 1, flags, seed: replay.seed, map_stat, ..Default::default() }));
+    }
+    // A network game's turns play as the client plays them (`Game::play_turn`); each
+    // checksum record follows the turn whose state it sums.
     let (mut turn, mut checked, mut first_off) = (0u32, 0u32, None);
     let mut last = None;
     for rec in &replay.records {
         match rec {
             w3_formats::w3g::Record::Turn { ms, actions } => {
                 turn += 1;
-                if actions.is_empty() {
-                    g.world.net_turn(*ms);
-                } else {
-                    g.world.net_turn_actions(*ms, actions);
-                    let acts = actions.iter().map(|(pid, b)| (pid - 1, b.clone())).collect();
-                    g.play_commands(&w3_game::replay::Frame { dt: *ms as f32 / 1000.0, commands: Vec::new(), actions: Some(acts), turn: None });
-                }
-                last = Some(g.world.keepalive());
-                g.tick(*ms as f32 / 1000.0);
+                let acts = actions.iter().map(|(pid, b)| (pid - 1, b.clone())).collect();
+                let frame = w3_game::replay::Frame { dt: *ms as f32 / 1000.0, commands: Vec::new(), actions: Some(acts), turn: Some((*ms, actions.clone())), checksum: None };
+                let (_, keepalive) = g.play_turn(&frame);
+                last = Some(keepalive);
             }
             w3_formats::w3g::Record::Checksum(b) if b.len() == 4 => {
                 let want = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
@@ -84,6 +85,13 @@ fn main() -> anyhow::Result<()> {
     match first_off {
         Some((t, ours, want)) => println!("checksums agree to turn {}; turn {t}: ours {:08x?}, the replay's {want:08x}", t.saturating_sub(1), ours),
         None => println!("checksums agree for all {checked} of {turn} turns"),
+    }
+    if let (Some(path), Some(r)) = (write, g.recorder.take()) {
+        let mut r = r.replay;
+        // The record as the original's: a network game's host and its name.
+        r.local_name = Some(replay.host.name.clone());
+        r.game_name = Some(replay.game_name.clone());
+        std::fs::write(path, r.to_bytes()?)?;
     }
     Ok(())
 }

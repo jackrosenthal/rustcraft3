@@ -706,6 +706,10 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // CGhostImage (`FUN_6f6db1a0`, the agent base alone; own `FUN_6f6db2b0`: three
     // words): its sprite, two shorts, five words, three words, nine words, a short.
     (b"+wgh", "!www", "p ss wwwww www 9w s"),
+    // CAbilityAttack (`FUN_6f49bd60`): its fields
+    // in order, with counted lists of words, of reals, and of three reals
+    // (`FUN_6f491650`), timers, references (`FUN_6f4915d0`), and words.
+    (b"Aatk", "wwww wwwwwww t w", "wwwwww [w][w][w][w] [fff] [w][w][w][w] [fff][fff] [f] [fff][fff] fff tttt [w] w [r] ff [f][f] f ttt ff wwww f [www] [t] www fff wwww f"),
     (b"tsk.", "wwwww fff", "r"),
     (b"tskt", "wwwwwwww f", "r"),
     // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to

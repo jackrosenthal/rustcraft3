@@ -229,7 +229,7 @@ impl World {
         }
         let flag_records = |out: &mut Vec<(u32, First, Option<Second>)>, owner: (u32, u32), flags: &[(u32, u32)], values: &[u32]| {
             for (k, &f) in flags.iter().enumerate() {
-                let mut base = listed_property_base(flags, k, owner);
+                let mut base = self.stamped(listed_property_base(flags, k, owner));
                 if let Some(&head) = on(f).last() {
                     base.links[1] = Link(rf(head), 1);
                 }
@@ -326,7 +326,7 @@ impl World {
                     // (Provisional: which of the two is the enabled flag, every trigger read
                     // being enabled.)
                     for (k, v) in [2, u32::from(t.enabled)].into_iter().enumerate() {
-                        out.push((flags[k].0, First::Flag { base: listed_property_base(&flags, k, own), value: v }, None));
+                        out.push((flags[k].0, First::Flag { base: self.stamped(listed_property_base(&flags, k, own)), value: v }, None));
                     }
                 }
                 Some(Obj::TriggerAction { func, slot }) if *slot != 0 => {
@@ -338,6 +338,13 @@ impl World {
             }
         }
         out
+    }
+
+    /// A property's base with its time stamp: the main clock at its making.
+    fn stamped(&self, mut base: PropertyBase) -> PropertyBase {
+        let slot = base.object.links[0].2 .0;
+        base.real = self.tags.made_at.get(&slot).map_or(0.0, |&c| f32::from_bits(c));
+        base
     }
 
     /// The game's object (`+gam`).
@@ -437,6 +444,18 @@ impl World {
                     let Some(own) = slot_of(id) else { continue };
                     let handler = self.tags.handler_objects.iter().find(|(_, g)| *g == f).map_or(NONE, |(&s, _)| rf(self.tagged(s)));
                     out.push((own.0, agent_first(own, b"+flt", &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail: vec![Field::Ref(handler)] })));
+                }
+                Some(Obj::Force(f)) if f.slots.len() == 3 => {
+                    let own = self.tagged(f.slots[0]);
+                    let flags = [self.tagged(f.slots[1]), self.tagged(f.slots[2])];
+                    for (k, v) in [f.players, f.enumerated].into_iter().enumerate() {
+                        out.push((flags[k].0, First::Flag { base: self.stamped(listed_property_base(&flags, k, own)), value: v }, None));
+                    }
+                    // (Its last ForForce's function's handler, its last enumeration's
+                    // filter's, provisional, and a player, none read.)
+                    let handler = |func: Option<u32>| func.and_then(|func| self.tags.handler_objects.iter().find(|(_, g)| **g == func)).map_or(NONE, |(&s, _)| rf(self.tagged(s)));
+                    let tail = vec![Field::Ref(handler(f.callback)), Field::Ref(handler(f.filter)), Field::Ref(NONE)];
+                    out.push((own.0, agent_first(own, b"+frc", &flags), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail })));
                 }
                 Some(Obj::Location(x, y)) => {
                     let Some(own) = slot_of(id) else { continue };

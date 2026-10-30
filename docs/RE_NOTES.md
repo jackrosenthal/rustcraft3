@@ -1497,6 +1497,20 @@ Formats the port made its own, to be replaced by the original's:
   state's flag, word 0; then the local player's resource bar's six in the second
   table).  The alliances hold no game registration: their handlers are each alliance
   registration's on event 0x80268, keyed by its listener's slot.
+  The forces agree as well (21, with their flags): a force's flags are its players'
+  mask (+0x24) and the count its last enumeration added (+0x40); its three references
+  its last ForForce's function's handler (+0x34, `FUN_6f22fe30`), its last
+  enumeration's filter (+0x38), and a player.  An enumeration (`FUN_6f22ef20`, for
+  ForceEnumPlayers, its Counted, Allies, and Enemies kin) empties the force, then
+  adds each of players 0 to 11 whose slot is not empty (+0x270, GetPlayerSlotState's)
+  if the filter passes it and then the kind's test, till the count reaches the limit:
+  Blizzard.j's `bj_FORCE_ALL_PLAYERS` holds only the players in the game (mask 3 in a
+  two-player game, its count 2).
+- A property's base real and word (+0x70, +0x74) are a time stamp, its clock group's
+  time and word (`FUN_6f161090`, from the group `FUN_6f15c650` picks; `FUN_6f161040`
+  measures from it): flags stamped as made (0 at the map's start; forces made by a
+  timer at 2 seconds 1.9999981, the main clock at tick 400, the start of the port's
+  tick), positions as their units move (0.866, 1.027, ...).
 - Setting the time of day (SetFloatGameState) passes the time-of-day events'
   listeners as the clock does, but an event for equal runs its trigger only if the
   time is its value to 0.001 (`FUN_6f27c5c0`: its listener replaced the other way,

@@ -56,6 +56,14 @@ pub struct Tags {
     /// function is given to an object (an action, a filter, a timer; `FUN_6f2872f0`).
     #[serde(default)]
     pub handlers: std::collections::BTreeSet<u32>,
+    /// The engine's main clock (its single's bits) as objects are made now (set each
+    /// tick: `World::plan_steps`).
+    #[serde(default)]
+    pub clock: u32,
+    /// The main clock at each live object's making, where past 0: a property's time
+    /// stamp (`FUN_6f161090`: its clock group's time, +0x70).
+    #[serde(default)]
+    pub made_at: std::collections::BTreeMap<u32, u32>,
     /// Each player's object (`+ply`), by number.
     #[serde(default)]
     pub player_slots: Vec<u32>,
@@ -129,7 +137,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), clock: 0, made_at: Default::default(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -147,6 +155,11 @@ impl Tags {
         let birth = self.born;
         self.born += 1;
         self.live.insert(t, (*code, birth));
+        if self.clock != 0 {
+            self.made_at.insert(t, self.clock);
+        } else {
+            self.made_at.remove(&t);
+        }
         if let Some(l) = self.log.as_mut() {
             l.push(*code);
         }
@@ -161,6 +174,7 @@ impl Tags {
     pub fn release(&mut self, slot: u32) {
         self.free.push(slot);
         self.live.remove(&slot);
+        self.made_at.remove(&slot);
         if let Some(l) = self.trace.as_mut() {
             l.push(TagEvent::Free(slot));
         }

@@ -86,18 +86,35 @@ fn for_force(w: &mut World, vm: &mut Vm, force: u32, func: Option<w3_jass::FuncI
     none()
 }
 
-fn enum_players(w: &mut World, vm: &mut Vm, force: u32, filter: u32, pred: impl Fn(&World, u8) -> bool) -> NativeResult {
-    for p in 0..PLAYER_COUNT as u8 {
-        if !pred(w, p) {
+/// ForceEnumPlayers and its kin (`FUN_6f22ef20`): the force is emptied, then each of
+/// the first twelve players whose slot is not empty is added if the filter passes it
+/// and then the kind's test (an ally of a player, an enemy), till `limit` are added, the
+/// count kept (its second flag) and the filter.
+fn enum_players(w: &mut World, vm: &mut Vm, force: u32, filter: u32, limit: u32, pred: impl Fn(&World, u8) -> bool) -> NativeResult {
+    let func = match w.handles.get(filter) {
+        Some(Obj::BoolExpr(crate::types::BoolExpr::Func(f))) => Some(*f),
+        _ => None,
+    };
+    if let Some(f) = w.force_mut(force) {
+        f.players = 0;
+        f.enumerated = 0;
+        f.filter = func;
+    }
+    for p in 0..12u8 {
+        if w.force(force).map_or(0, |f| f.enumerated) >= limit {
+            break;
+        }
+        if w.players.get(p as usize).is_none_or(|pl| pl.slot_state == crate::types::slot_state::EMPTY) {
             continue;
         }
         let saved = w.enum_ctx;
         w.enum_ctx.filter_player = p;
         let ok = filter == 0 || w.eval_boolexpr(vm, filter);
         w.enum_ctx = saved;
-        if ok {
+        if ok && pred(w, p) {
             if let Some(f) = w.force_mut(force) {
                 f.players |= 1 << p;
+                f.enumerated += 1;
             }
         }
     }
@@ -272,8 +289,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         GetPlayerScore => |w, _, a| int(player_arg(w, a, 0).map_or(0, |p| w.player_score(p, a.h(1) as i32))),
         CreateForce => |w, _, _| {
-            w.tags.take_all(&[b"+frc", b"`flg", b"`flg"]);
-            handle(w.handles.insert(Obj::Force(Force::default())))
+            let slots: Vec<u32> = [b"+frc", b"`flg", b"`flg"].iter().map(|c| w.tags.take(c)).collect();
+            handle(w.handles.insert(Obj::Force(Force { slots, ..Force::default() })))
         },
         DestroyForce => |w, _, a| { if w.force(a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
         ForceAddPlayer => |w, _, a| {
@@ -287,21 +304,25 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         ForceClear => |w, _, a| { if let Some(f) = w.force_mut(a.h(0)) { f.players = 0; } none() },
-        ForceEnumPlayers => |w, vm, a| enum_players(w, vm, a.h(0), a.h(1), |_, _| true),
-        ForceEnumPlayersCounted => |w, vm, a| enum_players(w, vm, a.h(0), a.h(1), |_, _| true),
+        ForceEnumPlayers => |w, vm, a| enum_players(w, vm, a.h(0), a.h(1), u32::MAX, |_, _| true),
+        ForceEnumPlayersCounted => |w, vm, a| { let n = a.i(2) as u32; enum_players(w, vm, a.h(0), a.h(1), n, |_, _| true) },
         ForceEnumAllies => |w, vm, a| {
             let Some(p) = player_arg(w, a, 1) else { return none() };
-            enum_players(w, vm, a.h(0), a.h(2), move |w, o| is_ally(w, p, o))
+            enum_players(w, vm, a.h(0), a.h(2), u32::MAX, move |w, o| is_ally(w, p, o))
         },
         ForceEnumEnemies => |w, vm, a| {
             let Some(p) = player_arg(w, a, 1) else { return none() };
-            enum_players(w, vm, a.h(0), a.h(2), move |w, o| !is_ally(w, p, o))
+            enum_players(w, vm, a.h(0), a.h(2), u32::MAX, move |w, o| !is_ally(w, p, o))
         },
         // Its function takes a handler, as ForGroup's does (traced: Melee's alliance
         // check's ForForce calls).
         ForForce => |w, vm, a| {
             if let Some(f) = a.code(1) {
                 w.tags.handler(f);
+            }
+            let cb = a.code(1);
+            if let Some(f) = w.force_mut(a.h(0)) {
+                f.callback = cb;
             }
             for_force(w, vm, a.h(0), a.code(1))
         },

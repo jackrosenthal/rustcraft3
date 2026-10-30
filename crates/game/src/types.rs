@@ -1253,6 +1253,19 @@ pub struct Group {
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Force {
     pub players: u32,
+    /// Its engine objects' slots: itself and its two flags (`+frc`, two `` `flg ``).
+    #[serde(default)]
+    pub slots: Vec<u32>,
+    /// How many players its last enumeration added (its second flag).
+    #[serde(default)]
+    pub enumerated: u32,
+    /// Its last enumeration's filter's function, which it keeps after the filter goes
+    /// (+0x38).
+    #[serde(default)]
+    pub filter: Option<FuncId>,
+    /// Its last ForForce's function (+0x34, `FUN_6f22fe30`).
+    #[serde(default)]
+    pub callback: Option<FuncId>,
 }
 
 #[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]

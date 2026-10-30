@@ -952,6 +952,10 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // (`FUN_6f9a0080`), two words, and a counted list of a word, ten reals, a word, a
     // byte, a word, and a string.
     (b"+gam", "www f", "10e [[w]] [w] w [w w ~(z) #(rw)] r r r r w [w r w] w [r w w] [w [s]] w w f w t t w [w] w w w [w ffff ffffff w b w z]"),
+    // CItem (`FUN_6f65ab10`, own `FUN_6f03edf0`: a word): the widget's state (as
+    // `Widget`), three reals, four words, a real, a word, a counted list of two words
+    // and a real, a timer, two words, and a timer.
+    (b"item", "w", "p w w ss ?b({r} ff) bb f b fff wwww f w [wwf] t ww t"),
     (b"tsk.", "wwwww fff", "r"),
     (b"tskt", "wwwwwwww f", "r"),
     // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to

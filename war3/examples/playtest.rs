@@ -332,7 +332,11 @@ fn main() -> anyhow::Result<()> {
             "timerlog" => {
                 if let Some(g) = &scene.game {
                     for (n, k, c) in g.world.tags.timer_log.iter().flatten() {
-                        eprintln!("timer {n} {k} {:.6}", f32::from_bits(*c));
+                        if *k == "prop" {
+                            eprintln!("prop {n} {}", String::from_utf8_lossy(&c.to_be_bytes()));
+                        } else {
+                            eprintln!("timer {n} {k} {:.6}", f32::from_bits(*c));
+                        }
                     }
                 }
                 i += 1;

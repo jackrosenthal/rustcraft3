@@ -60,6 +60,15 @@ pub struct Tags {
     /// queue's +0x50): each start takes the next, which its timer keeps.
     #[serde(default)]
     pub timer_starts: u32,
+    /// The property module's count of timing nodes (its +0x50, at 0x6f15d735,
+    /// 0x6f15dc58, 0x6f15e127), which properties' and listeners' blocks keep: taken as
+    /// objects are made (`Tags::take`: a modifier `` `rcm `` one, a threshold listener
+    /// `` `rtl `` two, an in-range listener `` `pil `` three, an order or task one) and as a
+    /// sleeping creep's listeners go (one each).  The count each object's last took.
+    #[serde(default)]
+    pub prop_count: u32,
+    #[serde(default)]
+    pub prop_counts: std::collections::BTreeMap<u32, u32>,
     /// Each start's count and kind, while logged (W3_TIMERLOG).
     #[serde(skip)]
     pub timer_log: Option<Vec<(u32, &'static str, u32)>>,
@@ -153,7 +162,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), autotarget_due: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -171,6 +180,19 @@ impl Tags {
         let birth = self.born;
         self.born += 1;
         self.live.insert(t, (*code, birth));
+        let n = match code {
+            b"`rcm" | b"+ord" | b"task" | b"tskA" => 1,
+            b"`rtl" => 2,
+            b"`pil" => 3,
+            _ => 0,
+        };
+        if n > 0 {
+            self.prop_count += n;
+            self.prop_counts.insert(t, self.prop_count);
+            if let Some(l) = self.timer_log.as_mut() {
+                l.push((self.prop_count, "prop", u32::from_be_bytes(*code)));
+            }
+        }
         if self.clock != 0 {
             self.made_at.insert(t, self.clock);
         } else {
@@ -191,6 +213,7 @@ impl Tags {
         self.free.push(slot);
         self.live.remove(&slot);
         self.made_at.remove(&slot);
+        self.prop_counts.remove(&slot);
         self.tech_buffs.retain(|&(s, _)| s != slot);
         if let Some(l) = self.trace.as_mut() {
             l.push(TagEvent::Free(slot));
@@ -755,7 +778,18 @@ impl crate::world::World {
         }
         let oid = self.tags.take_id(&codes[0]);
         let mut slots = vec![oid.0];
-        for c in &codes[1..] {
+        // A creep falling asleep lets its spells' listeners go before its making's tasks,
+        // each taking a count of the property module's (`FUN_6f48c8c0`; read: an Ogre
+        // Lord's one, a High Priest's three, its autocast's order none).
+        let asleep_now = owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE
+            && !building
+            && o.int("canSleep") != 0
+            && self.is_night()
+            && self.players.get(owner as usize).is_none_or(|p| p.get_state(crate::types::player_state::NO_CREEP_SLEEP) == 0);
+        for (k, c) in codes.iter().enumerate().skip(1) {
+            if k == tasks && asleep_now {
+                self.tags.prop_count += spell_timers.len() as u32;
+            }
             slots.push(self.tags.take(c));
         }
         // The agent timers its making starts, in its objects' order, named by the

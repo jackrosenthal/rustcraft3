@@ -1583,9 +1583,18 @@ Formats the port made its own, to be replaced by the original's:
   are made (`FUN_6f058090` and `FUN_6f062180`, `FUN_6f0616e0`, `FUN_6f062c80`,
   `FUN_6f15ecb0`) and twice as each unit's tags are made (`FUN_6f68a060`'s at
   0x6f15e127): a shop and a fountain seven, a gold mine four; a Gnoll's life
-  regeneration's `` `rcm `` (due 150, period 150, count 41).  The port does not count
-  these yet; a unit's `` `rel `` holds its value, a rate, and its bounds (life 320, 0.5,
-  0, 320), linked to its regeneration's `` `rcm `` and death's `` `rtl `` (0.4).
+  regeneration's `` `rcm `` (due 150, period 150, count 41).  They follow the objects
+  made: a modifier `` `rcm `` takes one (`FUN_6f1613d0`), a threshold listener `` `rtl ``
+  two (`FUN_6f058090`, `FUN_6f0616e0`), an in-range listener `` `pil `` three
+  (`FUN_6f15ecb0`, `FUN_6f062c80`, `FUN_6f0616e0`, its node the third's), an order or
+  task one (a unit's making's two tasks, its AI's nine, its autocast's order), a flag
+  listener none; a creep falling asleep as it is made lets each spell's listener go
+  before its making's tasks, a count each (`FUN_6f48c8c0`).  The game's own `` `rtl ``
+  takes 1 and 2.  The port counts so (`Tags::prop_count`), each object's kept: the
+  quiet test map's agree through its 373rd (the shop's and fountain's `` `pil `` 7 and
+  14, a Gnoll's `` `rcm `` 41).  A unit's `` `rel `` holds its value, a rate, and its
+  bounds (life 320, 0.5, 0, 320), linked to its regeneration's `` `rcm `` and death's
+  `` `rtl `` (0.4).
 - A property's base real and word (+0x70, +0x74) are a time stamp, its clock group's
   time and word (`FUN_6f161090`, from the group `FUN_6f15c650` picks; `FUN_6f161040`
   measures from it): flags stamped as made (0 at the map's start; forces made by a

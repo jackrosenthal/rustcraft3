@@ -1049,7 +1049,11 @@ these are the findings behind them.
   - A walk whose goal is within reach as it starts frees its order's objects at its
     first step (traced) but turns toward the goal until judged on it, as any arrival,
     and only then ends (read: a sheep 0.81 off its goal's bearing drew its next wait at
-    8.369596, two steps after its first, 8.309607).  A new walk whose search finds
+    8.369596, two steps after its first, 8.309607) -- when its first step's turn leaves
+    it within a step's turn of the bearing, as a stopped walker is judged: one that
+    starts twice its turn or more off turns and arrives as any walk, its tree freed as
+    its turn ends and its path the step after (read: a pig 1.40 off and a sheep 3.0
+    off, their turns 0.5, in a game past 400 seconds).  A new walk whose search finds
     nothing nearer turns in its search step and the next, judged facing from the third
     (read: a pig searched at 18.117960, on its goal's bearing at 18.147955 and still
     walking, done at 18.177950); one searching again is judged the step after.
@@ -1148,6 +1152,19 @@ these are the findings behind them.
     triggers not run; then less than's, Day's and Night's, their triggers run), the
     old listeners and the executions freed at the tick's end in that order
     (`World::time_listeners_crossed`).
+  - The time of day moves on to each step's main tick as the step begins, its
+    listeners passed firing there (read: dawn's triggers after a turn's first step,
+    before the walk ends of its second; `World::time_of_day_to`).  The change between
+    day and night lets the last change's listeners go as it ends (one set by script,
+    as the next turn starts).  A creep woken by the day makes each spell's listener
+    on its mana as it stands: one whose cost it is past waits for it to fall (read:
+    creeps waking with full mana, none replaced after).
+  - An aura reaches only units it serves, as on its bearer: Trueshot those with a
+    ranged weapon, Vampiric those with a melee one, War Drums and Command those with
+    a weapon, Brilliance those with mana (read: Trueshot's buff on no critter passing
+    a bearer; `World::aura_serves`).
+  With these Booty Bay without actions (`docs/reference/bootybay_quiet_long_*`) agrees
+  with the original's keepalives to turn 6844 and the long lumber game to 5663.
   - The timers a creep's Hurl Boulder and Thunder Clap (ACtb, ACtc) make as its mana is
     first set are listeners on its mana rising past each spell's cost plus 0.1, the
     last spell's in the first slot (read: both Granite Golems' Hurl Boulder listeners,

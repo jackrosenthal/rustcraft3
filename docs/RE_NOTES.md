@@ -1379,6 +1379,15 @@ Formats the port made its own, to be replaced by the original's:
   script's integer, real, and boolean variables, and the handles its units had.  Not
   yet: the time, construction and training, orders, items, trees, the other
   variables, timers, and threads; and the port still writes its own saves.
+- JASS bytecode, as a save keeps each code block (`ScriptData`, `w3zhead` with
+  W3Z_CODE): 8-byte instructions, three register bytes, an opcode byte, and a 32-bit
+  argument, with a string table from 1 ("main" first, then the type names); the map
+  script's block opens with Blizzard's types, each an 0x09 with its parent's string
+  and an 0x0a with its own (`agent extends handle`: 09 handle, 0a agent).  The
+  original compiles common.j, blizzard.j, and the map's script in `FUN_6f9146f0`
+  (called from `FUN_6f20d2f0`); its compile errors are a table of (code, message)
+  at 0x6fce4b28 (`FUN_6f1fde30`, reported by `FUN_6f1fdd60`).  A save the port
+  writes needs this code as the original compiles it; not yet done.
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

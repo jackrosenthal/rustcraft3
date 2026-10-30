@@ -119,6 +119,15 @@ fn main() {
                                 for (k, c) in d.code.iter().enumerate() {
                                     if let Some(c) = c {
                                         println!("  code {}: {} words, {} strings", k + 1, c.words.len(), c.strings.len());
+                                        // W3Z_CODE=<n>: the first n instructions, each its four bytes and word.
+                                        if let Ok(n) = std::env::var("W3Z_CODE").map(|v| v.parse::<usize>().unwrap()) {
+                                            for (i, w) in c.words.chunks(2).take(n).enumerate() {
+                                                println!("    {i:5}: {:02x?} {:#x} ({})", w[0].to_le_bytes(), w[1], w[1] as i32);
+                                            }
+                                            for (i, t) in c.strings.iter().take(n).enumerate() {
+                                                println!("    string {}: {t:?}", i + 1);
+                                            }
+                                        }
                                     }
                                 }
                                 for ((place, m), t) in d.machines.iter().zip(&d.threads) {

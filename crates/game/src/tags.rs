@@ -67,6 +67,10 @@ pub struct Tags {
     /// Freed as the next turn starts.
     #[serde(default)]
     pub next_turn: Vec<u32>,
+    /// Freed as the next turn starts, after `doomed`: a removed unit's own objects (traced:
+    /// a gold mine's after the objects the haunted mine made since released).
+    #[serde(default)]
+    pub removed: Vec<u32>,
     /// Ended walks' paths (`l^pa`, `^clu`), freed in the next movement step
     /// (`World::first_steps`, `World::step_walkers`).
     #[serde(default)]
@@ -112,7 +116,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -158,6 +162,9 @@ impl Tags {
             self.release(s);
         }
         for s in std::mem::take(&mut self.doomed) {
+            self.release(s);
+        }
+        for s in std::mem::take(&mut self.removed) {
             self.release(s);
         }
     }

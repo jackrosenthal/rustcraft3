@@ -931,32 +931,31 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 let t: Vec<u32> = [b"tskA", b"task", b"task", b"task", b"task", b"task", b"tskA"].iter().map(|c| w.tags.take(c)).collect();
                 // The removal's tasks and the unit's own objects freed as the next turn
                 // starts, in this order (traced for a gold mine Blizzard.j removes): the
-                // first and last tasks, the sixth to fourth, its listener (provisional:
-                // its modifiers with it, the last first), the third task, its
-                // abilities' objects (the last first), its five reals (the last first),
-                // its path, its two regions, its position, itself, the second task.
+                // first and last tasks, the sixth and fifth; then, after what is
+                // released meanwhile, the fourth, its listener (provisional: its
+                // modifiers with it, the last first), the third task, its abilities'
+                // objects (the last first), its five reals (the last first), its path,
+                // its two regions, its position, itself, the second task.
                 let objects = w.unit(a.h(0)).map(|u| u.extra.object_slots.clone()).unwrap_or_default();
                 let live = |w: &World, (s, b): (u32, u32)| w.tags.live.get(&s).is_some_and(|e| e.1 == b);
-                for k in [0, 6, 5, 4, 3] {
+                for k in [0, 6, 5, 4] {
                     w.tags.doom(t[k]);
                 }
-                for &o in objects[1].iter().rev() {
-                    if live(w, o) {
-                        w.tags.doom(o.0);
+                let mut later = vec![t[3]];
+                later.extend(objects[1].iter().rev().filter(|&&o| live(w, o)).map(|o| o.0));
+                later.push(t[2]);
+                later.extend(objects[2].iter().rev().filter(|&&o| live(w, o)).map(|o| o.0));
+                later.extend([8, 7, 6, 5, 4, 9, 2, 3, 1, 0].iter().filter_map(|&k| objects[0].get(k).filter(|&&o| live(w, o)).map(|o| o.0)));
+                later.push(t[1]);
+                w.tags.removed.extend(later);
+                // Its day change's object goes on the frame after (traced: the gold
+                // mine's at 0.0002, after its own at 0.0001).
+                if let Some(s) = w.unit_mut(a.h(0)).and_then(|u| u.extra.day_rcm.take()) {
+                    if w.tags.timed.iter().any(|&(_, x)| x == s) {
+                        let at = w.time_of_day_clock + 1e-4;
+                        w.tags.redoom_at(at, s);
                     }
                 }
-                w.tags.doom(t[2]);
-                for &o in objects[2].iter().rev() {
-                    if live(w, o) {
-                        w.tags.doom(o.0);
-                    }
-                }
-                for k in [8, 7, 6, 5, 4, 9, 2, 3, 1, 0] {
-                    if let Some(&o) = objects[0].get(k).filter(|&&o| live(w, o)) {
-                        w.tags.doom(o.0);
-                    }
-                }
-                w.tags.doom(t[1]);
             }
             script_remove_unit(w, a.h(0));
             none()

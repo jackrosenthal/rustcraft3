@@ -392,6 +392,9 @@ impl World {
         for h in units {
             let s = self.tags.take(b"`rcm");
             self.tags.doom_at(now + 3.0, s);
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.day_rcm = Some(s);
+            }
             let Some(u) = self.unit(h).filter(|u| !u.dead) else { continue };
             // With the night an idle creep that may sleep falls asleep at once
             // (measured: a creep made by day, after a night set by script, wakes making

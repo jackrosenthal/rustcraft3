@@ -14,6 +14,10 @@ fn main() -> anyhow::Result<()> {
     let a: Vec<String> = std::env::args().collect();
     let (w, h): (u32, u32) = if a.len() > 5 { (a[4].parse()?, a[5].parse()?) } else { (1920, 1080) };
     let data = GameData::open(Path::new(&a[1]), std::env::var("W3CLASSIC").is_ok())?;
+    // W3TAGTRACE: record the engine objects' tags as taken and freed (for `tagtrace`).
+    if std::env::var("W3TAGTRACE").is_ok() {
+        w3_game::tags::RECORD.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     // W3CAMPAIGN: a custom campaign (.w3n) whose maps and data the map is played with.
     if let Ok(c) = std::env::var("W3CAMPAIGN") {
         data.chain.mount(std::sync::Arc::new(w3_mpq::Archive::open(&c)?), None, war3::data::PRIORITY_CAMPAIGN);
@@ -1034,6 +1038,24 @@ fn main() -> anyhow::Result<()> {
                             eprintln!("{h:#x} {} at {:.0},{:.0} on {:?} destroyed {}", e.model, e.x, e.y, e.target, e.destroyed);
                         }
                     }
+                }
+                i += 2;
+            }
+            // tagtrace <file>: the tags taken and freed so far (with W3TAGTRACE), a line
+            // each, turns numbered.
+            "tagtrace" => {
+                if let Some(g) = &scene.game {
+                    let mut turn = 0;
+                    let mut text = String::new();
+                    for e in g.world.tags.trace.iter().flatten() {
+                        match e {
+                            w3_game::tags::TagEvent::Take(c, s) => text += &format!("take {} {s} turn {turn}\n", String::from_utf8_lossy(c)),
+                            w3_game::tags::TagEvent::Free(s) => text += &format!("free {s} turn {turn}\n"),
+                            w3_game::tags::TagEvent::Turn => turn += 1,
+                            _ => {}
+                        }
+                    }
+                    std::fs::write(&a[i + 1], text).unwrap();
                 }
                 i += 2;
             }

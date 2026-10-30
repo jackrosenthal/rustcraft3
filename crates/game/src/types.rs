@@ -565,6 +565,9 @@ pub struct UnitExtra {
     /// removed.
     #[serde(default)]
     pub object_slots: [Vec<(u32, u32)>; 3],
+    /// Its object of the last day change (`World::time_of_day_moved`), while it lasts.
+    #[serde(default)]
+    pub day_rcm: Option<u32>,
     /// The slots of its current move order's objects (`Tags::move_issued`).
     #[serde(default)]
     pub order_tags: Vec<u32>,
@@ -824,6 +827,7 @@ impl Default for UnitExtra {
             blight_slots: Vec::new(),
             footprint_slots: Vec::new(),
             object_slots: Default::default(),
+            day_rcm: None,
             order_tags: Vec::new(),
             gold_run: None,
             mine_shaft: false,

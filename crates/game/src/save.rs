@@ -146,10 +146,10 @@ impl Game {
     /// script's main run): its units (their type, owner, place, facing, life, and mana),
     /// the handles scripts had them by, its players' gold and lumber (saved in tenths),
     /// the time of day, the map script's integer, real, and boolean variables (by name,
-    /// arrays too), its timers, and its destructables' life.  Not yet: the rest (the
-    /// time, which the port's timers and sleeping threads count from; orders,
-    /// buildings in progress, items, the other variables, the AI scripts', and
-    /// threads), which stay as the script just made them.
+    /// arrays too), its timers, its destructables' life, and its items.  Not yet: the
+    /// rest (the time, which the port's timers and sleeping threads count from;
+    /// orders, buildings in progress, carried items, the other variables, the AI
+    /// scripts', and threads), which stay as the script just made them.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
         use crate::natives::units::{create_unit_exact, remove_unit};
         let units = s.units()?;
@@ -158,6 +158,7 @@ impl Game {
         let game_reals = s.game_reals()?;
         let timers = s.timers()?;
         let destructables = s.destructables()?;
+        let items = s.items()?;
         let agent_clock = s.objects.as_ref().map_or(0.0, |m| m.clocks[1].0);
         let scripts = s.script_data()?;
         let w = &mut self.world;
@@ -186,6 +187,21 @@ impl Game {
                 if matches!(k, 1 | 2 | 15 | 16) {
                     player.state.insert(k as i32, v / 10);
                 }
+            }
+        }
+        // The items in place of the script's, under the handles they had (provisional:
+        // an item a unit carries is not yet told apart, and lies where it is saved).
+        for h in w.item_order.clone() {
+            w.remove_item(h);
+        }
+        for i in items {
+            let (x, y) = (origin[0] + i.pos[0] * crate::pathing::CELL, origin[1] + i.pos[1] * crate::pathing::CELL);
+            let h = crate::natives::objects::create_item(w, i.type_id.to_be_bytes(), x, y);
+            if let Some(&jass) = handles.get(&(i.tag, i.birth)) {
+                w.handles.alias(jass, h);
+            }
+            if let Some(Obj::Item(item)) = w.handles.get_mut(h) {
+                (item.life, item.player) = (i.life, i.owner as u8);
             }
         }
         // The destructables' life, by the handles they had (the map placed them in the

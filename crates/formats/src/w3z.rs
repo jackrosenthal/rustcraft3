@@ -2211,3 +2211,53 @@ impl SaveGame {
         Ok(out)
     }
 }
+
+/// A saved item as far as named.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SavedItem {
+    pub tag: u32,
+    pub birth: u32,
+    /// Its type and owner (the widget's word and +0x24).
+    pub type_id: u32,
+    pub owner: u32,
+    /// Its position property's (`` `pos ``) reals, the first two its place in pathing
+    /// cells from the map's origin.
+    pub pos: [f32; 7],
+    /// Its life and maximum (its own reals' first and third).
+    pub life: f32,
+    pub max_life: f32,
+}
+
+impl SaveGame {
+    /// The items, in the object table's order.
+    pub fn items(&self) -> Result<Vec<SavedItem>, Error> {
+        let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
+        let all: std::collections::HashMap<(u32, u32), &SavedObject> = objects.iter().flatten().map(|o| ((o.entry.tag, o.entry.birth), o)).collect();
+        let mut out = Vec::new();
+        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == b"item") {
+            let Second::Agent { tail, .. } = o.second()? else { continue };
+            let word = |k: usize| match tail.get(k) {
+                Some(Field::Word(v)) => *v,
+                _ => 0,
+            };
+            let real = |k: usize| match tail.get(k) {
+                Some(Field::Real(v)) => *v,
+                _ => 0.0,
+            };
+            // The widget's sprite, owner, and type first; the item's reals after the
+            // widget's fields (`Widget`, eight fields without its optional list).
+            let mut i = SavedItem { tag: o.entry.tag, birth: o.entry.birth, owner: word(1), type_id: word(2), ..Default::default() };
+            let at = tail.iter().position(|f| matches!(f, Field::Real(_))).map_or(0, |k| k + 2);
+            (i.life, i.max_life) = (real(at), real(at + 2));
+            if let First::Agent { refs, .. } = o.first()? {
+                for r in refs {
+                    if let Some(First::Pos { values, .. }) = all.get(&(r.0, r.1)).map(|p| p.first()).transpose()? {
+                        i.pos = values;
+                    }
+                }
+            }
+            out.push(i);
+        }
+        Ok(out)
+    }
+}

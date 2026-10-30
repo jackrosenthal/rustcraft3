@@ -127,7 +127,8 @@ pub fn create_item(w: &mut World, id: Id, x: f32, y: f32) -> u32 {
         droppable: o.bool("droppable"),
         drop_type: None,
     };
-    let h = w.handles.insert(Obj::Item(Box::new(item)));
+    // An item takes its handle as a script first has it, as a unit does.
+    let h = w.handles.insert_unseen(Obj::Item(Box::new(item)));
     if let Some(Obj::Item(i)) = w.handles.get_mut(h) {
         i.handle = h;
     }

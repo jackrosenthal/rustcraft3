@@ -34,6 +34,9 @@ fn main() {
         for u in units.iter().take(3) {
             println!("  {u:?} handle {:?}", handles.iter().find(|(r, _)| (r.0, r.1) == (u.tag, u.birth)).map(|h| h.1));
         }
+        for i in s.items().unwrap() {
+            println!("  item {} owner {} pos {:?} life {} of {}", code(i.type_id), i.owner, i.pos, i.life, i.max_life);
+        }
         for (k, p) in s.player_states().unwrap().iter().enumerate().take(2) {
             println!("  player {k}: {p:?}");
         }

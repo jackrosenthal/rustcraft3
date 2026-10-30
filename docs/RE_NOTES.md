@@ -1555,7 +1555,15 @@ Formats the port made its own, to be replaced by the original's:
   worker order's (so), the walk's `task` and `+ord`, then its last `tskA` and five
   tasks from the last; the walk's others (and the second `uref`) later.  The port's
   AI gives the ghoul its orders later and by its own logic, and tags only orders
-  that come over the network: not yet modeled.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
+  that come over the network: not yet modeled.  Read further: the second `uref`'s
+  making and the walk are the AI making the ghoul's unit AI anew (`FUN_6f9c3660`: its
+  `uref`/`AI-U`, its order stopped, `FUN_6f6803f0(1)`, its lists, then its AI order,
+  `FUN_6f693450`), the order's task an idle unit's (`FUN_6f9bd6e0`, task 0xd0194,
+  `FUN_6f9cd390`): a worker by its harvest ability (Ahar, Awha, Aaha with the AI's
+  gold, Ahrl with its wood, `FUN_6f9c9470` and the like), else a walk to the AI's
+  target at +0x30 of its data (`FUN_6f9d8a90`, the `ordt` and the walk's `tskt`).  In
+  the Forestwalk game with an undead computer the original's first keepalive has 37
+  births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,
   so its units join as they are made, the AI script or not.
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on

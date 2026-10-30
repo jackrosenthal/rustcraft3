@@ -28,6 +28,19 @@ fn main() {
                 }
             }
         }
+        // "header0": the object manager header's two first words, its update counter
+        // and parity, and its four groups' counts zeroed (1024 for the counter).
+        "header0" => {
+            let h = &mut m.header;
+            let mut put = |k: usize, v: u32| h[k * 4..k * 4 + 4].copy_from_slice(&v.to_le_bytes());
+            put(0, 0);
+            put(1, 0);
+            put(4, 1024);
+            put(5, 0);
+            for g in 0..4 {
+                put(12 + 5 * g, 0);
+            }
+        }
         // "none": as it was (a control).
         "none" => {}
         // "drop1": the second table's objects but its classes' definitions left out.

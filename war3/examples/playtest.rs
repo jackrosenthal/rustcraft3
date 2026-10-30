@@ -1074,6 +1074,17 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // w3zwrite <template> <out>: a save from the port's state, the pieces it
+            // does not yet make taken from the original's save of the same moment.
+            "w3zwrite" => {
+                if let Some(g) = &scene.game {
+                    let bytes = std::fs::read(&a[i + 1]).unwrap();
+                    let (header, _) = w3_formats::container::unpack(&bytes).unwrap();
+                    let orig = w3_formats::w3z::SaveGame::read(&bytes).unwrap();
+                    std::fs::write(&a[i + 2], g.world.write_save(&orig).to_file(&header)).unwrap();
+                }
+                i += 3;
+            }
             // objtable <file>: the engine's live objects, a line each: slot, code, birth.
             "objtable" => {
                 if let Some(g) = &scene.game {

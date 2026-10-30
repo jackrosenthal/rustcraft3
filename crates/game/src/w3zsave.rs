@@ -79,6 +79,62 @@ pub fn class_definitions() -> Vec<SavedObject> {
 }
 
 impl World {
+    /// The object manager's header as saved (`FUN_6f15c9b0`): two words, two reals (25
+    /// and 0.2), its update counter and that's parity, each table's births, four
+    /// groups of a clock (a time, a word, its wrap 300, a word, a count), and "espi".
+    /// The two words, the counter, and the counts are the running game's (they differ
+    /// between saves of one moment); the original loads a save with them 0, the
+    /// counter 1024 (read: the quiet test map's save so changed, `w3zedit header0`).
+    pub fn saved_manager_header(&self, second_births: u32) -> Vec<u8> {
+        let mut o = Vec::new();
+        let mut word = |v: u32| o.extend(v.to_le_bytes());
+        let main = f32::from_bits(self.main_clock.1);
+        word(0);
+        word(0);
+        word(25f32.to_bits());
+        word(0.2f32.to_bits());
+        word(1024);
+        word(0);
+        word(self.tags.born);
+        word(second_births);
+        let agent = self.step_agent.last().copied().unwrap_or(main.to_bits());
+        for (t, w) in [(main.to_bits(), 4096), (agent, 0), (main.to_bits(), 4096), (agent, 0)] {
+            word(t);
+            word(0);
+            word(300f32.to_bits());
+            word(w);
+            word(0);
+        }
+        o.extend(b"espi");
+        o
+    }
+
+    /// A save made from `template` (the original's save of the same moment) with the
+    /// pieces the port makes in place of its own.
+    pub fn write_save(&self, template: &SaveGame) -> SaveGame {
+        let mut s = template.clone();
+        let Some(m) = s.objects.as_mut() else { return s };
+        let Ok(mut objects) = m.objects() else { return s };
+        let births1 = m.header.get(28..32).map_or(0, |b| u32::from_le_bytes(b.try_into().unwrap()));
+        m.header = self.saved_manager_header(births1);
+        m.classes = saved_classes();
+        let defs = class_definitions();
+        for o in objects[1].iter_mut() {
+            if let Some(d) = defs.iter().find(|d| d.entry.tag == o.entry.tag) {
+                *o = d.clone();
+            }
+        }
+        let ours = self.saved_table();
+        if ours.len() == objects[0].len() {
+            for (o, e) in objects[0].iter_mut().zip(ours) {
+                o.entry = e;
+            }
+        }
+        m.set_objects(&objects);
+        m.free[0] = self.saved_free_list();
+        s
+    }
+
     /// The first object table as saved (`FUN_6f15c810`): each live object by slot, its
     /// family's code, its own, its slot, and its birth.
     pub fn saved_table(&self) -> Vec<Tagged> {

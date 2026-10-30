@@ -1604,6 +1604,19 @@ Formats the port made its own, to be replaced by the original's:
   (3.0 for those made before the melee setup's 8:00), a sight of none never changed
   -0 (the haunted mine's hidden gold mine).  Not yet: a Granite Golem's rates, 1.5 in
   its data, held as 1.5000001.
+- A unit's threshold listeners (`` `rtl ``) agree but for the running game's counts
+  (88 of 107 whole, the rest their re-armed nodes' counts): two words (the event,
+  0x20090400), the threshold, and whether rising; its death's on its life (0xd019f,
+  below 0.4); its spells' on its mana as made (0xd01b7, below -0.1) or as a creep
+  woke (0xd01b6, rising past each cost and 0.1, unless its mana is past the cost
+  itself: a Trapper's spell of no cost waits for it to fall, the port's wake having
+  compared with the cost and 0.1).  A rising one's node checks again at most 4
+  seconds on or as the mana reaches it: due the time it reaches, reckoned from 0 in
+  single precision (5.1 at 0.75: 6.7999997), its period the time left at its last
+  check (2.1 / 0.75: 2.8).  The unit chains all its listeners, its in-range ones
+  (`` `pil ``) among them (its abilities', a flyer's, its AI's item pickup, Ensnare's,
+  and a computer's structure's alarm's as it starts to watch), newest first; each
+  real its own.
 - A unit's modifiers (`` `rcm ``: its life's and mana's regeneration, and its life's on
   blight) agree for 56 of 69: two words (-1, 0x60050044), its rate and no limit, a
   timing node due 150 seconds after it was made (its stamp's clock plus 150), every

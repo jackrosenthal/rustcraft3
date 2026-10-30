@@ -400,6 +400,87 @@ impl World {
         out
     }
 
+    /// A unit's threshold listeners (`` `rtl ``, read against the quiet test map's): its
+    /// death's on its life (event 0xd019f, below 0.4); its spells' on its mana, as
+    /// made (0xd01b7, below -0.1) or as a creep woke (0xd01b6, rising past each cost
+    /// and 0.1, a timing node that checks again in the time the rate takes to reach
+    /// it, at most 4 seconds: read, 5.1 at 0.75 a second from 0 checked at 4.0 and then
+    /// 2.8 on); each two words (its event, 0x20090400), chained on the unit and on its
+    /// real.  (Provisional: a re-armed node's count, the running game's.)
+    pub fn unit_listener_records(&self, h: u32) -> Vec<(u32, First, Option<Second>)> {
+        let mut out = Vec::new();
+        let Some(u) = self.unit(h) else { return out };
+        let first = &u.extra.object_slots[0];
+        if first.len() < 10 {
+            return out;
+        }
+        let me = first[0];
+        let (life, mana) = (first[4], first[5]);
+        let is_rtl = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == b"`rtl");
+        let death = u.extra.object_slots[1].iter().copied().find(|&(s, _)| is_rtl(s));
+        let (_, mp_rate) = self.regen_rates(h).unwrap_or((0.0, 0.0));
+        // (Each: itself, its real, event, threshold, rising, and its node.)
+        let mut ls: Vec<((u32, u32), (u32, u32), u32, f32, u32, Timing)> = Vec::new();
+        if let Some(d) = death {
+            ls.push((d, life, 0xd_019f, 0.4, 0, Timing(None)));
+        }
+        let woken: Vec<(f32, u32)> = u.extra.mana_listeners.iter().copied().filter(|&(_, s)| is_rtl(s)).collect();
+        for &s in u.extra.spell_timers.iter().filter(|&&s| is_rtl(s) && !woken.iter().any(|w| w.1 == s)) {
+            ls.push((self.tagged(s), mana, 0xd_01b7, -0.1, 0, Timing(None)));
+        }
+        for &(thr, s) in &woken {
+            let me_s = self.tagged(s);
+            let made = self.tags.made_at.get(&s).map_or(0.0, |&c| f32::from_bits(c));
+            // Its checks from its making: the mana from 0 at its rate (the creeps' at the
+            // start).
+            // (Due at most 4 seconds on, or as the mana reaches it, that time reckoned
+            // from 0 in single precision: read, 5.1 at 0.75 due 6.7999997.)
+            let reach = made + thr / mp_rate.max(f32::MIN_POSITIVE);
+            let (mut at, mut due) = (made, (made + 4.0).min(reach));
+            if mp_rate > 0.0 && thr.is_finite() {
+                while due <= self.time {
+                    at = due;
+                    due = (at + 4.0).min(reach);
+                }
+            }
+            let count = self.tags.prop_counts.get(&s).copied().unwrap_or(0);
+            if thr.is_finite() {
+                // (Its period the time left at its last check, from the mana then.)
+                let period = ((thr - mp_rate * (at - made)) / mp_rate.max(f32::MIN_POSITIVE)).min(4.0);
+                ls.push((me_s, mana, 0xd_01b6, thr, 1, Timing(Some((due, period, count, 0, 1)))));
+            } else {
+                // One past its cost waits for the mana to fall (provisional: below -0.1,
+                // read only of spells costing nothing).
+                ls.push((me_s, mana, 0xd_01b7, -0.1, 0, Timing(None)));
+            }
+        }
+        ls.sort_by_key(|l| l.0 .1);
+        // (The unit's chain holds its in-range listeners too, its abilities' and its
+        // AI's, by their makings.)
+        let is_pil = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == b"`pil");
+        let mut on_unit: Vec<(u32, u32)> = ls.iter().map(|l| l.0).collect();
+        let pils = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).map(|&(s, _)| s).chain(u.extra.flyer_pil).chain(u.extra.item_pil.map(|p| p.0)).chain(u.extra.ensnare_pil.map(|p| p.1)).chain(u.extra.alarm_pil);
+        for s in pils {
+            if is_pil(s) && !on_unit.iter().any(|x| x.0 == s) {
+                on_unit.push(self.tagged(s));
+            }
+        }
+        on_unit.sort_by_key(|x| x.1);
+        for &(me_s, prop, event, thr, rising, node) in &ls {
+            let on_prop: Vec<(u32, u32)> = ls.iter().filter(|l| l.1 == prop).map(|l| l.0).collect();
+            let (a0, b0) = chain_links(&on_unit, me_s, 0);
+            let (a1, b1) = chain_links(&on_prop, me_s, 1);
+            let object = ObjectBase {
+                real: 0.0,
+                words: [event, 0x2009_0400],
+                links: [(a0, b0, rf(me_s), rf(me)), (a1, b1, rf(me_s), rf(prop))],
+                timings: [node, Timing(None)],
+            };
+            out.push((me_s.0, First::Threshold { object, real: thr, word: rising }, None));
+        }
+        out
+    }
+
     /// The records of the script's triggers, their flags, actions, and handlers, by
     /// slot (read against the quiet test map's): a trigger's agent (its two flags, the
     /// second linked) and its own (CTriggerWar3: its word, its evaluations and
@@ -798,7 +879,7 @@ impl World {
                 seconds.insert(slot, sec);
             }
         }
-        let unit_reals: Vec<(u32, First, Option<Second>)> = self.unit_order.iter().flat_map(|&h| self.unit_real_records(h).into_iter().chain(self.unit_modifier_records(h))).collect();
+        let unit_reals: Vec<(u32, First, Option<Second>)> = self.unit_order.iter().flat_map(|&h| self.unit_real_records(h).into_iter().chain(self.unit_modifier_records(h)).chain(self.unit_listener_records(h))).collect();
         for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals) {
             records.insert(slot, f);
             if let Some(sec) = sec {
@@ -1091,6 +1172,40 @@ impl World {
                 }
             }
             out.push(format!("units' modifiers: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+            // The units' listeners.
+            let (mut same, mut differ, mut first) = (0, 0, None);
+            for (slot, f, sec) in self.unit_order.iter().flat_map(|&h| self.unit_listener_records(h)).collect::<Vec<_>>() {
+                let Some(o) = by_slot.get(&slot) else { continue };
+                // (By the bytes written: -0 is not 0.)
+                let ok1 = f.to_bytes() == o.first;
+                let ok2 = sec.as_ref().is_none_or(|s| s.to_bytes(o.entry.kind).is_ok_and(|b| b == o.second));
+                if ok1 && ok2 {
+                    same += 1;
+                } else {
+                    differ += 1;
+                    let brief = |s: Option<Second>| match s {
+                        Some(Second::Agent { own, handlers, tail }) => format!("own {own:?} keyed {:?} fixed {:?} events {} tail {tail:?}", handlers.keyed, handlers.fixed, handlers.events.len()),
+                        other => format!("{other:?}"),
+                    };
+                    let detail = if ok1 { format!("ours {}; the original's {}", brief(sec.clone()), brief(o.second().ok())) } else { format!("ours {f:?}; the original's {:?}", o.first()) };
+                    let line = format!("slot {slot} ({}): first {ok1} second {ok2}; {detail}", String::from_utf8_lossy(&o.entry.kind.to_be_bytes()));
+                    if std::env::var("W3Z_ALL").is_ok() {
+                        out.push(line.clone());
+                    }
+                    first.get_or_insert(line);
+                }
+            }
+            if false {
+                for (slot, func) in &self.tags.handler_objects {
+                    let k = self.tags.function_numbers.get(func).copied().unwrap_or(0);
+                    let theirs = by_slot.get(slot).and_then(|o| o.second().ok()).and_then(|s| match s {
+                        Second::Agent { tail, .. } => tail.first().cloned(),
+                        _ => None,
+                    });
+                    out.push(format!("handler slot {slot} birth {} func {func} ours {k} theirs {theirs:?}", self.tagged(*slot).1));
+                }
+            }
+            out.push(format!("units' listeners: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
         }
         out.push(match free.chunks(4).zip(m.free[0].chunks(4)).position(|(a, b)| a != b) {
             None if free.len() == m.free[0].len() => format!("free list: the same, {} slots", free.len() / 4 - 1),

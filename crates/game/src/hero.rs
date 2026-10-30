@@ -476,7 +476,10 @@ impl World {
             let owner = u.owner;
             let computer = self.players.get(owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER && p.slot_state == crate::types::slot_state::PLAYING);
             if computer && self.unit(h).is_some_and(|u| !u.dead) {
-                self.tags.take(b"`pil");
+                let s = self.tags.take(b"`pil");
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.alarm_pil = Some(s);
+                }
             }
         }
     }

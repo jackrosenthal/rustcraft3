@@ -594,6 +594,9 @@ pub struct UnitExtra {
     /// ramp ends (that change's plus 3 seconds), while it has had one.
     #[serde(default)]
     pub sight_stamp: Option<f32>,
+    /// A computer's structure's alarm's in-range listener, as it starts to watch.
+    #[serde(default)]
+    pub alarm_pil: Option<u32>,
     /// Regeneration on blight (Ablr): the time to its next look at the ground, and its
     /// timer while on blight (`World::regenerate`).
     #[serde(default)]
@@ -871,6 +874,7 @@ impl Default for UnitExtra {
             object_slots: Default::default(),
             day_rcm: None,
             sight_stamp: None,
+            alarm_pil: None,
             blight_check: None,
             blight_rcm: None,
             alarm_wait: None,

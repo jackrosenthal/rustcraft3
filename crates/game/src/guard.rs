@@ -537,7 +537,9 @@ impl World {
             // One whose cost its mana is past already waits for it to fall (read: creeps
             // waking with full mana at dawn made their listeners, none replaced after).
             let mana = self.unit(h).map_or(0.0, |u| u.mana);
-            let costs: Vec<f32> = costs.into_iter().map(|c| if mana >= c { f32::INFINITY } else { c }).collect();
+            // (Past its cost itself, not its cost and 0.1: read, a Forest Troll
+            // Trapper's spell of no cost waits for its mana to fall.)
+            let costs: Vec<f32> = costs.into_iter().map(|c| if mana >= c - 0.1 { f32::INFINITY } else { c }).collect();
             if let Some(u) = self.unit_mut(h) {
                 u.extra.mana_listeners = costs.into_iter().zip(slots).collect();
                 u.extra.ensnare_pil = pil;

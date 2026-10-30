@@ -1210,6 +1210,9 @@ impl Timer {
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Trigger {
+    /// Its engine objects' slots: itself and its two flags (`+trg`, two `` `flg ``).
+    #[serde(default)]
+    pub slots: Vec<u32>,
     pub enabled: bool,
     pub wait_on_sleeps: bool,
     pub events: Vec<u32>,
@@ -1222,6 +1225,7 @@ pub struct Trigger {
 impl Default for Trigger {
     fn default() -> Self {
         Trigger {
+            slots: Vec::new(),
             enabled: true,
             wait_on_sleeps: false,
             events: Vec::new(),
@@ -1611,7 +1615,8 @@ pub enum Obj {
     Timer(Timer),
     Trigger(Trigger),
     TriggerCondition { expr: u32 },
-    TriggerAction { func: FuncId },
+    /// A trigger's action: its function, and its engine object's slot (`+tac`).
+    TriggerAction { func: FuncId, #[serde(default)] slot: u32 },
     Event(EventReg),
     BoolExpr(BoolExpr),
     Group(Group),

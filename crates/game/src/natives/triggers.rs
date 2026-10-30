@@ -104,6 +104,10 @@ fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
     // A timer takes a handler with its first function and keeps it.
     if cb.is_some() && w.timer_mut(a.h(0)).is_some_and(|t| t.handler.is_none()) {
         let s = w.tags.take(b"hdlr");
+        if let Some(f) = cb {
+            w.tags.handler_objects.insert(s, f);
+            w.tags.function_number(f);
+        }
         if let Some(t) = w.timer_mut(a.h(0)) {
             t.handler = Some(s);
         }
@@ -114,8 +118,8 @@ fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
     reg!(t,
         CreateTrigger => |w, _, _| {
-            w.tags.take_all(&[b"+trg", b"`flg", b"`flg"]);
-            handle(w.handles.insert(Obj::Trigger(Trigger::default())))
+            let slots: Vec<u32> = [b"+trg", b"`flg", b"`flg"].iter().map(|c| w.tags.take(c)).collect();
+            handle(w.handles.insert(Obj::Trigger(Trigger { slots, ..Trigger::default() })))
         },
         DestroyTrigger => |w, _, a| {
             let h = a.h(0);
@@ -161,9 +165,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let trig = a.h(0);
             let Some(func) = a.code(1) else { return none() };
             if w.trigger(trig).is_none() { return none(); }
-            w.tags.take(b"+tac");
+            let slot = w.tags.take(b"+tac");
             w.tags.handler(func);
-            let h = w.handles.insert(Obj::TriggerAction { func });
+            let h = w.handles.insert(Obj::TriggerAction { func, slot });
             if let Some(t) = w.trigger_mut(trig) { t.actions.push(h); }
             handle(h)
         },

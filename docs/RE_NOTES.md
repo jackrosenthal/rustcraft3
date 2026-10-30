@@ -1458,6 +1458,29 @@ Formats the port made its own, to be replaced by the original's:
   (the sprite's tint, word, and short, the widget's shorts and first byte, the own
   word's 0x100): written with the values most trees have, the original loads the
   save and draws the trees as before.
+  The triggers' objects agree as well (238: `+trg`, its two flags, `+tac`, `hdlr`):
+  a trigger's agent names its two flags, the second linked; its own (CTriggerWar3,
+  `FUN_6f2998a0`) its word +0x20, evaluations +0x58, executions +0x5c, +0x60, +0x74
+  (1 for the trigger that ran, provisional as its executions), and whether it waits
+  on sleeps +0x78; then its events', conditions', and actions' lists.  Its flags are
+  2, then 1 (enabled; which flag is enabled is provisional, every trigger read being
+  so).  Registrations of timers' expiry, dialogs, their buttons, and trackables are
+  not on their triggers' lists: their natives make them without `FUN_6f296670`, which
+  every other registration native calls.  An action names its function's handler; a
+  handler (`hdlr`) saves its function's number, the count of functions given a
+  handler till it (timers' own handlers counted too: read, 1 to 46 by birth) and
+  holds the game's registration of event 0x80267, which a timer's own handler lacks.
+  Every object outside its family's own records (agents, the trees' widgets) holds
+  that registration, it seems: the trees and handlers read so.
+- Setting the time of day (SetFloatGameState) passes the time-of-day events'
+  listeners as the clock does, but an event for equal runs its trigger only if the
+  time is its value to 0.001 (`FUN_6f27c5c0`: its listener replaced the other way,
+  then `|time - value| < DAT_6fcd53a0`, 0.001); the comparisons run theirs as they
+  become true and keep their listeners.  Read in the quiet test map's save at 5
+  seconds: melee's start, setting the time from night to 8, replaced Blizzard.j's
+  dawn event's listener (= 6) without running its trigger and ran its day trigger
+  (>= 6) once, the day event's listeners its first.  Booty Bay's object traces could
+  not tell these apart, each making one listener.
   An agent's entry is its
   CAgentBaseAbs: its first record `FUN_6f146480` (its base's, a reference, a counted
   list of references, four more), its second its agent's vf 0x38 (CAgent's

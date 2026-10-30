@@ -1250,7 +1250,7 @@ impl World {
         let execution = self.tags.take(b"+tex");
         for a in actions {
             let f = match self.handles.get(a) {
-                Some(Obj::TriggerAction { func }) => *func,
+                Some(Obj::TriggerAction { func, .. }) => *func,
                 _ => continue,
             };
             let mut ctx = ctx.clone();

@@ -56,6 +56,15 @@ pub struct Tags {
     /// function is given to an object (an action, a filter, a timer; `FUN_6f2872f0`).
     #[serde(default)]
     pub handlers: std::collections::BTreeSet<u32>,
+    /// The handlers' objects (`hdlr`, CJassFunc): each slot's function (an action's
+    /// or filter's, made once a function, or a timer's own).
+    #[serde(default)]
+    pub handler_objects: std::collections::BTreeMap<u32, u32>,
+    /// Each function's number, as handlers save it: the count of functions given a
+    /// handler till it, a timer's too (read: the quiet test map's 1, 2, 3, ... by their
+    /// handlers' births, a timer's for a function given before keeping that one's).
+    #[serde(default)]
+    pub function_numbers: std::collections::BTreeMap<u32, u32>,
     /// Objects the engine makes right after the next one tagged (`after_next`).
     #[serde(skip)]
     pending: Vec<Code>,
@@ -116,7 +125,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -432,8 +441,16 @@ impl Tags {
     /// The handler of a script function given to an object, the first time.
     pub fn handler(&mut self, func: u32) {
         if self.handlers.insert(func) {
-            self.take(b"hdlr");
+            let s = self.take(b"hdlr");
+            self.handler_objects.insert(s, func);
+            self.function_number(func);
         }
+    }
+
+    /// A function's handler number, given it the first time.
+    pub fn function_number(&mut self, func: u32) -> u32 {
+        let n = self.function_numbers.len() as u32 + 1;
+        *self.function_numbers.entry(func).or_insert(n)
     }
 
     /// `n` objects of one code.

@@ -255,16 +255,15 @@ impl World {
     /// timer; the change makes two timers for day, one for night; then each unit a
     /// timer (`rcm), and a creep that wakes one for each spell it casts (Ensnare a
     /// region too), after its own.
-    /// An event of the time of day fires: one for equal when the time passes its value
-    /// (forward, through midnight too), the others when they become true as the clock
-    /// runs (traced: setting the time from 0 to 8 fires Blizzard.j's dawn trigger, equal
-    /// to 6, and not its day trigger, greater than or equal to 6).
-    fn time_event_fires(op: i32, value: f32, old: f32, new: f32, set: bool) -> bool {
+    /// A set time passes an event of the time of day's listener: one for equal when the
+    /// time passes its value (forward, through midnight too), the others when they
+    /// become true.
+    fn time_event_passed(op: i32, value: f32, old: f32, new: f32) -> bool {
         const EQUAL: i32 = 2;
         if op == EQUAL {
             return if old <= new { old < value && value <= new } else { value > old || value <= new };
         }
-        !set && crate::world::compare(op, new, value) && !crate::world::compare(op, old, value)
+        crate::world::compare(op, new, value) && !crate::world::compare(op, old, value)
     }
 
     /// As the time runs each event is a listener on it (`FUN_6f27a110`): those for
@@ -344,22 +343,43 @@ impl World {
         self.tags.issued = waiting;
     }
 
+    /// A set time passes the events' listeners, the latest made first (as the clock's,
+    /// provisional for a set): one for equal is replaced by one the other way, the old
+    /// one released (traced), and runs its trigger only if the time is its value, to
+    /// 0.001 (`FUN_6f27c5c0`, `DAT_6fcd53a0`); the others run their triggers and stay
+    /// (read: setting the time from night to 8 replaces Blizzard.j's dawn event's
+    /// listener, equal to 6, without running its trigger, and runs its day trigger,
+    /// greater than or equal to 6, its listeners kept: the quiet test map's save).
     pub(crate) fn time_of_day_moved(&mut self, vm: &mut w3_jass::Vm, old: f32, new: f32, set: bool) {
         use crate::types::EventKind;
-        let fires = |k: &EventKind| matches!(*k, EventKind::GameState { state: 2, op, value } if Self::time_event_fires(op, value, old, new, set));
-        let fired: Vec<u32> = self.events.iter().copied().filter(|&e| matches!(self.handles.get(e), Some(crate::types::Obj::Event(r)) if fires(&r.kind))).collect();
         if set {
-            self.fire(vm, crate::types::EventCtx::default(), |_, k| fires(k));
-            // Each fired event's timer is replaced, the old one released (traced).
-            for e in fired {
-                let s = self.tags.take(b"`rtl");
-                self.tags.listener_made.insert(e, self.tags.born as u64);
-                if let Some(old) = self.tags.event_timers.insert(e, s) {
-                    self.tags.doom(old);
+            const EQUAL: i32 = 2;
+            let mut passed: Vec<((u8, u64), u32, bool)> = Vec::new();
+            for &e in &self.events {
+                let Some(crate::types::Obj::Event(r)) = self.handles.get(e) else { continue };
+                let EventKind::GameState { state: 2, op, value } = r.kind else { continue };
+                if Self::time_event_passed(op, value, old, new) {
+                    let made = self.tags.listener_made.get(&e).map_or((0, e as u64), |&b| (1, b));
+                    passed.push((made, e, op == EQUAL));
+                }
+            }
+            passed.sort_by(|a, b| b.0.cmp(&a.0));
+            for (_, e, equal) in passed {
+                let runs = if equal {
+                    let s = self.tags.take(b"`rtl");
+                    self.tags.listener_made.insert(e, self.tags.born as u64);
+                    if let Some(old) = self.tags.event_timers.insert(e, s) {
+                        self.tags.doom(old);
+                    }
+                    matches!(self.handles.get(e), Some(crate::types::Obj::Event(r)) if matches!(r.kind, EventKind::GameState { value, .. } if (new - value).abs() < 0.001))
+                } else {
+                    true
+                };
+                if runs {
+                    self.fire_registrations_pub(vm, crate::types::EventCtx::default(), vec![e]);
                 }
             }
         } else {
-            let _ = fired;
             self.time_listeners_crossed(vm, old, new);
         }
         // Day and night change on listeners of their own, 0.01 past dawn and dusk

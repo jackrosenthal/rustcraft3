@@ -183,6 +183,24 @@ fn main() {
         }
         return;
     }
+    // "owners <kind>": that kind's objects' owners (their properties' first link set's
+    // last reference), counted by the owner's kind, with their values for flags.
+    if a[2] == "owners" {
+        let kinds: std::collections::HashMap<u32, String> = all.iter().map(|o| (o.entry.tag, code(o.entry.kind))).collect();
+        let mut c = std::collections::BTreeMap::new();
+        for o in all.iter().filter(|o| code(o.entry.kind) == a[3]) {
+            let owner = match o.first() {
+                Ok(w3_formats::w3z::First::Flag { base, value }) => (kinds.get(&base.object.links[0].3 .0).cloned(), Some(value)),
+                Ok(w3_formats::w3z::First::Real { base, .. }) | Ok(w3_formats::w3z::First::Pos { base, .. }) => (kinds.get(&base.object.links[0].3 .0).cloned(), None),
+                _ => (None, None),
+            };
+            *c.entry((owner.0.unwrap_or("-".into()), owner.1)).or_insert(0) += 1;
+        }
+        for (k, v) in c {
+            println!("{v} {k:?}");
+        }
+        return;
+    }
     // "classtable": the registry for docs/reference/w3z_classes.txt: code, parent, tag,
     // birth, and, when its definition's array is not the empty default, its four words
     // and each entry's eleven, all in hex.

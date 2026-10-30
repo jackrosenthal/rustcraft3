@@ -25,6 +25,12 @@ pub struct Handles<T> {
     next: u32,
     #[serde(default = "unseen_base")]
     next_unseen: u32,
+    /// The handles given to unseen objects as scripts first had them: each handle's
+    /// object's id, and each such object's handle.
+    #[serde(default)]
+    aliases: HashMap<u32, u32>,
+    #[serde(default)]
+    handle_of: HashMap<u32, u32>,
 }
 
 fn unseen_base() -> u32 {
@@ -33,22 +39,57 @@ fn unseen_base() -> u32 {
 
 impl<T> Default for Handles<T> {
     fn default() -> Self {
-        Handles { objects: HashMap::default(), free: Vec::new(), pending: Vec::new(), next: HANDLE_BASE, next_unseen: UNSEEN_BASE }
+        Handles { objects: HashMap::default(), free: Vec::new(), pending: Vec::new(), next: HANDLE_BASE, next_unseen: UNSEEN_BASE, aliases: HashMap::default(), handle_of: HashMap::default() }
     }
 }
 
 impl<T> Handles<T> {
     pub fn insert(&mut self, v: T) -> u32 {
-        let id = match self.free.pop() {
+        let id = self.take_id();
+        self.objects.insert(id, v);
+        id
+    }
+
+    /// The next handle: the last freed, or a new one.
+    fn take_id(&mut self) -> u32 {
+        match self.free.pop() {
             Some(id) => id,
             None => {
                 let id = self.next;
                 self.next += 1;
                 id
             }
-        };
-        self.objects.insert(id, v);
-        id
+        }
+    }
+
+    /// The handle scripts know an object by: its id, or for an unseen object the
+    /// handle it is given as a script first has it.
+    pub fn handle(&mut self, id: u32) -> u32 {
+        if id < UNSEEN_BASE {
+            return id;
+        }
+        if let Some(&h) = self.handle_of.get(&id) {
+            return h;
+        }
+        let h = self.take_id();
+        self.aliases.insert(h, id);
+        self.handle_of.insert(id, h);
+        h
+    }
+
+    /// The object a script's handle names (an unseen object's under its own id).
+    pub fn resolve(&self, h: u32) -> u32 {
+        self.aliases.get(&h).copied().unwrap_or(h)
+    }
+
+    /// Whether a script's handle stands for an unseen object.
+    pub fn is_alias(&self, h: u32) -> bool {
+        self.aliases.contains_key(&h)
+    }
+
+    /// The handle an object was given, if scripts have had it.
+    pub fn known_handle(&self, id: u32) -> Option<u32> {
+        if id < UNSEEN_BASE { Some(id) } else { self.handle_of.get(&id).copied() }
     }
 
     /// An object no script has been given, with an id apart from the handles'.
@@ -66,7 +107,19 @@ impl<T> Handles<T> {
 
     pub fn remove(&mut self, id: u32) -> Option<T> {
         let v = self.objects.remove(&id);
-        if v.is_some() && id < UNSEEN_BASE && !self.pending.contains(&id) {
+        // An unseen object's handle, if it was given one, is what scripts hold.
+        let id = if id < UNSEEN_BASE {
+            id
+        } else {
+            match self.handle_of.remove(&id) {
+                Some(h) => {
+                    self.aliases.remove(&h);
+                    h
+                }
+                None => return v,
+            }
+        };
+        if v.is_some() && !self.pending.contains(&id) {
             self.pending.push(id);
         }
         v

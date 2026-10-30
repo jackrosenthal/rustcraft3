@@ -1004,13 +1004,14 @@ fn main() -> anyhow::Result<()> {
             // runs.
             "handles" => {
                 if let Some(g) = &scene.game {
-                    let mut ids = g.world.handles.ids();
-                    ids.extend(g.world.handles.pending());
+                    // By the handles scripts know them by.
+                    let mut ids: Vec<(u32, u32)> = g.world.handles.ids().into_iter().filter_map(|id| g.world.handles.known_handle(id).map(|h| (h, id))).collect();
+                    ids.extend(g.world.handles.pending().iter().map(|&h| (h, u32::MAX)));
                     ids.sort();
-                    let kind = |h: u32| g.world.handles.get(h).map_or("none".to_string(), |o| format!("{o:?}").split(['(', ' ', '{']).next().unwrap_or_default().to_string());
+                    let kind = |id: u32| g.world.handles.get(id).map_or("none".to_string(), |o| format!("{o:?}").split(['(', ' ', '{']).next().unwrap_or_default().to_string());
                     let mut runs: Vec<(String, usize, u32)> = Vec::new();
-                    for h in ids {
-                        let k = kind(h);
+                    for (h, id) in ids {
+                        let k = kind(id);
                         match runs.last_mut() {
                             Some(r) if r.0 == k => r.1 += 1,
                             _ => runs.push((k, 1, h)),

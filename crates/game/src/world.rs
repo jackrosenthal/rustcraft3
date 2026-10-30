@@ -2264,7 +2264,30 @@ pub fn compare(op: i32, a: f32, b: f32) -> bool {
 }
 
 impl Host for World {
+    /// A native's call, with the handles scripts hold for unseen objects (units, made
+    /// without one) as those objects' ids, and an unseen object it gives back given its
+    /// handle then (read: a crypt the undead computer begins takes its handle after the
+    /// force its trigger made first, in a save's handle table).
     fn call_native(&mut self, vm: &mut Vm, native: u32, args: &[Value]) -> NativeResult {
+        let translated: Vec<Value>;
+        let args = if args.iter().any(|v| matches!(v, Value::Handle(h) if self.handles.is_alias(*h))) {
+            translated = args.iter().map(|v| match v {
+                Value::Handle(h) => Value::Handle(self.handles.resolve(*h)),
+                v => v.clone(),
+            }).collect();
+            &translated[..]
+        } else {
+            args
+        };
+        match self.call_native_as_is(vm, native, args) {
+            NativeResult::Return(Value::Handle(h)) if h >= crate::handles::UNSEEN_BASE => NativeResult::Return(Value::Handle(self.handles.handle(h))),
+            r => r,
+        }
+    }
+}
+
+impl World {
+    fn call_native_as_is(&mut self, vm: &mut Vm, native: u32, args: &[Value]) -> NativeResult {
         if let Some(p) = self.ai_current {
             let f = self.ai.get(&p).and_then(|a| a.natives.get(native as usize).copied().flatten());
             return match f {

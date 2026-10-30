@@ -133,7 +133,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         R2SW => |_, _, a| string(format_real(a.r(0), a.i(1), a.i(2))),
         S2I => |_, _, a| int(atoi(&a.s(0))),
         S2R => |_, _, a| real(atof(&a.s(0))),
-        GetHandleId => |_, _, a| int(a.h(0) as i32),
+        GetHandleId => |w, _, a| int(w.handles.handle(a.h(0)) as i32),
         SubString => |_, _, a| {
             let Some(s) = a[0].str() else { return none() };
             let b = s.as_bytes();

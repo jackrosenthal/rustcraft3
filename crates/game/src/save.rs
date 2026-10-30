@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use w3_jass::{Thread, Value};
 
 use crate::Game;
+use crate::types::Obj;
 use crate::world::World;
 
 /// Bumped whenever the saved state's layout changes.
@@ -144,17 +145,19 @@ impl Game {
     /// Puts an original's saved game in place of a game just started on its map (its
     /// script's main run): its units (their type, owner, place, facing, life, and mana),
     /// the handles scripts had them by, its players' gold and lumber (saved in tenths),
-    /// the time of day, and the map script's integer, real, and boolean variables (by
-    /// name, arrays too).  Not yet:
-    /// the rest (the time, which the port's timers and sleeping threads count from;
-    /// orders, buildings in progress, items, destructables, the other variables, the
-    /// AI scripts', timers, and threads), which stay as the script just made them.
+    /// the time of day, the map script's integer, real, and boolean variables (by name,
+    /// arrays too), and its timers.  Not yet: the rest (the time, which the port's
+    /// timers and sleeping threads count from; orders, buildings in progress, items,
+    /// destructables, the other variables, the AI scripts', and threads), which stay
+    /// as the script just made them.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
         use crate::natives::units::{create_unit_exact, remove_unit};
         let units = s.units()?;
         let handles: std::collections::HashMap<(u32, u32), u32> = s.handles()?.into_iter().map(|(r, h)| ((r.0, r.1), h)).collect();
         let players = s.player_states()?;
         let game_reals = s.game_reals()?;
+        let timers = s.timers()?;
+        let agent_clock = s.objects.as_ref().map_or(0.0, |m| m.clocks[1].0);
         let scripts = s.script_data()?;
         let w = &mut self.world;
         let origin = w.pathing.as_ref().map_or([0.0; 2], |p| p.origin);
@@ -181,6 +184,25 @@ impl Game {
                 if matches!(k, 1 | 2 | 15 | 16) {
                     player.state.insert(k as i32, v / 10);
                 }
+            }
+        }
+        // The script's timers, by the handles they had (the script made them in the
+        // same order): running ones with the time left to their due on the agent
+        // clock (provisional: the clock's wrap at 300 seconds not read).
+        for t in timers {
+            let Some(&jass) = handles.get(&(t.tag, t.birth)) else { continue };
+            let id = w.handles.resolve(jass);
+            let Some(Obj::Timer(timer)) = w.handles.get_mut(id) else { continue };
+            timer.timeout = t.timeout;
+            match t.run {
+                Some((due, length, periodic)) => {
+                    let mut left = due - agent_clock;
+                    if left < 0.0 {
+                        left += 300.0;
+                    }
+                    (timer.running, timer.periodic, timer.remaining, timer.period) = (true, periodic, left as f64, length as f64);
+                }
+                None => timer.running = false,
             }
         }
         if let Some((_, v)) = game_reals.iter().find(|(k, _)| *k == 2) {

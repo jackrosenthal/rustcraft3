@@ -2137,3 +2137,38 @@ impl SaveGame {
         Ok(out)
     }
 }
+
+/// A saved JASS timer (CTimerWar3, `+tmr`) as far as named.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SavedTimer {
+    /// Its object's tag and birth.
+    pub tag: u32,
+    pub birth: u32,
+    /// Its timeout (its own fields' first real).
+    pub timeout: f32,
+    /// While running, its run's block (CAgentTimer's): when it is due on the agent
+    /// clock, the run's length, and whether it repeats (read: a test map's 10-second
+    /// timer started at its start due at 10.0, the restock timer 120.0 and repeating).
+    pub run: Option<(f32, f32, bool)>,
+}
+
+impl SaveGame {
+    /// The JASS timers, in the object table's order.
+    pub fn timers(&self) -> Result<Vec<SavedTimer>, Error> {
+        let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
+        let mut out = Vec::new();
+        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == b"+tmr") {
+            let Second::Agent { own, tail, .. } = o.second()? else { continue };
+            let timeout = match own.get(1) {
+                Some(Field::Real(v)) => *v,
+                _ => 0.0,
+            };
+            let run = match tail.first() {
+                Some(Field::Timer(_, _, Timing(Some((due, length, _, _, periodic))))) => Some((*due, *length, *periodic != 0)),
+                _ => None,
+            };
+            out.push(SavedTimer { tag: o.entry.tag, birth: o.entry.birth, timeout, run });
+        }
+        Ok(out)
+    }
+}

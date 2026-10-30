@@ -710,6 +710,14 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // in order, with counted lists of words, of reals, and of three reals
     // (`FUN_6f491650`), timers, references (`FUN_6f4915d0`), and words.
     (b"Aatk", "wwww wwwwwww t w", "wwwwww [w][w][w][w] [fff] [w][w][w][w] [fff][fff] [f] [fff][fff] fff tttt [w] w [r] ff [f][f] f ttt ff wwww f [www] [t] www fff wwww f"),
+    // Creep camps (the agent base alone, no own fields): an indicator
+    // (`FUN_6f64f590`) a reference, a short, three reals, two words; the camps' UI
+    // (`FUN_6f64f5f0`) a counted list of references.
+    (b"+ccp", "!", "r s fff ww"),
+    (b"+ccu", "!", "[r]"),
+    // `FUN_6f5f5270` on the buff base: a reference, two timers, and from build 6026 a
+    // reference (own as `Alam`'s).
+    (b"Aens", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t r"),
     (b"tsk.", "wwwww fff", "r"),
     (b"tskt", "wwwwwwww f", "r"),
     // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to

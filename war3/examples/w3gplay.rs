@@ -79,6 +79,11 @@ fn main() -> anyhow::Result<()> {
                 checked += 1;
                 if first_off.is_none() && last != Some(want) && std::env::var("W3G_DEBUG").is_ok() {
                     println!("turn {turn}: game module {:08x}, wanted {:08x}; net {:08x} rand {:08x} born {} free {:?} slots {} ms {} rng {:016x}", g.world.game_module(), g.world.game_module_for(want), g.world.net_sum, g.world.rand_data.checksum(), g.world.tags.born, g.world.tags.free.last(), g.world.tags.slots, g.world.game_ms, g.world.rng.state());
+                    for (p, pl) in g.world.players.iter().enumerate().take(2) {
+                        for r in &pl.tech_regs {
+                            println!("player {p}: {} {} {} {} {} {} {} {}", String::from_utf8_lossy(&r.id), r.max, r.made, r.producing, r.changing, r.present, r.killed, r.flags);
+                        }
+                    }
                 }
                 if first_off.is_none() && last != Some(want) {
                     first_off = Some((turn, last, want));

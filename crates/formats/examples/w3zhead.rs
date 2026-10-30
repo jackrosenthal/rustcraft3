@@ -59,5 +59,10 @@ fn main() {
             }
         }
         println!("second records: {read} read, {raw} not yet ({} kinds), {bad} wrong", raws.len());
+        if std::env::var("W3Z_KINDS").is_ok() {
+            let mut v: Vec<_> = raws.into_iter().collect();
+            v.sort_by(|a, b| b.1.cmp(&a.1));
+            println!("{v:?}");
+        }
     }
 }

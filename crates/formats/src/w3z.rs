@@ -490,10 +490,12 @@ pub enum Field {
     List(Vec<Vec<Field>>),
     /// A NUL-terminated string.
     Text(String),
+    /// A widget's sprite (`FUN_6f1a4050`).
+    Sprite(Option<Sprite>),
 }
 
 /// Reads fields by a layout: 'w' a word, 'f' a real, 'b' a byte, 's' a short, 'r' a
-/// reference, 't' a timer, 'z' a string, 'e' an event's handler list (as "[rw]"),
+/// reference, 't' a timer, 'z' a string, 'p' a sprite, 'e' an event's handler list (as "[rw]"),
 /// "[...]" a word count and that many groups, "{...}" a short count and that many; a
 /// number before a token repeats it.
 fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
@@ -532,6 +534,7 @@ fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
                 'r' => Field::Ref(Ref::read(r)?),
                 't' => Field::Timer(Ref::read(r)?, r.u32()?, Timing::read(r)?),
                 'z' => Field::Text(r.cstr()?),
+                'p' => Field::Sprite(Sprite::read(r)?),
                 'e' => Field::List((0..r.u32()?).map(|_| fields(r, "rw")).collect::<Result<_, _>>()?),
                 '[' => Field::List((0..r.u32()?).map(|_| fields(r, &token[1..token.len() - 1])).collect::<Result<_, _>>()?),
                 '{' => Field::List((0..r.u16()?).map(|_| fields(r, &token[1..token.len() - 1])).collect::<Result<_, _>>()?),
@@ -620,6 +623,41 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (b"ordt", "wwwwww ff www wwww ff", "www r r"),
     // Tasks: `FUN_6f696330` (own `FUN_6f696f50`) and `FUN_6f696410` (own
     // `FUN_6f6970b0`), a reference each.
+    // The buff base's tail (`FUN_6f42d5f0`: from build 6001 a word and two pairs of
+    // words): CAbilityAvenger's own a word more from 6003 (`FUN_6f567cf0`).
+    (b"Aven", "wwww wwwwwww t w w", "wwwww"),
+    (b"Amim", "wwww wwwwwww t w", "wwwww"),
+    // On it (`FUN_6f42e2b0`): a reference and two timers; (`FUN_6f42d2a0`) three; with
+    // own fields `FUN_6f42f3e0` (on `FUN_6f42f4b0`: the ability's, four reals, four words,
+    // a real; then four words, two reals, four words, two reals).
+    (b"Alam", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
+    (b"Auns", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
+    (b"ACtb", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
+    (b"ACtc", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
+    (b"AOsh", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
+    (b"Aadm", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
+    (b"Anhe", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
+    (b"Ainf", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
+    // `FUN_6f42e0e0` on that: four timers and a reference (own `FUN_6f42f1b0`: three
+    // words, three reals, three words, a real, three words).
+    (b"Arep", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff www fff www f www", "wwwww r t t t t t t t r"),
+    (b"Arst", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff www fff www f www", "wwwww r t t t t t t t r"),
+    // The aura base (`FUN_6f532730`: a counted list of references and a word):
+    // CAbilityVulnerable's own a word (`FUN_6f42f5a0`); auras (`FUN_6f42d0c0`, own
+    // `FUN_6f42e920`: a word and two reals) a reference, a timer, and from build 6047 a
+    // word and two pairs.
+    (b"Avul", "wwww wwwwwww t w w", "[r] w"),
+    (b"AEar", "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
+    (b"AHad", "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
+    (b"Aarm", "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
+    // Effects on the widget base (`FUN_6f42e650`, own `FUN_6f42f720`: four words): the
+    // sprite and a word, a timer, a word, two counted lists of words; `FUN_6f42e6d0`
+    // three reals more.
+    (b"+EIm", "wwww", "p w t w [w] [w]"),
+    (b"+EIP", "wwww", "p w t w [w] [w] fff"),
+    // CAbilityUpgrade-like (`FUN_6f42d320`, own `FUN_6f42e970`: two reals more): two
+    // references.
+    (b"Aupg", "wwww wwwwwww t w ff", "r r"),
     (b"tsk.", "wwwww fff", "r"),
     (b"tskt", "wwwwwwww f", "r"),
     // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to

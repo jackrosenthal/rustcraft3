@@ -206,6 +206,10 @@ pub struct World {
     #[serde(default)]
     pub playable: Rect,
     pub time_of_day: f32,
+    /// The main clock in seconds since the game began (across its settings back) when
+    /// the time of day last moved on.
+    #[serde(default)]
+    pub time_of_day_clock: f64,
     pub time_of_day_scale: f32,
     /// SuspendTimeOfDay: the day's clock stands still.
     #[serde(default)]
@@ -794,6 +798,7 @@ impl World {
             // reads 0 at start in the original; melee games take 8 from Blizzard.j's
             // MeleeStartingVisibility).
             time_of_day: 0.0,
+            time_of_day_clock: 0.0,
             time_of_day_scale: 1.0,
             time_of_day_suspended: false,
             cheat_flags: 0,
@@ -1797,8 +1802,14 @@ impl World {
         let day_length = self.misc_f32("DayLength", 480.0);
         let hours_per_second = day_hours / day_length * self.time_of_day_scale;
         let old_time_of_day = self.time_of_day;
+        // It moves on by the main clock, which falls behind the game's time (read: the
+        // time of day's trigger at dusk and midnight in turns 2004 and 3207, where the
+        // main clock reaches 200 and 320 seconds, not 2001 and 3201).
+        let clock = self.tick_abs(self.tick_clocks.1.len().saturating_sub(1)).unwrap_or(self.time_exact);
+        let moved = (clock - self.time_of_day_clock).max(0.0) as f32;
+        self.time_of_day_clock = clock;
         if !self.time_of_day_suspended {
-            self.time_of_day = (self.time_of_day + dt * hours_per_second) % day_hours;
+            self.time_of_day = (self.time_of_day + moved * hours_per_second) % day_hours;
         }
         self.camera.update(dt);
         // A camera following a unit keeps its target on it.

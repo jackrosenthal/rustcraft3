@@ -1095,6 +1095,30 @@ these are the findings behind them.
     the clock's code; the dll's 300000 are waits).  The port sets its kept clocks back
     as the first step after begins (`World::plan_steps`, `World::wrap_clocks`), its
     step clocks there bit for bit the original's.
+  - An event on the agent queue due after a step but in that step's main tick (the
+    queue runs to the next tick's clock, events in time order) comes after the
+    step's walkers move and before its end: its objects are made then, its `^clg`
+    freed, and its other eight freed after the step's walk ends' (read: turn 1748, a
+    wanderer's order due 174.503616, after step 174.503433 in the same tick, made
+    before an arrival in that step freed its tree; `World::issue_after_step`).
+  - The time of day moves on by the main clock, not the game's time: it is a
+    FloatModifier (`FUN_6f28bbf0`: from DayHours over DayLength, wrapped at DayHours
+    by a listener with event 0x80262), read against the main clock, which falls
+    behind (read: the dusk triggers at turn 2004 and midnight's at 3207, where the
+    main clock reaches 200 and 320 seconds, not at 2001 and 3201).  A script's
+    game-state event is a FloatListener on it (`FUN_6f27a110`: less than and at most
+    wait for it to fall past the value, at least and greater than to rise, equal
+    either way as it stands); one firing runs its trigger, and an equal one's is
+    replaced by one the other way (`FUN_6f27c5c0`), its `` `rtl `` (read: at dusk the
+    Night trigger's `+tex`, then the Dusk event's new `` `rtl `` and its `+tex`).
+  - Day and night change on listeners of their own (`FUN_6f283c80`, event 0x80263):
+    by day, on the time falling below Dawn less 0.01 or rising past Dusk plus 0.01;
+    by night, on rising past Dawn plus 0.01 or falling below Dusk less 0.01 (0.01 at
+    0x6fcd53a4).  So night comes at 18.01 (read: the change at main clock
+    200.199966, turn 2006, two turns after the dusk triggers), with its one
+    `` `rtl `` and each unit's `` `rcm ``.  The port changes day and night with the
+    triggers still (open), and what midnight's wrap fires (three `` `rtl ``, two
+    `+tex`) is not yet read.
   - The timers a creep's Hurl Boulder and Thunder Clap (ACtb, ACtc) make as its mana is
     first set are listeners on its mana rising past each spell's cost plus 0.1, the
     last spell's in the first slot (read: both Granite Golems' Hurl Boulder listeners,

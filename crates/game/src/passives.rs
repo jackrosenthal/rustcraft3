@@ -176,16 +176,34 @@ impl World {
     /// `before_steps`: those falling due before the tick's first movement step, given
     /// before it; else the rest, given after it (with the tick's logic).
     pub fn update_wander(&mut self, before_steps: bool) {
-        let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.paused && matches!(u.action, Action::Idle))).collect();
-        let mut due: Vec<(usize, u32, u32)> = Vec::new();
-        for h in units {
-            // A walk ended: its order's objects go (`Tags::move_done`).
-            if !before_steps {
+        if !before_steps {
+            let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.paused && matches!(u.action, Action::Idle))).collect();
+            for h in units {
+                // A walk ended: its order's objects go (`Tags::move_done`).
                 let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
                 if let Some(slots) = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)).filter(|s| s.len() == 18 || s.len() == 17) {
                     self.tags.move_done(&slots, serial);
                 }
             }
+        }
+        let mut due: Vec<(usize, u32, u32)> = self.agent_dues().into_iter().filter(|e| (e.0 == 0) == before_steps).collect();
+        due.sort_by(|a, b| f32::from_bits(a.1).total_cmp(&f32::from_bits(b.1)));
+        // Those after the first step go among the steps (`World::step_walkers`).
+        if !before_steps {
+            self.wander_due = due;
+            return;
+        }
+        let next = self.step_ticks.first().copied();
+        self.issue_wanders(&due, next);
+    }
+
+    /// The events on the agent queue falling due in this tick, each with the steps it
+    /// falls after: the wanderers' orders and the workers' times in a mine or at a
+    /// tree.
+    pub(crate) fn agent_dues(&mut self) -> Vec<(usize, u32, u32)> {
+        let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.paused && matches!(u.action, Action::Idle))).collect();
+        let mut due: Vec<(usize, u32, u32)> = Vec::new();
+        for h in units {
             if self.ability_with_code(h, "Awan").is_none() {
                 continue;
             }
@@ -208,10 +226,7 @@ impl World {
             }
             // Its walk starts with the first step after it, in the next tick when none
             // is left in this one.
-            let k = self.steps_before(at);
-            if (k == 0) == before_steps {
-                due.push((k, at, h));
-            }
+            due.push((self.steps_before(at), at, h));
         }
         // A gold run's mine timer falls due on the agent queue as a wait does, its walk
         // home starting with the first step after it (read: a peon's first step home
@@ -226,18 +241,21 @@ impl World {
             }
             let k = self.steps_before(at);
             log::debug!("gold run {h} mine timer due {:.6} step {k} of agent clocks {:?}", f32::from_bits(at), self.step_agent.iter().map(|&c| f32::from_bits(c)).collect::<Vec<_>>());
-            if (k == 0) == before_steps {
-                due.push((k, at, h));
-            }
+            due.push((k, at, h));
         }
-        due.sort_by(|a, b| f32::from_bits(a.1).total_cmp(&f32::from_bits(b.1)));
-        // Those after the first step go among the steps (`World::step_walkers`).
-        if !before_steps {
-            self.wander_due = due;
-            return;
-        }
-        let next = self.step_ticks.first().copied();
-        self.issue_wanders(&due, next);
+        due
+    }
+
+    /// The events falling due after step `k` in its main tick, given after its walkers
+    /// move and before its end: their objects made then, and the eight of each order
+    /// freed after the step's walk ends' (read: turn 1748, a wanderer's order due
+    /// 174.503616, after step 174.503433 in its tick, made before that step's arrival
+    /// freed its tree, its eight after).  Returns their objects to free.
+    pub(crate) fn issue_after_step(&mut self, late: &[(usize, u32, u32)], k: usize) -> Vec<u32> {
+        let tick = self.step_ticks.get(k).copied();
+        let before = std::mem::take(&mut self.tags.issued);
+        self.issue_wanders(late, tick);
+        std::mem::replace(&mut self.tags.issued, before)
     }
 
     /// Gives the orders due together, in order, their issues' objects freed after each

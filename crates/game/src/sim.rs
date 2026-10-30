@@ -1254,8 +1254,14 @@ impl World {
             }
         }
         self.tags.free_step_paths(carried);
+        let tick = self.step_ticks.first().copied();
+        let mut late: Vec<(usize, u32, u32)> = if tick.is_some() { self.agent_dues().into_iter().filter(|e| e.0 == 1 && self.agent_tick(e.1) == tick).collect() } else { Vec::new() };
+        late.sort_by(|a, b| f32::from_bits(a.1).total_cmp(&f32::from_bits(b.1)));
+        let after = self.issue_after_step(&late, 0);
         self.tags.end_first_step();
         // Orders given at this step's tick free their objects after it.
+        self.tags.flush_issued();
+        self.tags.issued.extend(after);
         self.tags.flush_issued();
     }
 
@@ -1319,9 +1325,15 @@ impl World {
             // As the step ends: the paths of the walks older than its walkers, then the
             // objects of orders given at this step's tick, then its walk ends' (read: a
             // wanderer's order's eight freed after a peon's path and before a give-up's
-            // tree in the same step).
+            // tree in the same step), then those of orders due after it in its tick.
             self.tags.free_step_paths(carried);
+            let tick = self.step_ticks.get(k).copied();
+            let (late, rest): (Vec<_>, Vec<_>) = due.iter().copied().partition(|e| e.0 == k + 1 && self.agent_tick(e.1) == tick);
+            due = rest;
+            let after = self.issue_after_step(&late, k);
             self.tags.end_step();
+            self.tags.issued.extend(after);
+            self.tags.flush_issued();
         }
         self.wrap_clocks(&mut due);
         let rest: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 >= n.max(1)).collect();

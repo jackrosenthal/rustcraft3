@@ -1433,6 +1433,17 @@ Formats the port made its own, to be replaced by the original's:
   at five seconds is the original's, all 12314 (slot, kind, birth), and its birth
   count too (provisional: the alarm's condition, read as the owner a computer; the
   blight look's period after the first).
+- With the computer's AI (the test map's undead computer, its 5-second save against
+  the port's at five seconds): births agree to 12867; then StartMeleeAI, before
+  MeleeInitVictoryDefeat's timer dialog, makes in the original (traced, `births.sh`;
+  all at clock 0): the AI's thread (`AItr`), two captains (each `AI-C`, `` `pcu ``, two
+  `^pmr`, `l^pa`, four `` `pil ``), an order with its tasks (`+ord`, `tskA`, four `task`,
+  `tskA`), a unit AI (`uref`, `AI-U`), another order with its tasks, a `uref`, and an
+  order with its walk (`+ord`, `task`, `ordt`, `tskA`, `tskO`, three `task`, `tskt`, five
+  `task`, `tskA`, `^clg`, `^clu`, `l^pa`, a task freed, a `` `pil ``): 55 objects, which
+  the port does not make (it runs the AI's main on the next tick), its births 55
+  behind from there.  The ghoul's own `uref` and `AI-U` (born as it is made, as the
+  port has them) are freed by five seconds in the original.  Not yet modeled.
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

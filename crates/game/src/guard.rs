@@ -491,10 +491,12 @@ impl World {
                 let code = self.ability_code(*a);
                 if matches!(code.as_str(), "Arep" | "Aren" | "Arst" | "Ahea" | "Anhe" | "Ainf" | "Arpb" | "Arpl" | "Arpm") {
                     self.tags.start_timer("422820");
+                    self.tags.autotarget_due.push(self.time + 0.015);
                 }
             }
             if autocasting {
                 self.tags.start_timer("436a50");
+                self.tags.autotarget_due.push(self.time + 0.015);
             }
             if armed {
                 self.tags.start_timer("49d220");

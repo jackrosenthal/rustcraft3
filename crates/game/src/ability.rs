@@ -411,6 +411,9 @@ impl World {
         // game's objects share (measured: its allocation names the second table).
         if tagged && b.id != [0; 4] {
             let slot = self.tags.take(&b.id);
+            // (Its timer's start, CBuff vf211; read: the aura scans' buffs at 0.5
+            // seconds on the quiet test map.)
+            self.tags.start_timer("532b50");
             if matches!(self.ability_code(b.ability).as_str(), "AEar" | "AOac" | "Aakb") {
                 let owner = self.unit(target).map_or(0, |u| u.owner);
                 self.tags.tech_buffs.push((slot, owner));
@@ -829,6 +832,20 @@ impl World {
                 .collect();
             for t in targets {
                 self.apply_buff_tagged(t, b.clone(), t != src || area > 0.0 && false);
+            }
+        }
+        // At a sweep the buffs it keeps start their timers again (CBuff vf211; read: the
+        // quiet test map's eight at 2.0 and 4.0 seconds, the order provisional).
+        if !sweeps.is_empty() {
+            let kept = self
+                .unit_order
+                .iter()
+                .filter_map(|&t| self.unit(t))
+                .flat_map(|u| u.buffs.iter())
+                .filter(|b| b.id != [0; 4] && sweeps.contains(&b.caster) && b.aura_left.is_some_and(|l| l >= 0.0))
+                .count();
+            for _ in 0..kept {
+                self.tags.start_timer("532b50");
             }
         }
         // The sweeps, and the buffs of bearers that are gone once lapsed.

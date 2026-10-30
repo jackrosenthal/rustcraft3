@@ -62,7 +62,7 @@ pub struct Tags {
     pub timer_starts: u32,
     /// Each start's count and kind, while logged (W3_TIMERLOG).
     #[serde(skip)]
-    pub timer_log: Option<Vec<(u32, &'static str)>>,
+    pub timer_log: Option<Vec<(u32, &'static str, u32)>>,
     /// The engine's main clock (its single's bits) as objects are made now (set each
     /// tick: `World::plan_steps`).
     #[serde(default)]
@@ -71,6 +71,11 @@ pub struct Tags {
     /// stamp (`FUN_6f161090`: its clock group's time, +0x70).
     #[serde(default)]
     pub made_at: std::collections::BTreeMap<u32, u32>,
+    /// The auto-target spells' checks (their timers started by CAbilityAutoTargetSpell
+    /// vf267 and vf270), each due at the next step after its start and every 3 seconds
+    /// on (`FUN_6f42f8b0`; traced: the quiet test map's 17 at 0.015 and 3.02 seconds).
+    #[serde(default)]
+    pub autotarget_due: Vec<f32>,
     /// The buffs that listen to their owner's tech tree changes (Command, War Drums, and
     /// Trueshot Aura's), each its slot and its unit's owner, in the order made.
     #[serde(default)]
@@ -148,7 +153,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), autotarget_due: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -480,8 +485,9 @@ impl Tags {
     /// An agent timer started: the queue's next count, which it keeps.
     pub fn start_timer(&mut self, kind: &'static str) -> u32 {
         self.timer_starts += 1;
+        let clock = self.clock;
         if let Some(l) = self.timer_log.as_mut() {
-            l.push((self.timer_starts, kind));
+            l.push((self.timer_starts, kind, clock));
         }
         self.timer_starts
     }
@@ -819,6 +825,24 @@ impl crate::world::World {
         if owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && codes.contains(b"Aatk") && !night_sleeper {
             for _ in 0..2 {
                 self.tags.start_timer("49d220");
+            }
+        }
+        // Its unit AI joining (`FUN_6f9b9230`), a computer's unit or a creep awake:
+        // each auto-target spell's (CAbilityAutoTargetSpell vf267) and Cannibalize's
+        // (vf50), in its list's order (traced: an undead computer's acolytes' Restore
+        // and ghoul's Cannibalize; in the census, a creep peasant's Repair).
+        if (computer || (owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !building)) && !night_sleeper {
+            for id in &list {
+                match ability(id).as_ref() {
+                    Some(b"Arep" | b"Aren" | b"Arst" | b"Ahea" | b"Anhe" | b"Ainf" | b"Arpb" | b"Arpl" | b"Arpm") => {
+                        self.tags.start_timer("422820");
+                        self.tags.autotarget_due.push(self.time + 0.015);
+                    }
+                    Some(b"Acan") => {
+                        self.tags.start_timer("606220");
+                    }
+                    _ => {}
+                }
             }
         }
         let births: Vec<u32> = slots.iter().map(|s| self.tags.live.get(s).map_or(0, |e| e.1)).collect();

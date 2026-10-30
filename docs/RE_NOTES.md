@@ -1545,9 +1545,23 @@ Formats the port made its own, to be replaced by the original's:
   - Waking with the day: each auto-target spell (Heal, Inner Fire, Repair,
     Restoration, Renew, Replenish: CAbilityAutoTargetSpell vf267), the type's autocast
     ability (vf270), then the attack's, the last made first.
-  - Not yet: the computer's AI's (its Necropolis's `FUN_6f69c620` from an AI native,
-    its workers' spells' through `FUN_6f9b9230`), and the running game's (from 0.015
-    seconds: `FUN_6f42f8b0`, then `FUN_6f493ff0` re-armed as it fires, and more).
+  - A unit removed: its animation's (its orders cleared, `FUN_6f694690` to
+    `FUN_6f69c620`; the gold mine the undead melee setup replaces).
+  - A unit's AI joining (`FUN_6f9b9230`, a computer's units and creeps awake): each
+    auto-target spell's and Cannibalize's (vf50).
+  - The game's two periodic timers as its setup ends (events 0x80269, 0x8026a).
+  - The auto-target spells' checks, at the step after their timers start and every 3
+    seconds (`FUN_6f42f8b0`: the quiet test map's 17, its 11 vf267 and 6 vf270).
+  - A buff laid (CBuff vf211), and at its aura bearer's sweep every 2 seconds each
+    buff it keeps (eight at 2.0 and 4.0 seconds).
+  With these the first 354 agree in order, and in each half second every kind but one
+  in number.  That one: each armed unit's look for a target (`FUN_6f493ff0`), re-armed
+  half a second on (DAT_6fd6bf40; a second, DAT_6fd6bf44, by its flags), a worker's
+  look starting no timer (37 a half second of the 45 looks).  The original's looks
+  each fall once a half second, the creeps' first within the first half second after
+  they wake; the port's per-tick model (`acquire_timer`) has its casters and ghoul
+  look twice a half second and some units first later, its play agreeing all the
+  same: the looks' own timing is the next to follow.
 - A property's base real and word (+0x70, +0x74) are a time stamp, its clock group's
   time and word (`FUN_6f161090`, from the group `FUN_6f15c650` picks; `FUN_6f161040`
   measures from it): flags stamped as made (0 at the map's start; forces made by a

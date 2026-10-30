@@ -141,6 +141,14 @@ impl World {
     /// Each moment (measured: a Priest heals at 0.54 seconds after it is made, its cast
     /// point 0.5, and again 0.02 to 0.04 seconds after each cooldown runs out).
     pub fn update_autocast(&mut self, _dt: f32) {
+        // The auto-target spells' checks fall due (`Tags::autotarget_due`).
+        let now = self.time;
+        let mut due: Vec<usize> = (0..self.tags.autotarget_due.len()).filter(|&k| self.tags.autotarget_due[k] <= now).collect();
+        due.sort_by(|&a, &b| self.tags.autotarget_due[a].total_cmp(&self.tags.autotarget_due[b]));
+        for k in due {
+            self.tags.start_timer("42f8b0");
+            self.tags.autotarget_due[k] += 3.0;
+        }
         // Illusions autocast only under [Misc] IllusionsGetAutocast (0 in the game's data).
         let illusions_cast = self.misc_f32("IllusionsGetAutocast", 0.0) != 0.0;
         let casters: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.autocast.is_empty() && u.casting.is_none() && (illusions_cast || u.extra.illusion.is_none()) && matches!(u.action, Action::Idle | Action::Attack { .. } | Action::AttackMove { .. } | Action::Hold))).collect();

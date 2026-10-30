@@ -972,6 +972,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         RemoveUnit => |w, _, a| {
+            // Its orders cleared, it restarts its animation's timer (`FUN_6f694690`,
+            // `FUN_6f67df00`'s event to `FUN_6f69bf80`, `FUN_6f69c620`; traced: the gold
+            // mine the undead melee setup removes; provisional for every unit removed).
+            if w.unit(a.h(0)).is_some() {
+                w.tags.start_timer("69c620");
+            }
             // A structure's footprint goes at once (measured: a gold mine's three
             // regions freed before the removal's tasks).
             if let Some(footprint) = w.unit_mut(a.h(0)).map(|u| std::mem::take(&mut u.extra.footprint_slots)) {

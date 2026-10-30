@@ -1853,6 +1853,10 @@ impl World {
         if let Some(u) = self.unit_mut(h) {
             u.acquire_timer = u.acquire_timer.max(-dt) + 0.5;
         }
+        // (The look's timer started again, `FUN_6f493ff0`; provisional: not a worker's.)
+        if !self.unit(h).is_some_and(|u| self.unit_class(u, "peon")) {
+            self.tags.start_timer("493ff0");
+        }
     }
 
     fn find_target(&self, h: u32, range: f32) -> Option<u32> {

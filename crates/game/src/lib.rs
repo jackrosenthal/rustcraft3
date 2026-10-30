@@ -539,6 +539,11 @@ impl Game {
         // The engine's own objects after main, by the first turn (read under Wine, the
         // same with or without the map's units).
         self.world.tags.take_all(&[b"`rcm", b"`rtl"]);
+        // The game's two periodic timers, events 0x80269 and 0x8026a (`FUN_6f28ba80`,
+        // `FUN_6f28bac0`, as `FUN_6f1e5a10` ends the setup; traced: the quiet test map's
+        // after its script's; provisional: before the wanderers' first waits).
+        self.world.tags.start_timer("28ba80");
+        self.world.tags.start_timer("28bac0");
         self.world.draw_first_wander_waits();
         Ok(())
     }

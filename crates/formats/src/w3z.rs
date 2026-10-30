@@ -430,6 +430,15 @@ pub struct Handlers {
 }
 
 impl Handlers {
+    /// The handlers of a class whose record has no lists for events 0xd0000 to
+    /// 0xd03ff (its vf 0x38 writes the agent base's `FUN_6f0562b0` alone).
+    fn read_base(r: &mut Reader) -> Result<Handlers, Error> {
+        let list = |r: &mut Reader| -> Result<Vec<(Ref, u32)>, Error> { (0..r.u32()?).map(|_| Ok((Ref::read(r)?, r.u32()?))).collect() };
+        let n = r.u32()?;
+        let keyed = (0..n).map(|_| Ok((r.u32()?, list(r)?))).collect::<Result<_, Error>>()?;
+        Ok(Handlers { keyed, fixed: [list(r)?, list(r)?, list(r)?, list(r)?, list(r)?], events: Vec::new() })
+    }
+
     fn read(r: &mut Reader) -> Result<Handlers, Error> {
         let list = |r: &mut Reader| -> Result<Vec<(Ref, u32)>, Error> { (0..r.u32()?).map(|_| Ok((Ref::read(r)?, r.u32()?))).collect() };
         let n = r.u32()?;
@@ -568,6 +577,9 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // CAbilityMove (`FUN_6f5fec20`, own `FUN_6f5fec80`: the ability's, then words and
     // reals, three words from build 6000, a word from 6029): two timers.
     (b"Amov", "wwww wwwwwww t w www ff wwwww ff www w", "t t"),
+    // CAbilityCreepSleep (`FUN_6f5224c0`, own `FUN_6f5230a0`: the ability's and a real):
+    // two timers and a counted list (`FUN_6f3e2ce0` each, a reference).
+    (b"ACsp", "wwww wwwwwww t w f", "t t [r]"),
     // CJassFunc (`FUN_6f211180`): a word.
     (b"hdlr", "w", "w"),
     // CMapLocation (`FUN_6f27e7d0`): two reals; CRect (`FUN_6f246870`): four.
@@ -702,7 +714,11 @@ impl SavedObject {
                 Second::Destructable { own, handlers, widget, bytes: [r.u8()?, r.u8()?], words: words(&mut r)? }
             }
             kind => match (AGENTS.iter().find(|(k, _, _)| *k == kind), WHOLE.iter().find(|(k, _)| *k == kind)) {
-                (Some((_, own, tail)), _) => Second::Agent { own: fields(&mut r, own)?, handlers: Handlers::read(&mut r)?, tail: fields(&mut r, tail)? },
+                // An own layout starting "!": no lists for events 0xd0000 to 0xd03ff.
+                (Some((_, own, tail)), _) => match own.strip_prefix('!') {
+                    Some(own) => Second::Agent { own: fields(&mut r, own)?, handlers: Handlers::read_base(&mut r)?, tail: fields(&mut r, tail)? },
+                    None => Second::Agent { own: fields(&mut r, own)?, handlers: Handlers::read(&mut r)?, tail: fields(&mut r, tail)? },
+                },
                 (None, Some((_, layout))) => Second::Whole(fields(&mut r, layout)?),
                 _ => return Ok(Second::Raw(self.second.clone())),
             },

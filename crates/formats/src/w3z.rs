@@ -836,6 +836,11 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // vf 8, reals by vf 4, and two words and a real by vf 0; own `FUN_6f03edf0`: a
     // word).
     (b"AI-C", "w", "p w w ss ?b({r} ff) b b f r r r r t t [r] wwww wwww (wwf) wwwwww fffffff ww ff 19(wwf) 12w"),
+    // CCameraWar3 (`FUN_6f362530`, no event lists; own `FUN_6f03ede0`, nothing): a word,
+    // a real, a word, a reference, three reals, nine reals (`FUN_6f06b880`), a timer,
+    // two words, a counted list of three reals (`FUN_6f35d3f0`), twenty references, a
+    // byte, five references, sixteen reals, and four sets of nine reals.
+    (b"+cam", "!", "w f w r fff 9f t ww [fff] 20r b 5r 16f 4(9f)"),
     (b"tsk.", "wwwww fff", "r"),
     (b"tskt", "wwwwwwww f", "r"),
     // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to

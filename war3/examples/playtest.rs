@@ -328,6 +328,18 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 1;
             }
+            // "unitorder": each unit as made, its type, owner, and object's slot and birth.
+            "unitorder" => {
+                if let Some(g) = &scene.game {
+                    let wd = &g.world;
+                    for &h in &wd.unit_order {
+                        if let Some(u) = wd.unit(h) {
+                            eprintln!("unit {} {} owner {} slot {:?}", h, w3_game::objects::id_str(u.type_id), u.owner, u.extra.object_slots[0].first());
+                        }
+                    }
+                }
+                i += 1;
+            }
             "dump" => {
                 if let Some(g) = &scene.game {
                     for &h in &scene.selection {

@@ -1506,6 +1506,20 @@ Formats the port made its own, to be replaced by the original's:
   if the filter passes it and then the kind's test, till the count reaches the limit:
   Blizzard.j's `bj_FORCE_ALL_PLAYERS` holds only the players in the game (mask 3 in a
   two-player game, its count 2).
+- Agent timers (a `t` field: CAgentTimer, `FUN_6f060ba0`) save their node
+  (`FUN_6f060520`): its due and period, the count it took as it was started, its event,
+  and whether periodic.  The count is the timer queue's (`[0x6fd3c82c]`, picked by
+  group; its +0x50), taken by every start (`FUN_6f0602a0` and its kin, at 0x6f060210,
+  0x6f06034d, 0x6f06039c, 0x6f060458): 698 in the quiet test map's first 5 seconds,
+  by about 30 callers (`docs/reference/bbq_timer_starts.txt`).  At the start: six by
+  `FUN_6f9c7b20` (three each, twice), three by `FUN_6f41c010`, eight pairs by
+  `FUN_6f41baf0` and `FUN_6f41ae70`, then five for each creep (`FUN_6f49d220`,
+  `FUN_6f4993b0`, `FUN_6f524e00`, `FUN_6f517be0`, `FUN_6f4e36d0`), the wanderers' waits
+  (`FUN_6f5aa910`, 14), the script's four timers (224 to 227: Blizzard.j's 120-second
+  one, the map's two), then the players' units'.  Thereafter the most by
+  `FUN_6f493ff0`, re-armed as its timer fires (335 from 0.025 seconds).  A periodic
+  timer keeps its count as it repeats (creep sleep's 30 to 208 still at 5 seconds, due
+  6.0 every 2.0).  The port does not count these yet: a timer's block is not written.
 - A property's base real and word (+0x70, +0x74) are a time stamp, its clock group's
   time and word (`FUN_6f161090`, from the group `FUN_6f15c650` picks; `FUN_6f161040`
   measures from it): flags stamped as made (0 at the map's start; forces made by a

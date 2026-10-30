@@ -658,6 +658,24 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // CAbilityUpgrade-like (`FUN_6f42d320`, own `FUN_6f42e970`: two reals more): two
     // references.
     (b"Aupg", "wwww wwwwwww t w ff", "r r"),
+    // Records of the agent base alone (vf 0x38 `FUN_6f0562b0`, no lists of events
+    // 0xd0000 to 0xd03ff): an acolyte's ring slot (own `FUN_6f4eaef0`: three reals and
+    // six words); a rally point (`FUN_6f42e810`, own `FUN_6f42f7f0`) a reference.
+    (b"rslt", "!fff wwwwww", ""),
+    (b"rlyp", "!w ff wwww", "ww"),
+    // CEffectBlight (`FUN_6f490810`, own `FUN_6f490850`): a timer.
+    (b"Xbli", "ww fff ww", "t"),
+    // Buffs (own on `FUN_6f532960`: the ability's, a word, a real, three words, three
+    // reals; then a real and three words, and for a devotion aura from build 6047 a
+    // real): the aura base's, an extended timer (two shorts and a real more), for
+    // trueshot a counted list of words, and a timer.
+    (b"BEar", "wwww wwwwwww t w w f www fff f www", "[r] w t ss f [w] t"),
+    (b"BHad", "wwww wwwwwww t w w f www fff f www f", "[r] w t ss f t"),
+    // CAbilityBlightRegen (`FUN_6f42d4b0`): a timer; CAbilityAcolyteHarvest
+    // (`FUN_6f42cf90`, own `FUN_6f42e8d0`: a real and three words): from build 6000 a
+    // timer.
+    (b"Ablr", "wwww wwwwwww t w", "t"),
+    (b"Aaha", "wwww wwwwwww t w f www", "t"),
     (b"tsk.", "wwwww fff", "r"),
     (b"tskt", "wwwwwwww f", "r"),
     // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to

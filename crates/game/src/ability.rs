@@ -411,6 +411,11 @@ impl World {
         // game's objects share (measured: its allocation names the second table).
         if tagged && b.id != [0; 4] {
             self.tags.take(&b.id);
+            // Unholy Aura's buff makes a timer as it starts (`FUN_6f4bb8c0`,
+            // `FUN_6f41def0`; read: each of Forestwalk's at 0.5 seconds).
+            if &b.id == b"BUau" {
+                self.tags.take(b"`rcm");
+            }
         }
         if let Some((model, attach)) = art {
             if !model.is_empty() {
@@ -548,6 +553,38 @@ impl World {
             crate::natives::units::kill_unit(self, vm, h, 0);
         }
         self.update_auras(dt);
+        self.update_detection(dt);
+    }
+
+    /// A flyer's burrow detection (`Abdt`, CAbilityBurrowDetector): its in-range object
+    /// looks every half second from its making (read: Forestwalk's dragons and whelps at
+    /// 0.5 seconds), each unit come within its Rng but itself given a record for its
+    /// owner (`Cdet`, `FUN_6f407060`, `FUN_6f688990`), one a player (read: the 18 of
+    /// three dragons and fifteen whelps each finding the others of its camp).
+    pub(crate) fn update_detection(&mut self, dt: f32) {
+        let detectors: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.extra.sleeping && u.extra.flyer_pil.is_some())).collect();
+        for h in detectors {
+            let Some(u) = self.unit_mut(h) else { continue };
+            // (Its clock starts at its first look, as an aura's.)
+            let Some(prev) = u.extra.detect_clock else {
+                u.extra.detect_clock = Some(0.0);
+                continue;
+            };
+            let now = prev + dt;
+            u.extra.detect_clock = Some(now);
+            if (now / 0.5).floor() <= (prev / 0.5).floor() {
+                continue;
+            }
+            let (owner, x, y) = (u.owner, u.x, u.y);
+            let range = self.ability_with_code(h, "Abdt").map_or(900.0, |(a, l)| self.ability_real(a, "Rng", l).max(900.0));
+            let found: Vec<u32> = self.unit_order.iter().copied().filter(|&o| o != h && self.unit(o).is_some_and(|t| !t.dead && (t.x - x).hypot(t.y - y) <= range && !t.extra.detected_by.iter().any(|d| d.0 == owner))).collect();
+            for o in found {
+                let s = self.tags.take(b"Cdet");
+                if let Some(t) = self.unit_mut(o) {
+                    t.extra.detected_by.push((owner, s));
+                }
+            }
+        }
     }
 
     /// Whether a toggled ability is on: Immolation while it burns, the others while

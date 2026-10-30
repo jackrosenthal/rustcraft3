@@ -1392,7 +1392,13 @@ Formats the port made its own, to be replaced by the original's:
   `FUN_6f4bb8c0`, `FUN_6f41def0`), and 15 `Cdet` from the flyers' burrow detection
   (`Abdt`, CAbilityBurrowDetector of the CAbilityDetector family: its in-range object,
   event 0xd01b4, makes a detection, `FUN_6f407060`, `FUN_6f688990`, for each unit
-  come in range whose +0x164 list it is not yet in).  Not yet modeled.
+  come in range whose +0x164 list it is not yet in).  Read further (`detfw.sh`): the
+  detectors' first look is at 0.5 seconds, each finding every unit within its Rng
+  (900) but itself, the dragons first, then the whelps; a unit gets one record a
+  player (18: fifteen whelps and three dragons; the births between 0.5 and 0.6 are
+  15 `BUau`, 15 `` `rcm ``, and 18 `Cdet`).  The port does so (`update_detection`,
+  each detector's clock started at its first look, as an aura's): its births agree
+  at turn 7; the free list's order then differs.
 - A destructable's records (`+w3d`, 1408 trees of Booty Bay at 5 seconds, read against
   its war3map.doo): its first the agent's (its class's `^adf`, its `` `pos ``); its
   second its own (a word, 6 or 0x106, then life, 0, and maximum), handlers (one

@@ -100,6 +100,18 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        // TAGS_DETECT: at that turn, the units within 900 of each flyer's detection.
+        if std::env::var("TAGS_DETECT").ok().and_then(|v| v.parse::<u32>().ok()) == Some(n) {
+            let w = &g.world;
+            let mut all = std::collections::BTreeSet::new();
+            for &h in &w.unit_order {
+                let Some(d) = w.unit(h).filter(|u| u.extra.flyer_pil.is_some()) else { continue };
+                let near: Vec<u32> = w.unit_order.iter().copied().filter(|&o| w.unit(o).is_some_and(|u| !u.dead && (u.x - d.x).hypot(u.y - d.y) <= 900.0)).collect();
+                println!("detector {h} {} sleeping {} at {:.0},{:.0}: {} near", w3_game::objects::id_str(d.type_id), d.extra.sleeping, d.x, d.y, near.len());
+                all.extend(near);
+            }
+            println!("distinct units near detectors: {}", all.len());
+        }
         g.tick(dt);
         // TAGS_STEPS: each turn's movement steps' clocks.
         if std::env::var("TAGS_STEPS").is_ok() {

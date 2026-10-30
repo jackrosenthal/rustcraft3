@@ -1014,12 +1014,15 @@ impl Sprite {
 }
 
 /// A widget's state after its handlers (`FUN_6f6be8b0`'s tail, `FUN_6f6533a0`,
-/// `FUN_6f654c20`): its sprite, a real, a word, two shorts, an optional list of
-/// references with two reals (`FUN_6f064240`), two bytes, a real, and a byte.
+/// `FUN_6f654c20`): its sprite, its owner, a word (a unit's type), two shorts, an
+/// optional list of references with two reals (`FUN_6f064240`), two bytes, a real, and
+/// a byte.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Widget {
     pub sprite: Option<Sprite>,
-    pub real: f32,
+    /// Its owner's player number (+0x24: read, the units' 0, 1, 12, and 15 by their
+    /// owners).
+    pub owner: u32,
     pub word: u32,
     pub shorts: [u16; 2],
     pub refs: Option<(Vec<Ref>, [f32; 2])>,
@@ -1030,7 +1033,7 @@ pub struct Widget {
 
 impl Widget {
     fn read(r: &mut Reader) -> Result<Widget, Error> {
-        let mut w = Widget { sprite: Sprite::read(r)?, real: r.f32()?, word: r.u32()?, shorts: [r.u16()?, r.u16()?], ..Default::default() };
+        let mut w = Widget { sprite: Sprite::read(r)?, owner: r.u32()?, word: r.u32()?, shorts: [r.u16()?, r.u16()?], ..Default::default() };
         if r.u8()? != 0 {
             let refs = (0..r.u16()?).map(|_| Ref::read(r)).collect::<Result<_, _>>()?;
             w.refs = Some((refs, reals(r)?));
@@ -1540,7 +1543,7 @@ impl Sprite {
 impl Widget {
     fn write(&self, o: &mut Out) {
         Sprite::write(&self.sprite, o);
-        o.f32(self.real);
+        o.u32(self.owner);
         o.u32(self.word);
         o.u16(self.shorts[0]);
         o.u16(self.shorts[1]);
@@ -2005,5 +2008,100 @@ impl ScriptData {
             Ok(())
         })?;
         Ok(o.0)
+    }
+}
+
+/// A saved unit's state as far as named (read against the unit tables and the screen):
+/// the CUnit's record and the properties its agent wrapper lists.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SavedUnit {
+    /// Its object's tag and birth (as references to it name it).
+    pub tag: u32,
+    pub birth: u32,
+    /// Its type (the widget's word) and owner.
+    pub type_id: u32,
+    pub owner: u32,
+    /// Its position cluster's (`` `pcu ``): its position in pathing cells from the map's
+    /// origin, its facing (radians), its move speed (cells a second), and its collision
+    /// radius (cells).
+    pub cell: [f32; 2],
+    pub facing: f32,
+    pub speed: f32,
+    pub collision: f32,
+    /// Its life and mana (`` `rel `` 1 and 2): the value, its regeneration a second, a
+    /// real, and the maximum.
+    pub life: [f32; 4],
+    pub mana: [f32; 4],
+    /// Its sight by day (`` `rel `` 5's first).
+    pub sight: f32,
+}
+
+impl SaveGame {
+    /// The units, in the object table's order.
+    pub fn units(&self) -> Result<Vec<SavedUnit>, Error> {
+        let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
+        let all: std::collections::HashMap<(u32, u32), &SavedObject> = objects.iter().flatten().map(|o| ((o.entry.tag, o.entry.birth), o)).collect();
+        let mut out = Vec::new();
+        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == b"+w3u") {
+            let Second::Unit { widget, .. } = o.second()? else { continue };
+            let mut u = SavedUnit { tag: o.entry.tag, birth: o.entry.birth, type_id: widget.word, owner: widget.owner, ..Default::default() };
+            if let First::Agent { refs, .. } = o.first()? {
+                for r in refs {
+                    match all.get(&(r.0, r.1)).map(|p| p.first()).transpose()? {
+                        Some(First::Cluster { values, .. }) => {
+                            u.cell = [values[0], values[1]];
+                            (u.speed, u.facing, u.collision) = (values[4], values[5], values[6]);
+                        }
+                        Some(First::Real { base, values }) => match base.object.words[0] {
+                            1 => u.life = values,
+                            2 => u.mana = values,
+                            5 => u.sight = values[0],
+                            _ => {}
+                        },
+                        _ => {}
+                    }
+                }
+            }
+            out.push(u);
+        }
+        Ok(out)
+    }
+
+    /// Each player's state (`` `flg `` properties by the JASS player state's number, gold
+    /// and lumber, and the gathered, ten times the value), the players in their agents'
+    /// order (player 0 first).
+    pub fn player_states(&self) -> Result<Vec<Vec<(u32, i32)>>, Error> {
+        let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
+        let all: std::collections::HashMap<(u32, u32), &SavedObject> = objects.iter().flatten().map(|o| ((o.entry.tag, o.entry.birth), o)).collect();
+        let mut out = Vec::new();
+        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == b"+ply") {
+            let mut states = Vec::new();
+            if let First::Agent { refs, .. } = o.first()? {
+                for r in refs {
+                    if let Some(First::Flag { base, value }) = all.get(&(r.0, r.1)).map(|p| p.first()).transpose()? {
+                        states.push((base.object.words[0], value as i32));
+                    }
+                }
+            }
+            out.push(states);
+        }
+        Ok(out)
+    }
+
+    /// The JASS handles (CGameState's table, `FUN_6f28aad0`'s counted list of a
+    /// reference, a word, and a word): each handle's agent and its handle value.
+    pub fn handles(&self) -> Result<Vec<(Ref, u32)>, Error> {
+        let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
+        let o = objects.iter().flatten().find(|o| &o.entry.kind.to_be_bytes() == b"+gam").ok_or(Error::Format("no game state"))?;
+        let Second::Agent { tail, .. } = o.second()? else { return Err(Error::Format("the game state not read")) };
+        // The table follows the four references and the size before it.
+        let Some(Field::List(entries)) = tail.get(21) else { return Err(Error::Format("no handle table")) };
+        Ok(entries
+            .iter()
+            .filter_map(|e| match e[..] {
+                [Field::Ref(r), Field::Word(_), Field::Word(h)] => Some((r, h)),
+                _ => None,
+            })
+            .collect())
     }
 }

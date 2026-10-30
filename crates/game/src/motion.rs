@@ -20,6 +20,12 @@ pub const TICK: u32 = 0x3ba3_d70a;
 /// 46.017925, each bit for bit the 0.005s summed).
 pub const STEP: u32 = 0x3cf5_c290;
 
+/// The span the clocks are set back by as the main clock reaches it (read: the main
+/// clock's 0.005s sums at 299.985016 and 300.004913, the latter 0.004913 then; the
+/// agent queue's step due 300.018311 at 0.018311, its events due then set back as
+/// much, later ones counted from those).
+pub const WRAP: u32 = 0x4396_0000;
+
 /// The clock six ticks on.
 pub fn next_step(clock: u32) -> u32 {
     (0..6).fold(clock, |c, _| ef::add(c, TICK))

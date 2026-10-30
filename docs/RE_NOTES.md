@@ -1084,6 +1084,17 @@ these are the findings behind them.
     clock does (0.000863 at 34.53).  An order fires when that clock reaches its due
     (the queue's clock then the due itself: 5.035873 for a first wait of 5.035860),
     and the main clock then shows the tick during which it fired (see above).
+  - At 300 seconds the clocks are set back by 300: the main clock's first 0.005s
+    sum at or past it (tick 60111, 300.004913) reads 0.004913, the ticks after
+    counting on from that (0.014913 at the step after 299.985016); the agent queue's
+    events then due are set back as much (the step due 300.018311 at 0.018311), and
+    those they schedule are counted from the dues set back, so a chain of events
+    reads differently after (a chop cycle begun at 295.938477 over at 6.838403, not
+    the 6.838409 of its sums set back at the end).  Read in a game past 300 seconds,
+    each step's two clocks.  Where the engine does it is not yet found (no 300.0 in
+    the clock's code; the dll's 300000 are waits).  The port sets its kept clocks back
+    as the first step after begins (`World::plan_steps`, `World::wrap_clocks`), its
+    step clocks there bit for bit the original's.
   - The timers a creep's Hurl Boulder and Thunder Clap (ACtb, ACtc) make as its mana is
     first set are listeners on its mana rising past each spell's cost plus 0.1, the
     last spell's in the first slot (read: both Granite Golems' Hurl Boulder listeners,

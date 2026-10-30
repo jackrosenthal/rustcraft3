@@ -422,11 +422,11 @@ impl World {
         for &h in &self.unit_order {
             let Some((_, mp)) = self.regen_rates(h).filter(|r| r.1 > 0.0) else { continue };
             let Some(u) = self.unit(h) else { continue };
-            let (first, clocks) = &self.tick_clocks;
+            let (first, n) = (self.tick_clocks.0, self.tick_clocks.1.len());
             for &(thr, slot) in &u.extra.mana_listeners {
                 let at = (thr - u.mana) / mp;
-                let when = (start + at as f64) as f32;
-                if let Some(i) = clocks.iter().position(|&c| f32::from_bits(c) >= when).filter(|&i| i + 1 < clocks.len()) {
+                let when = (start + at as f64) as f32 as f64;
+                if let Some(i) = (0..n).position(|i| self.tick_abs(i).is_some_and(|c| c >= when)).filter(|&i| i + 1 < n) {
                     due.push((first + i as i64, at, h, slot));
                 }
             }

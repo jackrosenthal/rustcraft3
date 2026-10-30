@@ -76,6 +76,9 @@ pub struct GoldRun {
     /// Whether it gathers lumber from a tree.
     #[serde(default)]
     pub lumber: bool,
+    /// When it began to chop (f32 bits on the agent queue).
+    #[serde(default)]
+    pub chop_start: u32,
     pub phase: Phase,
     pub kind: Kind,
     /// The order's objects' slots, by place in its list (those freed already kept).
@@ -143,20 +146,37 @@ impl GoldRun {
 /// The agent queue's clock as `chops` swings begun at `start` are over: each chop at the
 /// damage point `point`, its backswing `back` (at least 0.01) after, and the next swing
 /// `dur` less both (at least 0.01) after that, each sum by the engine's arithmetic.
-fn chops_end(start: u32, point: u32, back: u32, dur: u32, chops: u32) -> u32 {
+/// With `wrap` (the main clock as it was set back), the first event due after it is set
+/// back (`motion::WRAP`) and the rest counted from it, the end so set back in any case
+/// (read: begun at 295.938477, over at 6.838403).
+fn chops_end(start: u32, point: u32, back: u32, dur: u32, chops: u32, wrap: Option<u32>) -> u32 {
     let least = 0.01f32.to_bits();
     let at_least = |t: u32| if f32::from_bits(t) < f32::from_bits(least) { least } else { t };
     let back = at_least(back);
     let gap = at_least(ef::sub(ef::sub(dur, point), back));
+    let mut wrap = wrap;
+    let mut due = |t: u32, d: u32| {
+        let t = ef::add(t, d);
+        match wrap {
+            Some(w) if f32::from_bits(w) < f32::from_bits(t) => {
+                wrap = None;
+                ef::sub(t, crate::motion::WRAP)
+            }
+            _ => t,
+        }
+    };
     let mut t = start;
     for i in 0..chops {
-        let out = ef::add(ef::add(t, point), back);
-        if i + 1 == chops {
-            return out;
+        t = due(t, point);
+        t = due(t, back);
+        if i + 1 < chops {
+            t = due(t, gap);
         }
-        t = ef::add(out, gap);
     }
-    t
+    match wrap {
+        Some(_) => ef::sub(t, crate::motion::WRAP),
+        None => t,
+    }
 }
 
 impl World {
@@ -224,7 +244,7 @@ impl World {
                 r.at_mine &= !r.entered;
                 r
             }
-            None => GoldRun { mine, lumber, phase: Phase::ToMine, kind: if player { Kind::Player } else { Kind::Own }, order, entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits() },
+            None => GoldRun { mine, lumber, chop_start: 0, phase: Phase::ToMine, kind: if player { Kind::Player } else { Kind::Own }, order, entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits() },
         };
         let Some(u) = self.unit_mut(h) else { return };
         u.extra.gold_run = Some(run);
@@ -397,7 +417,8 @@ impl World {
         self.tags.release_in_step(task);
         self.tags.walk_ended(path, serial);
         let agent = self.step_agent.get(k).copied().unwrap_or(self.agent_step);
-        run.phase = Phase::Chopping(self.chopped_at(h, agent));
+        run.chop_start = agent;
+        run.phase = Phase::Chopping(self.chopped_at(h, agent, None));
         if let Some(u) = self.unit_mut(h) {
             u.extra.gold_run = Some(run);
         }
@@ -410,7 +431,7 @@ impl World {
     /// 0.01), each by the engine's arithmetic; full, it stops as its last backswing runs
     /// out (`FUN_6f436ca0`).  The times are the unit's weapon against trees (a peon's
     /// 0.5 and 0.5, Dur 1.1: 10.9 seconds for ten chops).
-    fn chopped_at(&self, h: u32, start: u32) -> u32 {
+    pub(crate) fn chopped_at(&self, h: u32, start: u32, wrap: Option<u32>) -> u32 {
         let Some(u) = self.unit(h) else { return start };
         let (point, back) = (1..=2)
             .filter_map(|n| crate::sim::weapon_n(self, u.type_id, n))
@@ -421,7 +442,7 @@ impl World {
             None => (1.1, 1, 10),
         };
         let chops = ((cap - u.carry_lumber).max(1) + per.max(1) - 1) / per.max(1);
-        chops_end(start, point.to_bits(), back.to_bits(), dur.to_bits(), chops as u32)
+        chops_end(start, point.to_bits(), back.to_bits(), dur.to_bits(), chops as u32, wrap)
     }
 
     /// Its load full (`h`'s due on the agent queue): the lumber it chopped taken from
@@ -532,7 +553,7 @@ impl World {
             m.inside = m.inside.saturating_sub(1);
         }
         self.let_in_next(mine, due);
-        let now = self.step_clocks.get(k).map_or(self.time_exact, |&c| f32::from_bits(c) as f64);
+        let now = self.step_abs(k).map_or(self.time_exact, |(c, _)| c);
         self.mine_still_queued(mine, now);
         let serial = self.tags.born;
         let order: Vec<u32> = RETURN.iter().map(|c| self.tags.take(c)).collect();
@@ -757,7 +778,7 @@ mod tests {
     /// original set them (`FUN_6f15ff40`'s writes, cells a second).
     #[test]
     fn a_peons_speed_is_tuned_as_the_originals() {
-        let mut run = GoldRun { mine: 0, lumber: false, phase: Phase::ToMine, kind: Kind::Player, order: Vec::new(), entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits() };
+        let mut run = GoldRun { mine: 0, lumber: false, chop_start: 0, phase: Phase::ToMine, kind: Kind::Player, order: Vec::new(), entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits() };
         // As winedbg printed them, to six places.
         let speed = |r: &GoldRun| (f32::from_bits(ef::mul(190f32.to_bits(), r.factor)) as f64 / 32.0 * 1e6).round() / 1e6;
         run.tune(42.838799f32.to_bits(), 1f32.to_bits());
@@ -780,11 +801,14 @@ mod tests {
     #[test]
     fn a_peons_chopping_ends_as_the_originals() {
         let end = |start: f32| {
-            let t = chops_end(start.to_bits(), 0.5f32.to_bits(), 0.5f32.to_bits(), 1.1f32.to_bits(), 10);
+            let t = chops_end(start.to_bits(), 0.5f32.to_bits(), 0.5f32.to_bits(), 1.1f32.to_bits(), 10, None);
             format!("{:.6}", f32::from_bits(t))
         };
         assert_eq!(end(212.181900), "223.081818");
         assert_eq!(end(225.831345), "236.731262");
         assert_eq!(end(239.390793), "250.290710");
+        // Across the clocks' setting back at 300 (the main clock 300.004913 then).
+        let t = chops_end(295.938477f32.to_bits(), 0.5f32.to_bits(), 0.5f32.to_bits(), 1.1f32.to_bits(), 10, Some(300.004913f32.to_bits()));
+        assert_eq!(format!("{:.6}", f32::from_bits(t)), "6.838403");
     }
 }

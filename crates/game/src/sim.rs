@@ -1212,6 +1212,9 @@ impl World {
         let mut carried = if self.step_clocks.is_empty() { Vec::new() } else { self.tags.take_step_paths() };
         self.tags.begin_first_step();
         self.step_range = (0, self.step_clocks.len().min(1));
+        if self.wrap_step.is_some_and(|(k, _)| k == 0 && !self.step_clocks.is_empty()) {
+            self.wrap_clocks(&mut []);
+        }
         let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.steps_walker())).collect();
         // The newest walk first (traced: sheep 1050120, given its order after 1050117,
         // held it back before it moved in a step; pig 1050123 likewise held 1050124).
@@ -1261,7 +1264,7 @@ impl World {
     /// step after its order, traced), then its steps.
     pub(crate) fn step_walkers(&mut self) {
         let n = self.step_clocks.len();
-        let due = std::mem::take(&mut self.wander_due);
+        let mut due = std::mem::take(&mut self.wander_due);
         for k in 1..n {
             // The orders due before this step are given first (traced: a pig's walk ended
             // in a turn's second step, before an order due after it).
@@ -1269,6 +1272,9 @@ impl World {
             let now: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 == k).collect();
             let next = self.step_ticks.get(k).copied();
             self.issue_wanders(&now, next);
+            if self.wrap_step.is_some_and(|(w, _)| w == k) {
+                self.wrap_clocks(&mut due);
+            }
             self.fire_mana_listeners(next);
             // The paths of the walks ended in the last step go in this one, in the walkers'
             // order (`Tags::walk_ended`).
@@ -1317,6 +1323,7 @@ impl World {
             self.tags.free_step_paths(carried);
             self.tags.end_step();
         }
+        self.wrap_clocks(&mut due);
         let rest: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 >= n.max(1)).collect();
         self.issue_wanders(&rest, None);
         self.fire_mana_listeners(None);
@@ -1488,7 +1495,9 @@ impl World {
         let (from, until) = self.step_range;
         let from = if self.unit(h).is_some_and(|u| u.extra.mover.is_none()) { from.max(self.unit_mut(h).and_then(|u| u.extra.walk_from.take()).unwrap_or(0)) } else { from };
         if let Some(&c) = clocks.get(from.wrapping_sub(1)).filter(|_| from > 0) {
-            m.placed_at = c;
+            // The step before was by the clock before it was set back (`World::wrap_clocks`).
+            let back = self.step_wraps.get(from - 1).zip(self.step_wraps.get(from)).is_some_and(|(a, b)| a < b);
+            m.placed_at = if back { ef::sub(c, crate::motion::WRAP) } else { c };
         }
         if let Some(&c) = clocks.get(from).filter(|_| from < until) {
             log::trace!("walker {h} at {:.6} {:.6} v {:.6} {:.6} hd {:.6} clock {:.6}", f32::from_bits(m.x), f32::from_bits(m.y), f32::from_bits(m.vx), f32::from_bits(m.vy), f32::from_bits(m.heading), f32::from_bits(c));

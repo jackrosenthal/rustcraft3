@@ -225,6 +225,23 @@ pub struct World {
     /// clock, the sum of 0.005s so far by the engine's addition (`motion::TICK`).
     #[serde(default)]
     pub main_clock: (i64, u32),
+    /// The times the main clock has been set back (`motion::WRAP`) by `main_clock`'s
+    /// tick.
+    #[serde(default)]
+    pub main_wraps: u32,
+    /// The times the clocks kept (the agent queue's dues, the walkers' placings) have
+    /// been set back: their base.
+    #[serde(default)]
+    pub clock_wraps: u32,
+    /// This tick's: the times set back by each of its main ticks and each of its steps;
+    /// the first of its steps after the clocks are set back (its step count when after
+    /// all), and the main clock then before it was (`motion::WRAP` past it).
+    #[serde(skip)]
+    pub tick_wraps: Vec<u32>,
+    #[serde(skip)]
+    pub step_wraps: Vec<u32>,
+    #[serde(skip)]
+    pub wrap_step: Option<(usize, u32)>,
     /// The agent queue's time for the next movement step: the sum of 0.03s a step by
     /// the engine's addition (`motion::STEP`).
     #[serde(default)]
@@ -783,6 +800,11 @@ impl World {
             network: false,
             steps: 0,
             main_clock: (0, 0),
+            main_wraps: 0,
+            clock_wraps: 0,
+            tick_wraps: Vec::new(),
+            step_wraps: Vec::new(),
+            wrap_step: None,
             agent_step: 0,
             last_step_clock: 0,
             steps_total: 0,
@@ -1554,59 +1576,164 @@ impl World {
     /// a tick later from about 35 seconds in (read: step 1164 at main tick 6985, not
     /// 6984).  A tick of the game holds the engine's ticks that start within it (read:
     /// step 1223, taken at main tick 7339, in the turn of ticks 7320 to 7339).
+    ///
+    /// As the main clock reaches 300 seconds it and the agent queue's clock are set
+    /// back by 300 (`motion::WRAP`), and so are the agent queue's events then due: a
+    /// step due after is taken by the clock set back, its due set back, and the next
+    /// counted from it; the dues and placings kept are set back as the first step
+    /// after begins (`World::wrap_clocks`).
     fn plan_steps(&mut self, before_ms: i64, end_ms: i64) {
         let first = (before_ms + 4).div_euclid(5);
         let last = (end_ms + 4).div_euclid(5) - 1;
         let mut clocks = Vec::new();
+        let mut wraps = Vec::new();
         for t in first..=last + 1 {
-            clocks.push(self.main_clock_at(t));
+            let (c, w) = self.main_clock_at(t);
+            clocks.push(c);
+            wraps.push(w);
         }
-        let lt = |a: u32, b: u32| f32::from_bits(a) < f32::from_bits(b);
+        let abs = |c: u32, w: u32| f32::from_bits(c) as f64 + w as f64 * 300.0;
+        let base = self.clock_wraps;
         self.step_clocks.clear();
         self.step_agent.clear();
         self.step_ticks.clear();
+        self.step_wraps.clear();
+        self.wrap_step = None;
         self.step_base = self.last_step_clock;
         self.step_index = self.steps_total;
-        while !lt(clocks[clocks.len() - 1], self.agent_step) {
+        // The step's due in its base: the kept one's until set back.
+        let mut due_wraps = base;
+        while !(abs(clocks[clocks.len() - 1], wraps[wraps.len() - 1]) < abs(self.agent_step, due_wraps)) {
             let s = self.agent_step;
-            let t = (first..=last).rev().find(|&t| lt(clocks[(t - first) as usize], s)).unwrap_or(first);
-            let c = clocks[(t - first) as usize];
+            let at = abs(s, due_wraps);
+            let t = (first..=last).rev().find(|&t| abs(clocks[(t - first) as usize], wraps[(t - first) as usize]) < at).unwrap_or(first);
+            let (c, w) = (clocks[(t - first) as usize], wraps[(t - first) as usize]);
+            let s = if w > due_wraps {
+                due_wraps = w;
+                crate::efloat::sub(s, crate::motion::WRAP)
+            } else {
+                s
+            };
             log::trace!("step clocks {:.6} {:.6}", f32::from_bits(c), f32::from_bits(s));
             self.step_clocks.push(c);
             self.step_agent.push(s);
             self.step_ticks.push(t);
+            self.step_wraps.push(w);
             self.last_step_clock = c;
             self.agent_step = crate::efloat::add(s, crate::motion::STEP);
+        }
+        // The clocks set back in this tick: at its first step after, or at its end.
+        if let Some(i) = wraps.iter().position(|&w| w > base) {
+            let k = self.step_wraps.iter().position(|&w| w > base).unwrap_or(self.step_clocks.len());
+            self.wrap_step = Some((k, crate::efloat::add(clocks[i], crate::motion::WRAP)));
+            if due_wraps == base {
+                self.agent_step = crate::efloat::sub(self.agent_step, crate::motion::WRAP);
+            }
         }
         self.steps = self.step_clocks.len() as u32;
         self.steps_total += self.steps as u64;
         self.tick_clocks = (first, clocks);
+        self.tick_wraps = wraps;
     }
 
-    /// The main clock at a tick (0 before the first), from the last read on.
-    fn main_clock_at(&mut self, t: i64) -> u32 {
+    /// The main clock at a tick (0 before the first), from the last read on, and the
+    /// times it has been set back by then.
+    fn main_clock_at(&mut self, t: i64) -> (u32, u32) {
         if t <= 0 {
-            return 0;
+            return (0, 0);
         }
         if t < self.main_clock.0 {
             self.main_clock = (0, 0);
+            self.main_wraps = 0;
         }
         while self.main_clock.0 < t {
-            self.main_clock = (self.main_clock.0 + 1, crate::efloat::add(self.main_clock.1, crate::motion::TICK));
+            let mut c = crate::efloat::add(self.main_clock.1, crate::motion::TICK);
+            if !(f32::from_bits(c) < f32::from_bits(crate::motion::WRAP)) {
+                c = crate::efloat::sub(c, crate::motion::WRAP);
+                self.main_wraps += 1;
+            }
+            self.main_clock = (self.main_clock.0 + 1, c);
         }
-        self.main_clock.1
+        (self.main_clock.1, self.main_wraps)
     }
 
-    /// The main tick in which an event due at `at` on the agent queue takes place: the
-    /// last of this tick's whose clock is short of it (the first, if none), or none if
-    /// it falls due after this tick.
+    /// A kept clock reading (a due on the agent queue, a placing) in seconds since the
+    /// game began.
+    pub fn kept_abs(&self, v: u32) -> f64 {
+        f32::from_bits(v) as f64 + self.clock_wraps as f64 * 300.0
+    }
+
+    /// This tick's step `k`'s main clock and agent due in seconds since the game began.
+    pub fn step_abs(&self, k: usize) -> Option<(f64, f64)> {
+        let w = *self.step_wraps.get(k)? as f64 * 300.0;
+        Some((f32::from_bits(*self.step_clocks.get(k)?) as f64 + w, f32::from_bits(*self.step_agent.get(k)?) as f64 + w))
+    }
+
+    /// This tick's main tick `i` (from its first) in seconds since the game began.
+    pub fn tick_abs(&self, i: usize) -> Option<f64> {
+        Some(f32::from_bits(*self.tick_clocks.1.get(i)?) as f64 + *self.tick_wraps.get(i)? as f64 * 300.0)
+    }
+
+    /// The steps of this tick an event on the agent queue due at `at` (kept) falls
+    /// after.
+    pub fn steps_before(&self, at: u32) -> usize {
+        let at = self.kept_abs(at);
+        (0..self.step_agent.len()).filter(|&k| self.step_abs(k).is_some_and(|(_, a)| a < at)).count()
+    }
+
+    /// The main tick in which an event due at `at` (kept) on the agent queue takes
+    /// place: the last of this tick's whose clock is short of it (the first, if none),
+    /// or none if it falls due after this tick.
     pub fn agent_tick(&self, at: u32) -> Option<i64> {
         let (first, clocks) = &self.tick_clocks;
-        let lt = |a: u32, b: u32| f32::from_bits(a) < f32::from_bits(b);
-        if clocks.is_empty() || lt(*clocks.last().unwrap(), at) {
+        let at = self.kept_abs(at);
+        if clocks.is_empty() || self.tick_abs(clocks.len() - 1).is_some_and(|c| c < at) {
             return None;
         }
-        Some((0..clocks.len() - 1).rev().find(|&k| lt(clocks[k], at)).map_or(*first, |k| first + k as i64))
+        Some((0..clocks.len() - 1).rev().find(|&k| self.tick_abs(k).is_some_and(|c| c < at)).map_or(*first, |k| first + k as i64))
+    }
+
+    /// The clocks kept set back with the main clock's (`plan_steps`), as the first step
+    /// after it begins: the walkers' placings, the agent queue's dues (a wanderer's
+    /// next walk, a worker's time in a mine or at its tree, its trip's timer), the last
+    /// step's clock, and the wanderers' orders yet to come in this tick (`due`).
+    pub(crate) fn wrap_clocks(&mut self, due: &mut [(usize, u32, u32)]) {
+        let Some((k, old)) = self.wrap_step.take() else { return };
+        let back = |v: u32| crate::efloat::sub(v, crate::motion::WRAP);
+        self.clock_wraps += 1;
+        if k >= self.step_clocks.len() {
+            self.last_step_clock = back(self.last_step_clock);
+        }
+        self.step_base = back(self.step_base);
+        for e in due.iter_mut() {
+            e.1 = back(e.1);
+        }
+        let units: Vec<u32> = self.unit_order.clone();
+        for h in units {
+            let chop = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).and_then(|r| match r.phase {
+                crate::goldrun::Phase::Chopping(_) => Some(r.chop_start),
+                _ => None,
+            });
+            let chop = chop.map(|start| self.chopped_at(h, start, Some(old)));
+            let Some(u) = self.unit_mut(h) else { continue };
+            if let Some(m) = u.extra.mover.as_mut() {
+                m.placed_at = back(m.placed_at);
+            }
+            if let Some(w) = u.extra.wander_at.as_mut() {
+                *w = back(*w);
+            }
+            if let Some(r) = u.extra.gold_run.as_mut() {
+                if let Some(t) = r.timer_due.as_mut() {
+                    *t = back(*t);
+                }
+                r.chop_start = back(r.chop_start);
+                match &mut r.phase {
+                    crate::goldrun::Phase::InMine(at) => *at = back(*at),
+                    crate::goldrun::Phase::Chopping(at) => *at = chop.unwrap_or(back(*at)),
+                    _ => {}
+                }
+            }
+        }
     }
 
     pub fn tick(&mut self, vm: &mut Vm, dt: f32) {

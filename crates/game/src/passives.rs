@@ -208,7 +208,7 @@ impl World {
             }
             // Its walk starts with the first step after it, in the next tick when none
             // is left in this one.
-            let k = self.step_agent.iter().filter(|&&s| f32::from_bits(s) < f32::from_bits(at)).count();
+            let k = self.steps_before(at);
             if (k == 0) == before_steps {
                 due.push((k, at, h));
             }
@@ -224,7 +224,7 @@ impl World {
             if self.agent_tick(at).is_none() {
                 continue;
             }
-            let k = self.step_agent.iter().filter(|&&s| f32::from_bits(s) < f32::from_bits(at)).count();
+            let k = self.steps_before(at);
             log::debug!("gold run {h} mine timer due {:.6} step {k} of agent clocks {:?}", f32::from_bits(at), self.step_agent.iter().map(|&c| f32::from_bits(c)).collect::<Vec<_>>());
             if (k == 0) == before_steps {
                 due.push((k, at, h));

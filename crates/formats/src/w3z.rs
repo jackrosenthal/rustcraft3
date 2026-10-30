@@ -498,8 +498,8 @@ pub enum Field {
 /// reference, 't' a timer, 'z' a string, 'p' a sprite, 'e' an event's handler list (as
 /// "[rw]"), "[...]" a word count and that many groups, "{...}" a short count and that
 /// many, "(...)" a group, "?(X)" a word and X when it is not 0, "?(X)(Y)" Y when it is,
-/// 'm' a word kept as a mask and "&h(X)" X when the mask has the bits h (hex); a number
-/// before a token repeats it.
+/// 'm' a word kept as a mask and "&h(X)" X when the mask has the bits h (hex), "#(X)" X
+/// as many times as the last word read; a number before a token repeats it.
 fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
     let chars: Vec<char> = layout.chars().filter(|c| !c.is_whitespace()).collect();
     // The index of the bracket closing the one at `k`.
@@ -524,7 +524,7 @@ fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
     };
     let inner = |a: usize, b: usize| -> String { chars[a + 1..b].iter().collect() };
     let mut out = Vec::new();
-    let mut mask = 0u32;
+    let (mut mask, mut last) = (0u32, 0u32);
     let mut k = 0;
     while k < chars.len() {
         let mut times = 0usize;
@@ -546,6 +546,13 @@ fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
                 k = y.unwrap_or(x) + 1;
                 continue;
             }
+            '#' => {
+                let end = close(k + 1);
+                let group = inner(k + 1, end);
+                out.push(Field::List((0..last).map(|_| fields(r, &group)).collect::<Result<_, _>>()?));
+                k = end + 1;
+                continue;
+            }
             '&' => {
                 let open = k + 1 + chars[k + 1..].iter().position(|&c| c == '(').expect("layout bits");
                 let bits = u32::from_str_radix(&chars[k + 1..open].iter().collect::<String>(), 16).expect("layout bits");
@@ -565,7 +572,10 @@ fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
         let token: String = chars[start..=k].iter().collect();
         for _ in 0..times.max(1) {
             out.push(match token.chars().next().unwrap() {
-                'w' => Field::Word(r.u32()?),
+                'w' => {
+                    last = r.u32()?;
+                    Field::Word(last)
+                }
                 'm' => {
                     mask = r.u32()?;
                     Field::Word(mask)
@@ -776,6 +786,12 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // sound's (`FUN_6f359fa0`: its file, a reference, words and reals, a second string,
     // with a flag sixteen words more, and words by the bits of a mask).
     (b"+snd", "w", "t ss f ?(z fff www w)(?(z r w fff w z ?(f ww fff wwwwww f www) m &1(ww) &2(www) &4(www) &8(www) &10(www) &20(w) &40(w) &80(w) &100(w)))"),
+    // Build abilities (`FUN_6f567130` on CAbilityUpgrade-like's two references): a count
+    // and a short, then each building its two words, three references, four words, and
+    // with a flag four words and two reals (own `FUN_6f567ac0`: two reals and three
+    // words; `FUN_6f567ec0` three words more).
+    (b"AHbu", "wwww wwwwwww t w ff www", "r r w s #(ww r r r www ?(wwww ff))"),
+    (b"AUbu", "wwww wwwwwww t w ff www www", "r r w s #(ww r r r www ?(wwww ff))"),
     (b"tsk.", "wwwww fff", "r"),
     (b"tskt", "wwwwwwww f", "r"),
     // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to

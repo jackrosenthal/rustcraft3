@@ -556,6 +556,13 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // CTriggerWar3 (`FUN_6f299840`, its own `FUN_6f2998a0`: six words): three counted
     // lists (`FUN_6f294ba0`, `FUN_6f294c80`, `FUN_6f294c10`).
     (b"+trg", "wwwwww", "[r] [r] [r]"),
+    // Event registrations, each ending with its event's handler list: a unit's
+    // (`FUN_6f27ede0`, own `FUN_6f27f140`: five words) four words and a reference, a
+    // player's (`FUN_6f27e900`, own `FUN_6f27f1b0`: ten words) a reference, a game's
+    // (`FUN_6f27e6a0`) only its list.
+    (b"uevt", "wwwww", "wwww r [rw]"),
+    (b"pevt", "wwwwwwwwww", "r [rw]"),
+    (b"gevt", "wwwww", "[rw]"),
 ];
 
 /// Agents whose class writes its whole second record itself, without the agent's

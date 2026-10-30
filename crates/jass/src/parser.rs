@@ -171,8 +171,14 @@ impl<'a> Parser<'a> {
     }
 
     fn stmt(&mut self) -> R<Stmt> {
+        if self.eat_kw("debug") {
+            return Ok(Stmt::Debug(Box::new(self.stmt_undebugged()?)));
+        }
+        self.stmt_undebugged()
+    }
+
+    fn stmt_undebugged(&mut self) -> R<Stmt> {
         let line = self.line();
-        self.eat_kw("debug");
         let s = if self.eat_kw("set") {
             let name = self.ident()?;
             let idx = if *self.peek() == Tok::LBracket {
@@ -317,11 +323,9 @@ impl<'a> Parser<'a> {
         match self.peek() {
             Tok::Minus => {
                 self.next();
-                Ok(match self.unary()? {
-                    Expr::Int(v) => Expr::Int(v.wrapping_neg()),
-                    Expr::Real(v) => Expr::Real(-v),
-                    e => Expr::Neg(Box::new(e)),
-                })
+                // Kept as written: the original compiles a negative literal as the
+                // literal and a negation (its bytecode, read in saves).
+                Ok(Expr::Neg(Box::new(self.unary()?)))
             }
             Tok::Plus => {
                 self.next();
@@ -343,7 +347,7 @@ impl<'a> Parser<'a> {
             Tok::LParen => {
                 let e = self.expr()?;
                 self.expect(Tok::RParen)?;
-                Ok(e)
+                Ok(Expr::Paren(Box::new(e)))
             }
             Tok::Ident(s) => match &*s {
                 "true" => Ok(Expr::Bool(true)),

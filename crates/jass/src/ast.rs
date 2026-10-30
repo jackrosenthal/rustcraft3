@@ -18,6 +18,9 @@ pub enum Expr {
     Neg(Box<Expr>),
     Not(Box<Expr>),
     Bin(BinOp, Box<Expr>, Box<Expr>),
+    /// Parentheses, kept as the original's bytecode tells them (a chain of `and` or `or`
+    /// they close is compiled as one operand).
+    Paren(Box<Expr>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,6 +47,9 @@ pub enum Stmt {
     Loop(Vec<Stmt>),
     ExitWhen(Expr),
     Return(Option<Expr>, u32),
+    /// A statement marked `debug`, which the original jumps over (its bytecode, read in
+    /// saves: an 0x02 jump past it).
+    Debug(Box<Stmt>),
 }
 
 #[derive(Clone, Debug)]

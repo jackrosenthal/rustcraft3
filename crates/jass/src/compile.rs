@@ -378,6 +378,8 @@ impl<'m> FnCompiler<'m> {
                     self.patch(e, here);
                 }
             }
+            // Never run, as the original jumps over it.
+            Stmt::Debug(_) => {}
             Stmt::Loop(body) => {
                 let top = self.code.len();
                 self.loop_exits.push(Vec::new());
@@ -517,6 +519,18 @@ impl<'m> FnCompiler<'m> {
                 }
             }
             Expr::Call(name, args) => self.call(name, args, line)?,
+            Expr::Paren(e) => self.expr(e, line)?,
+            // A negated literal is a constant.
+            Expr::Neg(e) if matches!(**e, Expr::Int(_) | Expr::Real(_)) => {
+                let (v, t) = match **e {
+                    Expr::Int(v) => (Value::Int(v.wrapping_neg()), Integer),
+                    Expr::Real(v) => (Value::Real(-v), Real),
+                    _ => unreachable!(),
+                };
+                let c = self.constant(v);
+                self.emit(Op::Const(c), line);
+                Ty::Known(t)
+            }
             Expr::Neg(e) => {
                 let t = self.expr(e, line)?;
                 self.emit(Op::Neg, line);

@@ -1386,8 +1386,26 @@ Formats the port made its own, to be replaced by the original's:
   and an 0x0a with its own (`agent extends handle`: 09 handle, 0a agent).  The
   original compiles common.j, blizzard.j, and the map's script in `FUN_6f9146f0`
   (called from `FUN_6f20d2f0`); its compile errors are a table of (code, message)
-  at 0x6fce4b28 (`FUN_6f1fde30`, reported by `FUN_6f1fdd60`).  A save the port
-  writes needs this code as the original compiles it; not yet done.
+  at 0x6fce4b28 (`FUN_6f1fde30`, reported by `FUN_6f1fdd60`).  Its VM's switch
+  (`FUN_6f91b460`) gives the opcodes: 2 and 0x2b jump, 5 to 8 local, global,
+  constant, and function argument, 0xb pops arguments, 0xc a literal (byte 1 its
+  type), 0xd to 0x12 register, variable, code, and array moves, 0x13 and 0x14 push
+  and pop, 0x15 a native, 0x16 a function, 0x17 integer to real, 0x18 to 0x26
+  operators, 0x27 return, 0x28 a label, 0x29 and 0x2a branches.  `w3_jass::bytecode`
+  compiles as the original does, read in its code word for word: the test map's
+  script (common.j, Blizzard.j, war3map.j; all 37289 instructions, and the 4029
+  strings the compile makes) and the undead AI's (common.j, common.ai, undead.ai;
+  12227 instructions, 3132 strings).  As read: a value takes the next register (1
+  to 255 round, 0 a call's result); a binary operation pushes its left, computes its
+  right, pops the left to a new register; an integer beside a real is converted as
+  computed; `and` and `or` short-circuit, a chain without parentheses nested to the
+  right; a negative literal is the literal and a negation; an empty `if` is its
+  condition alone; a function's arguments are popped after it (`popn`), a native's
+  not; a `debug` statement is jumped over (0x02), so never run (the port's VM now
+  skips it too); string ids go by the sources' first names and literals as written,
+  then what the code first uses that the sources did not have so ("handle",
+  "<init>", a literal with its escapes resolved).  Not yet read: `and` with `or`
+  unparenthesized, and the strings scripts make as they run (the table's last two).
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

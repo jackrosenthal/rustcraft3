@@ -1,6 +1,7 @@
 //! JASS: the scripting language of Warcraft III maps, Blizzard.j, and the AI scripts.
 
 pub mod ast;
+pub mod bytecode;
 pub mod compile;
 pub mod lexer;
 pub mod parser;

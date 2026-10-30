@@ -481,6 +481,38 @@ impl World {
         out
     }
 
+    /// A unit's own first record (`+w3u`'s agent, read against the quiet test map's): its
+    /// properties (its position and five reals), the last its second link; its first
+    /// link its AI's unit list (`uref`), its third its newest modifier, its fourth its
+    /// newest listener.
+    pub fn unit_agent_record(&self, h: u32) -> Vec<(u32, First, Option<Second>)> {
+        let Some(u) = self.unit(h) else { return Vec::new() };
+        let first = &u.extra.object_slots[0];
+        if first.len() < 10 {
+            return Vec::new();
+        }
+        let me = first[0];
+        let props: Vec<(u32, u32)> = vec![first[1], first[4], first[5], first[6], first[7], first[8]];
+        let mut rec = agent_first(me, b"+w3u", &props);
+        let live = |s: u32, c: &[u8; 4]| self.tags.live.get(&s).is_some_and(|e| &e.0 == c);
+        let all = || u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).map(|&(s, _)| s).chain(u.extra.flyer_pil).chain(u.extra.item_pil.map(|p| p.0)).chain(u.extra.ensnare_pil.map(|p| p.1)).chain(u.extra.alarm_pil).chain(u.extra.spell_timers.iter().copied()).chain(u.extra.mana_listeners.iter().map(|l| l.1)).chain(u.extra.blight_rcm);
+        let newest = |codes: &[&[u8; 4]]| all().filter(|&s| codes.iter().any(|c| live(s, c))).max_by_key(|&s| self.tagged(s).1).map(|s| Link(rf(self.tagged(s)), 0));
+        if let First::Agent { links, .. } = &mut rec {
+            // (Its abilities' chain, newest first: its abilities and an AI's unit list,
+            // not the AI itself.)
+            // (Buffs among them, a buff being an ability: read, the aura scans' at 2
+            // seconds.)
+            let ability = |s: u32| self.tags.live.get(&s).is_some_and(|e| (e.0[0] == b'A' && &e.0 != b"AI-U") || e.0[0] == b'B' || &e.0 == b"uref");
+            let newest_ability = u.extra.object_slots[2].iter().map(|&(s, _)| s).chain(u.extra.ai_slots.iter().map(|&(s, _)| s)).chain(u.buffs.iter().map(|b| b.slot).filter(|&s| s != 0)).filter(|&s| ability(s)).max_by_key(|&s| self.tagged(s).1);
+            if let Some(s) = newest_ability {
+                links[0] = Link(rf(self.tagged(s)), 0);
+            }
+            links[2] = newest(&[b"`rcm"]).unwrap_or(Link(NONE, 0));
+            links[3] = newest(&[b"`rtl", b"`pil"]).unwrap_or(Link(NONE, 0));
+        }
+        vec![(me.0, rec, None)]
+    }
+
     /// A unit's clustered position (`` `pcu ``, read against the quiet test map's): its
     /// place in pathing cells, two zeros, its speed in cells a second (none moving
     /// unbounded), facing in radians, and collision in cells; its two regions; two
@@ -927,7 +959,7 @@ impl World {
                 seconds.insert(slot, sec);
             }
         }
-        let unit_reals: Vec<(u32, First, Option<Second>)> = self.unit_order.iter().flat_map(|&h| self.unit_real_records(h).into_iter().chain(self.unit_modifier_records(h)).chain(self.unit_listener_records(h)).chain(self.unit_position_records(h))).collect();
+        let unit_reals: Vec<(u32, First, Option<Second>)> = self.unit_order.iter().flat_map(|&h| self.unit_real_records(h).into_iter().chain(self.unit_modifier_records(h)).chain(self.unit_listener_records(h)).chain(self.unit_position_records(h)).chain(self.unit_agent_record(h))).collect();
         for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals) {
             records.insert(slot, f);
             if let Some(sec) = sec {
@@ -1288,6 +1320,40 @@ impl World {
                 }
             }
             out.push(format!("units' positions: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+            // The units' agents.
+            let (mut same, mut differ, mut first) = (0, 0, None);
+            for (slot, f, sec) in self.unit_order.iter().flat_map(|&h| self.unit_agent_record(h)).collect::<Vec<_>>() {
+                let Some(o) = by_slot.get(&slot) else { continue };
+                // (By the bytes written: -0 is not 0.)
+                let ok1 = f.to_bytes() == o.first;
+                let ok2 = sec.as_ref().is_none_or(|s| s.to_bytes(o.entry.kind).is_ok_and(|b| b == o.second));
+                if ok1 && ok2 {
+                    same += 1;
+                } else {
+                    differ += 1;
+                    let brief = |s: Option<Second>| match s {
+                        Some(Second::Agent { own, handlers, tail }) => format!("own {own:?} keyed {:?} fixed {:?} events {} tail {tail:?}", handlers.keyed, handlers.fixed, handlers.events.len()),
+                        other => format!("{other:?}"),
+                    };
+                    let detail = if ok1 { format!("ours {}; the original's {}", brief(sec.clone()), brief(o.second().ok())) } else { format!("ours {f:?}; the original's {:?}", o.first()) };
+                    let line = format!("slot {slot} ({}): first {ok1} second {ok2}; {detail}", String::from_utf8_lossy(&o.entry.kind.to_be_bytes()));
+                    if std::env::var("W3Z_ALL").is_ok() {
+                        out.push(line.clone());
+                    }
+                    first.get_or_insert(line);
+                }
+            }
+            if false {
+                for (slot, func) in &self.tags.handler_objects {
+                    let k = self.tags.function_numbers.get(func).copied().unwrap_or(0);
+                    let theirs = by_slot.get(slot).and_then(|o| o.second().ok()).and_then(|s| match s {
+                        Second::Agent { tail, .. } => tail.first().cloned(),
+                        _ => None,
+                    });
+                    out.push(format!("handler slot {slot} birth {} func {func} ours {k} theirs {theirs:?}", self.tagged(*slot).1));
+                }
+            }
+            out.push(format!("units' agents: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
         }
         out.push(match free.chunks(4).zip(m.free[0].chunks(4)).position(|(a, b)| a != b) {
             None if free.len() == m.free[0].len() => format!("free list: the same, {} slots", free.len() / 4 - 1),

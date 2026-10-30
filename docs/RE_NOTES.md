@@ -1617,6 +1617,14 @@ Formats the port made its own, to be replaced by the original's:
   (`` `pil ``) among them (its abilities', a flyer's, its AI's item pickup, Ensnare's,
   and a computer's structure's alarm's as it starts to watch), newest first; each
   real its own.
+- A unit's agent record (`+w3u`'s first) agrees for 65 of 71: its properties (its
+  position and five reals), the last its second link; its first link the newest on
+  its abilities' chain (its abilities, an AI's unit list `uref`, buffs laid on it,
+  abilities the script added: a town hall's Call to Arms from the melee setup; not
+  the AI itself), its third its newest modifier, its fourth its newest listener.
+  Not yet: which unit each of an aura's buffs is laid on at a scan, which follows the
+  aura's in-range listener's own list (read, 2 seconds in: neither the port's order
+  of making nor its search of the map).
 - A unit's own record (`+w3u`, CUnit's `FUN_6f696490`): its widget, its event lists
   (0x80234 to 0x80258, 0x80319 to 0x80329), then 109 fields from CUnit's +0x130 on
   (words, references, a short, timers).  Across the quiet test map's 71 units 79 are

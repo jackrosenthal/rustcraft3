@@ -948,6 +948,9 @@ pub struct Buff {
     /// Its healing is magical: more on an ethereal unit (Rejuvenation, Eat Tree).
     #[serde(default)]
     pub ethereal_heal: bool,
+    /// Its engine object's slot (as laid by `World::apply_buff_tagged`), 0 when none.
+    #[serde(default)]
+    pub slot: u32,
     pub effect: u32,
     /// Flat damage added to attacks.
     pub damage_bonus: f32,

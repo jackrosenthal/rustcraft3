@@ -1499,8 +1499,13 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             u.abilities.push((id, 1));
             let type_id = u.type_id;
             if !crate::tags::AbilityObjects::get().refused(&id) {
+                // (Kept with its own objects: a town hall's Call to Arms, added by the melee
+                // setup, heads its abilities' chain.)
                 for c in w.ability_tags(type_id, &id) {
-                    w.tags.take(&c);
+                    let t = w.tags.take_id(&c);
+                    if let Some(u) = w.unit_mut(a.h(0)) {
+                        u.extra.object_slots[2].push(t);
+                    }
                 }
             }
             w.sync_spell_books(a.h(0));

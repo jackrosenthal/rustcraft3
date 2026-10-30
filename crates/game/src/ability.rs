@@ -411,6 +411,7 @@ impl World {
         // game's objects share (measured: its allocation names the second table).
         if tagged && b.id != [0; 4] {
             let slot = self.tags.take(&b.id);
+            b.slot = slot;
             // (Its timer's start, CBuff vf211; read: the aura scans' buffs at 0.5
             // seconds on the quiet test map.)
             self.tags.start_timer("532b50");

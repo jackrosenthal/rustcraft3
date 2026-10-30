@@ -743,6 +743,23 @@ impl crate::world::World {
 }
 
 impl crate::world::World {
+    /// Whether an aura serves a unit of a type: Trueshot one with a ranged weapon,
+    /// Vampiric one with a melee weapon, War Drums and Command one with a weapon,
+    /// Brilliance one with mana (measured: on a sheep, without attack or mana, those
+    /// gave none; read: Trueshot's buff on no wandering critter as it passed).
+    pub(crate) fn aura_serves(&self, code: &Code, type_id: Code) -> bool {
+        let Some(o) = self.objects.units.get(type_id) else { return false };
+        let weapons = o.int("weapsOn");
+        let ranged = !matches!(o.str("weapTp1").trim(), "normal" | "instant" | "_" | "");
+        match code {
+            b"AEar" => weapons != 0 && ranged,
+            b"AUav" => weapons != 0 && !ranged,
+            b"Aakb" | b"AOac" => weapons != 0,
+            b"AHab" => o.real("manaN") > 0.0,
+            _ => true,
+        }
+    }
+
     /// The codes of an ability a unit of a type gains, and of the objects it makes; an
     /// aura's buff on its bearer only when the aura serves it (measured: on a sheep,
     /// without attack or mana, Trueshot, Vampiric, War Drums, Command, and Brilliance
@@ -750,18 +767,12 @@ impl crate::world::World {
     pub(crate) fn ability_tags(&self, type_id: Code, id: &Code) -> Vec<Code> {
         let Some(a) = self.objects.abilities.get(*id) else { return Vec::new() };
         let code = crate::objects::id_from_str(a.str("code").trim());
-        let Some(o) = self.objects.units.get(type_id) else { return Vec::new() };
-        let weapons = o.int("weapsOn");
-        let ranged = !matches!(o.str("weapTp1").trim(), "normal" | "instant" | "_" | "");
+        if self.objects.units.get(type_id).is_none() {
+            return Vec::new();
+        }
         let objects = AbilityObjects::get().objects(id, &code);
         let buff = Some(crate::objects::id_from_str(a.level_str("BuffID", 1).trim())).filter(|b| b[0] != 0);
-        let serves = match &code {
-            b"AEar" => weapons != 0 && ranged,
-            b"AUav" => weapons != 0 && !ranged,
-            b"Aakb" | b"AOac" => weapons != 0,
-            b"AHab" => o.real("manaN") > 0.0,
-            _ => true,
-        };
+        let serves = self.aura_serves(&code, type_id);
         let aura = matches!(&code, b"AHad" | b"AHab" | b"AUau" | b"AOae" | b"AEar" | b"AUav" | b"AEah" | b"Aakb" | b"AOac");
         // A morph's object on the unit it makes (measured: Amil's buff Bmil on a militia,
         // Aphx's Bphx on a phoenix egg, and Stone Form's regeneration timer on a gargoyle

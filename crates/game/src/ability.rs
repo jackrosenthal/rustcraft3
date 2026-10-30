@@ -737,17 +737,17 @@ impl World {
                     b.remaining = f32::INFINITY;
                     b.aura_left = Some(2.0);
                 }
-                grants.push((h, u.owner, u.x, u.y, area, b, reach));
+                grants.push((h, u.owner, u.x, u.y, area, b, reach, crate::objects::id_from_str(&code)));
             }
         }
-        for (src, owner, x, y, area, b, reach) in grants {
+        for (src, owner, x, y, area, b, reach, code) in grants {
             let targets: Vec<u32> = self
                 .unit_order
                 .iter()
                 .copied()
                 .filter(|&t| {
                     // Without an area (Engineering Upgrade) only the bearer.
-                    (area > 0.0 || t == src) && self.unit(t).is_some_and(|u| !u.dead && !u.is_building && (u.x - x).hypot(u.y - y) <= area && reach.is_none_or(|enemies| crate::natives::players::is_ally(self, owner, u.owner) != enemies))
+                    (area > 0.0 || t == src) && self.unit(t).is_some_and(|u| !u.dead && !u.is_building && (u.x - x).hypot(u.y - y) <= area && reach.is_none_or(|enemies| crate::natives::players::is_ally(self, owner, u.owner) != enemies) && self.aura_serves(&code, u.type_id))
                 })
                 .collect();
             for t in targets {

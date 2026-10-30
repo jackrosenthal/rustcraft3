@@ -1203,9 +1203,10 @@ impl World {
 
     /// The first movement step of the tick for units walking already, before the tick's
     /// logic.
-    pub(crate) fn first_steps(&mut self) {
+    pub(crate) fn first_steps(&mut self, vm: &mut Vm) {
         if let Some(&t) = self.step_ticks.first() {
             self.fire_mana_listeners(Some(t));
+            self.time_of_day_to(vm, Some(t));
         }
         // The paths of the walks ended in the last step go in this one, in the walkers'
         // order (`Tags::walk_ended`).
@@ -1268,7 +1269,7 @@ impl World {
     /// The tick's movement steps after its first for wanderers, step by step, each
     /// walker in turn: a new order's way found in its first step (its search in the
     /// step after its order, traced), then its steps.
-    pub(crate) fn step_walkers(&mut self) {
+    pub(crate) fn step_walkers(&mut self, vm: &mut Vm) {
         let n = self.step_clocks.len();
         let mut due = std::mem::take(&mut self.wander_due);
         for k in 1..n {
@@ -1282,6 +1283,7 @@ impl World {
                 self.wrap_clocks(&mut due);
             }
             self.fire_mana_listeners(next);
+            self.time_of_day_to(vm, next);
             // The paths of the walks ended in the last step go in this one, in the walkers'
             // order (`Tags::walk_ended`).
             let mut carried = self.tags.take_step_paths();
@@ -1495,8 +1497,17 @@ impl World {
         if u.extra.mover.is_none() {
             log::debug!("walk of {h} from {:.2}, {:.2} facing {:.2} by {:?} to {goal:?}, time {:.3}, tsk. {:?}", u.x, u.y, u.facing, u.path, self.time, u.extra.order_tags.get(7));
             // A goal within reach as it starts ends the walk without its usual objects
-            // (`Tags::move_done_in_place`).
-            let moves = goal.is_none_or(|g| (g.0 - u.x).hypot(g.1 - u.y) > 0.49 * crate::pathing::CELL);
+            // (`Tags::move_done_in_place`) when its first step's turn leaves it within a
+            // step's turn of the goal's bearing (as a stopped walker is judged there);
+            // else it turns to it and arrives as any walk (read: a sheep 0.81 off, its
+            // turn 0.5, freed at its first step; a pig 1.40 off and a sheep 3.0 off,
+            // their trees freed as their turns ended, their paths the step after).
+            let behind = goal.is_some_and(|g| {
+                let bearing = (g.1 - u.y).atan2(g.0 - u.x);
+                let d = (bearing - f32::from_bits(m.heading)).rem_euclid(std::f32::consts::TAU);
+                d.min(std::f32::consts::TAU - d) >= 2.0 * turn
+            });
+            let moves = behind || goal.is_none_or(|g| (g.0 - u.x).hypot(g.1 - u.y) > 0.49 * crate::pathing::CELL);
             if let Some(u) = self.unit_mut(h) {
                 u.extra.walk_moved = moves;
             }

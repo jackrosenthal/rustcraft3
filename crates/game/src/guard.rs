@@ -306,7 +306,12 @@ impl World {
         if !self.daytime && falls(dusk - eps) {
             passed.push(((1, self.tags.day_listener_made), None));
         }
+        if passed.is_empty() {
+            return;
+        }
         passed.sort_by(|a, b| b.0.cmp(&a.0));
+        // (The orders' objects waiting for the tick's end keep their place.)
+        let waiting = std::mem::take(&mut self.tags.issued);
         for (_, what) in passed {
             match what {
                 Some((e, remake, trigger)) => {
@@ -336,6 +341,7 @@ impl World {
             }
         }
         self.tags.flush_issued();
+        self.tags.issued = waiting;
     }
 
     pub(crate) fn time_of_day_moved(&mut self, vm: &mut w3_jass::Vm, old: f32, new: f32, set: bool) {
@@ -373,13 +379,10 @@ impl World {
         let first = self.tags.take(b"`rtl");
         self.tags.day_listener_made = self.tags.born as u64;
         let second = day.then(|| self.tags.take(b"`rtl"));
-        // Both of the last change's go (read: the first dawn's two at nightfall).
-        if let Some(old) = self.tags.day_timer.replace(first) {
-            self.tags.doom(old);
-        }
-        if let Some(old) = std::mem::replace(&mut self.tags.day_timer_2, second) {
-            self.tags.doom(old);
-        }
+        // Both of the last change's go as it ends, before the step's walk ends (read:
+        // the first dawn's two at nightfall; the night's at dawn, before a walk end's
+        // tree in that step).
+        let old: Vec<u32> = [self.tags.day_timer.replace(first), std::mem::replace(&mut self.tags.day_timer_2, second)].into_iter().flatten().collect();
         // Dead ones too, while their corpses remain (measured: a creep killed by script).
         let units: Vec<u32> = self.unit_order.iter().rev().copied().filter(|&h| self.unit(h).is_some()).collect();
         // Each unit's object of the change lasts three seconds (traced: queued with an
@@ -438,11 +441,24 @@ impl World {
                 }
             }
             slots.reverse();
+            // One whose cost its mana is past already waits for it to fall (read: creeps
+            // waking with full mana at dawn made their listeners, none replaced after).
+            let mana = self.unit(h).map_or(0.0, |u| u.mana);
+            let costs: Vec<f32> = costs.into_iter().map(|c| if mana >= c { f32::INFINITY } else { c }).collect();
             if let Some(u) = self.unit_mut(h) {
                 u.extra.mana_listeners = costs.into_iter().zip(slots).collect();
                 u.extra.ensnare_pil = pil;
             }
             self.set_asleep(h, false);
+        }
+        // One set by script lets them go as the next turn starts (traced: the engine's
+        // day timer at load, slot 0x287, at the game's first dawn).
+        for s in old {
+            if set {
+                self.tags.doom(s);
+            } else {
+                self.tags.release(s);
+            }
         }
     }
 }

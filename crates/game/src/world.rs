@@ -217,6 +217,9 @@ pub struct World {
     /// the time of day last moved on.
     #[serde(default)]
     pub time_of_day_clock: f64,
+    /// The time of day as counted (`time_of_day_to`).
+    #[serde(default)]
+    pub time_of_day_exact: f64,
     pub time_of_day_scale: f32,
     /// SuspendTimeOfDay: the day's clock stands still.
     #[serde(default)]
@@ -808,6 +811,7 @@ impl World {
             daytime: false,
             exec_at_tick_end: false,
             time_of_day_clock: 0.0,
+            time_of_day_exact: 0.0,
             time_of_day_scale: 1.0,
             time_of_day_suspended: false,
             cheat_flags: 0,
@@ -1680,6 +1684,40 @@ impl World {
         (self.main_clock.1, self.main_wraps)
     }
 
+    /// The time of day moved on to the main clock at this tick's main tick `tick` (its
+    /// last, without), the listeners it passes firing then (`time_of_day_moved`; read:
+    /// dawn's triggers after a turn's first step, before the walk ends of its second).
+    /// It moves on by the main clock, which falls behind the game's time (read: the
+    /// time of day's trigger at dusk and midnight in turns 2004 and 3207, where the main
+    /// clock reaches 200 and 320 seconds, not 2001 and 3201), counted in f64 from where
+    /// it was last set.
+    pub(crate) fn time_of_day_to(&mut self, vm: &mut Vm, tick: Option<i64>) {
+        let n = self.tick_clocks.1.len();
+        let i = match tick {
+            Some(t) => (t - self.tick_clocks.0).clamp(0, n as i64 - 1).max(0) as usize,
+            None => n.saturating_sub(1),
+        };
+        let clock = self.tick_abs(i).unwrap_or(self.time_exact);
+        let moved = clock - self.time_of_day_clock;
+        if moved <= 0.0 {
+            return;
+        }
+        self.time_of_day_clock = clock;
+        if self.time_of_day_suspended {
+            return;
+        }
+        let hours = self.misc_f32("DayHours", 24.0) as f64;
+        let rate = hours / self.misc_f32("DayLength", 480.0) as f64 * self.time_of_day_scale as f64;
+        if self.time_of_day_exact as f32 != self.time_of_day {
+            self.time_of_day_exact = self.time_of_day as f64;
+        }
+        let old = self.time_of_day;
+        self.time_of_day_exact = (self.time_of_day_exact + moved * rate) % hours;
+        self.time_of_day = self.time_of_day_exact as f32;
+        let new = self.time_of_day;
+        self.time_of_day_moved(vm, old, new, false);
+    }
+
     /// A kept clock reading (a due on the agent queue, a placing) in seconds since the
     /// game began.
     pub fn kept_abs(&self, v: u32) -> f64 {
@@ -1822,19 +1860,6 @@ impl World {
         self.time = self.time_exact as f32;
         self.game_ms = self.game_ms.wrapping_add(dt_ms);
         self.plan_mana_listeners(dt);
-        let day_hours = self.misc_f32("DayHours", 24.0);
-        let day_length = self.misc_f32("DayLength", 480.0);
-        let hours_per_second = day_hours / day_length * self.time_of_day_scale;
-        let old_time_of_day = self.time_of_day;
-        // It moves on by the main clock, which falls behind the game's time (read: the
-        // time of day's trigger at dusk and midnight in turns 2004 and 3207, where the
-        // main clock reaches 200 and 320 seconds, not 2001 and 3201).
-        let clock = self.tick_abs(self.tick_clocks.1.len().saturating_sub(1)).unwrap_or(self.time_exact);
-        let moved = (clock - self.time_of_day_clock).max(0.0) as f32;
-        self.time_of_day_clock = clock;
-        if !self.time_of_day_suspended {
-            self.time_of_day = (self.time_of_day + moved * hours_per_second) % day_hours;
-        }
         self.camera.update(dt);
         // A camera following a unit keeps its target on it.
         if let Some((u, ox, oy)) = self.camera.follow {
@@ -1882,10 +1907,10 @@ impl World {
         // a wanderer's order is given after it, a walk's end found in it handled then).
         self.train_before_steps(vm, dt);
         self.update_wander(true);
-        self.first_steps();
+        self.first_steps(vm);
         self.step_range = (1, self.step_clocks.len());
         prof!(self, "update_wander", self.update_wander(false));
-        self.step_walkers();
+        self.step_walkers(vm);
         prof!(self, "computer_idle_workers", self.computer_idle_workers(dt));
         prof!(self, "update_guards", self.update_guards());
         prof!(self, "update_creep_sleep", self.update_creep_sleep(dt));
@@ -2019,8 +2044,7 @@ impl World {
 
         self.wake_sleepers(vm, dt);
 
-        let new_time_of_day = self.time_of_day;
-        self.time_of_day_moved(vm, old_time_of_day, new_time_of_day, false);
+        self.time_of_day_to(vm, None);
         self.check_state_events(vm);
     }
 

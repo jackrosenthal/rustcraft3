@@ -458,6 +458,8 @@ pub enum Second {
     /// An agent whose record is its own fields, its handlers, and its class's fields
     /// after them, read by layout (`AGENTS`), the fields not yet named.
     Agent { own: Vec<Field>, handlers: Handlers, tail: Vec<Field> },
+    /// An agent whose class writes its whole record itself (`WHOLE`).
+    Whole(Vec<Field>),
     /// No record (an engine object, or an agent without one).
     Empty,
     /// Not yet read.
@@ -537,6 +539,30 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // `FUN_6f649220`: the ability's and two words; `FUN_6f42e9b0`: a real and three words.
     (b"Amil", "wwww wwwwwww t w ww", ""),
     (b"Abli", "wwww wwwwwww t w f www", ""),
+    // CJassFunc (`FUN_6f211180`): a word.
+    (b"hdlr", "w", "w"),
+    // CMapLocation (`FUN_6f27e7d0`): two reals; CRect (`FUN_6f246870`): four.
+    (b"+loc", "w", "ff"),
+    (b"+rct", "w", "ffff"),
+    // CTriggerAction (`FUN_6f299650`) and a filter (`FUN_6f211140`): a reference.
+    (b"+tac", "w", "r"),
+    (b"+flt", "w", "r"),
+    // CForce (`FUN_6f2462d0`): three references.
+    (b"+frc", "w", "rrr"),
+    // CTimerWar3 (`FUN_6f246c10`, its own `FUN_6f247300`: a word and two reals): its
+    // timer (CAgentTimerExtended, `FUN_6f060be0`: a timer, two shorts, a real), a
+    // reference, and the list of event 0x80204.
+    (b"+tmr", "w ff", "t ss f r [rw]"),
+    // CTriggerWar3 (`FUN_6f299840`, its own `FUN_6f2998a0`: six words): three counted
+    // lists (`FUN_6f294ba0`, `FUN_6f294c80`, `FUN_6f294c10`).
+    (b"+trg", "wwwwww", "[r] [r] [r]"),
+];
+
+/// Agents whose class writes its whole second record itself, without the agent's
+/// handlers, by kind.
+const WHOLE: &[(&[u8; 4], &str)] = &[
+    // CGroup (`FUN_6f2464b0`): its units (`FUN_6f28d2b0`), two references, four words.
+    (b"+grp", "[r] r r wwww"),
 ];
 
 /// CUnit's fields after its event lists, in the order `FUN_6f696490` writes them.
@@ -631,9 +657,10 @@ impl SavedObject {
                 let (handlers, widget) = (Handlers::read(&mut r)?, Widget::read(&mut r)?);
                 Second::Destructable { own, handlers, widget, bytes: [r.u8()?, r.u8()?], words: words(&mut r)? }
             }
-            kind => match AGENTS.iter().find(|(k, _, _)| *k == kind) {
-                Some((_, own, tail)) => Second::Agent { own: fields(&mut r, own)?, handlers: Handlers::read(&mut r)?, tail: fields(&mut r, tail)? },
-                None => return Ok(Second::Raw(self.second.clone())),
+            kind => match (AGENTS.iter().find(|(k, _, _)| *k == kind), WHOLE.iter().find(|(k, _)| *k == kind)) {
+                (Some((_, own, tail)), _) => Second::Agent { own: fields(&mut r, own)?, handlers: Handlers::read(&mut r)?, tail: fields(&mut r, tail)? },
+                (None, Some((_, layout))) => Second::Whole(fields(&mut r, layout)?),
+                _ => return Ok(Second::Raw(self.second.clone())),
             },
         };
         if r.remaining() != 0 {

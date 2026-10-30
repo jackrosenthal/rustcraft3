@@ -1063,6 +1063,17 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // w3zcompare <save>: the pieces of a save the port makes, against the
+            // original's save of the same moment.
+            "w3zcompare" => {
+                if let Some(g) = &scene.game {
+                    let orig = w3_formats::w3z::SaveGame::read(&std::fs::read(&a[i + 1]).unwrap()).unwrap();
+                    for l in g.world.compare_save(&orig) {
+                        eprintln!("w3z {l}");
+                    }
+                }
+                i += 2;
+            }
             // objtable <file>: the engine's live objects, a line each: slot, code, birth.
             "objtable" => {
                 if let Some(g) = &scene.game {

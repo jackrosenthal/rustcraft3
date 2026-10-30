@@ -43,6 +43,7 @@ pub mod spellai;
 pub mod spells;
 pub mod stampede;
 pub mod volcano;
+pub mod w3zsave;
 pub mod unitspells;
 pub mod upgrades;
 pub mod natives;

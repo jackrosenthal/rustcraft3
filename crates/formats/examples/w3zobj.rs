@@ -183,6 +183,44 @@ fn main() {
         }
         return;
     }
+    // "families": each kind with its family, as the tables hold them.
+    if a[2] == "families" {
+        let m = s.objects.as_ref().unwrap();
+        let mut pairs = std::collections::BTreeSet::new();
+        for (k, t) in m.tables.iter().enumerate() {
+            for e in t {
+                pairs.insert((k, code(e.kind), code(e.family)));
+            }
+        }
+        for (k, kind, family) in pairs {
+            println!("{k} {kind} {family}");
+        }
+        return;
+    }
+    // "manager": the object manager's small sections in hex, its clocks, words, bounds.
+    if a[2] == "manager" {
+        let m = s.objects.as_ref().unwrap();
+        let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
+        println!("header {}", hex(&m.header));
+        println!("free0 {} free1 {}", m.free[0].len(), hex(&m.free[1]));
+        println!("free0 head {}", hex(&m.free[0][..m.free[0].len().min(64)]));
+        println!("block {}", hex(&m.block));
+        println!("word {:x} words {:x?} bounds {:?} clocks {:?}", m.word, m.words, m.bounds, m.clocks);
+        println!("classes {} first {:x?}", m.classes.len(), &m.classes[..3]);
+        println!("game ms {} word {:x}", s.game_ms, s.game_word);
+        return;
+    }
+    // "dumpkind <kind> <file>": each object of a kind, a line each: its tag, birth, and
+    // its two records in hex.
+    if a[2] == "dumpkind" {
+        let mut text = String::new();
+        for o in all.iter().filter(|o| code(o.entry.kind) == a[3]) {
+            let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
+            text += &format!("{} {} {} {}\n", o.entry.tag, o.entry.birth, hex(&o.first), hex(&o.second));
+        }
+        std::fs::write(&a[4], text).unwrap();
+        return;
+    }
     // "census": each kind's objects and their records' bytes, most bytes first.
     if a[2] == "census" {
         let mut by: std::collections::HashMap<String, (usize, usize)> = Default::default();

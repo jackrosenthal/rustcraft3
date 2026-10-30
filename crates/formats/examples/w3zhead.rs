@@ -59,6 +59,19 @@ fn main() {
             }
         }
         println!("second records: {read} read, {raw} not yet ({} kinds), {bad} wrong", raws.len());
+        match s.state() {
+            Ok(g) => {
+                for (name, f) in &g.parts {
+                    let mut t = format!("{f:?}");
+                    if t.len() > 600 {
+                        t = format!("{}...{}", &t[..300], &t[t.len() - 300..]);
+                    }
+                    println!("state {name}: {t}");
+                }
+                println!("state: {} bytes after, starting {:02x?}", g.rest.len(), &g.rest[..g.rest.len().min(160)]);
+            }
+            Err(e) => println!("state: {e}"),
+        }
         if std::env::var("W3Z_KINDS").is_ok() {
             let mut v: Vec<_> = raws.into_iter().collect();
             v.sort_by(|a, b| b.1.cmp(&a.1));

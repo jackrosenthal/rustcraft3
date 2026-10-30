@@ -2,8 +2,9 @@
 //! container (`container`), its record a data store of little-endian bytes, words,
 //! dwords, and NUL-terminated strings (`FUN_6f06b170`, `FUN_6f06b220`, `FUN_6f06b3a0`,
 //! `FUN_6f06bc20`).  Read so far: the header and the object manager's layout (its
-//! tables, classes, clocks, and data sections, each kept whole); the game's own state
-//! after it is kept as it is.
+//! tables, classes, clocks, and data sections, and each object's records, `first` and
+//! `second`), and the game's own state after it (`SaveGame::state`), all but its
+//! script data, kept whole.
 
 use crate::{Error, Reader};
 
@@ -40,7 +41,7 @@ pub struct SaveGame {
     pub game_word: u32,
     /// The engine's object manager (`FUN_6f04dd30`).
     pub objects: ObjectManager,
-    /// The rest of the record (the game's own state), not yet read.
+    /// The rest of the record, the game's own state (read by `state`).
     pub rest: Vec<u8>,
 }
 
@@ -188,6 +189,88 @@ impl SaveGame {
     pub fn read(file: &[u8]) -> Result<SaveGame, Error> {
         let (_, record) = crate::container::unpack(file)?;
         SaveGame::parse(&record)
+    }
+}
+
+/// The game's own state after the object manager (`FUN_6f1e8630`), as far as read:
+/// each part's fields by name, and the bytes after.
+#[derive(Clone, Debug, Default)]
+pub struct GameState {
+    pub parts: Vec<(&'static str, Vec<Field>)>,
+    pub rest: Vec<u8>,
+}
+
+/// The game's own state's parts in order, as `fields` layouts ("fog" read by `fog`).
+const STATE: &[(&str, &str)] = &[
+    // CGameWar3's (its vf 0x10, `FUN_6f1e8460`): two words, a reference, three counted
+    // lists of a name and a word (`FUN_6f1d6c60`), and two shorts.
+    ("game", "ww r [zw] [zw] [zw] ss"),
+    // Its CMapSetupWar3's (vf 4, `FUN_6f2465b0`): two strings, a word, a byte, a
+    // string, five words, and six bytes.
+    ("map setup", "zz w b z wwwww bbbbbb"),
+    // Its CFogOfWarMap's (vf 8, `FUN_6f250d00`).
+    ("fog", ""),
+    // Then its own: a counted list (`FUN_6f1dbec0`: two reals, a counted list of two
+    // words, five words), three words, a counted list of references, a word, a counted
+    // list of counted lists of references (`FUN_6f1d6ec0`), a word, a reference
+    // (`FUN_6f366820`), and five words.
+    ("game 2", "[ff [ww] wwwww] www [r] w [[r]] w r wwwww"),
+    // The game UI's (`FUN_6f377330`, its vf 0xe4: nothing in the saves read), then a
+    // counted list of strings (`FUN_6f1d6f90`), a reference, and a counted list of
+    // words.
+    ("game 3", "[z] r [w]"),
+    // The terrain's (`FUN_6f78c900`): a word (1); a word (0) and a counted list of
+    // bytes (`FUN_6f757c80`); a word (2), a counted list of two words, a string, and a
+    // word, and a counted list of bytes (`FUN_6f778f90`); a word (1), two words, and a
+    // counted list of three words, four reals, a word, three reals, nine words, and two
+    // counted lists of words (`FUN_6f7576a0`); a word (0) and a counted list of two
+    // words, four reals, and a word (`FUN_6f7642d0`).
+    ("terrain", "w w [b] w [ww z w] [b] ww w [www ffff w fff w ww wwww www [w] [w]] w [ww ffff w]"),
+    // `FUN_6f90d350`'s, its size first.
+    ("script data", "n"),
+    // The hashtables' (CGameHashTableManager, `FUN_6f246430`): a counted list of a key
+    // and its counted list of a key and five counted lists (`FUN_6f246d90`: integers,
+    // reals, booleans, strings, and handles, each by its key), then a word.
+    ("hashtables", "[w [w [ww] [wf] [ww] [wz] [www]]] w"),
+    // `FUN_6f9ca1e0`'s: a counted list of references (`FUN_6f9c1560`) and a word.
+    ("references", "[r] w"),
+    // The sounds' (`FUN_6f359b50`): a counted list of reals (eight), a string, a word,
+    // and a counted list of a name and its counted list of a reference, four reals,
+    // three words, and three reals.
+    ("sounds", "[f] z w [z [r ff ff ww w fff]]"),
+    // The game UI's: a byte, a counted list of references (`FUN_6f376ce0`), two words;
+    // a word and with it two words, two strings, and four reals (`FUN_6f3cb6b0`); a
+    // word, three reals, a word, and a string (`FUN_6f389ec0`); and a string
+    // (`FUN_6f3cb860`).
+    ("ui", "b [r] ww ?(ww zz ffff) w fff w z z"),
+];
+
+/// The fog of war's map (`FUN_6f250d00`): two bytes, four words (the second and third
+/// its size), four maps of that many shorts, six reals, three shorts, and a word.
+fn fog(r: &mut Reader) -> Result<Vec<Field>, Error> {
+    let mut out = fields(r, "bb wwww")?;
+    let n = match (&out[3], &out[4]) {
+        (Field::Word(a), Field::Word(b)) => *a as usize * *b as usize,
+        _ => unreachable!(),
+    };
+    for _ in 0..4 {
+        out.push(Field::List((0..n).map(|_| Ok(vec![Field::Short(r.u16()?)])).collect::<Result<_, Error>>()?));
+    }
+    out.extend(fields(r, "ffffff sss w")?);
+    Ok(out)
+}
+
+impl SaveGame {
+    /// The game's own state, as far as read.
+    pub fn state(&self) -> Result<GameState, Error> {
+        let mut r = Reader::new(&self.rest);
+        let mut g = GameState::default();
+        for &(name, layout) in STATE {
+            let f = if name == "fog" { fog(&mut r)? } else { fields(&mut r, layout)? };
+            g.parts.push((name, f));
+        }
+        g.rest = r.data[r.pos..].to_vec();
+        Ok(g)
     }
 }
 
@@ -492,13 +575,15 @@ pub enum Field {
     Text(String),
     /// A widget's sprite (`FUN_6f1a4050`).
     Sprite(Option<Sprite>),
+    /// A section kept whole: its size, then its bytes.
+    Bytes(Vec<u8>),
 }
 
 /// Reads fields by a layout: 'w' a word, 'f' a real, 'b' a byte, 's' a short, 'r' a
 /// reference, 't' a timer, 'z' a string, 'p' a sprite, 'e' an event's handler list (as
 /// "[rw]"), "[...]" a word count and that many groups, "{...}" a short count and that
 /// many, "(...)" a group, "?(X)" a word and X when it is not 0, "?(X)(Y)" Y when it is,
-/// "?b(X)" the same with a byte,
+/// "?b(X)" the same with a byte, 'n' a size and that many bytes kept whole,
 /// 'm' a word kept as a mask and "&h(X)" X when the mask has the bits h (hex), "#(X)" X
 /// as many times as the last word read, "~(X)" X when the last word read is not 0; a
 /// number before a token repeats it.
@@ -605,6 +690,10 @@ fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
                 'r' => Field::Ref(Ref::read(r)?),
                 't' => Field::Timer(Ref::read(r)?, r.u32()?, Timing::read(r)?),
                 'z' => Field::Text(r.cstr()?),
+                'n' => {
+                    let n = r.u32()? as usize;
+                    Field::Bytes(r.bytes(n)?.to_vec())
+                }
                 'p' => Field::Sprite(Sprite::read(r)?),
                 'e' => Field::List((0..r.u32()?).map(|_| fields(r, "rw")).collect::<Result<_, _>>()?),
                 '[' => Field::List((0..r.u32()?).map(|_| fields(r, &token[1..token.len() - 1])).collect::<Result<_, _>>()?),

@@ -1440,10 +1440,17 @@ Formats the port made its own, to be replaced by the original's:
   `^pmr`, `l^pa`, four `` `pil ``), an order with its tasks (`+ord`, `tskA`, four `task`,
   `tskA`), a unit AI (`uref`, `AI-U`), another order with its tasks, a `uref`, and an
   order with its walk (`+ord`, `task`, `ordt`, `tskA`, `tskO`, three `task`, `tskt`, five
-  `task`, `tskA`, `^clg`, `^clu`, `l^pa`, a task freed, a `` `pil ``): 55 objects, which
-  the port does not make (it runs the AI's main on the next tick), its births 55
-  behind from there.  The ghoul's own `uref` and `AI-U` (born as it is made, as the
-  port has them) are freed by five seconds in the original.  Not yet modeled.
+  `task`, `tskA`, `^clg`, `^clu`, `l^pa`, a task freed, a `` `pil ``): 55 objects.  The
+  port now makes the thread and runs the AI's main at once (StartMeleeAI compiles
+  and runs it until it first sleeps, `FUN_6f9cbc00`), the captains in CreateCaptains
+  (`FUN_6f9c5360`, twice): births agree to 12886.  The rest are Blizzard.j's
+  `RecycleGuardPosition(bj_ghoul[index])` after the undead AI's start, refreshing the
+  ghoul's AI (`FUN_6f9bde20`: `FUN_6f9be910`'s order, its abilities' AI stopped, then
+  `FUN_6f9b9230` rejoining the AI, `FUN_6f9c3660` its unit AI made anew, its old
+  `uref`, `AI-U`, and item `` `pil `` freed, and a worker's order with its walk).  Not
+  yet modeled.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
+  structures' alarm watch asks for; a computer's AI object is made as the map loads,
+  so its units join as they are made, the AI script or not.
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

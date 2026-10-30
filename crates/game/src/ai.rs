@@ -306,17 +306,30 @@ impl World {
             ..Default::default()
         };
         self.ai.insert(player, state);
+        // The AI's thread (`AItr`, FUN_6f9c8d10), its script's main run at once until it
+        // first sleeps (traced: StartMeleeAI's own objects, the captains its main makes
+        // among them, come before MeleeInitVictoryDefeat's).
+        self.tags.take(b"AItr");
         self.ai_current = Some(player);
         if let Err(e) = vm.init_globals(self) {
             log::warn!("AI {script} globals: {e}");
         }
         let main = vm.module.function("main");
-        self.ai_current = None;
         let mut aivm = AiVm { vm, sleepers: Vec::new() };
         if let Some(f) = main {
-            let t = aivm.vm.new_thread(f, &[], true);
-            aivm.sleepers.push((self.time, t));
+            let mut t = aivm.vm.new_thread(f, &[], true);
+            let now = self.time;
+            match aivm.vm.run(self, &mut t) {
+                Outcome::Sleeping(s) => aivm.sleepers.push((now + s.max(0.0), t)),
+                Outcome::Finished(_) => {}
+                Outcome::Aborted(e) => log::warn!("AI thread for player {player} ended: {e} at {:?}", t.backtrace(&aivm.vm.module)),
+            }
+            let spawned = self.ai.get_mut(&player).map(|a| std::mem::take(&mut a.spawned)).unwrap_or_default();
+            for t in spawned {
+                aivm.sleepers.push((now, t));
+            }
         }
+        self.ai_current = None;
         self.ai_vms.insert(player, aivm);
         log::info!("player {player} runs AI script {script}");
     }
@@ -1317,6 +1330,11 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             none()
         },
         CreateCaptains => |w, _, _| {
+            // Each captain's objects (traced): itself, its position, two regions, its
+            // path, four listeners.
+            for _ in 0..2 {
+                w.tags.take_all(&[b"AI-C", b"`pcu", b"^pmr", b"^pmr", b"l^pa", b"`pil", b"`pil", b"`pil", b"`pil"]);
+            }
             let p = w.ai_player();
             let (attack_home, home) = w.captain_homes(p);
             if let Some(s) = w.ai_state() {

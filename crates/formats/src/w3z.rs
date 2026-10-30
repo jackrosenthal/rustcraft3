@@ -496,8 +496,8 @@ pub enum Field {
 
 /// Reads fields by a layout: 'w' a word, 'f' a real, 'b' a byte, 's' a short, 'r' a
 /// reference, 't' a timer, 'z' a string, 'p' a sprite, 'e' an event's handler list (as "[rw]"),
-/// "[...]" a word count and that many groups, "{...}" a short count and that many; a
-/// number before a token repeats it.
+/// "[...]" a word count and that many groups, "{...}" a short count and that many,
+/// "(...)" a group; a number before a token repeats it.
 fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
     let chars: Vec<char> = layout.chars().filter(|c| !c.is_whitespace()).collect();
     let mut out = Vec::new();
@@ -509,8 +509,12 @@ fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
             k += 1;
         }
         let start = k;
-        if matches!(chars[k], '[' | '{') {
-            let (open, close) = (chars[k], if chars[k] == '[' { ']' } else { '}' });
+        if matches!(chars[k], '[' | '{' | '(') {
+            let (open, close) = (chars[k], match chars[k] {
+                '[' => ']',
+                '{' => '}',
+                _ => ')',
+            });
             let mut depth = 0;
             loop {
                 if chars[k] == open {
@@ -538,6 +542,7 @@ fn fields(r: &mut Reader, layout: &str) -> Result<Vec<Field>, Error> {
                 'e' => Field::List((0..r.u32()?).map(|_| fields(r, "rw")).collect::<Result<_, _>>()?),
                 '[' => Field::List((0..r.u32()?).map(|_| fields(r, &token[1..token.len() - 1])).collect::<Result<_, _>>()?),
                 '{' => Field::List((0..r.u16()?).map(|_| fields(r, &token[1..token.len() - 1])).collect::<Result<_, _>>()?),
+                '(' => Field::List(vec![fields(r, &token[1..token.len() - 1])?]),
                 c => unreachable!("layout {c}"),
             });
         }
@@ -676,6 +681,28 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // timer.
     (b"Ablr", "wwww wwwwwww t w", "t"),
     (b"Aaha", "wwww wwwwwww t w f www", "t"),
+    // On CAbilityUpgrade-like's (`FUN_6f42d320`: two references): CAbilityQueue
+    // (`FUN_6f42df70`, own `FUN_6f42f030`: two reals, a word, counted lists) two
+    // references more; CAbilitySellUnit (`FUN_6f42d3c0`, own `FUN_6f42e970`) twelve
+    // slots (a word, three reals, two extended timers, a word) and five words.
+    (b"Aque", "wwww wwwwwww t w ff w [w] [www] [w]", "r r r r"),
+    (b"Asel", "wwww wwwwwww t w ff", "r r 12(w fff t ss f t ss f w) wwwww"),
+    // CAbilityRally (`FUN_6f42dff0`, own `FUN_6f42f120`): a counted list of references.
+    (b"ARal", "wwww wwwwwww t w www ff wwww", "[r]"),
+    // CAbilityInventory (`FUN_6f5675a0`): counted lists, a word, a reference, and its
+    // slots' timers.
+    (b"AInv", "wwww wwwwwww t w", "[www] w r [w] [t]"),
+    // CAbilityMilitiaConvert (`FUN_6f648660`): a timer.
+    (b"Amic", "wwww wwwwwww t w", "t"),
+    // CAbilityNeutralDetectAoe (the buff base's tail; own `FUN_6f42ef50`: from build
+    // 6037 a word).
+    (b"Andt", "wwww wwwwwww t w w", "wwwww"),
+    // CAbilityNeutral (`FUN_6f42dd20`): counted references, a reference, a counted
+    // list of three words, a reference, and a timer.
+    (b"Aneu", "wwww wwwwwww t w", "[r] r [www] r t"),
+    // COrderPoint (`FUN_6f6961c0`, own `FUN_6f696bd0`): the order's three words and a
+    // reference.
+    (b"ord.", "wwwwww ff", "www r"),
     (b"tsk.", "wwwww fff", "r"),
     (b"tskt", "wwwwwwww f", "r"),
     // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to

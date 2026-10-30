@@ -474,11 +474,20 @@ these are the findings behind them.
     223.081818).
   - At the hall the lumber is given and its own order made as with gold, the order
     home's tree and the new order's five going as the step ends.
+  - A chop takes as much of the tree's life as the lumber it gives; the chop that
+    takes the last fells it (a Booty Bay tree at its fiftieth): its pathing lifted
+    and the last three of its five `^pmr` freed at that chop (turn 2775), the worker
+    stopping as that chop's backswing ends (its target gone, `FUN_6f40bce0`), full
+    or not.  At the hall a felled tree's worker is ordered to the live tree nearest
+    it within Ahar's Area (`FUN_6f416740`, `FUN_6f4153a0`, `FUN_6f439e00`: the trees
+    about it enumerated, each judged by a path search, the cheapest taken; read: the
+    one 128 from the felled, four others nearer the hall), its order and walk as any
+    trip's.  The port takes the nearest by distance and does not yet run a tree's
+    death events; a tree felled short of a full load is not yet read.
   The lumber game (`docs/reference/bootybay_lumber_*`) agrees with the original's trace
-  and keepalives to its end, 1422 turns.  A longer one (read, not yet compared) shows
-  the tree felled at its fiftieth chop, the worker's next order on another tree, and
-  the main and agent clocks set back by about 300 seconds past 300 (295.94 at turn
-  2965, 6.83 at 3074).
+  and keepalives to its end, 1422 turns, and a longer one (its tree felled, the
+  worker on to the next, the clocks set back at 300 seconds, a night fallen) to turn
+  3206, midnight.
 - A player's order to walk to a point (traced: a Booty Bay peon sent across the
   ground, `docs/reference/bootybay_moves_*`) is the engine's walk, as a wanderer's
   with its way searched 700 nodes deep (`World::start_player_walk`).  Its order has

@@ -79,6 +79,13 @@ pub struct GoldRun {
     /// When it began to chop (f32 bits on the agent queue).
     #[serde(default)]
     pub chop_start: u32,
+    /// When its chopping fells its tree, if it does (the chop's damage point, f32 bits
+    /// on the agent queue).
+    #[serde(default)]
+    pub fells_at: Option<u32>,
+    /// The chops it makes there (`World::chops_planned`).
+    #[serde(default)]
+    pub chops: u32,
     pub phase: Phase,
     pub kind: Kind,
     /// The order's objects' slots, by place in its list (those freed already kept).
@@ -149,7 +156,13 @@ impl GoldRun {
 /// With `wrap` (the main clock as it was set back), the first event due after it is set
 /// back (`motion::WRAP`) and the rest counted from it, the end so set back in any case
 /// (read: begun at 295.938477, over at 6.838403).
+#[cfg(test)]
 fn chops_end(start: u32, point: u32, back: u32, dur: u32, chops: u32, wrap: Option<u32>) -> u32 {
+    chops_times(start, point, back, dur, chops, wrap).1
+}
+
+/// `chops_end`, with the last chop's own time first.
+fn chops_times(start: u32, point: u32, back: u32, dur: u32, chops: u32, wrap: Option<u32>) -> (u32, u32) {
     let least = 0.01f32.to_bits();
     let at_least = |t: u32| if f32::from_bits(t) < f32::from_bits(least) { least } else { t };
     let back = at_least(back);
@@ -166,16 +179,22 @@ fn chops_end(start: u32, point: u32, back: u32, dur: u32, chops: u32, wrap: Opti
         }
     };
     let mut t = start;
+    let mut chop = start;
     for i in 0..chops {
         t = due(t, point);
+        chop = t;
         t = due(t, back);
         if i + 1 < chops {
             t = due(t, gap);
         }
     }
+    // Dues before the clocks were set back are set back too.
     match wrap {
-        Some(_) => ef::sub(t, crate::motion::WRAP),
-        None => t,
+        Some(w) => {
+            let back = |v: u32| if f32::from_bits(v) > f32::from_bits(ef::sub(w, crate::motion::WRAP)) + 150.0 { ef::sub(v, crate::motion::WRAP) } else { v };
+            (back(chop), back(t))
+        }
+        None => (chop, t),
     }
 }
 
@@ -244,7 +263,7 @@ impl World {
                 r.at_mine &= !r.entered;
                 r
             }
-            None => GoldRun { mine, lumber, chop_start: 0, phase: Phase::ToMine, kind: if player { Kind::Player } else { Kind::Own }, order, entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits() },
+            None => GoldRun { mine, lumber, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: if player { Kind::Player } else { Kind::Own }, order, entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits() },
         };
         let Some(u) = self.unit_mut(h) else { return };
         u.extra.gold_run = Some(run);
@@ -418,7 +437,10 @@ impl World {
         self.tags.walk_ended(path, serial);
         let agent = self.step_agent.get(k).copied().unwrap_or(self.agent_step);
         run.chop_start = agent;
-        run.phase = Phase::Chopping(self.chopped_at(h, agent, None));
+        let (end, fells, chops) = self.chops_planned(h, run.mine, agent, None);
+        run.phase = Phase::Chopping(end);
+        run.fells_at = fells;
+        run.chops = chops;
         if let Some(u) = self.unit_mut(h) {
             u.extra.gold_run = Some(run);
         }
@@ -432,7 +454,23 @@ impl World {
     /// out (`FUN_6f436ca0`).  The times are the unit's weapon against trees (a peon's
     /// 0.5 and 0.5, Dur 1.1: 10.9 seconds for ten chops).
     pub(crate) fn chopped_at(&self, h: u32, start: u32, wrap: Option<u32>) -> u32 {
-        let Some(u) = self.unit(h) else { return start };
+        let tree = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).map_or(0, |r| r.mine);
+        self.chops_planned(h, tree, start, wrap).0
+    }
+
+    /// When the tree falls under a worker's chopping begun at `start`, as `chops_planned`.
+    pub(crate) fn fells_at(&self, h: u32, start: u32, wrap: Option<u32>) -> Option<u32> {
+        let tree = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).map_or(0, |r| r.mine);
+        self.chops_planned(h, tree, start, wrap).1
+    }
+
+    /// When a worker that starts to swing at `start` stops (`chopped_at`): its load
+    /// full or, sooner, its tree felled (each chop taking as much of its life as the
+    /// lumber it gives, `FUN_6f405110`), then too as that chop's backswing runs out
+    /// (`FUN_6f40bce0` finds its target gone); when the tree falls, if it does; and its
+    /// chops.
+    pub(crate) fn chops_planned(&self, h: u32, tree: u32, start: u32, wrap: Option<u32>) -> (u32, Option<u32>, u32) {
+        let Some(u) = self.unit(h) else { return (start, None, 0) };
         let (point, back) = (1..=2)
             .filter_map(|n| crate::sim::weapon_n(self, u.type_id, n))
             .find(|w| w.targets.contains("tree"))
@@ -442,7 +480,35 @@ impl World {
             None => (1.1, 1, 10),
         };
         let chops = ((cap - u.carry_lumber).max(1) + per.max(1) - 1) / per.max(1);
-        chops_end(start, point.to_bits(), back.to_bits(), dur.to_bits(), chops as u32, wrap)
+        let life = match self.handles.get(tree) {
+            Some(Obj::Destructable(d)) => d.life,
+            _ => f32::INFINITY,
+        };
+        let fells = (life / per.max(1) as f32).ceil().max(1.0);
+        let n = if fells <= chops as f32 { fells as i32 } else { chops };
+        let (chop, end) = chops_times(start, point.to_bits(), back.to_bits(), dur.to_bits(), n as u32, wrap);
+        (end, (fells <= chops as f32).then_some(chop), n as u32)
+    }
+
+    /// A worker's tree falls at its chop (`chops_planned`): its life gone, its pathing
+    /// lifted, and the last three of its five regions freed (read: a Booty Bay tree's,
+    /// at its fiftieth chop, turn 2775).  Its death's script events are not yet run.
+    pub fn tree_falls(&mut self, h: u32) {
+        let Some(tree) = self.unit_mut(h).and_then(|u| u.extra.gold_run.as_mut()).and_then(|r| {
+            r.fells_at = None;
+            Some(r.mine)
+        }) else { return };
+        let oid = match self.handles.get_mut(tree) {
+            Some(Obj::Destructable(d)) if d.life > 0.0 => {
+                d.life = 0.0;
+                d.oid.0
+            }
+            _ => return,
+        };
+        crate::natives::objects::unstamp_destructable(self, tree);
+        for k in 4..7 {
+            self.tags.release(oid + k);
+        }
     }
 
     /// Its load full (`h`'s due on the agent queue): the lumber it chopped taken from
@@ -457,9 +523,12 @@ impl World {
             None => (1, 10),
         };
         let cap = cap + self.unit(h).map_or(0, |u| self.upgrade_bonus(u.owner, u.type_id).lumber);
-        let taken = cap - self.unit(h).map_or(0, |u| u.carry_lumber);
+        let carried = self.unit(h).map_or(0, |u| u.carry_lumber);
+        let taken = (cap - carried).min(run.chops as i32 * per).max(0);
         if let Some(Obj::Destructable(d)) = self.handles.get_mut(run.mine) {
-            d.life -= taken as f32 * per.signum() as f32;
+            if d.life > 0.0 {
+                d.life = (d.life - taken as f32).max(0.0);
+            }
         }
         let serial = self.tags.born;
         let order: Vec<u32> = RETURN.iter().map(|c| self.tags.take(c)).collect();
@@ -476,7 +545,7 @@ impl World {
         }
         if let Some(u) = self.unit_mut(h) {
             u.carry_gold = 0;
-            u.carry_lumber = cap;
+            u.carry_lumber = carried + taken;
         }
         let hall = self.drop_off(h).unwrap_or(0);
         run.phase = Phase::ToHall(hall);
@@ -630,6 +699,34 @@ impl World {
             u.carry_gold = 0;
             u.carry_lumber = 0;
         }
+        // A felled tree's worker goes to the live tree nearest it within Ahar's Area
+        // (`FUN_6f416740`, `FUN_6f4153a0`: its search, by a path search from it to each,
+        // here by distance; read: a Booty Bay peon's next tree, 128 from the felled one,
+        // where four others lay nearer the hall).
+        let mut run = run;
+        if run.lumber && !self.is_tree_pub(run.mine) {
+            match self.next_tree(h, run.mine) {
+                Some(t) => {
+                    run.mine = t;
+                    if let Some(u) = self.unit_mut(h) {
+                        u.harvest_source = t;
+                    }
+                }
+                None => {
+                    let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
+                    self.tags.walk_ended(path, serial);
+                    for i in [7, 6, 5, 4, 3, 2, 1, 0] {
+                        self.tags.release_in_step(run.order[i]);
+                    }
+                    if let Some(u) = self.unit_mut(h) {
+                        u.extra.gold_run = None;
+                        u.action = Action::Idle;
+                        u.order = Order::default();
+                    }
+                    return;
+                }
+            }
+        }
         let codes: &[&Code] = if run.lumber { &LUMBER_OWN } else { &HARVEST_OWN };
         let next_serial = self.tags.born;
         let order: Vec<u32> = codes.iter().map(|c| self.tags.take(c)).collect();
@@ -643,7 +740,6 @@ impl World {
         }
         let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
         self.tags.walk_ended(path, serial);
-        let mut run = run;
         run.phase = Phase::ToMine;
         run.kind = Kind::Own;
         run.ghosted = true;
@@ -655,6 +751,21 @@ impl World {
             u.path.clear();
             u.order = Order { id: crate::natives::basic::order_id("harvest"), target_x: 0.0, target_y: 0.0, target: 0 };
         }
+    }
+
+    /// The live tree nearest a felled one within the worker's Ahar Area, the first in
+    /// the trees' order among those as near.
+    fn next_tree(&self, h: u32, felled: u32) -> Option<u32> {
+        let (fx, fy) = self.widget_pos(felled)?;
+        let area = self.ability_with_code(h, "Ahar").map_or(900.0, |(a, l)| self.ability_real(a, "Area", l));
+        self.destructable_order
+            .iter()
+            .copied()
+            .filter(|&d| d != felled && self.is_tree_pub(d) && !self.footprint(d).is_empty())
+            .filter_map(|d| self.widget_pos(d).map(|(x, y)| ((x - fx).hypot(y - fy), d)))
+            .filter(|&(dist, _)| dist <= area)
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|x| x.1)
     }
 
     /// Where a walker walks: a move order's point, or a gold run's structure's middle.
@@ -778,7 +889,7 @@ mod tests {
     /// original set them (`FUN_6f15ff40`'s writes, cells a second).
     #[test]
     fn a_peons_speed_is_tuned_as_the_originals() {
-        let mut run = GoldRun { mine: 0, lumber: false, chop_start: 0, phase: Phase::ToMine, kind: Kind::Player, order: Vec::new(), entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits() };
+        let mut run = GoldRun { mine: 0, lumber: false, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: Kind::Player, order: Vec::new(), entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits() };
         // As winedbg printed them, to six places.
         let speed = |r: &GoldRun| (f32::from_bits(ef::mul(190f32.to_bits(), r.factor)) as f64 / 32.0 * 1e6).round() / 1e6;
         run.tune(42.838799f32.to_bits(), 1f32.to_bits());

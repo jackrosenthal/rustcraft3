@@ -1737,6 +1737,7 @@ impl World {
                 crate::goldrun::Phase::Chopping(_) => Some(r.chop_start),
                 _ => None,
             });
+            let fell = chop.and_then(|start| self.fells_at(h, start, Some(old)));
             let chop = chop.map(|start| self.chopped_at(h, start, Some(old)));
             let Some(u) = self.unit_mut(h) else { continue };
             if let Some(m) = u.extra.mover.as_mut() {
@@ -1752,7 +1753,12 @@ impl World {
                 r.chop_start = back(r.chop_start);
                 match &mut r.phase {
                     crate::goldrun::Phase::InMine(at) => *at = back(*at),
-                    crate::goldrun::Phase::Chopping(at) => *at = chop.unwrap_or(back(*at)),
+                    crate::goldrun::Phase::Chopping(at) => {
+                        *at = chop.unwrap_or(back(*at));
+                        if r.fells_at.is_some() {
+                            r.fells_at = fell;
+                        }
+                    }
                     _ => {}
                 }
             }

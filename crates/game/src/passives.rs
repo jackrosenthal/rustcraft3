@@ -231,10 +231,20 @@ impl World {
         // A gold run's mine timer falls due on the agent queue as a wait does, its walk
         // home starting with the first step after it (read: a peon's first step home
         // 34 steps after it went in, its timer 1 second).
-        let runners: Vec<(u32, u32)> = self.unit_order.iter().filter_map(|&h| match self.unit(h)?.extra.gold_run.as_ref()?.phase {
-            crate::goldrun::Phase::InMine(at) | crate::goldrun::Phase::Chopping(at) => Some((h, at)),
-            _ => None,
-        }).collect();
+        // So does a worker's tree falling under its chop.
+        let runners: Vec<(u32, u32)> = self
+            .unit_order
+            .iter()
+            .flat_map(|&h| {
+                let r = self.unit(h).and_then(|u| u.extra.gold_run.as_ref());
+                let at = r.and_then(|r| match r.phase {
+                    crate::goldrun::Phase::InMine(at) | crate::goldrun::Phase::Chopping(at) => Some(at),
+                    _ => None,
+                });
+                let fell = r.filter(|r| matches!(r.phase, crate::goldrun::Phase::Chopping(_))).and_then(|r| r.fells_at);
+                fell.map(|f| (h, f)).into_iter().chain(at.map(|a| (h, a)))
+            })
+            .collect();
         for (h, at) in runners {
             if self.agent_tick(at).is_none() {
                 continue;
@@ -277,7 +287,10 @@ impl World {
             }
             last = Some(t);
             let phase = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).map(|r| r.phase);
-            if matches!(phase, Some(crate::goldrun::Phase::InMine(_))) {
+            let falls = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).is_some_and(|r| r.fells_at == Some(at));
+            if falls {
+                self.tree_falls(h);
+            } else if matches!(phase, Some(crate::goldrun::Phase::InMine(_))) {
                 self.leave_gold_mine(h, k);
             } else if matches!(phase, Some(crate::goldrun::Phase::Chopping(_))) {
                 self.leave_tree(h, k);

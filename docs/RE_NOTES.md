@@ -1564,7 +1564,19 @@ Formats the port made its own, to be replaced by the original's:
   target at +0x30 of its data (`FUN_6f9d8a90`, the `ordt` and the walk's `tskt`): for
   the recycled ghoul, `FUN_6f9d87d0` with order 0xd0012 and target a captain (traced
   at the order's making, `FUN_6f69bd80`: its target's class CCaptainAI, the `AI-C`
-  CreateCaptains made), so the ghoul walks to its captain.  In
+  CreateCaptains made), so the ghoul walks to its captain.  The port makes the
+  recycle's objects and frees (`World::recycle_objects`): Forestwalk with an undead
+  computer, played alone (`fws.w3x`), agrees with the original's object table at its
+  first timer birth for birth, and the network game with the computer to turn 2.
+  At 0.1 seconds the original's AI then acts (traced, `birthsai.sh`): its main
+  thread starts a thread (`AItr`, `FUN_6f9c01e3`); HarvestGold sends three acolytes
+  to the haunted mine (`FUN_6f9c73f6`, `FUN_6f9c7892`: each an order, its idle task,
+  the harvest's `ordt` from `FUN_6f9c9431`, the harvest ability's tasks, `tskA`,
+  three `task`, three `tskt`, three `task`, `tskA`, and its walk's three); three
+  threads more; and a build order (`FUN_6f9cafe3`, `FUN_6f9cb791`, `FUN_6f9cb885`:
+  a worker's harvest stopped, `` `rcm `` and `` `rtl `` of its harvest ability, an order
+  with a point, `ord.`, the build ability's tasks, two `tsk.`, a `tskO`, and its walk):
+  83 objects the port's AI does not yet make, nor at that time.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

@@ -2299,7 +2299,7 @@ impl World {
                 }
             };
         }
-        log::trace!("{}{:?}", self.native_names.get(native as usize).map_or("?", |s| s.as_str()), args);
+        log::trace!("{}{:?} born {}", self.native_names.get(native as usize).map_or("?", |s| s.as_str()), args, self.tags.born);
         match self.natives.get(native as usize).copied().flatten() {
             Some(f) => {
                 let r = f(self, vm, args);

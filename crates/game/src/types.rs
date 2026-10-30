@@ -539,6 +539,9 @@ pub struct UnitExtra {
     /// A creep's or computer's unit's AI objects (`uref`, `AI-U`), slot and birth.
     #[serde(default)]
     pub ai_slots: Vec<(u32, u32)>,
+    /// A computer's unit's item pickup range (its AI's `` `pil `` for AInv).
+    #[serde(default)]
+    pub item_pil: Option<(u32, u32)>,
     /// A meld's fade-in at dawn: its timer and listener, freed as it ends.
     #[serde(default)]
     pub fade_slots: Vec<u32>,
@@ -817,6 +820,7 @@ impl Default for UnitExtra {
             flyer_pil: None,
             flyer_sleeping: false,
             ai_slots: Vec::new(),
+            item_pil: None,
             fade_slots: Vec::new(),
             detect_clock: None,
             detected_by: Vec::new(),

@@ -24,7 +24,7 @@ fn main() -> anyhow::Result<()> {
     if std::env::var("TAGS_DRAWS").is_ok() {
         w3_game::rng::TRACE.store(true, std::sync::atomic::Ordering::Relaxed);
     }
-    let mut g = w3_game::Game::load_with_keys(data.chain.clone(), data.version as i32, None)?;
+    let mut g = w3_game::Game::load_for(data.chain.clone(), data.version as i32, None, w3_game::Start::of(&lobby))?;
     g.config()?;
     g.world.seed = seed;
     g.start_lobby(&lobby, war3::advanced::DEFAULT_FLAGS)?;

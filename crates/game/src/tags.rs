@@ -674,6 +674,7 @@ impl crate::world::World {
         // abilities' AI start, FUN_6f67dff0; AInv's at FUN_6f606a20).
         let mut extra = 0;
         let mut ai_refs = None;
+        let mut item_pil = None;
         if (owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !building) || computer {
             ai_refs = Some(codes.len());
             codes.extend([*b"uref", *b"AI-U"]);
@@ -686,6 +687,7 @@ impl crate::world::World {
             ai = Some(codes.len());
             codes.extend([*b"+ord", *b"tskA", *b"task", *b"task", *b"task", *b"task", *b"tskA", *b"+ord", *b"task"]);
             if codes.contains(b"AInv") {
+                item_pil = Some(codes.len());
                 codes.push(*b"`pil");
             }
         }
@@ -734,6 +736,7 @@ impl crate::world::World {
             u.extra.footprint_slots = footprint.map(|f| slots[f..f + 3].to_vec()).unwrap_or_default();
             u.extra.flyer_pil = flyer.filter(|_| !sleeps).map(|k| slots[k]);
             u.extra.ai_slots = ai_refs.map(|k| vec![(slots[k], births[k]), (slots[k + 1], births[k + 1])]).unwrap_or_default();
+            u.extra.item_pil = item_pil.map(|k| (slots[k], births[k]));
             u.extra.flyer_sleeping = flyer.is_some() && sleeps;
             let rest_start = mods_end + if building { 3 } else { 0 };
             let pair = |k: usize| (slots[k], births[k]);

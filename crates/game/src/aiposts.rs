@@ -131,8 +131,63 @@ impl World {
     /// RecycleGuardPosition (FUN_6f9bde20): as RemoveGuardPosition, then the unit is
     /// taken in afresh and may keep another post.
     pub fn recycle_guard_position(&mut self, h: u32) {
+        let joined = self.unit(h).is_some_and(|u| self.ai.contains_key(&u.owner));
+        if joined {
+            self.recycle_objects(h);
+        }
         self.remove_guard_position(h);
         self.ai_new_unit(h);
+    }
+
+    /// The objects a computer's unit's recycling makes and frees (traced on Forestwalk,
+    /// the undead start's ghoul, `FUN_6f9bde20`): RemoveGuardPosition's stop order
+    /// (`+ord`, `tskA`, four `task`, `tskA`; `FUN_6f9be910`); its unit AI made anew
+    /// (`FUN_6f9c3660`: `uref`, `AI-U`, a stop order as above, `FUN_6f6803f0(1)`, a
+    /// `uref` as it joins the AI's lists); its AI's order (`FUN_6f693450`: `+ord` and the
+    /// idle unit's task, then the walk to its captain, `FUN_6f9d87d0`: `ordt`, `tskA`,
+    /// `tskO`, three `task`, `tskt`, five `task`, `tskA`, its path's `^clg` freed at
+    /// once, `^clu`, `l^pa`); and its abilities' AI (`FUN_6f67dff0`: its inventory's
+    /// pickup range, `` `pil ``).  As the next turn starts: its old `uref` and `AI-U`, the
+    /// first stop's (its `tskA`s, its tasks the last first, its `+ord`), its old
+    /// `` `pil ``, the second stop's so, the walk's task and `+ord`, its last `tskA`,
+    /// and its five tasks the last first.
+    fn recycle_objects(&mut self, h: u32) {
+        let stop: [&crate::tags::Code; 7] = [b"+ord", b"tskA", b"task", b"task", b"task", b"task", b"tskA"];
+        let first: Vec<u32> = stop.iter().map(|c| self.tags.take(c)).collect();
+        let fresh = [self.tags.take(b"uref"), self.tags.take(b"AI-U")];
+        let second: Vec<u32> = stop.iter().map(|c| self.tags.take(c)).collect();
+        let listed = self.tags.take(b"uref");
+        let walk_codes: [&crate::tags::Code; 18] = [b"+ord", b"task", b"ordt", b"tskA", b"tskO", b"task", b"task", b"task", b"tskt", b"task", b"task", b"task", b"task", b"task", b"tskA", b"^clg", b"^clu", b"l^pa"];
+        let walk: Vec<u32> = walk_codes.iter().map(|c| self.tags.take(c)).collect();
+        self.tags.release(walk[15]);
+        let pil = self.tags.take(b"`pil");
+        let live = |w: &World, (s, b): (u32, u32)| w.tags.live.get(&s).is_some_and(|e| e.1 == b);
+        let (old_ai, old_pil) = self.unit(h).map(|u| (u.extra.ai_slots.clone(), u.extra.item_pil)).unwrap_or_default();
+        let old_ai: Vec<u32> = old_ai.into_iter().filter(|&o| live(self, o)).map(|o| o.0).collect();
+        for o in old_ai {
+            self.tags.doom(o);
+        }
+        let stopped = |w: &mut World, s: &[u32]| {
+            for k in [1, 6, 5, 4, 3, 2, 0] {
+                w.tags.doom(s[k]);
+            }
+        };
+        stopped(self, &first);
+        if let Some(o) = old_pil.filter(|&o| live(self, o)) {
+            self.tags.doom(o.0);
+        }
+        stopped(self, &second);
+        for k in [1, 0, 14, 13, 12, 11, 10, 9] {
+            self.tags.doom(walk[k]);
+        }
+        let births = |w: &World, s: u32| (s, w.tags.live.get(&s).map_or(0, |e| e.1));
+        let ai = vec![births(self, fresh[0]), births(self, fresh[1])];
+        let item = births(self, pil);
+        let _ = listed;
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.ai_slots = ai;
+            u.extra.item_pil = Some(item);
+        }
     }
 
     /// RemoveAllGuardPositions (FUN_6f9c9a60): the computer player's guards leave

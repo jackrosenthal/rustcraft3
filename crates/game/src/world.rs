@@ -206,6 +206,13 @@ pub struct World {
     #[serde(default)]
     pub playable: Rect,
     pub time_of_day: f32,
+    /// Whether the engine has it as day (`guard::time_of_day_moved`).
+    #[serde(default)]
+    pub daytime: bool,
+    /// Whether a trigger run now lets its execution go at the tick's end (with the
+    /// orders' objects) rather than as the next turn starts.
+    #[serde(skip)]
+    pub exec_at_tick_end: bool,
     /// The main clock in seconds since the game began (across its settings back) when
     /// the time of day last moved on.
     #[serde(default)]
@@ -798,6 +805,8 @@ impl World {
             // reads 0 at start in the original; melee games take 8 from Blizzard.j's
             // MeleeStartingVisibility).
             time_of_day: 0.0,
+            daytime: false,
+            exec_at_tick_end: false,
             time_of_day_clock: 0.0,
             time_of_day_scale: 1.0,
             time_of_day_suspended: false,
@@ -1238,7 +1247,11 @@ impl World {
             self.run_thread(vm, t, ctx);
         }
         // Released as its actions end (traced; one that sleeps is taken as ended here).
-        self.tags.doom(execution);
+        if self.exec_at_tick_end {
+            self.tags.issued.push(execution);
+        } else {
+            self.tags.doom(execution);
+        }
     }
 
     /// Runs a thread with an event context until it finishes or sleeps.
@@ -1419,6 +1432,11 @@ impl World {
 
     pub fn fire(&mut self, vm: &mut Vm, ctx: EventCtx, pred: impl Fn(&World, &EventKind) -> bool) {
         let regs: Vec<u32> = self.events.iter().copied().filter(|&e| matches!(self.handles.get(e), Some(Obj::Event(r)) if pred(self, &r.kind))).collect();
+        self.fire_registrations(vm, ctx, regs, true);
+    }
+
+    /// `fire_registrations` for the engine's other modules.
+    pub(crate) fn fire_registrations_pub(&mut self, vm: &mut Vm, ctx: EventCtx, regs: Vec<u32>) {
         self.fire_registrations(vm, ctx, regs, true);
     }
 

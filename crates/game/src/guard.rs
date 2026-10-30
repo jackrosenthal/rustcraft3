@@ -118,9 +118,10 @@ impl World {
         }
     }
 
-    /// Night, when creeps sleep.
+    /// Night, when creeps sleep: the engine's day and night, which change 0.01 past
+    /// dawn and dusk (`time_of_day_moved`).
     pub(crate) fn is_night(&self) -> bool {
-        !(6.0..18.0).contains(&self.time_of_day)
+        !self.daytime
     }
 
     /// A newly made creep that may sleep falls asleep if it is night (the original's
@@ -270,27 +271,57 @@ impl World {
         use crate::types::EventKind;
         let fires = |k: &EventKind| matches!(*k, EventKind::GameState { state: 2, op, value } if Self::time_event_fires(op, value, old, new, set));
         let fired: Vec<u32> = self.events.iter().copied().filter(|&e| matches!(self.handles.get(e), Some(crate::types::Obj::Event(r)) if fires(&r.kind))).collect();
-        self.fire(vm, crate::types::EventCtx::default(), |_, k| fires(k));
-        // Each fired event's timer is replaced, the old one released (traced).
-        for e in fired {
-            let s = self.tags.take(b"`rtl");
-            if let Some(old) = self.tags.event_timers.insert(e, s) {
-                self.tags.doom(old);
+        if set {
+            self.fire(vm, crate::types::EventCtx::default(), |_, k| fires(k));
+            // Each fired event's timer is replaced, the old one released (traced).
+            for e in fired {
+                let s = self.tags.take(b"`rtl");
+                if let Some(old) = self.tags.event_timers.insert(e, s) {
+                    self.tags.doom(old);
+                }
             }
+        } else {
+            // As the time runs each event is a listener on it (`FUN_6f27a110`), the
+            // latest made firing first; one for equal is replaced by one the other way
+            // before its trigger runs (`FUN_6f27c5c0`); the old listener and the
+            // triggers' executions go at the tick's end (read: at dusk the Night
+            // trigger's `+tex`, the Dusk event's `` `rtl `` and `+tex`, then those two
+            // `+tex` and the old listener freed, in the order let go).
+            for e in fired.into_iter().rev() {
+                let equal = matches!(self.handles.get(e), Some(crate::types::Obj::Event(r)) if matches!(r.kind, EventKind::GameState { op: 2, .. }));
+                if equal {
+                    let s = self.tags.take(b"`rtl");
+                    if let Some(old) = self.tags.event_timers.insert(e, s) {
+                        self.tags.issued.push(old);
+                    }
+                }
+                self.exec_at_tick_end = true;
+                self.fire_registrations_pub(vm, crate::types::EventCtx::default(), vec![e]);
+                self.exec_at_tick_end = false;
+            }
+            self.tags.flush_issued();
         }
-        let night = |t: f32| !(6.0..18.0).contains(&t);
-        if night(old) == night(new) {
+        // Day and night change on listeners of their own, 0.01 past dawn and dusk
+        // (`FUN_6f283c80`): by day, night comes as the time passes Dusk and 0.01 or
+        // falls below Dawn less 0.01; by night, day comes as it passes Dawn and 0.01 or
+        // falls below Dusk less 0.01 (read: the change at main clock 200.199966, the
+        // dusk triggers at 200.0).
+        let (dawn, dusk, eps) = (self.misc_f32("Dawn", 6.0), self.misc_f32("Dusk", 18.0), 0.01);
+        let day = if self.daytime { !(new >= dusk + eps || new < dawn - eps) } else { new >= dawn + eps && new < dusk - eps };
+        if day == self.daytime {
             return;
         }
-        let day = !night(new);
+        self.daytime = day;
         // The change's timers; the engine's day timer before them is released (traced:
         // slot 0x287 at Booty Bay's first day; which new one takes its place is not yet
         // measured, the first here).
         let first = self.tags.take(b"`rtl");
-        if day {
-            self.tags.take(b"`rtl");
-        }
+        let second = day.then(|| self.tags.take(b"`rtl"));
+        // Both of the last change's go (read: the first dawn's two at nightfall).
         if let Some(old) = self.tags.day_timer.replace(first) {
+            self.tags.doom(old);
+        }
+        if let Some(old) = std::mem::replace(&mut self.tags.day_timer_2, second) {
             self.tags.doom(old);
         }
         // Dead ones too, while their corpses remain (measured: a creep killed by script).
@@ -308,7 +339,21 @@ impl World {
             if !day {
                 let allowed = self.players.get(u.owner as usize).is_none_or(|p| p.get_state(player_state::NO_CREEP_SLEEP) == 0);
                 let idle = matches!(u.action, Action::Idle) && !u.extra.returning && u.swing.is_none();
-                if u.extra.can_sleep && !u.hidden && allowed && idle {
+                if u.extra.can_sleep && !u.hidden && allowed && idle && !u.extra.sleeping {
+                    // Its spells' listeners go as it sleeps, the last first, Ensnare's
+                    // in-range object after the listener made before it (read: at
+                    // nightfall, after every unit's object of the change).
+                    let (listeners, pil) = self.unit_mut(h).map(|u| (std::mem::take(&mut u.extra.mana_listeners), u.extra.ensnare_pil.take())).unwrap_or_default();
+                    for (_, s) in listeners.iter().rev() {
+                        self.tags.doom(*s);
+                        if let Some((_, p)) = pil.filter(|&(r, _)| r == *s) {
+                            self.tags.doom(p);
+                        }
+                    }
+                    if let Some((r, p)) = pil.filter(|&(r, _)| !listeners.iter().any(|l| l.1 == r)) {
+                        let _ = r;
+                        self.tags.doom(p);
+                    }
                     self.fall_asleep(h);
                 }
                 continue;
@@ -324,19 +369,22 @@ impl World {
             // Magic; its Heal's the last, re-armed as its mana passes 5.1).
             let mut costs = Vec::new();
             let mut slots = Vec::new();
+            let mut pil = None;
             for a in spells {
                 let Some(code) = self.objects.abilities.get(a).map(|o| crate::objects::id_from_str(o.str("code").trim())) else { continue };
                 if table.objects(&a, &code).contains(b"`rtl") {
-                    slots.push(self.tags.take(b"`rtl"));
+                    let s = self.tags.take(b"`rtl");
+                    slots.push(s);
                     costs.push(self.objects.abilities.get(a).map_or(0.0, |o| o.level_real("Cost", 1)) + 0.1);
                     if code == *b"Aens" {
-                        self.tags.take(b"`pil");
+                        pil = Some((s, self.tags.take(b"`pil")));
                     }
                 }
             }
             slots.reverse();
             if let Some(u) = self.unit_mut(h) {
                 u.extra.mana_listeners = costs.into_iter().zip(slots).collect();
+                u.extra.ensnare_pil = pil;
             }
             self.set_asleep(h, false);
         }

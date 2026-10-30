@@ -1116,9 +1116,14 @@ these are the findings behind them.
     by night, on rising past Dawn plus 0.01 or falling below Dusk less 0.01 (0.01 at
     0x6fcd53a4).  So night comes at 18.01 (read: the change at main clock
     200.199966, turn 2006, two turns after the dusk triggers), with its one
-    `` `rtl `` and each unit's `` `rcm ``.  The port changes day and night with the
-    triggers still (open), and what midnight's wrap fires (three `` `rtl ``, two
-    `+tex`) is not yet read.
+    `` `rtl `` and each unit's `` `rcm ``, the last change's listeners (two by day)
+    freed after them.  Creeps sleep by this night, not the time's (`World::is_night`),
+    and each that falls asleep then frees its spells' listeners, the last first, a
+    fired one's replacement among them (made as its mana passed the cost: one
+    waiting for it to fall), Ensnare's `` `pil `` after the listener made before it
+    (read: twenty objects freed at nightfall).  What midnight's wrap fires (three
+    `` `rtl ``, two `+tex`) is not yet read.  With this the long lumber game agrees
+    with the original to turn 2774, where its tree falls.
   - The timers a creep's Hurl Boulder and Thunder Clap (ACtb, ACtc) make as its mana is
     first set are listeners on its mana rising past each spell's cost plus 0.1, the
     last spell's in the first slot (read: both Granite Golems' Hurl Boulder listeners,

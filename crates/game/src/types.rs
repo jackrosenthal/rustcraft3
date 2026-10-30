@@ -526,6 +526,10 @@ pub struct UnitExtra {
     /// 0.1 (CPoReThresholdLis, `` `rtl ``): each threshold with its slot.
     #[serde(default)]
     pub mana_listeners: Vec<(f32, u32)>,
+    /// Ensnare's in-range object as its creep woke (`` `pil ``), and the listener made
+    /// just before it.
+    #[serde(default)]
+    pub ensnare_pil: Option<(u32, u32)>,
     /// The step of this tick its walk begins with (its order given after the one before).
     #[serde(default)]
     pub walk_from: Option<usize>,
@@ -772,6 +776,7 @@ impl Default for UnitExtra {
             facing_goal: false,
             walk_from: None,
             mana_listeners: Vec::new(),
+            ensnare_pil: None,
             sleep_effect: 0,
             sleep_show_wait: None,
             warp_inside: 0,

@@ -445,13 +445,13 @@ impl World {
         let n = self.mana_due.iter().take_while(|e| upto.is_none_or(|t| e.0 <= t)).count();
         let fired: Vec<(i64, f32, u32, u32)> = self.mana_due.drain(..n).collect();
         for group in fired.chunk_by(|a, b| a.0 == b.0) {
-            for _ in group {
-                self.tags.take(b"`rtl");
-            }
-            for &(_, _, h, slot) in group {
+            let new: Vec<u32> = group.iter().map(|_| self.tags.take(b"`rtl")).collect();
+            for (&(_, _, h, slot), &n) in group.iter().zip(&new) {
                 self.tags.release(slot);
-                if let Some(u) = self.unit_mut(h) {
-                    u.extra.mana_listeners.retain(|l| l.1 != slot);
+                // The new one waits for the mana to fall (not yet followed: it never
+                // fires here), kept in the old one's place, to go as the creep sleeps.
+                if let Some(l) = self.unit_mut(h).and_then(|u| u.extra.mana_listeners.iter_mut().find(|l| l.1 == slot)) {
+                    *l = (f32::INFINITY, n);
                 }
             }
         }

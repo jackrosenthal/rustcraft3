@@ -1000,6 +1000,13 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // global <name>: a map script variable's value, and the time of day.
+            "global" => {
+                if let Some(g) = &scene.game {
+                    eprintln!("{} = {:?}; time of day {}", a[i + 1], g.vm.global(&a[i + 1]), g.world.time_of_day);
+                }
+                i += 2;
+            }
             "state" => {
                 if let Some(g) = &scene.game {
                     let p = &g.world.players[g.world.local_player as usize];

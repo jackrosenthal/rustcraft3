@@ -2109,3 +2109,31 @@ impl SaveGame {
             .collect())
     }
 }
+
+impl SaveGame {
+    /// The script data (`ScriptData`), from the game's state.
+    pub fn script_data(&self) -> Result<ScriptData, Error> {
+        let g = self.state()?;
+        match g.parts.iter().find(|(n, _)| *n == "script data").map(|(_, f)| &f[..]) {
+            Some([Field::Bytes(b)]) => ScriptData::parse(b),
+            _ => Err(Error::Format("no script data")),
+        }
+    }
+
+    /// CGameState's indexed reals (`` `rel `` properties of its agent wrapper; 2 the time
+    /// of day, read: 15.5 set by SetTimeOfDay), each its index and four values.
+    pub fn game_reals(&self) -> Result<Vec<(u32, [f32; 4])>, Error> {
+        let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
+        let all: std::collections::HashMap<(u32, u32), &SavedObject> = objects.iter().flatten().map(|o| ((o.entry.tag, o.entry.birth), o)).collect();
+        let o = objects.iter().flatten().find(|o| &o.entry.kind.to_be_bytes() == b"+gam").ok_or(Error::Format("no game state"))?;
+        let mut out = Vec::new();
+        if let First::Agent { refs, .. } = o.first()? {
+            for r in refs {
+                if let Some(First::Real { base, values }) = all.get(&(r.0, r.1)).map(|p| p.first()).transpose()? {
+                    out.push((base.object.words[0], values));
+                }
+            }
+        }
+        Ok(out)
+    }
+}

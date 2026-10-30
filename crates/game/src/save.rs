@@ -143,14 +143,17 @@ impl Load {
 impl Game {
     /// Puts an original's saved game in place of a game just started on its map (its
     /// script's main run): its units (their type, owner, place, facing, life, and mana),
-    /// and its players' gold and lumber (saved in tenths).  Not yet: the rest (the time,
-    /// which the port's timers and sleeping threads count from; orders, buildings in
-    /// progress, items, destructables, the scripts' variables, timers, and threads),
-    /// which stay as the script just made them.
+    /// its players' gold and lumber (saved in tenths), the time of day, and the map
+    /// script's integer, real, and boolean variables (by name, arrays too).  Not yet:
+    /// the rest (the time, which the port's timers and sleeping threads count from;
+    /// orders, buildings in progress, items, destructables, the other variables, the
+    /// AI scripts', timers, and threads), which stay as the script just made them.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
         use crate::natives::units::{create_unit_exact, remove_unit};
         let units = s.units()?;
         let players = s.player_states()?;
+        let game_reals = s.game_reals()?;
+        let scripts = s.script_data()?;
         let w = &mut self.world;
         let origin = w.pathing.as_ref().map_or([0.0; 2], |p| p.origin);
         for h in w.unit_order.clone() {
@@ -171,6 +174,42 @@ impl Game {
             for (k, v) in states {
                 if matches!(k, 1 | 2 | 15 | 16) {
                     player.state.insert(k as i32, v / 10);
+                }
+            }
+        }
+        if let Some((_, v)) = game_reals.iter().find(|(k, _)| *k == 2) {
+            (w.time_of_day, w.time_of_day_exact, w.time_of_day_clock) = (v[0], v[0] as f64, w.time as f64);
+        }
+        // The map script's machine is the first; its values by type (the original's
+        // machine's: 4 integer, 5 real, 8 boolean, and 9, 10, and 13 their arrays; a
+        // real as its bits).
+        if let Some((_, m)) = scripts.machines.first() {
+            use w3_formats::w3z::Contents;
+            use w3_jass::{BaseType, Value};
+            let value = |kind: u32, v: u32| match kind {
+                4 | 9 => Some(Value::Int(v as i32)),
+                5 | 10 => Some(Value::Real(f32::from_bits(v))),
+                8 | 13 => Some(Value::Bool(v != 0)),
+                _ => None,
+            };
+            let vm = &mut self.vm;
+            for (name, v) in &m.globals {
+                let Some(&g) = vm.module.global_index.get(name.as_str()) else { continue };
+                let decl = &vm.module.globals[g as usize];
+                let base_matches = matches!((decl.base, v.kind), (BaseType::Integer, 4 | 9) | (BaseType::Real, 5 | 10) | (BaseType::Boolean, 8 | 13));
+                if decl.constant || !base_matches {
+                    continue;
+                }
+                match (&v.value, decl.array) {
+                    (Contents::One(x), false) => {
+                        if let Some(x) = value(v.kind, *x) {
+                            vm.globals[g as usize] = x;
+                        }
+                    }
+                    (Contents::Array(xs), true) => {
+                        vm.global_arrays[g as usize] = xs.iter().filter_map(|&x| value(v.kind, x)).collect();
+                    }
+                    _ => {}
                 }
             }
         }

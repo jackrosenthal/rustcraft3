@@ -41,5 +41,23 @@ fn main() {
             }
         }
         println!("first records: {read} read, {raw} not yet ({raws:?}), {bad} wrong");
+        let (mut read, mut raw, mut bad) = (0, 0, 0);
+        let mut raws: std::collections::BTreeMap<String, usize> = Default::default();
+        for o in objects.iter().flatten() {
+            match o.second() {
+                Ok(w3_formats::w3z::Second::Raw(_)) => {
+                    raw += 1;
+                    *raws.entry(code(o.entry.kind)).or_insert(0usize) += 1;
+                }
+                Ok(_) => read += 1,
+                Err(e) => {
+                    if bad < 5 {
+                        println!("  {}: {e}", code(o.entry.kind));
+                    }
+                    bad += 1
+                }
+            }
+        }
+        println!("second records: {read} read, {raw} not yet ({} kinds), {bad} wrong", raws.len());
     }
 }

@@ -416,3 +416,133 @@ impl SavedObject {
         Ok(out)
     }
 }
+
+/// An agent's handler lists as its record ends (CAgent's `FUN_6f0562b0` and
+/// `FUN_6f03eda0`): a counted table of keyed lists, the lists of events 0x40190064 to
+/// 0x40190068, and of events 0xd0000 to 0xd03ff (`FUN_6f0564e0`).  A list
+/// (`FUN_6f0563d0`): a count, then each handler's reference and its word (read: a
+/// destructable's ref 0x281 with event 0x80267).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Handlers {
+    pub keyed: Vec<(u32, Vec<(Ref, u32)>)>,
+    pub fixed: [Vec<(Ref, u32)>; 5],
+    pub events: Vec<Vec<(Ref, u32)>>,
+}
+
+impl Handlers {
+    fn read(r: &mut Reader) -> Result<Handlers, Error> {
+        let list = |r: &mut Reader| -> Result<Vec<(Ref, u32)>, Error> { (0..r.u32()?).map(|_| Ok((Ref::read(r)?, r.u32()?))).collect() };
+        let n = r.u32()?;
+        let keyed = (0..n).map(|_| Ok((r.u32()?, list(r)?))).collect::<Result<_, Error>>()?;
+        let fixed = [list(r)?, list(r)?, list(r)?, list(r)?, list(r)?];
+        let events = (0..0x400).map(|_| list(r)).collect::<Result<_, _>>()?;
+        Ok(Handlers { keyed, fixed, events })
+    }
+}
+
+/// An agent's second record, as far as its class is read: its own fields (its vf
+/// 0x48), then its handler lists.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Second {
+    /// A list of unit references (`uref`, CUnitRefList's `FUN_6f42f860`): four words.
+    UnitRefs { words: [u32; 4], handlers: Handlers },
+    /// A destructable (`+w3d`, CDestructable's `FUN_6f6c3940`): its own fields (a word and
+    /// three reals, `FUN_6f6c39b0`), its handlers, the widget's state, and two bytes and
+    /// three words.
+    Destructable { own: (u32, [f32; 3]), handlers: Handlers, widget: Widget, bytes: [u8; 2], words: [u32; 3] },
+    /// No record (an engine object, or an agent without one).
+    Empty,
+    /// Not yet read.
+    Raw(Vec<u8>),
+}
+
+/// A widget's sprite as saved (`FUN_6f1a4050`): its model's path, a real, a short, a
+/// byte, a word, two reals, two words, a real, a byte, three bytes, and a list of
+/// entries (`FUN_6f19de40`: a real, a word, and a list of words each).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Sprite {
+    pub model: String,
+    pub real: f32,
+    pub short: u16,
+    pub byte: u8,
+    pub word: u32,
+    pub reals: [f32; 2],
+    pub words: [u32; 2],
+    pub last_real: f32,
+    pub last_byte: u8,
+    pub flags: [u8; 3],
+    pub entries: Vec<(f32, u32, Vec<u32>)>,
+}
+
+impl Sprite {
+    fn read(r: &mut Reader) -> Result<Option<Sprite>, Error> {
+        if r.u8()? == 0 {
+            return Ok(None);
+        }
+        let mut s = Sprite { model: r.cstr()?, real: r.f32()?, short: r.u16()?, byte: r.u8()?, word: r.u32()?, ..Default::default() };
+        s.reals = reals(r)?;
+        s.words = words(r)?;
+        s.last_real = r.f32()?;
+        s.last_byte = r.u8()?;
+        s.flags = [r.u8()?, r.u8()?, r.u8()?];
+        let n = r.u32()?;
+        for _ in 0..n {
+            let (real, word) = (r.f32()?, r.u32()?);
+            let list = (0..r.u32()?).map(|_| r.u32()).collect::<Result<_, _>>()?;
+            s.entries.push((real, word, list));
+        }
+        Ok(Some(s))
+    }
+}
+
+/// A widget's state after its handlers (`FUN_6f6be8b0`'s tail, `FUN_6f6533a0`,
+/// `FUN_6f654c20`): its sprite, a real, a word, two shorts, an optional list of
+/// references with two reals (`FUN_6f064240`), two bytes, a real, and a byte.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Widget {
+    pub sprite: Option<Sprite>,
+    pub real: f32,
+    pub word: u32,
+    pub shorts: [u16; 2],
+    pub refs: Option<(Vec<Ref>, [f32; 2])>,
+    pub bytes: [u8; 2],
+    pub last_real: f32,
+    pub byte: u8,
+}
+
+impl Widget {
+    fn read(r: &mut Reader) -> Result<Widget, Error> {
+        let mut w = Widget { sprite: Sprite::read(r)?, real: r.f32()?, word: r.u32()?, shorts: [r.u16()?, r.u16()?], ..Default::default() };
+        if r.u8()? != 0 {
+            let refs = (0..r.u16()?).map(|_| Ref::read(r)).collect::<Result<_, _>>()?;
+            w.refs = Some((refs, reals(r)?));
+        }
+        w.bytes = [r.u8()?, r.u8()?];
+        w.last_real = r.f32()?;
+        w.byte = r.u8()?;
+        Ok(w)
+    }
+}
+
+impl SavedObject {
+    /// Its second record read by its kind.
+    pub fn second(&self) -> Result<Second, Error> {
+        if self.second.is_empty() {
+            return Ok(Second::Empty);
+        }
+        let mut r = Reader::new(&self.second);
+        let out = match &self.entry.kind.to_be_bytes() {
+            b"uref" => Second::UnitRefs { words: words(&mut r)?, handlers: Handlers::read(&mut r)? },
+            b"+w3d" => {
+                let own = (r.u32()?, reals(&mut r)?);
+                let (handlers, widget) = (Handlers::read(&mut r)?, Widget::read(&mut r)?);
+                Second::Destructable { own, handlers, widget, bytes: [r.u8()?, r.u8()?], words: words(&mut r)? }
+            }
+            _ => return Ok(Second::Raw(self.second.clone())),
+        };
+        if r.remaining() != 0 {
+            return Err(Error::Format("an object's second record longer than its class's fields"));
+        }
+        Ok(out)
+    }
+}

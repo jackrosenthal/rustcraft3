@@ -1615,10 +1615,16 @@ Formats the port made its own, to be replaced by the original's:
   (`FUN_6f298250`), one for Dawn's callback before its listener remade
   (`FUN_6f27c820`), one before the day change's two listeners (`FUN_6f2891b0`); each
   woken creep's listener a count after it (not Ensnare's, its in-range object made
-  instead).  They agree through 850; then four more in the melee setup, from natives
-  the VM calls into the property module (`FUN_6f15e0e0`, reached through
-  `FUN_6f060fe0`), three from its own actions and one within a ForForce callback, are
-  not yet placed: the players' units' counts trail by them.
+  instead).  A script agent destroyed lets its reference go, a count
+  (`FUN_6f060fe0`, from CListener's and RangeListener's vf2): DestroyGroup and
+  RemoveLocation in the melee setup (its clearing around the starts and its search
+  for the nearest mine, whose callback makes and removes a location; found by
+  reading the native the VM called at each count, `*(ebp-0x80)` in its frame).  A
+  unit removed takes four (`FUN_6f673610`, then three by `FUN_6f694690` as its
+  orders clear), not one for each of its removal's seven tasks.  With these the
+  quiet test map's counts agree through 1022, the players' units included; then the
+  running game's (a trigger run from its event, `FUN_6f298250`, releases by
+  `FUN_6f161800`, and more) are next.
 - A property's base real and word (+0x70, +0x74) are a time stamp, its clock group's
   time and word (`FUN_6f161090`, from the group `FUN_6f15c650` picks; `FUN_6f161040`
   measures from it): flags stamped as made (0 at the map's start; forces made by a

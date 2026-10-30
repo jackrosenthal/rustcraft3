@@ -88,6 +88,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         Location => |w, _, a| handle(w.insert_location(a.r(0), a.r(1))),
         RemoveLocation => |w, _, a| {
             if w.location(a.h(0)).is_some() {
+                // (Its reference let go: a count of the property module's, as a group's
+                // destroyed; read, the melee setup's search for the nearest mine.)
+                w.tags.bump_prop(1, "rloc");
                 w.handles.remove(a.h(0));
                 w.tags.doom_handle(a.h(0));
             }

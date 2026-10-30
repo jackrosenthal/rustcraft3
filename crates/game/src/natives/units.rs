@@ -984,6 +984,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 for s in footprint {
                     w.tags.release(s);
                 }
+                // (The removal takes four counts of the property module's, not one for
+                // each of its tasks: `FUN_6f673610`, then three by `FUN_6f694690` as its
+                // orders clear; traced for the gold mine the undead melee setup removes.)
+                let counted = w.tags.prop_count;
                 let mut t: Vec<u32> = [b"tskA", b"task", b"task", b"task", b"task", b"task"].iter().map(|c| w.tags.take(c)).collect();
                 // A wanderer draws its wait again before the last (read: Forestwalk's
                 // deer removed by MeleeClearExcessUnits, the main generator's draw
@@ -995,6 +999,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                     }
                 }
                 t.push(w.tags.take(b"tskA"));
+                w.tags.prop_count = counted;
+                w.tags.bump_prop(4, "rmvu");
                 // The removal's tasks and the unit's own objects freed as the next turn
                 // starts, in this order (traced for a gold mine Blizzard.j removes): the
                 // first and last tasks, the sixth and fifth; then, after what is
@@ -1602,6 +1608,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         DestroyGroup => |w, _, a| {
             if w.group(a.h(0)).is_some() {
+                // (Destroyed, its reference let go takes a count of the property
+                // module's, `FUN_6f060fe0`; read: the melee setup's groups.)
+                w.tags.bump_prop(1, "dgrp");
                 w.handles.remove(a.h(0));
                 w.tags.doom_handle(a.h(0));
             }

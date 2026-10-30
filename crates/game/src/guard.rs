@@ -380,7 +380,7 @@ impl World {
                     true
                 };
                 if runs {
-                    self.tags.prop_count += 1;
+                    self.tags.bump_prop(1, "trig");
                     self.fire_registrations_pub(vm, crate::types::EventCtx::default(), vec![e]);
                 }
             }
@@ -402,7 +402,7 @@ impl World {
         // slot 0x287 at Booty Bay's first day; which new one takes its place is not yet
         // measured, the first here).
         // (A count of the property module's first, `FUN_6f2891b0`.)
-        self.tags.prop_count += 1;
+        self.tags.bump_prop(1, "dayc");
         let first = self.tags.take(b"`rtl");
         self.tags.day_listener_made = self.tags.born as u64;
         let second = day.then(|| self.tags.take(b"`rtl"));
@@ -525,7 +525,7 @@ impl World {
                     // `FUN_6f161800`; traced: each woken creep's listeners, but Ensnare's,
                     // its in-range object made instead.)
                     if code != *b"Aens" {
-                        self.tags.prop_count += 1;
+                        self.tags.bump_prop(1, "wake");
                     }
                     slots.push(s);
                     costs.push(self.objects.abilities.get(a).map_or(0.0, |o| o.level_real("Cost", 1)) + 0.1);

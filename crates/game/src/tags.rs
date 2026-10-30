@@ -505,6 +505,15 @@ impl Tags {
         }
     }
 
+    /// Counts of the property module's taken without an object made (`prop_count`),
+    /// logged with what took them.
+    pub fn bump_prop(&mut self, n: u32, what: &'static str) {
+        self.prop_count += n;
+        if let Some(l) = self.timer_log.as_mut() {
+            l.push((self.prop_count, "prop", u32::from_be_bytes(what.as_bytes()[..4].try_into().unwrap_or(*b"????"))));
+        }
+    }
+
     /// An agent timer started: the queue's next count, which it keeps.
     pub fn start_timer(&mut self, kind: &'static str) -> u32 {
         self.timer_starts += 1;
@@ -788,7 +797,7 @@ impl crate::world::World {
             && self.players.get(owner as usize).is_none_or(|p| p.get_state(crate::types::player_state::NO_CREEP_SLEEP) == 0);
         for (k, c) in codes.iter().enumerate().skip(1) {
             if k == tasks && asleep_now {
-                self.tags.prop_count += spell_timers.len() as u32;
+                self.tags.bump_prop(spell_timers.len() as u32, "slep");
             }
             slots.push(self.tags.take(c));
         }
@@ -950,9 +959,9 @@ impl crate::world::World {
         let new: Vec<u32> = costs
             .iter()
             .map(|_| {
-                self.tags.prop_count += 1;
+                self.tags.bump_prop(1, "evnt");
                 let s = self.tags.take(b"`rtl");
-                self.tags.prop_count += 1;
+                self.tags.bump_prop(1, "lose");
                 s
             })
             .collect();

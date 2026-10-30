@@ -346,6 +346,60 @@ impl World {
         out
     }
 
+    /// A unit's continuous modifiers (`` `rcm ``, read against the quiet test map's): its
+    /// life's and mana's regeneration (and on blight its life's), each two words
+    /// (-1, 0x60050044), its rate and no limit, a timing node due 150 seconds after it
+    /// was made, every 150, with the count it took (`Tags::prop_counts`); chained on
+    /// the unit newest first, and on its real.
+    pub fn unit_modifier_records(&self, h: u32) -> Vec<(u32, First, Option<Second>)> {
+        let mut out = Vec::new();
+        let Some(u) = self.unit(h) else { return out };
+        let Some(o) = self.objects.units.get(u.type_id) else { return out };
+        let first = &u.extra.object_slots[0];
+        if first.len() < 10 {
+            return out;
+        }
+        let me = first[0];
+        let (life, mana) = (first[4], first[5]);
+        let live = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == b"`rcm");
+        let rcms: Vec<(u32, u32)> = u.extra.object_slots[1].iter().copied().filter(|&(s, _)| live(s)).collect();
+        let (hp_rate, mp_rate) = self.regen_rates(h).unwrap_or((0.0, 0.0));
+        let regen_life = matches!(o.str("regenType").to_ascii_lowercase().as_str(), "always" | "night" | "day");
+        // (Each with its real and rate.)
+        let mut mods: Vec<((u32, u32), (u32, u32), f32)> = Vec::new();
+        let mut k = 0;
+        if regen_life {
+            if let Some(&r) = rcms.get(k) {
+                mods.push((r, life, hp_rate));
+                k += 1;
+            }
+        }
+        if o.real("manaN") > 0.0 {
+            if let Some(&r) = rcms.get(k) {
+                mods.push((r, mana, mp_rate));
+            }
+        }
+        if let Some(s) = u.extra.blight_rcm.filter(|&s| live(s)) {
+            mods.push((self.tagged(s), life, hp_rate));
+        }
+        mods.sort_by_key(|m| m.0 .1);
+        let chain: Vec<(u32, u32)> = mods.iter().map(|m| m.0).collect();
+        for &(r, prop, rate) in &mods {
+            let (after, before) = chain_links(&chain, r, 0);
+            let made = self.tags.made_at.get(&r.0).copied().unwrap_or(0);
+            let due = f32::from_bits(crate::efloat::add(made, 150f32.to_bits()));
+            let count = self.tags.prop_counts.get(&r.0).copied().unwrap_or(0);
+            let object = ObjectBase {
+                real: 0.0,
+                words: [u32::MAX, 0x6005_0044],
+                links: [(after, before, rf(r), rf(me)), (Link(NONE, 0), Link(NONE, 0), rf(r), rf(prop))],
+                timings: [Timing(Some((due, 150.0, count, 0, 1))), Timing(None)],
+            };
+            out.push((r.0, First::Continuous { object, values: [rate, f32::MAX] }, None));
+        }
+        out
+    }
+
     /// The records of the script's triggers, their flags, actions, and handlers, by
     /// slot (read against the quiet test map's): a trigger's agent (its two flags, the
     /// second linked) and its own (CTriggerWar3: its word, its evaluations and
@@ -744,7 +798,7 @@ impl World {
                 seconds.insert(slot, sec);
             }
         }
-        let unit_reals: Vec<(u32, First, Option<Second>)> = self.unit_order.iter().flat_map(|&h| self.unit_real_records(h)).collect();
+        let unit_reals: Vec<(u32, First, Option<Second>)> = self.unit_order.iter().flat_map(|&h| self.unit_real_records(h).into_iter().chain(self.unit_modifier_records(h))).collect();
         for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals) {
             records.insert(slot, f);
             if let Some(sec) = sec {
@@ -1003,6 +1057,40 @@ impl World {
                 }
             }
             out.push(format!("units' reals: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+            // The units' modifiers.
+            let (mut same, mut differ, mut first) = (0, 0, None);
+            for (slot, f, sec) in self.unit_order.iter().flat_map(|&h| self.unit_modifier_records(h)).collect::<Vec<_>>() {
+                let Some(o) = by_slot.get(&slot) else { continue };
+                // (By the bytes written: -0 is not 0.)
+                let ok1 = f.to_bytes() == o.first;
+                let ok2 = sec.as_ref().is_none_or(|s| s.to_bytes(o.entry.kind).is_ok_and(|b| b == o.second));
+                if ok1 && ok2 {
+                    same += 1;
+                } else {
+                    differ += 1;
+                    let brief = |s: Option<Second>| match s {
+                        Some(Second::Agent { own, handlers, tail }) => format!("own {own:?} keyed {:?} fixed {:?} events {} tail {tail:?}", handlers.keyed, handlers.fixed, handlers.events.len()),
+                        other => format!("{other:?}"),
+                    };
+                    let detail = if ok1 { format!("ours {}; the original's {}", brief(sec.clone()), brief(o.second().ok())) } else { format!("ours {f:?}; the original's {:?}", o.first()) };
+                    let line = format!("slot {slot} ({}): first {ok1} second {ok2}; {detail}", String::from_utf8_lossy(&o.entry.kind.to_be_bytes()));
+                    if std::env::var("W3Z_ALL").is_ok() {
+                        out.push(line.clone());
+                    }
+                    first.get_or_insert(line);
+                }
+            }
+            if false {
+                for (slot, func) in &self.tags.handler_objects {
+                    let k = self.tags.function_numbers.get(func).copied().unwrap_or(0);
+                    let theirs = by_slot.get(slot).and_then(|o| o.second().ok()).and_then(|s| match s {
+                        Second::Agent { tail, .. } => tail.first().cloned(),
+                        _ => None,
+                    });
+                    out.push(format!("handler slot {slot} birth {} func {func} ours {k} theirs {theirs:?}", self.tagged(*slot).1));
+                }
+            }
+            out.push(format!("units' modifiers: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
         }
         out.push(match free.chunks(4).zip(m.free[0].chunks(4)).position(|(a, b)| a != b) {
             None if free.len() == m.free[0].len() => format!("free list: the same, {} slots", free.len() / 4 - 1),

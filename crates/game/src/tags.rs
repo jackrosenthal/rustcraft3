@@ -944,7 +944,18 @@ impl crate::world::World {
         }
         // The new timers replace the spells' first ones, released the last first.
         let old = u.extra.spell_timers.clone();
-        let new: Vec<u32> = costs.iter().map(|_| self.tags.take(b"`rtl")).collect();
+        // (Each made by its spell's event, `FUN_6f4256d0`, and the old let go,
+        // `FUN_6f161800`: a count of the property module's either side of the new
+        // listener's two; traced on the quiet test map's golems.)
+        let new: Vec<u32> = costs
+            .iter()
+            .map(|_| {
+                self.tags.prop_count += 1;
+                let s = self.tags.take(b"`rtl");
+                self.tags.prop_count += 1;
+                s
+            })
+            .collect();
         for &s in old.iter().rev() {
             self.tags.doom(s);
         }

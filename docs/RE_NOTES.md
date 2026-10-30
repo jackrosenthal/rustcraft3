@@ -1604,6 +1604,21 @@ Formats the port made its own, to be replaced by the original's:
   (3.0 for those made before the melee setup's 8:00), a sight of none never changed
   -0 (the haunted mine's hidden gold mine).  Not yet: a Granite Golem's rates, 1.5 in
   its data, held as 1.5000001.
+- A unit's modifiers (`` `rcm ``: its life's and mana's regeneration, and its life's on
+  blight) agree for 56 of 69: two words (-1, 0x60050044), its rate and no limit, a
+  timing node due 150 seconds after it was made (its stamp's clock plus 150), every
+  150, with its property count; chained on the unit newest first (a creep's mana
+  `` `rcm `` naming its life's as older) and on its real.  The property counts beyond
+  the units' making: a script's setting a golem's mana remakes its listeners, each a
+  count of its spell's event (`FUN_6f4256d0`) before and of the old's letting go
+  (`FUN_6f161800`) after; the melee setup's 8:00 a count for the Day trigger's run
+  (`FUN_6f298250`), one for Dawn's callback before its listener remade
+  (`FUN_6f27c820`), one before the day change's two listeners (`FUN_6f2891b0`); each
+  woken creep's listener a count after it (not Ensnare's, its in-range object made
+  instead).  They agree through 850; then four more in the melee setup, from natives
+  the VM calls into the property module (`FUN_6f15e0e0`, reached through
+  `FUN_6f060fe0`), three from its own actions and one within a ForForce callback, are
+  not yet placed: the players' units' counts trail by them.
 - A property's base real and word (+0x70, +0x74) are a time stamp, its clock group's
   time and word (`FUN_6f161090`, from the group `FUN_6f15c650` picks; `FUN_6f161040`
   measures from it): flags stamped as made (0 at the map's start; forces made by a

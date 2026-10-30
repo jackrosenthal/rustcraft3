@@ -364,8 +364,12 @@ impl World {
                 }
             }
             passed.sort_by(|a, b| b.0.cmp(&a.0));
+            // (Each takes a count of the property module's: the trigger run, `FUN_6f298250`,
+            // and an equal one's callback, `FUN_6f27c820`, before its listener remade;
+            // traced on the quiet test map's melee setup.)
             for (_, e, equal) in passed {
                 let runs = if equal {
+                    self.tags.prop_count += 1;
                     let s = self.tags.take(b"`rtl");
                     self.tags.listener_made.insert(e, self.tags.born as u64);
                     if let Some(old) = self.tags.event_timers.insert(e, s) {
@@ -376,6 +380,7 @@ impl World {
                     true
                 };
                 if runs {
+                    self.tags.prop_count += 1;
                     self.fire_registrations_pub(vm, crate::types::EventCtx::default(), vec![e]);
                 }
             }
@@ -396,6 +401,8 @@ impl World {
         // The change's timers; the engine's day timer before them is released (traced:
         // slot 0x287 at Booty Bay's first day; which new one takes its place is not yet
         // measured, the first here).
+        // (A count of the property module's first, `FUN_6f2891b0`.)
+        self.tags.prop_count += 1;
         let first = self.tags.take(b"`rtl");
         self.tags.day_listener_made = self.tags.born as u64;
         let second = day.then(|| self.tags.take(b"`rtl"));
@@ -514,6 +521,12 @@ impl World {
                 let Some(code) = self.objects.abilities.get(a).map(|o| crate::objects::id_from_str(o.str("code").trim())) else { continue };
                 if table.objects(&a, &code).contains(b"`rtl") {
                     let s = self.tags.take(b"`rtl");
+                    // (Then a count of the property module's as it settles,
+                    // `FUN_6f161800`; traced: each woken creep's listeners, but Ensnare's,
+                    // its in-range object made instead.)
+                    if code != *b"Aens" {
+                        self.tags.prop_count += 1;
+                    }
                     slots.push(s);
                     costs.push(self.objects.abilities.get(a).map_or(0.0, |o| o.level_real("Cost", 1)) + 0.1);
                     if code == *b"Aens" {

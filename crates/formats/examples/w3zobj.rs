@@ -39,6 +39,26 @@ fn main() {
         }
         return;
     }
+    // "dests": each destructable's own fields, widget owner and type, and properties.
+    if a[2] == "dests" {
+        for o in all.iter().filter(|o| code(o.entry.kind) == "+w3d") {
+            let Ok(w3_formats::w3z::Second::Destructable { own, widget, bytes, words, .. }) = o.second() else { continue };
+            let mut line = format!("{} {} own {:?} w {} {:?} bytes {:?} words {:?}", o.entry.tag, code(widget.word), own, widget.owner, widget.shorts, bytes, words);
+            if let Ok(w3_formats::w3z::First::Agent { refs, .. }) = o.first() {
+                for r in refs {
+                    match by_ref(r).map(|t| t.first()) {
+                        Some(Ok(w3_formats::w3z::First::Real { base, values })) => line += &format!(" rel{} {values:?} at {}", base.object.words[0], base.real),
+                        Some(Ok(w3_formats::w3z::First::Flag { base, value })) => line += &format!(" flg{} {value}", base.object.words[0]),
+                        Some(Ok(w3_formats::w3z::First::Pos { values, .. })) => line += &format!(" pos {values:?}"),
+                        Some(Ok(_)) => line += &format!(" {}", by_ref(r).map(|t| code(t.entry.kind)).unwrap_or_default()),
+                        _ => line += " ?",
+                    }
+                }
+            }
+            println!("{line}");
+        }
+        return;
+    }
     // "players": each player's indexed flags.
     if a[2] == "players" {
         for o in all.iter().filter(|o| code(o.entry.kind) == "+ply") {

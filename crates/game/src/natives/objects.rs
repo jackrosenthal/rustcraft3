@@ -184,6 +184,17 @@ pub fn kill_destructable_pub(w: &mut World, vm: &mut Vm, h: u32) {
     kill_destructable(w, vm, h);
 }
 
+/// A loaded game's life for a destructable: dead (its footprint gone) at none, and no
+/// events, as it died before.
+pub fn set_saved_destructable_life(w: &mut World, h: u32, life: f32) {
+    let Some(d) = dest_mut(w, h) else { return };
+    let was_alive = d.life > 0.0;
+    d.life = life.max(0.0);
+    if was_alive && life <= 0.0 {
+        unstamp_destructable(w, h);
+    }
+}
+
 fn kill_destructable(w: &mut World, vm: &mut Vm, h: u32) {
     let Some(d) = dest_mut(w, h) else { return };
     if d.life <= 0.0 {

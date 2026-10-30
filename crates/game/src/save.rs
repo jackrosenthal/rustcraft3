@@ -146,10 +146,10 @@ impl Game {
     /// script's main run): its units (their type, owner, place, facing, life, and mana),
     /// the handles scripts had them by, its players' gold and lumber (saved in tenths),
     /// the time of day, the map script's integer, real, and boolean variables (by name,
-    /// arrays too), and its timers.  Not yet: the rest (the time, which the port's
-    /// timers and sleeping threads count from; orders, buildings in progress, items,
-    /// destructables, the other variables, the AI scripts', and threads), which stay
-    /// as the script just made them.
+    /// arrays too), its timers, and its destructables' life.  Not yet: the rest (the
+    /// time, which the port's timers and sleeping threads count from; orders,
+    /// buildings in progress, items, the other variables, the AI scripts', and
+    /// threads), which stay as the script just made them.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
         use crate::natives::units::{create_unit_exact, remove_unit};
         let units = s.units()?;
@@ -157,6 +157,7 @@ impl Game {
         let players = s.player_states()?;
         let game_reals = s.game_reals()?;
         let timers = s.timers()?;
+        let destructables = s.destructables()?;
         let agent_clock = s.objects.as_ref().map_or(0.0, |m| m.clocks[1].0);
         let scripts = s.script_data()?;
         let w = &mut self.world;
@@ -185,6 +186,15 @@ impl Game {
                 if matches!(k, 1 | 2 | 15 | 16) {
                     player.state.insert(k as i32, v / 10);
                 }
+            }
+        }
+        // The destructables' life, by the handles they had (the map placed them in the
+        // same order), those at none dead.
+        for d in destructables {
+            let Some(&jass) = handles.get(&(d.tag, d.birth)) else { continue };
+            let id = w.handles.resolve(jass);
+            if matches!(w.handles.get(id), Some(Obj::Destructable(x)) if x.type_id == d.type_id.to_be_bytes()) {
+                crate::natives::objects::set_saved_destructable_life(w, id, d.life);
             }
         }
         // The script's timers, by the handles they had (the script made them in the

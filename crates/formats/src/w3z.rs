@@ -2185,3 +2185,29 @@ impl SaveGame {
         Ok(out)
     }
 }
+
+/// A saved destructable as far as named.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SavedDestructable {
+    pub tag: u32,
+    pub birth: u32,
+    /// Its type (the widget's word).
+    pub type_id: u32,
+    /// Its life and maximum (its own fields' first and third reals; read: a tree the
+    /// test map kills goes from 50 of 50 to 0).
+    pub life: f32,
+    pub max_life: f32,
+}
+
+impl SaveGame {
+    /// The destructables, in the object table's order.
+    pub fn destructables(&self) -> Result<Vec<SavedDestructable>, Error> {
+        let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
+        let mut out = Vec::new();
+        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == b"+w3d") {
+            let Second::Destructable { own, widget, .. } = o.second()? else { continue };
+            out.push(SavedDestructable { tag: o.entry.tag, birth: o.entry.birth, type_id: widget.word, life: own.1[0], max_life: own.1[2] });
+        }
+        Ok(out)
+    }
+}

@@ -1,0 +1,1082 @@
+# The engine's agent classes as every 1.27b save holds them (read alike in the saves of
+# Booty Bay and Forestwalk test maps): a line each in the registry's order, its code,
+# its parent's, the tag and birth of its definition (`^adf`, the second table), and, when
+# its definition's array (CRlAgentDef, `FUN_6f146500`) is not the empty default, its four
+# words and each entry's eleven, in hex.
++aga +aga 80000000 0
++agr +aga 80000001 1
++w3i +w3a 80000002 2
++w3a +aga 800003c3 963
++wgh +aga 80000003 3 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,2,1160,ffffffff,ffffffff 1160,0,1,0,1,0,0,0,0,ffffffff,ffffffff
++ccu +aga 80000004 4
++ccp +aga 80000005 5
+uref +w3a 80000006 6
++ord +w3a 80000007 7
+ord. +ord 80000008 8
+or.2 ord. 80000009 9
+ordt ord. 8000000a 10
+ort2 ordt 8000000b 11
++otc +ord 8000000c 12
++orc +ord 8000000d 13
+task uref 8000000e 14
+tskO tskP 8000000f 15
+tskP task 80000010 16
+tsk. task 80000011 17
+tk.2 tsk. 80000012 18
+tk.t tsk. 80000013 19
+tskt task 80000014 20
+tkt2 tskt 80000015 21
+tskg tskO 80000016 22
+tskA tskP 80000017 23
+tskR task 80000018 24
+abil uref 80000019 25
+AAin abil 8000001a 26
+buff ABon 8000001b 27
+ABon abil 80000042 66
+BAUR buff 8000001c 28
+BDoT buff 8000001d 29
+BlDT BDoT 8000001e 30
+BMDR buff 8000001f 31
+BPSE buff 80000020 32
+BBAR buff 80000021 33
+Bprv buff 80000022 34
+BINV buff 80000023 35
+BSPD buff 80000024 36
+BSTN Bdet 80000025 37
+Bdet buff 80000095 149
+BTLF BBAR 80000026 38
+BAOE buff 80000027 39
+powr AAin 80000028 40
+ABqu ABbs 80000029 41 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+ABbs AAin 80000032 50 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+ATrn ABqu 8000002a 42 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+ABld ABbs 8000002b 43 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+ANbu ABld 8000002c 44 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+AHbu ABld 8000002d 45 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+AEbu ANbu 8000002e 46 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+AObu ANbu 8000002f 47 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+AUbu ABld 80000030 48 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+AGbu ANbu 80000031 49 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+ASbs ABbs 80000033 51 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+ARal AAin 80000034 52
+ARes ABbs 80000035 53 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Aque ABbs 80000036 54 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+AAbt powr 80000037 55
+AAsp AAbt 80000038 56
+AAsm AAsp 80000039 57
+AAcs AAsm 8000003a 58
+AAms AAsm 8000003b 59
+AAat AAms 8000003c 60
+AAns AAbt 8000003d 61
+AHer AAin 8000003e 62 160,160,8,8 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+aura ABon 8000003f 63
+APas AAbt 80000040 64
+AInv AAin 80000041 65
+APbo ABon 80000043 67
+scal +w3a 80000044 68 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+spla +aga 80000045 69
+shft +aga 80000046 70
+Aalr abil 80000047 71
+Aall Aneu 80000048 72
+Aneu abil 80000249 585
+Aatk powr 80000049 73
+Aasp AAsp 8000004a 74
+Aawa AAin 8000004b 75
+Abli abil 8000004c 76
+Ablp AAsm 8000004d 77
+Ablr abil 8000004e 78
+Abou AAsp 8000004f 79
+Abdt Adet 80000050 80
+Adet APas 8000005b 91
+Acrg abil 80000051 81
+Adro AAsm 80000052 82
+Adri AAsp 80000053 83
+Acar powr 80000054 84
+Achd Aprg 80000055 85
+Aprg AAsm 80000129 297
+Aloa AAsm 80000056 86
+Asod abil 80000057 87
+Aspd Asod 80000058 88
+Assp Asod 80000059 89
+Adta AAsm 8000005a 90
+Agho Apiv 8000005c 92
+Apiv ABon 80000075 117
+Aeth abil 8000005d 93
+Agld Agmb 8000005e 94 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Agmb abil 8000005f 95 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Ahar Ahrl 80000060 96
+Ahrl Ahrr 80000062 98
+Ahrb powr 80000061 97
+Ahrr Ahrb 80000063 99
+Ahid AAbt 80000064 100
+Avul ABon 80000065 101
+Alit abil 80000066 102
+Amin abil 80000067 103
+Alea abil 80000068 104
+Amai Asei 80000069 105 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Asei ASbs 80000083 131 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Amor AAsp 8000006a 106
+Amou Amor 8000006b 107
+Amov powr 8000006c 108
+Anhe Ahea 8000006d 109
+Ahea AAat 800000c3 195
+Anit abil 8000006e 110
+Admg abil 8000006f 111
+Afir abil 80000070 112
+Afih Afir 80000071 113
+Afio Afir 80000072 114
+Afin Afir 80000073 115
+Afiu Afir 80000074 116
+Apoi APas 80000076 118
+Apgm Agmb 80000077 119 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+Apit abil 80000078 120
+AREB APbo 80000079 121
+Arel AREB 8000007a 122
+Arem AREB 8000007b 123
+Arep AAat 8000007c 124
+Arsc abil 8000007d 125
+Aret AAsp 8000007e 126
+Artn abil 8000007f 127
+Arng AAsp 80000080 128
+Arev ABqu 80000081 129 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Asds AAat 80000082 130
+Asid Asei 80000084 132 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Asel ASbs 80000085 133 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Asud Asel 80000086 134 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Asla abil 80000087 135
+Asph ABon 80000088 136
+Atrg abil 80000089 137
+Aupg ABbs 8000008a 138 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Awan abil 8000008b 139
+Awrp abil 8000008c 140
+AInP ABbs 8000008d 141 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+ABnP AInP 8000008e 142 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+AUnP AInP 8000008f 143 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+ASnP ABbs 80000090 144 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+BSTI buff 80000091 145
+BTAR buff 80000092 146
+Bchd Bprg 80000093 147
+Bprg buff 80000143 323
+Bdef buff 80000094 148
+Beth BSPD 80000096 150
+Bfre BSTN 80000097 151
+Bfro BSPD 80000098 152
+Bvul BINV 80000099 153
+Bpoi BlDT 8000009a 154
+Bpsd Bpoi 8000009b 155
+Bpsi BSTI 8000009c 156
+Brgl buff 8000009d 157
+Bsha Bdet 8000009e 158
+Btrv abil 8000009f 159
+Mfir B-Mi 800000a0 160 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+B-Mi +wbu 80000386 902 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mfre BfMi 800000a1 161 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+BfMi B-Mi 8000038b 907 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mfzs BfMs 800000a2 162 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+BfMs B-Ms 8000038c 908 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mlit B-Ro 800000a3 163
+B-Ro +w3a 80000390 912
+Mfro BfMi 800000a4 164 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mfss BfMs 800000a5 165 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mpoi BfMi 800000a6 166 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mpas BfMs 800000a7 167 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Xbli +w3a 800000a8 168 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Xdis +Epr 800000a9 169 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
++Epr +w3a 80000378 888 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Xfhs Afbs 800000aa 170
+Afbs ABon 800003ba 954
+Xfhm Afbs 800000ab 171
+Xfhl Afbs 800000ac 172
+Xfos Afbs 800000ad 173
+Xfom Afbs 800000ae 174
+Xfol Afbs 800000af 175
+Xfns Afbs 800000b0 176
+Xfnm Afbs 800000b1 177
+Xfnl Afbs 800000b2 178
+Xfus Afbs 800000b3 179
+Xfum Afbs 800000b4 180
+Xful Afbs 800000b5 181
+-det CMsk 800000b6 182
+CMsk +w3a 8000037a 890
+Aroc APas 800000b7 183
+Acal powr 800000b8 184
+Aclf ANsi 800000b9 185
+ANsi AAsm 8000027f 639
+Acmg AAsm 800000ba 186
+Adef AAbt 800000bb 187
+Adis AAsm 800000bc 188
+Afbk APas 800000bd 189
+Aflk APas 800000be 190
+Afla AAsm 800000bf 191
+Afsh APas 800000c0 192
+Agyb APas 800000c1 193
+Agyv Adet 800000c2 194
+Ainf AAat 800000c4 196
+Aivs AAsm 800000c5 197
+Amdf Adef 800000c6 198
+Amls AAsm 800000c7 199
+Adts Adet 800000c8 200
+Amil Acal 800000c9 201
+Amic Acal 800000ca 202
+Aphx Amor 800000cb 203
+Apxf APas 800000cc 204
+Aply AAsm 800000cd 205
+Aslo AAat 800000ce 206
+Asps AAat 800000cf 207
+Asth APas 800000d0 208
+Atdp AAsp 800000d1 209
+Atlp AAsm 800000d2 210
+Atpi AAsm 800000d3 211
+Attu abil 800000d4 212
+Bclf BNsi 800000d5 213
+BNsi BSPD 800002a3 675
+Bcmg BTLF 800000d6 214
+Bhea buff 800000d7 215
+Binf buff 800000d8 216
+Binv buff 800000d9 217 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Bmlc buff 800000da 218
+Bmlt BlDT 800000db 219
+Bmil BBAR 800000dc 220
+Bphx BBAR 800000dd 221
+Bpxf BlDT 800000de 222
+Bply BBAR 800000df 223
+Bslo BSPD 800000e0 224
+Rfsh B-Ar 800000e1 225 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+B-Ar +wbu 8000038d 909 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mfbk B-Mi 800000e2 226 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mpxf BfMi 800000e3 227 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Msps BfMi 800000e4 228 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Xclf +ERs 800000e5 229 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
++ERs +EIP 80000379 889 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+Xfla Xbdt 800000e6 230 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Xbdt +EIP 80000351 849 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+AHab aura 800000e7 231
+AHad aura 800000e8 232
+AHav AAsp 800000e9 233
+AHbn AAsm 800000ea 234
+AHbh AOcr 800000eb 235
+AOcr APas 80000151 337
+AHbz AAsm 800000ec 236
+AHds AAsp 800000ed 237
+AHdr AAsm 800000ee 238
+AOeq AAsm 800000ef 239
+AHfs AAsm 800000f0 240
+AHhb AAsm 800000f1 241
+AHmt AAsm 800000f2 242
+AHpx AHwe 800000f3 243
+AHwe AAsp 800000f8 248
+AHRa AAat 800000f4 244
+AHre AUan 800000f5 245
+AUan AAsm 80000218 536
+AHtb AAsm 800000f6 246
+AHtc AUfn 800000f7 247
+AUfn AAsm 80000225 549
+BHab BAUR 800000f9 249
+BHad BAUR 800000fa 250
+BHav BBAR 800000fb 251
+BHbn Beth 800000fc 252
+BHbd BlDT 800000fd 253
+BHbz BAOE 800000fe 254
+BHds buff 800000ff 255
+Bdbb buff 80000100 256 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+Bdbl Bdbb 80000101 257 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+Bdbm Bdbb 80000102 258 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+Bdcb buff 80000103 259
+Bdcl Bdcb 80000104 260
+Bdcm Bdcb 80000105 261
+Bdtb Bdcb 80000106 262
+Bdtl Bdtb 80000107 263
+Bdtm Bdtb 80000108 264
+BHfs BlDT 80000109 265
+BHfa BAOE 8000010a 266
+BHtc BSPD 8000010b 267
+BHwe BTLF 8000010c 268
+MHtb B-Mi 8000010d 269 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MHt2 BfMi 8000010e 270 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+XHbz +w3a 8000010f 271
+XHfs XUdd 80000110 272 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+XUdd XEtq 8000023a 570 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+XHf2 +EIP 80000111 273 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
++EIP +EIm 80000376 886 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Aast AAcs 80000112 274
+Aakb aura 80000113 275
+Aoar aura 80000114 276
+Aarm aura 80000115 277
+Abof APas 80000116 278
+Abtl AAsp 80000117 279
+Absk AAsp 80000118 280
+Ablo AAat 80000119 281
+Abun Acar 8000011a 282
+Acha Achb 8000011b 283
+Achb abil 8000011c 284
+Achl Achb 8000011d 285
+Acpf Amor 8000011e 286
+Adda abil 8000011f 287
+Adev Aloa 80000120 288
+Advc Acar 80000121 289
+Adch Adis 80000122 290
+Aens AAsm 80000123 291
+Aetf Amor 80000124 292
+Aeye AAsm 80000125 293
+Ahwd AAsm 80000126 294
+Alsh AAsm 80000127 295
+Aliq APas 80000128 296
+Arbr Aspi 8000012a 298
+Aspi ABon 8000012c 300
+Asal APas 8000012b 299
+Aspl AAsm 8000012d 301
+Astd Adri 8000012e 302
+Asta AAsm 8000012f 303
+Auco AAsm 80000130 304
+Aven Apoi 80000131 305
+Awar APas 80000132 306
+Bakb BOac 80000133 307
+BOac BAUR 8000015e 350
+Boar BAUR 80000134 308
+Barm BAUR 80000135 309
+Bbof BHfs 80000136 310
+Bbsk BSPD 80000137 311
+Bblo BSPD 80000138 312
+Bdvv Bsha 80000139 313
+Bdig BlDT 8000013a 314
+Bens Bsha 8000013b 315 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+Bena Bens 8000013c 316 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+Beng Bens 8000013d 317 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+Beye BTLF 8000013e 318
+Bhwd BTLF 8000013f 319
+Blsh buff 80000140 320
+Blsa BAOE 80000141 321
+Bliq Bpoi 80000142 322
+Bspl buff 80000144 324
+Bstt BTLF 80000145 325
+Rbof B-Ar 80000146 326 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mbof B-Ms 80000147 327 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+B-Ms B-Mi 80000388 904 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mens BfMi 80000148 328 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mliq BfMi 80000149 329 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mlis BfMs 8000014a 330 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mspl B-Ro 8000014b 331
+Muco B-Mi 8000014c 332 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Xbof XHfs 8000014d 333 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+AOac aura 8000014e 334
+AOae aura 8000014f 335
+AOcl AAsm 80000150 336
+AOhw AOcl 80000152 338
+AOhx Aply 80000153 339
+AOfs Adta 80000154 340
+AOmi AAsp 80000155 341
+AOre AAsp 80000156 342
+AOsh AUcs 80000157 343
+AUcs AAsm 8000021c 540
+AOsf AAsp 80000158 344
+AOws AHtc 80000159 345
+AOvd AAsm 8000015a 346
+AOwd AAsm 8000015b 347
+AOww AAsp 8000015c 348
+AOwk AAsp 8000015d 349
+BOae BAUR 8000015f 351
+BOeq BSPD 80000160 352
+BOea BAOE 80000161 353
+BOhx Bply 80000162 354
+BOmi BTLF 80000163 355
+BOsh BUcs 80000164 356
+BUcs buff 8000022f 559
+Bspe BSPD 80000165 357
+BOsf BTLF 80000166 358
+BOvd Bvul 80000167 359
+BOvc buff 80000168 360
+BOwd BTLF 80000169 361
+BOww BAOE 8000016a 362
+BOwk Binv 8000016b 363 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MOcl B-Mi 8000016c 364 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MOcr BfMi 8000016d 365 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MOcs BfMs 8000016e 366 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mmir B-Mi 8000016f 367 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MOsh MUcs 80000170 368 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MUcs +wbu 80000237 567 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+XOcl B-Ro 80000171 369
+XOeq +w3a 80000172 370
+XOre +w3a 80000173 371
+Aadm AAat 80000174 372
+Abrf Amor 80000175 373
+Acor APas 80000176 374
+Acou powr 80000177 375
+Acoa Acou 80000178 376
+Acoh Acou 80000179 377
+Acoi AAcs 8000017a 378
+Acyc AAsm 8000017b 379
+Adec AAsm 8000017c 380
+Adtn Adis 8000017d 381
+Aeat AAsm 8000017e 382
+Aent powr 8000017f 383
+Aenc Acar 80000180 384
+Aegm Apgm 80000181 385 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+Aetl APas 80000182 386
+Afae AAat 80000183 387
+Agra Aeat 80000184 388
+Aimp APas 80000185 389
+Amim APas 80000186 390
+Ambt AAat 80000187 391
+Amfl AAsm 80000188 392
+Amgl APas 80000189 393
+Apsh AAms 8000018a 394
+Arav Amor 8000018b 395
+Arej AAsm 8000018c 396
+Aren Arep 8000018d 397
+Arsk APas 8000018e 398
+Aroa AAsp 8000018f 399
+Aroo AAbt 80000190 400
+Aesn AAsm 80000191 401
+Ashm AAbt 80000192 402
+Aspo Apoi 80000193 403
+Assk APas 80000194 404
+Atau AAsm 80000195 405
+Atol ABon 80000196 406
+Ault Anit 80000197 407
+Avng AUcb 80000198 408
+AUcb Arai 8000021b 539
+Awha Ahrb 80000199 409
+Bbar Bdef 8000019a 410
+Bcor BlDT 8000019b 411
+Bcyc buff 8000019c 412
+Bcy2 Bcyc 8000019d 413
+Beat Brej 8000019e 414
+Brej buff 800001a4 420
+Bfae Bsha 8000019f 415
+Bgra buff 800001a0 416
+Bmfl Brgl 800001a1 417
+Bmfa BAOE 800001a2 418
+Bpsh BPSE 800001a3 419
+Broa Binf 800001a5 421
+Bspo Bpoi 800001a6 422
+Bssd Bpsd 800001a7 423
+Bssi Bpsi 800001a8 424
+Btau buff 800001a9 425
+Bvng BUcb 800001aa 426
+BUcb Brai 8000022e 558
+Mcor B-Mi 800001ab 427 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mcbs B-Ms 800001ac 428 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mmfl B-Ro 800001ad 429
+Mesn +wbu 800001ae 430 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
++wbu +w3B 80000384 900 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mspo Mpoi 800001af 431 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Msss Mpas 800001b0 432 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Xesn -det 800001b1 433 160,160,8,8 5e70726f,60706375,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+AEah aura 800001b2 434
+AEar aura 800001b3 435
+AEbl AAsm 800001b4 436
+AEer AAsm 800001b5 437
+AEev APas 800001b6 438
+AEfk AAsm 800001b7 439
+AHfa AHRa 800001b8 440
+AEfn AAsm 800001b9 441
+AEim AAsp 800001ba 442
+AEmb AAsm 800001bb 443
+AEme Amor 800001bc 444
+AEpa AHRa 800001bd 445
+AEst AHwe 800001be 446
+AEsh AAsm 800001bf 447
+AEsv AHwe 800001c0 448
+AEsf AEtq 800001c1 449
+AEtq AAsp 800001c3 451
+AEsd abil 800001c2 450
+AEtr Arel 800001c4 452
+BEah BAUR 800001c5 453
+BEar BOac 800001c6 454
+BEer BlDT 800001c7 455
+BEfn BTLF 800001c8 456
+BEim Blsh 800001c9 457
+BEia BAOE 800001ca 458
+BEme BBAR 800001cb 459
+BEst BTLF 800001cc 460
+BEsh Bspo 800001cd 461
+BEsv BHwe 800001ce 462
+MEmb B-Ro 800001cf 463
+MEsh Mspo 800001d0 464 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+XEsf XEtq 800001d1 465 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+XEtq +ERs 800001d2 466 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+Aabs AAsm 800001d3 467
+Aaha powr 800001d4 468
+rslt +aga 800001d5 469
+Aams AAsm 800001d6 470
+Aami Aams 800001d7 471
+Aabr aura 800001d8 472
+Aapl aura 800001d9 473
+Aave Amor 800001da 474
+Abgm Apgm 800001db 475 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+Abur Amor 800001dc 476
+Acan AAcs 800001dd 477
+Acri AAsm 800001de 478
+Acrs AAat 800001df 479
+Advm AAsm 800001e0 480
+Aexh AAsm 800001e1 481
+Afak AHfa 800001e2 482
+Afrz APas 800001e3 483
+Afra APas 800001e4 484
+Afrb abil 800001e5 485
+Agyd abil 800001e6 486
+Agyc abil 800001e7 487
+Amtc Acar 800001e8 488
+Amed Adri 800001e9 489
+Amel AAat 800001ea 490
+Apts APas 800001eb 491
+Apos AAsm 800001ec 492
+Aps2 Apos 800001ed 493
+Arai AAat 800001ee 494
+Arpb AAat 800001ef 495
+Arpl Arpb 800001f0 496
+Arpm Arpb 800001f1 497
+Arst Arep 800001f2 498
+Asac ATrn 800001f3 499 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Alam AAsm 800001f4 500
+Aspa abil 800001f5 501
+Astn Amor 800001f6 502
+Atru Adet 800001f7 503
+Auhf AAsm 800001f8 504
+Auns AAsm 800001f9 505
+Aweb AAat 800001fa 506
+Bams buff 800001fb 507
+Bam2 buff 800001fc 508
+Babr BAUR 800001fd 509
+Bapl BlDT 800001fe 510
+Bcri BSPD 800001ff 511
+Bcrs buff 80000200 512
+Bfrz BSTN 80000201 513
+Bplg BTLF 80000202 514
+Bpos BPSE 80000203 515
+Bpoc buff 80000204 516
+Brai BTLF 80000205 517
+Brpb Bhea 80000206 518
+Brpl Brpb 80000207 519
+Brpm Brpb 80000208 520
+Bspa buff 80000209 521
+Buhf BlDT 8000020a 522
+Buns BlDT 8000020b 523
+Bweb Beng 8000020c 524 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+Bwea Bena 8000020d 525 160,160,8,8 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+Mabs B-Mi 8000020e 526 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mdvm B-Mi 8000020f 527 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mfrz BfMi 80000210 528 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mfrs BfMs 80000211 529 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Rfrb B-Ar 80000212 530 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mfrb B-Ms 80000213 531 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mpts B-Ar 80000214 532 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mpos B-Mi 80000215 533 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mspa B-Mp 80000216 534 160,160,8,8 5e70726f,60706375,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+B-Mp +wbp 80000387 903 160,160,8,8 5e70726f,60706375,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Mweb BfMi 80000217 535 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+AUau aura 80000219 537
+AUav aura 8000021a 538
+AUdr AAsm 8000021d 541
+AUds AAsm 8000021e 542 160,160,8,8 5e70726f,60706375,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+AUdd AAsm 8000021f 543
+AUdc AAsm 80000220 544
+AUdp AUdr 80000221 545
+AUin ANin 80000222 546
+ANin AAsm 800002d0 720
+AUfa AAsm 80000223 547
+AUfu AAat 80000224 548
+AUim AAsm 80000226 550
+AUls AAsm 80000227 551
+Aloc abil 80000228 552
+AUsl AAsm 80000229 553
+AUts ANth 8000022a 554
+ANth APas 8000025b 603
+BUan BTLF 8000022b 555
+BUau BAUR 8000022c 556
+BUav BAUR 8000022d 557
+BUdd BAOE 80000230 560
+BUfa buff 80000231 561
+BUim Bcy2 80000232 562
+BUsl buff 80000233 563
+BUsp BPSE 80000234 564
+BUst BSTN 80000235 565
+BUts ABon 80000236 566
+MUds +wbu 80000238 568 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MUdc B-Mi 80000239 569 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+Aasl aura 8000023b 571
+Abar AAms 8000023c 572
+ACbf ANbf 8000023d 573
+ANbf AUcs 80000273 627
+ACad AUan 8000023e 574
+ACdv Adev 8000023f 575
+ACrn AOre 80000240 576
+ACsp Asla 80000241 577
+ACtb AHtb 80000242 578
+ACtc AHtc 80000243 579
+Afzy Ablo 80000244 580
+Amec AHwe 80000245 581
+ANmr AAsm 80000246 582
+ANmo AAsm 80000247 583
+ANmd AEsd 80000248 584
+Anei AAns 8000024a 586
+Andt AAns 8000024b 587
+ANgl AAns 8000024c 588
+ANlg AAns 8000024d 589
+ANre abil 8000024e 590
+ANrl Arel 8000024f 591
+ANrm Arem 80000250 592
+ANsp AAns 80000251 593
+Apig ANpi 80000252 594
+ANpi APas 80000253 595
+ANpr AAsm 80000254 596
+ANsa ANpr 80000255 597
+Ashs AAsm 80000256 598
+ANss AAsm 80000257 599
+ANse ANss 80000258 600
+AIsh AOsf 80000259 601
+Aste AUdr 8000025a 602
+Atdg abil 8000025c 604
+Atsp abil 8000025d 605
+Atwa Awan 8000025e 606
+Basl BOae 8000025f 607
+BCbf BNbf 80000260 608
+BNbf BlDT 80000296 662
+BCtc BHtc 80000261 609
+Bfzy Bblo 80000262 610
+Bmec BHwe 80000263 611
+BNmr BMDR 80000264 612
+Bpig BNpi 80000265 613
+BNpi BEim 80000266 614
+BNsa buff 80000267 615
+Bshs Bsha 80000268 616
+BNss buff 80000269 617
+BIsh BOsf 8000026a 618
+Btdg BAOE 8000026b 619
+Btsp Bcy2 8000026c 620
+Btsa BAOE 8000026d 621
+MCbf MNbf 8000026e 622 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MNbf MUcs 800002b7 695 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+XNmo XEsf 8000026f 623 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+Aamk APas 80000270 624
+ANba AHfa 80000271 625
+ANbs AAsm 80000272 626
+ANch AAsm 80000274 628
+ANca APas 80000275 629
+AHca AHRa 80000276 630
+ANdo AAsm 80000277 631
+ANdb AOcr 80000278 632
+ANdh ANsi 80000279 633
+ANef AAsm 8000027a 634
+ANfl AAsm 8000027b 635
+ANht Aroa 8000027c 636
+ANms AAsm 8000027d 637
+ANrf AHbz 8000027e 638
+ANst AAsm 80000280 640
+ANsg AHwe 80000281 641
+ANsq AHwe 80000282 642
+ANsw AHwe 80000283 643
+ANto AAsm 80000284 644
+ANwm AHwe 80000285 645
+ANab AAsm 80000286 646
+ANcr Amor 80000287 647
+ANhs ANcs 80000288 648
+ANcs AAsm 8000028a 650
+ANtm AAsm 80000289 649
+ANde Awar 8000028b 651
+ANeg APas 8000028c 652
+ANfy APas 8000028d 653
+ANrg Amor 8000028e 654
+ANsy AAsm 8000028f 655
+ANic ANca 80000290 656
+ANia AHRa 80000291 657
+ANlm AHwe 80000292 658
+ANso AAsm 80000293 659
+ANvc AAsm 80000294 660
+BNba buff 80000295 661
+BHca Bpoi 80000297 663
+Bcsd BHca 80000298 664
+Bcsi Bpsi 80000299 665
+BNdm BTLF 8000029a 666
+BNdo BlDT 8000029b 667
+BNdi BTLF 8000029c 668
+BNdh BNsi 8000029d 669
+BNef BTLF 8000029e 670
+BNht Broa 8000029f 671
+BNms buff 800002a0 672
+BNrd BlDT 800002a1 673
+BNrf BAOE 800002a2 674
+BNst buff 800002a4 676
+BNsg BHwe 800002a5 677
+BNsq BHwe 800002a6 678
+BNsw BHwe 800002a7 679
+BNto BTLF 800002a8 680
+BNwm BHwe 800002a9 681
+BNab Bpoi 800002aa 682
+BNcr BBAR 800002ab 683
+BNhs BNcs 800002ac 684
+BNcs BAOE 800002af 687
+BNtm BPSE 800002ad 685
+BNcg BTLF 800002ae 686
+BNeg ABon 800002b0 688
+BNfy BTLF 800002b1 689
+BNic buff 800002b2 690
+BNlm BTLF 800002b3 691
+BNso Bcri 800002b4 692
+BNva BAOE 800002b5 693
+MNba BfMi 800002b6 694 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MHca Mpoi 800002b8 696 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MHcs Mpas 800002b9 697 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MNdr B-Ro 800002ba 698
+MNdh BfMs 800002bb 699 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MNef B-Mi 800002bc 700 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MNfl B-Ro 800002bd 701
+MNst +wbu 800002be 702 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MNab BfMs 800002bf 703 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MNtm BfMs 800002c0 704 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+RNcs B-Ar 800002c1 705 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MNsy B-Ar 800002c2 706 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MNic BfMs 800002c3 707 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MNlm B-Mi 800002c4 708 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+RNvc BfAi 800002c5 709 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+BfAi B-Ar 8000038f 911 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+XErf XHbz 800002c6 710
+XNhs XNcs 800002c7 711 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+XNcs +ERs 800002c8 712 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+XNvc +EIP 800002c9 713 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+ANbr AAsm 800002ca 714
+ANcl AAsm 800002cb 715
+ANdc AUsl 800002cc 716
+ANdp AAsm 800002cd 717
+ANfd AAsm 800002ce 718
+ANfb AHtb 800002cf 719
+ANpa AAat 800002d1 721
+ANrc AAsm 800002d2 722
+ANsl AAsm 800002d3 723
+ANsu Abur 800002d4 724
+BNbr Broa 800002d5 725
+BNdc BUsl 800002d6 726
+BNin BTLF 800002d7 727
+BNpa Bpoi 800002d8 728
+BNpm BTLF 800002d9 729
+BNsl buff 800002da 730
+MNpa Mpoi 800002db 731 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+XErc +w3a 800002dc 732
+AIDB AIat 800002dd 733
+AIat APbo 800002e4 740
+AIDE AIDB 800002de 734
+AIab APbo 800002df 735
+AIxm AAsm 800002e0 736
+AIam AIxm 800002e1 737
+AIim AIxm 800002e2 738
+AIsm AIxm 800002e3 739
+AIaa AItm 800002e5 741
+AItm AAsm 80000309 777
+AIas APbo 800002e6 742
+AIcb AIDB 800002e7 743
+AIde APbo 800002e8 744
+AIem AItm 800002e9 745
+AIfl ABon 800002ea 746
+AIfm AIfl 800002eb 747
+AIfo AIfl 800002ec 748
+AIfe AIfl 800002ed 749
+AIfn AIfl 800002ee 750
+AIfg AAsm 800002ef 751
+AIff AIfg 800002f0 752
+AIfd AIfg 800002f1 753
+AIfr AIfg 800002f2 754
+AIfu AIfg 800002f3 755
+AIfh AIfg 800002f4 756
+AIfs AIfg 800002f5 757
+AIfb AIDB 800002f6 758
+AIzb AIDB 800002f7 759
+AIob AIDB 800002f8 760
+AIgl AItm 800002f9 761
+AIlm AItm 800002fa 762
+AIlb AIDB 800002fb 763
+AIlp Aprg 800002fc 764
+AIml APbo 800002fd 765
+AImi AItm 800002fe 766
+AImm APbo 800002ff 767
+AImn AItm 80000300 768
+AIms APbo 80000301 769
+AIdd APas 80000302 770
+AIpb AIDB 80000303 771
+Apo2 Apoi 80000304 772
+AIrb AItm 80000305 773
+AIsi APbo 80000306 774
+Aspb AAsp 80000307 775
+AIsb AIDB 80000308 776
+AIva APbo 8000030a 778
+AIan AUan 8000030b 779
+AIct AAsp 8000030c 780
+AIcf ANpi 8000030d 781
+AIco AAsm 8000030e 782
+AIdm AAsm 8000030f 783
+AIda AAsm 80000310 784
+AIta AAsm 80000311 785
+AIdi Adis 80000312 786
+AIhe AAsm 80000313 787
+AIha AAsm 80000314 788
+AIil AAsm 80000315 789
+AIma AAsm 80000316 790
+AImr AAsm 80000317 791
+AIpm AAsm 80000318 792
+AIrd Arai 80000319 793
+AIri AAsm 8000031a 794
+AIrt AAsm 8000031b 795
+AIrm Arem 8000031c 796
+AIrc abil 8000031d 797
+AIre AAsm 8000031e 798
+AIra AAsm 8000031f 799
+AIrs AHre 80000320 800
+AIsp AAsm 80000321 801
+AIsa AIsp 80000322 802
+AIsr AIat 80000323 803
+AIte AAsm 80000324 804
+AItp AIte 80000325 805
+AIvi AAsm 80000326 806
+AIpi Apiv 80000327 807
+AIvu AAsm 80000328 808
+AIso AAsm 80000329 809
+Asou abil 8000032a 810
+AIfc AAsm 8000032b 811
+AIpv AAsm 8000032c 812
+AIrg Arej 8000032d 813
+AIgo AItm 8000032e 814
+AIlu AItm 8000032f 815
+AIrv AAsp 80000330 816
+AIwb AAsm 80000331 817
+AImo AOwd 80000332 818
+AIdc AAsm 80000333 819
+AIca AAsm 80000334 820
+AIfa AAsm 80000335 821
+AIbl AAsm 80000336 822
+AItb AAsm 80000337 823
+BIcb buff 80000338 824
+BFig BTLF 80000339 825
+BIcf BEim 8000033a 826
+BIil BOmi 8000033b 827
+BIpb Bpoi 8000033c 828
+BIpd Bpsd 8000033d 829
+BIpi Bpsi 8000033e 830
+BIrb BTLF 8000033f 831
+BIsv buff 80000340 832
+BIrg Brej 80000341 833
+BIrl BIrg 80000342 834
+BIrm BIrg 80000343 835
+BIwb buff 80000344 836
+BImo BOwd 80000345 837
+BIpv buff 80000346 838
+MIcb BfMi 80000347 839 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MIcs BfMs 80000348 840 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MIlp BfMi 80000349 841 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MIls BfMs 8000034a 842 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MIdc B-Mb 8000034b 843 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+B-Mb B-Mi 80000389 905 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MIpb Mpoi 8000034c 844 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MIps Mpas 8000034d 845 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MIsb BfMi 8000034e 846 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+MIss BfMs 8000034f 847 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+XIct +w3a 80000350 848
++Wup +w3a 80000352 850
++Wue +w3a 80000353 851
+rtma +Wue 80000354 852
+rauv +Wue 80000355 853
+rarm +Wue 80000356 854
+rart +Wue 80000357 855
+ratt +Wue 80000358 856
+ratx +Wue 80000359 857
+radl +Wue 8000035a 858
+ratd +Wue 8000035b 859
+ratr +Wue 8000035c 860
+rats +Wue 8000035d 861
+rasd +Wue 8000035e 862
+rasr +Wue 8000035f 863
+ratc +Wue 80000360 864
+raud +Wue 80000361 865
+renw +Wue 80000362 866
+rent +Wue 80000363 867
+rhpo +Wue 80000364 868
+rhpx +Wue 80000365 869
+rhpr +Wue 80000366 870
+rlum +Wue 80000367 871
+rmim +Wue 80000368 872
+rman +Wue 80000369 873
+rmnx +Wue 8000036a 874
+rmnr +Wue 8000036b 875
+rmin +Wue 8000036c 876
+rmov +Wue 8000036d 877
+rmvx +Wue 8000036e 878
+rrai +Wue 8000036f 879
+rroo +Wue 80000370 880
+rsig +Wue 80000371 881
+rlev +Wue 80000372 882
+rspi +Wue 80000373 883
+ruro +Wue 80000374 884
++EIm +w3i 80000375 885
++EIf +EIm 80000377 887
++w3w +w3i 8000037b 891
++w3d +w3s 8000037c 892 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
++w3s +w3w 8000037d 893
++w3u +w3s 8000037e 894 2c0,2c0,8,10 5e70726f,60706375,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,0,7f7fffff,0,0,1160,ffffffff,ffffffff 1160,0,1,2,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,3,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,0,3f800000,0,0,1160,ffffffff,ffffffff 1160,0,1,4,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,5,1,0,0,0,0,ffffffff,ffffffff
+item +w3s 8000037f 895 160,160,8,8 5e70726f,60706f73,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+ddmg +w3a 80000380 896
+Cdet +w3a 80000381 897
+Csha +w3a 80000382 898
++w3B +w3i 80000383 899
++wbp +w3B 80000385 901 160,160,8,8 5e70726f,60706375,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+B-Ml B-Mi 8000038a 906 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60706375,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60706375,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,2,1,0,0,0,0,ffffffff,ffffffff
+B-Al B-Ar 8000038e 910 160,160,8,8 5e70726f,60706268,0,7f7fffff,7f7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60706375,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60706375,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,2,1,0,0,0,0,ffffffff,ffffffff
+MNfd B-Ro 80000391 913
+uedb wscd 80000392 914
+wscd +aga 80000434 1076
+usld uedb 80000393 915
+udad uedb 80000394 916
+uded ueoe 80000395 917
+ueoe uedb 800003a6 934
+udcd uedb 80000396 918
+used uedb 80000397 919
+uddd uedb 80000398 920
+uced uedb 80000399 921
+uccd uced 8000039a 922
+ucfd uced 8000039b 923
+uued uedb 8000039c 924
+uusd uued 8000039d 925
+uucd uued 8000039e 926
+uufd uued 8000039f 927
+ured uedb 800003a0 928
+ursd ured 800003a1 929
+urcd ured 800003a2 930
+urfd ured 800003a3 931
+ueed uedb 800003a4 932
+uhed uedb 800003a5 933
+ursc ueoe 800003a7 935
+uaed ueoe 800003a8 936
+uird uaed 800003a9 937
+uatd ueoe 800003aa 938
+uted ueoe 800003ab 939
+utsd uted 800003ac 940
+utcd utsd 800003ad 941
+utfd uted 800003ae 942
+uoed ueoe 800003af 943
+uped uoed 800003b0 944
+uotd uped 800003b1 945
+usbd uedb 800003b2 946
+uehs uedb 800003b3 947
+usud ueoe 800003b4 948
+uitt uedb 800003b5 949
+uite uedb 800003b6 950
+usvd ueoe 800003b7 951
+usid ueoe 800003b8 952
+ucod uedb 800003b9 953
+rlyp +aga 800003bb 955
+AI-1 +w3a 800003bc 956
+AI-U +w3a 800003bd 957
+AIts +w3a 800003be 958
+AIcs +w3a 800003bf 959
+AIgp +w3a 800003c0 960
+AI-C +w3w 800003c1 961 160,160,8,8 5e70726f,60706375,0,7f7fffff,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff
+AItr +w3a 800003c2 962
++rct +w3a 800003c4 964
++cst +w3a 800003c5 965 6e0,6e0,8,28 5e70726f,6072656c,0,44ce4000,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,459c4000,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,42c80000,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,2,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,428c0000,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,3,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,4,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,42b40000,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,5,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,43980000,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,6,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,7,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,8,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,9,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,a,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,b,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,c,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,d,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,e,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,f,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,10,1,0,0,0,0,ffffffff,ffffffff
++fgm +aga 800003c6 966
++fgt +fgm 800003c7 967
++loc +w3a 800003c8 968
++gam +w3a 800003c9 969 2c0,2c0,8,10 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,ff7fffff,7f7fffff,0,0,0,ffffffff,ffffffff 0,0,1,2,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,3f800000,ff7fffff,7f7fffff,0,0,1160,ffffffff,ffffffff 1160,0,1,3,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,4,1,0,0,0,0,ffffffff,ffffffff
+ally +w3a 800003ca 970 420,420,8,18 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,2,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,3,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,4,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,5,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,6,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,7,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,8,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,9,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,1771,ffffffff,ffffffff 1771,0,1,a,1,0,0,0,0,ffffffff,ffffffff
++ply +w3a 800003cb 971 9a0,9a0,8,38 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,2,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,3,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,4,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,5,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,6,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,7,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,8,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,9,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,a,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,b,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,c,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,d,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,e,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,f,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,10,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,11,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,12,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,13,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,14,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,15,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,16,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,17,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,18,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,1775,ffffffff,ffffffff 1775,0,1,19,1,0,0,0,0,ffffffff,ffffffff
++cam +aga 800003cc 972 580,580,8,20 5e70726f,6072656c,0,44d48000,42c80000,461c4000,0,2,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,405463e0,0,3fc90fdb,0,2,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,44ce4000,42c80000,461c4000,0,2,0,ffffffff,ffffffff 0,0,1,2,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,459c4000,42c80000,461c4000,0,2,0,ffffffff,ffffffff 0,0,1,3,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,42c80000,0,42c80000,0,2,0,ffffffff,ffffffff 0,0,1,4,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,3f9c61ab,3eb2b8c3,40060a92,0,2,0,ffffffff,ffffffff 0,0,1,5,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,80000000,ff800000,7f800000,0,2,0,ffffffff,ffffffff 0,0,1,6,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,3fc90fdb,ff800000,7f800000,0,2,0,ffffffff,ffffffff 0,0,1,7,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,40a9c91f,ff800000,7f800000,0,2,0,ffffffff,ffffffff 0,0,1,8,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,c5800000,45800000,0,2,0,ffffffff,ffffffff 0,0,1,9,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,0,0,7f7fffff,0,2,0,ffffffff,ffffffff 0,0,1,a,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60706f73,0,7f7fffff,0,0,0,2,0,ffffffff,ffffffff 0,0,1,b,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60706f73,0,7f7fffff,0,0,0,2,0,ffffffff,ffffffff 0,0,1,c,1,0,0,0,0,ffffffff,ffffffff 5e70726f,6072656c,0,80000000,ff800000,7f800000,0,2,1775,ffffffff,ffffffff 1775,0,1,d,1,0,0,0,0,ffffffff,ffffffff
+hdlr +w3a 800003cd 973
+bExp +w3a 800003ce 974
+bbop bExp 800003cf 975
+bAnd bbop 800003d0 976
++bOr bbop 800003d1 977
+bNot bExp 800003d2 978
++flt bExp 800003d3 979
++grp +w3a 800003d4 980
++frc +w3a 800003d5 981 160,160,8,8 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,0,0,0,0,0,0,ffffffff,ffffffff 0,0,1,1,1,0,0,0,0,ffffffff,ffffffff
++tmr +w3a 800003d6 982
++tml +w3a 800003d7 983
++trg +w3a 800003d8 984 160,160,8,8 5e70726f,60666c67,0,2,0,0,0,0,1160,ffffffff,ffffffff 1160,0,1,0,1,0,0,0,0,ffffffff,ffffffff 5e70726f,60666c67,0,1,0,0,0,0,1160,ffffffff,ffffffff 1160,0,1,1,1,0,0,0,0,ffffffff,ffffffff
+tcnd +w3a 800003d9 985
++tac +w3a 800003da 986
++tex +w3a 800003db 987
++evt +w3a 800003dc 988
+wdvt +evt 800003dd 989
+wded wscd 800003de 990
+gevt +evt 800003df 991
+pevt +evt 800003e0 992
+uevt +evt 800003e1 993
+rgvt +evt 800003e2 994
+vevt +evt 800003e3 995
+sevt vevt 800003e4 996
+ievt sevt 800003e5 997
+fevt sevt 800003e6 998
+alvt ievt 800003e7 999
+gsvt ievt 800003e8 1000
+gfvt fevt 800003e9 1001
+usvt uevt 800003ea 1002
+psvt pevt 800003eb 1003
+pcvt pevt 800003ec 1004
+tmvt +evt 800003ed 1005
+tmet +evt 800003ee 1006
+wsed wscd 800003ef 1007
++rev +evt 800003f0 1008
++snd +w3a 800003f1 1009
+pool +aga 800003f2 1010
+ipol +aga 800003f3 1011
+pedb wscd 800003f4 1012
+psld pedb 800003f5 1013
+pded pedb 800003f6 1014
+pved pedb 800003f7 1015
+pled pedb 800003f8 1016
+pecd pedb 800003f9 1017
+pcmd pedb 800003fa 1018
+pued pedb 800003fb 1019
+puad pued 800003fc 1020
+pudd pued 800003fd 1021
+pude pued 800003fe 1022
+pusd pued 800003ff 1023
+psel pued 80000400 1024
+updd pued 80000401 1025
+puhd pued 80000402 1026
+pucs pued 80000403 1027
+pcfd pued 80000404 1028
+pccd pued 80000405 1029
+puud pued 80000406 1030
+puse puud 80000407 1031
+pufd puud 80000408 1032
+pucd puud 80000409 1033
+pted pued 8000040a 1034
+ptes pted 8000040b 1035
+ptcd ptes 8000040c 1036
+ptcf ptes 8000040d 1037
+puod pued 8000040e 1038
+ppod puod 8000040f 1039
+ptod puod 80000410 1040
+psbd pued 80000411 1041
+prud pued 80000412 1042
+prse prud 80000413 1043
+prcd prud 80000414 1044
+prfd prud 80000415 1045
+pssd pued 80000416 1046
+pite pued 80000417 1047
+pstd pued 80000418 1048
+phsd pued 80000419 1049
+purd pued 8000041a 1050
++qum +w3a 8000041b 1051
++que +w3a 8000041c 1052
++qui +w3a 8000041d 1053
++dfc +qui 8000041e 1054
++tid +w3a 8000041f 1055
++dlb +w3a 80000420 1056
++dlg +w3a 80000421 1057
++ldb +w3a 80000422 1058
++trk +w3i 80000423 1059
++tev +evt 80000424 1060
+gcch +w3a 80000425 1061
+ghth +w3a 80000426 1062
+bevt +evt 80000427 1063
+bedb wscd 80000428 1064
+devt +evt 80000429 1065
+dced wscd 8000042a 1066
+gccm +w3a 8000042b 1067
+psvd pued 8000042c 1068
+psid pued 8000042d 1069
+tfsd wscd 8000042e 1070
+tfnd wscd 8000042f 1071
+gsed wscd 80000430 1072
+puco pued 80000431 1073
++mdb +w3a 80000432 1074
++mbi +w3a 80000433 1075

@@ -183,6 +183,46 @@ fn main() {
         }
         return;
     }
+    // "classtable": the registry for docs/reference/w3z_classes.txt: code, parent, tag,
+    // birth, and, when its definition's array is not the empty default, its four words
+    // and each entry's eleven, all in hex.
+    if a[2] == "classtable" {
+        let m = s.objects.as_ref().unwrap();
+        let defs: std::collections::HashMap<u32, &w3_formats::w3z::SavedObject> = all.iter().filter(|o| code(o.entry.kind) == "^adf").map(|o| (o.entry.tag, &**o)).collect();
+        for c in &m.classes {
+            let mut line = format!("{} {} {:x} {}", code(c[0]), code(c[1]), c[2], c[3]);
+            if let Some(Ok(w3_formats::w3z::First::AgentDef { array, .. })) = defs.get(&c[2]).map(|o| o.first()) {
+                if array.words != [0, 0, 8, 0] || !array.entries.is_empty() {
+                    line += &format!(" {}", array.words.iter().map(|w| format!("{w:x}")).collect::<Vec<_>>().join(","));
+                    for e in &array.entries {
+                        line += &format!(" {}", e.iter().map(|w| format!("{w:x}")).collect::<Vec<_>>().join(","));
+                    }
+                }
+            }
+            println!("{line}");
+        }
+        return;
+    }
+    // "table1": the second table's kinds, counted.
+    if a[2] == "table1" {
+        let m = s.objects.as_ref().unwrap();
+        let mut c = std::collections::BTreeMap::new();
+        for e in &m.tables[1] {
+            *c.entry(code(e.kind)).or_insert(0) += 1;
+        }
+        println!("{c:?}");
+        let non: Vec<_> = m.tables[1].iter().filter(|e| code(e.kind) != "^adf").map(|e| (code(e.kind), e.tag & 0x7fffffff, e.birth)).collect();
+        println!("{:?}", &non[..non.len().min(40)]);
+        return;
+    }
+    // "classes": the registered classes, a line each: code, parent, tags.
+    if a[2] == "classes" {
+        let m = s.objects.as_ref().unwrap();
+        for c in &m.classes {
+            println!("{} {} {:x} {}", code(c[0]), code(c[1]), c[2], c[3]);
+        }
+        return;
+    }
     // "families": each kind with its family, as the tables hold them.
     if a[2] == "families" {
         let m = s.objects.as_ref().unwrap();

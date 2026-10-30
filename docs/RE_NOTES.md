@@ -1438,6 +1438,16 @@ Formats the port made its own, to be replaced by the original's:
   `FUN_6f6c44a0(0)`), which a chop calls (`FUN_6f405110`), `FUN_6f48ffc0`, and the
   destructable's making (`FUN_6f6c0d90`, where `FUN_6f04e060(0x20, 0)` is not 0; else
   `FUN_6f6c44a0(1)`).
+  The classes registered and their definitions (`^adf`, the second table's first
+  1077) are alike in every save (`docs/reference/w3z_classes.txt`).  The second table
+  holds the local player's own objects besides (the camera `+cam` and its reals, the
+  cursor `+ccu`, `+ccp`, effect images `+EIm`, `rlyp`, fog ghosts `+wgh` with their
+  positions and regions): a save of the quiet test map with them left out crashes
+  the original as it loads (`w3zedit drop1`), the same save written back unchanged
+  loading and playing.  The port writes saves from its own state piece by piece
+  (`w3_game::w3zsave`, checked by playtest's `w3zcompare` against the original's save
+  of the same moment): so far the first table, its free list, the classes, and their
+  definitions, each byte for byte on the quiet test map at 5 seconds.
   An agent's entry is its
   CAgentBaseAbs: its first record `FUN_6f146480` (its base's, a reference, a counted
   list of references, four more), its second its agent's vf 0x38 (CAgent's

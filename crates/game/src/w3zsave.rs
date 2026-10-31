@@ -1060,6 +1060,9 @@ impl World {
         for (slot, f) in self.game_object_records() {
             records.entry(slot).or_insert(f);
         }
+        for (slot, sec) in self.plain_agent_seconds() {
+            seconds.entry(slot).or_insert(sec);
+        }
         for &h in &self.unit_order {
             for (slot, f) in self.ability_real_records(h, &rallies).into_iter().chain(self.structure_region_records(h)) {
                 records.entry(slot).or_insert(f);
@@ -1155,6 +1158,44 @@ impl World {
             links[3] = link(1);
         }
         out.push((game.0, first));
+        out
+    }
+
+    /// Second records of the AI's and engine's plain objects: each camp's AI (`AIcs`: 0,
+    /// its creeps' count, and twelve places for them, its creeps by slot then none), each
+    /// town site's (`AIts`: 0, its index, its place twice, none, its gold mine, none),
+    /// the `shft` (none, 0, 0, 0, and no timer), and the trigger queue (`+qum`: none
+    /// queued).  Provisional: what a running AI keeps in them; a site a town has taken
+    /// (its town hall after its place, its center and a second place computed: read,
+    /// the quiet test map's computer's, 8148.0054 and 8832), a `shft` at work, a queue
+    /// in use.
+    pub fn plain_agent_seconds(&self) -> Vec<(u32, Second)> {
+        let events = || Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
+        let none3 = || vec![Field::Word(u32::MAX), Field::Word(u32::MAX), Field::Word(0)];
+        let mut out = Vec::new();
+        for (&slot, (code, _)) in &self.tags.live {
+            match code {
+                b"AIcs" => {
+                    let mut members: Vec<(u32, u32)> = self.unit_order.iter().filter_map(|&h| self.unit(h)).filter(|u| u.extra.camp_ai.is_some_and(|c| c.0 == slot)).filter_map(|u| u.extra.object_slots[0].first().copied()).collect();
+                    members.sort();
+                    let list = (0..12).map(|k| members.get(k).map_or_else(none3, |m| vec![Field::Word(m.0), Field::Word(m.1), Field::Word(0)])).collect();
+                    out.push((slot, Second::Agent { own: vec![Field::Word(0), Field::Word(members.len() as u32), Field::List(list)], handlers: events(), tail: Vec::new() }));
+                }
+                b"AIts" => {
+                    let Some(index) = self.tags.sites.iter().position(|s| s.2 .0 == slot) else { continue };
+                    let (x, y, _) = self.tags.sites[index];
+                    let mine = self.unit_order.iter().filter_map(|&h| self.unit(h)).find(|u| u.extra.site_ai.is_some_and(|s| s.0 == slot)).and_then(|u| u.extra.object_slots[0].first().copied()).unwrap_or((u32::MAX, u32::MAX));
+                    let mut own = vec![Field::Word(0), Field::Word(index as u32), Field::Real(x), Field::Real(y), Field::Real(x), Field::Real(y)];
+                    own.extend(none3());
+                    own.extend([Field::Word(mine.0), Field::Word(mine.1), Field::Word(0)]);
+                    own.extend(none3());
+                    out.push((slot, Second::Agent { own, handlers: events(), tail: Vec::new() }));
+                }
+                b"shft" => out.push((slot, Second::Agent { own: vec![Field::Word(u32::MAX), Field::Word(u32::MAX), Field::Word(0), Field::Word(0), Field::Real(0.0)], handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: Vec::new() }, tail: vec![Field::Timer(NONE, 0, Timing(None))] })),
+                b"+qum" => out.push((slot, Second::Agent { own: vec![Field::Word(0)], handlers: events(), tail: vec![Field::List(Vec::new()), Field::List(Vec::new())] })),
+                _ => {}
+            }
+        }
         out
     }
 
@@ -1746,7 +1787,7 @@ impl World {
             let circles: Vec<(u32, First)> = self.unit_order.iter().flat_map(|&h| self.mine_circle_records(h).0.into_iter().chain(self.blight_growth_records(h).0)).collect();
             {
                 let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();
-                let secs: Vec<(u32, Second)> = self.unit_order.iter().flat_map(|&h| self.mine_circle_records(h).1.into_iter().chain(self.blight_growth_records(h).1)).collect();
+                let secs: Vec<(u32, Second)> = self.unit_order.iter().flat_map(|&h| self.mine_circle_records(h).1.into_iter().chain(self.blight_growth_records(h).1)).chain(self.plain_agent_seconds()).collect();
                 let (mut same, mut differ, mut first) = (0, 0, None);
                 for (slot, sec) in secs {
                     match by_slot.get(&slot) {
@@ -1763,7 +1804,7 @@ impl World {
                         None => differ += 1,
                     }
                 }
-                out.push(format!("mines' slots, circles, and blight growth (second records): {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+                out.push(format!("mines' slots, circles, blight growth, camps, sites, shifts, and the queue (second records): {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
             }
             for (name, recs) in [("plain agents", self.plain_agent_records()), ("pathing system objects", self.pathing_system_records(48, 0)), ("game object", self.game_object_records()), ("abilities' reals", ability_reals), ("structures' footprints (but for the search mark)", footprints), ("mines' circles and blight growth (but for the search mark)", circles)] {
                 let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();

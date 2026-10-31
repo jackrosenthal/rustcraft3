@@ -1251,6 +1251,25 @@ impl World {
         }
     }
 
+    /// The W3GS slot table as a save holds it: the slot count; each map slot (its players
+    /// but the neutral ones, those in use) its player's number from 1 (a computer's 0),
+    /// 100 (its download), 2 (in use), whether a computer, its team, color, race (its
+    /// preference, selectable), the computer's difficulty, and its handicap; the seed, 0
+    /// (the layout), and the start spots (read: the quiet test map's two).
+    pub fn saved_slot_table(&self) -> Vec<u8> {
+        let slots: Vec<&crate::types::Player> = self.players.iter().take(12).filter(|p| p.slot_state != crate::types::slot_state::EMPTY).collect();
+        let mut o = vec![slots.len() as u8];
+        for p in &slots {
+            let computer = p.controller == crate::types::map_control::COMPUTER;
+            let race = 0x40 | if p.race_preference & 0x3f != 0 { p.race_preference as u8 & 0x3f } else { 0x20 };
+            let ai = self.ai_difficulty.get(&p.id).copied().unwrap_or(1) as u8;
+            o.extend([if computer { 0 } else { p.id + 1 }, 100, 2, computer as u8, p.team as u8, p.color as u8, race, ai, (p.handicap * 100.0).round() as u8]);
+        }
+        o.extend(self.seed.to_le_bytes());
+        o.extend([0, slots.len() as u8]);
+        o
+    }
+
     /// The object manager's header as saved (`FUN_6f15c9b0`): two words, two reals (25
     /// and 0.2), its update counter and that's parity, each table's births, four
     /// groups of a clock (a time, a word, its wrap 300, a word, a count), and "espi".
@@ -1442,11 +1461,10 @@ impl World {
         m.set_objects(&objects);
         m.free[0] = self.saved_free_list();
         // The regions section (the pathing maps and grids; their search marks the
-        // template's, the running game's).
-        if let Ok(maps) = w3_formats::w3z::PathingMaps::parse(&m.data[0]) {
-            if let Some(ours) = self.saved_pathing_maps([maps.proximity[0].words[0], maps.proximity[1].words[0]]) {
-                m.data[0] = ours.to_bytes();
-            }
+        // template's, the running game's, else 0).
+        let marks = w3_formats::w3z::PathingMaps::parse(&m.data[0]).map_or([0, 0], |maps| [maps.proximity[0].words[0], maps.proximity[1].words[0]]);
+        if let Some(ours) = self.saved_pathing_maps(marks) {
+            m.data[0] = ours.to_bytes();
         }
         s
     }

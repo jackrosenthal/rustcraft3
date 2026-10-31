@@ -9,8 +9,7 @@ fn main() {
     let bytes = std::fs::read(&a[1]).unwrap();
     let (header, _) = w3_formats::container::unpack(&bytes).unwrap();
     let mut s = SaveGame::read(&bytes).unwrap();
-    let m = s.objects.as_mut().unwrap();
-    let mut objects = m.objects().unwrap();
+    let mut objects = s.objects.as_ref().unwrap().objects().unwrap();
     match a[3].as_str() {
         "life" => {
             let (tag, value): (u32, f32) = (a[4].parse().unwrap(), a[5].parse().unwrap());
@@ -32,7 +31,7 @@ fn main() {
         // "header0": the object manager header's two first words, its update counter
         // and parity, and its four groups' counts zeroed (1024 for the counter).
         "header0" => {
-            let h = &mut m.header;
+            let h = &mut s.objects.as_mut().unwrap().header;
             let mut put = |k: usize, v: u32| h[k * 4..k * 4 + 4].copy_from_slice(&v.to_le_bytes());
             put(0, 0);
             put(1, 0);
@@ -69,7 +68,7 @@ fn main() {
                     out.extend(t.to_le_bytes());
                 }
                 out.extend(u32::MAX.to_le_bytes());
-                m.free[1] = out;
+                s.objects.as_mut().unwrap().free[1] = out;
             }
         }
         // "dropkinds <kind,...>": the second table's objects of those kinds left out
@@ -117,8 +116,60 @@ fn main() {
             o.second = Second::Agent { own, handlers, tail }.to_bytes(o.entry.kind).unwrap();
             println!("camera target {x} {y}");
         }
+        // "graft <from.w3z> <pieces>": pieces of another save in place of this one's, by
+        // comma: header (the record's fields before the object manager), client (the
+        // second table, objects and entries), clocks, queues (data[1]), free1, block,
+        // mheader (the manager's header), state:<part>, script.
+        "graft" => {
+            let from = SaveGame::read(&std::fs::read(&a[4]).unwrap()).unwrap();
+            let fm = from.objects.as_ref().unwrap();
+            let theirs = fm.objects().unwrap();
+            let mut state_parts: Vec<String> = Vec::new();
+            for piece in a[5].split(',') {
+                match piece {
+                    "header" => {
+                        s.map = from.map.clone();
+                        s.game_name = from.game_name.clone();
+                        s.info_name = from.info_name.clone();
+                        s.info_password = from.info_password.clone();
+                        s.info_stat = from.info_stat.clone();
+                        s.info_words = from.info_words;
+                        s.slots = from.slots.clone();
+                        s.objects_word = from.objects_word;
+                        s.map_xoro = from.map_xoro;
+                        s.map_sha1 = from.map_sha1;
+                        s.local_slot = from.local_slot;
+                        s.local_player = from.local_player;
+                        s.player_name = from.player_name.clone();
+                        s.preferences = from.preferences;
+                        s.game_ms = from.game_ms;
+                        s.game_word = from.game_word;
+                    }
+                    "client" => objects[1] = theirs[1].clone(),
+                    "clocks" => s.objects.as_mut().unwrap().clocks = fm.clocks,
+                    "queues" => s.objects.as_mut().unwrap().data[1] = fm.data[1].clone(),
+                    "free1" => s.objects.as_mut().unwrap().free[1] = fm.free[1].clone(),
+                    "block" => s.objects.as_mut().unwrap().block = fm.block.clone(),
+                    "mheader" => s.objects.as_mut().unwrap().header = fm.header.clone(),
+                    p if p.starts_with("state:") || p == "script" => state_parts.push(p.trim_start_matches("state:").replace("script", "script data")),
+                    other => panic!("unknown piece {other}"),
+                }
+            }
+            if !state_parts.is_empty() {
+                let mut g = s.state().unwrap();
+                let fg = from.state().unwrap();
+                for (name, f) in g.parts.iter_mut() {
+                    if state_parts.iter().any(|p| p == name) {
+                        *f = fg.parts.iter().find(|(n, _)| n == name).unwrap().1.clone();
+                    }
+                }
+                s.rest = g.to_bytes().unwrap();
+            }
+            println!("grafted {}", a[5]);
+        }
         other => panic!("unknown edit {other}"),
     }
+    let m = s.objects.as_mut().unwrap();
     m.set_objects(&objects);
     std::fs::write(&a[2], s.to_file(&header)).unwrap();
 }

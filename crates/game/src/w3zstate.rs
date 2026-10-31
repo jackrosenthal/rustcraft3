@@ -152,7 +152,14 @@ impl World {
             }
         }
         let corners = t.corners.iter().map(|c| vec![Field::Byte(if c.ground_texture == blight { 255 } else { 0 })]).collect();
-        let doodads = template.get(5).cloned().unwrap_or(Field::List(Vec::new()));
+        // (Without a template, each doodad's 0, provisional; a byte for each of the map's
+        // doodads that is not a destructable, a destructable's type flagged 3 being
+        // scenery: read, 603 of Booty Bay's 2011, and a save with all 2011 crashes the
+        // original as it loads.)
+        let doodads = template.get(5).cloned().unwrap_or_else(|| {
+            let n = self.chain.read("war3map.doo").ok().and_then(|d| w3_formats::map::Doodads::parse(&d).ok()).map_or(0, |d| d.doodads.iter().filter(|x| self.objects.destructables.get(x.id).is_none() || x.flags == 3).count());
+            Field::List((0..n).map(|_| vec![Field::Byte(0)]).collect())
+        });
         Some(vec![
             Field::Word(1),
             Field::Word(0),

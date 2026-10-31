@@ -6,6 +6,17 @@ use w3_jass::vm::{Reg, Var};
 
 use crate::Game;
 
+/// What a save's header holds that the world does not: the map's path from the game's
+/// folder, its description as a game played alone carries it (the coded stat string),
+/// and its checksums over the game's scripts.
+#[derive(Clone, Debug, Default)]
+pub struct SaveHead {
+    pub map: String,
+    pub stat: Vec<u8>,
+    pub xoro: u32,
+    pub sha1: [u8; 20],
+}
+
 /// A register or a pushed value as saved (`FUN_6f91a6e0`): its type, the type given,
 /// and its word.
 fn reg_value(r: &Reg) -> Value {
@@ -110,7 +121,8 @@ impl Game {
         let mut threads = self.saved_threads();
         let old = d.threads.first().cloned().unwrap_or_default();
         for t in &mut threads {
-            let word = old.iter().find(|o| o.machine == t.machine).and_then(|o| o.frames.last()).and_then(|f| f.arguments.last()).map(|v| v.value.clone());
+            // (W3Z_NORETURN: none taken, to test what the original makes of it.)
+            let word = old.iter().find(|o| o.machine == t.machine).and_then(|o| o.frames.last()).and_then(|f| f.arguments.last()).map(|v| v.value.clone()).filter(|_| std::env::var_os("W3Z_NORETURN").is_none());
             if let (Some(f), Some(w)) = (t.frames.last_mut(), word) {
                 if let Some(v) = f.arguments.last_mut().filter(|v| v.kind == w3_jass::vm::ty::RETURN as u32 && v.value == Contents::One(0)) {
                     v.value = w;
@@ -136,6 +148,80 @@ impl Game {
             *f = vec![Field::Bytes(bytes)];
         }
         if let Ok(rest) = state.to_bytes() {
+            s.rest = rest;
+        }
+        s
+    }
+
+    /// A save from the port's state alone, without a template: the header (`head`'s map
+    /// and description, the slot table, the local player), the object manager (its
+    /// tables, the main one's from the tags and the second the classes' definitions and
+    /// the camera's; its free lists, classes, clocks, the path queues as a game's start
+    /// has them, the map's bounds and 522.6667), every object's records, and the game's
+    /// state, its script data the map script's.  Provisional: the objects' word (the
+    /// Tempest checksum, 0), the clocks' counts (0), the fog's third grid and the
+    /// doodads' bytes (0), the AI scripts' machines (none).
+    pub fn write_save_fresh(&self, head: &SaveHead) -> SaveGame {
+        use w3_formats::w3z::{GameState, ObjectManager, SavedObject};
+        let w = &self.world;
+        let blank = |entry| SavedObject { entry, first: Vec::new(), second: Vec::new() };
+        let mut second: Vec<SavedObject> = crate::w3zsave::class_definitions().into_iter().map(|o| blank(o.entry)).collect();
+        second.extend(w.camera_records().into_iter().map(|(e, _, _)| blank(e)));
+        let births = second.iter().map(|o| o.entry.birth + 1).max().unwrap_or(0);
+        let objects = [w.saved_table().into_iter().map(blank).collect(), second];
+        let time = w.time;
+        let mut queues = Vec::new();
+        for _ in 0..64 {
+            for v in [0u32, 0, 0, u32::MAX, u32::MAX, u32::MAX, u32::MAX] {
+                queues.extend(v.to_le_bytes());
+            }
+        }
+        let b = w.map_bounds;
+        let mut m = ObjectManager {
+            header: w.saved_manager_header(births),
+            free: [Vec::new(), u32::MAX.to_le_bytes().to_vec()],
+            classes: crate::w3zsave::saved_classes(),
+            clocks: [(time, 0, 300.0, 4096, 0), (time, 0, 300.0, 0, 0)],
+            block: vec![0; 256],
+            data: [Vec::new(), queues, Vec::new(), Vec::new(), Vec::new(), Vec::new()],
+            bounds: [b.min_x, b.min_y, b.max_x, b.max_y, 522.6667],
+            ..Default::default()
+        };
+        m.set_objects(&objects);
+        let local = w.local_player;
+        let skeleton = SaveGame {
+            map: head.map.clone(),
+            info_name: "Local Game".into(),
+            info_stat: head.stat.clone(),
+            info_words: [12, 1],
+            slots: w.saved_slot_table(),
+            map_xoro: head.xoro,
+            map_sha1: head.sha1,
+            local_slot: w.players.iter().take(12).filter(|p| p.slot_state != crate::types::slot_state::EMPTY).position(|p| p.id == local).map_or(-1, |k| k as i32),
+            local_player: local as u32,
+            player_name: w.players.get(local as usize).map_or_else(String::new, |p| p.name.clone()),
+            preferences: [1, 1],
+            game_ms: w.game_ms,
+            objects: Some(m),
+            ..Default::default()
+        };
+        let game = w.game_object();
+        let mut s = w.write_save(&skeleton, vec![(game.0, self.game_state_second())]);
+        let Ok(script) = self.saved_script_data(&ScriptData::default()).to_bytes() else { return s };
+        let parts: Vec<(&'static str, Vec<Field>)> = vec![
+            ("game", w.saved_game_part()),
+            ("map setup", self.saved_map_setup()),
+            ("fog", w.saved_fog(&[]).unwrap_or_default()),
+            ("game 2", w.saved_game_2(&[])),
+            ("game 3", w.saved_game_3(&[])),
+            ("terrain", w.saved_terrain(&[]).unwrap_or_default()),
+            ("script data", vec![Field::Bytes(script)]),
+            ("hashtables", vec![Field::List(Vec::new()), Field::Word(0)]),
+            ("references", w.saved_sites()),
+            ("sounds", w.saved_sounds()),
+            ("ui", w.saved_ui()),
+        ];
+        if let Ok(rest) = (GameState { parts, rest: Vec::new() }).to_bytes() {
             s.rest = rest;
         }
         s

@@ -236,6 +236,27 @@ fn main() {
         }
         return;
     }
+    // "part <name>": a state part's fields, one a line, lists by their lengths and
+    // distinct values.
+    if a[2] == "part" {
+        let g = s.state().unwrap();
+        let (_, f) = g.parts.iter().find(|(n, _)| *n == a[3]).expect("no such part");
+        for (k, x) in f.iter().enumerate() {
+            match x {
+                w3_formats::w3z::Field::List(rows) => {
+                    let mut seen: Vec<String> = rows.iter().map(|r| format!("{r:?}")).collect();
+                    seen.sort();
+                    seen.dedup();
+                    println!("{k}: list of {}, {} distinct: {}", rows.len(), seen.len(), seen.iter().take(6).cloned().collect::<Vec<_>>().join(" "));
+                    if std::env::var("FULL").is_ok_and(|v| v == k.to_string()) {
+                        println!("{}", rows.iter().map(|r| match r[..] { [w3_formats::w3z::Field::Byte(b)] => b.to_string(), _ => "?".into() }).collect::<Vec<_>>().join(""));
+                    }
+                }
+                other => println!("{k}: {other:?}"),
+            }
+        }
+        return;
+    }
     // "state": the game's state's parts, each its fields in brief.
     if a[2] == "state" {
         let st = s.state().unwrap();

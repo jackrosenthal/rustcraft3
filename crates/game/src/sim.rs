@@ -1650,6 +1650,23 @@ impl World {
             // The last waypoint of a way short of its goal is arrived at facing the goal,
             // as is a structure walked to.
             let last = self.unit(h).is_some_and(|u| u.path.len() == 1);
+            // On the last leg of a way short of its goal (its search stopped by its budget
+            // at the goal's cell, the way ending at that cell's middle), the walker is there
+            // once the goal itself is within reach: it steers for it and its walk ends
+            // (`FUN_6f16fbd0` tests arrival, `FUN_6f16e910`, against a point apart from the
+            // waypoint it steers by; read: a Gnoll Wood sheep, its search refused 33 passes
+            // short with its best node the goal's cell, as the original's, ending its walk
+            // a turn before the port's walk to the middle and search again).  Provisional:
+            // which point the engine tests, read only so.
+            let goal_near = !facing && !to_structure && last && self.unit(h).is_some_and(|u| u.extra.path_end_cell.is_some()) && goal.is_some_and(|g| {
+                let (x, y) = m.at(clock);
+                let (gx, gy) = (ef::sub(cell(g.0, origin[0]), x), ef::sub(cell(g.1, origin[1]), y));
+                f32::from_bits(ef::sqrt(ef::add(ef::mul(gx, gx), ef::mul(gy, gy)))) <= f32::from_bits(gait.reach)
+            });
+            let to = match goal {
+                Some(g) if goal_near => (cell(g.0, origin[0]), cell(g.1, origin[1])),
+                _ => to,
+            };
             let r = match goal {
                 _ if facing => m.face(&gait, to, clock),
                 Some(g) if to_structure && last => m.arrive(&gait, to, (cell(g.0, origin[0]), cell(g.1, origin[1])), clock),
@@ -1667,7 +1684,7 @@ impl World {
             if !u.path.is_empty() {
                 continue;
             }
-            let partial = u.extra.path_end_cell.take().is_some();
+            let partial = u.extra.path_end_cell.take().is_some() && !goal_near;
             match goal.filter(|_| partial) {
                 Some(goal) => {
                     self.path_to(h, goal);

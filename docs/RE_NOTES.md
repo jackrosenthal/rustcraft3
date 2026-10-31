@@ -2335,7 +2335,17 @@ Formats the port made its own, to be replaced by the original's:
   matched: the creeps falling asleep free their spells' listeners with the last
   change's listeners, as the change ends, not as the tick ends (the original's came
   before the tree of a walk that arrived in the turn's last step).  With it Twisted
-  Meadows agrees for all 3752 turns captured.
+  Meadows agrees for all 3752 turns captured.  Gnoll Wood (six players, four slots
+  closed) agreed to turn 1217: a sheep's walk ended there a turn late, its next wait
+  drawn after the original's.  Its search, from cell 468, 402 to 464, 409, was refused
+  by trees and stopped by its budget, 33 passes, its best node the goal's cell: so the
+  original's too (read under winedbg after `FUN_6f14aa10`: -1, 33 passes, best 464, 409,
+  start 468, 402), whose way then ends at that cell's middle (`FUN_6f148100`,
+  `FUN_6f147f90`), as the port's.  The port walked to the middle, searched again, and
+  turned to the goal; the original's walk ends as soon as the goal itself is within
+  reach (`FUN_6f16fbd0` tests arrival against a point apart from the waypoint it steers
+  by; which point, read only so: provisional).  With it Gnoll Wood agrees for all 3752
+  turns captured.
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

@@ -43,8 +43,10 @@ fn camera_margin(w: &World, which: u32) -> f32 {
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
     reg!(t,
         Rect => |w, _, a| {
-            w.tags.take(b"+rct");
-            handle(w.handles.insert(Obj::Rect(Rect { min_x: a.r(0), min_y: a.r(1), max_x: a.r(2), max_y: a.r(3) })))
+            let slot = w.tags.take(b"+rct");
+            let h = w.handles.insert(Obj::Rect(Rect { min_x: a.r(0), min_y: a.r(1), max_x: a.r(2), max_y: a.r(3) }));
+            w.tags.handle_slots.insert(h, slot);
+            handle(h)
         },
         RectFromLoc => |w, _, a| {
             let (x0, y0) = w.location(a.h(0)).unwrap_or_default();

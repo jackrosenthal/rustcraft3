@@ -807,6 +807,20 @@ impl World {
                     let Some(own) = slot_of(id) else { continue };
                     out.push((own.0, agent_first(own, b"+loc", &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail: vec![Field::Real(*x), Field::Real(*y)] })));
                 }
+                // A rect (CScriptRect): its bounds, bottom, left, top, right.
+                Some(Obj::Rect(r)) => {
+                    let Some(own) = slot_of(id) else { continue };
+                    let tail = vec![Field::Real(r.min_y), Field::Real(r.min_x), Field::Real(r.max_y), Field::Real(r.max_x)];
+                    out.push((own.0, agent_first(own, b"+rct", &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail })));
+                }
+                // A group (CGroup, its class writing its whole record): its units, two
+                // references, -1, and three words (read: the quiet test map's empty
+                // groups; provisional: a group's units' entries, the references).
+                Some(Obj::Group(g)) => {
+                    let Some(own) = slot_of(id) else { continue };
+                    let units = g.units.iter().filter_map(|&u| self.unit(u).and_then(|u| u.extra.object_slots[0].first().copied())).map(|s| vec![Field::Ref(rf(s))]).collect();
+                    out.push((own.0, agent_first(own, b"+grp", &[]), Some(Second::Whole(vec![Field::List(units), Field::Ref(NONE), Field::Ref(NONE), Field::Word(u32::MAX), Field::Word(0), Field::Word(0), Field::Word(0)]))));
+                }
                 _ => {}
             }
         }

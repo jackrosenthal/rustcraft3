@@ -611,6 +611,10 @@ pub fn remove_unit(w: &mut World, h: u32) {
         w.tech_reg(owner, type_id).present -= 1;
     }
     if w.unit(h).is_some() {
+        // (Its agent kept for the references scripts still hold to its handle.)
+        if let (Some(handle), Some(&agent)) = (w.handles.known_handle(h), w.unit(h).and_then(|u| u.extra.object_slots[0].first())) {
+            w.tags.dead_handles.insert(handle, (agent, 0));
+        }
         w.handles.remove(h);
         w.unit_order.retain(|x| *x != h);
         // Creep camps forget it, as its handle may come to name another unit.

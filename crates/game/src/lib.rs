@@ -563,8 +563,10 @@ impl Game {
         // The game's two periodic timers, events 0x80269 and 0x8026a (`FUN_6f28ba80`,
         // `FUN_6f28bac0`, as `FUN_6f1e5a10` ends the setup; traced: the quiet test map's
         // after its script's; provisional: before the wanderers' first waits).
-        self.world.tags.start_timer("28ba80");
-        self.world.tags.start_timer("28bac0");
+        let clock = self.world.tags.clock;
+        self.world.tags.game_timers[0] = self.world.tags.start_timer("28ba80");
+        self.world.tags.game_timers[1] = self.world.tags.start_timer("28bac0");
+        self.world.tags.game_timers_clock = clock;
         self.world.draw_first_wander_waits();
         Ok(())
     }

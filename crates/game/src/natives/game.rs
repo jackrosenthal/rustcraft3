@@ -156,6 +156,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         // SaveGame).
         SaveGame => |w, vm, a| {
             vm.snapshot_wanted = true;
+            w.tags.save_clock = Some(w.tags.clock);
             w.requests.push(crate::world::Request::SaveGame(a.s(0)));
             w3_jass::NativeResult::Suspend
         },

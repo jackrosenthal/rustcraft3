@@ -319,6 +319,7 @@ impl World {
                         let s = self.tags.take(codes::class::THRESHOLD_LISTENER);
                         self.tags.listener_made.insert(e, self.tags.born as u64);
                         if let Some(old) = self.tags.event_timers.insert(e, s) {
+                            self.tags.game_key_freed(old);
                             self.tags.issued.push(old);
                         }
                     }
@@ -332,9 +333,11 @@ impl World {
                     let s = self.tags.take(codes::class::THRESHOLD_LISTENER);
                     self.tags.day_listener_made = self.tags.born as u64;
                     if let Some(old) = self.tags.day_timer.replace(s) {
+                        self.tags.game_key_freed(old);
                         self.tags.issued.push(old);
                     }
                     if let Some(old) = self.tags.day_timer_2.take() {
+                        self.tags.game_key_freed(old);
                         self.tags.issued.push(old);
                     }
                 }
@@ -374,6 +377,7 @@ impl World {
                     let s = self.tags.take(codes::class::THRESHOLD_LISTENER);
                     self.tags.listener_made.insert(e, self.tags.born as u64);
                     if let Some(old) = self.tags.event_timers.insert(e, s) {
+                        self.tags.game_key_freed(old);
                         self.tags.doom(old);
                     }
                     matches!(self.handles.get(e), Some(crate::types::Obj::Event(r)) if matches!(r.kind, EventKind::GameState { value, .. } if (new - value).abs() < 0.001))
@@ -410,6 +414,9 @@ impl World {
         // the first dawn's two at nightfall; the night's at dawn, before a walk end's
         // tree in that step).
         let old: Vec<u32> = [self.tags.day_timer.replace(first), std::mem::replace(&mut self.tags.day_timer_2, second)].into_iter().flatten().collect();
+        for &s in &old {
+            self.tags.game_key_freed(s);
+        }
         // Dead ones too, while their corpses remain (measured: a creep killed by script).
         let units: Vec<u32> = self.unit_order.iter().rev().copied().filter(|&h| self.unit(h).is_some()).collect();
         // Each unit's object of the change lasts three seconds of the main clock (traced:

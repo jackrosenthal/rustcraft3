@@ -127,7 +127,8 @@ impl Game {
     /// A save made from `template` (the original's save of the same moment) with the
     /// pieces the port makes in place of its own: the world's, and the script data.
     pub fn write_save(&self, template: &SaveGame) -> SaveGame {
-        let mut s = self.world.write_save(template);
+        let game = self.world.game_object();
+        let mut s = self.world.write_save(template, vec![(game.0, self.game_state_second())]);
         let (Ok(state), Ok(d)) = (s.state(), s.script_data()) else { return s };
         let mut state = self.saved_state(&state);
         let Ok(bytes) = self.saved_script_data(&d).to_bytes() else { return s };
@@ -148,7 +149,7 @@ impl Game {
     /// each local of a thread asleep or saving.  A destroyed object's handle keeps its
     /// agent's slot while references remain.  The engine holds the expired timer of a
     /// callback asleep or saving besides (`context_timers`).  Each row: the count,
-    /// the agent (none once destroyed), the word, and the agent's slot.
+    /// the agent (none once destroyed), the word, and the agent's birth.
     pub fn handle_table(&self) -> Vec<(u32, Option<(u32, u32)>, u32, Option<u32>)> {
         use crate::types::Obj;
         use w3_jass::vm::ty;
@@ -198,7 +199,7 @@ impl Game {
                 let held = refs.get(&h).copied().unwrap_or(0);
                 let Some(&id) = by_handle.get(&h) else {
                     let dead = w.tags.dead_handles.get(&h).filter(|_| held > 0);
-                    return (held, None, dead.map_or(0, |d| d.1), dead.map(|d| d.0 .0));
+                    return (held, None, dead.map_or(0, |d| d.1), dead.map(|d| d.0 .1));
                 };
                 let o = w.handles.get(id);
                 if std::env::var("W3Z_HTOBJ").ok().and_then(|v| u32::from_str_radix(v.trim_start_matches("0x"), 16).ok()) == Some(h) {
@@ -214,9 +215,66 @@ impl Game {
                     _ => w.tags.handle_ids.get(&id).copied().or_else(|| w.tags.handle_slots.get(&id).map(|&s| tagged(s))),
                 };
                 let word = u32::from(matches!(o, Some(Obj::Event(_) | Obj::Timer(_) | Obj::Location(..) | Obj::Sound(_))));
-                (held + 1, agent, word, agent.map(|a| a.0))
+                (held + 1, agent, word, agent.map(|a| a.1))
             })
             .collect()
+    }
+
+    /// The game's own record (CGameState's, `FUN_6f28aad0`, own `FUN_6f28b190`; read
+    /// against the quiet test map's): 0, the trigger queue, 0.0; its keyed handlers
+    /// (`World::game_keyed_handlers`); ten event lists, the first each neutral
+    /// building's (Aneu, event 0xd01a6); fifteen lists of handles, the sixth the
+    /// expired timers callbacks hold (`context_timers`); none; 4; no tables; the time
+    /// of day's modifier and its day's end listener, the day's change's two; the handle
+    /// table (`handle_table`, each a size, 4 and 16 a row, and its rows: the count, the
+    /// agent, and the word; then the agent, its birth, and the handle from the first
+    /// handle on); none; the trigger queue; 0.0, 0; the game's two periodic timers
+    /// (every 0.4 and every agent step, events 0x80269 and 0x8026a, from the setup's
+    /// end, due after the clock SaveGame was called at); 0, the hundred words 0 to 99,
+    /// 100, 0, 0, and none.  Provisional: the second list, the fifteen lists' others.
+    pub fn game_state_second(&self) -> w3_formats::w3z::Second {
+        use w3_formats::w3z::{Handlers, Ref, Second, Timing};
+        let w = &self.world;
+        let game = w.game_object();
+        let rf = |r: (u32, u32)| Ref(r.0, r.1);
+        let none = Ref(u32::MAX, u32::MAX);
+        let qum = w.first_of(crate::codes::class::TRIGGER_QUEUE);
+        let own = vec![Field::Word(0), Field::Word(qum.0), Field::Word(qum.1), Field::Real(0.0)];
+        let mut shops: Vec<(u32, u32)> = w.tags.live.iter().filter(|(_, (c, _))| c == crate::codes::ability::id::NEUTRAL_BUILDING).map(|(&s, (_, b))| (s, *b)).collect();
+        shops.sort_by_key(|r| r.1);
+        // (The neutral buildings' on its event list for 0xd01a6 too.)
+        let mut events = vec![Vec::new(); 0x400];
+        events[0x1a6] = shops.iter().map(|&r| (rf(r), 0xd_01a6)).collect();
+        let handlers = Handlers { keyed: w.game_keyed_handlers(), fixed: Default::default(), events };
+        let mut tail = Vec::new();
+        tail.push(Field::List(shops.iter().map(|&r| vec![Field::Ref(rf(r)), Field::Word(0xd_01a6)]).collect()));
+        tail.extend((1..10).map(|_| Field::List(Vec::new())));
+        let mut timers = self.context_timers();
+        timers.sort();
+        timers.dedup();
+        tail.push(Field::List((0..15).map(|k| vec![Field::List(if k == 5 { timers.iter().map(|&h| vec![Field::Word(h)]).collect() } else { Vec::new() })]).collect()));
+        tail.extend([Field::List(Vec::new()), Field::Word(4), Field::List(Vec::new())]);
+        let live = |s: Option<u32>| s.filter(|s| w.tags.live.contains_key(s)).map_or(none, |s| Ref(s, w.tags.live[&s].1));
+        tail.extend([live(w.time_of_day_listeners[0]), live(w.time_of_day_listeners[1]), live(w.tags.day_timer), live(w.tags.day_timer_2)].map(Field::Ref));
+        let table = self.handle_table();
+        tail.push(Field::Word(4 + 16 * table.len() as u32));
+        tail.push(Field::List(table.iter().map(|r| vec![Field::Word(r.0), Field::Ref(r.1.map_or(none, rf)), Field::Word(r.2)]).collect()));
+        tail.push(Field::Word(4 + 16 * table.len().saturating_sub(1) as u32));
+        tail.push(Field::List(table.iter().enumerate().skip(1).map(|(k, r)| vec![Field::Ref(r.1.map_or(none, rf)), Field::Word(r.3.unwrap_or(0)), Field::Word(crate::handles::HANDLE_BASE + k as u32)]).collect()));
+        tail.push(Field::List(Vec::new()));
+        tail.extend([Field::Word(qum.0), Field::Word(qum.1), Field::Real(0.0), Field::Word(0)]);
+        let now = w.tags.save_clock.unwrap_or(w.tags.clock);
+        for (k, (period, event)) in [(0x3ecc_ccce_u32, 0x8_0269), (crate::motion::STEP, 0x8_026a)].into_iter().enumerate() {
+            let mut due = crate::efloat::add(w.tags.game_timers_clock, period);
+            while f32::from_bits(due) <= f32::from_bits(now) {
+                due = crate::efloat::add(due, period);
+            }
+            tail.push(Field::Timer(rf(game), 2, Timing(Some((f32::from_bits(due), f32::from_bits(period), w.tags.game_timers[k], event, 1)))));
+        }
+        tail.push(Field::Word(0));
+        tail.push(Field::List((0..100).map(|k| vec![Field::Word(k)]).collect()));
+        tail.extend([Field::Word(100), Field::Word(0), Field::Word(0), Field::List(Vec::new())]);
+        Second::Agent { own, handlers, tail }
     }
 
     /// The expired timers the engine holds as callbacks' contexts: those of callbacks
@@ -258,6 +316,31 @@ impl Game {
                         }
                     }
                     out.push(format!("handle table: {} ours, {} the original's; by kind (same, count differs, agent differs, word differs) {by_kind:?}", ours.len(), rows.len()));
+                    // The game's whole record.
+                    if let (Some(o), w3_formats::w3z::Second::Agent { own, handlers, tail: ours_tail }) = (game, self.game_state_second()) {
+                        let theirs = o.second().ok();
+                        let mine = w3_formats::w3z::Second::Agent { own: own.clone(), handlers: handlers.clone(), tail: ours_tail.clone() };
+                        let same = mine.to_bytes(o.entry.kind).is_ok_and(|b| b == o.second);
+                        let mut what = Vec::new();
+                        if let Some(w3_formats::w3z::Second::Agent { own: o2, handlers: h2, tail: t2 }) = &theirs {
+                            if &own != o2 { what.push(format!("own {own:?} vs {o2:?}")); }
+                            if handlers.keyed != h2.keyed { what.push(format!("keyed {:?} vs {:?}", handlers.keyed, h2.keyed)); }
+                            if handlers.fixed != h2.fixed { what.push("fixed".into()); }
+                            if handlers.events != h2.events { what.push(format!("events: theirs non-empty {:?}", h2.events.iter().enumerate().filter(|e| !e.1.is_empty()).map(|e| (e.0, e.1.clone())).collect::<Vec<_>>())); }
+                            if let (Some(Field::List(a)), Some(Field::List(b))) = (ours_tail.get(21), t2.get(21)) {
+                                for (x, y) in a.iter().zip(b).filter(|(x, y)| x != y).take(8) {
+                                    what.push(format!("handle row {x:?} vs {y:?}"));
+                                }
+                            }
+                            for k in 0..ours_tail.len().max(t2.len()) {
+                                if ours_tail.get(k) != t2.get(k) {
+                                    let show = |f: Option<&Field>| { let t = format!("{f:?}"); t[..t.len().min(300)].to_string() };
+                                    what.push(format!("tail {k}: {} vs {}", show(ours_tail.get(k)), show(t2.get(k))));
+                                }
+                            }
+                        }
+                        out.push(format!("game's record: {}{}", if same { "the same" } else { "differs" }, what.iter().map(|w| format!("; {w}")).collect::<String>()));
+                    }
                     // W3Z_HT: each handle's count, its holders among the globals (by
                     // name), whether a returned function's local kept it, and its kind.
                     if std::env::var("W3Z_HT").is_ok() {

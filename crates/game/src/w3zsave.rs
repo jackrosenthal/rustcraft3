@@ -940,7 +940,7 @@ impl World {
     }
 
     /// The game's object (`+gam`).
-    fn game_object(&self) -> (u32, u32) {
+    pub(crate) fn game_object(&self) -> (u32, u32) {
         self.tags.live.iter().find(|(_, (c, _))| c == codes::class::GAME_STATE).map_or((0, 0), |(&s, (_, b))| (s, *b))
     }
 
@@ -1283,7 +1283,7 @@ impl World {
 
     /// A save made from `template` (the original's save of the same moment) with the
     /// pieces the port makes in place of its own.
-    pub fn write_save(&self, template: &SaveGame) -> SaveGame {
+    pub fn write_save(&self, template: &SaveGame, extra: Vec<(u32, Second)>) -> SaveGame {
         let mut s = template.clone();
         let Some(m) = s.objects.as_mut() else { return s };
         let Ok(mut objects) = m.objects() else { return s };
@@ -1306,7 +1306,7 @@ impl World {
         for &h in &self.destructable_order {
             records.extend(self.destructable_records(h));
         }
-        let mut seconds: std::collections::HashMap<u32, Second> = std::collections::HashMap::new();
+        let mut seconds: std::collections::HashMap<u32, Second> = extra.into_iter().collect();
         for &h in &self.destructable_order {
             if let Some((slot, f, sec)) = self.destructable_own_records(h) {
                 records.insert(slot, f);
@@ -1482,9 +1482,8 @@ impl World {
         let mut out = Vec::new();
         let hours = self.misc_f32("DayHours", 24.0);
         let rate = hours / self.misc_f32("DayLength", 480.0) * self.time_of_day_scale;
-        let (dawn, dusk, eps) = (self.misc_f32("Dawn", 6.0), self.misc_f32("Dusk", 18.0), 0.01f32);
         let tod = self.time_of_day;
-        let [rcm, end] = self.time_of_day_listeners;
+        let [rcm, _] = self.time_of_day_listeners;
         if let Some(r) = rcm.filter(|s| self.tags.live.contains_key(s)).map(|s| self.tagged(s)) {
             let made = self.tags.made_at.get(&r.0).copied().unwrap_or(0);
             let due = f32::from_bits(crate::efloat::add(made, 150f32.to_bits()));
@@ -1492,28 +1491,10 @@ impl World {
             let object = ObjectBase { real: 0.0, words: [u32::MAX, 0x6005_0044], links: [(Link(NONE, 0), Link(NONE, 0), rf(r), rf(game)), (Link(NONE, 0), Link(NONE, 0), rf(r), rf(real))], timings: [Timing(Some((due, 150.0, count, 0, 1))), Timing(None)] };
             out.push((r.0, First::Continuous { object, values: [rate, f32::MAX] }));
         }
-        // (Each: itself, its event, threshold, and whether rising.)
-        let mut ls: Vec<((u32, u32), u32, f32, bool)> = Vec::new();
-        for &e in &self.events {
-            let Some(Obj::Event(r)) = self.handles.get(e) else { continue };
-            let EventKind::GameState { state: 2, op, value } = r.kind else { continue };
-            let Some(&s) = self.tags.event_timers.get(&e).filter(|s| self.tags.live.contains_key(s)) else { continue };
-            // (Less, at most, equal, at least, greater: 0 to 4.)
-            let op = if op == 2 { if tod < value { 3 } else { 1 } } else { op };
-            ls.push((self.tagged(s), 0x8_0101 + op as u32, value, matches!(op, 3 | 4)));
-        }
-        let change = |s: Option<u32>| s.filter(|s| self.tags.live.contains_key(s)).map(|s| self.tagged(s));
-        if self.daytime {
-            ls.extend(change(self.tags.day_timer).map(|r| (r, 0x8_0263, dawn - eps, false)));
-            ls.extend(change(self.tags.day_timer_2).map(|r| (r, 0x8_0263, dusk + eps, true)));
-        } else {
-            ls.extend(change(self.tags.day_timer).map(|r| (r, 0x8_0263, dawn + eps, true)));
-        }
-        ls.extend(change(end).map(|r| (r, 0x8_0262, hours, true)));
-        ls.sort_by_key(|l| l.0 .1);
+        let ls = self.time_of_day_listener_list();
         let chain: Vec<(u32, u32)> = ls.iter().map(|l| l.0).collect();
         let now = self.time;
-        for &(me, event, thr, rising) in &ls {
+        for &(me, event, thr, rising, _) in &ls {
             let node = if rising && tod < thr && rate > 0.0 {
                 // (Checked every 4 seconds from its making, or as the time reaches it.)
                 let made = self.tags.made_at.get(&me.0).map_or(0.0, |&c| f32::from_bits(c));
@@ -1535,6 +1516,46 @@ impl World {
             out.push((me.0, First::Threshold { object, real: thr, word: u32::from(rising) }));
         }
         out
+    }
+
+    /// The time of day's threshold listeners (as `time_of_day_records` has them), by
+    /// their making: each itself, its event, threshold, whether rising, and the agent
+    /// its event goes to (the script's registration's, else the game).
+    fn time_of_day_listener_list(&self) -> Vec<((u32, u32), u32, f32, bool, Ref)> {
+        let game = self.game_object();
+        let hours = self.misc_f32("DayHours", 24.0);
+        let (dawn, dusk, eps) = (self.misc_f32("Dawn", 6.0), self.misc_f32("Dusk", 18.0), 0.01f32);
+        let tod = self.time_of_day;
+        let mut ls = Vec::new();
+        for &e in &self.events {
+            let Some(Obj::Event(r)) = self.handles.get(e) else { continue };
+            let EventKind::GameState { state: 2, op, value } = r.kind else { continue };
+            let Some(&s) = self.tags.event_timers.get(&e).filter(|s| self.tags.live.contains_key(s)) else { continue };
+            let reg = self.tags.handle_ids.get(&e).map_or(NONE, |&r| rf(r));
+            // (Less, at most, equal, at least, greater: 0 to 4.)
+            let op = if op == 2 { if tod < value { 3 } else { 1 } } else { op };
+            ls.push((self.tagged(s), 0x8_0101 + op as u32, value, matches!(op, 3 | 4), reg));
+        }
+        let change = |s: Option<u32>| s.filter(|s| self.tags.live.contains_key(s)).map(|s| self.tagged(s));
+        if self.daytime {
+            ls.extend(change(self.tags.day_timer).map(|r| (r, 0x8_0263, dawn - eps, false, rf(game))));
+            ls.extend(change(self.tags.day_timer_2).map(|r| (r, 0x8_0263, dusk + eps, true, rf(game))));
+        } else {
+            ls.extend(change(self.tags.day_timer).map(|r| (r, 0x8_0263, dawn + eps, true, rf(game))));
+        }
+        ls.extend(change(self.time_of_day_listeners[1]).map(|r| (r, 0x8_0262, hours, true, rf(game))));
+        ls.sort_by_key(|l| l.0 .1);
+        ls
+    }
+
+    /// The game's keyed handlers (its record's): each listener of the time of day's
+    /// with its event's agent and event, and those replaced since the game began,
+    /// empty; by a key's low two bits, then its making.
+    pub fn game_keyed_handlers(&self) -> Vec<(u32, Vec<(Ref, u32)>)> {
+        let mut keys: Vec<((u32, u32), Vec<(Ref, u32)>)> = self.time_of_day_listener_list().into_iter().map(|(me, event, _, _, to)| (me, vec![(to, event)])).collect();
+        keys.extend(self.tags.game_freed_keys.iter().map(|&k| (k, Vec::new())));
+        keys.sort_by_key(|k| (k.0 .0 & 3, k.0 .1));
+        keys.into_iter().map(|(k, v)| (k.0, v)).collect()
     }
 
     /// The newest of the time of day's listeners (its chains' head).

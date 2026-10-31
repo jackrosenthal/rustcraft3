@@ -9,7 +9,7 @@ use crate::codes;
 
 impl World {
     /// The tagged object of a kind (its first), as references name it.
-    fn first_of(&self, code: &[u8; 4]) -> Ref {
+    pub(crate) fn first_of(&self, code: &[u8; 4]) -> Ref {
         self.tags.live.iter().filter(|(_, (c, _))| c == code).map(|(&s, (_, b))| Ref(s, *b)).min_by_key(|r| r.0).unwrap_or(Ref(u32::MAX, u32::MAX))
     }
 

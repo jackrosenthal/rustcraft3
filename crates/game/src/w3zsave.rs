@@ -1849,6 +1849,14 @@ impl World {
         let mut out = vec![format!("time {:.6}, agent clock {:.6}", self.time, f32::from_bits(self.agent_step))];
         let Some(m) = orig.objects.as_ref() else { return vec!["no object manager".into()] };
         let ours = self.saved_table();
+        // W3Z_BIRTHS=<from>-<to>: our live objects born in that range, by birth.
+        if let Some((lo, hi)) = std::env::var("W3Z_BIRTHS").ok().and_then(|v| v.split_once('-').and_then(|(a, b)| Some((a.parse::<u32>().ok()?, b.parse::<u32>().ok()?)))) {
+            let mut v: Vec<&Tagged> = ours.iter().filter(|t| (lo..=hi).contains(&t.birth)).collect();
+            v.sort_by_key(|t| t.birth);
+            for t in v {
+                out.push(format!("birth {} {} {}", t.birth, t.tag, String::from_utf8_lossy(&t.kind.to_be_bytes())));
+            }
+        }
         let line = match ours.iter().zip(&m.tables[0]).position(|(a, b)| a != b) {
             None if ours.len() == m.tables[0].len() => format!("table: the same, {} objects", ours.len()),
             None => format!("table: the same as far as both go, ours {} the original's {}", ours.len(), m.tables[0].len()),

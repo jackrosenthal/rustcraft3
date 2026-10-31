@@ -2186,6 +2186,30 @@ Formats the port made its own, to be replaced by the original's:
   PickMeleeHero) and all 944 of its AI script's globals agree with the original's at
   Forestwalk's start (the map's seed locked, 'war3').  A setup screen's game, with its
   per-team placement shuffles, already agreed (the Forestwalk network capture).
+- Forestwalk's saves (the test map saving at 0 and at 5 seconds, `fws.w3x`,
+  `fws5.w3x`, `-loadfile`; `abtest/savemap.sh`): every record of both is read and
+  written back whole.  The classes' layouts are each class's save functions, found by
+  RTTI (`VfList.java`: a class's vftable and its vf 0x38, the second record, and vf
+  0x48, its own fields): the auto-target spells' base `FUN_6f42d2a0` (the buff base's
+  tail, a reference, three timers: Curse, Bloodlust, Faerie Fire, and Heal's kin), a
+  two-timer base `FUN_6f42e2b0` (Sleep, Rejuvenation), CAbilityAnimateDead
+  `FUN_6f4e9990`, CAbilityDevour `FUN_6f5aadb0`, CAbilityManaBurn `FUN_6f648560`,
+  CAbilityRaiseDead `FUN_6f5221e0`, CAbilityShadowMeld `FUN_6f522420`,
+  CAbilityBurrowDetector `FUN_6f42d860`, CAbilityPurchaseItem `FUN_6f42df00`,
+  CAbilityDevourCargo `FUN_6f5aabb0`, CBuffAuraUnholy `FUN_6f4ea950`, CSplashData
+  (own `FUN_6f49c330`, a weapon's splash targets, three areas, two factors),
+  CTriggerExecution `FUN_6f2996d0`, CDetectedData `FUN_6f696040`.  Ghidra's `vfN`
+  counts entries: vf50 is offset 0xc8 (Cannibalize's `FUN_6f606220`, the creeps'
+  Animate Dead's `FUN_6f6060e0`, Mana Burn's `FUN_6f606c60`: each a look every 2
+  seconds, event 0xd01bf, started as the unit joins its AI).  A creep's copy of a
+  spell has its own class, which the save names: the creep Animate Dead's data code is
+  ACad, though the port plays it as Animate Dead (AUan).  A shop's sold items each yet
+  to arrive start their arrival timer as it is made (eight of Forestwalk's eleven).
+  The original loads the port's template-free save of Forestwalk at 5 seconds (its
+  computer's captains and spawned threads left out, its walks dropped) and runs on.
+  Still apart at 5 seconds: the computer's AI from 0.1 seconds (below), and timer
+  counts some ten to fifty low in the port (timers the original starts that the port
+  does not yet).
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

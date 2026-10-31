@@ -483,6 +483,16 @@ fn main() {
         }
         return;
     }
+    // "births <from> <to>": the live objects born in that range, by birth.
+    if a[2] == "births" {
+        let (lo, hi): (u32, u32) = (a[3].parse().unwrap(), a[4].parse().unwrap());
+        let mut v: Vec<_> = all.iter().filter(|o| (lo..=hi).contains(&o.entry.birth)).map(|o| (o.entry.birth, o.entry.tag, code(o.entry.kind))).collect();
+        v.sort();
+        for (b, t, k) in v {
+            println!("{b} {t} {k}");
+        }
+        return;
+    }
     if a[2] == "census" {
         let mut by: std::collections::HashMap<String, (usize, usize)> = Default::default();
         for o in &all {

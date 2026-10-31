@@ -1904,6 +1904,38 @@ Formats the port made its own, to be replaced by the original's:
   then what the code first uses that the sources did not have so ("handle",
   "<init>", a literal with its escapes resolved).  Not yet read: `and` with `or`
   unparenthesized, and the strings scripts make as they run (the table's last two).
+- The port runs that code as the original's machine does (`w3_jass::vm`, the regression
+  suite unchanged by it).  Read in `FUN_6f91b460` and its helpers: a context (the
+  machine, `FUN_6f904570`, or a thread) has 256 registers of 0x28 bytes (+0x68: a
+  type, the type given, a word), its frames (`AUJassFrame`, +0x2868: a parent, a
+  locals table, a stack of pushed values at +0xc counted at +0x8c, +0xb8 set on a
+  run's first frame), its place (+0x20, a pointer; saved and pushed as a word offset),
+  and its operation limit (+0x44, 300000 a run, counted per instruction).  The loader
+  (`FUN_6f917a20`) enters a function after its `function`, a label after its `label`.
+  A call (`FUN_6f91b250`) pushes the return place (type 1) on the caller's stack and
+  starts a frame; `funcarg` takes argument b from the caller's stack below it (and
+  marks the local an argument, +0x24); `return` from a run's first frame ends the
+  run, else frees the frame (`FUN_6f9161b0` releasing its arguments only) and pops the
+  place.  A native (`FUN_6f918fd0`) takes its arguments from the stack's top by its
+  signature ('R' by pointer, 'S' its string, 'C' a code reference registered in the
+  machine's table +0x2888, `FUN_6f916880`) and pops them after, its result in register
+  0.  Variables set with the machine (`FUN_6f916080`): the old string released and the
+  new counted (`FUN_6f916370`, `FUN_6f9174f0`), the type becoming the declared one;
+  registers set without it.  Strings (`FUN_6f91af80`): interned in the machine's table
+  (+0x2874, 16 bytes a place, the count at +0xc), each literal, concatenation, and
+  string result counting one more; a new one also joins the code's own string table
+  (`FUN_6f908500`; so the test map's "Build Town Hall" and "Build Necropolis" from
+  GetLocalizedString); at a count of none its place freed (+0x2878), the last freed
+  taken first.  Arrays (`FUN_6f91ae10`): an element set grows the array to its index
+  (at most 8192); a read past it is 0, never an error.  Operators: `==` on reals within
+  0.001 by the soft-float difference (`FUN_6f05cb40`), `!=` bit for bit; a string's
+  `!=` by place; `+` of strings only when both are strings (else the left register
+  stays: `"a" + null` is "a", `null + "a"` null); a division by zero (a real's ±0) or
+  an unset variable's read ends the thread (results 7, 6).  Every callback the engine
+  runs (`FUN_6f1dd7b0`: conditions, filters, enumerations, timers, actions) takes a new
+  thread (`FUN_6f90c950`), freed unless it sleeps; `config`, the globals' initializers,
+  and `main` run on the machine's own context (`FUN_6f91c310`), so its saved registers
+  are main's.
 - The engine's objects, read in a save's object table and free list (a quiet test map
   on Booty Bay without the computer's AI, saved at five seconds; `w3zobj objtable`,
   `free`, and playtest's `objtable`): the port's live objects (`Tags::live`) agree

@@ -1283,6 +1283,18 @@ impl World {
         self.run_pending(vm);
     }
 
+    /// Runs a function on the script machine's own context (a sleep there ends it).
+    pub fn run_main(&mut self, vm: &mut Vm, f: w3_jass::FuncId) {
+        let saved = std::mem::take(&mut self.ctx);
+        match vm.run_main(self, f) {
+            Outcome::Aborted(e) => log::warn!("script aborted: {e}"),
+            Outcome::Sleeping(_) => log::warn!("script slept on the machine's own context"),
+            Outcome::Finished(_) => {}
+        }
+        self.ctx = saved;
+        self.run_pending(vm);
+    }
+
     fn run_pending(&mut self, vm: &mut Vm) {
         while !self.pending.is_empty() {
             let batch = std::mem::take(&mut self.pending);

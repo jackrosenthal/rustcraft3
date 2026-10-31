@@ -3,16 +3,17 @@
 //! state in place of the fresh one.
 
 use serde::{Deserialize, Serialize};
-use w3_jass::{Thread, Value};
+use w3_jass::{State, Thread};
 
 use crate::Game;
 use crate::types::Obj;
 use crate::world::World;
 
 /// Bumped whenever the saved state's layout changes.
-const FORMAT: u32 = 13;
+const FORMAT: u32 = 14;
 
-type Variables = (Vec<Value>, Vec<Vec<Value>>);
+/// A script machine's state.
+type Variables = State;
 
 #[derive(Serialize)]
 struct SaveRef<'a> {
@@ -258,11 +259,12 @@ impl Game {
                 match (&v.value, decl.array) {
                     (Contents::One(x), false) => {
                         if let Some(x) = value(v.kind, *x) {
-                            vm.globals[g as usize] = x;
+                            vm.set_global_value(g, &x);
                         }
                     }
                     (Contents::Array(xs), true) => {
-                        vm.global_arrays[g as usize] = xs.iter().filter_map(|&x| value(v.kind, x)).collect();
+                        let xs: Vec<Value> = xs.iter().filter_map(|&x| value(v.kind, x)).collect();
+                        vm.set_global_array(g, &xs);
                     }
                     _ => {}
                 }

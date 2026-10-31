@@ -1124,8 +1124,8 @@ fn main() -> anyhow::Result<()> {
                 if let Some(g) = &scene.game {
                     let v = g.vm.global(&a[i + 1]);
                     // A unit's type, by the handle the script has.
-                    let unit = match v {
-                        Some(w3_jass::Value::Handle(h)) => g.world.unit(g.world.handles.resolve(*h)).map(|u| w3_game::objects::id_str(u.type_id).to_string()),
+                    let unit = match v.clone() {
+                        Some(w3_jass::Value::Handle(h)) => g.world.unit(g.world.handles.resolve(h)).map(|u| w3_game::objects::id_str(u.type_id).to_string()),
                         _ => None,
                     };
                     eprintln!("{} = {:?} {:?}; time of day {}", a[i + 1], v, unit, g.world.time_of_day);

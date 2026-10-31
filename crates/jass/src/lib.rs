@@ -11,7 +11,7 @@ pub mod vm;
 
 pub use compile::{CompileError, Module};
 pub use value::{BaseType, FuncId, Value};
-pub use vm::{Host, NativeResult, Outcome, Thread, Vm};
+pub use vm::{Host, NativeResult, Outcome, State, Thread, Vm};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -30,10 +30,12 @@ pub fn parse(src: &str) -> Result<ast::Program, lexer::SyntaxError> {
 
 /// Parses and links source files in order into one module.
 pub fn compile<'a>(files: impl IntoIterator<Item = (&'a str, &'a str)>) -> Result<Module, Error> {
+    let files: Vec<(&str, &str)> = files.into_iter().collect();
     let mut m = Module::default();
-    for (name, src) in files {
+    for &(name, src) in &files {
         let prog = parse(src).map_err(|err| Error::Syntax { file: name.into(), err })?;
         m.add(&prog).map_err(|err| Error::Compile { file: name.into(), err })?;
     }
+    m.code = bytecode::compile(files)?;
     Ok(m)
 }

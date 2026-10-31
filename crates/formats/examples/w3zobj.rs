@@ -164,6 +164,64 @@ fn main() {
         println!("rest {}", s.rest.len());
         return;
     }
+    // "scripts": the script data's code blocks, machines, and threads in brief.
+    if a[2] == "scripts" {
+        let d = s.script_data().unwrap();
+        println!("code places {} thread places {}", d.code_places, d.thread_places);
+        for (k, c) in d.code.iter().enumerate() {
+            if let Some(c) = c {
+                println!("code {}: {} words, {} strings, the last {:?}", k + 1, c.words.len(), c.strings.len(), &c.strings[c.strings.len().saturating_sub(4)..]);
+            }
+        }
+        for (k, (place, m)) in d.machines.iter().enumerate() {
+            println!("machine {k} at {place}: code {} flag {} real {} word {} at {} returns {} functions {} globals {} frames {} stack {} strings {}", m.code, m.flag, m.real, m.word, m.at, m.returns.len(), m.functions.len(), m.globals.len(), m.frames.len(), m.stack.len(), m.strings.len());
+            for t in d.threads.get(k).into_iter().flatten() {
+                println!("  thread machine {} at {} frames {} flag {} real {} word {} stack {}", t.machine, t.at, t.frames.len(), t.flag, t.real, t.word, t.stack.len());
+                for f in &t.frames {
+                    println!("    frame word {} arguments {:?} locals {:?}", f.word, f.arguments.iter().map(|v| (v.kind, v.word, v.value.clone())).collect::<Vec<_>>(), f.locals.iter().map(|(n, v)| (n, v.kind, v.word, v.value.clone())).collect::<Vec<_>>());
+                }
+                let used: Vec<String> = t.stack.iter().enumerate().filter(|(_, v)| v.kind != 0 || v.word != 0 || !matches!(v.value, w3_formats::w3z::Contents::One(0))).map(|(k, v)| format!("{k}:{}/{}/{:?}", v.kind, v.word, v.value)).collect();
+                println!("    registers set {}: {:?}", used.len(), &used[..used.len().min(16)]);
+            }
+        }
+        println!("owners {:?}", d.owners);
+        if let Some((_, m)) = d.machines.first() {
+            let mut kinds: std::collections::BTreeMap<(u32, bool), (u32, String)> = Default::default();
+            for (name, v) in &m.globals {
+                let arr = matches!(v.value, w3_formats::w3z::Contents::Array(_));
+                let e = kinds.entry((v.kind, arr)).or_insert((0, String::new()));
+                e.0 += 1;
+                if e.1.is_empty() { e.1 = format!("{name} = {:?} word {} length {}", v.value, v.word, v.length); }
+            }
+            for ((k, arr), (n, ex)) in kinds {
+                println!("global kind {k} array {arr}: {n}, e.g. {}", &ex[..ex.len().min(160)]);
+            }
+            println!("functions {:?}", &m.functions);
+            println!("strings {:?}", &m.strings);
+            let nonzero: Vec<String> = m.stack.iter().enumerate().filter(|(_, v)| !matches!(v.value, w3_formats::w3z::Contents::One(0)) || v.kind != 0).take(12).map(|(k, v)| format!("{k}:{}/{:?}", v.kind, v.value)).collect();
+            println!("registers in use {:?}", nonzero);
+        }
+        return;
+    }
+    // "globals": the first machine's globals in order, each its name, kind, word, length,
+    // and value.
+    if a[2] == "globals" {
+        let d = s.script_data().unwrap();
+        for (name, v) in &d.machines[0].1.globals {
+            println!("{name} {} {} {} {:?}", v.kind, v.word, v.length, v.value);
+        }
+        return;
+    }
+    // "state": the game's state's parts, each its fields in brief.
+    if a[2] == "state" {
+        let st = s.state().unwrap();
+        for (name, fields) in &st.parts {
+            let text = format!("{fields:?}");
+            println!("{name}: {} fields, {} chars: {}", fields.len(), text.len(), &text[..text.len().min(a.get(3).and_then(|v| v.parse().ok()).unwrap_or(300))]);
+        }
+        println!("rest {} bytes", st.rest.len());
+        return;
+    }
     // "grids": each grid's census of cell words, and a sample.
     if a[2] == "grids" {
         let m = s.objects.as_ref().unwrap();

@@ -625,10 +625,11 @@ impl Game {
         }
     }
 
+    /// Runs a function of the map script on its machine's own context, as the original
+    /// runs `config` and `main` (`FUN_6f91c310`).
     fn call(&mut self, name: &str) -> anyhow::Result<()> {
         let f = self.vm.module.function(name).with_context(|| format!("map script has no {name}"))?;
-        let t = self.vm.new_thread(f, &[], true);
-        self.world.run_thread(&mut self.vm, t, Default::default());
+        self.world.run_main(&mut self.vm, f);
         Ok(())
     }
 

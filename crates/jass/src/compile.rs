@@ -95,6 +95,8 @@ pub struct Module {
     pub constants: Vec<Value>,
     /// Functions that initialize each source file's globals, in order.
     pub global_inits: Vec<FuncId>,
+    /// The sources compiled as the original compiles them, which the machine runs.
+    pub code: crate::bytecode::Code,
 }
 
 impl Module {

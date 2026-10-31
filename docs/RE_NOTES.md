@@ -2186,7 +2186,15 @@ Formats the port made its own, to be replaced by the original's:
   the making, `natives/units.rs`, kept as a due time; `World::steps_before`); and the
   AI threads' wakes by their agent time among the steps too (the wake's objects come
   before the alarm's `` `pil `` in turn 2, the third acolyte's path after it in turn
-  4: both orders follow from the events' times).  In
+  4: both orders follow from the events' times).  Tried together (AI threads run as
+  the steps reach their time, `ai_threads_to`; the acolyte's walk by the steps, its
+  range checked after each step's move): turn 2 still agrees object for object, but
+  the port's walks begin only in the second tick after the order (its positions at 0.2
+  and 0.3 the same; the original's third acolyte in range mid-turn 4, so walking from
+  turn 3), its alarm `` `pil `` comes after that acolyte's path (alarms not yet by agent
+  time), and its second acolyte's searched way detours east then west around the base
+  (gap 207.8 at 1.1, in range in the original by turn 8).  Not kept (turn 4); next:
+  why a new walk waits a tick (`walk_from`, the step's searches), and alarms by time.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

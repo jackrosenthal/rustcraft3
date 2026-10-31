@@ -41,8 +41,9 @@ pub struct AiState {
     pub natives: Vec<Option<NativeFn>>,
     #[serde(skip)]
     pub native_names: Vec<String>,
-    /// Threads started with StartThread, run on the next AI update.
-    pub spawned: Vec<Thread>,
+    /// Threads started with StartThread, each run at once until it first sleeps, then
+    /// asleep until the time given, for the AI update to keep.
+    pub spawned: Vec<(f32, Thread)>,
     pub melee: bool,
     pub flags: HashMap<String, bool>,
     /// Harvest requests in priority order: (gold?, town, workers).
@@ -327,9 +328,7 @@ impl World {
                 Outcome::Aborted(e) => log::warn!("AI thread for player {player} ended: {e} at {:?}", t.backtrace(&aivm.vm.module)),
             }
             let spawned = self.ai.get_mut(&player).map(|a| std::mem::take(&mut a.spawned)).unwrap_or_default();
-            for t in spawned {
-                aivm.sleepers.push((now, t));
-            }
+            aivm.sleepers.extend(spawned);
         }
         self.ai_current = None;
         self.ai_vms.insert(player, aivm);
@@ -370,9 +369,7 @@ impl World {
                     Outcome::Aborted(e) => log::warn!("AI thread for player {p} ended: {e} at {:?}", t.backtrace(&aivm.vm.module)),
                 }
                 let spawned = self.ai.get_mut(&p).map(|a| std::mem::take(&mut a.spawned)).unwrap_or_default();
-                for t in spawned {
-                    aivm.sleepers.push((now, t));
-                }
+                aivm.sleepers.extend(spawned);
             }
             self.ai_hero_skills(p, &mut aivm);
             self.ai_current = None;
@@ -1437,10 +1434,24 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             }
             none()
         },
+        // A thread of its own (`AItr`, `FUN_6f919123`), run at once until it first
+        // sleeps (traced, Forestwalk's undead computer at 0.1 seconds: the peons
+        // thread's object, its acolytes' harvest orders, then the attack, set_vars, and
+        // build loop threads' objects).
         StartThread => |w, vm, a| {
             if let Some(f) = a.code(0) {
-                let t = vm.new_thread(f, &[], true);
-                if let Some(s) = w.ai_state() { s.spawned.push(t); }
+                w.tags.take(codes::class::AI_TOWN_LIST);
+                let mut t = vm.new_thread(f, &[], true);
+                let now = w.time;
+                match vm.run(w, &mut t) {
+                    Outcome::Sleeping(s) => {
+                        if let Some(st) = w.ai_state() {
+                            st.spawned.push((now + s.max(0.0), t));
+                        }
+                    }
+                    Outcome::Finished(_) => {}
+                    Outcome::Aborted(e) => log::warn!("AI thread ended: {e} at {:?}", t.backtrace(&vm.module)),
+                }
             }
             none()
         },

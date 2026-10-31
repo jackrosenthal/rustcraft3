@@ -2133,7 +2133,17 @@ Formats the port made its own, to be replaced by the original's:
   threads more; and a build order (`FUN_6f9cafe3`, `FUN_6f9cb791`, `FUN_6f9cb885`:
   a worker's harvest stopped, `` `rcm `` and `` `rtl `` of its harvest ability, an order
   with a point, `ord.`, the build ability's tasks, two `tsk.`, a `tskO`, and its walk):
-  83 objects the port's AI does not yet make, nor at that time.  In
+  83 objects the port's AI does not yet make, nor at that time.  StartThread makes the
+  thread's object and runs it at once until it first sleeps (Forestwalk's 5-second
+  save: the peons thread's `AItr` at birth 29862, its acolytes' orders, then the
+  attack, set_vars, and build loop threads' together; each `AItr` keeps its sleep
+  as an extended timer, its period, and its place in the script data: peons 3.0,
+  GetRandomInt(1,3)'s draw, attacks 2.0, set_vars 1.0, the build loop 2.0, main
+  SleepForever's 100.0).  The port now does so (its first `AItr` at 29862 too).
+  HarvestGold (`FUN_6f9bbdb0`, `FUN_6f9c7330`) assigns and sends its workers within
+  the call (`FUN_6f9c7410`, then `FUN_6f9c7700` for those still wanted); the port's
+  records the request for its engine's next pass and makes no order objects for it:
+  next.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

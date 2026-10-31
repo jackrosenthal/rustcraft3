@@ -658,6 +658,16 @@ pub enum Field {
     Bytes(Vec<u8>),
 }
 
+/// Reads the whole of `b` as fields by a layout (as `fields` does).
+pub fn parse_fields(layout: &str, b: &[u8]) -> Result<Vec<Field>, Error> {
+    let mut r = Reader::new(b);
+    let out = fields(&mut r, layout)?;
+    if r.remaining() != 0 {
+        return Err(Error::Format("bytes left after the layout"));
+    }
+    Ok(out)
+}
+
 /// Reads fields by a layout: 'w' a word, 'f' a real, 'b' a byte, 's' a short, 'r' a
 /// reference, 't' a timer, 'z' a string, 'p' a sprite, 'e' an event's handler list (as
 /// "[rw]"), "[...]" a word count and that many groups, "{...}" a short count and that

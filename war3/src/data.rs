@@ -256,8 +256,11 @@ pub fn load_persist(version: Version, chain: &Chain) -> w3_game::persist::Persis
             log::warn!("Campaigns.w3p: its Magic does not match; progress from the port's own file");
         }
     }
-    // The saved game caches from the original's Campaigns.w3v when it is there.
-    if let Some(b) = profile_dir().and_then(|d| std::fs::read(d.join("Campaigns.w3v")).ok()) {
+    // The saved game caches from the original's Campaigns.w3v when it is there (or from
+    // the one W3_CAMPAIGNS_W3V names: another profile's, to compare a save with the
+    // original's).
+    let w3v = std::env::var_os("W3_CAMPAIGNS_W3V").map(PathBuf::from).or_else(|| Some(profile_dir()?.join("Campaigns.w3v")));
+    if let Some(b) = w3v.and_then(|p| std::fs::read(p).ok()) {
         match w3_formats::w3v::Caches::parse(&b) {
             Ok(c) => p.take_caches_w3v(&c),
             Err(e) => log::warn!("Campaigns.w3v: {e}; caches from the port's own file"),

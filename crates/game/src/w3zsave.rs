@@ -1503,6 +1503,40 @@ impl World {
     /// (its town hall after its place, its center and a second place computed: read,
     /// the quiet test map's computer's, 8148.0054 and 8832), a `shft` at work, a queue
     /// in use.
+    /// The game cache manager's own fields (`gccm`, read against the quiet test map's,
+    /// whose profile held one saved cache): its file's name, and the saved caches as
+    /// that file holds them (`Persist::caches_w3v`): their counter, each cache's name,
+    /// counter, and missions, each its name, five counters, and its integers, reals,
+    /// flags, units (their records' fields), and strings.  (Provisional: the order, the
+    /// file's, name order; the caches the game makes and fills.)
+    fn game_cache_fields(&self) -> Vec<Field> {
+        const UNIT: &str = "w [www] wwwww f w fff w f [ww] fff [w] f s";
+        let c = self.persist.caches_w3v();
+        let text = |s: &str| Field::Text(s.to_string());
+        let caches = c
+            .caches
+            .iter()
+            .map(|cache| {
+                let missions = cache
+                    .missions
+                    .iter()
+                    .map(|m| {
+                        let mut row = vec![text(&m.name)];
+                        row.extend(m.counters.iter().map(|&w| Field::Word(w)));
+                        row.push(Field::List(m.ints.iter().map(|(k, v)| vec![text(k), Field::Word(*v as u32)]).collect()));
+                        row.push(Field::List(m.reals.iter().map(|(k, v)| vec![text(k), Field::Real(*v)]).collect()));
+                        row.push(Field::List(m.bools.iter().map(|(k, v)| vec![text(k), Field::Word(*v)]).collect()));
+                        row.push(Field::List(m.units.iter().filter_map(|(k, v)| Some(std::iter::once(text(k)).chain(w3_formats::w3z::parse_fields(UNIT, v).ok()?).collect())).collect()));
+                        row.push(Field::List(m.strings.iter().map(|(k, v)| vec![text(k), text(v)]).collect()));
+                        row
+                    })
+                    .collect();
+                vec![text(&cache.name), Field::Word(cache.counter), Field::List(missions)]
+            })
+            .collect();
+        vec![text("Campaigns.w3v"), Field::Word(c.counter), Field::List(caches)]
+    }
+
     pub fn plain_agent_seconds(&self) -> Vec<(u32, Second)> {
         let events = || Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
         let none3 = || vec![Field::Word(u32::MAX), Field::Word(u32::MAX), Field::Word(0)];
@@ -1527,6 +1561,7 @@ impl World {
                 }
                 codes::class::MINE_SHAFT => out.push((slot, Second::Agent { own: vec![Field::Word(u32::MAX), Field::Word(u32::MAX), Field::Word(0), Field::Word(0), Field::Real(0.0)], handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: Vec::new() }, tail: vec![Field::Timer(NONE, 0, Timing(None))] })),
                 codes::class::TRIGGER_QUEUE => out.push((slot, Second::Agent { own: vec![Field::Word(0)], handlers: events(), tail: vec![Field::List(Vec::new()), Field::List(Vec::new())] })),
+                codes::class::GAME_CACHE_MANAGER => out.push((slot, Second::Agent { own: vec![Field::Word(0)], handlers: events(), tail: self.game_cache_fields() })),
                 _ => {}
             }
         }

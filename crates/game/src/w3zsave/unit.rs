@@ -452,3 +452,179 @@ impl World {
         Some((me.0, Second::Unit { own, handlers, widget, lists, fields }))
     }
 }
+
+impl World {
+    /// The unit's ability chain: its abilities, buffs, and AI's unit list (`uref`), in
+    /// the order made (by birth), each with its kind (read: a creep's Amov, Aatk, an
+    /// aura and its own buff, ACsp, then its uref; a peasant's AHbu first).
+    pub(crate) fn ability_chain(&self, h: u32, rallies: &[(Ref, Ref)]) -> Vec<((u32, u32), [u8; 4])> {
+        let Some(u) = self.unit(h) else { return Vec::new() };
+        let code_of = |s: u32| self.tags.live.get(&s).map(|e| e.0);
+        let mut chain: Vec<((u32, u32), [u8; 4])> = Vec::new();
+        let add = |t: (u32, u32), c: [u8; 4], chain: &mut Vec<((u32, u32), [u8; 4])>| {
+            if !chain.iter().any(|x| x.0 == t) {
+                chain.push((t, c));
+            }
+        };
+        for &(s, b) in u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]) {
+            // (Only those still its own: a slot another object took since is not.)
+            if self.tagged(s).1 != b {
+                continue;
+            }
+            if let Some(c) = code_of(s).filter(|c| (c[0] == b'A' && c != b"AI-U") || c[0] == b'B') {
+                add((s, b), c, &mut chain);
+            }
+        }
+        for b in u.buffs.iter().filter(|b| b.slot != 0) {
+            let t = self.tagged(b.slot);
+            if let Some(c) = code_of(b.slot) {
+                add(t, c, &mut chain);
+            }
+        }
+        for &(s, b) in &u.extra.ai_slots {
+            if code_of(s) == Some(*b"uref") && self.tagged(s).1 == b {
+                add((s, b), *b"uref", &mut chain);
+            }
+        }
+        chain.sort_by_key(|x| x.0 .1);
+        // Its rally point (the second table's agent) right after its rally ability.
+        let me = u.extra.object_slots[0].first().copied().unwrap_or_default();
+        if let (Some(&(r, _)), Some(k)) = (rallies.iter().find(|(_, owner)| *owner == rf(me)), chain.iter().position(|x| &x.1 == b"ARal")) {
+            chain.insert(k + 1, ((r.0, r.1), *b"rlyp"));
+        }
+        chain
+    }
+
+    /// The agent records of a unit's ability chain (read against the quiet test map's):
+    /// each its class's, its properties (the `` `rel `` objects made right after it),
+    /// and in its first link set the one made after it and the one before, and the
+    /// unit.
+    pub fn ability_agent_records(&self, h: u32, rallies: &[(Ref, Ref)]) -> Vec<(u32, w3_formats::w3z::First)> {
+        let Some(u) = self.unit(h) else { return Vec::new() };
+        let Some(&me) = u.extra.object_slots[0].first() else { return Vec::new() };
+        let chain = self.ability_chain(h, rallies);
+        let slots: Vec<(u32, u32)> = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).copied().collect();
+        let mut out = Vec::new();
+        for (k, &(t, code)) in chain.iter().enumerate() {
+            if &code == b"rlyp" {
+                continue;
+            }
+            let props: Vec<(u32, u32)> = match slots.iter().position(|&x| x == t) {
+                Some(i) => slots[i + 1..].iter().copied().take_while(|&(s, b)| self.tagged(s).1 == b && self.tags.live.get(&s).is_some_and(|e| &e.0 == b"`rel")).collect(),
+                None => Vec::new(),
+            };
+            let mut rec = super::agent_first(t, &code, &props);
+            if let w3_formats::w3z::First::Agent { object, .. } = &mut rec {
+                let newer = chain.get(k + 1).map_or(NONE, |c| rf(c.0));
+                let older = if k > 0 { rf(chain[k - 1].0) } else { NONE };
+                object.links[0] = (w3_formats::w3z::Link(newer, 0), w3_formats::w3z::Link(older, 0), rf(t), rf(me));
+            }
+            out.push((t.0, rec));
+        }
+        out
+    }
+}
+
+/// An ability's targets as the engine holds them (+0x4c), by kind, read in the quiet
+/// test map's and Forestwalk's saves (its data's targs1 as bits: ground 0x2, air 0x4,
+/// structure 0x8, ward 0x10, tree 0x40, bridge 0x400, self 0x1000, friend 0x6000,
+/// neutral 0x8000, enemy 0x10000, vulnerable 0x100000, invulnerable 0x200000, alive
+/// 0x1000000, dead 0x2000000, organic 0x4000000, mechanical 0x8000000, nonancient
+/// 0x40000000; provisional: the defaults for what its data leaves out, and 0 for the
+/// kinds not read).
+fn ability_targets(code: &[u8; 4]) -> u32 {
+    match code {
+        b"Aalr" => 0x0031_0006,
+        b"Avul" | b"Awan" | b"Agld" | b"Amic" | b"Amil" | b"Amim" | b"Andt" | b"Aneu" | b"Artn" => 0xfdd1_f00e,
+        b"AEar" | b"AHad" => 0x0030_7006,
+        b"ACtb" => 0x0401_8006,
+        b"ACtc" => 0x0000_8002,
+        b"AOsh" => 0x0001_000a,
+        b"Aadm" => 0x0030_0056,
+        b"Aarm" => 0x0430_0006,
+        b"Acan" => 0xffd1_f006,
+        b"Aens" => 0x0081_8006,
+        b"Ahar" | b"Ahrl" => 0x0300_0040,
+        b"Ainf" => 0x0000_f006,
+        b"Alam" | b"Auns" => 0x0000_2008,
+        b"Anhe" => 0x4430_f006,
+        b"Arep" | b"Arst" => 0x4b30_640e,
+        b"Aven" => 0x0400_0006,
+        b"Aaha" | b"Abgm" | b"Abli" => 0xfdd1_f00e,
+        _ => 0,
+    }
+}
+
+impl World {
+    /// The second record of an ability on a unit's chain, for the kinds read so far
+    /// (read against the quiet test map's): CAbility's part (`FUN_6f42e830`: its flags,
+    /// the ability made before it, five words, its targets, its code, a word, a timer,
+    /// and a word), then its kind's.  None for kinds not read.
+    pub fn ability_own_record(&self, h: u32, t: (u32, u32), code: &[u8; 4], older: Option<(u32, u32)>) -> Option<Second> {
+        let u = self.unit(h)?;
+        let o = self.objects.units.get(u.type_id)?;
+        let computer = self.players.get(u.owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER && p.slot_state == crate::types::slot_state::PLAYING);
+        let ai = computer || u.owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE;
+        let w = Field::Word;
+        let timer = || Field::Timer(NONE, 0, Timing(None));
+        // A periodic agent timer it started (by its function's name): its next time due
+        // after now, its period, its count, and the event it sends.
+        let periodic = |name: &str, period: f32, event: u32| {
+            let started = self.tags.timer_objects.get(&t.0).and_then(|v| v.iter().find(|x| x.1 == name)).map(|x| (x.0, x.2));
+            match started {
+                Some((count, at)) => {
+                    // (Its due time stepped by its period in the engine's arithmetic.)
+                    let mut due = crate::efloat::add(at.to_bits(), period.to_bits());
+                    while f32::from_bits(due) <= self.time {
+                        due = crate::efloat::add(due, period.to_bits());
+                    }
+                    Field::Timer(rf(t), 2, Timing(Some((f32::from_bits(due), period, count, event, 1))))
+                }
+                None => timer(),
+            }
+        };
+        let base_flags: u32 = match code {
+            b"Avul" => 0x8000_0010,
+            b"ACsp" => 0x400,
+            _ => 0x10,
+        };
+        let flags = base_flags | if ai { 0x2 } else { 0 };
+        let prev = older.map_or(NONE, rf);
+        let mut own = vec![w(flags), w(prev.0), w(prev.1), w(0), w(0), w(0), w(0), w(0), w(ability_targets(code)), w(u32::from_be_bytes(*code)), w(0), timer(), w(0)];
+        let tail = match code {
+            // CAbilityMove (`FUN_6f5fec80`): two references, its speed and 1.0, words,
+            // two reals, references; its two timers.
+            b"Amov" => {
+                own.extend([w(u32::MAX), w(u32::MAX), w(0), Field::Real(o.real("spd")), Field::Real(1.0), w(0), w(0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), w(0)]);
+                vec![timer(), timer()]
+            }
+            // CAbilityInvulnerable: a word; an empty list and a word.
+            b"Avul" => {
+                own.push(w(0));
+                vec![Field::List(Vec::new()), w(0)]
+            }
+            // Creep sleep (`FUN_6f5224c0`, `FUN_6f5230a0`): 0.1; its sleep's timer, its
+            // check every 2 seconds (event 0xd01bf), and a list.
+            b"ACsp" => {
+                own.push(Field::Real(0.1));
+                // (The sleep's timer, as it fell asleep, else its check's: read, the
+                // count of the night's creeps' second.)
+                let sleep = periodic("517be0", 2.0, 0xd_01bf);
+                vec![timer(), if matches!(sleep, Field::Timer(r, ..) if r != NONE) { sleep } else { periodic("524e00", 2.0, 0xd_01bf) }, Field::List(Vec::new())]
+            }
+            // Fire (CAbilityOnFire): a reference, and its look (event 0xd01c1) every 1.5
+            // seconds and a two-thousandth of its maximum life, at most 3
+            // (`FUN_6f41baf0`: read, a town hall's 2.25, a haunted mine's 1.975).
+            b"Afih" | b"Afiu" | b"Afio" | b"Afin" => {
+                use crate::efloat::{add, div, from_int, mul};
+                let period = f32::from_bits(add(mul(u.max_life.to_bits(), div(from_int(1), from_int(2000))), div(from_int(3), from_int(2)))).clamp(1.5, 3.0);
+                vec![w(u32::MAX), w(u32::MAX), w(0), periodic("41baf0", period, 0xd_01c1)]
+            }
+            // CAbilityAlarm (`FUN_6f42d040`): its timer and its in-range listener.
+            b"Aalr" => vec![timer(), Field::Ref(u.extra.alarm_pil.map_or(NONE, |s| rf(self.tagged(s))))],
+            _ => return None,
+        };
+        let handlers = Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
+        Some(Second::Agent { own, handlers, tail })
+    }
+}

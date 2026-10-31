@@ -559,8 +559,13 @@ impl World {
         }
         let cx = (u.x - p.origin[0]) / 32.0;
         let cy = (u.y - p.origin[1]) / 32.0;
-        // (Degrees times the engine's 0.01745329, and its pi / 3 as 1.0471975.)
-        let facing = u.facing * 0.017_453_29;
+        // (Degrees times pi / 180 in the engine's arithmetic, a negative angle then two
+        // pi on (read: every facing of the quiet test map's script's creeps, from its
+        // literals, 57 of 57), and its pi / 3 as 1.0471975.)
+        let facing = match u.extra.made_facing {
+            Some((deg, rad)) if deg == u.facing => rad,
+            _ => f32::from_bits(crate::efloat::mul(u.facing.to_bits(), 0x3c8e_fa35)),
+        };
         let speed = o.real("spd");
         let moving = speed > 0.0;
         let cells_speed = if moving { speed / 32.0 } else { f32::MAX };
@@ -1416,6 +1421,54 @@ impl World {
                         out.push(format!("unit field {k}: {n} differ, first {ex}"));
                     }
                 }
+            }
+            // The units' abilities' agents.
+            {
+                let rallies = rally_points(orig);
+                let (mut same, mut differ, mut first) = (0, 0, None);
+                let mut kinds: std::collections::BTreeMap<String, u32> = Default::default();
+                for &h in &self.unit_order {
+                    for (slot, f) in self.ability_agent_records(h, &rallies) {
+                        let Some(o) = by_slot.get(&slot) else { continue };
+                        if f.to_bytes() == o.first {
+                            same += 1;
+                        } else {
+                            differ += 1;
+                            *kinds.entry(String::from_utf8_lossy(&o.entry.kind.to_be_bytes()).to_string()).or_insert(0) += 1;
+                            let line = format!("slot {slot}: ours {f:?}, the original's {:?}", o.first());
+                            if std::env::var("W3Z_ALL").is_ok() {
+                                out.push(format!("ability {line}"));
+                            }
+                            first.get_or_insert(line);
+                        }
+                    }
+                }
+                out.push(format!("units' abilities' agents: {same} the same, {differ} differ {kinds:?}{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+                // Their own records, for the kinds the port writes.
+                let (mut same, mut first) = (0, None);
+                let mut kinds: std::collections::BTreeMap<String, (u32, u32)> = Default::default();
+                for &h in &self.unit_order {
+                    let chain = self.ability_chain(h, &rallies);
+                    for (k, &(t, code)) in chain.iter().enumerate() {
+                        // (The ability made before it, not a buff.)
+                        let older = chain[..k].iter().rev().find(|c| c.1[0] == b'A').map(|c| c.0);
+                        let Some(sec) = self.ability_own_record(h, t, &code, older) else { continue };
+                        let Some(o) = by_slot.get(&t.0) else { continue };
+                        let e = kinds.entry(String::from_utf8_lossy(&code).to_string()).or_insert((0, 0));
+                        if sec.to_bytes(o.entry.kind).is_ok_and(|b| b == o.second) {
+                            same += 1;
+                            e.0 += 1;
+                        } else {
+                            e.1 += 1;
+                            let line = format!("slot {}: ours {sec:?}, the original's {:?}", t.0, o.second());
+                            if std::env::var("W3Z_ALL").is_ok() {
+                                out.push(format!("ability own {line}"));
+                            }
+                            first.get_or_insert(line);
+                        }
+                    }
+                }
+                out.push(format!("units' abilities' own records: {same} the same; by kind (same, differ) {kinds:?}{}", first.map_or(String::new(), |f| format!("; first {}", &f[..f.len().min(600)]))));
             }
             // The units' agents.
             let (mut same, mut differ, mut first) = (0, 0, None);

@@ -68,6 +68,10 @@ pub struct Tags {
     /// queue's +0x50): each start takes the next, which its timer keeps.
     #[serde(default)]
     pub timer_starts: u32,
+    /// The agent timers objects keep, by the object's slot: each its count, its
+    /// function's name, and the game time it started.
+    #[serde(default)]
+    pub timer_objects: std::collections::HashMap<u32, Vec<(u32, String, f32)>>,
     /// The property module's count of timing nodes (its +0x50, at 0x6f15d735,
     /// 0x6f15dc58, 0x6f15e127), which properties' and listeners' blocks keep: taken as
     /// objects are made (`Tags::take`: a modifier `` `rcm `` one, a threshold listener
@@ -170,7 +174,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -223,6 +227,7 @@ impl Tags {
         self.made_at.remove(&slot);
         self.prop_counts.remove(&slot);
         self.tech_buffs.retain(|&(s, _)| s != slot);
+        self.timer_objects.remove(&slot);
         if let Some(l) = self.trace.as_mut() {
             l.push(TagEvent::Free(slot));
         }
@@ -854,15 +859,18 @@ impl crate::world::World {
                     self.tags.start_timer("491250");
                 }
                 b"Afih" | b"Afio" | b"Afiu" | b"Afin" => {
-                    self.tags.start_timer("41baf0");
+                    let n = self.tags.start_timer("41baf0");
+                    self.tags.timer_objects.entry(slots[k]).or_default().push((n, "41baf0".into(), self.time));
                 }
                 b"Aalr" => {
                     self.tags.start_timer("41ae70");
                 }
                 b"ACsp" => {
-                    self.tags.start_timer("524e00");
+                    let n = self.tags.start_timer("524e00");
+                    self.tags.timer_objects.entry(slots[k]).or_default().push((n, "524e00".into(), self.time));
                     if night_sleeper {
-                        self.tags.start_timer("517be0");
+                        let n = self.tags.start_timer("517be0");
+                        self.tags.timer_objects.entry(slots[k]).or_default().push((n, "517be0".into(), self.time));
                     }
                 }
                 b"AHad" | b"AHab" | b"AUau" | b"AOae" | b"AEar" | b"AUav" | b"AEah" | b"Aakb" | b"AOac" | b"Aoar" | b"Aarm" => {

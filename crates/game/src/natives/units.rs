@@ -206,6 +206,13 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
     // Placed on a quarter-unit grid, rounding down (measured: pigs made at -5719.4,
     // -4560.2 and -5627.1, -4500.0 stand at -5719.5, -4560.25 and -5627.25, -4500.0).
     let (x, y) = ((x * 4.0).floor() / 4.0, (y * 4.0).floor() / 4.0);
+    // Its facing in radians as the original holds it: degrees times pi / 180 in the
+    // engine's arithmetic, a negative angle then two pi on (read: the quiet test map's
+    // creeps, every one).
+    let radians = {
+        let r = crate::efloat::mul(facing.to_bits(), 0x3c8e_fa35);
+        f32::from_bits(if f32::from_bits(r) < 0.0 { crate::efloat::add(r, 0x40c9_0fdb) } else { r })
+    };
     let facing = facing.rem_euclid(360.0);
     let Some(o) = w.objects.units.get(type_id) else {
         log::warn!("CreateUnit: unknown unit type {}", crate::objects::id_str(type_id));
@@ -310,7 +317,7 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
         proper_name: String::new(),
         xp_suspended: false,
         queue_started: false,
-        extra: Default::default(),
+        extra: UnitExtra { made_facing: Some((facing, radians)), ..Default::default() },
     };
     let path_tex = if unit.is_building { o.str("pathTex") } else { String::new() };
     let mut unit = unit;

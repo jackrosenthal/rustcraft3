@@ -98,44 +98,21 @@ impl Object {
     }
 }
 
-/// A decimal as the engine reads its data: its digits times a single precision tenth,
-/// hundredth, or thousandth by the count of its fraction's digits (0x3dccccce,
-/// 0x3c23d70b, 0x3a83126f), cut to single precision toward zero.  Read in the quiet test
-/// map's save: "1.05", "1.55", "0.9", "1.3", "1.5", "1.6", "1.8", "0.39", "0.44", "0.4"
-/// as 1.0500001, 1.5500001, 0.90000004, 1.3000001, 1.5000001, 1.6000001, 1.8000001,
-/// 0.39000002, 0.44000003, 0.40000004 (models' scales, regeneration, attacks' cooldowns
-/// and points); "1.2", "1.7", "1.35", "1.1", "0.3", "0.5", "0.75", "1.25", "0.25",
-/// "0.433", "0.567" as the nearest.  Provisional past three fraction digits (the
-/// thousandth's again).  None for what is not plain digits with a point.
+/// A decimal as the engine reads its data (`efloat::parse`, `FUN_6f070de0`: its digits
+/// as an integer through the engine's division, times an interpolated reciprocal that
+/// truncates).  Read in the quiet test map's save: "1.05", "1.55", "0.9", "1.3", "1.5",
+/// "1.6", "1.8", "0.39", "0.44", "0.4" as 1.0500001, 1.5500001, 0.90000004, 1.3000001,
+/// 1.5000001, 1.6000001, 1.8000001, 0.39000002, 0.44000003, 0.40000004 (models'
+/// scales, regeneration, attacks' cooldowns and points); "1.2", "1.7", "1.35", "1.1",
+/// "0.3", "0.5", "0.75", "1.25", "0.25", "0.433", "0.567" as the nearest.  None for what
+/// is not plain digits with a point.
 pub fn engine_real(s: &str) -> Option<f32> {
-    const UNITS: [u32; 4] = [0x3f80_0000, 0x3dcc_ccce, 0x3c23_d70b, 0x3a83_126f];
-    let (neg, body) = match s.strip_prefix('-') {
-        Some(b) => (true, b),
-        None => (false, s.strip_prefix('+').unwrap_or(s)),
-    };
+    let body = s.strip_prefix('-').or_else(|| s.strip_prefix('+')).unwrap_or(s);
     let (int, frac) = body.split_once('.').unwrap_or((body, ""));
-    if int.is_empty() && frac.is_empty() || !int.bytes().chain(frac.bytes()).all(|b| b.is_ascii_digit()) || int.len() + frac.len() > 18 {
+    if int.is_empty() && frac.is_empty() || !int.bytes().chain(frac.bytes()).all(|b| b.is_ascii_digit()) {
         return None;
     }
-    let digits: u128 = format!("{int}{frac}").parse().ok()?;
-    let f = if frac.is_empty() {
-        digits as f32
-    } else {
-        // The unit's significand and exponent, the product exact, then its top 24 bits.
-        let unit = UNITS[frac.len().min(3)];
-        let (mant, exp) = ((unit & 0x7f_ffff | 0x80_0000) as u128, ((unit >> 23) & 0xff) as i32 - 150);
-        let p = digits * mant;
-        if p == 0 {
-            0.0
-        } else {
-            let top = 127 - p.leading_zeros() as i32;
-            let shift = top - 23;
-            let m = if shift > 0 { p >> shift } else { p << -shift } as u32;
-            let e = exp + shift;
-            m as f32 * 2f32.powi(e)
-        }
-    };
-    Some(if neg { -f } else { f })
+    Some(f32::from_bits(crate::efloat::parse(s.as_bytes())))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]

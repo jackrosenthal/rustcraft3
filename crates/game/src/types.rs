@@ -590,6 +590,10 @@ pub struct UnitExtra {
     /// Its object of the last day change (`World::time_of_day_moved`), while it lasts.
     #[serde(default)]
     pub day_rcm: Option<u32>,
+    /// Its facing as made, in degrees as the port holds it and in radians as the
+    /// original does (the latter not the former's conversion for a negative angle).
+    #[serde(default)]
+    pub made_facing: Option<(f32, f32)>,
     /// That object's slot and birth, kept after it goes (its record names it still).
     #[serde(default)]
     pub day_ref: Option<(u32, u32)>,
@@ -888,6 +892,7 @@ impl Default for UnitExtra {
             footprint_slots: Vec::new(),
             object_slots: Default::default(),
             day_rcm: None,
+            made_facing: None,
             day_ref: None,
             woke_at: None,
             spell_owners: Vec::new(),

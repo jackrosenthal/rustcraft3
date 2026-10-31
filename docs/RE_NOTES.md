@@ -1683,6 +1683,27 @@ Formats the port made its own, to be replaced by the original's:
   nearest.  No single rounding of the decimal gives them all.  (Not the map script's
   reals: its creeps' facings fit neither this nor the nearest with any of the
   conversions tried.)
+- A unit's ability chain (its abilities, buffs, and AI's unit list, `uref`, by
+  birth; a structure's rally point, the second table's `rlyp`, right after its rally
+  ability) links each to the one made after it and the one before, the unit in its
+  first link set, its properties (the `` `rel `` objects made right after it): all 326
+  of the quiet test map's agree.  Their own records begin with CAbility's
+  (`FUN_6f42e830`): flags (0x10, Creep Sleep's 0x400, Invulnerable's 0x80000010; an
+  AI's 0x2), the ability made before it (not a buff), five words, its targets (+0x4c:
+  its data's targs1 as bits, ground 0x2, air 0x4, structure 0x8, ward 0x10, tree
+  0x40, bridge 0x400, self 0x1000, friend 0x6000, neutral 0x8000, enemy 0x10000,
+  vulnerable 0x100000, invulnerable 0x200000, alive 0x1000000, dead 0x2000000, organic
+  0x4000000, mechanical 0x8000000, nonancient 0x40000000; its defaults for what is
+  left out not yet read), its code, a word, a timer, a word.  Written so far, all
+  agreeing: Amov (references, its speed and 1.0, words, reals; two timers), Avul,
+  Aalr (its in-range listener), ACsp (0.1; its sleep's periodic timer, event 0xd01bf,
+  every 2 seconds, else its check's), and fire (a reference; its look, event 0xd01c1,
+  every 1.5 seconds and a two-thousandth of its maximum life, at most 3, in the
+  engine's arithmetic: `FUN_6f41baf0`).  A periodic timer keeps its count from its
+  start, its next due time stepped from its start by its period.
+- A unit made by script faces its literal (read by the script's compiler as the
+  original does) times pi / 180 (0x3c8efa35) in the engine's arithmetic, two pi
+  (0x40c90fdb) on for a negative angle: every creep of the quiet test map's, 57 of 57.
 - An aura's scan lays its buffs in the reverse of the order a search of the map finds
   the units (`spatial_order`): read, the trolls' and ogres' at 2 seconds.
 - A unit's clustered position (`` `pcu ``, CPoPosCl) holds its place in pathing cells

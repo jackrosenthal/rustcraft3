@@ -1794,6 +1794,7 @@ impl World {
         if let Some(now) = self.tick_abs(i) {
             self.ai_threads_to(now as f32);
             self.alarms_to(now);
+            self.captain_checks_to(now);
         }
     }
 

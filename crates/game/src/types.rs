@@ -664,6 +664,15 @@ pub struct UnitExtra {
     /// (`World::recycle_guard_position`): its goal, while it walks.
     #[serde(default)]
     pub captain_walk: Option<(f32, f32)>,
+    /// Its walk to its captain's objects (`World::recycle_guard_position`), its
+    /// captain's `uref`, and the captain's next look at it on the main clock
+    /// (`World::captain_checks_to`).
+    #[serde(default)]
+    pub captain_order: Vec<u32>,
+    #[serde(default)]
+    pub captain_uref: Option<u32>,
+    #[serde(default)]
+    pub captain_check: Option<f32>,
     /// A gold mine a worker has been in (its `+fgm` made; `crate::goldrun`).
     #[serde(default)]
     pub mine_shaft: bool,
@@ -944,6 +953,9 @@ impl Default for UnitExtra {
             gold_run: None,
             ai_order: Vec::new(),
             captain_walk: None,
+            captain_order: Vec::new(),
+            captain_uref: None,
+            captain_check: None,
             mine_shaft: false,
             mine_queue: Vec::new(),
             mine_busy: None,

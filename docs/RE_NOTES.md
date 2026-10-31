@@ -2263,7 +2263,19 @@ Formats the port made its own, to be replaced by the original's:
   ninth to thirteenth, the captain walk's tree (its ninth back to its third) and path.
   At 1.2 a harvest order of `AI_HARVEST`'s shape, its `^clg` freed, the `uref` of the
   ghoul's captain, and the move order's rest.  In the saves the ghoul moved 0.497 cells
-  on bearing 1.78 by 1.1 (two steps at its 0.253), then turned east by 1.2.  In
+  on bearing 1.78 by 1.1 (two steps at its 0.253), then turned east by 1.2.
+  Read further: the move order is not the wood order but the captain's look at its
+  unit a second after taking it in (an agent timer at 1.0 sending event 0xd01c9 to
+  the captain's dispatcher, `FUN_6f9d4aa0`'s table, to `FUN_6f9d9020`, which sends an
+  idle unit home through `FUN_6f9d4600`); saves at 1.03, 1.06, 1.09 show the ghoul
+  turning and walking from the turn's first step (`World::captain_checks_to`).  The
+  wood order comes in turn 12: `peon_assignment`'s wake due at 1.1 runs at the next
+  tick's first step (the AI update at a tick's end runs threads only up to its last
+  step's clock), and HarvestWood orders at once, as HarvestGold does (the ghoul on
+  its tree's bearing by the 1.2 save); its objects twenty (`AI_WOOD`).  With these
+  turns 11 and 12 match the original's slot for slot and the keepalives agree to turn
+  13.  The ghoul's way home differs a little (the original's first point the cell north
+  of it, the port's search going straight to the home).  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

@@ -52,6 +52,11 @@ pub struct ThreadObject {
 /// wake in the network game).
 pub const AI_HARVEST: [&crate::tags::Code; 18] = [codes::class::ORDER, codes::class::TASK_A, codes::class::TASK, codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 
+/// An AI's wood harvest order on a worker, its objects in order: `AI_HARVEST`'s with a
+/// task more before its target tasks and one after them (traced: Forestwalk's undead
+/// computer's ghoul at 1.1).
+pub const AI_WOOD: [&crate::tags::Code; 20] = [codes::class::ORDER, codes::class::TASK_A, codes::class::TASK, codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
+
 /// An AI's build order on a worker, its objects in order (`FUN_6f9cb885`: an order with
 /// a point, its task, `ord.`, two blocks, three tasks, two `tsk.`, three tasks, a `tskO`,
 /// a task, a block, and its walk's cluster goal, cluster, and path; traced, Forestwalk's
@@ -389,7 +394,11 @@ impl World {
             if self.ai.get(&p).is_some_and(|s| s.paused > 0) {
                 continue;
             }
-            self.ai_run_threads(p, self.time);
+            // (Those due by the tick's last movement step; one due after it waits for the
+            // next tick's steps: read, `peon_assignment`'s wake due at 1.1 giving its
+            // orders in turn 12, not 11.)
+            let until = self.step_clocks.last().map_or(self.time, |&c| f32::from_bits(c));
+            self.ai_run_threads(p, until);
             let Some(mut aivm) = self.ai_vms.remove(&p) else { continue };
             self.ai_current = Some(p);
             self.ai_hero_skills(p, &mut aivm);
@@ -782,11 +791,48 @@ impl World {
         for &h in &to_wood {
             if !on_wood(self, h) {
                 if let Some(t) = tree_near(self, h) {
+                    self.ai_wood_objects(p, h);
                     self.order_unit(h, harvest, 0.0, 0.0, t);
                 }
             }
         }
 
+    }
+
+    /// The objects of a wood harvest order the AI gives (`AI_WOOD`): its `^clg` and its
+    /// captain's `uref` go at once, the unit leaving its captain; with the tick's orders
+    /// a stopped walk home's `+ord`, the new order's second, that walk's tree, the new
+    /// order's third and first, its last `tskA` and the four tasks before it, then the
+    /// walk's path and the captain's `^clp` (read: Forestwalk's undead computer's ghoul
+    /// at 1.1, its walk home given at 1.0).  Provisional: a unit not walking home frees
+    /// the new order's alone.
+    fn ai_wood_objects(&mut self, p: u8, h: u32) {
+        let order: Vec<u32> = AI_WOOD.iter().map(|c| self.tags.take(c)).collect();
+        self.tags.release(order[17]);
+        let (uref, home) = self.unit_mut(h).map(|u| (u.extra.captain_uref.take(), std::mem::take(&mut u.extra.captain_order))).unwrap_or_default();
+        if let Some(r) = uref {
+            self.tags.release(r);
+        }
+        if let Some(st) = self.ai.get_mut(&p) {
+            st.attack.units.retain(|&u| u != h);
+            st.defense.units.retain(|&u| u != h);
+        }
+        let mut frees = Vec::new();
+        if home.len() == 12 {
+            frees.extend([home[0], order[1], home[6], home[5], home[4], home[3], home[2], home[1]]);
+        } else {
+            frees.push(order[1]);
+        }
+        frees.extend([2, 0, 16, 15, 14, 13, 12].map(|k| order[k]));
+        if home.len() == 12 {
+            frees.extend([home[8], home[7], home[11]]);
+        }
+        self.tags.issued.extend(frees);
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.captain_walk = None;
+            u.extra.captain_check = None;
+            u.extra.ai_order = order;
+        }
     }
 
     /// The objects of a harvest order the AI gives (`AI_HARVEST`): for now an acolyte's
@@ -1477,7 +1523,18 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             w.ai_assign_harvest(p);
             none()
         },
-        HarvestWood => |w, _, a| { let (t, n) = (a.i(0), a.i(1)); if let Some(s) = w.ai_state() { s.harvest.push((false, t, n)); s.harvest_timer = 0.0; } none() },
+        // (Ordered at once, as HarvestGold's: read, Forestwalk's undead computer's ghoul
+        // turned toward its tree by the 1.2-second save, `peon_assignment`'s wake at 1.1.)
+        HarvestWood => |w, _, a| {
+            let (t, n) = (a.i(0), a.i(1));
+            if let Some(s) = w.ai_state() {
+                s.harvest.push((false, t, n));
+                s.harvest_timer = 0.0;
+            }
+            let p = w.ai_player();
+            w.ai_assign_harvest(p);
+            none()
+        },
         StopGathering => |w, _, _| {
             if let Some(s) = w.ai_state() { s.harvest.clear(); }
             set_flag(w, "gathering", false)

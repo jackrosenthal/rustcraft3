@@ -217,10 +217,67 @@ impl World {
         let births = |w: &World, s: u32| (s, w.tags.live.get(&s).map_or(0, |e| e.1));
         let ai = vec![births(self, fresh[0]), births(self, fresh[1])];
         let item = births(self, pil);
-        let _ = listed;
+        let base = if self.tick_clocks.1.is_empty() { 0.0 } else { self.tick_abs(0).unwrap_or(0.0) as f32 };
         if let Some(u) = self.unit_mut(h) {
             u.extra.ai_slots = ai;
             u.extra.item_pil = Some(item);
+            u.extra.captain_order = walk;
+            u.extra.captain_uref = Some(listed);
+            u.extra.captain_check = Some(base + 1.0);
+        }
+    }
+
+    /// The captains' looks at their units due by `now` on the main clock: one idle, not
+    /// walking, is sent home again (event 0xd01c9 by an agent timer a second after it
+    /// was taken in, `FUN_6f9d9020` through `FUN_6f9d4600`; read with call stacks under
+    /// winedbg: Forestwalk's undead computer's ghoul at 1.0, its path query, `^clg`,
+    /// `^clu`, `l^pa`, the `^clg` freed, a `^clp`; a move order of sixteen, its `^clg`
+    /// freed and its `+ord` taking the slot; freed then its third, its walk's tree
+    /// ninth back to third, its fourteenth to ninth, its walk's path; in single-player
+    /// saves walking at 1.03 on its way's first point's bearing).  Provisional: the
+    /// period after the first.
+    pub(crate) fn captain_checks_to(&mut self, now: f64) {
+        let due: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.captain_check.is_some_and(|t| t as f64 <= now))).collect();
+        for h in due {
+            let Some(u) = self.unit_mut(h) else { continue };
+            let at = u.extra.captain_check.unwrap_or(0.0);
+            u.extra.captain_check = Some(at + 1.0);
+            let idle = matches!(u.action, Action::Idle) && u.extra.captain_walk.is_none() && u.extra.captain_order.len() == 18;
+            if !idle {
+                continue;
+            }
+            let old = std::mem::take(&mut u.extra.captain_order);
+            let query: Vec<u32> = [codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH].iter().map(|c| self.tags.take(c)).collect();
+            self.tags.release(query[0]);
+            let clp = self.tags.take(b"^clp");
+            const MOVE: [&crate::tags::Code; 16] = [codes::class::CLUSTER_GOAL, codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK_O, codes::class::TASK, codes::class::TASK, b"tsk.", codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER, codes::class::PATH];
+            let order: Vec<u32> = MOVE.iter().map(|c| self.tags.take(c)).collect();
+            self.tags.release(order[0]);
+            let ord = self.tags.take(codes::class::ORDER);
+            self.tags.release(order[2]);
+            for k in [8, 7, 6, 5, 4, 3, 2] {
+                self.tags.release(old[k]);
+            }
+            for k in [13, 12, 11, 10, 9, 8] {
+                self.tags.release(order[k]);
+            }
+            for k in [17, 16] {
+                self.tags.release(old[k]);
+            }
+            let owner = self.unit(h).map_or(0, |u| u.owner);
+            let home = self.captain_homes(owner).1;
+            let serial = self.tags.born;
+            if let Some(u) = self.unit_mut(h) {
+                let mut kept = vec![ord];
+                kept.extend([1, 3, 4, 5, 6, 7, 14, 15].map(|k| order[k]));
+                kept.extend([query[1], query[2], clp]);
+                u.extra.captain_order = kept;
+                u.extra.captain_walk = Some(home);
+                u.extra.walk_serial = serial;
+                u.extra.mover = None;
+                u.extra.facing_goal = false;
+                u.path.clear();
+            }
         }
     }
 

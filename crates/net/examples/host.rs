@@ -8,8 +8,9 @@
 //!
 //! W3HOSTCOMPUTER="<race>,<level>" adds a computer player in a third slot: its race as
 //! the slot table has it (1 human, 2 orc, 4 night elf, 8 undead, in hex) and its level
-//! (0 easy, 1 normal, 2 insane).  W3HOSTCLOSED=1 instead adds a closed third slot (for a
-//! map of three players or more, which the original leaves with two slots).
+//! (0 easy, 1 normal, 2 insane).  W3HOSTCLOSED=n instead adds n closed slots (for a map
+//! of more than two players: the lobby has as many slots as the map has players, the
+//! original leaving one with fewer).
 
 use std::time::{Duration, Instant};
 
@@ -31,15 +32,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (r, l) = v.split_once(',')?;
         Some((u8::from_str_radix(r, 16).ok()?, l.parse().ok()?))
     });
-    let closed = std::env::var("W3HOSTCLOSED").is_ok_and(|v| v == "1");
-    let total = if computer.is_some() || closed { 3 } else { 2 };
+    let closed: u32 = std::env::var("W3HOSTCLOSED").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+    let total = if computer.is_some() { 3 } else { 2 + closed };
     let info = GameInfo { product: TFT, version: VERSION, host_counter: 1, entry_key: 0, name: "w3-net host".into(), stat, slots_total: total, game_type: 9, players: 1, player_slots: total, uptime: 0, port };
     let slot = |pid, st, team, color| Slot { pid, download: if pid == 1 { 100 } else { DOWNLOAD_UNKNOWN }, status: st, computer: false, team, color, race: race::RANDOM | race::SELECTABLE, ai: 1, handicap: 100 };
     let mut list = vec![slot(1, status::OCCUPIED, 0, 0), slot(0, status::OPEN, 1, 1)];
     if let Some((r, level)) = computer {
         list.push(Slot { download: 100, computer: true, race: r | race::SELECTABLE, ai: level, ..slot(0, status::OCCUPIED, 2, 2) });
-    } else if closed {
-        list.push(slot(0, status::CLOSED, 2, 2));
+    } else {
+        for k in 0..closed {
+            list.push(slot(0, status::CLOSED, 2 + k as u8, 2 + k as u8));
+        }
     }
     let slots = SlotTable { slots: list, seed: 0x35000000, layout: layout::MELEE, player_slots: total as u8 };
     let mut host = Host::new(port, info, HostMap { path: a[2].clone(), bytes, checksums }, slots, "Host".into())?;

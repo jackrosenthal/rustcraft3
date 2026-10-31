@@ -60,8 +60,10 @@ fn item_cell(w: &mut World, h: u32) -> Option<&mut MultiboardItem> {
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
     reg!(t,
         CreateTimerDialog => |w, _, a| {
-            w.tags.take(b"+tid");
-            handle(w.handles.insert(Obj::TimerDialog(TimerDialog { timer: a.h(0), ..Default::default() })))
+            let slot = w.tags.take(b"+tid");
+            let h = w.handles.insert(Obj::TimerDialog(TimerDialog { timer: a.h(0), ..Default::default() }));
+            w.tags.handle_slots.insert(h, slot);
+            handle(h)
         },
         DestroyTimerDialog => |w, _, a| { if timer_dialog(w, a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
         TimerDialogSetTitle => |w, _, a| { let t = w.localized(&a.s(1)); if let Some(d) = timer_dialog(w, a.h(0)) { d.title = Some(t); } none() },

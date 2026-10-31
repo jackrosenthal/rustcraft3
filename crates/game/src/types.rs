@@ -1395,6 +1395,9 @@ pub struct Sound {
     pub fade_out: i32,
     pub eax: String,
     pub label: Option<String>,
+    /// Made by CreateMIDISound (a save keeps no label entry for it).
+    #[serde(default)]
+    pub midi: bool,
     pub volume: i32,
     pub pitch: f32,
     pub position: Option<(f32, f32, f32)>,

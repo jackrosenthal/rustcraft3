@@ -807,6 +807,41 @@ impl World {
                     let Some(own) = slot_of(id) else { continue };
                     out.push((own.0, agent_first(own, b"+loc", &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail: vec![Field::Real(*x), Field::Real(*y)] })));
                 }
+                // A sound (CSoundScript?): its timer (none), 0, 0, 0, 0, and its labels: one
+                // made from a label its entry (the label, none, 0, its fades in and out as
+                // words, 128, 3, "", 0, 0), else (a MIDI sound's too) none.  (Provisional: a sound playing, the
+                // 128 and 3.)
+                Some(Obj::Sound(snd)) => {
+                    let Some(own) = slot_of(id) else { continue };
+                    let labels = match snd.label.as_ref().filter(|_| !snd.midi) {
+                        Some(l) => {
+                            let mut entry = vec![Field::Text(l.clone()), Field::Ref(NONE), Field::Word(0), Field::Real(f32::from_bits(snd.fade_in as u32)), Field::Real(f32::from_bits(snd.fade_out as u32)), Field::Real(f32::from_bits(128)), Field::Word(3)];
+                            match self.sound_label_row(l) {
+                                // (A label with an EAX preset (UI\SoundInfo's tables): the
+                                // preset, 0, a flags word, its least and most distance, and
+                                // two lists, as the day's rooster and the night's wolf have
+                                // them; provisional: the flags word, 289 for theirs.)
+                                Some((eax, min, max)) if eax != "0" && !eax.is_empty() => {
+                                    entry.extend([Field::Text(eax), Field::Word(0), Field::Word(289), Field::List(vec![vec![Field::Word(min.to_bits()), Field::Word(max.to_bits())]]), Field::List(vec![vec![Field::Word(0)]]), Field::List(vec![vec![Field::Word(0)]])]);
+                                }
+                                _ => entry.extend([Field::Text(String::new()), Field::Word(0), Field::Word(0)]),
+                            }
+                            vec![vec![Field::Word(1), Field::List(vec![entry])]]
+                        }
+                        None => vec![vec![Field::Word(0)]],
+                    };
+                    let tail = vec![Field::Timer(NONE, 0, Timing(None)), Field::Short(0), Field::Short(0), Field::Real(0.0), Field::Word(0), Field::List(labels)];
+                    out.push((own.0, agent_first(own, b"+snd", &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail })));
+                }
+                // A timer dialog: its timer, 0; then 0, its colors (as made), its default
+                // text (DEFAULTTIMERDIALOGTEXT, not the title set), and 1.  (Provisional: the
+                // colors and speed set.)
+                Some(Obj::TimerDialog(d)) => {
+                    let Some(own) = slot_of(id) else { continue };
+                    let timer = slot_of(d.timer).map_or(NONE, rf);
+                    let tail = vec![Field::Word(0), Field::Word(0xfffc_d211), Field::Word(0xfffc_d211), Field::Text(self.localized("DEFAULTTIMERDIALOGTEXT")), Field::Real(1.0)];
+                    out.push((own.0, agent_first(own, b"+tid", &[]), Some(Second::Agent { own: vec![Field::Word(0), Field::Word(timer.0), Field::Word(timer.1), Field::Real(0.0)], handlers: game_handlers(self.game_object()), tail })));
+                }
                 // A rect (CScriptRect): its bounds, bottom, left, top, right.
                 Some(Obj::Rect(r)) => {
                     let Some(own) = slot_of(id) else { continue };
@@ -1120,6 +1155,20 @@ impl World {
             }
         }
         s
+    }
+
+    /// A sound label's EAX preset and least and most distances, from the game's sound
+    /// tables (UI\SoundInfo).
+    fn sound_label_row(&self, label: &str) -> Option<(String, f32, f32)> {
+        for t in ["UISounds", "AmbienceSounds", "AbilitySounds", "AnimSounds", "MIDISounds", "DialogSounds", "UnitAckSounds", "UnitCombatSounds", "EnvironmentSounds"] {
+            let Ok(text) = self.chain.read_string(&format!("UI\\SoundInfo\\{t}.slk")) else { continue };
+            let slk = w3_formats::slk::Table::parse(&text);
+            if let Some(eax) = slk.get(label, "EAXFlags") {
+                let num = |c: &str| slk.get(label, c).and_then(|v| v.as_str().parse::<f32>().ok()).unwrap_or(0.0);
+                return Some((eax.as_str(), num("MinDistance"), num("MaxDistance")));
+            }
+        }
+        None
     }
 
     /// The game's object (`+gam`, CGameWar3's agent) and its five properties: two flags

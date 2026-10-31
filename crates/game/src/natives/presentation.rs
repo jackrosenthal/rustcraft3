@@ -161,24 +161,32 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetMusicPlayPosition => |w, _, a| { w.requests.push(Request::MusicOffset(a.i(0))); none() },
         SetThematicMusicPlayPosition => |w, _, a| { w.requests.push(Request::MusicOffset(a.i(0))); none() },
         CreateSound => |w, _, a| {
-            w.tags.take(b"+snd");
+            let slot = w.tags.take(b"+snd");
             let s = Sound { path: a.s(0), looping: a.b(1), is_3d: a.b(2), stop_when_out_of_range: a.b(3), fade_in: a.i(4), fade_out: a.i(5), eax: a.s(6), volume: 127, pitch: 1.0, ..Default::default() };
-            handle(w.handles.insert(Obj::Sound(Box::new(s))))
+            let h = w.handles.insert(Obj::Sound(Box::new(s)));
+            w.tags.handle_slots.insert(h, slot);
+            handle(h)
         },
         CreateSoundFilenameWithLabel => |w, _, a| {
-            w.tags.take(b"+snd");
+            let slot = w.tags.take(b"+snd");
             let s = Sound { path: a.s(0), looping: a.b(1), is_3d: a.b(2), stop_when_out_of_range: a.b(3), fade_in: a.i(4), fade_out: a.i(5), label: Some(a.s(6)), volume: 127, pitch: 1.0, ..Default::default() };
-            handle(w.handles.insert(Obj::Sound(Box::new(s))))
+            let h = w.handles.insert(Obj::Sound(Box::new(s)));
+            w.tags.handle_slots.insert(h, slot);
+            handle(h)
         },
         CreateSoundFromLabel => |w, _, a| {
-            w.tags.take(b"+snd");
+            let slot = w.tags.take(b"+snd");
             let s = Sound { label: Some(a.s(0)), looping: a.b(1), is_3d: a.b(2), stop_when_out_of_range: a.b(3), fade_in: a.i(4), fade_out: a.i(5), volume: 127, pitch: 1.0, ..Default::default() };
-            handle(w.handles.insert(Obj::Sound(Box::new(s))))
+            let h = w.handles.insert(Obj::Sound(Box::new(s)));
+            w.tags.handle_slots.insert(h, slot);
+            handle(h)
         },
         CreateMIDISound => |w, _, a| {
-            w.tags.take(b"+snd");
-            let s = Sound { label: Some(a.s(0)), fade_in: a.i(1), fade_out: a.i(2), volume: 127, pitch: 1.0, ..Default::default() };
-            handle(w.handles.insert(Obj::Sound(Box::new(s))))
+            let slot = w.tags.take(b"+snd");
+            let s = Sound { label: Some(a.s(0)), midi: true, fade_in: a.i(1), fade_out: a.i(2), volume: 127, pitch: 1.0, ..Default::default() };
+            let h = w.handles.insert(Obj::Sound(Box::new(s)));
+            w.tags.handle_slots.insert(h, slot);
+            handle(h)
         },
         SetSoundParamsFromLabel => |w, _, a| { let l = a.s(1); if let Some(s) = sound_mut(w, a.h(0)) { s.label = Some(l); } none() },
         SetSoundDistanceCutoff => |w, _, a| { let v = a.r(1); if let Some(s) = sound_mut(w, a.h(0)) { s.cutoff = v; } none() },

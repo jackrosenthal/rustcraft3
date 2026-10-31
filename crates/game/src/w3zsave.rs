@@ -1061,7 +1061,7 @@ impl World {
             records.entry(slot).or_insert(f);
         }
         for &h in &self.unit_order {
-            for (slot, f) in self.ability_real_records(h, &rallies) {
+            for (slot, f) in self.ability_real_records(h, &rallies).into_iter().chain(self.structure_region_records(h)) {
                 records.entry(slot).or_insert(f);
             }
         }
@@ -1732,12 +1732,20 @@ impl World {
             // The agents with no properties, and the pathing system's objects.
             let rallies = rally_points(orig);
             let ability_reals: Vec<(u32, First)> = self.unit_order.iter().flat_map(|&h| self.ability_real_records(h, &rallies)).collect();
-            for (name, recs) in [("plain agents", self.plain_agent_records()), ("pathing system objects", self.pathing_system_records(48, 0)), ("game object", self.game_object_records()), ("abilities' reals", ability_reals)] {
+            let footprints: Vec<(u32, First)> = self.unit_order.iter().flat_map(|&h| self.structure_region_records(h)).collect();
+            for (name, recs) in [("plain agents", self.plain_agent_records()), ("pathing system objects", self.pathing_system_records(48, 0)), ("game object", self.game_object_records()), ("abilities' reals", ability_reals), ("structures' footprints (but for the search mark)", footprints)] {
                 let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();
                 let (mut same, mut differ, mut first) = (0, 0, None);
                 for (slot, f) in recs {
+                    let unmarked = |f: &First| match f.clone() {
+                        First::Region { refs, word, bounds, mut words } => {
+                            words[0] = 0;
+                            First::Region { refs, word, bounds, words }.to_bytes()
+                        }
+                        other => other.to_bytes(),
+                    };
                     match by_slot.get(&slot) {
-                        Some(o) if o.first == f.to_bytes() => same += 1,
+                        Some(o) if o.first().is_ok_and(|t| unmarked(&t) == unmarked(&f)) => same += 1,
                         Some(o) => {
                             differ += 1;
                             first.get_or_insert(format!("slot {slot} ({}): ours {f:?}, the original's {:?}", String::from_utf8_lossy(&o.entry.kind.to_be_bytes()), o.first()));

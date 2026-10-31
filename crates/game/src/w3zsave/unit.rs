@@ -526,6 +526,32 @@ impl World {
 }
 
 impl World {
+    /// A structure's footprint's three regions (`^pmr` on the pathing map, as a tree's):
+    /// flags 0xc2 and 0x10 over its pathing footprint's cells, 0x08 over where none may
+    /// build; each bounded by the building footprint's first row and column and their
+    /// last plus 2, its cells' count, and 0x10000000 (the search mark the running
+    /// game's, written 0).
+    pub fn structure_region_records(&self, h: u32) -> Vec<(u32, w3_formats::w3z::First)> {
+        let Some(u) = self.unit(h) else { return Vec::new() };
+        if u.extra.footprint_slots.len() != 3 {
+            return Vec::new();
+        }
+        let maps = self.pathing_map_objects();
+        let me = u.extra.object_slots[0].first().copied().unwrap_or((u32::MAX, u32::MAX));
+        let outline = if u.build_cells.is_empty() { &u.pathing_cells } else { &u.build_cells };
+        let rows = outline.iter().map(|c| c.1 as u32);
+        let cols = outline.iter().map(|c| c.0 as u32);
+        let bounds = [rows.clone().min().unwrap_or(0), cols.clone().min().unwrap_or(0), rows.max().unwrap_or(0) + 2, cols.max().unwrap_or(0) + 2];
+        let mut out = Vec::new();
+        for (k, flags) in [0xc2u32, 0x10, 0x08].into_iter().enumerate() {
+            let n = if k < 2 { u.pathing_cells.len() } else { u.build_cells.len() } as u32;
+            let slot = u.extra.footprint_slots[k];
+            let words = [0, n, 0x1000_0000];
+            out.push((slot, w3_formats::w3z::First::Region { refs: [rf(maps[1]), rf(me)], word: 0x0100_0000 | flags, bounds, words }));
+        }
+        out
+    }
+
     /// A unit's abilities' indexed reals (`` `rel ``, each an ability's own, made after
     /// it): stamped, listed on the ability, each its value, rate, and bounds as made (read
     /// on the quiet test map: the gold mine's and Abgm's first -0 unbounded, Abgm's

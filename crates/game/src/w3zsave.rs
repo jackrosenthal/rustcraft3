@@ -342,6 +342,13 @@ impl World {
     /// computer's, 0x100002 Neutral Hostile's), and its three timers, every 2, 10, and
     /// 0.5 seconds from its making (events 0xd01c1, 0xd01c3, 0xd01c5).  Provisional:
     /// what a running script sets in them, the flags.
+    /// A computer player's AI object (`AI-1`), in the order computers' are made.
+    fn player_ai_object(&self, player: u8) -> Option<(u32, u32)> {
+        let computers: Vec<u8> = (0..12u8).filter(|&i| self.players.get(i as usize).is_some_and(|p| p.controller == 1)).collect();
+        let k = computers.iter().position(|&p| p == player)?;
+        self.tags.player_ais.get(k).copied()
+    }
+
     pub fn player_ai_seconds(&self) -> Vec<(u32, Second)> {
         let mut out = Vec::new();
         let computers: Vec<u8> = (0..12u8).filter(|&i| self.players.get(i as usize).is_some_and(|p| p.controller == 1)).collect();
@@ -1778,6 +1785,22 @@ impl World {
                 codes::class::MINE_SHAFT => out.push((slot, Second::Agent { own: vec![Field::Word(u32::MAX), Field::Word(u32::MAX), Field::Word(0), Field::Word(0), Field::Real(0.0)], handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: Vec::new() }, tail: vec![Field::Timer(NONE, 0, Timing(None))] })),
                 codes::class::TRIGGER_QUEUE => out.push((slot, Second::Agent { own: vec![Field::Word(0)], handlers: events(), tail: vec![Field::List(Vec::new()), Field::List(Vec::new())] })),
                 codes::class::GAME_CACHE_MANAGER => out.push((slot, Second::Agent { own: vec![Field::Word(0)], handlers: events(), tail: self.game_cache_fields() })),
+                // An AI script's thread (CThreadAI, `FUN_6f9bef30`): 0, its player's AI,
+                // 0, its number's successor and its number (its main's both 0), its last
+                // sleep; that sleep's timer (event 0xd01bf, once), its length again, and
+                // the thread's place (read: Forestwalk's undead computer's five at 5
+                // seconds; provisional: the two numbers, read as the threads in turn).
+                codes::class::AI_THREAD => {
+                    let Some((player, o)) = self.ai.iter().find_map(|(&p, st)| st.thread_objects.iter().find(|(_, o)| o.slot == slot).map(|(&place, o)| (p, (place, *o)))) else { continue };
+                    let (place, o) = o;
+                    let ai = self.player_ai_object(player).unwrap_or((u32::MAX, u32::MAX));
+                    let (a, b) = if o.number == 0 { (0, 0) } else { (o.number + 1, o.number) };
+                    let me = self.tagged(slot);
+                    let timer = if o.count == 0 { Field::Timer(NONE, 0, Timing(None)) } else { Field::Timer(rf(me), 0, Timing(Some((o.due, o.sleep, o.count, 0xd_01bf, 0)))) };
+                    let (chunks, rest) = timer_chunks(o.sleep);
+                    let own = vec![Field::Word(0), Field::Word(ai.0), Field::Word(ai.1), Field::Word(0), Field::Word(a), Field::Word(b), Field::Real(o.sleep)];
+                    out.push((slot, Second::Agent { own, handlers: events(), tail: vec![timer, Field::Short(chunks.min(0xffff) as u16), Field::Short(chunks.min(0xffff) as u16), Field::Real(rest), Field::Word(place)] }));
+                }
                 // A unit's detection by a player (CDetectedData): 0; 0 and sixteen 0,
                 // twice (read: Forestwalk's eighteen, none yet counted).
                 codes::class::DETECTION => {
@@ -1818,7 +1841,7 @@ impl World {
     /// shifts, rects, the queue, and the game cache manager): each its class's definition
     /// alone.
     pub fn plain_agent_records(&self) -> Vec<(u32, First)> {
-        const PLAIN: [&[u8; 4]; 13] = [codes::class::UNIT_AI, codes::class::CREEP_CAMP, codes::class::TOWN_SITE, codes::class::PLAYER_AI, codes::class::GROUP, codes::class::SOUND, codes::class::TIMER_DIALOG, codes::class::MINE_SLOT, codes::class::MINE_SHAFT, codes::class::RECT, codes::class::TRIGGER_QUEUE, codes::class::GAME_CACHE_MANAGER, codes::class::DETECTION];
+        const PLAIN: [&[u8; 4]; 14] = [codes::class::UNIT_AI, codes::class::CREEP_CAMP, codes::class::TOWN_SITE, codes::class::PLAYER_AI, codes::class::GROUP, codes::class::SOUND, codes::class::TIMER_DIALOG, codes::class::MINE_SLOT, codes::class::MINE_SHAFT, codes::class::RECT, codes::class::TRIGGER_QUEUE, codes::class::GAME_CACHE_MANAGER, codes::class::DETECTION, codes::class::AI_THREAD];
         self.tags.live.iter().filter(|(_, (c, _))| PLAIN.contains(&c)).map(|(&slot, (c, birth))| (slot, agent_first((slot, *birth), c, &[]))).collect()
     }
 

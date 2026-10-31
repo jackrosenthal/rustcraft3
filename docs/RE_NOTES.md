@@ -2143,7 +2143,18 @@ Formats the port made its own, to be replaced by the original's:
   HarvestGold (`FUN_6f9bbdb0`, `FUN_6f9c7330`) assigns and sends its workers within
   the call (`FUN_6f9c7410`, then `FUN_6f9c7700` for those still wanted); the port's
   records the request for its engine's next pass and makes no order objects for it:
-  next.  In
+  next.  In the network game with the undead computer (`fw.w3m`, the port hosting,
+  W3HOSTCOMPUTER=8,1; `abtest/birthsfree.sh`: each take's code, birth, and slot, each
+  free's slot, and a mark at each keepalive's first module), all 83 of the wake's
+  objects come between keepalives 2 and 3: the peons thread, three acolytes' harvest
+  orders (each `+ord`, `tskA`, `task`, `ordt`, `tskA`, three `task`, three `tskt`, three
+  `task`, `tskA`, `^clg`, `^clu`, `l^pa`, then one free), three threads, the build
+  order (`+ord`, `tskA`, `` `rcm ``, `` `rtl ``, `+ord`, `task`, `ord.`, two `tskA`, three
+  `task`, two `tsk.`, three `task`, `tskO`, `task`, `tskA`, `^clg`, `^clu`, `l^pa`, a
+  free, `+ord`), 43 frees, and a `` `pil ``; between keepalives 3 and 4 two frees,
+  `` `rcm ``, `` `rtl ``, `` `pil ``, and two frees.  The take (`FUN_6f1cbf40`: the
+  object, the table, the free list's head, the birth counter) gives the head's slot,
+  else the table's count (+0x1c).  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

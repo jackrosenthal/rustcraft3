@@ -1602,8 +1602,9 @@ pub mod class {
     pub const AI_CAPTAIN: &Code = b"AI-C";
     /// `AI-U`: A unit's AI.
     pub const UNIT_AI: &Code = b"AI-U";
-    /// `AItr`: Made by StartMeleeAI (provisional name).
-    pub const AI_TOWN_LIST: &Code = b"AItr";
+    /// `AItr`: An AI script's thread (CThreadAI, `FUN_6f919123`): its main's, made by
+    /// StartMeleeAI, and each StartThread's.
+    pub const AI_THREAD: &Code = b"AItr";
     /// `AIts`: A town site (a gold mine's).
     pub const TOWN_SITE: &Code = b"AIts";
     /// `AIcs`: A creep camp.

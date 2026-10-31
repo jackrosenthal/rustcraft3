@@ -32,6 +32,18 @@ pub struct Captain {
     pub peak: usize,
 }
 
+/// An AI thread's object (CThreadAI): its slot, its number (its main's 0, then each
+/// thread started in turn), and its last sleep: its length, its timer's count, and when
+/// it ends.
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct ThreadObject {
+    pub slot: u32,
+    pub number: u32,
+    pub sleep: f32,
+    pub count: u32,
+    pub due: f32,
+}
+
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct AiState {
     pub player: u8,
@@ -44,6 +56,14 @@ pub struct AiState {
     /// Threads started with StartThread, each run at once until it first sleeps, then
     /// asleep until the time given, for the AI update to keep.
     pub spawned: Vec<(f32, Thread)>,
+    /// Each thread's object (`AItr`), by the thread's place.
+    #[serde(default)]
+    pub thread_objects: std::collections::BTreeMap<u32, ThreadObject>,
+    /// The time the thread running woke at: its sleep's due time, which a sleep it
+    /// begins then counts from (as an agent timer's next start is its due time, not the
+    /// frame's).
+    #[serde(default)]
+    pub clock: f32,
     pub melee: bool,
     pub flags: HashMap<String, bool>,
     /// Harvest requests in priority order: (gold?, town, workers).
@@ -312,8 +332,12 @@ impl World {
         // The AI's thread (`AItr`, FUN_6f9c8d10), its script's main run at once until it
         // first sleeps (traced: StartMeleeAI's own objects, the captains its main makes
         // among them, come before MeleeInitVictoryDefeat's).
-        self.tags.take(codes::class::AI_TOWN_LIST);
+        let thread_slot = self.tags.take(codes::class::AI_THREAD);
         self.ai_current = Some(player);
+        let now = self.time;
+        if let Some(st) = self.ai_state() {
+            st.clock = now;
+        }
         if let Err(e) = vm.init_globals(self) {
             log::warn!("AI {script} globals: {e}");
         }
@@ -321,9 +345,13 @@ impl World {
         let mut aivm = AiVm { vm, sleepers: Vec::new() };
         if let Some(f) = main {
             let mut t = aivm.vm.new_thread(f, &[], true);
-            let now = self.time;
-            match aivm.vm.run(self, &mut t) {
-                Outcome::Sleeping(s) => aivm.sleepers.push((now + s.max(0.0), t)),
+            let outcome = aivm.vm.run(self, &mut t);
+            self.ai_thread_made(thread_slot, t.place);
+            match outcome {
+                Outcome::Sleeping(s) => {
+                    let due = self.ai_thread_slept(t.place, s);
+                    aivm.sleepers.push((due, t));
+                }
                 Outcome::Finished(_) => {}
                 Outcome::Aborted(e) => log::warn!("AI thread for player {player} ended: {e} at {:?}", t.backtrace(&aivm.vm.module)),
             }
@@ -350,21 +378,29 @@ impl World {
             let Some(mut aivm) = self.ai_vms.remove(&p) else { continue };
             self.ai_current = Some(p);
             let now = self.time;
-            let due: Vec<Thread> = {
+            // (Those due, by due time, the earlier asleep first at a tie.)
+            let due: Vec<(f32, Thread)> = {
                 let mut due = Vec::new();
                 let mut i = 0;
                 while i < aivm.sleepers.len() {
                     if aivm.sleepers[i].0 <= now {
-                        due.push(aivm.sleepers.swap_remove(i).1);
+                        due.push(aivm.sleepers.remove(i));
                     } else {
                         i += 1;
                     }
                 }
+                due.sort_by(|a, b| a.0.total_cmp(&b.0));
                 due
             };
-            for mut t in due {
+            for (at, mut t) in due {
+                if let Some(st) = self.ai.get_mut(&p) {
+                    st.clock = at;
+                }
                 match aivm.vm.run(self, &mut t) {
-                    Outcome::Sleeping(s) => aivm.sleepers.push((now + s.max(0.0), t)),
+                    Outcome::Sleeping(s) => {
+                        let due = self.ai_thread_slept(t.place, s);
+                        aivm.sleepers.push((due, t));
+                    }
                     Outcome::Finished(_) => {}
                     Outcome::Aborted(e) => log::warn!("AI thread for player {p} ended: {e} at {:?}", t.backtrace(&aivm.vm.module)),
                 }
@@ -409,6 +445,30 @@ impl World {
                 }
             }
         }
+    }
+
+    /// A thread's object made (the current AI's), numbered in turn.
+    fn ai_thread_made(&mut self, slot: u32, place: u32) {
+        if let Some(st) = self.ai_state() {
+            let number = st.thread_objects.len() as u32;
+            st.thread_objects.insert(place, ThreadObject { slot, number, ..Default::default() });
+        }
+    }
+
+    /// A thread of the current AI's asleep: its object's timer started anew from the
+    /// AI's clock (traced: each `AItr`'s count is its last sleep's; read, Forestwalk's
+    /// computer's main asleep at 0.1 for 100 due at 100.1).  Its due time.
+    fn ai_thread_slept(&mut self, place: u32, s: f32) -> f32 {
+        let n = self.tags.start_timer("ai thread sleep");
+        let now = self.time;
+        let clock = self.ai_state().map_or(now, |st| st.clock);
+        let due = f32::from_bits(crate::efloat::add(clock.to_bits(), s.max(0.0).to_bits()));
+        if let Some(o) = self.ai_state().and_then(|st| st.thread_objects.get_mut(&place)) {
+            o.sleep = s;
+            o.count = n;
+            o.due = due;
+        }
+        due
     }
 
     fn ai_state(&mut self) -> Option<&mut AiState> {
@@ -1440,13 +1500,15 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         // build loop threads' objects).
         StartThread => |w, vm, a| {
             if let Some(f) = a.code(0) {
-                w.tags.take(codes::class::AI_TOWN_LIST);
+                let slot = w.tags.take(codes::class::AI_THREAD);
                 let mut t = vm.new_thread(f, &[], true);
-                let now = w.time;
-                match vm.run(w, &mut t) {
+                let outcome = vm.run(w, &mut t);
+                w.ai_thread_made(slot, t.place);
+                match outcome {
                     Outcome::Sleeping(s) => {
+                        let due = w.ai_thread_slept(t.place, s);
                         if let Some(st) = w.ai_state() {
-                            st.spawned.push((now + s.max(0.0), t));
+                            st.spawned.push((due, t));
                         }
                     }
                     Outcome::Finished(_) => {}

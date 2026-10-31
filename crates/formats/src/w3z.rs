@@ -1034,7 +1034,7 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::ability::id::HARVEST, "wwww wwwwwww t w wwww wwww ff w fff", "[www] [t] wwwwww f t t t t"),
     // CThreadAI (`FUN_6f9bef30`, own `FUN_6f9bf070`: six words and a real): an extended
     // timer and a word.
-    (codes::class::AI_TOWN_LIST, "wwwwww f", "t ss f w"),
+    (codes::class::AI_THREAD, "wwwwww f", "t ss f w"),
     // CSoundWar3 (`FUN_6f2469a0`): its extended timer, then a flag and a sound's
     // (`FUN_6f359e90`: its file, three reals, six words), or else another flag and a
     // sound's (`FUN_6f359fa0`: its file, a reference, words and reals, a second string,

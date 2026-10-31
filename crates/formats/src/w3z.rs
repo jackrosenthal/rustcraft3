@@ -658,6 +658,15 @@ pub enum Field {
     Bytes(Vec<u8>),
 }
 
+/// An agent's second record read as far as its own fields (by `own`'s layout) and its
+/// handler lists go, and the bytes left after them (to find an unread class's layout).
+pub fn probe_agent(b: &[u8], own: &str) -> Result<(Vec<Field>, Handlers, Vec<u8>), Error> {
+    let mut r = Reader::new(b);
+    let own = fields(&mut r, own)?;
+    let handlers = Handlers::read(&mut r)?;
+    Ok((own, handlers, r.data[r.pos..].to_vec()))
+}
+
 /// Reads the whole of `b` as fields by a layout (as `fields` does).
 pub fn parse_fields(layout: &str, b: &[u8]) -> Result<Vec<Field>, Error> {
     let mut r = Reader::new(b);
@@ -852,6 +861,11 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // CTriggerWar3 (`FUN_6f299840`, its own `FUN_6f2998a0`: six words): three counted
     // lists (`FUN_6f294ba0`, `FUN_6f294c80`, `FUN_6f294c10`).
     (codes::class::TRIGGER, "wwwwww", "[r] [r] [r]"),
+    // CTriggerExecution (`FUN_6f2996d0`, own `FUN_6f03edf0`: a word): a counted list of
+    // words, an extended timer, a word, a reference, a counted list of references
+    // (`FUN_6f294c10`), a real, a reference, two words, events 0x80274's and 0x80273's
+    // lists, and a word.
+    (codes::class::TRIGGER_EXECUTION, "w", "[w] t ss f w r [r] f r w w e e w"),
     // Event registrations, each ending with its event's handler list: a unit's
     // (`FUN_6f27ede0`, own `FUN_6f27f140`: five words) four words and a reference, a
     // player's (`FUN_6f27e900`, own `FUN_6f27f1b0`: ten words) a reference, a game's
@@ -890,6 +904,39 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::ability::id::ABOLISH_MAGIC, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
     (codes::ability::id::HEAL_CREEP_NORMAL, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
     (codes::ability::id::INNER_FIRE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
+    (codes::ability::id::CURSE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
+    (codes::ability::id::BLOODLUST, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
+    (codes::ability::id::FAERIE_FIRE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
+    (codes::ability::id::DREADLORD_SLEEP, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
+    (codes::ability::id::REJUVINATION, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
+    // CAbilityAnimateDead (`FUN_6f4e9990`): the buff base's tail, a reference, three
+    // timers; CAbilityDevour (`FUN_6f5aadb0`, own `FUN_6f5aba20`: a word more) two and
+    // from build 6029 a third; CAbilityManaBurn (`FUN_6f648560`, own `FUN_6f649130`: two
+    // words and a real more) three; CAbilityRaiseDead (`FUN_6f5221e0`, own
+    // `FUN_6f522d50`: from build 6011 two words more) `FUN_6f42d2a0`'s and a timer.
+    (codes::ability::id::ANIMATE_DEAD_CREEP, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
+    (codes::ability::id::DEVOUR_DRAGON_CREEP, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff w", "wwwww r t t t"),
+    (codes::ability::id::DEMON_HUNTER_MANA_BURN, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff ww f", "wwwww r t t t"),
+    (codes::ability::id::RAISE_DEAD, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff ww", "wwwww r t t t t"),
+    // CAbilityShadowMeld (`FUN_6f522420`, own `FUN_6f523050`: three reals more): the
+    // buff base's tail, a timer, and from build 6018 a second.
+    (codes::ability::id::SHADOW_MELD, "wwww wwwwwww t w fff", "wwwww t t"),
+    // CAbilityBurrowDetector (`FUN_6f42d860`, own `FUN_6f42ebd0`: a real and a word
+    // more): the buff base's tail and two references.
+    (codes::ability::id::BURROW_DETECTION_FLYERS, "wwww wwwwwww t w f w", "wwwww r r"),
+    // CAbilityCriticalStrike (the buff base's tail; own `FUN_6f4eb470`: a word more).
+    (codes::ability::id::BLADE_MASTER_CRITICAL_STRIKE, "wwww wwwwwww t w w", "wwwww"),
+    // CAbilityPurchaseItem (`FUN_6f42df00`): a reference.
+    (codes::ability::id::PURCHASE_ITEM, "wwww wwwwwww t w", "r"),
+    // CAbilityDevourCargo (`FUN_6f5aabb0`): a real, three words, two counted lists of
+    // two words and a real, two of words, two timers, and two counted lists of two reals.
+    (codes::ability::id::CARGO_HOLD_DEVOUR, "wwww wwwwwww t w", "f www [wwf] [wwf] [w] [w] t t [ff] [ff]"),
+    // CAbilityDeathSpawnSpider (CAgent's `FUN_6f03eda0` alone).
+    (codes::ability::id::SPAWN_SPIDER, "wwww wwwwwww t w", ""),
+    // CAbilityNeutralInteract (as CAbilityNeutralDetectAoe's).
+    (codes::ability::id::SELECT_USER, "wwww wwwwwww t w w", "wwwww"),
+    (codes::ability::id::DEATH_KNIGHT_UNHOLY_AURA, "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
+    (codes::ability::id::SELL_ITEMS, "wwww wwwwwww t w ff", "r r 12(w fff t ss f t ss f w) wwwww"),
     // `FUN_6f42e0e0` on that: four timers and a reference (own `FUN_6f42f1b0`: three
     // words, three reals, three words, a real, three words).
     (codes::ability::id::REPAIR_ORC, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff www fff www f www", "wwwww r t t t t t t t r"),
@@ -914,6 +961,8 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // 0xd0000 to 0xd03ff): an acolyte's ring slot (own `FUN_6f4eaef0`: three reals and
     // six words); a rally point (`FUN_6f42e810`, own `FUN_6f42f7f0`) a reference.
     (codes::class::MINE_SLOT, "!fff wwwwww", ""),
+    // CSplashData (own `FUN_6f49c330`: a word and five reals).
+    (codes::class::SPLASH, "!w fffff", ""),
     (codes::class::RALLY_POINT, "!w ff wwww", "ww"),
     // CEffectBlight (`FUN_6f490810`, own `FUN_6f490850`): a timer.
     (codes::class::BLIGHT_GROWTH, "ww fff ww", "t"),
@@ -923,6 +972,9 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // trueshot a counted list of words, and a timer.
     (codes::buff::id::TRUESHOT_AURA, "wwww wwwwwww t w w f www fff f www", "[r] w t ss f [w] t"),
     (codes::buff::id::DEVOTION_AURA, "wwww wwwwwww t w w f www fff f www f", "[r] w t ss f t"),
+    // CBuffAuraUnholy (`FUN_6f4ea950`, own `FUN_6f4ebac0`: a real, two words, three
+    // reals more): the aura base's, an extended timer, a reference, and a timer.
+    (codes::buff::id::UNHOLY_AURA, "wwww wwwwwww t w w f www fff f ww f ff", "[r] w t ss f r t"),
     // CAbilityBlightRegen (`FUN_6f42d4b0`): a timer; CAbilityAcolyteHarvest
     // (`FUN_6f42cf90`, own `FUN_6f42e8d0`: a real and three words): from build 6000 a
     // timer.

@@ -452,6 +452,24 @@ fn main() {
         return;
     }
     // "census": each kind's objects and their records' bytes, most bytes first.
+    // "raw": the kinds whose second records the reader keeps raw or cannot read, with
+    // counts and an example tag.
+    if a[2] == "raw" {
+        let mut by: std::collections::BTreeMap<String, (usize, u32)> = Default::default();
+        for o in &all {
+            let what = match o.second() {
+                Ok(w3_formats::w3z::Second::Raw(_)) => "raw",
+                Err(_) => "error",
+                _ => continue,
+            };
+            let e = by.entry(format!("{} {what}", code(o.entry.kind))).or_insert((0, o.entry.tag));
+            e.0 += 1;
+        }
+        for (k, (n, t)) in by {
+            println!("{k}: {n} (e.g., {t})");
+        }
+        return;
+    }
     if a[2] == "census" {
         let mut by: std::collections::HashMap<String, (usize, usize)> = Default::default();
         for o in &all {
@@ -513,6 +531,25 @@ fn main() {
         lines.sort();
         for (_, l) in lines {
             println!("{l}");
+        }
+        return;
+    }
+    // "probe <tag>": an unread agent's second record: for each count of words after an
+    // ability's own fields ("wwww wwwwwww t w") that leaves its handler lists readable,
+    // the extra words (hex and as reals) and the rest after the lists.
+    if a[2] == "probe" {
+        let t: u32 = a[3].parse().unwrap();
+        let o = all.iter().find(|o| o.entry.tag == t).expect("no such object");
+        let base = a.get(4).map_or("wwww wwwwwww t w", |s| s.as_str());
+        for k in 0..24 {
+            let layout = format!("{base}{}", " w".repeat(k));
+            let Ok((own, h, rest)) = w3_formats::w3z::probe_agent(&o.second, &layout) else { continue };
+            if h.events.len() != 0x400 {
+                continue;
+            }
+            let extra: Vec<String> = own.iter().skip(own.len() - k).map(|f| match f { w3_formats::w3z::Field::Word(w) => format!("{w:#x}/{}", f32::from_bits(*w)), x => format!("{x:?}") }).collect();
+            let words: Vec<String> = rest.chunks(4).map(|c| { let w = u32::from_le_bytes([c[0], c[1], *c.get(2).unwrap_or(&0), *c.get(3).unwrap_or(&0)]); format!("{w:#x}/{}", f32::from_bits(w)) }).collect();
+            println!("{k} extra [{}] keyed {} rest {} bytes: {}", extra.join(" "), h.keyed.len(), rest.len(), words.join(" "));
         }
         return;
     }

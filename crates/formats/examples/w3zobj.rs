@@ -470,6 +470,31 @@ fn main() {
         println!("header {:?}", h);
         return;
     }
+    // "nodes": every timing node in the first records (the property module's), a line
+    // each by its count: its count, due, period, word, periodic, and its object's tag
+    // and kind.
+    if a[2] == "nodes" {
+        let mut lines = Vec::new();
+        for o in &all {
+            let Ok(f) = o.first() else { continue };
+            let text = format!("{f:?}");
+            let kind = String::from_utf8_lossy(&o.entry.kind.to_be_bytes()).to_string();
+            let mut rest = text.as_str();
+            while let Some(i) = rest.find("Timing(Some((") {
+                rest = &rest[i + 13..];
+                let end = rest.find("))").unwrap_or(rest.len());
+                let parts: Vec<&str> = rest[..end].split(", ").collect();
+                if parts.len() == 5 {
+                    lines.push((parts[2].parse::<u32>().unwrap_or(0), format!("{} due {} period {} word {} periodic {} owner {} {kind}", parts[2], parts[0], parts[1], parts[3], parts[4], o.entry.tag)));
+                }
+            }
+        }
+        lines.sort();
+        for (_, l) in lines {
+            println!("{l}");
+        }
+        return;
+    }
     // "timers": every running timer in the agents' second records, a line each: its
     // start count, its owner's tag and kind, its due time, period, and event.
     if a[2] == "timers" {

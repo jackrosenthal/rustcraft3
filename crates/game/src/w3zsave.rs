@@ -1374,7 +1374,7 @@ impl World {
         for (slot, f) in self.pathing_system_records(accel_word, system_short) {
             records.entry(slot).or_insert(f);
         }
-        for (slot, f) in self.game_object_records() {
+        for (slot, f) in self.game_object_records().into_iter().chain(self.time_of_day_records()) {
             records.entry(slot).or_insert(f);
         }
         for (slot, sec) in self.plain_agent_seconds() {
@@ -1461,6 +1461,87 @@ impl World {
     /// clock then, its rate, 0 and 24; its two listeners, the `` `rcm `` and `` `rtl ``
     /// of the day's change, linked), the time's scale, and a flag (1).  The agent's last
     /// two links name the listeners too.  Provisional: the flags.
+    /// The time of day's modifier and threshold listeners (read against the quiet test
+    /// map's, at 8:15 by day): the `` `rcm `` of its rate (two words, -1 and 0x60050044,
+    /// its rate and no limit, a node due 150 seconds after it was made, every 150); its
+    /// listeners, chained on the game and on the time's real by their making: the
+    /// script's (TriggerRegisterGameStateEvent; an equal one listening rising, at least,
+    /// while the time is below its value, else falling, at most: Blizzard.j's dawn
+    /// remade so by the melee setup's 8:00), the day's change's (by day 0.01 below dawn,
+    /// falling, and 0.01 past dusk, rising; provisional by night, 0.01 past dawn,
+    /// rising), and the day's end (24, rising).  Each two words (its event: 0x80101 and
+    /// its comparison the script's, 0x80263 the change's, 0x80262 the day's end; and
+    /// 0x20090400), its threshold, and whether rising; one rising ahead of the time a
+    /// node checking every 4 seconds from its making (as a unit's).  Provisional: the
+    /// nodes' counts (the running game's re-armed ones), a stopped time's.
+    pub fn time_of_day_records(&self) -> Vec<(u32, First)> {
+        let game = self.game_object();
+        let mut props: Vec<(u32, u32)> = self.tags.live.iter().filter(|&(&s, (c, _))| s > game.0 && s <= game.0 + 5 && matches!(c, codes::class::FLAG | codes::class::REAL)).map(|(&s, (_, b))| (s, *b)).collect();
+        props.sort();
+        let Some(&real) = props.get(2) else { return Vec::new() };
+        let mut out = Vec::new();
+        let hours = self.misc_f32("DayHours", 24.0);
+        let rate = hours / self.misc_f32("DayLength", 480.0) * self.time_of_day_scale;
+        let (dawn, dusk, eps) = (self.misc_f32("Dawn", 6.0), self.misc_f32("Dusk", 18.0), 0.01f32);
+        let tod = self.time_of_day;
+        let [rcm, end] = self.time_of_day_listeners;
+        if let Some(r) = rcm.filter(|s| self.tags.live.contains_key(s)).map(|s| self.tagged(s)) {
+            let made = self.tags.made_at.get(&r.0).copied().unwrap_or(0);
+            let due = f32::from_bits(crate::efloat::add(made, 150f32.to_bits()));
+            let count = self.tags.prop_counts.get(&r.0).copied().unwrap_or(0);
+            let object = ObjectBase { real: 0.0, words: [u32::MAX, 0x6005_0044], links: [(Link(NONE, 0), Link(NONE, 0), rf(r), rf(game)), (Link(NONE, 0), Link(NONE, 0), rf(r), rf(real))], timings: [Timing(Some((due, 150.0, count, 0, 1))), Timing(None)] };
+            out.push((r.0, First::Continuous { object, values: [rate, f32::MAX] }));
+        }
+        // (Each: itself, its event, threshold, and whether rising.)
+        let mut ls: Vec<((u32, u32), u32, f32, bool)> = Vec::new();
+        for &e in &self.events {
+            let Some(Obj::Event(r)) = self.handles.get(e) else { continue };
+            let EventKind::GameState { state: 2, op, value } = r.kind else { continue };
+            let Some(&s) = self.tags.event_timers.get(&e).filter(|s| self.tags.live.contains_key(s)) else { continue };
+            // (Less, at most, equal, at least, greater: 0 to 4.)
+            let op = if op == 2 { if tod < value { 3 } else { 1 } } else { op };
+            ls.push((self.tagged(s), 0x8_0101 + op as u32, value, matches!(op, 3 | 4)));
+        }
+        let change = |s: Option<u32>| s.filter(|s| self.tags.live.contains_key(s)).map(|s| self.tagged(s));
+        if self.daytime {
+            ls.extend(change(self.tags.day_timer).map(|r| (r, 0x8_0263, dawn - eps, false)));
+            ls.extend(change(self.tags.day_timer_2).map(|r| (r, 0x8_0263, dusk + eps, true)));
+        } else {
+            ls.extend(change(self.tags.day_timer).map(|r| (r, 0x8_0263, dawn + eps, true)));
+        }
+        ls.extend(change(end).map(|r| (r, 0x8_0262, hours, true)));
+        ls.sort_by_key(|l| l.0 .1);
+        let chain: Vec<(u32, u32)> = ls.iter().map(|l| l.0).collect();
+        let now = self.time;
+        for &(me, event, thr, rising) in &ls {
+            let node = if rising && tod < thr && rate > 0.0 {
+                // (Checked every 4 seconds from its making, or as the time reaches it.)
+                let made = self.tags.made_at.get(&me.0).map_or(0.0, |&c| f32::from_bits(c));
+                let at_time = |t: f32| tod - rate * (now - t);
+                let mut at = made;
+                let mut due = made + 4f32.min((thr - at_time(made)) / rate);
+                while due <= now {
+                    at = due;
+                    due = at + 4f32.min((thr - at_time(at)) / rate);
+                }
+                let period = 4f32.min((thr - at_time(at)) / rate);
+                Timing(Some((due, period, self.tags.prop_counts.get(&me.0).copied().unwrap_or(0), 0, 1)))
+            } else {
+                Timing(None)
+            };
+            let (a0, b0) = chain_links(&chain, me, 0);
+            let (a1, b1) = chain_links(&chain, me, 1);
+            let object = ObjectBase { real: 0.0, words: [event, 0x2009_0400], links: [(a0, b0, rf(me), rf(game)), (a1, b1, rf(me), rf(real))], timings: [node, Timing(None)] };
+            out.push((me.0, First::Threshold { object, real: thr, word: u32::from(rising) }));
+        }
+        out
+    }
+
+    /// The newest of the time of day's listeners (its chains' head).
+    fn time_of_day_head(&self) -> Option<(u32, u32)> {
+        self.time_of_day_records().into_iter().filter(|(_, f)| matches!(f, First::Threshold { .. })).map(|(s, _)| self.tagged(s)).max_by_key(|r| r.1)
+    }
+
     pub fn game_object_records(&self) -> Vec<(u32, First)> {
         let game = self.game_object();
         let mut props: Vec<(u32, u32)> = self.tags.live.iter().filter(|&(&s, (c, _))| s > game.0 && s <= game.0 + 5 && matches!(c, codes::class::FLAG | codes::class::REAL)).map(|(&s, (_, b))| (s, *b)).collect();
@@ -1468,7 +1549,9 @@ impl World {
         if props.len() != 5 {
             return Vec::new();
         }
-        let listeners: Vec<(u32, u32)> = self.time_of_day_listeners.iter().flatten().filter(|s| self.tags.live.contains_key(s)).map(|&s| self.tagged(s)).collect();
+        // (Its modifier, and its newest listener.)
+        let modifier = self.time_of_day_listeners[0].filter(|s| self.tags.live.contains_key(s)).map(|s| self.tagged(s));
+        let listeners: Vec<(u32, u32)> = modifier.into_iter().chain(self.time_of_day_head()).collect();
         let link = |k: usize| listeners.get(k).map_or(Link(NONE, 0), |&r| Link(rf(r), 0));
         let mut out = Vec::new();
         let hours = self.misc_f32("DayHours", 24.0);
@@ -1495,14 +1578,6 @@ impl World {
         out
     }
 
-    /// Second records of the AI's and engine's plain objects: each camp's AI (`AIcs`: 0,
-    /// its creeps' count, and twelve places for them, its creeps by slot then none), each
-    /// town site's (`AIts`: 0, its index, its place twice, none, its gold mine, none),
-    /// the `shft` (none, 0, 0, 0, and no timer), and the trigger queue (`+qum`: none
-    /// queued).  Provisional: what a running AI keeps in them; a site a town has taken
-    /// (its town hall after its place, its center and a second place computed: read,
-    /// the quiet test map's computer's, 8148.0054 and 8832), a `shft` at work, a queue
-    /// in use.
     /// The game cache manager's own fields (`gccm`, read against the quiet test map's,
     /// whose profile held one saved cache): its file's name, and the saved caches as
     /// that file holds them (`Persist::caches_w3v`): their counter, each cache's name,
@@ -1537,6 +1612,14 @@ impl World {
         vec![text("Campaigns.w3v"), Field::Word(c.counter), Field::List(caches)]
     }
 
+    /// Second records of the AI's and engine's plain objects: each camp's AI (`AIcs`: 0,
+    /// its creeps' count, and twelve places for them, its creeps by slot then none), each
+    /// town site's (`AIts`: 0, its index, its place twice, none, its gold mine, none),
+    /// the `shft` (none, 0, 0, 0, and no timer), and the trigger queue (`+qum`: none
+    /// queued).  Provisional: what a running AI keeps in them; a site a town has taken
+    /// (its town hall after its place, its center and a second place computed: read,
+    /// the quiet test map's computer's, 8148.0054 and 8832), a `shft` at work, a queue
+    /// in use.
     pub fn plain_agent_seconds(&self) -> Vec<(u32, Second)> {
         let events = || Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
         let none3 = || vec![Field::Word(u32::MAX), Field::Word(u32::MAX), Field::Word(0)];
@@ -2199,7 +2282,7 @@ impl World {
                 }
                 out.push(format!("own records (mines' slots, circles, blight growth, camps, sites, shifts, the queue, players): {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
             }
-            for (name, recs) in [("plain agents", self.plain_agent_records()), ("pathing system objects", self.pathing_system_records(48, 0)), ("game object", self.game_object_records()), ("abilities' reals", ability_reals), ("structures' footprints (but for the search mark)", footprints), ("mines' circles and blight growth (but for the search mark)", circles)] {
+            for (name, recs) in [("plain agents", self.plain_agent_records()), ("pathing system objects", self.pathing_system_records(48, 0)), ("game object", self.game_object_records()), ("time of day's modifier and listeners", self.time_of_day_records()), ("abilities' reals", ability_reals), ("structures' footprints (but for the search mark)", footprints), ("mines' circles and blight growth (but for the search mark)", circles)] {
                 let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();
                 let (mut same, mut differ, mut first) = (0, 0, None);
                 for (slot, f) in recs {

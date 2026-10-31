@@ -1430,6 +1430,15 @@ impl World {
                 eprintln!("  {k}: {e:?}");
             }
         }
+        // The camera's objects in the second table.
+        for (e, f, sec) in self.camera_records() {
+            if let Some(o) = objects[1].iter_mut().find(|o| o.entry.tag == e.tag) {
+                o.first = f.to_bytes();
+                if let Some(Ok(b)) = sec.map(|sec| sec.to_bytes(e.kind)) {
+                    o.second = b;
+                }
+            }
+        }
         m.set_objects(&objects);
         m.free[0] = self.saved_free_list();
         // The regions section (the pathing maps and grids; their search marks the
@@ -1440,6 +1449,87 @@ impl World {
             }
         }
         s
+    }
+
+    /// The game interface's camera (the second table's `+cam`, made as the slots are
+    /// assigned, after the classes' definitions; read against the quiet test map's and
+    /// Forestwalk's): its fourteen properties, each its index (eleven reals, the target's
+    /// eye's place and the target's in pathing cells, each with its coarse and fine
+    /// regions, and a real), and its own record (CCameraWar3: 120 as a real's bits, an
+    /// identity matrix, 1 and 2; its points, the local player's start and the target with
+    /// the ground's height; the start again and the camera bounds' sides and corners,
+    /// 1.0 twice, and four matrices).  The reals: 1700, 85 degrees, the distance, the far
+    /// clip, 100, the field of view, the roll, the rotation, the angle of attack, the
+    /// height offset, 0 and 0 (angles in radians as `deg * pi / 180` in single
+    /// precision but the 85 degrees', in double; a zero -0.0).  The eye's place is the distance's run along the ground
+    /// behind the target by the rotation.  Provisional: the stamp (the client's clock in
+    /// the original), the regions' search marks (0).
+    pub fn camera_records(&self) -> Vec<(Tagged, First, Option<Second>)> {
+        let c = &self.camera;
+        let rad = |deg: f32| deg * std::f32::consts::PI / 180.0;
+        let zero = |v: f32| if v == 0.0 { -0.0 } else { v };
+        let tag = |k: u32| (0x8000_0000 | (1077 + k), 1077 + k);
+        let entry = |k: u32, code: &[u8; 4], family: &[u8; 4]| Tagged { family: u32::from_be_bytes(*family), kind: u32::from_be_bytes(*code), tag: tag(k).0, birth: tag(k).1 };
+        let cam = tag(0);
+        // (Its properties: the reals 1 to 11, the places 12 and 15, the last real 18.)
+        let props: Vec<(u32, u32)> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18].iter().map(|&k| tag(k)).collect();
+        let (distance, far, aoa, fov, roll, rotation, z) = (c.fields[0], c.fields[1], c.fields[2], c.fields[3], c.fields[4], c.fields[5], c.fields[6]);
+        let reals: [[f32; 4]; 11] = [
+            [1700.0, 0.0, 100.0, 10000.0],
+            // (This one in double precision: read, 1.4835299.)
+            [(85.0 * std::f32::consts::PI as f64 / 180.0) as f32, 0.0, 0.0, rad(90.0)],
+            [distance, 0.0, 100.0, 10000.0],
+            [far, 0.0, 100.0, 10000.0],
+            [100.0, 0.0, 0.0, 100.0],
+            [rad(fov), 0.0, rad(20.0), rad(120.0)],
+            [zero(rad(roll)), 0.0, f32::NEG_INFINITY, f32::INFINITY],
+            [zero(rad(rotation)), 0.0, f32::NEG_INFINITY, f32::INFINITY],
+            [zero(rad(aoa)), 0.0, f32::NEG_INFINITY, f32::INFINITY],
+            [zero(z), 0.0, -4096.0, 4096.0],
+            [-0.0, 0.0, 0.0, f32::MAX],
+        ];
+        let mut out = vec![(entry(0, codes::class::CAMERA, codes::class::AGENT), agent_first(cam, codes::class::CAMERA, &props), None)];
+        for (k, v) in reals.iter().enumerate() {
+            out.push((entry(1 + k as u32, codes::class::REAL, codes::class::PROPERTY_FAMILY), First::Real { base: listed_property_base(&props, k, cam), values: *v }, None));
+        }
+        // The eye's place and the target's, in pathing cells.
+        let run = distance * rad(aoa).cos();
+        let (rx, ry) = (rad(rotation).cos(), rad(rotation).sin());
+        let origin = self.pathing.as_ref().map_or([0.0; 2], |p| p.origin);
+        let maps = self.pathing_map_objects();
+        // (The target in cells, the eye's the run in cells back from it: read, to the bit.)
+        let (tx, ty) = ((c.x - origin[0]) / 32.0, (c.y - origin[1]) / 32.0);
+        for (j, (cx, cy)) in [(tx - run * rx / 32.0, ty - run * ry / 32.0), (tx, ty)].into_iter().enumerate() {
+            let k = 12 + 3 * j as u32;
+            let (row, col) = (cy.floor().max(0.0) as u32, cx.floor().max(0.0) as u32);
+            let mut base = listed_property_base(&props, 11 + j, cam);
+            base.real = self.time;
+            out.push((entry(k, codes::class::POSITION, codes::class::PROPERTY_FAMILY), First::Pos { base, values: [cx, cy, 0.0, 0.0, f32::MAX, 0.0, 0.0], refs: [rf(tag(k + 1)), rf(tag(k + 2))] }, None));
+            out.push((entry(k + 1, codes::class::PATHING_REGION, codes::class::PATHING_MAP), First::Region { refs: [rf(maps[0]), rf(tag(k))], word: 0, bounds: [row >> 3, col >> 3, (row >> 3) + 1, (col >> 3) + 1], words: [0, 1, 0] }, None));
+            out.push((entry(k + 2, codes::class::PATHING_REGION, codes::class::PATHING_MAP), First::Region { refs: [rf(maps[1]), rf(tag(k))], word: 0x0100_0000, bounds: [row, col, row + 1, col + 1], words: [0, 1, 0] }, None));
+        }
+        out.push((entry(18, codes::class::REAL, codes::class::PROPERTY_FAMILY), First::Real { base: listed_property_base(&props, 13, cam), values: [-0.0, 0.0, f32::NEG_INFINITY, f32::INFINITY] }, None));
+        // Its own record.
+        let r = Field::Real;
+        let start = self.players.get(self.local_player as usize).and_then(|p| self.start_locations.get(p.start_location.max(0) as usize)).map_or((c.x, c.y), |s| (s.x, s.y));
+        let b = self.camera_bounds;
+        let (xmin, xmax) = (b.iter().step_by(2).copied().fold(f32::MAX, f32::min), b.iter().step_by(2).copied().fold(f32::MIN, f32::max));
+        let (ymin, ymax) = (b.iter().skip(1).step_by(2).copied().fold(f32::MAX, f32::min), b.iter().skip(1).step_by(2).copied().fold(f32::MIN, f32::max));
+        let identity = || [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0f32];
+        let matrix = |m: [f32; 9]| Field::List(vec![m.iter().map(|&v| r(v)).collect()]);
+        let mut tail = vec![Field::Word(0), r(f32::from_bits(120)), Field::Word(0), Field::Ref(NONE), r(0.0), r(0.0), r(0.0)];
+        tail.extend(identity().map(r));
+        tail.extend([Field::Timer(NONE, 0, Timing(None)), Field::Word(1), Field::Word(2)]);
+        let mut points = vec![vec![r(start.0), r(start.1), r(0.0)], vec![r(c.x), r(c.y), r(self.ground_z(c.x, c.y))]];
+        points.extend((0..6).map(|_| vec![r(0.0), r(0.0), r(0.0)]));
+        tail.push(Field::List(points));
+        tail.extend((0..20).map(|_| Field::Ref(NONE)));
+        tail.push(Field::Byte(0));
+        tail.extend((0..5).map(|_| Field::Ref(NONE)));
+        tail.extend([start.0, start.1, ymin, xmin, ymax, xmax, xmin, ymin, xmax, ymax, xmin, ymax, xmax, ymin, 1.0, 1.0].map(r));
+        tail.extend([identity(), identity(), [1.0, -0.0, 0.0, -0.0, 1.0, -0.0, 0.0, -0.0, 1.0], [2.0, 3.0, 2.0, 3.0, 2.0, 3.0, 2.0, 3.0, 2.0]].map(matrix));
+        out[0].2 = Some(Second::Agent { own: Vec::new(), handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: Vec::new() }, tail });
+        out
     }
 
     /// A sound label's EAX preset and least and most distances, from the game's sound
@@ -2302,6 +2392,24 @@ impl World {
                     }
                 }
                 out.push(format!("own records (mines' slots, circles, blight growth, camps, sites, shifts, the queue, players): {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+            }
+            // The camera's objects, in the second table.
+            {
+                let by_tag: std::collections::HashMap<u32, &SavedObject> = objects[1].iter().map(|o| (o.entry.tag, o)).collect();
+                let (mut same, mut differ) = (0, Vec::new());
+                for (e, f, sec) in self.camera_records() {
+                    let Some(o) = by_tag.get(&e.tag) else { differ.push(format!("{} missing", e.tag)); continue };
+                    let first_ok = f.to_bytes() == o.first;
+                    let second_ok = sec.as_ref().is_none_or(|x| x.to_bytes(e.kind).is_ok_and(|b| b == o.second));
+                    if first_ok && second_ok && o.entry == e {
+                        same += 1;
+                    } else {
+                        let theirs = if first_ok { format!("{:?}", o.second()) } else { format!("{:?}", o.first()) };
+                        let ours = if first_ok { format!("{sec:?}") } else { format!("{f:?}") };
+                        differ.push(format!("{} ({}): ours {}, the original's {}", e.tag - 0x8000_0000, if first_ok { "second" } else { "first" }, &ours[..ours.len().min(900)], &theirs[..theirs.len().min(900)]));
+                    }
+                }
+                out.push(format!("camera: {same} the same, {} differ{}", differ.len(), differ.iter().map(|d| format!("\n  {d}")).collect::<String>()));
             }
             for (name, recs) in [("plain agents", self.plain_agent_records()), ("pathing system objects", self.pathing_system_records(48, 0)), ("game object", self.game_object_records()), ("time of day's modifier and listeners", self.time_of_day_records()), ("abilities' reals", ability_reals), ("structures' footprints (but for the search mark)", footprints), ("mines' circles and blight growth (but for the search mark)", circles)] {
                 let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();

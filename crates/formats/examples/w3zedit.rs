@@ -89,6 +89,34 @@ fn main() {
             objects[1].retain(|o| !gone.contains(&o.entry.tag));
             println!("second table {before} -> {}", objects[1].len());
         }
+        // "copycam <from.w3z>": the camera's objects (`+cam` and the eighteen made after
+        // it) take another save's records, tag for tag.
+        "copycam" => {
+            let from = SaveGame::read(&std::fs::read(&a[4]).unwrap()).unwrap();
+            let theirs = from.objects.as_ref().unwrap().objects().unwrap();
+            let cam = objects[1].iter().position(|o| &o.entry.kind.to_be_bytes() == codes::class::CAMERA).expect("no camera");
+            for o in objects[1][cam..cam + 19].iter_mut() {
+                let t = theirs[1].iter().find(|x| x.entry.tag == o.entry.tag && x.entry.kind == o.entry.kind).expect("no such object in the other save");
+                (o.first, o.second) = (t.first.clone(), t.second.clone());
+            }
+            println!("camera records from {}", a[4]);
+        }
+        // "camtarget <x> <y>": the camera's target point (its record's first point and
+        // the pair before its bounds) moved, its other values kept.
+        "camtarget" => {
+            use w3_formats::w3z::{Field, Second};
+            let (x, y): (f32, f32) = (a[4].parse().unwrap(), a[5].parse().unwrap());
+            let o = objects[1].iter_mut().find(|o| &o.entry.kind.to_be_bytes() == codes::class::CAMERA).expect("no camera");
+            let Ok(Second::Agent { own, handlers, mut tail }) = o.second() else { panic!("camera not read") };
+            if let Some(Field::List(points)) = tail.get_mut(19) {
+                points[0][0] = Field::Real(x);
+                points[0][1] = Field::Real(y);
+            }
+            tail[46] = Field::Real(x);
+            tail[47] = Field::Real(y);
+            o.second = Second::Agent { own, handlers, tail }.to_bytes(o.entry.kind).unwrap();
+            println!("camera target {x} {y}");
+        }
         other => panic!("unknown edit {other}"),
     }
     m.set_objects(&objects);

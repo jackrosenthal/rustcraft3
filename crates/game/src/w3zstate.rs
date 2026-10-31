@@ -271,6 +271,7 @@ impl Game {
                 }
             }
             out.push(format!("players {:?}", self.world.players.iter().map(|p| (p.controller, p.start_location, p.team, p.race, p.race_preference, p.slot_state)).collect::<Vec<_>>()));
+            out.push(format!("pathing origin {:?}; camera {:?}", self.world.pathing.as_ref().map(|p| p.origin), self.world.camera));
         }
         for ((name, a), (_, b)) in ours.parts.iter().zip(&theirs.parts) {
             if *name == "fog" {

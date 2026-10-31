@@ -628,6 +628,10 @@ pub struct UnitExtra {
     /// A computer's structure's alarm's in-range listener, as it starts to watch.
     #[serde(default)]
     pub alarm_pil: Option<u32>,
+    /// Blizzard's and Rain of Fire's in-range listeners, each with its ability's code,
+    /// made as the AI of its owner takes it (`FUN_6f606140`).
+    #[serde(default)]
+    pub spell_pils: Vec<(u32, [u8; 4])>,
     /// Regeneration on blight (Ablr): the time to its next look at the ground, and its
     /// timer while on blight (`World::regenerate`).
     #[serde(default)]
@@ -920,6 +924,7 @@ impl Default for UnitExtra {
             site_ai: None,
             sight_stamp: None,
             alarm_pil: None,
+            spell_pils: Vec::new(),
             blight_check: None,
             blight_rcm: None,
             alarm_wait: None,

@@ -249,7 +249,11 @@ impl World {
                 }
                 if !u.buffs.iter().any(|b| b.ability == a) {
                     let buff = self.objects.abilities.get(a).map(|o| id_from_str(o.level_str("BuffID", lvl).split(',').next().unwrap_or("").trim())).unwrap_or([0; 4]);
-                    self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: f32::MAX, ..Default::default() });
+                    // Its own ability's buff came with its making (read: Plaguelands'
+                    // creeps' `BNpi` after their `ANpi` in the census at the start, and none
+                    // in the first turn); a cloak's takes its own.
+                    let made = code != codes::ability::ITEM_CLOAK_OF_FLAMES;
+                    self.apply_buff_tagged(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: f32::MAX, ..Default::default() }, !made);
                 }
                 let (area, dps) = (self.data(a, "Area", lvl), self.data(a, "DataA", lvl));
                 for t in self.units_in_pub(x, y, area) {

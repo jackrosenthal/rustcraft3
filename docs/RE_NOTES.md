@@ -2351,7 +2351,25 @@ Formats the port made its own, to be replaced by the original's:
   none by the map's script, the port re-armed their Slow's listener as it does a mud
   golem's; but they are made asleep (units are made at midnight, before melee sets
   8:00), and a creep asleep re-arms none.  With it Emerald Gardens agrees for all 3753
-  turns captured.
+  turns captured.  Plaguelands (eight players, six closed) differed at the load too,
+  four ways (its census at the start):
+  - Each spell's listener re-arms as the mana is set, not only Hurl Boulder's, Thunder
+    Clap's, and Slow's: ten more there (treants', satyrs', thunder lizards', murlocs'),
+    and those that made none elsewhere were asleep.
+  - A Rain of Fire (and a Blizzard) makes an in-range listener as its unit's owner's AI
+    takes the unit, after the AI's objects (`FUN_6f9b9230` calling each ability's vf
+    0xc8 through `FUN_6f67dff0` for an owner with a player AI; the classes'
+    `FUN_6f606140`, event 0xd01bf at the ability's +0x50; read: the Doom Guards').
+  - Permanent Immolation's buff comes with the unit's making; the port took a second as
+    its first update applied it.
+  - Not yet: a gold mine near a town site made before joins it, making no `AIts`
+    (`FUN_6f9b7c10`, `FUN_6f9ba790`: the first site whose path query from it,
+    `FUN_6f0594f0` to `FUN_6f059590`, costs under 70).  Its sixteenth mine, 61.2 cells
+    from its fourth, made none; Ogre Mound's and Twisted Meadows' nearest pairs, 61.1
+    and 65.3 cells apart, made two each, so the cost is the path's, not the distance.
+  With the first three Plaguelands agrees from the second turn to turn 601 when the
+  site's object is set aside (there two creeps' re-armed listeners fire a turn sooner
+  in the original).
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

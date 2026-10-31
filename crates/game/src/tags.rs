@@ -816,7 +816,11 @@ impl crate::world::World {
         let tasks = codes.len();
         codes.extend([*codes::class::TASK, *codes::class::TASK]);
         // A gold mine is a town site for computer players (not the one a haunted mine
-        // hides: measured, CreateBlightedGoldmine's has none).
+        // hides: measured, CreateBlightedGoldmine's has none).  Not yet: one whose way
+        // from a site made before costs under 70 joins it instead (`FUN_6f9b7c10`,
+        // `FUN_6f9ba790`, the cost by the path query `FUN_6f0594f0`; read: Plaguelands'
+        // sixteenth mine, 61.2 cells from its fourth, made none, where Ogre Mound's and
+        // Twisted Meadows' nearest pairs, 61.1 and 65.3 cells apart, each made two).
         if had.iter().any(|c| c == codes::ability::id::GOLD_MINE || c == codes::ability::id::ENTANGLED_GOLD_MINE) && !self.hidden_mine {
             codes.push(*codes::class::TOWN_SITE);
         }
@@ -844,6 +848,7 @@ impl crate::world::World {
         let mut extra = 0;
         let mut ai_refs = None;
         let mut item_pil = None;
+        let mut spell_pils: Vec<(usize, Code)> = Vec::new();
         if (owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !building) || computer {
             ai_refs = Some(codes.len());
             codes.extend([*codes::class::UNIT_AI_REF, *codes::class::UNIT_AI]);
@@ -858,6 +863,16 @@ impl crate::world::World {
             if codes.contains(codes::ability::id::INVENTORY) {
                 item_pil = Some(codes.len());
                 codes.push(*codes::class::IN_RANGE_LISTENER);
+            }
+            // So does each Blizzard and Rain of Fire (their classes' vf 0xc8,
+            // `FUN_6f606140`: a listener on event 0xd01bf at its range; read under
+            // winedbg, Plaguelands' Doom Guards' after their AI's objects, from the
+            // making's hook `FUN_6f9b9230` for an owner with a player AI).
+            for c in &had {
+                if matches!(c, codes::ability::id::ARCH_MAGE_BLIZZARD | codes::ability::id::PIT_LORD_RAIN_OF_FIRE) {
+                    spell_pils.push((codes.len(), *c));
+                    codes.push(*codes::class::IN_RANGE_LISTENER);
+                }
             }
         }
         let oid = self.tags.take_id(&codes[0]);
@@ -1053,6 +1068,7 @@ impl crate::world::World {
             u.extra.flyer_pil = flyer.filter(|_| !sleeps).map(|k| slots[k]);
             u.extra.ai_slots = ai_refs.map(|k| vec![(slots[k], births[k]), (slots[k + 1], births[k + 1])]).unwrap_or_default();
             u.extra.item_pil = item_pil.map(|k| (slots[k], births[k]));
+            u.extra.spell_pils = spell_pils.iter().map(|&(k, c)| (slots[k], c)).collect();
             u.extra.flyer_sleeping = flyer.is_some() && sleeps;
             let rest_start = mods_end + if building { 3 } else { 0 };
             let pair = |k: usize| (slots[k], births[k]);
@@ -1066,23 +1082,25 @@ impl crate::world::World {
 }
 
 impl crate::world::World {
-    /// A unit's mana was set: its creep Hurl Boulder and Thunder Clap (ACtb, ACtc) each
-    /// make a timer the first time (measured: Booty Bay's two Granite Golems take two
-    /// after SetUnitState sets their mana to 0, and creeps with other spells none).
+    /// A unit's mana was set: its spells' listeners each make a new one the first time,
+    /// replacing those of its making (measured: Booty Bay's two Granite Golems take two
+    /// after SetUnitState sets their mana to 0).
     pub(crate) fn mana_changed(&mut self, h: u32) {
-        // (Read: the quiet test map's golems' Hurl Boulder and Thunder Clap, and
-        // Harrow's mud golems' Slow, each their mana set to none by the map's script;
-        // its gnoll wardens' Purge none.)  A creep asleep makes none (read: Emerald
-        // Gardens' Mur'gul Snarecasters, made asleep and their mana set to none, their
-        // Slow the mud golems').
+        // (Read: the quiet test map's golems' Hurl Boulder and Thunder Clap, Harrow's mud
+        // golems' Slow, and Plaguelands' creeps' spells, each their mana set to none by
+        // the map's script.)  A creep asleep makes none, its spells' listeners gone with
+        // its sleep (read: Emerald Gardens' Mur'gul Snarecasters, made asleep, their Slow
+        // the mud golems'; Booty Bay's troll priests and ogre lord and Harrow's gnoll
+        // wardens, made asleep, none).
         let Some(u) = self.unit(h).filter(|u| !u.extra.mana_watched && !u.extra.sleeping) else { return };
-        let costs: Vec<f32> = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a).filter(|o| matches!(o.str("code").trim(), codes::ability::THUNDER_BOLT_CREEP | codes::ability::THUNDER_CLAP_CREEP | codes::ability::SLOW)).map(|o| o.level_real("Cost", 1))).collect();
-        if costs.is_empty() {
+        let spells: Vec<(Code, f32)> = u.extra.spell_owners.iter().filter(|(s, _)| self.tags.live.contains_key(s)).filter_map(|&(_, c)| u.abilities.iter().find_map(|(a, _)| self.objects.abilities.get(*a).filter(|o| crate::objects::id_from_str(o.str("code").trim()) == c).map(|o| (c, o.level_real("Cost", 1))))).collect();
+        if spells.is_empty() {
             return;
         }
+        let costs: Vec<f32> = spells.iter().map(|s| s.1).collect();
+        let codes: Vec<Code> = spells.iter().map(|s| s.0).collect();
         // The new timers replace the spells' first ones, released the last first.
         let old = u.extra.spell_timers.clone();
-        let codes: Vec<Code> = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a).map(|o| crate::objects::id_from_str(o.str("code").trim()))).filter(|c| matches!(c, codes::ability::id::THUNDER_BOLT_CREEP | codes::ability::id::THUNDER_CLAP_CREEP | codes::ability::id::SLOW)).collect();
         // (Each made by its spell's event, `FUN_6f4256d0`, and the old let go,
         // `FUN_6f161800`: a count of the property module's either side of the new
         // listener's two; traced on the quiet test map's golems.)

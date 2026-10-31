@@ -53,7 +53,7 @@ const BUFF_EVENTS: [u16; 3] = [0x1a1, 0x1a2, 0x1a7];
 /// alarm's on units in range, Ensnare's, a shop's and an inventory's.
 fn pil_handler(code: &[u8; 4]) -> u32 {
     match code {
-        codes::ability::id::ENSNARE => 0xd_01bf,
+        codes::ability::id::ENSNARE | codes::ability::id::ARCH_MAGE_BLIZZARD | codes::ability::id::PIT_LORD_RAIN_OF_FIRE => 0xd_01bf,
         codes::ability::id::NEUTRAL_BUILDING | codes::ability::id::INVENTORY => 0xd_01aa,
         codes::ability::id::ALARM => 0xd_01c8,
         _ => 0xd_01c7,
@@ -276,6 +276,7 @@ impl World {
         pils.extend(u.extra.alarm_pil.map(|s| (s, *codes::ability::id::ALARM)));
         pils.extend(u.extra.ensnare_pil.map(|p| (p.1, *codes::ability::id::ENSNARE)));
         pils.extend(u.extra.item_pil.map(|p| (p.0, *codes::ability::id::INVENTORY)));
+        pils.extend(u.extra.spell_pils.iter().copied());
         for (s, c) in pils {
             if code_of(s) == Some(*codes::class::IN_RANGE_LISTENER) {
                 if let Some(a) = ability_ref(&c) {
@@ -1667,6 +1668,7 @@ impl World {
         pils.extend(u.extra.alarm_pil.map(|s| (s, *codes::ability::id::ALARM)));
         pils.extend(u.extra.ensnare_pil.map(|p| (p.1, *codes::ability::id::ENSNARE)));
         pils.extend(u.extra.item_pil.map(|p| (p.0, *codes::ability::id::INVENTORY)));
+        pils.extend(u.extra.spell_pils.iter().copied());
         pils.retain(|&(s, _)| code_of(s) == Some(*codes::class::IN_RANGE_LISTENER));
         // The unit's listeners' chain: its threshold and in-range listeners by birth.
         let is = |s: u32, c: &[u8; 4]| code_of(s) == Some(*c);
@@ -1682,6 +1684,8 @@ impl World {
                 codes::ability::id::ALARM => (3.0, self.objects.abilities.get(*codes::ability::id::ALARM).map_or(0.0, |o| o.level_real("Rng", 1))),
                 codes::ability::id::ENSNARE => (0.5, ability(&c).map_or(0.0, |o| o.level_real("Rng", 1) + o.level_real("DataB", 1))),
                 codes::ability::id::INVENTORY => (0.5, 180.0),
+                // (Its range provisional: the ability's cast range, +0x50 not yet read.)
+                codes::ability::id::ARCH_MAGE_BLIZZARD | codes::ability::id::PIT_LORD_RAIN_OF_FIRE => (0.5, ability(&c).map_or(0.0, |o| o.level_real("Rng", 1))),
                 _ => (0.5, ability(&c).map_or(0.0, |o| o.level_real("Area", 1))),
             };
             let made = self.tags.made_at.get(&s).map_or(0.0, |&c| f32::from_bits(c));

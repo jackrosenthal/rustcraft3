@@ -49,6 +49,45 @@ fn main() {
             objects[1].retain(|o| &o.entry.kind.to_be_bytes() == b"^adf");
             println!("second table {before} -> {}", objects[1].len());
         }
+        // "dropghosts [free]": the fog ghosts (`+wgh`) left out with the position and
+        // two regions after each; with "free", their slots (as tags) on the second
+        // table's free list.
+        "dropghosts" => {
+            let mut gone: Vec<u32> = Vec::new();
+            for (k, o) in objects[1].iter().enumerate() {
+                if &o.entry.kind.to_be_bytes() == b"+wgh" {
+                    gone.extend(objects[1][k..(k + 4).min(objects[1].len())].iter().map(|x| x.entry.tag));
+                }
+            }
+            let before = objects[1].len();
+            objects[1].retain(|o| !gone.contains(&o.entry.tag));
+            println!("second table {before} -> {}", objects[1].len());
+            if a.get(4).is_some_and(|v| v == "free") {
+                let mut out = Vec::new();
+                for &t in gone.iter().rev() {
+                    out.extend(t.to_le_bytes());
+                }
+                out.extend(u32::MAX.to_le_bytes());
+                m.free[1] = out;
+            }
+        }
+        // "dropkinds <kind,...>": the second table's objects of those kinds left out
+        // (alone, without their children), and the fog ghosts with theirs.
+        "dropkinds" => {
+            let kinds: Vec<&str> = a[4].split(',').collect();
+            let mut gone: Vec<u32> = Vec::new();
+            for (k, o) in objects[1].iter().enumerate() {
+                let kind = String::from_utf8_lossy(&o.entry.kind.to_be_bytes()).into_owned();
+                if kind == "+wgh" {
+                    gone.extend(objects[1][k..(k + 4).min(objects[1].len())].iter().map(|x| x.entry.tag));
+                } else if kinds.contains(&kind.as_str()) {
+                    gone.push(o.entry.tag);
+                }
+            }
+            let before = objects[1].len();
+            objects[1].retain(|o| !gone.contains(&o.entry.tag));
+            println!("second table {before} -> {}", objects[1].len());
+        }
         other => panic!("unknown edit {other}"),
     }
     m.set_objects(&objects);

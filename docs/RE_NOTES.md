@@ -1446,7 +1446,17 @@ Formats the port made its own, to be replaced by the original's:
   cursor `+ccu`, `+ccp`, effect images `+EIm`, `rlyp`, fog ghosts `+wgh` with their
   positions and regions): a save of the quiet test map with them left out crashes
   the original as it loads (`w3zedit drop1`), the same save written back unchanged
-  loading and playing.  The port writes saves from its own state piece by piece
+  loading and playing.  But all of them except the camera's may go: with the fog
+  ghosts (103, each with a `` `pos `` and two `^pmr`), effect images, the cursor's,
+  the rally indicators, and the flag listeners left out (`w3zedit dropkinds`; 1096
+  objects left: the definitions and the camera's 19), the original loads the save and
+  plays on, the main table's references to them dangling; their slots put on the
+  second table's free list as tags (high bit set) crash it.  The camera (`+cam`, slot
+  1077, which the game state's second part names): an agent with fourteen
+  properties, eleven `` `rel `` camera fields (each value, a rate, its least and most:
+  the distance 1700 within 100 and 10000 first), two positions with their regions,
+  and one `` `rel `` more, its second record its matrices, its target (the start
+  location) and eye, and the camera bounds.  The port writes saves from its own state piece by piece
   (`w3_game::w3zsave`, checked by playtest's `w3zcompare` against the original's save
   of the same moment): so far the first table, its free list, the classes, and their
   definitions, each byte for byte on the quiet test map at 5 seconds; then the

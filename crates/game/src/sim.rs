@@ -2745,6 +2745,11 @@ impl World {
 
     /// Queues a unit at a structure (a train order).
     pub fn train(&mut self, h: u32, id: Id) -> Result<(), &'static str> {
+        self.train_by(h, id, false)
+    }
+
+    /// `train`, by a player's order or its AI's (`ai`).
+    pub fn train_by(&mut self, h: u32, id: Id, ai: bool) -> Result<(), &'static str> {
         let Some(u) = self.unit(h) else { return Err("") };
         if u.dead || u.constructing.is_some() || u.queue.len() >= 7 {
             return Err("");
@@ -2766,8 +2771,16 @@ impl World {
         // training's `rcm and `rtl, its time counting from the next turn (traced: a
         // peon ordered at turn 991 is made in turn 1141's run; one queued behind
         // another not yet traced).
+        // An AI's order is its own and a block (`FUN_6f9cafe3`, `FUN_6f9cb799`), both
+        // going with the tick's orders, the block first (traced: Forestwalk's undead
+        // computer's acolyte at its wake).
         let order = self.tags.take(codes::class::ORDER);
-        self.tags.doom(order);
+        if ai {
+            let block = self.tags.take(codes::class::TASK_A);
+            self.tags.issued.extend([block, order]);
+        } else {
+            self.tags.doom(order);
+        }
         if first {
             let rcm = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
             let rtl = self.tags.take(codes::class::THRESHOLD_LISTENER);

@@ -641,6 +641,10 @@ pub struct UnitExtra {
     /// (`crate::goldrun`).
     #[serde(default)]
     pub gold_run: Option<crate::goldrun::GoldRun>,
+    /// The objects of the order its AI last gave it (`crate::ai::AI_HARVEST`), by slot,
+    /// while they last.
+    #[serde(default)]
+    pub ai_order: Vec<u32>,
     /// A gold mine a worker has been in (its `+fgm` made; `crate::goldrun`).
     #[serde(default)]
     pub mine_shaft: bool,
@@ -917,6 +921,7 @@ impl Default for UnitExtra {
             alarm_wait: None,
             order_tags: Vec::new(),
             gold_run: None,
+            ai_order: Vec::new(),
             mine_shaft: false,
             mine_queue: Vec::new(),
             mine_busy: None,

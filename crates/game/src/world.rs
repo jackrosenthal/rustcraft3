@@ -2040,7 +2040,6 @@ impl World {
         prof!(self, "update_units", self.update_units(vm, dt));
         prof!(self, "update_region_events", self.update_region_events(vm));
         prof!(self, "regenerate", self.regenerate(dt));
-        self.alarms(dt);
         prof!(self, "update_buffs", self.update_buffs(vm, dt));
         prof!(self, "update_fires", self.update_fires(dt));
         prof!(self, "update_area_buffs", self.update_area_buffs(vm, dt));
@@ -2065,7 +2064,18 @@ impl World {
         prof!(self, "update_reincarnation", self.update_reincarnation(dt));
         prof!(self, "update_fog", self.update_fog(dt));
         prof!(self, "update_shops", self.update_shops(dt));
+        // The AI's orders' objects that go with the tick's orders go at its end, before
+        // what the tick makes next (traced: Forestwalk's computer's wake, its orders'
+        // frees before the turn's `` `pil ``).
+        let issued = self.tags.issued.len();
         prof!(self, "update_ai", self.update_ai(dt));
+        for s in self.tags.issued.split_off(issued.min(self.tags.issued.len())) {
+            self.tags.release(s);
+        }
+        // Structures' alarm watches, a computer's alone, after its AI (traced: the
+        // undead computer's first watch's `` `pil `` after its AI's 0.1-second wake and
+        // its orders' frees, in the same turn).
+        self.alarms(dt);
         self.ai_zeppelin_tick(vm);
         self.sweep_handles(vm, dt);
         prof!(self, "update_rescue", self.update_rescue());

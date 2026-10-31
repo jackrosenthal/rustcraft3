@@ -44,6 +44,20 @@ pub struct ThreadObject {
     pub due: f32,
 }
 
+/// An AI's harvest order on an acolyte at a haunted mine, its objects in order
+/// (`FUN_6f9c7892`, `FUN_6f680319`, `FUN_6f67c0d4`: the AI's order, a block, a task; the
+/// AI's target task `FUN_6f9cd49c`; the harvest ability's (`FUN_6f42697d`): a block,
+/// three tasks, three target tasks, three tasks, a block; then its walk's cluster goal,
+/// cluster, and path; traced, Forestwalk's undead computer's three at its 0.1-second
+/// wake in the network game).
+pub const AI_HARVEST: [&crate::tags::Code; 18] = [codes::class::ORDER, codes::class::TASK_A, codes::class::TASK, codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
+
+/// An AI's build order on a worker, its objects in order (`FUN_6f9cb885`: an order with
+/// a point, its task, `ord.`, two blocks, three tasks, two `tsk.`, three tasks, a `tskO`,
+/// a task, a block, and its walk's cluster goal, cluster, and path; traced, Forestwalk's
+/// undead computer's crypt begun by an acolyte at its wake).
+pub const AI_BUILD: [&crate::tags::Code; 19] = [codes::class::ORDER, codes::class::TASK, b"ord.", codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, b"tsk.", b"tsk.", codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_O, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
+
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct AiState {
     pub player: u8,
@@ -626,7 +640,11 @@ impl World {
             let Some(&b) = builders.first() else { return false };
             let Some((x, y)) = self.ai_build_site(p, id, town, b) else { return false };
             self.leave_mine_pub(b);
-            return self.order_build(b, id, x, y).is_ok();
+            let ok = self.order_build(b, id, x, y).is_ok();
+            if ok {
+                self.ai_build_objects(b);
+            }
+            return ok;
         }
         // Units and heroes train at the least busy structure that offers them.
         let id_s = crate::objects::id_str(id);
@@ -643,7 +661,7 @@ impl World {
         }
         // The order is given to an idle producer that lists the type, and that is the
         // answer, whether or not the order then goes through (FUN_6f9cb530).
-        let _ = self.train(b, id);
+        let _ = self.train_by(b, id, true);
         true
     }
 
@@ -655,9 +673,15 @@ impl World {
             return;
         }
         st.harvest_timer = 1.0;
-        let requests = st.harvest.clone();
         self.ai_entangle(p);
+        self.ai_assign_harvest(p);
+    }
+
+    /// Puts free workers to the harvest requests made since ClearHarvestAI, as each is
+    /// made (FUN_6f9c7330 orders them within HarvestGold's call) and again once a second.
+    pub(crate) fn ai_assign_harvest(&mut self, p: u8) {
         let Some(st) = self.ai.get_mut(&p) else { return };
+        let requests = st.harvest.clone();
         // Units at a guard post do not gather, nor those of a captain with somewhere to
         // go; without SetSlowChopping a captain's units standing at home are taken back
         // to gather and leave it (FUN_6f9c7700; measured: a melee computer's ghouls go
@@ -672,7 +696,10 @@ impl World {
         }
         let in_captain: Vec<u32> = st.attack.units.iter().chain(st.defense.units.iter()).copied().collect();
         held.extend(self.guards(p));
-        let workers: Vec<u32> = self.workers(p).into_iter().filter(|h| !held.contains(h)).collect();
+        // (The AI's own list, its newest first: FUN_6f9c7700; traced, Forestwalk's undead
+        // computer's first harvest order its newest acolyte's, which its build loop then
+        // takes to build.)
+        let workers: Vec<u32> = self.workers(p).into_iter().rev().filter(|h| !held.contains(h)).collect();
         let busy = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Build { .. } | Action::Construct { .. } | Action::Attack { .. } | Action::Move { .. }));
         let on_gold = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_gold > 0));
         let on_wood = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if !w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_lumber > 0));
@@ -722,6 +749,7 @@ impl World {
         if let Some(mine) = mine {
             for &h in &to_gold {
                 if !on_gold(self, h) {
+                    self.ai_order_objects(h, mine);
                     self.order_unit(h, harvest, 0.0, 0.0, mine);
                 }
             }
@@ -734,6 +762,50 @@ impl World {
             }
         }
 
+    }
+
+    /// The objects of a harvest order the AI gives (`AI_HARVEST`): for now an acolyte's
+    /// on a haunted mine, as traced; others make none yet.  Its `^clg` goes at once; its
+    /// wrapper (the `tskA`, the `task`, then the `+ord`) and the last `tskA` with the
+    /// three tasks before it go with the tick's orders.
+    fn ai_order_objects(&mut self, h: u32, mine: u32) {
+        let acolyte = self.ability_with_code(h, codes::ability::ACOLYTE_HARVEST).is_some() && self.ability_with_code(mine, codes::ability::BLIGHTED_GOLD_MINE).is_some();
+        if !acolyte {
+            return;
+        }
+        let order: Vec<u32> = AI_HARVEST.iter().map(|c| self.tags.take(c)).collect();
+        self.tags.release(order[15]);
+        for k in [1, 2, 0, 14, 13, 12, 11] {
+            self.tags.issued.push(order[k]);
+        }
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.ai_order = order;
+        }
+    }
+
+    /// The objects of a build order the AI gives a worker (`AI_BUILD`, `FUN_6f9cb885`):
+    /// its `^clg` goes at once and a last order is made; with the tick's orders go its
+    /// task, its order, and its first block, then what is left of the worker's harvest
+    /// it stopped (its target tasks, last first, its tasks, its block, its target task),
+    /// then the build's last block and the five before it, then the harvest's path and
+    /// cluster (traced: Forestwalk's undead computer's crypt at its wake).
+    fn ai_build_objects(&mut self, h: u32) {
+        let old = self.unit(h).map(|u| u.extra.ai_order.clone()).unwrap_or_default();
+        let order: Vec<u32> = AI_BUILD.iter().map(|c| self.tags.take(c)).collect();
+        self.tags.release(order[16]);
+        self.tags.take(codes::class::ORDER);
+        let mut frees = vec![order[1], order[0], order[3]];
+        if old.len() == AI_HARVEST.len() {
+            frees.extend([10, 9, 8, 7, 6, 5, 4, 3].map(|k| old[k]));
+        }
+        frees.extend([15, 14, 13, 12, 11, 10].map(|k| order[k]));
+        if old.len() == AI_HARVEST.len() {
+            frees.extend([17, 16].map(|k| old[k]));
+        }
+        self.tags.issued.extend(frees);
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.ai_order = order;
+        }
     }
 
     /// A computer's tree that can entangle a gold mine (Aent) and covers none entangles
@@ -1367,7 +1439,16 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         ClearHarvestAI => |w, _, _| { if let Some(s) = w.ai_state() { s.harvest.clear(); } none() },
         // Workers are put to the work at once (FUN_6f9c7330 orders them within the call),
         // so the engine takes the requests up on this tick.
-        HarvestGold => |w, _, a| { let (t, n) = (a.i(0), a.i(1)); if let Some(s) = w.ai_state() { s.harvest.push((true, t, n)); s.harvest_timer = 0.0; } none() },
+        HarvestGold => |w, _, a| {
+            let (t, n) = (a.i(0), a.i(1));
+            if let Some(s) = w.ai_state() {
+                s.harvest.push((true, t, n));
+                s.harvest_timer = 0.0;
+            }
+            let p = w.ai_player();
+            w.ai_assign_harvest(p);
+            none()
+        },
         HarvestWood => |w, _, a| { let (t, n) = (a.i(0), a.i(1)); if let Some(s) = w.ai_state() { s.harvest.push((false, t, n)); s.harvest_timer = 0.0; } none() },
         StopGathering => |w, _, _| {
             if let Some(s) = w.ai_state() { s.harvest.clear(); }

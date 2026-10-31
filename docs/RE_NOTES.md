@@ -2154,7 +2154,22 @@ Formats the port made its own, to be replaced by the original's:
   free, `+ord`), 43 frees, and a `` `pil ``; between keepalives 3 and 4 two frees,
   `` `rcm ``, `` `rtl ``, `` `pil ``, and two frees.  The take (`FUN_6f1cbf40`: the
   object, the table, the free list's head, the birth counter) gives the head's slot,
-  else the table's count (+0x1c).  In
+  else the table's count (+0x1c).  Named by slot, the wake's frees are the orders'
+  own: each acolyte's harvest order frees its `^clg` at once and, with the tick's
+  orders, its first `tskA`, `task`, `+ord`, its last `tskA` and the three tasks before
+  it; the build loop's first order is the necropolis's acolyte (the AI's train order:
+  `+ord`, `tskA`, the training's `` `rcm `` and `` `rtl ``; its `tskA` and `+ord` with the
+  tick's orders), then a crypt begun by the newest acolyte, the first given a harvest
+  (HarvestGold's workers go newest first, the AI's list): its 19, its `^clg` at once,
+  a last `+ord`; with the tick's orders its `task`, `+ord`, and first `tskA`, the
+  stopped harvest's target tasks (last first), tasks, block, and target task, the
+  build's last `tskA` and the five before it, then the harvest's path and cluster.
+  The tick's orders' frees come after the AI and before the structures' alarm watch
+  (the necropolis's `` `pil ``).  The port does all this (`AI_HARVEST`, `AI_BUILD`,
+  `World::ai_order_objects`, `ai_build_objects`, `train_by`): the keepalives with the
+  computer agree to turn 4.  Next, turn 4's: the third acolyte at its slot frees its
+  last two target tasks, makes its harvest's `` `rcm `` and `` `rtl ``, and after the
+  alarm's `` `pil `` its path and cluster.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

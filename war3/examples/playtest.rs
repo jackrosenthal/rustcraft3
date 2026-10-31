@@ -1096,6 +1096,9 @@ fn main() -> anyhow::Result<()> {
                     for l in g.world.compare_save(&orig) {
                         eprintln!("w3z {l}");
                     }
+                    for l in g.compare_script(&orig) {
+                        eprintln!("w3z script {l}");
+                    }
                 }
                 i += 2;
             }
@@ -1106,7 +1109,7 @@ fn main() -> anyhow::Result<()> {
                     let bytes = std::fs::read(&a[i + 1]).unwrap();
                     let (header, _) = w3_formats::container::unpack(&bytes).unwrap();
                     let orig = w3_formats::w3z::SaveGame::read(&bytes).unwrap();
-                    std::fs::write(&a[i + 2], g.world.write_save(&orig).to_file(&header)).unwrap();
+                    std::fs::write(&a[i + 2], g.write_save(&orig).to_file(&header)).unwrap();
                 }
                 i += 3;
             }

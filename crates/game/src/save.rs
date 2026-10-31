@@ -66,6 +66,7 @@ impl Game {
             let Some(script) = self.world.ai.get(&player).map(|a| a.script.clone()) else { continue };
             let Some((mut vm, natives, names)) = self.world.compile_ai(&script) else { continue };
             vm.set_variables(vars);
+            vm.places = self.vm.places.clone();
             if let Some(a) = self.world.ai.get_mut(&player) {
                 a.natives = natives;
                 a.native_names = names;

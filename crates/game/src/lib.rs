@@ -28,6 +28,7 @@ pub mod orcspells;
 pub mod undeadspells;
 pub mod herospells;
 pub mod save;
+pub mod w3zscript;
 pub mod targets;
 pub mod passives;
 pub mod techtree;

@@ -1936,6 +1936,21 @@ Formats the port made its own, to be replaced by the original's:
   thread (`FUN_6f90c950`), freed unless it sleeps; `config`, the globals' initializers,
   and `main` run on the machine's own context (`FUN_6f91c310`), so its saved registers
   are main's.
+- The script data the port writes (`Game::saved_script_data`, `w3zscript.rs`): the
+  code block (as compiled, then the strings interned since), the machine (its place,
+  op limit, place in the code, string table with counts, globals in their declaration
+  order, registers, and code references by name), and its threads, the one that called
+  SaveGame as it was within the call (the original saves there: its arguments still on
+  its frame's stack, its place past the call).  The contexts' places are one table for
+  every machine and thread (`FUN_6f9107f0`; 0 unused, the map script's machine 1, an
+  AI's machine as StartMeleeAI makes it), a thread's taken as it first runs and given
+  back as it ends (`FUN_6f9100c0`), the last given back taken first; the saved count is
+  the most ever taken.  On the quiet test map at five seconds all 426090 bytes agree
+  with the original's but one word: a thread's base frame's return place, the
+  original's code address taken from none (a heap address: 0xfdedc9fc in the quiet
+  test map's saves), the template's where it has one (provisional).  The original
+  loads and plays the save written with it.  Not yet: the AI scripts' machines and
+  threads (the template's).
 - The engine's objects, read in a save's object table and free list (a quiet test map
   on Booty Bay without the computer's AI, saved at five seconds; `w3zobj objtable`,
   `free`, and playtest's `objtable`): the port's live objects (`Tags::live`) agree

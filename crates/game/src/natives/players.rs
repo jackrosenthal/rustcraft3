@@ -326,12 +326,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             }
             for_force(w, vm, a.h(0), a.code(1))
         },
-        StartMeleeAI => |w, _, a| {
-            if let Some(p) = w.player_of(a.h(0)) { let s = a.s(1); w.start_ai(p, &s, true); }
+        StartMeleeAI => |w, vm, a| {
+            if let Some(p) = w.player_of(a.h(0)) { let s = a.s(1); w.start_ai(p, &s, true, &vm.places); }
             none()
         },
-        StartCampaignAI => |w, _, a| {
-            if let Some(p) = w.player_of(a.h(0)) { let s = a.s(1); w.start_ai(p, &s, false); }
+        StartCampaignAI => |w, vm, a| {
+            if let Some(p) = w.player_of(a.h(0)) { let s = a.s(1); w.start_ai(p, &s, false, &vm.places); }
             none()
         },
         CommandAI => |w, _, a| {

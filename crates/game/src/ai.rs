@@ -288,8 +288,9 @@ impl World {
         Some((vm, natives, names))
     }
 
-    pub fn start_ai(&mut self, player: u8, script: &str, melee: bool) {
+    pub fn start_ai(&mut self, player: u8, script: &str, melee: bool, places: &std::rc::Rc<std::cell::RefCell<w3_jass::Places>>) {
         let Some((mut vm, natives, native_names)) = self.compile_ai(script) else { return };
+        vm.share_places(places);
         let state = AiState {
             player,
             script: script.to_string(),

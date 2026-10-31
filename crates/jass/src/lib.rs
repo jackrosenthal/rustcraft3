@@ -11,7 +11,7 @@ pub mod vm;
 
 pub use compile::{CompileError, Module};
 pub use value::{BaseType, FuncId, Value};
-pub use vm::{Host, NativeResult, Outcome, State, Thread, Vm};
+pub use vm::{Host, NativeResult, Outcome, Places, State, Thread, Vm};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

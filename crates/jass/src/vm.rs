@@ -21,6 +21,7 @@
 //! frees its place, the last freed taken first.  A string interned anew also joins the
 //! code's own string table.
 
+use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 
@@ -112,9 +113,38 @@ impl Frame {
     }
 }
 
+/// The contexts' places (+0x90 of the machines' owner, shared by every machine and
+/// thread): the first unused, the machines' own taken as they are made, a thread's as
+/// it first runs and given back as it ends (`FUN_6f9107f0`, `FUN_6f9100c0`), the last
+/// given back taken first.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct Places {
+    /// The number of places ever taken, the unused first among them.
+    pub len: u32,
+    pub free: Vec<u32>,
+}
+
+impl Places {
+    fn take(&mut self) -> u32 {
+        self.free.pop().unwrap_or_else(|| {
+            self.len = self.len.max(1) + 1;
+            self.len - 1
+        })
+    }
+
+    fn give(&mut self, p: u32) {
+        if p != 0 {
+            self.free.push(p);
+        }
+    }
+}
+
 /// A context: a thread, or the machine's own.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Thread {
+    /// Its place among the contexts (+0x2850; none before it first runs).
+    #[serde(default)]
+    pub place: u32,
     pub regs: Vec<Reg>,
     pub frames: Vec<Frame>,
     /// Its place (an instruction's index), none before it first runs.
@@ -131,7 +161,7 @@ pub struct Thread {
 
 impl Default for Thread {
     fn default() -> Self {
-        Thread { regs: vec![Reg::default(); 256], frames: Vec::new(), ip: None, returns: Vec::new(), ops: 0, can_sleep: false, entry: None }
+        Thread { place: 0, regs: vec![Reg::default(); 256], frames: Vec::new(), ip: None, returns: Vec::new(), ops: 0, can_sleep: false, entry: None }
     }
 }
 
@@ -392,6 +422,12 @@ pub struct Vm {
     /// clearing its local stays taken in a save's handle table, the ids after it not
     /// reusing it).
     pub leaked: BTreeSet<u32>,
+    /// The contexts' places, shared with the game's other machines.
+    pub places: Rc<RefCell<Places>>,
+    /// Set by a native (SaveGame) for the calling thread to be kept as it was in the
+    /// call (`snapshot`), as the original saves within it.
+    pub snapshot_wanted: bool,
+    pub snapshot: Option<Thread>,
 }
 
 /// The machine's state as the port saves it.
@@ -403,18 +439,27 @@ pub struct State {
     pub callbacks: Vec<u32>,
     pub main: Thread,
     pub leaked: BTreeSet<u32>,
+    pub places: Places,
 }
 
 impl Vm {
     pub fn new(module: Module) -> Self {
         let prog = Rc::new(Prog::new(&module));
         let vars = module.globals.iter().map(|_| Var::default()).collect();
-        Vm { module, prog, vars, strings: Strings::default(), code_strings: Vec::new(), callbacks: vec![0], callback_index: HashMap::new(), main: Thread::default(), op_limit: 300_000, leaked: Default::default() }
+        let places = Rc::new(RefCell::new(Places::default()));
+        let main = Thread { place: places.borrow_mut().take(), ..Default::default() };
+        Vm { module, prog, vars, strings: Strings::default(), code_strings: Vec::new(), callbacks: vec![0], callback_index: HashMap::new(), main, op_limit: 300_000, leaked: Default::default(), places, snapshot_wanted: false, snapshot: None }
+    }
+
+    /// Takes the places of another machine's (the map script's), its own the next.
+    pub fn share_places(&mut self, places: &Rc<RefCell<Places>>) {
+        self.places = places.clone();
+        self.main.place = self.places.borrow_mut().take();
     }
 
     /// The machine's state, for a saved game.
     pub fn variables(&self) -> State {
-        State { vars: self.vars.clone(), strings: self.strings.clone(), code_strings: self.code_strings.clone(), callbacks: self.callbacks.clone(), main: self.main.clone(), leaked: self.leaked.clone() }
+        State { vars: self.vars.clone(), strings: self.strings.clone(), code_strings: self.code_strings.clone(), callbacks: self.callbacks.clone(), main: self.main.clone(), leaked: self.leaked.clone(), places: self.places.borrow().clone() }
     }
 
     /// Restores the state [`Vm::variables`] gave, of the same script.
@@ -423,6 +468,7 @@ impl Vm {
             return;
         }
         (self.vars, self.strings, self.code_strings, self.callbacks, self.main, self.leaked) = (s.vars, s.strings, s.code_strings, s.callbacks, s.main, s.leaked);
+        *self.places.borrow_mut() = s.places;
         self.strings.rebuild();
         self.callback_index = self.callbacks.iter().enumerate().skip(1).map(|(k, &f)| (f, k as u32)).collect();
     }
@@ -488,6 +534,7 @@ impl Vm {
             // 0) and the return place, then the function's frame, its run's first.
             let Some(&k) = prog.of_port.get(&func) else { return Outcome::Aborted(format!("no function #{func}")) };
             f = k;
+            t.place = self.places.borrow_mut().take();
             t.returns.push(t.ip);
             let mut base = Frame::new(NO_FUNC, false);
             for a in &args {
@@ -509,6 +556,7 @@ impl Vm {
                 self.free_frame(fr, finished);
             }
             t.ip = t.returns.pop().flatten();
+            self.places.borrow_mut().give(std::mem::take(&mut t.place));
         }
         out
     }
@@ -811,6 +859,9 @@ impl Vm {
                     }
                     t.ip = Some(ip as u32);
                     let result = host.call_native(self, res, &args);
+                    if std::mem::take(&mut self.snapshot_wanted) {
+                        self.snapshot = Some(t.clone());
+                    }
                     if let Some(f) = t.frames.last_mut() {
                         f.stack.truncate(base);
                     }

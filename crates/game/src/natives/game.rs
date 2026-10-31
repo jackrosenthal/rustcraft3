@@ -149,7 +149,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetCampaignMenuRaceEx => |w, _, a| { set_campaign_menu(w, a.i(0)); none() },
         ForceCampaignSelectScreen => |w, _, _| { w.force_campaign_select = true; none() },
         LoadGame => |w, _, a| { w.requests.push(crate::world::Request::LoadGame(a.s(0))); none() },
-        SaveGame => |w, _, a| { w.requests.push(crate::world::Request::SaveGame(a.s(0))); none() },
+        // The original saves within the call: the calling thread is kept as it is in it.
+        SaveGame => |w, vm, a| {
+            vm.snapshot_wanted = true;
+            w.requests.push(crate::world::Request::SaveGame(a.s(0)));
+            none()
+        },
         // Not in network games (FUN_6f1f8390).
         RenameSaveDirectory => |w, _, a| {
             let (from, to) = (w.save_dir_path(&a.s(0)), w.save_dir_path(&a.s(1)));

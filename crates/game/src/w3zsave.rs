@@ -998,6 +998,15 @@ impl World {
             if let Some((slot, sec)) = self.unit_own_record(h, &rallies) {
                 seconds.insert(slot, sec);
             }
+            // Its abilities' agents, and the own records of the kinds written.
+            records.extend(self.ability_agent_records(h, &rallies));
+            let chain = self.ability_chain(h, &rallies);
+            for (k, &(t, code)) in chain.iter().enumerate() {
+                let older = chain[..k].iter().rev().find(|c| c.1[0] == b'A').map(|c| c.0);
+                if let Some(sec) = self.ability_own_record(h, t, &code, older) {
+                    seconds.insert(t.0, sec);
+                }
+            }
         }
         for o in objects[0].iter_mut() {
             if let Some(r) = records.get(&o.entry.tag) {

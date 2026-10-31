@@ -1128,7 +1128,9 @@ impl crate::world::World {
         let weapons = o.int("weapsOn");
         let ranged = !matches!(o.str("weapTp1").trim(), "normal" | "instant" | "_" | "");
         match code {
-            codes::ability::id::PRIESTESS_TRUESHOT_AURA => weapons != 0 && ranged,
+            // (Trueshot reaches a melee unit too: read, Harrow's troll warlords' buff on
+            // the granite golem of their camps.)
+            codes::ability::id::PRIESTESS_TRUESHOT_AURA => weapons != 0,
             codes::ability::id::DREADLORD_VAMPIRIC_AURA => weapons != 0 && !ranged,
             codes::ability::id::AURA_WAR_DRUMS | codes::ability::id::COMMAND_AURA => weapons != 0,
             codes::ability::id::ARCH_MAGE_BRILLIANCE_AURA => o.real("manaN") > 0.0,

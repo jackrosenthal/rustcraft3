@@ -2255,7 +2255,15 @@ Formats the port made its own, to be replaced by the original's:
   step, done within 0.2: six steps to 1.712389, as read (facing the home itself, at
   1.734, would have ended on 1.734; a whole step's turn past a nearer bearing, tried,
   broke the wanderers).  Provisional: the radius, and the point faced.  Next: the wood
-  order's objects at 1.1.  In
+  order's objects at 1.1.  Its shape, from the original's turn 11 and 12: the AI's own
+  path query first (`^clg`, `^clu`, `l^pa`, the `^clg` freed, then a `^clp`, all but the
+  goal kept to turn 12); a move order of sixteen (`^clg`, `ordt`, two `tskA`, `tskO`, two
+  `task`, `tsk.`, five `task`, `tskA`, `^clu`, `l^pa`), its `^clg` freed and its `+ord`
+  taking that slot; freed with it its second and fourteenth objects and its tasks
+  ninth to thirteenth, the captain walk's tree (its ninth back to its third) and path.
+  At 1.2 a harvest order of `AI_HARVEST`'s shape, its `^clg` freed, the `uref` of the
+  ghoul's captain, and the move order's rest.  In the saves the ghoul moved 0.497 cells
+  on bearing 1.78 by 1.1 (two steps at its 0.253), then turned east by 1.2.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

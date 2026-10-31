@@ -894,6 +894,8 @@ impl World {
         let ai = computer || u.owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE;
         let w = Field::Word;
         let timer = || Field::Timer(NONE, 0, Timing(None));
+        // Its handlers keyed by another object, with their events.
+        let mut keyed: Vec<(u32, Vec<(Ref, u32)>)> = Vec::new();
         // A periodic agent timer it started (by its function's name): its next time due
         // after now, its period, its count, and the event it sends.
         let periodic = |name: &str, period: f32, event: u32| {
@@ -1193,16 +1195,36 @@ impl World {
                 Vec::new()
             }
             // A haunted mine's (CAbilityBlightedGoldMine): its gold, the hidden gold mine,
-            // 0.0, DataA, DataB, 0.0, DataC, 0; three none, no timer, its work slots.
+            // 0.0, DataA, DataB, its payout period (DataB over the share of its ring
+            // slots at work, by the engine's division: `FUN_6f4e8c30`; read, 2.5000002
+            // with two of five), DataC, the acolytes at work; none, its payout's
+            // modifier and threshold listener (that keyed to its event 0xd01c4), no
+            // timer, its work slots.
             codes::ability::id::BLIGHTED_GOLD_MINE => {
                 let (a, l) = self.ability_with_code(h, codes::ability::BLIGHTED_GOLD_MINE)?;
                 let d = self.objects.abilities.get(a)?;
                 let hidden = u.extra.mine.and_then(|m| self.unit(m)).and_then(|m| m.extra.object_slots[0].first().copied()).unwrap_or((u32::MAX, u32::MAX));
-                own.extend([w(u.resource as u32), w(hidden.0), w(hidden.1), Field::Real(0.0), w(d.level_real("DataA", l) as u32), Field::Real(d.level_real("DataB", l)), Field::Real(0.0), w(d.level_real("DataC", l) as u32), w(0)]);
+                let working = u.extra.payout.map_or(0, |p| p.1);
+                let data_b = d.level_real("DataB", l);
+                let period = if working == 0 {
+                    0.0
+                } else {
+                    use crate::efloat as ef;
+                    let share = ef::div(ef::from_int(working as i32), ef::from_int(self.mine_slots_pub(h).len().max(1) as i32));
+                    f32::from_bits(ef::div(data_b.to_bits(), share))
+                };
+                own.extend([w(u.resource as u32), w(hidden.0), w(hidden.1), Field::Real(0.0), w(d.level_real("DataA", l) as u32), Field::Real(data_b), Field::Real(period), w(d.level_real("DataC", l) as u32), w(working)]);
                 let objs = &u.extra.object_slots[2];
                 let i = objs.iter().position(|&x| x == t)?;
                 let slots = objs.get(i + 3..i + 8).map(|v| v.iter().map(|&r| vec![Field::Ref(rf(r))]).collect()).unwrap_or_default();
-                vec![Field::Ref(NONE), Field::Ref(NONE), Field::Ref(NONE), timer(), Field::List(slots)]
+                let (rcm, rtl) = match u.extra.ai_order.as_slice() {
+                    &[m, l] => (rf(self.tagged(m)), rf(self.tagged(l))),
+                    _ => (NONE, NONE),
+                };
+                if rtl != NONE {
+                    keyed.push((rtl.0, vec![(Ref(t.0, t.1), 0xd_01c4)]));
+                }
+                vec![Field::Ref(NONE), Field::Ref(rcm), Field::Ref(rtl), timer(), Field::List(slots)]
             }
             // An inventory (CAbilityInventory): its six slots (none), 0, its pickup
             // listener (`` `pil ``), six 0, six timers (none).  (Provisional: items carried.)
@@ -1313,7 +1335,7 @@ impl World {
             }
             _ => return None,
         };
-        let handlers = Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
+        let handlers = Handlers { keyed, fixed: Default::default(), events: vec![Vec::new(); 0x400] };
         Some(Second::Agent { own, handlers, tail })
     }
 }

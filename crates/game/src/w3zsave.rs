@@ -2270,6 +2270,21 @@ impl World {
                     }
                 }
                 out.push(format!("units' abilities' own records: {same} the same; by kind (same, differ) {kinds:?}{}", first.map_or(String::new(), |f| format!("; first {}", &f[..f.len().min(600)]))));
+                // Their orders' and tasks' records.
+                let (mut same, mut differ) = (0, Vec::new());
+                for &h in &self.unit_order {
+                    for (slot, f, sec) in self.order_records(h) {
+                        let Some(o) = by_slot.get(&slot) else { differ.push(format!("{slot} missing")); continue };
+                        let first_ok = f.as_ref().is_none_or(|f| f.to_bytes() == o.first);
+                        let second_ok = sec.to_bytes(o.entry.kind).is_ok_and(|b| b == o.second);
+                        if first_ok && second_ok {
+                            same += 1;
+                        } else {
+                            differ.push(format!("{slot} {}: ours {:?} {sec:?}, the original's {:?} {:?}", String::from_utf8_lossy(&o.entry.kind.to_be_bytes()), f, o.first(), o.second()));
+                        }
+                    }
+                }
+                out.push(format!("units' orders and tasks: {same} the same, {} differ{}", differ.len(), differ.iter().take(4).map(|d| format!("\n  {}", &d[..d.len().min(1500)])).collect::<String>()));
                 // The units' AI lists.
                 let (mut same, mut differ, mut first) = (0, 0, None);
                 for (slot, sec) in self.unit_ref_records() {

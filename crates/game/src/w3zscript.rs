@@ -207,6 +207,45 @@ impl Game {
         };
         let game = w.game_object();
         let mut s = w.write_save(&skeleton, vec![(game.0, self.game_state_second())]);
+        // W3Z_COVERAGE: the objects left without records (none made for their kind yet).
+        if std::env::var("W3Z_COVERAGE").is_ok() {
+            if let Some(Ok(objects)) = s.objects.as_ref().map(|m| m.objects()) {
+                let mut empty: std::collections::BTreeMap<String, (u32, u32)> = Default::default();
+                for o in objects.iter().flatten() {
+                    let k = String::from_utf8_lossy(&o.entry.kind.to_be_bytes()).into_owned();
+                    let e = empty.entry(k).or_default();
+                    e.0 += u32::from(o.first.is_empty());
+                    e.1 += u32::from(o.second.is_empty() && !matches!(&o.entry.family.to_be_bytes(), b"^pro" | b"^lis" | b"^mod" | b"^pma"));
+                }
+                empty.retain(|_, e| e.0 + e.1 > 0);
+                eprintln!("fresh: objects without records by kind (first, second): {empty:?}");
+            }
+        }
+        // The objects the port makes no records for yet (a walk's order, tasks, cluster,
+        // and path; a computer's captains): left out, their slots free, their units
+        // standing as their records have them (provisional).
+        if let Some(m) = s.objects.as_mut() {
+            if let Ok(mut objects) = m.objects() {
+                let mut freed: Vec<u32> = Vec::new();
+                objects[0].retain(|o| {
+                    let keep = !o.first.is_empty() || matches!(&o.entry.kind.to_be_bytes(), crate::codes::class::ACCELERATOR_GRID | crate::codes::class::PATHING_MAP);
+                    if !keep {
+                        freed.push(o.entry.tag);
+                    }
+                    keep
+                });
+                if !freed.is_empty() {
+                    let mut free = m.free[0].clone();
+                    free.truncate(free.len().saturating_sub(4));
+                    for slot in freed {
+                        free.extend(slot.to_le_bytes());
+                    }
+                    free.extend(u32::MAX.to_le_bytes());
+                    m.free[0] = free;
+                    m.set_objects(&objects);
+                }
+            }
+        }
         let Ok(script) = self.saved_script_data(&ScriptData::default()).to_bytes() else { return s };
         let parts: Vec<(&'static str, Vec<Field>)> = vec![
             ("game", w.saved_game_part()),

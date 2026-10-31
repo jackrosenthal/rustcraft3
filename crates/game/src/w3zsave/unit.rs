@@ -5,6 +5,7 @@
 use w3_formats::w3z::{Field, Handlers, Ref, Second, Sprite, Timing, Widget};
 
 use super::{rf, NONE};
+use crate::types::Action;
 use crate::world::World;
 use crate::codes;
 
@@ -522,6 +523,65 @@ impl World {
             if c[0] == b'B' && !own.contains(t) {
                 out[k] = chain[..k].iter().rev().find(|c| c.1[0] == b'A').map(|c| c.0);
             }
+        }
+        out
+    }
+
+    /// A unit's current order's object (`ordt`) and its live tasks, by their making: a
+    /// walk's (as `Tags::move_issued` and `player_move_issued` take them: the order, a
+    /// block of tasks, the tree's six tasks from the third; its cluster and path last).
+    /// Its objects were made one after another, so a slot another object has taken
+    /// since is told by its birth.
+    pub(crate) fn order_slots(&self, h: u32) -> Option<((u32, u32), Vec<(u32, u32)>)> {
+        let u = self.unit(h)?;
+        let tags = &u.extra.order_tags;
+        if !matches!(tags.len(), 17 | 18) || !matches!(u.action, Action::Move { .. }) {
+            return None;
+        }
+        if self.tags.live.get(&tags[0]).is_none_or(|e| &e.0 != codes::class::ORDER_TASKS) {
+            return None;
+        }
+        let order = self.tagged(tags[0]);
+        let tasks = (2..8).map(|k| self.tagged(tags[k])).filter(|t| t.1 > order.1 && t.1 <= order.1 + 17).collect();
+        Some((order, tasks))
+    }
+
+    /// A unit's order's own records (read against the training test map's wanderers at
+    /// 10 seconds): the order (`ordt`: 0, the order's id, its flags (a walk's 15), none,
+    /// 0, its target point, its target (none), five 0, two 0.0; none, 0, and two
+    /// references none) and its task tree, each task 0, the one before it (the first's
+    /// none), 0, and its kind's event, then its own: the order tree's head (`tskA`,
+    /// 0xd0162, 0), the order's (`tskO`, 0xd0166, the order's id), three steps (0xd0148,
+    /// 0xd014a, 0xd0165), and the walk's point (`tsk.`, 0xd016b, its x, y, and 0.0; a
+    /// reference none).  The order's first record too (the tasks' are their unit's
+    /// chain's, after its abilities and AI places).  Not yet written: the walk's
+    /// cluster and path, so a fresh save leaves a walk out.  Provisional: a player's
+    /// walk's flags.
+    pub fn order_records(&self, h: u32) -> Vec<(u32, Option<w3_formats::w3z::First>, Second)> {
+        let Some(u) = self.unit(h) else { return Vec::new() };
+        let Some((order, tasks)) = self.order_slots(h) else { return Vec::new() };
+        let Action::Move { x, y } = u.action else { return Vec::new() };
+        const MOVE: u32 = 851986;
+        let w = Field::Word;
+        let events = || Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
+        let mut out = Vec::new();
+        let own = vec![w(0), w(MOVE), w(15), w(u32::MAX), w(u32::MAX), w(0), Field::Real(x), Field::Real(y), w(u32::MAX), w(u32::MAX), w(0), w(0), w(0), w(0), w(0), Field::Real(0.0), Field::Real(0.0)];
+        let tail = vec![w(u32::MAX), w(u32::MAX), w(0), Field::Ref(NONE), Field::Ref(NONE)];
+        out.push((order.0, Some(super::agent_first(order, codes::class::ORDER_TASKS, &[])), Second::Agent { own, handlers: events(), tail }));
+        let kinds: [(u32, Vec<Field>, Vec<Field>); 6] = [
+            (0xd_0162, vec![w(0)], Vec::new()),
+            (0xd_0166, vec![w(MOVE)], Vec::new()),
+            (0xd_0148, Vec::new(), Vec::new()),
+            (0xd_014a, Vec::new(), Vec::new()),
+            (0xd_0165, Vec::new(), Vec::new()),
+            (0xd_016b, vec![Field::Real(x), Field::Real(y), Field::Real(0.0)], vec![Field::Ref(NONE)]),
+        ];
+        for (k, &t) in tasks.iter().enumerate() {
+            let Some((event, extra, tail)) = kinds.get(k + 6 - tasks.len()) else { continue };
+            let before = if k > 0 { rf(tasks[k - 1]) } else { NONE };
+            let mut own = vec![w(0), w(before.0), w(before.1), w(0), w(*event)];
+            own.extend(extra.iter().cloned());
+            out.push((t.0, None, Second::Agent { own, handlers: events(), tail: tail.clone() }));
         }
         out
     }

@@ -1733,8 +1733,8 @@ Formats the port made its own, to be replaced by the original's:
   (Agld: its gold, 15 and 2.0, the haunted mine over it, its shaft) agree too.  Not
   yet: auras, buffs, a shop's selling, blight, which name the second table's effects.
 - A map loaded directly (-loadfile) draws on the main generator as the game starts,
-  before its script: a weighted choice's real (`FUN_6f1c0c40`), then a race for each
-  of the 12 players (`FUN_6f1e9dd0`); traced on the quiet test map, the 13 before its
+  before its script: races and start locations' shuffles (see below: not a weighted
+  choice's real, as first read); traced on the quiet test map, the 13 before its
   structures' alarms' and wanderers' first waits.  The wanderers' waits then agree
   but for six one unit in the last place low in the original's (traced under
   OpenGL, whose processor keeps extended precision: lo + r * 5 rounded once; the
@@ -2138,6 +2138,54 @@ Formats the port made its own, to be replaced by the original's:
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,
   so its units join as they are made, the AI script or not.
+- The JASS handle table's references (CGameState's record, the counted list before
+  the handles by agent; read against the quiet test map's 1736 at five seconds, every
+  one agreeing): a handle's object's own while it lasts; each global holding it, but
+  not a value its initializer set (Blizzard.j's timers and groups made so count 1);
+  each returned function's local that held it, with multiplicity (Player(12) 33); each
+  local of a thread asleep or kept within SaveGame; and the expired timer a sleeping
+  or saving callback's context holds (also the game's sixth list of handles).  A
+  destroyed object's handle keeps its references, its agent none, its birth in the
+  second table (the gold mine `bj_meleeNearestMine` held, removed for the haunted
+  mine).  The rest of CGameState's record agrees byte for byte from the port's state
+  (`Game::game_state_second`): the trigger queue, its keyed handlers (the time of
+  day's listeners with their events' agents, and those replaced since the game began,
+  empty, until a load), each neutral building's registration (Aneu, event 0xd01a6,
+  also on its event list 0x1a6), the time of day's listeners, the two periodic game
+  timers (every 0.4 seconds and every agent step) from the clock SaveGame ran at.
+- The time of day's listeners (Blizzard.j's day and night sounds, the day's change, the
+  day's end): an equal registration listens at least or at most by the side the time
+  is on (dawn remade at most by the melee setup's 8:00); event 0x80101 plus the
+  comparison (less 0, at most 1, equal 2, at least 3, greater 4); a rising one ahead of
+  the time checks every 4 seconds from its making, the original's counts those of its
+  re-arms (1133 to 1136 at five seconds), which the port does not count yet.
+- The second table's camera (+cam and its fourteen properties) from the port's camera,
+  all values to the bit (angles as `deg * pi / 180` in single precision, but the 85
+  degrees' in double; the eye's place the run back from the target in cells), but for
+  the client's clock stamps, search marks, and the target's ground height.  The
+  original honors a saved camera: a quiet test map save given Forestwalk's looks where
+  that one did; its target point alone does not move the view.
+- Saves without a template (`Game::write_save_fresh`, `playtest w3zfresh`): the
+  original loads the quiet test map's at 5 seconds and the training test map's at 10,
+  and plays on.  The terrain part's doodad bytes are one each for the map's doodads
+  that are not destructables (a destructable's type flagged 3 is scenery): 603 of
+  Booty Bay's 2011, all 2011 crashing the original as it loads (found with `w3zedit
+  graft`, which takes pieces of another save).  Objects the port writes no records for
+  yet (a walk's order, tasks, cluster, and path; captains) are left out and their
+  slots freed, their units standing; the objects' word (the Tempest checksum) is 0.
+- A map loaded directly (-loadfile) draws as the game starts, on the main generator
+  alone (traced under winedbg with the breakpoint on `FUN_6f1b7130` conditioned on the
+  main generator, `[0x6fd53a48]`; `drawtrace.sh`): a race for each of the 12 players
+  whose preference is random, all but a map's slot left open (`FUN_6f1e9dd0`), then a
+  shuffle of the free start locations for each team placed (`FUN_6f1e9e60` from
+  `FUN_6f1e9fd0`, `FUN_6f1d1460` on the main generator); then the wanderers' first
+  waits.  The quiet test map: 12 and 1; Forestwalk (its third slot open): 11 and 3,
+  where the port drew 13 (a weighted choice's real, then 12 races: the quiet test map's
+  count by chance).  The weighted choice's real (`FUN_6f1c0c40`) is another
+  generator's (0x6fd685ac).  With that the undead computer's hero picks (common.ai
+  PickMeleeHero) and all 944 of its AI script's globals agree with the original's at
+  Forestwalk's start (the map's seed locked, 'war3').  A setup screen's game, with its
+  per-team placement shuffles, already agreed (the Forestwalk network capture).
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

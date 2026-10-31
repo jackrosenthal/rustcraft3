@@ -428,14 +428,37 @@ impl Game {
         if !self.world.lobby_teams {
             self.seed_generators();
         }
-        // A map loaded directly draws as the game starts, on the main generator: a
-        // weighted choice's real (`FUN_6f1c0c40`), then a random race for each of the 12
-        // players (`FUN_6f1e9dd0`; traced on the quiet test map under -loadfile: the 13
-        // before its structures' alarms and wanderers' waits).
+        // Each user and computer slot's fill, in the players' order.
+        let fills: Vec<Option<SlotFill>> = self.world.players.iter().map(|p| matches!(p.controller, map_control::USER | map_control::COMPUTER).then(|| fill(p.id, p.controller))).collect();
+        // A map loaded directly draws as the game starts, on the main generator: a random
+        // race for each of the 12 players whose preference is random, all but a map's slot
+        // left open (`FUN_6f1e9dd0`), then a shuffle of the free start locations for each
+        // team placed, the largest first (`FUN_6f1e9e60` from `FUN_6f1e9fd0`, for i from
+        // 1: a draw each).  Traced under -loadfile, the main generator's alone: the quiet
+        // test map's 12 and 1, Forestwalk's 11 (its third slot open) and 3, before the
+        // wanderers' waits; with them the undead computer's hero picks agree.
         if self.world.fixed_starts {
-            self.world.rng.next_u32();
-            for _ in 0..12 {
-                self.world.rng.next_u32();
+            for f in fills.iter().take(12) {
+                if !matches!(f, Some(SlotFill::Empty)) {
+                    self.world.rng.next_u32();
+                }
+            }
+            let mut teams: Vec<(i32, usize)> = Vec::new();
+            for (p, f) in self.world.players.iter().zip(&fills) {
+                if matches!(f, Some(SlotFill::Local | SlotFill::Remote | SlotFill::Computer)) {
+                    match teams.iter_mut().find(|t| t.0 == p.team) {
+                        Some(t) => t.1 += 1,
+                        None => teams.push((p.team, 1)),
+                    }
+                }
+            }
+            teams.sort_by(|a, b| b.1.cmp(&a.1));
+            let mut free = self.world.start_locations.len();
+            for (_, size) in teams {
+                for _ in 1..free {
+                    self.world.rng.next_u32();
+                }
+                free = free.saturating_sub(size);
             }
         }
         // Each player's start (FUN_6f1e7c20): passive toward Neutral Passive and it
@@ -454,10 +477,10 @@ impl Game {
         for p in self.world.players.iter_mut().skip(types::PLAYER_NEUTRAL_AGGRESSIVE as usize).take(4) {
             p.state.insert(types::player_state::GIVES_BOUNTY, 1);
         }
-        for p in self.world.players.iter_mut() {
+        for (p, f) in self.world.players.iter_mut().zip(fills) {
             let controller = p.controller;
-            if controller == map_control::USER || controller == map_control::COMPUTER {
-                match fill(p.id, controller) {
+            if let Some(f) = f {
+                match f {
                     SlotFill::Local => {
                         p.controller = map_control::USER;
                         p.slot_state = slot_state::PLAYING;

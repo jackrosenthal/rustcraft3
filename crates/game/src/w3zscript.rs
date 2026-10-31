@@ -32,73 +32,111 @@ fn var_value(v: &Var) -> Value {
     }
 }
 
-impl Game {
-    /// A context's frames as saved (`FUN_6f91a540`), the current first: each its pushed
-    /// values, whether it is its run's first, and its locals by name as made.
-    fn saved_frames(&self, frames: &[w3_jass::vm::Frame]) -> Vec<Frame> {
-        frames
-            .iter()
-            .rev()
-            .map(|f| {
-                let names = self.vm.local_names(f.func);
-                Frame {
-                    arguments: f.stack.iter().map(reg_value).collect(),
-                    word: f.top as u32,
-                    locals: f.locals.iter().enumerate().map(|(k, v)| (names.get(k).map_or_else(String::new, |n| n.to_string()), var_value(v))).collect(),
-                }
-            })
-            .collect()
-    }
+/// A context's frames as saved (`FUN_6f91a540`), the current first: each its pushed
+/// values, whether it is its run's first, and its locals by name as made.
+fn frames_of(vm: &w3_jass::Vm, frames: &[w3_jass::vm::Frame]) -> Vec<Frame> {
+    frames
+        .iter()
+        .rev()
+        .map(|f| {
+            let names = vm.local_names(f.func);
+            Frame {
+                arguments: f.stack.iter().map(reg_value).collect(),
+                word: f.top as u32,
+                locals: f.locals.iter().enumerate().map(|(k, v)| (names.get(k).map_or_else(String::new, |n| n.to_string()), var_value(v))).collect(),
+            }
+        })
+        .collect()
+}
 
+/// A machine as saved (`FUN_6f91a0d0`), on its code block (`code`, by place).
+fn machine_of(vm: &w3_jass::Vm, code: u32) -> Machine {
+    let m = &vm.main;
+    let names = vm.global_names();
+    Machine {
+        code,
+        flag: 0,
+        real: 0.0,
+        word: vm.op_limit,
+        at: m.ip.map_or(0, |i| i * 2),
+        returns: m.returns.iter().map(|r| r.map_or(0, |i| i * 2)).collect(),
+        functions: vm.strings.entries.iter().skip(1).map(|(s, n)| (s.as_deref().unwrap_or("").to_string(), *n)).collect(),
+        globals: vm.vars.iter().zip(&names).filter(|(v, _)| v.decl != 0).map(|(v, n)| (n.to_string(), var_value(v))).collect(),
+        frames: frames_of(vm, &m.frames),
+        stack: m.regs.iter().map(reg_value).collect(),
+        strings: vm.callbacks.iter().skip(1).map(|&e| vm.function_at(e).map_or_else(String::new, |n| n.to_string())).collect(),
+    }
+}
+
+/// A thread as saved (`FUN_6f91a790`): its place, its place in the code, its frames,
+/// whether it sleeps, a real, its operation limit, and its registers.
+fn thread_of(vm: &w3_jass::Vm, t: &w3_jass::Thread, sleeping: bool) -> Thread {
+    Thread {
+        machine: t.place,
+        at: t.ip.map_or(0, |i| i * 2),
+        frames: frames_of(vm, &t.frames),
+        flag: sleeping as u32,
+        real: 0.0,
+        word: vm.op_limit,
+        stack: t.regs.iter().map(reg_value).collect(),
+    }
+}
+
+/// A machine's code block as saved (`FUN_6f910730`).
+fn code_of(vm: &w3_jass::Vm) -> Code {
+    Code { words: vm.code_words().to_vec(), strings: vm.code_table().iter().map(|s| s.to_string()).collect() }
+}
+
+impl Game {
     /// The map script's machine as saved (`FUN_6f91a0d0`).
     pub fn saved_machine(&self) -> Machine {
-        let vm = &self.vm;
-        let m = &vm.main;
-        let names = vm.global_names();
-        Machine {
-            code: 1,
-            flag: 0,
-            real: 0.0,
-            word: vm.op_limit,
-            at: m.ip.map_or(0, |i| i * 2),
-            returns: m.returns.iter().map(|r| r.map_or(0, |i| i * 2)).collect(),
-            functions: vm.strings.entries.iter().skip(1).map(|(s, n)| (s.as_deref().unwrap_or("").to_string(), *n)).collect(),
-            globals: vm.vars.iter().zip(&names).filter(|(v, _)| v.decl != 0).map(|(v, n)| (n.to_string(), var_value(v))).collect(),
-            frames: self.saved_frames(&m.frames),
-            stack: m.regs.iter().map(reg_value).collect(),
-            strings: vm.callbacks.iter().skip(1).map(|&e| vm.function_at(e).map_or_else(String::new, |n| n.to_string())).collect(),
-        }
-    }
-
-    /// A thread as saved (`FUN_6f91a790`): its place, its place in the code, its frames,
-    /// whether it sleeps, a real, its operation limit, and its registers.
-    fn saved_thread(&self, t: &w3_jass::Thread, sleeping: bool) -> Thread {
-        Thread {
-            machine: t.place,
-            at: t.ip.map_or(0, |i| i * 2),
-            frames: self.saved_frames(&t.frames),
-            flag: sleeping as u32,
-            real: 0.0,
-            word: self.vm.op_limit,
-            stack: t.regs.iter().map(reg_value).collect(),
-        }
+        machine_of(&self.vm, 1)
     }
 
     /// The map script's threads as saved, by place: those asleep (flag 1), those kept
     /// within SaveGame (flag 0), and the one that called it last as it was in the call
     /// (a timer's callback's, say, freed after it).
     pub fn saved_threads(&self) -> Vec<Thread> {
-        let mut out: Vec<Thread> = self.world.sleepers.iter().map(|s| self.saved_thread(&s.thread, s.thread.parked.is_none())).collect();
+        let mut out: Vec<Thread> = self.world.sleepers.iter().map(|s| thread_of(&self.vm, &s.thread, s.thread.parked.is_none())).collect();
         if let Some(t) = self.vm.snapshot.as_ref().filter(|t| !out.iter().any(|o| o.machine == t.place)) {
-            out.push(self.saved_thread(t, false));
+            out.push(thread_of(&self.vm, t, false));
         }
         out.sort_by_key(|t| t.machine);
         out
     }
 
+    /// The computers' AI scripts as saved, by their places: each machine, on its
+    /// script's code block (one a script, after the map script's, in the order the
+    /// AIs started), and its threads asleep (read: Forestwalk's undead computer's at
+    /// its start, common.ai's code, its op limit 10000, its main asleep).  Each block's
+    /// code, then the machines and their threads.  Provisional: a machine's own place
+    /// in the code (the original's an uninitialized word), two computers' sharing.
+    pub fn saved_ai_scripts(&self) -> (Vec<Code>, Vec<((u32, Machine), Vec<Thread>)>) {
+        let mut scripts: Vec<String> = Vec::new();
+        let mut codes = Vec::new();
+        let mut machines = Vec::new();
+        let mut ais: Vec<(&u8, &crate::ai::AiVm)> = self.world.ai_vms.iter().collect();
+        ais.sort_by_key(|(_, a)| a.vm.main.place);
+        for (p, a) in ais {
+            let script = self.world.ai.get(p).map_or_else(String::new, |s| s.script.to_ascii_lowercase());
+            let k = match scripts.iter().position(|s| *s == script) {
+                Some(k) => k,
+                None => {
+                    scripts.push(script);
+                    codes.push(code_of(&a.vm));
+                    scripts.len() - 1
+                }
+            };
+            let mut threads: Vec<Thread> = a.sleepers.iter().map(|(_, t)| thread_of(&a.vm, t, true)).collect();
+            threads.sort_by_key(|t| t.machine);
+            machines.push(((a.vm.main.place, machine_of(&a.vm, 2 + k as u32)), threads));
+        }
+        (codes, machines)
+    }
+
     /// The map script's code block as saved (`FUN_6f910730`).
     pub fn saved_code(&self) -> Code {
-        Code { words: self.vm.code_words().to_vec(), strings: self.vm.code_table().iter().map(|s| s.to_string()).collect() }
+        code_of(&self.vm)
     }
 
     /// The script data as saved (`FUN_6f90d350`): the map script's code block, machine,
@@ -132,6 +170,19 @@ impl Game {
         match d.threads.first_mut() {
             Some(t) => *t = threads,
             None => d.threads.push(threads),
+        }
+        // The AI scripts' (when the port runs any: else the template's stay).
+        let (codes, machines) = self.saved_ai_scripts();
+        if !machines.is_empty() {
+            d.code.truncate(1);
+            d.code.extend(codes.into_iter().map(Some));
+            d.code_places = d.code.len() as u32 + 1;
+            d.machines.truncate(1);
+            d.threads.truncate(1);
+            for (m, t) in machines {
+                d.machines.push(m);
+                d.threads.push(t);
+            }
         }
         d
     }
@@ -500,6 +551,38 @@ impl Game {
             out.push(format!("code: words {}; strings {} ours, {} the original's, {}", if words { "the same" } else { "differ" }, ours.strings.len(), c.strings.len(), first.map_or("agreeing".into(), |k| format!("first differing {k}: {:?} vs {:?}", ours.strings[k], c.strings[k]))));
             if first.is_none() && ours.strings.len() != c.strings.len() {
                 out.push(format!("  the original's last {:?}, ours {:?}", &c.strings[c.strings.len().saturating_sub(3)..], &ours.strings[ours.strings.len().saturating_sub(3)..]));
+            }
+        }
+        // The AI scripts': code blocks, machines, and threads.
+        let (codes, machines) = self.saved_ai_scripts();
+        for (k, c) in codes.iter().enumerate() {
+            match d.code.get(1 + k) {
+                Some(Some(t)) => {
+                    let first = c.strings.iter().zip(&t.strings).position(|(a, b)| a != b);
+                    let word = c.words.iter().zip(&t.words).position(|(a, b)| a != b);
+                    out.push(format!("AI code {}: words {} ours, {} the original's, first differing {word:?}; strings {} and {}, first differing {:?}", k + 2, c.words.len(), t.words.len(), c.strings.len(), t.strings.len(), first.map(|j| (j, &c.strings[j], &t.strings[j]))));
+                }
+                _ => out.push(format!("AI code {}: none in the original's", k + 2)),
+            }
+        }
+        for (k, ((place, m), threads)) in machines.iter().enumerate() {
+            let Some((tp, t)) = d.machines.get(1 + k) else { out.push(format!("AI machine {k}: none in the original's")); continue };
+            let dbg = |x: &dyn std::fmt::Debug| format!("{x:?}");
+            let globals = m.globals.iter().zip(&t.globals).filter(|(a, b)| dbg(a) != dbg(b)).count();
+            let first_global = m.globals.iter().zip(&t.globals).find(|(a, b)| dbg(a) != dbg(b)).map(|(a, b)| format!("{:?} vs {:?}", a, b));
+            out.push(format!("AI machine {}: place {place} vs {tp}; code {} vs {}; word {} vs {}; at {} vs {}; functions {} vs {}; globals {} vs {}, {globals} differ{}; stack differs {}; strings {:?} vs {:?}", k + 1, m.code, t.code, m.word, t.word, m.at, t.at, m.functions.len(), t.functions.len(), m.globals.len(), t.globals.len(), first_global.map_or(String::new(), |g| format!(", the first {}", &g[..g.len().min(300)])), dbg(&m.stack) != dbg(&t.stack), m.strings, t.strings));
+            if std::env::var("W3Z_ALL").is_ok() {
+                for (a, b) in m.globals.iter().zip(&t.globals).filter(|(a, b)| dbg(a) != dbg(b)) {
+                    out.push(format!("  AI global {} {:?} vs {:?}", a.0, a.1.value, b.1.value));
+                }
+            }
+            if let Some(theirs) = d.threads.get(1 + k) {
+                for (a, b) in threads.iter().zip(theirs) {
+                    out.push(format!("  AI thread: place {} vs {}; at {} vs {}; flag {} vs {}; word {} vs {}; frames {} vs {}{}; registers differ {}", a.machine, b.machine, a.at, b.at, a.flag, b.flag, a.word, b.word, a.frames.len(), b.frames.len(), if dbg(&a.frames) == dbg(&b.frames) { String::new() } else { format!(" (ours {:?}, theirs {:?})", a.frames.iter().map(|f| f.arguments.len()).collect::<Vec<_>>(), b.frames.iter().map(|f| (f.arguments.clone(), f.locals.clone())).collect::<Vec<_>>()) }, a.stack.iter().zip(&b.stack).filter(|(x, y)| dbg(x) != dbg(y)).count()));
+                }
+                if threads.len() != theirs.len() {
+                    out.push(format!("  AI threads: {} ours, {} the original's", threads.len(), theirs.len()));
+                }
             }
         }
         let Some((_, theirs)) = d.machines.first() else { return out };

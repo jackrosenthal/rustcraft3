@@ -598,6 +598,9 @@ impl World {
             b"Aadm" | b"Ainf" => 0x808_0000,
             b"Arep" => 0x940_0010,
             b"Arst" => 0x908_0010,
+            b"AHbu" | b"AUbu" | b"AObu" | b"AEbu" => 0x2000_0010,
+            b"Ahar" | b"Ahrl" => 0x8000_0010,
+            b"Aaha" => 0x210,
             b"ACsp" => 0x400,
             b"Aven" | b"Amim" => 0,
             b"ARal" | b"Amic" | b"Amil" => 0x90,
@@ -704,6 +707,45 @@ impl World {
                     tail.extend([Field::Ref(NONE), Field::Ref(NONE), periodic("606220", 2.0, 0xd_01bf)]);
                 }
                 tail
+            }
+            // Building: nothing begun; the undead's one more reference and a short of 1.
+            b"AHbu" | b"AUbu" | b"AObu" | b"AEbu" => {
+                own.extend([Field::Real(0.0), Field::Real(0.0), w(0), w(0), w(0)]);
+                let undead = code == b"AUbu";
+                if undead {
+                    own.extend([w(u32::MAX), w(u32::MAX), w(0)]);
+                }
+                vec![Field::Ref(NONE), Field::Ref(NONE), w(0), Field::Short(undead as u16), Field::List(Vec::new())]
+            }
+            // Harvest (gold and lumber, or lumber): its DataC and DataB, its unit's
+            // attack's point and backswing, its DataA; eight references and timers
+            // empty, its area, its timers.
+            b"Ahar" | b"Ahrl" => {
+                let ab = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a)).find(|ab| ab.str("code").trim().as_bytes() == code);
+                let data = |f: &str| ab.map_or(0.0, |ab| ab.level_real(f, 1));
+                own.extend([w(data("DataC") as u32), w(data("DataB") as u32), w(0), w(0), w(0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(o.real("dmgpt1")), Field::Real(o.real("backSw1")), w(data("DataA") as u32)]);
+                let gold = code == b"Ahar";
+                if gold {
+                    own.extend([Field::Real(0.0), Field::Real(0.0), Field::Real(0.0)]);
+                }
+                let mut tail = vec![Field::List((0..8).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect()), Field::List((0..8).map(|_| vec![timer()]).collect()), w(u32::MAX), w(u32::MAX), w(0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(data("Area"))];
+                tail.extend((0..if gold { 4 } else { 3 }).map(|_| timer()));
+                tail
+            }
+            // A haunted mine's gathering (Aaha): its range, a reference; a timer.
+            b"Aaha" => {
+                let ab = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a)).find(|ab| ab.str("code").trim() == "Aaha");
+                own.extend([Field::Real(ab.map_or(0.0, |ab| ab.level_real("Rng", 1))), w(u32::MAX), w(u32::MAX), w(0)]);
+                vec![timer()]
+            }
+            // A gold mine (Agld): its gold, 1.0, 1, references, 15 and 2.0, the haunted
+            // mine over it; its shaft (`shft`).
+            b"Agld" => {
+                let over = self.unit_order.iter().copied().find(|&v| v != h && self.unit(v).is_some_and(|w| !w.dead && w.abilities.iter().any(|(a, _)| a == b"Abgm") && (w.x - u.x).abs() < 1.0 && (w.y - u.y).abs() < 1.0)).and_then(|v| self.unit(v)).and_then(|w| w.extra.object_slots[0].first().copied());
+                let over = over.map_or(NONE, rf);
+                own.extend([w(u.resource.max(0) as u32), Field::Real(1.0), w(1), w(0), w(u32::MAX), w(u32::MAX), w(0), w(u32::MAX), w(u32::MAX), w(0), w(15), Field::Real(2.0), w(over.0), w(over.1), w(0), w(u32::MAX), w(u32::MAX), w(0)]);
+                let shaft = u.extra.object_slots[2].iter().map(|&(s, _)| s).skip_while(|&s| s != t.0).find(|&s| self.tags.live.get(&s).is_some_and(|e| &e.0 == b"shft")).map_or(NONE, |s| rf(self.tagged(s)));
+                vec![Field::Ref(NONE), Field::List(vec![vec![Field::Ref(shaft)]]), timer()]
             }
             // Creep sleep (`FUN_6f5224c0`, `FUN_6f5230a0`): 0.1; its sleep's timer, its
             // check every 2 seconds (event 0xd01bf), and a list.

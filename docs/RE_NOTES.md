@@ -1715,7 +1715,11 @@ Formats the port made its own, to be replaced by the original's:
   for corpses every 2 seconds.  A woken creep starts its auto-target spells' looks the
   last in its list first, Abolish Magic among them, its type's autocast spell's apart
   and last (read: a High Priest's Abolish Magic 572, Inner Fire 573, Heal 574).
-  All of the quiet test map's agree.
+  All of the quiet test map's agree.  Building (AHbu, AUbu: the undead's one more reference and a short of 1), harvest
+  (Ahar, Ahrl: DataC and DataB, its unit's attack's point and backswing, DataA, eight
+  places, its Area), a haunted mine's gathering (Aaha: its range), and a gold mine
+  (Agld: its gold, 15 and 2.0, the haunted mine over it, its shaft) agree too.  Not
+  yet: auras, buffs, a shop's selling, blight, which name the second table's effects.
 - A map loaded directly (-loadfile) draws on the main generator as the game starts,
   before its script: a weighted choice's real (`FUN_6f1c0c40`), then a race for each
   of the 12 players (`FUN_6f1e9dd0`); traced on the quiet test map, the 13 before its

@@ -525,6 +525,35 @@ impl World {
     }
 }
 
+impl World {
+    /// A unit's abilities' indexed reals (`` `rel ``, each an ability's own, made after
+    /// it): stamped, listed on the ability, each its value, rate, and bounds as made (read
+    /// on the quiet test map: the gold mine's and Abgm's first -0 unbounded, Abgm's
+    /// second 0 unbounded, Select's, the queue's, Upgrade's, and the builds' 0 up to the
+    /// largest real; provisional: their values later).
+    pub fn ability_real_records(&self, h: u32, rallies: &[(Ref, Ref)]) -> Vec<(u32, w3_formats::w3z::First)> {
+        let Some(u) = self.unit(h) else { return Vec::new() };
+        let chain = self.ability_chain(h, rallies);
+        let slots: Vec<(u32, u32)> = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).copied().collect();
+        let mut out = Vec::new();
+        for &(t, code) in &chain {
+            let Some(i) = slots.iter().position(|&x| x == t) else { continue };
+            let props: Vec<(u32, u32)> = slots[i + 1..].iter().copied().take_while(|&(s, b)| self.tagged(s).1 == b && self.tags.live.get(&s).is_some_and(|e| &e.0 == b"`rel")).collect();
+            for k in 0..props.len() {
+                // (Abgm's second 0, not -0.)
+                let values = match (&code, k) {
+                    (b"Agld" | b"Abgm", 0) => [-0.0, 0.0, -f32::MAX, f32::MAX],
+                    (b"Abgm", _) => [0.0, 0.0, -f32::MAX, f32::MAX],
+                    _ => [0.0, 0.0, 0.0, f32::MAX],
+                };
+                let base = self.stamped(super::listed_property_base(&props, k, t));
+                out.push((props[k].0, w3_formats::w3z::First::Real { base, values }));
+            }
+        }
+        out
+    }
+}
+
 /// An ability's targets as the engine holds them (+0x4c), by kind, read in the quiet
 /// test map's and Forestwalk's saves (its data's targs1 as bits: ground 0x2, air 0x4,
 /// structure 0x8, ward 0x10, tree 0x40, bridge 0x400, self 0x1000, friend 0x6000,

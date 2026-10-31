@@ -1060,6 +1060,11 @@ impl World {
         for (slot, f) in self.game_object_records() {
             records.entry(slot).or_insert(f);
         }
+        for &h in &self.unit_order {
+            for (slot, f) in self.ability_real_records(h, &rallies) {
+                records.entry(slot).or_insert(f);
+            }
+        }
         // W3Z_COVERAGE: by kind, the objects whose first and second records are the
         // template's still.
         let mut kept: std::collections::BTreeMap<String, (u32, u32, u32)> = Default::default();
@@ -1725,7 +1730,9 @@ impl World {
                 }
             }
             // The agents with no properties, and the pathing system's objects.
-            for (name, recs) in [("plain agents", self.plain_agent_records()), ("pathing system objects", self.pathing_system_records(48, 0)), ("game object", self.game_object_records())] {
+            let rallies = rally_points(orig);
+            let ability_reals: Vec<(u32, First)> = self.unit_order.iter().flat_map(|&h| self.ability_real_records(h, &rallies)).collect();
+            for (name, recs) in [("plain agents", self.plain_agent_records()), ("pathing system objects", self.pathing_system_records(48, 0)), ("game object", self.game_object_records()), ("abilities' reals", ability_reals)] {
                 let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();
                 let (mut same, mut differ, mut first) = (0, 0, None);
                 for (slot, f) in recs {

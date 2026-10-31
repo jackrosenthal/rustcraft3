@@ -1009,7 +1009,7 @@ impl World {
                 }
             }
         }
-        for (slot, sec) in self.unit_ref_records() {
+        for (slot, sec) in self.unit_ref_records().into_iter().chain(self.unit_ai_records()) {
             seconds.insert(slot, sec);
         }
         for o in objects[0].iter_mut() {
@@ -1495,6 +1495,22 @@ impl World {
                     }
                 }
                 out.push(format!("units' AI lists: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+                let (mut same, mut differ, mut first) = (0, 0, None);
+                for (slot, sec) in self.unit_ai_records() {
+                    let Some(o) = by_slot.get(&slot) else { continue };
+                    if sec.to_bytes(o.entry.kind).is_ok_and(|b| b == o.second) {
+                        same += 1;
+                    } else {
+                        differ += 1;
+                        let own = |s: &Second| match s { Second::Agent { own, .. } => format!("{own:?}"), _ => String::new() };
+                        let line = format!("slot {slot}: ours {}, the original's {:?}", own(&sec), o.second().ok().map(|s| own(&s)));
+                        if std::env::var("W3Z_ALL").is_ok() {
+                            out.push(format!("ai {line}"));
+                        }
+                        first.get_or_insert(line);
+                    }
+                }
+                out.push(format!("units' AIs: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
             }
             // The units' agents.
             let (mut same, mut differ, mut first) = (0, 0, None);

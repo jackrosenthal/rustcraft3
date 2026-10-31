@@ -2175,9 +2175,18 @@ Formats the port made its own, to be replaced by the original's:
   go as the next movement step starts (the third acolyte's in its own turn after the
   alarm's `` `pil ``, the second's, ending in turn 8's last step, in turn 9).  The port
   ends the walk so (`World::acolyte_in_range`), its path and cluster at the tick's end
-  for now: the keepalives agree to turn 8.  Next: the acolytes' walks by the movement
-  steps (`walk_steps`), so that a walk ending in a turn's last step frees its path in
-  the next.  In
+  for now: the keepalives agree to turn 8.  Turn 9's keepalive then differs by the
+  free list's head: the second acolyte's walk, in the original ending in turn 8's last
+  step, its path freed in turn 9; the port's straight walk to its ring slot crosses
+  the range in turn 8's second step of three (a straight walk to the mine's center,
+  tried, brings the third acolyte a turn late).  Next, in order: the AI acolyte's
+  walk by the movement steps (`Unit::steps_walker`, `World::walk_goal` the mine, the
+  range checked as each step begins, the path freed by `Tags::walk_ended`); the
+  structures' alarms fired by their agent time among the steps (their wait drawn at
+  the making, `natives/units.rs`, kept as a due time; `World::steps_before`); and the
+  AI threads' wakes by their agent time among the steps too (the wake's objects come
+  before the alarm's `` `pil `` in turn 2, the third acolyte's path after it in turn
+  4: both orders follow from the events' times).  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

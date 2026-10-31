@@ -1672,11 +1672,17 @@ Formats the port made its own, to be replaced by the original's:
     spell immune unit's two words; isBuildOn 0x100; elevation points 0x8 in +0x280.
   - Its sprite: its model's stands (sequences named "Stand" with a variation's number
     alone), the first played (provisional: the running game's choice and time).
-- The engine reads its data's decimals as their digits times ten to the minus their
-  fraction's count, in double, then the single at or above it: "1.05", "1.55", "0.9",
-  "1.3" as 1.0500001, 1.5500001, 0.90000004, 1.3000001 (models' scales), "0.5",
-  "0.75", "1.25", "1.2", "1.7" as the nearest.  Not yet: "1.5" as 1.5000001 (a
-  golem's scale and regeneration), which this does not give.
+- The engine reads its data's decimals as their digits times a single precision
+  tenth, hundredth, or thousandth by their fraction's count (0x3dccccce, 0x3c23d70b,
+  0x3a83126f: the first two one above the nearest), the product cut toward zero to
+  single precision.  Read in the quiet test map's save: "1.05", "1.55", "0.9", "1.3",
+  "1.5", "1.6", "1.8", "0.39", "0.44", "0.4" as 1.0500001, 1.5500001, 0.90000004,
+  1.3000001, 1.5000001, 1.6000001, 1.8000001, 0.39000002, 0.44000003, 0.40000004
+  (models' scales, regeneration, attacks' cooldowns and points); "1.2", "1.7",
+  "1.35", "1.1", "0.3", "0.5", "0.75", "1.25", "0.25", "0.433", "0.567" as the
+  nearest.  No single rounding of the decimal gives them all.  (Not the map script's
+  reals: its creeps' facings fit neither this nor the nearest with any of the
+  conversions tried.)
 - An aura's scan lays its buffs in the reverse of the order a search of the map finds
   the units (`spatial_order`): read, the trolls' and ogres' at 2 seconds.
 - A unit's clustered position (`` `pcu ``, CPoPosCl) holds its place in pathing cells

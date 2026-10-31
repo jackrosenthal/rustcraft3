@@ -77,6 +77,42 @@ fn main() {
         }
         return;
     }
+    // "vary <kind>": for an agent kind's records, each own and tail field's distinct
+    // values (up to six) across its objects, and its handlers' shapes.
+    if a[2] == "vary" {
+        let kind = a[3].as_bytes();
+        let mut own: Vec<std::collections::BTreeMap<String, u32>> = Vec::new();
+        let mut tail: Vec<std::collections::BTreeMap<String, u32>> = Vec::new();
+        let mut shapes: std::collections::BTreeMap<String, u32> = Default::default();
+        let mut n = 0;
+        for o in all.iter().filter(|o| o.entry.kind.to_be_bytes() == kind[..4]) {
+            let Ok(w3_formats::w3z::Second::Agent { own: ow, handlers, tail: tl }) = o.second() else { continue };
+            n += 1;
+            for (k, f) in ow.iter().enumerate() {
+                if own.len() <= k { own.push(Default::default()); }
+                *own[k].entry(format!("{f:?}").replace("Ref(4294967295, 4294967295)", "-")).or_insert(0) += 1;
+            }
+            for (k, f) in tl.iter().enumerate() {
+                if tail.len() <= k { tail.push(Default::default()); }
+                *tail[k].entry(format!("{f:?}").replace("Ref(4294967295, 4294967295)", "-")).or_insert(0) += 1;
+            }
+            let ev: Vec<String> = handlers.events.iter().enumerate().filter(|(_, e)| !e.is_empty()).map(|(k, e)| format!("{k:#x}x{}", e.len())).collect();
+            *shapes.entry(format!("keyed {} fixed {:?} events {:?}", handlers.keyed.len(), handlers.fixed.iter().map(|f| f.len()).collect::<Vec<_>>(), ev)).or_insert(0) += 1;
+        }
+        println!("{n} objects");
+        for (k, m) in own.iter().enumerate() {
+            let vals: Vec<String> = m.iter().take(6).map(|(v, c)| format!("{v} x{c}")).collect();
+            println!("own {k}: {}{}", vals.join(" | "), if m.len() > 6 { format!(" ... ({} values)", m.len()) } else { String::new() });
+        }
+        for (k, m) in tail.iter().enumerate() {
+            let vals: Vec<String> = m.iter().take(6).map(|(v, c)| format!("{v} x{c}")).collect();
+            println!("tail {k}: {}{}", vals.join(" | "), if m.len() > 6 { format!(" ... ({} values)", m.len()) } else { String::new() });
+        }
+        for (s, c) in &shapes {
+            println!("handlers x{c}: {s}");
+        }
+        return;
+    }
     // "unitsec": a unit's own record by its tag, besides its fields: its word, handlers
     // (the event lists not empty), widget, and lists not empty.
     if a[2] == "unitsec" {

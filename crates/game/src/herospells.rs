@@ -9,6 +9,7 @@ use w3_jass::Vm;
 use crate::objects::{Id, id_from_str};
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 impl World {
     fn lstr(&self, a: Id, field: &str, lvl: u32) -> String {
@@ -37,7 +38,7 @@ impl World {
             // Acid Bomb: the target loses DataC armor and takes DataD every DataF; others
             // within Area take DataE every DataF; the first at once (measured: a footman
             // bombed at 0.83 seconds takes 5 at 0.84 and each second after).
-            "ANab" => {
+            codes::ability::ALCHEMIST_ACID_BOMB => {
                 let every = d(self, "DataF").max(0.01);
                 for t in self.enemies_in(owner, tx, ty, area) {
                     let dps = if t == target { d(self, "DataD") } else { d(self, "DataE") } / every;
@@ -50,7 +51,7 @@ impl World {
             // DataB in all.  Those under Drunken Haze catch fire: DataE once a second for
             // Dur, the first at once (measured: a footman not hazed takes 65 and no more;
             // one hazed takes 65 at 1.90 seconds, then 7 at 1.91 and each second to 5.91).
-            "ANbf" => {
+            codes::ability::BREWMASTER_BREATH_OF_FIRE => {
                 let len = d(self, "DataC");
                 let dir = (x - cx, y - cy);
                 let n = dir.0.hypot(dir.1).max(1.0);
@@ -58,7 +59,7 @@ impl World {
                 let targets = self.line_units_pub(owner, (cx, cy), end, area * 2.0, d(self, "DataD") * 2.0);
                 self.capped_damage_pub(vm, h, &targets, d(self, "DataA"), d(self, "DataB"));
                 for t in targets {
-                    let hazed = self.unit(t).is_some_and(|u| u.buffs.iter().any(|b| self.ability_code(b.ability) == "ANdh"));
+                    let hazed = self.unit(t).is_some_and(|u| u.buffs.iter().any(|b| self.ability_code(b.ability) == codes::ability::BREWMASTER_DRUNKEN_HAZE));
                     if hazed {
                         self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: d(self, "DataE"), dps_every: 1.0, dps_next: 0.0, ..Default::default() });
                     }
@@ -66,7 +67,7 @@ impl World {
             }
             // Charm and Dark Conversion: the target becomes the caster's (Dark Conversion
             // also turns it into UnitID).
-            "ANch" => {
+            codes::ability::DARK_RANGER_CHARM => {
                 if let Some(u) = self.unit_mut(target).filter(|u| !u.is_hero) {
                     u.owner = owner;
                     u.action = Action::Idle;
@@ -75,7 +76,7 @@ impl World {
             // Soul Preservation (CAbilitySoulPreservation, CBuffSoulPreservation): the
             // target is held, untouchable, for Dur (HeroDur); then it is the caster's
             // (update_buffs).
-            "ANsl" => {
+            codes::ability::MALGANIS_SOUL_PRESERVATION => {
                 if self.unit(target).is_some_and(|u| !u.is_hero) {
                     let dur = self.duration_for(a, lvl, target);
                     self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, stun: true, invulnerable: true, magic_immune: true, ..Default::default() });
@@ -87,7 +88,7 @@ impl World {
             // Dark Conversion (CAbilityDarkConversion, CBuffDarkConversion): the target
             // sleeps under the buff for Dur (HeroDur); when it ends with the target alive
             // the target becomes UnitID for the caster (update_buffs).
-            "ANdc" => {
+            codes::ability::MALGANIS_DARK_CONVERSION => {
                 if self.unit(target).is_some_and(|u| !u.is_hero) && self.converts_race(a, lvl, target) {
                     let dur = self.duration_for(a, lvl, target);
                     self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, stun: true, ..Default::default() });
@@ -98,7 +99,7 @@ impl World {
             }
             // Cluster Rockets: DataA every DataB for DataF within Area (at most DataD each),
             // structures taking DataE of it, and a stun for Dur.
-            "ANcs" => {
+            codes::ability::TINKERER_CLUSTER_ROCKETS_LEVEL_0 => {
                 let total = d(self, "DataA") * (d(self, "DataF") / d(self, "DataB").max(0.01)).floor();
                 let each = total.min(d(self, "DataD"));
                 for t in self.enemies_in(owner, x, y, area) {
@@ -109,7 +110,7 @@ impl World {
                 }
             }
             // Drunken Haze: within Area, DataB more misses and DataC slower movement.
-            "ANdh" => {
+            codes::ability::BREWMASTER_DRUNKEN_HAZE => {
                 for t in self.enemies_in(owner, tx, ty, area) {
                     let dur = if self.hero_duration(t) { d(self, "HeroDur") } else { d(self, "Dur") };
                     self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, miss_chance: d(self, "DataB"), move_factor: -d(self, "DataC"), attack_factor: -d(self, "DataD"), ..Default::default() });
@@ -117,9 +118,9 @@ impl World {
             }
             // Doom: DataA a second, silenced, until death; then DataB of UnitID rise for
             // DataC (see on_death_buffs).
-            "ANdo" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: f32::INFINITY, dps: d(self, "DataA"), silence: true, ..Default::default() }),
+            codes::ability::PIT_LORD_DOOM => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: f32::INFINITY, dps: d(self, "DataA"), silence: true, ..Default::default() }),
             // Dark Portal: between DataB and DataC of the DataA types come through.
-            "ANdp" => {
+            codes::ability::DARK_PORTAL => {
                 let types: Vec<Id> = self.lstr(a, "DataA", lvl).split(',').map(|s| id_from_str(s.trim())).filter(|i| i[0] != 0).collect();
                 let (lo, hi) = (d(self, "DataB") as i32, d(self, "DataC") as i32);
                 let n = self.rng.int(lo, hi.max(lo));
@@ -129,7 +130,7 @@ impl World {
                 }
             }
             // Storm, Earth and Fire: the hero splits into the DataA spirits for Dur.
-            "ANef" => {
+            codes::ability::BREWMASTER_STORM_EARTH_AND_FIRE => {
                 let types: Vec<Id> = self.lstr(a, "DataA", lvl).split(',').map(|s| id_from_str(s.trim())).filter(|i| i[0] != 0).collect();
                 let life = d(self, "Dur");
                 let mut spirits = Vec::new();
@@ -143,12 +144,12 @@ impl World {
                 }
             }
             // Finger of Death: DataC damage.
-            "ANfd" => {
+            codes::ability::FINGER_OF_DEATH => {
                 self.ability_bolt(a, true, h, target);
                 self.spell_damage(vm, h, target, d(self, "DataC"))
             }
             // Forked Lightning: DataA to at most DataB in a cone DataC long ending DataD wide.
-            "ANfl" => {
+            codes::ability::SEA_WITCH_FORKED_LIGHTNING => {
                 let len = d(self, "DataC");
                 let dir = (tx - cx, ty - cy);
                 let n = dir.0.hypot(dir.1).max(1.0);
@@ -163,27 +164,27 @@ impl World {
                 }
             }
             // Healing Spray: DataF waves of DataA within Area.
-            "ANhs" => {
+            codes::ability::ALCHEMIST_HEALING_SPRAY => {
                 let total = d(self, "DataA") * d(self, "DataF").max(1.0);
                 for t in self.allies_in_pub(owner, x, y, area) {
                     self.magic_heal(t, total.min(d(self, "DataD").max(total)));
                 }
             }
             // Howl of Terror: enemies within Area deal DataA less damage.
-            "ANht" => {
+            codes::ability::PIT_LORD_HOWL_OF_TERROR => {
                 for t in self.enemies_in(owner, cx, cy, area) {
                     let dur = if self.hero_duration(t) { d(self, "HeroDur") } else { d(self, "Dur") };
                     self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, damage_factor: -d(self, "DataA"), ..Default::default() });
                 }
             }
             // The Beast Master's and Firelord's summons: DataA of UnitID for Dur.
-            "ANsg" | "ANsq" | "ANsw" | "ANlm" => {
+            codes::ability::BEAST_MASTER_SUMMON_BEAR | codes::ability::BEAST_MASTER_SUMMON_QUILBEAST | codes::ability::BEAST_MASTER_SUMMON_HAWK | codes::ability::FIRELORD_SUMMON_LAVA_SPAWN => {
                 let unit = id_from_str(&self.lstr(a, "UnitID", lvl));
                 let n = d(self, "DataA").max(1.0) as i32;
                 self.summon(h, owner, unit, n, cx, cy, d(self, "Dur"));
             }
             // Mana Shield: damage taken comes off mana, DataA mana a point, DataB of it.
-            "ANms" => {
+            codes::ability::SEA_WITCH_MANA_SHIELD => {
                 let on = !self.unit(h).is_some_and(|u| u.buffs.iter().any(|b| b.ability == a));
                 if let Some(u) = self.unit_mut(h) {
                     u.buffs.retain(|b| b.ability != a);
@@ -193,7 +194,7 @@ impl World {
                 }
             }
             // Rain of Chaos: DataB units of the DataA ability's UnitID land within Area.
-            "ANrc" => {
+            codes::ability::RAIN_OF_CHAOS => {
                 let inf = id_from_str(&self.lstr(a, "DataA", lvl));
                 let unit = id_from_str(self.objects.abilities.get(inf).map(|o| o.level_str("UnitID", 1)).unwrap_or_default().trim());
                 let life = self.objects.abilities.get(inf).map_or(0.0, |o| o.level_real("Dur", 1));
@@ -205,7 +206,7 @@ impl World {
                 }
             }
             // Silence: no spells within Area for Dur.
-            "ANsi" => {
+            codes::ability::DARK_RANGER_SILENCE => {
                 for t in self.enemies_in(owner, x, y, area) {
                     let dur = if self.hero_duration(t) { d(self, "HeroDur") } else { d(self, "Dur") };
                     self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, silence: true, ..Default::default() });
@@ -214,22 +215,22 @@ impl World {
             // Soul Burn: DataA every DataB, DataC less damage, silenced.
             // Soul Burn strikes once a second, the first at once (measured: 7.14 at 0.68
             // seconds, 1.68, and on to 11.68).
-            "ANso" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: d(self, "DataA") / d(self, "DataB").max(0.01), dps_every: 1.0, dps_next: 0.0, damage_factor: -d(self, "DataC"), silence: true, ..Default::default() }),
+            codes::ability::FIRELORD_SOUL_BURN => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: d(self, "DataA") / d(self, "DataB").max(0.01), dps_every: 1.0, dps_next: 0.0, damage_factor: -d(self, "DataC"), silence: true, ..Default::default() }),
             // Transmute: a unit up to level DataC dies for DataA of its gold cost.
-            "ANtm" => {
+            codes::ability::ALCHEMIST_TRANSMUTE => {
                 let Some(u) = self.unit(target).filter(|u| !u.is_hero && u.level <= d(self, "DataC") as i32) else { return true };
                 let gold = self.objects.units.get(u.type_id).map_or(0.0, |o| o.real("goldcost")) * d(self, "DataA");
                 *self.players[owner as usize].state.entry(player_state::RESOURCE_GOLD).or_insert(0) += gold as i32;
                 crate::natives::units::kill_unit(self, vm, target, h);
             }
             // Tornado: UnitID at the point for Dur.
-            "ANto" => {
+            codes::ability::SEA_WITCH_TORNADO => {
                 let unit = id_from_str(&self.lstr(a, "UnitID", lvl));
                 self.summon(h, owner, unit, 1, x, y, d(self, "Dur"));
             }
             // Hex: the target becomes one of the critters for its movement (DataB ground,
             // DataC air, DataD amphibious, DataE water) for Dur.
-            "AOhx" => {
+            codes::ability::SHADOW_HUNTER_HEX => {
                 let field = match self.move_kind(target) {
                     crate::pathing::Move::Fly => "DataC",
                     crate::pathing::Move::Amphibious => "DataD",

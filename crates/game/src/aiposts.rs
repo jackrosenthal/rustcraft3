@@ -8,6 +8,7 @@
 use crate::objects::Id;
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct GuardPost {
@@ -152,15 +153,15 @@ impl World {
     /// `` `pil ``, the second stop's so, the walk's task and `+ord`, its last `tskA`,
     /// and its five tasks the last first.
     fn recycle_objects(&mut self, h: u32) {
-        let stop: [&crate::tags::Code; 7] = [b"+ord", b"tskA", b"task", b"task", b"task", b"task", b"tskA"];
+        let stop: [&crate::tags::Code; 7] = [codes::class::ORDER, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A];
         let first: Vec<u32> = stop.iter().map(|c| self.tags.take(c)).collect();
-        let fresh = [self.tags.take(b"uref"), self.tags.take(b"AI-U")];
+        let fresh = [self.tags.take(codes::class::UNIT_AI_REF), self.tags.take(codes::class::UNIT_AI)];
         let second: Vec<u32> = stop.iter().map(|c| self.tags.take(c)).collect();
-        let listed = self.tags.take(b"uref");
-        let walk_codes: [&crate::tags::Code; 18] = [b"+ord", b"task", b"ordt", b"tskA", b"tskO", b"task", b"task", b"task", b"tskt", b"task", b"task", b"task", b"task", b"task", b"tskA", b"^clg", b"^clu", b"l^pa"];
+        let listed = self.tags.take(codes::class::UNIT_AI_REF);
+        let walk_codes: [&crate::tags::Code; 18] = [codes::class::ORDER, codes::class::TASK, codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK_O, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
         let walk: Vec<u32> = walk_codes.iter().map(|c| self.tags.take(c)).collect();
         self.tags.release(walk[15]);
-        let pil = self.tags.take(b"`pil");
+        let pil = self.tags.take(codes::class::IN_RANGE_LISTENER);
         let live = |w: &World, (s, b): (u32, u32)| w.tags.live.get(&s).is_some_and(|e| e.1 == b);
         let (old_ai, old_pil) = self.unit(h).map(|u| (u.extra.ai_slots.clone(), u.extra.item_pil)).unwrap_or_default();
         let old_ai: Vec<u32> = old_ai.into_iter().filter(|&o| live(self, o)).map(|o| o.0).collect();

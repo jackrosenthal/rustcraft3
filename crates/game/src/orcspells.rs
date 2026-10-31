@@ -5,6 +5,7 @@ use w3_jass::Vm;
 use crate::objects::Id;
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 impl World {
     /// Damage taking a unit's life, after Mana Shield; a Spirit Linked unit passes its
@@ -103,7 +104,7 @@ impl World {
         if t.is_hero || t.level as f32 > self.data(a, "DataA", lvl) {
             return false;
         }
-        let capacity = self.ability_with_code(h, "Advc").map_or(1.0, |(c, l)| self.data(c, "DataA", l.max(1) as u32)).max(1.0) as usize;
+        let capacity = self.ability_with_code(h, codes::ability::CARGO_HOLD_DEVOUR).map_or(1.0, |(c, l)| self.data(c, "DataA", l.max(1) as u32)).max(1.0) as usize;
         if self.unit(h).is_none_or(|u| u.extra.devoured.len() >= capacity) {
             return false;
         }
@@ -144,7 +145,7 @@ impl World {
             }
             // A second's worth once a second, the first as it is swallowed (measured: a
             // footman devoured at 0.50 seconds takes 5 at 0.51 and each second after).
-            let dps = self.ability_with_code(k, "Advc").map_or(0.0, |(c, l)| self.data(c, "DataB", l.max(1) as u32));
+            let dps = self.ability_with_code(k, codes::ability::CARGO_HOLD_DEVOUR).map_or(0.0, |(c, l)| self.data(c, "DataB", l.max(1) as u32));
             let u = self.unit_mut(k).unwrap();
             u.extra.digest_in -= dt;
             if u.extra.digest_in > 0.0 {

@@ -10,6 +10,7 @@ use crate::natives::players::is_ally;
 use crate::objects::{Id, id_from_int, id_to_int};
 use crate::types::*;
 use crate::world::{NativeFn, World};
+use crate::codes;
 
 /// Creates a unit of a type for a player, returning its handle (0 if the type is unknown).
 /// Where a new unit stands: a structure snapped to the build grid, and if destructables
@@ -87,9 +88,9 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32, facing: f32)
         let hall = abil_list
             .iter()
             .filter_map(|a| w.objects.abilities.get(crate::objects::id_from_str(a.trim())))
-            .any(|a| a.str("code") == "Artn" && a.level_real("DataA", 1) != 0.0);
+            .any(|a| a.str("code") == codes::ability::RETURN && a.level_real("DataA", 1) != 0.0);
         let mines: Vec<(f32, f32)> = if hall {
-            w.unit_order.iter().filter_map(|&h| w.unit(h)).filter(|u| !u.dead && w.ability_with_code(u.handle, "Agld").is_some()).map(|u| (u.x, u.y)).collect()
+            w.unit_order.iter().filter_map(|&h| w.unit(h)).filter(|u| !u.dead && w.ability_with_code(u.handle, codes::ability::GOLD_MINE).is_some()).map(|u| (u.x, u.y)).collect()
         } else {
             Vec::new()
         };
@@ -234,7 +235,7 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
     // ability list says (measured: NightElf02, editor version 4436, lists Tyrande's
     // abilities as Sshm alone and her heroes have six slots; at 5999 too, at 6000 and
     // Booty Bay's 6030 none).
-    let inventory = *b"AInv";
+    let inventory = *codes::ability::id::INVENTORY;
     if is_hero && w.editor_version < 6000 && !abilities.iter().any(|(a, _)| *a == inventory) {
         abilities.insert(0, (inventory, 1));
     }
@@ -335,7 +336,7 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
     // Gold mines start with their ability's gold (Agld DataA).
     for (a, _) in &unit.abilities {
         if let Some(ab) = w.objects.abilities.get(*a) {
-            if ab.str("code") == "Agld" {
+            if ab.str("code") == codes::ability::GOLD_MINE {
                 unit.resource = ab.int("DataA1");
             }
         }
@@ -369,7 +370,7 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
     // A structure that spreads blight blights the four cells about it at once, its
     // growth following (measured: a Necropolis made by script has blighted 0 to 96 to
     // its right before the script's next line, and 768 a second later).
-    if let Some((a, lvl)) = w.ability_with_code(h, "Abli") {
+    if let Some((a, lvl)) = w.ability_with_code(h, codes::ability::BLIGHT_GROWTH) {
         if w.objects.abilities.get(a).is_some_and(|o| o.level_real("DataB", lvl) != 0.0) {
             w.blight_circle(x, y, 0.0);
         }
@@ -417,7 +418,7 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
     // A wanderer draws its first wait as it is made, on the main generator (Awan's
     // timer, `FUN_6f9a9d90` from 0x6f5aa925; read: Forestwalk's thirteen deer, each
     // drawing within its making).
-    if w.ability_with_code(h, "Awan").is_some() && w.unit(h).is_some_and(|u| w.wanders_at_start(u)) {
+    if w.ability_with_code(h, codes::ability::WANDER).is_some() && w.unit(h).is_some_and(|u| w.wanders_at_start(u)) {
         let wait = w.rng.real(5.0, 10.0);
         // (Each wait is its timer's start, `FUN_6f5aa910`.)
         let n = w.tags.start_timer("5aa910");
@@ -468,7 +469,7 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     let illusion = w.unit(h).and_then(|u| u.extra.illusion);
     // A unit set to explode (SetUnitExploded) or dying under Incinerate bursts, unless a
     // Hero (FUN_6f678280).
-    let explodes = w.unit(h).is_some_and(|u| !u.is_hero && (u.explode_on_death || u.buffs.iter().any(|b| matches!(w.ability_code(b.ability).as_str(), "ANia" | "ANic"))));
+    let explodes = w.unit(h).is_some_and(|u| !u.is_hero && (u.explode_on_death || u.buffs.iter().any(|b| matches!(w.ability_code(b.ability).as_str(), codes::ability::FIRELORD_INCINERATE_ANIA | codes::ability::FIRELORD_INCINERATE_ANIC))));
     if w.unit(h).is_some_and(|u| !u.dead) && killer != 0 && illusion.is_none() {
         w.grant_bounty(h, killer);
         w.grant_kill_xp(h, killer);
@@ -884,7 +885,7 @@ fn tag_immediate_order(w: &mut World, unit: u32, order: i32) {
     let name = crate::natives::basic::order_name(order).unwrap_or_default();
     let toggle = u.abilities.iter().any(|(a, _)| w.objects.abilities.get(*a).is_some_and(|o| o.str("Orderon") == name || o.str("Orderoff") == name));
     if !toggle {
-        w.tags.take_all(&[b"+ord", b"tskA", b"task", b"task", b"task", b"task", b"tskA"]);
+        w.tags.take_all(&[codes::class::ORDER, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A]);
     }
 }
 
@@ -985,9 +986,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         // Each makes its tasks (measured by script: a creep's).
         KillUnit => |w, vm, a| {
             if w.unit(a.h(0)).is_some_and(|u| !u.dead) {
-                w.tags.take(b"tskA");
-                w.tags.take_n(b"task", 7);
-                w.tags.take(b"tskA");
+                w.tags.take(codes::class::TASK_A);
+                w.tags.take_n(codes::class::TASK, 7);
+                w.tags.take(codes::class::TASK_A);
             }
             kill_unit(w, vm, a.h(0), 0);
             none()
@@ -1009,17 +1010,17 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 // each of its tasks: `FUN_6f673610`, then three by `FUN_6f694690` as its
                 // orders clear; traced for the gold mine the undead melee setup removes.)
                 let counted = w.tags.prop_count;
-                let mut t: Vec<u32> = [b"tskA", b"task", b"task", b"task", b"task", b"task"].iter().map(|c| w.tags.take(c)).collect();
+                let mut t: Vec<u32> = [codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK].iter().map(|c| w.tags.take(c)).collect();
                 // A wanderer draws its wait again before the last (read: Forestwalk's
                 // deer removed by MeleeClearExcessUnits, the main generator's draw
                 // between their removals' sixth and seventh objects).
-                if w.ability_with_code(a.h(0), "Awan").is_some() {
+                if w.ability_with_code(a.h(0), codes::ability::WANDER).is_some() {
                     let wait = w.rng.real(5.0, 10.0);
                     if let Some(u) = w.unit_mut(a.h(0)) {
                         u.extra.wander_at = Some(wait.to_bits());
                     }
                 }
-                t.push(w.tags.take(b"tskA"));
+                t.push(w.tags.take(codes::class::TASK_A));
                 w.tags.prop_count = counted;
                 w.tags.bump_prop(4, "rmvu");
                 // The removal's tasks and the unit's own objects freed as the next turn
@@ -1045,11 +1046,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 // then its listener; the third task; its abilities' other objects, the
                 // last first; ...
                 let abilities: Vec<(u32, u32)> = objects[2].iter().copied().filter(|&o| live(w, o)).collect();
-                let pils: Vec<u32> = abilities.iter().filter(|o| code(w, o.0) == Some(*b"`pil")).map(|o| o.0).collect();
+                let pils: Vec<u32> = abilities.iter().filter(|o| code(w, o.0) == Some(*codes::class::IN_RANGE_LISTENER)).map(|o| o.0).collect();
                 let mut buffs: Vec<u32> = Vec::new();
                 for (i, o) in abilities.iter().enumerate() {
                     if code(w, o.0).is_some_and(|c| c[0] == b'B') {
-                        if let Some(n) = abilities.get(i + 1).filter(|n| code(w, n.0) == Some(*b"`rcm")) {
+                        if let Some(n) = abilities.get(i + 1).filter(|n| code(w, n.0) == Some(*codes::class::CONTINUOUS_MODIFIER)) {
                             buffs.push(n.0);
                         }
                         buffs.push(o.0);
@@ -1063,8 +1064,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 woke.sort_by_key(|s| w.tags.live.get(s).map_or(0, |e| e.1));
                 later.extend(woke);
                 let mods: Vec<u32> = objects[1].iter().filter(|&&o| live(w, o)).map(|o| o.0).collect();
-                later.extend(mods.iter().filter(|&&s| code(w, s) == Some(*b"`rcm")));
-                later.extend(mods.iter().filter(|&&s| code(w, s) != Some(*b"`rcm")));
+                later.extend(mods.iter().filter(|&&s| code(w, s) == Some(*codes::class::CONTINUOUS_MODIFIER)));
+                later.extend(mods.iter().filter(|&&s| code(w, s) != Some(*codes::class::CONTINUOUS_MODIFIER)));
                 // A meld's fade-in not yet over (read: a Shadowdancer removed after the
                 // first dawn).
                 let fading: Vec<u32> = fade.into_iter().filter(|s| w.tags.timed.iter().any(|&(_, x)| x == *s)).collect();
@@ -1239,7 +1240,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         // The original grants and takes away the Invulnerable ability ('Avul').
         SetUnitInvulnerable => |w, _, a| {
             let v = a.b(1);
-            let avul = crate::objects::id_from_str("Avul");
+            let avul = *codes::ability::id::INVULNERABLE;
             with_unit(w, a, |u| {
                 u.invulnerable = v;
                 u.abilities.retain(|(x, _)| *x != avul);
@@ -1627,7 +1628,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetEnumUnit => |w, _, _| handle(w.enum_ctx.enum_unit),
         GetFilterUnit => |w, _, _| handle(w.enum_ctx.filter_unit),
         CreateGroup => |w, _, _| {
-            let slot = w.tags.take(b"+grp");
+            let slot = w.tags.take(codes::class::GROUP);
             let h = w.handles.insert(Obj::Group(Group::default()));
             w.tags.handle_slots.insert(h, slot);
             handle(h)

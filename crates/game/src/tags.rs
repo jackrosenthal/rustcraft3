@@ -9,6 +9,7 @@
 //! map's start).
 
 use serde::{Deserialize, Serialize};
+use crate::codes;
 
 /// A type code as the original keeps it at +0x10 of each tagged object (`+w3u` a unit,
 /// `^pmr` a region, `Amov` an ability, ...).
@@ -214,9 +215,9 @@ impl Tags {
         }
         self.live.insert(t, (*code, birth));
         let n = match code {
-            b"`rcm" | b"+ord" | b"task" | b"tskA" => 1,
-            b"`rtl" => 2,
-            b"`pil" => 3,
+            codes::class::CONTINUOUS_MODIFIER | codes::class::ORDER | codes::class::TASK | codes::class::TASK_A => 1,
+            codes::class::THRESHOLD_LISTENER => 2,
+            codes::class::IN_RANGE_LISTENER => 3,
             _ => 0,
         };
         if n > 0 {
@@ -408,7 +409,7 @@ impl Tags {
     /// go at once (the cluster's `^clg`, the second, the fifteenth, and six tasks, the
     /// last first).  The slots, by place.
     pub fn move_issued(&mut self) -> Vec<u32> {
-        const CODES: [&Code; 18] = [b"ordt", b"tskA", b"tskA", b"tskO", b"task", b"task", b"task", b"tsk.", b"task", b"task", b"task", b"task", b"task", b"task", b"tskA", b"^clg", b"^clu", b"l^pa"];
+        const CODES: [&Code; 18] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK_O, codes::class::TASK, codes::class::TASK, codes::class::TASK, b"tsk.", codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
         let slots: Vec<u32> = CODES.iter().map(|c| self.take(c)).collect();
         // Its `^clg` goes at once, the other eight once the orders given with it are
         // (traced: two wanderers' orders between the same steps, each `^clg` freed after
@@ -426,7 +427,7 @@ impl Tags {
     /// order's first block, the old order's tree, then the new order's other six, then
     /// the old path (read: two orders to walk given to a peon in one turn).
     pub fn player_move_issued(&mut self, replaced: Option<&[u32]>) -> Vec<u32> {
-        const CODES: [&Code; 17] = [b"ordt", b"tskA", b"tskA", b"tskO", b"task", b"task", b"task", b"tsk.", b"task", b"task", b"task", b"task", b"task", b"tskA", b"^clg", b"^clu", b"l^pa"];
+        const CODES: [&Code; 17] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK_O, codes::class::TASK, codes::class::TASK, codes::class::TASK, b"tsk.", codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
         let slots: Vec<u32> = CODES.iter().map(|c| self.take(c)).collect();
         self.release(slots[14]);
         let Some(old) = replaced.filter(|o| o.len() == 17) else {
@@ -452,7 +453,7 @@ impl Tags {
     /// `player_move_issued`'s without the cluster and path, 14 objects, its blocks and
     /// five tasks as the next turn starts.
     pub fn member_move_issued(&mut self) -> Vec<u32> {
-        const CODES: [&Code; 14] = [b"ordt", b"tskA", b"tskA", b"tskO", b"task", b"task", b"task", b"tsk.", b"task", b"task", b"task", b"task", b"task", b"tskA"];
+        const CODES: [&Code; 14] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK_O, codes::class::TASK, codes::class::TASK, codes::class::TASK, b"tsk.", codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A];
         let slots: Vec<u32> = CODES.iter().map(|c| self.take(c)).collect();
         for k in [1, 13, 12, 11, 10, 9, 8] {
             self.doom(slots[k]);
@@ -500,9 +501,9 @@ impl Tags {
     }
 
     pub fn move_done(&mut self, slots: &[u32], serial: u32) {
-        let a = self.take(b"tskA");
-        let b = self.take(b"task");
-        let c = self.take(b"task");
+        let a = self.take(codes::class::TASK_A);
+        let b = self.take(codes::class::TASK);
+        let c = self.take(codes::class::TASK);
         for s in [slots[7], c, b, a, slots[6], slots[5], slots[4], slots[3], slots[2], slots[0]] {
             self.release_in_step(s);
         }
@@ -518,7 +519,7 @@ impl Tags {
     pub fn flush(&mut self) {
         for c in std::mem::take(&mut self.pending) {
             let s = self.take(&c);
-            if c == *b"`rtl" && self.day_timer.is_none() {
+            if c == *codes::class::THRESHOLD_LISTENER && self.day_timer.is_none() {
                 self.day_timer = Some(s);
             }
         }
@@ -534,7 +535,7 @@ impl Tags {
     /// The handler of a script function given to an object, the first time.
     pub fn handler(&mut self, func: u32) {
         if self.handlers.insert(func) {
-            let s = self.take(b"hdlr");
+            let s = self.take(codes::class::HANDLER);
             self.handler_objects.insert(s, func);
             self.function_number(func);
         }
@@ -640,33 +641,33 @@ impl crate::world::World {
         let race = field("race").to_ascii_lowercase();
         let ability = |id: &Code| self.objects.abilities.get(*id).map(|a| crate::objects::id_from_str(a.str("code").trim()));
 
-        let mut codes: Vec<Code> = vec![*b"+w3u", *b"`pcu", *b"^pmr", *b"^pmr", *b"`rel", *b"`rel", *b"`rel", *b"`rel", *b"`rel", *b"l^pa"];
+        let mut codes: Vec<Code> = vec![*codes::class::UNIT, *codes::class::UNIT_POSITION, *codes::class::PATHING_REGION, *codes::class::PATHING_REGION, *codes::class::REAL, *codes::class::REAL, *codes::class::REAL, *codes::class::REAL, *codes::class::REAL, *codes::class::PATH];
         const BASE: usize = 10;
         let mut blight_rcm: Option<usize> = None;
         let blight_regen = field("regenType").eq_ignore_ascii_case("blight");
         // Life regeneration: a timer, or for regeneration on blight its ability.
         match field("regenType").to_ascii_lowercase().as_str() {
-            "always" | "night" | "day" => codes.push(*b"`rcm"),
+            "always" | "night" | "day" => codes.push(*codes::class::CONTINUOUS_MODIFIER),
             // Its timer too when made on blight (measured: undead made where the
             // test's undead buildings had spread blight had one, those made before
             // them none).
             "blight" => {
-                codes.push(*b"Ablr");
+                codes.push(*codes::ability::id::REGENERATE_ON_BLIGHT);
                 if self.point_blighted(x, y) {
                     blight_rcm = Some(codes.len());
-                    codes.push(*b"`rcm");
+                    codes.push(*codes::class::CONTINUOUS_MODIFIER);
                 }
             }
             _ => {}
         }
-        codes.push(*b"`rtl");
+        codes.push(*codes::class::THRESHOLD_LISTENER);
         if o.real("manaN") > 0.0 {
-            codes.push(*b"`rcm");
+            codes.push(*codes::class::CONTINUOUS_MODIFIER);
         }
         let mods_end = codes.len();
         let footprint = building.then_some(codes.len());
         if building {
-            codes.extend([*b"^pmr"; 3]);
+            codes.extend([*codes::class::PATHING_REGION; 3]);
         }
 
         // The engine's abilities, as the type's lists call for them.
@@ -675,45 +676,45 @@ impl crate::world::World {
         let revive = o.bool("Revive");
         if ids("Builds").iter().any(is_unit) {
             codes.push(match race.as_str() {
-                "human" => *b"AHbu",
-                "orc" => *b"AObu",
-                "undead" => *b"AUbu",
-                "nightelf" => *b"AEbu",
-                "naga" => *b"AGbu",
-                _ => *b"ANbu",
+                "human" => *codes::ability::id::BUILD_HUMAN,
+                "orc" => *codes::ability::id::BUILD_ORC,
+                "undead" => *codes::ability::id::BUILD_UNDEAD,
+                "nightelf" => *codes::ability::id::BUILD_NIGHT_ELF,
+                "naga" => *codes::ability::id::BUILD_NAGA,
+                _ => *codes::ability::id::BUILD_NEUTRAL,
             });
-            codes.push(*b"`rel");
+            codes.push(*codes::class::REAL);
         }
         if trains || researches || revive {
-            codes.extend([*b"Aque", *b"`rel"]);
+            codes.extend([*codes::ability::id::QUEUE, *codes::class::REAL]);
         }
         if ids("Makeitems").iter().any(|c| self.objects.items.get(*c).is_some()) {
-            codes.extend([*b"Amai", *b"`rel"]);
+            codes.extend([*codes::ability::id::MAKE_ITEMS, *codes::class::REAL]);
         }
         if ids("Sellitems").iter().any(|c| self.objects.items.get(*c).is_some()) {
-            codes.extend([*b"Asei", *b"`rel"]);
+            codes.extend([*codes::ability::id::SELL_ITEMS, *codes::class::REAL]);
         }
         if ids("Sellunits").iter().any(is_unit) {
-            codes.extend([*b"Asel", *b"`rel"]);
+            codes.extend([*codes::ability::id::SELL_UNITS, *codes::class::REAL]);
         }
         if ids("Upgrade").iter().any(is_unit) {
-            codes.extend([*b"Aupg", *b"`rel"]);
+            codes.extend([*codes::ability::id::UPGRADE_STRUCTURE, *codes::class::REAL]);
         }
         if o.real("spd") != 0.0 {
-            codes.push(*b"Amov");
+            codes.push(*codes::ability::id::MOVE);
         }
         let weapons = o.int("weapsOn");
         if weapons != 0 {
-            codes.push(*b"Aatk");
+            codes.push(*codes::ability::id::ATTACK);
             // One more object for each splashing weapon, enabled or not.
             for k in 1..=2 {
                 if matches!(field(&format!("weapTp{k}")).as_str(), "msplash" | "artillery" | "aline" | "mline" | "mbounce") {
-                    codes.push(*b"spla");
+                    codes.push(*codes::class::SPLASH);
                 }
             }
         }
         if type_id[0].is_ascii_uppercase() {
-            codes.extend([*b"AHer", *b"`flg", *b"`flg", *b"`rcm", *b"`rcm", *b"`rcm", *b"`rcm"]);
+            codes.extend([*codes::ability::id::HERO, *codes::class::FLAG, *codes::class::FLAG, *codes::class::CONTINUOUS_MODIFIER, *codes::class::CONTINUOUS_MODIFIER, *codes::class::CONTINUOUS_MODIFIER, *codes::class::CONTINUOUS_MODIFIER]);
         }
         // The type's list, each with its objects.
         let list = ids("abilList");
@@ -730,11 +731,11 @@ impl crate::world::World {
             had.push(code);
             let at = codes.len();
             let objects = self.ability_tags(type_id, id);
-            if objects.first() == Some(b"Abli") {
+            if objects.first() == Some(codes::ability::id::BLIGHT_GROWTH) {
                 blight = Some(at);
             }
             // A spell's timer (its first `rtl), which sleep and a mana change replace.
-            if let Some(k) = objects.iter().position(|c| c == b"`rtl") {
+            if let Some(k) = objects.iter().position(|c| c == codes::class::THRESHOLD_LISTENER) {
                 spell_timers.push(at + k);
             }
             codes.extend(objects);
@@ -742,23 +743,23 @@ impl crate::world::World {
         // Rally (when it trains or revives), the inventory of a hero of an old map, fire
         // (a structure or a machine), detection of the burrowed (a flyer), the order for
         // its own autocast ability, creep sleep, and the alarm (a structure).
-        if (trains || revive) && !had.contains(b"ARal") {
-            codes.push(*b"ARal");
+        if (trains || revive) && !had.contains(codes::ability::id::RALLY) {
+            codes.push(*codes::ability::id::RALLY);
         }
-        if type_id[0].is_ascii_uppercase() && self.editor_version < 6000 && !had.contains(b"AInv") {
-            codes.push(*b"AInv");
+        if type_id[0].is_ascii_uppercase() && self.editor_version < 6000 && !had.contains(codes::ability::id::INVENTORY) {
+            codes.push(*codes::ability::id::INVENTORY);
         }
         if building || mechanical {
             codes.push(match race.as_str() {
-                "orc" => *b"Afio",
-                "undead" => *b"Afiu",
-                "nightelf" => *b"Afin",
-                _ => *b"Afih",
+                "orc" => *codes::ability::id::ON_FIRE_ORC,
+                "undead" => *codes::ability::id::ON_FIRE_UNDEAD,
+                "nightelf" => *codes::ability::id::ON_FIRE_NIGHT_ELF,
+                _ => *codes::ability::id::ON_FIRE_HUMAN,
             });
         }
         let mut flyer = None;
-        if field("movetp").eq_ignore_ascii_case("fly") && !had.contains(b"Abdt") {
-            codes.extend([*b"Abdt", *b"`pil"]);
+        if field("movetp").eq_ignore_ascii_case("fly") && !had.contains(codes::ability::id::BURROW_DETECTION_FLYERS) {
+            codes.extend([*codes::ability::id::BURROW_DETECTION_FLYERS, *codes::class::IN_RANGE_LISTENER]);
             flyer = Some(codes.len() - 1);
         }
         let auto = crate::objects::id_from_str(field("auto").as_str());
@@ -768,20 +769,20 @@ impl crate::world::World {
         let auto_ability = list.iter().find(|id| ability(id) == Some(auto));
         if auto[0] != 0 && auto_ability.is_some_and(|a| self.ability_enabled(owner, *a)) {
             autocast = Some(codes.len());
-            codes.push(*b"+ord");
+            codes.push(*codes::class::ORDER);
         }
         if o.int("canSleep") != 0 && !building {
-            codes.push(*b"ACsp");
+            codes.push(*codes::ability::id::CREEP_SLEEP);
         }
         if building {
-            codes.push(*b"Aalr");
+            codes.push(*codes::ability::id::ALARM);
         }
         let tasks = codes.len();
-        codes.extend([*b"task", *b"task"]);
+        codes.extend([*codes::class::TASK, *codes::class::TASK]);
         // A gold mine is a town site for computer players (not the one a haunted mine
         // hides: measured, CreateBlightedGoldmine's has none).
-        if had.iter().any(|c| c == b"Agld" || c == b"Aegm") && !self.hidden_mine {
-            codes.push(*b"AIts");
+        if had.iter().any(|c| c == codes::ability::id::GOLD_MINE || c == codes::ability::id::ENTANGLED_GOLD_MINE) && !self.hidden_mine {
+            codes.push(*codes::class::TOWN_SITE);
         }
         // A creep joins the nearest camp whose first creep is near enough, or makes one,
         // and takes its AI.
@@ -796,7 +797,7 @@ impl crate::world::World {
             if camp.is_none() {
                 camp = Some(self.tags.camps.len());
                 self.tags.camps.push((x, y));
-                codes.push(*b"AIcs");
+                codes.push(*codes::class::CREEP_CAMP);
             }
         }
         // A worker's AI first orders each of its owner's idle workers, itself among
@@ -809,18 +810,18 @@ impl crate::world::World {
         let mut item_pil = None;
         if (owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !building) || computer {
             ai_refs = Some(codes.len());
-            codes.extend([*b"uref", *b"AI-U"]);
+            codes.extend([*codes::class::UNIT_AI_REF, *codes::class::UNIT_AI]);
             if self.unit_class(self.unit(h).unwrap(), "peon") {
                 extra = self.unit_order.iter().filter_map(|&v| self.unit(v)).filter(|v| v.owner == owner && !v.dead && v.order.id == 0 && self.unit_class(v, "peon")).count();
                 for _ in 0..extra {
-                    codes.extend([*b"+ord", *b"tskA", *b"task"]);
+                    codes.extend([*codes::class::ORDER, *codes::class::TASK_A, *codes::class::TASK]);
                 }
             }
             ai = Some(codes.len());
-            codes.extend([*b"+ord", *b"tskA", *b"task", *b"task", *b"task", *b"task", *b"tskA", *b"+ord", *b"task"]);
-            if codes.contains(b"AInv") {
+            codes.extend([*codes::class::ORDER, *codes::class::TASK_A, *codes::class::TASK, *codes::class::TASK, *codes::class::TASK, *codes::class::TASK, *codes::class::TASK_A, *codes::class::ORDER, *codes::class::TASK]);
+            if codes.contains(codes::ability::id::INVENTORY) {
                 item_pil = Some(codes.len());
-                codes.push(*b"`pil");
+                codes.push(*codes::class::IN_RANGE_LISTENER);
             }
         }
         let oid = self.tags.take_id(&codes[0]);
@@ -862,20 +863,20 @@ impl crate::world::World {
             if c[0] == b'A' {
                 last_ability = *c;
             }
-            if c[0] == b'B' && matches!(&last_ability, b"AEar" | b"AOac" | b"Aakb") {
+            if c[0] == b'B' && matches!(&last_ability, codes::ability::id::PRIESTESS_TRUESHOT_AURA | codes::ability::id::COMMAND_AURA | codes::ability::id::AURA_WAR_DRUMS) {
                 self.tags.tech_buffs.push((slots[k], owner));
             }
             match c {
-                b"Ablr" => {
+                codes::ability::id::REGENERATE_ON_BLIGHT => {
                     let n = self.tags.start_timer("436780");
                     self.tags.timer_objects.entry(slots[k]).or_default().push((n, "436780".into(), self.time, 0.0));
                 }
-                b"Asel" => {
+                codes::ability::id::SELL_UNITS => {
                     for _ in 0..sold {
                         self.tags.start_timer("41c010");
                     }
                 }
-                b"Aatk" => {
+                codes::ability::id::ATTACK => {
                     if owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE {
                         let n = self.tags.start_timer("49d220");
                         attack_timer = Some((n, self.time, 2.0));
@@ -883,17 +884,17 @@ impl crate::world::World {
                     let n = self.tags.start_timer("4993b0");
                     look_timer = Some(n);
                 }
-                b"Abli" => {
+                codes::ability::id::BLIGHT_GROWTH => {
                     self.tags.start_timer("491250");
                 }
-                b"Afih" | b"Afio" | b"Afiu" | b"Afin" => {
+                codes::ability::id::ON_FIRE_HUMAN | codes::ability::id::ON_FIRE_ORC | codes::ability::id::ON_FIRE_UNDEAD | codes::ability::id::ON_FIRE_NIGHT_ELF => {
                     let n = self.tags.start_timer("41baf0");
                     self.tags.timer_objects.entry(slots[k]).or_default().push((n, "41baf0".into(), self.time, 0.0));
                 }
-                b"Aalr" => {
+                codes::ability::id::ALARM => {
                     self.tags.start_timer("41ae70");
                 }
-                b"ACsp" => {
+                codes::ability::id::CREEP_SLEEP => {
                     let n = self.tags.start_timer("524e00");
                     self.tags.timer_objects.entry(slots[k]).or_default().push((n, "524e00".into(), self.time, 0.0));
                     if night_sleeper {
@@ -901,7 +902,7 @@ impl crate::world::World {
                         self.tags.timer_objects.entry(slots[k]).or_default().push((n, "517be0".into(), self.time, 0.0));
                     }
                 }
-                b"AHad" | b"AHab" | b"AUau" | b"AOae" | b"AEar" | b"AUav" | b"AEah" | b"Aakb" | b"AOac" | b"Aoar" | b"Aarm" => {
+                codes::ability::id::PALADIN_DEVOTION_AURA | codes::ability::id::ARCH_MAGE_BRILLIANCE_AURA | codes::ability::id::DEATH_KNIGHT_UNHOLY_AURA | codes::ability::id::CHIEFTAIN_ENDURANCE_AURA | codes::ability::id::PRIESTESS_TRUESHOT_AURA | codes::ability::id::DREADLORD_VAMPIRIC_AURA | codes::ability::id::KEEPER_THORNS_AURA | codes::ability::id::AURA_WAR_DRUMS | codes::ability::id::COMMAND_AURA | codes::ability::id::AURA_REGENERATION_WARD | codes::ability::id::MANA_REGENERATION_AURA => {
                     let n = self.tags.start_timer("40b5e0");
                     self.tags.timer_objects.entry(slots[k]).or_default().push((n, "40b5e0".into(), self.time, 0.0));
                 }
@@ -914,7 +915,7 @@ impl crate::world::World {
         }
         // An armed creep that does not fall asleep: two more of its attack's
         // (`FUN_6f49e880`; read: a golem's, and in the census heroes' and towers').
-        if owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && codes.contains(b"Aatk") && !night_sleeper {
+        if owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && codes.contains(codes::ability::id::ATTACK) && !night_sleeper {
             for _ in 0..2 {
                 let n = self.tags.start_timer("49d220");
                 attack_timer = Some((n, self.time, 2.0));
@@ -927,16 +928,16 @@ impl crate::world::World {
         if (computer || (owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !building)) && !night_sleeper {
             for id in &list {
                 match ability(id).as_ref() {
-                    Some(c @ (b"Arep" | b"Aren" | b"Arst" | b"Ahea" | b"Anhe" | b"Ainf" | b"Arpb" | b"Arpl" | b"Arpm")) => {
+                    Some(c @ (codes::ability::id::REPAIR_ORC | codes::ability::id::RENEW | codes::ability::id::RESTORATION | codes::ability::id::HEAL | codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::INNER_FIRE | codes::ability::id::REPLENISH_LIFE_AND_MANA | codes::ability::id::REPLENISH_LIFE | codes::ability::id::REPLENISH_MANA)) => {
                         let n = self.tags.start_timer("422820");
                         self.tags.autotarget_due.push(self.time + 0.015);
                         self.tags.autotarget_info.push((h, *c));
                         self.tags.autotarget_saved.push(f32::from_bits(crate::efloat::add(self.time.to_bits(), 0.02f32.to_bits())));
                         self.tags.autotarget_timers.insert((h, *c), (n, f32::from_bits(crate::efloat::add(self.time.to_bits(), 0.02f32.to_bits())), 0.02));
                     }
-                    Some(b"Acan") => {
+                    Some(codes::ability::id::CANNIBALIZE) => {
                         let n = self.tags.start_timer("606220");
-                        if let Some(k) = codes.iter().position(|c| c == b"Acan") {
+                        if let Some(k) = codes.iter().position(|c| c == codes::ability::id::CANNIBALIZE) {
                             self.tags.timer_objects.entry(slots[k]).or_default().push((n, "606220".into(), self.time, 0.0));
                         }
                     }
@@ -945,11 +946,11 @@ impl crate::world::World {
             }
         }
         let births: Vec<u32> = slots.iter().map(|s| self.tags.live.get(s).map_or(0, |e| e.1)).collect();
-        if let Some(k) = codes.iter().position(|c| c == b"AIcs") {
+        if let Some(k) = codes.iter().position(|c| c == codes::class::CREEP_CAMP) {
             self.tags.camp_ais.push((slots[k], births[k]));
         }
         let camp_ai = camp.and_then(|c| self.tags.camp_ais.get(c).copied());
-        let site_ai = codes.iter().position(|c| c == b"AIts").map(|k| (slots[k], births[k]));
+        let site_ai = codes.iter().position(|c| c == codes::class::TOWN_SITE).map(|k| (slots[k], births[k]));
         if let Some(s) = site_ai {
             self.tags.sites.push((x, y, s));
         }
@@ -1020,13 +1021,13 @@ impl crate::world::World {
     /// after SetUnitState sets their mana to 0, and creeps with other spells none).
     pub(crate) fn mana_changed(&mut self, h: u32) {
         let Some(u) = self.unit(h).filter(|u| !u.extra.mana_watched) else { return };
-        let costs: Vec<f32> = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a).filter(|o| matches!(o.str("code").trim(), "ACtb" | "ACtc")).map(|o| o.level_real("Cost", 1))).collect();
+        let costs: Vec<f32> = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a).filter(|o| matches!(o.str("code").trim(), codes::ability::THUNDER_BOLT_CREEP | codes::ability::THUNDER_CLAP_CREEP)).map(|o| o.level_real("Cost", 1))).collect();
         if costs.is_empty() {
             return;
         }
         // The new timers replace the spells' first ones, released the last first.
         let old = u.extra.spell_timers.clone();
-        let codes: Vec<Code> = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a).map(|o| crate::objects::id_from_str(o.str("code").trim()))).filter(|c| matches!(c, b"ACtb" | b"ACtc")).collect();
+        let codes: Vec<Code> = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a).map(|o| crate::objects::id_from_str(o.str("code").trim()))).filter(|c| matches!(c, codes::ability::id::THUNDER_BOLT_CREEP | codes::ability::id::THUNDER_CLAP_CREEP)).collect();
         // (Each made by its spell's event, `FUN_6f4256d0`, and the old let go,
         // `FUN_6f161800`: a count of the property module's either side of the new
         // listener's two; traced on the quiet test map's golems.)
@@ -1034,7 +1035,7 @@ impl crate::world::World {
             .iter()
             .map(|_| {
                 self.tags.bump_prop(1, "evnt");
-                let s = self.tags.take(b"`rtl");
+                let s = self.tags.take(codes::class::THRESHOLD_LISTENER);
                 self.tags.bump_prop(1, "lose");
                 s
             })
@@ -1057,7 +1058,7 @@ impl crate::world::World {
 impl crate::world::World {
     /// A new location handle, which the original tags (`+loc`).
     pub fn insert_location(&mut self, x: f32, y: f32) -> u32 {
-        let slot = self.tags.take(b"+loc");
+        let slot = self.tags.take(codes::class::LOCATION);
         let h = self.handles.insert(crate::types::Obj::Location(x, y));
         self.tags.handle_slots.insert(h, slot);
         h
@@ -1074,10 +1075,10 @@ impl crate::world::World {
         let weapons = o.int("weapsOn");
         let ranged = !matches!(o.str("weapTp1").trim(), "normal" | "instant" | "_" | "");
         match code {
-            b"AEar" => weapons != 0 && ranged,
-            b"AUav" => weapons != 0 && !ranged,
-            b"Aakb" | b"AOac" => weapons != 0,
-            b"AHab" => o.real("manaN") > 0.0,
+            codes::ability::id::PRIESTESS_TRUESHOT_AURA => weapons != 0 && ranged,
+            codes::ability::id::DREADLORD_VAMPIRIC_AURA => weapons != 0 && !ranged,
+            codes::ability::id::AURA_WAR_DRUMS | codes::ability::id::COMMAND_AURA => weapons != 0,
+            codes::ability::id::ARCH_MAGE_BRILLIANCE_AURA => o.real("manaN") > 0.0,
             _ => true,
         }
     }
@@ -1095,13 +1096,13 @@ impl crate::world::World {
         let objects = AbilityObjects::get().objects(id, &code);
         let buff = Some(crate::objects::id_from_str(a.level_str("BuffID", 1).trim())).filter(|b| b[0] != 0);
         let serves = self.aura_serves(&code, type_id);
-        let aura = matches!(&code, b"AHad" | b"AHab" | b"AUau" | b"AOae" | b"AEar" | b"AUav" | b"AEah" | b"Aakb" | b"AOac");
+        let aura = matches!(&code, codes::ability::id::PALADIN_DEVOTION_AURA | codes::ability::id::ARCH_MAGE_BRILLIANCE_AURA | codes::ability::id::DEATH_KNIGHT_UNHOLY_AURA | codes::ability::id::CHIEFTAIN_ENDURANCE_AURA | codes::ability::id::PRIESTESS_TRUESHOT_AURA | codes::ability::id::DREADLORD_VAMPIRIC_AURA | codes::ability::id::KEEPER_THORNS_AURA | codes::ability::id::AURA_WAR_DRUMS | codes::ability::id::COMMAND_AURA);
         // A morph's object on the unit it makes (measured: Amil's buff Bmil on a militia,
         // Aphx's Bphx on a phoenix egg, and Stone Form's regeneration timer on a gargoyle
         // of stone).
         let made = match &code {
-            b"Amil" => crate::objects::id_from_str(a.level_str("DataB", 1).trim()) == type_id,
-            b"Aphx" | b"Astn" => crate::objects::id_from_str(a.level_str("UnitID", 1).trim()) == type_id,
+            codes::ability::id::MILITIA => crate::objects::id_from_str(a.level_str("DataB", 1).trim()) == type_id,
+            codes::ability::id::PHOENIX | codes::ability::id::STONE_FORM => crate::objects::id_from_str(a.level_str("UnitID", 1).trim()) == type_id,
             _ => false,
         };
         let mut codes = vec![code];
@@ -1121,21 +1122,21 @@ impl crate::world::World {
             k += 1;
             // An aura measured without its buff (the sheep it was measured on did not
             // take it) gives it after its own object when it serves the bearer.
-            if aura && serves && k == 1 && c == *b"`pil" && !objects.iter().any(|o| Some(*o) == buff) {
+            if aura && serves && k == 1 && c == *codes::class::IN_RANGE_LISTENER && !objects.iter().any(|o| Some(*o) == buff) {
                 if let Some(b) = buff {
                     codes.push(b);
                     // Brilliance's buff has its own (measured: a dark wizard's).
-                    if b == *b"BHab" {
-                        codes.push(*b"`rcm");
+                    if b == *codes::buff::id::BRILLIANCE_AURA {
+                        codes.push(*codes::class::CONTINUOUS_MODIFIER);
                     }
                 }
             }
         }
         if made {
             codes.push(match &code {
-                b"Amil" => *b"Bmil",
-                b"Aphx" => *b"Bphx",
-                _ => *b"`rcm",
+                codes::ability::id::MILITIA => *codes::buff::id::MILITIA,
+                codes::ability::id::PHOENIX => *codes::buff::id::PHOENIX,
+                _ => *codes::class::CONTINUOUS_MODIFIER,
             });
         }
         codes

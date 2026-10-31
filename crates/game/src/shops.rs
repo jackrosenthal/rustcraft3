@@ -10,6 +10,7 @@ use crate::event_ids::*;
 use crate::objects::{Id, id_from_str};
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 /// One shop's supply of one item or unit type.
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -152,7 +153,7 @@ impl World {
         // The neutral building ability (Aneu, Ane2, or Aall): its activation radius
         // (DataA) and interaction type (DataB, FUN_6f3fa620): 0 heroes, bit 1 units with
         // an inventory, bit 2 units not structures, otherwise any; never illusions.
-        let neutral = self.ability_with_code(shop, "Aneu").or_else(|| self.ability_with_code(shop, "Ane2")).or_else(|| self.ability_with_code(shop, "Aall"));
+        let neutral = self.ability_with_code(shop, codes::ability::NEUTRAL_BUILDING).or_else(|| self.ability_with_code(shop, codes::ability::NEUTRAL_BUILDING_ANY_UNIT)).or_else(|| self.ability_with_code(shop, codes::ability::ALLIED_BUILDING));
         let data = |k: &str| neutral.and_then(|(a, l)| self.objects.abilities.get(a).map(|o| o.level_real(k, l)));
         let radius = data("DataA").filter(|&r| r > 0.0).unwrap_or(500.0);
         let kind = data("DataB").map_or(1, |v| v as i32);
@@ -264,7 +265,7 @@ impl World {
 
     /// Whether a unit awakens heroes (has Awaken, Aawa).
     pub fn awakens(&self, h: u32) -> bool {
-        self.unit(h).is_some_and(|u| u.abilities.iter().any(|&(a, _)| self.ability_code(a) == "Aawa"))
+        self.unit(h).is_some_and(|u| u.abilities.iter().any(|&(a, _)| self.ability_code(a) == codes::ability::AWAKEN))
     }
 
     /// Gold and lumber to awaken a hero (FUN_6f4187a0, FUN_6f421e80).

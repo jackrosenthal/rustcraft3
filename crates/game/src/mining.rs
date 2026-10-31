@@ -10,6 +10,7 @@ use w3_jass::Vm;
 use crate::objects::Id;
 use crate::types::*;
 use crate::world::{Request, World};
+use crate::codes;
 
 /// Engine text tags for gathered resources (UI\MiscData.txt Gold/LumberText*, heights
 /// from UI\MiscUI.txt): "+N" at the unit, rising.
@@ -207,7 +208,7 @@ impl World {
     }
 
     fn mine_slots(&self, mine: u32) -> Vec<Option<(f32, f32, f32)>> {
-        let Some((abgm, lvl)) = self.ability_with_code(mine, "Abgm") else { return Vec::new() };
+        let Some((abgm, lvl)) = self.ability_with_code(mine, codes::ability::BLIGHTED_GOLD_MINE) else { return Vec::new() };
         let Some(m) = self.unit(mine) else { return Vec::new() };
         let a = self.objects.abilities.get(abgm);
         let n = a.map_or(5, |a| a.level_real("DataC", lvl) as usize).min(8);
@@ -229,8 +230,8 @@ impl World {
         if m.dead || m.owner != u.owner || m.constructing.is_some() {
             return false;
         }
-        (self.ability_with_code(h, "Aaha").is_some() && self.ability_with_code(mine, "Abgm").is_some())
-            || (self.ability_with_code(h, "Awha").is_some() && self.ability_with_code(mine, "Aegm").is_some())
+        (self.ability_with_code(h, codes::ability::ACOLYTE_HARVEST).is_some() && self.ability_with_code(mine, codes::ability::BLIGHTED_GOLD_MINE).is_some())
+            || (self.ability_with_code(h, codes::ability::WISP_HARVEST).is_some() && self.ability_with_code(mine, codes::ability::ENTANGLED_GOLD_MINE).is_some())
     }
 
     /// A harvest that left `before` gold in a mine at `after`: its harvester's owner
@@ -342,11 +343,11 @@ impl World {
             .unit_order
             .iter()
             .copied()
-            .filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.constructing.is_none()) && (self.ability_with_code(h, "Abgm").is_some() || self.ability_with_code(h, "Aegm").is_some()))
+            .filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.constructing.is_none()) && (self.ability_with_code(h, codes::ability::BLIGHTED_GOLD_MINE).is_some() || self.ability_with_code(h, codes::ability::ENTANGLED_GOLD_MINE).is_some()))
             .collect();
         for mine in mines {
-            let (working, per, base) = if let Some((aegm, lvl)) = self.ability_with_code(mine, "Aegm") {
-                let capacity = self.ability_with_code(mine, "Aenc").map_or(5, |(a, l)| self.objects.abilities.get(a).map_or(5.0, |o| o.level_real("DataA", l)) as u32).max(1);
+            let (working, per, base) = if let Some((aegm, lvl)) = self.ability_with_code(mine, codes::ability::ENTANGLED_GOLD_MINE) {
+                let capacity = self.ability_with_code(mine, codes::ability::CARGO_HOLD_GOLD_MINE).map_or(5, |(a, l)| self.objects.abilities.get(a).map_or(5.0, |o| o.level_real("DataA", l)) as u32).max(1);
                 let a = self.objects.abilities.get(aegm);
                 let working = self.unit(mine).map_or(0, |m| m.inside);
                 (working, a.map_or(10.0, |a| a.level_real("DataA", lvl)) as i32, a.map_or(1.0, |a| a.level_real("DataB", lvl)) * capacity as f32)
@@ -361,7 +362,7 @@ impl World {
                         })
                     })
                     .count() as u32;
-                let (abgm, lvl) = self.ability_with_code(mine, "Abgm").unwrap();
+                let (abgm, lvl) = self.ability_with_code(mine, codes::ability::BLIGHTED_GOLD_MINE).unwrap();
                 let a = self.objects.abilities.get(abgm);
                 (working, a.map_or(10.0, |a| a.level_real("DataA", lvl)) as i32, a.map_or(1.0, |a| a.level_real("DataB", lvl)) * a.map_or(5.0, |a| a.level_real("DataC", lvl)).max(1.0))
             };
@@ -414,7 +415,7 @@ impl World {
             crate::sim::set_anim(u, "stand");
             return;
         }
-        let capacity = self.ability_with_code(mine, "Aenc").map_or(5, |(a, l)| self.objects.abilities.get(a).map_or(5.0, |o| o.level_real("DataA", l)) as u32).max(1);
+        let capacity = self.ability_with_code(mine, codes::ability::CARGO_HOLD_GOLD_MINE).map_or(5, |(a, l)| self.objects.abilities.get(a).map_or(5.0, |o| o.level_real("DataA", l)) as u32).max(1);
         // Inside, it waits; the mine pays (haunted_mine_payouts).
         if self.unit(h).is_some_and(|u| u.inside != mine) {
             if !self.approach(h, mine, 8.0, dt) {
@@ -439,7 +440,7 @@ impl World {
     /// The entangled mine shows how many wisps are inside ("stand work first" .. "fifth").
     pub(crate) fn mine_work_anim(&mut self, mine: u32) {
         const N: [&str; 5] = ["first", "second", "third", "fourth", "fifth"];
-        if self.ability_with_code(mine, "Aegm").is_none() {
+        if self.ability_with_code(mine, codes::ability::ENTANGLED_GOLD_MINE).is_none() {
             return;
         }
         if let Some(m) = self.unit_mut(mine) {
@@ -454,7 +455,7 @@ impl World {
     /// A wisp beside a tree: DataA lumber every Dur seconds, the tree unharmed; the
     /// amount shows 100 above it (0x6f5af880).
     fn wisp_lumber(&mut self, h: u32, tree: u32, dt: f32) {
-        let Some((awha, lvl)) = self.ability_with_code(h, "Awha") else { return };
+        let Some((awha, lvl)) = self.ability_with_code(h, codes::ability::WISP_HARVEST) else { return };
         if !self.is_tree_pub(tree) {
             let u = self.unit_mut(h).unwrap();
             u.action = Action::Idle;
@@ -516,9 +517,9 @@ impl World {
     /// wisps go in 60 seconds later, egol's bldtm; NightElfX04's entangleinstant leaves
     /// a finished mine).
     pub fn entangle(&mut self, caster: u32, mine: u32, instant: bool) {
-        let Some((aent, lvl)) = self.ability_with_code(caster, "Aent") else { return };
+        let Some((aent, lvl)) = self.ability_with_code(caster, codes::ability::ENTANGLE) else { return };
         let Some(owner) = self.unit(caster).map(|u| u.owner) else { return };
-        if !self.unit(mine).is_some_and(|m| !m.dead && !m.hidden) || self.ability_with_code(mine, "Agld").is_none() {
+        if !self.unit(mine).is_some_and(|m| !m.dead && !m.hidden) || self.ability_with_code(mine, codes::ability::GOLD_MINE).is_none() {
             return;
         }
         let id = crate::objects::id_from_str(self.objects.abilities.get(aent).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
@@ -547,7 +548,7 @@ impl World {
             .iter()
             .copied()
             .filter(|&h| self.unit(h).is_some_and(|u| u.constructing.is_none() && (u.dead != u.extra.slot_effects.is_empty())))
-            .filter(|&h| self.ability_with_code(h, "Abgm").is_some())
+            .filter(|&h| self.ability_with_code(h, codes::ability::BLIGHTED_GOLD_MINE).is_some())
             .collect();
         for h in mines {
             if self.unit(h).is_some_and(|u| u.dead) {
@@ -558,7 +559,7 @@ impl World {
                 }
                 continue;
             }
-            let (a, _) = self.ability_with_code(h, "Abgm").unwrap();
+            let (a, _) = self.ability_with_code(h, codes::ability::BLIGHTED_GOLD_MINE).unwrap();
             let model = self.profile_art(a, "Effectart");
             let mut effects = Vec::new();
             let (mx, my) = self.unit(h).map(|u| (u.x, u.y)).unwrap_or_default();
@@ -578,7 +579,7 @@ impl World {
     /// (human, orc, undead, night elf, demon) over the finished structure, risen above
     /// the ground by its mana fraction of DataD (0x6f64d2f0).
     pub fn update_moon_wells(&mut self) {
-        let wells: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.ability_with_code(h, "Ambt").is_some()).collect();
+        let wells: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.ability_with_code(h, codes::ability::MANA_BATTERY).is_some()).collect();
         for h in wells {
             let Some(u) = self.unit(h) else { continue };
             let (x, y, dead, building, frac, pool, owner) = (u.x, u.y, u.dead, u.constructing.is_some(), if u.max_mana > 0.0 { u.mana / u.max_mana } else { 0.0 }, u.extra.slot_effects.first().copied(), u.owner);
@@ -591,7 +592,7 @@ impl World {
                 }
                 continue;
             }
-            let (a, lvl) = self.ability_with_code(h, "Ambt").unwrap();
+            let (a, lvl) = self.ability_with_code(h, codes::ability::MANA_BATTERY).unwrap();
             let height = self.objects.abilities.get(a).map_or(0.0, |o| o.level_real("DataD", lvl));
             let z = self.ground_z(x, y) + frac * height;
             match pool {

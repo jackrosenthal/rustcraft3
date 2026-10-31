@@ -7,6 +7,7 @@ use crate::event_ids::*;
 use crate::objects::{Id, id_from_str};
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 impl World {
     pub fn item(&self, h: u32) -> Option<&Item> {
@@ -25,7 +26,7 @@ impl World {
 
     /// Inventory slots a unit has: AInv's Item Capacity (DataA).
     pub fn inventory_size(&self, h: u32) -> usize {
-        self.ability_with_code(h, "AInv").map_or(0, |(a, l)| self.objects.abilities.get(a).map_or(0.0, |o| o.level_real("DataA", l)) as usize).min(6)
+        self.ability_with_code(h, codes::ability::INVENTORY).map_or(0, |(a, l)| self.objects.abilities.get(a).map_or(0.0, |o| o.level_real("DataA", l)) as usize).min(6)
     }
 
     /// Fires a unit event and the matching player-unit event.
@@ -162,7 +163,7 @@ impl World {
 
     /// A dying unit drops what it carries when AInv says so (Drop Items On Death, DataB).
     pub fn drop_on_death(&mut self, vm: &mut Vm, unit: u32) {
-        let drops = self.ability_with_code(unit, "AInv").is_some_and(|(a, l)| self.objects.abilities.get(a).is_some_and(|o| o.level_real("DataB", l) != 0.0));
+        let drops = self.ability_with_code(unit, codes::ability::INVENTORY).is_some_and(|(a, l)| self.objects.abilities.get(a).is_some_and(|o| o.level_real("DataB", l) != 0.0));
         let Some(u) = self.unit(unit) else { return };
         let (x, y) = (u.x, u.y);
         let items: Vec<u32> = u.inventory.iter().copied().filter(|&i| i != 0).collect();
@@ -222,7 +223,7 @@ impl World {
         // Used without a target, an item whose regeneration reaches a unit (a range
         // and no area: a Healing Salve's) does nothing (measured: UnitUseItem with a
         // salve answers false and the holder is not healed).
-        if target == 0 && self.item_abilities(type_id).into_iter().any(|a| self.ability_code(a) == "AIrg" && self.data(a, "Rng", 1) > 0.0 && self.data(a, "Area", 1) <= 0.0) {
+        if target == 0 && self.item_abilities(type_id).into_iter().any(|a| self.ability_code(a) == codes::ability::POTION_OF_LIFE_REGEN && self.data(a, "Rng", 1) > 0.0 && self.data(a, "Area", 1) <= 0.0) {
             return false;
         }
         if !self.item_effect(vm, unit, item, type_id, target, x, y) {
@@ -268,14 +269,14 @@ impl World {
             let area = data(self, "Area");
             match code.as_str() {
                 // Healing and mana potions, and restoration.
-                "AIhe" => {
+                codes::ability::ITEM_HEALING => {
                     let v = data(self, "DataA");
                     if let Some(u) = self.unit_mut(unit) {
                         u.life = (u.life + v).min(u.max_life);
                     }
                     did = true;
                 }
-                "AIma" | "AImr" => {
+                codes::ability::ITEM_MANA_REGAIN | codes::ability::ITEM_MANA_RESTORE_AOE => {
                     let v = data(self, "DataA");
                     if let Some(u) = self.unit_mut(unit) {
                         u.mana = (u.mana + v).min(u.max_mana);
@@ -289,7 +290,7 @@ impl World {
                 // (measured: a Scroll of Regeneration's 225 over 45 heals 5 at 1.1, 2.1,
                 // and on, used at 0.1), and DataB mana; to friends within Area when it
                 // has one (the scroll's 600), else to its target or holder.
-                "AIrg" => {
+                codes::ability::POTION_OF_LIFE_REGEN => {
                     let dur = data(self, "Dur").max(0.1);
                     let (life, mana) = (data(self, "DataA"), data(self, "DataB"));
                     let ids: Vec<Id> = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", 1)).unwrap_or_default().split(',').map(|b| crate::objects::id_from_str(b.trim())).collect();
@@ -309,7 +310,7 @@ impl World {
                 }
                 // Scroll of Protection (and the like): DataA armor for Dur to friends
                 // within Area, who gain DataB life and DataC mana.
-                "AIda" => {
+                codes::ability::ITEM_DEFENSE_AOE => {
                     let (ux, uy) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
                     let id = self.first_buff(a, 1);
                     let (armor, life, mana, dur) = (data(self, "DataA"), data(self, "DataB"), data(self, "DataC"), data(self, "Dur"));
@@ -323,27 +324,27 @@ impl World {
                     did = true;
                 }
                 // Scroll of Speed: friends within Area move DataA faster for Dur.
-                "AIsa" | "AIsp" => {
+                codes::ability::ITEM_SPEED_AOE | codes::ability::ITEM_SPEED => {
                     let (ux, uy) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
                     let id = self.first_buff(a, 1);
                     let (speed, dur) = (data(self, "DataA"), data(self, "Dur"));
-                    let group = if code == "AIsa" { self.allies_in(owner, ux, uy, area) } else { vec![unit] };
+                    let group = if code == codes::ability::ITEM_SPEED_AOE { self.allies_in(owner, ux, uy, area) } else { vec![unit] };
                     for t in group {
                         self.apply_buff(t, Buff { id, ability: a, level: 1, caster: unit, remaining: dur, move_factor: speed, ..Default::default() });
                     }
                     did = true;
                 }
                 // Potions of Invisibility and Invulnerability.
-                "AIvi" | "AIvu" => {
+                codes::ability::ITEM_TEMPORARY_INVISIBILITY | codes::ability::ITEM_INVUL => {
                     let id = self.first_buff(a, 1);
                     let dur = data(self, "Dur");
-                    let b = Buff { id, ability: a, level: 1, caster: unit, remaining: dur, invisible: code == "AIvi", invulnerable: code == "AIvu", ..Default::default() };
+                    let b = Buff { id, ability: a, level: 1, caster: unit, remaining: dur, invisible: code == codes::ability::ITEM_TEMPORARY_INVISIBILITY, invulnerable: code == codes::ability::ITEM_INVUL, ..Default::default() };
                     self.apply_buff(unit, b);
                     did = true;
                 }
                 // Wand of Negation: magic dispelled within Area of the target, DataA mana
                 // lost, and DataB damage to summoned units.
-                "AIdi" => {
+                codes::ability::ITEM_DISPEL_AOE => {
                     let (px, py) = if _target != 0 { self.widget_pos(_target).unwrap_or((_x, _y)) } else { (_x, _y) };
                     let (mana, summoned) = (data(self, "DataA"), data(self, "DataB"));
                     for t in self.units_in_pub(px, py, area) {
@@ -355,7 +356,7 @@ impl World {
                     did = true;
                 }
                 // Dust of Appearance: invisible units within Area show for Dur.
-                "AItb" => {
+                codes::ability::DUST_OF_APPEARANCE => {
                     let (ux, uy) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
                     let until = self.time + data(self, "Dur");
                     self.detect_areas.push((owner, ux, uy, area, until));
@@ -363,7 +364,7 @@ impl World {
                 }
                 // Scroll of Town Portal: the hero and up to DataA friends within Area go to
                 // the target structure.
-                "AItp" => {
+                codes::ability::ITEM_TOWN_PORTAL => {
                     // Aimed at a point it goes to the town hall nearest it: the owner's,
                     // else an ally's (FUN_6f40d3d0).
                     let mut _target = _target;
@@ -403,7 +404,7 @@ impl World {
                 // Rune of Rebirth (CAbilityRebirth): a unit of the type whose death left
                 // the rune (SetItemDropID) joins the one picking it up, for Dur when set,
                 // not as a summon, with the BIrb buff's Effectart.
-                "AIrb" => {
+                codes::ability::RUNE_OF_REBIRTH => {
                     if let Some(t) = self.item(_item).and_then(|i| i.drop_type) {
                         let (x, y) = self.unit(unit).map_or((0.0, 0.0), |u| (u.x, u.y));
                         let born = crate::natives::units::create_unit(self, owner, t, x, y, 270.0);
@@ -420,7 +421,7 @@ impl World {
                     did = true;
                 }
                 // Soul Gem (CAbilitySoulTrap): on an enemy Hero, its Effectart there.
-                "AIso" => {
+                codes::ability::SOUL_TRAP => {
                     if _target != 0 {
                         let model = self.profile_art(a, "Effectart");
                         if let Some((tx, ty)) = self.widget_pos(_target) {
@@ -430,19 +431,19 @@ impl World {
                     }
                 }
                 // Moonstone: the time of day becomes DataA:DataB.
-                "AIct" => {
+                codes::ability::ITEM_CHANGE_TOD => {
                     self.time_of_day = data(self, "DataA") + data(self, "DataB") / 60.0;
                     did = true;
                 }
                 // Items that cast their spell's effect (see ability_code's aliases).
-                "Arai" | "AUan" | "AHre" | "Aweb" | "Afla" => {
+                codes::ability::RAISE_DEAD | codes::ability::DEATH_KNIGHT_ANIMATE_DEAD | codes::ability::PALADIN_RESURRECTION | codes::ability::WEB | codes::ability::FLARE => {
                     let t = if _target != 0 { _target } else { unit };
                     let at = if _target != 0 { self.widget_pos(_target).unwrap_or((_x, _y)) } else if _x != 0.0 || _y != 0.0 { (_x, _y) } else { self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default() };
                     self.ability_effect_pub(vm, unit, a, 1, t, at);
                     did = true;
                 }
                 // Figurines: DataA of DataC and DataB of DataD for Dur beside the hero.
-                "AIfs" => {
+                codes::ability::FIGURINE_SKELETON => {
                     let (ux, uy) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
                     let dur = data(self, "Dur");
                     for (count, kind) in [("DataA", "DataC"), ("DataB", "DataD")] {
@@ -456,14 +457,14 @@ impl World {
                 }
                 // Summon Headhunter (the Axe of the Headhunters' Berserkers): DataB of
                 // UnitID for Dur.
-                "AIsh" => {
+                codes::ability::SUMMON_HEADHUNTER_ITEM => {
                     let (ux, uy) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
                     let kind = crate::objects::id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", 1)).unwrap_or_default().trim());
                     self.summon(unit, owner, kind, data(self, "DataB") as i32, ux, uy, data(self, "Dur"));
                     did = true;
                 }
                 // Potion of Omniscience: the whole map shows for Dur.
-                "AIrv" => {
+                codes::ability::ITEM_REVEAL_MAP => {
                     let b = self.camera_bounds;
                     let (x0, x1) = (b.iter().step_by(2).copied().fold(f32::INFINITY, f32::min), b.iter().step_by(2).copied().fold(f32::NEG_INFINITY, f32::max));
                     let (y0, y1) = (b.iter().skip(1).step_by(2).copied().fold(f32::INFINITY, f32::min), b.iter().skip(1).step_by(2).copied().fold(f32::NEG_INFINITY, f32::max));
@@ -472,14 +473,14 @@ impl World {
                     did = true;
                 }
                 // Goblin Land Mines: a mine (UnitID) at the point.
-                "AIpm" => {
+                codes::ability::ITEM_PLACE_MINE => {
                     let kind = crate::objects::id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", 1)).unwrap_or_default().trim());
                     let (px, py) = if _x != 0.0 || _y != 0.0 { (_x, _y) } else { self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default() };
                     crate::natives::units::create_unit(self, owner, kind, px, py, 270.0);
                     did = true;
                 }
                 // Glyphs: a level of the research UnitID.
-                "AIgl" => {
+                codes::ability::FORTIFICATION_GLYPH => {
                     let up = crate::objects::id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", 1)).unwrap_or_default().trim());
                     let n = data(self, "DataA").max(1.0) as i32;
                     *self.players[owner as usize].tech_researched.entry(up).or_insert(0) += n;
@@ -487,7 +488,7 @@ impl World {
                     did = true;
                 }
                 // Potion of Vampirism: DataA more damage and DataB of it regained for Dur.
-                "AIpv" => {
+                codes::ability::ITEM_POTION_VAMPIRISM => {
                     let id = self.first_buff(a, 1);
                     let (bonus, steal, dur) = (data(self, "DataA"), data(self, "DataB"), data(self, "Dur"));
                     self.apply_buff(unit, Buff { id, ability: a, level: 1, caster: unit, remaining: dur, damage_bonus: bonus, life_steal: steal, ..Default::default() });
@@ -495,7 +496,7 @@ impl World {
                 }
                 // Tiny buildings: the owner's race's structure (UnitID: Human, Orc,
                 // Undead, Night Elf) at the point, going up over Dur.
-                "AIbl" => {
+                codes::ability::BUILD_TINY_CASTLE => {
                     let ids = self.objects.abilities.get(a).map(|o| o.level_str("UnitID", 1)).unwrap_or_default();
                     let ids: Vec<&str> = ids.split(',').map(str::trim).collect();
                     let race = self.players.get(owner as usize).map_or(1, |p| p.race).clamp(1, 4) as usize;
@@ -516,7 +517,7 @@ impl World {
                 }
                 // Tome of Retraining: the hero unlearns its skills and has a point for
                 // each level again.
-                "Aret" => {
+                codes::ability::RETRAIN => {
                     let Some(u) = self.unit(unit).filter(|u| u.is_hero) else { continue };
                     let skills: Vec<Id> = self.objects.units.get(u.type_id).map(|o| o.list("heroAbilList")).unwrap_or_default().iter().map(|s| crate::objects::id_from_str(s.trim())).collect();
                     let level = u.level;
@@ -528,7 +529,7 @@ impl World {
                 }
                 // Amulet of Recall and Dark Summoning: up to DataA of the player's units
                 // within Area of the target come to the hero.
-                "AIrt" | "AUds" => {
+                codes::ability::ITEM_RECALL | codes::ability::DARK_SUMMONING => {
                     let Some((tx, ty)) = self.widget_pos(_target) else { continue };
                     let (ux, uy) = self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default();
                     let n = data(self, "DataA") as usize;
@@ -548,7 +549,7 @@ impl World {
                 // Wand of Neutralization: magic dispelled from the target and up to DataC
                 // in all within Area of it, nearest first, each losing DataA mana; summons
                 // take DataB.
-                "AIdc" => {
+                codes::ability::ITEM_DISPEL_CHAIN => {
                     let Some((tx, ty)) = self.widget_pos(_target).or(Some((_x, _y))) else { continue };
                     let (mana, summoned, max) = (data(self, "DataA"), data(self, "DataB"), data(self, "DataC").max(1.0) as usize);
                     let mut hit = self.units_in_pub(tx, ty, area);
@@ -566,7 +567,7 @@ impl World {
                 }
                 // Scepter of Mastery (ItemCommand): a non-hero of level DataA or less
                 // becomes the user's.
-                "AIco" => {
+                codes::ability::ITEM_COMMAND => {
                     let max = data(self, "DataA") as i32;
                     let color = self.players.get(owner as usize).map_or(0, |p| p.color);
                     if let Some(t) = self.unit_mut(_target).filter(|t| !t.is_hero && !t.dead && t.level <= max) {
@@ -578,19 +579,19 @@ impl World {
                     self.update_food();
                 }
                 // Anti-magic Potion: magic immunity for Dur.
-                "Aami" => {
+                codes::ability::ITEM_ANTI_MAGIC_SHELL => {
                     let id = self.first_buff(a, 1);
                     self.apply_buff(unit, Buff { id, ability: a, level: 1, caster: unit, remaining: data(self, "Dur"), magic_immune: true, ..Default::default() });
                     did = true;
                 }
                 // Sacrificial Skull: blight within Area of the point.
-                "Ablp" => {
+                codes::ability::BLIGHT_PLACEMENT => {
                     let (px, py) = if _x != 0.0 || _y != 0.0 { (_x, _y) } else { self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default() };
                     self.blight_circle(px, py, area);
                     did = true;
                 }
                 // Wand of Mana Stealing: up to DataA of the target's mana to the user.
-                "Aste" => {
+                codes::ability::MANA_STEAL => {
                     let take = self.unit(_target).map_or(0.0, |t| t.mana.min(data(self, "DataA")));
                     if let Some(t) = self.unit_mut(_target) {
                         t.mana -= take;
@@ -601,7 +602,7 @@ impl World {
                     did = take > 0.0;
                 }
                 // Monster Lure: DataA lures (UnitID) at the point for Dur.
-                "AImo" => {
+                codes::ability::ITEM_MONSTER_LURE => {
                     let kind = crate::objects::id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", 1)).unwrap_or_default().trim());
                     let (px, py) = if _x != 0.0 || _y != 0.0 { (_x, _y) } else { self.unit(unit).map(|u| (u.x, u.y)).unwrap_or_default() };
                     self.summon(unit, owner, kind, data(self, "DataA").max(1.0) as i32, px, py, data(self, "Dur"));
@@ -610,14 +611,14 @@ impl World {
                 // Wand of Illusion: an image of the target, Area before it as it faces
                 // (FUN_6f600f10; measured: footmen facing east, north, and west get
                 // theirs at about 200 that way, moved to open ground).
-                "AIil" => {
+                codes::ability::ITEM_ILLUSION => {
                     let t = if _target != 0 { _target } else { unit };
                     let (dealt, taken, area) = (data(self, "DataA"), data(self, "DataB"), data(self, "Area"));
                     if let Some((tx, ty)) = self.unit(t).map(|u| (u.x + area * u.facing.to_radians().cos(), u.y + area * u.facing.to_radians().sin())) {
                         did = self.make_illusion(t, owner, (tx, ty), a, 1, dealt, taken).is_some();
                     }
                 }
-                "AIre" => {
+                codes::ability::ITEM_RESTORE => {
                     let (hp, mp) = (data(self, "DataA"), data(self, "DataB"));
                     if let Some(u) = self.unit_mut(unit) {
                         u.life = (u.life + hp).min(u.max_life);
@@ -626,8 +627,8 @@ impl World {
                     did = true;
                 }
                 // Area restoration: allies around the user.
-                "AIha" | "AIra" => {
-                    let (hp, mp) = (data(self, "DataA"), if code == "AIra" { data(self, "DataB") } else { 0.0 });
+                codes::ability::ITEM_HEAL_AOE | codes::ability::ITEM_RESTORE_AOE => {
+                    let (hp, mp) = (data(self, "DataA"), if code == codes::ability::ITEM_RESTORE_AOE { data(self, "DataB") } else { 0.0 });
                     let (ux, uy) = self.unit(unit).map_or((0.0, 0.0), |u| (u.x, u.y));
                     let allies: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|t| !t.dead && (t.x - ux).hypot(t.y - uy) <= area && crate::natives::players::is_ally(self, owner, t.owner))).collect();
                     for h in allies {
@@ -639,7 +640,7 @@ impl World {
                     did = true;
                 }
                 // Tomes: permanent attribute gains.
-                "AIsm" | "AIam" | "AIim" | "AIxm" | "AIab" => {
+                codes::ability::STRENGTH_MOD | codes::ability::AGILITY_MOD | codes::ability::INTELLIGENCE_MOD | codes::ability::PERMANENT_ALL_1 | codes::ability::ITEM_HERO_STAT_BONUS => {
                     let (agi, int, str_) = (data(self, "DataA"), data(self, "DataB"), data(self, "DataC"));
                     if let Some(u) = self.unit_mut(unit).filter(|u| u.is_hero) {
                         u.agi += agi;
@@ -656,7 +657,7 @@ impl World {
                 }
                 // Manual of Health: maximum life for good (measured: a Paladin of 650
                 // goes to 725 with it and a Tome of Strength).
-                "AImi" => {
+                codes::ability::ITEM_PERMANENT_LIFE_GAIN => {
                     let gain = data(self, "DataA");
                     let hero = self.unit(unit).is_some_and(|u| u.is_hero);
                     if let Some(u) = self.unit_mut(unit) {
@@ -671,12 +672,12 @@ impl World {
                     }
                     did = true;
                 }
-                "AIem" => {
+                codes::ability::EXPERIENCE_MOD => {
                     let xp = data(self, "DataA") as i32;
                     self.add_hero_xp(unit, xp);
                     did = true;
                 }
-                "AIlm" => {
+                codes::ability::LEVEL_MOD => {
                     let levels = data(self, "DataA") as i32;
                     for _ in 0..levels {
                         let need = self.unit(unit).map_or(0, |u| self.hero_xp_needed(u.level + 1) - u.hero_xp);
@@ -685,12 +686,12 @@ impl World {
                     did = true;
                 }
                 // Coins and lumber bundles.
-                "AIgo" => {
+                codes::ability::GIVE_GOLD => {
                     let g = data(self, "DataA") as i32;
                     *self.players[owner as usize].state.entry(player_state::RESOURCE_GOLD).or_insert(0) += g;
                     did = true;
                 }
-                "AIlu" => {
+                codes::ability::GIVE_LUMBER => {
                     let l = data(self, "DataA") as i32;
                     *self.players[owner as usize].state.entry(player_state::RESOURCE_LUMBER).or_insert(0) += l;
                     did = true;
@@ -717,26 +718,26 @@ impl World {
             for a in self.item_abilities(t) {
                 let d = |f: &str| self.objects.abilities.get(a).map_or(0.0, |o| o.level_real(f, 1));
                 match self.ability_code(a).as_str() {
-                    "AIat" => b.damage += d("DataA"),
-                    "AIde" => b.armor += d("DataA"),
-                    "AIms" => {
+                    codes::ability::ATTACK_BONUS => b.damage += d("DataA"),
+                    codes::ability::ITEM_ARMOR_BONUS => b.armor += d("DataA"),
+                    codes::ability::MOVE_SPEED_BONUS => {
                         if stack || speed_bonuses == 0 {
                             b.move_speed += d("DataA");
                         }
                         speed_bonuses += 1;
                     }
-                    "AIas" => b.attack_speed += d("DataA"),
-                    "AIml" => b.life += d("DataA"),
-                    "AImm" => b.mana += d("DataA"),
-                    "AIrm" => b.mana_regen += d("DataA"),
-                    "Arel" => b.life_regen += d("DataA"),
-                    "AIsr" => {
+                    codes::ability::ITEM_ATTACK_SPEED_BONUS => b.attack_speed += d("DataA"),
+                    codes::ability::ITEM_LIFE_BONUS => b.life += d("DataA"),
+                    codes::ability::ITEM_MANA_BONUS => b.mana += d("DataA"),
+                    codes::ability::ITEM_REGEN_MANA => b.mana_regen += d("DataA"),
+                    codes::ability::REGEN_LIFE => b.life_regen += d("DataA"),
+                    codes::ability::RUNED_BRACERS => {
                         b.damage += d("DataA");
                         b.spell_reduction += d("DataB");
                     }
-                    "AIva" => b.life_steal += d("DataA"),
+                    codes::ability::VAMPIRIC_ATTACK => b.life_steal += d("DataA"),
                     // Attribute items (not tomes, which are powerups).
-                    "AIsm" | "AIam" | "AIim" | "AIxm" | "AIab" => {
+                    codes::ability::STRENGTH_MOD | codes::ability::AGILITY_MOD | codes::ability::INTELLIGENCE_MOD | codes::ability::PERMANENT_ALL_1 | codes::ability::ITEM_HERO_STAT_BONUS => {
                         b.agi += d("DataA");
                         b.int += d("DataB");
                         b.str_ += d("DataC");
@@ -747,7 +748,7 @@ impl World {
         }
         // Attribute Bonus (Aamk): DataA agility, DataB intelligence, and DataC strength
         // at its level.
-        let learned: Vec<(Id, i32)> = self.unit(unit).map(|u| u.abilities.iter().copied().filter(|&(a, l)| l > 0 && self.ability_code(a) == "Aamk").collect()).unwrap_or_default();
+        let learned: Vec<(Id, i32)> = self.unit(unit).map(|u| u.abilities.iter().copied().filter(|&(a, l)| l > 0 && self.ability_code(a) == codes::ability::ATTRIBUTE_MODIFIER_SKILL).collect()).unwrap_or_default();
         for (a, l) in learned {
             let d = |f: &str| self.data(a, f, l as u32);
             b.agi += d("DataA");

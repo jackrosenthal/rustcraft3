@@ -6,37 +6,38 @@ use w3_formats::w3z::{Field, Handlers, Ref, Second, Sprite, Timing, Widget};
 
 use super::{rf, NONE};
 use crate::world::World;
+use crate::codes;
 
 /// The events (less 0xd0000) an agent of a kind listens to on the unit it serves, as
 /// it registers when made (read: the quiet test map's units' registries, and traced as
 /// made at `FUN_6f0725b0`).  Provisional for kinds not read there: none.
 fn listened(code: &[u8; 4]) -> &'static [u16] {
     match code {
-        b"Amov" => &[0x144, 0x161, 0x166, 0x16b, 0x16c, 0x16d, 0x16e, 0x16f, 0x170, 0x171, 0x172, 0x173, 0x174, 0x175, 0x176, 0x177, 0x178, 0x17f, 0x18e, 0x193, 0x29d],
-        b"Aatk" => &[0x144, 0x148, 0x149, 0x14a, 0x14b, 0x14c, 0x14d, 0x14e, 0x14f, 0x161, 0x163, 0x165, 0x166, 0x168, 0x169, 0x16a, 0x1a2, 0x1a5, 0x2a3, 0x2a4],
-        b"ACsp" => &[0x1a2, 0x1d5, 0x1d6],
-        b"AHbu" | b"AObu" | b"AEbu" => &[0x144, 0x161, 0x179, 0x17a, 0x1a2, 0x29c, 0x2a5, 0x2a6],
-        b"AUbu" => &[0x144, 0x161, 0x162, 0x179, 0x17a, 0x1a2, 0x29c, 0x2a5, 0x2a6],
-        b"Ahar" => &[0x144, 0x150, 0x151, 0x152, 0x161, 0x166, 0x167, 0x182, 0x183, 0x184, 0x185, 0x186, 0x187, 0x191, 0x1c5],
-        b"Ahrl" => &[0x144, 0x150, 0x151, 0x152, 0x161, 0x166, 0x167, 0x184, 0x185, 0x186, 0x187, 0x1c5],
-        b"Aaha" => &[0x144, 0x166, 0x182, 0x183],
-        b"Amil" => &[0x144, 0x188],
+        codes::ability::id::MOVE => &[0x144, 0x161, 0x166, 0x16b, 0x16c, 0x16d, 0x16e, 0x16f, 0x170, 0x171, 0x172, 0x173, 0x174, 0x175, 0x176, 0x177, 0x178, 0x17f, 0x18e, 0x193, 0x29d],
+        codes::ability::id::ATTACK => &[0x144, 0x148, 0x149, 0x14a, 0x14b, 0x14c, 0x14d, 0x14e, 0x14f, 0x161, 0x163, 0x165, 0x166, 0x168, 0x169, 0x16a, 0x1a2, 0x1a5, 0x2a3, 0x2a4],
+        codes::ability::id::CREEP_SLEEP => &[0x1a2, 0x1d5, 0x1d6],
+        codes::ability::id::BUILD_HUMAN | codes::ability::id::BUILD_ORC | codes::ability::id::BUILD_NIGHT_ELF => &[0x144, 0x161, 0x179, 0x17a, 0x1a2, 0x29c, 0x2a5, 0x2a6],
+        codes::ability::id::BUILD_UNDEAD => &[0x144, 0x161, 0x162, 0x179, 0x17a, 0x1a2, 0x29c, 0x2a5, 0x2a6],
+        codes::ability::id::HARVEST => &[0x144, 0x150, 0x151, 0x152, 0x161, 0x166, 0x167, 0x182, 0x183, 0x184, 0x185, 0x186, 0x187, 0x191, 0x1c5],
+        codes::ability::id::HARVEST_LUMBER => &[0x144, 0x150, 0x151, 0x152, 0x161, 0x166, 0x167, 0x184, 0x185, 0x186, 0x187, 0x1c5],
+        codes::ability::id::ACOLYTE_HARVEST => &[0x144, 0x166, 0x182, 0x183],
+        codes::ability::id::MILITIA => &[0x144, 0x188],
         // Spells cast on their own (autocast).
-        b"Arep" | b"Aadm" | b"Anhe" | b"Ainf" | b"Arst" | b"Ahea" | b"Aren" => &[0x144, 0x148, 0x14c, 0x15f, 0x160, 0x161, 0x1a2, 0x2a3, 0x2a4],
+        codes::ability::id::REPAIR_ORC | codes::ability::id::ABOLISH_MAGIC | codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::INNER_FIRE | codes::ability::id::RESTORATION | codes::ability::id::HEAL | codes::ability::id::RENEW => &[0x144, 0x148, 0x14c, 0x15f, 0x160, 0x161, 0x1a2, 0x2a3, 0x2a4],
         // Spells cast at a target, and one cast at none.
-        b"ACtb" | b"AOsh" | b"Aens" | b"Acan" | b"Alam" | b"Auns" => &[0x144, 0x15f, 0x160, 0x161],
-        b"ACtc" => &[0x144, 0x15f, 0x160],
-        b"AInv" => &[0x144, 0x17c, 0x17d, 0x17e, 0x1a0, 0x1a2, 0x1a7, 0x299],
-        b"Ablr" => &[0x1a0, 0x1a2, 0x1a7],
-        b"Awan" => &[0x148, 0x14c, 0x177, 0x178, 0x1a2],
-        b"Aalr" => &[0x1a2],
-        b"Afih" | b"Afiu" | b"Afio" | b"Afin" | b"Abgm" => &[0x1a0],
-        b"Avul" => &[0x1a1, 0x1a7],
-        b"Aarm" | b"AHad" | b"AHab" | b"AUau" | b"AOae" | b"AEar" | b"AUav" | b"AEah" | b"Aakb" | b"AOac" | b"Aoar" => &[0x1a0, 0x1a1, 0x1a2, 0x1a7],
-        b"Asel" => &[0x1a2],
-        b"Aneu" => &[0x1a5],
-        b"Aque" => &[0x1a0, 0x1a1, 0x1a2],
-        b"Aupg" => &[0x1a1, 0x1a2],
+        codes::ability::id::THUNDER_BOLT_CREEP | codes::ability::id::CHIEFTAIN_SHOCK_WAVE | codes::ability::id::ENSNARE | codes::ability::id::CANNIBALIZE | codes::ability::id::SACRIFICE_ACOLYTE | codes::ability::id::UNSUMMON => &[0x144, 0x15f, 0x160, 0x161],
+        codes::ability::id::THUNDER_CLAP_CREEP => &[0x144, 0x15f, 0x160],
+        codes::ability::id::INVENTORY => &[0x144, 0x17c, 0x17d, 0x17e, 0x1a0, 0x1a2, 0x1a7, 0x299],
+        codes::ability::id::REGENERATE_ON_BLIGHT => &[0x1a0, 0x1a2, 0x1a7],
+        codes::ability::id::WANDER => &[0x148, 0x14c, 0x177, 0x178, 0x1a2],
+        codes::ability::id::ALARM => &[0x1a2],
+        codes::ability::id::ON_FIRE_HUMAN | codes::ability::id::ON_FIRE_UNDEAD | codes::ability::id::ON_FIRE_ORC | codes::ability::id::ON_FIRE_NIGHT_ELF | codes::ability::id::BLIGHTED_GOLD_MINE => &[0x1a0],
+        codes::ability::id::INVULNERABLE => &[0x1a1, 0x1a7],
+        codes::ability::id::MANA_REGENERATION_AURA | codes::ability::id::PALADIN_DEVOTION_AURA | codes::ability::id::ARCH_MAGE_BRILLIANCE_AURA | codes::ability::id::DEATH_KNIGHT_UNHOLY_AURA | codes::ability::id::CHIEFTAIN_ENDURANCE_AURA | codes::ability::id::PRIESTESS_TRUESHOT_AURA | codes::ability::id::DREADLORD_VAMPIRIC_AURA | codes::ability::id::KEEPER_THORNS_AURA | codes::ability::id::AURA_WAR_DRUMS | codes::ability::id::COMMAND_AURA | codes::ability::id::AURA_REGENERATION_WARD => &[0x1a0, 0x1a1, 0x1a2, 0x1a7],
+        codes::ability::id::SELL_UNITS => &[0x1a2],
+        codes::ability::id::NEUTRAL_BUILDING => &[0x1a5],
+        codes::ability::id::QUEUE => &[0x1a0, 0x1a1, 0x1a2],
+        codes::ability::id::UPGRADE_STRUCTURE => &[0x1a1, 0x1a2],
         _ => &[],
     }
 }
@@ -51,9 +52,9 @@ const BUFF_EVENTS: [u16; 3] = [0x1a1, 0x1a2, 0x1a7];
 /// alarm's on units in range, Ensnare's, a shop's and an inventory's.
 fn pil_handler(code: &[u8; 4]) -> u32 {
     match code {
-        b"Aens" => 0xd_01bf,
-        b"Aneu" | b"AInv" => 0xd_01aa,
-        b"Aalr" => 0xd_01c8,
+        codes::ability::id::ENSNARE => 0xd_01bf,
+        codes::ability::id::NEUTRAL_BUILDING | codes::ability::id::INVENTORY => 0xd_01aa,
+        codes::ability::id::ALARM => 0xd_01c8,
         _ => 0xd_01c7,
     }
 }
@@ -93,7 +94,7 @@ impl World {
         let code_of = |s: u32| self.tags.live.get(&s).map(|e| e.0);
         let building = u.is_building;
         let hidden = u.hidden;
-        let invulnerable = u.abilities.iter().any(|(a, _)| a == b"Avul");
+        let invulnerable = u.abilities.iter().any(|(a, _)| a == codes::ability::id::INVULNERABLE);
         let computer = self.players.get(u.owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER && p.slot_state == crate::types::slot_state::PLAYING);
         let creep = u.owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE;
         let types: Vec<String> = o.list("type").iter().map(|t| t.trim().to_ascii_lowercase()).collect();
@@ -120,33 +121,33 @@ impl World {
         }
         for (a, _) in &u.abilities {
             match self.objects.abilities.get(*a).map(|ab| ab.str("code").trim().to_string()).as_deref() {
-                Some("Ahar") => own |= 0x4_8000,
-                Some("Ahrl") => own |= 0x4_0000,
-                Some("Aaha") => own |= 0x1_0000,
+                Some(codes::ability::HARVEST) => own |= 0x4_8000,
+                Some(codes::ability::HARVEST_LUMBER) => own |= 0x4_0000,
+                Some(codes::ability::ACOLYTE_HARVEST) => own |= 0x1_0000,
                 _ => {}
             }
         }
 
         // Who listens to it, each with its stamp: as made, in the order made.
-        let abilities: Vec<(u32, u32, [u8; 4])> = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).filter_map(|&(s, b)| code_of(s).filter(|c| c[0] == b'A' && c != b"AI-U").map(|c| (s, b, c))).collect();
+        let abilities: Vec<(u32, u32, [u8; 4])> = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).filter_map(|&(s, b)| code_of(s).filter(|c| c[0] == b'A' && c != codes::class::UNIT_AI).map(|c| (s, b, c))).collect();
         let mut agents: Vec<(Ref, (u32, u32), Vec<u16>)> = vec![(rf(me), (me.1, 0), SELF_EVENTS.to_vec())];
         for &(s, b, c) in &abilities {
             let mut events = listened(&c).to_vec();
             // (A computer's structure's alarm listens for its owner's AI too, read: the
             // undead's Necropolis and Haunted Gold Mine.)
-            if &c == b"Aalr" && computer {
+            if &c == codes::ability::id::ALARM && computer {
                 events.push(0x1a5);
             }
             // (A haunted mine's listens as it starts to serve, after its AIs.)
-            if !events.is_empty() && &c != b"Abgm" {
+            if !events.is_empty() && &c != codes::ability::id::BLIGHTED_GOLD_MINE {
                 agents.push((Ref(s, b), (b, 0), events));
             }
         }
         let made = abilities.iter().map(|a| a.1).max().unwrap_or(me.1);
-        if let Some(a) = abilities.iter().find(|a| &a.2 == b"Abgm") {
-            agents.push((Ref(a.0, a.1), (made, 9), listened(b"Abgm").to_vec()));
+        if let Some(a) = abilities.iter().find(|a| &a.2 == codes::ability::id::BLIGHTED_GOLD_MINE) {
+            agents.push((Ref(a.0, a.1), (made, 9), listened(codes::ability::id::BLIGHTED_GOLD_MINE).to_vec()));
         }
-        if abilities.iter().any(|a| &a.2 == b"Aque") {
+        if abilities.iter().any(|a| &a.2 == codes::ability::id::QUEUE) {
             own |= 0x20_0000;
         }
         // A structure's own again after its abilities.
@@ -155,7 +156,7 @@ impl World {
         }
         // Its rally point (a second table's agent), with its abilities.
         if let Some(&(r, _)) = rallies.iter().find(|(_, owner)| *owner == rf(me)) {
-            let at = abilities.iter().find(|a| &a.2 == b"Aupg").map_or(made, |a| a.1);
+            let at = abilities.iter().find(|a| &a.2 == codes::ability::id::UPGRADE_STRUCTURE).map_or(made, |a| a.1);
             agents.push((r, (at, 1), vec![0x1a0, 0x1a2]));
         }
         // The AIs that watch it, as it joins them.
@@ -166,10 +167,10 @@ impl World {
         };
         // A gold mine's town site (its own, or for a haunted mine the one it replaced)
         // and each computer's AI; a computer's town hall's site after its AI.
-        let mine = u.abilities.iter().any(|(a, _)| matches!(a, b"Agld" | b"Abgm" | b"Aegm"));
+        let mine = u.abilities.iter().any(|(a, _)| matches!(a, codes::ability::id::GOLD_MINE | codes::ability::id::BLIGHTED_GOLD_MINE | codes::ability::id::ENTANGLED_GOLD_MINE));
         let nearest_site = || self.tags.sites.iter().min_by(|a, b| (a.0 - u.x).hypot(a.1 - u.y).total_cmp(&(b.0 - u.x).hypot(b.1 - u.y))).map(|s| s.2);
         if mine {
-            let site = u.extra.site_ai.or_else(|| if u.abilities.iter().any(|(a, _)| a == b"Abgm") { nearest_site() } else { None });
+            let site = u.extra.site_ai.or_else(|| if u.abilities.iter().any(|(a, _)| a == codes::ability::id::BLIGHTED_GOLD_MINE) { nearest_site() } else { None });
             if let Some(site) = site {
                 agents.push((rf(site), (made, 2), vec![0x1a0, 0x1a4]));
             }
@@ -205,7 +206,7 @@ impl World {
         }
         for t in buffs {
             // (Devotion Aura's on another listens to it not for 0x1a2: read, the ogres'.)
-            let events = if code_of(t.0) == Some(*b"BHad") && !u.extra.object_slots[2].contains(&t) { vec![0x1a1, 0x1a7] } else { BUFF_EVENTS.to_vec() };
+            let events = if code_of(t.0) == Some(*codes::buff::id::DEVOTION_AURA) && !u.extra.object_slots[2].contains(&t) { vec![0x1a1, 0x1a7] } else { BUFF_EVENTS.to_vec() };
             agents.push((rf(t), (t.1, 0), events));
         }
         for &v in &self.unit_order {
@@ -242,7 +243,7 @@ impl World {
         if !hidden {
             fixed[0].push((rf(self.game_object()), 0x8_0267));
         }
-        if let Some(a) = abilities.iter().find(|a| &a.2 == b"Amov") {
+        if let Some(a) = abilities.iter().find(|a| &a.2 == codes::ability::id::MOVE) {
             fixed[3].push((Ref(a.0, a.1), 0xd_0199));
             fixed[4].push((Ref(a.0, a.1), 0xd_019a));
         }
@@ -250,11 +251,11 @@ impl World {
         // slot, each in the order made.
         let ability_ref = |c: &[u8; 4]| abilities.iter().find(|a| &a.2 == c).map(|a| Ref(a.0, a.1));
         let mut keyed: Vec<((u32, u32), (Ref, u32))> = Vec::new();
-        if let Some(&d) = u.extra.object_slots[1].iter().find(|&&(s, _)| code_of(s) == Some(*b"`rtl")) {
+        if let Some(&d) = u.extra.object_slots[1].iter().find(|&&(s, _)| code_of(s) == Some(*codes::class::THRESHOLD_LISTENER)) {
             keyed.push((d, (rf(me), 0xd_019f)));
         }
         for &(s, c) in &u.extra.spell_owners {
-            if code_of(s) != Some(*b"`rtl") {
+            if code_of(s) != Some(*codes::class::THRESHOLD_LISTENER) {
                 continue;
             }
             let rising = u.extra.mana_listeners.iter().any(|&(t, x)| x == s && t.is_finite());
@@ -265,17 +266,17 @@ impl World {
         let mut pils: Vec<(u32, [u8; 4])> = Vec::new();
         let rest = &u.extra.object_slots[2];
         for (k, &(s, _)) in rest.iter().enumerate() {
-            if code_of(s) == Some(*b"`pil") {
+            if code_of(s) == Some(*codes::class::IN_RANGE_LISTENER) {
                 if let Some(c) = rest[..k].iter().rev().filter_map(|&(x, _)| code_of(x)).find(|c| c[0] == b'A') {
                     pils.push((s, c));
                 }
             }
         }
-        pils.extend(u.extra.alarm_pil.map(|s| (s, *b"Aalr")));
-        pils.extend(u.extra.ensnare_pil.map(|p| (p.1, *b"Aens")));
-        pils.extend(u.extra.item_pil.map(|p| (p.0, *b"AInv")));
+        pils.extend(u.extra.alarm_pil.map(|s| (s, *codes::ability::id::ALARM)));
+        pils.extend(u.extra.ensnare_pil.map(|p| (p.1, *codes::ability::id::ENSNARE)));
+        pils.extend(u.extra.item_pil.map(|p| (p.0, *codes::ability::id::INVENTORY)));
         for (s, c) in pils {
-            if code_of(s) == Some(*b"`pil") {
+            if code_of(s) == Some(*codes::class::IN_RANGE_LISTENER) {
                 if let Some(a) = ability_ref(&c) {
                     keyed.push((self.tagged(s), (a, pil_handler(&c))));
                 }
@@ -339,12 +340,12 @@ impl World {
         let none3 = || [w(u32::MAX), w(u32::MAX), w(0)];
         let slot_ref = |s: Option<(u32, u32)>| s.map_or(NONE, rf);
         let (life_rate, mana_rate) = self.regen_rates(h).unwrap_or((0.0, 0.0));
-        let rcm: Vec<(u32, u32)> = u.extra.object_slots[1].iter().copied().filter(|&(s, _)| code_of(s) == Some(*b"`rcm")).collect();
-        let death = u.extra.object_slots[1].iter().copied().find(|&(s, _)| code_of(s) == Some(*b"`rtl"));
+        let rcm: Vec<(u32, u32)> = u.extra.object_slots[1].iter().copied().filter(|&(s, _)| code_of(s) == Some(*codes::class::CONTINUOUS_MODIFIER)).collect();
+        let death = u.extra.object_slots[1].iter().copied().find(|&(s, _)| code_of(s) == Some(*codes::class::THRESHOLD_LISTENER));
         // The newest of its abilities and buffs (its abilities' chain's head, the AI's
         // unit list aside).
         let newest = abilities.iter().map(|a| (a.0, a.1)).chain(u.buffs.iter().filter(|b| b.slot != 0).map(|b| self.tagged(b.slot))).max_by_key(|a| a.1);
-        let ai_unit = u.extra.ai_slots.iter().copied().find(|&(s, _)| code_of(s) == Some(*b"AI-U"));
+        let ai_unit = u.extra.ai_slots.iter().copied().find(|&(s, _)| code_of(s) == Some(*codes::class::UNIT_AI));
         let mut kinds = 0u32;
         for (bit, name) in [(2, "undead"), (8, "mechanical"), (16, "peon"), (32, "sapper"), (64, "townhall"), (128, "ancient"), (256, "neutral")] {
             if is(name) {
@@ -379,19 +380,19 @@ impl World {
         if o.str("movetp").trim().eq_ignore_ascii_case("fly") {
             flags |= 0x2000_0000;
         }
-        if u.abilities.iter().any(|(a, _)| matches!(a, b"Agld" | b"Abgm" | b"Aegm")) {
+        if u.abilities.iter().any(|(a, _)| matches!(a, codes::ability::id::GOLD_MINE | codes::ability::id::BLIGHTED_GOLD_MINE | codes::ability::id::ENTANGLED_GOLD_MINE)) {
             flags |= 0x2_0000;
         }
         let passive = u.owner as usize == crate::types::PLAYER_NEUTRAL_AGGRESSIVE as usize + 3;
         if passive && is("neutral") {
             flags |= 0x4_0000;
         }
-        if passive && u.abilities.iter().any(|(a, _)| a == b"Awan") {
+        if passive && u.abilities.iter().any(|(a, _)| a == codes::ability::id::WANDER) {
             flags |= 0x8_0000;
         }
         for (a, _) in &u.abilities {
             let Some(ab) = self.objects.abilities.get(*a) else { continue };
-            if ab.str("code").trim() == "Artn" {
+            if ab.str("code").trim() == codes::ability::RETURN {
                 if ab.level_real("DataA", 1) != 0.0 {
                     flags |= 0x4000;
                 }
@@ -445,7 +446,7 @@ impl World {
         // (A spell immune unit's two words (+0x15c, +0x160: read, the granite golems' and a
         // red dragon's), its being built on another (isBuildOn, +0x60), and a flag word
         // (+0x280: 0x10 for all read, 0x8 for a type with elevation points).)
-        let immune = u.abilities.iter().any(|(a, _)| self.objects.abilities.get(*a).is_some_and(|ab| ab.str("code").trim() == "Amim"));
+        let immune = u.abilities.iter().any(|(a, _)| self.objects.abilities.get(*a).is_some_and(|ab| ab.str("code").trim() == codes::ability::MAGIC_IMMUNITY));
         let built_on = if o.int("isBuildOn") != 0 { 0x100 } else { 0 };
         let elevated = if o.int("elevPts") > 0 { 8 } else { 0 };
         fields.extend([w(speed.to_bits()), w(speed.to_bits()), w(1f32.to_bits()), w(0), w(immune as u32), w(immune as u32), w(built_on), w(0), w(0x10 | elevated)]);
@@ -471,7 +472,7 @@ impl World {
             if self.tagged(s).1 != b {
                 continue;
             }
-            if let Some(c) = code_of(s).filter(|c| (c[0] == b'A' && c != b"AI-U") || c[0] == b'B') {
+            if let Some(c) = code_of(s).filter(|c| (c[0] == b'A' && c != codes::class::UNIT_AI) || c[0] == b'B') {
                 add((s, b), c, &mut chain);
             }
         }
@@ -482,15 +483,15 @@ impl World {
             }
         }
         for &(s, b) in &u.extra.ai_slots {
-            if code_of(s) == Some(*b"uref") && self.tagged(s).1 == b {
-                add((s, b), *b"uref", &mut chain);
+            if code_of(s) == Some(*codes::class::UNIT_AI_REF) && self.tagged(s).1 == b {
+                add((s, b), *codes::class::UNIT_AI_REF, &mut chain);
             }
         }
         chain.sort_by_key(|x| x.0 .1);
         // Its rally point (the second table's agent) right after its rally ability.
         let me = u.extra.object_slots[0].first().copied().unwrap_or_default();
-        if let (Some(&(r, _)), Some(k)) = (rallies.iter().find(|(_, owner)| *owner == rf(me)), chain.iter().position(|x| &x.1 == b"ARal")) {
-            chain.insert(k + 1, ((r.0, r.1), *b"rlyp"));
+        if let (Some(&(r, _)), Some(k)) = (rallies.iter().find(|(_, owner)| *owner == rf(me)), chain.iter().position(|x| &x.1 == codes::ability::id::RALLY)) {
+            chain.insert(k + 1, ((r.0, r.1), *codes::class::RALLY_POINT));
         }
         chain
     }
@@ -536,11 +537,11 @@ impl World {
         let slots: Vec<(u32, u32)> = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).copied().collect();
         let mut out = Vec::new();
         for (k, &(t, code)) in chain.iter().enumerate() {
-            if &code == b"rlyp" {
+            if &code == codes::class::RALLY_POINT {
                 continue;
             }
             let props: Vec<(u32, u32)> = match slots.iter().position(|&x| x == t) {
-                Some(i) => slots[i + 1..].iter().copied().take_while(|&(s, b)| self.tagged(s).1 == b && self.tags.live.get(&s).is_some_and(|e| &e.0 == b"`rel")).collect(),
+                Some(i) => slots[i + 1..].iter().copied().take_while(|&(s, b)| self.tagged(s).1 == b && self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::REAL)).collect(),
                 None => Vec::new(),
             };
             let mut rec = super::agent_first(t, &code, &props);
@@ -567,7 +568,7 @@ impl World {
         let (mut firsts, mut seconds) = (Vec::new(), Vec::new());
         let Some(u) = self.unit(h) else { return (firsts, seconds) };
         let Some(p) = self.pathing.as_ref() else { return (firsts, seconds) };
-        let Some((a, lvl)) = self.ability_with_code(h, "Abli") else { return (firsts, seconds) };
+        let Some((a, lvl)) = self.ability_with_code(h, codes::ability::BLIGHT_GROWTH) else { return (firsts, seconds) };
         if u.extra.blight_slots.len() != 5 {
             return (firsts, seconds);
         }
@@ -576,7 +577,7 @@ impl World {
         let [coarse, fine] = self.pathing_map_objects();
         let (cx, cy) = ((u.x - p.origin[0]) / crate::pathing::CELL, (u.y - p.origin[1]) / crate::pathing::CELL);
         let (row, col) = (cy.floor() as u32, cx.floor() as u32);
-        firsts.push((xbli.0, super::agent_first(xbli, b"Xbli", &[pos])));
+        firsts.push((xbli.0, super::agent_first(xbli, codes::class::BLIGHT_GROWTH, &[pos])));
         firsts.push((pos.0, First::Pos { base: super::property_base(pos, xbli), values: [cx, cy, 0.0, 0.0, f32::MAX, 0.0, 0.0], refs: [rf(r1), rf(r2)] }));
         firsts.push((r1.0, First::Region { refs: [rf(coarse), rf(pos)], word: 0, bounds: [row >> 3, col >> 3, (row >> 3) + 1, (col >> 3) + 1], words: [0, 1, 0] }));
         firsts.push((r2.0, First::Region { refs: [rf(fine), rf(pos)], word: 0x0100_0000, bounds: [row, col, row + 1, col + 1], words: [0, 1, 0] }));
@@ -609,10 +610,10 @@ impl World {
         use w3_formats::w3z::{Field, First, Handlers, Link, Second, Sprite};
         let (mut firsts, mut seconds) = (Vec::new(), Vec::new());
         let Some(u) = self.unit(h) else { return (firsts, seconds) };
-        let Some((abgm, _)) = self.ability_with_code(h, "Abgm") else { return (firsts, seconds) };
+        let Some((abgm, _)) = self.ability_with_code(h, codes::ability::BLIGHTED_GOLD_MINE) else { return (firsts, seconds) };
         let Some(p) = self.pathing.as_ref() else { return (firsts, seconds) };
         let objs = &u.extra.object_slots[2];
-        let Some(i) = objs.iter().position(|&(s, _)| self.tags.live.get(&s).is_some_and(|e| &e.0 == b"Abgm")) else { return (firsts, seconds) };
+        let Some(i) = objs.iter().position(|&(s, _)| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::ability::id::BLIGHTED_GOLD_MINE)) else { return (firsts, seconds) };
         if objs.len() < i + 28 {
             return (firsts, seconds);
         }
@@ -647,7 +648,7 @@ impl World {
             let (ex, ey) = ((x * 4.0).floor() / 4.0, (y * 4.0).floor() / 4.0);
             let (cx, cy) = ((ex - p.origin[0]) / crate::pathing::CELL, (ey - p.origin[1]) / crate::pathing::CELL);
             let (row, col) = (cy.floor() as u32, cx.floor() as u32);
-            firsts.push((eip.0, super::agent_first(eip, b"+EIP", &[pos])));
+            firsts.push((eip.0, super::agent_first(eip, codes::class::SPECIAL_EFFECT, &[pos])));
             firsts.push((pos.0, First::Pos { base: super::property_base(pos, eip), values: [cx, cy, 0.0, 0.0, f32::MAX, 0.0, 0.0], refs: [rf(r1), rf(r2)] }));
             firsts.push((r1.0, First::Region { refs: [rf(coarse), rf(pos)], word: 0x0200_0000, bounds: [row >> 3, col >> 3, (row >> 3) + 1, (col >> 3) + 1], words: [0, 0x6000_0001, 0] }));
             firsts.push((r2.0, First::Region { refs: [rf(fine), rf(pos)], word: 0x0100_0000, bounds: [row, col, row + 1, col + 1], words: [0, 1, 0] }));
@@ -701,12 +702,12 @@ impl World {
         let mut out = Vec::new();
         for &(t, code) in &chain {
             let Some(i) = slots.iter().position(|&x| x == t) else { continue };
-            let props: Vec<(u32, u32)> = slots[i + 1..].iter().copied().take_while(|&(s, b)| self.tagged(s).1 == b && self.tags.live.get(&s).is_some_and(|e| &e.0 == b"`rel")).collect();
+            let props: Vec<(u32, u32)> = slots[i + 1..].iter().copied().take_while(|&(s, b)| self.tagged(s).1 == b && self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::REAL)).collect();
             for k in 0..props.len() {
                 // (Abgm's second 0, not -0.)
                 let values = match (&code, k) {
-                    (b"Agld" | b"Abgm", 0) => [-0.0, 0.0, -f32::MAX, f32::MAX],
-                    (b"Abgm", _) => [0.0, 0.0, -f32::MAX, f32::MAX],
+                    (codes::ability::id::GOLD_MINE | codes::ability::id::BLIGHTED_GOLD_MINE, 0) => [-0.0, 0.0, -f32::MAX, f32::MAX],
+                    (codes::ability::id::BLIGHTED_GOLD_MINE, _) => [0.0, 0.0, -f32::MAX, f32::MAX],
                     _ => [0.0, 0.0, 0.0, f32::MAX],
                 };
                 let base = self.stamped(super::listed_property_base(&props, k, t));
@@ -726,23 +727,23 @@ impl World {
 /// kinds not read).
 fn ability_targets(code: &[u8; 4]) -> u32 {
     match code {
-        b"Aalr" => 0x0031_0006,
-        b"Avul" | b"Awan" | b"Agld" | b"Amic" | b"Amil" | b"Amim" | b"Andt" | b"Aneu" | b"Artn" => 0xfdd1_f00e,
-        b"AEar" | b"AHad" => 0x0030_7006,
-        b"ACtb" => 0x0401_8006,
-        b"ACtc" => 0x0000_8002,
-        b"AOsh" => 0x0001_000a,
-        b"Aadm" => 0x0030_0056,
-        b"Aarm" => 0x0430_0006,
-        b"Acan" => 0xffd1_f006,
-        b"Aens" => 0x0081_8006,
-        b"Ahar" | b"Ahrl" => 0x0300_0040,
-        b"Ainf" => 0x0000_f006,
-        b"Alam" | b"Auns" => 0x0000_2008,
-        b"Anhe" => 0x4430_f006,
-        b"Arep" | b"Arst" => 0x4b30_640e,
-        b"Aven" => 0x0400_0006,
-        b"Aaha" | b"Abgm" | b"Abli" | b"AInv" => 0xfdd1_f00e,
+        codes::ability::id::ALARM => 0x0031_0006,
+        codes::ability::id::INVULNERABLE | codes::ability::id::WANDER | codes::ability::id::GOLD_MINE | codes::ability::id::MILITIA_CONVERSION | codes::ability::id::MILITIA | codes::ability::id::MAGIC_IMMUNITY | codes::ability::id::NEUTRAL_DETECTION_REVEAL_ABILITY | codes::ability::id::NEUTRAL_BUILDING | codes::ability::id::RETURN => 0xfdd1_f00e,
+        codes::ability::id::PRIESTESS_TRUESHOT_AURA | codes::ability::id::PALADIN_DEVOTION_AURA => 0x0030_7006,
+        codes::ability::id::THUNDER_BOLT_CREEP => 0x0401_8006,
+        codes::ability::id::THUNDER_CLAP_CREEP => 0x0000_8002,
+        codes::ability::id::CHIEFTAIN_SHOCK_WAVE => 0x0001_000a,
+        codes::ability::id::ABOLISH_MAGIC => 0x0030_0056,
+        codes::ability::id::MANA_REGENERATION_AURA => 0x0430_0006,
+        codes::ability::id::CANNIBALIZE => 0xffd1_f006,
+        codes::ability::id::ENSNARE => 0x0081_8006,
+        codes::ability::id::HARVEST | codes::ability::id::HARVEST_LUMBER => 0x0300_0040,
+        codes::ability::id::INNER_FIRE => 0x0000_f006,
+        codes::ability::id::SACRIFICE_ACOLYTE | codes::ability::id::UNSUMMON => 0x0000_2008,
+        codes::ability::id::HEAL_CREEP_NORMAL => 0x4430_f006,
+        codes::ability::id::REPAIR_ORC | codes::ability::id::RESTORATION => 0x4b30_640e,
+        codes::ability::id::VENOM_SPEARS => 0x0400_0006,
+        codes::ability::id::ACOLYTE_HARVEST | codes::ability::id::BLIGHTED_GOLD_MINE | codes::ability::id::BLIGHT_GROWTH | codes::ability::id::INVENTORY => 0xfdd1_f00e,
         _ => 0,
     }
 }
@@ -768,8 +769,8 @@ impl World {
         let caster = self.unit(b.caster).and_then(|c| c.extra.object_slots[0].first().copied()).unwrap_or((u32::MAX, u32::MAX));
         let ai = self.players.get(u.owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER && p.slot_state == crate::types::slot_state::PLAYING) || u.owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE;
         let base: u32 = match code {
-            b"BHad" => 0x290,
-            b"BEar" => 0xa90,
+            codes::buff::id::DEVOTION_AURA => 0x290,
+            codes::buff::id::TRUESHOT_AURA => 0xa90,
             _ => 0x10,
         };
         let flags = base | if ai { 0x2 } else { 0 } | if b.caster == h { 0x100_0000 } else { 0x8000_0000 };
@@ -779,7 +780,7 @@ impl World {
         let prev = older.map_or(NONE, rf);
         let mut own = vec![w(flags), w(prev.0), w(prev.1), w(0), w(0), w(0), w(0), w(0), w(0), w(u32::from_be_bytes(*code)), w(0), none(), w(0)];
         own.extend([w(0), r(0.0), w(0), w(0), w(ability_targets(&aura_code)), r(0.0), r(0.0), r(0.0), r(data_a), w(caster.0), w(caster.1), w(0)]);
-        if code == b"BHad" {
+        if code == codes::buff::id::DEVOTION_AURA {
             own.push(r(b.armor));
         }
         let timer = match self.tags.timer_objects.get(&t.0).and_then(|v| v.iter().rev().find(|x| x.1 == "532b50")) {
@@ -787,7 +788,7 @@ impl World {
             None => none(),
         };
         let mut tail = vec![art.get(&t.0).cloned().unwrap_or(Field::List(Vec::new())), w(0), timer, Field::Short(0), Field::Short(0), r(crate::ability::AURA_BUFF_TIME)];
-        if code == b"BEar" {
+        if code == codes::buff::id::TRUESHOT_AURA {
             let o = self.objects.units.get(u.type_id)?;
             let weapons = o.int("weapsOn");
             let bonus = |k: u32| {
@@ -831,34 +832,34 @@ impl World {
         let weapons = o.int("weapsOn");
         let peon = o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case("peon"));
         let base_flags: u32 = match code {
-            b"Avul" => 0x8000_0010,
+            codes::ability::id::INVULNERABLE => 0x8000_0010,
             // (Spells, read: targeted 0x0, autocast 0x8080000 with 0x80 for heal, repair
             // 0x9400010, restore 0x9080010, Lightning Shield-like 0x0, Cannibalize
             // 0x80010.)
-            b"ACtb" | b"ACtc" | b"AOsh" | b"Aens" => 0,
-            b"Alam" | b"Auns" => 0x10,
-            b"Acan" => 0x8_0010,
-            b"Anhe" => 0x808_0080,
-            b"Aadm" | b"Ainf" => 0x808_0000,
-            b"Arep" => 0x940_0010,
-            b"Arst" => 0x908_0010,
-            b"AHbu" | b"AUbu" | b"AObu" | b"AEbu" => 0x2000_0010,
-            b"Ahar" | b"Ahrl" => 0x8000_0010,
-            b"Aaha" => 0x210,
-            b"ACsp" => 0x400,
-            b"Abli" => 0x290,
-            // (An aura, read: a creep's 0x90000000, an item's armor aura on a shop
-            // 0x90000010.)
-            b"AEar" | b"AHad" | b"AHab" | b"AUau" | b"AOae" | b"AUav" | b"AEah" | b"Aakb" | b"AOac" | b"Aoar" => 0x9000_0080,
-            b"Aarm" => 0x9000_0090,
-            b"Aven" | b"Amim" => 0,
-            b"ARal" | b"Amic" | b"Amil" => 0x90,
-            b"Asel" => 0x1000_0010,
+            codes::ability::id::THUNDER_BOLT_CREEP | codes::ability::id::THUNDER_CLAP_CREEP | codes::ability::id::CHIEFTAIN_SHOCK_WAVE | codes::ability::id::ENSNARE => 0,
+            codes::ability::id::SACRIFICE_ACOLYTE | codes::ability::id::UNSUMMON => 0x10,
+            codes::ability::id::CANNIBALIZE => 0x8_0010,
+            codes::ability::id::HEAL_CREEP_NORMAL => 0x808_0080,
+            codes::ability::id::ABOLISH_MAGIC | codes::ability::id::INNER_FIRE => 0x808_0000,
+            codes::ability::id::REPAIR_ORC => 0x940_0010,
+            codes::ability::id::RESTORATION => 0x908_0010,
+            codes::ability::id::BUILD_HUMAN | codes::ability::id::BUILD_UNDEAD | codes::ability::id::BUILD_ORC | codes::ability::id::BUILD_NIGHT_ELF => 0x2000_0010,
+            codes::ability::id::HARVEST | codes::ability::id::HARVEST_LUMBER => 0x8000_0010,
+            codes::ability::id::ACOLYTE_HARVEST => 0x210,
+            codes::ability::id::CREEP_SLEEP => 0x400,
+            codes::ability::id::BLIGHT_GROWTH => 0x290,
+            // (An aura, read: a creep's 0x90000080, a fountain's mana regeneration
+            // 0x90000090.)
+            codes::ability::id::PRIESTESS_TRUESHOT_AURA | codes::ability::id::PALADIN_DEVOTION_AURA | codes::ability::id::ARCH_MAGE_BRILLIANCE_AURA | codes::ability::id::DEATH_KNIGHT_UNHOLY_AURA | codes::ability::id::CHIEFTAIN_ENDURANCE_AURA | codes::ability::id::DREADLORD_VAMPIRIC_AURA | codes::ability::id::KEEPER_THORNS_AURA | codes::ability::id::AURA_WAR_DRUMS | codes::ability::id::COMMAND_AURA | codes::ability::id::AURA_REGENERATION_WARD => 0x9000_0080,
+            codes::ability::id::MANA_REGENERATION_AURA => 0x9000_0090,
+            codes::ability::id::VENOM_SPEARS | codes::ability::id::MAGIC_IMMUNITY => 0,
+            codes::ability::id::RALLY | codes::ability::id::MILITIA_CONVERSION | codes::ability::id::MILITIA => 0x90,
+            codes::ability::id::SELL_UNITS => 0x1000_0010,
             // (Regeneration on blight, as it stands on blight 0x80.)
-            b"Ablr" => 0x10 | if u.extra.blight_rcm.is_some() { 0x80 } else { 0 },
+            codes::ability::id::REGENERATE_ON_BLIGHT => 0x10 | if u.extra.blight_rcm.is_some() { 0x80 } else { 0 },
             // (An attack: two weapons 0x100000, not a worker's 0x20004000, one never
             // asleep 0x2000000: read, every unit of the quiet test map's.)
-            b"Aatk" => 0x8_0010 | if weapons & 2 != 0 { 0x10_0000 } else { 0 } | if peon { 0 } else { 0x2000_4000 } | if u.extra.woke_at.is_none() { 0x200_0000 } else { 0 },
+            codes::ability::id::ATTACK => 0x8_0010 | if weapons & 2 != 0 { 0x10_0000 } else { 0 } | if peon { 0 } else { 0x2000_4000 } | if u.extra.woke_at.is_none() { 0x200_0000 } else { 0 },
             _ => 0x10,
         };
         let flags = base_flags | if ai { 0x2 } else { 0 };
@@ -866,59 +867,59 @@ impl World {
         // (Its id, not its kind's code: a shop's Ane2, a creep's ACvs and ACmi, a town
         // hall's Argl; the last word Call to Arms' 1.)
         let id = u.abilities.iter().map(|(a, _)| *a).find(|a| self.objects.abilities.get(*a).is_some_and(|o| crate::objects::id_from_str(o.str("code").trim()) == *code)).unwrap_or(*code);
-        let last = if code == b"Amic" { 1 } else { 0 };
+        let last = if code == codes::ability::id::MILITIA_CONVERSION { 1 } else { 0 };
         let mut own = vec![w(flags), w(prev.0), w(prev.1), w(0), w(0), w(0), w(0), w(0), w(ability_targets(code)), w(u32::from_be_bytes(id)), w(0), timer(), w(last)];
         let tail = match code {
             // CAbilityMove (`FUN_6f5fec80`): two references, its speed and 1.0, words,
             // two reals, references; its two timers.
-            b"Amov" => {
+            codes::ability::id::MOVE => {
                 own.extend([w(u32::MAX), w(u32::MAX), w(0), Field::Real(o.real("spd")), Field::Real(1.0), w(0), w(0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), w(0)]);
                 vec![timer(), timer()]
             }
             // CAbilityInvulnerable: a word; an empty list and a word.
-            b"Avul" => {
+            codes::ability::id::INVULNERABLE => {
                 own.push(w(0));
                 vec![Field::List(Vec::new()), w(0)]
             }
             // Regeneration on blight: its look at the ground every 2 seconds (event
             // 0xd01c1).
-            b"Ablr" => vec![periodic("436780", 2.0, 0xd_01c1)],
+            codes::ability::id::REGENERATE_ON_BLIGHT => vec![periodic("436780", 2.0, 0xd_01c1)],
             // Passives with an order (spell immunity, a creep's poison, detection): its
             // order (852290) and words; detection its own order too.
-            b"Aven" | b"Amim" | b"Andt" => {
+            codes::ability::id::VENOM_SPEARS | codes::ability::id::MAGIC_IMMUNITY | codes::ability::id::NEUTRAL_DETECTION_REVEAL_ABILITY => {
                 match code {
-                    b"Aven" => own.push(w(0)),
-                    b"Andt" => own.push(w(852_630)),
+                    codes::ability::id::VENOM_SPEARS => own.push(w(0)),
+                    codes::ability::id::NEUTRAL_DETECTION_REVEAL_ABILITY => own.push(w(852_630)),
                     _ => {}
                 }
                 vec![w(852_290), w(0), w(0), w(0), w(0)]
             }
             // A shop's (Aneu): its customers' (twelve players' none), its listener.
-            b"Aneu" => {
-                let pil = u.extra.object_slots[2].iter().map(|&(s, _)| s).skip_while(|&s| s != t.0).find(|&s| self.tags.live.get(&s).is_some_and(|e| &e.0 == b"`pil")).map_or(NONE, |s| rf(self.tagged(s)));
+            codes::ability::id::NEUTRAL_BUILDING => {
+                let pil = u.extra.object_slots[2].iter().map(|&(s, _)| s).skip_while(|&s| s != t.0).find(|&s| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::IN_RANGE_LISTENER)).map_or(NONE, |s| rf(self.tagged(s)));
                 vec![Field::List((0..12).map(|_| vec![Field::Ref(NONE)]).collect()), Field::Ref(NONE), Field::List((0..12).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect()), Field::Ref(pil), timer()]
             }
-            b"Artn" => Vec::new(),
+            codes::ability::id::RETURN => Vec::new(),
             // Rally: no point set; its rally point (the second table's).
-            b"ARal" => {
+            codes::ability::id::RALLY => {
                 own.extend([w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), Field::Real(0.0), w(0), w(0), w(0), w(0)]);
                 let me = u.extra.object_slots[0].first().copied().unwrap_or_default();
                 let r = rallies.iter().find(|(_, owner)| *owner == rf(me)).map_or(NONE, |x| x.0);
                 vec![Field::List(vec![vec![Field::Ref(r)]])]
             }
-            b"Amic" => vec![timer()],
+            codes::ability::id::MILITIA_CONVERSION => vec![timer()],
             // Militia: the unit's type and the militia's (its DataB).
-            b"Amil" => {
-                let to = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a)).find(|ab| ab.str("code").trim() == "Amil").map_or([0; 4], |ab| crate::objects::id_from_str(ab.level_str("DataB", 1).trim()));
+            codes::ability::id::MILITIA => {
+                let to = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a)).find(|ab| ab.str("code").trim() == codes::ability::MILITIA).map_or([0; 4], |ab| crate::objects::id_from_str(ab.level_str("DataB", 1).trim()));
                 own.extend([w(u32::from_be_bytes(u.type_id)), w(u32::from_be_bytes(to))]);
                 Vec::new()
             }
-            b"Aupg" => {
+            codes::ability::id::UPGRADE_STRUCTURE => {
                 own.extend([Field::Real(0.0), Field::Real(0.0)]);
                 vec![Field::Ref(NONE), Field::Ref(NONE)]
             }
             // A queue (Aque): idle, its seven places empty.
-            b"Aque" => {
+            codes::ability::id::QUEUE => {
                 own.extend([Field::Real(0.0), Field::Real(0.0), w(0), Field::List((0..7).map(|_| vec![w(0)]).collect()), Field::List((0..7).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect()), Field::List((0..7).map(|_| vec![w(0)]).collect())]);
                 vec![Field::Ref(NONE), Field::Ref(NONE), Field::Ref(NONE), Field::Ref(NONE)]
             }
@@ -926,17 +927,17 @@ impl World {
             // backswing (a repair's none and the largest real), references; its order
             // (852290), words, its listener on the unit's mana, two timers; an
             // auto-target spell's look every 3 seconds (event 0xd01c2), a repair's more.
-            b"ACtb" | b"ACtc" | b"AOsh" | b"Aens" | b"Acan" | b"Alam" | b"Auns" | b"Anhe" | b"Aadm" | b"Ainf" | b"Arst" | b"Arep" => {
+            codes::ability::id::THUNDER_BOLT_CREEP | codes::ability::id::THUNDER_CLAP_CREEP | codes::ability::id::CHIEFTAIN_SHOCK_WAVE | codes::ability::id::ENSNARE | codes::ability::id::CANNIBALIZE | codes::ability::id::SACRIFICE_ACOLYTE | codes::ability::id::UNSUMMON | codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::ABOLISH_MAGIC | codes::ability::id::INNER_FIRE | codes::ability::id::RESTORATION | codes::ability::id::REPAIR_ORC => {
                 // (Restore as Repair.)
-                let repair = matches!(code, b"Arep" | b"Arst");
+                let repair = matches!(code, codes::ability::id::REPAIR_ORC | codes::ability::id::RESTORATION);
                 let (point, back) = if repair { (0.0, f32::MAX) } else { (o.real("castpt"), o.real("castbsw")) };
                 own.extend([Field::Real(0.0), Field::Real(point), Field::Real(back), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), w(0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), w(0), Field::Real(0.0), Field::Real(0.0), w(0), w(0), w(0), w(0), Field::Real(0.0), Field::Real(0.0)]);
                 if repair {
                     own.extend([w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), Field::Real(0.0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0)]);
                 }
-                let listener = u.extra.spell_owners.iter().find(|x| &x.1 == code && self.tags.live.get(&x.0).is_some_and(|e| &e.0 == b"`rtl")).map_or(NONE, |x| rf(self.tagged(x.0)));
+                let listener = u.extra.spell_owners.iter().find(|x| &x.1 == code && self.tags.live.get(&x.0).is_some_and(|e| &e.0 == codes::class::THRESHOLD_LISTENER)).map_or(NONE, |x| rf(self.tagged(x.0)));
                 let mut tail = vec![w(852_290), w(0), w(0), w(0), w(0), Field::Ref(listener), timer(), timer()];
-                if matches!(code, b"Anhe" | b"Aadm" | b"Ainf" | b"Arst" | b"Arep") {
+                if matches!(code, codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::ABOLISH_MAGIC | codes::ability::id::INNER_FIRE | codes::ability::id::RESTORATION | codes::ability::id::REPAIR_ORC) {
                     tail.push(match self.tags.autotarget_timers.get(&(h, *code)) {
                         Some(&(count, due, period)) if due > self.time - 0.0205 => Field::Timer(rf(t), 0, Timing(Some((due, period, count, 0xd_01c2, 0)))),
                         _ => timer(),
@@ -946,11 +947,11 @@ impl World {
                     tail.extend([timer(), timer(), timer(), timer(), Field::Ref(NONE)]);
                 }
                 // Ensnare's in-range listener.
-                if code == b"Aens" {
+                if code == codes::ability::id::ENSNARE {
                     tail.push(Field::Ref(u.extra.ensnare_pil.map_or(NONE, |p| rf(self.tagged(p.1)))));
                 }
                 // Cannibalize's look for corpses every 2 seconds (event 0xd01bf).
-                if code == b"Acan" {
+                if code == codes::ability::id::CANNIBALIZE {
                     // (A reference and two target masks: read, a ghoul's.)
                     own.extend([w(u32::MAX), w(u32::MAX), w(0), w(0xf6d1_f002), w(0xfdd1_f006)]);
                     tail.extend([Field::Ref(NONE), Field::Ref(NONE), periodic("606220", 2.0, 0xd_01bf)]);
@@ -958,9 +959,9 @@ impl World {
                 tail
             }
             // Building: nothing begun; the undead's one more reference and a short of 1.
-            b"AHbu" | b"AUbu" | b"AObu" | b"AEbu" => {
+            codes::ability::id::BUILD_HUMAN | codes::ability::id::BUILD_UNDEAD | codes::ability::id::BUILD_ORC | codes::ability::id::BUILD_NIGHT_ELF => {
                 own.extend([Field::Real(0.0), Field::Real(0.0), w(0), w(0), w(0)]);
-                let undead = code == b"AUbu";
+                let undead = code == codes::ability::id::BUILD_UNDEAD;
                 if undead {
                     own.extend([w(u32::MAX), w(u32::MAX), w(0)]);
                 }
@@ -969,11 +970,11 @@ impl World {
             // Harvest (gold and lumber, or lumber): its DataC and DataB, its unit's
             // attack's point and backswing, its DataA; eight references and timers
             // empty, its area, its timers.
-            b"Ahar" | b"Ahrl" => {
+            codes::ability::id::HARVEST | codes::ability::id::HARVEST_LUMBER => {
                 let ab = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a)).find(|ab| ab.str("code").trim().as_bytes() == code);
                 let data = |f: &str| ab.map_or(0.0, |ab| ab.level_real(f, 1));
                 own.extend([w(data("DataC") as u32), w(data("DataB") as u32), w(0), w(0), w(0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(o.real("dmgpt1")), Field::Real(o.real("backSw1")), w(data("DataA") as u32)]);
-                let gold = code == b"Ahar";
+                let gold = code == codes::ability::id::HARVEST;
                 if gold {
                     own.extend([Field::Real(0.0), Field::Real(0.0), Field::Real(0.0)]);
                 }
@@ -982,23 +983,23 @@ impl World {
                 tail
             }
             // A haunted mine's gathering (Aaha): its range, a reference; a timer.
-            b"Aaha" => {
-                let ab = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a)).find(|ab| ab.str("code").trim() == "Aaha");
+            codes::ability::id::ACOLYTE_HARVEST => {
+                let ab = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a)).find(|ab| ab.str("code").trim() == codes::ability::ACOLYTE_HARVEST);
                 own.extend([Field::Real(ab.map_or(0.0, |ab| ab.level_real("Rng", 1))), w(u32::MAX), w(u32::MAX), w(0)]);
                 vec![timer()]
             }
             // A gold mine (Agld): its gold, 1.0, 1, references, 15 and 2.0, the haunted
             // mine over it; its shaft (`shft`).
-            b"Agld" => {
-                let over = self.unit_order.iter().copied().find(|&v| v != h && self.unit(v).is_some_and(|w| !w.dead && w.abilities.iter().any(|(a, _)| a == b"Abgm") && (w.x - u.x).abs() < 1.0 && (w.y - u.y).abs() < 1.0)).and_then(|v| self.unit(v)).and_then(|w| w.extra.object_slots[0].first().copied());
+            codes::ability::id::GOLD_MINE => {
+                let over = self.unit_order.iter().copied().find(|&v| v != h && self.unit(v).is_some_and(|w| !w.dead && w.abilities.iter().any(|(a, _)| a == codes::ability::id::BLIGHTED_GOLD_MINE) && (w.x - u.x).abs() < 1.0 && (w.y - u.y).abs() < 1.0)).and_then(|v| self.unit(v)).and_then(|w| w.extra.object_slots[0].first().copied());
                 let over = over.map_or(NONE, rf);
                 own.extend([w(u.resource.max(0) as u32), Field::Real(1.0), w(1), w(0), w(u32::MAX), w(u32::MAX), w(0), w(u32::MAX), w(u32::MAX), w(0), w(15), Field::Real(2.0), w(over.0), w(over.1), w(0), w(u32::MAX), w(u32::MAX), w(0)]);
-                let shaft = u.extra.object_slots[2].iter().map(|&(s, _)| s).skip_while(|&s| s != t.0).find(|&s| self.tags.live.get(&s).is_some_and(|e| &e.0 == b"shft")).map_or(NONE, |s| rf(self.tagged(s)));
+                let shaft = u.extra.object_slots[2].iter().map(|&(s, _)| s).skip_while(|&s| s != t.0).find(|&s| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::MINE_SHAFT)).map_or(NONE, |s| rf(self.tagged(s)));
                 vec![Field::Ref(NONE), Field::List(vec![vec![Field::Ref(shaft)]]), timer()]
             }
             // Creep sleep (`FUN_6f5224c0`, `FUN_6f5230a0`): 0.1; its sleep's timer, its
             // check every 2 seconds (event 0xd01bf), and a list.
-            b"ACsp" => {
+            codes::ability::id::CREEP_SLEEP => {
                 own.push(Field::Real(0.1));
                 // (The sleep's timer, as it fell asleep, else its check's: read, the
                 // count of the night's creeps' second.)
@@ -1008,14 +1009,14 @@ impl World {
             // Fire (CAbilityOnFire): a reference, and its look (event 0xd01c1) every 1.5
             // seconds and a two-thousandth of its maximum life, at most 3
             // (`FUN_6f41baf0`: read, a town hall's 2.25, a haunted mine's 1.975).
-            b"Afih" | b"Afiu" | b"Afio" | b"Afin" => {
+            codes::ability::id::ON_FIRE_HUMAN | codes::ability::id::ON_FIRE_UNDEAD | codes::ability::id::ON_FIRE_ORC | codes::ability::id::ON_FIRE_NIGHT_ELF => {
                 use crate::efloat::{add, div, from_int, mul};
                 let period = f32::from_bits(add(mul(u.max_life.to_bits(), div(from_int(1), from_int(2000))), div(from_int(3), from_int(2)))).clamp(1.5, 3.0);
                 vec![w(u32::MAX), w(u32::MAX), w(0), periodic("41baf0", period, 0xd_01c1)]
             }
             // Wander (CAbilityWander): its wait (event 0xd01bf), due at its start and
             // the wait drawn, once.
-            b"Awan" => {
+            codes::ability::id::WANDER => {
                 let timer = match u.extra.wander_timer {
                     Some((count, at, wait)) => Field::Timer(rf(t), 0, Timing(Some((f32::from_bits(crate::efloat::add(at.to_bits(), wait.to_bits())), wait, count, 0xd_01bf, 0)))),
                     None => timer(),
@@ -1024,20 +1025,20 @@ impl World {
             }
             // CAbilityAttack (`FUN_6f49bd60`): its weapons' data, its acquisition range,
             // its place, and its two timers.
-            b"Aatk" => return Some(self.attack_record(h, t, own)),
+            codes::ability::id::ATTACK => return Some(self.attack_record(h, t, own)),
             // CAbilityAlarm (`FUN_6f42d040`): its timer and its in-range listener.
-            b"Aalr" => vec![timer(), Field::Ref(u.extra.alarm_pil.map_or(NONE, |s| rf(self.tagged(s))))],
+            codes::ability::id::ALARM => vec![timer(), Field::Ref(u.extra.alarm_pil.map_or(NONE, |s| rf(self.tagged(s))))],
             // Blight growth (CAbilityBlightGrowth): its Area as given, its Xbli, 0.
-            b"Abli" => {
+            codes::ability::id::BLIGHT_GROWTH => {
                 let xbli = u.extra.blight_slots.get(1).map_or((u32::MAX, u32::MAX), |&s| self.tagged(s));
-                let area = self.ability_with_code(h, "Abli").and_then(|(a, l)| self.objects.abilities.get(a).map(|o| o.level_real("Area", l))).unwrap_or(0.0);
+                let area = self.ability_with_code(h, codes::ability::BLIGHT_GROWTH).and_then(|(a, l)| self.objects.abilities.get(a).map(|o| o.level_real("Area", l))).unwrap_or(0.0);
                 own.extend([Field::Real(area), w(xbli.0), w(xbli.1), w(0)]);
                 Vec::new()
             }
             // A haunted mine's (CAbilityBlightedGoldMine): its gold, the hidden gold mine,
             // 0.0, DataA, DataB, 0.0, DataC, 0; three none, no timer, its work slots.
-            b"Abgm" => {
-                let (a, l) = self.ability_with_code(h, "Abgm")?;
+            codes::ability::id::BLIGHTED_GOLD_MINE => {
+                let (a, l) = self.ability_with_code(h, codes::ability::BLIGHTED_GOLD_MINE)?;
                 let d = self.objects.abilities.get(a)?;
                 let hidden = u.extra.mine.and_then(|m| self.unit(m)).and_then(|m| m.extra.object_slots[0].first().copied()).unwrap_or((u32::MAX, u32::MAX));
                 own.extend([w(u.resource as u32), w(hidden.0), w(hidden.1), Field::Real(0.0), w(d.level_real("DataA", l) as u32), Field::Real(d.level_real("DataB", l)), Field::Real(0.0), w(d.level_real("DataC", l) as u32), w(0)]);
@@ -1048,16 +1049,15 @@ impl World {
             }
             // An inventory (CAbilityInventory): its six slots (none), 0, its pickup
             // listener (`` `pil ``), six 0, six timers (none).  (Provisional: items carried.)
-            b"AInv" => {
+            codes::ability::id::INVENTORY => {
                 let pil = u.extra.item_pil.map_or(NONE, rf);
                 let slots = (0..6).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect();
                 vec![Field::List(slots), w(0), Field::Ref(pil), Field::List((0..6).map(|_| vec![w(0)]).collect()), Field::List((0..6).map(|_| vec![timer()]).collect())]
             }
             // An aura (CAbilityAura): 0, its Area and DataA; its art on the unit (the
-            // second table's, not written: provisional), its owner, its range listener
-            // (`` `pil `` after it), its refresh every 2 seconds, 0xd0142 (and 0 more for
-            // an item's armor aura, Aarm).
-            b"AEar" | b"AHad" | b"Aarm" | b"AHab" | b"AUau" | b"AOae" | b"AUav" | b"AEah" | b"Aakb" | b"AOac" | b"Aoar" => {
+            // second table's, as `art` has it), its owner, its range listener (`` `pil ``
+            // after it), its refresh every 2 seconds, 0xd0142, and four 0.
+            codes::ability::id::PRIESTESS_TRUESHOT_AURA | codes::ability::id::PALADIN_DEVOTION_AURA | codes::ability::id::MANA_REGENERATION_AURA | codes::ability::id::ARCH_MAGE_BRILLIANCE_AURA | codes::ability::id::DEATH_KNIGHT_UNHOLY_AURA | codes::ability::id::CHIEFTAIN_ENDURANCE_AURA | codes::ability::id::DREADLORD_VAMPIRIC_AURA | codes::ability::id::KEEPER_THORNS_AURA | codes::ability::id::AURA_WAR_DRUMS | codes::ability::id::COMMAND_AURA | codes::ability::id::AURA_REGENERATION_WARD => {
                 let (a, l) = u.abilities.iter().copied().find(|(a, _)| self.objects.abilities.get(*a).is_some_and(|o| crate::objects::id_from_str(o.str("code").trim()) == *code))?;
                 let d = self.objects.abilities.get(a)?;
                 own.extend([w(0), Field::Real(d.level_real("Area", l.max(1) as u32)), Field::Real(d.level_real("DataA", l.max(1) as u32))]);
@@ -1217,7 +1217,7 @@ impl World {
         for &h in &self.unit_order {
             let Some(u) = self.unit(h) else { continue };
             for &(s, b) in &u.extra.ai_slots {
-                if self.tags.live.get(&s).is_some_and(|e| &e.0 == b"uref" && e.1 == b) {
+                if self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::UNIT_AI_REF && e.1 == b) {
                     lists.push((u.owner, (s, b)));
                 }
             }
@@ -1243,7 +1243,7 @@ impl World {
             let Some(u) = self.unit(h) else { continue };
             let computer = self.players.get(u.owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER && p.slot_state == crate::types::slot_state::PLAYING);
             for &(s, b) in &u.extra.ai_slots {
-                if !self.tags.live.get(&s).is_some_and(|e| &e.0 == b"AI-U" && e.1 == b) {
+                if !self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::UNIT_AI && e.1 == b) {
                     continue;
                 }
                 // (A computer's workers' and structures': read, its acolytes', Necropolis's,
@@ -1324,7 +1324,7 @@ impl World {
         let computer = self.players.get(u.owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER && p.slot_state == crate::types::slot_state::PLAYING);
         let ai = computer || u.owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE;
         let mobile = !u.is_building && o.real("spd") > 0.0;
-        let critter = u.owner as usize == crate::types::PLAYER_NEUTRAL_PASSIVE as usize && u.abilities.iter().any(|(a, _)| a == b"Awan");
+        let critter = u.owner as usize == crate::types::PLAYER_NEUTRAL_PASSIVE as usize && u.abilities.iter().any(|(a, _)| a == codes::ability::id::WANDER);
         let mut hi = 0;
         if u.owner == self.local_player {
             hi |= 0x8;
@@ -1374,19 +1374,19 @@ impl World {
         let mut pils: Vec<(u32, [u8; 4])> = Vec::new();
         let rest = &u.extra.object_slots[2];
         for (k, &(s, _)) in rest.iter().enumerate() {
-            if code_of(s) == Some(*b"`pil") {
+            if code_of(s) == Some(*codes::class::IN_RANGE_LISTENER) {
                 if let Some(c) = rest[..k].iter().rev().filter_map(|&(x, _)| code_of(x)).find(|c| c[0] == b'A') {
                     pils.push((s, c));
                 }
             }
         }
-        pils.extend(u.extra.alarm_pil.map(|s| (s, *b"Aalr")));
-        pils.extend(u.extra.ensnare_pil.map(|p| (p.1, *b"Aens")));
-        pils.extend(u.extra.item_pil.map(|p| (p.0, *b"AInv")));
-        pils.retain(|&(s, _)| code_of(s) == Some(*b"`pil"));
+        pils.extend(u.extra.alarm_pil.map(|s| (s, *codes::ability::id::ALARM)));
+        pils.extend(u.extra.ensnare_pil.map(|p| (p.1, *codes::ability::id::ENSNARE)));
+        pils.extend(u.extra.item_pil.map(|p| (p.0, *codes::ability::id::INVENTORY)));
+        pils.retain(|&(s, _)| code_of(s) == Some(*codes::class::IN_RANGE_LISTENER));
         // The unit's listeners' chain: its threshold and in-range listeners by birth.
         let is = |s: u32, c: &[u8; 4]| code_of(s) == Some(*c);
-        let mut chain: Vec<(u32, u32)> = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).map(|&(s, _)| s).chain(u.extra.spell_timers.iter().copied()).chain(u.extra.mana_listeners.iter().map(|l| l.1)).chain(pils.iter().map(|p| p.0)).filter(|&s| is(s, b"`rtl") || is(s, b"`pil")).map(|s| self.tagged(s)).collect();
+        let mut chain: Vec<(u32, u32)> = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).map(|&(s, _)| s).chain(u.extra.spell_timers.iter().copied()).chain(u.extra.mana_listeners.iter().map(|l| l.1)).chain(pils.iter().map(|p| p.0)).filter(|&s| is(s, codes::class::THRESHOLD_LISTENER) || is(s, codes::class::IN_RANGE_LISTENER)).map(|s| self.tagged(s)).collect();
         chain.sort_by_key(|x| x.1);
         chain.dedup();
         let ability = |c: &[u8; 4]| u.abilities.iter().map(|(a, _)| *a).find(|a| self.objects.abilities.get(*a).is_some_and(|o| crate::objects::id_from_str(o.str("code").trim()) == *c)).and_then(|a| self.objects.abilities.get(a));
@@ -1394,10 +1394,10 @@ impl World {
         for (s, c) in pils {
             let t = self.tagged(s);
             let (period, range) = match &c {
-                b"Aneu" => (2.0, ability(&c).map_or(0.0, |o| o.level_real("DataA", 1))),
-                b"Aalr" => (3.0, self.objects.abilities.get(*b"Aalr").map_or(0.0, |o| o.level_real("Rng", 1))),
-                b"Aens" => (0.5, ability(&c).map_or(0.0, |o| o.level_real("Rng", 1) + o.level_real("DataB", 1))),
-                b"AInv" => (0.5, 180.0),
+                codes::ability::id::NEUTRAL_BUILDING => (2.0, ability(&c).map_or(0.0, |o| o.level_real("DataA", 1))),
+                codes::ability::id::ALARM => (3.0, self.objects.abilities.get(*codes::ability::id::ALARM).map_or(0.0, |o| o.level_real("Rng", 1))),
+                codes::ability::id::ENSNARE => (0.5, ability(&c).map_or(0.0, |o| o.level_real("Rng", 1) + o.level_real("DataB", 1))),
+                codes::ability::id::INVENTORY => (0.5, 180.0),
                 _ => (0.5, ability(&c).map_or(0.0, |o| o.level_real("Area", 1))),
             };
             let made = self.tags.made_at.get(&s).map_or(0.0, |&c| f32::from_bits(c));
@@ -1553,7 +1553,7 @@ impl World {
             v.sort();
             v
         };
-        let (pma, ama, sy, ac) = (of(b"^pma"), of(b"^ama"), of(b"l^sy"), of(b"l^ac"));
+        let (pma, ama, sy, ac) = (of(codes::class::PATHING_MAP), of(codes::class::ACCELERATOR_GRID), of(codes::class::LONG_RANGE_SYSTEM), of(codes::class::LONG_RANGE_ACCELERATOR));
         if pma.len() != 2 || ama.len() != 4 || sy.is_empty() || ac.is_empty() {
             return None;
         }

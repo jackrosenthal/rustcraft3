@@ -4,6 +4,7 @@
 use w3_formats::profile::Profile;
 use w3_game::World;
 use w3_game::objects::{Id, id_from_str, id_str};
+use w3_game::codes;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
@@ -283,13 +284,13 @@ impl Commands {
         }
         // Root (Aroo) shows Uproot (Unbuttonpos, Unart, Unorder) while rooted, and a
         // morph its way back while in its other form (UnitID).
-        const MORPHS: [&str; 9] = ["Abrf", "Arav", "Astn", "Abur", "AEme", "ANcr", "ANrg", "Acpf", "Aetf"];
+        const MORPHS: [&str; 9] = [codes::ability::BEARFORM, codes::ability::RAVEN_FORM_DRUID, codes::ability::STONE_FORM, codes::ability::BURROW, codes::ability::DEMON_HUNTER_METAMORPHOSIS, codes::ability::ALCHEMIST_CHEMICAL_RAGE, codes::ability::TINKERER_ROBO_GOBLIN_LEVEL_0, codes::ability::CORPOREAL_FORM, codes::ability::ETHEREAL_FORM];
         let code = ab.str("code");
         let in_other_form = MORPHS.contains(&code.as_str()) && id_from_str(ab.level_str("UnitID", w.ability_level(h, a).max(1)).trim()) == u.type_id;
         // A toggled ability that is on shows its off side (Unart, Untip, Unorder), if it
         // may be turned off.
-        let toggled_on = matches!(code.as_str(), "Adef" | "AEim" | "AHds" | "Amfl" | "ANth" | "Amdf") && !ab.str("Unorder").is_empty() && w.toggle_active(h, a) && w.toggle_can_end(a);
-        let unrooted_side = (code == "Aroo" && !u.extra.uprooted) || in_other_form || toggled_on;
+        let toggled_on = matches!(code.as_str(), codes::ability::DEFEND | codes::ability::DEMON_HUNTER_IMMOLATION | codes::ability::PALADIN_DIVINE_SHIELD | codes::ability::MANA_FLARE | codes::ability::THORNY_SHIELD_CREEP | codes::ability::MAGIC_DEFENSE) && !ab.str("Unorder").is_empty() && w.toggle_active(h, a) && w.toggle_can_end(a);
+        let unrooted_side = (code == codes::ability::ROOT && !u.extra.uprooted) || in_other_form || toggled_on;
         // Abilities with a button position appear on the card.
         let Some((x, y)) = at.or_else(|| parse_pos(&ab.list(if unrooted_side { "Unbuttonpos" } else { "Buttonpos" }))) else { return out };
         // Art may list one icon per race (Rally): human, orc, undead, night elf.
@@ -311,11 +312,11 @@ impl Commands {
         let order = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&w.order_string(a))).unwrap_or("");
         let targeting = w.targeting(a);
         let (order, targeted) = match ab.str("code").as_str() {
-            "Ahar" | "Ahrl" => ("harvest", true),
+            codes::ability::HARVEST | codes::ability::HARVEST_LUMBER => ("harvest", true),
             // Militia walk to their Town Hall themselves.
-            "Amil" => (order, false),
-            "Aroo" if unrooted_side => ("unroot", false),
-            "Aroo" => ("root", true),
+            codes::ability::MILITIA => (order, false),
+            codes::ability::ROOT if unrooted_side => ("unroot", false),
+            codes::ability::ROOT => ("root", true),
             c if MORPHS.contains(&c) || toggled_on => {
                 let name = ab.str(if unrooted_side { "Unorder" } else { "Order" });
                 (w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&name)).unwrap_or(""), false)
@@ -332,7 +333,7 @@ impl Commands {
         // An ability without an order string uses its code's built-in order; a spell
         // book opens its page.
         let action = match w.intrinsic_order_of(a) {
-            _ if code == "Aspb" => Action::BookMenu(a),
+            _ if code == codes::ability::SPELL_BOOK => Action::BookMenu(a),
             Some(id) if order.is_empty() && targeting != w3_game::ability::Targeting::Passive => Action::OrderId { order: id, targeted },
             _ => Action::Order { order, targeted },
         };
@@ -352,7 +353,7 @@ impl Commands {
         out.push(button);
         // Call to Arms shows its second button (Unbuttonpos, Unart, Unorder: Back to
         // Work) beside it; other toggles show one button at a time.
-        let both = ab.str("code") == "Amic";
+        let both = ab.str("code") == codes::ability::MILITIA_CONVERSION;
         if let (true, Some((ux, uy)), unart) = (both, parse_pos(&ab.list("Unbuttonpos")), pick("Unart")) {
             let unorder = w3_game::natives::basic::order_name(w3_game::natives::basic::order_id(&ab.str("Unorder"))).unwrap_or("");
             if !unart.is_empty() && !unorder.is_empty() {

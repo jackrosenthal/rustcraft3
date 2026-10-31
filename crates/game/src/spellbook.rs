@@ -7,6 +7,7 @@
 
 use crate::objects::{Id, id_from_str};
 use crate::world::World;
+use crate::codes;
 
 /// The most spells a book holds.
 const MOST: usize = 11;
@@ -15,11 +16,11 @@ impl World {
     /// The spell books a unit has: its own and its carried items'.
     pub fn spell_books(&self, h: u32) -> Vec<(Id, u32)> {
         let Some(u) = self.unit(h) else { return Vec::new() };
-        let mut out: Vec<(Id, u32)> = u.abilities.iter().filter(|(a, _)| self.ability_code(*a) == "Aspb").map(|&(a, l)| (a, l.max(1) as u32)).collect();
+        let mut out: Vec<(Id, u32)> = u.abilities.iter().filter(|(a, _)| self.ability_code(*a) == codes::ability::SPELL_BOOK).map(|&(a, l)| (a, l.max(1) as u32)).collect();
         for &it in &u.inventory {
             let Some(t) = self.item(it).map(|i| i.type_id) else { continue };
             for a in self.item_abilities(t) {
-                if self.ability_code(a) == "Aspb" && !out.iter().any(|b| b.0 == a) {
+                if self.ability_code(a) == codes::ability::SPELL_BOOK && !out.iter().any(|b| b.0 == a) {
                     out.push((a, 1));
                 }
             }

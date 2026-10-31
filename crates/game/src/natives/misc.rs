@@ -7,6 +7,7 @@ use super::{Args, boolean, handle, int, none, string};
 use crate::objects::{Id, id_from_int, id_to_int};
 use crate::types::*;
 use crate::world::{NativeFn, World};
+use crate::codes;
 
 fn pool(w: &mut World, h: u32) -> Option<&mut Vec<(Id, f32)>> {
     match w.handles.get_mut(h) {
@@ -97,7 +98,7 @@ fn pathing_mask(t: i32) -> u8 {
 
 /// Shops with the Sell Items ability ('Asid'), which the *AllStock natives change.
 fn all_shops(w: &World) -> Vec<u32> {
-    w.unit_order.iter().copied().filter(|&h| w.unit(h).is_some_and(|u| !u.dead) && w.ability_with_code(h, "Asid").is_some()).collect()
+    w.unit_order.iter().copied().filter(|&h| w.unit(h).is_some_and(|u| !u.dead) && w.ability_with_code(h, codes::ability::SELL_ITEM).is_some()).collect()
 }
 
 /// EFFECT_TYPE_* art of an ability (or buff): Effectart, Targetart, Casterart,
@@ -126,7 +127,7 @@ fn ability_sound(w: &World, id: Id, kind: i32) -> String {
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
     reg!(t,
         CreateUnitPool => |w, _, _| {
-            w.tags.take(b"pool");
+            w.tags.take(codes::class::UNIT_POOL);
             handle(w.handles.insert(Obj::UnitPool(Vec::new())))
         },
         DestroyUnitPool => |w, _, a| { if matches!(w.handles.get(a.h(0)), Some(Obj::UnitPool(_))) { w.handles.remove(a.h(0)); } none() },
@@ -140,7 +141,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             handle(u)
         },
         CreateItemPool => |w, _, _| {
-            w.tags.take(b"ipol");
+            w.tags.take(codes::class::ITEM_POOL);
             handle(w.handles.insert(Obj::ItemPool(Vec::new())))
         },
         DestroyItemPool => |w, _, a| { if matches!(w.handles.get(a.h(0)), Some(Obj::ItemPool(_))) { w.handles.remove(a.h(0)); } none() },
@@ -250,7 +251,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         CreateBlightedGoldmine => |w, _, a| {
             let (Some(p), x, y, face) = (w.player_of(a.h(0)), a.r(1), a.r(2), a.r(3)) else { return handle(0) };
             w.hidden_mine = true;
-            let mine = super::units::create_unit(w, 15, *b"ngol", x, y, face);
+            let mine = super::units::create_unit(w, 15, *codes::unit::id::GOLD_MINE, x, y, face);
             w.hidden_mine = false;
             let footprint = w.unit_mut(mine).map(|m| {
                 m.hidden = true;
@@ -259,7 +260,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             for s in footprint.unwrap_or_default() {
                 w.tags.release(s);
             }
-            let h = super::units::create_unit(w, p, *b"ugol", x, y, face);
+            let h = super::units::create_unit(w, p, *codes::unit::id::HAUNTED_GOLD_MINE, x, y, face);
             let gold = w.unit(mine).map_or(0, |m| m.resource);
             if let Some(u) = w.unit_mut(h) {
                 u.extra.mine = Some(mine);

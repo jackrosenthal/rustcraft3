@@ -10,6 +10,7 @@ use crate::objects::id_from_int;
 use crate::orders::ORDERS;
 use crate::types::{GameCache, Hashtable, Obj};
 use crate::world::{NativeFn, World};
+use crate::codes;
 
 /// Formats a real the way R2S/R2SW do: fixed-point with the given precision.
 pub fn format_real(v: f32, width: i32, precision: i32) -> String {
@@ -214,7 +215,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         InitHashtable => |w, _, _| {
-            w.tags.take(b"ghth");
+            w.tags.take(codes::class::HASHTABLE);
             handle(w.handles.insert(Obj::Hashtable(Box::default())))
         },
         SaveInteger => |w, _, a| {
@@ -264,7 +265,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         InitGameCache => |w, _, a| {
-            w.tags.take(b"gcch");
+            w.tags.take(codes::class::GAME_CACHE);
             // A cache already open by that name is shared, under a new handle (measured:
             // two InitGameCache("Test.w3v") differ but read the same values).
             let name = a.s(0);

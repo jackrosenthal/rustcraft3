@@ -5,6 +5,7 @@
 use crate::objects::id_from_str;
 use crate::sim::weapon;
 use crate::world::World;
+use crate::codes;
 
 /// One attack's line: the white range and the colored bonus.
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -113,7 +114,7 @@ impl World {
                 .iter()
                 .filter_map(|&i| self.item(i))
                 .flat_map(|i| self.item_abilities(i.type_id))
-                .filter(|&a| matches!(self.ability_code(a).as_str(), "AIob" | "AIcb" | "AIpb" | "AIlb" | "AIsb" | "AIfb"))
+                .filter(|&a| matches!(self.ability_code(a).as_str(), codes::ability::ORB_OF_FROST | codes::ability::ORB_OF_CORRUPTION | codes::ability::ORB_OF_VENOM | codes::ability::ORB_OF_LIGHTNING_OLD | codes::ability::ORB_OF_SPELLS | codes::ability::ORB_OF_FIRE))
                 .map(|a| self.data(a, "DataA", 1))
                 .sum();
             let bonus = u.item_bonus.damage + orbs + self.buff_damage_bonus(h) + (all - own) + (factor * mean).round();
@@ -173,7 +174,7 @@ impl World {
                 s.rank = Some(RankInfo { art, name: entry(names), tip: entry(o.list("Casterupgradetip")), level, upgrade_id: up.map(|(id, _)| id) });
             }
         }
-        s.gold = self.ability_with_code(h, "Agld").map(|_| u.resource);
+        s.gold = self.ability_with_code(h, codes::ability::GOLD_MINE).map(|_| u.resource);
         if u.is_hero {
             let b = u.item_bonus;
             s.hero = Some(HeroInfo {

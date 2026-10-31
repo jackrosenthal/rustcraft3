@@ -11,6 +11,7 @@ use crate::natives::{Args, boolean, handle, int, none, reg};
 use crate::objects::{Id, id_from_int, id_from_str, id_to_int};
 use crate::types::*;
 use crate::world::{NativeFn, World};
+use crate::codes;
 
 /// The AI script's virtual machine and its threads.  Kept apart from [`AiState`] so the VM
 /// can be borrowed mutably while natives change the AI state in the world.
@@ -310,7 +311,7 @@ impl World {
         // The AI's thread (`AItr`, FUN_6f9c8d10), its script's main run at once until it
         // first sleeps (traced: StartMeleeAI's own objects, the captains its main makes
         // among them, come before MeleeInitVictoryDefeat's).
-        self.tags.take(b"AItr");
+        self.tags.take(codes::class::AI_TOWN_LIST);
         self.ai_current = Some(player);
         if let Err(e) = vm.init_globals(self) {
             log::warn!("AI {script} globals: {e}");
@@ -511,7 +512,7 @@ impl World {
     }
 
     pub(crate) fn workers(&self, p: u8) -> Vec<u32> {
-        self.ai_units(p).into_iter().filter(|&h| ["Ahar", "Ahrl", "Aaha", "Awha"].iter().any(|c| self.ability_with_code(h, c).is_some())).collect()
+        self.ai_units(p).into_iter().filter(|&h| [codes::ability::HARVEST, codes::ability::HARVEST_LUMBER, codes::ability::ACOLYTE_HARVEST, codes::ability::WISP_HARVEST].iter().any(|c| self.ability_with_code(h, c).is_some())).collect()
     }
 
     /// A Hero type first (FUN_6f9caff0): an idle altar of the player revives a dead
@@ -690,7 +691,7 @@ impl World {
             .iter()
             .copied()
             .filter(|&h| self.unit(h).is_some_and(|u| u.owner == p && !u.dead && u.constructing.is_none() && u.extra.mine.is_none() && !u.extra.uprooted && matches!(u.action, Action::Idle)))
-            .filter_map(|h| self.ability_with_code(h, "Aent").map(|(a, l)| (h, a, l)))
+            .filter_map(|h| self.ability_with_code(h, codes::ability::ENTANGLE).map(|(a, l)| (h, a, l)))
             .collect();
         let order = crate::natives::basic::order_id("entangle");
         for (h, a, lvl) in trees {
@@ -700,7 +701,7 @@ impl World {
             let Some((x, y, size)) = self.unit(h).map(|u| (u.x, u.y, u.collision)) else { continue };
             let reach = self.data(a, "Rng", lvl) + size;
             let mine = self.unit_order.iter().copied().find(|&m| {
-                self.unit(m).is_some_and(|u| !u.dead && !u.hidden && (u.x - x).hypot(u.y - y) <= reach + u.collision) && self.ability_with_code(m, "Agld").is_some()
+                self.unit(m).is_some_and(|u| !u.dead && !u.hidden && (u.x - x).hypot(u.y - y) <= reach + u.collision) && self.ability_with_code(m, codes::ability::GOLD_MINE).is_some()
             });
             if let Some(m) = mine {
                 self.order_unit(h, order, 0.0, 0.0, m);
@@ -961,7 +962,7 @@ impl World {
                 // take them home first, by the unnamed order 852660 (FUN_6f9c32d0;
                 // measured: a computer's ghouls called to its first wave bring their
                 // lumber back before they go).
-                let gatherer = ["Ahar", "Ahrl", "Aaha", "Awha"].iter().any(|c| self.ability_with_code(h, c).is_some());
+                let gatherer = [codes::ability::HARVEST, codes::ability::HARVEST_LUMBER, codes::ability::ACOLYTE_HARVEST, codes::ability::WISP_HARVEST].iter().any(|c| self.ability_with_code(h, c).is_some());
                 if gatherer && (u.carry_gold > 0 || u.carry_lumber > 0) {
                     if attack {
                         if let Some(u) = self.unit_mut(h).filter(|u| !matches!(u.action, Action::ReturnResources)) {
@@ -1334,7 +1335,7 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             // Each captain's objects (traced): itself, its position, two regions, its
             // path, four listeners.
             for _ in 0..2 {
-                w.tags.take_all(&[b"AI-C", b"`pcu", b"^pmr", b"^pmr", b"l^pa", b"`pil", b"`pil", b"`pil", b"`pil"]);
+                w.tags.take_all(&[codes::class::AI_CAPTAIN, codes::class::UNIT_POSITION, codes::class::PATHING_REGION, codes::class::PATHING_REGION, codes::class::PATH, codes::class::IN_RANGE_LISTENER, codes::class::IN_RANGE_LISTENER, codes::class::IN_RANGE_LISTENER, codes::class::IN_RANGE_LISTENER]);
             }
             let p = w.ai_player();
             let (attack_home, home) = w.captain_homes(p);

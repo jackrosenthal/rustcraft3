@@ -6,6 +6,7 @@ use w3_jass::Vm;
 use crate::objects::{Id, id_from_str};
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 impl World {
     /// Disease Cloud (Aapl): what the ability allows within Area of its carrier catches
@@ -17,12 +18,12 @@ impl World {
         let _ = vm;
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden)).collect();
         for h in units {
-            for code in ["Aapl", "Arpl", "Arpm"] {
+            for code in [codes::ability::DISEASE_CLOUD, codes::ability::REPLENISH_LIFE, codes::ability::REPLENISH_MANA] {
                 let Some((a, lvl)) = self.ability_with_code(h, code) else { continue };
                 let lvl = lvl.max(1) as u32;
                 let Some(u) = self.unit(h) else { continue };
                 let (owner, ux, uy) = (u.owner, u.x, u.y);
-                if !self.ability_enabled(owner, a) || (code != "Aapl" && !u.autocast.contains(&a)) {
+                if !self.ability_enabled(owner, a) || (code != codes::ability::DISEASE_CLOUD && !u.autocast.contains(&a)) {
                     continue;
                 }
                 // Ability cooldowns count down with the rest (update_buffs).
@@ -31,7 +32,7 @@ impl World {
                 }
                 let area = self.data(a, "Area", lvl);
                 let buffs: Vec<Id> = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", lvl)).unwrap_or_default().split(',').map(|b| id_from_str(b.trim())).filter(|b| b[0] != 0).collect();
-                if code == "Aapl" {
+                if code == codes::ability::DISEASE_CLOUD {
                     self.unit_mut(h).unwrap().cooldowns.insert(a, 0.5);
                     let (dps, last) = (self.data(a, "DataB", lvl), self.data(a, "DataA", lvl));
                     for t in self.units_in_pub(ux, uy, area) {
@@ -42,7 +43,7 @@ impl World {
                     }
                     continue;
                 }
-                let life = code == "Arpl";
+                let life = code == codes::ability::REPLENISH_LIFE;
                 let (gain, max, charged, cost) = (self.data(a, if life { "DataA" } else { "DataB" }, lvl), self.data(a, "Cast", lvl).max(1.0) as usize, self.data(a, "DataE", lvl) as usize, self.data(a, "Cost", lvl));
                 let mut needy: Vec<u32> = self
                     .units_in_pub(ux, uy, area)
@@ -122,7 +123,7 @@ impl World {
 
     /// The corpses a meat wagon holds at most: its cargo hold's (Amtc) DataA.
     fn corpse_capacity(&self, h: u32) -> usize {
-        self.ability_with_code(h, "Amtc").map_or(0, |(a, lvl)| self.data(a, "DataA", lvl.max(1) as u32) as usize)
+        self.ability_with_code(h, codes::ability::CARGO_HOLD_AMTC).map_or(0, |(a, lvl)| self.data(a, "DataA", lvl.max(1) as u32) as usize)
     }
 
     /// Get Corpse: the wagon takes up a corpse.
@@ -167,7 +168,7 @@ impl World {
     pub fn update_corpse_makers(&mut self, _dt: f32) {
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && u.constructing.is_none())).collect();
         for h in units {
-            for code in ["Aexh", "Agyd"] {
+            for code in [codes::ability::EXHUME, codes::ability::GRAVEYARD] {
                 let Some((a, lvl)) = self.ability_with_code(h, code) else { continue };
                 let lvl = lvl.max(1) as u32;
                 let Some(u) = self.unit(h) else { continue };
@@ -187,8 +188,8 @@ impl World {
                     let (px, py) = place(k);
                     self.corpses_in(px, py, 96.0).is_empty()
                 });
-                let full = if code == "Aexh" { held >= max.min(self.corpse_capacity(h)) } else { free.is_none() || self.corpses_in(x, y, out + 96.0).len() >= max };
-                let period = self.data(a, if code == "Aexh" { "Dur" } else { "Cool" }, lvl);
+                let full = if code == codes::ability::EXHUME { held >= max.min(self.corpse_capacity(h)) } else { free.is_none() || self.corpses_in(x, y, out + 96.0).len() >= max };
+                let period = self.data(a, if code == codes::ability::EXHUME { "Dur" } else { "Cool" }, lvl);
                 let u = self.unit_mut(h).unwrap();
                 if full {
                     u.cooldowns.insert(a, period);
@@ -199,7 +200,7 @@ impl World {
                 // original's every 15).  A wagon's first comes after a whole Dur.
                 match u.cooldowns.get(&a).copied() {
                     Some(left) if left > 0.0 => continue,
-                    None if code == "Aexh" => {
+                    None if code == codes::ability::EXHUME => {
                         u.cooldowns.insert(a, period);
                         continue;
                     }
@@ -207,7 +208,7 @@ impl World {
                 }
                 u.cooldowns.insert(a, period);
                 let type_id = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
-                if code == "Aexh" {
+                if code == codes::ability::EXHUME {
                     self.unit_mut(h).unwrap().extra.corpses.push(type_id);
                 } else if let Some(k) = free {
                     let (px, py) = place(k);
@@ -229,9 +230,9 @@ impl World {
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden)).collect();
         for h in units {
             // The Cloak of Flames (AIcf) burns as Permanent Immolation does.
-            let cloak = self.unit(h).map(|u| u.inventory.clone()).unwrap_or_default().into_iter().filter_map(|i| self.item(i).map(|i| i.type_id)).flat_map(|t| self.item_abilities(t)).find(|&a| self.ability_code(a) == "AIcf");
-            for code in ["ANpi", "Apig", "AIcf"] {
-                let found = if code == "AIcf" { cloak.map(|a| (a, 1)) } else { self.ability_with_code(h, code) };
+            let cloak = self.unit(h).map(|u| u.inventory.clone()).unwrap_or_default().into_iter().filter_map(|i| self.item(i).map(|i| i.type_id)).flat_map(|t| self.item_abilities(t)).find(|&a| self.ability_code(a) == codes::ability::ITEM_CLOAK_OF_FLAMES);
+            for code in [codes::ability::PERMANENT_IMMOLATION, codes::ability::PERMANENT_IMMOLATION_GRAPHIC, codes::ability::ITEM_CLOAK_OF_FLAMES] {
+                let found = if code == codes::ability::ITEM_CLOAK_OF_FLAMES { cloak.map(|a| (a, 1)) } else { self.ability_with_code(h, code) };
                 let Some((a, lvl)) = found else {
                     // Without it (a cloak dropped), its flames go.
                     let gone: Vec<Id> = self.unit(h).map(|u| u.buffs.iter().filter(|b| b.caster == h && self.ability_code(b.ability) == code).map(|b| b.ability).collect()).unwrap_or_default();

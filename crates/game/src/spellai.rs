@@ -24,6 +24,7 @@ use w3_jass::Vm;
 use crate::objects::{Id, id_from_str};
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 /// The units around a point, as FUN_6f602f70 counts them.
 #[derive(Default, Debug, Clone, Copy)]
@@ -47,7 +48,7 @@ pub(crate) struct Census {
 }
 
 /// Illidan's demon form ('Eidm'), which Sleep leaves alone.
-const ILLIDAN_DEMON: Id = *b"Eidm";
+const ILLIDAN_DEMON: Id = *codes::unit::id::DEMON_HUNTER_DEMON_FORM;
 
 impl World {
     /// Whether a player's units help another's (the caster's side in the census).
@@ -190,99 +191,99 @@ impl World {
             }
             let lvl = lvl as u32;
             match self.ability_code(a).as_str() {
-                "AHtc" | "ACtc" | "AOws" => self.ai_thunder_clap(h, a, lvl, enemy, victim),
-                "AHtb" | "ACtb" | "ANfb" => self.ai_storm_bolt(h, a, lvl, enemy, victim),
-                "AHhb" => self.ai_holy_light(h, a, lvl, enemy, victim),
-                "AUdc" => self.ai_death_coil(h, a, lvl, enemy, victim),
-                "AUsl" => self.ai_sleep(h, a, lvl, enemy, victim),
-                "AUfn" => self.ai_frost_nova(h, a, lvl, enemy, victim),
-                "AOcl" => self.ai_chain_lightning(h, a, lvl, enemy, victim),
-                "AOhw" => self.ai_healing_wave(h, a, victim),
-                "AUcs" => self.ai_carrion_swarm(h, a, lvl, enemy, victim),
-                "AOsh" => self.ai_shockwave(h, a, lvl, enemy, victim),
-                "AEer" => self.ai_entangling_roots(h, a, lvl, enemy, victim),
-                "AEmb" => self.ai_mana_burn(h, a, lvl, enemy, victim),
-                "AOhx" => self.ai_hex(h, a, enemy, victim),
-                "Aprg" => self.ai_purge(h, a, lvl, enemy, victim),
-                "Aply" => self.ai_polymorph(h, a, enemy, victim),
-                "ANsi" | "ANdh" => self.ai_silence(h, a, lvl, enemy, victim),
-                "AHbn" => self.ai_banish(h, a, enemy, victim),
-                "AUim" => self.ai_impale(h, a, lvl, enemy, victim),
-                "AHfs" => self.ai_flame_strike(h, a, lvl, enemy, victim),
-                "ANdo" => self.ai_doom(h, a, lvl, enemy, victim),
-                "Acri" => self.ai_cripple(h, a, enemy, victim),
-                "AEfk" => self.ai_fan_of_knives(h, a, lvl, enemy, victim),
-                "ANbf" | "ACbf" => self.ai_breath(h, a, lvl, enemy, victim),
-                "AHwe" | "ANsg" | "ANsq" | "ANsw" | "ANlm" => self.ai_summon(h, a, enemy, victim),
-                "AOsf" | "AIsh" => self.ai_feral_spirit(h, a, victim),
-                "AHpx" => self.ai_phoenix(h, a, lvl, enemy, victim),
-                "ANwm" => self.ai_watery_minion(h, a, enemy, victim),
-                "ANsy" | "AOwd" => self.ai_ward(h, a, lvl, enemy, victim),
-                "ANht" => self.ai_howl(h, a, lvl, enemy, victim),
-                "Auhf" => self.ai_unholy_frenzy(h, a, lvl, enemy, victim),
-                "Aspl" => self.ai_spirit_link(h, a, lvl, enemy, victim),
-                "Alsh" => self.ai_lightning_shield(h, a, lvl, enemy, victim),
-                "AUls" => self.ai_locust_swarm(h, a, lvl, enemy, victim),
-                "AEsf" => self.ai_starfall(h, a, lvl, enemy, victim),
-                "AOvd" => self.ai_voodoo(h, a, lvl, enemy, victim),
-                "Arai" | "AUcb" | "AIrd" | "Avng" => self.ai_raise_dead(h, a, lvl, enemy, victim),
-                "AUin" | "ANin" => self.ai_inferno(h, a, lvl, enemy, victim),
-                "ANrc" => {
+                codes::ability::MOUNTAIN_KING_THUNDER_CLAP | codes::ability::THUNDER_CLAP_CREEP | codes::ability::CHIEFTAIN_WAR_STOMP => self.ai_thunder_clap(h, a, lvl, enemy, victim),
+                codes::ability::MOUNTAIN_KING_THUNDER_BOLT | codes::ability::THUNDER_BOLT_CREEP | codes::ability::FIRE_BOLT => self.ai_storm_bolt(h, a, lvl, enemy, victim),
+                codes::ability::PALADIN_HOLY_LIGHT => self.ai_holy_light(h, a, lvl, enemy, victim),
+                codes::ability::DEATH_KNIGHT_DEATH_COIL => self.ai_death_coil(h, a, lvl, enemy, victim),
+                codes::ability::DREADLORD_SLEEP => self.ai_sleep(h, a, lvl, enemy, victim),
+                codes::ability::LICH_FROST_NOVA => self.ai_frost_nova(h, a, lvl, enemy, victim),
+                codes::ability::FARSEER_CHAIN_LIGHTNING => self.ai_chain_lightning(h, a, lvl, enemy, victim),
+                codes::ability::SHADOW_HUNTER_HEALING_WAVE => self.ai_healing_wave(h, a, victim),
+                codes::ability::DREADLORD_CARRION_SWARM => self.ai_carrion_swarm(h, a, lvl, enemy, victim),
+                codes::ability::CHIEFTAIN_SHOCK_WAVE => self.ai_shockwave(h, a, lvl, enemy, victim),
+                codes::ability::KEEPER_ENTANGLING_ROOTS => self.ai_entangling_roots(h, a, lvl, enemy, victim),
+                codes::ability::DEMON_HUNTER_MANA_BURN => self.ai_mana_burn(h, a, lvl, enemy, victim),
+                codes::ability::SHADOW_HUNTER_HEX => self.ai_hex(h, a, enemy, victim),
+                codes::ability::PURGE => self.ai_purge(h, a, lvl, enemy, victim),
+                codes::ability::POLYMORPH => self.ai_polymorph(h, a, enemy, victim),
+                codes::ability::DARK_RANGER_SILENCE | codes::ability::BREWMASTER_DRUNKEN_HAZE => self.ai_silence(h, a, lvl, enemy, victim),
+                codes::ability::BLOOD_MAGE_BANISH => self.ai_banish(h, a, enemy, victim),
+                codes::ability::CRYPT_LORD_IMPALE => self.ai_impale(h, a, lvl, enemy, victim),
+                codes::ability::BLOOD_MAGE_FLAME_STRIKE => self.ai_flame_strike(h, a, lvl, enemy, victim),
+                codes::ability::PIT_LORD_DOOM => self.ai_doom(h, a, lvl, enemy, victim),
+                codes::ability::CRIPPLE => self.ai_cripple(h, a, enemy, victim),
+                codes::ability::WARDEN_FAN_OF_KNIVES => self.ai_fan_of_knives(h, a, lvl, enemy, victim),
+                codes::ability::BREWMASTER_BREATH_OF_FIRE | codes::ability::BREATH_OF_FROST_CREEP => self.ai_breath(h, a, lvl, enemy, victim),
+                codes::ability::ARCH_MAGE_WATER_ELEMENTAL | codes::ability::BEAST_MASTER_SUMMON_BEAR | codes::ability::BEAST_MASTER_SUMMON_QUILBEAST | codes::ability::BEAST_MASTER_SUMMON_HAWK | codes::ability::FIRELORD_SUMMON_LAVA_SPAWN => self.ai_summon(h, a, enemy, victim),
+                codes::ability::FARSEER_SPIRIT_WOLF | codes::ability::SUMMON_HEADHUNTER_ITEM => self.ai_feral_spirit(h, a, victim),
+                codes::ability::BLOOD_MAGE_PHOENIX => self.ai_phoenix(h, a, lvl, enemy, victim),
+                codes::ability::WATERY_MINION => self.ai_watery_minion(h, a, enemy, victim),
+                codes::ability::TINKERER_SUMMON_FACTORY_LEVEL_0 | codes::ability::SHADOW_HUNTER_SERPENT_WARD_AOWD => self.ai_ward(h, a, lvl, enemy, victim),
+                codes::ability::PIT_LORD_HOWL_OF_TERROR => self.ai_howl(h, a, lvl, enemy, victim),
+                codes::ability::UNHOLY_FRENZY => self.ai_unholy_frenzy(h, a, lvl, enemy, victim),
+                codes::ability::SPIRIT_LINK => self.ai_spirit_link(h, a, lvl, enemy, victim),
+                codes::ability::LIGHTNING_SHIELD => self.ai_lightning_shield(h, a, lvl, enemy, victim),
+                codes::ability::CRYPT_LORD_LOCUST_SWARM => self.ai_locust_swarm(h, a, lvl, enemy, victim),
+                codes::ability::PRIESTESS_STARFALL => self.ai_starfall(h, a, lvl, enemy, victim),
+                codes::ability::SHADOW_HUNTER_VOODOOO => self.ai_voodoo(h, a, lvl, enemy, victim),
+                codes::ability::RAISE_DEAD | codes::ability::CRYPT_LORD_CARRION_SCARABS | codes::ability::RAISE_DEAD_ITEM | codes::ability::VENGEANCE => self.ai_raise_dead(h, a, lvl, enemy, victim),
+                codes::ability::DREADLORD_INFERNO | codes::ability::INFERNO => self.ai_inferno(h, a, lvl, enemy, victim),
+                codes::ability::RAIN_OF_CHAOS => {
                     if !self.ai_gate(h, a, enemy, victim, false, None, None) {
                         self.ai_cast(h, a, enemy);
                     }
                 }
-                "AHdr" => self.ai_drain(h, a, lvl, enemy, victim),
-                "Aens" => self.ai_ensnare(h, a, enemy, victim),
-                "Aweb" => {
+                codes::ability::BLOOD_MAGE_SIPHON_MANA => self.ai_drain(h, a, lvl, enemy, victim),
+                codes::ability::ENSNARE => self.ai_ensnare(h, a, enemy, victim),
+                codes::ability::WEB => {
                     if !self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
                         self.ai_cast(h, a, enemy);
                     }
                 }
-                "Acyc" => self.ai_cyclone(h, a, enemy),
-                "Atau" => self.ai_taunt(h, a, lvl, enemy, victim),
-                "ANtm" => self.ai_transmute(h, a, enemy, victim),
-                "ANmo" => self.ai_monsoon(h, a, lvl, enemy, victim),
-                "ANst" => self.ai_stampede(h, a, lvl, enemy, victim),
-                "ANms" => self.ai_mana_shield(h, a, lvl, enemy, victim),
-                "Arej" => self.ai_rejuvenation(h, a, lvl, enemy, victim),
-                "ANcs" => self.ai_cluster_rockets(h, a, lvl, enemy, victim),
-                "Aabs" => self.ai_absorb(h, a, enemy, victim),
-                "ANch" => self.ai_charm(h, a, enemy, victim),
-                "Acmg" => {
+                codes::ability::CYCLONE => self.ai_cyclone(h, a, enemy),
+                codes::ability::TAUNT => self.ai_taunt(h, a, lvl, enemy, victim),
+                codes::ability::ALCHEMIST_TRANSMUTE => self.ai_transmute(h, a, enemy, victim),
+                codes::ability::MONSOON => self.ai_monsoon(h, a, lvl, enemy, victim),
+                codes::ability::BEAST_MASTER_STAMPEDE => self.ai_stampede(h, a, lvl, enemy, victim),
+                codes::ability::SEA_WITCH_MANA_SHIELD => self.ai_mana_shield(h, a, lvl, enemy, victim),
+                codes::ability::REJUVINATION => self.ai_rejuvenation(h, a, lvl, enemy, victim),
+                codes::ability::TINKERER_CLUSTER_ROCKETS_LEVEL_0 => self.ai_cluster_rockets(h, a, lvl, enemy, victim),
+                codes::ability::ABSORB_MANA => self.ai_absorb(h, a, enemy, victim),
+                codes::ability::DARK_RANGER_CHARM => self.ai_charm(h, a, enemy, victim),
+                codes::ability::CONTROL_MAGIC => {
                     if !self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) {
                         self.ai_cast(h, a, enemy);
                     }
                 }
-                "Advm" => self.ai_devour_magic(h, a, enemy, victim),
-                "ANfl" => self.ai_forked_lightning(h, a, lvl, enemy, victim),
-                "Apos" | "Aps2" => self.ai_possession(h, a, enemy, victim),
-                "AEsh" => self.ai_lingering(h, a, lvl, enemy, victim, false),
-                "Auco" => self.ai_concoction(h, a, lvl, enemy, victim),
-                "ANso" => self.ai_lingering(h, a, lvl, enemy, victim, true),
-                "Absk" | "ANcr" => self.ai_restart_timer(h, a, 2.0, victim != h),
-                "AEbl" => {
+                codes::ability::DEVOUR_MAGIC => self.ai_devour_magic(h, a, enemy, victim),
+                codes::ability::SEA_WITCH_FORKED_LIGHTNING => self.ai_forked_lightning(h, a, lvl, enemy, victim),
+                codes::ability::POSSESSION | codes::ability::POSSESSION_CHANNELING => self.ai_possession(h, a, enemy, victim),
+                codes::ability::WARDEN_SHADOW_STRIKE => self.ai_lingering(h, a, lvl, enemy, victim, false),
+                codes::ability::UNSTABLE_CONCOCTION => self.ai_concoction(h, a, lvl, enemy, victim),
+                codes::ability::FIRELORD_SOUL_BURN => self.ai_lingering(h, a, lvl, enemy, victim, true),
+                codes::ability::BESERK | codes::ability::ALCHEMIST_CHEMICAL_RAGE => self.ai_restart_timer(h, a, 2.0, victim != h),
+                codes::ability::WARDEN_BLINK => {
                     if victim == h {
                         self.ai_restart_timer(h, a, 5.0, false);
                     }
                 }
-                "Abtl" => self.ai_battle_stations(h, a, enemy),
-                "Abrf" => self.ai_bear_form(h, a, enemy, victim),
-                "Aroa" => self.ai_roar(h, a, enemy, victim),
-                "ANhs" => self.ai_healing_spray(h, a, lvl, enemy),
-                "Aclf" => self.ai_cloud(h, a, enemy, victim),
-                "Acpf" => self.ai_corporeal_form(h, a, enemy, victim),
-                "Amfl" => {
+                codes::ability::BATTLESTATIONS => self.ai_battle_stations(h, a, enemy),
+                codes::ability::BEARFORM => self.ai_bear_form(h, a, enemy, victim),
+                codes::ability::ROAR => self.ai_roar(h, a, enemy, victim),
+                codes::ability::ALCHEMIST_HEALING_SPRAY => self.ai_healing_spray(h, a, lvl, enemy),
+                codes::ability::CLOUD_OF_FOG => self.ai_cloud(h, a, enemy, victim),
+                codes::ability::CORPOREAL_FORM => self.ai_corporeal_form(h, a, enemy, victim),
+                codes::ability::MANA_FLARE => {
                     if !self.ai_gate(h, a, enemy, victim, false, None, None) && self.ai_mana_flare_due(h, a, lvl) {
                         self.ai_cast(h, a, 0);
                     }
                 }
-                "Amic" => self.ai_militia(h, a, enemy, victim),
-                "Asds" => self.ai_self_destruct(h, a, lvl, enemy, victim),
-                "AEsv" => self.ai_spirit_of_vengeance(h, a, enemy, victim),
-                "Asta" => self.ai_stasis_trap(h, a, lvl, enemy, victim),
-                "ANab" => self.ai_acid_bomb(h, a, lvl, enemy, victim),
-                "Aams" => {
+                codes::ability::MILITIA_CONVERSION => self.ai_militia(h, a, enemy, victim),
+                codes::ability::SELF_DESTRUCT => self.ai_self_destruct(h, a, lvl, enemy, victim),
+                codes::ability::WARDEN_SPIRIT_OF_VENGEANCE => self.ai_spirit_of_vengeance(h, a, enemy, victim),
+                codes::ability::STASIS_TRAP => self.ai_stasis_trap(h, a, lvl, enemy, victim),
+                codes::ability::ALCHEMIST_ACID_BOMB => self.ai_acid_bomb(h, a, lvl, enemy, victim),
+                codes::ability::ANTI_MAGIC_SHIELD => {
                     if !self.ai_gate(h, a, enemy, victim, true, Some(victim), None) && self.unit(victim).is_some_and(Self::real_hero) {
                         self.ai_cast(h, a, victim);
                     }
@@ -306,15 +307,15 @@ impl World {
             let lvl = lvl as u32;
             match self.ability_code(a).as_str() {
                 // FUN_6f602930: Thunder Clap's own test, easier when hard pressed.
-                "AHtc" | "ACtc" | "AOws" => self.thunder_clap_test(h, a, lvl, true),
+                codes::ability::MOUNTAIN_KING_THUNDER_CLAP | codes::ability::THUNDER_CLAP_CREEP | codes::ability::CHIEFTAIN_WAR_STOMP => self.thunder_clap_test(h, a, lvl, true),
                 // FUN_6f602950: a summon past the gate.
-                "AHwe" | "ANsg" | "ANsq" | "ANsw" | "ANlm" | "AHpx" | "AEsv" | "ANwm" => {
+                codes::ability::ARCH_MAGE_WATER_ELEMENTAL | codes::ability::BEAST_MASTER_SUMMON_BEAR | codes::ability::BEAST_MASTER_SUMMON_QUILBEAST | codes::ability::BEAST_MASTER_SUMMON_HAWK | codes::ability::FIRELORD_SUMMON_LAVA_SPAWN | codes::ability::BLOOD_MAGE_PHOENIX | codes::ability::WARDEN_SPIRIT_OF_VENGEANCE | codes::ability::WATERY_MINION => {
                     if !self.ai_gate(h, a, attacker, h, true, None, None) {
                         self.ai_cast(h, a, 0);
                     }
                 }
                 // FUN_6f6028d0: Feral Spirit against an enemy on the ground.
-                "AOsf" | "AIsh" => {
+                codes::ability::FARSEER_SPIRIT_WOLF | codes::ability::SUMMON_HEADHUNTER_ITEM => {
                     let owner = self.unit(h).map_or(0, |u| u.owner);
                     let ok = self.unit(attacker).is_some_and(|e| !crate::natives::players::is_ally(self, owner, e.owner) && !self.is_air(e));
                     if ok && self.can_cast(h, a).is_ok() {
@@ -323,26 +324,26 @@ impl World {
                 }
                 // CAbilityWindWalk vf63: past the gate with less than a third of its life or
                 // 200.
-                "AOwk" => {
+                codes::ability::BLADE_MASTER_WIND_WALK => {
                     if !self.ai_gate(h, a, attacker, h, true, None, None) && (self.life_fraction(h) < 1.0 / 3.0 || self.life(h) < 200.0) {
                         self.ai_cast(h, a, 0);
                     }
                 }
-                "AOmi" => self.ai_mirror_image(h, a, attacker),
+                codes::ability::BLADE_MASTER_MIRROR_IMAGE => self.ai_mirror_image(h, a, attacker),
                 // CAbilityAvatar vf63: able to cast, armed, with half its life or less.
-                "AHav" => {
+                codes::ability::MOUNTAIN_KING_AVATAR => {
                     if self.can_cast(h, a).is_ok() && self.unit(h).is_some_and(|u| !crate::sim::unit_weapons(self, u).is_empty()) && self.life_fraction(h) <= 0.5 {
                         self.ai_cast(h, a, 0);
                     }
                 }
                 // CAbilityDivineShield vf63: struck by an attack, at once.
-                "AHds" => {
+                codes::ability::PALADIN_DIVINE_SHIELD => {
                     if attack && self.can_cast(h, a).is_ok() {
                         self.ai_cast(h, a, 0);
                     }
                 }
                 // CAbilityMetamorphosis vf63: under half its life, struck by an enemy.
-                "AEme" => {
+                codes::ability::DEMON_HUNTER_METAMORPHOSIS => {
                     let owner = self.unit(h).map_or(0, |u| u.owner);
                     let enemy = self.unit(attacker).is_some_and(|e| !crate::natives::players::is_ally(self, owner, e.owner));
                     if enemy && self.can_cast(h, a).is_ok() && self.life_fraction(h) < 0.5 {
@@ -390,10 +391,10 @@ impl World {
             let Some(t) = self.item(item).map(|i| i.type_id) else { continue };
             for a in self.item_abilities(t) {
                 let use_it = match self.ability_code(a).as_str() {
-                    "AIhe" | "AIha" => max - life >= self.data(a, "DataA", 1),
-                    "AIre" => life < 100.0,
-                    "AIvu" => enemy && life <= 100.0,
-                    "AIvi" => enemy && (self.life_fraction(h) < 1.0 / 3.0 || life < 200.0),
+                    codes::ability::ITEM_HEALING | codes::ability::ITEM_HEAL_AOE => max - life >= self.data(a, "DataA", 1),
+                    codes::ability::ITEM_RESTORE => life < 100.0,
+                    codes::ability::ITEM_INVUL => enemy && life <= 100.0,
+                    codes::ability::ITEM_TEMPORARY_INVISIBILITY => enemy && (self.life_fraction(h) < 1.0 / 3.0 || life < 200.0),
                     _ => false,
                 };
                 if use_it && self.unit(h).is_some_and(|u| u.cooldowns.get(&a).copied().unwrap_or(0.0) <= 0.0) {
@@ -701,7 +702,7 @@ impl World {
             }
             let held = u.move_speed > 0.0 && (self.buff_mods(u_h).4 || self.current_move_speed(u_h) <= 0.0);
             let attacking = matches!(u.action, Action::Attack { .. });
-            if u.extra.illusion.is_some() || u.timed_life.is_some() || held || attacking || u.buffs.iter().any(|x| x.id == *b"BNhs") {
+            if u.extra.illusion.is_some() || u.timed_life.is_some() || held || attacking || u.buffs.iter().any(|x| x.id == *codes::buff::id::HEALING_SPRAY) {
                 continue;
             }
             let life = self.life_fraction(u_h);
@@ -781,7 +782,7 @@ impl World {
     fn ai_entangling_roots(&mut self, h: u32, a: Id, lvl: u32, enemy: u32, victim: u32) {
         let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
         let Some(e) = self.unit(enemy) else { return };
-        if self.can_cast(h, a).is_err() || crate::natives::players::is_ally(self, owner, e.owner) || e.buffs.iter().any(|b| b.id == *b"BEer") {
+        if self.can_cast(h, a).is_err() || crate::natives::players::is_ally(self, owner, e.owner) || e.buffs.iter().any(|b| b.id == *codes::buff::id::ENTANGLING_ROOTS) {
             return;
         }
         let low = victim == h && self.life(h) <= 200.0 && self.unit(h).is_some_and(|u| u.max_life > 0.0 && u.life / u.max_life <= 1.0 / 3.0);
@@ -844,7 +845,7 @@ impl World {
                 return;
             }
         } else {
-            if self.has_hostile_buff(enemy) || e.buffs.iter().any(|b| b.id == *b"Bprg") {
+            if self.has_hostile_buff(enemy) || e.buffs.iter().any(|b| b.id == *codes::buff::id::PURGE) {
                 return;
             }
             let reach = crate::sim::unit_weapons(self, e).iter().map(|w| w.1.range).fold(0.0f32, f32::max);
@@ -959,7 +960,7 @@ impl World {
         if if Self::real_hero(e) { e.life > 100.0 } else { e.life <= 50.0 } {
             return;
         }
-        if e.buffs.iter().any(|b| b.id == *b"Bcri") {
+        if e.buffs.iter().any(|b| b.id == *codes::buff::id::CRIPPLE) {
             return;
         }
         let Some((_, w)) = crate::sim::unit_weapons(self, e).into_iter().next() else { return };
@@ -1003,7 +1004,7 @@ impl World {
         if self.can_cast(h, a).is_err() {
             return;
         }
-        if let Some((haze, hl)) = self.ability_with_code(h, "ANdh") {
+        if let Some((haze, hl)) = self.ability_with_code(h, codes::ability::BREWMASTER_DRUNKEN_HAZE) {
             let hl = hl.max(1) as u32;
             let both = self.data(a, "Cost", lvl) + self.data(haze, "Cost", hl);
             if self.unit(h).is_some_and(|u| u.mana < both) {
@@ -1044,7 +1045,7 @@ impl World {
                             u.extra.ai_rest.retain(|e| e.0 != a);
                             u.extra.ai_rest.push((a, now + 2.0));
                         }
-                        self.ai_raise_corpses(h, a, lvl as u32, code == "AHre");
+                        self.ai_raise_corpses(h, a, lvl as u32, code == codes::ability::PALADIN_RESURRECTION);
                     }
                     continue;
                 }
@@ -1053,12 +1054,12 @@ impl World {
                 }
                 let lvl = lvl as u32;
                 let radius = match code.as_str() {
-                    "AUdd" => 1000.0,
-                    "ANsl" => self.data(a, "Rng", lvl) + 400.0,
+                    codes::ability::LICH_DEATH_AND_DECAY => 1000.0,
+                    codes::ability::MALGANIS_SOUL_PRESERVATION => self.data(a, "Rng", lvl) + 400.0,
                     _ => self.data(a, "Rng", lvl),
                 };
                 // Dark Conversion and Soul Preservation weigh every unit, not only enemies.
-                let any = matches!(code.as_str(), "ANdc" | "ANsl");
+                let any = matches!(code.as_str(), codes::ability::MALGANIS_DARK_CONVERSION | codes::ability::MALGANIS_SOUL_PRESERVATION);
                 let (x, y, owner) = self.unit(h).map(|u| (u.x, u.y, u.owner)).unwrap();
                 let near: Vec<u32> = self.unit_order.iter().copied().filter(|&t| t != h && self.unit(t).is_some_and(|u| !u.dead && !u.hidden && (u.x - x).hypot(u.y - y) <= radius && (any || !crate::natives::players::is_ally(self, owner, u.owner)))).collect();
                 let before = self.unit(h).and_then(|u| u.extra.ai_inside.iter().find(|e| e.0 == a).map(|e| e.1.clone())).unwrap_or_default();
@@ -1068,21 +1069,21 @@ impl World {
                 }
                 for t in near.into_iter().filter(|t| !before.contains(t)) {
                     match code.as_str() {
-                        "AHbz" | "ANrf" => self.ai_blizzard(h, a, lvl, t),
-                        "AUdd" => self.ai_death_and_decay(h, a, lvl, t),
+                        codes::ability::ARCH_MAGE_BLIZZARD | codes::ability::PIT_LORD_RAIN_OF_FIRE => self.ai_blizzard(h, a, lvl, t),
+                        codes::ability::LICH_DEATH_AND_DECAY => self.ai_death_and_decay(h, a, lvl, t),
                         // Dark Conversion, Soul Preservation (their vf3 on the watch): on a
                         // unit they may target that does not bear them already.
-                        "ANdc" | "ANsl" => {
+                        codes::ability::MALGANIS_DARK_CONVERSION | codes::ability::MALGANIS_SOUL_PRESERVATION => {
                             let buff = self.buff_id(a, lvl);
                             let bears = self.unit(t).is_some_and(|u| u.buffs.iter().any(|b| Some(b.id) == buff));
-                            let fits = if code == "ANdc" { self.converts_race(a, lvl, t) } else { self.unit(t).is_some_and(|u| !crate::natives::players::is_ally(self, owner, u.owner)) };
+                            let fits = if code == codes::ability::MALGANIS_DARK_CONVERSION { self.converts_race(a, lvl, t) } else { self.unit(t).is_some_and(|u| !crate::natives::players::is_ally(self, owner, u.owner)) };
                             if fits && self.can_cast(h, a).is_ok() && self.cast_target_error(h, a, t).is_none() && !bears {
                                 self.ai_cast(h, a, t);
                             }
                         }
                         // Finger of Death (its vf3 on the watch): at an enemy that is not
                         // within 300 of the caster.
-                        "ANfd" => {
+                        codes::ability::FINGER_OF_DEATH => {
                             if self.can_cast(h, a).is_ok() && (self.pos(t).0 - x).hypot(self.pos(t).1 - y) > 300.0 {
                                 self.ai_cast(h, a, t);
                             }
@@ -1145,11 +1146,11 @@ impl World {
         let code = self.ability_code(c.ability);
         let census = || self.point_census(h, c.ability, c.level, c.x, c.y);
         let ok = match code.as_str() {
-            "AHbz" | "ANrf" => {
+            codes::ability::ARCH_MAGE_BLIZZARD | codes::ability::PIT_LORD_RAIN_OF_FIRE => {
                 let n = census();
                 n.allies < n.enemies
             }
-            "AUdd" => {
+            codes::ability::LICH_DEATH_AND_DECAY => {
                 let n = census();
                 if n.enemy_structures == 0 { n.allies == 0 && n.enemies != 0 } else { n.enemies >= n.allies }
             }
@@ -1513,7 +1514,7 @@ impl World {
             return;
         }
         let Some(e) = self.unit(enemy) else { return };
-        if e.buffs.iter().any(|b| b.id == *b"Bmil") {
+        if e.buffs.iter().any(|b| b.id == *codes::buff::id::MILITIA) {
             return;
         }
         if !(victim == h && self.life(h) <= 400.0) && e.life < 600.0 {
@@ -1581,7 +1582,7 @@ impl World {
         }
         self.ai_rest(h, a);
         let Some(v) = self.unit(victim) else { return };
-        if v.buffs.iter().any(|b| b.id == *b"Brej") {
+        if v.buffs.iter().any(|b| b.id == *codes::buff::id::REJUVENATION_BREJ) {
             return;
         }
         let small = v.life <= 200.0 && (400.0..=600.0).contains(&v.max_life);
@@ -1622,7 +1623,7 @@ impl World {
             return;
         }
         let Some(e) = self.unit(enemy) else { return };
-        if e.buffs.iter().any(|b| b.id == *b"Bmil") || (!(victim == h && self.life(h) <= 400.0) && e.life <= 400.0) {
+        if e.buffs.iter().any(|b| b.id == *codes::buff::id::MILITIA) || (!(victim == h && self.life(h) <= 400.0) && e.life <= 400.0) {
             return;
         }
         self.ai_cast(h, a, enemy);
@@ -1678,10 +1679,10 @@ impl World {
     /// Possession (FUN_6f60e810): past the gate, on an enemy not in militia (Bmil), by a
     /// caster without Curse and Anti-magic Shell that is not at full life.
     fn ai_possession(&mut self, h: u32, a: Id, enemy: u32, victim: u32) {
-        if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) || self.unit(enemy).is_some_and(|e| e.buffs.iter().any(|b| b.id == *b"Bmil")) {
+        if self.ai_gate(h, a, enemy, victim, true, Some(enemy), None) || self.unit(enemy).is_some_and(|e| e.buffs.iter().any(|b| b.id == *codes::buff::id::MILITIA)) {
             return;
         }
-        if self.ability_with_code(h, "Acrs").is_none() && self.ability_with_code(h, "Aams").is_none() && self.unit(h).is_some_and(|u| u.life != u.max_life) {
+        if self.ability_with_code(h, codes::ability::CURSE).is_none() && self.ability_with_code(h, codes::ability::ANTI_MAGIC_SHIELD).is_none() && self.unit(h).is_some_and(|u| u.life != u.max_life) {
             self.ai_cast(h, a, enemy);
         }
     }
@@ -1752,27 +1753,27 @@ impl World {
                 }
                 let enemy_player = self.unit(enemy).is_some_and(|e| e.owner < PLAYER_NEUTRAL_AGGRESSIVE && !crate::natives::players::is_ally(self, owner, e.owner));
                 let target = match self.ability_code(a).as_str() {
-                    "AIfg" | "AIfu" | "AIfh" | "AIff" | "AIfd" | "AIfr" | "AIfs" if enemy_player && !self.ai_resting(h, a) => {
+                    codes::ability::CLOUD_OF_FOG_ITEM | codes::ability::FIGURINE_DOOM_GUARD | codes::ability::FIGURINE_FEL_HOUND | codes::ability::FIGURINE_FURBOLG | codes::ability::FIGURINE_RED_DRAKE | codes::ability::FIGURINE_ROCK_GOLEM | codes::ability::FIGURINE_SKELETON if enemy_player && !self.ai_resting(h, a) => {
                         self.ai_rest(h, a);
                         let (x, y) = self.pos(victim);
                         let c = self.census(h, x, y, 500.0, true);
-                        let flyer = self.ability_code(a) == "AIfd";
+                        let flyer = self.ability_code(a) == codes::ability::FIGURINE_RED_DRAKE;
                         let seen = if flyer { c.enemies } else { c.enemy_ground };
                         (seen > 2 && c.allies <= c.enemies).then_some(0)
                     }
-                    "AIwb" => (!self.ai_gate(h, a, enemy, victim, true, Some(enemy), None)).then_some(enemy),
-                    "AIdc" => {
+                    codes::ability::ITEM_WEB => (!self.ai_gate(h, a, enemy, victim, true, Some(enemy), None)).then_some(enemy),
+                    codes::ability::ITEM_DISPEL_CHAIN => {
                         if !self.ai_gate(h, a, enemy, victim, true, Some(victim), None) {
                             Some(victim)
                         } else {
                             (!self.ai_gate(h, a, enemy, victim, false, Some(enemy), None)).then_some(enemy)
                         }
                     }
-                    "AIda" => {
+                    codes::ability::ITEM_DEFENSE_AOE => {
                         let other = victim != h && self.unit(victim).zip(self.unit(enemy)).is_some_and(|(v, e)| !crate::natives::players::is_ally(self, v.owner, e.owner));
                         (enemy_player && other).then_some(0)
                     }
-                    "AIct" => {
+                    codes::ability::ITEM_CHANGE_TOD => {
                         let elf = self.players.get(owner as usize).is_some_and(|p| p.race == 4);
                         let day = (6.0..18.0).contains(&self.time_of_day);
                         (enemy_player && elf && day && self.unit(victim).is_some_and(|v| crate::natives::players::is_ally(self, owner, v.owner))).then_some(0)
@@ -1841,13 +1842,13 @@ impl World {
             }
             let lvl = self.unit(h).and_then(|u| u.abilities.iter().find(|x| x.0 == a).map(|x| x.1.max(1) as u32)).unwrap_or(1);
             match self.ability_code(a).as_str() {
-                "Absk" => {
+                codes::ability::BESERK => {
                     if self.attacking(h) && self.can_cast(h, a).is_ok() {
                         self.ai_cast(h, a, 0);
                     }
                 }
-                "ANcr" => {
-                    if let Some((bomb, bl)) = self.ability_with_code(h, "ANab") {
+                codes::ability::ALCHEMIST_CHEMICAL_RAGE => {
+                    if let Some((bomb, bl)) = self.ability_with_code(h, codes::ability::ALCHEMIST_ACID_BOMB) {
                         let costs = self.data(bomb, "Cost", bl.max(1) as u32) + self.data(a, "Cost", lvl);
                         if costs < self.unit(h).map_or(0.0, |u| u.mana) {
                             continue;
@@ -1857,7 +1858,7 @@ impl World {
                         self.ai_cast(h, a, 0);
                     }
                 }
-                "AEbl" => self.ai_blink(h, a, lvl),
+                codes::ability::WARDEN_BLINK => self.ai_blink(h, a, lvl),
                 _ => {}
             }
         }
@@ -1909,7 +1910,7 @@ impl World {
         if range <= 0.0 || (e.x - b.x).hypot(e.y - b.y) > range + e.collision {
             return;
         }
-        let full = self.ability_with_code(h, "Acar").is_some() && b.extra.cargo.len() as f32 >= self.ability_with_code(h, "Acar").map_or(0.0, |(c, l)| self.data(c, "DataA", l.max(1) as u32));
+        let full = self.ability_with_code(h, codes::ability::CARGO_HOLD_ACAR).is_some() && b.extra.cargo.len() as f32 >= self.ability_with_code(h, codes::ability::CARGO_HOLD_ACAR).map_or(0.0, |(c, l)| self.data(c, "DataA", l.max(1) as u32));
         if full {
             return;
         }
@@ -1935,8 +1936,8 @@ impl World {
             let l = l.max(1) as u32;
             (self.can_cast(h, a).is_ok() && mana >= self.data(a, "Cost", l)).then_some((a, l))
         };
-        if let (Some((a, l)), Some(t)) = (ready("Arej"), self.unit(target)) {
-            if !t.buffs.iter().any(|b| b.id == *b"Brej") {
+        if let (Some((a, l)), Some(t)) = (ready(codes::ability::REJUVINATION), self.unit(target)) {
+            if !t.buffs.iter().any(|b| b.id == *codes::buff::id::REJUVENATION_BREJ) {
                 let small = t.life <= 200.0 && (400.0..=600.0).contains(&t.max_life);
                 if small || t.max_life - t.life >= self.data(a, "DataA", l) {
                     return 1;
@@ -1945,13 +1946,13 @@ impl World {
         }
         let Some(me) = self.unit(h) else { return 0 };
         let (x, y, owner) = (me.x, me.y, me.owner);
-        if let Some((a, l)) = ready("Aroa") {
+        if let Some((a, l)) = ready(codes::ability::ROAR) {
             let area = self.data(a, "Area", l);
             let busy = self
                 .unit_order
                 .iter()
                 .filter_map(|&f| self.unit(f))
-                .filter(|f| !f.dead && crate::natives::players::is_ally(self, owner, f.owner) && (f.x - x).hypot(f.y - y) <= area && !f.buffs.iter().any(|b| b.id == *b"Broa"))
+                .filter(|f| !f.dead && crate::natives::players::is_ally(self, owner, f.owner) && (f.x - x).hypot(f.y - y) <= area && !f.buffs.iter().any(|b| b.id == *codes::buff::id::ROAR))
                 .filter(|f| match f.action {
                     Action::Attack { target } => self.unit(target).is_some_and(|t| t.owner < 12),
                     _ => false,
@@ -1961,9 +1962,9 @@ impl World {
                 return 2;
             }
         }
-        if ready("Abrf").is_some() {
+        if ready(codes::ability::BEARFORM).is_some() {
             let rival = self.unit_order.iter().any(|&f| {
-                f != h && self.unit(f).is_some_and(|d| !d.dead && d.type_id == *b"edoc" && crate::natives::players::is_ally(self, owner, d.owner) && (d.x - x).hypot(d.y - y) <= 300.0 && d.mana >= mana)
+                f != h && self.unit(f).is_some_and(|d| !d.dead && d.type_id == *codes::unit::id::DRUID_OF_THE_CLAW && crate::natives::players::is_ally(self, owner, d.owner) && (d.x - x).hypot(d.y - y) <= 300.0 && d.mana >= mana)
             });
             if !rival {
                 return 3;
@@ -1995,7 +1996,7 @@ impl World {
             return;
         }
         self.ai_rest(h, a);
-        if self.unit(h).is_some_and(|u| u.type_id != *b"edoc") || self.druid_choice(h, victim) == 2 {
+        if self.unit(h).is_some_and(|u| u.type_id != *codes::unit::id::DRUID_OF_THE_CLAW) || self.druid_choice(h, victim) == 2 {
             self.ai_cast(h, a, 0);
         }
     }
@@ -2103,7 +2104,7 @@ impl World {
         let _ = victim;
         let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
         let Some(e) = self.unit(enemy) else { return };
-        if crate::natives::players::is_ally(self, owner, e.owner) || self.can_cast(h, a).is_err() || !Self::real_hero(e) || e.buffs.iter().any(|b| b.id == *b"BNab") {
+        if crate::natives::players::is_ally(self, owner, e.owner) || self.can_cast(h, a).is_err() || !Self::real_hero(e) || e.buffs.iter().any(|b| b.id == *codes::buff::id::ACID_BOMB) {
             return;
         }
         let dur = if self.hero_duration(enemy) { self.data(a, "HeroDur", lvl) } else { self.data(a, "Dur", lvl) };
@@ -2121,7 +2122,7 @@ impl World {
 }
 
 /// Abilities whose AI watches the units about the caster.
-const WATCHED: [&str; 6] = ["AHbz", "ANrf", "AUdd", "ANfd", "ANdc", "ANsl"];
+const WATCHED: [&str; 6] = [codes::ability::ARCH_MAGE_BLIZZARD, codes::ability::PIT_LORD_RAIN_OF_FIRE, codes::ability::LICH_DEATH_AND_DECAY, codes::ability::FINGER_OF_DEATH, codes::ability::MALGANIS_DARK_CONVERSION, codes::ability::MALGANIS_SOUL_PRESERVATION];
 
 /// Abilities whose AI looks every 2 seconds (their vf50 timer, 0x6fd6fbb0).
-const EVERY_2S: [&str; 2] = ["AUan", "AHre"];
+const EVERY_2S: [&str; 2] = [codes::ability::DEATH_KNIGHT_ANIMATE_DEAD, codes::ability::PALADIN_RESURRECTION];

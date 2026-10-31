@@ -8,6 +8,7 @@ use w3_jass::Vm;
 use crate::objects::{Id, id_from_str};
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 impl World {
     fn level_str(&self, a: Id, field: &str, lvl: u32) -> String {
@@ -84,13 +85,13 @@ impl World {
             // which is used up; they last Dur.
             // Raise Dead: from its corpse (measured: the original refuses the order without
             // a target, and takes it at a corpse), or the nearest within Area.
-            "Arai" => {
+            codes::ability::RAISE_DEAD => {
                 let (cx, cy) = self.unit(h).map(|u| (u.x, u.y)).unwrap_or((x, y));
                 let aimed = self.unit(target).filter(|t| t.dead && !t.hidden && self.corpse_ready(t)).map(|_| target);
                 let Some(corpse) = aimed.or_else(|| self.corpses_in(cx, cy, d(self, "Area")).first().copied()) else { return true };
                 let (px, py) = self.unit(corpse).map(|u| (u.x, u.y)).unwrap();
                 crate::natives::units::remove_unit(self, corpse);
-                let life = d(self, "Dur") + self.unit(h).map_or(0.0, |u| self.upgrade_ability_bonus(u.owner, u.type_id, "rrai", "Arai"));
+                let life = d(self, "Dur") + self.unit(h).map_or(0.0, |u| self.upgrade_ability_bonus(u.owner, u.type_id, codes::upgrade::RAISE_DEAD_DURATION, codes::ability::RAISE_DEAD));
                 for (n, t) in [(d(self, "DataA") as i32, self.level_str(a, "DataC", lvl)), (d(self, "DataB") as i32, self.level_str(a, "DataD", lvl))] {
                     if n > 0 && !t.is_empty() {
                         self.summon(h, owner, id_from_str(&t), n, px, py, life);
@@ -98,13 +99,13 @@ impl World {
                 }
             }
             // Curse: the target misses DataA of its attacks.
-            "Acrs" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, miss_chance: d(self, "DataA"), ..Default::default() }),
+            codes::ability::CURSE => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, miss_chance: d(self, "DataA"), ..Default::default() }),
             // Faerie Fire: DataA less armor.
-            "Afae" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, armor: -d(self, "DataA"), ..Default::default() }),
+            codes::ability::FAERIE_FIRE => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, armor: -d(self, "DataA"), ..Default::default() }),
             // Abolish Magic: one target, only its side's harmful buffs or the other side's
             // helpful ones when DataC is set under AbolishMagicDispelSmart (otherwise when
             // autocast), all of them otherwise (CAbilityAutoDispelMagic::vf265).
-            "Aadm" => {
+            codes::ability::ABOLISH_MAGIC => {
                 let smart = if self.misc_f32("AbolishMagicDispelSmart", 1.0) != 0.0 {
                     d(self, "DataC") != 0.0
                 } else {
@@ -113,14 +114,14 @@ impl World {
                 self.dispel(vm, h, target, d(self, "DataB"), smart);
             }
             // Dispel Magic: every buff on everyone within Area (FUN_6f54c780).
-            "Adis" => {
+            codes::ability::DISPEL_MAGIC => {
                 for t in self.units_in_pub(x, y, d(self, "Area")) {
                     self.dispel(vm, h, t, d(self, "DataB"), false);
                 }
             }
             // Devour Magic: dispels within Area; the caster gains DataA life and DataB mana
             // per unit and DataC and DataD per buff.
-            "Advm" => {
+            codes::ability::DEVOUR_MAGIC => {
                 let (mut units, mut buffs) = (0, 0);
                 for t in self.units_in_pub(x, y, d(self, "Area")) {
                     let n = self.dispel(vm, h, t, d(self, "DataE"), false);
@@ -137,15 +138,15 @@ impl World {
             }
             // Purge: dispels and stops the target, its speed returning over Dur.
             // The Orb of Lightning's purge (CAbilityLightningPurge) is Purge's.
-            "Aprg" | "AIlp" => {
+            codes::ability::PURGE | codes::ability::LIGHTNING_PURGE => {
                 self.dispel(vm, h, target, d(self, "DataC"), false);
                 self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, move_factor: -1.0, decaying: dur, ..Default::default() });
             }
             // Lightning Shield: DataA damage a second to units within Area of the target.
-            "Alsh" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, area_dps: d(self, "DataA"), area: d(self, "Area"), ..Default::default() }),
+            codes::ability::LIGHTNING_SHIELD => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, area_dps: d(self, "DataA"), area: d(self, "Area"), ..Default::default() }),
             // Polymorph: the target becomes a critter (DataB ground, DataC air, DataD
             // amphibious, DataE water) for Dur.
-            "Aply" => {
+            codes::ability::POLYMORPH => {
                 let kind = self.move_kind(target);
                 let field = match kind {
                     crate::pathing::Move::Fly => "DataC",
@@ -162,17 +163,17 @@ impl World {
                 }
             }
             // Invisibility.
-            "Aivs" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, invisible: true, ..Default::default() }),
+            codes::ability::INVISIBILITY => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, invisible: true, ..Default::default() }),
             // Cripple: DataA less movement, DataB less attack speed, DataC less damage.
-            "Acri" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, move_factor: -d(self, "DataA"), attack_factor: -d(self, "DataB"), damage_factor: -d(self, "DataC"), ..Default::default() }),
+            codes::ability::CRIPPLE => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, move_factor: -d(self, "DataA"), attack_factor: -d(self, "DataB"), damage_factor: -d(self, "DataC"), ..Default::default() }),
             // Unholy Frenzy: DataA attack speed and DataB damage a second.
             // Its damage strikes once a second, the first at once (measured: a footman
             // frenzied at 0.50 seconds takes 4 at 0.51 and each second after).
-            "Auhf" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, attack_factor: d(self, "DataA"), dps: d(self, "DataB"), dps_every: 1.0, dps_next: 0.0, ..Default::default() }),
+            codes::ability::UNHOLY_FRENZY => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, attack_factor: d(self, "DataA"), dps: d(self, "DataB"), dps_every: 1.0, dps_next: 0.0, ..Default::default() }),
             // Anti-magic Shell: immune to magic.
-            "Aams" => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, magic_immune: true, ..Default::default() }),
+            codes::ability::ANTI_MAGIC_SHIELD => self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, magic_immune: true, ..Default::default() }),
             // Possession: the target becomes the caster's and the caster is spent.
-            "Apos" => {
+            codes::ability::POSSESSION => {
                 if let Some(u) = self.unit_mut(target) {
                     u.owner = owner;
                     u.action = Action::Idle;
@@ -183,14 +184,14 @@ impl World {
             // buffs when DataA is set and [Misc] CycloneStasis is not, else the first
             // (CAbilityCyclone::vf265; measured: a footman cycloned by a druid or a Wand
             // of the Wind has Bcy2, not Bcyc).
-            "Acyc" => {
+            codes::ability::CYCLONE => {
                 let ids = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", lvl)).unwrap_or_default();
                 let second = self.data(a, "DataA", lvl) != 0.0 && self.misc_f32("CycloneStasis", 0.0) == 0.0;
                 let id = ids.split(',').nth(if second { 1 } else { 0 }).map(|b| crate::objects::id_from_str(b.trim())).unwrap_or(buff);
                 self.apply_buff(target, Buff { id, ability: a, level: lvl, caster: h, remaining: dur, stun: true, invulnerable: true, ..Default::default() })
             }
             // Roar: DataA more damage for allies within Area.
-            "Aroa" => {
+            codes::ability::ROAR => {
                 let (cx, cy) = self.unit(h).map(|u| (u.x, u.y)).unwrap_or((x, y));
                 for t in self.allies_in_pub(owner, cx, cy, d(self, "Area")) {
                     self.apply_buff(t, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, damage_factor: d(self, "DataA"), armor: d(self, "DataB"), life_regen: d(self, "DataC"), mana_regen: d(self, "DataD"), ..Default::default() });
@@ -200,12 +201,12 @@ impl World {
             // Rejuvenation: DataA life over Dur, once a second from a second after
             // (measured: chunks of about 34 at 1.7 seconds after the order, 1.0 after the
             // cast, and each second after), and DataB mana.
-            "Arej" => {
+            codes::ability::REJUVINATION => {
                 let t = dur.max(0.01);
                 self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: -d(self, "DataA") / t, dps_every: 1.0, dps_next: 1.0, mana_regen: d(self, "DataB") / t, ethereal_heal: true, ..Default::default() });
             }
             // Taunt: enemies within Area (at most DataC when set) attack the caster.
-            "Atau" => {
+            codes::ability::TAUNT => {
                 let (cx, cy) = self.unit(h).map(|u| (u.x, u.y)).unwrap_or((x, y));
                 let max = d(self, "DataC") as usize;
                 let mut n = 0;
@@ -222,9 +223,9 @@ impl World {
                 }
             }
             // Berserk: DataA movement, DataB attack speed, and DataC more damage taken.
-            "Absk" => self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, move_factor: d(self, "DataA"), attack_factor: d(self, "DataB"), damage_taken: d(self, "DataC"), ..Default::default() }),
+            codes::ability::BESERK => self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, move_factor: d(self, "DataA"), attack_factor: d(self, "DataB"), damage_taken: d(self, "DataC"), ..Default::default() }),
             // Absorb Mana: the caster takes the target's mana (up to DataB) and life (DataA).
-            "Aabs" => {
+            codes::ability::ABSORB_MANA => {
                 let (tl, tm) = self.unit(target).map(|u| (u.life, u.mana)).unwrap_or_default();
                 let mana = tm.min(d(self, "DataB"));
                 let life = tl.min(d(self, "DataA"));
@@ -238,7 +239,7 @@ impl World {
             }
             // Ancestral Spirit: a dead unit of the caster's type rises with DataA of its
             // life and DataB of its mana.
-            "Aast" => {
+            codes::ability::ANCESTRAL_SPIRIT => {
                 let Some(t) = self.unit(target).filter(|t| t.dead).map(|t| t.handle) else { return true };
                 let (lf, mf) = (d(self, "DataA"), d(self, "DataB"));
                 if let Some(u) = self.unit_mut(t) {
@@ -252,7 +253,7 @@ impl World {
             }
             // Sentinel: an owl perches on the tree, DataC above it, seeing DataB around,
             // until the tree falls; the caster keeps at most DataD.
-            "Aesn" | "Aesr" => {
+            codes::ability::SENTINEL | codes::ability::SENTINEL_NO_RESEARCH => {
                 if !self.is_tree_pub(target) {
                     return true;
                 }
@@ -272,10 +273,10 @@ impl World {
             }
             // Wards: Healing Ward, Sentry Ward, and Stasis Trap place their UnitID at the
             // point for Dur.
-            "Ahwd" | "Aeye" | "Asta" => {
+            codes::ability::HEALING_WARD | codes::ability::SENTRY_WARD | codes::ability::STASIS_TRAP => {
                 let unit = id_from_str(&self.level_str(a, "UnitID", lvl));
                 let wards = self.summon(h, owner, unit, 1, x, y, d(self, "Dur"));
-                if code == "Asta" {
+                if code == codes::ability::STASIS_TRAP {
                     let now = self.time;
                     for w in wards {
                         if let Some(u) = self.unit_mut(w) {
@@ -285,7 +286,7 @@ impl World {
                 }
             }
             // Unsummon: an owned structure is taken down, returning DataA of its cost.
-            "Auns" => {
+            codes::ability::UNSUMMON => {
                 let Some(t) = self.unit(target).filter(|t| t.is_building && t.owner == owner) else { return true };
                 let ratio = d(self, "DataA");
                 let frac = if t.max_life > 0.0 { t.life / t.max_life } else { 1.0 };
@@ -296,7 +297,7 @@ impl World {
                 crate::natives::units::kill_unit(self, vm, target, 0);
             }
             // Cannibalize: a corpse within reach heals DataA a second, up to DataB.
-            "Acan" => {
+            codes::ability::CANNIBALIZE => {
                 let (cx, cy) = self.unit(h).map(|u| (u.x, u.y)).unwrap_or((x, y));
                 let Some(&corpse) = self.corpses_in(cx, cy, d(self, "Rng") + 64.0).first() else { return true };
                 crate::natives::units::remove_unit(self, corpse);
@@ -316,7 +317,7 @@ impl World {
 
     /// Sacrifice: an acolyte at a sacrificial pit (Asac) becomes a shade there.
     pub fn sacrifice(&mut self, acolyte: u32, pit: u32) -> bool {
-        if self.ability_with_code(pit, "Asac").is_none() || self.unit(acolyte).is_none_or(|u| u.dead) {
+        if self.ability_with_code(pit, codes::ability::SACRIFICE_SACRIFICIAL_PIT).is_none() || self.unit(acolyte).is_none_or(|u| u.dead) {
             return false;
         }
         let (owner, x, y) = self.unit(pit).map(|p| (p.owner, p.x, p.y)).unwrap();
@@ -324,7 +325,7 @@ impl World {
             return false;
         }
         crate::natives::units::remove_unit(self, acolyte);
-        let shade = crate::natives::units::create_unit(self, owner, *b"ushd", x, y, 270.0);
+        let shade = crate::natives::units::create_unit(self, owner, *codes::unit::id::SHADE, x, y, 270.0);
         if shade != 0 {
             let r = self.unit(shade).map_or(16.0, |u| u.collision);
             let (sx, sy) = self.spawn_point_pub(pit, r);
@@ -339,7 +340,7 @@ impl World {
     /// Defend (Adef): on, the unit takes DataA of piercing damage and moves at DataC
     /// less speed.
     pub fn defend_order(&mut self, h: u32, on: bool) -> bool {
-        let Some((a, lvl)) = self.ability_with_code(h, "Adef") else { return false };
+        let Some((a, lvl)) = self.ability_with_code(h, codes::ability::DEFEND) else { return false };
         let buff = self.first_buff(a, lvl);
         if let Some(u) = self.unit_mut(h) {
             u.buffs.retain(|b| b.ability != a);
@@ -360,7 +361,7 @@ impl World {
         if self.misc_f32("DefendDeflection", 0.0) == 0.0 {
             return None;
         }
-        let (a, lvl) = self.ability_with_code(defender, "Adef")?;
+        let (a, lvl) = self.ability_with_code(defender, codes::ability::DEFEND)?;
         if !self.unit(defender)?.buffs.iter().any(|b| b.ability == a) {
             return None;
         }
@@ -404,7 +405,7 @@ impl World {
         // 1.00, it hides at 3.02 having stopped at 1.34, and at 3.64 having stopped at
         // 2.12).
         let night = !(6.0..18.0).contains(&self.time_of_day);
-        let melders: Vec<(u32, Id, u32)> = self.unit_order.iter().filter_map(|&h| self.ability_with_code(h, "Ashm").map(|(a, l)| (h, a, l))).collect();
+        let melders: Vec<(u32, Id, u32)> = self.unit_order.iter().filter_map(|&h| self.ability_with_code(h, codes::ability::SHADOW_MELD).map(|(a, l)| (h, a, l))).collect();
         for (h, a, lvl) in melders {
             let Some(u) = self.unit(h) else { continue };
             let idle = matches!(u.action, Action::Idle | Action::Hold) && u.swing.is_none() && u.casting.is_none();

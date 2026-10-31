@@ -5,6 +5,7 @@
 
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 impl World {
     /// The active waygates: their handle, box, and destination.
@@ -14,7 +15,7 @@ impl World {
             .filter_map(|&h| {
                 let u = self.unit(h)?;
                 let (dx, dy, on) = u.extra.waygate?;
-                let (a, lvl) = self.ability_with_code(h, "Awrp")?;
+                let (a, lvl) = self.ability_with_code(h, codes::ability::WARP)?;
                 if !on || u.dead {
                     return None;
                 }

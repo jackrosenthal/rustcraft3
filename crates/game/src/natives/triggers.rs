@@ -7,6 +7,7 @@ use w3_jass::{NativeResult, Value, Vm};
 use super::{Args, boolean, handle, int, none, real, reg};
 use crate::types::*;
 use crate::world::{NativeFn, World};
+use crate::codes;
 
 fn register_event(w: &mut World, trig: u32, kind: EventKind) -> NativeResult {
     register_event_tagged(w, trig, kind, true)
@@ -19,22 +20,22 @@ fn register_event_tagged(w: &mut World, trig: u32, kind: EventKind, tagged: bool
     // The original's event object for the kind, with the objects it makes (measured in
     // Booty Bay's start and a census of each registration native).
     let codes: &[&crate::tags::Code] = match &kind {
-        EventKind::Unit { .. } => &[b"uevt"],
-        EventKind::Death(_) => &[b"wdvt"],
-        EventKind::UnitState { .. } => &[b"usvt", b"`rtl"],
-        EventKind::EnterRegion { .. } | EventKind::LeaveRegion { .. } => &[b"+rev"],
-        EventKind::PlayerChat { .. } => &[b"pcvt"],
-        EventKind::Variable { .. } => &[b"vevt"],
-        EventKind::Dialog(_) => &[b"devt"],
-        EventKind::DialogButton(_) => &[b"bevt"],
-        EventKind::UnitInRange { .. } => &[b"rgvt", b"`pil"],
-        EventKind::Trackable { .. } => &[b"+tev"],
-        EventKind::Player { event, .. } if *event == crate::event_ids::EVENT_PLAYER_ALLIANCE_CHANGED => &[b"alvt", b"`fcl"],
-        EventKind::Player { .. } | EventKind::PlayerUnit { .. } => &[b"pevt"],
-        EventKind::PlayerState { .. } => &[b"psvt", b"`fcl"],
-        EventKind::GameState { .. } => &[b"gfvt", b"`rtl"],
-        EventKind::Game(_) => &[b"gevt"],
-        EventKind::TimerExpire(_) => &[b"tmet"],
+        EventKind::Unit { .. } => &[codes::class::UNIT_EVENT],
+        EventKind::Death(_) => &[codes::class::WIDGET_DEATH_EVENT],
+        EventKind::UnitState { .. } => &[codes::class::UNIT_STATE_EVENT, codes::class::THRESHOLD_LISTENER],
+        EventKind::EnterRegion { .. } | EventKind::LeaveRegion { .. } => &[codes::class::REGION_EVENT],
+        EventKind::PlayerChat { .. } => &[codes::class::PLAYER_CHAT_EVENT],
+        EventKind::Variable { .. } => &[codes::class::VARIABLE_EVENT],
+        EventKind::Dialog(_) => &[codes::class::DIALOG_EVENT],
+        EventKind::DialogButton(_) => &[codes::class::DIALOG_BUTTON_EVENT],
+        EventKind::UnitInRange { .. } => &[codes::class::UNIT_IN_RANGE_EVENT, codes::class::IN_RANGE_LISTENER],
+        EventKind::Trackable { .. } => &[codes::class::TRACKABLE_EVENT],
+        EventKind::Player { event, .. } if *event == crate::event_ids::EVENT_PLAYER_ALLIANCE_CHANGED => &[codes::class::ALLIANCE_EVENT, codes::class::FLAG_LISTENER],
+        EventKind::Player { .. } | EventKind::PlayerUnit { .. } => &[codes::class::PLAYER_EVENT],
+        EventKind::PlayerState { .. } => &[codes::class::PLAYER_STATE_EVENT, codes::class::FLAG_LISTENER],
+        EventKind::GameState { .. } => &[codes::class::GAME_STATE_EVENT, codes::class::THRESHOLD_LISTENER],
+        EventKind::Game(_) => &[codes::class::GAME_EVENT],
+        EventKind::TimerExpire(_) => &[codes::class::TIMER_EXPIRED_EVENT],
         _ => &[],
     };
     let mut timer = None;
@@ -43,7 +44,7 @@ fn register_event_tagged(w: &mut World, trig: u32, kind: EventKind, tagged: bool
         for c in codes {
             let t = w.tags.take_id(c);
             id.get_or_insert(t);
-            if *c == b"`rtl" || *c == b"`fcl" {
+            if *c == codes::class::THRESHOLD_LISTENER || *c == codes::class::FLAG_LISTENER {
                 timer = Some(t.0);
             }
         }
@@ -64,7 +65,7 @@ fn register_event_tagged(w: &mut World, trig: u32, kind: EventKind, tagged: bool
 }
 
 fn boolexpr(w: &mut World, e: BoolExpr) -> NativeResult {
-    let slot = matches!(e, BoolExpr::Func(_)).then(|| w.tags.take(b"+flt"));
+    let slot = matches!(e, BoolExpr::Func(_)).then(|| w.tags.take(codes::class::FILTER));
     if let BoolExpr::Func(f) = e {
         w.tags.handler(f);
     }
@@ -113,7 +114,7 @@ fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
     }
     // A timer takes a handler with its first function and keeps it.
     if cb.is_some() && w.timer_mut(a.h(0)).is_some_and(|t| t.handler.is_none()) {
-        let s = w.tags.take(b"hdlr");
+        let s = w.tags.take(codes::class::HANDLER);
         if let Some(f) = cb {
             w.tags.handler_objects.insert(s, f);
             w.tags.function_number(f);
@@ -128,7 +129,7 @@ fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
     reg!(t,
         CreateTrigger => |w, _, _| {
-            let slots: Vec<u32> = [b"+trg", b"`flg", b"`flg"].iter().map(|c| w.tags.take(c)).collect();
+            let slots: Vec<u32> = [codes::class::TRIGGER, codes::class::FLAG, codes::class::FLAG].iter().map(|c| w.tags.take(c)).collect();
             handle(w.handles.insert(Obj::Trigger(Trigger { slots, ..Trigger::default() })))
         },
         DestroyTrigger => |w, _, a| {
@@ -155,7 +156,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         TriggerAddCondition => |w, _, a| {
             let (trig, expr) = (a.h(0), a.h(1));
             if w.trigger(trig).is_none() { return none(); }
-            w.tags.take(b"tcnd");
+            w.tags.take(codes::class::TRIGGER_CONDITION);
             let c = w.handles.insert(Obj::TriggerCondition { expr });
             if let Some(t) = w.trigger_mut(trig) { t.conditions.push(c); }
             handle(c)
@@ -175,7 +176,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let trig = a.h(0);
             let Some(func) = a.code(1) else { return none() };
             if w.trigger(trig).is_none() { return none(); }
-            let slot = w.tags.take(b"+tac");
+            let slot = w.tags.take(codes::class::TRIGGER_ACTION);
             w.tags.handler(func);
             let h = w.handles.insert(Obj::TriggerAction { func, slot });
             if let Some(t) = w.trigger_mut(trig) { t.actions.push(h); }
@@ -237,12 +238,12 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         Condition => |w, _, a| match a.code(0) { Some(f) => boolexpr(w, BoolExpr::Func(f)), None => none() },
         Filter => |w, _, a| match a.code(0) { Some(f) => boolexpr(w, BoolExpr::Func(f)), None => none() },
         And => |w, _, a| {
-            w.tags.take(b"bAnd");
+            w.tags.take(codes::class::BOOLEXPR_AND);
             boolexpr(w, BoolExpr::And(a.h(0), a.h(1)))
         },
         Or => |w, _, a| boolexpr(w, BoolExpr::Or(a.h(0), a.h(1))),
         Not => |w, _, a| {
-            w.tags.take(b"bNot");
+            w.tags.take(codes::class::BOOLEXPR_NOT);
             boolexpr(w, BoolExpr::Not(a.h(0)))
         },
         DestroyBoolExpr => destroy_boolexpr,
@@ -310,7 +311,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         // it, which is all it tags (measured).
         TriggerRegisterTimerEvent => |w, _, a| {
             if w.trigger(a.h(0)).is_some() {
-                w.tags.take(b"tmvt");
+                w.tags.take(codes::class::TIMER_EVENT);
             }
             let timer = w.handles.insert(Obj::Timer(Timer { remaining: a.r(1) as f64, timeout: a.r(1), period: a.r(1) as f64, periodic: a.b(2), running: true, ..Default::default() }));
             register_event_tagged(w, a.h(0), EventKind::TimerExpire(timer), false)
@@ -357,7 +358,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         TriggerRegisterFilterUnitEvent => |w, _, a| register_event_tagged(w, a.h(0), EventKind::Unit { unit: a.h(1), event: a.h(2) as i32 }, false),
         TriggerRegisterUnitInRange => |w, _, a| register_event(w, a.h(0), EventKind::UnitInRange { unit: a.h(1), range: a.r(2), filter: opt(a.h(3)) }),
         CreateTimer => |w, _, _| {
-            let slot = w.tags.take(b"+tmr");
+            let slot = w.tags.take(codes::class::TIMER);
             let h = w.handles.insert(Obj::Timer(Timer::default()));
             w.tags.handle_slots.insert(h, slot);
             handle(h)

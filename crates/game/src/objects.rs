@@ -504,13 +504,13 @@ mod tests {
     #[test]
     fn custom_keys_set_only_their_fields_of_known_objects() {
         let mut db = ObjectDb::default();
-        let mut o = Object { id: *b"AHbz", ..Default::default() };
+        let mut o = Object { id: *crate::codes::ability::id::ARCH_MAGE_BLIZZARD, ..Default::default() };
         o.fields.insert("hotkey".into(), "B".into());
         o.fields.insert("art".into(), "a.blp".into());
-        db.abilities.objects.insert(*b"AHbz", o);
+        db.abilities.objects.insert(*crate::codes::ability::id::ARCH_MAGE_BLIZZARD, o);
         let keys = custom_keys("\u{feff}[AHbz]\r\nHotkey=Q\r\nArt=b.blp\r\nResearchhotkey=W\r\n[Zzzz]\r\nHotkey=Z\r\n");
         db.apply_custom_keys(&keys);
-        let a = &db.abilities.objects[b"AHbz"];
+        let a = &db.abilities.objects[crate::codes::ability::id::ARCH_MAGE_BLIZZARD];
         assert_eq!(a.fields["hotkey"], "Q");
         assert_eq!(a.fields["researchhotkey"], "W");
         assert_eq!(a.fields["art"], "a.blp");

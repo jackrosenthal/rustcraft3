@@ -6,6 +6,7 @@ use w3_jass::Vm;
 use crate::objects::{Id, id_from_str};
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 impl World {
     /// Control Magic: an enemy summoned unit of level DataA or less becomes the caster's,
@@ -78,7 +79,7 @@ impl World {
     /// The Phoenix falls into its egg (UnitID) instead of dying; the egg hatches back
     /// into it (DataA) after HeroDur unless destroyed.  True when it did.
     pub(crate) fn phoenix_egg(&mut self, h: u32) -> bool {
-        let Some((a, lvl)) = self.ability_with_code(h, "Aphx") else { return false };
+        let Some((a, lvl)) = self.ability_with_code(h, codes::ability::PHOENIX) else { return false };
         let lvl = lvl.max(1) as u32;
         let Some(o) = self.objects.abilities.get(a) else { return false };
         let (normal, egg) = (id_from_str(o.level_str("DataA", lvl).trim()), id_from_str(o.level_str("UnitID", lvl).trim()));
@@ -110,7 +111,7 @@ impl World {
         let _ = vm;
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && u.constructing.is_none())).collect();
         for h in units {
-            for code in ["Apxf"] {
+            for code in [codes::ability::PHOENIX_FIRE] {
                 let Some((a, lvl)) = self.ability_with_code(h, code) else { continue };
                 let lvl = lvl.max(1) as u32;
                 let Some(u) = self.unit(h) else { continue };
@@ -121,7 +122,7 @@ impl World {
                 // Ability cooldowns count down with the rest (update_buffs).  Phoenix Fire
                 // starts cooling as its unit appears (measured: a new Phoenix's first fire
                 // lands 0.72 seconds in, ours 0.22, and every later one as much behind).
-                if code == "Apxf" && !u.cooldowns.contains_key(&a) {
+                if code == codes::ability::PHOENIX_FIRE && !u.cooldowns.contains_key(&a) {
                     let cool = self.data(a, "Cool", lvl);
                     self.unit_mut(h).unwrap().cooldowns.insert(a, cool);
                     continue;
@@ -176,7 +177,7 @@ impl World {
                         attack_type: "spells".into(),
                         start: (ux, uy),
                         // Phoenix Fire's burn goes on as it lands (phoenix_burn).
-                        spell: Some((a, lvl, 0.0, if code == "Apxf" { buff } else { [0; 4] })),
+                        spell: Some((a, lvl, 0.0, if code == codes::ability::PHOENIX_FIRE { buff } else { [0; 4] })),
                         weapon: None,
                         impact: None,
                         bounces: 0,

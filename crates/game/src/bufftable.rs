@@ -6,6 +6,7 @@
 
 use crate::types::Buff;
 use crate::world::World;
+use crate::codes;
 
 pub const MAGIC: u16 = 1;
 pub const PHYSICAL: u16 = 2;
@@ -25,222 +26,222 @@ const PHYSICAL_UNLESS_MAGIC: u16 = 512;
 
 /// Buff ids and their classes' flags.
 const BUFFS: &[(&str, u16)] = &[
-    ("BAOE", POSITIVE), // CBuffAoe
-    ("BAUR", AURA), // CBuffAura
-    ("BBAR", MAGIC), // CBuffProgressBar
-    ("BCbf", NEGATIVE), // CBuffBreathOfFrost
-    ("BCtc", NEGATIVE), // CBuffCreepThunderClap
-    ("BDoT", MAGIC), // CBuffDoT
-    ("BEah", POSITIVE | AURA), // CBuffAuraThorns
-    ("BEar", POSITIVE | AURA), // CBuffAuraTrueshot
-    ("BEer", MAGIC | NEGATIVE), // CBuffEntanglingRoots
-    ("BEfn", POSITIVE | TIMED_LIFE), // CBuffForceOfNature
-    ("BEia", POSITIVE), // CBuffImmolationAoe
-    ("BEim", RELATIVE), // CBuffImmolation
-    ("BEme", POSITIVE), // CBuffMetamorphosis
-    ("BEsh", NEGATIVE), // CBuffShadowStrike
-    ("BEst", POSITIVE | TIMED_LIFE), // CBuffScout
-    ("BEsv", POSITIVE | TIMED_LIFE), // CBuffSpiritOfVengeance
-    ("BFig", POSITIVE | TIMED_LIFE), // CBuffFigurine
-    ("BHab", POSITIVE | AURA), // CBuffAuraBrilliance
-    ("BHad", POSITIVE | AURA), // CBuffAuraDevotion
-    ("BHav", POSITIVE), // CBuffAvatar
-    ("BHbd", NEGATIVE), // CBuffBlizzard
-    ("BHbn", MAGIC | RELATIVE), // CBuffBanish
-    ("BHbz", POSITIVE), // CBuffBlizzardAoe
-    ("BHca", PHYSICAL | NEGATIVE), // CBuffColdArrow
-    ("BHds", POSITIVE), // CBuffDivineShield
-    ("BHfa", NEGATIVE), // CBuffFlameStrikeAoe
-    ("BHfs", NEGATIVE), // CBuffFlameStrike
-    ("BHtc", NEGATIVE), // CBuffThunderClap
-    ("BHwe", POSITIVE | TIMED_LIFE), // CBuffWaterElemental
-    ("BINV", MAGIC), // CBuff
-    ("BIcb", NEGATIVE), // CBuffCorruption
-    ("BIcf", RELATIVE), // CBuffItemCloakOfFlames
-    ("BIil", POSITIVE | TIMED_LIFE), // CBuffItemIllusion
-    ("BImo", POSITIVE | TIMED_LIFE), // CBuffItemMonsterLure
-    ("BIpb", NEGATIVE), // CBuffPoisonDamage
-    ("BIpd", NEGATIVE), // CBuffPoisonDamageStackDoT
-    ("BIpi", NEGATIVE), // CBuffPoisonDamageStackInfo
-    ("BIpv", MAGIC | POSITIVE), // CBuffItemVampirePotion
-    ("BIrb", POSITIVE | TIMED_LIFE), // CBuffRebirth
-    ("BIrg", POSITIVE), // CBuffRegeneration
-    ("BIrl", POSITIVE), // CBuffRegenLife
-    ("BIrm", POSITIVE), // CBuffRegenMana
-    ("BIsh", POSITIVE | TIMED_LIFE), // CBuffSpiritTroll
-    ("BIsv", NEGATIVE), // CBuffSoulTrapVision
-    ("BIwb", MAGIC), // CBuffItemWeb
-    ("BMDR", MAGIC), // CBuffManaDrain
-    ("BNab", NEGATIVE), // CBuffAcidBomb
-    ("BNba", NEGATIVE), // CBuffBlackArrow
-    ("BNbf", NEGATIVE), // CBuffBreathOfFire
-    ("BNbr", MAGIC | POSITIVE), // CBuffBattleRoar
-    ("BNcg", POSITIVE | TIMED_LIFE), // CBuffClockworkGoblin
-    ("BNcr", POSITIVE), // CBuffChemicalRage
-    ("BNcs", POSITIVE), // CBuffClusterRockets
-    ("BNdc", NEGATIVE), // CBuffDarkConversion
-    ("BNdh", MAGIC | NEGATIVE), // CBuffDrunkenHaze
-    ("BNdi", POSITIVE | TIMED_LIFE), // CBuffDoomMinion
-    ("BNdm", POSITIVE | TIMED_LIFE), // CBuffDarkMinion
-    ("BNdo", NEGATIVE), // CBuffDoom
-    ("BNef", POSITIVE | TIMED_LIFE), // CBuffElementalFury
-    ("BNfy", POSITIVE | TIMED_LIFE), // CBuffFactory
-    ("BNhs", POSITIVE), // CBuffHealingSpray
-    ("BNht", MAGIC | NEGATIVE), // CBuffHowlOfTerror
-    ("BNic", NEGATIVE), // CBuffIncinerate
-    ("BNin", POSITIVE | TIMED_LIFE), // CBuffInfernal
-    ("BNlm", POSITIVE | TIMED_LIFE), // CBuffLavaMonster
-    ("BNmr", MAGIC | NEGATIVE), // CBuffMindRot
-    ("BNms", POSITIVE), // CBuffManaShield
-    ("BNpa", PHYSICAL | NEGATIVE), // CBuffParasite
-    ("BNpi", RELATIVE), // CBuffPermImmolation
-    ("BNpm", POSITIVE | TIMED_LIFE), // CBuffParasiteMinion
-    ("BNrd", NEGATIVE), // CBuffRainOfFire
-    ("BNrf", POSITIVE), // CBuffRainOfFireAoe
-    ("BNsa", MAGIC | POSITIVE), // CBuffSanctuary
-    ("BNsg", POSITIVE | TIMED_LIFE), // CBuffSummonGrizzly
-    ("BNsi", MAGIC | NEGATIVE), // CBuffSilence
-    ("BNsl", NEGATIVE), // CBuffSoulPreservation
-    ("BNso", MAGIC | NEGATIVE), // CBuffSoulBurn
-    ("BNsq", POSITIVE | TIMED_LIFE), // CBuffSummonQuillbeast
-    ("BNss", POSITIVE), // CBuffSpellShield
-    ("BNst", MAGIC), // CBuffStampede
-    ("BNsw", POSITIVE | TIMED_LIFE), // CBuffSummonWarEagle
-    ("BNtm", NEGATIVE), // CBuffTransmute
-    ("BNto", POSITIVE | TIMED_LIFE), // CBuffTornado
-    ("BNva", POSITIVE), // CBuffVolcanoAoe
-    ("BNwm", POSITIVE | TIMED_LIFE), // CBuffWateryMinion
-    ("BOac", POSITIVE | AURA), // CBuffAuraCommand
-    ("BOae", POSITIVE | AURA), // CBuffAuraEndurance
-    ("BOea", POSITIVE), // CBuffEarthquakeAoe
-    ("BOeq", NEGATIVE), // CBuffEarthquake
-    ("BOhx", MAGIC | NEGATIVE), // CBuffHex
-    ("BOmi", POSITIVE | TIMED_LIFE), // CBuffMirrorImage
-    ("BOsf", POSITIVE | TIMED_LIFE), // CBuffSpiritWolf
-    ("BOsh", NEGATIVE), // CBuffShockwave
-    ("BOvc", POSITIVE), // CBuffVoodooCaster
-    ("BOvd", POSITIVE | AURA), // CBuffVoodoo
-    ("BOwd", POSITIVE | TIMED_LIFE), // CBuffWard
-    ("BOwk", POSITIVE), // CBuffWindWalk
-    ("BOww", POSITIVE), // CBuffWhirlwindAoe
-    ("BPSE", NEGATIVE), // CBuffPause
-    ("BSPD", MAGIC), // CBuffSpeed
-    ("BSTI", NEGATIVE), // CBuffStackInfo
-    ("BSTN", NEGATIVE), // CBuffStun
-    ("BTAR", POSITIVE), // CBuffTarget
-    ("BTLF", POSITIVE | TIMED_LIFE), // CBuffTimedLife
-    ("BUan", POSITIVE | TIMED_LIFE), // CBuffAnimateDead
-    ("BUau", POSITIVE | AURA), // CBuffAuraUnholy
-    ("BUav", POSITIVE | AURA), // CBuffAuraVampiric
-    ("BUcb", POSITIVE | TIMED_LIFE), // CBuffCarrionScarab
-    ("BUcs", NEGATIVE), // CBuffCarrionSwarm
-    ("BUdd", POSITIVE), // CBuffDeathAndDecayAoe
-    ("BUfa", MAGIC | POSITIVE), // CBuffFrostArmor
-    ("BUim", NEGATIVE), // CBuffImpale
-    ("BUsl", MAGIC | NEGATIVE), // CBuffSleep
-    ("BUsp", NEGATIVE), // CBuffSleepPause
-    ("BUst", NEGATIVE), // CBuffSleepStun
-    ("Babr", POSITIVE | AURA), // CBuffAuraBlightRegen
-    ("Bakb", POSITIVE | AURA), // CBuffAuraKotoBeast
-    ("Bam2", POSITIVE), // CBuffAntiMagicShellTwo
-    ("Bams", MAGIC | POSITIVE), // CBuffAntiMagicShell
-    ("Bapl", PHYSICAL | NEGATIVE), // CBuffAuraPlague
-    ("Barm", POSITIVE | AURA), // CBuffAuraRegenMana
-    ("Basl", NEGATIVE | AURA), // CBuffAuraSlow
-    ("Bbar", MAGIC | POSITIVE), // CBuffBarkskin
-    ("Bblo", MAGIC | POSITIVE), // CBuffBloodlust
-    ("Bbof", NEGATIVE), // CBuffBallsOfFire
-    ("Bbsk", POSITIVE), // CBuffBerserkerRage
-    ("Bchd", NEGATIVE), // CBuffCargoHoldDeath
-    ("Bclf", NEGATIVE), // CBuffCloudOfFog
-    ("Bcmg", POSITIVE | TIMED_LIFE), // CBuffControlMagic
-    ("Bcor", MAGIC | NEGATIVE), // CBuffCorrosiveBreath
-    ("Bcri", MAGIC | NEGATIVE), // CBuffCripple
-    ("Bcrs", MAGIC | NEGATIVE), // CBuffCurse
-    ("Bcsd", PHYSICAL | NEGATIVE), // CBuffColdArrowStackDoT
-    ("Bcsi", NEGATIVE), // CBuffColdArrowStackInfo
-    ("Bcy2", MAGIC | NEGATIVE), // CBuffCycloneTwo
-    ("Bcyc", NEGATIVE), // CBuffCyclone
-    ("Bdbb", POSITIVE), // CBuffDrainBonus
-    ("Bdbl", POSITIVE), // CBuffDrainBonusLife
-    ("Bdbm", POSITIVE), // CBuffDrainBonusMana
-    ("Bdcb", POSITIVE), // CBuffDrainCaster
-    ("Bdcl", POSITIVE), // CBuffDrainCasterLife
-    ("Bdcm", POSITIVE), // CBuffDrainCasterMana
-    ("Bdef", MAGIC | POSITIVE), // CBuffDefense
-    ("Bdet", NEGATIVE), // CBuffDetected
-    ("Bdig", MAGIC | NEGATIVE), // CBuffDigesting
-    ("Bdtb", POSITIVE), // CBuffDrainTarget
-    ("Bdtl", POSITIVE), // CBuffDrainTargetLife
-    ("Bdtm", POSITIVE), // CBuffDrainTargetMana
-    ("Bdvv", NEGATIVE), // CBuffDevourVision
-    ("Beat", MAGIC | POSITIVE), // CBuffEatTree
-    ("Bena", MAGIC_ENSNARE | PHYSICAL_UNLESS_MAGIC | NEGATIVE), // CBuffEnsnareAir
-    ("Beng", MAGIC_ENSNARE | PHYSICAL_UNLESS_MAGIC | NEGATIVE), // CBuffEnsnareGround
-    ("Bens", MAGIC_ENSNARE | PHYSICAL_UNLESS_MAGIC | NEGATIVE), // CBuffEnsnare
-    ("Beth", MAGIC | RELATIVE), // CBuffEthereal
-    ("Beye", POSITIVE | TIMED_LIFE), // CBuffEvilEye
-    ("Bfae", MAGIC | NEGATIVE), // CBuffFaerieFire
-    ("Bfre", NEGATIVE), // CBuffFreeze
-    ("Bfro", NEGATIVE), // CBuffFrost
-    ("Bfrz", NEGATIVE), // CBuffFreezingBreath
-    ("Bfzy", MAGIC | POSITIVE), // CBuffFrenzy
-    ("Bgra", POSITIVE), // CBuffGrabTree
-    ("Bhea", POSITIVE), // CBuffHeal
-    ("Bhwd", POSITIVE | TIMED_LIFE), // CBuffHealingWard
-    ("Binf", MAGIC | POSITIVE), // CBuffInnerFire
-    ("Binv", MAGIC | POSITIVE), // CBuffInvisibility
-    ("BlDT", MAGIC), // CBuffLifeDoT
-    ("Bliq", PHYSICAL | NEGATIVE), // CBuffLiquidFire
-    ("Blsa", POSITIVE), // CBuffLightningShieldAoe
-    ("Blsh", MAGIC | RELATIVE), // CBuffLightningShield
-    ("Bmec", POSITIVE | TIMED_LIFE), // CBuffMechanicalCritter
-    ("Bmfa", POSITIVE), // CBuffManaFlareAoe
-    ("Bmfl", POSITIVE), // CBuffManaFlare
-    ("Bmil", POSITIVE), // CBuffMilitia
-    ("Bmlc", POSITIVE), // CBuffMagicLeashCaster
-    ("Bmlt", NEGATIVE), // CBuffMagicLeashTarget
-    ("Boar", POSITIVE | AURA), // CBuffAuraRegenLife
-    ("Bphx", POSITIVE), // CBuffPhoenix
-    ("Bpig", RELATIVE), // CBuffPandaImmolation
-    ("Bplg", POSITIVE | TIMED_LIFE), // CBuffPlagueWard
-    ("Bply", MAGIC | NEGATIVE), // CBuffPolymorph
-    ("Bpoc", POSITIVE), // CBuffPossessionCaster
-    ("Bpoi", PHYSICAL | NEGATIVE), // CBuffPoisonAttack
-    ("Bpos", NEGATIVE), // CBuffPossession
-    ("Bprg", NEGATIVE), // CBuffPurge
-    ("Bprv", NEGATIVE), // CBuffPulseReveal
-    ("Bpsd", PHYSICAL | NEGATIVE), // CBuffPoisonAttackStackDoT
-    ("Bpsh", POSITIVE), // CBuffPhaseShift
-    ("Bpsi", NEGATIVE), // CBuffPoisonAttackStackInfo
-    ("Bpxf", PHYSICAL | NEGATIVE), // CBuffPhoenixFire
-    ("Brai", POSITIVE | TIMED_LIFE), // CBuffRaiseDead
-    ("Brej", MAGIC | POSITIVE), // CBuffRejuvination
-    ("Brgl", MAGIC), // CBuffRangeListener
-    ("Broa", MAGIC | POSITIVE), // CBuffRoar
-    ("Brpb", POSITIVE), // CBuffReplenish
-    ("Brpl", POSITIVE), // CBuffReplenishLife
-    ("Brpm", POSITIVE), // CBuffReplenishMana
-    ("Bsha", NEGATIVE), // CBuffSharedVision
-    ("Bshs", MAGIC | NEGATIVE), // CBuffShadowSight
-    ("Bslo", MAGIC | NEGATIVE), // CBuffSlow
-    ("Bspa", NEGATIVE), // CBuffSpiderAttack
-    ("Bspe", MAGIC | POSITIVE), // CBuffSpeedBonus
-    ("Bspl", MAGIC | POSITIVE), // CBuffSpiritLink
-    ("Bspo", PHYSICAL | NEGATIVE), // CBuffSlowPoison
-    ("Bssd", PHYSICAL | NEGATIVE), // CBuffSlowPoisonStackDoT
-    ("Bssi", NEGATIVE), // CBuffSlowPoisonStackInfo
-    ("Bstt", POSITIVE | TIMED_LIFE), // CBuffStasisTrapTrigger
-    ("Btau", NEGATIVE), // CBuffTaunt
-    ("Btdg", POSITIVE), // CBuffTornadoDamageAoe
-    ("Btsa", POSITIVE), // CBuffTornadoSpinAoe
-    ("Btsp", MAGIC | NEGATIVE), // CBuffTornadoSpin
-    ("Buhf", MAGIC | RELATIVE), // CBuffUnholyFrenzy
-    ("Buns", POSITIVE), // CBuffUnsummon
-    ("Bvng", POSITIVE | TIMED_LIFE), // CBuffVengeance
-    ("Bvul", POSITIVE), // CBuffInvulnerable
-    ("Bwea", MAGIC_ENSNARE | PHYSICAL_UNLESS_MAGIC | NEGATIVE), // CBuffWebAir
-    ("Bweb", MAGIC_WEB | PHYSICAL_UNLESS_MAGIC | NEGATIVE), // CBuffWeb
+    (codes::buff::AOE, POSITIVE), // CBuffAoe
+    (codes::buff::AURA, AURA), // CBuffAura
+    (codes::buff::PROGRESS_BAR, MAGIC), // CBuffProgressBar
+    (codes::buff::BREATH_OF_FROST, NEGATIVE), // CBuffBreathOfFrost
+    (codes::buff::SLAM, NEGATIVE), // CBuffCreepThunderClap
+    (codes::buff::DOT, MAGIC), // CBuffDoT
+    (codes::buff::THORNS_AURA, POSITIVE | AURA), // CBuffAuraThorns
+    (codes::buff::TRUESHOT_AURA, POSITIVE | AURA), // CBuffAuraTrueshot
+    (codes::buff::ENTANGLING_ROOTS, MAGIC | NEGATIVE), // CBuffEntanglingRoots
+    (codes::buff::FORCE_OF_NATURE, POSITIVE | TIMED_LIFE), // CBuffForceOfNature
+    (codes::buff::IMMOLATION_AOE, POSITIVE), // CBuffImmolationAoe
+    (codes::buff::IMMOLATION, RELATIVE), // CBuffImmolation
+    (codes::buff::METAMORPHOSIS, POSITIVE), // CBuffMetamorphosis
+    (codes::buff::SHADOW_STRIKE, NEGATIVE), // CBuffShadowStrike
+    (codes::buff::SCOUT, POSITIVE | TIMED_LIFE), // CBuffScout
+    (codes::buff::VENGEANCE, POSITIVE | TIMED_LIFE), // CBuffSpiritOfVengeance
+    (codes::buff::SUMMONED_UNIT, POSITIVE | TIMED_LIFE), // CBuffFigurine
+    (codes::buff::BRILLIANCE_AURA, POSITIVE | AURA), // CBuffAuraBrilliance
+    (codes::buff::DEVOTION_AURA, POSITIVE | AURA), // CBuffAuraDevotion
+    (codes::buff::AVATAR, POSITIVE), // CBuffAvatar
+    (codes::buff::BLIZZARD, NEGATIVE), // CBuffBlizzard
+    (codes::buff::BANISH, MAGIC | RELATIVE), // CBuffBanish
+    (codes::buff::BLIZZARD_AOE, POSITIVE), // CBuffBlizzardAoe
+    (codes::buff::COLD_ARROWS_BHCA, PHYSICAL | NEGATIVE), // CBuffColdArrow
+    (codes::buff::DIVINE_SHIELD, POSITIVE), // CBuffDivineShield
+    (codes::buff::FLAME_STRIKE_AOE, NEGATIVE), // CBuffFlameStrikeAoe
+    (codes::buff::FLAME_STRIKE, NEGATIVE), // CBuffFlameStrike
+    (codes::buff::THUNDER_CLAP, NEGATIVE), // CBuffThunderClap
+    (codes::buff::WATER_ELEMENTAL, POSITIVE | TIMED_LIFE), // CBuffWaterElemental
+    (codes::buff::BINV, MAGIC), // CBuff
+    (codes::buff::CORRUPTION, NEGATIVE), // CBuffCorruption
+    (codes::buff::CLOAK_OF_FLAMES, RELATIVE), // CBuffItemCloakOfFlames
+    (codes::buff::ILLUSION, POSITIVE | TIMED_LIFE), // CBuffItemIllusion
+    (codes::buff::MONSTER_LURE, POSITIVE | TIMED_LIFE), // CBuffItemMonsterLure
+    (codes::buff::VENOM_BIPB, NEGATIVE), // CBuffPoisonDamage
+    (codes::buff::VENOM_BIPD, NEGATIVE), // CBuffPoisonDamageStackDoT
+    (codes::buff::POISON_DAMAGE_STACK_INFO, NEGATIVE), // CBuffPoisonDamageStackInfo
+    (codes::buff::VAMPIRIC_POTION, MAGIC | POSITIVE), // CBuffItemVampirePotion
+    (codes::buff::REBORN, POSITIVE | TIMED_LIFE), // CBuffRebirth
+    (codes::buff::REJUVENATION_BIRG, POSITIVE), // CBuffRegeneration
+    (codes::buff::REGENERATION, POSITIVE), // CBuffRegenLife
+    (codes::buff::CLARITY_POTION, POSITIVE), // CBuffRegenMana
+    (codes::buff::HEADHUNTER_SPIRIT, POSITIVE | TIMED_LIFE), // CBuffSpiritTroll
+    (codes::buff::SOUL_THEFT, NEGATIVE), // CBuffSoulTrapVision
+    (codes::buff::ITEM_WEB, MAGIC), // CBuffItemWeb
+    (codes::buff::MANA_DRAIN, MAGIC), // CBuffManaDrain
+    (codes::buff::ACID_BOMB, NEGATIVE), // CBuffAcidBomb
+    (codes::buff::BLACK_ARROW, NEGATIVE), // CBuffBlackArrow
+    (codes::buff::BREATH_OF_FIRE, NEGATIVE), // CBuffBreathOfFire
+    (codes::buff::BATTLE_ROAR, MAGIC | POSITIVE), // CBuffBattleRoar
+    (codes::buff::CLOCKWERK_GOBLIN, POSITIVE | TIMED_LIFE), // CBuffClockworkGoblin
+    (codes::buff::CHEMICAL_RAGE, POSITIVE), // CBuffChemicalRage
+    (codes::buff::CLUSTER_ROCKETS, POSITIVE), // CBuffClusterRockets
+    (codes::buff::DARK_CONVERSION, NEGATIVE), // CBuffDarkConversion
+    (codes::buff::DRUNKEN_HAZE, MAGIC | NEGATIVE), // CBuffDrunkenHaze
+    (codes::buff::DOOM_BNDI, POSITIVE | TIMED_LIFE), // CBuffDoomMinion
+    (codes::buff::DARK_MINION, POSITIVE | TIMED_LIFE), // CBuffDarkMinion
+    (codes::buff::DOOM_BNDO, NEGATIVE), // CBuffDoom
+    (codes::buff::PANDAREN_ELEMENTAL, POSITIVE | TIMED_LIFE), // CBuffElementalFury
+    (codes::buff::POCKET_FACTORY, POSITIVE | TIMED_LIFE), // CBuffFactory
+    (codes::buff::HEALING_SPRAY, POSITIVE), // CBuffHealingSpray
+    (codes::buff::HOWL_OF_TERROR, MAGIC | NEGATIVE), // CBuffHowlOfTerror
+    (codes::buff::INCINERATE, NEGATIVE), // CBuffIncinerate
+    (codes::buff::INFERNAL, POSITIVE | TIMED_LIFE), // CBuffInfernal
+    (codes::buff::LAVA_SPAWN, POSITIVE | TIMED_LIFE), // CBuffLavaMonster
+    (codes::buff::MIND_ROT, MAGIC | NEGATIVE), // CBuffMindRot
+    (codes::buff::MANA_SHIELD, POSITIVE), // CBuffManaShield
+    (codes::buff::PARASITE_BNPA, PHYSICAL | NEGATIVE), // CBuffParasite
+    (codes::buff::PERM_IMMOLATION, RELATIVE), // CBuffPermImmolation
+    (codes::buff::PARASITE_BNPM, POSITIVE | TIMED_LIFE), // CBuffParasiteMinion
+    (codes::buff::RAIN_OF_FIRE, NEGATIVE), // CBuffRainOfFire
+    (codes::buff::RAIN_OF_FIRE_AOE, POSITIVE), // CBuffRainOfFireAoe
+    (codes::buff::SANCTUARY, MAGIC | POSITIVE), // CBuffSanctuary
+    (codes::buff::BEAR, POSITIVE | TIMED_LIFE), // CBuffSummonGrizzly
+    (codes::buff::SILENCE, MAGIC | NEGATIVE), // CBuffSilence
+    (codes::buff::SOUL_PRESERVATION, NEGATIVE), // CBuffSoulPreservation
+    (codes::buff::SOUL_BURN, MAGIC | NEGATIVE), // CBuffSoulBurn
+    (codes::buff::QUILBEAST, POSITIVE | TIMED_LIFE), // CBuffSummonQuillbeast
+    (codes::buff::SPELL_SHIELD, POSITIVE), // CBuffSpellShield
+    (codes::buff::STAMPEDE, MAGIC), // CBuffStampede
+    (codes::buff::HAWK, POSITIVE | TIMED_LIFE), // CBuffSummonWarEagle
+    (codes::buff::TRANSMUTE, NEGATIVE), // CBuffTransmute
+    (codes::buff::TORNADO_BNTO, POSITIVE | TIMED_LIFE), // CBuffTornado
+    (codes::buff::VOLCANO_AOE, POSITIVE), // CBuffVolcanoAoe
+    (codes::buff::WATERY_MINION, POSITIVE | TIMED_LIFE), // CBuffWateryMinion
+    (codes::buff::AURA_COMMAND, POSITIVE | AURA), // CBuffAuraCommand
+    (codes::buff::ENDURANCE_AURA, POSITIVE | AURA), // CBuffAuraEndurance
+    (codes::buff::EARTHQUAKE_AOE, POSITIVE), // CBuffEarthquakeAoe
+    (codes::buff::EARTHQUAKE, NEGATIVE), // CBuffEarthquake
+    (codes::buff::HEX, MAGIC | NEGATIVE), // CBuffHex
+    (codes::buff::MIRROR_IMAGE, POSITIVE | TIMED_LIFE), // CBuffMirrorImage
+    (codes::buff::FERAL_SPIRIT, POSITIVE | TIMED_LIFE), // CBuffSpiritWolf
+    (codes::buff::SHOCKWAVE, NEGATIVE), // CBuffShockwave
+    (codes::buff::VOODOO_CASTER, POSITIVE), // CBuffVoodooCaster
+    (codes::buff::BIG_BAD_VOODOO, POSITIVE | AURA), // CBuffVoodoo
+    (codes::buff::WARD, POSITIVE | TIMED_LIFE), // CBuffWard
+    (codes::buff::WIND_WALK, POSITIVE), // CBuffWindWalk
+    (codes::buff::WHIRLWIND_AOE, POSITIVE), // CBuffWhirlwindAoe
+    (codes::buff::STUNNED_BPSE, NEGATIVE), // CBuffPause
+    (codes::buff::SPEED, MAGIC), // CBuffSpeed
+    (codes::buff::STACK_INFO, NEGATIVE), // CBuffStackInfo
+    (codes::buff::STUNNED_BSTN, NEGATIVE), // CBuffStun
+    (codes::buff::TARGET, POSITIVE), // CBuffTarget
+    (codes::buff::TIMED_LIFE, POSITIVE | TIMED_LIFE), // CBuffTimedLife
+    (codes::buff::ANIMATE_DEAD, POSITIVE | TIMED_LIFE), // CBuffAnimateDead
+    (codes::buff::UNHOLY_AURA, POSITIVE | AURA), // CBuffAuraUnholy
+    (codes::buff::VAMPIRIC_AURA, POSITIVE | AURA), // CBuffAuraVampiric
+    (codes::buff::CARRION_BEETLES, POSITIVE | TIMED_LIFE), // CBuffCarrionScarab
+    (codes::buff::CARRION_SWARM, NEGATIVE), // CBuffCarrionSwarm
+    (codes::buff::DEATH_AND_DECAY, POSITIVE), // CBuffDeathAndDecayAoe
+    (codes::buff::FROST_ARMOR, MAGIC | POSITIVE), // CBuffFrostArmor
+    (codes::buff::IMPALE, NEGATIVE), // CBuffImpale
+    (codes::buff::SLEEP, MAGIC | NEGATIVE), // CBuffSleep
+    (codes::buff::SLEEP_PAUSE, NEGATIVE), // CBuffSleepPause
+    (codes::buff::SLEEP_STUN, NEGATIVE), // CBuffSleepStun
+    (codes::buff::AURA_OF_BLIGHT, POSITIVE | AURA), // CBuffAuraBlightRegen
+    (codes::buff::WAR_DRUMS, POSITIVE | AURA), // CBuffAuraKotoBeast
+    (codes::buff::ANTI_MAGIC_SHELL_BAM2, POSITIVE), // CBuffAntiMagicShellTwo
+    (codes::buff::ANTI_MAGIC_SHELL_BAMS, MAGIC | POSITIVE), // CBuffAntiMagicShell
+    (codes::buff::DISEASE, PHYSICAL | NEGATIVE), // CBuffAuraPlague
+    (codes::buff::MANA_REGENERATION_AURA, POSITIVE | AURA), // CBuffAuraRegenMana
+    (codes::buff::TORNADO_BASL, NEGATIVE | AURA), // CBuffAuraSlow
+    (codes::buff::BARKSKIN, MAGIC | POSITIVE), // CBuffBarkskin
+    (codes::buff::BLOODLUST, MAGIC | POSITIVE), // CBuffBloodlust
+    (codes::buff::BURNING_OIL, NEGATIVE), // CBuffBallsOfFire
+    (codes::buff::BERSERK, POSITIVE), // CBuffBerserkerRage
+    (codes::buff::DIZZINESS, NEGATIVE), // CBuffCargoHoldDeath
+    (codes::buff::CLOUD, NEGATIVE), // CBuffCloudOfFog
+    (codes::buff::CONTROL_MAGIC, POSITIVE | TIMED_LIFE), // CBuffControlMagic
+    (codes::buff::CORROSIVE_BREATH, MAGIC | NEGATIVE), // CBuffCorrosiveBreath
+    (codes::buff::CRIPPLE, MAGIC | NEGATIVE), // CBuffCripple
+    (codes::buff::CURSE, MAGIC | NEGATIVE), // CBuffCurse
+    (codes::buff::COLD_ARROWS_BCSD, PHYSICAL | NEGATIVE), // CBuffColdArrowStackDoT
+    (codes::buff::COLD_ARROW_STACK_INFO, NEGATIVE), // CBuffColdArrowStackInfo
+    (codes::buff::CYCLONE_BCY2, MAGIC | NEGATIVE), // CBuffCycloneTwo
+    (codes::buff::CYCLONE_BCYC, NEGATIVE), // CBuffCyclone
+    (codes::buff::DRAIN_LIFE_AND_MANA, POSITIVE), // CBuffDrainBonus
+    (codes::buff::DRAIN_LIFE, POSITIVE), // CBuffDrainBonusLife
+    (codes::buff::SIPHON_MANA, POSITIVE), // CBuffDrainBonusMana
+    (codes::buff::DRAIN_CASTER, POSITIVE), // CBuffDrainCaster
+    (codes::buff::DRAIN_CASTER_LIFE, POSITIVE), // CBuffDrainCasterLife
+    (codes::buff::DRAIN_CASTER_MANA, POSITIVE), // CBuffDrainCasterMana
+    (codes::buff::SCROLL_OF_PROTECTION, MAGIC | POSITIVE), // CBuffDefense
+    (codes::buff::DUST_OF_APPEARANCE, NEGATIVE), // CBuffDetected
+    (codes::buff::DIGESTING, MAGIC | NEGATIVE), // CBuffDigesting
+    (codes::buff::DRAIN_TARGET, POSITIVE), // CBuffDrainTarget
+    (codes::buff::DRAIN_TARGET_LIFE, POSITIVE), // CBuffDrainTargetLife
+    (codes::buff::DRAIN_TARGET_MANA, POSITIVE), // CBuffDrainTargetMana
+    (codes::buff::DEVOUR, NEGATIVE), // CBuffDevourVision
+    (codes::buff::EAT_TREE, MAGIC | POSITIVE), // CBuffEatTree
+    (codes::buff::ENSNARE_BENA, MAGIC_ENSNARE | PHYSICAL_UNLESS_MAGIC | NEGATIVE), // CBuffEnsnareAir
+    (codes::buff::ENSNARE_BENG, MAGIC_ENSNARE | PHYSICAL_UNLESS_MAGIC | NEGATIVE), // CBuffEnsnareGround
+    (codes::buff::ENSNARE_BENS, MAGIC_ENSNARE | PHYSICAL_UNLESS_MAGIC | NEGATIVE), // CBuffEnsnare
+    (codes::buff::ETHEREAL, MAGIC | RELATIVE), // CBuffEthereal
+    (codes::buff::SENTRY_WARD, POSITIVE | TIMED_LIFE), // CBuffEvilEye
+    (codes::buff::FAERIE_FIRE, MAGIC | NEGATIVE), // CBuffFaerieFire
+    (codes::buff::FREEZE, NEGATIVE), // CBuffFreeze
+    (codes::buff::SLOWED, NEGATIVE), // CBuffFrost
+    (codes::buff::FREEZING_BREATH, NEGATIVE), // CBuffFreezingBreath
+    (codes::buff::FRENZY, MAGIC | POSITIVE), // CBuffFrenzy
+    (codes::buff::GRAB_TREE, POSITIVE), // CBuffGrabTree
+    (codes::buff::HEAL, POSITIVE), // CBuffHeal
+    (codes::buff::HEALING_WARD, POSITIVE | TIMED_LIFE), // CBuffHealingWard
+    (codes::buff::INNER_FIRE, MAGIC | POSITIVE), // CBuffInnerFire
+    (codes::buff::INVISIBILITY, MAGIC | POSITIVE), // CBuffInvisibility
+    (codes::buff::LIFE_DOT, MAGIC), // CBuffLifeDoT
+    (codes::buff::LIQUID_FIRE, PHYSICAL | NEGATIVE), // CBuffLiquidFire
+    (codes::buff::LIGHTNING_SHIELD_AOE, POSITIVE), // CBuffLightningShieldAoe
+    (codes::buff::LIGHTNING_SHIELD, MAGIC | RELATIVE), // CBuffLightningShield
+    (codes::buff::MECHANICAL_CRITTER, POSITIVE | TIMED_LIFE), // CBuffMechanicalCritter
+    (codes::buff::MANA_FLARE_BMFA, POSITIVE), // CBuffManaFlareAoe
+    (codes::buff::MANA_FLARE_BMFL, POSITIVE), // CBuffManaFlare
+    (codes::buff::MILITIA, POSITIVE), // CBuffMilitia
+    (codes::buff::MAGIC_LEASH_CASTER, POSITIVE), // CBuffMagicLeashCaster
+    (codes::buff::AERIAL_SHACKLES, NEGATIVE), // CBuffMagicLeashTarget
+    (codes::buff::HEALING_WARD_AURA, POSITIVE | AURA), // CBuffAuraRegenLife
+    (codes::buff::PHOENIX, POSITIVE), // CBuffPhoenix
+    (codes::buff::PANDA_IMMOLATION, RELATIVE), // CBuffPandaImmolation
+    (codes::buff::PLAGUE_WARD, POSITIVE | TIMED_LIFE), // CBuffPlagueWard
+    (codes::buff::POLYMORPH, MAGIC | NEGATIVE), // CBuffPolymorph
+    (codes::buff::POSSESSION_BPOC, POSITIVE), // CBuffPossessionCaster
+    (codes::buff::POISON_BPOI, PHYSICAL | NEGATIVE), // CBuffPoisonAttack
+    (codes::buff::POSSESSION_BPOS, NEGATIVE), // CBuffPossession
+    (codes::buff::PURGE, NEGATIVE), // CBuffPurge
+    (codes::buff::PULSE_REVEAL, NEGATIVE), // CBuffPulseReveal
+    (codes::buff::POISON_BPSD, PHYSICAL | NEGATIVE), // CBuffPoisonAttackStackDoT
+    (codes::buff::PHASE_SHIFT, POSITIVE), // CBuffPhaseShift
+    (codes::buff::POISON_ATTACK_STACK_INFO, NEGATIVE), // CBuffPoisonAttackStackInfo
+    (codes::buff::PHOENIX_FIRE, PHYSICAL | NEGATIVE), // CBuffPhoenixFire
+    (codes::buff::SKELETAL_MINION, POSITIVE | TIMED_LIFE), // CBuffRaiseDead
+    (codes::buff::REJUVENATION_BREJ, MAGIC | POSITIVE), // CBuffRejuvination
+    (codes::buff::RANGE_LISTENER, MAGIC), // CBuffRangeListener
+    (codes::buff::ROAR, MAGIC | POSITIVE), // CBuffRoar
+    (codes::buff::REPLENISH, POSITIVE), // CBuffReplenish
+    (codes::buff::ESSENCE_OF_BLIGHT, POSITIVE), // CBuffReplenishLife
+    (codes::buff::SPIRIT_TOUCH, POSITIVE), // CBuffReplenishMana
+    (codes::buff::SHARED_VISION, NEGATIVE), // CBuffSharedVision
+    (codes::buff::WAND_OF_SHADOWSIGHT, MAGIC | NEGATIVE), // CBuffShadowSight
+    (codes::buff::SLOW, MAGIC | NEGATIVE), // CBuffSlow
+    (codes::buff::SPIDERLING, NEGATIVE), // CBuffSpiderAttack
+    (codes::buff::SPEED_BONUS, MAGIC | POSITIVE), // CBuffSpeedBonus
+    (codes::buff::SPIRIT_LINK, MAGIC | POSITIVE), // CBuffSpiritLink
+    (codes::buff::SLOW_POISON_BSPO, PHYSICAL | NEGATIVE), // CBuffSlowPoison
+    (codes::buff::SLOW_POISON_BSSD, PHYSICAL | NEGATIVE), // CBuffSlowPoisonStackDoT
+    (codes::buff::SLOW_POISON_STACK_INFO, NEGATIVE), // CBuffSlowPoisonStackInfo
+    (codes::buff::STASIS_TRAP, POSITIVE | TIMED_LIFE), // CBuffStasisTrapTrigger
+    (codes::buff::TAUNT, NEGATIVE), // CBuffTaunt
+    (codes::buff::TORNADO_DAMAGE_AOE, POSITIVE), // CBuffTornadoDamageAoe
+    (codes::buff::TORNADO_SPIN_AOE, POSITIVE), // CBuffTornadoSpinAoe
+    (codes::buff::TORNADO_SPIN, MAGIC | NEGATIVE), // CBuffTornadoSpin
+    (codes::buff::UNHOLY_FRENZY, MAGIC | RELATIVE), // CBuffUnholyFrenzy
+    (codes::buff::UNSUMMON, POSITIVE), // CBuffUnsummon
+    (codes::buff::SPIRIT_OF_VENGEANCE, POSITIVE | TIMED_LIFE), // CBuffVengeance
+    (codes::buff::INVULNERABLE, POSITIVE), // CBuffInvulnerable
+    (codes::buff::WEB_BWEA, MAGIC_ENSNARE | PHYSICAL_UNLESS_MAGIC | NEGATIVE), // CBuffWebAir
+    (codes::buff::WEB_BWEB, MAGIC_WEB | PHYSICAL_UNLESS_MAGIC | NEGATIVE), // CBuffWeb
 ];
 
 /// What a dispel or a buff native may choose by (FUN_6f48eb10's arguments).

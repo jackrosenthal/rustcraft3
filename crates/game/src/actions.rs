@@ -477,11 +477,11 @@ mod tests {
         let s = "6c617048060000000000000000000000000000000000000000000000000000006568677001000000402700000000000000000000000000006674617200000000003500000000000000000000000000001902000002000000010000000a00010016000000cdcc2c400d000000000000000bd7a33e0100c03f110000006766e63f050000006268484102000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000e144020000000000000000000000000000000000";
         let b: Vec<u8> = (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect();
         let u = stored_unit(&b).unwrap();
-        assert_eq!((&u.type_id, u.level, u.xp, u.skill_points), (b"Hpal", 3, 537, 1));
+        assert_eq!((&u.type_id, u.level, u.xp, u.skill_points), (crate::codes::unit::id::PALADIN, 3, 537, 1));
         assert_eq!((u.str_, u.agi, u.int), (22.0, 13.0, 17.0));
-        assert_eq!(u.abilities, vec![(*b"AHhb", 2)]);
-        assert_eq!(u.items[2], Some((*b"pghe", 1)));
-        assert_eq!(u.items[4], Some((*b"ratf", 0)));
+        assert_eq!(u.abilities, vec![(*crate::codes::ability::id::PALADIN_HOLY_LIGHT, 2)]);
+        assert_eq!(u.items[2], Some((*crate::codes::item::id::POTION_OF_GREATER_HEALING, 1)));
+        assert_eq!(u.items[4], Some((*crate::codes::item::id::CLAWS_OF_ATTACK_15, 0)));
         assert_eq!(u.items.iter().filter(|i| i.is_some()).count(), 2);
         assert_eq!(u.record, b);
     }

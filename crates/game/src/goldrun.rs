@@ -18,28 +18,29 @@ use crate::efloat as ef;
 use crate::tags::Code;
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 /// A harvest order given by a player (a smart order on a mine): its order, a block, a
 /// second block, four tasks, the three target tasks, a task, the move to the mine (a
 /// target task), three tasks, a block (`FUN_6f419380`), and its move's path cluster
 /// group, cluster, and path.
-const HARVEST_PLAYER: [&Code; 19] = [b"ordt", b"tskA", b"tskA", b"task", b"task", b"task", b"task", b"tskt", b"tskt", b"tskt", b"task", b"tskt", b"task", b"task", b"task", b"tskA", b"^clg", b"^clu", b"l^pa"];
+const HARVEST_PLAYER: [&Code; 19] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 /// The worker's own harvest order from the hall: one block at its head and four tasks
 /// at its tail (its flag 0x40000000 adds 0xd0150).
-const HARVEST_OWN: [&Code; 19] = [b"ordt", b"tskA", b"task", b"task", b"task", b"task", b"tskt", b"tskt", b"tskt", b"task", b"tskt", b"task", b"task", b"task", b"task", b"tskA", b"^clg", b"^clu", b"l^pa"];
+const HARVEST_OWN: [&Code; 19] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 /// The order home with the gold: its order, a block, four tasks, two target tasks, four
 /// tasks, a block, and its move's objects.
-const RETURN: [&Code; 16] = [b"ordt", b"tskA", b"task", b"task", b"task", b"task", b"tskt", b"tskt", b"task", b"task", b"task", b"task", b"tskA", b"^clg", b"^clu", b"l^pa"];
+const RETURN: [&Code; 16] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 /// A harvest order on a tree given by a player: the gold order without the move to the
 /// mine and the task before it, its move to the tree the third target task.
-const LUMBER_PLAYER: [&Code; 17] = [b"ordt", b"tskA", b"tskA", b"task", b"task", b"task", b"task", b"tskt", b"tskt", b"tskt", b"task", b"task", b"task", b"tskA", b"^clg", b"^clu", b"l^pa"];
+const LUMBER_PLAYER: [&Code; 17] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 /// The worker's own harvest order on a tree from the hall.
-const LUMBER_OWN: [&Code; 17] = [b"ordt", b"tskA", b"task", b"task", b"task", b"task", b"tskt", b"tskt", b"tskt", b"task", b"task", b"task", b"task", b"tskA", b"^clg", b"^clu", b"l^pa"];
+const LUMBER_OWN: [&Code; 17] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 /// At the tree, short of chopping (`FUN_6f4377d0`, event 0xd0184 as the move ends): its
 /// walk to reach the tree (0xd0171, `FUN_6f6926b0`), the end of its ghosting (0xd0151,
 /// `FUN_6f691f20`, which lets it chop: `FUN_6f43b7e0` sets the harvest's 0x1000), a
 /// block (`FUN_6f6927a0(5)`), and the walk's path cluster group, cluster, and path.
-const REACH: [&Code; 6] = [b"tskt", b"task", b"tskA", b"^clg", b"^clu", b"l^pa"];
+const REACH: [&Code; 6] = [codes::class::TASK_T, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 
 /// Where a gold run stands.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -207,10 +208,10 @@ impl World {
     /// ground worker gathering with Ahar from a gold mine (Agld) or a tree.
     pub fn gold_run_eligible(&self, h: u32, target: u32) -> bool {
         self.pathing.is_some()
-            && self.ability_with_code(h, "Ahar").is_some()
-            && self.ability_with_code(h, "Aaha").is_none()
-            && self.ability_with_code(h, "Awha").is_none()
-            && (self.unit(target).is_some_and(|m| !m.dead && !m.hidden && !m.pathing_cells.is_empty()) && self.ability_with_code(target, "Agld").is_some()
+            && self.ability_with_code(h, codes::ability::HARVEST).is_some()
+            && self.ability_with_code(h, codes::ability::ACOLYTE_HARVEST).is_none()
+            && self.ability_with_code(h, codes::ability::WISP_HARVEST).is_none()
+            && (self.unit(target).is_some_and(|m| !m.dead && !m.hidden && !m.pathing_cells.is_empty()) && self.ability_with_code(target, codes::ability::GOLD_MINE).is_some()
                 || self.is_tree_pub(target) && !self.footprint(target).is_empty())
             && self.move_kind(h) == crate::pathing::Move::Foot
     }
@@ -337,7 +338,7 @@ impl World {
     fn enter_mine(&mut self, h: u32, mut run: GoldRun, path: [u32; 2], agent: u32) {
         // The mine's first worker in makes its `+fgm` (read: one for five peons).
         if !self.unit(run.mine).is_some_and(|m| m.extra.mine_shaft) {
-            self.tags.take(b"+fgm");
+            self.tags.take(codes::class::FOG_MODIFIER);
             if let Some(m) = self.unit_mut(run.mine) {
                 m.extra.mine_shaft = true;
             }
@@ -355,7 +356,7 @@ impl World {
         let (dur, room) = self.mine_time_and_room(mine);
         run.tune(agent, dur.to_bits());
         if self.unit(mine).is_some_and(|m| m.inside >= room) {
-            run.phase = Phase::Waiting(self.tags.take(b"uref"));
+            run.phase = Phase::Waiting(self.tags.take(codes::class::UNIT_AI_REF));
             if let Some(m) = self.unit_mut(mine) {
                 m.extra.mine_queue.push(h);
             }
@@ -480,7 +481,7 @@ impl World {
             .filter_map(|n| crate::sim::weapon_n(self, u.type_id, n))
             .find(|w| w.targets.contains("tree"))
             .map_or((0.5, 0.5), |w| (w.damage_point, w.backswing));
-        let (dur, per, cap) = match self.ability_with_code(h, "Ahar") {
+        let (dur, per, cap) = match self.ability_with_code(h, codes::ability::HARVEST) {
             Some((a, l)) => (self.ability_real(a, "Dur", l), self.ability_real(a, "DataA", l) as i32, self.ability_real(a, "DataB", l) as i32 + self.upgrade_bonus(u.owner, u.type_id).lumber),
             None => (1.1, 1, 10),
         };
@@ -523,7 +524,7 @@ impl World {
     /// the order home's 12 to 8).
     pub fn leave_tree(&mut self, h: u32, k: usize) {
         let Some(mut run) = self.unit(h).and_then(|u| u.extra.gold_run.clone()) else { return };
-        let (per, cap) = match self.ability_with_code(h, "Ahar") {
+        let (per, cap) = match self.ability_with_code(h, codes::ability::HARVEST) {
             Some((a, l)) => (self.ability_real(a, "DataA", l) as i32, self.ability_real(a, "DataB", l) as i32),
             None => (1, 10),
         };
@@ -569,7 +570,7 @@ impl World {
 
     /// A gold mine's time inside (Agld DataB) and the workers it holds at once (DataC).
     fn mine_time_and_room(&self, mine: u32) -> (f32, u32) {
-        match self.ability_with_code(mine, "Agld") {
+        match self.ability_with_code(mine, codes::ability::GOLD_MINE) {
             Some((m, ml)) => (self.ability_real(m, "DataB", ml), self.ability_real(m, "DataC", ml).max(1.0) as u32),
             None => (1.0, 1),
         }
@@ -579,7 +580,7 @@ impl World {
     /// load (Ahar DataC) taken from the mine's gold.
     fn into_mine(&mut self, h: u32, mut run: GoldRun, due: u32) {
         let mine = run.mine;
-        let gold_cap = match self.ability_with_code(h, "Ahar") {
+        let gold_cap = match self.ability_with_code(h, codes::ability::HARVEST) {
             Some((a, al)) => self.ability_real(a, "DataC", al) as i32,
             None => 10,
         };
@@ -669,7 +670,7 @@ impl World {
         let Some(m) = self.unit(mine).filter(|m| !m.extra.mine_queue.is_empty()) else { return };
         let slot = match m.extra.mine_busy {
             Some((s, end)) if now <= end + 10.0 => s,
-            _ => self.tags.take(b"`rcm"),
+            _ => self.tags.take(codes::class::CONTINUOUS_MODIFIER),
         };
         self.tags.redoom_at(now + 1.0 + 10.0, slot);
         if let Some(m) = self.unit_mut(mine) {
@@ -770,7 +771,7 @@ impl World {
     /// way the local search finds to its footprint.
     fn next_tree(&self, h: u32, felled: u32) -> Option<u32> {
         let (fx, fy) = self.widget_pos(felled)?;
-        let area = self.ability_with_code(h, "Ahar").map_or(900.0, |(a, l)| self.ability_real(a, "Area", l));
+        let area = self.ability_with_code(h, codes::ability::HARVEST).map_or(900.0, |(a, l)| self.ability_real(a, "Area", l));
         let p = self.pathing.as_ref()?;
         let u = self.unit(h)?;
         struct Open<'a>(&'a crate::pathing::PathingMap, crate::pathing::Move);
@@ -899,7 +900,7 @@ impl World {
         let cell = |w: f32, o: f32| ef::div(ef::sub(w.to_bits(), o.to_bits()), crate::pathing::CELL.to_bits());
         let (tx, ty) = self.widget_pos(r.mine)?;
         let tree = (cell(tx, origin[0]), cell(ty, origin[1]));
-        let (a, l) = self.ability_with_code(h, "Ahar")?;
+        let (a, l) = self.ability_with_code(h, codes::ability::HARVEST)?;
         let range = ef::add(ef::div(self.ability_real(a, "Rng", l).to_bits(), crate::pathing::CELL.to_bits()), ef::div(u.collision.to_bits(), crate::pathing::CELL.to_bits()));
         if !m.within(tree, range, clock) {
             return None;

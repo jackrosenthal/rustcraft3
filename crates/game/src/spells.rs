@@ -6,10 +6,11 @@ use w3_jass::Vm;
 use crate::objects::{Id, id_from_str};
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 /// Codes whose effect keeps the caster channeling.
 pub fn channeled(code: &str) -> bool {
-    matches!(code, "AHbz" | "ANrf" | "AEsf" | "AEtq" | "AUdd" | "AHdr" | "AOvd" | "AOeq" | "ANst" | "ANvc" | "AHmt")
+    matches!(code, codes::ability::ARCH_MAGE_BLIZZARD | codes::ability::PIT_LORD_RAIN_OF_FIRE | codes::ability::PRIESTESS_STARFALL | codes::ability::KEEPER_TRANQUILITY | codes::ability::LICH_DEATH_AND_DECAY | codes::ability::BLOOD_MAGE_SIPHON_MANA | codes::ability::SHADOW_HUNTER_VOODOOO | codes::ability::FARSEER_EARTHQUAKE | codes::ability::BEAST_MASTER_STAMPEDE | codes::ability::FIRELORD_VOLCANO | codes::ability::ARCH_MAGE_MASS_TELEPORT)
 }
 
 impl World {
@@ -156,30 +157,30 @@ impl World {
         let (tx, ty) = self.widget_pos(target).unwrap_or((x, y));
         match code {
             // Channeled waves.
-            "AHbz" | "ANrf" | "AEsf" | "AEtq" | "AUdd" | "AHdr" | "AOvd" | "AOeq" | "ANst" => {
+            codes::ability::ARCH_MAGE_BLIZZARD | codes::ability::PIT_LORD_RAIN_OF_FIRE | codes::ability::PRIESTESS_STARFALL | codes::ability::KEEPER_TRANQUILITY | codes::ability::LICH_DEATH_AND_DECAY | codes::ability::BLOOD_MAGE_SIPHON_MANA | codes::ability::SHADOW_HUNTER_VOODOOO | codes::ability::FARSEER_EARTHQUAKE | codes::ability::BEAST_MASTER_STAMPEDE => {
                 let waves = match code {
-                    "AHbz" | "ANrf" => self.d(a, "DataA", lvl).max(1.0) as u32,
+                    codes::ability::ARCH_MAGE_BLIZZARD | codes::ability::PIT_LORD_RAIN_OF_FIRE => self.d(a, "DataA", lvl).max(1.0) as u32,
                     _ => 0,
                 };
                 // Self-sustained spells last the caster's duration (HeroDur for heroes);
                 // Blizzard's waves come one per Cast time.
                 let cast = self.d(a, "Cast", lvl).max(0.1);
-                let duration = if code == "AHbz" || code == "ANrf" { waves as f32 * cast } else { self.duration_for(a, lvl, h) };
+                let duration = if code == codes::ability::ARCH_MAGE_BLIZZARD || code == codes::ability::PIT_LORD_RAIN_OF_FIRE { waves as f32 * cast } else { self.duration_for(a, lvl, h) };
                 let interval = match code {
-                    "AHbz" | "ANrf" => cast,
-                    "AEsf" => self.d(a, "DataB", lvl).max(0.1),
+                    codes::ability::ARCH_MAGE_BLIZZARD | codes::ability::PIT_LORD_RAIN_OF_FIRE => cast,
+                    codes::ability::PRIESTESS_STARFALL => self.d(a, "DataB", lvl).max(0.1),
                     // Tranquility heals all the while (measured: a footman gains about 1
                     // every twentieth of a second, 20 a second, from the cast point).
-                    "AEtq" => 0.02,
-                    "AHdr" => self.d(a, "DataC", lvl).max(0.1),
+                    codes::ability::KEEPER_TRANQUILITY => 0.02,
+                    codes::ability::BLOOD_MAGE_SIPHON_MANA => self.d(a, "DataC", lvl).max(0.1),
                     // Stampede: DataA beasts a second.
-                    "ANst" => 1.0 / self.d(a, "DataA", lvl).max(0.01),
+                    codes::ability::BEAST_MASTER_STAMPEDE => 1.0 / self.d(a, "DataA", lvl).max(0.01),
                     _ => 1.0,
                 };
-                let (px, py) = if code == "AOvd" || code == "AEtq" || code == "AEsf" { (cx, cy) } else { (x, y) };
+                let (px, py) = if code == codes::ability::SHADOW_HUNTER_VOODOOO || code == codes::ability::KEEPER_TRANQUILITY || code == codes::ability::PRIESTESS_STARFALL { (cx, cy) } else { (x, y) };
                 // Drain: the lightning of what it takes (LightningEffect: both, life,
                 // mana).
-                let link = if code == "AHdr" {
+                let link = if code == codes::ability::BLOOD_MAGE_SIPHON_MANA {
                     let (life, mana) = (self.d(a, "DataA", lvl) > 0.0, self.d(a, "DataB", lvl) > 0.0);
                     self.channel_link_nth(a, if life && mana { 0 } else if life { 1 } else { 2 }, h, target)
                 } else {
@@ -194,7 +195,7 @@ impl World {
                 // every 1.5 at uneven gaps).
                 // Earthquake's first strike 0.48 seconds after the cast (measured: a farm
                 // struck 0.80 seconds after the order, the Far Seer's cast point 0.3).
-                let next = if code == "AHdr" || code == "AEsf" { interval } else if code == "AUdd" { 0.33 } else if code == "AOeq" { 0.48 } else { 0.0 };
+                let next = if code == codes::ability::BLOOD_MAGE_SIPHON_MANA || code == codes::ability::PRIESTESS_STARFALL { interval } else if code == codes::ability::LICH_DEATH_AND_DECAY { 0.33 } else if code == codes::ability::FARSEER_EARTHQUAKE { 0.48 } else { 0.0 };
                 if let Some(u) = self.unit_mut(h) {
                     u.channel = Some(Channel { ability: a, level: lvl, target, x: px, y: py, elapsed: 0.0, duration, interval, next, waves, link, held: [0; 4], lanes: 0, ai_fails: 0, strikes: Vec::new(), struck: Vec::new() });
                 }
@@ -202,7 +203,7 @@ impl World {
             }
             // Volcano: DataB waves DataC apart, the first a second after the cast
             // (volcano.rs).
-            "ANvc" => {
+            codes::ability::FIRELORD_VOLCANO => {
                 let every = self.d(a, "DataC", lvl).max(0.1);
                 let duration = self.d(a, "DataB", lvl) * every;
                 self.begin_volcano(h, a, lvl, x, y);
@@ -213,7 +214,7 @@ impl World {
             }
             // Cloud: while the caster channels, for Dur, structures within Area stop
             // their DataA attacks (2: ranged).
-            "Aclf" => {
+            codes::ability::CLOUD_OF_FOG => {
                 let duration = self.d(a, "Dur", lvl);
                 self.effect_at(a, lvl, x, y, duration);
                 if let Some(u) = self.unit_mut(h) {
@@ -223,7 +224,7 @@ impl World {
             }
             // Aerial Shackles: the target is held and takes DataA a second while the
             // caster channels, for Dur (HeroDur on Heroes), tied by its lightning.
-            "Amls" => {
+            codes::ability::AERIAL_SHACKLES => {
                 let duration = self.duration_for(a, lvl, target);
                 // BuffID: the caster's buff (Bmlc), then the target's (Bmlt).
                 let buffs = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", lvl)).unwrap_or_default();
@@ -245,14 +246,14 @@ impl World {
             // seconds until Dur.
             // Monsoon: DataA every DataB for Dur to what it allows within Area,
             // structures taking DataC of it.
-            "ANmo" => {
+            codes::ability::MONSOON => {
                 let duration = self.d(a, "Dur", lvl);
                 let interval = self.d(a, "DataB", lvl).max(0.05);
                 self.ground_effects.push(GroundEffect { caster: h, owner, ability: a, level: lvl, x, y, elapsed: 0.0, duration, interval, next: 0.0, effect: 0 });
                 self.art_at(a, "EffectArt", x, y);
                 true
             }
-            "AHfs" => {
+            codes::ability::BLOOD_MAGE_FLAME_STRIKE => {
                 let duration = self.d(a, "Dur", lvl);
                 let interval = self.d(a, "DataB", lvl).max(0.05);
                 self.ground_effects.push(GroundEffect { caster: h, owner, ability: a, level: lvl, x, y, elapsed: 0.0, duration, interval, next: 0.0, effect: 0 });
@@ -260,29 +261,29 @@ impl World {
                 true
             }
             // Bladestorm and Immolation follow the caster.
-            "AOww" | "AEim" => {
-                let duration = if code == "AEim" { f32::MAX } else { self.duration_for(a, lvl, h) };
+            codes::ability::BLADE_MASTER_BLADESTORM | codes::ability::DEMON_HUNTER_IMMOLATION => {
+                let duration = if code == codes::ability::DEMON_HUNTER_IMMOLATION { f32::MAX } else { self.duration_for(a, lvl, h) };
                 // Bladestorm strikes a fifth of DataA every fifth of a second, the first a
                 // fifth after the order (measured: a footman takes 22 at 0.20 seconds and
                 // each 0.20 after).
-                let (interval, next) = if code == "AOww" { (0.2, 0.2) } else { (1.0, 0.0) };
+                let (interval, next) = if code == codes::ability::BLADE_MASTER_BLADESTORM { (0.2, 0.2) } else { (1.0, 0.0) };
                 self.ground_effects.push(GroundEffect { caster: h, owner, ability: a, level: lvl, x: cx, y: cy, elapsed: 0.0, duration, interval, next, effect: 0 });
-                if code == "AOww" {
+                if code == codes::ability::BLADE_MASTER_BLADESTORM {
                     self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: duration, magic_immune: true, ..Default::default() });
                 }
                 true
             }
             // Lines: Shockwave, Carrion Swarm, Impale.
-            "AOsh" | "AUcs" | "AUim" => {
+            codes::ability::CHIEFTAIN_SHOCK_WAVE | codes::ability::DREADLORD_CARRION_SWARM | codes::ability::CRYPT_LORD_IMPALE => {
                 let (len, w1, each, max) = match code {
-                    "AUim" => (self.d(a, "DataA", lvl), area, self.d(a, "DataC", lvl), 0.0),
+                    codes::ability::CRYPT_LORD_IMPALE => (self.d(a, "DataA", lvl), area, self.d(a, "DataC", lvl), 0.0),
                     _ => (self.d(a, "DataC", lvl), self.d(a, "DataD", lvl), self.d(a, "DataA", lvl), self.d(a, "DataB", lvl)),
                 };
                 let (dx, dy) = (tx - cx, ty - cy);
                 let l = dx.hypot(dy).max(1.0);
                 let end = (cx + dx / l * len, cy + dy / l * len);
                 let hit = self.line_units(owner, (cx, cy), end, area, w1.max(area));
-                if code == "AUim" {
+                if code == codes::ability::CRYPT_LORD_IMPALE {
                     // The spikes run the length in DataB seconds; each unit they reach is
                     // thrown up, stunned for the air time (DataD) plus Dur, and takes the
                     // damage as it lands (measured: units 139, 346, and 569 along take it
@@ -306,13 +307,13 @@ impl World {
             // Chains: Chain Lightning and Healing Wave jump to the nearest new target,
             // losing a fraction per jump.
             // Jumps come a moment apart, each with its bolt (bolts.rs).
-            "AOcl" | "AOhw" => {
+            codes::ability::FARSEER_CHAIN_LIGHTNING | codes::ability::SHADOW_HUNTER_HEALING_WAVE => {
                 let (amount, jumps) = (self.d(a, "DataA", lvl), self.d(a, "DataB", lvl).max(1.0) as usize);
-                self.start_jumps(vm, a, lvl, h, target, amount, jumps, code == "AOhw");
+                self.start_jumps(vm, a, lvl, h, target, amount, jumps, code == codes::ability::SHADOW_HUNTER_HEALING_WAVE);
                 true
             }
             // Mana Burn: after DataB, drains up to DataA mana and deals as much damage.
-            "AEmb" => {
+            codes::ability::DEMON_HUNTER_MANA_BURN => {
                 let (amount, delay) = (self.d(a, "DataA", lvl), self.d(a, "DataB", lvl));
                 self.start_mana_burn(a, lvl, h, target, amount, delay);
                 true
@@ -320,7 +321,7 @@ impl World {
             // Shadow Strike: DataE at once, then DataA every DataD seconds with a slow
             // (measured: a footman struck at 0.75 seconds takes 75, then 10 at 3.75 and
             // 6.75).
-            "AEsh" => {
+            codes::ability::WARDEN_SHADOW_STRIKE => {
                 self.spell_damage(vm, h, target, self.d(a, "DataE", lvl));
                 let every = self.d(a, "DataD", lvl).max(0.01);
                 let dps = self.d(a, "DataA", lvl) / every;
@@ -329,7 +330,7 @@ impl World {
                 true
             }
             // Blink: to the point, no farther than the maximum range.
-            "AEbl" => {
+            codes::ability::WARDEN_BLINK => {
                 let max = self.d(a, "DataA", lvl);
                 let (dx, dy) = (x - cx, y - cy);
                 let dd = dx.hypot(dy);
@@ -344,7 +345,7 @@ impl World {
                 true
             }
             // Fan of Knives: damage to enemies around, capped in total and count.
-            "AEfk" => {
+            codes::ability::WARDEN_FAN_OF_KNIVES => {
                 let mut t = self.enemies_in(owner, cx, cy, area);
                 let n = self.d(a, "DataC", lvl) as usize;
                 if n > 0 {
@@ -354,7 +355,7 @@ impl World {
                 true
             }
             // Dark Ritual and Death Pact: sacrifice a friendly unit for mana or life.
-            "AUdr" | "AUdp" => {
+            codes::ability::LICH_DARK_RITUAL | codes::ability::DEATH_KNIGHT_DEATH_PACT => {
                 let life = self.unit(target).map_or(0.0, |t| t.life);
                 let (to_mana, to_life) = (self.d(a, "DataA", lvl), self.d(a, "DataB", lvl));
                 let (mana_pct, life_pct) = (self.d(a, "DataC", lvl) != 0.0, self.d(a, "DataD", lvl) != 0.0);
@@ -367,16 +368,16 @@ impl World {
                 }
                 true
             }
-            "AUsl" => {
+            codes::ability::DREADLORD_SLEEP => {
                 self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, sleep: true, stun: true, ..Default::default() });
                 true
             }
-            "AHbn" => {
+            codes::ability::BLOOD_MAGE_BANISH => {
                 let b = Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, ethereal: true, move_factor: -self.d(a, "DataA", lvl), attack_factor: -self.d(a, "DataB", lvl), ..Default::default() };
                 self.apply_buff(target, b);
                 true
             }
-            "AHav" => {
+            codes::ability::MOUNTAIN_KING_AVATAR => {
                 let d = self.d(a, "Dur", lvl).max(self.d(a, "HeroDur", lvl));
                 let b = Buff { id: buff, ability: a, level: lvl, caster: h, remaining: d, armor: self.d(a, "DataA", lvl), life_bonus: self.d(a, "DataB", lvl), damage_bonus: self.d(a, "DataC", lvl), magic_immune: true, ..Default::default() };
                 let gain = b.life_bonus;
@@ -387,32 +388,32 @@ impl World {
                 }
                 true
             }
-            "AOwk" => {
+            codes::ability::BLADE_MASTER_WIND_WALK => {
                 let d = self.d(a, "Dur", lvl).max(self.d(a, "HeroDur", lvl));
                 let b = Buff { id: buff, ability: a, level: lvl, caster: h, remaining: d, invisible: true, move_factor: self.d(a, "DataB", lvl), backstab: self.d(a, "DataC", lvl), fade: self.d(a, "DataA", lvl), ..Default::default() };
                 self.apply_buff(h, b);
                 true
             }
-            "AUfa" | "AUfu" => {
+            codes::ability::LICH_FROST_ARMOR | codes::ability::LICH_FROST_ARMOR_AUTOCAST => {
                 let b = Buff { id: buff, ability: a, level: lvl, caster: h, remaining: self.d(a, "DataA", lvl), armor: self.d(a, "DataB", lvl), ..Default::default() };
                 self.apply_buff(target, b);
                 true
             }
             // Summons.
-            "AOsf" | "AHwe" | "AHpx" | "AEst" | "AEsv" | "AOwd" | "AOsw" => {
+            codes::ability::FARSEER_SPIRIT_WOLF | codes::ability::ARCH_MAGE_WATER_ELEMENTAL | codes::ability::BLOOD_MAGE_PHOENIX | codes::ability::PRIESTESS_SCOUT | codes::ability::WARDEN_SPIRIT_OF_VENGEANCE | codes::ability::SHADOW_HUNTER_SERPENT_WARD_AOWD | codes::ability::SHADOW_HUNTER_SERPENT_WARD_AOSW => {
                 let unit = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
                 let n = match code {
-                    "AOsf" => self.d(a, "DataB", lvl),
+                    codes::ability::FARSEER_SPIRIT_WOLF => self.d(a, "DataB", lvl),
                     _ => self.d(a, "DataA", lvl),
                 }
                 .max(1.0) as i32;
-                let (sx, sy) = if code == "AOsw" || code == "AOwd" { (x, y) } else { (cx, cy) };
+                let (sx, sy) = if code == codes::ability::SHADOW_HUNTER_SERPENT_WARD_AOSW || code == codes::ability::SHADOW_HUNTER_SERPENT_WARD_AOWD { (x, y) } else { (cx, cy) };
                 let life = self.d(a, "Dur", lvl);
                 self.summon(h, owner, unit, n, sx, sy, life);
                 true
             }
             // Force of Nature: trees in the area become treants.
-            "AEfn" => {
+            codes::ability::KEEPER_FORCE_OF_NATURE => {
                 let unit = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
                 let n = self.d(a, "DataA", lvl).max(1.0) as usize;
                 let trees: Vec<u32> = self.destructable_order.iter().copied().filter(|&t| self.is_tree_pub(t) && self.widget_pos(t).is_some_and(|p| (p.0 - x).hypot(p.1 - y) <= area)).take(n).collect();
@@ -428,7 +429,7 @@ impl World {
             // Inferno: the Infernal comes at once and lands DataC later, striking those
             // within Area for DataA and stunning them (measured: summoned 0.30 seconds after
             // the order, a footman beside struck for 50 at 1.30).
-            "AUin" => {
+            codes::ability::DREADLORD_INFERNO => {
                 let delay = self.d(a, "DataC", lvl);
                 let unit = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
                 let life = self.d(a, "DataB", lvl);
@@ -443,15 +444,15 @@ impl World {
                 true
             }
             // Corpses: Animate Dead raises any, Resurrection friendly ones.
-            "AUan" | "AHre" => {
+            codes::ability::DEATH_KNIGHT_ANIMATE_DEAD | codes::ability::PALADIN_RESURRECTION => {
                 let n = self.d(a, "DataA", lvl).max(1.0) as usize;
                 let corpses: Vec<u32> = self
                     .corpses_in(cx, cy, area.max(900.0))
                     .into_iter()
-                    .filter(|&c| code == "AUan" || crate::natives::players::is_ally(self, owner, self.owner_of(c)))
+                    .filter(|&c| code == codes::ability::DEATH_KNIGHT_ANIMATE_DEAD || crate::natives::players::is_ally(self, owner, self.owner_of(c)))
                     .take(n)
                     .collect();
-                let life = if code == "AUan" { self.d(a, "Dur", lvl) } else { 0.0 };
+                let life = if code == codes::ability::DEATH_KNIGHT_ANIMATE_DEAD { self.d(a, "Dur", lvl) } else { 0.0 };
                 // DataB: the raised are invulnerable, under the ability's buff (BUan).
                 let invulnerable = self.d(a, "DataB", lvl) != 0.0;
                 let buff = self.buff_of(a, lvl);
@@ -490,7 +491,7 @@ impl World {
             // Mass Teleport: the caster channels DataB seconds, then it and up to DataA of
             // its owner's units within Area go to the target (measured: a Staff of
             // Teleportation's hero arrives 3.06 seconds after it is used).
-            "AHmt" => {
+            codes::ability::ARCH_MAGE_MASS_TELEPORT => {
                 let delay = self.d(a, "DataB", lvl).max(0.01);
                 if let Some(u) = self.unit_mut(h) {
                     // The teleport comes when the delay is up; the channel lasts a step
@@ -500,7 +501,7 @@ impl World {
                 true
             }
             // Far Sight reveals the area for its duration.
-            "AOfs" => {
+            codes::ability::FARSEER_FAR_SIGHT => {
                 let modifier = crate::fog::FogModifier { player: owner, state: crate::fog::FOG_VISIBLE, shape: crate::fog::FogShape::Circle(x, y, area), shared: true, after_units: false, active: true };
                 let m = self.handles.insert(Obj::FogModifier(modifier));
                 self.timed_removals.push((m, self.time + self.d(a, "Dur", lvl).max(1.0)));
@@ -508,62 +509,62 @@ impl World {
             }
             // Reveal (the Town Hall's, AIta): the area shows, and its invisible units, for
             // Dur.
-            "AIta" => {
+            codes::ability::ITEM_DETECT_AOE => {
                 let dur = self.d(a, "Dur", lvl).max(0.1);
                 self.reveal_area(owner, x, y, area, dur, 0.0);
                 self.effect_at(a, lvl, x, y, dur);
                 true
             }
             // Flare: after DataB, the area shows, and its invisible units, for Dur.
-            "Afla" => {
+            codes::ability::FLARE => {
                 let (dur, delay) = (self.d(a, "Dur", lvl).max(0.1), self.d(a, "DataB", lvl));
                 self.reveal_area(owner, x, y, area, dur, delay);
                 self.effect_at(a, lvl, x, y, dur + delay);
                 true
             }
-            "Amil" => {
+            codes::ability::MILITIA => {
                 self.take_up_arms(h, a, lvl);
                 true
             }
-            "Acmg" => {
+            codes::ability::CONTROL_MAGIC => {
                 self.control_magic(vm, h, a, lvl, target);
                 true
             }
-            "Asps" => {
+            codes::ability::SPELL_STEAL => {
                 self.spell_steal(h, a, lvl, target);
                 true
             }
-            "Aspl" => {
+            codes::ability::SPIRIT_LINK => {
                 self.spirit_link(h, a, lvl, target);
                 true
             }
-            "Auco" => {
+            codes::ability::UNSTABLE_CONCOCTION => {
                 self.unstable_concoction(vm, h, a, lvl, target);
                 true
             }
-            "Adev" => {
+            codes::ability::DEVOUR => {
                 self.devour(h, a, lvl, target);
                 true
             }
-            "Amel" => {
+            codes::ability::MEAT_LOAD => {
                 self.load_corpse(h, target);
                 true
             }
-            "Amed" => {
+            codes::ability::MEAT_DROP => {
                 self.drop_corpses(h);
                 true
             }
             // Parasite: DataA once a second for Dur, the first at once (measured: 5 at 0.44
             // seconds and each second after, for a parasite landing at 0.43), attacks
             // DataB and moves DataC slower.
-            "ANpa" => {
+            codes::ability::PARASITE => {
                 let buff = self.buff_of(a, lvl);
                 let dur = self.duration_for(a, lvl, target);
                 self.apply_buff(target, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: dur, dps: self.d(a, "DataA", lvl), dps_every: 1.0, dps_next: 0.0, attack_factor: -self.d(a, "DataB", lvl), move_factor: -self.d(a, "DataC", lvl), ..Default::default() });
                 true
             }
             // Pocket Factory: a factory (UnitID) for Dur at the point.
-            "ANsy" => {
+            codes::ability::TINKERER_SUMMON_FACTORY_LEVEL_0 => {
                 let kind = crate::objects::id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
                 let dur = self.duration_for(a, lvl, h);
                 let every = self.d(a, "DataA", lvl);
@@ -574,48 +575,48 @@ impl World {
                 }
                 true
             }
-            "AUcb" => {
+            codes::ability::CRYPT_LORD_CARRION_SCARABS => {
                 self.carrion_scarabs(h, a, lvl, target);
                 true
             }
-            "AOmi" => {
+            codes::ability::BLADE_MASTER_MIRROR_IMAGE => {
                 self.mirror_image(h, a, lvl);
                 true
             }
-            "AUls" => {
+            codes::ability::CRYPT_LORD_LOCUST_SWARM => {
                 self.begin_swarm(h, a, lvl);
                 true
             }
-            "Aps2" => {
+            codes::ability::POSSESSION_CHANNELING => {
                 self.begin_possession(h, a, lvl, target);
                 true
             }
-            "Acoi" => {
+            codes::ability::COUPLE_INSTANT_ARCHER_ACOI => {
                 self.couple(h, a, lvl, target);
                 true
             }
-            "Adec" => {
+            codes::ability::DECOUPLE => {
                 self.decouple(h, a, lvl);
                 true
             }
-            "Adtn" => {
+            codes::ability::DETONATE => {
                 self.detonate(vm, h, a, lvl, x, y);
                 true
             }
-            "Agra" => {
+            codes::ability::GRAB_TREE => {
                 self.grab_tree(vm, h, a, lvl, target);
                 true
             }
-            "Aeat" => {
+            codes::ability::EAT_TREE => {
                 self.eat_tree(vm, h, a, lvl, target);
                 true
             }
-            "Avng" => {
+            codes::ability::VENGEANCE => {
                 self.vengeance(h, a, lvl, target);
                 true
             }
             // Mana Flare: the caster channels its flare for Dur.
-            "Amfl" => {
+            codes::ability::MANA_FLARE => {
                 let duration = self.d(a, "Dur", lvl);
                 let buff = self.buff_of(a, lvl);
                 self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: duration, ..Default::default() });
@@ -626,7 +627,7 @@ impl World {
             }
             // Channel: the caster channels for DataA, Follow Through Time, with no effect
             // of its own (maps answer its spell events).
-            "ANcl" => {
+            codes::ability::ILLIDAN_CHANNEL => {
                 let duration = self.d(a, "DataA", lvl);
                 if duration > 0.0 {
                     if let Some(u) = self.unit_mut(h) {
@@ -635,7 +636,7 @@ impl World {
                 }
                 true
             }
-            "AOre" | "AEev" | "AOcr" | "AHbh" | "AUts" | "AEah" | "AUav" => true,
+            codes::ability::CHIEFTAIN_REINCARNATION | codes::ability::DEMON_HUNTER_EVASION | codes::ability::BLADE_MASTER_CRITICAL_STRIKE | codes::ability::MOUNTAIN_KING_BASH | codes::ability::CRYPT_LORD_SPIKED_CARAPACE | codes::ability::KEEPER_THORNS_AURA | codes::ability::DREADLORD_VAMPIRIC_AURA => true,
             _ => false,
         }
     }
@@ -685,7 +686,7 @@ impl World {
                         // the Archmage's order is blizzard for 6.3 seconds, its cast
                         // point and six waves a second apart); the others end with
                         // their last wave.
-                        if matches!(self.ability_code(c.ability).as_str(), "AHbz" | "ANrf") {
+                        if matches!(self.ability_code(c.ability).as_str(), codes::ability::ARCH_MAGE_BLIZZARD | codes::ability::PIT_LORD_RAIN_OF_FIRE) {
                             c.next = f32::INFINITY;
                         } else {
                             c.elapsed = c.duration + 1.0;
@@ -696,7 +697,7 @@ impl World {
             let done = c.elapsed >= c.duration;
             if done {
                 self.release_channel(&c);
-                if self.ability_code(c.ability) == "Aps2" {
+                if self.ability_code(c.ability) == codes::ability::POSSESSION_CHANNELING {
                     self.finish_possession(vm, h, c.target);
                     continue;
                 }
@@ -749,7 +750,7 @@ impl World {
     fn blizzard_strike(&mut self, vm: &mut Vm, h: u32, c: &mut Channel) {
         let (a, lvl) = (c.ability, c.level);
         let area = self.d(a, "Area", lvl);
-        let rain = self.ability_code(a) == "ANrf";
+        let rain = self.ability_code(a) == codes::ability::PIT_LORD_RAIN_OF_FIRE;
         let targets: Vec<u32> = self
             .units_in(c.x, c.y, area)
             .into_iter()
@@ -789,10 +790,10 @@ impl World {
         let owner = self.owner_of(h);
         let area = self.d(a, "Area", lvl);
         match code.as_str() {
-            "AHmt" => self.mass_teleport(h, a, lvl, c.target, (c.x, c.y)),
-            "ANst" => self.stampede_beast(h, c),
-            "ANvc" => self.volcano_wave(h, a),
-            "Aclf" => {
+            codes::ability::ARCH_MAGE_MASS_TELEPORT => self.mass_teleport(h, a, lvl, c.target, (c.x, c.y)),
+            codes::ability::BEAST_MASTER_STAMPEDE => self.stampede_beast(h, c),
+            codes::ability::FIRELORD_VOLCANO => self.volcano_wave(h, a),
+            codes::ability::CLOUD_OF_FOG => {
                 let buff = self.buff_of(a, lvl);
                 let disarm = self.d(a, "DataA", lvl) as u8;
                 let targs = self.objects.abilities.get(a).map(|o| o.level_str("targs", lvl).to_ascii_lowercase()).unwrap_or_default();
@@ -807,25 +808,25 @@ impl World {
             // Rain of Fire: a Blizzard wave that also leaves what it hits burning for DataE
             // a second for Dur.
             // Rain of Fire: as Blizzard, its strikes also leaving what they hit burning.
-            "ANrf" => {
+            codes::ability::PIT_LORD_RAIN_OF_FIRE => {
                 c.strikes.push(0.9);
                 self.art_at(a, "EffectArt", c.x, c.y);
             }
             // Blizzard: a wave's shards fall now and strike 0.9 seconds later
             // (FUN_6f4daef0's DAT_6fcd5414; measured: the first strike lands 1.2 seconds
             // after the order, the Archmage's 0.3 cast point and 0.9).
-            "AHbz" => {
+            codes::ability::ARCH_MAGE_BLIZZARD => {
                 c.strikes.push(0.9);
                 self.art_at(a, "EffectArt", c.x, c.y);
             }
-            "AEsf" => {
+            codes::ability::PRIESTESS_STARFALL => {
                 let reduction = self.d(a, "DataC", lvl);
                 for t in self.enemies_in(owner, c.x, c.y, area) {
                     let k = if self.unit(t).is_some_and(|u| u.is_building) && reduction > 0.0 { reduction } else { 1.0 };
                     self.spell_damage(vm, h, t, self.d(a, "DataA", lvl) * k);
                 }
             }
-            "AEtq" => {
+            codes::ability::KEEPER_TRANQUILITY => {
                 for t in self.allies_in(owner, c.x, c.y, area) {
                     if self.unit(t).is_some_and(|u| !u.is_building) {
                         self.magic_heal(t, self.d(a, "DataA", lvl) * c.interval);
@@ -833,7 +834,7 @@ impl World {
                 }
             }
             // Death and Decay: a share of maximum life every second, to everything.
-            "AUdd" => {
+            codes::ability::LICH_DEATH_AND_DECAY => {
                 let pct = self.d(a, "DataA", lvl);
                 for t in self.units_in(c.x, c.y, area) {
                     let max = self.unit(t).map_or(0.0, |u| u.max_life);
@@ -845,7 +846,7 @@ impl World {
             // DataE mana a second, under DrainTransfersLife and DrainTransfersMana
             // (CAbilityDrain::vf265), paying all of it though the ally fills, and it
             // ends once the ally is full.
-            "AHdr" if self.unit(c.target).is_some_and(|t| crate::natives::players::is_ally(self, owner, t.owner)) => {
+            codes::ability::BLOOD_MAGE_SIPHON_MANA if self.unit(c.target).is_some_and(|t| crate::natives::players::is_ally(self, owner, t.owner)) => {
                 let life = if self.misc_f32("DrainTransfersLife", 1.0) != 0.0 { self.d(a, "DataD", lvl) * c.interval } else { 0.0 };
                 let mana = if self.misc_f32("DrainTransfersMana", 1.0) != 0.0 { self.d(a, "DataE", lvl) * c.interval } else { 0.0 };
                 let (life, mana) = self.unit(h).map_or((0.0, 0.0), |u| (life.min((u.life - 1.0).max(0.0)), mana.min(u.mana)));
@@ -863,7 +864,7 @@ impl World {
                     c.elapsed = c.duration + 1.0;
                 }
             }
-            "AHdr" => {
+            codes::ability::BLOOD_MAGE_SIPHON_MANA => {
                 let take = self.unit(c.target).map_or(0.0, |t| t.mana.min(self.d(a, "DataB", lvl)));
                 if let Some(t) = self.unit_mut(c.target) {
                     t.mana -= take;
@@ -882,7 +883,7 @@ impl World {
                 }
             }
             // Big Bad Voodoo: allies around the caster cannot be hurt.
-            "AOvd" => {
+            codes::ability::SHADOW_HUNTER_VOODOOO => {
                 let buff = self.buff_of(a, lvl);
                 let (x, y) = self.unit(h).map_or((c.x, c.y), |u| (u.x, u.y));
                 for t in self.allies_in(owner, x, y, area) {
@@ -892,7 +893,7 @@ impl World {
                 }
             }
             // Earthquake: buildings take damage; units slow.
-            "AOeq" => {
+            codes::ability::FARSEER_EARTHQUAKE => {
                 let buff = self.buff_of(a, lvl);
                 for t in self.enemies_in(owner, c.x, c.y, area) {
                     if self.unit(t).is_some_and(|u| u.is_building) {
@@ -939,11 +940,11 @@ impl World {
     pub fn try_reincarnate(&mut self, h: u32) -> bool {
         // An Ankh of Reincarnation (AIrc) in the inventory: back after DataA with DataB
         // life and DataC mana (-1 keeps it), the ankh spent.
-        if self.ability_with_code(h, "AOre").is_none() {
+        if self.ability_with_code(h, codes::ability::CHIEFTAIN_REINCARNATION).is_none() {
             let held = self.unit(h).map(|u| u.inventory.clone()).unwrap_or_default();
             for item in held {
                 let Some(t) = self.item(item).map(|i| i.type_id) else { continue };
-                let Some(a) = self.item_abilities(t).into_iter().find(|&a| self.ability_code(a) == "AIrc") else { continue };
+                let Some(a) = self.item_abilities(t).into_iter().find(|&a| self.ability_code(a) == codes::ability::ITEM_REINCARNATION) else { continue };
                 let (delay, life, mana) = (self.d(a, "DataA", 1), self.d(a, "DataB", 1), self.d(a, "DataC", 1));
                 self.remove_item(item);
                 let u = self.unit_mut(h).unwrap();
@@ -953,7 +954,7 @@ impl World {
             }
             return false;
         }
-        let Some((a, lvl)) = self.ability_with_code(h, "AOre") else { return false };
+        let Some((a, lvl)) = self.ability_with_code(h, codes::ability::CHIEFTAIN_REINCARNATION) else { return false };
         if self.unit(h).is_some_and(|u| u.cooldowns.get(&a).copied().unwrap_or(0.0) > 0.0) {
             return false;
         }
@@ -973,7 +974,7 @@ impl World {
             e.next -= dt;
             // Effects that follow their caster end with it.
             let code = self.ability_code(e.ability);
-            if matches!(code.as_str(), "AOww" | "AEim") {
+            if matches!(code.as_str(), codes::ability::BLADE_MASTER_BLADESTORM | codes::ability::DEMON_HUNTER_IMMOLATION) {
                 match self.unit(e.caster).filter(|u| !u.dead) {
                     Some(u) => {
                         e.x = u.x;
@@ -986,7 +987,7 @@ impl World {
                 e.next += e.interval;
                 let area = self.d(e.ability, "Area", e.level);
                 match code.as_str() {
-                    "AHfs" => {
+                    codes::ability::BLOOD_MAGE_FLAME_STRIKE => {
                         let full = self.d(e.ability, "HeroDur", e.level);
                         let damage = if e.elapsed <= full {
                             self.d(e.ability, "DataA", e.level)
@@ -1001,8 +1002,8 @@ impl World {
                     }
                     // Burning Oil: DataA every DataB to what it allows within Area,
                         // structures taking DataE of it.
-                    "Abof" | "ANmo" => {
-                        let reduction_key = if code == "ANmo" { "DataC" } else { "DataE" };
+                    codes::ability::BALLS_OF_FIRE | codes::ability::MONSOON => {
+                        let reduction_key = if code == codes::ability::MONSOON { "DataC" } else { "DataE" };
                         let (dmg, reduction) = (self.d(e.ability, "DataA", e.level), self.d(e.ability, reduction_key, e.level));
                         for t in self.units_in(e.x, e.y, area) {
                             if self.cast_target_error(e.caster, e.ability, t).is_some() {
@@ -1012,13 +1013,13 @@ impl World {
                             self.spell_damage(vm, e.caster, t, dmg * k);
                         }
                     }
-                    "AOww" => {
+                    codes::ability::BLADE_MASTER_BLADESTORM => {
                         let dps = self.d(e.ability, "DataA", e.level);
                         for t in self.enemies_in(e.owner, e.x, e.y, area) {
                             self.spell_damage(vm, e.caster, t, dps * e.interval);
                         }
                     }
-                    "AEim" => {
+                    codes::ability::DEMON_HUNTER_IMMOLATION => {
                         // Immolation burns while the caster can pay its mana each second.
                         let drain = self.d(e.ability, "DataB", e.level);
                         let mana = self.unit(e.caster).map_or(0.0, |u| u.mana);

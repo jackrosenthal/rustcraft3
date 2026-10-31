@@ -8,11 +8,12 @@
 use crate::objects::Id;
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 /// Ability codes with autocast, by what they look for.
-const HEAL: [&str; 2] = ["Ahea", "Anhe"];
-const ALLY_BUFF: [&str; 4] = ["Ainf", "Ablo", "AUfu", "AUfa"];
-const ENEMY_DEBUFF: [&str; 4] = ["Aslo", "Acrs", "Afae", "Aweb"];
+const HEAL: [&str; 2] = [codes::ability::HEAL, codes::ability::HEAL_CREEP_NORMAL];
+const ALLY_BUFF: [&str; 4] = [codes::ability::INNER_FIRE, codes::ability::BLOODLUST, codes::ability::LICH_FROST_ARMOR_AUTOCAST, codes::ability::LICH_FROST_ARMOR];
+const ENEMY_DEBUFF: [&str; 4] = [codes::ability::SLOW, codes::ability::CURSE, codes::ability::FAERIE_FIRE, codes::ability::WEB];
 
 impl World {
     /// Turns a unit's autocast on or off by an ability's orderon / orderoff name.
@@ -67,7 +68,7 @@ impl World {
         // An enemy fighting itself (measured: a Sorceress slows a footman attacking her but
         // not one on hold position she attacks).
         if ENEMY_DEBUFF.contains(&code.as_str()) {
-            let air_only = code == "Aweb";
+            let air_only = code == codes::ability::WEB;
             return units()
                 .find(|t| {
                     alive(t) && !ally(t) && near(t) && !self.has_buff_of(t.handle, a) && !self.is_magic_immune(t.handle) && self.attacking(t.handle) && (!air_only || self.move_kind(t.handle) == crate::pathing::Move::Fly)
@@ -76,16 +77,16 @@ impl World {
         }
         match code.as_str() {
             // Repair on autocast: the nearest damaged structure or machine in sight.
-            "Arep" | "Arst" | "Aren" => units()
+            codes::ability::REPAIR_ORC | codes::ability::RESTORATION | codes::ability::RENEW => units()
                 .filter(|t| (t.x - u.x).hypot(t.y - u.y) <= u.acquire_range.max(500.0) && self.can_repair(h, t.handle))
                 .min_by(|x, y| (x.x - u.x).hypot(x.y - u.y).total_cmp(&(y.x - u.x).hypot(y.y - u.y)))
                 .map(|t| t.handle),
-            "Arai" => self.corpses_in(u.x, u.y, self.data(a, "Area", lvl)).first().copied(),
+            codes::ability::RAISE_DEAD => self.corpses_in(u.x, u.y, self.data(a, "Area", lvl)).first().copied(),
             // Carrion Scarabs: the nearest corpse in range, in a fight.
-            "AUcb" => self.in_combat(h).then(|| self.corpses_in(u.x, u.y, self.data(a, "Rng", lvl)).first().copied()).flatten(),
-            "Aadm" => units().find(|t| alive(t) && !ally(t) && near(t) && self.is_summoned(t.handle)).map(|t| t.handle),
+            codes::ability::CRYPT_LORD_CARRION_SCARABS => self.in_combat(h).then(|| self.corpses_in(u.x, u.y, self.data(a, "Rng", lvl)).first().copied()).flatten(),
+            codes::ability::ABOLISH_MAGIC => units().find(|t| alive(t) && !ally(t) && near(t) && self.is_summoned(t.handle)).map(|t| t.handle),
             // Frenzy: the caster itself, in a fight, without it.
-            "Afzy" => (self.in_combat(h) && !self.has_buff_of(h, a)).then_some(h),
+            codes::ability::FRENZY => (self.in_combat(h) && !self.has_buff_of(h, a)).then_some(h),
             _ => None,
         }
     }
@@ -100,7 +101,7 @@ impl World {
     pub fn update_cannibalize(&mut self, dt: f32) {
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && u.owner >= PLAYER_NEUTRAL_AGGRESSIVE || self.unit(h).is_some_and(|u| !u.dead && !u.hidden && self.players.get(u.owner as usize).is_some_and(|p| p.controller == map_control::COMPUTER)))).collect();
         for h in units {
-            let Some((a, lvl)) = self.ability_with_code(h, "Acan") else { continue };
+            let Some((a, lvl)) = self.ability_with_code(h, codes::ability::CANNIBALIZE) else { continue };
             let Some(u) = self.unit_mut(h) else { continue };
             let idle = matches!(u.action, Action::Idle);
             let became_idle = idle && !u.extra.was_idle;
@@ -165,7 +166,7 @@ impl World {
                     continue;
                 }
                 let Some(target) = self.autocast_target(h, a, lvl) else { continue };
-                if matches!(self.ability_code(a).as_str(), "Arep" | "Arst" | "Aren") {
+                if matches!(self.ability_code(a).as_str(), codes::ability::REPAIR_ORC | codes::ability::RESTORATION | codes::ability::RENEW) {
                     if matches!(self.unit(h).map(|u| &u.action), Some(Action::Idle)) {
                         self.unit_mut(h).unwrap().action = Action::Repair { target };
                     }

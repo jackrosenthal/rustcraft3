@@ -7,6 +7,7 @@ use w3_jass::Value;
 use super::{Args, boolean, handle, int, none, reg, string};
 use crate::types::*;
 use crate::world::{NativeFn, World};
+use crate::codes;
 
 fn rgba(a: &[Value], first: usize) -> [u8; 4] {
     let c = |i: usize| a.i(first + i).clamp(0, 255) as u8;
@@ -60,7 +61,7 @@ fn item_cell(w: &mut World, h: u32) -> Option<&mut MultiboardItem> {
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
     reg!(t,
         CreateTimerDialog => |w, _, a| {
-            let slot = w.tags.take(b"+tid");
+            let slot = w.tags.take(codes::class::TIMER_DIALOG);
             let h = w.handles.insert(Obj::TimerDialog(TimerDialog { timer: a.h(0), ..Default::default() }));
             w.tags.handle_slots.insert(h, slot);
             handle(h)
@@ -75,7 +76,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         TimerDialogSetRealTimeRemaining => |w, _, a| { let r = a.r(1); if let Some(d) = timer_dialog(w, a.h(0)) { d.real_time = Some(r); } none() },
 
         CreateLeaderboard => |w, _, _| {
-            w.tags.take(b"+ldb");
+            w.tags.take(codes::class::LEADERBOARD);
             handle(w.handles.insert(Obj::Leaderboard(Leaderboard::default())))
         },
         DestroyLeaderboard => |w, _, a| { if leaderboard(w, a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
@@ -124,7 +125,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         LeaderboardSetItemValueColor => |w, _, a| { let (i, c) = (a.i(1), rgba(a, 2)); if let Some(it) = leaderboard(w, a.h(0)).and_then(|b| b.items.get_mut(i.max(0) as usize)) { it.value_color = Some(c); } none() },
 
         CreateMultiboard => |w, _, _| {
-            w.tags.take(b"+mdb");
+            w.tags.take(codes::class::MULTIBOARD);
             handle(w.handles.insert(Obj::Multiboard(Multiboard::default())))
         },
         DestroyMultiboard => |w, _, a| { if multiboard(w, a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },

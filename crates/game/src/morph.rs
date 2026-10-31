@@ -6,8 +6,9 @@
 use crate::objects::{Id, id_from_str};
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
-const MORPHS: [&str; 11] = ["Abrf", "Arav", "Astn", "Abur", "AEme", "ANcr", "ANrg", "Acpf", "Aetf", "Aave", "ANsu"];
+const MORPHS: [&str; 11] = [codes::ability::BEARFORM, codes::ability::RAVEN_FORM_DRUID, codes::ability::STONE_FORM, codes::ability::BURROW, codes::ability::DEMON_HUNTER_METAMORPHOSIS, codes::ability::ALCHEMIST_CHEMICAL_RAGE, codes::ability::TINKERER_ROBO_GOBLIN_LEVEL_0, codes::ability::CORPOREAL_FORM, codes::ability::ETHEREAL_FORM, codes::ability::AVENGER_FORM, codes::ability::SUBMERGE_MYRMIDON];
 
 impl World {
     /// The morph ability a unit has whose order or unorder is `name`, and the type it
@@ -210,7 +211,7 @@ impl World {
         match name {
             // A peasant runs to the nearest Town Hall to take up arms.
             "militia" => {
-                let (a, _) = self.ability_with_code(h, "Amil")?;
+                let (a, _) = self.ability_with_code(h, codes::ability::MILITIA)?;
                 let normal = id_from_str(self.objects.abilities.get(a)?.level_str("DataA", 1).trim());
                 if type_id != normal {
                     return Some(None);
@@ -220,7 +221,7 @@ impl World {
             }
             // Militia go back to work at once.
             "militiaoff" => {
-                let (a, _) = self.ability_with_code(h, "Amil")?;
+                let (a, _) = self.ability_with_code(h, codes::ability::MILITIA)?;
                 let o = self.objects.abilities.get(a)?;
                 let (normal, alternate) = (id_from_str(o.level_str("DataA", 1).trim()), id_from_str(o.level_str("DataB", 1).trim()));
                 if type_id == alternate {
@@ -234,10 +235,10 @@ impl World {
             // The Town Hall's bell calls the peasants within Area to arms, or sends its
             // militia back to work.
             "townbellon" | "townbelloff" => {
-                let (a, lvl) = self.ability_with_code(h, "Amic")?;
+                let (a, lvl) = self.ability_with_code(h, codes::ability::MILITIA_CONVERSION)?;
                 let area = self.data(a, "Area", lvl.max(1) as u32);
                 let sub = crate::natives::basic::order_id(if name == "townbellon" { "militia" } else { "militiaoff" });
-                let workers: Vec<u32> = self.units_in_pub(ux, uy, area).into_iter().filter(|&w| self.unit(w).is_some_and(|wu| wu.owner == owner && !wu.dead) && self.ability_with_code(w, "Amil").is_some()).collect();
+                let workers: Vec<u32> = self.units_in_pub(ux, uy, area).into_iter().filter(|&w| self.unit(w).is_some_and(|wu| wu.owner == owner && !wu.dead) && self.ability_with_code(w, codes::ability::MILITIA).is_some()).collect();
                 for w in workers {
                     self.order_unit(w, sub, 0.0, 0.0, 0);
                 }
@@ -259,7 +260,7 @@ impl World {
         self.unit_order
             .iter()
             .copied()
-            .filter(|&t| self.unit(t).is_some_and(|tu| tu.owner == owner && !tu.dead && tu.is_building && tu.constructing.is_none()) && self.ability_with_code(t, "Amic").is_some())
+            .filter(|&t| self.unit(t).is_some_and(|tu| tu.owner == owner && !tu.dead && tu.is_building && tu.constructing.is_none()) && self.ability_with_code(t, codes::ability::MILITIA_CONVERSION).is_some())
             .min_by(|&p, &q| {
                 let d = |t: u32| self.unit(t).map_or(f32::MAX, |u| (u.x - x).hypot(u.y - y));
                 d(p).total_cmp(&d(q))

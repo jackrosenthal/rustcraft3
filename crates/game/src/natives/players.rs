@@ -8,6 +8,7 @@ use super::{Args, boolean, handle, int, none, real, reg, string};
 use crate::objects::id_from_int;
 use crate::types::*;
 use crate::world::{NativeFn, World};
+use crate::codes;
 
 /// ALLIANCE_PASSIVE: the alliance flag IsPlayerAlly and IsPlayerEnemy read.
 pub(crate) const ALLIANCE_PASSIVE: usize = 0;
@@ -289,7 +290,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         GetPlayerScore => |w, _, a| int(player_arg(w, a, 0).map_or(0, |p| w.player_score(p, a.h(1) as i32))),
         CreateForce => |w, _, _| {
-            let slots: Vec<u32> = [b"+frc", b"`flg", b"`flg"].iter().map(|c| w.tags.take(c)).collect();
+            let slots: Vec<u32> = [codes::class::FORCE, codes::class::FLAG, codes::class::FLAG].iter().map(|c| w.tags.take(c)).collect();
             handle(w.handles.insert(Obj::Force(Force { slots, ..Force::default() })))
         },
         DestroyForce => |w, _, a| { if w.force(a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },

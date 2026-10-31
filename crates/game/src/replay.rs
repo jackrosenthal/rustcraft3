@@ -538,7 +538,7 @@ mod tests {
             frames: vec![
                 Frame { dt: 0.0166, commands: vec![], actions: None, turn: None, checksum: None },
                 Frame { dt: 0.05, commands: vec![(0, Command::Order { unit: 42, order: 851971, x: 1.5, y: -2.0, target: 0 }), (0, Command::Chat { player: 0, text: "hi".into(), to: 0 })], actions: None, turn: None, checksum: None },
-                Frame { dt: 0.1, commands: vec![(1, Command::Train { building: 7, id: *b"hpea" })], actions: None, turn: None, checksum: None },
+                Frame { dt: 0.1, commands: vec![(1, Command::Train { building: 7, id: *crate::codes::unit::id::PEASANT })], actions: None, turn: None, checksum: None },
             ],
             ..Default::default()
         };

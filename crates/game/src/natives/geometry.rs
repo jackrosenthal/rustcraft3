@@ -5,6 +5,7 @@ use crate::collections::HashMap;
 use super::{Args, boolean, handle, none, real, reg};
 use crate::types::*;
 use crate::world::{NativeFn, World};
+use crate::codes;
 
 fn rect_mut(w: &mut World, h: u32) -> Option<&mut Rect> {
     match w.handles.get_mut(h) {
@@ -43,7 +44,7 @@ fn camera_margin(w: &World, which: u32) -> f32 {
 pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
     reg!(t,
         Rect => |w, _, a| {
-            let slot = w.tags.take(b"+rct");
+            let slot = w.tags.take(codes::class::RECT);
             let h = w.handles.insert(Obj::Rect(Rect { min_x: a.r(0), min_y: a.r(1), max_x: a.r(2), max_y: a.r(3) }));
             w.tags.handle_slots.insert(h, slot);
             handle(h)
@@ -106,7 +107,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetLocationY => |w, _, a| real(w.location(a.h(0)).map_or(0.0, |l| l.1)),
         GetLocationZ => |w, _, a| real(w.location(a.h(0)).map_or(0.0, |(x, y)| w.ground_z(x, y))),
         CreateRegion => |w, _, _| {
-            w.tags.take_all(&[b"+agr", b"^pmr"]);
+            w.tags.take_all(&[codes::class::REGION, codes::class::PATHING_REGION]);
             handle(w.handles.insert(Obj::Region(Region::default())))
         },
         RemoveRegion => |w, _, a| { if w.region(a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },

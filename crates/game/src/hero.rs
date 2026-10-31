@@ -5,6 +5,7 @@ use crate::objects::{Id, id_from_str};
 use crate::types::EventCtx;
 
 use crate::world::World;
+use crate::codes;
 
 impl World {
     fn misc_list_f32(&self, key: &str) -> Vec<f32> {
@@ -264,7 +265,7 @@ impl World {
     fn in_hero_list(&self, h: u32, ability: Id) -> bool {
         let Some(u) = self.unit(h) else { return false };
         let list: Vec<Id> = self.objects.units.get(u.type_id).map(|o| o.list("heroAbilList")).unwrap_or_default().iter().map(|s| crate::objects::id_from_str(s.trim())).collect();
-        let listed = |a: Id| list.iter().any(|&x| x == a || (a == *b"AUfa" && x == *b"AUfu"));
+        let listed = |a: Id| list.iter().any(|&x| x == a || (a == *codes::ability::id::LICH_FROST_ARMOR && x == *codes::ability::id::LICH_FROST_ARMOR_AUTOCAST));
         listed(ability) || u.extra.swapped.iter().any(|s| s.1 == ability && listed(s.0))
     }
 
@@ -362,10 +363,10 @@ impl World {
                 1
             }
         };
-        if self.ability_code(ability) == "Aamk" {
+        if self.ability_code(ability) == codes::ability::ATTRIBUTE_MODIFIER_SKILL {
             self.apply_item_bonuses(h);
         }
-        if self.ability_code(ability) == "ANeg" {
+        if self.ability_code(ability) == codes::ability::TINKERER_ENGINEERING_UPGRADE {
             self.engineering_upgrade(h, ability, level as u32);
         }
         use crate::event_ids::*;
@@ -445,7 +446,7 @@ impl World {
         let n = self.mana_due.iter().take_while(|e| upto.is_none_or(|t| e.0 <= t)).count();
         let fired: Vec<(i64, f32, u32, u32)> = self.mana_due.drain(..n).collect();
         for group in fired.chunk_by(|a, b| a.0 == b.0) {
-            let new: Vec<u32> = group.iter().map(|_| self.tags.take(b"`rtl")).collect();
+            let new: Vec<u32> = group.iter().map(|_| self.tags.take(codes::class::THRESHOLD_LISTENER)).collect();
             for (&(_, _, h, slot), &n) in group.iter().zip(&new) {
                 self.tags.release(slot);
                 // The new one waits for the mana to fall (not yet followed: it never
@@ -476,7 +477,7 @@ impl World {
             let owner = u.owner;
             let computer = self.players.get(owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER && p.slot_state == crate::types::slot_state::PLAYING);
             if computer && self.unit(h).is_some_and(|u| !u.dead) {
-                let s = self.tags.take(b"`pil");
+                let s = self.tags.take(codes::class::IN_RANGE_LISTENER);
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.alarm_pil = Some(s);
                 }
@@ -509,7 +510,7 @@ impl World {
                     // 1.9999981.)
                     let kept = self.tags.clock;
                     self.tags.clock = self.clock_at_time(due).unwrap_or(kept);
-                    let s = self.tags.take(b"`rcm");
+                    let s = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
                     self.tags.clock = kept;
                     if let Some(u) = self.unit_mut(h) {
                         u.extra.blight_rcm = Some(s);

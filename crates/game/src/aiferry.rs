@@ -5,10 +5,10 @@
 
 use w3_jass::Vm;
 
-use crate::objects::id_from_str;
 use crate::pathing::{Move, CELL};
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 impl World {
     /// Whether a unit must be carried to reach a point: it walks, and no path joins
@@ -134,7 +134,7 @@ impl World {
     /// PurchaseZeppelin (FUN_6f9d5190): the attack captain goes to a shop that sells
     /// goblin zeppelins, the first found kept for later purchases, to buy one there.
     pub(crate) fn ai_purchase_zeppelin(&mut self, p: u8) {
-        let nzep = id_from_str("nzep");
+        let nzep = *codes::unit::id::GOBLIN_ZEPPELIN;
         let kept = self.ai.get(&p).map_or(0, |s| s.zep_shop);
         let sells = |w: &World, h: u32| w.unit(h).is_some_and(|u| !u.dead) && w.shop_goods(h).1.contains(&nzep);
         let shop = if kept != 0 && sells(self, kept) {
@@ -163,7 +163,7 @@ impl World {
         for (p, shop) in buying {
             let at = self.unit(shop).filter(|u| !u.dead).map(|u| (u.x, u.y));
             let still = at.is_some() && self.ai.get(&p).is_some_and(|s| s.attack.goal == at);
-            if !still || self.hire_unit(vm, p, shop, id_from_str("nzep")).is_ok() {
+            if !still || self.hire_unit(vm, p, shop, *codes::unit::id::GOBLIN_ZEPPELIN).is_ok() {
                 if let Some(st) = self.ai.get_mut(&p) {
                     st.zep_buying = false;
                 }

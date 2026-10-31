@@ -6,8 +6,9 @@
 
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
-const REPAIRS: [&str; 3] = ["Arep", "Arst", "Aren"];
+const REPAIRS: [&str; 3] = [codes::ability::REPAIR_ORC, codes::ability::RESTORATION, codes::ability::RENEW];
 
 impl World {
     fn repair_ability(&self, h: u32) -> Option<(crate::objects::Id, u32)> {
@@ -26,7 +27,7 @@ impl World {
         let kinds = o.map(|o| o.str("type").to_ascii_lowercase()).unwrap_or_default();
         let ancient = kinds.contains("ancient");
         let code = self.ability_code(a);
-        if ancient && code != "Aren" {
+        if ancient && code != codes::ability::RENEW {
             return false;
         }
         t.is_building || kinds.contains("mechanical")

@@ -6,6 +6,7 @@
 
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 /// Defense types by index (DEFENSE_TYPE_*), as UnitBalance names them.
 const DEFENSE: [&str; 8] = ["small", "medium", "large", "fort", "normal", "hero", "divine", "none"];
@@ -17,7 +18,7 @@ impl World {
     }
 
     fn root_ability(&self, h: u32) -> Option<(crate::objects::Id, u32)> {
-        self.ability_with_code(h, "Aroo")
+        self.ability_with_code(h, codes::ability::ROOT)
     }
 
     fn root_data(&self, h: u32, field: &str) -> f32 {

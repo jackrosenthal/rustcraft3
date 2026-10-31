@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::efloat as ef;
 use crate::world::World;
+use crate::codes;
 
 /// A cluster walking to a point: its path's objects (`l^pa`, `^clu`) and the members
 /// still walking.
@@ -161,8 +162,8 @@ impl World {
         let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return };
         let f = |v: f32| v.to_bits();
         let cell = |w: f32, o: f32| ef::div(ef::sub(f(w), f(o)), f(crate::pathing::CELL));
-        let cluster = self.tags.take(b"^clu");
-        let path = [self.tags.take(b"l^pa"), cluster];
+        let cluster = self.tags.take(codes::class::CLUSTER);
+        let path = [self.tags.take(codes::class::PATH), cluster];
         let at: Vec<(u32, u32)> = members
             .iter()
             .filter_map(|&h| self.unit(h))

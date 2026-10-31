@@ -18,6 +18,7 @@
 
 use crate::objects::{Id, id_from_str};
 use crate::world::World;
+use crate::codes;
 
 const SIZE: usize = 101;
 const CELL: f32 = 32.0;
@@ -132,7 +133,7 @@ impl World {
             }
         }
         let mut grid = Grid { ox, oy, class };
-        let tower = id == id_from_str("hwtw") || id == id_from_str("uzig");
+        let tower = id == *codes::unit::id::SCOUT_TOWER || id == *codes::unit::id::ZIGGURAT;
         let many = tower && self.unit_count(p, id, false, None) > 1;
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead)).collect();
         for h in units {
@@ -244,7 +245,7 @@ impl World {
 
     /// A gold mine: plain, haunted (Abgm), or entangled (Aegm).
     pub(crate) fn is_gold_mine(&self, h: u32) -> bool {
-        ["Agld", "Abgm", "Aegm"].iter().any(|c| self.ability_with_code(h, c).is_some())
+        [codes::ability::GOLD_MINE, codes::ability::BLIGHTED_GOLD_MINE, codes::ability::ENTANGLED_GOLD_MINE].iter().any(|c| self.ability_with_code(h, c).is_some())
     }
 
     pub fn is_town_hall(&self, u: &crate::types::Unit) -> bool {
@@ -307,7 +308,7 @@ impl World {
         }
         let from = self.defense_position(p);
         let taken: Vec<u32> = self.ai.iter().filter(|(q, _)| **q != p && crate::natives::players::is_ally(self, p, **q)).filter_map(|(_, s)| s.expansion).collect();
-        let haunted = id_from_str("ugol");
+        let haunted = *codes::unit::id::HAUNTED_GOLD_MINE;
         let (mut best, mut guarded, mut far): (Option<(u32, f32)>, Option<(u32, f32)>, Option<(u32, f32)>) = (None, None, None);
         for m in self.gold_mines() {
             if gold(self, m) <= 600 || taken.contains(&m) {

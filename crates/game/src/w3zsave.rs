@@ -8,6 +8,7 @@ use crate::types::{BoolExpr, EventKind, Obj};
 
 use crate::tags::Code;
 use crate::world::World;
+use crate::codes;
 
 mod unit;
 
@@ -16,12 +17,12 @@ mod unit;
 /// their families, a few kinds their own, the rest agents).
 pub fn family_of(kind: &Code) -> Code {
     match kind {
-        b"`flg" | b"`pcu" | b"`pos" | b"`rel" => *b"^pro",
-        b"`fcl" | b"`pil" | b"`rtl" => *b"^lis",
-        b"`rcm" => *b"^mod",
-        b"^pma" | b"^pmr" => *b"^pma",
-        b"^ama" | b"^clu" | b"l^ac" | b"l^pa" | b"l^sy" | b"^adf" => *kind,
-        _ => *b"+agl",
+        codes::class::FLAG | codes::class::UNIT_POSITION | codes::class::POSITION | codes::class::REAL => *codes::class::PROPERTY_FAMILY,
+        codes::class::FLAG_LISTENER | codes::class::IN_RANGE_LISTENER | codes::class::THRESHOLD_LISTENER => *codes::class::LISTENER_FAMILY,
+        codes::class::CONTINUOUS_MODIFIER => *codes::class::MODIFIER_FAMILY,
+        codes::class::PATHING_MAP | codes::class::PATHING_REGION => *codes::class::PATHING_MAP,
+        codes::class::ACCELERATOR_GRID | codes::class::CLUSTER | codes::class::LONG_RANGE_ACCELERATOR | codes::class::PATH | codes::class::LONG_RANGE_SYSTEM | codes::class::AGENT_DEFINITION => *kind,
+        _ => *codes::class::AGENT,
     }
 }
 
@@ -75,7 +76,7 @@ pub fn saved_classes() -> Vec<[u32; 4]> {
 
 /// The classes' definitions (`^adf`, CRlAgentDef), as the second table holds them.
 pub fn class_definitions() -> Vec<SavedObject> {
-    let adf = u32::from_be_bytes(*b"^adf");
+    let adf = u32::from_be_bytes(*codes::class::AGENT_DEFINITION);
     let mut defs: Vec<SavedObject> = classes()
         .into_iter()
         .map(|c| SavedObject {
@@ -151,7 +152,7 @@ pub fn client_listeners(save: &SaveGame) -> Vec<Listener> {
     let Ok(objects) = m.objects() else { return Vec::new() };
     let mut out: Vec<Listener> = objects[1]
         .iter()
-        .filter(|o| &o.entry.kind.to_be_bytes() == b"`fcl")
+        .filter(|o| &o.entry.kind.to_be_bytes() == codes::class::FLAG_LISTENER)
         .filter_map(|o| match o.first() {
             Ok(First::FlagListener { object, word }) => Some(Listener { me: (o.entry.tag, o.entry.birth), owner: (object.links[0].3 .0, object.links[0].3 .1), flag: (object.links[1].3 .0, object.links[1].3 .1), word }),
             _ => None,
@@ -170,7 +171,7 @@ pub fn client_art(save: &SaveGame) -> std::collections::HashMap<u32, Field> {
         .iter()
         .filter(|o| {
             let k = o.entry.kind.to_be_bytes();
-            k[0] == b'B' || matches!(&k, b"AEar" | b"AHad" | b"Aarm" | b"AHab" | b"AUau" | b"AOae" | b"AUav" | b"AEah" | b"Aakb" | b"AOac" | b"Aoar")
+            k[0] == b'B' || matches!(&k, codes::ability::id::PRIESTESS_TRUESHOT_AURA | codes::ability::id::PALADIN_DEVOTION_AURA | codes::ability::id::MANA_REGENERATION_AURA | codes::ability::id::ARCH_MAGE_BRILLIANCE_AURA | codes::ability::id::DEATH_KNIGHT_UNHOLY_AURA | codes::ability::id::CHIEFTAIN_ENDURANCE_AURA | codes::ability::id::DREADLORD_VAMPIRIC_AURA | codes::ability::id::KEEPER_THORNS_AURA | codes::ability::id::AURA_WAR_DRUMS | codes::ability::id::COMMAND_AURA | codes::ability::id::AURA_REGENERATION_WARD)
         })
         .filter_map(|o| match o.second() {
             Ok(Second::Agent { tail, .. }) => match tail.first() {
@@ -189,7 +190,7 @@ pub fn rally_points(save: &SaveGame) -> Vec<(Ref, Ref)> {
     let Ok(objects) = m.objects() else { return Vec::new() };
     objects[1]
         .iter()
-        .filter(|o| &o.entry.kind.to_be_bytes() == b"rlyp")
+        .filter(|o| &o.entry.kind.to_be_bytes() == codes::class::RALLY_POINT)
         .filter_map(|o| match o.first() {
             Ok(First::Agent { object, .. }) => Some((Ref(o.entry.tag, o.entry.birth), object.links[0].3)),
             _ => None,
@@ -289,7 +290,7 @@ impl World {
                 } as u32)
                 .collect();
             flag_records(&mut out, me, &flags, &values);
-            let mut first = agent_first(me, b"+ply", &flags);
+            let mut first = agent_first(me, codes::class::PLAYER, &flags);
             if let (First::Agent { links, .. }, Some(&head)) = (&mut first, owned(me).last()) {
                 links[3] = Link(rf(head), 0);
             }
@@ -301,7 +302,7 @@ impl World {
                 avalues.push(p.alliances.iter().enumerate().filter(|(_, a)| a[t]).fold(0u32, |m, (j, _)| m | 1 << j));
             }
             flag_records(&mut out, ally, &aflags, &avalues);
-            let mut first = agent_first(ally, b"ally", &aflags);
+            let mut first = agent_first(ally, codes::class::ALLIANCE, &aflags);
             if let (First::Agent { links, .. }, Some(&head)) = (&mut first, owned(ally).last()) {
                 links[3] = Link(rf(head), 0);
             }
@@ -404,7 +405,7 @@ impl World {
     /// Provisional: the selection, what an AI or cinematics set, the counts' rules.
     pub fn player_agent_seconds(&self, client: &[Listener], rallies: &[(Ref, Ref)]) -> Vec<(u32, Second)> {
         let mut out = Vec::new();
-        const TECH_LISTENERS: [&[u8; 4]; 12] = [b"Aque", b"Arep", b"Arst", b"AInv", b"ACsp", b"AEar", b"BEar", b"AHad", b"Aarm", b"Aadm", b"Anhe", b"Ainf"];
+        const TECH_LISTENERS: [&[u8; 4]; 12] = [codes::ability::id::QUEUE, codes::ability::id::REPAIR_ORC, codes::ability::id::RESTORATION, codes::ability::id::INVENTORY, codes::ability::id::CREEP_SLEEP, codes::ability::id::PRIESTESS_TRUESHOT_AURA, codes::buff::id::TRUESHOT_AURA, codes::ability::id::PALADIN_DEVOTION_AURA, codes::ability::id::MANA_REGENERATION_AURA, codes::ability::id::ABOLISH_MAGIC, codes::ability::id::HEAL_CREEP_NORMAL, codes::ability::id::INNER_FIRE];
         let list_index = |e: u32| match e {
             0x8_020b..=0x8_0233 => Some((e - 0x8_020b) as usize),
             0x8_0305..=0x8_0318 => Some(41 + (e - 0x8_0305) as usize),
@@ -439,14 +440,14 @@ impl World {
             for &h in self.unit_order.iter().rev() {
                 let Some(u) = self.unit(h).filter(|u| u.owner as usize == i) else { continue };
                 let chain = self.ability_chain(h, rallies);
-                let creep = chain.iter().any(|(_, c)| c == b"ACsp");
+                let creep = chain.iter().any(|(_, c)| c == codes::ability::id::CREEP_SLEEP);
                 let own: Vec<u32> = u.extra.object_slots.iter().flatten().map(|s| s.0).collect();
                 let mut spells = Vec::new();
                 for (t, code) in chain {
                     if !TECH_LISTENERS.contains(&&code) {
                         continue;
                     }
-                    if creep && matches!(&code, b"Aadm" | b"Anhe" | b"Ainf") {
+                    if creep && matches!(&code, codes::ability::id::ABOLISH_MAGIC | codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::INNER_FIRE) {
                         spells.push(t);
                     } else if code[0] == b'B' && !own.contains(&t.0) {
                         later.push(t);
@@ -572,8 +573,8 @@ impl World {
         let props: Vec<(u32, u32)> = vec![first[1], first[4], first[5], first[6], first[7], first[8]];
         let code_of = |s: u32| self.tags.live.get(&s).map(|e| e.0);
         let mods: Vec<(u32, u32)> = u.extra.object_slots[1].clone();
-        let rcms: Vec<(u32, u32)> = mods.iter().copied().filter(|&(s, _)| code_of(s) == Some(*b"`rcm")).collect();
-        let rtl = mods.iter().copied().find(|&(s, _)| code_of(s) == Some(*b"`rtl"));
+        let rcms: Vec<(u32, u32)> = mods.iter().copied().filter(|&(s, _)| code_of(s) == Some(*codes::class::CONTINUOUS_MODIFIER)).collect();
+        let rtl = mods.iter().copied().find(|&(s, _)| code_of(s) == Some(*codes::class::THRESHOLD_LISTENER));
         let (hp_rate, mp_rate) = self.regen_rates(h).unwrap_or((0.0, 0.0));
         let regen_life = matches!(o.str("regenType").to_ascii_lowercase().as_str(), "always" | "night" | "day");
         // (Regeneration on blight: its `` `rcm `` made as the unit stands on blight, the
@@ -640,7 +641,7 @@ impl World {
         }
         let me = first[0];
         let (life, mana) = (first[4], first[5]);
-        let live = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == b"`rcm");
+        let live = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::CONTINUOUS_MODIFIER);
         let rcms: Vec<(u32, u32)> = u.extra.object_slots[1].iter().copied().filter(|&(s, _)| live(s)).collect();
         let (hp_rate, mp_rate) = self.regen_rates(h).unwrap_or((0.0, 0.0));
         let regen_life = matches!(o.str("regenType").to_ascii_lowercase().as_str(), "always" | "night" | "day");
@@ -695,7 +696,7 @@ impl World {
         }
         let me = first[0];
         let (life, mana) = (first[4], first[5]);
-        let is_rtl = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == b"`rtl");
+        let is_rtl = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::THRESHOLD_LISTENER);
         let death = u.extra.object_slots[1].iter().copied().find(|&(s, _)| is_rtl(s));
         let (_, mp_rate) = self.regen_rates(h).unwrap_or((0.0, 0.0));
         // (Each: itself, its real, event, threshold, rising, and its node.)
@@ -736,7 +737,7 @@ impl World {
         ls.sort_by_key(|l| l.0 .1);
         // (The unit's chain holds its in-range listeners too, its abilities' and its
         // AI's, by their makings.)
-        let is_pil = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == b"`pil");
+        let is_pil = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::IN_RANGE_LISTENER);
         let mut on_unit: Vec<(u32, u32)> = ls.iter().map(|l| l.0).collect();
         let pils = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).map(|&(s, _)| s).chain(u.extra.flyer_pil).chain(u.extra.item_pil.map(|p| p.0)).chain(u.extra.ensnare_pil.map(|p| p.1)).chain(u.extra.alarm_pil);
         for s in pils {
@@ -772,7 +773,7 @@ impl World {
         }
         let me = first[0];
         let props: Vec<(u32, u32)> = vec![first[1], first[4], first[5], first[6], first[7], first[8]];
-        let mut rec = agent_first(me, b"+w3u", &props);
+        let mut rec = agent_first(me, codes::class::UNIT, &props);
         let live = |s: u32, c: &[u8; 4]| self.tags.live.get(&s).is_some_and(|e| &e.0 == c);
         let all = || u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).map(|&(s, _)| s).chain(u.extra.flyer_pil).chain(u.extra.item_pil.map(|p| p.0)).chain(u.extra.ensnare_pil.map(|p| p.1)).chain(u.extra.alarm_pil).chain(u.extra.spell_timers.iter().copied()).chain(u.extra.mana_listeners.iter().map(|l| l.1)).chain(u.extra.blight_rcm);
         // (Not a kept slot another object has taken since: read, the town hall's
@@ -784,13 +785,13 @@ impl World {
             // not the AI itself.)
             // (Buffs among them, a buff being an ability: read, the aura scans' at 2
             // seconds.)
-            let ability = |s: u32| self.tags.live.get(&s).is_some_and(|e| (e.0[0] == b'A' && &e.0 != b"AI-U") || e.0[0] == b'B' || &e.0 == b"uref");
+            let ability = |s: u32| self.tags.live.get(&s).is_some_and(|e| (e.0[0] == b'A' && &e.0 != codes::class::UNIT_AI) || e.0[0] == b'B' || &e.0 == codes::class::UNIT_AI_REF);
             let newest_ability = u.extra.object_slots[2].iter().map(|&(s, _)| s).chain(u.extra.ai_slots.iter().map(|&(s, _)| s)).chain(u.buffs.iter().map(|b| b.slot).filter(|&s| s != 0)).filter(|&s| ability(s)).max_by_key(|&s| self.tagged(s).1);
             if let Some(s) = newest_ability {
                 links[0] = Link(rf(self.tagged(s)), 0);
             }
-            links[2] = newest(&[b"`rcm"]).unwrap_or(Link(NONE, 0));
-            links[3] = newest(&[b"`rtl", b"`pil"]).unwrap_or(Link(NONE, 0));
+            links[2] = newest(&[codes::class::CONTINUOUS_MODIFIER]).unwrap_or(Link(NONE, 0));
+            links[3] = newest(&[codes::class::THRESHOLD_LISTENER, codes::class::IN_RANGE_LISTENER]).unwrap_or(Link(NONE, 0));
         }
         vec![(me.0, rec, None)]
     }
@@ -814,7 +815,7 @@ impl World {
         let me = first[0];
         let props: Vec<(u32, u32)> = vec![first[1], first[4], first[5], first[6], first[7], first[8]];
         let mut base = self.stamped(listed_property_base(&props, 0, me));
-        let is_pil = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == b"`pil");
+        let is_pil = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::IN_RANGE_LISTENER);
         let newest = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).map(|&(s, _)| s).chain(u.extra.flyer_pil).chain(u.extra.item_pil.map(|p| p.0)).chain(u.extra.ensnare_pil.map(|p| p.1)).chain(u.extra.alarm_pil).filter(|&s| is_pil(s)).max_by_key(|&s| self.tagged(s).1);
         if let Some(s) = newest {
             base.links[1] = Link(rf(self.tagged(s)), 1);
@@ -863,13 +864,13 @@ impl World {
             _ => None,
         }).collect();
         for (slot, func) in &self.tags.handler_objects {
-            if self.tags.live.get(slot).is_none_or(|e| &e.0 != b"hdlr") {
+            if self.tags.live.get(slot).is_none_or(|e| &e.0 != codes::class::HANDLER) {
                 continue;
             }
             let own = self.tagged(*slot);
             let k = self.tags.function_numbers.get(func).copied().unwrap_or(0);
             let handlers = if timers.contains(slot) { Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] } } else { no_handlers() };
-            out.push((own.0, agent_first(own, b"hdlr", &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers, tail: vec![Field::Word(k)] })));
+            out.push((own.0, agent_first(own, codes::class::HANDLER, &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers, tail: vec![Field::Word(k)] })));
         }
         for id in self.handles.ids() {
             match self.handles.get(id) {
@@ -894,7 +895,7 @@ impl World {
                     // start, taken as its executions.)
                     let words = [0, t.eval_count as u32, t.exec_count as u32, 0, t.exec_count as u32, u32::from(t.wait_on_sleeps)];
                     let second = Second::Agent { own: words.iter().map(|&w| Field::Word(w)).collect(), handlers: no_handlers(), tail: vec![listed(&t.events), listed(&t.conditions), actions] };
-                    out.push((own.0, agent_first(own, b"+trg", &flags), Some(second)));
+                    out.push((own.0, agent_first(own, codes::class::TRIGGER, &flags), Some(second)));
                     // (Provisional: which of the two is the enabled flag, every trigger read
                     // being enabled.)
                     for (k, v) in [2, u32::from(t.enabled)].into_iter().enumerate() {
@@ -904,7 +905,7 @@ impl World {
                 Some(Obj::TriggerAction { func, slot }) if *slot != 0 => {
                     let own = self.tagged(*slot);
                     let handler = self.tags.handler_objects.iter().find(|(_, f)| *f == func).map_or(NONE, |(&s, _)| rf(self.tagged(s)));
-                    out.push((own.0, agent_first(own, b"+tac", &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: no_handlers(), tail: vec![Field::Ref(handler)] })));
+                    out.push((own.0, agent_first(own, codes::class::TRIGGER_ACTION, &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: no_handlers(), tail: vec![Field::Ref(handler)] })));
                 }
                 _ => {}
             }
@@ -921,7 +922,7 @@ impl World {
 
     /// The game's object (`+gam`).
     fn game_object(&self) -> (u32, u32) {
-        self.tags.live.iter().find(|(_, (c, _))| c == b"+gam").map_or((0, 0), |(&s, (_, b))| (s, *b))
+        self.tags.live.iter().find(|(_, (c, _))| c == codes::class::GAME_STATE).map_or((0, 0), |(&s, (_, b))| (s, *b))
     }
 
     /// The records of the script's event registrations, filters, and locations, by
@@ -955,7 +956,7 @@ impl World {
                         EventKind::Unit { unit, event } => {
                             let e = *event as u32 + 0x8_0200;
                             let u = self.unit(*unit).and_then(|u| u.extra.object_slots[0].first().copied()).unwrap_or((u32::MAX, u32::MAX));
-                            (b"uevt", vec![0], vec![Field::Word(e), Field::Word(u.0), Field::Word(u.1), Field::Word(0), Field::Ref(NONE), handler_list(vec![(trig, e)])])
+                            (codes::class::UNIT_EVENT, vec![0], vec![Field::Word(e), Field::Word(u.0), Field::Word(u.1), Field::Word(0), Field::Ref(NONE), handler_list(vec![(trig, e)])])
                         }
                         EventKind::Player { player: p, event, alliance } if *event == crate::event_ids::EVENT_PLAYER_ALLIANCE_CHANGED => {
                             let pl = player(*p);
@@ -963,19 +964,19 @@ impl World {
                             let mut ws = words(&base);
                             ws.extend([Field::Word(0), Field::Word(0x8_0106), Field::Real(0.0), Field::Word(0), Field::Word(pl.0), Field::Word(pl.1), Field::Word(*alliance as u32)]);
                             let tail = vec![Field::List(Vec::new()), Field::Ref(listener), handler_list(vec![(own, 0x8_0106)]), handler_list(vec![(trig, 0x8_020c)])];
-                            out.push((own.0, agent_first(own, b"alvt", &[]), Some(Second::Agent { own: ws, handlers: game_handlers(self.game_object()), tail })));
+                            out.push((own.0, agent_first(own, codes::class::ALLIANCE_EVENT, &[]), Some(Second::Agent { own: ws, handlers: game_handlers(self.game_object()), tail })));
                             continue;
                         }
                         EventKind::Player { player: p, event, .. } | EventKind::PlayerUnit { player: p, event, filter: None } => {
                             let e = *event as u32 + 0x8_0200;
                             let pl = player(*p);
-                            (b"pevt", vec![0, e, pl.0, pl.1, 0, 0], vec![Field::Ref(NONE), handler_list(vec![(trig, e)])])
+                            (codes::class::PLAYER_EVENT, vec![0, e, pl.0, pl.1, 0, 0], vec![Field::Ref(NONE), handler_list(vec![(trig, e)])])
                         }
                         EventKind::PlayerUnit { player: p, event, filter: Some(f) } => {
                             let e = *event as u32 + 0x8_0200;
                             let pl = player(*p);
                             let f = slot_of(*f).map_or(NONE, rf);
-                            (b"pevt", vec![0, e, pl.0, pl.1, 0, 0], vec![Field::Ref(f), handler_list(vec![(trig, e)])])
+                            (codes::class::PLAYER_EVENT, vec![0, e, pl.0, pl.1, 0, 0], vec![Field::Ref(f), handler_list(vec![(trig, e)])])
                         }
                         EventKind::PlayerState { player: p, state, op, value } => {
                             let pl = player(*p);
@@ -985,16 +986,16 @@ impl World {
                             ws.extend(words(&[0, op, pl.0, pl.1, 0, *state as u32, op]));
                             ws.push(Field::Real(*value));
                             let tail = vec![Field::Ref(NONE), Field::List(Vec::new()), Field::Ref(listener), handler_list(vec![(trig, 0x8_020b)])];
-                            out.push((own.0, agent_first(own, b"psvt", &[]), Some(Second::Agent { own: ws, handlers: game_handlers(self.game_object()), tail })));
+                            out.push((own.0, agent_first(own, codes::class::PLAYER_STATE_EVENT, &[]), Some(Second::Agent { own: ws, handlers: game_handlers(self.game_object()), tail })));
                             continue;
                         }
                         EventKind::Game(event) => {
                             let e = *event as u32 + 0x8_0200;
-                            (b"gevt", vec![e], vec![handler_list(vec![(trig, e)])])
+                            (codes::class::GAME_EVENT, vec![e], vec![handler_list(vec![(trig, e)])])
                         }
                         EventKind::TimerExpire(timer) => {
                             let tm = slot_of(*timer).map_or(NONE, rf);
-                            (b"tmet", vec![0], vec![Field::Ref(tm), handler_list(vec![(trig, 0x8_0204)])])
+                            (codes::class::TIMER_EXPIRED_EVENT, vec![0], vec![Field::Ref(tm), handler_list(vec![(trig, 0x8_0204)])])
                         }
                         EventKind::GameState { state: 2, op, value } => {
                             let listener = self.tags.event_timers.get(&id).map_or(NONE, |&s| rf(self.tagged(s)));
@@ -1003,7 +1004,7 @@ impl World {
                             let mut ws = words(&base);
                             ws.extend([Field::Word(0x8_0106), Field::Word(*op as u32 + 0x8_0101), Field::Real(*value), Field::Word(2)]);
                             let tail = vec![Field::List(Vec::new()), Field::Ref(l1), Field::Ref(l2), handler_list(vec![(own, 0x8_0106)]), handler_list(vec![(trig, 0x8_0203)])];
-                            out.push((own.0, agent_first(own, b"gfvt", &[]), Some(Second::Agent { own: ws, handlers: game_handlers(self.game_object()), tail })));
+                            out.push((own.0, agent_first(own, codes::class::GAME_STATE_EVENT, &[]), Some(Second::Agent { own: ws, handlers: game_handlers(self.game_object()), tail })));
                             continue;
                         }
                         _ => continue,
@@ -1015,7 +1016,7 @@ impl World {
                 Some(Obj::BoolExpr(BoolExpr::Func(f))) => {
                     let Some(own) = slot_of(id) else { continue };
                     let handler = self.tags.handler_objects.iter().find(|(_, g)| *g == f).map_or(NONE, |(&s, _)| rf(self.tagged(s)));
-                    out.push((own.0, agent_first(own, b"+flt", &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail: vec![Field::Ref(handler)] })));
+                    out.push((own.0, agent_first(own, codes::class::FILTER, &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail: vec![Field::Ref(handler)] })));
                 }
                 Some(Obj::Force(f)) if f.slots.len() == 3 => {
                     let own = self.tagged(f.slots[0]);
@@ -1027,7 +1028,7 @@ impl World {
                     // filter's, provisional, and a player, none read.)
                     let handler = |func: Option<u32>| func.and_then(|func| self.tags.handler_objects.iter().find(|(_, g)| **g == func)).map_or(NONE, |(&s, _)| rf(self.tagged(s)));
                     let tail = vec![Field::Ref(handler(f.callback)), Field::Ref(handler(f.filter)), Field::Ref(NONE)];
-                    out.push((own.0, agent_first(own, b"+frc", &flags), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail })));
+                    out.push((own.0, agent_first(own, codes::class::FORCE, &flags), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail })));
                 }
                 // A timer (CTimerWar3, read against the quiet test map's): its own word,
                 // timeout, and a real; its agent timer (CAgentTimerExtended,
@@ -1063,11 +1064,11 @@ impl World {
                         .map(|&r| ((r.0, r.1), 0x8_0204))
                         .collect();
                     let tail = vec![agent, Field::Short(periodic as u16), Field::Short(periodic as u16), Field::Real(rest), Field::Ref(handler), handler_list(expiries)];
-                    out.push((own.0, agent_first(own, b"+tmr", &[]), Some(Second::Agent { own: vec![Field::Word(0), Field::Real(t.timeout), Field::Real(0.0)], handlers: game_handlers(self.game_object()), tail })));
+                    out.push((own.0, agent_first(own, codes::class::TIMER, &[]), Some(Second::Agent { own: vec![Field::Word(0), Field::Real(t.timeout), Field::Real(0.0)], handlers: game_handlers(self.game_object()), tail })));
                 }
                 Some(Obj::Location(x, y)) => {
                     let Some(own) = slot_of(id) else { continue };
-                    out.push((own.0, agent_first(own, b"+loc", &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail: vec![Field::Real(*x), Field::Real(*y)] })));
+                    out.push((own.0, agent_first(own, codes::class::LOCATION, &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail: vec![Field::Real(*x), Field::Real(*y)] })));
                 }
                 // A sound (CSoundScript?): its timer (none), 0, 0, 0, 0, and its labels: one
                 // made from a label its entry (the label, none, 0, its fades in and out as
@@ -1093,7 +1094,7 @@ impl World {
                         None => vec![vec![Field::Word(0)]],
                     };
                     let tail = vec![Field::Timer(NONE, 0, Timing(None)), Field::Short(0), Field::Short(0), Field::Real(0.0), Field::Word(0), Field::List(labels)];
-                    out.push((own.0, agent_first(own, b"+snd", &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail })));
+                    out.push((own.0, agent_first(own, codes::class::SOUND, &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail })));
                 }
                 // A timer dialog: its timer, 0; then 0, its colors (as made), its default
                 // text (DEFAULTTIMERDIALOGTEXT, not the title set), and 1.  (Provisional: the
@@ -1102,13 +1103,13 @@ impl World {
                     let Some(own) = slot_of(id) else { continue };
                     let timer = slot_of(d.timer).map_or(NONE, rf);
                     let tail = vec![Field::Word(0), Field::Word(0xfffc_d211), Field::Word(0xfffc_d211), Field::Text(self.localized("DEFAULTTIMERDIALOGTEXT")), Field::Real(1.0)];
-                    out.push((own.0, agent_first(own, b"+tid", &[]), Some(Second::Agent { own: vec![Field::Word(0), Field::Word(timer.0), Field::Word(timer.1), Field::Real(0.0)], handlers: game_handlers(self.game_object()), tail })));
+                    out.push((own.0, agent_first(own, codes::class::TIMER_DIALOG, &[]), Some(Second::Agent { own: vec![Field::Word(0), Field::Word(timer.0), Field::Word(timer.1), Field::Real(0.0)], handlers: game_handlers(self.game_object()), tail })));
                 }
                 // A rect (CScriptRect): its bounds, bottom, left, top, right.
                 Some(Obj::Rect(r)) => {
                     let Some(own) = slot_of(id) else { continue };
                     let tail = vec![Field::Real(r.min_y), Field::Real(r.min_x), Field::Real(r.max_y), Field::Real(r.max_x)];
-                    out.push((own.0, agent_first(own, b"+rct", &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail })));
+                    out.push((own.0, agent_first(own, codes::class::RECT, &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail })));
                 }
                 // A group (CGroup, its class writing its whole record): its units, two
                 // references, -1, and three words (read: the quiet test map's empty
@@ -1116,7 +1117,7 @@ impl World {
                 Some(Obj::Group(g)) => {
                     let Some(own) = slot_of(id) else { continue };
                     let units = g.units.iter().filter_map(|&u| self.unit(u).and_then(|u| u.extra.object_slots[0].first().copied())).map(|s| vec![Field::Ref(rf(s))]).collect();
-                    out.push((own.0, agent_first(own, b"+grp", &[]), Some(Second::Whole(vec![Field::List(units), Field::Ref(NONE), Field::Ref(NONE), Field::Word(u32::MAX), Field::Word(0), Field::Word(0), Field::Word(0)]))));
+                    out.push((own.0, agent_first(own, codes::class::GROUP, &[]), Some(Second::Whole(vec![Field::List(units), Field::Ref(NONE), Field::Ref(NONE), Field::Word(u32::MAX), Field::Word(0), Field::Word(0), Field::Word(0)]))));
                 }
                 _ => {}
             }
@@ -1132,7 +1133,7 @@ impl World {
     /// The two pathing maps' objects (`^pma`): the coarse one of 8-cell blocks, then the
     /// pathing map itself.
     fn pathing_map_objects(&self) -> [(u32, u32); 2] {
-        let mut maps = self.tags.live.iter().filter(|(_, (c, _))| c == b"^pma").map(|(&s, (_, b))| (s, *b));
+        let mut maps = self.tags.live.iter().filter(|(_, (c, _))| c == codes::class::PATHING_MAP).map(|(&s, (_, b))| (s, *b));
         let a = maps.next().unwrap_or_default();
         [a, maps.next().unwrap_or_default()]
     }
@@ -1199,7 +1200,7 @@ impl World {
         let own = self.tagged(d.oid.0);
         let pos = self.tagged(d.object_slots[0]);
         let none = Ref(u32::MAX, u32::MAX);
-        let first = First::Agent { object: plain_base(own.0, own.1), agent: class_ref(b"+w3d"), refs: vec![Ref(pos.0, pos.1)], links: [Link(none, 0), Link(Ref(pos.0, pos.1), 0), Link(none, 0), Link(none, 0)] };
+        let first = First::Agent { object: plain_base(own.0, own.1), agent: class_ref(codes::class::DESTRUCTABLE), refs: vec![Ref(pos.0, pos.1)], links: [Link(none, 0), Link(Ref(pos.0, pos.1), 0), Link(none, 0), Link(none, 0)] };
         let handlers = game_handlers(self.game_object());
         let dead = d.life <= 0.0;
         let model = format!("{}{}{}.mdl", o.str("file"), d.variation, if dead { "D" } else if o.int("lightweight") != 0 { "S" } else { "" });
@@ -1345,11 +1346,11 @@ impl World {
         }
         // The pathing system's objects (their counters the template's).
         let counters = |code: &[u8; 4]| objects[0].iter().find(|o| &o.entry.kind.to_be_bytes() == code).and_then(|o| o.first().ok());
-        let accel_word = match counters(b"l^ac") {
+        let accel_word = match counters(codes::class::LONG_RANGE_ACCELERATOR) {
             Some(First::Accelerator { word, .. }) => word,
             _ => 48,
         };
-        let system_short = match counters(b"l^sy") {
+        let system_short = match counters(codes::class::LONG_RANGE_SYSTEM) {
             Some(First::System { short, .. }) => short,
             _ => 0,
         };
@@ -1445,7 +1446,7 @@ impl World {
     /// two links name the listeners too.  Provisional: the flags.
     pub fn game_object_records(&self) -> Vec<(u32, First)> {
         let game = self.game_object();
-        let mut props: Vec<(u32, u32)> = self.tags.live.iter().filter(|&(&s, (c, _))| s > game.0 && s <= game.0 + 5 && matches!(c, b"`flg" | b"`rel")).map(|(&s, (_, b))| (s, *b)).collect();
+        let mut props: Vec<(u32, u32)> = self.tags.live.iter().filter(|&(&s, (c, _))| s > game.0 && s <= game.0 + 5 && matches!(c, codes::class::FLAG | codes::class::REAL)).map(|(&s, (_, b))| (s, *b)).collect();
         props.sort();
         if props.len() != 5 {
             return Vec::new();
@@ -1468,7 +1469,7 @@ impl World {
             };
             out.push((props[k].0, f));
         }
-        let mut first = agent_first(game, b"+gam", &props);
+        let mut first = agent_first(game, codes::class::GAME_STATE, &props);
         if let First::Agent { links, .. } = &mut first {
             links[2] = link(0);
             links[3] = link(1);
@@ -1491,13 +1492,13 @@ impl World {
         let mut out = Vec::new();
         for (&slot, (code, _)) in &self.tags.live {
             match code {
-                b"AIcs" => {
+                codes::class::CREEP_CAMP => {
                     let mut members: Vec<(u32, u32)> = self.unit_order.iter().filter_map(|&h| self.unit(h)).filter(|u| u.extra.camp_ai.is_some_and(|c| c.0 == slot)).filter_map(|u| u.extra.object_slots[0].first().copied()).collect();
                     members.sort();
                     let list = (0..12).map(|k| members.get(k).map_or_else(none3, |m| vec![Field::Word(m.0), Field::Word(m.1), Field::Word(0)])).collect();
                     out.push((slot, Second::Agent { own: vec![Field::Word(0), Field::Word(members.len() as u32), Field::List(list)], handlers: events(), tail: Vec::new() }));
                 }
-                b"AIts" => {
+                codes::class::TOWN_SITE => {
                     let Some(index) = self.tags.sites.iter().position(|s| s.2 .0 == slot) else { continue };
                     let (x, y, _) = self.tags.sites[index];
                     let mine = self.unit_order.iter().filter_map(|&h| self.unit(h)).find(|u| u.extra.site_ai.is_some_and(|s| s.0 == slot)).and_then(|u| u.extra.object_slots[0].first().copied()).unwrap_or((u32::MAX, u32::MAX));
@@ -1507,8 +1508,8 @@ impl World {
                     own.extend(none3());
                     out.push((slot, Second::Agent { own, handlers: events(), tail: Vec::new() }));
                 }
-                b"shft" => out.push((slot, Second::Agent { own: vec![Field::Word(u32::MAX), Field::Word(u32::MAX), Field::Word(0), Field::Word(0), Field::Real(0.0)], handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: Vec::new() }, tail: vec![Field::Timer(NONE, 0, Timing(None))] })),
-                b"+qum" => out.push((slot, Second::Agent { own: vec![Field::Word(0)], handlers: events(), tail: vec![Field::List(Vec::new()), Field::List(Vec::new())] })),
+                codes::class::MINE_SHAFT => out.push((slot, Second::Agent { own: vec![Field::Word(u32::MAX), Field::Word(u32::MAX), Field::Word(0), Field::Word(0), Field::Real(0.0)], handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: Vec::new() }, tail: vec![Field::Timer(NONE, 0, Timing(None))] })),
+                codes::class::TRIGGER_QUEUE => out.push((slot, Second::Agent { own: vec![Field::Word(0)], handlers: events(), tail: vec![Field::List(Vec::new()), Field::List(Vec::new())] })),
                 _ => {}
             }
         }
@@ -1526,12 +1527,12 @@ impl World {
             v.sort();
             v
         };
-        let (pma, ama) = (of(b"^pma"), of(b"^ama"));
+        let (pma, ama) = (of(codes::class::PATHING_MAP), of(codes::class::ACCELERATOR_GRID));
         let mut out: Vec<(u32, First)> = pma.iter().chain(&ama).map(|&(s, _)| (s, First::Empty)).collect();
-        if let (Some(&sy), Some(&map)) = (of(b"l^sy").first(), pma.get(1)) {
+        if let (Some(&sy), Some(&map)) = (of(codes::class::LONG_RANGE_SYSTEM).first(), pma.get(1)) {
             out.push((sy.0, First::System { owner: rf(map), short: system_short }));
         }
-        if let (Some(&ac), true) = (of(b"l^ac").first(), ama.len() == 4) {
+        if let (Some(&ac), true) = (of(codes::class::LONG_RANGE_ACCELERATOR).first(), ama.len() == 4) {
             let array = w3_formats::w3z::Array { words: [3072, 3072, 0, 256], entries: vec![[0u32; 3]; 256] };
             out.push((ac.0, First::Accelerator { refs: [rf(ama[0]), rf(ama[1]), rf(ama[2]), rf(ama[3])], array, word: accel_word }));
         }
@@ -1543,7 +1544,7 @@ impl World {
     /// shifts, rects, the queue, and the game cache manager): each its class's definition
     /// alone.
     pub fn plain_agent_records(&self) -> Vec<(u32, First)> {
-        const PLAIN: [&[u8; 4]; 12] = [b"AI-U", b"AIcs", b"AIts", b"AI-1", b"+grp", b"+snd", b"+tid", b"rslt", b"shft", b"+rct", b"+qum", b"gccm"];
+        const PLAIN: [&[u8; 4]; 12] = [codes::class::UNIT_AI, codes::class::CREEP_CAMP, codes::class::TOWN_SITE, codes::class::PLAYER_AI, codes::class::GROUP, codes::class::SOUND, codes::class::TIMER_DIALOG, codes::class::MINE_SLOT, codes::class::MINE_SHAFT, codes::class::RECT, codes::class::TRIGGER_QUEUE, codes::class::GAME_CACHE_MANAGER];
         self.tags.live.iter().filter(|(_, (c, _))| PLAIN.contains(&c)).map(|(&slot, (c, birth))| (slot, agent_first((slot, *birth), c, &[]))).collect()
     }
 
@@ -1584,7 +1585,7 @@ impl World {
         out.push(if saved_classes() == m.classes { format!("classes: the same, {}", m.classes.len()) } else { "classes: differ".into() });
         if let Ok(objects) = m.objects() {
             let defs = class_definitions();
-            let theirs: Vec<&SavedObject> = objects[1].iter().filter(|o| o.entry.kind == u32::from_be_bytes(*b"^adf")).collect();
+            let theirs: Vec<&SavedObject> = objects[1].iter().filter(|o| o.entry.kind == u32::from_be_bytes(*codes::class::AGENT_DEFINITION)).collect();
             let k = defs.iter().zip(&theirs).position(|(a, b)| a.entry != b.entry || a.first != b.first || a.second != b.second);
             out.push(match k {
                 None if defs.len() == theirs.len() => format!("class definitions: the same, {}", defs.len()),

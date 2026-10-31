@@ -4,6 +4,7 @@
 //! structure: DataA more radius every Dur seconds up to Area.
 
 use crate::world::World;
+use crate::codes;
 
 pub const BLIGHT_FLAG: u8 = 0x20;
 
@@ -137,7 +138,7 @@ impl World {
         let mut grow = Vec::new();
         for &h in &self.unit_order {
             let Some(u) = self.unit(h).filter(|u| !u.dead && !u.hidden) else { continue };
-            let Some((a, lvl)) = self.ability_with_code(h, "Abli") else { continue };
+            let Some((a, lvl)) = self.ability_with_code(h, codes::ability::BLIGHT_GROWTH) else { continue };
             let Some(o) = self.objects.abilities.get(a) else { continue };
             let area = o.level_real("Area", lvl);
             if u.extra.blight_radius >= area {

@@ -6,6 +6,7 @@
 
 use crate::objects::{Id, id_from_str};
 use crate::world::World;
+use crate::codes;
 
 impl World {
     /// What `id` requires before it can be made, researched (at research level
@@ -153,7 +154,7 @@ impl World {
         }
         let hero = id[0].is_ascii_uppercase();
         if hero {
-            if let Some(m) = self.tech_max(owner, *b"HERO") {
+            if let Some(m) = self.tech_max(owner, *codes::unit::id::ANY_HERO) {
                 if made(&|t| t[0].is_ascii_uppercase()) >= m {
                     return false;
                 }

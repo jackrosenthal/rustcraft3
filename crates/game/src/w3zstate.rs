@@ -5,6 +5,7 @@ use w3_formats::w3z::{Field, GameState, Ref, SaveGame};
 
 use crate::Game;
 use crate::world::World;
+use crate::codes;
 
 impl World {
     /// The tagged object of a kind (its first), as references name it.
@@ -28,7 +29,7 @@ impl World {
             }
         }
         let orders = crate::orders::ORDERS.iter().map(|&(id, n)| vec![Field::Text(n.to_string()), Field::Word(id as u32)]).collect();
-        vec![Field::Word(1), Field::Word(1), Field::Ref(self.first_of(b"+gam")), Field::List(units), Field::List(Vec::new()), Field::List(orders), Field::Short(0), Field::Short(1)]
+        vec![Field::Word(1), Field::Word(1), Field::Ref(self.first_of(codes::class::GAME_STATE)), Field::List(units), Field::List(Vec::new()), Field::List(orders), Field::Short(0), Field::Short(1)]
     }
 }
 
@@ -52,7 +53,7 @@ impl World {
                 _ => vec![Field::Real(0.0), Field::Real(0.0), Field::List(Vec::new()), Field::Word(0), Field::Word(0), Field::Word(u32::MAX), Field::Word(0), Field::Word(0)],
             })
             .collect();
-        let mut plys: Vec<Ref> = self.tags.live.iter().filter(|(_, (c, _))| c == b"+ply").map(|(&s, (_, b))| Ref(s, *b)).collect();
+        let mut plys: Vec<Ref> = self.tags.live.iter().filter(|(_, (c, _))| c == codes::class::PLAYER).map(|(&s, (_, b))| Ref(s, *b)).collect();
         plys.sort_by_key(|r| r.0);
         let teams = (0..12)
             .map(|t| vec![Field::List(self.players.iter().enumerate().filter(|(k, p)| *k < 12 && p.team == t && p.slot_state == 1).filter_map(|(k, _)| plys.get(k).map(|r| vec![Field::Ref(*r)])).collect())])
@@ -80,7 +81,7 @@ impl World {
     /// cache manager (`gccm`), and twelve words (the original's uninitialized memory but
     /// for its first: the template's, provisional).
     pub fn saved_game_3(&self, template: &[Field]) -> Vec<Field> {
-        vec![Field::List(Vec::new()), Field::Ref(self.first_of(b"gccm")), template.get(2).cloned().unwrap_or(Field::List((0..12).map(|_| vec![Field::Word(0)]).collect()))]
+        vec![Field::List(Vec::new()), Field::Ref(self.first_of(codes::class::GAME_CACHE_MANAGER)), template.get(2).cloned().unwrap_or(Field::List((0..12).map(|_| vec![Field::Word(0)]).collect()))]
     }
 
     /// The fog of war's part (CFogOfWarMap's, `FUN_6f250d00`): two bytes (1, 1), its

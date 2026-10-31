@@ -60,6 +60,7 @@ pub mod paint;
 pub mod preload;
 pub mod spellbook;
 pub mod accel;
+pub mod codes;
 pub mod datahash;
 pub mod efloat;
 mod efloat_recip;
@@ -257,16 +258,16 @@ impl Game {
         // Wine): the game, flags and properties, and the queue after the globals' first
         // (Blizzard.j's first timer); then the pathing and acceleration maps, the
         // pathing system, the game cache, and the AI.
-        world.tags.after_next(&[b"+gam", b"`flg", b"`flg", b"`rel", b"`rel", b"`flg", b"`rtl", b"+qum"]);
+        world.tags.after_next(&[codes::class::GAME_STATE, codes::class::FLAG, codes::class::FLAG, codes::class::REAL, codes::class::REAL, codes::class::FLAG, codes::class::THRESHOLD_LISTENER, codes::class::TRIGGER_QUEUE]);
         vm.init_globals(&mut world).map_err(anyhow::Error::msg)?;
         world.tags.flush();
-        world.tags.take_all(&[b"^pma", b"^pma", b"^ama", b"^ama", b"^ama", b"^ama", b"l^sy", b"l^ac", b"gccm"]);
+        world.tags.take_all(&[codes::class::PATHING_MAP, codes::class::PATHING_MAP, codes::class::ACCELERATOR_GRID, codes::class::ACCELERATOR_GRID, codes::class::ACCELERATOR_GRID, codes::class::ACCELERATOR_GRID, codes::class::LONG_RANGE_SYSTEM, codes::class::LONG_RANGE_ACCELERATOR, codes::class::GAME_CACHE_MANAGER]);
         // An AI for each computer playing, then Neutral Hostile's (FUN_6f1e9a40;
         // measured under Wine against one computer).
         // Each starts three timers as it is made (`FUN_6f9c7b20`, its +0x154 and +0x15c;
         // traced on the quiet test map, the game's first six).
         for _ in 0..start.computers + 1 {
-            let s = world.tags.take(b"AI-1");
+            let s = world.tags.take(codes::class::PLAYER_AI);
             let birth = world.tags.live.get(&s).map_or(0, |e| e.1);
             world.tags.player_ais.push((s, birth));
             let counts = [0; 3].map(|_| world.tags.start_timer("9c7b20"));
@@ -555,8 +556,8 @@ impl Game {
         // its listener, `FUN_6f161800` from `FUN_6f28bc9d`'s making of them; traced.)
         self.world.tags.bump_prop(3, "setp");
         // (The time of day's monitor and listener, which its real links.)
-        let rcm = self.world.tags.take(b"`rcm");
-        let rtl = self.world.tags.take(b"`rtl");
+        let rcm = self.world.tags.take(codes::class::CONTINUOUS_MODIFIER);
+        let rtl = self.world.tags.take(codes::class::THRESHOLD_LISTENER);
         self.world.time_of_day_listeners = [Some(rcm), Some(rtl)];
         self.world.tags.bump_prop(1, "setq");
         // The game's two periodic timers, events 0x80269 and 0x8026a (`FUN_6f28ba80`,
@@ -954,7 +955,7 @@ impl Game {
                 // An order to more than one unit has two cluster groups of its own while
                 // its units take it (read: five peons sent to a gold mine, two `^clg`
                 // made before their five orders and freed after them).
-                let groups = (units.len() > 1).then(|| [self.world.tags.take(b"^clg"), self.world.tags.take(b"^clg")]);
+                let groups = (units.len() > 1).then(|| [self.world.tags.take(codes::class::CLUSTER_GOAL), self.world.tags.take(codes::class::CLUSTER_GOAL)]);
                 // Sent together to a point on foot they walk as one cluster
                 // (`crate::groupwalk`).
                 let move_order = order == smart || order == natives::basic::order_id("move");

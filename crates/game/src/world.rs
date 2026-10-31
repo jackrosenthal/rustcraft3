@@ -9,6 +9,7 @@ use w3_mpq::Chain;
 use crate::handles::Handles;
 use crate::objects::ObjectDb;
 use crate::types::*;
+use crate::codes;
 
 pub type NativeFn = fn(&mut World, &mut Vm, &[Value]) -> NativeResult;
 
@@ -768,11 +769,11 @@ impl World {
             players.push(Player::new(i, 0));
             // Each player's tags (read under Wine): the player, 26 flags, a flag
             // listener, its alliances, 11 flags.
-            let s = tags.take(b"+ply");
+            let s = tags.take(codes::class::PLAYER);
             tags.player_slots.push(s);
-            tags.take_n(b"`flg", 26);
-            tags.take_all(&[b"`fcl", b"ally"]);
-            tags.take_n(b"`flg", 11);
+            tags.take_n(codes::class::FLAG, 26);
+            tags.take_all(&[codes::class::FLAG_LISTENER, codes::class::ALLIANCE]);
+            tags.take_n(codes::class::FLAG, 11);
         }
         // Each player is allied to itself in every type but rescuable and forced shared
         // vision (read: a save's alliance flags, 1 << p for types 0 to 7).
@@ -1271,7 +1272,7 @@ impl World {
         // The original makes an object for each execution (measured: Booty Bay's melee
         // initialization, run by ConditionalTriggerExecute, takes a +tex, and the time
         // of day's trigger another when SetFloatGameState fires it).
-        let execution = self.tags.take(b"+tex");
+        let execution = self.tags.take(codes::class::TRIGGER_EXECUTION);
         for a in actions {
             let f = match self.handles.get(a) {
                 Some(Obj::TriggerAction { func, .. }) => *func,

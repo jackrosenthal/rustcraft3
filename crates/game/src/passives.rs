@@ -7,9 +7,10 @@ use w3_jass::Vm;
 use crate::objects::{Id, id_from_str};
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 /// Abilities that reveal invisible units within their cast range.
-const DETECTORS: [&str; 4] = ["Atru", "Adts", "Adet", "Agyv"];
+const DETECTORS: [&str; 4] = [codes::ability::DETECT_SHADE, codes::ability::DETECT_MAGIC_SENTINEL, codes::ability::DETECTOR, codes::ability::DETECT_GYROCOPTER];
 
 impl World {
     fn passive(&self, h: u32, code: &str) -> Option<(Id, u32)> {
@@ -20,7 +21,7 @@ impl World {
     /// Permanent Invisibility (Apiv).
     pub fn permanently_invisible(&self, u: &Unit) -> bool {
         // Permanent Invisibility, and the Shade's Ghost.
-        u.abilities.iter().any(|(a, _)| matches!(self.ability_code(*a).as_str(), "Apiv" | "Agho")) || self.mine_armed(u)
+        u.abilities.iter().any(|(a, _)| matches!(self.ability_code(*a).as_str(), codes::ability::PERMANENT_INVISIBILITY | codes::ability::GHOST)) || self.mine_armed(u)
     }
 
     /// Whether `player` (or a player sharing vision with it) has a detector in range of
@@ -43,13 +44,13 @@ impl World {
 
     /// Ultravision (Ault): day sight at night.
     pub fn ultravision(&self, u: &Unit) -> bool {
-        u.abilities.iter().any(|(a, _)| self.ability_code(*a) == "Ault") || self.upgrade_bonus(u.owner, u.type_id).ultravision
+        u.abilities.iter().any(|(a, _)| self.ability_code(*a) == codes::ability::ULTRAVISION) || self.upgrade_bonus(u.owner, u.type_id).ultravision
     }
 
     /// Hardened Skin (Assk): a DataA% chance to take DataC less damage, but at least
     /// DataB, from ranged (DataD) and melee (DataE) attacks.
     pub fn hardened_skin(&mut self, target: u32, melee: bool, dmg: f32) -> f32 {
-        let Some((a, l)) = self.passive(target, "Assk") else { return dmg };
+        let Some((a, l)) = self.passive(target, codes::ability::HARDENED_SKIN) else { return dmg };
         let applies = if melee { self.data(a, "DataE", l) != 0.0 } else { self.data(a, "DataD", l) != 0.0 };
         if !applies || !self.prd_roll(target, a, self.data(a, "DataA", l)) {
             return dmg;
@@ -61,7 +62,7 @@ impl World {
     /// research rspi damage.
     pub fn spiked_barricades(&self, target: u32) -> f32 {
         let Some(t) = self.unit(target) else { return 0.0 };
-        if self.passive(target, "Aspi").is_none() {
+        if self.passive(target, codes::ability::SPIKED_BARRICADES).is_none() {
             return 0.0;
         }
         self.upgrade_bonus(t.owner, t.type_id).spikes
@@ -92,7 +93,7 @@ impl World {
             // Liquid Fire likewise: burning structures take DataA a second and attack
             // slower (measured: a farm hit at 0.98 seconds takes 0, the hit, and 8 at
             // 0.99, 1.99, and 2.99, its Dur 3).
-            if code == "Aliq" && building {
+            if code == codes::ability::LIQUID_FIRE && building {
                 self.spell_damage(vm, h, target, 0.0);
                 let buff = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", l)).unwrap_or_default();
                 let id = id_from_str(buff.split(',').next().unwrap_or("").trim());
@@ -107,7 +108,7 @@ impl World {
             // Frost Attack: its slow as the attack lands, touching the target with a hit
             // of nothing first (measured: a Nerubian Tower's every strike shows 0 then its
             // damage).
-            if matches!(code.as_str(), "Afra" | "Afrb") {
+            if matches!(code.as_str(), codes::ability::FROST_ATTACK | codes::ability::FROST_BREATH) {
                 self.spell_damage(vm, h, target, 0.0);
                 let buff = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", l)).unwrap_or_default();
                 let id = id_from_str(buff.split(',').next().unwrap_or("").trim());
@@ -116,7 +117,7 @@ impl World {
                 self.apply_buff(target, Buff { id, ability: a, level: l, caster: h, remaining: dur, move_factor: -mv, attack_factor: -at, ..Default::default() });
                 continue;
             }
-            if !matches!(code.as_str(), "Aspo" | "Apoi" | "Aven" | "Apo2") {
+            if !matches!(code.as_str(), codes::ability::SLOW_POISON | codes::ability::POISON_ATTACK | codes::ability::VENOM_SPEARS | codes::ability::ORB_OF_VENOM_POISON_ATTACK) {
                 continue;
             }
             self.spell_damage(vm, h, target, 0.0);
@@ -124,7 +125,7 @@ impl World {
             let id = id_from_str(buff.split(',').next().unwrap_or("").trim());
             let dur = if self.hero_duration(target) { self.data(a, "HeroDur", l) } else { self.data(a, "Dur", l) };
             let (b, c) = (self.data(a, "DataB", l), self.data(a, "DataC", l));
-            let (move_factor, attack_factor) = if code == "Aspo" { (-b, -c) } else { (-c, -b) };
+            let (move_factor, attack_factor) = if code == codes::ability::SLOW_POISON { (-b, -c) } else { (-c, -b) };
             let b = Buff { id, ability: a, level: l, caster: h, remaining: dur, dps: self.data(a, "DataA", l), dps_every: 1.0, dps_next: 0.0, move_factor, attack_factor, ..Default::default() };
             self.apply_buff(target, b);
         }
@@ -138,7 +139,7 @@ impl World {
         let (tx, ty) = self.unit(target).map_or((ux, uy), |t| (t.x, t.y));
         // Pulverize: a DataA% chance of DataB damage to enemy ground units within DataC
         // of the attacker, half within DataD.
-        if let Some((a, l)) = self.passive(h, "Awar") {
+        if let Some((a, l)) = self.passive(h, codes::ability::PULVERIZE) {
             if self.prd_roll(h, a, self.data(a, "DataA", l)) {
                 let (dmg, full, half) = (self.data(a, "DataB", l), self.data(a, "DataC", l), self.data(a, "DataD", l));
                 for t in self.enemies_in(owner, ux, uy, half) {
@@ -153,7 +154,7 @@ impl World {
         }
         // Kaboom: the attacker explodes: DataB damage within DataA, DataD within DataC,
         // structures taking DataE times as much.
-        if let Some((a, l)) = self.passive(h, "Asds") {
+        if let Some((a, l)) = self.passive(h, codes::ability::SELF_DESTRUCT) {
             self.kaboom(vm, h, a, l, tx, ty);
         }
     }
@@ -204,7 +205,7 @@ impl World {
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.paused && matches!(u.action, Action::Idle))).collect();
         let mut due: Vec<(usize, u32, u32)> = Vec::new();
         for h in units {
-            if self.ability_with_code(h, "Awan").is_none() {
+            if self.ability_with_code(h, codes::ability::WANDER).is_none() {
                 continue;
             }
             // The wait is a timer on the agent queue (CAgentTimer), its due time the
@@ -321,7 +322,7 @@ impl World {
     pub fn draw_first_wander_waits(&mut self) {
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| self.wanders_at_start(u))).collect();
         for h in units {
-            if self.ability_with_code(h, "Awan").is_some() {
+            if self.ability_with_code(h, codes::ability::WANDER).is_some() {
                 let w = self.rng.real(5.0, 10.0);
                 let n = self.tags.start_timer("5aa910");
                 self.keep_wander_timer(h, n, 0.0, w);
@@ -383,7 +384,7 @@ impl World {
         let Some(u) = self.unit(h) else { return };
         let mut out = Vec::new();
         for &(a, _) in &u.abilities {
-            if !matches!(self.ability_code(a).as_str(), "Asph" | "Atol") {
+            if !matches!(self.ability_code(a).as_str(), codes::ability::SPHERE | codes::ability::TREE_OF_LIFE_FOR_ATTACHING_ART) {
                 continue;
             }
             let Some(o) = self.objects.abilities.get(a) else { continue };
@@ -421,12 +422,12 @@ impl World {
                 let code = self.ability_code(a);
                 // Magic Sentry's eye shows over a tower once its research enables it
                 // (measured: HumanX02's Scout Tower, Rhse researched, wears it).
-                let aura = matches!(code.as_str(), "AHad" | "AHab" | "AUau" | "AOae" | "AEar" | "AUav" | "AEah" | "Adts");
-                if !aura && !matches!(code.as_str(), "Aspi" | "Arbr") {
+                let aura = matches!(code.as_str(), codes::ability::PALADIN_DEVOTION_AURA | codes::ability::ARCH_MAGE_BRILLIANCE_AURA | codes::ability::DEATH_KNIGHT_UNHOLY_AURA | codes::ability::CHIEFTAIN_ENDURANCE_AURA | codes::ability::PRIESTESS_TRUESHOT_AURA | codes::ability::DREADLORD_VAMPIRIC_AURA | codes::ability::KEEPER_THORNS_AURA | codes::ability::DETECT_MAGIC_SENTINEL);
+                if !aura && !matches!(code.as_str(), codes::ability::SPIKED_BARRICADES | codes::ability::REINFORCED_BURROWS) {
                     continue;
                 }
                 let bonus = self.upgrade_bonus(u.owner, u.type_id);
-                let want = !u.dead && if aura { lvl >= 1 && self.ability_enabled(u.owner, a) } else if code == "Aspi" { bonus.spikes > 0.0 } else { bonus.armor_type > 0 };
+                let want = !u.dead && if aura { lvl >= 1 && self.ability_enabled(u.owner, a) } else if code == codes::ability::SPIKED_BARRICADES { bonus.spikes > 0.0 } else { bonus.armor_type > 0 };
                 let has = u.extra.upgrade_art.iter().any(|e| e.0 == a);
                 if want != has {
                     changes.push((h, a, want));
@@ -442,7 +443,7 @@ impl World {
         for (h, a, want) in changes {
             if want {
                 let Some(o) = self.objects.abilities.get(a) else { continue };
-                let side = if self.ability_code(a) == "Adts" { "Caster" } else { "Target" };
+                let side = if self.ability_code(a) == codes::ability::DETECT_MAGIC_SENTINEL { "Caster" } else { "Target" };
                 let models = o.list(&format!("{side}art"));
                 let n = o.str(&format!("{side}attachcount")).trim().parse::<usize>().unwrap_or(1).max(1);
                 let mut art = Vec::new();
@@ -494,7 +495,7 @@ impl World {
                         && self.players.get(u.owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER)
                 })
             })
-            .filter(|&h| ["Ahar", "Ahrl"].iter().any(|c| self.ability_with_code(h, c).is_some()))
+            .filter(|&h| [codes::ability::HARVEST, codes::ability::HARVEST_LUMBER].iter().any(|c| self.ability_with_code(h, c).is_some()))
             .collect();
         for h in idle {
             self.order_unit(h, order, 0.0, 0.0, 0);
@@ -519,7 +520,7 @@ impl World {
     /// Spin (Atsp): ground enemies within Area are thrown up for Dur (HeroDur on Heroes),
     /// each at most once every DataB.
     pub fn update_tornadoes(&mut self, vm: &mut Vm, dt: f32) {
-        let tornadoes: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead) && (self.ability_with_code(h, "Atwa").is_some() || self.ability_with_code(h, "Atdg").is_some() || self.ability_with_code(h, "Atsp").is_some())).collect();
+        let tornadoes: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead) && (self.ability_with_code(h, codes::ability::TORNADO_WANDER).is_some() || self.ability_with_code(h, codes::ability::TORNADO_DAMAGE).is_some() || self.ability_with_code(h, codes::ability::TORNADO_SPIN).is_some())).collect();
         for h in tornadoes {
             let Some(u) = self.unit(h) else { continue };
             let (x, y) = (u.x, u.y);
@@ -527,7 +528,7 @@ impl World {
                 self.unit_mut(h).unwrap().extra.home = Some((x, y));
             }
             let (hx, hy) = self.unit(h).and_then(|u| u.extra.home).unwrap_or((x, y));
-            if let Some((a, lvl)) = self.ability_with_code(h, "Atwa") {
+            if let Some((a, lvl)) = self.ability_with_code(h, codes::ability::TORNADO_WANDER) {
                 let lvl = lvl.max(1) as u32;
                 let left = self.unit(h).and_then(|u| u.cooldowns.get(&a).copied()).unwrap_or(0.0);
                 if left <= 0.0 {
@@ -542,7 +543,7 @@ impl World {
                     self.unit_mut(h).unwrap().cooldowns.insert(a, left);
                 }
             }
-            if let Some((a, lvl)) = self.ability_with_code(h, "Atdg") {
+            if let Some((a, lvl)) = self.ability_with_code(h, codes::ability::TORNADO_DAMAGE) {
                 let lvl = lvl.max(1) as u32;
                 let d = |k: &str| self.data(a, k, lvl);
                 let (area, dps, mid_r, mid, small_r, small) = (d("Area"), d("DataA"), d("DataB"), d("DataC"), d("DataD"), d("DataE"));
@@ -564,7 +565,7 @@ impl World {
                     self.spell_damage(vm, h, t, rate);
                 }
             }
-            if let Some((a, lvl)) = self.ability_with_code(h, "Atsp") {
+            if let Some((a, lvl)) = self.ability_with_code(h, codes::ability::TORNADO_SPIN) {
                 let lvl = lvl.max(1) as u32;
                 let (area, again) = (self.data(a, "Area", lvl), self.data(a, "DataB", lvl));
                 let buff = self.objects.abilities.get(a).map(|o| id_from_str(o.level_str("BuffID", lvl).split(',').next().unwrap_or("").trim())).unwrap_or([0; 4]);

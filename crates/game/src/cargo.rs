@@ -9,11 +9,12 @@ use w3_jass::Vm;
 
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 impl World {
     /// The cargo hold of a unit: (capacity, load range, unload interval).
     pub fn cargo_hold(&self, h: u32) -> Option<(i32, f32, f32)> {
-        let (a, l) = self.ability_with_code(h, "Acar").or_else(|| self.ability_with_code(h, "Abun"))?;
+        let (a, l) = self.ability_with_code(h, codes::ability::CARGO_HOLD_ACAR).or_else(|| self.ability_with_code(h, codes::ability::CARGO_HOLD_BURROW))?;
         let o = self.objects.abilities.get(a)?;
         Some((o.level_real("DataA", l) as i32, o.level_real("Rng", l), o.level_real("Dur", l)))
     }
@@ -38,7 +39,7 @@ impl World {
             return false;
         }
         // A burrow takes only its owner's workers that can enter it.
-        if self.ability_with_code(transport, "Abun").is_some() && (t.owner != u.owner || self.ability_with_code(h, "Ahar").is_none()) {
+        if self.ability_with_code(transport, codes::ability::CARGO_HOLD_BURROW).is_some() && (t.owner != u.owner || self.ability_with_code(h, codes::ability::HARVEST).is_none()) {
             return false;
         }
         self.cargo_used(transport) + self.cargo_size(h) <= cap
@@ -99,7 +100,7 @@ impl World {
 
     /// A transport takes a unit aboard (order "load"): it goes to within its Load range.
     pub(crate) fn load_step(&mut self, h: u32, target: u32, dt: f32) {
-        let range = self.ability_with_code(h, "Aloa").and_then(|(a, l)| self.objects.abilities.get(a).map(|o| o.level_real("Rng", l))).unwrap_or(80.0);
+        let range = self.ability_with_code(h, codes::ability::LOAD).and_then(|(a, l)| self.objects.abilities.get(a).map(|o| o.level_real("Rng", l))).unwrap_or(80.0);
         if !self.can_board(h, target) {
             self.unit_mut(h).unwrap().action = Action::Idle;
             return;
@@ -123,7 +124,7 @@ impl World {
             self.unit_mut(h).unwrap().action = Action::Idle;
             return;
         }
-        if self.move_kind(transport) == crate::pathing::Move::Fly && self.ability_with_code(transport, "Aloa").is_some() {
+        if self.move_kind(transport) == crate::pathing::Move::Fly && self.ability_with_code(transport, codes::ability::LOAD).is_some() {
             if let Some(t) = self.unit_mut(transport).filter(|t| matches!(t.action, Action::Idle)) {
                 t.action = Action::Load { target: h };
                 t.path.clear();
@@ -139,7 +140,7 @@ impl World {
     /// A transport unloads (order "unload" at a point): it goes there, then drops its
     /// cargo one unit every unload interval.
     pub(crate) fn unload_step(&mut self, h: u32, x: f32, y: f32, dt: f32) {
-        let range = self.ability_with_code(h, "Adro").and_then(|(a, l)| self.objects.abilities.get(a).map(|o| o.level_real("Rng", l))).unwrap_or(80.0);
+        let range = self.ability_with_code(h, codes::ability::DROP).and_then(|(a, l)| self.objects.abilities.get(a).map(|o| o.level_real("Rng", l))).unwrap_or(80.0);
         let Some(u) = self.unit(h) else { return };
         if u.extra.cargo.is_empty() {
             self.unit_mut(h).unwrap().action = Action::Idle;
@@ -181,7 +182,7 @@ impl World {
             let Some(dead) = self.unit(t).map(|u| u.dead) else { continue };
             let cargo = self.unit(t).unwrap().extra.cargo.clone();
             if dead {
-                let lost = self.ability_with_code(t, "Achd").is_some();
+                let lost = self.ability_with_code(t, codes::ability::CARGO_HOLD_DEATH).is_some();
                 for c in cargo {
                     self.disembark(c);
                     if lost {

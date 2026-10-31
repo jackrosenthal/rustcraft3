@@ -2,9 +2,10 @@
 //! expansion (FUN_6f9c66d0), and whether a hall is towered (IsTowered).
 
 use crate::natives::players::is_ally;
-use crate::objects::{Id, id_from_str};
+use crate::objects::Id;
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 impl World {
     /// A unit's weight in the AI's tallies: a Hero (level + 1) / 2 + 4, any other its
@@ -36,9 +37,9 @@ impl World {
         let mut halls = [0u32; 12];
         let worth = |id: Id| -> Option<i32> {
             match &id {
-                b"owtw" | b"hgtw" | b"etrp" | b"hctw" | b"uzg1" => Some(3),
-                b"otrb" => Some(1),
-                b"unp1" | b"unp2" => Some(4),
+                codes::unit::id::WATCH_TOWER | codes::unit::id::GUARD_TOWER | codes::unit::id::ANCIENT_PROTECTOR | codes::unit::id::CANNON_TOWER | codes::unit::id::SPIRIT_TOWER => Some(3),
+                codes::unit::id::ORC_BURROW => Some(1),
+                codes::unit::id::HALLS_OF_THE_DEAD | codes::unit::id::BLACK_CITADEL => Some(4),
                 _ => None,
             }
         };
@@ -54,7 +55,7 @@ impl World {
                 if allied {
                     continue;
                 }
-                if self.unit_class(u, "townhall") || u.type_id == id_from_str("ugol") {
+                if self.unit_class(u, "townhall") || u.type_id == *codes::unit::id::HAUNTED_GOLD_MINE {
                     halls[o] = h;
                 }
                 match worth(u.type_id) {
@@ -124,7 +125,7 @@ impl World {
                 if r.gold < gold {
                     r.gold = gold;
                     r.unit = h;
-                } else if r.gold == gold && (self.unit_class(u, "townhall") || u.type_id == id_from_str("ugol")) {
+                } else if r.gold == gold && (self.unit_class(u, "townhall") || u.type_id == *codes::unit::id::HAUNTED_GOLD_MINE) {
                     r.unit = h;
                 }
             }

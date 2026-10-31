@@ -178,7 +178,7 @@ mod tests {
         let mut p = Persist::default();
         p.take_caches_w3v(&f);
         let hero = &p.caches["testcache.w3v"].units[0].2;
-        assert_eq!((&hero.type_id, hero.level, hero.str_), (b"Hpal", 1, 22.0));
+        assert_eq!((&hero.type_id, hero.level, hero.str_), (crate::codes::unit::id::PALADIN, 1, 22.0));
         let (_, data) = w3_formats::container::unpack(&file).unwrap();
         assert_eq!(p.caches_w3v().data(), data);
     }

@@ -8,6 +8,7 @@ use super::{Args, boolean, handle, int, none, real, reg};
 use crate::objects::{Id, id_from_int, id_to_int};
 use crate::types::*;
 use crate::world::{NativeFn, World};
+use crate::codes;
 
 /// A destructable made; `dead`, made dead (its life 0, no footprint).
 pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>, facing: f32, scale: f32, variation: u32, dead: bool) -> u32 {
@@ -42,10 +43,10 @@ pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>
     // Its tags (read under Wine): itself, its position, five regions; one made dead
     // only its position's two (read: Forestwalk's four trees placed dead, its pathing
     // map listing none of their cells).
-    let oid = w.tags.take_id(b"+w3d");
-    let mut slots = vec![w.tags.take(b"`pos")];
+    let oid = w.tags.take_id(codes::class::DESTRUCTABLE);
+    let mut slots = vec![w.tags.take(codes::class::POSITION)];
     for _ in 0..if dead { 2 } else { 5 } {
-        slots.push(w.tags.take(b"^pmr"));
+        slots.push(w.tags.take(codes::class::PATHING_REGION));
     }
     if let Some(Obj::Destructable(d)) = w.handles.get_mut(h) {
         d.handle = h;
@@ -118,8 +119,8 @@ fn dest_mut(w: &mut World, h: u32) -> Option<&mut Destructable> {
 pub fn create_item(w: &mut World, id: Id, x: f32, y: f32) -> u32 {
     let Some(o) = w.objects.items.get(id) else { return 0 };
     // Its tags (measured: CreateItem and UnitAddItemById each make these).
-    let oid = w.tags.take_id(b"item");
-    w.tags.take_all(&[b"`pos", b"^pmr", b"^pmr"]);
+    let oid = w.tags.take_id(codes::class::ITEM);
+    w.tags.take_all(&[codes::class::POSITION, codes::class::PATHING_REGION, codes::class::PATHING_REGION]);
     let item = Item {
         handle: 0,
         oid,
@@ -508,10 +509,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetEnumItem => |w, _, _| handle(w.enum_ctx.enum_item),
         GetFilterItem => |w, _, _| handle(w.enum_ctx.filter_item),
         AddSpecialEffect => |w, _, a| {
-            w.tags.take_all(&[b"+EIP", b"`pos", b"^pmr", b"^pmr"]);
+            w.tags.take_all(&[codes::class::SPECIAL_EFFECT, codes::class::POSITION, codes::class::PATHING_REGION, codes::class::PATHING_REGION]);
             add_effect(w, a.s(0), a.r(1), a.r(2), None)
         },
-        AddSpecialEffectLoc => |w, _, a| { w.tags.take_all(&[b"+EIP", b"`pos", b"^pmr", b"^pmr"]);  let (x, y) = w.location(a.h(1)).unwrap_or_default(); add_effect(w, a.s(0), x, y, None) },
+        AddSpecialEffectLoc => |w, _, a| { w.tags.take_all(&[codes::class::SPECIAL_EFFECT, codes::class::POSITION, codes::class::PATHING_REGION, codes::class::PATHING_REGION]);  let (x, y) = w.location(a.h(1)).unwrap_or_default(); add_effect(w, a.s(0), x, y, None) },
         AddSpecialEffectTarget => |w, _, a| add_effect(w, a.s(0), 0.0, 0.0, Some((a.h(1), a.s(2)))),
         DestroyEffect => |w, _, a| {
             if let Some(Obj::Effect(e)) = w.handles.get_mut(a.h(0)) { e.destroyed = true; }

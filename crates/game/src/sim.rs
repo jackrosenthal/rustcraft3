@@ -5,6 +5,7 @@ use w3_jass::Vm;
 use crate::event_ids::*;
 use crate::natives::players::is_ally;
 use crate::natives::units::kill_unit;
+use crate::codes;
 
 fn d_kill(w: &mut World, vm: &mut Vm, h: u32) {
     if let Some(Obj::Destructable(d)) = w.handles.get_mut(h) {
@@ -151,7 +152,7 @@ pub(crate) const STEP_SLACK: f32 = 1e-4;
 
 pub fn unit_weapons(w: &World, u: &Unit) -> Vec<(u8, Weapon)> {
     // A burrow shoots only with workers inside.
-    if u.extra.cargo.is_empty() && w.ability_with_code(u.handle, "Abun").is_some() {
+    if u.extra.cargo.is_empty() && w.ability_with_code(u.handle, codes::ability::CARGO_HOLD_BURROW).is_some() {
         return Vec::new();
     }
     let mut mask = u.extra.weapons.unwrap_or_else(|| w.objects.units.get(u.type_id).map_or(0, |o| o.int("weapsOn")));
@@ -159,7 +160,7 @@ pub fn unit_weapons(w: &World, u: &Unit) -> Vec<(u8, Weapon)> {
     // measured: an Ancient Protector made rooted throws at a peasant 150 away, within
     // its 128 melee reach, every 2 seconds, its second weapon's cooldown).
     if u.extra.weapons.is_none() && !u.extra.uprooted {
-        if let Some((a, l)) = w.ability_with_code(u.handle, "Aroo") {
+        if let Some((a, l)) = w.ability_with_code(u.handle, codes::ability::ROOT) {
             if let Some(m) = w.objects.abilities.get(a).map(|o| o.level_real("DataA", l) as i32).filter(|&m| m > 0) {
                 mask = m;
             }
@@ -371,7 +372,7 @@ impl World {
     pub fn order_unit(&mut self, h: u32, order: i32, x: f32, y: f32, target: u32) {
         // Shadowmeld's order leaves a hidden unit as it is (measured: an archer hidden at
         // night stays hidden and reads no order).
-        if order == crate::natives::basic::order_id("ambush") && self.ability_with_code(h, "Ashm").is_some_and(|(a, _)| self.unit(h).is_some_and(|u| u.buffs.iter().any(|b| b.ability == a))) {
+        if order == crate::natives::basic::order_id("ambush") && self.ability_with_code(h, codes::ability::SHADOW_MELD).is_some_and(|(a, _)| self.unit(h).is_some_and(|u| u.buffs.iter().any(|b| b.ability == a))) {
             return;
         }
         // An order ends a new unit's first wait to look for targets (measured: a Demon
@@ -383,7 +384,7 @@ impl World {
         // half second.)
         let name = crate::natives::basic::order_name(order).unwrap_or_default();
         let toggle = self.unit(h).is_some_and(|u| u.abilities.iter().any(|&(a, _)| self.objects.abilities.get(a).is_some_and(|o| o.str("Orderon").eq_ignore_ascii_case(name) || o.str("Orderoff").eq_ignore_ascii_case(name))));
-        let no_gold = name == "autoharvestgold" && self.ability_with_code(h, "Ahar").is_none();
+        let no_gold = name == "autoharvestgold" && self.ability_with_code(h, codes::ability::HARVEST).is_none();
         if !toggle && !no_gold {
             if let Some(u) = self.unit_mut(h) {
                 u.extra.acquired = 0;
@@ -409,7 +410,7 @@ impl World {
         // unload 400 away flies there with its cargo aboard).
         let unloadall = crate::natives::basic::order_id("unloadall");
         let at_point = order == unloadall && (x, y) != (0.0, 0.0);
-        if order == unloadall && !at_point || order == crate::natives::basic::order_id("unloadallinstant") || (order == crate::natives::basic::order_id("standdown") && self.ability_with_code(h, "Abun").is_some()) {
+        if order == unloadall && !at_point || order == crate::natives::basic::order_id("unloadallinstant") || (order == crate::natives::basic::order_id("standdown") && self.ability_with_code(h, codes::ability::CARGO_HOLD_BURROW).is_some()) {
             self.unload_all(h);
             return;
         }
@@ -421,7 +422,7 @@ impl World {
             }
             return;
         }
-        if (order == crate::natives::basic::order_id("load") || order == smart) && target != 0 && self.ability_with_code(h, "Aloa").is_some() && self.can_board(h, target) {
+        if (order == crate::natives::basic::order_id("load") || order == smart) && target != 0 && self.ability_with_code(h, codes::ability::LOAD).is_some() && self.can_board(h, target) {
             if let Some(u) = self.unit_mut(h) {
                 u.action = Action::Load { target };
                 u.path.clear();
@@ -431,9 +432,9 @@ impl World {
         // Battle Stations (Abtl): the owner's UnitID workers within Area head inside;
         // Chaos Cargo Load (Achl) makes them its UnitID instead (FUN_6f4c9ce0).
         if order == crate::natives::basic::order_id("battlestations") {
-            if let Some((a, l)) = self.ability_with_code(h, "Abtl") {
+            if let Some((a, l)) = self.ability_with_code(h, codes::ability::BATTLESTATIONS) {
                 let (area, mut id) = self.objects.abilities.get(a).map_or((0.0, [0; 4]), |o| (o.level_real("Area", l), crate::objects::id_from_str(o.level_str("UnitID", l).trim())));
-                if let Some(o) = self.ability_with_code(h, "Achl").and_then(|(c, cl)| self.objects.abilities.get(c).map(|o| (o, cl))) {
+                if let Some(o) = self.ability_with_code(h, codes::ability::CHAOS_CARGO_LOAD).and_then(|(c, cl)| self.objects.abilities.get(c).map(|o| (o, cl))) {
                     id = crate::objects::id_from_str(o.0.level_str("UnitID", o.1).trim());
                 }
                 let (owner, bx, by) = self.unit(h).map(|u| (u.owner, u.x, u.y)).unwrap_or_default();
@@ -458,7 +459,7 @@ impl World {
             return;
         }
         // entangleinstant: Entangle Gold Mine at once, without its casting time.
-        if order == crate::natives::basic::order_id("entangleinstant") && self.ability_with_code(h, "Aent").is_some() {
+        if order == crate::natives::basic::order_id("entangleinstant") && self.ability_with_code(h, codes::ability::ENTANGLE).is_some() {
             self.entangle(h, target, true);
             return;
         }
@@ -485,10 +486,10 @@ impl World {
             }
         }
         if order == crate::natives::basic::order_id("sacrifice") && target != 0 {
-            if self.ability_with_code(h, "Alam").is_some() && self.sacrifice(h, target) {
+            if self.ability_with_code(h, codes::ability::SACRIFICE_ACOLYTE).is_some() && self.sacrifice(h, target) {
                 return;
             }
-            if self.ability_with_code(h, "Asac").is_some() && self.sacrifice(target, h) {
+            if self.ability_with_code(h, codes::ability::SACRIFICE_SACRIFICIAL_PIT).is_some() && self.sacrifice(target, h) {
                 return;
             }
         }
@@ -532,7 +533,7 @@ impl World {
         } else if order == patrol {
             let p = self.unit(h).map(|u| (u.x, u.y)).unwrap_or_default();
             Action::Patrol { a: p, b: (x, y) }
-        } else if (order == crate::natives::basic::order_id("repair") || order == smart) && target != 0 && self.unit(target).is_some_and(|t| t.extra.needs_builder && t.constructing.is_some()) && self.unit(h).is_some_and(|u| self.unit(target).is_some_and(|t| t.owner == u.owner)) && self.ability_with_code(h, "Arep").is_some() {
+        } else if (order == crate::natives::basic::order_id("repair") || order == smart) && target != 0 && self.unit(target).is_some_and(|t| t.extra.needs_builder && t.constructing.is_some()) && self.unit(h).is_some_and(|u| self.unit(target).is_some_and(|t| t.owner == u.owner)) && self.ability_with_code(h, codes::ability::REPAIR_ORC).is_some() {
             // A peasant helps build a peasant's structure.
             Action::Construct { target }
         } else if (order == crate::natives::basic::order_id("repair") || order == smart) && target != 0 && self.can_repair(h, target) {
@@ -574,7 +575,7 @@ impl World {
                     .filter(|(d, _)| *d <= RANGE)
                     .min_by(|a, b| a.0.total_cmp(&b.0))
                     .map(|x| x.1)
-            } else if ["Awha", "Ahar", "Ahrl"].iter().any(|c| self.ability_with_code(h, c).is_some()) {
+            } else if [codes::ability::WISP_HARVEST, codes::ability::HARVEST, codes::ability::HARVEST_LUMBER].iter().any(|c| self.ability_with_code(h, c).is_some()) {
                 // Ghouls too (measured: UndeadX03's ghouls so ordered gather lumber).
                 self.nearest_tree(h, RANGE).filter(|&t| self.can_harvest(h, t))
             } else {
@@ -618,11 +619,11 @@ impl World {
             // immediate cannibalize once the corpse beside the ghoul is eaten).
             let code = self.ability_code(a);
             if target == 0 && (x, y) == (0.0, 0.0) {
-                if code == "Arai" {
+                if code == codes::ability::RAISE_DEAD {
                     self.order_error = Some("Targetcorpse");
                     return;
                 }
-                if code == "Acan" {
+                if code == codes::ability::CANNIBALIZE {
                     let (ux, uy, r) = self.unit(h).map_or((0.0, 0.0, 0.0), |u| (u.x, u.y, u.collision));
                     let lvl = self.ability_level(h, a);
                     if self.corpses_in(ux, uy, self.data(a, "Rng", lvl) + r + 32.0).is_empty() {
@@ -735,7 +736,7 @@ impl World {
     /// Ghost and Ghost (Visible) (CAbilityGhost, CAbilityGhostVisible: Agho, Aeth) take
     /// a unit's collision with other units away (FUN_6f623bd0).
     pub fn is_ghost(&self, u: &Unit) -> bool {
-        u.abilities.iter().any(|&(a, _)| matches!(self.ability_code(a).as_str(), "Agho" | "Aeth"))
+        u.abilities.iter().any(|&(a, _)| matches!(self.ability_code(a).as_str(), codes::ability::GHOST | codes::ability::GHOST_VISIBLE))
     }
 
     /// How a unit moves, from its type's movetp (an uprooted ancient walks).
@@ -793,7 +794,7 @@ impl World {
     /// the ability taken away again, player 0's sheep and Neutral Passive's footmen
     /// 700).
     pub(crate) fn wander_paths(&mut self, h: u32) {
-        if self.ability_with_code(h, "Awan").is_none() {
+        if self.ability_with_code(h, codes::ability::WANDER).is_none() {
             return;
         }
         if let Some(u) = self.unit_mut(h) {
@@ -1713,7 +1714,7 @@ impl World {
             // step (`FUN_6f5af350` on the order's end, event 0xd0148: read, the first
             // sheep's walk ended at 5.399847 and the main generator drew for it there,
             // between its order's draw and the next wanderer's).
-            if self.ability_with_code(h, "Awan").is_some() {
+            if self.ability_with_code(h, codes::ability::WANDER).is_some() {
                 let next = self.rng.real(5.0, 10.0);
                 let n = self.tags.start_timer("5aa910");
                 log::debug!("wander redraw: {h} at step {k}, clock {:.6}, next {next:.6}", f32::from_bits(clocks.get(k).copied().unwrap_or(0)));
@@ -2280,7 +2281,7 @@ impl World {
                         if let (Some(src), Some(_)) = (self.unit(h).cloned(), self.unit(s.target)) {
                             // Lightning Attack: a weapon firing the ability's missile also
                             // strikes with its lightning, DataA after for DataB.
-                            if let Some((a, lvl)) = self.ability_with_code(h, "Alit") {
+                            if let Some((a, lvl)) = self.ability_with_code(h, codes::ability::LIGHTNING_ATTACK) {
                                 let lvl = lvl.max(1) as u32;
                                 if self.profile_art(a, "Missileart").eq_ignore_ascii_case(&wp.missile) {
                                     let (delay, life) = (self.data(a, "DataA", lvl), self.data(a, "DataB", lvl));
@@ -2319,7 +2320,7 @@ impl World {
                             // other air enemies within Area too, DataC in all, each with the
                             // attack's damage (measured: a Siege Engine's every 2 seconds
                             // strike three Gryphon Riders alike, 28 each, then 26 each).
-                            let barrage = self.ability_with_code(h, "Aroc").filter(|&(a, _)| self.ability_enabled(src.owner, a));
+                            let barrage = self.ability_with_code(h, codes::ability::ROCKET_ATTACK).filter(|&(a, _)| self.ability_enabled(src.owner, a));
                             if let Some((a, lvl)) = barrage.filter(|_| self.unit(s.target).is_some_and(|t| self.objects.units.get(t.type_id).is_some_and(|o| o.str("movetp").eq_ignore_ascii_case("fly")))) {
                                 let lvl = lvl.max(1) as u32;
                                 let (area, max) = (self.data(a, "Area", lvl), self.data(a, "DataC", lvl).max(1.0) as usize);
@@ -2403,7 +2404,7 @@ impl World {
                 Action::GiveItem { item, target } => {
                     // A shop that buys items (Purchase Item, Apit) takes it for gold within
                     // PawnItemRange (CAbilityPurchaseItem).
-                    let pawn = self.ability_with_code(target, "Apit").is_some() && self.unit(target).is_some_and(|t| t.owner == self.unit(h).map_or(0, |u| u.owner) || t.owner >= crate::types::PLAYER_NEUTRAL_AGGRESSIVE);
+                    let pawn = self.ability_with_code(target, codes::ability::PURCHASE_ITEM).is_some() && self.unit(target).is_some_and(|t| t.owner == self.unit(h).map_or(0, |u| u.owner) || t.owner >= crate::types::PLAYER_NEUTRAL_AGGRESSIVE);
                     let range = if pawn { self.misc_f32("PawnItemRange", 300.0) } else { self.misc_f32("GiveItemRange", 150.0) };
                     let Some((tx, ty)) = self.unit(target).filter(|t| !t.dead).map(|t| (t.x, t.y)) else {
                         self.unit_mut(h).unwrap().action = Action::Idle;
@@ -2765,11 +2766,11 @@ impl World {
         // training's `rcm and `rtl, its time counting from the next turn (traced: a
         // peon ordered at turn 991 is made in turn 1141's run; one queued behind
         // another not yet traced).
-        let order = self.tags.take(b"+ord");
+        let order = self.tags.take(codes::class::ORDER);
         self.tags.doom(order);
         if first {
-            let rcm = self.tags.take(b"`rcm");
-            let rtl = self.tags.take(b"`rtl");
+            let rcm = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
+            let rtl = self.tags.take(codes::class::THRESHOLD_LISTENER);
             let u = self.unit_mut(h).unwrap();
             u.extra.training_tags = Some((rcm, rtl));
             u.extra.training_waits = true;
@@ -3135,7 +3136,7 @@ impl World {
         self.tech_changed(owner);
         // Then a ptcf, and freed at once, in order: the training's `rtl and `rcm, the
         // two tasks of the unit's making (the second first), and the ptcf (traced).
-        let ptcf = self.tags.take(b"ptcf");
+        let ptcf = self.tags.take(codes::class::TRAINING_DONE);
         if let Some((rcm, rtl)) = self.unit_mut(h).and_then(|u| u.extra.training_tags.take()) {
             self.tags.release(rtl);
             self.tags.release(rcm);
@@ -3332,14 +3333,14 @@ impl World {
     }
 
     fn is_mine(&self, h: u32) -> bool {
-        self.unit(h).is_some_and(|u| !u.dead && !u.hidden) && self.ability_with_code(h, "Agld").is_some()
+        self.unit(h).is_some_and(|u| !u.dead && !u.hidden) && self.ability_with_code(h, codes::ability::GOLD_MINE).is_some()
     }
 
     pub fn can_harvest(&self, h: u32, target: u32) -> bool {
         self.can_mine_covered(h, target)
-            || self.ability_with_code(h, "Awha").is_some() && self.is_tree(target)
-            || self.ability_with_code(h, "Ahar").is_some() && (self.is_mine(target) || self.is_tree(target))
-            || self.ability_with_code(h, "Ahrl").is_some() && self.is_tree(target)
+            || self.ability_with_code(h, codes::ability::WISP_HARVEST).is_some() && self.is_tree(target)
+            || self.ability_with_code(h, codes::ability::HARVEST).is_some() && (self.is_mine(target) || self.is_tree(target))
+            || self.ability_with_code(h, codes::ability::HARVEST_LUMBER).is_some() && self.is_tree(target)
     }
 
     /// A worker leaving a mine with its load comes out on the mine's side toward the
@@ -3378,7 +3379,7 @@ impl World {
     /// seconds after it last came out they go).
     pub(crate) fn mine_held_by_other(&self, h: u32, mine: u32) -> bool {
         let Some(owner) = self.unit(h).map(|u| u.owner) else { return false };
-        self.ability_with_code(mine, "Agld").is_some() && self.unit(mine).and_then(|m| m.extra.mine_holder).is_some_and(|(p, until)| p != owner && until > self.time)
+        self.ability_with_code(mine, codes::ability::GOLD_MINE).is_some() && self.unit(mine).and_then(|m| m.extra.mine_holder).is_some_and(|(p, until)| p != owner && until > self.time)
     }
 
     pub(crate) fn leave_mine(&mut self, h: u32) {
@@ -3492,13 +3493,13 @@ impl World {
     }
 
     fn harvest(&mut self, vm: &mut Vm, h: u32, target: u32, dt: f32) {
-        if self.ability_with_code(h, "Aaha").is_some() {
+        if self.ability_with_code(h, codes::ability::ACOLYTE_HARVEST).is_some() {
             return self.acolyte_harvest(vm, h, target, dt);
         }
-        if self.ability_with_code(h, "Awha").is_some() {
+        if self.ability_with_code(h, codes::ability::WISP_HARVEST).is_some() {
             return self.wisp_harvest(vm, h, target, dt);
         }
-        let Some((ahar, lvl)) = self.ability_with_code(h, "Ahar").or_else(|| self.ability_with_code(h, "Ahrl")) else {
+        let Some((ahar, lvl)) = self.ability_with_code(h, codes::ability::HARVEST).or_else(|| self.ability_with_code(h, codes::ability::HARVEST_LUMBER)) else {
             self.unit_mut(h).unwrap().action = Action::Idle;
             return;
         };
@@ -3556,7 +3557,7 @@ impl World {
                 return;
             }
             // Enter if the mine has room (Agld DataC: workers inside at once).
-            let (agld, mlvl) = self.ability_with_code(target, "Agld").unwrap();
+            let (agld, mlvl) = self.ability_with_code(target, codes::ability::GOLD_MINE).unwrap();
             let capacity = self.ability_real(agld, "DataC", mlvl).max(1.0) as u32;
             let duration = self.ability_real(agld, "DataB", mlvl);
             if self.unit(target).is_some_and(|m| m.inside < capacity) {
@@ -3687,7 +3688,7 @@ impl World {
             if b.extra.uprooted {
                 continue;
             }
-            let Some((a, l)) = self.ability_with_code(o, "Artn") else { continue };
+            let Some((a, l)) = self.ability_with_code(o, codes::ability::RETURN) else { continue };
             let accepts = (gold && self.ability_real(a, "DataA", l) != 0.0) || (lumber && self.ability_real(a, "DataB", l) != 0.0);
             if !accepts {
                 continue;
@@ -3881,7 +3882,7 @@ impl World {
         // A burrow attacks the faster for each worker inside, its cooldown over one more
         // than their count (measured: a Burrow, cooldown 4, with one, two, and four
         // peons fires every 2.0, 1.33, and 0.8 seconds).
-        let crew = if self.ability_with_code(h, "Abun").is_some() { (u.extra.cargo.len() + 1) as f32 } else { 1.0 };
+        let crew = if self.ability_with_code(h, codes::ability::CARGO_HOLD_BURROW).is_some() { (u.extra.cargo.len() + 1) as f32 } else { 1.0 };
         ((base + u.item_bonus.attack_speed + ub.attack_speed) * self.buff_mods(h).1 * crew).max(0.01)
     }
 
@@ -4092,7 +4093,7 @@ impl World {
                     if enemy {
                         self.spell_damage(vm, m.source, m.target, 0.0);
                     }
-                    if self.ability_code(a) == "AUdc" {
+                    if self.ability_code(a) == codes::ability::DEATH_KNIGHT_DEATH_COIL {
                         if self.is_undead(m.target) {
                             self.magic_heal(m.target, m.damage);
                         } else {
@@ -4101,7 +4102,7 @@ impl World {
                         continue;
                     }
                     self.spell_damage(vm, m.source, m.target, m.damage);
-                    if self.ability_code(a) == "Apxf" && self.unit(m.target).is_some_and(|t| !t.dead) {
+                    if self.ability_code(a) == codes::ability::PHOENIX_FIRE && self.unit(m.target).is_some_and(|t| !t.dead) {
                         self.phoenix_burn(m.source, m.target, a, lvl, buff);
                     }
                     if stun > 0.0 {
@@ -4221,7 +4222,7 @@ impl World {
         let artillery = wp.weapon_type == "artillery" || wp.weapon_type == "aline";
         // Bladestorming, the hero's attacks strike for nothing (measured: a Blademaster's
         // hits show damage events of 0 while it spins).
-        let raw = if self.unit(source).is_some_and(|u| u.buffs.iter().any(|b| self.ability_code(b.ability) == "AOww")) { 0.0 } else { raw };
+        let raw = if self.unit(source).is_some_and(|u| u.buffs.iter().any(|b| self.ability_code(b.ability) == codes::ability::BLADE_MASTER_BLADESTORM)) { 0.0 } else { raw };
         self.poison_on_hit(vm, source, target);
         if !artillery {
             self.deal_damage(vm, source, target, raw, &wp.attack_type);
@@ -4297,7 +4298,7 @@ impl World {
         }
         // Plague Toss: the shell leaves a Plague Ward (UnitID) for Dur.
         if artillery {
-            if let Some((a, lvl)) = self.ability_with_code(source, "Apts") {
+            if let Some((a, lvl)) = self.ability_with_code(source, codes::ability::PLAGUE_TOSS) {
                 let owner = self.unit(source).map_or(0, |u| u.owner);
                 if self.ability_enabled(owner, a) {
                     let lvl = lvl.max(1) as u32;
@@ -4309,7 +4310,7 @@ impl World {
         }
         // Burning Oil: the shell sets the ground alight for Dur.
         if artillery {
-            if let Some((a, lvl)) = self.ability_with_code(source, "Abof") {
+            if let Some((a, lvl)) = self.ability_with_code(source, codes::ability::BALLS_OF_FIRE) {
                 let owner = self.unit(source).map_or(0, |u| u.owner);
                 if self.ability_enabled(owner, a) {
                     let lvl = lvl.max(1) as u32;
@@ -4320,7 +4321,7 @@ impl World {
         }
         // Flak Cannons and Fragmentation Shards: DataC damage within Area, DataD within
         // DataA, and DataE within DataB, to what their targets allow.
-        for code in ["Aflk", "Afsh"] {
+        for code in [codes::ability::FLAK_CANNON, codes::ability::FRAG_SHARDS] {
             let Some((a, lvl)) = self.ability_with_code(source, code) else { continue };
             let owner = self.unit(source).map_or(0, |u| u.owner);
             if !self.ability_enabled(owner, a) {

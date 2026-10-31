@@ -8,6 +8,7 @@ use w3_jass::Vm;
 use crate::objects::{Id, id_from_str};
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 impl World {
     fn buff_ids(&self, a: Id, lvl: u32) -> Vec<Id> {
@@ -42,25 +43,25 @@ impl World {
             let dur = if self.hero_duration(target) { d(self, "HeroDur") } else { d(self, "Dur") };
             match code.as_str() {
                 // Arrows with a mana cost per attack while autocast.
-                "AHfa" | "AHca" | "ANba" if autocast.contains(&a) && !target_building => {
+                codes::ability::PRIESTESS_SEARING_ARROWS | codes::ability::COLD_ARROWS | codes::ability::DARK_RANGER_BLACK_ARROW if autocast.contains(&a) && !target_building => {
                     let cost = d(self, "Cost");
                     if mana_left < cost {
                         continue;
                     }
                     mana_left -= cost;
                     damage += d(self, "DataA");
-                    if code == "AHca" {
+                    if code == codes::ability::COLD_ARROWS {
                         self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: dur, move_factor: -d(self, "DataB"), attack_factor: -d(self, "DataC"), ..Default::default() });
                     }
-                    if code == "ANba" {
+                    if code == codes::ability::DARK_RANGER_BLACK_ARROW {
                         self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: d(self, "Dur").max(0.5), ..Default::default() });
                     }
                 }
                 // Incinerate (CAbilityIncinerateArrow, CBuffIncinerate): while autocast
                 // and mana last, each hit on what it allows lays or renews its buff for
                 // Dur, one more time each hit, and deals that many times DataA more.
-                "ANia" | "ANic" if (code == "ANic" || autocast.contains(&a)) && self.cast_target_error(attacker, a, target).is_none() => {
-                    let cost = if code == "ANia" { d(self, "Cost") } else { 0.0 };
+                codes::ability::FIRELORD_INCINERATE_ANIA | codes::ability::FIRELORD_INCINERATE_ANIC if (code == codes::ability::FIRELORD_INCINERATE_ANIC || autocast.contains(&a)) && self.cast_target_error(attacker, a, target).is_none() => {
+                    let cost = if code == codes::ability::FIRELORD_INCINERATE_ANIA { d(self, "Cost") } else { 0.0 };
                     if mana_left < cost {
                         continue;
                     }
@@ -77,19 +78,19 @@ impl World {
                 }
                 // Orb of Lightning (CAbilityLightningPurge, an arrow without cost): each
                 // hit purges what it may target.
-                "AIlp" if self.cast_target_error(attacker, a, target).is_none() => {
+                codes::ability::LIGHTNING_PURGE if self.cast_target_error(attacker, a, target).is_none() => {
                     if let Some(at) = self.widget_pos(target) {
                         self.ability_effect_pub(vm, attacker, a, 1, target, at);
                     }
                 }
                 // Freezing Breath: a structure hit stops working for Dur.
-                "Afrz" if target_building => {
+                codes::ability::FREEZING_BREATH if target_building => {
                     self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: d(self, "Dur"), stun: true, ..Default::default() });
                 }
                 // Orb of Annihilation: while autocast and mana last, DataA more damage, and
                 // the hit spreads: all of it within DataD, DataB within DataE, and DataC
                 // within Area.
-                "Afak" if autocast.contains(&a) => {
+                codes::ability::ORB_OF_ANNIHILATION if autocast.contains(&a) => {
                     let cost = d(self, "Cost");
                     if mana_left < cost {
                         continue;
@@ -113,7 +114,7 @@ impl World {
                 // Frost Attack (and the Frost Wyrm's Frost Breath): the MiscGame frost slow.
                 // Feedback: burns mana (DataA, DataC for heroes) and deals it as damage
                 // (DataB, DataD); summons take DataE.
-                "Afbk" => {
+                codes::ability::FEEDBACK => {
                     let (max, ratio) = if hero { (d(self, "DataC"), d(self, "DataD")) } else { (d(self, "DataA"), d(self, "DataB")) };
                     let burned = self.unit(target).map_or(0.0, |t| t.mana.min(max));
                     if let Some(t) = self.unit_mut(target) {
@@ -125,20 +126,20 @@ impl World {
                     }
                 }
                 // Orbs (CAbilityAttackMod): DataA more damage, and their own effects.
-                "AIob" | "AIcb" | "AIpb" | "AIlb" | "AIsb" | "AIfb" => {
+                codes::ability::ORB_OF_FROST | codes::ability::ORB_OF_CORRUPTION | codes::ability::ORB_OF_VENOM | codes::ability::ORB_OF_LIGHTNING_OLD | codes::ability::ORB_OF_SPELLS | codes::ability::ORB_OF_FIRE => {
                     damage += d(self, "DataA");
                     match code.as_str() {
                         // Orb of Frost: the frost slow for Dur (HeroDur on Heroes).
-                        "AIob" if !target_building => {
+                        codes::ability::ORB_OF_FROST if !target_building => {
                             let (mv, at) = (self.misc_f32("FrostMoveSpeedDecrease", 0.5), self.misc_f32("FrostAttackSpeedDecrease", 0.25));
                             self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: dur, move_factor: -mv, attack_factor: -at, ..Default::default() });
                         }
                         // Orb of Corruption: DataB less armor for Dur.
-                        "AIcb" => {
+                        codes::ability::ORB_OF_CORRUPTION => {
                             self.apply_buff(target, Buff { id: buffs.first().copied().unwrap_or_default(), ability: a, level: lvl, caster: attacker, remaining: dur, armor: -d(self, "DataB"), ..Default::default() });
                         }
                         // Orb of Fire: the bonus burns others within Area too.
-                        "AIfb" => {
+                        codes::ability::ORB_OF_FIRE => {
                             let (tx, ty) = self.unit(target).map(|t| (t.x, t.y)).unwrap_or_default();
                             for t in self.enemies_in(owner, tx, ty, d(self, "Area")) {
                                 if t != target {
@@ -148,7 +149,7 @@ impl World {
                         }
                         // Orbs that cast: their effect ability (UnitID) with a chance of
                         // DataB on units, DataC on Heroes, and DataD on summons.
-                        "AIsb" => {
+                        codes::ability::ORB_OF_SPELLS => {
                             let chance = if target_hero { d(self, "DataC") } else if self.is_summoned(target) { d(self, "DataD") } else { d(self, "DataB") };
                             if (self.rng.int(1, 100) as f32) <= chance {
                                 let effect = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl)).unwrap_or_default().trim());
@@ -162,7 +163,7 @@ impl World {
                     }
                 }
                 // Cleaving Attack: DataA of the damage to other enemies within Area.
-                "ANca" => {
+                codes::ability::PIT_LORD_CLEAVING_ATTACK => {
                     let (tx, ty) = self.unit(target).map(|t| (t.x, t.y)).unwrap_or_default();
                     let owner = self.unit(attacker).map_or(0, |u| u.owner);
                     for t in self.enemies_in(owner, tx, ty, d(self, "Area")) {
@@ -193,7 +194,7 @@ impl World {
         let (cost_gold, cost_lumber, max_life) = (o.real("goldcost"), o.real("lumbercost"), t.max_life.max(1.0));
         let Some(u) = self.unit(attacker) else { return };
         let owner = u.owner;
-        let Some((a, lvl)) = u.abilities.iter().copied().find(|&(a, _)| self.ability_code(a) == "Asal" && self.ability_enabled(owner, a)) else { return };
+        let Some((a, lvl)) = u.abilities.iter().copied().find(|&(a, _)| self.ability_code(a) == codes::ability::PILLAGE && self.ability_enabled(owner, a)) else { return };
         let lvl = lvl.max(1) as u32;
         let share = dealt / max_life * self.data(a, "DataA", lvl);
         let step = self.data(a, "DataB", lvl).max(1.0);
@@ -219,7 +220,7 @@ impl World {
         }
         let (x, y) = (u.x, u.y);
         // Doom: DataB of UnitID rise for DataC.
-        let doom: Vec<(Id, u32, u32)> = u.buffs.iter().filter(|b| self.ability_code(b.ability) == "ANdo").map(|b| (b.ability, b.level, b.caster)).collect();
+        let doom: Vec<(Id, u32, u32)> = u.buffs.iter().filter(|b| self.ability_code(b.ability) == codes::ability::PIT_LORD_DOOM).map(|b| (b.ability, b.level, b.caster)).collect();
         if let Some((a, lvl, caster)) = doom.first().copied() {
             let n = self.data(a, "DataB", lvl) as i32;
             let life = self.data(a, "DataC", lvl);
@@ -229,7 +230,7 @@ impl World {
             return;
         }
         let Some(u) = self.unit(h) else { return };
-        let arrows: Vec<(Id, u32, u32)> = u.buffs.iter().filter(|b| self.ability_code(b.ability) == "ANba").map(|b| (b.ability, b.level, b.caster)).collect();
+        let arrows: Vec<(Id, u32, u32)> = u.buffs.iter().filter(|b| self.ability_code(b.ability) == codes::ability::DARK_RANGER_BLACK_ARROW).map(|b| (b.ability, b.level, b.caster)).collect();
         if let Some((a, lvl, caster)) = arrows.first().copied() {
             let n = self.data(a, "DataB", lvl) as i32;
             let life = self.data(a, "DataC", lvl);

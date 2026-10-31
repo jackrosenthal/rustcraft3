@@ -6,6 +6,7 @@ use crate::collections::HashMap;
 
 use crate::objects::{Id, id_from_str};
 use crate::world::World;
+use crate::codes;
 
 /// What a player's research adds to one unit type.
 #[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -87,27 +88,27 @@ impl World {
                 let effect = u.str(&format!("effect{k}"));
                 let v = value(&u.str(&format!("base{k}")), &u.str(&format!("mod{k}")), level);
                 match effect.as_str() {
-                    "ratd" => b.dice += v.unwrap_or(0.0) as i32,
-                    "ratx" => b.damage += v.unwrap_or(0.0),
-                    "rarm" => b.armor += v.unwrap_or(o.real("defUp") * level as f32),
-                    "rhpx" => b.hp += v.unwrap_or(0.0),
-                    "rhpo" => b.hp_pct += v.unwrap_or(0.0),
-                    "rmnx" => b.mana += v.unwrap_or(0.0),
-                    "rman" => b.mana_pct += v.unwrap_or(0.0),
-                    "rhpr" => b.hp_regen += v.unwrap_or(0.0),
-                    "rmnr" => b.mana_regen += v.unwrap_or(0.0),
-                    "rmvx" => b.move_speed += v.unwrap_or(0.0),
-                    "rmov" => b.move_pct += v.unwrap_or(0.0),
-                    "ratr" => b.range += v.unwrap_or(0.0),
-                    "rats" => b.attack_speed += v.unwrap_or(0.0),
-                    "rsig" => b.sight += v.unwrap_or(0.0),
-                    "rspi" => b.spikes += v.unwrap_or(0.0),
-                    "rasd" => b.spill_dist += v.unwrap_or(0.0),
-                    "ratc" => b.targets += v.unwrap_or(0.0) as i32,
-                    "renw" => b.weapons = v.map(|m| m as i32),
-                    "rlum" => b.lumber += v.unwrap_or(0.0) as i32,
-                    "rauv" => b.ultravision = true,
-                    "rart" => b.armor_type += v.unwrap_or(0.0) as i32,
+                    codes::upgrade::ATTACK_DICE => b.dice += v.unwrap_or(0.0) as i32,
+                    codes::upgrade::ATTACK_DAMAGE => b.damage += v.unwrap_or(0.0),
+                    codes::upgrade::ARMOR => b.armor += v.unwrap_or(o.real("defUp") * level as f32),
+                    codes::upgrade::HIT_POINTS => b.hp += v.unwrap_or(0.0),
+                    codes::upgrade::HIT_POINTS_PERCENT => b.hp_pct += v.unwrap_or(0.0),
+                    codes::upgrade::MANA => b.mana += v.unwrap_or(0.0),
+                    codes::upgrade::MANA_PERCENT => b.mana_pct += v.unwrap_or(0.0),
+                    codes::upgrade::HIT_POINT_REGENERATION => b.hp_regen += v.unwrap_or(0.0),
+                    codes::upgrade::MANA_REGENERATION => b.mana_regen += v.unwrap_or(0.0),
+                    codes::upgrade::MOVE_SPEED => b.move_speed += v.unwrap_or(0.0),
+                    codes::upgrade::MOVE_SPEED_PERCENT => b.move_pct += v.unwrap_or(0.0),
+                    codes::upgrade::ATTACK_RANGE => b.range += v.unwrap_or(0.0),
+                    codes::upgrade::ATTACK_SPEED => b.attack_speed += v.unwrap_or(0.0),
+                    codes::upgrade::SIGHT => b.sight += v.unwrap_or(0.0),
+                    codes::upgrade::SPIKES => b.spikes += v.unwrap_or(0.0),
+                    codes::upgrade::SPILL_DISTANCE => b.spill_dist += v.unwrap_or(0.0),
+                    codes::upgrade::ATTACK_TARGETS => b.targets += v.unwrap_or(0.0) as i32,
+                    codes::upgrade::WEAPONS_ENABLED => b.weapons = v.map(|m| m as i32),
+                    codes::upgrade::LUMBER_HARVESTED => b.lumber += v.unwrap_or(0.0) as i32,
+                    codes::upgrade::ULTRAVISION => b.ultravision = true,
+                    codes::upgrade::ARMOR_TYPE => b.armor_type += v.unwrap_or(0.0) as i32,
                     _ => {}
                 }
             }
@@ -157,7 +158,7 @@ impl World {
             let level = p.tech_researched.get(&up).copied().unwrap_or(0);
             let Some(u) = self.objects.upgrades.get(up).filter(|_| level > 0) else { continue };
             for k in 1..=4 {
-                if u.str(&format!("effect{k}")) == "rlev" && u.str(&format!("code{k}")).trim().eq_ignore_ascii_case(code) {
+                if u.str(&format!("effect{k}")) == codes::upgrade::ABILITY_LEVEL && u.str(&format!("code{k}")).trim().eq_ignore_ascii_case(code) {
                     n += value(&u.str(&format!("base{k}")), &u.str(&format!("mod{k}")), level).unwrap_or(1.0) as i32;
                 }
             }
@@ -177,7 +178,7 @@ impl World {
             }
             let Some(u) = self.objects.upgrades.get(up) else { continue };
             for k in 1..=4 {
-                if u.str(&format!("effect{k}")) == "rtma" && id_from_str(u.str(&format!("code{k}")).trim()) == id {
+                if u.str(&format!("effect{k}")) == codes::upgrade::MAXIMUM_TRAINED && id_from_str(u.str(&format!("code{k}")).trim()) == id {
                     sum += value(&u.str(&format!("base{k}")), &u.str(&format!("mod{k}")), level).unwrap_or(0.0) as i32;
                 }
             }
@@ -253,7 +254,7 @@ impl World {
             return;
         }
         // Chaos (Acha): once its requirements are met, the unit becomes UnitID.
-        if let Some((a, lvl)) = self.ability_with_code(h, "Acha") {
+        if let Some((a, lvl)) = self.ability_with_code(h, codes::ability::CHAOS) {
             let to = id_from_str(self.objects.abilities.get(a).map(|o| o.level_str("UnitID", lvl.max(1) as u32)).unwrap_or_default().trim());
             if !u.dead && to != u.type_id && self.objects.units.get(to).is_some() && self.ability_enabled(u.owner, a) {
                 self.change_type(h, to);

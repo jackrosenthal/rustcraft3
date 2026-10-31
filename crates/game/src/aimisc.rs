@@ -7,6 +7,7 @@ use crate::natives::players::is_ally;
 use crate::objects::{Id, id_from_str};
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 impl World {
     /// SuicidePlayer and SuicidePlayerUnits (FUN_6f9cc850, FUN_6f9d7240): unless
@@ -136,10 +137,10 @@ impl World {
     /// is idle or gathering does so to the structure.
     pub(crate) fn ai_unsummon(&mut self, p: u8, building: u32) {
         let caster = self.unit_order.iter().copied().find(|&h| {
-            self.unit(h).is_some_and(|u| u.owner == p && !u.dead && matches!(u.action, Action::Idle | Action::Harvest { .. } | Action::ReturnResources)) && self.ability_with_code(h, "Auns").is_some()
+            self.unit(h).is_some_and(|u| u.owner == p && !u.dead && matches!(u.action, Action::Idle | Action::Harvest { .. } | Action::ReturnResources)) && self.ability_with_code(h, codes::ability::UNSUMMON).is_some()
         });
         let Some(h) = caster else { return };
-        let Some((a, _)) = self.ability_with_code(h, "Auns") else { return };
+        let Some((a, _)) = self.ability_with_code(h, codes::ability::UNSUMMON) else { return };
         let order = self.objects.abilities.get(a).map(|o| o.str("Order")).unwrap_or_default();
         self.leave_mine_pub(h);
         self.order_unit(h, order_id(&order), 0.0, 0.0, building);
@@ -240,7 +241,7 @@ impl World {
         let couple = |w: &World, h: u32| -> Option<String> {
             w.unit(h)?.abilities.iter().find_map(|&(ab, _)| {
                 let o = w.objects.abilities.get(ab)?;
-                matches!(o.str("code").as_str(), "Acoa" | "Acoh" | "Aco2" | "Aco3").then(|| o.str("Order"))
+                matches!(o.str("code").as_str(), codes::ability::COUPLE_ARCHER | codes::ability::COUPLE_HIPPOGRYPH | codes::ability::COUPLE_INSTANT_ARCHER_ACO2 | codes::ability::COUPLE_INSTANT_HIPPOGRYPH).then(|| o.str("Order"))
             })
         };
         let mine = |w: &World, id: Id| -> Vec<u32> { w.unit_order.iter().copied().filter(|&h| w.unit(h).is_some_and(|u| u.owner == p && !u.dead && u.type_id == id)).collect() };

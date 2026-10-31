@@ -9,6 +9,7 @@ use super::{Args, boolean, handle, int, none, real, reg};
 use crate::fog::{FOG_FOGGED, FOG_MASKED, FOG_VISIBLE, FogModifier, FogShape};
 use crate::types::*;
 use crate::world::{NativeFn, Request, World};
+use crate::codes;
 
 fn player_mask(w: &World, a: &[Value], n: usize) -> u32 {
     w.player_of(a.h(n)).map_or(0, |p| 1 << p)
@@ -161,28 +162,28 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetMusicPlayPosition => |w, _, a| { w.requests.push(Request::MusicOffset(a.i(0))); none() },
         SetThematicMusicPlayPosition => |w, _, a| { w.requests.push(Request::MusicOffset(a.i(0))); none() },
         CreateSound => |w, _, a| {
-            let slot = w.tags.take(b"+snd");
+            let slot = w.tags.take(codes::class::SOUND);
             let s = Sound { path: a.s(0), looping: a.b(1), is_3d: a.b(2), stop_when_out_of_range: a.b(3), fade_in: a.i(4), fade_out: a.i(5), eax: a.s(6), volume: 127, pitch: 1.0, ..Default::default() };
             let h = w.handles.insert(Obj::Sound(Box::new(s)));
             w.tags.handle_slots.insert(h, slot);
             handle(h)
         },
         CreateSoundFilenameWithLabel => |w, _, a| {
-            let slot = w.tags.take(b"+snd");
+            let slot = w.tags.take(codes::class::SOUND);
             let s = Sound { path: a.s(0), looping: a.b(1), is_3d: a.b(2), stop_when_out_of_range: a.b(3), fade_in: a.i(4), fade_out: a.i(5), label: Some(a.s(6)), volume: 127, pitch: 1.0, ..Default::default() };
             let h = w.handles.insert(Obj::Sound(Box::new(s)));
             w.tags.handle_slots.insert(h, slot);
             handle(h)
         },
         CreateSoundFromLabel => |w, _, a| {
-            let slot = w.tags.take(b"+snd");
+            let slot = w.tags.take(codes::class::SOUND);
             let s = Sound { label: Some(a.s(0)), looping: a.b(1), is_3d: a.b(2), stop_when_out_of_range: a.b(3), fade_in: a.i(4), fade_out: a.i(5), volume: 127, pitch: 1.0, ..Default::default() };
             let h = w.handles.insert(Obj::Sound(Box::new(s)));
             w.tags.handle_slots.insert(h, slot);
             handle(h)
         },
         CreateMIDISound => |w, _, a| {
-            let slot = w.tags.take(b"+snd");
+            let slot = w.tags.take(codes::class::SOUND);
             let s = Sound { label: Some(a.s(0)), midi: true, fade_in: a.i(1), fade_out: a.i(2), volume: 127, pitch: 1.0, ..Default::default() };
             let h = w.handles.insert(Obj::Sound(Box::new(s)));
             w.tags.handle_slots.insert(h, slot);
@@ -363,7 +364,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetCameraEyePositionY => |w, _, _| real(camera_eye(w).1),
         GetCameraEyePositionZ => |w, _, _| real(camera_eye(w).2),
         CreateCameraSetup => |w, _, _| {
-            w.tags.take(b"+cst");
+            w.tags.take(codes::class::CAMERA_SETUP);
             handle(w.handles.insert(Obj::CameraSetup(Box::default())))
         },
         CameraSetupSetField => |w, _, a| {
@@ -422,17 +423,17 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         RemoveWeatherEffect => |w, _, a| { if matches!(w.handles.get(a.h(0)), Some(Obj::Weather(_))) { w.handles.remove(a.h(0)); } none() },
         EnableWeatherEffect => |w, _, a| { let on = a.b(1); if let Some(Obj::Weather(x)) = w.handles.get_mut(a.h(0)) { x.enabled = on; } none() },
         CreateFogModifierRect => |w, _, a| {
-            w.tags.take(b"+fgm");
+            w.tags.take(codes::class::FOG_MODIFIER);
             let (Some(p), Some(r)) = (w.player_of(a.h(0)), w.rect(a.h(2))) else { return none() };
             fog_modifier(w, p, a.i(1), FogShape::Rect(r), a.b(3), a.b(4))
         },
         CreateFogModifierRadius => |w, _, a| {
-            w.tags.take(b"+fgm");
+            w.tags.take(codes::class::FOG_MODIFIER);
             let Some(p) = w.player_of(a.h(0)) else { return none() };
             fog_modifier(w, p, a.i(1), FogShape::Circle(a.r(2), a.r(3), a.r(4)), a.b(5), a.b(6))
         },
         CreateFogModifierRadiusLoc => |w, _, a| {
-            w.tags.take(b"+fgm");
+            w.tags.take(codes::class::FOG_MODIFIER);
             let (Some(p), Some((x, y))) = (w.player_of(a.h(0)), w.location(a.h(2))) else { return none() };
             fog_modifier(w, p, a.i(1), FogShape::Circle(x, y, a.r(3)), a.b(4), a.b(5))
         },
@@ -512,7 +513,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetTextTagLifespan => |w, _, a| { let v = a.r(1); if let Some(t) = tag_mut(w, a.h(0)) { t.lifespan = v; } none() },
         SetTextTagFadepoint => |w, _, a| { let v = a.r(1); if let Some(t) = tag_mut(w, a.h(0)) { t.fadepoint = v; } none() },
         DialogCreate => |w, _, _| {
-            let id = w.tags.take_id(b"+dlg");
+            let id = w.tags.take_id(codes::class::DIALOG);
             let h = w.handles.insert(Obj::Dialog(Dialog::default()));
             log::debug!("dialog {h} id {id:x?}");
             w.tags.handle_ids.insert(h, id);
@@ -543,7 +544,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         DialogAddButton => |w, _, a| {
-            let id = w.tags.take_id(b"+dlb");
+            let id = w.tags.take_id(codes::class::DIALOG_BUTTON);
             let (dialog, text, hotkey) = (a.h(0), w.localized(&a.s(1)), a.i(2));
             let r = add_dialog_button(w, DialogButton { dialog, text, hotkey, quit: None });
             if let w3_jass::NativeResult::Return(w3_jass::Value::Handle(h)) = &r {
@@ -564,7 +565,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         CreateQuest => |w, _, _| {
-            w.tags.take(b"+que");
+            w.tags.take(codes::class::QUEST);
             let q = w.handles.insert(Obj::Quest(Quest::default()));
             w.quests.push(q);
             handle(q)
@@ -594,7 +595,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         IsQuestFailed => |w, _, a| boolean(quest_get(w, a.h(0)).is_some_and(|q| q.failed)),
         IsQuestEnabled => |w, _, a| boolean(quest_get(w, a.h(0)).is_some_and(|q| q.enabled)),
         QuestCreateItem => |w, _, a| {
-            w.tags.take(b"+qui");
+            w.tags.take(codes::class::QUEST_ITEM);
             let q = a.h(0);
             let i = w.handles.insert(Obj::QuestItem(QuestItem { quest: q, ..Default::default() }));
             if let Some(Obj::Quest(qu)) = w.handles.get_mut(q) {
@@ -614,7 +615,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         IsQuestItemCompleted => |w, _, a| boolean(matches!(w.handles.get(a.h(0)), Some(Obj::QuestItem(i)) if i.completed)),
         CreateDefeatCondition => |w, _, _| {
-            w.tags.take(b"+dfc");
+            w.tags.take(codes::class::DEFEAT_CONDITION);
             let d = w.handles.insert(Obj::DefeatCondition(String::new()));
             w.defeat_conditions.push(d);
             handle(d)
@@ -635,7 +636,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         // A trackable: its model standing at a point, which the mouse hits and tracks
         // (TriggerRegisterTrackableHitEvent, ...TrackEvent).
         CreateTrackable => |w, _, a| {
-            let id = w.tags.take_id(b"+trk");
+            let id = w.tags.take_id(codes::class::TRACKABLE);
             let (x, y) = (a.r(1), a.r(2));
             let z = w.ground_z(x, y);
             let h = w.handles.insert(Obj::Effect(crate::types::Effect { model: a.s(0), x, y, z, target: None, destroyed: false, facing: a.r(3) }));

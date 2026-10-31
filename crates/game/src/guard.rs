@@ -8,6 +8,7 @@
 
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 impl World {
     pub fn update_guards(&mut self) {
@@ -167,7 +168,7 @@ impl World {
     /// The sleep effect over a sleeping unit's head.
     fn show_asleep(&mut self, h: u32) {
         if self.unit(h).is_some_and(|u| u.extra.sleeping && u.extra.sleep_effect == 0) {
-            let art = self.objects.abilities.get(*b"ACsp").map(|o| (o.list("Casterart").first().cloned().unwrap_or_default(), o.list("Casterattach").first().cloned().unwrap_or_default()));
+            let art = self.objects.abilities.get(*codes::ability::id::CREEP_SLEEP).map(|o| (o.list("Casterart").first().cloned().unwrap_or_default(), o.list("Casterattach").first().cloned().unwrap_or_default()));
             if let Some((model, attach)) = art.filter(|a| !a.0.is_empty()) {
                 let e = self.handles.insert_unseen(Obj::Effect(Effect { model, x: 0.0, y: 0.0, z: 0.0, target: Some((h, attach)), destroyed: false, facing: 0.0 }));
                 if let Some(u) = self.unit_mut(h) {
@@ -215,7 +216,7 @@ impl World {
             false
         } else {
             let attacker_free = !a.paused && !self.buff_mods(attacker).4;
-            let ensnared = a.buffs.iter().any(|b| b.id == *b"Bens");
+            let ensnared = a.buffs.iter().any(|b| b.id == *codes::buff::id::ENSNARE_BENS);
             let targeting = matches!(u.action, Action::Attack { target } if target == attacker);
             let band = |n: f32| life >= n && life <= n + 10.0;
             let bands: &[f32] = if theirs_r >= 200.0 && mine_r <= 200.0 { &[200.0, 100.0] } else { &[600.0, 500.0, 400.0, 300.0, 200.0, 100.0] };
@@ -315,7 +316,7 @@ impl World {
             match what {
                 Some((e, remake, trigger)) => {
                     if remake {
-                        let s = self.tags.take(b"`rtl");
+                        let s = self.tags.take(codes::class::THRESHOLD_LISTENER);
                         self.tags.listener_made.insert(e, self.tags.born as u64);
                         if let Some(old) = self.tags.event_timers.insert(e, s) {
                             self.tags.issued.push(old);
@@ -328,7 +329,7 @@ impl World {
                     }
                 }
                 None => {
-                    let s = self.tags.take(b"`rtl");
+                    let s = self.tags.take(codes::class::THRESHOLD_LISTENER);
                     self.tags.day_listener_made = self.tags.born as u64;
                     if let Some(old) = self.tags.day_timer.replace(s) {
                         self.tags.issued.push(old);
@@ -370,7 +371,7 @@ impl World {
             for (_, e, equal) in passed {
                 let runs = if equal {
                     self.tags.prop_count += 1;
-                    let s = self.tags.take(b"`rtl");
+                    let s = self.tags.take(codes::class::THRESHOLD_LISTENER);
                     self.tags.listener_made.insert(e, self.tags.born as u64);
                     if let Some(old) = self.tags.event_timers.insert(e, s) {
                         self.tags.doom(old);
@@ -402,9 +403,9 @@ impl World {
         // measured, the first here).
         // (A count of the property module's first, `FUN_6f2891b0`.)
         self.tags.bump_prop(1, "dayc");
-        let first = self.tags.take(b"`rtl");
+        let first = self.tags.take(codes::class::THRESHOLD_LISTENER);
         self.tags.day_listener_made = self.tags.born as u64;
-        let second = day.then(|| self.tags.take(b"`rtl"));
+        let second = day.then(|| self.tags.take(codes::class::THRESHOLD_LISTENER));
         // Both of the last change's go as it ends, before the step's walk ends (read:
         // the first dawn's two at nightfall; the night's at dawn, before a walk end's
         // tree in that step).
@@ -416,7 +417,7 @@ impl World {
         // made).
         let now = self.time_of_day_clock;
         for h in units {
-            let s = self.tags.take(b"`rcm");
+            let s = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
             self.tags.doom_at(now + 3.0, s);
             let birth = self.tags.live.get(&s).map_or(0, |e| e.1);
             if let Some(u) = self.unit_mut(h) {
@@ -462,13 +463,13 @@ impl World {
             // its timer and a listener made as the day's object of it, freed together
             // as the fade ends (`FUN_6f508ae0`, `FUN_6f509170`, `FUN_6f694b20`; read:
             // Forestwalk's Satyr Shadowdancers at the first dawn, freed 2.5 seconds on).
-            if let Some((a, lvl)) = self.ability_with_code(h, "Ashm") {
+            if let Some((a, lvl)) = self.ability_with_code(h, codes::ability::SHADOW_MELD) {
                 let idle = matches!(u.action, Action::Idle | Action::Hold) && u.swing.is_none() && u.casting.is_none();
                 let melded = u.buffs.iter().any(|b| b.ability == a) || (u.extra.meld_active_since.is_none() && !u.extra.meld_acting && idle);
                 if melded {
                     let fade = self.data(a, "DataB", lvl) as f64;
                     let mut slots = Vec::new();
-                    for c in [b"`rcm", b"`rtl"] {
+                    for c in [codes::class::CONTINUOUS_MODIFIER, codes::class::THRESHOLD_LISTENER] {
                         let s = self.tags.take(c);
                         self.tags.doom_at(now + fade, s);
                         slots.push(s);
@@ -504,7 +505,7 @@ impl World {
                 if autocasting && code.as_bytes() == auto {
                     continue;
                 }
-                if matches!(code.as_str(), "Arep" | "Aren" | "Arst" | "Ahea" | "Anhe" | "Ainf" | "Aadm" | "Arpb" | "Arpl" | "Arpm") {
+                if matches!(code.as_str(), codes::ability::REPAIR_ORC | codes::ability::RENEW | codes::ability::RESTORATION | codes::ability::HEAL | codes::ability::HEAL_CREEP_NORMAL | codes::ability::INNER_FIRE | codes::ability::ABOLISH_MAGIC | codes::ability::REPLENISH_LIFE_AND_MANA | codes::ability::REPLENISH_LIFE | codes::ability::REPLENISH_MANA) {
                     let n = self.tags.start_timer("422820");
                     let c = crate::objects::id_from_str(&code);
                     self.tags.autotarget_due.push(self.time + 0.015);
@@ -540,19 +541,19 @@ impl World {
             let mut pil = None;
             for a in spells {
                 let Some(code) = self.objects.abilities.get(a).map(|o| crate::objects::id_from_str(o.str("code").trim())) else { continue };
-                if table.objects(&a, &code).contains(b"`rtl") {
-                    let s = self.tags.take(b"`rtl");
+                if table.objects(&a, &code).contains(codes::class::THRESHOLD_LISTENER) {
+                    let s = self.tags.take(codes::class::THRESHOLD_LISTENER);
                     // (Then a count of the property module's as it settles,
                     // `FUN_6f161800`; traced: each woken creep's listeners, but Ensnare's,
                     // its in-range object made instead.)
-                    if code != *b"Aens" {
+                    if code != *codes::ability::id::ENSNARE {
                         self.tags.bump_prop(1, "wake");
                     }
                     slots.push(s);
                     owners.push(code);
                     costs.push(self.objects.abilities.get(a).map_or(0.0, |o| o.level_real("Cost", 1)) + 0.1);
-                    if code == *b"Aens" {
-                        pil = Some((s, self.tags.take(b"`pil")));
+                    if code == *codes::ability::id::ENSNARE {
+                        pil = Some((s, self.tags.take(codes::class::IN_RANGE_LISTENER)));
                     }
                 }
             }
@@ -576,7 +577,7 @@ impl World {
             // as it fell asleep (`FUN_6f40bb00`, `FUN_6f3f8640`; read: Forestwalk's Green
             // Dragon Whelps at the first dawn).
             if self.unit(h).is_some_and(|u| u.extra.flyer_sleeping) {
-                let s = self.tags.take(b"`pil");
+                let s = self.tags.take(codes::class::IN_RANGE_LISTENER);
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.flyer_pil = Some(s);
                     u.extra.flyer_sleeping = false;

@@ -13,6 +13,7 @@ use w3_render::terrain::TerrainRenderer;
 use w3_render::texture::TextureCache;
 
 use crate::data::{DataSet, GameData, PRIORITY_MAP};
+use w3_game::codes;
 
 pub struct Assets {
     pub textures: TextureCache,
@@ -112,7 +113,7 @@ fn card_of(commands: &crate::card::Commands, db: &w3_ui::FrameDb, w: &w3_game::W
             card.extend(commands.shop_card(db, w, h));
         }
         card
-    } else if w.ability_with_code(h, "Aneu").or_else(|| w.ability_with_code(h, "Ane2")).is_some() {
+    } else if w.ability_with_code(h, codes::ability::NEUTRAL_BUILDING).or_else(|| w.ability_with_code(h, codes::ability::NEUTRAL_BUILDING_ANY_UNIT)).is_some() {
         commands.shop_card(db, w, h)
     } else {
         Vec::new()
@@ -2145,7 +2146,7 @@ impl Scene {
             if unit_level != 0 {
                 out.push((level(unit_level), white));
             }
-        } else if w.ability_with_code(h, "Agld").is_some() {
+        } else if w.ability_with_code(h, codes::ability::GOLD_MINE).is_some() {
             out.push((type_name, white));
             out.push((format!("{}  {}", w.localized("COLON_GOLD"), u.resource), white));
         } else if u.owner == 15 && u.is_building {
@@ -3928,7 +3929,7 @@ impl Scene {
                 // as dots, and the neutral's other units not at all (measured: the
                 // original draws Twisted Meadows' mines as its yellow resource icons alone,
                 // and none of its sheep and pigs).
-                .filter(|u| !(w.ability_with_code(u.handle, "Agld").is_some() || u.owner as usize == w3_game::types::PLAYER_NEUTRAL_PASSIVE as usize))
+                .filter(|u| !(w.ability_with_code(u.handle, codes::ability::GOLD_MINE).is_some() || u.owner as usize == w3_game::types::PLAYER_NEUTRAL_PASSIVE as usize))
                 .map(|u| {
                     // Ally color modes use [FogOfWar] FogColorPlayer, FogColorAlly,
                     // FogColorEnemy, and FogColorCreepNormal; the local player's own
@@ -4082,7 +4083,7 @@ impl Scene {
             // Shadowmelded, it shows half see-through (measured: a night elf archer
             // melded at night lets 0.47 to 0.48 of the ground through in the original,
             // its stand pose varying; one made invisible by Apiv shows whole).
-            if u.buffs.iter().any(|b| b.invisible && w.ability_code(b.ability) == "Ashm") {
+            if u.buffs.iter().any(|b| b.invisible && w.ability_code(b.ability) == codes::ability::SHADOW_MELD) {
                 view.inst.tint.w *= 0.5;
             }
             // Within an area spell's target light, units take its color (Tip35).
@@ -4682,7 +4683,7 @@ impl Scene {
             if w3_game::natives::players::controls(&g.world, g.world.local_player, u) && g.world.unit(u).is_some_and(|un| un.inventory.get(slot).is_some_and(|&i| i != 0)) {
                 // A spell book opens its page (its base order, spellbook).
                 let item = g.world.unit(u).map_or(0, |un| un.inventory[slot]);
-                let book = g.world.item(item).map(|i| g.world.item_abilities(i.type_id)).unwrap_or_default().into_iter().find(|&a| g.world.ability_code(a) == "Aspb");
+                let book = g.world.item(item).map(|i| g.world.item_abilities(i.type_id)).unwrap_or_default().into_iter().find(|&a| g.world.ability_code(a) == codes::ability::SPELL_BOOK);
                 if let Some(book) = book {
                     if let Some(h) = self.hud.as_mut() {
                         h.page = crate::card::Page::Book(book);

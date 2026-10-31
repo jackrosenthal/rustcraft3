@@ -6,6 +6,7 @@ use w3_jass::Vm;
 use crate::objects::{Id, id_from_str};
 use crate::types::*;
 use crate::world::World;
+use crate::codes;
 
 impl World {
     /// Mount Hippogryph: an archer and a hippogryph that meet become a rider (UnitID).
@@ -108,7 +109,7 @@ impl World {
     /// Elune's Grace (AIdd): the damage a unit takes, piercing scaled by DataA and
     /// spells by DataE.
     pub fn elunes_grace(&self, target: u32, attack_type: &str, dmg: f32) -> f32 {
-        let Some((a, lvl)) = self.ability_with_code(target, "AIdd") else { return dmg };
+        let Some((a, lvl)) = self.ability_with_code(target, codes::ability::DEFEND_ITEM) else { return dmg };
         let owner = self.unit(target).map_or(0, |u| u.owner);
         if !self.ability_enabled(owner, a) {
             return dmg;
@@ -132,7 +133,7 @@ impl World {
             .copied()
             .filter_map(|f| {
                 let u = self.unit(f)?;
-                let b = u.buffs.iter().find(|b| self.ability_code(b.ability) == "Amfl" && b.caster == f)?;
+                let b = u.buffs.iter().find(|b| self.ability_code(b.ability) == codes::ability::MANA_FLARE && b.caster == f)?;
                 (!u.dead && !crate::natives::players::is_ally(self, u.owner, owner) && (u.x - x).hypot(u.y - y) <= self.data(b.ability, "Area", b.level)).then_some((f, b.ability, b.level))
             })
             .collect();
@@ -150,7 +151,7 @@ impl World {
     /// Phase Shift: while its autocast is on and mana lasts, a unit about to be hit
     /// shifts out for Dur instead, every Cool.  True when it did.
     pub(crate) fn phase_shift(&mut self, target: u32) -> bool {
-        let Some((a, lvl)) = self.ability_with_code(target, "Apsh") else { return false };
+        let Some((a, lvl)) = self.ability_with_code(target, codes::ability::PHASE_SHIFT) else { return false };
         let lvl = lvl.max(1) as u32;
         let Some(u) = self.unit(target) else { return false };
         let cost = self.data(a, "Cost", lvl);

@@ -1126,11 +1126,14 @@ impl crate::world::World {
     pub(crate) fn aura_serves(&self, code: &Code, type_id: Code) -> bool {
         let Some(o) = self.objects.units.get(type_id) else { return false };
         let weapons = o.int("weapsOn");
-        let ranged = !matches!(o.str("weapTp1").trim(), "normal" | "instant" | "_" | "");
+        let ranged_weapon = |k: &str| !matches!(o.str(k).trim(), "normal" | "instant" | "_" | "");
+        let ranged = ranged_weapon("weapTp1");
         match code {
-            // (Trueshot reaches a melee unit too: read, Harrow's troll warlords' buff on
-            // the granite golem of their camps.)
-            codes::ability::id::PRIESTESS_TRUESHOT_AURA => weapons != 0,
+            // Trueshot reaches a unit with a ranged weapon on, its first or its second
+            // (read: Harrow's troll warlords' buff on the granite golems of their camps,
+            // their second weapon a missile; Twisted Meadows' on the trolls of their
+            // camps and not the ogres).
+            codes::ability::id::PRIESTESS_TRUESHOT_AURA => weapons & 1 != 0 && ranged || weapons & 2 != 0 && ranged_weapon("weapTp2"),
             codes::ability::id::DREADLORD_VAMPIRIC_AURA => weapons != 0 && !ranged,
             codes::ability::id::AURA_WAR_DRUMS | codes::ability::id::COMMAND_AURA => weapons != 0,
             codes::ability::id::ARCH_MAGE_BRILLIANCE_AURA => o.real("manaN") > 0.0,

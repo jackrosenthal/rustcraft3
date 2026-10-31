@@ -2320,7 +2320,12 @@ Formats the port made its own, to be replaced by the original's:
   begins its meld with the night, its fade's timer and listener freed as the fade ends
   (the port's now over DataB, as the day's fade is; provisional, though the keepalives
   agree through the frees), hiding then.  With it Echo Isles agrees for all 2653 turns
-  captured.
+  captured.  Twisted Meadows (four players, two slots closed) parted at turn 7: at the
+  auras' first scan the original gave Trueshot's buff to two of each four units about
+  the troll warlords, the trolls and not the ogres.  Trueshot reaches a unit with a
+  ranged weapon on, its first or its second: Harrow's granite golems, melee first,
+  throw missiles with their second (its data's Melee Bonus 0 and Ranged Bonus 1, DataB
+  and DataC, say as much).  With it Twisted Meadows agrees to turn 1784.
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

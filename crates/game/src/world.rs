@@ -218,6 +218,11 @@ pub struct World {
     /// orders' objects) rather than as the next turn starts.
     #[serde(skip)]
     pub exec_at_tick_end: bool,
+    /// While a structure is begun at a movement step: that step's main and agent clocks
+    /// (seconds since the game began), the moment its making counts from
+    /// (`World::build_step_arrive`).
+    #[serde(skip)]
+    pub making_clock: Option<(f64, f64)>,
     /// The main clock in seconds since the game began (across its settings back) when
     /// the time of day last moved on.
     #[serde(default)]
@@ -827,6 +832,7 @@ impl World {
             time_of_day: 0.0,
             daytime: false,
             exec_at_tick_end: false,
+            making_clock: None,
             time_of_day_clock: 0.0,
             time_of_day_exact: 0.0,
             time_of_day_scale: 1.0,
@@ -1795,6 +1801,7 @@ impl World {
             self.blight_checks_to(now);
             self.ai_threads_to(now as f32);
             self.alarms_to(now);
+            self.build_ends_to(now);
             self.captain_checks_to(now);
         }
     }

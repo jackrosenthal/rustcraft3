@@ -1062,7 +1062,7 @@ impl crate::world::World {
         }
         // Its look at the ground falls due on the main clock, from the tick's first
         // reading (none before the game runs).
-        let base = if self.tick_clocks.1.is_empty() { 0.0 } else { self.tick_abs(0).unwrap_or(0.0) as f32 };
+        let base = if self.tick_clocks.1.is_empty() { 0.0 } else { self.making_clock.map(|c| c.0).or_else(|| self.tick_abs(0)).unwrap_or(0.0) as f32 };
         if let Some(u) = self.unit_mut(h) {
             u.extra.oid = oid;
             u.extra.spell_timers = spell_timers.iter().map(|&k| slots[k]).collect();

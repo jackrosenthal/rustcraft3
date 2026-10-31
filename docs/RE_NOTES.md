@@ -2293,7 +2293,34 @@ Formats the port made its own, to be replaced by the original's:
   (`Tags::next_turn_end`, as the captain's query's).  The four undead's blight looks
   (due at 2.0) run at the first step of turn 21: the main clock is 1.98 at turn 20's
   last step and 2.01 at turn 21's first, so the looks now fall due on the main clock
-  and run at steps (`World::blight_checks_to`).  The keepalives agree to turn 22.  In
+  and run at steps (`World::blight_checks_to`).  The keepalives agree to turn 22.
+  Then (traced by keepalive, `abtest/tf22k.sh`; the turns' births and frees): nothing
+  in turns 22 to 25; the satyrs' fades' objects in 26 (as the port, their threshold
+  listener's node due 2.5000002 on the main queue, read in memory); in 30 the crypt's
+  alarm `` `pil ``, then the acolyte's order ending (the unit's event 0xd019d,
+  `FUN_6f691260`, `FUN_6f67df00`) with a task from its AI, then its build order's
+  objects at the turn's end (its `tsk.`, three tasks from the last, a block, its
+  `ord.`, the new task, its last order); the day's objects in 31.  The order ends a
+  second after the build begins: `FUN_6f54d0f0` sets the unit's animation timer
+  (`FUN_6f69c620`, event 0xd019d) for 1.0, the build begun as the acolyte's walk
+  arrives in a movement step (its caller the step engine's arrival).  Read in a
+  single-player save at 1.9 seconds (`abtest/fw19.w3x`): the acolyte at cells
+  (339.3957, 501.3349), the port's place after turn 19's last step to the bit; its
+  build order's `ord.` holds the site, (512, 5760), the crypt's middle.  With the
+  alarm's wait (0.9489) and the order's second both in turn 30, alarm first, the
+  build began at turn 20's second step (1.95), the acolyte 103.56 from the middle
+  then: the port's AI builders walk by the steps (`World::build_step_arrive`), in
+  range by their place a step on (provisional: half the collision would fit too),
+  and what is made then counts from that step's clocks (`World::making_clock`: the
+  alarm's and blight look's due; the order's end, `World::build_ends_to`).  A
+  structure's alarm due after a tick's last step waits for the next tick's steps (the
+  pass at the tick's end reads the tick's last main tick, not the next one's first).
+  The AI's build loop's second pass (StaggerSleep, 2.5 seconds) orders nothing in the
+  original: its builder choice (`FUN_6f9cb230`) takes only a worker whose AI state
+  (+0x194) is 0, 5, 6, or 3 but for a peasant, none of the acolytes then (one
+  summoning, two mining; the crypt's acolyte had been walking to the mine); the
+  port's skips a worker whose order has yet to end or that is at its mine
+  (provisional: the states' meanings).  The keepalives agree to turn 31.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

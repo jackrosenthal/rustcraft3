@@ -670,6 +670,14 @@ impl World {
                 .rev()
                 .filter(|&h| self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|wo| wo.list("Builds").iter().any(|b| b.trim() == id_s)))
                 .filter(|&h| self.unit(h).is_some_and(|u| !matches!(u.action, Action::Build { .. } | Action::Construct { .. })))
+                // Only a worker in some of its AI states builds (`FUN_6f9cb230`, its AI
+                // unit's +0x194: 0, 5, 6, or 3 but for a peasant): not one whose build
+                // order has yet to end, nor one at its mine (read: Forestwalk's undead
+                // computer orders nothing at its build loop's second pass, 2.5 seconds,
+                // its crypt's acolyte summoning and the others mining; its crypt begun
+                // by an acolyte still walking to the mine; provisional: the states'
+                // meanings).
+                .filter(|&h| self.unit(h).is_some_and(|u| u.extra.build_end.is_none() && !(matches!(u.action, Action::Harvest { target } if self.is_gold_mine(target)) && !u.ai_harvest_walk()) && !(matches!(u.action, Action::Harvest { .. }) && crate::objects::id_str(u.type_id) == "hpea")))
                 .collect();
             let Some(&b) = builders.first() else { return false };
             let Some((x, y)) = self.ai_build_site(p, id, town, b) else { return false };
@@ -734,7 +742,8 @@ impl World {
         // computer's first harvest order its newest acolyte's, which its build loop then
         // takes to build.)
         let workers: Vec<u32> = self.workers(p).into_iter().rev().filter(|h| !held.contains(h)).collect();
-        let busy = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Build { .. } | Action::Construct { .. } | Action::Attack { .. } | Action::Move { .. }));
+        // (A worker summoning a structure keeps its order until the summoning ends.)
+        let busy = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Build { .. } | Action::Construct { .. } | Action::Attack { .. } | Action::Move { .. }) || u.extra.build_end.is_some());
         let on_gold = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_gold > 0));
         let on_wood = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if !w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_lumber > 0));
         // Each request in priority order takes workers that can do its work and are free,
@@ -871,7 +880,8 @@ impl World {
         let old = self.unit(h).map(|u| u.extra.ai_order.clone()).unwrap_or_default();
         let order: Vec<u32> = AI_BUILD.iter().map(|c| self.tags.take(c)).collect();
         self.tags.release(order[16]);
-        self.tags.take(codes::class::ORDER);
+        // (The last order made takes the cluster goal's place in the order kept.)
+        let last = self.tags.take(codes::class::ORDER);
         let mut frees = vec![order[1], order[0], order[3]];
         if old.len() == AI_HARVEST.len() {
             frees.extend([10, 9, 8, 7, 6, 5, 4, 3].map(|k| old[k]));
@@ -883,6 +893,29 @@ impl World {
         self.tags.issued.extend(frees);
         if let Some(u) = self.unit_mut(h) {
             u.extra.ai_order = order;
+            u.extra.ai_order[16] = last;
+            u.extra.build_legacy = false;
+        }
+    }
+
+    /// The summoning workers whose orders end by `now` on the main clock (the unit's
+    /// event 0xd019d): an AI's build order then makes a task and lets go its objects,
+    /// at the turn's end in the order traced: its `tsk.`, three tasks from the last, a
+    /// block, its `ord.`, the new task, and its last order (traced: Forestwalk's undead
+    /// computer's crypt, the acolyte's order ending in turn 30).
+    pub(crate) fn build_ends_to(&mut self, now: f64) {
+        let hs: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).and_then(|u| u.extra.build_end).is_some_and(|t| t as f64 <= now)).collect();
+        for h in hs {
+            let Some(u) = self.unit_mut(h) else { continue };
+            u.extra.build_end = None;
+            let order = std::mem::take(&mut u.extra.ai_order);
+            if order.len() != AI_BUILD.len() {
+                continue;
+            }
+            let task = self.tags.take(codes::class::TASK);
+            for s in [order[8], order[7], order[6], order[5], order[4], order[2], task, order[16]] {
+                self.tags.doom(s);
+            }
         }
     }
 

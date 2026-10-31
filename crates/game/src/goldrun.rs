@@ -814,6 +814,7 @@ impl World {
         }
         match self.unit(h)?.action {
             Action::Move { x, y } => Some((x, y)),
+            Action::Build { x, y, .. } if self.unit(h)?.ai_build_walk() => Some((x, y)),
             Action::Harvest { target } => self.gold_run_goal(h).or_else(|| self.unit(h).filter(|u| u.ai_harvest_walk()).and_then(|_| self.widget_pos(target))),
             _ => None,
         }

@@ -1251,7 +1251,7 @@ impl World {
             self.tags.free_step_paths(now);
             carried = later;
             // A walk to a structure ends in the walkers' order (`World::gold_run_step_end`).
-            if self.gold_run_step_end(h, 0) || self.acolyte_step_arrive(h) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
+            if self.gold_run_step_end(h, 0) || self.acolyte_step_arrive(h) || self.build_step_arrive(vm, h, 0) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
                 continue;
             }
             // One given before this step (this tick's) walks from the next, one given
@@ -1265,7 +1265,11 @@ impl World {
             let stopped = self.walk_steps(h);
             // (An AI's acolyte in range after its move ends its walk in this step; one
             // stopped short keeps to its harvest, going on by itself.)
-            if self.acolyte_step_arrive(h) {
+            if self.acolyte_step_arrive(h) || self.build_step_arrive(vm, h, 0) {
+            } else if stopped && self.unit(h).is_some_and(|u| u.ai_build_walk()) {
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.build_legacy = true;
+                }
             } else if stopped && self.unit(h).is_some_and(|u| u.ai_harvest_walk()) {
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.ai_order.push(u32::MAX);
@@ -1338,7 +1342,7 @@ impl World {
                 let (now, later): (Vec<_>, Vec<_>) = std::mem::take(&mut carried).into_iter().partition(|&(_, s)| s > serial);
                 self.tags.free_step_paths(now);
                 carried = later;
-                if self.gold_run_step_end(h, k) || self.acolyte_step_arrive(h) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
+                if self.gold_run_step_end(h, k) || self.acolyte_step_arrive(h) || self.build_step_arrive(vm, h, k) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
                     continue;
                 }
                 let Some(u) = self.unit(h) else { continue };
@@ -1348,7 +1352,11 @@ impl World {
                 let stopped = self.walk_steps(h);
                 // (An AI's acolyte in range after its move ends its walk in this step; one
                 // stopped short keeps to its harvest, going on by itself.)
-                if self.acolyte_step_arrive(h) {
+                if self.acolyte_step_arrive(h) || self.build_step_arrive(vm, h, k) {
+                } else if stopped && self.unit(h).is_some_and(|u| u.ai_build_walk()) {
+                    if let Some(u) = self.unit_mut(h) {
+                        u.extra.build_legacy = true;
+                    }
                 } else if stopped && self.unit(h).is_some_and(|u| u.ai_harvest_walk()) {
                     if let Some(u) = self.unit_mut(h) {
                         u.extra.ai_order.push(u32::MAX);
@@ -3279,7 +3287,40 @@ impl World {
         (snap(x, w), snap(y, h))
     }
 
+    /// An AI's builder walking by the movement steps reaching its site in step `k`:
+    /// within StructureFollowRange it begins the structure there, the step's clocks the
+    /// moment its making counts from (read: Forestwalk's undead computer's acolyte
+    /// beginning its crypt as its walk arrives in turn 20's second step, 1.95, its
+    /// order ending a second on and the crypt's alarm watching from then, both in turn
+    /// 30).
+    pub(crate) fn build_step_arrive(&mut self, vm: &mut Vm, h: u32, k: usize) -> bool {
+        let Some(u) = self.unit(h).filter(|u| u.ai_build_walk()) else { return false };
+        let Action::Build { id, x, y } = u.action else { return false };
+        // In range by its place a step on (read: the acolyte 103.56 from the site's
+        // middle after turn 20's second step, its order then ending a second on, not
+        // after the third, 96.96; its place at 1.9 the original's to the bit, read in a
+        // single-player save; provisional: the rule, which half its collision would
+        // fit as well).
+        let reach = self.current_move_speed(h) * f32::from_bits(crate::motion::STEP);
+        if (u.x - x).hypot(u.y - y) - reach > self.misc_f32("StructureFollowRange", 100.0) {
+            return false;
+        }
+        self.making_clock = self.step_abs(k);
+        if let Some(u) = self.unit_mut(h) {
+            u.path.clear();
+            u.extra.mover = None;
+            u.extra.build_legacy = true;
+        }
+        self.build(vm, h, id, x, y, 0.0);
+        self.making_clock = None;
+        true
+    }
+
     fn build(&mut self, vm: &mut Vm, h: u32, id: Id, x: f32, y: f32, dt: f32) {
+        // An AI's builder walks by the steps (`World::build_step_arrive`).
+        if self.unit(h).is_some_and(|u| u.ai_build_walk()) {
+            return;
+        }
         let u = self.unit(h).unwrap();
         let (d, need_path, owner) = ((u.x - x).hypot(u.y - y), u.path.is_empty() || u.repath_timer <= 0.0, u.owner);
         // Structures whose requirements are not met, or over their limit, are not
@@ -3291,7 +3332,8 @@ impl World {
         // The worker starts once within StructureFollowRange of the site, whatever the
         // structure's size (measured: farms, a blacksmith, a lumber mill, and barracks
         // all begun with their peasant 94 to 99 from the center).
-        if d > self.misc_f32("StructureFollowRange", 100.0) {
+        // (One arrived by the steps is in range: `World::build_step_arrive`.)
+        if d > self.misc_f32("StructureFollowRange", 100.0) && self.making_clock.is_none() {
             if need_path {
                 self.path_to(h, (x, y));
             }
@@ -3389,6 +3431,15 @@ impl World {
         if summons {
             u.action = Action::Idle;
             set_anim(u, "stand");
+            // Its order ends a second on, on the agent queue from the step it arrived in
+            // (`FUN_6f54d0f0` setting the unit's animation timer, event 0xd019d, for 1.0;
+            // read: Forestwalk's undead computer's acolyte, the crypt begun as its walk
+            // arrived in turn 20's last step, its order ending in turn 30).
+            let k = self.step_agent.len().saturating_sub(1);
+            let at = self.making_clock.or_else(|| self.step_abs(k)).map_or(self.time as f64, |(_, a)| a);
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.build_end = Some((at + 1.0) as f32);
+            }
         } else {
             u.building = b;
             u.action = Action::Construct { target: b };

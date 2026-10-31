@@ -468,8 +468,11 @@ impl World {
     /// condition, the unit's flags 4 and not 0x100 at +0x5c, read as its owner a
     /// computer).
     pub fn alarms(&mut self, _dt: f32) {
+        // By the tick's own last main tick, not the next turn's first (read: Forestwalk's
+        // undead computer's crypt's alarm, due 2.8989 by its making at 1.95, watching in
+        // turn 30, not as turn 29 ends).
         let n = self.tick_clocks.1.len();
-        let now = n.checked_sub(1).and_then(|i| self.tick_abs(i)).unwrap_or(self.time as f64);
+        let now = n.checked_sub(2).and_then(|i| self.tick_abs(i)).unwrap_or(self.time as f64);
         self.alarms_to(now);
     }
 

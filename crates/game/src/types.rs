@@ -275,7 +275,12 @@ impl Unit {
     /// Whether its walks are the engine's (a wanderer's, a player's move's, or a gold
     /// run's), whose ways are searched near at hand (`World::local_path`).
     pub fn engine_walker(&self) -> bool {
-        self.extra.local_paths || self.extra.player_walk || self.extra.gold_run.is_some() || self.ai_harvest_walk() || self.extra.captain_walk.is_some()
+        self.extra.local_paths || self.extra.player_walk || self.extra.gold_run.is_some() || self.ai_harvest_walk() || self.ai_build_walk() || self.extra.captain_walk.is_some()
+    }
+
+    /// Whether it walks to its site under its AI's build order (`World::build_step_arrive`).
+    pub fn ai_build_walk(&self) -> bool {
+        matches!(self.action, Action::Build { .. }) && self.extra.ai_order.len() == crate::ai::AI_BUILD.len() && !self.extra.build_legacy
     }
 
     /// Whether it walks to its mine under its AI's harvest order, not yet in range
@@ -293,6 +298,7 @@ impl Unit {
             && (((self.extra.local_paths || self.extra.player_walk) && matches!(self.action, Action::Move { .. }))
                 || (matches!(self.action, Action::Harvest { .. }) && self.extra.gold_run.as_ref().is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::ToMine | crate::goldrun::Phase::ToHall(_) | crate::goldrun::Phase::Reaching { .. })))
                 || self.ai_harvest_walk()
+                || self.ai_build_walk()
                 || self.extra.captain_walk.is_some())
     }
 }
@@ -652,6 +658,15 @@ pub struct UnitExtra {
     /// (`FUN_6f54d0f0`, `FUN_6f41b380`).
     #[serde(default)]
     pub build_objects: Vec<u32>,
+    /// A worker that has begun summoning a structure: when its order ends, due on the
+    /// main clock (seconds since the game began; the unit's event 0xd019d,
+    /// `FUN_6f69c620`), its AI's build order then let go (`World::build_ends_to`).
+    #[serde(default)]
+    pub build_end: Option<f32>,
+    /// An AI's builder whose step walk stopped short of its site, going on as a
+    /// player's builder does (`World::build`).
+    #[serde(default)]
+    pub build_legacy: bool,
     /// A structure's alarm's wait before it watches for enemies (`World::alarms`).
     #[serde(default)]
     pub alarm_wait: Option<f32>,
@@ -955,6 +970,8 @@ impl Default for UnitExtra {
             blight_check: None,
             blight_rcm: None,
             build_objects: Vec::new(),
+            build_end: None,
+            build_legacy: false,
             alarm_wait: None,
             order_tags: Vec::new(),
             gold_run: None,

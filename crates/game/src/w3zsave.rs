@@ -1044,6 +1044,19 @@ impl World {
         for (slot, f) in self.plain_agent_records() {
             records.entry(slot).or_insert(f);
         }
+        // The pathing system's objects (their counters the template's).
+        let counters = |code: &[u8; 4]| objects[0].iter().find(|o| &o.entry.kind.to_be_bytes() == code).and_then(|o| o.first().ok());
+        let accel_word = match counters(b"l^ac") {
+            Some(First::Accelerator { word, .. }) => word,
+            _ => 48,
+        };
+        let system_short = match counters(b"l^sy") {
+            Some(First::System { short, .. }) => short,
+            _ => 0,
+        };
+        for (slot, f) in self.pathing_system_records(accel_word, system_short) {
+            records.entry(slot).or_insert(f);
+        }
         // W3Z_COVERAGE: by kind, the objects whose first and second records are the
         // template's still.
         let mut kept: std::collections::BTreeMap<String, (u32, u32, u32)> = Default::default();
@@ -1054,6 +1067,13 @@ impl World {
                 o.first = r.to_bytes();
             } else {
                 e.1 += 1;
+                if std::env::var("W3Z_COVERAGE").is_ok_and(|v| v == "list") {
+                    let owner = match o.first() {
+                        Ok(First::Real { base, .. } | First::Flag { base, .. } | First::Pos { base, .. }) => format!("{:?}", base.object.links[0].3),
+                        _ => String::new(),
+                    };
+                    eprintln!("  kept first {} {} {owner}", o.entry.tag, String::from_utf8_lossy(&o.entry.kind.to_be_bytes()));
+                }
             }
             if let Some(Ok(b)) = seconds.get(&o.entry.tag).map(|sec| sec.to_bytes(o.entry.kind)) {
                 o.second = b;
@@ -1079,6 +1099,29 @@ impl World {
             }
         }
         s
+    }
+
+    /// The pathing system's objects' first records: the two pathing maps' and the four
+    /// accelerator grids' (`^pma`, `^ama`: none), the long-range system's (`l^sy`: the
+    /// pathing map, and a short counting its work), and the accelerator's (`l^ac`: its
+    /// grids, an empty queue of 256, and a word counting its work).  Provisional: the
+    /// two counters (48 and 0 on the quiet test map, more as units path).
+    pub fn pathing_system_records(&self, accel_word: u32, system_short: u16) -> Vec<(u32, First)> {
+        let of = |code: &[u8; 4]| {
+            let mut v: Vec<(u32, u32)> = self.tags.live.iter().filter(|(_, (c, _))| c == code).map(|(&s, (_, b))| (s, *b)).collect();
+            v.sort();
+            v
+        };
+        let (pma, ama) = (of(b"^pma"), of(b"^ama"));
+        let mut out: Vec<(u32, First)> = pma.iter().chain(&ama).map(|&(s, _)| (s, First::Empty)).collect();
+        if let (Some(&sy), Some(&map)) = (of(b"l^sy").first(), pma.get(1)) {
+            out.push((sy.0, First::System { owner: rf(map), short: system_short }));
+        }
+        if let (Some(&ac), true) = (of(b"l^ac").first(), ama.len() == 4) {
+            let array = w3_formats::w3z::Array { words: [3072, 3072, 0, 256], entries: vec![[0u32; 3]; 256] };
+            out.push((ac.0, First::Accelerator { refs: [rf(ama[0]), rf(ama[1]), rf(ama[2]), rf(ama[3])], array, word: accel_word }));
+        }
+        out
     }
 
     /// The first records of the agents that have no properties (read: the AIs of units,
@@ -1639,11 +1682,11 @@ impl World {
                     out.push(format!("grid {k}: {} cells, {} ours, {differ} differ{}", g.cells.len(), o.len(), first.unwrap_or_default()));
                 }
             }
-            // The agents with no properties.
-            {
+            // The agents with no properties, and the pathing system's objects.
+            for (name, recs) in [("plain agents", self.plain_agent_records()), ("pathing system objects", self.pathing_system_records(48, 0))] {
                 let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();
                 let (mut same, mut differ, mut first) = (0, 0, None);
-                for (slot, f) in self.plain_agent_records() {
+                for (slot, f) in recs {
                     match by_slot.get(&slot) {
                         Some(o) if o.first == f.to_bytes() => same += 1,
                         Some(o) => {
@@ -1656,7 +1699,7 @@ impl World {
                         }
                     }
                 }
-                out.push(format!("plain agents: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+                out.push(format!("{name}: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
             }
             // The regions section whole.
             if let Ok(maps) = w3_formats::w3z::PathingMaps::parse(&m.data[0]) {

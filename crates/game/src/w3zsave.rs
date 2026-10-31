@@ -1018,6 +1018,7 @@ impl World {
             if let Some((slot, f)) = self.unit_path_record(h) {
                 records.insert(slot, f);
             }
+            records.extend(self.unit_pil_records(h));
             for (slot, mut f) in self.unit_region_records(h) {
                 if let (First::Region { words, .. }, Some(&m)) = (&mut f, marks.get(&slot)) {
                     words[0] = m;
@@ -1062,7 +1063,7 @@ impl World {
     /// The pieces of a save the port makes, each against the original's save `orig`:
     /// a line each, the same or where they first part.
     pub fn compare_save(&self, orig: &SaveGame) -> Vec<String> {
-        let mut out = Vec::new();
+        let mut out = vec![format!("time {:.6}, agent clock {:.6}", self.time, f32::from_bits(self.agent_step))];
         let Some(m) = orig.objects.as_ref() else { return vec!["no object manager".into()] };
         let ours = self.saved_table();
         let line = match ours.iter().zip(&m.tables[0]).position(|(a, b)| a != b) {
@@ -1559,6 +1560,23 @@ impl World {
                     }
                 }
                 out.push(format!("units' paths: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+                let (mut same, mut differ, mut first) = (0, 0, None);
+                for &h in &self.unit_order {
+                    for (slot, f) in self.unit_pil_records(h) {
+                        let Some(o) = by_slot.get(&slot) else { continue };
+                        if f.to_bytes() == o.first {
+                            same += 1;
+                        } else {
+                            differ += 1;
+                            let line = format!("slot {slot}: ours {f:?}, the original's {:?}", o.first());
+                            if std::env::var("W3Z_ALL").is_ok() {
+                                out.push(format!("pil {line}"));
+                            }
+                            first.get_or_insert(line);
+                        }
+                    }
+                }
+                out.push(format!("units' in-range listeners: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
             }
             // The units' agents.
             let (mut same, mut differ, mut first) = (0, 0, None);

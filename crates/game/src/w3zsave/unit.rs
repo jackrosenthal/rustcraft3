@@ -927,3 +927,79 @@ impl World {
         ))
     }
 }
+
+impl World {
+    /// A unit's in-range listeners (`` `pil ``, CPoPoInterfLis's `FUN_6f15f100`; read against
+    /// the quiet test map's): each its check's period (an aura's, Ensnare's, and an
+    /// inventory's half a second, a shop's 2, the alarm's 3) and its handler, linked on
+    /// its unit's listeners' chain and on its position, a periodic timing from its making
+    /// with its property count; its range in cells (an aura's area, a shop's DataA, the
+    /// alarm's range, Ensnare's range and DataB, an inventory's 180); and the units in
+    /// range, their positions in the order a search of the map finds them.
+    pub fn unit_pil_records(&self, h: u32) -> Vec<(u32, w3_formats::w3z::First)> {
+        use w3_formats::w3z::{Array, First, Link, ObjectBase};
+        let Some(u) = self.unit(h) else { return Vec::new() };
+        let first = &u.extra.object_slots[0];
+        if first.len() < 10 {
+            return Vec::new();
+        }
+        let me = first[0];
+        let code_of = |s: u32| self.tags.live.get(&s).map(|e| e.0);
+        // Its listeners with their abilities, as for its keyed handlers.
+        let mut pils: Vec<(u32, [u8; 4])> = Vec::new();
+        let rest = &u.extra.object_slots[2];
+        for (k, &(s, _)) in rest.iter().enumerate() {
+            if code_of(s) == Some(*b"`pil") {
+                if let Some(c) = rest[..k].iter().rev().filter_map(|&(x, _)| code_of(x)).find(|c| c[0] == b'A') {
+                    pils.push((s, c));
+                }
+            }
+        }
+        pils.extend(u.extra.alarm_pil.map(|s| (s, *b"Aalr")));
+        pils.extend(u.extra.ensnare_pil.map(|p| (p.1, *b"Aens")));
+        pils.extend(u.extra.item_pil.map(|p| (p.0, *b"AInv")));
+        pils.retain(|&(s, _)| code_of(s) == Some(*b"`pil"));
+        // The unit's listeners' chain: its threshold and in-range listeners by birth.
+        let is = |s: u32, c: &[u8; 4]| code_of(s) == Some(*c);
+        let mut chain: Vec<(u32, u32)> = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).map(|&(s, _)| s).chain(u.extra.spell_timers.iter().copied()).chain(u.extra.mana_listeners.iter().map(|l| l.1)).chain(pils.iter().map(|p| p.0)).filter(|&s| is(s, b"`rtl") || is(s, b"`pil")).map(|s| self.tagged(s)).collect();
+        chain.sort_by_key(|x| x.1);
+        chain.dedup();
+        let ability = |c: &[u8; 4]| u.abilities.iter().map(|(a, _)| *a).find(|a| self.objects.abilities.get(*a).is_some_and(|o| crate::objects::id_from_str(o.str("code").trim()) == *c)).and_then(|a| self.objects.abilities.get(a));
+        let mut out = Vec::new();
+        for (s, c) in pils {
+            let t = self.tagged(s);
+            let (period, range) = match &c {
+                b"Aneu" => (2.0, ability(&c).map_or(0.0, |o| o.level_real("DataA", 1))),
+                b"Aalr" => (3.0, self.objects.abilities.get(*b"Aalr").map_or(0.0, |o| o.level_real("Rng", 1))),
+                b"Aens" => (0.5, ability(&c).map_or(0.0, |o| o.level_real("Rng", 1) + o.level_real("DataB", 1))),
+                b"AInv" => (0.5, 180.0),
+                _ => (0.5, ability(&c).map_or(0.0, |o| o.level_real("Area", 1))),
+            };
+            let made = self.tags.made_at.get(&s).map_or(0.0, |&c| f32::from_bits(c));
+            let mut due = crate::efloat::add(made.to_bits(), (period as f32).to_bits());
+            // (One due since the tick began still pending: the property module runs after
+            // the agent timers; read, the auras' due at 5.0 pending where the script's
+            // timer due then has fired.)
+            while f32::from_bits(due) < self.time - 0.0205 {
+                due = crate::efloat::add(due, (period as f32).to_bits());
+            }
+            let count = self.tags.prop_counts.get(&s).copied().unwrap_or(0);
+            let k = chain.iter().position(|&x| x == t);
+            let newer = k.and_then(|k| chain.get(k + 1)).map_or(NONE, |&x| rf(x));
+            let older = k.filter(|&k| k > 0).map_or(NONE, |k| rf(chain[k - 1]));
+            // The units in range, positions by the map's search.
+            // (In range with its collision: read, a Necropolis a ghoul's inventory's.)
+            let near: Vec<u32> = self.unit_order.iter().copied().filter(|&v| v != h && self.unit(v).is_some_and(|w| !w.dead && !w.hidden && (w.x - u.x).hypot(w.y - u.y) - self.objects.units.get(w.type_id).map_or(0.0, |o| o.real("collision")) <= range)).collect();
+            let near = crate::natives::units::spatial_order(self, near);
+            let entries: Vec<[u32; 3]> = near.iter().filter_map(|&v| self.unit(v).and_then(|w| w.extra.object_slots[0].get(1).copied())).map(|p| [p.0, p.1, 0]).collect();
+            let object = ObjectBase {
+                real: period as f32,
+                words: [pil_handler(&c), 0x2019_0400],
+                links: [(Link(newer, 0), Link(older, 0), rf(t), rf(me)), (Link(NONE, 0), Link(NONE, 0), rf(t), rf(first[1]))],
+                timings: [Timing(Some((f32::from_bits(due), period as f32, count, 0, 1))), Timing(None)],
+            };
+            out.push((s, First::Interference { object, real: range / 32.0, word: 0, array: Array { words: [384, 384, 32, 32], entries } }));
+        }
+        out
+    }
+}

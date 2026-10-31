@@ -1734,6 +1734,15 @@ Formats the port made its own, to be replaced by the original's:
   number, with 0x8 for the local player's, 0x2 for one that moves and is not a
   critter, 0x1 an AI player's that moves (nibbles of its high half); a unit's word
   0x2000002; limits 700 (a critter's 32) and 400; its fine region.  All 71 agree.
+- A unit's in-range listener (`` `pil ``, CPoPoInterfLis): its check's period (an aura's,
+  Ensnare's, an inventory's half a second, a shop's 2, the alarm's 3) and handler,
+  0x20190400; linked on its unit's listeners' chain and on its position; a periodic
+  timing from its making with its property count; its range in cells (an aura's
+  Area, a shop's DataA, the alarm's Rng, Ensnare's Rng and DataB, an inventory's 180);
+  the units in range with their collisions, their positions in the order a search of
+  the map finds them.  7 of the quiet test map's 9 agree, the alarms' counts past
+  1030.  The save falls between the agent timers and the property module at its
+  moment: a script timer due at 5.0 has fired, the auras' checks due then not.
 - A unit's AI (`AI-U`): fourteen words, a computer's workers' and structures' naming
   their town site's AI (`AIts`); empty handlers.  All 42 agree.
 - A unit's AI list (`uref`): four words, the second and third its owner's AI list

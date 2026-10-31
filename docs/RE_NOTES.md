@@ -2367,6 +2367,11 @@ Formats the port made its own, to be replaced by the original's:
     `FUN_6f0594f0` to `FUN_6f059590`, costs under 70).  Its sixteenth mine, 61.2 cells
     from its fourth, made none; Ogre Mound's and Twisted Meadows' nearest pairs, 61.1
     and 65.3 cells apart, made two each, so the cost is the path's, not the distance.
+    The port's own search (class 0, the mines' footprints set aside) finds no way for
+    those two pairs, and 71.0 cells (center to center, 15 and 21 a step) for
+    Plaguelands' joining pair, 76.8 and more for its others: near the threshold of 70
+    if the query ends short of the mine, as walks to structures do.  Not yet read: the
+    query's ends and units (`FUN_6f059590`).
   With the first three Plaguelands agrees from the second turn to turn 601 when the
   site's object is set aside (a local stand-in, `abtest/tmp_site.patch`).  There a
   Satyr Hellcaller's listener, due at 60.079998 on the clock, fired in the turn whose

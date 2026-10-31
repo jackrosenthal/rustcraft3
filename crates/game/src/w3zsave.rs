@@ -161,6 +161,27 @@ pub fn client_listeners(save: &SaveGame) -> Vec<Listener> {
     out
 }
 
+/// The art (the second table's effects) the auras and their buffs hold first in their
+/// records, by slot, as a save holds them.
+pub fn client_art(save: &SaveGame) -> std::collections::HashMap<u32, Field> {
+    let Some(m) = save.objects.as_ref() else { return Default::default() };
+    let Ok(objects) = m.objects() else { return Default::default() };
+    objects[0]
+        .iter()
+        .filter(|o| {
+            let k = o.entry.kind.to_be_bytes();
+            k[0] == b'B' || matches!(&k, b"AEar" | b"AHad" | b"Aarm" | b"AHab" | b"AUau" | b"AOae" | b"AUav" | b"AEah" | b"Aakb" | b"AOac" | b"Aoar")
+        })
+        .filter_map(|o| match o.second() {
+            Ok(Second::Agent { tail, .. }) => match tail.first() {
+                Some(f @ Field::List(rows)) if !rows.is_empty() && rows.iter().all(|r| matches!(r[..], [Field::Ref(x)] if x.0 & 0x8000_0000 != 0)) => Some((o.entry.tag, f.clone())),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
+
 /// The rally points (`rlyp`, the second table's agents), each with the structure it
 /// serves (its first link's owner), as a save holds them.
 pub fn rally_points(save: &SaveGame) -> Vec<(Ref, Ref)> {
@@ -1284,6 +1305,7 @@ impl World {
         // The units' own records (their second table's rally points as the template has
         // them).
         let rallies = rally_points(template);
+        let art = client_art(template);
         for &h in &self.unit_order {
             if let Some((slot, sec)) = self.unit_own_record(h, &rallies) {
                 seconds.insert(slot, sec);
@@ -1292,9 +1314,10 @@ impl World {
             // (The AI lists' after.)
             records.extend(self.ability_agent_records(h, &rallies));
             let chain = self.ability_chain(h, &rallies);
+            let olders = self.chain_older(h, &chain);
             for (k, &(t, code)) in chain.iter().enumerate() {
-                let older = chain[..k].iter().rev().find(|c| c.1[0] == b'A').map(|c| c.0);
-                if let Some(sec) = self.ability_own_record(h, t, &code, older, &rallies) {
+                let older = olders[k];
+                if let Some(sec) = self.ability_own_record(h, t, &code, older, &rallies, &art) {
                     seconds.insert(t.0, sec);
                 }
             }
@@ -1959,12 +1982,13 @@ impl World {
                 // Their own records, for the kinds the port writes.
                 let (mut same, mut first) = (0, None);
                 let mut kinds: std::collections::BTreeMap<String, (u32, u32)> = Default::default();
+                let art = client_art(orig);
                 for &h in &self.unit_order {
                     let chain = self.ability_chain(h, &rallies);
+                    let olders = self.chain_older(h, &chain);
                     for (k, &(t, code)) in chain.iter().enumerate() {
-                        // (The ability made before it, not a buff.)
-                        let older = chain[..k].iter().rev().find(|c| c.1[0] == b'A').map(|c| c.0);
-                        let Some(sec) = self.ability_own_record(h, t, &code, older, &rallies) else { continue };
+                        let older = olders[k];
+                        let Some(sec) = self.ability_own_record(h, t, &code, older, &rallies, &art) else { continue };
                         let Some(o) = by_slot.get(&t.0) else { continue };
                         let e = kinds.entry(String::from_utf8_lossy(&code).to_string()).or_insert((0, 0));
                         if sec.to_bytes(o.entry.kind).is_ok_and(|b| b == o.second) {

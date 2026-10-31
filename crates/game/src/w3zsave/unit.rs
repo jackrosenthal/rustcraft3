@@ -495,6 +495,36 @@ impl World {
         chain
     }
 
+    /// The one each of a unit's abilities and buffs follows in its list, by the chain's
+    /// index: the chain's order, but an aura's buff on its bearer, made just after the
+    /// aura, comes before it (read: a troll's Trueshot Aura follows its buff, which
+    /// follows its attack); a buff on another follows the last ability made before it,
+    /// and none follows such a buff.
+    pub(crate) fn chain_older(&self, h: u32, chain: &[((u32, u32), [u8; 4])]) -> Vec<Option<(u32, u32)>> {
+        let own: Vec<(u32, u32)> = self.unit(h).map(|u| u.extra.object_slots[2].clone()).unwrap_or_default();
+        let mut order: Vec<usize> = Vec::new();
+        for (k, (t, c)) in chain.iter().enumerate() {
+            if c[0] == b'A' {
+                order.push(k);
+            } else if c[0] == b'B' && own.contains(t) {
+                match order.iter().rposition(|&j| chain[j].1[0] == b'A') {
+                    Some(at) => order.insert(at, k),
+                    None => order.push(k),
+                }
+            }
+        }
+        let mut out = vec![None; chain.len()];
+        for (j, &k) in order.iter().enumerate().skip(1) {
+            out[k] = Some(chain[order[j - 1]].0);
+        }
+        for (k, (t, c)) in chain.iter().enumerate() {
+            if c[0] == b'B' && !own.contains(t) {
+                out[k] = chain[..k].iter().rev().find(|c| c.1[0] == b'A').map(|c| c.0);
+            }
+        }
+        out
+    }
+
     /// The agent records of a unit's ability chain (read against the quiet test map's):
     /// each its class's, its properties (the `` `rel `` objects made right after it),
     /// and in its first link set the one made after it and the one before, and the
@@ -722,7 +752,59 @@ impl World {
     /// (read against the quiet test map's): CAbility's part (`FUN_6f42e830`: its flags,
     /// the ability made before it, five words, its targets, its code, a word, a timer,
     /// and a word), then its kind's.  None for kinds not read.
-    pub fn ability_own_record(&self, h: u32, t: (u32, u32), code: &[u8; 4], older: Option<(u32, u32)>, rallies: &[(Ref, Ref)]) -> Option<Second> {
+    /// An aura's buff's own record (CBuff; read against the quiet test map's Trueshot
+    /// and Devotion Aura buffs): CAbility's part (its flags 0x1000000 on its bearer,
+    /// 0x80000000 on another; 0x290 Devotion's, 0xa90 Trueshot's, provisional the
+    /// rest's), 0, 0.0, 0, 0, its aura's targets, three 0.0, its aura's DataA, its
+    /// bearer, 0, and Devotion's armor given; its art (the second table's, as `art` has
+    /// it), 0, its timer (its span from its last start, event 0xd01c4, once), its span,
+    /// and Trueshot's bonus per weapon (as an attack's).
+    fn buff_own_record(&self, h: u32, t: (u32, u32), code: &[u8; 4], older: Option<(u32, u32)>, art: &std::collections::HashMap<u32, Field>) -> Option<Second> {
+        let u = self.unit(h)?;
+        let b = u.buffs.iter().find(|b| b.slot == t.0 && b.slot != 0).or_else(|| u.buffs.iter().find(|b| b.slot == 0 && &b.id == code && b.caster == h))?;
+        let aura = self.objects.abilities.get(b.ability)?;
+        let aura_code: [u8; 4] = self.ability_code(b.ability).as_bytes().try_into().ok()?;
+        let data_a = aura.level_real("DataA", b.level.max(1));
+        let caster = self.unit(b.caster).and_then(|c| c.extra.object_slots[0].first().copied()).unwrap_or((u32::MAX, u32::MAX));
+        let ai = self.players.get(u.owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER && p.slot_state == crate::types::slot_state::PLAYING) || u.owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE;
+        let base: u32 = match code {
+            b"BHad" => 0x290,
+            b"BEar" => 0xa90,
+            _ => 0x10,
+        };
+        let flags = base | if ai { 0x2 } else { 0 } | if b.caster == h { 0x100_0000 } else { 0x8000_0000 };
+        let w = Field::Word;
+        let r = Field::Real;
+        let none = || Field::Timer(NONE, 0, Timing(None));
+        let prev = older.map_or(NONE, rf);
+        let mut own = vec![w(flags), w(prev.0), w(prev.1), w(0), w(0), w(0), w(0), w(0), w(0), w(u32::from_be_bytes(*code)), w(0), none(), w(0)];
+        own.extend([w(0), r(0.0), w(0), w(0), w(ability_targets(&aura_code)), r(0.0), r(0.0), r(0.0), r(data_a), w(caster.0), w(caster.1), w(0)]);
+        if code == b"BHad" {
+            own.push(r(b.armor));
+        }
+        let timer = match self.tags.timer_objects.get(&t.0).and_then(|v| v.iter().rev().find(|x| x.1 == "532b50")) {
+            Some(&(n, _, at, span)) => Field::Timer(rf(t), 0, Timing(Some((f32::from_bits(crate::efloat::add(at.to_bits(), span.to_bits())), span, n, 0xd_01c4, 0)))),
+            None => none(),
+        };
+        let mut tail = vec![art.get(&t.0).cloned().unwrap_or(Field::List(Vec::new())), w(0), timer, Field::Short(0), Field::Short(0), r(crate::ability::AURA_BUFF_TIME)];
+        if code == b"BEar" {
+            let o = self.objects.units.get(u.type_id)?;
+            let weapons = o.int("weapsOn");
+            let bonus = |k: u32| {
+                let on = weapons & (1 << (k - 1)) != 0;
+                let least = if on { o.int(&format!("dmgplus{k}")).max(0) + o.int(&format!("dice{k}")).max(0) } else { 1 };
+                vec![w(f32::from_bits(crate::efloat::mul(crate::efloat::from_int(least), data_a.to_bits())).ceil() as u32)]
+            };
+            tail.push(Field::List(vec![bonus(1), bonus(2)]));
+        }
+        tail.push(none());
+        Some(Second::Agent { own, handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] }, tail })
+    }
+
+    pub fn ability_own_record(&self, h: u32, t: (u32, u32), code: &[u8; 4], older: Option<(u32, u32)>, rallies: &[(Ref, Ref)], art: &std::collections::HashMap<u32, Field>) -> Option<Second> {
+        if code[0] == b'B' {
+            return self.buff_own_record(h, t, code, older, art);
+        }
         let u = self.unit(h)?;
         let o = self.objects.units.get(u.type_id)?;
         let computer = self.players.get(u.owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER && p.slot_state == crate::types::slot_state::PLAYING);
@@ -767,7 +849,7 @@ impl World {
             b"Abli" => 0x290,
             // (An aura, read: a creep's 0x90000000, an item's armor aura on a shop
             // 0x90000010.)
-            b"AEar" | b"AHad" | b"AHab" | b"AUau" | b"AOae" | b"AUav" | b"AEah" | b"Aakb" | b"AOac" | b"Aoar" => 0x9000_0000,
+            b"AEar" | b"AHad" | b"AHab" | b"AUau" | b"AOae" | b"AUav" | b"AEah" | b"Aakb" | b"AOac" | b"Aoar" => 0x9000_0080,
             b"Aarm" => 0x9000_0090,
             b"Aven" | b"Amim" => 0,
             b"ARal" | b"Amic" | b"Amil" => 0x90,
@@ -981,7 +1063,7 @@ impl World {
                 own.extend([w(0), Field::Real(d.level_real("Area", l.max(1) as u32)), Field::Real(d.level_real("DataA", l.max(1) as u32))]);
                 let objs = &u.extra.object_slots[2];
                 let pil = objs.iter().position(|&x| x == t).and_then(|i| objs.get(i + 1)).map_or(NONE, |&r| rf(r));
-                vec![Field::List(Vec::new()), w(u.owner as u32), Field::Ref(pil), periodic("40b5e0", 2.0, 0xd_01c1), w(0xd_0142), w(0), w(0), w(0), w(0)]
+                vec![art.get(&t.0).cloned().unwrap_or(Field::List(Vec::new())), w(u.owner as u32), Field::Ref(pil), periodic("40b5e0", 2.0, 0xd_01c1), w(0xd_0142), w(0), w(0), w(0), w(0)]
             }
             _ => return None,
         };

@@ -76,6 +76,10 @@ pub struct Tags {
     /// which its kind knows).
     #[serde(default)]
     pub timer_objects: std::collections::HashMap<u32, Vec<(u32, String, f32, f32)>>,
+    /// Each aura's next sweep due (its periodic timer's, `40b5e0`, on the agent clock),
+    /// by the aura's slot.
+    #[serde(default)]
+    pub aura_dues: std::collections::HashMap<u32, u32>,
     /// The property module's count of timing nodes (its +0x50, at 0x6f15d735,
     /// 0x6f15dc58, 0x6f15e127), which properties' and listeners' blocks keep: taken as
     /// objects are made (`Tags::take`: a modifier `` `rcm `` one, a threshold listener
@@ -187,7 +191,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), player_ai_timers: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), player_ai_timers: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), aura_dues: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -245,6 +249,7 @@ impl Tags {
         self.prop_counts.remove(&slot);
         self.tech_buffs.retain(|&(s, _)| s != slot);
         self.timer_objects.remove(&slot);
+        self.aura_dues.remove(&slot);
         if let Some(l) = self.trace.as_mut() {
             l.push(TagEvent::Free(slot));
         }
@@ -902,7 +907,7 @@ impl crate::world::World {
                 }
                 c if c[0] == b'B' => {
                     let n = self.tags.start_timer("532b50");
-                    self.tags.timer_objects.entry(slots[k]).or_default().push((n, "532b50".into(), self.time, 0.0));
+                    self.tags.timer_objects.entry(slots[k]).or_default().push((n, "532b50".into(), self.time, crate::ability::AURA_BUFF_TIME));
                 }
                 _ => {}
             }

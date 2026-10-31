@@ -147,6 +147,9 @@ fn passive(code: &str) -> bool {
     matches!(code, "AHbh" | "AOcr" | "AEev" | "AHad" | "AHab" | "AUav" | "AOae" | "AEar" | "AEah" | "AOr2" | "AUts" | "ANba" | "AUau" | "Aamk" | "AOre")
 }
 
+/// An aura buff's timer's span (CBuff's, read: 4 seconds, twice its aura's sweep).
+pub(crate) const AURA_BUFF_TIME: f32 = 4.0;
+
 impl World {
     pub fn ability_code(&self, id: Id) -> String {
         let code = self.objects.abilities.get(id).map(|a| a.str("code")).unwrap_or_default();
@@ -414,7 +417,9 @@ impl World {
             b.slot = slot;
             // (Its timer's start, CBuff vf211; read: the aura scans' buffs at 0.5
             // seconds on the quiet test map.)
-            self.tags.start_timer("532b50");
+            let n = self.tags.start_timer("532b50");
+            // (Its time provisional: the tick's.)
+            self.tags.timer_objects.entry(slot).or_default().push((n, "532b50".into(), f32::from_bits(self.tags.clock), AURA_BUFF_TIME));
             if matches!(self.ability_code(b.ability).as_str(), "AEar" | "AOac" | "Aakb") {
                 let owner = self.unit(target).map_or(0, |u| u.owner);
                 self.tags.tech_buffs.push((slot, owner));
@@ -667,6 +672,76 @@ impl World {
     /// second in, giving those in range its buff for 2 seconds; every 2 seconds it
     /// drops the buffs it gave whose 2 seconds have run out (a footman leaving at 6.13,
     /// 6.38, or 6.63 seconds loses the buff at 10.01).
+    /// The aura buffs' timers started again as their bearers' auras sweep (CBuff vf211):
+    /// at each due of the aura's periodic timer (`40b5e0`, every 2 seconds), at the first
+    /// main tick whose clock reaches it, the bearers' own from the due, then the others'
+    /// by their making from that tick's clock (read: the quiet test map's eight at 4
+    /// seconds, counts 652 to 659, the bearers' due at 8.0, the others' at 8.004948, the
+    /// clock of the tick after 4.0's).  Only the counts and times are kept here: the
+    /// buffs lapse in `update_auras`.
+    pub(crate) fn restart_aura_buff_timers(&mut self) {
+        let clocks = self.tick_clocks.1.clone();
+        if clocks.len() < 2 {
+            return;
+        }
+        // This tick's main ticks: all but the one after it.
+        let ticks = &clocks[..clocks.len() - 1];
+        let last = ticks[ticks.len() - 1];
+        let before = crate::efloat::sub(ticks[0], crate::motion::TICK);
+        let half_wrap = f32::from_bits(crate::motion::WRAP) / 2.0;
+        // Each sweep due in this tick: its main tick, the due, the bearer, the aura.
+        let mut sweeps: Vec<(usize, u32, u32, String)> = Vec::new();
+        let mut dues: Vec<(u32, u32)> = Vec::new();
+        for &h in &self.unit_order {
+            let Some(u) = self.unit(h).filter(|u| !u.dead) else { continue };
+            for &(s, birth) in &u.extra.object_slots[2] {
+                let Some(code) = self.tags.live.get(&s).filter(|e| e.1 == birth).map(|e| e.0) else { continue };
+                let Some(at) = self.tags.timer_objects.get(&s).and_then(|v| v.iter().find(|x| x.1 == "40b5e0")).map(|x| x.2) else { continue };
+                let period = 2.0f32.to_bits();
+                let mut due = self.tags.aura_dues.get(&s).copied().unwrap_or_else(|| crate::efloat::add(at.to_bits(), period));
+                // (Past the main clock's wrap, its due is set back with it.)
+                if f32::from_bits(due) - f32::from_bits(last) > half_wrap {
+                    due = crate::efloat::sub(due, crate::motion::WRAP);
+                }
+                while f32::from_bits(due) <= f32::from_bits(before) {
+                    due = crate::efloat::add(due, period);
+                }
+                while f32::from_bits(due) <= f32::from_bits(last) {
+                    let k = ticks.iter().position(|&c| f32::from_bits(c) >= f32::from_bits(due)).unwrap_or(0);
+                    sweeps.push((k, due, h, String::from_utf8_lossy(&code).to_string()));
+                    due = crate::efloat::add(due, period);
+                }
+                dues.push((s, due));
+            }
+        }
+        self.tags.aura_dues.extend(dues);
+        if sweeps.is_empty() {
+            return;
+        }
+        // The buffs each keeps: by its tick, the bearers' own first, by their making.
+        let mut kept: Vec<(usize, bool, u32, u32, u32)> = Vec::new();
+        for &t in &self.unit_order {
+            let Some(u) = self.unit(t) else { continue };
+            for b in u.buffs.iter().filter(|b| b.id != [0; 4] && b.aura_left.is_some_and(|l| l >= 0.0)) {
+                let code = self.ability_code(b.ability);
+                let Some(&(k, due, _, _)) = sweeps.iter().find(|x| x.2 == b.caster && x.3 == code) else { continue };
+                let slot = if b.slot != 0 { Some(b.slot) } else { u.extra.object_slots[2].iter().find(|s| self.tags.live.get(&s.0).is_some_and(|e| e.0 == b.id && e.1 == s.1)).map(|s| s.0) };
+                let Some(slot) = slot else { continue };
+                let birth = self.tags.live.get(&slot).map_or(0, |e| e.1);
+                let other = t != b.caster;
+                let at = if other { clocks[k] } else { due };
+                kept.push((k, other, birth, slot, at));
+            }
+        }
+        kept.sort_by_key(|x| (x.0, x.1, x.2));
+        for (_, _, _, slot, at) in kept {
+            let n = self.tags.start_timer("532b50");
+            let v = self.tags.timer_objects.entry(slot).or_default();
+            v.retain(|x| x.1 != "532b50");
+            v.push((n, "532b50".into(), f32::from_bits(at), AURA_BUFF_TIME));
+        }
+    }
+
     pub(crate) fn update_auras(&mut self, dt: f32) {
         let mut grants = Vec::new();
         let mut sweeps = Vec::new();
@@ -840,20 +915,7 @@ impl World {
                 self.apply_buff_tagged(t, b.clone(), t != src || area > 0.0 && false);
             }
         }
-        // At a sweep the buffs it keeps start their timers again (CBuff vf211; read: the
-        // quiet test map's eight at 2.0 and 4.0 seconds, the order provisional).
-        if !sweeps.is_empty() {
-            let kept = self
-                .unit_order
-                .iter()
-                .filter_map(|&t| self.unit(t))
-                .flat_map(|u| u.buffs.iter())
-                .filter(|b| b.id != [0; 4] && sweeps.contains(&b.caster) && b.aura_left.is_some_and(|l| l >= 0.0))
-                .count();
-            for _ in 0..kept {
-                self.tags.start_timer("532b50");
-            }
-        }
+        // (The buffs a sweep keeps start their timers again in `restart_aura_buff_timers`.)
         // The sweeps, and the buffs of bearers that are gone once lapsed.
         let lapsed: Vec<(u32, u32)> = self
             .unit_order

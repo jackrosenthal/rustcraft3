@@ -263,8 +263,10 @@ impl Game {
         let mut out = Vec::new();
         if std::env::var("W3Z_FIND").is_ok() {
             for &h in &self.world.unit_order {
-                if let Some(u) = self.world.unit(h).filter(|u| u.owner == 1) {
-                    out.push(format!("unit {} {:?} building {} hero {} dead {} hidden {} slots {:?}", crate::objects::id_str(u.type_id), h, u.is_building, u.is_hero, u.dead, u.hidden, u.extra.object_slots[0].first()));
+                if let Some(u) = self.world.unit(h).filter(|u| u.buffs.iter().any(|b| b.slot != 0) || u.extra.object_slots[2].iter().any(|s| self.world.tags.live.get(&s.0).is_some_and(|e| e.0[0] == b'B'))) {
+                    let o = self.world.objects.units.get(u.type_id);
+                    let dmg = o.map(|o| (o.int("dmgplus1"), o.int("dice1"), o.int("sides1"), o.int("dmgplus2"), o.int("dice2"), o.int("sides2"), o.int("weapsOn"), o.str("weapTp1").to_string(), o.str("weapTp2").to_string(), o.str("atkType1").to_string())).unwrap_or_default();
+                    out.push(format!("unit {} {:?} owner {} slots {:?} dmg {dmg:?} buffs {:?}", crate::objects::id_str(u.type_id), h, u.owner, u.extra.object_slots[0].first(), u.buffs.iter().map(|b| (crate::objects::id_str(b.id), b.slot, b.caster)).collect::<Vec<_>>()));
                 }
             }
             out.push(format!("players {:?}", self.world.players.iter().map(|p| (p.controller, p.start_location, p.team, p.race, p.race_preference, p.slot_state)).collect::<Vec<_>>()));

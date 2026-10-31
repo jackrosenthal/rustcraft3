@@ -1930,6 +1930,7 @@ impl World {
         // time drifts by a part of one, enough to move a step across a tick in time).
         let dt_ms = (dt as f64 * 1000.0).round() as u32;
         self.plan_steps(self.game_ms as i64, (self.game_ms + dt_ms) as i64);
+        self.restart_aura_buff_timers();
         // Counted in f64 and read as f32: f32 adding 0.02s drifts, by seconds in an hour.
         self.time_exact = self.time_exact.max(self.time as f64) + dt as f64;
         self.time = self.time_exact as f32;

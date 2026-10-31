@@ -470,6 +470,38 @@ fn main() {
         println!("header {:?}", h);
         return;
     }
+    // "timers": every running timer in the agents' second records, a line each: its
+    // start count, its owner's tag and kind, its due time, period, and event.
+    if a[2] == "timers" {
+        fn walk(f: &w3_formats::w3z::Field, out: &mut Vec<String>) {
+            use w3_formats::w3z::Field;
+            match f {
+                Field::Timer(_, _, t) => {
+                    if let Some((due, period, count, event, repeat)) = t.0 {
+                        out.push(format!("{count} due {due} period {period} event {event:#x} repeat {repeat}"));
+                    }
+                }
+                Field::List(rows) => rows.iter().flatten().for_each(|g| walk(g, out)),
+                _ => {}
+            }
+        }
+        let mut lines = Vec::new();
+        for o in &all {
+            if let Ok(w3_formats::w3z::Second::Agent { own, tail, .. }) = o.second() {
+                let mut found = Vec::new();
+                own.iter().chain(&tail).for_each(|f| walk(f, &mut found));
+                for l in found {
+                    let kind = String::from_utf8_lossy(&o.entry.kind.to_be_bytes()).to_string();
+                    lines.push((l.split(' ').next().unwrap().parse::<u32>().unwrap_or(0), format!("{l} owner {} {kind}", o.entry.tag)));
+                }
+            }
+        }
+        lines.sort();
+        for (_, l) in lines {
+            println!("{l}");
+        }
+        return;
+    }
     // "fields <tag>": an agent's second record's tail fields, one a line with its index
     // (event lists in brief).
     if a[2] == "fields" {

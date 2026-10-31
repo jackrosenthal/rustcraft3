@@ -426,6 +426,16 @@ impl Game {
         if !self.world.lobby_teams {
             self.seed_generators();
         }
+        // A map loaded directly draws as the game starts, on the main generator: a
+        // weighted choice's real (`FUN_6f1c0c40`), then a random race for each of the 12
+        // players (`FUN_6f1e9dd0`; traced on the quiet test map under -loadfile: the 13
+        // before its structures' alarms and wanderers' waits).
+        if self.world.fixed_starts {
+            self.world.rng.next_u32();
+            for _ in 0..12 {
+                self.world.rng.next_u32();
+            }
+        }
         // Each player's start (FUN_6f1e7c20): passive toward Neutral Passive and it
         // toward them; food capped at [Misc] FoodCeiling (90 for Reign of Chaos, 100 for
         // The Frozen Throne, kept to 1 to 300: FUN_6f047250); the game's result neutral

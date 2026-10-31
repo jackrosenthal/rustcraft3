@@ -323,7 +323,8 @@ impl World {
         for h in units {
             if self.ability_with_code(h, "Awan").is_some() {
                 let w = self.rng.real(5.0, 10.0);
-                self.tags.start_timer("5aa910");
+                let n = self.tags.start_timer("5aa910");
+                self.keep_wander_timer(h, n, 0.0, w);
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.wander_at = Some(w.to_bits());
                 }
@@ -331,11 +332,19 @@ impl World {
         }
     }
 
+    /// A wanderer's timer kept for saves: its count, start, and wait.
+    pub(crate) fn keep_wander_timer(&mut self, h: u32, n: u32, at: f32, wait: f32) {
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.wander_timer = Some((n, at, wait));
+        }
+    }
+
     /// A wanderer's order given at its time (`update_wander`): the walk to its point, its
     /// next wait drawn.
     pub(crate) fn issue_wander(&mut self, k: usize, at: u32, h: u32) {
         let next = self.rng.real(5.0, 10.0);
-        self.tags.start_timer("5aa910");
+        let n = self.tags.start_timer("5aa910");
+        self.keep_wander_timer(h, n, f32::from_bits(at), next);
         // The point: on each axis, x first, a draw of stream 8 times 500 less 250, added
         // to the unit's place, by the engine's arithmetic (CAbilityWander vf190,
         // FUN_6f59af20; its constants read from the running original: 250 and 500; read:

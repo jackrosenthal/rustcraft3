@@ -571,6 +571,7 @@ impl World {
         // after now, its period, its count, and the event it sends.
         let periodic = |name: &str, period: f32, event: u32| {
             let started = self.tags.timer_objects.get(&t.0).and_then(|v| v.iter().find(|x| x.1 == name)).map(|x| (x.0, x.2));
+            // (Its period: the kind's.)
             match started {
                 Some((count, at)) => {
                     // (Its due time stepped by its period in the engine's arithmetic.)
@@ -619,6 +620,15 @@ impl World {
                 use crate::efloat::{add, div, from_int, mul};
                 let period = f32::from_bits(add(mul(u.max_life.to_bits(), div(from_int(1), from_int(2000))), div(from_int(3), from_int(2)))).clamp(1.5, 3.0);
                 vec![w(u32::MAX), w(u32::MAX), w(0), periodic("41baf0", period, 0xd_01c1)]
+            }
+            // Wander (CAbilityWander): its wait (event 0xd01bf), due at its start and
+            // the wait drawn, once.
+            b"Awan" => {
+                let timer = match u.extra.wander_timer {
+                    Some((count, at, wait)) => Field::Timer(rf(t), 0, Timing(Some((f32::from_bits(crate::efloat::add(at.to_bits(), wait.to_bits())), wait, count, 0xd_01bf, 0)))),
+                    None => timer(),
+                };
+                vec![timer]
             }
             // CAbilityAlarm (`FUN_6f42d040`): its timer and its in-range listener.
             b"Aalr" => vec![timer(), Field::Ref(u.extra.alarm_pil.map_or(NONE, |s| rf(self.tagged(s))))],

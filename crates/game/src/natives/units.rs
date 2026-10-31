@@ -415,7 +415,9 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
     if w.ability_with_code(h, "Awan").is_some() && w.unit(h).is_some_and(|u| w.wanders_at_start(u)) {
         let wait = w.rng.real(5.0, 10.0);
         // (Each wait is its timer's start, `FUN_6f5aa910`.)
-        w.tags.start_timer("5aa910");
+        let n = w.tags.start_timer("5aa910");
+        let now = w.time;
+        w.keep_wander_timer(h, n, now, wait);
         if let Some(u) = w.unit_mut(h) {
             u.extra.wander_at = Some(wait.to_bits());
         }

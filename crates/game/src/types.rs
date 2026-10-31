@@ -590,6 +590,9 @@ pub struct UnitExtra {
     /// Its object of the last day change (`World::time_of_day_moved`), while it lasts.
     #[serde(default)]
     pub day_rcm: Option<u32>,
+    /// Its wander's timer (Awan's): its count, the game time it started, and its wait.
+    #[serde(default)]
+    pub wander_timer: Option<(u32, f32, f32)>,
     /// Its facing as made, in degrees as the port holds it and in radians as the
     /// original does (the latter not the former's conversion for a negative angle).
     #[serde(default)]
@@ -892,6 +895,7 @@ impl Default for UnitExtra {
             footprint_slots: Vec::new(),
             object_slots: Default::default(),
             day_rcm: None,
+            wander_timer: None,
             made_facing: None,
             day_ref: None,
             woke_at: None,

@@ -1701,6 +1701,15 @@ Formats the port made its own, to be replaced by the original's:
   every 1.5 seconds and a two-thousandth of its maximum life, at most 3, in the
   engine's arithmetic: `FUN_6f41baf0`).  A periodic timer keeps its count from its
   start, its next due time stepped from its start by its period.
+- A map loaded directly (-loadfile) draws on the main generator as the game starts,
+  before its script: a weighted choice's real (`FUN_6f1c0c40`), then a race for each
+  of the 12 players (`FUN_6f1e9dd0`); traced on the quiet test map, the 13 before its
+  structures' alarms' and wanderers' first waits.  The wanderers' waits then agree
+  but for six one unit in the last place low in the original's (traced under
+  OpenGL, whose processor keeps extended precision: lo + r * 5 rounded once; the
+  port's rounding twice agrees with the Booty Bay captures; provisional).
+- Wander's record (CAbilityWander): its wait's timer (event 0xd01bf), once, due at
+  its start and the wait drawn, its count from its start.
 - A unit made by script faces its literal (read by the script's compiler as the
   original does) times pi / 180 (0x3c8efa35) in the engine's arithmetic, two pi
   (0x40c90fdb) on for a negative angle: every creep of the quiet test map's, 57 of 57.

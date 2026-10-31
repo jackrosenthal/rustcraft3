@@ -69,9 +69,10 @@ pub struct Tags {
     #[serde(default)]
     pub timer_starts: u32,
     /// The agent timers objects keep, by the object's slot: each its count, its
-    /// function's name, and the game time it started.
+    /// function's name, the game time it started, and its wait (0 for a periodic one's,
+    /// which its kind knows).
     #[serde(default)]
-    pub timer_objects: std::collections::HashMap<u32, Vec<(u32, String, f32)>>,
+    pub timer_objects: std::collections::HashMap<u32, Vec<(u32, String, f32, f32)>>,
     /// The property module's count of timing nodes (its +0x50, at 0x6f15d735,
     /// 0x6f15dc58, 0x6f15e127), which properties' and listeners' blocks keep: taken as
     /// objects are made (`Tags::take`: a modifier `` `rcm `` one, a threshold listener
@@ -860,17 +861,17 @@ impl crate::world::World {
                 }
                 b"Afih" | b"Afio" | b"Afiu" | b"Afin" => {
                     let n = self.tags.start_timer("41baf0");
-                    self.tags.timer_objects.entry(slots[k]).or_default().push((n, "41baf0".into(), self.time));
+                    self.tags.timer_objects.entry(slots[k]).or_default().push((n, "41baf0".into(), self.time, 0.0));
                 }
                 b"Aalr" => {
                     self.tags.start_timer("41ae70");
                 }
                 b"ACsp" => {
                     let n = self.tags.start_timer("524e00");
-                    self.tags.timer_objects.entry(slots[k]).or_default().push((n, "524e00".into(), self.time));
+                    self.tags.timer_objects.entry(slots[k]).or_default().push((n, "524e00".into(), self.time, 0.0));
                     if night_sleeper {
                         let n = self.tags.start_timer("517be0");
-                        self.tags.timer_objects.entry(slots[k]).or_default().push((n, "517be0".into(), self.time));
+                        self.tags.timer_objects.entry(slots[k]).or_default().push((n, "517be0".into(), self.time, 0.0));
                     }
                 }
                 b"AHad" | b"AHab" | b"AUau" | b"AOae" | b"AEar" | b"AUav" | b"AEah" | b"Aakb" | b"AOac" | b"Aoar" | b"Aarm" => {

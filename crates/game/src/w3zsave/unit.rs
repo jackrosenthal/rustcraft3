@@ -881,3 +881,49 @@ impl World {
         ]
     }
 }
+
+impl World {
+    /// A unit's long-range path (`l^pa`, CLrPath's `FUN_6f167780`; read against the quiet
+    /// test map's, none walking a path at 5 seconds): no waypoints; its first word its
+    /// owner's number, with 0x8 for the local player's, 0x2 for one that moves and is
+    /// not a critter, 0x1 an AI player's that moves (in its high half, by nibbles); a
+    /// unit's word 0x2000002; a limit of 700 (a critter's 32) and 400; its unit's fine
+    /// region.
+    pub fn unit_path_record(&self, h: u32) -> Option<(u32, w3_formats::w3z::First)> {
+        let u = self.unit(h)?;
+        let o = self.objects.units.get(u.type_id)?;
+        let first = &u.extra.object_slots[0];
+        if first.len() < 10 {
+            return None;
+        }
+        let computer = self.players.get(u.owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER && p.slot_state == crate::types::slot_state::PLAYING);
+        let ai = computer || u.owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE;
+        let mobile = !u.is_building && o.real("spd") > 0.0;
+        let critter = u.owner as usize == crate::types::PLAYER_NEUTRAL_PASSIVE as usize && u.abilities.iter().any(|(a, _)| a == b"Awan");
+        let mut hi = 0;
+        if u.owner == self.local_player {
+            hi |= 0x8;
+        }
+        if mobile && !critter {
+            hi |= 0x2;
+        }
+        if mobile && ai {
+            hi |= 0x1;
+        }
+        let word = (hi << 4 | (u.owner as u32 & 0xf)) << 16;
+        let way = |limit: u16| (w3_formats::w3z::Array { words: [0, 0, 128, 0], entries: Vec::new() }, u32::MAX, 0, limit);
+        Some((
+            first[9].0,
+            w3_formats::w3z::First::Path {
+                reals: [-128000.0; 6],
+                words: [word, 0, 0, u32::MAX, u32::MAX, 0],
+                real: 0.0,
+                // (A unit's 0x2000002, a structure's 0: read, every one of the quiet test
+                // map's.)
+                word: if u.is_building { 0 } else { 0x0200_0002 },
+                ways: [way(if critter { 32 } else { 700 }), way(400)],
+                refs: [NONE, NONE, rf(first[3]), NONE],
+            },
+        ))
+    }
+}

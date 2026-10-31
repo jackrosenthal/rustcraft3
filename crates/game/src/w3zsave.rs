@@ -1015,6 +1015,9 @@ impl World {
         // The units' regions (their search marks the template's, the running game's).
         let marks: std::collections::HashMap<u32, u32> = objects[0].iter().filter_map(|o| match o.first() { Ok(First::Region { words, .. }) => Some((o.entry.tag, words[0])), _ => None }).collect();
         for &h in &self.unit_order {
+            if let Some((slot, f)) = self.unit_path_record(h) {
+                records.insert(slot, f);
+            }
             for (slot, mut f) in self.unit_region_records(h) {
                 if let (First::Region { words, .. }, Some(&m)) = (&mut f, marks.get(&slot)) {
                     words[0] = m;
@@ -1544,6 +1547,18 @@ impl World {
                     }
                 }
                 out.push(format!("units' regions: {same} the same, {marks} but for the search mark, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+                let (mut same, mut differ, mut first) = (0, 0, None);
+                for &h in &self.unit_order {
+                    let Some((slot, f)) = self.unit_path_record(h) else { continue };
+                    let Some(o) = by_slot.get(&slot) else { continue };
+                    if f.to_bytes() == o.first {
+                        same += 1;
+                    } else {
+                        differ += 1;
+                        first.get_or_insert(format!("slot {slot}: ours {f:?}, the original's {:?}", o.first()));
+                    }
+                }
+                out.push(format!("units' paths: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
             }
             // The units' agents.
             let (mut same, mut differ, mut first) = (0, 0, None);

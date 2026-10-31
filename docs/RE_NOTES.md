@@ -1730,6 +1730,10 @@ Formats the port made its own, to be replaced by the original's:
   their count's high byte 0x10 and its owner's number.  A hidden unit's coarse one
   marked 0x0c000000, its fine one emptied (bounds 0xfffe0c00, no cells).  All 142 of
   the quiet test map's agree but for the maps' search marks, the running game's.
+- A unit's long-range path (`l^pa`, idle): no waypoints; its first word its owner's
+  number, with 0x8 for the local player's, 0x2 for one that moves and is not a
+  critter, 0x1 an AI player's that moves (nibbles of its high half); a unit's word
+  0x2000002; limits 700 (a critter's 32) and 400; its fine region.  All 71 agree.
 - A unit's AI (`AI-U`): fourteen words, a computer's workers' and structures' naming
   their town site's AI (`AIts`); empty handlers.  All 42 agree.
 - A unit's AI list (`uref`): four words, the second and third its owner's AI list

@@ -2288,8 +2288,15 @@ Formats the port made its own, to be replaced by the original's:
   blight, 992 of them).  Its search (`World::local_path`) is refused by a sheep idle at
   (2480, 3600), its region's 2 by 2 cells across the narrow way south (236 to 237, 336
   to 337); a detour by the east side is open, past the wanderers' search budget (32
-  nodes) perhaps.  Next: trace that walk's search in the original (does the sheep block
-  it, and how far does it search).
+  nodes) perhaps.  Not so: in the original that sheep stands elsewhere.  A new ground
+  unit's room (the cells about it walkable, `ground_place`) is its size class's
+  footprint as the searches take it (`lrpath::footprint`: class 1's 2 by 2 cells below
+  and left of its own, class 2's 3 by 3 about it, class 3's 4 by 4), not a square of the
+  class's reach about it: read in the save at one second, gnolls and ogres stood where
+  the map made them beside cliffs (199.508, 280.172 in cells, where the port had moved
+  one to 199.5, 279.5), and two sheep, the first of which the port moved onto the
+  second's spot, which then moved into the narrow way.  With it Hills of Glory agrees
+  for all 1952 turns (kept in `docs/reference`).
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

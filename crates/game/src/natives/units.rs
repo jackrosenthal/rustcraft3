@@ -175,12 +175,12 @@ fn ground_place(w: &World, movetp: &str, collision: f32, x: f32, y: f32, room_ab
     // above unwalkable ground in Booty Bay: in the next cell row they move up to the
     // row above, one row higher they stay; the fifth pig so stands at -5456,-4432).
     // One asked on ground a map marks unwalkable stays.
-    let class = {
-        let c = collision / crate::pathing::CELL;
-        if c < 0.5 { 0.0 } else if c < 1.0 { 1.0 } else if c < 1.5 { 2.0 } else { 3.0 }
-    };
-    let reach = class * crate::pathing::CELL;
-    let room = |c: (i32, i32)| p.fits_kind(c, reach, kind);
+    // (The room its class's footprint, as its walks' searches take it: a class 1
+    // unit's 2 by 2 cells below and left of its own, class 2's 3 by 3 about it, class
+    // 3's 4 by 4; read: Hills of Glory's sheep and gnolls stay where its map makes them
+    // beside cliffs, where a square of the class's reach about them moved them.)
+    let class = crate::lrpath::class_of(collision / crate::pathing::CELL);
+    let room = |c: (i32, i32)| crate::lrpath::footprint(class).all(|(dx, dy)| p.passable((c.0 + dx, c.1 + dy), kind));
     if apart((cx, cy)) && open((cx, cy)) && (!room_about || !p.walkable((cx, cy)) || room((cx, cy))) {
         return (x, y);
     }

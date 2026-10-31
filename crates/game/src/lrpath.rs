@@ -43,6 +43,15 @@ const RINGS: [(i32, i32, [u32; 8]); 4] = [
     (2, 5, [0xe00f, 0xe, 0xfe, 0xe000, 0xe0, 0xfe00, 0xe00, 0xfe0]),
     (3, 6, [0xf001f, 0x1e, 0x3fe, 0xf0000, 0x3c0, 0xff800, 0x7800, 0x7fc0]),
 ];
+/// The cells a unit of a class takes about its node: those within its ring (one for
+/// class 0; 2 by 2 below and left for class 1; 3 by 3 about it for class 2; 4 by 4
+/// for class 3), as offsets.
+pub fn footprint(class: u8) -> impl Iterator<Item = (i32, i32)> {
+    let (r, n, _) = RINGS[class.min(3) as usize];
+    let (lo, hi) = (1 - r, n - 2 - r);
+    (lo..=hi).flat_map(move |dy| (lo..=hi).map(move |dx| (dx, dy)))
+}
+
 const STEPS: [(i32, i32, u32); 8] = [(-1, -1, 21), (0, -1, 15), (1, -1, 21), (-1, 0, 15), (1, 0, 15), (-1, 1, 21), (0, 1, 15), (1, 1, 21)];
 
 /// The ring's refused cells as bits: its bottom row left to right, its right column

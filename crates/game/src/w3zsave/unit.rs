@@ -588,6 +588,16 @@ impl World {
         let peon = o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case("peon"));
         let base_flags: u32 = match code {
             b"Avul" => 0x8000_0010,
+            // (Spells, read: targeted 0x0, autocast 0x8080000 with 0x80 for heal, repair
+            // 0x9400010, restore 0x9080010, Lightning Shield-like 0x0, Cannibalize
+            // 0x80010.)
+            b"ACtb" | b"ACtc" | b"AOsh" | b"Aens" => 0,
+            b"Alam" | b"Auns" => 0x10,
+            b"Acan" => 0x8_0010,
+            b"Anhe" => 0x808_0080,
+            b"Aadm" | b"Ainf" => 0x808_0000,
+            b"Arep" => 0x940_0010,
+            b"Arst" => 0x908_0010,
             b"ACsp" => 0x400,
             b"Aven" | b"Amim" => 0,
             b"ARal" | b"Amic" | b"Amil" => 0x90,
@@ -659,6 +669,41 @@ impl World {
             b"Aque" => {
                 own.extend([Field::Real(0.0), Field::Real(0.0), w(0), Field::List((0..7).map(|_| vec![w(0)]).collect()), Field::List((0..7).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect()), Field::List((0..7).map(|_| vec![w(0)]).collect())]);
                 vec![Field::Ref(NONE), Field::Ref(NONE), Field::Ref(NONE), Field::Ref(NONE)]
+            }
+            // Spells (CAbilitySpell): its cooldown left, its unit's cast point and
+            // backswing (a repair's none and the largest real), references; its order
+            // (852290), words, its listener on the unit's mana, two timers; an
+            // auto-target spell's look every 3 seconds (event 0xd01c2), a repair's more.
+            b"ACtb" | b"ACtc" | b"AOsh" | b"Aens" | b"Acan" | b"Alam" | b"Auns" | b"Anhe" | b"Aadm" | b"Ainf" | b"Arst" | b"Arep" => {
+                // (Restore as Repair.)
+                let repair = matches!(code, b"Arep" | b"Arst");
+                let (point, back) = if repair { (0.0, f32::MAX) } else { (o.real("castpt"), o.real("castbsw")) };
+                own.extend([Field::Real(0.0), Field::Real(point), Field::Real(back), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), w(0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), w(0), Field::Real(0.0), Field::Real(0.0), w(0), w(0), w(0), w(0), Field::Real(0.0), Field::Real(0.0)]);
+                if repair {
+                    own.extend([w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), Field::Real(0.0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0)]);
+                }
+                let listener = u.extra.spell_owners.iter().find(|x| &x.1 == code && self.tags.live.get(&x.0).is_some_and(|e| &e.0 == b"`rtl")).map_or(NONE, |x| rf(self.tagged(x.0)));
+                let mut tail = vec![w(852_290), w(0), w(0), w(0), w(0), Field::Ref(listener), timer(), timer()];
+                if matches!(code, b"Anhe" | b"Aadm" | b"Ainf" | b"Arst" | b"Arep") {
+                    tail.push(match self.tags.autotarget_timers.get(&(h, *code)) {
+                        Some(&(count, due, period)) if due > self.time - 0.0205 => Field::Timer(rf(t), 0, Timing(Some((due, period, count, 0xd_01c2, 0)))),
+                        _ => timer(),
+                    });
+                }
+                if repair {
+                    tail.extend([timer(), timer(), timer(), timer(), Field::Ref(NONE)]);
+                }
+                // Ensnare's in-range listener.
+                if code == b"Aens" {
+                    tail.push(Field::Ref(u.extra.ensnare_pil.map_or(NONE, |p| rf(self.tagged(p.1)))));
+                }
+                // Cannibalize's look for corpses every 2 seconds (event 0xd01bf).
+                if code == b"Acan" {
+                    // (A reference and two target masks: read, a ghoul's.)
+                    own.extend([w(u32::MAX), w(u32::MAX), w(0), w(0xf6d1_f002), w(0xfdd1_f006)]);
+                    tail.extend([Field::Ref(NONE), Field::Ref(NONE), periodic("606220", 2.0, 0xd_01bf)]);
+                }
+                tail
             }
             // Creep sleep (`FUN_6f5224c0`, `FUN_6f5230a0`): 0.1; its sleep's timer, its
             // check every 2 seconds (event 0xd01bf), and a list.

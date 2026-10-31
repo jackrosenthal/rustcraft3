@@ -496,16 +496,31 @@ impl World {
             let auto = self.objects.units.get(u.type_id).map(|o| crate::objects::id_from_str(o.str("auto").trim())).unwrap_or([0; 4]);
             let owner = u.owner;
             let autocasting = auto[0] != 0 && spells.iter().any(|a| self.ability_code(*a).as_bytes() == auto && self.ability_enabled(owner, *a));
-            for a in &spells {
+            // (The last in its list first, Abolish Magic among them, its autocast one
+            // apart: read, a High Priest's Abolish Magic's count before Inner Fire's,
+            // then Heal's as its autocast's.)
+            for a in spells.iter().rev() {
                 let code = self.ability_code(*a);
-                if matches!(code.as_str(), "Arep" | "Aren" | "Arst" | "Ahea" | "Anhe" | "Ainf" | "Arpb" | "Arpl" | "Arpm") {
-                    self.tags.start_timer("422820");
+                if autocasting && code.as_bytes() == auto {
+                    continue;
+                }
+                if matches!(code.as_str(), "Arep" | "Aren" | "Arst" | "Ahea" | "Anhe" | "Ainf" | "Aadm" | "Arpb" | "Arpl" | "Arpm") {
+                    let n = self.tags.start_timer("422820");
+                    let c = crate::objects::id_from_str(&code);
                     self.tags.autotarget_due.push(self.time + 0.015);
+                    self.tags.autotarget_info.push((h, c));
+                    self.tags.autotarget_saved.push(f32::from_bits(crate::efloat::add(self.time.to_bits(), 0.02f32.to_bits())));
+                    self.tags.autotarget_timers.insert((h, c), (n, f32::from_bits(crate::efloat::add(self.time.to_bits(), 0.02f32.to_bits())), 0.02));
                 }
             }
             if autocasting {
-                self.tags.start_timer("436a50");
+                let n = self.tags.start_timer("436a50");
+                // (Its ability's code: the type names its id.)
+                let auto = self.objects.abilities.get(auto).map_or(auto, |o| crate::objects::id_from_str(o.str("code").trim()));
                 self.tags.autotarget_due.push(self.time + 0.015);
+                self.tags.autotarget_info.push((h, auto));
+                self.tags.autotarget_saved.push(f32::from_bits(crate::efloat::add(self.time.to_bits(), 0.02f32.to_bits())));
+                self.tags.autotarget_timers.insert((h, auto), (n, f32::from_bits(crate::efloat::add(self.time.to_bits(), 0.02f32.to_bits())), 0.02));
             }
             if armed {
                 let n = self.tags.start_timer("49d220");

@@ -98,6 +98,15 @@ pub struct Tags {
     /// on (`FUN_6f42f8b0`; traced: the quiet test map's 17 at 0.015 and 3.02 seconds).
     #[serde(default)]
     pub autotarget_due: Vec<f32>,
+    /// Each check's unit and spell, and the spells' timers as last started (their count,
+    /// due time as the original's queue has it, its first 0.02 after its start, and
+    /// period), for saves.
+    #[serde(default)]
+    pub autotarget_info: Vec<(u32, Code)>,
+    #[serde(default)]
+    pub autotarget_saved: Vec<f32>,
+    #[serde(default)]
+    pub autotarget_timers: std::collections::HashMap<(u32, Code), (u32, f32, f32)>,
     /// The buffs that listen to their owner's tech tree changes (Command, War Drums, and
     /// Trueshot Aura's), each its slot and its unit's owner, in the order made.
     #[serde(default)]
@@ -175,7 +184,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -904,12 +913,18 @@ impl crate::world::World {
         if (computer || (owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !building)) && !night_sleeper {
             for id in &list {
                 match ability(id).as_ref() {
-                    Some(b"Arep" | b"Aren" | b"Arst" | b"Ahea" | b"Anhe" | b"Ainf" | b"Arpb" | b"Arpl" | b"Arpm") => {
-                        self.tags.start_timer("422820");
+                    Some(c @ (b"Arep" | b"Aren" | b"Arst" | b"Ahea" | b"Anhe" | b"Ainf" | b"Arpb" | b"Arpl" | b"Arpm")) => {
+                        let n = self.tags.start_timer("422820");
                         self.tags.autotarget_due.push(self.time + 0.015);
+                        self.tags.autotarget_info.push((h, *c));
+                        self.tags.autotarget_saved.push(f32::from_bits(crate::efloat::add(self.time.to_bits(), 0.02f32.to_bits())));
+                        self.tags.autotarget_timers.insert((h, *c), (n, f32::from_bits(crate::efloat::add(self.time.to_bits(), 0.02f32.to_bits())), 0.02));
                     }
                     Some(b"Acan") => {
-                        self.tags.start_timer("606220");
+                        let n = self.tags.start_timer("606220");
+                        if let Some(k) = codes.iter().position(|c| c == b"Acan") {
+                            self.tags.timer_objects.entry(slots[k]).or_default().push((n, "606220".into(), self.time, 0.0));
+                        }
                     }
                     _ => {}
                 }

@@ -146,8 +146,13 @@ impl World {
         let mut due: Vec<usize> = (0..self.tags.autotarget_due.len()).filter(|&k| self.tags.autotarget_due[k] <= now).collect();
         due.sort_by(|&a, &b| self.tags.autotarget_due[a].total_cmp(&self.tags.autotarget_due[b]));
         for k in due {
-            self.tags.start_timer("42f8b0");
+            let n = self.tags.start_timer("42f8b0");
             self.tags.autotarget_due[k] += 3.0;
+            if let (Some(&key), Some(saved)) = (self.tags.autotarget_info.get(k), self.tags.autotarget_saved.get_mut(k)) {
+                *saved = f32::from_bits(crate::efloat::add(saved.to_bits(), 3f32.to_bits()));
+                let due = *saved;
+                self.tags.autotarget_timers.insert(key, (n, due, 3.0));
+            }
         }
         // Illusions autocast only under [Misc] IllusionsGetAutocast (0 in the game's data).
         let illusions_cast = self.misc_f32("IllusionsGetAutocast", 0.0) != 0.0;

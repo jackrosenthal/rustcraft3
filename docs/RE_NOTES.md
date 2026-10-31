@@ -1706,7 +1706,16 @@ Formats the port made its own, to be replaced by the original's:
   (0x80 as it stands on blight; its look every 2 seconds, event 0xd01c1), passives
   with an order (Aven, Amim, Andt: order 852290), a shop's Aneu (its customers none,
   its listener), Artn, ARal (its rally point), Amic (its last word 1), Amil (its
-  unit's type and the militia's), Aupg, and Aque (its seven places empty).
+  unit's type and the militia's), Aupg, and Aque (its seven places empty).  Spells
+  (CAbilitySpell): its cooldown left, its unit's cast point and backswing (Repair's
+  and Restore's none and the largest real, with more references), references; its
+  order 852290, words, its listener on its unit's mana, two timers; an auto-target
+  spell's look every 3 seconds (event 0xd01c2), its first 0.02 after its start;
+  Ensnare's in-range listener; Cannibalize's reference, two target masks, and its look
+  for corpses every 2 seconds.  A woken creep starts its auto-target spells' looks the
+  last in its list first, Abolish Magic among them, its type's autocast spell's apart
+  and last (read: a High Priest's Abolish Magic 572, Inner Fire 573, Heal 574).
+  All of the quiet test map's agree.
 - A map loaded directly (-loadfile) draws on the main generator as the game starts,
   before its script: a weighted choice's real (`FUN_6f1c0c40`), then a race for each
   of the 12 players (`FUN_6f1e9dd0`); traced on the quiet test map, the 13 before its

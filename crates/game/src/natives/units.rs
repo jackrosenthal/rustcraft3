@@ -772,7 +772,7 @@ fn enum_units(w: &mut World, vm: &mut Vm, group: u32, filter: u32, limit: i32, p
 /// trees, `FUN_6f651170`; read: Blizzard.j's MeleeClearExcessUnits on Forestwalk, the
 /// search's callback `FUN_6f233f20` traced at both starts: deer, satyrs, and the gold
 /// mine in that order).
-fn spatial_order(w: &World, mut units: Vec<u32>) -> Vec<u32> {
+pub(crate) fn spatial_order(w: &World, mut units: Vec<u32>) -> Vec<u32> {
     let Some(origin) = w.pathing.as_ref().map(|p| p.origin) else { return units };
     let index: std::collections::HashMap<u32, usize> = w.unit_order.iter().enumerate().map(|(i, &h)| (h, i)).collect();
     let block = |h: u32| w.unit(h).map_or((0, 0), |u| (((u.y - u.collision - origin[1]) / 256.0).floor() as i32, ((u.x - u.collision - origin[0]) / 256.0).floor() as i32));

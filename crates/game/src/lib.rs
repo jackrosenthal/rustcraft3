@@ -264,7 +264,9 @@ impl Game {
         // Each starts three timers as it is made (`FUN_6f9c7b20`, its +0x154 and +0x15c;
         // traced on the quiet test map, the game's first six).
         for _ in 0..start.computers + 1 {
-            world.tags.take(b"AI-1");
+            let s = world.tags.take(b"AI-1");
+            let birth = world.tags.live.get(&s).map_or(0, |e| e.1);
+            world.tags.player_ais.push((s, birth));
             for _ in 0..3 {
                 world.tags.start_timer("9c7b20");
             }

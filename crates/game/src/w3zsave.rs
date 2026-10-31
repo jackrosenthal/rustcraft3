@@ -9,6 +9,8 @@ use crate::types::{BoolExpr, EventKind, Obj};
 use crate::tags::Code;
 use crate::world::World;
 
+mod unit;
+
 /// The family a kind of engine object belongs to, as the object tables hold it (read
 /// from every save on hand: properties, listeners, timers, and pathing regions under
 /// their families, a few kinds their own, the rest agents).
@@ -157,6 +159,21 @@ pub fn client_listeners(save: &SaveGame) -> Vec<Listener> {
         .collect();
     out.sort_by_key(|l| l.me.1);
     out
+}
+
+/// The rally points (`rlyp`, the second table's agents), each with the structure it
+/// serves (its first link's owner), as a save holds them.
+pub fn rally_points(save: &SaveGame) -> Vec<(Ref, Ref)> {
+    let Some(m) = save.objects.as_ref() else { return Vec::new() };
+    let Ok(objects) = m.objects() else { return Vec::new() };
+    objects[1]
+        .iter()
+        .filter(|o| &o.entry.kind.to_be_bytes() == b"rlyp")
+        .filter_map(|o| match o.first() {
+            Ok(First::Agent { object, .. }) => Some((Ref(o.entry.tag, o.entry.birth), object.links[0].3)),
+            _ => None,
+        })
+        .collect()
 }
 
 /// A chain of listeners, newest first from its head: each one's link to the one made
@@ -496,7 +513,10 @@ impl World {
         let mut rec = agent_first(me, b"+w3u", &props);
         let live = |s: u32, c: &[u8; 4]| self.tags.live.get(&s).is_some_and(|e| &e.0 == c);
         let all = || u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).map(|&(s, _)| s).chain(u.extra.flyer_pil).chain(u.extra.item_pil.map(|p| p.0)).chain(u.extra.ensnare_pil.map(|p| p.1)).chain(u.extra.alarm_pil).chain(u.extra.spell_timers.iter().copied()).chain(u.extra.mana_listeners.iter().map(|l| l.1)).chain(u.extra.blight_rcm);
-        let newest = |codes: &[&[u8; 4]]| all().filter(|&s| codes.iter().any(|c| live(s, c))).max_by_key(|&s| self.tagged(s).1).map(|s| Link(rf(self.tagged(s)), 0));
+        // (Not a kept slot another object has taken since: read, the town hall's
+        // upgrade's modifiers, gone, their slots the acolytes' blight's.)
+        let stale = |s: u32| u.extra.object_slots.iter().flatten().any(|&(x, b)| x == s && self.tagged(s).1 != b);
+        let newest = |codes: &[&[u8; 4]]| all().filter(|&s| !stale(s) && codes.iter().any(|c| live(s, c))).max_by_key(|&s| self.tagged(s).1).map(|s| Link(rf(self.tagged(s)), 0));
         if let First::Agent { links, .. } = &mut rec {
             // (Its abilities' chain, newest first: its abilities and an AI's unit list,
             // not the AI itself.)
@@ -966,6 +986,14 @@ impl World {
                 seconds.insert(slot, sec);
             }
         }
+        // The units' own records (their second table's rally points as the template has
+        // them).
+        let rallies = rally_points(template);
+        for &h in &self.unit_order {
+            if let Some((slot, sec)) = self.unit_own_record(h, &rallies) {
+                seconds.insert(slot, sec);
+            }
+        }
         for o in objects[0].iter_mut() {
             if let Some(r) = records.get(&o.entry.tag) {
                 o.first = r.to_bytes();
@@ -1320,6 +1348,75 @@ impl World {
                 }
             }
             out.push(format!("units' positions: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+            // The units' own records, by part.
+            {
+                let rallies = rally_points(orig);
+                let (mut same, mut first) = (0, None);
+                let mut parts: std::collections::BTreeMap<&str, u32> = Default::default();
+                let mut fields_off: std::collections::BTreeMap<usize, (u32, String)> = Default::default();
+                for &h in &self.unit_order {
+                    let Some((slot, sec)) = self.unit_own_record(h, &rallies) else { continue };
+                    let Some(o) = by_slot.get(&slot) else { continue };
+                    if sec.to_bytes(o.entry.kind).is_ok_and(|b| b == o.second) {
+                        same += 1;
+                        continue;
+                    }
+                    let (Second::Unit { own, handlers, widget, lists, fields }, Ok(Second::Unit { own: own2, handlers: h2, widget: w2, lists: l2, fields: f2 })) = (&sec, o.second()) else { continue };
+                    let mut differs = Vec::new();
+                    if *own != own2 {
+                        differs.push(("own", format!("{own:#x} vs {own2:#x}")));
+                    }
+                    if handlers.keyed != h2.keyed {
+                        differs.push(("keyed", format!("{:?} vs {:?}", handlers.keyed, h2.keyed)));
+                    }
+                    if handlers.fixed != h2.fixed {
+                        differs.push(("fixed", format!("{:?} vs {:?}", handlers.fixed, h2.fixed)));
+                    }
+                    if let Some(k) = (0..0x400).find(|&k| handlers.events.get(k) != h2.events.get(k)) {
+                        differs.push(("events", format!("{k:#x}: {:?} vs {:?}", handlers.events.get(k), h2.events.get(k))));
+                    }
+                    let strip = |w: &Widget| Widget { sprite: None, shorts: [0; 2], ..w.clone() };
+                    if strip(widget) != strip(&w2) {
+                        differs.push(("widget", format!("{:?} vs {:?}", strip(widget), strip(&w2))));
+                    }
+                    // (What the local player sees aside: the animation's choice and time,
+                    // the fog's tint.)
+                    let seen = |w: &Widget| w.sprite.clone().map(|s| Sprite { real: 0.0, short: 0, word: 0, words: [0; 2], flags: [0; 3], entries: Vec::new(), ..s });
+                    if seen(widget) != seen(&w2) {
+                        differs.push(("sprite", format!("{:?} vs {:?}", seen(widget), seen(&w2))));
+                    }
+                    let stands = |w: &Widget| w.sprite.as_ref().and_then(|s| s.entries.first().map(|e| e.2.clone()));
+                    if stands(widget) != stands(&w2) {
+                        differs.push(("stands", format!("{:?} vs {:?}", stands(widget), stands(&w2))));
+                    }
+                    if *lists != l2 {
+                        differs.push(("lists", format!("{lists:?} vs {l2:?}")));
+                    }
+                    let shown: Option<usize> = std::env::var("W3Z_FIELD").ok().and_then(|v| v.parse().ok());
+                    for (k, (a, b)) in fields.iter().zip(f2.iter()).enumerate() {
+                        if a != b {
+                            if shown == Some(k) {
+                                out.push(format!("unit slot {slot} {} field {k}: ours {a:?}, the original's {b:?}", String::from_utf8_lossy(&widget.word.to_be_bytes())));
+                            }
+                            let e = fields_off.entry(k).or_insert((0, format!("slot {slot}: {a:?} vs {b:?}")));
+                            e.0 += 1;
+                        }
+                    }
+                    for (p, d) in &differs {
+                        *parts.entry(p).or_insert(0) += 1;
+                        if std::env::var("W3Z_ALL").is_ok() {
+                            out.push(format!("unit slot {slot} {p}: ours {d}"));
+                        }
+                    }
+                    first.get_or_insert(format!("slot {slot}: {:?}", differs.iter().map(|d| d.0).collect::<Vec<_>>()));
+                }
+                out.push(format!("units' own records: {same} the same; parts differing {parts:?}; fields differing {:?}{}", fields_off.iter().map(|(k, v)| (k, v.0)).collect::<Vec<_>>(), first.map_or(String::new(), |f| format!("; first {f}"))));
+                if std::env::var("W3Z_ALL").is_ok() {
+                    for (k, (n, ex)) in &fields_off {
+                        out.push(format!("unit field {k}: {n} differ, first {ex}"));
+                    }
+                }
+            }
             // The units' agents.
             let (mut same, mut differ, mut first) = (0, 0, None);
             for (slot, f, sec) in self.unit_order.iter().flat_map(|&h| self.unit_agent_record(h)).collect::<Vec<_>>() {

@@ -831,6 +831,11 @@ impl World {
                     (area > 0.0 || t == src) && self.unit(t).is_some_and(|u| !u.dead && !u.is_building && (u.x - x).hypot(u.y - y) <= area && reach.is_none_or(|enemies| crate::natives::players::is_ally(self, owner, u.owner) != enemies && !(neutral_out && u.owner == crate::types::PLAYER_NEUTRAL_PASSIVE && owner != u.owner)) && self.aura_serves(&code, u.type_id))
                 })
                 .collect();
+            // (Laid in the reverse of the order a search of the map finds them,
+            // `spatial_order`: read, which unit took each of the quiet test map's aura
+            // buffs at 2 seconds, the trolls' and the ogres'.)
+            let mut targets = crate::natives::units::spatial_order(self, targets);
+            targets.reverse();
             for t in targets {
                 self.apply_buff_tagged(t, b.clone(), t != src || area > 0.0 && false);
             }

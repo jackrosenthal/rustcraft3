@@ -52,6 +52,14 @@ pub struct Tags {
     /// Where each creep camp's first creep was made (the camps' AI takes tags).
     #[serde(default)]
     pub camps: Vec<(f32, f32)>,
+    /// Each camp's AI (`AIcs`), as made with its first creep.
+    pub camp_ais: Vec<(u32, u32)>,
+    /// The players' AIs (`AI-1`), each computer's and then Neutral Hostile's, in the
+    /// order made.
+    pub player_ais: Vec<(u32, u32)>,
+    /// The town sites' AIs (`AIts`), each made with a gold mine, and where: they last
+    /// past their mines (a haunted mine's site is the mine's it replaced).
+    pub sites: Vec<(f32, f32, (u32, u32))>,
     /// The script functions with a handler, which the original makes the first time a
     /// function is given to an object (an action, a filter, a timer; `FUN_6f2872f0`).
     #[serde(default)]
@@ -162,7 +170,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -754,9 +762,12 @@ impl crate::world::World {
         // Wine against an undead computer: its Necropolis, Haunted Gold Mine, and
         // workers each have it after their tasks).
         let computer = self.players.get(owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER && p.slot_state == crate::types::slot_state::PLAYING);
+        let mut camp = None;
         if owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !building {
             let reach = CAMP_CELLS * 32.0;
-            if !self.tags.camps.iter().any(|&(cx, cy)| (cx - x).hypot(cy - y) < reach) {
+            camp = self.tags.camps.iter().position(|&(cx, cy)| (cx - x).hypot(cy - y) < reach);
+            if camp.is_none() {
+                camp = Some(self.tags.camps.len());
                 self.tags.camps.push((x, y));
                 codes.push(*b"AIcs");
             }
@@ -889,6 +900,16 @@ impl crate::world::World {
             }
         }
         let births: Vec<u32> = slots.iter().map(|s| self.tags.live.get(s).map_or(0, |e| e.1)).collect();
+        if let Some(k) = codes.iter().position(|c| c == b"AIcs") {
+            self.tags.camp_ais.push((slots[k], births[k]));
+        }
+        let camp_ai = camp.and_then(|c| self.tags.camp_ais.get(c).copied());
+        let site_ai = codes.iter().position(|c| c == b"AIts").map(|k| (slots[k], births[k]));
+        if let Some(s) = site_ai {
+            self.tags.sites.push((x, y, s));
+        }
+        // Its spells' listeners, each its ability's (the ability's first `rtl).
+        let spell_owners: Vec<(u32, Code)> = spell_timers.iter().filter_map(|&k| codes[..k].iter().rposition(|c| c[0] == b'A').map(|a| (slots[k], codes[a]))).collect();
         // What it releases as it is made, each freed as the next turn starts, in this
         // order (traced in the original's event queue): a creep that falls asleep, its
         // autocast's order and its spells' timers, the last first; then the two tasks
@@ -922,6 +943,9 @@ impl crate::world::World {
         if let Some(u) = self.unit_mut(h) {
             u.extra.oid = oid;
             u.extra.spell_timers = spell_timers.iter().map(|&k| slots[k]).collect();
+            u.extra.spell_owners = spell_owners;
+            u.extra.camp_ai = camp_ai;
+            u.extra.site_ai = site_ai;
             // Blight growth's objects (Abli, Xbli, `pos, two ^pmr), released as its
             // dispel ends (`World::update_blight`).
             u.extra.blight_slots = blight.map(|b| slots[b..b + 5].to_vec()).unwrap_or_default();
@@ -953,6 +977,7 @@ impl crate::world::World {
         }
         // The new timers replace the spells' first ones, released the last first.
         let old = u.extra.spell_timers.clone();
+        let codes: Vec<Code> = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a).map(|o| crate::objects::id_from_str(o.str("code").trim()))).filter(|c| matches!(c, b"ACtb" | b"ACtc")).collect();
         // (Each made by its spell's event, `FUN_6f4256d0`, and the old let go,
         // `FUN_6f161800`: a count of the property module's either side of the new
         // listener's two; traced on the quiet test map's golems.)
@@ -974,6 +999,7 @@ impl crate::world::World {
         if let Some(u) = self.unit_mut(h) {
             u.extra.mana_watched = true;
             u.extra.mana_listeners = costs.iter().map(|c| c + 0.1).zip(new.iter().rev().copied()).collect();
+            u.extra.spell_owners = codes.into_iter().zip(new.iter().rev().copied()).map(|(c, s)| (s, c)).collect();
             u.extra.spell_timers = new;
         }
     }

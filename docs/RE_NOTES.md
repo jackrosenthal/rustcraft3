@@ -1637,6 +1637,48 @@ Formats the port made its own, to be replaced by the original's:
   51, 67 a word of 0 or 1; 72 to 74 flags; 80 to 83 reals (60, 120, 80; 0 or -20; 0 or
   60; 60, 40, 220); 92 its tint (ARGB); 100 and 101 its move speed and its type's (as
   single precision bits: 270, 200, 250); 104 to 106, 108 flags.
+- A unit's own record (`+w3u`'s second) as the port writes it agrees with the quiet
+  test map's for every part but what the local player sees (its sprite's animation
+  choice and time, flags, and fog tint, its widget's shorts), four keyed tables, and
+  the golems' 1.5000001s; the original loads and plays it.  Read:
+  - Its leading word is the agent's flags (+0x20, `FUN_6f03edf0`): 0x600, shown 0x2 or
+    hidden 0x1, 0x4, a unit 0x40, invulnerable 0x8, a worker 0x100000, it trains (a
+    queue) 0x200000, it harvests gold 0x8000, a haunted mine's 0x10000, lumber
+    0x40000; and 0x1000 for a unit whose collision is an odd count of 16 (16, 31, 48
+    have it, 32 and 47 not, on the quiet test map and Forestwalk; provisional).
+  - Its handlers: the agent's registry (`FUN_6f0725b0` appends; one already there for
+    an event keeps its place) walked by event (`FUN_6f0564e0`), so each event's list is
+    its listeners in the order they first listened.  Traced as made: the unit itself
+    (18 events, a structure one more after its abilities), each ability in its order
+    with its kind's set, then its AIs (a creep's camp's and Neutral Hostile's; a
+    computer's; a gold mine's town site and each computer's, a computer's town hall
+    its site's after its own), the game's.  A creep woken from sleep makes its
+    abilities with orders listen anew, the last made first (all but 0x166); a buff
+    listens on its bearer (Devotion Aura's not for 0x1a2 on another) and its aura's
+    bearer.  The keyed lists (each listener's observers) are a hash of four buckets
+    by slot, each in the order made (all but the computer's structures, whose alarm
+    comes first, and two golems' emptied listeners left in place).
+  - Its triggers' events (lists 0x80234 to 0x80258, 0x80319 to 0x80329): the uevts.
+  - Its fields (CUnit offsets in `FUN_6f696490`): its day change's object (+0x110,
+    kept after it goes); its sight's radius in fog cells of 128, rounded, a computer's
+    or neutral's no farther than its acquisition range (`FUN_6f24f7e0` of
+    `FUN_6f699ef0`); its newest ability or buff; its AI's; its death's listener, life
+    and mana rates and modifiers (on blight, its blight's); its armor with its buffs';
+    owner; flags (+0x5c, from CUnit's init `FUN_6f68a060`: deathType's raise bit clear
+    0x1000 and decay 0x200, an AI's 0x4, hidden 0x8, a structure 0x10000, a flyer
+    0x20000000, a gold mine 0x20000, a neutral building of Neutral Passive's 0x40000,
+    its critters 0x80000, Return Resources' DataA 0x4000 and DataB 0x8000); its type's
+    classes, targets, armor type, launch and impact; its tint; its walk's speed; a
+    spell immune unit's two words; isBuildOn 0x100; elevation points 0x8 in +0x280.
+  - Its sprite: its model's stands (sequences named "Stand" with a variation's number
+    alone), the first played (provisional: the running game's choice and time).
+- The engine reads its data's decimals as their digits times ten to the minus their
+  fraction's count, in double, then the single at or above it: "1.05", "1.55", "0.9",
+  "1.3" as 1.0500001, 1.5500001, 0.90000004, 1.3000001 (models' scales), "0.5",
+  "0.75", "1.25", "1.2", "1.7" as the nearest.  Not yet: "1.5" as 1.5000001 (a
+  golem's scale and regeneration), which this does not give.
+- An aura's scan lays its buffs in the reverse of the order a search of the map finds
+  the units (`spatial_order`): read, the trolls' and ogres' at 2 seconds.
 - A unit's clustered position (`` `pcu ``, CPoPosCl) holds its place in pathing cells
   ((x - the pathing origin) / 32), two zeros, its speed in cells a second (none
   moving: unbounded), its facing in radians, and its collision in cells; its two

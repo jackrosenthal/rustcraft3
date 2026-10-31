@@ -77,6 +77,26 @@ fn main() {
         }
         return;
     }
+    // "unitsec": a unit's own record by its tag, besides its fields: its word, handlers
+    // (the event lists not empty), widget, and lists not empty.
+    if a[2] == "unitsec" {
+        let tag: Option<u32> = a[3].parse().ok();
+        for o in all.iter().filter(|o| code(o.entry.kind) == "+w3u" && tag.is_none_or(|t| o.entry.tag == t)) {
+            let Ok(w3_formats::w3z::Second::Unit { own, handlers, widget, lists, .. }) = o.second() else { continue };
+            println!("unit {} {}", o.entry.tag, code(widget.word));
+            println!("own {own:#x}");
+            println!("keyed {:?}", handlers.keyed);
+            println!("fixed {:?}", handlers.fixed);
+            for (k, e) in handlers.events.iter().enumerate().filter(|(_, e)| !e.is_empty()) {
+                println!("event {k:#x} {e:?}");
+            }
+            println!("widget {widget:?}");
+            for (k, l) in lists.iter().enumerate().filter(|(_, l)| !l.is_empty()) {
+                println!("list {k} {l:?}");
+            }
+        }
+        return;
+    }
     // "units": each unit's type, its position cluster's reals, and its indexed reals.
     if a[2] == "units" {
         for o in all.iter().filter(|o| code(o.entry.kind) == "+w3u") {

@@ -418,8 +418,10 @@ impl World {
         for h in units {
             let s = self.tags.take(b"`rcm");
             self.tags.doom_at(now + 3.0, s);
+            let birth = self.tags.live.get(&s).map_or(0, |e| e.1);
             if let Some(u) = self.unit_mut(h) {
                 u.extra.day_rcm = Some(s);
+                u.extra.day_ref = Some((s, birth));
                 u.extra.sight_stamp = Some((now + 3.0) as f32);
             }
             let Some(u) = self.unit(h).filter(|u| !u.dead) else { continue };
@@ -515,6 +517,7 @@ impl World {
             // Magic; its Heal's the last, re-armed as its mana passes 5.1).
             let mut costs = Vec::new();
             let mut slots = Vec::new();
+            let mut owners = Vec::new();
             let mut pil = None;
             for a in spells {
                 let Some(code) = self.objects.abilities.get(a).map(|o| crate::objects::id_from_str(o.str("code").trim())) else { continue };
@@ -527,6 +530,7 @@ impl World {
                         self.tags.bump_prop(1, "wake");
                     }
                     slots.push(s);
+                    owners.push(code);
                     costs.push(self.objects.abilities.get(a).map_or(0.0, |o| o.level_real("Cost", 1)) + 0.1);
                     if code == *b"Aens" {
                         pil = Some((s, self.tags.take(b"`pil")));
@@ -540,9 +544,14 @@ impl World {
             // (Past its cost itself, not its cost and 0.1: read, a Forest Troll
             // Trapper's spell of no cost waits for its mana to fall.)
             let costs: Vec<f32> = costs.into_iter().map(|c| if mana >= c - 0.1 { f32::INFINITY } else { c }).collect();
+            let born = self.tags.born;
             if let Some(u) = self.unit_mut(h) {
+                // (Each its spell's: the spells' listeners in the reverse order, each
+                // spell's cost its own.)
+                u.extra.spell_owners = slots.iter().copied().zip(owners).collect();
                 u.extra.mana_listeners = costs.into_iter().zip(slots).collect();
                 u.extra.ensnare_pil = pil;
+                u.extra.woke_at = Some(born);
             }
             // A flyer's detection makes its in-range object again, the one it had gone
             // as it fell asleep (`FUN_6f40bb00`, `FUN_6f3f8640`; read: Forestwalk's Green

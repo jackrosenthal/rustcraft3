@@ -590,6 +590,21 @@ pub struct UnitExtra {
     /// Its object of the last day change (`World::time_of_day_moved`), while it lasts.
     #[serde(default)]
     pub day_rcm: Option<u32>,
+    /// That object's slot and birth, kept after it goes (its record names it still).
+    #[serde(default)]
+    pub day_ref: Option<(u32, u32)>,
+    /// The birth count as it last woke from creep sleep, its abilities listening anew.
+    #[serde(default)]
+    pub woke_at: Option<u32>,
+    /// Its spells' listeners on its mana, each with its ability's code.
+    #[serde(default)]
+    pub spell_owners: Vec<(u32, Id)>,
+    /// The AIs that watch it beside its own: a creep's camp's (`AIcs`), a gold mine's
+    /// town site's (`AIts`).
+    #[serde(default)]
+    pub camp_ai: Option<(u32, u32)>,
+    #[serde(default)]
+    pub site_ai: Option<(u32, u32)>,
     /// The time stamp of its sight (its `` `rel ``): the main clock as its last day change's
     /// ramp ends (that change's plus 3 seconds), while it has had one.
     #[serde(default)]
@@ -873,6 +888,11 @@ impl Default for UnitExtra {
             footprint_slots: Vec::new(),
             object_slots: Default::default(),
             day_rcm: None,
+            day_ref: None,
+            woke_at: None,
+            spell_owners: Vec::new(),
+            camp_ai: None,
+            site_ai: None,
             sight_stamp: None,
             alarm_pil: None,
             blight_check: None,

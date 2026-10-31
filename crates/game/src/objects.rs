@@ -76,7 +76,8 @@ impl Object {
     }
 
     pub fn real(&self, field: &str) -> f32 {
-        self.str(field).trim().parse().unwrap_or(0.0)
+        let s = self.str(field);
+        engine_real(s.trim()).or_else(|| s.trim().parse().ok()).unwrap_or(0.0)
     }
 
     pub fn bool(&self, field: &str) -> bool {
@@ -95,6 +96,31 @@ impl Object {
     pub fn level_int(&self, field: &str, level: u32) -> i32 {
         self.int(&format!("{field}{level}"))
     }
+}
+
+/// A decimal as the engine reads its data: its digits times ten to the minus the count
+/// of its fraction's, in double precision, then the single nearest at or above it (read:
+/// "1.05", "1.55", "0.9", "1.3", and "1.5" as 1.0500001, 1.5500001, 0.90000004,
+/// 1.3000001, and 1.5000001, models' scales and a golem's regeneration in the quiet test
+/// map's save; "0.5", "0.75", "1.25", "1.2", and "1.7" as the nearest).  None for what
+/// is not plain digits with a point.
+pub fn engine_real(s: &str) -> Option<f32> {
+    const TENTHS: [f64; 16] = [1.0, 0.1, 0.01, 0.001, 0.0001, 0.00001, 0.000001, 0.0000001, 0.00000001, 0.000000001, 0.0000000001, 0.00000000001, 0.000000000001, 0.0000000000001, 0.00000000000001, 0.000000000000001];
+    let (neg, body) = match s.strip_prefix('-') {
+        Some(b) => (true, b),
+        None => (false, s.strip_prefix('+').unwrap_or(s)),
+    };
+    let (int, frac) = body.split_once('.').unwrap_or((body, ""));
+    if int.is_empty() && frac.is_empty() || !int.bytes().chain(frac.bytes()).all(|b| b.is_ascii_digit()) || int.len() + frac.len() > 15 || frac.len() >= TENTHS.len() {
+        return None;
+    }
+    let digits: u64 = format!("{int}{frac}").parse().ok()?;
+    let d = digits as f64 * TENTHS[frac.len()] * if neg { -1.0 } else { 1.0 };
+    let mut f = d as f32;
+    if (f as f64) < d {
+        f = if f >= 0.0 { f32::from_bits(f.to_bits() + 1) } else if f == -0.0 || f.to_bits() == 0x8000_0000 { f32::from_bits(1) } else { f32::from_bits(f.to_bits() - 1) };
+    }
+    Some(f)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]

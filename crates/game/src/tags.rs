@@ -873,7 +873,8 @@ impl crate::world::World {
                 }
                 codes::ability::id::SELL_UNITS => {
                     for _ in 0..sold {
-                        self.tags.start_timer("41c010");
+                        let n = self.tags.start_timer("41c010");
+                        self.tags.timer_objects.entry(slots[k]).or_default().push((n, "41c010".into(), self.time, 0.0));
                     }
                 }
                 codes::ability::id::ATTACK => {

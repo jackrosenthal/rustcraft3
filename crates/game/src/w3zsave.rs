@@ -162,6 +162,25 @@ pub fn client_listeners(save: &SaveGame) -> Vec<Listener> {
     out
 }
 
+/// The span an extended agent timer runs in (DAT_6fd3c894, set to 120 at load by
+/// `FUN_6f070d80`).
+pub(crate) const TIMER_CHUNK: f32 = 120.0;
+
+/// An extended agent timer's (CAgentTimerExtended's) timeout as it runs: the count of
+/// whole chunks in it (as a periodic node of `TIMER_CHUNK`), and the time beyond them,
+/// the fraction of a chunk in the engine's arithmetic (read: a shop's 440 seconds,
+/// three chunks and 80.00001; 120, one and 0).  Under a chunk, none and the timeout.
+pub(crate) fn timer_chunks(timeout: f32) -> (u32, f32) {
+    use crate::efloat::{div, floor, from_int, mul, sub, to_int};
+    let chunk = TIMER_CHUNK.to_bits();
+    let q = div(timeout.to_bits(), chunk);
+    let chunks = to_int(floor(q)).max(0) as u32;
+    if chunks == 0 {
+        return (0, timeout);
+    }
+    (chunks, f32::from_bits(mul(sub(q, from_int(chunks as i32)), chunk)))
+}
+
 /// The art (the second table's effects) the auras and their buffs hold first in their
 /// records, by slot, as a save holds them.
 pub fn client_art(save: &SaveGame) -> std::collections::HashMap<u32, Field> {
@@ -1035,22 +1054,20 @@ impl World {
                 // `FUN_6f0602a0`): while running itself, its flags, and its block (due
                 // on the clock its run started by, its period, its start's count,
                 // event 0x80204, a periodic node); the count of 120-second chunks a
-                // timeout of 120 or more runs in (DAT_6fd3c894, set to 120 at load:
-                // such a timer runs as a periodic node of 120, flag 0x10) twice; the
-                // timeout beyond the chunks; its function's handler, and the
+                // timeout of 120 or more runs in (`timer_chunks`: such a timer runs as
+                // a periodic node of 120, flag 0x10) twice; the timeout beyond the
+                // chunks; its function's handler, and the
                 // registrations of its expiry.  (Provisional: a periodic one's flag 2,
                 // and the shorts as chunks pass.)
                 Some(Obj::Timer(t)) => {
                     let Some(own) = slot_of(id) else { continue };
-                    const CHUNK: f32 = 120.0;
-                    let chunks = (t.timeout / CHUNK) as u32;
-                    let rest = if chunks > 0 { t.timeout - chunks as f32 * CHUNK } else { t.timeout };
+                    let (chunks, rest) = timer_chunks(t.timeout);
                     let flags = if chunks > 0 { 0x10 } else { 0 } | if t.periodic { 2 } else { 0 };
                     let node_periodic = u32::from(chunks > 0 || t.periodic);
                     let agent = if t.running {
-                        let first = if chunks > 0 { CHUNK } else { t.timeout };
+                        let first = if chunks > 0 { TIMER_CHUNK } else { t.timeout };
                         let due = f32::from_bits(crate::efloat::add(t.started_clock, first.to_bits()));
-                        Field::Timer(rf(own), flags, Timing(Some((due, t.timeout, t.agent_seq, 0x8_0204, node_periodic))))
+                        Field::Timer(rf(own), flags, Timing(Some((due, first, t.agent_seq, 0x8_0204, node_periodic))))
                     } else {
                         Field::Timer(NONE, 0, Timing(None))
                     };

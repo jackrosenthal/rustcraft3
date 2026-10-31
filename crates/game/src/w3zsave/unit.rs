@@ -1028,6 +1028,52 @@ impl World {
             codes::ability::id::ATTACK => return Some(self.attack_record(h, t, own)),
             // CAbilityAlarm (`FUN_6f42d040`): its timer and its in-range listener.
             codes::ability::id::ALARM => vec![timer(), Field::Ref(u.extra.alarm_pil.map_or(NONE, |s| rf(self.tagged(s))))],
+            // Sell Units (CAbilitySellUnit, own `FUN_6f42e970`): two 0.0; two references
+            // (none), twelve slots, each a sold unit's (its id, its count, 0.0, and its
+            // most as reals, its restock, and its first coming: extended timers, the
+            // coming's its stockStart from the shop's making in chunks, `timer_chunks`,
+            // event 0xd01c1; 1 while it is yet to come) or empty (0, 0.0, 0.0, the
+            // largest real, no timers, 0); then 0xd0142 and four 0.  (Read: the quiet
+            // test map's Goblin Laboratory's three at 5 seconds; provisional: a slot
+            // after its unit has come, its restock running.)
+            codes::ability::id::SELL_UNITS => {
+                own.extend([Field::Real(0.0), Field::Real(0.0)]);
+                let (_, units) = self.shop_goods(h);
+                let starts: Vec<(u32, f32)> = self.tags.timer_objects.get(&t.0).map(|v| v.iter().filter(|x| x.1 == "41c010").map(|x| (x.0, x.2)).collect()).unwrap_or_default();
+                let idle = || [timer(), Field::Short(0), Field::Short(0), Field::Real(0.0)];
+                let mut tail = vec![Field::Ref(NONE), Field::Ref(NONE)];
+                for k in 0..12 {
+                    let mut slot = Vec::new();
+                    match units.get(k) {
+                        Some(&id) => {
+                            let start = self.objects.units.get(id).map_or(0.0, |o| o.real("stockStart"));
+                            let (count, max, arriving) = self.shops.stock.get(&(h, id)).map_or((0, 1, start > 0.0), |s| (s.count, s.max, s.arriving));
+                            slot.extend([w(u32::from_be_bytes(id)), Field::Real(count as f32), Field::Real(0.0), Field::Real(max as f32)]);
+                            slot.extend(idle());
+                            if arriving {
+                                let (chunks, rest) = super::timer_chunks(start);
+                                let first = if chunks > 0 { super::TIMER_CHUNK } else { start };
+                                let (n, at) = starts.get(k).copied().unwrap_or((0, 0.0));
+                                let due = f32::from_bits(crate::efloat::add(at.to_bits(), first.to_bits()));
+                                slot.push(Field::Timer(rf(t), if chunks > 0 { 0x10 } else { 0 }, Timing(Some((due, first, n, 0xd_01c1, u32::from(chunks > 0))))));
+                                slot.extend([Field::Short(chunks.min(0xffff) as u16), Field::Short(chunks.min(0xffff) as u16), Field::Real(rest)]);
+                            } else {
+                                slot.extend(idle());
+                            }
+                            slot.push(w(u32::from(arriving)));
+                        }
+                        None => {
+                            slot.extend([w(0), Field::Real(0.0), Field::Real(0.0), Field::Real(f32::MAX)]);
+                            slot.extend(idle());
+                            slot.extend(idle());
+                            slot.push(w(0));
+                        }
+                    }
+                    tail.push(Field::List(vec![slot]));
+                }
+                tail.extend([w(0xd_0142), w(0), w(0), w(0), w(0)]);
+                tail
+            }
             // Blight growth (CAbilityBlightGrowth): its Area as given, its Xbli, 0.
             codes::ability::id::BLIGHT_GROWTH => {
                 let xbli = u.extra.blight_slots.get(1).map_or((u32::MAX, u32::MAX), |&s| self.tagged(s));

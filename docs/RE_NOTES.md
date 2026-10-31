@@ -1988,6 +1988,15 @@ Formats the port made its own, to be replaced by the original's:
   occlusion height (UnitUI's occH, 200 for the neutral buildings) raise their cell's
   sight height as trees do (read: the Goblin Merchant's cell 584, its level's 384 and
   200); the port now does so, the regression suite unchanged.
+- The terrain's part (`FUN_6f78c900`): 1; 0 and a byte a terrain corner, 255 where its
+  ground texture is the blight's tile (`FUN_6f757c80`), the tile `FUN_6f75c7f0` takes
+  as the terrain's +0x1dc, the map's ground tile of the lowest Terrain.slk blightPri
+  (Booty Bay's rough dirt, Ldro, 1: its 386 corners), which a load paints back over the
+  corners so marked (`FUN_6f74cc20`); 2, the doodads' set animations (`FUN_6f778f90`:
+  those of kind 5 or 6, none here) and a byte a doodad (its flags' bits 26 and 27: ten
+  of Booty Bay's 603, among them two fog doodads, a hay cart, and rocks; not yet
+  read, the template's); 1, 10000, 0, and the deformations (none); 0 and none.  The
+  quiet test map's agrees whole, and the original loads and plays the save.
 - The engine's objects, read in a save's object table and free list (a quiet test map
   on Booty Bay without the computer's AI, saved at five seconds; `w3zobj objtable`,
   `free`, and playtest's `objtable`): the port's live objects (`Tags::live`) agree

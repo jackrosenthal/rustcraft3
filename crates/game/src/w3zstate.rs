@@ -132,6 +132,42 @@ impl World {
         Some(out)
     }
 
+    /// The terrain's part (`FUN_6f78c900`): 1; 0 and a byte a terrain corner, 255 where
+    /// its ground texture is the blight's tile (`FUN_6f757c80`; the tile `FUN_6f75c7f0`
+    /// chooses, the map's ground tile of the lowest Terrain.slk blightPri, as the original
+    /// draws blight: Booty Bay's rough dirt), which a load paints back (`FUN_6f74cc20`);
+    /// 2, the doodads' animations set (none) and a byte a doodad (its flags' bits 26
+    /// and 27; the template's: not read); 1, 10000, 0, and the deformations (none); 0
+    /// and none.  Provisional: the doodads' bytes, deformations a game has.
+    pub fn saved_terrain(&self, template: &[Field]) -> Option<Vec<Field>> {
+        let t = w3_formats::map::Terrain::parse(&self.chain.read("war3map.w3e").ok()?).ok()?;
+        let slk = w3_formats::slk::Table::parse(&self.chain.read_string("TerrainArt\\Terrain.slk").ok()?);
+        let pri = |id: &[u8; 4]| slk.get(&String::from_utf8_lossy(id), "blightPri").and_then(|v| v.as_str().parse::<i32>().ok()).unwrap_or(1000);
+        let mut blight = 0u8;
+        let mut best = 1000;
+        for (k, g) in t.ground_tilesets.iter().enumerate() {
+            if pri(g) < best {
+                (best, blight) = (pri(g), k as u8);
+            }
+        }
+        let corners = t.corners.iter().map(|c| vec![Field::Byte(if c.ground_texture == blight { 255 } else { 0 })]).collect();
+        let doodads = template.get(5).cloned().unwrap_or(Field::List(Vec::new()));
+        Some(vec![
+            Field::Word(1),
+            Field::Word(0),
+            Field::List(corners),
+            Field::Word(2),
+            Field::List(Vec::new()),
+            doodads,
+            Field::Word(1),
+            Field::Word(10000),
+            Field::Word(0),
+            Field::List(Vec::new()),
+            Field::Word(0),
+            Field::List(Vec::new()),
+        ])
+    }
+
     /// The sounds' part (`FUN_6f359b50`): the eight volume groups' levels (each the level
     /// it goes to), "Music", a word (-1), and the looping sounds playing on objects
     /// (none the port makes: provisional, Booty Bay's haunted mine's MineDomeLoop not
@@ -197,6 +233,11 @@ impl Game {
                 "game 3" => *f = self.world.saved_game_3(f),
                 "references" => *f = self.world.saved_sites(),
                 "sounds" => *f = self.world.saved_sounds(),
+                "terrain" => {
+                    if let Some(x) = self.world.saved_terrain(f) {
+                        *f = x;
+                    }
+                }
                 "fog" => {
                     if let Some(x) = self.world.saved_fog(f) {
                         *f = x;
@@ -249,7 +290,7 @@ impl Game {
                 }
                 continue;
             }
-            if matches!(*name, "game" | "map setup" | "game 2" | "game 3" | "references" | "hashtables" | "sounds" | "ui") {
+            if matches!(*name, "game" | "map setup" | "game 2" | "game 3" | "references" | "hashtables" | "sounds" | "ui" | "terrain") {
                 let first = (0..a.len().max(b.len())).find(|&k| a.get(k) != b.get(k));
                 out.push(format!("{name}: {}", first.map_or("the same".into(), |k| match (a.get(k), b.get(k)) {
                     (Some(Field::List(x)), Some(Field::List(y))) => {

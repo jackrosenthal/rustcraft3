@@ -2368,8 +2368,12 @@ Formats the port made its own, to be replaced by the original's:
     from its fourth, made none; Ogre Mound's and Twisted Meadows' nearest pairs, 61.1
     and 65.3 cells apart, made two each, so the cost is the path's, not the distance.
   With the first three Plaguelands agrees from the second turn to turn 601 when the
-  site's object is set aside (there two creeps' re-armed listeners fire a turn sooner
-  in the original).
+  site's object is set aside (a local stand-in, `abtest/tmp_site.patch`).  There a
+  Satyr Hellcaller's listener, due at 60.079998 on the clock, fired in the turn whose
+  clock ends at 60.0804, where the port waited for the next: a listener falls due
+  through the clock's last reading in a tick, the next tick's first (an Ogre Lord's due
+  at 80.08, its tick's clock ending at 80.075, still the next).  With it, and the site
+  set aside, Plaguelands agrees for all 3752 turns captured (kept in `docs/reference`).
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

@@ -427,7 +427,10 @@ impl World {
             for &(thr, slot) in &u.extra.mana_listeners {
                 let at = (thr - u.mana) / mp;
                 let when = (start + at as f64) as f32 as f64;
-                if let Some(i) = (0..n).position(|i| self.tick_abs(i).is_some_and(|c| c >= when)).filter(|&i| i + 1 < n) {
+                // (Through the clock's last reading in this tick, where the next tick
+                // begins: read, a Satyr Hellcaller's 75.1 at 1.25 a second, due at
+                // 60.079998, re-armed in the turn whose clock ends at 60.0804.)
+                if let Some(i) = (0..n).position(|i| self.tick_abs(i).is_some_and(|c| c >= when)) {
                     due.push((first + i as i64, at, h, slot));
                 }
             }

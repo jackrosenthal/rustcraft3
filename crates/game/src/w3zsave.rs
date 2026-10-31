@@ -1064,7 +1064,10 @@ impl World {
             for (slot, f) in self.ability_real_records(h, &rallies).into_iter().chain(self.structure_region_records(h)) {
                 records.entry(slot).or_insert(f);
             }
-            let (firsts, secs) = self.mine_circle_records(h);
+            let (mut firsts, mut secs) = self.mine_circle_records(h);
+            let (bf, bs) = self.blight_growth_records(h);
+            firsts.extend(bf);
+            secs.extend(bs);
             for (slot, f) in firsts {
                 records.entry(slot).or_insert(f);
             }
@@ -1740,10 +1743,10 @@ impl World {
             let rallies = rally_points(orig);
             let ability_reals: Vec<(u32, First)> = self.unit_order.iter().flat_map(|&h| self.ability_real_records(h, &rallies)).collect();
             let footprints: Vec<(u32, First)> = self.unit_order.iter().flat_map(|&h| self.structure_region_records(h)).collect();
-            let circles: Vec<(u32, First)> = self.unit_order.iter().flat_map(|&h| self.mine_circle_records(h).0).collect();
+            let circles: Vec<(u32, First)> = self.unit_order.iter().flat_map(|&h| self.mine_circle_records(h).0.into_iter().chain(self.blight_growth_records(h).0)).collect();
             {
                 let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();
-                let secs: Vec<(u32, Second)> = self.unit_order.iter().flat_map(|&h| self.mine_circle_records(h).1).collect();
+                let secs: Vec<(u32, Second)> = self.unit_order.iter().flat_map(|&h| self.mine_circle_records(h).1.into_iter().chain(self.blight_growth_records(h).1)).collect();
                 let (mut same, mut differ, mut first) = (0, 0, None);
                 for (slot, sec) in secs {
                     match by_slot.get(&slot) {
@@ -1760,9 +1763,9 @@ impl World {
                         None => differ += 1,
                     }
                 }
-                out.push(format!("mines' slots and circles (second records): {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+                out.push(format!("mines' slots, circles, and blight growth (second records): {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
             }
-            for (name, recs) in [("plain agents", self.plain_agent_records()), ("pathing system objects", self.pathing_system_records(48, 0)), ("game object", self.game_object_records()), ("abilities' reals", ability_reals), ("structures' footprints (but for the search mark)", footprints), ("mines' circles (but for the search mark)", circles)] {
+            for (name, recs) in [("plain agents", self.plain_agent_records()), ("pathing system objects", self.pathing_system_records(48, 0)), ("game object", self.game_object_records()), ("abilities' reals", ability_reals), ("structures' footprints (but for the search mark)", footprints), ("mines' circles and blight growth (but for the search mark)", circles)] {
                 let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();
                 let (mut same, mut differ, mut first) = (0, 0, None);
                 for (slot, f) in recs {

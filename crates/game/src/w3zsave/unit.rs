@@ -526,6 +526,45 @@ impl World {
 }
 
 impl World {
+    /// A structure's blight growth's objects (Abli's: `Xbli`, its `` `pos ``, two
+    /// `^pmr`), first records and Xbli's second: an agent with its position (the
+    /// structure's place in pathing cells; its coarse region unflagged, words 1; its
+    /// fine one as a tree's), and its own fields: 0, 1, the ability's Area, Dur, and
+    /// DataA, the steps grown, and 2 once grown (its timer then none).  Provisional:
+    /// one still growing (1, its timer).
+    pub fn blight_growth_records(&self, h: u32) -> (Vec<(u32, w3_formats::w3z::First)>, Vec<(u32, w3_formats::w3z::Second)>) {
+        use w3_formats::w3z::{Field, First, Handlers, Second, Timing};
+        let (mut firsts, mut seconds) = (Vec::new(), Vec::new());
+        let Some(u) = self.unit(h) else { return (firsts, seconds) };
+        let Some(p) = self.pathing.as_ref() else { return (firsts, seconds) };
+        let Some((a, lvl)) = self.ability_with_code(h, "Abli") else { return (firsts, seconds) };
+        if u.extra.blight_slots.len() != 5 {
+            return (firsts, seconds);
+        }
+        let t = |k: usize| self.tagged(u.extra.blight_slots[k]);
+        let (xbli, pos, r1, r2) = (t(1), t(2), t(3), t(4));
+        let [coarse, fine] = self.pathing_map_objects();
+        let (cx, cy) = ((u.x - p.origin[0]) / crate::pathing::CELL, (u.y - p.origin[1]) / crate::pathing::CELL);
+        let (row, col) = (cy.floor() as u32, cx.floor() as u32);
+        firsts.push((xbli.0, super::agent_first(xbli, b"Xbli", &[pos])));
+        firsts.push((pos.0, First::Pos { base: super::property_base(pos, xbli), values: [cx, cy, 0.0, 0.0, f32::MAX, 0.0, 0.0], refs: [rf(r1), rf(r2)] }));
+        firsts.push((r1.0, First::Region { refs: [rf(coarse), rf(pos)], word: 0, bounds: [row >> 3, col >> 3, (row >> 3) + 1, (col >> 3) + 1], words: [0, 1, 0] }));
+        firsts.push((r2.0, First::Region { refs: [rf(fine), rf(pos)], word: 0x0100_0000, bounds: [row, col, row + 1, col + 1], words: [0, 1, 0] }));
+        let o = self.objects.abilities.get(a);
+        let (area, dur, step) = o.map_or((0.0, 0.0, 0.0), |o| (o.level_real("Area", lvl), o.level_real("Dur", lvl), o.level_real("DataA", lvl)));
+        let grown = u.extra.blight_radius >= area;
+        // (The area as the disc rounds it to the 128 grid: a Necropolis's 960 is 1024,
+        // its steps 16.)
+        let rounded = (area / 128.0).round() * 128.0;
+        let steps = if step <= 0.0 { 0 } else if grown { (rounded / step) as u32 } else { (u.extra.blight_radius / step) as u32 };
+        seconds.push((xbli.0, Second::Agent {
+            own: vec![Field::Word(0), Field::Word(1), Field::Real(rounded), Field::Real(dur), Field::Real(step), Field::Word(steps), Field::Word(if grown { 2 } else { 1 })],
+            handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] },
+            tail: vec![Field::Timer(NONE, 0, Timing(None))],
+        }));
+        (firsts, seconds)
+    }
+
     /// A haunted mine's work slots and their circles (Abgm's objects after its two reals:
     /// five `rslt`, then five of `+EIP`, `` `pos ``, and two `^pmr`), first and second
     /// records.  A slot (`rslt`): its place, its angle out from the mine (a quarter turn

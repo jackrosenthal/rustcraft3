@@ -2242,7 +2242,15 @@ Formats the port made its own, to be replaced by the original's:
   `+ord`, an older order's tree freed with them (`tskt`, three `task`, `tskO`, `tskA`,
   `ordt`); in turn 12 a harvest order of `AI_HARVEST`'s shape and a `uref` freed: the
   ghoul sent to the trees.  The port sends it with `order_unit` alone, making none of
-  these.  In
+  these.  The older tree is the ghoul's walk to its captain, made at the load
+  (`recycle_guard_position`, `FUN_6f9d87d0`), which the port takes too but never walks:
+  in the saves the ghoul, made facing south at (352.51563, 500.875), faces 1.7124 from
+  0.2 on (five turning steps of 0.6 from the game's first steps), never moving, until
+  1.1; the bearing to the gold mine from it is 1.735.  So its walk found nowhere nearer
+  and it turned to face its goal, done within 0.2 of it, its order's objects kept until
+  turn 11's order replaced them.  The port's ghoul faces south throughout, so its walk
+  at 1.1 starts from the wrong heading.  Next: that walk by the steps (its goal, the
+  captain's, not yet read), then the wood order's objects.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

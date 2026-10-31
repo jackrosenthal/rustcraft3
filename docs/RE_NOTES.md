@@ -2220,7 +2220,18 @@ Formats the port made its own, to be replaced by the original's:
   acolyte, left where it stopped, had blocked in the port.  The keepalives with the
   computer agree to turn 11.  There the original's third acolyte, the builder, reaches
   its site (a new path, its build order's tree freed, an order after); the port's
-  walks there by the old movement (`Action::Build`), not yet the step engine.  In
+  walks there by the old movement (`Action::Build`), not yet the step engine.
+  The builder's way there, read in the saves: at 0.2 it had turned three steps to its
+  harvest walk's bearing (2.9124, moving at -6.6952, 1.5620), toward the mine; at 0.3
+  on 3.2792, at 0.4 on 3.5162, the site's bearing.  Yet its build order comes in the
+  same run of `main` at 0.1 as the harvests (call stacks under winedbg at the births
+  of the first harvest's `+ord`, the three `AItr`, the train's `+ord`: each from
+  `StartThread`, `FUN_6f9c8ea0`, which runs the new thread at once, as the port's,
+  `peon_assignment` the harvests and `BuildLoop` the train and build through
+  `SetProduce`, `FUN_6f9bfa8a`).  So a unit walking keeps its walk until the tick's
+  orders are taken up at the tick's end (its stopped harvest's objects freed with
+  them), turning to the new order from the next tick; the idle acolytes started at
+  the next step.  Next: the builder so, its walk by the steps, and its arrival.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

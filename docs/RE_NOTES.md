@@ -1184,7 +1184,8 @@ these are the findings behind them.
     and each that falls asleep then frees its spells' listeners, the last first, a
     fired one's replacement among them (made as its mana passed the cost: one
     waiting for it to fall), Ensnare's `` `pil `` after the listener made before it
-    (read: twenty objects freed at nightfall).
+    (read: twenty objects freed at nightfall), all as the change ends, after the last
+    change's listeners (read: before a walk's tree in the turn's last step).
   - Through midnight the time rises to DayHours and falls back from there (its
     FloatModifier set back, event 0x80262 at main clock 320): the listeners waiting
     for a fall past their values fire, the latest made first (read under winedbg:
@@ -2330,7 +2331,11 @@ Formats the port made its own, to be replaced by the original's:
   turn 1782: a wanderer's order given before the turn's first step, and two walks
   arriving in that step.  The original freed the order's eight before the arrivals'
   trees, as a later step does (`Tags::end_step`); the port had freed them after.  With
-  it Twisted Meadows agrees to turn 2005, nightfall.
+  it Twisted Meadows agrees to turn 2005, nightfall.  There all but one walk's tree
+  matched: the creeps falling asleep free their spells' listeners with the last
+  change's listeners, as the change ends, not as the tick ends (the original's came
+  before the tree of a walk that arrived in the turn's last step).  With it Twisted
+  Meadows agrees for all 3752 turns captured.
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

@@ -419,6 +419,10 @@ impl World {
         }
         // Dead ones too, while their corpses remain (measured: a creep killed by script).
         let units: Vec<u32> = self.unit_order.iter().rev().copied().filter(|&h| self.unit(h).is_some()).collect();
+        // The objects of the creeps falling asleep, freed after the last change's
+        // listeners (read: Twisted Meadows' first nightfall, before the tree of a walk
+        // that ended in the turn's last step).
+        let mut slept: Vec<u32> = Vec::new();
         // Each unit's object of the change lasts three seconds of the main clock (traced:
         // queued with an event 3.0 seconds on, freed in the turn after, in the order
         // made).
@@ -472,19 +476,19 @@ impl World {
                     // nightfall, after every unit's object of the change).
                     let (listeners, pil) = self.unit_mut(h).map(|u| (std::mem::take(&mut u.extra.mana_listeners), u.extra.ensnare_pil.take())).unwrap_or_default();
                     for (_, s) in listeners.iter().rev() {
-                        self.tags.doom(*s);
+                        slept.push(*s);
                         if let Some((_, p)) = pil.filter(|&(r, _)| r == *s) {
-                            self.tags.doom(p);
+                            slept.push(p);
                         }
                     }
                     if let Some((r, p)) = pil.filter(|&(r, _)| !listeners.iter().any(|l| l.1 == r)) {
                         let _ = r;
-                        self.tags.doom(p);
+                        slept.push(p);
                     }
                     // A flyer's detection object goes too (provisional: its place after
                     // the listeners, read only as a whelp is made asleep).
                     if let Some(p) = self.unit_mut(h).and_then(|u| u.extra.flyer_pil.take()) {
-                        self.tags.doom(p);
+                        slept.push(p);
                         if let Some(u) = self.unit_mut(h) {
                             u.extra.flyer_sleeping = true;
                         }
@@ -638,7 +642,7 @@ impl World {
         }
         // One set by script lets them go as the next turn starts (traced: the engine's
         // day timer at load, slot 0x287, at the game's first dawn).
-        for s in old {
+        for s in old.into_iter().chain(slept) {
             if set {
                 self.tags.doom(s);
             } else {

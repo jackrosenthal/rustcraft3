@@ -2202,7 +2202,25 @@ Formats the port made its own, to be replaced by the original's:
   steps (to clock 0.33) before moving, and the third acolyte comes in range after the
   original's (in range mid-turn 4 there).  Next: the original's acolytes' places by
   turn (a single-player save from a script on the map, `abtest/savemap.sh`, read with
-  `w3zobj`).  In
+  `w3zobj`).
+  Read so (`abtest/fw3.w3x` to `fw9.w3x`, Forestwalk loaded directly, its script saving
+  once at 0.3 to 0.9 seconds; `fwa2` at 0.2): the acolytes' states match the port's
+  step engine bit for bit (places, velocities, headings: the first turning 0.6 a step
+  from south, the second moving at 6.6952, 1.5620), three steps sooner than the
+  port's: their walks step at 0.12, 0.15, and 0.18, in the tick of the AI's order.
+  With the AI's threads run as the steps reach their due times (`World::ai_threads_to`)
+  the walks start so.  Then, in turn by turn order: the structures' alarms likewise
+  fall due among the steps (their wait drawn at the making is a due time on the main
+  clock; the Necropolis's `` `pil `` before the arrived acolyte's path, freed as the
+  next step begins); an acolyte in range stands at once on the nearest free ring slot
+  of the mine, facing it (the first at 0.4 on its slot 4.4 cells from where it walked
+  at 0.3, the second between 0.7 and 0.8; the slots 200 from the mine, a pentagon,
+  `World::mine_slots`); a walk aims at the waypoint furthest along a clear line, the
+  second acolyte's at (1072, 6064) by its heading 1.5440 at 0.4, which the first
+  acolyte, left where it stopped, had blocked in the port.  The keepalives with the
+  computer agree to turn 11.  There the original's third acolyte, the builder, reaches
+  its site (a new path, its build order's tree freed, an order after); the port's
+  walks there by the old movement (`Action::Build`), not yet the step engine.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

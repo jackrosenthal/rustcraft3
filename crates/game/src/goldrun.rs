@@ -811,7 +811,7 @@ impl World {
     pub fn walk_goal(&self, h: u32) -> Option<(f32, f32)> {
         match self.unit(h)?.action {
             Action::Move { x, y } => Some((x, y)),
-            Action::Harvest { .. } => self.gold_run_goal(h),
+            Action::Harvest { target } => self.gold_run_goal(h).or_else(|| self.unit(h).filter(|u| u.ai_harvest_walk()).and_then(|_| self.widget_pos(target))),
             _ => None,
         }
     }
@@ -920,7 +920,11 @@ impl World {
     /// to the first node whose ring touches the structure's footprint, toward its
     /// middle).
     pub(crate) fn gold_run_search(&self, h: u32, cells: &impl crate::lrpath::Cells, start: (i32, i32), end: (i32, i32), class: u8) -> Option<(crate::lrpath::Outcome, bool, u32)> {
-        let t = self.gold_run_target(h)?;
+        // (An AI's acolyte walking to its mine searches to it as a worker does.)
+        let t = self.gold_run_target(h).or_else(|| self.unit(h).filter(|u| u.ai_harvest_walk()).and_then(|u| match u.action {
+            crate::types::Action::Harvest { target } => Some(target),
+            _ => None,
+        }))?;
         let foot: std::collections::HashSet<(i32, i32)> = self.footprint(t).iter().copied().collect();
         log::debug!("gold run {h} searches from {start:?} to {end:?}, footprint {:?}", self.footprint(t));
         Some(crate::lrpath::search_to_region(cells, start, end, class, 700, |x, y| foot.contains(&(x, y))))

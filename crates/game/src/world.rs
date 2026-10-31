@@ -1782,6 +1782,21 @@ impl World {
     /// The timed releases falling due by the main clock at this tick's main tick `tick`,
     /// freed as the step there begins (read: the objects of a change between day and
     /// night freed after a turn's first step, before an order given at its second).
+    /// The computers' AI threads, then the structures' alarms, due by this tick's main
+    /// tick `tick` run as the movement steps reach it (`World::ai_threads_to`,
+    /// `World::alarms_to`).
+    pub(crate) fn ai_threads_to_tick(&mut self, tick: Option<i64>) {
+        let n = self.tick_clocks.1.len();
+        let i = match tick {
+            Some(t) => (t - self.tick_clocks.0).clamp(0, n as i64 - 1).max(0) as usize,
+            None => n.saturating_sub(1),
+        };
+        if let Some(now) = self.tick_abs(i) {
+            self.ai_threads_to(now as f32);
+            self.alarms_to(now);
+        }
+    }
+
     pub(crate) fn timed_frees_to(&mut self, tick: Option<i64>) {
         let n = self.tick_clocks.1.len();
         let i = match tick {

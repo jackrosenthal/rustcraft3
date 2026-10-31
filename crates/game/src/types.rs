@@ -275,7 +275,13 @@ impl Unit {
     /// Whether its walks are the engine's (a wanderer's, a player's move's, or a gold
     /// run's), whose ways are searched near at hand (`World::local_path`).
     pub fn engine_walker(&self) -> bool {
-        self.extra.local_paths || self.extra.player_walk || self.extra.gold_run.is_some()
+        self.extra.local_paths || self.extra.player_walk || self.extra.gold_run.is_some() || self.ai_harvest_walk()
+    }
+
+    /// Whether it walks to its mine under its AI's harvest order, not yet in range
+    /// (`World::acolyte_step_arrive`).
+    pub fn ai_harvest_walk(&self) -> bool {
+        matches!(self.action, Action::Harvest { .. }) && self.extra.ai_order.len() == crate::ai::AI_HARVEST.len()
     }
 
     /// Whether it walks by the engine's movement steps with the others
@@ -285,7 +291,8 @@ impl Unit {
     pub fn steps_walker(&self) -> bool {
         !self.dead
             && (((self.extra.local_paths || self.extra.player_walk) && matches!(self.action, Action::Move { .. }))
-                || (matches!(self.action, Action::Harvest { .. }) && self.extra.gold_run.as_ref().is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::ToMine | crate::goldrun::Phase::ToHall(_) | crate::goldrun::Phase::Reaching { .. }))))
+                || (matches!(self.action, Action::Harvest { .. }) && self.extra.gold_run.as_ref().is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::ToMine | crate::goldrun::Phase::ToHall(_) | crate::goldrun::Phase::Reaching { .. })))
+                || self.ai_harvest_walk())
     }
 }
 

@@ -431,10 +431,13 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
     // Every structure has an alarm (CAbilityAlarm, measured: town halls, gold mines, and
     // shops each start one), which waits a random moment, drawn on its own generator
     // (FUN_6f6936a0: a real from 0 to 1), before watching for enemies (`World::alarms`).
+    // Its watch falls due on the main clock, from the tick's first reading (none
+    // before the game runs).
     if w.unit(h).is_some_and(|u| u.is_building) {
         let wait = w.rand_data.streams[crate::rng::stream::ALARM].real(0.0, 1.0);
+        let base = if w.tick_clocks.1.is_empty() { 0.0 } else { w.tick_abs(0).unwrap_or(0.0) as f32 };
         if let Some(u) = w.unit_mut(h) {
-            u.extra.alarm_wait = Some(wait);
+            u.extra.alarm_wait = Some(base + wait);
         }
     }
     // Computer players' and creeps' units start with their autocast on.

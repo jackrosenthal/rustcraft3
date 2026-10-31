@@ -389,9 +389,43 @@ impl World {
             if self.ai.get(&p).is_some_and(|s| s.paused > 0) {
                 continue;
             }
+            self.ai_run_threads(p, self.time);
             let Some(mut aivm) = self.ai_vms.remove(&p) else { continue };
             self.ai_current = Some(p);
-            let now = self.time;
+            self.ai_hero_skills(p, &mut aivm);
+            self.ai_current = None;
+            self.ai_vms.insert(p, aivm);
+            self.ai_engine(p, dt);
+            self.ai_captains_move(p);
+            self.ai_ferries_update(p);
+            self.ai_captain_spells(p);
+            self.ai_threat_tick(p, dt);
+            self.ai_mega_tick(p, dt);
+            self.ai_attack_player_tick(p);
+            self.ai_suicide_tick(p);
+        }
+    }
+
+    /// Runs every computer player's threads due by `until` (a time of the main clock, as
+    /// the movement steps reach it: an AI's sleep is a timer on the agent queue, which
+    /// falls among the steps; traced, Forestwalk's undead computer's wake at 0.1 in its
+    /// turn's first step, its acolytes walking in that turn's later steps).
+    pub(crate) fn ai_threads_to(&mut self, until: f32) {
+        let players: Vec<u8> = self.ai_vms.keys().copied().collect();
+        for p in players {
+            if self.ai.get(&p).is_some_and(|s| s.paused > 0) {
+                continue;
+            }
+            self.ai_run_threads(p, until);
+        }
+    }
+
+    /// Runs a computer player's threads due by `until`, by due time.
+    fn ai_run_threads(&mut self, p: u8, until: f32) {
+        {
+            let Some(mut aivm) = self.ai_vms.remove(&p) else { return };
+            self.ai_current = Some(p);
+            let now = until;
             // (Those due, by due time, the earlier asleep first at a tie.)
             let due: Vec<(f32, Thread)> = {
                 let mut due = Vec::new();
@@ -421,17 +455,8 @@ impl World {
                 let spawned = self.ai.get_mut(&p).map(|a| std::mem::take(&mut a.spawned)).unwrap_or_default();
                 aivm.sleepers.extend(spawned);
             }
-            self.ai_hero_skills(p, &mut aivm);
             self.ai_current = None;
             self.ai_vms.insert(p, aivm);
-            self.ai_engine(p, dt);
-            self.ai_captains_move(p);
-            self.ai_ferries_update(p);
-            self.ai_captain_spells(p);
-            self.ai_threat_tick(p, dt);
-            self.ai_mega_tick(p, dt);
-            self.ai_attack_player_tick(p);
-            self.ai_suicide_tick(p);
         }
     }
 
@@ -773,6 +798,7 @@ impl World {
         if !acolyte {
             return;
         }
+        let serial = self.tags.born;
         let order: Vec<u32> = AI_HARVEST.iter().map(|c| self.tags.take(c)).collect();
         self.tags.release(order[15]);
         for k in [1, 2, 0, 14, 13, 12, 11] {
@@ -780,6 +806,8 @@ impl World {
         }
         if let Some(u) = self.unit_mut(h) {
             u.extra.ai_order = order;
+            u.extra.walk_serial = serial;
+            u.extra.mover = None;
         }
     }
 

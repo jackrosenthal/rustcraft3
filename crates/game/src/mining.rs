@@ -333,6 +333,60 @@ impl World {
         u.work_timer = 0.0;
     }
 
+    /// An AI's acolyte walking with the walkers to its mine, in range of it as this step
+    /// begins: its walk ends there (`acolyte_in_range`'s objects), its path and cluster
+    /// going in the next step (`Tags::walk_ended`).
+    pub(crate) fn acolyte_step_arrive(&mut self, h: u32) -> bool {
+        let Some(u) = self.unit(h).filter(|u| u.ai_harvest_walk()) else { return false };
+        let Action::Harvest { target: mine } = u.action else { return false };
+        let Some(m) = self.unit(mine) else { return false };
+        let range = self.ability_with_code(h, codes::ability::ACOLYTE_HARVEST).map_or(200.0, |(a, l)| self.ability_real(a, "Rng", l));
+        if (u.x - m.x).hypot(u.y - m.y) - m.collision - u.collision > range {
+            return false;
+        }
+        let order = u.extra.ai_order.clone();
+        let serial = u.extra.walk_serial;
+        let first = m.extra.ai_order.is_empty();
+        self.tags.release(order[10]);
+        self.tags.release(order[9]);
+        if first {
+            let rcm = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
+            let rtl = self.tags.take(codes::class::THRESHOLD_LISTENER);
+            if let Some(m) = self.unit_mut(mine) {
+                m.extra.ai_order = vec![rcm, rtl];
+            }
+        }
+        self.tags.walk_ended([order[17], order[16]], serial);
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.ai_order = order[3..=8].to_vec();
+            u.path.clear();
+            u.extra.mover = None;
+        }
+        // It stands at once on the nearest free ring slot, facing the mine (read:
+        // single-player saves of Forestwalk's undead computer, its first acolyte walking
+        // at 0.3 seconds, 4.4 cells from its slot, there at 0.4, its heading the mine's
+        // bearing; the second likewise between 0.7 and 0.8).
+        self.acolyte_to_slot(h, mine);
+        true
+    }
+
+    /// An acolyte arrived at its haunted mine taking the nearest free ring slot.
+    fn acolyte_to_slot(&mut self, h: u32, mine: u32) {
+        let slots = self.mine_slots(mine);
+        let taken: Vec<usize> = self.unit_order.iter().filter(|&&o| o != h).filter_map(|&o| self.unit(o).filter(|u| !u.dead && matches!(u.action, Action::Harvest { target } if target == mine)).and_then(|u| u.extra.mine_slot)).collect();
+        let Some((ux, uy)) = self.unit(h).map(|u| (u.x, u.y)) else { return };
+        let Some((_, k)) = (0..slots.len()).filter(|k| !taken.contains(k)).filter_map(|k| slots[k].map(|(x, y, _)| ((x - ux).hypot(y - uy), k))).min_by(|a, b| a.0.total_cmp(&b.0)) else { return };
+        let Some((sx, sy, face)) = slots[k] else { return };
+        if let Some(u) = self.unit_mut(h) {
+            u.x = sx;
+            u.y = sy;
+            u.facing = face.rem_euclid(360.0);
+            u.extra.mine_slot = Some(k);
+            u.extra.cell_at = None;
+            u.work_timer = -1.0;
+        }
+    }
+
     /// An AI's harvest order's walk ends as its acolyte comes within its harvest's range
     /// (Aaha's Rng, 200) of the mine, between their collision circles: its last two
     /// target tasks go, the mine's payout makes its `` `rcm `` and `` `rtl `` (its first

@@ -467,13 +467,21 @@ impl World {
     /// 0xd01c1; a user's Town Hall and the neutral gold mines none; provisional: the
     /// condition, the unit's flags 4 and not 0x100 at +0x5c, read as its owner a
     /// computer).
-    pub fn alarms(&mut self, dt: f32) {
+    pub fn alarms(&mut self, _dt: f32) {
+        let n = self.tick_clocks.1.len();
+        let now = n.checked_sub(1).and_then(|i| self.tick_abs(i)).unwrap_or(self.time as f64);
+        self.alarms_to(now);
+    }
+
+    /// The alarms due by `now` on the main clock (`UnitExtra::alarm_wait`), as the
+    /// movement steps reach it (read: the undead computer's Necropolis's watch before
+    /// the path of an acolyte arrived in the step before, freed as the next began).
+    pub fn alarms_to(&mut self, now: f64) {
         let hs: Vec<u32> = self.unit_order.clone();
         for h in hs {
             let Some(u) = self.unit_mut(h) else { continue };
-            let Some(w) = u.extra.alarm_wait.as_mut() else { continue };
-            *w -= dt;
-            if *w > 0.0 {
+            let Some(w) = u.extra.alarm_wait else { continue };
+            if w as f64 > now {
                 continue;
             }
             u.extra.alarm_wait = None;

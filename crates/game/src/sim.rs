@@ -867,7 +867,7 @@ impl World {
 
     fn local_path(&self, h: u32, goal: (f32, f32)) -> Option<(Vec<(f32, f32)>, Option<(i32, i32)>, u32)> {
         let u = self.unit(h).filter(|u| u.engine_walker())?;
-        let to_structure = u.extra.gold_run.is_some();
+        let to_structure = u.extra.gold_run.is_some() || u.ai_harvest_walk();
         let p = self.pathing.as_ref()?;
         let kind = self.move_kind(h);
         if kind == crate::pathing::Move::Fly {
@@ -1221,6 +1221,7 @@ impl World {
             self.fire_mana_listeners(Some(t));
             self.time_of_day_to(vm, Some(t));
             self.timed_frees_to(Some(t));
+            self.ai_threads_to_tick(Some(t));
         }
         // The paths of the walks ended in the last step go in this one, in the walkers'
         // order (`Tags::walk_ended`).
@@ -1250,7 +1251,7 @@ impl World {
             self.tags.free_step_paths(now);
             carried = later;
             // A walk to a structure ends in the walkers' order (`World::gold_run_step_end`).
-            if self.gold_run_step_end(h, 0) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
+            if self.gold_run_step_end(h, 0) || self.acolyte_step_arrive(h) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
                 continue;
             }
             // One given before this step (this tick's) walks from the next, one given
@@ -1261,7 +1262,15 @@ impl World {
                     u.extra.walk_from = None;
                 }
             }
-            if self.walk_steps(h) {
+            let stopped = self.walk_steps(h);
+            // (An AI's acolyte in range after its move ends its walk in this step; one
+            // stopped short keeps to its harvest, going on by itself.)
+            if self.acolyte_step_arrive(h) {
+            } else if stopped && self.unit(h).is_some_and(|u| u.ai_harvest_walk()) {
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.ai_order.push(u32::MAX);
+                }
+            } else if stopped {
                 if let Some(u) = self.unit_mut(h) {
                     u.action = Action::Idle;
                     u.order = Order::default();
@@ -1302,6 +1311,7 @@ impl World {
             self.fire_mana_listeners(next);
             self.time_of_day_to(vm, next);
             self.timed_frees_to(next);
+            self.ai_threads_to_tick(next);
             // The paths of the walks ended in the last step go in this one, in the walkers'
             // order (`Tags::walk_ended`).
             let mut carried = self.tags.take_step_paths();
@@ -1328,14 +1338,22 @@ impl World {
                 let (now, later): (Vec<_>, Vec<_>) = std::mem::take(&mut carried).into_iter().partition(|&(_, s)| s > serial);
                 self.tags.free_step_paths(now);
                 carried = later;
-                if self.gold_run_step_end(h, k) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
+                if self.gold_run_step_end(h, k) || self.acolyte_step_arrive(h) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
                     continue;
                 }
                 let Some(u) = self.unit(h) else { continue };
                 if u.extra.mover.is_none() && u.extra.walk_from.is_some_and(|f| f > k) {
                     continue;
                 }
-                if self.walk_steps(h) {
+                let stopped = self.walk_steps(h);
+                // (An AI's acolyte in range after its move ends its walk in this step; one
+                // stopped short keeps to its harvest, going on by itself.)
+                if self.acolyte_step_arrive(h) {
+                } else if stopped && self.unit(h).is_some_and(|u| u.ai_harvest_walk()) {
+                    if let Some(u) = self.unit_mut(h) {
+                        u.extra.ai_order.push(u32::MAX);
+                    }
+                } else if stopped {
                     if let Some(u) = self.unit_mut(h) {
                         u.action = Action::Idle;
                         u.order = Order::default();
@@ -1511,7 +1529,7 @@ impl World {
             _ => (cell(u.x, origin[0]), cell(u.y, origin[1])),
         };
         let mut m = u.extra.mover.unwrap_or(crate::motion::Mover { x: cx, y: cy, heading: u.extra.walk_heading.unwrap_or(f(u.facing.to_radians())), placed_at: start, ..Default::default() });
-        let to_structure = u.extra.gold_run.is_some();
+        let to_structure = u.extra.gold_run.is_some() || u.ai_harvest_walk();
         let goal = self.walk_goal(h);
         if u.extra.mover.is_none() && u.extra.group_walk.is_some() {
             self.group_member_steps(h);
@@ -2616,6 +2634,8 @@ impl World {
                 }
                 // A gold run walks with the walkers and goes in and out by its timer.
                 Action::Harvest { .. } if self.unit(h).is_some_and(|u| u.extra.gold_run.is_some()) => {}
+                // An AI's acolyte walks to its mine with the walkers until in range.
+                Action::Harvest { .. } if self.pathing.is_some() && self.unit(h).is_some_and(|u| u.ai_harvest_walk()) => {}
                 Action::Harvest { target } => self.harvest(vm, h, target, dt),
                 Action::Build { id, x, y } => self.build(vm, h, id, x, y, dt),
                 Action::Construct { target } => {

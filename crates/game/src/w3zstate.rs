@@ -1,0 +1,183 @@
+//! The game's own state in a saved game (after the object manager, `FUN_6f1e8630`):
+//! the parts the port makes, field by field as `w3_formats::w3z::GameState` reads them.
+
+use w3_formats::w3z::{Field, GameState, Ref, SaveGame};
+
+use crate::Game;
+use crate::world::World;
+
+impl World {
+    /// The tagged object of a kind (its first), as references name it.
+    fn first_of(&self, code: &[u8; 4]) -> Ref {
+        self.tags.live.iter().filter(|(_, (c, _))| c == code).map(|(&s, (_, b))| Ref(s, *b)).min_by_key(|r| r.0).unwrap_or(Ref(u32::MAX, u32::MAX))
+    }
+
+    /// CGameWar3's first part (`FUN_6f1e8460`): two words (1, 1), its agent (`+gam`),
+    /// its three name tables (`FUN_6f1d6c60`, each name and id in the order made): the
+    /// unit types' names from UnitUI.slk's rows (spaces dropped; provisional: the
+    /// original has the rocket engine after the siege engine, and the sea elemental
+    /// after the revenant of the depths), none, and the orders' names; and two shorts.
+    pub fn saved_game_part(&self) -> Vec<Field> {
+        let mut units = Vec::new();
+        if let Ok(text) = self.chain.read_string("Units\\UnitUI.slk") {
+            let t = w3_formats::slk::Table::parse(&text);
+            for id in &t.order {
+                let Some(name) = t.get(id, "name").map(|v| v.as_str()) else { continue };
+                let id4: [u8; 4] = id.as_bytes().try_into().unwrap_or([0; 4]);
+                units.push(vec![Field::Text(name.replace(' ', "")), Field::Word(u32::from_be_bytes(id4))]);
+            }
+        }
+        let orders = crate::orders::ORDERS.iter().map(|&(id, n)| vec![Field::Text(n.to_string()), Field::Word(id as u32)]).collect();
+        vec![Field::Word(1), Field::Word(1), Field::Ref(self.first_of(b"+gam")), Field::List(units), Field::List(Vec::new()), Field::List(orders), Field::Short(0), Field::Short(1)]
+    }
+}
+
+impl World {
+    /// The game's second part (CGameWar3's after the fog, `FUN_6f1e8460`): its twelve
+    /// start locations (`FUN_6f1dbec0`: each its place, its priorities by index as
+    /// SetStartLocPrio gave them (slot, priority), whether a playing slot's start, 0, -1, whether defined, 0), three words (the players, 12, 2), the
+    /// players' agents (`+ply`), 12, each team's playing players, a word (1), a second
+    /// table object's reference (the template's), and five words (3, 0, 0, 0, 0).
+    /// Provisional: the words read as constants, a start's user flag, the teams' lists.
+    pub fn saved_game_2(&self, template: &[Field]) -> Vec<Field> {
+        // A playing slot's (PLAYER_SLOT_STATE_PLAYING, 1: a computer's too, an empty
+        // slot's not; read: Forestwalk's empty third slot 0).
+        let user = |k: usize| self.players.iter().take(12).any(|p| p.start_location == k as i32 && p.slot_state == 1);
+        let starts = (0..12)
+            .map(|k| match self.start_locations.get(k) {
+                Some(s) if s.x != 0.0 || s.y != 0.0 || s.prio_count > 0 => {
+                    let prios = (0..s.prio_count.max(0)).map(|i| s.prios.get(&i).copied().unwrap_or((0, 0))).map(|(slot, prio)| vec![Field::Word(slot as u32), Field::Word(prio as u32)]).collect();
+                    vec![Field::Real(s.x), Field::Real(s.y), Field::List(prios), Field::Word(user(k) as u32), Field::Word(0), Field::Word(u32::MAX), Field::Word(1), Field::Word(0)]
+                }
+                _ => vec![Field::Real(0.0), Field::Real(0.0), Field::List(Vec::new()), Field::Word(0), Field::Word(0), Field::Word(u32::MAX), Field::Word(0), Field::Word(0)],
+            })
+            .collect();
+        let mut plys: Vec<Ref> = self.tags.live.iter().filter(|(_, (c, _))| c == b"+ply").map(|(&s, (_, b))| Ref(s, *b)).collect();
+        plys.sort_by_key(|r| r.0);
+        let teams = (0..12)
+            .map(|t| vec![Field::List(self.players.iter().enumerate().filter(|(k, p)| *k < 12 && p.team == t && p.slot_state == 1).filter_map(|(k, _)| plys.get(k).map(|r| vec![Field::Ref(*r)])).collect())])
+            .collect();
+        let ui = template.get(8).cloned().unwrap_or(Field::Ref(Ref(0x8000_0000 | 1077, 1077)));
+        vec![
+            Field::List(starts),
+            Field::Word(self.player_count as u32),
+            Field::Word(12),
+            Field::Word(2),
+            Field::List(plys.iter().map(|r| vec![Field::Ref(*r)]).collect()),
+            Field::Word(12),
+            Field::List(teams),
+            Field::Word(1),
+            ui,
+            Field::Word(3),
+            Field::Word(0),
+            Field::Word(0),
+            Field::Word(0),
+            Field::Word(0),
+        ]
+    }
+
+    /// The game's third part: the game UI's (none), a list of strings (none), the game
+    /// cache manager (`gccm`), and twelve words (the original's uninitialized memory but
+    /// for its first: the template's, provisional).
+    pub fn saved_game_3(&self, template: &[Field]) -> Vec<Field> {
+        vec![Field::List(Vec::new()), Field::Ref(self.first_of(b"gccm")), template.get(2).cloned().unwrap_or(Field::List((0..12).map(|_| vec![Field::Word(0)]).collect()))]
+    }
+
+    /// The sounds' part (`FUN_6f359b50`): the eight volume groups' levels (each the level
+    /// it goes to), "Music", a word (-1), and the looping sounds playing on objects
+    /// (none the port makes: provisional, Booty Bay's haunted mine's MineDomeLoop not
+    /// written).
+    pub fn saved_sounds(&self) -> Vec<Field> {
+        vec![Field::List(self.volume_groups.iter().map(|g| vec![Field::Real(g.1)]).collect()), Field::Text("Music".into()), Field::Word(u32::MAX), Field::List(Vec::new())]
+    }
+
+    /// The game UI's part (as the test maps all have it; provisional: its fields not
+    /// read): a byte (1), no references, words (1, 0), no cinematic scene, a word (0),
+    /// three reals (3000, 5000, 0.5), a color (0xff000000), and two empty strings.
+    pub fn saved_ui(&self) -> Vec<Field> {
+        vec![Field::Byte(1), Field::List(Vec::new()), Field::Word(1), Field::Word(0), Field::Word(0), Field::Word(0), Field::Real(3000.0), Field::Real(5000.0), Field::Real(0.5), Field::Word(0xff00_0000), Field::Text(String::new()), Field::Text(String::new())]
+    }
+
+    /// The AI's town sites (`FUN_6f9ca1e0`): each site's AI (`AIts`) as made, and their
+    /// count.
+    pub fn saved_sites(&self) -> Vec<Field> {
+        let refs: Vec<Vec<Field>> = self.tags.sites.iter().map(|&(_, _, (s, b))| vec![Field::Ref(Ref(s, b))]).collect();
+        let n = refs.len() as u32;
+        vec![Field::List(refs), Field::Word(n)]
+    }
+}
+
+impl Game {
+    /// The map setup's part (CMapSetupWar3's, `FUN_6f2465b0`): the map's name and
+    /// description, its scripts' xoro checksum (as a game is announced with), a byte
+    /// (1), its path, and words and bytes the test maps all have (1, 1, 0x02008000, 0,
+    /// 0; 0, 0, 1, 2, 0, 2; provisional: not read).
+    pub fn saved_map_setup(&self) -> Vec<Field> {
+        let w = &self.world;
+        let read = |n: &str| w.chain.read(n).ok();
+        let (common, blizzard) = (read("Scripts\\common.j").unwrap_or_default(), read("Scripts\\Blizzard.j").unwrap_or_default());
+        let xoro = w3_net::map::Checksums::compute(&[], &common, &blizzard, read).xoro;
+        vec![
+            Field::Text(w.localized(&self.info.name)),
+            Field::Text(w.localized(&self.info.description)),
+            Field::Word(xoro),
+            Field::Byte(1),
+            Field::Text(w.map_path.clone()),
+            Field::Word(1),
+            Field::Word(1),
+            Field::Word(0x0200_8000),
+            Field::Word(0),
+            Field::Word(0),
+            Field::Byte(0),
+            Field::Byte(0),
+            Field::Byte(1),
+            Field::Byte(2),
+            Field::Byte(0),
+            Field::Byte(2),
+        ]
+    }
+
+    /// The game's state with the parts the port makes in place of the template's.
+    pub fn saved_state(&self, template: &GameState) -> GameState {
+        let mut g = template.clone();
+        for (name, f) in &mut g.parts {
+            match *name {
+                "game" => *f = self.world.saved_game_part(),
+                "map setup" => *f = self.saved_map_setup(),
+                "game 2" => *f = self.world.saved_game_2(f),
+                "game 3" => *f = self.world.saved_game_3(f),
+                "references" => *f = self.world.saved_sites(),
+                "sounds" => *f = self.world.saved_sounds(),
+                "ui" => *f = self.world.saved_ui(),
+                // None the port makes yet (provisional: a game's hashtables not written).
+                "hashtables" if !self.world.handles.iter().any(|(_, o)| matches!(o, crate::types::Obj::Hashtable(_))) => *f = vec![Field::List(Vec::new()), Field::Word(0)],
+                _ => {}
+            }
+        }
+        g
+    }
+
+    /// The game state's parts the port makes, against the original's save of the same
+    /// moment.
+    pub fn compare_state(&self, orig: &SaveGame) -> Vec<String> {
+        let Ok(theirs) = orig.state() else { return vec!["state: not read".into()] };
+        let ours = self.saved_state(&theirs);
+        let mut out = Vec::new();
+        if std::env::var("W3Z_FIND").is_ok() {
+            out.push(format!("players {:?}", self.world.players.iter().take(4).map(|p| (p.controller, p.start_location, p.team)).collect::<Vec<_>>()));
+        }
+        for ((name, a), (_, b)) in ours.parts.iter().zip(&theirs.parts) {
+            if matches!(*name, "game" | "map setup" | "game 2" | "game 3" | "references" | "hashtables" | "sounds" | "ui") {
+                let first = (0..a.len().max(b.len())).find(|&k| a.get(k) != b.get(k));
+                out.push(format!("{name}: {}", first.map_or("the same".into(), |k| match (a.get(k), b.get(k)) {
+                    (Some(Field::List(x)), Some(Field::List(y))) => {
+                        let j = (0..x.len().max(y.len())).find(|&j| x.get(j) != y.get(j)).unwrap_or(0);
+                        format!("field {k}: {} entries vs {}; first differing {j}: {:?} vs {:?}", x.len(), y.len(), x.get(j), y.get(j))
+                    }
+                    (x, y) => format!("field {k}: {x:?} vs {y:?}"),
+                })));
+            }
+        }
+        out
+    }
+}

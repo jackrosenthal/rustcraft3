@@ -146,6 +146,10 @@ pub struct World {
     #[serde(skip)]
     pub objects: ObjectDb,
     pub handles: Handles<Obj>,
+    /// The map's path as the original names it, from the game's folder
+    /// ("Maps\\Test\\bbq.w3x"; `World::set_map_path`).
+    #[serde(default)]
+    pub map_path: String,
     /// The original engine's tags given so far (`tags`).
     pub tags: crate::tags::Tags,
     pub players: Vec<Player>,
@@ -773,6 +777,7 @@ impl World {
             chain,
             objects,
             handles,
+            map_path: String::new(),
             tags,
             players,
             start_locations: Vec::new(),
@@ -1017,6 +1022,14 @@ impl World {
         } else {
             name
         }
+    }
+
+    /// The map's path from a file's: from its `Maps` folder on, with backslashes (the
+    /// name alone when it has none).
+    pub fn set_map_path(&mut self, file: &str) {
+        let parts: Vec<&str> = file.split(['/', '\\']).collect();
+        let from = parts.iter().rposition(|p| p.eq_ignore_ascii_case("Maps")).unwrap_or(parts.len().saturating_sub(1));
+        self.map_path = parts[from..].join("\\");
     }
 
     pub fn localized(&self, s: &str) -> String {

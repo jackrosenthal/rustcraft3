@@ -786,6 +786,7 @@ impl Scene {
         let mut game = match w3_game::Game::load_for(data.chain.clone(), data.version as i32, custom_keys.as_ref(), start) {
             Ok(mut g) if restore.is_some() => {
                 g.restore(restore.unwrap())?;
+                g.world.set_map_path(&map_path.to_string_lossy());
                 // The loaded game's triggers hear it (EVENT_GAME_LOADED).
                 g.game_event(w3_game::event_ids::EVENT_GAME_LOADED);
                 g.world.saves_dir = crate::data::save_dir(data.version);
@@ -793,6 +794,7 @@ impl Scene {
                 Some(g)
             }
             Ok(mut g) => {
+                g.world.set_map_path(&map_path.to_string_lossy());
                 g.world.saves_dir = crate::data::save_dir(data.version);
                 g.world.preload.dir = crate::data::custom_map_data_dir();
                 g.world.keepalive_modules = crate::net::data_modules(&data.chain);

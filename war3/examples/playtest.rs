@@ -1099,6 +1099,9 @@ fn main() -> anyhow::Result<()> {
                     for l in g.compare_script(&orig) {
                         eprintln!("w3z script {l}");
                     }
+                    for l in g.compare_state(&orig) {
+                        eprintln!("w3z state {l}");
+                    }
                 }
                 i += 2;
             }

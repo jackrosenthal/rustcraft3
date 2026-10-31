@@ -127,7 +127,8 @@ impl Game {
     /// pieces the port makes in place of its own: the world's, and the script data.
     pub fn write_save(&self, template: &SaveGame) -> SaveGame {
         let mut s = self.world.write_save(template);
-        let (Ok(mut state), Ok(d)) = (s.state(), s.script_data()) else { return s };
+        let (Ok(state), Ok(d)) = (s.state(), s.script_data()) else { return s };
+        let mut state = self.saved_state(&state);
         let Ok(bytes) = self.saved_script_data(&d).to_bytes() else { return s };
         if let Some((_, f)) = state.parts.iter_mut().find(|(n, _)| *n == "script data") {
             *f = vec![Field::Bytes(bytes)];

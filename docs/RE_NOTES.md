@@ -1951,6 +1951,26 @@ Formats the port made its own, to be replaced by the original's:
   test map's saves), the template's where it has one (provisional).  The original
   loads and plays the save written with it.  Not yet: the AI scripts' machines and
   threads (the template's).
+- The game state's other parts as the port writes them (`w3zstate.rs`), all the same
+  as every test save's: CGameWar3's first (`FUN_6f1e8460`: 1, 1, the `+gam` object,
+  three name tables in the order made, `FUN_6f1d6c60`: UnitUI.slk's unit names with
+  their spaces dropped, none, and the 348 orders; then 0 and 1 as shorts).  The unit
+  names follow UnitUI.slk's rows but for two (the rocket engine after the siege
+  engine, the sea elemental after the revenant of the depths; not explained by any
+  SLK's order: provisional).  The map setup (`FUN_6f2465b0`): the map's name and
+  description, its scripts' xoro checksum (the header's), 1, its path from the game's
+  folder, and constants.  The second part: the twelve start locations
+  (`FUN_6f1dbec0`: place, SetStartLocPrio's priorities by index, whether its player's
+  slot is playing (a computer's is, an empty slot's not: Forestwalk's third), 0, -1,
+  whether defined, 0), the players count, 12, 2, the sixteen `+ply`, 12, each team's
+  playing players, 1, a second-table object, and 3, 0, 0, 0, 0.  The third: none, the
+  game cache manager (`gccm`), and twelve words of uninitialized memory (Wine's
+  addresses among them; the template's).  The references part (`FUN_6f9ca1e0`) is the
+  AI's town sites (`AIts`) and their count; the sounds' (`FUN_6f359b50`) the eight
+  volume groups' levels, "Music", -1, and the looping sounds on objects (Booty Bay's
+  haunted mine's MineDomeLoop in bbst10; not yet); the hashtables' none (not yet
+  written when a game has some: they keep their entries' order, the port's maps
+  none).
 - The engine's objects, read in a save's object table and free list (a quiet test map
   on Booty Bay without the computer's AI, saved at five seconds; `w3zobj objtable`,
   `free`, and playtest's `objtable`): the port's live objects (`Tags::live`) agree

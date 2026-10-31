@@ -138,6 +138,39 @@ impl World {
         }
         self.remove_guard_position(h);
         self.ai_new_unit(h);
+        if joined {
+            self.captain_walk(h);
+        }
+    }
+
+    /// A computer's unit taken in walks to its captain's home by the steps from the
+    /// game's first (`FUN_6f9d87d0`).
+    fn captain_walk(&mut self, h: u32) {
+        // Its goal the defense captain's home, midway between its town hall and gold
+        // mine; within 300 of it, it only turns to face its way's first point, done once
+        // within 0.2 of its bearing, its walk's objects kept until its next order (read
+        // in single-player saves: the undead start's ghoul, 101 from home, turning 0.5 a
+        // step six times to 1.712389, 0.116 off its way's first point's 1.5958, from 0.2
+        // on, never moving until 1.1; provisional: the radius, the captains' own for
+        // being home, and the point faced).
+        let owner = self.unit(h).map_or(0, |u| u.owner);
+        let home = self.captain_homes(owner).1;
+        let near = self.unit(h).is_some_and(|u| (u.x - home.0).hypot(u.y - home.1) <= 300.0);
+        let serial = self.tags.born;
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.captain_walk = Some(home);
+        }
+        let face = if near { self.local_path(h, home).and_then(|(way, _, _)| way.first().copied()).unwrap_or(home) } else { home };
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.captain_walk = Some(home);
+            u.extra.walk_serial = serial;
+            u.extra.mover = None;
+            u.path.clear();
+            if near {
+                u.path.push(face);
+                u.extra.facing_goal = true;
+            }
+        }
     }
 
     /// The objects a computer's unit's recycling makes and frees (traced on Forestwalk,

@@ -275,7 +275,7 @@ impl Unit {
     /// Whether its walks are the engine's (a wanderer's, a player's move's, or a gold
     /// run's), whose ways are searched near at hand (`World::local_path`).
     pub fn engine_walker(&self) -> bool {
-        self.extra.local_paths || self.extra.player_walk || self.extra.gold_run.is_some() || self.ai_harvest_walk()
+        self.extra.local_paths || self.extra.player_walk || self.extra.gold_run.is_some() || self.ai_harvest_walk() || self.extra.captain_walk.is_some()
     }
 
     /// Whether it walks to its mine under its AI's harvest order, not yet in range
@@ -292,7 +292,8 @@ impl Unit {
         !self.dead
             && (((self.extra.local_paths || self.extra.player_walk) && matches!(self.action, Action::Move { .. }))
                 || (matches!(self.action, Action::Harvest { .. }) && self.extra.gold_run.as_ref().is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::ToMine | crate::goldrun::Phase::ToHall(_) | crate::goldrun::Phase::Reaching { .. })))
-                || self.ai_harvest_walk())
+                || self.ai_harvest_walk()
+                || self.extra.captain_walk.is_some())
     }
 }
 
@@ -659,6 +660,10 @@ pub struct UnitExtra {
     /// while they last.
     #[serde(default)]
     pub ai_order: Vec<u32>,
+    /// A computer's unit's walk to its captain's home as its AI takes it in
+    /// (`World::recycle_guard_position`): its goal, while it walks.
+    #[serde(default)]
+    pub captain_walk: Option<(f32, f32)>,
     /// A gold mine a worker has been in (its `+fgm` made; `crate::goldrun`).
     #[serde(default)]
     pub mine_shaft: bool,
@@ -938,6 +943,7 @@ impl Default for UnitExtra {
             order_tags: Vec::new(),
             gold_run: None,
             ai_order: Vec::new(),
+            captain_walk: None,
             mine_shaft: false,
             mine_queue: Vec::new(),
             mine_busy: None,

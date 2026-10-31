@@ -865,7 +865,7 @@ impl World {
         way[k..].to_vec()
     }
 
-    fn local_path(&self, h: u32, goal: (f32, f32)) -> Option<(Vec<(f32, f32)>, Option<(i32, i32)>, u32)> {
+    pub(crate) fn local_path(&self, h: u32, goal: (f32, f32)) -> Option<(Vec<(f32, f32)>, Option<(i32, i32)>, u32)> {
         let u = self.unit(h).filter(|u| u.engine_walker())?;
         let to_structure = u.extra.gold_run.is_some() || u.ai_harvest_walk();
         let p = self.pathing.as_ref()?;
@@ -1766,6 +1766,7 @@ impl World {
             u.extra.mover = None;
             u.extra.step_from = None;
             u.extra.facing_goal = false;
+            u.extra.captain_walk = None;
             u.path.clear();
             set_anim(u, "stand");
             return true;
@@ -2486,7 +2487,8 @@ impl World {
                     }
                 }
                 Action::Idle | Action::Hold => {
-                    if let Some(u) = self.unit_mut(h) {
+                    // (One walking to its captain keeps its way: the steps walk it.)
+                    if let Some(u) = self.unit_mut(h).filter(|u| u.extra.captain_walk.is_none()) {
                         if !u.path.is_empty() {
                             u.path.clear();
                         }

@@ -809,6 +809,9 @@ impl World {
 
     /// Where a walker walks: a move order's point, or a gold run's structure's middle.
     pub fn walk_goal(&self, h: u32) -> Option<(f32, f32)> {
+        if let Some(g) = self.unit(h)?.extra.captain_walk {
+            return Some(g);
+        }
         match self.unit(h)?.action {
             Action::Move { x, y } => Some((x, y)),
             Action::Harvest { target } => self.gold_run_goal(h).or_else(|| self.unit(h).filter(|u| u.ai_harvest_walk()).and_then(|_| self.widget_pos(target))),

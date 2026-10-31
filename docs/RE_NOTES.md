@@ -2248,9 +2248,14 @@ Formats the port made its own, to be replaced by the original's:
   0.2 on (five turning steps of 0.6 from the game's first steps), never moving, until
   1.1; the bearing to the gold mine from it is 1.735.  So its walk found nowhere nearer
   and it turned to face its goal, done within 0.2 of it, its order's objects kept until
-  turn 11's order replaced them.  The port's ghoul faces south throughout, so its walk
-  at 1.1 starts from the wrong heading.  Next: that walk by the steps (its goal, the
-  captain's, not yet read), then the wood order's objects.  In
+  turn 11's order replaced them.  The port's ghoul faced south throughout, so its walk
+  at 1.1 started from the wrong heading.  Now it walks so (`World::captain_walk`): its
+  goal the defense captain's home, midway between its town hall and mine, 101 away;
+  within 300 it only faces its way's first point (1040, 5808, bearing 1.5958), 0.5 a
+  step, done within 0.2: six steps to 1.712389, as read (facing the home itself, at
+  1.734, would have ended on 1.734; a whole step's turn past a nearer bearing, tried,
+  broke the wanderers).  Provisional: the radius, and the point faced.  Next: the wood
+  order's objects at 1.1.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

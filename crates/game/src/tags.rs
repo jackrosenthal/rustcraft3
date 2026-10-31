@@ -897,10 +897,12 @@ impl crate::world::World {
                     }
                 }
                 b"AHad" | b"AHab" | b"AUau" | b"AOae" | b"AEar" | b"AUav" | b"AEah" | b"Aakb" | b"AOac" | b"Aoar" | b"Aarm" => {
-                    self.tags.start_timer("40b5e0");
+                    let n = self.tags.start_timer("40b5e0");
+                    self.tags.timer_objects.entry(slots[k]).or_default().push((n, "40b5e0".into(), self.time, 0.0));
                 }
                 c if c[0] == b'B' => {
-                    self.tags.start_timer("532b50");
+                    let n = self.tags.start_timer("532b50");
+                    self.tags.timer_objects.entry(slots[k]).or_default().push((n, "532b50".into(), self.time, 0.0));
                 }
                 _ => {}
             }

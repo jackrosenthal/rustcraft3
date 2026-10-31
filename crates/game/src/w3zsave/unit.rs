@@ -712,7 +712,7 @@ fn ability_targets(code: &[u8; 4]) -> u32 {
         b"Anhe" => 0x4430_f006,
         b"Arep" | b"Arst" => 0x4b30_640e,
         b"Aven" => 0x0400_0006,
-        b"Aaha" | b"Abgm" | b"Abli" => 0xfdd1_f00e,
+        b"Aaha" | b"Abgm" | b"Abli" | b"AInv" => 0xfdd1_f00e,
         _ => 0,
     }
 }
@@ -764,6 +764,11 @@ impl World {
             b"Ahar" | b"Ahrl" => 0x8000_0010,
             b"Aaha" => 0x210,
             b"ACsp" => 0x400,
+            b"Abli" => 0x290,
+            // (An aura, read: a creep's 0x90000000, an item's armor aura on a shop
+            // 0x90000010.)
+            b"AEar" | b"AHad" | b"AHab" | b"AUau" | b"AOae" | b"AUav" | b"AEah" | b"Aakb" | b"AOac" | b"Aoar" => 0x9000_0000,
+            b"Aarm" => 0x9000_0090,
             b"Aven" | b"Amim" => 0,
             b"ARal" | b"Amic" | b"Amil" => 0x90,
             b"Asel" => 0x1000_0010,
@@ -940,6 +945,44 @@ impl World {
             b"Aatk" => return Some(self.attack_record(h, t, own)),
             // CAbilityAlarm (`FUN_6f42d040`): its timer and its in-range listener.
             b"Aalr" => vec![timer(), Field::Ref(u.extra.alarm_pil.map_or(NONE, |s| rf(self.tagged(s))))],
+            // Blight growth (CAbilityBlightGrowth): its Area as given, its Xbli, 0.
+            b"Abli" => {
+                let xbli = u.extra.blight_slots.get(1).map_or((u32::MAX, u32::MAX), |&s| self.tagged(s));
+                let area = self.ability_with_code(h, "Abli").and_then(|(a, l)| self.objects.abilities.get(a).map(|o| o.level_real("Area", l))).unwrap_or(0.0);
+                own.extend([Field::Real(area), w(xbli.0), w(xbli.1), w(0)]);
+                Vec::new()
+            }
+            // A haunted mine's (CAbilityBlightedGoldMine): its gold, the hidden gold mine,
+            // 0.0, DataA, DataB, 0.0, DataC, 0; three none, no timer, its work slots.
+            b"Abgm" => {
+                let (a, l) = self.ability_with_code(h, "Abgm")?;
+                let d = self.objects.abilities.get(a)?;
+                let hidden = u.extra.mine.and_then(|m| self.unit(m)).and_then(|m| m.extra.object_slots[0].first().copied()).unwrap_or((u32::MAX, u32::MAX));
+                own.extend([w(u.resource as u32), w(hidden.0), w(hidden.1), Field::Real(0.0), w(d.level_real("DataA", l) as u32), Field::Real(d.level_real("DataB", l)), Field::Real(0.0), w(d.level_real("DataC", l) as u32), w(0)]);
+                let objs = &u.extra.object_slots[2];
+                let i = objs.iter().position(|&x| x == t)?;
+                let slots = objs.get(i + 3..i + 8).map(|v| v.iter().map(|&r| vec![Field::Ref(rf(r))]).collect()).unwrap_or_default();
+                vec![Field::Ref(NONE), Field::Ref(NONE), Field::Ref(NONE), timer(), Field::List(slots)]
+            }
+            // An inventory (CAbilityInventory): its six slots (none), 0, its pickup
+            // listener (`` `pil ``), six 0, six timers (none).  (Provisional: items carried.)
+            b"AInv" => {
+                let pil = u.extra.item_pil.map_or(NONE, rf);
+                let slots = (0..6).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect();
+                vec![Field::List(slots), w(0), Field::Ref(pil), Field::List((0..6).map(|_| vec![w(0)]).collect()), Field::List((0..6).map(|_| vec![timer()]).collect())]
+            }
+            // An aura (CAbilityAura): 0, its Area and DataA; its art on the unit (the
+            // second table's, not written: provisional), its owner, its range listener
+            // (`` `pil `` after it), its refresh every 2 seconds, 0xd0142 (and 0 more for
+            // an item's armor aura, Aarm).
+            b"AEar" | b"AHad" | b"Aarm" | b"AHab" | b"AUau" | b"AOae" | b"AUav" | b"AEah" | b"Aakb" | b"AOac" | b"Aoar" => {
+                let (a, l) = u.abilities.iter().copied().find(|(a, _)| self.objects.abilities.get(*a).is_some_and(|o| crate::objects::id_from_str(o.str("code").trim()) == *code))?;
+                let d = self.objects.abilities.get(a)?;
+                own.extend([w(0), Field::Real(d.level_real("Area", l.max(1) as u32)), Field::Real(d.level_real("DataA", l.max(1) as u32))]);
+                let objs = &u.extra.object_slots[2];
+                let pil = objs.iter().position(|&x| x == t).and_then(|i| objs.get(i + 1)).map_or(NONE, |&r| rf(r));
+                vec![Field::List(Vec::new()), w(u.owner as u32), Field::Ref(pil), periodic("40b5e0", 2.0, 0xd_01c1), w(0xd_0142), w(0), w(0), w(0), w(0)]
+            }
             _ => return None,
         };
         let handlers = Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };

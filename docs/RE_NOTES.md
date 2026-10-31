@@ -2275,7 +2275,12 @@ Formats the port made its own, to be replaced by the original's:
   its tree's bearing by the 1.2 save); its objects twenty (`AI_WOOD`).  With these
   turns 11 and 12 match the original's slot for slot and the keepalives agree to turn
   13.  The ghoul's way home differs a little (the original's first point the cell north
-  of it, the port's search going straight to the home).  In
+  of it, the port's search going straight to the home).  In turn 13 the captain's path
+  query's path and cluster go at the turn's end, after the blight dispel's objects
+  (`Tags::next_turn_end`).  At 2.0 the crypt is begun; the game module then differs by
+  the computer's tech tree hash: a structure begun is in production, not yet made or
+  present (`World::tech_begun`, `tech_built` as it finishes; `FUN_6f249cf0`), one bit of
+  two.  The keepalives agree to turn 20.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

@@ -3097,6 +3097,7 @@ impl World {
                 u.constructing = None;
                 restart_anim(u, "stand");
                 let (owner, id) = (u.owner, u.type_id);
+                self.tech_built(owner, id);
                 let sound = format!("JobDoneSound{}", self.race_label(owner));
                 self.requests.push(Request::Completed { unit: h, id, level: 1, sound });
                 self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_CONSTRUCT_FINISH, EVENT_UNIT_CONSTRUCT_FINISH, EventCtx::default());
@@ -3320,6 +3321,10 @@ impl World {
             bu.life = bu.max_life * 0.1;
             restart_anim(bu, "birth");
         }
+        // Begun, it is in production in its owner's tech tree, not yet made or present
+        // (`FUN_6f249cf0`; read: the undead computer's crypt begun at 2.0, its tech tree
+        // hashing as the original's only so).
+        self.tech_begun(owner, id);
         // The structure is begun with the worker where it stood (measured: a blacksmith's
         // peasant is inside the footprint when EVENT_PLAYER_UNIT_CONSTRUCT_START fires).
         let ctx = EventCtx { unit: b, player: owner, has_player: true, event_id: EVENT_PLAYER_UNIT_CONSTRUCT_START, ..Default::default() };

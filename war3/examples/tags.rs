@@ -97,9 +97,15 @@ fn main() -> anyhow::Result<()> {
                 let state = g.world.rng.state();
                 let h = w3_game::keepalive::byte_hash((state >> 32) as u32).wrapping_add(w3_game::keepalive::byte_hash(state as u32));
                 println!("  time {} presence {presence:#x} born {:#x} rng {h:#x} net {:08x} rand {:08x} modules {:x?}", g.world.game_ms, g.world.tags.born, g.world.net_sum, g.world.rand_data.checksum(), g.world.keepalive_modules);
-                for p in 0..2u8 {
+                // (Each player in the game: a computer's too, its registrations listed.)
+                for p in 0..3u8 {
                     let pl = &g.world.players[p as usize];
                     println!("  player {p}: race {} handicap {:08x} xp {:08x} tech {:08x} selection {:08x}", pl.race, pl.handicap.to_bits(), pl.handicap_xp.to_bits(), g.world.tech_hash(p), g.world.sync_selection_hash(p));
+                    if pl.controller == w3_game::types::map_control::COMPUTER {
+                        for r in &pl.tech_regs {
+                            println!("    {} max {} made {} producing {} changing {} present {} killed {} flags {}", String::from_utf8_lossy(&r.id), r.max, r.made, r.producing, r.changing, r.present, r.killed, r.flags);
+                        }
+                    }
                 }
             }
         }

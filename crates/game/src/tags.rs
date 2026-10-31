@@ -153,6 +153,11 @@ pub struct Tags {
     /// a gold mine's after the objects the haunted mine made since released).
     #[serde(default)]
     pub removed: Vec<u32>,
+    /// Freed at the next turn's end, after what that turn released (`later_now`).
+    #[serde(default)]
+    pub next_turn_end: Vec<u32>,
+    #[serde(default)]
+    pub later_now: Vec<u32>,
     /// Ended walks' paths (`l^pa`, `^clu`), freed in the next movement step
     /// (`World::first_steps`, `World::step_walkers`).
     #[serde(default)]
@@ -217,7 +222,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), player_ai_timers: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), aura_dues: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), buff_modifiers: Default::default(), tick_end: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), dead_handles: Default::default(), game_freed_keys: Vec::new(), game_timers: [0; 2], game_timers_clock: 0, save_clock: None, event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), player_ai_timers: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), aura_dues: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), buff_modifiers: Default::default(), tick_end: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), next_turn_end: Vec::new(), later_now: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), dead_handles: Default::default(), game_freed_keys: Vec::new(), game_timers: [0; 2], game_timers_clock: 0, save_clock: None, event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -295,6 +300,7 @@ impl Tags {
         for s in std::mem::take(&mut self.removed) {
             self.release(s);
         }
+        self.later_now = std::mem::take(&mut self.next_turn_end);
     }
 
     /// Queues a slot's release at a time of the main clock (seconds since the game
@@ -315,6 +321,9 @@ impl Tags {
     pub fn free_due(&mut self, now: f64) {
         self.free_timed(now);
         self.free_doomed();
+        for s in std::mem::take(&mut self.later_now) {
+            self.release(s);
+        }
     }
 
     /// Frees the timed releases falling due before `now`, earliest first.

@@ -75,6 +75,25 @@ impl World {
         self.tech_changed(owner);
     }
 
+    /// A structure of `owner`'s begun (`FUN_6f249cf0`): made by `create_unit` as if
+    /// finished, it is taken back to being in production.
+    pub fn tech_begun(&mut self, owner: u8, id: Id) {
+        let r = self.tech_reg(owner, id);
+        r.made -= 1;
+        r.present -= 1;
+        r.producing += 1;
+    }
+
+    /// A structure of `owner`'s finished (`FUN_6f22f6a0`): made and present, no longer
+    /// in production.
+    pub fn tech_built(&mut self, owner: u8, id: Id) {
+        let r = self.tech_reg(owner, id);
+        r.made += 1;
+        r.present += 1;
+        r.producing -= 1;
+        self.tech_changed(owner);
+    }
+
     /// `owner`'s tech tree changed: it tells its listeners (event 0x80261,
     /// `FUN_6f260550` after each change), among them Command, War Drums, and Trueshot
     /// Aura's buffs, whose bonuses its upgrades raise, each starting a timer

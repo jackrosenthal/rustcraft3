@@ -803,8 +803,9 @@ impl World {
     /// captain's `uref` go at once, the unit leaving its captain; with the tick's orders
     /// a stopped walk home's `+ord`, the new order's second, that walk's tree, the new
     /// order's third and first, its last `tskA` and the four tasks before it, then the
-    /// walk's path and the captain's `^clp` (read: Forestwalk's undead computer's ghoul
-    /// at 1.1, its walk home given at 1.0).  Provisional: a unit not walking home frees
+    /// walk's path and the captain's `^clp`; its path query's path and cluster at the next
+    /// turn's end (read: Forestwalk's undead computer's ghoul at 1.1, its walk home
+    /// given at 1.0).  Provisional: a unit not walking home frees
     /// the new order's alone.
     fn ai_wood_objects(&mut self, p: u8, h: u32) {
         let order: Vec<u32> = AI_WOOD.iter().map(|c| self.tags.take(c)).collect();
@@ -826,6 +827,9 @@ impl World {
         frees.extend([2, 0, 16, 15, 14, 13, 12].map(|k| order[k]));
         if home.len() == 12 {
             frees.extend([home[8], home[7], home[11]]);
+            // The captain's path query's path and cluster at the next turn's end, after
+            // what it released (read: after the blight dispel's objects in turn 13).
+            self.tags.next_turn_end.extend([home[10], home[9]]);
         }
         self.tags.issued.extend(frees);
         if let Some(u) = self.unit_mut(h) {

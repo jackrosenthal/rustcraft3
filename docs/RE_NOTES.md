@@ -2325,7 +2325,12 @@ Formats the port made its own, to be replaced by the original's:
   the troll warlords, the trolls and not the ogres.  Trueshot reaches a unit with a
   ranged weapon on, its first or its second: Harrow's granite golems, melee first,
   throw missiles with their second (its data's Melee Bonus 0 and Ranged Bonus 1, DataB
-  and DataC, say as much).  With it Twisted Meadows agrees to turn 1784.
+  and DataC, say as much).  With it Twisted Meadows agrees to turn 1784.  There the
+  original's takes had the port's codes in other slots, its free list having parted in
+  turn 1782: a wanderer's order given before the turn's first step, and two walks
+  arriving in that step.  The original freed the order's eight before the arrivals'
+  trees, as a later step does (`Tags::end_step`); the port had freed them after.  With
+  it Twisted Meadows agrees to turn 2005, nightfall.
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

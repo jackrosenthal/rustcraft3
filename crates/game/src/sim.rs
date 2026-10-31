@@ -1273,9 +1273,12 @@ impl World {
         let mut late: Vec<(usize, u32, u32)> = if tick.is_some() { self.agent_dues().into_iter().filter(|e| e.0 == 1 && self.agent_tick(e.1) == tick).collect() } else { Vec::new() };
         late.sort_by(|a, b| f32::from_bits(a.1).total_cmp(&f32::from_bits(b.1)));
         let after = self.issue_after_step(&late, 0);
-        self.tags.end_first_step();
-        // Orders given at this step's tick free their objects after it.
+        // Orders given at this step's tick free their objects after it, before its walk
+        // ends' (read: a wanderer's order's eight, given before a turn's first step,
+        // freed before the trees of two walks that arrived in it; Twisted Meadows' turn
+        // 1782), as a later step's (`Tags::end_step`).
         self.tags.flush_issued();
+        self.tags.end_first_step();
         self.tags.issued.extend(after);
         self.tags.flush_issued();
     }

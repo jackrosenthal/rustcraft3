@@ -512,7 +512,24 @@ impl World {
                 if autocasting && code.as_bytes() == auto {
                     continue;
                 }
-                if matches!(code.as_str(), codes::ability::REPAIR_ORC | codes::ability::RENEW | codes::ability::RESTORATION | codes::ability::HEAL | codes::ability::HEAL_CREEP_NORMAL | codes::ability::INNER_FIRE | codes::ability::ABOLISH_MAGIC | codes::ability::REPLENISH_LIFE_AND_MANA | codes::ability::REPLENISH_LIFE | codes::ability::REPLENISH_MANA) {
+                // (Animate Dead's and Mana Burn's looks, vf50, in the same order, by the
+                // ability's own code, its object's class, not the spell it plays as: read,
+                // Forestwalk's creeps at the first day.)
+                let class = self.objects.abilities.get(*a).map(|o| crate::objects::id_from_str(o.str("code").trim()));
+                if let Some(name) = match class.as_ref() {
+                    Some(codes::ability::id::ANIMATE_DEAD_CREEP) => Some("6060e0"),
+                    Some(codes::ability::id::DEMON_HUNTER_MANA_BURN) => Some("606c60"),
+                    _ => None,
+                } {
+                    let n = self.tags.start_timer(name);
+                    let c = class.unwrap();
+                    let slot = self.unit(h).and_then(|u| u.extra.object_slots[2].iter().map(|&(s, _)| s).find(|s| self.tags.live.get(s).is_some_and(|e| e.0 == c)));
+                    if let Some(slot) = slot {
+                        self.tags.timer_objects.entry(slot).or_default().push((n, name.into(), self.time, 0.0));
+                    }
+                    continue;
+                }
+                if matches!(code.as_str(), codes::ability::REPAIR_ORC | codes::ability::RENEW | codes::ability::RESTORATION | codes::ability::HEAL | codes::ability::HEAL_CREEP_NORMAL | codes::ability::INNER_FIRE | codes::ability::ABOLISH_MAGIC | codes::ability::REPLENISH_LIFE_AND_MANA | codes::ability::REPLENISH_LIFE | codes::ability::REPLENISH_MANA | codes::ability::CURSE | codes::ability::BLOODLUST | codes::ability::FAERIE_FIRE | codes::ability::RAISE_DEAD) {
                     let n = self.tags.start_timer("422820");
                     let c = crate::objects::id_from_str(&code);
                     self.tags.autotarget_due.push(self.time + 0.015);

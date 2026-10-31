@@ -428,7 +428,8 @@ impl World {
             // Unholy Aura's buff makes a timer as it starts (`FUN_6f4bb8c0`,
             // `FUN_6f41def0`; read: each of Forestwalk's at 0.5 seconds).
             if &b.id == codes::buff::id::UNHOLY_AURA {
-                self.tags.take(codes::class::CONTINUOUS_MODIFIER);
+                let m = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
+                self.tags.buff_modifiers.insert(slot, m);
             }
         }
         if let Some((model, attach)) = art {

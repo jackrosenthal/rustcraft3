@@ -470,6 +470,19 @@ fn main() {
         }
         return;
     }
+    // "kind <code>...": each object of the kinds given, its tag and its second record
+    // (no references 0xffffffff written out, nor its empty handler lists).
+    if a[2] == "kind" {
+        for o in all.iter().filter(|o| a[3..].contains(&code(o.entry.kind))) {
+            let text = format!("{:?}", o.second()).replace("Word(4294967295)", "W-").replace("Ref(4294967295, 4294967295)", "R-").replace("Timer(R-, 0, Timing(None))", "T-");
+            let text = match (text.find("handlers: Handlers {"), text.find(", tail")) {
+                (Some(x), Some(y)) if y > x => format!("{}{}", &text[..x], &text[y + 2..]),
+                _ => text,
+            };
+            println!("{} {} {}", code(o.entry.kind), o.entry.tag, text);
+        }
+        return;
+    }
     if a[2] == "census" {
         let mut by: std::collections::HashMap<String, (usize, usize)> = Default::default();
         for o in &all {

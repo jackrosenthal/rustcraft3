@@ -2,7 +2,7 @@
 //! test map's 71 units at 5 seconds: its agent flags, its handlers (who listens to it,
 //! and for what), its widget, its triggers' events, and its 109 fields.
 
-use w3_formats::w3z::{Field, Handlers, Ref, Second, Sprite, Timing, Widget};
+use w3_formats::w3z::{Field, First, Handlers, Ref, Second, Sprite, Timing, Widget};
 
 use super::{rf, NONE};
 use crate::types::Action;
@@ -789,7 +789,16 @@ fn ability_targets(code: &[u8; 4]) -> u32 {
     match code {
         codes::ability::id::ALARM => 0x0031_0006,
         codes::ability::id::INVULNERABLE | codes::ability::id::WANDER | codes::ability::id::GOLD_MINE | codes::ability::id::MILITIA_CONVERSION | codes::ability::id::MILITIA | codes::ability::id::MAGIC_IMMUNITY | codes::ability::id::NEUTRAL_DETECTION_REVEAL_ABILITY | codes::ability::id::NEUTRAL_BUILDING | codes::ability::id::RETURN => 0xfdd1_f00e,
-        codes::ability::id::PRIESTESS_TRUESHOT_AURA | codes::ability::id::PALADIN_DEVOTION_AURA => 0x0030_7006,
+        codes::ability::id::PRIESTESS_TRUESHOT_AURA | codes::ability::id::PALADIN_DEVOTION_AURA | codes::ability::id::DEATH_KNIGHT_UNHOLY_AURA => 0x0030_7006,
+        codes::ability::id::CURSE | codes::ability::id::DREADLORD_SLEEP => 0x0401_8006,
+        codes::ability::id::BLOODLUST => 0x0400_f006,
+        codes::ability::id::FAERIE_FIRE | codes::ability::id::DEMON_HUNTER_MANA_BURN | codes::ability::id::BLADE_MASTER_CRITICAL_STRIKE => 0x0001_8006,
+        codes::ability::id::REJUVINATION => 0x0430_f006,
+        codes::ability::id::ANIMATE_DEAD_CREEP => 0x0200_0006,
+        codes::ability::id::DEVOUR_DRAGON_CREEP => 0x0481_8002,
+        codes::ability::id::RAISE_DEAD => 0xffd1_f00e,
+        codes::ability::id::SHADOW_MELD | codes::ability::id::BURROW_DETECTION_FLYERS | codes::ability::id::SPAWN_SPIDER => 0xfdd1_f00e,
+        codes::ability::id::CARGO_HOLD_DEVOUR => 0x0031_8002,
         codes::ability::id::THUNDER_BOLT_CREEP => 0x0401_8006,
         codes::ability::id::THUNDER_CLAP_CREEP => 0x0000_8002,
         codes::ability::id::CHIEFTAIN_SHOCK_WAVE => 0x0001_000a,
@@ -831,6 +840,7 @@ impl World {
         let base: u32 = match code {
             codes::buff::id::DEVOTION_AURA => 0x290,
             codes::buff::id::TRUESHOT_AURA => 0xa90,
+            codes::buff::id::UNHOLY_AURA => 0x690,
             _ => 0x10,
         };
         let flags = base | if ai { 0x2 } else { 0 } | if b.caster == h { 0x100_0000 } else { 0x8000_0000 };
@@ -839,7 +849,14 @@ impl World {
         let none = || Field::Timer(NONE, 0, Timing(None));
         let prev = older.map_or(NONE, rf);
         let mut own = vec![w(flags), w(prev.0), w(prev.1), w(0), w(0), w(0), w(0), w(0), w(0), w(u32::from_be_bytes(*code)), w(0), none(), w(0)];
-        own.extend([w(0), r(0.0), w(0), w(0), w(ability_targets(&aura_code)), r(0.0), r(0.0), r(0.0), r(data_a), w(caster.0), w(caster.1), w(0)]);
+        own.extend([w(0), r(0.0), w(0), w(0), w(ability_targets(&aura_code)), r(0.0), r(0.0), r(0.0)]);
+        if code == codes::buff::id::UNHOLY_AURA {
+            // (Unholy Aura's: 0.0, its bearer, 0.0, and its DataA and DataB: read,
+            // Forestwalk's.)
+            own.extend([r(0.0), w(caster.0), w(caster.1), r(0.0), r(data_a), r(aura.level_real("DataB", b.level.max(1)))]);
+        } else {
+            own.extend([r(data_a), w(caster.0), w(caster.1), w(0)]);
+        }
         if code == codes::buff::id::DEVOTION_AURA {
             own.push(r(b.armor));
         }
@@ -857,6 +874,10 @@ impl World {
                 vec![w(f32::from_bits(crate::efloat::mul(crate::efloat::from_int(least), data_a.to_bits())).ceil() as u32)]
             };
             tail.push(Field::List(vec![bonus(1), bonus(2)]));
+        }
+        // Unholy Aura's modifier made with it.
+        if code == codes::buff::id::UNHOLY_AURA {
+            tail.push(Field::Ref(self.tags.buff_modifiers.get(&t.0).map_or(NONE, |&m| rf(self.tagged(m)))));
         }
         tail.push(none());
         Some(Second::Agent { own, handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] }, tail })
@@ -901,6 +922,12 @@ impl World {
             codes::ability::id::CANNIBALIZE => 0x8_0010,
             codes::ability::id::HEAL_CREEP_NORMAL => 0x808_0080,
             codes::ability::id::ABOLISH_MAGIC | codes::ability::id::INNER_FIRE => 0x808_0000,
+            // (Read, Forestwalk's creeps': the autocast spells 0x8080080, Mana Burn 0x10,
+            // Shadowmeld 0x110, the cargo hold 0x90.)
+            codes::ability::id::CURSE | codes::ability::id::BLOODLUST | codes::ability::id::FAERIE_FIRE | codes::ability::id::RAISE_DEAD => 0x808_0080,
+            codes::ability::id::ANIMATE_DEAD_CREEP | codes::ability::id::DEVOUR_DRAGON_CREEP | codes::ability::id::DREADLORD_SLEEP | codes::ability::id::REJUVINATION | codes::ability::id::BLADE_MASTER_CRITICAL_STRIKE | codes::ability::id::PURCHASE_ITEM => 0,
+            codes::ability::id::SHADOW_MELD => 0x110,
+            codes::ability::id::CARGO_HOLD_DEVOUR => 0x90,
             codes::ability::id::REPAIR_ORC => 0x940_0010,
             codes::ability::id::RESTORATION => 0x908_0010,
             codes::ability::id::BUILD_HUMAN | codes::ability::id::BUILD_UNDEAD | codes::ability::id::BUILD_ORC | codes::ability::id::BUILD_NIGHT_ELF => 0x2000_0010,
@@ -914,7 +941,7 @@ impl World {
             codes::ability::id::MANA_REGENERATION_AURA => 0x9000_0090,
             codes::ability::id::VENOM_SPEARS | codes::ability::id::MAGIC_IMMUNITY => 0,
             codes::ability::id::RALLY | codes::ability::id::MILITIA_CONVERSION | codes::ability::id::MILITIA => 0x90,
-            codes::ability::id::SELL_UNITS => 0x1000_0010,
+            codes::ability::id::SELL_UNITS | codes::ability::id::SELL_ITEMS => 0x1000_0010,
             // (Regeneration on blight, as it stands on blight 0x80.)
             codes::ability::id::REGENERATE_ON_BLIGHT => 0x10 | if u.extra.blight_rcm.is_some() { 0x80 } else { 0 },
             // (An attack: two weapons 0x100000, not a worker's 0x20004000, one never
@@ -987,21 +1014,44 @@ impl World {
             // backswing (a repair's none and the largest real), references; its order
             // (852290), words, its listener on the unit's mana, two timers; an
             // auto-target spell's look every 3 seconds (event 0xd01c2), a repair's more.
-            codes::ability::id::THUNDER_BOLT_CREEP | codes::ability::id::THUNDER_CLAP_CREEP | codes::ability::id::CHIEFTAIN_SHOCK_WAVE | codes::ability::id::ENSNARE | codes::ability::id::CANNIBALIZE | codes::ability::id::SACRIFICE_ACOLYTE | codes::ability::id::UNSUMMON | codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::ABOLISH_MAGIC | codes::ability::id::INNER_FIRE | codes::ability::id::RESTORATION | codes::ability::id::REPAIR_ORC => {
+            codes::ability::id::THUNDER_BOLT_CREEP | codes::ability::id::THUNDER_CLAP_CREEP | codes::ability::id::CHIEFTAIN_SHOCK_WAVE | codes::ability::id::ENSNARE | codes::ability::id::CANNIBALIZE | codes::ability::id::SACRIFICE_ACOLYTE | codes::ability::id::UNSUMMON | codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::ABOLISH_MAGIC | codes::ability::id::INNER_FIRE | codes::ability::id::RESTORATION | codes::ability::id::REPAIR_ORC | codes::ability::id::CURSE | codes::ability::id::BLOODLUST | codes::ability::id::FAERIE_FIRE | codes::ability::id::RAISE_DEAD | codes::ability::id::ANIMATE_DEAD_CREEP | codes::ability::id::DEMON_HUNTER_MANA_BURN | codes::ability::id::DEVOUR_DRAGON_CREEP | codes::ability::id::DREADLORD_SLEEP | codes::ability::id::REJUVINATION => {
                 // (Restore as Repair.)
                 let repair = matches!(code, codes::ability::id::REPAIR_ORC | codes::ability::id::RESTORATION);
-                let (point, back) = if repair { (0.0, f32::MAX) } else { (o.real("castpt"), o.real("castbsw")) };
+                // (Devour's backswing its own, 0.02: read, Forestwalk's drakes'.)
+                let (point, back) = if repair {
+                    (0.0, f32::MAX)
+                } else if code == codes::ability::id::DEVOUR_DRAGON_CREEP {
+                    (o.real("castpt"), 0.02)
+                } else {
+                    (o.real("castpt"), o.real("castbsw"))
+                };
                 own.extend([Field::Real(0.0), Field::Real(point), Field::Real(back), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), w(0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), w(0), Field::Real(0.0), Field::Real(0.0), w(0), w(0), w(0), w(0), Field::Real(0.0), Field::Real(0.0)]);
                 if repair {
                     own.extend([w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), Field::Real(0.0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0)]);
                 }
+                // Devour's word, Mana Burn's none and 0.0, Raise Dead's two target masks
+                // (read, Forestwalk's creeps').
+                match code {
+                    codes::ability::id::DEVOUR_DRAGON_CREEP => own.push(w(0)),
+                    codes::ability::id::DEMON_HUNTER_MANA_BURN => own.extend([w(u32::MAX), w(u32::MAX), Field::Real(0.0)]),
+                    codes::ability::id::RAISE_DEAD => own.extend([w(0xfed1_f00e), w(0xfdd1_f006)]),
+                    _ => {}
+                }
                 let listener = u.extra.spell_owners.iter().find(|x| &x.1 == code && self.tags.live.get(&x.0).is_some_and(|e| &e.0 == codes::class::THRESHOLD_LISTENER)).map_or(NONE, |x| rf(self.tagged(x.0)));
                 let mut tail = vec![w(852_290), w(0), w(0), w(0), w(0), Field::Ref(listener), timer(), timer()];
-                if matches!(code, codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::ABOLISH_MAGIC | codes::ability::id::INNER_FIRE | codes::ability::id::RESTORATION | codes::ability::id::REPAIR_ORC) {
+                if matches!(code, codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::ABOLISH_MAGIC | codes::ability::id::INNER_FIRE | codes::ability::id::RESTORATION | codes::ability::id::REPAIR_ORC | codes::ability::id::CURSE | codes::ability::id::BLOODLUST | codes::ability::id::FAERIE_FIRE | codes::ability::id::RAISE_DEAD) {
                     tail.push(match self.tags.autotarget_timers.get(&(h, *code)) {
                         Some(&(count, due, period)) if due > self.time - 0.0205 => Field::Timer(rf(t), 0, Timing(Some((due, period, count, 0xd_01c2, 0)))),
                         _ => timer(),
                     });
+                }
+                // Animate Dead's and Mana Burn's look every 2 seconds (event 0xd01bf);
+                // Devour's third timer and Raise Dead's fourth (none: read, at rest).
+                match code {
+                    codes::ability::id::ANIMATE_DEAD_CREEP => tail.push(periodic("6060e0", 2.0, 0xd_01bf)),
+                    codes::ability::id::DEMON_HUNTER_MANA_BURN => tail.push(periodic("606c60", 2.0, 0xd_01bf)),
+                    codes::ability::id::DEVOUR_DRAGON_CREEP | codes::ability::id::RAISE_DEAD => tail.push(timer()),
+                    _ => {}
                 }
                 if repair {
                     tail.extend([timer(), timer(), timer(), timer(), Field::Ref(NONE)]);
@@ -1171,6 +1221,95 @@ impl World {
                 let pil = objs.iter().position(|&x| x == t).and_then(|i| objs.get(i + 1)).map_or(NONE, |&r| rf(r));
                 vec![art.get(&t.0).cloned().unwrap_or(Field::List(Vec::new())), w(u.owner as u32), Field::Ref(pil), periodic("40b5e0", 2.0, 0xd_01c1), w(0xd_0142), w(0), w(0), w(0), w(0)]
             }
+            // Shadowmeld (CAbilityShadowMeld): its DataC, DataA, and DataB (read, 0.5,
+            // 1.5000001 as the data's 1.5 is read, 2.5); its order, words, and two timers.
+            // By day its third count is 1 (read, at 5 seconds; provisional: as the day
+            // begins).
+            codes::ability::id::SHADOW_MELD => {
+                let (a, l) = self.ability_with_code(h, codes::ability::SHADOW_MELD)?;
+                let d = self.objects.abilities.get(a)?;
+                if !self.is_night() {
+                    own[6] = w(1);
+                }
+                own.extend([Field::Real(d.level_real("DataC", l)), Field::Real(d.level_real("DataA", l)), Field::Real(d.level_real("DataB", l))]);
+                vec![w(852_290), w(0), w(0), w(0), w(0), timer(), timer()]
+            }
+            // Burrow detection (CAbilityBurrowDetector): its range and 12 (provisional);
+            // its order, words, none, and its in-range object (`` `pil ``).
+            codes::ability::id::BURROW_DETECTION_FLYERS => {
+                let range = self.ability_with_code(h, codes::ability::BURROW_DETECTION_FLYERS).map_or(900.0, |(a, l)| self.ability_real(a, "Rng", l));
+                own.extend([Field::Real(range), w(12)]);
+                let pil = u.extra.flyer_pil.map_or(NONE, |s| rf(self.tagged(s)));
+                vec![w(852_290), w(0), w(0), w(0), w(0), Field::Ref(NONE), Field::Ref(pil)]
+            }
+            // Critical Strike: 1 (provisional); its order and words.
+            codes::ability::id::BLADE_MASTER_CRITICAL_STRIKE => {
+                own.push(w(1));
+                vec![w(852_290), w(0), w(0), w(0), w(0)]
+            }
+            // The neutral interaction (Anei, as neutral detection): 0; its order and words.
+            codes::ability::id::SELECT_USER => {
+                own.push(w(0));
+                vec![w(852_290), w(0), w(0), w(0), w(0)]
+            }
+            // Purchase Item: its in-range object (`` `pil `` after it).
+            codes::ability::id::PURCHASE_ITEM => {
+                let objs = &u.extra.object_slots[2];
+                let pil = objs.iter().position(|&x| x == t).and_then(|i| objs.get(i + 1)).map_or(NONE, |&r| rf(r));
+                vec![Field::Ref(pil)]
+            }
+            codes::ability::id::SPAWN_SPIDER => Vec::new(),
+            // The cargo hold (CAbilityDevourCargo): 0.0, three 0, ten places empty in
+            // each of its lists, two timers, two lists of ten unbounded pairs (read: an
+            // empty hold).
+            codes::ability::id::CARGO_HOLD_DEVOUR => {
+                let empty = || Field::List((0..10).map(|_| vec![w(u32::MAX), w(u32::MAX), Field::Real(0.0)]).collect());
+                let zeros = || Field::List((0..10).map(|_| vec![w(0)]).collect());
+                let far = || Field::List((0..10).map(|_| vec![Field::Real(f32::MAX), Field::Real(f32::MAX)]).collect());
+                vec![Field::Real(0.0), w(0), w(0), w(0), empty(), empty(), zeros(), zeros(), timer(), timer(), far(), far()]
+            }
+            // Sell Items: as Sell Units, its items (each yet to arrive its coming's timer,
+            // in its own order: read, Forestwalk's shop's eight of eleven).
+            codes::ability::id::SELL_ITEMS => {
+                own.extend([Field::Real(0.0), Field::Real(0.0)]);
+                let (items, _) = self.shop_goods(h);
+                let starts: Vec<(u32, f32)> = self.tags.timer_objects.get(&t.0).map(|v| v.iter().filter(|x| x.1 == "41c010").map(|x| (x.0, x.2)).collect()).unwrap_or_default();
+                let idle = || [timer(), Field::Short(0), Field::Short(0), Field::Real(0.0)];
+                let mut tail = vec![Field::Ref(NONE), Field::Ref(NONE)];
+                let mut coming = 0;
+                for k in 0..12 {
+                    let mut slot = Vec::new();
+                    match items.get(k) {
+                        Some(&id) => {
+                            let start = self.objects.items.get(id).map_or(0.0, |o| o.real("stockStart"));
+                            let (count, max, arriving) = self.shops.stock.get(&(h, id)).map_or((0, 1, start > 0.0), |s| (s.count, s.max, s.arriving));
+                            slot.extend([w(u32::from_be_bytes(id)), Field::Real(count as f32), Field::Real(0.0), Field::Real(max as f32)]);
+                            slot.extend(idle());
+                            if arriving {
+                                let (chunks, rest) = super::timer_chunks(start);
+                                let first = if chunks > 0 { super::TIMER_CHUNK } else { start };
+                                let (n, at) = starts.get(coming).copied().unwrap_or((0, 0.0));
+                                coming += 1;
+                                let due = f32::from_bits(crate::efloat::add(at.to_bits(), first.to_bits()));
+                                slot.push(Field::Timer(rf(t), if chunks > 0 { 0x10 } else { 0 }, Timing(Some((due, first, n, 0xd_01c1, u32::from(chunks > 0))))));
+                                slot.extend([Field::Short(chunks.min(0xffff) as u16), Field::Short(chunks.min(0xffff) as u16), Field::Real(rest)]);
+                            } else {
+                                slot.extend(idle());
+                            }
+                            slot.push(w(u32::from(arriving)));
+                        }
+                        None => {
+                            slot.extend([w(0), Field::Real(0.0), Field::Real(0.0), Field::Real(f32::MAX)]);
+                            slot.extend(idle());
+                            slot.extend(idle());
+                            slot.push(w(0));
+                        }
+                    }
+                    tail.push(Field::List(vec![slot]));
+                }
+                tail.extend([w(0xd_0142), w(0), w(0), w(0), w(0)]);
+                tail
+            }
             _ => return None,
         };
         let handlers = Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
@@ -1298,7 +1437,8 @@ impl World {
         tail.extend([timer(), timer(), timer(), timer()]);
         tail.push(per(&|k| w(if on(k) { weapon_targets(&o.list(&format!("targs{k}"))) } else { 1 })));
         tail.push(w(0));
-        tail.push(Field::List(vec![vec![Field::Ref(NONE)], vec![Field::Ref(NONE)]]));
+        let splash = self.splash_slots(h);
+        tail.push(Field::List(splash.iter().map(|s| vec![Field::Ref(s.map_or(NONE, rf))]).collect()));
         tail.extend([r(u.acquire_range), r(0.0)]);
         tail.push(per(&|k| r(real("rangeN", k))));
         tail.push(per(&|k| r(real("RngBuff", k))));
@@ -1315,6 +1455,44 @@ impl World {
 }
 
 impl World {
+    /// A unit's splash data (`spla`, after its attack among its objects), one for each
+    /// weapon of a splashing kind, enabled or not, by weapon.
+    fn splash_slots(&self, h: u32) -> [Option<(u32, u32)>; 2] {
+        let mut out = [None; 2];
+        let (Some(u), Some(o)) = (self.unit(h), self.unit(h).and_then(|u| self.objects.units.get(u.type_id))) else { return out };
+        let objs = &u.extra.object_slots[2];
+        let Some(at) = objs.iter().position(|&(s, _)| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::ability::id::ATTACK)) else { return out };
+        let mut next = objs[at + 1..].iter().copied().filter(|&(s, b)| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::SPLASH && e.1 == b));
+        for k in 1..=2 {
+            if matches!(o.str(&format!("weapTp{k}")).trim(), "msplash" | "artillery" | "aline" | "mline" | "mbounce") {
+                out[k - 1] = next.next();
+            }
+        }
+        out
+    }
+
+    /// A unit's splash data's records (CSplashData, the agent base alone; own
+    /// `FUN_6f49c330`): its splash targets (none given, the default 0xfdd1f00e), its
+    /// full, half, and quarter areas, and its half and quarter factors (read:
+    /// Forestwalk's drakes' and whelps').
+    pub fn splash_records(&self, h: u32) -> Vec<(u32, First, Second)> {
+        let Some(o) = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)) else { return Vec::new() };
+        let mut out = Vec::new();
+        for (k, slot) in self.splash_slots(h).into_iter().enumerate() {
+            let Some(t) = slot else { continue };
+            let k = k + 1;
+            let list = o.list(&format!("splashTargs{k}"));
+            let targets = match weapon_targets(&list) {
+                1 => 0xfdd1_f00e,
+                bits => bits,
+            };
+            let real = |name: &str| o.real(&format!("{name}{k}"));
+            let own = vec![Field::Word(targets), Field::Real(real("Farea")), Field::Real(real("Harea")), Field::Real(real("Qarea")), Field::Real(real("Hfact")), Field::Real(real("Qfact"))];
+            out.push((t.0, super::agent_first(t, codes::class::SPLASH, &[]), Second::Agent { own, handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: Vec::new() }, tail: Vec::new() }));
+        }
+        out
+    }
+
     /// The units' AI lists (`uref`, CUnitRefList's `FUN_6f42f860`; read against the quiet
     /// test map's): four words, the second and third the list made before it of its
     /// owner's units (provisional: by owner), and empty handlers.

@@ -1350,6 +1350,10 @@ impl World {
             // Its abilities' agents, and the own records of the kinds written.
             // (The AI lists' after.)
             records.extend(self.ability_agent_records(h, &rallies));
+            for (slot, f, sec) in self.splash_records(h) {
+                records.insert(slot, f);
+                seconds.insert(slot, sec);
+            }
             let chain = self.ability_chain(h, &rallies);
             let olders = self.chain_older(h, &chain);
             for (k, &(t, code)) in chain.iter().enumerate() {
@@ -1774,6 +1778,12 @@ impl World {
                 codes::class::MINE_SHAFT => out.push((slot, Second::Agent { own: vec![Field::Word(u32::MAX), Field::Word(u32::MAX), Field::Word(0), Field::Word(0), Field::Real(0.0)], handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: Vec::new() }, tail: vec![Field::Timer(NONE, 0, Timing(None))] })),
                 codes::class::TRIGGER_QUEUE => out.push((slot, Second::Agent { own: vec![Field::Word(0)], handlers: events(), tail: vec![Field::List(Vec::new()), Field::List(Vec::new())] })),
                 codes::class::GAME_CACHE_MANAGER => out.push((slot, Second::Agent { own: vec![Field::Word(0)], handlers: events(), tail: self.game_cache_fields() })),
+                // A unit's detection by a player (CDetectedData): 0; 0 and sixteen 0,
+                // twice (read: Forestwalk's eighteen, none yet counted).
+                codes::class::DETECTION => {
+                    let zeros = || Field::List((0..16).map(|_| vec![Field::Word(0)]).collect());
+                    out.push((slot, Second::Agent { own: vec![Field::Word(0)], handlers: events(), tail: vec![Field::Word(0), zeros(), Field::Word(0), zeros()] }));
+                }
                 _ => {}
             }
         }
@@ -1808,7 +1818,7 @@ impl World {
     /// shifts, rects, the queue, and the game cache manager): each its class's definition
     /// alone.
     pub fn plain_agent_records(&self) -> Vec<(u32, First)> {
-        const PLAIN: [&[u8; 4]; 12] = [codes::class::UNIT_AI, codes::class::CREEP_CAMP, codes::class::TOWN_SITE, codes::class::PLAYER_AI, codes::class::GROUP, codes::class::SOUND, codes::class::TIMER_DIALOG, codes::class::MINE_SLOT, codes::class::MINE_SHAFT, codes::class::RECT, codes::class::TRIGGER_QUEUE, codes::class::GAME_CACHE_MANAGER];
+        const PLAIN: [&[u8; 4]; 13] = [codes::class::UNIT_AI, codes::class::CREEP_CAMP, codes::class::TOWN_SITE, codes::class::PLAYER_AI, codes::class::GROUP, codes::class::SOUND, codes::class::TIMER_DIALOG, codes::class::MINE_SLOT, codes::class::MINE_SHAFT, codes::class::RECT, codes::class::TRIGGER_QUEUE, codes::class::GAME_CACHE_MANAGER, codes::class::DETECTION];
         self.tags.live.iter().filter(|(_, (c, _))| PLAIN.contains(&c)).map(|(&slot, (c, birth))| (slot, agent_first((slot, *birth), c, &[]))).collect()
     }
 

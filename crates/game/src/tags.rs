@@ -115,6 +115,9 @@ pub struct Tags {
     pub autotarget_saved: Vec<f32>,
     #[serde(default)]
     pub autotarget_timers: std::collections::HashMap<(u32, Code), (u32, f32, f32)>,
+    /// Each Unholy Aura buff's modifier (`` `rcm ``), by the buff's slot.
+    #[serde(default)]
+    pub buff_modifiers: std::collections::HashMap<u32, u32>,
     /// The buffs that listen to their owner's tech tree changes (Command, War Drums, and
     /// Trueshot Aura's), each its slot and its unit's owner, in the order made.
     #[serde(default)]
@@ -210,7 +213,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), player_ai_timers: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), aura_dues: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), dead_handles: Default::default(), game_freed_keys: Vec::new(), game_timers: [0; 2], game_timers_clock: 0, save_clock: None, event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), player_ai_timers: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), aura_dues: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), buff_modifiers: Default::default(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), dead_handles: Default::default(), game_freed_keys: Vec::new(), game_timers: [0; 2], game_timers_clock: 0, save_clock: None, event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -884,6 +887,10 @@ impl crate::world::World {
             && self.is_night()
             && self.players.get(owner as usize).is_none_or(|p| p.get_state(crate::types::player_state::NO_CREEP_SLEEP) == 0);
         let sold = ids("Sellunits").iter().filter(|c| is_unit(c)).take(12).count();
+        // (Items, only those yet to arrive: read, Forestwalk's shop's eight of eleven.)
+        let mut items = ids("Sellitems");
+        items.extend(ids("Makeitems"));
+        let arriving_items = items.iter().take(12).filter(|i| self.objects.items.get(**i).is_some_and(|o| o.real("stockStart") > 0.0)).count();
         let mut attack_timer: Option<(u32, f32, f32)> = None;
         let mut look_timer: Option<u32> = None;
         let now = self.time;
@@ -900,8 +907,8 @@ impl crate::world::World {
                     let n = self.tags.start_timer("436780");
                     self.tags.timer_objects.entry(slots[k]).or_default().push((n, "436780".into(), self.time, 0.0));
                 }
-                codes::ability::id::SELL_UNITS => {
-                    for _ in 0..sold {
+                codes::ability::id::SELL_UNITS | codes::ability::id::SELL_ITEMS => {
+                    for _ in 0..if c == codes::ability::id::SELL_UNITS { sold } else { arriving_items } {
                         let n = self.tags.start_timer("41c010");
                         self.tags.timer_objects.entry(slots[k]).or_default().push((n, "41c010".into(), self.time, 0.0));
                     }
@@ -952,24 +959,33 @@ impl crate::world::World {
             }
         }
         // Its unit AI joining (`FUN_6f9b9230`), a computer's unit or a creep awake:
-        // each auto-target spell's (CAbilityAutoTargetSpell vf267) and Cannibalize's
-        // (vf50), in its list's order (traced: an undead computer's acolytes' Restore
-        // and ghoul's Cannibalize; in the census, a creep peasant's Repair).
+        // each auto-target spell's (CAbilityAutoTargetSpell vf267) and the looks of
+        // Cannibalize, Animate Dead, and Mana Burn (vf50: `FUN_6f606220`,
+        // `FUN_6f6060e0`, `FUN_6f606c60`), in its list's order (traced: an undead
+        // computer's acolytes' Restore and ghoul's Cannibalize; in the census, a creep
+        // peasant's Repair; read, Forestwalk's creeps' Curse, Bloodlust, Faerie Fire, and
+        // Raise Dead checks, their Animate Dead's and Mana Burn's looks).
         if (computer || (owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !building)) && !night_sleeper {
             for id in &list {
+                if let Some(c @ (codes::ability::id::CANNIBALIZE | codes::ability::id::ANIMATE_DEAD_CREEP | codes::ability::id::DEMON_HUNTER_MANA_BURN)) = ability(id).as_ref() {
+                    let name = match c {
+                        codes::ability::id::CANNIBALIZE => "606220",
+                        codes::ability::id::ANIMATE_DEAD_CREEP => "6060e0",
+                        _ => "606c60",
+                    };
+                    let n = self.tags.start_timer(name);
+                    if let Some(k) = codes.iter().position(|x| x == c) {
+                        self.tags.timer_objects.entry(slots[k]).or_default().push((n, name.into(), self.time, 0.0));
+                    }
+                    continue;
+                }
                 match ability(id).as_ref() {
-                    Some(c @ (codes::ability::id::REPAIR_ORC | codes::ability::id::RENEW | codes::ability::id::RESTORATION | codes::ability::id::HEAL | codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::INNER_FIRE | codes::ability::id::REPLENISH_LIFE_AND_MANA | codes::ability::id::REPLENISH_LIFE | codes::ability::id::REPLENISH_MANA)) => {
+                    Some(c @ (codes::ability::id::REPAIR_ORC | codes::ability::id::RENEW | codes::ability::id::RESTORATION | codes::ability::id::HEAL | codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::INNER_FIRE | codes::ability::id::REPLENISH_LIFE_AND_MANA | codes::ability::id::REPLENISH_LIFE | codes::ability::id::REPLENISH_MANA | codes::ability::id::CURSE | codes::ability::id::BLOODLUST | codes::ability::id::FAERIE_FIRE | codes::ability::id::RAISE_DEAD)) => {
                         let n = self.tags.start_timer("422820");
                         self.tags.autotarget_due.push(self.time + 0.015);
                         self.tags.autotarget_info.push((h, *c));
                         self.tags.autotarget_saved.push(f32::from_bits(crate::efloat::add(self.time.to_bits(), 0.02f32.to_bits())));
                         self.tags.autotarget_timers.insert((h, *c), (n, f32::from_bits(crate::efloat::add(self.time.to_bits(), 0.02f32.to_bits())), 0.02));
-                    }
-                    Some(codes::ability::id::CANNIBALIZE) => {
-                        let n = self.tags.start_timer("606220");
-                        if let Some(k) = codes.iter().position(|c| c == codes::ability::id::CANNIBALIZE) {
-                            self.tags.timer_objects.entry(slots[k]).or_default().push((n, "606220".into(), self.time, 0.0));
-                        }
                     }
                     _ => {}
                 }

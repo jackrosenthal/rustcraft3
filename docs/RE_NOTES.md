@@ -2285,7 +2285,11 @@ Formats the port made its own, to be replaced by the original's:
   wait on the main generator, while the original's walks on.  The way is open three
   cells south then two west; the goal's cell lies beside blocked ones.  The pathing
   maps agree there (a save at one second, `hog.w3x`: the cells' flags differ only in
-  blight, 992 of them).  Next: trace that walk in the original (its steps' cells).
+  blight, 992 of them).  Its search (`World::local_path`) is refused by a sheep idle at
+  (2480, 3600), its region's 2 by 2 cells across the narrow way south (236 to 237, 336
+  to 337); a detour by the east side is open, past the wanderers' search budget (32
+  nodes) perhaps.  Next: trace that walk's search in the original (does the sheep block
+  it, and how far does it search).
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

@@ -1071,13 +1071,16 @@ impl crate::world::World {
     /// after SetUnitState sets their mana to 0, and creeps with other spells none).
     pub(crate) fn mana_changed(&mut self, h: u32) {
         let Some(u) = self.unit(h).filter(|u| !u.extra.mana_watched) else { return };
-        let costs: Vec<f32> = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a).filter(|o| matches!(o.str("code").trim(), codes::ability::THUNDER_BOLT_CREEP | codes::ability::THUNDER_CLAP_CREEP)).map(|o| o.level_real("Cost", 1))).collect();
+        // (Read: the quiet test map's golems' Hurl Boulder and Thunder Clap, and
+        // Harrow's mud golems' Slow, each their mana set to none by the map's script;
+        // its gnoll wardens' Purge none.)
+        let costs: Vec<f32> = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a).filter(|o| matches!(o.str("code").trim(), codes::ability::THUNDER_BOLT_CREEP | codes::ability::THUNDER_CLAP_CREEP | codes::ability::SLOW)).map(|o| o.level_real("Cost", 1))).collect();
         if costs.is_empty() {
             return;
         }
         // The new timers replace the spells' first ones, released the last first.
         let old = u.extra.spell_timers.clone();
-        let codes: Vec<Code> = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a).map(|o| crate::objects::id_from_str(o.str("code").trim()))).filter(|c| matches!(c, codes::ability::id::THUNDER_BOLT_CREEP | codes::ability::id::THUNDER_CLAP_CREEP)).collect();
+        let codes: Vec<Code> = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a).map(|o| crate::objects::id_from_str(o.str("code").trim()))).filter(|c| matches!(c, codes::ability::id::THUNDER_BOLT_CREEP | codes::ability::id::THUNDER_CLAP_CREEP | codes::ability::id::SLOW)).collect();
         // (Each made by its spell's event, `FUN_6f4256d0`, and the old let go,
         // `FUN_6f161800`: a count of the property module's either side of the new
         // listener's two; traced on the quiet test map's golems.)

@@ -888,7 +888,10 @@ fn tag_immediate_order(w: &mut World, unit: u32, order: i32) {
     let Some(u) = w.unit(unit) else { return };
     let name = crate::natives::basic::order_name(order).unwrap_or_default();
     let toggle = u.abilities.iter().any(|(a, _)| w.objects.abilities.get(*a).is_some_and(|o| o.str("Orderon") == name || o.str("Orderoff") == name));
-    if !toggle {
+    // An autocast toggle of an ability the unit lacks is refused, making nothing (read:
+    // Harrow's script turning "blackarrowoff" on two troll priests).
+    let foreign_toggle = !toggle && !name.is_empty() && w.objects.abilities.ids().into_iter().any(|a| w.objects.abilities.get(a).is_some_and(|o| o.str("Orderon") == name || o.str("Orderoff") == name));
+    if !toggle && !foreign_toggle {
         w.tags.take_all(&[codes::class::ORDER, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A]);
     }
 }

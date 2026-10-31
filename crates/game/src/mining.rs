@@ -316,7 +316,7 @@ impl World {
                 self.path_to(h, (sx, sy));
             }
             let walked = self.walk(h, dt);
-            self.acolyte_in_range(h, mine);
+            self.acolyte_in_range(h, mine, (ux, uy));
             if !walked {
                 return;
             }
@@ -325,7 +325,7 @@ impl World {
                 u.y = sy;
             }
         }
-        self.acolyte_in_range(h, mine);
+        self.acolyte_in_range(h, mine, (ux, uy));
         // At its slot it works; the mine pays (haunted_mine_payouts).
         let u = self.unit_mut(h).unwrap();
         crate::sim::turn(u, face, dt);
@@ -336,12 +336,15 @@ impl World {
     /// An AI's harvest order's walk ends as its acolyte comes within its harvest's range
     /// (Aaha's Rng, 200) of the mine, between their collision circles: its last two
     /// target tasks go, the mine's payout makes its `` `rcm `` and `` `rtl `` (its first
-    /// worker's; `FUN_6f4e9650`, `FUN_6f4e9560`), and the walk's path and cluster go at
-    /// the tick's end; the acolyte then goes on to its ring slot (traced: Forestwalk's
-    /// undead computer's third acolyte in the network game's turn 4, 288.6 from the
-    /// mine's center as it began; provisional: an acolyte not the AI's, and those
-    /// after the first).
-    fn acolyte_in_range(&mut self, h: u32, mine: u32) {
+    /// worker's; `FUN_6f4e9650`, `FUN_6f4e9560`), and the walk's path and cluster go as
+    /// the next movement step starts: at the tick's end, or, the walk ending in the
+    /// tick's last step, in the next tick (`Tags::walk_ended`); the acolyte then goes on
+    /// to its ring slot (traced: Forestwalk's undead computer's third acolyte in the
+    /// network game's turn 4, 288.6 from the mine's center as it began, its path after
+    /// the alarm's `` `pil ``; the second's in turn 8's last step, its path in turn 9;
+    /// provisional: the step, by where in the tick's move the range is crossed; an
+    /// acolyte not the AI's, and the payout's objects after the first worker's).
+    fn acolyte_in_range(&mut self, h: u32, mine: u32, from: (f32, f32)) {
         let Some(u) = self.unit(h) else { return };
         if u.extra.ai_order.len() != crate::ai::AI_HARVEST.len() {
             return;
@@ -351,6 +354,11 @@ impl World {
         if (u.x - m.x).hypot(u.y - m.y) - m.collision - u.collision > range {
             return;
         }
+        let gap = |x: f32, y: f32| (x - m.x).hypot(y - m.y) - m.collision - u.collision;
+        let (before, after) = (gap(from.0, from.1), gap(u.x, u.y));
+        let at = if before > range && before > after { (before - range) / (before - after) } else { 0.0 };
+        let steps = self.step_clocks.len().max(1);
+        let last = steps > 1 && (at * steps as f32).ceil() as usize >= steps;
         let order = u.extra.ai_order.clone();
         let first = m.extra.ai_order.is_empty();
         self.tags.release(order[10]);
@@ -362,7 +370,12 @@ impl World {
                 m.extra.ai_order = vec![rcm, rtl];
             }
         }
-        self.tags.tick_end.extend([order[17], order[16]]);
+        if last {
+            let serial = self.tags.live.get(&order[17]).map_or(0, |e| e.1);
+            self.tags.walk_ended([order[17], order[16]], serial);
+        } else {
+            self.tags.tick_end.extend([order[17], order[16]]);
+        }
         if let Some(u) = self.unit_mut(h) {
             u.extra.ai_order = order[3..=8].to_vec();
         }

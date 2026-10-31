@@ -1026,12 +1026,33 @@ impl World {
                 records.insert(slot, f);
             }
         }
+        // The agents with no properties, each its class's definition alone.
+        for (slot, f) in self.plain_agent_records() {
+            records.entry(slot).or_insert(f);
+        }
+        // W3Z_COVERAGE: by kind, the objects whose first and second records are the
+        // template's still.
+        let mut kept: std::collections::BTreeMap<String, (u32, u32, u32)> = Default::default();
         for o in objects[0].iter_mut() {
+            let e = kept.entry(String::from_utf8_lossy(&o.entry.kind.to_be_bytes()).into_owned()).or_default();
+            e.0 += 1;
             if let Some(r) = records.get(&o.entry.tag) {
                 o.first = r.to_bytes();
+            } else {
+                e.1 += 1;
             }
             if let Some(Ok(b)) = seconds.get(&o.entry.tag).map(|sec| sec.to_bytes(o.entry.kind)) {
                 o.second = b;
+            } else if !o.second.is_empty() {
+                e.2 += 1;
+            }
+        }
+        if std::env::var("W3Z_COVERAGE").is_ok() {
+            let first: u32 = kept.values().map(|e| e.1).sum();
+            let second: u32 = kept.values().map(|e| e.2).sum();
+            eprintln!("coverage: of {} objects, {first} first and {second} second records the template's; by kind (objects, first kept, second kept):", objects[0].len());
+            for (k, e) in kept.iter().filter(|(_, e)| e.1 + e.2 > 0) {
+                eprintln!("  {k}: {e:?}");
             }
         }
         m.set_objects(&objects);
@@ -1044,6 +1065,15 @@ impl World {
             }
         }
         s
+    }
+
+    /// The first records of the agents that have no properties (read: the AIs of units,
+    /// camps, town sites, and players, the groups, sounds, timer dialogs, results,
+    /// shifts, rects, the queue, and the game cache manager): each its class's definition
+    /// alone.
+    pub fn plain_agent_records(&self) -> Vec<(u32, First)> {
+        const PLAIN: [&[u8; 4]; 12] = [b"AI-U", b"AIcs", b"AIts", b"AI-1", b"+grp", b"+snd", b"+tid", b"rslt", b"shft", b"+rct", b"+qum", b"gccm"];
+        self.tags.live.iter().filter(|(_, (c, _))| PLAIN.contains(&c)).map(|(&slot, (c, birth))| (slot, agent_first((slot, *birth), c, &[]))).collect()
     }
 
     /// The first object table as saved (`FUN_6f15c810`): each live object by slot, its
@@ -1594,6 +1624,25 @@ impl World {
                     let first = o.iter().zip(&g.cells).position(|(a, b)| a != b).map(|i| format!("; first cell {} ({}, {}): ours {:#x}, the original's {:#x}", i, i % g.frame.width as usize, i / g.frame.width as usize, o[i], g.cells[i]));
                     out.push(format!("grid {k}: {} cells, {} ours, {differ} differ{}", g.cells.len(), o.len(), first.unwrap_or_default()));
                 }
+            }
+            // The agents with no properties.
+            {
+                let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();
+                let (mut same, mut differ, mut first) = (0, 0, None);
+                for (slot, f) in self.plain_agent_records() {
+                    match by_slot.get(&slot) {
+                        Some(o) if o.first == f.to_bytes() => same += 1,
+                        Some(o) => {
+                            differ += 1;
+                            first.get_or_insert(format!("slot {slot} ({}): ours {f:?}, the original's {:?}", String::from_utf8_lossy(&o.entry.kind.to_be_bytes()), o.first()));
+                        }
+                        None => {
+                            differ += 1;
+                            first.get_or_insert(format!("slot {slot}: not in the original's"));
+                        }
+                    }
+                }
+                out.push(format!("plain agents: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
             }
             // The regions section whole.
             if let Ok(maps) = w3_formats::w3z::PathingMaps::parse(&m.data[0]) {

@@ -470,6 +470,14 @@ fn main() {
         println!("header {:?}", h);
         return;
     }
+    // "objtable2": the second table's objects, a line each: tag, kind, birth, and the
+    // sizes of its records.
+    if a[2] == "objtable2" {
+        for o in &objects[1] {
+            println!("{} {} {} {} {}", o.entry.tag, code(o.entry.kind), o.entry.birth, o.first.len(), o.second.len());
+        }
+        return;
+    }
     // "objtable": the first table's objects, a line each: tag, kind, birth.
     if a[2] == "objtable" {
         for o in &objects[0] {

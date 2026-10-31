@@ -470,6 +470,26 @@ fn main() {
         println!("header {:?}", h);
         return;
     }
+    // "fields <tag>": an agent's second record's tail fields, one a line with its index
+    // (event lists in brief).
+    if a[2] == "fields" {
+        let t: u32 = a[3].parse().unwrap();
+        for o in all.iter().filter(|o| o.entry.tag == t) {
+            if let Ok(w3_formats::w3z::Second::Agent { own, handlers, tail }) = o.second() {
+                println!("own {own:?}");
+                println!("keyed {:?}", handlers.keyed);
+                println!("fixed {:?}", handlers.fixed);
+                for (k, f) in tail.iter().enumerate() {
+                    let text = format!("{f:?}");
+                    if text != "List([])" {
+                        let n = if std::env::var("FULL").is_ok() { text.len() } else { text.len().min(400) };
+                        println!("{k}: {}", &text[..n]);
+                    }
+                }
+            }
+        }
+        return;
+    }
     // "objtable2": the second table's objects, a line each: tag, kind, birth, and the
     // sizes of its records.
     if a[2] == "objtable2" {

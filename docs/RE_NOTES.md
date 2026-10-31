@@ -2003,6 +2003,26 @@ Formats the port made its own, to be replaced by the original's:
   position, its coarse region flagged 0x02000000 and 0x60000001, and the ground's
   height there.  The port writes them, all agreeing on the quiet test map but the
   circles' heights by 0.01 (the port's corners interpolated bilinearly; provisional).
+- A player's agent's own record (CPlayerWar3, `FUN_6f269d70`): its own word 0 for the
+  local player, 2 for the others; the game's handler and, keyed by each listener on
+  its flags (its own at slot +27, word 6; a state registration's, word 0; the local
+  player's interface's six `` `fcl `` in the second table, worded by the state each
+  watches: gold, lumber, the two upkeeps, food cap, food used) in four buckets by
+  slot, the main table's first; its 63 event lists (0x8020b to 0x80233, 0x80305 to
+  0x80318, 0x80260, 0x80261), the script's registrations by event, and on 0x80261
+  the tech-change listeners: as made (queues, repair, restore, inventory, creep sleep,
+  the auras and an aura's buff on its own caster), then the creeps' autocast spells as
+  they woke (the last creep first, its spells from its last), then the auras' buffs
+  given later, as made; its name and number; its selection (empty); its alliance
+  object; its food cap and used, 96, race (an unused slot's: beyond the map's players
+  4 for the first six, then 3; an empty one of the map's 3; provisional), color,
+  controller, whether playing (the neutral players too), team and start or -1; its
+  `` `fcl `` and the interface's (by birth); handicaps; its tech table (`tech_regs`,
+  an unlimited type's limit 0x7fffffff); its structures' and other units' counts; its
+  AI twice; its bit.  All sixteen of the quiet test map's agree.  A unit removed takes
+  itself back from its owner's tech table (`FUN_6f23b030`): the port did not (read:
+  Neutral Passive's gold mines, six made, one removed for the haunted mine, its
+  hidden one added: six present); now it does, the regression suite unchanged.
 - The game's object (`+gam`, slot 641) has five properties: flags 0 and 1 (0), the
   time of day (a continuous `` `rel ``: the time as last set and the main clock then,
   8 at 0 on the quiet test map, 15.5 at 0.99999905 after bbst's SetTimeOfDay at one

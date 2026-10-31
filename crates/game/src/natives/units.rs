@@ -602,6 +602,13 @@ pub fn remove_unit(w: &mut World, h: u32) {
             p.stamp_no_build(&whole, -1);
         }
     }
+    // A unit made finished takes itself back from its owner's tech tree as it goes
+    // (`FUN_6f23b030`; read: a save's Neutral Passive gold mines, six made, one removed
+    // for the haunted mine, its hidden one added: six present; provisional: whether its
+    // listeners hear of it).
+    if let Some((owner, type_id)) = w.unit(h).filter(|u| u.constructing.is_none()).map(|u| (u.owner, u.type_id)) {
+        w.tech_reg(owner, type_id).present -= 1;
+    }
     if w.unit(h).is_some() {
         w.handles.remove(h);
         w.unit_order.retain(|x| *x != h);

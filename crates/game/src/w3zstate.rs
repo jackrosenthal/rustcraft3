@@ -262,7 +262,7 @@ impl Game {
         let ours = self.saved_state(&theirs);
         let mut out = Vec::new();
         if std::env::var("W3Z_FIND").is_ok() {
-            out.push(format!("players {:?}", self.world.players.iter().take(4).map(|p| (p.controller, p.start_location, p.team)).collect::<Vec<_>>()));
+            out.push(format!("players {:?}", self.world.players.iter().map(|p| (p.controller, p.start_location, p.team, p.race, p.race_preference, p.slot_state)).collect::<Vec<_>>()));
         }
         for ((name, a), (_, b)) in ours.parts.iter().zip(&theirs.parts) {
             if *name == "fog" {

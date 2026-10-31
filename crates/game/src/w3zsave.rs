@@ -293,6 +293,173 @@ impl World {
         out
     }
 
+    /// The players' agents' own records (CPlayerWar3, `FUN_6f269d70`; read against the
+    /// quiet test map's sixteen): the game's handler, and keyed by each of its flags'
+    /// listeners (its own at slot +27, word 6; a player state registration's, word 0; the
+    /// local player's interface's `` `fcl `` in the second table, after, by the flag)
+    /// in four buckets by slot; its 63 event lists (0x8020b to 0x80233, 0x80305 to
+    /// 0x80318, 0x80260, 0x80261: the script's registrations by event, and on 0x80261 the
+    /// tech-change listeners of its units' queues, repair, restore, inventory, creep
+    /// sleep, auras and their buffs, and abolish, heal, and inner fire, as made); its name
+    /// and number; an empty selection; its alliance object; food cap and used, 96, race,
+    /// color, controller, whether playing (the neutral players too), team and start or
+    /// -1; its flag listener and the interface's; handicaps 1, 1; its tech table (each
+    /// type's limit, made, in production two ways, present, killed, and kind); its
+    /// structures' and other units' counts; its AI, twice, or -1; its bit; and constants.
+    /// Provisional: the selection, what an AI or cinematics set, the counts' rules.
+    pub fn player_agent_seconds(&self, client: &[Listener], rallies: &[(Ref, Ref)]) -> Vec<(u32, Second)> {
+        let mut out = Vec::new();
+        const TECH_LISTENERS: [&[u8; 4]; 12] = [b"Aque", b"Arep", b"Arst", b"AInv", b"ACsp", b"AEar", b"BEar", b"AHad", b"Aarm", b"Aadm", b"Anhe", b"Ainf"];
+        let list_index = |e: u32| match e {
+            0x8_020b..=0x8_0233 => Some((e - 0x8_020b) as usize),
+            0x8_0305..=0x8_0318 => Some(41 + (e - 0x8_0305) as usize),
+            0x8_0260 => Some(61),
+            0x8_0261 => Some(62),
+            _ => None,
+        };
+        let ais: Vec<(u32, u32)> = self.tags.player_ais.clone();
+        let computers: Vec<usize> = (0..self.players.len()).filter(|&i| self.players[i].controller == 1).collect();
+        for (i, &ps) in self.tags.player_slots.iter().enumerate() {
+            let Some(p) = self.players.get(i) else { continue };
+            let me = self.tagged(ps);
+            let mut events: Vec<Vec<Vec<Field>>> = vec![Vec::new(); 63];
+            // The script's registrations of this player's events.
+            for &id in &self.events {
+                let Some(Obj::Event(r)) = self.handles.get(id) else { continue };
+                let (player, event) = match r.kind {
+                    EventKind::Player { player, event, .. } | EventKind::PlayerUnit { player, event, .. } => (player, event as u32 + 0x8_0200),
+                    _ => continue,
+                };
+                if player as usize != i || event == 0x8_0200 + crate::event_ids::EVENT_PLAYER_ALLIANCE_CHANGED as u32 {
+                    continue;
+                }
+                let (Some(k), Some(&reg)) = (list_index(event), self.tags.handle_ids.get(&id)) else { continue };
+                events[k].push(vec![Field::Ref(rf(reg)), Field::Word(event)]);
+            }
+            // Its units' tech-change listeners, as they registered: first those made with
+            // their units (an aura's buff on its own caster among them), by birth; then
+            // the creeps' autocast spells as they woke, the last creep first, each's spells
+            // from its last; then the auras' buffs given later, as made.
+            let (mut made, mut woke, mut later): (Vec<(u32, u32)>, Vec<(u32, u32)>, Vec<(u32, u32)>) = Default::default();
+            for &h in self.unit_order.iter().rev() {
+                let Some(u) = self.unit(h).filter(|u| u.owner as usize == i) else { continue };
+                let chain = self.ability_chain(h, rallies);
+                let creep = chain.iter().any(|(_, c)| c == b"ACsp");
+                let own: Vec<u32> = u.extra.object_slots.iter().flatten().map(|s| s.0).collect();
+                let mut spells = Vec::new();
+                for (t, code) in chain {
+                    if !TECH_LISTENERS.contains(&&code) {
+                        continue;
+                    }
+                    if creep && matches!(&code, b"Aadm" | b"Anhe" | b"Ainf") {
+                        spells.push(t);
+                    } else if code[0] == b'B' && !own.contains(&t.0) {
+                        later.push(t);
+                    } else {
+                        made.push(t);
+                    }
+                }
+                spells.sort_by_key(|t| std::cmp::Reverse(t.1));
+                woke.extend(spells);
+            }
+            made.sort_by_key(|t| t.1);
+            later.sort_by_key(|t| t.1);
+            events[62].extend(made.iter().chain(&woke).chain(&later).map(|&t| vec![Field::Ref(rf(t)), Field::Word(0x8_0261)]));
+            // Keyed by its flags' listeners.
+            let mut keyed: Vec<((u32, u32), u32, u32)> = vec![(self.tagged(ps + 27), 6, 0)];
+            for &id in &self.events {
+                let Some(Obj::Event(r)) = self.handles.get(id) else { continue };
+                if !matches!(r.kind, EventKind::PlayerState { player, .. } if player as usize == i) {
+                    continue;
+                }
+                let (Some(&l), Some(&reg)) = (self.tags.event_timers.get(&id), self.tags.handle_ids.get(&id)) else { continue };
+                keyed.push((self.tagged(l), 0, reg.0 | 0x4000_0000));
+            }
+            let mut keyed: Vec<(u32, Vec<(Ref, u32)>)> = {
+                keyed.sort_by_key(|k| (k.0 .0 & 3, k.0 .1));
+                keyed.into_iter().map(|(l, w, reg)| if reg & 0x4000_0000 != 0 { (l.0, vec![(rf(self.tagged(reg & !0x4000_0000)), w)]) } else { (l.0, vec![(rf(me), w)]) }).collect()
+            };
+            // (The interface's, by the state each watches: gold, lumber, the two upkeep
+            // rates, the food cap, the food used.)
+            const WATCHED: [u32; 6] = [1, 2, 13, 14, 4, 5];
+            let mut mine: Vec<&Listener> = client.iter().filter(|l| l.owner == me).collect();
+            mine.sort_by_key(|l| WATCHED.iter().position(|&w| w == l.flag.0.wrapping_sub(ps + 1)).unwrap_or(9));
+            for (k, l) in mine.iter().enumerate() {
+                let pos = keyed.iter().rposition(|(t, _)| t & 3 <= l.me.0 & 3).map_or(0, |x| x + 1);
+                keyed.insert(pos, (l.me.0, vec![(rf(me), k as u32)]));
+            }
+            let handlers = Handlers { keyed, fixed: game_handlers(self.game_object()).fixed, events: vec![Vec::new(); 0x400] };
+            let mut tail: Vec<Field> = events.into_iter().map(Field::List).collect();
+            let none = || Field::Ref(NONE);
+            let empty = || Field::List(Vec::new());
+            let words = |n: usize, w: u32| Field::List((0..n).map(|_| vec![Field::Word(w)]).collect());
+            tail.extend([Field::Text(p.name.clone()), Field::Byte(i as u8), empty(), Field::Word(10)]);
+            tail.extend((0..20).map(|_| empty()));
+            tail.extend([none(), none(), empty(), empty(), Field::Word(u32::MAX), empty(), none(), none(), empty(), Field::Word(0), Field::Word(u32::MAX), Field::Word(i as u32), none(), Field::Word(0), Field::Ref(rf(self.tagged(ps + 28)))]);
+            tail.extend([words(12, 0), words(12, 0)]);
+            let playing = p.slot_state == 1 || i >= 12;
+            let or_none = |v: i32| if playing && v >= 0 && i < 12 { v as u32 } else if i < 12 && playing { v as u32 } else { u32::MAX };
+            tail.extend([
+                Field::Word(p.get_state(crate::types::player_state::RESOURCE_FOOD_CAP) as u32),
+                Field::Word(p.get_state(crate::types::player_state::RESOURCE_FOOD_USED) as u32),
+                Field::Word(0),
+                Field::Word(0),
+                Field::Word(0),
+                Field::Word(96),
+                // (An unused slot's race: beyond the map's players the first six 4 and
+                // the rest 3, an empty one of the map's 3; read on Booty Bay and
+                // Forestwalk alone: provisional.)
+                Field::Word(if p.race != 0 || i >= 12 {
+                    p.race as u32
+                } else if (i as i32) < self.player_count {
+                    3
+                } else if (i as i32) - self.player_count < 6 {
+                    4
+                } else {
+                    3
+                }),
+                Field::Word(p.color as u32),
+                Field::Word(p.controller as u32),
+                Field::Word(playing as u32),
+                Field::Word(or_none(p.team)),
+                Field::Word(or_none(p.start_location)),
+            ]);
+            tail.push(Field::Ref(rf(self.tagged(ps + 27))));
+            // (The interface's listeners again, by birth.)
+            let mut by_birth = mine.clone();
+            by_birth.sort_by_key(|l| l.me.1);
+            for k in 0..6 {
+                tail.push(Field::Ref(by_birth.get(k).map_or(NONE, |l| rf(l.me))));
+            }
+            tail.extend([Field::Real(p.handicap), Field::Real(p.handicap_xp)]);
+            tail.push(Field::List((0..7).map(|_| vec![none()]).collect()));
+            tail.push(words(7, 0));
+            tail.push(Field::Word(0));
+            tail.push(Field::List(p.tech_regs.iter().map(|t| {
+                let max = t.max as u32;
+                let mut e = vec![Field::Word(u32::from_be_bytes(t.id))];
+                e.extend([max, t.made as u32, t.producing as u32, t.changing as u32, t.present as u32, t.killed as u32, t.flags].map(|v| Field::Real(f32::from_bits(v))));
+                e
+            }).collect()));
+            tail.push(Field::List(Vec::new()));
+            let (mut structures, mut others) = (0u32, 0u32);
+            for &h in &self.unit_order {
+                if let Some(u) = self.unit(h).filter(|u| u.owner as usize == i && !u.dead) {
+                    if u.is_building { structures += 1 } else { others += 1 }
+                }
+            }
+            let ai = if i < 12 { computers.iter().position(|&c| c == i).and_then(|k| ais.get(k)) } else if i == 12 { ais.last() } else { None };
+            let ai = ai.map_or(u32::MAX, |a| a.0);
+            tail.extend([Field::Word(0), Field::Word(structures), Field::Word(0), Field::Word(others), Field::Word(ai), Field::Word(ai), Field::Word(0), Field::Word(1 << i)]);
+            tail.push(Field::List(Vec::new()));
+            tail.extend([Field::Word(u32::MAX), Field::Word(u32::MAX), Field::Word(0), Field::Timer(NONE, 0, Timing(None)), Field::Word(1), Field::Word(1), Field::Word(1), Field::Text(String::new()), Field::Word(1), Field::Word(0), Field::Word(0), Field::Word(0), Field::Word(0), Field::Word(0)]);
+            // (Its own word 0 for the local player, 2 for the others.)
+            let own = if i as u8 == self.local_player { 0 } else { 2 };
+            out.push((ps, Second::Agent { own: vec![Field::Word(own)], handlers, tail }));
+        }
+        out
+    }
+
     /// A unit's five reals (`` `rel ``, read against the quiet test map's): its life,
     /// mana, two of -0 (to 2048 and to 1), and sight, each its value, rate, and bounds,
     /// listed after its `` `pcu `` (the unit's properties); life and mana with their
@@ -1098,6 +1265,9 @@ impl World {
         for (slot, sec) in self.plain_agent_seconds() {
             seconds.entry(slot).or_insert(sec);
         }
+        for (slot, sec) in self.player_agent_seconds(&client_listeners(template), &rallies) {
+            seconds.entry(slot).or_insert(sec);
+        }
         for &h in &self.unit_order {
             for (slot, f) in self.ability_real_records(h, &rallies).into_iter().chain(self.structure_region_records(h)) {
                 records.entry(slot).or_insert(f);
@@ -1836,7 +2006,7 @@ impl World {
             let circles: Vec<(u32, First)> = self.unit_order.iter().flat_map(|&h| self.mine_circle_records(h).0.into_iter().chain(self.blight_growth_records(h).0)).collect();
             {
                 let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();
-                let secs: Vec<(u32, Second)> = self.unit_order.iter().flat_map(|&h| self.mine_circle_records(h).1.into_iter().chain(self.blight_growth_records(h).1)).chain(self.plain_agent_seconds()).collect();
+                let secs: Vec<(u32, Second)> = self.unit_order.iter().flat_map(|&h| self.mine_circle_records(h).1.into_iter().chain(self.blight_growth_records(h).1)).chain(self.plain_agent_seconds()).chain(self.player_agent_seconds(&client_listeners(orig), &rally_points(orig))).collect();
                 let (mut same, mut differ, mut first) = (0, 0, None);
                 for (slot, sec) in secs {
                     match by_slot.get(&slot) {
@@ -1844,8 +2014,31 @@ impl World {
                         Some(o) => {
                             differ += 1;
                             if std::env::var("W3Z_ALL").is_ok() {
-                                if let (Second::Agent { own, .. }, Ok(Second::Agent { own: theirs, .. })) = (&sec, o.second()) {
-                                    out.push(format!("  slot {slot}: ours {:?} vs {:?}", &own[..3.min(own.len())], &theirs[..3.min(theirs.len())]));
+                                if let (Second::Agent { own, handlers, tail }, Ok(Second::Agent { own: o2, handlers: h2, tail: t2 })) = (&sec, o.second()) {
+                                    let where_ = if *own != o2 {
+                                        format!("own {own:?} vs {o2:?}")
+                                    } else if handlers.keyed != h2.keyed {
+                                        format!("keyed {:?} vs {:?}", handlers.keyed, h2.keyed)
+                                    } else if handlers.fixed != h2.fixed || handlers.events.len() != h2.events.len() {
+                                        format!("fixed/events {:?} {} vs {:?} {}", handlers.fixed, handlers.events.len(), h2.fixed, h2.events.len())
+                                    } else {
+                                        // (By bits: a NaN equals itself.)
+                                        let bits = |f: Option<&Field>| format!("{f:?}").replace("NaN", "nan");
+                                        let k = (0..tail.len().max(t2.len())).find(|&k| bits(tail.get(k)) != bits(t2.get(k))).unwrap_or(0);
+                                        if let (Some(Field::List(x)), Some(Field::List(y))) = (tail.get(k), t2.get(k)) {
+                                            let j = (0..x.len().max(y.len())).find(|&j| format!("{:?}", x.get(j)) != format!("{:?}", y.get(j))).unwrap_or(0);
+                                            out.push(format!("  slot {slot} tail {k} entry {j} of {} vs {}: {:?} vs {:?}", x.len(), y.len(), x.get(j), y.get(j)));
+                                        }
+                                        let show = |f: Option<&Field>| { let t = format!("{f:?}"); t[..t.len().min(240)].to_string() };
+                                        format!("tail {k} ({} vs {}): {} vs {}", tail.len(), t2.len(), show(tail.get(k)), show(t2.get(k)))
+                                    };
+                                    out.push(format!("  slot {slot}: {where_}"));
+                                    if let Ok(b) = sec.to_bytes(o.entry.kind) {
+                                        if let Some(k) = b.iter().zip(&o.second).position(|(x, y)| x != y) {
+                                            let hex = |v: &[u8]| v.iter().map(|x| format!("{x:02x}")).collect::<String>();
+                                            out.push(format!("  slot {slot} first differing byte {k} of {} vs {}: {} vs {}", b.len(), o.second.len(), hex(&b[k.saturating_sub(8)..(k + 16).min(b.len())]), hex(&o.second[k.saturating_sub(8)..(k + 16).min(o.second.len())])));
+                                        }
+                                    }
                                 }
                             }
                             first.get_or_insert(format!("slot {slot}: ours {sec:?}, the original's {:?}", o.second()));
@@ -1853,7 +2046,7 @@ impl World {
                         None => differ += 1,
                     }
                 }
-                out.push(format!("mines' slots, circles, blight growth, camps, sites, shifts, and the queue (second records): {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+                out.push(format!("own records (mines' slots, circles, blight growth, camps, sites, shifts, the queue, players): {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
             }
             for (name, recs) in [("plain agents", self.plain_agent_records()), ("pathing system objects", self.pathing_system_records(48, 0)), ("game object", self.game_object_records()), ("abilities' reals", ability_reals), ("structures' footprints (but for the search mark)", footprints), ("mines' circles and blight growth (but for the search mark)", circles)] {
                 let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();

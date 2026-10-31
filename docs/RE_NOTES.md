@@ -2280,7 +2280,20 @@ Formats the port made its own, to be replaced by the original's:
   (`Tags::next_turn_end`).  At 2.0 the crypt is begun; the game module then differs by
   the computer's tech tree hash: a structure begun is in production, not yet made or
   present (`World::tech_begun`, `tech_built` as it finishes; `FUN_6f249cf0`), one bit of
-  two.  The keepalives agree to turn 20.  In
+  two.  The keepalives agree to turn 20.  The other bit is the birth count: as the
+  crypt is begun (the build ability's `FUN_6f54d0f0`) the original makes, after the
+  AI's objects of the new structure, the construction start's event data (`pucs`,
+  `FUN_6f2609b0`: only when something listens for event 0x8021a, as the melee
+  defeat trigger does), the trigger's `+tex`, a Build In Progress ability (`ABnP`,
+  `FUN_6f533490`) and its `` `rel ``, then as the build ability starts it
+  (`FUN_6f41b380`) the rise's `` `rcm `` and `` `rtl `` (`FUN_6f436b00`, event 0xd01c4)
+  and a regeneration `` `rcm `` (`FUN_6f431e50`).  The build order's second `tsk.` is
+  freed first at the turn's end, then the turn's objects, the `+tex`, and the `pucs`;
+  its path and cluster at the next turn's end, after that turn's AI objects
+  (`Tags::next_turn_end`, as the captain's query's).  The four undead's blight looks
+  (due at 2.0) run at the first step of turn 21: the main clock is 1.98 at turn 20's
+  last step and 2.01 at turn 21's first, so the looks now fall due on the main clock
+  and run at steps (`World::blight_checks_to`).  The keepalives agree to turn 22.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

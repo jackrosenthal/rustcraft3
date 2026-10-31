@@ -3311,6 +3311,16 @@ impl World {
         // A structure built on another unit stands on it and takes it over.
         let site = if self.builds_on(id) { self.build_on_site(x, y) } else { None };
         let (x, y) = site.and_then(|s| self.unit(s).map(|m| (m.x, m.y))).unwrap_or((x, y));
+        // An AI's build order's second `tsk.` goes as the structure is begun, before
+        // what the AI makes of the structure, and its walk's path and cluster at the
+        // next turn's end, as a captain's path query's do (traced: Forestwalk's undead
+        // computer's crypt, the `tsk.` freed first at the turn's end, the path and
+        // cluster after the AI's objects in the next; provisional: the rest of the
+        // order).
+        if let Some(order) = self.unit(h).filter(|u| u.extra.ai_order.len() == crate::ai::AI_BUILD.len()).map(|u| u.extra.ai_order.clone()) {
+            self.tags.doom(order[9]);
+            self.tags.next_turn_end.extend([order[18], order[17]]);
+        }
         let b = crate::natives::units::create_unit(self, owner, id, x, y, self.misc_f32("BuildingAngle", 270.0));
         if let Some(s) = site {
             self.cover_mine(b, s);
@@ -3327,8 +3337,31 @@ impl World {
         self.tech_begun(owner, id);
         // The structure is begun with the worker where it stood (measured: a blacksmith's
         // peasant is inside the footprint when EVENT_PLAYER_UNIT_CONSTRUCT_START fires).
+        // The event's data (`pucs`) is made when anything listens for it, before the
+        // triggers run, and goes with their executions (`FUN_6f2609b0`, event 0x8021a;
+        // traced: freed at the turn's end after the melee trigger's `+tex`).
+        let listened = self.events.iter().any(|&e| matches!(self.handles.get(e), Some(Obj::Event(r)) if matches!(r.kind, EventKind::PlayerUnit { event: EVENT_PLAYER_UNIT_CONSTRUCT_START, .. })));
+        let data = listened.then(|| self.tags.take(b"pucs"));
         let ctx = EventCtx { unit: b, player: owner, has_player: true, event_id: EVENT_PLAYER_UNIT_CONSTRUCT_START, ..Default::default() };
         self.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event, .. } if *player == owner && *event == EVENT_PLAYER_UNIT_CONSTRUCT_START));
+        if let Some(d) = data {
+            if self.exec_at_tick_end {
+                self.tags.issued.push(d);
+            } else {
+                self.tags.doom(d);
+            }
+        }
+        // Then its Build In Progress ability with its real (`FUN_6f533490`), and as the
+        // build ability starts it (`FUN_6f41b380`), the rise's modifier and threshold
+        // listener (`FUN_6f436b00`, event 0xd01c4) and its regeneration's modifier
+        // (`FUN_6f431e50`) (traced: Forestwalk's undead computer's crypt; provisional:
+        // when they go).
+        if self.unit(b).is_some() {
+            let objects: Vec<u32> = [codes::ability::id::BUILD_IN_PROGRESS, codes::class::REAL, codes::class::CONTINUOUS_MODIFIER, codes::class::THRESHOLD_LISTENER, codes::class::CONTINUOUS_MODIFIER].iter().map(|c| self.tags.take(c)).collect();
+            if let Some(bu) = self.unit_mut(b) {
+                bu.extra.build_objects = objects;
+            }
+        }
         if self.unit(h).is_none() {
             return;
         }

@@ -640,12 +640,18 @@ pub struct UnitExtra {
     /// made as the AI of its owner takes it (`FUN_6f606140`).
     #[serde(default)]
     pub spell_pils: Vec<(u32, [u8; 4])>,
-    /// Regeneration on blight (Ablr): the time to its next look at the ground, and its
-    /// timer while on blight (`World::regenerate`).
+    /// Regeneration on blight (Ablr): its next look at the ground due on the main clock
+    /// (seconds since the game began), and its timer while on blight
+    /// (`World::blight_checks_to`).
     #[serde(default)]
     pub blight_check: Option<f32>,
     #[serde(default)]
     pub blight_rcm: Option<u32>,
+    /// A structure being built: its Build In Progress ability (`ABnP`) and that's real,
+    /// then its rise's modifier and threshold listener and its regeneration's modifier
+    /// (`FUN_6f54d0f0`, `FUN_6f41b380`).
+    #[serde(default)]
+    pub build_objects: Vec<u32>,
     /// A structure's alarm's wait before it watches for enemies (`World::alarms`).
     #[serde(default)]
     pub alarm_wait: Option<f32>,
@@ -948,6 +954,7 @@ impl Default for UnitExtra {
             spell_pils: Vec::new(),
             blight_check: None,
             blight_rcm: None,
+            build_objects: Vec::new(),
             alarm_wait: None,
             order_tags: Vec::new(),
             gold_run: None,

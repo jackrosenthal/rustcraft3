@@ -1792,6 +1792,7 @@ impl World {
             None => n.saturating_sub(1),
         };
         if let Some(now) = self.tick_abs(i) {
+            self.blight_checks_to(now);
             self.ai_threads_to(now as f32);
             self.alarms_to(now);
             self.captain_checks_to(now);

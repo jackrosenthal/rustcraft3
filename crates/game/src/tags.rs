@@ -1060,6 +1060,9 @@ impl crate::world::World {
                 self.tags.doom(slots[a + d]);
             }
         }
+        // Its look at the ground falls due on the main clock, from the tick's first
+        // reading (none before the game runs).
+        let base = if self.tick_clocks.1.is_empty() { 0.0 } else { self.tick_abs(0).unwrap_or(0.0) as f32 };
         if let Some(u) = self.unit_mut(h) {
             u.extra.oid = oid;
             u.extra.spell_timers = spell_timers.iter().map(|&k| slots[k]).collect();
@@ -1083,7 +1086,7 @@ impl crate::world::World {
             let pair = |k: usize| (slots[k], births[k]);
             u.extra.object_slots = [(0..BASE).map(pair).collect(), (BASE..mods_end).map(pair).collect(), (rest_start..tasks).map(pair).collect()];
             if blight_regen {
-                u.extra.blight_check = Some(2.0);
+                u.extra.blight_check = Some(base + 2.0);
                 u.extra.blight_rcm = blight_rcm.map(|k| slots[k]);
             }
         }

@@ -496,23 +496,23 @@ impl World {
         }
     }
 
-    /// Hero health and mana regeneration and unit regeneration.
-    pub fn regenerate(&mut self, dt: f32) {
+    /// Regeneration on blight looks at the ground every two seconds from the unit's
+    /// making, its timer made as it finds blight (traced: an undead start's ghoul and
+    /// three acolytes each take one at 2.0 seconds, the haunted mine's blight under them
+    /// since its making; event 0xd01c1, `FUN_6f43a200`; provisional: the period, and
+    /// leaving blight frees it).  Its looks fall due on the main clock, run at the
+    /// tick's steps (traced: in the network game with Forestwalk's undead computer its
+    /// ghoul's and three acolytes' at the first of turn 21's, the main clock short of 2
+    /// at turn 20's last).
+    pub fn blight_checks_to(&mut self, now: f64) {
         let hs: Vec<u32> = self.unit_order.clone();
-        // Regeneration on blight looks at the ground every two seconds from the unit's
-        // making, its timer made as it finds blight (traced: an undead start's ghoul and
-        // three acolytes each take one at 2.0 seconds, the haunted mine's blight under
-        // them since its making; event 0xd01c1, `FUN_6f43a200`; provisional: the period,
-        // and leaving blight frees it).
-        let now = self.time;
         for &h in &hs {
             let Some(u) = self.unit_mut(h) else { continue };
             let Some(c) = u.extra.blight_check.as_mut() else { continue };
-            *c -= dt;
-            if *c > 1e-4 {
+            if *c as f64 > now {
                 continue;
             }
-            let due = now + *c;
+            let due = *c;
             *c += 2.0;
             let (x, y, had) = (u.x, u.y, u.extra.blight_rcm);
             match (self.point_blighted(x, y), had) {
@@ -536,6 +536,11 @@ impl World {
                 _ => {}
             }
         }
+    }
+
+    /// Hero health and mana regeneration and unit regeneration.
+    pub fn regenerate(&mut self, dt: f32) {
+        let hs: Vec<u32> = self.unit_order.clone();
         for h in hs {
             let Some((hp, mp)) = self.regen_rates(h) else { continue };
             let u = self.unit_mut(h).unwrap();

@@ -2195,7 +2195,14 @@ Formats the port made its own, to be replaced by the original's:
   turn 3), its alarm `` `pil `` comes after that acolyte's path (alarms not yet by agent
   time), and its second acolyte's searched way detours east then west around the base
   (gap 207.8 at 1.1, in range in the original by turn 8).  Not kept (turn 4); next:
-  why a new walk waits a tick (`walk_from`, the step's searches), and alarms by time.  In
+  why a new walk waits a tick (`walk_from`, the step's searches), and alarms by time.
+  Tried again (`abtest`'s `acolyte_steps.patch`, the search to the mine's footprint as
+  a worker's, `gold_run_search`): the ways are found, but the walks do not start late,
+  they turn first, the acolytes made facing south turning in place 0.6 a step for five
+  steps (to clock 0.33) before moving, and the third acolyte comes in range after the
+  original's (in range mid-turn 4 there).  Next: the original's acolytes' places by
+  turn (a single-player save from a script on the map, `abtest/savemap.sh`, read with
+  `w3zobj`).  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

@@ -2271,6 +2271,21 @@ Formats the port made its own, to be replaced by the original's:
   Still apart at 5 seconds: the computer's AI from 0.1 seconds (below), and timer
   counts some ten to fifty low in the port (timers the original starts that the port
   does not yet).
+- Other melee maps, two people, no actions (the original as player 2 of the port's
+  host, `abtest/netmap.sh`; its modules at a keepalive, `ckmod.sh`; its main
+  generator's draws with callers and turn marks, `netdraws.sh`; its census at the
+  start, `run.sh`): Harrow agrees for 1952 turns and Plunder Isle for 1953 (kept in
+  `docs/reference`) after four fixes, each read so: an autocast toggle of an ability
+  the unit lacks is refused (no objects; Harrow's script's "blackarrowoff"); a mud
+  golem's Slow listener re-arms as the script sets its mana to none; Trueshot Aura's
+  buff reaches melee units too; an aura's scan and a detection look reach a unit
+  within range of its collision circle.  Hills of Glory agrees to turn 76: a critter's
+  wander walk from (2512, 3664) to (2424.1, 3555.5) ends at once in the port (its
+  search near at hand reaching one cell west, then nothing nearer), drawing its next
+  wait on the main generator, while the original's walks on.  The way is open three
+  cells south then two west; the goal's cell lies beside blocked ones.  The pathing
+  maps agree there (a save at one second, `hog.w3x`: the cells' flags differ only in
+  blight, 992 of them).  Next: trace that walk in the original (its steps' cells).
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

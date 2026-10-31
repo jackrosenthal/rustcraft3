@@ -83,6 +83,55 @@ impl World {
         vec![Field::List(Vec::new()), Field::Ref(self.first_of(b"gccm")), template.get(2).cloned().unwrap_or(Field::List((0..12).map(|_| vec![Field::Word(0)]).collect()))]
     }
 
+    /// The fog of war's part (CFogOfWarMap's, `FUN_6f250d00`): two bytes (1, 1), its
+    /// size in cells, its rows' stride (a power of two) and that power, then four grids
+    /// a short a cell, rows from the map's bottom (the stride's unused cells 0xffff in
+    /// the first, 0 in the others): the players unexplored (a bit each; the neutral
+    /// players' always), those seeing now, a third mask (the template's: not read), and the sight heights; its bounds
+    /// (bottom, left, top, right), their scale (1/128) twice, three shorts (1), and a
+    /// word (0).
+    pub fn saved_fog(&self, template: &[Field]) -> Option<Vec<Field>> {
+        let f = self.fog.as_ref()?;
+        let (w, h) = (f.width, f.height);
+        let stride = w.next_power_of_two();
+        let shift = stride.trailing_zeros();
+        let mut grids = [vec![0xffffu16; stride * h], vec![0u16; stride * h], vec![0u16; stride * h], vec![0u16; stride * h]];
+        for y in 0..h {
+            for x in 0..w {
+                let (c, k) = (y * w + x, y * stride + x);
+                let mut unexplored = 0xffffu16;
+                let mut visible = 0u16;
+                // The neutral players' bits never set (read: Neutral Hostile's creeps
+                // leave none in a save's grids).
+                for p in 0..12.min(f.explored.len()) {
+                    if f.explored[p].get(c).copied().unwrap_or(false) {
+                        unexplored &= !(1 << p);
+                    }
+                    if f.visible.get(p).and_then(|v| v.get(c)).copied().unwrap_or(false) {
+                        visible |= 1 << p;
+                    }
+                }
+                grids[0][k] = unexplored;
+                grids[1][k] = visible;
+                grids[3][k] = f.sight_height.get(c).copied().unwrap_or(0) as u16;
+            }
+        }
+        if let Some(Field::List(t)) = template.get(8) {
+            for (k, v) in t.iter().enumerate().take(grids[2].len()) {
+                if let [Field::Short(x)] = v[..] {
+                    grids[2][k] = x;
+                }
+            }
+        }
+        let b = self.map_bounds;
+        let mut out = vec![Field::Byte(1), Field::Byte(1), Field::Word(w as u32), Field::Word(h as u32), Field::Word(stride as u32), Field::Word(shift)];
+        for g in grids {
+            out.push(Field::List(g.into_iter().map(|v| vec![Field::Short(v)]).collect()));
+        }
+        out.extend([Field::Real(b.min_y), Field::Real(b.min_x), Field::Real(b.max_y), Field::Real(b.max_x), Field::Real(1.0 / 128.0), Field::Real(1.0 / 128.0), Field::Short(1), Field::Short(1), Field::Short(1), Field::Word(0)]);
+        Some(out)
+    }
+
     /// The sounds' part (`FUN_6f359b50`): the eight volume groups' levels (each the level
     /// it goes to), "Music", a word (-1), and the looping sounds playing on objects
     /// (none the port makes: provisional, Booty Bay's haunted mine's MineDomeLoop not
@@ -148,6 +197,11 @@ impl Game {
                 "game 3" => *f = self.world.saved_game_3(f),
                 "references" => *f = self.world.saved_sites(),
                 "sounds" => *f = self.world.saved_sounds(),
+                "fog" => {
+                    if let Some(x) = self.world.saved_fog(f) {
+                        *f = x;
+                    }
+                }
                 "ui" => *f = self.world.saved_ui(),
                 // None the port makes yet (provisional: a game's hashtables not written).
                 "hashtables" if !self.world.handles.iter().any(|(_, o)| matches!(o, crate::types::Obj::Hashtable(_))) => *f = vec![Field::List(Vec::new()), Field::Word(0)],
@@ -167,6 +221,34 @@ impl Game {
             out.push(format!("players {:?}", self.world.players.iter().take(4).map(|p| (p.controller, p.start_location, p.team)).collect::<Vec<_>>()));
         }
         for ((name, a), (_, b)) in ours.parts.iter().zip(&theirs.parts) {
+            if *name == "fog" {
+                if let Ok(path) = std::env::var("W3Z_FOGDUMP") {
+                    let mut raw = Vec::new();
+                    for g in &a[6..10] {
+                        if let Field::List(g) = g {
+                            for v in g {
+                                if let [Field::Short(x)] = v[..] {
+                                    raw.extend(x.to_le_bytes());
+                                }
+                            }
+                        }
+                    }
+                    let _ = std::fs::write(path, raw);
+                }
+                // Grid by grid: the cells differing, and the first.
+                for k in 0..4 {
+                    if let (Some(Field::List(x)), Some(Field::List(y))) = (a.get(6 + k), b.get(6 + k)) {
+                        let differ: Vec<usize> = (0..x.len().max(y.len())).filter(|&j| x.get(j) != y.get(j)).collect();
+                        out.push(format!("fog grid {k}: {} cells ours, {} the original's; {} differ{}", x.len(), y.len(), differ.len(), differ.first().map_or(String::new(), |&j| format!(", the first {j} (row {}, column {}): {:?} vs {:?}", j / 256, j % 256, x.get(j), y.get(j)))));
+                    }
+                }
+                let (ha, hb) = (&a[..6.min(a.len())], &b[..6.min(b.len())]);
+                let (ta, tb) = (a.get(10..).unwrap_or(&[]), b.get(10..).unwrap_or(&[]));
+                if ha != hb || ta != tb {
+                    out.push(format!("fog head {ha:?} vs {hb:?}; tail {ta:?} vs {tb:?}"));
+                }
+                continue;
+            }
             if matches!(*name, "game" | "map setup" | "game 2" | "game 3" | "references" | "hashtables" | "sounds" | "ui") {
                 let first = (0..a.len().max(b.len())).find(|&k| a.get(k) != b.get(k));
                 out.push(format!("{name}: {}", first.map_or("the same".into(), |k| match (a.get(k), b.get(k)) {

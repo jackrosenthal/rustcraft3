@@ -1971,6 +1971,23 @@ Formats the port made its own, to be replaced by the original's:
   haunted mine's MineDomeLoop in bbst10; not yet); the hashtables' none (not yet
   written when a game has some: they keep their entries' order, the port's maps
   none).
+- The fog of war's part (CFogOfWarMap, `FUN_6f250d00`; made in `FUN_6f250ae0`): two
+  bytes, its width and height in cells (128 units), its rows' stride (the width's
+  next power of two: 256 on Booty Bay) and that power, then four grids of shorts,
+  rows from the map's bottom: +0x2c the players who have not explored a cell (a bit
+  each; the neutral players' always set, the stride's spare cells 0xffff), +0x30
+  those who see it now, +0x34 a reveal mask (`FUN_6f250f00` ORs a player's bit over a
+  row's span, `FUN_6f251120` clears spans, `FUN_6f251590` merges it into the seeing
+  grid), and +0x38 the sight heights; then its bounds (bottom, left, top, right),
+  1/128 twice, three shorts (1), and a word.  The quiet test map's agree but for the
+  computer player's: the original's +0x34 holds that player's bits over a disk of
+  about 1400 around its base (364 cells, unchanged from 5 to 20 seconds; 156 on
+  Forestwalk's computer; none for the user), and it sees that disk clipped by line of
+  sight alone, not its workers' vision as the port does (97 cells more; not yet
+  understood: the port writes the template's reveal mask).  Units of a type with an
+  occlusion height (UnitUI's occH, 200 for the neutral buildings) raise their cell's
+  sight height as trees do (read: the Goblin Merchant's cell 584, its level's 384 and
+  200); the port now does so, the regression suite unchanged.
 - The engine's objects, read in a save's object table and free list (a quiet test map
   on Booty Bay without the computer's AI, saved at five seconds; `w3zobj objtable`,
   `free`, and playtest's `objtable`): the port's live objects (`Tags::live`) agree

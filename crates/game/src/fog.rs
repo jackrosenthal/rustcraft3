@@ -256,6 +256,20 @@ impl World {
                 standing.push((h, occ, d.occluder_height.is_some()));
             }
         }
+        // Units of a type with an occlusion height (UnitUI's occH: the neutral buildings,
+        // 200) raise their cell too (read: Booty Bay's Goblin Merchant's cell 584 in a
+        // save's sight heights, its cliff level's 384 plus 200).
+        let mut unit_occludes: crate::HashMap<crate::objects::Id, f32> = crate::HashMap::default();
+        for &h in &self.unit_order {
+            let Some(u) = self.unit(h) else { continue };
+            if u.dead || u.hidden {
+                continue;
+            }
+            let occ = *unit_occludes.entry(u.type_id).or_insert_with(|| self.objects.units.get(u.type_id).map_or(0.0, |o| o.real("occh")));
+            if occ > 0.0 {
+                standing.push((h, occ, false));
+            }
+        }
         {
             let fog = self.fog.as_mut().unwrap();
             let mut applied = std::mem::take(&mut fog.occluders);
@@ -270,9 +284,13 @@ impl World {
                 if applied.iter().any(|&(a, ..)| a == h) {
                     continue;
                 }
-                let Some(Obj::Destructable(d)) = self.handles.get(h) else { continue };
-                let Some(c) = fog.cell(d.x, d.y) else { continue };
-                let base = fog.level_at(d.x, d.y) as i16 * 128;
+                let (x, y) = match self.handles.get(h) {
+                    Some(Obj::Destructable(d)) => (d.x, d.y),
+                    Some(Obj::Unit(u)) => (u.x, u.y),
+                    _ => continue,
+                };
+                let Some(c) = fog.cell(x, y) else { continue };
+                let base = fog.level_at(x, y) as i16 * 128;
                 let value = base + occ as i32 as i16;
                 fog.sight_height[c] = if set { value } else { fog.sight_height[c].max(value) };
                 applied.push((h, c, base, value));

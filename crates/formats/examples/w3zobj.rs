@@ -212,6 +212,30 @@ fn main() {
         }
         return;
     }
+    // "fog <out>": the fog's head, its four maps' census of values, and its tail; the
+    // maps' shorts to <out> (map by map, row by row).
+    if a[2] == "fog" {
+        let st = s.state().unwrap();
+        let f = &st.parts.iter().find(|(n, _)| *n == "fog").unwrap().1;
+        println!("head {:?}", &f[..6]);
+        let mut raw = Vec::new();
+        for (k, m) in f[6..10].iter().enumerate() {
+            let w3_formats::w3z::Field::List(m) = m else { continue };
+            let mut c: std::collections::BTreeMap<u16, usize> = Default::default();
+            for v in m {
+                if let [w3_formats::w3z::Field::Short(x)] = v[..] {
+                    *c.entry(x).or_insert(0) += 1;
+                    raw.extend(x.to_le_bytes());
+                }
+            }
+            println!("map {k}: {} shorts, {} values: {:?}", m.len(), c.len(), c.iter().take(12).collect::<Vec<_>>());
+        }
+        println!("tail {:?}", &f[10..]);
+        if let Some(out) = a.get(3) {
+            std::fs::write(out, raw).unwrap();
+        }
+        return;
+    }
     // "state": the game's state's parts, each its fields in brief.
     if a[2] == "state" {
         let st = s.state().unwrap();

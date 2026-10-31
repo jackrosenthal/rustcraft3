@@ -293,6 +293,80 @@ impl World {
         out
     }
 
+    /// The players' AIs' own records (CCompAI, `FUN_6f9ca100`; read against the quiet
+    /// test map's, whose computer runs no script): 0, its player, the newest list of
+    /// its units' AIs (`uref`) twice, none-valued places, eight none and eight 0.0, 7,
+    /// a computer's newest unit not a structure, four towns (a
+    /// computer's first 1), 3, twelve and twelve 0, six none, a flags word (0x180183 a
+    /// computer's, 0x100002 Neutral Hostile's), and its three timers, every 2, 10, and
+    /// 0.5 seconds from its making (events 0xd01c1, 0xd01c3, 0xd01c5).  Provisional:
+    /// what a running script sets in them, the flags.
+    pub fn player_ai_seconds(&self) -> Vec<(u32, Second)> {
+        let mut out = Vec::new();
+        let computers: Vec<u8> = (0..12u8).filter(|&i| self.players.get(i as usize).is_some_and(|p| p.controller == 1)).collect();
+        let clock = self.agent_step;
+        for (k, &(slot, birth)) in self.tags.player_ais.iter().enumerate() {
+            let me = (slot, birth);
+            let player = computers.get(k).copied().unwrap_or(12);
+            let computer = player < 12;
+            let head = self.unit_order.iter().filter_map(|&h| self.unit(h)).filter(|u| u.owner == player).filter_map(|u| u.extra.ai_slots.first().copied()).filter(|s| self.tags.live.get(&s.0).is_some_and(|e| e.1 == s.1)).max_by_key(|s| s.1).unwrap_or((u32::MAX, u32::MAX));
+            // (A computer's newest unit not a structure; read, the quiet test map's last
+            // acolyte; provisional: heroes.)
+            let joins = |u: &crate::types::Unit| !u.is_building;
+            let guard = if computer { self.unit_order.iter().filter_map(|&h| self.unit(h)).filter(|u| u.owner == player && !u.dead && joins(u)).filter_map(|u| u.extra.object_slots[0].first().copied()).max_by_key(|s| s.1) } else { None }.unwrap_or((u32::MAX, u32::MAX));
+            let w = |v: u32| Field::Word(v);
+            let none = || [Field::Word(u32::MAX), Field::Word(u32::MAX)];
+            let mut own = vec![w(0), w(player as u32), w(head.0), w(head.1), Field::Real(0.0)];
+            for _ in 0..3 {
+                own.extend(none());
+                own.push(Field::Real(0.0));
+            }
+            own.push(w(0));
+            own.push(Field::List((0..8).map(|_| vec![w(u32::MAX), w(u32::MAX), Field::Real(0.0)]).collect()));
+            own.push(Field::List((0..8).map(|_| vec![Field::Real(0.0)]).collect()));
+            own.extend([w(7), Field::Real(0.0), Field::Real(0.0)]);
+            for _ in 0..2 {
+                own.extend(none());
+                own.push(Field::Real(0.0));
+            }
+            own.extend([w(guard.0), w(guard.1), Field::Real(0.0)]);
+            own.push(Field::List((0..4).map(|t| vec![w(if computer && t == 0 { 1 } else { u32::MAX })]).collect()));
+            own.extend(none());
+            own.extend([Field::Real(0.0), w(3), w(u32::MAX), w(0), w(0)]);
+            own.push(Field::List((0..12).map(|_| vec![w(0)]).collect()));
+            own.push(Field::List((0..12).map(|_| vec![w(0)]).collect()));
+            own.push(Field::List((0..6).map(|_| vec![w(u32::MAX), w(u32::MAX), Field::Real(0.0)]).collect()));
+            own.push(w(0));
+            for _ in 0..2 {
+                own.extend(none());
+                own.push(Field::Real(0.0));
+            }
+            own.extend([w(if computer { 0x18_0183 } else { 0x10_0002 }), w(0)]);
+            for _ in 0..2 {
+                own.extend(none());
+                own.push(Field::Real(0.0));
+            }
+            own.extend([w(0), w(0)]);
+            let counts = self.tags.player_ai_timers.get(k).copied().unwrap_or([0; 3]);
+            let timer = |period: f32, count: u32, event: u32| {
+                let mut due = period.to_bits();
+                while f32::from_bits(due) <= f32::from_bits(clock) {
+                    due = crate::efloat::add(due, period.to_bits());
+                }
+                Field::Timer(rf(me), 2, Timing(Some((f32::from_bits(due), period, count, event, 1))))
+            };
+            let mut tail = vec![w(0), w(0), Field::List(Vec::new()), Field::List(Vec::new())];
+            tail.push(timer(2.0, counts[0], 0xd_01c1));
+            tail.push(timer(10.0, counts[1], 0xd_01c3));
+            for _ in 0..5 {
+                tail.push(Field::Timer(NONE, 0, Timing(None)));
+            }
+            tail.push(timer(0.5, counts[2], 0xd_01c5));
+            out.push((slot, Second::Agent { own, handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] }, tail }));
+        }
+        out
+    }
+
     /// The players' agents' own records (CPlayerWar3, `FUN_6f269d70`; read against the
     /// quiet test map's sixteen): the game's handler, and keyed by each of its flags'
     /// listeners (its own at slot +27, word 6; a player state registration's, word 0; the
@@ -1265,7 +1339,7 @@ impl World {
         for (slot, sec) in self.plain_agent_seconds() {
             seconds.entry(slot).or_insert(sec);
         }
-        for (slot, sec) in self.player_agent_seconds(&client_listeners(template), &rallies) {
+        for (slot, sec) in self.player_agent_seconds(&client_listeners(template), &rallies).into_iter().chain(self.player_ai_seconds()) {
             seconds.entry(slot).or_insert(sec);
         }
         for &h in &self.unit_order {
@@ -2006,7 +2080,7 @@ impl World {
             let circles: Vec<(u32, First)> = self.unit_order.iter().flat_map(|&h| self.mine_circle_records(h).0.into_iter().chain(self.blight_growth_records(h).0)).collect();
             {
                 let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();
-                let secs: Vec<(u32, Second)> = self.unit_order.iter().flat_map(|&h| self.mine_circle_records(h).1.into_iter().chain(self.blight_growth_records(h).1)).chain(self.plain_agent_seconds()).chain(self.player_agent_seconds(&client_listeners(orig), &rally_points(orig))).collect();
+                let secs: Vec<(u32, Second)> = self.unit_order.iter().flat_map(|&h| self.mine_circle_records(h).1.into_iter().chain(self.blight_growth_records(h).1)).chain(self.plain_agent_seconds()).chain(self.player_agent_seconds(&client_listeners(orig), &rally_points(orig))).chain(self.player_ai_seconds()).collect();
                 let (mut same, mut differ, mut first) = (0, 0, None);
                 for (slot, sec) in secs {
                     match by_slot.get(&slot) {

@@ -269,9 +269,8 @@ impl Game {
             let s = world.tags.take(b"AI-1");
             let birth = world.tags.live.get(&s).map_or(0, |e| e.1);
             world.tags.player_ais.push((s, birth));
-            for _ in 0..3 {
-                world.tags.start_timer("9c7b20");
-            }
+            let counts = [0; 3].map(|_| world.tags.start_timer("9c7b20"));
+            world.tags.player_ai_timers.push(counts);
         }
         world.camera_bounds = info.camera_bounds;
         // The map's global weather (w3i) covers the whole map.

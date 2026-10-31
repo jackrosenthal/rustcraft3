@@ -2,6 +2,7 @@
 
 pub mod blp;
 pub mod campaign;
+pub mod codes;
 pub mod container;
 pub mod map;
 pub mod mdx;

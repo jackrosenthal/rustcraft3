@@ -7,6 +7,7 @@
 //! script data, kept whole.
 
 use crate::{Error, Reader};
+use crate::codes;
 
 /// A saved game's record.
 #[derive(Clone, Debug, Default)]
@@ -518,15 +519,15 @@ impl SavedObject {
         let mut r = Reader::new(&self.first);
         let (kind, family) = (&self.entry.kind.to_be_bytes(), &self.entry.family.to_be_bytes());
         let out = match (kind, family) {
-            (b"^pmr", _) => {
+            (codes::class::PATHING_REGION, _) => {
                 let refs = [Ref::read(&mut r)?, Ref::read(&mut r)?];
                 let word = r.u32()?;
                 let bounds = [r.u32()?, r.u32()?, r.u32()?, r.u32()?];
                 First::Region { refs, word, bounds, words: [r.u32()?, r.u32()?, r.u32()?] }
             }
-            (b"`flg", _) => First::Flag { base: PropertyBase::read(&mut r)?, value: r.u32()? },
-            (b"`rel", _) => First::Real { base: PropertyBase::read(&mut r)?, values: [r.f32()?, r.f32()?, r.f32()?, r.f32()?] },
-            (b"`pos", _) => {
+            (codes::class::FLAG, _) => First::Flag { base: PropertyBase::read(&mut r)?, value: r.u32()? },
+            (codes::class::REAL, _) => First::Real { base: PropertyBase::read(&mut r)?, values: [r.f32()?, r.f32()?, r.f32()?, r.f32()?] },
+            (codes::class::POSITION, _) => {
                 let base = PropertyBase::read(&mut r)?;
                 let mut values = [0f32; 7];
                 for v in &mut values {
@@ -534,17 +535,17 @@ impl SavedObject {
                 }
                 First::Pos { base, values, refs: [Ref::read(&mut r)?, Ref::read(&mut r)?] }
             }
-            (_, b"+agl") => {
+            (_, codes::class::AGENT) => {
                 let object = ObjectBase::read(&mut r)?;
                 let agent = Ref::read(&mut r)?;
                 let refs = (0..r.u32()?).map(|_| Ref::read(&mut r)).collect::<Result<_, _>>()?;
                 First::Agent { object, agent, refs, links: [Link::read(&mut r)?, Link::read(&mut r)?, Link::read(&mut r)?, Link::read(&mut r)?] }
             }
-            (b"`rtl", _) => First::Threshold { object: ObjectBase::read(&mut r)?, real: r.f32()?, word: r.u32()? },
-            (b"`fcl", _) => First::FlagListener { object: ObjectBase::read(&mut r)?, word: r.u32()? },
-            (b"`pil", _) => First::Interference { object: ObjectBase::read(&mut r)?, real: r.f32()?, word: r.u32()?, array: Array::read(&mut r, |r| words::<3>(r))? },
-            (b"`rcm", _) => First::Continuous { object: ObjectBase::read(&mut r)?, values: reals(&mut r)? },
-            (b"`pcu", _) => {
+            (codes::class::THRESHOLD_LISTENER, _) => First::Threshold { object: ObjectBase::read(&mut r)?, real: r.f32()?, word: r.u32()? },
+            (codes::class::FLAG_LISTENER, _) => First::FlagListener { object: ObjectBase::read(&mut r)?, word: r.u32()? },
+            (codes::class::IN_RANGE_LISTENER, _) => First::Interference { object: ObjectBase::read(&mut r)?, real: r.f32()?, word: r.u32()?, array: Array::read(&mut r, |r| words::<3>(r))? },
+            (codes::class::CONTINUOUS_MODIFIER, _) => First::Continuous { object: ObjectBase::read(&mut r)?, values: reals(&mut r)? },
+            (codes::class::UNIT_POSITION, _) => {
                 let base = PropertyBase::read(&mut r)?;
                 let (values, refs) = (reals(&mut r)?, [Ref::read(&mut r)?, Ref::read(&mut r)?]);
                 let (words3, reals8, more) = (words(&mut r)?, reals(&mut r)?, words(&mut r)?);
@@ -554,21 +555,21 @@ impl SavedObject {
                 }
                 First::Cluster { base, values, refs, words: words3, reals: reals8, more, flags, last: Ref::read(&mut r)? }
             }
-            (b"l^pa", _) => {
+            (codes::class::PATH, _) => {
                 let (reals6, words5, real, word) = (reals(&mut r)?, words(&mut r)?, r.f32()?, r.u32()?);
                 let way = |r: &mut Reader| -> Result<_, Error> { Ok((Array::read(r, |r| reals::<2>(r))?, r.u32()?, r.u32()?, r.u16()?)) };
                 let ways = [way(&mut r)?, way(&mut r)?];
                 First::Path { reals: reals6, words: words5, real, word, ways, refs: [Ref::read(&mut r)?, Ref::read(&mut r)?, Ref::read(&mut r)?, Ref::read(&mut r)?] }
             }
-            (b"l^ac", _) => First::Accelerator { refs: [Ref::read(&mut r)?, Ref::read(&mut r)?, Ref::read(&mut r)?, Ref::read(&mut r)?], array: Array::read(&mut r, |r| words::<3>(r))?, word: r.u32()? },
-            (b"l^sy", _) => First::System { owner: Ref::read(&mut r)?, short: r.u16()? },
-            (b"^adf", _) => First::AgentDef { object: ObjectBase::read(&mut r)?, array: Array::read(&mut r, |r| words::<11>(r))? },
-            (b"^clu", _) => {
+            (codes::class::LONG_RANGE_ACCELERATOR, _) => First::Accelerator { refs: [Ref::read(&mut r)?, Ref::read(&mut r)?, Ref::read(&mut r)?, Ref::read(&mut r)?], array: Array::read(&mut r, |r| words::<3>(r))?, word: r.u32()? },
+            (codes::class::LONG_RANGE_SYSTEM, _) => First::System { owner: Ref::read(&mut r)?, short: r.u16()? },
+            (codes::class::AGENT_DEFINITION, _) => First::AgentDef { object: ObjectBase::read(&mut r)?, array: Array::read(&mut r, |r| words::<11>(r))? },
+            (codes::class::CLUSTER, _) => {
                 let array = Array::read(&mut r, |r| Ok((words::<3>(r)?, reals::<6>(r)?, r.u32()?)))?;
                 let (words3, reals4, more, last_reals, word) = (words(&mut r)?, reals(&mut r)?, words(&mut r)?, reals(&mut r)?, r.u32()?);
                 First::Cluster2 { array, words: words3, reals: reals4, more, last_reals, word, refs: [Ref::read(&mut r)?, Ref::read(&mut r)?, Ref::read(&mut r)?] }
             }
-            (b"^ama" | b"^pma", _) => First::Empty,
+            (codes::class::ACCELERATOR_GRID | codes::class::PATHING_MAP, _) => First::Empty,
             _ => return Ok(First::Raw(self.first.clone())),
         };
         if r.remaining() != 0 {
@@ -794,231 +795,231 @@ const ABILITY_OWN: &str = "wwww wwwwwww t w";
 /// kind: (own, tail) as `fields` layouts.
 const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // CAbilityAlarm (`FUN_6f42d040`): a timer and a reference.
-    (b"Aalr", ABILITY_OWN, "t r"),
+    (codes::ability::id::ALARM, ABILITY_OWN, "t r"),
     // CAbilityWander (`FUN_6f5ab430`): a timer.
-    (b"Awan", ABILITY_OWN, "t"),
+    (codes::ability::id::WANDER, ABILITY_OWN, "t"),
     // `FUN_6f42dea0`: three words and a timer.
-    (b"Afih", ABILITY_OWN, "www t"),
-    (b"Afiu", ABILITY_OWN, "www t"),
+    (codes::ability::id::ON_FIRE_HUMAN, ABILITY_OWN, "www t"),
+    (codes::ability::id::ON_FIRE_UNDEAD, ABILITY_OWN, "www t"),
     // Those whose class's fields are all their own (CAgent's vf 0x38, `FUN_6f03eda0`).
     // CAlliances: a word (`FUN_6f03edf0`).
-    (b"ally", "w", ""),
-    (b"Artn", ABILITY_OWN, ""),
+    (codes::class::ALLIANCE, "w", ""),
+    (codes::ability::id::RETURN, ABILITY_OWN, ""),
     // CUnitAI (`FUN_6f9ce510`): fourteen words.
-    (b"AI-U", "wwwwwwwwwwwwww", ""),
+    (codes::class::UNIT_AI, "wwwwwwwwwwwwww", ""),
     // CTask (`FUN_6f696dd0`): five words; `tskA` (`FUN_6f696ec0`): six.
-    (b"task", "wwwww", ""),
-    (b"tskA", "wwwwww", ""),
+    (codes::class::TASK, "wwwww", ""),
+    (codes::class::TASK_A, "wwwwww", ""),
     // CTaskOrderParam: CTaskAction's methods (vf 0x38 `FUN_6f03eda0`, own `FUN_6f696ec0`).
-    (b"tskO", "wwwwww", ""),
+    (codes::class::TASK_O, "wwwwww", ""),
     // CCreepSpot (`FUN_6f9bef80`): two words and a counted list of three words each.
-    (b"AIcs", "ww [www]", ""),
+    (codes::class::CREEP_CAMP, "ww [www]", ""),
     // `FUN_6f9ca630`: two words, four reals, nine words.
-    (b"AIts", "ww ffff wwwwwwwww", ""),
+    (codes::class::TOWN_SITE, "ww ffff wwwwwwwww", ""),
     // `FUN_6f649220`: the ability's and two words; `FUN_6f42e9b0`: a real and three words.
-    (b"Amil", "wwww wwwwwww t w ww", ""),
-    (b"Abli", "wwww wwwwwww t w f www", ""),
+    (codes::ability::id::MILITIA, "wwww wwwwwww t w ww", ""),
+    (codes::ability::id::BLIGHT_GROWTH, "wwww wwwwwww t w f www", ""),
     // CAbilityMove (`FUN_6f5fec20`, own `FUN_6f5fec80`: the ability's, then words and
     // reals, three words from build 6000, a word from 6029): two timers.
-    (b"Amov", "wwww wwwwwww t w www ff wwwww ff www w", "t t"),
+    (codes::ability::id::MOVE, "wwww wwwwwww t w www ff wwwww ff www w", "t t"),
     // CAbilityCreepSleep (`FUN_6f5224c0`, own `FUN_6f5230a0`: the ability's and a real):
     // two timers and a counted list (`FUN_6f3e2ce0` each, a reference).
-    (b"ACsp", "wwww wwwwwww t w f", "t t [r]"),
+    (codes::ability::id::CREEP_SLEEP, "wwww wwwwwww t w f", "t t [r]"),
     // CJassFunc (`FUN_6f211180`): a word.
-    (b"hdlr", "w", "w"),
+    (codes::class::HANDLER, "w", "w"),
     // CMapLocation (`FUN_6f27e7d0`): two reals; CRect (`FUN_6f246870`): four.
-    (b"+loc", "w", "ff"),
-    (b"+rct", "w", "ffff"),
+    (codes::class::LOCATION, "w", "ff"),
+    (codes::class::RECT, "w", "ffff"),
     // CTriggerAction (`FUN_6f299650`) and a filter (`FUN_6f211140`): a reference.
-    (b"+tac", "w", "r"),
-    (b"+flt", "w", "r"),
+    (codes::class::TRIGGER_ACTION, "w", "r"),
+    (codes::class::FILTER, "w", "r"),
     // CForce (`FUN_6f2462d0`): three references.
-    (b"+frc", "w", "rrr"),
+    (codes::class::FORCE, "w", "rrr"),
     // CTimerWar3 (`FUN_6f246c10`, its own `FUN_6f247300`: a word and two reals): its
     // timer (CAgentTimerExtended, `FUN_6f060be0`: a timer, two shorts, a real), a
     // reference, and the list of event 0x80204.
-    (b"+tmr", "w ff", "t ss f r [rw]"),
+    (codes::class::TIMER, "w ff", "t ss f r [rw]"),
     // CTriggerWar3 (`FUN_6f299840`, its own `FUN_6f2998a0`: six words): three counted
     // lists (`FUN_6f294ba0`, `FUN_6f294c80`, `FUN_6f294c10`).
-    (b"+trg", "wwwwww", "[r] [r] [r]"),
+    (codes::class::TRIGGER, "wwwwww", "[r] [r] [r]"),
     // Event registrations, each ending with its event's handler list: a unit's
     // (`FUN_6f27ede0`, own `FUN_6f27f140`: five words) four words and a reference, a
     // player's (`FUN_6f27e900`, own `FUN_6f27f1b0`: ten words) a reference, a game's
     // (`FUN_6f27e6a0`) only its list.
-    (b"uevt", "wwwww", "wwww r [rw]"),
-    (b"pevt", "wwwwwwwwww", "r [rw]"),
-    (b"gevt", "wwwww", "[rw]"),
+    (codes::class::UNIT_EVENT, "wwwww", "wwww r [rw]"),
+    (codes::class::PLAYER_EVENT, "wwwwwwwwww", "r [rw]"),
+    (codes::class::GAME_EVENT, "wwwww", "[rw]"),
     // Registrations on the event-registration base (`FUN_6f27ef60`: event 0x80202's
     // list): a game state's (`FUN_6f27e630`, own `FUN_6f27f260`) two references and two
     // lists; an alliance's (`FUN_6f27e330`, own `FUN_6f27eff0`) a reference and two
     // lists; a player state's (`FUN_6f27e9a0`, own `FUN_6f27f230`) the player
     // registration's, a reference, and event 0x8020b's list; a timer's (`FUN_6f27ec50`)
     // a reference and event 0x80204's list.
-    (b"gfvt", "wwwwww f w", "e r r e e"),
-    (b"alvt", "wwwwww f w www", "e r e e"),
-    (b"psvt", "wwwwwwwwww w f", "r e r e"),
-    (b"tmet", "wwwww", "r e"),
+    (codes::class::GAME_STATE_EVENT, "wwwwww f w", "e r r e e"),
+    (codes::class::ALLIANCE_EVENT, "wwwwww f w www", "e r e e"),
+    (codes::class::PLAYER_STATE_EVENT, "wwwwwwwwww w f", "r e r e"),
+    (codes::class::TIMER_EXPIRED_EVENT, "wwwww", "r e"),
     // Orders (`FUN_6f6960f0`, own `FUN_6f696b40`: six words): three words from build
     // 6000; a targeted one (`FUN_6f696220`, own `FUN_6f696cf0`) two references more.
-    (b"+ord", "wwwwww", "www"),
-    (b"ordt", "wwwwww ff www wwww ff", "www r r"),
+    (codes::class::ORDER, "wwwwww", "www"),
+    (codes::class::ORDER_TASKS, "wwwwww ff www wwww ff", "www r r"),
     // Tasks: `FUN_6f696330` (own `FUN_6f696f50`) and `FUN_6f696410` (own
     // `FUN_6f6970b0`), a reference each.
     // The buff base's tail (`FUN_6f42d5f0`: from build 6001 a word and two pairs of
     // words): CAbilityAvenger's own a word more from 6003 (`FUN_6f567cf0`).
-    (b"Aven", "wwww wwwwwww t w w", "wwwww"),
-    (b"Amim", "wwww wwwwwww t w", "wwwww"),
+    (codes::ability::id::VENOM_SPEARS, "wwww wwwwwww t w w", "wwwww"),
+    (codes::ability::id::MAGIC_IMMUNITY, "wwww wwwwwww t w", "wwwww"),
     // On it (`FUN_6f42e2b0`): a reference and two timers; (`FUN_6f42d2a0`) three; with
     // own fields `FUN_6f42f3e0` (on `FUN_6f42f4b0`: the ability's, four reals, four words,
     // a real; then four words, two reals, four words, two reals).
-    (b"Alam", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
-    (b"Auns", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
-    (b"ACtb", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
-    (b"ACtc", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
-    (b"AOsh", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
-    (b"Aadm", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
-    (b"Anhe", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
-    (b"Ainf", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
+    (codes::ability::id::SACRIFICE_ACOLYTE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
+    (codes::ability::id::UNSUMMON, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
+    (codes::ability::id::THUNDER_BOLT_CREEP, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
+    (codes::ability::id::THUNDER_CLAP_CREEP, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
+    (codes::ability::id::CHIEFTAIN_SHOCK_WAVE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
+    (codes::ability::id::ABOLISH_MAGIC, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
+    (codes::ability::id::HEAL_CREEP_NORMAL, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
+    (codes::ability::id::INNER_FIRE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
     // `FUN_6f42e0e0` on that: four timers and a reference (own `FUN_6f42f1b0`: three
     // words, three reals, three words, a real, three words).
-    (b"Arep", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff www fff www f www", "wwwww r t t t t t t t r"),
-    (b"Arst", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff www fff www f www", "wwwww r t t t t t t t r"),
+    (codes::ability::id::REPAIR_ORC, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff www fff www f www", "wwwww r t t t t t t t r"),
+    (codes::ability::id::RESTORATION, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff www fff www f www", "wwwww r t t t t t t t r"),
     // The aura base (`FUN_6f532730`: a counted list of references and a word):
     // CAbilityVulnerable's own a word (`FUN_6f42f5a0`); auras (`FUN_6f42d0c0`, own
     // `FUN_6f42e920`: a word and two reals) a reference, a timer, and from build 6047 a
     // word and two pairs.
-    (b"Avul", "wwww wwwwwww t w w", "[r] w"),
-    (b"AEar", "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
-    (b"AHad", "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
-    (b"Aarm", "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
+    (codes::ability::id::INVULNERABLE, "wwww wwwwwww t w w", "[r] w"),
+    (codes::ability::id::PRIESTESS_TRUESHOT_AURA, "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
+    (codes::ability::id::PALADIN_DEVOTION_AURA, "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
+    (codes::ability::id::MANA_REGENERATION_AURA, "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
     // Effects on the widget base (`FUN_6f42e650`, own `FUN_6f42f720`: four words): the
     // sprite and a word, a timer, a word, two counted lists of words; `FUN_6f42e6d0`
     // three reals more.
-    (b"+EIm", "wwww", "p w t w [w] [w]"),
-    (b"+EIP", "wwww", "p w t w [w] [w] fff"),
+    (codes::class::EFFECT_IMAGE, "wwww", "p w t w [w] [w]"),
+    (codes::class::SPECIAL_EFFECT, "wwww", "p w t w [w] [w] fff"),
     // CAbilityUpgrade-like (`FUN_6f42d320`, own `FUN_6f42e970`: two reals more): two
     // references.
-    (b"Aupg", "wwww wwwwwww t w ff", "r r"),
+    (codes::ability::id::UPGRADE_STRUCTURE, "wwww wwwwwww t w ff", "r r"),
     // Records of the agent base alone (vf 0x38 `FUN_6f0562b0`, no lists of events
     // 0xd0000 to 0xd03ff): an acolyte's ring slot (own `FUN_6f4eaef0`: three reals and
     // six words); a rally point (`FUN_6f42e810`, own `FUN_6f42f7f0`) a reference.
-    (b"rslt", "!fff wwwwww", ""),
-    (b"rlyp", "!w ff wwww", "ww"),
+    (codes::class::MINE_SLOT, "!fff wwwwww", ""),
+    (codes::class::RALLY_POINT, "!w ff wwww", "ww"),
     // CEffectBlight (`FUN_6f490810`, own `FUN_6f490850`): a timer.
-    (b"Xbli", "ww fff ww", "t"),
+    (codes::class::BLIGHT_GROWTH, "ww fff ww", "t"),
     // Buffs (own on `FUN_6f532960`: the ability's, a word, a real, three words, three
     // reals; then a real and three words, and for a devotion aura from build 6047 a
     // real): the aura base's, an extended timer (two shorts and a real more), for
     // trueshot a counted list of words, and a timer.
-    (b"BEar", "wwww wwwwwww t w w f www fff f www", "[r] w t ss f [w] t"),
-    (b"BHad", "wwww wwwwwww t w w f www fff f www f", "[r] w t ss f t"),
+    (codes::buff::id::TRUESHOT_AURA, "wwww wwwwwww t w w f www fff f www", "[r] w t ss f [w] t"),
+    (codes::buff::id::DEVOTION_AURA, "wwww wwwwwww t w w f www fff f www f", "[r] w t ss f t"),
     // CAbilityBlightRegen (`FUN_6f42d4b0`): a timer; CAbilityAcolyteHarvest
     // (`FUN_6f42cf90`, own `FUN_6f42e8d0`: a real and three words): from build 6000 a
     // timer.
-    (b"Ablr", "wwww wwwwwww t w", "t"),
-    (b"Aaha", "wwww wwwwwww t w f www", "t"),
+    (codes::ability::id::REGENERATE_ON_BLIGHT, "wwww wwwwwww t w", "t"),
+    (codes::ability::id::ACOLYTE_HARVEST, "wwww wwwwwww t w f www", "t"),
     // On CAbilityUpgrade-like's (`FUN_6f42d320`: two references): CAbilityQueue
     // (`FUN_6f42df70`, own `FUN_6f42f030`: two reals, a word, counted lists) two
     // references more; CAbilitySellUnit (`FUN_6f42d3c0`, own `FUN_6f42e970`) twelve
     // slots (a word, three reals, two extended timers, a word) and five words.
-    (b"Aque", "wwww wwwwwww t w ff w [w] [www] [w]", "r r r r"),
-    (b"Asel", "wwww wwwwwww t w ff", "r r 12(w fff t ss f t ss f w) wwwww"),
+    (codes::ability::id::QUEUE, "wwww wwwwwww t w ff w [w] [www] [w]", "r r r r"),
+    (codes::ability::id::SELL_UNITS, "wwww wwwwwww t w ff", "r r 12(w fff t ss f t ss f w) wwwww"),
     // CAbilityRally (`FUN_6f42dff0`, own `FUN_6f42f120`): a counted list of references.
-    (b"ARal", "wwww wwwwwww t w www ff wwww", "[r]"),
+    (codes::ability::id::RALLY, "wwww wwwwwww t w www ff wwww", "[r]"),
     // CAbilityInventory (`FUN_6f5675a0`): counted lists, a word, a reference, and its
     // slots' timers.
-    (b"AInv", "wwww wwwwwww t w", "[www] w r [w] [t]"),
+    (codes::ability::id::INVENTORY, "wwww wwwwwww t w", "[www] w r [w] [t]"),
     // CAbilityMilitiaConvert (`FUN_6f648660`): a timer.
-    (b"Amic", "wwww wwwwwww t w", "t"),
+    (codes::ability::id::MILITIA_CONVERSION, "wwww wwwwwww t w", "t"),
     // CAbilityNeutralDetectAoe (the buff base's tail; own `FUN_6f42ef50`: from build
     // 6037 a word).
-    (b"Andt", "wwww wwwwwww t w w", "wwwww"),
+    (codes::ability::id::NEUTRAL_DETECTION_REVEAL_ABILITY, "wwww wwwwwww t w w", "wwwww"),
     // CAbilityNeutral (`FUN_6f42dd20`): counted references, a reference, a counted
     // list of three words, a reference, and a timer.
-    (b"Aneu", "wwww wwwwwww t w", "[r] r [www] r t"),
+    (codes::ability::id::NEUTRAL_BUILDING, "wwww wwwwwww t w", "[r] r [www] r t"),
     // COrderPoint (`FUN_6f6961c0`, own `FUN_6f696bd0`): the order's three words and a
     // reference.
     (b"ord.", "wwwwww ff", "www r"),
     // CGhostImage (`FUN_6f6db1a0`, the agent base alone; own `FUN_6f6db2b0`: three
     // words): its sprite, two shorts, five words, three words, nine words, a short.
-    (b"+wgh", "!www", "p ss wwwww www 9w s"),
+    (codes::class::FOG_GHOST, "!www", "p ss wwwww www 9w s"),
     // CAbilityAttack (`FUN_6f49bd60`): its fields
     // in order, with counted lists of words, of reals, and of three reals
     // (`FUN_6f491650`), timers, references (`FUN_6f4915d0`), and words.
-    (b"Aatk", "wwww wwwwwww t w", "wwwwww [w][w][w][w] [fff] [w][w][w][w] [fff][fff] [f] [fff][fff] fff tttt [w] w [r] ff [f][f] f ttt ff wwww f [www] [t] www fff wwww f"),
+    (codes::ability::id::ATTACK, "wwww wwwwwww t w", "wwwwww [w][w][w][w] [fff] [w][w][w][w] [fff][fff] [f] [fff][fff] fff tttt [w] w [r] ff [f][f] f ttt ff wwww f [www] [t] www fff wwww f"),
     // Creep camps (the agent base alone, no own fields): an indicator
     // (`FUN_6f64f590`) a reference, a short, three reals, two words; the camps' UI
     // (`FUN_6f64f5f0`) a counted list of references.
-    (b"+ccp", "!", "r s fff ww"),
-    (b"+ccu", "!", "[r]"),
+    (codes::class::CURSOR_PART, "!", "r s fff ww"),
+    (codes::class::CURSOR, "!", "[r]"),
     // `FUN_6f5f5270` on the buff base: a reference, two timers, and from build 6026 a
     // reference (own as `Alam`'s).
-    (b"Aens", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t r"),
+    (codes::ability::id::ENSNARE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t r"),
     // CAbilityGoldMine (`FUN_6f5f54f0` on `FUN_6f4ea3a0`: a reference; own
     // `FUN_6f5f62c0`): counted references (`FUN_6f5b0980`) and a timer.
-    (b"Agld", "wwww wwwwwww t w w f wwwww wwww f wwwwww", "r [r] t"),
+    (codes::ability::id::GOLD_MINE, "wwww wwwwwww t w w f wwwww wwww f wwwwww", "r [r] t"),
     // MineShaft (`FUN_6f5f5f20`, the agent base alone; own `FUN_6f5f7ab0`): a timer.
-    (b"shft", "!wwww f", "t"),
+    (codes::class::MINE_SHAFT, "!wwww f", "t"),
     // Harvests (`FUN_6f42da60` on `FUN_6f42d950`: a counted list of three words, of
     // timers, six words, a real; then two timers and from build 6028 a third; own on
     // `FUN_6f42ee40`: the ability's and eight words, then two reals and a word):
     // CAbilityHarvestLumber; CAbilityHarvest (`FUN_6f42d8c0`, own `FUN_6f42ec10`) from
     // build 6037 a timer more and three reals more.
-    (b"Ahrl", "wwww wwwwwww t w wwww wwww ff w", "[www] [t] wwwwww f t t t"),
-    (b"Ahar", "wwww wwwwwww t w wwww wwww ff w fff", "[www] [t] wwwwww f t t t t"),
+    (codes::ability::id::HARVEST_LUMBER, "wwww wwwwwww t w wwww wwww ff w", "[www] [t] wwwwww f t t t"),
+    (codes::ability::id::HARVEST, "wwww wwwwwww t w wwww wwww ff w fff", "[www] [t] wwwwww f t t t t"),
     // CThreadAI (`FUN_6f9bef30`, own `FUN_6f9bf070`: six words and a real): an extended
     // timer and a word.
-    (b"AItr", "wwwwww f", "t ss f w"),
+    (codes::class::AI_TOWN_LIST, "wwwwww f", "t ss f w"),
     // CSoundWar3 (`FUN_6f2469a0`): its extended timer, then a flag and a sound's
     // (`FUN_6f359e90`: its file, three reals, six words), or else another flag and a
     // sound's (`FUN_6f359fa0`: its file, a reference, words and reals, a second string,
     // with a flag sixteen words more, and words by the bits of a mask).
-    (b"+snd", "w", "t ss f ?(z fff www w)(?(z r w fff w z ?(f ww fff wwwwww f www) m &1(ww) &2(www) &4(www) &8(www) &10(www) &20(w) &40(w) &80(w) &100(w)))"),
+    (codes::class::SOUND, "w", "t ss f ?(z fff www w)(?(z r w fff w z ?(f ww fff wwwwww f www) m &1(ww) &2(www) &4(www) &8(www) &10(www) &20(w) &40(w) &80(w) &100(w)))"),
     // Build abilities (`FUN_6f567130` on CAbilityUpgrade-like's two references): a count
     // and a short, then each building its two words, three references, four words, and
     // with a flag four words and two reals (own `FUN_6f567ac0`: two reals and three
     // words; `FUN_6f567ec0` three words more).
-    (b"AHbu", "wwww wwwwwww t w ff www", "r r w s #(ww r r r www ?(wwww ff))"),
-    (b"AUbu", "wwww wwwwwww t w ff www www", "r r w s #(ww r r r www ?(wwww ff))"),
+    (codes::ability::id::BUILD_HUMAN, "wwww wwwwwww t w ff www", "r r w s #(ww r r r www ?(wwww ff))"),
+    (codes::ability::id::BUILD_UNDEAD, "wwww wwwwwww t w ff www www", "r r w s #(ww r r r www ?(wwww ff))"),
     // CAbilityBuildInProgress (`FUN_6f42d4f0`, own `FUN_6f42ea00`: two reals, three
     // words, seven reals, a real from build 6047): a word, a reference, two timers.
-    (b"ABnP", "wwww wwwwwww t w ff www fffffff f", "r r w r t t"),
+    (codes::ability::id::BUILD_IN_PROGRESS, "wwww wwwwwww t w ff www fffffff f", "r r w r t t"),
     // CAbilityCannibalize (`FUN_6f4e9db0` on the buff base: a reference, two timers, two
     // references, a timer; own `FUN_6f4eb120`: `Alam`'s, three words, two from 6011).
-    (b"Acan", "wwww wwwwwww t w ffff wwww f wwww ff wwww ff www ww", "wwwww r t t r r t"),
+    (codes::ability::id::CANNIBALIZE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff www ww", "wwwww r t t r r t"),
     // CQuestManager (`FUN_6f246820`, own `FUN_6f03edf0`: a word): its quests and its
     // defeat conditions, each a reference.
-    (b"+qum", "w", "[r] [r]"),
+    (codes::class::TRIGGER_QUEUE, "w", "[r] [r]"),
     // CAbilityBlightedGoldMine (`FUN_6f4e9bb0` on `FUN_6f4ea4b0` and `FUN_6f4ea3a0`: a
     // reference, two more, a timer from build 6037, and a counted list of references;
     // own `FUN_6f4eb0f0` on `FUN_6f4eb6e0`: three words, a real, a word, two reals, two
     // words).
-    (b"Abgm", "wwww wwwwwww t w www f w ff ww", "r r r t [r]"),
+    (codes::ability::id::BLIGHTED_GOLD_MINE, "wwww wwwwwww t w www f w ff ww", "r r r t [r]"),
     // CTimerDialogWar3 (`FUN_6f246ad0`, own `FUN_6f2472c0`: three words and a real): a
     // word, two words (`FUN_6f3b6e90`, `FUN_6f3b6fc0`), a string, and a real.
-    (b"+tid", "www f", "w ww z f"),
+    (codes::class::TIMER_DIALOG, "www f", "w ww z f"),
     // CCompAI (`FUN_6f9ca100`, own `FUN_6f9ca230`: words, reals, and counted lists):
     // two words, a counted list of a reference, a word, a reference, a word, and a
     // reference, a counted list of references, and eight timers.
-    (b"AI-1", "wwww f ww f ww f ww f w [wwf] [f] w ff wwf wwf wwf [w] wwfw w ww [w] [w] [wwf] w wwf wwf w wwwf wwf ww", "ww [rwrwr] [r] 8t"),
+    (codes::class::PLAYER_AI, "wwww f ww f ww f ww f w [wwf] [f] w ff wwf wwf wwf [w] wwfw w ww [w] [w] [wwf] w wwf wwf w wwwf wwf ww", "ww [rwrwr] [r] 8t"),
     // CGameCacheManager (`FUN_6f246380`, own `FUN_6f03edf0`: a word): a string and a
     // word, then its caches (`FUN_6f21acd0`: a name, a word, and its missions,
     // `FUN_6f21b1d0`: a name, five words, and five lists of named values: words,
     // reals, words, units (`FUN_6f21b0b0`: a word, a list of three words, and
     // `FUN_6f224e20`'s fields), and strings).
-    (b"gccm", "w", "z w [z w [z wwwww [zw] [zf] [zw] [zw [www] wwwww f w fff w f [ww] fff [w] f s] [zz]]]"),
+    (codes::class::GAME_CACHE_MANAGER, "w", "z w [z w [z wwwww [zw] [zf] [zw] [zw [www] wwwww f w fff w f [ww] fff [w] f s] [zz]]]"),
     // CCaptainAI (`FUN_6f9d5cb0` on `FUN_6f6533a0` and `FUN_6f6be8b0`: a sprite and a
     // word; a word, two shorts, a byte and with it a short-counted list of references
     // and two reals, two bytes, a real; four references, two timers, a counted list of
     // references, four words, then its fields through CSave, `FUN_6f9d41a0`: words by
     // vf 8, reals by vf 4, and two words and a real by vf 0; own `FUN_6f03edf0`: a
     // word).
-    (b"AI-C", "w", "p w w ss ?b({r} ff) b b f r r r r t t [r] wwww wwww (wwf) wwwwww fffffff ww ff 19(wwf) 12w"),
+    (codes::class::AI_CAPTAIN, "w", "p w w ss ?b({r} ff) b b f r r r r t t [r] wwww wwww (wwf) wwwwww fffffff ww ff 19(wwf) 12w"),
     // CCameraWar3 (`FUN_6f362530`, no event lists; own `FUN_6f03ede0`, nothing): a word,
     // a real, a word, a reference, three reals, nine reals (`FUN_6f06b880`), a timer,
     // two words, a counted list of three reals (`FUN_6f35d3f0`), twenty references, a
     // byte, five references, sixteen reals, and four sets of nine reals.
-    (b"+cam", "!", "w f w r fff 9f t ww [fff] 20r b 5r 16f 4(9f)"),
+    (codes::class::CAMERA, "!", "w f w r fff 9f t ww [fff] 20r b 5r 16f 4(9f)"),
     // CGameState (`FUN_6f28aad0`, own `FUN_6f28b190`: three words and a real): ten more
     // event lists; a counted list of counted lists of words; a counted list of words; a
     // size, and its counted tables (a size, a count, with any a name, and that many
@@ -1028,13 +1029,13 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // real; two timers; and `FUN_6f9a1230`'s: a word, a counted list of words and a word
     // (`FUN_6f9a0080`), two words, and a counted list of a word, ten reals, a word, a
     // byte, a word, and a string.
-    (b"+gam", "www f", "10e [[w]] [w] w [w w ~(z) #(rw)] r r r r w [w r w] w [r w w] [w [s]] w w f w t t w [w] w w w [w ffff ffffff w b w z]"),
+    (codes::class::GAME_STATE, "www f", "10e [[w]] [w] w [w w ~(z) #(rw)] r r r r w [w r w] w [r w w] [w [s]] w w f w t t w [w] w w w [w ffff ffffff w b w z]"),
     // CItem (`FUN_6f65ab10`, own `FUN_6f03edf0`: a word): the widget's state (as
     // `Widget`), three reals, four words, a real, a word, a counted list of two words
     // and a real, a timer, two words, and a timer.
-    (b"item", "w", "p w w ss ?b({r} ff) bb f b fff wwww f w [wwf] t ww t"),
+    (codes::class::ITEM, "w", "p w w ss ?b({r} ff) bb f b fff wwww f w [wwf] t ww t"),
     (b"tsk.", "wwwww fff", "r"),
-    (b"tskt", "wwwwwwww f", "r"),
+    (codes::class::TASK_T, "wwwwwwww f", "r"),
     // CPlayerWar3 (`FUN_6f269d70`): the lists of events 0x8020b to 0x80233, 0x80305 to
     // 0x80318, 0x80260 and 0x80261; its name and a byte; its selection
     // (`FUN_6f292c10`: a list, ten control groups' two lists each, references, lists of
@@ -1042,14 +1043,14 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // references; two reals; counted references and words; a word; `FUN_6f246a30`
     // (short-counted lists of eight words and of two, four words); words, a counted list
     // of three words, words, its timer, words, a string, and six words.
-    (b"+ply", "w", "63e zb [r] w 20[r] r r [r] [[r]] w [r] r r [[r]] w w w r w r [w] [w] 12w 7r ff [r] [w] w {wfffffff} {ww} wwww wwww [www] www t www z wwwwww"),
+    (codes::class::PLAYER, "w", "63e zb [r] w 20[r] r r [r] [[r]] w [r] r r [[r]] w w w r w r [w] [w] 12w 7r ff [r] [w] w {wfffffff} {ww} wwww wwww [www] www t www z wwwwww"),
 ];
 
 /// Agents whose class writes its whole second record itself, without the agent's
 /// handlers, by kind.
 const WHOLE: &[(&[u8; 4], &str)] = &[
     // CGroup (`FUN_6f2464b0`): its units (`FUN_6f28d2b0`), two references, four words.
-    (b"+grp", "[r] r r wwww"),
+    (codes::class::GROUP, "[r] r r wwww"),
 ];
 
 /// CUnit's fields after its event lists, in the order `FUN_6f696490` writes them.
@@ -1134,15 +1135,15 @@ impl SavedObject {
         }
         let mut r = Reader::new(&self.second);
         let out = match &self.entry.kind.to_be_bytes() {
-            b"uref" => Second::UnitRefs { words: words(&mut r)?, handlers: Handlers::read(&mut r)? },
-            b"+w3u" => {
+            codes::class::UNIT_AI_REF => Second::UnitRefs { words: words(&mut r)?, handlers: Handlers::read(&mut r)? },
+            codes::class::UNIT => {
                 let own = r.u32()?;
                 let (handlers, widget) = (Handlers::read(&mut r)?, Widget::read(&mut r)?);
                 let list = |r: &mut Reader| -> Result<Vec<(Ref, u32)>, Error> { (0..r.u32()?).map(|_| Ok((Ref::read(r)?, r.u32()?))).collect() };
                 let lists = (0..37 + 17).map(|_| list(&mut r)).collect::<Result<_, _>>()?;
                 Second::Unit { own, handlers, widget, lists, fields: fields(&mut r, UNIT_FIELDS)? }
             }
-            b"+w3d" => {
+            codes::class::DESTRUCTABLE => {
                 let own = (r.u32()?, reals(&mut r)?);
                 let (handlers, widget) = (Handlers::read(&mut r)?, Widget::read(&mut r)?);
                 Second::Destructable { own, handlers, widget, bytes: [r.u8()?, r.u8()?], words: words(&mut r)? }
@@ -2175,7 +2176,7 @@ impl SaveGame {
         let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
         let all: std::collections::HashMap<(u32, u32), &SavedObject> = objects.iter().flatten().map(|o| ((o.entry.tag, o.entry.birth), o)).collect();
         let mut out = Vec::new();
-        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == b"+w3u") {
+        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == codes::class::UNIT) {
             let Second::Unit { widget, .. } = o.second()? else { continue };
             let mut u = SavedUnit { tag: o.entry.tag, birth: o.entry.birth, type_id: widget.word, owner: widget.owner, ..Default::default() };
             if let First::Agent { refs, .. } = o.first()? {
@@ -2207,7 +2208,7 @@ impl SaveGame {
         let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
         let all: std::collections::HashMap<(u32, u32), &SavedObject> = objects.iter().flatten().map(|o| ((o.entry.tag, o.entry.birth), o)).collect();
         let mut out = Vec::new();
-        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == b"+ply") {
+        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == codes::class::PLAYER) {
             let mut states = Vec::new();
             if let First::Agent { refs, .. } = o.first()? {
                 for r in refs {
@@ -2225,7 +2226,7 @@ impl SaveGame {
     /// reference, a word, and a word): each handle's agent and its handle value.
     pub fn handles(&self) -> Result<Vec<(Ref, u32)>, Error> {
         let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
-        let o = objects.iter().flatten().find(|o| &o.entry.kind.to_be_bytes() == b"+gam").ok_or(Error::Format("no game state"))?;
+        let o = objects.iter().flatten().find(|o| &o.entry.kind.to_be_bytes() == codes::class::GAME_STATE).ok_or(Error::Format("no game state"))?;
         let Second::Agent { tail, .. } = o.second()? else { return Err(Error::Format("the game state not read")) };
         // The table follows the four references and the size before it.
         let Some(Field::List(entries)) = tail.get(21) else { return Err(Error::Format("no handle table")) };
@@ -2254,7 +2255,7 @@ impl SaveGame {
     pub fn game_reals(&self) -> Result<Vec<(u32, [f32; 4])>, Error> {
         let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
         let all: std::collections::HashMap<(u32, u32), &SavedObject> = objects.iter().flatten().map(|o| ((o.entry.tag, o.entry.birth), o)).collect();
-        let o = objects.iter().flatten().find(|o| &o.entry.kind.to_be_bytes() == b"+gam").ok_or(Error::Format("no game state"))?;
+        let o = objects.iter().flatten().find(|o| &o.entry.kind.to_be_bytes() == codes::class::GAME_STATE).ok_or(Error::Format("no game state"))?;
         let mut out = Vec::new();
         if let First::Agent { refs, .. } = o.first()? {
             for r in refs {
@@ -2286,7 +2287,7 @@ impl SaveGame {
     pub fn timers(&self) -> Result<Vec<SavedTimer>, Error> {
         let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
         let mut out = Vec::new();
-        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == b"+tmr") {
+        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == codes::class::TIMER) {
             let Second::Agent { own, tail, .. } = o.second()? else { continue };
             let timeout = match own.get(1) {
                 Some(Field::Real(v)) => *v,
@@ -2328,7 +2329,7 @@ impl SaveGame {
     pub fn destructables(&self) -> Result<Vec<SavedDestructable>, Error> {
         let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
         let mut out = Vec::new();
-        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == b"+w3d") {
+        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == codes::class::DESTRUCTABLE) {
             let Second::Destructable { own, widget, bytes, words, .. } = o.second()? else { continue };
             let pos = widget.refs.as_ref().map_or([0.0; 2], |r| r.1);
             let scale = widget.sprite.as_ref().map_or(1.0, |s| s.reals[0]);
@@ -2371,7 +2372,7 @@ impl SaveGame {
         let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
         let all: std::collections::HashMap<(u32, u32), &SavedObject> = objects.iter().flatten().map(|o| ((o.entry.tag, o.entry.birth), o)).collect();
         let mut out = Vec::new();
-        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == b"item") {
+        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == codes::class::ITEM) {
             let Second::Agent { tail, .. } = o.second()? else { continue };
             let word = |k: usize| match tail.get(k) {
                 Some(Field::Word(v)) => *v,

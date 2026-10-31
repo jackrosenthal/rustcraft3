@@ -2,6 +2,7 @@
 //! life changed (its indexed real 1's value), written back in the port's container;
 //! `drop1`: its second table left with its classes' definitions alone.
 use w3_formats::w3z::{First, SaveGame};
+use w3_formats::codes;
 
 fn main() {
     let a: Vec<String> = std::env::args().collect();
@@ -46,7 +47,7 @@ fn main() {
         // "drop1": the second table's objects but its classes' definitions left out.
         "drop1" => {
             let before = objects[1].len();
-            objects[1].retain(|o| &o.entry.kind.to_be_bytes() == b"^adf");
+            objects[1].retain(|o| &o.entry.kind.to_be_bytes() == codes::class::AGENT_DEFINITION);
             println!("second table {before} -> {}", objects[1].len());
         }
         // "dropghosts [free]": the fog ghosts (`+wgh`) left out with the position and
@@ -55,7 +56,7 @@ fn main() {
         "dropghosts" => {
             let mut gone: Vec<u32> = Vec::new();
             for (k, o) in objects[1].iter().enumerate() {
-                if &o.entry.kind.to_be_bytes() == b"+wgh" {
+                if &o.entry.kind.to_be_bytes() == codes::class::FOG_GHOST {
                     gone.extend(objects[1][k..(k + 4).min(objects[1].len())].iter().map(|x| x.entry.tag));
                 }
             }

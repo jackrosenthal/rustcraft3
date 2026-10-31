@@ -7,7 +7,8 @@
 //! hold it (`ability::DEVOTION_AURA`, "AHad"), and as an id (`ability::id::DEVOTION_AURA`,
 //! b"AHad").  Search for a code (e.g., `AHad`) to find its name.
 
-use crate::tags::Code;
+/// A four-character code as the engine keeps it.
+pub type Code = [u8; 4];
 
 /// A code's id from its text.
 pub const fn id(text: &str) -> Code {
@@ -22,7 +23,7 @@ macro_rules! codes {
         $($(#[$doc])* pub const $name: &str = $text;)*
         /// The same codes as ids.
         pub mod id {
-            $($(#[$doc])* pub const $name: &$crate::tags::Code = &$crate::codes::id($text);)*
+            $($(#[$doc])* pub const $name: &$crate::codes::Code = &$crate::codes::id($text);)*
         }
     };
 }
@@ -30,6 +31,8 @@ macro_rules! codes {
 /// Abilities (AbilityData), aliases and the codes of the kinds they are.
 pub mod ability {
     codes! {
+        /// `ABnP`: Build In Progress (a structure's while it is built; the engine's).
+        BUILD_IN_PROGRESS = "ABnP";
         /// `ACad`: Animate Dead (creep).
         ANIMATE_DEAD_CREEP = "ACad";
         /// `ACbf`: Breath of Frost(Creep).
@@ -1413,7 +1416,7 @@ pub mod upgrade {
 
 /// The engine's object classes, as its object tables and the saves name them.
 pub mod class {
-    use crate::tags::Code;
+    use super::Code;
 
     /// `+agl`: An agent: the family of every agent class not otherwise placed.
     pub const AGENT: &Code = b"+agl";
@@ -1531,6 +1534,16 @@ pub mod class {
     pub const CAMERA_SETUP: &Code = b"+cst";
     /// `+EIP`: A special effect (AddSpecialEffect).
     pub const SPECIAL_EFFECT: &Code = b"+EIP";
+    /// `+EIm`: An effect image (a buff's art; the second table's).
+    pub const EFFECT_IMAGE: &Code = b"+EIm";
+    /// `+cam`: The game interface's camera (the second table's).
+    pub const CAMERA: &Code = b"+cam";
+    /// `+ccu`: The cursor (the second table's).
+    pub const CURSOR: &Code = b"+ccu";
+    /// `+ccp`: The cursor's other object (the second table's; provisional name).
+    pub const CURSOR_PART: &Code = b"+ccp";
+    /// `+wgh`: A fog ghost (the second table's).
+    pub const FOG_GHOST: &Code = b"+wgh";
     /// `pool`: A unit pool.
     pub const UNIT_POOL: &Code = b"pool";
     /// `ipol`: An item pool.

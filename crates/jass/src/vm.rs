@@ -22,7 +22,7 @@
 //! code's own string table.
 
 use std::cell::RefCell;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
 use crate::bytecode::op;
@@ -433,6 +433,13 @@ pub struct Vm {
     /// clearing its local stays taken in a save's handle table, the ids after it not
     /// reusing it).
     pub leaked: BTreeSet<u32>,
+    /// How many returned functions' locals kept each handle: each holds a reference
+    /// in the original's handle table for good.
+    pub leak_counts: BTreeMap<u32, u32>,
+    /// The globals whose values their initializers set: a reference the original's
+    /// handle table does not count (read: Blizzard.j's timers and groups made so, 1).
+    pub init_set: BTreeSet<u32>,
+    initializing: bool,
     /// The contexts' places, shared with the game's other machines.
     pub places: Rc<RefCell<Places>>,
     /// Set by a native (SaveGame) for the calling thread to be kept as it was in the
@@ -450,6 +457,10 @@ pub struct State {
     pub callbacks: Vec<u32>,
     pub main: Thread,
     pub leaked: BTreeSet<u32>,
+    #[serde(default)]
+    pub leak_counts: BTreeMap<u32, u32>,
+    #[serde(default)]
+    pub init_set: BTreeSet<u32>,
     pub places: Places,
 }
 
@@ -459,7 +470,7 @@ impl Vm {
         let vars = module.globals.iter().map(|_| Var::default()).collect();
         let places = Rc::new(RefCell::new(Places::default()));
         let main = Thread { place: places.borrow_mut().take(), ..Default::default() };
-        Vm { module, prog, vars, strings: Strings::default(), code_strings: Vec::new(), callbacks: vec![0], callback_index: HashMap::new(), main, op_limit: 300_000, leaked: Default::default(), places, snapshot_wanted: false, snapshot: None }
+        Vm { module, prog, vars, strings: Strings::default(), code_strings: Vec::new(), callbacks: vec![0], callback_index: HashMap::new(), main, op_limit: 300_000, leaked: Default::default(), leak_counts: Default::default(), init_set: Default::default(), initializing: false, places, snapshot_wanted: false, snapshot: None }
     }
 
     /// Takes the places of another machine's (the map script's), its own the next.
@@ -470,7 +481,7 @@ impl Vm {
 
     /// The machine's state, for a saved game.
     pub fn variables(&self) -> State {
-        State { vars: self.vars.clone(), strings: self.strings.clone(), code_strings: self.code_strings.clone(), callbacks: self.callbacks.clone(), main: self.main.clone(), leaked: self.leaked.clone(), places: self.places.borrow().clone() }
+        State { vars: self.vars.clone(), strings: self.strings.clone(), code_strings: self.code_strings.clone(), callbacks: self.callbacks.clone(), main: self.main.clone(), leaked: self.leaked.clone(), leak_counts: self.leak_counts.clone(), init_set: self.init_set.clone(), places: self.places.borrow().clone() }
     }
 
     /// Restores the state [`Vm::variables`] gave, of the same script.
@@ -479,6 +490,7 @@ impl Vm {
             return;
         }
         (self.vars, self.strings, self.code_strings, self.callbacks, self.main, self.leaked) = (s.vars, s.strings, s.code_strings, s.callbacks, s.main, s.leaked);
+        (self.leak_counts, self.init_set) = (s.leak_counts, s.init_set);
         *self.places.borrow_mut() = s.places;
         self.strings.rebuild();
         self.callback_index = self.callbacks.iter().enumerate().skip(1).map(|(k, &f)| (f, k as u32)).collect();
@@ -500,6 +512,7 @@ impl Vm {
         let prog = self.prog.clone();
         let mut t = std::mem::take(&mut self.main);
         let mut r = Ok(());
+        self.initializing = true;
         for &entry in &prog.inits {
             t.frames.push(Frame::new(NO_FUNC, false));
             t.ip = Some(entry);
@@ -508,6 +521,7 @@ impl Vm {
                 break;
             }
         }
+        self.initializing = false;
         self.main = t;
         r
     }
@@ -608,6 +622,7 @@ impl Vm {
                 self.release(v);
             } else if leak && v.decl == ty::HANDLE && v.value != 0 {
                 self.leaked.insert(v.value);
+                *self.leak_counts.entry(v.value).or_default() += 1;
             }
         }
     }
@@ -817,6 +832,13 @@ impl Vm {
                     let Some(v) = Self::var(&mut self.vars, t, res) else { fail!("no variable {}", name(&prog, i.arg)) };
                     let kind = if r.kind == ty::NULL { v.decl } else { r.kind };
                     Self::set_var(&mut self.strings, v, kind, r.value);
+                    if res & LOCAL == 0 {
+                        if self.initializing {
+                            self.init_set.insert(res);
+                        } else {
+                            self.init_set.remove(&res);
+                        }
+                    }
                 }
                 op::MOVAR => {
                     // FUN_6f916110: the array grows to the index (at most 8192), a string

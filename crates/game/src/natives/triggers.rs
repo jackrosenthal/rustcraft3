@@ -368,7 +368,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         DestroyTimer => |w, _, a| {
             let Some(handler) = w.timer_mut(a.h(0)).map(|t| t.handler) else { return none() };
             w.handles.remove(a.h(0));
-            w.tags.doom_handle(a.h(0));
+            w.tags.doom_handle(a.h(0), 1);
             if let Some(s) = handler {
                 w.tags.doom(s);
             }

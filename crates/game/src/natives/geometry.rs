@@ -95,7 +95,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 // destroyed; read, the melee setup's search for the nearest mine.)
                 w.tags.bump_prop(1, "rloc");
                 w.handles.remove(a.h(0));
-                w.tags.doom_handle(a.h(0));
+                w.tags.doom_handle(a.h(0), 1);
             }
             none()
         },

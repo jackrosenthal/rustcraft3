@@ -169,6 +169,10 @@ pub struct Tags {
     /// dialogs, their buttons, trackables, and event registrations, by handle.
     #[serde(default)]
     pub handle_ids: std::collections::BTreeMap<u32, (u32, u32)>,
+    /// Destroyed script objects' agents and handle table words, by handle (what the
+    /// original's table keeps while references to them remain).
+    #[serde(default)]
+    pub dead_handles: std::collections::BTreeMap<u32, ((u32, u32), u32)>,
     /// Event registrations' listeners' slots (a game state's `` `rtl ``, an alliance's or
     /// player state's `` `fcl ``), by event handle.
     #[serde(default)]
@@ -192,7 +196,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), player_ai_timers: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), aura_dues: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), player_ai_timers: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), aura_dues: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), dead_handles: Default::default(), event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -392,9 +396,13 @@ impl Tags {
         self.doomed.push(slot);
     }
 
-    /// Queues a script handle's destruction, when it has a slot.
-    pub fn doom_handle(&mut self, h: u32) {
+    /// Queues a script handle's destruction, when it has a slot; its agent (and `word`,
+    /// its handle table word) kept for the references scripts may still hold.
+    pub fn doom_handle(&mut self, h: u32, word: u32) {
         if let Some(s) = self.handle_slots.remove(&h) {
+            if let Some(&(_, birth)) = self.live.get(&s) {
+                self.dead_handles.insert(h, ((s, birth), word));
+            }
             self.doom(s);
         }
     }

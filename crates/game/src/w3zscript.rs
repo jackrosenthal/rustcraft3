@@ -140,10 +140,150 @@ impl Game {
         s
     }
 
+    /// The JASS handle table (CGameState's, `FUN_6f282260`), by handle value from
+    /// 0x100000: each handle's references, its agent, and a word (1 for events, timers,
+    /// locations, and sounds).  Its references (read against the quiet test map's): its
+    /// object's own while it lasts; each global holding it, but for a value its
+    /// initializer set; each returned function's local that held it (`leak_counts`); and
+    /// each local of a thread asleep or saving.  A destroyed object's handle keeps its
+    /// agent's slot while references remain.  The engine holds the expired timer of a
+    /// callback asleep or saving besides (`context_timers`).  Each row: the count,
+    /// the agent (none once destroyed), the word, and the agent's slot.
+    pub fn handle_table(&self) -> Vec<(u32, Option<(u32, u32)>, u32, Option<u32>)> {
+        use crate::types::Obj;
+        use w3_jass::vm::ty;
+        let w = &self.world;
+        let mut refs: std::collections::HashMap<u32, u32> = Default::default();
+        let mut add = |h: u32, n: u32| *refs.entry(h).or_default() += n;
+        let var = |v: &Var, add: &mut dyn FnMut(u32, u32)| {
+            if v.decl == ty::HANDLE && v.value != 0 {
+                add(v.value, 1);
+            }
+            if v.kind == ty::HANDLE_ARRAY {
+                v.array.iter().flatten().filter(|&&h| h != 0).for_each(|&h| add(h, 1));
+            }
+        };
+        for (k, v) in self.vm.vars.iter().enumerate() {
+            if !self.vm.init_set.contains(&(k as u32)) {
+                var(v, &mut add);
+            }
+        }
+        let mut threads: Vec<&w3_jass::Thread> = w.sleepers.iter().map(|s| &s.thread).collect();
+        if let Some(t) = self.vm.snapshot.as_ref().filter(|t| !threads.iter().any(|o| o.place == t.place)) {
+            threads.push(t);
+        }
+        for t in threads {
+            for f in &t.frames {
+                for v in &f.locals {
+                    var(v, &mut add);
+                }
+            }
+        }
+        for (&h, &n) in &self.vm.leak_counts {
+            add(h, n);
+        }
+        for h in self.context_timers() {
+            add(h, 1);
+        }
+        let mut by_handle: std::collections::BTreeMap<u32, u32> = Default::default();
+        for id in w.handles.ids() {
+            if let Some(h) = w.handles.known_handle(id) {
+                by_handle.insert(h, id);
+            }
+        }
+        let last = by_handle.keys().chain(refs.keys()).copied().max().unwrap_or(crate::handles::HANDLE_BASE);
+        let tagged = |s: u32| (s, w.tags.live.get(&s).map_or(0, |e| e.1));
+        (crate::handles::HANDLE_BASE..=last)
+            .map(|h| {
+                let held = refs.get(&h).copied().unwrap_or(0);
+                let Some(&id) = by_handle.get(&h) else {
+                    let dead = w.tags.dead_handles.get(&h).filter(|_| held > 0);
+                    return (held, None, dead.map_or(0, |d| d.1), dead.map(|d| d.0 .0));
+                };
+                let o = w.handles.get(id);
+                if std::env::var("W3Z_HTOBJ").ok().and_then(|v| u32::from_str_radix(v.trim_start_matches("0x"), 16).ok()) == Some(h) {
+                    eprintln!("handle {h:#x}: {o:?}");
+                }
+                let agent = match o {
+                    Some(Obj::Unit(u)) => u.extra.object_slots[0].first().copied(),
+                    Some(Obj::Destructable(d)) => Some(d.oid),
+                    Some(Obj::Player(p)) => w.tags.player_slots.get(*p as usize).map(|&s| tagged(s)),
+                    Some(Obj::Trigger(t)) => t.slots.first().map(|&s| tagged(s)),
+                    Some(Obj::TriggerAction { slot, .. }) => Some(tagged(*slot)),
+                    Some(Obj::Force(f)) => f.slots.first().map(|&s| tagged(s)),
+                    _ => w.tags.handle_ids.get(&id).copied().or_else(|| w.tags.handle_slots.get(&id).map(|&s| tagged(s))),
+                };
+                let word = u32::from(matches!(o, Some(Obj::Event(_) | Obj::Timer(_) | Obj::Location(..) | Obj::Sound(_))));
+                (held + 1, agent, word, agent.map(|a| a.0))
+            })
+            .collect()
+    }
+
+    /// The expired timers the engine holds as callbacks' contexts: those of callbacks
+    /// asleep or kept within SaveGame (read: the quiet test map's timer whose callback
+    /// saves; provisional: one asleep).
+    pub fn context_timers(&self) -> Vec<u32> {
+        self.world.sleepers.iter().map(|s| s.ctx.timer).filter(|&t| t != 0).collect()
+    }
+
     /// The script data's pieces the port makes, against the original's save of the same
     /// moment.
     pub fn compare_script(&self, orig: &SaveGame) -> Vec<String> {
         let mut out = Vec::new();
+        // The handle table, against the original's (CGameState's tail 19).
+        if let Ok(objects) = orig.objects.as_ref().map_or(Err(()), |m| m.objects().map_err(|_| ())) {
+            let kinds: std::collections::HashMap<u32, String> = objects[0].iter().map(|o| (o.entry.tag, String::from_utf8_lossy(&o.entry.kind.to_be_bytes()).to_string())).collect();
+            let game = objects[0].iter().find(|o| &o.entry.kind.to_be_bytes() == crate::codes::class::GAME_STATE);
+            if let Some(Ok(w3_formats::w3z::Second::Agent { tail, .. })) = game.map(|o| o.second()) {
+                if let Some(Field::List(rows)) = tail.get(19) {
+                    let ours = self.handle_table();
+                    let mut by_kind: std::collections::BTreeMap<String, (u32, u32, u32, u32)> = Default::default();
+                    let mut shown = 0;
+                    for (k, row) in rows.iter().enumerate() {
+                        let [Field::Word(count), Field::Ref(r), Field::Word(word)] = row[..] else { continue };
+                        let kind = kinds.get(&r.0).cloned().unwrap_or_else(|| "none".into());
+                        let e = by_kind.entry(kind.clone()).or_default();
+                        let theirs = (count, (r.0 != u32::MAX).then_some((r.0, r.1)), word);
+                        let mine = ours.get(k).map(|r| (r.0, r.1, r.2));
+                        if mine == Some(theirs) {
+                            e.0 += 1;
+                        } else {
+                            if mine.map(|m| m.0) != Some(count) { e.1 += 1; }
+                            if mine.map(|m| m.1) != Some(theirs.1) { e.2 += 1; }
+                            if mine.map(|m| m.2) != Some(word) { e.3 += 1; }
+                            if std::env::var("W3Z_ALL").is_ok() && shown < 60 {
+                                shown += 1;
+                                out.push(format!("  handle {:#x} {kind}: ours {mine:?}, the original's {theirs:?}", 0x10_0000 + k));
+                            }
+                        }
+                    }
+                    out.push(format!("handle table: {} ours, {} the original's; by kind (same, count differs, agent differs, word differs) {by_kind:?}", ours.len(), rows.len()));
+                    // W3Z_HT: each handle's count, its holders among the globals (by
+                    // name), whether a returned function's local kept it, and its kind.
+                    if std::env::var("W3Z_HT").is_ok() {
+                        let names = self.vm.global_names();
+                        let mut holders: std::collections::HashMap<u32, Vec<String>> = Default::default();
+                        for (k, v) in self.vm.vars.iter().enumerate() {
+                            let name = names.get(k).map(|n| n.to_string()).unwrap_or_default();
+                            if v.decl == w3_jass::vm::ty::HANDLE && v.value != 0 {
+                                holders.entry(v.value).or_default().push(name.clone());
+                            }
+                            if v.kind == w3_jass::vm::ty::HANDLE_ARRAY {
+                                for (j, &h) in v.array.iter().flatten().enumerate().filter(|x| *x.1 != 0) {
+                                    holders.entry(h).or_default().push(format!("{name}[{j}]"));
+                                }
+                            }
+                        }
+                        for (k, row) in rows.iter().enumerate() {
+                            let [Field::Word(count), Field::Ref(r), Field::Word(word)] = row[..] else { continue };
+                            let h = 0x10_0000 + k as u32;
+                            let kind = kinds.get(&r.0).cloned().unwrap_or_else(|| "none".into());
+                            out.push(format!("ht {h:#x} {kind} count {count} word {word} leaked {} globals {:?} ours {:?}", self.vm.leak_counts.get(&h).copied().unwrap_or(0), holders.get(&h), ours.get(k)));
+                        }
+                    }
+                }
+            }
+        }
         let Ok(d) = orig.script_data() else { return vec!["script data: not read".into()] };
         if let Some(Some(c)) = d.code.first() {
             let ours = self.saved_code();

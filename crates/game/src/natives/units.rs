@@ -1639,7 +1639,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 // module's, `FUN_6f060fe0`; read: the melee setup's groups.)
                 w.tags.bump_prop(1, "dgrp");
                 w.handles.remove(a.h(0));
-                w.tags.doom_handle(a.h(0));
+                w.tags.doom_handle(a.h(0), 0);
             }
             none()
         },

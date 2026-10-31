@@ -590,6 +590,12 @@ pub struct UnitExtra {
     /// Its object of the last day change (`World::time_of_day_moved`), while it lasts.
     #[serde(default)]
     pub day_rcm: Option<u32>,
+    /// Its attack's timers (Aatk's): its periodic one's (2 seconds) count, start, and
+    /// period; its look for a target's count, due time, and wait.
+    #[serde(default)]
+    pub attack_timer: Option<(u32, f32, f32)>,
+    #[serde(default)]
+    pub look_timer: Option<(u32, f32, f32)>,
     /// Its wander's timer (Awan's): its count, the game time it started, and its wait.
     #[serde(default)]
     pub wander_timer: Option<(u32, f32, f32)>,
@@ -895,6 +901,8 @@ impl Default for UnitExtra {
             footprint_slots: Vec::new(),
             object_slots: Default::default(),
             day_rcm: None,
+            attack_timer: None,
+            look_timer: None,
             wander_timer: None,
             made_facing: None,
             day_ref: None,

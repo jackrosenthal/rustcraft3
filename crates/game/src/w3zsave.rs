@@ -999,6 +999,7 @@ impl World {
                 seconds.insert(slot, sec);
             }
             // Its abilities' agents, and the own records of the kinds written.
+            // (The AI lists' after.)
             records.extend(self.ability_agent_records(h, &rallies));
             let chain = self.ability_chain(h, &rallies);
             for (k, &(t, code)) in chain.iter().enumerate() {
@@ -1007,6 +1008,9 @@ impl World {
                     seconds.insert(t.0, sec);
                 }
             }
+        }
+        for (slot, sec) in self.unit_ref_records() {
+            seconds.insert(slot, sec);
         }
         for o in objects[0].iter_mut() {
             if let Some(r) = records.get(&o.entry.tag) {
@@ -1478,6 +1482,19 @@ impl World {
                     }
                 }
                 out.push(format!("units' abilities' own records: {same} the same; by kind (same, differ) {kinds:?}{}", first.map_or(String::new(), |f| format!("; first {}", &f[..f.len().min(600)]))));
+                // The units' AI lists.
+                let (mut same, mut differ, mut first) = (0, 0, None);
+                for (slot, sec) in self.unit_ref_records() {
+                    let Some(o) = by_slot.get(&slot) else { continue };
+                    if sec.to_bytes(o.entry.kind).is_ok_and(|b| b == o.second) {
+                        same += 1;
+                    } else {
+                        differ += 1;
+                        let words = |s: &Second| match s { Second::UnitRefs { words, .. } => *words, _ => [0; 4] };
+                        first.get_or_insert(format!("slot {slot}: ours {:?}, the original's {:?}", words(&sec), o.second().ok().map(|s| words(&s))));
+                    }
+                }
+                out.push(format!("units' AI lists: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
             }
             // The units' agents.
             let (mut same, mut differ, mut first) = (0, 0, None);

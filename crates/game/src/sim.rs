@@ -1865,7 +1865,17 @@ impl World {
         }
         // (The look's timer started again, `FUN_6f493ff0`; provisional: not a worker's.)
         if !self.unit(h).is_some_and(|u| self.unit_class(u, "peon")) {
-            self.tags.start_timer("493ff0");
+            let n = self.tags.start_timer("493ff0");
+            let now = self.time;
+            if let Some(u) = self.unit_mut(h) {
+                // (Due half a second after the last look's due time, in the engine's
+                // arithmetic: the timer fired then.)
+                let due = match u.extra.look_timer {
+                    Some((_, d, _)) if f32::from_bits(crate::efloat::add(d.to_bits(), 0.5f32.to_bits())) > now => f32::from_bits(crate::efloat::add(d.to_bits(), 0.5f32.to_bits())),
+                    _ => now + 0.5,
+                };
+                u.extra.look_timer = Some((n, due, 0.5));
+            }
         }
     }
 

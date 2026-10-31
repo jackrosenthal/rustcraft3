@@ -1710,6 +1710,21 @@ Formats the port made its own, to be replaced by the original's:
   port's rounding twice agrees with the Booty Bay captures; provisional).
 - Wander's record (CAbilityWander): its wait's timer (event 0xd01bf), once, due at
   its start and the wait drawn, its count from its start.
+- An attack's record (CAbilityAttack, `FUN_6f49bd60`): its flags (0x80010; an AI's
+  0x2, two weapons 0x100000, not a worker's 0x20004000, one never asleep 0x2000000),
+  then per weapon (two each, an absent second's zeros, attack type 1, targets 1) its
+  dice, sides, damage, an aura's bonus (a ceiling of the factor times the least
+  damage: Trueshot's on trolls, provisional), its kind (normal 1, missile 2), attack
+  type (common.j's order), sound (common.j's WEAPON_TYPE order), cooldown, damage
+  point and backswing (each with 0 and the largest real); its targets (as bits), its
+  acquisition range, ranges, range buffers, 600, its periodic timer (event 0xd01ad,
+  every 2 seconds, last started as it woke) and its look for a target (event 0xd01c1:
+  first as it was made, after the wait drawn, then half a second after each look's
+  due time), its place.  31 of the quiet test map's 45 agree; the rest swap counts
+  with a neighbor started in the same moment (the original fires its looks in due
+  order).
+- A unit's AI list (`uref`): four words, the second and third its owner's AI list
+  made before it; empty handlers.  All 42 agree.
 - A unit made by script faces its literal (read by the script's compiler as the
   original does) times pi / 180 (0x3c8efa35) in the engine's arithmetic, two pi
   (0x40c90fdb) on for a negative angle: every creep of the quiet test map's, 57 of 57.

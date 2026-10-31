@@ -508,7 +508,11 @@ impl World {
                 self.tags.autotarget_due.push(self.time + 0.015);
             }
             if armed {
-                self.tags.start_timer("49d220");
+                let n = self.tags.start_timer("49d220");
+                let now = self.time;
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.attack_timer = Some((n, now, 2.0));
+                }
             }
             let table = crate::tags::AbilityObjects::get();
             // Each spell's listener on its mana (`` `rtl ``): made below its cost, then,

@@ -833,6 +833,9 @@ impl crate::world::World {
             && self.is_night()
             && self.players.get(owner as usize).is_none_or(|p| p.get_state(crate::types::player_state::NO_CREEP_SLEEP) == 0);
         let sold = ids("Sellunits").iter().filter(|c| is_unit(c)).take(12).count();
+        let mut attack_timer: Option<(u32, f32, f32)> = None;
+        let mut look_timer: Option<u32> = None;
+        let now = self.time;
         let mut last_ability = [0u8; 4];
         for (k, c) in codes.iter().enumerate() {
             if c[0] == b'A' {
@@ -852,9 +855,11 @@ impl crate::world::World {
                 }
                 b"Aatk" => {
                     if owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE {
-                        self.tags.start_timer("49d220");
+                        let n = self.tags.start_timer("49d220");
+                        attack_timer = Some((n, self.time, 2.0));
                     }
-                    self.tags.start_timer("4993b0");
+                    let n = self.tags.start_timer("4993b0");
+                    look_timer = Some(n);
                 }
                 b"Abli" => {
                     self.tags.start_timer("491250");
@@ -887,7 +892,8 @@ impl crate::world::World {
         // (`FUN_6f49e880`; read: a golem's, and in the census heroes' and towers').
         if owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && codes.contains(b"Aatk") && !night_sleeper {
             for _ in 0..2 {
-                self.tags.start_timer("49d220");
+                let n = self.tags.start_timer("49d220");
+                attack_timer = Some((n, self.time, 2.0));
             }
         }
         // Its unit AI joining (`FUN_6f9b9230`), a computer's unit or a creep awake:
@@ -953,6 +959,10 @@ impl crate::world::World {
             u.extra.oid = oid;
             u.extra.spell_timers = spell_timers.iter().map(|&k| slots[k]).collect();
             u.extra.spell_owners = spell_owners;
+            u.extra.attack_timer = attack_timer;
+            // (Its first look waits the time drawn as it was made.)
+            let wait = u.acquire_timer;
+            u.extra.look_timer = look_timer.map(|n| (n, f32::from_bits(crate::efloat::add(now.to_bits(), wait.to_bits())), wait));
             u.extra.camp_ai = camp_ai;
             u.extra.site_ai = site_ai;
             // Blight growth's objects (Abli, Xbli, `pos, two ^pmr), released as its

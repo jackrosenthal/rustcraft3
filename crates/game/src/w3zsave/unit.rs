@@ -584,9 +584,14 @@ impl World {
                 None => timer(),
             }
         };
+        let weapons = o.int("weapsOn");
+        let peon = o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case("peon"));
         let base_flags: u32 = match code {
             b"Avul" => 0x8000_0010,
             b"ACsp" => 0x400,
+            // (An attack: two weapons 0x100000, not a worker's 0x20004000, one never
+            // asleep 0x2000000: read, every unit of the quiet test map's.)
+            b"Aatk" => 0x8_0010 | if weapons & 2 != 0 { 0x10_0000 } else { 0 } | if peon { 0 } else { 0x2000_4000 } | if u.extra.woke_at.is_none() { 0x200_0000 } else { 0 },
             _ => 0x10,
         };
         let flags = base_flags | if ai { 0x2 } else { 0 };
@@ -630,11 +635,175 @@ impl World {
                 };
                 vec![timer]
             }
+            // CAbilityAttack (`FUN_6f49bd60`): its weapons' data, its acquisition range,
+            // its place, and its two timers.
+            b"Aatk" => return Some(self.attack_record(h, t, own)),
             // CAbilityAlarm (`FUN_6f42d040`): its timer and its in-range listener.
             b"Aalr" => vec![timer(), Field::Ref(u.extra.alarm_pil.map_or(NONE, |s| rf(self.tagged(s))))],
             _ => return None,
         };
         let handlers = Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
         Some(Second::Agent { own, handlers, tail })
+    }
+}
+
+/// A weapon's kind as the engine numbers it (weapTp; provisional past normal and missile).
+fn weapon_kind(s: &str) -> u32 {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "normal" => 1,
+        "missile" => 2,
+        "artillery" => 3,
+        "instant" => 4,
+        "msplash" => 5,
+        "mbounce" => 6,
+        "mline" => 7,
+        "aline" => 8,
+        _ => 0,
+    }
+}
+
+/// An attack type as the engine numbers it (common.j's ATTACK_TYPE order).
+fn attack_kind(s: &str) -> u32 {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "spells" => 0,
+        "pierce" => 2,
+        "siege" => 3,
+        "magic" => 4,
+        "chaos" => 5,
+        "hero" => 6,
+        _ => 1,
+    }
+}
+
+/// A weapon's sound as the engine numbers it (common.j's WEAPON_TYPE order).
+fn weapon_sound(s: &str) -> u32 {
+    const NAMES: [&str; 24] = ["", "metallightchop", "metalmediumchop", "metalheavychop", "metallightslice", "metalmediumslice", "metalheavyslice", "metalmediumbash", "metalheavybash", "metalmediumstab", "metalheavystab", "woodlightslice", "woodmediumslice", "woodheavyslice", "woodlightbash", "woodmediumbash", "woodheavybash", "woodlightstab", "woodmediumstab", "clawlightslice", "clawmediumslice", "clawheavyslice", "axemediumchop", "rockheavybash"];
+    let s = s.trim().to_ascii_lowercase();
+    NAMES.iter().position(|&n| !n.is_empty() && n == s).unwrap_or(0) as u32
+}
+
+/// A weapon's targets as bits (as abilities' +0x4c; 1 for none).
+fn weapon_targets(list: &[String]) -> u32 {
+    let mut bits = 0;
+    for t in list {
+        bits |= match t.trim().to_ascii_lowercase().as_str() {
+            "ground" => 0x2,
+            "air" => 0x4,
+            "structure" => 0x8,
+            "ward" => 0x10,
+            "item" => 0x20,
+            "tree" => 0x40,
+            "wall" => 0x80,
+            "debris" => 0x100,
+            "decoration" => 0x200,
+            "bridge" => 0x400,
+            _ => 0,
+        };
+    }
+    if bits == 0 { 1 } else { bits }
+}
+
+impl World {
+    /// An attack's own record (CAbilityAttack, `FUN_6f49bd60`; read against the quiet
+    /// test map's 45): after CAbility's part, references; per weapon (two each) its dice,
+    /// sides, damage, a bonus (an aura's, a ceiling of its factor times the least
+    /// damage: read, Trueshot's on trolls), modifiers, its kind, attack type, sound,
+    /// cooldown, damage point and backswing; its targets, its acquisition range, ranges
+    /// and range buffers, 600, its periodic timer (event 0xd01ad, every 2 seconds) and
+    /// its look for a target's (event 0xd01c1), its place, and lists empty.
+    fn attack_record(&self, h: u32, t: (u32, u32), own: Vec<Field>) -> Second {
+        let u = self.unit(h).unwrap();
+        let o = self.objects.units.get(u.type_id).unwrap();
+        let w = Field::Word;
+        let r = Field::Real;
+        let weapons = o.int("weapsOn");
+        let on = |k: u32| weapons & (1 << (k - 1)) != 0;
+        let per = |f: &dyn Fn(u32) -> Field| Field::List(vec![vec![f(1)], vec![f(2)]]);
+        let int = |name: &str, k: u32, absent: u32| if on(k) { o.int(&format!("{name}{k}")).max(0) as u32 } else { absent };
+        let real = |name: &str, k: u32| if on(k) { o.real(&format!("{name}{k}")) } else { 0.0 };
+        let modifiable = |f: &dyn Fn(u32) -> f32| Field::List(vec![vec![r(f(1)), r(0.0), r(f32::MAX)], vec![r(f(2)), r(0.0), r(f32::MAX)]]);
+        let plain = || Field::List(vec![vec![r(0.0), r(0.0), r(f32::MAX)], vec![r(0.0), r(0.0), r(f32::MAX)]]);
+        let factor: f32 = u.buffs.iter().map(|b| b.damage_factor).sum();
+        let bonus = |k: u32| {
+            if factor == 0.0 {
+                return 0;
+            }
+            let least = int("dmgplus", k, 0) + int("dice", k, 1);
+            f32::from_bits(crate::efloat::mul(crate::efloat::from_int(least as i32), factor.to_bits())).ceil() as u32
+        };
+        let timer = || Field::Timer(NONE, 0, Timing(None));
+        let attack_timer = match u.extra.attack_timer {
+            Some((count, at, period)) => {
+                let mut due = crate::efloat::add(at.to_bits(), period.to_bits());
+                while f32::from_bits(due) <= self.time {
+                    due = crate::efloat::add(due, period.to_bits());
+                }
+                Field::Timer(rf(t), 2, Timing(Some((f32::from_bits(due), period, count, 0xd_01ad, 1))))
+            }
+            None => timer(),
+        };
+        // (Its look's due time the port's countdown on from now: each miss waits half a
+        // second from the last look's time, not the step's.)
+        let look_timer = match u.extra.look_timer {
+            Some((count, due, wait)) if due > self.time => Field::Timer(rf(t), 0, Timing(Some((due, wait, count, 0xd_01c1, 0)))),
+            _ => timer(),
+        };
+        let mut tail = vec![w(u32::MAX), w(u32::MAX), w(0), w(u32::MAX), w(u32::MAX), w(0)];
+        tail.push(per(&|k| w(int("dice", k, 0))));
+        tail.push(per(&|k| w(int("sides", k, 0))));
+        tail.push(per(&|k| w(int("dmgplus", k, 0))));
+        tail.push(per(&|k| w(bonus(k))));
+        tail.push(plain());
+        tail.push(per(&|k| w(if on(k) { weapon_kind(&o.str(&format!("weapTp{k}"))) } else { 0 })));
+        tail.push(per(&|k| w(if on(k) { attack_kind(&o.str(&format!("atkType{k}"))) } else { 1 })));
+        tail.push(per(&|k| w(if on(k) { weapon_sound(&o.str(&format!("weapType{k}"))) } else { 0 })));
+        tail.push(per(&|_| w(1)));
+        tail.push(plain());
+        tail.push(plain());
+        tail.push(per(&|k| r(real("cool", k))));
+        tail.push(modifiable(&|k| real("dmgpt", k)));
+        tail.push(modifiable(&|k| real("backSw", k)));
+        tail.extend([r(1.0), r(-f32::MAX), r(f32::MAX)]);
+        tail.extend([timer(), timer(), timer(), timer()]);
+        tail.push(per(&|k| w(if on(k) { weapon_targets(&o.list(&format!("targs{k}"))) } else { 1 })));
+        tail.push(w(0));
+        tail.push(Field::List(vec![vec![Field::Ref(NONE)], vec![Field::Ref(NONE)]]));
+        tail.extend([r(u.acquire_range), r(0.0)]);
+        tail.push(per(&|k| r(real("rangeN", k))));
+        tail.push(per(&|k| r(real("RngBuff", k))));
+        tail.push(r(600.0));
+        tail.extend([attack_timer, look_timer, timer()]);
+        tail.extend([r(u.x), r(u.y)]);
+        tail.extend([w(0), w(u32::MAX), w(u32::MAX), w(0), r(0.0)]);
+        tail.push(Field::List((0..8).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect()));
+        tail.push(Field::List((0..8).map(|_| vec![timer()]).collect()));
+        tail.extend([w(u32::MAX), w(u32::MAX), w(0), r(0.0), r(0.0), r(0.0), w(0), w(0), w(0), w(0), r(0.0)]);
+        let handlers = Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
+        Second::Agent { own, handlers, tail }
+    }
+}
+
+impl World {
+    /// The units' AI lists (`uref`, CUnitRefList's `FUN_6f42f860`; read against the quiet
+    /// test map's): four words, the second and third the list made before it of its
+    /// owner's units (provisional: by owner), and empty handlers.
+    pub fn unit_ref_records(&self) -> Vec<(u32, Second)> {
+        let mut lists: Vec<(u8, (u32, u32))> = Vec::new();
+        for &h in &self.unit_order {
+            let Some(u) = self.unit(h) else { continue };
+            for &(s, b) in &u.extra.ai_slots {
+                if self.tags.live.get(&s).is_some_and(|e| &e.0 == b"uref" && e.1 == b) {
+                    lists.push((u.owner, (s, b)));
+                }
+            }
+        }
+        lists.sort_by_key(|l| l.1 .1);
+        let mut out = Vec::new();
+        for (k, &(owner, t)) in lists.iter().enumerate() {
+            let prev = lists[..k].iter().rev().find(|l| l.0 == owner).map_or(NONE, |l| rf(l.1));
+            let handlers = Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
+            out.push((t.0, Second::UnitRefs { words: [0, prev.0, prev.1, 0], handlers }));
+        }
+        out
     }
 }

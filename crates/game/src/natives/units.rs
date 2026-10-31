@@ -404,8 +404,13 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
     // drawn on the attack's own generator (vf194, FUN_6f4993b0, stream 2).
     if w.unit(h).is_some_and(|u| !crate::sim::unit_weapons(w, u).is_empty()) {
         let t = w.rand_data.streams[crate::rng::stream::ATTACK].real(0.0, 1.0) * 0.5;
+        let now = w.time;
         if let Some(u) = w.unit_mut(h) {
             u.acquire_timer = t;
+            // (Its look's timer first due then.)
+            if let Some(l) = u.extra.look_timer.as_mut() {
+                (l.1, l.2) = (f32::from_bits(crate::efloat::add(now.to_bits(), t.to_bits())), t);
+            }
         }
     }
     w.creep_made(h);

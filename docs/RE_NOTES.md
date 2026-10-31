@@ -2231,7 +2231,18 @@ Formats the port made its own, to be replaced by the original's:
   `SetProduce`, `FUN_6f9bfa8a`).  So a unit walking keeps its walk until the tick's
   orders are taken up at the tick's end (its stopped harvest's objects freed with
   them), turning to the new order from the next tick; the idle acolytes started at
-  the next step.  Next: the builder so, its walk by the steps, and its arrival.  In
+  the next step.  Next: the builder so, its walk by the steps, and its arrival.
+  The builder still walks at 1.2 seconds (saves at 1.0 to 1.2), so turn 11's objects
+  are not its arrival: they are `peon_assignment`'s second pass, its `Sleep` of
+  `GetRandomInt(1,3)` (1) over at 1.1, now with `set_vars`'s wood gatherers.  Their call
+  stacks run from the AI engine's worker code (`0x6f9d9153`, `0x6f9d4638`,
+  `0x6f9d18f9`), not the script's natives: a path search (`^clg`, `^clu`, `l^pa`, the
+  `^clg` freed), a `^clp` (`0x6f89c873`), then a move order of 17 (`^clg`, `ordt`,
+  `tskA`, `tskA`, `tskO`, two `task`, `tsk.`, five `task`, `tskA`, `^clu`, `l^pa`) and its
+  `+ord`, an older order's tree freed with them (`tskt`, three `task`, `tskO`, `tskA`,
+  `ordt`); in turn 12 a harvest order of `AI_HARVEST`'s shape and a `uref` freed: the
+  ghoul sent to the trees.  The port sends it with `order_unit` alone, making none of
+  these.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

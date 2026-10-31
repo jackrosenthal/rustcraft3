@@ -108,7 +108,8 @@ impl Game {
     /// The computers' AI scripts as saved, by their places: each machine, on its
     /// script's code block (one a script, after the map script's, in the order the
     /// AIs started), and its threads asleep (read: Forestwalk's undead computer's at
-    /// its start, common.ai's code, its op limit 10000, its main asleep).  Each block's
+    /// its start, common.ai's code, its machine's limit 10000, its main asleep, the
+    /// first frame of its thread).  Each block's
     /// code, then the machines and their threads.  Provisional: a machine's own place
     /// in the code (the original's an uninitialized word), two computers' sharing.
     pub fn saved_ai_scripts(&self) -> (Vec<Code>, Vec<((u32, Machine), Vec<Thread>)>) {
@@ -127,9 +128,29 @@ impl Game {
                     scripts.len() - 1
                 }
             };
-            let mut threads: Vec<Thread> = a.sleepers.iter().map(|(_, t)| thread_of(&a.vm, t, true)).collect();
+            // (An AI's thread has its script's function as its first frame, with none
+            // below it to return to: read, Forestwalk's computer's main.)
+            let mut threads: Vec<Thread> = a
+                .sleepers
+                .iter()
+                .map(|(_, t)| {
+                    let mut t = t.clone();
+                    if t.frames.first().is_some_and(|f| f.func == u32::MAX) {
+                        t.frames.remove(0);
+                    }
+                    // (No frame of it marked its run's first: read, its main's 0.)
+                    let mut saved = thread_of(&a.vm, &t, true);
+                    for f in &mut saved.frames {
+                        f.word = 0;
+                    }
+                    saved
+                })
+                .collect();
             threads.sort_by_key(|t| t.machine);
-            machines.push(((a.vm.main.place, machine_of(&a.vm, 2 + k as u32)), threads));
+            // (Its machine's own limit 10000, its threads' 300000.)
+            let mut machine = machine_of(&a.vm, 2 + k as u32);
+            machine.word = 10_000;
+            machines.push(((a.vm.main.place, machine), threads));
         }
         (codes, machines)
     }
@@ -578,7 +599,7 @@ impl Game {
             }
             if let Some(theirs) = d.threads.get(1 + k) {
                 for (a, b) in threads.iter().zip(theirs) {
-                    out.push(format!("  AI thread: place {} vs {}; at {} vs {}; flag {} vs {}; word {} vs {}; frames {} vs {}{}; registers differ {}", a.machine, b.machine, a.at, b.at, a.flag, b.flag, a.word, b.word, a.frames.len(), b.frames.len(), if dbg(&a.frames) == dbg(&b.frames) { String::new() } else { format!(" (ours {:?}, theirs {:?})", a.frames.iter().map(|f| f.arguments.len()).collect::<Vec<_>>(), b.frames.iter().map(|f| (f.arguments.clone(), f.locals.clone())).collect::<Vec<_>>()) }, a.stack.iter().zip(&b.stack).filter(|(x, y)| dbg(x) != dbg(y)).count()));
+                    out.push(format!("  AI thread: place {} vs {}; at {} vs {}; flag {} vs {}; word {} vs {}; frames {} vs {}{}; registers differ {}", a.machine, b.machine, a.at, b.at, a.flag, b.flag, a.word, b.word, a.frames.len(), b.frames.len(), if dbg(&a.frames) == dbg(&b.frames) { String::new() } else { format!(" (ours {:?}, theirs {:?})", a.frames.iter().map(|f| (f.word, f.arguments.clone(), f.locals.clone())).collect::<Vec<_>>(), b.frames.iter().map(|f| (f.word, f.arguments.clone(), f.locals.clone())).collect::<Vec<_>>()) }, a.stack.iter().zip(&b.stack).filter(|(x, y)| dbg(x) != dbg(y)).count()));
                 }
                 if threads.len() != theirs.len() {
                     out.push(format!("  AI threads: {} ours, {} the original's", threads.len(), theirs.len()));

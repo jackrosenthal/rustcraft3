@@ -433,6 +433,33 @@ impl World {
                 u.extra.sight_stamp = Some((now + 3.0) as f32);
             }
             let Some(u) = self.unit(h).filter(|u| !u.dead) else { continue };
+            // With the night an idle melder not hidden begins to meld, fading out over
+            // Shadowmeld's DataB: its timer and a listener, made after its object of the
+            // change, freed as the fade ends, when it hides (`FUN_6f51d0a0` on event
+            // 0xd01d6, `FUN_6f5067b0`; read: Echo Isles' Murloc Nightcrawlers at the
+            // first nightfall, each pair right after its object; provisional: the fade's
+            // length, as the day's).
+            if !day && !u.hidden {
+                if let Some((a, lvl)) = self.ability_with_code(h, codes::ability::SHADOW_MELD) {
+                    let idle = matches!(u.action, Action::Idle | Action::Hold) && u.swing.is_none() && u.casting.is_none();
+                    let hidden = u.buffs.iter().any(|b| b.ability == a);
+                    if idle && !hidden && u.extra.meld_fade_until.is_none() {
+                        let fade = self.data(a, "DataB", lvl);
+                        let mut slots = Vec::new();
+                        for c in [codes::class::CONTINUOUS_MODIFIER, codes::class::THRESHOLD_LISTENER] {
+                            let s = self.tags.take(c);
+                            self.tags.doom_at(now + fade as f64, s);
+                            slots.push(s);
+                        }
+                        let t = self.time;
+                        if let Some(u) = self.unit_mut(h) {
+                            u.extra.fade_slots = slots;
+                            u.extra.meld_fade_until = Some(t + fade);
+                        }
+                    }
+                }
+            }
+            let Some(u) = self.unit(h).filter(|u| !u.dead) else { continue };
             // With the night an idle creep that may sleep falls asleep at once
             // (measured: a creep made by day, after a night set by script, wakes making
             // its spells' timers when the day is set again).

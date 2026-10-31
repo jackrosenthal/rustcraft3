@@ -309,6 +309,9 @@ pub struct UnitExtra {
     pub meld_active_since: Option<f32>,
     #[serde(default)]
     pub meld_acting: bool,
+    /// When a meld begun at nightfall ends its fade and the melder hides.
+    #[serde(default)]
+    pub meld_fade_until: Option<f32>,
     /// A haunted mine's payout timer and the acolytes it last counted at work.
     #[serde(default)]
     pub payout: Option<(f32, u32)>,
@@ -772,6 +775,7 @@ impl Default for UnitExtra {
             pulse_in: None,
             meld_active_since: None,
             meld_acting: false,
+            meld_fade_until: None,
             aura_clock: None,
             payout: None,
             mine_holder: None,

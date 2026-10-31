@@ -412,11 +412,15 @@ impl World {
             let hidden = u.buffs.iter().any(|b| b.ability == a);
             if night && idle {
                 let (fade, act) = (self.data(a, "DataA", lvl), self.data(a, "DataC", lvl));
-                let ready = match u.extra.meld_active_since {
-                    None => true,
-                    Some(began) => self.time - u.extra.still_since.max(began + act) >= fade,
+                let ready = match (u.extra.meld_fade_until, u.extra.meld_active_since) {
+                    (Some(until), _) => self.time >= until,
+                    (None, None) => true,
+                    (None, Some(began)) => self.time - u.extra.still_since.max(began + act) >= fade,
                 };
                 self.unit_mut(h).unwrap().extra.meld_acting = false;
+                if ready {
+                    self.unit_mut(h).unwrap().extra.meld_fade_until = None;
+                }
                 if !hidden && ready {
                     let buff = self.first_buff(a, lvl);
                     self.apply_buff(h, Buff { id: buff, ability: a, level: lvl, caster: h, remaining: f32::INFINITY, invisible: true, ..Default::default() });
@@ -428,6 +432,7 @@ impl World {
                         u.extra.meld_acting = true;
                         u.extra.meld_active_since = Some(now);
                     }
+                    u.extra.meld_fade_until = None;
                     u.extra.still_since = now;
                     if hidden {
                         u.buffs.retain(|b| b.ability != a);

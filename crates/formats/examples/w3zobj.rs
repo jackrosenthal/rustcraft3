@@ -503,6 +503,11 @@ fn main() {
         let t: u32 = a[3].parse().unwrap();
         for o in all.iter().filter(|o| o.entry.tag == t) {
             println!("{} {} birth {}: {:?}", code(o.entry.kind), code(o.entry.family), o.entry.birth, o.first());
+            if std::env::var("SECOND").is_ok() {
+                let text = format!("{:?}", o.second());
+                // Event lists left out when empty.
+                println!("  second ({} bytes): {}", o.second.len(), text.replace(", []", "").replace("[], ", ""));
+            }
             if let Ok(w3_formats::w3z::First::Real { base, .. } | w3_formats::w3z::First::Flag { base, .. }) = o.first() {
                 let owner = base.object.links[0].3;
                 if let Some(p) = by_ref(owner) {

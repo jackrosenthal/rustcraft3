@@ -55,6 +55,9 @@ pub enum NativeResult {
     Sleep(f32),
     /// Abort the calling thread, as the game does on a fatal script error.
     Abort(String),
+    /// Keep the calling thread within the call for good, its arguments still pushed (as
+    /// the original's SaveGame does, a game loaded from the save keeping it too).
+    Suspend,
 }
 
 pub trait Host {
@@ -157,11 +160,19 @@ pub struct Thread {
     pub can_sleep: bool,
     /// A function to call as it first runs, with its arguments.
     entry: Option<(FuncId, Vec<Value>)>,
+    /// Kept within a native's call (`NativeResult::Suspend`): the arguments to pop as it
+    /// resumes.
+    #[serde(default)]
+    pub parked: Option<u32>,
+    /// Kept by its owner should it stop within a call though it may not sleep (a timer's
+    /// callback's: the timer keeps its thread, `FUN_6f2975c0`); it never goes on.
+    #[serde(default)]
+    pub kept: bool,
 }
 
 impl Default for Thread {
     fn default() -> Self {
-        Thread { place: 0, regs: vec![Reg::default(); 256], frames: Vec::new(), ip: None, returns: Vec::new(), ops: 0, can_sleep: false, entry: None }
+        Thread { place: 0, regs: vec![Reg::default(); 256], frames: Vec::new(), ip: None, returns: Vec::new(), ops: 0, can_sleep: false, entry: None, parked: None, kept: false }
     }
 }
 
@@ -547,6 +558,14 @@ impl Vm {
             t.frames.push(Frame::new(func, true));
             t.ip = Some(prog.funcs[k as usize].entry);
         }
+        if let Some(n) = t.parked.take() {
+            // Resumed from within a native's call: its arguments popped, its result none.
+            if let Some(f) = t.frames.last_mut() {
+                let k = f.stack.len().saturating_sub(n as usize);
+                f.stack.truncate(k);
+            }
+            t.regs[0] = Reg::default();
+        }
         let s = self.interpret(host, t);
         let finished = matches!(s, Status::Finished);
         let out = self.outcome(t, f, s);
@@ -568,6 +587,8 @@ impl Vm {
             Status::Sleep(secs) => {
                 if t.can_sleep {
                     Outcome::Sleeping(secs)
+                } else if t.kept {
+                    Outcome::Sleeping(f32::INFINITY)
                 } else {
                     // A thread that may not sleep (a timer's callback, an enumeration's,
                     // a filter) ends there, as the original's does (measured: a timer
@@ -862,6 +883,11 @@ impl Vm {
                     if std::mem::take(&mut self.snapshot_wanted) {
                         self.snapshot = Some(t.clone());
                     }
+                    if let NativeResult::Suspend = result {
+                        t.parked = Some(n as u32);
+                        t.ip = Some(ip as u32);
+                        return Status::Sleep(f32::INFINITY);
+                    }
                     if let Some(f) = t.frames.last_mut() {
                         f.stack.truncate(base);
                     }
@@ -877,6 +903,7 @@ impl Vm {
                             return Status::Sleep(secs);
                         }
                         NativeResult::Abort(e) => fail!("{e}"),
+                        NativeResult::Suspend => unreachable!(),
                     }
                 }
                 op::CALL => {

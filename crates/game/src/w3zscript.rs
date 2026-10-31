@@ -73,12 +73,13 @@ impl Game {
         }
     }
 
-    /// The map script's threads as saved: the one that called SaveGame (as it was in
-    /// the call), then those asleep (provisional: their order the places').
+    /// The map script's threads as saved, by place: those asleep (flag 1), those kept
+    /// within SaveGame (flag 0), and the one that called it last as it was in the call
+    /// (a timer's callback's, say, freed after it).
     pub fn saved_threads(&self) -> Vec<Thread> {
-        let mut out: Vec<Thread> = self.vm.snapshot.iter().map(|t| self.saved_thread(t, false)).collect();
-        for s in &self.world.sleepers {
-            out.push(self.saved_thread(&s.thread, true));
+        let mut out: Vec<Thread> = self.world.sleepers.iter().map(|s| self.saved_thread(&s.thread, s.thread.parked.is_none())).collect();
+        if let Some(t) = self.vm.snapshot.as_ref().filter(|t| !out.iter().any(|o| o.machine == t.place)) {
+            out.push(self.saved_thread(t, false));
         }
         out.sort_by_key(|t| t.machine);
         out

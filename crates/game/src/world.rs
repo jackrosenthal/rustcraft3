@@ -2102,7 +2102,9 @@ impl World {
         for (_, _, timer, callback) in expired {
             let ctx = EventCtx { timer, ..Default::default() };
             if let Some(f) = callback {
-                let t = vm.new_thread(f, &[], false);
+                let mut t = vm.new_thread(f, &[], false);
+                // The timer keeps its thread should it stop (a sleep, SaveGame), for good.
+                t.kept = true;
                 self.run_thread(vm, t, ctx.clone());
             }
             self.fire(vm, ctx, |_, k| matches!(k, EventKind::TimerExpire(t) if *t == timer));

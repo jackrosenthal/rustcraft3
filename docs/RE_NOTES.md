@@ -1951,6 +1951,19 @@ Formats the port made its own, to be replaced by the original's:
   test map's saves), the template's where it has one (provisional).  The original
   loads and plays the save written with it.  Not yet: the AI scripts' machines and
   threads (the template's).
+- SaveGame keeps the calling thread within the call for good: the save is written in
+  the call (its argument still pushed, its place past it), and the thread never goes
+  on, nor in a game loaded from the save (read: bbst10.w3z, saved at ten seconds by a
+  game that loaded bbst5.w3z, holds both saves' threads, each just past its SaveGame,
+  places 8 and 9).  A timer keeps its callback's thread should it stop
+  (`FUN_6f2975c0`, its +0x50: a sleep or SaveGame), where conditions' and filters'
+  threads are freed (`FUN_6f90d310`).  The port does both (`NativeResult::Suspend`,
+  `Thread::kept`): bbst's threads then agree.  A load re-counts every string the
+  script holds (each global's, each thread's register and pushed value, each sound's
+  label: Booty Bay's "QuestCompleted" two more for its two sounds) and gives a
+  handle global never set its type (bj_stockPickedItemType 0 to 7), as read in the
+  saves made after a load (bbq20, bbst10, bbsv20); not yet modeled when the port
+  loads an original's save.
 - The game state's other parts as the port writes them (`w3zstate.rs`), all the same
   as every test save's: CGameWar3's first (`FUN_6f1e8460`: 1, 1, the `+gam` object,
   three name tables in the order made, `FUN_6f1d6c60`: UnitUI.slk's unit names with

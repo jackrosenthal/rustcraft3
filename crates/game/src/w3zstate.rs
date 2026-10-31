@@ -160,7 +160,10 @@ impl World {
             Field::List(Vec::new()),
             doodads,
             Field::Word(1),
-            Field::Word(10000),
+            // The next multiple of 10 seconds in milliseconds, 5000 before the first
+            // frame (read: 5000 at 0, 10000 at 5, 20000 at 10, 30000 at 20 seconds;
+            // provisional).
+            Field::Word(if self.time < 0.001 { 5000 } else { ((self.time * 1000.0) as u32 / 10000 + 1) * 10000 }),
             Field::Word(0),
             Field::List(Vec::new()),
             Field::Word(0),

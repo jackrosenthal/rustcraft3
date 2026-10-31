@@ -1057,6 +1057,9 @@ impl World {
         for (slot, f) in self.pathing_system_records(accel_word, system_short) {
             records.entry(slot).or_insert(f);
         }
+        for (slot, f) in self.game_object_records() {
+            records.entry(slot).or_insert(f);
+        }
         // W3Z_COVERAGE: by kind, the objects whose first and second records are the
         // template's still.
         let mut kept: std::collections::BTreeMap<String, (u32, u32, u32)> = Default::default();
@@ -1099,6 +1102,45 @@ impl World {
             }
         }
         s
+    }
+
+    /// The game's object (`+gam`, CGameWar3's agent) and its five properties: two flags
+    /// (0), the time of day (a continuous real: the time as last set and the main
+    /// clock then, its rate, 0 and 24; its two listeners, the `` `rcm `` and `` `rtl ``
+    /// of the day's change, linked), the time's scale, and a flag (1).  The agent's last
+    /// two links name the listeners too.  Provisional: the flags.
+    pub fn game_object_records(&self) -> Vec<(u32, First)> {
+        let game = self.game_object();
+        let mut props: Vec<(u32, u32)> = self.tags.live.iter().filter(|&(&s, (c, _))| s > game.0 && s <= game.0 + 5 && matches!(c, b"`flg" | b"`rel")).map(|(&s, (_, b))| (s, *b)).collect();
+        props.sort();
+        if props.len() != 5 {
+            return Vec::new();
+        }
+        let listeners: Vec<(u32, u32)> = self.time_of_day_listeners.iter().flatten().filter(|s| self.tags.live.contains_key(s)).map(|&s| self.tagged(s)).collect();
+        let link = |k: usize| listeners.get(k).map_or(Link(NONE, 0), |&r| Link(rf(r), 0));
+        let mut out = Vec::new();
+        let hours = self.misc_f32("DayHours", 24.0);
+        let rate = hours / self.misc_f32("DayLength", 480.0) * self.time_of_day_scale;
+        for k in 0..5 {
+            let mut base = listed_property_base(&props, k, game);
+            let f = match k {
+                2 => {
+                    base.real = f32::from_bits(self.time_of_day_set.1);
+                    base.links = [0, 1].map(|j| listeners.get(j).map_or(Link(NONE, 0), |&r| Link(rf(r), 1)));
+                    First::Real { base, values: [self.time_of_day_set.0, rate, 0.0, hours] }
+                }
+                3 => First::Real { base, values: [self.time_of_day_scale, 0.0, -f32::MAX, f32::MAX] },
+                _ => First::Flag { base, value: u32::from(k == 4) },
+            };
+            out.push((props[k].0, f));
+        }
+        let mut first = agent_first(game, b"+gam", &props);
+        if let First::Agent { links, .. } = &mut first {
+            links[2] = link(0);
+            links[3] = link(1);
+        }
+        out.push((game.0, first));
+        out
     }
 
     /// The pathing system's objects' first records: the two pathing maps' and the four
@@ -1683,7 +1725,7 @@ impl World {
                 }
             }
             // The agents with no properties, and the pathing system's objects.
-            for (name, recs) in [("plain agents", self.plain_agent_records()), ("pathing system objects", self.pathing_system_records(48, 0))] {
+            for (name, recs) in [("plain agents", self.plain_agent_records()), ("pathing system objects", self.pathing_system_records(48, 0)), ("game object", self.game_object_records())] {
                 let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();
                 let (mut same, mut differ, mut first) = (0, 0, None);
                 for (slot, f) in recs {

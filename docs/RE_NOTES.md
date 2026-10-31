@@ -1994,6 +1994,17 @@ Formats the port made its own, to be replaced by the original's:
   haunted mine's MineDomeLoop in bbst10; not yet); the hashtables' none (not yet
   written when a game has some: they keep their entries' order, the port's maps
   none).
+- The game's object (`+gam`, slot 641) has five properties: flags 0 and 1 (0), the
+  time of day (a continuous `` `rel ``: the time as last set and the main clock then,
+  8 at 0 on the quiet test map, 15.5 at 0.99999905 after bbst's SetTimeOfDay at one
+  second; its rate, 0.05 hours a second times the scale; 0 and 24; linked to the
+  time's monitor and listener, the `` `rcm `` and `` `rtl `` the engine makes after
+  main, `FUN_6f28bc9d`, which the agent's last two links name too), the scale (1,
+  unbounded), and flag 4 (1).  The port writes them, all six agreeing.  The pathing
+  system's objects: `^pma` and `^ama` have no records, `l^sy` names the pathing map
+  and a short counting its work, `l^ac` its four grids, an empty queue of 256, and a
+  word counting its work (48 and 0 on the quiet test map; 268 and 10 by bbst's
+  five seconds: not yet counted, the template's).
 - The fog of war's part (CFogOfWarMap, `FUN_6f250d00`; made in `FUN_6f250ae0`): two
   bytes, its width and height in cells (128 units), its rows' stride (the width's
   next power of two: 256 on Booty Bay) and that power, then four grids of shorts,

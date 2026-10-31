@@ -225,6 +225,14 @@ pub struct World {
     #[serde(default)]
     pub time_of_day_exact: f64,
     pub time_of_day_scale: f32,
+    /// The time of day as last set (SetFloatGameState), and the main clock's bits then:
+    /// the game's continuous real keeps these (`+gam`'s `` `rel `` 2).
+    #[serde(default)]
+    pub time_of_day_set: (f32, u32),
+    /// The time of day's monitor and listener (`` `rcm ``, `` `rtl ``, made after main),
+    /// which its real links (provisional: whether setting it later remakes them).
+    #[serde(default)]
+    pub time_of_day_listeners: [Option<u32>; 2],
     /// SuspendTimeOfDay: the day's clock stands still.
     #[serde(default)]
     pub time_of_day_suspended: bool,
@@ -821,6 +829,8 @@ impl World {
             time_of_day_clock: 0.0,
             time_of_day_exact: 0.0,
             time_of_day_scale: 1.0,
+            time_of_day_set: (0.0, 0),
+            time_of_day_listeners: [None; 2],
             time_of_day_suspended: false,
             cheat_flags: 0,
             network: false,

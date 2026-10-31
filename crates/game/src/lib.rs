@@ -555,7 +555,10 @@ impl Game {
         // (With three counts of the property module's before its modifier and one after
         // its listener, `FUN_6f161800` from `FUN_6f28bc9d`'s making of them; traced.)
         self.world.tags.bump_prop(3, "setp");
-        self.world.tags.take_all(&[b"`rcm", b"`rtl"]);
+        // (The time of day's monitor and listener, which its real links.)
+        let rcm = self.world.tags.take(b"`rcm");
+        let rtl = self.world.tags.take(b"`rtl");
+        self.world.time_of_day_listeners = [Some(rcm), Some(rtl)];
         self.world.tags.bump_prop(1, "setq");
         // The game's two periodic timers, events 0x80269 and 0x8026a (`FUN_6f28ba80`,
         // `FUN_6f28bac0`, as `FUN_6f1e5a10` ends the setup; traced: the quiet test map's

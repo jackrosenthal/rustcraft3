@@ -201,6 +201,10 @@ impl Tags {
         });
         let birth = self.born;
         self.born += 1;
+        // W3_TAGBT=<birth>: where the object of that birth is made.
+        if std::env::var("W3_TAGBT").ok().and_then(|v| v.parse::<u32>().ok()) == Some(birth) {
+            eprintln!("tag {birth} {}: {}", String::from_utf8_lossy(code), std::backtrace::Backtrace::force_capture());
+        }
         self.live.insert(t, (*code, birth));
         let n = match code {
             b"`rcm" | b"+ord" | b"task" | b"tskA" => 1,

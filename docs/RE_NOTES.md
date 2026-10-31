@@ -2345,6 +2345,12 @@ Formats the port made its own, to be replaced by the original's:
   turned to the goal; the original's walk ends as soon as the goal itself is within
   reach (`FUN_6f16fbd0` tests arrival against a point apart from the waypoint it steers
   by; which point, read only so: provisional).  With it Gnoll Wood agrees for all 3752
+  turns captured.  Emerald Gardens (twelve players, ten slots closed) differed from the
+  load: the port had twenty objects more, a `` `rtl `` after each of twenty Mur'gul
+  Snarecasters' making (the census at the start, `abtest/run.sh`).  Their mana set to
+  none by the map's script, the port re-armed their Slow's listener as it does a mud
+  golem's; but they are made asleep (units are made at midnight, before melee sets
+  8:00), and a creep asleep re-arms none.  With it Emerald Gardens agrees for all 3753
   turns captured.
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global

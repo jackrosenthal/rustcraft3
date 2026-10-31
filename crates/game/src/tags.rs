@@ -1070,10 +1070,12 @@ impl crate::world::World {
     /// make a timer the first time (measured: Booty Bay's two Granite Golems take two
     /// after SetUnitState sets their mana to 0, and creeps with other spells none).
     pub(crate) fn mana_changed(&mut self, h: u32) {
-        let Some(u) = self.unit(h).filter(|u| !u.extra.mana_watched) else { return };
         // (Read: the quiet test map's golems' Hurl Boulder and Thunder Clap, and
         // Harrow's mud golems' Slow, each their mana set to none by the map's script;
-        // its gnoll wardens' Purge none.)
+        // its gnoll wardens' Purge none.)  A creep asleep makes none (read: Emerald
+        // Gardens' Mur'gul Snarecasters, made asleep and their mana set to none, their
+        // Slow the mud golems').
+        let Some(u) = self.unit(h).filter(|u| !u.extra.mana_watched && !u.extra.sleeping) else { return };
         let costs: Vec<f32> = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a).filter(|o| matches!(o.str("code").trim(), codes::ability::THUNDER_BOLT_CREEP | codes::ability::THUNDER_CLAP_CREEP | codes::ability::SLOW)).map(|o| o.level_real("Cost", 1))).collect();
         if costs.is_empty() {
             return;

@@ -603,7 +603,10 @@ impl World {
         let Some(u) = self.unit(h) else { return };
         let (owner, x, y) = (u.owner, u.x, u.y);
         let range = self.ability_with_code(h, codes::ability::BURROW_DETECTION_FLYERS).map_or(900.0, |(a, l)| self.ability_real(a, "Rng", l).max(900.0));
-        let found: Vec<u32> = self.unit_order.iter().copied().filter(|&o| o != h && self.unit(o).is_some_and(|t| !t.dead && (t.x - x).hypot(t.y - y) <= range && !t.extra.detected_by.iter().any(|d| d.0 == owner))).collect();
+        // (Within its range of the unit's collision circle: read, Plunder Isle's red
+        // drake's first look finding a gnoll 920.9 away, its collision 32, and not one
+        // 933.5 away.)
+        let found: Vec<u32> = self.unit_order.iter().copied().filter(|&o| o != h && self.unit(o).is_some_and(|t| !t.dead && (t.x - x).hypot(t.y - y) <= range + t.collision && !t.extra.detected_by.iter().any(|d| d.0 == owner))).collect();
         for o in found {
             let s = self.tags.take(codes::class::DETECTION);
             if let Some(t) = self.unit_mut(o) {
@@ -904,8 +907,10 @@ impl World {
                 .iter()
                 .copied()
                 .filter(|&t| {
-                    // Without an area (Engineering Upgrade) only the bearer.
-                    (area > 0.0 || t == src) && self.unit(t).is_some_and(|u| !u.dead && !u.is_building && (u.x - x).hypot(u.y - y) <= area && reach.is_none_or(|enemies| crate::natives::players::is_ally(self, owner, u.owner) != enemies && !(neutral_out && u.owner == crate::types::PLAYER_NEUTRAL_PASSIVE && owner != u.owner)) && self.aura_serves(&code, u.type_id))
+                    // Without an area (Engineering Upgrade) only the bearer; within it of
+                    // the unit's collision circle (read: Plunder Isle's Command Aura on a
+                    // red drake 936.6 away, its collision 48).
+                    (area > 0.0 || t == src) && self.unit(t).is_some_and(|u| !u.dead && !u.is_building && (u.x - x).hypot(u.y - y) <= area + if area > 0.0 { u.collision } else { 0.0 } && reach.is_none_or(|enemies| crate::natives::players::is_ally(self, owner, u.owner) != enemies && !(neutral_out && u.owner == crate::types::PLAYER_NEUTRAL_PASSIVE && owner != u.owner)) && self.aura_serves(&code, u.type_id))
                 })
                 .collect();
             // (Laid in the reverse of the order a search of the map finds them,

@@ -2167,9 +2167,17 @@ Formats the port made its own, to be replaced by the original's:
   The tick's orders' frees come after the AI and before the structures' alarm watch
   (the necropolis's `` `pil ``).  The port does all this (`AI_HARVEST`, `AI_BUILD`,
   `World::ai_order_objects`, `ai_build_objects`, `train_by`): the keepalives with the
-  computer agree to turn 4.  Next, turn 4's: the third acolyte at its slot frees its
-  last two target tasks, makes its harvest's `` `rcm `` and `` `rtl ``, and after the
-  alarm's `` `pil `` its path and cluster.  In
+  computer agree to turn 4.  An acolyte's harvest walk ends as it comes within Aaha's
+  Rng (200) of the mine between their collision circles (288.6 from the mine's center
+  as it began, 200.6 after its first step, in range after its second): its last two
+  target tasks go; the mine's payout makes its `` `rcm `` and `` `rtl `` for its first
+  worker (`FUN_6f4e9650`, `FUN_6f4e9560`, read in the backtrace); its path and cluster
+  go as the next movement step starts (the third acolyte's in its own turn after the
+  alarm's `` `pil ``, the second's, ending in turn 8's last step, in turn 9).  The port
+  ends the walk so (`World::acolyte_in_range`), its path and cluster at the tick's end
+  for now: the keepalives agree to turn 8.  Next: the acolytes' walks by the movement
+  steps (`walk_steps`), so that a walk ending in a turn's last step frees its path in
+  the next.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

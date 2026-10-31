@@ -118,6 +118,10 @@ pub struct Tags {
     /// Each Unholy Aura buff's modifier (`` `rcm ``), by the buff's slot.
     #[serde(default)]
     pub buff_modifiers: std::collections::HashMap<u32, u32>,
+    /// Objects to free at the tick's end, after the structures' alarm watch (an AI
+    /// worker's walk to its mine slot ended in the tick).
+    #[serde(default)]
+    pub tick_end: Vec<u32>,
     /// The buffs that listen to their owner's tech tree changes (Command, War Drums, and
     /// Trueshot Aura's), each its slot and its unit's owner, in the order made.
     #[serde(default)]
@@ -213,7 +217,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), player_ai_timers: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), aura_dues: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), buff_modifiers: Default::default(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), dead_handles: Default::default(), game_freed_keys: Vec::new(), game_timers: [0; 2], game_timers_clock: 0, save_clock: None, event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), player_ai_timers: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), aura_dues: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), buff_modifiers: Default::default(), tick_end: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), dead_handles: Default::default(), game_freed_keys: Vec::new(), game_timers: [0; 2], game_timers_clock: 0, save_clock: None, event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.

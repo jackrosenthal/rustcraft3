@@ -315,7 +315,9 @@ impl World {
             if need {
                 self.path_to(h, (sx, sy));
             }
-            if !self.walk(h, dt) {
+            let walked = self.walk(h, dt);
+            self.acolyte_in_range(h, mine);
+            if !walked {
                 return;
             }
             if let Some(u) = self.unit_mut(h) {
@@ -323,11 +325,47 @@ impl World {
                 u.y = sy;
             }
         }
+        self.acolyte_in_range(h, mine);
         // At its slot it works; the mine pays (haunted_mine_payouts).
         let u = self.unit_mut(h).unwrap();
         crate::sim::turn(u, face, dt);
         crate::sim::set_anim(u, "stand work gold");
         u.work_timer = 0.0;
+    }
+
+    /// An AI's harvest order's walk ends as its acolyte comes within its harvest's range
+    /// (Aaha's Rng, 200) of the mine, between their collision circles: its last two
+    /// target tasks go, the mine's payout makes its `` `rcm `` and `` `rtl `` (its first
+    /// worker's; `FUN_6f4e9650`, `FUN_6f4e9560`), and the walk's path and cluster go at
+    /// the tick's end; the acolyte then goes on to its ring slot (traced: Forestwalk's
+    /// undead computer's third acolyte in the network game's turn 4, 288.6 from the
+    /// mine's center as it began; provisional: an acolyte not the AI's, and those
+    /// after the first).
+    fn acolyte_in_range(&mut self, h: u32, mine: u32) {
+        let Some(u) = self.unit(h) else { return };
+        if u.extra.ai_order.len() != crate::ai::AI_HARVEST.len() {
+            return;
+        }
+        let Some(m) = self.unit(mine) else { return };
+        let range = self.ability_with_code(h, codes::ability::ACOLYTE_HARVEST).map_or(200.0, |(a, l)| self.ability_real(a, "Rng", l));
+        if (u.x - m.x).hypot(u.y - m.y) - m.collision - u.collision > range {
+            return;
+        }
+        let order = u.extra.ai_order.clone();
+        let first = m.extra.ai_order.is_empty();
+        self.tags.release(order[10]);
+        self.tags.release(order[9]);
+        if first {
+            let rcm = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
+            let rtl = self.tags.take(codes::class::THRESHOLD_LISTENER);
+            if let Some(m) = self.unit_mut(mine) {
+                m.extra.ai_order = vec![rcm, rtl];
+            }
+        }
+        self.tags.tick_end.extend([order[17], order[16]]);
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.ai_order = order[3..=8].to_vec();
+        }
     }
 
     /// Haunted mines pay their owners DataA gold at a time, as one timer per mine whose

@@ -2076,6 +2076,9 @@ impl World {
         // undead computer's first watch's `` `pil `` after its AI's 0.1-second wake and
         // its orders' frees, in the same turn).
         self.alarms(dt);
+        for s in std::mem::take(&mut self.tags.tick_end) {
+            self.tags.release(s);
+        }
         self.ai_zeppelin_tick(vm);
         self.sweep_handles(vm, dt);
         prof!(self, "update_rescue", self.update_rescue());

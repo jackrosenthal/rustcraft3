@@ -326,7 +326,8 @@ pub struct UnitExtra {
     /// When a meld begun at nightfall ends its fade and the melder hides.
     #[serde(default)]
     pub meld_fade_until: Option<f32>,
-    /// A haunted mine's payout timer and the acolytes it last counted at work.
+    /// A haunted mine's next payout, due on the main clock (seconds since the game
+    /// began), and the workers it last counted at work.
     #[serde(default)]
     pub payout: Option<(f32, u32)>,
     /// A gold mine's holder: the player whose workers are in it, until when (infinite

@@ -801,7 +801,11 @@ impl World {
             if !on_wood(self, h) {
                 if let Some(t) = tree_near(self, h) {
                     self.ai_wood_objects(p, h);
+                    // The worker's own lumber order is the AI's order's last 17 (its run's,
+                    // `World::start_gold_run`).
+                    self.run_order_made = self.unit(h).filter(|u| u.extra.ai_order.len() == AI_WOOD.len()).map(|u| u.extra.ai_order[3..].to_vec());
                     self.order_unit(h, harvest, 0.0, 0.0, t);
+                    self.run_order_made = None;
                 }
             }
         }

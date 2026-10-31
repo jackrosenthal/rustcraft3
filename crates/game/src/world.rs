@@ -223,6 +223,11 @@ pub struct World {
     /// (`World::build_step_arrive`).
     #[serde(skip)]
     pub making_clock: Option<(f64, f64)>,
+    /// A harvest order's objects already made (an AI's wood order's, the worker's own
+    /// lumber order's 17 after the AI's three), for the run it starts
+    /// (`World::start_gold_run`).
+    #[serde(skip)]
+    pub run_order_made: Option<Vec<u32>>,
     /// The main clock in seconds since the game began (across its settings back) when
     /// the time of day last moved on.
     #[serde(default)]
@@ -833,6 +838,7 @@ impl World {
             daytime: false,
             exec_at_tick_end: false,
             making_clock: None,
+            run_order_made: None,
             time_of_day_clock: 0.0,
             time_of_day_exact: 0.0,
             time_of_day_scale: 1.0,

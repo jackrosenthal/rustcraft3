@@ -367,7 +367,53 @@ impl World {
         // at 0.3 seconds, 4.4 cells from its slot, there at 0.4, its heading the mine's
         // bearing; the second likewise between 0.7 and 0.8).
         self.acolyte_to_slot(h, mine);
+        // Its mine's payout counts it from this step (`FUN_6f4e9560`).
+        let k = self.step_range.0;
+        if let Some((t, _)) = self.step_abs(k) {
+            self.mine_workers_changed(mine, t);
+        }
         true
+    }
+
+    /// A mine's payout terms: the workers at work there, the gold of a payout, and the
+    /// period with one worker (a haunted mine's Abgm DataB times DataC, the acolytes on
+    /// its ring slots; an entangled mine's Aegm DataB times its capacity, the wisps
+    /// inside).
+    fn mine_payout_terms(&self, mine: u32) -> Option<(u32, i32, f32)> {
+        if let Some((aegm, lvl)) = self.ability_with_code(mine, codes::ability::ENTANGLED_GOLD_MINE) {
+            let capacity = self.ability_with_code(mine, codes::ability::CARGO_HOLD_GOLD_MINE).map_or(5, |(a, l)| self.objects.abilities.get(a).map_or(5.0, |o| o.level_real("DataA", l)) as u32).max(1);
+            let a = self.objects.abilities.get(aegm);
+            let working = self.unit(mine).map_or(0, |m| m.inside);
+            return Some((working, a.map_or(10.0, |a| a.level_real("DataA", lvl)) as i32, a.map_or(1.0, |a| a.level_real("DataB", lvl)) * capacity as f32));
+        }
+        let (abgm, lvl) = self.ability_with_code(mine, codes::ability::BLIGHTED_GOLD_MINE)?;
+        let slots = self.mine_slots(mine);
+        let working = self
+            .unit_order
+            .iter()
+            .filter(|&&o| {
+                self.unit(o).is_some_and(|u| {
+                    !u.dead && matches!(u.action, Action::Harvest { target } if target == mine) && u.extra.mine_slot.and_then(|k| slots.get(k).copied().flatten()).is_some_and(|(sx, sy, _)| (u.x - sx).hypot(u.y - sy) <= 8.0)
+                })
+            })
+            .count() as u32;
+        let a = self.objects.abilities.get(abgm);
+        Some((working, a.map_or(10.0, |a| a.level_real("DataA", lvl)) as i32, a.map_or(1.0, |a| a.level_real("DataB", lvl)) * a.map_or(5.0, |a| a.level_real("DataC", lvl)).max(1.0)))
+    }
+
+    /// The workers at a mine counted again at main clock `t`: its payout's time left is
+    /// scaled to the new period, or a first period begins.
+    fn mine_workers_changed(&mut self, mine: u32, t: f64) {
+        let Some((working, _, base)) = self.mine_payout_terms(mine) else { return };
+        let period = |n: u32| base as f64 / n.max(1) as f64;
+        let Some(m) = self.unit_mut(mine) else { return };
+        let (due, was) = m.extra.payout.map_or((0.0, 0), |(d, w)| (d as f64, w));
+        m.extra.payout = match (was, working) {
+            (_, 0) => None,
+            (0, n) => Some(((t + period(n)) as f32, n)),
+            (w, n) if w != n => Some(((t + (due - t) * period(n) / period(w)) as f32, n)),
+            _ => m.extra.payout,
+        };
     }
 
     /// An acolyte arrived at its haunted mine taking the nearest free ring slot.
@@ -450,54 +496,50 @@ impl World {
             .copied()
             .filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.constructing.is_none()) && (self.ability_with_code(h, codes::ability::BLIGHTED_GOLD_MINE).is_some() || self.ability_with_code(h, codes::ability::ENTANGLED_GOLD_MINE).is_some()))
             .collect();
+        // Due on the main clock: a change of workers not seen at a step counts from the
+        // tick's start; a payout falls in the tick whose last main tick reaches it.
+        let n = self.tick_clocks.1.len();
+        let start = self.tick_abs(0).unwrap_or(self.time as f64 - dt as f64);
+        let end = n.checked_sub(2).and_then(|i| self.tick_abs(i)).unwrap_or(self.time as f64);
         for mine in mines {
-            let (working, per, base) = if let Some((aegm, lvl)) = self.ability_with_code(mine, codes::ability::ENTANGLED_GOLD_MINE) {
-                let capacity = self.ability_with_code(mine, codes::ability::CARGO_HOLD_GOLD_MINE).map_or(5, |(a, l)| self.objects.abilities.get(a).map_or(5.0, |o| o.level_real("DataA", l)) as u32).max(1);
-                let a = self.objects.abilities.get(aegm);
-                let working = self.unit(mine).map_or(0, |m| m.inside);
-                (working, a.map_or(10.0, |a| a.level_real("DataA", lvl)) as i32, a.map_or(1.0, |a| a.level_real("DataB", lvl)) * capacity as f32)
-            } else {
-                let slots = self.mine_slots(mine);
-                let working = self
-                    .unit_order
-                    .iter()
-                    .filter(|&&o| {
-                        self.unit(o).is_some_and(|u| {
-                            !u.dead && matches!(u.action, Action::Harvest { target } if target == mine) && u.extra.mine_slot.and_then(|k| slots.get(k).copied().flatten()).is_some_and(|(sx, sy, _)| (u.x - sx).hypot(u.y - sy) <= 8.0)
-                        })
-                    })
-                    .count() as u32;
-                let (abgm, lvl) = self.ability_with_code(mine, codes::ability::BLIGHTED_GOLD_MINE).unwrap();
-                let a = self.objects.abilities.get(abgm);
-                (working, a.map_or(10.0, |a| a.level_real("DataA", lvl)) as i32, a.map_or(1.0, |a| a.level_real("DataB", lvl)) * a.map_or(5.0, |a| a.level_real("DataC", lvl)).max(1.0))
-            };
-            let period = |n: u32| base / n.max(1) as f32;
-            let Some(m) = self.unit_mut(mine) else { continue };
-            let (mut left, was) = m.extra.payout.unwrap_or((0.0, 0));
-            if working == 0 {
-                m.extra.payout = None;
-                continue;
+            let Some((working, per, base)) = self.mine_payout_terms(mine) else { continue };
+            let period = |n: u32| base as f64 / n.max(1) as f64;
+            if self.unit(mine).and_then(|m| m.extra.payout).map_or(0, |p| p.1) != working {
+                self.mine_workers_changed(mine, start);
             }
-            if was == 0 {
-                left = period(working);
-            } else if was != working {
-                left *= period(working) / period(was);
-            }
-            left -= dt;
-            let owner = m.owner;
+            let Some((due, working)) = self.unit(mine).and_then(|m| m.extra.payout) else { continue };
+            let mut due = due as f64;
+            let owner = self.unit(mine).map_or(0, |m| m.owner);
             let mut pays = 0;
-            while left <= 0.0 {
+            while due <= end {
                 pays += 1;
-                left += period(working);
+                due += period(working);
             }
             if let Some(m) = self.unit_mut(mine) {
-                m.extra.payout = Some((left, working));
+                m.extra.payout = Some((due as f32, working));
             }
             let per = if self.slow_chopping(owner) { 1 } else { per };
+            let haunted = self.ability_with_code(mine, codes::ability::BLIGHTED_GOLD_MINE).is_some();
             for _ in 0..pays {
+                let left = self.unit(mine).map_or(0, |m| m.resource);
                 let got = self.take_gold(vm, mine, mine, per);
                 if got > 0 {
                     self.gather(owner, mine, got, 0, 0.0);
+                }
+                // With gold left after it, a haunted mine's next payout is a new modifier
+                // and threshold listener, the old ones then freed (`FUN_6f4efa20`,
+                // `FUN_6f4e9650`, event 0xd01c4; read: Forestwalk's undead computer's
+                // mine paying at 3.1 seconds, its pair made at its first acolyte's
+                // arrival freed after the new one's).
+                let pair = self.unit(mine).map(|m| m.extra.ai_order.clone()).unwrap_or_default();
+                if haunted && left > per && pair.len() == 2 {
+                    let rcm = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
+                    let rtl = self.tags.take(codes::class::THRESHOLD_LISTENER);
+                    self.tags.release(pair[0]);
+                    self.tags.release(pair[1]);
+                    if let Some(m) = self.unit_mut(mine) {
+                        m.extra.ai_order = vec![rcm, rtl];
+                    }
                 }
             }
         }

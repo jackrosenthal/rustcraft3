@@ -2320,7 +2320,23 @@ Formats the port made its own, to be replaced by the original's:
   (+0x194) is 0, 5, 6, or 3 but for a peasant, none of the acolytes then (one
   summoning, two mining; the crypt's acolyte had been walking to the mine); the
   port's skips a worker whose order has yet to end or that is at its mine
-  (provisional: the states' meanings).  The keepalives agree to turn 31.  In
+  (provisional: the states' meanings).  The keepalives agree to turn 31.
+  In turn 31 the haunted mine pays (CAbilityPossessedGoldMine's event 0xd01c4,
+  `FUN_6f4efa20`): with gold left it makes a new `` `rcm `` and `` `rtl ``
+  (`FUN_6f4e9650`), the pair made at its first acolyte's arrival freed right after;
+  its period is DataB over the share of its ring slots at work, by the engine's
+  division (`FUN_6f4e8c30`: 1 / (2 / 5), 2.5000002, saved in its record), counted
+  on the main clock from the acolytes' arrival steps (`World::mine_workers_changed`):
+  2.5 + (0.4 + 0.8) / 2 brings it in turn 31.  In turn 32 the ghoul's lumber
+  harvest (CAbilityHarvestLumber, event 0xd0184, `FUN_6f4377d0`) finds its walk
+  ended short of its tree and walks to reach it (`REACH`): an AI's wood order is the
+  AI's three objects then the worker's own lumber order, so the port's AI ghoul now
+  harvests by the engine's lumber run (`World::start_gold_run` taking the AI's
+  objects, `run_order_made`; Ahrl's fields as Ahar's).  Its reach falls a turn early
+  in the port: the original's ghoul, by single-player saves (1.0 to 3.1 seconds),
+  walks home from 1.0 at 113 degrees and turns for the tree by 1.2 (heading 0.10989),
+  where the port's way home differs (the open item above); at 2.5 the two are 0.1
+  cells apart.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

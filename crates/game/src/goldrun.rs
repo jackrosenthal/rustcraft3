@@ -206,9 +206,16 @@ fn chops_times(start: u32, point: u32, back: u32, dur: u32, chops: u32, wrap: Op
 impl World {
     /// Whether a worker's harvest of `target` runs as the original's engine does: a
     /// ground worker gathering with Ahar from a gold mine (Agld) or a tree.
+    /// A worker's harvest ability for a run: Ahar, else a lumber-only one (Ahrl, a
+    /// ghoul's), whose fields for lumber are Ahar's (the original's CAbilityHarvestLumber
+    /// serving both).
+    pub(crate) fn run_harvest(&self, h: u32) -> Option<(crate::objects::Id, u32)> {
+        self.ability_with_code(h, codes::ability::HARVEST).or_else(|| self.ability_with_code(h, codes::ability::HARVEST_LUMBER))
+    }
+
     pub fn gold_run_eligible(&self, h: u32, target: u32) -> bool {
         self.pathing.is_some()
-            && self.ability_with_code(h, codes::ability::HARVEST).is_some()
+            && (self.ability_with_code(h, codes::ability::HARVEST).is_some() || self.is_tree_pub(target) && self.ability_with_code(h, codes::ability::HARVEST_LUMBER).is_some())
             && self.ability_with_code(h, codes::ability::ACOLYTE_HARVEST).is_none()
             && self.ability_with_code(h, codes::ability::WISP_HARVEST).is_none()
             && (self.unit(target).is_some_and(|m| !m.dead && !m.hidden && !m.pathing_cells.is_empty()) && self.ability_with_code(target, codes::ability::GOLD_MINE).is_some()
@@ -242,20 +249,28 @@ impl World {
         // tick a worker left the mine and ended before the worker's walk home, freed
         // before the worker's arrival).
         let serial = self.tags.born;
-        let order: Vec<u32> = codes.iter().map(|c| self.tags.take(c)).collect();
-        // Its `^clg` at once; the block at its head (a player's) and the last five
-        // before it, the first of them its closing block, as the next turn starts or
-        // with the tick's orders (read: a tree's order 1, 13, 12, 11, and 10).
-        let n = order.len();
-        self.tags.release(order[n - 3]);
-        let five: [usize; 5] = if player { [1, n - 4, n - 5, n - 6, n - 7] } else { [n - 4, n - 5, n - 6, n - 7, n - 8] };
-        for k in five {
-            if player {
-                self.tags.doom(order[k]);
-            } else {
-                self.tags.issued.push(order[k]);
+        // (An AI's order makes them itself: `World::ai_wood_objects`.)
+        let order: Vec<u32> = match self.run_order_made.take() {
+            Some(order) => order,
+            None => {
+                let order: Vec<u32> = codes.iter().map(|c| self.tags.take(c)).collect();
+                // Its `^clg` at once; the block at its head (a player's) and the last
+                // five before it, the first of them its closing block, as the next turn
+                // starts or with the tick's orders (read: a tree's order 1, 13, 12, 11,
+                // and 10).
+                let n = order.len();
+                self.tags.release(order[n - 3]);
+                let five: [usize; 5] = if player { [1, n - 4, n - 5, n - 6, n - 7] } else { [n - 4, n - 5, n - 6, n - 7, n - 8] };
+                for k in five {
+                    if player {
+                        self.tags.doom(order[k]);
+                    } else {
+                        self.tags.issued.push(order[k]);
+                    }
+                }
+                order
             }
-        }
+        };
         let old = self.unit(h).and_then(|u| u.extra.gold_run.clone());
         let run = match old {
             Some(mut r) => {
@@ -481,7 +496,7 @@ impl World {
             .filter_map(|n| crate::sim::weapon_n(self, u.type_id, n))
             .find(|w| w.targets.contains("tree"))
             .map_or((0.5, 0.5), |w| (w.damage_point, w.backswing));
-        let (dur, per, cap) = match self.ability_with_code(h, codes::ability::HARVEST) {
+        let (dur, per, cap) = match self.run_harvest(h) {
             Some((a, l)) => (self.ability_real(a, "Dur", l), self.ability_real(a, "DataA", l) as i32, self.ability_real(a, "DataB", l) as i32 + self.upgrade_bonus(u.owner, u.type_id).lumber),
             None => (1.1, 1, 10),
         };
@@ -524,7 +539,7 @@ impl World {
     /// the order home's 12 to 8).
     pub fn leave_tree(&mut self, h: u32, k: usize) {
         let Some(mut run) = self.unit(h).and_then(|u| u.extra.gold_run.clone()) else { return };
-        let (per, cap) = match self.ability_with_code(h, codes::ability::HARVEST) {
+        let (per, cap) = match self.run_harvest(h) {
             Some((a, l)) => (self.ability_real(a, "DataA", l) as i32, self.ability_real(a, "DataB", l) as i32),
             None => (1, 10),
         };
@@ -771,7 +786,7 @@ impl World {
     /// way the local search finds to its footprint.
     fn next_tree(&self, h: u32, felled: u32) -> Option<u32> {
         let (fx, fy) = self.widget_pos(felled)?;
-        let area = self.ability_with_code(h, codes::ability::HARVEST).map_or(900.0, |(a, l)| self.ability_real(a, "Area", l));
+        let area = self.run_harvest(h).map_or(900.0, |(a, l)| self.ability_real(a, "Area", l));
         let p = self.pathing.as_ref()?;
         let u = self.unit(h)?;
         struct Open<'a>(&'a crate::pathing::PathingMap, crate::pathing::Move);
@@ -904,7 +919,7 @@ impl World {
         let cell = |w: f32, o: f32| ef::div(ef::sub(w.to_bits(), o.to_bits()), crate::pathing::CELL.to_bits());
         let (tx, ty) = self.widget_pos(r.mine)?;
         let tree = (cell(tx, origin[0]), cell(ty, origin[1]));
-        let (a, l) = self.ability_with_code(h, codes::ability::HARVEST)?;
+        let (a, l) = self.run_harvest(h)?;
         let range = ef::add(ef::div(self.ability_real(a, "Rng", l).to_bits(), crate::pathing::CELL.to_bits()), ef::div(u.collision.to_bits(), crate::pathing::CELL.to_bits()));
         if !m.within(tree, range, clock) {
             return None;

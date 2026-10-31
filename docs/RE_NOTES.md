@@ -2305,7 +2305,13 @@ Formats the port made its own, to be replaced by the original's:
   ones: the original's shuffle (`FUN_6f1d1460`, teams together's and random
   placement's) swaps each entry from the second on with one at or before it, where the
   port walked back from the last (the same on two start locations, one swap).  With
-  it Lost Temple agrees for all 1804 turns captured.
+  it Lost Temple agrees for all 1804 turns captured.  Without Teams Together (the
+  host's `W3HOSTSETTINGS=0x60802`, the port's `TAGS_FLAGS=608`), random placement
+  shuffles the free locations anew for each team in turn, its members taking the
+  first (`FUN_6f1e9e60`, `FUN_6f1e5060`; read), where the port shuffled once for all:
+  five draws here, not three.  With one player a team the two placements draw alike,
+  and the original's keepalives were the same either way on the 1803 turns two captures
+  shared; the port agrees with the second for all 1952.
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

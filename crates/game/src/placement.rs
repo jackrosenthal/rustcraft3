@@ -1,6 +1,6 @@
 //! Start locations as the game begins (FUN_6f1e9fd0), by the map's placement
-//! (SetGamePlacement): MAP_PLACEMENT_RANDOM (0) gives each player a free start
-//! location in random order; FIXED (1) and USE_MAP_SETTINGS (2) keep those the map set;
+//! (SetGamePlacement): MAP_PLACEMENT_RANDOM (0) places each team in turn on the first
+//! of the free start locations shuffled anew (FUN_6f1e9e60, FUN_6f1e5060); FIXED (1) and USE_MAP_SETTINGS (2) keep those the map set;
 //! TEAMS_TOGETHER (3), with the setup's Teams Together (0x40), places each team, the
 //! largest first, around a random free location, its other members on free locations
 //! the placed ones rank near (SetStartLocPrio: high, then low; FUN_6f1ea2f0), and
@@ -53,10 +53,32 @@ impl World {
         }
     }
 
+    /// The players by team, the teams in the order their first players come.
+    fn teams_of(&self, players: &[u8]) -> Vec<(i32, Vec<u8>)> {
+        let mut teams: Vec<(i32, Vec<u8>)> = Vec::new();
+        for &p in players {
+            let t = self.players[p as usize].team;
+            match teams.iter_mut().find(|g| g.0 == t) {
+                Some(g) => g.1.push(p),
+                None => teams.push((t, vec![p])),
+            }
+        }
+        teams
+    }
+
+    /// Each team in turn takes the first of the free start locations, shuffled for it,
+    /// its members in order; one with too few left ends the placing.
     fn place_randomly(&mut self, players: &[u8]) {
-        let free = self.shuffled((0..self.start_locations.len() as i32).collect());
-        for (&p, loc) in players.iter().zip(free) {
-            self.players[p as usize].start_location = loc;
+        let mut taken: Vec<i32> = Vec::new();
+        for (_, members) in self.teams_of(players) {
+            let free = self.shuffled((0..self.start_locations.len() as i32).filter(|l| !taken.contains(l)).collect());
+            if free.len() < members.len() {
+                break;
+            }
+            for (&p, &l) in members.iter().zip(&free) {
+                self.players[p as usize].start_location = l;
+                taken.push(l);
+            }
         }
     }
 
@@ -66,14 +88,7 @@ impl World {
     }
 
     fn place_teams_together(&mut self, players: &[u8]) -> bool {
-        let mut teams: Vec<(i32, Vec<u8>)> = Vec::new();
-        for &p in players {
-            let t = self.players[p as usize].team;
-            match teams.iter_mut().find(|g| g.0 == t) {
-                Some(g) => g.1.push(p),
-                None => teams.push((t, vec![p])),
-            }
-        }
+        let mut teams = self.teams_of(players);
         // The largest teams first.
         teams.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
         let mut taken: Vec<i32> = Vec::new();

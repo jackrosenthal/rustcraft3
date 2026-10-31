@@ -27,7 +27,10 @@ fn main() -> anyhow::Result<()> {
     let mut g = w3_game::Game::load_for(data.chain.clone(), data.version as i32, None, w3_game::Start::of(&lobby))?;
     g.config()?;
     g.world.seed = seed;
-    g.start_lobby(&lobby, war3::advanced::DEFAULT_FLAGS)?;
+    // TAGS_FLAGS: the setup's advanced options in hex (war3::advanced: 0x648 by default;
+    // 0x608 without Teams Together, as the host's W3HOSTSETTINGS=0x60802 has it).
+    let flags = std::env::var("TAGS_FLAGS").ok().and_then(|v| u32::from_str_radix(v.trim_start_matches("0x"), 16).ok()).unwrap_or(war3::advanced::DEFAULT_FLAGS);
+    g.start_lobby(&lobby, flags)?;
     // TAGS_TURNS: how many turns of 0.1 seconds to play (one by default).
     let turns: usize = std::env::var("TAGS_TURNS").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
     // TAGS_FIRST: the first turn's length (the original's first turn runs what falls

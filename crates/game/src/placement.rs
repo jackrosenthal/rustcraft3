@@ -23,8 +23,12 @@ impl World {
             .collect()
     }
 
+    /// The list shuffled as `FUN_6f1d1460` does: from the second entry on, each swapped
+    /// with one at or before it (read; measured: Lost Temple's two players, each a team,
+    /// placed at the original's start locations, where walking back from the last entry
+    /// placed them elsewhere).
     fn shuffled(&mut self, mut v: Vec<i32>) -> Vec<i32> {
-        for i in (1..v.len()).rev() {
+        for i in 1..v.len() {
             let j = self.rng.int(0, i as i32) as usize;
             v.swap(i, j);
         }

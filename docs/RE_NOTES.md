@@ -2296,7 +2296,16 @@ Formats the port made its own, to be replaced by the original's:
   the map made them beside cliffs (199.508, 280.172 in cells, where the port had moved
   one to 199.5, 279.5), and two sheep, the first of which the port moved onto the
   second's spot, which then moved into the narrow way.  With it Hills of Glory agrees
-  for all 1952 turns (kept in `docs/reference`).
+  for all 1952 turns (kept in `docs/reference`).  Ogre Mound agrees for all 1953 as it
+  was.  Lost Temple, four players, takes a lobby of four slots (the host's
+  `W3HOSTCLOSED=2`; with three the original leaves at the countdown): it agreed to
+  turn 752, where creeps' mana listeners fire, the original's at a creep the port had
+  removed at turn 1 and the port's at one the original had.  Melee clears the creeps
+  near the players' start locations, and the two had placed the players at different
+  ones: the original's shuffle (`FUN_6f1d1460`, teams together's and random
+  placement's) swaps each entry from the second on with one at or before it, where the
+  port walked back from the last (the same on two start locations, one swap).  With
+  it Lost Temple agrees for all 1804 turns captured.
 - JASS handles, read in a save's handle table (`w3zobj handles`; a test map on
   Booty Bay, 1740 at five seconds): they start at 0x100001 with Blizzard.j's global
   initializers in order (seven timers and groups); a player's handle is made as a

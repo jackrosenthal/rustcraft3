@@ -2247,6 +2247,7 @@ impl World {
                 // Their own records, for the kinds the port writes.
                 let (mut same, mut first) = (0, None);
                 let mut kinds: std::collections::BTreeMap<String, (u32, u32)> = Default::default();
+                let mut fields: std::collections::BTreeMap<String, (u32, String)> = Default::default();
                 let art = client_art(orig);
                 for &h in &self.unit_order {
                     let chain = self.ability_chain(h, &rallies);
@@ -2265,11 +2266,23 @@ impl World {
                             if std::env::var("W3Z_ALL").is_ok() {
                                 out.push(format!("ability own {line}"));
                             }
+                            if let Ok(theirs) = o.second() {
+                                for d in second_diffs(&sec, &theirs) {
+                                    let e = fields.entry(format!("{} {}", String::from_utf8_lossy(&code), d.0)).or_insert((0, String::new()));
+                                    e.0 += 1;
+                                    if e.1.is_empty() {
+                                        e.1 = format!("slot {}: {}", t.0, d.1);
+                                    }
+                                }
+                            }
                             first.get_or_insert(line);
                         }
                     }
                 }
                 out.push(format!("units' abilities' own records: {same} the same; by kind (same, differ) {kinds:?}{}", first.map_or(String::new(), |f| format!("; first {}", &f[..f.len().min(600)]))));
+                for (k, (n, example)) in &fields {
+                    out.push(format!("  ability field {k}: {n} differ, e.g., {example}"));
+                }
                 // Their orders' and tasks' records.
                 let (mut same, mut differ) = (0, Vec::new());
                 for &h in &self.unit_order {
@@ -2567,4 +2580,36 @@ impl World {
         });
         out
     }
+}
+
+/// Where two agents' second records differ, field by field: each place ("own 3", "tail
+/// 2", "keyed", "events 0x1a2") and the two values.
+fn second_diffs(ours: &Second, theirs: &Second) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    match (ours, theirs) {
+        (Second::Agent { own: a, handlers: ha, tail: ta }, Second::Agent { own: b, handlers: hb, tail: tb }) => {
+            for (name, x, y) in [("own", a, b), ("tail", ta, tb)] {
+                for k in 0..x.len().max(y.len()) {
+                    let (p, q) = (x.get(k).map(|f| format!("{f:?}")), y.get(k).map(|f| format!("{f:?}")));
+                    if p != q {
+                        out.push((format!("{name} {k}"), format!("ours {} vs {}", p.unwrap_or_default(), q.unwrap_or_default())));
+                    }
+                }
+            }
+            if format!("{:?}", ha.keyed) != format!("{:?}", hb.keyed) {
+                out.push(("keyed".into(), format!("ours {:?} vs {:?}", ha.keyed, hb.keyed)));
+            }
+            if format!("{:?}", ha.fixed) != format!("{:?}", hb.fixed) {
+                out.push(("fixed".into(), format!("ours {:?} vs {:?}", ha.fixed, hb.fixed)));
+            }
+            for k in 0..ha.events.len().max(hb.events.len()) {
+                let (p, q) = (ha.events.get(k), hb.events.get(k));
+                if format!("{p:?}") != format!("{q:?}") {
+                    out.push((format!("events {:#x}", k), format!("ours {p:?} vs {q:?}")));
+                }
+            }
+        }
+        _ => out.push(("whole".into(), format!("ours {ours:?} vs {theirs:?}"))),
+    }
+    out
 }

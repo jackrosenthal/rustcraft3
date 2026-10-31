@@ -1022,6 +1022,9 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::ability::id::GOLD_MINE, "wwww wwwwwww t w w f wwwww wwww f wwwwww", "r [r] t"),
     // MineShaft (`FUN_6f5f5f20`, the agent base alone; own `FUN_6f5f7ab0`): a timer.
     (codes::class::MINE_SHAFT, "!wwww f", "t"),
+    // CDetectedData (`FUN_6f696040`, own `FUN_6f03edf0`: a word): a word and a counted
+    // list of words (a player's each: read, 16), twice.
+    (codes::class::DETECTION, "w", "w [w] w [w]"),
     // Harvests (`FUN_6f42da60` on `FUN_6f42d950`: a counted list of three words, of
     // timers, six words, a real; then two timers and from build 6028 a third; own on
     // `FUN_6f42ee40`: the ability's and eight words, then two reals and a word):

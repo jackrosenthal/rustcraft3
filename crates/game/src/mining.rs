@@ -202,6 +202,10 @@ impl World {
     /// The ring slot positions around a haunted mine (0x6f4d7e40): min(DataC, 8) slots
     /// at DataD, the first north of it and the rest clockwise (x by the sine, y by the
     /// cosine of k turns over the count), each facing the mine; None for unwalkable ones.
+    pub(crate) fn mine_slots_pub(&self, mine: u32) -> Vec<Option<(f32, f32, f32)>> {
+        self.mine_slots(mine)
+    }
+
     fn mine_slots(&self, mine: u32) -> Vec<Option<(f32, f32, f32)>> {
         let Some((abgm, lvl)) = self.ability_with_code(mine, "Abgm") else { return Vec::new() };
         let Some(m) = self.unit(mine) else { return Vec::new() };

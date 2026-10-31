@@ -1994,6 +1994,15 @@ Formats the port made its own, to be replaced by the original's:
   haunted mine's MineDomeLoop in bbst10; not yet); the hashtables' none (not yet
   written when a game has some: they keep their entries' order, the port's maps
   none).
+- A haunted mine's work slots and their circles (Abgm's objects after its two reals:
+  five `rslt`, then five of `+EIP`, `` `pos ``, two `^pmr`): a slot keeps its place
+  (`FUN_6f4d7e40` in the engine's soft floats: the turn times k over n, x the mine's
+  plus the radius times its sine, y plus the radius times its cosine), a quarter turn
+  less that angle, its circle, and the acolyte at it; its circle (the Effectart's
+  sprite) the slot's place floored to quarter units, in pathing cells for its
+  position, its coarse region flagged 0x02000000 and 0x60000001, and the ground's
+  height there.  The port writes them, all agreeing on the quiet test map but the
+  circles' heights by 0.01 (the port's corners interpolated bilinearly; provisional).
 - The game's object (`+gam`, slot 641) has five properties: flags 0 and 1 (0), the
   time of day (a continuous `` `rel ``: the time as last set and the main clock then,
   8 at 0 on the quiet test map, 15.5 at 0.99999905 after bbst's SetTimeOfDay at one

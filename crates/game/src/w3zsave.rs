@@ -1064,6 +1064,13 @@ impl World {
             for (slot, f) in self.ability_real_records(h, &rallies).into_iter().chain(self.structure_region_records(h)) {
                 records.entry(slot).or_insert(f);
             }
+            let (firsts, secs) = self.mine_circle_records(h);
+            for (slot, f) in firsts {
+                records.entry(slot).or_insert(f);
+            }
+            for (slot, sec) in secs {
+                seconds.entry(slot).or_insert(sec);
+            }
         }
         // W3Z_COVERAGE: by kind, the objects whose first and second records are the
         // template's still.
@@ -1733,7 +1740,29 @@ impl World {
             let rallies = rally_points(orig);
             let ability_reals: Vec<(u32, First)> = self.unit_order.iter().flat_map(|&h| self.ability_real_records(h, &rallies)).collect();
             let footprints: Vec<(u32, First)> = self.unit_order.iter().flat_map(|&h| self.structure_region_records(h)).collect();
-            for (name, recs) in [("plain agents", self.plain_agent_records()), ("pathing system objects", self.pathing_system_records(48, 0)), ("game object", self.game_object_records()), ("abilities' reals", ability_reals), ("structures' footprints (but for the search mark)", footprints)] {
+            let circles: Vec<(u32, First)> = self.unit_order.iter().flat_map(|&h| self.mine_circle_records(h).0).collect();
+            {
+                let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();
+                let secs: Vec<(u32, Second)> = self.unit_order.iter().flat_map(|&h| self.mine_circle_records(h).1).collect();
+                let (mut same, mut differ, mut first) = (0, 0, None);
+                for (slot, sec) in secs {
+                    match by_slot.get(&slot) {
+                        Some(o) if sec.to_bytes(o.entry.kind).is_ok_and(|b| b == o.second) => same += 1,
+                        Some(o) => {
+                            differ += 1;
+                            if std::env::var("W3Z_ALL").is_ok() {
+                                if let (Second::Agent { own, .. }, Ok(Second::Agent { own: theirs, .. })) = (&sec, o.second()) {
+                                    out.push(format!("  slot {slot}: ours {:?} vs {:?}", &own[..3.min(own.len())], &theirs[..3.min(theirs.len())]));
+                                }
+                            }
+                            first.get_or_insert(format!("slot {slot}: ours {sec:?}, the original's {:?}", o.second()));
+                        }
+                        None => differ += 1,
+                    }
+                }
+                out.push(format!("mines' slots and circles (second records): {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+            }
+            for (name, recs) in [("plain agents", self.plain_agent_records()), ("pathing system objects", self.pathing_system_records(48, 0)), ("game object", self.game_object_records()), ("abilities' reals", ability_reals), ("structures' footprints (but for the search mark)", footprints), ("mines' circles (but for the search mark)", circles)] {
                 let by_slot: std::collections::HashMap<u32, &SavedObject> = objects[0].iter().map(|o| (o.entry.tag, o)).collect();
                 let (mut same, mut differ, mut first) = (0, 0, None);
                 for (slot, f) in recs {

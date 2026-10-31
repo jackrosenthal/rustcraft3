@@ -526,6 +526,74 @@ impl World {
 }
 
 impl World {
+    /// A haunted mine's work slots and their circles (Abgm's objects after its two reals:
+    /// five `rslt`, then five of `+EIP`, `` `pos ``, and two `^pmr`), first and second
+    /// records.  A slot (`rslt`): its place, its angle out from the mine (a quarter turn
+    /// less k fifths of a turn, as summed), its circle, and the acolyte at it (none).  Its
+    /// circle (`+EIP`, the ability's Effectart): an agent with its position (the slot's
+    /// place floored to quarter units, in pathing cells; its coarse region flagged
+    /// 0x02000000, 0x60000001; its fine one as a tree's), its own (0, -1, -1, 0), no
+    /// handlers, its sprite (as the quiet test map's: its render state's words not
+    /// the port's), and its place with the ground's height.  Provisional: an acolyte at
+    /// a slot, the sprite's state.
+    pub fn mine_circle_records(&self, h: u32) -> (Vec<(u32, w3_formats::w3z::First)>, Vec<(u32, w3_formats::w3z::Second)>) {
+        use w3_formats::w3z::{Field, First, Handlers, Link, Second, Sprite};
+        let (mut firsts, mut seconds) = (Vec::new(), Vec::new());
+        let Some(u) = self.unit(h) else { return (firsts, seconds) };
+        let Some((abgm, _)) = self.ability_with_code(h, "Abgm") else { return (firsts, seconds) };
+        let Some(p) = self.pathing.as_ref() else { return (firsts, seconds) };
+        let objs = &u.extra.object_slots[2];
+        let Some(i) = objs.iter().position(|&(s, _)| self.tags.live.get(&s).is_some_and(|e| &e.0 == b"Abgm")) else { return (firsts, seconds) };
+        if objs.len() < i + 28 {
+            return (firsts, seconds);
+        }
+        let slots = self.mine_slots_pub(h);
+        let n = slots.len().max(1);
+        let model = self.profile_art(abgm, "Effectart");
+        let [coarse, fine] = self.pathing_map_objects();
+        let none_handlers = || Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
+        let (mx, my) = (u.x, u.y);
+        let radius = self.objects.abilities.get(abgm).map_or(200.0, |a| a.level_real("DataD", 1));
+        use w3_jass::softfloat as sf;
+        for k in 0..5.min(slots.len()) {
+            if slots[k].is_none() {
+                continue;
+            }
+            // (`FUN_6f4d7e40`, in the engine's soft floats: the turn's k nths, x by its
+            // sine and y by its cosine times the radius, the angle out a quarter turn less
+            // it.)
+            let a = sf::div(sf::mul(std::f32::consts::TAU.to_bits(), sf::itof(k as i32)), sf::itof(n as i32));
+            let x = f32::from_bits(sf::add(mx.to_bits(), sf::mul(radius.to_bits(), sf::sin(a))));
+            let y = f32::from_bits(sf::add(my.to_bits(), sf::mul(radius.to_bits(), sf::cos(a))));
+            let angle = f32::from_bits(sf::sub(std::f32::consts::FRAC_PI_2.to_bits(), a));
+            let rslt = objs[i + 3 + k];
+            let eip = objs[i + 8 + 4 * k];
+            let (pos, r1, r2) = (objs[i + 9 + 4 * k], objs[i + 10 + 4 * k], objs[i + 11 + 4 * k]);
+            let worker = (u32::MAX, u32::MAX);
+            seconds.push((rslt.0, Second::Agent {
+                own: vec![Field::Real(x), Field::Real(y), Field::Real(angle), Field::Word(eip.0), Field::Word(eip.1), Field::Word(0), Field::Word(worker.0), Field::Word(worker.1), Field::Word(0)],
+                handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: Vec::new() },
+                tail: Vec::new(),
+            }));
+            let (ex, ey) = ((x * 4.0).floor() / 4.0, (y * 4.0).floor() / 4.0);
+            let (cx, cy) = ((ex - p.origin[0]) / crate::pathing::CELL, (ey - p.origin[1]) / crate::pathing::CELL);
+            let (row, col) = (cy.floor() as u32, cx.floor() as u32);
+            firsts.push((eip.0, super::agent_first(eip, b"+EIP", &[pos])));
+            firsts.push((pos.0, First::Pos { base: super::property_base(pos, eip), values: [cx, cy, 0.0, 0.0, f32::MAX, 0.0, 0.0], refs: [rf(r1), rf(r2)] }));
+            firsts.push((r1.0, First::Region { refs: [rf(coarse), rf(pos)], word: 0x0200_0000, bounds: [row >> 3, col >> 3, (row >> 3) + 1, (col >> 3) + 1], words: [0, 0x6000_0001, 0] }));
+            firsts.push((r2.0, First::Region { refs: [rf(fine), rf(pos)], word: 0x0100_0000, bounds: [row, col, row + 1, col + 1], words: [0, 1, 0] }));
+            let sprite = Sprite { model: model.clone(), real: 5.7599255e-37, short: 0, byte: 255, word: u32::MAX, reals: [1.0, 1.0], words: [0, 0], last_real: 2.1e-43, last_byte: 0, flags: [2, 0, 1], entries: vec![(0.0, 0, vec![0]), (0.0, 4, vec![1])] };
+            let z = self.ground_z(ex, ey);
+            seconds.push((eip.0, Second::Agent {
+                own: vec![Field::Word(0), Field::Word(u32::MAX), Field::Word(u32::MAX), Field::Word(0)],
+                handlers: none_handlers(),
+                tail: vec![Field::Sprite(Some(sprite)), Field::Word(0), Field::Timer(NONE, 0, w3_formats::w3z::Timing(None)), Field::Word(0), Field::List(vec![vec![Field::Word(0)]]), Field::List((0..10).map(|_| vec![Field::Word(0)]).collect()), Field::Real(ex), Field::Real(ey), Field::Real(z)],
+            }));
+            let _ = Link(NONE, 0);
+        }
+        (firsts, seconds)
+    }
+
     /// A structure's footprint's three regions (`^pmr` on the pathing map, as a tree's):
     /// flags 0xc2 and 0x10 over its pathing footprint's cells, 0x08 over where none may
     /// build; each bounded by the building footprint's first row and column and their

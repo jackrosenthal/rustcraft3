@@ -1036,6 +1036,13 @@ impl World {
         }
         m.set_objects(&objects);
         m.free[0] = self.saved_free_list();
+        // The regions section (the pathing maps and grids; their search marks the
+        // template's, the running game's).
+        if let Ok(maps) = w3_formats::w3z::PathingMaps::parse(&m.data[0]) {
+            if let Some(ours) = self.saved_pathing_maps([maps.proximity[0].words[0], maps.proximity[1].words[0]]) {
+                m.data[0] = ours.to_bytes();
+            }
+        }
         s
     }
 
@@ -1577,6 +1584,72 @@ impl World {
                     }
                 }
                 out.push(format!("units' in-range listeners: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+            }
+            // The accelerator map's grids.
+            if let Ok(maps) = w3_formats::w3z::PathingMaps::parse(&m.data[0]) {
+                let ours = self.saved_grids();
+                for (k, g) in maps.grids.iter().enumerate() {
+                    let Some(o) = ours.get(k) else { continue };
+                    let differ = o.iter().zip(&g.cells).filter(|(a, b)| a != b).count();
+                    let first = o.iter().zip(&g.cells).position(|(a, b)| a != b).map(|i| format!("; first cell {} ({}, {}): ours {:#x}, the original's {:#x}", i, i % g.frame.width as usize, i / g.frame.width as usize, o[i], g.cells[i]));
+                    out.push(format!("grid {k}: {} cells, {} ours, {differ} differ{}", g.cells.len(), o.len(), first.unwrap_or_default()));
+                }
+            }
+            // The regions section whole.
+            if let Ok(maps) = w3_formats::w3z::PathingMaps::parse(&m.data[0]) {
+                match self.saved_pathing_maps([maps.proximity[0].words[0], maps.proximity[1].words[0]]) {
+                    Some(ours) => {
+                        let b = ours.to_bytes();
+                        let first = b.iter().zip(&m.data[0]).position(|(x, y)| x != y);
+                        out.push(format!("regions section: {} bytes ours, {} the original's, {}", b.len(), m.data[0].len(), first.map_or("the same".into(), |k| format!("first differing byte {k}"))));
+                        if ours.refs != maps.refs || ours.tail != maps.tail || ours.proximity[0].frame != maps.proximity[0].frame || ours.proximity[1].frame != maps.proximity[1].frame {
+                            out.push(format!("  refs {:?} {:?} vs {:?} {:?}; frames {:?} vs {:?}", ours.refs, ours.tail, maps.refs, maps.tail, ours.proximity.iter().map(|p| p.frame).collect::<Vec<_>>(), maps.proximity.iter().map(|p| p.frame).collect::<Vec<_>>()));
+                        }
+                    }
+                    None => out.push("regions section: not made".into()),
+                }
+            }
+            // The pathing map's cells.
+            if let Ok(maps) = w3_formats::w3z::PathingMaps::parse(&m.data[0]) {
+                let ours = self.saved_pathing_cells();
+                let theirs = &maps.proximity[1].cells;
+                let (mut flags_off, mut lists_off, mut sets_off) = (0, 0, 0);
+                let (mut first_flag, mut first_list) = (None, None);
+                for (a, b) in ours.iter().zip(theirs) {
+                    if (a.0, a.1, a.2) != (b.0, b.1, b.2) {
+                        flags_off += 1;
+                        first_flag.get_or_insert(format!("({}, {}): ours {:#x}, the original's {:#x}", b.0, b.1, a.2, b.2));
+                    }
+                    if a.3 != b.3 {
+                        lists_off += 1;
+                        let mut x = a.3.clone();
+                        let mut y = b.3.clone();
+                        x.sort_by_key(|r| (r.0, r.1));
+                        y.sort_by_key(|r| (r.0, r.1));
+                        if x != y {
+                            sets_off += 1;
+                        }
+                        first_list.get_or_insert(format!("({}, {}): ours {:?}, the original's {:?}", b.0, b.1, a.3, b.3));
+                    }
+                }
+                if std::env::var("W3Z_FIND").is_ok() {
+                    let mut extra: std::collections::BTreeMap<u32, u32> = Default::default();
+                    let mut missing: std::collections::BTreeMap<u32, u32> = Default::default();
+                    for (a, b) in ours.iter().zip(theirs) {
+                        for r in &a.3 {
+                            if !b.3.contains(r) {
+                                *extra.entry(r.0).or_insert(0) += 1;
+                            }
+                        }
+                        for r in &b.3 {
+                            if !a.3.contains(r) {
+                                *missing.entry(r.0).or_insert(0) += 1;
+                            }
+                        }
+                    }
+                    out.push(format!("cells: ours alone {extra:?}; the original's alone {missing:?}"));
+                }
+                out.push(format!("pathing cells: {} ours, {} the original's; flags differ {flags_off}{}; lists differ {lists_off} ({sets_off} in their members){}", ours.len(), theirs.len(), first_flag.map_or(String::new(), |f| format!(" first {f}")), first_list.map_or(String::new(), |f| format!(" first {f}"))));
             }
             // The units' agents.
             let (mut same, mut differ, mut first) = (0, 0, None);

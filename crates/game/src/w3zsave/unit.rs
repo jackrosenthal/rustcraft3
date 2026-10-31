@@ -1141,3 +1141,150 @@ impl World {
         out
     }
 }
+
+impl World {
+    /// The accelerator map's four grids as saved (`FUN_6f163120`; NIpse's
+    /// CAcceleratorMap, `crate::accel`): each cell a word of two bits a layer (ground,
+    /// then the 0x80, 0x40, and 0x04 layers, from bit 14 down), open 0, refused 1, mixed
+    /// 2; a cell refuses a layer by its static byte (the map's flags with 0x01, and 0x10
+    /// where 0x02) or a destructable's footprint (its types 0xc2, 0x10, 0x08, provisional
+    /// for other destructables than trees).
+    pub fn saved_grids(&self) -> Vec<Vec<u16>> {
+        let Some(p) = self.pathing.as_ref() else { return Vec::new() };
+        let (w, h) = (p.width as usize, p.height as usize);
+        let mut regions = vec![0u8; w * h];
+        for &dh in &self.destructable_order {
+            let Some(crate::types::Obj::Destructable(d)) = self.handles.get(dh) else { continue };
+            if d.object_slots.len() == 6 {
+                for &(x, y) in &d.pathing_cells {
+                    if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h {
+                        regions[y as usize * w + x as usize] |= 0xda;
+                    }
+                }
+            }
+        }
+        // Structures' footprints the same (their pathing textures' blocked cells; read:
+        // types 0xc2 and 0x10 over them, 0x08 over where none may build).
+        for &uh in &self.unit_order {
+            let Some(u) = self.unit(uh) else { continue };
+            if !u.is_building || u.hidden || u.extra.footprint_slots.len() != 3 {
+                continue;
+            }
+            for &(x, y) in &u.pathing_cells {
+                if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h {
+                    regions[y as usize * w + x as usize] |= 0xd2;
+                }
+            }
+        }
+        let masks = [(0x06u8, 0x06u8), (0x80, 0x80), (0x40, 0x40), (0x04, 0x04)];
+        let pyramid = crate::accel::Pyramid::build(w, h, |x, y, layer| {
+            let k = y as usize * w + x as usize;
+            let f = p.flags[k];
+            let stat = f | 0x01 | if f & 0x02 != 0 { 0x10 } else { 0 };
+            stat & masks[layer].0 != 0 || regions[k] & masks[layer].1 != 0
+        });
+        pyramid
+            .levels
+            .iter()
+            .map(|l| {
+                l.cells
+                    .iter()
+                    .map(|c| c.iter().enumerate().fold(0u16, |acc, (k, s)| acc | (match s { crate::accel::State::Open => 0, crate::accel::State::Blocked => 1, crate::accel::State::Mixed => 2 } << (14 - 2 * k))))
+                    .collect()
+            })
+            .collect()
+    }
+}
+
+impl World {
+    /// The pathing map's cells as saved (the second proximity map, `FUN_6f14d620`): each
+    /// cell's flags (its static byte, 0x20 where blighted, in its top byte) and the static
+    /// regions over it (the destructables' and structures' footprints; not the units'
+    /// regions nor the places' of no type), the newest first.
+    pub fn saved_pathing_cells(&self) -> Vec<(u32, u32, u32, Vec<Ref>)> {
+        let Some(p) = self.pathing.as_ref() else { return Vec::new() };
+        let (w, h) = (p.width as usize, p.height as usize);
+        let mut over: Vec<Vec<(u32, u32)>> = vec![Vec::new(); w * h];
+        let mut add = |x: i64, y: i64, t: (u32, u32)| {
+            if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h {
+                over[y as usize * w + x as usize].push(t);
+            }
+        };
+        for &dh in &self.destructable_order {
+            let Some(crate::types::Obj::Destructable(d)) = self.handles.get(dh) else { continue };
+            if d.object_slots.len() < 3 {
+                continue;
+            }
+            if d.object_slots.len() == 6 {
+                for k in 3..6 {
+                    for &(x, y) in &d.pathing_cells {
+                        add(x as i64, y as i64, self.tagged(d.object_slots[k]));
+                    }
+                }
+            }
+        }
+        for &uh in &self.unit_order {
+            let Some(u) = self.unit(uh) else { continue };
+            if u.is_building && !u.hidden && u.extra.footprint_slots.len() == 3 {
+                for (k, &s) in u.extra.footprint_slots.iter().enumerate() {
+                    let cells = if k < 2 { &u.pathing_cells } else { &u.build_cells };
+                    for &(x, y) in cells {
+                        add(x as i64, y as i64, self.tagged(s));
+                    }
+                }
+            }
+        }
+        let mut out = Vec::with_capacity(w * h);
+        for y in 0..h {
+            for x in 0..w {
+                let k = y * w + x;
+                let f = p.flags[k];
+                let flags = f | 0x01 | if f & 0x02 != 0 { 0x10 } else { 0 };
+                let mut refs = over[k].clone();
+                refs.sort_by_key(|t| std::cmp::Reverse(t.1));
+                out.push((x as u32, y as u32, (flags as u32) << 24, refs.into_iter().map(rf).collect()));
+            }
+        }
+        out
+    }
+}
+
+impl World {
+    /// The regions section as saved (`FUN_6f15c750`, `w3_formats::w3z::PathingMaps`):
+    /// the two proximity maps' and four grids' references (`^pma`, `^ama`), the coarse
+    /// map of 8-cell blocks (a cell and a half's border each side: none of its cells
+    /// written), the pathing map (`saved_pathing_cells`), each with three words (its
+    /// search mark, the running game's, `marks`; 0x11223344, 0xb8a008f0), the
+    /// accelerator's grids (`saved_grids`), and the `l^sy` and `l^ac` references.
+    pub fn saved_pathing_maps(&self, marks: [u32; 2]) -> Option<w3_formats::w3z::PathingMaps> {
+        use w3_formats::w3z::{Grid, MapFrame, PathingMaps, ProximityMap};
+        let p = self.pathing.as_ref()?;
+        let (w, h) = (p.width, p.height);
+        let frame = |w: u32, h: u32, scale: f32| MapFrame { width: w, height: h, bounds: [0.0, 0.0, h as f32, w as f32], cells: [0, 0, h, w], scale: [scale, 1.0 / scale] };
+        let of = |code: &[u8; 4]| {
+            let mut v: Vec<(u32, u32)> = self.tags.live.iter().filter(|(_, (c, _))| c == code).map(|(&s, (_, b))| (s, *b)).collect();
+            v.sort();
+            v
+        };
+        let (pma, ama, sy, ac) = (of(b"^pma"), of(b"^ama"), of(b"l^sy"), of(b"l^ac"));
+        if pma.len() != 2 || ama.len() != 4 || sy.is_empty() || ac.is_empty() {
+            return None;
+        }
+        let words = |mark: u32| [mark, 0x1122_3344, 0xb8a0_08f0];
+        let grids: Vec<Vec<u16>> = self.saved_grids();
+        let levels = crate::accel::Pyramid::build(w as usize, h as usize, |_, _, _| false).levels;
+        let mut gs: Vec<Grid> = Vec::new();
+        for (k, l) in levels.iter().enumerate() {
+            gs.push(Grid { frame: frame(l.width as u32, l.height as u32, (2u32 << k) as f32), cells: grids.get(k).cloned().unwrap_or_default() });
+        }
+        Some(PathingMaps {
+            refs: [rf(pma[0]), rf(pma[1]), rf(ama[0]), rf(ama[1]), rf(ama[2]), rf(ama[3])],
+            proximity: [
+                ProximityMap { frame: frame(w / 8 + 3, h / 8 + 3, 8.0), words: words(marks[0]), cells: Vec::new() },
+                ProximityMap { frame: frame(w, h, 1.0), words: words(marks[1]), cells: self.saved_pathing_cells() },
+            ],
+            grids: gs.try_into().ok()?,
+            tail: [rf(sy[0]), rf(ac[0])],
+        })
+    }
+}

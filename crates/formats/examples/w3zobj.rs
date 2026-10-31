@@ -164,6 +164,19 @@ fn main() {
         println!("rest {}", s.rest.len());
         return;
     }
+    // "grids": each grid's census of cell words, and a sample.
+    if a[2] == "grids" {
+        let m = s.objects.as_ref().unwrap();
+        let p = w3_formats::w3z::PathingMaps::parse(&m.data[0]).unwrap();
+        for g in &p.grids {
+            let mut c = std::collections::BTreeMap::new();
+            for w in &g.cells {
+                *c.entry(*w).or_insert(0) += 1;
+            }
+            println!("grid {}x{}: {:x?}", g.frame.width, g.frame.height, c.iter().map(|(w, n)| (*w, *n)).collect::<Vec<_>>());
+        }
+        return;
+    }
     // "pathing": the pathing maps' frames and a census of the pathing map's flags.
     if a[2] == "pathing" {
         let m = s.objects.as_ref().unwrap();

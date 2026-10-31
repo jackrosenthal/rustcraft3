@@ -1347,7 +1347,9 @@ Formats the port made its own, to be replaced by the original's:
   `FUN_6f167500`, then each table's objects' first records `FUN_6f15c8b0`, vf 0x24, and
   second `FUN_6f15c930`, vf 0x2c: each record size-prefixed and ended by "espi", one
   per entry in order), two words, and the map's bounds.  The regions section
-  (`w3_formats::w3z::PathingMaps`, written back byte for byte) is the pathing maps:
+  (`w3_formats::w3z::PathingMaps`, written back byte for byte, and now written by the
+  port from its own state, all 5499548 bytes of the quiet test map's agreeing but for
+  the two search marks, the running game's) is the pathing maps:
   references to two `^pma` and four `^ama` (the proximity maps and the grids), the two
   proximity maps (`FUN_6f14d620`: a frame, its size in cells, bounds, and cell scale,
   `FUN_6f14d590`; three words; and each cell with flags or objects, in rows, its
@@ -1742,6 +1744,16 @@ Formats the port made its own, to be replaced by the original's:
   due time), its place.  31 of the quiet test map's 45 agree; the rest swap counts
   with a neighbor started in the same moment (the original fires its looks in due
   order).
+- The regions section as the port writes it: the coarse map (8-cell blocks, the map's
+  size over 8 and 3 more each way) writes no cells; the pathing map every cell, its
+  flags (the map's own with 0x01, 0x10 where 0x02, 0x20 where blighted) in the top
+  byte, and the static regions over it, the newest first: the destructables' and
+  structures' footprints (types 0xc2 and 0x10 over the blocked cells, 0x08 over where
+  none may build), not the units' regions nor the places' of no type.  Each map's
+  words: its search mark, 0x11223344, 0xb8a008f0.  The accelerator's grids (2, 4, 8,
+  and 16 cells each) a word a cell of two bits a layer (ground, then the 0x80, 0x40,
+  and 0x04 layers, from bit 14 down), open 0, refused 1, mixed 2, a cell refusing by
+  its static byte or a footprint's types (`crate::accel`).
 - A unit's two regions (`^pmr`): the pathing map's cells under it (a square of one
   more than its collision's sixteens, at most four, the cell it is in ⌊n/2⌋ from its
   start; kind 1 and flags 0xca, a structure's none) and their count; the coarse map's

@@ -846,7 +846,8 @@ impl crate::world::World {
             }
             match c {
                 b"Ablr" => {
-                    self.tags.start_timer("436780");
+                    let n = self.tags.start_timer("436780");
+                    self.tags.timer_objects.entry(slots[k]).or_default().push((n, "436780".into(), self.time, 0.0));
                 }
                 b"Asel" => {
                     for _ in 0..sold {

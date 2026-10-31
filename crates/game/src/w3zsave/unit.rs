@@ -560,7 +560,7 @@ impl World {
     /// (read against the quiet test map's): CAbility's part (`FUN_6f42e830`: its flags,
     /// the ability made before it, five words, its targets, its code, a word, a timer,
     /// and a word), then its kind's.  None for kinds not read.
-    pub fn ability_own_record(&self, h: u32, t: (u32, u32), code: &[u8; 4], older: Option<(u32, u32)>) -> Option<Second> {
+    pub fn ability_own_record(&self, h: u32, t: (u32, u32), code: &[u8; 4], older: Option<(u32, u32)>, rallies: &[(Ref, Ref)]) -> Option<Second> {
         let u = self.unit(h)?;
         let o = self.objects.units.get(u.type_id)?;
         let computer = self.players.get(u.owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER && p.slot_state == crate::types::slot_state::PLAYING);
@@ -589,6 +589,11 @@ impl World {
         let base_flags: u32 = match code {
             b"Avul" => 0x8000_0010,
             b"ACsp" => 0x400,
+            b"Aven" | b"Amim" => 0,
+            b"ARal" | b"Amic" | b"Amil" => 0x90,
+            b"Asel" => 0x1000_0010,
+            // (Regeneration on blight, as it stands on blight 0x80.)
+            b"Ablr" => 0x10 | if u.extra.blight_rcm.is_some() { 0x80 } else { 0 },
             // (An attack: two weapons 0x100000, not a worker's 0x20004000, one never
             // asleep 0x2000000: read, every unit of the quiet test map's.)
             b"Aatk" => 0x8_0010 | if weapons & 2 != 0 { 0x10_0000 } else { 0 } | if peon { 0 } else { 0x2000_4000 } | if u.extra.woke_at.is_none() { 0x200_0000 } else { 0 },
@@ -596,7 +601,11 @@ impl World {
         };
         let flags = base_flags | if ai { 0x2 } else { 0 };
         let prev = older.map_or(NONE, rf);
-        let mut own = vec![w(flags), w(prev.0), w(prev.1), w(0), w(0), w(0), w(0), w(0), w(ability_targets(code)), w(u32::from_be_bytes(*code)), w(0), timer(), w(0)];
+        // (Its id, not its kind's code: a shop's Ane2, a creep's ACvs and ACmi, a town
+        // hall's Argl; the last word Call to Arms' 1.)
+        let id = u.abilities.iter().map(|(a, _)| *a).find(|a| self.objects.abilities.get(*a).is_some_and(|o| crate::objects::id_from_str(o.str("code").trim()) == *code)).unwrap_or(*code);
+        let last = if code == b"Amic" { 1 } else { 0 };
+        let mut own = vec![w(flags), w(prev.0), w(prev.1), w(0), w(0), w(0), w(0), w(0), w(ability_targets(code)), w(u32::from_be_bytes(id)), w(0), timer(), w(last)];
         let tail = match code {
             // CAbilityMove (`FUN_6f5fec80`): two references, its speed and 1.0, words,
             // two reals, references; its two timers.
@@ -608,6 +617,48 @@ impl World {
             b"Avul" => {
                 own.push(w(0));
                 vec![Field::List(Vec::new()), w(0)]
+            }
+            // Regeneration on blight: its look at the ground every 2 seconds (event
+            // 0xd01c1).
+            b"Ablr" => vec![periodic("436780", 2.0, 0xd_01c1)],
+            // Passives with an order (spell immunity, a creep's poison, detection): its
+            // order (852290) and words; detection its own order too.
+            b"Aven" | b"Amim" | b"Andt" => {
+                match code {
+                    b"Aven" => own.push(w(0)),
+                    b"Andt" => own.push(w(852_630)),
+                    _ => {}
+                }
+                vec![w(852_290), w(0), w(0), w(0), w(0)]
+            }
+            // A shop's (Aneu): its customers' (twelve players' none), its listener.
+            b"Aneu" => {
+                let pil = u.extra.object_slots[2].iter().map(|&(s, _)| s).skip_while(|&s| s != t.0).find(|&s| self.tags.live.get(&s).is_some_and(|e| &e.0 == b"`pil")).map_or(NONE, |s| rf(self.tagged(s)));
+                vec![Field::List((0..12).map(|_| vec![Field::Ref(NONE)]).collect()), Field::Ref(NONE), Field::List((0..12).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect()), Field::Ref(pil), timer()]
+            }
+            b"Artn" => Vec::new(),
+            // Rally: no point set; its rally point (the second table's).
+            b"ARal" => {
+                own.extend([w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), Field::Real(0.0), w(0), w(0), w(0), w(0)]);
+                let me = u.extra.object_slots[0].first().copied().unwrap_or_default();
+                let r = rallies.iter().find(|(_, owner)| *owner == rf(me)).map_or(NONE, |x| x.0);
+                vec![Field::List(vec![vec![Field::Ref(r)]])]
+            }
+            b"Amic" => vec![timer()],
+            // Militia: the unit's type and the militia's (its DataB).
+            b"Amil" => {
+                let to = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a)).find(|ab| ab.str("code").trim() == "Amil").map_or([0; 4], |ab| crate::objects::id_from_str(ab.level_str("DataB", 1).trim()));
+                own.extend([w(u32::from_be_bytes(u.type_id)), w(u32::from_be_bytes(to))]);
+                Vec::new()
+            }
+            b"Aupg" => {
+                own.extend([Field::Real(0.0), Field::Real(0.0)]);
+                vec![Field::Ref(NONE), Field::Ref(NONE)]
+            }
+            // A queue (Aque): idle, its seven places empty.
+            b"Aque" => {
+                own.extend([Field::Real(0.0), Field::Real(0.0), w(0), Field::List((0..7).map(|_| vec![w(0)]).collect()), Field::List((0..7).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect()), Field::List((0..7).map(|_| vec![w(0)]).collect())]);
+                vec![Field::Ref(NONE), Field::Ref(NONE), Field::Ref(NONE), Field::Ref(NONE)]
             }
             // Creep sleep (`FUN_6f5224c0`, `FUN_6f5230a0`): 0.1; its sleep's timer, its
             // check every 2 seconds (event 0xd01bf), and a list.

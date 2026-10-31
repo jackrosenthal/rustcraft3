@@ -1700,7 +1700,13 @@ Formats the port made its own, to be replaced by the original's:
   every 2 seconds, else its check's), and fire (a reference; its look, event 0xd01c1,
   every 1.5 seconds and a two-thousandth of its maximum life, at most 3, in the
   engine's arithmetic: `FUN_6f41baf0`).  A periodic timer keeps its count from its
-  start, its next due time stepped from its start by its period.
+  start, its next due time stepped from its start by its period.  The word after the
+  targets is the ability's id (a shop's Ane2, a creep's ACvs and ACmi, a town hall's
+  Argl), not its kind's code.  Also written, all agreeing: regeneration on blight
+  (0x80 as it stands on blight; its look every 2 seconds, event 0xd01c1), passives
+  with an order (Aven, Amim, Andt: order 852290), a shop's Aneu (its customers none,
+  its listener), Artn, ARal (its rally point), Amic (its last word 1), Amil (its
+  unit's type and the militia's), Aupg, and Aque (its seven places empty).
 - A map loaded directly (-loadfile) draws on the main generator as the game starts,
   before its script: a weighted choice's real (`FUN_6f1c0c40`), then a race for each
   of the 12 players (`FUN_6f1e9dd0`); traced on the quiet test map, the 13 before its

@@ -1004,7 +1004,7 @@ impl World {
             let chain = self.ability_chain(h, &rallies);
             for (k, &(t, code)) in chain.iter().enumerate() {
                 let older = chain[..k].iter().rev().find(|c| c.1[0] == b'A').map(|c| c.0);
-                if let Some(sec) = self.ability_own_record(h, t, &code, older) {
+                if let Some(sec) = self.ability_own_record(h, t, &code, older, &rallies) {
                     seconds.insert(t.0, sec);
                 }
             }
@@ -1479,7 +1479,7 @@ impl World {
                     for (k, &(t, code)) in chain.iter().enumerate() {
                         // (The ability made before it, not a buff.)
                         let older = chain[..k].iter().rev().find(|c| c.1[0] == b'A').map(|c| c.0);
-                        let Some(sec) = self.ability_own_record(h, t, &code, older) else { continue };
+                        let Some(sec) = self.ability_own_record(h, t, &code, older, &rallies) else { continue };
                         let Some(o) = by_slot.get(&t.0) else { continue };
                         let e = kinds.entry(String::from_utf8_lossy(&code).to_string()).or_insert((0, 0));
                         if sec.to_bytes(o.entry.kind).is_ok_and(|b| b == o.second) {

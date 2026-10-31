@@ -1723,6 +1723,15 @@ Formats the port made its own, to be replaced by the original's:
   due time), its place.  31 of the quiet test map's 45 agree; the rest swap counts
   with a neighbor started in the same moment (the original fires its looks in due
   order).
+- A unit's two regions (`^pmr`): the pathing map's cells under it (a square of one
+  more than its collision's sixteens, at most four, the cell it is in ⌊n/2⌋ from its
+  start; kind 1 and flags 0xca, a structure's none) and their count; the coarse map's
+  8-cell blocks of the cells its collision's circle reaches (⌊c - r⌋ to ⌊c + r⌋),
+  their count's high byte 0x10 and its owner's number.  A hidden unit's coarse one
+  marked 0x0c000000, its fine one emptied (bounds 0xfffe0c00, no cells).  All 142 of
+  the quiet test map's agree but for the maps' search marks, the running game's.
+- A unit's AI (`AI-U`): fourteen words, a computer's workers' and structures' naming
+  their town site's AI (`AIts`); empty handlers.  All 42 agree.
 - A unit's AI list (`uref`): four words, the second and third its owner's AI list
   made before it; empty handlers.  All 42 agree.
 - A unit made by script faces its literal (read by the script's compiler as the

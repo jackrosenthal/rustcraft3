@@ -1012,6 +1012,16 @@ impl World {
         for (slot, sec) in self.unit_ref_records().into_iter().chain(self.unit_ai_records()) {
             seconds.insert(slot, sec);
         }
+        // The units' regions (their search marks the template's, the running game's).
+        let marks: std::collections::HashMap<u32, u32> = objects[0].iter().filter_map(|o| match o.first() { Ok(First::Region { words, .. }) => Some((o.entry.tag, words[0])), _ => None }).collect();
+        for &h in &self.unit_order {
+            for (slot, mut f) in self.unit_region_records(h) {
+                if let (First::Region { words, .. }, Some(&m)) = (&mut f, marks.get(&slot)) {
+                    words[0] = m;
+                }
+                records.insert(slot, f);
+            }
+        }
         for o in objects[0].iter_mut() {
             if let Some(r) = records.get(&o.entry.tag) {
                 o.first = r.to_bytes();
@@ -1511,6 +1521,29 @@ impl World {
                     }
                 }
                 out.push(format!("units' AIs: {same} the same, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
+                // The units' regions, the search marks aside.
+                let (mut same, mut marks, mut differ, mut first) = (0, 0, 0, None);
+                for &h in &self.unit_order {
+                    for (slot, f) in self.unit_region_records(h) {
+                        let Some(o) = by_slot.get(&slot) else { continue };
+                        if f.to_bytes() == o.first {
+                            same += 1;
+                            continue;
+                        }
+                        match o.first() {
+                            Ok(First::Region { refs, word, bounds, words }) if (First::Region { refs, word, bounds, words: [0, words[1], words[2]] }) == f => marks += 1,
+                            theirs => {
+                                differ += 1;
+                                let line = format!("slot {slot}: ours {f:?}, the original's {theirs:?}");
+                                if std::env::var("W3Z_ALL").is_ok() {
+                                    out.push(format!("region {line}"));
+                                }
+                                first.get_or_insert(line);
+                            }
+                        }
+                    }
+                }
+                out.push(format!("units' regions: {same} the same, {marks} but for the search mark, {differ} differ{}", first.map_or(String::new(), |f| format!("; first {f}"))));
             }
             // The units' agents.
             let (mut same, mut differ, mut first) = (0, 0, None);

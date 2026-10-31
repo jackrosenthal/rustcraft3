@@ -834,3 +834,50 @@ impl World {
         out
     }
 }
+
+impl World {
+    /// A unit's two regions (`^pmr`; read against the quiet test map's): the pathing
+    /// map's cells its collision covers (kind 1 and flags 0xca, a structure's none),
+    /// a count of them; and the coarse map's 8-cell blocks those fall in, its count's
+    /// high byte 0x10 and its owner's number.  Each its map and its position, and the
+    /// map's search mark as last met (the running game's: 0 written).
+    pub fn unit_region_records(&self, h: u32) -> Vec<(u32, w3_formats::w3z::First)> {
+        let Some(u) = self.unit(h) else { return Vec::new() };
+        let Some(o) = self.objects.units.get(u.type_id) else { return Vec::new() };
+        let Some(p) = self.pathing.as_ref() else { return Vec::new() };
+        let first = &u.extra.object_slots[0];
+        if first.len() < 4 {
+            return Vec::new();
+        }
+        let [coarse, fine] = self.pathing_map_objects();
+        let (cx, cy) = ((u.x - p.origin[0]) / 32.0, (u.y - p.origin[1]) / 32.0);
+        // (Its footprint a square of one cell more than its collision's sixteens, the
+        // cell it is in ⌊n/2⌋ from its start: read, collision 16 and 31 two cells, 32
+        // three, 48 four.)
+        // (At most four: read, a town hall's and a Necropolis's.)
+        let n = ((o.real("collision") / 16.0) as u32 + 1).min(4);
+        let (r0, c0) = ((cy.floor() as u32).saturating_sub(n / 2), (cx.floor() as u32).saturating_sub(n / 2));
+        let (r1, c1) = (r0 + n, c0 + n);
+        let cells = (r1 - r0) * (c1 - c0);
+        // (Its blocks those of the cells its collision's circle reaches, ⌊c - r⌋ to
+        // ⌊c + r⌋: read, a sheep's one block where its footprint has two.)
+        let r = o.real("collision") / 32.0;
+        let (b0, d0) = (((cy - r).floor() as u32) >> 3, ((cx - r).floor() as u32) >> 3);
+        let (b1, d1) = ((((cy + r).floor() as u32) >> 3) + 1, (((cx + r).floor() as u32) >> 3) + 1);
+        let blocks = (b1 - b0) * (d1 - d0);
+        let pos = rf(first[1]);
+        let region = |map: (u32, u32), word: u32, bounds: [u32; 4], words: [u32; 3]| w3_formats::w3z::First::Region { refs: [rf(map), pos], word, bounds, words };
+        // A hidden unit's are off the pathing map (read: the gold mine a haunted mine
+        // hides): its coarse one marked 0x0c000000, its fine one emptied.
+        if u.hidden {
+            return vec![
+                (first[2].0, region(coarse, 0x0c00_0000, [b0, d0, b1, d1], [0, (0x10 | u.owner as u32) << 24 | blocks, 0])),
+                (first[3].0, region(fine, 0, [0xfffe_0c00; 4], [0, 0, 0])),
+            ];
+        }
+        vec![
+            (first[2].0, region(coarse, 0, [b0, d0, b1, d1], [0, (0x10 | u.owner as u32) << 24 | blocks, 0])),
+            (first[3].0, region(fine, if u.is_building { 0x0100_0000 } else { 0x0100_00ca }, [r0, c0, r1, c1], [0, cells, 0])),
+        ]
+    }
+}

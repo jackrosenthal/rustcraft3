@@ -1771,12 +1771,18 @@ impl World {
     /// its haunted mine going south about it, as a mine in the pyramid gives, the
     /// acolytes' ways to the mine reaching its middle, as one open there gives).
     pub(crate) fn accel_pyramid_with(&self, except: Option<u32>) -> Option<crate::accel::Pyramid> {
+        self.accel_pyramid_lifting(except, &[])
+    }
+
+    /// The same with the destructables `lifted` out of it, as a search lifts its ends'
+    /// (`FUN_6f059590`'s `FUN_6f15d360` about its `FUN_6f1627e0`).
+    pub(crate) fn accel_pyramid_lifting(&self, except: Option<u32>, lifted: &[u32]) -> Option<crate::accel::Pyramid> {
         let p = self.pathing.as_ref()?;
         let (w, h) = (p.width as usize, p.height as usize);
         let mut regions = vec![0u8; w * h];
         for &dh in &self.destructable_order {
             let Some(crate::types::Obj::Destructable(d)) = self.handles.get(dh) else { continue };
-            if d.object_slots.len() == 6 {
+            if d.object_slots.len() == 6 && !lifted.contains(&dh) {
                 for &(x, y) in &d.pathing_cells {
                     if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h {
                         regions[y as usize * w + x as usize] |= 0xda;

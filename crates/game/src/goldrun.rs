@@ -863,7 +863,23 @@ impl World {
             let foot: std::collections::HashSet<(i32, i32)> = self.footprint(d).iter().copied().collect();
             let (out, _, _) = crate::lrpath::search_to_region(&open, from, p.cell_of(x, y), class, 2000, |a, b| foot.contains(&(a, b)));
             let crate::lrpath::Outcome::Found(way) = out else { continue };
-            let cost = way.len() - 1;
+            // The original's cost: the accelerator plan's from the search's start to the
+            // tree, the two trees lifted, 32 pops (`FUN_6f439e00`'s `FUN_6f059590`,
+            // `FUN_6f1627e0`); taken for a tree felled under the chopping (read:
+            // Forestwalk's undead computer's ghoul, the tree of 8 taken over one of 10
+            // enumerated first).  Provisional: the drop's search keeps the way's steps,
+            // a Booty Bay peon's choice at turn 7290 going to a tree of 12 over two of 8
+            // for a reason not yet read (`FUN_6f41d160`'s list, `FUN_6f3ff600`'s 0x40).
+            let cost = if from_worker {
+                let acc = |w: f32, o: f32| (w - o) / 64.0;
+                let Some(pyr) = self.accel_pyramid_lifting(None, &[d]) else { continue };
+                match crate::accelpath::plan_cost(&pyr, 0, (acc(fx, p.origin[0]), acc(fy, p.origin[1])), (acc(x, p.origin[0]), acc(y, p.origin[1])), 0x20) {
+                    Some(c) => c as usize,
+                    None => continue,
+                }
+            } else {
+                way.len() - 1
+            };
             log::debug!("next tree for {h}: ({x}, {y}) cost {cost}");
             if best.is_none_or(|(c, _)| cost < c) {
                 best = Some((cost, d));

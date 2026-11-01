@@ -2645,8 +2645,21 @@ Formats the port made its own, to be replaced by the original's:
   with no tree, home, 0xd0031).  Read (`abtest/tf411c.sh`): Forestwalk's undead
   computer's ghoul, its tree felled at 40.6459 with ten of its twenty, given the
   harvest order's seventeen at 41.085636, its `^clg` freed then, the old order's
-  eight and the new one's five after.  The keepalives agree to turn 415; the next
-  tree it took (two tie a step apart) is not yet read.
+  eight and the new one's five after.  The keepalives agree to turn 415.
+- A next tree's cost (`FUN_6f4153a0`, each candidate by `FUN_6f439e00`, the first
+  of the cheapest kept, strict `<`): `FUN_6f059590` lifts the two ends' pathing and
+  plans over the accelerator pyramid (`FUN_6f1627e0`, 0x20 pops): within one node
+  (or from no node) the two places' doubled straight length, else the way back's
+  legs between the nodes' remembered cells (`FUN_6f163440`; a parent flagged at
+  +0x23 counts 2, not yet told apart), none found skipped.  Read: the ghoul's walk
+  (`abtest/velg.sh`) turning north at 41.2455 and stopping 4.43 from (1600, 6080)
+  at 41.425449, its reach (116 + 32) / 32; that tree's cost 8 against the one
+  enumerated first's 10.  Ported for a tree felled under the chopping only: a
+  Booty Bay peon's drop near turn 7290 takes a tree of 12 over two of 8 enumerated
+  after it, so something (`FUN_6f41d160`'s list of eight at the ability's +0x70,
+  or `FUN_6f3ff600`'s refusal of a target flagged 0x40) leaves those out; the drop
+  keeps the way's steps meanwhile (provisional).  The keepalives agree to turn
+  421.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

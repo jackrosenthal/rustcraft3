@@ -295,6 +295,50 @@ impl Search<'_> {
     }
 }
 
+/// A path's cost from `start` to `goal` (accelerator units), as `FUN_6f1627e0` gives
+/// it: within one node, the two places' straight length doubled (`isqrt` of the
+/// doubled whole units' squares); else, the goal's node found within `limit` pops,
+/// the way back's legs so (`FUN_6f163440`, each from a node's remembered cell to its
+/// parent's); none found, none.  Provisional: a leg the original flags (its +0x23)
+/// counts 2, not yet told apart here.
+pub fn plan_cost(pyr: &Pyramid, layer: usize, start: (f32, f32), goal: (f32, f32), limit: u32) -> Option<u32> {
+    let s = (start.0.floor() as i32, start.1.floor() as i32);
+    let g = (goal.0.floor() as i32, goal.1.floor() as i32);
+    let straight = |a: (i32, i32), b: (i32, i32)| {
+        let (dx, dy) = ((a.0 - b.0).abs() * 2, (a.1 - b.1).abs() * 2);
+        isqrt((dx * dx + dy * dy) as u32)
+    };
+    let mut search = Search { pyr, layer, nodes: Vec::new(), keys: HashMap::new(), heap: Heap(vec![(0, 0, 0)]), goal: g, goal_node: None, best: 0, best_d: 0 };
+    search.state(0, s.0, s.1)?;
+    if s == g {
+        return Some(0);
+    }
+    // (A start in no node is costed straight too: `FUN_6f164c30` answering 1.)
+    let sn = search.lookup(0, s.0, s.1);
+    if sn < 0 {
+        return Some(straight(s, g));
+    }
+    let gn = search.lookup(0, g.0, g.1);
+    if gn == sn {
+        return Some(straight(s, g));
+    }
+    let sn = sn as usize;
+    search.goal_node = (gn >= 0).then_some(gn as usize);
+    search.best = sn;
+    search.best_d = ((s.0 - g.0) * (s.0 - g.0) + (s.1 - g.1) * (s.1 - g.1)) as u32;
+    search.nodes[sn].h = cost(s, g);
+    search.push(sn);
+    let end = search.run(limit)?;
+    let mut total = 0;
+    let mut at = end;
+    while let Some(p) = search.nodes[at].parent {
+        let (a, b) = (&search.nodes[at], &search.nodes[p]);
+        total += straight((a.x, a.y), (b.x, b.y));
+        at = p;
+    }
+    Some(total)
+}
+
 /// A path's coarse way from `start` to `goal` (accelerator units) for a unit of size 1
 /// on `layer`, popping at most `limit` nodes (`FUN_6f164c30`, `FUN_6f164a20`,
 /// `FUN_6f162a30`): the goal alone when both stand in one node (or the start is off

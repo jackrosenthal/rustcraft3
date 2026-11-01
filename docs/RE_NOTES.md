@@ -2591,6 +2591,14 @@ Formats the port made its own, to be replaced by the original's:
   next turn's clocks begin with.  It paid in turn 335, after what the turn
   released went (the trained acolyte's AI objects, `Tags::free_due`), its old
   `` `rtl `` the free list's top.  The keepalives agree to turn 342.
+- An AI's training (to an empty queue) is made at the main clock of its order's
+  tick plus the build time, in the turn's steps: the fifth acolyte, ordered at
+  18.43, made at 33.432907 (its state's first set, `abtest/st325.sh`), after turn
+  335's first step had freed a walk's path, the unit's objects taking the slots
+  two places on (read in the original's frees of the turn: each of the port's
+  fifteen two places up its free list).  The fourth, ordered at 0.1, made at 15.1
+  as turn 152 began, fits both.  Players' trainings are still made before the
+  turn's steps.  The keepalives agree to turn 383.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

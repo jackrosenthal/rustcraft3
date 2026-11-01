@@ -476,6 +476,11 @@ pub struct UnitExtra {
     pub training_tags: Option<(u32, u32)>,
     #[serde(default)]
     pub training_waits: bool,
+    /// When an AI's training at the queue's head falls due, on the main clock
+    /// (seconds since the game began): its modifier runs from the order's tick
+    /// (`World::trainings_to`).
+    #[serde(default)]
+    pub train_due: Option<f64>,
     /// A wanderer's next walk (Awan): its timer's due time on the agent queue (its
     /// single's bits; `World::update_wander`).
     #[serde(default)]
@@ -887,6 +892,7 @@ impl Default for UnitExtra {
             idle_away: None,
             training_tags: None,
             training_waits: false,
+            train_due: None,
             wander_at: None,
             cannibal_wait: None,
             was_idle: false,

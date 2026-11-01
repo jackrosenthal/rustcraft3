@@ -1730,6 +1730,17 @@ impl World {
     }
 
     /// The main clock (its single's bits) at a moment of this tick, its 5 ms tick's.
+    /// The main clock at main tick `t` (seconds since the game began), within the
+    /// tick's clocks.
+    pub(crate) fn tick_main(&self, t: i64) -> Option<f64> {
+        self.tick_abs(usize::try_from(t - self.tick_clocks.0).ok()?)
+    }
+
+    /// The main clock at the tick of player `p`'s AI thread running now.
+    pub(crate) fn ai_tick_main(&self, p: u8) -> Option<f64> {
+        self.ai.get(&p).and_then(|s| self.tick_main((s.clock as f64 * 200.0).round() as i64))
+    }
+
     pub(crate) fn clock_at_time(&self, t: f32) -> Option<u32> {
         let k = (t as f64 * 200.0).round() as i64;
         let (first, clocks) = (&self.tick_clocks.0, &self.tick_clocks.1);

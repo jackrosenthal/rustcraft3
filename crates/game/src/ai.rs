@@ -730,8 +730,7 @@ impl World {
                 // An acolyte taken from its haunted mine changes the mine's count then,
                 // at the thread's tick (read: the altar's acolyte at 32.430, the mine
                 // paying at 33.494 in turn 335).
-                let at = self.ai.get(&p).and_then(|s| usize::try_from((s.clock as f64 * 200.0).round() as i64 - self.tick_clocks.0).ok()).and_then(|i| self.tick_abs(i));
-                if let (Some(mine), Some(t)) = (mine, at) {
+                if let (Some(mine), Some(t)) = (mine, self.ai_tick_main(p)) {
                     self.mine_workers_changed(mine, t);
                 }
             }

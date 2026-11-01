@@ -1428,6 +1428,7 @@ impl World {
             self.time_of_day_to(vm, next);
             self.timed_frees_to(next);
             self.ai_threads_to_tick(next);
+            self.trainings_to(vm, next);
             self.mine_payouts_to(vm, next);
             // The paths of the walks ended in the last step go in this one, in the walkers'
             // order (`Tags::walk_ended`).
@@ -1516,6 +1517,7 @@ impl World {
             i = j;
         }
         self.fire_mana_listeners(None);
+        self.trainings_to(vm, None);
         self.mine_payouts_to(vm, last);
         self.step_range = (1, n);
     }
@@ -2972,6 +2974,18 @@ impl World {
             // tick, counts from the next turn without waiting: read, Forestwalk's undead
             // computer's acolyte, ordered in turn 2 and made in turn 152.)
             u.extra.training_waits = !ai;
+            // Its unit is made at the order's tick's main clock and the build time on,
+            // in the turn's steps (read: Forestwalk's undead computer's fifth acolyte,
+            // ordered at 18.43, made at 33.432907, after turn 335's first step freed a
+            // walk's path; the fourth, ordered at 0.1, made at 15.1, as its turn
+            // began).
+            if ai {
+                let build_time = self.objects.units.get(id).map_or(1.0, |o| o.real("bldtm")).max(0.01) as f64;
+                let due = self.ai_tick_main(owner).map(|t| t + build_time);
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.train_due = due;
+                }
+            }
         }
         // Then the AI's issue of it (`FUN_6f693450`, as `FUN_6f9cb530` ends) makes an
         // order and a task, going with the tick's orders, the task first (traced: the
@@ -3290,6 +3304,29 @@ impl World {
         // tick's first movement step (`World::train_before_steps`).
     }
 
+    /// The AI's trainings held for the steps (`World::update_training`) due by main tick
+    /// `tick` (all with none), made as their step begins.
+    pub(crate) fn trainings_to(&mut self, vm: &mut Vm, tick: Option<i64>) {
+        let at = tick.and_then(|t| self.tick_main(t));
+        let ready: Vec<u32> = self
+            .unit_order
+            .iter()
+            .copied()
+            .filter(|&h| {
+                self.unit(h).is_some_and(|u| {
+                    let build_time = u.queue.first().and_then(|&id| self.objects.units.get(id)).map_or(1.0, |o| o.real("bldtm")).max(0.01);
+                    u.extra.train_due.is_some_and(|d| at.is_none_or(|a| d <= a + 1e-6)) && u.queue_progress >= build_time - 1e-3
+                })
+            })
+            .collect();
+        for h in ready {
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.train_due = None;
+            }
+            self.update_training(vm, h, 0.0);
+        }
+    }
+
     /// Structures' training, before the tick's first movement step (read: a peon trained
     /// made as the turn begins, before the turn's steps, a peon's arrival at the mine
     /// and a wanderer's walk end in its last step freeing theirs after).
@@ -3321,6 +3358,16 @@ impl World {
         if u.queue_progress < build_time - 1e-3 {
             return;
         }
+        // One due after the turn's first step is made in the steps (`World::trainings_to`).
+        let due = u.extra.train_due;
+        let first = self.step_ticks.first().and_then(|&t| self.tick_main(t));
+        if let (Some(due), Some(first)) = (due, first) {
+            if due > first + 1e-6 {
+                return;
+            }
+        }
+        let u = self.unit_mut(h).unwrap();
+        u.extra.train_due = None;
         // Food must be available when the unit finishes.
         let owner = u.owner;
         u.queue_progress = 0.0;

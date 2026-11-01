@@ -2712,6 +2712,17 @@ Formats the port made its own, to be replaced by the original's:
   three empty handles between them, every later handle three higher (42 globals and
   33 registers apart).  Now the tables are the same size, every global and register
   agreeing.
+- A player-unit event with listeners (`FUN_6f2609b0`, 0x8021a for a construction's
+  start) makes its data agent and gives it a handle as it goes to its triggers, then
+  the unit's (`FUN_6f262cb0`, each by `FUN_6f282e30`, which takes the last freed
+  handle or a new one); when the executions end the data's references are gone
+  (`FUN_6f283f40`) and its handle is freed (`FUN_6f28a300`).  Read under winedbg on
+  Forestwalk's test map (`abtest/hdl.sh`): at 1.979998 the data (born 30074) took
+  0x100f61, the crypt 0x100f62, and 0x100f61 was freed; at 1.999998 the melee timer's
+  first force took 0x100f61.  The game's record lists the handles' rows as they were
+  given (the force's after the crypt's), not by handle.  The port does both, and its
+  handle table and rows now agree with the original's save at 2.5 seconds but for
+  the crypt's slot.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

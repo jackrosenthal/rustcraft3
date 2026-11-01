@@ -31,6 +31,14 @@ pub struct Handles<T> {
     aliases: HashMap<u32, u32>,
     #[serde(default)]
     handle_of: HashMap<u32, u32>,
+    /// When each handle was last given, in order (the original keeps its handles'
+    /// rows so, a reused handle's after those given before it: read, Forestwalk's test
+    /// map's save at 2.5 seconds, the melee timer's first force in the crypt's event
+    /// data's freed handle 0x100f61 listed after the crypt's 0x100f62).
+    #[serde(default)]
+    given: HashMap<u32, u64>,
+    #[serde(default)]
+    given_count: u64,
 }
 
 fn unseen_base() -> u32 {
@@ -39,7 +47,7 @@ fn unseen_base() -> u32 {
 
 impl<T> Default for Handles<T> {
     fn default() -> Self {
-        Handles { objects: HashMap::default(), free: Vec::new(), pending: Vec::new(), next: HANDLE_BASE, next_unseen: UNSEEN_BASE, aliases: HashMap::default(), handle_of: HashMap::default() }
+        Handles { objects: HashMap::default(), free: Vec::new(), pending: Vec::new(), next: HANDLE_BASE, next_unseen: UNSEEN_BASE, aliases: HashMap::default(), handle_of: HashMap::default(), given: HashMap::default(), given_count: 0 }
     }
 }
 
@@ -52,14 +60,26 @@ impl<T> Handles<T> {
 
     /// The next handle: the last freed, or a new one.
     fn take_id(&mut self) -> u32 {
-        match self.free.pop() {
+        let id = match self.free.pop() {
             Some(id) => id,
             None => {
                 let id = self.next;
                 self.next += 1;
                 id
             }
-        }
+        };
+        self.mark_given(id);
+        id
+    }
+
+    fn mark_given(&mut self, h: u32) {
+        self.given.insert(h, self.given_count);
+        self.given_count += 1;
+    }
+
+    /// Where a handle stands among those given, the earlier first.
+    pub fn given_order(&self, h: u32) -> (u64, u32) {
+        (self.given.get(&h).copied().unwrap_or(0), h)
     }
 
     /// The handle scripts know an object by: its id, or for an unseen object the
@@ -89,6 +109,7 @@ impl<T> Handles<T> {
         }
         self.aliases.insert(h, id);
         self.handle_of.insert(id, h);
+        self.mark_given(h);
     }
 
     /// The object a script's handle names (an unseen object's under its own id).
@@ -135,6 +156,16 @@ impl<T> Handles<T> {
         };
         if v.is_some() && !self.pending.contains(&id) {
             self.pending.push(id);
+        }
+        v
+    }
+
+    /// Removes an object no script can hold, its handle free at once (the original's
+    /// count of its references down to none, `FUN_6f283f40`, `FUN_6f28a300`).
+    pub fn release(&mut self, id: u32) -> Option<T> {
+        let v = self.objects.remove(&id);
+        if v.is_some() {
+            self.free.push(id);
         }
         v
     }

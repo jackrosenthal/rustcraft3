@@ -457,7 +457,10 @@ impl Game {
         tail.push(Field::Word(4 + 16 * table.len() as u32));
         tail.push(Field::List(table.iter().map(|r| vec![Field::Word(r.0), Field::Ref(r.1.map_or(none, rf)), Field::Word(r.2)]).collect()));
         tail.push(Field::Word(4 + 16 * table.len().saturating_sub(1) as u32));
-        tail.push(Field::List(table.iter().enumerate().skip(1).map(|(k, r)| vec![Field::Ref(r.1.map_or(none, rf)), Field::Word(r.3.unwrap_or(0)), Field::Word(crate::handles::HANDLE_BASE + k as u32)]).collect()));
+        // (In the order the handles were given.)
+        let mut rows: Vec<(u32, &(u32, Option<(u32, u32)>, u32, Option<u32>))> = table.iter().enumerate().skip(1).map(|(k, r)| (crate::handles::HANDLE_BASE + k as u32, r)).collect();
+        rows.sort_by_key(|&(h, _)| w.handles.given_order(h));
+        tail.push(Field::List(rows.iter().map(|&(h, r)| vec![Field::Ref(r.1.map_or(none, rf)), Field::Word(r.3.unwrap_or(0)), Field::Word(h)]).collect()));
         tail.push(Field::List(Vec::new()));
         tail.extend([Field::Word(qum.0), Field::Word(qum.1), Field::Real(0.0), Field::Word(0)]);
         let now = w.tags.save_clock.unwrap_or(w.tags.clock);

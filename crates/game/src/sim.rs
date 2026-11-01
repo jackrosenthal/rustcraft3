@@ -3661,8 +3661,21 @@ impl World {
         // traced: freed at the turn's end after the melee trigger's `+tex`).
         let listened = self.events.iter().any(|&e| matches!(self.handles.get(e), Some(Obj::Event(r)) if matches!(r.kind, EventKind::PlayerUnit { event: EVENT_PLAYER_UNIT_CONSTRUCT_START, .. })));
         let data = listened.then(|| self.tags.take(b"pucs"));
+        // The data takes a handle as the event goes to its triggers, then the structure
+        // (`FUN_6f262cb0`, each by `FUN_6f282e30`), and gives its own back as their
+        // executions end, the next handle made taking it (read: Forestwalk's test map's
+        // crypt begun at 1.98, the data's handle 0x100f61 and the crypt's 0x100f62, the
+        // melee timer's first force at 2.0 then given 0x100f61).
+        let data_handle = data.map(|_| {
+            let d = self.handles.insert(Obj::Opaque("player unit event data".into()));
+            self.handles.handle(b);
+            d
+        });
         let ctx = EventCtx { unit: b, player: owner, has_player: true, event_id: EVENT_PLAYER_UNIT_CONSTRUCT_START, ..Default::default() };
         self.fire(vm, ctx, move |_, k| matches!(k, EventKind::PlayerUnit { player, event, .. } if *player == owner && *event == EVENT_PLAYER_UNIT_CONSTRUCT_START));
+        if let Some(d) = data_handle {
+            self.handles.release(d);
+        }
         if let Some(d) = data {
             if self.exec_at_tick_end {
                 self.tags.issued.push(d);

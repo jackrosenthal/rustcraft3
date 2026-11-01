@@ -2904,13 +2904,25 @@ Formats the port made its own, to be replaced by the original's:
     shows the mine to, and its fog modifier (`+fgm`, 72 bytes: 0x1d4, 1, 600.0, ten 0,
     the mine's place, 0, none).  Not yet made: a countdown on the mine's real (10
     falling for 11 seconds from the first entry).
-  - The local player's units, and others it sees (the gold mine), have 0x200000 more
-    in their sprite's word; its own units' widget shorts 1, 0 (others' seen 0, 0).
+  - The local player's units have 0x200000 more in their sprite's word (some others
+    too, far creeps among them: not yet told apart); its own units' widget shorts
+    1, 0, a unit it sees 0 second (the gold mine 4095, 0), else 0x8001.
+  - Read again at 3 seconds (the test map `fwh3`, the port's tags the original's
+    there): a worker waiting at the mine has the tasks of one inside, its harvest's
+    flags as inside (0x9000), and its place in the mine's queue, a `uref` on its
+    chain after its tasks naming the next waiting worker's (words 0, next, 0); the
+    mine's ability names the queue's first and last (its fifth and sixth words'
+    triples).  The harvest's hall is none until the worker first carries a load
+    out, and in the mine it carries nothing yet (the port's run now keeps the last
+    hall).  The original loads the port's save there and every peasant mines on.
+    The order the map's script gave is the player's form (two blocks at its head,
+    the first gone), where the port makes the worker's own (one block), its later
+    objects a place off (not yet changed: the port's script orders all take the
+    worker's form).
   With these the original loads the port's 12-second save and every peasant goes on
   mining (the gold rising as from its own save); with the orders alone they stood,
-  and without the mine's shaft the walkers went in and stayed.  Not yet read: the
-  player's first harvest order (its own kind), a worker waiting at the mine, lumber,
-  and the counters and turn values of a walk.
+  and without the mine's shaft the walkers went in and stayed.  Not yet read:
+  lumber, and the counters and turn values of a walk.
 - Still not written: the Graveyard's effects, a haunted mine's payout modifier and
   listener, and the running game's counts and search marks.
 - The agent timers' counts (each start's, saved in its timer's record) with the

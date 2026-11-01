@@ -582,7 +582,11 @@ impl World {
                 add(t, c, &mut chain);
             }
         }
-        // (Its order's tasks, after its abilities: read, a harvesting acolyte's.)
+        // (Its order's tasks, after its abilities: read, a harvesting acolyte's; and a
+        // waiting worker's place in its mine's queue after them.)
+        if let Some(q) = self.saved_order(h).and_then(|o| o.queue) {
+            add(q, *codes::class::UNIT_AI_REF, &mut chain);
+        }
         if let Some(o) = self.saved_order(h) {
             for (slot, first, _) in &o.records {
                 if let First::Agent { object, .. } = first {
@@ -1293,22 +1297,16 @@ impl World {
                 let data = |f: &str| ab.map_or(0.0, |ab| ab.level_real(f, 1));
                 let gold = code == codes::ability::id::HARVEST;
                 let run = u.extra.gold_run.as_ref().filter(|r| gold && !r.lumber);
+                // (The hall it walks to, else the last it took a load to, none before.)
                 let hall = run.and_then(|r| match r.phase {
                     crate::goldrun::Phase::ToHall(hall) => Some(hall),
-                    // (Else the nearest of its owner's that takes gold.)
-                    _ => self
-                        .unit_order
-                        .iter()
-                        .copied()
-                        .filter(|&o| self.unit(o).is_some_and(|b| !b.dead && b.owner == u.owner && !b.extra.uprooted) && self.ability_with_code(o, codes::ability::RETURN).is_some_and(|(a, l)| self.ability_real(a, "DataA", l) != 0.0))
-                        .min_by(|&a, &b| {
-                            let d = |o: u32| self.unit(o).map_or(f32::MAX, |b| (b.x - u.x).hypot(b.y - u.y));
-                            d(a).total_cmp(&d(b))
-                        }),
+                    _ => r.hall,
                 });
                 let hall = hall.and_then(|v| self.unit(v)).and_then(|v| v.extra.object_slots[0].first().copied()).map_or(NONE, rf);
-                // (Its gold carried the fifth: read, 10 on its way home.)
-                let carried = if gold { u.carry_gold.max(0) as u32 } else { 0 };
+                // (Its gold carried the fifth: read, 10 on its way home, none yet in the
+                // mine.)
+                let in_mine = run.is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::InMine(_)));
+                let carried = if gold && !in_mine { u.carry_gold.max(0) as u32 } else { 0 };
                 own.extend([w(data("DataC") as u32), w(data("DataB") as u32), w(0), w(0), w(carried), w(hall.0), w(hall.1), w(0), Field::Real(o.real("dmgpt1")), Field::Real(o.real("backSw1")), w(data("DataA") as u32)]);
                 if gold {
                     let f = f32::from_bits;
@@ -1318,7 +1316,8 @@ impl World {
                     });
                 }
                 if let Some(r) = run {
-                    let inside = matches!(r.phase, crate::goldrun::Phase::InMine(_));
+                    // (Waiting at the mine as inside it.)
+                    let inside = matches!(r.phase, crate::goldrun::Phase::InMine(_) | crate::goldrun::Phase::Waiting(_));
                     if let Some(Field::Word(flags)) = own.first_mut() {
                         *flags |= 0x1 | if r.entered { 0x4000_0000 } else { 0 } | if inside { 0x9000 } else { 0x800 };
                     }
@@ -1349,7 +1348,10 @@ impl World {
                 // fog modifier, `+fgm`: read, Forestwalk's human peasants' mine.)
                 let fog = u.extra.mine_fog.filter(|(s, _)| self.tags.live.get(s).is_some_and(|e| &e.0 == codes::class::FOG_MODIFIER));
                 let fog_ref = fog.map_or(NONE, |(s, _)| rf(self.tagged(s)));
-                own.extend([w(u.resource.max(0) as u32), Field::Real(1.0), w(1), w(fog.is_some() as u32), w(u32::MAX), w(u32::MAX), w(0), w(u32::MAX), w(u32::MAX), w(0), w(fog.map_or(15, |f| f.1 as u32)), Field::Real(2.0), w(over.0), w(over.1), w(0), w(fog_ref.0), w(fog_ref.1), w(0)]);
+                // (Its queue's first and last waiting worker's places.)
+                let queue: Vec<(u32, u32)> = u.extra.mine_queue.iter().filter_map(|&v| self.saved_order(v).and_then(|o| o.queue)).collect();
+                let (first_q, last_q) = (queue.first().map_or(NONE, |&q| rf(q)), queue.last().map_or(NONE, |&q| rf(q)));
+                own.extend([w(u.resource.max(0) as u32), Field::Real(1.0), w(1), w(fog.is_some() as u32), w(first_q.0), w(first_q.1), w(0), w(last_q.0), w(last_q.1), w(0), w(fog.map_or(15, |f| f.1 as u32)), Field::Real(2.0), w(over.0), w(over.1), w(0), w(fog_ref.0), w(fog_ref.1), w(0)]);
                 let shaft = u.extra.object_slots[2].iter().map(|&(s, _)| s).skip_while(|&s| s != t.0).find(|&s| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::MINE_SHAFT)).map_or(NONE, |s| rf(self.tagged(s)));
                 vec![Field::Ref(NONE), Field::List(vec![vec![Field::Ref(shaft)]]), timer()]
             }
@@ -1812,6 +1814,16 @@ impl World {
         out
     }
 
+    /// Each gold mine's queue of waiting workers' places, first first, by mine.
+    pub(crate) fn mine_queues(&self) -> Vec<Vec<(u32, u32)>> {
+        self.unit_order
+            .iter()
+            .filter_map(|&m| self.unit(m))
+            .map(|m| m.extra.mine_queue.iter().filter_map(|&w| self.saved_order(w).and_then(|o| o.queue)).collect::<Vec<_>>())
+            .filter(|q| !q.is_empty())
+            .collect()
+    }
+
     /// The units' AI lists (`uref`, CUnitRefList's `FUN_6f42f860`; read against the quiet
     /// test map's): four words, the second and third the list made before it of its
     /// owner's units (provisional: by owner), and empty handlers.
@@ -1831,6 +1843,15 @@ impl World {
             let prev = lists[..k].iter().rev().find(|l| l.0 == owner).map_or(NONE, |l| rf(l.1));
             let handlers = Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
             out.push((t.0, Second::UnitRefs { words: [0, prev.0, prev.1, 0], handlers }));
+        }
+        // A gold mine's queue: each waiting worker's place naming the next's (read:
+        // Forestwalk's mine at 3 seconds, two peasants waiting).
+        for q in self.mine_queues() {
+            for (k, t) in q.iter().enumerate() {
+                let next = q.get(k + 1).map_or(NONE, |&n| rf(n));
+                let handlers = Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
+                out.push((t.0, Second::UnitRefs { words: [0, next.0, next.1, 0], handlers }));
+            }
         }
         out
     }

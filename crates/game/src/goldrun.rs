@@ -120,6 +120,11 @@ pub struct GoldRun {
     /// as it goes to the next tree.
     #[serde(default)]
     pub swing_ready: Option<u32>,
+    /// The hall it last took its load to (its harvest's hall, none before it first
+    /// carried a load out: read, Forestwalk's peasants on their first trip at 3
+    /// seconds).
+    #[serde(default)]
+    pub hall: Option<u32>,
 }
 
 impl GoldRun {
@@ -299,7 +304,7 @@ impl World {
                 r.at_mine &= !r.entered;
                 r
             }
-            None => GoldRun { mine, lumber, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: if player { Kind::Player } else { Kind::Own }, order, entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits(), ordered: mine, swing_ready: None },
+            None => GoldRun { mine, lumber, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: if player { Kind::Player } else { Kind::Own }, order, entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits(), ordered: mine, swing_ready: None, hall: None },
         };
         let Some(u) = self.unit_mut(h) else { return };
         u.extra.gold_run = Some(run);
@@ -653,6 +658,7 @@ impl World {
         }
         let hall = self.drop_off(h).unwrap_or(0);
         run.phase = Phase::ToHall(hall);
+        run.hall = Some(hall).filter(|&h| h != 0);
         run.kind = Kind::Return;
         run.ghosted = true;
         run.at_mine = false;
@@ -746,6 +752,7 @@ impl World {
         }
         let hall = self.drop_off(h).unwrap_or(0);
         run.phase = Phase::ToHall(hall);
+        run.hall = Some(hall).filter(|&h| h != 0);
         run.kind = Kind::Return;
         run.ghosted = true;
         run.at_mine = false;
@@ -1085,7 +1092,7 @@ mod tests {
     /// original set them (`FUN_6f15ff40`'s writes, cells a second).
     #[test]
     fn a_peons_speed_is_tuned_as_the_originals() {
-        let mut run = GoldRun { mine: 0, lumber: false, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: Kind::Player, order: Vec::new(), entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits(), ordered: 0, swing_ready: None };
+        let mut run = GoldRun { mine: 0, lumber: false, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: Kind::Player, order: Vec::new(), entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits(), ordered: 0, swing_ready: None, hall: None };
         // As winedbg printed them, to six places.
         let speed = |r: &GoldRun| (f32::from_bits(ef::mul(190f32.to_bits(), r.factor)) as f64 / 32.0 * 1e6).round() / 1e6;
         run.tune(42.838799f32.to_bits(), 1f32.to_bits());

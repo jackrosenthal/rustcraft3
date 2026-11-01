@@ -2673,6 +2673,13 @@ Formats the port made its own, to be replaced by the original's:
   computer's 1-second thread due 41.0999985, the time of tick 8220 to the bit, ran
   at tick 8221 in the original (a comparison of at most would run it at 8220, its
   order then a step early).  The keepalives agree to turn 478.
+- A worker's pause after a swing (Ahar's Dur less its first weapon's damage point
+  and backswing, `FUN_6f40bce0`, 0xd01be) runs on as its felled tree sends it to the
+  next: reaching that tree before the pause runs out, it swings as it does.  Read:
+  Forestwalk's undead computer's ghoul, its swing felling a tree from 40.2555, its
+  backswing out at 41.085, at the next tree by 41.455, swinging from 41.605350 (1.35
+  after the last), every 1.35 after, full at 47.836926.  The keepalives agree to turn
+  516.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

@@ -115,6 +115,11 @@ pub struct GoldRun {
     /// tree, set by an order, `FUN_6f418660`, and not by its own search).
     #[serde(default)]
     pub ordered: u32,
+    /// When its next swing may start (f32 bits on the agent queue): its last swing's
+    /// backswing run out and the pause after it (`swing_gap`), the timer running on
+    /// as it goes to the next tree.
+    #[serde(default)]
+    pub swing_ready: Option<u32>,
 }
 
 impl GoldRun {
@@ -167,11 +172,21 @@ fn chops_end(start: u32, point: u32, back: u32, dur: u32, chops: u32, wrap: Opti
 }
 
 /// `chops_end`, with the last chop's own time first.
-fn chops_times(start: u32, point: u32, back: u32, dur: u32, chops: u32, wrap: Option<u32>) -> (u32, u32) {
+/// A time of at least 0.01 (f32 bits).
+fn at_least_hundredth(t: u32) -> u32 {
     let least = 0.01f32.to_bits();
-    let at_least = |t: u32| if f32::from_bits(t) < f32::from_bits(least) { least } else { t };
-    let back = at_least(back);
-    let gap = at_least(ef::sub(ef::sub(dur, point), back));
+    if f32::from_bits(t) < f32::from_bits(least) { least } else { t }
+}
+
+/// The pause from a swing's backswing running out to the next swing's start: Ahar's
+/// Dur less the damage point and backswing, at least 0.01 (`FUN_6f40bce0`, 0xd01be).
+fn swing_gap_of(point: u32, back: u32, dur: u32) -> u32 {
+    at_least_hundredth(ef::sub(ef::sub(dur, point), at_least_hundredth(back)))
+}
+
+fn chops_times(start: u32, point: u32, back: u32, dur: u32, chops: u32, wrap: Option<u32>) -> (u32, u32) {
+    let back = at_least_hundredth(back);
+    let gap = swing_gap_of(point, back, dur);
     let mut wrap = wrap;
     let mut due = |t: u32, d: u32| {
         let t = ef::add(t, d);
@@ -284,7 +299,7 @@ impl World {
                 r.at_mine &= !r.entered;
                 r
             }
-            None => GoldRun { mine, lumber, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: if player { Kind::Player } else { Kind::Own }, order, entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits(), ordered: mine },
+            None => GoldRun { mine, lumber, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: if player { Kind::Player } else { Kind::Own }, order, entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits(), ordered: mine, swing_ready: None },
         };
         let Some(u) = self.unit_mut(h) else { return };
         u.extra.gold_run = Some(run);
@@ -457,8 +472,16 @@ impl World {
         self.tags.release_in_step(task);
         self.tags.walk_ended(path, serial);
         let agent = self.step_agent.get(k).copied().unwrap_or(self.agent_step);
-        run.chop_start = agent;
-        let (end, fells, chops) = self.chops_planned(h, run.mine, agent, None);
+        // Its pause after its last swing still running (a tree felled and the next
+        // reached soon after), it swings as the pause runs out (read: Forestwalk's
+        // undead computer's ghoul, its swing felling a tree from 40.2555, at the next
+        // tree by 41.455, swinging from 41.605350, 1.35 after).
+        let start = match run.swing_ready.take() {
+            Some(r) if f32::from_bits(r) > f32::from_bits(agent) => r,
+            _ => agent,
+        };
+        run.chop_start = start;
+        let (end, fells, chops) = self.chops_planned(h, run.mine, start, None);
         run.phase = Phase::Chopping(end);
         run.fells_at = fells;
         run.chops = chops;
@@ -490,6 +513,15 @@ impl World {
     /// lumber it gives, `FUN_6f405110`), then too as that chop's backswing runs out
     /// (`FUN_6f40bce0` finds its target gone); when the tree falls, if it does; and its
     /// chops.
+    /// The pause after a worker's swing (`swing_gap_of`, its first weapon's damage
+    /// point and backswing, as `chops_planned`).
+    fn swing_gap(&self, h: u32) -> u32 {
+        let Some(u) = self.unit(h) else { return 0 };
+        let (point, back) = crate::sim::weapon_n(self, u.type_id, 1).map_or((0.5, 0.5), |w| (w.damage_point, w.backswing));
+        let dur = self.run_harvest(h).map_or(1.1, |(a, l)| self.ability_real(a, "Dur", l));
+        swing_gap_of(point.to_bits(), back.to_bits(), dur.to_bits())
+    }
+
     pub(crate) fn chops_planned(&self, h: u32, tree: u32, start: u32, wrap: Option<u32>) -> (u32, Option<u32>, u32) {
         let Some(u) = self.unit(h) else { return (start, None, 0) };
         // The swing's damage point and backswing are its first weapon's, whatever the
@@ -562,6 +594,9 @@ impl World {
         let felled = matches!(self.handles.get(run.mine), Some(Obj::Destructable(d)) if d.life <= 0.0);
         if run.lumber && felled && carried + taken < cap {
             if let Some(t) = self.next_tree(h, run.mine, true) {
+                if let Phase::Chopping(end) = run.phase {
+                    run.swing_ready = Some(ef::add(end, self.swing_gap(h)));
+                }
                 if let Some(u) = self.unit_mut(h) {
                     u.carry_gold = 0;
                     u.carry_lumber = carried + taken;
@@ -1029,7 +1064,7 @@ mod tests {
     /// original set them (`FUN_6f15ff40`'s writes, cells a second).
     #[test]
     fn a_peons_speed_is_tuned_as_the_originals() {
-        let mut run = GoldRun { mine: 0, lumber: false, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: Kind::Player, order: Vec::new(), entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits(), ordered: 0 };
+        let mut run = GoldRun { mine: 0, lumber: false, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: Kind::Player, order: Vec::new(), entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits(), ordered: 0, swing_ready: None };
         // As winedbg printed them, to six places.
         let speed = |r: &GoldRun| (f32::from_bits(ef::mul(190f32.to_bits(), r.factor)) as f64 / 32.0 * 1e6).round() / 1e6;
         run.tune(42.838799f32.to_bits(), 1f32.to_bits());

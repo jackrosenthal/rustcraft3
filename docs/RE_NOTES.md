@@ -2770,9 +2770,16 @@ Formats the port made its own, to be replaced by the original's:
   gains a level, its level, three lists of five (its skills, their levels most, the
   levels they need), two references, and its skill points (read against a
   Forestwalk test map saving at 160 seconds, `fwhero.w3x`: a Dreadlord's, the port's
-  now the original's but for the references).  Hills of Glory's save now loads; the
-  one at 160 seconds goes further and crashes in the computer's AI walking its units'
-  chain (`FUN_6f9c3920` under CCompAI's timer): not yet read.
+  now the original's but for the references).  Hills of Glory's save now loads.
+- A computer's repair logic (`FUN_6f9c3920`, run under CCompAI's timer and as a loaded
+  game begins, `FUN_6f9c9880`) keeps the unit it chose last (+0x17c, set by
+  `FUN_6f9cbba0`), one with Repair or Restore found by `FUN_6f48cb80` on 'Arep'; if
+  that unit stands idle (+0x194 0, 5, or 6) it is taken as it is and asked for the
+  ability without a check.  The port wrote there the computer's newest unit not a
+  structure, at 160 seconds an idle ghoul, and the original crashed (a read of 0 at
+  0x6f9c3a6b); now the newest with Repair or Restore (an acolyte, as the original's).
+  Next, there: `ai_InitAssault` takes the attack captain (+0x2ac), which the port's
+  saves leave out, and writes through none.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

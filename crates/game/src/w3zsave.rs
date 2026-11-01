@@ -369,10 +369,15 @@ impl World {
             let player = computers.get(k).copied().unwrap_or(12);
             let computer = player < 12;
             let head = self.unit_order.iter().filter_map(|&h| self.unit(h)).filter(|u| u.owner == player).filter_map(|u| u.extra.ai_slots.first().copied()).filter(|s| self.tags.live.get(&s.0).is_some_and(|e| e.1 == s.1)).max_by_key(|s| s.1).unwrap_or((u32::MAX, u32::MAX));
-            // (A computer's newest unit not a structure; read, the quiet test map's last
-            // acolyte; provisional: heroes.)
-            let joins = |u: &crate::types::Unit| !u.is_building;
-            let guard = if computer { self.unit_order.iter().filter_map(|&h| self.unit(h)).filter(|u| u.owner == player && !u.dead && joins(u)).filter_map(|u| u.extra.object_slots[0].first().copied()).max_by_key(|s| s.1) } else { None }.unwrap_or((u32::MAX, u32::MAX));
+            // (The unit its repair logic chose last (CCompAI +0x17c, `FUN_6f9c3920` and
+            // `FUN_6f9cbba0`): one with Repair or Restore, which that logic, run as a
+            // loaded game begins, takes as it is when idle (state 0, 5, or 6) and asks
+            // for that ability; taken as the newest such unit.  Read: the quiet test
+            // map's last acolyte; Forestwalk's computer's an acolyte at 2.5 and 160
+            // seconds, the port's idle ghoul there crashing the original as it loaded.
+            // Provisional: which of them.)
+            let repairs = |u: &crate::types::Unit| !u.is_building && u.abilities.iter().any(|(a, _)| matches!(self.objects.abilities.get(*a).map(|o| crate::objects::id_from_str(o.str("code").trim())), Some(c) if c == *codes::ability::id::REPAIR_ORC || c == *codes::ability::id::RESTORATION));
+            let guard = if computer { self.unit_order.iter().filter_map(|&h| self.unit(h)).filter(|u| u.owner == player && !u.dead && repairs(u)).filter_map(|u| u.extra.object_slots[0].first().copied()).max_by_key(|s| s.1) } else { None }.unwrap_or((u32::MAX, u32::MAX));
             let w = |v: u32| Field::Word(v);
             let none = || [Field::Word(u32::MAX), Field::Word(u32::MAX)];
             let mut own = vec![w(0), w(player as u32), w(head.0), w(head.1), Field::Real(0.0)];

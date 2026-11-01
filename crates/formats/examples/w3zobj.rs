@@ -113,6 +113,21 @@ fn main() {
         }
         return;
     }
+    // "unitfields <type>": each unit of a type's own record's fields, one a line,
+    // numbered.
+    if a[2] == "unitfields" {
+        for o in all.iter().filter(|o| code(o.entry.kind) == "+w3u") {
+            let Ok(w3_formats::w3z::Second::Unit { widget, fields, .. }) = o.second() else { continue };
+            if code(widget.word) != a[3] {
+                continue;
+            }
+            println!("unit {}", o.entry.tag);
+            for (k, f) in fields.iter().enumerate() {
+                println!("  {k} {f:?}");
+            }
+        }
+        return;
+    }
     // "unitsec": a unit's own record by its tag, besides its fields: its word, handlers
     // (the event lists not empty), widget, and lists not empty.
     if a[2] == "unitsec" {

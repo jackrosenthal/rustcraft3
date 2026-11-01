@@ -2886,7 +2886,10 @@ impl World {
             let rtl = self.tags.take(codes::class::THRESHOLD_LISTENER);
             let u = self.unit_mut(h).unwrap();
             u.extra.training_tags = Some((rcm, rtl));
-            u.extra.training_waits = true;
+            // (An AI's order, given by its thread after the structures' update in its
+            // tick, counts from the next turn without waiting: read, Forestwalk's undead
+            // computer's acolyte, ordered in turn 2 and made in turn 152.)
+            u.extra.training_waits = !ai;
         }
         // Then the AI's issue of it (`FUN_6f693450`, as `FUN_6f9cb530` ends) makes an
         // order and a task, going with the tick's orders, the task first (traced: the
@@ -3230,7 +3233,10 @@ impl World {
             return;
         }
         u.queue_progress += dt;
-        if u.queue_progress < build_time {
+        // Due on the clock at its time, not a hair after the turns' sum (read:
+        // Forestwalk's undead computer's acolyte ordered in turn 2, made in turn 152;
+        // 150 turns of 0.1 summed in single precision fall 2e-6 short of 15).
+        if u.queue_progress < build_time - 1e-3 {
             return;
         }
         // Food must be available when the unit finishes.

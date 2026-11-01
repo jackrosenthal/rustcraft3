@@ -2434,6 +2434,12 @@ Formats the port made its own, to be replaced by the original's:
 - A haunted mine's payout due after a tick's last movement step but by its last
   main tick pays in that tick (Forestwalk's undead computer's, due at 8.07, in turn
   81, its pair renewed then).  The keepalives agree to turn 152.
+- An AI's train order counts its time from the next turn without the wait a
+  player's order has: the AI's thread gives it after the structures' update in its
+  tick (Forestwalk's undead computer's acolyte, ordered in turn 2, is made in turn
+  152, the born count then the original's; the port, waiting, made it in 153).  And
+  150 turns of 0.1 summed in single precision fall short of 15, so the time is met
+  within a thousandth.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

@@ -967,7 +967,7 @@ impl World {
     /// fourth acolyte, made at (346.5, 483.5) and sent to its mine at (350, 516),
     /// heading straight for (349.5, 505.5) at 17.128).
     fn coarse_goal(&mut self, h: u32, goal: (f32, f32)) -> (f32, f32) {
-        if !self.unit(h).is_some_and(|u| u.ai_harvest_walk()) {
+        if !self.unit(h).is_some_and(|u| u.ai_harvest_walk() || u.ai_build_walk()) {
             return goal;
         }
         let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return goal };
@@ -975,7 +975,11 @@ impl World {
         if self.unit(h).is_some_and(|u| u.extra.coarse.is_none()) {
             let Some(u) = self.unit(h) else { return goal };
             let pos = (acc(u.x, origin[0]), acc(u.y, origin[1]));
-            let Some(pyr) = self.accel_pyramid() else { return goal };
+            let target = match self.unit(h).map(|u| &u.action) {
+                Some(Action::Harvest { target }) => *target,
+                _ => 0,
+            };
+            let Some(pyr) = self.accel_pyramid_with(Some(target)) else { return goal };
             let way = crate::accelpath::plan(&pyr, 0, pos, (acc(goal.0, origin[0]), acc(goal.1, origin[1])), 5000);
             let index = crate::accelpath::next_target(&way.points, way.points.len() - 1, pos, 10.0);
             let now = self.step_index + self.step_range.0 as u64;
@@ -1007,13 +1011,35 @@ impl World {
         let Some(m) = self.unit(h).and_then(|u| u.extra.mover) else { return false };
         let Some(&clock) = self.step_clocks.get(k) else { return false };
         let target = c.points[c.index];
-        let Some(Action::Harvest { target: t }) = self.unit(h).map(|u| u.action.clone()) else { return false };
-        let range = self.ability_with_code(h, codes::ability::ACOLYTE_HARVEST).map_or(200.0, |(a, l)| self.ability_real(a, "Rng", l));
+        // (A build's site, a point: StructureFollowRange, as its arrival there; read:
+        // the altar's acolyte stopping at (352.8942, 501.1347), 3.076 from its point,
+        // not a step before, 3.276.)
+        let (t, range) = match self.unit(h).map(|u| u.action.clone()) {
+            Some(Action::Harvest { target: t }) => (t, self.ability_with_code(h, codes::ability::ACOLYTE_HARVEST).map_or(200.0, |(a, l)| self.ability_real(a, "Rng", l))),
+            Some(Action::Build { .. }) => (0, self.misc_f32("StructureFollowRange", 100.0) - self.unit(h).map_or(0.0, |u| u.collision)),
+            _ => return false,
+        };
         let reach = ((self.unit(h).map_or(0.0, |u| u.collision) + self.unit(t).map_or(0.0, |v| v.collision) + range) / crate::pathing::CELL).max(0.49);
         let (x, y) = m.at(clock);
         let (dx, dy) = (f32::from_bits(x) - target.0 * 2.0, f32::from_bits(y) - target.1 * 2.0);
         if (dx * dx + dy * dy).sqrt() > reach {
             return false;
+        }
+        // Arrived only with its heading within 0.2 of the point's bearing; till then it
+        // stops there and turns, a turn a step (`FUN_6f16e910`; read: the altar's
+        // acolyte, in reach of its coarse point at 35.488712 14.2 degrees off it,
+        // stopped then and walking on from 35.548679).
+        self.stop_walker_at(h, clock);
+        let Some(mut mv) = self.unit(h).and_then(|u| u.extra.mover) else { return false };
+        let turn = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map_or(0.5, |o| o.real("turnRate"));
+        let gait = crate::motion::Gait { top: 0, grow: 0, turn: turn.to_bits(), window: 0, reach: 0.49f32.to_bits() };
+        if mv.face(&gait, ((target.0 * 2.0).to_bits(), (target.1 * 2.0).to_bits()), clock) != crate::motion::Step::Reached {
+            log::debug!("coarse target of {h} in reach at step {k}, turning: ({:.4}, {:.4})", f32::from_bits(x), f32::from_bits(y));
+            if let Some(u) = self.unit_mut(h) {
+                u.facing = f32::from_bits(mv.heading).to_degrees();
+                u.extra.mover = Some(mv);
+            }
+            return true;
         }
         log::debug!("coarse target of {h} reached at step {k}: ({:.4}, {:.4}), reach {reach}", f32::from_bits(x), f32::from_bits(y));
         self.stop_walker_at(h, clock);
@@ -1362,7 +1388,7 @@ impl World {
             self.tags.free_step_paths(now);
             carried = later;
             // A walk to a structure ends in the walkers' order (`World::gold_run_step_end`).
-            if self.gold_run_step_end(h, 0) || self.coarse_step_arrive(h, 0) || self.acolyte_step_arrive(h) || self.build_step_arrive(vm, h, 0) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
+            if self.gold_run_step_end(h, 0) || self.coarse_step_arrive(h, 0) || self.acolyte_step_arrive(h, 0) || self.build_step_arrive(vm, h, 0) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
                 continue;
             }
             // One given before this step (this tick's) walks from the next, one given
@@ -1376,7 +1402,7 @@ impl World {
             let stopped = self.walk_steps(h);
             // (An AI's acolyte in range after its move ends its walk in this step; one
             // stopped short keeps to its harvest, going on by itself.)
-            if self.acolyte_step_arrive(h) || self.build_step_arrive(vm, h, 0) {
+            if self.acolyte_step_arrive(h, 0) || self.build_step_arrive(vm, h, 0) {
             } else if stopped && self.unit(h).is_some_and(|u| u.ai_build_walk()) {
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.build_legacy = true;
@@ -1456,7 +1482,7 @@ impl World {
                 let (now, later): (Vec<_>, Vec<_>) = std::mem::take(&mut carried).into_iter().partition(|&(_, s)| s > serial);
                 self.tags.free_step_paths(now);
                 carried = later;
-                if self.gold_run_step_end(h, k) || self.coarse_step_arrive(h, k) || self.acolyte_step_arrive(h) || self.build_step_arrive(vm, h, k) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
+                if self.gold_run_step_end(h, k) || self.coarse_step_arrive(h, k) || self.acolyte_step_arrive(h, k) || self.build_step_arrive(vm, h, k) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
                     continue;
                 }
                 let Some(u) = self.unit(h) else { continue };
@@ -1466,7 +1492,7 @@ impl World {
                 let stopped = self.walk_steps(h);
                 // (An AI's acolyte in range after its move ends its walk in this step; one
                 // stopped short keeps to its harvest, going on by itself.)
-                if self.acolyte_step_arrive(h) || self.build_step_arrive(vm, h, k) {
+                if self.acolyte_step_arrive(h, k) || self.build_step_arrive(vm, h, k) {
                 } else if stopped && self.unit(h).is_some_and(|u| u.ai_build_walk()) {
                     if let Some(u) = self.unit_mut(h) {
                         u.extra.build_legacy = true;
@@ -1518,6 +1544,12 @@ impl World {
         }
         self.fire_mana_listeners(None);
         self.trainings_to(vm, None);
+        // Build orders ending after the last step by the turn's last main tick end in
+        // it (read: Forestwalk's undead computer's crypt begun at 1.979998, its order
+        // ending at 2.979974 in turn 30, after its last step at 2.969974).
+        if let Some(end) = self.tick_clocks.1.len().checked_sub(1).and_then(|i| self.tick_abs(i)) {
+            self.build_ends_to(end);
+        }
         self.mine_payouts_to(vm, last);
         self.step_range = (1, n);
     }
@@ -3502,24 +3534,31 @@ impl World {
     /// An AI's builder walking by the movement steps reaching its site in step `k`:
     /// within StructureFollowRange it begins the structure there, the step's clocks the
     /// moment its making counts from (read: Forestwalk's undead computer's acolyte
-    /// beginning its crypt as its walk arrives in turn 20's second step, 1.95, its
-    /// order ending a second on and the crypt's alarm watching from then, both in turn
-    /// 30).
+    /// beginning its crypt as its walk arrives in turn 20's last step, 1.98, its order
+    /// ending a second on, at 2.979974, and the crypt's alarm watching from then, both
+    /// in turn 30).
     pub(crate) fn build_step_arrive(&mut self, vm: &mut Vm, h: u32, k: usize) -> bool {
         let Some(u) = self.unit(h).filter(|u| u.ai_build_walk()) else { return false };
         let Action::Build { id, x, y } = u.action else { return false };
-        // In range by its place a step on (read: the acolyte 103.56 from the site's
-        // middle after turn 20's second step, its order then ending a second on, not
-        // after the third, 96.96; its place at 1.9 the original's to the bit, read in a
-        // single-player save; provisional: the rule, which half its collision would
-        // fit as well).
-        let reach = self.current_move_speed(h) * f32::from_bits(crate::motion::STEP);
-        if (u.x - x).hypot(u.y - y) - reach > self.misc_f32("StructureFollowRange", 100.0) {
+        // In range by its place at the step's clock (read under winedbg, the builders'
+        // velocity changes: the crypt's acolyte 103.56 from the site's middle at 1.95,
+        // walking on, and stopped at 1.98, 96.95 from it; the altar's 102.75 at
+        // 38.337, walking on, and stopped at 38.367, 96.5).
+        let follow = self.misc_f32("StructureFollowRange", 100.0);
+        let origin = self.pathing.as_ref().map_or([0.0, 0.0], |p| p.origin);
+        let at = match (u.extra.mover, self.step_clocks.get(k)) {
+            (Some(m), Some(&c)) => {
+                let (mx, my) = m.at(c);
+                (f32::from_bits(mx) * crate::pathing::CELL + origin[0], f32::from_bits(my) * crate::pathing::CELL + origin[1])
+            }
+            _ => (u.x, u.y),
+        };
+        if (at.0 - x).hypot(at.1 - y) > follow {
             return false;
         }
         self.making_clock = self.step_abs(k);
-        // It begins from its place a step on (read: the crypt's acolyte placed off the
-        // footprint from the cell it would reach in that step, `natives::units::
+        // It begins from its place at that step (read: the crypt's acolyte placed off
+        // the footprint from its cell at 1.98, (338, 501), `natives::units::
         // off_footprint`).
         if let Some(m) = self.unit(h).and_then(|u| u.extra.mover) {
             let at = self.step_clocks.iter().copied().find(|&c| f32::from_bits(c) > f32::from_bits(m.placed_at)).unwrap_or(crate::efloat::add(m.placed_at, crate::motion::STEP));
@@ -3573,17 +3612,18 @@ impl World {
         let site = if self.builds_on(id) { self.build_on_site(x, y) } else { None };
         let (x, y) = site.and_then(|s| self.unit(s).map(|m| (m.x, m.y))).unwrap_or((x, y));
         // An AI's build order's second `tsk.` goes as the structure is begun, before
-        // what the AI makes of the structure, and its walk's path and cluster two
-        // movement steps on (`FUN_6f15aa80`'s step), after the turn's other frees: in
-        // this turn if it has those steps, else at the next turn's end, as a captain's
-        // path query's do (traced: Forestwalk's undead computer's crypt, begun at 1.95,
-        // the `tsk.` freed first at the turn's end, the path and cluster after the AI's
-        // objects in the next; its ziggurat, begun at 7.62, the path and cluster freed
-        // last in that turn; provisional: the two steps, and the rest of the order).
+        // what the AI makes of the structure, and its walk's path and cluster a
+        // movement step on (`FUN_6f15aa80`'s step), after the turn's other frees: in
+        // this turn if it has that step, else at the next turn's end, as a captain's
+        // path query's do (traced: Forestwalk's undead computer's crypt, begun at 1.98,
+        // its turn's last step, the `tsk.` freed first at the turn's end, the path and
+        // cluster after the AI's objects in the next; its ziggurat, begun at 7.65, its
+        // turn's second step, the path and cluster freed last in that turn;
+        // provisional: the step, and the rest of the order).
         if let Some(order) = self.unit(h).filter(|u| u.extra.ai_order.len() == crate::ai::AI_BUILD.len()).map(|u| u.extra.ai_order.clone()) {
             self.tags.doom(order[7]);
             let begun = self.making_clock.and_then(|(c, _)| (0..self.step_clocks.len()).find(|&i| self.step_abs(i).is_some_and(|(s, _)| (s - c).abs() < 1e-6)));
-            if begun.is_some_and(|k| k + 2 < self.step_clocks.len()) {
+            if begun.is_some_and(|k| k + 1 < self.step_clocks.len()) {
                 self.tags.later_now.extend([order[16], order[15]]);
             } else {
                 self.tags.next_turn_end.extend([order[16], order[15]]);

@@ -207,6 +207,15 @@ impl World {
         self.mine_slots(mine)
     }
 
+    /// Where an acolyte stands at a slot: 16 up and right of it (`FUN_6f4b9910`, the
+    /// slot's place less -16 each way given the unit's position; read: Forestwalk's
+    /// undead computer's fourth acolyte, at its slot 4, (-5.94, 1.93) cells from the
+    /// mine, standing at (344.556, 518.431) for (344.056, 517.931) as it left at
+    /// 32.430).
+    pub(crate) fn slot_stand(x: f32, y: f32) -> (f32, f32) {
+        (x + 16.0, y + 16.0)
+    }
+
     fn mine_slots(&self, mine: u32) -> Vec<Option<(f32, f32, f32)>> {
         let Some((abgm, lvl)) = self.ability_with_code(mine, codes::ability::BLIGHTED_GOLD_MINE) else { return Vec::new() };
         let Some(m) = self.unit(mine) else { return Vec::new() };
@@ -301,6 +310,7 @@ impl World {
             return;
         };
         let Some((sx, sy, face)) = slots.get(k).copied().flatten() else { return };
+        let (sx, sy) = Self::slot_stand(sx, sy);
         let first = self.unit(h).is_some_and(|u| u.extra.mine_slot != Some(k));
         if first {
             if let Some(u) = self.unit_mut(h) {
@@ -333,10 +343,16 @@ impl World {
         u.work_timer = 0.0;
     }
 
-    /// An AI's acolyte walking with the walkers to its mine, in range of it as this step
-    /// begins: its walk ends there (`acolyte_in_range`'s objects), its path and cluster
-    /// going in the next step (`Tags::walk_ended`).
-    pub(crate) fn acolyte_step_arrive(&mut self, h: u32) -> bool {
+    /// An AI's acolyte walking with the walkers to its mine, in range of it at step `k`:
+    /// it stops, and its walk ends there once its heading is within 0.2 of the mine's
+    /// bearing (`acolyte_in_range`'s objects), its path and cluster going in the next
+    /// step (`Tags::walk_ended`); till then it turns toward the mine, one turn a step
+    /// (`FUN_6f16e910`: in reach, its steering stops; arrived only within
+    /// `DAT_6fcd53d4`, 0.2, of the bearing; read: Forestwalk's undead computer's second
+    /// acolyte, in reach at 0.75 26.8 degrees off, stopped then and arrived at 0.78;
+    /// the first, 5.4 degrees off, arrived as it came in reach at 0.36).
+    pub(crate) fn acolyte_step_arrive(&mut self, h: u32, k: usize) -> bool {
+        use crate::efloat as ef;
         let Some(u) = self.unit(h).filter(|u| u.ai_harvest_walk()) else { return false };
         let Action::Harvest { target: mine } = u.action else { return false };
         let Some(m) = self.unit(mine) else { return false };
@@ -344,6 +360,21 @@ impl World {
         if (u.x - m.x).hypot(u.y - m.y) - m.collision - u.collision > range {
             return false;
         }
+        if let (Some(mut mv), Some(&clock), Some(origin)) = (u.extra.mover, self.step_clocks.get(k), self.pathing.as_ref().map(|p| p.origin)) {
+            let f = |v: f32| v.to_bits();
+            let cell = |w: f32, o: f32| ef::div(ef::sub(f(w), f(o)), f(crate::pathing::CELL));
+            let to = (cell(m.x, origin[0]), cell(m.y, origin[1]));
+            let turn = self.objects.units.get(u.type_id).map_or(0.5, |o| o.real("turnRate"));
+            let gait = crate::motion::Gait { top: 0, grow: 0, turn: f(turn), window: 0, reach: f(0.49) };
+            if mv.face(&gait, to, clock) != crate::motion::Step::Reached {
+                if let Some(u) = self.unit_mut(h) {
+                    u.facing = f32::from_bits(mv.heading).to_degrees();
+                    u.extra.mover = Some(mv);
+                }
+                return true;
+            }
+        }
+        let Some(u) = self.unit(h) else { return false };
         let order = u.extra.ai_order.clone();
         let serial = u.extra.walk_serial;
         let first = m.extra.ai_order.is_empty();
@@ -393,7 +424,7 @@ impl World {
             .iter()
             .filter(|&&o| {
                 self.unit(o).is_some_and(|u| {
-                    !u.dead && matches!(u.action, Action::Harvest { target } if target == mine) && u.extra.mine_slot.and_then(|k| slots.get(k).copied().flatten()).is_some_and(|(sx, sy, _)| (u.x - sx).hypot(u.y - sy) <= 8.0)
+                    !u.dead && matches!(u.action, Action::Harvest { target } if target == mine) && u.extra.mine_slot.and_then(|k| slots.get(k).copied().flatten()).map(|(sx, sy, _)| Self::slot_stand(sx, sy)).is_some_and(|(sx, sy)| (u.x - sx).hypot(u.y - sy) <= 8.0)
                 })
             })
             .count() as u32;
@@ -436,6 +467,7 @@ impl World {
         let Some((ux, uy)) = self.unit(h).map(|u| (u.x, u.y)) else { return };
         let Some((_, k)) = (0..slots.len()).filter(|k| !taken.contains(k)).filter_map(|k| slots[k].map(|(x, y, _)| ((x - ux).hypot(y - uy), k))).min_by(|a, b| a.0.total_cmp(&b.0)) else { return };
         let Some((sx, sy, face)) = slots[k] else { return };
+        let (sx, sy) = Self::slot_stand(sx, sy);
         if let Some(u) = self.unit_mut(h) {
             u.x = sx;
             u.y = sy;

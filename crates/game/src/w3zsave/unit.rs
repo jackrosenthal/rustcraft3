@@ -1763,6 +1763,14 @@ impl World {
     /// The accelerator pyramid as the map stands (`crate::accel`): a cell refuses a
     /// layer by its static byte or a destructable's or structure's footprint.
     pub fn accel_pyramid(&self) -> Option<crate::accel::Pyramid> {
+        self.accel_pyramid_with(None)
+    }
+
+    /// The pyramid a walk's coarse way is planned over: every structure in it but the
+    /// walk's target (`except`; provisional: read, the altar's acolyte's way from beside
+    /// its haunted mine going south about it, as a mine in the pyramid gives, the
+    /// acolytes' ways to the mine reaching its middle, as one open there gives).
+    pub(crate) fn accel_pyramid_with(&self, except: Option<u32>) -> Option<crate::accel::Pyramid> {
         let p = self.pathing.as_ref()?;
         let (w, h) = (p.width as usize, p.height as usize);
         let mut regions = vec![0u8; w * h];
@@ -1786,7 +1794,7 @@ impl World {
             // (Gold mines, haunted or entangled too, are not in it: read, Forestwalk's
             // undead computer's acolyte's coarse way to its haunted mine reaching the
             // mine's middle, (175, 258), as only an open cell there gives.)
-            if self.is_gold_mine(uh) {
+            if except.map_or(self.is_gold_mine(uh), |e| e == uh) {
                 continue;
             }
             for &(x, y) in &u.pathing_cells {

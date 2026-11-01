@@ -2599,6 +2599,33 @@ Formats the port made its own, to be replaced by the original's:
   fifteen two places up its free list).  The fourth, ordered at 0.1, made at 15.1
   as turn 152 began, fits both.  Players' trainings are still made before the
   turn's steps.  The keepalives agree to turn 383.
+- An acolyte stands 16 up and right of its haunted mine's ring slot
+  (`FUN_6f4b9910`: the slot's place less -16 each way given the unit's position
+  call, vfunc +0x180); the slots themselves (`FUN_6f4ba3f0`, `FUN_6f4d7e40`) and
+  the save's markers are unmoved.  Read: the altar's acolyte leaving its slot 4 at
+  (344.556, 518.431) for the port's (344.056, 517.931); the second acolyte's
+  steering at 0.42 about the first, standing so, the original's to six digits
+  (`abtest/vela.sh`).
+- The steering's arrival (`FUN_6f16e910`): in reach (the two sizes and the range
+  over 32, at least 0.49) it stops; arrived only with its heading within
+  `DAT_6fcd53d4`, 0.2, of the target's bearing, else it turns, a turn a step, and
+  is judged again.  Read: the second acolyte in reach of its mine at 0.75 26.8
+  degrees off, stopped then and arrived at 0.78; the first, 5.4 off, arrived as it
+  came in reach at 0.36; the altar's acolyte in reach of a coarse point at 35.4887
+  14.2 off, arrived at 35.5187, walking on from 35.5487.
+- An AI's build walk steers by a coarse way too, its reach StructureFollowRange
+  (100) over 32; and the coarse way is planned with every structure in the pyramid
+  but the walk's target (gold mines included; provisional: the saves' grids still
+  leave mines out).  Read: the altar's acolyte going south about its haunted mine,
+  stopping at (352.8942, 501.1347), 3.076 from its point and not a step before,
+  3.276, as the port's.
+- A builder arrives by its place at the step's clock within StructureFollowRange
+  of the site (velocity traces, `abtest/velc.sh`, `abtest/velb.sh`): the crypt's
+  acolyte 103.56 at 1.95 and stopped at 1.98, 96.95, its order ending at 2.979974;
+  the altar's 102.75 at 38.337 and stopped at 38.367, 96.5.  A build order ending
+  after a turn's last step by its last main tick ends in it; the build walk's path
+  and cluster go a step after the begin in its turn, else at the next turn's end.
+  The keepalives agree to turn 385.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

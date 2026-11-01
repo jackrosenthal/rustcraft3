@@ -967,6 +967,7 @@ impl World {
             u.extra.ai_order[14] = last;
             u.extra.build_legacy = false;
             u.extra.mover = None;
+            u.extra.coarse = None;
         }
     }
 

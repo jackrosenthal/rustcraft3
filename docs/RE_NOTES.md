@@ -2667,6 +2667,12 @@ Formats the port made its own, to be replaced by the original's:
   last at 42.057987 (its count unchanged); the port had moved the newest off for
   the returning one's kept slot, its count three then.  The keepalives agree to
   turn 445.
+- An AI thread runs at the first main tick whose game time (the tick's
+  milliseconds over 1000, single precision) is strictly past its due.  Provisional:
+  inferred from the keepalives, not read in game.dll.  Forestwalk's undead
+  computer's 1-second thread due 41.0999985, the time of tick 8220 to the bit, ran
+  at tick 8221 in the original (a comparison of at most would run it at 8220, its
+  order then a step early).  The keepalives agree to turn 478.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

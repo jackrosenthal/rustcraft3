@@ -447,8 +447,17 @@ impl World {
     /// 20.097628, 200 ticks apart; its peon_assignment, due 17.1, so ran before the
     /// turn's first step and a wanderer's draws, which the port's comparison of the due
     /// with the lagging main clock put after them).
+    /// A thread runs at the first main tick whose game time, its milliseconds over
+    /// 1000 in single precision, is strictly past its due.  Provisional, from the
+    /// keepalives, not read in game.dll: its 1-second thread due 41.0999985, the time
+    /// of tick 8220 to the bit, run at tick 8221 (the keepalives agree to turn 478,
+    /// from 445).
     pub(crate) fn ai_tick_of(at: f32) -> i64 {
-        (at as f64 / 0.005 - 1e-3).ceil() as i64
+        let mut t = (at as f64 / 0.005).floor() as i64 - 1;
+        while (t * 5) as f32 / 1000.0 <= at {
+            t += 1;
+        }
+        t
     }
 
     /// Runs a computer player's threads due by `until` (game time; at the main tick
@@ -462,8 +471,9 @@ impl World {
             let due: Vec<(f32, Thread)> = {
                 let mut due = Vec::new();
                 let mut i = 0;
+                let limit = (now as f64 / 0.005).round() as i64;
                 while i < aivm.sleepers.len() {
-                    if aivm.sleepers[i].0 <= now {
+                    if Self::ai_tick_of(aivm.sleepers[i].0) <= limit {
                         due.push(aivm.sleepers.remove(i));
                     } else {
                         i += 1;

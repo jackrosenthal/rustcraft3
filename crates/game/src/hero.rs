@@ -363,6 +363,9 @@ impl World {
                 1
             }
         };
+        if level == 1 {
+            self.learned_objects(h, ability);
+        }
         if self.ability_code(ability) == codes::ability::ATTRIBUTE_MODIFIER_SKILL {
             self.apply_item_bonuses(h);
         }

@@ -928,6 +928,11 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::ability::id::BLADE_MASTER_CRITICAL_STRIKE, "wwww wwwwwww t w w", "wwwww"),
     // CAbilityPurchaseItem (`FUN_6f42df00`): a reference.
     (codes::ability::id::PURCHASE_ITEM, "wwww wwwwwww t w", "r"),
+    // An item's Town Portal (read: the melee start's scroll on Forestwalk's computer's
+    // Dreadlord): 5.0, three words, its item, three words, a reference; ten words,
+    // 0xd0142, four words, its listener on its holder's mana, two timers, and three
+    // references.  Provisional: the fields' meanings.
+    (codes::ability::id::ITEM_TOWN_PORTAL, "wwww wwwwwww t w f www r www r", "wwwwwwwwww w wwww r t t r r r"),
     // CAbilityDevourCargo (`FUN_6f5aabb0`): a real, three words, two counted lists of
     // two words and a real, two of words, two timers, and two counted lists of two reals.
     (codes::ability::id::CARGO_HOLD_DEVOUR, "wwww wwwwwww t w", "f www [wwf] [wwf] [w] [w] t t [ff] [ff]"),

@@ -672,6 +672,9 @@ pub struct UnitExtra {
     /// (`FUN_6f54d0f0`, `FUN_6f41b380`).
     #[serde(default)]
     pub build_objects: Vec<u32>,
+    /// Its builder's build ability (its slot and birth), as construction began.
+    #[serde(default)]
+    pub build_by: Option<(u32, u32)>,
     /// A worker that has begun summoning a structure: when its order ends, due on the
     /// main clock (seconds since the game began; the unit's event 0xd019d,
     /// `FUN_6f69c620`), its AI's build order then let go (`World::build_ends_to`).
@@ -986,6 +989,7 @@ impl Default for UnitExtra {
             blight_check: None,
             blight_rcm: None,
             build_objects: Vec::new(),
+            build_by: None,
             build_end: None,
             build_legacy: false,
             alarm_wait: None,
@@ -1292,6 +1296,12 @@ pub struct Item {
     /// The type of unit whose death left it (SetItemDropID; the Rune of Rebirth's).
     #[serde(default)]
     pub drop_type: Option<Id>,
+    /// Its position's and two regions' slots, as made.
+    #[serde(default)]
+    pub parts: Vec<u32>,
+    /// Its abilities' objects while a unit holds it (their slots).
+    #[serde(default)]
+    pub ability_slots: Vec<u32>,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]

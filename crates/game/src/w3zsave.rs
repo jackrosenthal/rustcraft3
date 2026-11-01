@@ -743,7 +743,9 @@ impl World {
         let newest = |k: usize| all_mods.iter().filter(|m| m.prop == k).map(|m| m.r).last();
         let life_rcm = newest(1);
         let mana_rcm = newest(2);
-        let life_rate: f32 = if all_mods.iter().any(|m| m.prop == 1) { all_mods.iter().filter(|m| m.prop == 1 && m.word == 0x6005_0044).map(|m| m.values[0]).sum() } else { hp_rate };
+        // (A structure being built's its rise.)
+        let rising = self.build_parts(h).map(|p| p[4]);
+        let life_rate: f32 = if all_mods.iter().any(|m| m.prop == 1) { all_mods.iter().filter(|m| m.prop == 1 && (m.word == 0x6005_0044 || Some(m.r) == rising)).map(|m| m.values[0]).sum() } else { hp_rate };
 
         let night = self.night_sight;
         let sight = if self.ultravision(u) { o.real("sight") } else { o.real("sight") + (o.real("nsight") - o.real("sight")) * night };
@@ -834,6 +836,18 @@ impl World {
             out.extend(s.map(|r| regen(r, 1, hero_hp)));
             out.extend(i.map(|r| regen(r, 2, mp_rate)));
         }
+        // A structure being built's on its life: its rise from a tenth over the build
+        // time, for that and a second more (0x60040044, `construction_records`).
+        if let Some(p) = self.build_parts(h) {
+            let bt = u.build_time.max(0.01);
+            let span = bt + 1.0;
+            let made = self.tags.made_at.get(&p[4].0).copied().unwrap_or(0);
+            let due = f32::from_bits(crate::efloat::add(made, span.to_bits()));
+            let count = self.tags.prop_counts.get(&p[4].0).copied().unwrap_or(0);
+            // (In the engine's arithmetic: read, a Crypt's 1300 over 60, 19.499998.)
+            let rate = f32::from_bits(crate::efloat::div(crate::efloat::mul(u.max_life.to_bits(), 0.9f32.to_bits()), bt.to_bits()));
+            out.push(UnitModifier { r: p[4], prop: 1, word: 0x6004_0044, values: [rate, span], timing: Timing(Some((due, span, count, 0, 0))) });
+        }
         if o.real("manaN") > 0.0 {
             if let Some(&r) = rcms.get(k) {
                 out.push(regen(r, 2, mp_rate));
@@ -863,6 +877,148 @@ impl World {
             out.push(UnitModifier { r, prop: 5, word: 0x6004_0044, values: [(to - from) / 3.0, 3.0], timing: Timing(Some((due, 3.0, count, 0, 0))) });
         }
         out.sort_by_key(|m| m.r.1);
+        out
+    }
+
+    /// The objects of the items a unit holds, in its slots' order: each its tag, kind,
+    /// and item.
+    pub(crate) fn held_item_objects(&self, h: u32) -> Vec<((u32, u32), [u8; 4], u32)> {
+        let Some(u) = self.unit(h) else { return Vec::new() };
+        u.inventory.iter().filter_map(|&i| self.item(i).map(|it| (i, it))).flat_map(|(i, it)| it.ability_slots.iter().filter_map(move |&s| self.tags.live.get(&s).map(|e| ((s, e.1), e.0, i)))).collect()
+    }
+
+    /// The items' records (CItem, read against the melee start's Town Portal scroll on
+    /// Forestwalk's computer's Dreadlord and a scripted item on Booty Bay's ground): its
+    /// agent (its position its property); its own flags (held 0x2757, on the ground
+    /// 0x3416); the game's handler; its sprite (its model, hidden while held), its
+    /// owner, type, shorts (0, 0x8001 held), -99999, its life, 0, its HP, its charges,
+    /// first ability, holder, 0, 15, its abilities' objects (four places), two timers;
+    /// its position (its place in cells as it was made or dropped, facing 270°, 1/32)
+    /// and regions (held: its block flagged 0x0c000000, the cell none, 0x18; on the
+    /// ground: its block and cell, 0x01000018).  Provisional: the flags' meanings,
+    /// the second 15, the sprite's fields, the search marks.
+    pub fn item_records(&self) -> Vec<(u32, First, Option<Second>)> {
+        let mut out = Vec::new();
+        let Some(p) = self.pathing.as_ref() else { return out };
+        let [coarse, fine] = self.pathing_map_objects();
+        let game = self.game_object();
+        let w = Field::Word;
+        let timer = || Field::Timer(NONE, 0, Timing(None));
+        for &i in &self.item_order {
+            let Some(it) = self.item(i) else { continue };
+            let Some(o) = self.objects.items.get(it.type_id) else { continue };
+            if it.parts.len() != 3 || !self.tags.live.get(&it.oid.0).is_some_and(|e| e.1 == it.oid.1) || !it.parts.iter().all(|s| self.tags.live.contains_key(s)) {
+                continue;
+            }
+            let me = it.oid;
+            let (pos, r1, r2) = (self.tagged(it.parts[0]), self.tagged(it.parts[1]), self.tagged(it.parts[2]));
+            let holder = self.unit(it.owner_unit).and_then(|u| u.extra.object_slots[0].first().copied()).filter(|_| it.owner_unit != 0);
+            let held = holder.is_some();
+            let model = o.str("file");
+            let stands = self.named_sequences(&model, "stand");
+            let births = self.named_sequences(&model, "birth");
+            let sprite = Sprite {
+                model,
+                real: f32::from_bits(0x0384_0000 | if held { 0x0008_0000 } else { 0 }),
+                short: if held { 0xfffe } else { stands.first().copied().unwrap_or(0) as u16 },
+                byte: 255,
+                word: if held { 0x0020_2020 } else { 0x00ff_ffff },
+                reals: [1.0, 1.0],
+                words: if held { [u32::MAX, 0xffff_feb3] } else { [4, 0] },
+                last_real: f32::from_bits(150),
+                last_byte: 0,
+                flags: if held { [2, 0, 1] } else { [1, 1, 1] },
+                entries: vec![(0.0, 0, births), (0.0, 4, stands)],
+            };
+            // (Its first ability, not its cooldown group: read, Claws of Attack's AItf
+            // where its cooldownID is AIat.)
+            let first_ability = self.item_abilities(it.type_id).first().map_or(0, |a| u32::from_be_bytes(*a));
+            let (ht, hb) = holder.unwrap_or((u32::MAX, u32::MAX));
+            let mut abilities: Vec<Vec<Field>> = it.ability_slots.iter().filter(|s| self.tags.live.get(s).is_some_and(|e| e.0[0] == b'A')).map(|&s| self.tagged(s)).map(|t| vec![w(t.0), w(t.1), Field::Real(0.0)]).collect();
+            abilities.resize_with(4, || vec![w(u32::MAX), w(u32::MAX), Field::Real(0.0)]);
+            let tail = vec![
+                Field::Sprite(Some(sprite)),
+                w(it.player as u32),
+                w(u32::from_be_bytes(it.type_id)),
+                Field::Short(0),
+                Field::Short(if held { 0x8001 } else { 0 }),
+                Field::Byte(0),
+                Field::Byte(0),
+                Field::Byte(0),
+                Field::Real(-99999.0),
+                Field::Byte(0),
+                Field::Real(it.life),
+                Field::Real(0.0),
+                Field::Real(o.real("HP")),
+                w(it.charges.max(0) as u32),
+                w(first_ability),
+                w(ht),
+                w(hb),
+                Field::Real(0.0),
+                w(15),
+                Field::List(abilities),
+                timer(),
+                w(0),
+                w(0),
+                timer(),
+            ];
+            let own = vec![w(if held { 0x2757 } else { 0x3416 })];
+            out.push((me.0, agent_first(me, codes::class::ITEM, &[pos]), Some(Second::Agent { own, handlers: game_handlers(game), tail })));
+            let (cx, cy) = ((it.x - p.origin[0]) / 32.0, (it.y - p.origin[1]) / 32.0);
+            let (col, row) = (cx.max(0.0) as u32, cy.max(0.0) as u32);
+            out.push((pos.0, First::Pos { base: self.stamped(property_base(pos, me)), values: [cx, cy, 0.0, 0.0, f32::MAX, 4.712_388_5, 0.03125], refs: [rf(r1), rf(r2)] }, None));
+            out.push((r1.0, First::Region { refs: [rf(coarse), rf(pos)], word: if held { 0x0c00_0000 } else { 0 }, bounds: [row >> 3, col >> 3, (row >> 3) + 1, (col >> 3) + 1], words: [0, 0x3000_0001, 0] }, None));
+            let unplaced = 0xfffe_0c00;
+            out.push((r2.0, First::Region { refs: [rf(fine), rf(pos)], word: if held { 0x18 } else { 0x0100_0018 }, bounds: if held { [unplaced; 4] } else { [row, col, row + 1, col + 1] }, words: [0, u32::from(!held), 0] }, None));
+        }
+        out
+    }
+
+    /// A structure being built's objects (`FUN_6f533490`, `FUN_6f41b380`): its Build In
+    /// Progress ability, that's real (the time left), the rise's modifier and threshold
+    /// listener on it, and its life's modifier.
+    pub(crate) fn build_parts(&self, h: u32) -> Option<[(u32, u32); 5]> {
+        let u = self.unit(h)?;
+        u.constructing?;
+        let codes = [codes::ability::id::BUILD_IN_PROGRESS, codes::class::REAL, codes::class::CONTINUOUS_MODIFIER, codes::class::THRESHOLD_LISTENER, codes::class::CONTINUOUS_MODIFIER];
+        if u.extra.build_objects.len() != 5 || !u.extra.build_objects.iter().zip(codes).all(|(s, c)| self.tags.live.get(s).is_some_and(|e| &e.0 == c)) {
+            return None;
+        }
+        let p: Vec<(u32, u32)> = u.extra.build_objects.iter().map(|&s| self.tagged(s)).collect();
+        Some([p[0], p[1], p[2], p[3], p[4]])
+    }
+
+    /// A structure being built's real and its rise's modifier and listener (read
+    /// against Forestwalk's undead computer's Crypt at 2.5 seconds and Graveyard at 160):
+    /// the real its build time at its start, falling 1 a second; the modifier -1 for
+    /// the build time and a second more (0x60040044, its node due as that ends); the
+    /// listener on event 0xd01c4 at 0 (0x20090400), its node checking every 4
+    /// seconds from the start, the last the time left.  Provisional: a peasant's
+    /// structure without its builder (its rate 0).
+    pub fn construction_records(&self, h: u32) -> Vec<(u32, First, Option<Second>)> {
+        let mut out = Vec::new();
+        let Some(u) = self.unit(h) else { return out };
+        let Some([abnp, rel, rise, rtl, _]) = self.build_parts(h) else { return out };
+        let bt = u.build_time.max(0.01);
+        let made = |r: (u32, u32)| self.tags.made_at.get(&r.0).copied().unwrap_or(0);
+        let count = |r: (u32, u32)| self.tags.prop_counts.get(&r.0).copied().unwrap_or(0);
+        let mut base = self.stamped(listed_property_base(&[rel], 0, abnp));
+        base.links = [Link(rf(rise), 1), Link(rf(rtl), 1)];
+        out.push((rel.0, First::Real { base, values: [bt, -1.0, 0.0, f32::MAX] }, None));
+        let span = bt + 1.0;
+        let owned = |r: (u32, u32)| [(Link(NONE, 0), Link(NONE, 0), rf(r), rf(abnp)), (Link(NONE, 0), Link(NONE, 0), rf(r), rf(rel))];
+        let due = f32::from_bits(crate::efloat::add(made(rise), span.to_bits()));
+        out.push((rise.0, First::Continuous { object: ObjectBase { real: 0.0, words: [u32::MAX, 0x6004_0044], links: owned(rise), timings: [Timing(Some((due, span, count(rise), 0, 0))), Timing(None)] }, values: [-1.0, span] }, None));
+        // (Its checks every 4 seconds, the last the time left.)
+        let start = made(rtl);
+        let (mut at, mut period) = (start, 4f32.min(bt));
+        let mut due = crate::efloat::add(at, period.to_bits());
+        while f32::from_bits(due) <= self.time {
+            at = due;
+            period = 4f32.min(bt - (f32::from_bits(at) - f32::from_bits(start)));
+            due = crate::efloat::add(at, period.to_bits());
+        }
+        out.push((rtl.0, First::Threshold { object: ObjectBase { real: 0.0, words: [0xd_01c4, 0x2009_0400], links: owned(rtl), timings: [Timing(Some((f32::from_bits(due), period, count(rtl), 0, 1))), Timing(None)] }, real: 0.0, word: 0 }, None));
         out
     }
 
@@ -957,8 +1113,25 @@ impl World {
             ls.push((d, life, 0xd_019f, 0.4, 0, Timing(None)));
         }
         let woken: Vec<(f32, u32)> = u.extra.mana_listeners.iter().copied().filter(|&(_, s)| is_rtl(s)).collect();
+        // (A hero's learned skill's waits for its mana to fall below its cost, less
+        // 0.1 in the engine's arithmetic: read, a Dreadlord's Sleep at 270 mana,
+        // 99.899994.  Provisional: one learned with less mana than its cost.)
+        let learned = |s: u32| -> Option<f32> {
+            let code = u.extra.spell_owners.iter().find(|o| o.0 == s)?.1;
+            let (a, l) = u.abilities.iter().copied().find(|(a, _)| self.objects.abilities.get(*a).is_some_and(|o| crate::objects::id_from_str(o.str("code").trim()) == code))?;
+            let ab = self.objects.abilities.get(a).filter(|o| o.int("hero") != 0)?;
+            let cost = ab.level_real("Cost", l.max(1) as u32);
+            (u.mana >= cost).then(|| f32::from_bits(crate::efloat::sub(cost.to_bits(), 0.1f32.to_bits())))
+        };
         for &s in u.extra.spell_timers.iter().filter(|&&s| is_rtl(s) && !woken.iter().any(|w| w.1 == s)) {
-            ls.push((self.tagged(s), mana, 0xd_01b7, -0.1, 0, Timing(None)));
+            ls.push((self.tagged(s), mana, 0xd_01b7, learned(s).unwrap_or(-0.1), 0, Timing(None)));
+        }
+        // (A held item's ability's, below its cost less 0.1: read, a Town Portal
+        // scroll's -0.1.)
+        let held = self.held_item_objects(h);
+        for (k, x) in held.iter().enumerate().filter(|(_, x)| &x.1 == codes::class::THRESHOLD_LISTENER) {
+            let cost = held[..k].iter().rev().find(|y| y.2 == x.2 && y.1[0] == b'A').and_then(|y| self.objects.abilities.get(y.1)).map_or(0.0, |a| a.level_real("Cost", 1));
+            ls.push((x.0, mana, 0xd_01b7, f32::from_bits(crate::efloat::sub(cost.to_bits(), 0.1f32.to_bits())), 0, Timing(None)));
         }
         for &(thr, s) in &woken {
             let me_s = self.tagged(s);
@@ -1565,8 +1738,8 @@ impl World {
                 seconds.insert(slot, sec);
             }
         }
-        let unit_reals: Vec<(u32, First, Option<Second>)> = self.unit_order.iter().flat_map(|&h| self.unit_real_records(h).into_iter().chain(self.unit_modifier_records(h)).chain(self.hero_flag_records(h)).chain(self.unit_listener_records(h)).chain(self.unit_position_records(h)).chain(self.unit_agent_record(h))).collect();
-        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals).chain(self.captain_records()) {
+        let unit_reals: Vec<(u32, First, Option<Second>)> = self.unit_order.iter().flat_map(|&h| self.unit_real_records(h).into_iter().chain(self.unit_modifier_records(h)).chain(self.hero_flag_records(h)).chain(self.construction_records(h)).chain(self.unit_listener_records(h)).chain(self.unit_position_records(h)).chain(self.unit_agent_record(h))).collect();
+        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals).chain(self.captain_records()).chain(self.item_records()) {
             records.insert(slot, f);
             if let Some(sec) = sec {
                 seconds.insert(slot, sec);

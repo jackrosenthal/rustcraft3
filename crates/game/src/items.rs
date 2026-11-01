@@ -83,10 +83,16 @@ impl World {
         let owner = u.owner;
         let u = self.unit_mut(unit).unwrap();
         u.inventory[s] = item;
+        let holder_type = u.type_id;
+        // Its abilities' objects, its holder's now (read: the melee start's Town Portal
+        // scroll on a Dreadlord, `AItp` and its listener on mana, after the item's).
+        let kinds: Vec<crate::tags::Code> = self.item_abilities(type_id).iter().flat_map(|a| self.ability_tags(holder_type, a)).collect();
+        let slots: Vec<u32> = kinds.iter().map(|c| self.tags.take(c)).collect();
         let it = self.item_mut(item).unwrap();
         it.owner_unit = unit;
         it.player = owner;
         it.visible = false;
+        it.ability_slots = slots;
         self.apply_item_bonuses(unit);
         let ctx = EventCtx { item, ..Default::default() };
         self.fire_unit_pair(vm, unit, EVENT_PLAYER_UNIT_PICKUP_ITEM, EVENT_UNIT_PICKUP_ITEM, ctx);
@@ -102,6 +108,10 @@ impl World {
                     *s = 0;
                 }
             }
+        }
+        let slots = self.item_mut(item).map(|it| std::mem::take(&mut it.ability_slots)).unwrap_or_default();
+        for s in slots {
+            self.tags.doom(s);
         }
         if let Some(it) = self.item_mut(item) {
             it.owner_unit = 0;
@@ -147,6 +157,13 @@ impl World {
 
     pub fn remove_item(&mut self, item: u32) {
         let holder = self.item(item).map_or(0, |i| i.owner_unit);
+        // Its objects go (provisional: as the next turn starts).
+        if let Some(it) = self.item(item) {
+            let slots: Vec<u32> = std::iter::once(it.oid.0).chain(it.parts.iter().copied()).chain(it.ability_slots.iter().copied()).filter(|&s| s != 0).collect();
+            for s in slots {
+                self.tags.doom(s);
+            }
+        }
         if let Some(u) = self.unit_mut(holder) {
             for s in u.inventory.iter_mut() {
                 if *s == item {

@@ -120,7 +120,7 @@ pub fn create_item(w: &mut World, id: Id, x: f32, y: f32) -> u32 {
     let Some(o) = w.objects.items.get(id) else { return 0 };
     // Its tags (measured: CreateItem and UnitAddItemById each make these).
     let oid = w.tags.take_id(codes::class::ITEM);
-    w.tags.take_all(&[codes::class::POSITION, codes::class::PATHING_REGION, codes::class::PATHING_REGION]);
+    let parts: Vec<u32> = [codes::class::POSITION, codes::class::PATHING_REGION, codes::class::PATHING_REGION].iter().map(|c| w.tags.take(c)).collect();
     let item = Item {
         handle: 0,
         oid,
@@ -138,6 +138,8 @@ pub fn create_item(w: &mut World, id: Id, x: f32, y: f32) -> u32 {
         drop_on_death: false,
         droppable: o.bool("droppable"),
         drop_type: None,
+        parts,
+        ability_slots: Vec::new(),
     };
     // An item takes its handle as a script first has it, as a unit does.
     let h = w.handles.insert_unseen(Obj::Item(Box::new(item)));

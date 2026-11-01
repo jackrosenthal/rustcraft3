@@ -3690,8 +3690,11 @@ impl World {
         // when they go).
         if self.unit(b).is_some() {
             let objects: Vec<u32> = [codes::ability::id::BUILD_IN_PROGRESS, codes::class::REAL, codes::class::CONTINUOUS_MODIFIER, codes::class::THRESHOLD_LISTENER, codes::class::CONTINUOUS_MODIFIER].iter().map(|c| self.tags.take(c)).collect();
+            let builds = [codes::ability::id::BUILD_HUMAN, codes::ability::id::BUILD_ORC, codes::ability::id::BUILD_UNDEAD, codes::ability::id::BUILD_NIGHT_ELF, codes::ability::id::BUILD_NAGA, codes::ability::id::BUILD_NEUTRAL];
+            let by = self.unit(h).and_then(|w| w.extra.object_slots.iter().flatten().copied().find(|&(s, n)| self.tags.live.get(&s).is_some_and(|e| e.1 == n && builds.contains(&&e.0))));
             if let Some(bu) = self.unit_mut(b) {
                 bu.extra.build_objects = objects;
+                bu.extra.build_by = by;
             }
         }
         if self.unit(h).is_none() {

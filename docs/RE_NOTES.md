@@ -2807,11 +2807,48 @@ Formats the port made its own, to be replaced by the original's:
   (`FUN_6f685150`: AHer +0x6c's object, +0x78, plus one), so a save without it
   crashed in the captain's look (`CCaptainAI::vf3`, `FUN_6f9d09c0`, its area
   search's filter `FUN_6f9d0bb0`).  With them the original loads the port's
-  160-second save and plays seven minutes.  Not yet written: a learned skill's
-  objects (the original's Sleep, `AUsl` and its mana listener, after the hero's AI),
-  items (the melee start's Town Portal scroll: `item`, `` `pos ``, two `^pmr`, its
-  `AItp` and listener on the hero), structures being built (`ABnP`, `+EIP`), and
-  units' orders and tasks.
+  160-second save and plays seven minutes.  The hero ability's tail: 0, its unspent
+  skill points (+0x90, which GetHeroSkillPoints reads), its strength, ...; its last
+  word (+0x138) is its place among its owner's heroes (`CAbilityHero::vf188`: the
+  player's count at +0x334, taken as the hero is made).
+- A hero's abilities made with it carry 0x80 in their first word (a Dreadlord's
+  Amov, Aatk, AHer, and AInv), its learned skills 0x10 (Sleep 0x12 where a creep's
+  is 2), and its attack lacks 0x4000 and 0x2000000 (0x20080092).  Its attack's
+  weapons both as the data has them, enabled or not (the Dreadlord's second, a
+  missile of 500, with `weapsOn` 1; every single-weapon unit read has a blank
+  second), each damage with its primary attribute (20), and its speed factor 1 +
+  agility × AgiAttackSpeedBonus in the engine's arithmetic (1.3199999 for 16; the
+  engine reads "0.02" a step up, so its hero ability's 16 × 0.02 is 0.32000002).
+- A learned skill makes its ability's objects as a unit's making does (Sleep:
+  `AUsl` and its listener on mana, event 0xd01b7 below its cost less 0.1 in the
+  engine's arithmetic, 99.899994).
+- A structure being built (read: the Crypt at 2.5 seconds, a Graveyard at 160): its
+  Build In Progress ability (`ABnP`, after its other abilities in its chain; own: 1.0,
+  its build time, its builder's build ability, 0, eight 0.0; its listener keyed to
+  event 0xd01c4; tail: its listener, its rise's modifier, 60.0, its life's modifier,
+  two timers), that's real (the build time at the start, falling 1 a second), the
+  rise's modifier (-1 for the build time and a second more, 0x60040044) and listener
+  (0xd01c4 at 0, a node every 4 seconds), and the structure's life modifier (its HP
+  × 0.9 over the build time in the engine's arithmetic: 19.499998 for a Crypt's
+  1300 over 60).  The Graveyard's five `+EIP` are its own effects, not
+  construction's (not yet written).
+- Items (CItem, read: the melee start's Town Portal scroll held by the Dreadlord,
+  and Claws of Attack on Booty Bay's ground): the agent with its position, own flags
+  (held 0x2757, on the ground 0x3416), the game's handler, its sprite (the inventory
+  model; hidden while held), owner, type, shorts (0, 0x8001 held), -99999, life, 0,
+  HP, charges, its first ability (AItf for Claws, whose cooldownID is AIat), its
+  holder, 0, 15, its abilities' objects (four places), two timers; its position
+  facing 270° with 1/32, and regions (held: its block flagged 0x0c000000, its cell
+  none with 0x18; on the ground: block and cell, 0x01000018).  Held, its abilities'
+  objects are its holder's (the scroll's `AItp` and its listener on mana at -0.1,
+  keyed to the ability), in its chain by birth; its inventory's slots name it.  The
+  original keeps the scroll's owner 15 while its Dreadlord holds it, where the port
+  gives it its holder's owner (not yet resolved).  The `AItp` record: CAbility's
+  fields, its casting time, three 0, its item, three 0, none; ten 0, 852290, four 0,
+  its listener, two timers, three none.
+- Still not written: the Graveyard's effects, a haunted mine's payout modifier and
+  listener, units' orders and tasks (so units stand after a load), and the running
+  game's counts and search marks.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

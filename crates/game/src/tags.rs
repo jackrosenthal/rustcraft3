@@ -1190,6 +1190,25 @@ impl crate::world::World {
     /// aura's buff on its bearer only when the aura serves it (measured: on a sheep,
     /// without attack or mana, Trueshot, Vampiric, War Drums, Command, and Brilliance
     /// Aura gave none).
+    /// A skill learned anew makes its ability's objects as a unit's making does (read:
+    /// Forestwalk's computer's Dreadlord's Sleep, `AUsl` and its listener on mana,
+    /// after its AI's), kept with the unit's, its listeners among its spells'.
+    pub(crate) fn learned_objects(&mut self, h: u32, ability: Code) {
+        let Some(type_id) = self.unit(h).map(|u| u.type_id) else { return };
+        let kinds = self.ability_tags(type_id, &ability);
+        let slots: Vec<u32> = kinds.iter().map(|c| self.tags.take(c)).collect();
+        let made: Vec<(u32, u32)> = slots.iter().map(|&s| (s, self.tags.live.get(&s).map_or(0, |e| e.1))).collect();
+        if let Some(u) = self.unit_mut(h) {
+            for (k, c) in kinds.iter().enumerate().skip(1) {
+                if c == codes::class::THRESHOLD_LISTENER {
+                    u.extra.spell_timers.push(made[k].0);
+                    u.extra.spell_owners.push((made[k].0, kinds[0]));
+                }
+            }
+            u.extra.object_slots[2].extend(made);
+        }
+    }
+
     pub(crate) fn ability_tags(&self, type_id: Code, id: &Code) -> Vec<Code> {
         let Some(a) = self.objects.abilities.get(*id) else { return Vec::new() };
         let code = crate::objects::id_from_str(a.str("code").trim());

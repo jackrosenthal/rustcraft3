@@ -70,14 +70,24 @@ impl World {
     /// (read: a Forest Troll's "Stand - 1" to "- 3", a ghoul's "Stand -2", "Stand", and
     /// "Stand -3", not "Stand Ready" nor "Stand Lumber"), by index.
     fn stand_sequences(&self, model: &str) -> Vec<u32> {
-        let Ok(data) = self.chain.read(model) else { return Vec::new() };
+        self.named_sequences(model, "stand")
+    }
+
+    /// A model's sequences named only so (numbers and dashes aside), by index.
+    pub(crate) fn named_sequences(&self, model: &str, name: &str) -> Vec<u32> {
+        // (A model named .mdl is read from its .mdx.)
+        let model = match model.len().checked_sub(4).filter(|&k| model[k..].eq_ignore_ascii_case(".mdl")) {
+            Some(k) => format!("{}.mdx", &model[..k]),
+            None => model.to_string(),
+        };
+        let Ok(data) = self.chain.read(&model) else { return Vec::new() };
         let Ok(m) = w3_formats::mdx::Model::parse(&data) else { return Vec::new() };
         m.sequences
             .iter()
             .enumerate()
             .filter(|(_, s)| {
                 let words: Vec<&str> = s.name.split(|c: char| c.is_whitespace() || c == '-').filter(|w| !w.is_empty() && !w.chars().all(|c| c.is_ascii_digit())).collect();
-                words.len() == 1 && words[0].eq_ignore_ascii_case("stand")
+                words.len() == 1 && words[0].eq_ignore_ascii_case(name)
             })
             .map(|(k, _)| k as u32)
             .collect()
@@ -132,7 +142,11 @@ impl World {
         }
 
         // Who listens to it, each with its stamp: as made, in the order made.
-        let abilities: Vec<(u32, u32, [u8; 4])> = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).filter_map(|&(s, b)| code_of(s).filter(|c| c[0] == b'A' && c != codes::class::UNIT_AI).map(|c| (s, b, c))).collect();
+        // (Its held items' abilities among them.)
+        let held = self.held_item_objects(h);
+        let mut abilities: Vec<(u32, u32, [u8; 4])> = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).filter_map(|&(s, b)| code_of(s).filter(|c| c[0] == b'A' && c != codes::class::UNIT_AI).map(|c| (s, b, c))).collect();
+        abilities.extend(held.iter().filter(|x| x.1[0] == b'A').map(|x| (x.0 .0, x.0 .1, x.1)));
+        abilities.sort_by_key(|a| a.1);
         let mut agents: Vec<(Ref, (u32, u32), Vec<u16>)> = vec![(rf(me), (me.1, 0), SELF_EVENTS.to_vec())];
         for &(s, b, c) in &abilities {
             let mut events = listened(&c).to_vec();
@@ -264,6 +278,14 @@ impl World {
             let rising = u.extra.mana_listeners.iter().any(|&(t, x)| x == s && t.is_finite());
             if let Some(a) = ability_ref(&c) {
                 keyed.push((self.tagged(s), (a, if rising { 0xd_01b6 } else { 0xd_01b7 })));
+            }
+        }
+        // (A held item's ability's listener on mana, its ability's.)
+        for (k, x) in held.iter().enumerate() {
+            if &x.1 == codes::class::THRESHOLD_LISTENER {
+                if let Some(a) = held[..k].iter().rev().find(|y| y.2 == x.2 && y.1[0] == b'A') {
+                    keyed.push((x.0, (rf(a.0), 0xd_01b7)));
+                }
             }
         }
         let mut pils: Vec<(u32, [u8; 4])> = Vec::new();
@@ -491,6 +513,14 @@ impl World {
                 add((s, b), *codes::class::UNIT_AI_REF, &mut chain);
             }
         }
+        if let Some(p) = self.build_parts(h) {
+            add(p[0], *codes::ability::id::BUILD_IN_PROGRESS, &mut chain);
+        }
+        for (t, c, _) in self.held_item_objects(h) {
+            if c[0] == b'A' {
+                add(t, c, &mut chain);
+            }
+        }
         chain.sort_by_key(|x| x.0 .1);
         // Its rally point (the second table's agent) right after its rally ability.
         let me = u.extra.object_slots[0].first().copied().unwrap_or_default();
@@ -603,17 +633,25 @@ impl World {
             if &code == codes::class::RALLY_POINT {
                 continue;
             }
+            let build = self.build_parts(h).filter(|_| &code == codes::ability::id::BUILD_IN_PROGRESS);
             let props: Vec<(u32, u32)> = match slots.iter().position(|&x| x == t) {
+                // (A structure being built's its real.)
+                _ if build.is_some() => build.map(|p| vec![p[1]]).unwrap_or_default(),
                 // (A hero's its two flags.)
                 _ if &code == codes::ability::id::HERO => self.hero_parts(h).map(|p| p.1.to_vec()).unwrap_or_default(),
                 Some(i) => slots[i + 1..].iter().copied().take_while(|&(s, b)| self.tagged(s).1 == b && self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::REAL)).collect(),
                 None => Vec::new(),
             };
             let mut rec = super::agent_first(t, &code, &props);
-            if let w3_formats::w3z::First::Agent { object, .. } = &mut rec {
+            if let w3_formats::w3z::First::Agent { object, links, .. } = &mut rec {
                 let newer = chain.get(k + 1).map_or(NONE, |c| rf(c.0));
                 let older = if k > 0 { rf(chain[k - 1].0) } else { NONE };
                 object.links[0] = (w3_formats::w3z::Link(newer, 0), w3_formats::w3z::Link(older, 0), rf(t), rf(me));
+                // (Its modifier's and listener's heads: the rise's.)
+                if let Some(p) = build {
+                    links[2] = w3_formats::w3z::Link(rf(p[2]), 0);
+                    links[3] = w3_formats::w3z::Link(rf(p[3]), 0);
+                }
             }
             out.push((t.0, rec));
         }
@@ -793,6 +831,7 @@ impl World {
 fn ability_targets(code: &[u8; 4]) -> u32 {
     match code {
         codes::ability::id::ALARM => 0x0031_0006,
+        codes::ability::id::ITEM_TOWN_PORTAL => 0x0030_0028,
         codes::ability::id::INVULNERABLE | codes::ability::id::WANDER | codes::ability::id::GOLD_MINE | codes::ability::id::MILITIA_CONVERSION | codes::ability::id::MILITIA | codes::ability::id::MAGIC_IMMUNITY | codes::ability::id::NEUTRAL_DETECTION_REVEAL_ABILITY | codes::ability::id::NEUTRAL_BUILDING | codes::ability::id::RETURN => 0xfdd1_f00e,
         codes::ability::id::PRIESTESS_TRUESHOT_AURA | codes::ability::id::PALADIN_DEVOTION_AURA | codes::ability::id::DEATH_KNIGHT_UNHOLY_AURA => 0x0030_7006,
         codes::ability::id::CURSE | codes::ability::id::DREADLORD_SLEEP => 0x0401_8006,
@@ -952,6 +991,8 @@ impl World {
             codes::ability::id::VENOM_SPEARS | codes::ability::id::MAGIC_IMMUNITY => 0,
             // (A hero's, read: Forestwalk's computer's Dreadlord's 0x92 with its AI's.)
             codes::ability::id::RALLY | codes::ability::id::MILITIA_CONVERSION | codes::ability::id::MILITIA | codes::ability::id::HERO => 0x90,
+            // (An item's Town Portal, read: 0x2022 with its holder's AI's.)
+            codes::ability::id::ITEM_TOWN_PORTAL => 0x2020,
             codes::ability::id::SELL_UNITS | codes::ability::id::SELL_ITEMS => 0x1000_0010,
             // (Regeneration on blight, as it stands on blight 0x80.)
             codes::ability::id::REGENERATE_ON_BLIGHT => 0x10 | if u.extra.blight_rcm.is_some() { 0x80 } else { 0 },
@@ -960,7 +1001,14 @@ impl World {
             codes::ability::id::ATTACK => 0x8_0010 | if weapons & 2 != 0 { 0x10_0000 } else { 0 } | if peon { 0 } else { 0x2000_4000 } | if u.extra.woke_at.is_none() { 0x200_0000 } else { 0 },
             _ => 0x10,
         };
-        let flags = base_flags | if ai { 0x2 } else { 0 };
+        // (A hero's skill 0x10 more: read, a Dreadlord's Sleep 0x12 where a creep's is 2.
+        // A hero's abilities made with it 0x80 more, its attack without 0x4000 and
+        // 0x2000000: read, a Dreadlord's Aatk 0x20080092, AInv 0x92; provisional, one
+        // hero read.)
+        let skill = u.is_hero && u.abilities.iter().any(|(a, _)| self.objects.abilities.get(*a).is_some_and(|o| o.int("hero") != 0 && crate::objects::id_from_str(o.str("code").trim()) == *code));
+        let made_with = u.is_hero && !skill && u.extra.object_slots.iter().flatten().any(|&x| x == t);
+        let base_flags = if made_with && code == codes::ability::id::ATTACK { base_flags & !0x0200_4000 } else { base_flags };
+        let flags = base_flags | if ai { 0x2 } else { 0 } | if skill { 0x10 } else { 0 } | if made_with { 0x80 } else { 0 };
         let prev = older.map_or(NONE, rf);
         // (Its id, not its kind's code: a shop's Ane2, a creep's ACvs and ACmi, a town
         // hall's Argl; the last word Call to Arms' 1.)
@@ -1011,34 +1059,40 @@ impl World {
                 tail
             }
             // A hero's (CAbilityHero, read against Forestwalk's undead computer's
-            // Dreadlord at 160 seconds): 0, 0, its strength, then its strength, the
+            // Dreadlord at 160 seconds): 0, its skill points (+0x90, as
+            // GetHeroSkillPoints reads), its strength, then its strength, the
             // life it gives (25 a point), the armor its agility gives (0.3 a point,
             // less 2), the mana its intelligence gives (15 a point), 0, the attack
             // speed its agility gives (0.02 a point); its agility, its strength's,
             // intelligence's, and agility's gains a level; its level, 0x1000a, 0; its
             // skills, their levels most, and the levels they need (five places); its
             // strength's and intelligence's regeneration modifiers (`hero_parts`), and
-            // its skill points; its level and intelligence are its flags.
-            // Provisional: the meaning of most.  Without the record the original's
-            // loader read past it and hung.
+            // its place among its owner's heroes; its level and intelligence are its
+            // flags.  Provisional: the meaning of most.  Without the record the
+            // original's loader read past it and hung.
             codes::ability::id::HERO => {
                 let ob = o;
                 let hero_rcms = self.hero_parts(h).map_or([None, None], |p| p.2);
+                // (Its place among its owner's heroes as made, the player's count then:
+                // `CAbilityHero::vf188`, the player's +0x334; provisional, from the
+                // heroes it still has.)
+                let birth = |v: u32| self.unit(v).and_then(|w| w.extra.object_slots[0].first().map(|f| f.1)).unwrap_or(0);
+                let ordinal = self.unit_order.iter().filter(|&&v| self.unit(v).is_some_and(|w| w.is_hero && w.owner == u.owner) && birth(v) <= birth(h)).count() as u32;
                 let (s, a, i) = (u.str_.floor(), u.agi.floor(), u.int.floor());
                 let skills: Vec<crate::objects::Id> = ob.list("heroAbilList").iter().map(|x| crate::objects::id_from_str(x.trim())).take(5).collect();
                 let at = |k: usize, f: &dyn Fn(crate::objects::Id) -> u32| vec![w(skills.get(k).map_or(0, |&id| f(id)))];
                 let levels = |id: crate::objects::Id| self.objects.abilities.get(id).map_or(0, |o| o.int("levels").max(0) as u32);
                 let needs = |id: crate::objects::Id| self.objects.abilities.get(id).map_or(0, |o| o.int("reqLevel").max(1) as u32);
                 vec![
-                    w(0), w(0), w(s as u32),
-                    Field::Real(s), Field::Real(s * 25.0), Field::Real(a * 0.3 - 2.0), Field::Real(i * 15.0), Field::Real(0.0), Field::Real(a * 0.02),
+                    w(0), w(u.skill_points.max(0) as u32), w(s as u32),
+                    Field::Real(s), Field::Real(s * 25.0), Field::Real(a * 0.3 - 2.0), Field::Real(i * 15.0), Field::Real(0.0), Field::Real(a * self.misc.get_str("Misc", "AgiAttackSpeedBonus").and_then(|v| crate::objects::engine_real(v.trim())).unwrap_or(0.02)),
                     w(a as u32), Field::Real(ob.real("STRplus")), Field::Real(ob.real("INTplus")), Field::Real(ob.real("AGIplus")),
                     w(u.level.max(1) as u32), w(0x1_000a), w(0),
                     Field::List((0..5).map(|k| at(k, &|id| u32::from_be_bytes(id))).collect()),
                     Field::List((0..5).map(|k| at(k, &levels)).collect()),
                     Field::List((0..5).map(|k| at(k, &needs)).collect()),
                     // (Its strength's and intelligence's regeneration modifiers.)
-                    Field::Ref(hero_rcms[0].map_or(NONE, rf)), Field::Ref(hero_rcms[1].map_or(NONE, rf)), w(u.skill_points.max(0) as u32),
+                    Field::Ref(hero_rcms[0].map_or(NONE, rf)), Field::Ref(hero_rcms[1].map_or(NONE, rf)), w(ordinal),
                 ]
             }
             // Rally: no point set; its rally point (the second table's).
@@ -1245,6 +1299,32 @@ impl World {
                 own.extend([Field::Real(area), w(xbli.0), w(xbli.1), w(0)]);
                 Vec::new()
             }
+            // An item's Town Portal (read: the melee start's scroll on Forestwalk's
+            // computer's Dreadlord): its casting time, three 0, its item, three 0, none;
+            // ten 0, 852290, four 0, its listener on mana, two timers, three none.
+            codes::ability::id::ITEM_TOWN_PORTAL => {
+                let held = self.held_item_objects(h);
+                let k = held.iter().position(|x| x.0 == t)?;
+                let item = self.item(held[k].2)?;
+                let rtl = held[k + 1..].iter().take_while(|x| x.1[0] != b'A' && x.2 == held[k].2).find(|x| &x.1 == codes::class::THRESHOLD_LISTENER).map_or(NONE, |x| rf(x.0));
+                let cast = self.objects.abilities.get(*code).map_or(0.0, |a| a.level_real("Cast", 1));
+                own.extend([Field::Real(cast), w(0), w(0), w(0), Field::Ref(rf(item.oid)), w(0), w(0), w(0), Field::Ref(NONE)]);
+                let mut tail: Vec<Field> = (0..10).map(|_| w(0)).collect();
+                tail.extend([w(852_290), w(0), w(0), w(0), w(0), Field::Ref(rtl), timer(), timer(), Field::Ref(NONE), Field::Ref(NONE), Field::Ref(NONE)]);
+                tail
+            }
+            // Build In Progress (read: Forestwalk's undead computer's Crypt and Graveyard):
+            // 1.0, its build time, its builder's build ability, 0, eight 0.0; its rise's
+            // listener (keyed to its event 0xd01c4) and modifier, 60.0, its life's
+            // modifier, two timers.
+            codes::ability::id::BUILD_IN_PROGRESS => {
+                let p = self.build_parts(h)?;
+                let by = u.extra.build_by.unwrap_or((u32::MAX, u32::MAX));
+                own.extend([Field::Real(1.0), Field::Real(u.build_time), w(by.0), w(by.1), w(0)]);
+                own.extend((0..8).map(|_| Field::Real(0.0)));
+                keyed.push((p[3].0, vec![(rf(t), 0xd_01c4)]));
+                vec![Field::Ref(rf(p[3])), Field::Ref(rf(p[2])), w(60f32.to_bits()), Field::Ref(rf(p[4])), timer(), timer()]
+            }
             // A haunted mine's (CAbilityBlightedGoldMine): its gold, the hidden gold mine,
             // 0.0, DataA, DataB, its payout period (DataB over the share of its ring
             // slots at work, by the engine's division: `FUN_6f4e8c30`; read, 2.5000002
@@ -1277,11 +1357,15 @@ impl World {
                 }
                 vec![Field::Ref(NONE), Field::Ref(rcm), Field::Ref(rtl), timer(), Field::List(slots)]
             }
-            // An inventory (CAbilityInventory): its six slots (none), 0, its pickup
-            // listener (`` `pil ``), six 0, six timers (none).  (Provisional: items carried.)
+            // An inventory (CAbilityInventory): its six slots, 0, its pickup listener
+            // (`` `pil ``), six 0, six timers (none).  (Provisional: items' cooldowns.)
             codes::ability::id::INVENTORY => {
                 let pil = u.extra.item_pil.map_or(NONE, rf);
-                let slots = (0..6).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect();
+                // (Each slot its item, read: the melee start's scroll in the first.)
+                let slots = u.inventory.iter().map(|&i| match self.item(i).map(|it| it.oid).filter(|o| self.tags.live.get(&o.0).is_some_and(|e| e.1 == o.1)) {
+                    Some(o) => vec![w(o.0), w(o.1), w(0)],
+                    None => vec![w(u32::MAX), w(u32::MAX), w(0)],
+                }).collect();
                 vec![Field::List(slots), w(0), Field::Ref(pil), Field::List((0..6).map(|_| vec![w(0)]).collect()), Field::List((0..6).map(|_| vec![timer()]).collect())]
             }
             // An aura (CAbilityAura): 0, its Area and DataA; its art on the unit (the
@@ -1461,9 +1545,22 @@ impl World {
         let w = Field::Word;
         let r = Field::Real;
         let weapons = o.int("weapsOn");
-        let on = |k: u32| weapons & (1 << (k - 1)) != 0;
+        // (A weapon is written as its data has it, enabled or not: read, a Dreadlord's
+        // second, its missile of 500, where every single-weapon unit read has none.)
+        let on = |k: u32| weapons & (1 << (k - 1)) != 0 || !matches!(o.str(&format!("weapTp{k}")).trim(), "" | "_" | "-");
         let per = |f: &dyn Fn(u32) -> Field| Field::List(vec![vec![f(1)], vec![f(2)]]);
         let int = |name: &str, k: u32, absent: u32| if on(k) { o.int(&format!("{name}{k}")).max(0) as u32 } else { absent };
+        // (A hero's primary attribute adds to each weapon's damage, and its agility
+        // quickens it, in the engine's arithmetic: read, a Dreadlord's 20 strength and
+        // 16 agility, 20 and 1.3199999.)
+        let primary = self.primary_attribute_pub(h) as u32;
+        let quickness = if u.is_hero {
+            let per_point = self.misc.get_str("Misc", "AgiAttackSpeedBonus").and_then(|v| crate::objects::engine_real(v.trim())).unwrap_or(0.02);
+            let agi = (u.agi + u.item_bonus.agi).floor() as i32;
+            f32::from_bits(crate::efloat::add(1f32.to_bits(), crate::efloat::mul(crate::efloat::from_int(agi), per_point.to_bits())))
+        } else {
+            1.0
+        };
         let real = |name: &str, k: u32| if on(k) { o.real(&format!("{name}{k}")) } else { 0.0 };
         let modifiable = |f: &dyn Fn(u32) -> f32| Field::List(vec![vec![r(f(1)), r(0.0), r(f32::MAX)], vec![r(f(2)), r(0.0), r(f32::MAX)]]);
         let plain = || Field::List(vec![vec![r(0.0), r(0.0), r(f32::MAX)], vec![r(0.0), r(0.0), r(f32::MAX)]]);
@@ -1495,7 +1592,7 @@ impl World {
         let mut tail = vec![w(u32::MAX), w(u32::MAX), w(0), w(u32::MAX), w(u32::MAX), w(0)];
         tail.push(per(&|k| w(int("dice", k, 0))));
         tail.push(per(&|k| w(int("sides", k, 0))));
-        tail.push(per(&|k| w(int("dmgplus", k, 0))));
+        tail.push(per(&|k| w(int("dmgplus", k, 0) + if on(k) { primary } else { 0 })));
         tail.push(per(&|k| w(bonus(k))));
         tail.push(plain());
         tail.push(per(&|k| w(if on(k) { weapon_kind(&o.str(&format!("weapTp{k}"))) } else { 0 })));
@@ -1507,7 +1604,7 @@ impl World {
         tail.push(per(&|k| r(real("cool", k))));
         tail.push(modifiable(&|k| real("dmgpt", k)));
         tail.push(modifiable(&|k| real("backSw", k)));
-        tail.extend([r(1.0), r(-f32::MAX), r(f32::MAX)]);
+        tail.extend([r(quickness), r(-f32::MAX), r(f32::MAX)]);
         tail.extend([timer(), timer(), timer(), timer()]);
         tail.push(per(&|k| w(if on(k) { weapon_targets(&o.list(&format!("targs{k}"))) } else { 1 })));
         tail.push(w(0));

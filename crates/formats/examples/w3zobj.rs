@@ -156,6 +156,15 @@ fn main() {
         return;
     }
     // "seed": the slot table's random seed (after its slots, nine bytes each).
+    // "secondsizes": each object's birth, kind, and second record's size, by birth.
+    if a[2] == "secondsizes" {
+        let mut v: Vec<_> = all.iter().map(|o| (o.entry.birth, code(o.entry.kind), o.second.len())).collect();
+        v.sort();
+        for (b, k, n) in v {
+            println!("{b} {k} {n}");
+        }
+        return;
+    }
     // "sizes": the object manager's sections' sizes.
     if a[2] == "sizes" {
         let m = s.objects.as_ref().unwrap();

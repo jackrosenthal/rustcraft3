@@ -2755,6 +2755,24 @@ Formats the port made its own, to be replaced by the original's:
   `FUN_6f48c8c0`, a read of 0x74).  The port writes it now.  The original loads the
   port's saves of Forestwalk's test maps at 2.5 and 5 seconds and plays on past the
   first night (seven minutes, no exception).
+- An agent record the port wrote empty (a class whose save it had no layout for) made
+  the original's loader read the next object's bytes as its own and hang on a
+  garbage count (caught by attaching winedbg to the hung loader, `abtest/hangbt.sh`):
+  Hills of Glory's creeps' Command Aura and its buffs, and Forestwalk's undead
+  computer's Graveyard and hero at 160 seconds.  Their layouts, from their classes'
+  save functions (vftable slot 0x38, read from game.dll's tables): the auras whose
+  classes keep the aura base's save (all but Plague and Slow: Brilliance, Command,
+  Endurance, War Drums, Thorns, Vampiric, a healing ward's) as Unholy Aura's, and
+  their buffs keeping the buff base's as Trueshot's (a word a weapon in a counted
+  list: Command Aura's 3 and 1); CAbilityGraveyard (`vf14` 0x6f5f5550) ten corpse
+  places (a reference and a word), Cool, DataC, DataA, a counted list of ten units,
+  and a timer; CAbilityHero (0x6f52a090) its attributes and what they give, their
+  gains a level, its level, three lists of five (its skills, their levels most, the
+  levels they need), two references, and its skill points (read against a
+  Forestwalk test map saving at 160 seconds, `fwhero.w3x`: a Dreadlord's, the port's
+  now the original's but for the references).  Hills of Glory's save now loads; the
+  one at 160 seconds goes further and crashes in the computer's AI walking its units'
+  chain (`FUN_6f9c3920` under CCompAI's timer): not yet read.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

@@ -868,7 +868,10 @@ impl World {
             None => none(),
         };
         let mut tail = vec![art.get(&t.0).cloned().unwrap_or(Field::List(Vec::new())), w(0), timer, Field::Short(0), Field::Short(0), r(crate::ability::AURA_BUFF_TIME)];
-        if code == codes::buff::id::TRUESHOT_AURA {
+        // (A bonus a weapon, Trueshot's and every buff's keeping the base's save, all
+        // but Devotion's and Unholy Aura's: read, Hills of Glory's Command Aura's 3 and
+        // 1; provisional, the others' values.)
+        if code != codes::buff::id::DEVOTION_AURA && code != codes::buff::id::UNHOLY_AURA {
             let o = self.objects.units.get(u.type_id)?;
             let weapons = o.int("weapsOn");
             let bonus = |k: u32| {
@@ -992,6 +995,46 @@ impl World {
                 vec![Field::List((0..12).map(|_| vec![Field::Ref(NONE)]).collect()), Field::Ref(NONE), Field::List((0..12).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect()), Field::Ref(pil), timer()]
             }
             codes::ability::id::RETURN => Vec::new(),
+            // A graveyard's (CAbilityGraveyard): its ten corpse places empty, its Cool,
+            // DataC, and DataA, its ten corpses' units, no timer (read: Forestwalk's
+            // undead computer's at 160 seconds, 15, 250, 5, five corpses).  Without the
+            // record the original's loader read past it and hung.  Provisional: its
+            // corpses, none kept yet.
+            codes::ability::id::GRAVEYARD => {
+                let o = self.objects.abilities.get(*codes::ability::id::GRAVEYARD);
+                let data = |f: &str| o.map_or(0.0, |o| o.level_real(f, 1));
+                let mut tail: Vec<Field> = (0..10).map(|_| Field::List(vec![vec![Field::Ref(NONE), w(0)]])).collect();
+                tail.extend([Field::Real(o.map_or(0.0, |o| o.level_real("Cool", 1))), Field::Real(data("DataC")), w(data("DataA") as u32), Field::List((0..10).map(|_| vec![Field::Ref(NONE)]).collect()), timer()]);
+                tail
+            }
+            // A hero's (CAbilityHero, read against Forestwalk's undead computer's
+            // Dreadlord at 160 seconds): 0, 0, its strength, then its strength, the
+            // life it gives (25 a point), the armor its agility gives (0.3 a point,
+            // less 2), the mana its intelligence gives (15 a point), 0, the attack
+            // speed its agility gives (0.02 a point); its agility, its strength's,
+            // intelligence's, and agility's gains a level; its level, 0x1000a, 0; its
+            // skills, their levels most, and the levels they need (five places); two
+            // references, and its skill points.  Provisional: the meaning of most,
+            // its intelligence's place, the references (none here).  Without the record
+            // the original's loader read past it and hung.
+            codes::ability::id::HERO => {
+                let ob = o;
+                let (s, a, i) = (u.str_.floor(), u.agi.floor(), u.int.floor());
+                let skills: Vec<crate::objects::Id> = ob.list("heroAbilList").iter().map(|x| crate::objects::id_from_str(x.trim())).take(5).collect();
+                let at = |k: usize, f: &dyn Fn(crate::objects::Id) -> u32| vec![w(skills.get(k).map_or(0, |&id| f(id)))];
+                let levels = |id: crate::objects::Id| self.objects.abilities.get(id).map_or(0, |o| o.int("levels").max(0) as u32);
+                let needs = |id: crate::objects::Id| self.objects.abilities.get(id).map_or(0, |o| o.int("reqLevel").max(1) as u32);
+                vec![
+                    w(0), w(0), w(s as u32),
+                    Field::Real(s), Field::Real(s * 25.0), Field::Real(a * 0.3 - 2.0), Field::Real(i * 15.0), Field::Real(0.0), Field::Real(a * 0.02),
+                    w(a as u32), Field::Real(ob.real("STRplus")), Field::Real(ob.real("INTplus")), Field::Real(ob.real("AGIplus")),
+                    w(u.level.max(1) as u32), w(0x1_000a), w(0),
+                    Field::List((0..5).map(|k| at(k, &|id| u32::from_be_bytes(id))).collect()),
+                    Field::List((0..5).map(|k| at(k, &levels)).collect()),
+                    Field::List((0..5).map(|k| at(k, &needs)).collect()),
+                    Field::Ref(NONE), Field::Ref(NONE), w(u.skill_points.max(0) as u32),
+                ]
+            }
             // Rally: no point set; its rally point (the second table's).
             codes::ability::id::RALLY => {
                 own.extend([w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), Field::Real(0.0), w(0), w(0), w(0), w(0)]);

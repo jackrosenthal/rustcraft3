@@ -931,6 +931,15 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // CAbilityDevourCargo (`FUN_6f5aabb0`): a real, three words, two counted lists of
     // two words and a real, two of words, two timers, and two counted lists of two reals.
     (codes::ability::id::CARGO_HOLD_DEVOUR, "wwww wwwwwww t w", "f www [wwf] [wwf] [w] [w] t t [ff] [ff]"),
+    // CAbilityGraveyard (`CAbilityGraveyard::vf14`, 0x6f5f5550; own CAbility's): its
+    // ten corpse places (a reference and a word each, from the last: `FUN_6f4a7060`
+    // makes ten), two FloatMinis' values, a word, its ten units (a counted list, the
+    // constructor's ten), and a timer.
+    (codes::ability::id::GRAVEYARD, "wwww wwwwwww t w", "10(r w) f f w [r] t"),
+    // CAbilityHero (`CAbilityHero::vf14`, 0x6f52a090; own CAbility's): three words,
+    // six FloatMinis' values, a word, three values more, three words, three counted
+    // lists of words, two references, and a word.
+    (codes::ability::id::HERO, "wwww wwwwwww t w", "www ffffff w fff www [w] [w] [w] r r w"),
     // CAbilityDeathSpawnSpider (CAgent's `FUN_6f03eda0` alone).
     (codes::ability::id::SPAWN_SPIDER, "wwww wwwwwww t w", ""),
     // CAbilityNeutralInteract (as CAbilityNeutralDetectAoe's).
@@ -949,6 +958,17 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::ability::id::PRIESTESS_TRUESHOT_AURA, "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
     (codes::ability::id::PALADIN_DEVOTION_AURA, "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
     (codes::ability::id::MANA_REGENERATION_AURA, "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
+    // The other auras whose classes keep the base's save (no vf 0x38 nor 0x48 of
+    // their own): Brilliance, Command, Endurance, War Drums (CAbilityAuraKotoBeast),
+    // Thorns, Vampiric, a healing ward's (read: Hills of Glory's Command Aura's 4276
+    // bytes, as an Unholy Aura's).
+    (codes::ability::id::ARCH_MAGE_BRILLIANCE_AURA, "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
+    (codes::ability::id::COMMAND_AURA, "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
+    (codes::ability::id::CHIEFTAIN_ENDURANCE_AURA, "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
+    (codes::ability::id::AURA_WAR_DRUMS, "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
+    (codes::ability::id::KEEPER_THORNS_AURA, "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
+    (codes::ability::id::DREADLORD_VAMPIRIC_AURA, "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
+    (codes::ability::id::AURA_REGENERATION_WARD, "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
     // Effects on the widget base (`FUN_6f42e650`, own `FUN_6f42f720`: four words): the
     // sprite and a word, a timer, a word, two counted lists of words; `FUN_6f42e6d0`
     // three reals more.
@@ -971,6 +991,13 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // real): the aura base's, an extended timer (two shorts and a real more), for
     // trueshot a counted list of words, and a timer.
     (codes::buff::id::TRUESHOT_AURA, "wwww wwwwwww t w w f www fff f www", "[r] w t ss f [w] t"),
+    // The aura buffs whose classes keep the base's save, as Trueshot's: Command,
+    // Endurance, War Drums, Thorns, Vampiric.
+    (codes::buff::id::AURA_COMMAND, "wwww wwwwwww t w w f www fff f www", "[r] w t ss f [w] t"),
+    (codes::buff::id::ENDURANCE_AURA, "wwww wwwwwww t w w f www fff f www", "[r] w t ss f [w] t"),
+    (codes::buff::id::WAR_DRUMS, "wwww wwwwwww t w w f www fff f www", "[r] w t ss f [w] t"),
+    (codes::buff::id::THORNS_AURA, "wwww wwwwwww t w w f www fff f www", "[r] w t ss f [w] t"),
+    (codes::buff::id::VAMPIRIC_AURA, "wwww wwwwwww t w w f www fff f www", "[r] w t ss f [w] t"),
     (codes::buff::id::DEVOTION_AURA, "wwww wwwwwww t w w f www fff f www f", "[r] w t ss f t"),
     // CBuffAuraUnholy (`FUN_6f4ea950`, own `FUN_6f4ebac0`: a real, two words, three
     // reals more): the aura base's, an extended timer, a reference, and a timer.

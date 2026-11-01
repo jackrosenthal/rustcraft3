@@ -114,13 +114,13 @@ pub(crate) struct OrderState {
     pub kind: u32,
     pub inside_word: u32,
     pub walking: bool,
-    pub after_tint: [u32; 3],
+    pub after_tint: [u32; 4],
     pub inside: bool,
 }
 
 impl Default for OrderState {
     fn default() -> Self {
-        OrderState { kind: 0, inside_word: 0, walking: false, after_tint: [1, 4, 0], inside: false }
+        OrderState { kind: 0, inside_word: 0, walking: false, after_tint: [1, 4, 0, 0], inside: false }
     }
 }
 
@@ -981,7 +981,7 @@ impl World {
             records.extend(self.point_walk_records(h, c, p, (x, y)));
         }
         // (Its work 7: read, a peasant sent to a point.)
-        let state = OrderState { kind: 7, walking: walk.is_some(), after_tint: [1, if walk.is_some() { 5 } else { 4 }, 0], ..Default::default() };
+        let state = OrderState { kind: 7, walking: walk.is_some(), after_tint: [1, if walk.is_some() { 5 } else { 4 }, 0, 0], ..Default::default() };
         Some(SavedOrder { records, task: t[6], order: t[0], next: t[0], mine: false, timer: None, summoning: false, in_gold_mine: false, walking: walk.is_some(), state, walk: walk.map(|(c, p)| (c, p, 0)), queue: None })
     }
 
@@ -1034,7 +1034,11 @@ impl World {
         use crate::goldrun::{Kind, Phase};
         let u = self.unit(h)?;
         let r = u.extra.gold_run.as_ref()?;
-        if r.lumber {
+        // (Chopping lumber: its harvest order on the tree with `tskA` 852322, tasks 852326,
+        // 852296, 852298, 852306, and target tasks 852357 and 852356 on the tree; read,
+        // Forestwalk's peasants sent to a tree by script, at 12 seconds.)
+        const CHOP: [(&[u8; 4], u32); 8] = [(codes::class::ORDER_TASKS, 852_018), (codes::class::TASK_A, 852_322), (codes::class::TASK, 852_326), (codes::class::TASK, 852_296), (codes::class::TASK, 852_298), (codes::class::TASK, 852_306), (codes::class::TASK_T, 852_357), (codes::class::TASK_T, 852_356)];
+        if r.lumber && !matches!(r.phase, Phase::Chopping(_)) {
             return None;
         }
         const OWN: [(&[u8; 4], u32); 11] = [(codes::class::ORDER_TASKS, 852_018), (codes::class::TASK_A, 852_322), (codes::class::TASK, 852_326), (codes::class::TASK, 852_298), (codes::class::TASK, 852_296), (codes::class::TASK, 852_306), (codes::class::TASK_T, 852_369), (codes::class::TASK_T, 852_355), (codes::class::TASK_T, 852_354), (codes::class::TASK, 852_305), (codes::class::TASK_T, 852_337)];
@@ -1042,6 +1046,7 @@ impl World {
         // (Waiting at the mine as in it; the player's order the worker's own a place on,
         // its first block gone: read, Forestwalk's peasants at 3 seconds.)
         let (list, target): (&[(&[u8; 4], u32)], u32) = match (r.kind, r.phase) {
+            (Kind::Own | Kind::Player, Phase::Chopping(_)) => (&CHOP[..], r.mine),
             (Kind::Own | Kind::Player, Phase::InMine(_) | Phase::Waiting(_)) => (&OWN[..9], r.mine),
             (Kind::Own | Kind::Player, Phase::ToMine) => (&OWN[..], r.mine),
             (Kind::Return, Phase::ToHall(hall)) => (&HOME[..], hall),
@@ -1056,12 +1061,18 @@ impl World {
         if !t.iter().zip(list).zip(&places).all(|((x, (c, _)), &k)| x.1 == t0.1 + k as u32 && self.tags.live.get(&x.0).is_some_and(|e| &e.0 == *c)) {
             return None;
         }
-        let tu = self.unit(target)?;
-        let target_ref = tu.extra.object_slots[0].first().copied()?;
+        // (Its target a unit, or a tree.)
+        let (target_ref, tx, ty) = match self.unit(target) {
+            Some(tu) => (tu.extra.object_slots[0].first().copied()?, tu.x, tu.y),
+            None => match self.handles.get(target) {
+                Some(crate::types::Obj::Destructable(d)) => (self.tagged(d.oid.0), d.x, d.y),
+                _ => return None,
+            },
+        };
         let w = Field::Word;
         let handlers = || Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
         let mut records = Vec::new();
-        let mut own = vec![w(0), w(list[0].1), w(0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(tu.x), Field::Real(tu.y), w(target_ref.0), w(target_ref.1)];
+        let mut own = vec![w(0), w(list[0].1), w(0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(tx), Field::Real(ty), w(target_ref.0), w(target_ref.1)];
         own.extend([w(0), w(0), w(0), w(0), w(0), Field::Real(0.0), Field::Real(0.0)]);
         records.push((t[0].0, agent_first(t[0], codes::class::ORDER_TASKS, &[]), Some(Second::Agent { own, handlers: handlers(), tail: vec![w(u32::MAX), w(u32::MAX), w(0), Field::Ref(NONE), Field::Ref(NONE)] })));
         for k in 1..t.len() {
@@ -1079,7 +1090,7 @@ impl World {
         }
         let last = *t.last()?;
         let in_gold_mine = matches!(r.phase, Phase::InMine(_));
-        let waiting = matches!(r.phase, Phase::Waiting(_));
+        let waiting = matches!(r.phase, Phase::Waiting(_)) || r.lumber;
         let home = matches!(r.phase, Phase::ToHall(_));
         // Its walk's cluster and path (the order's, by place).
         let at = |k: usize, c: &[u8; 4]| r.order.get(k).map(|&s| self.tagged(s)).filter(|x| x.1 == t0.1 + k as u32 && self.tags.live.get(&x.0).is_some_and(|e| &e.0 == c));
@@ -1094,7 +1105,12 @@ impl World {
             records.extend(self.walk_records(h, c, p, target));
         }
         let walking = !in_gold_mine && !waiting;
-        let state = OrderState { kind: 5, inside_word: in_gold_mine as u32, walking, after_tint: [if home { 2 } else { 1 }, if walking { 5 } else { 4 }, 35], inside: in_gold_mine };
+        // (Chopping: 3, 4, 19, 36 after its tint and 0x80 on its last word, read.)
+        let state = if r.lumber {
+            OrderState { kind: 5, inside_word: 0, walking: false, after_tint: [3, 4, 19, 36], inside: true }
+        } else {
+            OrderState { kind: 5, inside_word: in_gold_mine as u32, walking, after_tint: [if home { 2 } else { 1 }, if walking { 5 } else { 4 }, 35, 0], inside: in_gold_mine }
+        };
         // Waiting, its place in the mine's queue (a `uref`).
         let queue = match r.phase {
             Phase::Waiting(s) => Some(s).filter(|s| self.tags.live.get(s).is_some_and(|e| &e.0 == codes::class::UNIT_AI_REF)).map(|s| self.tagged(s)),
@@ -1151,7 +1167,7 @@ impl World {
         let me = u.extra.object_slots[0].first().copied()?;
         let count = self.tags.prop_counts.get(&me.0).copied().unwrap_or(0);
         let timer = Field::Timer(rf(me), 0, Timing(Some((end, 1.0, count, 0xd_019d, 0))));
-        let state = OrderState { kind: 2, after_tint: [1, 4, 37], ..Default::default() };
+        let state = OrderState { kind: 2, after_tint: [1, 4, 37, 0], ..Default::default() };
         Some(SavedOrder { records, task: t[5], order: t[0], next, mine: false, timer: Some(timer), summoning: true, in_gold_mine: false, walking: false, state, walk: None, queue: None })
     }
 
@@ -1224,7 +1240,7 @@ impl World {
             }
             records.push((t[k].0, agent_first(t[k], kinds[k], &[]), Some(Second::Agent { own, handlers: handlers(), tail })));
         }
-        let state = OrderState { kind: 6, after_tint: [2, 4, 35], inside: true, ..Default::default() };
+        let state = OrderState { kind: 6, after_tint: [2, 4, 35, 0], inside: true, ..Default::default() };
         Some(SavedOrder { records, task: t[5], order: t[0], next: t[0], mine: true, timer: None, summoning: false, in_gold_mine: false, walking: false, state, walk: None, queue: None })
     }
 
@@ -1660,6 +1676,11 @@ impl World {
         // real 2.0625 (6.0 on its way home); walking, its walk's cluster, its velocity,
         // and its heading (read: Forestwalk's peasants at 12 seconds; provisional, the
         // first real, the turn's last two).
+        // (Chopping, its first real 4.125 and 0x4000: read, Forestwalk's peasants.)
+        if u.extra.gold_run.as_ref().is_some_and(|r| r.lumber && matches!(r.phase, crate::goldrun::Phase::Chopping(_))) {
+            reals[0] = 4.125;
+            more[2] = 0x4000;
+        }
         if let Some(r) = u.extra.gold_run.as_ref().filter(|r| !r.lumber) {
             let top = self.walk_speed_cells(h);
             values[4] = top;

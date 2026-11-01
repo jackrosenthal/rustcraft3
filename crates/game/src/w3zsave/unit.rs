@@ -533,7 +533,7 @@ impl World {
         fields.extend([Field::Ref(NONE), Field::Ref(NONE), Field::Ref(NONE)]);
         fields.extend([Field::Real(o.real("impactZ")), Field::Real(o.real("launchX")), Field::Real(o.real("launchY")), Field::Real(o.real("launchZ"))]);
         fields.extend([Field::Byte(0), Field::Byte(st.walking as u8), w(0), w(0), w(0), w(0), Field::Ref(NONE), Field::Byte(0)]);
-        fields.extend([w(tint), w(st.after_tint[0]), w(st.after_tint[1]), w(st.after_tint[2]), w(0), w(0), w(0), w(0)]);
+        fields.extend([w(tint), w(st.after_tint[0]), w(st.after_tint[1]), w(st.after_tint[2]), w(st.after_tint[3]), w(0), w(0), w(0)]);
         // (A spell immune unit's two words (+0x15c, +0x160: read, the granite golems' and a
         // red dragon's), its being built on another (isBuildOn, +0x60), and a flag word
         // (+0x280: 0x10 for all read, 0x8 for a type with elevation points).)
@@ -1316,6 +1316,21 @@ impl World {
                 let in_mine = run.is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::InMine(_)));
                 let carried = if gold && !in_mine { u.carry_gold.max(0) as u32 } else { 0 };
                 own.extend([w(data("DataC") as u32), w(data("DataB") as u32), w(0), w(0), w(carried), w(hall.0), w(hall.1), w(0), Field::Real(o.real("dmgpt1")), Field::Real(o.real("backSw1")), w(data("DataA") as u32)]);
+                // (Chopping, the run's lumber: 2 third, its load fifth (each chop's lumber
+                // as it lands), its tree twice in its tail, its next chop's damage point
+                // on its timer, its flags 0x40003185 more: read, Forestwalk's peasants
+                // chopping.)
+                let chop = u.extra.gold_run.as_ref().filter(|r| r.lumber && matches!(r.phase, crate::goldrun::Phase::Chopping(_)));
+                if chop.is_some() {
+                    let n = own.len();
+                    own[n - 9] = w(2);
+                    let chopped = chop.map_or(0, |r| self.chops_done(h, r.chop_start));
+                    let per = self.run_harvest(h).map_or(1, |(a, l)| self.ability_real(a, "DataA", l).max(1.0) as i32);
+                    own[n - 7] = w((u.carry_lumber + chopped as i32 * per).max(0) as u32);
+                    if let Some(Field::Word(flags)) = own.first_mut() {
+                        *flags |= 0x4000_3185;
+                    }
+                }
                 if gold {
                     let f = f32::from_bits;
                     own.extend(match run {
@@ -1331,8 +1346,22 @@ impl World {
                     }
                 }
                 let mine = run.and_then(|r| self.unit(r.mine)).and_then(|m| m.extra.object_slots[0].first().copied()).map_or(NONE, rf);
-                let mut tail = vec![Field::List((0..8).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect()), Field::List((0..8).map(|_| vec![timer()]).collect()), w(u32::MAX), w(u32::MAX), w(0), w(mine.0), w(mine.1), w(0), Field::Real(data("Area"))];
-                tail.extend((0..if gold { 3 } else { 3 }).map(|_| timer()));
+                let tree = chop.and_then(|r| match self.handles.get(r.mine) {
+                    Some(crate::types::Obj::Destructable(d)) => Some(rf(self.tagged(d.oid.0))),
+                    _ => None,
+                });
+                let (named, at) = match tree {
+                    Some(t) => (t, t),
+                    None => (NONE, mine),
+                };
+                let mut tail = vec![Field::List((0..8).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect()), Field::List((0..8).map(|_| vec![timer()]).collect()), w(named.0), w(named.1), w(0), w(at.0), w(at.1), w(0), Field::Real(data("Area"))];
+                tail.push(timer());
+                // (Its swing's part now, from its swings' start.)
+                tail.push(match chop.and_then(|r| self.next_chop(h, r.chop_start)) {
+                    Some((due, len, event)) => Field::Timer(rf(t), 0, Timing(Some((f32::from_bits(due), f32::from_bits(len), 0, event, 0)))),
+                    None => timer(),
+                });
+                tail.push(timer());
                 if gold {
                     tail.push(match run.and_then(|r| r.timer_due) {
                         Some(due) => Field::Timer(NONE, 0, Timing(Some((f32::from_bits(due), 10.0, 0, u32::MAX, 0)))),
@@ -1928,7 +1957,9 @@ impl World {
         // word 0x20000000; at its mine its ghosting ended, 0xca and 0x10; read,
         // Forestwalk's peasants at 12 seconds.)
         let run = u.extra.gold_run.as_ref().filter(|r| !r.lumber);
-        let at_mine = run.is_some_and(|r| r.at_mine);
+        // (Chopping at its tree as a worker at its mine: read, 0xda.)
+        let chopping = u.extra.gold_run.as_ref().is_some_and(|r| r.lumber && matches!(r.phase, crate::goldrun::Phase::Chopping(_)));
+        let at_mine = run.is_some_and(|r| r.at_mine) || chopping;
         let ghosted = run.is_some_and(|r| r.ghosted) && !at_mine;
         let low = if ghosted { 0x08 } else { 0xca } | if at_mine { 0x10 } else { 0 };
         // A hidden unit's are off the pathing map (read: the gold mine a haunted mine
@@ -1977,6 +2008,25 @@ impl World {
         }
         let word = (hi << 4 | (u.owner as u32 & 0xf)) << 16;
         let way = |limit: u16| (w3_formats::w3z::Array { words: [0, 0, 128, 0], entries: Vec::new() }, u32::MAX, 0, limit);
+        // Chopping (read: Forestwalk's peasants chopping): its tree's cell last, 0x100000
+        // more, 0x12000012, its ways empty, and the tree's first footprint region.
+        if let (Some(r), Some(p)) = (u.extra.gold_run.as_ref().filter(|r| r.lumber && matches!(r.phase, crate::goldrun::Phase::Chopping(_))), self.pathing.as_ref()) {
+            if let Some(crate::types::Obj::Destructable(d)) = self.handles.get(r.mine) {
+                let empty = |limit: u16| (w3_formats::w3z::Array { words: [1024, 1024, 128, 128], entries: Vec::new() }, u32::MAX, 0, limit);
+                let region = d.object_slots.get(3).map_or(NONE, |&s| rf(self.tagged(s)));
+                return Some((
+                    first[9].0,
+                    w3_formats::w3z::First::Path {
+                        reals: [-128000.0, -128000.0, -128000.0, -128000.0, ((d.x - p.origin[0]) / 32.0).floor(), ((d.y - p.origin[1]) / 32.0).floor()],
+                        words: [word | 0x10_0000, 0, 0, u32::MAX, u32::MAX, 0],
+                        real: o.real("collision") / 32.0,
+                        word: 0x1200_0012,
+                        ways: [empty(700), empty(400)],
+                        refs: [NONE, NONE, rf(first[3]), region],
+                    },
+                ));
+            }
+        }
         // A walk to a point (read: Forestwalk's peasants sent off by script): its local
         // goal thrice, 0x2000000 in its first word, its collision, a local way from its
         // local goal to where it stands and its long way; its fine region.

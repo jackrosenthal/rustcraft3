@@ -2942,6 +2942,24 @@ Formats the port made its own, to be replaced by the original's:
   the peasants walk on to the point and go idle there, as from its own save.  The
   original's peasants there stood jammed (velocity 0, its own path naming the one it
   yields to) where the port's walked on: a difference in the walk, not the save.
+- A worker chopping a tree (read against Forestwalk's peasants sent to the nearest
+  tree by script, 12 seconds in; the test map `fwlm`): its harvest order on the tree
+  (`ordt` 852018 at the tree's place, naming the tree) with `tskA` 852322, tasks
+  852326, 852296, 852298, 852306, and target tasks 852357 and 852356 on the tree
+  (the player's form a place on, as for gold).  Its harvest: flags 0x40003185 more,
+  2 its third word, its load its fifth (each chop's lumber as it lands, where the
+  port adds it as the load fills), the tree twice in its tail, and its next chop's
+  damage point on its swing timer (period its damage point, event 0xd01b1; in its
+  backswing the ghoul's had event 0xd01b2 and the backswing's period: not yet
+  written).  Its state words 3, 4, 19, 36 after its tint and 0x80 on its last;
+  its position's first real 4.125 and 0x4000; its fine region 0xda; its own path
+  the tree's cell last, 0x100000 more, 0x12000012, ways empty, the tree's third
+  region (its first footprint region).  The original loads the port's save and
+  the peasants chop and carry on, as from its own.
+- A rect the script removed went on holding its object in the port (RemoveRect let
+  its handle go only), and a save then had the rect's object without its record:
+  the original's loader hung in CRectWar3's read.  RemoveRect now frees it as
+  RemoveLocation does.
 - Still not written: the Graveyard's effects, a haunted mine's payout modifier and
   listener, and the running game's counts and search marks.
 - The agent timers' counts (each start's, saved in its timer's record) with the

@@ -54,7 +54,15 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let (x1, y1) = w.location(a.h(1)).unwrap_or_default();
             handle(w.handles.insert(Obj::Rect(Rect { min_x: x0, min_y: y0, max_x: x1, max_y: y1 })))
         },
-        RemoveRect => |w, _, a| { if w.rect(a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
+        // (Its object goes as a location's does: a removed rect's object left behind
+        // without its record hung the original's loader in CRectWar3's read.)
+        RemoveRect => |w, _, a| {
+            if w.rect(a.h(0)).is_some() {
+                w.handles.remove(a.h(0));
+                w.tags.doom_handle(a.h(0), 1);
+            }
+            none()
+        },
         SetRect => |w, _, a| {
             let r = Rect { min_x: a.r(1), min_y: a.r(2), max_x: a.r(3), max_y: a.r(4) };
             if let Some(x) = rect_mut(w, a.h(0)) { *x = r; }

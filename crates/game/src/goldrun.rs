@@ -529,6 +529,47 @@ impl World {
         swing_gap_of(point.to_bits(), back.to_bits(), dur.to_bits())
     }
 
+    /// The chops a chopping worker has landed by now, from its swings' start.
+    pub(crate) fn chops_done(&self, h: u32, start: u32) -> u32 {
+        let Some(u) = self.unit(h) else { return 0 };
+        let (point, back) = crate::sim::weapon_n(self, u.type_id, 1).map_or((0.5, 0.5), |w| (w.damage_point, w.backswing));
+        let dur = self.run_harvest(h).map_or(1.1, |(a, l)| self.ability_real(a, "Dur", l));
+        let (point, back) = (point.to_bits(), at_least_hundredth(back.to_bits()));
+        let gap = swing_gap_of(point, back, dur.to_bits());
+        let (mut t, mut n) = (start, 0);
+        while n < 64 {
+            let chop = ef::add(t, point);
+            if f32::from_bits(chop) > self.time {
+                break;
+            }
+            n += 1;
+            t = ef::add(ef::add(chop, back), gap);
+        }
+        n
+    }
+
+    /// A chopping worker's swing timer now, from its swings' start (as `chops_planned`
+    /// times them): the end of the part of its swing it is in, that part's length, and
+    /// its event (the damage point 0xd01b1, the backswing 0xd01b2, the pause before the
+    /// next swing 0xd01be; read, Forestwalk's peasants and the computer's ghoul).
+    pub(crate) fn next_chop(&self, h: u32, start: u32) -> Option<(u32, u32, u32)> {
+        let u = self.unit(h)?;
+        let (point, back) = crate::sim::weapon_n(self, u.type_id, 1).map_or((0.5, 0.5), |w| (w.damage_point, w.backswing));
+        let dur = self.run_harvest(h).map_or(1.1, |(a, l)| self.ability_real(a, "Dur", l));
+        let (point, back) = (point.to_bits(), at_least_hundredth(back.to_bits()));
+        let gap = swing_gap_of(point, back, dur.to_bits());
+        let mut t = start;
+        for _ in 0..64 {
+            for (len, event) in [(point, 0xd_01b1), (back, 0xd_01b2), (gap, 0xd_01be)] {
+                t = ef::add(t, len);
+                if f32::from_bits(t) > self.time {
+                    return Some((t, len, event));
+                }
+            }
+        }
+        None
+    }
+
     pub(crate) fn chops_planned(&self, h: u32, tree: u32, start: u32, wrap: Option<u32>) -> (u32, Option<u32>, u32) {
         let Some(u) = self.unit(h) else { return (start, None, 0) };
         // The swing's damage point and backswing are its first weapon's, whatever the

@@ -153,6 +153,17 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        // TAGS_ACCEL="sx,sy,gx,gy,turn[,limit]": at that turn, the accelerator plan's
+        // coarse way from the start to the goal (accelerator units, half cells).
+        if let Some(v) = std::env::var("TAGS_ACCEL").ok() {
+            let a: Vec<f32> = v.split(',').filter_map(|s| s.parse().ok()).collect();
+            if a.len() >= 5 && a[4] as u32 == n {
+                if let Some(p) = g.world.accel_pyramid() {
+                    let way = w3_game::accelpath::plan(&p, 0, (a[0], a[1]), (a[2], a[3]), a.get(5).map_or(5000, |&l| l as u32));
+                    println!("accel way found {} {:?}", way.found, way.points);
+                }
+            }
+        }
         // TAGS_OIDS: at the given turn, every unit's id and type.
         if std::env::var("TAGS_OIDS").ok().and_then(|v| v.parse::<u32>().ok()) == Some(n) {
             let w = &g.world;

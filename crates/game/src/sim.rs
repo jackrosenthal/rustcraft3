@@ -960,7 +960,74 @@ impl World {
         })
     }
 
+    /// An AI's worker walking to its mine steers by its path's coarse way
+    /// (`crate::accelpath`): planned over the accelerator pyramid as its walk begins
+    /// (5000 pops, an order path's), its target the first point some 10 accelerator
+    /// units on, or the mine itself when none is (read: Forestwalk's undead computer's
+    /// fourth acolyte, made at (346.5, 483.5) and sent to its mine at (350, 516),
+    /// heading straight for (349.5, 505.5) at 17.128).
+    fn coarse_goal(&mut self, h: u32, goal: (f32, f32)) -> (f32, f32) {
+        if !self.unit(h).is_some_and(|u| u.ai_harvest_walk()) {
+            return goal;
+        }
+        let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return goal };
+        let acc = |w: f32, o: f32| (w - o) / 64.0;
+        if self.unit(h).is_some_and(|u| u.extra.coarse.is_none()) {
+            let Some(u) = self.unit(h) else { return goal };
+            let pos = (acc(u.x, origin[0]), acc(u.y, origin[1]));
+            let Some(pyr) = self.accel_pyramid() else { return goal };
+            let way = crate::accelpath::plan(&pyr, 0, pos, (acc(goal.0, origin[0]), acc(goal.1, origin[1])), 5000);
+            let index = crate::accelpath::next_target(&way.points, way.points.len() - 1, pos, 10.0);
+            let now = self.step_index + self.step_range.0 as u64;
+            log::debug!("coarse way of {h}: {:?}, target {index}", way.points);
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.coarse = Some(crate::accelpath::Coarse { points: way.points, index, searched_at: now });
+            }
+        }
+        match self.unit(h).and_then(|u| u.extra.coarse.as_ref()) {
+            Some(c) if c.index > 0 => {
+                let p = c.points[c.index];
+                (p.0 * 64.0 + origin[0], p.1 * 64.0 + origin[1])
+            }
+            _ => goal,
+        }
+    }
+
+    /// A walker steering for its coarse way's point short of its order's target is
+    /// there, and stops, once within its order's reach of it (the two units' sizes and
+    /// the ability's range, at least 0.49: `FUN_6f05a5c0` setting the steering's +0xb0
+    /// from the two sizes, the target's with the range; `FUN_6f16e910` testing
+    /// it at its place in the step); its group then picks its way's next target
+    /// (`FUN_6f16c4f0`, `FUN_6f1697a0`), planning it anew from there, and it walks on
+    /// in the next step (read: Forestwalk's undead computer's fourth acolyte, its reach
+    /// 8.3125 to its haunted mine, stopped at 19.198 8.1874 from (349.5, 505.5), and
+    /// walking for the mine's edge from 19.228).
+    pub(crate) fn coarse_step_arrive(&mut self, h: u32, k: usize) -> bool {
+        let Some(c) = self.unit(h).and_then(|u| u.extra.coarse.as_ref()).filter(|c| c.index > 0) else { return false };
+        let Some(m) = self.unit(h).and_then(|u| u.extra.mover) else { return false };
+        let Some(&clock) = self.step_clocks.get(k) else { return false };
+        let target = c.points[c.index];
+        let Some(Action::Harvest { target: t }) = self.unit(h).map(|u| u.action.clone()) else { return false };
+        let range = self.ability_with_code(h, codes::ability::ACOLYTE_HARVEST).map_or(200.0, |(a, l)| self.ability_real(a, "Rng", l));
+        let reach = ((self.unit(h).map_or(0.0, |u| u.collision) + self.unit(t).map_or(0.0, |v| v.collision) + range) / crate::pathing::CELL).max(0.49);
+        let (x, y) = m.at(clock);
+        let (dx, dy) = (f32::from_bits(x) - target.0 * 2.0, f32::from_bits(y) - target.1 * 2.0);
+        if (dx * dx + dy * dy).sqrt() > reach {
+            return false;
+        }
+        log::debug!("coarse target of {h} reached at step {k}: ({:.4}, {:.4}), reach {reach}", f32::from_bits(x), f32::from_bits(y));
+        self.stop_walker_at(h, clock);
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.coarse = None;
+            u.extra.mover = None;
+            u.path.clear();
+            u.extra.path_end_cell = None;
+        }
+        true
+    }
+
     fn path_to_inner(&mut self, h: u32, goal: (f32, f32)) {
+        let goal = self.coarse_goal(h, goal);
         // A walker's local search waits ten steps after its last while its class's
         // budget is spent past 64 passes (`FUN_6f166e90`, `FUN_6f168910`: read, sheep
         // 1050122's search at step 0x54c took the budget to 66, and its tries at 0x553
@@ -1295,7 +1362,7 @@ impl World {
             self.tags.free_step_paths(now);
             carried = later;
             // A walk to a structure ends in the walkers' order (`World::gold_run_step_end`).
-            if self.gold_run_step_end(h, 0) || self.acolyte_step_arrive(h) || self.build_step_arrive(vm, h, 0) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
+            if self.gold_run_step_end(h, 0) || self.coarse_step_arrive(h, 0) || self.acolyte_step_arrive(h) || self.build_step_arrive(vm, h, 0) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
                 continue;
             }
             // One given before this step (this tick's) walks from the next, one given
@@ -1387,7 +1454,7 @@ impl World {
                 let (now, later): (Vec<_>, Vec<_>) = std::mem::take(&mut carried).into_iter().partition(|&(_, s)| s > serial);
                 self.tags.free_step_paths(now);
                 carried = later;
-                if self.gold_run_step_end(h, k) || self.acolyte_step_arrive(h) || self.build_step_arrive(vm, h, k) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
+                if self.gold_run_step_end(h, k) || self.coarse_step_arrive(h, k) || self.acolyte_step_arrive(h) || self.build_step_arrive(vm, h, k) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
                     continue;
                 }
                 let Some(u) = self.unit(h) else { continue };

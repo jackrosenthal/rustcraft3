@@ -1747,7 +1747,23 @@ impl World {
     /// where 0x02) or a destructable's footprint (its types 0xc2, 0x10, 0x08, provisional
     /// for other destructables than trees).
     pub fn saved_grids(&self) -> Vec<Vec<u16>> {
-        let Some(p) = self.pathing.as_ref() else { return Vec::new() };
+        let Some(pyramid) = self.accel_pyramid() else { return Vec::new() };
+        pyramid
+            .levels
+            .iter()
+            .map(|l| {
+                l.cells
+                    .iter()
+                    .map(|c| c.iter().enumerate().fold(0u16, |acc, (k, s)| acc | (match s { crate::accel::State::Open => 0, crate::accel::State::Blocked => 1, crate::accel::State::Mixed => 2 } << (14 - 2 * k))))
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// The accelerator pyramid as the map stands (`crate::accel`): a cell refuses a
+    /// layer by its static byte or a destructable's or structure's footprint.
+    pub fn accel_pyramid(&self) -> Option<crate::accel::Pyramid> {
+        let p = self.pathing.as_ref()?;
         let (w, h) = (p.width as usize, p.height as usize);
         let mut regions = vec![0u8; w * h];
         for &dh in &self.destructable_order {
@@ -1767,6 +1783,12 @@ impl World {
             if !u.is_building || u.hidden || u.extra.footprint_slots.len() != 3 {
                 continue;
             }
+            // (Gold mines, haunted or entangled too, are not in it: read, Forestwalk's
+            // undead computer's acolyte's coarse way to its haunted mine reaching the
+            // mine's middle, (175, 258), as only an open cell there gives.)
+            if self.is_gold_mine(uh) {
+                continue;
+            }
             for &(x, y) in &u.pathing_cells {
                 if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h {
                     regions[y as usize * w + x as usize] |= 0xd2;
@@ -1774,22 +1796,12 @@ impl World {
             }
         }
         let masks = [(0x06u8, 0x06u8), (0x80, 0x80), (0x40, 0x40), (0x04, 0x04)];
-        let pyramid = crate::accel::Pyramid::build(w, h, |x, y, layer| {
+        Some(crate::accel::Pyramid::build(w, h, |x, y, layer| {
             let k = y as usize * w + x as usize;
             let f = p.flags[k];
             let stat = f | 0x01 | if f & 0x02 != 0 { 0x10 } else { 0 };
             stat & masks[layer].0 != 0 || regions[k] & masks[layer].1 != 0
-        });
-        pyramid
-            .levels
-            .iter()
-            .map(|l| {
-                l.cells
-                    .iter()
-                    .map(|c| c.iter().enumerate().fold(0u16, |acc, (k, s)| acc | (match s { crate::accel::State::Open => 0, crate::accel::State::Blocked => 1, crate::accel::State::Mixed => 2 } << (14 - 2 * k))))
-                    .collect()
-            })
-            .collect()
+        }))
     }
 }
 

@@ -576,6 +576,9 @@ pub struct UnitExtra {
     /// Its search found no way: it turns toward its goal and is done (`Mover::face`).
     #[serde(default)]
     pub facing_goal: bool,
+    /// Its walk's coarse way, while it steers by one (`crate::accelpath::Coarse`).
+    #[serde(default)]
+    pub coarse: Option<crate::accelpath::Coarse>,
     /// Its walk by the original's movement steps (`motion`), while it walks.
     #[serde(default)]
     pub mover: Option<crate::motion::Mover>,
@@ -904,6 +907,7 @@ impl Default for UnitExtra {
             yields_to: None,
             mover: None,
             facing_goal: false,
+            coarse: None,
             walk_from: None,
             mana_listeners: Vec::new(),
             ensnare_pil: None,

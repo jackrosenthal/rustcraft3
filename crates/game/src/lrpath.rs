@@ -114,15 +114,16 @@ struct Node {
 /// The open list: a binary heap from 1 on keys g + h (`FUN_6f1483f0` pushes, sifting
 /// up past parents whose keys are no smaller; `FUN_6f148240` pops, taking the right
 /// child when its key is no greater and stopping at a child whose key is no smaller).
+/// (The accelerator plan's search uses it too, its entries nodes: `accelpath`.)
 #[derive(Default)]
-struct Heap(Vec<(u32, (i32, i32), u32)>);
+pub(crate) struct Heap<T = (i32, i32)>(pub(crate) Vec<(u32, T, u32)>);
 
-impl Heap {
-    fn len(&self) -> usize {
+impl<T: Copy> Heap<T> {
+    pub(crate) fn len(&self) -> usize {
         self.0.len()
     }
 
-    fn push(&mut self, e: (u32, (i32, i32), u32)) {
+    pub(crate) fn push(&mut self, e: (u32, T, u32)) {
         self.0.push(e);
         let mut i = self.0.len() - 1;
         while i > 1 {
@@ -136,7 +137,7 @@ impl Heap {
         self.0[i] = e;
     }
 
-    fn pop(&mut self) -> (u32, (i32, i32), u32) {
+    pub(crate) fn pop(&mut self) -> (u32, T, u32) {
         let top = self.0[1];
         let last = self.0.pop().unwrap();
         let m = self.0.len() - 1;

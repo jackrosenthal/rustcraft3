@@ -920,6 +920,7 @@ impl World {
             u.extra.ai_order = order;
             u.extra.walk_serial = serial;
             u.extra.mover = None;
+            u.extra.coarse = None;
         }
     }
 

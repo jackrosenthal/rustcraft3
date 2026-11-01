@@ -2534,6 +2534,23 @@ Formats the port made its own, to be replaced by the original's:
   refused, seemingly (provisional).  The coarse points come from the search's nodes
   (`FUN_6f162a30`): each node's remembered cell plus 0.25 and a half (0.75 for a
   unit of size 1), the goal's and the start's own points in place of theirs.
+  The stop at 19.198 is the steering's arrival (`FUN_6f16e910`): read at each step
+  (`abtest/arrivek.sh`), its reach 8.3125 cells, the order's (`FUN_6f05a5c0` sets it
+  from the two units' sizes, the target's with the ability's range: 16, 50, and
+  Aaha's 200, over 32), tested at the walker's place in the step against the
+  coarse point it steers for: 8.3936 away at 19.168, 8.1874 at 19.198.  No local
+  search ran between; the group's countdown at +0x64 is not one.  The port plans
+  so (`accelpath.rs`: `FUN_6f164c30`, `FUN_6f164a20`, `FUN_6f163f50` and the
+  expansions, `FUN_6f162a30`; its ways at 17.128 and 19.228 the original's, point
+  for point, with gold mines, haunted or entangled, left out of the pyramid: the
+  goal (175, 258) is open in the original's), picks (`next_target`, reach 10), and
+  stops so (`World::coarse_step_arrive`), for an AI's worker walking to its mine.
+  Its stop then falls where the original's did, (348.4108, 497.3854).  Its walk on
+  to the mine searches with refused cells where the original's met none (the
+  necropolis's footprint, the defense captain's region, the slotted acolytes'),
+  walking node by node where the original went straight for (349.5, 511.5); the
+  slotted acolytes' and the captain's regions do refuse (without them the
+  keepalives part at turns 9 and 32).  The keepalives agree to turn 235.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

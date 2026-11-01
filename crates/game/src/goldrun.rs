@@ -940,6 +940,10 @@ impl World {
     /// to the first node whose ring touches the structure's footprint, toward its
     /// middle).
     pub(crate) fn gold_run_search(&self, h: u32, cells: &impl crate::lrpath::Cells, start: (i32, i32), end: (i32, i32), class: u8) -> Option<(crate::lrpath::Outcome, bool, u32)> {
+        // (Toward a coarse way's point short of the mine, a plain search to it.)
+        if self.unit(h).and_then(|u| u.extra.coarse.as_ref()).is_some_and(|c| c.index > 0) {
+            return None;
+        }
         // (An AI's acolyte walking to its mine searches to it as a worker does.)
         let t = self.gold_run_target(h).or_else(|| self.unit(h).filter(|u| u.ai_harvest_walk()).and_then(|u| match u.action {
             crate::types::Action::Harvest { target } => Some(target),

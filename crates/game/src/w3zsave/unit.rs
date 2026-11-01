@@ -73,6 +73,19 @@ impl World {
         self.named_sequences(model, "stand")
     }
 
+    /// A model's sequences named by a phrase (numbers and dashes aside), by index.
+    pub(crate) fn named_sequences_phrase(&self, model: &str, phrase: &str) -> Vec<u32> {
+        let Ok(data) = self.chain.read(model) else { return Vec::new() };
+        let Ok(m) = w3_formats::mdx::Model::parse(&data) else { return Vec::new() };
+        let want: Vec<String> = phrase.split_whitespace().map(|w| w.to_ascii_lowercase()).collect();
+        m.sequences
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.name.split(|c: char| c.is_whitespace() || c == '-').filter(|w| !w.is_empty() && !w.chars().all(|c| c.is_ascii_digit())).map(|w| w.to_ascii_lowercase()).collect::<Vec<_>>() == want)
+            .map(|(k, _)| k as u32)
+            .collect()
+    }
+
     /// A model's sequences named only so (numbers and dashes aside), by index.
     pub(crate) fn named_sequences(&self, model: &str, name: &str) -> Vec<u32> {
         // (A model named .mdl is read from its .mdx.)
@@ -113,8 +126,12 @@ impl World {
         let types: Vec<String> = o.list("type").iter().map(|t| t.trim().to_ascii_lowercase()).collect();
         let is = |t: &str| types.iter().any(|x| x == t);
 
-        // The agent's flags (+0x20).
+        // The agent's flags (+0x20), 0x200 not while it has an order.
+        let order = self.saved_order(h);
         let mut own = 0x600 | if hidden { 0x5 } else { 0x6 };
+        if order.is_some() {
+            own &= !0x200;
+        }
         if !building {
             own |= 0x40;
         }
@@ -249,6 +266,12 @@ impl World {
             }
             agents.extend(woken);
         }
+        // At work in a haunted mine, its harvest listens for 0x1a2, as the work began.
+        if let Some(o) = order.as_ref().filter(|o| o.mine) {
+            if let Some(a) = abilities.iter().find(|a| &a.2 == codes::ability::id::ACOLYTE_HARVEST) {
+                agents.push((Ref(a.0, a.1), (o.order.1, 0), vec![0x1a2]));
+            }
+        }
         agents.sort_by_key(|a| a.1);
         let mut events = vec![Vec::new(); 0x400];
         for (r, _, es) in &agents {
@@ -318,17 +341,23 @@ impl World {
         // provisional, the running game's random choice and time.)
         let model = format!("{}.mdx", o.str("file"));
         let stands = self.stand_sequences(&model);
+        // (At work in a haunted mine, its Stand Work Gold: read, an acolyte's sequence 4
+        // at 0x400, its current one 0xfffe.)
+        let working = order.as_ref().filter(|o| o.mine || o.summoning).map(|_| self.named_sequences_phrase(&model, "stand work gold"));
+        let summoning = order.as_ref().is_some_and(|o| o.summoning);
         let sprite = Sprite {
             real: f32::from_bits(0x0344_0000 | if building { 0x0008_0008 } else { 0 }),
-            short: stands.first().copied().unwrap_or(0) as u16,
+            short: if working.is_some() { 0xfffe } else { stands.first().copied().unwrap_or(0) as u16 },
             byte: 255,
             word: tint,
             reals: [o.real("modelScale"), 1.0],
             words: [4, 0],
             last_real: f32::from_bits(150),
             last_byte: 1,
-            flags: [1, 1, 1],
-            entries: vec![(0.0, 4, stands.clone()), (0.0, 4, stands)],
+            // (A summoner's flags 2, 1, 0 and its work from 0: read, the acolyte
+            // summoning a Crypt.)
+            flags: if summoning { [2, 1, 0] } else { [1, 1, 1] },
+            entries: vec![(0.0, 4, stands.clone()), working.map_or((0.0, 4, stands), |seq| (if summoning { 0.0 } else { f32::from_bits(0x400) }, 4, seq))],
             model,
         };
         let footprint: Vec<Ref> = u.extra.footprint_slots.iter().map(|&s| rf(self.tagged(s))).collect();
@@ -387,7 +416,8 @@ impl World {
         // wander, provisional), and what it takes back (Return Resources' DataA, lumber
         // 0x4000, and DataB, gold 0x8000; `FUN_6f517990`).
         let death_type = o.int("deathType");
-        let mut flags = 0x1;
+        // (0x1 none while it has an order.)
+        let mut flags = if order.is_some() { 0 } else { 0x1 };
         if death_type & 2 != 0 {
             flags |= 0x200;
         }
@@ -441,10 +471,12 @@ impl World {
             radius = radius.min(acquire);
         }
         fields.push(Field::Short((radius / 128.0 + 0.5) as u16));
-        fields.extend(none3());
-        fields.push(Field::Timer(NONE, 0, Timing(None)));
-        fields.extend(none3());
-        fields.extend(none3());
+        // Its current task, timer, order, and the order after (`saved_order`).
+        let three = |t: (u32, u32)| [w(t.0), w(t.1), w(0)];
+        fields.extend(order.as_ref().map_or_else(none3, |o| three(o.task)));
+        fields.push(order.as_ref().and_then(|o| o.timer.clone()).unwrap_or(Field::Timer(NONE, 0, Timing(None))));
+        fields.extend(order.as_ref().map_or_else(none3, |o| three(o.order)));
+        fields.extend(order.as_ref().map_or_else(none3, |o| three(o.next)));
         fields.extend(newest.map_or_else(none3, |n| [w(n.0), w(n.1), w(0)]));
         for _ in 0..5 {
             fields.extend(none3());
@@ -461,21 +493,25 @@ impl World {
         fields.push(Field::Real(o.real("def") + self.buff_mods(h).2));
         fields.push(Field::Real(0.0));
         fields.extend([w(u.owner as u32), w(flags), w(0x0f12), w(invulnerable as u32)]);
-        fields.extend((52..=66).map(|_| w(0)));
+        // (At work in a haunted mine its state 6 last, after its tint 2 and 35, and
+        // its last word 0x80 more: read, both acolytes in the mine at 2.5 seconds.)
+        let in_mine = order.as_ref().is_some_and(|o| o.mine);
+        fields.extend((52..66).map(|_| w(0)));
+        fields.push(w(if in_mine { 6 } else if summoning { 2 } else { 0 }));
         fields.extend([w(!building as u32), w(0)]);
         fields.extend([Field::Real(0.0), Field::Real(0.0), Field::Real(0.0)]);
         fields.extend([w(kinds), w(targets), w(defense), w(u32::MAX), w(u32::MAX)]);
         fields.extend([Field::Ref(NONE), Field::Ref(NONE), Field::Ref(NONE)]);
         fields.extend([Field::Real(o.real("impactZ")), Field::Real(o.real("launchX")), Field::Real(o.real("launchY")), Field::Real(o.real("launchZ"))]);
         fields.extend([Field::Byte(0), Field::Byte(0), w(0), w(0), w(0), w(0), Field::Ref(NONE), Field::Byte(0)]);
-        fields.extend([w(tint), w(1), w(4), w(0), w(0), w(0), w(0), w(0)]);
+        fields.extend([w(tint), w(if in_mine { 2 } else { 1 }), w(4), w(if in_mine { 35 } else if summoning { 37 } else { 0 }), w(0), w(0), w(0), w(0)]);
         // (A spell immune unit's two words (+0x15c, +0x160: read, the granite golems' and a
         // red dragon's), its being built on another (isBuildOn, +0x60), and a flag word
         // (+0x280: 0x10 for all read, 0x8 for a type with elevation points).)
         let immune = u.abilities.iter().any(|(a, _)| self.objects.abilities.get(*a).is_some_and(|ab| ab.str("code").trim() == codes::ability::MAGIC_IMMUNITY));
         let built_on = if o.int("isBuildOn") != 0 { 0x100 } else { 0 };
         let elevated = if o.int("elevPts") > 0 { 8 } else { 0 };
-        fields.extend([w(speed.to_bits()), w(speed.to_bits()), w(1f32.to_bits()), w(0), w(immune as u32), w(immune as u32), w(built_on), w(0), w(0x10 | elevated)]);
+        fields.extend([w(speed.to_bits()), w(speed.to_bits()), w(1f32.to_bits()), w(0), w(immune as u32), w(immune as u32), w(built_on), w(0), w(0x10 | elevated | if in_mine { 0x80 } else { 0 })]);
         Some((me.0, Second::Unit { own, handlers, widget, lists, fields }))
     }
 }
@@ -519,6 +555,16 @@ impl World {
         for (t, c, _) in self.held_item_objects(h) {
             if c[0] == b'A' {
                 add(t, c, &mut chain);
+            }
+        }
+        // (Its order's tasks, after its abilities: read, a harvesting acolyte's.)
+        if let Some(o) = self.saved_order(h) {
+            for (slot, first, _) in &o.records {
+                if let First::Agent { object, .. } = first {
+                    if let Some(c) = self.tags.live.get(slot).map(|e| e.0).filter(|c| is_task(c)) {
+                        add(rf2(object.links[0].2), c, &mut chain);
+                    }
+                }
             }
         }
         chain.sort_by_key(|x| x.0 .1);
@@ -931,6 +977,10 @@ impl World {
     }
 
     pub fn ability_own_record(&self, h: u32, t: (u32, u32), code: &[u8; 4], older: Option<(u32, u32)>, rallies: &[(Ref, Ref)], art: &std::collections::HashMap<u32, Field>) -> Option<Second> {
+        // (A task on its chain is its order's: `saved_order`.)
+        if is_task(code) {
+            return None;
+        }
         if code[0] == b'B' {
             return self.buff_own_record(h, t, code, older, art);
         }
@@ -1508,6 +1558,16 @@ fn weapon_sound(s: &str) -> u32 {
     const NAMES: [&str; 24] = ["", "metallightchop", "metalmediumchop", "metalheavychop", "metallightslice", "metalmediumslice", "metalheavyslice", "metalmediumbash", "metalheavybash", "metalmediumstab", "metalheavystab", "woodlightslice", "woodmediumslice", "woodheavyslice", "woodlightbash", "woodmediumbash", "woodheavybash", "woodlightstab", "woodmediumstab", "clawlightslice", "clawmediumslice", "clawheavyslice", "axemediumchop", "rockheavybash"];
     let s = s.trim().to_ascii_lowercase();
     NAMES.iter().position(|&n| !n.is_empty() && n == s).unwrap_or(0) as u32
+}
+
+/// Whether a kind is a task's (an order's steps, on its unit's chain).
+fn is_task(code: &[u8; 4]) -> bool {
+    matches!(code, b"task" | b"tskA" | b"tskt" | b"tsk." | b"tskO")
+}
+
+/// A reference's tag and birth.
+fn rf2(r: Ref) -> (u32, u32) {
+    (r.0, r.1)
 }
 
 /// A weapon's targets as bits (as abilities' +0x4c; 1 for none).

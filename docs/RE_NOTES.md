@@ -2846,9 +2846,31 @@ Formats the port made its own, to be replaced by the original's:
   gives it its holder's owner (not yet resolved).  The `AItp` record: CAbility's
   fields, its casting time, three 0, its item, three 0, none; ten 0, 852290, four 0,
   its listener, two timers, three none.
+- Units' orders (read against Forestwalk's undead computer at 2.5 seconds).  An order
+  is an agent of its own (`ordt` targeted, `ord.` at a point, `+ord` plain), not on
+  its unit's chain; its tasks are agents on the unit's chain after its abilities,
+  each naming the one before (own: 0, that one, 0, its event), the last the unit's
+  current task.  The unit's fields after its sight: its current task, its timer, its
+  order, and the order after it; its agent flags lose 0x200 and its flags word 0x1
+  while it has an order.
+  - An acolyte at work in a haunted mine: `ordt` (0, harvest 852018, 1, none, 0, 0.0,
+    0.0, the mine, five 0, 0.0, 0.0; none, 0, two none), `tskA` 852322 (and 0), tasks
+    852326, 852298, 852296, and `tskt` 852355 on the mine (0, 0.0; a none); its next
+    order the same.  Its harvest (Aaha) listens for 0x1a2 from then (after the AI);
+    its sprite's current sequence 0xfffe with Stand Work Gold (4) at 0x400; its state
+    word 6, the words after its tint 2, 4, 35, and its last word 0x80 more.  (The
+    port keeps these six as `ai_order`: `AI_HARVEST`'s fourth to ninth.)
+  - An acolyte summoning a structure for its AI: `ord.` (0, the type, 1, its next
+    order, 0, the site), the next `+ord` (851974), `tskA` 852322, tasks 852296,
+    852298, 852292, and `tsk.` (the type, the site, 0.0; a none); its timer the
+    order's end (event 0xd019d, a second on); its sprite's flags 2, 1, 0 with Stand
+    Work Gold from 0; its state word 2, the third word after its tint 37.
+  The original loads saves with these and plays seven minutes.  Not yet written:
+  a walk's cluster and path (`^clu`, `l^pa`, so a ghoul walking to its tree and a
+  player's workers stand), the player's harvest orders (`goldrun.rs` keeps their
+  objects), and the running animation clocks and counts.
 - Still not written: the Graveyard's effects, a haunted mine's payout modifier and
-  listener, units' orders and tasks (so units stand after a load), and the running
-  game's counts and search marks.
+  listener, and the running game's counts and search marks.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

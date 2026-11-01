@@ -104,6 +104,19 @@ fn property_base(tag: (u32, u32), owner: (u32, u32)) -> PropertyBase {
 
 const NONE: Ref = Ref(u32::MAX, u32::MAX);
 
+/// A unit's order as `World::saved_order` writes it.
+pub(crate) struct SavedOrder {
+    pub records: Vec<(u32, First, Option<Second>)>,
+    pub task: (u32, u32),
+    pub order: (u32, u32),
+    pub next: (u32, u32),
+    pub mine: bool,
+    /// Its timer (the summoning's end).
+    pub timer: Option<Field>,
+    /// Whether it summons a structure.
+    pub summoning: bool,
+}
+
 fn rf(t: (u32, u32)) -> Ref {
     Ref(t.0, t.1)
 }
@@ -880,6 +893,107 @@ impl World {
         out
     }
 
+    /// A unit's order as saved: its objects' records, its current task, its order, and
+    /// the order after it, and whether it works in a haunted mine.  So far an AI's
+    /// harvest at a haunted mine with its acolyte in the mine (read against Forestwalk's
+    /// undead computer's at 2.5 seconds): its order (`ordt`: harvest, 852018, the mine)
+    /// and the harvest's tasks (`tskA` 852322, three tasks 852326, 852298, 852296, and
+    /// the target task 852355 on the mine), each naming the one before, the last the
+    /// unit's current task; the order its own next.  (`AI_HARVEST`'s fourth to ninth,
+    /// as `mining.rs` keeps them.)
+    pub(crate) fn saved_order(&self, h: u32) -> Option<SavedOrder> {
+        self.harvest_order(h).or_else(|| self.summoning_order(h))
+    }
+
+    /// An AI's build order on a worker summoning its structure (read against
+    /// Forestwalk's undead computer's acolyte and its Crypt at 2.5 seconds): its
+    /// order (`ord.`: 0, the structure's type, 1, its next order, 0, the site), that
+    /// next order (`+ord`, 851974), and the build's tasks (`tskA` 852322, three tasks
+    /// 852296, 852298, 852292, and the site task `tsk.`: the type, the site, 0.0), the
+    /// last its current task; its order's end on its timer (event 0xd019d, a second
+    /// from its arrival).  (`AI_BUILD`'s first and third to seventh with the last order
+    /// made, as `ai_build_objects` keeps them.)
+    fn summoning_order(&self, h: u32) -> Option<SavedOrder> {
+        let u = self.unit(h)?;
+        let end = u.extra.build_end?;
+        let o = &u.extra.ai_order;
+        if o.len() != crate::ai::AI_BUILD.len() {
+            return None;
+        }
+        let idx = [0usize, 2, 3, 4, 5, 6];
+        let kinds: [&[u8; 4]; 6] = [b"ord.", codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, b"tsk."];
+        if !idx.iter().zip(kinds).all(|(&k, c)| self.tags.live.get(&o[k]).is_some_and(|e| &e.0 == c)) || self.tags.live.get(&o[14]).is_none_or(|e| &e.0 != codes::class::ORDER) {
+            return None;
+        }
+        let t: Vec<(u32, u32)> = idx.iter().map(|&k| self.tagged(o[k])).collect();
+        let next = self.tagged(o[14]);
+        let w = Field::Word;
+        let r = Field::Real;
+        let handlers = || Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
+        let (kind, x, y) = (u.order.id as u32, u.order.target_x, u.order.target_y);
+        let mut records = Vec::new();
+        records.push((t[0].0, agent_first(t[0], b"ord.", &[]), Some(Second::Agent { own: vec![w(0), w(kind), w(1), w(next.0), w(next.1), w(0), r(x), r(y)], handlers: handlers(), tail: vec![w(u32::MAX), w(u32::MAX), w(0), Field::Ref(NONE)] })));
+        records.push((next.0, agent_first(next, codes::class::ORDER, &[]), Some(Second::Agent { own: vec![w(0), w(851_974), w(1), w(u32::MAX), w(u32::MAX), w(0)], handlers: handlers(), tail: vec![w(u32::MAX), w(u32::MAX), w(0)] })));
+        let events = [852_322, 852_296, 852_298, 852_292];
+        for k in 1..t.len() {
+            let prev = if k == 1 { (u32::MAX, u32::MAX) } else { t[k - 1] };
+            let mut own = vec![w(0), w(prev.0), w(prev.1), w(0)];
+            let mut tail = Vec::new();
+            if k == t.len() - 1 {
+                own.extend([w(kind), r(x), r(y), r(0.0)]);
+                tail.push(Field::Ref(NONE));
+            } else {
+                own.push(w(events[k - 1]));
+                if kinds[k] == codes::class::TASK_A {
+                    own.push(w(0));
+                }
+            }
+            records.push((t[k].0, agent_first(t[k], kinds[k], &[]), Some(Second::Agent { own, handlers: handlers(), tail })));
+        }
+        let me = u.extra.object_slots[0].first().copied()?;
+        let count = self.tags.prop_counts.get(&me.0).copied().unwrap_or(0);
+        let timer = Field::Timer(rf(me), 0, Timing(Some((end, 1.0, count, 0xd_019d, 0))));
+        Some(SavedOrder { records, task: t[5], order: t[0], next, mine: false, timer: Some(timer), summoning: true })
+    }
+
+    /// An AI's harvest at a haunted mine with its acolyte in the mine.
+    fn harvest_order(&self, h: u32) -> Option<SavedOrder> {
+        let u = self.unit(h)?;
+        let kinds = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T];
+        if u.extra.ai_order.len() != kinds.len() || !u.extra.ai_order.iter().zip(kinds).all(|(s, c)| self.tags.live.get(s).is_some_and(|e| &e.0 == c)) {
+            return None;
+        }
+        let mine = self.unit(u.order.target).filter(|m| m.abilities.iter().any(|(a, _)| a == codes::ability::id::BLIGHTED_GOLD_MINE)).and_then(|m| m.extra.object_slots[0].first().copied())?;
+        let t: Vec<(u32, u32)> = u.extra.ai_order.iter().map(|&s| self.tagged(s)).collect();
+        let w = Field::Word;
+        let handlers = || Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
+        let mut records = Vec::new();
+        let mut own = vec![w(0), w(852_018), w(1), w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), Field::Real(0.0), w(mine.0), w(mine.1)];
+        own.extend([w(0), w(0), w(0), w(0), w(0), Field::Real(0.0), Field::Real(0.0)]);
+        records.push((t[0].0, agent_first(t[0], codes::class::ORDER_TASKS, &[]), Some(Second::Agent { own, handlers: handlers(), tail: vec![w(u32::MAX), w(u32::MAX), w(0), Field::Ref(NONE), Field::Ref(NONE)] })));
+        let events = [852_322, 852_326, 852_298, 852_296, 852_355];
+        for k in 1..t.len() {
+            let prev = if k == 1 { (u32::MAX, u32::MAX) } else { t[k - 1] };
+            let mut own = vec![w(0), w(prev.0), w(prev.1), w(0), w(events[k - 1])];
+            let mut tail = Vec::new();
+            match kinds[k] {
+                c if c == codes::class::TASK_A => own.push(w(0)),
+                c if c == codes::class::TASK_T => {
+                    own.extend([w(mine.0), w(mine.1), w(0), Field::Real(0.0)]);
+                    tail.push(Field::Ref(NONE));
+                }
+                _ => {}
+            }
+            records.push((t[k].0, agent_first(t[k], kinds[k], &[]), Some(Second::Agent { own, handlers: handlers(), tail })));
+        }
+        Some(SavedOrder { records, task: t[5], order: t[0], next: t[0], mine: true, timer: None, summoning: false })
+    }
+
+    /// The orders' records (`saved_order`).
+    pub fn saved_order_records(&self) -> Vec<(u32, First, Option<Second>)> {
+        self.unit_order.iter().filter_map(|&h| self.saved_order(h)).flat_map(|o| o.records).collect()
+    }
+
     /// The objects of the items a unit holds, in its slots' order: each its tag, kind,
     /// and item.
     pub(crate) fn held_item_objects(&self, h: u32) -> Vec<((u32, u32), [u8; 4], u32)> {
@@ -1210,10 +1324,10 @@ impl World {
             // not the AI itself.)
             // (Buffs among them, a buff being an ability: read, the aura scans' at 2
             // seconds.)
-            let ability = |s: u32| self.tags.live.get(&s).is_some_and(|e| (e.0[0] == b'A' && &e.0 != codes::class::UNIT_AI) || e.0[0] == b'B' || &e.0 == codes::class::UNIT_AI_REF);
-            let newest_ability = u.extra.object_slots[2].iter().map(|&(s, _)| s).chain(u.extra.ai_slots.iter().map(|&(s, _)| s)).chain(u.buffs.iter().map(|b| b.slot).filter(|&s| s != 0)).filter(|&s| ability(s)).max_by_key(|&s| self.tagged(s).1);
-            if let Some(s) = newest_ability {
-                links[0] = Link(rf(self.tagged(s)), 0);
+            // (And what else its chain holds: a structure's Build In Progress, its held
+            // items' abilities, its order's tasks.)
+            if let Some((t, _)) = self.ability_chain(h, &[]).into_iter().max_by_key(|(t, _)| t.1) {
+                links[0] = Link(rf(t), 0);
             }
             links[2] = newest(&[codes::class::CONTINUOUS_MODIFIER]).unwrap_or(Link(NONE, 0));
             links[3] = newest(&[codes::class::THRESHOLD_LISTENER, codes::class::IN_RANGE_LISTENER]).unwrap_or(Link(NONE, 0));
@@ -1739,7 +1853,7 @@ impl World {
             }
         }
         let unit_reals: Vec<(u32, First, Option<Second>)> = self.unit_order.iter().flat_map(|&h| self.unit_real_records(h).into_iter().chain(self.unit_modifier_records(h)).chain(self.hero_flag_records(h)).chain(self.construction_records(h)).chain(self.unit_listener_records(h)).chain(self.unit_position_records(h)).chain(self.unit_agent_record(h))).collect();
-        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals).chain(self.captain_records()).chain(self.item_records()) {
+        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals).chain(self.captain_records()).chain(self.item_records()).chain(self.saved_order_records()) {
             records.insert(slot, f);
             if let Some(sec) = sec {
                 seconds.insert(slot, sec);

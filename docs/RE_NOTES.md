@@ -2520,8 +2520,20 @@ Formats the port made its own, to be replaced by the original's:
   then heads for the mine's edge cell (349.5, 511.5).  The pick scans from the
   start's end for the first point at least some reach away: 11.10 accelerator
   units at 17.128 (index 1 taken, 9.12 not), the goal itself at 19.198 (4.09 not):
-  a reach of about 10.  Open: what sets the second pick's time (2.07 seconds on),
-  and the accelerator search's points (`FUN_6f162a30`).
+  a reach of 10 (`DAT_6fd54194`, read at run time).  The scan starts below the
+  last pick's index and never weighs the goal: the second pick returns it at once.
+  The second pick comes from the group's step check (`FUN_6f16c4f0`): when
+  `FUN_6f16b120` finds its members done (a member's +0x2a bit, the steering's stop
+  answer 0x10000 in its flags; or near within 16, `DAT_6fd541a4` 256 squared) or
+  its count at +0x60 passes 99 (0x18c with the group's 0x100), the order's way is
+  picked again (`FUN_6f1697a0`).  Read at each step from 19.0 to 19.2
+  (`abtest/groupk.sh`): the group's steps at +0x5c from 63 (it began at 17.128), a
+  countdown at +0x64 4, 3, 2, 1, 0, then 16 at 19.168 (a local search again,
+  seemingly), and at 19.198 the member stopped (its speed at +0x20 0, flags
+  0x10000), at (348.41, 497.39): within reach of a near waypoint after that search,
+  refused, seemingly (provisional).  The coarse points come from the search's nodes
+  (`FUN_6f162a30`): each node's remembered cell plus 0.25 and a half (0.75 for a
+  unit of size 1), the goal's and the start's own points in place of theirs.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

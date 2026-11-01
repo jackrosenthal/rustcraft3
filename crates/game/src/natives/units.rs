@@ -976,7 +976,16 @@ fn issue_order(w: &mut World, vm: &mut Vm, unit: u32, order: i32, x: f32, y: f32
         return boolean(ok);
     }
     w.order_error = None;
+    // A point or target order the script gives is issued as a player's is: its
+    // objects and walk the same (read: Forestwalk's peasants sent to mine and to walk
+    // by the map's script, the original's objects those of a player's harvest and
+    // walk, each born where the player's would be).  (Immediate orders have their
+    // own, `tag_immediate_order`; the computers' AI scripts give none.)
+    let external = target != 0 || x != 0.0 || y != 0.0;
+    let was = w.ordering_player;
+    w.ordering_player |= external;
     w.order_unit(unit, order, x, y, target);
+    w.ordering_player = was;
     // A refused order (a target the ability does not allow) is not issued.
     if w.order_error.take().is_some() {
         return boolean(false);

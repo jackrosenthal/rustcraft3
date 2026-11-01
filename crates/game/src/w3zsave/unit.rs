@@ -134,6 +134,10 @@ impl World {
         if order.is_some() {
             own &= !0x200;
         }
+        // (Under a move order 0x20000000: read, a peasant sent to a point.)
+        if order.as_ref().is_some_and(|o| o.state.kind == 7) {
+            own |= 0x2000_0000;
+        }
         if !building {
             own |= 0x40;
         }
@@ -1090,9 +1094,13 @@ impl World {
         // (A unit with an order its attack 0x80 more and 0x2000000 none: read, acolytes
         // and peasants at work.)
         let base_flags = if code == codes::ability::id::ATTACK && self.saved_order(h).is_some() { (base_flags & !0x0200_0000) | 0x80 } else { base_flags };
-        // (A worker on a gold run its repair 0x100000 more: read, Forestwalk's peasants
-        // at 12 seconds, 0x9500010 where idle ones' are 0x9400010.)
-        let base_flags = if code == codes::ability::id::REPAIR_ORC && u.extra.gold_run.is_some() { base_flags | 0x10_0000 } else { base_flags };
+        // (A unit with an order its repair 0x100000 more: read, Forestwalk's peasants
+        // mining and sent to a point, 0x9500010 where idle ones' are 0x9400010.)
+        let ordered = self.saved_order(h);
+        let base_flags = if code == codes::ability::id::REPAIR_ORC && ordered.is_some() { base_flags | 0x10_0000 } else { base_flags };
+        // (Walking to a point under its move order, its movement the order's: 0x80,
+        // 0x800, and 0x4: read, a peasant's 0x894.)
+        let base_flags = if code == codes::ability::id::MOVE && ordered.as_ref().is_some_and(|o| o.state.kind == 7 && o.walk.is_some()) { base_flags | 0x884 } else { base_flags };
         let flags = base_flags | if ai { 0x2 } else { 0 } | if skill { 0x10 } else { 0 } | if made_with { 0x80 } else { 0 };
         let prev = older.map_or(NONE, rf);
         // (Its id, not its kind's code: a shop's Ane2, a creep's ACvs and ACmi, a town
@@ -1969,6 +1977,34 @@ impl World {
         }
         let word = (hi << 4 | (u.owner as u32 & 0xf)) << 16;
         let way = |limit: u16| (w3_formats::w3z::Array { words: [0, 0, 128, 0], entries: Vec::new() }, u32::MAX, 0, limit);
+        // A walk to a point (read: Forestwalk's peasants sent off by script): its local
+        // goal thrice, 0x2000000 in its first word, its collision, a local way from its
+        // local goal to where it stands and its long way; its fine region.
+        // Provisional: the unit it yields to and the ways' counters (none written).
+        if let (Some(p), &crate::types::Action::Move { x, y }) = (self.pathing.as_ref(), &u.action) {
+            if self.saved_order(h).is_some_and(|o| o.walk.is_some()) && u.extra.gold_run.is_none() {
+                let cells = |(x, y): (f32, f32)| [(x - p.origin[0]) / 32.0, (y - p.origin[1]) / 32.0];
+                let here = cells((u.x, u.y));
+                let [gx, gy] = cells((x, y));
+                let local = if u.path.len() > 1 { cells(u.path[u.path.len() - 1]) } else { [gx, gy] };
+                let set = |entries: Vec<[f32; 2]>, limit: u16| (w3_formats::w3z::Array { words: [1024, 1024, 128, 128], entries }, 0, 0, limit);
+                let corners: Vec<[f32; 2]> = match u.extra.coarse.as_ref() {
+                    Some(c) => c.points.iter().map(|&(x, y)| [x, y]).collect(),
+                    None => vec![[gx / 2.0, gy / 2.0], [here[0] / 2.0, here[1] / 2.0]],
+                };
+                return Some((
+                    first[9].0,
+                    w3_formats::w3z::First::Path {
+                        reals: [local[0], local[1], local[0], local[1], local[0], local[1]],
+                        words: [word | 0x0200_0000, 0, 0, u32::MAX, u32::MAX, 0],
+                        real: o.real("collision") / 32.0,
+                        word: 0x0200_0002,
+                        ways: [set(vec![local, here], 700), set(corners, 400)],
+                        refs: [NONE, NONE, rf(first[3]), NONE],
+                    },
+                ));
+            }
+        }
         // A worker on a gold run (read: Forestwalk's peasants at 12 seconds): walking,
         // its walk's goal thrice, 0x12000000 in its first word, its collision, 0x10000010,
         // its local way from its end to where it stands and its long way in half cells,
@@ -2002,6 +2038,7 @@ impl World {
                 ));
             }
             if let (crate::goldrun::Phase::InMine(_), Some((gx, gy))) = (r.phase, goal) {
+                let _ = cells;
                 return Some((
                     first[9].0,
                     w3_formats::w3z::First::Path {

@@ -373,6 +373,22 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 1;
             }
+            // walks: each walker's order objects (slot, birth, kind), mover, coarse way,
+            // and local path.
+            "walks" => {
+                if let Some(g) = &scene.game {
+                    let wd = &g.world;
+                    let f = f32::from_bits;
+                    for &h in &wd.unit_order {
+                        let Some(u) = wd.unit(h) else { continue };
+                        let Some(m) = u.extra.mover.as_ref() else { continue };
+                        let objs: Vec<String> = u.extra.order_tags.iter().map(|s| wd.tags.live.get(s).map_or(format!("{s}:-"), |(c, b)| format!("{s}/{b}:{}", String::from_utf8_lossy(c)))).collect();
+                        eprintln!("walk {:?} {:?} order {:?} objs {} {:?}", u.extra.object_slots[0].first(), u.action, (u.order.id, u.order.target_x, u.order.target_y), objs.len(), objs);
+                        eprintln!("  mover ({}, {}) v ({}, {}) heading {} coarse {:?} path {:?}", f(m.x), f(m.y), f(m.vx), f(m.vy), f(m.heading), u.extra.coarse.as_ref().map(|c| (c.points.clone(), c.index)), u.path);
+                    }
+                }
+                i += 1;
+            }
             "dump" => {
                 if let Some(g) = &scene.game {
                     for &h in &scene.selection {

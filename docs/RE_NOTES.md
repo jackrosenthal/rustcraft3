@@ -2923,6 +2923,25 @@ Formats the port made its own, to be replaced by the original's:
   mining (the gold rising as from its own save); with the orders alone they stood,
   and without the mine's shaft the walkers went in and stayed.  Not yet read:
   lumber, and the counters and turn values of a walk.
+- The map script's point and target orders are a player's: the original's objects for
+  Forestwalk's peasants sent to mine and to walk by script are a player's harvest
+  (two blocks at its head) and a player's walk (17 objects), born where a player's
+  would be.  The port now issues them as a player's (its immediate orders have their
+  own way; the computers' AI scripts give none), and with that its objects at 3
+  seconds are the original's but for a few late ones.
+- A walk to a point under a move order (read against peasants sent off by script, 3
+  seconds in; the test map `fwmv`): the order (`ordt`: 0, move 851986, 0, none, 0,
+  the point, none, five 0, 0.0, 0.0; none, 0, two none), `tskA` 852322, `tskO` 852326
+  with the order, tasks 852296, 852298, 852325, and the point task `tsk.` 852331 (the
+  point, 0.0; a none); its walk the move list's last two (a cluster with its local
+  goal and the goal, no target, 0x20000; a path with the goal, the owner word
+  ((0x206 | 0x8 local) << 4 | owner) << 16, the long way's corners).  The unit's work
+  7 and 0x20000000 in its agent flags; its movement's 0x80, 0x800, and 0x4 (0x894),
+  without which the walkers reached the point and never finished their orders; any
+  ordered unit's repair 0x100000.  With these the original loads the port's save and
+  the peasants walk on to the point and go idle there, as from its own save.  The
+  original's peasants there stood jammed (velocity 0, its own path naming the one it
+  yields to) where the port's walked on: a difference in the walk, not the save.
 - Still not written: the Graveyard's effects, a haunted mine's payout modifier and
   listener, and the running game's counts and search marks.
 - The agent timers' counts (each start's, saved in its timer's record) with the

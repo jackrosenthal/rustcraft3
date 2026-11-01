@@ -931,7 +931,93 @@ impl World {
     /// unit's current task; the order its own next.  (`AI_HARVEST`'s fourth to ninth,
     /// as `mining.rs` keeps them.)
     pub(crate) fn saved_order(&self, h: u32) -> Option<SavedOrder> {
-        self.harvest_order(h).or_else(|| self.summoning_order(h)).or_else(|| self.gold_run_order(h))
+        self.harvest_order(h).or_else(|| self.summoning_order(h)).or_else(|| self.gold_run_order(h)).or_else(|| self.move_order(h))
+    }
+
+    /// A player's (or the map script's) order to walk to a point, walking (read against
+    /// Forestwalk's peasants sent off by script, 3 seconds in): its order (`ordt`: 0,
+    /// move 851986, 0, none, 0, the point, none, five 0, 0.0, 0.0; none, 0, two none),
+    /// `tskA` 852322, `tskO` 852326 with the order, tasks 852296, 852298, 852325, and the
+    /// point task `tsk.` 852331 (the point, 0.0; a none), and its walk (`walk_records`
+    /// to the point).  (`Tags::player_move_issued`'s first and third to eighth, the
+    /// walk's cluster and path its last two.)
+    fn move_order(&self, h: u32) -> Option<SavedOrder> {
+        let u = self.unit(h)?;
+        let crate::types::Action::Move { x, y } = u.action else { return None };
+        let o = &u.extra.order_tags;
+        if !u.extra.player_walk || !matches!(o.len(), 17 | 18) {
+            return None;
+        }
+        let places = [0usize, 2, 3, 4, 5, 6, 7];
+        let kinds: [&[u8; 4]; 7] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK_O, codes::class::TASK, codes::class::TASK, codes::class::TASK, b"tsk."];
+        let t0 = self.tagged(o[0]);
+        let at = |k: usize, c: &[u8; 4]| o.get(k).map(|&s| self.tagged(s)).filter(|t| t.1 == t0.1 + k as u32 && self.tags.live.get(&t.0).is_some_and(|e| &e.0 == c));
+        let t: Vec<(u32, u32)> = places.iter().zip(kinds).map(|(&k, c)| at(k, c)).collect::<Option<_>>()?;
+        const MOVE: u32 = 851_986;
+        let w = Field::Word;
+        let r = Field::Real;
+        let handlers = || Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
+        let mut records = Vec::new();
+        records.push((t[0].0, agent_first(t[0], codes::class::ORDER_TASKS, &[]), Some(Second::Agent { own: vec![w(0), w(MOVE), w(0), w(u32::MAX), w(u32::MAX), w(0), r(x), r(y), w(u32::MAX), w(u32::MAX), w(0), w(0), w(0), w(0), w(0), r(0.0), r(0.0)], handlers: handlers(), tail: vec![w(u32::MAX), w(u32::MAX), w(0), Field::Ref(NONE), Field::Ref(NONE)] })));
+        let events = [852_322, 852_326, 852_296, 852_298, 852_325, 852_331];
+        for k in 1..t.len() {
+            let prev = if k == 1 { (u32::MAX, u32::MAX) } else { t[k - 1] };
+            let mut own = vec![w(0), w(prev.0), w(prev.1), w(0), w(events[k - 1])];
+            let mut tail = Vec::new();
+            match k {
+                1 => own.push(w(0)),
+                2 => own.push(w(MOVE)),
+                6 => {
+                    own.extend([r(x), r(y), r(0.0)]);
+                    tail.push(Field::Ref(NONE));
+                }
+                _ => {}
+            }
+            records.push((t[k].0, agent_first(t[k], kinds[k], &[]), Some(Second::Agent { own, handlers: handlers(), tail })));
+        }
+        let n = o.len();
+        let walk = at(n - 2, codes::class::CLUSTER).zip(at(n - 1, codes::class::PATH)).filter(|_| u.extra.mover.is_some());
+        if let Some((c, p)) = walk {
+            records.extend(self.point_walk_records(h, c, p, (x, y)));
+        }
+        // (Its work 7: read, a peasant sent to a point.)
+        let state = OrderState { kind: 7, walking: walk.is_some(), after_tint: [1, if walk.is_some() { 5 } else { 4 }, 0], ..Default::default() };
+        Some(SavedOrder { records, task: t[6], order: t[0], next: t[0], mine: false, timer: None, summoning: false, in_gold_mine: false, walking: walk.is_some(), state, walk: walk.map(|(c, p)| (c, p, 0)), queue: None })
+    }
+
+    /// A walk to a point's cluster and path (read against Forestwalk's peasants sent off
+    /// by script): the cluster of its walker's position with its local goal (where its
+    /// own path leads now) and heading, no target, the goal and the local goal, 0x20000,
+    /// and the path; the path the goal thrice, its owner word ((0x206 | 0x8 local) << 4 |
+    /// owner) << 16, its collision, no short way, its long way (the coarse way's corners
+    /// in half cells, else the goal and where it stands).  Provisional: the counters,
+    /// the coarse goal (the goal written), the cluster's speed (the walker's top
+    /// moving).
+    fn point_walk_records(&self, h: u32, clu: (u32, u32), path: (u32, u32), goal: (f32, f32)) -> Vec<(u32, First, Option<Second>)> {
+        let mut out = Vec::new();
+        let (Some(u), Some(p)) = (self.unit(h), self.pathing.as_ref()) else { return out };
+        let Some(&pcu) = u.extra.object_slots[0].get(1) else { return out };
+        let cells = |(x, y): (f32, f32)| ((x - p.origin[0]) / 32.0, (y - p.origin[1]) / 32.0);
+        let (gx, gy) = cells(goal);
+        // (Its local goal the point itself while its way is direct.)
+        let (lx, ly) = if u.path.len() > 1 { cells(u.path[u.path.len() - 1]) } else { (gx, gy) };
+        let (cx, cy) = cells((u.x, u.y));
+        let heading = u.extra.mover.as_ref().map_or(0.0, |m| f32::from_bits(m.heading));
+        let moving = u.extra.mover.as_ref().is_some_and(|m| f32::from_bits(m.vx) != 0.0 || f32::from_bits(m.vy) != 0.0);
+        let speed = if moving { self.walk_speed_cells(h) } else { 0.0 };
+        let array = Array { words: [528, 528, 0, 12], entries: vec![([pcu.0, pcu.1, 0], [0.0, 0.0, lx, ly, speed, heading], 0)] };
+        out.push((clu.0, First::Cluster2 { array, words: [u32::MAX, u32::MAX, 0], reals: [gx, gy, lx, ly], more: [0, 0, 0, 0, 0], last_reals: [heading, f32::MAX], word: 0x2_0000, refs: [NONE, NONE, rf(path)] }, None));
+        let collision = self.objects.units.get(u.type_id).map_or(0.0, |o| o.real("collision")) / 32.0;
+        let local = if u.owner == self.local_player { 0x8 } else { 0 };
+        let word = ((0x206 | local) << 4 | (u.owner as u32 & 0xf)) << 16;
+        let corners: Vec<[f32; 2]> = match u.extra.coarse.as_ref() {
+            Some(c) => c.points.iter().map(|&(x, y)| [x, y]).collect(),
+            None => vec![[gx / 2.0, gy / 2.0], [cx / 2.0, cy / 2.0]],
+        };
+        let short = (Array { words: [0, 0, 128, 0], entries: Vec::new() }, u32::MAX, 0, 700);
+        let long = (Array { words: [1024, 1024, 128, 128], entries: corners }, 0, 0, 5000);
+        out.push((path.0, First::Path { reals: [gx, gy, gx, gy, gx, gy], words: [word, 0, 0, u32::MAX, u32::MAX, 0], real: collision, word: 0, ways: [short, long], refs: [NONE, NONE, NONE, NONE] }, None));
+        out
     }
 
     /// A worker's gold run's order (read against Forestwalk's human peasants at 12
@@ -1580,7 +1666,12 @@ impl World {
             reals[1] = top;
             reals[0] = if matches!(r.phase, crate::goldrun::Phase::ToHall(_)) { 6.0 } else { 2.0625 };
             more[2] = 0x4000;
+        }
+        // Walking (any walk: read too, peasants sent to a point), its walk's cluster,
+        // velocity, and heading, and 0x4000.
+        {
             if let (Some((c, _, _)), Some(m)) = (self.saved_order(h).and_then(|o| o.walk), u.extra.mover.as_ref()) {
+                more[2] = 0x4000;
                 let f = f32::from_bits;
                 // (Stamped as it last moved.)
                 base.real = self.time;

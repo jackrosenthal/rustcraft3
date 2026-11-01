@@ -408,8 +408,9 @@ impl World {
             // (Those due by the tick's last movement step; one due after it waits for the
             // next tick's steps: read, `peon_assignment`'s wake due at 1.1 giving its
             // orders in turn 12, not 11.)
-            let until = self.step_clocks.last().map_or(self.time, |&c| f32::from_bits(c));
-            self.ai_run_threads(p, until);
+            let tick = self.step_ticks.last().copied();
+            let until = tick.map_or(self.time, |t| (t as f64 * 0.005) as f32);
+            self.ai_run_threads(p, until, tick);
             let Some(mut aivm) = self.ai_vms.remove(&p) else { continue };
             self.ai_current = Some(p);
             self.ai_hero_skills(p, &mut aivm);
@@ -430,18 +431,29 @@ impl World {
     /// the movement steps reach it: an AI's sleep is a timer on the agent queue, which
     /// falls among the steps; traced, Forestwalk's undead computer's wake at 0.1 in its
     /// turn's first step, its acolytes walking in that turn's later steps).
-    pub(crate) fn ai_threads_to(&mut self, until: f32) {
+    pub(crate) fn ai_threads_to(&mut self, until: f32, until_tick: Option<i64>) {
         let players: Vec<u8> = self.ai_vms.keys().copied().collect();
         for p in players {
             if self.ai.get(&p).is_some_and(|s| s.paused > 0) {
                 continue;
             }
-            self.ai_run_threads(p, until);
+            self.ai_run_threads(p, until, until_tick);
         }
     }
 
-    /// Runs a computer player's threads due by `until`, by due time.
-    fn ai_run_threads(&mut self, p: u8, until: f32) {
+    /// The main tick an AI thread due at `at` runs at: its dues count game time, the
+    /// main tick `t` falling at `t` times 5 ms of it (read: Forestwalk's undead
+    /// computer's threads run at the main ticks 17.098131, 18.097963, 19.097795, and
+    /// 20.097628, 200 ticks apart; its peon_assignment, due 17.1, so ran before the
+    /// turn's first step and a wanderer's draws, which the port's comparison of the due
+    /// with the lagging main clock put after them).
+    pub(crate) fn ai_tick_of(at: f32) -> i64 {
+        (at as f64 / 0.005 - 1e-3).ceil() as i64
+    }
+
+    /// Runs a computer player's threads due by `until` (game time; at the main tick
+    /// `until_tick`), by due time.
+    fn ai_run_threads(&mut self, p: u8, until: f32, until_tick: Option<i64>) {
         {
             let Some(mut aivm) = self.ai_vms.remove(&p) else { return };
             self.ai_current = Some(p);
@@ -478,8 +490,7 @@ impl World {
                 // objects as that tick ends, before the step at the later one (read:
                 // Forestwalk's undead computer's harvest order in turn 172, its objects
                 // freed before the path of a wanderer's walk ended in the step before).
-                let ran = (0..self.tick_clocks.1.len()).filter_map(|i| self.tick_abs(i)).find(|&c| c >= at as f64 - 1e-6);
-                if ran.is_some_and(|c| c < now as f64 - 1e-6) {
+                if until_tick.is_some_and(|u| Self::ai_tick_of(at) < u) {
                     self.tags.flush_issued();
                 }
             }

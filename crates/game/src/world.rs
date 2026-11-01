@@ -1805,7 +1805,9 @@ impl World {
         };
         if let Some(now) = self.tick_abs(i) {
             self.blight_checks_to(now);
-            self.ai_threads_to(now as f32);
+            // (The threads' dues are game time, the tick's 5 ms each: `World::ai_tick_of`.)
+            let t = self.tick_clocks.0 + i as i64;
+            self.ai_threads_to((t as f64 * 0.005) as f32, Some(t));
             self.alarms_to(now);
             self.build_ends_to(now);
             self.captain_checks_to(now);

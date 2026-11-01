@@ -2457,6 +2457,14 @@ Formats the port made its own, to be replaced by the original's:
   which goes at the step (read: the new acolyte's harvest order in turn 172, a
   wanderer's walk ended in that turn's first step).  The keepalives agree to turn
   182.
+- An AI thread's sleeps count game time, and it runs at the main tick whose 5 ms of
+  game time first reach its due, not at the first main clock reading past it (the
+  main clock lags the game's time, 0.999832 a second; read, breaking on the AI's
+  Sleep, ClearHarvestAI, and GetRandomInt: Forestwalk's undead computer's threads
+  run at the main ticks 17.098131, 18.097963, 19.097795, and 20.097628, 200 ticks
+  apart).  Its peon_assignment, due 17.1, so draws before the turn's first step
+  and a wanderer's draws, getting 3 for its sleep; compared with the main clock it
+  ran a tick later, after them, and got 1.  The keepalives agree to turn 207.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

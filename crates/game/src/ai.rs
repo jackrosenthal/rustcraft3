@@ -474,6 +474,14 @@ impl World {
                 }
                 let spawned = self.ai.get_mut(&p).map(|a| std::mem::take(&mut a.spawned)).unwrap_or_default();
                 aivm.sleepers.extend(spawned);
+                // A thread run at a main tick before the one asked for frees its orders'
+                // objects as that tick ends, before the step at the later one (read:
+                // Forestwalk's undead computer's harvest order in turn 172, its objects
+                // freed before the path of a wanderer's walk ended in the step before).
+                let ran = (0..self.tick_clocks.1.len()).filter_map(|i| self.tick_abs(i)).find(|&c| c >= at as f64 - 1e-6);
+                if ran.is_some_and(|c| c < now as f64 - 1e-6) {
+                    self.tags.flush_issued();
+                }
             }
             self.ai_current = None;
             self.ai_vms.insert(p, aivm);

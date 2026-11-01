@@ -472,8 +472,8 @@ impl World {
     /// backswing (at least 0.01) runs out (`FUN_6f405110`, 0xd01b2), and the next swing
     /// starts once Ahar's Dur less both has passed (`FUN_6f40bce0`, 0xd01be, at least
     /// 0.01), each by the engine's arithmetic; full, it stops as its last backswing runs
-    /// out (`FUN_6f436ca0`).  The times are the unit's weapon against trees (a peon's
-    /// 0.5 and 0.5, Dur 1.1: 10.9 seconds for ten chops).
+    /// out (`FUN_6f436ca0`).  The times are the unit's first weapon's (a peon's 0.5 and
+    /// 0.5, Dur 1.1: 10.9 seconds for ten chops).
     pub(crate) fn chopped_at(&self, h: u32, start: u32, wrap: Option<u32>) -> u32 {
         let tree = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).map_or(0, |r| r.mine);
         self.chops_planned(h, tree, start, wrap).0
@@ -492,10 +492,11 @@ impl World {
     /// chops.
     pub(crate) fn chops_planned(&self, h: u32, tree: u32, start: u32, wrap: Option<u32>) -> (u32, Option<u32>, u32) {
         let Some(u) = self.unit(h) else { return (start, None, 0) };
-        let (point, back) = (1..=2)
-            .filter_map(|n| crate::sim::weapon_n(self, u.type_id, n))
-            .find(|w| w.targets.contains("tree"))
-            .map_or((0.5, 0.5), |w| (w.damage_point, w.backswing));
+        // The swing's damage point and backswing are its first weapon's, whatever the
+        // weapon against trees (read: Forestwalk's undead computer's ghoul, swinging
+        // from 3.15 every 1.35, full at the main tick 16.128294: its first weapon's 0.39
+        // and 0.44, not its second's 0.433 and 0.433).
+        let (point, back) = crate::sim::weapon_n(self, u.type_id, 1).map_or((0.5, 0.5), |w| (w.damage_point, w.backswing));
         let (dur, per, cap) = match self.run_harvest(h) {
             Some((a, l)) => (self.ability_real(a, "Dur", l), self.ability_real(a, "DataA", l) as i32, self.ability_real(a, "DataB", l) as i32 + self.upgrade_bonus(u.owner, u.type_id).lumber),
             None => (1.1, 1, 10),

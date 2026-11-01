@@ -2445,6 +2445,18 @@ Formats the port made its own, to be replaced by the original's:
   the turn's frees, after the objects of the orders its AI gives it (read: the
   acolyte made in turn 152, those three freed after its orders' twelve).  The
   keepalives agree to turn 162.
+- A worker's swings at a tree take its first weapon's damage point and backswing,
+  whatever its weapon against trees (read, breaking on `FUN_6f436a90` and
+  `FUN_6f436ca0`: Forestwalk's undead computer's ghoul swings from 3.15 every 1.35
+  and stops full at the main tick 16.128294, which its first weapon's 0.39 and 0.44
+  give; its second's 0.433 and 0.433, which the port had used, give 16.166, after a
+  wanderer's order due at 16.153 that the original gives after the ghoul's walk
+  home).  A peon's two weapons are alike, so its reads did not tell them apart.
+- An AI thread run at a main tick before the step it is run for frees its orders'
+  objects as that tick ends: before the path of a walk ended in the step before,
+  which goes at the step (read: the new acolyte's harvest order in turn 172, a
+  wanderer's walk ended in that turn's first step).  The keepalives agree to turn
+  182.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

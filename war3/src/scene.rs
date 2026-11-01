@@ -1621,13 +1621,12 @@ impl Scene {
         }
         // Weather ambience plays while the camera is inside an enabled effect's rect.
         let mut want = Vec::new();
-        for (&h, o) in g.world.handles.iter() {
-            if let w3_game::types::Obj::Weather(w) = o {
-                let r = w.rect;
-                if ambient && w.enabled && (r.min_x..=r.max_x).contains(&t.x) && (r.min_y..=r.max_y).contains(&t.y) {
-                    if let Some(label) = self.weather.ambient(w.id) {
-                        want.push((h, label));
-                    }
+        for (h, w) in g.world.weathers.iter().enumerate() {
+            let Some(w) = w else { continue };
+            let r = w.rect;
+            if ambient && w.enabled && (r.min_x..=r.max_x).contains(&t.x) && (r.min_y..=r.max_y).contains(&t.y) {
+                if let Some(label) = self.weather.ambient(w.id) {
+                    want.push((h as u32, label));
                 }
             }
         }

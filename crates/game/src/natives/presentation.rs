@@ -418,10 +418,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         AddWeatherEffect => |w, _, a| {
             let Some(Obj::Rect(r)) = w.handles.get(a.h(0)).cloned() else { return handle(0) };
             let id = crate::objects::id_from_int(a.i(1));
-            handle(w.handles.insert(Obj::Weather(Weather { rect: r, id, enabled: false })))
+            handle(w.add_weather(Weather { rect: r, id, enabled: false }))
         },
-        RemoveWeatherEffect => |w, _, a| { if matches!(w.handles.get(a.h(0)), Some(Obj::Weather(_))) { w.handles.remove(a.h(0)); } none() },
-        EnableWeatherEffect => |w, _, a| { let on = a.b(1); if let Some(Obj::Weather(x)) = w.handles.get_mut(a.h(0)) { x.enabled = on; } none() },
+        RemoveWeatherEffect => |w, _, a| { if let Some(s) = w.weathers.get_mut(a.h(0) as usize) { *s = None; } none() },
+        EnableWeatherEffect => |w, _, a| { let on = a.b(1); if let Some(Some(x)) = w.weathers.get_mut(a.h(0) as usize) { x.enabled = on; } none() },
         CreateFogModifierRect => |w, _, a| {
             w.tags.take(codes::class::FOG_MODIFIER);
             let (Some(p), Some(r)) = (w.player_of(a.h(0)), w.rect(a.h(2))) else { return none() };

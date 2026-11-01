@@ -105,8 +105,9 @@ impl WeatherView {
     pub fn sync(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, assets: &mut Assets, world: &w3_game::world::World, ground: impl Fn(f32, f32) -> f32, target: Vec3) {
         let slk = self.slk.get_or_insert_with(|| assets.textures.chain.read_string("TerrainArt\\Weather.slk").map(|s| Table::parse(&s)).unwrap_or_default());
         let mut keep = std::collections::HashSet::new();
-        for (&h, o) in world.handles.iter() {
-            let w3_game::types::Obj::Weather(w) = o else { continue };
+        for (h, w) in world.weathers.iter().enumerate() {
+            let Some(w) = w else { continue };
+            let h = h as u32;
             let row = String::from_utf8_lossy(&w.id).to_string();
             let entry = self.models.entry(w.id).or_insert_with(|| {
                 emitter_model(slk, &row).map(|(m, ..)| Arc::new(ModelGpu::new(device, queue, &mut assets.textures, &row, m)))

@@ -277,7 +277,7 @@ impl Game {
         world.camera_bounds = info.camera_bounds;
         // The map's global weather (w3i) covers the whole map.
         if info.weather != [0; 4] {
-            world.handles.insert(types::Obj::Weather(types::Weather { rect: world.map_bounds, id: info.weather, enabled: true }));
+            world.add_weather(types::Weather { rect: world.map_bounds, id: info.weather, enabled: true });
         }
         for p in &info.players {
             let name = world.localized(&p.name);

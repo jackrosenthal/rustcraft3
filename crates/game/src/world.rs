@@ -147,6 +147,12 @@ pub struct World {
     #[serde(skip)]
     pub objects: ObjectDb,
     pub handles: Handles<Obj>,
+    /// The weather effects, by the weather system's own ids: a script's
+    /// `weathereffect` is its place here, not a handle (`FUN_6f763300`, the first free
+    /// place, so the first effect is 0; read: Forestwalk's test map's three, whose
+    /// handles the original's save leaves out of its table).
+    #[serde(default)]
+    pub weathers: Vec<Option<crate::types::Weather>>,
     /// The map's path as the original names it, from the game's folder
     /// ("Maps\\Test\\bbq.w3x"; `World::set_map_path`).
     #[serde(default)]
@@ -796,6 +802,7 @@ impl World {
             chain,
             objects,
             handles,
+            weathers: Vec::new(),
             map_path: String::new(),
             tags,
             players,
@@ -2456,6 +2463,16 @@ impl Host for World {
 }
 
 impl World {
+    /// A weather effect added at the first free place of the weather list, its id.
+    pub fn add_weather(&mut self, w: crate::types::Weather) -> u32 {
+        let i = self.weathers.iter().position(|s| s.is_none()).unwrap_or(self.weathers.len());
+        if i == self.weathers.len() {
+            self.weathers.push(None);
+        }
+        self.weathers[i] = Some(w);
+        i as u32
+    }
+
     fn call_native_as_is(&mut self, vm: &mut Vm, native: u32, args: &[Value]) -> NativeResult {
         if let Some(p) = self.ai_current {
             let f = self.ai.get(&p).and_then(|a| a.natives.get(native as usize).copied().flatten());

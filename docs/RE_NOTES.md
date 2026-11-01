@@ -2703,6 +2703,15 @@ Formats the port made its own, to be replaced by the original's:
   walked by the first node, 0.0126 cells off the original's ever after, and missed
   its third tree's reach by 0.0035 in the squares at turn 516.  The keepalives agree
   for all 530 turns of the network game with the undead computer.
+- A weather effect is no handle: `AddWeatherEffect` (`jass_AddWeatherEffect`,
+  `FUN_6f78b020`, `FUN_6f762b20`) gives the weather system's own id, the first free
+  place in its list of areas (`FUN_6f763300`), so the first is 0, and
+  `EnableWeatherEffect` takes that id as it is.  Read in Forestwalk's test map's
+  save at 2.5 seconds: its three regions' rects in handles 0x100d7c to 0x100d7e
+  together, no handle for the weather effects made after each; the port's table had
+  three empty handles between them, every later handle three higher (42 globals and
+  33 registers apart).  Now the tables are the same size, every global and register
+  agreeing.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

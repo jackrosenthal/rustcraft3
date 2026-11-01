@@ -1749,6 +1749,8 @@ pub struct QuestItem {
 /// A handle-table entry.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Obj {
+    /// No longer made: weather effects are `World::weathers` (kept for the variants'
+    /// numbering).
     Weather(Weather),
     Image(Image),
     Ubersplat(Ubersplat),

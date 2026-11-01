@@ -2505,6 +2505,23 @@ Formats the port made its own, to be replaced by the original's:
   (`FUN_6f167ce0`); the port's walkers search locally to the goal, as only
   wanderers (no coarse plan) do.  Not yet done: the accelerator plan's search
   over the pyramid (`accel.rs` builds it).
+  Read under winedbg at `FUN_6f167ae0` (`abtest/coarse2.sh`): a walker has two
+  paths, its order's (mask 0, goal the mine at cells (350, 516)) and its
+  movement's (mask 0x02000002).  At 17.128 the order's coarse way holds ten points
+  in accelerator units (half cells; each a pathing cell's middle: 174.75 is
+  349.5): the goal (175, 258), then (174.75, 252.75), (174.75, 250.75), and down
+  x = 174.75 by one to (174.75, 244.75), and the start (173.25, 241.75); the
+  movement path's way is the same but the goal, its goal (349.5, 505.5), the
+  order's point before the mine.  Its local search to that goal (up x = 346.5,
+  then across to it) met no refused cell, so the walker heads straight for it:
+  heading 1.43746 from (346.6295, 484.1010), as read.  At 19.198, at (348.41,
+  497.39), the order's way is picked again (`FUN_6f167ae0` from index 1) and the
+  movement path planned anew from there (five points, its goal the mine); its walk
+  then heads for the mine's edge cell (349.5, 511.5).  The pick scans from the
+  start's end for the first point at least some reach away: 11.10 accelerator
+  units at 17.128 (index 1 taken, 9.12 not), the goal itself at 19.198 (4.09 not):
+  a reach of about 10.  Open: what sets the second pick's time (2.07 seconds on),
+  and the accelerator search's points (`FUN_6f162a30`).
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

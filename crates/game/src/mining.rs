@@ -402,8 +402,14 @@ impl World {
     }
 
     /// The workers at a mine counted again at main clock `t`: its payout's time left is
-    /// scaled to the new period, or a first period begins.
+    /// scaled to the new period, or a first period begins, from a hundredth of a second
+    /// after the change (the mine's payout is a modifier's value run down at a rate of
+    /// its workers over its period, `FUN_6f4e95e0` setting the rate; read: Forestwalk's
+    /// undead computer's mine, its counts changed at 0.36, 0.78, 10.979, 20.758,
+    /// 32.430, and 37.737 and paying at 3.080, 12.383, 21.980, 33.494, and 38.308, each
+    /// as the rate changed 0.01 after the count).
     fn mine_workers_changed(&mut self, mine: u32, t: f64) {
+        let t = t + 0.01;
         let Some((working, _, base)) = self.mine_payout_terms(mine) else { return };
         let period = |n: u32| base as f64 / n.max(1) as f64;
         // A change with acolytes at work and gold left starts the mine's timer for its
@@ -417,7 +423,8 @@ impl World {
         m.extra.payout = match (was, working) {
             (_, 0) => None,
             (0, n) => Some(((t + period(n)) as f32, n)),
-            (w, n) if w != n => Some(((t + (due - t) * period(n) / period(w)) as f32, n)),
+            (w, n) if w != n && due > t => Some(((t + (due - t) * period(n) / period(w)) as f32, n)),
+            (w, n) if w != n => Some((due as f32, n)),
             _ => m.extra.payout,
         };
     }
@@ -535,9 +542,12 @@ impl World {
             let mut due = due as f64;
             let owner = self.unit(mine).map_or(0, |m| m.owner);
             let mut pays = 0;
+            // The next period runs from the pair made as it pays, the clock then a
+            // ten-thousandth on (read: the mine's payouts 2.500101 apart with two
+            // workers, 1.666765 with three, 1.250099 with four).
             while due <= end {
                 pays += 1;
-                due += period(working);
+                due += period(working) + 1e-4;
             }
             if let Some(m) = self.unit_mut(mine) {
                 m.extra.payout = Some((due as f32, working));

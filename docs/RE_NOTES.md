@@ -2465,6 +2465,19 @@ Formats the port made its own, to be replaced by the original's:
   apart).  Its peon_assignment, due 17.1, so draws before the turn's first step
   and a wanderer's draws, getting 3 for its sleep; compared with the main clock it
   ran a tick later, after them, and got 1.  The keepalives agree to turn 207.
+- A haunted mine's payout is a modifier's value run down to a threshold listener
+  at 0 (`FUN_6f4e9650` makes the pair: a FloatModifier at the ability's +0xb4, a
+  listener for event 0xd01c4 at +0xb8; the period 1 over the rate at +0xa0, the
+  rate 0.2 a worker, `FUN_6f4e95e0` setting it at each count change, the gold
+  left at +0x6c).  Read, breaking on `FUN_6f4e95e0` and `FUN_6f4efa20` to 45
+  seconds of Forestwalk's undead computer: a count change takes effect a
+  hundredth of a second after it (the first at 0.36, its rate from 0.37; at
+  0.78, 10.979, 20.758, 32.430, and 37.737, the payouts then 3.080, 12.383,
+  21.980, 33.494, and 38.308 to the microsecond with the old rate run to 0.01
+  after the count and the new from there); and each payout's next period runs
+  from the clock a ten-thousandth on (2.500101, 1.666765, and 1.250099 apart;
+  the clock reads 0.0001 later for each event dispatched in a tick: the pair made
+  at 19.050377, the old freed at 19.050476).
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

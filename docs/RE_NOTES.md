@@ -2347,8 +2347,16 @@ Formats the port made its own, to be replaced by the original's:
   way home at 1.0 was searched with a refused cell (walking node by node,
   `FUN_6f166e90`), x = 352 at rows 502 and 503 closed to it; the port's search then
   meets no refused cell (the acolytes gone from there) and walks straight to the
-  home, at 1.7343.  Open: what holds those cells for the ghoul (its size class, 31,
-  or a region left behind), and the order's stop between steps.
+  home, at 1.7343.  Read in the network game at that search (`abtest/srchway.sh`,
+  the break after `FUN_6f148100` in `FUN_6f166e90`, the main clock 1.019999): the
+  search context's +0xd0 is 1 (node by node), the way's five points (+0x40, last
+  first) (351.5, 504.5), (351.5, 503.5), (351.5, 502.5), (352.5, 501.5), (352.515625,
+  500.875), toward the goal (352.0, 504.0), the captain's home on a cell's corner.  So
+  its search (class 1, the ghoul's 31) ends at node (351, 504), not the goal's
+  (352, 504) as the port's does, and the walk aims at the furthest node in a clear
+  line after the first (351.5, 503.5: heading 1.9731).  Open: what closes (352, 504)
+  for class 1 there (no unit stands there in the port), and the order's stop between
+  steps.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

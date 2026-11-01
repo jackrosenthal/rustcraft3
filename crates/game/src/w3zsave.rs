@@ -219,6 +219,17 @@ pub fn rally_points(save: &SaveGame) -> Vec<(Ref, Ref)> {
 
 /// A chain of listeners, newest first from its head: each one's link to the one made
 /// after it and to the one before, in its link set `set`.
+/// A unit's continuous modifier as a save holds it (`` `rcm ``): its slot and birth, the
+/// real it moves (1 life, 2 mana, 5 sight, as `unit_real_records` numbers them), its
+/// kind's word, its values (a rate and a limit), and its timing node.
+struct UnitModifier {
+    r: (u32, u32),
+    prop: usize,
+    word: u32,
+    values: [f32; 2],
+    timing: Timing,
+}
+
 fn chain_links(chain: &[(u32, u32)], me: (u32, u32), set: u32) -> (Link, Link) {
     let k = chain.iter().position(|&c| c == me).unwrap_or(0);
     let after = chain.get(k + 1).map_or(Link(NONE, 0), |&c| Link(rf(c), set));
@@ -599,15 +610,19 @@ impl World {
         let props: Vec<(u32, u32)> = vec![first[1], first[4], first[5], first[6], first[7], first[8]];
         let code_of = |s: u32| self.tags.live.get(&s).map(|e| e.0);
         let mods: Vec<(u32, u32)> = u.extra.object_slots[1].clone();
-        let rcms: Vec<(u32, u32)> = mods.iter().copied().filter(|&(s, _)| code_of(s) == Some(*codes::class::CONTINUOUS_MODIFIER)).collect();
         let rtl = mods.iter().copied().find(|&(s, _)| code_of(s) == Some(*codes::class::THRESHOLD_LISTENER));
         let (hp_rate, mp_rate) = self.regen_rates(h).unwrap_or((0.0, 0.0));
         let regen_life = matches!(o.str("regenType").to_ascii_lowercase().as_str(), "always" | "night" | "day");
         // (Regeneration on blight: its `` `rcm `` made as the unit stands on blight, the
         // life stamped then; read, the undead's at 2 seconds.)
         let blight_rcm = u.extra.blight_rcm.filter(|s| self.tags.live.contains_key(s)).map(|s| self.tagged(s));
-        let life_rcm = if regen_life { rcms.first().copied() } else { blight_rcm };
-        let mana_rcm = if o.real("manaN") > 0.0 { rcms.get(usize::from(regen_life)).copied() } else { None };
+        // (Each real's head its newest modifier, its rate theirs together.)
+        let all_mods = self.unit_modifiers(h);
+        let newest = |k: usize| all_mods.iter().filter(|m| m.prop == k).map(|m| m.r).last();
+        let life_rcm = newest(1);
+        let mana_rcm = newest(2);
+        let life_rate: f32 = if all_mods.iter().any(|m| m.prop == 1) { all_mods.iter().filter(|m| m.prop == 1 && m.word == 0x6005_0044).map(|m| m.values[0]).sum() } else { hp_rate };
+
         let night = self.night_sight;
         let sight = if self.ultravision(u) { o.real("sight") } else { o.real("sight") + (o.real("nsight") - o.real("sight")) * night };
         // Mana regenerating is kept as its value at its stamp (read: 0 for the creeps'
@@ -625,26 +640,36 @@ impl World {
         let mana_heard = u.extra.mana_listeners.iter().map(|&(_, s)| s).chain(u.extra.spell_timers.iter().copied()).filter(|s| self.tags.live.contains_key(s)).max_by_key(|s| self.tagged(*s).1);
         // (Mana without a pool is -0, read: every unit without mana's.)
         let mana = if u.max_mana == 0.0 && mana == 0.0 { -0.0 } else { mana };
+        // (While its day change's modifier lasts, its sight as the change began, at that
+        // rate, stamped as it was made.)
+        let ramp = all_mods.iter().find(|m| m.prop == 5).map(|m| (m.r, m.values[0]));
+        let sight_now = if let Some(_) = ramp { self.day_change_sight(h).0 } else if sight == 0.0 && u.extra.sight_stamp.is_none() { -0.0 } else { sight };
         let values: [[f32; 4]; 5] = [
-            [u.life, hp_rate, 0.0, u.max_life],
+            [u.life, life_rate, 0.0, u.max_life],
             [mana, mp_rate, 0.0, u.max_mana],
             [-0.0, 0.0, 0.0, 2048.0],
             [-0.0, 0.0, 0.0, 1.0],
             // (A sight of none never changed is -0, as made: read, the haunted mine's
             // hidden gold mine, made after the day's change set the others' to 0.)
-            [if sight == 0.0 && u.extra.sight_stamp.is_none() { -0.0 } else { sight }, 0.0, -f32::MAX, f32::MAX],
+            [sight_now, ramp.map_or(0.0, |r| r.1), -f32::MAX, f32::MAX],
         ];
         for k in 1..=5 {
             let mut base = self.stamped(listed_property_base(&props, k, me));
             if k == 1 {
-                if let Some(r) = life_rcm.filter(|_| !regen_life) {
+                if let Some(r) = blight_rcm.filter(|_| !regen_life) {
                     base.real = self.tags.made_at.get(&r.0).map_or(0.0, |&c| f32::from_bits(c));
                 }
             }
             match k {
                 1 => base.links = [life_rcm.map_or(Link(NONE, 0), |r| Link(rf(r), 1)), rtl.map_or(Link(NONE, 0), |r| Link(rf(r), 1))],
                 2 => base.links = [mana_rcm.map_or(Link(NONE, 0), |r| Link(rf(r), 1)), mana_heard.map_or(Link(NONE, 0), |s| Link(rf(self.tagged(s)), 1))],
-                5 => base.real = u.extra.sight_stamp.unwrap_or(0.0),
+                5 => match ramp {
+                    Some((r, _)) => {
+                        base.real = self.tags.made_at.get(&r.0).map_or(0.0, |&c| f32::from_bits(c));
+                        base.links = [Link(rf(r), 1), Link(NONE, 0)];
+                    }
+                    None => base.real = u.extra.sight_stamp.unwrap_or(0.0),
+                },
                 _ => {}
             }
             out.push((props[k].0, First::Real { base, values: values[k - 1] }, None));
@@ -652,56 +677,101 @@ impl World {
         out
     }
 
-    /// A unit's continuous modifiers (`` `rcm ``, read against the quiet test map's): its
-    /// life's and mana's regeneration (and on blight its life's), each two words
-    /// (-1, 0x60050044), its rate and no limit, a timing node due 150 seconds after it
-    /// was made, every 150, with the count it took (`Tags::prop_counts`); chained on
-    /// the unit newest first, and on its real.
-    pub fn unit_modifier_records(&self, h: u32) -> Vec<(u32, First, Option<Second>)> {
+    /// A unit's continuous modifiers (`UnitModifier`), oldest first: its life's and
+    /// mana's regeneration (and on blight its life's), each Unholy Aura buff's on its
+    /// life, and its last day change's on its sight while that lasts.
+    fn unit_modifiers(&self, h: u32) -> Vec<UnitModifier> {
         let mut out = Vec::new();
         let Some(u) = self.unit(h) else { return out };
         let Some(o) = self.objects.units.get(u.type_id) else { return out };
-        let first = &u.extra.object_slots[0];
-        if first.len() < 10 {
+        if u.extra.object_slots[0].len() < 10 {
             return out;
         }
-        let me = first[0];
-        let (life, mana) = (first[4], first[5]);
         let live = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::CONTINUOUS_MODIFIER);
         let rcms: Vec<(u32, u32)> = u.extra.object_slots[1].iter().copied().filter(|&(s, _)| live(s)).collect();
         let (hp_rate, mp_rate) = self.regen_rates(h).unwrap_or((0.0, 0.0));
         let regen_life = matches!(o.str("regenType").to_ascii_lowercase().as_str(), "always" | "night" | "day");
-        // (Each with its real and rate.)
-        let mut mods: Vec<((u32, u32), (u32, u32), f32)> = Vec::new();
+        // (A regeneration's node due 150 seconds after it was made, every 150.)
+        let periodic = |r: (u32, u32)| {
+            let made = self.tags.made_at.get(&r.0).copied().unwrap_or(0);
+            let due = f32::from_bits(crate::efloat::add(made, 150f32.to_bits()));
+            Timing(Some((due, 150.0, self.tags.prop_counts.get(&r.0).copied().unwrap_or(0), 0, 1)))
+        };
+        let regen = |r: (u32, u32), prop: usize, rate: f32| UnitModifier { r, prop, word: 0x6005_0044, values: [rate, f32::MAX], timing: periodic(r) };
         let mut k = 0;
         if regen_life {
             if let Some(&r) = rcms.get(k) {
-                mods.push((r, life, hp_rate));
+                out.push(regen(r, 1, hp_rate));
                 k += 1;
             }
         }
         if o.real("manaN") > 0.0 {
             if let Some(&r) = rcms.get(k) {
-                mods.push((r, mana, mp_rate));
+                out.push(regen(r, 2, mp_rate));
             }
         }
         if let Some(s) = u.extra.blight_rcm.filter(|&s| live(s)) {
-            mods.push((self.tagged(s), life, hp_rate));
+            out.push(regen(self.tagged(s), 1, hp_rate));
         }
-        mods.sort_by_key(|m| m.0 .1);
-        let chain: Vec<(u32, u32)> = mods.iter().map(|m| m.0).collect();
-        for &(r, prop, rate) in &mods {
-            let (after, before) = chain_links(&chain, r, 0);
-            let made = self.tags.made_at.get(&r.0).copied().unwrap_or(0);
-            let due = f32::from_bits(crate::efloat::add(made, 150f32.to_bits()));
-            let count = self.tags.prop_counts.get(&r.0).copied().unwrap_or(0);
+        // Each Unholy Aura buff's, its regeneration (read: Forestwalk's test map's
+        // creeps by a Satyr Hellcaller at 2.5 seconds, 0.5 each, due 150.5).
+        for b in &u.buffs {
+            if let Some(&s) = self.tags.buff_modifiers.get(&b.slot).filter(|&&s| live(s)) {
+                let r = self.tagged(s);
+                out.push(regen(r, 1, b.life_regen));
+            }
+        }
+        // The day's change's, its sight moving to the new over three seconds: its rate a
+        // second and its three, one node due as it ends (read: the creeps' at the
+        // melee setup's 8:00, 200 and 3.0, due 3.0, its sight real 800 then with rate
+        // 200; a deer's 0).
+        if let Some(s) = u.extra.day_rcm.filter(|&s| live(s)) {
+            let r = self.tagged(s);
+            let made = self.tags.made_at.get(&s).copied().unwrap_or(0);
+            let due = f32::from_bits(crate::efloat::add(made, 3f32.to_bits()));
+            let count = self.tags.prop_counts.get(&s).copied().unwrap_or(0);
+            let (from, to) = self.day_change_sight(h);
+            out.push(UnitModifier { r, prop: 5, word: 0x6004_0044, values: [(to - from) / 3.0, 3.0], timing: Timing(Some((due, 3.0, count, 0, 0))) });
+        }
+        out.sort_by_key(|m| m.r.1);
+        out
+    }
+
+    /// A unit's sight as its last day change began and where it goes (night sight to
+    /// day sight at dawn), the same for one with ultravision.
+    fn day_change_sight(&self, h: u32) -> (f32, f32) {
+        let Some(u) = self.unit(h) else { return (0.0, 0.0) };
+        let Some(o) = self.objects.units.get(u.type_id) else { return (0.0, 0.0) };
+        let (day, night) = (o.real("sight"), if self.ultravision(u) { o.real("sight") } else { o.real("nsight") });
+        if (6.0..18.0).contains(&self.time_of_day) { (night, day) } else { (day, night) }
+    }
+
+    /// A unit's continuous modifiers' records (`` `rcm ``, read against the quiet test
+    /// map's and Forestwalk's): each two words (-1, its kind), its values, and its
+    /// timing; chained on the unit newest first and on its real newest first, the
+    /// real's links flagged 1.
+    pub fn unit_modifier_records(&self, h: u32) -> Vec<(u32, First, Option<Second>)> {
+        let mut out = Vec::new();
+        let Some(u) = self.unit(h) else { return out };
+        let first = &u.extra.object_slots[0];
+        if first.len() < 10 {
+            return out;
+        }
+        let me = first[0];
+        let props = [first[1], first[4], first[5], first[6], first[7], first[8]];
+        let mods = self.unit_modifiers(h);
+        let chain: Vec<(u32, u32)> = mods.iter().map(|m| m.r).collect();
+        for m in &mods {
+            let (after, before) = chain_links(&chain, m.r, 0);
+            let on_real: Vec<(u32, u32)> = mods.iter().filter(|n| n.prop == m.prop).map(|n| n.r).collect();
+            let (r_after, r_before) = chain_links(&on_real, m.r, 1);
             let object = ObjectBase {
                 real: 0.0,
-                words: [u32::MAX, 0x6005_0044],
-                links: [(after, before, rf(r), rf(me)), (Link(NONE, 0), Link(NONE, 0), rf(r), rf(prop))],
-                timings: [Timing(Some((due, 150.0, count, 0, 1))), Timing(None)],
+                words: [u32::MAX, m.word],
+                links: [(after, before, rf(m.r), rf(me)), (r_after, r_before, rf(m.r), rf(props[m.prop]))],
+                timings: [m.timing, Timing(None)],
             };
-            out.push((r.0, First::Continuous { object, values: [rate, f32::MAX] }, None));
+            out.push((m.r.0, First::Continuous { object, values: m.values }, None));
         }
         out
     }
@@ -1796,7 +1866,12 @@ impl World {
                     let ai = self.player_ai_object(player).unwrap_or((u32::MAX, u32::MAX));
                     let (a, b) = if o.number == 0 { (0, 0) } else { (o.number + 1, o.number) };
                     let me = self.tagged(slot);
-                    let timer = if o.count == 0 { Field::Timer(NONE, 0, Timing(None)) } else { Field::Timer(rf(me), 0, Timing(Some((o.due, o.sleep, o.count, 0xd_01bf, 0)))) };
+                    // (Its sleep's timer left out, the thread not woken in a loaded game:
+                    // with it, any one of them, the original crashed within a minute of
+                    // loading the port's save, though the records agree but for the
+                    // timers' counts; provisional, its cause not yet read.)
+                    let _ = (me, o.due, o.count);
+                    let timer = Field::Timer(NONE, 0, Timing(None));
                     let (chunks, rest) = timer_chunks(o.sleep);
                     let own = vec![Field::Word(0), Field::Word(ai.0), Field::Word(ai.1), Field::Word(0), Field::Word(a), Field::Word(b), Field::Real(o.sleep)];
                     out.push((slot, Second::Agent { own, handlers: events(), tail: vec![timer, Field::Short(chunks.min(0xffff) as u16), Field::Short(chunks.min(0xffff) as u16), Field::Real(rest), Field::Word(place)] }));

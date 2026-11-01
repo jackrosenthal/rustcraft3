@@ -2723,6 +2723,30 @@ Formats the port made its own, to be replaced by the original's:
   given (the force's after the crypt's), not by handle.  The port does both, and its
   handle table and rows now agree with the original's save at 2.5 seconds but for
   the crypt's slot.
+- A unit's continuous modifiers in a save (`` `rcm ``), read against Forestwalk's test
+  map's at 2.5 seconds: besides its regeneration's (and on blight its life's), each
+  Unholy Aura buff's on its life (kind 0x60050044, the aura's DataB a second, no
+  limit, due 150 after it was made, every 150), and its last day change's on its
+  sight while that lasts (kind 0x60040044, the change's rate a second and its 3
+  seconds, one node due as it ends: the creeps' at the melee setup's 8:00, 200 a
+  second from night sight to day sight).  They chain on the unit by birth (links
+  flagged 0) and on their real by birth (flagged 1); each real's head is its newest,
+  its rate theirs together (a satyr by a Hellcaller's life 1.0 and 0.5, rate 1.5),
+  and a sight changing holds its value as the change began, stamped then, at the
+  change's rate (800 and 200).  The port writes them so: the units' reals 601 of 650
+  agree (from 485), the modifiers but for their timing counts (the property
+  counter's, some 1 to 15 low).
+- A thread an AI script began with StartThread is saved as the map script's
+  callbacks are: a base frame holding its return place (the original's "none" code
+  address, 0xFCB6BFFC for the AI's code there) and its function's frame marked its
+  run's first; the AI's main has no base frame (read: Forestwalk's computer's four
+  and its main at 2.5 seconds).  The port's saves with a computer crashed the
+  original as it loaded them from the AI threads' objects on (commit 9d51f5f,
+  bisected with `abtest/bisectrun.sh`); with every thread's sleep timer left out the
+  original loads them and plays on, though the threads then do not wake.  Any one
+  timer crashed it within a minute, its due time later or not, though the records
+  agree but for the timers' counts (the frames, return place, and the AI machine's
+  place set as the original's did not help): not yet read.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

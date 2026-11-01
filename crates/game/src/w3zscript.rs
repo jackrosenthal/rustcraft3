@@ -128,12 +128,19 @@ impl Game {
                     scripts.len() - 1
                 }
             };
-            // (An AI's thread has its script's function as its first frame, with none
-            // below it to return to: read, Forestwalk's computer's main.)
+            // (An AI's main has its script's function as its first frame, with none below
+            // it to return to: read, Forestwalk's computer's main.  A thread StartThread
+            // began keeps the base frame its start made, holding its return place, its
+            // function's frame marked its run's first: read, its four others at 2.5
+            // seconds.)
             let mut threads: Vec<Thread> = a
                 .sleepers
                 .iter()
                 .map(|(_, t)| {
+                    let started = t.frames.first().is_some_and(|f| f.func == u32::MAX) && t.frames.get(1).is_some_and(|f| a.vm.function_name(f.func).is_some_and(|n| &*n != "main"));
+                    if started {
+                        return thread_of(&a.vm, t, true);
+                    }
                     let mut t = t.clone();
                     if t.frames.first().is_some_and(|f| f.func == u32::MAX) {
                         t.frames.remove(0);
@@ -602,7 +609,12 @@ impl Game {
             }
             if let Some(theirs) = d.threads.get(1 + k) {
                 for (a, b) in threads.iter().zip(theirs) {
-                    out.push(format!("  AI thread: place {} vs {}; at {} vs {}; flag {} vs {}; word {} vs {}; frames {} vs {}{}; registers differ {}", a.machine, b.machine, a.at, b.at, a.flag, b.flag, a.word, b.word, a.frames.len(), b.frames.len(), if dbg(&a.frames) == dbg(&b.frames) { String::new() } else { format!(" (ours {:?}, theirs {:?})", a.frames.iter().map(|f| (f.word, f.arguments.clone(), f.locals.clone())).collect::<Vec<_>>(), b.frames.iter().map(|f| (f.word, f.arguments.clone(), f.locals.clone())).collect::<Vec<_>>()) }, a.stack.iter().zip(&b.stack).filter(|(x, y)| dbg(x) != dbg(y)).count()));
+                    if std::env::var_os("W3Z_FRAMES").is_some() {
+                        for (k, (x, y)) in a.stack.iter().zip(&b.stack).enumerate().filter(|(_, (x, y))| dbg(x) != dbg(y)).take(12) {
+                            out.push(format!("    place {} r{k}: ours {x:?} theirs {y:?}", a.machine));
+                        }
+                    }
+                    out.push(format!("  AI thread: place {} vs {}; at {} vs {}; flag {} vs {}; word {} vs {}; frames {} vs {}{}; registers differ {}", a.machine, b.machine, a.at, b.at, a.flag, b.flag, a.word, b.word, a.frames.len(), b.frames.len(), if dbg(&a.frames) == dbg(&b.frames) && std::env::var_os("W3Z_FRAMES").is_none() { String::new() } else { format!(" (ours {:?}, theirs {:?})", a.frames.iter().map(|f| (f.word, f.arguments.clone(), f.locals.clone())).collect::<Vec<_>>(), b.frames.iter().map(|f| (f.word, f.arguments.clone(), f.locals.clone())).collect::<Vec<_>>()) }, a.stack.iter().zip(&b.stack).filter(|(x, y)| dbg(x) != dbg(y)).count()));
                 }
                 if threads.len() != theirs.len() {
                     out.push(format!("  AI threads: {} ours, {} the original's", threads.len(), theirs.len()));

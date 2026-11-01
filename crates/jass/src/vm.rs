@@ -1065,6 +1065,11 @@ impl Vm {
         self.prog.at_entry.get(&entry).map(|&k| self.prog.funcs[k as usize].name.clone())
     }
 
+    /// A function's name.
+    pub fn function_name(&self, func: FuncId) -> Option<Rc<str>> {
+        self.prog.of_port.get(&func).map(|&k| self.prog.funcs[k as usize].name.clone())
+    }
+
     /// A function's locals' names (its arguments first), in their slots' order.
     pub fn local_names(&self, func: FuncId) -> Vec<Rc<str>> {
         let Some(&k) = self.prog.of_port.get(&func) else { return Vec::new() };

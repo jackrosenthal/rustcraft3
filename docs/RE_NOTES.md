@@ -2412,6 +2412,28 @@ Formats the port made its own, to be replaced by the original's:
   issue's `+ord` alone.  The port had taken the train's pair for the head of every
   build (the crypt's, traced at 0.1, came right after the acolyte's train); the
   altar's in turn 45 has no such pair.  The keepalives agree to turn 77.
+- An AI's builder, read step by step in the original's network game (each velocity
+  change, `FUN_6f15f7e0`, of the position objects about the base from 4.4 to 7.8
+  seconds; `abtest/velk.sh`): the ziggurat's acolyte, walking to the mine, is
+  stopped at the main clock 4.4299 by the build order (as the harvest order stops a
+  walker, `World::stop_walker_at`) and walks to the site from the next step; the port
+  had let its old walk end in that tick, which took the build's walk for one stopped
+  short and fell back to the old per-tick build.  As a structure is begun its
+  builder stands where it would be a step on (the arrival rule's "place a step on"),
+  and from there one standing on the footprint is placed as a unit made there is,
+  with its size class's room (`natives::units::off_footprint`: the crypt's acolyte,
+  in cell (338, 501), stands at (341.5, 498.5), the first cell of the rings with its
+  2 by 2 cells below and left clear of the crypt's 8 by 8; the port's rings about the
+  structure had put it at (340.5, 496.5), and every later walk of it from there).
+  With these the ziggurat is begun in turn 77, as the original's, its acolyte at
+  (361.5, 508.5) (as in the original's single-player save).
+- The build walk's path and cluster are freed by the movement step
+  (`FUN_6f15aa80`, under the agent queue) two steps after the begin: the ziggurat's,
+  begun at 7.62, last in turn 77; the crypt's, begun at 1.95, in turn 21
+  (provisional: the two steps).
+- A haunted mine's payout due after a tick's last movement step but by its last
+  main tick pays in that tick (Forestwalk's undead computer's, due at 8.07, in turn
+  81, its pair renewed then).  The keepalives agree to turn 152.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

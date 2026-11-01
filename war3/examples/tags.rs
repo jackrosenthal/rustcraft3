@@ -141,10 +141,11 @@ fn main() -> anyhow::Result<()> {
                 println!("unit {:x} {} owner {} at {} {} (cells {} {}) collision {} footprint x {x0:?}-{x1:?} y {y0:?}-{y1:?}", u.extra.oid.0, w3_game::objects::id_str(u.type_id), u.owner, u.x, u.y, (u.x - o[0]) / 32.0, (u.y - o[1]) / 32.0, u.collision);
             }
         }
-        // TAGS_CELLS="x0,y0,x1,y1": at the first turn, the pathing cells there open to
-        // walkers ('.') or not ('#'), top row first.
-        if let (0, Ok(v)) = (k, std::env::var("TAGS_CELLS")) {
-            let b: Vec<i32> = v.split(',').filter_map(|s| s.parse().ok()).collect();
+        // TAGS_CELLS="x0,y0,x1,y1[,turn]": at the first turn (or the given one), the
+        // pathing cells there open to walkers ('.') or not ('#'), top row first.
+        let cells_at = std::env::var("TAGS_CELLS").ok().and_then(|v| v.split(',').nth(4).and_then(|s| s.parse::<usize>().ok())).unwrap_or(0);
+        if let (true, Ok(v)) = (k == cells_at, std::env::var("TAGS_CELLS")) {
+            let b: Vec<i32> = v.split(',').take(4).filter_map(|s| s.parse().ok()).collect();
             if let (Some(p), [x0, y0, x1, y1]) = (g.world.pathing.as_ref(), b.as_slice()) {
                 for y in (*y0..=*y1).rev() {
                     let row: String = (*x0..=*x1).map(|x| if p.passable((x, y), w3_game::pathing::Move::Foot) { '.' } else { '#' }).collect();
@@ -160,12 +161,12 @@ fn main() -> anyhow::Result<()> {
             }
         }
         // TAGS_WATCH: a unit's place, action, and hiding after each turn, by its id's
-        // slot (hex).
+        // slot or its handle (hex).
         if let Some(slot) = std::env::var("TAGS_WATCH").ok().and_then(|v| u32::from_str_radix(&v, 16).ok()) {
             let w = &g.world;
-            if let Some(u) = w.unit_order.iter().filter_map(|&h| w.unit(h)).find(|u| u.extra.oid.0 == slot) {
+            if let Some(u) = w.unit_order.iter().filter_map(|&h| w.unit(h)).find(|u| u.extra.oid.0 == slot || u.handle == slot) {
                 let o = w.pathing.as_ref().map_or([0.0; 2], |p| p.origin);
-                println!("turn {n} watch {:.3} {:.3} (cells {:.4} {:.4}) facing {:.2} {:?} hidden {} gold {}", u.x, u.y, (u.x - o[0]) / 32.0, (u.y - o[1]) / 32.0, u.facing, u.action, u.hidden, u.carry_gold);
+                println!("turn {n} watch {:.3} {:.3} (cells {:.4} {:.4}) facing {:.2} {:?} hidden {} gold {} ai order {} legacy {} walker {}", u.x, u.y, (u.x - o[0]) / 32.0, (u.y - o[1]) / 32.0, u.facing, u.action, u.hidden, u.carry_gold, u.extra.ai_order.len(), u.extra.build_legacy, u.extra.mover.is_some());
             }
         }
         let t = &g.world.tags;

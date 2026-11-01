@@ -1430,6 +1430,11 @@ impl World {
         let rest: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 >= n.max(1)).collect();
         self.issue_wanders(&rest, None);
         self.fire_mana_listeners(None);
+        // The payouts due after the last step by the tick's last main tick (read:
+        // Forestwalk's undead computer's mine, due at 8.07 after turn 81's last step,
+        // paying in that turn).
+        let last = self.tick_clocks.1.len().checked_sub(2).map(|i| self.tick_clocks.0 + i as i64);
+        self.mine_payouts_to(vm, last);
         self.step_range = (1, n);
     }
 
@@ -3360,6 +3365,13 @@ impl World {
             return false;
         }
         self.making_clock = self.step_abs(k);
+        // It begins from its place a step on (read: the crypt's acolyte placed off the
+        // footprint from the cell it would reach in that step, `natives::units::
+        // off_footprint`).
+        if let Some(m) = self.unit(h).and_then(|u| u.extra.mover) {
+            let at = self.step_clocks.iter().copied().find(|&c| f32::from_bits(c) > f32::from_bits(m.placed_at)).unwrap_or(crate::efloat::add(m.placed_at, crate::motion::STEP));
+            self.stop_walker_at(h, at);
+        }
         if let Some(u) = self.unit_mut(h) {
             u.path.clear();
             u.extra.mover = None;
@@ -3408,14 +3420,21 @@ impl World {
         let site = if self.builds_on(id) { self.build_on_site(x, y) } else { None };
         let (x, y) = site.and_then(|s| self.unit(s).map(|m| (m.x, m.y))).unwrap_or((x, y));
         // An AI's build order's second `tsk.` goes as the structure is begun, before
-        // what the AI makes of the structure, and its walk's path and cluster at the
-        // next turn's end, as a captain's path query's do (traced: Forestwalk's undead
-        // computer's crypt, the `tsk.` freed first at the turn's end, the path and
-        // cluster after the AI's objects in the next; provisional: the rest of the
-        // order).
+        // what the AI makes of the structure, and its walk's path and cluster two
+        // movement steps on (`FUN_6f15aa80`'s step), after the turn's other frees: in
+        // this turn if it has those steps, else at the next turn's end, as a captain's
+        // path query's do (traced: Forestwalk's undead computer's crypt, begun at 1.95,
+        // the `tsk.` freed first at the turn's end, the path and cluster after the AI's
+        // objects in the next; its ziggurat, begun at 7.62, the path and cluster freed
+        // last in that turn; provisional: the two steps, and the rest of the order).
         if let Some(order) = self.unit(h).filter(|u| u.extra.ai_order.len() == crate::ai::AI_BUILD.len()).map(|u| u.extra.ai_order.clone()) {
             self.tags.doom(order[7]);
-            self.tags.next_turn_end.extend([order[16], order[15]]);
+            let begun = self.making_clock.and_then(|(c, _)| (0..self.step_clocks.len()).find(|&i| self.step_abs(i).is_some_and(|(s, _)| (s - c).abs() < 1e-6)));
+            if begun.is_some_and(|k| k + 2 < self.step_clocks.len()) {
+                self.tags.later_now.extend([order[16], order[15]]);
+            } else {
+                self.tags.next_turn_end.extend([order[16], order[15]]);
+            }
         }
         let b = crate::natives::units::create_unit(self, owner, id, x, y, self.misc_f32("BuildingAngle", 270.0));
         if let Some(s) = site {
@@ -3467,7 +3486,7 @@ impl World {
             (Some(u), Some(p)) => !p.fits(p.cell_of(u.x, u.y), r * 0.5),
             _ => true,
         };
-        let (sx, sy) = if blocked { self.spawn_point(b, r) } else { self.unit(h).map_or((x, y), |u| (u.x, u.y)) };
+        let (sx, sy) = if blocked { crate::natives::units::off_footprint(self, h) } else { self.unit(h).map_or((x, y), |u| (u.x, u.y)) };
         // As the original builds (observed): a peasant (AHbu) works on the structure,
         // which advances only while one does; a peon or wisp (AObu, AEbu) goes inside
         // until it is done; an acolyte (AUbu) summons it and is free at once.

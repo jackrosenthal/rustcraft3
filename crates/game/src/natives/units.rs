@@ -121,7 +121,7 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32, facing: f32)
         }
         return (sx, sy);
     }
-    ground_place(w, &movetp, collision, x, y, true, None, 0x02)
+    ground_place(w, &movetp, collision, x, y, true, None, 0x02, false)
 }
 
 /// A unit shown again where it stood (out of a gold mine; `FUN_6f699c00`'s placing): as
@@ -136,7 +136,23 @@ pub(crate) fn shown_at(w: &World, h: u32) -> (f32, f32) {
         return (u.x, u.y);
     }
     let (movetp, collision) = (o.str("movetp"), o.real("collision"));
-    ground_place(w, &movetp, collision, u.x, u.y, false, Some(h), u.region_mask())
+    ground_place(w, &movetp, collision, u.x, u.y, false, Some(h), u.region_mask(), false)
+}
+
+/// A builder standing on the footprint of the structure it has begun, moved off it as
+/// one made there is placed, with the room its size class asks for (read: Forestwalk's
+/// undead computer's crypt's acolyte, in cell (338, 501) a step past its arrival,
+/// standing then at cells (341.5, 498.5), the first cell of the rings with its 2 by 2
+/// cells below and left clear; one cell nearer, (340, 500), had it clear of the
+/// footprint alone).
+pub(crate) fn off_footprint(w: &World, h: u32) -> (f32, f32) {
+    let Some(u) = w.unit(h) else { return (0.0, 0.0) };
+    let Some(o) = w.objects.units.get(u.type_id) else { return (u.x, u.y) };
+    if w.pathing.is_none() {
+        return (u.x, u.y);
+    }
+    let (movetp, collision) = (o.str("movetp"), o.real("collision"));
+    ground_place(w, &movetp, collision, u.x, u.y, true, Some(h), u.region_mask(), true)
 }
 
 /// A ground pathing object's place at or near x, y, of `collision`, clear of the
@@ -145,14 +161,15 @@ pub(crate) fn agent_place(w: &World, x: f32, y: f32, collision: f32) -> (f32, f3
     if w.pathing.is_none() {
         return (x, y);
     }
-    ground_place(w, "foot", collision, x, y, false, None, 0x02)
+    ground_place(w, "foot", collision, x, y, false, None, 0x02, false)
 }
 
 /// A ground unit's place at or near x, y (`placed_at`); `room`: the cells about it must
 /// be walkable as far as its size class reaches; `except`: a unit not to keep clear of;
-/// `mask`: the region flags of the units it keeps clear of (`Unit::region_flags`).
+/// `mask`: the region flags of the units it keeps clear of (`Unit::region_flags`);
+/// `fit_here`: its own cell must fit it too to stay.
 #[allow(clippy::too_many_arguments)]
-fn ground_place(w: &World, movetp: &str, collision: f32, x: f32, y: f32, room_about: bool, except: Option<u32>, mask: u32) -> (f32, f32) {
+fn ground_place(w: &World, movetp: &str, collision: f32, x: f32, y: f32, room_about: bool, except: Option<u32>, mask: u32, fit_here: bool) -> (f32, f32) {
     let kind = crate::pathing::Move::from_movetp(movetp);
     let radius = collision * 0.5;
     if kind == crate::pathing::Move::Fly || radius <= 0.0 {
@@ -190,7 +207,7 @@ fn ground_place(w: &World, movetp: &str, collision: f32, x: f32, y: f32, room_ab
     // beside cliffs, where a square of the class's reach about them moved them.)
     let class = crate::lrpath::class_of(collision / crate::pathing::CELL);
     let room = |c: (i32, i32)| crate::lrpath::footprint(class).all(|(dx, dy)| p.passable((c.0 + dx, c.1 + dy), kind));
-    if apart((cx, cy)) && open((cx, cy)) && (!room_about || !p.walkable((cx, cy)) || room((cx, cy))) {
+    if apart((cx, cy)) && open((cx, cy)) && (!room_about || !p.walkable((cx, cy)) || room((cx, cy))) && (!fit_here || p.fits_kind((cx, cy), radius, kind)) {
         return (x, y);
     }
     for k in 1..=64i32 {

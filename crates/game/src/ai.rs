@@ -692,6 +692,13 @@ impl World {
                 .collect();
             let Some(&b) = builders.first() else { return false };
             let Some((x, y)) = self.ai_build_site(p, id, town, b) else { return false };
+            // A walker it orders stops where its walk has carried it by the thread's
+            // time, its walk dropped for the build's (`World::stop_walker_at`; read:
+            // Forestwalk's undead computer's ziggurat, ordered at 4.5 of an acolyte
+            // walking to the mine, begun in turn 77).
+            if let Some(c) = self.ai.get(&p).and_then(|s| self.clock_at_time(s.clock)) {
+                self.stop_walker_at(b, c);
+            }
             self.leave_mine_pub(b);
             let ok = self.order_build(b, id, x, y).is_ok();
             if ok {
@@ -922,6 +929,7 @@ impl World {
             u.extra.ai_order = order;
             u.extra.ai_order[14] = last;
             u.extra.build_legacy = false;
+            u.extra.mover = None;
         }
     }
 

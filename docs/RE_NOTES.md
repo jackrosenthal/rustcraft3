@@ -2490,6 +2490,21 @@ Formats the port made its own, to be replaced by the original's:
   port had searched rings about the structure's middle cell and faced it 270; its
   walk to the mine then took another way, arriving four steps early.  The
   keepalives agree to turn 220.
+- Open at turn 221: that acolyte's walk to its mine (ordered in turn 172), read
+  step by step in the original (`abtest/velk3.sh`): two straight legs, heading
+  1.4375 (velocity 0.914, 6.814 cells a second) to about (348.5, 498.0), then
+  1.4938 to the port's last node (349.5, 511.5), arriving at 20.757517.  The port's
+  search (to the mine's footprint, refused by the defense captain's region at
+  (352, 503) and the slotted acolytes' at (345..346, 509..510) and (352..353, 509))
+  walks it cell by cell up x = 346.5 and arrives a step early, before the turn-208
+  payout, so the payout's pair takes other slots, freed again in turn 220.  The
+  first leg's end is the path's coarse target: workers' paths plan over the
+  accelerator map (+0x88's 0x200000, `FUN_6f165b60`) and steer for the coarse way's
+  point some 10 cells along (`FUN_6f167ae0`, from the way's end back to the first
+  point within its reach, `FUN_6f167d70`), searching locally toward it
+  (`FUN_6f167ce0`); the port's walkers search locally to the goal, as only
+  wanderers (no coarse plan) do.  Not yet done: the accelerator plan's search
+  over the pyramid (`accel.rs` builds it).
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

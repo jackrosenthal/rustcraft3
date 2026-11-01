@@ -3258,8 +3258,13 @@ impl World {
             return;
         }
         let radius = self.objects.units.get(id).map_or(16.0, |o| o.real("collision"));
-        let (x, y) = self.spawn_point(h, radius);
-        let new = crate::natives::units::create_unit(self, owner, id, x, y, 270.0);
+        // About the structure's footprint, facing east (`FUN_6f677870` given 0; read:
+        // the acolyte's heading 0 in the save).
+        let (bx, by, bf, btex) = self.unit(h).map(|u| (u.x, u.y, u.facing, self.objects.units.get(u.type_id).map(|o| o.str("pathTex")).unwrap_or_default())).unwrap_or_default();
+        let cells = if btex.is_empty() { Vec::new() } else { self.build_cells(&btex, bx, by, bf) };
+        let rect = (!cells.is_empty()).then(|| (cells.iter().map(|c| c.0).min().unwrap(), cells.iter().map(|c| c.1).min().unwrap(), cells.iter().map(|c| c.0).max().unwrap() + 1, cells.iter().map(|c| c.1).max().unwrap() + 1));
+        let (x, y) = rect.and_then(|r| crate::natives::units::trained_place(self, id, bx, by, r)).unwrap_or_else(|| self.spawn_point(h, radius));
+        let new = crate::natives::units::create_unit(self, owner, id, x, y, 0.0);
         // Made finished from training: no longer in production (FUN_6f677870 with 4).
         self.tech_reg(owner, id).producing -= 1;
         self.tech_changed(owner);

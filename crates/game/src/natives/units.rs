@@ -121,7 +121,7 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32, facing: f32)
         }
         return (sx, sy);
     }
-    ground_place(w, &movetp, collision, x, y, true, None, 0x02, false)
+    ground_place(w, &movetp, collision, x, y, true, None, 0x02, false, None)
 }
 
 /// A unit shown again where it stood (out of a gold mine; `FUN_6f699c00`'s placing): as
@@ -136,7 +136,21 @@ pub(crate) fn shown_at(w: &World, h: u32) -> (f32, f32) {
         return (u.x, u.y);
     }
     let (movetp, collision) = (o.str("movetp"), o.real("collision"));
-    ground_place(w, &movetp, collision, u.x, u.y, false, Some(h), u.region_mask(), false)
+    ground_place(w, &movetp, collision, u.x, u.y, false, Some(h), u.region_mask(), false, None)
+}
+
+/// A unit a structure has trained: as one made there is placed, but ring by ring about
+/// the structure's footprint `rect` (its pathing texture's whole rectangle, cells x0,
+/// y0, x1, y1, the last past it; `FUN_6f22f1d0`), the rings walked from the bottom row
+/// as `FUN_6f66e3e0` asks `FUN_6f14a1e0` with side 2, no rally point set (read:
+/// Forestwalk's undead computer's acolyte made at cells (346.5, 483.5), the
+/// necropolis at (354, 492) with its 16 by 16: the first ring's first cell; the port's
+/// rings about the structure's middle put it at (358.5, 487.5)).
+pub(crate) fn trained_place(w: &World, type_id: Id, x: f32, y: f32, rect: (i32, i32, i32, i32)) -> Option<(f32, f32)> {
+    let o = w.objects.units.get(type_id)?;
+    w.pathing.as_ref()?;
+    let (movetp, collision) = (o.str("movetp"), o.real("collision"));
+    Some(ground_place(w, &movetp, collision, x, y, true, None, 0x02, false, Some(rect)))
 }
 
 /// A builder standing on the footprint of the structure it has begun, moved off it as
@@ -152,7 +166,7 @@ pub(crate) fn off_footprint(w: &World, h: u32) -> (f32, f32) {
         return (u.x, u.y);
     }
     let (movetp, collision) = (o.str("movetp"), o.real("collision"));
-    ground_place(w, &movetp, collision, u.x, u.y, true, Some(h), u.region_mask(), true)
+    ground_place(w, &movetp, collision, u.x, u.y, true, Some(h), u.region_mask(), true, None)
 }
 
 /// A ground pathing object's place at or near x, y, of `collision`, clear of the
@@ -161,15 +175,16 @@ pub(crate) fn agent_place(w: &World, x: f32, y: f32, collision: f32) -> (f32, f3
     if w.pathing.is_none() {
         return (x, y);
     }
-    ground_place(w, "foot", collision, x, y, false, None, 0x02, false)
+    ground_place(w, "foot", collision, x, y, false, None, 0x02, false, None)
 }
 
 /// A ground unit's place at or near x, y (`placed_at`); `room`: the cells about it must
 /// be walkable as far as its size class reaches; `except`: a unit not to keep clear of;
 /// `mask`: the region flags of the units it keeps clear of (`Unit::region_flags`);
-/// `fit_here`: its own cell must fit it too to stay.
+/// `fit_here`: its own cell must fit it too to stay; `rect`: rings about these cells
+/// (x0, y0, x1, y1, the last past them) instead, never staying.
 #[allow(clippy::too_many_arguments)]
-fn ground_place(w: &World, movetp: &str, collision: f32, x: f32, y: f32, room_about: bool, except: Option<u32>, mask: u32, fit_here: bool) -> (f32, f32) {
+fn ground_place(w: &World, movetp: &str, collision: f32, x: f32, y: f32, room_about: bool, except: Option<u32>, mask: u32, fit_here: bool, rect: Option<(i32, i32, i32, i32)>) -> (f32, f32) {
     let kind = crate::pathing::Move::from_movetp(movetp);
     let radius = collision * 0.5;
     if kind == crate::pathing::Move::Fly || radius <= 0.0 {
@@ -207,11 +222,12 @@ fn ground_place(w: &World, movetp: &str, collision: f32, x: f32, y: f32, room_ab
     // beside cliffs, where a square of the class's reach about them moved them.)
     let class = crate::lrpath::class_of(collision / crate::pathing::CELL);
     let room = |c: (i32, i32)| crate::lrpath::footprint(class).all(|(dx, dy)| p.passable((c.0 + dx, c.1 + dy), kind));
-    if apart((cx, cy)) && open((cx, cy)) && (!room_about || !p.walkable((cx, cy)) || room((cx, cy))) && (!fit_here || p.fits_kind((cx, cy), radius, kind)) {
+    if rect.is_none() && apart((cx, cy)) && open((cx, cy)) && (!room_about || !p.walkable((cx, cy)) || room((cx, cy))) && (!fit_here || p.fits_kind((cx, cy), radius, kind)) {
         return (x, y);
     }
+    let (x0, y0, x1, y1) = rect.unwrap_or((cx, cy, cx + 1, cy + 1));
     for k in 1..=64i32 {
-        for c in ring_order(2, cy - k, cx - k, cy + 1 + k, cx + 1 + k) {
+        for c in ring_order(2, y0 - k, x0 - k, y1 + k, x1 + k) {
             if apart(c) && open(c) && p.fits_kind(c, radius, kind) && (!room_about || room(c)) {
                 return p.center(c);
             }

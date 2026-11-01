@@ -2478,6 +2478,18 @@ Formats the port made its own, to be replaced by the original's:
   from the clock a ten-thousandth on (2.500101, 1.666765, and 1.250099 apart;
   the clock reads 0.0001 later for each event dispatched in a tick: the pair made
   at 19.050377, the old freed at 19.050476).
+- A trained unit is made (`FUN_6f40daa0`, `FUN_6f677870` given facing 0 and flags
+  0x404) at the point `FUN_6f66e3e0` finds: the structure's footprint rectangle
+  (`FUN_6f22f1d0`, by its facing's quadrant) handed in pathing cells to the
+  placement rings (`FUN_6f058cd0`, `FUN_6f16ecc0`, `FUN_6f14a1e0`), from side 2
+  with no rally point (else the side toward it), each cell checked as a unit
+  placed (`FUN_6f16ee00`).  Read: Forestwalk's undead computer's acolyte made at
+  cells (346.5, 483.5) heading 0 (the single-player save at 16.0 and the network
+  game's walk from there), the necropolis at (354, 492) with its 16 by 16
+  texture: the first cell of the first ring about [346, 362) by [484, 500).  The
+  port had searched rings about the structure's middle cell and faced it 270; its
+  walk to the mine then took another way, arriving four steps early.  The
+  keepalives agree to turn 220.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

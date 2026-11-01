@@ -368,9 +368,11 @@ impl World {
     fn enter_mine(&mut self, h: u32, mut run: GoldRun, path: [u32; 2], agent: u32) {
         // The mine's first worker in makes its `+fgm` (read: one for five peons).
         if !self.unit(run.mine).is_some_and(|m| m.extra.mine_shaft) {
-            self.tags.take(codes::class::FOG_MODIFIER);
+            let fog = self.tags.take(codes::class::FOG_MODIFIER);
+            let owner = self.unit(h).map_or(0, |u| u.owner);
             if let Some(m) = self.unit_mut(run.mine) {
                 m.extra.mine_shaft = true;
+                m.extra.mine_fog = Some((fog, owner));
             }
         }
         run.entered = true;
@@ -665,7 +667,7 @@ impl World {
     }
 
     /// A gold mine's time inside (Agld DataB) and the workers it holds at once (DataC).
-    fn mine_time_and_room(&self, mine: u32) -> (f32, u32) {
+    pub(crate) fn mine_time_and_room(&self, mine: u32) -> (f32, u32) {
         match self.ability_with_code(mine, codes::ability::GOLD_MINE) {
             Some((m, ml)) => (self.ability_real(m, "DataB", ml), self.ability_real(m, "DataC", ml).max(1.0) as u32),
             None => (1.0, 1),

@@ -2869,6 +2869,48 @@ Formats the port made its own, to be replaced by the original's:
   a walk's cluster and path (`^clu`, `l^pa`, so a ghoul walking to its tree and a
   player's workers stand), the player's harvest orders (`goldrun.rs` keeps their
   objects), and the running animation clocks and counts.
+- A player's workers mining gold (read against Forestwalk's human peasants sent to mine
+  by script, saved at 12 seconds; the test map `fwhm`):
+  - The worker's own harvest order from the hall (`ordt` 852018 at the mine's place,
+    flags 0) with `tskA` 852322, tasks 852326, 852298, 852296, 852306, target tasks
+    852369, 852355, 852354 on the mine; walking to it a task 0xd0151 (852305, its
+    ghosting's end) and the walk's target task 0xd0171 (852337) more.  Its order
+    home (`ordt` 852017 at the hall) with `tskA`, tasks 852326, 852296, 852298, 852306,
+    and target tasks 852358 and 852340 on the hall.  The unit's state words: its
+    work 5, 1 in a mine, a byte while it walks, after its tint 2 carrying, 5 walking,
+    35; 0x80 on its last word in the mine; in the mine its flags 0x7 and the game's
+    handler kept.
+  - A walk is the walk task's: a cluster (`^clu`: its walker's position, the goal in
+    cells, its speed and heading; the target's position; the goal; counters; a
+    heading; 0x21000; the target's second footprint region and the walk's path) and
+    a path (`l^pa`: the goal thrice, an owner word ((0x46 | 0x8 local) << 4 | owner)
+    << 16, the collision in cells, no short way, the long way in half cells goal
+    first, the target's region).  The walker's position names the cluster and holds
+    its velocity, its current speed, its heading, flags 1, 0; its own path holds the
+    goal, 0x12000000 in its first word, 0x10000010, a local way (cells, from its end
+    back to the walk's start) and the long way; walking home its movement names the
+    hall and listens to the hall's 0x1a2 and 0x1a4.  Without its walk a walker
+    stands after a load.
+  - The run on the worker: its harvest's flags 0x80000010 | 0x40000000 (been in) |
+    0x1 | 0x800 walking or 0x9000 inside, its hall, its load (the fifth word), its
+    speed bonus, last travel time, and bonus before, its mine, and its round trip's
+    timer (10 seconds, event -1); its movement's speed factor (1 + bonus) and 0x4
+    walking; its position's speed by that factor, 0x4000, and a first real 2.0625
+    (6.0 going home); its fine region ghosting 0x08 with 0x20000000, at its mine 0xda;
+    its repair 0x100000 more; its attack 0x80 more and 0x2000000 none (as any unit's
+    with an order).
+  - The mine: its shaft (`shft`) the worker in it, 1, and its time to come out on
+    the mine's ability (event 0xd01c1, the mine's time); its ability 1, the player it
+    shows the mine to, and its fog modifier (`+fgm`, 72 bytes: 0x1d4, 1, 600.0, ten 0,
+    the mine's place, 0, none).  Not yet made: a countdown on the mine's real (10
+    falling for 11 seconds from the first entry).
+  - The local player's units, and others it sees (the gold mine), have 0x200000 more
+    in their sprite's word; its own units' widget shorts 1, 0 (others' seen 0, 0).
+  With these the original loads the port's 12-second save and every peasant goes on
+  mining (the gold rising as from its own save); with the orders alone they stood,
+  and without the mine's shaft the walkers went in and stayed.  Not yet read: the
+  player's first harvest order (its own kind), a worker waiting at the mine, lumber,
+  and the counters and turn values of a walk.
 - Still not written: the Graveyard's effects, a haunted mine's payout modifier and
   listener, and the running game's counts and search marks.
 - The agent timers' counts (each start's, saved in its timer's record) with the

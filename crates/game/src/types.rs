@@ -714,6 +714,9 @@ pub struct UnitExtra {
     /// A gold mine a worker has been in (its `+fgm` made; `crate::goldrun`).
     #[serde(default)]
     pub mine_shaft: bool,
+    /// That `+fgm`'s slot and the player it shows the mine to.
+    #[serde(default)]
+    pub mine_fog: Option<(u32, u8)>,
     /// A gold mine's workers waiting at it for room, first come first (`crate::goldrun`).
     #[serde(default)]
     pub mine_queue: Vec<u32>,
@@ -1001,6 +1004,7 @@ impl Default for UnitExtra {
             captain_uref: None,
             captain_check: None,
             mine_shaft: false,
+            mine_fog: None,
             mine_queue: Vec::new(),
             mine_busy: None,
             walk_heading: None,

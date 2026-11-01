@@ -104,6 +104,26 @@ fn property_base(tag: (u32, u32), owner: (u32, u32)) -> PropertyBase {
 
 const NONE: Ref = Ref(u32::MAX, u32::MAX);
 
+/// A unit's state words as its order sets them (read against Forestwalk's at 2.5 and
+/// 12 seconds): its kind of work (6 an acolyte at its haunted mine, 5 a peasant's
+/// harvest, 2 a summoning), 1 in a gold mine, a byte while it walks, the three words
+/// after its tint (2 carrying or at the haunted mine, else 1; 5 walking, else 4; 35
+/// harvesting, 37 summoning), and 0x80 on its last word inside a mine.
+#[derive(Clone, Copy)]
+pub(crate) struct OrderState {
+    pub kind: u32,
+    pub inside_word: u32,
+    pub walking: bool,
+    pub after_tint: [u32; 3],
+    pub inside: bool,
+}
+
+impl Default for OrderState {
+    fn default() -> Self {
+        OrderState { kind: 0, inside_word: 0, walking: false, after_tint: [1, 4, 0], inside: false }
+    }
+}
+
 /// A unit's order as `World::saved_order` writes it.
 pub(crate) struct SavedOrder {
     pub records: Vec<(u32, First, Option<Second>)>,
@@ -115,6 +135,13 @@ pub(crate) struct SavedOrder {
     pub timer: Option<Field>,
     /// Whether it summons a structure.
     pub summoning: bool,
+    /// Whether it is inside a gold mine.
+    pub in_gold_mine: bool,
+    /// Whether it walks.
+    pub walking: bool,
+    pub state: OrderState,
+    /// Its walk's cluster and path, and the unit it walks to.
+    pub walk: Option<((u32, u32), (u32, u32), u32)>,
 }
 
 fn rf(t: (u32, u32)) -> Ref {
@@ -902,7 +929,79 @@ impl World {
     /// unit's current task; the order its own next.  (`AI_HARVEST`'s fourth to ninth,
     /// as `mining.rs` keeps them.)
     pub(crate) fn saved_order(&self, h: u32) -> Option<SavedOrder> {
-        self.harvest_order(h).or_else(|| self.summoning_order(h))
+        self.harvest_order(h).or_else(|| self.summoning_order(h)).or_else(|| self.gold_run_order(h))
+    }
+
+    /// A worker's gold run's order (read against Forestwalk's human peasants at 12
+    /// seconds, sent to mine by script): its own harvest order from the hall (`ordt`:
+    /// 0, harvest 852018, 0, none, 0, the mine's place, the mine, five 0, 0.0, 0.0;
+    /// none, 0, two none) with `tskA` 852322, tasks 852326, 852298, 852296, 852306,
+    /// and target tasks 852369, 852355, 852354 on the mine, so far in the mine; walking
+    /// to it a task 852305 and target task 852337 more.  Its order home (`ordt` 852017
+    /// at the hall's place, the hall) with `tskA` 852322, tasks 852326, 852296,
+    /// 852298, 852306, and target tasks 852358 and 852340 on the hall.  The order its
+    /// own next.  (`goldrun.rs`'s `HARVEST_OWN` and `RETURN`, by place, each born that
+    /// many after its order.)  Provisional: a walk's cluster and path not written.
+    fn gold_run_order(&self, h: u32) -> Option<SavedOrder> {
+        use crate::goldrun::{Kind, Phase};
+        let u = self.unit(h)?;
+        let r = u.extra.gold_run.as_ref()?;
+        if r.lumber {
+            return None;
+        }
+        const OWN: [(&[u8; 4], u32); 11] = [(codes::class::ORDER_TASKS, 852_018), (codes::class::TASK_A, 852_322), (codes::class::TASK, 852_326), (codes::class::TASK, 852_298), (codes::class::TASK, 852_296), (codes::class::TASK, 852_306), (codes::class::TASK_T, 852_369), (codes::class::TASK_T, 852_355), (codes::class::TASK_T, 852_354), (codes::class::TASK, 852_305), (codes::class::TASK_T, 852_337)];
+        const HOME: [(&[u8; 4], u32); 8] = [(codes::class::ORDER_TASKS, 852_017), (codes::class::TASK_A, 852_322), (codes::class::TASK, 852_326), (codes::class::TASK, 852_296), (codes::class::TASK, 852_298), (codes::class::TASK, 852_306), (codes::class::TASK_T, 852_358), (codes::class::TASK_T, 852_340)];
+        let (list, target): (&[(&[u8; 4], u32)], u32) = match (r.kind, r.phase) {
+            (Kind::Own, Phase::InMine(_)) => (&OWN[..9], r.mine),
+            (Kind::Own, Phase::ToMine) => (&OWN[..], r.mine),
+            (Kind::Return, Phase::ToHall(hall)) => (&HOME[..], hall),
+            _ => return None,
+        };
+        if r.order.len() < list.len() {
+            return None;
+        }
+        let t0 = self.tagged(r.order[0]);
+        let t: Vec<(u32, u32)> = (0..list.len()).map(|k| self.tagged(r.order[k])).collect();
+        if !t.iter().zip(list).enumerate().all(|(k, (x, (c, _)))| x.1 == t0.1 + k as u32 && self.tags.live.get(&x.0).is_some_and(|e| &e.0 == *c)) {
+            return None;
+        }
+        let tu = self.unit(target)?;
+        let target_ref = tu.extra.object_slots[0].first().copied()?;
+        let w = Field::Word;
+        let handlers = || Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
+        let mut records = Vec::new();
+        let mut own = vec![w(0), w(list[0].1), w(0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(tu.x), Field::Real(tu.y), w(target_ref.0), w(target_ref.1)];
+        own.extend([w(0), w(0), w(0), w(0), w(0), Field::Real(0.0), Field::Real(0.0)]);
+        records.push((t[0].0, agent_first(t[0], codes::class::ORDER_TASKS, &[]), Some(Second::Agent { own, handlers: handlers(), tail: vec![w(u32::MAX), w(u32::MAX), w(0), Field::Ref(NONE), Field::Ref(NONE)] })));
+        for k in 1..t.len() {
+            let prev = if k == 1 { (u32::MAX, u32::MAX) } else { t[k - 1] };
+            let (kind, event) = list[k];
+            let mut own = vec![w(0), w(prev.0), w(prev.1), w(0), w(event)];
+            let mut tail = Vec::new();
+            if kind == codes::class::TASK_A {
+                own.push(w(0));
+            } else if kind == codes::class::TASK_T {
+                own.extend([w(target_ref.0), w(target_ref.1), w(0), Field::Real(0.0)]);
+                tail.push(Field::Ref(NONE));
+            }
+            records.push((t[k].0, agent_first(t[k], kind, &[]), Some(Second::Agent { own, handlers: handlers(), tail })));
+        }
+        let last = *t.last()?;
+        let in_gold_mine = matches!(r.phase, Phase::InMine(_));
+        let home = matches!(r.phase, Phase::ToHall(_));
+        // Its walk's cluster and path (the order's, by place).
+        let at = |k: usize, c: &[u8; 4]| r.order.get(k).map(|&s| self.tagged(s)).filter(|x| x.1 == t0.1 + k as u32 && self.tags.live.get(&x.0).is_some_and(|e| &e.0 == c));
+        let walk = if in_gold_mine {
+            None
+        } else {
+            let (c, p) = if home { (14, 15) } else { (17, 18) };
+            at(c, codes::class::CLUSTER).zip(at(p, codes::class::PATH)).map(|(c, p)| (c, p, target))
+        };
+        if let Some((c, p, _)) = walk {
+            records.extend(self.walk_records(h, c, p, target));
+        }
+        let state = OrderState { kind: 5, inside_word: in_gold_mine as u32, walking: !in_gold_mine, after_tint: [if home { 2 } else { 1 }, if in_gold_mine { 4 } else { 5 }, 35], inside: in_gold_mine };
+        Some(SavedOrder { records, task: last, order: t[0], next: t[0], mine: false, timer: None, summoning: false, in_gold_mine, walking: !in_gold_mine, state, walk })
     }
 
     /// An AI's build order on a worker summoning its structure (read against
@@ -953,7 +1052,47 @@ impl World {
         let me = u.extra.object_slots[0].first().copied()?;
         let count = self.tags.prop_counts.get(&me.0).copied().unwrap_or(0);
         let timer = Field::Timer(rf(me), 0, Timing(Some((end, 1.0, count, 0xd_019d, 0))));
-        Some(SavedOrder { records, task: t[5], order: t[0], next, mine: false, timer: Some(timer), summoning: true })
+        let state = OrderState { kind: 2, after_tint: [1, 4, 37], ..Default::default() };
+        Some(SavedOrder { records, task: t[5], order: t[0], next, mine: false, timer: Some(timer), summoning: true, in_gold_mine: false, walking: false, state, walk: None })
+    }
+
+    /// A walk's cluster and path (read against Forestwalk's human peasants walking to
+    /// their mine and home at 12 seconds): the cluster (`^clu`) of its walker's
+    /// position with the goal (the target's place in cells), its speed, and its
+    /// heading; the target's position; the goal; counters; a heading; 0x21000; the
+    /// target's footprint region and the path.  The path (`l^pa`): the goal thrice, the
+    /// walker's owner word, its collision in cells, its short way none and its long
+    /// way from the goal to where it stands in half cells, and the target's region.
+    /// Provisional: the counters (written 0, 1, 0), the cluster's headings (the
+    /// walker's), the long way's start (where it stands, not where it set out).
+    fn walk_records(&self, h: u32, clu: (u32, u32), path: (u32, u32), target: u32) -> Vec<(u32, First, Option<Second>)> {
+        let mut out = Vec::new();
+        let (Some(u), Some(t), Some(p)) = (self.unit(h), self.unit(target), self.pathing.as_ref()) else { return out };
+        let Some(&pcu) = u.extra.object_slots[0].get(1) else { return out };
+        let Some(&tpcu) = t.extra.object_slots[0].get(1) else { return out };
+        let region = t.extra.footprint_slots.get(1).map_or(NONE, |&s| rf(self.tagged(s)));
+        let (gx, gy) = ((t.x - p.origin[0]) / 32.0, (t.y - p.origin[1]) / 32.0);
+        let (cx, cy) = ((u.x - p.origin[0]) / 32.0, (u.y - p.origin[1]) / 32.0);
+        let speed = self.walk_speed_cells(h);
+        let heading = u.extra.mover.as_ref().map_or(0.0, |m| f32::from_bits(m.heading));
+        let array = Array { words: [528, 528, 0, 12], entries: vec![([pcu.0, pcu.1, 0], [0.0, 0.0, gx, gy, speed, heading], 0)] };
+        out.push((clu.0, First::Cluster2 { array, words: [tpcu.0, tpcu.1, 0], reals: [0.0, 0.0, gx, gy], more: [0, 1, 0, 0, 0], last_reals: [heading, f32::MAX], word: 0x2_1000, refs: [region, NONE, rf(path)] }, None));
+        let o = self.objects.units.get(u.type_id);
+        let collision = o.map_or(0.0, |o| o.real("collision")) / 32.0;
+        let local = if u.owner == self.local_player { 0x8 } else { 0 };
+        let word = ((0x46 | local) << 4 | (u.owner as u32 & 0xf)) << 16;
+        let short = (Array { words: [0, 0, 128, 0], entries: Vec::new() }, u32::MAX, 0, 700);
+        let long = (Array { words: [1024, 1024, 128, 128], entries: vec![[gx / 2.0, gy / 2.0], [cx / 2.0, cy / 2.0]] }, 0, 0, 5000);
+        out.push((path.0, First::Path { reals: [gx, gy, gx, gy, gx, gy], words: [word, 0, 0, u32::MAX, u32::MAX, 0], real: collision, word: 0, ways: [short, long], refs: [NONE, NONE, NONE, region] }, None));
+        out
+    }
+
+    /// A walker's top speed in cells a second: its type's, by its gold run's factor.
+    fn walk_speed_cells(&self, h: u32) -> f32 {
+        let Some(u) = self.unit(h) else { return 0.0 };
+        let speed = self.objects.units.get(u.type_id).map_or(0.0, |o| o.real("spd"));
+        let factor = u.extra.gold_run.as_ref().map_or(1.0, |r| f32::from_bits(r.factor));
+        speed * factor / 32.0
     }
 
     /// An AI's harvest at a haunted mine with its acolyte in the mine.
@@ -986,12 +1125,53 @@ impl World {
             }
             records.push((t[k].0, agent_first(t[k], kinds[k], &[]), Some(Second::Agent { own, handlers: handlers(), tail })));
         }
-        Some(SavedOrder { records, task: t[5], order: t[0], next: t[0], mine: true, timer: None, summoning: false })
+        let state = OrderState { kind: 6, after_tint: [2, 4, 35], inside: true, ..Default::default() };
+        Some(SavedOrder { records, task: t[5], order: t[0], next: t[0], mine: true, timer: None, summoning: false, in_gold_mine: false, walking: false, state, walk: None })
     }
 
     /// The orders' records (`saved_order`).
     pub fn saved_order_records(&self) -> Vec<(u32, First, Option<Second>)> {
         self.unit_order.iter().filter_map(|&h| self.saved_order(h)).flat_map(|o| o.records).collect()
+    }
+
+    /// A gold mine's fog modifier (`+fgm`, made for the player whose worker went in):
+    /// its agent and 72 bytes: 0x1d4, 1, 600.0, ten 0, the mine's place, 0, and a
+    /// reference none (read: Forestwalk's human peasants' mine at 12 seconds;
+    /// provisional, not yet read field by field, the player's own place in it).
+    pub fn mine_fog_records(&self) -> Vec<(u32, First, Option<Second>)> {
+        let mut out = Vec::new();
+        for &h in &self.unit_order {
+            let Some(u) = self.unit(h) else { continue };
+            let Some((s, _)) = u.extra.mine_fog.filter(|(s, _)| self.tags.live.get(s).is_some_and(|e| &e.0 == codes::class::FOG_MODIFIER)) else { continue };
+            let me = self.tagged(s);
+            let mut b: Vec<u8> = Vec::new();
+            for v in [0x1d4u32, 1, 600f32.to_bits()] {
+                b.extend(v.to_le_bytes());
+            }
+            b.extend([0u8; 40]);
+            for v in [u.x.to_bits(), u.y.to_bits(), 0, u32::MAX, u32::MAX] {
+                b.extend(v.to_le_bytes());
+            }
+            out.push((me.0, agent_first(me, codes::class::FOG_MODIFIER, &[]), Some(Second::Raw(b))));
+        }
+        out
+    }
+
+    /// The worker in a gold mine's shaft and its timer to come out.
+    fn shaft_worker(&self, shaft: u32) -> Option<((u32, u32), Field)> {
+        let mine = self.unit_order.iter().copied().find(|&m| self.unit(m).is_some_and(|u| u.extra.object_slots[2].iter().any(|&(s, _)| s == shaft)))?;
+        let m = self.unit(mine)?;
+        let agld = m.extra.object_slots[2].iter().copied().find(|&(s, b)| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::ability::id::GOLD_MINE && e.1 == b))?;
+        let (w, due) = self.unit_order.iter().filter_map(|&h| self.unit(h)).find_map(|w| match w.extra.gold_run.as_ref() {
+            Some(r) if r.mine == mine => match r.phase {
+                crate::goldrun::Phase::InMine(due) => Some((w, due)),
+                _ => None,
+            },
+            _ => None,
+        })?;
+        let who = w.extra.object_slots[0].first().copied()?;
+        let (dur, _) = self.mine_time_and_room(mine);
+        Some((who, Field::Timer(rf(agld), 0, Timing(Some((f32::from_bits(due), dur, 0, 0xd_01c1, 0))))))
     }
 
     /// The objects of the items a unit holds, in its slots' order: each its tag, kind,
@@ -1372,16 +1552,44 @@ impl World {
         let moving = speed > 0.0;
         let cells_speed = if moving { speed / 32.0 } else { f32::MAX };
         let turn = if moving { o.real("turnRate") } else { 0.001 };
-        let values = [cx, cy, 0.0, 0.0, cells_speed, facing, o.real("collision") / 32.0];
-        let reals = [0.8, if moving { speed / 32.0 } else { 0.75 }, turn, 1.047_197_5, 0.0, 0.0, facing, 0.0];
+        let mut values = [cx, cy, 0.0, 0.0, cells_speed, facing, o.real("collision") / 32.0];
+        let mut reals = [0.8, if moving { speed / 32.0 } else { 0.75 }, turn, 1.047_197_5, 0.0, 0.0, facing, 0.0];
+        let mut words = [u32::MAX, u32::MAX, 0];
+        let mut more = [cx as u32, cy as u32, 0];
+        let mut flags = [0, 0];
+        // A worker on a gold run: its speed by its run's factor, 0x4000, and its first
+        // real 2.0625 (6.0 on its way home); walking, its walk's cluster, its velocity,
+        // and its heading (read: Forestwalk's peasants at 12 seconds; provisional, the
+        // first real, the turn's last two).
+        if let Some(r) = u.extra.gold_run.as_ref().filter(|r| !r.lumber) {
+            let top = self.walk_speed_cells(h);
+            values[4] = top;
+            reals[1] = top;
+            reals[0] = if matches!(r.phase, crate::goldrun::Phase::ToHall(_)) { 6.0 } else { 2.0625 };
+            more[2] = 0x4000;
+            if let (Some((c, _, _)), Some(m)) = (self.saved_order(h).and_then(|o| o.walk), u.extra.mover.as_ref()) {
+                let f = f32::from_bits;
+                // (Stamped as it last moved.)
+                base.real = self.time;
+                values[0] = f(m.x);
+                values[1] = f(m.y);
+                values[2] = f(m.vx);
+                values[3] = f(m.vy);
+                values[5] = f(m.heading);
+                words = [c.0, c.1, 0];
+                reals[4] = f(m.vx).hypot(f(m.vy));
+                reals[6] = f(m.heading);
+                flags = [1, 0];
+            }
+        }
         let first_rec = First::Cluster {
             base,
             values,
             refs: [rf(first[2]), rf(first[3])],
-            words: [u32::MAX, u32::MAX, 0],
+            words,
             reals,
-            more: [cx as u32, cy as u32, 0],
-            flags: [0, 0],
+            more,
+            flags,
             last: rf(first[9]),
         };
         out.push((first[1].0, first_rec, None));
@@ -1853,7 +2061,7 @@ impl World {
             }
         }
         let unit_reals: Vec<(u32, First, Option<Second>)> = self.unit_order.iter().flat_map(|&h| self.unit_real_records(h).into_iter().chain(self.unit_modifier_records(h)).chain(self.hero_flag_records(h)).chain(self.construction_records(h)).chain(self.unit_listener_records(h)).chain(self.unit_position_records(h)).chain(self.unit_agent_record(h))).collect();
-        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals).chain(self.captain_records()).chain(self.item_records()).chain(self.saved_order_records()) {
+        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals).chain(self.captain_records()).chain(self.item_records()).chain(self.saved_order_records()).chain(self.mine_fog_records()) {
             records.insert(slot, f);
             if let Some(sec) = sec {
                 seconds.insert(slot, sec);
@@ -2295,7 +2503,14 @@ impl World {
                     own.extend(none3());
                     out.push((slot, Second::Agent { own, handlers: events(), tail: Vec::new() }));
                 }
-                codes::class::MINE_SHAFT => out.push((slot, Second::Agent { own: vec![Field::Word(u32::MAX), Field::Word(u32::MAX), Field::Word(0), Field::Word(0), Field::Real(0.0)], handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: Vec::new() }, tail: vec![Field::Timer(NONE, 0, Timing(None))] })),
+                // A gold mine's shaft: the worker in it, 1, and its time to come out on
+                // the mine's ability (its time in, event 0xd01c1; read: Forestwalk's
+                // peasant at 12 seconds), else none.
+                codes::class::MINE_SHAFT => {
+                    let (who, timer) = self.shaft_worker(slot).unwrap_or(((u32::MAX, u32::MAX), Field::Timer(NONE, 0, Timing(None))));
+                    let inside = who.0 != u32::MAX;
+                    out.push((slot, Second::Agent { own: vec![Field::Word(who.0), Field::Word(who.1), Field::Word(0), Field::Word(inside as u32), Field::Real(0.0)], handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: Vec::new() }, tail: vec![timer] }))
+                }
                 codes::class::TRIGGER_QUEUE => out.push((slot, Second::Agent { own: vec![Field::Word(0)], handlers: events(), tail: vec![Field::List(Vec::new()), Field::List(Vec::new())] })),
                 codes::class::GAME_CACHE_MANAGER => out.push((slot, Second::Agent { own: vec![Field::Word(0)], handlers: events(), tail: self.game_cache_fields() })),
                 // An AI script's thread (CThreadAI, `FUN_6f9bef30`): 0, its player's AI,

@@ -357,6 +357,22 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 1;
             }
+            // runs: each worker's gold run: its slot, kind, phase, and its order's objects
+            // (slot, birth, live kind or "-").
+            "runs" => {
+                if let Some(g) = &scene.game {
+                    let wd = &g.world;
+                    for &h in &wd.unit_order {
+                        let Some(u) = wd.unit(h) else { continue };
+                        let Some(r) = u.extra.gold_run.as_ref() else { continue };
+                        let objs: Vec<String> = r.order.iter().map(|s| wd.tags.live.get(s).map_or(format!("{s}:-"), |(c, b)| format!("{s}/{b}:{}", String::from_utf8_lossy(c)))).collect();
+                        eprintln!("run {:?} {:?} {:?} order {} {:?}", u.extra.object_slots[0].first(), r.kind, r.phase, objs.len(), objs);
+                        let f = f32::from_bits;
+                        eprintln!("  at ({:.4}, {:.4}) bonus {} travel {} before {} factor {} timer {:?} mover {:?} coarse {:?} path {:?}", u.x, u.y, f(r.bonus), f(r.travel), f(r.bonus_before), f(r.factor), r.timer_due.map(f), u.extra.mover.as_ref().map(|m| (f(m.x), f(m.y), f(m.vx), f(m.vy), f(m.heading))), u.extra.coarse.as_ref().map(|c| (c.points.clone(), c.index)), u.path);
+                    }
+                }
+                i += 1;
+            }
             "dump" => {
                 if let Some(g) = &scene.game {
                     for &h in &scene.selection {

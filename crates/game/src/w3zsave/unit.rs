@@ -128,7 +128,9 @@ impl World {
 
         // The agent's flags (+0x20), 0x200 not while it has an order.
         let order = self.saved_order(h);
-        let mut own = 0x600 | if hidden { 0x5 } else { 0x6 };
+        // (A worker in a gold mine both: read, 0x7, its game handler kept.)
+        let in_gold_mine = order.as_ref().is_some_and(|o| o.in_gold_mine);
+        let mut own = 0x600 | if in_gold_mine { 0x7 } else if hidden { 0x5 } else { 0x6 };
         if order.is_some() {
             own &= !0x200;
         }
@@ -266,6 +268,20 @@ impl World {
             }
             agents.extend(woken);
         }
+        // A worker walking home to it with its load: the worker's movement listens for
+        // 0x1a2 and 0x1a4, as its walk began (read: Forestwalk's town hall at 12
+        // seconds).
+        for &v in &self.unit_order {
+            let Some(w) = self.unit(v) else { continue };
+            if !w.extra.gold_run.as_ref().is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::ToHall(hall) if hall == h)) {
+                continue;
+            }
+            let Some((clu, _, _)) = self.saved_order(v).and_then(|o| o.walk) else { continue };
+            let amov = w.extra.object_slots.iter().flatten().copied().find(|&(s, b)| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::ability::id::MOVE && e.1 == b));
+            if let Some(a) = amov {
+                agents.push((rf(a), (clu.1, 0), vec![0x1a2, 0x1a4]));
+            }
+        }
         // At work in a haunted mine, its harvest listens for 0x1a2, as the work began.
         if let Some(o) = order.as_ref().filter(|o| o.mine) {
             if let Some(a) = abilities.iter().find(|a| &a.2 == codes::ability::id::ACOLYTE_HARVEST) {
@@ -280,10 +296,15 @@ impl World {
             }
         }
         let mut fixed: [Vec<(Ref, u32)>; 5] = Default::default();
-        if !hidden {
+        if !hidden || in_gold_mine {
             fixed[0].push((rf(self.game_object()), 0x8_0267));
         }
         if let Some(a) = abilities.iter().find(|a| &a.2 == codes::ability::id::MOVE) {
+            // (Walking, its walk's events too: read, Forestwalk's peasants on their way.)
+            if order.as_ref().is_some_and(|o| o.walking) {
+                fixed[1].push((Ref(a.0, a.1), 0xd_0196));
+                fixed[2].push((Ref(a.0, a.1), 0xd_0198));
+            }
             fixed[3].push((Ref(a.0, a.1), 0xd_0199));
             fixed[4].push((Ref(a.0, a.1), 0xd_019a));
         }
@@ -341,12 +362,15 @@ impl World {
         // provisional, the running game's random choice and time.)
         let model = format!("{}.mdx", o.str("file"));
         let stands = self.stand_sequences(&model);
+        let seen = u.owner == self.local_player || self.unit_visible_to(h, self.local_player);
         // (At work in a haunted mine, its Stand Work Gold: read, an acolyte's sequence 4
         // at 0x400, its current one 0xfffe.)
         let working = order.as_ref().filter(|o| o.mine || o.summoning).map(|_| self.named_sequences_phrase(&model, "stand work gold"));
         let summoning = order.as_ref().is_some_and(|o| o.summoning);
         let sprite = Sprite {
-            real: f32::from_bits(0x0344_0000 | if building { 0x0008_0008 } else { 0 }),
+            // (The local player's 0x200000 more; provisional: others' too at times, read
+            // of far creeps and a gold mine seen, not yet told apart.)
+            real: f32::from_bits(0x0344_0000 | if building { 0x0008_0008 } else { 0 } | if u.owner == self.local_player { 0x0020_0000 } else { 0 }),
             short: if working.is_some() { 0xfffe } else { stands.first().copied().unwrap_or(0) as u16 },
             byte: 255,
             word: tint,
@@ -365,7 +389,9 @@ impl World {
             sprite: Some(sprite),
             owner: u.owner as u32,
             word: u32::from_be_bytes(u.type_id),
-            shorts: if building && u.owner as usize >= crate::types::PLAYER_NEUTRAL_AGGRESSIVE as usize { [4095, 0x8001] } else { [0, 0x8001] },
+            // (The local player's own 1; 0x8001 where it does not see it, else 0: read,
+            // Forestwalk's human hall and peasants, 1, 0, and their gold mine, 4095, 0.)
+            shorts: [if u.owner == self.local_player { 1 } else if building && u.owner as usize >= crate::types::PLAYER_NEUTRAL_AGGRESSIVE as usize { 4095 } else { 0 }, if seen { 0 } else { 0x8001 }],
             refs: (!footprint.is_empty()).then(|| (footprint, [u.x, u.y])),
             bytes: [0, 0],
             last_real: o.real("occH"),
@@ -493,25 +519,24 @@ impl World {
         fields.push(Field::Real(o.real("def") + self.buff_mods(h).2));
         fields.push(Field::Real(0.0));
         fields.extend([w(u.owner as u32), w(flags), w(0x0f12), w(invulnerable as u32)]);
-        // (At work in a haunted mine its state 6 last, after its tint 2 and 35, and
-        // its last word 0x80 more: read, both acolytes in the mine at 2.5 seconds.)
-        let in_mine = order.as_ref().is_some_and(|o| o.mine);
-        fields.extend((52..66).map(|_| w(0)));
-        fields.push(w(if in_mine { 6 } else if summoning { 2 } else { 0 }));
+        // (Its order's state words: `SavedOrder::state`.)
+        let st = order.as_ref().map(|o| o.state).unwrap_or_default();
+        fields.extend((52..66).map(|k| w(if k == 57 { st.inside_word } else { 0 })));
+        fields.push(w(st.kind));
         fields.extend([w(!building as u32), w(0)]);
         fields.extend([Field::Real(0.0), Field::Real(0.0), Field::Real(0.0)]);
         fields.extend([w(kinds), w(targets), w(defense), w(u32::MAX), w(u32::MAX)]);
         fields.extend([Field::Ref(NONE), Field::Ref(NONE), Field::Ref(NONE)]);
         fields.extend([Field::Real(o.real("impactZ")), Field::Real(o.real("launchX")), Field::Real(o.real("launchY")), Field::Real(o.real("launchZ"))]);
-        fields.extend([Field::Byte(0), Field::Byte(0), w(0), w(0), w(0), w(0), Field::Ref(NONE), Field::Byte(0)]);
-        fields.extend([w(tint), w(if in_mine { 2 } else { 1 }), w(4), w(if in_mine { 35 } else if summoning { 37 } else { 0 }), w(0), w(0), w(0), w(0)]);
+        fields.extend([Field::Byte(0), Field::Byte(st.walking as u8), w(0), w(0), w(0), w(0), Field::Ref(NONE), Field::Byte(0)]);
+        fields.extend([w(tint), w(st.after_tint[0]), w(st.after_tint[1]), w(st.after_tint[2]), w(0), w(0), w(0), w(0)]);
         // (A spell immune unit's two words (+0x15c, +0x160: read, the granite golems' and a
         // red dragon's), its being built on another (isBuildOn, +0x60), and a flag word
         // (+0x280: 0x10 for all read, 0x8 for a type with elevation points).)
         let immune = u.abilities.iter().any(|(a, _)| self.objects.abilities.get(*a).is_some_and(|ab| ab.str("code").trim() == codes::ability::MAGIC_IMMUNITY));
         let built_on = if o.int("isBuildOn") != 0 { 0x100 } else { 0 };
         let elevated = if o.int("elevPts") > 0 { 8 } else { 0 };
-        fields.extend([w(speed.to_bits()), w(speed.to_bits()), w(1f32.to_bits()), w(0), w(immune as u32), w(immune as u32), w(built_on), w(0), w(0x10 | elevated | if in_mine { 0x80 } else { 0 })]);
+        fields.extend([w(speed.to_bits()), w(speed.to_bits()), w(1f32.to_bits()), w(0), w(immune as u32), w(immune as u32), w(built_on), w(0), w(0x10 | elevated | if st.inside { 0x80 } else { 0 })]);
         Some((me.0, Second::Unit { own, handlers, widget, lists, fields }))
     }
 }
@@ -1058,6 +1083,12 @@ impl World {
         let skill = u.is_hero && u.abilities.iter().any(|(a, _)| self.objects.abilities.get(*a).is_some_and(|o| o.int("hero") != 0 && crate::objects::id_from_str(o.str("code").trim()) == *code));
         let made_with = u.is_hero && !skill && u.extra.object_slots.iter().flatten().any(|&x| x == t);
         let base_flags = if made_with && code == codes::ability::id::ATTACK { base_flags & !0x0200_4000 } else { base_flags };
+        // (A unit with an order its attack 0x80 more and 0x2000000 none: read, acolytes
+        // and peasants at work.)
+        let base_flags = if code == codes::ability::id::ATTACK && self.saved_order(h).is_some() { (base_flags & !0x0200_0000) | 0x80 } else { base_flags };
+        // (A worker on a gold run its repair 0x100000 more: read, Forestwalk's peasants
+        // at 12 seconds, 0x9500010 where idle ones' are 0x9400010.)
+        let base_flags = if code == codes::ability::id::REPAIR_ORC && u.extra.gold_run.is_some() { base_flags | 0x10_0000 } else { base_flags };
         let flags = base_flags | if ai { 0x2 } else { 0 } | if skill { 0x10 } else { 0 } | if made_with { 0x80 } else { 0 };
         let prev = older.map_or(NONE, rf);
         // (Its id, not its kind's code: a shop's Ane2, a creep's ACvs and ACmi, a town
@@ -1068,8 +1099,23 @@ impl World {
         let tail = match code {
             // CAbilityMove (`FUN_6f5fec80`): two references, its speed and 1.0, words,
             // two reals, references; its two timers.
+            // (On a gold run its run's factor, and walking 0x4 more: read, a peasant's
+            // 1.2.)
             codes::ability::id::MOVE => {
-                own.extend([w(u32::MAX), w(u32::MAX), w(0), Field::Real(o.real("spd")), Field::Real(1.0), w(0), w(0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), w(0)]);
+                let run = u.extra.gold_run.as_ref().filter(|r| !r.lumber);
+                let factor = run.map_or(1.0, |r| f32::from_bits(r.factor));
+                if run.is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::ToMine | crate::goldrun::Phase::ToHall(_))) {
+                    if let Some(Field::Word(flags)) = own.first_mut() {
+                        *flags |= 0x4;
+                    }
+                }
+                // (Walking home, the hall it walks to: read, a peasant with its load.)
+                let to = run.and_then(|r| match r.phase {
+                    crate::goldrun::Phase::ToHall(hall) => self.unit(hall).and_then(|v| v.extra.object_slots[0].first().copied()),
+                    _ => None,
+                });
+                let to = to.map_or(NONE, rf);
+                own.extend([w(to.0), w(to.1), w(0), Field::Real(o.real("spd")), Field::Real(factor), w(0), w(0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), w(0)]);
                 vec![timer(), timer()]
             }
             // CAbilityInvulnerable: a word; an empty list and a word.
@@ -1238,16 +1284,54 @@ impl World {
             // Harvest (gold and lumber, or lumber): its DataC and DataB, its unit's
             // attack's point and backswing, its DataA; eight references and timers
             // empty, its area, its timers.
+            // On a gold run (read: Forestwalk's peasants at 12 seconds): its hall, its
+            // run's speed bonus, last travel time, and bonus before, its mine, and its
+            // round trip's timer (10 seconds, event -1); its flags 0x40000000 once it
+            // has been in, 0x1, and 0x800 walking or 0x9000 inside.
             codes::ability::id::HARVEST | codes::ability::id::HARVEST_LUMBER => {
                 let ab = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a)).find(|ab| ab.str("code").trim().as_bytes() == code);
                 let data = |f: &str| ab.map_or(0.0, |ab| ab.level_real(f, 1));
-                own.extend([w(data("DataC") as u32), w(data("DataB") as u32), w(0), w(0), w(0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(o.real("dmgpt1")), Field::Real(o.real("backSw1")), w(data("DataA") as u32)]);
                 let gold = code == codes::ability::id::HARVEST;
+                let run = u.extra.gold_run.as_ref().filter(|r| gold && !r.lumber);
+                let hall = run.and_then(|r| match r.phase {
+                    crate::goldrun::Phase::ToHall(hall) => Some(hall),
+                    // (Else the nearest of its owner's that takes gold.)
+                    _ => self
+                        .unit_order
+                        .iter()
+                        .copied()
+                        .filter(|&o| self.unit(o).is_some_and(|b| !b.dead && b.owner == u.owner && !b.extra.uprooted) && self.ability_with_code(o, codes::ability::RETURN).is_some_and(|(a, l)| self.ability_real(a, "DataA", l) != 0.0))
+                        .min_by(|&a, &b| {
+                            let d = |o: u32| self.unit(o).map_or(f32::MAX, |b| (b.x - u.x).hypot(b.y - u.y));
+                            d(a).total_cmp(&d(b))
+                        }),
+                });
+                let hall = hall.and_then(|v| self.unit(v)).and_then(|v| v.extra.object_slots[0].first().copied()).map_or(NONE, rf);
+                // (Its gold carried the fifth: read, 10 on its way home.)
+                let carried = if gold { u.carry_gold.max(0) as u32 } else { 0 };
+                own.extend([w(data("DataC") as u32), w(data("DataB") as u32), w(0), w(0), w(carried), w(hall.0), w(hall.1), w(0), Field::Real(o.real("dmgpt1")), Field::Real(o.real("backSw1")), w(data("DataA") as u32)]);
                 if gold {
-                    own.extend([Field::Real(0.0), Field::Real(0.0), Field::Real(0.0)]);
+                    let f = f32::from_bits;
+                    own.extend(match run {
+                        Some(r) => [Field::Real(f(r.bonus)), Field::Real(f(r.travel)), Field::Real(f(r.bonus_before))],
+                        None => [Field::Real(0.0), Field::Real(0.0), Field::Real(0.0)],
+                    });
                 }
-                let mut tail = vec![Field::List((0..8).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect()), Field::List((0..8).map(|_| vec![timer()]).collect()), w(u32::MAX), w(u32::MAX), w(0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(data("Area"))];
-                tail.extend((0..if gold { 4 } else { 3 }).map(|_| timer()));
+                if let Some(r) = run {
+                    let inside = matches!(r.phase, crate::goldrun::Phase::InMine(_));
+                    if let Some(Field::Word(flags)) = own.first_mut() {
+                        *flags |= 0x1 | if r.entered { 0x4000_0000 } else { 0 } | if inside { 0x9000 } else { 0x800 };
+                    }
+                }
+                let mine = run.and_then(|r| self.unit(r.mine)).and_then(|m| m.extra.object_slots[0].first().copied()).map_or(NONE, rf);
+                let mut tail = vec![Field::List((0..8).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect()), Field::List((0..8).map(|_| vec![timer()]).collect()), w(u32::MAX), w(u32::MAX), w(0), w(mine.0), w(mine.1), w(0), Field::Real(data("Area"))];
+                tail.extend((0..if gold { 3 } else { 3 }).map(|_| timer()));
+                if gold {
+                    tail.push(match run.and_then(|r| r.timer_due) {
+                        Some(due) => Field::Timer(NONE, 0, Timing(Some((f32::from_bits(due), 10.0, 0, u32::MAX, 0)))),
+                        None => timer(),
+                    });
+                }
                 tail
             }
             // A haunted mine's gathering (Aaha): its range, a reference; a timer.
@@ -1261,7 +1345,11 @@ impl World {
             codes::ability::id::GOLD_MINE => {
                 let over = self.unit_order.iter().copied().find(|&v| v != h && self.unit(v).is_some_and(|w| !w.dead && w.abilities.iter().any(|(a, _)| a == codes::ability::id::BLIGHTED_GOLD_MINE) && (w.x - u.x).abs() < 1.0 && (w.y - u.y).abs() < 1.0)).and_then(|v| self.unit(v)).and_then(|w| w.extra.object_slots[0].first().copied());
                 let over = over.map_or(NONE, rf);
-                own.extend([w(u.resource.max(0) as u32), Field::Real(1.0), w(1), w(0), w(u32::MAX), w(u32::MAX), w(0), w(u32::MAX), w(u32::MAX), w(0), w(15), Field::Real(2.0), w(over.0), w(over.1), w(0), w(u32::MAX), w(u32::MAX), w(0)]);
+                // (Once a worker has been in, 1, the player it shows the mine to, and its
+                // fog modifier, `+fgm`: read, Forestwalk's human peasants' mine.)
+                let fog = u.extra.mine_fog.filter(|(s, _)| self.tags.live.get(s).is_some_and(|e| &e.0 == codes::class::FOG_MODIFIER));
+                let fog_ref = fog.map_or(NONE, |(s, _)| rf(self.tagged(s)));
+                own.extend([w(u.resource.max(0) as u32), Field::Real(1.0), w(1), w(fog.is_some() as u32), w(u32::MAX), w(u32::MAX), w(0), w(u32::MAX), w(u32::MAX), w(0), w(fog.map_or(15, |f| f.1 as u32)), Field::Real(2.0), w(over.0), w(over.1), w(0), w(fog_ref.0), w(fog_ref.1), w(0)]);
                 let shaft = u.extra.object_slots[2].iter().map(|&(s, _)| s).skip_while(|&s| s != t.0).find(|&s| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::MINE_SHAFT)).map_or(NONE, |s| rf(self.tagged(s)));
                 vec![Field::Ref(NONE), Field::List(vec![vec![Field::Ref(shaft)]]), timer()]
             }
@@ -1807,17 +1895,25 @@ impl World {
         let blocks = (b1 - b0) * (d1 - d0);
         let pos = rf(first[1]);
         let region = |map: (u32, u32), word: u32, bounds: [u32; 4], words: [u32; 3]| w3_formats::w3z::First::Region { refs: [rf(map), pos], word, bounds, words };
+        // (A worker on a gold run its run's flags: ghosting 0x08 (0xd6 cleared), its last
+        // word 0x20000000; at its mine its ghosting ended, 0xca and 0x10; read,
+        // Forestwalk's peasants at 12 seconds.)
+        let run = u.extra.gold_run.as_ref().filter(|r| !r.lumber);
+        let at_mine = run.is_some_and(|r| r.at_mine);
+        let ghosted = run.is_some_and(|r| r.ghosted) && !at_mine;
+        let low = if ghosted { 0x08 } else { 0xca } | if at_mine { 0x10 } else { 0 };
         // A hidden unit's are off the pathing map (read: the gold mine a haunted mine
-        // hides): its coarse one marked 0x0c000000, its fine one emptied.
+        // hides): its coarse one marked 0x0c000000, its fine one emptied (a worker in a
+        // mine its flags kept).
         if u.hidden {
             return vec![
                 (first[2].0, region(coarse, 0x0c00_0000, [b0, d0, b1, d1], [0, (0x10 | u.owner as u32) << 24 | blocks, 0])),
-                (first[3].0, region(fine, 0, [0xfffe_0c00; 4], [0, 0, 0])),
+                (first[3].0, region(fine, if run.is_some() { low } else { 0 }, [0xfffe_0c00; 4], [0, 0, 0])),
             ];
         }
         vec![
             (first[2].0, region(coarse, 0, [b0, d0, b1, d1], [0, (0x10 | u.owner as u32) << 24 | blocks, 0])),
-            (first[3].0, region(fine, if u.is_building { 0x0100_0000 } else { 0x0100_00ca }, [r0, c0, r1, c1], [0, cells, 0])),
+            (first[3].0, region(fine, if u.is_building { 0x0100_0000 } else { 0x0100_0000 | low }, [r0, c0, r1, c1], [0, cells, if ghosted { 0x2000_0000 } else { 0 }])),
         ]
     }
 }
@@ -1852,6 +1948,52 @@ impl World {
         }
         let word = (hi << 4 | (u.owner as u32 & 0xf)) << 16;
         let way = |limit: u16| (w3_formats::w3z::Array { words: [0, 0, 128, 0], entries: Vec::new() }, u32::MAX, 0, limit);
+        // A worker on a gold run (read: Forestwalk's peasants at 12 seconds): walking,
+        // its walk's goal thrice, 0x12000000 in its first word, its collision, 0x10000010,
+        // its local way from its end to where it stands and its long way in half cells,
+        // and the target's region; in its mine its last goal, 0x100000 more, 0x12000012,
+        // its ways empty.
+        if let (Some(r), Some(p)) = (u.extra.gold_run.as_ref().filter(|r| !r.lumber), self.pathing.as_ref()) {
+            let target = match r.phase {
+                crate::goldrun::Phase::ToHall(hall) => hall,
+                _ => r.mine,
+            };
+            let region = self.unit(target).and_then(|t| t.extra.footprint_slots.get(1).copied()).map_or(NONE, |s| rf(self.tagged(s)));
+            let goal = self.unit(target).map(|t| ((t.x - p.origin[0]) / 32.0, (t.y - p.origin[1]) / 32.0));
+            let cells = |(x, y): (f32, f32)| [(x - p.origin[0]) / 32.0, (y - p.origin[1]) / 32.0];
+            let collision = o.real("collision") / 32.0;
+            let set = |entries: Vec<[f32; 2]>, limit: u16| (w3_formats::w3z::Array { words: [1024, 1024, 128, 128], entries }, 0, 0, limit);
+            let empty = |limit: u16| (w3_formats::w3z::Array { words: [1024, 1024, 128, 128], entries: Vec::new() }, u32::MAX, 0, limit);
+            let walking = self.saved_order(h).is_some_and(|o| o.walk.is_some());
+            if let (true, Some((gx, gy))) = (walking, goal) {
+                let here = cells((u.x, u.y));
+                let end = u.path.last().map_or([gx, gy], |&q| cells(q));
+                return Some((
+                    first[9].0,
+                    w3_formats::w3z::First::Path {
+                        reals: [gx, gy, gx, gy, gx, gy],
+                        words: [word | 0x1200_0000, 0, 0, u32::MAX, u32::MAX, 0],
+                        real: collision,
+                        word: 0x1000_0010,
+                        ways: [set(vec![end, here], 700), set(vec![[gx / 2.0, gy / 2.0], [here[0] / 2.0, here[1] / 2.0]], 400)],
+                        refs: [NONE, NONE, rf(first[3]), region],
+                    },
+                ));
+            }
+            if let (crate::goldrun::Phase::InMine(_), Some((gx, gy))) = (r.phase, goal) {
+                return Some((
+                    first[9].0,
+                    w3_formats::w3z::First::Path {
+                        reals: [-128000.0, -128000.0, -128000.0, -128000.0, gx, gy],
+                        words: [word | 0x10_0000, 0, 0, u32::MAX, u32::MAX, 0],
+                        real: collision,
+                        word: 0x1200_0012,
+                        ways: [empty(700), empty(400)],
+                        refs: [NONE, NONE, rf(first[3]), region],
+                    },
+                ));
+            }
+        }
         Some((
             first[9].0,
             w3_formats::w3z::First::Path {

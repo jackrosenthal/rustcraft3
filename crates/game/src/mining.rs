@@ -496,6 +496,26 @@ impl World {
     /// DataA) over the wisps inside (measured: NightElfX04's five wisps bring 10 gold,
     /// 7 after upkeep, every second, evenly).
     pub(crate) fn haunted_mine_payouts(&mut self, vm: &mut Vm, dt: f32) {
+        // (Before this tick's steps: those reach the rest, `World::mine_payouts_to`.)
+        let end = self.tick_abs(0).unwrap_or(self.time as f64);
+        self.haunted_mine_payouts_until(vm, dt, end);
+    }
+
+    /// The payouts due by the main clock at this tick's main tick `tick`, as the
+    /// movement steps reach it (read: Forestwalk's undead computer's mine paying in
+    /// turn 31 after the day's objects freed at its second step).
+    pub(crate) fn mine_payouts_to(&mut self, vm: &mut Vm, tick: Option<i64>) {
+        let n = self.tick_clocks.1.len();
+        let i = match tick {
+            Some(t) => (t - self.tick_clocks.0).clamp(0, n as i64 - 1).max(0) as usize,
+            None => n.saturating_sub(1),
+        };
+        if let Some(end) = self.tick_abs(i) {
+            self.haunted_mine_payouts_until(vm, 0.0, end);
+        }
+    }
+
+    fn haunted_mine_payouts_until(&mut self, vm: &mut Vm, dt: f32, end: f64) {
         let mines: Vec<u32> = self
             .unit_order
             .iter()
@@ -504,9 +524,7 @@ impl World {
             .collect();
         // Due on the main clock: a change of workers not seen at a step counts from the
         // tick's start; a payout falls in the tick whose last main tick reaches it.
-        let n = self.tick_clocks.1.len();
         let start = self.tick_abs(0).unwrap_or(self.time as f64 - dt as f64);
-        let end = n.checked_sub(2).and_then(|i| self.tick_abs(i)).unwrap_or(self.time as f64);
         for mine in mines {
             let Some((working, per, base)) = self.mine_payout_terms(mine) else { continue };
             let period = |n: u32| base as f64 / n.max(1) as f64;

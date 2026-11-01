@@ -30,7 +30,18 @@ pub struct Captain {
     /// Its size when last a unit joined: those lost since count against its readiness.
     #[serde(default)]
     pub peak: usize,
+    /// Where it stands as a pathing object (its position cluster), its region turning
+    /// others' searches aside (`World::regions_taken`): its home as it is made, placed
+    /// as a ground unit's of collision 16 among the units then (read: Forestwalk's
+    /// undead computer's defense captain at cells (352.5, 503.5) beside its home
+    /// (352.0, 504.0), a start acolyte there; its attack captain at its home; both
+    /// still to 1.0 seconds).
+    #[serde(default)]
+    pub place: Option<(f32, f32)>,
 }
+
+/// A captain's size as a pathing object.
+pub const CAPTAIN_COLLISION: f32 = 16.0;
 
 /// An AI thread's object (CThreadAI): its slot, its number (its main's 0, then each
 /// thread started in turn), and its last sleep: its length, its timer's count, and when
@@ -789,9 +800,15 @@ impl World {
             }
         }
         let harvest = crate::natives::basic::order_id("harvest");
+        // A walker it orders stops where its walk has carried it by the thread's time
+        // (`World::stop_walker_at`).
+        let stop_at = self.ai.get(&p).and_then(|s| self.clock_at_time(s.clock));
         if let Some(mine) = mine {
             for &h in &to_gold {
                 if !on_gold(self, h) {
+                    if let Some(c) = stop_at {
+                        self.stop_walker_at(h, c);
+                    }
                     self.ai_order_objects(h, mine);
                     self.order_unit(h, harvest, 0.0, 0.0, mine);
                 }
@@ -800,6 +817,9 @@ impl World {
         for &h in &to_wood {
             if !on_wood(self, h) {
                 if let Some(t) = tree_near(self, h) {
+                    if let Some(c) = stop_at {
+                        self.stop_walker_at(h, c);
+                    }
                     self.ai_wood_objects(p, h);
                     // The worker's own lumber order is the AI's order's last 17 (its run's,
                     // `World::start_gold_run`).
@@ -1603,9 +1623,11 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             }
             let p = w.ai_player();
             let (attack_home, home) = w.captain_homes(p);
+            let attack_place = crate::natives::units::agent_place(w, attack_home.0, attack_home.1, CAPTAIN_COLLISION);
+            let defense_place = crate::natives::units::agent_place(w, home.0, home.1, CAPTAIN_COLLISION);
             if let Some(s) = w.ai_state() {
-                s.attack = Captain { home: attack_home, ..Default::default() };
-                s.defense = Captain { home, ..Default::default() };
+                s.attack = Captain { home: attack_home, place: Some(attack_place), ..Default::default() };
+                s.defense = Captain { home, place: Some(defense_place), ..Default::default() };
             }
             none()
         },

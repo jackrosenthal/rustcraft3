@@ -2380,7 +2380,23 @@ Formats the port made its own, to be replaced by the original's:
   nodes, the search's +0xd0 1), where the port's search, the captain's cells in the
   start's class-1 ring, stays.  So the ring check of a class-1 move (`FUN_6f148d00`'s
   masks) or the regions' cells in the port's searches are not yet the original's.
-  Open: that, and the order's stop between steps.
+  Resolved by a watch on (352, 503)'s word in the map (`abtest/cellwatch.sh`): the
+  captain's region enters the map's cell lists at 0.0 (`FUN_6f9d3047`, as
+  CreateCaptains runs), but only the cells whose middles it covers: at 0.12 the
+  acolyte's search finds (353, 504) empty (its word 0x61ffffff), so the region, half
+  a cell about (352.5, 503.5), holds (352, 503) alone.  The port's captains so stand
+  (`Captain::place`, placed as a ground unit's of collision 16; their cells in
+  `World::regions_taken`): every other search of the game is unchanged, and the
+  ghoul's at 1.0 ends at (351, 504) with the original's way.  Its wood order then
+  stops it between steps, its place moved on to the AI thread's time on the main
+  clock (`World::stop_walker_at`: at 1.12 at (352.3441, 501.5162), the original's to
+  the bit); and its lumber walk searches at once, not ten steps on: its captain
+  walk's search keeps to 32 passes (a local search's limit), its budget not spent
+  past 64 (with 700 the port's nearest search spent it, spacing the next).  At 1.9,
+  2.5, and 3.1 the ghoul is within 0.1 cells of the original's (its way's waypoints
+  aimed at a little differently).  A haunted mine's payout falls due among the
+  movement steps (`World::mine_payouts_to`): turn 31's after the day's objects freed
+  at its second step.  The keepalives agree to turn 32.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

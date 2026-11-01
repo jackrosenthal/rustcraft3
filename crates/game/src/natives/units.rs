@@ -139,6 +139,15 @@ pub(crate) fn shown_at(w: &World, h: u32) -> (f32, f32) {
     ground_place(w, &movetp, collision, u.x, u.y, false, Some(h), u.region_mask())
 }
 
+/// A ground pathing object's place at or near x, y, of `collision`, clear of the
+/// ground units standing there (an AI's captain as it is made).
+pub(crate) fn agent_place(w: &World, x: f32, y: f32, collision: f32) -> (f32, f32) {
+    if w.pathing.is_none() {
+        return (x, y);
+    }
+    ground_place(w, "foot", collision, x, y, false, None, 0x02)
+}
+
 /// A ground unit's place at or near x, y (`placed_at`); `room`: the cells about it must
 /// be walkable as far as its size class reaches; `except`: a unit not to keep clear of;
 /// `mask`: the region flags of the units it keeps clear of (`Unit::region_flags`).

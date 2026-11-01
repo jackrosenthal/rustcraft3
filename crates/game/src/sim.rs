@@ -836,6 +836,28 @@ impl World {
                 }
             }
         }
+        // The computers' captains stand as pathing objects too (`Captain::place`), their
+        // regions held in the map's cells whose middles they cover (read: the defense
+        // captain at (352.5, 503.5), radius half a cell, in (352, 503)'s list from 0.0,
+        // not in (353, 504)'s at 0.12, refusing (352, 503) to the ghoul's search at
+        // 1.02; `FUN_6f9d3047` placing it as CreateCaptains runs).
+        if mask & 0x02 != 0 {
+            let places: Vec<(f32, f32)> = self.ai.values().flat_map(|st| [st.attack.place, st.defense.place]).flatten().collect();
+            let r = crate::ai::CAPTAIN_COLLISION / crate::pathing::CELL * 0.5;
+            for (x, y) in places {
+                if (x - u.x).abs() >= 2048.0 || (y - u.y).abs() >= 2048.0 {
+                    continue;
+                }
+                let (cx, cy) = ((x - p.origin[0]) / crate::pathing::CELL, (y - p.origin[1]) / crate::pathing::CELL);
+                for ty in (cy - r - 0.5).floor() as i32..=(cy + r - 0.5).ceil() as i32 {
+                    for tx in (cx - r - 0.5).floor() as i32..=(cx + r - 0.5).ceil() as i32 {
+                        if (tx as f32 + 0.5 - cx).hypot(ty as f32 + 0.5 - cy) <= r {
+                            taken.insert((tx, ty));
+                        }
+                    }
+                }
+            }
+        }
         taken
     }
 
@@ -863,6 +885,27 @@ impl World {
             k = j;
         }
         way[k..].to_vec()
+    }
+
+    /// A walker stopped by a new order between steps: its place moved on by its
+    /// velocity for the time since its last step, to the main clock `clock`, as a
+    /// change of velocity does (`FUN_6f15f7e0`; read: Forestwalk's undead computer's
+    /// ghoul stopped by its wood order at 1.10, two thirds of a step past 1.08).
+    pub(crate) fn stop_walker_at(&mut self, h: u32, clock: u32) {
+        use crate::efloat as ef;
+        let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return };
+        let Some(m) = self.unit(h).and_then(|u| u.extra.mover) else { return };
+        if m.vx & 0x7fff_ffff == 0 && m.vy & 0x7fff_ffff == 0 {
+            return;
+        }
+        let (x, y) = m.at(clock);
+        let Some(u) = self.unit_mut(h) else { return };
+        u.x = f32::from_bits(ef::add(ef::mul(x, crate::pathing::CELL.to_bits()), origin[0].to_bits()));
+        u.y = f32::from_bits(ef::add(ef::mul(y, crate::pathing::CELL.to_bits()), origin[1].to_bits()));
+        u.extra.cell_at = Some((x, y, u.x, u.y));
+        if let Some(m) = u.extra.mover.as_mut() {
+            (m.x, m.y, m.vx, m.vy, m.placed_at) = (x, y, 0, 0, clock);
+        }
     }
 
     pub(crate) fn local_path(&self, h: u32, goal: (f32, f32)) -> Option<(Vec<(f32, f32)>, Option<(i32, i32)>, u32)> {
@@ -895,7 +938,7 @@ impl World {
         let (start, end) = (p.cell_of(u.x, u.y), p.cell_of(goal.0, goal.1));
         let (out, refused, cost) = match self.gold_run_search(h, &cells, start, end, class) {
             Some(r) => r,
-            None => crate::lrpath::search_costing(&cells, start, end, class, if u.extra.local_paths { 32 } else { 700 }),
+            None => crate::lrpath::search_costing(&cells, start, end, class, if u.extra.local_paths || u.extra.captain_walk.is_some() { 32 } else { 700 }),
         };
         log::debug!("search for {h} from {start:?} to {end:?}: {:?} refused {refused}", match &out { crate::lrpath::Outcome::Found(c) => format!("found {}", c.len()), crate::lrpath::Outcome::Nearest(c) => format!("nearest {:?}", c.last()), crate::lrpath::Outcome::Stay => "stay".into() });
         log::trace!("search for {h}: cells {:?}", match &out { crate::lrpath::Outcome::Found(c) | crate::lrpath::Outcome::Nearest(c) => c.clone(), crate::lrpath::Outcome::Stay => Vec::new() });
@@ -1222,6 +1265,7 @@ impl World {
             self.time_of_day_to(vm, Some(t));
             self.timed_frees_to(Some(t));
             self.ai_threads_to_tick(Some(t));
+            self.mine_payouts_to(vm, Some(t));
         }
         // The paths of the walks ended in the last step go in this one, in the walkers'
         // order (`Tags::walk_ended`).
@@ -1316,6 +1360,7 @@ impl World {
             self.time_of_day_to(vm, next);
             self.timed_frees_to(next);
             self.ai_threads_to_tick(next);
+            self.mine_payouts_to(vm, next);
             // The paths of the walks ended in the last step go in this one, in the walkers'
             // order (`Tags::walk_ended`).
             let mut carried = self.tags.take_step_paths();

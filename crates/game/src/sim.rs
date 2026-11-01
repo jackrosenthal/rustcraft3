@@ -1355,6 +1355,13 @@ impl World {
     pub(crate) fn first_steps(&mut self, vm: &mut Vm) {
         if let Some(&t) = self.step_ticks.first() {
             self.fire_mana_listeners(Some(t));
+            // The turn's first main tick's blight checks, by its game time (read: the
+            // undead start's due at 2.0, made at 1.999998 on the main clock), then its
+            // timers.
+            if !self.tick_clocks.1.is_empty() {
+                self.blight_checks_to(self.tick_clocks.0 as f64 * 0.005);
+            }
+            self.timers_at_turn_start(vm);
             self.time_of_day_to(vm, Some(t));
             self.timed_frees_to(Some(t));
             self.ai_threads_to_tick(Some(t));
@@ -3569,7 +3576,14 @@ impl World {
             u.extra.mover = None;
             u.extra.build_legacy = true;
         }
+        // What the begin lets go goes as its step ends (read: Forestwalk's undead
+        // computer's ziggurat, begun in turn 77's second step, its build's `tsk.` and
+        // its AI's objects freed before its walk's path and cluster in the third).
+        let doomed = self.tags.doomed.len();
         self.build(vm, h, id, x, y, 0.0);
+        for s in self.tags.doomed.split_off(doomed.min(self.tags.doomed.len())) {
+            self.tags.release_in_step(s);
+        }
         self.making_clock = None;
         true
     }
@@ -3612,22 +3626,19 @@ impl World {
         let site = if self.builds_on(id) { self.build_on_site(x, y) } else { None };
         let (x, y) = site.and_then(|s| self.unit(s).map(|m| (m.x, m.y))).unwrap_or((x, y));
         // An AI's build order's second `tsk.` goes as the structure is begun, before
-        // what the AI makes of the structure, and its walk's path and cluster a
-        // movement step on (`FUN_6f15aa80`'s step), after the turn's other frees: in
-        // this turn if it has that step, else at the next turn's end, as a captain's
-        // path query's do (traced: Forestwalk's undead computer's crypt, begun at 1.98,
-        // its turn's last step, the `tsk.` freed first at the turn's end, the path and
-        // cluster after the AI's objects in the next; its ziggurat, begun at 7.65, its
-        // turn's second step, the path and cluster freed last in that turn;
-        // provisional: the step, and the rest of the order).
+        // what the AI makes of the structure, and its walk's path and cluster as an
+        // ended walk's do, in the next movement step (`FUN_6f15aa80`'s, `Tags::
+        // walk_ended`; read with the main clock: Forestwalk's undead computer's crypt,
+        // begun at 1.98, its turn's last step, the path and cluster freed at 2.009998,
+        // the next turn's first, after its melee timer's objects; its ziggurat, begun at
+        // 7.65, its turn's second step, the path and cluster freed last in that turn; its
+        // altar, begun at 38.367, the path and cluster freed in the next turn before a
+        // wanderer's arrival's tree in its last step; provisional: the rest of the
+        // order).
         if let Some(order) = self.unit(h).filter(|u| u.extra.ai_order.len() == crate::ai::AI_BUILD.len()).map(|u| u.extra.ai_order.clone()) {
             self.tags.doom(order[7]);
-            let begun = self.making_clock.and_then(|(c, _)| (0..self.step_clocks.len()).find(|&i| self.step_abs(i).is_some_and(|(s, _)| (s - c).abs() < 1e-6)));
-            if begun.is_some_and(|k| k + 1 < self.step_clocks.len()) {
-                self.tags.later_now.extend([order[16], order[15]]);
-            } else {
-                self.tags.next_turn_end.extend([order[16], order[15]]);
-            }
+            let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
+            self.tags.walk_ended([order[16], order[15]], serial);
         }
         let b = crate::natives::units::create_unit(self, owner, id, x, y, self.misc_f32("BuildingAngle", 270.0));
         if let Some(s) = site {

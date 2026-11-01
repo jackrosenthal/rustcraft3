@@ -2174,10 +2174,45 @@ impl World {
                 }
             }
         }
-        // They go off in the order they expire, those expiring together in the order
-        // their runs began (measured: two periodic timers started for 0.5 seconds, one
-        // after the other, go off in that order each time); a periodic one's next run
-        // begins as it goes off.
+        self.fire_timers(vm, expired);
+
+        self.wake_sleepers(vm, dt);
+
+        self.time_of_day_to(vm, None);
+        self.check_state_events(vm);
+    }
+
+    /// The timers due by the turn's start, its time exactly at the last turn's end, go
+    /// off as it starts, after its first main tick's mana listeners and blight checks
+    /// and before its steps (read: Forestwalk's melee setup's 2-second timer's forces
+    /// made at 1.999998 on the main clock, turn 21's first main tick, after the blight
+    /// checks' four `` `rcm `` then and before its first step at 2.009998 freed a
+    /// walk's path).
+    pub(crate) fn timers_at_turn_start(&mut self, vm: &mut Vm) {
+        let mut expired = Vec::new();
+        for id in self.handles.ids() {
+            if let Some(Obj::Timer(t)) = self.handles.get_mut(id) {
+                if !t.running || t.remaining > 1e-4 {
+                    continue;
+                }
+                expired.push((t.remaining, t.seq, id, t.callback));
+                if t.periodic && t.timeout > 0.0 {
+                    t.period = t.timeout as f64;
+                    t.remaining += t.timeout as f64;
+                } else {
+                    t.running = false;
+                    t.remaining = 0.0;
+                }
+            }
+        }
+        self.fire_timers(vm, expired);
+    }
+
+    /// Timers gone off, run: in the order they expire, those expiring together in the
+    /// order their runs began (measured: two periodic timers started for 0.5 seconds,
+    /// one after the other, go off in that order each time); a periodic one's next run
+    /// begins as it goes off.
+    fn fire_timers(&mut self, vm: &mut Vm, mut expired: Vec<(f64, u64, u32, Option<w3_jass::value::FuncId>)>) {
         expired.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
         for &(_, _, id, _) in &expired {
             self.timer_seq += 1;
@@ -2198,11 +2233,6 @@ impl World {
             }
             self.fire(vm, ctx, |_, k| matches!(k, EventKind::TimerExpire(t) if *t == timer));
         }
-
-        self.wake_sleepers(vm, dt);
-
-        self.time_of_day_to(vm, None);
-        self.check_state_events(vm);
     }
 
     /// Advances the sleep clock: with the game, and alone while a game played alone is

@@ -2623,9 +2623,20 @@ Formats the port made its own, to be replaced by the original's:
   of the site (velocity traces, `abtest/velc.sh`, `abtest/velb.sh`): the crypt's
   acolyte 103.56 at 1.95 and stopped at 1.98, 96.95, its order ending at 2.979974;
   the altar's 102.75 at 38.337 and stopped at 38.367, 96.5.  A build order ending
-  after a turn's last step by its last main tick ends in it; the build walk's path
-  and cluster go a step after the begin in its turn, else at the next turn's end.
-  The keepalives agree to turn 385.
+  after a turn's last step by its last main tick ends in it.  The keepalives agree
+  to turn 385.
+- A JASS timer due exactly at a turn's end goes off as the next turn starts, at
+  its first main tick, after that tick's blight checks (due by game time) and
+  before its first step; the port had run it at the turn's end.  Read with the
+  main clock (`abtest/tf21c.sh`): Forestwalk's melee setup's 2-second timer's
+  forces at 1.999998, turn 21's first main tick, after the blight checks' four
+  `` `rcm `` then, before the first step at 2.009998.
+- An AI build's walk path and cluster go as an ended walk's do, in the next
+  movement step (`Tags::walk_ended`; the frees from `FUN_6f15aaec`'s step, read:
+  the crypt's at 2.009998, the altar's in turn 385 before a wanderer's tree), and
+  what the begin lets go (its `tsk.`, the structure's AI objects) as the begin's
+  step ends (read: the ziggurat's, begun at turn 77's second step, before its path
+  in the third).  The keepalives agree to turn 411.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

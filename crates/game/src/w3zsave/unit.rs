@@ -56,6 +56,8 @@ fn pil_handler(code: &[u8; 4]) -> u32 {
         codes::ability::id::ENSNARE | codes::ability::id::ARCH_MAGE_BLIZZARD | codes::ability::id::PIT_LORD_RAIN_OF_FIRE => 0xd_01bf,
         codes::ability::id::NEUTRAL_BUILDING | codes::ability::id::INVENTORY => 0xd_01aa,
         codes::ability::id::ALARM => 0xd_01c8,
+        // (A flyer's burrow detection's, its look: read, Forestwalk's whelps'.)
+        codes::ability::id::BURROW_DETECTION_FLYERS => 0xd_01b4,
         _ => 0xd_01c7,
     }
 }
@@ -1691,6 +1693,10 @@ impl World {
         pils.extend(u.extra.ensnare_pil.map(|p| (p.1, *codes::ability::id::ENSNARE)));
         pils.extend(u.extra.item_pil.map(|p| (p.0, *codes::ability::id::INVENTORY)));
         pils.extend(u.extra.spell_pils.iter().copied());
+        // (A flyer's detection's, made again as it woke: read, Forestwalk's whelps' and
+        // dragons' at the first dawn, which the original's sleep lets go and crashed
+        // without.)
+        pils.extend(u.extra.flyer_pil.map(|s| (s, *codes::ability::id::BURROW_DETECTION_FLYERS)));
         pils.retain(|&(s, _)| code_of(s) == Some(*codes::class::IN_RANGE_LISTENER));
         // The unit's listeners' chain: its threshold and in-range listeners by birth.
         let is = |s: u32, c: &[u8; 4]| code_of(s) == Some(*c);
@@ -1706,6 +1712,7 @@ impl World {
                 codes::ability::id::ALARM => (3.0, self.objects.abilities.get(*codes::ability::id::ALARM).map_or(0.0, |o| o.level_real("Rng", 1))),
                 codes::ability::id::ENSNARE => (0.5, ability(&c).map_or(0.0, |o| o.level_real("Rng", 1) + o.level_real("DataB", 1))),
                 codes::ability::id::INVENTORY => (0.5, 180.0),
+                codes::ability::id::BURROW_DETECTION_FLYERS => (0.5, self.objects.abilities.get(*codes::ability::id::BURROW_DETECTION_FLYERS).map_or(900.0, |o| o.level_real("Rng", 1))),
                 // (Its range provisional: the ability's cast range, +0x50 not yet read.)
                 codes::ability::id::ARCH_MAGE_BLIZZARD | codes::ability::id::PIT_LORD_RAIN_OF_FIRE => (0.5, ability(&c).map_or(0.0, |o| o.level_real("Rng", 1))),
                 _ => (0.5, ability(&c).map_or(0.0, |o| o.level_real("Area", 1))),
@@ -1726,7 +1733,9 @@ impl World {
             // (In range with its collision: read, a Necropolis a ghoul's inventory's.)
             let near: Vec<u32> = self.unit_order.iter().copied().filter(|&v| v != h && self.unit(v).is_some_and(|w| !w.dead && !w.hidden && (w.x - u.x).hypot(w.y - u.y) - self.objects.units.get(w.type_id).map_or(0.0, |o| o.real("collision")) <= range)).collect();
             let near = crate::natives::units::spatial_order(self, near);
-            let entries: Vec<[u32; 3]> = near.iter().filter_map(|&v| self.unit(v).and_then(|w| w.extra.object_slots[0].get(1).copied())).map(|p| [p.0, p.1, 0]).collect();
+            // (A detector's entries marked 2: read, the whelps'.)
+            let mark = if c == *codes::ability::id::BURROW_DETECTION_FLYERS { 2 } else { 0 };
+            let entries: Vec<[u32; 3]> = near.iter().filter_map(|&v| self.unit(v).and_then(|w| w.extra.object_slots[0].get(1).copied())).map(|p| [p.0, p.1, mark]).collect();
             let object = ObjectBase {
                 real: period as f32,
                 words: [pil_handler(&c), 0x2019_0400],

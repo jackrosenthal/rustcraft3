@@ -2740,13 +2740,21 @@ Formats the port made its own, to be replaced by the original's:
   callbacks are: a base frame holding its return place (the original's "none" code
   address, 0xFCB6BFFC for the AI's code there) and its function's frame marked its
   run's first; the AI's main has no base frame (read: Forestwalk's computer's four
-  and its main at 2.5 seconds).  The port's saves with a computer crashed the
-  original as it loaded them from the AI threads' objects on (commit 9d51f5f,
-  bisected with `abtest/bisectrun.sh`); with every thread's sleep timer left out the
-  original loads them and plays on, though the threads then do not wake.  Any one
-  timer crashed it within a minute, its due time later or not, though the records
-  agree but for the timers' counts (the frames, return place, and the AI machine's
-  place set as the original's did not help): not yet read.
+  and its main at 2.5 seconds).
+- The port's saves with a computer crashed the original as it loaded them, from the
+  AI threads' objects on (commit 9d51f5f, bisected with `abtest/bisectrun.sh`): as a
+  thread woke and slept again, `ai_Sleep` takes the running thread's object from
+  its AI's list of them (CAIPlayer +0x254, three words each, by the thread's number
+  at +0x29c, `FUN_6f9cc500`) and called through none (caught under winedbg,
+  `abtest/dbgload.sh`: a read of 0x24 from `FUN_6f9cc500` under `ai_Sleep`).  The
+  AI's record now lists its threads' objects by number in its six places (read:
+  the main's and its four).  Then a second, as the first night fell: a flyer's
+  burrow detection's in-range object (`` `pil ``, event 0xd01b4, its Rng over 32, a
+  look every half second, its entries marked 2), made again as it woke at dawn, was
+  missing, and its sleep let it go through none (`CAbilityCreepSleep` vf191,
+  `FUN_6f48c8c0`, a read of 0x74).  The port writes it now.  The original loads the
+  port's saves of Forestwalk's test maps at 2.5 and 5 seconds and plays on past the
+  first night (seven minutes, no exception).
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

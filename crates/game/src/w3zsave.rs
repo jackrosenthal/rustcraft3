@@ -394,7 +394,15 @@ impl World {
             own.extend([Field::Real(0.0), w(3), w(u32::MAX), w(0), w(0)]);
             own.push(Field::List((0..12).map(|_| vec![w(0)]).collect()));
             own.push(Field::List((0..12).map(|_| vec![w(0)]).collect()));
-            own.push(Field::List((0..6).map(|_| vec![w(u32::MAX), w(u32::MAX), Field::Real(0.0)]).collect()));
+            // (Its threads' objects by their numbers, six places: `ai_Sleep` takes the
+            // running thread's here, by its number at +0x29c; read, Forestwalk's
+            // computer's main and its four begun at 2.5 seconds.)
+            let mut threads: Vec<(u32, (u32, u32))> = self.ai.get(&player).map(|st| st.thread_objects.values().map(|o| (o.number, self.tagged(o.slot))).collect()).unwrap_or_default();
+            threads.sort();
+            own.push(Field::List((0..6).map(|k| match threads.get(k) {
+                Some(&(_, r)) => vec![w(r.0), w(r.1), Field::Real(0.0)],
+                None => vec![w(u32::MAX), w(u32::MAX), Field::Real(0.0)],
+            }).collect()));
             own.push(w(0));
             for _ in 0..2 {
                 own.extend(none());
@@ -1866,12 +1874,7 @@ impl World {
                     let ai = self.player_ai_object(player).unwrap_or((u32::MAX, u32::MAX));
                     let (a, b) = if o.number == 0 { (0, 0) } else { (o.number + 1, o.number) };
                     let me = self.tagged(slot);
-                    // (Its sleep's timer left out, the thread not woken in a loaded game:
-                    // with it, any one of them, the original crashed within a minute of
-                    // loading the port's save, though the records agree but for the
-                    // timers' counts; provisional, its cause not yet read.)
-                    let _ = (me, o.due, o.count);
-                    let timer = Field::Timer(NONE, 0, Timing(None));
+                    let timer = if o.count == 0 { Field::Timer(NONE, 0, Timing(None)) } else { Field::Timer(rf(me), 0, Timing(Some((o.due, o.sleep, o.count, 0xd_01bf, 0)))) };
                     let (chunks, rest) = timer_chunks(o.sleep);
                     let own = vec![Field::Word(0), Field::Word(ai.0), Field::Word(ai.1), Field::Word(0), Field::Word(a), Field::Word(b), Field::Real(o.sleep)];
                     out.push((slot, Second::Agent { own, handlers: events(), tail: vec![timer, Field::Short(chunks.min(0xffff) as u16), Field::Short(chunks.min(0xffff) as u16), Field::Real(rest), Field::Word(place)] }));

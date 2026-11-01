@@ -552,6 +552,51 @@ impl World {
                 d.life = (d.life - taken as f32).max(0.0);
             }
         }
+        // Its tree felled before it was full, it goes on to the next tree as its last
+        // backswing runs out (`FUN_6f437fb0`, event 0xd0185: the live tree cheapest to
+        // reach from where it stands, `FUN_6f4153a0`, its harvest order, 0xd0032; read:
+        // Forestwalk's undead computer's ghoul, its tree felled at 40.6459 with ten of
+        // its twenty, its order to the next tree at 41.085636, the harvest order's
+        // seventeen, its `^clg` freed then, the old order's eight and the new one's
+        // five after).  Home only when full or with no tree left about.
+        let felled = matches!(self.handles.get(run.mine), Some(Obj::Destructable(d)) if d.life <= 0.0);
+        if run.lumber && felled && carried + taken < cap {
+            if let Some(t) = self.next_tree(h, run.mine, true) {
+                if let Some(u) = self.unit_mut(h) {
+                    u.carry_gold = 0;
+                    u.carry_lumber = carried + taken;
+                    u.harvest_source = t;
+                }
+                let serial = self.tags.born;
+                let order: Vec<u32> = LUMBER_OWN.iter().map(|c| self.tags.take(c)).collect();
+                let n = order.len();
+                self.tags.release(order[n - 3]);
+                let rest: &[usize] = match run.kind {
+                    Kind::Player => &[8, 7, 6, 5, 4, 3, 2, 0],
+                    _ => &[7, 6, 5, 4, 3, 2, 1, 0],
+                };
+                for &i in rest {
+                    self.tags.issued.push(run.order[i]);
+                }
+                for i in [n - 4, n - 5, n - 6, n - 7, n - 8] {
+                    self.tags.issued.push(order[i]);
+                }
+                run.mine = t;
+                run.phase = Phase::ToMine;
+                run.kind = Kind::Own;
+                run.ghosted = true;
+                run.at_mine = false;
+                run.order = order;
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.gold_run = Some(run);
+                    u.extra.walk_from = Some(k);
+                    u.extra.walk_serial = serial;
+                    u.path.clear();
+                    u.order = Order { id: crate::natives::basic::order_id("harvest"), target_x: 0.0, target_y: 0.0, target: 0 };
+                }
+                return;
+            }
+        }
         let serial = self.tags.born;
         let order: Vec<u32> = RETURN.iter().map(|c| self.tags.take(c)).collect();
         self.tags.release(order[13]);
@@ -728,7 +773,7 @@ impl World {
         let mut run = run;
         if run.lumber && !self.is_tree_pub(run.mine) {
             let about = if run.ordered != 0 { run.ordered } else { run.mine };
-            let found = if self.is_tree_pub(about) { Some(about) } else { self.next_tree(h, about) };
+            let found = if self.is_tree_pub(about) { Some(about) } else { self.next_tree(h, about, false) };
             match found {
                 Some(t) => {
                     run.mine = t;
@@ -784,9 +829,13 @@ impl World {
     /// (`FUN_6f059590`), the first of the cheapest taken (read: from one felled tree,
     /// the three about it each 4 and the first of them taken; from the next, the one
     /// of its three in the earlier block).  The search's cost here is the steps of the
-    /// way the local search finds to its footprint.
-    fn next_tree(&self, h: u32, felled: u32) -> Option<u32> {
-        let (fx, fy) = self.widget_pos(felled)?;
+    /// way the local search finds to its footprint.  A tree felled under the worker's
+    /// chopping is searched about the worker itself (`FUN_6f437fb0` giving
+    /// `FUN_6f4153a0` the unit, the felled tree left out; `from_worker`; read:
+    /// Forestwalk's undead computer's ghoul at (368, 503), going to the tree of three a
+    /// step from the felled one nearest it).
+    fn next_tree(&self, h: u32, felled: u32, from_worker: bool) -> Option<u32> {
+        let (fx, fy) = if from_worker { self.unit(h).map(|u| (u.x, u.y))? } else { self.widget_pos(felled)? };
         let area = self.run_harvest(h).map_or(900.0, |(a, l)| self.ability_real(a, "Area", l));
         let p = self.pathing.as_ref()?;
         let u = self.unit(h)?;

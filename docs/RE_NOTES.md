@@ -2637,6 +2637,16 @@ Formats the port made its own, to be replaced by the original's:
   what the begin lets go (its `tsk.`, the structure's AI objects) as the begin's
   step ends (read: the ziggurat's, begun at turn 77's second step, before its path
   in the third).  The keepalives agree to turn 411.
+- A worker whose tree falls under its chopping before it is full goes on to the
+  next tree as its last backswing runs out, not home (`FUN_6f437fb0`, event
+  0xd0185 of CAbilityHarvestLumber: carrying less than its load, it searches with
+  `FUN_6f4153a0` about itself, the felled tree left out, else about the tree its
+  order named (`FUN_6f418080`), and is given a harvest order, 0xd0032; full or
+  with no tree, home, 0xd0031).  Read (`abtest/tf411c.sh`): Forestwalk's undead
+  computer's ghoul, its tree felled at 40.6459 with ten of its twenty, given the
+  harvest order's seventeen at 41.085636, its `^clg` freed then, the old order's
+  eight and the new one's five after.  The keepalives agree to turn 415; the next
+  tree it took (two tie a step apart) is not yet read.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

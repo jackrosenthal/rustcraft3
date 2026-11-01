@@ -604,6 +604,8 @@ impl World {
                 continue;
             }
             let props: Vec<(u32, u32)> = match slots.iter().position(|&x| x == t) {
+                // (A hero's its two flags.)
+                _ if &code == codes::ability::id::HERO => self.hero_parts(h).map(|p| p.1.to_vec()).unwrap_or_default(),
                 Some(i) => slots[i + 1..].iter().copied().take_while(|&(s, b)| self.tagged(s).1 == b && self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::REAL)).collect(),
                 None => Vec::new(),
             };
@@ -948,7 +950,8 @@ impl World {
             codes::ability::id::PRIESTESS_TRUESHOT_AURA | codes::ability::id::PALADIN_DEVOTION_AURA | codes::ability::id::ARCH_MAGE_BRILLIANCE_AURA | codes::ability::id::DEATH_KNIGHT_UNHOLY_AURA | codes::ability::id::CHIEFTAIN_ENDURANCE_AURA | codes::ability::id::DREADLORD_VAMPIRIC_AURA | codes::ability::id::KEEPER_THORNS_AURA | codes::ability::id::AURA_WAR_DRUMS | codes::ability::id::COMMAND_AURA | codes::ability::id::AURA_REGENERATION_WARD => 0x9000_0080,
             codes::ability::id::MANA_REGENERATION_AURA => 0x9000_0090,
             codes::ability::id::VENOM_SPEARS | codes::ability::id::MAGIC_IMMUNITY => 0,
-            codes::ability::id::RALLY | codes::ability::id::MILITIA_CONVERSION | codes::ability::id::MILITIA => 0x90,
+            // (A hero's, read: Forestwalk's computer's Dreadlord's 0x92 with its AI's.)
+            codes::ability::id::RALLY | codes::ability::id::MILITIA_CONVERSION | codes::ability::id::MILITIA | codes::ability::id::HERO => 0x90,
             codes::ability::id::SELL_UNITS | codes::ability::id::SELL_ITEMS => 0x1000_0010,
             // (Regeneration on blight, as it stands on blight 0x80.)
             codes::ability::id::REGENERATE_ON_BLIGHT => 0x10 | if u.extra.blight_rcm.is_some() { 0x80 } else { 0 },
@@ -1013,12 +1016,14 @@ impl World {
             // less 2), the mana its intelligence gives (15 a point), 0, the attack
             // speed its agility gives (0.02 a point); its agility, its strength's,
             // intelligence's, and agility's gains a level; its level, 0x1000a, 0; its
-            // skills, their levels most, and the levels they need (five places); two
-            // references, and its skill points.  Provisional: the meaning of most,
-            // its intelligence's place, the references (none here).  Without the record
-            // the original's loader read past it and hung.
+            // skills, their levels most, and the levels they need (five places); its
+            // strength's and intelligence's regeneration modifiers (`hero_parts`), and
+            // its skill points; its level and intelligence are its flags.
+            // Provisional: the meaning of most.  Without the record the original's
+            // loader read past it and hung.
             codes::ability::id::HERO => {
                 let ob = o;
+                let hero_rcms = self.hero_parts(h).map_or([None, None], |p| p.2);
                 let (s, a, i) = (u.str_.floor(), u.agi.floor(), u.int.floor());
                 let skills: Vec<crate::objects::Id> = ob.list("heroAbilList").iter().map(|x| crate::objects::id_from_str(x.trim())).take(5).collect();
                 let at = |k: usize, f: &dyn Fn(crate::objects::Id) -> u32| vec![w(skills.get(k).map_or(0, |&id| f(id)))];
@@ -1032,7 +1037,8 @@ impl World {
                     Field::List((0..5).map(|k| at(k, &|id| u32::from_be_bytes(id))).collect()),
                     Field::List((0..5).map(|k| at(k, &levels)).collect()),
                     Field::List((0..5).map(|k| at(k, &needs)).collect()),
-                    Field::Ref(NONE), Field::Ref(NONE), w(u.skill_points.max(0) as u32),
+                    // (Its strength's and intelligence's regeneration modifiers.)
+                    Field::Ref(hero_rcms[0].map_or(NONE, rf)), Field::Ref(hero_rcms[1].map_or(NONE, rf)), w(u.skill_points.max(0) as u32),
                 ]
             }
             // Rally: no point set; its rally point (the second table's).

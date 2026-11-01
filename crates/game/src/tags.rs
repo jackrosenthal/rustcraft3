@@ -1054,6 +1054,14 @@ impl crate::world::World {
         for k in [tasks + 1, tasks] {
             self.tags.doom(slots[k]);
         }
+        // A hero's first two regeneration modifiers, replaced as its attributes are set
+        // (read: Forestwalk's Dreadlord's AHer, two `flg, two freed, then the two
+        // `rcm kept; provisional: freed with its tasks).
+        if let Some(k) = codes.iter().position(|c| c == codes::ability::id::HERO) {
+            for d in [3, 4] {
+                self.tags.doom(slots[k + d]);
+            }
+        }
         if let Some(a) = ai {
             for k in 0..extra {
                 let e = a - 3 * (extra - k);

@@ -811,7 +811,9 @@ impl World {
         }
         let live = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::CONTINUOUS_MODIFIER);
         let rcms: Vec<(u32, u32)> = u.extra.object_slots[1].iter().copied().filter(|&(s, _)| live(s)).collect();
-        let (hp_rate, mp_rate) = self.regen_rates(h).unwrap_or((0.0, 0.0));
+        let (hp_base, hero_hp, mp_rate) = self.regen_parts(h).unwrap_or((0.0, 0.0, 0.0));
+        let hp_rate = hp_base + hero_hp;
+        let hero = self.hero_parts(h);
         let regen_life = matches!(o.str("regenType").to_ascii_lowercase().as_str(), "always" | "night" | "day");
         // (A regeneration's node due 150 seconds after it was made, every 150.)
         let periodic = |r: (u32, u32)| {
@@ -823,9 +825,14 @@ impl World {
         let mut k = 0;
         if regen_life {
             if let Some(&r) = rcms.get(k) {
-                out.push(regen(r, 1, hp_rate));
+                out.push(regen(r, 1, if hero.is_some() { hp_base } else { hp_rate }));
                 k += 1;
             }
+        }
+        // A hero's strength's on its life and intelligence's on its mana (its AHer's).
+        if let Some((_, _, [s, i])) = hero {
+            out.extend(s.map(|r| regen(r, 1, hero_hp)));
+            out.extend(i.map(|r| regen(r, 2, mp_rate)));
         }
         if o.real("manaN") > 0.0 {
             if let Some(&r) = rcms.get(k) {
@@ -833,7 +840,7 @@ impl World {
             }
         }
         if let Some(s) = u.extra.blight_rcm.filter(|&s| live(s)) {
-            out.push(regen(self.tagged(s), 1, hp_rate));
+            out.push(regen(self.tagged(s), 1, if hero.is_some() { hp_base } else { hp_rate }));
         }
         // Each Unholy Aura buff's, its regeneration (read: Forestwalk's test map's
         // creeps by a Satyr Hellcaller at 2.5 seconds, 0.5 each, due 150.5).
@@ -857,6 +864,33 @@ impl World {
         }
         out.sort_by_key(|m| m.r.1);
         out
+    }
+
+    /// A hero's hero ability (AHer) and its objects: its two flags (its level less one,
+    /// its intelligence) and its strength's and intelligence's regeneration modifiers,
+    /// those still its (read: Forestwalk's Dreadlord's, after two `rcm freed).
+    pub(crate) fn hero_parts(&self, h: u32) -> Option<((u32, u32), [(u32, u32); 2], [Option<(u32, u32)>; 2])> {
+        let u = self.unit(h)?;
+        let rest = &u.extra.object_slots[2];
+        let is = |&(s, b): &(u32, u32), code: &[u8; 4]| self.tags.live.get(&s).is_some_and(|e| &e.0 == code && e.1 == b);
+        let k = rest.iter().position(|x| is(x, codes::ability::id::HERO))?;
+        let at = |d: usize| rest.get(k + d).copied();
+        let flags = [at(1)?, at(2)?];
+        if !flags.iter().all(|f| is(f, codes::class::FLAG)) {
+            return None;
+        }
+        let rcm = |d: usize| at(d).filter(|x| is(x, codes::class::CONTINUOUS_MODIFIER));
+        Some((rest[k], flags, [rcm(5), rcm(6)]))
+    }
+
+    /// A hero ability's two flags' records: its level less one and its intelligence,
+    /// each stamped as made (read against Forestwalk's Dreadlord's at level 1, 0 and
+    /// 18).  Provisional: an item's intelligence (not counted).
+    pub fn hero_flag_records(&self, h: u32) -> Vec<(u32, First, Option<Second>)> {
+        let Some(u) = self.unit(h) else { return Vec::new() };
+        let Some((aher, flags, _)) = self.hero_parts(h) else { return Vec::new() };
+        let values = [u.level.max(1) as u32 - 1, u.int.floor() as u32];
+        (0..2).map(|k| (flags[k].0, First::Flag { base: self.stamped(listed_property_base(&flags, k, aher)), value: values[k] }, None)).collect()
     }
 
     /// A unit's sight as its last day change began and where it goes (night sight to
@@ -1531,7 +1565,7 @@ impl World {
                 seconds.insert(slot, sec);
             }
         }
-        let unit_reals: Vec<(u32, First, Option<Second>)> = self.unit_order.iter().flat_map(|&h| self.unit_real_records(h).into_iter().chain(self.unit_modifier_records(h)).chain(self.unit_listener_records(h)).chain(self.unit_position_records(h)).chain(self.unit_agent_record(h))).collect();
+        let unit_reals: Vec<(u32, First, Option<Second>)> = self.unit_order.iter().flat_map(|&h| self.unit_real_records(h).into_iter().chain(self.unit_modifier_records(h)).chain(self.hero_flag_records(h)).chain(self.unit_listener_records(h)).chain(self.unit_position_records(h)).chain(self.unit_agent_record(h))).collect();
         for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals).chain(self.captain_records()) {
             records.insert(slot, f);
             if let Some(sec) = sec {

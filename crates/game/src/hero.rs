@@ -377,6 +377,13 @@ impl World {
 
     /// A unit's life and mana regeneration a second.
     pub(crate) fn regen_rates(&self, h: u32) -> Option<(f32, f32)> {
+        let (hp, hero_hp, mp) = self.regen_parts(h)?;
+        Some((hp + hero_hp, mp))
+    }
+
+    /// A unit's life regeneration but for its strength's, its strength's (a hero's),
+    /// and its mana regeneration.
+    pub(crate) fn regen_parts(&self, h: u32) -> Option<(f32, f32, f32)> {
         let u = self.unit(h)?;
         if u.dead || u.constructing.is_some() {
             return None;
@@ -395,19 +402,23 @@ impl World {
         }
         let ub = self.upgrade_bonus(u.owner, u.type_id);
         hp += ub.hp_regen + u.item_bonus.life_regen;
+        // (Each attribute's in double precision: read, a Dreadlord's 18 intelligence's
+        // 0.9 in its save, where a single's product is 0.90000004.)
+        let attribute = |v: f32, key: &str| (f64::from(v.floor()) * self.misc.get_str("Misc", key).and_then(|v| v.trim().parse::<f64>().ok()).unwrap_or(0.05)) as f32;
+        let mut hero_hp = 0.0;
         if u.is_hero {
-            hp += (u.str_ + u.item_bonus.str_).floor() * self.misc_f32("StrRegenBonus", 0.05);
+            hero_hp = attribute(u.str_ + u.item_bonus.str_, "StrRegenBonus");
             // A hero's mana comes from its intelligence alone, without its type's
             // regenMana (measured: a Paladin of 17 intelligence regains 8.50 in 10
             // seconds, its regenMana 0.01 not added; its life 13.50, regenHP 0.25
             // with 22 strength's 1.1).
-            mp = (u.int + u.item_bonus.int).floor() * self.misc_f32("IntRegenBonus", 0.05);
+            mp = attribute(u.int + u.item_bonus.int, "IntRegenBonus");
         }
         // Mana regeneration items and research add a fraction of that rate (measured:
         // a Sobi Mask, half again, gives a Paladin of 17 intelligence 4.3 more in 10
         // seconds; ours added half of its regenMana, 0.05).
         mp *= 1.0 + u.item_bonus.mana_regen + ub.mana_regen;
-        Some((hp, mp))
+        Some((hp, hero_hp, mp))
     }
 
     /// The listeners on mana (`UnitExtra::mana_listeners`) whose thresholds the mana

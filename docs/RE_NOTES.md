@@ -2795,8 +2795,23 @@ Formats the port made its own, to be replaced by the original's:
   counts, the search mark, and the attack captain's home's y, a single's step above
   (5208.082 to 5208.0815: the engine's normalizing, not yet read).  With units the
   attack captain lists its unit references (`uref`) and counts (four at 160 seconds),
-  which the port does not yet write; the 160-second save crashes there, in the
-  captain's look (`CCaptainAI::vf3`, `FUN_6f9d09c0`).
+  which the port does not yet write.
+- A hero's hero ability (AHer, read against Forestwalk's computer's Dreadlord at 160
+  seconds): made with two flags (its properties: its level less one, and its
+  intelligence, 18) and four continuous modifiers, the first two freed as its
+  attributes are set and the last two kept: its strength's life regeneration (20 ×
+  0.05 = 1.0, beside the type's regenHP of 2 on blight) and its intelligence's mana
+  regeneration (0.9: 18 × 0.05 in double precision; a single's product is
+  0.90000004).  Its record's tail names those two modifiers; its first word is 0x92
+  (0x90 with its AI's 2).  The original reads a hero's level through the first flag
+  (`FUN_6f685150`: AHer +0x6c's object, +0x78, plus one), so a save without it
+  crashed in the captain's look (`CCaptainAI::vf3`, `FUN_6f9d09c0`, its area
+  search's filter `FUN_6f9d0bb0`).  With them the original loads the port's
+  160-second save and plays seven minutes.  Not yet written: a learned skill's
+  objects (the original's Sleep, `AUsl` and its mana listener, after the hero's AI),
+  items (the melee start's Town Portal scroll: `item`, `` `pos ``, two `^pmr`, its
+  `AItp` and listener on the hero), structures being built (`ABnP`, `+EIP`), and
+  units' orders and tasks.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

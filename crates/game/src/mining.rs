@@ -408,7 +408,7 @@ impl World {
     /// undead computer's mine, its counts changed at 0.36, 0.78, 10.979, 20.758,
     /// 32.430, and 37.737 and paying at 3.080, 12.383, 21.980, 33.494, and 38.308, each
     /// as the rate changed 0.01 after the count).
-    fn mine_workers_changed(&mut self, mine: u32, t: f64) {
+    pub(crate) fn mine_workers_changed(&mut self, mine: u32, t: f64) {
         let t = t + 0.01;
         let Some((working, _, base)) = self.mine_payout_terms(mine) else { return };
         let period = |n: u32| base as f64 / n.max(1) as f64;
@@ -518,8 +518,20 @@ impl World {
             None => n.saturating_sub(1),
         };
         if let Some(end) = self.tick_abs(i) {
+            log::trace!("payouts to tick {:?}: ticks from {} of {}, end {end:.6}, first {:?}, last {:?}", tick, self.tick_clocks.0, n, self.tick_abs(0), self.tick_abs(n.saturating_sub(1)));
             self.haunted_mine_payouts_until(vm, 0.0, end);
         }
+    }
+
+    /// The payouts due by a tick's last main tick, the one the next tick's clocks
+    /// begin with too, after what the tick released goes (`Tags::free_due`; read:
+    /// Forestwalk's undead computer's mine, due 33.494152, past turn 335's
+    /// next-to-last main tick, 33.489811, and by its last, 33.494808, paying in turn
+    /// 335 after the frees of the acolyte trained in it, its old `` `rtl `` the free
+    /// list's top).
+    pub(crate) fn last_tick_payouts(&mut self, vm: &mut Vm) {
+        let last = self.tick_clocks.1.len().checked_sub(1).map(|i| self.tick_clocks.0 + i as i64);
+        self.mine_payouts_to(vm, last);
     }
 
     fn haunted_mine_payouts_until(&mut self, vm: &mut Vm, dt: f32, end: f64) {

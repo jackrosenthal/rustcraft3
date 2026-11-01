@@ -640,10 +640,13 @@ impl World {
     }
 
     /// Whether one of the player's workers is still on its way to begin a structure
-    /// (FUN_6f9c9280): the AI then orders no other structure (measured: an Undead
-    /// computer's Ziggurat is ordered only after its acolyte has begun the Crypt).
+    /// or summoning it, its build order not yet ended (FUN_6f9c9280: a unit in state 2,
+    /// the unit's +0x194 that its orders' blocks set, `FUN_6f6927a0`): the AI then
+    /// orders no other structure (measured: an Undead computer's Ziggurat is ordered
+    /// only after its acolyte has begun the Crypt; read: the crypt's acolyte in state 2
+    /// from 0.1 to its build's end at 2.98, no build tried between).
     pub(crate) fn ai_builder_en_route(&self, p: u8) -> bool {
-        self.ai_units(p).into_iter().any(|h| self.unit(h).is_some_and(|u| !u.dead && matches!(u.action, Action::Build { .. })))
+        self.ai_units(p).into_iter().any(|h| self.unit(h).is_some_and(|u| !u.dead && (matches!(u.action, Action::Build { .. }) || u.extra.build_end.is_some())))
     }
 
     pub(crate) fn workers(&self, p: u8) -> Vec<u32> {
@@ -700,14 +703,12 @@ impl World {
                 .rev()
                 .filter(|&h| self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|wo| wo.list("Builds").iter().any(|b| b.trim() == id_s)))
                 .filter(|&h| self.unit(h).is_some_and(|u| !matches!(u.action, Action::Build { .. } | Action::Construct { .. })))
-                // Only a worker in some of its AI states builds (`FUN_6f9cb230`, its AI
-                // unit's +0x194: 0, 5, 6, or 3 but for a peasant): not one whose build
-                // order has yet to end, nor one at its mine (read: Forestwalk's undead
-                // computer orders nothing at its build loop's second pass, 2.5 seconds,
-                // its crypt's acolyte summoning and the others mining; its crypt begun
-                // by an acolyte still walking to the mine; provisional: the states'
-                // meanings).
-                .filter(|&h| self.unit(h).is_some_and(|u| u.extra.build_end.is_none() && !(matches!(u.action, Action::Harvest { target } if self.is_gold_mine(target)) && !u.ai_harvest_walk()) && !(matches!(u.action, Action::Harvest { .. }) && crate::objects::id_str(u.type_id) == "hpea")))
+                // Only a worker in some of its states builds (`FUN_6f9cb230`, the unit's
+                // +0x194: 0, 5, 6, or 3 but for a peasant): not one whose build order has
+                // yet to end (2).  An acolyte at its mine is in 6 (read: each acolyte's
+                // harvest sets 0 then 6; Forestwalk's undead computer's altar begun by
+                // the newest acolyte, at the mine, in turn 325).
+                .filter(|&h| self.unit(h).is_some_and(|u| u.extra.build_end.is_none() && !(matches!(u.action, Action::Harvest { .. }) && crate::objects::id_str(u.type_id) == "hpea")))
                 .collect();
             let Some(&b) = builders.first() else { return false };
             let Some((x, y)) = self.ai_build_site(p, id, town, b) else { return false };
@@ -719,9 +720,20 @@ impl World {
                 self.stop_walker_at(b, c);
             }
             self.leave_mine_pub(b);
+            let mine = self.unit(b).and_then(|u| match u.action {
+                Action::Harvest { target } if self.ability_with_code(target, codes::ability::BLIGHTED_GOLD_MINE).is_some() => Some(target),
+                _ => None,
+            });
             let ok = self.order_build(b, id, x, y).is_ok();
             if ok {
                 self.ai_build_objects(b);
+                // An acolyte taken from its haunted mine changes the mine's count then,
+                // at the thread's tick (read: the altar's acolyte at 32.430, the mine
+                // paying at 33.494 in turn 335).
+                let at = self.ai.get(&p).and_then(|s| usize::try_from((s.clock as f64 * 200.0).round() as i64 - self.tick_clocks.0).ok()).and_then(|i| self.tick_abs(i));
+                if let (Some(mine), Some(t)) = (mine, at) {
+                    self.mine_workers_changed(mine, t);
+                }
             }
             return ok;
         }
@@ -939,6 +951,12 @@ impl World {
         let mut frees = vec![order[1]];
         if old.len() == AI_HARVEST.len() {
             frees.extend([10, 9, 8, 7, 6, 5, 4, 3].map(|k| old[k]));
+        }
+        // An acolyte at its mine has only its harvest's six from `ordt` left
+        // (`World::acolyte_in_range`), freed the same way (read: Forestwalk's undead
+        // computer's altar begun by an acolyte at the mine in turn 325).
+        if old.len() == 6 {
+            frees.extend(old.iter().rev().copied());
         }
         frees.extend([13, 12, 11, 10, 9, 8].map(|k| order[k]));
         if old.len() == AI_HARVEST.len() {

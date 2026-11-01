@@ -1497,12 +1497,13 @@ impl World {
         }
         self.wrap_clocks(&mut due);
         let rest: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 >= n.max(1)).collect();
-        // The payouts due after the last step by the tick's last main tick (read:
-        // Forestwalk's undead computer's mine, due at 8.07 after turn 81's last step,
-        // paying in that turn), those in main ticks before a wanderer's ahead of it
-        // (read: the mine's due 26.980217, in the tick before a wanderer's due
-        // 26.987633 after turn 270's last step, its two objects made before the
-        // wanderer's order's eight were freed).
+        // The payouts due after the last step by the tick's next-to-last main tick
+        // (read: Forestwalk's undead computer's mine, due at 8.07 after turn 81's last
+        // step, paying in that turn; those by its last, `World::last_tick_payouts`),
+        // those in main ticks before a wanderer's ahead of it (read: the mine's due
+        // 26.980217, in the tick before a wanderer's due 26.987633 after turn 270's
+        // last step, its two objects made before the wanderer's order's eight were
+        // freed).
         let last = self.tick_clocks.1.len().checked_sub(2).map(|i| self.tick_clocks.0 + i as i64);
         let mut i = 0;
         while i < rest.len() {

@@ -2573,6 +2573,24 @@ Formats the port made its own, to be replaced by the original's:
   26.980217 (main tick 5397) and a wanderer 26.987633 (5398); the original's free
   list's top after the turn was the wanderer's order's last freed (`0x7196`), not
   the payout's.  The keepalives agree to turn 325.
+- A unit's state (+0x194) is set by its orders' blocks (`FUN_6f6927a0(unit, n)`
+  makes the `tskA`; event 0xd0162, `FUN_6f697ed0`, sets it): harvest 5 (or 6 for
+  an acolyte's), return 6, attack and move 7, an undead build 2, building 3.  An
+  AI's builder (`FUN_6f9cb230`) is one in 0, 5, 6, or 3 but for a peasant (`hpea`,
+  `nhew`); no other structure is ordered while one is in 2 (`FUN_6f9c9280`).
+  Read (`abtest/st325.sh`, the acolytes' states and the AI's build tries to 33.6):
+  the acolytes at the mine in 6, the crypt's acolyte in 2 from 0.1 to its build's
+  end at 2.98, build tries only at 0.1 (crypt), 4.43 (ziggurat), and 32.430
+  (altar), the last taking the newest acolyte, at the mine (0 then 2).  The port
+  had kept acolytes at the mine from building, reading the pause to 2.98 as that.
+  Its build frees the acolyte's six harvest objects left from `ordt`, last first,
+  after the new order's first block (turn 325).
+- The acolyte taken from the haunted mine changes its count at the AI's tick
+  (32.430, the rate's change 0.01 on), the mine paying at 33.494152: past turn
+  335's next-to-last main tick (33.489811) and by its last (33.494808), the one the
+  next turn's clocks begin with.  It paid in turn 335, after what the turn
+  released went (the trained acolyte's AI objects, `Tags::free_due`), its old
+  `` `rtl `` the free list's top.  The keepalives agree to turn 342.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

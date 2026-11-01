@@ -1937,6 +1937,7 @@ impl World {
         // within the same frame), after what fell due during it, by the main clock.
         let now = self.tick_abs(self.tick_clocks.1.len().saturating_sub(1)).unwrap_or(self.time_exact);
         self.tags.free_due(now);
+        self.last_tick_payouts(vm);
     }
 
     fn tick_inner(&mut self, vm: &mut Vm, dt: f32) {

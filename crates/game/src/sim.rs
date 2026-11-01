@@ -3270,13 +3270,26 @@ impl World {
             self.tags.release(rtl);
             self.tags.release(rcm);
         }
+        // An AI's unit's tasks and ptcf go last in the turn's frees, after the orders
+        // its AI gives it (read: Forestwalk's undead computer's acolyte made in turn
+        // 152, its `rtl and `rcm freed at once, the two tasks and the ptcf after its
+        // orders' objects at the turn's end).
+        let late = self.ai.contains_key(&owner);
         if new != 0 {
             let tasks: Vec<u32> = (0..2).filter_map(|_| self.tags.doomed.pop()).collect();
             for t in tasks.into_iter().rev() {
-                self.tags.release(t);
+                if late {
+                    self.tags.later_now.push(t);
+                } else {
+                    self.tags.release(t);
+                }
             }
         }
-        self.tags.release(ptcf);
+        if late {
+            self.tags.later_now.push(ptcf);
+        } else {
+            self.tags.release(ptcf);
+        }
         self.requests.push(Request::Ack { unit: new, kind: "Ready" });
         self.requests.push(Request::UnitReady { unit: new });
         // The rally point (FUN_6f429790): a unit or widget there is followed or worked

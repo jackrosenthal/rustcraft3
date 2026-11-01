@@ -2440,6 +2440,11 @@ Formats the port made its own, to be replaced by the original's:
   152, the born count then the original's; the port, waiting, made it in 153).  And
   150 turns of 0.1 summed in single precision fall short of 15, so the time is met
   within a thousandth.
+- A trained unit of an AI's: as it is made the training's `` `rtl `` and `` `rcm `` are
+  freed at once, and its making's two tasks (the second first) and the `ptcf` last in
+  the turn's frees, after the objects of the orders its AI gives it (read: the
+  acolyte made in turn 152, those three freed after its orders' twelve).  The
+  keepalives agree to turn 162.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

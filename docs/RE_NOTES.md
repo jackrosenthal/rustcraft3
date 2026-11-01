@@ -2361,8 +2361,26 @@ Formats the port made its own, to be replaced by the original's:
   the three, not of the fourth or of (351, 502..504)).  Yet at 1.0 the save's pathing
   map (its proximity map, read with a probe of `PathingMaps`) holds no object at or
   near (353, 503), and its flags there are its neighbours' (0x61); the units' regions
-  (`^pmr` bounds [ymin, xmin, ymax, xmax]) are where they stand.  Open: what refuses
-  (353, 503) at the search (1.02), and the order's stop between steps.
+  (`^pmr` bounds [ymin, xmin, ymax, xmax]) are where they stand.  At the search
+  (`FUN_6f1489a0`, its object refusal at 0x6f148aaa, `abtest/refuse2.sh`) the refused
+  cell is (352, 503), its object the defense captain's second region (the captain,
+  `AI-C`, a pathing object with a position cluster and two regions: its +0x34
+  0x01000002, +0x40 0, bounds [503, 352, 504, 353]); the search's own region
+  (+0xa8) is none.  The captains stand still from their making (CreateCaptains at
+  0.0, before the first Sleep): the attack captain at its home exactly, (355.54123,
+  482.75253) in cells; the defense captain at (352.5, 503.5), its home (352.0, 504.0)
+  placed as a ground unit of collision 16 among the start's units (ring by ring, the
+  first clear cell's middle: the port's `ground_place` gives (352, 503)).  A region's
+  cells in the original are floor(x - r) to floor(x + r) of its exact place (the
+  ghoul's at (352.5156, 500.875), r 0.97: 351 to 353, 499 to 501); the port's
+  `regions_taken` takes them from the cell's middle less half a cell, a cell lower
+  where the fraction is past a half.  With the captains' regions added (either way)
+  the port's searches part from the original's: at 0.12 the acolyte from (352.9375,
+  505.1328) walks to (353.5, 505.5) and then north up x = 353 in the original (eight
+  nodes, the search's +0xd0 1), where the port's search, the captain's cells in the
+  start's class-1 ring, stays.  So the ring check of a class-1 move (`FUN_6f148d00`'s
+  masks) or the regions' cells in the port's searches are not yet the original's.
+  Open: that, and the order's stop between steps.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

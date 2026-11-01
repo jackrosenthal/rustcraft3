@@ -2660,6 +2660,13 @@ Formats the port made its own, to be replaced by the original's:
   or `FUN_6f3ff600`'s refusal of a target flagged 0x40) leaves those out; the drop
   keeps the way's steps meanwhile (provisional).  The keepalives agree to turn
   421.
+- A haunted mine's ring slot is held only by the acolyte standing on it: one gone
+  off (to build) holds none, and another may take it meanwhile.  Read: the altar's
+  acolyte sent back to the mine at 41.095631 by the AI's harvest order, the newest
+  acolyte standing on the slot it had left, the mine paying 1.25 seconds after its
+  last at 42.057987 (its count unchanged); the port had moved the newest off for
+  the returning one's kept slot, its count three then.  The keepalives agree to
+  turn 445.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

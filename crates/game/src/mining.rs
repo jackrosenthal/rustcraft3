@@ -233,6 +233,26 @@ impl World {
             .collect()
     }
 
+    /// The ring slots of a mine held by acolytes other than `h`: each standing on its
+    /// slot (16 up and right of it, as `mine_payout_terms` counts them).  One gone off
+    /// holds none, its slot free to another meanwhile (read: Forestwalk's undead
+    /// computer's altar's acolyte, sent back to the mine at 41.095631, the newest
+    /// acolyte standing on the slot it had left keeping it, the mine's count and
+    /// payout unchanged).
+    fn slots_held(&self, mine: u32, h: u32, slots: &[Option<(f32, f32, f32)>]) -> Vec<usize> {
+        self.unit_order
+            .iter()
+            .filter(|&&o| o != h)
+            .filter_map(|&o| {
+                let u = self.unit(o).filter(|u| !u.dead && matches!(u.action, Action::Harvest { target } if target == mine))?;
+                let k = u.extra.mine_slot?;
+                let (sx, sy, _) = slots.get(k).copied().flatten()?;
+                let (sx, sy) = Self::slot_stand(sx, sy);
+                ((u.x - sx).hypot(u.y - sy) <= 8.0).then_some(k)
+            })
+            .collect()
+    }
+
     /// Whether a unit can mine a haunted mine or entangled mine of its owner.
     pub fn can_mine_covered(&self, h: u32, mine: u32) -> bool {
         let (Some(u), Some(m)) = (self.unit(h), self.unit(mine)) else { return false };
@@ -282,12 +302,7 @@ impl World {
             return;
         }
         let slots = self.mine_slots(mine);
-        let taken: Vec<usize> = self
-            .unit_order
-            .iter()
-            .filter(|&&o| o != h)
-            .filter_map(|&o| self.unit(o).filter(|u| !u.dead && matches!(u.action, Action::Harvest { target } if target == mine)).and_then(|u| u.extra.mine_slot))
-            .collect();
+        let taken = self.slots_held(mine, h, &slots);
         // A slot kept from before (the acolyte went off to build) holds only while no
         // other acolyte has taken it meanwhile.
         let slot = match self.unit(h).and_then(|u| u.extra.mine_slot).filter(|k| !taken.contains(k)) {
@@ -463,7 +478,7 @@ impl World {
     /// An acolyte arrived at its haunted mine taking the nearest free ring slot.
     fn acolyte_to_slot(&mut self, h: u32, mine: u32) {
         let slots = self.mine_slots(mine);
-        let taken: Vec<usize> = self.unit_order.iter().filter(|&&o| o != h).filter_map(|&o| self.unit(o).filter(|u| !u.dead && matches!(u.action, Action::Harvest { target } if target == mine)).and_then(|u| u.extra.mine_slot)).collect();
+        let taken = self.slots_held(mine, h, &slots);
         let Some((ux, uy)) = self.unit(h).map(|u| (u.x, u.y)) else { return };
         let Some((_, k)) = (0..slots.len()).filter(|k| !taken.contains(k)).filter_map(|k| slots[k].map(|(x, y, _)| ((x - ux).hypot(y - uy), k))).min_by(|a, b| a.0.total_cmp(&b.0)) else { return };
         let Some((sx, sy, face)) = slots[k] else { return };

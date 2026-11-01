@@ -2336,7 +2336,32 @@ Formats the port made its own, to be replaced by the original's:
   in the port: the original's ghoul, by single-player saves (1.0 to 3.1 seconds),
   walks home from 1.0 at 113 degrees and turns for the tree by 1.2 (heading 0.10989),
   where the port's way home differs (the open item above); at 2.5 the two are 0.1
-  cells apart.  In
+  cells apart.  Read step by step (single-player saves at 1.03 to 1.18,
+  `abtest/fw103.w3x` to `fw118.w3x`; the ghoul at cells (352.5156, 500.875) facing
+  1.7124 at 1.0): at the step of 1.02 it heads 1.5958 for (1040, 5808), the middle of
+  the cell north of it (352, 501), reaching it at 1.05; then it heads 1.9731 for
+  about (1008, 5872), the middle of (351, 503); the AI's wood order stops it at the
+  main clock 1.10, two thirds of a step past 1.08 (its place moved on by its velocity
+  for the time since the step, as a change of velocity does), at (352.3441,
+  501.5162); it turns 0.5 a step from 1.11 and walks from 1.17.  So the original's
+  way home at 1.0 was searched with a refused cell (walking node by node,
+  `FUN_6f166e90`), x = 352 at rows 502 and 503 closed to it; the port's search then
+  meets no refused cell (the acolytes gone from there) and walks straight to the
+  home, at 1.7343.  Open: what holds those cells for the ghoul (its size class, 31,
+  or a region left behind), and the order's stop between steps.
+- The agent timers' counts (each start's, saved in its timer's record) with the
+  computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
+  on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At
+  the load: a `FUN_6f240667` start before the units are made and another after the
+  wanderers' waits; each Shadowmeld unit's (`FUN_6f51cf50`, 9) as it is made; at the
+  first dawn each Shadowmeld unit's fade timer (`FUN_6f509170`'s event 0xd01be, 9,
+  then 2 more by `FUN_6f50a9e0`), whether or not its fade makes objects; two
+  wanderers' waits drawn again as MeleeClearExcessUnits removes them (`FUN_6f5aa910`,
+  between their animations' timers); after setup `FUN_6f9d3283` (2), `FUN_6f526940`
+  (8, by `FUN_6f4ffff1`), and 2 more fade timers; the auto-target spells' checks 28
+  at 0.015 (the port's 36 at 0.0); a blight look restarted every second for two units
+  (`FUN_6f43a050`, from 1.36 and 1.78); the haunted mine's count change
+  (`FUN_6f4e95e0`, event 0xd01c5, at each acolyte's arrival).  Not yet followed.  In
   the Forestwalk game with an undead computer the original's first keepalive has 37
   births more than the port's, all else (the generator, every module) agreeing.  A unit joining its owner's AI sets its flag 4 at +0x5c, which the
   structures' alarm watch asks for; a computer's AI object is made as the map loads,

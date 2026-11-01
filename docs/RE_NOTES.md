@@ -2354,9 +2354,15 @@ Formats the port made its own, to be replaced by the original's:
   500.875), toward the goal (352.0, 504.0), the captain's home on a cell's corner.  So
   its search (class 1, the ghoul's 31) ends at node (351, 504), not the goal's
   (352, 504) as the port's does, and the walk aims at the furthest node in a clear
-  line after the first (351.5, 503.5: heading 1.9731).  Open: what closes (352, 504)
-  for class 1 there (no unit stands there in the port), and the order's stop between
-  steps.
+  line after the first (351.5, 503.5: heading 1.9731).  The search (`FUN_6f14ad50`)
+  takes its start's and goal's cells by floor, as the port's, so its way ending at
+  (351, 504) is a nearest way: the goal's node refused for class 1, as are (352, 502)
+  and (352, 503) but not (352, 501), which points at cell (353, 503) (in the rings of
+  the three, not of the fourth or of (351, 502..504)).  Yet at 1.0 the save's pathing
+  map (its proximity map, read with a probe of `PathingMaps`) holds no object at or
+  near (353, 503), and its flags there are its neighbours' (0x61); the units' regions
+  (`^pmr` bounds [ymin, xmin, ymax, xmax]) are where they stand.  Open: what refuses
+  (353, 503) at the search (1.02), and the order's stop between steps.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

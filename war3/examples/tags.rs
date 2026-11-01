@@ -141,6 +141,17 @@ fn main() -> anyhow::Result<()> {
                 println!("unit {:x} {} owner {} at {} {} (cells {} {}) collision {} footprint x {x0:?}-{x1:?} y {y0:?}-{y1:?}", u.extra.oid.0, w3_game::objects::id_str(u.type_id), u.owner, u.x, u.y, (u.x - o[0]) / 32.0, (u.y - o[1]) / 32.0, u.collision);
             }
         }
+        // TAGS_CELLS="x0,y0,x1,y1": at the first turn, the pathing cells there open to
+        // walkers ('.') or not ('#'), top row first.
+        if let (0, Ok(v)) = (k, std::env::var("TAGS_CELLS")) {
+            let b: Vec<i32> = v.split(',').filter_map(|s| s.parse().ok()).collect();
+            if let (Some(p), [x0, y0, x1, y1]) = (g.world.pathing.as_ref(), b.as_slice()) {
+                for y in (*y0..=*y1).rev() {
+                    let row: String = (*x0..=*x1).map(|x| if p.passable((x, y), w3_game::pathing::Move::Foot) { '.' } else { '#' }).collect();
+                    println!("cells {y}: {row}");
+                }
+            }
+        }
         // TAGS_OIDS: at the given turn, every unit's id and type.
         if std::env::var("TAGS_OIDS").ok().and_then(|v| v.parse::<u32>().ok()) == Some(n) {
             let w = &g.world;

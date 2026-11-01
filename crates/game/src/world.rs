@@ -1805,12 +1805,25 @@ impl World {
         };
         if let Some(now) = self.tick_abs(i) {
             self.blight_checks_to(now);
-            // (The threads' dues are game time, the tick's 5 ms each: `World::ai_tick_of`.)
+            // (The threads' dues are game time, the tick's 5 ms each: `World::ai_tick_of`;
+            // those due at a step's own tick run after its movement,
+            // `World::ai_threads_at_tick`.)
             let t = self.tick_clocks.0 + i as i64;
-            self.ai_threads_to((t as f64 * 0.005) as f32, Some(t));
+            let before = if tick.is_some() { t - 1 } else { t };
+            self.ai_threads_to((before as f64 * 0.005) as f32, Some(t));
             self.alarms_to(now);
             self.build_ends_to(now);
             self.captain_checks_to(now);
+        }
+    }
+
+    /// The AI threads due at a movement step's own main tick, run after its movement
+    /// (read: Forestwalk's undead computer's peon_assignment, due at the main tick
+    /// 17.098131 with turn 172's first step, drawing after the step's walk end had
+    /// drawn a wanderer's wait; the wanderer's due then 23.467, as the original's).
+    pub(crate) fn ai_threads_at_tick(&mut self, tick: Option<i64>) {
+        if let Some(t) = tick {
+            self.ai_threads_to((t as f64 * 0.005) as f32, Some(t));
         }
     }
 

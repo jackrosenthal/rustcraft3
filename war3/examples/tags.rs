@@ -164,6 +164,13 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        // TAGS_WANDERS=turn: at that turn, every wanderer's next wander due and its action.
+        if std::env::var("TAGS_WANDERS").ok().and_then(|v| v.parse::<u32>().ok()) == Some(n) {
+            let w = &g.world;
+            for u in w.unit_order.iter().filter_map(|&h| w.unit(h)).filter(|u| u.extra.wander_at.is_some()) {
+                println!("wanderer {:#x} {} at ({:.1}, {:.1}) due {:?} {:?}", u.handle, w3_game::objects::id_str(u.type_id), u.x, u.y, u.extra.wander_at.map(f32::from_bits), u.action);
+            }
+        }
         // TAGS_OIDS: at the given turn, every unit's id and type.
         if std::env::var("TAGS_OIDS").ok().and_then(|v| v.parse::<u32>().ok()) == Some(n) {
             let w = &g.world;

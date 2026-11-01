@@ -1394,6 +1394,7 @@ impl World {
         }
         self.tags.free_step_paths(carried);
         let tick = self.step_ticks.first().copied();
+        self.ai_threads_at_tick(tick);
         let mut late: Vec<(usize, u32, u32)> = if tick.is_some() { self.agent_dues().into_iter().filter(|e| e.0 == 1 && self.agent_tick(e.1) == tick).collect() } else { Vec::new() };
         late.sort_by(|a, b| f32::from_bits(a.1).total_cmp(&f32::from_bits(b.1)));
         let after = self.issue_after_step(&late, 0);
@@ -1486,6 +1487,7 @@ impl World {
             // tree in the same step), then those of orders due after it in its tick.
             self.tags.free_step_paths(carried);
             let tick = self.step_ticks.get(k).copied();
+            self.ai_threads_at_tick(tick);
             let (late, rest): (Vec<_>, Vec<_>) = due.iter().copied().partition(|e| e.0 == k + 1 && self.agent_tick(e.1) == tick);
             due = rest;
             let after = self.issue_after_step(&late, k);

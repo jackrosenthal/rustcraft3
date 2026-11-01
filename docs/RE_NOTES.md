@@ -2551,6 +2551,14 @@ Formats the port made its own, to be replaced by the original's:
   walking node by node where the original went straight for (349.5, 511.5); the
   slotted acolytes' and the captain's regions do refuse (without them the
   keepalives part at turns 9 and 32).  The keepalives agree to turn 235.
+- AI threads due at a movement step's own main tick run after its movement; those
+  due at earlier ticks before it.  Read, every draw of the original's generators
+  from 17.0 to 19.2 (`abtest/rngk3.sh`): at 17.098131, turn 172's first step, a
+  wanderer's walk end drew its wait (`FUN_6f5af385`) before peon_assignment's
+  GetRandomInt at the same tick; the port had drawn the script's first, giving the
+  wanderer (0x70000072) the script's number, its wait 8.2786 where the original's
+  6.3685 put its next wander at 23.467 (turn 235).  The keepalives agree to turn
+  245.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

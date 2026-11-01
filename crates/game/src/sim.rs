@@ -2883,6 +2883,15 @@ impl World {
             u.extra.training_tags = Some((rcm, rtl));
             u.extra.training_waits = true;
         }
+        // Then the AI's issue of it (`FUN_6f693450`, as `FUN_6f9cb530` ends) makes an
+        // order and a task, going with the tick's orders, the task first (traced: the
+        // same acolyte's; the build order begun after it makes neither, as its altar's
+        // in turn 45 shows; provisional: a train's alone, the one traced).
+        if ai {
+            let issue = self.tags.take(codes::class::ORDER);
+            let task = self.tags.take(codes::class::TASK);
+            self.tags.issued.extend([task, issue]);
+        }
         Ok(())
     }
 
@@ -3405,8 +3414,8 @@ impl World {
         // cluster after the AI's objects in the next; provisional: the rest of the
         // order).
         if let Some(order) = self.unit(h).filter(|u| u.extra.ai_order.len() == crate::ai::AI_BUILD.len()).map(|u| u.extra.ai_order.clone()) {
-            self.tags.doom(order[9]);
-            self.tags.next_turn_end.extend([order[18], order[17]]);
+            self.tags.doom(order[7]);
+            self.tags.next_turn_end.extend([order[16], order[15]]);
         }
         let b = crate::natives::units::create_unit(self, owner, id, x, y, self.misc_f32("BuildingAngle", 270.0));
         if let Some(s) = site {

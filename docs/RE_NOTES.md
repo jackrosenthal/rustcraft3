@@ -2405,6 +2405,13 @@ Formats the port made its own, to be replaced by the original's:
   (turn 32's extra 18 objects); the original orders it in the script's call in turn
   42 (its `+ord` from `FUN_6f9c7330`'s order, under the native).  Without the pass
   the keepalives agree to turn 45.
+- An AI's train order (`FUN_6f9cb530`, from `FUN_6f9cafa0` for a type that is not a
+  structure, `FUN_6f34b6c0`) ends with the AI's issue (`FUN_6f693450`), which makes
+  an order and a task (`+ord` and `task` under `FUN_6f9cafe3`); its build order
+  (`FUN_6f9cb7c0` and `FUN_6f9cb230`) begins with its `ord.` and ends with the
+  issue's `+ord` alone.  The port had taken the train's pair for the head of every
+  build (the crypt's, traced at 0.1, came right after the acolyte's train); the
+  altar's in turn 45 has no such pair.  The keepalives agree to turn 77.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

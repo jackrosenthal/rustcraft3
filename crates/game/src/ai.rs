@@ -68,11 +68,11 @@ pub const AI_HARVEST: [&crate::tags::Code; 18] = [codes::class::ORDER, codes::cl
 /// computer's ghoul at 1.1).
 pub const AI_WOOD: [&crate::tags::Code; 20] = [codes::class::ORDER, codes::class::TASK_A, codes::class::TASK, codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 
-/// An AI's build order on a worker, its objects in order (`FUN_6f9cb885`: an order with
-/// a point, its task, `ord.`, two blocks, three tasks, two `tsk.`, three tasks, a `tskO`,
-/// a task, a block, and its walk's cluster goal, cluster, and path; traced, Forestwalk's
-/// undead computer's crypt begun by an acolyte at its wake).
-pub const AI_BUILD: [&crate::tags::Code; 19] = [codes::class::ORDER, codes::class::TASK, b"ord.", codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, b"tsk.", b"tsk.", codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_O, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
+/// An AI's build order on a worker, its objects in order (`FUN_6f9cb885`: `ord.`, two
+/// blocks, three tasks, two `tsk.`, three tasks, a `tskO`, a task, a block, and its
+/// walk's cluster goal, cluster, and path; traced, Forestwalk's undead computer's crypt
+/// begun by an acolyte at its wake, and its altar in turn 45).
+pub const AI_BUILD: [&crate::tags::Code; 17] = [b"ord.", codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, b"tsk.", b"tsk.", codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_O, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct AiState {
@@ -899,28 +899,28 @@ impl World {
 
     /// The objects of a build order the AI gives a worker (`AI_BUILD`, `FUN_6f9cb885`):
     /// its `^clg` goes at once and a last order is made; with the tick's orders go its
-    /// task, its order, and its first block, then what is left of the worker's harvest
+    /// first block, then what is left of the worker's harvest
     /// it stopped (its target tasks, last first, its tasks, its block, its target task),
     /// then the build's last block and the five before it, then the harvest's path and
     /// cluster (traced: Forestwalk's undead computer's crypt at its wake).
     fn ai_build_objects(&mut self, h: u32) {
         let old = self.unit(h).map(|u| u.extra.ai_order.clone()).unwrap_or_default();
         let order: Vec<u32> = AI_BUILD.iter().map(|c| self.tags.take(c)).collect();
-        self.tags.release(order[16]);
+        self.tags.release(order[14]);
         // (The last order made takes the cluster goal's place in the order kept.)
         let last = self.tags.take(codes::class::ORDER);
-        let mut frees = vec![order[1], order[0], order[3]];
+        let mut frees = vec![order[1]];
         if old.len() == AI_HARVEST.len() {
             frees.extend([10, 9, 8, 7, 6, 5, 4, 3].map(|k| old[k]));
         }
-        frees.extend([15, 14, 13, 12, 11, 10].map(|k| order[k]));
+        frees.extend([13, 12, 11, 10, 9, 8].map(|k| order[k]));
         if old.len() == AI_HARVEST.len() {
             frees.extend([17, 16].map(|k| old[k]));
         }
         self.tags.issued.extend(frees);
         if let Some(u) = self.unit_mut(h) {
             u.extra.ai_order = order;
-            u.extra.ai_order[16] = last;
+            u.extra.ai_order[14] = last;
             u.extra.build_legacy = false;
         }
     }
@@ -940,7 +940,7 @@ impl World {
                 continue;
             }
             let task = self.tags.take(codes::class::TASK);
-            for s in [order[8], order[7], order[6], order[5], order[4], order[2], task, order[16]] {
+            for s in [order[6], order[5], order[4], order[3], order[2], order[0], task, order[14]] {
                 self.tags.doom(s);
             }
         }

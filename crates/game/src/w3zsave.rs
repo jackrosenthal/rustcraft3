@@ -355,7 +355,9 @@ impl World {
             let (gold_tax, lumber_tax) = self.upkeep_tax(i as u8);
             let values: Vec<u32> = (0..26)
                 .map(|k| match k {
-                    1 | 2 => p.get_state(k) * 10,
+                    // (Gold, lumber, and the gold and lumber gathered are kept in tenths:
+                    // GetPlayerState, `6f201ad0`, divides these four by ten.)
+                    1 | 2 | crate::types::player_state::GOLD_GATHERED | crate::types::player_state::LUMBER_GATHERED => p.get_state(k) * 10,
                     crate::types::player_state::GOLD_UPKEEP_RATE => gold_tax,
                     crate::types::player_state::LUMBER_UPKEEP_RATE => lumber_tax,
                     _ => p.get_state(k),
@@ -1038,7 +1040,9 @@ impl World {
         // 852296, 852298, 852306, and target tasks 852357 and 852356 on the tree; read,
         // Forestwalk's peasants sent to a tree by script, at 12 seconds.)
         const CHOP: [(&[u8; 4], u32); 8] = [(codes::class::ORDER_TASKS, 852_018), (codes::class::TASK_A, 852_322), (codes::class::TASK, 852_326), (codes::class::TASK, 852_296), (codes::class::TASK, 852_298), (codes::class::TASK, 852_306), (codes::class::TASK_T, 852_357), (codes::class::TASK_T, 852_356)];
-        if r.lumber && !matches!(r.phase, Phase::Chopping(_)) {
+        // (Walking to its tree, the walk's target task 852337 on it more, 116.0.)
+        const CHOP_WALK: [(&[u8; 4], u32); 9] = [(codes::class::ORDER_TASKS, 852_018), (codes::class::TASK_A, 852_322), (codes::class::TASK, 852_326), (codes::class::TASK, 852_296), (codes::class::TASK, 852_298), (codes::class::TASK, 852_306), (codes::class::TASK_T, 852_357), (codes::class::TASK_T, 852_356), (codes::class::TASK_T, 852_337)];
+        if r.lumber && !matches!(r.phase, Phase::Chopping(_) | Phase::ToMine | Phase::ToHall(_)) {
             return None;
         }
         const OWN: [(&[u8; 4], u32); 11] = [(codes::class::ORDER_TASKS, 852_018), (codes::class::TASK_A, 852_322), (codes::class::TASK, 852_326), (codes::class::TASK, 852_298), (codes::class::TASK, 852_296), (codes::class::TASK, 852_306), (codes::class::TASK_T, 852_369), (codes::class::TASK_T, 852_355), (codes::class::TASK_T, 852_354), (codes::class::TASK, 852_305), (codes::class::TASK_T, 852_337)];
@@ -1047,6 +1051,7 @@ impl World {
         // its first block gone: read, Forestwalk's peasants at 3 seconds.)
         let (list, target): (&[(&[u8; 4], u32)], u32) = match (r.kind, r.phase) {
             (Kind::Own | Kind::Player, Phase::Chopping(_)) => (&CHOP[..], r.mine),
+            (Kind::Own | Kind::Player, Phase::ToMine) if r.lumber => (&CHOP_WALK[..], r.mine),
             (Kind::Own | Kind::Player, Phase::InMine(_) | Phase::Waiting(_)) => (&OWN[..9], r.mine),
             (Kind::Own | Kind::Player, Phase::ToMine) => (&OWN[..], r.mine),
             (Kind::Return, Phase::ToHall(hall)) => (&HOME[..], hall),
@@ -1083,21 +1088,23 @@ impl World {
             if kind == codes::class::TASK_A {
                 own.push(w(0));
             } else if kind == codes::class::TASK_T {
-                own.extend([w(target_ref.0), w(target_ref.1), w(0), Field::Real(0.0)]);
+                // (A walk to a tree's reach 116.0: read, a peasant's and a ghoul's.)
+                let reach = if r.lumber && event == 852_337 { 116.0 } else { 0.0 };
+                own.extend([w(target_ref.0), w(target_ref.1), w(0), Field::Real(reach)]);
                 tail.push(Field::Ref(NONE));
             }
             records.push((t[k].0, agent_first(t[k], kind, &[]), Some(Second::Agent { own, handlers: handlers(), tail })));
         }
         let last = *t.last()?;
         let in_gold_mine = matches!(r.phase, Phase::InMine(_));
-        let waiting = matches!(r.phase, Phase::Waiting(_)) || r.lumber;
+        let waiting = matches!(r.phase, Phase::Waiting(_)) || (r.lumber && matches!(r.phase, Phase::Chopping(_)));
         let home = matches!(r.phase, Phase::ToHall(_));
         // Its walk's cluster and path (the order's, by place).
         let at = |k: usize, c: &[u8; 4]| r.order.get(k).map(|&s| self.tagged(s)).filter(|x| x.1 == t0.1 + k as u32 && self.tags.live.get(&x.0).is_some_and(|e| &e.0 == c));
         let walk = if in_gold_mine || waiting {
             None
         } else {
-            let (c, p) = if home { (14, 15) } else { (17, 18) };
+            let (c, p) = if home { (14, 15) } else if r.lumber { (15, 16) } else { (17, 18) };
 
             at(c, codes::class::CLUSTER).zip(at(p, codes::class::PATH)).map(|(c, p)| (c, p, target))
         };
@@ -1106,7 +1113,11 @@ impl World {
         }
         let walking = !in_gold_mine && !waiting;
         // (Chopping: 3, 4, 19, 36 after its tint and 0x80 on its last word, read.)
-        let state = if r.lumber {
+        // (Walking to its tree: 1, 5, 36, 36, no walking byte, read.)
+        // (Home with its lumber: 2, 5, 36, 36, read.)
+        let state = if r.lumber && walking {
+            OrderState { kind: 5, inside_word: 0, walking: false, after_tint: [if home { 2 } else { 1 }, 5, 36, 36], inside: false }
+        } else if r.lumber {
             OrderState { kind: 5, inside_word: 0, walking: false, after_tint: [3, 4, 19, 36], inside: true }
         } else {
             OrderState { kind: 5, inside_word: in_gold_mine as u32, walking, after_tint: [if home { 2 } else { 1 }, if walking { 5 } else { 4 }, 35, 0], inside: in_gold_mine }
@@ -1182,11 +1193,9 @@ impl World {
     /// walker's), the long way's start (where it stands, not where it set out).
     fn walk_records(&self, h: u32, clu: (u32, u32), path: (u32, u32), target: u32) -> Vec<(u32, First, Option<Second>)> {
         let mut out = Vec::new();
-        let (Some(u), Some(t), Some(p)) = (self.unit(h), self.unit(target), self.pathing.as_ref()) else { return out };
+        let (Some(u), Some(p)) = (self.unit(h), self.pathing.as_ref()) else { return out };
+        let Some((gx, gy, tpcu, region)) = self.run_target(target) else { return out };
         let Some(&pcu) = u.extra.object_slots[0].get(1) else { return out };
-        let Some(&tpcu) = t.extra.object_slots[0].get(1) else { return out };
-        let region = t.extra.footprint_slots.get(1).map_or(NONE, |&s| rf(self.tagged(s)));
-        let (gx, gy) = ((t.x - p.origin[0]) / 32.0, (t.y - p.origin[1]) / 32.0);
         let (cx, cy) = ((u.x - p.origin[0]) / 32.0, (u.y - p.origin[1]) / 32.0);
         let speed = self.walk_speed_cells(h);
         let heading = u.extra.mover.as_ref().map_or(0.0, |m| f32::from_bits(m.heading));
@@ -1200,6 +1209,26 @@ impl World {
         let long = (Array { words: [1024, 1024, 128, 128], entries: vec![[gx / 2.0, gy / 2.0], [cx / 2.0, cy / 2.0]] }, 0, 0, 5000);
         out.push((path.0, First::Path { reals: [gx, gy, gx, gy, gx, gy], words: [word, 0, 0, u32::MAX, u32::MAX, 0], real: collision, word: 0, ways: [short, long], refs: [NONE, NONE, NONE, region] }, None));
         out
+    }
+
+    /// A worker's run's target as walks and paths name it: its place in cells, its
+    /// position, and its region (a structure's second footprint region; a tree's
+    /// fourth region: read, Forestwalk's mine and hall, and its trees).
+    pub(crate) fn run_target(&self, target: u32) -> Option<(f32, f32, (u32, u32), Ref)> {
+        let p = self.pathing.as_ref()?;
+        if let Some(t) = self.unit(target) {
+            let pcu = *t.extra.object_slots[0].get(1)?;
+            let region = t.extra.footprint_slots.get(1).map_or(NONE, |&s| rf(self.tagged(s)));
+            return Some(((t.x - p.origin[0]) / 32.0, (t.y - p.origin[1]) / 32.0, pcu, region));
+        }
+        match self.handles.get(target) {
+            Some(crate::types::Obj::Destructable(d)) => {
+                let pos = self.tagged(*d.object_slots.first()?);
+                let region = d.object_slots.get(4).map_or(NONE, |&s| rf(self.tagged(s)));
+                Some(((d.x - p.origin[0]) / 32.0, (d.y - p.origin[1]) / 32.0, pos, region))
+            }
+            _ => None,
+        }
     }
 
     /// A walker's top speed in cells a second: its type's, by its gold run's factor.
@@ -1676,9 +1705,12 @@ impl World {
         // real 2.0625 (6.0 on its way home); walking, its walk's cluster, its velocity,
         // and its heading (read: Forestwalk's peasants at 12 seconds; provisional, the
         // first real, the turn's last two).
-        // (Chopping, its first real 4.125 and 0x4000: read, Forestwalk's peasants.)
-        if u.extra.gold_run.as_ref().is_some_and(|r| r.lumber && matches!(r.phase, crate::goldrun::Phase::Chopping(_))) {
-            reals[0] = 4.125;
+        // (On a lumber run, its first real 4.125 and 0x4000: read, Forestwalk's peasants
+        // chopping and walking to their trees; walking home, 6.0 as with gold.)
+        let lumber = u.extra.gold_run.as_ref().is_some_and(|r| r.lumber);
+        if lumber {
+            let home = u.extra.gold_run.as_ref().is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::ToHall(_)));
+            reals[0] = if home { 6.0 } else { 4.125 };
             more[2] = 0x4000;
         }
         if let Some(r) = u.extra.gold_run.as_ref().filter(|r| !r.lumber) {
@@ -1704,7 +1736,8 @@ impl World {
                 words = [c.0, c.1, 0];
                 reals[4] = f(m.vx).hypot(f(m.vy));
                 reals[6] = f(m.heading);
-                flags = [1, 0];
+                // (A lumber walker's 0, 0: read.)
+                flags = if lumber { [0, 0] } else { [1, 0] };
             }
         }
         let first_rec = First::Cluster {

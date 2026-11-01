@@ -2949,9 +2949,10 @@ Formats the port made its own, to be replaced by the original's:
   (the player's form a place on, as for gold).  Its harvest: flags 0x40003185 more,
   2 its third word, its load its fifth (each chop's lumber as it lands, where the
   port adds it as the load fills), the tree twice in its tail, and its next chop's
-  damage point on its swing timer (period its damage point, event 0xd01b1; in its
-  backswing the ghoul's had event 0xd01b2 and the backswing's period: not yet
-  written).  Its state words 3, 4, 19, 36 after its tint and 0x80 on its last;
+  swing's part on its swing timer (the damage point, event 0xd01b1; the backswing,
+  0xd01b2, its flags 0x4000 more then; the pause before the next swing, 0xd01be),
+  each part's length its period.  Its state words 3, 4, 19, 36 after its tint and
+  0x80 on its last;
   its position's first real 4.125 and 0x4000; its fine region 0xda; its own path
   the tree's cell last, 0x100000 more, 0x12000012, ways empty, the tree's third
   region (its first footprint region).  The original loads the port's save and
@@ -2960,6 +2961,47 @@ Formats the port made its own, to be replaced by the original's:
   its handle go only), and a save then had the rect's object without its record:
   the original's loader hung in CRectWar3's read.  RemoveRect now frees it as
   RemoveLocation does.
+- Walking to its tree (read: Forestwalk's peasants at 19 seconds, `fwl2`): the
+  order on the tree as when chopping with the walk's target task 852337 on it more
+  (its real 116.0, the reach), then the walk's `^clu` and `l^pa` (the walk at the
+  order's places 15 and 16); its harvest flags 0x40000981 more and the tree twice
+  in its tail; state words 1, 5, 36, 36 after its tint, no walking byte; its
+  position's first real 4.125 and 0x4000, flags 0, 0; its fine region ghosting as
+  a gold walker's.  Home with its lumber (read: `fl15`, 15 seconds): the gold walk
+  home's order, tasks, walk, and own path exactly; its harvest as walking to its
+  tree with its lumber the fifth word; state words 2, 5, 36, 36; its position's
+  first real 6.0 as with gold.  The original loads the port's saves at 12, 15, and
+  19 seconds with no worker idle, and its lumber after 30 seconds' play from the
+  port's 19-second save is its own save's (400).
+- The player's gold and lumber gathered (states 15 and 16) are kept in tenths, as
+  gold and lumber are: GetPlayerState (`6f201ad0`) divides all four by ten.  The
+  port saved the two gathered as they are, a tenth of the original's.
+- Several workers on one tree (Forestwalk's five peasants sent to one tree, `fwlm`):
+  the port took each worker's load from the tree as it stopped, and the loads that
+  emptied it left it standing with no life, its pathing kept: the next worker home
+  searched for a tree from its cell, found no way, and stood idle.  The emptying
+  load now fells it (its pathing lifted, its regions freed).  Provisional: the
+  original takes each chop's lumber from the tree as it lands and fells it at the
+  chop that empties it (`FUN_6f405110`), the others' chopping stopping short (read:
+  four full at 13.84 to 15.34 seconds, the tree felled under the next round about
+  22.5).
+- Not yet as the original, read with `abtest/trarrive.sh` (each tree arrival,
+  `FUN_6f4377d0`; chop start, `FUN_6f436400`; tree given up, `FUN_6f3f6840`; next
+  tree, `FUN_6f437fb0`): the order of the five peasants' arrivals at the one tree
+  and their times (the original's chopping from 2.94, 3.15, 4.26, 4.44 seconds; the
+  port's earlier, 29389 from about 2.45 against 4.44).  The fifth, 29323, arrives
+  at 5.94 out of reach with no retries left (flags without 0x1) and gives the tree
+  up at once; after the half second's wait (task 0xd0167, 500) it searches about
+  itself for the next tree (event 0xd0185, the task under the arrival's 0xd0184
+  and the walk's 0xd0171 that every harvest order pushes) and takes another, own
+  order 852018 on it.  An arrival in reach but not yet free walks to reach the tree
+  with three retries (+0x19c), each after a half second's wait; the port models the
+  reach walk, not the retries nor the giving up.
+- Not yet written nor run: a ghoul's lumber harvest's second timer, every second
+  (event 0xd01c2, `FUN_6f3f4bd0`, kind 2, repeating), started with its harvest
+  order's tasks (`FUN_6f419530`) for a ghoul alone ('ugho', with its unit's flag
+  0x5c & 4); a worker waiting with its walk home blocked (`tskO` 852327, 5000); a
+  lumber walker's sprite (the original's sequences 12, then 8 and 18).
 - Still not written: the Graveyard's effects, a haunted mine's payout modifier and
   listener, and the running game's counts and search marks.
 - The agent timers' counts (each start's, saved in its timer's record) with the

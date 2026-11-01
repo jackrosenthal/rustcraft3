@@ -600,6 +600,12 @@ impl World {
             r.fells_at = None;
             Some(r.mine)
         }) else { return };
+        self.fell_tree(tree);
+    }
+
+    /// A tree's fall: its life gone, its pathing lifted, and the last three of its five
+    /// regions freed.
+    fn fell_tree(&mut self, tree: u32) {
         let oid = match self.handles.get_mut(tree) {
             Some(Obj::Destructable(d)) if d.life > 0.0 => {
                 d.life = 0.0;
@@ -627,10 +633,24 @@ impl World {
         let cap = cap + self.unit(h).map_or(0, |u| self.upgrade_bonus(u.owner, u.type_id).lumber);
         let carried = self.unit(h).map_or(0, |u| u.carry_lumber);
         let taken = (cap - carried).min(run.chops as i32 * per).max(0);
+        // (Several workers on one tree each take their load as they stop; the last
+        // load's emptying it fells it, its pathing lifted, or the next search from its
+        // cell finds no way.  Provisional: the original takes each chop's lumber as it
+        // lands and fells the tree at the chop that empties it, the others' chopping
+        // then stopping short: read, Forestwalk's five peasants sent to one tree, four
+        // full at 13.8 to 15.3 seconds, the tree felled about 22.5 under the next round.)
+        let mut emptied = false;
         if let Some(Obj::Destructable(d)) = self.handles.get_mut(run.mine) {
             if d.life > 0.0 {
                 d.life = (d.life - taken as f32).max(0.0);
+                if d.life <= 0.0 {
+                    d.life = f32::MIN_POSITIVE;
+                    emptied = true;
+                }
             }
+        }
+        if emptied {
+            self.fell_tree(run.mine);
         }
         // Its tree felled before it was full, it goes on to the next tree as its last
         // backswing runs out (`FUN_6f437fb0`, event 0xd0185: the live tree cheapest to

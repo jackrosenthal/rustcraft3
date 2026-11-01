@@ -1114,7 +1114,7 @@ impl World {
             // (On a gold run its run's factor, and walking 0x4 more: read, a peasant's
             // 1.2.)
             codes::ability::id::MOVE => {
-                let run = u.extra.gold_run.as_ref().filter(|r| !r.lumber);
+                let run = u.extra.gold_run.as_ref();
                 let factor = run.map_or(1.0, |r| f32::from_bits(r.factor));
                 if run.is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::ToMine | crate::goldrun::Phase::ToHall(_))) {
                     if let Some(Field::Word(flags)) = own.first_mut() {
@@ -1314,21 +1314,34 @@ impl World {
                 // (Its gold carried the fifth: read, 10 on its way home, none yet in the
                 // mine.)
                 let in_mine = run.is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::InMine(_)));
-                let carried = if gold && !in_mine { u.carry_gold.max(0) as u32 } else { 0 };
+                // (On a lumber run its lumber: read, 10 on its way home.)
+                let lumber_run = u.extra.gold_run.as_ref().is_some_and(|r| r.lumber);
+                let carried = if lumber_run { u.carry_lumber.max(0) as u32 } else if gold && !in_mine { u.carry_gold.max(0) as u32 } else { 0 };
                 own.extend([w(data("DataC") as u32), w(data("DataB") as u32), w(0), w(0), w(carried), w(hall.0), w(hall.1), w(0), Field::Real(o.real("dmgpt1")), Field::Real(o.real("backSw1")), w(data("DataA") as u32)]);
                 // (Chopping, the run's lumber: 2 third, its load fifth (each chop's lumber
                 // as it lands), its tree twice in its tail, its next chop's damage point
                 // on its timer, its flags 0x40003185 more: read, Forestwalk's peasants
                 // chopping.)
                 let chop = u.extra.gold_run.as_ref().filter(|r| r.lumber && matches!(r.phase, crate::goldrun::Phase::Chopping(_)));
+                // (Walking to its tree or home with its lumber: 0x40000981 more, its tree
+                // twice, no timer: read.)
+                let to_tree = u.extra.gold_run.as_ref().filter(|r| r.lumber && matches!(r.phase, crate::goldrun::Phase::ToMine | crate::goldrun::Phase::ToHall(_)));
+                if to_tree.is_some() {
+                    if let Some(Field::Word(flags)) = own.first_mut() {
+                        *flags |= 0x4000_0981;
+                    }
+                }
                 if chop.is_some() {
                     let n = own.len();
                     own[n - 9] = w(2);
                     let chopped = chop.map_or(0, |r| self.chops_done(h, r.chop_start));
                     let per = self.run_harvest(h).map_or(1, |(a, l)| self.ability_real(a, "DataA", l).max(1.0) as i32);
                     own[n - 7] = w((u.carry_lumber + chopped as i32 * per).max(0) as u32);
+                    // (In its backswing, 0x4000 more: read, Forestwalk's peasants at 12, 15,
+                    // and 19 seconds.)
+                    let backswing = chop.and_then(|r| self.next_chop(h, r.chop_start)).is_some_and(|c| c.2 == 0xd_01b2);
                     if let Some(Field::Word(flags)) = own.first_mut() {
-                        *flags |= 0x4000_3185;
+                        *flags |= 0x4000_3185 | if backswing { 0x4000 } else { 0 };
                     }
                 }
                 if gold {
@@ -1346,7 +1359,7 @@ impl World {
                     }
                 }
                 let mine = run.and_then(|r| self.unit(r.mine)).and_then(|m| m.extra.object_slots[0].first().copied()).map_or(NONE, rf);
-                let tree = chop.and_then(|r| match self.handles.get(r.mine) {
+                let tree = chop.or(to_tree).and_then(|r| match self.handles.get(r.mine) {
                     Some(crate::types::Obj::Destructable(d)) => Some(rf(self.tagged(d.oid.0))),
                     _ => None,
                 });
@@ -1956,7 +1969,8 @@ impl World {
         // (A worker on a gold run its run's flags: ghosting 0x08 (0xd6 cleared), its last
         // word 0x20000000; at its mine its ghosting ended, 0xca and 0x10; read,
         // Forestwalk's peasants at 12 seconds.)
-        let run = u.extra.gold_run.as_ref().filter(|r| !r.lumber);
+        // (A lumber walker ghosting too.)
+        let run = u.extra.gold_run.as_ref().filter(|r| !r.lumber || matches!(r.phase, crate::goldrun::Phase::ToMine | crate::goldrun::Phase::ToHall(_)));
         // (Chopping at its tree as a worker at its mine: read, 0xda.)
         let chopping = u.extra.gold_run.as_ref().is_some_and(|r| r.lumber && matches!(r.phase, crate::goldrun::Phase::Chopping(_)));
         let at_mine = run.is_some_and(|r| r.at_mine) || chopping;
@@ -2060,13 +2074,14 @@ impl World {
         // its local way from its end to where it stands and its long way in half cells,
         // and the target's region; in its mine its last goal, 0x100000 more, 0x12000012,
         // its ways empty.
-        if let (Some(r), Some(p)) = (u.extra.gold_run.as_ref().filter(|r| !r.lumber), self.pathing.as_ref()) {
+        if let (Some(r), Some(p)) = (u.extra.gold_run.as_ref().filter(|r| !r.lumber || matches!(r.phase, crate::goldrun::Phase::ToMine | crate::goldrun::Phase::ToHall(_))), self.pathing.as_ref()) {
             let target = match r.phase {
                 crate::goldrun::Phase::ToHall(hall) => hall,
                 _ => r.mine,
             };
-            let region = self.unit(target).and_then(|t| t.extra.footprint_slots.get(1).copied()).map_or(NONE, |s| rf(self.tagged(s)));
-            let goal = self.unit(target).map(|t| ((t.x - p.origin[0]) / 32.0, (t.y - p.origin[1]) / 32.0));
+            let rt = self.run_target(target);
+            let region = rt.map_or(NONE, |t| t.3);
+            let goal = rt.map(|t| (t.0, t.1));
             let cells = |(x, y): (f32, f32)| [(x - p.origin[0]) / 32.0, (y - p.origin[1]) / 32.0];
             let collision = o.real("collision") / 32.0;
             let set = |entries: Vec<[f32; 2]>, limit: u16| (w3_formats::w3z::Array { words: [1024, 1024, 128, 128], entries }, 0, 0, limit);

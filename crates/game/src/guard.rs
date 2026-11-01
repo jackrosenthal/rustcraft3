@@ -502,6 +502,11 @@ impl World {
             // as the fade ends (`FUN_6f508ae0`, `FUN_6f509170`, `FUN_6f694b20`; read:
             // Forestwalk's Satyr Shadowdancers at the first dawn, freed 2.5 seconds on).
             if let Some((a, lvl)) = self.ability_with_code(h, codes::ability::SHADOW_MELD) {
+                // Each meld ending starts its fade's timer, whether or not the fade makes
+                // its objects (`FUN_6f509170`, event 0xd01be; read: Forestwalk's nine
+                // satyrs at the first dawn).
+                self.tags.start_timer("509170");
+                let Some(u) = self.unit(h) else { continue };
                 let idle = matches!(u.action, Action::Idle | Action::Hold) && u.swing.is_none() && u.casting.is_none();
                 let melded = u.buffs.iter().any(|b| b.ability == a) || (u.extra.meld_active_since.is_none() && !u.extra.meld_acting && idle);
                 if melded {

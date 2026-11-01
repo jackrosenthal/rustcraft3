@@ -406,6 +406,12 @@ impl World {
     fn mine_workers_changed(&mut self, mine: u32, t: f64) {
         let Some((working, _, base)) = self.mine_payout_terms(mine) else { return };
         let period = |n: u32| base as f64 / n.max(1) as f64;
+        // A change with acolytes at work and gold left starts the mine's timer for its
+        // event 0xd01c5 (`FUN_6f4e95e0`).
+        let changed = self.unit(mine).map_or(0, |m| m.extra.payout.map_or(0, |p| p.1)) != working;
+        if changed && working > 0 && self.unit(mine).is_some_and(|m| m.resource > 0) {
+            self.tags.start_timer("4e95e0");
+        }
         let Some(m) = self.unit_mut(mine) else { return };
         let (due, was) = m.extra.payout.map_or((0.0, 0), |(d, w)| (d as f64, w));
         m.extra.payout = match (was, working) {

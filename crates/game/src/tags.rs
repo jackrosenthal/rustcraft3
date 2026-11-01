@@ -959,6 +959,11 @@ impl crate::world::World {
                 codes::ability::id::ALARM => {
                     self.tags.start_timer("41ae70");
                 }
+                // Shadowmeld's own (`FUN_6f51cf50`; read: Forestwalk's nine satyrs', each as
+                // it is made).
+                codes::ability::id::SHADOW_MELD => {
+                    self.tags.start_timer("51cf50");
+                }
                 codes::ability::id::CREEP_SLEEP => {
                     let n = self.tags.start_timer("524e00");
                     self.tags.timer_objects.entry(slots[k]).or_default().push((n, "524e00".into(), self.time, 0.0));

@@ -2559,6 +2559,20 @@ Formats the port made its own, to be replaced by the original's:
   wanderer (0x70000072) the script's number, its wait 8.2786 where the original's
   6.3685 put its next wander at 23.467 (turn 235).  The keepalives agree to turn
   245.
+- The orders those threads give free their objects with the step's walk ends,
+  after them.  Read (`abtest/tf176k.sh`, the original's objects from turn 176):
+  turn 172's first step ended a wanderer's walk (its tree's seven, `move_arrived`)
+  at the tick the computer's harvest order was given (`AI_HARVEST`, its wrapper
+  and four tasks to free); the original freed the walk's seven first, the order's
+  taking none of their slots, so the next wanderer's order (step 1) took the
+  order's slots for its first eight and freed `0x70ef` first where the port freed
+  `0x74e7`.  Unseen in the keepalives (only the free list's top is) until the
+  haunted mine's payout at turn 245 freed the slot.  The keepalives agree to 270.
+- A payout of the haunted mine due in a main tick before a wanderer's, both after
+  a turn's last step, comes first.  Read: after turn 270's last step, the mine due
+  26.980217 (main tick 5397) and a wanderer 26.987633 (5398); the original's free
+  list's top after the turn was the wanderer's order's last freed (`0x7196`), not
+  the payout's.  The keepalives agree to turn 325.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

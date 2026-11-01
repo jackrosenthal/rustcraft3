@@ -1821,9 +1821,16 @@ impl World {
     /// (read: Forestwalk's undead computer's peon_assignment, due at the main tick
     /// 17.098131 with turn 172's first step, drawing after the step's walk end had
     /// drawn a wanderer's wait; the wanderer's due then 23.467, as the original's).
+    /// Their orders' objects go with the step's walk ends', after them (read: turn
+    /// 172's first step, a wanderer's walk end's tree freed before the computer's
+    /// harvest order's seven, which took none of its slots).
     pub(crate) fn ai_threads_at_tick(&mut self, tick: Option<i64>) {
         if let Some(t) = tick {
+            let held = std::mem::take(&mut self.tags.issued);
             self.ai_threads_to((t as f64 * 0.005) as f32, Some(t));
+            for s in std::mem::replace(&mut self.tags.issued, held) {
+                self.tags.release_in_step(s);
+            }
         }
     }
 

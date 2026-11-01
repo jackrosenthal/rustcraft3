@@ -546,6 +546,7 @@ impl World {
             // ten-thousandth on (read: the mine's payouts 2.500101 apart with two
             // workers, 1.666765 with three, 1.250099 with four).
             while due <= end {
+                log::debug!("mine {mine:#x} pays at {due:.6} (to {end:.6})");
                 pays += 1;
                 due += period(working) + 1e-4;
             }

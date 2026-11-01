@@ -1497,12 +1497,24 @@ impl World {
         }
         self.wrap_clocks(&mut due);
         let rest: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 >= n.max(1)).collect();
-        self.issue_wanders(&rest, None);
-        self.fire_mana_listeners(None);
         // The payouts due after the last step by the tick's last main tick (read:
         // Forestwalk's undead computer's mine, due at 8.07 after turn 81's last step,
-        // paying in that turn).
+        // paying in that turn), those in main ticks before a wanderer's ahead of it
+        // (read: the mine's due 26.980217, in the tick before a wanderer's due
+        // 26.987633 after turn 270's last step, its two objects made before the
+        // wanderer's order's eight were freed).
         let last = self.tick_clocks.1.len().checked_sub(2).map(|i| self.tick_clocks.0 + i as i64);
+        let mut i = 0;
+        while i < rest.len() {
+            let t = self.agent_tick(rest[i].1);
+            let j = rest[i..].iter().position(|e| self.agent_tick(e.1) != t).map_or(rest.len(), |p| i + p);
+            if let (Some(t), Some(l)) = (t, last) {
+                self.mine_payouts_to(vm, Some((t - 1).min(l)));
+            }
+            self.issue_wanders(&rest[i..j], None);
+            i = j;
+        }
+        self.fire_mana_listeners(None);
         self.mine_payouts_to(vm, last);
         self.step_range = (1, n);
     }

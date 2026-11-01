@@ -164,6 +164,14 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        // TAGS_TECH=turn: at that turn, every player's tech registrations.
+        if std::env::var("TAGS_TECH").ok().and_then(|v| v.parse::<u32>().ok()) == Some(n) {
+            for (p, pl) in g.world.players.iter().enumerate() {
+                for r in &pl.tech_regs {
+                    println!("tech {p} {} {} {} {} {} {} {} {}", w3_game::objects::id_str(r.id), r.max, r.made, r.producing, r.changing, r.present, r.killed, r.flags);
+                }
+            }
+        }
         // TAGS_WANDERS=turn: at that turn, every wanderer's next wander due and its action.
         if std::env::var("TAGS_WANDERS").ok().and_then(|v| v.parse::<u32>().ok()) == Some(n) {
             let w = &g.world;

@@ -718,7 +718,11 @@ impl World {
         true
     }
 
-    /// Engine-side behavior: keeping workers on gold and wood, and moving captains.
+    /// Engine-side behavior: entangling or haunting the mines.  (Workers are put to the
+    /// harvest only within HarvestGold's and HarvestWood's calls: `FUN_6f9c7330` has
+    /// no other caller.  Read: Forestwalk's undead computer's acolyte, idle after
+    /// summoning its ziggurat at 2.95, is ordered to the mine in the script's call in
+    /// turn 42, not a second after its last.)
     fn ai_engine(&mut self, p: u8, dt: f32) {
         let Some(st) = self.ai.get_mut(&p) else { return };
         st.harvest_timer -= dt;
@@ -727,11 +731,10 @@ impl World {
         }
         st.harvest_timer = 1.0;
         self.ai_entangle(p);
-        self.ai_assign_harvest(p);
     }
 
     /// Puts free workers to the harvest requests made since ClearHarvestAI, as each is
-    /// made (FUN_6f9c7330 orders them within HarvestGold's call) and again once a second.
+    /// made (FUN_6f9c7330 orders them within HarvestGold's call).
     pub(crate) fn ai_assign_harvest(&mut self, p: u8) {
         let Some(st) = self.ai.get_mut(&p) else { return };
         let requests = st.harvest.clone();

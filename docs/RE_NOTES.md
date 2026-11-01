@@ -2397,6 +2397,14 @@ Formats the port made its own, to be replaced by the original's:
   aimed at a little differently).  A haunted mine's payout falls due among the
   movement steps (`World::mine_payouts_to`): turn 31's after the day's objects freed
   at its second step.  The keepalives agree to turn 32.
+- An AI's workers are put to the harvest only within HarvestGold's and
+  HarvestWood's calls: the assignment (`FUN_6f9c7330`) is called from those natives
+  (`FUN_6f9bbdb0`, `FUN_6f9bbe20`) and two wrappers no code refers to, and from
+  nothing periodic.  The port's once-a-second pass sent Forestwalk's undead
+  computer's acolyte, idle after summoning its ziggurat at 2.95, to the mine at 3.2
+  (turn 32's extra 18 objects); the original orders it in the script's call in turn
+  42 (its `+ord` from `FUN_6f9c7330`'s order, under the native).  Without the pass
+  the keepalives agree to turn 45.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

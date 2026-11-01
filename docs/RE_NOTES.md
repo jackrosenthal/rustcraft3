@@ -2680,6 +2680,29 @@ Formats the port made its own, to be replaced by the original's:
   backswing out at 41.085, at the next tree by 41.455, swinging from 41.605350 (1.35
   after the last), every 1.35 after, full at 47.836926.  The keepalives agree to turn
   516.
+- Back from its hall, a lumber worker that had gone on from a felled tree to
+  another goes about the tree its harvest order named, not to the one it went on
+  to: that tree if alive, else the one cheapest about it.  Read: Forestwalk's
+  undead computer's ghoul, its first tree felled with ten of its twenty, home full
+  from the second, then steering for (371.5, 507.5) and stopping 4.584 from the
+  middle of the tree at (1728, 6080) at 51.564877, not going back to the second.
+- A walk home ends in reach of the hall's middle by the walker's and the hall's
+  sizes over 32 (`FUN_6f16e910`'s reach, no range), as a walk to a tree does by Rng:
+  in reach and on its bearing it arrives, else it stops, turns a step, and arrives
+  in the next.  Read: the ghoul (31) home to its necropolis (196, 7.094 cells), 7.25
+  from its middle walking on, at 7.022 stopped 0.21 off its bearing at 49.585964,
+  arrived at 49.615948, walking out at 49.765865; 0.516 short of its way's last
+  point, where the port's way's end in 0.49 had it a step later.
+- A lumber run's searches have the mask 0x10000010 from its first walk: other
+  units' regions and the captains' (0x02) refuse it no cell.  Read under winedbg at
+  `FUN_6f1489a0` for cell (352, 503), the defense captain's: the ghoul's move
+  order's search at 1.019999, mask 0x02000002, refused there (+0xd0 set, its walk
+  to the way's first node); its harvest order's at 1.109999, mask 0x10000010, the
+  cell open, +0xd0 clear, so it headed straight for its way's end (369.5, 503.5) at
+  1.229999, velocity (8.386509, 0.925042) as the port's now.  The port's ghoul had
+  walked by the first node, 0.0126 cells off the original's ever after, and missed
+  its third tree's reach by 0.0035 in the squares at turn 516.  The keepalives agree
+  for all 530 turns of the network game with the undead computer.
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

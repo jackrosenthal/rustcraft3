@@ -804,9 +804,13 @@ impl World {
         // A worker whose tree is felled goes to the live tree cheapest to reach from the
         // tree its order named, within Ahar's Area (`FUN_6f416740`, `FUN_6f4153a0`;
         // read: a Booty Bay peon's sixth tree, after five felled, the cheapest from its
-        // first, not from its fifth).
+        // first, not from its fifth).  One that went on to another tree as its own was
+        // felled goes back about the tree its order named too, not to the one it went
+        // on to (read: Forestwalk's undead computer's ghoul, from its felled first tree
+        // to a second, home full, then to a third cheapest about the first, its walk
+        // ending 4.584 from that tree's middle at 51.564877).
         let mut run = run;
-        if run.lumber && !self.is_tree_pub(run.mine) {
+        if run.lumber && (!self.is_tree_pub(run.mine) || (run.ordered != 0 && run.ordered != run.mine)) {
             let about = if run.ordered != 0 { run.ordered } else { run.mine };
             let found = if self.is_tree_pub(about) { Some(about) } else { self.next_tree(h, about, false) };
             match found {
@@ -1012,16 +1016,31 @@ impl World {
     /// facing it (read: a peon 4.134 cells from its tree walking on, at 3.972 stopped on
     /// its bearing, Rng 116, its arrival's event 0xd0184 in the next step).  The walker
     /// as it is then, and whether it arrives.
+    ///
+    /// A walk home ends so too, in reach of the hall's middle by the two units' sizes
+    /// over 32 (`FUN_6f16e910`'s reach, no range): read, Forestwalk's undead computer's
+    /// ghoul (31) walking to its necropolis (196), 7.25 cells from its middle walking
+    /// on, at 7.022 stopped 0.21 off its bearing, turned, and arrived in the next step,
+    /// 0.516 short of its way's last point.
     fn tree_in_range(&self, h: u32, clock: u32) -> Option<(crate::motion::Mover, bool)> {
         let u = self.unit(h)?;
-        let r = u.extra.gold_run.as_ref().filter(|r| r.lumber && r.phase == Phase::ToMine)?;
+        let r = u.extra.gold_run.as_ref().filter(|r| (r.lumber && r.phase == Phase::ToMine) || matches!(r.phase, Phase::ToHall(_)))?;
         let mut m = u.extra.mover?;
         let origin = self.pathing.as_ref()?.origin;
         let cell = |w: f32, o: f32| ef::div(ef::sub(w.to_bits(), o.to_bits()), crate::pathing::CELL.to_bits());
-        let (tx, ty) = self.widget_pos(r.mine)?;
+        let size = |c: f32| ef::div(c.to_bits(), crate::pathing::CELL.to_bits());
+        let (target, range) = match r.phase {
+            Phase::ToHall(hall) => {
+                let c = self.unit(hall)?.collision;
+                (hall, ef::add(size(u.collision), size(c)))
+            }
+            _ => {
+                let (a, l) = self.run_harvest(h)?;
+                (r.mine, ef::add(size(self.ability_real(a, "Rng", l)), size(u.collision)))
+            }
+        };
+        let (tx, ty) = self.widget_pos(target)?;
         let tree = (cell(tx, origin[0]), cell(ty, origin[1]));
-        let (a, l) = self.run_harvest(h)?;
-        let range = ef::add(ef::div(self.ability_real(a, "Rng", l).to_bits(), crate::pathing::CELL.to_bits()), ef::div(u.collision.to_bits(), crate::pathing::CELL.to_bits()));
         if !m.within(tree, range, clock) {
             return None;
         }

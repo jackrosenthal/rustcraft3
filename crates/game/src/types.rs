@@ -264,10 +264,15 @@ impl Unit {
     /// and 0x10 once its harvest has been in a mine (both tasks set it; 0xd0150 clears
     /// 0xc6, so a ghosting worker meets only workers stopped at a mine: its searches'
     /// mask 0x10000010).  Read: peons out of a mine on later trips staying where they
-    /// went in by others walking past, where the first came out clear of all.
+    /// went in by others walking past, where the first came out clear of all.  A
+    /// lumber run's searches have 0x10000010 from its first walk (read: Forestwalk's
+    /// undead computer's ghoul, its first harvest order's search at 1.109999 with that
+    /// mask, its defense captain's region in cell (352, 503) not refusing it, as it
+    /// had the move order's search, mask 0x02000002, at 1.019999).
     pub fn region_mask(&self) -> u32 {
         match self.extra.gold_run.as_ref() {
             Some(r) if r.entered => (if r.ghosted { 0 } else { 0x02 }) | 0x10,
+            Some(r) if r.lumber => 0x10,
             _ => 0x02,
         }
     }

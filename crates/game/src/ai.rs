@@ -38,6 +38,13 @@ pub struct Captain {
     /// still to 1.0 seconds).
     #[serde(default)]
     pub place: Option<(f32, f32)>,
+    /// Its objects' slots as CreateCaptains made them: itself (`AI-C`), its position,
+    /// its two regions, its path, and its four in-range listeners.
+    #[serde(default)]
+    pub objects: Vec<u32>,
+    /// The main clock as it was made (f32 bits), for its timers' dues.
+    #[serde(default)]
+    pub made_at: u32,
 }
 
 /// A captain's size as a pathing object.
@@ -1677,16 +1684,17 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         CreateCaptains => |w, _, _| {
             // Each captain's objects (traced): itself, its position, two regions, its
             // path, four listeners.
-            for _ in 0..2 {
-                w.tags.take_all(&[codes::class::AI_CAPTAIN, codes::class::UNIT_POSITION, codes::class::PATHING_REGION, codes::class::PATHING_REGION, codes::class::PATH, codes::class::IN_RANGE_LISTENER, codes::class::IN_RANGE_LISTENER, codes::class::IN_RANGE_LISTENER, codes::class::IN_RANGE_LISTENER]);
-            }
+            let made_at = w.tags.clock;
+            let objects: Vec<Vec<u32>> = (0..2)
+                .map(|_| [codes::class::AI_CAPTAIN, codes::class::UNIT_POSITION, codes::class::PATHING_REGION, codes::class::PATHING_REGION, codes::class::PATH, codes::class::IN_RANGE_LISTENER, codes::class::IN_RANGE_LISTENER, codes::class::IN_RANGE_LISTENER, codes::class::IN_RANGE_LISTENER].iter().map(|c| w.tags.take(c)).collect())
+                .collect();
             let p = w.ai_player();
             let (attack_home, home) = w.captain_homes(p);
             let attack_place = crate::natives::units::agent_place(w, attack_home.0, attack_home.1, CAPTAIN_COLLISION);
             let defense_place = crate::natives::units::agent_place(w, home.0, home.1, CAPTAIN_COLLISION);
             if let Some(s) = w.ai_state() {
-                s.attack = Captain { home: attack_home, place: Some(attack_place), ..Default::default() };
-                s.defense = Captain { home, place: Some(defense_place), ..Default::default() };
+                s.attack = Captain { home: attack_home, place: Some(attack_place), objects: objects[0].clone(), made_at, ..Default::default() };
+                s.defense = Captain { home, place: Some(defense_place), objects: objects[1].clone(), made_at, ..Default::default() };
             }
             none()
         },

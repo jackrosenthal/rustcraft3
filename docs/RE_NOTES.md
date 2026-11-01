@@ -2779,7 +2779,24 @@ Formats the port made its own, to be replaced by the original's:
   structure, at 160 seconds an idle ghoul, and the original crashed (a read of 0 at
   0x6f9c3a6b); now the newest with Repair or Restore (an acolyte, as the original's).
   Next, there: `ai_InitAssault` takes the attack captain (+0x2ac), which the port's
-  saves leave out, and writes through none.
+  saves left out, and writes through none.
+- A computer's captains in a save (CAICaptain, read against Forestwalk's undead
+  computer's at 2.5 and 160 seconds), each the nine objects CreateCaptains makes:
+  its agent (its position its property, its newest listener its head) with its own
+  record (6; its four listeners' handlers keyed by them, events 0xd01aa, 0xd01ab,
+  0xd01c9, 0xd01ca; the defense captain's fixed 0xd0196 and 0xd0198; a VillagerKid
+  sprite, its color word -1 or 0xff00ff00; 200; its listeners; its look every second,
+  event 0xd01c1; its kind 2 or 1; its home thrice; -1, -1, 200), its position cluster
+  (its place in cells, never moving, 0.8, 0.75, 0.40000004, 0.1), its two regions
+  (an 8-cell block flagged 0x08000000 with 0xc0000001, one cell 0x01000002), an idle
+  path, and its four in-range listeners (400, 1500, 1100, and 1300 units, the first
+  two every half second, the others every second, the units within).  The port
+  writes them so, and the AI's record names them; the 2.5-second save's agree but for
+  counts, the search mark, and the attack captain's home's y, a single's step above
+  (5208.082 to 5208.0815: the engine's normalizing, not yet read).  With units the
+  attack captain lists its unit references (`uref`) and counts (four at 160 seconds),
+  which the port does not yet write; the 160-second save crashes there, in the
+  captain's look (`CCaptainAI::vf3`, `FUN_6f9d09c0`).
 - The agent timers' counts (each start's, saved in its timer's record) with the
   computer, read against the original's starts to 2.5 seconds (`abtest/tmrstart2.sh`
   on `fw25.w3x`, 1258 by then; the port's 1227): by kind all agree but these.  At

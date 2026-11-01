@@ -360,6 +360,102 @@ impl World {
         self.tags.player_ais.get(k).copied()
     }
 
+    /// A computer's captains' objects as saved (CAICaptain and its parts, read against
+    /// Forestwalk's undead computer's at 2.5 and 160 seconds): for each, attack then
+    /// defense, its agent (its position its property, its newest listener its head) and
+    /// own record (6; its four listeners' handlers keyed by them, the defense
+    /// captain's two fixed; its VillagerKid sprite, 200, its listeners, its look every
+    /// second, its kind 2 or 1, its home thrice, and 200); its position cluster (its
+    /// place in cells, never moving, 0.8 and 0.75, 0.4, 0.1); its regions (one 8-cell
+    /// block 0x08000000, one cell 0x01000002); its path, idle; and its four in-range
+    /// listeners (400, 1500, 1100, and 1300 units, the first two every half second,
+    /// events 0xd01aa, 0xd01ab, 0xd01c9, 0xd01ca), the units within.  Provisional: its
+    /// units, its group, its counts, and its timers' counts (none written).
+    pub fn captain_records(&self) -> Vec<(u32, First, Option<Second>)> {
+        let mut out = Vec::new();
+        let Some(p) = self.pathing.as_ref() else { return out };
+        let [coarse, fine] = self.pathing_map_objects();
+        let now = self.time;
+        let w = Field::Word;
+        let mut ais: Vec<(&u8, &crate::ai::AiState)> = self.ai.iter().collect();
+        ais.sort_by_key(|(p, _)| **p);
+        for (&player, st) in ais {
+            for (k, c) in [&st.attack, &st.defense].into_iter().enumerate() {
+                if c.objects.len() != 9 || !c.objects.iter().all(|s| self.tags.live.contains_key(s)) {
+                    continue;
+                }
+                let t: Vec<(u32, u32)> = c.objects.iter().map(|&s| self.tagged(s)).collect();
+                let (aic, pcu, pmrc, pmrf, pa) = (t[0], t[1], t[2], t[3], t[4]);
+                let pils = &t[5..9];
+                let (x, y) = c.place.unwrap_or(c.home);
+                let (cx, cy) = ((x - p.origin[0]) / 32.0, (y - p.origin[1]) / 32.0);
+                // A timer's next due from the captain's making, by its period.
+                let due = |period: f32| {
+                    let mut d = crate::efloat::add(c.made_at, period.to_bits());
+                    while f32::from_bits(d) < now - 0.0205 {
+                        d = crate::efloat::add(d, period.to_bits());
+                    }
+                    f32::from_bits(d)
+                };
+                // Its agent.
+                let mut first = agent_first(aic, codes::class::AI_CAPTAIN, &[pcu]);
+                if let First::Agent { links, .. } = &mut first {
+                    links[3] = Link(rf(pils[3]), 0);
+                }
+                let events = [0xd_01aa, 0xd_01ab, 0xd_01c9, 0xd_01ca];
+                let keyed: Vec<(u32, Vec<(Ref, u32)>)> = pils.iter().zip(events).map(|(p, e)| (p.0, vec![(rf(aic), e)])).collect();
+                let mut fixed: [Vec<(Ref, u32)>; 5] = Default::default();
+                if k == 1 {
+                    fixed[0].push((rf(aic), 0xd_0196));
+                    fixed[1].push((rf(aic), 0xd_0198));
+                }
+                let sprite = Sprite { model: "units\\critters\\VillagerKid\\VillagerKid.mdl".into(), real: f32::from_bits(0x0344_0000), short: 0xfffe, byte: 255, word: if k == 0 { u32::MAX } else { 0xff00_ff00 }, reals: [0.0001, 1.0], words: [u32::MAX, 0xffff_f2fb], last_real: f32::from_bits(0x96), last_byte: 0, flags: [1, 0, 0], entries: vec![(0.0, 4, vec![1, 2, 3])] };
+                let e = || Field::List(vec![vec![w(u32::MAX), w(u32::MAX), Field::Real(0.0)]]);
+                let (hx, hy) = c.home;
+                let mut tail = vec![Field::Sprite(Some(sprite)), w(0), w(0), Field::Short(0), Field::Short(0), Field::Byte(0), Field::Byte(0), Field::Byte(0), Field::Real(200.0)];
+                tail.extend(pils.iter().map(|&p| Field::Ref(rf(p))));
+                tail.push(Field::Timer(rf(aic), 2, Timing(Some((due(1.0), 1.0, 0, 0xd_01c1, 1)))));
+                tail.push(Field::Timer(NONE, 0, Timing(None)));
+                tail.push(Field::List(Vec::new()));
+                tail.extend([w(0), w(0), w(0), w(0), w(if k == 0 { 2 } else { 1 }), w(1), w(0xd_0014), w(4096), e()]);
+                tail.extend([w(k as u32), w(0), w(0), w(0), w(0), w(0)]);
+                tail.extend([Field::Real(hx), Field::Real(hy), Field::Real(hx), Field::Real(hy), Field::Real(-1.0), Field::Real(-1.0), Field::Real(200.0), w(u32::MAX), w(0), Field::Real(hx), Field::Real(hy)]);
+                tail.extend((0..19).map(|_| e()));
+                tail.extend((0..12).map(|_| w(0)));
+                out.push((aic.0, first, Some(Second::Agent { own: vec![w(6)], handlers: Handlers { keyed, fixed, events: vec![Vec::new(); 0x400] }, tail })));
+                // Its position.
+                let mut base = property_base(pcu, aic);
+                base.links[1] = Link(rf(pils[3]), 1);
+                out.push((pcu.0, First::Cluster { base, values: [cx, cy, 0.0, 0.0, f32::MAX, 0.0, 0.0], refs: [rf(pmrc), rf(pmrf)], words: [u32::MAX, u32::MAX, 0], reals: [0.8, 0.75, f32::from_bits(0x3ecc_ccce), 0.1, 0.0, 0.0, 0.0, 0.0], more: [cx as u32, cy as u32, 0], flags: [0, 0], last: rf(pa) }, None));
+                // Its regions.
+                let (bx, by) = ((cx as u32) >> 3, (cy as u32) >> 3);
+                out.push((pmrc.0, First::Region { refs: [rf(coarse), rf(pcu)], word: 0x0800_0000, bounds: [by, bx, by + 1, bx + 1], words: [0, 0xc000_0001, 0] }, None));
+                out.push((pmrf.0, First::Region { refs: [rf(fine), rf(pcu)], word: 0x0100_0002, bounds: [cy as u32, cx as u32, cy as u32 + 1, cx as u32 + 1], words: [0, 1, 0] }, None));
+                // Its path, idle (a computer's mobile unit's word).
+                let way = |limit: u16| (Array { words: [0, 0, 128, 0], entries: Vec::new() }, u32::MAX, 0, limit);
+                out.push((pa.0, First::Path { reals: [-128000.0; 6], words: [(0x30 | (player as u32 & 0xf)) << 16, 0, 0, u32::MAX, u32::MAX, 0], real: 0.0, word: 0x0200_0002, ways: [way(700), way(400)], refs: [NONE, NONE, rf(pmrf), NONE] }, None));
+                // Its listeners.
+                let ranges = [400.0f32, 1500.0, 1100.0, 1300.0];
+                let periods = [0.5f32, 0.5, 1.0, 1.0];
+                for i in 0..4 {
+                    let newer = pils.get(i + 1).map_or(NONE, |&p| rf(p));
+                    let older = if i > 0 { rf(pils[i - 1]) } else { NONE };
+                    let near: Vec<u32> = self.unit_order.iter().copied().filter(|&v| self.unit(v).is_some_and(|w| !w.dead && !w.hidden && (w.x - x).hypot(w.y - y) - self.objects.units.get(w.type_id).map_or(0.0, |o| o.real("collision")) <= ranges[i])).collect();
+                    let near = crate::natives::units::spatial_order(self, near);
+                    let entries: Vec<[u32; 3]> = near.iter().filter_map(|&v| self.unit(v).and_then(|w| w.extra.object_slots[0].get(1).copied())).map(|p| [p.0, p.1, 0]).collect();
+                    let object = ObjectBase {
+                        real: periods[i],
+                        words: [events[i], 0x2019_0400],
+                        links: [(Link(newer, 0), Link(older, 0), rf(pils[i]), rf(aic)), (Link(newer, u32::from(newer != NONE)), Link(older, u32::from(older != NONE)), rf(pils[i]), rf(pcu))],
+                        timings: [Timing(Some((due(periods[i]), periods[i], 0, 0, 1))), Timing(None)],
+                    };
+                    out.push((pils[i].0, First::Interference { object, real: ranges[i] / 32.0, word: 0, array: Array { words: [384, 384, 32, 32], entries } }, None));
+                }
+            }
+        }
+        out
+    }
+
     pub fn player_ai_seconds(&self) -> Vec<(u32, Second)> {
         let mut out = Vec::new();
         let computers: Vec<u8> = (0..12u8).filter(|&i| self.players.get(i as usize).is_some_and(|p| p.controller == 1)).collect();
@@ -409,9 +505,22 @@ impl World {
                 None => vec![w(u32::MAX), w(u32::MAX), Field::Real(0.0)],
             }).collect()));
             own.push(w(0));
-            for _ in 0..2 {
-                own.extend(none());
+            // (Its attack and defense captains, as saved: `captain_records`.)
+            for c in self.ai.get(&player).map(|st| [&st.attack, &st.defense]).into_iter().flatten() {
+                match c.objects.first().filter(|s| c.objects.len() == 9 && self.tags.live.contains_key(s)) {
+                    Some(&s) => {
+                        let r = self.tagged(s);
+                        own.extend([w(r.0), w(r.1)]);
+                    }
+                    None => own.extend(none()),
+                }
                 own.push(Field::Real(0.0));
+            }
+            if !self.ai.contains_key(&player) {
+                for _ in 0..2 {
+                    own.extend(none());
+                    own.push(Field::Real(0.0));
+                }
             }
             own.extend([w(if computer { 0x18_0183 } else { 0x10_0002 }), w(0)]);
             for _ in 0..2 {
@@ -1423,7 +1532,7 @@ impl World {
             }
         }
         let unit_reals: Vec<(u32, First, Option<Second>)> = self.unit_order.iter().flat_map(|&h| self.unit_real_records(h).into_iter().chain(self.unit_modifier_records(h)).chain(self.unit_listener_records(h)).chain(self.unit_position_records(h)).chain(self.unit_agent_record(h))).collect();
-        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals) {
+        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals).chain(self.captain_records()) {
             records.insert(slot, f);
             if let Some(sec) = sec {
                 seconds.insert(slot, sec);

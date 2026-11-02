@@ -493,7 +493,7 @@ impl World {
                         links: [(Link(newer, 0), Link(older, 0), rf(pils[i]), rf(aic)), (Link(newer, u32::from(newer != NONE)), Link(older, u32::from(older != NONE)), rf(pils[i]), rf(pcu))],
                         timings: [Timing(Some((due(periods[i]), periods[i], 0, 0, 1))), Timing(None)],
                     };
-                    out.push((pils[i].0, First::Interference { object, real: ranges[i] / 32.0, word: 0, array: Array { words: [384, 384, 32, 32], entries } }, None));
+                    out.push((pils[i].0, First::Interference { object, real: ranges[i] / 32.0, word: 0, array: in_range_array(entries) }, None));
                 }
             }
         }
@@ -805,7 +805,8 @@ impl World {
         };
         // (Its newest listener on mana: a creep's made again as it woke, else its
         // spells' own.)
-        let mana_heard = u.extra.mana_listeners.iter().map(|&(_, s)| s).chain(u.extra.spell_timers.iter().copied()).filter(|s| self.tags.live.contains_key(s)).max_by_key(|s| self.tagged(*s).1);
+        // (Those still listeners: a slot let go, as the creep slept, may be another's.)
+        let mana_heard = u.extra.mana_listeners.iter().map(|&(_, s)| s).chain(u.extra.spell_timers.iter().copied()).filter(|s| self.tags.live.get(s).is_some_and(|e| &e.0 == codes::class::THRESHOLD_LISTENER)).max_by_key(|s| self.tagged(*s).1);
         // (Mana without a pool is -0, read: every unit without mana's.)
         let mana = if u.max_mana == 0.0 && mana == 0.0 { -0.0 } else { mana };
         // (While its day change's modifier lasts, its sight as the change began, at that
@@ -1906,6 +1907,11 @@ impl World {
                             let tm = slot_of(*timer).map_or(NONE, rf);
                             (codes::class::TIMER_EXPIRED_EVENT, vec![0], vec![Field::Ref(tm), handler_list(vec![(trig, 0x8_0204)])])
                         }
+                        // A dialog button's (read: the melee defeat dialog's): its button.
+                        EventKind::DialogButton(button) => {
+                            let b = self.tags.handle_ids.get(button).map_or(NONE, |&r| rf(r));
+                            (codes::class::DIALOG_BUTTON_EVENT, vec![0], vec![Field::Ref(b), handler_list(vec![(trig, 0x8_025a)])])
+                        }
                         EventKind::GameState { state: 2, op, value } => {
                             let listener = self.tags.event_timers.get(&id).map_or(NONE, |&s| rf(self.tagged(s)));
                             let first = *op != 2 || hours > *value;
@@ -1921,6 +1927,26 @@ impl World {
                     let mut ws = words(&base);
                     ws.extend(words(&own_words));
                     out.push((own.0, agent_first(own, code, &[]), Some(Second::Agent { own: ws, handlers: game_handlers(self.game_object()), tail })));
+                }
+                // A dialog (read: the melee defeat dialogs at 900 seconds): a word, its
+                // buttons, and three words.
+                Some(Obj::Dialog(d)) => {
+                    let Some(&own) = self.tags.handle_ids.get(&id) else { continue };
+                    let buttons: Vec<Vec<Field>> = d.buttons.iter().filter_map(|b| self.tags.handle_ids.get(b)).map(|&r| vec![Field::Ref(rf(r))]).collect();
+                    out.push((own.0, agent_first(own, codes::class::DIALOG, &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail: vec![Field::List(buttons), Field::Word(0), Field::Word(0), Field::Word(0)] })));
+                }
+                // A dialog button: its text, its hotkey, the registrations of its clicks
+                // (event 0x8025b), and whether it quits and to the score screen.
+                Some(Obj::DialogButton(b)) => {
+                    let Some(&own) = self.tags.handle_ids.get(&id) else { continue };
+                    let text = b.text.clone();
+                    let regs: Vec<((u32, u32), u32)> = self.handles.ids().into_iter().filter_map(|e| match self.handles.get(e) {
+                        Some(Obj::Event(r)) if matches!(r.kind, EventKind::DialogButton(x) if x == id) => self.tags.handle_ids.get(&e).map(|&s| (s, 0x8_025b)),
+                        _ => None,
+                    }).collect();
+                    let (quit, score) = b.quit.map_or((0, 0), |s| (1, u32::from(s)));
+                    let tail = vec![Field::Text(text), Field::Word(b.hotkey as u32), handler_list(regs), Field::Word(quit), Field::Word(score)];
+                    out.push((own.0, agent_first(own, codes::class::DIALOG_BUTTON, &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail })));
                 }
                 Some(Obj::BoolExpr(BoolExpr::Func(f))) => {
                     let Some(own) = slot_of(id) else { continue };
@@ -2786,7 +2812,11 @@ impl World {
     /// alone.
     pub fn plain_agent_records(&self) -> Vec<(u32, First)> {
         const PLAIN: [&[u8; 4]; 14] = [codes::class::UNIT_AI, codes::class::CREEP_CAMP, codes::class::TOWN_SITE, codes::class::PLAYER_AI, codes::class::GROUP, codes::class::SOUND, codes::class::TIMER_DIALOG, codes::class::MINE_SLOT, codes::class::MINE_SHAFT, codes::class::RECT, codes::class::TRIGGER_QUEUE, codes::class::GAME_CACHE_MANAGER, codes::class::DETECTION, codes::class::AI_THREAD];
-        self.tags.live.iter().filter(|(_, (c, _))| PLAIN.contains(&c)).map(|(&slot, (c, birth))| (slot, agent_first((slot, *birth), c, &[]))).collect()
+        // (A unit's AI without its unit, the unit gone and its AI kept by the port, is
+        // left out, its slot freed: the original holds none such, and its reader
+        // would meet an empty record.)
+        let held: std::collections::HashSet<u32> = self.unit_order.iter().filter_map(|&h| self.unit(h)).flat_map(|u| u.extra.ai_slots.iter().map(|&(s, _)| s)).collect();
+        self.tags.live.iter().filter(|(_, (c, _))| PLAIN.contains(&c)).filter(|(s, (c, _))| c != codes::class::UNIT_AI || held.contains(s)).map(|(&slot, (c, birth))| (slot, agent_first((slot, *birth), c, &[]))).collect()
     }
 
     /// The first object table as saved (`FUN_6f15c810`): each live object by slot, its
@@ -3618,6 +3648,18 @@ impl World {
         }
         [(self.main_clock_now(), wraps, 300.0, 4096, 0), (f32::from_bits(agent), wraps, 300.0, 0, 0)]
     }
+}
+
+/// An in-range listener's units as saved: its array's room in bytes twice, its
+/// growth, and its room, 32 places doubled as needed (read: [768, 768, 32, 64] in the
+/// original's with more than 32 units met).  The original reads the units into that
+/// room: more than it, as the port once wrote, overran its heap and hung its loader.
+pub(crate) fn in_range_array(entries: Vec<[u32; 3]>) -> Array<[u32; 3]> {
+    let mut room = 32u32;
+    while (room as usize) < entries.len() {
+        room *= 2;
+    }
+    Array { words: [room * 12, room * 12, 32, room], entries }
 }
 
 /// A due on the game's time set back `n` times by 300 seconds, as the engine's

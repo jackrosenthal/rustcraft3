@@ -913,6 +913,7 @@ fn ability_targets(code: &[u8; 4]) -> u32 {
         codes::ability::id::ITEM_TOWN_PORTAL => 0x0030_0028,
         codes::ability::id::INVULNERABLE | codes::ability::id::WANDER | codes::ability::id::GOLD_MINE | codes::ability::id::MILITIA_CONVERSION | codes::ability::id::MILITIA | codes::ability::id::MAGIC_IMMUNITY | codes::ability::id::NEUTRAL_DETECTION_REVEAL_ABILITY | codes::ability::id::NEUTRAL_BUILDING | codes::ability::id::RETURN => 0xfdd1_f00e,
         codes::ability::id::PRIESTESS_TRUESHOT_AURA | codes::ability::id::PALADIN_DEVOTION_AURA | codes::ability::id::DEATH_KNIGHT_UNHOLY_AURA => 0x0030_7006,
+        codes::ability::id::DREADLORD_VAMPIRIC_AURA => 0x0430_7006,
         codes::ability::id::CURSE | codes::ability::id::DREADLORD_SLEEP => 0x0401_8006,
         codes::ability::id::BLOODLUST => 0x0400_f006,
         codes::ability::id::FAERIE_FIRE | codes::ability::id::DEMON_HUNTER_MANA_BURN | codes::ability::id::BLADE_MASTER_CRITICAL_STRIKE => 0x0001_8006,
@@ -923,6 +924,8 @@ fn ability_targets(code: &[u8; 4]) -> u32 {
         codes::ability::id::SHADOW_MELD | codes::ability::id::BURROW_DETECTION_FLYERS | codes::ability::id::SPAWN_SPIDER | codes::ability::id::BURROW => 0xfdd1_f00e,
         codes::ability::id::WEB => 0x0001_8004,
         codes::ability::id::DEATH_KNIGHT_DEATH_COIL => 0x4431_e006,
+        codes::ability::id::CRIPPLE => 0x0401_8006,
+        codes::ability::id::UNHOLY_FRENZY => 0x0400_0006,
         codes::ability::id::EXHUME | codes::ability::id::MEAT_DROP => 0xfdd1_f00e,
         codes::ability::id::MEAT_LOAD => 0x0280_0002,
         codes::ability::id::CARGO_HOLD_AMTC => 0x0200_0000,
@@ -991,15 +994,23 @@ impl World {
         if code == codes::buff::id::DEVOTION_AURA {
             own.push(r(b.armor));
         }
+        // (Endurance's two reals more, provisional its DataA and DataB.)
+        if code == codes::buff::id::ENDURANCE_AURA {
+            own.extend([r(data_a), r(aura.level_real("DataB", b.level.max(1)))]);
+        }
         let timer = match self.tags.timer_objects.get(&t.0).and_then(|v| v.iter().rev().find(|x| x.1 == "532b50")) {
             Some(&(n, _, at, span)) => Field::Timer(rf(t), 0, Timing(Some((f32::from_bits(crate::efloat::add(at.to_bits(), span.to_bits())), span, n, 0xd_01c4, 0)))),
             None => none(),
         };
         let mut tail = vec![art.get(&t.0).cloned().unwrap_or(Field::List(Vec::new())), w(0), timer, Field::Short(0), Field::Short(0), r(crate::ability::AURA_BUFF_TIME)];
-        // (A bonus a weapon, Trueshot's and every buff's keeping the base's save, all
-        // but Devotion's and Unholy Aura's: read, Hills of Glory's Command Aura's 3 and
-        // 1; provisional, the others' values.)
-        if code != codes::buff::id::DEVOTION_AURA && code != codes::buff::id::UNHOLY_AURA {
+        // (A bonus a weapon, Trueshot's, Command's, and War Drums': read, Hills of
+        // Glory's Command Aura's 3 and 1; provisional, the others' values.)  Thorns'
+        // and Vampiric's the aura base's save, its extended timer alone.
+        let plain = matches!(code, codes::buff::id::THORNS_AURA | codes::buff::id::VAMPIRIC_AURA);
+        if plain {
+            return Some(Second::Agent { own, handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] }, tail });
+        }
+        if !matches!(code, codes::buff::id::DEVOTION_AURA | codes::buff::id::UNHOLY_AURA | codes::buff::id::ENDURANCE_AURA) {
             let o = self.objects.units.get(u.type_id)?;
             let weapons = o.int("weapsOn");
             let bonus = |k: u32| {
@@ -1243,7 +1254,7 @@ impl World {
             // backswing (a repair's none and the largest real), references; its order
             // (852290), words, its listener on the unit's mana, two timers; an
             // auto-target spell's look every 3 seconds (event 0xd01c2), a repair's more.
-            codes::ability::id::THUNDER_BOLT_CREEP | codes::ability::id::THUNDER_CLAP_CREEP | codes::ability::id::CHIEFTAIN_SHOCK_WAVE | codes::ability::id::ENSNARE | codes::ability::id::CANNIBALIZE | codes::ability::id::SACRIFICE_ACOLYTE | codes::ability::id::UNSUMMON | codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::ABOLISH_MAGIC | codes::ability::id::INNER_FIRE | codes::ability::id::RESTORATION | codes::ability::id::REPAIR_ORC | codes::ability::id::CURSE | codes::ability::id::BLOODLUST | codes::ability::id::FAERIE_FIRE | codes::ability::id::WEB | codes::ability::id::RAISE_DEAD | codes::ability::id::ANIMATE_DEAD_CREEP | codes::ability::id::DEMON_HUNTER_MANA_BURN | codes::ability::id::DEVOUR_DRAGON_CREEP | codes::ability::id::DREADLORD_SLEEP | codes::ability::id::REJUVINATION | codes::ability::id::DEATH_KNIGHT_DEATH_COIL | codes::ability::id::EXHUME | codes::ability::id::MEAT_LOAD | codes::ability::id::MEAT_DROP => {
+            codes::ability::id::THUNDER_BOLT_CREEP | codes::ability::id::THUNDER_CLAP_CREEP | codes::ability::id::CHIEFTAIN_SHOCK_WAVE | codes::ability::id::ENSNARE | codes::ability::id::CANNIBALIZE | codes::ability::id::SACRIFICE_ACOLYTE | codes::ability::id::UNSUMMON | codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::ABOLISH_MAGIC | codes::ability::id::INNER_FIRE | codes::ability::id::RESTORATION | codes::ability::id::REPAIR_ORC | codes::ability::id::CURSE | codes::ability::id::BLOODLUST | codes::ability::id::FAERIE_FIRE | codes::ability::id::WEB | codes::ability::id::RAISE_DEAD | codes::ability::id::ANIMATE_DEAD_CREEP | codes::ability::id::DEMON_HUNTER_MANA_BURN | codes::ability::id::DEVOUR_DRAGON_CREEP | codes::ability::id::DREADLORD_SLEEP | codes::ability::id::REJUVINATION | codes::ability::id::DEATH_KNIGHT_DEATH_COIL | codes::ability::id::EXHUME | codes::ability::id::MEAT_LOAD | codes::ability::id::MEAT_DROP | codes::ability::id::CRIPPLE | codes::ability::id::UNHOLY_FRENZY => {
                 // (Restore as Repair.)
                 let repair = matches!(code, codes::ability::id::REPAIR_ORC | codes::ability::id::RESTORATION);
                 // (Devour's backswing its own, 0.02: read, Forestwalk's drakes'.)
@@ -2210,7 +2221,7 @@ impl World {
     /// alarm's range, Ensnare's range and DataB, an inventory's 180); and the units in
     /// range, their positions in the order a search of the map finds them.
     pub fn unit_pil_records(&self, h: u32) -> Vec<(u32, w3_formats::w3z::First)> {
-        use w3_formats::w3z::{Array, First, Link, ObjectBase};
+        use w3_formats::w3z::{First, Link, ObjectBase};
         let Some(u) = self.unit(h) else { return Vec::new() };
         let first = &u.extra.object_slots[0];
         if first.len() < 10 {
@@ -2281,7 +2292,7 @@ impl World {
                 links: [(Link(newer, 0), Link(older, 0), rf(t), rf(me)), (Link(NONE, 0), Link(NONE, 0), rf(t), rf(first[1]))],
                 timings: [Timing(Some((f32::from_bits(due), period as f32, count, 0, 1))), Timing(None)],
             };
-            out.push((s, First::Interference { object, real: range / 32.0, word: 0, array: Array { words: [384, 384, 32, 32], entries } }));
+            out.push((s, First::Interference { object, real: range / 32.0, word: 0, array: super::in_range_array(entries) }));
         }
         out
     }

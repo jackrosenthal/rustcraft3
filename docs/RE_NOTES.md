@@ -3042,6 +3042,36 @@ Formats the port made its own, to be replaced by the original's:
   was the main clock, set back by then; reckoned on the game's time now, and the
   loop ends when no time is left.
 - `W3Z_TRACE`: the writer's steps and each unit as it is written, to stderr.
+- At 900 seconds (`fh900`): the Necromancer's Cripple and Unholy Frenzy (the spell's
+  fields, `FUN_6f42e2b0`'s tail), and the melee defeat dialogs, the human player's
+  base gone.  A dialog (`+dlg`): a word, the game's handler (event 0x80267), its
+  buttons, three words.  A button (`+dlb`, CDialogButton `vf14_6f246090`): its text
+  as the string has it ("|CFFFFFFFFQ|Ruit Game"), its hotkey, event 0x8025b's list
+  (the registrations of its clicks), and its quit and score flags.  A button's event
+  (`bevt`, CDialogButtonEventReg `vf14_6f27e430`): five words, its button, event
+  0x8025a's list (its trigger).  The port's quit buttons took no object (the
+  original's "Quit Game" is a `+dlb` as the others), and its GetLocalizedHotkey gave
+  the string's first byte ('|'); now the letter the string sets off in color (67,
+  81 as read; the original reads a "HotKeys" table, `FUN_6f047710`).
+- An in-range listener's (`` `pil ``) units are saved with the array's room (bytes
+  twice, 32, its places): 32 places, doubled as more are met (read: [768, 768, 32,
+  64] in the original's).  The port always wrote 32; with more units about than that
+  (41 at 865 seconds) the original read them past its room, overran its heap, and
+  hung later in the second table's first records (in Storm's reallocation from the
+  agent reader, `FUN_6f146390`).  Found by tracing the original's agent first-record
+  reads (`abtest/trfirst.sh`: each read's stream position, aligned with the save's
+  records by `w3zobj lens`) after a bisection by save time (`abtest/loadquick.sh`).
+- The aura buffs' saves by class: Trueshot's, Command's, and War Drums'
+  (`FUN_6f4ea860`) the base's, a per-weapon list, and a timer; Thorns' and
+  Vampiric's the base's alone (`FUN_6f42e4c0`: its extended timer; read, the
+  Dreadlord's at 900 seconds); Endurance's (own `FUN_6f4eba40`, two reals more; save
+  `FUN_6f4ea910`, a timer after the extended one).  The port wrote Trueshot's for
+  all.  Vampiric Aura's targets 0x4307006.  Not yet run: the aura's look every 2
+  seconds (event 0xd01c5, repeating) on a hero's learned aura.
+- A computer's or creep's unit's AI (`AI-U`) the port kept after its unit was gone
+  was written empty; it is left out, its slot freed.  A creep's mana's newest
+  listener was taken from slots it once had without checking them still listeners
+  (a slot let go as it slept, then a walk's cluster).
 - Not yet written nor run: a ghoul's lumber harvest's second timer, every second
   (event 0xd01c2, `FUN_6f3f4bd0`, kind 2, repeating), started with its harvest
   order's tasks (`FUN_6f419530`) for a ghoul alone ('ugho', with its unit's flag

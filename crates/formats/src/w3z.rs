@@ -883,6 +883,14 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::class::ALLIANCE_EVENT, "wwwwww f w www", "e r e e"),
     (codes::class::PLAYER_STATE_EVENT, "wwwwwwwwww w f", "r e r e"),
     (codes::class::TIMER_EXPIRED_EVENT, "wwwww", "r e"),
+    // A dialog button's event (CDialogButtonEventReg `vf14_6f27e430`): its button
+    // (`FUN_6f21b520`) and event 0x8025a's list.
+    (codes::class::DIALOG_BUTTON_EVENT, "wwwww", "r e"),
+    // A dialog button (CDialogButton `vf14_6f246090`): its text, hotkey, event
+    // 0x8025b's list, and two words (from build 4482); a dialog its buttons and three
+    // words (read: the melee defeat dialog; provisional, the dialog's words).
+    (codes::class::DIALOG_BUTTON, "w", "z w e w w"),
+    (codes::class::DIALOG, "w", "[r] www"),
     // Orders (`FUN_6f6960f0`, own `FUN_6f696b40`: six words): three words from build
     // 6000; a targeted one (`FUN_6f696220`, own `FUN_6f696cf0`) two references more.
     (codes::class::ORDER, "wwwwww", "www"),
@@ -917,8 +925,10 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::ability::id::MEAT_DROP, "wwww wwwwwww t w ffff wwww f", "wwwww r t t"),
     (codes::ability::id::PLAGUE_TOSS, "wwww wwwwwww t w", "wwwww"),
     (codes::ability::id::CARGO_HOLD_AMTC, "wwww wwwwwww t w", "f www [wwf] [wwf] [w] [w] t t [ff] [ff]"),
-    // Death Coil (CAbilityDeathCoil: the spell's fields, its save `FUN_6f42e2b0`).
+    // Death Coil, Cripple, Unholy Frenzy (the spell's fields, their save `FUN_6f42e2b0`).
     (codes::ability::id::DEATH_KNIGHT_DEATH_COIL, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
+    (codes::ability::id::CRIPPLE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
+    (codes::ability::id::UNHOLY_FRENZY, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
     // CAbilityAllied (`FUN_6f42dd20`): a counted list of references (`FUN_6f3e2ce0`), a
     // reference, a counted list of two words and a word, a reference, and a timer.
     (codes::ability::id::ALLIED_BUILDING, "wwww wwwwwww t w", "[r] r [www] r t"),
@@ -1023,13 +1033,16 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // real): the aura base's, an extended timer (two shorts and a real more), for
     // trueshot a counted list of words, and a timer.
     (codes::buff::id::TRUESHOT_AURA, "wwww wwwwwww t w w f www fff f www", "[r] w t ss f [w] t"),
-    // The aura buffs whose classes keep the base's save, as Trueshot's: Command,
-    // Endurance, War Drums, Thorns, Vampiric.
+    // Command's and War Drums' (CBuffAuraCommand, CBuffAuraKotoBeast) save as
+    // Trueshot's (`FUN_6f4ea860`); Thorns' and Vampiric's as the aura base's
+    // (`FUN_6f42e4c0`: its extended timer alone; read, Forestwalk's Dreadlord's at 900
+    // seconds); Endurance's (CBuffAuraEndurance, own `FUN_6f4eba40`: two reals more,
+    // save `FUN_6f4ea910`: a timer after its extended one).
     (codes::buff::id::AURA_COMMAND, "wwww wwwwwww t w w f www fff f www", "[r] w t ss f [w] t"),
-    (codes::buff::id::ENDURANCE_AURA, "wwww wwwwwww t w w f www fff f www", "[r] w t ss f [w] t"),
+    (codes::buff::id::ENDURANCE_AURA, "wwww wwwwwww t w w f www fff f www ff", "[r] w t ss f t"),
     (codes::buff::id::WAR_DRUMS, "wwww wwwwwww t w w f www fff f www", "[r] w t ss f [w] t"),
-    (codes::buff::id::THORNS_AURA, "wwww wwwwwww t w w f www fff f www", "[r] w t ss f [w] t"),
-    (codes::buff::id::VAMPIRIC_AURA, "wwww wwwwwww t w w f www fff f www", "[r] w t ss f [w] t"),
+    (codes::buff::id::THORNS_AURA, "wwww wwwwwww t w w f www fff f www", "[r] w t ss f"),
+    (codes::buff::id::VAMPIRIC_AURA, "wwww wwwwwww t w w f www fff f www", "[r] w t ss f"),
     (codes::buff::id::DEVOTION_AURA, "wwww wwwwwww t w w f www fff f www f", "[r] w t ss f t"),
     // CBuffAuraUnholy (`FUN_6f4ea950`, own `FUN_6f4ebac0`: a real, two words, three
     // reals more): the aura base's, an extended timer, a reference, and a timer.

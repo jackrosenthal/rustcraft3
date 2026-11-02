@@ -161,9 +161,15 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let s = a.s(0);
             string(w.localized(&s))
         },
+        // (The letter the string sets off in color, "|CFFFFFFFFQ|Ruit Game"'s Q: read,
+        // the melee defeat dialog's buttons' 67 and 81 in the original's save; the
+        // original reads a "HotKeys" table, `FUN_6f047710`; provisional, a string
+        // without one its first letter.)
         GetLocalizedHotkey => |w, _, a| {
             let s = w.localized(&a.s(0));
-            int(s.bytes().next().map_or(0, |c| c as i32))
+            let b = s.as_bytes();
+            let set_off = (0..b.len().saturating_sub(10)).find(|&i| b[i] == b'|' && b[i + 1].eq_ignore_ascii_case(&b'c') && b[i + 2..i + 10].iter().all(u8::is_ascii_hexdigit)).map(|i| b[i + 10]);
+            int(set_off.or_else(|| b.first().copied()).map_or(0, |c| c.to_ascii_uppercase() as i32))
         },
         OrderId => |_, _, a| int(order_id(&a.s(0))),
         OrderId2String => |_, _, a| match order_name(a.i(0)) {

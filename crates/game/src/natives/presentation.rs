@@ -553,9 +553,16 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             }
             r
         },
+        // (A quit button an object as the others: read, the melee defeat dialog's
+        // "Quit Game", a `+dlb` in the original's save.)
         DialogAddQuitButton => |w, _, a| {
+            let id = w.tags.take_id(codes::class::DIALOG_BUTTON);
             let (dialog, score, text, hotkey) = (a.h(0), a.b(1), w.localized(&a.s(2)), a.i(3));
-            add_dialog_button(w, DialogButton { dialog, text, hotkey, quit: Some(score) })
+            let r = add_dialog_button(w, DialogButton { dialog, text, hotkey, quit: Some(score) });
+            if let w3_jass::NativeResult::Return(w3_jass::Value::Handle(h)) = &r {
+                w.tags.handle_ids.insert(*h, id);
+            }
+            r
         },
         DialogDisplay => |w, _, a| {
             let (p, show) = (w.player_of(a.h(0)), a.b(2));

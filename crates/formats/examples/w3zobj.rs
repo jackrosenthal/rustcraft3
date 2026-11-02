@@ -707,6 +707,13 @@ fn main() {
         }
         return;
     }
+    // "lens": every object's tag, kind, family, and its records' sizes.
+    if a[2] == "lens" {
+        for o in &all {
+            println!("{} {} {} {} {}", o.entry.tag, code(o.entry.kind), code(o.entry.family), o.first.len(), o.second.len());
+        }
+        return;
+    }
     // "find <hex word>": the objects whose records hold the word, and where.
     if a[2] == "find" {
         let w = u32::from_str_radix(&a[3], 16).unwrap().to_le_bytes();

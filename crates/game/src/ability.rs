@@ -151,6 +151,10 @@ fn passive(code: &str) -> bool {
 /// An aura buff's timer's span (CBuff's, read: 4 seconds, twice its aura's sweep).
 pub(crate) const AURA_BUFF_TIME: f32 = 4.0;
 
+/// The buffs that show their bearer to their caster's owner (CBuffSharedVision's
+/// family: vf213 `FUN_6f5304c0`).
+pub(crate) const SHOWS_BEARER: [&Id; 9] = [codes::buff::id::DEVOUR, codes::buff::id::ENSNARE_BENA, codes::buff::id::ENSNARE_BENG, codes::buff::id::ENSNARE_BENS, codes::buff::id::FAERIE_FIRE, codes::buff::id::WAND_OF_SHADOWSIGHT, codes::buff::id::SHARED_VISION, codes::buff::id::WEB_BWEB, codes::buff::id::WEB_BWEA];
+
 impl World {
     pub fn ability_code(&self, id: Id) -> String {
         let code = self.objects.abilities.get(id).map(|a| a.str("code")).unwrap_or_default();
@@ -416,11 +420,14 @@ impl World {
         if tagged && b.id != [0; 4] {
             let slot = self.tags.take(&b.id);
             b.slot = slot;
+            b.birth = self.tags.live.get(&slot).map_or(0, |e| e.1);
             // (Its timer's start, CBuff vf211; read: the aura scans' buffs at 0.5
             // seconds on the quiet test map.)
             let n = self.tags.start_timer("532b50");
-            // (Its time provisional: the tick's.)
-            self.tags.timer_objects.entry(slot).or_default().push((n, "532b50".into(), f32::from_bits(self.tags.clock), AURA_BUFF_TIME));
+            // (Its time provisional: the tick's; an aura's span its scan's, another's
+            // its own.)
+            let span = if b.aura_left.is_none() && b.remaining.is_finite() && b.remaining < 1.0e6 { b.remaining } else { AURA_BUFF_TIME };
+            self.tags.timer_objects.entry(slot).or_default().push((n, "532b50".into(), f32::from_bits(self.tags.clock), span));
             if matches!(self.ability_code(b.ability).as_str(), codes::ability::PRIESTESS_TRUESHOT_AURA | codes::ability::COMMAND_AURA | codes::ability::AURA_WAR_DRUMS) {
                 let owner = self.unit(target).map_or(0, |u| u.owner);
                 self.tags.tech_buffs.push((slot, owner));
@@ -430,6 +437,21 @@ impl World {
             if &b.id == codes::buff::id::UNHOLY_AURA {
                 let m = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
                 self.tags.buff_modifiers.insert(slot, m);
+            }
+        }
+        // One that shows its bearer to its caster's owner (CBuffSharedVision's family,
+        // vf213 `FUN_6f5304c0`) makes the bearer's shared vision the first time, after
+        // its own (`FUN_6f688ba0`; read: Ensnare's on the creeps test map's dragons,
+        // which the original crashed letting go without).
+        if SHOWS_BEARER.contains(&&b.id) {
+            b.vision_player = self.unit(b.caster).map(|c| c.owner);
+            let made = self.unit(target).and_then(|u| u.extra.vision_record).is_some_and(|(s, born)| self.tags.live.get(&s).is_some_and(|e| e.1 == born));
+            if tagged && !made {
+                let s = self.tags.take(codes::class::SHARED_VISION);
+                let born = self.tags.live.get(&s).map_or(0, |e| e.1);
+                if let Some(u) = self.unit_mut(target) {
+                    u.extra.vision_record = Some((s, born));
+                }
             }
         }
         if let Some((model, attach)) = art {

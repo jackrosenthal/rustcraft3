@@ -3067,6 +3067,78 @@ Formats the port made its own, to be replaced by the original's:
   the port after the mine was gone (mined out by 1800 seconds) are left out, their
   records otherwise empty (the original's loader hung on them).  The port's saves
   at 1200 and 1800 seconds load.
+- Every melee unit's abilities (a test map making one of each unit of the four races
+  and the creeps for the player, heroes at level 10 with their skills, saved at 5
+  seconds: `fwall`, and one per race): the port wrote about 130 kinds of ability and
+  buff empty, each a hang in the original's loader.  Their layouts are now read from
+  game.dll and fitted to the original's records (`tools/saves`): each class's code
+  from its vf7 (`classmap.py`), its own fields (vf18) and save (vf14) translated
+  from the decompile into layout strings (`xlate.py`: the writing primitives, the
+  base saves already read, references, counted and fixed loops, writes gated by
+  build; a timer plain or extended as fitting settles), fitted with `w3zobj fit`
+  against every record of the kind (`fitall.py`).  Ninety share the spells'
+  families (`ability_family`); the rest are written from the original's record of
+  each at rest (`gentemplates.py` makes `w3zsave/kinds.rs`): their base fields the
+  port's, a spell's mana listener its own, a companion reference the unit's object
+  of that kind, a repeating timer restarted from the save's time, lists of art
+  emptied, other references none.  Provisional where no record of the original's was
+  read: Robo-Goblin, the healing ward's aura buff, the poison buff (its second timer
+  extended, as the original's reader showed by reading 8 bytes past the plain one,
+  `abtest/trfail.sh` at FUN_6f15c390's length check).  Target masks from the data's
+  `targs1` (`data_targets`).  The orcs', night elves', and neutral's build abilities
+  have the undead's three words more.
+- The rest of the ability and buff classes (362, no record of the original's read
+  for them): their layouts from the decompile alone, each timer's kind by the
+  class's constructors (the vtable put at its offset, CAgentTimer or
+  CAgentTimerExtended, through the base constructors called: `xlate.resolve`; this
+  reproduces all 108 layouts already fitted whose timers it settles), into the
+  formats crate's table and `w3zsave/kind_layouts.rs` (`genlayouts.py`).  Their
+  records at rest are their layouts read from zeros (`default_fields`: no timers,
+  no references, lists empty), a spell's order and listener its own.  Translations
+  that branch around writes are refused (`xlate.risky`), with the two forms of an
+  optional reference understood.  The engine's own class codes (CAbilitySpell's
+  AAsp and the like) are named in `codes.rs` by class; the generators write every
+  code by its name there (`codenames.py`).
+- Shared vision (`Csha`, CSharedVisionData: its agent, a mask of the players shown
+  the unit and sixteen counts, `w [w]`): a unit's record names it at +0x13c (its
+  fifth field), its detection (`Cdet`) at +0x130 (its second).  The buffs that
+  show their bearer to their caster's owner (vf213 `FUN_6f5304c0`: Devour Vision,
+  Ensnare's three, Faerie Fire, Shadow Sight, Shared Vision, Web's two) make the
+  bearer's the first time (`FUN_6f688ba0`, after the buff's own object) and count
+  their player in it; each names that player in its own record (`FUN_6f4ec0d0`,
+  +0xcc, its ninth field past the ability's).  Letting one go (vf207
+  `FUN_6f52e010` -> `FUN_6f678240`) takes it for granted: the creeps-only save,
+  its Ensnare buff on a dragon written without one, crashed so.  A shop's neutral
+  ability shares vision too (`CAbilityNeutral` vf190 `FUN_6f3f8010`), as a
+  player's unit comes in range (the every-unit map's shops' at 5 seconds); the
+  port does not, and the original makes them again after loading.
+- A buff's own timer (CBuff vf211 `532b50`, event 0xd01c4) is written running to
+  its end for every buff whose tail has it (`[r] w t ss f`), its span the buff's
+  time as laid (an aura's its scan's); a buff keeps its slot's birth, and one whose
+  slot was let go and taken since is left out.  So too a unit's day change's
+  modifier, freed three seconds on (18 units naming one at 1800 seconds of the hero
+  map froze it in the relation loop above), its birth kept with it.
+- Relation lists (`tools/saves/checklinks.py` over a dump): in the original's every
+  list is whole (each neighbour naming it back, each owner's head naming the first
+  of its list, the newest).  A dying agent's relations are let go in a loop over its
+  head (`FUN_6f145c70` -> `FUN_6f146590` -> `FUN_6f146650`) that never ends when the
+  head names a relation not first in its list: the every-unit save froze so a
+  minute after loading, as units died.  The port's were broken three ways: a creep
+  made asleep, or falling asleep, kept naming its spells' listeners freed (their
+  slots another unit's listeners after); kept slots taken since by others' objects
+  (a flyer's making's in-range listener, freed as it slept); and the heads reckoned
+  from other sets than their chains (a unit's newest modifier among its kept slots,
+  not its aura buffs'), now each chain one function its records and its owner's
+  head share.  A unit's in-range listeners are chained on its position too, newest
+  first (the original's, its `` `pcu ``'s second head their first).
+- Unit sprites (the same map): a model with the _V1 version where its file's flags
+  have 2 (a Sorceress, a Lich, the murlocs); stands where a model has no plain one
+  chosen among its stand sequences by the unit's animation properties and the tags a
+  stand may carry, "VarN" a variation (a Guard Tower's 'Stand Upgrade First Ready
+  Attack', a Sea Giant's 'Stand Ready', a Chaos Kodo's 'Stand Channel'); a model with
+  none (a Locust) one empty entry, its sequence 0xffff.  Empty stand lists crashed
+  the original as a unit attacked (FUN_6f1a42b0).  A Sphere's effects (its list of
+  art) written empty: its null references crashed it likewise.
 - The aura buffs' saves by class: Trueshot's, Command's, and War Drums'
   (`FUN_6f4ea860`) the base's, a per-weapon list, and a timer; Thorns' and
   Vampiric's the base's alone (`FUN_6f42e4c0`: its extended timer; read, the

@@ -547,6 +547,8 @@ pub mod ability {
         CORPOREAL_FORM = "Acpf";
         /// `Acri`: Cripple.
         CRIPPLE = "Acri";
+        /// `Acor`: Corrosive Breath.
+        CORROSIVE_BREATH = "Acor";
         /// `Acrs`: Curse.
         CURSE = "Acrs";
         /// `Acyc`: Cyclone.
@@ -567,6 +569,8 @@ pub mod ability {
         DISPEL_MAGIC = "Adis";
         /// `Adro`: Drop.
         DROP = "Adro";
+        /// `Adri`: Drop Instant.
+        DROP_INSTANT = "Adri";
         /// `Adta`: Reveal.
         REVEAL = "Adta";
         /// `Adtn`: Detonate.
@@ -865,6 +869,141 @@ pub mod ability {
         WISP_HARVEST = "Awha";
         /// `Awrp`: Warp.
         WARP = "Awrp";
+        // The engine's own ability classes' codes (their vf7), named by class.
+        /// `AAat`: CAbilityAutoTargetSpell (the engine's own class, no data ability).
+        AUTO_TARGET_SPELL = "AAat";
+        /// `AAbt`: CAbilityButton (the engine's own class, no data ability).
+        BUTTON = "AAbt";
+        /// `AAcs`: CAbilityClosestTargetSpell (the engine's own class, no data ability).
+        CLOSEST_TARGET_SPELL = "AAcs";
+        /// `AAin`: CAbilityInterfaced (the engine's own class, no data ability).
+        INTERFACED = "AAin";
+        /// `AAms`: CAbilityModalSpell (the engine's own class, no data ability).
+        MODAL_SPELL = "AAms";
+        /// `AAns`: CAbilityNeutralSpell (the engine's own class, no data ability).
+        NEUTRAL_SPELL = "AAns";
+        /// `AAsm`: CAbilitySimpleSpell (the engine's own class, no data ability).
+        SIMPLE_SPELL = "AAsm";
+        /// `AAsp`: CAbilitySpell (the engine's own class, no data ability).
+        SPELL = "AAsp";
+        /// `ABbs`: CAbilityBaseBuild (the engine's own class, no data ability).
+        BASE_BUILD = "ABbs";
+        /// `ABon`: CBonusBase (the engine's own class, no data ability).
+        BONUS_BASE = "ABon";
+        /// `ABqu`: CAbilityBuildQueue (the engine's own class, no data ability).
+        BUILD_QUEUE = "ABqu";
+        /// `AEpa`: CAbilityPoisonArrows (the engine's own class, no data ability).
+        POISON_ARROWS = "AEpa";
+        /// `AEsd`: CAbilityStarfallDrain (the engine's own class, no data ability).
+        STARFALL_DRAIN = "AEsd";
+        /// `AEtr`: CAbilityTranquilityRegen (the engine's own class, no data ability).
+        TRANQUILITY_REGEN = "AEtr";
+        /// `AHRa`: CAbilityRangerArrow (the engine's own class, no data ability).
+        RANGER_ARROW = "AHRa";
+        /// `AIaa`: CAbilityAttackMod (the engine's own class, no data ability).
+        ATTACK_MOD = "AIaa";
+        /// `AIca`: CAbilityItemCureAoe (the engine's own class, no data ability).
+        ITEM_CURE_AOE = "AIca";
+        /// `AIdm`: CAbilityItemDamageAoe (the engine's own class, no data ability).
+        ITEM_DAMAGE_AOE = "AIdm";
+        /// `AIfc`: CAbilityItemFlyingCarpet (the engine's own class, no data ability).
+        ITEM_FLYING_CARPET = "AIfc";
+        /// `AIfe`: CAbilityFlagUndead (the engine's own class, no data ability).
+        FLAG_UNDEAD = "AIfe";
+        /// `AIfl`: CAbilityFlag (the engine's own class, no data ability).
+        FLAG = "AIfl";
+        /// `AIfm`: CAbilityFlagHuman (the engine's own class, no data ability).
+        FLAG_HUMAN = "AIfm";
+        /// `AIfn`: CAbilityFlagNightElf (the engine's own class, no data ability).
+        FLAG_NIGHT_ELF = "AIfn";
+        /// `AIfo`: CAbilityFlagOrc (the engine's own class, no data ability).
+        FLAG_ORC = "AIfo";
+        /// `AIgp`: CGuardPost (the engine's own class, no data ability).
+        GUARD_POST = "AIgp";
+        /// `AImn`: CAbilityMaxManaMod (the engine's own class, no data ability).
+        MAX_MANA_MOD = "AImn";
+        /// `AIpi`: CAbilityItemPermInvis (the engine's own class, no data ability).
+        ITEM_PERM_INVIS = "AIpi";
+        /// `AIri`: CAbilityItemRandomItem (the engine's own class, no data ability).
+        ITEM_RANDOM_ITEM = "AIri";
+        /// `AIsi`: CAbilitySightBonus (the engine's own class, no data ability).
+        SIGHT_BONUS = "AIsi";
+        /// `AIte`: CAbilityItemTeleport (the engine's own class, no data ability).
+        ITEM_TELEPORT = "AIte";
+        /// `AItm`: CAbilityTome (the engine's own class, no data ability).
+        TOME = "AItm";
+        /// `ANbr`: CAbilityBattleRoar (the engine's own class, no data ability).
+        BATTLE_ROAR_CLASS = "ANbr";
+        /// `ANmd`: CAbilityMonsoonDrain (the engine's own class, no data ability).
+        MONSOON_DRAIN = "ANmd";
+        /// `ANmr`: CAbilityMindRot (the engine's own class, no data ability).
+        MIND_ROT_CLASS = "ANmr";
+        /// `ANre`: CAbilityNeutralRegen (the engine's own class, no data ability).
+        NEUTRAL_REGEN = "ANre";
+        /// `ANrl`: CAbilityNeutralRegenLife (the engine's own class, no data ability).
+        NEUTRAL_REGEN_LIFE = "ANrl";
+        /// `ANrm`: CAbilityNeutralRegenMana (the engine's own class, no data ability).
+        NEUTRAL_REGEN_MANA = "ANrm";
+        /// `APas`: CAbilityPassive (the engine's own class, no data ability).
+        PASSIVE = "APas";
+        /// `APbo`: CAbilityPersistentBonus (the engine's own class, no data ability).
+        PERSISTENT_BONUS = "APbo";
+        /// `AREB`: CAbilityRegenBase (the engine's own class, no data ability).
+        REGEN_BASE = "AREB";
+        /// `ARes`: CAbilityResearch (the engine's own class, no data ability).
+        RESEARCH = "ARes";
+        /// `ASnP`: CAbilitySacrificeInProgress (the engine's own class, no data ability).
+        SACRIFICE_IN_PROGRESS = "ASnP";
+        /// `ATrn`: CAbilityTrain (the engine's own class, no data ability).
+        TRAIN = "ATrn";
+        /// `Aabr`: CAbilityAuraBlightRegen (the engine's own class, no data ability).
+        AURA_BLIGHT_REGEN = "Aabr";
+        /// `Aasp`: CAbilityAuraSpell (the engine's own class, no data ability).
+        AURA_SPELL = "Aasp";
+        /// `Abou`: CAbilityBounce (the engine's own class, no data ability).
+        BOUNCE = "Abou";
+        /// `Acal`: CAbilityCallToArms (the engine's own class, no data ability).
+        CALL_TO_ARMS = "Acal";
+        /// `Achb`: CAbilityChaosBase (the engine's own class, no data ability).
+        CHAOS_BASE = "Achb";
+        /// `Acou`: CAbilityCouple (the engine's own class, no data ability).
+        COUPLE = "Acou";
+        /// `Acrg`: CAbilityCargo (the engine's own class, no data ability).
+        CARGO = "Acrg";
+        /// `Admg`: CAbilityNotifyDamage (the engine's own class, no data ability).
+        NOTIFY_DAMAGE = "Admg";
+        /// `Afbs`: COnFireBase (the engine's own class, no data ability).
+        ON_FIRE_BASE = "Afbs";
+        /// `Afir`: CAbilityOnFire (the engine's own class, no data ability).
+        ON_FIRE = "Afir";
+        /// `Agmb`: CAbilityGoldMineBase (the engine's own class, no data ability).
+        GOLD_MINE_BASE = "Agmb";
+        /// `Agyc`: CAbilityGraveyardCorpse (the engine's own class, no data ability).
+        GRAVEYARD_CORPSE = "Agyc";
+        /// `Alea`: CAbilityLeash (the engine's own class, no data ability).
+        LEASH = "Alea";
+        /// `Amor`: CAbilityMorph (the engine's own class, no data ability).
+        MORPH = "Amor";
+        /// `Amou`: CAbilityMount (the engine's own class, no data ability).
+        MOUNT = "Amou";
+        /// `Anit`: CAbilityNightVision (the engine's own class, no data ability).
+        NIGHT_VISION = "Anit";
+        /// `Arem`: CAbilityRegenMana (the engine's own class, no data ability).
+        REGEN_MANA = "Arem";
+        /// `Arsc`: CAbilityRescuable (the engine's own class, no data ability).
+        RESCUABLE = "Arsc";
+        /// `Asla`: CAbilitySleepAlways (the engine's own class, no data ability).
+        SLEEP_ALWAYS = "Asla";
+        /// `Asod`: CAbilityDeathSpawn (the engine's own class, no data ability).
+        DEATH_SPAWN = "Asod";
+        /// `Asou`: CAbilitySoulTrapped (the engine's own class, no data ability).
+        SOUL_TRAPPED = "Asou";
+        /// `Atdp`: CAbilityTankDropPilot (the engine's own class, no data ability).
+        TANK_DROP_PILOT = "Atdp";
+        /// `Atrg`: CAbilityTarget (the engine's own class, no data ability).
+        TARGET_CLASS = "Atrg";
+        /// `Attu`: CAbilityTankTurret (the engine's own class, no data ability).
+        TANK_TURRET = "Attu";
     }
 }
 
@@ -885,6 +1024,8 @@ pub mod buff {
         DOT = "BDoT";
         /// `BEah`: Thorns Aura.
         THORNS_AURA = "BEah";
+        /// `BUts`: Thorny Shield.
+        THORNY_SHIELD = "BUts";
         /// `BEar`: Trueshot Aura.
         TRUESHOT_AURA = "BEar";
         /// `BEer`: Entangling Roots.
@@ -1303,6 +1444,11 @@ pub mod buff {
         WEB_BWEA = "Bwea";
         /// `Bweb`: Web.
         WEB_BWEB = "Bweb";
+        // The engine's own ability classes' codes (their vf7), named by class.
+        /// `BNeg`: CBuffEngineeringUpgrade (the engine's own class, no data ability).
+        BUFF_ENGINEERING_UPGRADE = "BNeg";
+        /// `Btrv`: CBuffTeleportReveal (the engine's own class, no data ability).
+        BUFF_TELEPORT_REVEAL = "Btrv";
     }
 }
 
@@ -1623,6 +1769,9 @@ pub mod class {
     pub const SPLASH: &Code = b"spla";
     /// `Cdet`: A detection (the flyers' burrow detection).
     pub const DETECTION: &Code = b"Cdet";
+    /// `Csha`: A unit's shared vision, as buffs show it to players (Ensnare's, Web's,
+    /// Faerie Fire's, Devour's, ...).
+    pub const SHARED_VISION: &Code = b"Csha";
     /// `Xbli`: A blight growth (a haunted mine's, a structure's).
     pub const BLIGHT_GROWTH: &Code = b"Xbli";
 }

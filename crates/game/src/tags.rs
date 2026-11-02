@@ -293,6 +293,7 @@ impl Tags {
         self.tech_buffs.retain(|&(s, _)| s != slot);
         self.timer_objects.remove(&slot);
         self.aura_dues.remove(&slot);
+        self.buff_modifiers.remove(&slot);
         if let Some(l) = self.trace.as_mut() {
             l.push(TagEvent::Free(slot));
         }
@@ -1093,8 +1094,12 @@ impl crate::world::World {
         let base = if self.tick_clocks.1.is_empty() { 0.0 } else { self.making_clock.map(|c| c.0).or_else(|| self.tick_abs(0)).unwrap_or(0.0) as f32 };
         if let Some(u) = self.unit_mut(h) {
             u.extra.oid = oid;
-            u.extra.spell_timers = spell_timers.iter().map(|&k| slots[k]).collect();
-            u.extra.spell_owners = spell_owners;
+            // (A creep made asleep has let them go: their slots, freed, may be taken by
+            // others' objects.)
+            if !sleeps {
+                u.extra.spell_timers = spell_timers.iter().map(|&k| slots[k]).collect();
+                u.extra.spell_owners = spell_owners;
+            }
             u.extra.attack_timer = attack_timer;
             // (Its first look waits the time drawn as it was made.)
             let wait = u.acquire_timer;

@@ -707,6 +707,20 @@ fn main() {
         }
         return;
     }
+    // "fit <kind> <own> <tail>": for each object of the kind, whether its second record
+    // reads exactly as the ability's own fields, its handler lists, and the tail.
+    if a[2] == "fit" {
+        let (mut ok, mut bad) = (0, 0);
+        for o in all.iter().filter(|o| code(o.entry.kind) == a[3]) {
+            let fits = match w3_formats::w3z::probe_agent(&o.second, &a[4]) {
+                Ok((_, h, rest)) if h.events.len() == 0x400 => matches!(w3_formats::w3z::fit_fields(&rest, &a[5]), Ok((_, 0))),
+                _ => false,
+            };
+            if fits { ok += 1 } else { bad += 1 }
+        }
+        println!("{} fit {ok} of {}", a[3], ok + bad);
+        return;
+    }
     // "lens": every object's tag, kind, family, and its records' sizes.
     if a[2] == "lens" {
         for o in &all {

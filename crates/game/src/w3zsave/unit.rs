@@ -73,6 +73,47 @@ impl World {
         self.named_sequences(model, "stand")
     }
 
+    /// A unit's stands as its sprite holds them: its model's plain stands; else those
+    /// with the fewest more words, all of them its animation properties or the tags a
+    /// stand may carry (read: a Guard Tower's 'Stand Upgrade First Ready Attack', a
+    /// Sea Giant's 'Stand Ready', a Tree of Life's 'Stand Alternate Upgrade First
+    /// Second', a spider crab's 'Stand - Var1' to 'Var3', a Chaos Kodo Beast's 'Stand
+    /// Channel').  None for a model without a
+    /// stand (read: a Locust's).
+    fn unit_stands(&self, model: &str, o: &crate::objects::Object) -> Vec<u32> {
+        let plain = self.stand_sequences(model);
+        if !plain.is_empty() {
+            return plain;
+        }
+        let Ok(data) = self.chain.read(model) else { return Vec::new() };
+        let Ok(m) = w3_formats::mdx::Model::parse(&data) else { return Vec::new() };
+        let props: Vec<String> = o.str("animProps").split(',').map(|s| s.trim().to_ascii_lowercase()).filter(|s| !s.is_empty()).collect();
+        // (A Kodo Beast's 'Stand Channel - 1' and '- 3', as a Chaos Kodo's read.)
+        const TAGS: [&str; 8] = ["ready", "attack", "alternate", "upgrade", "first", "second", "third", "channel"];
+        let mut best: Option<(usize, Vec<u32>)> = None;
+        for (k, s) in m.sequences.iter().enumerate() {
+            let words: Vec<String> = s
+                .name
+                .split(|c: char| c.is_whitespace() || c == '-')
+                .map(|w| w.to_ascii_lowercase())
+                .filter(|w| !w.is_empty() && !w.chars().all(|c| c.is_ascii_digit()) && !(w.starts_with("var") && w[3..].chars().all(|c| c.is_ascii_digit())))
+                .collect();
+            if !words.iter().any(|w| w == "stand") {
+                continue;
+            }
+            let extra: Vec<&String> = words.iter().filter(|w| *w != "stand").collect();
+            if !extra.iter().all(|w| props.contains(w) || TAGS.contains(&w.as_str())) || !props.iter().all(|p| words.contains(p)) {
+                continue;
+            }
+            match &mut best {
+                Some((n, v)) if *n == extra.len() => v.push(k as u32),
+                Some((n, _)) if *n < extra.len() => {}
+                _ => best = Some((extra.len(), vec![k as u32])),
+            }
+        }
+        best.map_or(Vec::new(), |b| b.1)
+    }
+
     /// A model's sequences named by a phrase (numbers and dashes aside), by index.
     pub(crate) fn named_sequences_phrase(&self, model: &str, phrase: &str) -> Vec<u32> {
         let Ok(data) = self.chain.read(model) else { return Vec::new() };
@@ -238,7 +279,7 @@ impl World {
         // Buffs on it (an aura's on its bearer, made with it), and those its auras laid
         // on others.
         let mut buffs: Vec<(u32, u32)> = u.extra.object_slots[2].iter().copied().filter(|&(s, _)| code_of(s).is_some_and(|c| c[0] == b'B')).collect();
-        for b in u.buffs.iter().filter(|b| b.slot != 0) {
+        for b in u.buffs.iter().filter(|b| self.buff_kept(b)) {
             let t = self.tagged(b.slot);
             if !buffs.contains(&t) {
                 buffs.push(t);
@@ -253,7 +294,7 @@ impl World {
             if v == h {
                 continue;
             }
-            for b in self.unit(v).into_iter().flat_map(|w| w.buffs.iter()).filter(|b| b.slot != 0 && b.caster == h) {
+            for b in self.unit(v).into_iter().flat_map(|w| w.buffs.iter()).filter(|b| self.buff_kept(b) && b.caster == h) {
                 let t = self.tagged(b.slot);
                 agents.push((rf(t), (t.1, 0), vec![0x1a2]));
             }
@@ -338,9 +379,11 @@ impl World {
         }
         let mut pils: Vec<(u32, [u8; 4])> = Vec::new();
         let rest = &u.extra.object_slots[2];
-        for (k, &(s, _)) in rest.iter().enumerate() {
-            if code_of(s) == Some(*codes::class::IN_RANGE_LISTENER) {
-                if let Some(c) = rest[..k].iter().rev().filter_map(|&(x, _)| code_of(x)).find(|c| c[0] == b'A') {
+        // (Not a kept slot another object has taken since: read, a flyer's making's,
+        // let go as it slept.)
+        for (k, &(s, b)) in rest.iter().enumerate() {
+            if self.tagged(s).1 == b && code_of(s) == Some(*codes::class::IN_RANGE_LISTENER) {
+                if let Some(c) = rest[..k].iter().rev().filter(|&&(x, b)| self.tagged(x).1 == b).filter_map(|&(x, _)| code_of(x)).find(|c| c[0] == b'A') {
                     pils.push((s, c));
                 }
             }
@@ -364,8 +407,10 @@ impl World {
         let tint = 0xff00_0000 | (o.int("red").clamp(0, 255) as u32) << 16 | (o.int("green").clamp(0, 255) as u32) << 8 | o.int("blue").clamp(0, 255) as u32;
         // (Its animation as made: the first of its model's stands, from its start;
         // provisional, the running game's random choice and time.)
-        let model = format!("{}.mdx", o.str("file"));
-        let stands = self.stand_sequences(&model);
+        // (Its model's _V1 version where its file's flags have 2: read, a Sorceress's
+        // and a Lich's.)
+        let model = if o.int("fileVerFlags") & 2 != 0 { format!("{}_V1.mdx", o.str("file")) } else { format!("{}.mdx", o.str("file")) };
+        let stands = self.unit_stands(&model, o);
         let seen = u.owner == self.local_player || self.unit_visible_to(h, self.local_player);
         // (At work in a haunted mine, its Stand Work Gold: read, an acolyte's sequence 4
         // at 0x400, its current one 0xfffe.)
@@ -375,7 +420,7 @@ impl World {
             // (The local player's 0x200000 more; provisional: others' too at times, read
             // of far creeps and a gold mine seen, not yet told apart.)
             real: f32::from_bits(0x0344_0000 | if building { 0x0008_0008 } else { 0 } | if u.owner == self.local_player { 0x0020_0000 } else { 0 }),
-            short: if working.is_some() { 0xfffe } else { stands.first().copied().unwrap_or(0) as u16 },
+            short: if working.is_some() { 0xfffe } else { stands.first().map_or(0xffff, |&k| k as u16) },
             byte: 255,
             word: tint,
             reals: [o.real("modelScale"), 1.0],
@@ -385,7 +430,8 @@ impl World {
             // (A summoner's flags 2, 1, 0 and its work from 0: read, the acolyte
             // summoning a Crypt.)
             flags: if summoning { [2, 1, 0] } else { [1, 1, 1] },
-            entries: vec![(0.0, 4, stands.clone()), working.map_or((0.0, 4, stands), |seq| (if summoning { 0.0 } else { f32::from_bits(0x400) }, 4, seq))],
+            // (A model without a stand one entry, empty.)
+            entries: if stands.is_empty() && working.is_none() { vec![(0.0, 4, Vec::new())] } else { vec![(0.0, 4, stands.clone()), working.map_or((0.0, 4, stands), |seq| (if summoning { 0.0 } else { f32::from_bits(0x400) }, 4, seq))] },
             model,
         };
         let footprint: Vec<Ref> = u.extra.footprint_slots.iter().map(|&s| rf(self.tagged(s))).collect();
@@ -429,7 +475,7 @@ impl World {
         let death = u.extra.object_slots[1].iter().copied().find(|&(s, _)| code_of(s) == Some(*codes::class::THRESHOLD_LISTENER));
         // The newest of its abilities and buffs (its abilities' chain's head, the AI's
         // unit list aside).
-        let newest = abilities.iter().map(|a| (a.0, a.1)).chain(u.buffs.iter().filter(|b| b.slot != 0).map(|b| self.tagged(b.slot))).max_by_key(|a| a.1);
+        let newest = abilities.iter().map(|a| (a.0, a.1)).chain(u.buffs.iter().filter(|b| self.buff_kept(b)).map(|b| self.tagged(b.slot))).max_by_key(|a| a.1);
         let ai_unit = u.extra.ai_slots.iter().copied().find(|&(s, _)| code_of(s) == Some(*codes::class::UNIT_AI));
         let mut kinds = 0u32;
         for (bit, name) in [(2, "undead"), (8, "mechanical"), (16, "peon"), (32, "sapper"), (64, "townhall"), (128, "ancient"), (256, "neutral")] {
@@ -489,7 +535,15 @@ impl World {
         }
         // (Its walk's speed for its animation, a structure's 200.)
         let speed = if o.real("walk") > 0.0 { o.real("walk") } else { 200.0 };
-        let mut fields = vec![Field::Timer(NONE, 0, Timing(None)), w(u32::MAX), w(u32::MAX), w(0), w(u32::MAX), w(u32::MAX), w(0), w(0)];
+        // Its detection's record (`Cdet`) and its shared vision's (`Csha`), once made.
+        let detection = u.extra.detected_by.first().map(|d| self.tagged(d.1)).filter(|t| self.tags.live.get(&t.0).is_some_and(|e| &e.0 == codes::class::DETECTION));
+        let vision = u.extra.vision_record.filter(|&(s, b)| self.tagged(s).1 == b);
+        let two = |t: Option<(u32, u32)>| t.map_or([w(u32::MAX), w(u32::MAX)], |t| [w(t.0), w(t.1)]);
+        let mut fields = vec![Field::Timer(NONE, 0, Timing(None))];
+        fields.extend(two(detection));
+        fields.push(w(0));
+        fields.extend(two(vision));
+        fields.extend([w(0), w(0)]);
         fields.push(Field::Ref(slot_ref(u.extra.day_ref)));
         // (Its sight's radius in the fog's cells of 128, rounded (`FUN_6f24f7e0` of
         // `FUN_6f699ef0`), a computer's or neutral's no farther than it acquires
@@ -567,7 +621,7 @@ impl World {
                 add((s, b), c, &mut chain);
             }
         }
-        for b in u.buffs.iter().filter(|b| b.slot != 0) {
+        for b in u.buffs.iter().filter(|b| self.buff_kept(b)) {
             let t = self.tagged(b.slot);
             if let Some(c) = code_of(b.slot) {
                 add(t, c, &mut chain);
@@ -964,8 +1018,12 @@ impl World {
     /// it), 0, its timer (its span from its last start, event 0xd01c4, once), its span,
     /// and Trueshot's bonus per weapon (as an attack's).
     fn buff_own_record(&self, h: u32, t: (u32, u32), code: &[u8; 4], older: Option<(u32, u32)>, art: &std::collections::HashMap<u32, Field>) -> Option<Second> {
+        // (The aura buffs read; others, Brilliance's among them, by their templates.)
+        if !matches!(code, codes::buff::id::TRUESHOT_AURA | codes::buff::id::AURA_COMMAND | codes::buff::id::WAR_DRUMS | codes::buff::id::DEVOTION_AURA | codes::buff::id::UNHOLY_AURA | codes::buff::id::THORNS_AURA | codes::buff::id::VAMPIRIC_AURA | codes::buff::id::ENDURANCE_AURA | codes::buff::id::HEALING_WARD_AURA) {
+            return None;
+        }
         let u = self.unit(h)?;
-        let b = u.buffs.iter().find(|b| b.slot == t.0 && b.slot != 0).or_else(|| u.buffs.iter().find(|b| b.slot == 0 && &b.id == code && b.caster == h))?;
+        let b = u.buffs.iter().find(|b| b.slot == t.0 && self.buff_kept(b)).or_else(|| u.buffs.iter().find(|b| b.slot == 0 && &b.id == code && b.caster == h))?;
         let aura = self.objects.abilities.get(b.ability)?;
         let aura_code: [u8; 4] = self.ability_code(b.ability).as_bytes().try_into().ok()?;
         let data_a = aura.level_real("DataA", b.level.max(1));
@@ -1010,7 +1068,7 @@ impl World {
         if plain {
             return Some(Second::Agent { own, handlers: Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] }, tail });
         }
-        if !matches!(code, codes::buff::id::DEVOTION_AURA | codes::buff::id::UNHOLY_AURA | codes::buff::id::ENDURANCE_AURA) {
+        if !matches!(code, codes::buff::id::DEVOTION_AURA | codes::buff::id::UNHOLY_AURA | codes::buff::id::ENDURANCE_AURA | codes::buff::id::HEALING_WARD_AURA) {
             let o = self.objects.units.get(u.type_id)?;
             let weapons = o.int("weapsOn");
             let bonus = |k: u32| {
@@ -1020,8 +1078,9 @@ impl World {
             };
             tail.push(Field::List(vec![bonus(1), bonus(2)]));
         }
-        // Unholy Aura's modifier made with it.
-        if code == codes::buff::id::UNHOLY_AURA {
+        // Unholy Aura's modifier made with it; the healing ward's aura's as its
+        // (`FUN_6f42e550`; provisional, read of its class alone).
+        if code == codes::buff::id::UNHOLY_AURA || code == codes::buff::id::HEALING_WARD_AURA {
             tail.push(Field::Ref(self.tags.buff_modifiers.get(&t.0).map_or(NONE, |&m| rf(self.tagged(m)))));
         }
         tail.push(none());
@@ -1033,8 +1092,12 @@ impl World {
         if is_task(code) {
             return None;
         }
+        // (A buff the aura buffs' writer does not take is written from its kind's
+        // template, below.)
         if code[0] == b'B' {
-            return self.buff_own_record(h, t, code, older, art);
+            if let Some(r) = self.buff_own_record(h, t, code, older, art) {
+                return Some(r);
+            }
         }
         let u = self.unit(h)?;
         let o = self.objects.units.get(u.type_id)?;
@@ -1131,7 +1194,12 @@ impl World {
         // hall's Argl; the last word Call to Arms' 1.)
         let id = u.abilities.iter().map(|(a, _)| *a).find(|a| self.objects.abilities.get(*a).is_some_and(|o| crate::objects::id_from_str(o.str("code").trim()) == *code)).unwrap_or(*code);
         let last = if code == codes::ability::id::MILITIA_CONVERSION { 1 } else { 0 };
-        let mut own = vec![w(flags), w(prev.0), w(prev.1), w(0), w(0), w(0), w(0), w(0), w(ability_targets(code)), w(u32::from_be_bytes(id)), w(0), timer(), w(last)];
+        // (The kinds written by family, their targets from their data.)
+        let targets = match ability_family(code) {
+            Some(_) => self.objects.abilities.get(id).map_or(0xfdd1_f00e, |a| data_targets(&a.level_str("targs", 1).split(',').map(str::to_string).collect::<Vec<_>>())),
+            None => ability_targets(code),
+        };
+        let mut own = vec![w(flags), w(prev.0), w(prev.1), w(0), w(0), w(0), w(0), w(0), w(targets), w(u32::from_be_bytes(id)), w(0), timer(), w(last)];
         let tail = match code {
             // CAbilityMove (`FUN_6f5fec80`): two references, its speed and 1.0, words,
             // two reals, references; its two timers.
@@ -1329,11 +1397,13 @@ impl World {
                 }
                 tail
             }
-            // Building: nothing begun; the undead's one more reference and a short of 1.
-            codes::ability::id::BUILD_HUMAN | codes::ability::id::BUILD_UNDEAD | codes::ability::id::BUILD_ORC | codes::ability::id::BUILD_NIGHT_ELF => {
+            // Building: nothing begun; but the humans' one more reference (read: the
+            // orcs', night elves', and neutral's as the undead's), the undead's a short of
+            // 1.
+            codes::ability::id::BUILD_HUMAN | codes::ability::id::BUILD_UNDEAD | codes::ability::id::BUILD_ORC | codes::ability::id::BUILD_NIGHT_ELF | codes::ability::id::BUILD_NEUTRAL => {
                 own.extend([Field::Real(0.0), Field::Real(0.0), w(0), w(0), w(0)]);
                 let undead = code == codes::ability::id::BUILD_UNDEAD;
-                if undead {
+                if code != codes::ability::id::BUILD_HUMAN {
                     own.extend([w(u32::MAX), w(u32::MAX), w(0)]);
                 }
                 vec![Field::Ref(NONE), Field::Ref(NONE), w(0), Field::Short(undead as u16), Field::List(Vec::new())]
@@ -1737,7 +1807,98 @@ impl World {
                 tail.extend([w(0xd_0142), w(0), w(0), w(0), w(0)]);
                 tail
             }
-            _ => return None,
+            // The kinds of the families above: as the spells, Plague Toss, or Spider
+            // Attack (their values provisional: the defaults of a spell at rest).
+            _ => match ability_family(code) {
+                Some(f @ (2 | 3 | 9)) => {
+                    own.extend([Field::Real(0.0), Field::Real(o.real("castpt")), Field::Real(o.real("castbsw")), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), w(0), Field::Real(0.0)]);
+                    if f != 9 {
+                        own.extend([w(u32::MAX), w(u32::MAX), w(0), w(0), Field::Real(0.0), Field::Real(0.0), w(0), w(0), w(0), w(0), Field::Real(0.0), Field::Real(0.0)]);
+                    }
+                    let listener = u.extra.spell_owners.iter().find(|x| &x.1 == code && self.tags.live.get(&x.0).is_some_and(|e| &e.0 == codes::class::THRESHOLD_LISTENER)).map_or(NONE, |x| rf(self.tagged(x.0)));
+                    let mut tail = vec![w(852_290), w(0), w(0), w(0), w(0), Field::Ref(listener), timer(), timer()];
+                    if f == 3 {
+                        tail.push(timer());
+                    }
+                    tail
+                }
+                Some(5) => vec![w(852_290), w(0), w(0), w(0), w(0)],
+                Some(_) => Vec::new(),
+                // The kinds whose layouts were fitted to the original's records: their
+                // templates at rest (`kinds`), the spell's listener its own, a repeating
+                // timer restarted from now.
+                None => {
+                    let listener = u.extra.spell_owners.iter().find(|x| &x.1 == code && self.tags.live.get(&x.0).is_some_and(|e| &e.0 == codes::class::THRESHOLD_LISTENER)).map_or(NONE, |x| rf(self.tagged(x.0)));
+                    let now = self.time;
+                    let restart = |period: f32, event: u32, kind: u32| Field::Timer(rf(t), kind, Timing(Some((f32::from_bits(crate::efloat::add(now.to_bits(), period.to_bits())), period, 0, event, 1))));
+                    // (Robo-Goblin a morph as Burrow with two fields more, the poison buff
+                    // its class's fields empty: as their functions read, no record of the
+                    // original's yet; provisional.)
+                    let manual = match code {
+                        codes::ability::id::TINKERER_ROBO_GOBLIN_LEVEL_0 => Some((
+                            vec![Field::Real(0.0), Field::Real(o.real("castpt")), Field::Real(o.real("castbsw")), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), w(0), Field::Real(0.0), Field::Real(0.0), Field::Real(0.0), w(u32::from_be_bytes(u.type_id)), w(u32::from_be_bytes(u.type_id)), Field::Real(0.0), w(u32::MAX), w(0), w(0), Field::Real(0.0)],
+                            {
+                                let mut tl = vec![w(852_290), w(0), w(0), w(0), w(0), Field::Ref(listener), timer(), timer(), timer(), timer(), timer()];
+                                tl.extend([w(0), w(0), w(0), w(0), w(0), Field::Real(0.0), w(0), Field::Real(0.0), Field::Real(0.0), Field::Real(0.0), w(0), Field::Real(0.0), Field::List(Vec::new()), Field::Real(0.0), Field::Real(0.0), Field::Real(0.0), Field::List(vec![vec![w(0)], vec![w(0)]]), Field::Real(0.0), Field::Short(0), timer()]);
+                                tl
+                            },
+                        )),
+                        codes::buff::id::POISON_BPOI => Some((
+                            vec![w(0), Field::Real(0.0), w(0), w(0), w(0), Field::Real(0.0), Field::Real(0.0), Field::Real(0.0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), Field::Real(0.0), Field::Real(0.0)],
+                            // (Its second timer extended too: read, the original's reader 8
+                            // bytes past the plain one.)
+                            vec![Field::List(Vec::new()), w(0), timer(), Field::Short(0), Field::Short(0), Field::Real(0.0), timer(), Field::Short(0), Field::Short(0), Field::Real(0.0)],
+                        )),
+                        _ => None,
+                    };
+                    let (mut extra, mut tail) = match manual {
+                        Some(m) => m,
+                        None => {
+                            // (Its companion of a kind: the unit's object of it made after
+                            // the ability, as its own records name.)
+                            let objs: Vec<(u32, u32)> = u.extra.object_slots[2].iter().chain(&u.extra.object_slots[1]).copied().collect();
+                            let at = objs.iter().position(|&x| x.0 == t.0).map_or(0, |i| i + 1);
+                            let companion = |kind: [u8; 4]| objs[at.min(objs.len())..].iter().chain(&objs[..at.min(objs.len())]).find(|x| self.tags.live.get(&x.0).is_some_and(|e| e.0 == kind && e.1 == x.1)).map_or(Field::Ref(NONE), |&x| Field::Ref(rf(x)));
+                            match super::kinds::kind_template(code, Field::Ref(listener), &timer, &restart, &companion) {
+                                Some(k) => k,
+                                // (A kind no record of the original's was read for: its
+                                // fields at rest as its layout has them, a spell's order
+                                // and listener its own; provisional throughout.)
+                                None => {
+                                    let (own_layout, tail_layout) = super::kind_layouts::kind_layout(code)?;
+                                    let mut tail = w3_formats::w3z::default_fields(tail_layout);
+                                    if tail_layout.replace(' ', "").starts_with("wwwwwr") {
+                                        tail[0] = w(852_290);
+                                        tail[5] = Field::Ref(listener);
+                                    }
+                                    (w3_formats::w3z::default_fields(own_layout), tail)
+                                }
+                            }
+                        }
+                    };
+                    // A buff's timer runs to its end (CBuff vf211's, event 0xd01c4, as the
+                    // auras'); one showing its bearer names the player shown
+                    // (`FUN_6f4ec0d0`'s word at +0xcc).
+                    if let Some(b) = u.buffs.iter().find(|b| b.slot == t.0 && self.buff_kept(b) && &b.id == code) {
+                        let started = self.tags.timer_objects.get(&t.0).and_then(|v| v.iter().rev().find(|x| x.1 == "532b50")).map(|x| (x.0, x.2, x.3));
+                        let shaped = matches!(tail.get(..6), Some([Field::List(_), Field::Word(_), Field::Timer(r, ..), Field::Short(_), Field::Short(_), Field::Real(_)]) if r.0 == u32::MAX);
+                        if let Some((n, at, span)) = started.filter(|_| shaped) {
+                            let (chunks, rest) = crate::w3zsave::timer_chunks(span);
+                            tail[2] = Field::Timer(rf(t), 0, Timing(Some((f32::from_bits(crate::efloat::add(at.to_bits(), span.to_bits())), span, n, 0xd_01c4, 0))));
+                            tail[3] = Field::Short(chunks.min(0xffff) as u16);
+                            tail[4] = Field::Short(chunks.min(0xffff) as u16);
+                            tail[5] = Field::Real(rest);
+                        }
+                        if let (Some(p), true) = (b.vision_player, crate::ability::SHOWS_BEARER.contains(&code)) {
+                            if extra.len() > 8 {
+                                extra[8] = w(p as u32);
+                            }
+                        }
+                    }
+                    own.extend(extra);
+                    tail
+                }
+            },
         };
         let handlers = Handlers { keyed, fixed: Default::default(), events: vec![Vec::new(); 0x400] };
         Some(Second::Agent { own, handlers, tail })
@@ -1781,7 +1942,7 @@ fn weapon_sound(s: &str) -> u32 {
 
 /// Whether a kind is a task's (an order's steps, on its unit's chain).
 fn is_task(code: &[u8; 4]) -> bool {
-    matches!(code, b"task" | b"tskA" | b"tskt" | b"tsk." | b"tskO")
+    matches!(code, codes::class::TASK | codes::class::TASK_A | codes::class::TASK_T | b"tsk." | codes::class::TASK_O)
 }
 
 /// A reference's tag and birth.
@@ -1790,6 +1951,67 @@ fn rf2(r: Ref) -> (u32, u32) {
 }
 
 /// A weapon's targets as bits (as abilities' +0x4c; 1 for none).
+/// The abilities whose classes' own fields and saves are those of a kind already read
+/// (their classes by their vf7's code, their vf18 and vf14 from the vtables): 2 the
+/// spell's fields and its tail with two timers (`FUN_6f42f3e0`, `FUN_6f42e2b0`), 3
+/// with three (`FUN_6f42d2a0`), 9 the spell's first fields and two timers
+/// (`FUN_6f42f4b0`), 5 the ability's alone and the buff base's tail (`FUN_6f42d5f0`),
+/// 0 the ability's alone (`FUN_6f03eda0`).
+fn ability_family(code: &[u8; 4]) -> Option<u8> {
+    match code {
+        codes::ability::id::BREATH_OF_FROST_CREEP | codes::ability::id::KEEPER_ENTANGLING_ROOTS | codes::ability::id::WARDEN_FAN_OF_KNIVES | codes::ability::id::KEEPER_FORCE_OF_NATURE | codes::ability::id::WARDEN_SHADOW_STRIKE | codes::ability::id::BLOOD_MAGE_BANISH | codes::ability::id::MOUNTAIN_KING_THUNDER_BOLT | codes::ability::id::MOUNTAIN_KING_THUNDER_CLAP | codes::ability::id::ITEM_DISPEL_CHAIN | codes::ability::id::ITEM_DETECT_AOE | codes::ability::id::ALCHEMIST_ACID_BOMB | codes::ability::id::BREWMASTER_BREATH_OF_FIRE | codes::ability::id::DARK_RANGER_CHARM | codes::ability::id::PIT_LORD_DOOM | codes::ability::id::FIRE_BOLT | codes::ability::id::SEA_WITCH_FORKED_LIGHTNING | codes::ability::id::FIRELORD_SOUL_BURN | codes::ability::id::TINKERER_SUMMON_FACTORY_LEVEL_0 | codes::ability::id::ALCHEMIST_TRANSMUTE | codes::ability::id::FARSEER_FAR_SIGHT | codes::ability::id::SHADOW_HUNTER_SERPENT_WARD_AOWD | codes::ability::id::CHIEFTAIN_WAR_STOMP | codes::ability::id::DREADLORD_CARRION_SWARM | codes::ability::id::LICH_FROST_NOVA | codes::ability::id::ABSORB_MANA | codes::ability::id::ANTI_MAGIC_SHIELD | codes::ability::id::CARGO_HOLD_DEATH | codes::ability::id::CONTROL_MAGIC | codes::ability::id::COUPLE_INSTANT_ARCHER_ACOI | codes::ability::id::DECOUPLE | codes::ability::id::DEVOUR_MAGIC | codes::ability::id::EAT_TREE | codes::ability::id::SENTRY_WARD | codes::ability::id::GRAB_TREE | codes::ability::id::INVISIBILITY | codes::ability::id::LIGHTNING_SHIELD | codes::ability::id::POSSESSION | codes::ability::id::PURGE | codes::ability::id::STASIS_TRAP | codes::ability::id::TAUNT => Some(2),
+        codes::ability::id::REINCARNATION_CREEP | codes::ability::id::WARDEN_SPIRIT_OF_VENGEANCE | codes::ability::id::BLOOD_MAGE_PHOENIX | codes::ability::id::ARCH_MAGE_WATER_ELEMENTAL | codes::ability::id::PIT_LORD_HOWL_OF_TERROR | codes::ability::id::FIRELORD_SUMMON_LAVA_SPAWN | codes::ability::id::BEAST_MASTER_SUMMON_BEAR | codes::ability::id::BEAST_MASTER_SUMMON_QUILBEAST | codes::ability::id::BEAST_MASTER_SUMMON_HAWK | codes::ability::id::WATERY_MINION | codes::ability::id::CHIEFTAIN_REINCARNATION | codes::ability::id::FARSEER_SPIRIT_WOLF | codes::ability::id::BLADE_MASTER_WIND_WALK | codes::ability::id::DROP_INSTANT | codes::ability::id::REVENGE | codes::ability::id::ROAR | codes::ability::id::STAND_DOWN => Some(9),
+        codes::ability::id::DEMON_HUNTER_EVASION | codes::ability::id::PIT_LORD_CLEAVING_ATTACK | codes::ability::id::BALLS_OF_FIRE | codes::ability::id::CORROSIVE_BREATH | codes::ability::id::FEEDBACK | codes::ability::id::FLAK_CANNON | codes::ability::id::FROST_ATTACK | codes::ability::id::FREEZING_BREATH | codes::ability::id::FRAG_SHARDS | codes::ability::id::GYROCOPTER_BOMBS | codes::ability::id::SHADOW_MELD_AKAMA | codes::ability::id::IMPALING_BOLT | codes::ability::id::LIQUID_FIRE | codes::ability::id::MOON_GLAIVE | codes::ability::id::ROCKET_ATTACK | codes::ability::id::RESISTANT_SKIN | codes::ability::id::STORM_HAMMERS => Some(5),
+        codes::ability::id::COLD_ARROWS | codes::ability::id::PRIESTESS_SEARING_ARROWS | codes::ability::id::DARK_RANGER_BLACK_ARROW | codes::ability::id::FIRELORD_INCINERATE_ANIA | codes::ability::id::PARASITE | codes::ability::id::LICH_FROST_ARMOR_AUTOCAST | codes::ability::id::ORB_OF_ANNIHILATION | codes::ability::id::FRENZY | codes::ability::id::HEAL | codes::ability::id::SLOW | codes::ability::id::SPELL_STEAL => Some(3),
+        codes::ability::id::AWAKEN | codes::ability::id::DEATH_DAMAGE_SAPPER | codes::ability::id::GHOST_VISIBLE | codes::ability::id::FROST_BREATH | codes::ability::id::SPAWN_SPIDERLING => Some(0),
+        _ => None,
+    }
+}
+
+/// An ability's targets from its data's `targs1` (read against those of the abilities
+/// above: ground 0x2, air 0x4, structure 0x8, ward 0x10, item 0x20, tree 0x40, wall
+/// 0x80, debris 0x100, decoration 0x200, bridge 0x400, self 0x1000, player 0x2000,
+/// allies 0x4000, friend 0x6000, neutral 0x8000, enemy 0x10000, notself 0x1e000, vuln
+/// 0x100000, invu 0x200000, hero 0x400000, nonhero 0x800000, alive 0x1000000, dead
+/// 0x2000000, organic 0x4000000, mechanical 0x8000000, nonancient 0x40000000; none
+/// given 0xfdd1f00e).  Provisional: mechanical's, ancient's, and the sappers' bits.
+fn data_targets(list: &[String]) -> u32 {
+    let mut bits = 0;
+    for t in list {
+        bits |= match t.trim().to_ascii_lowercase().as_str() {
+            "ground" => 0x2,
+            "air" => 0x4,
+            "structure" => 0x8,
+            "ward" => 0x10,
+            "item" => 0x20,
+            "tree" => 0x40,
+            "wall" => 0x80,
+            "debris" => 0x100,
+            "decoration" => 0x200,
+            "bridge" => 0x400,
+            "self" => 0x1000,
+            "player" => 0x2000,
+            "allies" => 0x4000,
+            "friend" => 0x6000,
+            "neutral" => 0x8000,
+            "enemy" => 0x1_0000,
+            "notself" => 0x1_e000,
+            "vuln" | "vulnerable" => 0x10_0000,
+            "invu" | "invulnerable" => 0x20_0000,
+            "hero" => 0x40_0000,
+            "nonhero" => 0x80_0000,
+            "alive" => 0x100_0000,
+            "dead" => 0x200_0000,
+            "organic" => 0x400_0000,
+            "mechanical" => 0x800_0000,
+            "ancient" => 0x2000_0000,
+            "nonancient" => 0x4000_0000,
+            _ => 0,
+        };
+    }
+    if bits == 0 { 0xfdd1_f00e } else { bits }
+}
+
 fn weapon_targets(list: &[String]) -> u32 {
     let mut bits = 0;
     for t in list {
@@ -2213,6 +2435,51 @@ impl World {
 }
 
 impl World {
+    /// A unit's in-range listeners with their abilities (`` `pil ``): its abilities'
+    /// kept with it, its alarm's, Ensnare's, its inventory's, its spells', and a
+    /// flyer's detection's.
+    pub(crate) fn unit_pils(&self, h: u32) -> Vec<(u32, [u8; 4])> {
+        let Some(u) = self.unit(h) else { return Vec::new() };
+        let code_of = |s: u32| self.tags.live.get(&s).map(|e| e.0);
+        let mut pils: Vec<(u32, [u8; 4])> = Vec::new();
+        let rest = &u.extra.object_slots[2];
+        // (Not a kept slot another object has taken since: read, a flyer's making's,
+        // let go as it slept.)
+        for (k, &(s, b)) in rest.iter().enumerate() {
+            if self.tagged(s).1 == b && code_of(s) == Some(*codes::class::IN_RANGE_LISTENER) {
+                if let Some(c) = rest[..k].iter().rev().filter(|&&(x, b)| self.tagged(x).1 == b).filter_map(|&(x, _)| code_of(x)).find(|c| c[0] == b'A') {
+                    pils.push((s, c));
+                }
+            }
+        }
+        pils.extend(u.extra.alarm_pil.map(|s| (s, *codes::ability::id::ALARM)));
+        pils.extend(u.extra.ensnare_pil.map(|p| (p.1, *codes::ability::id::ENSNARE)));
+        pils.extend(u.extra.item_pil.map(|p| (p.0, *codes::ability::id::INVENTORY)));
+        pils.extend(u.extra.spell_pils.iter().copied());
+        // (A flyer's detection's, made again as it woke: read, Forestwalk's whelps' and
+        // dragons' at the first dawn, which the original's sleep lets go and crashed
+        // without.)
+        pils.extend(u.extra.flyer_pil.map(|s| (s, *codes::ability::id::BURROW_DETECTION_FLYERS)));
+        pils.retain(|&(s, _)| code_of(s) == Some(*codes::class::IN_RANGE_LISTENER));
+        pils
+    }
+
+    /// A unit's listeners' chain (`` `rtl `` and `` `pil ``), by birth, the newest its
+    /// head: its kept ones, its spells', those on its mana, its in-range ones, and its
+    /// held items' abilities'.
+    pub(crate) fn unit_listener_chain(&self, h: u32) -> Vec<(u32, u32)> {
+        let Some(u) = self.unit(h) else { return Vec::new() };
+        let code_of = |s: u32| self.tags.live.get(&s).map(|e| e.0);
+        let pils = self.unit_pils(h);
+        let is = |s: u32, c: &[u8; 4]| code_of(s) == Some(*c);
+        // (Not a kept slot another object has taken since.)
+        let mut chain: Vec<(u32, u32)> = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).filter(|&&(s, b)| self.tagged(s).1 == b).map(|&(s, _)| s).chain(u.extra.spell_timers.iter().copied()).chain(u.extra.mana_listeners.iter().map(|l| l.1)).chain(pils.iter().map(|p| p.0)).filter(|&s| is(s, codes::class::THRESHOLD_LISTENER) || is(s, codes::class::IN_RANGE_LISTENER)).map(|s| self.tagged(s)).collect();
+        chain.extend(self.held_item_objects(h).into_iter().filter(|x| &x.1 == codes::class::THRESHOLD_LISTENER).map(|x| x.0));
+        chain.sort_by_key(|x| x.1);
+        chain.dedup();
+        chain
+    }
+
     /// A unit's in-range listeners (`` `pil ``, CPoPoInterfLis's `FUN_6f15f100`; read against
     /// the quiet test map's): each its check's period (an aura's, Ensnare's, and an
     /// inventory's half a second, a shop's 2, the alarm's 3) and its handler, linked on
@@ -2228,31 +2495,12 @@ impl World {
             return Vec::new();
         }
         let me = first[0];
-        let code_of = |s: u32| self.tags.live.get(&s).map(|e| e.0);
-        // Its listeners with their abilities, as for its keyed handlers.
-        let mut pils: Vec<(u32, [u8; 4])> = Vec::new();
-        let rest = &u.extra.object_slots[2];
-        for (k, &(s, _)) in rest.iter().enumerate() {
-            if code_of(s) == Some(*codes::class::IN_RANGE_LISTENER) {
-                if let Some(c) = rest[..k].iter().rev().filter_map(|&(x, _)| code_of(x)).find(|c| c[0] == b'A') {
-                    pils.push((s, c));
-                }
-            }
-        }
-        pils.extend(u.extra.alarm_pil.map(|s| (s, *codes::ability::id::ALARM)));
-        pils.extend(u.extra.ensnare_pil.map(|p| (p.1, *codes::ability::id::ENSNARE)));
-        pils.extend(u.extra.item_pil.map(|p| (p.0, *codes::ability::id::INVENTORY)));
-        pils.extend(u.extra.spell_pils.iter().copied());
-        // (A flyer's detection's, made again as it woke: read, Forestwalk's whelps' and
-        // dragons' at the first dawn, which the original's sleep lets go and crashed
-        // without.)
-        pils.extend(u.extra.flyer_pil.map(|s| (s, *codes::ability::id::BURROW_DETECTION_FLYERS)));
-        pils.retain(|&(s, _)| code_of(s) == Some(*codes::class::IN_RANGE_LISTENER));
-        // The unit's listeners' chain: its threshold and in-range listeners by birth.
-        let is = |s: u32, c: &[u8; 4]| code_of(s) == Some(*c);
-        let mut chain: Vec<(u32, u32)> = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).map(|&(s, _)| s).chain(u.extra.spell_timers.iter().copied()).chain(u.extra.mana_listeners.iter().map(|l| l.1)).chain(pils.iter().map(|p| p.0)).filter(|&s| is(s, codes::class::THRESHOLD_LISTENER) || is(s, codes::class::IN_RANGE_LISTENER)).map(|s| self.tagged(s)).collect();
-        chain.sort_by_key(|x| x.1);
-        chain.dedup();
+        let pils = self.unit_pils(h);
+        let chain = self.unit_listener_chain(h);
+        // Its position's: the same, by birth.
+        let mut on_pos: Vec<(u32, u32)> = pils.iter().map(|p| self.tagged(p.0)).collect();
+        on_pos.sort_by_key(|x| x.1);
+        on_pos.dedup();
         let ability = |c: &[u8; 4]| u.abilities.iter().map(|(a, _)| *a).find(|a| self.objects.abilities.get(*a).is_some_and(|o| crate::objects::id_from_str(o.str("code").trim()) == *c)).and_then(|a| self.objects.abilities.get(a));
         let mut out = Vec::new();
         for (s, c) in pils {
@@ -2279,6 +2527,11 @@ impl World {
             let k = chain.iter().position(|&x| x == t);
             let newer = k.and_then(|k| chain.get(k + 1)).map_or(NONE, |&x| rf(x));
             let older = k.filter(|&k| k > 0).map_or(NONE, |k| rf(chain[k - 1]));
+            // (Chained on its position too, newest first: read, the hero test map's
+            // and every-unit test map's units with two.)
+            let k = on_pos.iter().position(|&x| x == t);
+            let pos_newer = k.and_then(|k| on_pos.get(k + 1)).map_or(Link(NONE, 0), |&x| Link(rf(x), 1));
+            let pos_older = k.filter(|&k| k > 0).map_or(Link(NONE, 0), |k| Link(rf(on_pos[k - 1]), 1));
             // The units in range, positions by the map's search.
             // (In range with its collision: read, a Necropolis a ghoul's inventory's.)
             let near: Vec<u32> = self.unit_order.iter().copied().filter(|&v| v != h && self.unit(v).is_some_and(|w| !w.dead && !w.hidden && (w.x - u.x).hypot(w.y - u.y) - self.objects.units.get(w.type_id).map_or(0.0, |o| o.real("collision")) <= range)).collect();
@@ -2289,7 +2542,7 @@ impl World {
             let object = ObjectBase {
                 real: period as f32,
                 words: [pil_handler(&c), 0x2019_0400],
-                links: [(Link(newer, 0), Link(older, 0), rf(t), rf(me)), (Link(NONE, 0), Link(NONE, 0), rf(t), rf(first[1]))],
+                links: [(Link(newer, 0), Link(older, 0), rf(t), rf(me)), (pos_newer, pos_older, rf(t), rf(first[1]))],
                 timings: [Timing(Some((f32::from_bits(due), period as f32, count, 0, 1))), Timing(None)],
             };
             out.push((s, First::Interference { object, real: range / 32.0, word: 0, array: super::in_range_array(entries) }));

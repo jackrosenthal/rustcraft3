@@ -11,6 +11,8 @@ use crate::world::World;
 use crate::codes;
 
 mod unit;
+mod kinds;
+mod kind_layouts;
 
 /// The family a kind of engine object belongs to, as the object tables hold it (read
 /// from every save on hand: properties, listeners, timers, and pathing regions under
@@ -774,9 +776,10 @@ impl World {
         }
         let me = first[0];
         let props: Vec<(u32, u32)> = vec![first[1], first[4], first[5], first[6], first[7], first[8]];
-        let code_of = |s: u32| self.tags.live.get(&s).map(|e| e.0);
-        let mods: Vec<(u32, u32)> = u.extra.object_slots[1].clone();
-        let rtl = mods.iter().copied().find(|&(s, _)| code_of(s) == Some(*codes::class::THRESHOLD_LISTENER));
+        // (Each real's newest listener its head, as the listeners chain them.)
+        let thresholds = self.unit_thresholds(h);
+        let newest_on = |p: (u32, u32)| thresholds.iter().filter(|l| l.1 == p).map(|l| l.0).last();
+        let (rtl, mana_heard) = (newest_on(first[4]), newest_on(first[5]));
         let (hp_rate, mp_rate) = self.regen_rates(h).unwrap_or((0.0, 0.0));
         let regen_life = matches!(o.str("regenType").to_ascii_lowercase().as_str(), "always" | "night" | "day");
         // (Regeneration on blight: its `` `rcm `` made as the unit stands on blight, the
@@ -803,10 +806,6 @@ impl World {
         } else {
             u.mana
         };
-        // (Its newest listener on mana: a creep's made again as it woke, else its
-        // spells' own.)
-        // (Those still listeners: a slot let go, as the creep slept, may be another's.)
-        let mana_heard = u.extra.mana_listeners.iter().map(|&(_, s)| s).chain(u.extra.spell_timers.iter().copied()).filter(|s| self.tags.live.get(s).is_some_and(|e| &e.0 == codes::class::THRESHOLD_LISTENER)).max_by_key(|s| self.tagged(*s).1);
         // (Mana without a pool is -0, read: every unit without mana's.)
         let mana = if u.max_mana == 0.0 && mana == 0.0 { -0.0 } else { mana };
         // (While its day change's modifier lasts, its sight as the change began, at that
@@ -831,7 +830,7 @@ impl World {
             }
             match k {
                 1 => base.links = [life_rcm.map_or(Link(NONE, 0), |r| Link(rf(r), 1)), rtl.map_or(Link(NONE, 0), |r| Link(rf(r), 1))],
-                2 => base.links = [mana_rcm.map_or(Link(NONE, 0), |r| Link(rf(r), 1)), mana_heard.map_or(Link(NONE, 0), |s| Link(rf(self.tagged(s)), 1))],
+                2 => base.links = [mana_rcm.map_or(Link(NONE, 0), |r| Link(rf(r), 1)), mana_heard.map_or(Link(NONE, 0), |s| Link(rf(s), 1))],
                 5 => match ramp {
                     Some((r, _)) => {
                         base.real = self.tags.made_at.get(&r.0).map_or(0.0, |&c| f32::from_bits(c));
@@ -858,6 +857,9 @@ impl World {
         }
         let live = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::CONTINUOUS_MODIFIER);
         let rcms: Vec<(u32, u32)> = u.extra.object_slots[1].iter().copied().filter(|&(s, _)| live(s)).collect();
+        // (Not a kept slot another object has taken since: read, the town hall's
+        // upgrade's modifiers, gone, their slots the acolytes' blight's.)
+        let fresh = |r: &&(u32, u32)| self.tagged(r.0).1 == r.1;
         let (hp_base, hero_hp, mp_rate) = self.regen_parts(h).unwrap_or((0.0, 0.0, 0.0));
         let hp_rate = hp_base + hero_hp;
         let hero = self.hero_parts(h);
@@ -871,7 +873,7 @@ impl World {
         let regen = |r: (u32, u32), prop: usize, rate: f32| UnitModifier { r, prop, word: 0x6005_0044, values: [rate, f32::MAX], timing: periodic(r) };
         let mut k = 0;
         if regen_life {
-            if let Some(&r) = rcms.get(k) {
+            if let Some(&r) = rcms.get(k).filter(fresh) {
                 out.push(regen(r, 1, if hero.is_some() { hp_base } else { hp_rate }));
                 k += 1;
             }
@@ -894,7 +896,7 @@ impl World {
             out.push(UnitModifier { r: p[4], prop: 1, word: 0x6004_0044, values: [rate, span], timing: Timing(Some((due, span, count, 0, 0))) });
         }
         if o.real("manaN") > 0.0 {
-            if let Some(&r) = rcms.get(k) {
+            if let Some(&r) = rcms.get(k).filter(fresh) {
                 out.push(regen(r, 2, mp_rate));
             }
         }
@@ -903,7 +905,7 @@ impl World {
         }
         // Each Unholy Aura buff's, its regeneration (read: Forestwalk's test map's
         // creeps by a Satyr Hellcaller at 2.5 seconds, 0.5 each, due 150.5).
-        for b in &u.buffs {
+        for b in u.buffs.iter().filter(|b| self.buff_kept(b)) {
             if let Some(&s) = self.tags.buff_modifiers.get(&b.slot).filter(|&&s| live(s)) {
                 let r = self.tagged(s);
                 out.push(regen(r, 1, b.life_regen));
@@ -913,7 +915,8 @@ impl World {
         // second and its three, one node due as it ends (read: the creeps' at the
         // melee setup's 8:00, 200 and 3.0, due 3.0, its sight real 800 then with rate
         // 200; a deer's 0).
-        if let Some(s) = u.extra.day_rcm.filter(|&s| live(s)) {
+        // (Its own still: freed three seconds on, its slot may be another's since.)
+        if let Some(s) = u.extra.day_ref.filter(|&(s, b)| live(s) && self.tagged(s).1 == b).map(|x| x.0) {
             let r = self.tagged(s);
             let made = self.made_abs(s).unwrap_or(0);
             let due = f32::from_bits(crate::efloat::add(made, 3f32.to_bits()));
@@ -1546,9 +1549,38 @@ impl World {
             return out;
         }
         let me = first[0];
+        let ls = self.unit_thresholds(h);
+        // (The unit's chain holds its in-range listeners too, its abilities' and its
+        // AI's, by their makings.)
+        let on_unit = self.unit_listener_chain(h);
+        for &(me_s, prop, event, thr, rising, node) in &ls {
+            let on_prop: Vec<(u32, u32)> = ls.iter().filter(|l| l.1 == prop).map(|l| l.0).collect();
+            let (a0, b0) = chain_links(&on_unit, me_s, 0);
+            let (a1, b1) = chain_links(&on_prop, me_s, 1);
+            let object = ObjectBase {
+                real: 0.0,
+                words: [event, 0x2009_0400],
+                links: [(a0, b0, rf(me_s), rf(me)), (a1, b1, rf(me_s), rf(prop))],
+                timings: [node, Timing(None)],
+            };
+            out.push((me_s.0, First::Threshold { object, real: thr, word: rising }, None));
+        }
+        out
+    }
+
+    /// A unit's threshold listeners (`unit_listener_records`), by birth: each itself,
+    /// its real, event, threshold, rising, and its node.
+    fn unit_thresholds(&self, h: u32) -> Vec<((u32, u32), (u32, u32), u32, f32, u32, Timing)> {
+        let Some(u) = self.unit(h) else { return Vec::new() };
+        let first = &u.extra.object_slots[0];
+        if first.len() < 10 {
+            return Vec::new();
+        }
         let (life, mana) = (first[4], first[5]);
         let is_rtl = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::THRESHOLD_LISTENER);
-        let death = u.extra.object_slots[1].iter().copied().find(|&(s, _)| is_rtl(s));
+        // (Not a kept slot another object has taken since.)
+        let kept = |&&(s, b): &&(u32, u32)| self.tagged(s).1 == b;
+        let death = u.extra.object_slots[1].iter().filter(kept).copied().find(|&(s, _)| is_rtl(s));
         let (_, mp_rate) = self.regen_rates(h).unwrap_or((0.0, 0.0));
         // (Each: itself, its real, event, threshold, rising, and its node.)
         let mut ls: Vec<((u32, u32), (u32, u32), u32, f32, u32, Timing)> = Vec::new();
@@ -1603,30 +1635,7 @@ impl World {
             }
         }
         ls.sort_by_key(|l| l.0 .1);
-        // (The unit's chain holds its in-range listeners too, its abilities' and its
-        // AI's, by their makings.)
-        let is_pil = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::IN_RANGE_LISTENER);
-        let mut on_unit: Vec<(u32, u32)> = ls.iter().map(|l| l.0).collect();
-        let pils = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).map(|&(s, _)| s).chain(u.extra.flyer_pil).chain(u.extra.item_pil.map(|p| p.0)).chain(u.extra.ensnare_pil.map(|p| p.1)).chain(u.extra.alarm_pil);
-        for s in pils {
-            if is_pil(s) && !on_unit.iter().any(|x| x.0 == s) {
-                on_unit.push(self.tagged(s));
-            }
-        }
-        on_unit.sort_by_key(|x| x.1);
-        for &(me_s, prop, event, thr, rising, node) in &ls {
-            let on_prop: Vec<(u32, u32)> = ls.iter().filter(|l| l.1 == prop).map(|l| l.0).collect();
-            let (a0, b0) = chain_links(&on_unit, me_s, 0);
-            let (a1, b1) = chain_links(&on_prop, me_s, 1);
-            let object = ObjectBase {
-                real: 0.0,
-                words: [event, 0x2009_0400],
-                links: [(a0, b0, rf(me_s), rf(me)), (a1, b1, rf(me_s), rf(prop))],
-                timings: [node, Timing(None)],
-            };
-            out.push((me_s.0, First::Threshold { object, real: thr, word: rising }, None));
-        }
-        out
+        ls
     }
 
     /// A unit's own first record (`+w3u`'s agent, read against the quiet test map's): its
@@ -1642,12 +1651,6 @@ impl World {
         let me = first[0];
         let props: Vec<(u32, u32)> = vec![first[1], first[4], first[5], first[6], first[7], first[8]];
         let mut rec = agent_first(me, codes::class::UNIT, &props);
-        let live = |s: u32, c: &[u8; 4]| self.tags.live.get(&s).is_some_and(|e| &e.0 == c);
-        let all = || u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).map(|&(s, _)| s).chain(u.extra.flyer_pil).chain(u.extra.item_pil.map(|p| p.0)).chain(u.extra.ensnare_pil.map(|p| p.1)).chain(u.extra.alarm_pil).chain(u.extra.spell_timers.iter().copied()).chain(u.extra.mana_listeners.iter().map(|l| l.1)).chain(u.extra.blight_rcm);
-        // (Not a kept slot another object has taken since: read, the town hall's
-        // upgrade's modifiers, gone, their slots the acolytes' blight's.)
-        let stale = |s: u32| u.extra.object_slots.iter().flatten().any(|&(x, b)| x == s && self.tagged(s).1 != b);
-        let newest = |codes: &[&[u8; 4]]| all().filter(|&s| !stale(s) && codes.iter().any(|c| live(s, c))).max_by_key(|&s| self.tagged(s).1).map(|s| Link(rf(self.tagged(s)), 0));
         if let First::Agent { links, .. } = &mut rec {
             // (Its abilities' chain, newest first: its abilities and an AI's unit list,
             // not the AI itself.)
@@ -1658,8 +1661,9 @@ impl World {
             if let Some((t, _)) = self.ability_chain(h, &[]).into_iter().max_by_key(|(t, _)| t.1) {
                 links[0] = Link(rf(t), 0);
             }
-            links[2] = newest(&[codes::class::CONTINUOUS_MODIFIER]).unwrap_or(Link(NONE, 0));
-            links[3] = newest(&[codes::class::THRESHOLD_LISTENER, codes::class::IN_RANGE_LISTENER]).unwrap_or(Link(NONE, 0));
+            // (Each chain's head its newest, as its records chain them.)
+            links[2] = self.unit_modifiers(h).last().map_or(Link(NONE, 0), |m| Link(rf(m.r), 0));
+            links[3] = self.unit_listener_chain(h).last().map_or(Link(NONE, 0), |&s| Link(rf(s), 0));
         }
         vec![(me.0, rec, None)]
     }
@@ -1683,8 +1687,7 @@ impl World {
         let me = first[0];
         let props: Vec<(u32, u32)> = vec![first[1], first[4], first[5], first[6], first[7], first[8]];
         let mut base = self.stamped(listed_property_base(&props, 0, me));
-        let is_pil = |s: u32| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::IN_RANGE_LISTENER);
-        let newest = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).map(|&(s, _)| s).chain(u.extra.flyer_pil).chain(u.extra.item_pil.map(|p| p.0)).chain(u.extra.ensnare_pil.map(|p| p.1)).chain(u.extra.alarm_pil).filter(|&s| is_pil(s)).max_by_key(|&s| self.tagged(s).1);
+        let newest = self.unit_pils(h).into_iter().map(|p| self.tagged(p.0)).max_by_key(|x| x.1).map(|x| x.0);
         if let Some(s) = newest {
             base.links[1] = Link(rf(self.tagged(s)), 1);
         }
@@ -2059,6 +2062,11 @@ impl World {
     }
 
     /// An object's slot with its birth, as references name it.
+    /// Whether a buff's object is still its own (not let go, its slot another's since).
+    pub(crate) fn buff_kept(&self, b: &crate::types::Buff) -> bool {
+        b.slot != 0 && self.tags.live.get(&b.slot).is_some_and(|e| e.1 == b.birth)
+    }
+
     fn tagged(&self, slot: u32) -> (u32, u32) {
         (slot, self.tags.live.get(&slot).map_or(0, |e| e.1))
     }
@@ -2784,6 +2792,20 @@ impl World {
                     let zeros = || Field::List((0..16).map(|_| vec![Field::Word(0)]).collect());
                     out.push((slot, Second::Agent { own: vec![Field::Word(0)], handlers: events(), tail: vec![Field::Word(0), zeros(), Field::Word(0), zeros()] }));
                 }
+                // A unit's shared vision (CSharedVisionData): 0; the players it is shown
+                // to, and sixteen counts, each player's of the buffs showing it
+                // (`FUN_6f688b80`, `FUN_6f678210`).
+                codes::class::SHARED_VISION => {
+                    let mut counts = [0u32; 16];
+                    if let Some(u) = self.unit_order.iter().filter_map(|&h| self.unit(h)).find(|u| u.extra.vision_record.is_some_and(|v| v.0 == slot)) {
+                        for p in u.buffs.iter().filter(|b| self.buff_kept(b)).filter_map(|b| b.vision_player) {
+                            counts[p as usize % 16] += 1;
+                        }
+                    }
+                    let mask = (0..16).filter(|&p| counts[p] > 0).fold(0u32, |m, p| m | 1 << p);
+                    let list = Field::List(counts.iter().map(|&c| vec![Field::Word(c)]).collect());
+                    out.push((slot, Second::Agent { own: vec![Field::Word(0)], handlers: events(), tail: vec![Field::Word(mask), list] }));
+                }
                 _ => {}
             }
         }
@@ -2818,7 +2840,7 @@ impl World {
     /// shifts, rects, the queue, and the game cache manager): each its class's definition
     /// alone.
     pub fn plain_agent_records(&self) -> Vec<(u32, First)> {
-        const PLAIN: [&[u8; 4]; 14] = [codes::class::UNIT_AI, codes::class::CREEP_CAMP, codes::class::TOWN_SITE, codes::class::PLAYER_AI, codes::class::GROUP, codes::class::SOUND, codes::class::TIMER_DIALOG, codes::class::MINE_SLOT, codes::class::MINE_SHAFT, codes::class::RECT, codes::class::TRIGGER_QUEUE, codes::class::GAME_CACHE_MANAGER, codes::class::DETECTION, codes::class::AI_THREAD];
+        const PLAIN: [&[u8; 4]; 15] = [codes::class::UNIT_AI, codes::class::CREEP_CAMP, codes::class::TOWN_SITE, codes::class::PLAYER_AI, codes::class::GROUP, codes::class::SOUND, codes::class::TIMER_DIALOG, codes::class::MINE_SLOT, codes::class::MINE_SHAFT, codes::class::RECT, codes::class::TRIGGER_QUEUE, codes::class::GAME_CACHE_MANAGER, codes::class::DETECTION, codes::class::SHARED_VISION, codes::class::AI_THREAD];
         // (A unit's AI without its unit, the unit gone and its AI kept by the port, is
         // left out, its slot freed: the original holds none such, and its reader
         // would meet an empty record.)

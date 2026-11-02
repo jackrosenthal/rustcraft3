@@ -580,6 +580,10 @@ pub struct UnitExtra {
     /// The players' detectors that found this unit, each with its record (`Cdet`).
     #[serde(default)]
     pub detected_by: Vec<(u8, u32)>,
+    /// Its shared vision's record (`Csha`) and its birth: made the first time a buff
+    /// showed it to a player (`FUN_6f688ba0`), kept while it lives.
+    #[serde(default)]
+    pub vision_record: Option<(u32, u32)>,
     /// The step of this tick its walk begins with (its order given after the one before).
     #[serde(default)]
     pub walk_from: Option<usize>,
@@ -935,6 +939,7 @@ impl Default for UnitExtra {
             fade_slots: Vec::new(),
             detect_clock: None,
             detected_by: Vec::new(),
+            vision_record: None,
             sleep_effect: 0,
             sleep_show_wait: None,
             warp_inside: 0,
@@ -1075,6 +1080,13 @@ pub struct Buff {
     /// Its engine object's slot (as laid by `World::apply_buff_tagged`), 0 when none.
     #[serde(default)]
     pub slot: u32,
+    /// Its slot's birth (another object may take the slot once it is let go).
+    #[serde(default)]
+    pub birth: u32,
+    /// The player it shows its bearer to (its caster's owner), for those that do
+    /// (Ensnare's, Web's, Faerie Fire's, ...: CBuffSharedVision's family).
+    #[serde(default)]
+    pub vision_player: Option<u8>,
     pub effect: u32,
     /// Flat damage added to attacks.
     pub damage_bonus: f32,

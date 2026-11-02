@@ -1,0 +1,127 @@
+AEbl	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t t t
+AEim	wwww wwwwwww t w ffff wwww f w w w	wwwww r t t t
+AEme	wwww wwwwwww t w ffff wwww f f f w w f w w f	wwwww r t t t t t wwwww f w fff w f [ww] f f f [w] f s
+AEsf	wwww wwwwwww t w ffff wwww f w w w w	wwwww r t t t
+AEst	wwww wwwwwww t w ffff wwww f	wwwww r t t t
+AEtq	wwww wwwwwww t w ffff wwww f w w w w	wwwww r t t t
+AHav	wwww wwwwwww t w ffff wwww f w w w	wwwww r t t t
+AHbh	wwww wwwwwww t w w	wwwww
+AHbz	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t t r [w] w w w
+AHdr	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w w w w w w w w w w w	wwwww r t t t t
+AHds	wwww wwwwwww t w ffff wwww f w w w	wwwww r t t
+AHfs	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w	wwwww r t t t t
+AHhb	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t t
+AHmt	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w	wwwww r t t t r r w
+AHre	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t t t
+AIdd	wwww wwwwwww t w w	wwwww
+ANcl	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w	wwwww r t t t
+ANcr	wwww wwwwwww t w ffff wwww f f f w w f w w	wwwww r t t t t t wwwww f w fff w f [ww] f f f [w] f s t
+ANcs	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w w f f f w w w w	wwwww r t t t t t r
+ANdb	wwww wwwwwww t w w	wwwww
+ANdc	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w	wwwww r t t r t
+ANde	wwww wwwwwww t w f w	wwwww
+ANdh	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t r
+ANef	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w w	wwwww r t t t
+ANeg	wwww wwwwwww t w w w w f f w	wwwww
+ANfd	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w	wwwww r t t t r
+ANhs	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w w f f f w w w w	wwwww r t t t t t r
+ANin	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t r
+ANmo	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w	wwwww r t t
+ANms	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w	wwwww r t t
+ANrc	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w w	wwwww r t t
+ANrf	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t t r [w] w w w
+ANsi	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t r
+ANsl	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w	wwwww r t t r t
+ANst	wwww wwwwwww t w ffff wwww f wwww ff wwww ff f w	wwwww r t t t t t
+ANto	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w w	wwwww r t t r t t
+ANvc	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w w	wwwww r t t t r
+AOcl	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t w f [w w w] [w w w]
+AOeq	wwww wwwwwww t w ffff wwww f wwww ff wwww ff f f w w w w	wwwww r t t r t t
+AOhw	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t w f [w w w] [w w w]
+AOhx	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w	wwwww r t t r
+AOmi	wwww wwwwwww t w ffff wwww f	wwwww r t t w w w [w w w] t w r
+AOvd	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w w	wwwww r t t t r t t
+AOww	wwww wwwwwww t w ffff wwww f w w f f	wwwww r t t t
+AUan	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t t
+AUcb	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w	wwwww r t t t t
+AUdd	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w w	wwwww r t t r t
+AUdp	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t t
+AUdr	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t t
+AUim	wwww wwwwwww t w ffff wwww f wwww ff wwww ff f f f f w f	wwwww r t t t
+AUin	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t r
+AUls	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t [w w w] w w w t t
+AUts	wwww wwwwwww t w f w w w	wwwww t
+Aapl	wwww wwwwwww t w w f f w w w	[r] w r t w w w w w
+Aast	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t t
+Aave	wwww wwwwwww t w ffff wwww f f f w w f w w	wwwww r t t t t t wwwww f w fff w f [ww] f f f [w] f s
+Abrf	wwww wwwwwww t w ffff wwww f f f w w f w w	wwwww r t t t t t wwwww f w fff w f [ww] f f f [w] f s t
+Absk	wwww wwwwwww t w ffff wwww f w	wwwww r t t t
+Abtl	wwww wwwwwww t w ffff wwww f w	wwwww r t t t
+Abun	wwww wwwwwww t w	f w w w [w w w] [w w w] [w] [w] t t [f f] [f f]
+Acar	wwww wwwwwww t w	f w w w [w w w] [w w w] [w] [w] t t [f f] [f f]
+Acha	wwww wwwwwww t w w	t t
+Aclf	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w	wwwww r t t r
+Acpf	wwww wwwwwww t w ffff wwww f f f w w f w w	wwwww r t t t t t wwwww f w fff w f [ww] f f f [w] f s t
+Acyc	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t r
+Adef	wwww wwwwwww t w w	wwwww t
+Adet	wwww wwwwwww t w f w	wwwww r r
+Adev	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w	wwwww r t t t
+Adis	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t t
+Adro	wwww wwwwwww t w ffff wwww f wwww ff wwww ff f f f f f f	wwwww r t t t t
+Adtn	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t t
+Adts	wwww wwwwwww t w f w	wwwww r r
+Aegm	wwww wwwwwww t w w w w w w f f	r r r t
+Aenc	wwww wwwwwww t w	f w w w [w w w] [w w w] [w] [w] t t [f f] [f f]
+Aent	wwww wwwwwww t w f w w w w w w	r t
+Aesn	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w	wwwww r t t r t
+Afin	wwww wwwwwww t w	w w w t
+Afio	wwww wwwwwww t w	w w w t
+Afla	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w	wwwww r t t
+Agho	wwww wwwwwww t w w	[r] w
+Agyv	wwww wwwwwww t w f w	wwwww r r
+Ahwd	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t t
+Alit	wwww wwwwwww t w f w w w	w
+Aloa	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w	wwwww r t t t
+Aloc	wwww wwwwwww t w w w w f w f f f w w w w	t
+Ambt	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w f	wwwww r t t t r t r w f f f
+Amfl	wwww wwwwwww t w ffff wwww f wwww ff wwww ff f w	wwwww r t t t
+Amin	wwww wwwwwww t w f	t r
+Amls	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w w w w w w w	wwwww r t t t t
+Aphx	wwww wwwwwww t w ffff wwww f f f w w f w w w w w w	wwwww r t t t t t wwwww f w fff w f [ww] f f f [w] f s
+Apig	wwww wwwwwww t w w w w	wwwww
+Apiv	wwww wwwwwww t w w	[r] w
+Aply	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w	wwwww r t t r
+Aps2	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w w	wwwww r t t t
+Apsh	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w	wwwww r t t
+Apxf	wwww wwwwwww t w	t
+Arav	wwww wwwwwww t w ffff wwww f f f w w f w w	wwwww r t t t t t wwwww f w fff w f [ww] f f f [w] f s
+Arbr	wwww wwwwwww t w w f w w	[r] w
+Aren	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w f f f w w w f w w w	wwwww r t t t t t t t r
+Aroo	wwww wwwwwww t w w w f f f f w	wwwww t t
+Arpl	wwww wwwwwww t w ffff wwww f wwww ff wwww ff f	wwwww r t t t
+Arpm	wwww wwwwwww t w ffff wwww f wwww ff wwww ff f	wwwww r t t t
+Asac	wwww wwwwwww t w f f	r r r r [w] w f [w w w]
+Asal	wwww wwwwwww t w f f	wwwww
+Asds	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w	wwwww r t t t
+Asph	wwww wwwwwww t w w w w w f f w f	[r] w t t
+Aspi	wwww wwwwwww t w w f w	[r] w
+Aspl	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w	wwwww r t t
+Aspo	wwww wwwwwww t w w	wwwww
+Assk	wwww wwwwwww t w w	wwwww
+Astn	wwww wwwwwww t w ffff wwww f f f w w f w w	wwwww r t t t t t wwwww f w fff w f [ww] f f f [w] f s r t
+Atol	wwww wwwwwww t w w	[r] w
+Atru	wwww wwwwwww t w f w	wwwww r r
+Auco	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w w w	wwwww r t t t
+Ault	wwww wwwwwww t w f	
+Avng	wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w	wwwww r t t t t
+Awar	wwww wwwwwww t w f w	wwwww
+BHab	wwww wwwwwww t w w f www fff f w w w w	[r] w t ss f r t
+BPSE	wwww wwwwwww t w w f www fff w w w	[r] w t ss f
+BUts	wwww wwwwwww t w w	[r] w
+Bcrs	wwww wwwwwww t w w f www fff f w	[r] w t ss f
+Bfro	wwww wwwwwww t w w f www fff f f	[r] w t ss f t
+Bmil	wwww wwwwwww t w w f www fff f w w w	[r] w t ss f
+Bphx	wwww wwwwwww t w w f www fff f	[r] w t ss f
+Bpig	wwww wwwwwww t w w f www fff w f f f w w w w w w w f	[r] w t ss f t r r
+Awha	wwww wwwwwww t w f f w f f w w w w w w	[www] [t] wwwwww f t
+ANdp	wwww wwwwwww t w ffff wwww f wwww ff wwww ff	wwwww r t t t [w] w f f r

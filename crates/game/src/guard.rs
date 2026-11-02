@@ -479,6 +479,7 @@ impl World {
                     // others' objects.)
                     if let Some(u) = self.unit_mut(h) {
                         u.extra.spell_owners.retain(|o| !listeners.iter().any(|l| l.1 == o.0));
+                        u.extra.spell_timers.retain(|&s| !listeners.iter().any(|l| l.1 == s));
                     }
                     for (_, s) in listeners.iter().rev() {
                         slept.push(*s);

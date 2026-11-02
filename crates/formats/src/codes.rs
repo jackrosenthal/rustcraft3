@@ -1769,6 +1769,8 @@ pub mod class {
     pub const MINE_SLOT: &Code = b"rslt";
     /// `spla`: A splash weapon's.
     pub const SPLASH: &Code = b"spla";
+    /// `+Wup`: A player's upgrade (CPlayerUpgrade): its levels researched.
+    pub const PLAYER_UPGRADE: &Code = b"+Wup";
     /// `Cdet`: A detection (the flyers' burrow detection).
     pub const DETECTION: &Code = b"Cdet";
     /// `Csha`: A unit's shared vision, as buffs show it to players (Ensnare's, Web's,

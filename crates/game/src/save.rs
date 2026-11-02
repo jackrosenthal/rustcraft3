@@ -223,7 +223,8 @@ impl Game {
     /// the handles scripts had them by, its players' gold and lumber (saved in tenths),
     /// the time of day, the map script's variables (by name, arrays too) and its threads
     /// asleep, its timers, its destructables' life, its items (those carried in their
-    /// units' slots), and the computers' AI scripts and captains (`restore_ai_scripts`).
+    /// units' slots), its players' upgrades researched, and the computers' AI scripts
+    /// and captains (`restore_ai_scripts`).
     /// Not yet: the rest (the time, which the port's timers and sleeping threads count
     /// from; orders, buildings in progress), which stay as the script just made them.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
@@ -336,6 +337,35 @@ impl Game {
                 if let (Some((life, mana, max_life, max_mana)), Some(u)) = (kept, w.unit_mut(h)) {
                     (u.life, u.mana, u.max_life, u.max_mana) = (life, mana, max_life, max_mana);
                 }
+            }
+        }
+        // The upgrades researched (each a player's `+Wup`, CPlayerUpgrade: its player,
+        // the upgrade, 0, its level, and its most, found by the first two as the engine
+        // looks them up, `FUN_6f6c9b40`, its level the fourth as `FUN_6f6c9b00` reads;
+        // read, the hero map's undead computer's at 900 seconds, Unholy Strength at 1 of
+        // 3), their effects on the player's units as research gives them.  Provisional:
+        // the third word.
+        {
+            use w3_formats::w3z::{Field, Second};
+            let all = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
+            let word = |f: Option<&Field>| match f {
+                Some(Field::Word(w)) => Some(*w),
+                _ => None,
+            };
+            let mut changed: Vec<u8> = Vec::new();
+            for o in all.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::class::PLAYER_UPGRADE) {
+                let Ok(Second::Agent { tail, .. }) = o.second() else { continue };
+                let (Some(p), Some(id), Some(level)) = (word(tail.first()), word(tail.get(1)), word(tail.get(3))) else { continue };
+                let Some(player) = w.players.get_mut(p as usize) else { continue };
+                if level > 0 {
+                    player.tech_researched.insert(id.to_be_bytes(), level as i32);
+                    changed.push(p as u8);
+                }
+            }
+            changed.sort();
+            changed.dedup();
+            for p in changed {
+                w.research_changed(p);
             }
         }
         // Gold, lumber, and what was gathered of each (JASS's player states 1, 2, 15,

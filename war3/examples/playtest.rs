@@ -682,6 +682,19 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // techs: each player's upgrades researched.
+            "techs" => {
+                if let Some(g) = scene.game.as_ref() {
+                    for p in &g.world.players {
+                        let mut t: Vec<String> = p.tech_researched.iter().filter(|(id, _)| g.world.objects.upgrades.get(**id).is_some()).map(|(id, l)| format!("{}:{l}", w3_game::objects::id_str(*id))).collect();
+                        t.sort();
+                        if !t.is_empty() {
+                            eprintln!("techs p{} {}", p.id, t.join(" "));
+                        }
+                    }
+                }
+                i += 1;
+            }
             // tech <upgrade> <level>: gives player 0 research.
             "tech" => {
                 if let Some(g) = scene.game.as_mut() {

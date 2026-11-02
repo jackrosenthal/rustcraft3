@@ -1739,6 +1739,36 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // CDetectedData (`FUN_6f696040`, own `FUN_6f03edf0`: a word): a word and a counted
     // list of words (a player's each: read, 16), twice.
     (codes::class::DETECTION, "w", "w [w] w [w]"),
+    // A player's upgrade (CPlayerUpgrade vf14): five words, then a counted list of
+    // three each.
+    (codes::class::PLAYER_UPGRADE, "w", "wwwww [www]"),
+    // The upgrades' effects (CUpgradeArmor and the rest, own `FUN_6f6b5140`): their own
+    // fields alone.
+    (codes::upgrade::id::ARMOR, "wffw", ""), // CUpgradeArmor
+    (codes::upgrade::id::ARMOR_TYPE, "wffw", ""), // CUpgradeArmorType
+    (codes::upgrade::id::SPILL_DISTANCE, "wffw", ""), // CUpgradeAttackSpillDistance
+    (codes::upgrade::id::ATTACK_TARGETS, "wffw", ""), // CUpgradeAttackTargetCount
+    (codes::upgrade::id::ATTACK_DICE, "wffw", ""), // CUpgradeAttackDice
+    (codes::upgrade::id::ATTACK_RANGE, "wffw", ""), // CUpgradeAttackRange
+    (codes::upgrade::id::ATTACK_SPEED, "wffw", ""), // CUpgradeAttackSpeed
+    (codes::upgrade::id::ATTACK_DAMAGE, "wffw", ""), // CUpgradeAttackEx
+    (codes::upgrade::id::AURA_DATA_AN_ABILITYS_DATAA, "wffw", ""), // CUpgradeAuraData
+    (codes::upgrade::id::ULTRAVISION, "wffw", ""), // CUpgradeAddUltraVision
+    (codes::upgrade::id::WEAPONS_ENABLED, "wffw", ""), // CUpgradeEnableWeapon
+    (codes::upgrade::id::HIT_POINTS_PERCENT, "wffw", ""), // CUpgradeHitPoints
+    (codes::upgrade::id::HIT_POINT_REGENERATION, "wffw", ""), // CUpgradeHitPointsRegen
+    (codes::upgrade::id::HIT_POINTS, "wffw", ""), // CUpgradeHitPointsEx
+    (codes::upgrade::id::ABILITY_LEVEL, "wffw", ""), // CUpgradeSpell
+    (codes::upgrade::id::LUMBER_HARVESTED, "wffw", ""), // CUpgradeLumberJack
+    (codes::upgrade::id::MANA_PERCENT, "wffw", ""), // CUpgradeMana
+    (codes::upgrade::id::MANA_REGENERATION, "wffw", ""), // CUpgradeManaRegen
+    (codes::upgrade::id::MANA, "wffw", ""), // CUpgradeManaEx
+    (codes::upgrade::id::MOVE_SPEED_PERCENT, "wffw", ""), // CUpgradeMove
+    (codes::upgrade::id::MOVE_SPEED, "wffw", ""), // CUpgradeMoveEx
+    (codes::upgrade::id::RAISE_DEAD_DURATION, "wffw", ""), // CUpgradeRaiseDead
+    (codes::upgrade::id::SIGHT, "wffw", ""), // CUpgradeSight
+    (codes::upgrade::id::SPIKES, "wffw", ""), // CUpgradeSpikes
+    (codes::upgrade::id::MAXIMUM_TRAINED, "wffw", ""), // CUpgradeAddTechMaxAllowed
     // (Its mask of the players shown it, and each one's count.)
     (codes::class::SHARED_VISION, "w", "w [w]"),
     // Harvests (`FUN_6f42da60` on `FUN_6f42d950`: a counted list of three words, of

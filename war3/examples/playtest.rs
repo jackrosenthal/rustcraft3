@@ -947,6 +947,18 @@ fn main() -> anyhow::Result<()> {
                 i += 2;
             }
             // aithreads: where each computer player's script threads wait.
+            // aiground: the computers' AI threads written as saved and read back,
+            // their differences.
+            "aiground" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let d = g.check_thread_round_trip();
+                    eprintln!("aiground: {} threads differ", d.len());
+                    for l in d.iter().take(10) {
+                        eprintln!("aiground {l}");
+                    }
+                }
+                i += 1;
+            }
             "aithreads" => {
                 if let Some(g) = scene.game.as_ref() {
                     for (p, a) in &g.world.ai_vms {

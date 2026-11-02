@@ -307,6 +307,8 @@ struct Func {
     ret: u8,
     port: FuncId,
     locals: Vec<u32>,
+    /// How many of its locals are its arguments (the first).
+    params: usize,
 }
 
 /// The code, decoded and resolved.
@@ -361,13 +363,18 @@ impl Prog {
                 op::FUNCTION => {
                     let n = name(i.arg);
                     let port = m.function_index.get(&*n).copied().unwrap_or(NO_FUNC);
-                    funcs.push(Func { name: n, entry: k as u32 + 1, ret: i.c, port, locals: Vec::new() });
+                    funcs.push(Func { name: n, entry: k as u32 + 1, ret: i.c, port, locals: Vec::new(), params: 0 });
                     cur = funcs.len() as u32 - 1;
                 }
                 op::LABEL => {
                     labels.insert(i.arg, k as u32 + 1);
                 }
-                op::LOCAL | op::FUNCARG if cur != u32::MAX => funcs[cur as usize].locals.push(i.arg),
+                op::LOCAL | op::FUNCARG if cur != u32::MAX => {
+                    funcs[cur as usize].locals.push(i.arg);
+                    if i.op == op::FUNCARG {
+                        funcs[cur as usize].params += 1;
+                    }
+                }
                 _ => {}
             }
             owner[k] = cur;
@@ -1068,6 +1075,22 @@ impl Vm {
     /// A function's name.
     pub fn function_name(&self, func: FuncId) -> Option<Rc<str>> {
         self.prog.of_port.get(&func).map(|&k| self.prog.funcs[k as usize].name.clone())
+    }
+
+    /// The function whose code holds an instruction (by index), none outside every
+    /// function.
+    pub fn function_holding(&self, ip: u32) -> FuncId {
+        self.prog.funcs.iter().filter(|f| f.entry <= ip).max_by_key(|f| f.entry).map_or(NO_FUNC, |f| f.port)
+    }
+
+    /// The number of instructions.
+    pub fn code_len(&self) -> u32 {
+        self.prog.code.len() as u32
+    }
+
+    /// How many of a function's locals are its arguments.
+    pub fn param_count(&self, func: FuncId) -> usize {
+        self.prog.of_port.get(&func).map_or(0, |&k| self.prog.funcs[k as usize].params)
     }
 
     /// A function's locals' names (its arguments first), in their slots' order.

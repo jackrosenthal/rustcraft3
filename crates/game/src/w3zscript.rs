@@ -84,6 +84,79 @@ fn thread_of(vm: &w3_jass::Vm, t: &w3_jass::Thread, sleeping: bool) -> Thread {
     }
 }
 
+/// The original's machine's values as the port's: its strings by their text (its own
+/// table, `Machine::functions`), a return place outside the code none; the rest as
+/// saved (a code value its function's place in the same code).
+pub(crate) struct Remap<'a> {
+    pub strings: &'a [(String, u32)],
+}
+
+impl Remap<'_> {
+    fn word(&self, vm: &mut w3_jass::Vm, kind: u32, v: u32) -> u32 {
+        use w3_jass::vm::ty;
+        match kind as u8 {
+            ty::STRING | ty::STRING_ARRAY if v != 0 => self.strings.get(v as usize - 1).map_or(0, |s| vm.intern(&s.0)),
+            ty::RETURN if v / 2 >= vm.code_len() => 0,
+            _ => v,
+        }
+    }
+
+    fn reg(&self, vm: &mut w3_jass::Vm, v: &Value) -> Reg {
+        let value = match v.value {
+            Contents::One(x) => self.word(vm, v.kind, x),
+            Contents::Array(_) => 0,
+        };
+        Reg { kind: v.kind as u8, decl: v.word as u8, value }
+    }
+
+    fn var(&self, vm: &mut w3_jass::Vm, v: &Value, param: bool) -> Var {
+        match &v.value {
+            Contents::One(x) => Var { kind: v.kind as u8, decl: v.word as u8, value: self.word(vm, v.kind, *x), array: None, param },
+            Contents::Array(xs) => {
+                let xs = xs.iter().map(|&x| self.word(vm, v.kind, x)).collect();
+                Var { kind: v.kind as u8, decl: v.word as u8, value: 0, array: Some(xs), param }
+            }
+        }
+    }
+}
+
+/// A thread from its saved form (`thread_of`'s inverse): its frames' functions found
+/// from the code (the current one's from its place; a caller's from the return place it
+/// pushed; a frame below one marked its run's first, or holding a return place outside
+/// the code, a run's base, its return place the run's), its locals' arguments by its
+/// function.
+pub(crate) fn thread_from(vm: &mut w3_jass::Vm, t: &Thread, map: &Remap) -> w3_jass::Thread {
+    use w3_jass::vm::ty;
+    let mut th = w3_jass::Thread::default();
+    (th.place, th.ip, th.can_sleep) = (t.machine, (t.at != 0 && t.at / 2 < vm.code_len()).then_some(t.at / 2), true);
+    for (k, v) in t.stack.iter().enumerate().take(th.regs.len()) {
+        th.regs[k] = map.reg(vm, v);
+    }
+    let saved: Vec<&Frame> = t.frames.iter().rev().collect();
+    let n = saved.len();
+    let ret = |f: &Frame| f.arguments.iter().rev().find(|v| v.kind == ty::RETURN as u32).and_then(|v| match v.value {
+        Contents::One(x) => Some(x),
+        _ => None,
+    });
+    for (j, f) in saved.iter().enumerate() {
+        let place = ret(f).filter(|&x| x != 0 && x / 2 < vm.code_len());
+        let base = j + 1 < n && (saved[j + 1].word != 0 || place.is_none());
+        let func = if j + 1 == n {
+            th.ip.map_or(u32::MAX, |ip| vm.function_holding(ip))
+        } else if base {
+            th.returns.push(place.map(|x| x / 2));
+            u32::MAX
+        } else {
+            vm.function_holding(place.unwrap_or(0) / 2)
+        };
+        let params = vm.param_count(func);
+        let locals = f.locals.iter().enumerate().map(|(k, (_, v))| map.var(vm, v, k < params)).collect();
+        let stack = f.arguments.iter().map(|v| map.reg(vm, v)).collect();
+        th.frames.push(w3_jass::vm::Frame { func, locals, stack, top: f.word != 0 });
+    }
+    th
+}
+
 /// A machine's code block as saved (`FUN_6f910730`).
 fn code_of(vm: &w3_jass::Vm) -> Code {
     Code { words: vm.code_words().to_vec(), strings: vm.code_table().iter().map(|s| s.to_string()).collect() }
@@ -162,6 +235,165 @@ impl Game {
             machines.push(((a.vm.main.place, machine), threads));
         }
         (codes, machines)
+    }
+
+    /// Each computer's AI threads written as saved and read back (`thread_from`), the
+    /// differences from the port's own: none when the two are each other's inverse.
+    pub fn check_thread_round_trip(&mut self) -> Vec<String> {
+        let mut out = Vec::new();
+        let players: Vec<u8> = self.world.ai_vms.keys().copied().collect();
+        for p in players {
+            let Some(a) = self.world.ai_vms.get_mut(&p) else { continue };
+            let m = machine_of(&a.vm, 2);
+            let map = Remap { strings: &m.functions };
+            let threads: Vec<w3_jass::Thread> = a.sleepers.iter().map(|(_, t)| t.clone()).collect();
+            for t in threads {
+                let saved = thread_of(&a.vm, &t, true);
+                let back = thread_from(&mut a.vm, &saved, &map);
+                let fr = |t: &w3_jass::Thread| t.frames.iter().map(|f| (f.func, f.top, f.stack.clone(), f.locals.iter().map(|v| (v.kind, v.decl, v.value, v.array.clone(), v.param)).collect::<Vec<_>>())).collect::<Vec<_>>();
+                let same = (t.place, t.ip, &t.returns, &t.regs) == (back.place, back.ip, &back.returns, &back.regs) && fr(&t) == fr(&back);
+                if !same {
+                    out.push(format!("p{p} place {}: ip {:?} vs {:?}; returns {:?} vs {:?}; regs differ {:?}; frames {:?} vs {:?}", t.place, t.ip, back.ip, t.returns, back.returns, t.regs.iter().zip(&back.regs).enumerate().filter(|(_, (a, b))| a != b).map(|(k, (a, b))| (k, *a, *b)).take(4).collect::<Vec<_>>(), fr(&t).iter().map(|f| (f.0, f.1)).collect::<Vec<_>>(), fr(&back).iter().map(|f| (f.0, f.1)).collect::<Vec<_>>()));
+                }
+            }
+        }
+        out
+    }
+
+    /// The computers' AI scripts as a save of the original's has them, in place of
+    /// those the map's start made: each machine (by its place) its globals and its
+    /// threads (`thread_from`), each asleep for what was left of its sleep (its AI
+    /// thread object's timer, due on the agent clock, `agent_clock` that clock as
+    /// saved, no longer than the sleep it records: a due not yet set back as the clock
+    /// wrapped at 300 seconds taken back by 300; read, the hero map's at 300 seconds).
+    pub fn restore_ai_scripts(&mut self, s: &SaveGame, scripts: &ScriptData, agent_clock: f32, units: &std::collections::HashMap<(u32, u32), u32>) -> anyhow::Result<()> {
+        use w3_formats::w3z::{Second, Timing};
+        let objects = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
+        let mut due: std::collections::HashMap<u32, (f32, f32)> = Default::default();
+        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::class::AI_THREAD) {
+            if let Ok(Second::Agent { own, tail, .. }) = o.second() {
+                let sleep = match own.get(6) {
+                    Some(Field::Real(r)) => *r,
+                    _ => 0.0,
+                };
+                if let (Some(Field::Timer(_, _, Timing(Some(t)))), Some(Field::Word(place))) = (tail.first(), tail.get(4)) {
+                    due.insert(*place, (t.0, sleep));
+                }
+            }
+        }
+        let now = self.world.time;
+        for (k, (place, m)) in scripts.machines.iter().enumerate().skip(1) {
+            let Some(p) = self.world.ai_vms.iter().find(|(_, a)| a.vm.main.place == *place).map(|(&p, _)| p) else { continue };
+            let map = Remap { strings: &m.functions };
+            let Some(a) = self.world.ai_vms.get_mut(&p) else { continue };
+            for (name, v) in &m.globals {
+                let Some(&g) = a.vm.module.global_index.get(name.as_str()) else { continue };
+                let var = map.var(&mut a.vm, v, false);
+                if let Some(slot) = a.vm.vars.get_mut(g as usize) {
+                    *slot = var;
+                }
+            }
+            let mut sleepers = Vec::new();
+            for t in scripts.threads.get(k).into_iter().flatten() {
+                let th = thread_from(&mut a.vm, t, &map);
+                let (mut left, sleep) = due.get(&t.machine).map_or((0.0, 0.0), |&(d, s)| (d - agent_clock, s));
+                while left > sleep + 1.0 {
+                    left -= 300.0;
+                }
+                if left < -1.0 {
+                    left += 300.0;
+                }
+                sleepers.push((now + left.max(0.0), th));
+            }
+            a.sleepers = sleepers;
+            // (Its threads' objects say when each wakes, as the port's own sleeps set them.)
+            if let Some(st) = self.world.ai.get_mut(&p) {
+                for (at, th) in &a.sleepers {
+                    if let Some(o) = st.thread_objects.get_mut(&th.place) {
+                        o.due = *at;
+                    }
+                }
+            }
+        }
+        self.restore_captains(&objects, units);
+        Ok(())
+    }
+
+    /// The computers' captains as saved (CAICaptain, `AI-C`, two a computer in the
+    /// computers' order, its kind 2 the attack's and 1 the defense's): each its units
+    /// (the owners, on their first lists, of its chain of unit references `uref` from
+    /// the head its record names), where it is bound (an attack's goal, the defense's
+    /// home) and where it stands, and the unit among its slots (read: the hero map's
+    /// undead computer's attack captain at 300 seconds, five fiends and ghouls marching
+    /// on the human town hall, its script's target too, the hall's place its goal; its
+    /// defense captain's its home).  Provisional: the slots' other meanings, its counts.
+    fn restore_captains(&mut self, objects: &[Vec<w3_formats::w3z::SavedObject>], units: &std::collections::HashMap<(u32, u32), u32>) {
+        use w3_formats::w3z::{First, Second};
+        let all: std::collections::HashMap<u32, &w3_formats::w3z::SavedObject> = objects.iter().flatten().map(|o| (o.entry.tag, o)).collect();
+        // (A unit reference's next, and its unit: its owner on its first list.)
+        let next = |t: u32| match all.get(&t).map(|o| o.second()) {
+            Some(Ok(Second::UnitRefs { words, .. })) => Some((words[1], words[2])),
+            _ => None,
+        };
+        let owner = |t: u32| match all.get(&t).map(|o| o.first()) {
+            Some(Ok(First::Agent { object, .. })) => Some((object.links[0].3 .0, object.links[0].3 .1)),
+            _ => None,
+        };
+        let word = |f: &Field| match f {
+            Field::Word(w) => Some(*w),
+            _ => None,
+        };
+        let real = |f: &Field| match f {
+            Field::Real(r) => Some(*r),
+            _ => None,
+        };
+        let entry = |f: &Field| match f {
+            Field::List(g) => g.first().and_then(|g| Some((word(g.first()?)?, word(g.get(1)?)?))),
+            _ => None,
+        };
+        let mut captains: Vec<(u32, Vec<u32>, (f32, f32), (f32, f32), Option<u32>)> = Vec::new();
+        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::class::AI_CAPTAIN) {
+            let Ok(Second::Agent { tail, .. }) = o.second() else { continue };
+            let n = tail.len();
+            if n < 57 {
+                continue;
+            }
+            let kind = word(&tail[n - 53]).unwrap_or(0);
+            let mut members = Vec::new();
+            let mut at = entry(&tail[n - 49]);
+            while let Some((t, _)) = at.filter(|a| a.0 != u32::MAX) {
+                if let Some(h) = owner(t).and_then(|u| units.get(&u)) {
+                    members.push(*h);
+                }
+                at = next(t);
+                if members.len() > 1000 {
+                    break;
+                }
+            }
+            let bound = (real(&tail[n - 42]).unwrap_or(0.0), real(&tail[n - 41]).unwrap_or(0.0));
+            let place = (real(&tail[n - 33]).unwrap_or(bound.0), real(&tail[n - 32]).unwrap_or(bound.1));
+            let target = tail[n - 31..n - 12].iter().filter_map(entry).find_map(|r| units.get(&r).copied());
+            captains.push((kind, members, bound, place, target));
+        }
+        let mut computers: Vec<u8> = self.world.ai.keys().copied().collect();
+        computers.sort();
+        for (p, pair) in computers.into_iter().zip(captains.chunks(2)) {
+            let Some(st) = self.world.ai.get_mut(&p) else { continue };
+            for (kind, members, bound, place, target) in pair {
+                let c = if *kind == 2 { &mut st.attack } else { &mut st.defense };
+                c.units = members.clone();
+                c.peak = members.len();
+                if *kind == 2 {
+                    c.goal = Some(*bound);
+                } else {
+                    c.home = *bound;
+                }
+                c.place = Some(*place);
+                if let Some(t) = target {
+                    c.target = *t;
+                }
+            }
+        }
     }
 
     /// The map script's code block as saved (`FUN_6f910730`).

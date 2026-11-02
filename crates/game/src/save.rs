@@ -220,9 +220,12 @@ impl Game {
         for h in w.unit_order.clone() {
             remove_unit(w, h);
         }
+        // (The units made, by their objects as saved.)
+        let mut made: std::collections::HashMap<(u32, u32), u32> = Default::default();
         for u in units {
             let (x, y) = (origin[0] + u.cell[0] * crate::pathing::CELL, origin[1] + u.cell[1] * crate::pathing::CELL);
             let h = create_unit_exact(w, u.owner as u8, u.type_id.to_be_bytes(), x, y, u.facing.to_degrees());
+            made.insert((u.tag, u.birth), h);
             // The handle scripts had it by, as the save's handle table has it.
             if let Some(&jass) = handles.get(&(u.tag, u.birth)) {
                 w.handles.alias(jass, h);
@@ -331,6 +334,10 @@ impl Game {
                     _ => {}
                 }
             }
+        }
+        // The computers' AI scripts, as they were.
+        if let Err(e) = self.restore_ai_scripts(s, &scripts, agent_clock, &made) {
+            log::warn!("the AI scripts of the save: {e:#}");
         }
         Ok(())
     }

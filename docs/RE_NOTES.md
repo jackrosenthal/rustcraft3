@@ -2933,11 +2933,14 @@ Formats the port made its own, to be replaced by the original's:
   entangle order's objects are freed at turn 1 in three parts (1 and 9 to 6, then the
   entangled mine's two tasks, then 5 to 2 and 0), and the Tree of Life's Eat Tree
   listener before its own tasks (a rooted structure's; provisional).  With these the
-  keepalives agree for the first 1199 of the 1352 turns recorded, through the five
-  wisps' arrivals and the mine's payouts to 119 seconds; from turn 1200 each payout
-  (every ten turns) falls a tick after the port's (the port's due 119.841499 against
-  the tick's end 119.842346: the original's period runs longer than the port's
-  1.0001).
+  keepalives agree for all 1352 turns recorded, through the five wisps' arrivals and
+  the mine's payouts, with two more readings (breaking on `FUN_6f4e95e0` and
+  `FUN_6f4efa20`, the main clock at each): the nearest wisp's count change falls at
+  2.129995, the next tick's second step, where the port had its first (the payouts,
+  1.000099 apart in both, had run 0.00598 early, a fifth of that step, and from 120
+  seconds fell a tick before the original's); and a payout due before a wanderer's
+  order in the same step (125.848091, the order 125.863121) comes first, as after the
+  last step.
 - The original's saves hold no state of its random generators (neither the main one
   nor the 45 streams, as seeded or by value, under the locked seed or the slot
   table's): the original goes on from a save with generators of its own, so neither

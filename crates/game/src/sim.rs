@@ -1466,7 +1466,20 @@ impl World {
             self.tags.mark_step(k);
             let now: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 == k).collect();
             let next = self.step_ticks.get(k).copied();
-            self.issue_wanders(&now, next);
+            // The payouts in main ticks before a wanderer's go ahead of its order, as after
+            // the last step (read: a night elf start's entangled mine, due 125.848091,
+            // its pair made before the objects of a wanderer's order due 125.863121
+            // before the turn's second step were freed).
+            let mut i = 0;
+            while i < now.len() {
+                let t = self.agent_tick(now[i].1);
+                let j = now[i..].iter().position(|e| self.agent_tick(e.1) != t).map_or(now.len(), |p| i + p);
+                if let Some(t) = t {
+                    self.mine_payouts_to(vm, Some(t - 1));
+                }
+                self.issue_wanders(&now[i..j], next);
+                i = j;
+            }
             if self.wrap_step.is_some_and(|(w, _)| w == k) {
                 self.wrap_clocks(&mut due);
             }
@@ -1921,12 +1934,13 @@ impl World {
         if let Some(k) = done {
             log::debug!("walk of {h} done at step {k} of {n}, time {:.3}, tsk. {:?}", self.time, self.unit(h).and_then(|u| u.extra.order_tags.get(7).copied()));
             // A walk to the mine whose search found its walker beside the mine's
-            // footprint (a way of its own cell alone) ends there, arrived as the next
-            // tick begins (read: a night elf start's nearest wisp, sent to its entangled
-            // mine by script over LAN at the turn's start, in the mine in the next turn,
-            // its path freed in that turn; provisional: the step).
+            // footprint (a way of its own cell alone) ends there, arrived in the next
+            // tick's second step (read: a night elf start's nearest wisp, sent to its
+            // entangled mine by script over LAN at the turn's start, its mine's count
+            // changed at 2.129995, that step's clock, its path freed in that turn;
+            // provisional: which step, read once).
             if self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).is_some_and(|r| r.phase == crate::goldrun::Phase::ToMine && !r.lumber) {
-                let next = self.step_index + n as u64;
+                let next = self.step_index + n as u64 + 1;
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.mover = None;
                     u.extra.step_from = None;

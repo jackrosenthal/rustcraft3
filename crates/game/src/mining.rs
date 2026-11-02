@@ -455,6 +455,7 @@ impl World {
     /// 32.430, and 37.737 and paying at 3.080, 12.383, 21.980, 33.494, and 38.308, each
     /// as the rate changed 0.01 after the count).
     pub(crate) fn mine_workers_changed(&mut self, mine: u32, t: f64) {
+        log::debug!("mine {mine:#x} workers changed at {t:.6}");
         let t = t + 0.01;
         let Some((working, _, base)) = self.mine_payout_terms(mine) else { return };
         let period = |n: u32| base as f64 / n.max(1) as f64;

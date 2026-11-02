@@ -244,6 +244,32 @@ pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing
 }
 
 /// A unit made just where asked, without looking for room.
+impl World {
+    /// UnitAddAbility: the ability at level 1, unless the unit has it, with its own
+    /// objects.
+    pub fn add_unit_ability(&mut self, h: u32, id: Id) -> bool {
+        let Some(u) = self.unit_mut(h) else { return false };
+        if u.abilities.iter().any(|(x, _)| *x == id) {
+            return false;
+        }
+        u.abilities.push((id, 1));
+        let type_id = u.type_id;
+        if !crate::tags::AbilityObjects::get().refused(&id) {
+            // (Kept with its own objects: a town hall's Call to Arms, added by the melee
+            // setup, heads its abilities' chain.)
+            for c in self.ability_tags(type_id, &id) {
+                let t = self.tags.take_id(&c);
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.object_slots[2].push(t);
+                }
+            }
+        }
+        self.sync_spell_books(h);
+        self.wander_paths(h);
+        true
+    }
+}
+
 pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing: f32) -> u32 {
     let (x, y) = w.clamp_to_map(x, y);
     // Placed on a quarter-unit grid, rounding down (measured: pigs made at -5719.4,
@@ -1575,26 +1601,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         SetResourceAmount => |w, _, a| { let v = a.i(1); with_unit(w, a, |u| u.resource = v) },
         AddResourceAmount => |w, _, a| { let v = a.i(1); with_unit(w, a, |u| u.resource += v) },
         GetResourceAmount => |w, _, a| int(unit_arg(w, a, 0).map_or(0, |u| u.resource)),
-        UnitAddAbility => |w, _, a| {
-            let id = id_from_int(a.i(1));
-            let Some(u) = w.unit_mut(a.h(0)) else { return boolean(false) };
-            if u.abilities.iter().any(|(x, _)| *x == id) { return boolean(false); }
-            u.abilities.push((id, 1));
-            let type_id = u.type_id;
-            if !crate::tags::AbilityObjects::get().refused(&id) {
-                // (Kept with its own objects: a town hall's Call to Arms, added by the melee
-                // setup, heads its abilities' chain.)
-                for c in w.ability_tags(type_id, &id) {
-                    let t = w.tags.take_id(&c);
-                    if let Some(u) = w.unit_mut(a.h(0)) {
-                        u.extra.object_slots[2].push(t);
-                    }
-                }
-            }
-            w.sync_spell_books(a.h(0));
-            w.wander_paths(a.h(0));
-            boolean(true)
-        },
+        UnitAddAbility => |w, _, a| { let id = id_from_int(a.i(1)); boolean(w.add_unit_ability(a.h(0), id)) },
         UnitRemoveAbility => |w, _, a| {
             let id = id_from_int(a.i(1));
             let Some(u) = w.unit_mut(a.h(0)) else { return boolean(false) };

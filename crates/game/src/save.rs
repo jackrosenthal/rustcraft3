@@ -563,6 +563,39 @@ impl Game {
                 w.carry_item(uh, ih, slot);
             }
         }
+        // Each unit's abilities beyond its type's that a script gave it (an ability object
+        // it owns, on its first list, that its making here gave it none of: read, Echo
+        // Isles' town hall's Militia Conversion, which the melee setup adds), at their
+        // levels (the ability's word at +0x50, the level less one); not an item's, which
+        // came with the item (an item ability, or one its carried items give: read, the
+        // hero map's Death Knight's Sentry Ward).
+        {
+            use w3_formats::w3z::{Field, First, Second};
+            let all = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
+            for o in all.iter().flatten().filter(|o| o.entry.kind.to_be_bytes()[0] == b'A') {
+                // (Its object's kind the ability's code; its id, which a map's own may
+                // build on the code, its own tenth word, as a skill's.)
+                let code = o.entry.kind.to_be_bytes();
+                let Ok(First::Agent { object, .. }) = o.first() else { continue };
+                let Some(&h) = made.get(&(object.links[0].3 .0, object.links[0].3 .1)) else { continue };
+                let Ok(Second::Agent { own, .. }) = o.second() else { continue };
+                let (Some(&Field::Word(id)), Some(&Field::Word(level))) = (own.get(9), own.get(10)) else { continue };
+                let id = id.to_be_bytes();
+                if w.objects.abilities.get(id).is_none_or(|a| a.int("item") != 0) {
+                    continue;
+                }
+                let Some(u) = w.unit(h) else { continue };
+                let carried = u.inventory.iter().filter_map(|&i| w.item(i)).any(|it| w.item_abilities(it.type_id).iter().any(|a| *a == id));
+                let has = carried || u.abilities.iter().any(|(a, _)| *a == id) || u.extra.object_slots.iter().flatten().any(|&(s, _)| w.tags.live.get(&s).is_some_and(|e| e.0 == code));
+                if has || !w.add_unit_ability(h, id) {
+                    continue;
+                }
+                let level = level as i32 + 1;
+                if let Some(e) = w.unit_mut(h).and_then(|u| u.abilities.iter_mut().find(|(a, _)| *a == id)) {
+                    e.1 = level.max(1);
+                }
+            }
+        }
         // The destructables' life, by the handles they had (the map placed them in the
         // same order), those at none dead.
         for d in destructables {

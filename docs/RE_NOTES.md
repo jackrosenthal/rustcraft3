@@ -2841,6 +2841,15 @@ Formats the port made its own, to be replaced by the original's:
   counted the places its own restart had taken, 5, under its computer's threads at 2
   to 7, and the original crashed as the first woke (a null machine).  The loaded
   threads now take their places in the places the machines share, as the map's.
+- A unit's abilities that a script added are its own objects in the save, as its
+  type's are (an ability object's kind its code, its id its own tenth word, its
+  level less one the eleventh): the melee setup's Militia Conversion on a human
+  start's town hall (`MeleeStartingUnitsHuman`'s UnitAddAbility; made after all the
+  start units, Echo Isles' tag 15051 in both games).  The port's load makes units
+  from their types, so it lost these; it now adds each saved ability its unit lacks
+  (not an item ability, nor one its carried items give, by id: the hero map's
+  Death Knight's Sentry Ward is its Sentry Wards' and on the code Aeye).  A town
+  hall made again reruns its Blight Dispel (1.2 seconds) after the load.
 - A gold mine's gold is its Gold Mine ability's (`Agld`) first own field after the
   ability's thirteen (the hero map's 11000 and 14000), and a haunted mine's
   (`Abgm`) too, then the mine it covers (9760 over its mine); the port had loaded

@@ -223,10 +223,10 @@ impl Game {
     /// the handles scripts had them by, its players' gold and lumber (saved in tenths),
     /// the time of day, the map script's variables (by name, arrays too) and its threads
     /// asleep, its timers, its destructables' life, its items (those carried in their
-    /// units' slots), its players' upgrades researched, and the computers' AI scripts
-    /// and captains (`restore_ai_scripts`).
-    /// Not yet: the rest (the time, which the port's timers and sleeping threads count
-    /// from; orders, buildings in progress), which stay as the script just made them.
+    /// units' slots), its players' upgrades researched, the computers' AI scripts and
+    /// captains (`restore_ai_scripts`), the structures being built, and the queues at
+    /// work.  Not yet: the rest (the time, which the port's timers and sleeping threads
+    /// count from; orders), which stay as the script just made them.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
         use crate::natives::units::{create_unit_exact, remove_unit};
         let units = s.units()?;
@@ -336,6 +336,86 @@ impl Game {
                 w.apply_hero_stats(h, false);
                 if let (Some((life, mana, max_life, max_mana)), Some(u)) = (kept, w.unit_mut(h)) {
                     (u.life, u.mana, u.max_life, u.max_mana) = (life, mana, max_life, max_mana);
+                }
+            }
+        }
+        // A structure being built (its Build In Progress, `ABnP`, the unit's ability, its
+        // owner on its first list): the time left its real's (the ability's reference,
+        // its build time falling 1 a second from its stamp on the agent clock; read, the
+        // hero map's computer's two at 450 seconds, 60 and 50, 36.8 and 23.8 left).  Its
+        // objects as a start makes them, stamped as long ago as it has been building,
+        // for the port's own saves of it.  Provisional: its builder, still at work.
+        {
+            use w3_formats::w3z::First;
+            let all = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
+            let by: std::collections::HashMap<(u32, u32), &w3_formats::w3z::SavedObject> = all.iter().flatten().map(|o| ((o.entry.tag, o.entry.birth), o)).collect();
+            // (A stamp before the agent clock's last wrap at 300 seconds counts from
+            // there: read, a research's at 279.76 with the clock at 1.21.)
+            let since = |stamp: f32| {
+                let mut e = agent_clock - stamp;
+                while e < 0.0 {
+                    e += 300.0;
+                }
+                e
+            };
+            // An ability's real (its first reference's): its first value and what it is
+            // now (falling at its rate since its stamp).
+            let real_of = |refs: &[w3_formats::w3z::Ref]| refs.iter().find_map(|r| match by.get(&(r.0, r.1)).map(|p| p.first()) {
+                Some(Ok(First::Real { base, values })) => Some((values[0], values[0] + values[1] * since(base.real))),
+                _ => None,
+            });
+            for o in all.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::ability::id::BUILD_IN_PROGRESS) {
+                let Ok(First::Agent { object, refs, .. }) = o.first() else { continue };
+                let Some(&h) = made.get(&(object.links[0].3 .0, object.links[0].3 .1)) else { continue };
+                let left = real_of(&refs).map(|(total, now)| (now, total));
+                let Some((left, total)) = left else { continue };
+                let left = left.clamp(0.0, total);
+                let objects: Vec<u32> = [crate::codes::ability::id::BUILD_IN_PROGRESS, crate::codes::class::REAL, crate::codes::class::CONTINUOUS_MODIFIER, crate::codes::class::THRESHOLD_LISTENER, crate::codes::class::CONTINUOUS_MODIFIER].iter().map(|c| w.tags.take(c)).collect();
+                let begun = crate::efloat::sub(w.main_clock_now().to_bits(), (total - left).to_bits());
+                for &o in &objects {
+                    w.tags.made_at.insert(o, begun);
+                    w.tags.made_wraps.remove(&o);
+                }
+                if let Some(u) = w.unit_mut(h) {
+                    u.build_time = total;
+                    u.constructing = Some(left);
+                    u.extra.build_objects = objects;
+                    crate::sim::restart_anim(u, "birth");
+                }
+            }
+            // A queue at work (its Queue, `Aque`: its seven places' ids after the
+            // ability's fields and two reals and a word, the first's time its real's,
+            // falling 1 a second from its time; read, the hero map's computer's
+            // research of Rura at 900 seconds, 21.45 of 75 done): its ids, the time
+            // done on the first, each begun in its owner's tech tree, the first's
+            // objects as training takes them; its start's events not again.
+            for o in all.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::ability::id::QUEUE) {
+                use w3_formats::w3z::{Field, Second};
+                let Ok(First::Agent { object, refs, .. }) = o.first() else { continue };
+                let Some(&h) = made.get(&(object.links[0].3 .0, object.links[0].3 .1)) else { continue };
+                let Ok(Second::Agent { own, .. }) = o.second() else { continue };
+                let Some(Field::List(places)) = own.iter().skip(13).find(|f| matches!(f, Field::List(_))) else { continue };
+                let ids: Vec<crate::objects::Id> = places.iter().filter_map(|g| match g.first() {
+                    Some(Field::Word(id)) if *id != 0 => Some(id.to_be_bytes()),
+                    _ => None,
+                }).collect();
+                if ids.is_empty() {
+                    continue;
+                }
+                let done = real_of(&refs).map_or(0.0, |(total, now)| (total - now).max(0.0));
+                let Some(owner) = w.unit(h).map(|u| u.owner) else { continue };
+                for &id in &ids {
+                    w.tech_reg(owner, id).producing += 1;
+                }
+                w.tech_changed(owner);
+                let rcm = w.tags.take(crate::codes::class::CONTINUOUS_MODIFIER);
+                let rtl = w.tags.take(crate::codes::class::THRESHOLD_LISTENER);
+                if let Some(u) = w.unit_mut(h) {
+                    u.extra.queue_tokens = vec![false; ids.len()];
+                    u.queue = ids;
+                    u.queue_progress = done;
+                    u.queue_started = true;
+                    u.extra.training_tags = Some((rcm, rtl));
                 }
             }
         }

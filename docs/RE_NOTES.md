@@ -3151,6 +3151,16 @@ Formats the port made its own, to be replaced by the original's:
   action, and its trigger).  The thread records the sleep itself too (`real`, which
   the port writes 0).  Measured: the hero map's computer at 300 seconds resumes its
   attack and trains; a trigger waiting at 60 seconds wakes 20 seconds after loading.
+- Work in progress in the original's saves: a structure being built has its Build
+  In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
+  a second from its stamp on the agent clock; a queue at work (`Aque`) lists its
+  seven places' ids after the ability's fields, two reals, and a word, its real the
+  first's time likewise (a stamp before the clock's last wrap at 300 seconds counts
+  from there: a research's at 279.76 with the clock at 1.21).  Loading such a save,
+  the structures go on building (the hero map's two at 450 seconds) and the queues
+  on working (its computer's next level of Rura at 900 seconds, done 54 seconds on),
+  their objects as the port's own starts take them, a structure's stamped as long
+  ago as it has been building.
 - Upgrades researched (`+Wup`, CPlayerUpgrade vf14: its agent, then its player, the
   upgrade, 0, its level, and 3, and four places for its effects' objects; found by
   player and upgrade, `FUN_6f6c9b40`, its level +0x2c the fourth saved word,

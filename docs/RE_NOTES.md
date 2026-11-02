@@ -2849,10 +2849,15 @@ Formats the port made its own, to be replaced by the original's:
   period 1.0 from 299.64832).  The port wrote the real empty and no pair, so after
   loading its save the original's haunted mines never paid; written so, its undead
   computer mines on (300 gold in 30 seconds after loading the port's Twisted Meadows
-  save at 120, its five acolytes' rate).  Not yet: an entangled mine's payout (the
-  port has no pair for it), and an orc's peons, which in the original after the load
-  went to the trees and mined 40 gold in 30 seconds (no save of the original's with
-  peons or peasants mining read yet).
+  save at 120, its five acolytes' rate).  Ordinary mining carries over exactly: on
+  Echo Isles with player 0's peasants sent to the mine by script at 1 second, the
+  port's game at 30 seconds is the original's (760 gold, 260 gathered, the peasants'
+  Harvest records alike to their reals), and the original going on from the port's
+  save at 30 gathers what its own game does by 60 (560).  Not yet: an entangled
+  mine's payout (the port has no pair for it), and an orc computer after loading the
+  port's Twisted Meadows save, which in the original sent its peons to the trees
+  (40 gold, 114 lumber in 30 seconds): its AI's choice, its mining records being
+  right.
 - A save's slot table keeps each player's choices (a random race as random, 0x60);
   the race the game drew is the player's record's tail word 110 (common.j's
   numbering: Booty Bay's LAN game's human and orc, the hero map's and Echo Isles'

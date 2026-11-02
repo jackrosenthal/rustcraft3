@@ -36,6 +36,11 @@ const RETURN: [&Code; 16] = [codes::class::ORDER_TASKS, codes::class::TASK_A, co
 const LUMBER_PLAYER: [&Code; 17] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 /// The worker's own harvest order on a tree from the hall.
 const LUMBER_OWN: [&Code; 17] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
+/// A wisp's harvest order on its entangled mine: its order, two blocks, three tasks,
+/// three target tasks, three tasks, a block, a `tskO`, and its move's path cluster
+/// group, cluster, and path (traced: a night elf start's five wisps sent by script,
+/// over LAN with the original).
+const WISP_GOLD: [&Code; 17] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::TASK_O, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 /// At the tree, short of chopping (`FUN_6f4377d0`, event 0xd0184 as the move ends): its
 /// walk to reach the tree (0xd0171, `FUN_6f6926b0`), the end of its ghosting (0xd0151,
 /// `FUN_6f691f20`, which lets it chop: `FUN_6f43b7e0` sets the harvest's 0x1000), a
@@ -68,6 +73,8 @@ pub enum Kind {
     Player,
     Own,
     Return,
+    /// A wisp's to its entangled mine.
+    Wisp,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -234,6 +241,10 @@ impl World {
     }
 
     pub fn gold_run_eligible(&self, h: u32, target: u32) -> bool {
+        // A wisp walks so to its own entangled mine.
+        if self.ability_with_code(h, codes::ability::WISP_HARVEST).is_some() {
+            return self.pathing.is_some() && self.can_mine_covered(h, target) && self.unit(target).is_some_and(|m| !m.pathing_cells.is_empty()) && self.move_kind(h) == crate::pathing::Move::Foot;
+        }
         self.pathing.is_some()
             && (self.ability_with_code(h, codes::ability::HARVEST).is_some() || self.is_tree_pub(target) && self.ability_with_code(h, codes::ability::HARVEST_LUMBER).is_some())
             && self.ability_with_code(h, codes::ability::ACOLYTE_HARVEST).is_none()
@@ -258,7 +269,9 @@ impl World {
     /// orders).
     pub fn start_gold_run(&mut self, h: u32, mine: u32, player: bool) {
         let lumber = self.is_tree_pub(mine);
+        let wisp = self.ability_with_code(h, codes::ability::WISP_HARVEST).is_some();
         let codes: &[&Code] = match (lumber, player) {
+            _ if wisp => &WISP_GOLD,
             (false, true) => &HARVEST_PLAYER,
             (false, false) => &HARVEST_OWN,
             (true, true) => &LUMBER_PLAYER,
@@ -280,8 +293,15 @@ impl World {
                 // and 10).
                 let n = order.len();
                 self.tags.release(order[n - 3]);
+                // (A wisp's, its first block and the five before its closing block, as
+                // the next turn starts, after the script's groups destroyed before.)
+                if wisp {
+                    for k in [1, n - 4, n - 5, n - 6, n - 7, n - 8] {
+                        self.tags.doom(order[k]);
+                    }
+                }
                 let five: [usize; 5] = if player { [1, n - 4, n - 5, n - 6, n - 7] } else { [n - 4, n - 5, n - 6, n - 7, n - 8] };
-                for k in five {
+                for k in five.into_iter().filter(|_| !wisp) {
                     if player {
                         self.tags.doom(order[k]);
                     } else {
@@ -298,13 +318,13 @@ impl World {
                 r.lumber = lumber;
                 r.ordered = mine;
                 r.phase = Phase::ToMine;
-                r.kind = if player { Kind::Player } else { Kind::Own };
+                r.kind = if wisp { Kind::Wisp } else if player { Kind::Player } else { Kind::Own };
                 r.order = order;
                 r.ghosted |= r.entered;
                 r.at_mine &= !r.entered;
                 r
             }
-            None => GoldRun { mine, lumber, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: if player { Kind::Player } else { Kind::Own }, order, entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits(), ordered: mine, swing_ready: None, hall: None },
+            None => GoldRun { mine, lumber, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: if wisp { Kind::Wisp } else if player { Kind::Player } else { Kind::Own }, order, entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits(), ordered: mine, swing_ready: None, hall: None },
         };
         let Some(u) = self.unit_mut(h) else { return };
         u.extra.gold_run = Some(run);
@@ -356,6 +376,9 @@ impl World {
                 if run.lumber {
                     return self.reach_tree(h, run, path);
                 }
+                if run.kind == Kind::Wisp {
+                    return self.wisp_enter(h, run, path);
+                }
                 self.push_off_ghosts(h);
                 self.enter_mine(h, run, path, agent)
             }
@@ -403,6 +426,57 @@ impl World {
             return;
         }
         self.into_mine(h, run, ef::add(agent, dur.to_bits()));
+    }
+
+    /// A wisp at its entangled mine as its walk ends there goes in, loaded into the
+    /// mine's cargo hold: its cargo ability (`Acrg`) is made, its order's last two target
+    /// tasks go, and its spells' listeners, the last first; the mine's first wisp makes
+    /// the payout's `` `rcm `` and `` `rtl ``; the walk's path and cluster go as the
+    /// next movement step starts (`Tags::walk_ended`; traced: a night elf start's five
+    /// wisps sent by script, over LAN with the original, the first in the turn after
+    /// its order, its path freed in that turn, the fourth's in the next).
+    fn wisp_enter(&mut self, h: u32, run: GoldRun, path: [u32; 2]) {
+        let mine = run.mine;
+        let cargo = self.tags.take(codes::ability::id::CARGO);
+        let birth = self.tags.live.get(&cargo).map_or(0, |e| e.1);
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.object_slots[2].push((cargo, birth));
+        }
+        self.tags.release(run.order[8]);
+        self.tags.release(run.order[7]);
+        let listeners = self.unit_mut(h).map(|u| {
+            u.extra.spell_owners.clear();
+            std::mem::take(&mut u.extra.spell_timers)
+        });
+        for s in listeners.unwrap_or_default().into_iter().rev() {
+            self.tags.release(s);
+        }
+        if self.unit(mine).is_some_and(|m| m.extra.ai_order.is_empty()) {
+            let rcm = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
+            let rtl = self.tags.take(codes::class::THRESHOLD_LISTENER);
+            if let Some(m) = self.unit_mut(mine) {
+                m.extra.ai_order = vec![rcm, rtl];
+            }
+        }
+        let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
+        self.tags.walk_ended(path, serial);
+        if let Some(m) = self.unit_mut(mine) {
+            m.inside += 1;
+        }
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.wisp_order = [0, 2, 3, 4, 5, 6].iter().map(|&k| run.order[k]).collect();
+            u.extra.gold_run = None;
+            u.inside = mine;
+            u.hidden = true;
+            u.path.clear();
+            u.extra.mover = None;
+        }
+        self.mine_work_anim(mine);
+        // Its mine's payout counts it from this step (`FUN_6f4e9560`).
+        let k = self.step_range.0;
+        if let Some((t, _)) = self.step_abs(k) {
+            self.mine_workers_changed(mine, t);
+        }
     }
 
     /// As its walk to the mine ends its ghosting ends (task 0xd0151, `FUN_6f43b7e0`,
@@ -1015,6 +1089,17 @@ impl World {
     /// arrival, taken in the walkers' order (read: a hall arrival's order freed before a
     /// newer wanderer's walk end's objects, after an older one's).
     pub(crate) fn gold_run_step_end(&mut self, h: u32, k: usize) -> bool {
+        // (Arrived where it stood: `World::walk_steps`.)
+        if let Some(s) = self.unit(h).and_then(|u| u.extra.arrive_step) {
+            if self.step_index + (k as u64) < s {
+                return true;
+            }
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.arrive_step = None;
+            }
+            self.gold_run_arrive(h, k);
+            return true;
+        }
         if self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).is_some_and(|r| matches!(r.phase, Phase::Reaching { .. })) {
             self.tree_reached(h, k);
             return true;

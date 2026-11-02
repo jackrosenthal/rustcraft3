@@ -2916,7 +2916,28 @@ Formats the port made its own, to be replaced by the original's:
   dispel ends at 1.2 as measured).  With these the keepalives agree to turn 21; at 2
   seconds the test map's script orders the wisps to harvest, whose orders' objects
   (`ordt tskA tskA task task task tskt tskt tskt task task task tskA tskO ^clg ^clu
-  l^pa` for each) the port does not make yet.
+  l^pa` for each) the port did not make.
+- A wisp's harvest of its entangled mine, traced (takes and frees after turn 21,
+  breakpoints enabled at the 21st turn mark): each order's `^clg` is freed at once,
+  its first block and the five tasks before its closing block (indices 1, 13 to 9)
+  as the next turn starts, after the script's groups destroyed before the orders.
+  The wisp walks to the mine as a peon does (its way searched to the footprint); as
+  the walk ends it is loaded: its `Acrg` is made, its order's two last target tasks
+  (8, 7) and its spells' listeners (the last first) are freed, the mine's first wisp
+  makes the payout's `` `rcm `` and `` `rtl ``, and the walk's path and cluster go as
+  the next movement step starts.  Its order, block, three tasks, and first target
+  task stay while it is inside.  The nearest wisp, one cell from the footprint, has
+  a way of its own cell alone: it is in the mine in the next turn, its path freed in
+  that turn (the port arrives it at the next tick's first step; provisional).  The
+  entangled mine pays as a haunted one, each payout a new pair, the old freed.  The
+  entangle order's objects are freed at turn 1 in three parts (1 and 9 to 6, then the
+  entangled mine's two tasks, then 5 to 2 and 0), and the Tree of Life's Eat Tree
+  listener before its own tasks (a rooted structure's; provisional).  With these the
+  keepalives agree for the first 1199 of the 1352 turns recorded, through the five
+  wisps' arrivals and the mine's payouts to 119 seconds; from turn 1200 each payout
+  (every ten turns) falls a tick after the port's (the port's due 119.841499 against
+  the tick's end 119.842346: the original's period runs longer than the port's
+  1.0001).
 - The original's saves hold no state of its random generators (neither the main one
   nor the 45 streams, as seeded or by value, under the locked seed or the slot
   table's): the original goes on from a save with generators of its own, so neither

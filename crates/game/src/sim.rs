@@ -461,14 +461,19 @@ impl World {
         // entangleinstant: Entangle Gold Mine at once, without its casting time, the
         // order's objects made first (an order with its target and nine tasks: traced, a
         // night elf start's Tree of Life over LAN with the original, before its
-        // entangled mine; provisional: freed as the next turn starts).
+        // entangled mine), freed as the next turn starts: its first block and its last
+        // four tasks, the last first, before the entangled mine's two tasks, the rest
+        // after them (read: the turn's first frees).
         if order == crate::natives::basic::order_id("entangleinstant") && self.ability_with_code(h, codes::ability::ENTANGLE).is_some() {
             const ENTANGLE_ORDER: [&crate::tags::Code; 10] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK];
-            for c in ENTANGLE_ORDER {
-                let s = self.tags.take(c);
-                self.tags.doom(s);
+            let slots: Vec<u32> = ENTANGLE_ORDER.iter().map(|c| self.tags.take(c)).collect();
+            for k in [1, 9, 8, 7, 6] {
+                self.tags.doom(slots[k]);
             }
             self.entangle(h, target, true);
+            for k in [5, 4, 3, 2, 0] {
+                self.tags.doom(slots[k]);
+            }
             return;
         }
         let me = match self.unit(h) {
@@ -1915,6 +1920,22 @@ impl World {
         u.facing = f32::from_bits(m.heading).to_degrees();
         if let Some(k) = done {
             log::debug!("walk of {h} done at step {k} of {n}, time {:.3}, tsk. {:?}", self.time, self.unit(h).and_then(|u| u.extra.order_tags.get(7).copied()));
+            // A walk to the mine whose search found its walker beside the mine's
+            // footprint (a way of its own cell alone) ends there, arrived as the next
+            // tick begins (read: a night elf start's nearest wisp, sent to its entangled
+            // mine by script over LAN at the turn's start, in the mine in the next turn,
+            // its path freed in that turn; provisional: the step).
+            if self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).is_some_and(|r| r.phase == crate::goldrun::Phase::ToMine && !r.lumber) {
+                let next = self.step_index + n as u64;
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.mover = None;
+                    u.extra.step_from = None;
+                    u.path.clear();
+                    u.extra.arrive_step = Some(next);
+                    set_anim(u, "stand");
+                }
+                return false;
+            }
             // The order's objects go as its walk ends, at its step (traced).
             let moved = self.unit_mut(h).is_some_and(|u| std::mem::take(&mut u.extra.walk_moved));
             let gave_up = self.unit(h).is_some_and(|u| u.extra.facing_goal);

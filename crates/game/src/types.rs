@@ -592,6 +592,9 @@ pub struct UnitExtra {
     /// The step of this tick its walk begins with (its order given after the one before).
     #[serde(default)]
     pub walk_from: Option<usize>,
+    /// The step its walk to the mine, ended where it stood, arrives (`World::walk_steps`).
+    #[serde(default)]
+    pub arrive_step: Option<u64>,
     /// Its search found no way: it turns toward its goal and is done (`Mover::face`).
     #[serde(default)]
     pub facing_goal: bool,
@@ -707,6 +710,10 @@ pub struct UnitExtra {
     /// (`crate::goldrun`).
     #[serde(default)]
     pub gold_run: Option<crate::goldrun::GoldRun>,
+    /// A wisp's harvest order's objects kept while it is in its entangled mine (its
+    /// order, block, three tasks, and first target task; `World::wisp_enter`).
+    #[serde(default)]
+    pub wisp_order: Vec<u32>,
     /// The objects of the order its AI last gave it (`crate::ai::AI_HARVEST`), by slot,
     /// while they last.
     #[serde(default)]
@@ -939,6 +946,7 @@ impl Default for UnitExtra {
             facing_goal: false,
             coarse: None,
             walk_from: None,
+            arrive_step: None,
             mana_listeners: Vec::new(),
             ensnare_pil: None,
             flyer_pil: None,
@@ -1013,6 +1021,7 @@ impl Default for UnitExtra {
             alarm_wait: None,
             order_tags: Vec::new(),
             gold_run: None,
+            wisp_order: Vec::new(),
             ai_order: Vec::new(),
             captain_walk: None,
             captain_order: Vec::new(),

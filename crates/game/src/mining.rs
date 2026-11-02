@@ -613,7 +613,6 @@ impl World {
                 m.extra.payout = Some((due as f32, working));
             }
             let per = if self.slow_chopping(owner) { 1 } else { per };
-            let haunted = self.ability_with_code(mine, codes::ability::BLIGHTED_GOLD_MINE).is_some();
             for _ in 0..pays {
                 let left = self.unit(mine).map_or(0, |m| m.resource);
                 let got = self.take_gold(vm, mine, mine, per);
@@ -625,8 +624,10 @@ impl World {
                 // `FUN_6f4e9650`, event 0xd01c4; read: Forestwalk's undead computer's
                 // mine paying at 3.1 seconds, its pair made at its first acolyte's
                 // arrival freed after the new one's).
+                // (An entangled mine's likewise: read, a night elf start's, over LAN with
+                // the original.)
                 let pair = self.unit(mine).map(|m| m.extra.ai_order.clone()).unwrap_or_default();
-                if haunted && left > per && pair.len() == 2 {
+                if left > per && pair.len() == 2 {
                     let rcm = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
                     let rtl = self.tags.take(codes::class::THRESHOLD_LISTENER);
                     self.tags.release(pair[0]);

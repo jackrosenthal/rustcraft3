@@ -1073,6 +1073,14 @@ impl crate::world::World {
                 self.tags.doom(slots[k]);
             }
         }
+        // A rooted structure's Eat Tree's timer goes so too (read: a night elf start's
+        // Tree of Life over LAN with the original, freed before its making's tasks;
+        // provisional: why).
+        let rooted = building && had.contains(codes::ability::id::ROOT);
+        let unusable: Vec<usize> = spell_timers.iter().copied().filter(|&k| rooted && codes[..k].iter().rposition(|c| c[0] == b'A').is_some_and(|a| &codes[a] == codes::ability::id::EAT_TREE)).collect();
+        for &k in unusable.iter().rev() {
+            self.tags.doom(slots[k]);
+        }
         for k in [tasks + 1, tasks] {
             self.tags.doom(slots[k]);
         }
@@ -1103,8 +1111,8 @@ impl crate::world::World {
             // (A creep made asleep has let them go: their slots, freed, may be taken by
             // others' objects.)
             if !sleeps {
-                u.extra.spell_timers = spell_timers.iter().map(|&k| slots[k]).collect();
-                u.extra.spell_owners = spell_owners;
+                u.extra.spell_timers = spell_timers.iter().filter(|k| !unusable.contains(k)).map(|&k| slots[k]).collect();
+                u.extra.spell_owners = spell_owners.into_iter().filter(|o| !unusable.iter().any(|&k| slots[k] == o.0)).collect();
             }
             u.extra.attack_timer = attack_timer;
             // (Its first look waits the time drawn as it was made.)

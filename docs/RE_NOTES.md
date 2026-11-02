@@ -2899,7 +2899,12 @@ Formats the port made its own, to be replaced by the original's:
   covers, 0, DataA and DataB (10 and 1.0), 0.0 (the original's one read was still
   entangling at 5 seconds, no gold and no mine yet).  The port wrote it with defaults,
   so a night elf's mine came back empty and its wisps mined nothing after a load; it
-  now writes and loads both as the haunted mine's (provisional).
+  now writes and loads both as the haunted mine's (provisional).  Its last real is
+  its period with the wisps inside (DataB times its capacity over them; 0.0 with
+  none), as the haunted mine's: written 0.0, the original paid once after loading
+  the port's save, its next pair not made; written so, Twisted Meadows' night elf
+  computer gains its 300 gold from 120 to 150 seconds in the original's continuation,
+  as in the port's own game.
 - A night elf start over LAN (the original joining the port's host, slot 0 night elf):
   the keepalives differed from the first turn.  Its object counts (the take's birth
   counter, `+0x50`, and the presence table's count, `+0x1c`, and free head, `+0x40`,

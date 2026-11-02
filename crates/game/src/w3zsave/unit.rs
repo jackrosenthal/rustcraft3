@@ -1793,14 +1793,17 @@ impl World {
             }
             // An entangled mine (CAbilityEntangledGoldMine), as a haunted one: its gold, the
             // mine it covers, 0, its gold a payout and its period a wisp (DataA, DataB),
-            // and 0.0; three references and a timer, none (read: the original's mine
-            // still entangling at 5 seconds, no gold and no mine yet, 10 and 1.0).
-            // Provisional: the gold and the mine, as the haunted mine's.
+            // and its period with the wisps inside (0.0 with none); three references and
+            // a timer, none (read: the original's mine still entangling at 5 seconds, no
+            // gold and no mine yet, 10, 1.0, and 0.0).  Provisional: the gold, the mine,
+            // and the period, as the haunted mine's (written 0.0, the original's mine
+            // paid once after loading the port's save and no more).
             codes::ability::id::ENTANGLED_GOLD_MINE => {
                 let (a, l) = self.ability_with_code(h, codes::ability::ENTANGLED_GOLD_MINE)?;
                 let d = self.objects.abilities.get(a)?;
                 let cover = u.extra.mine.and_then(|m| self.unit(m)).and_then(|m| m.extra.object_slots[0].first().copied()).unwrap_or((u32::MAX, u32::MAX));
-                own.extend([w(u.resource.max(0) as u32), w(cover.0), w(cover.1), w(0), w(d.level_real("DataA", l) as u32), Field::Real(d.level_real("DataB", l)), Field::Real(0.0)]);
+                let period = self.mine_payout_terms(h).filter(|t| t.0 > 0).map_or(0.0, |(working, _, base)| base / working as f32);
+                own.extend([w(u.resource.max(0) as u32), w(cover.0), w(cover.1), w(0), w(d.level_real("DataA", l) as u32), Field::Real(d.level_real("DataB", l)), Field::Real(period)]);
                 // (Its payout's modifier and listener, as the haunted mine's.)
                 let (rcm, rtl) = self.mine_payout_parts(h).map_or((NONE, NONE), |p| (rf(p.rcm), rf(p.rtl)));
                 if rtl != NONE {

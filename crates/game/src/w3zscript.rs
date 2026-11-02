@@ -312,6 +312,16 @@ impl Game {
             let mut sleepers = Vec::new();
             for t in scripts.threads.get(k).into_iter().flatten() {
                 let th = thread_from(&mut a.vm, t, &map);
+                // (Its place taken in the places all machines share, as the map's
+                // threads': a save counts the places by them, and the original finds
+                // each thread by its place; read, a save of the port's whose count fell
+                // short of its computer's threads' places crashed the original as the
+                // first woke.)
+                {
+                    let mut places = a.vm.places.borrow_mut();
+                    places.free.retain(|&p| p != th.place);
+                    places.len = places.len.max(th.place + 1).max(scripts.thread_places);
+                }
                 let (mut left, sleep) = due.get(&t.machine).map_or((0.0, 0.0), |&(d, s)| (d - clock, s));
                 while left > sleep + 1.0 {
                     left -= 300.0;

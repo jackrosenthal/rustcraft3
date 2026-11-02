@@ -2833,6 +2833,14 @@ Formats the port made its own, to be replaced by the original's:
   so they woke 0.67 seconds early, and kept the thread objects of the threads its
   restart of the AI had made, so its save then held one of the five; it now makes
   each saved thread's object again (its number, sleep, count, and place).
+- A computer's thread object (CThreadAI) holds its machine and its thread's index
+  (+0x38, +0x3c), which the original resolves through the script data's places as it
+  loads; waking, it finds the machine (`FUN_6f90c9b0`: `FUN_6f90ab10`'s table) and
+  the thread (`FUN_6f917480`).  A save's count of places (+0x8c) must reach past every
+  thread's: the port's save of a game loaded from the original's 450-second one
+  counted the places its own restart had taken, 5, under its computer's threads at 2
+  to 7, and the original crashed as the first woke (a null machine).  The loaded
+  threads now take their places in the places the machines share, as the map's.
 - A gold mine's gold is its Gold Mine ability's (`Agld`) first own field after the
   ability's thirteen (the hero map's 11000 and 14000), and a haunted mine's
   (`Abgm`) too, then the mine it covers (9760 over its mine); the port had loaded

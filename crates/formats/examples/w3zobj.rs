@@ -209,7 +209,9 @@ fn main() {
             }
         }
         println!("owners {:?}", d.owners);
-        if let Some((_, m)) = d.machines.first() {
+        // (W3ZOBJ_MACHINE: which machine's globals and tables, the map script's, 0, else.)
+        let pick = std::env::var("W3ZOBJ_MACHINE").ok().and_then(|v| v.parse().ok()).unwrap_or(0usize);
+        if let Some((_, m)) = d.machines.get(pick) {
             let mut kinds: std::collections::BTreeMap<(u32, bool), (u32, String)> = Default::default();
             for (name, v) in &m.globals {
                 let arr = matches!(v.value, w3_formats::w3z::Contents::Array(_));

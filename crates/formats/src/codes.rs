@@ -1686,6 +1686,8 @@ pub mod class {
     pub const SPECIAL_EFFECT: &Code = b"+EIP";
     /// `+EIm`: An effect image (a buff's art; the second table's).
     pub const EFFECT_IMAGE: &Code = b"+EIm";
+    /// `+EIf`: A fogged effect image (CEffectImageFogged; an entangling Tree of Life's).
+    pub const EFFECT_IMAGE_FOGGED: &Code = b"+EIf";
     /// `+cam`: The game interface's camera (the second table's).
     pub const CAMERA: &Code = b"+cam";
     /// `+ccu`: The cursor (the second table's).

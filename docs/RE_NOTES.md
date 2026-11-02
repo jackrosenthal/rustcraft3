@@ -2946,6 +2946,16 @@ Formats the port made its own, to be replaced by the original's:
   seconds fell a tick before the original's); and a payout due before a wanderer's
   order in the same step (125.848091, the order 125.863121) comes first, as after the
   last step.
+- An entangled mine is no town site of its own: the original's save of a night elf
+  start (`nel.w3x`) holds the map's four mines' four sites, the first naming the
+  entangled mine (the mine it covers made at the map's start with that site).  The
+  object born after the entangled mine's tasks, where the port had made a site, is a
+  fogged effect image (`+EIf`, CEffectImageFogged, its record's first words the Tree
+  of Life's tag; its record not yet parsed).  The port made a fifth site for it,
+  the duplicate site seen in its saves; it now makes the image, and its saves of
+  Twisted Meadows hold twelve sites for its twelve mines.  (The take trace's code
+  reads are not always the object's: it showed `+EIf` for the Tree of Life's `Artn`,
+  which its save holds, and `+wgh` for an entangled mine's own `+w3u` in one run.)
 - A wisp sent to the nearest tree (`autoharvestlumber`, by script, over LAN with the
   original; `abtest/nel2.w3x`, two of the five so sent): its order makes 19 objects,
   `+ord tskA tskA` and then a harvest order as the mine's but for its second block
@@ -2968,7 +2978,10 @@ Formats the port made its own, to be replaced by the original's:
   as `-loadfile` ignores the race preference): its Wisp Harvest's own fields after
   Dur, DataC, and DataA hold the tree's place and reference, the art's reference, the
   tree twice more, and its lumber timer (due, Dur, event 852417); one in the mine the
-  entangled mine in its tail.  The port's writer does not write these yet.
+  entangled mine in its tail.  Written so (the art's reference none for a wisp the
+  AI sent, which keeps the old harvest), Twisted Meadows' night elf computer's lumber
+  goes from 115 to 165 between 120 and 150 seconds in the original's continuation of
+  the port's save (the port's own game 175), where it had stayed at 115.
 - A unit's own path (`l^pa`, the tenth of its first objects) carries in its first
   word's high half 0x1 for a computer's unit only while it stands: Twisted Meadows'
   computers' walkers read 0x122 (0x1200_0000 for a gold run's walk, 0x2 moving), those

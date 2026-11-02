@@ -849,8 +849,16 @@ impl crate::world::World {
         // `FUN_6f9ba790`, the cost by the path query `FUN_6f0594f0`; read: Plaguelands'
         // sixteenth mine, 61.2 cells from its fourth, made none, where Ogre Mound's and
         // Twisted Meadows' nearest pairs, 61.1 and 65.3 cells apart, each made two).
-        if had.iter().any(|c| c == codes::ability::id::GOLD_MINE || c == codes::ability::id::ENTANGLED_GOLD_MINE) && !self.hidden_mine {
+        if had.iter().any(|c| c == codes::ability::id::GOLD_MINE) && !self.hidden_mine {
             codes.push(*codes::class::TOWN_SITE);
+        }
+        // An entangled mine makes none, its mine's site naming it instead, but a fogged
+        // image of its caster's (read: the original's save of a night elf start, its
+        // four sites the map's four mines', the first naming the entangled mine, and a
+        // `+EIf` born after the entangled mine's tasks naming the Tree of Life;
+        // provisional: made for a mine entangled by any means).
+        if had.iter().any(|c| c == codes::ability::id::ENTANGLED_GOLD_MINE) {
+            codes.push(*codes::class::EFFECT_IMAGE_FOGGED);
         }
         // A creep joins the nearest camp whose first creep is near enough, or makes one,
         // and takes its AI.

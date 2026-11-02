@@ -466,12 +466,12 @@ impl World {
             self.tags.start_timer("4e95e0");
         }
         let Some(m) = self.unit_mut(mine) else { return };
-        let (due, was) = m.extra.payout.map_or((0.0, 0), |(d, w)| (d as f64, w));
+        let (due, was) = m.extra.payout.unwrap_or((0.0, 0));
         m.extra.payout = match (was, working) {
             (_, 0) => None,
-            (0, n) => Some(((t + period(n)) as f32, n)),
-            (w, n) if w != n && due > t => Some(((t + (due - t) * period(n) / period(w)) as f32, n)),
-            (w, n) if w != n => Some((due as f32, n)),
+            (0, n) => Some((single_in_wrap(t + period(n)), n)),
+            (w, n) if w != n && due > t => Some((single_in_wrap(t + (due - t) * period(n) / period(w)), n)),
+            (w, n) if w != n => Some((due, n)),
             _ => m.extra.payout,
         };
     }
@@ -579,7 +579,9 @@ impl World {
     /// list's top).
     pub(crate) fn last_tick_payouts(&mut self, vm: &mut Vm) {
         let last = self.tick_clocks.1.len().checked_sub(1).map(|i| self.tick_clocks.0 + i as i64);
+        self.paying_last = true;
         self.mine_payouts_to(vm, last);
+        self.paying_last = false;
     }
 
     fn haunted_mine_payouts_until(&mut self, vm: &mut Vm, dt: f32, end: f64) {
@@ -598,22 +600,36 @@ impl World {
             if self.unit(mine).and_then(|m| m.extra.payout).map_or(0, |p| p.1) != working {
                 self.mine_workers_changed(mine, start);
             }
-            let Some((due, working)) = self.unit(mine).and_then(|m| m.extra.payout) else { continue };
-            let mut due = due as f64;
+            let Some((mut due, working)) = self.unit(mine).and_then(|m| m.extra.payout) else { continue };
+            let mut paid_from = due;
             let owner = self.unit(mine).map_or(0, |m| m.owner);
             let mut pays = 0;
             // The next period runs from the pair made as it pays, the clock then a
             // ten-thousandth on (read: the mine's payouts 2.500101 apart with two
-            // workers, 1.666765 with three, 1.250099 with four).
+            // workers, 1.666765 with three, 1.250099 with four), in the engine's
+            // arithmetic within the clock's wrap (read: a night elf start's entangled
+            // mine's 64 payouts to 110 seconds, each the last plus 0.0001 plus the
+            // period by `FUN_6f06fbb0`'s add, which drops the low bits: double precision
+            // had run 0.000107 early by 64 seconds).
             while due <= end {
                 log::debug!("mine {mine:#x} pays at {due:.6} (to {end:.6})");
                 pays += 1;
-                due += period(working) + 1e-4;
+                paid_from = due;
+                let base = (due / 300.0).floor() * 300.0;
+                let rel = ((due - base) as f32).to_bits();
+                let next = crate::efloat::add(crate::efloat::add(rel, 1e-4f32.to_bits()), (period(working) as f32).to_bits());
+                due = base + f32::from_bits(next) as f64;
             }
             if let Some(m) = self.unit_mut(mine) {
-                m.extra.payout = Some((due as f32, working));
+                m.extra.payout = Some((due, working));
             }
             let per = if self.slow_chopping(owner) { 1 } else { per };
+            // (Its old pair goes by events a ten-thousandth apart after it pays: paying
+            // so near a tick's last main tick that they fall past it, they go in the
+            // next tick; read, a night elf start's entangled mine paying at 109.952751,
+            // the tick's last main tick 109.952782, its old pair freed in the next turn,
+            // where at 104.952461 by 104.955528 it went in the same.)
+            let late = self.paying_last && paid_from + 2e-4 > end;
             for _ in 0..pays {
                 let left = self.unit(mine).map_or(0, |m| m.resource);
                 let got = self.take_gold(vm, mine, mine, per);
@@ -631,8 +647,17 @@ impl World {
                 if left > per && pair.len() == 2 {
                     let rcm = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
                     let rtl = self.tags.take(codes::class::THRESHOLD_LISTENER);
-                    self.tags.release(pair[0]);
-                    self.tags.release(pair[1]);
+                    // (Paying after a tick's last step, the old pair goes in the next
+                    // tick's first: read, a night elf start's entangled mine paying at
+                    // 109.952751, the tick's last main tick 109.952782, its old pair
+                    // freed in the next turn, over LAN with the original.)
+                    if late {
+                        self.tags.release_by_step(pair[0]);
+                        self.tags.release_by_step(pair[1]);
+                    } else {
+                        self.tags.release(pair[0]);
+                        self.tags.release(pair[1]);
+                    }
                     if let Some(m) = self.unit_mut(mine) {
                         m.extra.ai_order = vec![rcm, rtl];
                     }
@@ -874,4 +899,11 @@ impl World {
             }
         }
     }
+}
+
+/// A main clock time as the engine holds it: a single within the clock's wrap of 300
+/// seconds.
+fn single_in_wrap(t: f64) -> f64 {
+    let base = (t / 300.0).floor() * 300.0;
+    base + ((t - base) as f32) as f64
 }

@@ -470,20 +470,23 @@ impl World {
         if let Some(u) = self.unit_mut(h) {
             u.extra.object_slots[2].push((cargo, birth));
         }
-        self.tags.release(run.order[8]);
-        self.tags.release(run.order[7]);
+        // (Those as the step ends, after its ended walks' paths, and the first wisp's
+        // pair after them: read, a gold wisp's arriving in the step a lumber wisp's
+        // walk ended, its frees after that walk's path, over LAN with the original.)
+        self.tags.release_in_step(run.order[8]);
+        self.tags.release_in_step(run.order[7]);
         let listeners = self.unit_mut(h).map(|u| {
             u.extra.spell_owners.clear();
             std::mem::take(&mut u.extra.spell_timers)
         });
         for s in listeners.unwrap_or_default().into_iter().rev() {
-            self.tags.release(s);
+            self.tags.release_in_step(s);
         }
-        if self.unit(mine).is_some_and(|m| m.extra.ai_order.is_empty()) {
-            let rcm = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
-            let rtl = self.tags.take(codes::class::THRESHOLD_LISTENER);
-            if let Some(m) = self.unit_mut(mine) {
-                m.extra.ai_order = vec![rcm, rtl];
+        if self.unit(mine).is_some_and(|m| m.extra.ai_order.is_empty()) && !self.pending_pairs.contains(&mine) {
+            if self.tags.in_step() {
+                self.pending_pairs.push(mine);
+            } else {
+                self.make_payout_pair(mine);
             }
         }
         let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
@@ -537,6 +540,22 @@ impl World {
             u.path.clear();
             u.extra.mover = None;
             u.extra.cell_at = None;
+        }
+    }
+
+    /// A covering mine's first payout pair (its `` `rcm `` and `` `rtl ``).
+    pub(crate) fn make_payout_pair(&mut self, mine: u32) {
+        let rcm = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
+        let rtl = self.tags.take(codes::class::THRESHOLD_LISTENER);
+        if let Some(m) = self.unit_mut(mine) {
+            m.extra.ai_order = vec![rcm, rtl];
+        }
+    }
+
+    /// The pairs waiting for the step's end (`World::wisp_enter`).
+    pub(crate) fn make_pending_pairs(&mut self) {
+        for mine in std::mem::take(&mut self.pending_pairs) {
+            self.make_payout_pair(mine);
         }
     }
 

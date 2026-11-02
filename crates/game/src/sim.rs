@@ -1454,6 +1454,7 @@ impl World {
         // 1782), as a later step's (`Tags::end_step`).
         self.tags.flush_issued();
         self.tags.end_first_step();
+        self.make_pending_pairs();
         self.tags.issued.extend(after);
         self.tags.flush_issued();
     }
@@ -1470,16 +1471,17 @@ impl World {
             self.tags.mark_step(k);
             let now: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 == k).collect();
             let next = self.step_ticks.get(k).copied();
-            // The payouts in main ticks before a wanderer's go ahead of its order, as after
-            // the last step (read: a night elf start's entangled mine, due 125.848091,
-            // its pair made before the objects of a wanderer's order due 125.863121
-            // before the turn's second step were freed).
+            // The payouts by a wanderer's main tick go ahead of its order (read: a night
+            // elf start's entangled mine, due 125.848091, its pair made before the
+            // objects of a wanderer's order due 125.863121 before the turn's second step
+            // were freed; and due 56.616413 in the main tick of a wanderer's due
+            // 56.620937, likewise).
             let mut i = 0;
             while i < now.len() {
                 let t = self.agent_tick(now[i].1);
                 let j = now[i..].iter().position(|e| self.agent_tick(e.1) != t).map_or(now.len(), |p| i + p);
                 if let Some(t) = t {
-                    self.mine_payouts_to(vm, Some(t - 1));
+                    self.mine_payouts_to(vm, Some(t));
                 }
                 self.issue_wanders(&now[i..j], next);
                 i = j;
@@ -1556,6 +1558,7 @@ impl World {
             due = rest;
             let after = self.issue_after_step(&late, k);
             self.tags.end_step();
+            self.make_pending_pairs();
             self.tags.issued.extend(after);
             self.tags.flush_issued();
         }

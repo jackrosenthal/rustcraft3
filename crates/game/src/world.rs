@@ -251,6 +251,13 @@ pub struct World {
     /// `World::start_gold_run`).
     #[serde(skip)]
     pub run_auto: bool,
+    /// Covering mines whose first payout pair waits for the step's end
+    /// (`World::wisp_enter`).
+    #[serde(default)]
+    pub pending_pairs: Vec<u32>,
+    /// Paying by the tick's last main tick, after its steps (`World::last_tick_payouts`).
+    #[serde(skip)]
+    pub paying_last: bool,
     /// The main clock in seconds since the game began (across its settings back) when
     /// the time of day last moved on.
     #[serde(default)]
@@ -874,6 +881,8 @@ impl World {
             making_clock: None,
             run_order_made: None,
             run_auto: false,
+            pending_pairs: Vec::new(),
+            paying_last: false,
             time_of_day_clock: 0.0,
             time_of_day_exact: 0.0,
             time_of_day_scale: 1.0,

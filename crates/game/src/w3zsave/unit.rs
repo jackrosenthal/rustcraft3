@@ -831,7 +831,7 @@ impl World {
         let i = slots.iter().position(|&(s, _)| self.tags.live.get(&s).is_some_and(|e| e.0 == t))?;
         let real = *slots.get(i + 2)?;
         let wraps = self.tick_wraps.last().copied().unwrap_or(0) as f64 * 300.0;
-        let due = (due as f64 - wraps) as f32;
+        let due = (due - wraps) as f32;
         Some(MinePayout { rcm: self.tagged(rcm), rtl: self.tagged(rtl), real: self.tagged(real.0), ability: self.tagged(slots[i].0), stamp: due - period, period, due })
     }
 

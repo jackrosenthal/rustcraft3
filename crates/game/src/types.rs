@@ -277,7 +277,10 @@ impl Unit {
     pub fn region_mask(&self) -> u32 {
         match self.extra.gold_run.as_ref() {
             Some(r) if r.entered => (if r.ghosted { 0 } else { 0x02 }) | 0x10,
-            Some(r) if r.lumber => 0x10,
+            // (A wisp's walk to its tree meets walkers as any walk: read, a night elf
+            // start's lumber wisp held by the gold wisps in its way, over LAN with the
+            // original.)
+            Some(r) if r.lumber && r.kind != crate::goldrun::Kind::Wisp => 0x10,
             _ => 0x02,
         }
     }
@@ -339,7 +342,7 @@ pub struct UnitExtra {
     /// A haunted mine's next payout, due on the main clock (seconds since the game
     /// began), and the workers it last counted at work.
     #[serde(default)]
-    pub payout: Option<(f32, u32)>,
+    pub payout: Option<(f64, u32)>,
     /// A gold mine's holder: the player whose workers are in it, until when (infinite
     /// while any is inside, GoldMineOwnDuration after the last leaves).
     #[serde(default)]

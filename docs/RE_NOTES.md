@@ -2969,11 +2969,28 @@ Formats the port made its own, to be replaced by the original's:
   walk ends it makes the harvest's art (`+EIP`, its `` `pos ``, two `^pmr`), frees its
   order's last target task (10), and its path and cluster go as the next movement
   step starts; it gathers at the tree's middle.  No objects for its deliveries.  The
-  keepalives agree to turn 25: from 2.43 seconds the original holds the first lumber
+  keepalives agreed to turn 25: from 2.43 seconds the original holds the first lumber
   wisp, walking west past the gold wisps, three times (`FUN_6f1689d0` on its path,
-  its goal 18 cells off, so drawing its wait), where the port's gold wisps give way
-  to it; the waypoint provider's rule between walkers of one speed
-  (`FUN_6f168360`) is not yet read for this.  The original's save of such a wisp
+  its goal 18 cells off, so drawing its wait).  A wisp's walk to a tree meets other
+  walkers as any walk does (its region mask 0x02; the port had given it a peon
+  lumber run's 0x10, past walkers).  The give-way rule (`FUN_6f168360`, read): for
+  each moving walker in its cells whose own path waits for none (`FUN_6f1680f0`),
+  the walker waits 4 steps for it if they share a walk's cluster (`FUN_6f1702a0`,
+  the cluster's flag 8 clear), or it is no faster, or their size classes differ;
+  else the other waits 20 for it; one with no cluster is passed by.  An arriving
+  gold wisp's frees (its two target tasks, its spells' listeners) and the first
+  wisp's payout pair come as the step ends, after the step's ended walks' paths
+  (read: one arriving in the step a lumber wisp's walk ended, its frees after that
+  walk's path).  A payout in the main tick of a wanderer's order comes ahead of it
+  (due 56.616413, the order 56.620937).  The payouts' times are the engine's
+  arithmetic within the clock's wrap: each the last plus 0.0001 plus the period, by
+  `FUN_6f06fbb0`'s add, which drops the low bits (the original's 64 payouts to 110
+  seconds read under winedbg, all so; in double precision the port had run 0.000107
+  early by 64 seconds, its steps changing as the clock crosses 8, 32, and 64).  And a
+  payout so near a tick's last main tick that its old pair's frees, events a
+  ten-thousandth after it, fall past that tick goes on in the next tick's first step
+  (109.952751 by 109.952782; 104.952461 by 104.955528 freed at once).  With these
+  the keepalives agree to turn 2005 of 2253.  The original's save of such a wisp
   (`nel.w3x` played alone to 30 seconds, `MeleeStartingUnitsNightElf` for player 0
   as `-loadfile` ignores the race preference): its Wisp Harvest's own fields after
   Dur, DataC, and DataA hold the tree's place and reference, the art's reference, the

@@ -69,6 +69,11 @@ pub struct Setup {
 /// The race bits of RaceMenu's choices.
 const RACES: [u8; 5] = [race::RANDOM, race::HUMAN, race::ORC, race::UNDEAD, race::NIGHT_ELF];
 
+/// A slot's race flags as the race menu's index (random where none is set).
+pub fn race_index(flags: u8) -> usize {
+    RACES.iter().position(|&r| flags & r != 0).unwrap_or(0)
+}
+
 /// The settings word GAMEINFO carries: the advanced options are the game's map flags,
 /// eight bits up, with the speed below them (1.27b's default fast game, 0x648 and 2, is
 /// 0x64802).
@@ -144,7 +149,7 @@ impl Setup {
             };
             s.team = t.team as i32;
             s.color = t.color as i32;
-            s.race = RACES.iter().position(|&r| t.race & r != 0).unwrap_or(0);
+            s.race = race_index(t.race);
             s.handicap = (100u8.saturating_sub(t.handicap) / 10).min(5) as usize;
         }
     }

@@ -3115,6 +3115,25 @@ pub struct SavedTimer {
 }
 
 impl SaveGame {
+    /// The players' names, by player in the object table's order (each player's record,
+    /// `+ply`, the first text of its tail, after its event lists: read, the original's
+    /// save of a LAN game on Booty Bay, "Host" and "Jack"; empty for a computer).
+    pub fn player_names(&self) -> Result<Vec<String>, Error> {
+        let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
+        let mut out = Vec::new();
+        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == codes::class::PLAYER) {
+            let name = match o.second()? {
+                Second::Agent { tail, .. } => tail.iter().find_map(|f| match f {
+                    Field::Text(t) => Some(t.clone()),
+                    _ => None,
+                }),
+                _ => None,
+            };
+            out.push(name.unwrap_or_default());
+        }
+        Ok(out)
+    }
+
     /// The JASS timers, in the object table's order.
     pub fn timers(&self) -> Result<Vec<SavedTimer>, Error> {
         let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;

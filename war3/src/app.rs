@@ -614,13 +614,18 @@ impl ApplicationHandler for App {
                             r.pending_net = role.borrow_mut().take().map(|r| (r, speed));
                             self.data.setup_seed.set(r.pending_net.as_ref().map_or(0, |n| n.0.seed));
                         }
-                        Some(crate::glue::GlueAction::PlayNetSave(path, bytes, role, speed, me)) => match w3_game::save::SaveGame::parse(&bytes) {
-                            Ok(save) => {
+                        // (Either format: the port's own state, which holds the setup; or a
+                        // copy in the original's, its map started with the lobby's setup,
+                        // seeded from the slot table as a new network game, then loaded.)
+                        Some(crate::glue::GlueAction::PlayNetSave(path, bytes, lobby, role, speed, me)) => match w3_game::save::Load::parse(&bytes) {
+                            Ok(load) => {
                                 self.data.campaign_game.set(false);
                                 glue.skirmish.summary = crate::skirmish::summarize_path(&path);
                                 glue.show_loading(&mut r.assets);
-                                r.pending = Some((path, None, Some(w3_game::save::Load::Port(save))));
+                                let slots = matches!(load, w3_game::save::Load::Original(_)).then_some(lobby);
+                                r.pending = Some((path, slots, Some(load)));
                                 r.pending_net = role.borrow_mut().take().map(|r| (r, speed));
+                                self.data.setup_seed.set(r.pending_net.as_ref().map_or(0, |n| n.0.seed));
                                 r.pending_local = Some(me);
                             }
                             Err(e) => log::error!("loading the network game: {e:#}"),

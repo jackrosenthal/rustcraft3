@@ -42,8 +42,8 @@ fn main() -> anyhow::Result<()> {
                             data.setup_flags.set(flags);
                             return net_game(&device, &queue, format, &data, &mut assets, &map, &lobby, role.borrow_mut().take(), speed, w, h);
                         }
-                        Some(war3::glue::GlueAction::PlayNetSave(map, save, role, speed, me)) => {
-                            return net_game_saved(&device, &queue, format, &data, &mut assets, &map, &save, role.borrow_mut().take(), speed, me, w, h);
+                        Some(war3::glue::GlueAction::PlayNetSave(map, save, lobby, role, speed, me)) => {
+                            return net_game_saved(&device, &queue, format, &data, &mut assets, &map, &save, &lobby, role.borrow_mut().take(), speed, me, w, h);
                         }
                         _ => {}
                     }
@@ -61,8 +61,8 @@ fn main() -> anyhow::Result<()> {
                             data.setup_flags.set(flags);
                             return net_game(&device, &queue, format, &data, &mut assets, &map, &lobby, role.borrow_mut().take(), speed, w, h);
                         }
-                        Some(war3::glue::GlueAction::PlayNetSave(map, save, role, speed, me)) => {
-                            return net_game_saved(&device, &queue, format, &data, &mut assets, &map, &save, role.borrow_mut().take(), speed, me, w, h);
+                        Some(war3::glue::GlueAction::PlayNetSave(map, save, lobby, role, speed, me)) => {
+                            return net_game_saved(&device, &queue, format, &data, &mut assets, &map, &save, &lobby, role.borrow_mut().take(), speed, me, w, h);
                         }
                         _ => {}
                     }
@@ -115,8 +115,8 @@ fn main() -> anyhow::Result<()> {
                         data.setup_flags.set(flags);
                         return net_game(&device, &queue, format, &data, &mut assets, &map, &lobby, role.borrow_mut().take(), speed, w, h);
                     }
-                    Some(war3::glue::GlueAction::PlayNetSave(map, save, role, speed, me)) => {
-                        return net_game_saved(&device, &queue, format, &data, &mut assets, &map, &save, role.borrow_mut().take(), speed, me, w, h);
+                    Some(war3::glue::GlueAction::PlayNetSave(map, save, lobby, role, speed, me)) => {
+                        return net_game_saved(&device, &queue, format, &data, &mut assets, &map, &save, &lobby, role.borrow_mut().take(), speed, me, w, h);
                     }
                     Some(war3::glue::GlueAction::Campaign(map)) => {
                         eprintln!("campaign mission {map}");
@@ -252,9 +252,14 @@ fn net_game(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFor
 
 /// A loaded network game, as the application starts one.
 #[allow(clippy::too_many_arguments)]
-fn net_game_saved(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, data: &GameData, assets: &mut Assets, map: &Path, save: &[u8], role: Option<war3::net::Role>, speed: u8, me: u8, w: u32, h: u32) -> anyhow::Result<()> {
-    let save = w3_game::save::SaveGame::parse(save)?;
-    let mut scene = war3::scene::Scene::load(device, queue, format, data, assets, map, w as f32 / h as f32, None, Some(w3_game::save::Load::Port(save)), None)?;
+#[allow(clippy::too_many_arguments)]
+fn net_game_saved(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, data: &GameData, assets: &mut Assets, map: &Path, save: &[u8], lobby: &[w3_game::LobbySlot], role: Option<war3::net::Role>, speed: u8, me: u8, w: u32, h: u32) -> anyhow::Result<()> {
+    // (Either format, as the app loads it: a save in the original's starts its map with
+    // the lobby's setup, seeded from the slot table, then loads.)
+    let load = w3_game::save::Load::parse(save)?;
+    let slots = matches!(load, w3_game::save::Load::Original(_)).then_some(lobby);
+    data.setup_seed.set(role.as_ref().map_or(0, |r| r.seed));
+    let mut scene = war3::scene::Scene::load(device, queue, format, data, assets, map, w as f32 / h as f32, slots, Some(load), None)?;
     if let Some(g) = scene.game.as_mut() {
         g.world.local_player = me;
         println!("loaded at {:.1}s", g.world.time);

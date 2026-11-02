@@ -3207,6 +3207,22 @@ Formats the port made its own, to be replaced by the original's:
   every computer (`save::port_state`), as before.  Provisional: a game the port
   joined, its stat's host its own name; not yet loaded by the original (its LAN
   load wants the other players to join it).
+- Loading a network game over LAN, each computer loads its own copy, and a joiner's
+  copy must be the host's game's: the original's join (CLocalMultiplayerLoad vf3)
+  compares the game's announced identifier (GAMEINFO's map checksum) with its own
+  copy's word after the slot table (CSaveGame +0x430, `FUN_6f24d770` reading it),
+  the objects' sum `FUN_6f324930` (each live object's vf 0x3c over the object table:
+  the same on every computer of the game; the Booty Bay save's 0xc2aa926c).  The
+  players' names are in their records (`+ply`, the first text of the tail after the
+  event lists; "Host" and "Jack"), by which the lobby keeps each person's slot.  The
+  port now offers and joins a load of a save in the original's format so (its
+  identifier that word, its slots from the save's slot table and names), each
+  computer starting the map with the lobby's setup and then loading its copy
+  (`restore_original`): two of the port's, as Host and Jack, loading the original's
+  Booty Bay save over LAN play 300 frames alike.  The port's own saves write 0 for
+  the sum, the same in every copy, so the original's peers can load those among
+  themselves; a game mixing the two cannot load until the port reckons the sum (its
+  classes' vf 0x3c, dozens of functions).
 - Continuing the original's saves (`Game::restore_original`): the port's compiled
   code is the original's word for word (map script and AI scripts), so each machine
   comes back as saved: its globals (strings by their text, a handle where the port

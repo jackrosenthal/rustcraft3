@@ -31,7 +31,7 @@ pub enum GlueAction {
     PlayNet(std::path::PathBuf, Vec<w3_game::LobbySlot>, std::rc::Rc<std::cell::RefCell<Option<crate::net::Role>>>, u8, u32),
     /// A loaded network game: its map, saved state, role, speed, and this computer's
     /// player.
-    PlayNetSave(std::path::PathBuf, Vec<u8>, std::rc::Rc<std::cell::RefCell<Option<crate::net::Role>>>, u8, u8),
+    PlayNetSave(std::path::PathBuf, Vec<u8>, Vec<w3_game::LobbySlot>, std::rc::Rc<std::cell::RefCell<Option<crate::net::Role>>>, u8, u8),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -860,10 +860,10 @@ impl Glue {
                 );
                 self.action = Some(GlueAction::PlayNet(map, lobby, std::rc::Rc::new(std::cell::RefCell::new(Some(role))), speed, flags));
             }
-            crate::lan::Event::StartSaved(map, save, role, speed, me) => {
+            crate::lan::Event::StartSaved(map, save, lobby, role, speed, me) => {
                 self.lan.detach();
                 self.lan_players = Some(self.lan.setup.slots.iter().filter(|s| matches!(s.holder, crate::net::Holder::Human(_))).map(|s| (s.name.clone(), s.race)).collect());
-                self.action = Some(GlueAction::PlayNetSave(map, save, std::rc::Rc::new(std::cell::RefCell::new(Some(role))), speed, me));
+                self.action = Some(GlueAction::PlayNetSave(map, save, lobby, std::rc::Rc::new(std::cell::RefCell::new(Some(role))), speed, me));
             }
         }
     }

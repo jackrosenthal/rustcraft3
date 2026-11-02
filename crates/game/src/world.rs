@@ -326,6 +326,11 @@ pub struct World {
     /// The game time in whole milliseconds, each tick's added (the keepalive's `t`).
     #[serde(default)]
     pub game_ms: u32,
+    /// The time played before this game was loaded from a save of the original's (its
+    /// header's game time), which the port's clocks start again from 0 after: the game
+    /// time a save of it and the score show adds it.
+    #[serde(default)]
+    pub played_before_ms: u32,
     /// The keepalive's data modules, by index, as the game's data loaded
     /// (`datahash::modules`).
     #[serde(default)]
@@ -886,6 +891,7 @@ impl World {
             search_budget: (0, 0),
             net_sum: 0,
             game_ms: 0,
+            played_before_ms: 0,
             keepalive_modules: Default::default(),
             sync_selections: Vec::new(),
             step_base: 0,

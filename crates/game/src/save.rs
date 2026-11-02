@@ -226,8 +226,8 @@ impl Game {
     /// units' slots), its players' upgrades researched, the computers' AI scripts and
     /// captains (`restore_ai_scripts`), the mines' gold, the structures being built, the
     /// queues at work, each unit's order, the triggers turned off, and the timer events'
-    /// timers.  Not yet: the time, which the port's timers and sleeping threads count
-    /// from.
+    /// timers.  The time played before (`World::played_before_ms`), as its saves and
+    /// score show it; the clocks start again from 0, all the rest counting from them.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
         use crate::natives::units::{create_unit_exact, remove_unit};
         let units = s.units()?;
@@ -240,6 +240,7 @@ impl Game {
         let agent_clock = s.objects.as_ref().map_or(0.0, |m| m.clocks[1].0);
         let scripts = s.script_data()?;
         let w = &mut self.world;
+        w.played_before_ms = s.game_ms;
         let origin = w.pathing.as_ref().map_or([0.0; 2], |p| p.origin);
         for h in w.unit_order.clone() {
             remove_unit(w, h);

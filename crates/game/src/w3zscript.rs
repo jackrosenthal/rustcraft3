@@ -568,7 +568,7 @@ impl Game {
             local_player: local as u32,
             player_name: w.players.get(local as usize).map_or_else(String::new, |p| p.name.clone()),
             preferences: [1, 1],
-            game_ms: w.game_ms,
+            game_ms: w.game_ms.wrapping_add(w.played_before_ms),
             objects: Some(m),
             ..Default::default()
         };

@@ -2854,10 +2854,24 @@ Formats the port made its own, to be replaced by the original's:
   port's game at 30 seconds is the original's (760 gold, 260 gathered, the peasants'
   Harvest records alike to their reals), and the original going on from the port's
   save at 30 gathers what its own game does by 60 (560).  Not yet: an entangled
-  mine's payout (the port has no pair for it), and an orc computer after loading the
-  port's Twisted Meadows save, which in the original sent its peons to the trees
-  (40 gold, 114 lumber in 30 seconds): its AI's choice, its mining records being
-  right.
+  mine's payout (the port has no pair for it).
+- A computer's towns: its AI object (`AI-1`) lists four towns by their sites'
+  indices, which TownWithMine walks (`FUN_6f9ccf50`: a human's or orc's town needing
+  its site's hall, a night elf's its entangled mine); each town site (`AIts`) holds
+  where its town gathers (its attack captain's home), its own place (midway from
+  hall to mine once a town holds it), its hall, and its mine (a haunted or entangled
+  one over the site's standing for it; after a melee undead start, which replaces the
+  mine, the one at its place).  Read: Echo Isles' undead computer at 60 seconds on
+  site 2 (4499.96, 2698.23; 4896, 3264, the Necropolis at 4672 and the mine at
+  5120), the hero map's [4].  The port wrote every computer's towns as [1] and no
+  site's hall, so after the original loaded its Twisted Meadows save the orc and
+  night elf computers found no town with a mine (`HarvestGold(-1, ..)`, traced at the
+  native, 0x6f9bbdb0) and sent their gold peons to the trees; written so, each asks
+  of its town 0, and the orc mines on (120 gold in the next 30 seconds against 40).
+  Each computer unit's AI (`AI-U`) carries flags, 0x60 and a worker's job (0x5 gold,
+  0xa wood: the acolytes' 0x65, the ghouls' at the trees 0x6a), and its town's site
+  for a worker or a structure; now written so.  Provisional: the flags' high bits
+  (0x10000000, 0x20000000) on some, not written.
 - A save's slot table keeps each player's choices (a random race as random, 0x60);
   the race the game drew is the player's record's tail word 110 (common.j's
   numbering: Booty Bay's LAN game's human and orc, the hero map's and Echo Isles'

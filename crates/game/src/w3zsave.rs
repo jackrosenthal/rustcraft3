@@ -543,6 +543,32 @@ impl World {
         out
     }
 
+    /// A town site's mine as the original names it (its mine made with it, else one
+    /// made at its place since: a melee undead start's haunting replaces the mine, read,
+    /// Echo Isles'; a haunted or entangled mine over it standing for it), the mine's
+    /// place, and a computer's town on it: its town hall the nearest to the mine, within
+    /// 1500.
+    pub(crate) fn site_town(&self, index: usize) -> (Option<u32>, (f32, f32), Option<u32>) {
+        let Some(&(x, y, (slot, _))) = self.tags.sites.get(index) else { return (None, (0.0, 0.0), None) };
+        let is_mine = |h: u32| [codes::ability::GOLD_MINE, codes::ability::BLIGHTED_GOLD_MINE, codes::ability::ENTANGLED_GOLD_MINE].iter().any(|c| self.ability_with_code(h, c).is_some());
+        let site_mine = self.unit_order.iter().copied().find(|&h| self.unit(h).is_some_and(|u| u.extra.site_ai.is_some_and(|s| s.0 == slot))).or_else(|| {
+            self.unit_order.iter().copied().find(|&h| self.unit(h).is_some_and(|u| !u.dead && u.extra.mine.is_none() && (u.x - x).hypot(u.y - y) < 64.0) && is_mine(h))
+        });
+        let cover = site_mine.and_then(|m| self.unit_order.iter().copied().find(|&v| self.unit(v).is_some_and(|w| !w.dead && w.extra.mine == Some(m))));
+        let at = site_mine.and_then(|h| self.unit(h)).map_or((x, y), |u| (u.x, u.y));
+        let town = self
+            .unit_order
+            .iter()
+            .copied()
+            .filter_map(|h| self.unit(h).map(|u| (h, u)))
+            .filter(|(_, u)| !u.dead && u.constructing.is_none() && self.ai.contains_key(&u.owner) && self.is_town_hall(u))
+            .map(|(h, u)| ((u.x - at.0).hypot(u.y - at.1), h))
+            .filter(|(d, _)| *d <= 1500.0)
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, h)| h);
+        (cover.or(site_mine), at, town)
+    }
+
     pub fn player_ai_seconds(&self) -> Vec<(u32, Second)> {
         let mut out = Vec::new();
         let computers: Vec<u8> = (0..12u8).filter(|&i| self.players.get(i as usize).is_some_and(|p| p.controller == 1)).collect();
@@ -568,16 +594,29 @@ impl World {
                 own.extend(none());
                 own.push(Field::Real(0.0));
             }
-            own.push(w(0));
+            // (A computer's 1, eight trees and their reals (read: the hero map's at 450
+            // seconds, eight trees, 26 to 29; provisional, none), 7, and its town's place,
+            // where its workers' mine is looked for (read: there, 1024 and 5888, the
+            // defense captain's home; the port's 0 and 0 left an orc computer loaded
+            // from its save mining nothing).)
+            own.push(w(u32::from(computer && self.ai.contains_key(&player))));
             own.push(Field::List((0..8).map(|_| vec![w(u32::MAX), w(u32::MAX), Field::Real(0.0)]).collect()));
             own.push(Field::List((0..8).map(|_| vec![Field::Real(0.0)]).collect()));
-            own.extend([w(7), Field::Real(0.0), Field::Real(0.0)]);
+            let town = if self.ai.contains_key(&player) { self.town_pos_pub(player, 0) } else { (0.0, 0.0) };
+            own.extend([w(7), Field::Real(town.0), Field::Real(town.1)]);
             for _ in 0..2 {
                 own.extend(none());
                 own.push(Field::Real(0.0));
             }
             own.extend([w(guard.0), w(guard.1), Field::Real(0.0)]);
-            own.push(Field::List((0..4).map(|t| vec![w(if computer && t == 0 { 1 } else { u32::MAX })]).collect()));
+            // (Its towns, by their sites' indices, four places: the sites holding its town
+            // halls, which TownWithMine looks through (`FUN_6f9ccf50`: a human's or orc's
+            // site needing its hall, a night elf's its entangled mine).  Read: the hero
+            // map's computer's 4, its Necropolis's site; the port's 1 for every computer
+            // left an orc's and a night elf's without a town after the original loaded its
+            // save, their gold peons sent to the trees.)
+            let towns: Vec<u32> = if computer { (0..self.tags.sites.len()).filter(|&i| self.site_town(i).2.and_then(|h| self.unit(h)).is_some_and(|u| u.owner == player)).map(|i| i as u32).take(4).collect() } else { Vec::new() };
+            own.push(Field::List((0..4).map(|t| vec![w(towns.get(t).copied().unwrap_or(u32::MAX))]).collect()));
             own.extend(none());
             own.extend([Field::Real(0.0), w(3), w(u32::MAX), w(0), w(0)]);
             own.push(Field::List((0..12).map(|_| vec![w(0)]).collect()));
@@ -2933,12 +2972,31 @@ impl World {
                     let list = (0..12).map(|k| members.get(k).map_or_else(none3, |m| vec![Field::Word(m.0), Field::Word(m.1), Field::Word(0)])).collect();
                     out.push((slot, Second::Agent { own: vec![Field::Word(0), Field::Word(members.len() as u32), Field::List(list)], handlers: events(), tail: Vec::new() }));
                 }
+                // A town site (CAITownSite): 0, its index, where its town gathers and its
+                // own place, its town's hall, 0, its mine, 0, and none.  A computer's town
+                // on it (its hall the nearest to the mine, within 1500) gives the hall and
+                // its attack captain's home, and a haunted or entangled mine over the
+                // site's stands for it (read: Echo Isles' undead computer at 60 seconds,
+                // its Necropolis and haunted mine on site 2, gathering at 4499.96,
+                // 2698.23; the hero map's at 450 seconds at its attack captain's home;
+                // the human's town on none).  Without the town an orc computer loaded
+                // from the port's save sent its gold peons to the trees.
                 codes::class::TOWN_SITE => {
                     let Some(index) = self.tags.sites.iter().position(|s| s.2 .0 == slot) else { continue };
                     let (x, y, _) = self.tags.sites[index];
-                    let mine = self.unit_order.iter().filter_map(|&h| self.unit(h)).find(|u| u.extra.site_ai.is_some_and(|s| s.0 == slot)).and_then(|u| u.extra.object_slots[0].first().copied()).unwrap_or((u32::MAX, u32::MAX));
-                    let mut own = vec![Field::Word(0), Field::Word(index as u32), Field::Real(x), Field::Real(y), Field::Real(x), Field::Real(y)];
-                    own.extend(none3());
+                    let (mine, at, town) = self.site_town(index);
+                    let mine = mine.and_then(|h| self.unit(h)).and_then(|u| u.extra.object_slots[0].first().copied()).unwrap_or((u32::MAX, u32::MAX));
+                    let town = town.and_then(|h| self.unit(h));
+                    let hall = town.and_then(|u| u.extra.object_slots[0].first().copied());
+                    let home = town.and_then(|u| self.ai.get(&u.owner)).map_or((x, y), |st| st.attack.home);
+                    // (Its own place, a town's, midway from its hall to its mine: read, Echo
+                    // Isles' 4896, 3264, the Necropolis at 4672 and the mine at 5120.)
+                    let place = town.map_or((x, y), |u| ((u.x + at.0) / 2.0, (u.y + at.1) / 2.0));
+                    let mut own = vec![Field::Word(0), Field::Word(index as u32), Field::Real(home.0), Field::Real(home.1), Field::Real(place.0), Field::Real(place.1)];
+                    match hall {
+                        Some(r) => own.extend([Field::Word(r.0), Field::Word(r.1), Field::Word(0)]),
+                        None => own.extend(none3()),
+                    }
                     own.extend([Field::Word(mine.0), Field::Word(mine.1), Field::Word(0)]);
                     own.extend(none3());
                     out.push((slot, Second::Agent { own, handlers: events(), tail: Vec::new() }));

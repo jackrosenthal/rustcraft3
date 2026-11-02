@@ -2336,8 +2336,13 @@ impl World {
 
 impl World {
     /// The units' AIs (`AI-U`; read against the quiet test map's): fourteen words, the
-    /// tenth and eleventh a computer's unit's town site's AI (`AIts`, provisional: the
-    /// nearest), and empty handlers.
+    /// seventh a computer's unit's flags (0x60, and a worker's job: 0x5 at gold, 0xa at
+    /// wood; read, the hero map's and Echo Isles' acolytes 0x65 and ghouls at the trees
+    /// 0x6a, every other unit and structure 0x60; provisional: the high bits some carry,
+    /// 0x10000000 and 0x20000000, not written), the tenth and eleventh its town site's
+    /// AI (`AIts`, provisional: the nearest) for a worker or a structure, and empty
+    /// handlers.  (Without the jobs, an orc computer loaded from the port's save moved
+    /// its gold peons to the trees.)
     pub fn unit_ai_records(&self) -> Vec<(u32, Second)> {
         let mut out = Vec::new();
         for &h in &self.unit_order {
@@ -2347,12 +2352,16 @@ impl World {
                 if !self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::UNIT_AI && e.1 == b) {
                     continue;
                 }
+                let gold = matches!(u.action, crate::types::Action::Harvest { target } if self.is_gold_mine(target)) || (matches!(u.action, crate::types::Action::ReturnResources) && u.carry_gold > 0);
+                let wood = matches!(u.action, crate::types::Action::Harvest { target } if !self.is_gold_mine(target)) || (matches!(u.action, crate::types::Action::ReturnResources) && u.carry_lumber > 0);
+                let job = if gold { 0x5 } else if wood { 0xa } else { 0 };
+                let flags = if computer { 0x60 | job } else { 0 };
                 // (A computer's workers' and structures': read, its acolytes', Necropolis's,
-                // and haunted mine's, not its ghoul's.)
-                let town = u.is_building || self.objects.units.get(u.type_id).is_some_and(|o| o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case("peon")));
+                // and haunted mine's, its ghouls' at the trees, not its ghouls' at war.)
+                let town = u.is_building || job != 0 || self.objects.units.get(u.type_id).is_some_and(|o| o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case("peon")));
                 let site = if computer && town { self.tags.sites.iter().min_by(|a, c| (a.0 - u.x).hypot(a.1 - u.y).total_cmp(&(c.0 - u.x).hypot(c.1 - u.y))).map_or(NONE, |x| rf(x.2)) } else { NONE };
                 let w = Field::Word;
-                let own = vec![w(0), w(0), w(0), w(u32::MAX), w(u32::MAX), w(0), w(0), w(u32::MAX), w(u32::MAX), w(0), w(site.0), w(site.1), w(0), w(0)];
+                let own = vec![w(0), w(0), w(0), w(u32::MAX), w(u32::MAX), w(0), w(flags), w(u32::MAX), w(u32::MAX), w(0), w(site.0), w(site.1), w(0), w(0)];
                 let handlers = Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
                 out.push((s, Second::Agent { own, handlers, tail: Vec::new() }));
             }

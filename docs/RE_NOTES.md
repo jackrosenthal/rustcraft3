@@ -2854,7 +2854,18 @@ Formats the port made its own, to be replaced by the original's:
   port's game at 30 seconds is the original's (760 gold, 260 gathered, the peasants'
   Harvest records alike to their reals), and the original going on from the port's
   save at 30 gathers what its own game does by 60 (560).  Not yet: an entangled
-  mine's payout (the port has no pair for it).
+  mine's payout.  Its class shares the haunted mine's payout code (177 of 192 virtual
+  functions; its save, `FUN_6f4ea4b0`, the haunted mine's save's base, its tail's
+  three references the same: none, the modifier, the listener), so it pays by the
+  same pair, which the port does not model for it.  Tried: the pair taken as the first
+  wisp enters and renewed as it pays, and the cargo hold's wisps written (CAbility-
+  CargoHold's save, `FUN_6f5aabb0`: a real, three words, two lists of ten places,
+  twenty words, two timers, twenty pairs of reals); the original then paid once after
+  loading the port's save and no more, and the night elf start under a chosen race
+  already differs from the original's at its first turn (the game module's checksum,
+  over LAN with the host's W3HOSTRACE and the tags tool's TAGS_RACES), so the pair
+  could not be checked there; left out.  The writer writes the pair and cargo when a
+  mine has them.
 - A computer's towns: its AI object (`AI-1`) lists four towns by their sites'
   indices, which TownWithMine walks (`FUN_6f9ccf50`: a human's or orc's town needing
   its site's hall, a night elf's its entangled mine); each town site (`AIts`) holds

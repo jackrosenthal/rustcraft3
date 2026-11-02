@@ -44,6 +44,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             list.push(slot(0, status::CLOSED, 2 + k as u8, 2 + k as u8));
         }
     }
+    // W3HOSTRACE: the host's slot's race flags in hex (random and selectable by default).
+    if let Some(r) = std::env::var("W3HOSTRACE").ok().and_then(|v| u8::from_str_radix(v.trim_start_matches("0x"), 16).ok()) {
+        list[0].race = r;
+    }
     let slots = SlotTable { slots: list, seed: 0x35000000, layout: layout::MELEE, player_slots: total as u8 };
     let mut host = Host::new(port, info, HostMap { path: a[2].clone(), bytes, checksums }, slots, "Host".into())?;
     println!("offering on port {}", host.port());

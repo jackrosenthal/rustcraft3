@@ -786,7 +786,7 @@ impl World {
                     links[2] = w3_formats::w3z::Link(rf(p[2]), 0);
                     links[3] = w3_formats::w3z::Link(rf(p[3]), 0);
                 }
-                if let Some(p) = self.mine_payout_parts(h).filter(|_| &code == codes::ability::id::BLIGHTED_GOLD_MINE) {
+                if let Some(p) = self.mine_payout_parts(h).filter(|_| &code == codes::ability::id::BLIGHTED_GOLD_MINE || &code == codes::ability::id::ENTANGLED_GOLD_MINE) {
                     links[2] = w3_formats::w3z::Link(rf(p.rcm), 0);
                     links[3] = w3_formats::w3z::Link(rf(p.rtl), 0);
                 }
@@ -826,7 +826,7 @@ impl World {
         }
         let (_, _, base) = self.mine_payout_terms(h)?;
         let period = base / working.max(1) as f32;
-        let (t, _) = self.ability_with_code(h, codes::ability::BLIGHTED_GOLD_MINE)?;
+        let (t, _) = self.ability_with_code(h, codes::ability::BLIGHTED_GOLD_MINE).or_else(|| self.ability_with_code(h, codes::ability::ENTANGLED_GOLD_MINE))?;
         let slots: Vec<(u32, u32)> = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).copied().collect();
         let i = slots.iter().position(|&(s, _)| self.tags.live.get(&s).is_some_and(|e| e.0 == t))?;
         let real = *slots.get(i + 2)?;
@@ -994,7 +994,7 @@ impl World {
         for &(t, code) in &chain {
             let Some(i) = slots.iter().position(|&x| x == t) else { continue };
             let props: Vec<(u32, u32)> = slots[i + 1..].iter().copied().take_while(|&(s, b)| self.tagged(s).1 == b && self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::REAL)).collect();
-            let payout = self.mine_payout_parts(h).filter(|_| &code == codes::ability::id::BLIGHTED_GOLD_MINE);
+            let payout = self.mine_payout_parts(h).filter(|_| &code == codes::ability::id::BLIGHTED_GOLD_MINE || &code == codes::ability::id::ENTANGLED_GOLD_MINE);
             for k in 0..props.len() {
                 // (Abgm's second 0, not -0.)
                 let values = match (&code, k) {
@@ -1775,6 +1775,22 @@ impl World {
                 }
                 vec![Field::Ref(NONE), Field::Ref(rcm), Field::Ref(rtl), timer(), Field::List(slots)]
             }
+            // An entangled mine's cargo hold (CAbilityCargoHold, `FUN_6f5aabb0`): a real,
+            // its count of units in, two words, its ten places' units, ten more, twenty
+            // words, two timers, and twenty pairs of reals; the wisps inside its mine in its
+            // first places.  Provisional: the count and the places, read from the save
+            // function alone (the port's wisps inside otherwise lost to the original,
+            // its mine paying once after loading the port's save and no more).
+            codes::ability::id::CARGO_HOLD_GOLD_MINE => {
+                let inside: Vec<(u32, u32)> = self.unit_order.iter().filter_map(|&v| self.unit(v)).filter(|w| !w.dead && w.inside == h).filter_map(|w| w.extra.object_slots[0].first().copied()).take(10).collect();
+                let places = |first: bool| Field::List((0..10).map(|k| match inside.get(k).filter(|_| first) {
+                    Some(&r) => vec![w(r.0), w(r.1), w(0)],
+                    None => vec![w(u32::MAX), w(u32::MAX), w(0)],
+                }).collect());
+                let words = || Field::List((0..10).map(|_| vec![w(0)]).collect());
+                let reals = || Field::List((0..10).map(|_| vec![Field::Real(f32::MAX), Field::Real(f32::MAX)]).collect());
+                vec![Field::Real(0.0), w(inside.len() as u32), w(0), w(0), places(true), places(false), words(), words(), timer(), timer(), reals(), reals()]
+            }
             // An entangled mine (CAbilityEntangledGoldMine), as a haunted one: its gold, the
             // mine it covers, 0, its gold a payout and its period a wisp (DataA, DataB),
             // and 0.0; three references and a timer, none (read: the original's mine
@@ -1785,7 +1801,12 @@ impl World {
                 let d = self.objects.abilities.get(a)?;
                 let cover = u.extra.mine.and_then(|m| self.unit(m)).and_then(|m| m.extra.object_slots[0].first().copied()).unwrap_or((u32::MAX, u32::MAX));
                 own.extend([w(u.resource.max(0) as u32), w(cover.0), w(cover.1), w(0), w(d.level_real("DataA", l) as u32), Field::Real(d.level_real("DataB", l)), Field::Real(0.0)]);
-                vec![Field::Ref(NONE), Field::Ref(NONE), Field::Ref(NONE), timer()]
+                // (Its payout's modifier and listener, as the haunted mine's.)
+                let (rcm, rtl) = self.mine_payout_parts(h).map_or((NONE, NONE), |p| (rf(p.rcm), rf(p.rtl)));
+                if rtl != NONE {
+                    keyed.push((rtl.0, vec![(Ref(t.0, t.1), 0xd_01c4)]));
+                }
+                vec![Field::Ref(NONE), Field::Ref(rcm), Field::Ref(rtl), timer()]
             }
             // An inventory (CAbilityInventory): its six slots, 0, its pickup listener
             // (`` `pil ``), six 0, six timers (none).  (Provisional: items' cooldowns.)

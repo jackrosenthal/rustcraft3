@@ -12,7 +12,10 @@ fn main() -> anyhow::Result<()> {
     data.chain.mount(map, None, war3::data::PRIORITY_MAP);
     let seed = u32::from_str_radix(&a[3], 16)?;
     let reference: Vec<String> = std::fs::read_to_string(&a[4])?.lines().filter(|l| !l.starts_with('#')).map(|l| l.to_string()).collect();
-    let mut lobby: Vec<w3_game::LobbySlot> = (0..2u8).map(|p| w3_game::LobbySlot { player: p, fill: if p == 0 { w3_game::SlotFill::Remote } else { w3_game::SlotFill::Local }, name: Some(format!("P{p}")), race: None, team: p as i32, color: p as i32, handicap: 100.0, difficulty: 1 }).collect();
+    // TAGS_RACES="<race>,<race>": the two players' races (1 human to 4 night elf; empty
+    // for random), as the host's W3HOSTRACE sets its own.
+    let races: Vec<Option<i32>> = std::env::var("TAGS_RACES").map(|v| v.split(',').map(|r| r.trim().parse().ok()).collect()).unwrap_or_default();
+    let mut lobby: Vec<w3_game::LobbySlot> = (0..2u8).map(|p| w3_game::LobbySlot { player: p, fill: if p == 0 { w3_game::SlotFill::Remote } else { w3_game::SlotFill::Local }, name: Some(format!("P{p}")), race: races.get(p as usize).copied().flatten(), team: p as i32, color: p as i32, handicap: 100.0, difficulty: 1 }).collect();
     // TAGS_COMPUTER="<race>,<level>": a computer player in the third slot, as the host's
     // W3HOSTCOMPUTER has it (race 1 human, 2 orc, 3 undead, 4 night elf as the script
     // numbers them; level 0 easy, 1 normal, 2 insane).

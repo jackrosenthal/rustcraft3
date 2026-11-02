@@ -366,6 +366,21 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 1;
             }
+            // captains: each computer's captains (units by type and action, goal, target,
+            // retreating) and its harvest requests.
+            "captains" => {
+                if let Some(g) = &scene.game {
+                    let wd = &g.world;
+                    for (p, st) in &wd.ai {
+                        for (name, c) in [("attack", &st.attack), ("defense", &st.defense)] {
+                            let us: Vec<String> = c.units.iter().filter_map(|&h| wd.unit(h)).map(|u| format!("{}:{}", w3_game::objects::id_str(u.type_id), format!("{:?}", u.action).split(|ch: char| !ch.is_alphanumeric()).next().unwrap_or(""))).collect();
+                            eprintln!("captain p{p} {name} goal {:?} home {:?} target {} retreating {} units {us:?}", c.goal, c.home, c.target, c.retreating);
+                        }
+                        eprintln!("harvest p{p} {:?}", st.harvest);
+                    }
+                }
+                i += 1;
+            }
             // heroes: each hero's level, attributes, life, mana, and inventory.
             "heroes" => {
                 if let Some(g) = &scene.game {
@@ -694,14 +709,14 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
-            // actions: the units' current actions, counted by kind.
+            // actions: the units' current actions, counted by type and kind.
             "actions" => {
                 if let Some(g) = scene.game.as_ref() {
                     let mut n: std::collections::BTreeMap<String, u32> = Default::default();
                     for &h in &g.world.unit_order {
                         if let Some(u) = g.world.unit(h).filter(|u| !u.dead) {
                             let k = format!("{:?}", u.action);
-                            let k = k.split(|c: char| !c.is_alphanumeric()).next().unwrap_or("").to_string();
+                            let k = format!("{}:{}", w3_game::objects::id_str(u.type_id), k.split(|c: char| !c.is_alphanumeric()).next().unwrap_or(""));
                             *n.entry(k).or_default() += 1;
                         }
                     }

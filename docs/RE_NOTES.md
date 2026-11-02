@@ -2825,6 +2825,25 @@ Formats the port made its own, to be replaced by the original's:
   and 18 for 28 and 21 (700, 4.3, 0.42).  The port had read and written the totals
   there, so a loaded hero lost its levels' gains and a saved one would have had them
   twice.
+- A computer's threads sleep on the main clock (each `AItr`'s timer without flag 4:
+  the hero map's at 450 seconds due 150.09998 to 200.09998, the main clock at 150.0
+  and the agent clock at 150.665; at 300 seconds due past 300 with the main clock at
+  300.0 and the agent clock wrapped to 0.45, which had looked like dues not set back
+  at the wrap).  Loading the original's save, the port took them on the agent clock,
+  so they woke 0.67 seconds early, and kept the thread objects of the threads its
+  restart of the AI had made, so its save then held one of the five; it now makes
+  each saved thread's object again (its number, sleep, count, and place).
+- A gold mine's gold is its Gold Mine ability's (`Agld`) first own field after the
+  ability's thirteen (the hero map's 11000 and 14000), and a haunted mine's
+  (`Abgm`) too, then the mine it covers (9760 over its mine); the port had loaded
+  every mine full, and the undead computer's haunted mine with none, so it
+  collapsed and its acolytes mined nothing.  Loaded, the computer's gold over the
+  next 150 seconds is the original's (1490 against 1450).
+- A captain's order (its tail's 51st word from the end): an attacking captain's
+  AImove (851988) to its goal, one going home move (851986), its goal where it
+  stands, as CaptainGoHome leaves it (the hero map's at 450 seconds).  A ghoul's
+  Cannibalize order carries flag 8 and refers to the order under it, 851974
+  (0xD0006, no name: the internal stop Cannibalize issues once its life is full).
 - A script's SaveGame saves once a session (`jass_SaveGame`: nothing in a network
   game, for an empty name, or while the game's flag at +0x3e4 is set; it sets it,
   and a new game's start, `FUN_6f1e05a0`, and a load clear it): the original's own

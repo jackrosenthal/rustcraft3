@@ -270,21 +270,30 @@ impl Game {
     /// The computers' AI scripts as a save of the original's has them, in place of
     /// those the map's start made: each machine (by its place) its globals and its
     /// threads (`thread_from`), each asleep for what was left of its sleep (its AI
-    /// thread object's timer, due on the agent clock, `agent_clock` that clock as
-    /// saved, no longer than the sleep it records: a due not yet set back as the clock
-    /// wrapped at 300 seconds taken back by 300; read, the hero map's at 300 seconds).
-    pub fn restore_ai_scripts(&mut self, s: &SaveGame, scripts: &ScriptData, agent_clock: f32, units: &std::collections::HashMap<(u32, u32), u32>) -> anyhow::Result<()> {
+    /// thread object's timer, due on the main clock, its flags without 4: `clock` that
+    /// clock as saved; read, the hero map's at 450 seconds, due 150.09998 to 200.09998
+    /// with the main clock at 150.0, the agent clock 150.665; no longer than the sleep
+    /// it records), and their objects (`AItr`) as saved.
+    pub fn restore_ai_scripts(&mut self, s: &SaveGame, scripts: &ScriptData, clock: f32, units: &std::collections::HashMap<(u32, u32), u32>) -> anyhow::Result<()> {
         use w3_formats::w3z::{Second, Timing};
         let objects = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
+        // Each thread's object (`AItr`) by its thread's place: its due, its last sleep,
+        // its number (its own sixth word, the main's 0), and its timer's count.
         let mut due: std::collections::HashMap<u32, (f32, f32)> = Default::default();
+        let mut numbers: std::collections::HashMap<u32, (u32, u32)> = Default::default();
         for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::class::AI_THREAD) {
             if let Ok(Second::Agent { own, tail, .. }) = o.second() {
                 let sleep = match own.get(6) {
                     Some(Field::Real(r)) => *r,
                     _ => 0.0,
                 };
+                let number = match own.get(5) {
+                    Some(Field::Word(n)) => *n,
+                    _ => 0,
+                };
                 if let (Some(Field::Timer(_, _, Timing(Some(t)))), Some(Field::Word(place))) = (tail.first(), tail.get(4)) {
                     due.insert(*place, (t.0, sleep));
+                    numbers.insert(*place, (number, t.2));
                 }
             }
         }
@@ -303,7 +312,7 @@ impl Game {
             let mut sleepers = Vec::new();
             for t in scripts.threads.get(k).into_iter().flatten() {
                 let th = thread_from(&mut a.vm, t, &map);
-                let (mut left, sleep) = due.get(&t.machine).map_or((0.0, 0.0), |&(d, s)| (d - agent_clock, s));
+                let (mut left, sleep) = due.get(&t.machine).map_or((0.0, 0.0), |&(d, s)| (d - clock, s));
                 while left > sleep + 1.0 {
                     left -= 300.0;
                 }
@@ -313,13 +322,30 @@ impl Game {
                 sleepers.push((now + left.max(0.0), th));
             }
             a.sleepers = sleepers;
-            // (Its threads' objects say when each wakes, as the port's own sleeps set them.)
+            // Its threads' objects anew, one a thread as saved (the restart's slots taken
+            // first, the main's for the main), each saying when its thread wakes, as the
+            // port's own sleeps set them; none of the restart's threads left to start.
+            let restored: Vec<(u32, f32, f32)> = a.sleepers.iter().map(|(at, th)| (th.place, *at, due.get(&th.place).map_or(0.0, |d| d.1))).collect();
+            let Some(st) = self.world.ai.get_mut(&p) else { continue };
+            st.spawned.clear();
+            let mut old: Vec<crate::ai::ThreadObject> = std::mem::take(&mut st.thread_objects).into_values().collect();
+            old.sort_by_key(|o| std::cmp::Reverse(o.number));
+            let mut objects: std::collections::BTreeMap<u32, crate::ai::ThreadObject> = Default::default();
+            let mut order: Vec<(u32, f32, f32)> = restored;
+            order.sort_by_key(|&(place, ..)| numbers.get(&place).map_or(u32::MAX, |n| n.0));
+            for (place, at, sleep) in order {
+                let (number, count) = numbers.get(&place).copied().unwrap_or((objects.len() as u32, 0));
+                let slot = match old.pop() {
+                    Some(o) => o.slot,
+                    None => self.world.tags.take(crate::codes::class::AI_THREAD),
+                };
+                objects.insert(place, crate::ai::ThreadObject { slot, number, sleep, count, due: at });
+            }
+            for o in old {
+                self.world.tags.doom(o.slot);
+            }
             if let Some(st) = self.world.ai.get_mut(&p) {
-                for (at, th) in &a.sleepers {
-                    if let Some(o) = st.thread_objects.get_mut(&th.place) {
-                        o.due = *at;
-                    }
-                }
+                st.thread_objects = objects;
             }
         }
         self.restore_captains(&objects, units);
@@ -358,7 +384,7 @@ impl Game {
             Field::List(g) => g.first().and_then(|g| Some((word(g.first()?)?, word(g.get(1)?)?))),
             _ => None,
         };
-        let mut captains: Vec<(u32, Vec<u32>, (f32, f32), (f32, f32), Option<u32>)> = Vec::new();
+        let mut captains: Vec<(u32, Vec<u32>, (f32, f32), (f32, f32), Option<u32>, u32)> = Vec::new();
         for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::class::AI_CAPTAIN) {
             let Ok(Second::Agent { tail, .. }) = o.second() else { continue };
             let n = tail.len();
@@ -380,18 +406,27 @@ impl Game {
             let bound = (real(&tail[n - 42]).unwrap_or(0.0), real(&tail[n - 41]).unwrap_or(0.0));
             let place = (real(&tail[n - 33]).unwrap_or(bound.0), real(&tail[n - 32]).unwrap_or(bound.1));
             let target = tail[n - 31..n - 12].iter().filter_map(entry).find_map(|r| units.get(&r).copied());
-            captains.push((kind, members, bound, place, target));
+            let order = word(&tail[n - 51]).unwrap_or(0);
+            captains.push((kind, members, bound, place, target, order));
         }
         let mut computers: Vec<u8> = self.world.ai.keys().copied().collect();
         computers.sort();
         for (p, pair) in computers.into_iter().zip(captains.chunks(2)) {
             let Some(st) = self.world.ai.get_mut(&p) else { continue };
-            for (kind, members, bound, place, target) in pair {
+            for (kind, members, bound, place, target, order) in pair {
                 let c = if *kind == 2 { &mut st.attack } else { &mut st.defense };
                 c.units = members.clone();
                 c.peak = members.len();
+                // (An attack captain's order: attacking, AImove, to its goal; going home,
+                // move, its goal its home, as CaptainGoHome leaves it: read, the hero
+                // map's at 300 and 900 seconds AImove on the human town, at 450 move to
+                // where it stands.)
                 if *kind == 2 {
                     c.goal = Some(*bound);
+                    c.retreating = *order == crate::natives::basic::order_id("move") as u32;
+                    if c.retreating {
+                        c.home = *bound;
+                    }
                 } else {
                     c.home = *bound;
                 }

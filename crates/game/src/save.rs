@@ -224,9 +224,10 @@ impl Game {
     /// the time of day, the map script's variables (by name, arrays too) and its threads
     /// asleep, its timers, its destructables' life, its items (those carried in their
     /// units' slots), its players' upgrades researched, the computers' AI scripts and
-    /// captains (`restore_ai_scripts`), the structures being built, the queues at work,
-    /// each unit's order, the triggers turned off, and the timer events' timers.  Not
-    /// yet: the time, which the port's timers and sleeping threads count from.
+    /// captains (`restore_ai_scripts`), the mines' gold, the structures being built, the
+    /// queues at work, each unit's order, the triggers turned off, and the timer events'
+    /// timers.  Not yet: the time, which the port's timers and sleeping threads count
+    /// from.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
         use crate::natives::units::{create_unit_exact, remove_unit};
         let units = s.units()?;
@@ -338,6 +339,36 @@ impl Game {
                 w.apply_hero_stats(h, false);
                 if let (Some((life, mana, max_life, max_mana)), Some(u)) = (kept, w.unit_mut(h)) {
                     (u.life, u.mana, u.max_life, u.max_mana) = (life, mana, max_life, max_mana);
+                }
+            }
+        }
+        // Each gold mine's gold (its Gold Mine ability's first own field after the
+        // ability's, `Agld`), and a haunted mine's (`Abgm`: its gold, then the mine it
+        // covers, hidden under it as haunting leaves it; read, the hero map at 300
+        // seconds, its mines' 11000 and 14000, its undead computer's haunted mine's 9760
+        // over its mine).
+        {
+            use w3_formats::w3z::{Field, First, Second};
+            use crate::codes::ability::id::{BLIGHTED_GOLD_MINE, GOLD_MINE};
+            let all = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
+            for o in all.iter().flatten() {
+                let kind = o.entry.kind.to_be_bytes();
+                if &kind != GOLD_MINE && &kind != BLIGHTED_GOLD_MINE {
+                    continue;
+                }
+                let Ok(First::Agent { object, .. }) = o.first() else { continue };
+                let Some(&h) = made.get(&(object.links[0].3 .0, object.links[0].3 .1)) else { continue };
+                let Ok(Second::Agent { own, .. }) = o.second() else { continue };
+                let Some(&Field::Word(gold)) = own.get(13) else { continue };
+                if &kind == BLIGHTED_GOLD_MINE {
+                    if let (Some(&Field::Word(t)), Some(&Field::Word(b))) = (own.get(14), own.get(15)) {
+                        if let Some(&mine) = made.get(&(t, b)) {
+                            w.cover_mine(h, mine);
+                        }
+                    }
+                }
+                if let Some(u) = w.unit_mut(h) {
+                    u.resource = gold as i32;
                 }
             }
         }
@@ -773,8 +804,10 @@ impl Game {
                 self.world.order_unit(h, id, x, y, target);
             }
         }
-        // The computers' AI scripts, as they were.
-        if let Err(e) = self.restore_ai_scripts(s, &scripts, agent_clock, &made) {
+        // The computers' AI scripts, as they were (their threads' sleeps on the main
+        // clock).
+        let main_clock = s.objects.as_ref().map_or(0.0, |m| m.clocks[0].0);
+        if let Err(e) = self.restore_ai_scripts(s, &scripts, main_clock, &made) {
             log::warn!("the AI scripts of the save: {e:#}");
         }
         Ok(())

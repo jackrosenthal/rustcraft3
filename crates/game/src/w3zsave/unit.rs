@@ -2105,7 +2105,7 @@ impl World {
         // more, 0x12000012, its ways empty, and the tree's first footprint region.
         if let (Some(r), Some(p)) = (u.extra.gold_run.as_ref().filter(|r| r.lumber && matches!(r.phase, crate::goldrun::Phase::Chopping(_))), self.pathing.as_ref()) {
             if let Some(crate::types::Obj::Destructable(d)) = self.handles.get(r.mine) {
-                let empty = |limit: u16| (w3_formats::w3z::Array { words: [1024, 1024, 128, 128], entries: Vec::new() }, u32::MAX, 0, limit);
+                let empty = |limit: u16| (super::path_array(Vec::new()), u32::MAX, 0, limit);
                 let region = d.object_slots.get(3).map_or(NONE, |&s| rf(self.tagged(s)));
                 return Some((
                     first[9].0,
@@ -2130,7 +2130,7 @@ impl World {
                 let here = cells((u.x, u.y));
                 let [gx, gy] = cells((x, y));
                 let local = if u.path.len() > 1 { cells(u.path[u.path.len() - 1]) } else { [gx, gy] };
-                let set = |entries: Vec<[f32; 2]>, limit: u16| (w3_formats::w3z::Array { words: [1024, 1024, 128, 128], entries }, 0, 0, limit);
+                let set = |entries: Vec<[f32; 2]>, limit: u16| (super::path_array(entries), 0, 0, limit);
                 let corners: Vec<[f32; 2]> = match u.extra.coarse.as_ref() {
                     Some(c) => c.points.iter().map(|&(x, y)| [x, y]).collect(),
                     None => vec![[gx / 2.0, gy / 2.0], [here[0] / 2.0, here[1] / 2.0]],
@@ -2163,8 +2163,8 @@ impl World {
             let goal = rt.map(|t| (t.0, t.1));
             let cells = |(x, y): (f32, f32)| [(x - p.origin[0]) / 32.0, (y - p.origin[1]) / 32.0];
             let collision = o.real("collision") / 32.0;
-            let set = |entries: Vec<[f32; 2]>, limit: u16| (w3_formats::w3z::Array { words: [1024, 1024, 128, 128], entries }, 0, 0, limit);
-            let empty = |limit: u16| (w3_formats::w3z::Array { words: [1024, 1024, 128, 128], entries: Vec::new() }, u32::MAX, 0, limit);
+            let set = |entries: Vec<[f32; 2]>, limit: u16| (super::path_array(entries), 0, 0, limit);
+            let empty = |limit: u16| (super::path_array(Vec::new()), u32::MAX, 0, limit);
             let walking = self.saved_order(h).is_some_and(|o| o.walk.is_some());
             if let (true, Some((gx, gy))) = (walking, goal) {
                 let here = cells((u.x, u.y));

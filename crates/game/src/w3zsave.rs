@@ -1018,7 +1018,7 @@ impl World {
             None => vec![[gx / 2.0, gy / 2.0], [cx / 2.0, cy / 2.0]],
         };
         let short = (Array { words: [0, 0, 128, 0], entries: Vec::new() }, u32::MAX, 0, 700);
-        let long = (Array { words: [1024, 1024, 128, 128], entries: corners }, 0, 0, 5000);
+        let long = (path_array(corners), 0, 0, 5000);
         out.push((path.0, First::Path { reals: [gx, gy, gx, gy, gx, gy], words: [word, 0, 0, u32::MAX, u32::MAX, 0], real: collision, word: 0, ways: [short, long], refs: [NONE, NONE, NONE, NONE] }, None));
         out
     }
@@ -1207,7 +1207,7 @@ impl World {
         let local = if u.owner == self.local_player { 0x8 } else { 0 };
         let word = ((0x46 | local) << 4 | (u.owner as u32 & 0xf)) << 16;
         let short = (Array { words: [0, 0, 128, 0], entries: Vec::new() }, u32::MAX, 0, 700);
-        let long = (Array { words: [1024, 1024, 128, 128], entries: vec![[gx / 2.0, gy / 2.0], [cx / 2.0, cy / 2.0]] }, 0, 0, 5000);
+        let long = (path_array(vec![[gx / 2.0, gy / 2.0], [cx / 2.0, cy / 2.0]]), 0, 0, 5000);
         out.push((path.0, First::Path { reals: [gx, gy, gx, gy, gx, gy], words: [word, 0, 0, u32::MAX, u32::MAX, 0], real: collision, word: 0, ways: [short, long], refs: [NONE, NONE, NONE, region] }, None));
         out
     }
@@ -2371,6 +2371,13 @@ impl World {
             }
             for (slot, sec) in secs {
                 seconds.entry(slot).or_insert(sec);
+            }
+        }
+        // (A haunted mine's ring slots without their mine, gone and its slots kept by
+        // the port, are left out, their slots freed: their records would be empty.)
+        for (slot, (code, _)) in &self.tags.live {
+            if code == codes::class::MINE_SLOT && !seconds.contains_key(slot) {
+                records.remove(slot);
             }
         }
         // The main clock set back every 300 seconds, the dues as the original's, its
@@ -3648,6 +3655,17 @@ impl World {
         }
         [(self.main_clock_now(), wraps, 300.0, 4096, 0), (f32::from_bits(agent), wraps, 300.0, 0, 0)]
     }
+}
+
+/// A path's way as saved: its array's room in bytes twice, 128, and its places, 128
+/// doubled as needed (the original's grows as an in-range listener's does; more
+/// points than its room would be read past it).
+pub(crate) fn path_array(entries: Vec<[f32; 2]>) -> Array<[f32; 2]> {
+    let mut room = 128u32;
+    while (room as usize) < entries.len() {
+        room *= 2;
+    }
+    Array { words: [room * 8, room * 8, 128, room], entries }
 }
 
 /// An in-range listener's units as saved: its array's room in bytes twice, its

@@ -3061,6 +3061,12 @@ Formats the port made its own, to be replaced by the original's:
   agent reader, `FUN_6f146390`).  Found by tracing the original's agent first-record
   reads (`abtest/trfirst.sh`: each read's stream position, aligned with the save's
   records by `w3zobj lens`) after a bisection by save time (`abtest/loadquick.sh`).
+- A path's ways are arrays with room too (128 points of 8 bytes, as read); the port
+  now doubles it as an in-range listener's for a way longer than that, which the
+  original would read past its room.  A haunted mine's ring slots (`rslt`) kept by
+  the port after the mine was gone (mined out by 1800 seconds) are left out, their
+  records otherwise empty (the original's loader hung on them).  The port's saves
+  at 1200 and 1800 seconds load.
 - The aura buffs' saves by class: Trueshot's, Command's, and War Drums'
   (`FUN_6f4ea860`) the base's, a per-weapon list, and a timer; Thorns' and
   Vampiric's the base's alone (`FUN_6f42e4c0`: its extended timer; read, the

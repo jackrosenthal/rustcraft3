@@ -126,7 +126,49 @@ pub enum Load {
     Original(Box<w3_formats::w3z::SaveGame>),
 }
 
+/// Where the port keeps its own state beside a saved game in the original's format:
+/// `<save>.port`.
+pub fn sidecar_path(path: &std::path::Path) -> std::path::PathBuf {
+    let mut s = path.as_os_str().to_owned();
+    s.push(".port");
+    std::path::PathBuf::from(s)
+}
+
+/// The original's file's length and CRC-32, with which its sidecar begins: a save
+/// written over since (by the original, or another) is not taken for its sidecar's.
+fn stamp(w3z: &[u8]) -> [u8; 8] {
+    let mut crc = flate2::Crc::new();
+    crc.update(w3z);
+    let mut out = [0; 8];
+    out[..4].copy_from_slice(&(w3z.len() as u32).to_le_bytes());
+    out[4..].copy_from_slice(&crc.sum().to_le_bytes());
+    out
+}
+
+/// The sidecar of a saved game in the original's format (`w3z`): its stamp, then the
+/// port's own state (`Game::save`).
+pub fn sidecar(w3z: &[u8], port: &[u8]) -> Vec<u8> {
+    [&stamp(w3z)[..], port].concat()
+}
+
 impl Load {
+    /// A saved game file: the port's own state when its sidecar is this file's, else
+    /// the file as it reads.
+    pub fn read(path: &std::path::Path) -> anyhow::Result<Load> {
+        let bytes = std::fs::read(path)?;
+        if bytes.starts_with(w3_formats::container::MAGIC) {
+            if let Ok(side) = std::fs::read(sidecar_path(path)) {
+                if side.len() > 8 && side[..8] == stamp(&bytes) {
+                    match SaveGame::parse(&side[8..]) {
+                        Ok(s) => return Ok(Load::Port(s)),
+                        Err(e) => log::warn!("{}: the port's state beside it does not read ({e:#}); loading the save alone", path.display()),
+                    }
+                }
+            }
+        }
+        Load::parse(&bytes)
+    }
+
     pub fn parse(bytes: &[u8]) -> anyhow::Result<Load> {
         if bytes.starts_with(w3_formats::container::MAGIC) {
             return Ok(Load::Original(Box::new(w3_formats::w3z::SaveGame::read(bytes)?)));

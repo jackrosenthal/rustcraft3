@@ -1023,7 +1023,19 @@ impl World {
             return None;
         }
         let u = self.unit(h)?;
-        let b = u.buffs.iter().find(|b| b.slot == t.0 && self.buff_kept(b)).or_else(|| u.buffs.iter().find(|b| b.slot == 0 && &b.id == code && b.caster == h))?;
+        let found = u.buffs.iter().find(|b| b.slot == t.0 && self.buff_kept(b)).or_else(|| u.buffs.iter().find(|b| b.slot == 0 && &b.id == code && b.caster == h));
+        // (The bearer's own, made with it, as the port's sweep has it off: its aura's at
+        // rest; read, a Death Knight's at 60 seconds of the every-unit test map.)
+        let fallback;
+        let b = match found {
+            Some(b) => b,
+            None => {
+                let mine = u.extra.object_slots.iter().flatten().any(|&x| x == t);
+                let (a, lvl) = u.abilities.iter().copied().filter(|_| mine).find(|&(a, l)| self.objects.abilities.get(a).is_some_and(|o| crate::objects::id_from_str(o.level_str("BuffID", l.max(1) as u32).trim()) == *code))?;
+                fallback = crate::types::Buff { id: *code, ability: a, level: lvl.max(1) as u32, caster: h, ..Default::default() };
+                &fallback
+            }
+        };
         let aura = self.objects.abilities.get(b.ability)?;
         let aura_code: [u8; 4] = self.ability_code(b.ability).as_bytes().try_into().ok()?;
         let data_a = aura.level_real("DataA", b.level.max(1));

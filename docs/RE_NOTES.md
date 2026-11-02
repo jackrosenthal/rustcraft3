@@ -3112,6 +3112,18 @@ Formats the port made its own, to be replaced by the original's:
   ability shares vision too (`CAbilityNeutral` vf190 `FUN_6f3f8010`), as a
   player's unit comes in range (the every-unit map's shops' at 5 seconds); the
   port does not, and the original makes them again after loading.
+- The game's Save writes the original's format (`Scene::save_files`: the fresh
+  writer, the header 1.27's, `PX3W` 27 6059), and the port's own state beside it
+  in `<save>.w3z.port`, stamped with the save's length and CRC-32.  Loading takes
+  the port's state when its stamp is the save's (`save::Load::read`), else reads the
+  save as the original's (its partial restore).  Nothing rides in the save itself:
+  the original refuses one with bytes after its record (back to the menu) or after
+  its container ("The save file is unavailable or corrupted").  Measured: a save
+  at 60 seconds of the hero map loads in the original and plays; the port resumes
+  it at 70 seconds after 10 more.  Not yet: a network game's saves, still the
+  port's own format.
+- An aura bearer's own buff, made with it, is written at rest when the port's sweep
+  has it off (a Death Knight's at 60 seconds of the every-unit map, else empty).
 - A buff's own timer (CBuff vf211 `532b50`, event 0xd01c4) is written running to
   its end for every buff whose tail has it (`[r] w t ss f`), its span the buff's
   time as laid (an aura's its scan's); a buff keeps its slot's birth, and one whose

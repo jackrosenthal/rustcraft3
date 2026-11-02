@@ -118,7 +118,7 @@ impl App {
         let mut scene = match &self.args.loadfile {
             // A saved game starts its map with the saved state.
             Some(path) if path.extension().is_some_and(|e| e.eq_ignore_ascii_case(crate::saveload::EXTENSION)) => {
-                let save = w3_game::save::Load::parse(&std::fs::read(path)?)?;
+                let save = w3_game::save::Load::read(path)?;
                 let map = self.data.map_of_save(&save);
                 Some(Scene::load(&gpu.device, &gpu.queue, gpu.config.format, &self.data, &mut assets, &map, inner.width as f32 / inner.height.max(1) as f32, None, Some(save), None)?)
             }
@@ -589,7 +589,7 @@ impl ApplicationHandler for App {
                             r.pending = Some((path, slots, None));
                         }
                         Some(crate::glue::GlueAction::LoadSave(file)) => {
-                            match std::fs::read(&file).map_err(anyhow::Error::from).and_then(|b| w3_game::save::Load::parse(&b)) {
+                            match w3_game::save::Load::read(&file) {
                                 Ok(save) => {
                                     self.data.campaign_game.set(false);
                                     let map = save.map().to_string();

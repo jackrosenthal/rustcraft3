@@ -1,6 +1,7 @@
 //! `w3zedit <in.w3z> <out.w3z> life <unit tag> <value>`: a saved game with a unit's
 //! life changed (its indexed real 1's value), written back in the port's container;
-//! `drop1`: its second table left with its classes' definitions alone.
+//! `drop1`: its second table left with its classes' definitions alone; `append
+//! <file>`: the file's bytes after the record.
 use w3_formats::w3z::{First, SaveGame};
 use w3_formats::codes;
 
@@ -43,6 +44,11 @@ fn main() {
         }
         // "none": as it was (a control).
         "none" => {}
+        // "append <file>": the file's bytes after the record's last.
+        "append" => {
+            let extra = std::fs::read(&a[4]).unwrap();
+            s.rest.extend(extra);
+        }
         // "drop1": the second table's objects but its classes' definitions left out.
         "drop1" => {
             let before = objects[1].len();

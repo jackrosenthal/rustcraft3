@@ -3166,6 +3166,8 @@ impl Scene {
                         if let Err(e) = std::fs::remove_file(&path) {
                             log::error!("deleting {}: {e}", path.display());
                         }
+                        // (The port's state beside it goes with it.)
+                        let _ = std::fs::remove_file(w3_game::save::sidecar_path(&path));
                         p.refresh();
                     }
                 }
@@ -3216,13 +3218,15 @@ impl Scene {
         self.write_save(&path);
     }
 
-    /// Writes the game to a saved game file and returns to the game.
+    /// Writes the game to a saved game file and returns to the game: the save in the
+    /// original's format, and the port's own state beside it (`save::sidecar_path`).
     fn write_save(&mut self, path: &std::path::Path) {
-        let res = self.save_game().and_then(|bytes| {
+        let res = self.save_files().and_then(|(w3z, port)| {
             if let Some(d) = path.parent() {
                 std::fs::create_dir_all(d)?;
             }
-            std::fs::write(path, bytes).map_err(Into::into)
+            std::fs::write(path, w3z)?;
+            std::fs::write(w3_game::save::sidecar_path(path), port).map_err(Into::into)
         });
         if let Err(e) = res {
             log::error!("saving {}: {e:#}", path.display());
@@ -4561,12 +4565,31 @@ impl Scene {
         card_of(&self.commands, db, &g.world, h, page)
     }
 
-    /// The game as a saved game.
+    /// The game as a saved game, in the port's own format.
     pub fn save_game(&mut self) -> anyhow::Result<Vec<u8>> {
         let g = self.game.as_mut().context("no game")?;
         // The triggers hear the save first (EVENT_GAME_SAVE).
         g.game_event(w3_game::event_ids::EVENT_GAME_SAVE);
         g.save(&self.map_path)
+    }
+
+    /// The game as a saved game in the original's format (`.w3z`, its recorded-game
+    /// container with the header the original's 1.27 writes; provisional, a Reign of
+    /// Chaos game's product, as its replays'), and the port's own state as its
+    /// sidecar.
+    pub fn save_files(&mut self) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
+        let port = self.save_game()?;
+        let g = self.game.as_ref().context("no game")?;
+        let ms = g.recorder.as_ref().and_then(|r| r.replay.map_stat.clone()).context("the map's checksums are not known")?;
+        let expansion = g.recorder.as_ref().is_none_or(|r| r.replay.version != 0);
+        let host = g.world.players.get(g.world.local_player as usize).map_or_else(String::new, |p| p.name.clone());
+        // (Its settings: the speed, fast, as a game played alone has it.)
+        let stat = w3_net::GameStat { settings: 2, map_width: ms.width, map_height: ms.height, map_xoro: ms.xoro, map_path: ms.path.clone(), host, map_sha1: ms.sha1 }.to_bytes();
+        let head = w3_game::w3zscript::SaveHead { map: ms.path, stat, xoro: ms.xoro, sha1: ms.sha1 };
+        let header = w3_formats::container::Header { product: if expansion { *b"PX3W" } else { *b"3RAW" }, version: 27, build: 6059, flags: 0, length_ms: 0 };
+        let w3z = g.write_save_fresh(&head).to_file(&header);
+        let side = w3_game::save::sidecar(&w3z, &port);
+        Ok((w3z, side))
     }
 
     /// The ground height the camera looks at: the terrain 500 units around the target

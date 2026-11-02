@@ -37,10 +37,11 @@ fn main() -> anyhow::Result<()> {
     let (device, queue) = pollster::block_on(adapter.request_device(&Default::default()))?;
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let mut assets = Assets::new(&device, &queue, &data);
-    // A saved game (.w3z, the port's or the original's) starts its map with the saved
-    // state.
+    // A saved game (.w3z, the port's or the original's, the port's own state beside it
+    // taken when it is the file's) starts its map with the saved state.
     let (map, restore) = if a[2].to_ascii_lowercase().ends_with(".w3z") {
-        let save = w3_game::save::Load::parse(&std::fs::read(&a[2])?)?;
+        let save = w3_game::save::Load::read(Path::new(&a[2]))?;
+        eprintln!("loading {}", if matches!(save, w3_game::save::Load::Port(_)) { "the port's state" } else { "the original's save" });
         (data.map_of_save(&save).to_string_lossy().to_string(), Some(save))
     } else {
         (a[2].clone(), None)
@@ -322,6 +323,14 @@ fn main() -> anyhow::Result<()> {
             }
             "save" => {
                 std::fs::write(&a[i + 1], scene.save_game()?)?;
+                i += 2;
+            }
+            // savefiles <out.w3z>: as the game's Save writes it, the original's format and
+            // the port's state beside it.
+            "savefiles" => {
+                let (w3z, port) = scene.save_files()?;
+                std::fs::write(&a[i + 1], w3z)?;
+                std::fs::write(w3_game::save::sidecar_path(Path::new(&a[i + 1])), port)?;
                 i += 2;
             }
             "res" => {

@@ -227,10 +227,19 @@ impl Game {
             if let Some(&jass) = handles.get(&(u.tag, u.birth)) {
                 w.handles.alias(jass, h);
             }
+            let time = w.time;
             if let Some(unit) = w.unit_mut(h) {
                 (unit.max_life, unit.max_mana) = (u.life[3], u.mana[3]);
                 use w3_formats::w3z::SavedUnit;
                 (unit.life, unit.mana) = (SavedUnit::now(u.life, u.life_at, agent_clock), SavedUnit::now(u.mana, u.mana_at, agent_clock));
+                // A corpse (none of its life left; read, the hero map's ghouls at 300
+                // seconds, their owner 15, bones' with the top bit) lies dead, as
+                // CreateCorpse makes one (provisional: its decay from now).
+                if u.life[0] <= 0.0 {
+                    unit.dead = true;
+                    unit.life = 0.0;
+                    unit.death_time = time;
+                }
             }
         }
         // Gold, lumber, and what was gathered of each (JASS's player states 1, 2, 15,

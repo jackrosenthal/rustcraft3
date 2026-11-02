@@ -3151,6 +3151,19 @@ Formats the port made its own, to be replaced by the original's:
   action, and its trigger).  The thread records the sleep itself too (`real`, which
   the port writes 0).  Measured: the hero map's computer at 300 seconds resumes its
   attack and trains; a trigger waiting at 60 seconds wakes 20 seconds after loading.
+- Heroes and abilities in saves: every ability's level less one is its word at +0x50
+  (its eleventh own field, as GetUnitAbilityLevel reads; the port wrote 0, every
+  skill level 1 in the original); a hero's experience is its hero ability's first
+  word (+0x8c, GetHeroXP's), its skill points the second; its level is its level
+  flag (the hero ability's first `flg`, the level less one, GetHeroLevel's +0x6c);
+  its strength's word (third) and agility's (tenth) and its intelligence flag (the
+  second `flg`) are its own, without items.  Provisional: the reals after them (the
+  Dreadlord at 900 seconds: 28.0 and what 21 agility and 20 intelligence give, its
+  own 23, 18, and 17, which its items, a ring, potions, boots, wards, and a scroll,
+  do not explain).  Loading the original's save, each hero's experience, level,
+  skill points, attributes beyond its type's, and skills come back (the hero map's
+  two Dreadlords at 900 seconds, their skills at the levels saved) and each
+  Inventory's items into its slots.
 - The port's own waiting triggers: a trigger's execution (`+tex`) is kept while a
   thread of it sleeps and freed as that thread ends (the original's save holds it
   with the wake timer), its timer started as the thread sleeps (the agent timer's

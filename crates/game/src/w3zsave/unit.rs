@@ -1226,7 +1226,10 @@ impl World {
             Some(_) => self.objects.abilities.get(id).map_or(0xfdd1_f00e, |a| data_targets(&a.level_str("targs", 1).split(',').map(str::to_string).collect::<Vec<_>>())),
             None => ability_targets(code),
         };
-        let mut own = vec![w(flags), w(prev.0), w(prev.1), w(0), w(0), w(0), w(0), w(0), w(targets), w(u32::from_be_bytes(id)), w(0), timer(), w(last)];
+        // (Its level less one at +0x50, as GetUnitAbilityLevel reads it: read, the hero
+        // map's Dreadlord's skills at 900 seconds.)
+        let level = u.abilities.iter().find(|(a, _)| *a == id).map_or(0, |&(_, l)| (l - 1).max(0) as u32);
+        let mut own = vec![w(flags), w(prev.0), w(prev.1), w(0), w(0), w(0), w(0), w(0), w(targets), w(u32::from_be_bytes(id)), w(level), timer(), w(last)];
         let tail = match code {
             // CAbilityMove (`FUN_6f5fec80`): two references, its speed and 1.0, words,
             // two reals, references; its two timers.
@@ -1286,7 +1289,8 @@ impl World {
                 tail
             }
             // A hero's (CAbilityHero, read against Forestwalk's undead computer's
-            // Dreadlord at 160 seconds): 0, its skill points (+0x90, as
+            // Dreadlord at 160 seconds): its experience (+0x8c, as GetHeroXP reads; read,
+            // the hero map's Dreadlord's 633 at 900 seconds), its skill points (+0x90, as
             // GetHeroSkillPoints reads), its strength, then its strength, the
             // life it gives (25 a point), the armor its agility gives (0.3 a point,
             // less 2), the mana its intelligence gives (15 a point), 0, the attack
@@ -1305,13 +1309,17 @@ impl World {
                 // heroes it still has.)
                 let birth = |v: u32| self.unit(v).and_then(|w| w.extra.object_slots[0].first().map(|f| f.1)).unwrap_or(0);
                 let ordinal = self.unit_order.iter().filter(|&&v| self.unit(v).is_some_and(|w| w.is_hero && w.owner == u.owner) && birth(v) <= birth(h)).count() as u32;
+                // (Its strength's and agility's words its own, without its items: read,
+                // the hero map's Dreadlord at 900 seconds, 23 and 18.  Provisional: the
+                // reals, 28 and what 21 agility and 20 intelligence give there, which its
+                // items do not explain.)
                 let (s, a, i) = (u.str_.floor(), u.agi.floor(), u.int.floor());
                 let skills: Vec<crate::objects::Id> = ob.list("heroAbilList").iter().map(|x| crate::objects::id_from_str(x.trim())).take(5).collect();
                 let at = |k: usize, f: &dyn Fn(crate::objects::Id) -> u32| vec![w(skills.get(k).map_or(0, |&id| f(id)))];
                 let levels = |id: crate::objects::Id| self.objects.abilities.get(id).map_or(0, |o| o.int("levels").max(0) as u32);
                 let needs = |id: crate::objects::Id| self.objects.abilities.get(id).map_or(0, |o| o.int("reqLevel").max(1) as u32);
                 vec![
-                    w(0), w(u.skill_points.max(0) as u32), w(s as u32),
+                    w(u.hero_xp.max(0) as u32), w(u.skill_points.max(0) as u32), w(s as u32),
                     Field::Real(s), Field::Real(s * 25.0), Field::Real(a * 0.3 - 2.0), Field::Real(i * 15.0), Field::Real(0.0), Field::Real(a * self.misc.get_str("Misc", "AgiAttackSpeedBonus").and_then(|v| crate::objects::engine_real(v.trim())).unwrap_or(0.02)),
                     w(a as u32), Field::Real(ob.real("STRplus")), Field::Real(ob.real("INTplus")), Field::Real(ob.real("AGIplus")),
                     w(u.level.max(1) as u32), w(0x1_000a), w(0),

@@ -218,7 +218,8 @@ fn obj_kind(o: &Obj) -> Option<[u8; 4]> {
 
 impl Game {
     /// Puts an original's saved game in place of a game just started on its map (its
-    /// script's main run): its units (their type, owner, place, facing, life, and mana),
+    /// script's main run): its units (their type, owner, place, facing, life, and mana,
+    /// a hero's experience, level, skill points, and skills),
     /// the handles scripts had them by, its players' gold and lumber (saved in tenths),
     /// the time of day, the map script's variables (by name, arrays too) and its threads
     /// asleep, its timers, its destructables' life, its items (those carried in their
@@ -263,6 +264,77 @@ impl Game {
                     unit.dead = true;
                     unit.life = 0.0;
                     unit.death_time = time;
+                }
+            }
+        }
+        // A hero's experience and skill points (its hero ability's first two words), its
+        // level (its level flag's value, the first of the ability's two, less one), and
+        // its skills' levels (each its ability's word at +0x50, the level less one, as
+        // GetUnitAbilityLevel reads; read, the hero map's Dreadlord at 900 seconds: 633,
+        // level 3, three skills at level 1); its life and mana as saved after.
+        {
+            use w3_formats::w3z::{Field, First, Second};
+            let all = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
+            let by: std::collections::HashMap<(u32, u32), &w3_formats::w3z::SavedObject> = all.iter().flatten().map(|o| ((o.entry.tag, o.entry.birth), o)).collect();
+            let word = |f: Option<&Field>| match f {
+                Some(Field::Word(w)) => Some(*w),
+                _ => None,
+            };
+            let mut heroes: Vec<u32> = Vec::new();
+            for o in all.iter().flatten().filter(|o| o.entry.kind.to_be_bytes()[0] == b'A') {
+                let Ok(First::Agent { object, refs, .. }) = o.first() else { continue };
+                let Some(&h) = made.get(&(object.links[0].3 .0, object.links[0].3 .1)) else { continue };
+                let Some((type_id, hero)) = w.unit(h).map(|u| (u.type_id, u.is_hero)) else { continue };
+                if !hero {
+                    continue;
+                }
+                let Ok(Second::Agent { own, tail, .. }) = o.second() else { continue };
+                if &o.entry.kind.to_be_bytes() == crate::codes::ability::id::HERO {
+                    let flag = |k: u32| refs.iter().find_map(|r| match by.get(&(r.0, r.1)).map(|p| p.first()) {
+                        Some(Ok(First::Flag { base, value })) if base.object.words[0] == k => Some(value),
+                        _ => None,
+                    });
+                    if let Some(u) = w.unit_mut(h) {
+                        u.hero_xp = word(tail.first()).unwrap_or(0) as i32;
+                        u.skill_points = word(tail.get(1)).unwrap_or(0) as i32;
+                        if let Some(l) = flag(0) {
+                            u.level = l as i32 + 1;
+                        }
+                    }
+                    // (Its strength, agility, and intelligence without its items': the
+                    // record's third and tenth words and its second flag; beyond its
+                    // type's, tomes'.)
+                    w.refresh_hero_attrs(h);
+                    if let (Some(st), Some(ag), Some(it)) = (word(tail.get(2)), word(tail.get(9)), flag(1)) {
+                        w.set_hero_attrs(h, [st as f32, ag as f32, it as f32]);
+                    }
+                    heroes.push(h);
+                    continue;
+                }
+                // A skill learned (one of its type's hero abilities).
+                let (Some(id), Some(level)) = (word(own.get(9)), word(own.get(10))) else { continue };
+                let id = id.to_be_bytes();
+                let skills = w.objects.units.get(type_id).map(|o| o.list("heroAbilList").iter().map(|x| crate::objects::id_from_str(x.trim())).collect::<Vec<_>>()).unwrap_or_default();
+                if !skills.contains(&id) {
+                    continue;
+                }
+                let level = level as i32 + 1;
+                let had = w.unit(h).is_some_and(|u| u.abilities.iter().any(|(a, _)| *a == id));
+                if let Some(u) = w.unit_mut(h) {
+                    match u.abilities.iter_mut().find(|(a, _)| *a == id) {
+                        Some(e) => e.1 = level,
+                        None => u.abilities.push((id, level)),
+                    }
+                }
+                if !had {
+                    w.learned_objects(h, id);
+                }
+            }
+            for h in heroes {
+                let kept = w.unit(h).map(|u| (u.life, u.mana, u.max_life, u.max_mana));
+                w.apply_hero_stats(h, false);
+                if let (Some((life, mana, max_life, max_mana)), Some(u)) = (kept, w.unit_mut(h)) {
+                    (u.life, u.mana, u.max_life, u.max_mana) = (life, mana, max_life, max_mana);
                 }
             }
         }

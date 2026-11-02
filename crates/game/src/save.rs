@@ -225,8 +225,8 @@ impl Game {
     /// asleep, its timers, its destructables' life, its items (those carried in their
     /// units' slots), its players' upgrades researched, the computers' AI scripts and
     /// captains (`restore_ai_scripts`), the structures being built, the queues at work,
-    /// each unit's order, and the timer events' timers.  Not yet: the time, which the
-    /// port's timers and sleeping threads count from.
+    /// each unit's order, the triggers turned off, and the timer events' timers.  Not
+    /// yet: the time, which the port's timers and sleeping threads count from.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
         use crate::natives::units::{create_unit_exact, remove_unit};
         let units = s.units()?;
@@ -626,6 +626,27 @@ impl Game {
                     places.len = places.len.max(thread.place + 1);
                 }
                 w.sleepers.push(crate::world::Sleeper { wake_at: w.sleep_time + left.max(0.0) + crate::world::SLEEP_SLACK, thread, ctx, sound: 0, execution: 0, sleep: *sleep, timer_count: 0 });
+            }
+        }
+        // Each trigger's enabled flag (its second, kind 1; read, a trigger the original
+        // disabled as it ran, 0), by the handle it had: one turned off as it ran stays
+        // off though the map's start made it anew.
+        {
+            use w3_formats::w3z::First;
+            let all = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
+            let by: std::collections::HashMap<(u32, u32), &w3_formats::w3z::SavedObject> = all.iter().flatten().map(|o| ((o.entry.tag, o.entry.birth), o)).collect();
+            for o in all.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::class::TRIGGER) {
+                let Some(&jass) = handles.get(&(o.entry.tag, o.entry.birth)) else { continue };
+                let Ok(First::Agent { refs, .. }) = o.first() else { continue };
+                let enabled = refs.iter().find_map(|r| match by.get(&(r.0, r.1)).map(|p| p.first()) {
+                    Some(Ok(First::Flag { base, value })) if base.object.words[0] == 1 => Some(value != 0),
+                    _ => None,
+                });
+                let w = &mut self.world;
+                let id = w.handles.resolve(jass);
+                if let (Some(enabled), Some(Obj::Trigger(t))) = (enabled, w.handles.get_mut(id)) {
+                    t.enabled = enabled;
+                }
             }
         }
         // Each timer event's registration (`tmvt`, TriggerRegisterTimerEvent's, by the

@@ -3151,6 +3151,14 @@ Formats the port made its own, to be replaced by the original's:
   action, and its trigger).  The thread records the sleep itself too (`real`, which
   the port writes 0).  Measured: the hero map's computer at 300 seconds resumes its
   attack and trains; a trigger waiting at 60 seconds wakes 20 seconds after loading.
+- Loading the original's save runs the map's start again, so what the script made
+  then is set back as saved: a trigger's second flag is its enabled state (0 once
+  DisableTrigger turned it off, read on a trigger disabling itself as it ran), and a
+  timer event's registration (`tmvt`) its timer running to its due or stopped once
+  fired (on the main clock).  A timer event's own timer takes no script handle in
+  the original (its event's handle the next after its trigger's), nor now in the
+  port; each unit's order (its record's fifteenth and sixteenth fields: `+ord`, or
+  `ordt` with its point and target) is given again without its events.
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

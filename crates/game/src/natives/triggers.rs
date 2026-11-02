@@ -96,10 +96,11 @@ fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
     let (timeout, periodic, cb) = (a.r(1), a.b(2), a.code(3));
     // (Its agent timer's start, `FUN_6f249ca0`.)
     let agent_seq = w.tags.start_timer("249ca0");
-    let started_clock = w.tags.clock;
+    let (started_clock, started_wraps) = (w.tags.clock, w.tags.clock_wraps);
     if let Some(t) = w.timer_mut(a.h(0)) {
         t.agent_seq = agent_seq;
         t.started_clock = started_clock;
+        t.started_wraps = started_wraps;
     }
     w.timer_seq += 1;
     let seq = w.timer_seq;

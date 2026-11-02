@@ -3101,10 +3101,17 @@ pub struct SavedTimer {
     pub birth: u32,
     /// Its timeout (its own fields' first real).
     pub timeout: f32,
-    /// While running, its run's block (CAgentTimer's): when it is due on the agent
-    /// clock, the run's length, and whether it repeats (read: a test map's 10-second
-    /// timer started at its start due at 10.0, the restock timer 120.0 and repeating).
+    /// While running, its node's block (CAgentTimer's): when it is due on its clock
+    /// (the main clock's current wrap), the node's period, and whether the node repeats
+    /// (read: a test map's 10-second timer started at its start due at 10.0, the
+    /// restock timer 120.0 and repeating).
     pub run: Option<(f32, f32, bool)>,
+    /// Its agent timer's flags (2 repeating, 0x10 while in its chunks), its run's
+    /// 120-second chunks and those left, and the run beyond them (CAgentTimerExtended's
+    /// +0x14, +0x16, and +0x18).
+    pub flags: u32,
+    pub chunks: (u16, u16),
+    pub rest: f32,
 }
 
 impl SaveGame {
@@ -3118,11 +3125,19 @@ impl SaveGame {
                 Some(Field::Real(v)) => *v,
                 _ => 0.0,
             };
-            let run = match tail.first() {
-                Some(Field::Timer(_, _, Timing(Some((due, length, _, _, periodic))))) => Some((*due, *length, *periodic != 0)),
-                _ => None,
+            let (run, flags) = match tail.first() {
+                Some(Field::Timer(_, flags, Timing(Some((due, length, _, _, periodic))))) => (Some((*due, *length, *periodic != 0)), *flags),
+                _ => (None, 0),
             };
-            out.push(SavedTimer { tag: o.entry.tag, birth: o.entry.birth, timeout, run });
+            let short = |k: usize| match tail.get(k) {
+                Some(Field::Short(v)) => *v,
+                _ => 0,
+            };
+            let rest = match tail.get(3) {
+                Some(Field::Real(v)) => *v,
+                _ => timeout,
+            };
+            out.push(SavedTimer { tag: o.entry.tag, birth: o.entry.birth, timeout, run, flags, chunks: (short(1), short(2)), rest });
         }
         Ok(out)
     }

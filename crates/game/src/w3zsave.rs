@@ -214,6 +214,47 @@ pub(crate) const TIMER_CHUNK: f32 = 120.0;
 /// whole chunks in it (as a periodic node of `TIMER_CHUNK`), and the time beyond them,
 /// the fraction of a chunk in the engine's arithmetic (read: a shop's 440 seconds,
 /// three chunks and 80.00001; 120, one and 0).  Under a chunk, none and the timeout.
+impl World {
+    /// A running timer's node as the original would have it now: its due (on its clock,
+    /// in the clock's current wrap), its period, and the chunks left of its run (none
+    /// once at the rest).  From its start on its clock, each node's due its last's and
+    /// its period, added in single precision: each chunk's 120, then the rest's (as the
+    /// last chunk passes, vf3 `FUN_6f060d40`), then, a periodic one, another run; each
+    /// set back 300 as the clock wraps while it waits (read: the hero map's 30-second
+    /// timer due 300.0001 with the clock at 300.0 in its third wrap).  Provisional: the
+    /// rest's node from the last chunk's due, not the clock's step.
+    fn timer_node(&self, t: &crate::types::Timer, chunks: u32, rest: f32, run: f32) -> Option<(f32, f32, u32)> {
+        use crate::efloat::{add, sub};
+        let wrap = f32::from_bits(crate::motion::WRAP);
+        let now = f32::from_bits(self.tags.clock) as f64 + wrap as f64 * self.tags.clock_wraps as f64;
+        let (mut d, mut w, mut j) = (t.started_clock, t.started_wraps, 0u32);
+        for _ in 0..1_000_000 {
+            let period = if chunks == 0 { run } else if j < chunks { TIMER_CHUNK } else { rest };
+            if period <= 0.0 {
+                return Some((f32::from_bits(self.tags.clock), period, 0));
+            }
+            let mut due = add(d, period.to_bits());
+            let mut dw = w;
+            while dw < self.tags.clock_wraps && f32::from_bits(due) > wrap {
+                due = sub(due, crate::motion::WRAP);
+                dw += 1;
+            }
+            if f32::from_bits(due) as f64 + wrap as f64 * dw as f64 > now {
+                return Some((f32::from_bits(due), period, chunks - j.min(chunks)));
+            }
+            (d, w) = (due, dw);
+            if chunks > 0 && j < chunks {
+                j += 1;
+            } else if t.periodic {
+                j = 0;
+            } else {
+                return None;
+            }
+        }
+        None
+    }
+}
+
 pub(crate) fn timer_chunks(timeout: f32) -> (u32, f32) {
     use crate::efloat::{div, floor, from_int, mul, sub, to_int};
     let chunk = TIMER_CHUNK.to_bits();
@@ -2104,27 +2145,34 @@ impl World {
                 }
                 // A timer (CTimerWar3, read against the quiet test map's): its own word,
                 // timeout, and a real; its agent timer (CAgentTimerExtended,
-                // `FUN_6f0602a0`): while running itself, its flags, and its block (due
-                // on the clock its run started by, its period, its start's count,
-                // event 0x80204, a periodic node); the count of 120-second chunks a
-                // timeout of 120 or more runs in (`timer_chunks`: such a timer runs as
-                // a periodic node of 120, flag 0x10) twice; the timeout beyond the
-                // chunks; its function's handler, and the
-                // registrations of its expiry.  (Provisional: a periodic one's flag 2,
-                // and the shorts as chunks pass.)
+                // `FUN_6f0602a0`): while running itself, its flags, and its block (its
+                // node's next due, on its clock in the clock's current wrap, its period,
+                // its start's count, event 0x80204, a periodic node); the count of
+                // 120-second chunks a run of 120 or more goes in (`timer_chunks`: such
+                // a run is a periodic node of 120, flag 0x10, then, as the last chunk
+                // passes, a node for the rest, the flag dropped, vf3 `FUN_6f060d40`)
+                // and the chunks left (none once expired: read, the hero map's save
+                // timers of 300, 450, and 900 seconds, 2, 3, and 7 and none); the run
+                // beyond the chunks; its function's handler, and the registrations of
+                // its expiry.  A periodic one's node keeps its count (the hero map's
+                // 30-second timer's at 450 and 900 seconds, due 150.00009 and
+                // 300.0001).  (Provisional: a periodic one's flag 2; the rest's node's
+                // count, its start's.)
                 Some(Obj::Timer(t)) => {
                     let Some(own) = slot_of(id) else { continue };
-                    let (chunks, rest) = timer_chunks(t.timeout);
-                    let flags = if chunks > 0 { 0x10 } else { 0 } | if t.periodic { 2 } else { 0 };
-                    let node_periodic = u32::from(chunks > 0 || t.periodic);
-                    let agent = if t.running {
-                        let first = if chunks > 0 { TIMER_CHUNK } else { t.timeout };
-                        let due = f32::from_bits(crate::efloat::add(t.started_clock, first.to_bits()));
-                        Field::Timer(rf(own), flags, Timing(Some((due, first, t.agent_seq, 0x8_0204, node_periodic))))
-                    } else {
-                        Field::Timer(NONE, 0, Timing(None))
+                    let run = if t.period > 0.0 { t.period as f32 } else { t.timeout };
+                    let (chunks, rest) = timer_chunks(run);
+                    let periodic_flag = if t.periodic { 2 } else { 0 };
+                    let (agent, left) = match t.running.then(|| self.timer_node(t, chunks, rest, run)).flatten() {
+                        Some((due, period, left)) => {
+                            let flags = if left > 0 { 0x10 } else { 0 } | periodic_flag;
+                            let node_periodic = u32::from(left > 0 || (t.periodic && chunks == 0));
+                            (Field::Timer(rf(own), flags, Timing(Some((due, period, t.agent_seq, 0x8_0204, node_periodic)))), left)
+                        }
+                        None => (Field::Timer(NONE, 0, Timing(None)), 0),
                     };
                     let periodic = chunks.min(0xffff);
+                    let left = left.min(0xffff);
                     let handler = t.handler.map_or(NONE, |s| rf(self.tagged(s)));
                     let expiries = self
                         .events
@@ -2133,7 +2181,7 @@ impl World {
                         .filter_map(|e| self.tags.handle_ids.get(e))
                         .map(|&r| ((r.0, r.1), 0x8_0204))
                         .collect();
-                    let tail = vec![agent, Field::Short(periodic as u16), Field::Short(periodic as u16), Field::Real(rest), Field::Ref(handler), handler_list(expiries)];
+                    let tail = vec![agent, Field::Short(periodic as u16), Field::Short(left as u16), Field::Real(rest), Field::Ref(handler), handler_list(expiries)];
                     out.push((own.0, agent_first(own, codes::class::TIMER, &[]), Some(Second::Agent { own: vec![Field::Word(0), Field::Real(t.timeout), Field::Real(0.0)], handlers: game_handlers(self.game_object()), tail })));
                 }
                 Some(Obj::Location(x, y)) => {

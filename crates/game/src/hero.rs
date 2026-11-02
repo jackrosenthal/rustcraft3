@@ -108,12 +108,15 @@ impl World {
 
     /// A hero's strength, agility, and intelligence for its type and level: the base and
     /// the gain times the levels past the first, at once (measured: a level 6 Paladin
-    /// has 26 intelligence, 17 and 1.8 times 5, where adding 1.8 five times floors to 25).
+    /// has 26 intelligence, 17 and 1.8 times 5, where adding 1.8 five times floors to 25),
+    /// its whole part.
     fn type_attrs(&self, h: u32) -> [f32; 3] {
         let Some(u) = self.unit(h) else { return [0.0; 3] };
         let Some(o) = self.objects.units.get(u.type_id) else { return [u.str_, u.agi, u.int] };
+        // (Each level's gain its whole part, as the original reckons a total: the base
+        // and the level less one times the gain, made whole, `FUN_6f528770`.)
         let n = (u.level - 1).max(0) as f32;
-        [o.real("STR") + o.real("STRplus") * n, o.real("AGI") + o.real("AGIplus") * n, o.real("INT") + o.real("INTplus") * n]
+        [o.real("STR") + (o.real("STRplus") * n).trunc(), o.real("AGI") + (o.real("AGIplus") * n).trunc(), o.real("INT") + (o.real("INTplus") * n).trunc()]
     }
 
     /// Sets a hero's attributes from its type and level and what it has gained beyond.

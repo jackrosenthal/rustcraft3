@@ -541,20 +541,38 @@ impl Game {
             }
         }
         // The script's timers, by the handles they had (the script made them in the
-        // same order): running ones with the time left to their due on the agent
-        // clock (provisional: the clock's wrap at 300 seconds not read).
+        // same order): running ones with the time left to their node's due on the main
+        // clock (in its current wrap: read, the original's 320-second timer fired as its
+        // main clock read 20.0 in its second wrap), and for one in its 120-second chunks
+        // (flag 0x10) the chunks left after it and the rest; its run's length its
+        // chunks' and the rest, or its node's period; repeating by its flag 2.
+        let main_clock = s.objects.as_ref().map_or(0.0, |m| m.clocks[0].0);
+        let (clock_now, clock_wraps) = (f32::from_bits(w.tags.clock) as f64, w.tags.clock_wraps);
         for t in timers {
             let Some(&jass) = handles.get(&(t.tag, t.birth)) else { continue };
             let id = w.handles.resolve(jass);
             let Some(Obj::Timer(timer)) = w.handles.get_mut(id) else { continue };
             timer.timeout = t.timeout;
             match t.run {
-                Some((due, length, periodic)) => {
-                    let mut left = due - agent_clock;
-                    if left < 0.0 {
+                Some((due, length, node_periodic)) => {
+                    let mut left = due - main_clock;
+                    if left < -1.0 {
                         left += 300.0;
                     }
-                    (timer.running, timer.periodic, timer.remaining, timer.period) = (true, periodic, left as f64, length as f64);
+                    let left = left.max(0.0) as f64;
+                    let chunked = t.flags & 0x10 != 0;
+                    let (left, run) = if chunked {
+                        (left + 120.0 * t.chunks.1.saturating_sub(1) as f64 + t.rest as f64, 120.0 * t.chunks.0 as f64 + t.rest as f64)
+                    } else if t.chunks.0 > 0 {
+                        (left, 120.0 * t.chunks.0 as f64 + t.rest as f64)
+                    } else {
+                        (left, length as f64)
+                    };
+                    let periodic = t.flags & 2 != 0 || (node_periodic && !chunked);
+                    (timer.running, timer.periodic, timer.remaining, timer.period) = (true, periodic, left, run);
+                    // (Its run begun its length before its expiry, on the port's clock,
+                    // as a save reckons its node from.)
+                    (timer.started_clock, timer.started_wraps) = (((clock_now + left - run) as f32).to_bits(), clock_wraps);
                 }
                 None => timer.running = false,
             }

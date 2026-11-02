@@ -2825,6 +2825,25 @@ Formats the port made its own, to be replaced by the original's:
   and 18 for 28 and 21 (700, 4.3, 0.42).  The port had read and written the totals
   there, so a loaded hero lost its levels' gains and a saved one would have had them
   twice.
+- A script's timer (CTimerWar3) runs on the main clock (the original's 320-second
+  timer fired as the main clock read 20.0 in its second wrap; the header's game time
+  then 320.555).  Its agent timer (CAgentTimerExtended) runs a run of 120 seconds or
+  more in 120-second chunks: +0x14 the chunks, +0x16 those left, +0x18 the rest,
+  flag 0x10 while in them, a periodic node of 120 (vf2 `FUN_6f0602a0`); each chunk's
+  firing counts +0x16 down (vf3 `FUN_6f060d40`), and as the last passes the flag
+  drops and a node for the rest is made, due then plus the rest, newly numbered on
+  the clock (read: the hero map's 320-second timer at 200 seconds due 240.0 every
+  120 with 2 chunks and 1 left, its start's count; at 250 due 320.0 for 80.00001,
+  none left, count 45906).  An expired one keeps its chunks, none left (the save
+  timers of 300, 450, and 900 seconds: 2, 3, and 7).  A node's due is in the clock's
+  current wrap (a periodic 30-second timer due 150.00009 at 450 seconds, the clock at
+  150.0 in its second wrap; a due beyond 300 stands until the clock wraps), and a
+  periodic node keeps its count across its repeats.  The port wrote every running
+  timer's node as at its start (a periodic one's first due, a chunked one's first
+  chunk, and no wrap), so a script's timer of 120 seconds or more, or any past a
+  wrap, fired late or not at all in the original after loading the port's save; it
+  now reckons the node from the run's start (`World::timer_node`), and reads a
+  chunked one's time left from the chunks left and the rest.
 - A unit moving among others has its position cluster (`` `pcu ``) end in its
   separation's record (CPoSeparate, `FUN_6f16f9d0`: two reals and a word), its
   second flag set (read, the hero map's 18 dragons on the move).

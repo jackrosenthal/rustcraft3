@@ -427,6 +427,7 @@ impl World {
         // queued with an event 3.0 seconds on, freed in the turn after, in the order
         // made).
         let now = self.time_of_day_clock;
+        let mut old_life: Vec<u32> = Vec::new();
         for h in units {
             let s = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
             self.tags.doom_at(now + 3.0, s);
@@ -436,6 +437,7 @@ impl World {
                 u.extra.day_ref = Some((s, birth));
                 u.extra.sight_stamp = Some((now + 3.0) as f32);
             }
+            self.regeneration_at_change(h, day, &mut old_life);
             let Some(u) = self.unit(h).filter(|u| !u.dead) else { continue };
             // With the night an idle melder not hidden begins to meld, fading out over
             // Shadowmeld's DataB: its timer and a listener, made after its object of the
@@ -651,6 +653,8 @@ impl World {
             }
             self.set_asleep(h, false);
         }
+        let mut old = old;
+        old.extend(old_life);
         // One set by script lets them go as the next turn starts (traced: the engine's
         // day timer at load, slot 0x287, at the game's first dawn).
         for s in old.into_iter().chain(slept) {
@@ -658,6 +662,41 @@ impl World {
                 self.tags.doom(s);
             } else {
                 self.tags.release(s);
+            }
+        }
+    }
+
+    /// A unit regenerating by night alone has its life's modifier made as the night
+    /// falls, one by day alone as the day breaks, right after its object of the change
+    /// (read: the original's save of a night elf start a second after the first
+    /// nightfall, each wisp's and the Tree of Life's two `` `rcm `` together among the
+    /// units' objects; over LAN, the melders' pairs after them).  Provisional: each
+    /// losing its own as its time ends, with the last change's listeners.
+    fn regeneration_at_change(&mut self, h: u32, day: bool, old: &mut Vec<u32>) {
+        let Some(u) = self.unit(h).filter(|u| !u.dead) else { return };
+        let Some(regen) = self.objects.units.get(u.type_id).map(|o| o.str("regenType").to_ascii_lowercase()) else { return };
+        let now = match regen.trim() {
+            "night" => !day,
+            "day" => day,
+            _ => return,
+        };
+        if now != u.extra.no_life_rcm {
+            return;
+        }
+        if now {
+            let s = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
+            let birth = self.tags.live.get(&s).map_or(0, |e| e.1);
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.object_slots[1].insert(0, (s, birth));
+                u.extra.no_life_rcm = false;
+            }
+        } else {
+            let life = self.unit(h).and_then(|u| u.extra.object_slots[1].iter().position(|&(s, b)| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::CONTINUOUS_MODIFIER && e.1 == b)));
+            if let Some(u) = self.unit_mut(h) {
+                if let Some(k) = life {
+                    old.push(u.extra.object_slots[1].remove(k).0);
+                }
+                u.extra.no_life_rcm = true;
             }
         }
     }

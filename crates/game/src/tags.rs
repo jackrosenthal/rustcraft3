@@ -1160,8 +1160,8 @@ impl crate::world::World {
             if blight_regen {
                 u.extra.blight_check = Some(base + 2.0);
                 u.extra.blight_rcm = blight_rcm.map(|k| slots[k]);
-                u.extra.no_life_rcm = no_life_rcm;
             }
+            u.extra.no_life_rcm = no_life_rcm;
         }
     }
 }

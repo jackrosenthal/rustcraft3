@@ -2989,8 +2989,16 @@ Formats the port made its own, to be replaced by the original's:
   early by 64 seconds, its steps changing as the clock crosses 8, 32, and 64).  And a
   payout so near a tick's last main tick that its old pair's frees, events a
   ten-thousandth after it, fall past that tick goes on in the next tick's first step
-  (109.952751 by 109.952782; 104.952461 by 104.955528 freed at once).  With these
-  the keepalives agree to turn 2005 of 2253.  The original's save of such a wisp
+  (109.952751 by 109.952782; 104.952461 by 104.955528 freed at once).  At the first
+  nightfall (200 seconds) each unit regenerating by night alone (the Tree of Life and
+  the five wisps) gains its life's modifier, right after its object of the change:
+  the original's save a second after nightfall (`nel201.w3x`) holds each wisp's and
+  the Tree of Life's two `` `rcm `` together among the change's objects (and the
+  melders' pairs follow, six places later than the port's had them).  The port had
+  not set the flag of a unit made without one (its making by day) but on blight.
+  With these the keepalives agree for all 2253 turns recorded.  (Its second table's
+  `+EIm` takes after the nightfall have their own birth count and do not enter the
+  keepalive.)  The original's save of such a wisp
   (`nel.w3x` played alone to 30 seconds, `MeleeStartingUnitsNightElf` for player 0
   as `-loadfile` ignores the race preference): its Wisp Harvest's own fields after
   Dur, DataC, and DataA hold the tree's place and reference, the art's reference, the

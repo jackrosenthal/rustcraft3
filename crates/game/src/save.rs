@@ -224,9 +224,9 @@ impl Game {
     /// the time of day, the map script's variables (by name, arrays too) and its threads
     /// asleep, its timers, its destructables' life, its items (those carried in their
     /// units' slots), its players' upgrades researched, the computers' AI scripts and
-    /// captains (`restore_ai_scripts`), the structures being built, and the queues at
-    /// work.  Not yet: the rest (the time, which the port's timers and sleeping threads
-    /// count from; orders), which stay as the script just made them.
+    /// captains (`restore_ai_scripts`), the structures being built, the queues at work,
+    /// and each unit's order.  Not yet: the time, which the port's timers and sleeping
+    /// threads count from.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
         use crate::natives::units::{create_unit_exact, remove_unit};
         let units = s.units()?;
@@ -626,6 +626,52 @@ impl Game {
                     places.len = places.len.max(thread.place + 1);
                 }
                 w.sleepers.push(crate::world::Sleeper { wake_at: w.sleep_time + left.max(0.0) + crate::world::SLEEP_SLACK, thread, ctx, sound: 0, execution: 0, sleep: *sleep, timer_count: 0 });
+            }
+        }
+        // Each unit's order (its own record's fifteenth and sixteenth fields name it: an
+        // order's id, `+ord`; one with a target or a point, `ordt`, its point and its
+        // target's tag and birth after; read, the hero map's at 900 seconds, workers
+        // harvesting their mine and trees, a captain's units moving), given again as
+        // the unit's order without its events; one the engine names none of, none.
+        // Provisional: a target not a unit or a destructable.
+        {
+            use w3_formats::w3z::{Field, Second};
+            let all = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
+            let by: std::collections::HashMap<(u32, u32), &w3_formats::w3z::SavedObject> = all.iter().flatten().map(|o| ((o.entry.tag, o.entry.birth), o)).collect();
+            let word = |f: Option<&Field>| match f {
+                Some(Field::Word(w)) => Some(*w),
+                _ => None,
+            };
+            let real = |f: Option<&Field>| match f {
+                Some(Field::Real(r)) => Some(*r),
+                _ => None,
+            };
+            let mut orders: Vec<(u32, i32, f32, f32, (u32, u32))> = Vec::new();
+            for o in all.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::class::UNIT) {
+                let Some(&h) = made.get(&(o.entry.tag, o.entry.birth)) else { continue };
+                let Ok(Second::Unit { fields, .. }) = o.second() else { continue };
+                let (Some(t), Some(b)) = (word(fields.get(14)), word(fields.get(15))) else { continue };
+                let Some(ord) = by.get(&(t, b)) else { continue };
+                let Ok(Second::Agent { own, .. }) = ord.second() else { continue };
+                let Some(id) = word(own.get(1)) else { continue };
+                let (x, y) = (real(own.get(6)).unwrap_or(0.0), real(own.get(7)).unwrap_or(0.0));
+                let target = (word(own.get(8)).unwrap_or(u32::MAX), word(own.get(9)).unwrap_or(u32::MAX));
+                orders.push((h, id as i32, x, y, target));
+            }
+            for (h, id, x, y, target) in orders {
+                if crate::natives::basic::order_name(id).is_none_or(|n| n == "stop") {
+                    continue;
+                }
+                let target = if target.0 == u32::MAX {
+                    0
+                } else if let Some(&u) = made.get(&target) {
+                    u
+                } else if let Some(&jass) = handles.get(&target) {
+                    self.world.handles.resolve(jass)
+                } else {
+                    continue;
+                };
+                self.world.order_unit(h, id, x, y, target);
             }
         }
         // The computers' AI scripts, as they were.

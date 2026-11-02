@@ -682,6 +682,21 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 2;
             }
+            // actions: the units' current actions, counted by kind.
+            "actions" => {
+                if let Some(g) = scene.game.as_ref() {
+                    let mut n: std::collections::BTreeMap<String, u32> = Default::default();
+                    for &h in &g.world.unit_order {
+                        if let Some(u) = g.world.unit(h).filter(|u| !u.dead) {
+                            let k = format!("{:?}", u.action);
+                            let k = k.split(|c: char| !c.is_alphanumeric()).next().unwrap_or("").to_string();
+                            *n.entry(k).or_default() += 1;
+                        }
+                    }
+                    eprintln!("actions {n:?}");
+                }
+                i += 1;
+            }
             // techs: each player's upgrades researched.
             "techs" => {
                 if let Some(g) = scene.game.as_ref() {

@@ -2841,6 +2841,18 @@ Formats the port made its own, to be replaced by the original's:
   counted the places its own restart had taken, 5, under its computer's threads at 2
   to 7, and the original crashed as the first woke (a null machine).  The loaded
   threads now take their places in the places the machines share, as the map's.
+- A haunted mine's payouts run on its ability's second real, the period counting down
+  1 a second from its start, with a continuous modifier on it (-1.0 and 2.0, its node
+  due 2.0 on and every 2.0) and a threshold listener due as it reaches 0 (words
+  0xd01c4 and 0x20090400, every period, keyed to the ability for event 0xd01c4), the
+  ability's agent heading both (read: the hero map's at 300 seconds, five acolytes,
+  period 1.0 from 299.64832).  The port wrote the real empty and no pair, so after
+  loading its save the original's haunted mines never paid; written so, its undead
+  computer mines on (300 gold in 30 seconds after loading the port's Twisted Meadows
+  save at 120, its five acolytes' rate).  Not yet: an entangled mine's payout (the
+  port has no pair for it), and an orc's peons, which in the original after the load
+  went to the trees and mined 40 gold in 30 seconds (no save of the original's with
+  peons or peasants mining read yet).
 - A save's slot table keeps each player's choices (a random race as random, 0x60);
   the race the game drew is the player's record's tail word 110 (common.j's
   numbering: Booty Bay's LAN game's human and orc, the hero map's and Echo Isles'

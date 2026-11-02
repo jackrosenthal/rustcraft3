@@ -425,7 +425,7 @@ impl World {
     /// period with one worker (a haunted mine's Abgm DataB times DataC, the acolytes on
     /// its ring slots; an entangled mine's Aegm DataB times its capacity, the wisps
     /// inside).
-    fn mine_payout_terms(&self, mine: u32) -> Option<(u32, i32, f32)> {
+    pub(crate) fn mine_payout_terms(&self, mine: u32) -> Option<(u32, i32, f32)> {
         if let Some((aegm, lvl)) = self.ability_with_code(mine, codes::ability::ENTANGLED_GOLD_MINE) {
             let capacity = self.ability_with_code(mine, codes::ability::CARGO_HOLD_GOLD_MINE).map_or(5, |(a, l)| self.objects.abilities.get(a).map_or(5.0, |o| o.level_real("DataA", l)) as u32).max(1);
             let a = self.objects.abilities.get(aegm);

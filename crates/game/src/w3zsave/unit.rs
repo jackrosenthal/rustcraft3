@@ -780,10 +780,15 @@ impl World {
                 let newer = chain.get(k + 1).map_or(NONE, |c| rf(c.0));
                 let older = if k > 0 { rf(chain[k - 1].0) } else { NONE };
                 object.links[0] = (w3_formats::w3z::Link(newer, 0), w3_formats::w3z::Link(older, 0), rf(t), rf(me));
-                // (Its modifier's and listener's heads: the rise's.)
+                // (Its modifier's and listener's heads: the rise's; a haunted mine's, its
+                // payout's.)
                 if let Some(p) = build {
                     links[2] = w3_formats::w3z::Link(rf(p[2]), 0);
                     links[3] = w3_formats::w3z::Link(rf(p[3]), 0);
+                }
+                if let Some(p) = self.mine_payout_parts(h).filter(|_| &code == codes::ability::id::BLIGHTED_GOLD_MINE) {
+                    links[2] = w3_formats::w3z::Link(rf(p.rcm), 0);
+                    links[3] = w3_formats::w3z::Link(rf(p.rtl), 0);
                 }
             }
             out.push((t.0, rec));
@@ -792,7 +797,57 @@ impl World {
     }
 }
 
+/// A haunted mine's payout at work, as the original keeps it (`FUN_6f4e95e0`,
+/// `FUN_6f4efa20`): its ability's second real counting down 1 a second from the period
+/// (from its start, `stamp`), a modifier on it, and a threshold listener due as it
+/// reaches 0, event 0xd01c4 (read: the hero map's at 300 seconds, five acolytes, the
+/// real 1.0 at 299.64832, the listener due 300.64832 every 1.0, the modifier -1.0 and
+/// 2.0 due 301.64822 every 2.0).
+#[derive(Clone, Copy)]
+pub(crate) struct MinePayout {
+    pub rcm: (u32, u32),
+    pub rtl: (u32, u32),
+    pub real: (u32, u32),
+    pub ability: (u32, u32),
+    pub stamp: f32,
+    pub period: f32,
+    pub due: f32,
+}
+
 impl World {
+    /// A haunted mine's payout at work (`MinePayout`), its times on the main clock in the
+    /// clock's current wrap.
+    pub(crate) fn mine_payout_parts(&self, h: u32) -> Option<MinePayout> {
+        let u = self.unit(h)?;
+        let (due, working) = u.extra.payout?;
+        let &[rcm, rtl] = u.extra.ai_order.as_slice() else { return None };
+        if working == 0 || !self.tags.live.get(&rcm).is_some_and(|e| &e.0 == codes::class::CONTINUOUS_MODIFIER) || !self.tags.live.get(&rtl).is_some_and(|e| &e.0 == codes::class::THRESHOLD_LISTENER) {
+            return None;
+        }
+        let (_, _, base) = self.mine_payout_terms(h)?;
+        let period = base / working.max(1) as f32;
+        let (t, _) = self.ability_with_code(h, codes::ability::BLIGHTED_GOLD_MINE)?;
+        let slots: Vec<(u32, u32)> = u.extra.object_slots[1].iter().chain(&u.extra.object_slots[2]).copied().collect();
+        let i = slots.iter().position(|&(s, _)| self.tags.live.get(&s).is_some_and(|e| e.0 == t))?;
+        let real = *slots.get(i + 2)?;
+        let wraps = self.tick_wraps.last().copied().unwrap_or(0) as f64 * 300.0;
+        let due = (due as f64 - wraps) as f32;
+        Some(MinePayout { rcm: self.tagged(rcm), rtl: self.tagged(rtl), real: self.tagged(real.0), ability: self.tagged(slots[i].0), stamp: due - period, period, due })
+    }
+
+    /// A haunted mine's payout's modifier and threshold listener (`MinePayout`), each on
+    /// its ability and its real.  Provisional: their timing nodes' counts, the clock's
+    /// count now.
+    pub fn mine_payout_records(&self, h: u32) -> Vec<(u32, First, Option<Second>)> {
+        let Some(p) = self.mine_payout_parts(h) else { return Vec::new() };
+        let none = (w3_formats::w3z::Link(NONE, 0), w3_formats::w3z::Link(NONE, 0));
+        let links = |me: (u32, u32)| [(none.0, none.1, rf(me), rf(p.ability)), (none.0, none.1, rf(me), rf(p.real))];
+        let count = self.tags.timer_starts;
+        let rcm = w3_formats::w3z::ObjectBase { real: 0.0, words: [u32::MAX, 0x6004_0044], links: links(p.rcm), timings: [Timing(Some((p.stamp + 2.0, 2.0, count, 0, 0))), Timing(None)] };
+        let rtl = w3_formats::w3z::ObjectBase { real: 0.0, words: [0xd_01c4, 0x2009_0400], links: links(p.rtl), timings: [Timing(Some((p.due, p.period, count, 0, 1))), Timing(None)] };
+        vec![(p.rcm.0, First::Continuous { object: rcm, values: [-1.0, 2.0] }, None), (p.rtl.0, First::Threshold { object: rtl, real: 0.0, word: 0 }, None)]
+    }
+
     /// A structure's blight growth's objects (Abli's: `Xbli`, its `` `pos ``, two
     /// `^pmr`), first records and Xbli's second: an agent with its position (the
     /// structure's place in pathing cells; its coarse region unflagged, words 1; its
@@ -939,6 +994,7 @@ impl World {
         for &(t, code) in &chain {
             let Some(i) = slots.iter().position(|&x| x == t) else { continue };
             let props: Vec<(u32, u32)> = slots[i + 1..].iter().copied().take_while(|&(s, b)| self.tagged(s).1 == b && self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::REAL)).collect();
+            let payout = self.mine_payout_parts(h).filter(|_| &code == codes::ability::id::BLIGHTED_GOLD_MINE);
             for k in 0..props.len() {
                 // (Abgm's second 0, not -0.)
                 let values = match (&code, k) {
@@ -946,7 +1002,17 @@ impl World {
                     (codes::ability::id::BLIGHTED_GOLD_MINE, _) => [0.0, 0.0, -f32::MAX, f32::MAX],
                     _ => [0.0, 0.0, 0.0, f32::MAX],
                 };
-                let base = self.stamped(super::listed_property_base(&props, k, t));
+                let mut base = self.stamped(super::listed_property_base(&props, k, t));
+                // (A haunted mine's second, while it pays: the period, falling 1 a second
+                // from its start, its modifier and listener on it.)
+                let values = match payout {
+                    Some(p) if k == 1 => {
+                        base.real = p.stamp;
+                        base.links = [w3_formats::w3z::Link(rf(p.rcm), 1), w3_formats::w3z::Link(rf(p.rtl), 1)];
+                        [p.period, -1.0, -f32::MAX, f32::MAX]
+                    }
+                    _ => values,
+                };
                 out.push((props[k].0, w3_formats::w3z::First::Real { base, values }));
             }
         }

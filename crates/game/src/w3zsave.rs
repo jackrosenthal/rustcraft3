@@ -2456,6 +2456,7 @@ impl World {
             v.extend(self.construction_records(h));
             tr("listeners", h);
             v.extend(self.unit_listener_records(h));
+            v.extend(self.mine_payout_records(h));
             tr("position", h);
             v.extend(self.unit_position_records(h));
             tr("agent", h);

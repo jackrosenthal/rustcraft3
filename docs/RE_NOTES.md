@@ -3131,6 +3131,28 @@ Formats the port made its own, to be replaced by the original's:
   every computer (`save::port_state`), as before.  Provisional: a game the port
   joined, its stat's host its own name; not yet loaded by the original (its LAN
   load wants the other players to join it).
+- Continuing the original's saves (`Game::restore_original`): the port's compiled
+  code is the original's word for word (map script and AI scripts), so each machine
+  comes back as saved: its globals (strings by their text, a handle where the port
+  holds an object of the kind the save's handle table names), and its threads
+  (`thread_from`, `thread_of`'s inverse: each frame's function from the code, the
+  current one's from its place, a caller's from the return place it pushed, a run's
+  base below a frame marked its run's first; exact on every port AI thread,
+  `aiground`).  An AI thread wakes by its `AItr` timer, bounded by the sleep it
+  records (a due not yet set back at the clock's wrap at 300 seconds); a computer's
+  captains (`AI-C`, attack kind 2, defense 1) by their units (the owners, on their
+  first lists, of the chain of `uref` from the head the record names), their goal or
+  home, place, and target.  A map thread asleep (TriggerSleepAction) wakes by its
+  execution's object (`+tex`, CTriggerExecution: fifteen context words, slot 0 the
+  triggering unit, 1 widget, 2 trigger, 3 player, 4 and 5 the event's own objects, 6
+  the event id, 7 to 9 the filter unit, player, and destructable, 10 to 13 the enum
+  unit, player, destructable, and item, 14 the filter item, as the natives read them
+  through `FUN_6f2892d0`; then its timer, the sleep in it, the thread's place, its
+  action, and its trigger).  The thread records the sleep itself too (`real`, which
+  the port writes 0).  Measured: the hero map's computer at 300 seconds resumes its
+  attack and trains; a trigger waiting at 60 seconds wakes 20 seconds after loading.
+  Not yet: the port's own waiting triggers are saved without their `+tex` (it frees
+  it as the actions start), so the original would not wake them.
 - The dynamic shops (Echo Isles' Marketplace `Asid` and mercenary camp `Asud`:
   CAbilitySellItemDynamic and CAbilitySellUnitDynamic vf14) save as the plain shops
   and then a word and twelve (`w 12(w)`: 11, eleven 0, and 1 at 60 seconds, their

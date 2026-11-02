@@ -222,9 +222,9 @@ impl Game {
     /// the handles scripts had them by, its players' gold and lumber (saved in tenths),
     /// the time of day, the map script's variables (by name, arrays too), its timers, its
     /// destructables' life, its items, and the computers' AI scripts and captains
-    /// (`restore_ai_scripts`).  Not yet: the rest (the time, which the port's timers and
-    /// sleeping threads count from; orders, buildings in progress, carried items, the
-    /// map script's threads), which stay as the script just made them.
+    /// (`restore_ai_scripts`), and the map script's threads asleep.  Not yet: the rest
+    /// (the time, which the port's timers and sleeping threads count from; orders,
+    /// buildings in progress, carried items), which stay as the script just made them.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
         use crate::natives::units::{create_unit_exact, remove_unit};
         let units = s.units()?;
@@ -366,6 +366,57 @@ impl Game {
                 if let Some(slot) = self.vm.vars.get_mut(g as usize) {
                     *slot = var;
                 }
+            }
+        }
+        // The map script's threads asleep (TriggerSleepAction, flag 1), each by its
+        // execution's object (`+tex`, CTriggerExecution vf14): its context's slots (0
+        // the triggering unit, 1 its widget, 2 the trigger, 3 the player, 6 the event's
+        // id: the event natives' indices, `FUN_6f2892d0`), its wake timer on the agent
+        // clock, and its place (read: a trigger waiting 30 seconds from 50, saved at
+        // 60).  Provisional: the event's own data (slots 4 and 5: an order's, a spell's,
+        // damage), and a sleep past the clock's wrap.
+        if let (Some((_, m)), Some(threads)) = (scripts.machines.first(), scripts.threads.first()) {
+            use w3_formats::w3z::{Field, Second, Timing};
+            let all = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
+            let mut execs: std::collections::HashMap<u32, (f32, f32, Vec<u32>)> = Default::default();
+            for o in all.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::class::TRIGGER_EXECUTION) {
+                let Ok(Second::Agent { tail, .. }) = o.second() else { continue };
+                let words: Vec<u32> = match tail.first() {
+                    Some(Field::List(g)) => g.iter().filter_map(|g| match g.first() {
+                        Some(Field::Word(w)) => Some(*w),
+                        _ => None,
+                    }).collect(),
+                    _ => Vec::new(),
+                };
+                let (Some(Field::Timer(_, _, Timing(Some(t)))), Some(Field::Word(place))) = (tail.get(1), tail.get(5)) else { continue };
+                execs.insert(*place, (t.0, t.1, words));
+            }
+            let map = crate::w3zscript::Remap { strings: &m.functions };
+            for t in threads.iter().filter(|t| t.flag == 1) {
+                let Some((due, sleep, words)) = execs.get(&t.machine) else { continue };
+                let thread = crate::w3zscript::thread_from(&mut self.vm, t, &map);
+                let w = &mut self.world;
+                let word = |k: usize| words.get(k).copied().unwrap_or(0);
+                let res = |w: &crate::world::World, h: u32| if h == 0 { 0 } else { w.handles.resolve(h) };
+                let player = match w.handles.get(res(w, word(3))) {
+                    Some(Obj::Player(p)) => Some(*p),
+                    _ => None,
+                };
+                let ctx = crate::types::EventCtx { trigger: res(w, word(2)), unit: res(w, word(0)), widget: res(w, word(1)), event_id: word(6) as i32, player: player.unwrap_or(0), has_player: player.is_some(), ..Default::default() };
+                let mut left = due - agent_clock;
+                while left > sleep + 1.0 {
+                    left -= 300.0;
+                }
+                if left < -1.0 {
+                    left += 300.0;
+                }
+                // (Its place taken in the places all machines share.)
+                {
+                    let mut places = self.vm.places.borrow_mut();
+                    places.free.retain(|&p| p != thread.place);
+                    places.len = places.len.max(thread.place + 1);
+                }
+                w.sleepers.push(crate::world::Sleeper { wake_at: w.sleep_time + left.max(0.0) + crate::world::SLEEP_SLACK, thread, ctx, sound: 0 });
             }
         }
         // The computers' AI scripts, as they were.

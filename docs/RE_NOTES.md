@@ -2946,6 +2946,16 @@ Formats the port made its own, to be replaced by the original's:
   seconds fell a tick before the original's); and a payout due before a wanderer's
   order in the same step (125.848091, the order 125.863121) comes first, as after the
   last step.
+- A unit's own path (`l^pa`, the tenth of its first objects) carries in its first
+  word's high half 0x1 for a computer's unit only while it stands: Twisted Meadows'
+  computers' walkers read 0x122 (0x1200_0000 for a gold run's walk, 0x2 moving), those
+  standing 0x3.  The port set 0x1 for every computer's unit that moves, and the
+  original, loading its save at 120 seconds, left the orc computer's three walking
+  peons where they stood (their clusters counting 1002 steps by 150 seconds, the
+  orc's gold up 120 where the port's own game's was up 300).  Written as read, they
+  walk on, the orc's gold up 290 by 150 seconds.  Not the cause (tried): the position
+  cluster's flags (1, 0, as the port writes for a gold walker) and the order's third
+  word (0 as the port writes; the original's own orders 0, 1, or 2).
 - The original's saves hold no state of its random generators (neither the main one
   nor the 45 streams, as seeded or by value, under the locked seed or the slot
   table's): the original goes on from a save with generators of its own, so neither

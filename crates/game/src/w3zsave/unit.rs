@@ -2456,7 +2456,9 @@ impl World {
     /// A unit's long-range path (`l^pa`, CLrPath's `FUN_6f167780`; read against the quiet
     /// test map's, none walking a path at 5 seconds): no waypoints; its first word its
     /// owner's number, with 0x8 for the local player's, 0x2 for one that moves and is
-    /// not a critter, 0x1 an AI player's that moves (in its high half, by nibbles); a
+    /// not a critter, 0x1 an AI player's that moves but stands (in its high half, by
+    /// nibbles: read, Twisted Meadows' computers' walkers 0x122, those standing 0x3;
+    /// the port's walkers written with 0x1 stood where they were in the original); a
     /// unit's word 0x2000002; a limit of 700 (a critter's 32) and 400; its unit's fine
     /// region.
     pub fn unit_path_record(&self, h: u32) -> Option<(u32, w3_formats::w3z::First)> {
@@ -2477,7 +2479,8 @@ impl World {
         if mobile && !critter {
             hi |= 0x2;
         }
-        if mobile && ai {
+        let walking = self.saved_order(h).is_some_and(|o| o.walk.is_some());
+        if mobile && ai && !walking {
             hi |= 0x1;
         }
         let word = (hi << 4 | (u.owner as u32 & 0xf)) << 16;

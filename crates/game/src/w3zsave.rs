@@ -1793,7 +1793,10 @@ impl World {
                     // (Registrations of timers' expiry, dialogs, their buttons, and
                     // trackables are not on their triggers' lists: their natives make them
                     // without `FUN_6f296670`.)
-                    let unlisted = |h: &u32| matches!(self.handles.get(*h), Some(Obj::Event(r)) if matches!(r.kind, EventKind::TimerExpire(_) | EventKind::Dialog(_) | EventKind::DialogButton(_) | EventKind::Trackable { .. }));
+                    // (A timer event's, TriggerRegisterTimerEvent's `tmvt`, is: read, the
+                    // original's save of a trigger waiting.)
+                    let timer_event = |h: &u32| self.tags.handle_ids.get(h).and_then(|(s, _)| self.tags.live.get(s)).is_some_and(|e| &e.0 == codes::class::TIMER_EVENT);
+                    let unlisted = |h: &u32| !timer_event(h) && matches!(self.handles.get(*h), Some(Obj::Event(r)) if matches!(r.kind, EventKind::TimerExpire(_) | EventKind::Dialog(_) | EventKind::DialogButton(_) | EventKind::Trackable { .. }));
                     let listed = |hs: &[u32]| Field::List(hs.iter().filter(|h| !unlisted(h)).filter_map(|h| self.tags.handle_ids.get(h)).map(|&(s, b)| vec![Field::Ref(Ref(s, b))]).collect());
                     let actions = Field::List(
                         t.actions
@@ -1805,8 +1808,16 @@ impl World {
                             .collect(),
                     );
                     // (Provisional: the fifth word, 1 for the trigger the map ran at its
-                    // start, taken as its executions.)
-                    let words = [0, t.eval_count as u32, t.exec_count as u32, 0, t.exec_count as u32, u32::from(t.wait_on_sleeps)];
+                    // start, taken as its executions.)  The fourth its executions still
+                    // running, a thread of each asleep (read, the original's save of a
+                    // trigger waiting, 1).
+                    let running = {
+                        let mut ex: Vec<u32> = self.sleepers.iter().filter(|s| s.execution != 0 && s.ctx.trigger == id).map(|s| s.execution).collect();
+                        ex.sort();
+                        ex.dedup();
+                        ex.len() as u32
+                    };
+                    let words = [0, t.eval_count as u32, t.exec_count as u32, running, t.exec_count as u32, u32::from(t.wait_on_sleeps)];
                     let second = Second::Agent { own: words.iter().map(|&w| Field::Word(w)).collect(), handlers: no_handlers(), tail: vec![listed(&t.events), listed(&t.conditions), actions] };
                     out.push((own.0, agent_first(own, codes::class::TRIGGER, &flags), Some(second)));
                     // (Provisional: which of the two is the enabled flag, every trigger read
@@ -1822,6 +1833,70 @@ impl World {
                 }
                 _ => {}
             }
+        }
+        out
+    }
+
+    /// The trigger executions alive (`+tex`, CTriggerExecution vf14; read against the
+    /// original's save of a trigger waiting 30 seconds): its context's fifteen words
+    /// (slot 0 the triggering unit, 1 its widget, 2 the trigger, 3 the player, 6 the
+    /// event's id; the event's own objects, 4 and 5, none); its timer to its thread's
+    /// waking (kind 4, its sleep, once), the sleep again in chunks; the thread's place;
+    /// the action it runs, and the actions listed; 0.0, none, 0, 0; its trigger on event
+    /// 0x80274; none; and 1.  One whose thread does not sleep (within SaveGame, say) has
+    /// no timer.  Provisional: the actions listed (the one).
+    pub fn execution_records(&self) -> Vec<(u32, First, Option<Second>)> {
+        let mut out = Vec::new();
+        let live: Vec<u32> = self.tags.live.iter().filter(|(_, (c, _))| c == codes::class::TRIGGER_EXECUTION).map(|(&s, _)| s).collect();
+        for slot in live {
+            let me = self.tagged(slot);
+            let sleeper = self.sleepers.iter().find(|s| s.execution == slot);
+            let jass = |id: u32| if id == 0 { 0 } else { self.handles.known_handle(id).unwrap_or(id) };
+            let mut words = [0u32; 15];
+            let mut tail_timer = (Field::Timer(NONE, 0, Timing(None)), 0u32, 0.0f32);
+            let (mut place, mut action, mut trigger) = (0, None, None);
+            if let Some(s) = sleeper {
+                let player = self.players.get(s.ctx.player as usize).map_or(0, |p| p.handle);
+                words[0] = jass(s.ctx.unit);
+                words[1] = jass(s.ctx.widget);
+                words[2] = jass(s.ctx.trigger);
+                words[3] = if s.ctx.has_player { jass(player) } else { 0 };
+                words[6] = s.ctx.event_id as u32;
+                let left = (s.wake_at - crate::world::SLEEP_SLACK - self.sleep_time).max(0.0);
+                let (chunks, rest) = timer_chunks(s.sleep);
+                tail_timer = (Field::Timer(rf(me), 4, Timing(Some((self.time + left, s.sleep, s.timer_count, 0, 0)))), chunks, rest);
+                place = s.thread.place;
+                if let Some(Obj::Trigger(t)) = self.handles.get(s.ctx.trigger) {
+                    // (The action its thread runs: the one whose function is its run's.)
+                    let top = s.thread.frames.iter().find(|f| f.top).map(|f| f.func);
+                    let mine = t.actions.iter().find(|&&a| matches!(self.handles.get(a), Some(Obj::TriggerAction { func, .. }) if Some(*func) == top)).or(t.actions.first());
+                    action = mine.and_then(|&a| match self.handles.get(a) {
+                        Some(Obj::TriggerAction { slot, .. }) if *slot != 0 => Some(self.tagged(*slot)),
+                        _ => None,
+                    });
+                    trigger = t.slots.first().map(|&s| self.tagged(s));
+                }
+            }
+            let (timer, chunks, rest) = tail_timer;
+            let tail = vec![
+                Field::List(words.iter().map(|&w| vec![Field::Word(w)]).collect()),
+                timer,
+                Field::Short(chunks.min(0xffff) as u16),
+                Field::Short(chunks.min(0xffff) as u16),
+                Field::Real(rest),
+                Field::Word(place),
+                Field::Ref(action.map_or(NONE, rf)),
+                Field::List(action.into_iter().map(|a| vec![Field::Ref(rf(a))]).collect()),
+                Field::Real(0.0),
+                Field::Ref(NONE),
+                Field::Word(0),
+                Field::Word(0),
+                Field::List(trigger.into_iter().map(|t| vec![Field::Ref(rf(t)), Field::Word(0x8_0274)]).collect()),
+                Field::List(Vec::new()),
+                Field::Word(1),
+            ];
+            let handlers = Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
+            out.push((me.0, agent_first(me, codes::class::TRIGGER_EXECUTION, &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers, tail })));
         }
         out
     }
@@ -1905,6 +1980,25 @@ impl World {
                         EventKind::Game(event) => {
                             let e = *event as u32 + 0x8_0200;
                             (codes::class::GAME_EVENT, vec![e], vec![handler_list(vec![(trig, e)])])
+                        }
+                        // A timer event's (CTimerEventReg, TriggerRegisterTimerEvent's
+                        // `tmvt`): the registration's words, then its timer, the
+                        // trigger's, to its due (event 0x80204, once unless periodic),
+                        // stopped once it has fired, its timeout in chunks (read: the
+                        // original's at 40 seconds, due 50, and at 60).
+                        EventKind::TimerExpire(timer) if self.tags.live.get(&own.0).is_some_and(|e| &e.0 == codes::class::TIMER_EVENT) => {
+                            let Some(Obj::Timer(tm)) = self.handles.get(*timer) else { continue };
+                            let field = if tm.running {
+                                Field::Timer(rf(trig), 0, Timing(Some(((self.time as f64 + tm.remaining) as f32, tm.period as f32, tm.agent_seq, 0x8_0204, u32::from(tm.periodic)))))
+                            } else {
+                                Field::Timer(NONE, 0, Timing(None))
+                            };
+                            let (chunks, rest) = timer_chunks(tm.timeout);
+                            let mut ws = words(&base);
+                            ws.push(Field::Word(0));
+                            let tail = vec![field, Field::Short(chunks.min(0xffff) as u16), Field::Short(chunks.min(0xffff) as u16), Field::Real(rest)];
+                            out.push((own.0, agent_first(own, codes::class::TIMER_EVENT, &[]), Some(Second::Agent { own: ws, handlers: game_handlers(self.game_object()), tail })));
+                            continue;
                         }
                         EventKind::TimerExpire(timer) => {
                             let tm = slot_of(*timer).map_or(NONE, rf);
@@ -2281,7 +2375,7 @@ impl World {
             v
         }).collect();
         tr("unit reals done", 0);
-        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals).chain(self.captain_records()).chain(self.item_records()).chain(self.saved_order_records()).chain(self.mine_fog_records()) {
+        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.execution_records()).chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals).chain(self.captain_records()).chain(self.item_records()).chain(self.saved_order_records()).chain(self.mine_fog_records()) {
             records.insert(slot, f);
             if let Some(sec) = sec {
                 seconds.insert(slot, sec);

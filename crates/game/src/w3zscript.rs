@@ -172,7 +172,14 @@ impl Game {
     /// within SaveGame (flag 0), and the one that called it last as it was in the call
     /// (a timer's callback's, say, freed after it).
     pub fn saved_threads(&self) -> Vec<Thread> {
-        let mut out: Vec<Thread> = self.world.sleepers.iter().map(|s| thread_of(&self.vm, &s.thread, s.thread.parked.is_none())).collect();
+        // (A thread asleep records its sleep: read, a trigger's 30.)
+        let mut out: Vec<Thread> = self.world.sleepers.iter().map(|s| {
+            let mut t = thread_of(&self.vm, &s.thread, s.thread.parked.is_none());
+            if s.thread.parked.is_none() {
+                t.real = s.sleep;
+            }
+            t
+        }).collect();
         if let Some(t) = self.vm.snapshot.as_ref().filter(|t| !out.iter().any(|o| o.machine == t.place)) {
             out.push(thread_of(&self.vm, t, false));
         }

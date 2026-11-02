@@ -452,6 +452,13 @@ fn main() {
         return;
     }
     // "manager": the object manager's small sections in hex, its clocks, words, bounds.
+    // "free": the first table's free slots, in order.
+    if a[2] == "free" {
+        let m = s.objects.as_ref().unwrap();
+        let slots: Vec<u32> = m.free[0].chunks(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect();
+        println!("{}", slots.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(" "));
+        return;
+    }
     if a[2] == "manager" {
         let m = s.objects.as_ref().unwrap();
         let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();

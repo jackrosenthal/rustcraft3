@@ -310,11 +310,15 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         // A private timer drives the event; the original makes its own event object for
         // it, which is all it tags (measured).
         TriggerRegisterTimerEvent => |w, _, a| {
-            if w.trigger(a.h(0)).is_some() {
-                w.tags.take(codes::class::TIMER_EVENT);
-            }
+            let id = w.trigger(a.h(0)).is_some().then(|| w.tags.take_id(codes::class::TIMER_EVENT));
             let timer = w.handles.insert(Obj::Timer(Timer { remaining: a.r(1) as f64, timeout: a.r(1), period: a.r(1) as f64, periodic: a.b(2), running: true, ..Default::default() }));
-            register_event_tagged(w, a.h(0), EventKind::TimerExpire(timer), false)
+            let r = register_event_tagged(w, a.h(0), EventKind::TimerExpire(timer), false);
+            // (Its registration's object, `tmvt`, is the event handle's agent: read, the
+            // original's save of a timer event's trigger.)
+            if let (Some(id), NativeResult::Return(Value::Handle(e))) = (id, &r) {
+                w.tags.handle_ids.insert(*e, id);
+            }
+            r
         },
         TriggerRegisterTimerExpireEvent => |w, _, a| register_event(w, a.h(0), EventKind::TimerExpire(a.h(1))),
         TriggerRegisterGameStateEvent => |w, _, a| register_event(w, a.h(0), EventKind::GameState { state: a.h(1) as i32, op: a.h(2) as i32, value: a.r(3) }),

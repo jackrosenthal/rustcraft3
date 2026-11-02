@@ -907,6 +907,9 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::class::ALLIANCE_EVENT, "wwwwww f w www", "e r e e"),
     (codes::class::PLAYER_STATE_EVENT, "wwwwwwwwww w f", "r e r e"),
     (codes::class::TIMER_EXPIRED_EVENT, "wwwww", "r e"),
+    // A timer event's registration (CTimerEventReg, TriggerRegisterTimerEvent's): the
+    // registration's words, then its timer.
+    (codes::class::TIMER_EVENT, "wwwww", "t ss f"),
     // A dialog button's event (CDialogButtonEventReg `vf14_6f27e430`): its button
     // (`FUN_6f21b520`) and event 0x8025a's list.
     (codes::class::DIALOG_BUTTON_EVENT, "wwwww", "r e"),

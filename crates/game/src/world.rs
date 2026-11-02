@@ -138,6 +138,16 @@ pub struct Sleeper {
     /// The sound a TriggerWaitForSound waits on, or 0: it resumes too once that sound
     /// has stopped.
     pub sound: u32,
+    /// Its trigger execution's object (`+tex`), kept while it sleeps (0 for a thread
+    /// not a trigger's).
+    #[serde(default)]
+    pub execution: u32,
+    /// Its sleep's length.
+    #[serde(default)]
+    pub sleep: f32,
+    /// Its execution's timer to its waking: its count among the timers started.
+    #[serde(default)]
+    pub timer_count: u32,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -185,6 +195,9 @@ pub struct World {
     /// it makes.
     #[serde(skip)]
     pub sound_wait: u32,
+    /// The trigger execution whose thread runs (its `+tex`), for a sleep to keep.
+    #[serde(skip)]
+    pub running_execution: u32,
     #[serde(skip)]
     pub handle_sweep_timer: f32,
     /// Threads started by natives (TriggerExecute, ExecuteFunc) that must run once the
@@ -819,6 +832,7 @@ impl World {
             sleep_exact: 0.0,
             sleepers: Vec::new(),
             sound_wait: 0,
+            running_execution: 0,
             handle_sweep_timer: 0.0,
             pending: Vec::new(),
             requests: Vec::new(),
@@ -1292,6 +1306,7 @@ impl World {
         // initialization, run by ConditionalTriggerExecute, takes a +tex, and the time
         // of day's trigger another when SetFloatGameState fires it).
         let execution = self.tags.take(codes::class::TRIGGER_EXECUTION);
+        let mut kept = false;
         for a in actions {
             let f = match self.handles.get(a) {
                 Some(Obj::TriggerAction { func, .. }) => *func,
@@ -1300,30 +1315,44 @@ impl World {
             let mut ctx = ctx.clone();
             ctx.trigger = trig;
             let t = vm.new_thread(f, &[], true);
-            self.run_thread(vm, t, ctx);
+            let outer = std::mem::replace(&mut self.running_execution, execution);
+            kept |= self.run_thread(vm, t, ctx);
+            self.running_execution = outer;
         }
-        // Released as its actions end (traced; one that sleeps is taken as ended here).
-        if self.exec_at_tick_end {
-            self.tags.issued.push(execution);
-        } else {
-            self.tags.doom(execution);
+        // Released as its actions end (traced); one whose thread sleeps kept until that
+        // thread ends (read: the original's save of a trigger waiting, its `+tex` with
+        // the wake timer).
+        if !kept {
+            if self.exec_at_tick_end {
+                self.tags.issued.push(execution);
+            } else {
+                self.tags.doom(execution);
+            }
         }
     }
 
-    /// Runs a thread with an event context until it finishes or sleeps.
-    pub fn run_thread(&mut self, vm: &mut Vm, mut t: Thread, ctx: EventCtx) {
+    /// Runs a thread with an event context until it finishes or sleeps (true then).
+    pub fn run_thread(&mut self, vm: &mut Vm, mut t: Thread, ctx: EventCtx) -> bool {
         let saved = std::mem::replace(&mut self.ctx, ctx);
+        let mut slept = false;
         match vm.run(self, &mut t) {
             Outcome::Finished(_) => {}
             Outcome::Sleeping(secs) => {
                 let ctx = self.ctx.clone();
                 let sound = std::mem::take(&mut self.sound_wait);
-                self.sleepers.push(Sleeper { wake_at: self.sleep_time + secs.max(0.0) + SLEEP_SLACK, thread: t, ctx, sound });
+                // (A trigger's thread sleeps on its execution's timer, started as it
+                // sleeps: read, the original's save of a trigger waiting, its count.)
+                let timer_count = if self.running_execution != 0 { self.tags.start_timer("trigger sleep") } else { 0 };
+                self.sleepers.push(Sleeper { wake_at: self.sleep_time + secs.max(0.0) + SLEEP_SLACK, thread: t, ctx, sound, execution: self.running_execution, sleep: secs.max(0.0), timer_count });
+                slept = true;
             }
             Outcome::Aborted(e) => log::warn!("thread aborted: {e}"),
         }
         self.ctx = saved;
+        let outer = std::mem::take(&mut self.running_execution);
         self.run_pending(vm);
+        self.running_execution = outer;
+        slept
     }
 
     /// Runs a function on the script machine's own context (a sleep there ends it).
@@ -2239,6 +2268,9 @@ impl World {
                 t.kept = true;
                 self.run_thread(vm, t, ctx.clone());
             }
+            // (Its triggers' event, EVENT_GAME_TIMER_EXPIRED: read, the original's save of
+            // a timer event's trigger waiting, its context's event id 4.)
+            let ctx = EventCtx { event_id: crate::event_ids::EVENT_GAME_TIMER_EXPIRED, ..ctx };
             self.fire(vm, ctx, |_, k| matches!(k, EventKind::TimerExpire(t) if *t == timer));
         }
     }
@@ -2266,7 +2298,13 @@ impl World {
             let stopped = sound != 0 && crate::natives::presentation::sound_position(self, sound).is_none();
             if self.sleepers[i].wake_at < now || stopped {
                 let s = self.sleepers.swap_remove(i);
-                self.run_thread(vm, s.thread, s.ctx);
+                let outer = std::mem::replace(&mut self.running_execution, s.execution);
+                let slept = self.run_thread(vm, s.thread, s.ctx);
+                self.running_execution = outer;
+                // Its execution's object goes as its thread ends.
+                if !slept && s.execution != 0 && !self.sleepers.iter().any(|o| o.execution == s.execution) {
+                    self.tags.doom(s.execution);
+                }
             } else {
                 i += 1;
             }

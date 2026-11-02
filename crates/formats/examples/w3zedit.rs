@@ -44,6 +44,23 @@ fn main() {
         }
         // "none": as it was (a control).
         "none" => {}
+        // "timercount <tag> <count>": the first timer of an object's second record
+        // counted so.
+        "timercount" => {
+            let (tag, count): (u32, u32) = (a[4].parse().unwrap(), a[5].parse().unwrap());
+            let o = objects.iter_mut().flatten().find(|o| o.entry.tag == tag).expect("no such object");
+            let mut sec = o.second().unwrap();
+            if let w3_formats::w3z::Second::Agent { tail, .. } = &mut sec {
+                for f in tail.iter_mut() {
+                    if let w3_formats::w3z::Field::Timer(_, _, w3_formats::w3z::Timing(Some(t))) = f {
+                        println!("count {} -> {count}", t.2);
+                        t.2 = count;
+                        break;
+                    }
+                }
+            }
+            o.second = sec.to_bytes(o.entry.kind).unwrap();
+        }
         // "append <file>": the file's bytes after the record's last.
         "append" => {
             let extra = std::fs::read(&a[4]).unwrap();
@@ -158,6 +175,13 @@ fn main() {
                     "block" => s.objects.as_mut().unwrap().block = fm.block.clone(),
                     "mheader" => s.objects.as_mut().unwrap().header = fm.header.clone(),
                     p if p.starts_with("state:") || p == "script" => state_parts.push(p.trim_start_matches("state:").replace("script", "script data")),
+                    // "object:<tag>": that object's records, the other's.
+                    p if p.starts_with("object:") => {
+                        let tag: u32 = p[7..].parse().unwrap();
+                        let o = theirs.iter().flatten().find(|o| o.entry.tag == tag).expect("no such object there");
+                        let mine = objects.iter_mut().flatten().find(|o| o.entry.tag == tag).expect("no such object here");
+                        (mine.first, mine.second) = (o.first.clone(), o.second.clone());
+                    }
                     other => panic!("unknown piece {other}"),
                 }
             }

@@ -3151,8 +3151,22 @@ Formats the port made its own, to be replaced by the original's:
   action, and its trigger).  The thread records the sleep itself too (`real`, which
   the port writes 0).  Measured: the hero map's computer at 300 seconds resumes its
   attack and trains; a trigger waiting at 60 seconds wakes 20 seconds after loading.
-  Not yet: the port's own waiting triggers are saved without their `+tex` (it frees
-  it as the actions start), so the original would not wake them.
+- The port's own waiting triggers: a trigger's execution (`+tex`) is kept while a
+  thread of it sleeps and freed as that thread ends (the original's save holds it
+  with the wake timer), its timer started as the thread sleeps (the agent timer's
+  count), and written as the original's (`World::execution_records`); a sleeping
+  thread records its sleep (`real`).  The trigger's fourth word counts its
+  executions still running.  TriggerRegisterTimerEvent's registration (`tmvt`,
+  CTimerEventReg: the registration's words, then its timer, the trigger's, due at
+  its timeout, event 0x80204, once unless periodic, stopped once fired, its timeout
+  in chunks) is its event handle's agent and on its trigger's list, as the
+  original's; a timer event's trigger hears EVENT_GAME_TIMER_EXPIRED (4) as its
+  event id.  An agent timer's kind word picks its clock on loading (`CAgentTimer`
+  vf9: bit 4 the agent clock, else the main), and its timing registers as saved
+  (`FUN_6f060840`), nothing checked.  Measured: the original wakes a port save's
+  waiting trigger (a preload file written as it wakes, Echo Isles made to wait at
+  50 and saved at 59).  Open: the woken thread's own SaveGame writes nothing in
+  such a game (one the original saved itself writes it).
 - The dynamic shops (Echo Isles' Marketplace `Asid` and mercenary camp `Asud`:
   CAbilitySellItemDynamic and CAbilitySellUnitDynamic vf14) save as the plain shops
   and then a word and twelve (`w 12(w)`: 11, eleven 0, and 1 at 60 seconds, their

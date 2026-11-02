@@ -2825,6 +2825,16 @@ Formats the port made its own, to be replaced by the original's:
   and 18 for 28 and 21 (700, 4.3, 0.42).  The port had read and written the totals
   there, so a loaded hero lost its levels' gains and a saved one would have had them
   twice.
+- A script's SaveGame saves once a session (`jass_SaveGame`: nothing in a network
+  game, for an empty name, or while the game's flag at +0x3e4 is set; it sets it,
+  and a new game's start, `FUN_6f1e05a0`, and a load clear it): the original's own
+  game saving at 60 seconds and again from a trigger woken at 80 writes only the
+  first, and the woken thread runs on; a game loaded from the first save, or one
+  that never saved at 60, writes the second.  A trigger fired by a timer event holds
+  the event's own timer in its context, which scripts never had: the port's handle
+  table had counted it as a handle, and with that timer apart from the handles'
+  numbers a save during such a trigger's sleep asked for 52 GB.  With both, the
+  original loading the port's save of 61 seconds saves from the woken trigger.
 - A script's timer (CTimerWar3) runs on the main clock (the original's 320-second
   timer fired as the main clock read 20.0 in its second wrap; the header's game time
   then 320.555).  Its agent timer (CAgentTimerExtended) runs a run of 120 seconds or

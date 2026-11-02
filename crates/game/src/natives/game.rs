@@ -153,8 +153,16 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         // The original saves within the call, and keeps the calling thread there for good,
         // a game loaded from the save too (read: a save at ten seconds, of a game that
         // loaded the five seconds' save, holds both saves' threads, each past its
-        // SaveGame).
+        // SaveGame).  Once a session, with a name, not in a network game (`jass_SaveGame`:
+        // nothing while the game's flag at +0x3e4 is set, which it sets; read, the
+        // original's own game saving at 60 seconds and again from a trigger woken at 80
+        // writes only the first, a game loaded from the first save the second, and one
+        // that never saved at 60 the second).
         SaveGame => |w, vm, a| {
+            if w.script_saved || w.network || a.s(0).is_empty() {
+                return none();
+            }
+            w.script_saved = true;
             vm.snapshot_wanted = true;
             w.tags.save_clock = Some(w.tags.clock);
             w.requests.push(crate::world::Request::SaveGame(a.s(0)));

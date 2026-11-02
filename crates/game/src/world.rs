@@ -272,6 +272,10 @@ pub struct World {
     /// A game over the network (no cheats, no saving).
     #[serde(default)]
     pub network: bool,
+    /// A script's SaveGame has saved this session (the game's flag at +0x3e4, set as
+    /// it saves; a new game's start, `FUN_6f1e05a0`, and a load clear it).
+    #[serde(skip)]
+    pub script_saved: bool,
     /// How many of the engine's 30 ms movement steps fall in this tick (multiples of 30
     /// ms of game time after its start, up to and with its end: 4, 3, 3 in successive
     /// 100 ms turns; `FUN_6f15aa80`).
@@ -982,6 +986,7 @@ impl World {
             ai_walks: Default::default(),
             lightning_data: None,
             saves_dir: None,
+            script_saved: false,
             preload: Default::default(),
             order_error: None,
             spell_landing: false,

@@ -731,7 +731,8 @@ impl Game {
     /// asleep or kept within SaveGame (read: the quiet test map's timer whose callback
     /// saves; provisional: one asleep).
     pub fn context_timers(&self) -> Vec<u32> {
-        self.world.sleepers.iter().map(|s| s.ctx.timer).filter(|&t| t != 0).collect()
+        // (Those scripts have had: a timer event's own timer is none of theirs.)
+        self.world.sleepers.iter().filter(|s| s.ctx.timer != 0).filter_map(|s| self.world.handles.known_handle(s.ctx.timer)).collect()
     }
 
     /// The script data's pieces the port makes, against the original's save of the same

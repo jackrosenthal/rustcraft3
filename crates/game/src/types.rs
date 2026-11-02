@@ -77,6 +77,10 @@ pub struct Player {
     pub state: HashMap<i32, i32>,
     pub tech_max: HashMap<Id, i32>,
     pub tech_researched: HashMap<Id, i32>,
+    /// Each upgrade researched's objects, made as its first level comes in: its own
+    /// (`+Wup`, CPlayerUpgrade) and its effects' (as its data lists them).
+    #[serde(default)]
+    pub upgrade_objects: Vec<(Id, u32, Vec<u32>)>,
     /// The original's tech tree registrations, in the order made (`crate::techreg`).
     #[serde(default)]
     pub tech_regs: Vec<crate::techreg::TechReg>,
@@ -112,6 +116,7 @@ impl Player {
             state: HashMap::default(),
             tech_max: HashMap::default(),
             tech_researched: HashMap::default(),
+            upgrade_objects: Vec::new(),
             tech_regs: Vec::new(),
             abilities_unavailable: Default::default(),
             score: Default::default(),

@@ -1837,6 +1837,45 @@ impl World {
         out
     }
 
+    /// The players' upgrades researched (CPlayerUpgrade vf14, `+Wup`; read against the
+    /// hero map's undead computer's at 900 seconds): no handlers; its player, the
+    /// upgrade, 0, its level, and 3, then its four effects' places (each an object, or
+    /// none); each effect's object (CUpgradeArmor and the rest) 0, its base and its
+    /// amount a level as the upgrade's data gives them, and 0.  Provisional: the third
+    /// and fifth words (3 in every one read, of one, two, or three levels).
+    pub fn upgrade_records(&self) -> Vec<(u32, First, Option<Second>)> {
+        let mut out = Vec::new();
+        let quiet = || Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
+        for p in &self.players {
+            for (id, slot, effects) in &p.upgrade_objects {
+                if self.tags.live.get(slot).is_none_or(|e| &e.0 != codes::class::PLAYER_UPGRADE) {
+                    continue;
+                }
+                let me = self.tagged(*slot);
+                let Some(o) = self.objects.upgrades.get(*id) else { continue };
+                let level = p.tech_researched.get(id).copied().unwrap_or(0).max(0) as u32;
+                let places = Field::List((0..4).map(|k| match effects.get(k) {
+                    Some(&e) => {
+                        let t = self.tagged(e);
+                        vec![Field::Word(t.0), Field::Word(t.1), Field::Word(0)]
+                    }
+                    None => vec![Field::Word(u32::MAX), Field::Word(u32::MAX), Field::Word(0)],
+                }).collect());
+                let tail = vec![Field::Word(p.id as u32), Field::Word(u32::from_be_bytes(*id)), Field::Word(0), Field::Word(level), Field::Word(3), places];
+                out.push((me.0, agent_first(me, codes::class::PLAYER_UPGRADE, &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: quiet(), tail })));
+                // Its effects', in its data's order, those named.
+                let named = (1..=4).filter(|k| crate::objects::id_from_str(o.str(&format!("effect{k}")).trim())[0].is_ascii_lowercase());
+                for (k, &e) in named.zip(effects) {
+                    let Some(code) = self.tags.live.get(&e).map(|x| x.0) else { continue };
+                    let t = self.tagged(e);
+                    let own = vec![Field::Word(0), Field::Real(o.real(&format!("base{k}"))), Field::Real(o.real(&format!("mod{k}"))), Field::Word(0)];
+                    out.push((t.0, agent_first(t, &code, &[]), Some(Second::Agent { own, handlers: quiet(), tail: Vec::new() })));
+                }
+            }
+        }
+        out
+    }
+
     /// The trigger executions alive (`+tex`, CTriggerExecution vf14; read against the
     /// original's save of a trigger waiting 30 seconds): its context's fifteen words
     /// (slot 0 the triggering unit, 1 its widget, 2 the trigger, 3 the player, 6 the
@@ -2375,7 +2414,7 @@ impl World {
             v
         }).collect();
         tr("unit reals done", 0);
-        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.execution_records()).chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals).chain(self.captain_records()).chain(self.item_records()).chain(self.saved_order_records()).chain(self.mine_fog_records()) {
+        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.execution_records()).chain(self.upgrade_records()).chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals).chain(self.captain_records()).chain(self.item_records()).chain(self.saved_order_records()).chain(self.mine_fog_records()) {
             records.insert(slot, f);
             if let Some(sec) = sec {
                 seconds.insert(slot, sec);

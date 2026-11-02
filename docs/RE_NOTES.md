@@ -3151,6 +3151,16 @@ Formats the port made its own, to be replaced by the original's:
   action, and its trigger).  The thread records the sleep itself too (`real`, which
   the port writes 0).  Measured: the hero map's computer at 300 seconds resumes its
   attack and trains; a trigger waiting at 60 seconds wakes 20 seconds after loading.
+- Upgrades researched (`+Wup`, CPlayerUpgrade vf14: its agent, then its player, the
+  upgrade, 0, its level, and 3, and four places for its effects' objects; found by
+  player and upgrade, `FUN_6f6c9b40`, its level +0x2c the fourth saved word,
+  `FUN_6f6c9b00`): made as its first level comes in, then an object for each effect
+  its data names (CUpgradeArmor and the rest, own `FUN_6f6b5140`: 0, the effect's
+  base and amount a level from UpgradeData, 0; no tail), all without handlers (read:
+  the hero map's undead computer's nine at 900 seconds, Unholy Strength's `ratd`
+  born right after it).  The port makes and writes them; loading the original's
+  save, each player's levels come back and apply.  Provisional: the third and fifth
+  words (0 and 3 in every one read).
 - Heroes and abilities in saves: every ability's level less one is its word at +0x50
   (its eleventh own field, as GetUnitAbilityLevel reads; the port wrote 0, every
   skill level 1 in the original); a hero's experience is its hero ability's first

@@ -340,11 +340,11 @@ impl Game {
             }
         }
         // The upgrades researched (each a player's `+Wup`, CPlayerUpgrade: its player,
-        // the upgrade, 0, its level, and its most, found by the first two as the engine
-        // looks them up, `FUN_6f6c9b40`, its level the fourth as `FUN_6f6c9b00` reads;
-        // read, the hero map's undead computer's at 900 seconds, Unholy Strength at 1 of
-        // 3), their effects on the player's units as research gives them.  Provisional:
-        // the third word.
+        // the upgrade, 0, its level, and 3, found by the first two as the engine looks
+        // them up, `FUN_6f6c9b40`, its level the fourth as `FUN_6f6c9b00` reads; read,
+        // the hero map's undead computer's nine at 900 seconds, Unholy Strength at
+        // level 1), their effects on the player's units as research gives them.
+        // Provisional: the third and fifth words.
         {
             use w3_formats::w3z::{Field, Second};
             let all = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();

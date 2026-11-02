@@ -188,6 +188,19 @@ impl World {
 
     pub fn research_changed(&mut self, owner: u8) {
         self.upgrade_cache.borrow_mut().retain(|(p, _), _| *p != owner);
+        // An upgrade's first level researched makes its objects: its own (`+Wup`), then
+        // each effect's its data names (read: the hero map's undead computer's at 900
+        // seconds, Unholy Strength's `ratd` born right after it).
+        let mut new: Vec<Id> = self.players.get(owner as usize).map(|p| p.tech_researched.iter().filter(|&(id, &l)| l > 0 && self.objects.upgrades.get(*id).is_some() && !p.upgrade_objects.iter().any(|o| o.0 == *id)).map(|(id, _)| *id).collect()).unwrap_or_default();
+        new.sort();
+        for id in new {
+            let me = self.tags.take(codes::class::PLAYER_UPGRADE);
+            let effects: Vec<Id> = (1..=4).filter_map(|k| self.objects.upgrades.get(id).map(|o| crate::objects::id_from_str(o.str(&format!("effect{k}")).trim()))).filter(|e| e[0].is_ascii_lowercase()).collect();
+            let slots = effects.iter().map(|e| self.tags.take(e)).collect();
+            if let Some(p) = self.players.get_mut(owner as usize) {
+                p.upgrade_objects.push((id, me, slots));
+            }
+        }
         let units: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.owner == owner)).collect();
         for h in units {
             self.apply_upgrades_keeping(h, true);

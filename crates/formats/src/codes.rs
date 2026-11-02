@@ -793,8 +793,10 @@ pub mod ability {
         SHADOW_MELD = "Ashm";
         /// `Ashs`: Shadow Sight.
         SHADOW_SIGHT = "Ashs";
-        /// `Asid`: Sell Item.
+        /// `Asid`: Sell Item (a Marketplace's goods, chosen as the game goes).
         SELL_ITEM = "Asid";
+        /// `Asud`: Sell Unit (as Sell Item, units).
+        SELL_UNIT = "Asud";
         /// `Aslo`: Slow.
         SLOW = "Aslo";
         /// `Aspb`: Spell Book.

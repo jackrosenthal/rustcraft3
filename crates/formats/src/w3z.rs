@@ -1612,6 +1612,11 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::ability::id::SELECT_USER, "wwww wwwwwww t w w", "wwwww"),
     (codes::ability::id::DEATH_KNIGHT_UNHOLY_AURA, "wwww wwwwwww t w w ff", "[r] w r t w ww ww"),
     (codes::ability::id::SELL_ITEMS, "wwww wwwwwww t w ff", "r r 12(w fff t ss f t ss f w) wwwww"),
+    // The dynamic shops' (CAbilitySellItemDynamic and CAbilitySellUnitDynamic vf14): the
+    // shop's, then a word and twelve more (+0x47c and on; read, Echo Isles' at 60
+    // seconds).
+    (codes::ability::id::SELL_ITEM, "wwww wwwwwww t w ff", "r r 12(w fff t ss f t ss f w) wwwww w 12(w)"),
+    (codes::ability::id::SELL_UNIT, "wwww wwwwwww t w ff", "r r 12(w fff t ss f t ss f w) wwwww w 12(w)"),
     // `FUN_6f42e0e0` on that: four timers and a reference (own `FUN_6f42f1b0`: three
     // words, three reals, three words, a real, three words).
     (codes::ability::id::REPAIR_ORC, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff www fff www f www", "wwwww r t t t t t t t r"),

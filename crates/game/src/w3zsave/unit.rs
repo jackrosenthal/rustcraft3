@@ -961,9 +961,24 @@ impl World {
 /// 0x1000000, dead 0x2000000, organic 0x4000000, mechanical 0x8000000, nonancient
 /// 0x40000000; provisional: the defaults for what its data leaves out, and 0 for the
 /// kinds not read).
+/// A dynamic shop's own (CAbilitySellItemDynamic and CAbilitySellUnitDynamic vf14,
+/// +0x47c and the twelve words after): 11, then eleven 0 and a 1, as Echo Isles'
+/// Marketplace and mercenary camp have them at 60 seconds, their goods not yet come
+/// (provisional: a shop stocked since); none for another.
+fn dynamic_shop_tail(code: &[u8; 4]) -> Vec<Field> {
+    if !matches!(code, codes::ability::id::SELL_ITEM | codes::ability::id::SELL_UNIT) {
+        return Vec::new();
+    }
+    let mut out = vec![Field::Word(11)];
+    out.extend((0..12).map(|k| Field::List(vec![vec![Field::Word(u32::from(k == 11))]])));
+    out
+}
+
 fn ability_targets(code: &[u8; 4]) -> u32 {
     match code {
         codes::ability::id::ALARM => 0x0031_0006,
+        // (Read: Echo Isles' Marketplace's and mercenary camp's.)
+        codes::ability::id::SELL_ITEM | codes::ability::id::SELL_UNIT => 0xfdd1_f00e,
         codes::ability::id::ITEM_TOWN_PORTAL => 0x0030_0028,
         codes::ability::id::INVULNERABLE | codes::ability::id::WANDER | codes::ability::id::GOLD_MINE | codes::ability::id::MILITIA_CONVERSION | codes::ability::id::MILITIA | codes::ability::id::MAGIC_IMMUNITY | codes::ability::id::NEUTRAL_DETECTION_REVEAL_ABILITY | codes::ability::id::NEUTRAL_BUILDING | codes::ability::id::RETURN => 0xfdd1_f00e,
         codes::ability::id::PRIESTESS_TRUESHOT_AURA | codes::ability::id::PALADIN_DEVOTION_AURA | codes::ability::id::DEATH_KNIGHT_UNHOLY_AURA => 0x0030_7006,
@@ -1175,7 +1190,7 @@ impl World {
             codes::ability::id::RALLY | codes::ability::id::MILITIA_CONVERSION | codes::ability::id::MILITIA | codes::ability::id::HERO => 0x90,
             // (An item's Town Portal, read: 0x2022 with its holder's AI's.)
             codes::ability::id::ITEM_TOWN_PORTAL => 0x2020,
-            codes::ability::id::SELL_UNITS | codes::ability::id::SELL_ITEMS | codes::ability::id::MAKE_ITEMS => 0x1000_0010,
+            codes::ability::id::SELL_UNITS | codes::ability::id::SELL_ITEMS | codes::ability::id::MAKE_ITEMS | codes::ability::id::SELL_ITEM | codes::ability::id::SELL_UNIT => 0x1000_0010,
             // (Regeneration on blight, as it stands on blight 0x80.)
             codes::ability::id::REGENERATE_ON_BLIGHT => 0x10 | if u.extra.blight_rcm.is_some() { 0x80 } else { 0 },
             // (An attack: two weapons 0x100000, not a worker's 0x20004000, one never
@@ -1571,7 +1586,7 @@ impl World {
             // largest real, no timers, 0); then 0xd0142 and four 0.  (Read: the quiet
             // test map's Goblin Laboratory's three at 5 seconds; provisional: a slot
             // after its unit has come, its restock running.)
-            codes::ability::id::SELL_UNITS => {
+            codes::ability::id::SELL_UNITS | codes::ability::id::SELL_UNIT => {
                 own.extend([Field::Real(0.0), Field::Real(0.0)]);
                 let (_, units) = self.shop_goods(h);
                 let starts: Vec<(u32, f32)> = self.tags.timer_objects.get(&t.0).map(|v| v.iter().filter(|x| x.1 == "41c010").map(|x| (x.0, x.2)).collect()).unwrap_or_default();
@@ -1607,6 +1622,7 @@ impl World {
                     tail.push(Field::List(vec![slot]));
                 }
                 tail.extend([w(0xd_0142), w(0), w(0), w(0), w(0)]);
+                tail.extend(dynamic_shop_tail(code));
                 tail
             }
             // Blight growth (CAbilityBlightGrowth): its Area as given, its Xbli, 0.
@@ -1776,7 +1792,7 @@ impl World {
             // in its own order: read, Forestwalk's shop's eight of eleven).
             // (Make Items as Sell Items, a word more: 0xc0, read on the undead computer's
             // Tomb of Relics at 450 seconds; provisional.)
-            codes::ability::id::SELL_ITEMS | codes::ability::id::MAKE_ITEMS => {
+            codes::ability::id::SELL_ITEMS | codes::ability::id::MAKE_ITEMS | codes::ability::id::SELL_ITEM => {
                 own.extend([Field::Real(0.0), Field::Real(0.0)]);
                 if code == codes::ability::id::MAKE_ITEMS {
                     own.push(w(0xc0));
@@ -1817,6 +1833,7 @@ impl World {
                     tail.push(Field::List(vec![slot]));
                 }
                 tail.extend([w(0xd_0142), w(0), w(0), w(0), w(0)]);
+                tail.extend(dynamic_shop_tail(code));
                 tail
             }
             // The kinds of the families above: as the spells, Plague Toss, or Spider

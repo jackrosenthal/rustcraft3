@@ -3131,6 +3131,12 @@ Formats the port made its own, to be replaced by the original's:
   every computer (`save::port_state`), as before.  Provisional: a game the port
   joined, its stat's host its own name; not yet loaded by the original (its LAN
   load wants the other players to join it).
+- The dynamic shops (Echo Isles' Marketplace `Asid` and mercenary camp `Asud`:
+  CAbilitySellItemDynamic and CAbilitySellUnitDynamic vf14) save as the plain shops
+  and then a word and twelve (`w 12(w)`: 11, eleven 0, and 1 at 60 seconds, their
+  goods not yet come; read from the original's save of the map made to save then).
+  Written empty, the original called the port's 10-minute save corrupted; written
+  so, it loads and plays.
 - An aura bearer's own buff, made with it, is written at rest when the port's sweep
   has it off (a Death Knight's at 60 seconds of the every-unit map, else empty).
 - A buff's own timer (CBuff vf211 `532b50`, event 0xd01c4) is written running to

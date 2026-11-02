@@ -2997,6 +2997,51 @@ Formats the port made its own, to be replaced by the original's:
   order 852018 on it.  An arrival in reach but not yet free walks to reach the tree
   with three retries (+0x19c), each after a half second's wait; the port models the
   reach walk, not the retries nor the giving up.
+- Longer computer games (Forestwalk's hero map saved at 300, 450, and 600 seconds,
+  `fh300`, `fh450`, `fh600`, the original's own beside each): the port's 300-second
+  save hung the original's loader in an auto-target spell's read (`FUN_6f41e200`,
+  `FUN_6f055f80` looping on a count read off the record's end).  The port wrote empty
+  records for the abilities it had no layout for, and the original's reader ran off
+  them.  Written now, each read with `w3zobj probe` against the decompile: Web
+  (Faerie Fire's layout), Spider Attack (the ability's own fields alone), Burrow (a
+  morph, CAbilityMorph's `FUN_6f4eb500` and `FUN_6f4ea410`: the spell's first
+  fields, two reals, DataA and UnitID, a real and two words; the spell tail, a
+  reference, five timers, `FUN_6f224e20`'s state; then its look every second, vf50
+  `FUN_6f606200`, event 0xd01bf, started as the computer's unit joins its AI as
+  Cannibalize's is), Death Coil (`FUN_6f42e2b0`: the spell tail and two timers),
+  Allied Building (CAbilityAllied `FUN_6f42dd20`: twelve references, one, twelve
+  triples, its `` `pil ``, a timer), Make Items (Sell Items' with a word more), and
+  the Meat Wagon's Exhume (its corpse every Dur from its making, event 0xd01c3,
+  repeating), Meat Load and Meat Drop (spells), Plague Toss (the buff base's tail),
+  and its cargo hold (the Devour cargo hold's).  Their target masks and flags as read.
+  `w3zobj dumpall` lists every record for such comparisons.
+- A spell's listener on mana, re-armed as the mana passes it or let go as the creep
+  sleeps, stayed named by the spell in the port, its slot then another's: the save
+  named an object it did not hold.  The spell's own reference now follows it.
+- The main clock and the agent queue's clock are set back by 300 seconds as the main
+  clock reaches 300 (`motion::WRAP`), and the original saves on them: its agents'
+  timers and its properties' dues set back as many times (read: at 450 seconds both
+  from 150), its properties' time stamps the main clock as stamped.  At 600 its save
+  timer fires as the clock is set back the second time, its agents' timers due from
+  0.06 and its properties' still from 300 (theirs set back as the next step begins).
+  The port's writer reckons most dues on the game's time; those due now or later
+  are set back as the clock has been, once all records are made (a gold run's are
+  on the agent queue's clock already).  Each object's making keeps the times the
+  clock had been set back then (`Tags::made_wraps`, `World::made_abs`), and the
+  writer reckons from it.  The port's main clock falls behind the game's time (to
+  298.945 at 600.21 seconds), so its 600-second save is before the second wrap.
+  The object manager's two clocks are saved as they stand, each with the times it
+  has been set back (read: at 300 seconds main 300.0 not yet, agent 0.45376 once; at
+  450 main 150.0 and agent 150.66518, once; at 600 main 0.00009 and agent 0.8862,
+  twice); the port wrote the game's time and none.  Now the main clock as the port
+  keeps it, and the agent queue's the game's time set back as often, the dues the
+  writer reckons on each.  Provisional: the clocks' last words (the queues' counts,
+  read 49867 and 367 at 300 seconds), 0.
+- A structure under construction past its listener's checks hung the writer: its
+  check stepped by the time left, none left, the same due again.  Its making's time
+  was the main clock, set back by then; reckoned on the game's time now, and the
+  loop ends when no time is left.
+- `W3Z_TRACE`: the writer's steps and each unit as it is written, to stderr.
 - Not yet written nor run: a ghoul's lumber harvest's second timer, every second
   (event 0xd01c2, `FUN_6f3f4bd0`, kind 2, repeating), started with its harvest
   order's tasks (`FUN_6f419530`) for a ghoul alone ('ugho', with its unit's flag

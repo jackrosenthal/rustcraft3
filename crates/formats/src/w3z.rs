@@ -907,6 +907,33 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::ability::id::CURSE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
     (codes::ability::id::BLOODLUST, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
     (codes::ability::id::FAERIE_FIRE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
+    (codes::ability::id::WEB, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
+    // The Meat Wagon's: Exhume (`vf14_6f5f5380`) and Meat Load (`FUN_6f42d2a0`) the
+    // spell's with three timers, Meat Drop (own `FUN_6f42f4b0`, save `FUN_6f42e2b0`)
+    // the spell's first fields and two timers, Plague Toss the buff base's tail
+    // (`FUN_6f42d5f0`), its cargo hold (`FUN_6f5aabb0`) the Devour cargo hold's.
+    (codes::ability::id::EXHUME, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
+    (codes::ability::id::MEAT_LOAD, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t t"),
+    (codes::ability::id::MEAT_DROP, "wwww wwwwwww t w ffff wwww f", "wwwww r t t"),
+    (codes::ability::id::PLAGUE_TOSS, "wwww wwwwwww t w", "wwwww"),
+    (codes::ability::id::CARGO_HOLD_AMTC, "wwww wwwwwww t w", "f www [wwf] [wwf] [w] [w] t t [ff] [ff]"),
+    // Death Coil (CAbilityDeathCoil: the spell's fields, its save `FUN_6f42e2b0`).
+    (codes::ability::id::DEATH_KNIGHT_DEATH_COIL, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
+    // CAbilityAllied (`FUN_6f42dd20`): a counted list of references (`FUN_6f3e2ce0`), a
+    // reference, a counted list of two words and a word, a reference, and a timer.
+    (codes::ability::id::ALLIED_BUILDING, "wwww wwwwwww t w", "[r] r [www] r t"),
+    // CAbilityMakeItem (own `vf18_6f42eec0`: two reals and a word; its save
+    // `FUN_6f42d3c0`, as Sell Items').
+    (codes::ability::id::MAKE_ITEMS, "wwww wwwwwww t w ffw", "r r 12(w fff t ss f t ss f w) wwwww"),
+    // CAbilitySpiderAttack (`FUN_6f42e830`, its save `FUN_6f03eda0`): the ability's
+    // own fields and lists alone.
+    (codes::ability::id::SPIDER_ATTACK, "wwww wwwwwww t w", ""),
+    // CAbilityBurrow, a morph (`FUN_6f4eb500`: the spell's first fields, two reals,
+    // the two unit types, a real and two words by build; its save `FUN_6f4e9d90`, the
+    // morph's `FUN_6f4ea410`: the buff base's tail, a reference, five timers, and
+    // `FUN_6f224e20`'s structure; then its own timer, `+0x1a4`: read, a Crypt Fiend's
+    // every second, event 0xd01bf).
+    (codes::ability::id::BURROW, "wwww wwwwwww t w ffff wwww f ff ww f w w", "wwwww r t t t t t wwwww f w fff w f [ww] f f f [w] f s t"),
     (codes::ability::id::DREADLORD_SLEEP, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
     (codes::ability::id::REJUVINATION, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"),
     // CAbilityAnimateDead (`FUN_6f4e9990`): the buff base's tail, a reference, three

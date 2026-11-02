@@ -468,8 +468,14 @@ impl World {
                 self.tags.release(slot);
                 // The new one waits for the mana to fall (not yet followed: it never
                 // fires here), kept in the old one's place, to go as the creep sleeps.
-                if let Some(l) = self.unit_mut(h).and_then(|u| u.extra.mana_listeners.iter_mut().find(|l| l.1 == slot)) {
-                    *l = (f32::INFINITY, n);
+                // (The spell's own reference follows it.)
+                if let Some(u) = self.unit_mut(h) {
+                    if let Some(l) = u.extra.mana_listeners.iter_mut().find(|l| l.1 == slot) {
+                        *l = (f32::INFINITY, n);
+                    }
+                    if let Some(o) = u.extra.spell_owners.iter_mut().find(|o| o.0 == slot) {
+                        o.0 = n;
+                    }
                 }
             }
         }

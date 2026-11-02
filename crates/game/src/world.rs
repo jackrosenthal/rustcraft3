@@ -1732,6 +1732,7 @@ impl World {
         // (Provisional: objects made in the tick are stamped with its start's clock,
         // read for forces made by a timer at 2 seconds, 1.9999981, main tick 400.)
         self.tags.clock = clocks.first().copied().unwrap_or(0);
+        self.tags.clock_wraps = wraps.first().copied().unwrap_or(0);
         self.tick_clocks = (first, clocks);
         self.tick_wraps = wraps;
     }

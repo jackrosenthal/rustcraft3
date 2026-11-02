@@ -97,10 +97,16 @@ pub struct Tags {
     /// tick: `World::plan_steps`).
     #[serde(default)]
     pub clock: u32,
+    /// The times the main clock had been set back by 300 seconds then (`clock`'s).
+    #[serde(default)]
+    pub clock_wraps: u32,
     /// The main clock at each live object's making, where past 0: a property's time
     /// stamp (`FUN_6f161090`: its clock group's time, +0x70).
     #[serde(default)]
     pub made_at: std::collections::BTreeMap<u32, u32>,
+    /// The times the main clock had been set back at each of those makings, where any.
+    #[serde(default)]
+    pub made_wraps: std::collections::BTreeMap<u32, u32>,
     /// The auto-target spells' checks (their timers started by CAbilityAutoTargetSpell
     /// vf267 and vf270), each due at the next step after its start and every 3 seconds
     /// on (`FUN_6f42f8b0`; traced: the quiet test map's 17 at 0.015 and 3.02 seconds).
@@ -222,7 +228,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), player_ai_timers: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), aura_dues: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, made_at: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), buff_modifiers: Default::default(), tick_end: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), next_turn_end: Vec::new(), later_now: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), dead_handles: Default::default(), game_freed_keys: Vec::new(), game_timers: [0; 2], game_timers_clock: 0, save_clock: None, event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), player_ai_timers: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), aura_dues: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, clock_wraps: 0, made_at: Default::default(), made_wraps: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), buff_modifiers: Default::default(), tick_end: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), next_turn_end: Vec::new(), later_now: Vec::new(), step_paths: Vec::new(), step_frees: None, issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), dead_handles: Default::default(), game_freed_keys: Vec::new(), game_timers: [0; 2], game_timers_clock: 0, save_clock: None, event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -262,6 +268,11 @@ impl Tags {
         } else {
             self.made_at.remove(&t);
         }
+        if self.clock_wraps != 0 {
+            self.made_wraps.insert(t, self.clock_wraps);
+        } else {
+            self.made_wraps.remove(&t);
+        }
         if let Some(l) = self.log.as_mut() {
             l.push(*code);
         }
@@ -277,6 +288,7 @@ impl Tags {
         self.free.push(slot);
         self.live.remove(&slot);
         self.made_at.remove(&slot);
+        self.made_wraps.remove(&slot);
         self.prop_counts.remove(&slot);
         self.tech_buffs.retain(|&(s, _)| s != slot);
         self.timer_objects.remove(&slot);
@@ -1000,10 +1012,13 @@ impl crate::world::World {
         // Raise Dead checks, their Animate Dead's and Mana Burn's looks).
         if (computer || (owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && !building)) && !night_sleeper {
             for id in &list {
-                if let Some(c @ (codes::ability::id::CANNIBALIZE | codes::ability::id::ANIMATE_DEAD_CREEP | codes::ability::id::DEMON_HUNTER_MANA_BURN)) = ability(id).as_ref() {
+                // (Burrow's look too, every second: its vf50, `FUN_6f606200`; read, the
+                // computer's Crypt Fiends at 300 seconds.)
+                if let Some(c @ (codes::ability::id::CANNIBALIZE | codes::ability::id::ANIMATE_DEAD_CREEP | codes::ability::id::DEMON_HUNTER_MANA_BURN | codes::ability::id::BURROW)) = ability(id).as_ref() {
                     let name = match c {
                         codes::ability::id::CANNIBALIZE => "606220",
                         codes::ability::id::ANIMATE_DEAD_CREEP => "6060e0",
+                        codes::ability::id::BURROW => "606200",
                         _ => "606c60",
                     };
                     let n = self.tags.start_timer(name);
@@ -1107,6 +1122,21 @@ impl crate::world::World {
 }
 
 impl crate::world::World {
+    /// When an object was made, on the game's time (its main clock and the 300 seconds
+    /// the clock had been set back by then), by its slot.
+    pub(crate) fn made_abs(&self, slot: u32) -> Option<u32> {
+        let mut c = *self.tags.made_at.get(&slot)?;
+        for _ in 0..self.tags.made_wraps.get(&slot).copied().unwrap_or(0) {
+            c = crate::efloat::add(c, crate::motion::WRAP);
+        }
+        Some(c)
+    }
+
+    /// The main clock now (its tick's last), as the original stamps properties with it.
+    pub(crate) fn main_clock_now(&self) -> f32 {
+        self.tick_clocks.1.last().copied().map_or(self.time, f32::from_bits)
+    }
+
     /// A unit's mana was set: its spells' listeners each make a new one the first time,
     /// replacing those of its making (measured: Booty Bay's two Granite Golems take two
     /// after SetUnitState sets their mana to 0).

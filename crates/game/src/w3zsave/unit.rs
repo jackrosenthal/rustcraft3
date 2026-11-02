@@ -920,7 +920,15 @@ fn ability_targets(code: &[u8; 4]) -> u32 {
         codes::ability::id::ANIMATE_DEAD_CREEP => 0x0200_0006,
         codes::ability::id::DEVOUR_DRAGON_CREEP => 0x0481_8002,
         codes::ability::id::RAISE_DEAD => 0xffd1_f00e,
-        codes::ability::id::SHADOW_MELD | codes::ability::id::BURROW_DETECTION_FLYERS | codes::ability::id::SPAWN_SPIDER => 0xfdd1_f00e,
+        codes::ability::id::SHADOW_MELD | codes::ability::id::BURROW_DETECTION_FLYERS | codes::ability::id::SPAWN_SPIDER | codes::ability::id::BURROW => 0xfdd1_f00e,
+        codes::ability::id::WEB => 0x0001_8004,
+        codes::ability::id::DEATH_KNIGHT_DEATH_COIL => 0x4431_e006,
+        codes::ability::id::EXHUME | codes::ability::id::MEAT_DROP => 0xfdd1_f00e,
+        codes::ability::id::MEAT_LOAD => 0x0280_0002,
+        codes::ability::id::CARGO_HOLD_AMTC => 0x0200_0000,
+        codes::ability::id::PLAGUE_TOSS => 0x0401_81ca,
+        codes::ability::id::ALLIED_BUILDING => 0xfdd1_f00e,
+        codes::ability::id::SPIDER_ATTACK => 0x0001_013a,
         codes::ability::id::CARGO_HOLD_DEVOUR => 0x0031_8002,
         codes::ability::id::THUNDER_BOLT_CREEP => 0x0401_8006,
         codes::ability::id::THUNDER_CLAP_CREEP => 0x0000_8002,
@@ -1060,6 +1068,11 @@ impl World {
             codes::ability::id::ANIMATE_DEAD_CREEP | codes::ability::id::DEVOUR_DRAGON_CREEP | codes::ability::id::DREADLORD_SLEEP | codes::ability::id::REJUVINATION | codes::ability::id::BLADE_MASTER_CRITICAL_STRIKE | codes::ability::id::PURCHASE_ITEM => 0,
             codes::ability::id::SHADOW_MELD => 0x110,
             codes::ability::id::CARGO_HOLD_DEVOUR => 0x90,
+            // (Web 0x180010, Burrow 0x200010: read, the computer's Crypt Fiends at 300
+            // seconds; provisional, the bits' meaning, their research not yet done.)
+            codes::ability::id::WEB => 0x18_0010,
+            codes::ability::id::MEAT_LOAD => 0x808_0010,
+            codes::ability::id::BURROW => 0x20_0010,
             codes::ability::id::REPAIR_ORC => 0x940_0010,
             codes::ability::id::RESTORATION => 0x908_0010,
             codes::ability::id::BUILD_HUMAN | codes::ability::id::BUILD_UNDEAD | codes::ability::id::BUILD_ORC | codes::ability::id::BUILD_NIGHT_ELF => 0x2000_0010,
@@ -1076,7 +1089,7 @@ impl World {
             codes::ability::id::RALLY | codes::ability::id::MILITIA_CONVERSION | codes::ability::id::MILITIA | codes::ability::id::HERO => 0x90,
             // (An item's Town Portal, read: 0x2022 with its holder's AI's.)
             codes::ability::id::ITEM_TOWN_PORTAL => 0x2020,
-            codes::ability::id::SELL_UNITS | codes::ability::id::SELL_ITEMS => 0x1000_0010,
+            codes::ability::id::SELL_UNITS | codes::ability::id::SELL_ITEMS | codes::ability::id::MAKE_ITEMS => 0x1000_0010,
             // (Regeneration on blight, as it stands on blight 0x80.)
             codes::ability::id::REGENERATE_ON_BLIGHT => 0x10 | if u.extra.blight_rcm.is_some() { 0x80 } else { 0 },
             // (An attack: two weapons 0x100000, not a worker's 0x20004000, one never
@@ -1230,7 +1243,7 @@ impl World {
             // backswing (a repair's none and the largest real), references; its order
             // (852290), words, its listener on the unit's mana, two timers; an
             // auto-target spell's look every 3 seconds (event 0xd01c2), a repair's more.
-            codes::ability::id::THUNDER_BOLT_CREEP | codes::ability::id::THUNDER_CLAP_CREEP | codes::ability::id::CHIEFTAIN_SHOCK_WAVE | codes::ability::id::ENSNARE | codes::ability::id::CANNIBALIZE | codes::ability::id::SACRIFICE_ACOLYTE | codes::ability::id::UNSUMMON | codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::ABOLISH_MAGIC | codes::ability::id::INNER_FIRE | codes::ability::id::RESTORATION | codes::ability::id::REPAIR_ORC | codes::ability::id::CURSE | codes::ability::id::BLOODLUST | codes::ability::id::FAERIE_FIRE | codes::ability::id::RAISE_DEAD | codes::ability::id::ANIMATE_DEAD_CREEP | codes::ability::id::DEMON_HUNTER_MANA_BURN | codes::ability::id::DEVOUR_DRAGON_CREEP | codes::ability::id::DREADLORD_SLEEP | codes::ability::id::REJUVINATION => {
+            codes::ability::id::THUNDER_BOLT_CREEP | codes::ability::id::THUNDER_CLAP_CREEP | codes::ability::id::CHIEFTAIN_SHOCK_WAVE | codes::ability::id::ENSNARE | codes::ability::id::CANNIBALIZE | codes::ability::id::SACRIFICE_ACOLYTE | codes::ability::id::UNSUMMON | codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::ABOLISH_MAGIC | codes::ability::id::INNER_FIRE | codes::ability::id::RESTORATION | codes::ability::id::REPAIR_ORC | codes::ability::id::CURSE | codes::ability::id::BLOODLUST | codes::ability::id::FAERIE_FIRE | codes::ability::id::WEB | codes::ability::id::RAISE_DEAD | codes::ability::id::ANIMATE_DEAD_CREEP | codes::ability::id::DEMON_HUNTER_MANA_BURN | codes::ability::id::DEVOUR_DRAGON_CREEP | codes::ability::id::DREADLORD_SLEEP | codes::ability::id::REJUVINATION | codes::ability::id::DEATH_KNIGHT_DEATH_COIL | codes::ability::id::EXHUME | codes::ability::id::MEAT_LOAD | codes::ability::id::MEAT_DROP => {
                 // (Restore as Repair.)
                 let repair = matches!(code, codes::ability::id::REPAIR_ORC | codes::ability::id::RESTORATION);
                 // (Devour's backswing its own, 0.02: read, Forestwalk's drakes'.)
@@ -1245,6 +1258,10 @@ impl World {
                 if repair {
                     own.extend([w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), Field::Real(0.0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0)]);
                 }
+                // (Meat Drop's the spell's first nine alone.)
+                if code == codes::ability::id::MEAT_DROP {
+                    own.truncate(own.len() - 12);
+                }
                 // Devour's word, Mana Burn's none and 0.0, Raise Dead's two target masks
                 // (read, Forestwalk's creeps').
                 match code {
@@ -1253,11 +1270,28 @@ impl World {
                     codes::ability::id::RAISE_DEAD => own.extend([w(0xfed1_f00e), w(0xfdd1_f006)]),
                     _ => {}
                 }
-                let listener = u.extra.spell_owners.iter().find(|x| &x.1 == code && self.tags.live.get(&x.0).is_some_and(|e| &e.0 == codes::class::THRESHOLD_LISTENER)).map_or(NONE, |x| rf(self.tagged(x.0)));
+                // (One of its own listeners, whose records are written with the unit's.)
+                let own_listener = |s: u32| u.extra.mana_listeners.iter().any(|l| l.1 == s) || u.extra.spell_timers.contains(&s) || u.extra.object_slots[2].iter().any(|x| x.0 == s);
+                let listener = u.extra.spell_owners.iter().find(|x| &x.1 == code && own_listener(x.0) && self.tags.live.get(&x.0).is_some_and(|e| &e.0 == codes::class::THRESHOLD_LISTENER)).map_or(NONE, |x| rf(self.tagged(x.0)));
                 let mut tail = vec![w(852_290), w(0), w(0), w(0), w(0), Field::Ref(listener), timer(), timer()];
-                if matches!(code, codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::ABOLISH_MAGIC | codes::ability::id::INNER_FIRE | codes::ability::id::RESTORATION | codes::ability::id::REPAIR_ORC | codes::ability::id::CURSE | codes::ability::id::BLOODLUST | codes::ability::id::FAERIE_FIRE | codes::ability::id::RAISE_DEAD) {
+                if matches!(code, codes::ability::id::HEAL_CREEP_NORMAL | codes::ability::id::ABOLISH_MAGIC | codes::ability::id::INNER_FIRE | codes::ability::id::RESTORATION | codes::ability::id::REPAIR_ORC | codes::ability::id::CURSE | codes::ability::id::BLOODLUST | codes::ability::id::FAERIE_FIRE | codes::ability::id::WEB | codes::ability::id::RAISE_DEAD | codes::ability::id::MEAT_LOAD) {
                     tail.push(match self.tags.autotarget_timers.get(&(h, *code)) {
                         Some(&(count, due, period)) if due > self.time - 0.0205 => Field::Timer(rf(t), 0, Timing(Some((due, period, count, 0xd_01c2, 0)))),
+                        _ => timer(),
+                    });
+                }
+                // Exhume's corpse every Dur seconds from its making (event 0xd01c3,
+                // repeating; read, a Meat Wagon's at 600 seconds; provisional, its count).
+                if code == codes::ability::id::EXHUME {
+                    let period = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a)).find(|ab| ab.str("code").trim().as_bytes() == code).map_or(0.0, |ab| ab.level_real("Dur", 1));
+                    tail.push(match self.made_abs(t.0) {
+                        Some(made) if period > 0.0 => {
+                            let mut due = crate::efloat::add(made, period.to_bits());
+                            while f32::from_bits(due) <= self.time {
+                                due = crate::efloat::add(due, period.to_bits());
+                            }
+                            Field::Timer(rf(t), 2, Timing(Some((f32::from_bits(due), period, 0, 0xd_01c3, 1))))
+                        }
                         _ => timer(),
                     });
                 }
@@ -1606,11 +1640,40 @@ impl World {
                 let pil = objs.iter().position(|&x| x == t).and_then(|i| objs.get(i + 1)).map_or(NONE, |&r| rf(r));
                 vec![Field::Ref(pil)]
             }
-            codes::ability::id::SPAWN_SPIDER => Vec::new(),
+            codes::ability::id::SPAWN_SPIDER | codes::ability::id::SPIDER_ATTACK => Vec::new(),
+            // Plague Toss: the buff base's tail alone.
+            codes::ability::id::PLAGUE_TOSS => vec![w(852_290), w(0), w(0), w(0), w(0)],
+            // Allied Building (CAbilityAllied): twelve places empty, none, twelve pairs
+            // and words empty, its in-range listener (the `` `pil `` after it), and a
+            // timer (read, the undead computer's Tomb of Relics at 450 seconds).
+            codes::ability::id::ALLIED_BUILDING => {
+                let objs = &u.extra.object_slots[2];
+                let pil = objs.iter().position(|&x| x == t).and_then(|i| objs.get(i + 1)).filter(|r| self.tags.live.get(&r.0).is_some_and(|e| &e.0 == codes::class::IN_RANGE_LISTENER)).map_or(NONE, |&r| rf(r));
+                vec![Field::List((0..12).map(|_| vec![Field::Ref(NONE)]).collect()), Field::Ref(NONE), Field::List((0..12).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect()), Field::Ref(pil), timer()]
+            }
+            // Burrow, a morph (CAbilityBurrow): the spell's first fields, two reals, its
+            // two forms, a real, none, and 0; its
+            // order and words, its listener on mana, five timers, the morph's state at
+            // rest (words, reals, an empty list of pairs, two words in a list, a short),
+            // and its look every second (event 0xd01bf; read, the computer's Crypt
+            // Fiends at 300 seconds).
+            codes::ability::id::BURROW => {
+                // (Its data's DataA and UnitID, the two forms: read, 'ucry' and 'ucrm'.)
+                let ab = u.abilities.iter().filter_map(|(a, _)| self.objects.abilities.get(*a)).find(|ab| ab.str("code").trim().as_bytes() == code);
+                let form = |f: &str| ab.map_or(u.type_id, |ab| crate::objects::id_from_str(ab.level_str(f, 1).trim()));
+                let (now, then) = (form("DataA"), form("UnitID"));
+                own.extend([Field::Real(0.0), Field::Real(o.real("castpt")), Field::Real(o.real("castbsw")), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), w(0), Field::Real(0.0)]);
+                own.extend([Field::Real(0.0), Field::Real(0.0), w(u32::from_be_bytes(now)), w(u32::from_be_bytes(then)), Field::Real(0.0), w(u32::MAX), w(0)]);
+                let listener = u.extra.spell_owners.iter().find(|x| &x.1 == code && self.tags.live.get(&x.0).is_some_and(|e| &e.0 == codes::class::THRESHOLD_LISTENER)).map_or(NONE, |x| rf(self.tagged(x.0)));
+                let mut tail = vec![w(852_290), w(0), w(0), w(0), w(0), Field::Ref(listener), timer(), timer(), timer(), timer(), timer()];
+                tail.extend([w(0), w(0), w(0), w(0), w(0), Field::Real(0.0), w(0), Field::Real(0.0), Field::Real(0.0), Field::Real(0.0), w(0), Field::Real(0.0), Field::List(Vec::new()), Field::Real(0.0), Field::Real(0.0), Field::Real(0.0), Field::List(vec![vec![w(0)], vec![w(0)]]), Field::Real(0.0), Field::Short(0)]);
+                tail.push(periodic("606200", 1.0, 0xd_01bf));
+                tail
+            }
             // The cargo hold (CAbilityDevourCargo): 0.0, three 0, ten places empty in
             // each of its lists, two timers, two lists of ten unbounded pairs (read: an
             // empty hold).
-            codes::ability::id::CARGO_HOLD_DEVOUR => {
+            codes::ability::id::CARGO_HOLD_DEVOUR | codes::ability::id::CARGO_HOLD_AMTC => {
                 let empty = || Field::List((0..10).map(|_| vec![w(u32::MAX), w(u32::MAX), Field::Real(0.0)]).collect());
                 let zeros = || Field::List((0..10).map(|_| vec![w(0)]).collect());
                 let far = || Field::List((0..10).map(|_| vec![Field::Real(f32::MAX), Field::Real(f32::MAX)]).collect());
@@ -1618,8 +1681,13 @@ impl World {
             }
             // Sell Items: as Sell Units, its items (each yet to arrive its coming's timer,
             // in its own order: read, Forestwalk's shop's eight of eleven).
-            codes::ability::id::SELL_ITEMS => {
+            // (Make Items as Sell Items, a word more: 0xc0, read on the undead computer's
+            // Tomb of Relics at 450 seconds; provisional.)
+            codes::ability::id::SELL_ITEMS | codes::ability::id::MAKE_ITEMS => {
                 own.extend([Field::Real(0.0), Field::Real(0.0)]);
+                if code == codes::ability::id::MAKE_ITEMS {
+                    own.push(w(0xc0));
+                }
                 let (items, _) = self.shop_goods(h);
                 let starts: Vec<(u32, f32)> = self.tags.timer_objects.get(&t.0).map(|v| v.iter().filter(|x| x.1 == "41c010").map(|x| (x.0, x.2)).collect()).unwrap_or_default();
                 let idle = || [timer(), Field::Short(0), Field::Short(0), Field::Real(0.0)];
@@ -2188,7 +2256,7 @@ impl World {
                 codes::ability::id::ARCH_MAGE_BLIZZARD | codes::ability::id::PIT_LORD_RAIN_OF_FIRE => (0.5, ability(&c).map_or(0.0, |o| o.level_real("Rng", 1))),
                 _ => (0.5, ability(&c).map_or(0.0, |o| o.level_real("Area", 1))),
             };
-            let made = self.tags.made_at.get(&s).map_or(0.0, |&c| f32::from_bits(c));
+            let made = self.made_abs(s).map_or(0.0, f32::from_bits);
             let mut due = crate::efloat::add(made.to_bits(), (period as f32).to_bits());
             // (One due since the tick began still pending: the property module runs after
             // the agent timers; read, the auras' due at 5.0 pending where the script's

@@ -260,7 +260,7 @@ impl Game {
             header: w.saved_manager_header(births),
             free: [Vec::new(), u32::MAX.to_le_bytes().to_vec()],
             classes: crate::w3zsave::saved_classes(),
-            clocks: [(time, 0, 300.0, 4096, 0), (time, 0, 300.0, 0, 0)],
+            clocks: w.saved_clocks(time),
             block: vec![0; 256],
             data: [Vec::new(), queues, Vec::new(), Vec::new(), Vec::new(), Vec::new()],
             bounds: [b.min_x, b.min_y, b.max_x, b.max_y, 522.6667],

@@ -699,6 +699,14 @@ fn main() {
         }
         return;
     }
+    // "dumpall": every object, a line each: tag, kind, family, birth, and both records
+    // as read (for checking references across the save).
+    if a[2] == "dumpall" {
+        for o in &all {
+            println!("{} {} {} {} | {:?} | {:?}", o.entry.tag, code(o.entry.kind), code(o.entry.family), o.entry.birth, o.first(), o.second());
+        }
+        return;
+    }
     // "find <hex word>": the objects whose records hold the word, and where.
     if a[2] == "find" {
         let w = u32::from_str_radix(&a[3], 16).unwrap().to_le_bytes();

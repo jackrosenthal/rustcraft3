@@ -796,7 +796,7 @@ impl World {
         // Mana regenerating is kept as its value at its stamp (read: 0 for the creeps'
         // mana at the start, their rates beside it; provisional: the port's mana, a
         // tick's regeneration ahead, taken back by its rate since then).
-        let mana_stamp = self.tags.made_at.get(&props[2].0).map_or(0.0, |&c| f32::from_bits(c));
+        let mana_stamp = self.made_abs(props[2].0).map_or(0.0, f32::from_bits);
         let mana = if mp_rate > 0.0 && u.mana < u.max_mana {
             let base = u.mana - mp_rate * (self.time - mana_stamp);
             if base.abs() < mp_rate * 0.05 { 0.0 } else { base.max(0.0) }
@@ -863,7 +863,7 @@ impl World {
         let regen_life = matches!(o.str("regenType").to_ascii_lowercase().as_str(), "always" | "night" | "day");
         // (A regeneration's node due 150 seconds after it was made, every 150.)
         let periodic = |r: (u32, u32)| {
-            let made = self.tags.made_at.get(&r.0).copied().unwrap_or(0);
+            let made = self.made_abs(r.0).unwrap_or(0);
             let due = f32::from_bits(crate::efloat::add(made, 150f32.to_bits()));
             Timing(Some((due, 150.0, self.tags.prop_counts.get(&r.0).copied().unwrap_or(0), 0, 1)))
         };
@@ -885,7 +885,7 @@ impl World {
         if let Some(p) = self.build_parts(h) {
             let bt = u.build_time.max(0.01);
             let span = bt + 1.0;
-            let made = self.tags.made_at.get(&p[4].0).copied().unwrap_or(0);
+            let made = self.made_abs(p[4].0).unwrap_or(0);
             let due = f32::from_bits(crate::efloat::add(made, span.to_bits()));
             let count = self.tags.prop_counts.get(&p[4].0).copied().unwrap_or(0);
             // (In the engine's arithmetic: read, a Crypt's 1300 over 60, 19.499998.)
@@ -914,7 +914,7 @@ impl World {
         // 200; a deer's 0).
         if let Some(s) = u.extra.day_rcm.filter(|&s| live(s)) {
             let r = self.tagged(s);
-            let made = self.tags.made_at.get(&s).copied().unwrap_or(0);
+            let made = self.made_abs(s).unwrap_or(0);
             let due = f32::from_bits(crate::efloat::add(made, 3f32.to_bits()));
             let count = self.tags.prop_counts.get(&s).copied().unwrap_or(0);
             let (from, to) = self.day_change_sight(h);
@@ -1438,7 +1438,7 @@ impl World {
         let Some(u) = self.unit(h) else { return out };
         let Some([abnp, rel, rise, rtl, _]) = self.build_parts(h) else { return out };
         let bt = u.build_time.max(0.01);
-        let made = |r: (u32, u32)| self.tags.made_at.get(&r.0).copied().unwrap_or(0);
+        let made = |r: (u32, u32)| self.made_abs(r.0).unwrap_or(0);
         let count = |r: (u32, u32)| self.tags.prop_counts.get(&r.0).copied().unwrap_or(0);
         let mut base = self.stamped(listed_property_base(&[rel], 0, abnp));
         base.links = [Link(rf(rise), 1), Link(rf(rtl), 1)];
@@ -1454,6 +1454,10 @@ impl World {
         while f32::from_bits(due) <= self.time {
             at = due;
             period = 4f32.min(bt - (f32::from_bits(at) - f32::from_bits(start)));
+            // (None left: its last check due, not stepped again.)
+            if period <= 0.0 {
+                break;
+            }
             due = crate::efloat::add(at, period.to_bits());
         }
         out.push((rtl.0, First::Threshold { object: ObjectBase { real: 0.0, words: [0xd_01c4, 0x2009_0400], links: owned(rtl), timings: [Timing(Some((f32::from_bits(due), period, count(rtl), 0, 1))), Timing(None)] }, real: 0.0, word: 0 }, None));
@@ -1573,7 +1577,7 @@ impl World {
         }
         for &(thr, s) in &woken {
             let me_s = self.tagged(s);
-            let made = self.tags.made_at.get(&s).map_or(0.0, |&c| f32::from_bits(c));
+            let made = self.made_abs(s).map_or(0.0, f32::from_bits);
             // Its checks from its making: the mana from 0 at its rate (the creeps' at the
             // start).
             // (Due at most 4 seconds on, or as the mana reaches it, that time reckoned
@@ -1726,8 +1730,8 @@ impl World {
             if let (Some((c, _, _)), Some(m)) = (self.saved_order(h).and_then(|o| o.walk), u.extra.mover.as_ref()) {
                 more[2] = 0x4000;
                 let f = f32::from_bits;
-                // (Stamped as it last moved.)
-                base.real = self.time;
+                // (Stamped as it last moved: on the main clock.)
+                base.real = self.main_clock_now();
                 values[0] = f(m.x);
                 values[1] = f(m.y);
                 values[2] = f(m.vx);
@@ -2218,7 +2222,31 @@ impl World {
                 seconds.insert(slot, sec);
             }
         }
-        let unit_reals: Vec<(u32, First, Option<Second>)> = self.unit_order.iter().flat_map(|&h| self.unit_real_records(h).into_iter().chain(self.unit_modifier_records(h)).chain(self.hero_flag_records(h)).chain(self.construction_records(h)).chain(self.unit_listener_records(h)).chain(self.unit_position_records(h)).chain(self.unit_agent_record(h))).collect();
+        let trace = std::env::var("W3Z_TRACE").is_ok();
+        let tr = |what: &str, h: u32| {
+            if trace {
+                eprintln!("w3z: {what} {h}");
+            }
+        };
+        tr("destructables done", 0);
+        let unit_reals: Vec<(u32, First, Option<Second>)> = self.unit_order.iter().flat_map(|&h| {
+            tr("unit reals", h);
+            let mut v = self.unit_real_records(h);
+            tr("modifiers", h);
+            v.extend(self.unit_modifier_records(h));
+            tr("hero flags", h);
+            v.extend(self.hero_flag_records(h));
+            tr("construction", h);
+            v.extend(self.construction_records(h));
+            tr("listeners", h);
+            v.extend(self.unit_listener_records(h));
+            tr("position", h);
+            v.extend(self.unit_position_records(h));
+            tr("agent", h);
+            v.extend(self.unit_agent_record(h));
+            v
+        }).collect();
+        tr("unit reals done", 0);
         for (slot, f, sec) in self.trigger_records().into_iter().chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals).chain(self.captain_records()).chain(self.item_records()).chain(self.saved_order_records()).chain(self.mine_fog_records()) {
             records.insert(slot, f);
             if let Some(sec) = sec {
@@ -2229,7 +2257,9 @@ impl World {
         // them).
         let rallies = rally_points(template);
         let art = client_art(template);
+        tr("first records done", 0);
         for &h in &self.unit_order {
+            tr("unit own", h);
             if let Some((slot, sec)) = self.unit_own_record(h, &rallies) {
                 seconds.insert(slot, sec);
             }
@@ -2242,6 +2272,7 @@ impl World {
             }
             let chain = self.ability_chain(h, &rallies);
             let olders = self.chain_older(h, &chain);
+            tr("unit abilities", h);
             for (k, &(t, code)) in chain.iter().enumerate() {
                 let older = olders[k];
                 if let Some(sec) = self.ability_own_record(h, t, &code, older, &rallies, &art) {
@@ -2249,12 +2280,15 @@ impl World {
                 }
             }
         }
+        tr("units' own done", 0);
         for (slot, sec) in self.unit_ref_records().into_iter().chain(self.unit_ai_records()) {
             seconds.insert(slot, sec);
         }
         // The units' regions (their search marks the template's, the running game's).
         let marks: std::collections::HashMap<u32, u32> = objects[0].iter().filter_map(|o| match o.first() { Ok(First::Region { words, .. }) => Some((o.entry.tag, words[0])), _ => None }).collect();
+        tr("refs and ai done", 0);
         for &h in &self.unit_order {
+            tr("unit path", h);
             if let Some((slot, f)) = self.unit_path_record(h) {
                 records.insert(slot, f);
             }
@@ -2267,6 +2301,7 @@ impl World {
             }
         }
         // The agents with no properties, each its class's definition alone.
+        tr("unit paths done", 0);
         for (slot, f) in self.plain_agent_records() {
             records.entry(slot).or_insert(f);
         }
@@ -2280,19 +2315,24 @@ impl World {
             Some(First::System { short, .. }) => short,
             _ => 0,
         };
+        tr("plain agents done", 0);
         for (slot, f) in self.pathing_system_records(accel_word, system_short) {
             records.entry(slot).or_insert(f);
         }
         for (slot, f) in self.game_object_records().into_iter().chain(self.time_of_day_records()) {
             records.entry(slot).or_insert(f);
         }
+        tr("pathing done", 0);
         for (slot, sec) in self.plain_agent_seconds() {
             seconds.entry(slot).or_insert(sec);
         }
+        tr("plain seconds done", 0);
         for (slot, sec) in self.player_agent_seconds(&client_listeners(template), &rallies).into_iter().chain(self.player_ai_seconds()) {
             seconds.entry(slot).or_insert(sec);
         }
+        tr("player seconds done", 0);
         for &h in &self.unit_order {
+            tr("ability reals", h);
             for (slot, f) in self.ability_real_records(h, &rallies).into_iter().chain(self.structure_region_records(h)) {
                 records.entry(slot).or_insert(f);
             }
@@ -2305,6 +2345,24 @@ impl World {
             }
             for (slot, sec) in secs {
                 seconds.entry(slot).or_insert(sec);
+            }
+        }
+        // The main clock set back every 300 seconds, the dues as the original's, its
+        // agents' timers' and its properties' set back as many times (read: Forestwalk's
+        // computer game at 450 seconds, both from 150; at 600, saved by a timer due as
+        // the clock was set back the second time, the agents' from 0.06 and the
+        // properties' from 300, theirs set back as the next step begins).  Only those
+        // the port reckons on the game's time are set back (due now or after; a gold
+        // run's are on the agent queue's clock already).
+        let wraps = self.tick_wraps.last().copied().unwrap_or(0);
+        if wraps > 0 {
+            let from = self.time - 1.0;
+            for (slot, f) in records.iter_mut() {
+                let _ = slot;
+                set_back_first(f, wraps, from);
+            }
+            for sec in seconds.values_mut() {
+                set_back_second(sec, wraps, from);
             }
         }
         // W3Z_COVERAGE: by kind, the objects whose first and second records are the
@@ -2411,7 +2469,7 @@ impl World {
             let k = 12 + 3 * j as u32;
             let (row, col) = (cy.floor().max(0.0) as u32, cx.floor().max(0.0) as u32);
             let mut base = listed_property_base(&props, 11 + j, cam);
-            base.real = self.time;
+            base.real = self.main_clock_now();
             out.push((entry(k, codes::class::POSITION, codes::class::PROPERTY_FAMILY), First::Pos { base, values: [cx, cy, 0.0, 0.0, f32::MAX, 0.0, 0.0], refs: [rf(tag(k + 1)), rf(tag(k + 2))] }, None));
             out.push((entry(k + 1, codes::class::PATHING_REGION, codes::class::PATHING_MAP), First::Region { refs: [rf(maps[0]), rf(tag(k))], word: 0, bounds: [row >> 3, col >> 3, (row >> 3) + 1, (col >> 3) + 1], words: [0, 1, 0] }, None));
             out.push((entry(k + 2, codes::class::PATHING_REGION, codes::class::PATHING_MAP), First::Region { refs: [rf(maps[1]), rf(tag(k))], word: 0x0100_0000, bounds: [row, col, row + 1, col + 1], words: [0, 1, 0] }, None));
@@ -2483,7 +2541,7 @@ impl World {
         let tod = self.time_of_day;
         let [rcm, _] = self.time_of_day_listeners;
         if let Some(r) = rcm.filter(|s| self.tags.live.contains_key(s)).map(|s| self.tagged(s)) {
-            let made = self.tags.made_at.get(&r.0).copied().unwrap_or(0);
+            let made = self.made_abs(r.0).unwrap_or(0);
             let due = f32::from_bits(crate::efloat::add(made, 150f32.to_bits()));
             let count = self.tags.prop_counts.get(&r.0).copied().unwrap_or(0);
             let object = ObjectBase { real: 0.0, words: [u32::MAX, 0x6005_0044], links: [(Link(NONE, 0), Link(NONE, 0), rf(r), rf(game)), (Link(NONE, 0), Link(NONE, 0), rf(r), rf(real))], timings: [Timing(Some((due, 150.0, count, 0, 1))), Timing(None)] };
@@ -2495,7 +2553,7 @@ impl World {
         for &(me, event, thr, rising, _) in &ls {
             let node = if rising && tod < thr && rate > 0.0 {
                 // (Checked every 4 seconds from its making, or as the time reaches it.)
-                let made = self.tags.made_at.get(&me.0).map_or(0.0, |&c| f32::from_bits(c));
+                let made = self.made_abs(me.0).map_or(0.0, f32::from_bits);
                 let at_time = |t: f32| tod - rate * (now - t);
                 let mut at = made;
                 let mut due = made + 4f32.min((thr - at_time(made)) / rate);
@@ -3539,4 +3597,74 @@ fn second_diffs(ours: &Second, theirs: &Second) -> Vec<(String, String)> {
         _ => out.push(("whole".into(), format!("ours {ours:?} vs {theirs:?}"))),
     }
     out
+}
+
+impl World {
+    /// The object manager's clocks: the main clock's and the agent queue's, each with
+    /// the times it has been set back, the span, and two words (read: Forestwalk's
+    /// computer game saved at 450 seconds, main 150.0 and agent 150.66518, each set back
+    /// once; at 300, the main 300.0 not yet).  The main clock as the port keeps it (its
+    /// properties' dues reckoned from their makings' clocks); the agent queue's the
+    /// game's time set back as often (its timers' dues reckoned on that time).
+    /// Provisional: their last words, the queues' counts, 0.
+    pub(crate) fn saved_clocks(&self, time: f32) -> [(f32, u32, f32, u32, u32); 2] {
+        let wraps = self.tick_wraps.last().copied().unwrap_or(0);
+        if wraps == 0 {
+            return [(time, 0, 300.0, 4096, 0), (time, 0, 300.0, 0, 0)];
+        }
+        let mut agent = time.to_bits();
+        for _ in 0..wraps {
+            agent = crate::efloat::sub(agent, crate::motion::WRAP);
+        }
+        [(self.main_clock_now(), wraps, 300.0, 4096, 0), (f32::from_bits(agent), wraps, 300.0, 0, 0)]
+    }
+}
+
+/// A due on the game's time set back `n` times by 300 seconds, as the engine's
+/// subtraction does, where it is due by `from` or after.
+fn set_back_timing(t: &mut Timing, n: u32, from: f32) {
+    if let Some((due, ..)) = &mut t.0 {
+        if *due >= from {
+            for _ in 0..n {
+                *due = f32::from_bits(crate::efloat::sub(due.to_bits(), crate::motion::WRAP));
+            }
+        }
+    }
+}
+
+fn set_back_fields(fields: &mut [Field], n: u32, from: f32) {
+    for f in fields {
+        match f {
+            Field::Timer(_, _, t) => set_back_timing(t, n, from),
+            Field::List(l) => {
+                for g in l {
+                    set_back_fields(g, n, from);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// A first record's timings.
+fn set_back_first(f: &mut First, wraps: u32, from: f32) {
+    let object = match f {
+        First::Flag { base, .. } | First::Real { base, .. } | First::Pos { base, .. } | First::Cluster { base, .. } => &mut base.object,
+        First::Threshold { object, .. } | First::FlagListener { object, .. } | First::Interference { object, .. } | First::Continuous { object, .. } | First::Agent { object, .. } | First::AgentDef { object, .. } => object,
+        _ => return,
+    };
+    for t in &mut object.timings {
+        set_back_timing(t, wraps, from);
+    }
+}
+
+fn set_back_second(sec: &mut Second, wraps: u32, from: f32) {
+    match sec {
+        Second::Agent { own, tail, .. } => {
+            set_back_fields(own, wraps, from);
+            set_back_fields(tail, wraps, from);
+        }
+        Second::Unit { fields, .. } | Second::Whole(fields) => set_back_fields(fields, wraps, from),
+        _ => {}
+    }
 }

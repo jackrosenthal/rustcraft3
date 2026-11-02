@@ -1684,7 +1684,7 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
         CreateCaptains => |w, _, _| {
             // Each captain's objects (traced): itself, its position, two regions, its
             // path, four listeners.
-            let made_at = w.tags.clock;
+            let made_at = (0..w.tags.clock_wraps).fold(w.tags.clock, |c, _| crate::efloat::add(c, crate::motion::WRAP));
             let objects: Vec<Vec<u32>> = (0..2)
                 .map(|_| [codes::class::AI_CAPTAIN, codes::class::UNIT_POSITION, codes::class::PATHING_REGION, codes::class::PATHING_REGION, codes::class::PATH, codes::class::IN_RANGE_LISTENER, codes::class::IN_RANGE_LISTENER, codes::class::IN_RANGE_LISTENER, codes::class::IN_RANGE_LISTENER].iter().map(|c| w.tags.take(c)).collect())
                 .collect();

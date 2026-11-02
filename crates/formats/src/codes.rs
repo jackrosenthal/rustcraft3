@@ -794,6 +794,8 @@ pub mod ability {
         /// `Aslo`: Slow.
         SLOW = "Aslo";
         /// `Aspb`: Spell Book.
+        /// `Aspa`: Spider Attack (the Crypt Fiend's).
+        SPIDER_ATTACK = "Aspa";
         SPELL_BOOK = "Aspb";
         /// `Aspd`: Spawn Spider.
         SPAWN_SPIDER = "Aspd";

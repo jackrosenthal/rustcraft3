@@ -475,6 +475,11 @@ impl World {
                     // in-range object after the listener made before it (read: at
                     // nightfall, after every unit's object of the change).
                     let (listeners, pil) = self.unit_mut(h).map(|u| (std::mem::take(&mut u.extra.mana_listeners), u.extra.ensnare_pil.take())).unwrap_or_default();
+                    // (Its spells name them no longer: their slots freed may be taken by
+                    // others' objects.)
+                    if let Some(u) = self.unit_mut(h) {
+                        u.extra.spell_owners.retain(|o| !listeners.iter().any(|l| l.1 == o.0));
+                    }
                     for (_, s) in listeners.iter().rev() {
                         slept.push(*s);
                         if let Some((_, p)) = pil.filter(|&(r, _)| r == *s) {

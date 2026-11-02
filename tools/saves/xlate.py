@@ -48,6 +48,13 @@ def body_of(name):
 def strip_gates(b):
     # The CSaveGame.h version holders' allocation: no writes in them.
     b = re.sub(r'if \(DAT_[0-9a-f]+ == \([^)]*\)0x0\) \{\s*DAT_[0-9a-f]+ = \([^)]*\)\s*Ordinal_401\(.*?\n\s*\}\s*\n\s*\}', '', b, flags=re.S)
+    # A gate's timer, saved through the holder's pointer to it (`DAT[2] = this + off`,
+    # then a call through that pointer): the timer at that offset.
+    def gated(m):
+        obj, off, rest = m.group(1), m.group(2), m.group(3)
+        rest = re.sub(r'\(\*\*\(code \*\*\)\(\*\w+ \+ 0x20\)\)', f'(**(code **)(*(int *)((int){obj} + {off}) + 0x20))', rest, count=1)
+        return m.group(0)[:m.start(3) - m.start(0)] + rest
+    b = re.sub(r'DAT_[0-9a-f]+\[2\] = \(int\)(\w+) \+ (0x[0-9a-f]+);(.{0,400}?\(\*\*\(code \*\*\)\(\*\w+ \+ 0x20\)\))', gated, b, flags=re.S)
     return b
 
 REF_PAT = re.compile(

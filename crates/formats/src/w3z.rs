@@ -1111,6 +1111,7 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::ability::id::ATTACK_BONUS, "wwww wwwwwww t w w f", "[r] w t"), // CAbilityAttackBonus
     (codes::ability::id::BUILD_TINY_CASTLE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff w", "wwwww r t t"), // CAbilityItemBuild
     (codes::ability::id::ITEM_CURE_AOE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"), // CAbilityItemCureAoe
+    (codes::ability::id::ORB_OF_CORRUPTION, "wwww wwwwwww t w w f w", "[r] w t t"), // CAbilityCorruptionDamageBonus
     (codes::ability::id::ITEM_CLOAK_OF_FLAMES, "wwww wwwwwww t w w w w", "wwwww"), // CAbilityItemCloakOfFlames
     (codes::ability::id::ITEM_COMMAND, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"), // CAbilityItemCommand
     (codes::ability::id::ITEM_CHANGE_TOD, "wwww wwwwwww t w ffff wwww f", "wwwww r t t"), // CAbilityItemChangeTOD
@@ -1120,6 +1121,7 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::ability::id::ITEM_DAMAGE_AOE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"), // CAbilityItemDamageAoe
     (codes::ability::id::EXPERIENCE_MOD, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff w", "wwwww r t t"), // CAbilityExperienceMod
     (codes::ability::id::FLARE_GUN, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"), // CAbilityItemFlare
+    (codes::ability::id::ORB_OF_FIRE, "wwww wwwwwww t w w f w", "[r] w t t"), // CAbilityFireDamageBonus
     (codes::ability::id::ITEM_FLYING_CARPET, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"), // CAbilityItemFlyingCarpet
     (codes::ability::id::FIGURINE_RED_DRAKE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"), // CAbilityFigurineRedDrake
     (codes::ability::id::FLAG_UNDEAD, "wwww wwwwwww t w w", "[r] w"), // CAbilityFlagUndead
@@ -1139,6 +1141,7 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::ability::id::ITEM_HEALING, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff f", "wwwww r t t"), // CAbilityItemHeal
     (codes::ability::id::ITEM_ILLUSION, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t r"), // CAbilityItemIllusion
     (codes::ability::id::INTELLIGENCE_MOD, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w", "wwwww r t t"), // CAbilityIntelligenceMod
+    (codes::ability::id::ORB_OF_LIGHTNING_OLD, "wwww wwwwwww t w w f w", "[r] w t t"), // CAbilityLightningDamageBonus
     (codes::ability::id::LEVEL_MOD, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff w", "wwwww r t t"), // CAbilityLevelMod
     (codes::ability::id::LIGHTNING_PURGE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"), // CAbilityLightningPurge
     (codes::ability::id::GIVE_LUMBER, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff w", "wwwww r t t"), // CAbilityItemGiveLumber
@@ -1150,6 +1153,8 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::ability::id::ITEM_MONSTER_LURE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"), // CAbilityItemMonsterLure
     (codes::ability::id::ITEM_MANA_RESTORE_AOE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff f f f", "wwwww r t t"), // CAbilityItemManaRestoreAoe
     (codes::ability::id::MOVE_SPEED_BONUS, "wwww wwwwwww t w w f", "[r] w t"), // CAbilityMoveSpeedBonus
+    (codes::ability::id::ORB_OF_FROST, "wwww wwwwwww t w w f w", "[r] w t t"), // CAbilityFrostDamageBonus
+    (codes::ability::id::ORB_OF_VENOM, "wwww wwwwwww t w w f w", "[r] w t t"), // CAbilityPoisonDamageBonus
     (codes::ability::id::ITEM_PERM_INVIS, "wwww wwwwwww t w w", "[r] w"), // CAbilityItemPermInvis
     (codes::ability::id::ITEM_PLACE_MINE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"), // CAbilityItemPlaceMine
     (codes::ability::id::ITEM_POTION_VAMPIRISM, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"), // CAbilityItemVampirePotion
@@ -1165,6 +1170,7 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::ability::id::ITEM_RECALL, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t w w"), // CAbilityItemRecall
     (codes::ability::id::ITEM_REVEAL_MAP, "wwww wwwwwww t w ffff wwww f", "wwwww r t t"), // CAbilityItemRevealMap
     (codes::ability::id::ITEM_SPEED_AOE, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff", "wwwww r t t"), // CAbilityItemSpeedAoe
+    (codes::ability::id::ORB_OF_SPELLS, "wwww wwwwwww t w w f w w w w w w w w w w", "[r] w t t"), // CAbilitySpellEffectBonus
     (codes::ability::id::SUMMON_HEADHUNTER_ITEM, "wwww wwwwwww t w ffff wwww f", "wwwww r t t"), // CAbilitySpiritTroll
     (codes::ability::id::SIGHT_BONUS, "wwww wwwwwww t w w f", "[r] w"), // CAbilitySightBonus
     (codes::ability::id::STRENGTH_MOD, "wwww wwwwwww t w ffff wwww f wwww ff wwww ff w w w", "wwwww r t t"), // CAbilityStrengthMod
@@ -1340,6 +1346,7 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::buff::id::WATERY_MINION, "wwww wwwwwww t w w f www fff f", "[r] w t ss f"), // CBuffWateryMinion
     (codes::buff::id::EARTHQUAKE_AOE, "wwww wwwwwww t w w f www fff f", "[r] w t ss f"), // CBuffEarthquakeAoe
     (codes::buff::id::EARTHQUAKE, "wwww wwwwwww t w w f www fff f f", "[r] w t ss f t"), // CBuffEarthquake
+    (codes::buff::id::HEX, "wwww wwwwwww t w w f www fff f w w w w w w f f f f f w", "[r] w t ss f t"), // CBuffHex
     (codes::buff::id::MIRROR_IMAGE, "wwww wwwwwww t w w f www fff f f f", "[r] w t ss f"), // CBuffMirrorImage
     (codes::buff::id::FERAL_SPIRIT, "wwww wwwwwww t w w f www fff f w w w", "[r] w t ss f"), // CBuffSpiritWolf
     (codes::buff::id::SHOCKWAVE, "wwww wwwwwww t w w f www fff w w w", "[r] w t ss f"), // CBuffShockwave
@@ -1372,6 +1379,7 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::buff::id::BLOODLUST, "wwww wwwwwww t w w f www fff f f w w w f f", "[r] w t ss f t t"), // CBuffBloodlust
     (codes::buff::id::BURNING_OIL, "wwww wwwwwww t w w f www fff f w w w w f f f", "[r] w t ss f t ss f t"), // CBuffBallsOfFire
     (codes::buff::id::BERSERK, "wwww wwwwwww t w w f www fff f f f", "[r] w t ss f t"), // CBuffBerserkerRage
+    (codes::buff::id::DIZZINESS, "wwww wwwwwww t w w f www fff w w w f f f f f f", "[r] w t ss f t t t"), // CBuffCargoHoldDeath
     (codes::buff::id::CLOUD, "wwww wwwwwww t w w f www fff f f w f w", "[r] w t ss f t t"), // CBuffCloudOfFog
     (codes::buff::id::CONTROL_MAGIC, "wwww wwwwwww t w w f www fff f", "[r] w t ss f"), // CBuffControlMagic
     (codes::buff::id::CORROSIVE_BREATH, "wwww wwwwwww t w w f www fff f w w w", "[r] w t ss f t ss f"), // CBuffCorrosiveBreath
@@ -1415,8 +1423,10 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     (codes::buff::id::MAGIC_LEASH_CASTER, "wwww wwwwwww t w w f www fff", "[r] w t ss f"), // CBuffMagicLeashCaster
     (codes::buff::id::AERIAL_SHACKLES, "wwww wwwwwww t w w f www fff f w w w", "[r] w t ss f t ss f"), // CBuffMagicLeashTarget
     (codes::buff::id::PLAGUE_WARD, "wwww wwwwwww t w w f www fff f", "[r] w t ss f"), // CBuffPlagueWard
+    (codes::buff::id::POLYMORPH, "wwww wwwwwww t w w f www fff f w w w w w w f f f f f w", "[r] w t ss f t"), // CBuffPolymorph
     (codes::buff::id::POSSESSION_BPOC, "wwww wwwwwww t w w f www fff", "[r] w t ss f"), // CBuffPossessionCaster
     (codes::buff::id::POSSESSION_BPOS, "wwww wwwwwww t w w f www fff w w w", "[r] w t ss f"), // CBuffPossession
+    (codes::buff::id::PURGE, "wwww wwwwwww t w w f www fff w w w f f f f f f", "[r] w t ss f t t t"), // CBuffPurge
     (codes::buff::id::PULSE_REVEAL, "wwww wwwwwww t w w f www fff", "[r] w t ss f t"), // CBuffPulseReveal
     (codes::buff::id::POISON_BPSD, "wwww wwwwwww t w w f www fff f w w w f f f w w w", "[r] w t ss f t ss f"), // CBuffPoisonAttackStackDoT
     (codes::buff::id::PHASE_SHIFT, "wwww wwwwwww t w w f www fff w w w w w w", "[r] w t ss f"), // CBuffPhaseShift

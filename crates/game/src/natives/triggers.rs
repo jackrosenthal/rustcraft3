@@ -311,7 +311,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         // it, which is all it tags (measured).
         TriggerRegisterTimerEvent => |w, _, a| {
             let id = w.trigger(a.h(0)).is_some().then(|| w.tags.take_id(codes::class::TIMER_EVENT));
-            let timer = w.handles.insert(Obj::Timer(Timer { remaining: a.r(1) as f64, timeout: a.r(1), period: a.r(1) as f64, periodic: a.b(2), running: true, ..Default::default() }));
+            // (Its timer is the registration's own, no script's handle: read, the
+            // original's handle table, the event's handle the next after the trigger's.)
+            let timer = w.handles.insert_unseen(Obj::Timer(Timer { remaining: a.r(1) as f64, timeout: a.r(1), period: a.r(1) as f64, periodic: a.b(2), running: true, ..Default::default() }));
             let r = register_event_tagged(w, a.h(0), EventKind::TimerExpire(timer), false);
             // (Its registration's object, `tmvt`, is the event handle's agent: read, the
             // original's save of a timer event's trigger.)

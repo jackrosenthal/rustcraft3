@@ -225,8 +225,8 @@ impl Game {
     /// asleep, its timers, its destructables' life, its items (those carried in their
     /// units' slots), its players' upgrades researched, the computers' AI scripts and
     /// captains (`restore_ai_scripts`), the structures being built, the queues at work,
-    /// and each unit's order.  Not yet: the time, which the port's timers and sleeping
-    /// threads count from.
+    /// each unit's order, and the timer events' timers.  Not yet: the time, which the
+    /// port's timers and sleeping threads count from.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
         use crate::natives::units::{create_unit_exact, remove_unit};
         let units = s.units()?;
@@ -626,6 +626,35 @@ impl Game {
                     places.len = places.len.max(thread.place + 1);
                 }
                 w.sleepers.push(crate::world::Sleeper { wake_at: w.sleep_time + left.max(0.0) + crate::world::SLEEP_SLACK, thread, ctx, sound: 0, execution: 0, sleep: *sleep, timer_count: 0 });
+            }
+        }
+        // Each timer event's registration (`tmvt`, TriggerRegisterTimerEvent's, by the
+        // event handle it had): its timer as saved, on the main clock (kind 0): running
+        // to its due, or stopped once it has fired, so that the map's start, run again
+        // to load, fires none twice (read: the original's at 40 seconds, due 50, and at
+        // 60, stopped).
+        {
+            use w3_formats::w3z::{Field, Second, Timing};
+            let main_clock = s.objects.as_ref().map_or(0.0, |m| m.clocks[0].0);
+            let all = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
+            for o in all.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::class::TIMER_EVENT) {
+                let Some(&jass) = handles.get(&(o.entry.tag, o.entry.birth)) else { continue };
+                let Ok(Second::Agent { tail, .. }) = o.second() else { continue };
+                let Some(Field::Timer(_, _, Timing(timing))) = tail.first() else { continue };
+                let w = &mut self.world;
+                let Some(Obj::Event(r)) = w.handles.get(w.handles.resolve(jass)) else { continue };
+                let crate::types::EventKind::TimerExpire(timer) = r.kind else { continue };
+                let Some(Obj::Timer(t)) = w.handles.get_mut(timer) else { continue };
+                match timing {
+                    Some((due, period, _, _, rep)) => {
+                        let mut left = due - main_clock;
+                        while left < -1.0 {
+                            left += 300.0;
+                        }
+                        (t.running, t.remaining, t.period, t.periodic) = (true, left.max(0.0) as f64, *period as f64, *rep != 0);
+                    }
+                    None => t.running = false,
+                }
             }
         }
         // Each unit's order (its own record's fifteenth and sixteenth fields name it: an

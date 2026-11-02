@@ -247,6 +247,10 @@ pub struct World {
     /// (`World::start_gold_run`).
     #[serde(skip)]
     pub run_order_made: Option<Vec<u32>>,
+    /// The order a run starts with was to harvest the nearest (`autoharvestlumber`,
+    /// `World::start_gold_run`).
+    #[serde(skip)]
+    pub run_auto: bool,
     /// The main clock in seconds since the game began (across its settings back) when
     /// the time of day last moved on.
     #[serde(default)]
@@ -869,6 +873,7 @@ impl World {
             exec_at_tick_end: false,
             making_clock: None,
             run_order_made: None,
+            run_auto: false,
             time_of_day_clock: 0.0,
             time_of_day_exact: 0.0,
             time_of_day_scale: 1.0,

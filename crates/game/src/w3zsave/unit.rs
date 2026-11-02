@@ -1243,7 +1243,7 @@ impl World {
             codes::ability::id::REPAIR_ORC => 0x940_0010,
             codes::ability::id::RESTORATION => 0x908_0010,
             codes::ability::id::BUILD_HUMAN | codes::ability::id::BUILD_UNDEAD | codes::ability::id::BUILD_ORC | codes::ability::id::BUILD_NIGHT_ELF => 0x2000_0010,
-            codes::ability::id::HARVEST | codes::ability::id::HARVEST_LUMBER => 0x8000_0010,
+            codes::ability::id::HARVEST | codes::ability::id::HARVEST_LUMBER | codes::ability::id::WISP_HARVEST => 0x8000_0010,
             codes::ability::id::ACOLYTE_HARVEST => 0x210,
             codes::ability::id::CREEP_SLEEP => 0x400,
             codes::ability::id::BLIGHT_GROWTH => 0x290,
@@ -1798,6 +1798,51 @@ impl World {
             // gold and no mine yet, 10, 1.0, and 0.0).  Provisional: the gold, the mine,
             // and the period, as the haunted mine's (written 0.0, the original's mine
             // paid once after loading the port's save and no more).
+            // A wisp's harvest (CAbilityWispHarvest, as CAbilityHarvestBase): its Dur, DataC,
+            // and DataA; at its tree, where its walk there ended, the tree, and its art on
+            // the tree (`+EIP`), else none; eight places and eight timers; the tree twice
+            // (in its mine, none and the mine), 900.0, and at its tree its lumber's timer
+            // (due, Dur, event 0xd01c1); flags 0x185 more at its tree, 0x1 in its mine
+            // with the two words after its first two 1 (read: `nel.w3x` played alone to
+            // 30 seconds, two wisps at their trees and three in the mine).  Provisional:
+            // the timer's count, the art's reference for a wisp the AI sent.
+            codes::ability::id::WISP_HARVEST => {
+                let (a, l) = self.ability_with_code(h, codes::ability::WISP_HARVEST)?;
+                let d = self.objects.abilities.get(a)?;
+                let target = match u.action {
+                    crate::types::Action::Harvest { target } => target,
+                    _ => 0,
+                };
+                let tree = match self.handles.get(target) {
+                    Some(crate::types::Obj::Destructable(t)) if (t.x, t.y) == (u.x, u.y) => Some(rf(self.tagged(t.oid.0))),
+                    _ => None,
+                };
+                let in_mine = u.inside != 0 && self.unit(u.inside).is_some();
+                let mine = if in_mine { self.unit(u.inside).and_then(|m| m.extra.object_slots[0].first().copied()).map_or(NONE, rf) } else { NONE };
+                let (spot, art) = match tree {
+                    Some(_) => (u.extra.wisp_spot.unwrap_or((u.x, u.y)), u.extra.wisp_art.first().map_or(NONE, |&s| rf(self.tagged(s)))),
+                    None => ((0.0, 0.0), NONE),
+                };
+                let named = tree.unwrap_or(NONE);
+                own.extend([Field::Real(d.level_real("Dur", l)), Field::Real(d.level_real("DataC", l)), w(d.level_real("DataA", l) as u32), Field::Real(spot.0), Field::Real(spot.1), w(named.0), w(named.1), w(0), w(art.0), w(art.1), w(0)]);
+                if let Some(Field::Word(flags)) = own.first_mut() {
+                    *flags |= if tree.is_some() { 0x185 } else if in_mine { 0x1 } else { 0 };
+                }
+                if in_mine {
+                    own[4] = w(1);
+                    own[5] = w(1);
+                }
+                let at = if in_mine { mine } else { named };
+                let lumber = match tree {
+                    Some(_) => {
+                        let dur = d.level_real("Dur", l);
+                        let due = f32::from_bits(crate::efloat::add(self.agent_step, u.work_timer.max(0.0).to_bits()));
+                        Field::Timer(rf(t), 0, Timing(Some((due, dur, self.tags.timer_starts, 0xd_01c1, 0))))
+                    }
+                    None => timer(),
+                };
+                vec![Field::List((0..8).map(|_| vec![w(u32::MAX), w(u32::MAX), w(0)]).collect()), Field::List((0..8).map(|_| vec![timer()]).collect()), w(named.0), w(named.1), w(0), w(at.0), w(at.1), w(0), Field::Real(900.0), lumber]
+            }
             codes::ability::id::ENTANGLED_GOLD_MINE => {
                 let (a, l) = self.ability_with_code(h, codes::ability::ENTANGLED_GOLD_MINE)?;
                 let d = self.objects.abilities.get(a)?;

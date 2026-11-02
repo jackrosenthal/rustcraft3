@@ -2946,6 +2946,29 @@ Formats the port made its own, to be replaced by the original's:
   seconds fell a tick before the original's); and a payout due before a wanderer's
   order in the same step (125.848091, the order 125.863121) comes first, as after the
   last step.
+- A wisp sent to the nearest tree (`autoharvestlumber`, by script, over LAN with the
+  original; `abtest/nel2.w3x`, two of the five so sent): its order makes 19 objects,
+  `+ord tskA tskA` and then a harvest order as the mine's but for its second block
+  (no generic immediate order's seven); its `^clg` is freed at once, its first two
+  blocks, its order, and the five before its closing block (1, 2, 0, 15 to 11) as the
+  next turn starts.  The tree is CAbilityHarvest's (`FUN_6f426870`, `FUN_6f4153a0`
+  within 2000, of the trees its owner sees, each judged by `FUN_6f439e00`): the first
+  of the cheapest by the accelerator plan's cost (32 pops, the tree lifted), as a
+  peon's next tree; the original's two wisps went to trees 580 and 466 away where the
+  nearest by distance were 452 and 420.  It walks to the tree as a peon does; as the
+  walk ends it makes the harvest's art (`+EIP`, its `` `pos ``, two `^pmr`), frees its
+  order's last target task (10), and its path and cluster go as the next movement
+  step starts; it gathers at the tree's middle.  No objects for its deliveries.  The
+  keepalives agree to turn 25: from 2.43 seconds the original holds the first lumber
+  wisp, walking west past the gold wisps, three times (`FUN_6f1689d0` on its path,
+  its goal 18 cells off, so drawing its wait), where the port's gold wisps give way
+  to it; the waypoint provider's rule between walkers of one speed
+  (`FUN_6f168360`) is not yet read for this.  The original's save of such a wisp
+  (`nel.w3x` played alone to 30 seconds, `MeleeStartingUnitsNightElf` for player 0
+  as `-loadfile` ignores the race preference): its Wisp Harvest's own fields after
+  Dur, DataC, and DataA hold the tree's place and reference, the art's reference, the
+  tree twice more, and its lumber timer (due, Dur, event 852417); one in the mine the
+  entangled mine in its tail.  The port's writer does not write these yet.
 - A unit's own path (`l^pa`, the tenth of its first objects) carries in its first
   word's high half 0x1 for a computer's unit only while it stands: Twisted Meadows'
   computers' walkers read 0x122 (0x1200_0000 for a gold run's walk, 0x2 moving), those

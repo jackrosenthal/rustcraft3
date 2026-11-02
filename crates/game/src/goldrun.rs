@@ -41,6 +41,11 @@ const LUMBER_OWN: [&Code; 17] = [codes::class::ORDER_TASKS, codes::class::TASK_A
 /// group, cluster, and path (traced: a night elf start's five wisps sent by script,
 /// over LAN with the original).
 const WISP_GOLD: [&Code; 17] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::TASK_O, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
+/// A wisp's harvest of the nearest tree (its `autoharvestlumber`): an order and two
+/// blocks, then its harvest order on the tree as `WISP_GOLD` but for its second block
+/// (traced: a night elf start's two wisps so ordered by script, over LAN with the
+/// original).
+const WISP_LUMBER: [&Code; 19] = [codes::class::ORDER, codes::class::TASK_A, codes::class::TASK_A, codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::TASK_O, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 /// At the tree, short of chopping (`FUN_6f4377d0`, event 0xd0184 as the move ends): its
 /// walk to reach the tree (0xd0171, `FUN_6f6926b0`), the end of its ghosting (0xd0151,
 /// `FUN_6f691f20`, which lets it chop: `FUN_6f43b7e0` sets the harvest's 0x1000), a
@@ -241,9 +246,11 @@ impl World {
     }
 
     pub fn gold_run_eligible(&self, h: u32, target: u32) -> bool {
-        // A wisp walks so to its own entangled mine.
+        // A wisp walks so to its own entangled mine, or to a tree.
         if self.ability_with_code(h, codes::ability::WISP_HARVEST).is_some() {
-            return self.pathing.is_some() && self.can_mine_covered(h, target) && self.unit(target).is_some_and(|m| !m.pathing_cells.is_empty()) && self.move_kind(h) == crate::pathing::Move::Foot;
+            let mine = self.can_mine_covered(h, target) && self.unit(target).is_some_and(|m| !m.pathing_cells.is_empty());
+            let tree = self.is_tree_pub(target) && !self.footprint(target).is_empty();
+            return self.pathing.is_some() && (mine || tree) && self.move_kind(h) == crate::pathing::Move::Foot;
         }
         self.pathing.is_some()
             && (self.ability_with_code(h, codes::ability::HARVEST).is_some() || self.is_tree_pub(target) && self.ability_with_code(h, codes::ability::HARVEST_LUMBER).is_some())
@@ -270,7 +277,19 @@ impl World {
     pub fn start_gold_run(&mut self, h: u32, mine: u32, player: bool) {
         let lumber = self.is_tree_pub(mine);
         let wisp = self.ability_with_code(h, codes::ability::WISP_HARVEST).is_some();
+        // (A wisp the AI sends to wood keeps to its old harvest: the AI's order's objects
+        // are not yet read for one.)
+        if wisp && lumber && self.run_order_made.is_some() {
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.gold_run = None;
+            }
+            return;
+        }
+        // (Sent to a tree of its own choosing, the order alone, without the three of the
+        // order to harvest the nearest; provisional.)
+        let skip = if wisp && lumber && !self.run_auto { 3 } else { 0 };
         let codes: &[&Code] = match (lumber, player) {
+            (true, _) if wisp => &WISP_LUMBER[skip..],
             _ if wisp => &WISP_GOLD,
             (false, true) => &HARVEST_PLAYER,
             (false, false) => &HARVEST_OWN,
@@ -294,9 +313,15 @@ impl World {
                 let n = order.len();
                 self.tags.release(order[n - 3]);
                 // (A wisp's, its first block and the five before its closing block, as
-                // the next turn starts, after the script's groups destroyed before.)
+                // the next turn starts, after the script's groups destroyed before; to a
+                // tree, its first two blocks and its order first.)
                 if wisp {
-                    for k in [1, n - 4, n - 5, n - 6, n - 7, n - 8] {
+                    let ks: Vec<usize> = match (lumber, skip) {
+                        (true, 0) => vec![1, 2, 0, n - 4, n - 5, n - 6, n - 7, n - 8],
+                        (true, _) => vec![n - 4, n - 5, n - 6, n - 7, n - 8],
+                        _ => vec![1, n - 4, n - 5, n - 6, n - 7, n - 8],
+                    };
+                    for k in ks {
                         self.tags.doom(order[k]);
                     }
                 }
@@ -373,11 +398,14 @@ impl World {
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.gold_run = Some(run.clone());
                 }
+                if run.kind == Kind::Wisp {
+                    if run.lumber {
+                        return self.wisp_at_tree(h, run, path);
+                    }
+                    return self.wisp_enter(h, run, path);
+                }
                 if run.lumber {
                     return self.reach_tree(h, run, path);
-                }
-                if run.kind == Kind::Wisp {
-                    return self.wisp_enter(h, run, path);
                 }
                 self.push_off_ghosts(h);
                 self.enter_mine(h, run, path, agent)
@@ -476,6 +504,39 @@ impl World {
         let k = self.step_range.0;
         if let Some((t, _)) = self.step_abs(k) {
             self.mine_workers_changed(mine, t);
+        }
+    }
+
+    /// A wisp at its tree as its walk ends there: the harvest's art on the tree is made
+    /// (`+EIP`, its `` `pos ``, two `^pmr`), its order's last target task goes, and the
+    /// walk's path and cluster as the next movement step starts; it gathers standing at
+    /// the tree's middle (traced: a night elf start's wisps sent by script to the
+    /// nearest trees, over LAN with the original).
+    fn wisp_at_tree(&mut self, h: u32, run: GoldRun, path: [u32; 2]) {
+        let tree = run.mine;
+        // (Its order's place in the objects: after the order to harvest the nearest's
+        // three, when there.)
+        let at0 = run.order.len() - 16;
+        let art: Vec<u32> = [codes::class::SPECIAL_EFFECT, codes::class::POSITION, codes::class::PATHING_REGION, codes::class::PATHING_REGION].iter().map(|c| self.tags.take(c)).collect();
+        self.tags.release(run.order[at0 + 7]);
+        let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
+        self.tags.walk_ended(path, serial);
+        let at = self.widget_pos(tree);
+        let interval = self.ability_with_code(h, codes::ability::WISP_HARVEST).map_or(8.0, |(a, l)| self.ability_real(a, "Dur", l)).max(0.1);
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.wisp_spot = Some((u.x, u.y));
+            u.extra.wisp_order = (at0..at0 + 7).map(|k| run.order[k]).collect();
+            u.extra.wisp_art = art;
+            u.extra.gold_run = None;
+            if let Some((x, y)) = at {
+                u.x = x;
+                u.y = y;
+            }
+            u.harvest_source = tree;
+            u.work_timer = interval;
+            u.path.clear();
+            u.extra.mover = None;
+            u.extra.cell_at = None;
         }
     }
 
@@ -1064,6 +1125,39 @@ impl World {
                 way.len() - 1
             };
             log::debug!("next tree for {h}: ({x}, {y}) cost {cost}");
+            if best.is_none_or(|(c, _)| cost < c) {
+                best = Some((cost, d));
+            }
+        }
+        best.map(|b| b.1)
+    }
+
+    /// The tree an order to harvest the nearest lumber sends a worker to (CAbilityHarvest's
+    /// `FUN_6f426870`, `FUN_6f4153a0` within 2000, `DAT_6fd6b7dc`): of the live trees its
+    /// owner sees, enumerated as `next_tree`'s, the first of the cheapest by the
+    /// accelerator plan's cost from the worker (read: a night elf start's two wisps so
+    /// ordered by script, over LAN with the original, at trees 580 and 466 away where
+    /// nearer ones stood).  Provisional: the costs, read only so far as the choices.
+    pub(crate) fn auto_tree(&self, h: u32) -> Option<u32> {
+        let u = self.unit(h)?;
+        let (fx, fy, owner) = (u.x, u.y, u.owner);
+        let p = self.pathing.as_ref()?;
+        let block = |x: f32, y: f32| (((y - p.origin[1]) / 256.0).floor() as i32, ((x - p.origin[0]) / 256.0).floor() as i32);
+        let mut trees: Vec<(usize, u32, (i32, i32))> = self
+            .destructable_order
+            .iter()
+            .enumerate()
+            .filter(|&(_, &d)| self.is_tree_pub(d) && !self.footprint(d).is_empty())
+            .filter_map(|(i, &d)| self.widget_pos(d).filter(|&(x, y)| (x - fx).hypot(y - fy) <= 2000.0 && self.fog_state(x, y, owner) == crate::fog::FOG_VISIBLE).map(|(x, y)| (i, d, block(x, y))))
+            .collect();
+        trees.sort_by(|a, b| a.2.cmp(&b.2).then(b.0.cmp(&a.0)));
+        let acc = |w: f32, o: f32| (w - o) / 64.0;
+        let mut best: Option<(u32, u32)> = None;
+        for (_, d, _) in trees {
+            let Some((x, y)) = self.widget_pos(d) else { continue };
+            let Some(pyr) = self.accel_pyramid_lifting(None, &[d]) else { continue };
+            let Some(cost) = crate::accelpath::plan_cost(&pyr, 0, (acc(fx, p.origin[0]), acc(fy, p.origin[1])), (acc(x, p.origin[0]), acc(y, p.origin[1])), 0x20) else { continue };
+            log::trace!("auto tree for {h}: ({x}, {y}) cost {cost}");
             if best.is_none_or(|(c, _)| cost < c) {
                 best = Some((cost, d));
             }

@@ -714,6 +714,13 @@ pub struct UnitExtra {
     /// order, block, three tasks, and first target task; `World::wisp_enter`).
     #[serde(default)]
     pub wisp_order: Vec<u32>,
+    /// A wisp's harvest art on its tree (`+EIP`, its `` `pos ``, two `^pmr`;
+    /// `World::wisp_at_tree`).
+    #[serde(default)]
+    pub wisp_art: Vec<u32>,
+    /// Where a wisp's walk to its tree ended (`World::wisp_at_tree`).
+    #[serde(default)]
+    pub wisp_spot: Option<(f32, f32)>,
     /// The objects of the order its AI last gave it (`crate::ai::AI_HARVEST`), by slot,
     /// while they last.
     #[serde(default)]
@@ -1022,6 +1029,8 @@ impl Default for UnitExtra {
             order_tags: Vec::new(),
             gold_run: None,
             wisp_order: Vec::new(),
+            wisp_art: Vec::new(),
+            wisp_spot: None,
             ai_order: Vec::new(),
             captain_walk: None,
             captain_order: Vec::new(),

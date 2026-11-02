@@ -590,7 +590,8 @@ impl World {
                     .map(|x| x.1)
             } else if [codes::ability::WISP_HARVEST, codes::ability::HARVEST, codes::ability::HARVEST_LUMBER].iter().any(|c| self.ability_with_code(h, c).is_some()) {
                 // Ghouls too (measured: UndeadX03's ghouls so ordered gather lumber).
-                self.nearest_tree(h, RANGE).filter(|&t| self.can_harvest(h, t))
+                // (The cheapest by the original's path query: `World::auto_tree`.)
+                self.auto_tree(h).filter(|&t| self.can_harvest(h, t))
             } else {
                 None
             };
@@ -660,8 +661,9 @@ impl World {
         }
         // Sent to the nearest tree, it is under a harvest order at that tree (measured:
         // NightElfX04's wisps so ordered read "harvest" in the original).
+        let auto = order == crate::natives::basic::order_id("autoharvestlumber") || order == crate::natives::basic::order_id("autoharvestgold");
         let (order, target) = match action {
-            Action::Harvest { target: t } if order == crate::natives::basic::order_id("autoharvestlumber") || order == crate::natives::basic::order_id("autoharvestgold") => (crate::natives::basic::order_id("harvest"), t),
+            Action::Harvest { target: t } if auto => (crate::natives::basic::order_id("harvest"), t),
             _ => (order, target),
         };
         self.leave_mine(h);
@@ -700,7 +702,9 @@ impl World {
         match harvest {
             Some(target) if self.gold_run_eligible(h, target) => {
                 let player = self.ordering_player;
+                self.run_auto = auto;
                 self.start_gold_run(h, target, player);
+                self.run_auto = false;
             }
             _ => {
                 if let Some(u) = self.unit_mut(h) {

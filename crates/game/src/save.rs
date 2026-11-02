@@ -220,7 +220,7 @@ impl Game {
     /// Puts an original's saved game in place of a game just started on its map (its
     /// script's main run): its units (their type, owner, place, facing, life, and mana,
     /// a hero's experience, level, skill points, and skills),
-    /// the handles scripts had them by, its players' gold and lumber (saved in tenths),
+    /// the handles scripts had them by, its players' states and alliances,
     /// the time of day, the map script's variables (by name, arrays too) and its threads
     /// asleep, its timers, its destructables' life, its items (those carried in their
     /// units' slots), its players' upgrades researched, the computers' AI scripts and
@@ -448,13 +448,42 @@ impl Game {
                 w.research_changed(p);
             }
         }
-        // Gold, lumber, and what was gathered of each (JASS's player states 1, 2, 15,
-        // and 16), the rest as the script set them.
+        // The players' states by their JASS numbers (gold, lumber, and what was
+        // gathered of each, 1, 2, 15, and 16, in tenths), but those the game reckons
+        // (hero tokens, food, and upkeep: 3, 4, 5, 13, and 14).
         for (p, states) in players.into_iter().enumerate() {
             let Some(player) = w.players.get_mut(p) else { continue };
             for (k, v) in states {
-                if matches!(k, 1 | 2 | 15 | 16) {
-                    player.state.insert(k as i32, v / 10);
+                match k {
+                    1 | 2 | 15 | 16 => {
+                        player.state.insert(k as i32, v / 10);
+                    }
+                    3 | 4 | 5 | 13 | 14 => {}
+                    _ => {
+                        player.state.insert(k as i32, v);
+                    }
+                }
+            }
+        }
+        // The alliances (each player's `ally` object's flags: its player's number, then
+        // each alliance type's mask of the players it is set toward), as the script
+        // left them.
+        {
+            use w3_formats::w3z::First;
+            let all = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
+            let by: std::collections::HashMap<(u32, u32), &w3_formats::w3z::SavedObject> = all.iter().flatten().map(|o| ((o.entry.tag, o.entry.birth), o)).collect();
+            for o in all.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::class::ALLIANCE) {
+                let Ok(First::Agent { refs, .. }) = o.first() else { continue };
+                let flags: Vec<(u32, u32)> = refs.iter().filter_map(|r| match by.get(&(r.0, r.1)).map(|p| p.first()) {
+                    Some(Ok(First::Flag { base, value })) => Some((base.object.words[0], value)),
+                    _ => None,
+                }).collect();
+                let Some(&(_, me)) = flags.iter().find(|f| f.0 == 0) else { continue };
+                let Some(player) = w.players.get_mut(me as usize) else { continue };
+                for &(k, mask) in flags.iter().filter(|f| f.0 >= 1 && (f.0 as usize) <= crate::types::ALLIANCE_TYPES) {
+                    for (j, a) in player.alliances.iter_mut().enumerate() {
+                        a[k as usize - 1] = mask & (1 << j) != 0;
+                    }
                 }
             }
         }

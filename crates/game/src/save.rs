@@ -195,15 +195,36 @@ impl Load {
     }
 }
 
+/// A handle's object's kind as the original's handle table names it, for those the
+/// port tells apart.
+fn obj_kind(o: &Obj) -> Option<[u8; 4]> {
+    use crate::codes::class;
+    Some(*match o {
+        Obj::Unit(_) => class::UNIT,
+        Obj::Destructable(_) => class::DESTRUCTABLE,
+        Obj::Item(_) => class::ITEM,
+        Obj::Player(_) => class::PLAYER,
+        Obj::Trigger(_) => class::TRIGGER,
+        Obj::Timer(_) => class::TIMER,
+        Obj::TimerDialog(_) => class::TIMER_DIALOG,
+        Obj::Group(_) => class::GROUP,
+        Obj::Location(..) => class::LOCATION,
+        Obj::Rect(_) => class::RECT,
+        Obj::Force(_) => class::FORCE,
+        Obj::Sound(_) => class::SOUND,
+        _ => return None,
+    })
+}
+
 impl Game {
     /// Puts an original's saved game in place of a game just started on its map (its
     /// script's main run): its units (their type, owner, place, facing, life, and mana),
     /// the handles scripts had them by, its players' gold and lumber (saved in tenths),
-    /// the time of day, the map script's integer, real, and boolean variables (by name,
-    /// arrays too), its timers, its destructables' life, and its items.  Not yet: the
-    /// rest (the time, which the port's timers and sleeping threads count from;
-    /// orders, buildings in progress, carried items, the other variables, the AI
-    /// scripts', and threads), which stay as the script just made them.
+    /// the time of day, the map script's variables (by name, arrays too), its timers, its
+    /// destructables' life, its items, and the computers' AI scripts and captains
+    /// (`restore_ai_scripts`).  Not yet: the rest (the time, which the port's timers and
+    /// sleeping threads count from; orders, buildings in progress, carried items, the
+    /// map script's threads), which stay as the script just made them.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
         use crate::natives::units::{create_unit_exact, remove_unit};
         let units = s.units()?;
@@ -301,37 +322,49 @@ impl Game {
         if let Some((_, v)) = game_reals.iter().find(|(k, _)| *k == 2) {
             (w.time_of_day, w.time_of_day_exact, w.time_of_day_clock) = (v[0], v[0] as f64, w.time as f64);
         }
-        // The map script's machine is the first; its values by type (the original's
-        // machine's: 4 integer, 5 real, 8 boolean, and 9, 10, and 13 their arrays; a
-        // real as its bits).
+        // The map script's machine is the first: its globals as they were (its strings
+        // by their text; a handle kept where the port holds an object of the kind the
+        // save's handle table names, else none; its constants as the script makes them).
         if let Some((_, m)) = scripts.machines.first() {
-            use w3_formats::w3z::Contents;
-            use w3_jass::{BaseType, Value};
-            let value = |kind: u32, v: u32| match kind {
-                4 | 9 => Some(Value::Int(v as i32)),
-                5 | 10 => Some(Value::Real(f32::from_bits(v))),
-                8 | 13 => Some(Value::Bool(v != 0)),
-                _ => None,
+            use w3_jass::vm::ty;
+            let all = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
+            let kind_of: std::collections::HashMap<(u32, u32), [u8; 4]> = all.iter().flatten().map(|o| ((o.entry.tag, o.entry.birth), o.entry.kind.to_be_bytes())).collect();
+            let saved_kind: std::collections::HashMap<u32, [u8; 4]> = s.handles()?.into_iter().filter_map(|(r, h)| kind_of.get(&(r.0, r.1)).map(|k| (h, *k))).collect();
+            let w = &self.world;
+            let handle_ok = |h: u32| -> bool {
+                if h == 0 {
+                    return true;
+                }
+                let Some(o) = w.handles.get(w.handles.resolve(h)) else { return false };
+                match (saved_kind.get(&h), obj_kind(o)) {
+                    (Some(a), Some(b)) => *a == b,
+                    _ => true,
+                }
             };
-            let vm = &mut self.vm;
+            let map = crate::w3zscript::Remap { strings: &m.functions };
+            let mut kept: Vec<(u32, w3_jass::vm::Var)> = Vec::new();
             for (name, v) in &m.globals {
-                let Some(&g) = vm.module.global_index.get(name.as_str()) else { continue };
-                let decl = &vm.module.globals[g as usize];
-                let base_matches = matches!((decl.base, v.kind), (BaseType::Integer, 4 | 9) | (BaseType::Real, 5 | 10) | (BaseType::Boolean, 8 | 13));
-                if decl.constant || !base_matches {
+                let Some(&g) = self.vm.module.global_index.get(name.as_str()) else { continue };
+                if self.vm.module.globals[g as usize].constant {
                     continue;
                 }
-                match (&v.value, decl.array) {
-                    (Contents::One(x), false) => {
-                        if let Some(x) = value(v.kind, *x) {
-                            vm.set_global_value(g, &x);
+                let mut var = map.var(&mut self.vm, v, false);
+                if var.decl == ty::HANDLE {
+                    if !handle_ok(var.value) {
+                        var.value = 0;
+                    }
+                } else if var.decl == ty::HANDLE_ARRAY {
+                    for x in var.array.iter_mut().flatten() {
+                        if !handle_ok(*x) {
+                            *x = 0;
                         }
                     }
-                    (Contents::Array(xs), true) => {
-                        let xs: Vec<Value> = xs.iter().filter_map(|&x| value(v.kind, x)).collect();
-                        vm.set_global_array(g, &xs);
-                    }
-                    _ => {}
+                }
+                kept.push((g, var));
+            }
+            for (g, var) in kept {
+                if let Some(slot) = self.vm.vars.get_mut(g as usize) {
+                    *slot = var;
                 }
             }
         }

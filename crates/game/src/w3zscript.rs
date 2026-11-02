@@ -109,7 +109,7 @@ impl Remap<'_> {
         Reg { kind: v.kind as u8, decl: v.word as u8, value }
     }
 
-    fn var(&self, vm: &mut w3_jass::Vm, v: &Value, param: bool) -> Var {
+    pub(crate) fn var(&self, vm: &mut w3_jass::Vm, v: &Value, param: bool) -> Var {
         match &v.value {
             Contents::One(x) => Var { kind: v.kind as u8, decl: v.word as u8, value: self.word(vm, v.kind, *x), array: None, param },
             Contents::Array(xs) => {

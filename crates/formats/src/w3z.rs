@@ -3117,21 +3117,47 @@ pub struct SavedTimer {
 impl SaveGame {
     /// The players' names, by player in the object table's order (each player's record,
     /// `+ply`, the first text of its tail, after its event lists: read, the original's
-    /// save of a LAN game on Booty Bay, "Host" and "Jack"; empty for a computer).
+    /// save of a LAN game on Booty Bay, "Host" and "Jack"; a computer's "Computer
+    /// (Normal)").
     pub fn player_names(&self) -> Result<Vec<String>, Error> {
+        Ok(self.player_records()?.into_iter().map(|(name, _)| name).collect())
+    }
+
+    /// The players' races as the game drew them, by player (each player's record's
+    /// tail word 110, common.j's numbering: 1 human, 2 orc, 3 undead, 4 night elf; read,
+    /// Booty Bay's LAN game's human and orc, the hero map's and Echo Isles' human and
+    /// undead computer, where the slot table says random).
+    pub fn player_races(&self) -> Result<Vec<u32>, Error> {
+        Ok(self.player_records()?.into_iter().map(|(_, race)| race).collect())
+    }
+
+    fn player_records(&self) -> Result<Vec<(String, u32)>, Error> {
         let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
         let mut out = Vec::new();
         for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == codes::class::PLAYER) {
-            let name = match o.second()? {
-                Second::Agent { tail, .. } => tail.iter().find_map(|f| match f {
-                    Field::Text(t) => Some(t.clone()),
-                    _ => None,
-                }),
-                _ => None,
+            let (name, race) = match o.second()? {
+                Second::Agent { tail, .. } => (
+                    tail.iter().find_map(|f| match f {
+                        Field::Text(t) => Some(t.clone()),
+                        _ => None,
+                    }),
+                    match tail.get(110) {
+                        Some(Field::Word(r)) => *r,
+                        _ => 0,
+                    },
+                ),
+                _ => (None, 0),
             };
-            out.push(name.unwrap_or_default());
+            out.push((name.unwrap_or_default(), race));
         }
         Ok(out)
+    }
+
+    /// The slot table's slots (W3GS's nine bytes each after their count: id, download,
+    /// status, computer, team, color, race flags, computer level, handicap).
+    pub fn slot_list(&self) -> Vec<[u8; 9]> {
+        let n = self.slots.first().copied().unwrap_or(0) as usize;
+        self.slots.get(1..1 + 9 * n).map_or(Vec::new(), |b| b.chunks_exact(9).map(|c| c.try_into().unwrap()).collect())
     }
 
     /// The JASS timers, in the object table's order.

@@ -2841,6 +2841,27 @@ Formats the port made its own, to be replaced by the original's:
   counted the places its own restart had taken, 5, under its computer's threads at 2
   to 7, and the original crashed as the first woke (a null machine).  The loaded
   threads now take their places in the places the machines share, as the map's.
+- A save's slot table keeps each player's choices (a random race as random, 0x60);
+  the race the game drew is the player's record's tail word 110 (common.j's
+  numbering: Booty Bay's LAN game's human and orc, the hero map's and Echo Isles'
+  human and undead computer), its name the record's text.  The port loading the
+  original's save alone had started the map as `-loadfile` does (the local player
+  and one computer), so a skirmish against three computers came back with one AI:
+  its others stood still and 5 of its 15 threads returned.  It now starts the map
+  with the save's setup (`save::original_lobby`: each occupied slot its computer or,
+  the local player's, this computer; the race drawn, name, team, color, handicap,
+  and level), and its LAN lobby takes the drawn races too.  On Twisted Meadows with
+  three computers loaded at 120 seconds, the undead and orc computers' units 60
+  seconds on are the uninterrupted game's (19 and 21), the night elf's 24 of 25.
+- An entangled mine (`Aegm`) is laid out as a haunted one: its gold, the mine it
+  covers, 0, DataA and DataB (10 and 1.0), 0.0 (the original's one read was still
+  entangling at 5 seconds, no gold and no mine yet).  The port wrote it with defaults,
+  so a night elf's mine came back empty and its wisps mined nothing after a load; it
+  now writes and loads both as the haunted mine's (provisional).
+- The original's saves hold no state of its random generators (neither the main one
+  nor the 45 streams, as seeded or by value, under the locked seed or the slot
+  table's): the original goes on from a save with generators of its own, so neither
+  game's continuation draws as the uninterrupted game.
 - A unit's abilities that a script added are its own objects in the save, as its
   type's are (an ability object's kind its code, its id its own tenth word, its
   level less one the eleventh): the melee setup's Militia Conversion on a human

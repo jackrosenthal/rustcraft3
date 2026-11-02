@@ -619,8 +619,13 @@ impl Scene {
         // A replay plays its own setup and profile.
         let replay_lobby = replay.as_ref().and_then(|r| r.lobby.clone());
         let lobby = if replay.is_some() { replay_lobby.as_deref() } else { lobby };
+        // A save of the original's, loaded alone, starts its map with the setup it was
+        // played with (its slot table, the races drawn), its computers' AI scripts
+        // among it, before it loads.
+        let original_lobby = original.as_ref().filter(|_| lobby.is_none()).map(|s| w3_game::save::original_lobby(s)).filter(|l| !l.is_empty());
+        let lobby = lobby.or(original_lobby.as_deref());
         let campaign = replay.as_ref().map_or(data.campaign_game.get(), |r| r.campaign);
-        let setup_flags = replay.as_ref().map_or(data.setup_flags.get(), |r| r.flags);
+        let setup_flags = if original_lobby.is_some() { crate::advanced::DEFAULT_FLAGS } else { replay.as_ref().map_or(data.setup_flags.get(), |r| r.flags) };
         let seed = replay.as_ref().map_or(data.setup_seed.get(), |r| r.seed);
         data.chain.unmount(PRIORITY_MAP);
         // A map on disk, or one inside the game's archives (the campaigns' maps).

@@ -315,6 +315,8 @@ impl Lan {
     fn original_setup(save: &w3_formats::w3z::SaveGame) -> Option<(Setup, u32)> {
         let table = w3_net::SlotTable::read(&mut w3_net::wire::Reader::new(&save.slots)).ok()?;
         let names = save.player_names().unwrap_or_default();
+        // (The races the game drew, the table keeping the choice.)
+        let races = save.player_races().unwrap_or_default();
         let mut users = 0;
         let slots = table
             .slots
@@ -330,7 +332,7 @@ impl Lan {
                         _ => Holder::Open,
                     },
                     name: if human { names.get(t.color as usize).cloned().unwrap_or_default() } else { String::new() },
-                    race: crate::net::race_index(t.race),
+                    race: races.get(t.color as usize).map(|&r| r as usize).filter(|r| (1..=4).contains(r)).unwrap_or_else(|| crate::net::race_index(t.race)),
                     team: t.team as i32,
                     color: t.color as i32,
                     handicap: (100u8.saturating_sub(t.handicap) / 10).min(5) as usize,

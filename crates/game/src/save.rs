@@ -126,6 +126,37 @@ pub enum Load {
     Original(Box<w3_formats::w3z::SaveGame>),
 }
 
+/// The setup a save of the original's was played with, for the map to start so before
+/// it loads (`Game::restore_original`): its slot table's slots, each occupied one
+/// played by its computer or, its local player's, by this computer (the rest empty),
+/// with the race the game drew for it (the table keeps the choice: random), its name,
+/// team, color, handicap, and computer level.
+pub fn original_lobby(s: &w3_formats::w3z::SaveGame) -> Vec<crate::LobbySlot> {
+    let races = s.player_races().unwrap_or_default();
+    let names = s.player_names().unwrap_or_default();
+    s.slot_list()
+        .iter()
+        .map(|&[_, _, status, computer, team, color, _, ai, handicap]| {
+            let p = color;
+            let fill = match (status, computer != 0) {
+                (2, true) => crate::SlotFill::Computer,
+                (2, false) if p as u32 == s.local_player => crate::SlotFill::Local,
+                _ => crate::SlotFill::Empty,
+            };
+            crate::LobbySlot {
+                player: p,
+                fill,
+                name: names.get(p as usize).filter(|n| !n.is_empty() && computer == 0).cloned(),
+                race: races.get(p as usize).copied().filter(|r| (1..=4).contains(r)).map(|r| r as i32),
+                team: team as i32,
+                color: color as i32,
+                handicap: handicap as f32,
+                difficulty: ai as i32,
+            }
+        })
+        .collect()
+}
+
 /// Where the port keeps its own state beside a saved game in the original's format:
 /// `<save>.port`.
 pub fn sidecar_path(path: &std::path::Path) -> std::path::PathBuf {
@@ -347,21 +378,21 @@ impl Game {
         // ability's, `Agld`), and a haunted mine's (`Abgm`: its gold, then the mine it
         // covers, hidden under it as haunting leaves it; read, the hero map at 300
         // seconds, its mines' 11000 and 14000, its undead computer's haunted mine's 9760
-        // over its mine).
+        // over its mine), and an entangled one's so (`Aegm`, provisional).
         {
             use w3_formats::w3z::{Field, First, Second};
-            use crate::codes::ability::id::{BLIGHTED_GOLD_MINE, GOLD_MINE};
+            use crate::codes::ability::id::{BLIGHTED_GOLD_MINE, ENTANGLED_GOLD_MINE, GOLD_MINE};
             let all = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
             for o in all.iter().flatten() {
                 let kind = o.entry.kind.to_be_bytes();
-                if &kind != GOLD_MINE && &kind != BLIGHTED_GOLD_MINE {
+                if &kind != GOLD_MINE && &kind != BLIGHTED_GOLD_MINE && &kind != ENTANGLED_GOLD_MINE {
                     continue;
                 }
                 let Ok(First::Agent { object, .. }) = o.first() else { continue };
                 let Some(&h) = made.get(&(object.links[0].3 .0, object.links[0].3 .1)) else { continue };
                 let Ok(Second::Agent { own, .. }) = o.second() else { continue };
                 let Some(&Field::Word(gold)) = own.get(13) else { continue };
-                if &kind == BLIGHTED_GOLD_MINE {
+                if &kind == BLIGHTED_GOLD_MINE || &kind == ENTANGLED_GOLD_MINE {
                     if let (Some(&Field::Word(t)), Some(&Field::Word(b))) = (own.get(14), own.get(15)) {
                         if let Some(&mine) = made.get(&(t, b)) {
                             w.cover_mine(h, mine);

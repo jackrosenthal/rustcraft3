@@ -1709,6 +1709,18 @@ impl World {
                 }
                 vec![Field::Ref(NONE), Field::Ref(rcm), Field::Ref(rtl), timer(), Field::List(slots)]
             }
+            // An entangled mine (CAbilityEntangledGoldMine), as a haunted one: its gold, the
+            // mine it covers, 0, its gold a payout and its period a wisp (DataA, DataB),
+            // and 0.0; three references and a timer, none (read: the original's mine
+            // still entangling at 5 seconds, no gold and no mine yet, 10 and 1.0).
+            // Provisional: the gold and the mine, as the haunted mine's.
+            codes::ability::id::ENTANGLED_GOLD_MINE => {
+                let (a, l) = self.ability_with_code(h, codes::ability::ENTANGLED_GOLD_MINE)?;
+                let d = self.objects.abilities.get(a)?;
+                let cover = u.extra.mine.and_then(|m| self.unit(m)).and_then(|m| m.extra.object_slots[0].first().copied()).unwrap_or((u32::MAX, u32::MAX));
+                own.extend([w(u.resource.max(0) as u32), w(cover.0), w(cover.1), w(0), w(d.level_real("DataA", l) as u32), Field::Real(d.level_real("DataB", l)), Field::Real(0.0)]);
+                vec![Field::Ref(NONE), Field::Ref(NONE), Field::Ref(NONE), timer()]
+            }
             // An inventory (CAbilityInventory): its six slots, 0, its pickup listener
             // (`` `pil ``), six 0, six timers (none).  (Provisional: items' cooldowns.)
             codes::ability::id::INVENTORY => {

@@ -2811,6 +2811,26 @@ Formats the port made its own, to be replaced by the original's:
   skill points (+0x90, which GetHeroSkillPoints reads), its strength, ...; its last
   word (+0x138) is its place among its owner's heroes (`CAbilityHero::vf188`: the
   player's count at +0x334, taken as the hero is made).
+- A hero's attributes, as the original keeps them (CAbilityHero): base strength
+  (word +0x94) and agility (+0xa8) and intelligence (its second flag, +0x7c), each
+  its type's at level 1 and what tomes and SetHero* gave, without its levels' gains
+  or its items'; each total the base and the whole part of its level less one times
+  its gain per level (+0xd4 strength, +0xdc intelligence, +0xe4 agility;
+  `FUN_6f528770` reckons agility so).  The tail's reals come from the totals:
+  strength, its life (× 25), its armor (agility × 0.3 − 2), its mana (intelligence
+  × 15), 0, its attack speed (agility × 0.02).  Its word +0xcc is its primary
+  attribute (1 strength, 2 intelligence, else agility; common.j's 3).  Read: the
+  hero map's Dreadlord at level 2, 20, 18, and 19 for 22, 19, and 21 (550, 3.7,
+  315, and 0.38), and at level 4, 23 for 30 (750); its Death Knight at level 3, 23
+  and 18 for 28 and 21 (700, 4.3, 0.42).  The port had read and written the totals
+  there, so a loaded hero lost its levels' gains and a saved one would have had them
+  twice.
+- A unit moving among others has its position cluster (`` `pcu ``) end in its
+  separation's record (CPoSeparate, `FUN_6f16f9d0`: two reals and a word), its
+  second flag set (read, the hero map's 18 dragons on the move).
+- Life and mana are stamped on the agent clock, which wraps at 300 seconds; a stamp
+  before the last wrap counts from there (the hero map's Dreadlord at 300 seconds,
+  its stamps near 290 and the clock at 0.45).
 - A hero's abilities made with it carry 0x80 in their first word (a Dreadlord's
   Amov, Aatk, AHer, and AInv), its learned skills 0x10 (Sleep 0x12 where a creep's
   is 2), and its attack lacks 0x4000 and 0x2000000 (0x20080092).  Its attack's

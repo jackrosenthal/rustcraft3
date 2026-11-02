@@ -126,6 +126,28 @@ impl World {
         u.int = t[2] + b[2];
     }
 
+    /// A hero's base attributes: its type's at level 1 and what it has gained beyond
+    /// (tomes', SetHeroStr's), without its levels' gains, as the original keeps them
+    /// (CAbilityHero's words at 0x94 and 0xa8 and its flag at 0x7c; each total the base
+    /// and the level's gain, its whole part: `FUN_6f528770`'s agility, 0xa8 and the
+    /// level less one times 0xe4).
+    pub(crate) fn hero_base_attrs(&self, h: u32) -> [f32; 3] {
+        let Some(u) = self.unit(h) else { return [0.0; 3] };
+        let Some(o) = self.objects.units.get(u.type_id) else { return [u.str_, u.agi, u.int] };
+        let b = u.extra.attr_bonus;
+        [o.real("STR") + b[0], o.real("AGI") + b[1], o.real("INT") + b[2]]
+    }
+
+    /// Sets a hero's base attributes (`hero_base_attrs`), its levels' gains on them.
+    pub(crate) fn set_hero_base_attrs(&mut self, h: u32, v: [f32; 3]) {
+        let Some(o) = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)) else { return };
+        let t = [o.real("STR"), o.real("AGI"), o.real("INT")];
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.attr_bonus = [v[0] - t[0], v[1] - t[1], v[2] - t[2]];
+        }
+        self.refresh_hero_attrs(h);
+    }
+
     /// Sets a hero's attributes outright, keeping what lies beyond its type's as bonus.
     pub(crate) fn set_hero_attrs(&mut self, h: u32, v: [f32; 3]) {
         let t = self.type_attrs(h);

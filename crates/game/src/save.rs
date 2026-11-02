@@ -302,12 +302,14 @@ impl Game {
                             u.level = l as i32 + 1;
                         }
                     }
-                    // (Its strength, agility, and intelligence without its items': the
-                    // record's third and tenth words and its second flag; beyond its
-                    // type's, tomes'.)
+                    // (Its base strength, agility, and intelligence, without its items'
+                    // or its levels' gains: the record's third and tenth words and its
+                    // second flag; read, the hero map's Dreadlord at level 2, 20, 18,
+                    // and 19, its totals 22, 19, and 21 as its 550 life, 3.7 armor,
+                    // and 315 mana from them say.)
                     w.refresh_hero_attrs(h);
                     if let (Some(st), Some(ag), Some(it)) = (word(tail.get(2)), word(tail.get(9)), flag(1)) {
-                        w.set_hero_attrs(h, [st as f32, ag as f32, it as f32]);
+                        w.set_hero_base_attrs(h, [st as f32, ag as f32, it as f32]);
                     }
                     heroes.push(h);
                     continue;

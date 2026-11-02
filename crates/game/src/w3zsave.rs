@@ -472,7 +472,7 @@ impl World {
                 // Its position.
                 let mut base = property_base(pcu, aic);
                 base.links[1] = Link(rf(pils[3]), 1);
-                out.push((pcu.0, First::Cluster { base, values: [cx, cy, 0.0, 0.0, f32::MAX, 0.0, 0.0], refs: [rf(pmrc), rf(pmrf)], words: [u32::MAX, u32::MAX, 0], reals: [0.8, 0.75, f32::from_bits(0x3ecc_ccce), 0.1, 0.0, 0.0, 0.0, 0.0], more: [cx as u32, cy as u32, 0], flags: [0, 0], last: rf(pa) }, None));
+                out.push((pcu.0, First::Cluster { base, values: [cx, cy, 0.0, 0.0, f32::MAX, 0.0, 0.0], refs: [rf(pmrc), rf(pmrf)], words: [u32::MAX, u32::MAX, 0], reals: [0.8, 0.75, f32::from_bits(0x3ecc_ccce), 0.1, 0.0, 0.0, 0.0, 0.0], more: [cx as u32, cy as u32, 0], flags: [0, 0], last: rf(pa), separate: None }, None));
                 // Its regions.
                 let (bx, by) = ((cx as u32) >> 3, (cy as u32) >> 3);
                 out.push((pmrc.0, First::Region { refs: [rf(coarse), rf(pcu)], word: 0x0800_0000, bounds: [by, bx, by + 1, bx + 1], words: [0, 0xc000_0001, 0] }, None));
@@ -1485,13 +1485,13 @@ impl World {
         Some((rest[k], flags, [rcm(5), rcm(6)]))
     }
 
-    /// A hero ability's two flags' records: its level less one and its intelligence,
-    /// each stamped as made (read against Forestwalk's Dreadlord's at level 1, 0 and
-    /// 18).  Provisional: an item's intelligence (not counted).
+    /// A hero ability's two flags' records: its level less one and its base
+    /// intelligence (`World::hero_base_attrs`), each stamped as made (read against
+    /// Forestwalk's Dreadlord's at level 1, 0 and 18).
     pub fn hero_flag_records(&self, h: u32) -> Vec<(u32, First, Option<Second>)> {
         let Some(u) = self.unit(h) else { return Vec::new() };
         let Some((aher, flags, _)) = self.hero_parts(h) else { return Vec::new() };
-        let values = [u.level.max(1) as u32 - 1, u.int.floor() as u32];
+        let values = [u.level.max(1) as u32 - 1, self.hero_base_attrs(h)[2].round().max(0.0) as u32];
         (0..2).map(|k| (flags[k].0, First::Flag { base: self.stamped(listed_property_base(&flags, k, aher)), value: values[k] }, None)).collect()
     }
 
@@ -1757,6 +1757,7 @@ impl World {
             more,
             flags,
             last: rf(first[9]),
+            separate: None,
         };
         out.push((first[1].0, first_rec, None));
         out

@@ -366,6 +366,18 @@ fn main() -> anyhow::Result<()> {
                 }
                 i += 1;
             }
+            // heroes: each hero's level, attributes, life, mana, and inventory.
+            "heroes" => {
+                if let Some(g) = &scene.game {
+                    let wd = &g.world;
+                    for &h in &wd.unit_order {
+                        let Some(u) = wd.unit(h).filter(|u| u.is_hero) else { continue };
+                        let inv: Vec<String> = u.inventory.iter().map(|&i| wd.item(i).map_or("-".into(), |it| w3_game::objects::id_str(it.type_id).to_string())).collect();
+                        eprintln!("hero {} {} owner {} level {} xp {} attrs {:?} bonus {:?} life {}/{} mana {}/{} inv {inv:?}", h, w3_game::objects::id_str(u.type_id), u.owner, u.level, u.hero_xp, [u.str_, u.agi, u.int], u.item_bonus, u.life, u.max_life, u.mana, u.max_mana);
+                    }
+                }
+                i += 1;
+            }
             // runs: each worker's gold run: its slot, kind, phase, and its order's objects
             // (slot, birth, live kind or "-").
             "runs" => {

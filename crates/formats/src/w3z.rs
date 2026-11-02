@@ -454,9 +454,10 @@ pub enum First {
     /// reals.
     Continuous { object: ObjectBase, values: [f32; 2] },
     /// A clustered position (`` `pcu ``, CPoPosCl's `FUN_6f16f890`): the position's
-    /// record, three words, eight reals, three words, two flags, a reference (and, with
-    /// the second flag, a nested object's record, not yet read).
-    Cluster { base: PropertyBase, values: [f32; 7], refs: [Ref; 2], words: [u32; 3], reals: [f32; 8], more: [u32; 3], flags: [u32; 2], last: Ref },
+    /// record, three words, eight reals, three words, two flags, a reference, and with
+    /// the second flag its separation's record (CPoSeparate's `FUN_6f16f9d0`, the
+    /// object at 0xac: two reals and a word; read, the hero map's moving dragons).
+    Cluster { base: PropertyBase, values: [f32; 7], refs: [Ref; 2], words: [u32; 3], reals: [f32; 8], more: [u32; 3], flags: [u32; 2], last: Ref, separate: Option<(f32, f32, u32)> },
     /// A long-range path (`l^pa`, CLrPath's `FUN_6f167780`): six reals, six words, a
     /// real, a word, two waypoint lists each with two words and a short, and four
     /// references.
@@ -549,11 +550,9 @@ impl SavedObject {
                 let base = PropertyBase::read(&mut r)?;
                 let (values, refs) = (reals(&mut r)?, [Ref::read(&mut r)?, Ref::read(&mut r)?]);
                 let (words3, reals8, more) = (words(&mut r)?, reals(&mut r)?, words(&mut r)?);
-                let flags = words(&mut r)?;
-                if flags[1] != 0 {
-                    return Ok(First::Raw(self.first.clone()));
-                }
-                First::Cluster { base, values, refs, words: words3, reals: reals8, more, flags, last: Ref::read(&mut r)? }
+                let (flags, last) = (words(&mut r)?, Ref::read(&mut r)?);
+                let separate = if flags[1] != 0 { Some((r.f32()?, r.f32()?, r.u32()?)) } else { None };
+                First::Cluster { base, values, refs, words: words3, reals: reals8, more, flags, last, separate }
             }
             (codes::class::PATH, _) => {
                 let (reals6, words5, real, word) = (reals(&mut r)?, words(&mut r)?, r.f32()?, r.u32()?);
@@ -2335,7 +2334,7 @@ impl First {
                 object.write(&mut o);
                 o.reals(values);
             }
-            First::Cluster { base, values, refs: r, words, reals, more, flags, last } => {
+            First::Cluster { base, values, refs: r, words, reals, more, flags, last, separate } => {
                 base.write(&mut o);
                 o.reals(values);
                 refs(&mut o, r);
@@ -2344,6 +2343,11 @@ impl First {
                 o.words(more);
                 o.words(flags);
                 last.write(&mut o);
+                if let Some((a, b, w)) = separate {
+                    o.f32(*a);
+                    o.f32(*b);
+                    o.u32(*w);
+                }
             }
             First::Path { reals, words, real, word, ways, refs: r } => {
                 o.reals(reals);
@@ -2979,9 +2983,15 @@ pub struct SavedUnit {
 
 impl SavedUnit {
     /// A value (life or mana) at an agent clock time: as saved, plus its regeneration
-    /// since, within its maximum.
+    /// since, within its maximum (a stamp before the clock's last wrap at 300 seconds
+    /// counting from there: read, the hero map's Dreadlord at 300 seconds, its clock at
+    /// 0.45).
     pub fn now(values: [f32; 4], at: f32, clock: f32) -> f32 {
-        (values[0] + values[1] * (clock - at)).min(values[3])
+        let mut since = clock - at;
+        while since < 0.0 {
+            since += 300.0;
+        }
+        (values[0] + values[1] * since).min(values[3])
     }
 }
 

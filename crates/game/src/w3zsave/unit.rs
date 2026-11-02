@@ -1309,20 +1309,31 @@ impl World {
                 // heroes it still has.)
                 let birth = |v: u32| self.unit(v).and_then(|w| w.extra.object_slots[0].first().map(|f| f.1)).unwrap_or(0);
                 let ordinal = self.unit_order.iter().filter(|&&v| self.unit(v).is_some_and(|w| w.is_hero && w.owner == u.owner) && birth(v) <= birth(h)).count() as u32;
-                // (Its strength's and agility's words its own, without its items: read,
-                // the hero map's Dreadlord at 900 seconds, 23 and 18.  Provisional: the
-                // reals, 28 and what 21 agility and 20 intelligence give there, which its
-                // items do not explain.)
+                // (Its strength's and agility's words its base's, without its items or
+                // its levels' gains, the reals from its totals: read, the hero map's
+                // Death Knight at level 3, 23 and 18, its reals 28, 700, 4.3, 300, and
+                // 0.42 from 28 strength, 21 agility, and 20 intelligence.)
                 let (s, a, i) = (u.str_.floor(), u.agi.floor(), u.int.floor());
+                let base = self.hero_base_attrs(h).map(|v| v.round().max(0.0) as u32);
                 let skills: Vec<crate::objects::Id> = ob.list("heroAbilList").iter().map(|x| crate::objects::id_from_str(x.trim())).take(5).collect();
                 let at = |k: usize, f: &dyn Fn(crate::objects::Id) -> u32| vec![w(skills.get(k).map_or(0, |&id| f(id)))];
                 let levels = |id: crate::objects::Id| self.objects.abilities.get(id).map_or(0, |o| o.int("levels").max(0) as u32);
                 let needs = |id: crate::objects::Id| self.objects.abilities.get(id).map_or(0, |o| o.int("reqLevel").max(1) as u32);
                 vec![
-                    w(u.hero_xp.max(0) as u32), w(u.skill_points.max(0) as u32), w(s as u32),
+                    w(u.hero_xp.max(0) as u32), w(u.skill_points.max(0) as u32), w(base[0]),
                     Field::Real(s), Field::Real(s * 25.0), Field::Real(a * 0.3 - 2.0), Field::Real(i * 15.0), Field::Real(0.0), Field::Real(a * self.misc.get_str("Misc", "AgiAttackSpeedBonus").and_then(|v| crate::objects::engine_real(v.trim())).unwrap_or(0.02)),
-                    w(a as u32), Field::Real(ob.real("STRplus")), Field::Real(ob.real("INTplus")), Field::Real(ob.real("AGIplus")),
-                    w(u.level.max(1) as u32), w(0x1_000a), w(0),
+                    w(base[1]), Field::Real(ob.real("STRplus")), Field::Real(ob.real("INTplus")), Field::Real(ob.real("AGIplus")),
+                    // (Its primary attribute, 0xcc, as common.j numbers them: 1
+                    // strength, 2 intelligence, 3 agility; read, the hero map's
+                    // Dreadlords and Death Knight, 1; the main attribute's damage
+                    // reckoned on it.  Provisional: agility's 3, by elimination.)
+                    w(match ob.str("Primary").trim() {
+                        "INT" => 2,
+                        "AGI" => 3,
+                        _ => 1,
+                    }),
+                    w(0x1_000a),
+                    w(0),
                     Field::List((0..5).map(|k| at(k, &|id| u32::from_be_bytes(id))).collect()),
                     Field::List((0..5).map(|k| at(k, &levels)).collect()),
                     Field::List((0..5).map(|k| at(k, &needs)).collect()),

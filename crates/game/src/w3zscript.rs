@@ -237,9 +237,9 @@ impl Game {
     /// tables, the main one's from the tags and the second the classes' definitions and
     /// the camera's; its free lists, classes, clocks, the path queues as a game's start
     /// has them, the map's bounds and 522.6667), every object's records, and the game's
-    /// state, its script data the map script's.  Provisional: the objects' word (the
-    /// Tempest checksum, 0), the clocks' counts (0), the fog's third grid and the
-    /// doodads' bytes (0), the AI scripts' machines (none).
+    /// state, its script data the map script's and the computers' AI scripts'
+    /// (`saved_script_data`).  Provisional: the objects' word (the Tempest checksum,
+    /// 0), the clocks' counts (0), the fog's third grid and the doodads' bytes (0).
     pub fn write_save_fresh(&self, head: &SaveHead) -> SaveGame {
         use w3_formats::w3z::{GameState, ObjectManager, SavedObject};
         let w = &self.world;

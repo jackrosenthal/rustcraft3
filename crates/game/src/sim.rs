@@ -458,8 +458,16 @@ impl World {
             self.root_at(h, x, y);
             return;
         }
-        // entangleinstant: Entangle Gold Mine at once, without its casting time.
+        // entangleinstant: Entangle Gold Mine at once, without its casting time, the
+        // order's objects made first (an order with its target and nine tasks: traced, a
+        // night elf start's Tree of Life over LAN with the original, before its
+        // entangled mine; provisional: freed as the next turn starts).
         if order == crate::natives::basic::order_id("entangleinstant") && self.ability_with_code(h, codes::ability::ENTANGLE).is_some() {
+            const ENTANGLE_ORDER: [&crate::tags::Code; 10] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK];
+            for c in ENTANGLE_ORDER {
+                let s = self.tags.take(c);
+                self.tags.doom(s);
+            }
             self.entangle(h, target, true);
             return;
         }

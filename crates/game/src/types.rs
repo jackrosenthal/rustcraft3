@@ -676,6 +676,10 @@ pub struct UnitExtra {
     pub blight_check: Option<f32>,
     #[serde(default)]
     pub blight_rcm: Option<u32>,
+    /// A unit regenerating by night (or by day) alone made with no life modifier, as it
+    /// was made by day (or by night).
+    #[serde(default)]
+    pub no_life_rcm: bool,
     /// A structure being built: its Build In Progress ability (`ABnP`) and that's real,
     /// then its rise's modifier and threshold listener and its regeneration's modifier
     /// (`FUN_6f54d0f0`, `FUN_6f41b380`).
@@ -1001,6 +1005,7 @@ impl Default for UnitExtra {
             spell_pils: Vec::new(),
             blight_check: None,
             blight_rcm: None,
+            no_life_rcm: false,
             build_objects: Vec::new(),
             build_by: None,
             build_end: None,

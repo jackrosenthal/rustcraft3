@@ -95,7 +95,14 @@ fn main() -> anyhow::Result<()> {
             let ours = g.world.keepalive();
             if ours != want {
                 first_off = Some((n, ours, want));
-                println!("turn {n}: the original's keepalive wants game module {:08x}, ours {:08x}", g.world.game_module_for(want), g.world.game_module());
+                println!("turn {n}: the original's keepalive wants game module {:08x}, ours {:08x} (keepalives: ours {ours:08x}, the original's {want:08x}; game ms {}, born {}, next slot {}, free {:?})", g.world.game_module_for(want), g.world.game_module(), g.world.game_ms, g.world.tags.born, g.world.tags.free.last().copied().unwrap_or(g.world.tags.slots), &g.world.tags.free[g.world.tags.free.len().saturating_sub(12)..]);
+                // TAGS_TECH: each player's tech registrations and game module inputs then.
+                if std::env::var("TAGS_TECH").is_ok() {
+                    for (p, pl) in g.world.players.iter().enumerate().take(12) {
+                        let regs: Vec<String> = pl.tech_regs.iter().map(|r| format!("{}:{}/{}/{}/{}/{}/{}/{:x}", w3_game::objects::id_str(r.id), r.max, r.made, r.producing, r.changing, r.present, r.killed, r.flags)).collect();
+                        println!("tech p{p} handicap {:08x} xp {:08x} selection {:08x} hash {:08x} regs {}", pl.handicap.to_bits(), pl.handicap_xp.to_bits(), g.world.sync_selection_hash(p as u8), g.world.tech_hash(p as u8), regs.join(" "));
+                    }
+                }
                 let presence = g.world.tags.free.last().copied().unwrap_or(g.world.tags.slots);
                 let state = g.world.rng.state();
                 let h = w3_game::keepalive::byte_hash((state >> 32) as u32).wrapping_add(w3_game::keepalive::byte_hash(state as u32));

@@ -2900,6 +2900,23 @@ Formats the port made its own, to be replaced by the original's:
   entangling at 5 seconds, no gold and no mine yet).  The port wrote it with defaults,
   so a night elf's mine came back empty and its wisps mined nothing after a load; it
   now writes and loads both as the haunted mine's (provisional).
+- A night elf start over LAN (the original joining the port's host, slot 0 night elf):
+  the keepalives differed from the first turn.  Its object counts (the take's birth
+  counter, `+0x50`, and the presence table's count, `+0x1c`, and free head, `+0x40`,
+  read at each take and turn mark) showed four things the port did not do.  A unit
+  that regenerates by night alone (the Tree of Life, wisps) has no life modifier
+  (`` `rcm ``) when made by day.  The Tree of Life's `entangleinstant` makes an order
+  and nine tasks (`ordt tskA tskA task task tskt task task task task`) before the
+  entangled mine (freed as the next turn starts, provisional).  The gold mine's
+  footprint, its three `^pmr`, is freed as it is entangled, before the entangled
+  mine is made, whose first three objects take those slots (the last freed first).
+  And the entangled mine's Blight Dispel (Small) (`Abds`: 768 by 64 every 0.08) frees
+  its objects by turn 10 (0.9 seconds) where twelve steps from its making end at
+  0.96; it is taken as a step ahead (provisional: the Booty Bay town halls' Large
+  dispel ends at 1.2 as measured).  With these the keepalives agree to turn 21; at 2
+  seconds the test map's script orders the wisps to harvest, whose orders' objects
+  (`ordt tskA tskA task task task tskt tskt tskt task task task tskA tskO ^clg ^clu
+  l^pa` for each) the port does not make yet.
 - The original's saves hold no state of its random generators (neither the main one
   nor the 45 streams, as seeded or by value, under the locked seed or the slot
   table's): the original goes on from a save with generators of its own, so neither

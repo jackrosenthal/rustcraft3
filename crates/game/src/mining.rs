@@ -769,9 +769,22 @@ impl World {
         // own unbuildable ground (measured: NightElfX04's entangleinstant on its mine
         // at 11136,3328 leaves the entangled mine there, in the script's rect about it,
         // where ours stood at 11008,2816 and its wisps, sent by that rect, mined nothing).
+        // The mine's footprint goes first, its three regions freed in order (traced: a
+        // night elf start's over LAN with the original, the entangled mine's first three
+        // objects taking their slots, the last freed first).
+        if let Some(footprint) = self.unit_mut(mine).map(|m| std::mem::take(&mut m.extra.footprint_slots)) {
+            for s in footprint {
+                self.tags.release(s);
+            }
+        }
         let e = crate::natives::units::create_unit_exact(self, owner, id, x, y, facing);
         if e != 0 {
             self.cover_mine(e, mine);
+            if instant {
+                if let Some(u) = self.unit_mut(e) {
+                    u.extra.blight_timer = 0.08;
+                }
+            }
             if !instant {
                 if let Some(u) = self.unit_mut(e) {
                     u.constructing = Some(u.build_time);

@@ -861,7 +861,7 @@ impl World {
         let newest_on = |p: (u32, u32)| thresholds.iter().filter(|l| l.1 == p).map(|l| l.0).last();
         let (rtl, mana_heard) = (newest_on(first[4]), newest_on(first[5]));
         let (hp_rate, mp_rate) = self.regen_rates(h).unwrap_or((0.0, 0.0));
-        let regen_life = matches!(o.str("regenType").to_ascii_lowercase().as_str(), "always" | "night" | "day");
+        let regen_life = matches!(o.str("regenType").to_ascii_lowercase().as_str(), "always" | "night" | "day") && !u.extra.no_life_rcm;
         // (Regeneration on blight: its `` `rcm `` made as the unit stands on blight, the
         // life stamped then; read, the undead's at 2 seconds.)
         let blight_rcm = u.extra.blight_rcm.filter(|s| self.tags.live.contains_key(s)).map(|s| self.tagged(s));
@@ -943,7 +943,7 @@ impl World {
         let (hp_base, hero_hp, mp_rate) = self.regen_parts(h).unwrap_or((0.0, 0.0, 0.0));
         let hp_rate = hp_base + hero_hp;
         let hero = self.hero_parts(h);
-        let regen_life = matches!(o.str("regenType").to_ascii_lowercase().as_str(), "always" | "night" | "day");
+        let regen_life = matches!(o.str("regenType").to_ascii_lowercase().as_str(), "always" | "night" | "day") && !u.extra.no_life_rcm;
         // (A regeneration's node due 150 seconds after it was made, every 150.)
         let periodic = |r: (u32, u32)| {
             let made = self.made_abs(r.0).unwrap_or(0);

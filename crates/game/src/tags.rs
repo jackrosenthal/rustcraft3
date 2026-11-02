@@ -703,9 +703,15 @@ impl crate::world::World {
         const BASE: usize = 10;
         let mut blight_rcm: Option<usize> = None;
         let blight_regen = field("regenType").eq_ignore_ascii_case("blight");
-        // Life regeneration: a timer, or for regeneration on blight its ability.
-        match field("regenType").to_ascii_lowercase().as_str() {
-            "always" | "night" | "day" => codes.push(*codes::class::CONTINUOUS_MODIFIER),
+        // Life regeneration: a timer, or for regeneration on blight its ability.  A unit
+        // regenerating by night alone has none made by day, nor one by day alone by night
+        // (traced: a night elf start's Tree of Life and wisps, made at 8:00, none, over
+        // LAN with the original).
+        let regen = field("regenType").to_ascii_lowercase();
+        let no_life_rcm = matches!(regen.as_str(), "night" | "day") && (regen == "day") != self.daytime;
+        match regen.as_str() {
+            "always" => codes.push(*codes::class::CONTINUOUS_MODIFIER),
+            "night" | "day" if (regen == "day") == self.daytime => codes.push(*codes::class::CONTINUOUS_MODIFIER),
             // Its timer too when made on blight (measured: undead made where the
             // test's undead buildings had spread blight had one, those made before
             // them none).
@@ -1121,6 +1127,7 @@ impl crate::world::World {
             if blight_regen {
                 u.extra.blight_check = Some(base + 2.0);
                 u.extra.blight_rcm = blight_rcm.map(|k| slots[k]);
+                u.extra.no_life_rcm = no_life_rcm;
             }
         }
     }

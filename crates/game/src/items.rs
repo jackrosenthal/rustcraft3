@@ -99,6 +99,25 @@ impl World {
         true
     }
 
+    /// Puts an item into a unit's inventory slot as a saved game had it: as `give_item`,
+    /// but no event fires and nothing is scored (the item was already the unit's).
+    pub fn carry_item(&mut self, unit: u32, item: u32, slot: usize) -> bool {
+        let Some(type_id) = self.item(item).map(|i| i.type_id) else { return false };
+        let size = self.inventory_size(unit);
+        let Some(u) = self.unit(unit).filter(|u| slot < size && u.inventory.get(slot) == Some(&0)) else { return false };
+        let (owner, holder_type) = (u.owner, u.type_id);
+        self.unit_mut(unit).unwrap().inventory[slot] = item;
+        let kinds: Vec<crate::tags::Code> = self.item_abilities(type_id).iter().flat_map(|a| self.ability_tags(holder_type, a)).collect();
+        let slots: Vec<u32> = kinds.iter().map(|c| self.tags.take(c)).collect();
+        let it = self.item_mut(item).unwrap();
+        it.owner_unit = unit;
+        it.player = owner;
+        it.visible = false;
+        it.ability_slots = slots;
+        self.apply_item_bonuses(unit);
+        true
+    }
+
     /// Takes an item out of its holder's inventory and puts it on the ground.
     pub fn drop_item(&mut self, vm: &mut Vm, item: u32, x: f32, y: f32) {
         let Some(holder) = self.item(item).map(|i| i.owner_unit).filter(|&u| u != 0) else { return };

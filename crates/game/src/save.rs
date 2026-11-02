@@ -220,11 +220,11 @@ impl Game {
     /// Puts an original's saved game in place of a game just started on its map (its
     /// script's main run): its units (their type, owner, place, facing, life, and mana),
     /// the handles scripts had them by, its players' gold and lumber (saved in tenths),
-    /// the time of day, the map script's variables (by name, arrays too), its timers, its
-    /// destructables' life, its items, and the computers' AI scripts and captains
-    /// (`restore_ai_scripts`), and the map script's threads asleep.  Not yet: the rest
-    /// (the time, which the port's timers and sleeping threads count from; orders,
-    /// buildings in progress, carried items), which stay as the script just made them.
+    /// the time of day, the map script's variables (by name, arrays too) and its threads
+    /// asleep, its timers, its destructables' life, its items (those carried in their
+    /// units' slots), and the computers' AI scripts and captains (`restore_ai_scripts`).
+    /// Not yet: the rest (the time, which the port's timers and sleeping threads count
+    /// from; orders, buildings in progress), which stay as the script just made them.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
         use crate::natives::units::{create_unit_exact, remove_unit};
         let units = s.units()?;
@@ -276,19 +276,46 @@ impl Game {
                 }
             }
         }
-        // The items in place of the script's, under the handles they had (provisional:
-        // an item a unit carries is not yet told apart, and lies where it is saved).
+        // The items in place of the script's, under the handles they had; one a unit
+        // carries in its inventory's slot (its Inventory's six, `AInv`, each an item's
+        // tag and birth; its unit the ability's owner on its first list; read, the hero
+        // map's heroes at 300 and 900 seconds).
+        let mut carried: Vec<((u32, u32), (u32, u32), usize)> = Vec::new();
+        {
+            use w3_formats::w3z::{Field, First, Second};
+            let all = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
+            for o in all.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::ability::id::INVENTORY) {
+                let Ok(First::Agent { object, .. }) = o.first() else { continue };
+                let unit = (object.links[0].3 .0, object.links[0].3 .1);
+                let Ok(Second::Agent { tail, .. }) = o.second() else { continue };
+                let Some(Field::List(slots)) = tail.first() else { continue };
+                for (k, g) in slots.iter().enumerate() {
+                    if let (Some(Field::Word(t)), Some(Field::Word(b))) = (g.first(), g.get(1)) {
+                        if *t != u32::MAX {
+                            carried.push(((*t, *b), unit, k));
+                        }
+                    }
+                }
+            }
+        }
         for h in w.item_order.clone() {
             w.remove_item(h);
         }
+        let mut made_items: std::collections::HashMap<(u32, u32), u32> = Default::default();
         for i in items {
             let (x, y) = (origin[0] + i.pos[0] * crate::pathing::CELL, origin[1] + i.pos[1] * crate::pathing::CELL);
             let h = crate::natives::objects::create_item(w, i.type_id.to_be_bytes(), x, y);
+            made_items.insert((i.tag, i.birth), h);
             if let Some(&jass) = handles.get(&(i.tag, i.birth)) {
                 w.handles.alias(jass, h);
             }
             if let Some(Obj::Item(item)) = w.handles.get_mut(h) {
                 (item.life, item.player) = (i.life, i.owner as u8);
+            }
+        }
+        for (item, unit, slot) in carried {
+            if let (Some(&ih), Some(&uh)) = (made_items.get(&item), made.get(&unit)) {
+                w.carry_item(uh, ih, slot);
             }
         }
         // The destructables' life, by the handles they had (the map placed them in the

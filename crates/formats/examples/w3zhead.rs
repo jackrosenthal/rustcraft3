@@ -3,6 +3,10 @@ fn main() {
     let a: Vec<String> = std::env::args().collect();
     let s = w3_formats::w3z::SaveGame::read(&std::fs::read(&a[1]).unwrap()).unwrap();
     println!("map {} game {:?} info {:?} {:?} stat {} bytes words {:?}", s.map, s.game_name, s.info_name, s.info_password, s.info_stat.len(), s.info_words);
+    // W3ZHEAD_STAT: the stat's coded bytes.
+    if std::env::var_os("W3ZHEAD_STAT").is_some() {
+        println!("stat {}", s.info_stat.iter().map(|b| format!("{b:02x}")).collect::<String>());
+    }
     println!("slots {:02x?}", s.slots);
     println!("objects word {:08x} map xoro {:08x} sha1 {}", s.objects_word, s.map_xoro, s.map_sha1.iter().map(|b| format!("{b:02x}")).collect::<String>());
     println!("local slot {} player {} name {:?} preferences {:?}, game time {} ms", s.local_slot, s.local_player, s.player_name, s.preferences, s.game_ms);

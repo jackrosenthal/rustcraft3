@@ -151,18 +151,28 @@ pub fn sidecar(w3z: &[u8], port: &[u8]) -> Vec<u8> {
     [&stamp(w3z)[..], port].concat()
 }
 
+/// The port's own state of a saved game file: its sidecar's, when it is this file's,
+/// or the file itself in the port's format (as saves were before the original's
+/// format).
+pub fn port_state(path: &std::path::Path) -> Option<Vec<u8>> {
+    let bytes = std::fs::read(path).ok()?;
+    if !bytes.starts_with(w3_formats::container::MAGIC) {
+        return Some(bytes);
+    }
+    let side = std::fs::read(sidecar_path(path)).ok()?;
+    (side.len() > 8 && side[..8] == stamp(&bytes)).then(|| side[8..].to_vec())
+}
+
 impl Load {
     /// A saved game file: the port's own state when its sidecar is this file's, else
     /// the file as it reads.
     pub fn read(path: &std::path::Path) -> anyhow::Result<Load> {
         let bytes = std::fs::read(path)?;
         if bytes.starts_with(w3_formats::container::MAGIC) {
-            if let Ok(side) = std::fs::read(sidecar_path(path)) {
-                if side.len() > 8 && side[..8] == stamp(&bytes) {
-                    match SaveGame::parse(&side[8..]) {
-                        Ok(s) => return Ok(Load::Port(s)),
-                        Err(e) => log::warn!("{}: the port's state beside it does not read ({e:#}); loading the save alone", path.display()),
-                    }
+            if let Some(port) = port_state(path) {
+                match SaveGame::parse(&port) {
+                    Ok(s) => return Ok(Load::Port(s)),
+                    Err(e) => log::warn!("{}: the port's state beside it does not read ({e:#}); loading the save alone", path.display()),
                 }
             }
         }

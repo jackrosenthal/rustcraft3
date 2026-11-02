@@ -1168,7 +1168,7 @@ fn main() -> anyhow::Result<()> {
                     let host = g.world.players.get(g.world.local_player as usize).map_or_else(String::new, |p| p.name.clone());
                     // (Its settings: the speed, fast, as a game played alone has it.)
                     let stat = w3_net::GameStat { settings: 2, map_width: ms.width, map_height: ms.height, map_xoro: ms.xoro, map_path: ms.path.clone(), host, map_sha1: ms.sha1 }.to_bytes();
-                    let head = w3_game::w3zscript::SaveHead { map: ms.path, stat, xoro: ms.xoro, sha1: ms.sha1 };
+                    let head = w3_game::w3zscript::SaveHead { map: ms.path, stat, xoro: ms.xoro, sha1: ms.sha1, network: None };
                     let header = w3_formats::container::Header { product: *b"PX3W", version: 27, build: 6059, flags: 0, length_ms: 0 };
                     std::fs::write(&a[i + 1], g.write_save_fresh(&head).to_file(&header)).unwrap();
                 }

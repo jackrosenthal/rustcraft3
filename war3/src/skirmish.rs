@@ -264,7 +264,8 @@ impl Skirmish {
         }
         if e.kind == EntryKind::Save {
             // The saved game's map: a file, or one in the game's archives.
-            let map = std::fs::read(&e.path).ok().and_then(|b| w3_game::save::SaveGame::peek_map(&b));
+            // (One the original saved, without the port's state, by its own header.)
+            let map = w3_game::save::port_state(&e.path).and_then(|b| w3_game::save::SaveGame::peek_map(&b)).or_else(|| w3_game::save::Load::read(&e.path).ok().map(|l| l.map().to_string()));
             self.summary = map.and_then(|m| {
                 let p = PathBuf::from(&m);
                 // Saved games show the unknown map image, not the map's preview.

@@ -1310,15 +1310,18 @@ impl Scene {
                 }
                 // A network game's save, made on every computer at the same moment (a
                 // replay's saves are not made again).
+                // (As the original's format, the port's own state beside it, as a game
+                // played alone's.)
                 w3_game::world::Request::NetSave(name) if self.playback.is_none() => {
                     let path = crate::data::multiplayer_save_dir().map(|d| d.join(format!("{name}.{}", crate::saveload::EXTENSION)));
-                    let bytes = self.game.as_ref().map(|g| g.save(&self.map_path));
-                    if let (Some(path), Some(bytes)) = (path, bytes) {
-                        let res = bytes.and_then(|b| {
+                    let files = self.game.as_ref().map(|g| g.save(&self.map_path)).map(|port| port.and_then(|p| self.save_files_of(p)));
+                    if let (Some(path), Some(files)) = (path, files) {
+                        let res = files.and_then(|(w3z, port)| {
                             if let Some(d) = path.parent() {
                                 std::fs::create_dir_all(d)?;
                             }
-                            std::fs::write(&path, b).map_err(Into::into)
+                            std::fs::write(&path, w3z)?;
+                            std::fs::write(w3_game::save::sidecar_path(&path), port).map_err(Into::into)
                         });
                         if let Err(e) = res {
                             log::error!("saving {}: {e:#}", path.display());
@@ -4579,13 +4582,25 @@ impl Scene {
     /// sidecar.
     pub fn save_files(&mut self) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
         let port = self.save_game()?;
+        self.save_files_of(port)
+    }
+
+    /// As `save_files`, the port's own state given (a network game's, its triggers
+    /// having heard the save in its turn).
+    fn save_files_of(&self, port: Vec<u8>) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
         let g = self.game.as_ref().context("no game")?;
         let ms = g.recorder.as_ref().and_then(|r| r.replay.map_stat.clone()).context("the map's checksums are not known")?;
         let expansion = g.recorder.as_ref().is_none_or(|r| r.replay.version != 0);
-        let host = g.world.players.get(g.world.local_player as usize).map_or_else(String::new, |p| p.name.clone());
-        // (Its settings: the speed, fast, as a game played alone has it.)
-        let stat = w3_net::GameStat { settings: 2, map_width: ms.width, map_height: ms.height, map_xoro: ms.xoro, map_path: ms.path.clone(), host, map_sha1: ms.sha1 }.to_bytes();
-        let head = w3_game::w3zscript::SaveHead { map: ms.path, stat, xoro: ms.xoro, sha1: ms.sha1 };
+        let network = g.recorder.as_ref().and_then(|r| r.replay.network_head());
+        let stat = match &network {
+            Some((_, stat, _)) => stat.clone(),
+            None => {
+                let host = g.world.players.get(g.world.local_player as usize).map_or_else(String::new, |p| p.name.clone());
+                // (Its settings: the speed, fast, as a game played alone has it.)
+                w3_net::GameStat { settings: 2, map_width: ms.width, map_height: ms.height, map_xoro: ms.xoro, map_path: ms.path.clone(), host, map_sha1: ms.sha1 }.to_bytes()
+            }
+        };
+        let head = w3_game::w3zscript::SaveHead { map: ms.path, stat, xoro: ms.xoro, sha1: ms.sha1, network: network.map(|(name, _, people)| (name, people)) };
         let header = w3_formats::container::Header { product: if expansion { *b"PX3W" } else { *b"3RAW" }, version: 27, build: 6059, flags: 0, length_ms: 0 };
         let w3z = g.write_save_fresh(&head).to_file(&header);
         let side = w3_game::save::sidecar(&w3z, &port);

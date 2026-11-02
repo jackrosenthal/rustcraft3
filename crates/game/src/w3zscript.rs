@@ -15,6 +15,8 @@ pub struct SaveHead {
     pub stat: Vec<u8>,
     pub xoro: u32,
     pub sha1: [u8; 20],
+    /// A network game's name and its people (none for a game played alone).
+    pub network: Option<(String, u32)>,
 }
 
 /// A register or a pushed value as saved (`FUN_6f91a6e0`): its type, the type given,
@@ -270,9 +272,11 @@ impl Game {
         let local = w.local_player;
         let skeleton = SaveGame {
             map: head.map.clone(),
-            info_name: "Local Game".into(),
+            // (A game played alone's "Local Game", 12, and 1; a network game's its name,
+            // its people, and 9: read, the original's save of a LAN game.)
+            info_name: head.network.as_ref().map_or_else(|| "Local Game".into(), |n| n.0.clone()),
             info_stat: head.stat.clone(),
-            info_words: [12, 1],
+            info_words: head.network.as_ref().map_or([12, 1], |n| [n.1, 9]),
             slots: w.saved_slot_table(),
             map_xoro: head.xoro,
             map_sha1: head.sha1,

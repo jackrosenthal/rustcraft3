@@ -3120,8 +3120,17 @@ Formats the port made its own, to be replaced by the original's:
   the original refuses one with bytes after its record (back to the menu) or after
   its container ("The save file is unavailable or corrupted").  Measured: a save
   at 60 seconds of the hero map loads in the original and plays; the port resumes
-  it at 70 seconds after 10 more.  Not yet: a network game's saves, still the
-  port's own format.
+  it at 70 seconds after 10 more.
+- A network game's save (the original's of a LAN game on Booty Bay, read): its
+  second name empty, its description the game's GAMEINFO (its name, no password,
+  the stat with the lobby's options, `0x648 << 8 | 2`, and the host's name, and the
+  words people and 9, as a game played alone's "Local Game", 12, and 1), the slot
+  table W3GS carries, and the local slot and player.  The port's network saves are
+  written so (`Replay::network_head`), the port's own state beside them as a game
+  played alone's; loading a network game takes everyone's port state, the same on
+  every computer (`save::port_state`), as before.  Provisional: a game the port
+  joined, its stat's host its own name; not yet loaded by the original (its LAN
+  load wants the other players to join it).
 - An aura bearer's own buff, made with it, is written at rest when the port's sweep
   has it off (a Death Knight's at 60 seconds of the every-unit map, else empty).
 - A buff's own timer (CBuff vf211 `532b50`, event 0xd01c4) is written running to

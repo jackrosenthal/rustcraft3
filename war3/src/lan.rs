@@ -317,7 +317,9 @@ impl Lan {
     /// people's slots kept for them by name, its computers as they were.  Everyone
     /// loads their own copy of the save (each computer saved it).
     pub fn host_saved(&mut self, file: &Path, game: &str, expansion: bool, chain: &w3_mpq::Chain) -> Result<(), &'static str> {
-        let bytes = std::fs::read(file).map_err(|_| "SAVE_ERROR_BAD_SAVE")?;
+        // (The port's own state of it: everyone's the same, as the original's own
+        // format is not.)
+        let bytes = w3_game::save::port_state(file).ok_or("SAVE_ERROR_BAD_SAVE")?;
         let save = w3_game::save::SaveGame::parse(&bytes).map_err(|_| "SAVE_ERROR_BAD_SAVE")?;
         let mut setup = Lan::saved_setup(&save);
         let mine = setup.slots.iter_mut().find(|s| s.holder == Holder::Open && s.name.eq_ignore_ascii_case(&self.name)).ok_or("NETERROR_JOINGAMEFAILED")?;
@@ -345,7 +347,7 @@ impl Lan {
         self.save = None;
         if saved {
             let file = Path::new(&game.stat.map_path.replace('\\', "/")).file_name().map(|f| f.to_owned()).unwrap_or_default();
-            let bytes = crate::data::multiplayer_save_dir().and_then(|d| std::fs::read(d.join(file)).ok());
+            let bytes = crate::data::multiplayer_save_dir().and_then(|d| w3_game::save::port_state(&d.join(file)));
             match bytes {
                 Some(b) if Lan::save_id(&b) == game.stat.map_xoro => self.save = Some(b),
                 _ => return Err("NETERROR_DIFFERENTSAVEFILE"),

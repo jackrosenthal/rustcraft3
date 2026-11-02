@@ -236,6 +236,24 @@ struct Setup {
 }
 
 impl Replay {
+    /// A network game's description as its saves carry it (read: the original's save
+    /// of a LAN game, its GAMEINFO's name, the stat with the lobby's options and the
+    /// host's name, and the people in it and game type 9): its name, stat, and people;
+    /// none for a game played alone.  Provisional: a game the port joined, the host's
+    /// name its own.
+    pub fn network_head(&self) -> Option<(String, Vec<u8>, u32)> {
+        let lobby = self.lobby.as_ref()?;
+        if !lobby.iter().any(|s| matches!(s.fill, crate::SlotFill::Remote)) {
+            return None;
+        }
+        let host_slot = lobby.iter().find(|s| matches!(s.fill, crate::SlotFill::Local)).or(lobby.first());
+        let host = host_slot.map(|s| s.name.clone().unwrap_or_else(|| format!("Player {}", s.player + 1))).unwrap_or_default();
+        let ms = self.map_stat.clone().unwrap_or_else(|| MapStat { path: self.map.clone(), ..Default::default() });
+        let stat = w3_net::GameStat { settings: self.flags << 8 | 2, map_width: ms.width, map_height: ms.height, map_xoro: ms.xoro, map_path: ms.path.clone(), host, map_sha1: ms.sha1 }.to_bytes();
+        let people = lobby.iter().filter(|s| matches!(s.fill, crate::SlotFill::Local | crate::SlotFill::Remote)).count() as u32;
+        Some((self.game_name.clone().unwrap_or_else(|| self.map.clone()), stat, people.max(1)))
+    }
+
     /// The replay as the original's file (.w3g), as it writes them: its header and
     /// record (the host and players, the game's description with the map and its
     /// checksums, the slots, the seed), the start records, then each frame's turn (a
@@ -520,6 +538,27 @@ impl Outcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A network game's saves carry its name, its stat with the lobby's options and
+    /// the host's name, and its people (as the original's save of a LAN game); a game
+    /// played alone's carry none of it.
+    #[test]
+    fn network_games_describe_themselves_in_saves() {
+        let slot = |player: u8, fill: crate::SlotFill, name: Option<&str>| crate::LobbySlot { player, fill, name: name.map(Into::into), race: None, team: player as i32, color: player as i32, handicap: 100.0, difficulty: 1 };
+        let mut r = Replay {
+            map: "Maps\\(2)BootyBay.w3m".into(),
+            lobby: Some(vec![slot(0, crate::SlotFill::Local, Some("Host")), slot(1, crate::SlotFill::Remote, Some("Jack"))]),
+            flags: 0x648,
+            game_name: Some("w3-net host".into()),
+            ..Default::default()
+        };
+        let (name, stat, people) = r.network_head().expect("a network game");
+        assert_eq!((name.as_str(), people), ("w3-net host", 2));
+        let stat = w3_net::GameStat::parse(&stat).unwrap();
+        assert_eq!((stat.settings, stat.host.as_str()), (0x64802, "Host"));
+        r.lobby = Some(vec![slot(0, crate::SlotFill::Local, Some("Host")), slot(1, crate::SlotFill::Computer, None)]);
+        assert!(r.network_head().is_none());
+    }
 
     /// A replay written as the original's file reads back as it was: its setup (from
     /// the original's record), each frame's exact length, and each command.

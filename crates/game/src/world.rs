@@ -1820,27 +1820,18 @@ impl World {
         self.ai.get(&p).and_then(|s| self.tick_main((s.clock as f64 * 200.0).round() as i64))
     }
 
-    /// The main clock at which an AI thread due at `due` stops the walkers it orders: at
-    /// the first tick whose game time, 5 ms added in single precision tick by tick, is
-    /// strictly past the due (read: Twisted Meadows' human computer's harvest pass due
-    /// 35.0999985 stopping a peasant walking home where it was at tick 7021's clock, a
-    /// fifth of a step past tick 7020's; its passes due 2.0999999 to 7.0999999 at the
-    /// ticks they round to; provisional: read only so, and not the threads' own ticks,
-    /// `World::ai_tick_of`).
+    /// The main clock at which an AI thread due at `due` stops the walkers it orders: that
+    /// of the first tick whose main clock is past the due less a tick (read: Twisted
+    /// Meadows' human computer's harvest pass due 35.0999985 stopping a peasant walking
+    /// home at tick 7021's clock, a fifth of a step past tick 7020's; its build order due
+    /// 48.0999985 stopping its builder at tick 9622's, two ticks past the one the due
+    /// rounds to; its passes due 2.0999999 to 7.0999999 and its build order due 18.1 at
+    /// the ticks they round to, the main clock not yet lagging a tick behind the game's
+    /// time; provisional: read only so).
     pub(crate) fn clock_at_thread(&self, due: f32) -> Option<u32> {
-        let r = (due as f64 * 200.0).round() as i64;
-        let mut acc = 0.0f32;
-        let mut k = 0i64;
-        while k < r - 2 {
-            acc += 0.005f32;
-            k += 1;
-        }
-        while acc <= due {
-            acc += 0.005f32;
-            k += 1;
-        }
-        let (first, clocks) = (&self.tick_clocks.0, &self.tick_clocks.1);
-        clocks.get(usize::try_from(k - *first).ok()?).copied()
+        let past = crate::efloat::sub(due.to_bits(), crate::motion::TICK);
+        let clocks = &self.tick_clocks.1;
+        clocks.iter().copied().find(|&c| f32::from_bits(past) < f32::from_bits(c)).or_else(|| clocks.last().copied())
     }
 
     pub(crate) fn clock_at_time(&self, t: f32) -> Option<u32> {

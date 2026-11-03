@@ -3172,6 +3172,13 @@ Formats the port made its own, to be replaced by the original's:
   due: the passes due 2.0999999 to 15.0999994 at the ticks they round to, 33.1 and
   35.1 at the next (provisional; the threads' own ticks, `ai_tick_of`, unchanged).
   With it the keepalives agree to turn 508.
+- Its build order due 48.0999985 stops the peasant it sends to build a farm 0.059
+  cells (two ticks) further along its walk than the tick the due rounds to (read under
+  winedbg).  One rule fits that, the harvest stops, and the build order due 18.1: the
+  first tick whose main clock (the lagging single-precision one) is past the due less
+  a tick, for both the build and the harvest orders' stops (replacing the game-time
+  rule above).  With it the keepalives agree to turn 526; next, the farm begun at
+  17.6 finishes in turn 527 in the original, not then in the port.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

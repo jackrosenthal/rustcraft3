@@ -740,7 +740,7 @@ impl World {
             // time, its walk dropped for the build's (`World::stop_walker_at`; read:
             // Forestwalk's undead computer's ziggurat, ordered at 4.5 of an acolyte
             // walking to the mine, begun in turn 77).
-            if let Some(c) = self.ai.get(&p).and_then(|s| self.clock_at_time(s.clock)) {
+            if let Some(c) = self.ai.get(&p).and_then(|s| self.clock_at_thread(s.clock)) {
                 self.stop_walker_at(b, c);
             }
             self.leave_mine_pub(b);

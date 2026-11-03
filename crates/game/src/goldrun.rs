@@ -30,6 +30,10 @@ const HARVEST_PLAYER: [&Code; 19] = [codes::class::ORDER_TASKS, codes::class::TA
 const HARVEST_OWN: [&Code; 19] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 /// The order home with the gold: its order, a block, four tasks, two target tasks, four
 /// tasks, a block, and its move's objects.
+/// A computer's worker walking home with gold sent to its mine again by its AI: the walk
+/// home's order anew, an order (`+ord`) at its head (read: Twisted Meadows' human
+/// computer's trained peasant re-sent at 35.2, its walk home's first eight freed).
+const RETURN_AI: [&Code; 16] = [codes::class::ORDER, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 const RETURN: [&Code; 16] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 /// A harvest order on a tree given by a player: the gold order without the move to the
 /// mine and the task before it, its move to the tree the third target task.
@@ -335,19 +339,25 @@ impl World {
         // `HARVEST_OWN`: read, Twisted Meadows' human computer's five in its first pass.)
         let peon = !wisp && !lumber && self.ability_with_code(h, codes::ability::HARVEST).is_some();
         let mut ghost = false;
+        let mut home = None;
         if (wisp || peon) && computer && self.run_order_made.is_none() && self.ai_ordering {
             // (A peasant sent again ghosts from the start: read, the human computer's
             // third peasant's region at 0.12 flagged 0x08, the ghosting's, after its
             // AI's order at 0.1, the second's still 0x02 at 0.03.)
             ghost = peon;
-            let layout: &[&Code] = if wisp { &WISP_GOLD_AI } else { &HARVEST_OWN };
+            // (One walking home with gold walks on home: `RETURN_AI`.)
+            home = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).filter(|r| peon && r.kind == Kind::Return).and_then(|r| match r.phase {
+                Phase::ToHall(hall) => Some(hall),
+                _ => None,
+            });
+            let layout: &[&Code] = if home.is_some() { &RETURN_AI } else if wisp { &WISP_GOLD_AI } else { &HARVEST_OWN };
             let n = layout.len();
             let triple: Vec<u32> = [codes::class::ORDER, codes::class::TASK_A, codes::class::TASK].iter().map(|c| self.tags.take(c)).collect();
             let order: Vec<u32> = layout.iter().map(|c| self.tags.take(c)).collect();
             self.tags.release(order[n - 3]);
             // (A peasant's wood order so too: read, the human computer's oldest, sent to
             // gold in its AI's second pass, its nine freed.)
-            let old = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).filter(|r| matches!(r.kind, Kind::Wisp | Kind::Own) && !r.entered && matches!(r.order.len(), 16 | 17 | 18 | 19)).map(|r| r.order.clone());
+            let old = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).filter(|r| (matches!(r.kind, Kind::Wisp | Kind::Own) && !r.entered || home.is_some()) && matches!(r.order.len(), 16 | 17 | 18 | 19)).map(|r| r.order.clone());
             let mut frees = vec![triple[1]];
             if let Some(o) = &old {
                 frees.extend((0..harvest_split(o.len())).rev().map(|k| o[k]));
@@ -355,11 +365,20 @@ impl World {
             frees.extend([triple[2], triple[0]]);
             frees.extend((harvest_split(n)..n - 3).rev().map(|k| order[k]));
             self.tags.issued.extend(frees);
+            // (One walking home, from a thread run before the tick's steps: as an ended
+            // walk's, in the next step, `World::ai_build_objects`.)
             if let Some(o) = old {
-                self.tags.later_now.extend([o[o.len() - 1], o[o.len() - 2]]);
+                if home.is_some() && !self.ai_after_steps {
+                    let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
+                    self.tags.walk_ended([o[o.len() - 1], o[o.len() - 2]], serial);
+                } else {
+                    self.tags.later_now.extend([o[o.len() - 1], o[o.len() - 2]]);
+                }
             }
             if let Some(u) = self.unit_mut(h) {
-                u.extra.gold_run = None;
+                if home.is_none() {
+                    u.extra.gold_run = None;
+                }
                 u.extra.ai_harvesting = false;
             }
             self.run_order_made = Some(order);
@@ -401,6 +420,12 @@ impl World {
         };
         let old = self.unit(h).and_then(|u| u.extra.gold_run.clone());
         let run = match old {
+            Some(mut r) if home.is_some() => {
+                r.mine = mine;
+                r.ordered = mine;
+                r.order = order;
+                r
+            }
             Some(mut r) => {
                 r.mine = mine;
                 r.lumber = lumber;
@@ -1109,9 +1134,14 @@ impl World {
         // to a second, home full, then to a third cheapest about the first, its walk
         // ending 4.584 from that tree's middle at 51.564877).
         let mut run = run;
-        if run.lumber && (!self.is_tree_pub(run.mine) || (run.ordered != 0 && run.ordered != run.mine)) {
+        // One its AI sent home again (`RETURN_AI`) stands there till its AI orders it
+        // (read: Twisted Meadows' human computer's peasant re-sent at 35.2, home at 36.0,
+        // its order's first eight freed then, its path and cluster in the next step, its
+        // AI's harvest order at 36.2).
+        let ai_return = self.tags.live.get(&run.order[0]).is_some_and(|e| &e.0 == codes::class::ORDER);
+        if ai_return || run.lumber && (!self.is_tree_pub(run.mine) || (run.ordered != 0 && run.ordered != run.mine)) {
             let about = if run.ordered != 0 { run.ordered } else { run.mine };
-            let found = if self.is_tree_pub(about) { Some(about) } else { self.next_tree(h, about, false) };
+            let found = if ai_return { None } else if self.is_tree_pub(about) { Some(about) } else { self.next_tree(h, about, false) };
             match found {
                 Some(t) => {
                     run.mine = t;

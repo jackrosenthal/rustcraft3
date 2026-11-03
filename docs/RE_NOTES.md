@@ -3154,6 +3154,16 @@ Formats the port made its own, to be replaced by the original's:
   span there are clear, and else takes the first clear cell's middle from its own,
   ring by ring (a start peasant's region takes the home's lower cells; Forestwalk's
   captains keep the places read).  With it the keepalives agree to turn 332.
+- A worker made in the tick of its AI's pass, before the pass runs, counts as made
+  since it: the peasant trained by 31.2 sits out the passes at 31.2 and 33.2 and joins
+  at 35.2 (its making's harvest not counted at gold, so it is sent again).  Walking
+  home with gold then, it is given its walk home again, an order (`+ord`) at its head
+  (`RETURN_AI`), its old walk home's first eight freed (the last first) and that
+  walk's path and cluster as an ended walk's in the next step.  Home at 36.0 it drops
+  its gold and stands (that order's first eight freed, its path and cluster in the
+  next step), till its AI's pass at 36.2 sends it to the mine; a computer with an AI
+  script has no other look for idle workers (the port's quarter-second one sent it at
+  once).  With these the keepalives agree to turn 427.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

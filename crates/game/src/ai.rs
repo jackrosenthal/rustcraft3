@@ -817,10 +817,11 @@ impl World {
         // (The AI's own list, its newest first: FUN_6f9c7700; traced, Forestwalk's undead
         // computer's first harvest order its newest acolyte's, which its build loop then
         // takes to build.)
-        // (A worker made since its AI's last pass but one is not yet among them: read,
-        // Twisted Meadows' human computer's peasant trained at 15.1, sent to wood in
-        // the pass at 16.2, not at 15.2.)
-        let joining = |w: &World, h: u32| w.unit(h).is_some_and(|u| u.extra.ai_harvesting && u.extra.made_at.is_some_and(|t| t > since));
+        // (A worker made since its AI's last pass but one is not yet among them, one made
+        // in that pass's tick counting as made since it: read, Twisted Meadows' human
+        // computer's peasant trained at 15.1, sent to wood in the pass at 16.2, not at
+        // 15.2; one trained by 31.2, sent again in the pass at 35.2, not at 33.2.)
+        let joining = |w: &World, h: u32| w.unit(h).is_some_and(|u| u.extra.ai_harvesting && u.extra.made_at.is_some_and(|t| t >= since));
         let workers: Vec<u32> = self.workers(p).into_iter().rev().filter(|h| !held.contains(h) && !joining(self, *h)).collect();
         // (A worker summoning a structure keeps its order until the summoning ends.)
         let busy = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Build { .. } | Action::Construct { .. } | Action::Attack { .. } | Action::Move { .. }) || u.extra.build_end.is_some());

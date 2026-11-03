@@ -486,6 +486,9 @@ impl World {
     /// stay idle; workers with only trees about, peasant or ghoul, stay idle too;
     /// Human02's Uther, a computer slot without a script, so works the mine its intro
     /// shows, and holds it when the intro is skipped).  Looked for every quarter second.
+    /// A computer with an AI script leaves its idle workers to the AI's passes (read:
+    /// Twisted Meadows' human computer's peasant home idle at 36.0, ordered by its AI's
+    /// pass at 36.2).
     pub fn computer_idle_workers(&mut self, dt: f32) {
         const EVERY: f32 = 0.25;
         if (self.time / EVERY).floor() == ((self.time - dt) / EVERY).floor() {
@@ -500,6 +503,7 @@ impl World {
                 self.unit(h).is_some_and(|u| {
                     !u.dead && !u.hidden && !u.paused && !u.is_building && matches!(u.action, Action::Idle) && u.order.id == 0
                         && self.players.get(u.owner as usize).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER)
+                        && !self.ai.contains_key(&u.owner)
                 })
             })
             .filter(|&h| [codes::ability::HARVEST, codes::ability::HARVEST_LUMBER].iter().any(|c| self.ability_with_code(h, c).is_some()))

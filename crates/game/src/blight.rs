@@ -138,6 +138,11 @@ impl World {
         let mut grow = Vec::new();
         for &h in &self.unit_order {
             let Some(u) = self.unit(h).filter(|u| !u.dead && !u.hidden) else { continue };
+            // (Not while it is built: read, Twisted Meadows' human computer's farm,
+            // begun at 2.1, its dispel's objects kept past 3.3.)
+            if u.constructing.is_some() {
+                continue;
+            }
             let Some((a, lvl)) = self.ability_with_code(h, codes::ability::BLIGHT_GROWTH) else { continue };
             let Some(o) = self.objects.abilities.get(a) else { continue };
             let area = o.level_real("Area", lvl);

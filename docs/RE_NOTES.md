@@ -3096,6 +3096,10 @@ Formats the port made its own, to be replaced by the original's:
   is 689).  The port takes the first of the cheapest by the accelerator plan from the
   hall (`World::ai_town_tree`; provisional: the area, and which of the eight a worker
   gets); the keepalives agree to turn 32.
+- A structure's blight dispel does not run while it is built (read: the human
+  computer's farm, begun at 2.1, its `Abli`, `Xbli`, `` `pos `` and two `^pmr` kept
+  past 3.3, where the port had let them go as a pre-placed town hall's go 1.2
+  seconds in).  With it the keepalives agree to turn 98.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

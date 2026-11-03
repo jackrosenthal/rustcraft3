@@ -3117,6 +3117,11 @@ Formats the port made its own, to be replaced by the original's:
   these the keepalives agree to turn 162.  At 16.2 the AI sends that peasant to build,
   its setup harvest (18) still its run, and frees that harvest's eleven before the
   last target task as it does a re-ordered one's (turn 164 then agrees).
+- A walker that comes within reach of its structure stopped and off its bearing
+  arrives only within 0.2 of it, not within its turn: the fourth peasant, 0.925 off
+  as it reached the mine at 16.318 (the provider's answer 3), turned 0.6, then onto
+  the bearing, and joined the queue at 16.378, its path freed as turn 165 began.
+  With it the keepalives agree to turn 177.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

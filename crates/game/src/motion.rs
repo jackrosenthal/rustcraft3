@@ -273,17 +273,19 @@ impl Mover {
     }
 
     /// Whether its walk is over there now: within reach on the goal's bearing, or stopped
-    /// there (`arrive`) within a step's turn of it (read: a peon stopped at a gold mine
-    /// 0.069 short of its bearing, its turn 0.6, went in at the next step with its
-    /// heading as it was; one walking home straight at its hall arrived as it came
-    /// within reach).
+    /// there (`arrive`) within 0.2 of it (0x6fcd53d4, the waypoint test's; read: a peon
+    /// stopped at a gold mine 0.069 short of its bearing, its turn 0.6, went in at the
+    /// next step with its heading as it was; Twisted Meadows' human computer's peasant
+    /// 0.925 off as it came within reach, turned 0.6, then onto the bearing, in the
+    /// third step; one walking home straight at its hall arrived as it came within
+    /// reach).
     pub fn arrived(&self, gait: &Gait, to: (u32, u32), goal: (u32, u32), now: u32) -> bool {
         let (x, y) = self.at(now);
         let (dx, dy) = (ef::sub(to.0, x), ef::sub(to.1, y));
         let dist = ef::sqrt(ef::add(ef::mul(dx, dx), ef::mul(dy, dy)));
         let stopped = self.vx & 0x7fff_ffff == 0 && self.vy & 0x7fff_ffff == 0;
         let angle = self.goal_angle(goal, now);
-        !lt(gait.reach, dist) && (angle == ZERO || (stopped && lt(abs(angle), gait.turn)))
+        !lt(gait.reach, dist) && (angle == ZERO || (stopped && lt(abs(angle), 0.2f32.to_bits())))
     }
 
     /// A point's bearing from its place now.

@@ -3139,6 +3139,10 @@ Formats the port made its own, to be replaced by the original's:
   gold (a 16-object return run) lets go its first eight, the last first, and, given
   before the tick's steps, its path and cluster as an ended walk's, in the next step
   (before an older walk's).  With these the keepalives agree to turn 218.
+- A walker the AI stops for an order turns from its facing as its next walk starts,
+  not from the heading it last arrived somewhere with: the barracks' peasant, walking
+  home at heading 0.2074 when stopped at 18.1, turned three steps (0.6 each) and moved
+  at 18.208 toward (166.5, 187.5), as the port's now does.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

@@ -920,6 +920,11 @@ impl World {
         u.x = f32::from_bits(ef::add(ef::mul(x, crate::pathing::CELL.to_bits()), origin[0].to_bits()));
         u.y = f32::from_bits(ef::add(ef::mul(y, crate::pathing::CELL.to_bits()), origin[1].to_bits()));
         u.extra.cell_at = Some((x, y, u.x, u.y));
+        // Its next walk turns from the facing it had, not an older walk's end (read:
+        // the human computer's barracks' peasant, stopped walking home at 18.1, three
+        // steps turning from its heading before it moved on; the port's, from the
+        // heading it last arrived with, two).
+        u.extra.walk_heading = None;
         if let Some(m) = u.extra.mover.as_mut() {
             (m.x, m.y, m.vx, m.vy, m.placed_at) = (x, y, 0, 0, clock);
         }

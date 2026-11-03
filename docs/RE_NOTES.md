@@ -3050,6 +3050,20 @@ Formats the port made its own, to be replaced by the original's:
   walker's mask.  With the re-ordered peasants ghosting (`GoldRun::ghosted`, its mask
   0x10 though not yet in), and a re-ordered wood order's first nine freed as the
   gold orders' are, the keepalives agree to turn 14.
+- At turn 15 the fourth peasant joins the mine's queue a turn early in the port.  Its
+  walk differs from the setup on: the original's first node is (166.5, 187.5) (south
+  west, into the second peasant's region: blocked at 0.03, answering 1 facing the
+  mine at 0.06 and 0.09, its place unchanged to 0.96), the port's (168.5, 188.5)
+  (east round it, its search refused by all five standing).  Searching each setup
+  way as the peasant is made, before the newer ones exist, gives the original's
+  first nodes for four of the five ((164.5, 190.5), (166.5, 187.5), (162.5, 188.5),
+  (162.5, 185.5); the second's (165.5, 186.5) where the original has (165.5, 185.5)),
+  so the original searches them then; but the port then searches the fourth's way
+  again at 0.06 and finds the way east where the original's finds none, and the
+  keepalives differ sooner (turn 10).  The walker's +0xa8 is its coarse path
+  (accelerator units: its start and the mine, (78, 92)), not the local way.  Not
+  yet read: the local way's object, and why the original's search at 0.06 finds
+  nothing (its limit, or the places it refuses).
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

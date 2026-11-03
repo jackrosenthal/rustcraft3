@@ -1408,15 +1408,12 @@ impl World {
         // The newest walk first (traced: sheep 1050120, given its order after 1050117,
         // held it back before it moved in a step; pig 1050123 likewise held 1050124).
         walkers.sort_by_key(|&h| std::cmp::Reverse(self.unit(h).map_or(0, |u| u.extra.walk_serial)));
-        // New orders have their ways found in this step, before its movement.
-        for &h in &walkers {
-            let Some(u) = self.unit(h) else { continue };
-            if u.extra.mover.is_none() && u.path.is_empty() {
-                if let Some(g) = self.walk_goal(h) {
-                    self.path_to(h, g);
-                }
-            }
-        }
+        // New orders have their ways found in this step, each as its walker's turn in
+        // it comes, after the walkers before it have moved: one that moved first is a
+        // mover to the search (read: Twisted Meadows' human computer's five peasants'
+        // searches at 0.03, newest first, their ways of 3, 7, 3, 9, and 6 points, the
+        // fourth's through the cell beside the second, which had just begun to move;
+        // the second's turned by the build peasant, which had only turned).
         for h in walkers {
             // The ended walks' paths newer than this walker's go before it.
             let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
@@ -1433,6 +1430,11 @@ impl World {
             if u.extra.mover.is_none() {
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.walk_from = None;
+                }
+            }
+            if self.unit(h).is_some_and(|u| u.extra.mover.is_none() && u.path.is_empty()) {
+                if let Some(g) = self.walk_goal(h) {
+                    self.path_to(h, g);
                 }
             }
             let stopped = self.walk_steps(h);
@@ -1518,16 +1520,8 @@ impl World {
             // Its walk ends' objects wait for its end as a first step's do (traced: two
             // give-ups in a turn's second step make their new objects, then free all).
             self.tags.begin_step();
-            // The step's searches come before its movement (read: a sheep about to move
-            // in the step still blocks another's search in it).
-            for &h in &walkers {
-                let Some(u) = self.unit(h) else { continue };
-                if u.extra.mover.is_none() && u.extra.walk_from.is_none_or(|f| f <= k) && u.path.is_empty() {
-                    if let Some(g) = self.walk_goal(h) {
-                        self.path_to(h, g);
-                    }
-                }
-            }
+            // Each walker's search comes in its turn in the step, before its movement (read:
+            // a sheep about to move in the step still blocks another's search in it).
             for h in walkers {
                 let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
                 let (now, later): (Vec<_>, Vec<_>) = std::mem::take(&mut carried).into_iter().partition(|&(_, s)| s > serial);
@@ -1539,6 +1533,11 @@ impl World {
                 let Some(u) = self.unit(h) else { continue };
                 if u.extra.mover.is_none() && u.extra.walk_from.is_some_and(|f| f > k) {
                     continue;
+                }
+                if self.unit(h).is_some_and(|u| u.extra.mover.is_none() && u.path.is_empty()) {
+                    if let Some(g) = self.walk_goal(h) {
+                        self.path_to(h, g);
+                    }
                 }
                 let stopped = self.walk_steps(h);
                 // (An AI's acolyte in range after its move ends its walk in this step; one

@@ -425,6 +425,12 @@ impl World {
         // new walk does, read: Twisted Meadows' night elf computer's wisp re-ordered by
         // its AI at 0.1, entering as turn 3 begins.)
         u.extra.arrive_step = None;
+        // (A new walk waits on no one's old give-way: read, the human computer's
+        // fourth peasant, held by the second at 0.03 for four steps, moving at 0.12
+        // under its AI's new order.)
+        u.extra.walk_wait = 0;
+        u.extra.yields_to = None;
+        u.extra.walk_blocked = 0;
     }
 
     /// The structure a gold run walks to now, if walking.

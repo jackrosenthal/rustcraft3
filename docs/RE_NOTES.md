@@ -3064,6 +3064,19 @@ Formats the port made its own, to be replaced by the original's:
   (accelerator units: its start and the mine, (78, 92)), not the local way.  Not
   yet read: the local way's object, and why the original's search at 0.06 finds
   nothing (its limit, or the places it refuses).
+- Read (after the search's call in `FUN_6f166e90`, 0x6f166fbe: the path at
+  ebp-0x14, its way at +0x34, the way's points at +0x40 and count at +0x50, the
+  search's passes +0x6c and limit +0x68, 700): the original searches the five setup
+  ways at 0.03, newest first, with 3, 7, 3, 9, and 6 points; the fourth's (18
+  passes) runs (166, 187), (165, 186), (165, 185), and along row 184 to (161, 184),
+  through the cell beside the second peasant, which had just begun to move in that
+  step.  So each walker's search comes in its own turn of the step, after the
+  walkers before it have moved (`World::step_walkers`); the port searched them all
+  first, and its fourth's way went east round the second.  The fourth is then held
+  by the second (a mover, so a four-step wait: answers 1 at 0.06 and 0.09, no new
+  search), and the AI's new order at 0.1 starts its walk afresh: it moves at 0.12
+  toward (161.5, 185.5) (the port had kept the old wait).  With these the
+  keepalives agree to turn 22.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

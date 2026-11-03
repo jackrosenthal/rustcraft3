@@ -268,6 +268,9 @@ pub struct World {
     /// (the live trees and structures), as `World::ai_town_tree` judged it.
     #[serde(skip)]
     pub ai_tree_cache: std::collections::HashMap<u32, (u64, Option<u32>)>,
+    /// The computers' threads run after the tick's movement steps (`World::update_ai`).
+    #[serde(skip)]
+    pub ai_after_steps: bool,
     /// The main clock in seconds since the game began (across its settings back) when
     /// the time of day last moved on.
     #[serde(default)]
@@ -896,6 +899,7 @@ impl World {
             first_tick_done: false,
             ai_ordering: false,
             ai_tree_cache: Default::default(),
+            ai_after_steps: false,
             time_of_day_clock: 0.0,
             time_of_day_exact: 0.0,
             time_of_day_scale: 1.0,
@@ -2217,7 +2221,9 @@ impl World {
         // what the tick makes next (traced: Forestwalk's computer's wake, its orders'
         // frees before the turn's `` `pil ``).
         let issued = self.tags.issued.len();
+        self.ai_after_steps = true;
         prof!(self, "update_ai", self.update_ai(dt));
+        self.ai_after_steps = false;
         for s in self.tags.issued.split_off(issued.min(self.tags.issued.len())) {
             self.tags.release(s);
         }

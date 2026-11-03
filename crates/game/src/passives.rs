@@ -280,6 +280,13 @@ impl World {
         let mut last = None;
         for &(k, at, h) in due {
             let t = self.agent_tick(at);
+            // The computers' threads due before its main tick run first (read: Twisted
+            // Meadows' human computer's build order from its thread due 18.1, main tick
+            // 3620, before a wanderer's order due at 3621, both before the turn's first
+            // step).
+            if let Some(t) = t {
+                self.ai_threads_to(((t - 1) as f64 * 0.005) as f32, Some(t));
+            }
             // The timed releases falling due before it go first (read: the objects of a
             // change between day and night three seconds before, due 683.2, freed before
             // a wanderer's order due 683.2195, both before the turn's second step).

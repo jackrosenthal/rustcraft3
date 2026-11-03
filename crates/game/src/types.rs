@@ -314,6 +314,7 @@ impl Unit {
                 || (matches!(self.action, Action::Harvest { .. }) && self.extra.gold_run.as_ref().is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::ToMine | crate::goldrun::Phase::ToHall(_) | crate::goldrun::Phase::Reaching { .. })))
                 || self.ai_harvest_walk()
                 || self.ai_build_walk()
+                || self.extra.construct_walk.is_some()
                 || self.extra.captain_walk.is_some())
     }
 }
@@ -709,6 +710,11 @@ pub struct UnitExtra {
     /// player's builder does (`World::build`).
     #[serde(default)]
     pub build_legacy: bool,
+    /// An AI's peasant ordered to build on a structure it does not touch as it is
+    /// begun: its order's target task, then its search's cluster and path, and the
+    /// steps till it is in range (`World::construct_step_arrive`).
+    #[serde(default)]
+    pub construct_walk: Option<([u32; 3], u8)>,
     /// A structure's alarm's wait before it watches for enemies (`World::alarms`).
     #[serde(default)]
     pub alarm_wait: Option<f32>,
@@ -1043,6 +1049,7 @@ impl Default for UnitExtra {
             build_by: None,
             build_end: None,
             build_legacy: false,
+            construct_walk: None,
             alarm_wait: None,
             order_tags: Vec::new(),
             gold_run: None,

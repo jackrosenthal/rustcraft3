@@ -11,7 +11,7 @@ use crate::codes;
 const REPAIRS: [&str; 3] = [codes::ability::REPAIR_ORC, codes::ability::RESTORATION, codes::ability::RENEW];
 
 impl World {
-    fn repair_ability(&self, h: u32) -> Option<(crate::objects::Id, u32)> {
+    pub(crate) fn repair_ability(&self, h: u32) -> Option<(crate::objects::Id, u32)> {
         REPAIRS.iter().find_map(|c| self.ability_with_code(h, c))
     }
 

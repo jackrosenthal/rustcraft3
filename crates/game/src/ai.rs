@@ -1032,8 +1032,9 @@ impl World {
         // computer's.)
         let peon = self.ability_with_code(h, codes::ability::HARVEST).is_some();
         // (Its setup's harvest too, a trained peasant's: read, the one trained at 15.1 sent
-        // to build at 16.2, its eleven freed.)
-        let run = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).filter(|r| (r.kind == crate::goldrun::Kind::Wisp || (peon && r.kind == crate::goldrun::Kind::Own)) && !r.entered && matches!(r.order.len(), 16 | 18 | 19)).map(|r| r.order.clone());
+        // to build at 16.2, its eleven freed; and its walk home with gold, its eight: read,
+        // the one sent to build its barracks at 18.2.)
+        let run = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).filter(|r| (((r.kind == crate::goldrun::Kind::Wisp || (peon && r.kind == crate::goldrun::Kind::Own)) && !r.entered) || (peon && r.kind == crate::goldrun::Kind::Return)) && matches!(r.order.len(), 16 | 18 | 19)).map(|r| r.order.clone());
         if let Some(r) = &run {
             frees.extend((0..crate::goldrun::harvest_split(r.len())).rev().map(|k| r[k]));
         }
@@ -1049,9 +1050,17 @@ impl World {
         }
         // (Its path and cluster as the tick ends, after the turn's other orders: read,
         // after its Tree of Life's training's, before the paths of the harvests its AI
-        // gave up, `World::start_gold_run`.)
+        // gave up, `World::start_gold_run`; from a thread run before the tick's steps, as
+        // an ended walk's, in the next step: read, the human computer's barracks' peasant
+        // walking home, given its order at 18.1, its path and cluster freed after a
+        // wanderer's order given after and before an older walk's path in the step.)
         if let Some(r) = run {
-            self.tags.tick_end.extend([r.len() - 1, r.len() - 2].map(|k| r[k]));
+            if self.ai_after_steps {
+                self.tags.tick_end.extend([r.len() - 1, r.len() - 2].map(|k| r[k]));
+            } else {
+                let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
+                self.tags.walk_ended([r[r.len() - 1], r[r.len() - 2]], serial);
+            }
             if let Some(u) = self.unit_mut(h) {
                 u.extra.gold_run = None;
             }

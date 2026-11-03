@@ -3122,6 +3122,23 @@ Formats the port made its own, to be replaced by the original's:
   as it reached the mine at 16.318 (the provider's answer 3), turned 0.6, then onto
   the bearing, and joined the queue at 16.378, its path freed as turn 165 began.
   With it the keepalives agree to turn 177.
+- A builder is placed off its structure as a unit made there is (with the room its
+  size class asks for), not only when on the footprint: the farm's peasant, begun at
+  17.608 at cells (170.15, 178.63), stood then at (171.5, 179.5).  An AI's peasant
+  not then touching the footprint (`FUN_6f166310`/`FUN_6f148790`: a cell of the ring
+  about its class's square, class 1 the 4 by 4 from two below and left of its cell,
+  is the structure's; provisional: its cell its place rounded, the altar's peasant
+  at (158.5, 196.5) touching, the farm's not) has a `tskt` before its order's
+  target and searches (`^clg` freed at once), its walk the newest; its repair range
+  tested (`FUN_6f41d1f0`: 50 over 32 plus the radii, 0.5 and 2.25) at 17.608 and
+  17.668, the rise made at 17.668 (births traced with the clock) and the `tskt`
+  freed, its path and cluster in the next step, turn 178's first.
+- The computers' threads due before a wanderer's order's main tick run before it
+  (the barracks' order from a thread due 18.1, main tick 3620, before a pig's order
+  due at 3621, both before the turn's first step).  Its peasant walking home with
+  gold (a 16-object return run) lets go its first eight, the last first, and, given
+  before the tick's steps, its path and cluster as an ended walk's, in the next step
+  (before an older walk's).  With these the keepalives agree to turn 218.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

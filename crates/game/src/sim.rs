@@ -1421,7 +1421,7 @@ impl World {
             self.tags.free_step_paths(now);
             carried = later;
             // A walk to a structure ends in the walkers' order (`World::gold_run_step_end`).
-            if self.gold_run_step_end(h, 0) || self.coarse_step_arrive(h, 0) || self.acolyte_step_arrive(h, 0) || self.build_step_arrive(vm, h, 0) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
+            if self.gold_run_step_end(h, 0) || self.coarse_step_arrive(h, 0) || self.acolyte_step_arrive(h, 0) || self.build_step_arrive(vm, h, 0) || self.construct_step_arrive(h) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
                 continue;
             }
             // One given before this step (this tick's) walks from the next, one given
@@ -1527,7 +1527,7 @@ impl World {
                 let (now, later): (Vec<_>, Vec<_>) = std::mem::take(&mut carried).into_iter().partition(|&(_, s)| s > serial);
                 self.tags.free_step_paths(now);
                 carried = later;
-                if self.gold_run_step_end(h, k) || self.coarse_step_arrive(h, k) || self.acolyte_step_arrive(h, k) || self.build_step_arrive(vm, h, k) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
+                if self.gold_run_step_end(h, k) || self.coarse_step_arrive(h, k) || self.acolyte_step_arrive(h, k) || self.build_step_arrive(vm, h, k) || self.construct_step_arrive(h) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
                     continue;
                 }
                 let Some(u) = self.unit(h) else { continue };
@@ -3790,13 +3790,11 @@ impl World {
         if self.unit(h).is_none() {
             return;
         }
-        // A worker standing on the footprint moves out of it; one beside it stays.
-        let r = self.unit(h).map_or(16.0, |u| u.collision);
-        let blocked = match (self.unit(h), self.pathing.as_ref()) {
-            (Some(u), Some(p)) => !p.fits(p.cell_of(u.x, u.y), r * 0.5),
-            _ => true,
-        };
-        let (sx, sy) = if blocked { crate::natives::units::off_footprint(self, h) } else { self.unit(h).map_or((x, y), |u| (u.x, u.y)) };
+        // A worker where one made there could not stand moves off as such a one is placed;
+        // one with the room its size class asks for stays (read: Twisted Meadows' human
+        // computer's farm's peasant, at cells (170.15, 178.63), clear of the footprint
+        // but its room not, standing then at (171.5, 179.5)).
+        let (sx, sy) = crate::natives::units::off_footprint(self, h);
         // As the original builds (observed): a peasant (AHbu) works on the structure,
         // which advances only while one does; a peon or wisp (AObu, AEbu) goes inside
         // until it is done; an acolyte (AUbu) summons it and is free at once.
@@ -3837,14 +3835,37 @@ impl World {
             // structure's rise anew; with the step's end go the rise begun with the
             // structure (the last first), its build order's six left (6 to 2, its order),
             // and the new order's last six, the last first (traced: Twisted Meadows'
-            // human computer's farm begun at 2.1, over LAN with the original).
+            // human computer's farm begun at 2.1, over LAN with the original).  One not
+            // touching the structure has a target task before its target and searches
+            // (its cluster's goal freed at once), the rise made in its next step when in
+            // range (`construct_step_arrive`; traced: its farm begun at 17.578).
             let order = self.unit(h).filter(|u| !enters && u.extra.ai_order.len() == crate::ai::AI_BUILD.len()).map(|u| u.extra.ai_order.clone());
             if let Some(order) = order {
-                let construct: Vec<u32> = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK_O, codes::ability::id::TARGET_CLASS, codes::class::TASK_O, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_O, codes::class::TASK_A].iter().map(|c| self.tags.take(c)).collect();
-                let rise: Vec<u32> = [codes::class::CONTINUOUS_MODIFIER, codes::class::THRESHOLD_LISTENER, codes::class::CONTINUOUS_MODIFIER].iter().map(|c| self.tags.take(c)).collect();
+                let touching = self.touches_footprint(h, b);
+                let mut codes: Vec<&crate::tags::Code> = vec![codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK_O, codes::ability::id::TARGET_CLASS, codes::class::TASK_O, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_O, codes::class::TASK_A];
+                if !touching {
+                    codes.insert(5, codes::class::TASK_T);
+                }
+                let construct: Vec<u32> = codes.iter().map(|c| self.tags.take(c)).collect();
+                let rise: Vec<u32> = if touching {
+                    [codes::class::CONTINUOUS_MODIFIER, codes::class::THRESHOLD_LISTENER, codes::class::CONTINUOUS_MODIFIER].iter().map(|c| self.tags.take(c)).collect()
+                } else {
+                    let walk: Vec<u32> = [codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH].iter().map(|c| self.tags.take(c)).collect();
+                    self.tags.release(walk[0]);
+                    // (Its walk the newest: its path and cluster go first as it ends, read
+                    // before a gold peasant's queuing at the mine in that step.)
+                    let serial = self.tags.born;
+                    if let Some(u) = self.unit_mut(h) {
+                        u.extra.construct_walk = Some(([construct[5], walk[1], walk[2]], 2));
+                        u.extra.walk_serial = serial;
+                    }
+                    Vec::new()
+                };
                 let old = self.unit_mut(b).filter(|bu| bu.extra.build_objects.len() == 5).map(|bu| {
                     let old = bu.extra.build_objects[2..5].to_vec();
-                    bu.extra.build_objects.splice(2..5, rise.iter().copied());
+                    if !rise.is_empty() {
+                        bu.extra.build_objects.splice(2..5, rise.iter().copied());
+                    }
                     old
                 });
                 for s in old.unwrap_or_default().into_iter().rev() {
@@ -3853,11 +3874,12 @@ impl World {
                 for k in [6, 5, 4, 3, 2, 0] {
                     self.tags.doom(order[k]);
                 }
-                for k in (6..12).rev() {
+                let n = construct.len();
+                for k in (n - 6..n).rev() {
                     self.tags.doom(construct[k]);
                 }
                 if let Some(u) = self.unit_mut(h) {
-                    u.extra.ai_order = construct[..6].to_vec();
+                    u.extra.ai_order = construct[..n - 6].to_vec();
                 }
             }
         }
@@ -3983,6 +4005,68 @@ impl World {
         }
         let span = ((x1 - x0 + 1).max(y1 - y0 + 1)) as f32 * crate::pathing::CELL;
         (span / 2.0).max(u.collision)
+    }
+
+    /// Whether a unit touches a structure's footprint: a cell of the ring about the
+    /// square its size class takes at its cell is the structure's (`FUN_6f166310`,
+    /// `FUN_6f148790`: class 0 the ring of 3 from one below and left of its cell, class
+    /// 1 of 4 from two, class 2 of 5 from two, class 3 of 6 from three; read: Twisted
+    /// Meadows' human computer's altar's peasant, placed at cells (158.5, 196.5) below
+    /// its footprint, ordered at once to build on; its farm's at (171.5, 179.5), a cell
+    /// clear above its footprint, ordered to reach it first; provisional: its cell its
+    /// place rounded, read only so).
+    pub(crate) fn touches_footprint(&self, h: u32, structure: u32) -> bool {
+        let (Some(u), Some(s), Some(p)) = (self.unit(h), self.unit(structure), self.pathing.as_ref()) else { return false };
+        let (off, size) = [(1, 3), (2, 4), (2, 5), (3, 6)][crate::lrpath::class_of(u.collision / crate::pathing::CELL) as usize];
+        let cx = ((u.x - p.origin[0]) / crate::pathing::CELL + 0.5).floor() as i32;
+        let cy = ((u.y - p.origin[1]) / crate::pathing::CELL + 0.5).floor() as i32;
+        let (x0, y0) = (cx - off, cy - off);
+        let mut ring = (x0..x0 + size).flat_map(|x| [(x, y0), (x, y0 + size - 1)]).chain((y0 + 1..y0 + size - 1).flat_map(|y| [(x0, y), (x0 + size - 1, y)]));
+        ring.any(|c| s.pathing_cells.contains(&c))
+    }
+
+    /// An AI's peasant ordered to build on a structure it did not touch, in the second
+    /// step after: in range (its repair's range over 32 and the two sizes,
+    /// `FUN_6f41d1f0`), the structure's rise is made and its target task freed, and its
+    /// walk ends, its path and cluster going in the next step (`Tags::walk_ended`;
+    /// traced: Twisted Meadows' human computer's farm begun at 17.608, its peasant
+    /// 3.54 cells from its middle tested in range then and at 17.668, the rise made
+    /// at 17.668 and the task freed after its build walk's path and cluster went, its
+    /// own path and cluster in the next turn; provisional: one out of range, its walk
+    /// not yet read, doing as well).
+    pub(crate) fn construct_step_arrive(&mut self, h: u32) -> bool {
+        let Some(u) = self.unit(h) else { return false };
+        let Some(([task, cluster, path], steps)) = u.extra.construct_walk else { return false };
+        if steps > 1 {
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.construct_walk = Some(([task, cluster, path], steps - 1));
+            }
+            return true;
+        }
+        let target = match u.action {
+            Action::Construct { target } => target,
+            _ => 0,
+        };
+        let serial = u.extra.walk_serial;
+        if let Some(s) = self.unit(target) {
+            let range = self.repair_ability(h).map_or(0.0, |(a, l)| self.ability_real(a, "Rng", l));
+            let r = ((range + u.collision + s.collision) / crate::pathing::CELL).max(0.49);
+            let d = (u.x - s.x).hypot(u.y - s.y) / crate::pathing::CELL;
+            if d > r && !self.touches_footprint(h, target) {
+                log::debug!("construct walk of {h}: {d:.3} cells from {target}, out of range {r:.3}");
+            }
+            let rise: Vec<u32> = [codes::class::CONTINUOUS_MODIFIER, codes::class::THRESHOLD_LISTENER, codes::class::CONTINUOUS_MODIFIER].iter().map(|c| self.tags.take(c)).collect();
+            if let Some(bu) = self.unit_mut(target).filter(|bu| bu.extra.build_objects.len() == 5) {
+                bu.extra.build_objects.splice(2..5, rise);
+            }
+        }
+        self.tags.release(task);
+        self.tags.walk_ended([path, cluster], serial);
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.construct_walk = None;
+            u.extra.ai_order.retain(|&t| t != task);
+        }
+        true
     }
 
     /// Distance from a point to the edge of a widget: to its pathing footprint's rectangle

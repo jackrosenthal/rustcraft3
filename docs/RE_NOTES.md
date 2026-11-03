@@ -3027,7 +3027,17 @@ Formats the port made its own, to be replaced by the original's:
   port holds those two (the third peasant's region on (162, 187), the build
   peasant's on (163, 185)) and not the fourth; taking regions half a cell higher
   (their cell and the next) blocks others at 0.03 and the keepalives differ from
-  turn 5.  Not yet read: the regions' cells as the original lists them.
+  turn 5.  The lists themselves (before `FUN_6f168360`, 0x6f1662cb: the walker's
+  cell at ebp-0x18, the cell ahead at ebp-0x30, the list's count at +0x1c and its
+  movers at +0xc): at 0.03 the fourth peasant (cell (167, 188), ahead (166, 187),
+  south-west) lists the second's mover twice, that one standing at (166.297,
+  186.133) turning to its way; every other list to 0.18 is empty, the build
+  peasant's at 0.12 (cell (163, 186), ahead (163, 187)) though the third peasant
+  moves at (163.042, 188.444), and the second's at 0.15 (cell (165, 185), ahead
+  (164, 185)) beside the build peasant at (163.682, 186.035).  So a moving unit's
+  region is not where the port puts it (its cell's span, half a cell below and
+  left), while a standing one's may be: not yet read where the original keeps a
+  walker's region as it moves.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

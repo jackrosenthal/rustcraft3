@@ -173,12 +173,46 @@ pub(crate) fn off_footprint(w: &World, h: u32) -> (f32, f32) {
 }
 
 /// A ground pathing object's place at or near x, y, of `collision`, clear of the
-/// ground units standing there (an AI's captain as it is made).
+/// ground units' regions there (`World::regions_taken`'s cells; an AI's captain as it
+/// is made): just there when the cells its region would span are clear, else the
+/// middle of the first clear cell from its own, ring by ring (read: Forestwalk's
+/// undead computer's attack captain at its home exactly, (355.54123, 482.75253), its
+/// defense captain at (352.5, 503.5) from its home (352.0, 504.0); Twisted Meadows'
+/// human computer's defense captain at its home's cell's middle, (167.5, 189.5), a
+/// start peasant's region taking the home's lower cells: its builder's line past
+/// (167, 189) refused at 18.298, another walker's through the port's former place,
+/// (169.5, 187.5), passing).
 pub(crate) fn agent_place(w: &World, x: f32, y: f32, collision: f32) -> (f32, f32) {
-    if w.pathing.is_none() {
+    let Some(p) = w.pathing.as_ref() else { return (x, y) };
+    let mut taken = std::collections::HashSet::new();
+    for v in w.unit_order.iter().filter_map(|&o| w.unit(o)).filter(|v| v.region_flags() & 0x02 != 0 && !v.dead && !v.hidden && !v.is_building && v.collision > 0.0 && (v.x - x).abs() < 1024.0 && (v.y - y).abs() < 1024.0) {
+        let (px, py) = (((v.x - p.origin[0]) / crate::pathing::CELL).floor() + 0.5, ((v.y - p.origin[1]) / crate::pathing::CELL).floor() + 0.5);
+        let r = v.collision / crate::pathing::CELL;
+        for cy in (py - 0.5 - r).floor() as i32..=(py - 0.5 + r).floor() as i32 {
+            for cx in (px - 0.5 - r).floor() as i32..=(px - 0.5 + r).floor() as i32 {
+                taken.insert((cx, cy));
+            }
+        }
+    }
+    let kind = crate::pathing::Move::from_movetp("foot");
+    let clear = |c: (i32, i32)| !taken.contains(&c) && p.passable(c, kind);
+    let r = collision / crate::pathing::CELL * 0.5;
+    let (gx, gy) = ((x - p.origin[0]) / crate::pathing::CELL, (y - p.origin[1]) / crate::pathing::CELL);
+    if ((gy - r).floor() as i32..(gy + r).ceil() as i32).all(|ty| ((gx - r).floor() as i32..(gx + r).ceil() as i32).all(|tx| clear((tx, ty)))) {
         return (x, y);
     }
-    ground_place(w, "foot", collision, x, y, false, None, 0x02, false, None)
+    let (cx, cy) = p.cell_of(x, y);
+    if clear((cx, cy)) {
+        return p.center((cx, cy));
+    }
+    for k in 1..=64i32 {
+        for c in ring_order(2, cy - k, cx - k, cy + 1 + k, cx + 1 + k) {
+            if clear(c) {
+                return p.center(c);
+            }
+        }
+    }
+    (x, y)
 }
 
 /// A ground unit's place at or near x, y (`placed_at`); `room`: the cells about it must

@@ -3143,6 +3143,17 @@ Formats the port made its own, to be replaced by the original's:
   not from the heading it last arrived somewhere with: the barracks' peasant, walking
   home at heading 0.2074 when stopped at 18.1, turned three steps (0.6 each) and moved
   at 18.208 toward (166.5, 187.5), as the port's now does.
+- Its way (read after the search, 25 points, the end first) is the port's, but at
+  18.298 it heads for (167.5, 202.5), not the way's end: its line test
+  (`FUN_6f168d30`, traced cell by cell with the class-1 test's answers) refuses the
+  line to (168.5, 203.5) at its third cell, the step from (166, 189) into (167, 190),
+  where the port saw nothing; another walker's line through (169, 187), the port's
+  defense captain's cell, passes.  The captain stands in its home's cell, (167.5,
+  189.5): a captain keeps clear of the other ground units' regions (not the made
+  units' two-cell rule), stays at its home exactly when the cells its region would
+  span there are clear, and else takes the first clear cell's middle from its own,
+  ring by ring (a start peasant's region takes the home's lower cells; Forestwalk's
+  captains keep the places read).  With it the keepalives agree to turn 332.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

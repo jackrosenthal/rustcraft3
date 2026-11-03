@@ -3077,6 +3077,17 @@ Formats the port made its own, to be replaced by the original's:
   search), and the AI's new order at 0.1 starts its walk afresh: it moves at 0.12
   toward (161.5, 185.5) (the port had kept the old wait).  With these the
   keepalives agree to turn 22.
+- At 2.1 the build peasant begins its farm.  After the structure's objects (its AI's,
+  the event's data, Build In Progress and its real and rise, `` `rcm `rtl `rcm ``)
+  the peasant takes its order to build (`ordt tskA task task tskO Atrg tskO task
+  task task tskO tskA`, `Atrg` CAbilityTarget) and the rise anew (`` `rcm `rtl
+  `rcm ``); as the step ends go the structure's first rise (the last first), the
+  build order's six left (6 to 2, then its `ord.`), and the new order's last six,
+  the last first, before the walk's path and cluster.  With it the keepalives agree
+  to turn 28; then the oldest peasant, sent from wood to gold, reaches the mine a
+  step late: on its wood walk the original, past its first node (166.5, 189.5),
+  heads straight for (183.5, 177.5), some twenty cells on (its place at 1.11 on that
+  line), where the port's look-ahead stops sooner.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

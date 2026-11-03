@@ -3816,6 +3816,34 @@ impl World {
             if !enters {
                 u.order = Order { id: crate::natives::basic::order_id("repair"), target_x: x, target_y: y, target: b };
             }
+            // An AI's peasant then takes its order to build (a block, two tasks, a
+            // `tskO`, its target, a `tskO`, three tasks, a `tskO`, a block) and the
+            // structure's rise anew; with the step's end go the rise begun with the
+            // structure (the last first), its build order's six left (6 to 2, its order),
+            // and the new order's last six, the last first (traced: Twisted Meadows'
+            // human computer's farm begun at 2.1, over LAN with the original).
+            let order = self.unit(h).filter(|u| !enters && u.extra.ai_order.len() == crate::ai::AI_BUILD.len()).map(|u| u.extra.ai_order.clone());
+            if let Some(order) = order {
+                let construct: Vec<u32> = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK_O, codes::ability::id::TARGET_CLASS, codes::class::TASK_O, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_O, codes::class::TASK_A].iter().map(|c| self.tags.take(c)).collect();
+                let rise: Vec<u32> = [codes::class::CONTINUOUS_MODIFIER, codes::class::THRESHOLD_LISTENER, codes::class::CONTINUOUS_MODIFIER].iter().map(|c| self.tags.take(c)).collect();
+                let old = self.unit_mut(b).filter(|bu| bu.extra.build_objects.len() == 5).map(|bu| {
+                    let old = bu.extra.build_objects[2..5].to_vec();
+                    bu.extra.build_objects.splice(2..5, rise.iter().copied());
+                    old
+                });
+                for s in old.unwrap_or_default().into_iter().rev() {
+                    self.tags.doom(s);
+                }
+                for k in [6, 5, 4, 3, 2, 0] {
+                    self.tags.doom(order[k]);
+                }
+                for k in (6..12).rev() {
+                    self.tags.doom(construct[k]);
+                }
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.ai_order = construct[..6].to_vec();
+                }
+            }
         }
     }
 

@@ -812,7 +812,9 @@ impl World {
         let workers: Vec<u32> = self.workers(p).into_iter().rev().filter(|h| !held.contains(h)).collect();
         // (A worker summoning a structure keeps its order until the summoning ends.)
         let busy = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Build { .. } | Action::Construct { .. } | Action::Attack { .. } | Action::Move { .. }) || u.extra.build_end.is_some());
-        let on_gold = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_gold > 0));
+        // (A wisp its making sent to gold is the AI's to send again: read, Twisted Meadows'
+        // night elf computer's five in its first pass.)
+        let on_gold = |w: &World, h: u32| w.unit(h).is_some_and(|u| !u.extra.ai_harvesting && (matches!(u.action, Action::Harvest { target } if w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_gold > 0)));
         let on_wood = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if !w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_lumber > 0));
         // Each request in priority order takes workers that can do its work and are free,
         // those already at it first: an Undead's acolytes mine and its ghouls cut wood
@@ -867,7 +869,9 @@ impl World {
                         self.stop_walker_at(h, c);
                     }
                     self.ai_order_objects(h, mine);
+                    self.ai_ordering = true;
                     self.order_unit(h, harvest, 0.0, 0.0, mine);
+                    self.ai_ordering = false;
                 }
             }
         }
@@ -876,6 +880,13 @@ impl World {
                 if let Some(t) = tree_near(self, h) {
                     if let Some(c) = stop_at {
                         self.stop_walker_at(h, c);
+                    }
+                    // (A wisp's order to a tree is its order to gold: `World::start_gold_run`.)
+                    if self.ability_with_code(h, codes::ability::WISP_HARVEST).is_some() {
+                        self.ai_ordering = true;
+                        self.order_unit(h, harvest, 0.0, 0.0, t);
+                        self.ai_ordering = false;
+                        continue;
                     }
                     self.ai_wood_objects(p, h);
                     // The worker's own lumber order is the AI's order's last 17 (its run's,
@@ -968,6 +979,13 @@ impl World {
         if old.len() == AI_HARVEST.len() {
             frees.extend([10, 9, 8, 7, 6, 5, 4, 3].map(|k| old[k]));
         }
+        // A wisp on its way to its mine stops its gold run likewise: its eight from
+        // `ordt`, the last first, and its path and cluster after (read: Twisted Meadows'
+        // night elf computer's first wisp sent to build in its first pass).
+        let run = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).filter(|r| r.kind == crate::goldrun::Kind::Wisp && !r.entered && r.order.len() == crate::goldrun::WISP_GOLD_AI.len()).map(|r| r.order.clone());
+        if let Some(r) = &run {
+            frees.extend([7, 6, 5, 4, 3, 2, 1, 0].map(|k| r[k]));
+        }
         // An acolyte at its mine has only its harvest's six from `ordt` left
         // (`World::acolyte_in_range`), freed the same way (read: Forestwalk's undead
         // computer's altar begun by an acolyte at the mine in turn 325).
@@ -977,6 +995,15 @@ impl World {
         frees.extend([13, 12, 11, 10, 9, 8].map(|k| order[k]));
         if old.len() == AI_HARVEST.len() {
             frees.extend([17, 16].map(|k| old[k]));
+        }
+        // (Its path and cluster as the tick ends, after the turn's other orders: read,
+        // after its Tree of Life's training's, before the paths of the harvests its AI
+        // gave up, `World::start_gold_run`.)
+        if let Some(r) = run {
+            self.tags.tick_end.extend([15, 14].map(|k| r[k]));
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.gold_run = None;
+            }
         }
         self.tags.issued.extend(frees);
         if let Some(u) = self.unit_mut(h) {

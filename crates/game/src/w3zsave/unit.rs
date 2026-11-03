@@ -191,8 +191,10 @@ impl World {
         if !building && (o.real("collision") / 16.0) as i32 & 1 == 1 {
             own |= 0x1000;
         }
-        // What it does: a worker (0x100000), what it harvests (gold 0x8000, a haunted
-        // mine's 0x10000, lumber 0x40000), it trains (0x200000).
+        // What it does: a worker (0x100000), what it harvests (gold 0x8000, a haunted or
+        // entangled mine's 0x10000, lumber 0x40000, a wisp's lumber 0x80000), it trains
+        // (0x200000).  (Read: the original's wisps' 0x191445, its save of a night elf's
+        // start at 201 seconds; the AI's assignment reads them, `FUN_6f9c7700`.)
         if is("peon") {
             own |= 0x10_0000;
         }
@@ -201,6 +203,7 @@ impl World {
                 Some(codes::ability::HARVEST) => own |= 0x4_8000,
                 Some(codes::ability::HARVEST_LUMBER) => own |= 0x4_0000,
                 Some(codes::ability::ACOLYTE_HARVEST) => own |= 0x1_0000,
+                Some(codes::ability::WISP_HARVEST) => own |= 0x9_0000,
                 _ => {}
             }
         }

@@ -258,6 +258,12 @@ pub struct World {
     /// Paying by the tick's last main tick, after its steps (`World::last_tick_payouts`).
     #[serde(skip)]
     pub paying_last: bool,
+    /// The game's first tick is over (`World::tick`).
+    #[serde(default)]
+    pub first_tick_done: bool,
+    /// An AI is giving the order under way (`World::start_gold_run`).
+    #[serde(skip)]
+    pub ai_ordering: bool,
     /// The main clock in seconds since the game began (across its settings back) when
     /// the time of day last moved on.
     #[serde(default)]
@@ -883,6 +889,8 @@ impl World {
             run_auto: false,
             pending_pairs: Vec::new(),
             paying_last: false,
+            first_tick_done: false,
+            ai_ordering: false,
             time_of_day_clock: 0.0,
             time_of_day_exact: 0.0,
             time_of_day_scale: 1.0,
@@ -2011,6 +2019,16 @@ impl World {
         let now = self.tick_abs(self.tick_clocks.1.len().saturating_sub(1)).unwrap_or(self.time_exact);
         self.tags.free_due(now);
         self.last_tick_payouts(vm);
+        // A structure's watch falling due in the game's first tick begins after that
+        // tick's releases (read: Twisted Meadows' night elf computer's, due 0.081, its
+        // `` `pil `` after the setup's paths and the game's first timer freed, over LAN
+        // with the original; provisional: why).
+        if self.tick_clocks.0 == 0 && !self.first_tick_done {
+            self.first_tick_done = true;
+            let n = self.tick_clocks.1.len();
+            let at = n.checked_sub(2).and_then(|i| self.tick_abs(i)).unwrap_or(self.time as f64);
+            self.alarms_to(at);
+        }
     }
 
     fn tick_inner(&mut self, vm: &mut Vm, dt: f32) {

@@ -33,16 +33,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some((u8::from_str_radix(r, 16).ok()?, l.parse().ok()?))
     });
     let closed: u32 = std::env::var("W3HOSTCLOSED").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
-    let total = if computer.is_some() { 3 } else { 2 + closed };
+    let total = 2 + u32::from(computer.is_some()) + closed;
     let info = GameInfo { product: TFT, version: VERSION, host_counter: 1, entry_key: 0, name: "w3-net host".into(), stat, slots_total: total, game_type: 9, players: 1, player_slots: total, uptime: 0, port };
     let slot = |pid, st, team, color| Slot { pid, download: if pid == 1 { 100 } else { DOWNLOAD_UNKNOWN }, status: st, computer: false, team, color, race: race::RANDOM | race::SELECTABLE, ai: 1, handicap: 100 };
     let mut list = vec![slot(1, status::OCCUPIED, 0, 0), slot(0, status::OPEN, 1, 1)];
     if let Some((r, level)) = computer {
         list.push(Slot { download: 100, computer: true, race: r | race::SELECTABLE, ai: level, ..slot(0, status::OCCUPIED, 2, 2) });
-    } else {
-        for k in 0..closed {
-            list.push(slot(0, status::CLOSED, 2 + k as u8, 2 + k as u8));
-        }
+    }
+    // (W3HOSTCLOSED: closed slots after the others, as many as the map has players more.)
+    let first = list.len() as u8;
+    for k in 0..closed as u8 {
+        list.push(slot(0, status::CLOSED, first + k, first + k));
     }
     // W3HOSTRACE: the host's slot's race flags in hex (random and selectable by default).
     if let Some(r) = std::env::var("W3HOSTRACE").ok().and_then(|v| u8::from_str_radix(v.trim_start_matches("0x"), 16).ok()) {

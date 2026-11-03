@@ -3050,7 +3050,17 @@ impl World {
         let order = self.tags.take(codes::class::ORDER);
         if ai {
             let block = self.tags.take(codes::class::TASK_A);
-            self.tags.issued.extend([block, order]);
+            self.tags.issued.push(block);
+            // A computer's Tree of Life lets its Eat Tree's listener go as it begins
+            // training, between the two (read: Twisted Meadows' night elf computer's
+            // first wisp, over LAN with the original; provisional: why).
+            let pils = self.unit_mut(h).map(|u| {
+                let (eat, keep): (Vec<_>, Vec<_>) = std::mem::take(&mut u.extra.spell_pils).into_iter().partition(|p| &p.1 == codes::ability::id::EAT_TREE);
+                u.extra.spell_pils = keep;
+                eat
+            });
+            self.tags.issued.extend(pils.unwrap_or_default().into_iter().map(|p| p.0));
+            self.tags.issued.push(order);
         } else {
             self.tags.doom(order);
         }

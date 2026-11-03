@@ -2946,6 +2946,40 @@ Formats the port made its own, to be replaced by the original's:
   seconds fell a tick before the original's); and a payout due before a wanderer's
   order in the same step (125.848091, the order 125.863121) comes first, as after the
   last step.
+- A night elf computer over LAN (Twisted Meadows, the original joining the port's
+  host, the computer in the third slot, the fourth closed: `W3HOSTCOMPUTER=4,1
+  W3HOSTCLOSED=1`; the map without a computer agrees for 900 turns).  At its making
+  each of its wisps takes the AI's order (`+ord tskA task`) and a gold order of its
+  own (`ordt tskA`, three tasks, three target tasks, three tasks, `tskA tskO ^clg
+  ^clu l^pa`, a scripted order's second block less), given up at once for the AI's
+  first order (its nine), whose last gives it the same harvest again, the one it
+  carries out; a wisp so ordered waits for no other.  As the next turn starts the
+  first harvest goes but its path and cluster (its `^clg` at once), and the second's
+  five before its closing block; the first's path and cluster go at the first
+  tick's end, after the time of day's objects and the game's first timer, the
+  newest wisp's first.  The computer's Tree of Life takes an in-range listener after
+  its AI's objects (taken as its Eat Tree's), and a creep made while a computer
+  plays lets its autocast's order go as the next turn starts (four creeps with
+  Slow; kept without a computer).  A structure's watch due in the game's first
+  tick (0.081) begins after that tick's releases.
+- The AI's harvest assignment (`FUN_6f9c7330`, within each `HarvestGold` and
+  `HarvestWood` call): `FUN_6f9c7410` counts those already at the work (state
+  +0x194 5 or 6 and the AI unit's flag 4 for gold, 8 for wood), then `FUN_6f9c7700`
+  takes others in the AI's list, newest first: not taken in this pass (AI unit +0x28
+  & 3 clear), state 0, 5, or 6, and the unit word +0x20 with gold 0x8000 or 0x10000,
+  wood 0x40000 or 0x80000.  A wisp's word is 0x191445 (worker 0x100000, Awha's
+  0x90000; read, the original's save).  Traced (Twisted Meadows' night elf computer,
+  `HarvestGold(T,4) HarvestWood(0,1) HarvestGold(T,1) HarvestWood(0,2)`): at 0.1 four
+  wisps to gold, the fifth to wood; at 1.1 that one to gold, as one on wood is not
+  counted for gold and only three were.  Each order, gold or a tree, is `+ord tskA
+  task` and the sixteen (`WISP_GOLD_AI`), its `^clg` at once; with the tick's orders
+  the `tskA`, the earlier harvest's eight, the `task` and `+ord`, the new one's five;
+  the earlier harvests' paths at the turn's end, the newest wisp's first.  The first
+  wisp's harvest is given up for a build order (its eight after the build's first
+  frees, its path at the tick's end, before those paths); the Tree of Life's
+  training lets its Eat Tree listener go between the train order's block and order.
+  A re-ordered wisp that stood beside its mine arrives as its new walk does: entering
+  at 0.27, its path freed at 0.30.  With these the keepalives agree to turn 2.
 - An entangled mine is no town site of its own: the original's save of a night elf
   start (`nel.w3x`) holds the map's four mines' four sites, the first naming the
   entangled mine (the mine it covers made at the map's start with that site).  The

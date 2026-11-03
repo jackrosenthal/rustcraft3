@@ -525,6 +525,10 @@ impl World {
     /// movement steps reach it (read: the undead computer's Necropolis's watch before
     /// the path of an acolyte arrived in the step before, freed as the next began).
     pub fn alarms_to(&mut self, now: f64) {
+        // (In the game's first tick, after the tick's releases: `World::tick`.)
+        if self.tick_clocks.0 == 0 && !self.first_tick_done {
+            return;
+        }
         let hs: Vec<u32> = self.unit_order.clone();
         for h in hs {
             let Some(u) = self.unit_mut(h) else { continue };

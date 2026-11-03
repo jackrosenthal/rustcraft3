@@ -724,6 +724,10 @@ pub struct UnitExtra {
     /// Where a wisp's walk to its tree ended (`World::wisp_at_tree`).
     #[serde(default)]
     pub wisp_spot: Option<(f32, f32)>,
+    /// A computer's wisp given a harvest by its AI as it was made, no longer waiting
+    /// for an order (`World::tag_unit`).
+    #[serde(default)]
+    pub ai_harvesting: bool,
     /// The objects of the order its AI last gave it (`crate::ai::AI_HARVEST`), by slot,
     /// while they last.
     #[serde(default)]
@@ -1034,6 +1038,7 @@ impl Default for UnitExtra {
             wisp_order: Vec::new(),
             wisp_art: Vec::new(),
             wisp_spot: None,
+            ai_harvesting: false,
             ai_order: Vec::new(),
             captain_walk: None,
             captain_order: Vec::new(),

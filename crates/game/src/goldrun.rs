@@ -41,6 +41,10 @@ const LUMBER_OWN: [&Code; 17] = [codes::class::ORDER_TASKS, codes::class::TASK_A
 /// group, cluster, and path (traced: a night elf start's five wisps sent by script,
 /// over LAN with the original).
 const WISP_GOLD: [&Code; 17] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::TASK_O, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
+/// A computer's wisp's harvest order on its entangled mine, the AI's: as `WISP_GOLD` but
+/// for its second block (traced: Twisted Meadows' night elf computer over LAN with the
+/// original, each after the AI's order, `+ord tskA task`).
+pub(crate) const WISP_GOLD_AI: [&Code; 16] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::TASK_O, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 /// A wisp's harvest of the nearest tree (its `autoharvestlumber`): an order and two
 /// blocks, then its harvest order on the tree as `WISP_GOLD` but for its second block
 /// (traced: a night elf start's two wisps so ordered by script, over LAN with the
@@ -301,6 +305,36 @@ impl World {
         // tick a worker left the mine and ended before the worker's walk home, freed
         // before the worker's arrival).
         let serial = self.tags.born;
+        // A computer's wisp sent to gold by its AI: the AI's order (`+ord tskA task`) and
+        // the harvest's sixteen (`WISP_GOLD_AI`, to a tree the same), its `^clg` at once; with the tick's
+        // orders the AI order's first block, the rest of the wisp's earlier harvest but
+        // its path and cluster (its eight from `ordt`, the last first), the AI order's
+        // other two, and the new harvest's five before its closing block; the earlier
+        // harvest's path and cluster as the tick ends (read: Twisted Meadows' night elf
+        // computer's first pass over its wisps, the fifth sent to wood, over LAN with the
+        // original).
+        let computer = self.unit(h).and_then(|u| self.players.get(u.owner as usize)).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER);
+        if wisp && computer && self.run_order_made.is_none() && self.ai_ordering {
+            let triple: Vec<u32> = [codes::class::ORDER, codes::class::TASK_A, codes::class::TASK].iter().map(|c| self.tags.take(c)).collect();
+            let order: Vec<u32> = WISP_GOLD_AI.iter().map(|c| self.tags.take(c)).collect();
+            self.tags.release(order[13]);
+            let old = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).filter(|r| r.kind == Kind::Wisp && !r.entered && r.order.len() == WISP_GOLD_AI.len()).map(|r| r.order.clone());
+            let mut frees = vec![triple[1]];
+            if let Some(o) = &old {
+                frees.extend([7, 6, 5, 4, 3, 2, 1, 0].map(|k| o[k]));
+            }
+            frees.extend([triple[2], triple[0]]);
+            frees.extend([12, 11, 10, 9, 8].map(|k| order[k]));
+            self.tags.issued.extend(frees);
+            if let Some(o) = old {
+                self.tags.later_now.extend([o[15], o[14]]);
+            }
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.gold_run = None;
+                u.extra.ai_harvesting = false;
+            }
+            self.run_order_made = Some(order);
+        }
         // (An AI's order makes them itself: `World::ai_wood_objects`.)
         let order: Vec<u32> = match self.run_order_made.take() {
             Some(order) => order,
@@ -358,6 +392,10 @@ impl World {
         u.path.clear();
         u.extra.mover = None;
         u.extra.walk_serial = serial;
+        // (Its walk begins again: one that had found it beside the mine arrives as its
+        // new walk does, read: Twisted Meadows' night elf computer's wisp re-ordered by
+        // its AI at 0.1, entering as turn 3 begins.)
+        u.extra.arrive_step = None;
     }
 
     /// The structure a gold run walks to now, if walking.
@@ -465,6 +503,8 @@ impl World {
     /// its order, its path freed in that turn, the fourth's in the next).
     fn wisp_enter(&mut self, h: u32, run: GoldRun, path: [u32; 2]) {
         let mine = run.mine;
+        // (An AI's order lacks the second block: its target tasks a place sooner.)
+        let off = WISP_GOLD.len() - run.order.len();
         let cargo = self.tags.take(codes::ability::id::CARGO);
         let birth = self.tags.live.get(&cargo).map_or(0, |e| e.1);
         if let Some(u) = self.unit_mut(h) {
@@ -473,8 +513,8 @@ impl World {
         // (Those as the step ends, after its ended walks' paths, and the first wisp's
         // pair after them: read, a gold wisp's arriving in the step a lumber wisp's
         // walk ended, its frees after that walk's path, over LAN with the original.)
-        self.tags.release_in_step(run.order[8]);
-        self.tags.release_in_step(run.order[7]);
+        self.tags.release_in_step(run.order[8 - off]);
+        self.tags.release_in_step(run.order[7 - off]);
         let listeners = self.unit_mut(h).map(|u| {
             u.extra.spell_owners.clear();
             std::mem::take(&mut u.extra.spell_timers)
@@ -495,7 +535,7 @@ impl World {
             m.inside += 1;
         }
         if let Some(u) = self.unit_mut(h) {
-            u.extra.wisp_order = [0, 2, 3, 4, 5, 6].iter().map(|&k| run.order[k]).collect();
+            u.extra.wisp_order = std::iter::once(0).chain(2 - off..=6 - off).map(|k| run.order[k]).collect();
             u.extra.gold_run = None;
             u.inside = mine;
             u.hidden = true;

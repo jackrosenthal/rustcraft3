@@ -175,6 +175,10 @@ pub struct Tags {
     /// What waits for the next tick's first step's end (`Tags::release_by_step`).
     #[serde(default)]
     pub next_tick_frees: Vec<u32>,
+    /// Walks ended as the map was set up, their paths and clusters freed at the first
+    /// tick's end, the newest first (`Tags::free_due`).
+    #[serde(default)]
+    pub setup_paths: Vec<[u32; 2]>,
     /// Issued orders' objects freed once the orders due together are all given
     /// (`flush_issued`).
     #[serde(default)]
@@ -231,7 +235,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), player_ai_timers: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), aura_dues: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, clock_wraps: 0, made_at: Default::default(), made_wraps: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), buff_modifiers: Default::default(), tick_end: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), next_turn_end: Vec::new(), later_now: Vec::new(), step_paths: Vec::new(), step_frees: None, next_tick_frees: Vec::new(), issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), dead_handles: Default::default(), game_freed_keys: Vec::new(), game_timers: [0; 2], game_timers_clock: 0, save_clock: None, event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), player_ai_timers: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), aura_dues: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, clock_wraps: 0, made_at: Default::default(), made_wraps: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), buff_modifiers: Default::default(), tick_end: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), next_turn_end: Vec::new(), later_now: Vec::new(), step_paths: Vec::new(), step_frees: None, next_tick_frees: Vec::new(), setup_paths: Vec::new(), issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), dead_handles: Default::default(), game_freed_keys: Vec::new(), game_timers: [0; 2], game_timers_clock: 0, save_clock: None, event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -339,6 +343,11 @@ impl Tags {
         self.free_doomed();
         for s in std::mem::take(&mut self.later_now) {
             self.release(s);
+        }
+        for p in std::mem::take(&mut self.setup_paths).into_iter().rev() {
+            for s in p {
+                self.release(s);
+            }
         }
     }
 
@@ -899,6 +908,14 @@ impl crate::world::World {
         // orders).  A unit with an inventory then takes its item pickup range (its
         // abilities' AI start, FUN_6f67dff0; AInv's at FUN_6f606a20).
         let mut extra = 0;
+        // A computer's wisp, its owner's entangled mine at hand: the AI's order makes it
+        // harvest there, the order its own (`WISP_GOLD_AI`), at once given up for the
+        // AI's first order, and it no longer waits for one (read: Twisted Meadows'
+        // night elf computer over LAN with the original, each of its five wisps one
+        // AI order and the harvest's sixteen, then the first order's nine; at the next
+        // turn's start the harvest's freed but its path and cluster).
+        let mut ai_gold: Option<usize> = None;
+        let mut ai_gold_run: Option<usize> = None;
         let mut ai_refs = None;
         let mut item_pil = None;
         let mut spell_pils: Vec<(usize, Code)> = Vec::new();
@@ -906,13 +923,25 @@ impl crate::world::World {
             ai_refs = Some(codes.len());
             codes.extend([*codes::class::UNIT_AI_REF, *codes::class::UNIT_AI]);
             if self.unit_class(self.unit(h).unwrap(), "peon") {
-                extra = self.unit_order.iter().filter_map(|&v| self.unit(v)).filter(|v| v.owner == owner && !v.dead && v.order.id == 0 && self.unit_class(v, "peon")).count();
+                extra = self.unit_order.iter().filter_map(|&v| self.unit(v)).filter(|v| v.owner == owner && !v.dead && v.order.id == 0 && !v.extra.ai_harvesting && self.unit_class(v, "peon")).count();
                 for _ in 0..extra {
                     codes.extend([*codes::class::ORDER, *codes::class::TASK_A, *codes::class::TASK]);
+                }
+                let wisp = had.contains(codes::ability::id::WISP_HARVEST);
+                let mine = wisp && computer && self.unit_order.iter().filter_map(|&v| self.unit(v)).any(|m| m.owner == owner && !m.dead && m.constructing.is_none() && self.ability_with_code(m.handle, codes::ability::ENTANGLED_GOLD_MINE).is_some());
+                if mine && extra > 0 {
+                    ai_gold = Some(codes.len());
+                    codes.extend(crate::goldrun::WISP_GOLD_AI.iter().map(|c| **c));
                 }
             }
             ai = Some(codes.len());
             codes.extend([*codes::class::ORDER, *codes::class::TASK_A, *codes::class::TASK, *codes::class::TASK, *codes::class::TASK, *codes::class::TASK, *codes::class::TASK_A, *codes::class::ORDER, *codes::class::TASK]);
+            // (Its first order's last gives the wisp its harvest again, the one it
+            // carries out.)
+            if ai_gold.is_some() {
+                ai_gold_run = Some(codes.len());
+                codes.extend(crate::goldrun::WISP_GOLD_AI.iter().map(|c| **c));
+            }
             if codes.contains(codes::ability::id::INVENTORY) {
                 item_pil = Some(codes.len());
                 codes.push(*codes::class::IN_RANGE_LISTENER);
@@ -921,8 +950,11 @@ impl crate::world::World {
             // `FUN_6f606140`: a listener on event 0xd01bf at its range; read under
             // winedbg, Plaguelands' Doom Guards' after their AI's objects, from the
             // making's hook `FUN_6f9b9230` for an owner with a player AI).
+            // (A computer's Tree of Life one too, its Eat Tree's, provisional: read, Twisted
+            // Meadows' night elf computer's over LAN with the original, after its AI's
+            // objects.)
             for c in &had {
-                if matches!(c, codes::ability::id::ARCH_MAGE_BLIZZARD | codes::ability::id::PIT_LORD_RAIN_OF_FIRE) {
+                if matches!(c, codes::ability::id::ARCH_MAGE_BLIZZARD | codes::ability::id::PIT_LORD_RAIN_OF_FIRE) || (computer && c == codes::ability::id::EAT_TREE) {
                     spell_pils.push((codes.len(), *c));
                     codes.push(*codes::class::IN_RANGE_LISTENER);
                 }
@@ -943,6 +975,10 @@ impl crate::world::World {
                 self.tags.bump_prop(spell_timers.len() as u32, "slep");
             }
             slots.push(self.tags.take(c));
+            // (The AI's harvests' `^clg` goes as its path is made.)
+            if let Some(g) = [ai_gold, ai_gold_run].into_iter().flatten().find(|&g| k == g + 15) {
+                self.tags.release(slots[g + 13]);
+            }
         }
         // The agent timers its making starts, in its objects' order, named by the
         // function starting each (traced: the quiet test map's, and a census of every
@@ -1097,6 +1133,14 @@ impl crate::world::World {
             for k in autocast.into_iter().chain(flyer).chain(spell_timers.iter().rev().copied()) {
                 self.tags.doom(slots[k]);
             }
+        } else if owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE && self.players.iter().any(|p| p.controller == crate::types::map_control::COMPUTER && p.slot_state == crate::types::slot_state::PLAYING) {
+            // A creep made while a computer plays lets its autocast's order go so too
+            // (read: Twisted Meadows' four creeps with Slow over LAN with the original,
+            // a night elf computer in the game, their orders freed before their making's
+            // tasks; without a computer kept).  Provisional: why.
+            if let Some(k) = autocast {
+                self.tags.doom(slots[k]);
+            }
         }
         // A rooted structure's Eat Tree's timer goes so too (read: a night elf start's
         // Tree of Life over LAN with the original, freed before its making's tasks;
@@ -1118,13 +1162,33 @@ impl crate::world::World {
             }
         }
         if let Some(a) = ai {
+            let triples = a - ai_gold.map_or(0, |_| 16);
             for k in 0..extra {
-                let e = a - 3 * (extra - k);
+                let e = triples - 3 * (extra - k);
                 for d in [1, 2, 0] {
                     self.tags.doom(slots[e + d]);
                 }
             }
-            for d in [1, 6, 5, 4, 3, 2, 0, 8, 7] {
+            if let Some(g) = ai_gold {
+                // (The harvest given up: the five before its closing block, then after
+                // the first order's first block the rest but its path and cluster.)
+                for d in [12, 11, 10, 9, 8] {
+                    self.tags.doom(slots[g + d]);
+                }
+                self.tags.doom(slots[a + 1]);
+                for d in [7, 6, 5, 4, 3, 2, 1, 0] {
+                    self.tags.doom(slots[g + d]);
+                }
+                for d in [6, 5, 4, 3, 2, 0, 8, 7] {
+                    self.tags.doom(slots[a + d]);
+                }
+                if let Some(r) = ai_gold_run {
+                    for d in [12, 11, 10, 9, 8] {
+                        self.tags.doom(slots[r + d]);
+                    }
+                }
+            }
+            for d in [1, 6, 5, 4, 3, 2, 0, 8, 7].into_iter().filter(|_| ai_gold.is_none()) {
                 self.tags.doom(slots[a + d]);
             }
         }
@@ -1162,6 +1226,30 @@ impl crate::world::World {
                 u.extra.blight_rcm = blight_rcm.map(|k| slots[k]);
             }
             u.extra.no_life_rcm = no_life_rcm;
+            u.extra.ai_harvesting = ai_gold.is_some();
+        }
+        // The given-up harvest's path and cluster go as walks ended do; made as the map
+        // is set up, at the first tick's end (read: the last of its frees, after the
+        // time of day's objects and the game's first timer, the newest wisp's first).
+        if let Some(g) = ai_gold {
+            if self.tick_clocks.1.is_empty() {
+                self.tags.setup_paths.push([slots[g + 15], slots[g + 14]]);
+            } else {
+                let serial = self.tags.live.get(&slots[g]).map_or(0, |e| e.1);
+                self.tags.walk_ended([slots[g + 15], slots[g + 14]], serial);
+            }
+        }
+        // The wisp walks to its mine on its second harvest's objects.
+        if let Some(r) = ai_gold_run {
+            let mine = self.unit_order.iter().copied().find(|&m| self.unit(m).is_some_and(|v| v.owner == owner && !v.dead && v.constructing.is_none()) && self.ability_with_code(m, codes::ability::ENTANGLED_GOLD_MINE).is_some());
+            if let Some(mine) = mine {
+                self.run_order_made = Some(slots[r..r + 16].to_vec());
+                self.start_gold_run(h, mine, false);
+                self.run_order_made = None;
+                if let Some(u) = self.unit_mut(h) {
+                    u.order = crate::types::Order { id: crate::natives::basic::order_id("harvest"), target_x: 0.0, target_y: 0.0, target: mine };
+                }
+            }
         }
     }
 }

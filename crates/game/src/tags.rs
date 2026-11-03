@@ -1212,8 +1212,10 @@ impl crate::world::World {
         // Its look at the ground falls due on the main clock, from the tick's first
         // reading (none before the game runs).
         let base = if self.tick_clocks.1.is_empty() { 0.0 } else { self.making_clock.map(|c| c.0).or_else(|| self.tick_abs(0)).unwrap_or(0.0) as f32 };
+        let made_at = (!self.tick_clocks.1.is_empty()).then_some(self.time_exact);
         if let Some(u) = self.unit_mut(h) {
             u.extra.oid = oid;
+            u.extra.made_at = made_at;
             // (A creep made asleep has let them go: their slots, freed, may be taken by
             // others' objects.)
             if !sleeps {

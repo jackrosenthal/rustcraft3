@@ -734,6 +734,10 @@ pub struct UnitExtra {
     /// for an order (`World::tag_unit`).
     #[serde(default)]
     pub ai_harvesting: bool,
+    /// The game time it was made at, for units made as the game runs (none for the
+    /// map's own and the setup's).
+    #[serde(default)]
+    pub made_at: Option<f64>,
     /// The objects of the order its AI last gave it (`crate::ai::AI_HARVEST`), by slot,
     /// while they last.
     #[serde(default)]
@@ -1046,6 +1050,7 @@ impl Default for UnitExtra {
             wisp_art: Vec::new(),
             wisp_spot: None,
             ai_harvesting: false,
+            made_at: None,
             ai_order: Vec::new(),
             captain_walk: None,
             captain_order: Vec::new(),

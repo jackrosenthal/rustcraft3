@@ -3453,7 +3453,15 @@ impl World {
             }
             let dt = if self.cheat(crate::cheats::flag::FAST_BUILD) { dt * crate::cheats::FAST } else { dt };
             self.start_production(vm, h);
+            let doomed = self.tags.doomed.len();
             self.update_training(vm, h, dt);
+            // (What a unit made as the turn begins lets go goes then, before the turn's
+            // steps: read, Twisted Meadows' human computer's peasant trained as turn 152
+            // began, its AI's first orders freed before a wood peasant's arrival at its
+            // tree in that turn's steps.)
+            for s in self.tags.doomed.split_off(doomed.min(self.tags.doomed.len())) {
+                self.tags.release(s);
+            }
         }
     }
 
@@ -3522,17 +3530,25 @@ impl World {
         // 152, its `rtl and `rcm freed at once, the two tasks and the ptcf after its
         // orders' objects at the turn's end).
         let late = self.ai.contains_key(&owner);
+        // (One its AI gave its harvest as it was made goes on at once, its tasks and
+        // ptcf with the tick's orders before the steps: read, Twisted Meadows' human
+        // computer's peasant trained as turn 152 began.)
+        let given = self.unit(new).is_some_and(|u| u.extra.ai_harvesting);
         if new != 0 {
             let tasks: Vec<u32> = (0..2).filter_map(|_| self.tags.doomed.pop()).collect();
             for t in tasks.into_iter().rev() {
-                if late {
+                if late && given {
+                    self.tags.issued.push(t);
+                } else if late {
                     self.tags.later_now.push(t);
                 } else {
                     self.tags.release(t);
                 }
             }
         }
-        if late {
+        if late && given {
+            self.tags.issued.push(ptcf);
+        } else if late {
             self.tags.later_now.push(ptcf);
         } else {
             self.tags.release(ptcf);

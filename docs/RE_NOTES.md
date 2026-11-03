@@ -3106,6 +3106,15 @@ Formats the port made its own, to be replaced by the original's:
   where it went in, the ring's earlier (160.5, 183.5) having its 2 by 2 below and
   left on the mine's column 159; the port had put it there and it walked home six
   steps behind).  With it the keepalives agree to turn 152.
+- The peasant trained as turn 152 begins (15.1) takes its AI's harvests as the setup's
+  peasants did, and what its making lets go goes then, before the turn's steps (its
+  making's two tasks, its AI's objects, the `ptcf`), before a wood peasant's arrival
+  at its tree in that turn's steps; and the AI's pass at 15.2 leaves it be: a worker
+  its AI gave its harvest as it was made joins the harvest requests only from the
+  pass after the next (the original's first wood order for it at 16.2).  Forestwalk's
+  trained acolyte, given no harvest as it is made, is ordered in its first pass and
+  its tasks and `ptcf` go after those orders at the turn's end, as before.  With
+  these the keepalives agree to turn 162.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

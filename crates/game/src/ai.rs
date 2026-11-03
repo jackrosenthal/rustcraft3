@@ -105,6 +105,11 @@ pub struct AiState {
     pub flags: HashMap<String, bool>,
     /// Harvest requests in priority order: (gold?, town, workers).
     pub harvest: Vec<(bool, i32, i32)>,
+    /// The game times of its last two ClearHarvestAI calls, the earlier first: a worker
+    /// made since the earlier is not yet among those its requests take
+    /// (`World::ai_assign_harvest`).
+    #[serde(default)]
+    pub harvest_passes: (f64, f64),
     pub attack: Captain,
     pub defense: Captain,
     pub assault: Vec<(Id, i32)>,
@@ -794,6 +799,7 @@ impl World {
     pub(crate) fn ai_assign_harvest(&mut self, p: u8) {
         let Some(st) = self.ai.get_mut(&p) else { return };
         let requests = st.harvest.clone();
+        let since = st.harvest_passes.0;
         // Units at a guard post do not gather, nor those of a captain with somewhere to
         // go; without SetSlowChopping a captain's units standing at home are taken back
         // to gather and leave it (FUN_6f9c7700; measured: a melee computer's ghouls go
@@ -811,7 +817,11 @@ impl World {
         // (The AI's own list, its newest first: FUN_6f9c7700; traced, Forestwalk's undead
         // computer's first harvest order its newest acolyte's, which its build loop then
         // takes to build.)
-        let workers: Vec<u32> = self.workers(p).into_iter().rev().filter(|h| !held.contains(h)).collect();
+        // (A worker made since its AI's last pass but one is not yet among them: read,
+        // Twisted Meadows' human computer's peasant trained at 15.1, sent to wood in
+        // the pass at 16.2, not at 15.2.)
+        let joining = |w: &World, h: u32| w.unit(h).is_some_and(|u| u.extra.ai_harvesting && u.extra.made_at.is_some_and(|t| t > since));
+        let workers: Vec<u32> = self.workers(p).into_iter().rev().filter(|h| !held.contains(h) && !joining(self, *h)).collect();
         // (A worker summoning a structure keeps its order until the summoning ends.)
         let busy = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Build { .. } | Action::Construct { .. } | Action::Attack { .. } | Action::Move { .. }) || u.extra.build_end.is_some());
         // (A wisp its making sent to gold is the AI's to send again: read, Twisted Meadows'
@@ -1703,7 +1713,14 @@ pub fn table_ai() -> HashMap<&'static str, NativeFn> {
             boolean(fighting || w.captain_attacker(p, &units).is_some())
         },
         IsTowered => |w, _, a| boolean(w.is_towered(a.h(0))),
-        ClearHarvestAI => |w, _, _| { if let Some(s) = w.ai_state() { s.harvest.clear(); } none() },
+        ClearHarvestAI => |w, _, _| {
+            let now = w.time_exact;
+            if let Some(s) = w.ai_state() {
+                s.harvest.clear();
+                s.harvest_passes = (s.harvest_passes.1, now);
+            }
+            none()
+        },
         // Workers are put to the work at once (FUN_6f9c7330 orders them within the call),
         // so the engine takes the requests up on this tick.
         HarvestGold => |w, _, a| {

@@ -2978,8 +2978,23 @@ Formats the port made its own, to be replaced by the original's:
   wisp's harvest is given up for a build order (its eight after the build's first
   frees, its path at the tick's end, before those paths); the Tree of Life's
   training lets its Eat Tree listener go between the train order's block and order.
-  A re-ordered wisp that stood beside its mine arrives as its new walk does: entering
-  at 0.27, its path freed at 0.30.  With these the keepalives agree to turn 2.
+  With these the keepalives agree to turn 2.
+- The same game's wisps' walks, read under winedbg (the waypoint provider's answer
+  after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
+  changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),
+  and the AI's re-order at 0.1 to the same mine keeps each walk (the same walker
+  objects and targets on).  The wisps enter at 0.27, 0.60, 1.23, and 2.10 (the port,
+  re-searching at the re-order: 0.24, 0.84, and later).  The first, standing at
+  (161.0, 188.44) in cells (origin -10240, -10240), heads first for (161.5, 189.5), a
+  cell north (the port's search finds its own cell already touching the mine and gives
+  it no way), answers 3 at 0.12 with the mine's middle (156, 184), and enters at 0.27:
+  as a turn of about 2.8 from that heading at 0.6 a step, set at 0.24.  The scripted
+  case (Booty Bay's night elf start) fits the same turn rule: facing 270 with the mine
+  2.29 off, searched at 2.01, turning to 2.10, entering at 2.13.  Calls from
+  `FUN_6f167290` (the blocked walker's countdown) test contact with the mine one step
+  before the others' entries.  Why the first wisp's way leaves its cell is not yet
+  read (the other standing wisps in its search, or its placement); until then the
+  port re-searches at the re-order and the keepalives differ from turn 3.
 - An entangled mine is no town site of its own: the original's save of a night elf
   start (`nel.w3x`) holds the map's four mines' four sites, the first naming the
   entangled mine (the mine it covers made at the map's start with that site).  The

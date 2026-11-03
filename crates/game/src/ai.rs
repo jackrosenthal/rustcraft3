@@ -721,11 +721,13 @@ impl World {
                 .filter(|&h| self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|wo| wo.list("Builds").iter().any(|b| b.trim() == id_s)))
                 .filter(|&h| self.unit(h).is_some_and(|u| !matches!(u.action, Action::Build { .. } | Action::Construct { .. })))
                 // Only a worker in some of its states builds (`FUN_6f9cb230`, the unit's
-                // +0x194: 0, 5, 6, or 3 but for a peasant): not one whose build order has
-                // yet to end (2).  An acolyte at its mine is in 6 (read: each acolyte's
-                // harvest sets 0 then 6; Forestwalk's undead computer's altar begun by
-                // the newest acolyte, at the mine, in turn 325).
-                .filter(|&h| self.unit(h).is_some_and(|u| u.extra.build_end.is_none() && !(matches!(u.action, Action::Harvest { .. }) && crate::objects::id_str(u.type_id) == "hpea")))
+                // +0x194: 0, 5, 6, or 3 but for a peasant, 3 its building, above): not
+                // one whose build order has yet to end (2).  An acolyte at its mine is in
+                // 6 (read: each acolyte's harvest sets 0 then 6; Forestwalk's undead
+                // computer's altar begun by the newest acolyte, at the mine, in turn 325);
+                // a peasant walking to its mine in 5 (read: Twisted Meadows' human
+                // computer's newest, sent to build in its AI's first pass).
+                .filter(|&h| self.unit(h).is_some_and(|u| u.extra.build_end.is_none()))
                 .collect();
             let Some(&b) = builders.first() else { return false };
             let Some((x, y)) = self.ai_build_site(p, id, town, b) else { return false };
@@ -925,6 +927,16 @@ impl World {
         } else {
             frees.push(order[1]);
         }
+        // A peasant's harvest given up goes as the AI's gold orders let theirs go: its
+        // part before its last target task after the first block, its path and
+        // cluster as the turn ends (read: Twisted Meadows' human computer's oldest
+        // peasant, sent to wood in its AI's first pass).
+        let peon = self.ability_with_code(h, codes::ability::HARVEST).is_some();
+        let old = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).filter(|r| peon && r.kind == crate::goldrun::Kind::Own && !r.entered && matches!(r.order.len(), 18 | 19)).map(|r| r.order.clone());
+        if let Some(o) = &old {
+            frees.extend((0..crate::goldrun::harvest_split(o.len())).rev().map(|k| o[k]));
+            self.tags.later_now.extend([o[o.len() - 1], o[o.len() - 2]]);
+        }
         frees.extend([2, 0, 16, 15, 14, 13, 12].map(|k| order[k]));
         if home.len() == 12 {
             frees.extend([home[8], home[7], home[11]]);
@@ -982,9 +994,12 @@ impl World {
         // A wisp on its way to its mine stops its gold run likewise: its eight from
         // `ordt`, the last first, and its path and cluster after (read: Twisted Meadows'
         // night elf computer's first wisp sent to build in its first pass).
-        let run = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).filter(|r| r.kind == crate::goldrun::Kind::Wisp && !r.entered && r.order.len() == crate::goldrun::WISP_GOLD_AI.len()).map(|r| r.order.clone());
+        // (A computer's peasant likewise, its eleven: read, Twisted Meadows' human
+        // computer's.)
+        let peon = self.ability_with_code(h, codes::ability::HARVEST).is_some();
+        let run = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).filter(|r| (r.kind == crate::goldrun::Kind::Wisp || (peon && r.kind == crate::goldrun::Kind::Own)) && !r.entered && matches!(r.order.len(), 16 | 19)).map(|r| r.order.clone());
         if let Some(r) = &run {
-            frees.extend([7, 6, 5, 4, 3, 2, 1, 0].map(|k| r[k]));
+            frees.extend((0..crate::goldrun::harvest_split(r.len())).rev().map(|k| r[k]));
         }
         // An acolyte at its mine has only its harvest's six from `ordt` left
         // (`World::acolyte_in_range`), freed the same way (read: Forestwalk's undead
@@ -1000,7 +1015,7 @@ impl World {
         // after its Tree of Life's training's, before the paths of the harvests its AI
         // gave up, `World::start_gold_run`.)
         if let Some(r) = run {
-            self.tags.tick_end.extend([15, 14].map(|k| r[k]));
+            self.tags.tick_end.extend([r.len() - 1, r.len() - 2].map(|k| r[k]));
             if let Some(u) = self.unit_mut(h) {
                 u.extra.gold_run = None;
             }

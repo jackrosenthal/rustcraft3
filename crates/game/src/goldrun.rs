@@ -45,6 +45,22 @@ const WISP_GOLD: [&Code; 17] = [codes::class::ORDER_TASKS, codes::class::TASK_A,
 /// for its second block (traced: Twisted Meadows' night elf computer over LAN with the
 /// original, each after the AI's order, `+ord tskA task`).
 pub(crate) const WISP_GOLD_AI: [&Code; 16] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::TASK_O, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
+/// A computer's worker's harvest order on a gold mine, the AI's: as `HARVEST_OWN` but
+/// for a task before its closing block (traced: Twisted Meadows' human computer's
+/// peasants as they are made, over LAN with the original, each after the AI's order).
+pub(crate) const HARVEST_AI: [&Code; 18] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
+/// Where an AI's harvest order's objects part, after its last target task (by its
+/// length: `WISP_GOLD_AI`, `HARVEST_AI`, or `HARVEST_OWN`): those before go when it is
+/// given up, those after but its closing block, cluster goal, cluster, and path as
+/// the next turn starts (read: Twisted Meadows' night elf and human computers').
+pub(crate) fn harvest_split(len: usize) -> usize {
+    let layout: &[&Code] = match len {
+        16 => &WISP_GOLD_AI,
+        18 => &HARVEST_AI,
+        _ => &HARVEST_OWN,
+    };
+    layout.iter().rposition(|c| *c == codes::class::TASK_T).map_or(0, |k| k + 1)
+}
 /// A wisp's harvest of the nearest tree (its `autoharvestlumber`): an order and two
 /// blocks, then its harvest order on the tree as `WISP_GOLD` but for its second block
 /// (traced: a night elf start's two wisps so ordered by script, over LAN with the
@@ -314,20 +330,25 @@ impl World {
         // computer's first pass over its wisps, the fifth sent to wood, over LAN with the
         // original).
         let computer = self.unit(h).and_then(|u| self.players.get(u.owner as usize)).is_some_and(|p| p.controller == crate::types::map_control::COMPUTER);
-        if wisp && computer && self.run_order_made.is_none() && self.ai_ordering {
+        // (A computer's peasant or peon so too, at a gold mine, its new order
+        // `HARVEST_OWN`: read, Twisted Meadows' human computer's five in its first pass.)
+        let peon = !wisp && !lumber && self.ability_with_code(h, codes::ability::HARVEST).is_some();
+        if (wisp || peon) && computer && self.run_order_made.is_none() && self.ai_ordering {
+            let layout: &[&Code] = if wisp { &WISP_GOLD_AI } else { &HARVEST_OWN };
+            let n = layout.len();
             let triple: Vec<u32> = [codes::class::ORDER, codes::class::TASK_A, codes::class::TASK].iter().map(|c| self.tags.take(c)).collect();
-            let order: Vec<u32> = WISP_GOLD_AI.iter().map(|c| self.tags.take(c)).collect();
-            self.tags.release(order[13]);
-            let old = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).filter(|r| r.kind == Kind::Wisp && !r.entered && r.order.len() == WISP_GOLD_AI.len()).map(|r| r.order.clone());
+            let order: Vec<u32> = layout.iter().map(|c| self.tags.take(c)).collect();
+            self.tags.release(order[n - 3]);
+            let old = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).filter(|r| matches!(r.kind, Kind::Wisp | Kind::Own) && !r.entered && matches!(r.order.len(), 16 | 18 | 19)).map(|r| r.order.clone());
             let mut frees = vec![triple[1]];
             if let Some(o) = &old {
-                frees.extend([7, 6, 5, 4, 3, 2, 1, 0].map(|k| o[k]));
+                frees.extend((0..harvest_split(o.len())).rev().map(|k| o[k]));
             }
             frees.extend([triple[2], triple[0]]);
-            frees.extend([12, 11, 10, 9, 8].map(|k| order[k]));
+            frees.extend((harvest_split(n)..n - 3).rev().map(|k| order[k]));
             self.tags.issued.extend(frees);
             if let Some(o) = old {
-                self.tags.later_now.extend([o[15], o[14]]);
+                self.tags.later_now.extend([o[o.len() - 1], o[o.len() - 2]]);
             }
             if let Some(u) = self.unit_mut(h) {
                 u.extra.gold_run = None;

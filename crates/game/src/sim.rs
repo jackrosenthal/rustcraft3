@@ -1393,6 +1393,13 @@ impl World {
             self.wrap_clocks(&mut []);
         }
         let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.steps_walker())).collect();
+        // The game's first step (its clock 0) moves no one: the walks ordered as the map
+        // is set up are searched and steered from the next (read: the waypoint provider,
+        // `FUN_6f165ae0`, first asked at 0.03 for Twisted Meadows' computers' workers,
+        // the human's third peasant's way ending at 0.30 and its entry at 0.33).
+        if self.tick_clocks.0 == 0 && self.step_index == 0 {
+            walkers.clear();
+        }
         // The newest walk first (traced: sheep 1050120, given its order after 1050117,
         // held it back before it moved in a step; pig 1050123 likewise held 1050124).
         walkers.sort_by_key(|&h| std::cmp::Reverse(self.unit(h).map_or(0, |u| u.extra.walk_serial)));

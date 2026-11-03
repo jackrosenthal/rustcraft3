@@ -2979,6 +2979,28 @@ Formats the port made its own, to be replaced by the original's:
   frees, its path at the tick's end, before those paths); the Tree of Life's
   training lets its Eat Tree listener go between the train order's block and order.
   With these the keepalives agree to turn 2.
+- A human computer over LAN (Twisted Meadows, `W3HOSTCOMPUTER=1,1 W3HOSTCLOSED=1`):
+  as each of its peasants is made it takes the AI's order (`+ord tskA task`), a
+  harvest of its own at the nearest gold mine (`HARVEST_AI`: the own harvest's 19
+  less a task before its closing block), the AI's first order's nine, and the same
+  harvest again, the one it carries out (as a computer's wisps do).  A harvest's
+  objects part after its last target task (`goldrun::harvest_split`): those before
+  go when it is given up, those after but the closing block, cluster goal, cluster,
+  and path as the next turn starts.  Turn 1's frees agree object for object (read:
+  frees of slots from 27100).  In its AI's first pass each peasant is sent to gold
+  again, newest first (`+ord tskA task` and the 19, `HARVEST_OWN`), the oldest to
+  wood (the AI's wood order, its 17), each freeing its first block, its earlier
+  harvest's part before the last target task, the AI order's other two, and the
+  new order's tail; the earlier harvests' paths at the turn's end, the newest
+  peasant's first; then a peasant trains at the town hall and the newest peasant
+  is sent to build, its harvest's first part freed after the build's first block,
+  its path at the tick's end.  The AI's builder may be a peasant walking to its mine
+  (state 5); only one building (3) is not.  The game's first step (clock 0) moves no
+  one: the waypoint provider is first asked at 0.03 (both computers' workers), the
+  third peasant's way ends at 0.30 (answer 3) and it enters at 0.33, before the
+  town hall's watch (0.3365) and that walk's path freed at 0.36.  With these the
+  keepalives agree to turn 9; at turn 10 the second peasant reaches the mine's queue
+  (`uref`) a turn later in the port.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

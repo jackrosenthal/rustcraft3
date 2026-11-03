@@ -914,8 +914,12 @@ impl crate::world::World {
         // night elf computer over LAN with the original, each of its five wisps one
         // AI order and the harvest's sixteen, then the first order's nine; at the next
         // turn's start the harvest's freed but its path and cluster).
+        // (A computer's peasant or peon so too, at a gold mine, its order `HARVEST_AI`:
+        // read, Twisted Meadows' human computer's.)
         let mut ai_gold: Option<usize> = None;
         let mut ai_gold_run: Option<usize> = None;
+        let mut ai_layout: &[&Code] = &crate::goldrun::WISP_GOLD_AI;
+        let mut ai_mine = None;
         let mut ai_refs = None;
         let mut item_pil = None;
         let mut spell_pils: Vec<(usize, Code)> = Vec::new();
@@ -928,10 +932,21 @@ impl crate::world::World {
                     codes.extend([*codes::class::ORDER, *codes::class::TASK_A, *codes::class::TASK]);
                 }
                 let wisp = had.contains(codes::ability::id::WISP_HARVEST);
-                let mine = wisp && computer && self.unit_order.iter().filter_map(|&v| self.unit(v)).any(|m| m.owner == owner && !m.dead && m.constructing.is_none() && self.ability_with_code(m.handle, codes::ability::ENTANGLED_GOLD_MINE).is_some());
-                if mine && extra > 0 {
+                let peon = had.contains(codes::ability::id::HARVEST);
+                ai_mine = if !computer {
+                    None
+                } else if wisp {
+                    self.unit_order.iter().copied().find(|&m| self.unit(m).is_some_and(|v| v.owner == owner && !v.dead && v.constructing.is_none()) && self.ability_with_code(m, codes::ability::ENTANGLED_GOLD_MINE).is_some())
+                } else if peon {
+                    // (Its town's mine: the nearest, provisional.)
+                    ai_layout = &crate::goldrun::HARVEST_AI;
+                    self.unit_order.iter().copied().filter(|&m| self.unit(m).is_some_and(|v| !v.dead && v.constructing.is_none() && !v.hidden) && self.ability_with_code(m, codes::ability::GOLD_MINE).is_some()).filter_map(|m| self.widget_pos(m).map(|p| ((p.0 - x).hypot(p.1 - y), m))).filter(|&(d, _)| d < 2000.0).min_by(|a, b| a.0.total_cmp(&b.0)).map(|p| p.1)
+                } else {
+                    None
+                };
+                if ai_mine.is_some() && extra > 0 {
                     ai_gold = Some(codes.len());
-                    codes.extend(crate::goldrun::WISP_GOLD_AI.iter().map(|c| **c));
+                    codes.extend(ai_layout.iter().map(|c| **c));
                 }
             }
             ai = Some(codes.len());
@@ -940,7 +955,7 @@ impl crate::world::World {
             // carries out.)
             if ai_gold.is_some() {
                 ai_gold_run = Some(codes.len());
-                codes.extend(crate::goldrun::WISP_GOLD_AI.iter().map(|c| **c));
+                codes.extend(ai_layout.iter().map(|c| **c));
             }
             if codes.contains(codes::ability::id::INVENTORY) {
                 item_pil = Some(codes.len());
@@ -976,8 +991,8 @@ impl crate::world::World {
             }
             slots.push(self.tags.take(c));
             // (The AI's harvests' `^clg` goes as its path is made.)
-            if let Some(g) = [ai_gold, ai_gold_run].into_iter().flatten().find(|&g| k == g + 15) {
-                self.tags.release(slots[g + 13]);
+            if let Some(g) = [ai_gold, ai_gold_run].into_iter().flatten().find(|&g| k == g + ai_layout.len() - 1) {
+                self.tags.release(slots[g + ai_layout.len() - 3]);
             }
         }
         // The agent timers its making starts, in its objects' order, named by the
@@ -1162,7 +1177,8 @@ impl crate::world::World {
             }
         }
         if let Some(a) = ai {
-            let triples = a - ai_gold.map_or(0, |_| 16);
+            let n = ai_layout.len();
+            let triples = a - ai_gold.map_or(0, |_| n);
             for k in 0..extra {
                 let e = triples - 3 * (extra - k);
                 for d in [1, 2, 0] {
@@ -1172,18 +1188,19 @@ impl crate::world::World {
             if let Some(g) = ai_gold {
                 // (The harvest given up: the five before its closing block, then after
                 // the first order's first block the rest but its path and cluster.)
-                for d in [12, 11, 10, 9, 8] {
+                let split = crate::goldrun::harvest_split(n);
+                for d in (split..n - 3).rev() {
                     self.tags.doom(slots[g + d]);
                 }
                 self.tags.doom(slots[a + 1]);
-                for d in [7, 6, 5, 4, 3, 2, 1, 0] {
+                for d in (0..split).rev() {
                     self.tags.doom(slots[g + d]);
                 }
                 for d in [6, 5, 4, 3, 2, 0, 8, 7] {
                     self.tags.doom(slots[a + d]);
                 }
                 if let Some(r) = ai_gold_run {
-                    for d in [12, 11, 10, 9, 8] {
+                    for d in (split..n - 3).rev() {
                         self.tags.doom(slots[r + d]);
                     }
                 }
@@ -1231,19 +1248,19 @@ impl crate::world::World {
         // The given-up harvest's path and cluster go as walks ended do; made as the map
         // is set up, at the first tick's end (read: the last of its frees, after the
         // time of day's objects and the game's first timer, the newest wisp's first).
+        let n = ai_layout.len();
         if let Some(g) = ai_gold {
             if self.tick_clocks.1.is_empty() {
-                self.tags.setup_paths.push([slots[g + 15], slots[g + 14]]);
+                self.tags.setup_paths.push([slots[g + n - 1], slots[g + n - 2]]);
             } else {
                 let serial = self.tags.live.get(&slots[g]).map_or(0, |e| e.1);
-                self.tags.walk_ended([slots[g + 15], slots[g + 14]], serial);
+                self.tags.walk_ended([slots[g + n - 1], slots[g + n - 2]], serial);
             }
         }
-        // The wisp walks to its mine on its second harvest's objects.
+        // The worker walks to its mine on its second harvest's objects.
         if let Some(r) = ai_gold_run {
-            let mine = self.unit_order.iter().copied().find(|&m| self.unit(m).is_some_and(|v| v.owner == owner && !v.dead && v.constructing.is_none()) && self.ability_with_code(m, codes::ability::ENTANGLED_GOLD_MINE).is_some());
-            if let Some(mine) = mine {
-                self.run_order_made = Some(slots[r..r + 16].to_vec());
+            if let Some(mine) = ai_mine {
+                self.run_order_made = Some(slots[r..r + n].to_vec());
                 self.start_gold_run(h, mine, false);
                 self.run_order_made = None;
                 if let Some(u) = self.unit_mut(h) {

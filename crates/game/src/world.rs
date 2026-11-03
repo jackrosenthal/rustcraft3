@@ -1820,6 +1820,29 @@ impl World {
         self.ai.get(&p).and_then(|s| self.tick_main((s.clock as f64 * 200.0).round() as i64))
     }
 
+    /// The main clock at which an AI thread due at `due` stops the walkers it orders: at
+    /// the first tick whose game time, 5 ms added in single precision tick by tick, is
+    /// strictly past the due (read: Twisted Meadows' human computer's harvest pass due
+    /// 35.0999985 stopping a peasant walking home where it was at tick 7021's clock, a
+    /// fifth of a step past tick 7020's; its passes due 2.0999999 to 7.0999999 at the
+    /// ticks they round to; provisional: read only so, and not the threads' own ticks,
+    /// `World::ai_tick_of`).
+    pub(crate) fn clock_at_thread(&self, due: f32) -> Option<u32> {
+        let r = (due as f64 * 200.0).round() as i64;
+        let mut acc = 0.0f32;
+        let mut k = 0i64;
+        while k < r - 2 {
+            acc += 0.005f32;
+            k += 1;
+        }
+        while acc <= due {
+            acc += 0.005f32;
+            k += 1;
+        }
+        let (first, clocks) = (&self.tick_clocks.0, &self.tick_clocks.1);
+        clocks.get(usize::try_from(k - *first).ok()?).copied()
+    }
+
     pub(crate) fn clock_at_time(&self, t: f32) -> Option<u32> {
         let k = (t as f64 * 200.0).round() as i64;
         let (first, clocks) = (&self.tick_clocks.0, &self.tick_clocks.1);

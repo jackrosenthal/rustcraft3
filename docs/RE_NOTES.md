@@ -3164,6 +3164,14 @@ Formats the port made its own, to be replaced by the original's:
   next step), till its AI's pass at 36.2 sends it to the mine; a computer with an AI
   script has no other look for idle workers (the port's quarter-second one sent it at
   once).  With these the keepalives agree to turn 427.
+- Its harvest pass due 35.0999985 stops that peasant walking home where it was at
+  main tick 7021's clock, a fifth of a step past tick 7020's (its start 0.025 cells
+  further on, read under winedbg; its walk then the port's step for step, so its
+  arrival at the mine, its place there, and its later walks one step on).  The tick
+  is the first whose game time, 5 ms added in f32 tick by tick, is strictly past the
+  due: the passes due 2.0999999 to 15.0999994 at the ticks they round to, 33.1 and
+  35.1 at the next (provisional; the threads' own ticks, `ai_tick_of`, unchanged).
+  With it the keepalives agree to turn 508.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

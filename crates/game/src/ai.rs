@@ -898,7 +898,7 @@ impl World {
         let harvest = crate::natives::basic::order_id("harvest");
         // A walker it orders stops where its walk has carried it by the thread's time
         // (`World::stop_walker_at`).
-        let stop_at = self.ai.get(&p).and_then(|s| self.clock_at_time(s.clock));
+        let stop_at = self.ai.get(&p).and_then(|s| self.clock_at_thread(s.clock));
         if let Some(mine) = mine {
             for &h in &to_gold {
                 if !on_gold(self, h) {

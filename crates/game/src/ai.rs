@@ -1031,7 +1031,9 @@ impl World {
         // (A computer's peasant likewise, its eleven: read, Twisted Meadows' human
         // computer's.)
         let peon = self.ability_with_code(h, codes::ability::HARVEST).is_some();
-        let run = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).filter(|r| (r.kind == crate::goldrun::Kind::Wisp || (peon && r.kind == crate::goldrun::Kind::Own)) && !r.entered && matches!(r.order.len(), 16 | 19)).map(|r| r.order.clone());
+        // (Its setup's harvest too, a trained peasant's: read, the one trained at 15.1 sent
+        // to build at 16.2, its eleven freed.)
+        let run = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).filter(|r| (r.kind == crate::goldrun::Kind::Wisp || (peon && r.kind == crate::goldrun::Kind::Own)) && !r.entered && matches!(r.order.len(), 16 | 18 | 19)).map(|r| r.order.clone());
         if let Some(r) = &run {
             frees.extend((0..crate::goldrun::harvest_split(r.len())).rev().map(|k| r[k]));
         }

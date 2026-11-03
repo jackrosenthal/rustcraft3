@@ -3114,7 +3114,9 @@ Formats the port made its own, to be replaced by the original's:
   pass after the next (the original's first wood order for it at 16.2).  Forestwalk's
   trained acolyte, given no harvest as it is made, is ordered in its first pass and
   its tasks and `ptcf` go after those orders at the turn's end, as before.  With
-  these the keepalives agree to turn 162.
+  these the keepalives agree to turn 162.  At 16.2 the AI sends that peasant to build,
+  its setup harvest (18) still its run, and frees that harvest's eleven before the
+  last target task as it does a re-ordered one's (turn 164 then agrees).
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

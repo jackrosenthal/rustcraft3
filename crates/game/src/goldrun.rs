@@ -50,12 +50,13 @@ pub(crate) const WISP_GOLD_AI: [&Code; 16] = [codes::class::ORDER_TASKS, codes::
 /// peasants as they are made, over LAN with the original, each after the AI's order).
 pub(crate) const HARVEST_AI: [&Code; 18] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK_T, codes::class::TASK, codes::class::TASK_T, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 /// Where an AI's harvest order's objects part, after its last target task (by its
-/// length: `WISP_GOLD_AI`, `HARVEST_AI`, or `HARVEST_OWN`): those before go when it is
+/// length: `WISP_GOLD_AI`, `LUMBER_OWN`, `HARVEST_AI`, or `HARVEST_OWN`): those before go when it is
 /// given up, those after but its closing block, cluster goal, cluster, and path as
 /// the next turn starts (read: Twisted Meadows' night elf and human computers').
 pub(crate) fn harvest_split(len: usize) -> usize {
     let layout: &[&Code] = match len {
         16 => &WISP_GOLD_AI,
+        17 => &LUMBER_OWN,
         18 => &HARVEST_AI,
         _ => &HARVEST_OWN,
     };
@@ -333,13 +334,20 @@ impl World {
         // (A computer's peasant or peon so too, at a gold mine, its new order
         // `HARVEST_OWN`: read, Twisted Meadows' human computer's five in its first pass.)
         let peon = !wisp && !lumber && self.ability_with_code(h, codes::ability::HARVEST).is_some();
+        let mut ghost = false;
         if (wisp || peon) && computer && self.run_order_made.is_none() && self.ai_ordering {
+            // (A peasant sent again ghosts from the start: read, the human computer's
+            // third peasant's region at 0.12 flagged 0x08, the ghosting's, after its
+            // AI's order at 0.1, the second's still 0x02 at 0.03.)
+            ghost = peon;
             let layout: &[&Code] = if wisp { &WISP_GOLD_AI } else { &HARVEST_OWN };
             let n = layout.len();
             let triple: Vec<u32> = [codes::class::ORDER, codes::class::TASK_A, codes::class::TASK].iter().map(|c| self.tags.take(c)).collect();
             let order: Vec<u32> = layout.iter().map(|c| self.tags.take(c)).collect();
             self.tags.release(order[n - 3]);
-            let old = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).filter(|r| matches!(r.kind, Kind::Wisp | Kind::Own) && !r.entered && matches!(r.order.len(), 16 | 18 | 19)).map(|r| r.order.clone());
+            // (A peasant's wood order so too: read, the human computer's oldest, sent to
+            // gold in its AI's second pass, its nine freed.)
+            let old = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).filter(|r| matches!(r.kind, Kind::Wisp | Kind::Own) && !r.entered && matches!(r.order.len(), 16 | 17 | 18 | 19)).map(|r| r.order.clone());
             let mut frees = vec![triple[1]];
             if let Some(o) = &old {
                 frees.extend((0..harvest_split(o.len())).rev().map(|k| o[k]));
@@ -400,11 +408,11 @@ impl World {
                 r.phase = Phase::ToMine;
                 r.kind = if wisp { Kind::Wisp } else if player { Kind::Player } else { Kind::Own };
                 r.order = order;
-                r.ghosted |= r.entered;
+                r.ghosted |= r.entered || ghost;
                 r.at_mine &= !r.entered;
                 r
             }
-            None => GoldRun { mine, lumber, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: if wisp { Kind::Wisp } else if player { Kind::Player } else { Kind::Own }, order, entered: false, ghosted: false, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits(), ordered: mine, swing_ready: None, hall: None },
+            None => GoldRun { mine, lumber, chop_start: 0, fells_at: None, chops: 0, phase: Phase::ToMine, kind: if wisp { Kind::Wisp } else if player { Kind::Player } else { Kind::Own }, order, entered: false, ghosted: ghost, at_mine: false, timer_due: None, bonus: 0, travel: 0, bonus_before: 0, factor: 1f32.to_bits(), ordered: mine, swing_ready: None, hall: None },
         };
         let Some(u) = self.unit_mut(h) else { return };
         u.extra.gold_run = Some(run);

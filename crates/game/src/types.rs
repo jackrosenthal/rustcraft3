@@ -276,7 +276,9 @@ impl Unit {
     /// had the move order's search, mask 0x02000002, at 1.019999).
     pub fn region_mask(&self) -> u32 {
         match self.extra.gold_run.as_ref() {
-            Some(r) if r.entered => (if r.ghosted { 0 } else { 0x02 }) | 0x10,
+            // (Ghosting from its order before it was in, its mask likewise: read, the human
+            // computer's peasants re-ordered by its AI, searching with 0x10000010.)
+            Some(r) if r.entered || r.ghosted => (if r.ghosted { 0 } else { 0x02 }) | 0x10,
             // (A wisp's walk to its tree meets walkers as any walk: read, a night elf
             // start's lumber wisp held by the gold wisps in its way, over LAN with the
             // original.)

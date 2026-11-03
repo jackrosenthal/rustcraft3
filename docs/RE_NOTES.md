@@ -3038,6 +3038,18 @@ Formats the port made its own, to be replaced by the original's:
   region is not where the port puts it (its cell's span, half a cell below and
   left), while a standing one's may be: not yet read where the original keeps a
   walker's region as it moves.
+- Why (`FUN_6f148ad0`, the cell's region filter, read at 0x6f148b65 in the 0.12
+  step): the third peasant's region does cover (162 to 163, 187 to 188), as the port
+  puts it (bounds +0x1c to +0x28: rows 187 to 189, columns 162 to 164, one past the
+  last), but its flags (+0x34) are 0x01000008, not 0x02: it ghosts (0xca less 0xc6),
+  and the build peasant's mask 0x02000002 does not meet it.  Others' searches in that
+  step use 0x10000010, the ghosting mask.  So a computer's peasant sent again by its
+  AI ghosts from that order on, before it has been in its mine (the second peasant
+  still 0x02 at 0.03, before the re-order).  A region is listed only if its word
+  +0x40 has none of 0x8fffffff (the gold mine's has 0x10000000) and +0x34 meets the
+  walker's mask.  With the re-ordered peasants ghosting (`GoldRun::ghosted`, its mask
+  0x10 though not yet in), and a re-ordered wood order's first nine freed as the
+  gold orders' are, the keepalives agree to turn 14.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

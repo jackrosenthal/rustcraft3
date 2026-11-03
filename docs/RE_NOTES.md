@@ -3015,7 +3015,19 @@ Formats the port made its own, to be replaced by the original's:
   the original's test meets neither.  A unit turning in place has no speed; the
   port takes it as standing to others' tests (`World::held_back`), and one that
   makes a slower mover yield still counts itself blocked: changing either alone
-  changed nothing here.
+  changed nothing here.  The latter is the original's too: `FUN_6f168360` never
+  removes an entry from the list `FUN_6f166140` gathers (the regions on the class's
+  leading edge one cell toward the target, `FUN_6f167940`, `FUN_6f149560` to
+  `FUN_6f149e60`), so a walker making another yield still goes on to the blocked
+  path.  The test's answers, read after its call (0x6f165caa: pos in ebx, target in
+  edi; the walkers' places agree with the port's to the digit): at 0.03 only the
+  fourth peasant (167.102, 188.438, toward (166.5, 187.5)) is blocked; from 0.06 to
+  0.18 none, the build peasant clear at 0.12 (163.682, 186.035, toward (163.5,
+  187.5)) and the second at 0.15 (165.824, 185.836, toward (161.5, 185.5)).  The
+  port holds those two (the third peasant's region on (162, 187), the build
+  peasant's on (163, 185)) and not the fourth; taking regions half a cell higher
+  (their cell and the next) blocks others at 0.03 and the keepalives differ from
+  turn 5.  Not yet read: the regions' cells as the original lists them.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

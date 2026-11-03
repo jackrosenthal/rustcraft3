@@ -2992,9 +2992,17 @@ Formats the port made its own, to be replaced by the original's:
   case (Booty Bay's night elf start) fits the same turn rule: facing 270 with the mine
   2.29 off, searched at 2.01, turning to 2.10, entering at 2.13.  Calls from
   `FUN_6f167290` (the blocked walker's countdown) test contact with the mine one step
-  before the others' entries.  Why the first wisp's way leaves its cell is not yet
-  read (the other standing wisps in its search, or its placement); until then the
-  port re-searches at the re-order and the keepalives differ from turn 3.
+  before the others' entries.  A search whose start never counts as reached (only
+  nodes popped after it) gives the port exactly the original's first nodes for the
+  two wisps beside the mine (161, 189) and (161, 185); the walk then turns in place
+  toward its node, and `FUN_6f165c60` reaches `FUN_6f167290` (contact test, then the
+  countdown) when its way's last point is within reach or the cells ahead are taken
+  by a unit not moving and it is not waiting; contact answers 3.  The port's held-back
+  test has no contact answer and sets the first wisp waiting at 0.09 where the
+  original's fourth wisp moves freely.  In Booty Bay's scripted start the provider is
+  not called at all for the wisps' walks (none from 2.0 to 5.0), so those take
+  another steering path.  Not yet modeled: the port re-searches at the re-order and
+  the keepalives differ from turn 3.
 - An entangled mine is no town site of its own: the original's save of a night elf
   start (`nel.w3x`) holds the map's four mines' four sites, the first naming the
   entangled mine (the mine it covers made at the map's start with that site).  The

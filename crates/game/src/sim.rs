@@ -839,7 +839,7 @@ impl World {
         let mask = u.region_mask();
         for &o in &self.unit_order {
             let Some(v) = self.unit(o).filter(|v| o != h && !v.dead && !v.hidden && !v.is_building && v.collision > 0.0 && (v.x - u.x).abs() < 2048.0 && (v.y - u.y).abs() < 2048.0) else { continue };
-            if v.engine_walker() && v.extra.mover.is_some_and(|m| m.vx & 0x7fff_ffff != 0 || m.vy & 0x7fff_ffff != 0) || v.region_flags() & mask == 0 {
+            if v.engine_walker() && (v.extra.stopped_between || v.extra.mover.is_some_and(|m| m.vx & 0x7fff_ffff != 0 || m.vy & 0x7fff_ffff != 0)) || v.region_flags() & mask == 0 {
                 continue;
             }
             if self.move_kind(o) == crate::pathing::Move::Fly {
@@ -923,6 +923,11 @@ impl World {
         if let Some(m) = u.extra.mover.as_mut() {
             (m.x, m.y, m.vx, m.vy, m.placed_at) = (x, y, 0, 0, clock);
         }
+        // Others' searches before its next step still take it as moving (read: the
+        // human computer's peasants stopped for its AI's orders at 0.1, the second's
+        // search at 0.12 meeting none of the others' regions, straight to its way's end
+        // at (161, 185)).
+        u.extra.stopped_between = true;
     }
 
     pub(crate) fn local_path(&self, h: u32, goal: (f32, f32)) -> Option<(Vec<(f32, f32)>, Option<(i32, i32)>, u32)> {
@@ -1735,6 +1740,9 @@ impl World {
     /// stops when nothing nearer is found.  Notes whether it stopped in the last step.
     fn walk_steps(&mut self, h: u32) -> bool {
         use crate::efloat as ef;
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.stopped_between = false;
+        }
         let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return true };
         let f = |v: f32| v.to_bits();
         let cell = |w: f32, o: f32| ef::div(ef::sub(f(w), f(o)), f(crate::pathing::CELL));

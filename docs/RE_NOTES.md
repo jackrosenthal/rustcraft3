@@ -3001,6 +3001,21 @@ Formats the port made its own, to be replaced by the original's:
   town hall's watch (0.3365) and that walk's path freed at 0.36.  With these the
   keepalives agree to turn 9; at turn 10 the second peasant reaches the mine's queue
   (`uref`) a turn later in the port.
+- The same game's walks to one second (the waypoint provider, every walker): the
+  second peasant, re-ordered at 0.1, heads straight for (161.5, 185.5) from 0.12
+  (its search meeting no region: not refused, straight to its way's end), answers 0
+  at every step to 0.78, 3 at 0.81, and joins the mine's queue at 0.84.  The other
+  peasants, each stopped at the AI's clock for its order (`World::stop_walker_at`),
+  still count as moving to that search; the port now takes a walker stopped between
+  steps as moving to others' searches until its own next step, and its search agrees
+  (along row 185 to (161, 185)).  The build peasant answers 0 from 0.12 to 0.33,
+  heading for (163.5, 187.5), then (157, 199) from 0.36: it is held by no one.  In the
+  port it is held at 0.12 by the third peasant (its cells ahead, (162, 187) and
+  (163, 187), meeting that one's region) and then holds the second: not yet read why
+  the original's test meets neither.  A unit turning in place has no speed; the
+  port takes it as standing to others' tests (`World::held_back`), and one that
+  makes a slower mover yield still counts itself blocked: changing either alone
+  changed nothing here.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

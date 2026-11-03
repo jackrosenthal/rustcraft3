@@ -535,6 +535,10 @@ pub struct UnitExtra {
     /// (`FUN_6f168740`, then `FUN_6f167ce0`).
     #[serde(default)]
     pub walk_research: bool,
+    /// Stopped between movement steps, its region still a mover's to others' searches
+    /// until its next step (`World::stop_walker_at`).
+    #[serde(default)]
+    pub stopped_between: bool,
     /// The step of its last local search, while searches are spaced for it (the path's
     /// +0x7c): none once a search leaves its class's budget under 64 passes.
     #[serde(default)]
@@ -949,6 +953,7 @@ impl Default for UnitExtra {
             walk_moved: false,
             walk_wait: 0,
             walk_research: false,
+            stopped_between: false,
             search_at: None,
             face_hold: 0,
             cell_at: None,

@@ -136,7 +136,10 @@ pub(crate) fn shown_at(w: &World, h: u32) -> (f32, f32) {
         return (u.x, u.y);
     }
     let (movetp, collision) = (o.str("movetp"), o.real("collision"));
-    ground_place(w, &movetp, collision, u.x, u.y, false, Some(h), u.region_mask(), false, None)
+    // (With the room its size class asks for, as a builder put off a footprint: read,
+    // Twisted Meadows' human computer's peasant out of the mine at (161.5, 183.5),
+    // the cell before, (160.5, 183.5), its 2 by 2 below and left on the mine's.)
+    ground_place(w, &movetp, collision, u.x, u.y, true, Some(h), u.region_mask(), false, None)
 }
 
 /// A unit a structure has trained: as one made there is placed, but ring by ring about

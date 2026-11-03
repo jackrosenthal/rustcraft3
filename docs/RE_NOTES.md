@@ -3087,7 +3087,15 @@ Formats the port made its own, to be replaced by the original's:
   to turn 28; then the oldest peasant, sent from wood to gold, reaches the mine a
   step late: on its wood walk the original, past its first node (166.5, 189.5),
   heads straight for (183.5, 177.5), some twenty cells on (its place at 1.11 on that
-  line), where the port's look-ahead stops sooner.
+  line), where the port's look-ahead stops sooner.  The cause is its tree (the
+  original's search at 0.12, 101 passes, goes to (186, 174) by a way of 19 points
+  ending (183.5, 177.5); the port's went to (192, 178)): the AI's wood workers go to
+  their town's trees (`FUN_6f9c55d0` about each drop-off, `FUN_6f9c5950` judging each
+  by `FUN_6f059590`, the plan's cost with both ends lifted, the eight cheapest kept
+  and sorted), not the tree nearest the town (680 from the hall where the original's
+  is 689).  The port takes the first of the cheapest by the accelerator plan from the
+  hall (`World::ai_town_tree`; provisional: the area, and which of the eight a worker
+  gets); the keepalives agree to turn 32.
 - The same game's wisps' walks, read under winedbg (the waypoint provider's answer
   after `FUN_6f165ae0` at 0x6f16fd05, the walker's object in edi; the mine's count
   changes, `FUN_6f4e95e0`): the setup's orders walk from turn 1 (answers from 0.03),

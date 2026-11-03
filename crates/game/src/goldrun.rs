@@ -1259,6 +1259,37 @@ impl World {
         best.map(|b| b.1)
     }
 
+    /// The tree a computer's town sends its wood workers to (`FUN_6f9c55d0`, each tree
+    /// about a drop-off judged by `FUN_6f9c5950`): the first of the cheapest by the
+    /// accelerator plan's cost from the drop-off, both lifted, 32 pops (read: Twisted
+    /// Meadows' human computer's oldest peasant sent to a tree 689 from its town hall
+    /// where one stood 680 away).  Provisional: the area enumerated.
+    pub(crate) fn ai_town_tree(&self, hall: u32, worker: u32) -> Option<u32> {
+        let (fx, fy) = self.widget_pos(hall)?;
+        let p = self.pathing.as_ref()?;
+        let block = |x: f32, y: f32| (((y - p.origin[1]) / 256.0).floor() as i32, ((x - p.origin[0]) / 256.0).floor() as i32);
+        let mut trees: Vec<(usize, u32, (i32, i32))> = self
+            .destructable_order
+            .iter()
+            .enumerate()
+            .filter(|&(_, &d)| self.is_tree_pub(d) && !self.footprint(d).is_empty() && self.can_harvest(worker, d))
+            .filter_map(|(i, &d)| self.widget_pos(d).filter(|&(x, y)| (x - fx).hypot(y - fy) <= 1600.0).map(|(x, y)| (i, d, block(x, y))))
+            .collect();
+        trees.sort_by(|a, b| a.2.cmp(&b.2).then(b.0.cmp(&a.0)));
+        let acc = |w: f32, o: f32| (w - o) / 64.0;
+        let mut best: Option<(u32, u32)> = None;
+        for (_, d, _) in trees {
+            let Some((x, y)) = self.widget_pos(d) else { continue };
+            let Some(pyr) = self.accel_pyramid_lifting(Some(hall), &[d]) else { continue };
+            let Some(cost) = crate::accelpath::plan_cost(&pyr, 0, (acc(fx, p.origin[0]), acc(fy, p.origin[1])), (acc(x, p.origin[0]), acc(y, p.origin[1])), 0x20) else { continue };
+            log::trace!("town tree from {hall}: ({x}, {y}) cost {cost}");
+            if best.is_none_or(|(c, _)| cost < c) {
+                best = Some((cost, d));
+            }
+        }
+        best.map(|b| b.1)
+    }
+
     /// Where a walker walks: a move order's point, or a gold run's structure's middle.
     pub fn walk_goal(&self, h: u32) -> Option<(f32, f32)> {
         if let Some(g) = self.unit(h)?.extra.captain_walk {

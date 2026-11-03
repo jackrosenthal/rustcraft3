@@ -824,7 +824,31 @@ impl World {
         // against the gold request, stood idle for half a minute).
         let mut gold_town = 0;
         let (tx0, ty0) = self.town_pos(p, 0);
+        let hall0 = self.unit_order.iter().copied().find(|&b| self.unit(b).is_some_and(|u| u.owner == p && u.is_building && !u.dead && (u.x - tx0).abs() < 1.0 && (u.y - ty0).abs() < 1.0));
+        let wood_worker = workers.iter().copied().find(|&h| self.unit(h).is_some_and(|u| self.unit_class(u, "peon")));
+        // Wood workers go to their town's tree, the first of the cheapest to reach from
+        // its hall (`World::ai_town_tree`).
+        let town_tree = if requests.iter().any(|r| !r.0 && r.2 > 0) {
+            hall0.zip(wood_worker).and_then(|(hall, w)| {
+                // (Judged again only as the trees or structures change: the plan sees
+                // nothing else.)
+                let key = self.destructable_order.iter().filter(|&&d| self.is_tree_pub(d)).fold(0u64, |a, &d| a.wrapping_mul(31).wrapping_add(d as u64)) ^ self.unit_order.iter().filter(|&&b| self.unit(b).is_some_and(|u| u.is_building && !u.dead)).fold(7u64, |a, &b| a.wrapping_mul(37).wrapping_add(b as u64));
+                match self.ai_tree_cache.get(&hall) {
+                    Some(&(k, t)) if k == key && t.is_none_or(|t| self.can_harvest(w, t)) => t,
+                    _ => {
+                        let t = self.ai_town_tree(hall, w);
+                        self.ai_tree_cache.insert(hall, (key, t));
+                        t
+                    }
+                }
+            })
+        } else {
+            None
+        };
         let tree_near = |w: &World, h: u32| {
+            if let Some(t) = town_tree.filter(|&t| w.can_harvest(h, t)) {
+                return Some(t);
+            }
             w.destructable_order
                 .iter()
                 .copied()

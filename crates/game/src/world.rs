@@ -264,6 +264,10 @@ pub struct World {
     /// An AI is giving the order under way (`World::start_gold_run`).
     #[serde(skip)]
     pub ai_ordering: bool,
+    /// Each town hall's tree for its AI's wood workers, with what it was judged among
+    /// (the live trees and structures), as `World::ai_town_tree` judged it.
+    #[serde(skip)]
+    pub ai_tree_cache: std::collections::HashMap<u32, (u64, Option<u32>)>,
     /// The main clock in seconds since the game began (across its settings back) when
     /// the time of day last moved on.
     #[serde(default)]
@@ -891,6 +895,7 @@ impl World {
             paying_last: false,
             first_tick_done: false,
             ai_ordering: false,
+            ai_tree_cache: Default::default(),
             time_of_day_clock: 0.0,
             time_of_day_exact: 0.0,
             time_of_day_scale: 1.0,

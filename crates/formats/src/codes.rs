@@ -1633,6 +1633,9 @@ pub mod class {
     pub const GAME_CACHE_MANAGER: &Code = b"gccm";
     /// `gcch`: A game cache (InitGameCache).
     pub const GAME_CACHE: &Code = b"gcch";
+    /// `gsed`: A save's event data, its name at +0x20, held by the script event that
+    /// tells the triggers of the save (`FUN_6f283920`, from `FUN_6f284760`).
+    pub const SAVE_EVENT_DATA: &Code = b"gsed";
     /// `ghth`: A hashtable (InitHashtable).
     pub const HASHTABLE: &Code = b"ghth";
     /// `+trg`: A trigger.

@@ -876,6 +876,20 @@ impl Game {
         if let Err(e) = self.restore_ai_scripts(s, &scripts, main_clock, &made) {
             log::warn!("the AI scripts of the save: {e:#}");
         }
+        // The players' tech registrations as saved, in their order: the units made again
+        // counted no more (read: Mafarazzo TD's LAN load, its first keepalive's game
+        // module the saved game's, each peasant made once).
+        if let Ok(techs) = s.player_techs() {
+            for (p, regs) in techs.into_iter().enumerate().filter(|(_, r)| !r.is_empty()) {
+                if let Some(pl) = self.world.players.get_mut(p) {
+                    pl.tech_regs = regs.into_iter().map(|r| crate::techreg::TechReg { id: r[0].to_be_bytes(), max: r[1] as i32, made: r[2] as i32, producing: r[3] as i32, changing: r[4] as i32, present: r[5] as i32, killed: r[6] as i32, flags: r[7] }).collect();
+                }
+            }
+        }
+        // Its generators its own, seeded as a game starts from the slot table's seed, no
+        // map script drawing (the saves hold none of theirs: read, the load's first
+        // keepalive's random data module a fresh one's).
+        self.seed_generators();
         Ok(())
     }
 

@@ -936,10 +936,10 @@ impl Game {
     /// net module is set back (`FUN_6f32f930`: CSyncData's sum and count, 0); then
     /// (`FUN_6f26f450`), while no save is under way and the player has made none
     /// (`FUN_6f32b800`, over LAN: its +0x3c), the save begins (`world::SaveWait`), the
-    /// triggers hear it (EVENT_GAME_SAVE), this computer's copy is made (`saves`,
-    /// in a game being recorded, whose record describes it), the player's saves count
-    /// one more, and this computer says its save is done (0x07 with 1 for a copy made,
-    /// `FUN_6f26c130`).
+    /// triggers hear it (EVENT_GAME_SAVE, its data a `` `gsed ``), this computer's copy
+    /// is made (`saves`, in a game being recorded, whose record describes it), the
+    /// player's saves count one more, and this computer says its save is done (0x07
+    /// with 1 for a copy made, `FUN_6f26c130`).
     pub fn after_keepalive(&mut self) {
         let Some((player, name)) = self.save_due.take() else { return };
         self.world.net_sum = 0;
@@ -947,6 +947,11 @@ impl Game {
             return;
         }
         self.world.net_save = Some(world::SaveWait { budget: 8000, first: true, done: Vec::new() });
+        // (The save's event data, held by the triggers' event until its timer lets it go
+        // in the next tick: in the save, and born before the next keepalive; read, the
+        // Mafarazzo TD save's `gsed` and its keepalives.)
+        let data = self.world.tags.take_id(codes::class::SAVE_EVENT_DATA);
+        self.world.save_event = Some(data);
         self.game_event(event_ids::EVENT_GAME_SAVE);
         let mut result = 0;
         if self.recorder.is_some() {
@@ -954,6 +959,8 @@ impl Game {
             result = files.is_ok() as u32;
             self.saves.push(NetSaveMade { name, files });
         }
+        self.world.save_event = None;
+        self.world.tags.release(data.0);
         self.world.saves_made[player as usize % 16] += 1;
         let local = self.world.local_player;
         if let Some(o) = self.outbox.as_mut() {

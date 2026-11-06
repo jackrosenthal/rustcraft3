@@ -80,6 +80,32 @@ fn main() {
     let n: usize = a.get(4).map_or(3, |v| v.parse().unwrap());
     let ox = x.objects.as_ref().unwrap().objects().unwrap();
     let oy = y.objects.as_ref().unwrap().objects().unwrap();
+    // W3ZDIFF_SUM: the main table's objects whose part of the objects' sum differs
+    // (`SavedObject::sum`), by kind, the first n of each with their first records whole.
+    if std::env::var_os("W3ZDIFF_SUM").is_some() {
+        let by: BTreeMap<u32, &SavedObject> = oy[0].iter().map(|o| (o.entry.tag, o)).collect();
+        let mut count: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+        for o in &ox[0] {
+            let k = code(o.entry.kind);
+            let Some(p) = by.get(&o.entry.tag).filter(|p| p.entry.kind == o.entry.kind) else { continue };
+            let (s1, s2) = (o.sum(), p.sum());
+            if s1.as_ref().ok() == s2.as_ref().ok() {
+                continue;
+            }
+            let c = count.entry(k.clone()).or_default();
+            c.0 += 1;
+            if c.0 <= n && only.as_ref().is_none_or(|q| *q == k) {
+                println!("{k} {} sums {:x?} vs {:x?}\n  {:?}\n  {:?}", o.entry.tag, s1.ok(), s2.ok(), o.first(), p.first());
+            }
+        }
+        for o in &ox[0] {
+            if !by.contains_key(&o.entry.tag) {
+                count.entry(code(o.entry.kind)).or_default().1 += 1;
+            }
+        }
+        println!("by kind (sum differs, only the first's): {count:?}");
+        return;
+    }
     for t in 0..2 {
         let bx: BTreeMap<u32, &SavedObject> = ox[t].iter().map(|o| (o.entry.tag, o)).collect();
         let by: BTreeMap<u32, &SavedObject> = oy[t].iter().map(|o| (o.entry.tag, o)).collect();

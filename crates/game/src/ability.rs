@@ -646,8 +646,14 @@ impl World {
     /// others of its camp).
     /// Returns the detectors looking now, each with the birth of its in-range object
     /// (the queue's order, `update_auras`) and how long before the turn's start its look
-    /// fell due, in milliseconds.
-    pub(crate) fn detection_looks(&mut self, dt: f32) -> Vec<(u32, u32, f32)> {
+    /// fell due, in milliseconds.  With the turn's `reach` (the main clock its agent
+    /// queue is brought to) and its end in milliseconds, a look whose due (as a turn of
+    /// 100 ms crossing its half second would have it) is within reach is taken now, a
+    /// turn ahead of its half second: as the turns run 25 ms off the tenths after a
+    /// network game's save (`world::SaveWait`), the look due 55.0 falls among the turn's
+    /// last ticks (read: Mafarazzo TD's LAN game saved at 53.8 seconds, the flying
+    /// peasants' two detections at 55.0 before the keepalive of the turn ending 55.025).
+    pub(crate) fn detection_looks(&mut self, dt: f32, reach: Option<(f64, f64)>) -> Vec<(u32, u32, f32)> {
         let detectors: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.extra.sleeping && u.extra.flyer_pil.is_some())).collect();
         let mut looks = Vec::new();
         for h in detectors {
@@ -660,12 +666,26 @@ impl World {
             // (Counted in whole milliseconds: tenths of a second summed drift, a look a
             // turn late by 46 seconds where the original's fall on the half second, read
             // in Mafarazzo TD's LAN game at turn 461.)
-            let now = prev + (dt * 1000.0).round();
+            let dt_ms = (dt * 1000.0).round();
+            let now = prev + dt_ms;
             u.extra.detect_clock = Some(now);
-            if (now / 500.0).floor() <= (prev / 500.0).floor() {
-                continue;
-            }
-            let behind = now - (now / 500.0).floor() * 500.0;
+            let half = (now / 500.0).floor() * 500.0;
+            let behind = if (now / 500.0).floor() > (prev / 500.0).floor() {
+                // (Not again, when taken a turn ahead.)
+                if u.extra.detect_ahead.take() == Some(half) {
+                    continue;
+                }
+                now - half
+            } else {
+                let next = half + 500.0;
+                let Some((reach, end)) = reach else { continue };
+                let due = end - now as f64 + next as f64 - 100.0;
+                if u.extra.detect_ahead == Some(next) || due / 1000.0 > reach {
+                    continue;
+                }
+                u.extra.detect_ahead = Some(next);
+                now - dt_ms - next + 100.0
+            };
             let pil = u.extra.flyer_pil.unwrap_or(0);
             looks.push((h, self.tags.live.get(&pil).map_or(0, |e| e.1), behind));
         }
@@ -689,7 +709,8 @@ impl World {
         }
         let start = self.game_ms.wrapping_sub((dt as f64 * 1000.0).round() as u32) as f64;
         let mut looks: Vec<(f64, u32, u32)> = std::mem::take(&mut self.looks_carried);
-        looks.extend(self.detection_looks(dt).into_iter().map(|(h, birth, behind)| ((start - behind as f64) / 1000.0, birth, h)));
+        let reach = self.tick_clocks.1.len().checked_sub(1).and_then(|i| self.tick_abs(i)).map(|r| (r, self.game_ms as f64));
+        looks.extend(self.detection_looks(dt, reach).into_iter().map(|(h, birth, behind)| ((start - behind as f64) / 1000.0, birth, h)));
         looks.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
         self.looks_due = Some(looks);
     }
@@ -1025,7 +1046,7 @@ impl World {
             .map(|(src, owner, x, y, area, b, reach, code)| (self.unit(src).map_or(0, |u| u.extra.oid.1), Due::Grant(src, owner, x, y, area, Box::new(b), reach, code)))
             .collect();
         if self.looks_due.take().is_none() {
-            due.extend(self.detection_looks(dt).into_iter().map(|(h, k, _)| (k, Due::Look(h))));
+            due.extend(self.detection_looks(dt, None).into_iter().map(|(h, k, _)| (k, Due::Look(h))));
         }
         due.sort_by_key(|d| d.0);
         for (_, d) in due {

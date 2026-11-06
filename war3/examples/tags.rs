@@ -183,8 +183,26 @@ fn main() -> anyhow::Result<()> {
                 println!("loaded the port's own state of {file}");
             }
             None => {
-                g.restore_original(&w3_formats::w3z::SaveGame::read(&std::fs::read(&file)?)?)?;
+                let s = w3_formats::w3z::SaveGame::read(&std::fs::read(&file)?)?;
+                g.restore_original(&s)?;
                 println!("loaded {file} in the original's format");
+                // (Experiments, toward a load in step with the original's: TAGS_LOADTAGS the
+                // allocator as saved, its births, slots, and free list, the restored objects
+                // keeping their own slots; TAGS_LOADTAKE=n then n tags taken, as the
+                // original's load makes two objects not yet known: read, the Mafarazzo TD
+                // load's first keepalive with both, 2.)
+                if let (Ok(_), Some(m)) = (std::env::var("TAGS_LOADTAGS"), s.objects.as_ref()) {
+                    let births = m.header.get(24..28).map_or(0, |b| u32::from_le_bytes(b.try_into().unwrap()));
+                    let free: Vec<u32> = m.free[0].chunks(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).take_while(|&v| v != u32::MAX).collect();
+                    let top = m.tables[0].iter().map(|t| t.tag + 1).chain(free.iter().map(|&f| f + 1)).max().unwrap_or(0);
+                    println!("allocator as saved: born {births}, slots {top}, free {} (head {:?})", free.len(), free.first());
+                    g.world.tags.born = births;
+                    g.world.tags.slots = top;
+                    g.world.tags.free = free.into_iter().rev().collect();
+                }
+                for _ in 0..std::env::var("TAGS_LOADTAKE").ok().and_then(|v| v.parse::<u32>().ok()).unwrap_or(0) {
+                    g.world.tags.take(b"????");
+                }
             }
         }
     }
@@ -288,7 +306,7 @@ fn main() -> anyhow::Result<()> {
         // After the keepalive, the save the turn's actions called for, and the copy made.
         g.after_keepalive();
         if !saving && g.world.net_save.is_some() {
-            println!("turn {n}: a save begins at game time {} ms", g.world.game_ms);
+            println!("turn {n}: a save begins at game time {} ms (born {}, next slot {}, timer starts {})", g.world.game_ms, g.world.tags.born, g.world.tags.presence(), g.world.tags.timer_starts);
         }
         if saving && g.world.net_save.is_none() {
             println!("turn {n}: the save is over");

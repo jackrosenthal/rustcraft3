@@ -3258,6 +3258,38 @@ impl SaveGame {
         Ok(out)
     }
 
+    /// The players' tech registrations, by player (each `+ply`'s counted list of an id
+    /// and seven words kept as reals: its limit, made, in production, in production the
+    /// other way, present, killed, and flags), in the order of the players' records.
+    pub fn player_techs(&self) -> Result<Vec<Vec<[u32; 8]>>, Error> {
+        let objects = self.objects.as_ref().ok_or(Error::Format("no object manager"))?.objects()?;
+        let mut out = Vec::new();
+        for o in objects.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == codes::class::PLAYER) {
+            let Second::Agent { tail, .. } = o.second()? else { return Err(Error::Format("a player's record not read")) };
+            let regs = tail.iter().find_map(|f| match f {
+                Field::List(entries) if !entries.is_empty() && entries.iter().all(|e| e.len() == 8 && matches!(e[0], Field::Word(_)) && e[1..].iter().all(|v| matches!(v, Field::Real(_)))) => Some(entries),
+                _ => None,
+            });
+            out.push(regs.map_or_else(Vec::new, |entries| {
+                entries
+                    .iter()
+                    .map(|e| {
+                        let mut r = [0u32; 8];
+                        for (k, v) in e.iter().enumerate() {
+                            r[k] = match v {
+                                Field::Word(w) => *w,
+                                Field::Real(x) => x.to_bits(),
+                                _ => 0,
+                            };
+                        }
+                        r
+                    })
+                    .collect()
+            }));
+        }
+        Ok(out)
+    }
+
     /// The JASS handles (CGameState's table, `FUN_6f28aad0`'s counted list of a
     /// reference, a word, and a word): each handle's agent and its handle value.
     pub fn handles(&self) -> Result<Vec<(Ref, u32)>, Error> {

@@ -20,6 +20,17 @@ fn main() {
         return;
     };
     println!("objects {} and {}, classes {}, clocks {:?}", m.tables[0].len(), m.tables[1].len(), m.classes.len(), m.clocks);
+    // The manager's header (`FUN_6f15c9b0`) as words (reals as reals), and the free
+    // lists' slots (each list's words, -1 ending it).
+    let words: Vec<String> = m.header.chunks(4).filter(|c| c.len() == 4).enumerate().map(|(k, c)| {
+        let w = u32::from_le_bytes([c[0], c[1], c[2], c[3]]);
+        if matches!(k, 2 | 3 | 8 | 10 | 13 | 15 | 18 | 20 | 23 | 25) { format!("{}", f32::from_bits(w)) } else { format!("{w}") }
+    }).collect();
+    println!("manager header {}", words.join(" "));
+    for (k, f) in m.free.iter().enumerate() {
+        let slots: Vec<i64> = f.chunks(4).filter(|c| c.len() == 4).map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64).collect();
+        println!("free list {k}: {} words, last {:?}", slots.len(), &slots[slots.len().saturating_sub(14)..]);
+    }
     println!("data sections {:?}, bounds {:?}, {} bytes after", m.data.iter().map(|d| d.len()).collect::<Vec<_>>(), m.bounds, s.rest.len());
     // The record written back: whole, then from each part as read.
     let record = w3_formats::container::unpack(&std::fs::read(&a[1]).unwrap()).unwrap().1;

@@ -1878,8 +1878,10 @@ impl World {
         {
             if let (Some((c, _, _)), Some(m)) = (self.saved_order(h).and_then(|o| o.walk), u.extra.mover.as_ref()) {
                 let f = f32::from_bits;
-                // (Stamped as it last moved: on the main clock.)
-                base.real = self.main_clock_now();
+                // (Stamped as it last moved: the main clock of the last step's tick; read,
+                // Mafarazzo TD's LAN save at 53.8 seconds, its 180 walkers' 53.753674, the
+                // main clock then 53.783657.)
+                base.real = if self.last_step_clock != 0 { f32::from_bits(self.last_step_clock) } else { self.main_clock_now() };
                 values[0] = f(m.x);
                 values[1] = f(m.y);
                 values[2] = f(m.vx);
@@ -2607,7 +2609,7 @@ impl World {
             v
         }).collect();
         tr("unit reals done", 0);
-        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.execution_records()).chain(self.upgrade_records()).chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals).chain(self.captain_records()).chain(self.item_records()).chain(self.saved_order_records()).chain(self.mine_fog_records()) {
+        for (slot, f, sec) in self.trigger_records().into_iter().chain(self.execution_records()).chain(self.upgrade_records()).chain(self.script_object_records()).chain(self.player_records(&client_listeners(template))).chain(unit_reals).chain(self.captain_records()).chain(self.item_records()).chain(self.saved_order_records()).chain(self.mine_fog_records()).chain(self.save_event_records()) {
             records.insert(slot, f);
             if let Some(sec) = sec {
                 seconds.insert(slot, sec);
@@ -3187,6 +3189,24 @@ impl World {
             out.push((ac.0, First::Accelerator { refs: [rf(ama[0]), rf(ama[1]), rf(ama[2]), rf(ama[3])], array, word: accel_word }));
         }
         out
+    }
+
+    /// The save's event data while a network game's save is made (`` `gsed ``, read: the
+    /// original's LAN save of Mafarazzo TD): its first record its class's definition
+    /// alone and its second timer running 0.0001 s from the main clock, the queue's next
+    /// count its (provisional: the port's count of the starts); its second the game's
+    /// handler for event 0x80267 in the first fixed list, and no event lists.
+    pub fn save_event_records(&self) -> Vec<(u32, First, Option<Second>)> {
+        let Some(me) = self.save_event else { return Vec::new() };
+        let First::Agent { mut object, agent, refs, links } = agent_first(me, codes::class::SAVE_EVENT_DATA, &[]) else { return Vec::new() };
+        let now = self.main_clock_now();
+        object.timings[1] = Timing(Some((f32::from_bits(crate::efloat::add(now.to_bits(), 0.0001f32.to_bits())), 0.0001, self.tags.timer_starts + 1, 0, 0)));
+        let game = self.game_object();
+        let mut second = Vec::new();
+        for w in [0, 1, game.0, game.1, 0x8_0267, 0, 0, 0, 0] {
+            second.extend(u32::to_le_bytes(w));
+        }
+        vec![(me.0, First::Agent { object, agent, refs, links }, Some(Second::Raw(second)))]
     }
 
     /// The first records of the agents that have no properties (read: the AIs of units,

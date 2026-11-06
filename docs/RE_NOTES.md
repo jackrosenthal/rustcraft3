@@ -4974,8 +4974,8 @@ Formats the port made its own, to be replaced by the original's:
   on in step.
 - A network save's description (`FUN_6f968cf0`, the session's +0x13c, which
   `FUN_6f96bef0` copies from its source: its words from +0x9c and +0xa0, the second
-  only for a first of 1 to 16): GAMEINFO's slots and game type (provisional: the
-  Booty Bay LAN save's 2 and 9 fit; Mafarazzo TD's would tell slots from people), and
+  only for a first of 1 to 16): GAMEINFO's slots and game type (read: Booty Bay's LAN
+  save 2 and 9; Mafarazzo TD's, two people in twelve slots, 12 and 1), and
   its stat GAMEINFO's as the host offered it (the host's name, the size it gave:
   160 by 72 there).  Its map setup's second and third words (`FUN_6f2465b0`: +0x34,
   +0x38 less 0x80000) are the game type and advanced options (9 and 0x648 there; a game
@@ -4991,6 +4991,72 @@ Formats the port made its own, to be replaced by the original's:
   Jack's copy, where the port writes 0 for the local player (not yet changed), and
   the clocks, the original's 58.78091 and 36.015045 where the port writes the game
   time.
+- The original's save of a Mafarazzo TD LAN game (its 06 in turn 539, the host's 07
+  in 540, its own in 543; the port's tags copy from the host's log, TAGS_NETGAME) has
+  the port's header in every field (words 12 and 1, game time 53800, (539 − 1) × 100).
+  Its keepalives give the hold: turn 540's time is 53825 (the save turn's 25 ms), held
+  through 543, the net module set back (each keepalive then as the port's but for one
+  bit).  That bit was a birth: the save's event data (`` `gsed ``, its class
+  `FUN_6f285380`; made by `FUN_6f283920` from `FUN_6f284760`, which keeps the save's
+  name at its +0x20, sets the game's +0x3e8 to 0, and passes it with script event
+  0x80303 to the triggers) is in the save at the next slot (9156), its first record its
+  class's definition and a second timer of 0.0001 s from the main clock (its count
+  the manager's 11252), its second the game's handler for 0x80267 in the first fixed
+  list and no event lists; held by the event, it is let go by that timer in the next
+  tick, so before the next keepalive born counts one more and the next slot is again
+  9156.  The port makes and lets it go so (`World::save_event`,
+  `World::save_event_records`): its keepalives now agree through turn 554 of that game.
+- After a network game's save its turns run 25 ms off the tenths, and the detectors'
+  looks (agent timers each half second, `World::detection_looks`) fall due a turn
+  before the half second's turn by the port's count: the look due 55.0 within the
+  reach of the turn ending 55.025 (its main clock past 55.0 by its end), its two `Cdet`
+  born before that turn's keepalive in the original's game (the keepalive's born two
+  more, next slot 0x2216).  The port takes a look a turn ahead when its due (as a
+  100 ms turn crossing its half second has it) is within the turn's reach, and not
+  again at the crossing: that game's keepalives then agree through turn 628.  Left:
+  turns 629 and 665 to 666 part one turn each and 686 on for good; at 629 the born
+  and next slot fit three objects (`+tex`, `+loc`, `ordt`) of a step's region event
+  one turn early in the original's, or five a turn late (provisional: a step's
+  region trigger near the turn's end, `World::carried_region_triggers`, not yet
+  read against the original).
+- The object manager's clocks as the original saves them (`FUN_6f04dd30`: the main
+  and agent queues at DAT_6fd3c82c +0x40 and +0x44, each its time +0x40, word, 300,
+  word, and count +0x50): Mafarazzo TD's at 53.8 seconds main 53.783657 (the engine's
+  clock at tick 10760, the port's `main_clock_now`), count 491, agent 53.853115,
+  count 6; the manager's header (`FUN_6f15c9b0`, four queues of its own at +0x54 on)
+  53.783657 count 11252 (the `gsed` timer's count), 53.853115 count 0, and the two
+  again with counts 0.  Booty Bay's LAN save: main 58.78091 count 5203, agent
+  36.015045 count 2 (header 2657).  The port writes the game time for both clocks
+  before the clock's first wrap and counts 0 (`World::saved_clocks`, unchanged: the
+  agent queue's time, which runs ahead of the main clock there and far behind it in
+  the quiet Booty Bay game, and the counts are not modeled; the port's count of agent
+  timer starts was 17).
+- Loading the original's Mafarazzo TD save over LAN (the host example's W3HOSTLOAD,
+  the original joining with its own copy), its first keepalive is the port's with:
+  the net time the save's game time (53800: `FUN_6f32a860` reads the net game's
+  +0x1c70 and +0x1c74 back), the net module a fresh session's one message, the
+  generators seeded afresh (the random data module a fresh one's, the main
+  generator's hash a fresh one's: none of the save's, no map script run), the game
+  module the saved game's (each player's tech registrations as saved: the port's
+  load made each peasant twice), born the save's births and two more, and the next
+  slot the saved free list's third (6273 and 8477 taken: two objects made as it
+  loads, not identified).  The port's load now takes the saved tech registrations
+  (`SaveGame::player_techs`), seeds its generators afresh, and counts the save's
+  game time in the keepalive's time (`World::played_before_ms`); with the allocator
+  as saved and two tags taken (the tags example's TAGS_LOADTAGS and TAGS_LOADTAKE=2,
+  experiments) its first keepalive is the original's.  The second parts: born within
+  a few of the original's but the next slot elsewhere, the port's restored objects
+  holding their own slots rather than the saved ones (open: the restore's objects at
+  their saved slots and births, the two objects made at loading).
+- The positions' stamps (CPoPosCl's base real): a walker's is the main clock of its
+  last step's tick (Mafarazzo TD's 180 walkers 53.753674 with the main clock at
+  53.783657), as the port now writes.  The objects' word of that save still parts
+  at those walkers' headings, speeds, and turning reals (their `` `pcu ``, the
+  heading 4.7431884 where the port's velocity's angle is 4.743192), their clusters'
+  words (`^clu`'s 61 and 61) and last real, their paths' first word and word
+  (`l^pa`'s 0xc0a00000 and 0x04000004, the port's 0x00200000 and 0x02000002), 14
+  pathing regions' words, 6 positions, and the placed state (PLAYER_STATE_PLACED 1 for
+  the map's nine unplayed user slots, 0 in the port's).
 - A unit's clustered position's flag word (CPoPosCl +0xd8, its record's third word
   after its eight reals): its type's orientInterp in bits 8 to 11 and formation in 12
   to 15, set as the unit is made from its type's data (`FUN_6f652620`, `FUN_6f653800`:

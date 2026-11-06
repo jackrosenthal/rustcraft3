@@ -639,6 +639,10 @@ pub struct UnitExtra {
     /// looks every half second (`World::detection_looks`).
     #[serde(default)]
     pub detect_clock: Option<f32>,
+    /// The half second on that clock whose look was taken a turn ahead, its due within
+    /// that turn's reach (`World::detection_looks`).
+    #[serde(default)]
+    pub detect_ahead: Option<f32>,
     /// The players' detectors that found this unit, each with its record (`Cdet`).
     #[serde(default)]
     pub detected_by: Vec<(u8, u32)>,
@@ -1101,6 +1105,7 @@ impl Default for UnitExtra {
             item_pil: None,
             fade_slots: Vec::new(),
             detect_clock: None,
+            detect_ahead: None,
             detected_by: Vec::new(),
             vision_record: None,
             sleep_effect: 0,

@@ -599,6 +599,11 @@ pub struct World {
     pub net_save: Option<SaveWait>,
     #[serde(skip)]
     pub saves_made: [u8; 16],
+    /// The save's event data (`` `gsed ``, its tag and birth) while a network game's save
+    /// is made: made as the triggers are told of it, before the save is written, and let
+    /// go by its 0.0001 s timer, before the next keepalive.
+    #[serde(skip)]
+    pub save_event: Option<(u32, u32)>,
     /// PauseGame: the script has paused the game (FUN_6f3719c0).
     #[serde(default)]
     pub script_paused: bool,
@@ -1138,6 +1143,7 @@ impl World {
             pauses_used: [0; 16],
             net_save: None,
             saves_made: [0; 16],
+            save_event: None,
             save_copies: 0,
             local_text_tags: Vec::new(),
             lobby_teams: false,

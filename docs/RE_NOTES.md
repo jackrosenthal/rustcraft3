@@ -4052,8 +4052,52 @@ Formats the port made its own, to be replaced by the original's:
   port, taking a turn's 0.1 a time from its begin, had it done a turn early).  Its
   objects go at once as it is done: the rise's listener, the rise's modifier, the
   life's modifier, the real, and Build In Progress, in that order.  The AI's builder
-  then takes its next order at once (an order with targets, as a harvest's; not yet
-  in the port).
+  then takes its next order at once: the order its AI's build order queued behind
+  the build (the issue `FUN_6f693450` after `FUN_6f680320`, `FUN_6f9cb7c0` and
+  `FUN_6f9cb230`: `+ord` 851974, 0xd0006, the build order's last, kept through its
+  order to build), which the unit runs (`CUnit`'s vf3, `FUN_6f9bd6e0`): a task
+  (0xd0194, `FUN_6f691f20`), then its AI's look at it (`FUN_6f9cd390`), for a worker
+  with Ahar `FUN_6f9c9470`: one carrying a load (the ability's +0x1c4) is ordered
+  0xd02b4 with the `+ord` again behind it; one its AI sent to wood since its last
+  ClearHarvestAI (flag 2 of the unit's AI record +0x28, set by `FUN_6f9c7410` and
+  `FUN_6f9c7700`, moved to 8 by the clear) goes to a tree (`FUN_6f9c6cf0`); else to
+  its town's gold mine (`FUN_6f9cc360`: its harvest, 0xd0032, on the town's mine at
+  +0x54 unless `FUN_6f9cd8e0` refuses it, then the one at +0x60, then +0x54 anyway),
+  the worker's own harvest order (`ordt`, its block, four tasks, three target tasks,
+  a task, a target task, four tasks, a block, and its walk).  Traced in turn 527:
+  the task, the harvest's 19, its `^clg` freed at once; then the order to build's
+  six (its `Atrg`, `tskO`, two tasks, block, and `ordt`), the task, the `+ord`, and the
+  harvest's block and four tasks before it.  The port does so for a computer's
+  peasant carrying nothing, at its first town's mine (`World::ai_builder_done`);
+  provisional: when in the structure's end (here after its finish events, as the
+  structure's event 0xd01da, `FUN_6f679d50`, follows them; the trace cannot tell);
+  not yet in the port: the load and wood cases, the second mine.
+- A built structure's Blight Growth (a human one's dispel, Abds: 64 every 0.08 to
+  768) waits while Build In Progress is on it (`CAbilityBlightGrowth`'s vf105 and
+  vf106, read as an ability's coming and going, vf106 from `FUN_6f48e8a0` as Build
+  In Progress goes, `FUN_6f40bb00` and `FUN_6f4076e0`) and begins
+  as it is done: its effect (`Xbli`, CEffectBlight, set up by the growth's vf32
+  through `FUN_6f4904e0`) starts its timer (`FUN_6f491250`, event 0xd01c1 each Dur)
+  and takes its first step at once (`FUN_6f490070`, the radius its count times
+  DataA), its timer stopped and the growth's end run (`FUN_6f04c410` with
+  `FUN_6f4901f0`, `FUN_6f423550`) as the radius reaches Area.  Traced: Twisted
+  Meadows' human computer's first farm, done at 52.668034, its dispel's five objects
+  (two regions, the position, `Xbli`, and `Abli`) freed as turn 536 begins, before
+  that turn's first order: its twelfth step at 53.548 (the port had counted a turn's
+  0.1 a time from the turn after, a turn late).  The port now counts a built one's
+  steps on the main clock from its end, the first at once, and frees its objects in
+  the step after its last (`World::update_blight`).  Provisional: one made outright
+  (Booty Bay's town halls) keeps the port's count, its first step an interval on.
+- An AI's harvest pass (`FUN_6f9c7700`) takes a worker inside a gold mine as any
+  other (provisional: its state, +0x194, its harvest's 5 inside too), but gives it no
+  order then: read,
+  Twisted Meadows' human computer's farm peasant, sent to gold as its farm was done,
+  in the mine at the pass at 55.2 with no wood worker counted, came out with its gold
+  and walked home (its return order in turn 557).  The port counts it and orders it
+  not (`World::ai_assign_harvest`).  Open: what makes the original's order
+  (`FUN_6f6802f0`, the `+ord` 0xd0006 through `FUN_6f680320` with its queue flag)
+  come to nothing there; a measurement would be a breakpoint on `FUN_6f9bd6e0` for
+  that peasant at 55.2.
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

@@ -3381,8 +3381,11 @@ impl World {
     /// modifier, the life's modifier, the real, and Build In Progress; traced: Twisted
     /// Meadows' human computer's first farm), then its owner's tech and its events.
     fn complete_construction(&mut self, vm: &mut Vm, h: u32) {
+        let last = self.tick_clocks.1.len().checked_sub(1).and_then(|i| self.tick_abs(i));
         let Some(u) = self.unit_mut(h) else { return };
         u.constructing = None;
+        // Its Blight Growth begins its steps now (`World::update_blight`).
+        u.extra.blight_start = u.extra.build_due.map(|d| d as f64).or(last);
         u.extra.build_due = None;
         restart_anim(u, "stand");
         let objects = std::mem::take(&mut u.extra.build_objects);
@@ -3397,6 +3400,9 @@ impl World {
         let sound = format!("JobDoneSound{}", self.race_label(owner));
         self.requests.push(Request::Completed { unit: h, id, level: 1, sound });
         self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_CONSTRUCT_FINISH, EVENT_UNIT_CONSTRUCT_FINISH, EventCtx::default());
+        // Then its AI's builder takes its next order (provisional: by the structure's
+        // event 0xd01da after its finish events, `FUN_6f67b630` and `FUN_6f679d50`).
+        self.ai_builder_done(h);
     }
 
     /// The constructions due on the main clock by main tick `tick` (by the turn's last
@@ -3884,8 +3890,11 @@ impl World {
                 for k in (n - 6..n).rev() {
                     self.tags.doom(construct[k]);
                 }
+                // (The order its AI queued behind the build, the build order's last, is
+                // kept for the structure's end: `World::ai_builder_done`.)
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.ai_order = construct[..n - 6].to_vec();
+                    u.extra.ai_next_order = Some(order[14]);
                 }
             }
         }

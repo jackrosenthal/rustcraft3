@@ -152,13 +152,25 @@ impl World {
             let add = o.level_real("DataB", lvl) != 0.0;
             grow.push((h, u.x, u.y, o.level_real("DataA", lvl).max(1.0), o.level_real("Dur", lvl).max(0.01), area, add));
         }
+        // (The tick's last main tick, for a built structure's steps.)
+        let last = self.tick_clocks.1.len().checked_sub(1).and_then(|i| self.tick_abs(i));
         for (h, x, y, step, interval, area, add) in grow {
             // Step k falls due k intervals after the structure was made (traced: Booty
             // Bay's town halls' dispels, 64 every 0.08 to 960, end 1.2 seconds in).
+            // A built structure's steps begin as it is done, its first at once and one
+            // each interval on, on the main clock (its effect's timer, `FUN_6f491250`
+            // and `FUN_6f490070`, the effect `Xbli`; read: Twisted Meadows' human
+            // computer's first farm, done at 52.668034, its dispel's objects freed as
+            // turn 536 starts, 64 every 0.08 to 768).  (Provisional: the made one's
+            // first step an interval on, as the port has had it.)
             let mut radius = None;
             if let Some(u) = self.unit_mut(h) {
                 u.extra.blight_timer += dt;
-                let steps = ((u.extra.blight_timer - 1e-4) / interval).floor().max(0.0);
+                let steps = match (u.extra.blight_start, last) {
+                    (Some(s), Some(now)) if now + 1e-6 >= s => ((now - s) / interval as f64 + 1e-6).floor() as f32 + 1.0,
+                    (Some(_), _) => 0.0,
+                    _ => ((u.extra.blight_timer - 1e-4) / interval).floor().max(0.0),
+                };
                 let r = (steps * step).min(area);
                 if r > u.extra.blight_radius {
                     u.extra.blight_radius = r;
@@ -173,10 +185,18 @@ impl World {
             // Booty Bay, 1.2 seconds in, as 960 is reached 64 every 0.08).
             let done = self.unit(h).is_some_and(|u| u.extra.blight_radius >= area);
             if done && !add {
+                let start = self.unit(h).and_then(|u| u.extra.blight_start);
                 let slots = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.blight_slots)).unwrap_or_default();
                 if slots.len() == 5 {
+                    // (A built one's at its last step on the main clock, in the step after
+                    // it: read, the farm's ending at 53.548 freed in turn 536's second
+                    // step, before its AI's order.)
+                    let end = start.map(|s| s + ((area / step).ceil() as f64 - 1.0) * interval as f64);
                     for k in [3, 4, 2, 1, 0] {
-                        self.tags.doom(slots[k]);
+                        match end {
+                            Some(t) => self.tags.doom_at(t, slots[k]),
+                            None => self.tags.doom(slots[k]),
+                        }
                     }
                 }
             }

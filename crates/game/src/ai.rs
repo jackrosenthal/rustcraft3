@@ -900,9 +900,14 @@ impl World {
         // A walker it orders stops where its walk has carried it by the thread's time
         // (`World::stop_walker_at`).
         let stop_at = self.ai.get(&p).and_then(|s| self.clock_at_thread(s.clock));
+        // (One in a gold mine is taken but not ordered: read, Twisted Meadows' human
+        // computer's farm peasant, sent to gold as its farm was done, in the mine at the
+        // pass at 55.2, its wood request taking it, comes out with its gold; provisional:
+        // how the original's order, `FUN_6f6802f0`, comes to nothing.)
+        let in_mine = |w: &World, h: u32| w.unit(h).and_then(|u| u.extra.gold_run.as_ref()).is_some_and(|r| !r.lumber && matches!(r.phase, crate::goldrun::Phase::InMine(_)));
         if let Some(mine) = mine {
             for &h in &to_gold {
-                if !on_gold(self, h) {
+                if !on_gold(self, h) && !in_mine(self, h) {
                     if let Some(c) = stop_at {
                         self.stop_walker_at(h, c);
                     }
@@ -914,7 +919,7 @@ impl World {
             }
         }
         for &h in &to_wood {
-            if !on_wood(self, h) {
+            if !on_wood(self, h) && !in_mine(self, h) {
                 if let Some(t) = tree_near(self, h) {
                     if let Some(c) = stop_at {
                         self.stop_walker_at(h, c);
@@ -1120,6 +1125,45 @@ impl World {
             for s in [order[6], order[5], order[4], order[3], order[2], order[0], task, order[14]] {
                 self.tags.doom(s);
             }
+        }
+    }
+
+    /// A computer's peasant whose structure is done: its order to build ends and the
+    /// order its AI queued behind the build runs (`+ord` 851974, the unit's
+    /// `FUN_6f9bd6e0`): a task (0xd0194, `FUN_6f691f20`), then its AI's look at it
+    /// (`FUN_6f9cd390`; for a harvester, `FUN_6f9c9470`), which sends one carrying
+    /// nothing to its town's gold mine (`FUN_6f9cc360`: its harvest order on the mine,
+    /// 0xd0032, given as a worker's own, `World::start_gold_run`).  With the step's
+    /// orders go its order to build's objects (the last first, its order last), the
+    /// task, and the `+ord`, then the harvest's (traced: Twisted Meadows' human
+    /// computer's first farm, done in turn 527, its peasant at once to gold).
+    /// (Not yet in the port: one carrying a load, ordered 0xd02b4 with the `+ord` again
+    /// behind it; one its AI sent to wood since its last ClearHarvestAI, its flag 2 on
+    /// the unit's AI record, to wood, `FUN_6f9c6cf0`; its own town's second mine.)
+    pub(crate) fn ai_builder_done(&mut self, structure: u32) {
+        let builders: Vec<u32> = self.unit_order.iter().copied().filter(|&b| self.unit(b).is_some_and(|u| !u.dead && u.extra.ai_next_order.is_some() && matches!(u.action, Action::Construct { target } if target == structure))).collect();
+        for b in builders {
+            let Some(u) = self.unit(b) else { continue };
+            let carrying = u.carry_gold > 0 || u.carry_lumber > 0;
+            let p = u.owner;
+            if carrying || !self.ai.contains_key(&p) || self.ability_with_code(b, codes::ability::HARVEST).is_none() {
+                continue;
+            }
+            // (Its town's mine, the first town's: provisional, the port keeping no town
+            // for a unit.)
+            let (tx, ty) = self.town_pos(p, 0);
+            let Some(mine) = self.mine_near(tx, ty).filter(|&m| self.can_harvest(b, m)) else { continue };
+            let Some(u) = self.unit_mut(b) else { continue };
+            let next = u.extra.ai_next_order.take();
+            let old = std::mem::take(&mut u.extra.ai_order);
+            u.action = Action::Idle;
+            u.building = 0;
+            crate::sim::set_anim(u, "stand");
+            let task = self.tags.take(codes::class::TASK);
+            self.tags.issued.extend(old.iter().rev().copied());
+            self.tags.issued.push(task);
+            self.tags.issued.extend(next);
+            self.order_unit(b, crate::natives::basic::order_id("harvest"), 0.0, 0.0, mine);
         }
     }
 

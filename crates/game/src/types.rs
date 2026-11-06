@@ -424,6 +424,10 @@ pub struct UnitExtra {
     /// Blight Growth's radius so far and time to its next step.
     pub blight_radius: f32,
     pub blight_timer: f32,
+    /// A built structure's Blight Growth: when its steps began on the main clock, as its
+    /// construction was done (`World::update_blight`).
+    #[serde(default)]
+    pub blight_start: Option<f64>,
     /// A haunted mine's slot markers.
     pub slot_effects: Vec<u32>,
     /// A structure under construction that advances only while a worker builds it.
@@ -762,6 +766,10 @@ pub struct UnitExtra {
     /// while they last.
     #[serde(default)]
     pub ai_order: Vec<u32>,
+    /// An AI's peasant building: the order its AI's build order queued behind it (`+ord`
+    /// 851974, `FUN_6f693450`), run as the structure is done (`World::ai_builder_done`).
+    #[serde(default)]
+    pub ai_next_order: Option<u32>,
     /// A computer's unit's walk to its captain's home as its AI takes it in
     /// (`World::recycle_guard_position`): its goal, while it walks.
     #[serde(default)]
@@ -942,6 +950,7 @@ impl Default for UnitExtra {
             mine_slot: None,
             blight_radius: 0.0,
             blight_timer: 0.0,
+            blight_start: None,
             slot_effects: Vec::new(),
             needs_builder: false,
             weapons: None,
@@ -1075,6 +1084,7 @@ impl Default for UnitExtra {
             ai_harvesting: false,
             made_at: None,
             ai_order: Vec::new(),
+            ai_next_order: None,
             captain_walk: None,
             captain_order: Vec::new(),
             captain_uref: None,

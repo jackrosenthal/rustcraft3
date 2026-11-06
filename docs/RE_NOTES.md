@@ -1581,6 +1581,35 @@ these are the findings behind them.
   ring (each ring's bottom row from its second cell, its right column up, its top row
   back, and its left column down to its corner; measured by pinging their places in
   the original right after New_Round, all 180 the port's now).
+- A structure a script makes where it cannot stand (CreateUnit, `FUN_6f677870`, its
+  point snapped first; CUnit vf55 `FUN_6f67f490` with the structure check
+  `FUN_6f69b200`) is moved by `FUN_6f6515f0` (`FUN_6f058cd0`, `FUN_6f16ecc0`,
+  `FUN_6f14a1e0`): up to 31 rings of pathing cells about the snapped point, each walked
+  from side 2 (`FUN_6f14b580`: its bottom row from the second cell, its right column
+  up, its top row back, its left column down) whatever the facing (the 2 a constant,
+  pushed at 0x6f651748), each cell's corner tried as the build check snaps it
+  (`FUN_6f66f050`), and only a cell on the asked point's cliff level (`FUN_6f654060`
+  comparing `FUN_6f78bc90`: the layer of the terrain corner nearest the cell,
+  `FUN_6f744040` by `FUN_6f750100`, or a higher one laid over it, `FUN_6f782bf0`, not
+  yet read); with none it stands where asked.  Read: Mafarazzo TD's Vengence
+  requirements, made on the creep path's unbuildable ground, its build ground a level
+  up beside it, stand where asked in the original (its Red peasant's detection finds
+  the five within reach there, where the port, having moved them up to 600 onto the
+  build ground, found four).  Open: the commit that began the ring walk (5489c9b)
+  measured structures facing 0 and 270 landing as walked from the side their facing
+  names; the code reads side 2 for every CreateUnit, and those maps were not run again.
+- A flyer's burrow detection (CAbilityDetector) looks with its in-range listener's
+  search (`FUN_6f15f870`, `FUN_6f15fa80`, `FUN_6f15f9b0`) and test (`FUN_6f15eac0`): a
+  unit's position other than the listener's own whose collision (CPoPos +0x90, in
+  cells) is above 0, nearer than the range (Rng1, CAbilityDetector +0x8c, from
+  `FUN_6f41b4f0` by `FUN_6f4319f0`) plus that collision (its distance squared under
+  the sum squared).  Those newly in come in the reverse of the order the search found
+  them (`FUN_6f15f2a0`), each passed to the detector once while in range (event
+  0xd01b4, `FUN_6f407060`, its in-range object's set at +0x84); the unit's one record
+  (`Cdet`, at its +0x130) is made by the first detector of any player to find it
+  (`FUN_6f688990`), each player's count kept in it (`FUN_6f688940`; leaving, event
+  0xd01b5, `FUN_6f43aca0` and `FUN_6f678150`, only counts down).  Mafarazzo's
+  peasants, collision 0, are found by none.
 - The script's globals run before the map's destructables: Blizzard.j's first timer,
   then the engine's `+gam` `` `flg `` `` `flg `` `` `rel `` `` `rel `` `` `flg ``
   `` `rtl `` `+qum`, then the other globals.

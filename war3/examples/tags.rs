@@ -219,6 +219,36 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        // TAGS_BUILD="x0,y0,x1,y1": at the first turn, the pathing cells there: 'S' under
+        // a structure, 'B' unbuildable, '#' unwalkable, '.' open, top row first.
+        if let (0, Ok(v)) = (k, std::env::var("TAGS_BUILD")) {
+            let b: Vec<i32> = v.split(',').take(4).filter_map(|s| s.parse().ok()).collect();
+            if let (Some(p), [x0, y0, x1, y1]) = (g.world.pathing.as_ref(), b.as_slice()) {
+                for y in (*y0..=*y1).rev() {
+                    let row: String = (*x0..=*x1)
+                        .map(|x| match p.index_pub((x, y)).map(|i| p.flags[i]) {
+                            _ if p.under_structure((x, y)) => 'S',
+                            Some(f) if f & w3_game::pathing::NO_BUILD != 0 => 'B',
+                            Some(f) if f & w3_game::pathing::NO_WALK != 0 => '#',
+                            Some(_) => '.',
+                            None => ' ',
+                        })
+                        .collect();
+                    println!("build {y}: {row}");
+                }
+            }
+        }
+        // TAGS_LAYERS="x0,y0,x1,y1": at the first turn, the terrain's corners' cliff
+        // levels there (corners, not cells), top row first.
+        if let (0, Ok(v)) = (k, std::env::var("TAGS_LAYERS")) {
+            let b: Vec<usize> = v.split(',').take(4).filter_map(|s| s.parse().ok()).collect();
+            if let (Some(t), [x0, y0, x1, y1]) = (g.world.terrain_heights.as_ref(), b.as_slice()) {
+                for y in (*y0..=*y1).rev() {
+                    let row: String = (*x0..=*x1).map(|x| t.layers.get(y * t.width as usize + x).map_or(' ', |&l| char::from_digit(l as u32, 16).unwrap_or('?'))).collect();
+                    println!("layer {y}: {row}");
+                }
+            }
+        }
         // TAGS_ACCEL="sx,sy,gx,gy,turn[,limit]": at that turn, the accelerator plan's
         // coarse way from the start to the goal (accelerator units, half cells).
         if let Some(v) = std::env::var("TAGS_ACCEL").ok() {

@@ -815,6 +815,18 @@ impl TerrainHeights {
         at(ix, iy).min(at(ix + 1, iy)).min(at(ix, iy + 1)).min(at(ix + 1, iy + 1))
     }
 
+    /// The cliff level a placement compares (`FUN_6f78bc90`): that of the corner nearest
+    /// the pathing cell holding (x, y) (`FUN_6f744040` by `FUN_6f750100`), none off the
+    /// map.  (Not yet: the higher level of an area laid over it, `FUN_6f782bf0`.)
+    pub fn cell_level(&self, x: f32, y: f32) -> Option<u8> {
+        let (cx, cy) = (((x - self.offset[0]) / 32.0).floor(), ((y - self.offset[1]) / 32.0).floor());
+        if cx < 0.0 || cy < 0.0 {
+            return None;
+        }
+        let (col, row) = ((cx as u32 + 2) / 4, (cy as u32 + 2) / 4);
+        (col < self.width && row < self.height).then(|| self.layers.get((row * self.width + col) as usize).copied()).flatten()
+    }
+
     pub fn at(&self, x: f32, y: f32) -> f32 {
         let fx = ((x - self.offset[0]) / 128.0).clamp(0.0, (self.width - 1) as f32);
         let fy = ((y - self.offset[1]) / 128.0).clamp(0.0, (self.height - 1) as f32);

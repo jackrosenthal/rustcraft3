@@ -33,7 +33,7 @@ fn ring_order(mode: i32, r0: i32, r1: i32, r2: i32, r3: i32) -> Vec<(i32, i32)> 
     (0..4).flat_map(|i| sides[(start + i) % 4].clone()).collect()
 }
 
-pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32, facing: f32) -> (f32, f32) {
+pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32) -> (f32, f32) {
     let Some(o) = w.objects.units.get(type_id) else { return (x, y) };
     if w.pathing.is_none() {
         return (x, y);
@@ -105,15 +105,23 @@ pub(crate) fn placed_at(w: &mut World, type_id: Id, x: f32, y: f32, facing: f32)
         if clear(w, sx, sy) {
             return (sx, sy);
         }
-        // The search turns with the facing asked for, a quarter turn a side (measured:
-        // structures made facing 0 around a stand of trees and facing 270 around a gold
-        // mine land where the original's do, each walk only with its own facing).
-        let mode = ((facing / 90.0).round() as i32).rem_euclid(4);
-        let (cx, cy) = ((x / 32.0).floor() as i32, (y / 32.0).floor() as i32);
-        for k in 1..=64i32 {
+        // The search (CUnit vf55, `FUN_6f6515f0`, `FUN_6f058cd0`, `FUN_6f14a1e0`): 31
+        // rings of cells about the snapped point, each walked from side 2 whatever the
+        // facing (`FUN_6f14b580`), each cell's corner tried as snapped
+        // (`FUN_6f69b200`), and only one on the asked point's cliff level
+        // (`FUN_6f654060`); with none the structure stands where asked (read:
+        // Mafarazzo TD's towers made on the path's unbuildable ground, the build ground
+        // beside it a level up, its peasant's detection finding them there).
+        let (cx, cy) = ((sx / 32.0).floor() as i32, (sy / 32.0).floor() as i32);
+        let level = |w: &World, x: f32, y: f32| w.terrain_heights.as_ref().and_then(|t| t.cell_level(x, y));
+        let asked = level(w, sx, sy);
+        for k in 1..=31i32 {
             let (r0, r1, r2, r3) = (cy - k, cx - k, cy + 1 + k, cx + 1 + k);
-            for (px, py) in ring_order(mode, r0, r1, r2, r3) {
-                let (ax, ay) = w.snap_placement(type_id, px as f32 * 32.0 + 16.0, py as f32 * 32.0 + 16.0);
+            for (px, py) in ring_order(2, r0, r1, r2, r3) {
+                if level(w, px as f32 * 32.0, py as f32 * 32.0) != asked {
+                    continue;
+                }
+                let (ax, ay) = w.snap_placement(type_id, px as f32 * 32.0, py as f32 * 32.0);
                 if clear(w, ax, ay) {
                     return w.clamp_to_map(ax, ay);
                 }
@@ -279,7 +287,7 @@ fn ground_place(w: &World, movetp: &str, collision: f32, x: f32, y: f32, room_ab
 pub fn create_unit(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, facing: f32) -> u32 {
     // On the map, facing within a turn (measured: 400 reads 40, -90 reads 270).
     let (x, y) = w.clamp_to_map(x, y);
-    let (x, y) = placed_at(w, type_id, x, y, facing.rem_euclid(360.0));
+    let (x, y) = placed_at(w, type_id, x, y);
     create_unit_exact(w, owner, type_id, x, y, facing)
 }
 

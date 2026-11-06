@@ -607,9 +607,10 @@ impl World {
 
     /// A flyer's burrow detection (`Abdt`, CAbilityBurrowDetector): its in-range object
     /// looks every half second from its making (read: Forestwalk's dragons and whelps at
-    /// 0.5 seconds), each unit come within its Rng but itself given a record for its
-    /// owner (`Cdet`, `FUN_6f407060`, `FUN_6f688990`), one a player (read: the 18 of
-    /// three dragons and fifteen whelps each finding the others of its camp).
+    /// 0.5 seconds), each unit come within its Rng but itself counted for its owner
+    /// (`FUN_6f407060`, `FUN_6f688990`), the unit's record (`Cdet`) made as the first
+    /// finds it (read: the 18 of three dragons and fifteen whelps each finding the
+    /// others of its camp).
     /// Returns the detectors looking now, each with the birth of its in-range object
     /// (the queue's order, `update_auras`).
     pub(crate) fn detection_looks(&mut self, dt: f32) -> Vec<(u32, u32)> {
@@ -638,13 +639,23 @@ impl World {
         let Some(u) = self.unit(h) else { return };
         let (owner, x, y) = (u.owner, u.x, u.y);
         let range = self.ability_with_code(h, codes::ability::BURROW_DETECTION_FLYERS).map_or(900.0, |(a, l)| self.ability_real(a, "Rng", l).max(900.0));
-        // (Within its range of the unit's collision circle: read, Plunder Isle's red
+        // (Within its range of the unit's collision circle, a unit of none never: the
+        // in-range listener's test, `FUN_6f15eac0`, the distance under the range plus
+        // the position's collision, which must be above 0; read, Plunder Isle's red
         // drake's first look finding a gnoll 920.9 away, its collision 32, and not one
         // 933.5 away.)
-        let found: Vec<u32> = self.unit_order.iter().copied().filter(|&o| o != h && self.unit(o).is_some_and(|t| !t.dead && (t.x - x).hypot(t.y - y) <= range + t.collision && !t.extra.detected_by.iter().any(|d| d.0 == owner))).collect();
+        let found: Vec<u32> = self.unit_order.iter().copied().filter(|&o| o != h && self.unit(o).is_some_and(|t| !t.dead && t.collision > 0.0 && (t.x - x).hypot(t.y - y) < range + t.collision && !t.extra.detected_by.iter().any(|d| d.0 == owner))).collect();
+        // (Come in in the reverse of the order its search finds them, as an aura's,
+        // `FUN_6f15f2a0`; one record a unit whoever's detectors find it, made by the
+        // first, `FUN_6f688990` at the unit's +0x130.)
+        let mut found = crate::natives::units::spatial_order(self, found);
+        found.reverse();
         for o in found {
             log::trace!("{h} detects {o} ({:?})", self.unit(o).map(|t| (crate::objects::id_str(t.type_id), t.owner, t.x, t.y, t.hidden)));
-            let s = self.tags.take(codes::class::DETECTION);
+            let s = match self.unit(o).and_then(|t| t.extra.detected_by.first()) {
+                Some(&(_, s)) => s,
+                None => self.tags.take(codes::class::DETECTION),
+            };
             if let Some(t) = self.unit_mut(o) {
                 t.extra.detected_by.push((owner, s));
             }

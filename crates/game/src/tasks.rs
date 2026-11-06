@@ -431,6 +431,87 @@ impl World {
         Some((die, path))
     }
 
+    /// A unit KillUnit kills that bursts (SetUnitExploded; not a structure or a hero),
+    /// as its death begins, before its death's events: its AI's `uref` and `AI-U`, its
+    /// kill's first task, its walk's tree (top first, then its `ordt`; the walk's path
+    /// and cluster at the next step, as an ended walk's), its kill's ninth to seventh,
+    /// and its regeneration's listener go, in that order with the step's releases.
+    /// Read: Mafarazzo TD's creep exploded by WalkEnd's trigger in its LAN load's turn
+    /// 144, all freed 0.0001 after the trigger (`World::burst_ends` for the rest).
+    pub(crate) fn burst_begun(&mut self, h: u32, kill: &[u32]) {
+        let live = |w: &World, s: u32, b: u32| w.tags.live.get(&s).is_some_and(|e| e.1 == b);
+        let ai = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.ai_slots)).unwrap_or_default();
+        for (s, b) in ai {
+            if live(self, s, b) {
+                self.tags.doom(s);
+            }
+        }
+        self.tags.doom(kill[0]);
+        let order = self.unit_mut(h).map(|u| {
+            u.extra.player_walk = false;
+            std::mem::take(&mut u.extra.order_tags)
+        }).unwrap_or_default();
+        let base = order.first().and_then(|&s| self.tags.live.get(&s)).filter(|e| &e.0 == codes::class::ORDER_TASKS).map(|e| e.1);
+        if let Some(b0) = base.filter(|_| order.len() >= 17) {
+            for k in [7, 6, 5, 4, 3, 2, 0] {
+                if live(self, order[k], b0 + k as u32) {
+                    self.tags.doom(order[k]);
+                }
+            }
+            let n = order.len();
+            if live(self, order[n - 1], b0 + n as u32 - 1) && live(self, order[n - 2], b0 + n as u32 - 2) {
+                let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
+                self.tags.walk_ended([order[n - 1], order[n - 2]], serial);
+            }
+        }
+        for k in [8, 7, 6] {
+            self.tags.doom(kill[k]);
+        }
+        let listeners = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.object_slots[1])).unwrap_or_default();
+        for (s, b) in listeners {
+            if live(self, s, b) {
+                self.tags.doom(s);
+            }
+        }
+    }
+
+    /// The bursts of a step's region triggers end after those triggers have all run
+    /// (`World::burst_end`): read, Mafarazzo TD's exploded creep's after the Losing life
+    /// trigger's execution, made after WalkEnd's.
+    pub(crate) fn burst_ends(&mut self) {
+        for (h, t) in std::mem::take(&mut self.pending_bursts) {
+            self.burst_end(h, t);
+        }
+    }
+
+    /// A burst unit's end (`World::burst_begun`), its death's effect made (`+EIP`, its
+    /// `` `pos ``, two `^pmr`, the second table's): its kill's fifth, fourth, and third
+    /// tasks (`kill` those and its second), its abilities (the last first), its own
+    /// objects (its reals, path, regions, position, and itself), its kill's second
+    /// task, and its detection's record go with the step's releases, and it is gone,
+    /// leaving no body.
+    pub(crate) fn burst_end(&mut self, h: u32, kill: [u32; 4]) {
+        let Some(u) = self.unit(h) else { return };
+        let objects = u.extra.object_slots.clone();
+        let detection = u.extra.detected_by.first().map(|d| d.1);
+        let live = |w: &World, (s, b): (u32, u32)| w.tags.live.get(&s).is_some_and(|e| e.1 == b) && !w.tags.doomed.contains(&s);
+        let mut gone = kill[..3].to_vec();
+        gone.extend(objects[2].iter().rev().copied().filter(|&o| live(self, o)).map(|o| o.0));
+        gone.extend([8, 7, 6, 5, 4, 9, 2, 3, 1, 0].iter().filter_map(|&j| objects[0].get(j).filter(|&&o| live(self, o)).map(|o| o.0)));
+        gone.push(kill[3]);
+        if let Some(d) = detection.filter(|d| self.tags.live.get(d).is_some_and(|e| &e.0 == codes::class::DETECTION)) {
+            gone.push(d);
+        }
+        for s in gone {
+            self.tags.doom(s);
+        }
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.object_slots = Default::default();
+            u.extra.detected_by.clear();
+        }
+        crate::natives::units::remove_unit(self, h);
+    }
+
     /// A unit's death's 0xd0153 done (`World::death_begun`): it goes, then the walk's
     /// path and cluster as the corpse's wait begins.
     pub(crate) fn death_ended(&mut self, die: u32, path: Vec<u32>) {

@@ -5300,20 +5300,37 @@ Formats the port made its own, to be replaced by the original's:
   last freed then; at 94 a re-order's objects between the look's detections in the
   original's, the port's all before it); from about turn 144 on they part for good,
   born one more (or seven fewer).
-- Where the loads' one-turn parts fall (the port's steps' region triggers by
-  registration, `World::run_step_region_events`, against the keepalives): every
-  step whose orders come from three registrations at once agrees when it is not the
-  tick's last (the load's turns 5, 14, 57, 67, and 84), and parts when it is (45 and
-  80); two registrations at the tick's last step agree (101).  In both parting turns
-  the original's next slot is, among the port's frees, the second order's tenth
-  object (its tasks freed 13 down to 8), with the births the same: as though A's 15
-  and B's first 12 frees came before C took its objects, C's `+tex` then taking
-  that slot (provisional; not yet read in the original).  The lasting split begins
-  at the first creep to leak after the load (turn 144's tick: WalkEnd's trigger
-  exploding it, ExplodeUnitBJ, Losing life, and the leaderboard trigger on its death:
-  three `+tex`, the death's nine), born one more in the original's; the save game's
-  lasting split at turn 686 is its first leak too, born one more there with the same
-  next slot (one more object made and freed).
+- The loads' parts read in the original (its LAN load of the Mafarazzo TD save,
+  every tag take and free, `FUN_6f1cbf40` and `FUN_6f1cbff0`, while births are 20470
+  to 23870: its turns 44 to 145, `abtest/loadbirths.log`): every tick from 45 to 143
+  takes and frees the same kinds in the same order as the port's, only their slots
+  differing, so the one-turn parts (45, 80, 94, 95, 111, 116, 120, 128, 135, 143) are
+  not of the ticks' order but of the free list below its head: at keepalive 44 the
+  original's holds four slots the port's holds live (0x1ded, 0x1de1, 0x1ddb, 0x1ddc:
+  in the port the `^clu` and `l^pa` of a creep's walk ordered at turn 41's second step
+  as its last walk arrived there, and two tasks of the walk ordered at that turn's
+  last step after it), their objects let go before 44 (not yet read where).
+- A creep KillUnit bursts (ExplodeUnitBJ, read at Mafarazzo TD's first creep to leak
+  after the load, turn 144, and the second, 145): WalkEnd's trigger runs before
+  Losing life's (the regions a step's walker enters taken oldest first, the two made
+  from one rect), and its kill's nine tasks are followed by its owner's death event's
+  data (`pudd`, the event listened for), the death trigger's execution, and Losing
+  life's; then the death's effect (`+EIP`, `` `pos ``, two `^pmr`, the second
+  table's).  0.0001 after the triggers all go together, in order: its AI's `uref`
+  and `AI-U`, the kill's first task, its walk's tree (top first, then `ordt`), the
+  kill's ninth to seventh, its regeneration's `` `rtl ``, the death trigger's
+  execution and the `pudd`, the kill's sixth, WalkEnd's and Losing life's
+  executions, the kill's fifth to third, its abilities (the last first), its own
+  objects (reals, path, regions, position, itself), and the kill's second; its
+  detection's record 0.0001 later; its walk's path and cluster at the next step.  It
+  leaves no body.  The port does so (`World::burst_begun`, `World::burst_end`): the
+  two ticks then take and free as the original's, and the load's keepalives agree
+  again from 146 to 157.  Left in turn 145's tick, at its last main tick (68.175743):
+  the original frees eight of the Fantas trigger's eleven chat registrations
+  (`pcvt`, those of players 9 to 3 and 1, slots 1137 to 1144, in the order 1139,
+  1140, 1138, 1137, 1143, 1144, 1142, 1141; the free's return 0x6f1cbfd5 where the
+  others' is 0x6f1cbfeb), the port none; the flyer game's four `pcvt` at its turn 311
+  are likely the same (not yet read why).
 - A walker's clustered position (`` `pcu ``, `FUN_6f16f890`: its words +0x9c and
   +0xa0, +0xa4, eight reals, +0xd0, +0xd4, the flag word +0xd8, then its first flag
   set when +0x4 or +0x8 is, its second when it has a separation, +0xac): in all 646

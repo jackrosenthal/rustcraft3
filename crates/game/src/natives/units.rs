@@ -731,7 +731,10 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     // owner's event makes its data first (CPlayerUnitDeathEventData, `pudd`,
     // `FUN_6f260ab0`), let go after its triggers' executions (traced).
     let heard = w.events.iter().any(|&e| matches!(w.handles.get(e), Some(Obj::Event(r)) if matches!(r.kind, EventKind::PlayerUnit { player, event, .. } if player == owner && event == EVENT_PLAYER_UNIT_DEATH)));
-    let data = (course.is_some() && heard).then(|| w.tags.take(codes::class::PLAYER_UNIT_DEATH_DATA));
+    // (A unit KillUnit bursts makes it too: read, Mafarazzo TD's creep exploded at
+    // WalkEnd, its `pudd` after its kill's tasks.)
+    let bursts = explodes && w.script_kill && w.unit(h).is_some_and(|u| !u.is_building);
+    let data = ((course.is_some() || bursts) && heard).then(|| w.tags.take(codes::class::PLAYER_UNIT_DEATH_DATA));
     w.fire(vm, EventCtx { event_id: EVENT_PLAYER_UNIT_DEATH, ..ctx.clone() }, |_, k| match k {
         EventKind::PlayerUnit { player, event, .. } => *player == owner && *event == EVENT_PLAYER_UNIT_DEATH,
         _ => false,
@@ -1408,9 +1411,24 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 t.push(w.tags.take(codes::class::TASK_A));
             }
             // (Its tasks made here, the death's course not again, `World::death_begun`.)
+            // A unit bursting goes as `World::burst_begun` and `World::burst_end` have it,
+            // its kill's sixth task after its death's events.
+            let burst = t.len() == 9 && w.unit(h).is_some_and(|u| !u.is_building && !u.is_hero && u.explode_on_death && !u.extra.object_slots[0].is_empty());
+            if burst {
+                w.burst_begun(h, &t);
+            }
             w.script_kill = true;
             kill_unit(w, vm, h, 0);
             w.script_kill = false;
+            if burst {
+                w.tags.doom(t[5]);
+                let rest = [t[4], t[3], t[2], t[1]];
+                if w.after_steps {
+                    w.pending_bursts.push((h, rest));
+                } else {
+                    w.burst_end(h, rest);
+                }
+            }
             // A structure's go with the turn's releases: its first and last, its eighth
             // to seventh, its own listener, its sixth; its fifth and fourth as its death
             // has played, the others with its body (traced twice: Mafarazzo TD's Freeze

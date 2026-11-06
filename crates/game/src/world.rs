@@ -733,6 +733,10 @@ pub struct World {
     /// Units RemoveUnit asked for, gone at the end of the moment.
     #[serde(default)]
     pub pending_removals: Vec<u32>,
+    /// Units KillUnit burst while a step's region triggers ran: each with the four of
+    /// its kill's tasks still held, gone after those triggers (`World::burst_ends`).
+    #[serde(default)]
+    pub pending_bursts: Vec<(u32, [u32; 4])>,
     /// Build orders paid for and not yet begun: the worker, its owner, and the
     /// structure.
     #[serde(default)]
@@ -1183,6 +1187,7 @@ impl World {
             weapon_cache: Default::default(),
             cache_alias: Default::default(),
             pending_removals: Vec::new(),
+            pending_bursts: Vec::new(),
             paid_builds: Vec::new(),
             region_inside: Default::default(),
             in_range: Default::default(),
@@ -1753,12 +1758,14 @@ impl World {
     /// regions left told first, then those entered.  Each registration asks its filter
     /// at once and queues the event, its trigger run by a timer of no wait on the agent
     /// queue (`FUN_6f277bd0`, event 0x80275 to itself), so after the step, at its clock
-    /// (`World::run_step_region_events`).  Provisional: the regions of a cell taken
-    /// newest first by their handles.
+    /// (`World::run_step_region_events`).  The regions of a cell are taken oldest
+    /// first by their handles (read: Mafarazzo TD's creep entering WalkEnd, its two
+    /// triggers' regions made from the one rect, WalkEnd's trigger run before Losing
+    /// life's, made after it).
     pub(crate) fn step_regions(&mut self, vm: &mut Vm, h: u32) {
         let Some((x, y)) = self.unit(h).map(|u| (u.x, u.y)) else { return };
         let mut regions: Vec<u32> = self.region_inside.keys().copied().collect();
-        regions.sort_unstable_by(|a, b| b.cmp(a));
+        regions.sort_unstable();
         let mut changes: Vec<(u32, bool)> = Vec::new();
         for region in regions {
             let inside = self.region(region).is_some_and(|r| r.contains(x, y));
@@ -1822,6 +1829,7 @@ impl World {
                 }
             }
         }
+        self.burst_ends();
         self.after_steps = after;
         let n = self.tags.doomed.len();
         self.tags.doomed.split_off(doomed.min(n))

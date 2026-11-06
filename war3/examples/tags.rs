@@ -103,6 +103,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
     let mut first_off = None;
+    let mut watched: std::collections::BTreeMap<u32, String> = std::collections::BTreeMap::new();
     for k in 0..turns {
         let n = k as u32 + 1;
         let acts = played.get(&n).cloned().unwrap_or_default();
@@ -274,6 +275,27 @@ fn main() -> anyhow::Result<()> {
             for u in w.unit_order.iter().filter_map(|&h| w.unit(h)).filter(|u| u.owner == p) {
                 println!("track {n} {:#x} at ({:.3}, {:.3}) {:?} order {} speed {} now {} buffs {:?}", u.handle, u.x, u.y, u.action, u.order.id, u.move_speed, w.current_move_speed(u.handle), u.buffs.iter().map(|b| w3_game::objects::id_str(b.id)).collect::<Vec<_>>());
             }
+        }
+        // TAGS_WATCHP=player: each of the player's units as it is first seen and as its
+        // type, place, construction, upgrade, queue, abilities, hiding, or life change,
+        // by turn: handle, object id, type, place, and state ('-' for one gone).
+        if let Some(p) = std::env::var("TAGS_WATCHP").ok().and_then(|v| v.parse::<u8>().ok()) {
+            let w = &g.world;
+            let mut now = std::collections::BTreeMap::new();
+            for u in w.unit_order.iter().filter_map(|&h| w.unit(h)).filter(|u| u.owner == p) {
+                let queue: Vec<String> = u.queue.iter().map(|q| w3_game::objects::id_str(*q)).collect();
+                let state = format!("{} oid {:x} {:x} at {:.0} {:.0}{}{}{}{}{} queue [{}] abilities [{}]", w3_game::objects::id_str(u.type_id), u.extra.oid.0, u.extra.oid.1, u.x, u.y, if u.constructing.is_some() { " constructing" } else { "" }, u.extra.upgrading.as_ref().map_or(String::new(), |g| format!(" upgrading from {}", w3_game::objects::id_str(g.from))), if u.hidden { " hidden" } else { "" }, if u.dead { " dead" } else { "" }, if u.extra.oid == (0, 0) { " no-oid" } else { "" }, queue.join(","), u.abilities.iter().map(|a| w3_game::objects::id_str(a.0)).collect::<Vec<_>>().join(","));
+                now.insert(u.handle, state);
+            }
+            for (h, s) in &now {
+                if watched.get(h) != Some(s) {
+                    println!("watchp {n} {h:#x} {s}");
+                }
+            }
+            for h in watched.keys().filter(|h| !now.contains_key(h)) {
+                println!("watchp {n} {h:#x} -");
+            }
+            watched = now;
         }
         // TAGS_UNITS=turn,player: at that turn, the player's units' actions and AI state.
         if let Some((t, p)) = std::env::var("TAGS_UNITS").ok().and_then(|v| v.split_once(',').and_then(|(a, b)| Some((a.parse::<u32>().ok()?, b.parse::<u8>().ok()?)))) {

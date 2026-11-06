@@ -3295,6 +3295,21 @@ impl World {
                 Action::Build { id, x, y } => self.build(vm, h, id, x, y, dt),
                 Action::Construct { target } => {
                     let done = self.unit(target).is_none_or(|b| b.constructing.is_none() || b.dead);
+                    // One consumed stays inside until it goes, or, its structure lost,
+                    // is given back to its owner's tech tree and food and comes out
+                    // (CAbilityNightElfBuild's vf210, `FUN_6f543ca0`: `FUN_6f25ba00`, as
+                    // made anew; provisional: for a structure killed as for one
+                    // cancelled).
+                    let consumed = self.unit(h).is_some_and(|u| u.extra.consumed);
+                    if done && consumed {
+                        if self.unit(target).is_some_and(|b| !b.dead && b.constructing.is_none()) {
+                            continue 'units;
+                        }
+                        let (owner, type_id) = self.unit(h).map(|u| (u.owner, u.type_id)).unwrap();
+                        self.tech_add(owner, type_id);
+                        self.unit_mut(h).unwrap().extra.consumed = false;
+                        self.update_food();
+                    }
                     let inside = self.unit(h).is_some_and(|u| u.hidden);
                     if done && inside {
                         // Out of the finished (or lost) structure beside it.
@@ -3525,12 +3540,12 @@ impl World {
     }
 
     /// Changes a structure's type as an upgrade starts (`World::upgrade_structure_by`),
-    /// keeping its life and mana fractions.
+    /// keeping its life and mana fractions, and its abilities till the upgrade is done
+    /// (`World::replace_type_abilities`).
     pub fn transform_unit(&mut self, h: u32, id: Id) {
         let Some(o) = self.objects.units.get(id) else { return };
         let (hp, mana) = (o.real("HP").max(1.0), o.real("manaN"));
         let hp = self.handicap_life(self.unit(h).map_or(0, |u| u.owner), hp);
-        let abilities: Vec<(Id, i32)> = o.list("abilList").iter().map(|s| (crate::objects::id_from_str(s.trim()), 1)).filter(|(a, _)| a[0] != 0).collect();
         // It acquires at the new type's range, none without a weapon, as one made so
         // (the original keeps the range with the unit's attack, CUnit+0x1e8's +0x244;
         // a Scout Tower upgraded to a Guard Tower attacks what comes near; provisional:
@@ -3547,13 +3562,66 @@ impl World {
         u.mana = mana * mf;
         u.acquire_range = acquire;
         u.scale = scale;
-        // Abilities made permanent stay (UnitMakeAbilityPermanent).
-        let kept: Vec<(Id, i32)> = u.abilities.iter().copied().filter(|(a, _)| u.extra.permanent.iter().any(|p| p.0 == *a && p.1 > 0) && !abilities.iter().any(|x| x.0 == *a)).collect();
-        u.abilities = abilities;
-        u.abilities.extend(kept);
-        u.extra.books.clear();
-        self.sync_spell_books(h);
         self.update_food();
+    }
+
+    /// A structure's abilities as its upgrade is done, before its rise's objects go
+    /// (CAbilityUpgradeInProgress's vf205, `FUN_6f5a75f0`, by `FUN_6f694f00` with the
+    /// new type's abilList; the type's change as the upgrade began, `FUN_6f670950`,
+    /// replaces none of them): its abilities, the newest first (`FUN_6f48ca70`), each
+    /// kept when in the new list (taken from it, the list's last put in its place) or
+    /// made permanent (UnitMakeAbilityPermanent; the engine's own, kept too, are not
+    /// among the port's), else taken away with its objects at once (`FUN_6f6947e0`,
+    /// `FUN_6f48e8a0`); then the list's others added in its order (`FUN_6f4725f0`),
+    /// each with its objects.  (Provisional: a taken ability's objects freed its own
+    /// first.)
+    pub(crate) fn replace_type_abilities(&mut self, h: u32, to: Id) {
+        let Some(o) = self.objects.units.get(to) else { return };
+        let mut list: Vec<Id> = o.list("abilList").iter().map(|s| crate::objects::id_from_str(s.trim())).filter(|a| a[0] != 0).collect();
+        let Some(u) = self.unit(h) else { return };
+        let had: Vec<Id> = u.abilities.iter().map(|a| a.0).collect();
+        let permanent: Vec<Id> = u.extra.permanent.iter().filter(|p| p.1 > 0).map(|p| p.0).collect();
+        let mut gone = Vec::new();
+        for &a in had.iter().rev() {
+            match list.iter().rposition(|x| *x == a) {
+                Some(k) => {
+                    list.swap_remove(k);
+                }
+                None if permanent.contains(&a) => {}
+                None => gone.push(a),
+            }
+        }
+        let code = |w: &World, a: Id| w.objects.abilities.get(a).map(|o| crate::objects::id_from_str(o.str("code").trim()));
+        for a in gone {
+            let (Some(c), Some(type_id)) = (code(self, a), self.unit(h).map(|u| u.type_id)) else { continue };
+            let n = self.ability_tags(type_id, &a).len().max(1);
+            let at = self.unit(h).and_then(|u| u.extra.object_slots[2].iter().position(|&(s, b)| self.tags.live.get(&s).is_some_and(|e| e.0 == c && e.1 == b)));
+            let u = self.unit_mut(h).unwrap();
+            u.abilities.retain(|x| x.0 != a);
+            let slots: Vec<(u32, u32)> = at.map(|k| u.extra.object_slots[2].drain(k..(k + n).min(u.extra.object_slots[2].len())).collect()).unwrap_or_default();
+            for (s, _) in slots {
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.spell_timers.retain(|&t| t != s);
+                    u.extra.spell_owners.retain(|&(t, _)| t != s);
+                }
+                self.tags.release(s);
+            }
+        }
+        // (Its code once, as a unit's making has each.)
+        for a in list {
+            let Some(c) = code(self, a) else { continue };
+            if self.unit(h).is_some_and(|u| u.abilities.iter().any(|x| code(self, x.0) == Some(c))) {
+                continue;
+            }
+            self.learned_objects(h, a);
+            if let Some(u) = self.unit_mut(h) {
+                u.abilities.push((a, 1));
+            }
+        }
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.books.clear();
+        }
+        self.sync_spell_books(h);
     }
 
     /// Starts researching an upgrade at a structure that offers it.
@@ -3853,6 +3921,13 @@ impl World {
         // event 0xd01da after its finish events, `FUN_6f67b630` and `FUN_6f679d50`).
         self.ai_builder_done(h);
         self.player_builder_done(h);
+        // Then the builder's build ability ends its work (Build In Progress's vf213,
+        // `FUN_6f422c10`, calling its vf209 after `FUN_6f427e40`'s events): one the
+        // structure consumed goes (`FUN_6f543eb0`, `FUN_6f694690(1, 0)`).
+        let consumed: Vec<u32> = self.unit_order.iter().copied().filter(|&b| self.unit(b).is_some_and(|u| !u.dead && u.extra.consumed && matches!(u.action, Action::Construct { target } if target == h))).collect();
+        for b in consumed {
+            crate::natives::units::remove_with_tasks(self, vm, b, false);
+        }
     }
 
     /// A player's builder at its structure's end: its order to build, none queued
@@ -4272,6 +4347,26 @@ impl World {
         let summons = race == "undead";
         if let Some(bu) = self.unit_mut(b) {
             bu.extra.needs_builder = !enters && !summons;
+        }
+        // A night elf builder an Ancient takes in is consumed (CAbilityNightElfBuild's
+        // vf208, `FUN_6f5441e0`, for a structure whose class has `ancient`: its +0x248
+        // bit 0x80, as the classes' table at 0x6fce5fa0 has it): it leaves its owner's
+        // tech tree's present (`FUN_6f266f70`, by its +0x64 bit 0x10) and its food, and
+        // goes as the structure is done (vf209, `FUN_6f543eb0`, `FUN_6f694690(1, 0)`;
+        // `World::complete_construction`); another goes inside and comes out (vf209's
+        // `FUN_6f566dd0`).  (Not yet in the port: its current order's tasks cleared then,
+        // `FUN_6f673e80`, a night elf's build order having no objects here.)
+        let ancient = self.unit(b).and_then(|s| self.objects.units.get(s.type_id)).is_some_and(|o| o.str("type").split(',').any(|c| c.trim().eq_ignore_ascii_case("ancient")));
+        if race == "nightelf" && ancient {
+            let (owner, type_id) = self.unit(h).map(|u| (u.owner, u.type_id)).unwrap();
+            if self.unit(h).is_some_and(|u| u.constructing.is_none() && u.extra.upgrading.is_none()) {
+                self.tech_reg(owner, type_id).present -= 1;
+                self.tech_changed(owner);
+            }
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.consumed = true;
+            }
+            self.update_food();
         }
         let u = self.unit_mut(h).unwrap();
         u.x = sx;

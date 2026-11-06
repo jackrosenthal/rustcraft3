@@ -755,7 +755,8 @@ pub fn remove_unit(w: &mut World, h: u32) {
     // listeners hear of it).
     // (One upgrading, begun as its new type, cancels that instead, `FUN_6f6744d0` by
     // its flag 8; provisional.)
-    if let Some((owner, type_id, upgrading)) = w.unit(h).filter(|u| u.constructing.is_none()).map(|u| (u.owner, u.type_id, u.extra.upgrading.is_some())) {
+    // (A builder an Ancient consumed has left it already, `FUN_6f5441e0`.)
+    if let Some((owner, type_id, upgrading)) = w.unit(h).filter(|u| u.constructing.is_none() && !u.extra.consumed).map(|u| (u.owner, u.type_id, u.extra.upgrading.is_some())) {
         if upgrading {
             w.tech_reg(owner, type_id).producing -= 1;
         } else {
@@ -779,6 +780,136 @@ pub fn remove_unit(w: &mut World, h: u32) {
             }
         }
     }
+}
+
+/// A unit's removal (`FUN_6f694690`), its objects and tasks as RemoveUnit's (with
+/// `script`: its task 0xd0156 too, `FUN_6f694690(1, 1)` after the unit's vf 0x84) or as
+/// a builder an Ancient consumes as it is done (`FUN_6f694690(1, 0)` from
+/// CAbilityNightElfBuild's vf209, `FUN_6f543eb0`; provisional: its objects freed as
+/// RemoveUnit's but for that task).
+pub(crate) fn remove_with_tasks(w: &mut World, vm: &mut Vm, h: u32, script: bool) {
+    // Its orders cleared, it restarts its animation's timer (`FUN_6f694690`,
+    // `FUN_6f67df00`'s event to `FUN_6f69bf80`, `FUN_6f69c620`; traced: the gold
+    // mine the undead melee setup removes; provisional for every unit removed).
+    if w.unit(h).is_some() {
+        w.tags.start_timer("69c620");
+    }
+    // A structure's footprint goes at once (measured: a gold mine's three
+    // regions freed before the removal's tasks).
+    if let Some(footprint) = w.unit_mut(h).map(|u| std::mem::take(&mut u.extra.footprint_slots)) {
+        for s in footprint {
+            w.tags.release(s);
+        }
+        // (The removal takes four counts of the property module's, not one for
+        // each of its tasks: `FUN_6f673610`, then three by `FUN_6f694690` as its
+        // orders clear; traced for the gold mine the undead melee setup removes.)
+        let counted = w.tags.prop_count;
+        // (Its block, then tasks 0xd015a, 0xd0164, 0xd0156 (RemoveUnit's alone),
+        // 0xd0178, and 0xd0144.)
+        let tasks = if script { 5 } else { 4 };
+        let mut t: Vec<u32> = std::iter::once(codes::class::TASK_A).chain(std::iter::repeat_n(codes::class::TASK, tasks)).map(|c| w.tags.take(c)).collect();
+        // A wanderer draws its wait again before the last (read: Forestwalk's
+        // deer removed by MeleeClearExcessUnits, the main generator's draw
+        // between their removals' sixth and seventh objects).
+        if w.ability_with_code(h, codes::ability::WANDER).is_some() {
+            let wait = w.rng.real(5.0, 10.0);
+            if let Some(u) = w.unit_mut(h) {
+                u.extra.wander_at = Some(wait.to_bits());
+            }
+        }
+        t.push(w.tags.take(codes::class::TASK_A));
+        w.tags.prop_count = counted;
+        w.tags.bump_prop(4, "rmvu");
+        // The removal's tasks and the unit's own objects freed as the next turn
+        // starts, in this order (traced for a gold mine Blizzard.j removes): the
+        // first and last tasks, the sixth and fifth; then, after what is
+        // released meanwhile, the fourth, its listener and modifiers in the
+        // order made (read: a Forestwalk deer's `rcm then `rtl), the third task,
+        // its abilities' objects (the last first), its five reals (the last
+        // first), its path, its two regions, its position, itself, the second
+        // task.
+        let objects = w.unit(h).map(|u| u.extra.object_slots.clone()).unwrap_or_default();
+        let (ai, listeners, fade) = w.unit(h).map(|u| (u.extra.ai_slots.clone(), u.extra.mana_listeners.iter().map(|l| l.1).collect::<Vec<u32>>(), u.extra.fade_slots.clone())).unwrap_or_default();
+        // (Those released already, as it fell asleep, are not freed again.)
+        let live = |w: &World, (s, b): (u32, u32)| w.tags.live.get(&s).is_some_and(|e| e.1 == b) && !w.tags.doomed.contains(&s);
+        let code = |w: &World, s: u32| w.tags.live.get(&s).map(|e| e.0);
+        // A paused unit's pause order before them (its current order's tasks,
+        // `FUN_6f673e80`; read: Mafarazzo TD's test runners'), and its task stack
+        // after the first, top first (`FUN_6f673fe0` makes and destroys a block,
+        // then destroys the stack; read: the test towers' attack tasks, removed
+        // 4.5 seconds after they were made).
+        let paused = w.unit_mut(h).map(|u| std::mem::take(&mut u.extra.pause_order)).unwrap_or_default();
+        for &s in paused.iter().rev() {
+            w.tags.doom(s);
+        }
+        w.tags.doom(t[0]);
+        for s in w.take_attack_tasks(h) {
+            w.tags.doom(s);
+        }
+        let n = t.len();
+        for k in [n - 1, n - 2, n - 3] {
+            w.tags.doom(t[k]);
+        }
+        // Then (read: Forestwalk's satyrs removed by MeleeClearExcessUnits) the
+        // fourth task; its abilities' in-range objects (an aura's `pil); its AI
+        // objects; its buffs' objects, each its timer then itself; the spells'
+        // listeners made as it woke, in the order made; its regeneration timers,
+        // then its listener; the third task; its abilities' other objects, the
+        // last first; ...
+        let abilities: Vec<(u32, u32)> = objects[2].iter().copied().filter(|&o| live(w, o)).collect();
+        let pils: Vec<u32> = abilities.iter().filter(|o| code(w, o.0) == Some(*codes::class::IN_RANGE_LISTENER)).map(|o| o.0).collect();
+        let mut buffs: Vec<u32> = Vec::new();
+        for (i, o) in abilities.iter().enumerate() {
+            if code(w, o.0).is_some_and(|c| c[0] == b'B') {
+                if let Some(n) = abilities.get(i + 1).filter(|n| code(w, n.0) == Some(*codes::class::CONTINUOUS_MODIFIER)) {
+                    buffs.push(n.0);
+                }
+                buffs.push(o.0);
+            }
+        }
+        let mut later: Vec<u32> = if script { vec![t[3]] } else { Vec::new() };
+        later.extend(&pils);
+        later.extend(ai.iter().filter(|&&o| live(w, o)).map(|o| o.0));
+        later.extend(&buffs);
+        // Then the buffs laid on it since, the newest first, each its timer then
+        // itself (read: the Ice tower's runner's `Bfro`).
+        let laid: Vec<u32> = w.unit(h).map(|u| u.buffs.iter().rev().filter(|b| b.slot != 0 && !buffs.contains(&b.slot) && w.tags.live.get(&b.slot).is_some_and(|e| e.1 == b.birth)).map(|b| b.slot).collect()).unwrap_or_default();
+        for s in laid {
+            if let Some(&m) = w.tags.buff_modifiers.get(&s).filter(|m| w.tags.live.contains_key(m)) {
+                later.push(m);
+            }
+            later.push(s);
+        }
+        let mut woke: Vec<u32> = listeners.into_iter().filter(|s| w.tags.live.contains_key(s)).collect();
+        woke.sort_by_key(|s| w.tags.live.get(s).map_or(0, |e| e.1));
+        later.extend(woke);
+        let mods: Vec<u32> = objects[1].iter().filter(|&&o| live(w, o)).map(|o| o.0).collect();
+        later.extend(mods.iter().filter(|&&s| code(w, s) == Some(*codes::class::CONTINUOUS_MODIFIER)));
+        later.extend(mods.iter().filter(|&&s| code(w, s) != Some(*codes::class::CONTINUOUS_MODIFIER)));
+        // A meld's fade-in not yet over (read: a Shadowdancer removed after the
+        // first dawn).
+        let fading: Vec<u32> = fade.into_iter().filter(|s| w.tags.timed.iter().any(|&(_, x)| x == *s)).collect();
+        w.tags.timed.retain(|&(_, x)| !fading.contains(&x));
+        later.extend(fading);
+        later.push(t[2]);
+        later.extend(abilities.iter().rev().map(|o| o.0).filter(|s| !pils.contains(s) && !buffs.contains(s)));
+        later.extend([8, 7, 6, 5, 4, 9, 2, 3, 1, 0].iter().filter_map(|&k| objects[0].get(k).filter(|&&o| live(w, o)).map(|o| o.0)));
+        later.push(t[1]);
+        w.tags.removed.extend(later);
+        // Its day change's object goes on the frame after (traced: the gold
+        // mine's at 0.0002, after its own at 0.0001).
+        if let Some(s) = w.unit_mut(h).and_then(|u| u.extra.day_rcm.take()) {
+            if w.tags.timed.iter().any(|&(_, x)| x == s) {
+                let at = w.time_of_day_clock + 1e-4;
+                w.tags.redoom_at(at, s);
+            }
+        }
+    }
+    script_remove_unit(w, h);
+    // Its food is gone at once: a player state event on it fires inside the
+    // removal (read: Mafarazzo TD's End_Round, food used equal to 0, its event's
+    // data made after the removal's tasks as the test runner goes).
+    w.check_player_states(vm);
 }
 
 fn unit_arg<'a>(w: &'a World, a: &[Value], n: usize) -> Option<&'a Unit> {
@@ -1170,124 +1301,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             none()
         },
         RemoveUnit => |w, vm, a| {
-            // Its orders cleared, it restarts its animation's timer (`FUN_6f694690`,
-            // `FUN_6f67df00`'s event to `FUN_6f69bf80`, `FUN_6f69c620`; traced: the gold
-            // mine the undead melee setup removes; provisional for every unit removed).
-            if w.unit(a.h(0)).is_some() {
-                w.tags.start_timer("69c620");
-            }
-            // A structure's footprint goes at once (measured: a gold mine's three
-            // regions freed before the removal's tasks).
-            if let Some(footprint) = w.unit_mut(a.h(0)).map(|u| std::mem::take(&mut u.extra.footprint_slots)) {
-                for s in footprint {
-                    w.tags.release(s);
-                }
-                // (The removal takes four counts of the property module's, not one for
-                // each of its tasks: `FUN_6f673610`, then three by `FUN_6f694690` as its
-                // orders clear; traced for the gold mine the undead melee setup removes.)
-                let counted = w.tags.prop_count;
-                let mut t: Vec<u32> = [codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK].iter().map(|c| w.tags.take(c)).collect();
-                // A wanderer draws its wait again before the last (read: Forestwalk's
-                // deer removed by MeleeClearExcessUnits, the main generator's draw
-                // between their removals' sixth and seventh objects).
-                if w.ability_with_code(a.h(0), codes::ability::WANDER).is_some() {
-                    let wait = w.rng.real(5.0, 10.0);
-                    if let Some(u) = w.unit_mut(a.h(0)) {
-                        u.extra.wander_at = Some(wait.to_bits());
-                    }
-                }
-                t.push(w.tags.take(codes::class::TASK_A));
-                w.tags.prop_count = counted;
-                w.tags.bump_prop(4, "rmvu");
-                // The removal's tasks and the unit's own objects freed as the next turn
-                // starts, in this order (traced for a gold mine Blizzard.j removes): the
-                // first and last tasks, the sixth and fifth; then, after what is
-                // released meanwhile, the fourth, its listener and modifiers in the
-                // order made (read: a Forestwalk deer's `rcm then `rtl), the third task,
-                // its abilities' objects (the last first), its five reals (the last
-                // first), its path, its two regions, its position, itself, the second
-                // task.
-                let objects = w.unit(a.h(0)).map(|u| u.extra.object_slots.clone()).unwrap_or_default();
-                let (ai, listeners, fade) = w.unit(a.h(0)).map(|u| (u.extra.ai_slots.clone(), u.extra.mana_listeners.iter().map(|l| l.1).collect::<Vec<u32>>(), u.extra.fade_slots.clone())).unwrap_or_default();
-                // (Those released already, as it fell asleep, are not freed again.)
-                let live = |w: &World, (s, b): (u32, u32)| w.tags.live.get(&s).is_some_and(|e| e.1 == b) && !w.tags.doomed.contains(&s);
-                let code = |w: &World, s: u32| w.tags.live.get(&s).map(|e| e.0);
-                // A paused unit's pause order before them (its current order's tasks,
-                // `FUN_6f673e80`; read: Mafarazzo TD's test runners'), and its task stack
-                // after the first, top first (`FUN_6f673fe0` makes and destroys a block,
-                // then destroys the stack; read: the test towers' attack tasks, removed
-                // 4.5 seconds after they were made).
-                let paused = w.unit_mut(a.h(0)).map(|u| std::mem::take(&mut u.extra.pause_order)).unwrap_or_default();
-                for &s in paused.iter().rev() {
-                    w.tags.doom(s);
-                }
-                w.tags.doom(t[0]);
-                for s in w.take_attack_tasks(a.h(0)) {
-                    w.tags.doom(s);
-                }
-                for k in [6, 5, 4] {
-                    w.tags.doom(t[k]);
-                }
-                // Then (read: Forestwalk's satyrs removed by MeleeClearExcessUnits) the
-                // fourth task; its abilities' in-range objects (an aura's `pil); its AI
-                // objects; its buffs' objects, each its timer then itself; the spells'
-                // listeners made as it woke, in the order made; its regeneration timers,
-                // then its listener; the third task; its abilities' other objects, the
-                // last first; ...
-                let abilities: Vec<(u32, u32)> = objects[2].iter().copied().filter(|&o| live(w, o)).collect();
-                let pils: Vec<u32> = abilities.iter().filter(|o| code(w, o.0) == Some(*codes::class::IN_RANGE_LISTENER)).map(|o| o.0).collect();
-                let mut buffs: Vec<u32> = Vec::new();
-                for (i, o) in abilities.iter().enumerate() {
-                    if code(w, o.0).is_some_and(|c| c[0] == b'B') {
-                        if let Some(n) = abilities.get(i + 1).filter(|n| code(w, n.0) == Some(*codes::class::CONTINUOUS_MODIFIER)) {
-                            buffs.push(n.0);
-                        }
-                        buffs.push(o.0);
-                    }
-                }
-                let mut later = vec![t[3]];
-                later.extend(&pils);
-                later.extend(ai.iter().filter(|&&o| live(w, o)).map(|o| o.0));
-                later.extend(&buffs);
-                // Then the buffs laid on it since, the newest first, each its timer then
-                // itself (read: the Ice tower's runner's `Bfro`).
-                let laid: Vec<u32> = w.unit(a.h(0)).map(|u| u.buffs.iter().rev().filter(|b| b.slot != 0 && !buffs.contains(&b.slot) && w.tags.live.get(&b.slot).is_some_and(|e| e.1 == b.birth)).map(|b| b.slot).collect()).unwrap_or_default();
-                for s in laid {
-                    if let Some(&m) = w.tags.buff_modifiers.get(&s).filter(|m| w.tags.live.contains_key(m)) {
-                        later.push(m);
-                    }
-                    later.push(s);
-                }
-                let mut woke: Vec<u32> = listeners.into_iter().filter(|s| w.tags.live.contains_key(s)).collect();
-                woke.sort_by_key(|s| w.tags.live.get(s).map_or(0, |e| e.1));
-                later.extend(woke);
-                let mods: Vec<u32> = objects[1].iter().filter(|&&o| live(w, o)).map(|o| o.0).collect();
-                later.extend(mods.iter().filter(|&&s| code(w, s) == Some(*codes::class::CONTINUOUS_MODIFIER)));
-                later.extend(mods.iter().filter(|&&s| code(w, s) != Some(*codes::class::CONTINUOUS_MODIFIER)));
-                // A meld's fade-in not yet over (read: a Shadowdancer removed after the
-                // first dawn).
-                let fading: Vec<u32> = fade.into_iter().filter(|s| w.tags.timed.iter().any(|&(_, x)| x == *s)).collect();
-                w.tags.timed.retain(|&(_, x)| !fading.contains(&x));
-                later.extend(fading);
-                later.push(t[2]);
-                later.extend(abilities.iter().rev().map(|o| o.0).filter(|s| !pils.contains(s) && !buffs.contains(s)));
-                later.extend([8, 7, 6, 5, 4, 9, 2, 3, 1, 0].iter().filter_map(|&k| objects[0].get(k).filter(|&&o| live(w, o)).map(|o| o.0)));
-                later.push(t[1]);
-                w.tags.removed.extend(later);
-                // Its day change's object goes on the frame after (traced: the gold
-                // mine's at 0.0002, after its own at 0.0001).
-                if let Some(s) = w.unit_mut(a.h(0)).and_then(|u| u.extra.day_rcm.take()) {
-                    if w.tags.timed.iter().any(|&(_, x)| x == s) {
-                        let at = w.time_of_day_clock + 1e-4;
-                        w.tags.redoom_at(at, s);
-                    }
-                }
-            }
-            script_remove_unit(w, a.h(0));
-            // Its food is gone at once: a player state event on it fires inside the
-            // removal (read: Mafarazzo TD's End_Round, food used equal to 0, its event's
-            // data made after the removal's tasks as the test runner goes).
-            w.check_player_states(vm);
+            remove_with_tasks(w, vm, a.h(0), true);
             none()
         },
         ShowUnit => |w, _, a| { let v = a.b(1); with_unit(w, a, |u| u.hidden = !v) },

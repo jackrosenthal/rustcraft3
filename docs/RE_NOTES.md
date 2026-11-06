@@ -4680,6 +4680,30 @@ Formats the port made its own, to be replaced by the original's:
   provisional: when in the structure's end (here after its finish events, as the
   structure's event 0xd01da, `FUN_6f679d50`, follows them; the trace cannot tell);
   not yet in the port: the load and wood cases, the second mine.
+- A wisp building an Ancient is consumed.  CAbilityNightElfBuild (`AEbu`, the build
+  ability the engine gives a night elf builder) differs from the orc's (`AObu`, whose
+  builder goes inside and comes out as the structure is done, vf209's `FUN_6f566dd0`) in
+  its vf208 to vf210.  As the structure is begun (vf208, `FUN_6f5441e0`, from
+  `FUN_6f54d0f0` once Build In Progress is given) the builder goes inside as an orc's
+  does (`FUN_6f544140`), and when the structure's class has `ancient` (the unit's +0x248,
+  its type's, bit 0x80; the classes' table at 0x6fce5fa0, read by `FUN_6f684340`: giant
+  1, undead 2, summoned 4, mechanical 8, peon 0x10, sapper 0x20, townhall 0x40, ancient
+  0x80, neutral 0x100, ward 0x200, standon 0x400, tauren 0x800) it also leaves each
+  player's own selection (vf115 `FUN_6f6948d0` with -1, by `FUN_6f2928c0`, "Async
+  remove": the synchronized selection keeps it), has its current order's tasks cleared
+  (`FUN_6f673e80`), and leaves its owner's tech tree by its +0x64 bits (8, in
+  production, `FUN_6f25c260`; else 0x10, present, `FUN_6f266f70`) and its food (0x800
+  used, 0x200 made), the ability's flag 0x200 set.  As the structure is done (Build In
+  Progress's vf205 `FUN_6f427e40`: after its finish events, its vf213 `FUN_6f422c10`
+  calls the builder's vf209, `FUN_6f543eb0`) such a builder is removed
+  (`FUN_6f694690(1, 0)`: RemoveUnit's without the unit's vf 0x84 and task 0xd0156); a
+  cancel (vf210, `FUN_6f543ca0`) gives it back (present and made again, `FUN_6f25ba00`,
+  or in production, `FUN_6f26b140`; its food) and lets it out.  So Mafarazzo TD's Tower
+  of Vengence (e000, class Ancient, made from the Ancient Protector) takes its wisp.
+  The port does so (`World::build`, `World::complete_construction`,
+  `natives::units::remove_with_tasks`).  Provisional: the removal's objects as
+  RemoveUnit's but for that task; not yet in the port: the order's tasks cleared, a
+  night elf player's build order making no objects here.
 - A structure's upgrade (an order, flags 0x40, the new type's id as its order) goes to
   its Upgrade ability (`Aupg`, CAbilityUpgrade; its vf3, 0x6f5a5990, finds the order
   among the type's Upgrade list, vf200 0x6f582970 checks it, vf192 0x6f581060 the
@@ -4726,10 +4750,27 @@ Formats the port made its own, to be replaced by the original's:
   30150 to 24150 at 2.0 for Super Tower of Vengence's 6000; the setting reader
   `FUN_6f047710` called at 0x6f59cf82 returned 1 at both upgrades' starts).
   Provisional: which setting that read is (MiscGame.txt has UpgradeInProgressIdChange
-  and RelativeUpgradeCost 0, yet the first behaved as set), the objects of types whose
-  ability lists differ, an order by script or
-  by an AI, the event's data agent, and what an upgrading unit counts as in the AI's
-  and the requirements' counts (the old type, as before).  A cancel (vf206,
+  and RelativeUpgradeCost 0, yet the first behaved as set), an order by script or by
+  an AI, the event's data agent, and what an upgrading unit counts as in the AI's and
+  the requirements' counts (the old type, as before).
+  The type's change as the upgrade starts (`FUN_6f670950` from vf212 with 0x101, its
+  ninth argument 0) remakes the engine's abilities alone (build, queue, Upgrade, move,
+  attack); the abilities of the type's list are the old type's till the upgrade is
+  done (vf205, `FUN_6f5a75f0`), which replaces them by the new type's abilList
+  (`FUN_6f694f00`) before the rise's objects go and the tech tree's finish
+  (`FUN_6f427f10`): the unit's abilities, the newest first (`FUN_6f48ca70`; an ability
+  given heads the unit's chain, `FUN_6f48b4c0`), each kept when its flag 0x20 is set or
+  its vf 0xf0 answers (provisionally, the engine's), when made permanent (+0x38), or
+  when in the new list (taken from it, the list's last put in its place), else taken
+  away with its objects at once (`FUN_6f6947e0`, `FUN_6f48e8a0`); then the list's others
+  are added in its order (`FUN_6f4725f0`).  The port does so
+  (`World::replace_type_abilities`): Mafarazzo TD's Fan Knifes Tower becoming the
+  Assasin Tower frees its Moon Glaive's object (`Amgl`) and makes a Critical Strike's
+  (`AOcr`), the Plague Tower becoming the Zombie Tower makes a Critical Strike's, and
+  the Zombie Tower becoming the St George Bank frees its Critical Strike's and Slow
+  Poison's and makes Pillage's (`Asal`), each before the rise's listener goes; it had
+  changed them as the upgrade began, their objects kept.  Provisional, not yet traced:
+  the objects' slots and order (a taken ability's own object freed first).  A cancel (vf206,
   0x6f5a73b0) gives back UpgradeRefundRate of the cost and the old type
   (`FUN_6f670950` with 0x102); not traced.
 - A built structure's Blight Growth (a human one's dispel, Abds: 64 every 0.08 to

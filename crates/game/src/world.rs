@@ -2934,8 +2934,9 @@ impl World {
         let mut made = [0i32; PLAYER_COUNT];
         for &h in &self.unit_order {
             let Some(u) = self.unit(h) else { continue };
-            // (One removed has given its food back already.)
-            if self.pending_removals.contains(&h) {
+            // (One removed has given its food back already, as has a builder an Ancient
+            // consumes, `FUN_6f5441e0`.)
+            if self.pending_removals.contains(&h) || u.extra.consumed {
                 continue;
             }
             // One reincarnating keeps its food and food made (the rising adds them

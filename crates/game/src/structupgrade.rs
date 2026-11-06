@@ -88,12 +88,12 @@ impl World {
     /// The unit's change of type as its upgrade starts (`FUN_6f670950` with 0x101): in
     /// its owner's tech tree the old type taken from present and the new one begun
     /// (`FUN_6f6703b0`; measured: e000 to e001 at 2.0, the tech tree's start of e001
-    /// then), its type's stats and abilities, the engine's Upgrade ability let go when
-    /// the new type upgrades to nothing (its real, then itself, freed with the order's
+    /// then), its type's stats and engine abilities (its list's at the upgrade's end,
+    /// `World::replace_type_abilities`), the engine's Upgrade ability let go when the
+    /// new type upgrades to nothing (its real, then itself, freed with the order's
     /// objects: traced, e001 to e002), and its sight's modifier over 3 seconds, as a
     /// change of day makes (`FUN_6f6708a0`, the unit's +0x110; traced: freed 3 seconds
-    /// on).  (Provisional: the other abilities' objects of types whose lists differ, as
-    /// the one traced kept its own.)
+    /// on).
     fn upgrade_type_change(&mut self, h: u32, from: Id, to: Id, at: f64) {
         let Some(owner) = self.unit(h).map(|u| u.owner) else { return };
         self.tech_reg(owner, from).present -= 1;
@@ -136,11 +136,15 @@ impl World {
         }
     }
 
-    /// An upgrade done (CAbilityUpgradeInProgress's vf205): its objects go at once, the
-    /// rise's listener, its modifier, the real, and Upgrade In Progress (traced), the new
-    /// type made in its owner's tech tree (`FUN_6f262f30`, `FUN_6f22f6a0`; measured at
-    /// 17.0000), then its events (`FUN_6f67d960`, event 0x80244).
+    /// An upgrade done (CAbilityUpgradeInProgress's vf205, `FUN_6f5a75f0`): its
+    /// abilities the new type's (`World::replace_type_abilities`), then its objects go
+    /// at once, the rise's listener, its modifier, the real, and Upgrade In Progress
+    /// (traced; `FUN_6f427f10`, by `FUN_6f41dd90` and `FUN_6f48e8a0`), the new type made
+    /// in its owner's tech tree (`FUN_6f262f30`, `FUN_6f22f6a0`; measured at 17.0000),
+    /// then its events (`FUN_6f67d960`, event 0x80244).
     fn complete_upgrade(&mut self, vm: &mut Vm, h: u32) {
+        let Some(to) = self.unit(h).and_then(|u| u.extra.upgrading.as_ref()).map(|g| g.to) else { return };
+        self.replace_type_abilities(h, to);
         let Some(u) = self.unit_mut(h) else { return };
         let Some(g) = u.extra.upgrading.take() else { return };
         let owner = u.owner;

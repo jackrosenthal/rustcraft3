@@ -775,6 +775,11 @@ pub struct UnitExtra {
     /// `FUN_6f69c620`), its AI's build order then let go (`World::build_ends_to`).
     #[serde(default)]
     pub build_end: Option<f32>,
+    /// A builder an Ancient it began consumes (CAbilityNightElfBuild's vf208,
+    /// `FUN_6f5441e0`, for a structure of the `ancient` class): taken from its owner's
+    /// tech tree and food then, and removed as the structure is done.
+    #[serde(default)]
+    pub consumed: bool,
     /// An AI's builder whose step walk stopped short of its site, going on as a
     /// player's builder does (`World::build`).
     #[serde(default)]
@@ -1139,6 +1144,7 @@ impl Default for UnitExtra {
             build_due: None,
             build_by: None,
             build_end: None,
+            consumed: false,
             build_legacy: false,
             construct_walk: None,
             upgrading: None,

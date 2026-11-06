@@ -1748,10 +1748,26 @@ impl World {
             }
             self.carried_region_triggers(vm);
             self.script_clock = self.tick_clocks.1.first().copied();
+            let before = self.tags.doomed.len();
             self.timers_at_turn_start(vm);
             self.script_clock = None;
             self.time_of_day_to(vm, Some(t));
             self.timed_frees_to(Some(t));
+            // What the turn's timers released in its first main tick goes in the next,
+            // before a first step in a later tick, after the timed frees due by it
+            // (measured: maftr's New Round, its timer due at 20.0 in turn 201, whose
+            // first step is two main ticks on: its creeps' old orders, `+tex`, and
+            // `wsed` freed before that step's look and the walk ended at the turn
+            // before's last step, the original's next free slot after the turn that
+            // walk's `^clu`; its leaderboard's timer at 2.0 in turn 21, its `+tex`
+            // after the hall's build order's leftovers; provisional: whether every
+            // release of the first tick goes so).
+            if t > self.tick_clocks.0 && self.tags.doomed.len() > before {
+                let mine: Vec<u32> = self.tags.doomed.drain(before..).collect();
+                for s in mine {
+                    self.tags.release(s);
+                }
+            }
             self.ai_threads_to_tick(Some(t));
             // Constructions and upgrades due by the first step's tick are done in it, as in
             // the later steps, before its walks' ended paths go (traced: the Tower of
@@ -4230,6 +4246,10 @@ impl World {
     /// Meadows' human computer's first farm), then its owner's tech and its events.
     fn complete_construction(&mut self, vm: &mut Vm, h: u32) {
         let last = self.tick_clocks.1.len().checked_sub(1).and_then(|i| self.tick_abs(i));
+        // (Done in the turn's last main tick, the first at or past its due: its player
+        // builder's order ends in the next, the next turn's first, `player_builder_done`.)
+        let n = self.tick_clocks.1.len();
+        let in_last_tick = self.unit(h).and_then(|u| u.extra.build_due).is_some_and(|d| n >= 3 && self.tick_abs(n - 3).is_some_and(|c| d as f64 > c + 1e-6));
         self.look_when_built(h);
         let Some(u) = self.unit_mut(h) else { return };
         u.constructing = None;
@@ -4256,7 +4276,7 @@ impl World {
         // Then its AI's builder takes its next order (provisional: by the structure's
         // event 0xd01da after its finish events, `FUN_6f67b630` and `FUN_6f679d50`).
         self.ai_builder_done(h);
-        self.player_builder_done(h);
+        self.player_builder_done(h, in_last_tick);
         // Then the builder's build ability ends its work (Build In Progress's vf213,
         // `FUN_6f422c10`, calling its vf209 after `FUN_6f427e40`'s events): one the
         // structure consumed goes (`FUN_6f543eb0`, `FUN_6f694690(1, 0)`).
@@ -4303,14 +4323,23 @@ impl World {
     /// behind it (`World::player_build_objects`), ends, the rest of its objects freed
     /// after the structure's, the last first (traced: Mafarazzo TD's flying peasant's
     /// Arrow Tower, done a second after it was begun, its `Atrg`, `tskO`, two tasks,
-    /// `tskA`, and `ordt` then, over LAN with the original).
-    fn player_builder_done(&mut self, structure: u32) {
+    /// `tskA`, and `ordt` then, over LAN with the original).  For a structure done in
+    /// its turn's last main tick, they go as the next turn starts: its builder's order
+    /// ends in the next main tick (traced: maftr's Town Hall, due 8.589906, done in the
+    /// main tick at 8.594559, the turn's last, its order's six freed in the next turn;
+    /// its Cutter due 20.977648, done at 20.982479, two ticks before the turn's end,
+    /// its builder's six in that turn).
+    fn player_builder_done(&mut self, structure: u32, next_tick_next_turn: bool) {
         let builders: Vec<u32> = self.unit_order.iter().copied().filter(|&b| self.unit(b).is_some_and(|u| !u.dead && u.extra.ai_next_order.is_none() && matches!(u.action, Action::Construct { target } if target == structure) && matches!(u.extra.ai_order.len(), 6 | 7))).collect();
         for b in builders {
             let Some(u) = self.unit_mut(b) else { continue };
             let old = std::mem::take(&mut u.extra.ai_order);
             for s in old.into_iter().rev() {
-                self.tags.release(s);
+                if next_tick_next_turn {
+                    self.tags.next_turn.push(s);
+                } else {
+                    self.tags.release(s);
+                }
             }
         }
     }

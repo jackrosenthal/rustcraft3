@@ -5374,6 +5374,26 @@ Formats the port made its own, to be replaced by the original's:
   Arrow Tower, done at turn 192, a second after its begin).  The flying peasant's game
   so agrees to turn 216, where the original makes six `Cdet` (detections, the creeps
   made at 20.0 coming near), now the port's too (a burrow detection's test, above).
+- Its builder's order's objects go as the next turn starts when the structure is done
+  in its turn's last main tick (the first at or past its due): the builder's order
+  ends in the next main tick (`World::player_builder_done`).  Measured over LAN with
+  the original (Mafarazzo TD's maftr games, their keepalives and a trace of turns 86
+  to 201): the Town Hall due 8.589906, done in the main tick at 8.594559, the last of
+  turn 86, its `rtl`, two `rcm`, `rel`, and `ABnP` freed in it and the order's six in
+  turn 87 (the original's next free slot after turn 86 the `ABnP`'s); a Cutter due
+  20.977648, done at 20.982479, two ticks short of turn 210's end, its order's six in
+  that turn (the next free slot the `ordt`'s).
+- What the timers going off at a turn's start release goes in the next main tick, so
+  before a first movement step in a later tick, after the timed frees due by then (the
+  next frame's destructions, above; `World::first_steps`).  Measured (the maftr games'
+  keepalives): the New Round's timer, due at 20.0 as turn 201 begins, its first step
+  two main ticks on: its 180 creeps' old orders' objects, the three `+tex`, and the
+  `wsed` freed before that step's detection look and the paths of a walk ended in the
+  last step of turn 200 (the original's next free slot after turn 201 the walk's
+  `^clu`; the port had freed them at the turn's end); the leaderboard's timer at 2.0 in
+  turn 21, its first step also two ticks on, its `+tex` after the hall's build order's
+  leftovers, freed by their due.  Provisional: whether all of a first tick's releases
+  go so (an action's, at least, are timed already).
 - A construction is done (`CAbilityBuildInProgress`'s vf205, 0x6f427e40, from
   `FUN_6f424320` on its listener's event 0xd01c4) on the main clock at its build time
   from the step its rise began in: the step it was begun in, or for a builder still

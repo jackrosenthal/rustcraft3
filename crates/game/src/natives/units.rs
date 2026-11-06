@@ -150,6 +150,18 @@ pub(crate) fn shown_at(w: &World, h: u32) -> (f32, f32) {
     ground_place(w, &movetp, collision, u.x, u.y, true, Some(h), u.region_mask(), false, None)
 }
 
+/// A unit placed again where it stands (`FUN_6f427870`), clear of the units whose
+/// regions `mask` meets, with the room its size class asks for.
+pub(crate) fn placed_clear(w: &World, h: u32, mask: u32) -> (f32, f32) {
+    let Some(u) = w.unit(h) else { return (0.0, 0.0) };
+    let Some(o) = w.objects.units.get(u.type_id) else { return (u.x, u.y) };
+    if w.pathing.is_none() {
+        return (u.x, u.y);
+    }
+    let (movetp, collision) = (o.str("movetp"), o.real("collision"));
+    ground_place(w, &movetp, collision, u.x, u.y, true, Some(h), mask, false, None)
+}
+
 /// A unit a structure has trained: as one made there is placed, but ring by ring about
 /// the structure's footprint `rect` (its pathing texture's whole rectangle, cells x0,
 /// y0, x1, y1, the last past it; `FUN_6f22f1d0`), the rings walked from the bottom row

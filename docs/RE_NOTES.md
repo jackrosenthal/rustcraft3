@@ -4890,12 +4890,8 @@ Formats the port made its own, to be replaced by the original's:
   arrives a step late; and without the turn at its walks out at 48.0 or 53.4 the
   keepalives part at turns 502 and 553, so those turned in place.  At 58.5 alone the
   original's walker starts as if facing its way (within the window of its first
-  point's bearing, 3.036), or three steps on.  Open: why; its walk home from 56.7
-  and its drop agree to the turn (the drop's objects in turn 585), and its trip
-  before was a queued one, but not every such walk starts so (tried: each walker out
-  after a queued trip so, the keepalives part at turn 71).  A measurement would be
-  the waypoint provider's answers for its walker (after `FUN_6f165ae0`, as for the
-  wisps above) from 58.40 to 58.70, with its heading and place.
+  point's bearing, 3.036), or three steps on.  (Read since, below: it turns as the
+  port's but walks from another place, put there as its drop ends.)
 - That walk's provider answers, read (after `FUN_6f165ae0`, 0x6f16fd0a, 58.406 to
   58.676; the point at [ebp-0xc], [ebp-0x8], in cells): the walkers and their order
   are the port's one for one (two far units, the peasant walking home along row 188
@@ -4922,16 +4918,30 @@ Formats the port made its own, to be replaced by the original's:
   a walker about 1.5 off (169.5, 185.5) moving at once is within 0.49 of it at 58.676
   and then 49 or 50 steps from within 0.49 of (161.5, 183.5), arriving at 60.145 or
   60.175, in turn 602 as the objects have it; from the port's place (171.16, 187.43)
-  those points would bring it in at 60.29 or later.  Open: where the original's
-  walker is at 58.466 (if near (170.9, 185.5), out of the hall's contact) and whence
-  its way was searched; its walk home from 56.7 began where it had waited at the mine,
-  (161.93, 185.61) in the port, where its other trips home began at (161.5, 183.5).  A
-  measurement: at 0x6f16fd0a with edi 0x6a09578 from 56.6 to 58.7, the place (*ebx,
-  *(ebx+4)), the heading (edi+0x8c) and velocity (+0x80, +0x84), and its path's
-  (edi+0xa8) goal (+0x1c, +0x20), local way (count +0x50, index +0x74, the first six
-  points at +0x40), coarse way (+0x70, +0x78, four points at +0x60), flags (+0x88), and
-  target region (+0xa4); and after the search in `FUN_6f166e90` (0x6f166fbe) for that
-  walker over the same time, its start, goal, and way.
+  those points would bring it in at 60.29 or later.  Measured since (every walker's
+  place, heading, and path at 0x6f16fd0a, 56.6 to 58.7): the peasant, its contact at
+  58.406 at (171.1617, 187.4288) as the port's, stands at 58.466 at (170.5, 185.5),
+  its heading 0.7655 kept, and searches from there (its way (161.5, 183.5), (162.5,
+  183.5), (163.5, 183.5), (164.5, 184.5), and on, end first, index 8; its coarse way
+  from (85.25, 92.75)); it turns in place three steps and walks from 58.586.  So its
+  order home's end placed it again: task 0xd0152 (`FUN_6f422b10`, the harvest's +0x20
+  holding 0x800 or 0x1000) gives the worker its own region and mask (`FUN_6f699290`)
+  and places it where it stands clear of the units that mask meets (`FUN_6f427870`,
+  its vf 0x180).  The one it was put clear of is the farm peasant (1879048396), home
+  at 57.4466 at (171.0388, 187.4737) and standing there after (no walk of its own in
+  the reading): the port had sent it on to repair its farm, done at 52.67 with 0.001
+  of its 500 short, where a computer's repairs are its AI's (`FUN_6f9c3920`): a
+  structure is taken only under its maximum life less `DAT_6fd3c76c`, 10 (set as the
+  game loads, 0x6f001ac0, through `FUN_6f070d80`).  The first cell clear of it (more
+  than a cell from its cell (171, 187) either way, the rings walked from the bottom
+  row, `natives::units::ground_place`) is the second ring's first, (170, 185).  The
+  port so places a worker at its drop (`World::place_off_ghosting`) and leaves a
+  computer's structures under that margin (`World::autocast_target`; provisional: the
+  AI's other tests and its timing, the autocast standing in); the keepalives agree to
+  turn 632, from 602 (the farm peasant now walks to its tree from the hall, reaching
+  it in turn 634, the original's in 637; and in turn 632 a peasant's first arrival
+  at the mine, to wait, comes before that turn's trained peasant's AI orders' frees,
+  the original's after them).
 - An AI's wood workers take its town's trees in turn: each sent to a tree
   (`FUN_6f9c6cf0`, from `FUN_6f9c9470` as a worker its pass took for wood runs its
   `+ord`, and `FUN_6f9c9610`; `FUN_6f9c96c0` too) gets the next of the AI's eight
@@ -4949,8 +4959,8 @@ Formats the port made its own, to be replaced by the original's:
   had sent it to the first tree, 15 cells off, reached in turn 626, and now sends it
   to the second, (192, 178), 21 off (with the walk out at 58.5 above given the
   original's start, the objects agree through turn 630, from 625).  Open: the
-  original's reach is half a second later still; the port reaches that tree in turn
-  631.
+  original's reach is later still; the port's, walking from the hall since it no
+  longer repairs (above), reaches that tree in turn 634.
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

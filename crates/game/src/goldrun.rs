@@ -696,6 +696,34 @@ impl World {
         }
     }
 
+    /// Home with its load, its order home's end (its task 0xd0152, `FUN_6f422b10`, once
+    /// the harvest has ghosted or been at its work, +0x20's 0x800 or 0x1000) gives the
+    /// worker its own region and mask again (`FUN_6f699290`) and places it again where
+    /// it stands, clear of the units that mask meets (`FUN_6f427870`; read: Twisted
+    /// Meadows' human computer's gold peasant, home at 58.406 at (171.16, 187.43) in
+    /// cells, where another stood since its own drop at 57.4, at 58.466 at (170.5,
+    /// 185.5) with its heading kept, the first cell of the second ring clear of that one,
+    /// searching to the mine from there).
+    fn place_off_ghosting(&mut self, h: u32) {
+        let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return };
+        let Some((x, y)) = self.unit(h).map(|u| (u.x, u.y)) else { return };
+        let (nx, ny) = crate::natives::units::placed_clear(self, h, 0x02);
+        if (nx, ny) == (x, y) {
+            return;
+        }
+        let cell = |w: f32, o: f32| ef::div(ef::sub(w.to_bits(), o.to_bits()), crate::pathing::CELL.to_bits());
+        let (cx, cy) = (cell(nx, origin[0]), cell(ny, origin[1]));
+        if let Some(u) = self.unit_mut(h) {
+            u.x = nx;
+            u.y = ny;
+            u.extra.cell_at = Some((cx, cy, nx, ny));
+            if let Some(m) = u.extra.mover.as_mut() {
+                m.x = cx;
+                m.y = cy;
+            }
+        }
+    }
+
     /// At its tree as its move ends (`FUN_6f4377d0`, event 0xd0184): within range but
     /// not yet free to chop, it walks to reach the tree (`REACH`, its `^clg` at once),
     /// its ghosting ending with that walk's tasks (0xd0151: `World::push_off_ghosts`).
@@ -1118,6 +1146,7 @@ impl World {
     /// order's five, go as the step ends in the walkers' order; the walk home's path as
     /// the next step ends.
     fn drop_gold(&mut self, h: u32, run: GoldRun, _hall: u32, path: [u32; 2]) {
+        self.place_off_ghosting(h);
         let (owner, gold, lumber) = self.unit(h).map_or((0, 0, 0), |u| (u.owner, u.carry_gold, u.carry_lumber));
         if gold > 0 || lumber > 0 {
             self.gather(owner, h, gold, lumber, 0.0);

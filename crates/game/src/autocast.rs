@@ -14,6 +14,9 @@ use crate::codes;
 const HEAL: [&str; 2] = [codes::ability::HEAL, codes::ability::HEAL_CREEP_NORMAL];
 const ALLY_BUFF: [&str; 4] = [codes::ability::INNER_FIRE, codes::ability::BLOODLUST, codes::ability::LICH_FROST_ARMOR_AUTOCAST, codes::ability::LICH_FROST_ARMOR];
 const ENEMY_DEBUFF: [&str; 4] = [codes::ability::SLOW, codes::ability::CURSE, codes::ability::FAERIE_FIRE, codes::ability::WEB];
+/// The life short of its maximum a computer's structure must be for its AI to repair it
+/// (`DAT_6fd3c76c`, `FUN_6f9c3920`).
+const AI_REPAIR_MARGIN: f32 = 10.0;
 
 impl World {
     /// Turns a unit's autocast on or off by an ability's orderon / orderoff name.
@@ -76,9 +79,16 @@ impl World {
                 .map(|t| t.handle);
         }
         match code.as_str() {
-            // Repair on autocast: the nearest damaged structure or machine in sight.
+            // Repair on autocast: the nearest damaged structure or machine in sight.  A
+            // computer's repairs are its AI's (`FUN_6f9c3920`), which takes a structure
+            // only under its maximum life less 10 (`DAT_6fd3c76c`, set to 10 as the game
+            // loads, 0x6f001ac0; read: Twisted Meadows' human computer's first farm, done
+            // 0.001 short of its 500, never repaired, its builder standing at the hall
+            // after its drop at 57.4).  Provisional: the AI's other tests and its timing,
+            // the autocast standing in for them.
             codes::ability::REPAIR_ORC | codes::ability::RESTORATION | codes::ability::RENEW => units()
                 .filter(|t| (t.x - u.x).hypot(t.y - u.y) <= u.acquire_range.max(500.0) && self.can_repair(h, t.handle))
+                .filter(|t| !self.players.get(u.owner as usize).is_some_and(|p| p.controller == map_control::COMPUTER) || t.life < t.max_life - AI_REPAIR_MARGIN)
                 .min_by(|x, y| (x.x - u.x).hypot(x.y - u.y).total_cmp(&(y.x - u.x).hypot(y.y - u.y)))
                 .map(|t| t.handle),
             codes::ability::RAISE_DEAD => self.corpses_in(u.x, u.y, self.data(a, "Area", lvl)).first().copied(),

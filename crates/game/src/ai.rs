@@ -110,7 +110,7 @@ pub struct AiState {
     /// Harvest requests in priority order: (gold?, town, workers).
     pub harvest: Vec<(bool, i32, i32)>,
     /// The game times of its last two ClearHarvestAI calls, the earlier first: a worker
-    /// made since the earlier is not yet among those its requests take
+    /// made in the later's tick is not yet among those its requests take
     /// (`World::ai_assign_harvest`).
     #[serde(default)]
     pub harvest_passes: (f64, f64),
@@ -815,7 +815,6 @@ impl World {
     pub(crate) fn ai_assign_harvest(&mut self, p: u8) {
         let Some(st) = self.ai.get_mut(&p) else { return };
         let requests = st.harvest.clone();
-        let since = st.harvest_passes.0;
         let pass = st.harvest_passes.1;
         // Units at a guard post do not gather, nor those of a captain with somewhere to
         // go; without SetSlowChopping a captain's units standing at home are taken back
@@ -834,11 +833,15 @@ impl World {
         // (The AI's own list, its newest first: FUN_6f9c7700; traced, Forestwalk's undead
         // computer's first harvest order its newest acolyte's, which its build loop then
         // takes to build.)
-        // (A worker made since its AI's last pass but one is not yet among them, one made
-        // in that pass's tick counting as made since it: read, Twisted Meadows' human
-        // computer's peasant trained at 15.1, sent to wood in the pass at 16.2, not at
-        // 15.2; one trained by 31.2, sent again in the pass at 35.2, not at 33.2.)
-        let joining = |w: &World, h: u32| w.unit(h).is_some_and(|u| u.extra.ai_harvesting && u.extra.made_at.is_some_and(|t| t >= since));
+        // (A unit joins that list as it is made, `FUN_6f9b9230` from `FUN_6f677870`, so
+        // one made in the pass's tick, after it, is not yet among them: read, every unit
+        // the pass's `FUN_6f9c7700` looks at, Twisted Meadows' human computer's at
+        // 15.098467 its five first peasants, the one trained as turn 152 began not yet
+        // listed (sent to wood in the pass at 16.2), and its night elf computer's wisp
+        // trained at 14.1 taken for wood at 15.098467; one in a mine is passed over, its
+        // +0x20's 1, as the human computer's newest peasant at 33.095 and taken at
+        // 35.099.  Provisional: the port runs the pass after a turn's first trainings.)
+        let joining = |w: &World, h: u32| w.unit(h).is_some_and(|u| u.extra.ai_harvesting && u.extra.made_at.is_some_and(|t| t >= pass));
         let workers: Vec<u32> = self.workers(p).into_iter().rev().filter(|h| !held.contains(h) && !joining(self, *h)).collect();
         // (A worker summoning a structure keeps its order until the summoning ends.)
         let busy = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Build { .. } | Action::Construct { .. } | Action::Attack { .. } | Action::Move { .. }) || u.extra.build_end.is_some());

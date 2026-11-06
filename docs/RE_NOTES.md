@@ -5852,6 +5852,24 @@ Formats the port made its own, to be replaced by the original's:
   last (12.1) not yet among those its passes take (`World::ai_assign_harvest`'s
   joining, read on the human computer's peasants made in a pass's tick); not read
   what the original's AI list takes.
+- An AI's harvest pass takes its workers from its unit list, which a unit joins as
+  it is made (`FUN_6f9b9230` from `FUN_6f677870`: the night elf computer's wisp at
+  14.100000), with no test of its age.  `FUN_6f9c7700` walks the list (AI +0x28,
+  newest first; its head at 0x6f9c7783) and takes a unit whose +0x20 has 1 clear
+  (not hidden) and its harvest's flags (0xc0000 for wood; 0x8000 or 0x10000 for
+  gold), whose AI's +0x28 has 1 and 2 clear (not taken this pass), and whose +0x194
+  is 0, 5, or 6 (7 too for a ghoul); it sets the AI's +0x28 1 (gold) or 2 (wood).
+  Read (every unit at the loop's head and each take): the night elf computer's pass
+  at 15.098467 takes the wisp trained at 14.1 (+0x194 5) for wood first; the human
+  computer's at 15.098467 lists its five first peasants only, the one trained as
+  turn 152 began not yet made; at 33.095 its newest peasant is in the mine (+0x20
+  0x149447) and passed over, and at 35.099 taken for gold.  The port had kept from a
+  pass every worker made since the pass before last; it now keeps only one made in
+  the pass's own tick (`World::ai_assign_harvest`; provisional: the port runs that
+  pass after the turn's first trainings, where the original's ran before), and the
+  wisp is sent again at 15.1 as the original's.  The keepalives agree to turn 155,
+  from 152, the objects to 163.  Next: at turn 164 the port's Moon Well is begun, the
+  original's at 178.
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

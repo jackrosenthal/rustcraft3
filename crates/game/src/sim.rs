@@ -4348,7 +4348,23 @@ impl World {
             if let Some(u) = self.unit_mut(h) {
                 u.extra.train_due = None;
             }
+            let (doomed, issued) = (self.tags.doomed.len(), self.tags.issued.len());
             self.update_training(vm, h, 0.0);
+            // A computer's unit made in the steps, its AI's harvest given it as it was
+            // made, lets go in the main tick after (the agents' destroy list,
+            // `FUN_6f04c1a0`'s `FUN_6f04f7e0`): what its making and its AI's orders let go,
+            // in turn, then its tasks and ptcf, before the next step (read, each free's
+            // clock and caller at the tag allocator: Twisted Meadows' human computer's
+            // peasant trained at 63.096783, its AI's orders' objects, the last order's
+            // four tasks, the making's two, and the ptcf freed at 63.096882 through
+            // `FUN_6f054190`, a waiting peasant's cluster's at the step at 63.113529).
+            let given = tick.is_some() && self.ai.contains_key(&self.unit(h).map_or(u8::MAX, |u| u.owner)) && self.tags.issued.len() > issued;
+            if given {
+                let now: Vec<u32> = self.tags.doomed.split_off(doomed.min(self.tags.doomed.len())).into_iter().chain(self.tags.issued.split_off(issued)).collect();
+                for s in now {
+                    self.tags.release(s);
+                }
+            }
         }
     }
 

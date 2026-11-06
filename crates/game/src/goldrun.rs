@@ -1413,7 +1413,7 @@ impl World {
             Action::Move { x, y } => Some((x, y)),
             Action::AttackMove { x, y } if self.unit(h)?.extra.ai_idle_ord.is_some() => Some((x, y)),
             Action::Build { x, y, .. } if self.unit(h)?.ai_build_walk() => Some((x, y)),
-            Action::Harvest { target } => self.gold_run_goal(h).or_else(|| self.unit(h).filter(|u| u.ai_harvest_walk()).and_then(|_| self.widget_pos(target))),
+            Action::Harvest { target } => self.gold_run_goal(h).or_else(|| self.unit(h).filter(|u| u.ai_harvest_walk() || u.extra.gold_run.as_ref().is_some_and(|r| r.lumber && matches!(r.phase, Phase::Reaching { .. }))).and_then(|_| self.widget_pos(target))),
             _ => None,
         }
     }
@@ -1434,14 +1434,39 @@ impl World {
             self.gold_run_arrive(h, k);
             return true;
         }
-        if self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).is_some_and(|r| matches!(r.phase, Phase::Reaching { .. })) {
-            self.tree_reached(h, k);
-            return true;
-        }
+        let reaching = self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).is_some_and(|r| matches!(r.phase, Phase::Reaching { .. }));
         let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return false };
         let Some(&clock) = self.step_clocks.get(k) else { return false };
+        // Its walk to reach the tree goes on till the tree is within range, as its move
+        // there did (read: Twisted Meadows' human computer's farm peasant, its move
+        // ending at 63.5633 in contact 4.70 cells from its tree's middle, its reach's way
+        // searched at 63.6232 to (189.5, 177.5), the node nearest the tree, node by
+        // node, walking on from 63.6532).  Stopped within range, it has reached it.
+        if reaching && self.unit(h).is_some_and(|u| u.extra.mover.is_none()) {
+            if self.reach_within(h) {
+                self.tree_reached(h, k);
+                return true;
+            }
+            return false;
+        }
         let cell = |w: f32, o: f32| ef::div(ef::sub(w.to_bits(), o.to_bits()), crate::pathing::CELL.to_bits());
         match self.tree_in_range(h, clock) {
+            Some((m, true)) if reaching => {
+                let (x, y) = m.at(clock);
+                if let Some(u) = self.unit_mut(h) {
+                    u.x = f32::from_bits(ef::add(ef::mul(x, crate::pathing::CELL.to_bits()), origin[0].to_bits()));
+                    u.y = f32::from_bits(ef::add(ef::mul(y, crate::pathing::CELL.to_bits()), origin[1].to_bits()));
+                    u.extra.cell_at = Some((x, y, u.x, u.y));
+                    u.facing = f32::from_bits(m.heading).to_degrees();
+                    u.extra.walk_heading = Some(m.heading);
+                    u.extra.mover = None;
+                    u.extra.step_from = None;
+                    u.path.clear();
+                    crate::sim::set_anim(u, "stand");
+                }
+                self.tree_reached(h, k);
+                return true;
+            }
             Some((m, true)) => {
                 // Where it stopped is its place (as `World::walk_steps` keeps it).
                 let (x, y) = m.at(clock);
@@ -1513,7 +1538,7 @@ impl World {
     /// 0.516 short of its way's last point.
     fn tree_in_range(&self, h: u32, clock: u32) -> Option<(crate::motion::Mover, bool)> {
         let u = self.unit(h)?;
-        let r = u.extra.gold_run.as_ref().filter(|r| (r.lumber && r.phase == Phase::ToMine) || matches!(r.phase, Phase::ToHall(_)))?;
+        let r = u.extra.gold_run.as_ref().filter(|r| (r.lumber && matches!(r.phase, Phase::ToMine | Phase::Reaching { .. })) || matches!(r.phase, Phase::ToHall(_)))?;
         let mut m = u.extra.mover?;
         let origin = self.pathing.as_ref()?.origin;
         let cell = |w: f32, o: f32| ef::div(ef::sub(w.to_bits(), o.to_bits()), crate::pathing::CELL.to_bits());
@@ -1542,6 +1567,19 @@ impl World {
         }
         m.halt_facing(&gait, tree, clock);
         Some((m, false))
+    }
+
+    /// Whether a worker stopped on its walk to reach its tree stands within its
+    /// harvest's range of the tree's middle (as `World::tree_in_range` measures).
+    fn reach_within(&self, h: u32) -> bool {
+        let (Some(u), Some(p)) = (self.unit(h), self.pathing.as_ref()) else { return false };
+        let Some(r) = u.extra.gold_run.as_ref() else { return false };
+        let (Some((a, l)), Some((tx, ty))) = (self.run_harvest(h), self.widget_pos(r.mine)) else { return true };
+        let cell = |w: f32, o: f32| f32::from_bits(ef::div(ef::sub(w.to_bits(), o.to_bits()), crate::pathing::CELL.to_bits()));
+        let size = |c: f32| f32::from_bits(ef::div(c.to_bits(), crate::pathing::CELL.to_bits()));
+        let range = size(self.ability_real(a, "Rng", l)) + size(u.collision);
+        let (dx, dy) = (cell(u.x, p.origin[0]) - cell(tx, p.origin[0]), cell(u.y, p.origin[1]) - cell(ty, p.origin[1]));
+        (dx * dx + dy * dy).sqrt() <= range
     }
 
     /// A gold run's way to its structure (`World::local_path`'s search, 700 nodes deep,

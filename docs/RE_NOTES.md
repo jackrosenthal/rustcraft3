@@ -5659,6 +5659,32 @@ Formats the port made its own, to be replaced by the original's:
   is so the original's to the step (its reach's objects in turn 637); the keepalives
   still part at turn 633, by turn 632's frees (above: the peasant waiting at the
   mine, its objects freed before that turn's trained peasant's AI orders' frees).
+- A computer's unit trained in the steps lets go in the main tick after, before the
+  next step.  Read (every tag free from 63.05 to 63.25, its clock and backtrace, in
+  Twisted Meadows' human computer's game): the peasant trained at 63.096783
+  (`CAbilityQueue` vf3, `FUN_6f40daa0`, its AI's harvest given through
+  `FUN_6f9b9230` and `FUN_6f9c9cc0`, the order's `^clg` freed at once), then at
+  63.096882 the training's `` `rtl `` and `` `rcm ``, its AI's orders' objects in
+  turn (29), the last order's four tasks, the making's two, and the ptcf, all from
+  the agents' destroy list (`FUN_6f04c1a0`'s `FUN_6f04f7e0`, `FUN_6f054190`,
+  `FUN_6f15e500`), and only at the step at 63.113529 the waiting peasant's cluster
+  and path (`FUN_6f16c150`, `FUN_6f1699c0`).  The port had freed the orders'
+  objects as the turn ended and the tasks and ptcf as the step ended, after that
+  step's; it now frees both, in that order, as the training is done in the steps
+  (`World::trainings_to`, for a computer's unit given its harvest as it is made).
+  And a worker's walk to reach its tree goes on till the tree is within its
+  harvest's range: the farm peasant's move ended at 63.5633 in contact 4.70 cells
+  from its tree's middle (range 4.125); its reach's way, searched at 63.6232 from
+  (187, 177), is a plain one to the tree's middle, ending at the node nearest it,
+  (189.5, 177.5), node by node (its index 1, (188.5, 177.5)), and it walks on from
+  63.6532.  The port had ended every reach in the step after it began (as the reads
+  at turns 854 and 990, in range from the start); it now walks the reach by such a
+  search till in range, stops and turns there, and has reached it then
+  (`World::gold_run_step_end`, `World::reach_within`, `World::walk_goal`).  The
+  keepalives agree to turn 640, from 632.  Next (turn 639's frees, the keepalives
+  parting at 641): the reach's task goes where the original's does, its path and
+  cluster right after it where the original's go after seven others (an older
+  order's tasks), not yet read why.
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

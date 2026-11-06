@@ -52,6 +52,13 @@ original images.
   an item, a null one too: Blizzard.j's LeaderboardSetPlayerItemValueBJ for a killer's
   owner when a unit dies unkilled (Mafarazzo TD's kill count on a creep exploded at the
   end of its path) changes nothing.
+- Leaderboard sorts (`FUN_6f3d2980`, by value `FUN_6f3d2ba0`, by player, by label): the
+  items into an array, the C runtime's qsort over it (Visual C++'s: a median-of-three
+  quicksort, runs of eight or fewer by a selection sort that moves the first of the
+  greatest to the end, so ties are not kept in order), the board emptied and the items
+  added back in that order.  Its comparisons are differences: the value (item +0x54)
+  or the player (+0x64), the second's less the first's when descending; the labels by
+  Storm's ordinal 508.
 
 ## Rendering
 

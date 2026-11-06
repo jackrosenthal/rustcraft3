@@ -14,6 +14,112 @@ fn rgba(a: &[Value], first: usize) -> [u8; 4] {
     [c(0), c(1), c(2), c(3)]
 }
 
+/// The C runtime's qsort, as the leaderboard's sorts call it (`FUN_6f3d2980`; the Visual
+/// C++ runtime's, msvcr80 on, provisional which): a median-of-three quicksort leaving
+/// runs of eight or fewer to a selection sort that takes the first of the greatest to
+/// the end, so that ties fall as the original's do (it is not a stable sort).
+fn crt_qsort<T>(v: &mut [T], cmp: impl Fn(&T, &T) -> i32) {
+    if v.len() < 2 {
+        return;
+    }
+    let mut stack: Vec<(isize, isize)> = Vec::new();
+    let (mut lo, mut hi) = (0isize, v.len() as isize - 1);
+    let c = |v: &[T], a: isize, b: isize| cmp(&v[a as usize], &v[b as usize]);
+    'recurse: loop {
+        let size = hi - lo + 1;
+        if size <= 8 {
+            let mut top = hi;
+            while top > lo {
+                let mut max = lo;
+                for p in lo + 1..=top {
+                    if c(v, p, max) > 0 {
+                        max = p;
+                    }
+                }
+                v.swap(max as usize, top as usize);
+                top -= 1;
+            }
+        } else {
+            let mut mid = lo + size / 2;
+            for (x, y) in [(lo, mid), (lo, hi), (mid, hi)] {
+                if c(v, x, y) > 0 {
+                    v.swap(x as usize, y as usize);
+                }
+            }
+            let (mut loguy, mut higuy) = (lo, hi);
+            loop {
+                if mid > loguy {
+                    loguy += 1;
+                    while loguy < mid && c(v, loguy, mid) <= 0 {
+                        loguy += 1;
+                    }
+                }
+                if mid <= loguy {
+                    loguy += 1;
+                    while loguy <= hi && c(v, loguy, mid) <= 0 {
+                        loguy += 1;
+                    }
+                }
+                higuy -= 1;
+                while higuy > mid && c(v, higuy, mid) > 0 {
+                    higuy -= 1;
+                }
+                if higuy < loguy {
+                    break;
+                }
+                v.swap(loguy as usize, higuy as usize);
+                if mid == higuy {
+                    mid = loguy;
+                }
+            }
+            higuy += 1;
+            if mid < higuy {
+                higuy -= 1;
+                while higuy > mid && c(v, higuy, mid) == 0 {
+                    higuy -= 1;
+                }
+            }
+            if mid >= higuy {
+                higuy -= 1;
+                while higuy > lo && c(v, higuy, mid) == 0 {
+                    higuy -= 1;
+                }
+            }
+            if higuy - lo >= hi - loguy {
+                if lo < higuy {
+                    stack.push((lo, higuy));
+                }
+                if loguy < hi {
+                    lo = loguy;
+                    continue 'recurse;
+                }
+            } else {
+                if loguy < hi {
+                    stack.push((loguy, hi));
+                }
+                if lo < higuy {
+                    hi = higuy;
+                    continue 'recurse;
+                }
+            }
+        }
+        match stack.pop() {
+            Some((l, h)) => (lo, hi) = (l, h),
+            None => return,
+        }
+    }
+}
+
+/// Sorts a leaderboard's items (`FUN_6f3d2980`): by a key's difference, the second's
+/// less the first's when descending.
+fn sort_items(b: &mut Leaderboard, ascending: bool, cmp: impl Fn(&LeaderboardItem, &LeaderboardItem) -> i32) {
+    if ascending {
+        crt_qsort(&mut b.items, cmp);
+    } else {
+        crt_qsort(&mut b.items, |x, y| cmp(y, x));
+    }
+}
+
 fn timer_dialog(w: &mut World, h: u32) -> Option<&mut TimerDialog> {
     match w.handles.get_mut(h) {
         Some(Obj::TimerDialog(d)) => Some(d),
@@ -104,9 +210,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         LeaderboardRemoveItem => |w, _, a| { let i = a.i(1); if let Some(b) = leaderboard(w, a.h(0)) { if i >= 0 && (i as usize) < b.items.len() { b.items.remove(i as usize); } } none() },
         LeaderboardRemovePlayerItem => |w, _, a| { let p = w.player_of(a.h(1)); if let (Some(p), Some(b)) = (p, leaderboard(w, a.h(0))) { b.items.retain(|i| i.player != p); } none() },
         LeaderboardClear => |w, _, a| { if let Some(b) = leaderboard(w, a.h(0)) { b.items.clear(); } none() },
-        LeaderboardSortItemsByValue => |w, _, a| { let asc = a.b(1); if let Some(b) = leaderboard(w, a.h(0)) { b.items.sort_by_key(|i| i.value); if !asc { b.items.reverse(); } } none() },
-        LeaderboardSortItemsByPlayer => |w, _, a| { let asc = a.b(1); if let Some(b) = leaderboard(w, a.h(0)) { b.items.sort_by_key(|i| i.player); if !asc { b.items.reverse(); } } none() },
-        LeaderboardSortItemsByLabel => |w, _, a| { let asc = a.b(1); if let Some(b) = leaderboard(w, a.h(0)) { b.items.sort_by(|x, y| x.label.cmp(&y.label)); if !asc { b.items.reverse(); } } none() },
+        LeaderboardSortItemsByValue => |w, _, a| { let asc = a.b(1); if let Some(b) = leaderboard(w, a.h(0)) { sort_items(b, asc, |x, y| x.value.wrapping_sub(y.value)); } none() },
+        LeaderboardSortItemsByPlayer => |w, _, a| { let asc = a.b(1); if let Some(b) = leaderboard(w, a.h(0)) { sort_items(b, asc, |x, y| x.player as i32 - y.player as i32); } none() },
+        // (The original compares the labels with Storm's ordinal 508; here by their
+        // bytes, provisional.)
+        LeaderboardSortItemsByLabel => |w, _, a| { let asc = a.b(1); if let Some(b) = leaderboard(w, a.h(0)) { sort_items(b, asc, |x, y| x.label.cmp(&y.label) as i32); } none() },
         LeaderboardHasPlayerItem => |w, _, a| { let p = w.player_of(a.h(1)); boolean(p.is_some_and(|p| leaderboard_ref(w, a.h(0)).is_some_and(|b| b.items.iter().any(|i| i.player == p)))) },
         LeaderboardGetPlayerIndex => |w, _, a| { let p = w.player_of(a.h(1)); int(p.and_then(|p| leaderboard_ref(w, a.h(0)).and_then(|b| b.items.iter().position(|i| i.player == p))).map_or(-1, |i| i as i32)) },
         LeaderboardSetLabel => |w, _, a| { let l = w.localized(&a.s(1)); if let Some(b) = leaderboard(w, a.h(0)) { b.label = l; } none() },
@@ -171,4 +279,40 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         MultiboardSetItemIcon => |w, _, a| { let s = a.s(1); if let Some(it) = item_cell(w, a.h(0)) { it.icon = s; } none() },
         MultiboardSuppressDisplay => |w, _, a| { w.multiboard_suppressed = a.b(0); none() },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::crt_qsort;
+
+    /// Equal keys move as the C runtime's selection sort moves them: each pass takes the
+    /// first of the greatest to the end.
+    #[test]
+    fn ties_fall_as_the_c_runtimes() {
+        let mut v = [(0, 'a'), (0, 'b'), (0, 'c'), (0, 'd')];
+        crt_qsort(&mut v, |x, y| x.0 - y.0);
+        assert_eq!(v.map(|x| x.1), ['b', 'c', 'd', 'a']);
+        // Descending, as the leaderboards sort by value.
+        let mut v = [(0, 'a'), (1, 'b'), (0, 'c')];
+        crt_qsort(&mut v, |x, y| y.0 - x.0);
+        assert_eq!(v.map(|x| x.1), ['b', 'c', 'a']);
+    }
+
+    /// Longer runs go by the quicksort, sorted all the same.
+    #[test]
+    fn long_runs_sort() {
+        let mut seed = 12345u32;
+        for n in 0..40 {
+            let mut v: Vec<i32> = (0..n)
+                .map(|_| {
+                    seed = seed.wrapping_mul(1103515245).wrapping_add(12345);
+                    (seed >> 16) as i32 % 7
+                })
+                .collect();
+            let mut want = v.clone();
+            want.sort();
+            crt_qsort(&mut v, |x, y| x - y);
+            assert_eq!(v, want);
+        }
+    }
 }

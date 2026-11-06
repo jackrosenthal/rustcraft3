@@ -176,6 +176,15 @@ original images.
   End Round (Player 11's food used equal to 0) runs inside the KillUnit of the last
   creep, before its death's triggers, and for a creep exploded at WalkEnd inside that
   trigger, before Losing life (the region's next trigger) takes its life.
+- ForceEnumPlayers, ForceEnumAllies, and ForceEnumEnemies (`FUN_6f22ef20` through
+  `6f1fe750` and `6f1fe790`): players 0 to 11 whose slot is not empty (+0x270, so a
+  player who left is among them), the neutral players never; the filter asked first,
+  then for allies IsPlayerAlly(the player enumerated, the one given) (`FUN_6f1e2b60`,
+  its passive mask at +0x38 of its alliances, as `6f205a90`), for enemies its
+  negation.  A player is allied to itself, so it is among its allies and not its
+  enemies.  Blizzard.j's GetPlayersAllies and GetPlayersEnemies make a force so:
+  Mafarazzo TD's GetPlayersEnemies(Player(11)) is players 0 to 10 not empty, its
+  GetPlayersAllies(Player(0)) the same.
 
 ## Rendering
 

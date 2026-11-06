@@ -318,13 +318,16 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         ForceClear => |w, _, a| { if let Some(f) = w.force_mut(a.h(0)) { f.players = 0; } none() },
         ForceEnumPlayers => |w, vm, a| enum_players(w, vm, a.h(0), a.h(1), u32::MAX, |_, _| true),
         ForceEnumPlayersCounted => |w, vm, a| { let n = a.i(2) as u32; enum_players(w, vm, a.h(0), a.h(1), n, |_, _| true) },
+        // Each player is asked whether it is allied toward the one given, IsPlayerAlly(o,
+        // p) (`FUN_6f1e2b60`): the player itself among the allies (allied to itself), the
+        // neutral players never enumerated.
         ForceEnumAllies => |w, vm, a| {
             let Some(p) = player_arg(w, a, 1) else { return none() };
-            enum_players(w, vm, a.h(0), a.h(2), u32::MAX, move |w, o| is_ally(w, p, o))
+            enum_players(w, vm, a.h(0), a.h(2), u32::MAX, move |w, o| is_ally(w, o, p))
         },
         ForceEnumEnemies => |w, vm, a| {
             let Some(p) = player_arg(w, a, 1) else { return none() };
-            enum_players(w, vm, a.h(0), a.h(2), u32::MAX, move |w, o| !is_ally(w, p, o))
+            enum_players(w, vm, a.h(0), a.h(2), u32::MAX, move |w, o| !is_ally(w, o, p))
         },
         // Its function takes a handler, as ForGroup's does (traced: Melee's alliance
         // check's ForForce calls).

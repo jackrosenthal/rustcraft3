@@ -263,6 +263,26 @@ original images.
   `WorldFrameUnitMessage` 0.5 × 0.25 whose bottom center sits 0.098125 left of center
   on the message frame's top, moved by DisplayTextToPlayer x and y toward x 0.8 and
   y 0.452 (`FUN_6f374d20`); default duration 3 s + 0.1 s per byte.
+  `WorldFrameChatMessage` (CGameUI +0x3ec, `FUN_6f367710`): the chat font (option 0x4e,
+  else MasterFont, `FUN_6f2bfb60`) at its FontHeights (0.013), from the screen's top
+  down to 0.2 above its bottom, 0.00625 in from the left and 0.02 from the right.
+  Each is a CSimpleMessageFrame: as many whole lines as its height holds (vf0
+  `FUN_6f116290`), laid a line apart from its top, the newest lowest (`FUN_6f115e60`,
+  `FUN_6f116900`), so the height's remainder lies under the lowest line: 0.005 for
+  the error frame, 0.01 for the unit and chat messages (measured from the original's
+  LAN capture: chat baselines 0.2153 and 0.2283, the unit messages' lowest 0.2457, the
+  error line's 0.191).  So the chat lines sit in their own block at the lower left,
+  above the hero portrait and under the unit messages.
+- UI\MiscUI.txt [FontHeights] values all carry a "// comment"; the game reads the number
+  before it (`FUN_6f047680`).  (The port had read WorldFrameChatMessage, 0.013, as its
+  default, 0.015.)
+- Text keeps its shape on a screen wider than 4:3 while the interface stretches across
+  it, so text measured for layout (tooltip widths and wrapping, unit tip boxes, the chat
+  bar's prompt) is narrower in interface units by the stretch: on the original's 16:9
+  capture the HSBC tooltip wraps "Build this gives  50%" on one line, the "Enemy" tip box
+  is 65 pixels wide, and "To Allies:" is followed by the typed text 0.002 after it.
+  The chat bar's box blends as the tooltips' do (`FUN_6f39cb10`, `FUN_6f0fa000`'s last
+  argument; the original's shows the grass through it).
 - Error texts: `Units\CommandStrings.txt [Errors]`; per-race lists run Human, Orc,
   Undead, Night Elf.
 - Acknowledgments (`FUN_6f697c30`, `FUN_6f690dd0`): three consecutive "What" lines on

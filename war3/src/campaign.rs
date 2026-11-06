@@ -190,7 +190,7 @@ impl Campaigns {
 
     pub fn draws(&self, persist: &Persist, db: &FrameDb, root: Rect, hover: Option<&Row>, out: &mut Vec<Draw>) {
         let font = db.decorate("MasterFont");
-        let height = |k: &str, d: f32| db.misc_ui.get_str("FontHeights", k).and_then(|v| v.trim().parse().ok()).unwrap_or(d);
+        let height = |k: &str, d: f32| db.font_height(k, d);
         let (hh, nh) = (height("CampaignItemHeader", 0.011), height("CampaignItemName", 0.015));
         let shadow = Some(([0.0, 0.0, 0.0, 1.0], 0.001, -0.001));
         for (k, row) in self.rows(persist).iter().enumerate() {

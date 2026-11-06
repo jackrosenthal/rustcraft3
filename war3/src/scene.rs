@@ -4496,6 +4496,8 @@ impl Scene {
     }
 
     pub fn sync_hud(&mut self, db: &w3_ui::FrameDb, aspect: f32) {
+        // Text is measured as it will be drawn on a screen of this shape.
+        db.set_screen(self.hud.as_ref().map_or(w3_ui::UI_WIDTH, |h| h.tree.width), ((aspect * 1000.0).round().max(1.0) as u32, 1000));
         // A menu key or a load request waits for the menu it opened.
         if self.hud.as_ref().is_some_and(|h| h.menu.is_some()) {
             if std::mem::take(&mut self.load_dialog_requested) {
@@ -4823,6 +4825,8 @@ impl Scene {
         assets: &mut Assets,
     ) {
         let aspect = size.0 as f32 / size.1 as f32;
+        // Text is measured as it will be drawn on this screen.
+        assets.frames.set_screen(self.hud.as_ref().map_or(w3_ui::UI_WIDTH, |h| h.tree.width), size);
         if let Some(g) = self.game.as_ref() {
             self.shadows.update(&g.world, &mut self.terrain, device, queue);
         }

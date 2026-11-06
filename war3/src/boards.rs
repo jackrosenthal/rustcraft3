@@ -126,7 +126,7 @@ pub fn sync(view: &mut Option<BoardsView>, db: &FrameDb, w: &World, team_rgb: &[
     let mut t = FrameTree::new(aspect);
     let (wx, wy) = world_top_right(&t);
     let font = db.decorate("MasterFont");
-    let lb_size = db.misc_ui.get_str("FontHeights", "LeaderBoard").and_then(|v| v.trim().parse().ok()).unwrap_or(0.011f32);
+    let lb_size = db.font_height("LeaderBoard", 0.011);
     let shadow = Some(([0.0, 0.0, 0.0, 1.0], 0.001, -0.001));
 
     for (k, (d, text)) in s.dialogs.iter().enumerate() {

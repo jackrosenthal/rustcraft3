@@ -1420,6 +1420,8 @@ impl Glue {
         assets: &mut Assets,
     ) {
         let aspect = size.0 as f32 / size.1.max(1) as f32;
+        // Text is measured as it will be drawn on this screen.
+        assets.frames.set_screen(self.tree.width, size);
         // The campaign screen shows a campaign's backdrop and fog in place of the glue's.
         if self.screen == Screen::Campaign && self.saved_background.is_none() {
             let pick = self.campaigns.backdrop_campaign(&self.persist.borrow()).and_then(|c| self.campaigns.list[c].clone());

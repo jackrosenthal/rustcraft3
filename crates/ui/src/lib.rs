@@ -33,6 +33,10 @@ pub struct FrameDb {
     pub fonts: HashMap<String, Rc<fontdue::Font>>,
     /// The map's war3mapSkin.txt [CustomSkin] keys (lower case), which come first.
     pub custom_skin: HashMap<String, String>,
+    /// Interface x units per unit of text: text keeps its shape while the interface is
+    /// stretched across a wider screen, so on one its width in interface units shrinks
+    /// by the stretch (`set_screen`; 0 until set, read as 1).
+    pub text_scale: std::cell::Cell<f32>,
 }
 
 impl FrameDb {
@@ -77,11 +81,30 @@ impl FrameDb {
         db
     }
 
+    /// A text height from UI\MiscUI.txt [FontHeights], read as the game reads its numbers
+    /// (FUN_6f047680): the value before its "// comment" (every in-game entry has one),
+    /// else `default`.
+    pub fn font_height(&self, key: &str, default: f32) -> f32 {
+        self.misc_ui.get_str("FontHeights", key).and_then(|v| v.split("//").next().and_then(|v| v.trim().parse().ok())).unwrap_or(default)
+    }
+
+    /// The screen the interface is drawn on: `ui_width` interface units across its width
+    /// and UI_HEIGHT up its height, text sized by the height (as the renderer draws it).
+    pub fn set_screen(&self, ui_width: f32, size: (u32, u32)) {
+        if size.0 > 0 && size.1 > 0 {
+            self.text_scale.set(ui_width * size.1 as f32 / (UI_HEIGHT * size.0 as f32));
+        }
+    }
+
     /// Width of a line in interface units, without color codes (as the renderer
-    /// measures it).
+    /// measures it, on the screen last set).
     pub fn text_width(&self, font: &str, size: f32, line: &str) -> f32 {
-        let Some(f) = self.fonts.get(&font.to_ascii_lowercase()) else { return line.chars().count() as f32 * size * 0.5 };
-        strip_color_codes(line).chars().map(|c| f.metrics(c, 64.0).advance_width).sum::<f32>() * size / 64.0
+        let scale = match self.text_scale.get() {
+            s if s > 0.0 => s,
+            _ => 1.0,
+        };
+        let Some(f) = self.fonts.get(&font.to_ascii_lowercase()) else { return line.chars().count() as f32 * size * 0.5 * scale };
+        strip_color_codes(line).chars().map(|c| f.metrics(c, 64.0).advance_width).sum::<f32>() * size / 64.0 * scale
     }
 
     /// Breaks text at newlines and |n, then words to `max_w` (as the renderer does).

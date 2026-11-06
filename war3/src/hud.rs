@@ -858,7 +858,7 @@ impl Hud {
             return;
         }
         let font = db.decorate("MasterFont");
-        let size = db.misc_ui.get_str("FontHeights", "UnitTipPlayerName").and_then(|v| v.trim().parse().ok()).unwrap_or(0.011f32);
+        let size = db.font_height("UnitTipPlayerName", 0.011);
         let widest = lines.iter().map(|(t, _)| db.text_width(&font, size, t)).fold(0.0, f32::max);
         let (w, h) = (widest + 0.016, 0.006 + lines.len() as f32 * 0.0125 + 0.004);
         let r = w3_ui::Rect { x0: x - w / 2.0, x1: x + w / 2.0, y0: bottom, y1: bottom + h };
@@ -901,7 +901,7 @@ impl Hud {
         use w3_ui::fdf::{Arg, Def, Prop};
         let root = self.tree.frames[0].rect.unwrap_or_default();
         let font = db.decorate("MasterFont");
-        let height = |key: &str| db.misc_ui.get_str("FontHeights", key).and_then(|v| v.trim().parse().ok()).unwrap_or(0.011f32);
+        let height = |key: &str| db.font_height(key, 0.011);
         let (name_h, desc_h, cost_h) = (height("ToolTipName"), height("ToolTipDesc"), height("ToolTipCost"));
         let name_w = db.text_width(&font, name_h, &b.tip);
         let lines = if b.ubertip.is_empty() { Vec::new() } else { db.wrap(&font, desc_h, &b.ubertip, 0.21) };
@@ -1029,7 +1029,7 @@ impl Hud {
     fn number_overlay(db: &FrameDb, r: w3_ui::Rect, n: i32, out: &mut Vec<Draw>) {
         let o = w3_ui::Rect { x0: r.x1 - 0.015625, x1: r.x1, y0: r.y0, y1: r.y0 + 0.015625 };
         out.push(Draw::Image { texture: db.decorate("CommandButtonNumberOverlay"), rect: o, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: w3_ui::Blend::Alpha, rotated: false });
-        let size = db.misc_ui.get_str("FontHeights", "CommandButtonNumber").and_then(|v| v.split("//").next().and_then(|v| v.trim().parse().ok())).unwrap_or(0.009);
+        let size = db.font_height("CommandButtonNumber", 0.009);
         let t = w3_ui::Rect { y0: o.y0 - 0.0006, y1: o.y1 - 0.0006, ..o };
         out.push(Draw::Text { font: db.decorate("MasterFont"), size, rect: t, text: n.to_string(), color: [1.0; 4], justify_h: w3_ui::Justify::Middle, justify_v: w3_ui::Justify::Middle, shadow: None });
     }
@@ -1944,8 +1944,18 @@ impl Hud {
         let root = self.tree.frames[0].rect.unwrap_or_default();
         let cx = (root.x0 + root.x1) / 2.0;
         let font = db.decorate("MessageFont");
-        let height = |key: &str| db.misc_ui.get_str("FontHeights", key).and_then(|v| v.trim().parse().ok()).unwrap_or(0.015);
+        let height = |key: &str| db.font_height(key, 0.015);
         let shadow = Some(([0.0, 0.0, 0.0, 1.0], 0.001, -0.001));
+        // A message frame (CSimpleMessageFrame) holds as many whole lines as fit its
+        // height, laid from its top a line apart, the newest lowest (vf0, FUN_6f116290);
+        // what is left over lies under the lowest line.  So its text stands that much
+        // above the frame's bottom: 0.005 for the error line, 0.01 for the unit and chat
+        // messages (measured from the original: their baselines 0.006 to 0.0107 above
+        // where the port's bottom-kept lines had them).
+        let slots = |r: w3_ui::Rect, size: f32| {
+            let h = r.y1 - r.y0;
+            w3_ui::Rect { y0: r.y0 + (h - (h / size).floor() * size), ..r }
+        };
         // WorldFrameMessage: 0.38 x 0.05, its bottom 0.18 above the bottom of the screen.
         let msg = w3_ui::Rect { x0: cx - 0.19, x1: cx + 0.19, y0: root.y0 + 0.18, y1: root.y0 + 0.23 };
         // Its text runs from its left edge in gold (0xfed312, as captured from the
@@ -1957,7 +1967,7 @@ impl Hud {
         if let Some(text) = message {
             let size = height("WorldFrameMessage");
             let gold = [0xfe as f32 / 255.0, 0xd3 as f32 / 255.0, 0x12 as f32 / 255.0, 1.0];
-            out.push(Draw::Text { font: font.clone(), size, rect: msg, text, color: gold, justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow });
+            out.push(Draw::Text { font: font.clone(), size, rect: slots(msg, size), text, color: gold, justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow });
         }
         // (Each message ends its colors: a code holds past line breaks within one text.)
         // WorldFrameUnitMessage: 0.5 x 0.25 with its bottom center on the message frame's
@@ -1972,14 +1982,16 @@ impl Hud {
             let ay = ay0 + (root.y0 + 0.452 - ay0) * oy;
             let rect = w3_ui::Rect { x0: ax - 0.25, x1: ax + 0.25, y0: ay, y1: ay + 0.25 };
             let text = self.unit_messages.iter().map(|m| format!("{}|r", m.text.replace("|n", "\n"))).collect::<Vec<_>>().join("\n");
-            out.push(Draw::Text { font, size, rect, text, color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow });
+            out.push(Draw::Text { font, size, rect: slots(rect, size), text, color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow });
         }
-        // The chat message frame: from the screen's top down to 0.2 above its bottom,
-        // 0.00625 in from its left and 0.02 from its right, in MasterFont (unless the
-        // player chose another) at WorldFrameChatMessage, its lines kept to the bottom.
+        // The chat message frame (CGameUI's +0x3ec, FUN_6f367710): from the screen's top
+        // down to 0.2 above its bottom, 0.00625 in from its left and 0.02 from its right,
+        // in MasterFont (unless the player chose another) at WorldFrameChatMessage (0.013),
+        // its lines kept to the bottom: under the unit messages, at the left (as the
+        // original's LAN game shows its "[Allies]" lines above the portrait).
         if !self.chat_messages.is_empty() {
             let size = height("WorldFrameChatMessage");
-            let rect = w3_ui::Rect { x0: root.x0 + 0.00625, x1: root.x1 - 0.02, y0: root.y0 + 0.2, y1: root.y1 };
+            let rect = slots(w3_ui::Rect { x0: root.x0 + 0.00625, x1: root.x1 - 0.02, y0: root.y0 + 0.2, y1: root.y1 }, size);
             let text = self.chat_messages.iter().map(|m| format!("{}|r", m.text.replace("|n", "\n"))).collect::<Vec<_>>().join("\n");
             out.push(Draw::Text { font: db.decorate("MasterFont"), size, rect, text, color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow });
         }
@@ -2017,18 +2029,22 @@ impl Hud {
                 prop("BackdropCornerSize", vec![Arg::Num(0.01)]),
                 prop("BackdropBackgroundInsets", vec![Arg::Num(0.0019); 4]),
                 prop("BackdropEdgeFile", vec![s("ToolTipBorder")]),
+                // Blended, as the tooltips' (FUN_6f0fa000's last argument; the
+                // original's "To Allies:" box shows the grass through it).
+                prop("BackdropBlendAll", vec![]),
             ],
             children: vec![],
         };
         self.tree.backdrop(db, &def, r, out);
-        let size = db.misc_ui.get_str("FontHeights", "ChatEditBar").and_then(|v| v.trim().parse().ok()).unwrap_or(0.013f32);
+        let size = db.font_height("ChatEditBar", 0.013);
         let font = db.decorate("ChatFont");
         // The prompt, 0xFFCCAC12, 0.003 in, then the line 0.002 after it, both shadowed
         // 0.001 down and right (FUN_6f39cb10).
         let shadow = Some(([0.0, 0.0, 0.0, 1.0], 0.001, -0.001));
         let prompt_w = db.text_width(&font, size, &self.chat_prompt);
         let pr = w3_ui::Rect { x0: r.x0 + 0.003, x1: r.x0 + 0.003 + prompt_w, y0: r.y0, y1: r.y1 };
-        out.push(Draw::Text { font: font.clone(), size, rect: pr, text: self.chat_prompt.clone(), color: [0xcc as f32 / 255.0, 0xac as f32 / 255.0, 0x12 as f32 / 255.0, 1.0], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Middle, shadow });
+        // (Drawn unwrapped: the renderer's whole pixel size may make it a little wider.)
+        out.push(Draw::Text { font: font.clone(), size, rect: w3_ui::Rect { x1: r.x1, ..pr }, text: self.chat_prompt.clone(), color: [0xcc as f32 / 255.0, 0xac as f32 / 255.0, 0x12 as f32 / 255.0, 1.0], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Middle, shadow });
         let tr = w3_ui::Rect { x0: pr.x1 + 0.002, x1: r.x1 - 0.0015, y0: r.y0, y1: r.y1 };
         out.push(Draw::Text { font, size, rect: tr, text: format!("{text}|"), color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::Middle, shadow });
     }
@@ -2116,7 +2132,7 @@ impl Hud {
                 let x0 = root.x0 + 0.309375 + 0.188125 + 0.015625;
                 let y1 = root.y0 + 0.114063 + 0.016563;
                 let rect = w3_ui::Rect { x0, x1: x0 + 0.076875, y0: y1 - 0.01125, y1 };
-                let size = db.misc_ui.get_str("FontHeights", "Inventory").and_then(|v| v.trim().parse().ok()).unwrap_or(0.011);
+                let size = db.font_height("Inventory", 0.011);
                 let color = [0xfe as f32 / 255.0, 0xd3 as f32 / 255.0, 0x12 as f32 / 255.0, 1.0];
                 out.push(Draw::Text { font: db.decorate("MasterFont"), size, rect, text: db.string("INVENTORY"), color, justify_h: w3_ui::Justify::Middle, justify_v: w3_ui::Justify::Middle, shadow: Some(([0.0, 0.0, 0.0, 0xee as f32 / 255.0], 0.001, -0.001)) });
             }
@@ -2202,7 +2218,7 @@ impl Hud {
             // Hit points and mana: 0.078125 x 0.011875 at (0.214375, 0.0283) and
             // (0.214375, 0.01375), MasterFont at [FontHeights] PortraitStats.
             let root = self.tree.frames[0].rect.unwrap_or_default();
-            let size = db.misc_ui.get_str("FontHeights", "PortraitStats").and_then(|v| v.trim().parse().ok()).unwrap_or(0.011);
+            let size = db.font_height("PortraitStats", 0.011);
             let font = db.decorate("MasterFont");
             let mut text = |t: &str, y: f32, c: [f32; 4]| {
                 let rect = w3_ui::Rect { x0: root.x0 + 0.214375, x1: root.x0 + 0.214375 + 0.078125, y1: root.y0 + y, y0: root.y0 + y - 0.011875 };

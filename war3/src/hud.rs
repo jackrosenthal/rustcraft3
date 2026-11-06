@@ -2045,6 +2045,12 @@ impl Hud {
                 out.extend(c.draw(db));
             }
             self.message_draws(db, &mut out);
+            // A script dialog shows over them (provisional: maps end in cinematic mode,
+            // faded to black, with CustomVictoryBJ's dialog, as Mafarazzo TD's Ending
+            // does, and would leave the player nothing to click otherwise).
+            if let Some(d) = &self.dialog {
+                out.extend(d.tree.draw(db));
+            }
             return out;
         }
         let mut out = Vec::new();

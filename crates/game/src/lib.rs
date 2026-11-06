@@ -34,6 +34,7 @@ pub mod targets;
 pub mod passives;
 pub mod techtree;
 pub mod bolts;
+pub mod bullets;
 pub mod bufftable;
 pub mod info;
 pub mod mining;

@@ -701,6 +701,10 @@ pub struct World {
     /// The last missile id given.
     #[serde(default)]
     pub missile_serial: u32,
+    /// The units' CAbilityTargets, each counting the missiles of an ability and owner in
+    /// flight at it (`crate::bullets`).
+    #[serde(default)]
+    pub bullet_targets: Vec<crate::bullets::BulletTarget>,
     #[serde(skip)]
     pathing_textures: HashMap<String, Option<w3_formats::blp::Image>>,
     pub ai: HashMap<u8, crate::ai::AiState>,
@@ -1101,6 +1105,7 @@ impl World {
             pathing: None,
             missiles: Vec::new(),
             missile_serial: 0,
+            bullet_targets: Vec::new(),
             pathing_textures: HashMap::default(),
             ai: HashMap::default(),
             guard_posts: HashMap::default(),

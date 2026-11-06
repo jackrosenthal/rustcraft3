@@ -66,6 +66,7 @@ impl World {
             stampede: Some((a, lvl, every)),
             rock: None,
             reflected: false,
+            bullet: None,
         });
     }
 

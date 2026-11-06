@@ -185,6 +185,7 @@ impl World {
                     stampede: None,
                     rock: None,
                     reflected: false,
+                    bullet: None,
                     });
                 }
             }

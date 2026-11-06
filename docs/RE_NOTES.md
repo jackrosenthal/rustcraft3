@@ -1643,16 +1643,91 @@ these are the findings behind them.
   on its target, and its later hits take nothing more.  Bit 8 is passed to the strike
   and not read; Orb of Venom's and Envenomed Spears' classes are not read (the port
   keeps their plain buffs).
-- A missile attack's objects (read in a trace of the original, Mafarazzo TD's Plague
-  Tower): at the damage point its missile (Slow Poison's `Mspo`, made by its vf213
-  `FUN_6f62b870`; the plain missile's code is `B-Mi`, `FUN_6f6d1f40`), its position
-  `` `pbh `` (NIpse::CPoPosBh), two `^pmr`, and its flight `>prj`
-  (NIpse::CBhPoProjectile), all freed together about 5.3 seconds later, in the order
-  `>prj`, `^pmr`, `^pmr`, `` `pbh ``, the missile; and on some attacks a CAbilityTarget
-  (`Atrg`), freed 0.2 to 4.2 seconds later.  Provisional: that they go 5 seconds after the
-  missile lands (a removal timer of 5.0, 0x6fd3c758, in `FUN_6f6d9870`; the delays
-  grow as the target walks away, 53 to 57 turns), and what makes the `Atrg`.  The
-  port makes none of them yet.
+- An attack's missile is an agent of its own, a CBullet (CBulletBase, CWar3Image),
+  made at the damage point (`FUN_6f4946b0`, by the weapon's kind: 2 missile, 3
+  artillery, 5 msplash, 6 mbounce, 7 mline, 8 aline; 1 normal and 4 instant strike at
+  once).  The weapon's own class: CMissile `B-Mi` (`FUN_6f497520`), CArtillery `B-Ar`
+  (`FUN_6f4973c0`), CMissileSplash `B-Ms` (`FUN_6f497730`), CMissileBounce `B-Mb`
+  (`FUN_6f4975d0`), CMissileLine `B-Ml` (`FUN_6f497680`), CArtilleryLine `B-Al`
+  (`FUN_6f497470`).  But first the attacker's abilities are asked, by their place
+  (CAbility vf78, 0x1b to 0x29, each place in turn, `FUN_6f67fbd0` for a missile and
+  its kin `FUN_6f67f950`, `FUN_6f67fb30`, `FUN_6f67f9f0`, `FUN_6f67fa90`,
+  `FUN_6f67f8b0`), each by its hook for the weapon's kind (vf84 missile, vf80
+  artillery, vf83 msplash, vf82 mbounce, vf81 mline, vf79 aline; the base's return
+  0); the first to take it makes its own.  Read: Slow Poison, Poison Attack, and
+  Envenomed Spears (place 0x28, vf84 `FUN_6f632790`, the missile only): while not
+  disabled (+0x3c below 1, vf154 the tech tree) and at a unit its targets allow
+  (`FUN_6f672140`), its art put in (`FUN_6f415ff0`), Slow Poison's CMissileSlowPoison
+  `Mspo` (vf213 `FUN_6f62b870`), the others' CMissilePoisonAttack `Mpoi` (vf213
+  `FUN_6f62b460`; Orb of Venom's CAbilityPoisonDamage, place 0x1a, is never asked).
+  Frost Attack and Frost Breath (place 0x29): an artillery's CArtilleryFrostBreath
+  `Rfrb` (vf80), a splash's CMissileFrostBreath `Mfrb` (vf83, no target check), a
+  missile's CMissileFrost `Mfro` at a unit its targets allow (vf84, after
+  `FUN_6f671e70`, not read).  Not yet read: the hooks of Bash, Critical Strike, and
+  Drunken Brawler (place 0x1b), the orbs (CAbilityDamageBonusBase and its kin, place
+  +0xa0 + 0x22), Black, Searing, Cold, Poison, and Incinerate Arrows, Incinerate,
+  Corrosive, Freezing, and Frost Breath's kin, Liquid Fire, Feedback, Frag Shards,
+  Plague Toss, Balls of Fire, Lightning Attack (a CRope, `Mlit`), and Spider Attack;
+  Barrage (place 0x28) takes nothing but sends a CMissile at each other target first
+  (vf84 `FUN_6f58f700`, `FUN_6f6d6920`, `FUN_6f6d3ec0`).  The classes' codes, from
+  their vf7: `B-Mi`, `B-Ar`, `B-Ms`, `B-Mb`, `B-Ml`, `B-Al`, `Mspo`, `Msss`, `Mpoi`,
+  `Mpas`, `MIpb`, `Mfro`, `Mfss`, `Mfrb`, `Rfrb`, `MHca`, `MNba`, `MOcr`, `MIcb`,
+  `MIsb`, `MIlp`, `Mliq`, `Mfre`, `Mfrz`, `Mcor`, `Mbof`, `Rbof`, `Rfsh`, `Mpts`.
+- A missile's objects, as it is made and sent (traced: Mafarazzo TD's Plague Tower's
+  every attack; a test map's Arrow, Cannon, Ice, and Cutter towers'): the missile, its
+  position `` `pbh `` (NIpse::CPoPosBh, the CBullet's +0x78, made with it), that
+  position's two regions `^pmr`, and its flight `>prj` (NIpse::CBhPoProjectile,
+  started by `FUN_6f6d3e50` → `FUN_6f89d1b0`).  One an ability sends (CBuffMissile
+  vf52, `FUN_6f6d2c50`; a splash's `FUN_6f6d2db0`, an artillery's `FUN_6f6d2b30`)
+  counts itself on its target: the target's CAbilityTarget (`Atrg`) for that ability
+  (its +0x34, the data's id) and the attacker's owner (vf 0xec), made with the first
+  in flight (`FUN_6f48dfa0`, `FUN_6f489580`), counted at +0x74, let go as the last
+  lands (`FUN_6f48c7f0`, `FUN_6f589120`, `FUN_6f48e8a0`); traced, `Atrg` after the
+  `>prj`.  A bounce's (CMissileBounce vf50 `FUN_6f6d3790`) marks its target with a
+  buff, `BTAR` (`FUN_6f6d4700`; parent `buff`), after the `>prj`, and each next target
+  as it bounces on; the same missile flies on (vf47 `FUN_6f6cfbc0`).  Traced: the two
+  Cutter `BTAR`s kept 2.7 seconds and freed with their unit's removal, the newest first,
+  after its AI's objects (provisional: whether they end sooner).
+- A missile's flight (NIpse::CBhPoProjectile, `FUN_6f173450`) falls due at the
+  distance to its goal across the ground over its speed (`FUN_6f1737d0`), at most 60
+  seconds (0x6fd3c7b0); one at a unit is aimed at the unit's place (homing, CBullet
+  vf49 `FUN_6f6d1e90`) and aimed anew whenever that place moves (vf17
+  `FUN_6f173dd0`, `FUN_6f1739e0`), the arrival its timer (event 0xd019c, vf45).  The
+  launch puts the start at the attacker's place and launch offsets turned by its
+  facing (`FUN_6f68c4e0`).  Read against the Plague Tower's trace (its target
+  fleeing at about 145 a second from about 0.95 seconds): its 14 missiles land as a
+  chase at 1800 to the target's middle (collision 0: within 16 of it).
+- A missile landed starts its removal timer (CBullet vf42, CMissile `FUN_6f6d0cf0`,
+  CArtillery `FUN_6f6d0c70`, then `FUN_6f6d0c90`: MiscData's BulletDeathTime, 5, event
+  0xd019f at +0x64), at whose end it destroys itself (vf3 `FUN_6f6d4e30`, vf23
+  `FUN_6f0557b0`) with its objects: its flight, its regions in the order made, its
+  position, itself.  A missile whose attacker is removed meanwhile is not affected
+  (traced: the Arrow tower's last, landing 0.4 seconds before the tower's removal,
+  freed 5 seconds after it landed).  Destruction is on the next frame: read with a
+  main tick (0.005) after the due, the Plague Tower's first missile, landing about
+  0.8994 and its `Atrg` let go then, has the `Atrg` freed in turn 10 and its objects
+  in turn 60, and the second's `Atrg`, let go about 1.239, freed before the third
+  missile, sent at 1.255, made a new one (provisional: the frame a main tick; the port
+  frees such objects at the movement steps, before the units' damage points of the
+  same turn: the Arrow tower's first missile's objects, due 6.833, go before the
+  Cannon tower's missile sent at 6.815 where the original's go after).
+- An attack's swing begins as its cooldown runs out (`FUN_6f49a4f0`): read, the Arrow
+  tower (cooldown 0.7, damage point 0.3, missile at 1800 to a target 384 away)
+  sending one in turns 17, 24, 31, and so every seven, its objects freed 52 turns on.
+  A unit taking up a target begins its first swing provisionally three main ticks
+  (0.015) into the next turn: the Plague Tower's look due 0.216 in turn 3, its damage
+  points 0.32 apart from between 0.611 and 0.616 (its 14 attacks in turns 7 to 48, its
+  first missile landing in turn 9 and freed in turn 60); the Arrow, Cannon, and Ice
+  towers' first in the fourth turn after their looks' (to be measured: the attack
+  ability's start of its first attack, `FUN_6f49d130`, against the clock).
+- `+fgt` (parent `+fgm`, `FUN_6f675460`): a fogged attack's reveal of the attacker,
+  FogFlashTime long and FoggedAttackRevealRadius wide (`FUN_6f67fc70`), made at an
+  attack's damage point on a unit whose owner does not see the attacker
+  (`FUN_6f67fde0` from `FUN_6f4946b0`) and at a splash's landing for the players it
+  hit (`FUN_6f67feb0` from CMissileSplash vf47 `FUN_6f6d00e0`), an existing one
+  renewed.  Traced: the Cannon tower's first landing and the Ice tower's first (with
+  its `Bfro`), each freed 6 seconds on; none for the Arrow tower's.  The port makes
+  none yet.
 - A structure does not walk, whatever its speed, unless an uprooted ancient: a tower
   made from the Ancient Protector (speed 40) without its Root (Mafarazzo TD's Towers of
   Vengence) stays where it was built when it acquires past its reach (provisional:

@@ -130,6 +130,7 @@ impl World {
                     stampede: None,
                     rock: Some((v.ability, v.level)),
                     reflected: false,
+                    bullet: None,
                 });
                 self.volcanoes[i] = v;
             }

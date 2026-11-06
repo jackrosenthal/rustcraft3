@@ -54,6 +54,9 @@ pub struct Missile {
     /// An attack Defend sent back, which cannot be deflected again.
     #[serde(default)]
     pub reflected: bool,
+    /// An attack's missile's objects (`crate::bullets`).
+    #[serde(default)]
+    pub bullet: Option<crate::bullets::Bullet>,
 }
 
 /// Weapon 1 of a unit type, from UnitWeapons.slk and the unit's profile.
@@ -181,6 +184,9 @@ const COOLDOWN_AFTER_POINT: f32 = 0.02;
 const LEAST_COOLDOWN: f32 = 0.1;
 /// A bound on a quick weapon's attacks in one step, should a step be long.
 const QUICK_SWINGS_PER_STEP: u32 = 1000;
+/// How far into a tick a swing begins that its unit was ready for since an earlier one
+/// (provisional: three main ticks, `World::try_attack`).
+const SWING_START_IN_TICK: f32 = 0.015;
 
 pub fn unit_weapons(w: &World, u: &Unit) -> Vec<(u8, Weapon)> {
     // A burrow shoots only with workers inside.
@@ -2576,7 +2582,10 @@ impl World {
                 loop {
                     if !s.done && s.elapsed >= point - STEP_SLACK {
                         s.done = true;
-                        if !self.swing_lands(vm, h, &s, &wp) {
+                        // (The damage point's moment: as far back in the tick as the
+                        // swing has run past it.)
+                        let at = self.time_exact - ((s.elapsed - point).max(0.0) / speed) as f64;
+                        if !self.swing_lands(vm, h, &s, &wp, at) {
                             continue 'units;
                         }
                         if quick {
@@ -4502,7 +4511,18 @@ impl World {
     /// A swing's damage point: an attack on the ground sends its missile at the point;
     /// one on a unit strikes it or sends its missile.  False when the attacker is gone or
     /// died of it.
-    fn swing_lands(&mut self, vm: &mut Vm, h: u32, s: &Swing, wp: &Weapon) -> bool {
+    fn swing_lands(&mut self, vm: &mut Vm, h: u32, s: &Swing, wp: &Weapon, at: f64) -> bool {
+        // The missiles landing earlier in the tick land first (read: the Plague Tower's
+        // second, landing 0.016 before its third is sent, lets its `Atrg` go, and the
+        // third makes another).
+        self.fly_bullets(vm, at);
+        // (What fell due before then is gone by then: read, that `Atrg` freed before the
+        // third missile's objects are made.)
+        let now = self.bullet_clock(at);
+        self.tags.free_timed(now);
+        if self.unit(h).is_none_or(|u| u.dead) {
+            return false;
+        }
         if s.ground.is_some() {
             let (owner, tid) = self.unit(h).map_or((0, [0; 4]), |u| (u.owner, u.type_id));
             let ub = self.upgrade_bonus(owner, tid);
@@ -4511,6 +4531,8 @@ impl World {
             let raw = wp.base + (0..dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>() + self.primary_attribute(h) + bonus;
             if let Some(src) = self.unit(h).cloned() {
                 let launch_z = self.objects.units.get(src.type_id).map_or(60.0, |o| o.real("launchZ"));
+                let (class, _) = self.bullet_class(h, 0, wp);
+                let bullet = Some(self.bullet_sent(h, 0, class, None, at));
                 self.missiles.push(Missile {
                     id: 0,
                     source: h,
@@ -4532,6 +4554,7 @@ impl World {
                     stampede: None,
                     rock: None,
                     reflected: false,
+                    bullet,
                 });
             }
             return true;
@@ -4563,6 +4586,7 @@ impl World {
                     }
                 }
                 let launch_z = self.objects.units.get(src.type_id).map_or(60.0, |o| o.real("launchZ"));
+                let main = self.missiles.len();
                 self.missiles.push(Missile {
                     id: 0,
                     source: h,
@@ -4586,6 +4610,7 @@ impl World {
                     stampede: None,
                     rock: None,
                     reflected: false,
+                    bullet: None,
                 });
                 // Barrage (Aroc): an attack on an air unit sends rockets at the
                 // other air enemies within Area too, DataC in all, each with the
@@ -4600,13 +4625,20 @@ impl World {
                         let d = |t: u32| self.unit(t).map_or(f32::MAX, |u| (u.x - src.x).hypot(u.y - src.y));
                         d(p).total_cmp(&d(q))
                     });
+                    // (Each a CMissile of its own, sent by the ability's hook before the
+                    // attack's own is made: CAbilityBarrage vf84 `FUN_6f58f700`,
+                    // `FUN_6f6d6920`, `FUN_6f6d3ec0`.)
                     for t in others.into_iter().take(max.saturating_sub(1)) {
                         let mut m = self.missiles.last().cloned().unwrap();
                         m.target = t;
                         m.impact = None;
+                        m.bullet = Some(self.bullet_sent(h, t, codes::class::MISSILE, None, at));
                         self.missiles.push(m);
                     }
                 }
+                let (class, ability) = self.bullet_class(h, s.target, wp);
+                let bullet = self.bullet_sent(h, s.target, class, ability, at);
+                self.missiles[main].bullet = Some(bullet);
             }
         } else {
             // Melee impacts sound by weapon (weapType1) and target armor
@@ -4777,9 +4809,17 @@ impl World {
             return;
         }
         if u.cooldown <= STEP_SLACK {
-            u.cooldown = wp.cooldown / speed + u.cooldown.min(0.0);
+            // The swing begins as the cooldown runs out (`FUN_6f49a4f0`), or for one ready
+            // since an earlier tick three main ticks into this one (provisional; read:
+            // Mafarazzo TD's Plague Tower, taking up its target at its look due 0.216,
+            // its damage points 0.32 apart from between 0.611 and 0.616, its first
+            // missile landing 0.284 later in turn 9 and its objects destroyed in turn 10;
+            // a test map's Arrow tower, cooldown 0.7, its missiles' objects destroyed 51
+            // turns after the turns they were sent in, as they land 0.7 apart).
+            let early = if u.cooldown >= 0.0 { dt - SWING_START_IN_TICK } else { -u.cooldown };
+            u.cooldown = wp.cooldown / speed - early;
             u.extra.cooldown_speed = Some(speed);
-            u.swing = Some(Swing { target, ground: None, elapsed: 0.0, done: false, weapon: wn });
+            u.swing = Some(Swing { target, ground: None, elapsed: early * speed, done: false, weapon: wn });
             restart_anim(u, "attack");
             // The target is attacked (GetAttacker is the attacker).
             self.queue_unit_event(target, EVENT_PLAYER_UNIT_ATTACKED, EVENT_UNIT_ATTACKED, EventCtx { other_unit: h, ..Default::default() });
@@ -4942,19 +4982,18 @@ impl World {
             m.id = self.missile_serial;
         }
         self.update_stampede(vm, dt);
+        let end = self.time_exact;
+        self.fly_bullets(vm, end);
         let mut hits = Vec::new();
         let mut i = 0;
         while i < self.missiles.len() {
             let m = &mut self.missiles[i];
-            if m.stampede.is_some() || m.rock.is_some() {
+            if m.stampede.is_some() || m.rock.is_some() || m.bullet.is_some() {
                 i += 1;
                 continue;
             }
-            // An attack's missile at a unit lands on reaching its edge (measured: an
-            // archer's arrow, at 900, strikes a footman 500 away 0.51 seconds after
-            // leaving, its 469 to the footman's collision of 31); a spell's flies to its
-            // middle (measured: a Storm Bolt at 1000 lands on footmen 300 and 600 away
-            // 0.31 and 0.61 seconds after leaving).
+            // A spell's missile flies to its target's middle (measured: a Storm Bolt at
+            // 1000 lands on footmen 300 and 600 away 0.31 and 0.61 seconds after leaving).
             let spell = m.spell.is_some();
             let target = match self.handles.get(m.target) {
                 Some(Obj::Unit(t)) => Some((t.x, t.y, if spell { 0.0 } else { t.collision })),
@@ -4977,7 +5016,59 @@ impl World {
             m.y += dy / d * step;
             i += 1;
         }
-        for m in hits {
+        self.missiles_land(vm, hits);
+    }
+
+    /// The attacks' missiles flown on to game time `t` of this tick, those reaching their
+    /// targets by then landing in the order they land.  An attack's missile at a unit
+    /// lands on reaching its edge (measured: an archer's arrow, at 900, strikes a footman
+    /// 500 away 0.51 seconds after leaving, its 469 to the footman's collision of 31);
+    /// it flies from the moment it was sent, its target taken to move evenly through
+    /// the tick (`World::bullet_flies`).
+    pub(crate) fn fly_bullets(&mut self, vm: &mut Vm, t: f64) {
+        let end = self.time_exact;
+        let mut hits = Vec::new();
+        let mut i = 0;
+        while i < self.missiles.len() {
+            let m = &mut self.missiles[i];
+            let Some(b) = m.bullet.as_ref().filter(|_| m.stampede.is_none() && m.rock.is_none()) else {
+                i += 1;
+                continue;
+            };
+            let target = match self.handles.get(m.target) {
+                Some(Obj::Unit(u)) => Some((u.x, u.y, u.collision)),
+                _ if m.target == 0 => m.impact.map(|(x, y)| (x, y, 0.0)),
+                _ => None,
+            };
+            let Some((tx, ty, edge)) = target else {
+                // (Provisional: an attack's missile whose target is gone ends where it
+                // is, its objects as at a landing.)
+                let m = self.missiles.swap_remove(i);
+                if let Some(mut b) = m.bullet {
+                    b.at = t;
+                    self.bullet_landed(b, m.target);
+                }
+                continue;
+            };
+            // Its target at `t`, on its way from where it was last seen to where it is now.
+            let t0 = b.at.clamp(end - 1.0, end);
+            let seen = b.seen.unwrap_or((tx, ty));
+            let f = if end - t0 > 1e-9 { ((t - t0) / (end - t0)).clamp(0.0, 1.0) as f32 } else { 1.0 };
+            let to = (seen.0 + (tx - seen.0) * f, seen.1 + (ty - seen.1) * f);
+            if World::bullet_flies(m, to, edge, t).is_some() {
+                hits.push(self.missiles.swap_remove(i));
+            } else {
+                i += 1;
+            }
+        }
+        hits.sort_by(|p, q| p.bullet.as_ref().map_or(t, |b| b.at).total_cmp(&q.bullet.as_ref().map_or(t, |b| b.at)));
+        self.missiles_land(vm, hits);
+    }
+
+    /// Missiles reaching their targets: a spell's takes hold, an attack's strikes.
+    fn missiles_land(&mut self, vm: &mut Vm, hits: Vec<Missile>) {
+        for mut m in hits {
+            let mut bullet = m.bullet.take();
             match m.spell {
                 Some((a, lvl, _, _)) if crate::ability::spell_flies(&self.ability_code(a)) => {
                     let at = self.widget_pos(m.target).or(m.impact).unwrap_or((m.x, m.y));
@@ -5015,9 +5106,21 @@ impl World {
                                     self.deal_damage(vm, m.source, m.target, m.damage * taken, &wp.attack_type);
                                 }
                                 let z = self.unit(m.target).map_or(m.z, |u| self.ground_z(u.x, u.y) + 60.0);
-                                self.missiles.push(Missile { id: 0, source: m.target, target: m.source, x: at.0, y: at.1, z, start: at, bounces: 0, hit: Vec::new(), impact: None, reflected: true, ..m.clone() });
+                                // (Provisional: the same missile sent back, its count on its
+                                // target let go.)
+                                if let Some(b) = bullet.as_mut() {
+                                    self.bullet_uncounted(b, m.target);
+                                }
+                                let bullet = bullet.take().map(|b| crate::bullets::Bullet { seen: self.unit(m.source).map(|t| (t.x, t.y)), ..b });
+                                self.missiles.push(Missile { id: 0, source: m.target, target: m.source, x: at.0, y: at.1, z, start: at, bounces: 0, hit: Vec::new(), impact: None, reflected: true, bullet, ..m.clone() });
                                 continue;
                             }
+                        }
+                        // An ability's missile lets its count on its target go as it
+                        // lands, after its effect and before its damage (CBuffMissile vf47
+                        // `FUN_6f6cf940`).
+                        if let Some(b) = bullet.as_mut() {
+                            self.bullet_uncounted(b, m.target);
                         }
                         // Shot from below at a target on higher ground, it may miss
                         // (ChanceToMiss): the target takes nothing and any splash only
@@ -5045,14 +5148,23 @@ impl World {
                                     let d = |u: u32| self.unit(u).map_or(f32::MAX, |t| (t.x - at.0).hypot(t.y - at.1));
                                     d(p).total_cmp(&d(q))
                                 });
+                            // (The same missile flies on: CMissileBounce vf47
+                            // `FUN_6f6cfbc0`, its objects kept.)
                             if let Some(n) = next {
                                 let z = self.ground_z(at.0, at.1) + 60.0;
-                                self.missiles.push(Missile { id: 0, target: n, x: at.0, y: at.1, z, start: at, damage: m.damage * (1.0 - wp.damage_loss), bounces: m.bounces - 1, hit, impact: None, ..m.clone() });
+                                if bullet.is_some() {
+                                    self.bounce_marked(n);
+                                }
+                                let bullet = bullet.take().map(|b| crate::bullets::Bullet { seen: self.unit(n).map(|t| (t.x, t.y)), ..b });
+                                self.missiles.push(Missile { id: 0, target: n, x: at.0, y: at.1, z, start: at, damage: m.damage * (1.0 - wp.damage_loss), bounces: m.bounces - 1, hit, impact: None, bullet, ..m.clone() });
                             }
                         }
                     }
                     None => self.deal_damage(vm, m.source, m.target, m.damage, &m.attack_type),
                 },
+            }
+            if let Some(b) = bullet {
+                self.bullet_landed(b, m.target);
             }
         }
     }

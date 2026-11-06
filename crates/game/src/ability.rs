@@ -1314,6 +1314,7 @@ impl World {
             stampede: None,
             rock: None,
             reflected: false,
+            bullet: None,
         });
     }
 
@@ -1393,6 +1394,7 @@ impl World {
                     stampede: None,
                     rock: None,
                     reflected: false,
+                    bullet: None,
                 });
             }
             // Thunder Clap: area damage (DataA) and slow (DataC movement, DataD attack).
@@ -1465,6 +1467,7 @@ impl World {
                     stampede: None,
                     rock: None,
                     reflected: false,
+                    bullet: None,
                 });
             }
             // Frost Nova: target damage (DataB), area damage (DataA), and a slow.

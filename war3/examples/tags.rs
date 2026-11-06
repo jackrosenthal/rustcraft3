@@ -181,7 +181,16 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        let requests = g.world.requests.len();
         g.tick(dt);
+        // TAGS_PINGS: the script's minimap pings (PingMinimap), each with its turn.
+        if std::env::var("TAGS_PINGS").is_ok() {
+            for r in g.world.requests.iter().skip(requests) {
+                if let w3_game::world::Request::Ping { x, y, duration, .. } = r {
+                    println!("turn {n} ping {x} {y} {duration}");
+                }
+            }
+        }
         // TAGS_STEPS: each turn's movement steps' clocks.
         if std::env::var("TAGS_STEPS").is_ok() {
             println!("turn {n} steps {:?} ticks {:?} of {:?}", g.world.step_clocks.iter().map(|&c| f32::from_bits(c)).collect::<Vec<_>>(), g.world.step_ticks, (g.world.tick_clocks.0, g.world.tick_clocks.0 + g.world.tick_clocks.1.len() as i64 - 2));

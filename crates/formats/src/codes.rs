@@ -1782,4 +1782,33 @@ pub mod class {
     pub const SHARED_VISION: &Code = b"Csha";
     /// `Xbli`: A blight growth (a haunted mine's, a structure's).
     pub const BLIGHT_GROWTH: &Code = b"Xbli";
+    /// `B-Mi`: A missile weapon's missile (CMissile).
+    pub const MISSILE: &Code = b"B-Mi";
+    /// `B-Ar`: An artillery weapon's shell (CArtillery).
+    pub const ARTILLERY: &Code = b"B-Ar";
+    /// `B-Ms`: A splash missile weapon's missile (CMissileSplash).
+    pub const MISSILE_SPLASH: &Code = b"B-Ms";
+    /// `B-Mb`: A bouncing missile weapon's missile (CMissileBounce).
+    pub const MISSILE_BOUNCE: &Code = b"B-Mb";
+    /// `B-Ml`: A line missile weapon's missile (CMissileLine).
+    pub const MISSILE_LINE: &Code = b"B-Ml";
+    /// `B-Al`: A line artillery weapon's shell (CArtilleryLine).
+    pub const ARTILLERY_LINE: &Code = b"B-Al";
+    /// `Mspo`: Slow Poison's missile (CMissileSlowPoison).
+    pub const SLOW_POISON_MISSILE: &Code = b"Mspo";
+    /// `Mpoi`: Poison Attack's and Envenomed Spears' missile (CMissilePoisonAttack).
+    pub const POISON_ATTACK_MISSILE: &Code = b"Mpoi";
+    /// `Mfro`: Frost Attack's and Frost Breath's missile (CMissileFrost).
+    pub const FROST_MISSILE: &Code = b"Mfro";
+    /// `Mfrb`: Frost Attack's and Frost Breath's splash missile (CMissileFrostBreath).
+    pub const FROST_SPLASH_MISSILE: &Code = b"Mfrb";
+    /// `Rfrb`: Frost Attack's and Frost Breath's shell (CArtilleryFrostBreath).
+    pub const FROST_ARTILLERY: &Code = b"Rfrb";
+    /// `BTAR`: A bouncing missile's mark on each unit it is sent at (a buff, CMissileBounce
+    /// `FUN_6f6d4700`; provisional name).
+    pub const BOUNCE_TARGET: &Code = b"BTAR";
+    /// `` `pbh ``: A missile's position (NIpse::CPoPosBh).
+    pub const PROJECTILE_POSITION: &Code = b"`pbh";
+    /// `>prj`: A missile's flight (NIpse::CBhPoProjectile).
+    pub const PROJECTILE: &Code = b">prj";
 }

@@ -970,23 +970,32 @@ impl World {
         // not in (353, 504)'s at 0.12, refusing (352, 503) to the ghoul's search at
         // 1.02; `FUN_6f9d3047` placing it as CreateCaptains runs).
         if mask & 0x02 != 0 {
-            let places: Vec<(f32, f32)> = self.ai.values().flat_map(|st| [st.attack.place, st.defense.place]).flatten().collect();
-            let r = crate::ai::CAPTAIN_COLLISION / crate::pathing::CELL * 0.5;
-            for (x, y) in places {
-                if (x - u.x).abs() >= 2048.0 || (y - u.y).abs() >= 2048.0 {
-                    continue;
-                }
-                let (cx, cy) = ((x - p.origin[0]) / crate::pathing::CELL, (y - p.origin[1]) / crate::pathing::CELL);
-                for ty in (cy - r - 0.5).floor() as i32..=(cy + r - 0.5).ceil() as i32 {
-                    for tx in (cx - r - 0.5).floor() as i32..=(cx + r - 0.5).ceil() as i32 {
-                        if (tx as f32 + 0.5 - cx).hypot(ty as f32 + 0.5 - cy) <= r {
-                            taken.insert((tx, ty));
-                        }
+            taken.extend(self.captain_cells((u.x, u.y)));
+        }
+        taken
+    }
+
+    /// The cells the computers' captains' regions are held in near a place (within 2048
+    /// on each axis): those whose middles a captain covers (`World::regions_taken`).
+    fn captain_cells(&self, (ux, uy): (f32, f32)) -> Vec<(i32, i32)> {
+        let Some(p) = self.pathing.as_ref() else { return Vec::new() };
+        let places: Vec<(f32, f32)> = self.ai.values().flat_map(|st| [st.attack.place, st.defense.place]).flatten().collect();
+        let r = crate::ai::CAPTAIN_COLLISION / crate::pathing::CELL * 0.5;
+        let mut cells = Vec::new();
+        for (x, y) in places {
+            if (x - ux).abs() >= 2048.0 || (y - uy).abs() >= 2048.0 {
+                continue;
+            }
+            let (cx, cy) = ((x - p.origin[0]) / crate::pathing::CELL, (y - p.origin[1]) / crate::pathing::CELL);
+            for ty in (cy - r - 0.5).floor() as i32..=(cy + r - 0.5).ceil() as i32 {
+                for tx in (cx - r - 0.5).floor() as i32..=(cx + r - 0.5).ceil() as i32 {
+                    if (tx as f32 + 0.5 - cx).hypot(ty as f32 + 0.5 - cy) <= r {
+                        cells.push((tx, ty));
                     }
                 }
             }
         }
-        taken
+        cells
     }
 
     /// The waypoints left once a walker at `from` (in cells) picks its target
@@ -2102,9 +2111,16 @@ impl World {
                 }
             }
         }
-        let blocked = wall || !seen.is_empty() || d2 <= reach;
+        // A computer's captain's region on those cells blocks it as a standing unit's
+        // (`FUN_6f166140`'s collection, `FUN_6f148e30`: read, Twisted Meadows' night elf
+        // computer's wisp at (165.3233, 189.1246) at 0.33 turning west for its way's end,
+        // the one region it collected the defense captain's, its `` `pcu ``, in (163,
+        // 188); its way dropped, it searched again from there at 0.42).
+        let (ux, uy) = self.unit(h).map_or((0.0, 0.0), |u| (u.x, u.y));
+        let captain = mask & 0x02 != 0 && self.captain_cells((ux, uy)).iter().any(|c| cells.contains(c));
+        let blocked = wall || captain || !seen.is_empty() || d2 <= reach;
         if blocked {
-            log::trace!("held {h}: wall {wall} seen {seen:?} near {} cells {cells:?}", d2 <= reach);
+            log::trace!("held {h}: wall {wall} captain {captain} seen {seen:?} near {} cells {cells:?}", d2 <= reach);
         }
         for o in seen {
             let Some(v) = self.unit(o) else { continue };

@@ -4265,8 +4265,23 @@ Formats the port made its own, to be replaced by the original's:
   166 to 173 by 190 to 197, its collision 144 a region from 165 by its cells' rule,
   which would have held it at 0.30 too).  Measured (after the collection's call in
   `FUN_6f166140`, 0x6f1662cc, at 0.33): that wisp's (its way 0xbdb7f08) collects one
-  region (`DAT_6fd53a84` + 0xc8, 1), the two others' none; which region, not yet
-  read.
+  region (`DAT_6fd53a84` + 0xc8, 1), the two others' none: the computer's defense
+  captain's (the region's words naming its `` `pcu ``, slot 27465, birth 27478, made
+  with the second `AI-C` as CreateCaptains runs), the captain at (163.5, 188.5) in
+  cells, its region in (163, 188), on the wisp's step west along its way's end there
+  ((163, 188) and (163, 189)) and not on its step north at 0.30.  The port now holds a
+  walker on a captain's cells as on a standing unit's (`World::held_back`,
+  `World::captain_cells`), and gives a computer's wisp's first tree by the plan from
+  the tree (`World::ai_setup_tree`; provisional, above): that wisp's tree is then the
+  original's (160, 170), its heading at 0.12 4.4476, and its walk the original's
+  step for step through its contact at 1.20 (blocked at 0.33 and 0.51, its searches
+  at 0.42 and 0.54 of seven and six points).  Next (turn 12): the wood wisp's old
+  path and cluster, its tree walk given up for the mine in the pass at 1.2, are
+  freed in the original before the builder's structure's objects in that turn, in
+  the port at the turn's end after them; and the third wisp's entry, in turn 13,
+  comes after that turn's fifteen frees from 26741 in the original, before them in
+  the port (its way's end reached, the port arriving it in the next tick's second
+  step, provisional).
 - An entangled mine is no town site of its own: the original's save of a night elf
   start (`nel.w3x`) holds the map's four mines' four sites, the first naming the
   entangled mine (the mine it covers made at the map's start with that site).  The
@@ -5281,7 +5296,12 @@ Formats the port made its own, to be replaced by the original's:
   and reaches it in turn 634, three before the original's.  Tried: a lumber run's
   walk so stepped through its cluster's point (`World::coarse_goal`,
   `World::coarse_step_arrive` with the harvest's range), the keepalives part at turn
-  29 (the first wood worker's walk at 0.1, 23 cells, so too, not read).
+  29 (the first wood worker's walk at 0.1, 23 cells, so too, not read).  Read since
+  (every walker at 0x6f16fd0a, 0.1 to 3.0): that first walk's path has the tree,
+  (186, 174), for its goal from the start (its coarse way's index 0), where the farm
+  peasant's at 60.1 has its cluster's point; why the two clusters differ is not yet
+  read.  The eight places' costs at 60.1 are 21, 21, 22, 24, 24, 24, 24, and 26; the
+  port's fourth, (196, 178), costs 22 by its plan, the rest as the original's.
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

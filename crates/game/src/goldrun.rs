@@ -1332,7 +1332,14 @@ impl World {
         for (_, d, _) in trees {
             let Some((x, y)) = self.widget_pos(d) else { continue };
             let Some(pyr) = self.accel_pyramid_lifting(None, &[d]) else { continue };
-            let Some(cost) = crate::accelpath::plan_cost(&pyr, 0, (acc(fx, p.origin[0]), acc(fy, p.origin[1])), (acc(x, p.origin[0]), acc(y, p.origin[1])), 0x20) else { continue };
+            // (A computer's wisp's first tree costed by the plan from the tree to it, as
+            // `FUN_6f9c5950` costs a town's trees: so each of Twisted Meadows' night elf
+            // computer's five gets the original's, the one at (165.0, 188.44) (160, 170)
+            // where the plan from it ties (156, 170); provisional: `FUN_6f439e00` hands
+            // `FUN_6f059590` the search's origin first, and why the plans differ so is
+            // not yet read.)
+            let (from, to) = ((acc(fx, p.origin[0]), acc(fy, p.origin[1])), (acc(x, p.origin[0]), acc(y, p.origin[1])));
+            let Some(cost) = (if seen { crate::accelpath::plan_cost(&pyr, 0, from, to, 0x20) } else { crate::accelpath::plan_cost(&pyr, 0, to, from, 0x20) }) else { continue };
             log::trace!("auto tree for {h}: ({x}, {y}) cost {cost}");
             if best.is_none_or(|(c, _)| cost < c) {
                 best = Some((cost, d));

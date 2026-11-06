@@ -110,10 +110,113 @@ fn main() -> anyhow::Result<()> {
     let dv = depth.create_view(&Default::default());
     let mut i = 6;
     let num = |s: &str| s.parse::<f32>().unwrap();
+    // A handle, whole (handles pass 2^24, past what an f32 holds exactly).
+    let hnd = |s: &str| s.parse::<u32>().unwrap();
+    let mut a = a;
     while i < a.len() {
         scene.update_menu(&assets.frames, w as f32 / h as f32);
         scene.sync_hud(&assets.frames, w as f32 / h as f32);
+        // "@type" or "@type#k" in a command's arguments: player 0's living unit of that
+        // type (the k-th, from 0, in the order units were made), as its handle.
+        if let Some(g) = scene.game.as_ref() {
+            for k in i + 1..a.len().min(i + 5) {
+                let Some(spec) = a[k].strip_prefix('@') else { continue };
+                let (ty, nth) = spec.split_once('#').map_or((spec, 0), |(t, n)| (t, n.parse().unwrap_or(0)));
+                let id = w3_game::objects::id_from_str(ty);
+                let found = g.world.unit_order.iter().copied().filter(|&h| g.world.unit(h).is_some_and(|u| u.owner == 0 && !u.dead && u.type_id == id)).nth(nth);
+                a[k] = found.unwrap_or(0).to_string();
+            }
+        }
         match a[i].as_str() {
+            // build <worker> <type> <x> <y>: the interface's build order at a map point,
+            // snapped as its placement snaps.
+            "build" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let (u, id) = (hnd(&a[i + 1]), w3_game::objects::id_from_str(&a[i + 2]));
+                    let (x, y) = g.world.snap_placement(id, num(&a[i + 3]), num(&a[i + 4]));
+                    let r = g.apply(w3_game::replay::Command::Build { worker: u, id, x, y });
+                    eprintln!("build {} at {x} {y}: {r:?} gold {} lumber {}", a[i + 2], g.world.players[0].get_state(1), g.world.players[0].get_state(2));
+                }
+                i += 5;
+            }
+            // findplace <type> <x> <y>: the nearest places, 64 apart, where the structure
+            // can be built.
+            "findplace" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let id = w3_game::objects::id_from_str(&a[i + 1]);
+                    let (x0, y0) = (num(&a[i + 2]), num(&a[i + 3]));
+                    let mut found = Vec::new();
+                    for r in 0..40i32 {
+                        for dx in -r..=r {
+                            for dy in -r..=r {
+                                if dx.abs().max(dy.abs()) != r {
+                                    continue;
+                                }
+                                let (x, y) = g.world.snap_placement(id, x0 + dx as f32 * 64.0, y0 + dy as f32 * 64.0);
+                                if found.len() < 6 && g.world.can_place(id, x, y) && !found.contains(&(x, y)) {
+                                    found.push((x, y));
+                                }
+                            }
+                        }
+                    }
+                    eprintln!("places {} {:?}", a[i + 1], found);
+                }
+                i += 4;
+            }
+            // train <structure> <type>, upgrade <structure> <type>: the interface's train
+            // and upgrade commands.
+            "train" | "upgrade" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let (b, id) = (hnd(&a[i + 1]), w3_game::objects::id_from_str(&a[i + 2]));
+                    let c = if a[i] == "train" { w3_game::replay::Command::Train { building: b, id } } else { w3_game::replay::Command::Upgrade { building: b, id } };
+                    let r = g.apply(c);
+                    eprintln!("{} {}: {r:?} gold {} lumber {}", a[i], a[i + 2], g.world.players[0].get_state(1), g.world.players[0].get_state(2));
+                }
+                i += 3;
+            }
+            // cardof <unit> <main|build>: the unit's command card page, each button's
+            // action, place, whether enabled, tip, costs, and requirements.
+            "cardof" => {
+                scene.selection = vec![hnd(&a[i + 1])];
+                let page = if a[i + 2] == "build" { war3::card::Page::Build } else { war3::card::Page::Main };
+                if let Some(hd) = scene.hud.as_mut() {
+                    hd.page = page;
+                }
+                for b in scene.card_now(&assets.frames) {
+                    eprintln!("card {:?} ({},{}) enabled {} \"{}\" costs {:?} {}", b.action, b.x, b.y, b.enabled, b.tip, b.costs, b.requires.replace('\n', " "));
+                }
+                if let Some(hd) = scene.hud.as_mut() {
+                    hd.page = war3::card::Page::Main;
+                }
+                i += 3;
+            }
+            // owned <player>: the player's units, with handles, types, and what they do.
+            "owned" => {
+                if let Some(g) = scene.game.as_ref() {
+                    let p = num(&a[i + 1]) as u8;
+                    for &h in &g.world.unit_order {
+                        if let Some(u) = g.world.unit(h).filter(|u| u.owner == p && !u.dead) {
+                            eprintln!("owned {h} {} at {:.0} {:.0} constructing {:?} queue {:?} {:?}", w3_game::objects::id_str(u.type_id), u.x, u.y, u.constructing, u.queue.iter().map(|q| w3_game::objects::id_str(*q)).collect::<Vec<_>>(), u.action);
+                        }
+                    }
+                }
+                i += 2;
+            }
+            // ustate <unit>: a unit's type, life, construction or queue, abilities, and
+            // weapons (damage, cooldown, range, splash, and targets).
+            "ustate" => {
+                if let Some(g) = scene.game.as_ref() {
+                    let h = hnd(&a[i + 1]);
+                    if let Some(u) = g.world.unit(h) {
+                        let o = g.world.objects.units.get(u.type_id);
+                        eprintln!("ustate {h} {} \"{}\" p{} life {:.1}/{:.0} build {:?} of {:.2} queue {:?} progress {:.2} abils {:?} acquire {} point value {} {:?} t {:.2}", w3_game::objects::id_str(u.type_id), o.map(|o| o.str("Name")).unwrap_or_default(), u.owner, u.life, u.max_life, u.constructing, u.build_time, u.queue.iter().map(|q| w3_game::objects::id_str(*q)).collect::<Vec<_>>(), u.queue_progress, u.abilities.iter().map(|(a, l)| format!("{}:{}", w3_game::objects::id_str(*a), l)).collect::<Vec<_>>(), u.acquire_range, o.map_or(0, |o| o.int("points")), u.action, g.world.time);
+                        for (n, wp) in w3_game::sim::unit_weapons(&g.world, u) {
+                            eprintln!("  weapon {n} damage {}+{}d{} cooldown {} range {} type {} {} areas {}/{}/{} targets {} missile speed {}", wp.base, wp.dice, wp.sides, wp.cooldown, wp.range, wp.attack_type, wp.weapon_type, wp.full_area, wp.half_area, wp.quarter_area, wp.targets, wp.missile_speed);
+                        }
+                    }
+                }
+                i += 2;
+            }
             "select" => {
                 scene.select((num(&a[i + 1]), num(&a[i + 2])), (num(&a[i + 3]), num(&a[i + 4])), (w, h), false);
                 eprintln!("selected {:?}", scene.selection);
@@ -163,7 +266,7 @@ fn main() -> anyhow::Result<()> {
             // stock <shop> <good>: a shop's stock of one good.
             "stock" => {
                 if let Some(g) = &scene.game {
-                    let (shop, id) = (num(&a[i + 1]) as u32, w3_game::objects::id_from_str(&a[i + 2]));
+                    let (shop, id) = (hnd(&a[i + 1]), w3_game::objects::id_from_str(&a[i + 2]));
                     eprintln!("stock {:?} added {:?}", g.world.shops.stock.get(&(shop, id)), g.world.shops.added.get(&(shop, id)));
                 }
                 i += 3;
@@ -504,7 +607,7 @@ fn main() -> anyhow::Result<()> {
             // give <unit> <item type>: creates an item in the unit's inventory.
             "give" => {
                 if let Some(g) = scene.game.as_mut() {
-                    let u = num(&a[i + 1]) as u32;
+                    let u = hnd(&a[i + 1]);
                     let id = w3_game::objects::id_from_str(&a[i + 2]);
                     let it = w3_game::natives::objects::create_item(&mut g.world, id, 0.0, 0.0);
                     let ok = g.world.give_item(&mut g.vm, u, it, None);
@@ -520,7 +623,7 @@ fn main() -> anyhow::Result<()> {
             // books <unit>: prints the unit's spell books and their spells.
             "books" => {
                 if let Some(g) = scene.game.as_ref() {
-                    if let Some(u) = g.world.unit(num(&a[i + 1]) as u32) {
+                    if let Some(u) = g.world.unit(hnd(&a[i + 1])) {
                         for (b, s) in &u.extra.books {
                             eprintln!("book {} spells {:?}", w3_game::objects::id_str(*b), s.iter().map(|x| w3_game::objects::id_str(*x)).collect::<Vec<_>>());
                         }
@@ -547,7 +650,7 @@ fn main() -> anyhow::Result<()> {
             // hero <handle> <xp> <ability>: grants experience and learns an ability.
             "hero" => {
                 if let Some(g) = scene.game.as_mut() {
-                    let h = num(&a[i + 1]) as u32;
+                    let h = hnd(&a[i + 1]);
                     g.world.add_hero_xp(h, num(&a[i + 2]) as i32);
                     let ok = g.world.learn_skill(h, w3_game::objects::id_from_str(&a[i + 3]));
                     let u = g.world.unit(h).unwrap();
@@ -560,7 +663,7 @@ fn main() -> anyhow::Result<()> {
                 if let Some(g) = scene.game.as_mut() {
                     let (sx, sy) = g.world.start_of(0);
                     let id = w3_game::natives::basic::order_id(&a[i + 2]);
-                    g.world.order_unit(num(&a[i + 1]) as u32, id, sx + num(&a[i + 3]), sy + num(&a[i + 4]), 0);
+                    g.world.order_unit(hnd(&a[i + 1]), id, sx + num(&a[i + 3]), sy + num(&a[i + 4]), 0);
                 }
                 i += 5;
             }
@@ -569,7 +672,7 @@ fn main() -> anyhow::Result<()> {
                 if let Some(g) = scene.game.as_mut() {
                     let id = w3_game::natives::basic::order_id(&a[i + 2]);
                     g.world.order_error = None;
-                    g.world.order_unit(num(&a[i + 1]) as u32, id, 0.0, 0.0, num(&a[i + 3]) as u32);
+                    g.world.order_unit(hnd(&a[i + 1]), id, 0.0, 0.0, hnd(&a[i + 3]));
                     if let Some(e) = g.world.order_error.take() {
                         eprintln!("order refused: {e}");
                     }
@@ -578,7 +681,7 @@ fn main() -> anyhow::Result<()> {
             }
             "unit" => {
                 if let Some(g) = scene.game.as_ref() {
-                    if let Some(u) = g.world.unit(num(&a[i + 1]) as u32) {
+                    if let Some(u) = g.world.unit(hnd(&a[i + 1])) {
                         eprintln!("unit {} life {}/{} mana {} action {:?} buffs {:?}{}", w3_game::objects::id_str(u.type_id), u.life, u.max_life, u.mana, u.action, u.buffs.iter().map(|b| (w3_game::objects::id_str(b.id), b.remaining, b.stun)).collect::<Vec<_>>(), if u.extra.corpses.is_empty() { String::new() } else { format!(" corpses {}", u.extra.corpses.len()) } + if u.extra.sleeping { " asleep" } else { "" });
                         eprintln!("  at {:.0} {:.0} casting {:?} channel {:?} path {} cooldown {:.2} swing {:?} t {:.2}", u.x, u.y, u.casting, u.channel.as_ref().map(|c| (c.elapsed, c.duration, c.next)), u.path.len(), u.cooldown, u.swing.as_ref().map(|s| (s.elapsed, s.done)), g.world.time);
                     }
@@ -588,7 +691,7 @@ fn main() -> anyhow::Result<()> {
             "mine" => {
                 if let Some(g) = &scene.game {
                     let w = &g.world;
-                    let m = num(&a[i + 1]) as u32;
+                    let m = hnd(&a[i + 1]);
                     if let Some(u) = w.unit(m) { eprintln!("mine at {:.0},{:.0} inside {} gold {}", u.x, u.y, u.inside, u.resource); }
                     for &h in &w.unit_order {
                         if let Some(u) = w.unit(h) { if matches!(u.action, w3_game::types::Action::Harvest{target} if target == m || m == 0) || u.carry_gold > 0 || u.carry_lumber > 0 { eprintln!("  t={:.1} {h} at {:.0},{:.0} {:?} inside {} path {} lumber {} anim {} facing {:.0} slot {:?}", w.time, u.x, u.y, u.action, u.inside, u.path.len(), u.carry_lumber, u.anim, u.facing, u.extra.mine_slot); } }
@@ -650,8 +753,8 @@ fn main() -> anyhow::Result<()> {
             }
             "buy" => {
                 if let Some(g) = scene.game.as_mut() {
-                    let r = g.buy_item(0, num(&a[i + 1]) as u32, w3_game::objects::id_from_str(&a[i + 2]));
-                    let (shop, id) = (num(&a[i + 1]) as u32, w3_game::objects::id_from_str(&a[i + 2]));
+                    let r = g.buy_item(0, hnd(&a[i + 1]), w3_game::objects::id_from_str(&a[i + 2]));
+                    let (shop, id) = (hnd(&a[i + 1]), w3_game::objects::id_from_str(&a[i + 2]));
                     eprintln!("buy: {r:?} gold {} stock {:?}", g.world.players[0].get_state(1), g.world.shops.stock.get(&(shop, id)));
                 }
                 i += 3;
@@ -659,7 +762,7 @@ fn main() -> anyhow::Result<()> {
             // hire <shop> <unit type>: hires a unit for player 0.
             "hire" => {
                 if let Some(g) = scene.game.as_mut() {
-                    let r = g.hire_unit(0, num(&a[i + 1]) as u32, w3_game::objects::id_from_str(&a[i + 2]));
+                    let r = g.hire_unit(0, hnd(&a[i + 1]), w3_game::objects::id_from_str(&a[i + 2]));
                     eprintln!("hire: {r:?} gold {} lumber {}", g.world.players[0].get_state(1), g.world.players[0].get_state(2));
                 }
                 i += 3;
@@ -668,7 +771,7 @@ fn main() -> anyhow::Result<()> {
             "shop" => {
                 if let Some(g) = scene.game.as_ref() {
                     let w = &g.world;
-                    let h = num(&a[i + 1]) as u32;
+                    let h = hnd(&a[i + 1]);
                     let p = w.local_player;
                     eprintln!("shopper {:?} gold {} lumber {}", w.shopper(p, h), w.players[p as usize].get_state(1), w.players[p as usize].get_state(2));
                     let (items, units) = w.shop_goods(h);
@@ -747,29 +850,29 @@ fn main() -> anyhow::Result<()> {
             }
             "bonus" => {
                 if let Some(g) = scene.game.as_ref() {
-                    if let Some(u) = g.world.unit(num(&a[i + 1]) as u32) {
+                    if let Some(u) = g.world.unit(hnd(&a[i + 1])) {
                         eprintln!("{} life {}/{} bonus {:?}", w3_game::objects::id_str(u.type_id), u.life, u.max_life, g.world.upgrade_bonus(u.owner, u.type_id));
                     }
                 }
                 i += 2;
             }
             "selecth" => {
-                scene.selection = vec![num(&a[i + 1]) as u32];
+                scene.selection = vec![hnd(&a[i + 1])];
                 i += 2;
             }
             // useitemon <unit> <slot> <target>: uses an item on a unit.
             "useitemon" => {
                 if let Some(g) = scene.game.as_mut() {
-                    let t = num(&a[i + 3]) as u32;
+                    let t = hnd(&a[i + 3]);
                     let (x, y) = g.world.widget_pos(t).unwrap_or((0.0, 0.0));
-                    let ok = g.use_item_at(num(&a[i + 1]) as u32, num(&a[i + 2]) as usize, t, x, y);
+                    let ok = g.use_item_at(hnd(&a[i + 1]), num(&a[i + 2]) as usize, t, x, y);
                     eprintln!("used: {ok}");
                 }
                 i += 4;
             }
             "useitem" => {
                 if let Some(g) = scene.game.as_mut() {
-                    let ok = g.use_item(num(&a[i + 1]) as u32, num(&a[i + 2]) as usize);
+                    let ok = g.use_item(hnd(&a[i + 1]), num(&a[i + 2]) as usize);
                     eprintln!("used: {ok}");
                 }
                 i += 3;
@@ -777,7 +880,7 @@ fn main() -> anyhow::Result<()> {
             // additem <unit> <item>: puts an item in a unit's inventory.
             "additem" => {
                 if let Some(g) = scene.game.as_mut() {
-                    let (u, it) = (num(&a[i + 1]) as u32, num(&a[i + 2]) as u32);
+                    let (u, it) = (hnd(&a[i + 1]), hnd(&a[i + 2]));
                     let w3_game::Game { world, vm, .. } = g;
                     world.give_item(vm, u, it, None);
                 }
@@ -786,13 +889,13 @@ fn main() -> anyhow::Result<()> {
             // giveitem <unit> <slot> <target>: hands an item to a unit (or sells it to a shop).
             "giveitem" => {
                 if let Some(g) = scene.game.as_mut() {
-                    g.apply(w3_game::replay::Command::GiveItemTo { unit: num(&a[i + 1]) as u32, slot: num(&a[i + 2]) as usize, target: num(&a[i + 3]) as u32 });
+                    g.apply(w3_game::replay::Command::GiveItemTo { unit: hnd(&a[i + 1]), slot: num(&a[i + 2]) as usize, target: hnd(&a[i + 3]) });
                 }
                 i += 4;
             }
             "inv" => {
                 if let Some(g) = scene.game.as_ref() {
-                    if let Some(u) = g.world.unit(num(&a[i + 1]) as u32) {
+                    if let Some(u) = g.world.unit(hnd(&a[i + 1])) {
                         let inv: Vec<String> = u.inventory.iter().map(|&it| g.world.item(it).map(|i| format!("{}x{}", w3_game::objects::id_str(i.type_id), i.charges)).unwrap_or("-".into())).collect();
                         eprintln!("inventory {:?} life {}/{} armor+{} dmg+{}", inv, u.life, u.max_life, u.item_bonus.armor, u.item_bonus.damage);
                     }
@@ -872,7 +975,7 @@ fn main() -> anyhow::Result<()> {
             // flyh <handle> <height>: sets a unit's flying height.
             "flyh" => {
                 if let Some(g) = scene.game.as_mut() {
-                    if let Some(u) = g.world.unit_mut(num(&a[i + 1]) as u32) {
+                    if let Some(u) = g.world.unit_mut(hnd(&a[i + 1])) {
                         u.fly_height = num(&a[i + 2]);
                     }
                 }
@@ -909,7 +1012,7 @@ fn main() -> anyhow::Result<()> {
             }
             // mana <handle> <amount>: sets a unit's mana.
             "mana" => {
-                if let Some(u) = scene.game.as_mut().and_then(|g| g.world.unit_mut(num(&a[i + 1]) as u32)) {
+                if let Some(u) = scene.game.as_mut().and_then(|g| g.world.unit_mut(hnd(&a[i + 1]))) {
                     u.mana = num(&a[i + 2]);
                     u.max_mana = u.max_mana.max(u.mana);
                 }
@@ -918,14 +1021,14 @@ fn main() -> anyhow::Result<()> {
             // kill <handle>: kills a unit.
             "kill" => {
                 if let Some(g) = scene.game.as_mut() {
-                    w3_game::natives::units::kill_unit(&mut g.world, &mut g.vm, num(&a[i + 1]) as u32, 0);
+                    w3_game::natives::units::kill_unit(&mut g.world, &mut g.vm, hnd(&a[i + 1]), 0);
                 }
                 i += 2;
             }
             // killby <victim> <killer>: kills a unit by another's hand.
             "killby" => {
                 if let Some(g) = scene.game.as_mut() {
-                    w3_game::natives::units::kill_unit(&mut g.world, &mut g.vm, num(&a[i + 1]) as u32, num(&a[i + 2]) as u32);
+                    w3_game::natives::units::kill_unit(&mut g.world, &mut g.vm, hnd(&a[i + 1]), hnd(&a[i + 2]));
                 }
                 i += 3;
             }
@@ -939,7 +1042,7 @@ fn main() -> anyhow::Result<()> {
                 if let Some(g) = scene.game.as_mut() {
                     let (sx, sy) = g.world.start_of(0);
                     let (x, y) = (sx + num(&a[i + 2]), sy + num(&a[i + 3]));
-                    if let Some(u) = g.world.unit_mut(num(&a[i + 1]) as u32) {
+                    if let Some(u) = g.world.unit_mut(hnd(&a[i + 1])) {
                         u.extra.waygate = Some((x, y, true));
                     }
                 }
@@ -956,8 +1059,8 @@ fn main() -> anyhow::Result<()> {
             // lookat <handle> <bone> <target>: turns a unit's bone toward another unit.
             "lookat" => {
                 if let Some(g) = scene.game.as_mut() {
-                    let t = num(&a[i + 3]) as u32;
-                    if let Some(u) = g.world.unit_mut(num(&a[i + 1]) as u32) {
+                    let t = hnd(&a[i + 3]);
+                    if let Some(u) = g.world.unit_mut(hnd(&a[i + 1])) {
                         u.extra.look_at = Some((a[i + 2].clone(), t, [0.0, 0.0, 60.0]));
                     }
                 }
@@ -995,7 +1098,7 @@ fn main() -> anyhow::Result<()> {
             // abils <handle>: a unit's abilities and levels.
             "abils" => {
                 if let Some(g) = scene.game.as_ref() {
-                    if let Some(u) = g.world.unit(num(&a[i + 1]) as u32) {
+                    if let Some(u) = g.world.unit(hnd(&a[i + 1])) {
                         eprintln!("abils {:?}", u.abilities.iter().map(|(a, l)| format!("{}:{}", w3_game::objects::id_str(*a), l)).collect::<Vec<_>>());
                     }
                 }
@@ -1098,7 +1201,7 @@ fn main() -> anyhow::Result<()> {
             // info <unit>: a unit's type, owner, life, place, and action.
             "info" => {
                 if let Some(g) = scene.game.as_ref() {
-                    let h = num(&a[i + 1]) as u32;
+                    let h = hnd(&a[i + 1]);
                     if let Some(u) = g.world.unit(h) {
                         eprintln!("info {h} {} p{} life {}/{} at {:.0} {:.0} {:?} swing {:?} acquire {}", w3_game::objects::id_str(u.type_id), u.owner, u.life, u.max_life, u.x, u.y, u.action, u.swing.is_some(), u.acquire_range);
                     }
@@ -1108,7 +1211,7 @@ fn main() -> anyhow::Result<()> {
             // life <unit> <amount>: sets a unit's life.
             "life" => {
                 if let Some(g) = scene.game.as_mut() {
-                    if let Some(u) = g.world.unit_mut(num(&a[i + 1]) as u32) {
+                    if let Some(u) = g.world.unit_mut(hnd(&a[i + 1])) {
                         u.life = num(&a[i + 2]).min(u.max_life);
                     }
                 }

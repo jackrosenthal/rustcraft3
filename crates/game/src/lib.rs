@@ -432,6 +432,17 @@ impl Game {
                 p.controller = map_control::USER;
             }
         }
+        // A network game's open slots are placed too (read: Mafarazzo TD's LAN save,
+        // PLAYER_STATE_PLACED 1 for its nine open user slots, where its game loaded
+        // directly places only those playing; provisional: a game played alone's open
+        // slots, and a closed slot's, not read).
+        if slots.iter().any(|s| matches!(s.fill, SlotFill::Remote)) {
+            for s in slots.iter().filter(|s| matches!(s.fill, SlotFill::Empty)) {
+                if let Some(p) = self.world.players.get_mut(s.player as usize) {
+                    p.state.insert(crate::types::player_state::PLACED, 1);
+                }
+            }
+        }
         let fills: HashMap<u8, SlotFill> = slots.iter().map(|s| (s.player, s.fill.clone())).collect();
         self.start(|id, _| fills.get(&id).cloned().unwrap_or(SlotFill::Empty))
     }

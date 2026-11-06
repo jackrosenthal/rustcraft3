@@ -2488,18 +2488,16 @@ impl World {
         Some((own.0, first, second))
     }
 
-    /// A destructable's facing as its position saves it: its type's fixed rotation if
-    /// it has one, else as placed, in radians (read: every tree of Booty Bay and
-    /// Forestwalk, fixedRot 270, saves 0x4096cbe3, which 270 times 0.01745329 gives;
-    /// provisional: that constant, which the binary does not hold as such, and the
-    /// placed facing of a type without one).
+    /// A destructable's facing as its position saves it: in degrees, its type's fixed
+    /// rotation if it has one, else as placed (the map's radians times 57.29578), times
+    /// 0.01745329 (read: every tree of Booty Bay and Forestwalk, fixedRot 270, saves
+    /// 0x4096cbe3, which 270 times 0.01745329 gives; Mafarazzo TD's six placed at
+    /// 0x40963ceb save 0x40963cea, their 269.00003 degrees so; provisional: those
+    /// constants, which the binary does not hold as such).
     fn saved_destructable_facing(&self, d: &crate::types::Destructable) -> f32 {
         let fixed = self.objects.destructables.get(d.type_id).map_or(-1.0, |o| o.real("fixedRot"));
-        if fixed >= 0.0 {
-            fixed * 0.017_453_29
-        } else {
-            d.placed_facing.unwrap_or(d.facing * 0.017_453_292)
-        }
+        let degrees = if fixed >= 0.0 { fixed } else { d.placed_facing.map_or(d.facing, |r| r * 57.295_78) };
+        degrees * 0.017_453_29
     }
 
     /// The W3GS slot table as a save holds it: the slot count; each map slot (its players

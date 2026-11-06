@@ -186,22 +186,43 @@ fn main() -> anyhow::Result<()> {
                 let s = w3_formats::w3z::SaveGame::read(&std::fs::read(&file)?)?;
                 g.restore_original(&s)?;
                 println!("loaded {file} in the original's format");
-                // (Experiments, toward a load in step with the original's: TAGS_LOADTAGS the
-                // allocator as saved, its births, slots, and free list, the restored objects
-                // keeping their own slots; TAGS_LOADTAKE=n then n tags taken, as the
-                // original's load makes two objects not yet known: read, the Mafarazzo TD
-                // load's first keepalive with both, 2.)
-                if let (Ok(_), Some(m)) = (std::env::var("TAGS_LOADTAGS"), s.objects.as_ref()) {
-                    let births = m.header.get(24..28).map_or(0, |b| u32::from_le_bytes(b.try_into().unwrap()));
-                    let free: Vec<u32> = m.free[0].chunks(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).take_while(|&v| v != u32::MAX).collect();
-                    let top = m.tables[0].iter().map(|t| t.tag + 1).chain(free.iter().map(|&f| f + 1)).max().unwrap_or(0);
-                    println!("allocator as saved: born {births}, slots {top}, free {} (head {:?})", free.len(), free.first());
-                    g.world.tags.born = births;
-                    g.world.tags.slots = top;
-                    g.world.tags.free = free.into_iter().rev().collect();
-                }
-                for _ in 0..std::env::var("TAGS_LOADTAKE").ok().and_then(|v| v.parse::<u32>().ok()).unwrap_or(0) {
-                    g.world.tags.take(b"????");
+                // TAGS_LOADLIVE: the restored game's live tags against the save's table: by
+                // kind, those alike (slot, kind, and birth), at the slot with another
+                // birth or kind, and only the port's or only the save's.
+                if let (Ok(_), Some(m)) = (std::env::var("TAGS_LOADLIVE"), s.objects.as_ref()) {
+                    let saved: std::collections::BTreeMap<u32, (u32, u32)> = m.tables[0].iter().map(|t| (t.tag, (t.kind, t.birth))).collect();
+                    let mut by: std::collections::BTreeMap<String, [u32; 5]> = Default::default();
+                    let name = |k: u32| String::from_utf8_lossy(&k.to_be_bytes()).into_owned();
+                    for (&slot, (code, birth)) in &g.world.tags.live {
+                        let k = u32::from_be_bytes(*code);
+                        let e = by.entry(name(k)).or_default();
+                        match saved.get(&slot) {
+                            Some(&(sk, sb)) if sk == k && sb == *birth => e[0] += 1,
+                            Some(&(sk, _)) if sk == k => e[1] += 1,
+                            Some(_) => e[2] += 1,
+                            None => {
+                                e[3] += 1;
+                                if std::env::var("TAGS_LOADLIVE").is_ok_and(|v| v == name(k)) {
+                                    println!("  the port's only: {} slot {slot} birth {birth}", name(k));
+                                }
+                            }
+                        }
+                    }
+                    for (slot, &(k, _)) in &saved {
+                        if !g.world.tags.live.contains_key(slot) {
+                            by.entry(name(k)).or_default()[4] += 1;
+                        }
+                    }
+                    let total = by.values().fold([0u32; 5], |mut t, e| {
+                        for i in 0..5 {
+                            t[i] += e[i];
+                        }
+                        t
+                    });
+                    println!("live against the save (alike, other birth, other kind, the port's only, the save's only): {total:?}");
+                    for (k, e) in by.iter().filter(|(_, e)| e[1] + e[2] + e[3] + e[4] > 0) {
+                        println!("  {k} {e:?}");
+                    }
                 }
             }
         }

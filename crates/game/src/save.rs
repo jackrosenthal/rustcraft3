@@ -259,6 +259,9 @@ impl Game {
     /// queues at work, each unit's order, the triggers turned off, and the timer events'
     /// timers.  The time played before (`World::played_before_ms`), as its saves and
     /// score show it; the clocks start again from 0, all the rest counting from them.
+    /// The units and the walks given again take their saved slots and births
+    /// (`tags::RestorePlan`), and the allocator is then the save's, as the original's
+    /// loaded game has its object table.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
         use crate::natives::units::{create_unit_exact, remove_unit};
         let units = s.units()?;
@@ -276,11 +279,26 @@ impl Game {
         for h in w.unit_order.clone() {
             remove_unit(w, h);
         }
-        // (The units made, by their objects as saved.)
+        w.tags.free_doomed();
+        // (The units made, by their objects as saved: each unit and the objects made
+        // with it at its saved slots and births, `tags::RestorePlan`.)
+        let saved_table: Vec<w3_formats::w3z::Tagged> = s.objects.as_ref().map(|m| m.tables[0].clone()).unwrap_or_default();
+        w.tags.plan = Some(crate::tags::RestorePlan { saved: saved_table.iter().map(|t| (t.birth, (t.tag, t.kind.to_be_bytes()))).collect(), base: None, next: 0 });
+        // (What else the restore makes takes slots past the saved table's, the free list the
+        // saved one once it is done.)
+        w.tags.free.clear();
+        let saved_free = s.objects.as_ref().map_or(&[][..], |m| &m.free[0][..]).chunks(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).take_while(|&v| v != u32::MAX).max().map_or(0, |f| f + 1);
+        w.tags.slots = saved_table.iter().map(|t| t.tag + 1).max().unwrap_or(0).max(saved_free).max(w.tags.slots);
         let mut made: std::collections::HashMap<(u32, u32), u32> = Default::default();
         for u in units {
             let (x, y) = (origin[0] + u.cell[0] * crate::pathing::CELL, origin[1] + u.cell[1] * crate::pathing::CELL);
+            if let Some(p) = w.tags.plan.as_mut() {
+                (p.base, p.next) = (Some(u.birth), 0);
+            }
             let h = create_unit_exact(w, u.owner as u8, u.type_id.to_be_bytes(), x, y, u.facing.to_degrees());
+            if let Some(p) = w.tags.plan.as_mut() {
+                p.base = None;
+            }
             made.insert((u.tag, u.birth), h);
             // The handle scripts had it by, as the save's handle table has it.
             if let Some(&jass) = handles.get(&(u.tag, u.birth)) {
@@ -842,19 +860,36 @@ impl Game {
                 Some(Field::Real(r)) => Some(*r),
                 _ => None,
             };
-            let mut orders: Vec<(u32, i32, f32, f32, (u32, u32))> = Vec::new();
+            let mut orders: Vec<(u32, i32, f32, f32, (u32, u32), (u32, u32))> = Vec::new();
             for o in all.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::class::UNIT) {
                 let Some(&h) = made.get(&(o.entry.tag, o.entry.birth)) else { continue };
                 let Ok(Second::Unit { fields, .. }) = o.second() else { continue };
+                // Its detection's record (`Cdet`, its second and third words) at its saved
+                // slot and birth, found by no player yet: the next detector to find it
+                // takes it as the original's goes on with it (`World::detection_look`).
+                if let (Some(dt), Some(db)) = (word(fields.get(1)), word(fields.get(2))) {
+                    if by.get(&(dt, db)).is_some_and(|d| &d.entry.kind.to_be_bytes() == crate::codes::class::DETECTION) {
+                        if let Some(p) = self.world.tags.plan.as_mut() {
+                            (p.base, p.next) = (Some(db), 0);
+                        }
+                        let slot = self.world.tags.take(crate::codes::class::DETECTION);
+                        if let Some(p) = self.world.tags.plan.as_mut() {
+                            p.base = None;
+                        }
+                        if let Some(u) = self.world.unit_mut(h) {
+                            u.extra.detected_by = vec![(u8::MAX, slot)];
+                        }
+                    }
+                }
                 let (Some(t), Some(b)) = (word(fields.get(14)), word(fields.get(15))) else { continue };
                 let Some(ord) = by.get(&(t, b)) else { continue };
                 let Ok(Second::Agent { own, .. }) = ord.second() else { continue };
                 let Some(id) = word(own.get(1)) else { continue };
                 let (x, y) = (real(own.get(6)).unwrap_or(0.0), real(own.get(7)).unwrap_or(0.0));
                 let target = (word(own.get(8)).unwrap_or(u32::MAX), word(own.get(9)).unwrap_or(u32::MAX));
-                orders.push((h, id as i32, x, y, target));
+                orders.push((h, id as i32, x, y, target, (ord.entry.kind, b)));
             }
-            for (h, id, x, y, target) in orders {
+            for (h, id, x, y, target, (kind, birth)) in orders {
                 if crate::natives::basic::order_name(id).is_none_or(|n| n == "stop") {
                     continue;
                 }
@@ -867,7 +902,23 @@ impl Game {
                 } else {
                     continue;
                 };
+                // (An order of a player's kind, `ordt`, as a script or a player gives one
+                // (`World::ordering_player`), its objects at the saved order's slots and
+                // births by their places from its first, `tags::RestorePlan`: read, a
+                // creep's walk's `ordt`, `tskA`, `tskO`, three `task`, `tsk.`, `^clu`, and
+                // `l^pa` born 0, 2, 3, 4 to 6, 7, 15, and 16 after it, as
+                // `Tags::player_move_issued` makes them.)
+                let player = &kind.to_be_bytes() == crate::codes::class::ORDER_TASKS;
+                let before = self.world.ordering_player;
+                let ordering = std::mem::replace(&mut self.world.ordering_player, player || before);
+                if let (true, Some(p)) = (player, self.world.tags.plan.as_mut()) {
+                    (p.base, p.next) = (Some(birth), 0);
+                }
                 self.world.order_unit(h, id, x, y, target);
+                if let Some(p) = self.world.tags.plan.as_mut() {
+                    p.base = None;
+                }
+                self.world.ordering_player = ordering;
             }
         }
         // The computers' AI scripts, as they were (their threads' sleeps on the main
@@ -890,7 +941,35 @@ impl Game {
         // map script drawing (the saves hold none of theirs: read, the load's first
         // keepalive's random data module a fresh one's).
         self.seed_generators();
+        // The allocator as saved: its births, slots, and free list (those the port's
+        // objects still hold kept out of it), then the load's own objects.
+        self.world.tags.plan = None;
+        if let Some(m) = s.objects.as_ref() {
+            let births = m.header.get(24..28).map_or(0, |b| u32::from_le_bytes(b.try_into().unwrap()));
+            let free: Vec<u32> = m.free[0].chunks(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).take_while(|&v| v != u32::MAX).collect();
+            let t = &mut self.world.tags;
+            t.slots = m.tables[0].iter().map(|e| e.tag + 1).chain(free.iter().map(|&f| f + 1)).max().unwrap_or(0).max(t.slots);
+            t.born = births;
+            t.free = free.into_iter().rev().filter(|f| !t.live.contains_key(f)).collect();
+            let saved: std::collections::HashMap<u32, (u32, u32)> = m.tables[0].iter().map(|e| (e.tag, (e.kind, e.birth))).collect();
+            t.strangers = t.live.iter().filter(|(slot, (code, birth))| saved.get(slot) != Some(&(u32::from_be_bytes(*code), *birth))).map(|(&slot, _)| slot).collect();
+        }
+        self.loaded_objects();
         Ok(())
+    }
+
+    /// The objects the original makes as a saved game is loaded, the first born after
+    /// the save's: a threshold listener (`` `rtl ``) for each unit with burrow
+    /// detection, in the units' order (read: Mafarazzo TD's LAN load saved again at its
+    /// turns 77 and 246, births 19013 and 19014 at the saved free list's first two
+    /// slots, one for each flying peasant: event 0xd01b7, -0.1, on its unit's second
+    /// real, linked after its detector's in-range object; provisional: their part, not
+    /// read, and their records, not written).
+    pub fn loaded_objects(&mut self) {
+        let detectors = self.world.unit_order.iter().filter(|&&h| self.world.unit(h).is_some_and(|u| u.extra.flyer_pil.is_some())).count();
+        for _ in 0..detectors {
+            self.world.tags.take(crate::codes::class::THRESHOLD_LISTENER);
+        }
     }
 
     /// An original's save's leaderboards, timer dialogs, and camera setups (made by the

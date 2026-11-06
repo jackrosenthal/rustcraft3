@@ -5086,24 +5086,57 @@ Formats the port made its own, to be replaced by the original's:
   generator's hash a fresh one's: none of the save's, no map script run), the game
   module the saved game's (each player's tech registrations as saved: the port's
   load made each peasant twice), born the save's births and two more, and the next
-  slot the saved free list's third (6273 and 8477 taken: two objects made as it
-  loads, not identified).  The port's load now takes the saved tech registrations
+  slot the saved free list's third (6273 and 8477 taken by two objects made as it
+  loads).  The port's load now takes the saved tech registrations
   (`SaveGame::player_techs`), seeds its generators afresh, and counts the save's
-  game time in the keepalive's time (`World::played_before_ms`); with the allocator
-  as saved and two tags taken (the tags example's TAGS_LOADTAGS and TAGS_LOADTAKE=2,
-  experiments) its first keepalive is the original's.  The second parts: born within
-  a few of the original's but the next slot elsewhere, the port's restored objects
-  holding their own slots rather than the saved ones (open: the restore's objects at
-  their saved slots and births, the two objects made at loading).
+  game time in the keepalive's time (`World::played_before_ms`).
+- The two objects the original makes as it loads (read: that loaded game saved again
+  at its turns 77 and 246, births 19013 and 19014 at slots 6273 and 8477 in both) are
+  threshold listeners (`` `rtl ``), one for each flying peasant (units 1383 and 1406):
+  on the unit's second real (`` `rel ``), its word 852407 (0xd01b7), at -0.1, linked
+  after the unit's in-range object (its burrow detection's `` `pil ``).  The port's
+  load takes them so (`Game::loaded_objects`; provisional: their part, not modeled,
+  and their records, not written).  The loaded game goes on from the save's times:
+  at turn 77 its game time 61400 (53800 and 76 turns), its main clock 61.379482 and
+  its agent clock 61.533245 (the saved clocks run on, not started again), the
+  manager's counter 3070 (2816 saved; 3633 at turn 246) and its first queue's count
+  13224 (11252; 17263), the main and agent queues' counts 618 and 6 (491 and 6; 907
+  and 35); born 21543 and 26165; the second table 1156 and 1181 objects (1137), 19
+  and 20 of its slots free.
+- The port's load of an original's save now restores the object table
+  (`Game::restore_original`, `tags::RestorePlan`): each unit and the objects made
+  with it take their saved slots and births (the saved objects born one after
+  another from the unit's birth, of the codes the port's making takes in turn); an
+  order of a player's kind (`ordt`, a script's or a player's walk) is given again as
+  a player's (`World::ordering_player`), its objects at the saved order's by their
+  places from its first (`ordt`, `tskA`, `tskO`, three `task`, `tsk.`, `^clu`, and
+  `l^pa` at 0, 2, 3, 4 to 6, 7, 15, and 16, as `Tags::player_move_issued` makes
+  them); a unit's detection record (`Cdet`, its record's second and third words)
+  is taken at its saved slot and birth, found by no player yet, so the next detector
+  to find the unit takes it rather than making one; what else the restore makes takes
+  slots past the saved table; then the
+  allocator is the save's (births, slots, and free list, those the port's objects
+  hold kept out of it), and the objects its save does not hold as they are
+  (`Tags::strangers`) are given back to no free list.  Of Mafarazzo TD's 6463 saved
+  objects 5751 are then the port's alike (1414 before; 690 of the rest leaked
+  locations), of Booty Bay's LAN save's 12270 12223; the LAN load's first keepalive
+  is the original's, the second born one off (or seven) and its next slot a saved
+  detection record (6463) or a walk's order (6462) where the port's is 7879 (open:
+  the port's clocks starting again from 0 where the original's run on, and the
+  restored walks' state).
 - The positions' stamps (CPoPosCl's base real): a walker's is the main clock of its
   last step's tick (Mafarazzo TD's 180 walkers 53.753674 with the main clock at
   53.783657), as the port now writes.  The objects' word of that save still parts
   at those walkers' headings, speeds, and turning reals (their `` `pcu ``, the
   heading 4.7431884 where the port's velocity's angle is 4.743192), their clusters'
   words (`^clu`'s 61 and 61) and last real, their paths' first word and word
-  (`l^pa`'s 0xc0a00000 and 0x04000004, the port's 0x00200000 and 0x02000002), 14
-  pathing regions' words, 6 positions, and the placed state (PLAYER_STATE_PLACED 1 for
-  the map's nine unplayed user slots, 0 in the port's).
+  (`l^pa`'s 0xc0a00000 and 0x04000004, the port's 0x00200000 and 0x02000002), and
+  14 pathing regions' words.  The placed state (PLAYER_STATE_PLACED) is 1 for a
+  network game's open slots (the map's nine unplayed user slots there; Mafarazzo TD
+  loaded directly, `maf_save30`, places only those playing), as the port now sets
+  it.  A placed destructable's saved facing goes through degrees (the map's radians
+  times 57.29578, then times 0.01745329: Mafarazzo TD's six at 0x40963ceb save
+  0x40963cea), as the port now writes it.
 - A unit's clustered position's flag word (CPoPosCl +0xd8, its record's third word
   after its eight reals): its type's orientInterp in bits 8 to 11 and formation in 12
   to 15, set as the unit is made from its type's data (`FUN_6f652620`, `FUN_6f653800`:

@@ -27,6 +27,19 @@ fn main() {
         if matches!(k, 2 | 3 | 8 | 10 | 13 | 15 | 18 | 20 | 23 | 25) { format!("{}", f32::from_bits(w)) } else { format!("{w}") }
     }).collect();
     println!("manager header {}", words.join(" "));
+    // W3ZHEAD_STATE=<k>: each player's state k (common.j's numbering: 9 placed).
+    if let Some(k) = std::env::var("W3ZHEAD_STATE").ok().and_then(|v| v.parse::<u32>().ok()) {
+        let states = s.player_states().unwrap_or_default();
+        println!("state {k} by player: {:?}", states.iter().map(|p| p.iter().find(|(i, _)| *i == k).map(|(_, v)| *v)).collect::<Vec<_>>());
+    }
+    // W3ZHEAD_BIRTHS=<from>-<to>: the main table's objects born in that range, by birth.
+    if let Some((lo, hi)) = std::env::var("W3ZHEAD_BIRTHS").ok().and_then(|v| v.split_once('-').and_then(|(a, b)| Some((a.parse::<u32>().ok()?, b.parse::<u32>().ok()?)))) {
+        let mut v: Vec<_> = m.tables[0].iter().filter(|t| (lo..=hi).contains(&t.birth)).collect();
+        v.sort_by_key(|t| t.birth);
+        for t in v {
+            println!("birth {} slot {} {}", t.birth, t.tag, String::from_utf8_lossy(&t.kind.to_be_bytes()));
+        }
+    }
     for (k, f) in m.free.iter().enumerate() {
         let slots: Vec<i64> = f.chunks(4).filter(|c| c.len() == 4).map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64).collect();
         println!("free list {k}: {} words, last {:?}", slots.len(), &slots[slots.len().saturating_sub(14)..]);

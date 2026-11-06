@@ -31,6 +31,17 @@ pub static RECORD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool
 /// A handler's function when it has none (a timer started without a callback).
 pub const NO_FUNCTION: u32 = u32::MAX;
 
+/// A restore's plan (`Tags::plan`): an object made again takes its saved slot and birth
+/// when the take counted from the plan's base names a saved object of its code, the
+/// objects made with a unit being those born with it (read: a unit's objects born one
+/// after another as it is made, `Game::restore_original`).
+#[derive(Clone, Debug, Default)]
+pub struct RestorePlan {
+    pub saved: std::collections::HashMap<u32, (u32, Code)>,
+    pub base: Option<u32>,
+    pub next: u32,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Tags {
     /// The table's slots (given and given back).
@@ -45,6 +56,14 @@ pub struct Tags {
     /// original's object table, as a save keeps it).
     #[serde(default)]
     pub live: std::collections::BTreeMap<u32, (Code, u32)>,
+    /// While a save of the original's is restored, its objects by birth (each its slot
+    /// and code), and the birth the takes now count from (`Tags::take_id`).
+    #[serde(skip)]
+    pub plan: Option<RestorePlan>,
+    /// The slots of a restored game's objects its save does not hold as they are: given
+    /// back to no free list, the original's holding no such object.
+    #[serde(skip)]
+    pub strangers: std::collections::HashSet<u32>,
     /// The objects' codes in the order tagged, while recording (for comparing with the
     /// original's).
     #[serde(skip)]
@@ -239,7 +258,7 @@ pub struct Tags {
 impl Tags {
     pub fn new() -> Tags {
         let rec = RECORD.load(std::sync::atomic::Ordering::Relaxed);
-        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), player_ai_timers: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), aura_dues: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, clock_wraps: 0, made_at: Default::default(), made_wraps: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), buff_modifiers: Default::default(), tick_end: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), next_turn_end: Vec::new(), later_now: Vec::new(), step_paths: Vec::new(), step_frees: None, next_tick_frees: Vec::new(), setup_paths: Vec::new(), issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), dead_handles: Default::default(), game_freed_keys: Vec::new(), game_timers: [0; 2], game_timers_clock: 0, save_clock: None, event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
+        Tags { slots: 0, free: Vec::new(), born: 0, live: Default::default(), plan: None, strangers: Default::default(), trace: rec.then(Vec::new), log: rec.then(Vec::new), camps: Vec::new(), camp_ais: Vec::new(), player_ais: Vec::new(), player_ai_timers: Vec::new(), sites: Vec::new(), handlers: Default::default(), timer_starts: 0, timer_objects: Default::default(), aura_dues: Default::default(), timer_log: std::env::var_os("W3_TIMERLOG").map(|_| Vec::new()), clock: 0, clock_wraps: 0, made_at: Default::default(), made_wraps: Default::default(), prop_count: 0, prop_counts: Default::default(), autotarget_due: Vec::new(), autotarget_info: Vec::new(), autotarget_saved: Vec::new(), autotarget_timers: Default::default(), buff_modifiers: Default::default(), tick_end: Vec::new(), tech_buffs: Vec::new(), player_slots: Vec::new(), handler_objects: Default::default(), function_numbers: Default::default(), pending: Vec::new(), doomed: Vec::new(), next_turn: Vec::new(), removed: Vec::new(), next_turn_end: Vec::new(), later_now: Vec::new(), step_paths: Vec::new(), step_frees: None, next_tick_frees: Vec::new(), setup_paths: Vec::new(), issued: Vec::new(), timed: Vec::new(), handle_slots: Default::default(), handle_ids: Default::default(), dead_handles: Default::default(), game_freed_keys: Vec::new(), game_timers: [0; 2], game_timers_clock: 0, save_clock: None, event_timers: Default::default(), day_timer: None, day_timer_2: None, listener_made: Default::default(), day_listener_made: 0 }
     }
 
     /// The next tag, for an object of type `code`: its slot.
@@ -250,12 +269,30 @@ impl Tags {
     /// The next tag, for an object of type `code`: its slot and its birth count, the two
     /// words that name it in the original's actions.
     pub fn take_id(&mut self, code: &Code) -> (u32, u32) {
-        let t = self.free.pop().unwrap_or_else(|| {
-            self.slots += 1;
-            self.slots - 1
+        // (Restoring a save: the saved object's slot and birth when the plan names one.)
+        let planned = self.plan.as_mut().and_then(|p| {
+            let base = p.base?;
+            let b = base + p.next;
+            p.next += 1;
+            p.saved.get(&b).filter(|(_, c)| c == code).map(|&(slot, _)| (slot, b))
         });
-        let birth = self.born;
-        self.born += 1;
+        let (t, birth) = match planned.filter(|(slot, _)| !self.live.contains_key(slot)) {
+            Some((slot, b)) => {
+                self.free.retain(|&f| f != slot);
+                self.slots = self.slots.max(slot + 1);
+                self.born = self.born.max(b + 1);
+                (slot, b)
+            }
+            None => {
+                let t = self.free.pop().unwrap_or_else(|| {
+                    self.slots += 1;
+                    self.slots - 1
+                });
+                let birth = self.born;
+                self.born += 1;
+                (t, birth)
+            }
+        };
         // W3_TAGBT=<birth>: where the object of that birth is made.
         if std::env::var("W3_TAGBT").ok().and_then(|v| v.parse::<u32>().ok()) == Some(birth) {
             eprintln!("tag {birth} {}: {}", String::from_utf8_lossy(code), std::backtrace::Backtrace::force_capture());
@@ -296,7 +333,9 @@ impl Tags {
 
     /// Gives a slot back.
     pub fn release(&mut self, slot: u32) {
-        self.free.push(slot);
+        if !self.strangers.remove(&slot) {
+            self.free.push(slot);
+        }
         self.live.remove(&slot);
         self.made_at.remove(&slot);
         self.made_wraps.remove(&slot);

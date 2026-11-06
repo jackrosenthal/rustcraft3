@@ -4549,7 +4549,11 @@ impl World {
         let (tpos, upos) = ((t.x, t.y), (u.x, u.y));
         let ub = self.upgrade_bonus(u.owner, u.type_id);
         if d > wp.range + ub.range {
-            if stationary {
+            // A structure does not walk, whatever its speed, unless an uprooted ancient:
+            // one acquiring past its reach stays (Mafarazzo TD's Towers of Vengence, made
+            // from the Ancient Protector, speed 40, without its Root, acquire at 1800 and
+            // 2000 and reach 1500; provisional: whether it keeps such a target).
+            if stationary || (u.is_building && !u.extra.uprooted) {
                 return;
             }
             if u.path.is_empty() || u.repath_timer <= 0.0 {

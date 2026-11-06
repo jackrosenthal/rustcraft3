@@ -1614,6 +1614,31 @@ these are the findings behind them.
   once, the first to land pays and the second nothing.
 - Moon Glaive (`Amgl`), Slow Poison (`Aspo`), and Pillage (`Asal`) are passive: their
   art is a passive button's (`PASBTN...`) and their buttons give no order.
+- Slow Poison and Poison Attack stack by their DataD (CAbilitySlowPoison vf211
+  `FUN_6f623170`, CAbilityPoisonAttack vf211 `FUN_6f622ee0`, its low three bits;
+  the base Aspo and Apoi have 1).  Without a stacking type a hit puts or refreshes
+  the plain buff (`Bspo`, `Bpoi`).  With one, each caster has its stack info on the
+  target (`Bssi`, `Bpsi`, the engine's own codes), refreshed by its later hits for Dur
+  (`FUN_6f625a40` finds it by its caster); a new info joins the shared strike (the
+  info's +0xf4, else `Bssd` or `Bpsd`; provisionally its data's second BuffID, as the
+  port takes it): the first makes it with all of its own
+  DataA a second and slows (DataB and DataC), each later one adds the parts its type
+  stacks (bits 1, 2, and 4: DataA, DataB, DataC) and takes them away as it runs out,
+  and the strike goes with the last (CBuffSlowPoisonStackInfo vf213 `FUN_6f6236e0`,
+  vf214 `FUN_6f62de00`).  Measured: a Plague Tower's first hit puts `Bssi` then `Bssd`
+  on its target, and its later hits take nothing more.  Bit 8 is passed to the strike
+  and not read; Orb of Venom's and Envenomed Spears' classes are not read (the port
+  keeps their plain buffs).
+- A missile attack's objects (read in a trace of the original, Mafarazzo TD's Plague
+  Tower): at the damage point its missile (Slow Poison's `Mspo`, made by its vf213
+  `FUN_6f62b870`; the plain missile's code is `B-Mi`, `FUN_6f6d1f40`), its position
+  `` `pbh `` (NIpse::CPoPosBh), two `^pmr`, and its flight `>prj`
+  (NIpse::CBhPoProjectile), all freed together about 5.3 seconds later, in the order
+  `>prj`, `^pmr`, `^pmr`, `` `pbh ``, the missile; and on some attacks a CAbilityTarget
+  (`Atrg`), freed 0.2 to 4.2 seconds later.  Provisional: that they go 5 seconds after the
+  missile lands (a removal timer of 5.0, 0x6fd3c758, in `FUN_6f6d9870`; the delays
+  grow as the target walks away, 53 to 57 turns), and what makes the `Atrg`.  The
+  port makes none of them yet.
 - A structure does not walk, whatever its speed, unless an uprooted ancient: a tower
   made from the Ancient Protector (speed 40) without its Root (Mafarazzo TD's Towers of
   Vengence) stays where it was built when it acquires past its reach (provisional:

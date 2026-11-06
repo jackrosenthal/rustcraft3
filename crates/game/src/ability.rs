@@ -407,8 +407,10 @@ impl World {
         // Buff art attaches to the target (the buff's Targetart and Targetattach).
         let art = self.objects.buffs.get(b.id).map(|o| (o.list("Targetart").first().cloned().unwrap_or_default(), o.list("Targetattach").first().cloned().unwrap_or_default()));
         let u = self.unit_mut(target).unwrap();
-        // An effect without a buff type (a fountain's) is told apart by its ability.
-        if let Some(existing) = u.buffs.iter_mut().find(|x| x.id == b.id && (b.id != [0; 4] || x.ability == b.ability)) {
+        // An effect without a buff type (a fountain's) is told apart by its ability; a
+        // stacking poison's stack info by its caster.
+        let per_caster = crate::passives::STACKING_POISONS.iter().any(|p| p.1 == &b.id);
+        if let Some(existing) = u.buffs.iter_mut().find(|x| x.id == b.id && (b.id != [0; 4] || x.ability == b.ability) && (!per_caster || x.caster == b.caster)) {
             existing.remaining = existing.remaining.max(b.remaining);
             if b.aura_left.is_some() {
                 existing.aura_left = b.aura_left;
@@ -480,6 +482,7 @@ impl World {
         let mut dots = Vec::new();
         let mut conversions = Vec::new();
         let mut released: Vec<(u32, u32, Id, bool)> = Vec::new();
+        let mut stacks_ended: Vec<(u32, Id, Id, u32)> = Vec::new();
         let ethereal_heal = self.misc_f32("EtherealHealBonus", 1.66);
         for &h in &units {
             let heal_factor = if self.is_ethereal(h) { ethereal_heal } else { 1.0 };
@@ -525,6 +528,9 @@ impl World {
                 conversions.push((h, caster, a, lvl));
                 released.push((h, caster, a, stun));
             }
+            for b in u.buffs.iter().filter(|b| b.remaining <= 0.0 && crate::passives::STACKING_POISONS.iter().any(|p| p.1 == &b.id)) {
+                stacks_ended.push((h, b.id, b.ability, b.level));
+            }
             u.buffs.retain(|b| {
                 if b.remaining <= 0.0 {
                     expired_effects.push(b.effect);
@@ -547,6 +553,12 @@ impl World {
         }
         for e in expired_effects {
             self.remove_buff_effect(e);
+        }
+        // A stacking poison's stack info running out takes its part from the shared
+        // strike, the last the strike itself (`World::poison_stacks`).
+        for (h, info, a, lvl) in stacks_ended {
+            let dot = self.poison_dot(a, lvl, &info);
+            self.poison_stacks(h, &info, dot);
         }
         // Dark Conversion runs its course (CBuffDarkConversion vf41): the sleeper becomes
         // UnitID for the caster's player, the caster raising the summon events

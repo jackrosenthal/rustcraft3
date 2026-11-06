@@ -12,6 +12,15 @@ use crate::codes;
 /// Abilities that reveal invisible units within their cast range.
 const DETECTORS: [&str; 4] = [codes::ability::DETECT_SHADE, codes::ability::DETECT_MAGIC_SENTINEL, codes::ability::DETECTOR, codes::ability::DETECT_GYROCOPTER];
 
+/// The stacking poisons: each ability's caster's stack info buff (the engine's own code)
+/// and the shared strike's buff it makes when its data names none (CAbilitySlowPoison
+/// vf211 `FUN_6f623170` with CBuffSlowPoisonStackInfo vf213 `FUN_6f6236e0`;
+/// CAbilityPoisonAttack vf211 `FUN_6f622ee0`).
+pub(crate) const STACKING_POISONS: [(&str, &Id, &Id); 2] = [
+    (codes::ability::SLOW_POISON, codes::buff::id::SLOW_POISON_STACK_INFO, codes::buff::id::SLOW_POISON_BSSD),
+    (codes::ability::POISON_ATTACK, codes::buff::id::POISON_ATTACK_STACK_INFO, codes::buff::id::POISON_BPSD),
+];
+
 impl World {
     fn passive(&self, h: u32, code: &str) -> Option<(Id, u32)> {
         let u = self.unit(h)?;
@@ -124,10 +133,78 @@ impl World {
             let buff = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", l)).unwrap_or_default();
             let id = id_from_str(buff.split(',').next().unwrap_or("").trim());
             let dur = if self.hero_duration(target) { self.data(a, "HeroDur", l) } else { self.data(a, "Dur", l) };
+            // A stacking type (DataD's low three bits) puts the caster's stack info on the
+            // target instead, refreshed by its later hits, which strikes through one buff
+            // all its casters share (`poison_stacks`; measured: a Plague Tower's first hit
+            // puts Bssi and Bssd on its target, not Bspo).
+            let stacking = STACKING_POISONS.iter().find(|p| p.0 == code).filter(|_| self.data(a, "DataD", l) as i32 & 7 != 0);
+            if let Some(&(_, info, _)) = stacking {
+                let dot = self.poison_dot(a, l, info);
+                let known = self.unit_mut(target).and_then(|t| t.buffs.iter_mut().find(|b| &b.id == info && b.caster == h)).map(|b| b.remaining = dur).is_some();
+                if !known {
+                    self.apply_buff(target, Buff { id: *info, ability: a, level: l, caster: h, remaining: dur, ..Default::default() });
+                }
+                self.poison_stacks(target, info, dot);
+                continue;
+            }
             let (b, c) = (self.data(a, "DataB", l), self.data(a, "DataC", l));
             let (move_factor, attack_factor) = if code == codes::ability::SLOW_POISON { (-b, -c) } else { (-c, -b) };
             let b = Buff { id, ability: a, level: l, caster: h, remaining: dur, dps: self.data(a, "DataA", l), dps_every: 1.0, dps_next: 0.0, move_factor, attack_factor, ..Default::default() };
             self.apply_buff(target, b);
+        }
+    }
+
+    /// A stacking poison's shared strike's buff: the stack info's +0xf4, else the
+    /// engine's own for the kind (`FUN_6f6236e0`); provisionally the data's second
+    /// BuffID.
+    pub(crate) fn poison_dot(&self, a: Id, l: u32, info: &Id) -> Id {
+        let buff = self.objects.abilities.get(a).map(|o| o.level_str("BuffID", l)).unwrap_or_default();
+        let named = id_from_str(buff.split(',').nth(1).unwrap_or("").trim());
+        let own = STACKING_POISONS.iter().find(|p| p.1 == info).map_or([0; 4], |p| *p.2);
+        if named == [0; 4] { own } else { named }
+    }
+
+    /// A stacking poison's shared strike, by its stack infos on the target: the first
+    /// makes it with all of its own strike (DataA a second, DataB and DataC its slows by
+    /// the ability's kind), each later one adds the parts its stacking type stacks
+    /// (DataD bits 1, 2, and 4 for DataA, DataB, and DataC) and takes them away as it
+    /// runs out, and it goes with the last (CBuffSlowPoisonStackInfo vf213
+    /// `FUN_6f6236e0`, vf214 `FUN_6f62de00`).  (Bit 8, passed on to the strike, is not
+    /// read.)
+    pub(crate) fn poison_stacks(&mut self, target: u32, info: &Id, dot: Id) {
+        let Some(t) = self.unit(target) else { return };
+        let infos: Vec<(Id, u32)> = t.buffs.iter().filter(|b| &b.id == info && b.remaining > 0.0).map(|b| (b.ability, b.level)).collect();
+        let first = t.buffs.iter().find(|b| b.id == dot).map(|b| (b.ability, b.level, b.caster));
+        let caster = t.buffs.iter().find(|b| &b.id == info && b.remaining > 0.0).map_or(0, |b| b.caster);
+        // (It lasts while they do: one taken away otherwise, as by a dispel, ends it too.)
+        let left = t.buffs.iter().filter(|b| &b.id == info).map(|b| b.remaining).fold(0.0f32, f32::max);
+        if infos.is_empty() {
+            if let Some(u) = self.unit_mut(target) {
+                let effects: Vec<u32> = u.buffs.iter().filter(|b| b.id == dot).map(|b| b.effect).collect();
+                u.buffs.retain(|b| b.id != dot);
+                for e in effects {
+                    self.remove_buff_effect(e);
+                }
+            }
+            return;
+        }
+        let parts = |a: Id, l: u32| -> ([f32; 3], i32) { ([self.data(a, "DataA", l), self.data(a, "DataB", l), self.data(a, "DataC", l)], self.data(a, "DataD", l) as i32) };
+        let (a0, l0, c0) = first.unwrap_or((infos[0].0, infos[0].1, caster));
+        let (own, bits) = parts(a0, l0);
+        let mut sum = [0.0f32; 3];
+        for (k, v) in sum.iter_mut().enumerate() {
+            *v = if bits & (1 << k) == 0 { own[k] } else { infos.iter().map(|&(a, l)| parts(a, l).0[k]).sum() };
+        }
+        // Slow Poison's DataB slows movement and DataC attacks; the poisons' the other way.
+        let (move_factor, attack_factor) = if self.ability_code(a0) == codes::ability::SLOW_POISON { (-sum[1], -sum[2]) } else { (-sum[2], -sum[1]) };
+        let shared = self.unit_mut(target).and_then(|t| t.buffs.iter_mut().find(|b| b.id == dot)).map(|b| {
+            b.dps = sum[0];
+            b.remaining = left;
+            b.move_factor = move_factor;
+            b.attack_factor = attack_factor;
+        });
+        if shared.is_none() {
+            self.apply_buff(target, Buff { id: dot, ability: a0, level: l0, caster: c0, remaining: left, dps: sum[0], dps_every: 1.0, dps_next: 0.0, move_factor, attack_factor, ..Default::default() });
         }
     }
 

@@ -2257,17 +2257,42 @@ these are the findings behind them.
   `abtest/mafv4.*`; breakpoints on the look, the take-up `FUN_6f4943f0`,
   `FUN_6f66f030`, the reaction wait `FUN_6f49ea80`, and the give-up `FUN_6f49d280`,
   47.85 to 48.75 seconds): the Mega Tower of Vengence (e002; acquisition 2000, its
-  weapons 1500 and 700) looks at 47.906887, takes up a creep about 1881 off edge to
-  edge, and starts its reaction wait at once (from 0x6f49a6b8); it looks again at
-  48.2467 and takes up another, with a reaction wait; no give-up.  The other towers
-  look each half second and take up none.  Its look's due is 0.01 and 26 half seconds
-  past 34.896887, its upgrade's end by the agent queue's clock (19.896887, as the
-  order was carried out, and the 15 of its build time), where the port times the
-  upgrade from the main clock (19.897661) and keeps its look's phase from before.
-  Not yet in the port: the take-up's tasks (the original's trace: the ten of a
-  structure's at turn 480, the attack's freed at once, the reaction's in turn 481,
-  the rest in 483) and the reaction wait's draw (stream 9) make the upgrade games
-  part at turn 481.
+  weapons 1500 and 700) looks in the main tick of clock 47.906887, its look due
+  47.909035 on the agent queue (after the turn's first step, due 47.908592), takes up
+  a creep 1875 off edge to edge, and starts its reaction wait at once (from
+  0x6f49a6b8).  The other towers look each half second and take up none.  Its look's
+  phase: its upgrade, due 34.897661 on the main clock, is done in main tick 6980,
+  whose agent queue has already been brought to the next main tick's clock,
+  34.899036 (`FUN_6f04c1a0`: the agent queue before the dispatches), and its look is
+  restarted 0.01 on from that (`FUN_6f49d000`; then each half second).
+- Such a structure's take-up is a cycle that ends in a give-up (`crate::tasks`,
+  `World::reach_tried`, `World::reaction_ended`, `World::reach_walk_step`).  Its look
+  is an agent queue event among the movement steps by its due
+  (`World::structure_events_before`).  Its tasks are a structure's ten; the last block
+  runs and the attack tries at once (`FUN_6f49e510`: for a unit whose move ability is
+  not disabled, event 0xd0196, not the 0.1 wait), and on a target out of reach both
+  go as the main tick ends.  Its reaction wait runs then: ReactionDelay (0.25) times
+  a real drawn on stream 9 (`FUN_6f49ea80`, `FUN_6f6936a0`), from the look's due.  As
+  it ends (event 0xd01af) its task goes as that main tick ends, and its walk into
+  range (`tskt` 0xd016f, its range 1500) begins with a walk's `^clg ^clu l^pa`, the
+  `^clg` let go at once.  From inside its footprint it is blocked from the start: its
+  count, 7 or 8, is drawn then on the main generator (`FUN_6f167290` →
+  `FUN_6f1689d0`, `FUN_6f1d62b0(2)`), and it walks in the walkers' order, ending in
+  the step after its count runs out (CAbilityMove's event 0xd0198, `FUN_6f603110`):
+  its task popped, a block and two tasks 0xd0144 pushed, all freed top first as the
+  step ends, its path and cluster at the next step, and its look again 0.01 after the
+  step's agent clock (`FUN_6f49d000`).  Measured (the upgrade game; the take-up, the
+  reaction, `FUN_6f1689d0`, `FUN_6f1d62b0`, and the task pushes and pops, 47.85 to
+  48.75 seconds): reaction ends due 48.028042 and 48.427876 (draws 0.476029 and
+  0.717201), the walk begun at 48.026821 with the only main draw through 48.25 (a
+  count of 7), its ends in the steps due 48.238579 and 48.658562, the eighth after
+  each start, its looks due 48.248577 and 48.668560 taking the creep up again.  The
+  port's upgrade game now agrees to turn 498 (from 480), its trace to 497.  Not yet
+  read: the try's reach.  At 49.778515 the creep is 1559 off center to center, the
+  tower's collision 144 and the creep's 0, where the port's test (the in-place
+  structures', `World::reaches_walker`, range and both collisions) finds it in reach
+  of the 1500 weapon; the original's attack went at once as out of reach, and at
+  50.108501, 1485 off, again.
 - RemoveUnit (`jass_RemoveUnit`: the unit's vf 0x84, then `FUN_6f694690(1, 1)`) clears
   its orders (`FUN_6f673610`): its current order's tasks (`FUN_6f673e80`), then a block
   made and destroyed and its task stack destroyed top first (`FUN_6f673fe0`), then its

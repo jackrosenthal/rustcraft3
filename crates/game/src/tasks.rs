@@ -46,6 +46,25 @@ pub(crate) const FIRST_ATTACK_WAIT: f64 = 0.1;
 /// event 0xd01c1, restarted at DAT_6fcd53a4).
 pub(crate) const LOOK_AFTER_DROP: f32 = 0.01;
 
+/// A structure that can move (its move ability, CUnit +0x1ec, `FUN_6f66f030`) and has
+/// taken up what lies out of its reach: its attack tried at once and done, it waits its
+/// reaction (task 0xd0163), then walks into range (task 0xd016f) from inside its
+/// footprint, held there until it gives up (`World::reach_walk_step`).
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub enum ReachWalk {
+    /// Its reaction wait, due then on the agent queue (seconds since the game began).
+    React { due: f64 },
+    /// Its walk, held: the steps left of its blocked count, and its path and cluster.
+    Walk { steps: u32, path: [u32; 2] },
+}
+
+impl ReachWalk {
+    /// Whether it walks (with the walkers, in their order).
+    pub fn walking(&self) -> bool {
+        matches!(self, ReachWalk::Walk { .. })
+    }
+}
+
 impl World {
     /// Whether a unit's attacks are a structure's: it cannot walk into range
     /// (`FUN_6f66f030`, no move ability or its move disabled), so it takes up only
@@ -53,6 +72,17 @@ impl World {
     /// (`FUN_6f495180`).
     pub(crate) fn attacks_in_place(&self, h: u32) -> bool {
         self.unit(h).is_some_and(|u| u.is_building && !u.extra.uprooted)
+    }
+
+    /// Whether such a structure can move all the same (`FUN_6f66f030` →
+    /// `FUN_6f5fb040`): it has a move ability (`Amov`, made for a type with a speed), as
+    /// Mafarazzo TD's Towers of Vengence, made from the Ancient Protector without its
+    /// Root, have.  Its look then takes up what is within its acquisition range out of
+    /// its weapons' reach (`FUN_6f498e50` from 0x6f498ec3; the reach test `FUN_6f4959f0`
+    /// from 0x6f495ab4).  (Provisional: the ability's disabling, its +0x7c and its +0x20
+    /// flag 0x200, not yet read.)
+    pub(crate) fn moves_to_attack(&self, h: u32) -> bool {
+        self.attacks_in_place(h) && self.unit(h).is_some_and(|u| u.extra.object_slots.iter().flatten().any(|&(s, b)| self.tags.live.get(&s).is_some_and(|e| &e.0 == codes::ability::id::MOVE && e.1 == b)))
     }
 
     /// A structure takes up a target on its own at `at` (the main clock): its tasks
@@ -65,8 +95,16 @@ impl World {
         if tasks.is_empty() {
             let made: [(&crate::tags::Code, u32); 10] = [(codes::class::TASK_A, BLOCK), (codes::class::TASK, TASK_14B), (codes::class::TASK_POINT, MOVE_HOME), (codes::class::TASK_A, BLOCK), (codes::class::TASK, LOOK_AGAIN), (codes::class::TASK, BACKSWING), (codes::class::TASK_T, MOVE_TO), (codes::class::TASK, REACT), (codes::class::TASK_T, ATTACK), (codes::class::TASK_A, BLOCK)];
             tasks = made.iter().map(|&(c, e)| (self.tags.take(c), e)).collect();
-            // (The last block runs and goes at once.)
+            // (The last block runs and goes at once; one that can move tries its attack
+            // at once, `World::reach_tried`.)
             let (top, _) = tasks.pop().unwrap();
+            if self.moves_to_attack(h) {
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.attack_tasks = tasks;
+                }
+                self.reach_tried(h, at, top);
+                return;
+            }
             self.tags.doom(top);
         } else {
             self.pop_attack(&mut tasks);
@@ -77,6 +115,133 @@ impl World {
             u.extra.attack_tasks = tasks;
             u.extra.first_swing_at = Some(at + FIRST_ATTACK_WAIT);
         }
+    }
+
+    /// A structure that can move tries its attack at once on a target it took up at `at`
+    /// (event 0xd0196), its tasks' last block `top` run: on a target in reach the attack
+    /// begins then; on one out of reach the attack is done, and it and the block go,
+    /// and its reaction wait runs (task 0xd0163, `FUN_6f49ea80`: ReactionDelay
+    /// times a draw on stream 9, `FUN_6f6936a0`, from the agent queue's clock, event
+    /// 0xd01af).  Measured: the upgrade game's Mega Tower of Vengence taking up a creep
+    /// 1881 off at its look due 47.909035, its block and attack freed at once, its
+    /// reaction wait from 0x6f49a6b8, its end due 48.028042.  (Provisional: the attack
+    /// on one in reach.)  The block and the attack go as the main tick ends
+    /// (`World::free_as_tick_ends`).
+    fn reach_tried(&mut self, h: u32, at: f64, top: u32) {
+        use crate::efloat as ef;
+        let t = self.unit(h).map_or(0, |u| u.extra.acquired);
+        if self.reaches_now(h, t, at) {
+            self.tags.doom(top);
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.first_swing_at = Some(at);
+            }
+            return;
+        }
+        self.free_as_tick_ends(top, at);
+        let attack = self.unit_mut(h).and_then(|u| if u.extra.attack_tasks.last().is_some_and(|t| t.1 == ATTACK) { u.extra.attack_tasks.pop() } else { None });
+        if let Some((s, _)) = attack {
+            self.free_as_tick_ends(s, at);
+        }
+        let draw = self.rand_data.streams[crate::rng::stream::REACTION].real(0.0, 1.0);
+        let wait = ef::mul(draw.to_bits(), self.misc_f32("ReactionDelay", 0.25).to_bits());
+        let due = f32::from_bits(ef::add((at as f32).to_bits(), wait)) as f64;
+        log::trace!("{h} reacts to {t} from {at:.6}: draw {draw:.6}, due {due:.6}");
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.first_swing_at = None;
+            u.extra.reach_walk = Some(ReachWalk::React { due });
+        }
+    }
+
+    /// An object destroyed by an event on the agent queue due at `at`, freed as that main
+    /// tick ends (traced: the upgrade game's tower's reaction task, its wait ending at
+    /// 48.028042, freed after the region trigger's objects of the step after in the same
+    /// main tick; ending at 48.864094, a main tick before the next step's, freed before
+    /// that step's trigger took its slot).
+    fn free_as_tick_ends(&mut self, s: u32, at: f64) {
+        let kept = ((at - self.clock_wraps as f64 * 300.0) as f32).to_bits();
+        match self.agent_tick(kept).and_then(|t| self.tick_main(t)) {
+            Some(c) => self.tags.doom_at(c, s),
+            None => self.tags.doom(s),
+        }
+    }
+
+    /// A structure's reaction wait done at `at` (event 0xd01af): the task popped, freed
+    /// as the main tick ends, then its walk into range begins (`FUN_6f5fc640`): its
+    /// cluster's goal, cluster, and path made, the goal let go at once, as a walk's; from
+    /// inside its footprint it is blocked from the start, its count drawn then
+    /// (`FUN_6f167290` → `FUN_6f1689d0`: 7 or 8, `FUN_6f1d62b0(2)` on the main
+    /// generator, its goal far).  Read: the upgrade game's tower at 48.026821 (step
+    /// 0xa41), the only main draw through 48.25; traced, its three objects in turn 481.
+    pub(crate) fn reaction_ended(&mut self, h: u32, at: f64) {
+        let react = self.unit_mut(h).and_then(|u| if u.extra.attack_tasks.last().is_some_and(|t| t.1 == REACT) { u.extra.attack_tasks.pop() } else { None });
+        if let Some((s, _)) = react {
+            self.free_as_tick_ends(s, at);
+        }
+        let goal = self.tags.take(codes::class::CLUSTER_GOAL);
+        let cluster = self.tags.take(codes::class::CLUSTER);
+        let path = self.tags.take(codes::class::PATH);
+        self.tags.release(goal);
+        let r = f32::from_bits((self.rng.next_u32() & 0x7f_ffff) | 0x3f80_0000) - 1.0;
+        let count = 7 + (r * 2.0) as u32;
+        log::trace!("{h} walks into range at {at:.6}: blocked {count}");
+        let serial = self.tags.born;
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.walk_serial = serial;
+            // (Its count's steps, then the one it searches again in, finding nothing
+            // from inside its footprint; measured: a count of 7, its end in the eighth.)
+            u.extra.reach_walk = Some(ReachWalk::Walk { steps: count + 1, path: [path, cluster] });
+        }
+    }
+
+    /// A structure's walk into range in movement step `k`, in its turn among the walkers:
+    /// held, it counts its blocked count down, and as it runs out the walk ends
+    /// (CAbilityMove's event 0xd0198, `FUN_6f603110`): its task popped, a block and two
+    /// tasks 0xd0144 pushed, all freed top first as the step ends, its path and cluster
+    /// at the next step (`Tags::walk_ended`), and its look comes again `LOOK_AFTER_DROP`
+    /// after the step's agent clock (`FUN_6f49d000`).  Measured: the upgrade game's
+    /// tower's walks begun at 48.028042 and 48.427876, each ending in the eighth step
+    /// after, 48.238579 and 48.658562, its looks at 48.248577 and 48.668560 taking the
+    /// creep up again; traced, its walk's ten objects freed in the step's order, its path
+    /// and cluster after the next look's.  False for any other walker.
+    pub(crate) fn reach_walk_step(&mut self, h: u32, k: usize) -> bool {
+        use crate::efloat as ef;
+        let Some(ReachWalk::Walk { steps, path }) = self.unit(h).and_then(|u| u.extra.reach_walk.clone()) else { return false };
+        if steps > 1 {
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.reach_walk = Some(ReachWalk::Walk { steps: steps - 1, path });
+            }
+            return true;
+        }
+        let Some(u) = self.unit_mut(h) else { return true };
+        u.extra.reach_walk = None;
+        let mut tasks = std::mem::take(&mut u.extra.attack_tasks);
+        let serial = u.extra.walk_serial;
+        if tasks.last().is_some_and(|t| t.1 == MOVE_TO) {
+            let (s, _) = tasks.pop().unwrap();
+            self.tags.release_in_step(s);
+        }
+        let pushed: Vec<u32> = [codes::class::TASK_A, codes::class::TASK, codes::class::TASK].iter().map(|c| self.tags.take(c)).collect();
+        for &s in pushed.iter().rev() {
+            self.tags.release_in_step(s);
+        }
+        for &(s, _) in tasks.iter().rev() {
+            self.tags.release_in_step(s);
+        }
+        self.tags.walk_ended(path, serial);
+        let at = self.step_agent.get(k).copied().unwrap_or(0);
+        let due = f32::from_bits(ef::add(at, LOOK_AFTER_DROP.to_bits()));
+        let n = self.tags.start_timer("49d000");
+        let (now, dt) = (self.time_exact, self.tick_dt);
+        log::trace!("{h} gives up its walk at step {k} ({:.6}), looking at {due:.6}", f32::from_bits(at));
+        if let Some(u) = self.unit_mut(h) {
+            u.action = crate::types::Action::Idle;
+            u.extra.first_swing_at = None;
+            u.extra.acquired = 0;
+            // (As the units' logic, still to come this tick, will count it down.)
+            u.acquire_timer = (due as f64 - now) as f32 + dt;
+            u.extra.look_timer = Some((n, due, LOOK_AFTER_DROP));
+        }
+        true
     }
 
     /// The attack's own tasks popped (`FUN_6f497190`): the attack, its reaction wait
@@ -97,6 +262,13 @@ impl World {
     /// and the look for a target again `LOOK_AFTER_DROP` on.  Traced: the Plague Tower's
     /// nine tasks freed in the turn of its last attack, its runner fled.
     pub(crate) fn attack_given_up(&mut self, h: u32, at: f64) {
+        // (A walk into range under way: its path and cluster go with the turn's
+        // releases; provisional.)
+        if let Some(ReachWalk::Walk { path, .. }) = self.unit_mut(h).and_then(|u| u.extra.reach_walk.take()) {
+            for s in path {
+                self.tags.doom(s);
+            }
+        }
         let Some(u) = self.unit(h) else { return };
         let mut tasks = u.extra.attack_tasks.clone();
         self.pop_attack(&mut tasks);

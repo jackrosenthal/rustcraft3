@@ -195,6 +195,24 @@ impl World {
             }
         }
         self.tech_built(owner, g.to);
+        // Its attack looks again 0.01 after (`FUN_6f49d000`, its look's timer restarted)
+        // by the agent queue's clock, which the main tick the upgrade's due falls in has
+        // brought to the next main tick's before its dispatches run (`FUN_6f04c1a0`).
+        // Measured: the upgrade game's Mega Tower of Vengence's upgrade done by its due,
+        // 34.897661, its look restarted at 34.899036 (main tick 6981's clock), then each
+        // half second, its look due 47.909035 taking up a creep.
+        if self.unit(h).is_some_and(|u| !crate::sim::unit_weapons(self, u).is_empty()) {
+            let at = (0..self.tick_clocks.1.len()).filter_map(|i| self.tick_abs(i)).find(|&c| c > g.due as f64).unwrap_or(g.due as f64);
+            let due = f32::from_bits(crate::efloat::add((at as f32).to_bits(), crate::tasks::LOOK_AFTER_DROP.to_bits()));
+            let n = self.tags.start_timer("49d000");
+            // (As the units' logic, still to come this tick, will count it down.)
+            let ahead = if self.after_steps { 0.0 } else { self.tick_dt };
+            let now = self.time_exact;
+            if let Some(u) = self.unit_mut(h) {
+                u.acquire_timer = (due as f64 - now) as f32 + ahead;
+                u.extra.look_timer = Some((n, due, crate::tasks::LOOK_AFTER_DROP));
+            }
+        }
         let sound = format!("UpgradeComplete{}", self.race_label(owner));
         self.requests.push(Request::Completed { unit: h, id: g.to, level: 1, sound });
         self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_UPGRADE_FINISH, EVENT_UNIT_UPGRADE_FINISH, EventCtx::default());

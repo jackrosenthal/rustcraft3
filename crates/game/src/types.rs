@@ -327,7 +327,8 @@ impl Unit {
                 || self.ai_harvest_walk()
                 || self.ai_build_walk()
                 || self.extra.construct_walk.is_some()
-                || self.extra.captain_walk.is_some())
+                || self.extra.captain_walk.is_some()
+                || self.extra.reach_walk.as_ref().is_some_and(|r| r.walking()))
     }
 }
 
@@ -742,6 +743,10 @@ pub struct UnitExtra {
     /// (`World::looks_after_deaths`).
     #[serde(default)]
     pub look_after_death: bool,
+    /// A structure that can move taking up what is out of its reach: its reaction wait,
+    /// then its walk into range from inside its footprint (`crate::tasks`).
+    #[serde(default)]
+    pub reach_walk: Option<crate::tasks::ReachWalk>,
     /// What is left of its pause's order (`World::pause_objects`).
     #[serde(default)]
     pub pause_order: Vec<u32>,
@@ -1179,6 +1184,7 @@ impl Default for UnitExtra {
             first_swing_at: None,
             death_tasks: Vec::new(),
             look_after_death: false,
+            reach_walk: None,
             pause_order: Vec::new(),
             ai_idle_ord: None,
             wander_timer: None,

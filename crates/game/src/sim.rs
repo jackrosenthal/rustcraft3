@@ -1789,6 +1789,7 @@ impl World {
         // the structures' damage points (`World::points_before`).
         self.looks_before(self.step_abs(0).map(|s| s.0));
         if let Some((_, due)) = self.step_abs(0) {
+            self.structure_events_before(due);
             self.points_before(vm, Some(due));
         }
         let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.steps_walker())).collect();
@@ -1816,7 +1817,7 @@ impl World {
             self.tags.free_step_paths(now);
             carried = later;
             // A walk to a structure ends in the walkers' order (`World::gold_run_step_end`).
-            if self.gold_run_step_end(h, 0) || self.coarse_step_arrive(h, 0) || self.acolyte_step_arrive(h, 0) || self.build_step_arrive(vm, h, 0) || self.construct_step_arrive(h) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
+            if self.reach_walk_step(h, 0) || self.gold_run_step_end(h, 0) || self.coarse_step_arrive(h, 0) || self.acolyte_step_arrive(h, 0) || self.build_step_arrive(vm, h, 0) || self.construct_step_arrive(h) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
                 continue;
             }
             // One given before this step (this tick's) walks from the next, one given
@@ -1951,6 +1952,7 @@ impl World {
             self.tags.mark_step(k);
             self.looks_before(self.step_abs(k).map(|s| s.0));
             if let Some((_, due)) = self.step_abs(k) {
+                self.structure_events_before(due);
                 self.points_before(vm, Some(due));
             }
             let now: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 == k).collect();
@@ -2000,7 +2002,7 @@ impl World {
                 let (now, later): (Vec<_>, Vec<_>) = std::mem::take(&mut carried).into_iter().partition(|&(_, s)| s > serial);
                 self.tags.free_step_paths(now);
                 carried = later;
-                if self.gold_run_step_end(h, k) || self.coarse_step_arrive(h, k) || self.acolyte_step_arrive(h, k) || self.build_step_arrive(vm, h, k) || self.construct_step_arrive(h) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
+                if self.reach_walk_step(h, k) || self.gold_run_step_end(h, k) || self.coarse_step_arrive(h, k) || self.acolyte_step_arrive(h, k) || self.build_step_arrive(vm, h, k) || self.construct_step_arrive(h) || !self.unit(h).is_some_and(|u| u.steps_walker()) {
                     continue;
                 }
                 let Some(u) = self.unit(h) else { continue };
@@ -2089,6 +2091,9 @@ impl World {
         // agent queue's reach, its detection made as turn 1552 began).
         let reach = self.tick_clocks.1.len().checked_sub(1).and_then(|i| self.tick_abs(i));
         self.looks_before(reach);
+        if let Some(r) = reach.filter(|_| n > 0) {
+            self.structure_events_before(r);
+        }
         if let Some(left) = self.looks_due.as_mut() {
             self.looks_carried = std::mem::take(left);
         }
@@ -2903,7 +2908,7 @@ impl World {
         }
         let Some(u) = self.unit(h) else { return };
         let Action::Attack { target } = u.action else { return };
-        if u.extra.acquired != target || u.acquire_timer > 0.0 || u.extra.sleeping || unit_weapons(self, u).is_empty() || self.unit(target).is_none_or(|t| t.dead) {
+        if u.extra.acquired != target || u.acquire_timer > 0.0 || u.extra.sleeping || u.extra.reach_walk.is_some() || unit_weapons(self, u).is_empty() || self.unit(target).is_none_or(|t| t.dead) {
             return;
         }
         let (range, creeps) = (u.acquire_range, u.owner == PLAYER_NEUTRAL_AGGRESSIVE);
@@ -2926,6 +2931,82 @@ impl World {
 
     fn find_target(&self, h: u32, range: f32) -> Option<u32> {
         self.find_target_ex(h, range, true)
+    }
+
+    /// Whether a structure's weapons reach `t` at game time `at` (a walker by the
+    /// engine's steps, `World::reaches_walker`; else edge to edge).
+    pub(crate) fn reaches_now(&self, h: u32, t: u32, at: f64) -> bool {
+        let (Some(u), Some(tu)) = (self.unit(h), self.unit(t)) else { return false };
+        let bonus = self.upgrade_bonus(u.owner, u.type_id).range;
+        let d = (tu.x - u.x).hypot(tu.y - u.y) - u.collision - self.reach_radius(t);
+        unit_weapons(self, u).iter().any(|(_, wp)| can_target(self, wp, u, tu) && self.reaches_walker(h, t, wp.range + bonus, at).unwrap_or(d <= wp.range + bonus))
+    }
+
+    /// The structures' idle looks and reaction waits falling due before `until` (an
+    /// agent due, seconds since the game began), taken among the movement steps in the
+    /// order they fall due: each is an event on the agent queue (the look's timer,
+    /// event 0xd01c1, `FUN_6f493ff0`; the reaction's, 0xd01af), as are the steps, and
+    /// each main tick runs that queue's events in turn (`FUN_6f04c1a0`).  Measured: the
+    /// upgrade game's Mega Tower of Vengence's look due 47.909035, after the turn's first
+    /// step (47.908592), its objects before the next step's region trigger's; its look
+    /// due 48.248577 between the turn's second and third.  The rest are the units'
+    /// logic's (`World::update_units`).
+    pub(crate) fn structure_events_before(&mut self, until: f64) {
+        let dt = self.tick_dt;
+        let mut due: Vec<(f64, u32, bool)> = Vec::new();
+        for &h in &self.unit_order {
+            if !self.attacks_in_place(h) {
+                continue;
+            }
+            let Some(u) = self.unit(h).filter(|u| !u.dead && !u.paused && u.constructing.is_none() && !u.extra.sleeping) else { continue };
+            if let Some(crate::tasks::ReachWalk::React { due: d }) = u.extra.reach_walk {
+                if d < until {
+                    due.push((d, h, true));
+                }
+                continue;
+            }
+            if !matches!(u.action, Action::Idle) || u.acquire_timer - dt > 0.0 || unit_weapons(self, u).is_empty() {
+                continue;
+            }
+            let Some((_, d, _)) = u.extra.look_timer else { continue };
+            if (d as f64) < until {
+                due.push((d as f64, h, false));
+            }
+        }
+        due.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for (d, h, react) in due {
+            if react {
+                self.reaction_ended(h, d);
+            } else {
+                self.structure_idle_look(h, dt);
+            }
+        }
+    }
+
+    /// An idle structure's look (as the units' logic's, `World::update_units`), its timer
+    /// counted down for the tick first, as the units' logic will find it.
+    fn structure_idle_look(&mut self, h: u32, dt: f32) {
+        if let Some(u) = self.unit_mut(h) {
+            u.acquire_timer -= dt;
+        }
+        let Some(u) = self.unit(h) else { return };
+        let (range, creeps) = (u.acquire_range, u.owner == PLAYER_NEUTRAL_AGGRESSIVE);
+        if let Some(t) = self.find_target_ex(h, range, creeps) {
+            if let Some(u) = self.unit_mut(h) {
+                u.action = Action::Attack { target: t };
+            }
+            self.acquired(h, t);
+            self.spell_ai(h, t, h);
+            self.look_restarted(h, dt, 0.5);
+            if creeps {
+                self.creeps_join(h, t);
+            }
+        } else {
+            self.acquire_miss(h, dt);
+        }
+        if let Some(u) = self.unit_mut(h) {
+            u.acquire_timer += dt;
+        }
     }
 
     /// Whether the search would find `only` (`find_target_ex`'s tests on it alone).
@@ -2968,6 +3049,9 @@ impl World {
             return None;
         }
         let in_place = self.attacks_in_place(h);
+        // (One that can move all the same takes up what is out of its reach,
+        // `World::moves_to_attack`.)
+        let reaches = in_place && !self.moves_to_attack(h);
         let reach_bonus = self.upgrade_bonus(u.owner, u.type_id).range;
         // (An idle structure's look: its due, and the main clock of the last step before
         // it, this tick's or the last.)
@@ -3018,13 +3102,13 @@ impl World {
                 let o = self.pathing.as_ref().map_or([0.0; 2], |p| p.origin);
                 let (px, py) = (f32::from_bits(px) * crate::pathing::CELL + o[0], f32::from_bits(py) * crate::pathing::CELL + o[1]);
                 d = (px - u.x).hypot(py - u.y) - u.collision.max(1.0) - self.reach_radius(t).max(1.0);
-                if !weapons.iter().any(|(_, wp)| can_target(self, wp, u, tu) && self.reaches_walker(h, t, wp.range + reach_bonus, due) != Some(false)) {
+                if reaches && !weapons.iter().any(|(_, wp)| can_target(self, wp, u, tu) && self.reaches_walker(h, t, wp.range + reach_bonus, due) != Some(false)) {
                     continue;
                 }
             }
             // One that cannot walk takes up only what it reaches (`FUN_6f4959f0`: the
             // weapon's range for a unit `FUN_6f66f030` finds no move for).
-            if in_place && walker.is_none() && !weapons.iter().any(|(_, wp)| can_target(self, wp, u, tu) && d <= wp.range + reach_bonus) {
+            if reaches && walker.is_none() && !weapons.iter().any(|(_, wp)| can_target(self, wp, u, tu) && d <= wp.range + reach_bonus) {
                 continue;
             }
             // Only what the owner can see (a cliff above, the fog) is acquired.
@@ -3540,6 +3624,11 @@ impl World {
                     }
                     if let Some(u) = self.unit_mut(h).filter(|u| u.extra.reaction > 0.0) {
                         u.extra.reaction -= dt;
+                        continue;
+                    }
+                    // (A structure waiting its reaction or held in its walk into range,
+                    // `World::reach_tried`.)
+                    if self.unit(h).is_some_and(|u| u.extra.reach_walk.is_some()) {
                         continue;
                     }
                     // On a target it took up itself it looks again each second (the look

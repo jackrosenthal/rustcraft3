@@ -138,6 +138,9 @@ pub mod stream {
     /// CAbilityAttack vf194 (FUN_6f4993b0): a new armed unit's first look for a target;
     /// an attack's dice (FUN_6f498960) and its missile's miss from below (FUN_6f6d48b0).
     pub const ATTACK: usize = 2;
+    /// An attack's reaction wait (task 0xd0163, `FUN_6f49ea80`): ReactionDelay times a
+    /// real from 0 to 1.
+    pub const REACTION: usize = 9;
     /// A structure's alarm (CAbilityAlarm vf32, FUN_6f41ae70): the wait before it starts
     /// watching for enemies (event 0xd01c1, FUN_6f436510).
     pub const ALARM: usize = 21;

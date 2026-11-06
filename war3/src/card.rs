@@ -213,6 +213,17 @@ impl Commands {
         Some(Button::new(x, y, db.decorate(&art), self.profile.get_str(name, "Hotkey").and_then(|h| hotkey(&h)), action, enabled).with_tip(tip, uber, [0; 4]))
     }
 
+    /// The card while a target or a structure's place is awaited: Cancel alone.  The
+    /// bar is refilled for the input mode on top (FUN_6f3c6c40, each unit's abilities
+    /// told the mode, FUN_6f67e4c0), and abilities show their buttons only in the one
+    /// they belong to: Move and Attack only in the select mode (CAbilityMove::vf112,
+    /// CAbilityAttack::vf112), a spell only in its own, the select mode or its book's
+    /// (FUN_6f430a00).  (Provisional: where the Cancel shown comes from is not yet
+    /// read.)
+    pub fn aiming_card(&self, db: &w3_ui::FrameDb) -> Vec<Button> {
+        self.command(db, "CmdCancel", Action::Cancel, true).into_iter().collect()
+    }
+
     /// A shop's goods for the local player: items, hired units, and revivals.  A good is
     /// unavailable out of the shop's reach, before it first arrives (COOLDOWNSTOCKTOOLTIP),
     /// or sold out (OUTOFSTOCKTOOLTIP) (FUN_6f3fe0f0, CAbilitySellUnit::vf166); gold and
@@ -485,7 +496,10 @@ impl Commands {
             out.extend(self.command(db, "CmdCancel", Action::Cancel, true));
             return out;
         }
-        if u.constructing.is_some() {
+        // A structure being built or upgraded has its cancel alone (the in-progress
+        // abilities' vf108, FUN_6f42a3c0, CAbilityBuildInProgress's and
+        // CAbilityUpgradeInProgress's alike: order 0xd0008, CmdCancelBuild).
+        if u.constructing.is_some() || u.extra.upgrading.is_some() {
             out.extend(self.command(db, "CmdCancelBuild", Action::CancelTrain, true));
             return out;
         }
@@ -504,6 +518,17 @@ impl Commands {
             if artillery {
                 out.extend(self.command(db, "CmdAttackGround", Action::Order { order: "attackground", targeted: true }, true));
             }
+        } else if w3_game::sim::weapon(w, u.type_id).is_some() {
+            // An armed unit that does not move (a tower) has its attack's buttons alone:
+            // Attack Ground for an artillery weapon, then Attack and Stop
+            // (CAbilityAttack::vf112, FUN_6f49c550, which adds them whether the unit
+            // moves or not).
+            let artillery = w3_game::sim::unit_weapons(w, u).iter().any(|(_, wp)| wp.weapon_type == "artillery" || wp.weapon_type == "aline");
+            if artillery {
+                out.extend(self.command(db, "CmdAttackGround", Action::Order { order: "attackground", targeted: true }, true));
+            }
+            out.extend(self.command(db, "CmdAttack", Action::Order { order: "attack", targeted: true }, true));
+            out.extend(self.command(db, "CmdStop", Action::Order { order: "stop", targeted: false }, true));
         }
         // Every hero shows Hero Abilities, points or not (CAbilityHero::vf108); its
         // skills are dimmed while none can be learned.  The original leaves out units

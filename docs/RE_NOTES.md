@@ -279,6 +279,40 @@ original images.
   Buttonpos, all show in a builder's menu (Mafarazzo TD's peasant: Poison, Ice, and
   HSBC Towers all ask for 3,0).  A unit type without a Buttonpos (a sheep, nshe) asks
   for 0,0 (provisional: the field's default).
+- The command bar is refilled for the input mode on top (`FUN_6f3c6c40`: the selected
+  units' abilities told the mode through `FUN_6f67e4c0`, `FUN_6f67e570`, vf112 and
+  vf113).  Move and Attack add theirs only in the select mode (`CAbilityMove::vf112`
+  `FUN_6f5fee80`, `CAbilityAttack::vf112` `FUN_6f49c550`, `param_2 == 0`), a spell only
+  in the select mode or its own or its book's (`FUN_6f430a00`); so while a target or a
+  structure's place is awaited (`CTargetMode`, `CBuildMode`) the card holds Cancel
+  alone (`CmdCancel`, order 0xd0007, `FUN_6f40d100`; provisional: which ability adds it
+  in those modes is not read).
+- `CAbilityAttack::vf112` adds Attack (0xd000f) and Stop (0xd0004), and Attack Ground
+  (0xd0010) for an artillery weapon, whether the unit moves or not: an armed tower shows
+  them.  The in-progress abilities' vf108 (`FUN_6f42a3c0`, `CAbilityBuildInProgress`
+  and `CAbilityUpgradeInProgress` alike) add `CmdCancelBuild` (0xd0008) alone.
+- A structure's place clicked (`FUN_6f3e0790` → `FUN_6f3e13a0`) is checked there
+  (`FUN_6f66f050`); refused, the mode goes on and `FUN_6f36d390` shows the error
+  (`FUN_6f370da0`: 0x44 Cantplace, 0x46 Outofbounds, 0x47 Tooclosetomine, 0x48
+  Tooclosetohall, 0x49 Buildingblocked) with InterfaceError (but for a Night Elf
+  builder, race 4) and `CantPlaceSound` (CantPlaceHuman, ...) for 0x44 and 0x47.  A place
+  taken ends the mode with `PlaceBuilding` for the race (`0x6fac2ecc`).  (Provisional:
+  the port refuses with Cantplace alone.)
+- A unit's tip names another player's unit's owner (`FUN_6f3d16c0`, owner below 12 and
+  not the local player) in the color of the local player's standing toward it
+  (`FUN_6f376e60` → `FUN_6f340400`): the owner sharing control with the local player
+  (alliance type 6, the record's +0x98 = 0x38 + 16 × 6, as GetPlayerAlliance `0x6f2016a0`
+  reads it) in `UI\MiscData.txt [SelectionCircle] ColorFriend`, one the local player is
+  not passive toward in `ColorEnemy`, others and all to an observer (the player's
+  +0xf0, provisional) in `ColorNeutral` (each A,R,G,B; loaded by `FUN_6f3535d0`).  The
+  original's Mafarazzo TD capture names a creep's owner "Enemy" in red.
+- Health bars, unit tips, and text tags are placed in the interface's own space, laid
+  out at 4:3 and stretched across a wider screen (as the pointer maps to it); the
+  original's capture at 16:9 has a creep's tip and bar over its head.
+- Script dialog and game menu buttons (`EscMenuButtonTemplate`) light under the pointer
+  with their `ControlMouseOverHighlight`, `EscMenuButtonMouseOverHighlight` decorated
+  through war3skins (`DecorateFileNames`), added; the original's defeat dialog capture
+  shows it on Quit Campaign.
 
 ## Glue screens
 

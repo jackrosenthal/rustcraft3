@@ -1402,7 +1402,10 @@ impl FrameTree {
                 if f.hovered && f.enabled {
                     if let Some(h) = d.str("ControlMouseOverHighlight").and_then(|n| f.children.iter().map(|&c| &self.frames[c]).find(|c| c.def.name == n)) {
                         if let Some(tex) = h.def.str("HighlightAlphaFile") {
-                            out.push(Draw::Image { texture: tex.to_string(), rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: Blend::Add, rotated: false });
+                            // A skin name under DecorateFileNames (the menus' and script
+                            // dialogs' EscMenuButtonMouseOverHighlight).
+                            let texture = if h.def.has("DecorateFileNames") { db.decorate(tex) } else { tex.to_string() };
+                            out.push(Draw::Image { texture, rect: r, uv: [0.0, 0.0, 1.0, 1.0], color: [1.0; 4], blend: Blend::Add, rotated: false });
                         }
                     }
                 }

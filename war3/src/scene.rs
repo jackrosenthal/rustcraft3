@@ -1440,6 +1440,7 @@ impl Scene {
             "Nolumber" => format!("NoLumber{race_name}"),
             "Nofood" => format!("NoFood{race_name}"),
             "Nomana" => format!("NoMana{race_name}"),
+            "Cantplace" => format!("CantPlace{race_name}"),
             _ => "InterfaceError".to_string(),
         };
         self.ui_sound(&label);
@@ -2036,10 +2037,14 @@ impl Scene {
         }
         let all = self.alt_held || self.options.healthbars;
         let hovered = if all { None } else { self.pick_unit(self.cursor.0, self.cursor.1, size) };
-        if self.over_console(self.cursor.0, self.cursor.1, size) && !all {
+        // Nothing in the world is pointed at under the console or while a window over
+        // it is open.
+        if (self.over_console(self.cursor.0, self.cursor.1, size) || self.window_open()) && !all {
             return Vec::new();
         }
-        let width = w3_ui::UI_HEIGHT * (size.0 as f32 / size.1.max(1) as f32).max(4.0 / 3.0);
+        // The interface's width, which its draws span across the screen (laid out at
+        // 4:3 and stretched, FrameTree::new), as the pointer maps to it (`to_ui`).
+        let width = self.hud.as_ref().map_or(w3_ui::UI_WIDTH, |h| h.tree.width);
         let factor = w.misc.get_str("SelectionCircle", "ScaleFactor").and_then(|v| v.trim().parse().ok()).unwrap_or(72.0) * 0.0005;
         let fill = db.decorate("SimpleHpBarConsoleSmall");
         let mut out = Vec::new();
@@ -2128,9 +2133,9 @@ impl Scene {
     }
 
     /// The lines of a unit's tip (FUN_6f3d16c0): another player's unit names its owner
-    /// in the owner's color; a hero gives its proper name and LEVEL, a hostile neutral
-    /// its type and LEVEL, a gold mine its type and COLON_GOLD (FUN_6f3d65c0), and a
-    /// neutral passive structure its type.
+    /// in the color of the owner's standing (FUN_6f376e60); a hero gives its proper name
+    /// and LEVEL, a hostile neutral its type and LEVEL, a gold mine its type and
+    /// COLON_GOLD (FUN_6f3d65c0), and a neutral passive structure its type.
     fn unit_tip_lines(&self, w: &w3_game::World, h: u32) -> Vec<(String, [f32; 4])> {
         let mut out = Vec::new();
         let Some(u) = w.unit(h) else { return out };
@@ -2138,8 +2143,7 @@ impl Scene {
         if u.owner != w.local_player && u.owner < 12 {
             let p = &w.players[u.owner as usize];
             if !p.name.is_empty() {
-                let c = self.team_rgb[p.color as usize % 16];
-                out.push((p.name.clone(), [c[0], c[1], c[2], 1.0]));
+                out.push((p.name.clone(), Self::standing_color(w, u.owner)));
             }
         }
         let type_name = w.objects.units.get(u.type_id).map(|o| o.str("Name")).unwrap_or_default();
@@ -2164,6 +2168,31 @@ impl Scene {
         out
     }
 
+    /// How the local player stands toward a player, as a unit tip names its owner
+    /// (FUN_6f340400): an owner sharing control with the local player in UI\MiscData.txt
+    /// [SelectionCircle] ColorFriend, one the local player is not allied (passive)
+    /// toward in ColorEnemy, others and every player to an observer in ColorNeutral
+    /// (each alpha, red, green, blue).  So Mafarazzo TD's creeps name "Enemy" in red.
+    fn standing_color(w: &w3_game::World, owner: u8) -> [f32; 4] {
+        // ALLIANCE_SHARED_CONTROL, the alliance flag the owner's record gives the local
+        // player (+0x98 of the record, 0x38 + 16 x 6).
+        const SHARED_CONTROL: usize = 6;
+        let me = w.local_player;
+        let observer = w.players.get(me as usize).is_some_and(|p| p.get_state(w3_game::types::player_state::OBSERVER) != 0);
+        let shares = w.players.get(owner as usize).is_some_and(|p| p.alliances[me as usize][SHARED_CONTROL]);
+        let allied = w3_game::natives::players::is_ally(w, me, owner);
+        let key = match (observer, shares, allied) {
+            (false, true, _) => "ColorFriend",
+            (false, false, false) => "ColorEnemy",
+            _ => "ColorNeutral",
+        };
+        let v: Vec<f32> = w.misc.get_list("SelectionCircle", key).iter().filter_map(|s| s.trim().parse().ok()).collect();
+        match v.as_slice() {
+            [a, r, g, b] => [r / 255.0, g / 255.0, b / 255.0, a / 255.0],
+            _ => [1.0; 4],
+        }
+    }
+
     /// Text tags (CTextTagManager, 0x6f9a1040): each at its projected world position plus
     /// velocity times age, left-aligned, with a black shadow, fading after the fade point.
     /// Their units span the 4:3 screen as 1 by 0.75, so one is 0.8 interface units
@@ -2174,7 +2203,9 @@ impl Scene {
         if self.hud.as_ref().is_some_and(|h| h.cinematic) {
             return Vec::new();
         }
-        let width = w3_ui::UI_HEIGHT * (size.0 as f32 / size.1.max(1) as f32).max(4.0 / 3.0);
+        // The interface's width, which its draws span across the screen (laid out at
+        // 4:3 and stretched, FrameTree::new), as the pointer maps to it (`to_ui`).
+        let width = self.hud.as_ref().map_or(w3_ui::UI_WIDTH, |h| h.tree.width);
         let font = db.decorate("MasterFont");
         let mut out = Vec::new();
         let script_tags = w.handles.iter().filter_map(|(_, o)| if let w3_game::types::Obj::TextTag(t) = o { Some(&**t) } else { None });
@@ -2840,12 +2871,29 @@ impl Scene {
             self.order_ack();
             return true;
         }
-        if let Some(id) = self.placing.take() {
+        if let Some(id) = self.placing {
             let Some((x, y)) = self.ground_at(sx, sy, size) else { return true };
-            if let Some(g) = self.game.as_mut() {
-                let (x, y) = g.world.snap_placement(id, x, y);
-                if let Some(&worker) = self.selection.first() {
-                    g.apply(w3_game::replay::Command::Build { worker, id, x, y });
+            let Some(g) = self.game.as_mut() else { return true };
+            let (x, y) = g.world.snap_placement(id, x, y);
+            // A place the structure cannot take is refused there, the placing going on:
+            // the interface's error sound (but for a Night Elf builder) and Cantplace,
+            // with the race's CantPlaceSound (FUN_6f3e13a0 checking with FUN_6f66f050,
+            // FUN_6f36d390).  (Provisional: Cantplace for every refusal; the check's
+            // other errors, Outofbounds, Tooclosetomine, and the like, are not read.)
+            if !g.world.can_place(id, x, y) {
+                let elf = g.world.players.get(g.world.local_player as usize).is_some_and(|p| p.race == 4);
+                if !elf {
+                    self.ui_sound("InterfaceError");
+                }
+                self.error("Cantplace");
+                return true;
+            }
+            // The placing ends; a cost the player cannot meet is told then (the builder's
+            // check, vf0x244, its error shown and the mode left).
+            self.placing = None;
+            if let Some(&worker) = self.selection.first() {
+                if let Err(e) = g.apply(w3_game::replay::Command::Build { worker, id, x, y }).ok() {
+                    self.error(e);
                 }
             }
             return true;
@@ -3298,7 +3346,8 @@ impl Scene {
         let p = self.to_ui(sx, sy, size);
         if let Some(h) = self.hud.as_mut() {
             h.pointer = p;
-            if let Some(m) = h.menu.as_mut().filter(|_| self.menu_drag) {
+            // The menu's buttons light under the pointer; a slider held follows it.
+            if let Some(m) = h.menu.as_mut() {
                 m.pointer_move(p.0, p.1);
             }
             if let Some(s) = h.save_panel.as_mut() {
@@ -3310,7 +3359,18 @@ impl Scene {
             if let Some(l) = h.log_view.as_mut() {
                 l.pointer_move(p.0, p.1);
             }
+            // A script dialog's buttons light under the pointer (their
+            // ControlMouseOverHighlight, as the original's defeat dialog shows).
+            if let Some(d) = h.dialog.as_mut() {
+                d.tree.pointer_move(p.0, p.1);
+            }
         }
+    }
+
+    /// Whether a window over the world takes the pointer: a script dialog, the game
+    /// menu, the quest or message log, or the Allies or chat dialog.
+    fn window_open(&self) -> bool {
+        self.hud.as_ref().is_some_and(|h| h.dialog.is_some() || h.menu.is_some() || h.quests.is_some() || h.log_view.is_some() || h.alliance.is_some() || h.chat_dialog.is_some())
     }
 
     /// A key press: command card hotkeys and Escape.
@@ -4513,7 +4573,12 @@ impl Scene {
         hud.show_item(item.as_ref().map(|(n, d)| (n.as_str(), d.as_str())));
         let w = &g.world;
         let page = hud.page;
-        hud.card = self.selection.first().map_or_else(Vec::new, |&h| card_of(&self.commands, db, w, h, page));
+        let aiming = self.targeting.is_some() || self.placing.is_some() || self.item_target.is_some();
+        hud.card = match self.selection.first() {
+            Some(_) if aiming => self.commands.aiming_card(db),
+            Some(&h) => card_of(&self.commands, db, w, h, page),
+            None => Vec::new(),
+        };
         hud.show_group(&g.world, &self.selection);
         hud.sync_cinematic(db, &g.world, aspect);
         hud.sync_heroes(db, &g.world);
@@ -4572,6 +4637,9 @@ impl Scene {
     /// The selected unit's command card, as the interface would show it.
     pub fn card_now(&self, db: &w3_ui::FrameDb) -> Vec<crate::card::Button> {
         let (Some(g), Some(&h)) = (self.game.as_ref(), self.selection.first()) else { return Vec::new() };
+        if self.targeting.is_some() || self.placing.is_some() || self.item_target.is_some() {
+            return self.commands.aiming_card(db);
+        }
         let page = self.hud.as_ref().map_or(crate::card::Page::Main, |h| h.page);
         card_of(&self.commands, db, &g.world, h, page)
     }
@@ -5171,7 +5239,7 @@ impl Scene {
                     self.cursor_model = Some(ModelInstance::new(m));
                 }
             }
-            let over_unit = self.screen.0 > 0 && self.pick_unit(self.cursor.0, self.cursor.1, self.screen).is_some();
+            let over_unit = self.screen.0 > 0 && !self.window_open() && self.pick_unit(self.cursor.0, self.cursor.1, self.screen).is_some();
             let targeting = self.targeting.is_some() || self.item_target.is_some();
             let held_icon = self.held_item.and_then(|(u, slot)| {
                 let g = self.game.as_ref()?;

@@ -293,6 +293,23 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("left click consumed: {consumed}");
                 i += 3;
             }
+            // lclickw, rclickw, hoverw <x> <y>: a left click, a right click, or the
+            // pointer at the screen point showing a map point (on the ground there).
+            "lclickw" | "rclickw" | "hoverw" => {
+                let (x, y) = (num(&a[i + 1]), num(&a[i + 2]));
+                let z = scene.game.as_ref().map_or(0.0, |g| g.world.ground_z(x, y));
+                match scene.project(glam::Vec3::new(x, y, z), (w, h)) {
+                    Some((sx, sy)) => {
+                        match a[i].as_str() {
+                            "lclickw" => eprintln!("left click at ({sx:.0}, {sy:.0}) consumed: {}", scene.left_click(sx, sy, (w, h))),
+                            "rclickw" => scene.command(sx, sy, (w, h)),
+                            _ => scene.hover(sx, sy, (w, h)),
+                        }
+                    }
+                    None => eprintln!("{} {x} {y}: off the screen", a[i]),
+                }
+                i += 3;
+            }
             // chatdialog: as in a network game, opens the chat dialog, to look at.
             "chatdialog" => {
                 if let Some(g) = scene.game.as_mut() {

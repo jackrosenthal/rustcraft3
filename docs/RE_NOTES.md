@@ -5971,6 +5971,18 @@ Formats the port made its own, to be replaced by the original's:
   as a structure is begun (`World::build`, with its Build In Progress; provisional:
   why, the abilities read as disabled while it builds).  The keepalives agree to turn
   302, from 178.
+- A training falling due in one of a turn's main ticks after its first is done there,
+  after the computers' threads due before it.  Read (`GetPlayerState` and
+  `SetProduce` at 29.75 to 30.25, Twisted Meadows' night elf computer's game): its
+  thread at 30.095949 (the turn's first main tick) reads 250 gold and 60 lumber and
+  asks for a wisp (`SetProduce(1, 'ewsp', -1)`) while its Tree of Life still trains
+  one, due 30.098299, so its build loop stops there (common.ai's `OneBuildLoop`, a
+  `StartUnit` refused) and no Ancient of War is asked for (no `FUN_6f9cb7c0` from 29.9
+  to 30.7).  The port had made the wisp as the turn began, before that thread, its
+  Tree of Life then idle and the Ancient of War begun at 30.1; it now runs the threads
+  due before a training's main tick first (`World::train_before_steps`).  The
+  keepalives agree to turn 304, from 302, the objects to 346 (next: at turn 347 the
+  original's structure begun, the port's at 348).
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

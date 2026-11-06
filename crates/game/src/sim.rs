@@ -4551,6 +4551,23 @@ impl World {
             }
             let dt = if self.cheat(crate::cheats::flag::FAST_BUILD) { dt * crate::cheats::FAST } else { dt };
             self.start_production(vm, h);
+            // A training falling due in a main tick after the turn's first, the
+            // computers' threads due before that tick run first (read, each
+            // `GetPlayerState` and `SetProduce` and the training's objects: Twisted
+            // Meadows' night elf computer's thread at 30.095949, its wisp asked for while
+            // the Tree of Life still trained one, due 30.098299, so no Ancient of War
+            // asked for after it; the port had made the wisp first).
+            let due = self.unit(h).and_then(|u| {
+                let build_time = u.queue.first().and_then(|&id| self.objects.units.get(id)).map_or(1.0, |o| o.real("bldtm")).max(0.01);
+                u.extra.train_due.filter(|_| u.queue_progress + dt >= build_time - 1e-3)
+            });
+            if let Some(d) = due {
+                let n = self.tick_clocks.1.len();
+                if let Some(i) = (1..n).find(|&i| self.tick_abs(i).is_some_and(|c| c + 1e-6 >= d)) {
+                    let t = self.tick_clocks.0 + i as i64;
+                    self.ai_threads_to(((t - 1) as f64 * 0.005) as f32, Some(t));
+                }
+            }
             let doomed = self.tags.doomed.len();
             self.update_training(vm, h, dt);
             // (What a unit made as the turn begins lets go goes then, before the turn's

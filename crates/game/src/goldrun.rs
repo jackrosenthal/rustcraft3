@@ -303,8 +303,8 @@ impl World {
         let lumber = self.is_tree_pub(mine);
         let wisp = self.ability_with_code(h, codes::ability::WISP_HARVEST).is_some();
         // (A wisp the AI sends to wood keeps to its old harvest: the AI's order's objects
-        // are not yet read for one.)
-        if wisp && lumber && self.run_order_made.is_some() {
+        // are not yet read for one.  The tree it is sent to as it is made it walks to.)
+        if wisp && lumber && self.run_order_made.is_some() && !self.run_setup {
             if let Some(u) = self.unit_mut(h) {
                 u.extra.gold_run = None;
             }
@@ -450,6 +450,11 @@ impl World {
         // new walk does, read: Twisted Meadows' night elf computer's wisp re-ordered by
         // its AI at 0.1, entering as turn 3 begins.)
         u.extra.arrive_step = None;
+        // (Its order's path is a new one, its searches' spacing not yet begun
+        // (`FUN_6f168910`'s +0x7c, the path's): read, Twisted Meadows' night elf
+        // computer's wisps, each searching at 0.03 and again under its AI's order at 0.12,
+        // their budget's use past 64.)
+        u.extra.search_at = None;
         // (A new walk waits on no one's old give-way: read, the human computer's
         // fourth peasant, held by the second at 0.03 for four steps, moving at 0.12
         // under its AI's new order.)
@@ -1293,6 +1298,21 @@ impl World {
     /// ordered by script, over LAN with the original, at trees 580 and 466 away where
     /// nearer ones stood).  Provisional: the costs, read only so far as the choices.
     pub(crate) fn auto_tree(&self, h: u32) -> Option<u32> {
+        self.cheapest_tree(h, true)
+    }
+
+    /// The tree a computer's wisp is sent to as it is made (its AI's first order, the
+    /// harvest it carries out until its AI's first pass): the cheapest as `auto_tree`
+    /// judges it, fog or none (read: Twisted Meadows' night elf computer's five wisps
+    /// walking from 0.03 for trees at (156, 170), (160, 170), (148, 198), (160, 170),
+    /// and (148, 198) in cells, each a cheapest of its own by the port's plans; for the
+    /// fourth a tie, the port's order's first being (156, 170); provisional: why the
+    /// original's AI sends them to wood).
+    pub(crate) fn ai_setup_tree(&self, h: u32) -> Option<u32> {
+        self.cheapest_tree(h, false)
+    }
+
+    fn cheapest_tree(&self, h: u32, seen: bool) -> Option<u32> {
         let u = self.unit(h)?;
         let (fx, fy, owner) = (u.x, u.y, u.owner);
         let p = self.pathing.as_ref()?;
@@ -1302,7 +1322,7 @@ impl World {
             .iter()
             .enumerate()
             .filter(|&(_, &d)| self.is_tree_pub(d) && !self.footprint(d).is_empty())
-            .filter_map(|(i, &d)| self.widget_pos(d).filter(|&(x, y)| (x - fx).hypot(y - fy) <= 2000.0 && self.fog_state(x, y, owner) == crate::fog::FOG_VISIBLE).map(|(x, y)| (i, d, block(x, y))))
+            .filter_map(|(i, &d)| self.widget_pos(d).filter(|&(x, y)| (x - fx).hypot(y - fy) <= 2000.0 && (!seen || self.fog_state(x, y, owner) == crate::fog::FOG_VISIBLE)).map(|(x, y)| (i, d, block(x, y))))
             .collect();
         trees.sort_by(|a, b| a.2.cmp(&b.2).then(b.0.cmp(&a.0)));
         let acc = |w: f32, o: f32| (w - o) / 64.0;

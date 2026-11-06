@@ -1311,11 +1311,18 @@ impl crate::world::World {
                 self.tags.walk_ended([slots[g + n - 1], slots[g + n - 2]], serial);
             }
         }
-        // The worker walks to its mine on its second harvest's objects.
+        // The worker walks to its mine on its second harvest's objects; a wisp to a tree
+        // (`World::ai_setup_tree`: read, Twisted Meadows' night elf computer's five
+        // searching from 0.03 to trees, each to the mine only from its AI's first pass at
+        // 0.1, the first turning in place toward its way's first node till then).
         if let Some(r) = ai_gold_run {
             if let Some(mine) = ai_mine {
+                let wisp = self.ability_with_code(h, codes::ability::WISP_HARVEST).is_some();
+                let mine = if wisp { self.ai_setup_tree(h).unwrap_or(mine) } else { mine };
                 self.run_order_made = Some(slots[r..r + n].to_vec());
+                self.run_setup = true;
                 self.start_gold_run(h, mine, false);
+                self.run_setup = false;
                 self.run_order_made = None;
                 if let Some(u) = self.unit_mut(h) {
                     u.order = crate::types::Order { id: crate::natives::basic::order_id("harvest"), target_x: 0.0, target_y: 0.0, target: mine };

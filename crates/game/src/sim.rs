@@ -935,7 +935,7 @@ impl World {
         let mask = u.region_mask();
         for &o in &self.unit_order {
             let Some(v) = self.unit(o).filter(|v| o != h && !v.dead && !v.hidden && !v.is_building && v.collision > 0.0 && (v.x - u.x).abs() < 2048.0 && (v.y - u.y).abs() < 2048.0) else { continue };
-            if v.engine_walker() && (v.extra.stopped_between || v.extra.mover.is_some_and(|m| m.vx & 0x7fff_ffff != 0 || m.vy & 0x7fff_ffff != 0)) || v.region_flags() & mask == 0 {
+            if v.engine_walker() && v.extra.mover.is_some_and(|m| m.vx & 0x7fff_ffff != 0 || m.vy & 0x7fff_ffff != 0) || v.region_flags() & mask == 0 {
                 continue;
             }
             if self.move_kind(o) == crate::pathing::Move::Fly {
@@ -1024,11 +1024,10 @@ impl World {
         if let Some(m) = u.extra.mover.as_mut() {
             (m.x, m.y, m.vx, m.vy, m.placed_at) = (x, y, 0, 0, clock);
         }
-        // Others' searches before its next step still take it as moving (read: the
-        // human computer's peasants stopped for its AI's orders at 0.1, the second's
-        // search at 0.12 meeting none of the others' regions, straight to its way's end
-        // at (161, 185)).
-        u.extra.stopped_between = true;
+        // Its velocity so set to none, its region is no longer a mover's to others'
+        // searches (`FUN_6f1606e0` clears its +0x40's 0x20000000; read: Twisted Meadows'
+        // night elf computer's wisp stopped by its AI's order at 0.1 turning another's
+        // search at 0.12 aside, round the north of the mine).
     }
 
     pub(crate) fn local_path(&self, h: u32, goal: (f32, f32)) -> Option<(Vec<(f32, f32)>, Option<(i32, i32)>, u32)> {
@@ -2135,9 +2134,6 @@ impl World {
     /// stops when nothing nearer is found.  Notes whether it stopped in the last step.
     fn walk_steps(&mut self, h: u32) -> bool {
         use crate::efloat as ef;
-        if let Some(u) = self.unit_mut(h) {
-            u.extra.stopped_between = false;
-        }
         let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return true };
         let f = |v: f32| v.to_bits();
         let cell = |w: f32, o: f32| ef::div(ef::sub(f(w), f(o)), f(crate::pathing::CELL));
@@ -2195,6 +2191,7 @@ impl World {
             log::trace!("walker {h} at {:.6} {:.6} v {:.6} {:.6} hd {:.6} clock {:.6}", f32::from_bits(m.x), f32::from_bits(m.y), f32::from_bits(m.vx), f32::from_bits(m.vy), f32::from_bits(m.heading), f32::from_bits(c));
         }
         let mut done = None;
+        let mut faced = None;
         // A goal within reach as the walk starts: its order's objects go at its first
         // step (traced: before the turn's logic), and it turns toward the goal until
         // its heading is on it, the walk then done (read: a sheep 0.81 off its goal's
@@ -2292,6 +2289,24 @@ impl World {
                 continue;
             }
             let Some(&next) = self.unit(h).and_then(|u| u.path.first()) else {
+                // A walk to the mine whose search found its walker beside the mine's
+                // footprint (a way of its own cell alone) is in contact from its first
+                // step (the provider's 3, `FUN_6f167290`, the walker's +0xd8 0x10000 from
+                // `FUN_6f171060`): it turns toward the mine's middle, a turn a step, and
+                // is there once its heading is within 0.2 of it as a step begins
+                // (`FUN_6f16e910`), going in then (read: Twisted Meadows' night elf
+                // computer's first wisp, re-ordered to its mine at 0.1 heading 0.2292,
+                // 2.644 off the mine's bearing, on it after the turn at 0.24, in at 0.27;
+                // a night elf start's nearest wisp sent by script, 2.29 off, searched at
+                // 2.01, in at 2.13).
+                if let (true, Some(g)) = (self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).is_some_and(|r| r.phase == crate::goldrun::Phase::ToMine && !r.lumber), goal) {
+                    let to = (cell(g.0, origin[0]), cell(g.1, origin[1]));
+                    if m.face(&gait, to, clock) == crate::motion::Step::Reached || m.faces(to, clock) {
+                        faced = Some(k);
+                        break;
+                    }
+                    continue;
+                }
                 done = Some(k);
                 break;
             };
@@ -2398,14 +2413,23 @@ impl World {
             u.extra.step_from = Some(was);
         }
         u.facing = f32::from_bits(m.heading).to_degrees();
+        // (Turned onto its mine beside it: there as the next step begins, above.)
+        if let Some(k) = faced {
+            let next = self.step_index + k as u64 + 1;
+            log::debug!("walk of {h} faces its mine at step {k} of {n}, there at step {next}");
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.mover = None;
+                u.extra.step_from = None;
+                u.path.clear();
+                u.extra.arrive_step = Some(next);
+                set_anim(u, "stand");
+            }
+            return false;
+        }
         if let Some(k) = done {
             log::debug!("walk of {h} done at step {k} of {n}, time {:.3}, tsk. {:?}", self.time, self.unit(h).and_then(|u| u.extra.order_tags.get(7).copied()));
-            // A walk to the mine whose search found its walker beside the mine's
-            // footprint (a way of its own cell alone) ends there, arrived in the next
-            // tick's second step (read: a night elf start's nearest wisp, sent to its
-            // entangled mine by script over LAN at the turn's start, its mine's count
-            // changed at 2.129995, that step's clock, its path freed in that turn;
-            // provisional: which step, read once).
+            // Another walk to the mine done with its way used up ends there too, arrived
+            // in the next tick's second step (provisional; an own cell's turns, above).
             if self.unit(h).and_then(|u| u.extra.gold_run.as_ref()).is_some_and(|r| r.phase == crate::goldrun::Phase::ToMine && !r.lumber) {
                 let next = self.step_index + n as u64 + 1;
                 if let Some(u) = self.unit_mut(h) {

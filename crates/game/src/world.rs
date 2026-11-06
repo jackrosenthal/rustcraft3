@@ -300,6 +300,10 @@ pub struct World {
     /// `World::start_gold_run`).
     #[serde(skip)]
     pub run_auto: bool,
+    /// The run starts as a computer's wisp is made, on its tree (`World::ai_setup_tree`):
+    /// its AI's own harvest's objects, made with the wisp's.
+    #[serde(skip)]
+    pub run_setup: bool,
     /// Covering mines whose first payout pair waits for the step's end
     /// (`World::wisp_enter`).
     #[serde(default)]
@@ -1011,6 +1015,7 @@ impl World {
             making_clock: None,
             run_order_made: None,
             run_auto: false,
+            run_setup: false,
             pending_pairs: Vec::new(),
             paying_last: false,
             first_tick_done: false,

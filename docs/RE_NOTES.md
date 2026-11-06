@@ -4044,8 +4044,7 @@ Formats the port made its own, to be replaced by the original's:
   test has no contact answer and sets the first wisp waiting at 0.09 where the
   original's fourth wisp moves freely.  In Booty Bay's scripted start the provider is
   not called at all for the wisps' walks (none from 2.0 to 5.0), so those take
-  another steering path.  Not yet modeled: the port re-searches at the re-order and
-  the keepalives differ from turn 4 (its first wisp in at 0.24).
+  another steering path.  (Modeled since, below: the keepalives agree to turn 12.)
 - The provider as read (`FUN_6f165c60`): the walker's next point (`FUN_6f167ce0`);
   within 0.49 of it, the next, or at its way's last, `FUN_6f167290` (`FUN_6f167070`);
   short of it, the cells a step toward it (`FUN_6f166140`, the point at most a cell
@@ -4062,31 +4061,35 @@ Formats the port made its own, to be replaced by the original's:
   counterclockwise), then from 0.12 toward the mine's bearing (3.868), clockwise
   2.644 at 0.6 a step, on it at 0.24 (the last 0.244), entering the step after, as
   the scripted wisp's.  The port's own-cell way (no turning first, from 270) would
-  enter at 0.18 by that rule.  Open: why its setup's search (0.0) gives it its node
-  while at 0.12 its point is the mine's middle (as if its re-order's search found
-  its start at the mine, as the port's does); a measurement would be its walker's
-  way, index, and heading at 0.03 to 0.27 (+0x40, +0x50, +0x74 as `FUN_6f167ce0`
-  reads them).
-- Two readings fit the first wisp's setup node, tried on the port's search
-  (`lrpath`) with the other four wisps' regions held (each on x - 1 to x and y - 1 to
-  y of its cell): a search to the mine's middle as a point, with no target region
-  (`FUN_6f148100` given the path's +0xa4 empty; its nearest node), gives (161, 189)
-  first, its way going on above the mine to (156, 189), where the search to the
-  mine's region ends at once at the wisp's own cell; and the region's search whose
-  start never counts reached (above) gives (161, 189) too.  The point search gives the
-  wisp at (161, 186) its (161, 185) and the one at (163, 190) its (162, 190), as the
-  original's; for those at (164, 186) and (165, 188) neither gives the original's
-  first points with the regions so held.  Not yet told apart (provisional): the
-  path's +0xa4 is the steering's key (`FUN_6f168bd0`, from `FUN_6f16fbd0`), and the
-  setup's own gold order is given up at once for the AI's.  Two readings fit the 0.12
-  answer as well: the turn in place above, or a walker moving at once toward its node
-  (0.253 a step), within 0.49 of it at 0.12 at its way's last (`FUN_6f167070`'s 4, so
-  the contact test), then turning from that node's bearing to the mine's (2.777
-  counterclockwise), on it at 0.24 and in at 0.27; a walker moving at its first step
-  fits Twisted Meadows' human computer's walk out at 58.5 too (below).  A measurement
-  telling them apart: after the search in `FUN_6f166e90` (0x6f166fbe) at 0.03, the
-  path's +0xa4 and the way's count, and at 0x6f16fd0a the walker's place and heading
-  (*ebx, edi+0x8c) from 0.03 to 0.27.
+  enter at 0.18 by that rule.  (Read since, below: its setup's walk is to a tree,
+  its re-order's to the mine from its own place.)
+- Measured (each search's start, goal, and way after `FUN_6f166e90`, 0x6f166fbe, and
+  each walker's place, heading, and path after `FUN_6f165ae0`, to 0.3): the five
+  wisps' walks from their making go to trees, not the mine: from (161.84, 186.13) to
+  (156, 170), (164.16, 186.13) and (165.0, 188.44) to (160, 170), and (161.0, 188.44)
+  and (163.0, 190.13) to (148, 198), in cells.  So the first wisp's node, (161.5,
+  189.5), is its way's to its tree, and it turns in place toward it, 4.7124 to 5.3124,
+  5.9124, and 0.2292 at 0.12, its place kept.  The AI's pass at 0.1 sends four to the
+  mine and one to wood ((152, 206)); each searches anew at 0.12, the first from its
+  own place to the mine's middle, its way one point, that place (contact, 3), the one
+  from (164.26, 185.57) straight along row 185 (four points), the one from (165.0,
+  188.44) round the north of the mine (ten), the builder first in that step.  The port
+  gives each computer wisp a tree as it is made, the cheapest by `World::auto_tree`'s
+  plans, fog or none (`World::ai_setup_tree`; read so for four of the five, the one at
+  (165.0, 188.44)'s (160, 170) a tie the port's order breaks for (156, 170);
+  provisional: why the AI sends them to wood), passes over such a wisp at the wood in
+  its AI's pass (`World::ai_assign_harvest`), and gives an order's walk its own path's
+  spacing (the +0x7c is the path's, a new `l^pa` each order; `World::start_gold_run`);
+  an own cell's walk to the mine turns then and goes in as above
+  (`World::walk_steps`).  A walker stopped by an order between steps is no mover to the
+  searches before its next (`FUN_6f15f7e0` through `FUN_6f1606e0`: its velocity none,
+  its region's +0x40 loses 0x20000000): the wisp at (164.26, 185.57), so stopped,
+  turns the other's search north (the port had excused it, `World::regions_taken`; the
+  human computer's searches then pass its peasants by their ghosting).  The AI's build
+  order's walk is the newest (`World::ai_build_objects`).  The keepalives agree to turn
+  12, from 3; next, the third wisp in comes a turn before the original's, in turn 12
+  (where the one at (165.0, 188.44) turns the other way at 0.12, its heading held
+  toward its tree, not the original's).
 - An entangled mine is no town site of its own: the original's save of a night elf
   start (`nel.w3x`) holds the map's four mines' four sites, the first naming the
   entangled mine (the mine it covers made at the map's start with that site).  The

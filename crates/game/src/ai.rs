@@ -848,7 +848,10 @@ impl World {
         // pass, not the gold: its AI unit's flag 2, which keeps it from the pass's other
         // requests, `FUN_6f9c7410` and `FUN_6f9c7700`.)
         let on_gold = |w: &World, h: u32| w.unit(h).is_some_and(|u| !u.extra.ai_harvesting && u.extra.ai_wood_pass != Some(pass) && (matches!(u.action, Action::Harvest { target } if w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_gold > 0)));
-        let on_wood = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if !w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_lumber > 0) || u.extra.ai_wood_pass == Some(pass));
+        // (A wisp its making sent to a tree likewise: read, the night elf computer's
+        // five, each sent again in that pass, the one to wood to a tree anew.)
+        let made_to_tree = |u: &crate::types::Unit| u.extra.ai_harvesting && u.extra.gold_run.as_ref().is_some_and(|r| r.kind == crate::goldrun::Kind::Wisp && r.lumber);
+        let on_wood = |w: &World, h: u32| w.unit(h).is_some_and(|u| (!made_to_tree(u) && matches!(u.action, Action::Harvest { target } if !w.is_gold_mine(target))) || (matches!(u.action, Action::ReturnResources) && u.carry_lumber > 0) || u.extra.ai_wood_pass == Some(pass));
         // Each request in priority order takes workers that can do its work and are free,
         // those already at it first: an Undead's acolytes mine and its ghouls cut wood
         // (measured: the original's computer ghoul cuts wood from the start; ours, counted
@@ -1074,6 +1077,10 @@ impl World {
     /// cluster (traced: Forestwalk's undead computer's crypt at its wake).
     fn ai_build_objects(&mut self, h: u32) {
         let old = self.unit(h).map(|u| u.extra.ai_order.clone()).unwrap_or_default();
+        // Its walk is the newest, its serial taken before its objects (read: Twisted
+        // Meadows' night elf computer's builder, sent at 0.1 after its four harvests,
+        // the first walker in the step at 0.12).
+        let serial = self.tags.born;
         let order: Vec<u32> = AI_BUILD.iter().map(|c| self.tags.take(c)).collect();
         self.tags.release(order[14]);
         // (The last order made takes the cluster goal's place in the order kept.)
@@ -1127,6 +1134,7 @@ impl World {
             u.extra.ai_order = order;
             u.extra.ai_order[14] = last;
             u.extra.build_legacy = false;
+            u.extra.walk_serial = serial;
             u.extra.mover = None;
             u.extra.coarse = None;
         }

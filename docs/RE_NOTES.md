@@ -5542,10 +5542,44 @@ Formats the port made its own, to be replaced by the original's:
   89.75), (92.75, 91.75), (90.75, 92.75), (88.75, 93.75), ... in accelerator units)
   and its point 10 on is the original's (189.5, 179.5); from the first wood worker's
   at 0.1 its point 10 on would be (185.5, 179.5), where the original's member goes
-  for the tree.  Provisional: that cluster's plan refused at 0.1 by its budget (the
-  sixth plan of the tick), its point then the order's.  A measurement: at 0.1 and 60.1,
-  the return of `FUN_6f166c30` for each cluster's path (refused or planned), the
-  budget's used and limit, and the picked index (the cluster's path's +0x70, +0x78).
+  for the tree.  Read since (breaks after `FUN_6f166c30` at 0x6f165c02 and
+  0x6f167278, after `FUN_6f1697a0` at 0x6f16c565 and 0x6f16cef4): every plan at 0.12
+  and 60.115 returned 1, none refused.  The difference is the tree: a coarse plan
+  lifts its path's target's region out of the accelerator for its search, and its
+  walker's own (`FUN_6f166c30` calls `FUN_6f15d360` with 1 for the path's +0xa0 and
+  +0xa4 before `FUN_6f162cb0` and with 0 after; `FUN_6f15cf80` clears the states of
+  each level-0 cell of the region's rect, its cells halved and floored by
+  `FUN_6f15ba80`, the levels above built again by `FUN_6f15d470`, and with 0 works
+  them out again from the map).  A cluster's path's +0xa4 is its target's region
+  (`FUN_6f16ce10`'s `FUN_6f168bd0` with `FUN_6f16afc0`: the cluster's +0x78, else its
+  target unit's +0x98).  With the tree's cells (184 to 187 by 172 to 175) lifted, the
+  first wood worker's way from (82.52, 95.07) is the original's, (93, 87), (88.75,
+  91.75), (86.75, 93.75), (84.75, 93.75), and its pick (`FUN_6f165e30`,
+  `FUN_6f167ae0`, the legs summed from the start) the tree itself; left in, the way
+  ends at (94.5, 88.5) short of it, its point 10 on (92.75, 89.75).  The farm
+  peasant's at 60.1, its tree's cells lifted, picks (94.75, 89.75), the original's
+  (189.5, 179.5).  The port now walks an AI's wood worker to its tree by such a
+  coarse way (`World::coarse_goal`, `World::lift_region`, `accel::Pyramid::lift`), its
+  point arrived at within its harvest's range (`World::coarse_step_arrive`: Ahar's
+  116, 4.125 cells, the farm peasant in reach at 62.8437 4.01 off, as the
+  original's).  Then its search from (185, 181) to the tree (five nodes through open
+  ground, the original's (185.5, 180.5), (185.5, 179.5), (186.5, 178.5), (187.5,
+  177.5)) has the original's index 3, node by node: the ring of a popped node is
+  tested cell by cell (`FUN_6f1489a0`: a cell refused sets the searcher's +0xd0; one
+  with the target's region, its +0xa8, sets +0xcc), the last node's too, and that
+  ring, (185, 175) to (188, 178), meets the next tree's cells (185 to 187 on row
+  175, the tree at (186, 174)), where the port's search stopped at the node touching
+  its tree untested and had met no refused cell, so went straight
+  (`World::gold_run_search`, `lrpath::last_ring_refused`).  Provisional: whether the
+  target tree's own region refuses (refusing on it alone parts Forestwalk's computer
+  game at turn 517, its ghouls' walks), and the same for a mine's or a hall's (left
+  as they were).  And it stood by the hall from 57.4466 at (171.0388,
+  187.4737), where the port's was pushed to (171.21, 187.63) as the mine's peasant,
+  ghosting, came home past it at 58.406 (`World::separate_units`, the port's own
+  overlap push, now leaving out a worker ghosting on its run).  Its walk to its tree
+  is so the original's to the step (its reach's objects in turn 637); the keepalives
+  still part at turn 633, by turn 632's frees (above: the peasant waiting at the
+  mine, its objects freed before that turn's trained peasant's AI orders' frees).
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

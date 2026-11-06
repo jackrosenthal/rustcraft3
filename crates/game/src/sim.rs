@@ -1136,7 +1136,8 @@ impl World {
         if self.cluster_walker(h) {
             return self.cluster_goal(h, goal);
         }
-        if !self.unit(h).is_some_and(|u| u.ai_harvest_walk() || u.ai_build_walk()) {
+        let wood = self.unit(h).is_some_and(|u| u.ai_wood_walk());
+        if !wood && !self.unit(h).is_some_and(|u| u.ai_harvest_walk() || u.ai_build_walk()) {
             return Some(goal);
         }
         let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return Some(goal) };
@@ -1148,10 +1149,15 @@ impl World {
                 Some(Action::Harvest { target }) => *target,
                 _ => 0,
             };
-            let Some(pyr) = self.accel_pyramid_with(Some(target)) else { return Some(goal) };
+            let Some(mut pyr) = self.accel_pyramid_with(Some(target)) else { return Some(goal) };
+            // A walk to a tree plans with the tree's region lifted (below), and picks its
+            // point by the way's legs (`accelpath::pick`, 10 on, as a cluster's).
+            if wood {
+                self.lift_region(&mut pyr, target);
+            }
             let layer = if self.move_kind(h) == crate::pathing::Move::Fly { 3 } else { 0 };
             let way = crate::accelpath::plan(&pyr, layer, pos, (acc(goal.0, origin[0]), acc(goal.1, origin[1])), 5000);
-            let index = crate::accelpath::next_target(&way.points, way.points.len() - 1, pos, 10.0);
+            let index = if wood { crate::accelpath::pick(&way.points, way.points.len() - 1, 10.0) } else { crate::accelpath::next_target(&way.points, way.points.len() - 1, pos, 10.0) };
             let now = self.step_index + self.step_range.0 as u64;
             log::debug!("coarse way of {h}: {:?}, target {index}", way.points);
             if let Some(u) = self.unit_mut(h) {
@@ -1165,6 +1171,25 @@ impl World {
             }
             _ => goal,
         })
+    }
+
+    /// A destructable's pathing region lifted out of a pyramid for a plan to it, as a
+    /// coarse plan lifts its path's target's region (its +0xa4, the cluster's target's,
+    /// `FUN_6f16afc0`, set by `FUN_6f16ce10`'s `FUN_6f168bd0`) and its walker's own
+    /// (+0xa0) for its search (`FUN_6f166c30`'s `FUN_6f15d360`, `accel::Pyramid::lift`):
+    /// the region's cells, x0 to x1 and y0 to y1 past its last, halved and floored.
+    /// Read: Twisted Meadows' human computer's wood workers, its first at 0.12 from
+    /// (165.04, 190.15) heading straight for its tree at (186, 174), its point the tree
+    /// (the tree's cells left in, the way ends short of it, its point 10 on (185.5,
+    /// 179.5)); its farm peasant at 60.1, from (171.04, 187.47) to its tree at (190,
+    /// 174), for (189.5, 179.5).  (Provisional: the region the tree's cells' bounds.)
+    fn lift_region(&self, pyr: &mut crate::accel::Pyramid, d: u32) {
+        let Some(crate::types::Obj::Destructable(d)) = self.handles.get(d) else { return };
+        let Some(x0) = d.pathing_cells.iter().map(|c| c.0).min() else { return };
+        let x1 = d.pathing_cells.iter().map(|c| c.0).max().unwrap_or(x0) + 1;
+        let y0 = d.pathing_cells.iter().map(|c| c.1).min().unwrap_or(0);
+        let y1 = d.pathing_cells.iter().map(|c| c.1).max().unwrap_or(y0) + 1;
+        pyr.lift(x0.div_euclid(2) as i64, y0.div_euclid(2) as i64, x1.div_euclid(2) as i64, y1.div_euclid(2) as i64);
     }
 
     /// Whether it walks as a cluster of one (a move order's `^clu`, its path `l^pa`):
@@ -1313,7 +1338,11 @@ impl World {
         // (A build's site, a point: StructureFollowRange, as its arrival there; read:
         // the altar's acolyte stopping at (352.8942, 501.1347), 3.076 from its point,
         // not a step before, 3.276.)
+        // (A walk to a tree, its harvest's: read, the human computer's farm peasant
+        // stopping 4.01 cells from its point, Ahar's 116 and its 16 over 32 being 4.125.)
+        let wood = self.unit(h).is_some_and(|u| u.ai_wood_walk());
         let (t, range) = match self.unit(h).map(|u| u.action.clone()) {
+            Some(Action::Harvest { target: t }) if wood => (t, self.ability_with_code(h, codes::ability::HARVEST).or_else(|| self.ability_with_code(h, codes::ability::HARVEST_LUMBER)).map_or(116.0, |(a, l)| self.ability_real(a, "Rng", l))),
             Some(Action::Harvest { target: t }) => (t, self.ability_with_code(h, codes::ability::ACOLYTE_HARVEST).map_or(200.0, |(a, l)| self.ability_real(a, "Rng", l))),
             Some(Action::Build { .. }) => (0, self.misc_f32("StructureFollowRange", 100.0) - self.unit(h).map_or(0.0, |u| u.collision)),
             _ => return false,
@@ -5930,13 +5959,17 @@ impl World {
     }
 
     /// Pushes overlapping units apart, flyers among flyers and the rest among
-    /// themselves; units unseen, aboard, with their pathing off, or ghosts take no part.
+    /// themselves; units unseen, aboard, with their pathing off, or ghosts take no part,
+    /// nor a worker ghosting on its run (its region's 0x02 clear, `Unit::region_flags`;
+    /// read: Twisted Meadows' human computer's farm peasant, standing by its hall at
+    /// (171.0388, 187.4737) from 57.4466 to 60.1 as the mine's peasant came home past
+    /// it at 58.406, where the port's was pushed to (171.21, 187.63)).
     fn separate_units(&mut self, _dt: f32) {
         let hs: Vec<u32> = self
             .unit_order
             .iter()
             .copied()
-            .filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.is_building && u.collision > 0.0 && !u.extra.no_pathing && !self.is_ghost(u)))
+            .filter(|&h| self.unit(h).is_some_and(|u| !u.dead && !u.hidden && !u.is_building && u.collision > 0.0 && !u.extra.no_pathing && !self.is_ghost(u) && u.region_flags() & 0x02 != 0))
             .collect();
         let pos: Vec<(f32, f32, f32)> = hs.iter().map(|&h| self.unit(h).map(|u| (u.x, u.y, u.collision)).unwrap()).collect();
         let air: Vec<bool> = hs.iter().map(|&h| self.move_kind(h) == crate::pathing::Move::Fly).collect();

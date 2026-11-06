@@ -195,6 +195,22 @@ pub fn ring_touches(c: (i32, i32), class: u8, region: impl Fn(i32, i32) -> bool)
     (0..n).any(|i| region(x0 + i, y0) || region(x0 + i, y0 + n - 1)) || (1..n - 1).any(|j| region(x0, y0 + j) || region(x0 + n - 1, y0 + j))
 }
 
+/// Whether the ring of a search's last node, the one touching a region, meets a cell
+/// refused beyond that region (`FUN_6f1489a0` tests each cell of a popped node's ring,
+/// that node's too: one refused sets the searcher's +0xd0).
+pub fn last_ring_refused(cells: &impl Cells, c: (i32, i32), class: u8, region: impl Fn(i32, i32) -> bool) -> bool {
+    struct Beyond<'a, C: Cells, R: Fn(i32, i32) -> bool>(&'a C, R);
+    impl<C: Cells, R: Fn(i32, i32) -> bool> Cells for Beyond<'_, C, R> {
+        fn open(&self, x: i32, y: i32) -> bool {
+            (self.1)(x, y) || self.0.open(x, y)
+        }
+    }
+    let (r, n, _) = RINGS[class.min(3) as usize];
+    let mut refused = false;
+    ring(&Beyond(cells, region), c.0, c.1, r, n, &mut refused);
+    refused
+}
+
 /// `search_costing` toward a structure: the goal its middle's cell, found at the first
 /// node popped whose ring touches its footprint (read: a peon from cell 670, 266 to a
 /// gold mine whose footprint is 676 to 683 by 260 to 267, its way's end at 675, 265; from

@@ -309,6 +309,12 @@ impl Unit {
         matches!(self.action, Action::Harvest { .. }) && self.extra.ai_order.len() == crate::ai::AI_HARVEST.len()
     }
 
+    /// Whether it walks to its tree under its AI's wood order (`crate::ai::AI_WOOD`),
+    /// its lumber run's first walk there or one after.
+    pub fn ai_wood_walk(&self) -> bool {
+        matches!(self.action, Action::Harvest { .. }) && self.extra.ai_order.len() == crate::ai::AI_WOOD.len() && self.extra.gold_run.as_ref().is_some_and(|r| r.lumber && matches!(r.phase, crate::goldrun::Phase::ToMine))
+    }
+
     /// Whether it walks by the engine's movement steps with the others
     /// (`World::first_steps`, `World::step_walkers`): a wanderer or a unit a player sent
     /// to a point under a move order, or a worker on a gold run between the mine and

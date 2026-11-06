@@ -65,7 +65,30 @@ impl Pyramid {
                 }
             }
         }
-        let mut levels = vec![l0];
+        let mut pyr = Pyramid { levels: vec![l0] };
+        pyr.build_up();
+        pyr
+    }
+
+    /// Level 0's cells `x0` to `x1` by `y0` to `y1` (inclusive) made open for every
+    /// layer, and the levels above built again: a plan's lift of its walker's and its
+    /// target's regions (`FUN_6f15d360` with 1 about `FUN_6f166c30`'s search: the
+    /// region's cells halved and floored, `FUN_6f15ba80`, each cell's states cleared,
+    /// `FUN_6f15cf80`, the levels above by `FUN_6f15d470`).
+    pub fn lift(&mut self, x0: i64, y0: i64, x1: i64, y1: i64) {
+        let l0 = &mut self.levels[0];
+        for y in y0.max(0)..=y1.min(l0.height as i64 - 1) {
+            for x in x0.max(0)..=x1.min(l0.width as i64 - 1) {
+                l0.cells[y as usize * l0.width + x as usize] = [State::Open; 4];
+            }
+        }
+        self.levels.truncate(1);
+        self.build_up();
+    }
+
+    /// The three levels above level 0, each halving the one below.
+    fn build_up(&mut self) {
+        let levels = &mut self.levels;
         for _ in 1..4 {
             let below = levels.last().unwrap();
             let (w, h) = (below.width / 2, below.height / 2);
@@ -88,7 +111,6 @@ impl Pyramid {
             }
             levels.push(up);
         }
-        Pyramid { levels }
     }
 }
 

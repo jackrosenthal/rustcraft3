@@ -1043,6 +1043,7 @@ impl World {
             u.extra.captain_walk = None;
             u.extra.captain_check = None;
             u.extra.ai_order = order;
+            u.extra.coarse = None;
         }
     }
 

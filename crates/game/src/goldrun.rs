@@ -1559,7 +1559,21 @@ impl World {
         }))?;
         let foot: std::collections::HashSet<(i32, i32)> = self.footprint(t).iter().copied().collect();
         log::debug!("gold run {h} searches from {start:?} to {end:?}, footprint {:?}", self.footprint(t));
-        Some(crate::lrpath::search_to_region(cells, start, end, class, 700, |x, y| foot.contains(&(x, y))))
+        let (out, refused, cost) = crate::lrpath::search_to_region(cells, start, end, class, 700, |x, y| foot.contains(&(x, y)));
+        // The ring of the last node, touching its tree, is tested too: a cell refused
+        // there beyond the tree's refuses the search (`FUN_6f1489a0`, its +0xd0), so its
+        // walker goes node by node (read: Twisted Meadows' human computer's farm
+        // peasant, searching at 62.87 from (185, 181) to its tree at (190, 174), five
+        // nodes through open ground, its index 3, the last node's ring on the next
+        // tree's cells).  (Provisional: to a tree only; whether the tree's own region
+        // refuses, not read.)
+        let tree = matches!(self.handles.get(t), Some(crate::types::Obj::Destructable(_)));
+        let last = match &out {
+            crate::lrpath::Outcome::Found(c) if tree && c.len() > 1 => c.last().copied(),
+            _ => None,
+        };
+        let beyond = last.is_some_and(|c| crate::lrpath::last_ring_refused(cells, c, class, |x, y| foot.contains(&(x, y))));
+        Some((out, refused || beyond, cost))
     }
 }
 

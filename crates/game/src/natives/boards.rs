@@ -188,8 +188,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         TimerDialogSetRealTimeRemaining => |w, _, a| { let r = a.r(1); if let Some(d) = timer_dialog(w, a.h(0)) { d.real_time = Some(r); } none() },
 
         CreateLeaderboard => |w, _, _| {
-            w.tags.take(codes::class::LEADERBOARD);
-            handle(w.handles.insert(Obj::Leaderboard(Leaderboard::default())))
+            let slot = w.tags.take(codes::class::LEADERBOARD);
+            let h = w.handles.insert(Obj::Leaderboard(Leaderboard::default()));
+            w.tags.handle_slots.insert(h, slot);
+            handle(h)
         },
         DestroyLeaderboard => |w, _, a| { if leaderboard(w, a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
         LeaderboardDisplay => |w, _, a| { let on = a.b(1); if let Some(b) = leaderboard(w, a.h(0)) { b.displayed = on; } none() },

@@ -117,8 +117,10 @@ fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
     // keeps it (`FUN_6f249ca0`; traced: Mafarazzo TD's StartTimerBJ, its null callback).
     if w.timer_mut(a.h(0)).is_some_and(|t| t.handler.is_none()) {
         let s = w.tags.take(codes::class::HANDLER);
+        // (One of none numbered 0, its slot another's handler's before perhaps: read,
+        // Mafarazzo TD's.)
+        w.tags.handler_objects.insert(s, cb.unwrap_or(crate::tags::NO_FUNCTION));
         if let Some(f) = cb {
-            w.tags.handler_objects.insert(s, f);
             w.tags.function_number(f);
         }
         if let Some(t) = w.timer_mut(a.h(0)) {
@@ -158,8 +160,9 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         TriggerAddCondition => |w, _, a| {
             let (trig, expr) = (a.h(0), a.h(1));
             if w.trigger(trig).is_none() { return none(); }
-            w.tags.take(codes::class::TRIGGER_CONDITION);
+            let slot = w.tags.take(codes::class::TRIGGER_CONDITION);
             let c = w.handles.insert(Obj::TriggerCondition { expr });
+            w.tags.handle_slots.insert(c, slot);
             if let Some(t) = w.trigger_mut(trig) { t.conditions.push(c); }
             handle(c)
         },
@@ -204,8 +207,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             w.ctx.trigger = outer;
             boolean(r)
         },
+        // An execution counts an evaluation with it (`FUN_6f2979a0`), its conditions
+        // not asked.
         TriggerExecute => |w, vm, a| {
             let ctx = EventCtx { trigger: a.h(0), ..w.ctx.clone() };
+            w.count_fired(a.h(0));
             w.trigger_execute(vm, a.h(0), ctx);
             // (Its execution let go as it ends takes a count of the property module's,
             // 0x6f297997; read: the melee setup's, at its end.)
@@ -216,6 +222,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         TriggerExecuteWait => |w, vm, a| {
             let ctx = EventCtx { trigger: a.h(0), ..w.ctx.clone() };
+            w.count_fired(a.h(0));
             w.trigger_execute(vm, a.h(0), ctx);
             none()
         },

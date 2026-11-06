@@ -13,6 +13,9 @@ use crate::codes;
 mod unit;
 mod kinds;
 mod kind_layouts;
+mod script;
+
+pub(crate) use script::CAMERA_SETUP_FIELDS;
 
 /// The family a kind of engine object belongs to, as the object tables hold it (read
 /// from every save on hand: properties, listeners, timers, and pathing regions under
@@ -617,7 +620,10 @@ impl World {
             // save, their gold peons sent to the trees.)
             let towns: Vec<u32> = if computer { (0..self.tags.sites.len()).filter(|&i| self.site_town(i).2.and_then(|h| self.unit(h)).is_some_and(|u| u.owner == player)).map(|i| i as u32).take(4).collect() } else { Vec::new() };
             own.push(Field::List((0..4).map(|t| vec![w(towns.get(t).copied().unwrap_or(u32::MAX))]).collect()));
-            own.extend(none());
+            // (Its guard posts' list's head, the newest: read, Mafarazzo TD's computer's
+            // 180th.)
+            let post = self.last_guard_post(player);
+            own.extend([w(post.0), w(post.1)]);
             own.extend([Field::Real(0.0), w(3), w(u32::MAX), w(0), w(0)]);
             own.push(Field::List((0..12).map(|_| vec![w(0)]).collect()));
             own.push(Field::List((0..12).map(|_| vec![w(0)]).collect()));
@@ -709,6 +715,18 @@ impl World {
                 let Some(Obj::Event(r)) = self.handles.get(id) else { continue };
                 let (player, event) = match r.kind {
                     EventKind::Player { player, event, .. } | EventKind::PlayerUnit { player, event, .. } => (player, event as u32 + 0x8_0200),
+                    // (A chat registration on events 0x80210 and 0x80260: read, Mafarazzo
+                    // TD's at 30 seconds.)
+                    EventKind::PlayerChat { player, .. } => {
+                        if player as usize == i {
+                            if let Some(&reg) = self.tags.handle_ids.get(&id) {
+                                for (k, e) in [(5, 0x8_0210), (61, 0x8_0260)] {
+                                    events[k].push(vec![Field::Ref(rf(reg)), Field::Word(e)]);
+                                }
+                            }
+                        }
+                        continue;
+                    }
                     _ => continue,
                 };
                 if player as usize != i || event == 0x8_0200 + crate::event_ids::EVENT_PLAYER_ALLIANCE_CHANGED as u32 {
@@ -774,19 +792,36 @@ impl World {
             let none = || Field::Ref(NONE);
             let empty = || Field::List(Vec::new());
             let words = |n: usize, w: u32| Field::List((0..n).map(|_| vec![Field::Word(w)]).collect());
-            tail.extend([Field::Text(p.name.clone()), Field::Byte(i as u8), empty(), Field::Word(10)]);
+            // (An empty slot of the map's without a name: read, Mafarazzo TD's.)
+            let name = if i < 12 && p.slot_state == crate::types::slot_state::EMPTY { String::new() } else { p.name.clone() };
+            tail.extend([Field::Text(name), Field::Byte(i as u8), empty(), Field::Word(10)]);
             tail.extend((0..20).map(|_| empty()));
             tail.extend([none(), none(), empty(), empty(), Field::Word(u32::MAX), empty(), none(), none(), empty(), Field::Word(0), Field::Word(u32::MAX), Field::Word(i as u32), none(), Field::Word(0), Field::Ref(rf(self.tagged(ps + 28)))]);
             tail.extend([words(12, 0), words(12, 0)]);
             let playing = p.slot_state == 1 || i >= 12;
             let or_none = |v: i32| if playing && v >= 0 && i < 12 { v as u32 } else if i < 12 && playing { v as u32 } else { u32::MAX };
+            // (Its race preference, +0x25c, `FUN_6f1e9dd0`'s: a map fixing its players'
+            // settings its player's race alone, else random or the race chosen, with
+            // 0x40, chosen in the lobby; the neutral players 0x60.  Read: Mafarazzo TD's
+            // 1 for its twelve players, Booty Bay's 0x60.)
+            let preference = if i >= 12 {
+                0x60
+            } else if self.fixed_player_settings {
+                [0, 1, 2, 8, 4].get(p.race as usize).copied().unwrap_or(0x20)
+            } else {
+                0x40 | if p.race_preference & 0x3f != 0 { p.race_preference as u32 & 0x3f } else { 0x20 }
+            };
+            // (Its start location, +0x274, kept for an empty slot of the map's, then its
+            // team, +0x278, none for one not playing: read, Mafarazzo TD's computer at
+            // start 11 in team 1, its empty slots each at its own start in no team.)
+            let start = if i < 12 && p.start_location >= 0 { p.start_location as u32 } else { u32::MAX };
             tail.extend([
                 Field::Word(p.get_state(crate::types::player_state::RESOURCE_FOOD_CAP) as u32),
                 Field::Word(p.get_state(crate::types::player_state::RESOURCE_FOOD_USED) as u32),
                 Field::Word(0),
                 Field::Word(0),
                 Field::Word(0),
-                Field::Word(96),
+                Field::Word(preference),
                 // (An unused slot's race: beyond the map's players the first six 4 and
                 // the rest 3, an empty one of the map's 3; read on Booty Bay and
                 // Forestwalk alone: provisional.)
@@ -802,8 +837,8 @@ impl World {
                 Field::Word(p.color as u32),
                 Field::Word(p.controller as u32),
                 Field::Word(playing as u32),
+                Field::Word(start),
                 Field::Word(or_none(p.team)),
-                Field::Word(or_none(p.start_location)),
             ]);
             tail.push(Field::Ref(rf(self.tagged(ps + 27))));
             // (The interface's listeners again, by birth.)
@@ -831,11 +866,17 @@ impl World {
             }
             let ai = if i < 12 { computers.iter().position(|&c| c == i).and_then(|k| ais.get(k)) } else if i == 12 { ais.last() } else { None };
             let ai = ai.map_or(u32::MAX, |a| a.0);
-            tail.extend([Field::Word(0), Field::Word(structures), Field::Word(0), Field::Word(others), Field::Word(ai), Field::Word(ai), Field::Word(0), Field::Word(1 << i)]);
+            // (The players whose sight it shares, +0x2e0, `FUN_6f26b3d0`: itself and each
+            // sharing vision with it; read, Mafarazzo TD's eleven allies' 0x7ff.)
+            let sight = (0..crate::types::PLAYER_COUNT).filter(|&k| k == i || self.players.get(k).is_some_and(|o| o.alliances[i][crate::fog::ALLIANCE_SHARED_VISION])).fold(0u32, |m, k| m | 1 << k);
+            tail.extend([Field::Word(0), Field::Word(structures), Field::Word(0), Field::Word(others), Field::Word(ai), Field::Word(ai), Field::Word(0), Field::Word(sight)]);
             tail.push(Field::List(Vec::new()));
-            tail.extend([Field::Word(u32::MAX), Field::Word(u32::MAX), Field::Word(0), Field::Timer(NONE, 0, Timing(None)), Field::Word(1), Field::Word(1), Field::Word(1), Field::Text(String::new()), Field::Word(1), Field::Word(0), Field::Word(0), Field::Word(0), Field::Word(0), Field::Word(0)]);
-            // (Its own word 0 for the local player, 2 for the others.)
-            let own = if i as u8 == self.local_player { 0 } else { 2 };
+            // (Its leaderboard, +0x2d4: PlayerSetLeaderboard's.)
+            let board = self.player_leaderboard_object(i as u8).map_or(NONE, rf);
+            tail.extend([Field::Word(board.0), Field::Word(board.1), Field::Word(0), Field::Timer(NONE, 0, Timing(None)), Field::Word(1), Field::Word(1), Field::Word(1), Field::Text(String::new()), Field::Word(1), Field::Word(0), Field::Word(0), Field::Word(0), Field::Word(0), Field::Word(0)]);
+            // (Its own word 0 for the local player and an empty slot of the map's, 2 for
+            // the others: read, Mafarazzo TD's.)
+            let own = if i as u8 == self.local_player || (i < 12 && p.slot_state == crate::types::slot_state::EMPTY) { 0 } else { 2 };
             out.push((ps, Second::Agent { own: vec![Field::Word(own)], handlers, tail }));
         }
         out
@@ -916,7 +957,13 @@ impl World {
                         base.real = self.tags.made_at.get(&r.0).map_or(0.0, |&c| f32::from_bits(c));
                         base.links = [Link(rf(r), 1), Link(NONE, 0)];
                     }
-                    None => base.real = u.extra.sight_stamp.unwrap_or(0.0),
+                    // (Else stamped as made: read, Mafarazzo TD's creeps made at 20
+                    // seconds, no day's change since.)
+                    None => {
+                        if let Some(s) = u.extra.sight_stamp {
+                            base.real = s;
+                        }
+                    }
                 },
                 _ => {}
             }
@@ -1044,7 +1091,9 @@ impl World {
         let r = Field::Real;
         let handlers = || Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
         let mut records = Vec::new();
-        records.push((t[0].0, agent_first(t[0], codes::class::ORDER_TASKS, &[]), Some(Second::Agent { own: vec![w(0), w(MOVE), w(0), w(u32::MAX), w(u32::MAX), w(0), r(x), r(y), w(u32::MAX), w(u32::MAX), w(0), w(0), w(0), w(0), w(0), r(0.0), r(0.0)], handlers: handlers(), tail: vec![w(u32::MAX), w(u32::MAX), w(0), Field::Ref(NONE), Field::Ref(NONE)] })));
+        // (Its third word its unit's owner: read, Mafarazzo TD's creeps' 11, Forestwalk's
+        // peasants' 0; provisional, the owner or the player ordering.)
+        records.push((t[0].0, agent_first(t[0], codes::class::ORDER_TASKS, &[]), Some(Second::Agent { own: vec![w(0), w(MOVE), w(u.owner as u32), w(u32::MAX), w(u32::MAX), w(0), r(x), r(y), w(u32::MAX), w(u32::MAX), w(0), w(0), w(0), w(0), w(0), r(0.0), r(0.0)], handlers: handlers(), tail: vec![w(u32::MAX), w(u32::MAX), w(0), Field::Ref(NONE), Field::Ref(NONE)] })));
         let events = [852_322, 852_326, 852_296, 852_298, 852_325, 852_331];
         for k in 1..t.len() {
             let prev = if k == 1 { (u32::MAX, u32::MAX) } else { t[k - 1] };
@@ -1318,7 +1367,8 @@ impl World {
     /// A walker's top speed in cells a second: its type's, by its gold run's factor.
     fn walk_speed_cells(&self, h: u32) -> f32 {
         let Some(u) = self.unit(h) else { return 0.0 };
-        let speed = self.objects.units.get(u.type_id).map_or(0.0, |o| o.real("spd"));
+        // (Its speed as set, SetUnitMoveSpeed's: read, Mafarazzo TD's creeps'.)
+        let speed = u.move_speed;
         let factor = u.extra.gold_run.as_ref().map_or(1.0, |r| f32::from_bits(r.factor));
         speed * factor / 32.0
     }
@@ -1780,11 +1830,14 @@ impl World {
             Some((deg, rad)) if deg == u.facing => rad,
             _ => f32::from_bits(crate::efloat::mul(u.facing.to_bits(), 0x3c8e_fa35)),
         };
-        let speed = o.real("spd");
-        let moving = speed > 0.0;
+        // (Its speed as set, SetUnitMoveSpeed's: read, Mafarazzo TD's creeps'; one whose
+        // type moves not moving all the same.)
+        let moving = o.real("spd") > 0.0;
+        let speed = if moving { u.move_speed } else { 0.0 };
         let cells_speed = if moving { speed / 32.0 } else { f32::MAX };
         let turn = if moving { o.real("turnRate") } else { 0.001 };
-        let mut values = [cx, cy, 0.0, 0.0, cells_speed, facing, o.real("collision") / 32.0];
+        // (A collision of none as one: read, Mafarazzo TD's units, 0.03125; provisional.)
+        let mut values = [cx, cy, 0.0, 0.0, cells_speed, facing, o.real("collision").max(1.0) / 32.0];
         let mut reals = [0.8, if moving { speed / 32.0 } else { 0.75 }, turn, 1.047_197_5, 0.0, 0.0, facing, 0.0];
         let mut words = [u32::MAX, u32::MAX, 0];
         let mut more = [cx as u32, cy as u32, 0];
@@ -1826,6 +1879,12 @@ impl World {
                 reals[6] = f(m.heading);
                 // (A lumber walker's 0, 0: read.)
                 flags = if lumber { [0, 0] } else { [1, 0] };
+                // (One whose pathing a script turned off: 0.49 and 0, 0; read, Mafarazzo
+                // TD's creeps; provisional.)
+                if u.extra.no_pathing {
+                    reals[0] = 0.49;
+                    flags = [0, 0];
+                }
             }
         }
         let first_rec = First::Cluster {
@@ -1888,18 +1947,22 @@ impl World {
                             })
                             .collect(),
                     );
-                    // (Provisional: the fifth word, 1 for the trigger the map ran at its
-                    // start, taken as its executions.)  The fourth its executions still
-                    // running, a thread of each asleep (read, the original's save of a
-                    // trigger waiting, 1).
+                    // Its words: its evaluations and executions counted, its executions
+                    // still running, a thread of each asleep (read, the original's save of
+                    // a trigger waiting, 1), its conditions' last evaluation (+0x74, none
+                    // by TriggerExecute: read, Mafarazzo TD's triggers run by another's
+                    // TriggerExecute 0, those run by ConditionalTriggerExecute 1), and
+                    // whether it waits on sleeps.
                     let running = {
                         let mut ex: Vec<u32> = self.sleepers.iter().filter(|s| s.execution != 0 && s.ctx.trigger == id).map(|s| s.execution).collect();
                         ex.sort();
                         ex.dedup();
                         ex.len() as u32
                     };
-                    let words = [0, t.eval_count as u32, t.exec_count as u32, running, t.exec_count as u32, u32::from(t.wait_on_sleeps)];
-                    let second = Second::Agent { own: words.iter().map(|&w| Field::Word(w)).collect(), handlers: no_handlers(), tail: vec![listed(&t.events), listed(&t.conditions), actions] };
+                    let words = [0, t.eval_count as u32, t.exec_count as u32, running, u32::from(t.last_eval), u32::from(t.wait_on_sleeps)];
+                    // (Its conditions, `tcnd`, by their handles' slots.)
+                    let conditions = Field::List(t.conditions.iter().filter_map(|c| self.tags.handle_slots.get(c)).map(|&s| vec![Field::Ref(rf(self.tagged(s)))]).collect());
+                    let second = Second::Agent { own: words.iter().map(|&w| Field::Word(w)).collect(), handlers: no_handlers(), tail: vec![listed(&t.events), conditions, actions] };
                     out.push((own.0, agent_first(own, codes::class::TRIGGER, &flags), Some(second)));
                     // (Provisional: which of the two is the enabled flag, every trigger read
                     // being enabled.)
@@ -1976,7 +2039,7 @@ impl World {
             let jass = |id: u32| if id == 0 { 0 } else { self.handles.known_handle(id).unwrap_or(id) };
             let mut words = [0u32; 15];
             let mut tail_timer = (Field::Timer(NONE, 0, Timing(None)), 0u32, 0.0f32);
-            let (mut place, mut action, mut trigger) = (0, None, None);
+            let (mut place, mut action, mut trigger, mut asleep) = (0, None, None, false);
             if let Some(s) = sleeper {
                 let player = self.players.get(s.ctx.player as usize).map_or(0, |p| p.handle);
                 words[0] = jass(s.ctx.unit);
@@ -1998,6 +2061,7 @@ impl World {
                         Some(Obj::TriggerAction { slot, .. }) if *slot != 0 => Some(self.tagged(*slot)),
                         _ => None,
                     });
+                    asleep = s.wake_at.is_finite();
                     trigger = t.slots.first().map(|&s| self.tagged(s));
                 }
             }
@@ -2009,7 +2073,9 @@ impl World {
                 Field::Short(chunks.min(0xffff) as u16),
                 Field::Real(rest),
                 Field::Word(place),
-                Field::Ref(action.map_or(NONE, rf)),
+                // (Its action under way while it sleeps, none kept within SaveGame: read,
+                // Mafarazzo TD's; its actions listed either way.)
+                Field::Ref(action.filter(|_| asleep).map_or(NONE, rf)),
                 Field::List(action.into_iter().map(|a| vec![Field::Ref(rf(a))]).collect()),
                 Field::Real(0.0),
                 Field::Ref(NONE),
@@ -2143,6 +2209,17 @@ impl World {
                             out.push((own.0, agent_first(own, codes::class::GAME_STATE_EVENT, &[]), Some(Second::Agent { own: ws, handlers: game_handlers(self.game_object()), tail })));
                             continue;
                         }
+                        // A region's enter or leave registration and a chat registration
+                        // (`script.rs`).
+                        EventKind::EnterRegion { region, filter } | EventKind::LeaveRegion { region, filter } => {
+                            let enter = matches!(r.kind, EventKind::EnterRegion { .. });
+                            out.extend(self.region_event_record(own, *region, *filter, trig, enter));
+                            continue;
+                        }
+                        EventKind::PlayerChat { player: p, text, exact } => {
+                            out.push(self.chat_event_record(own, player(*p), text, *exact, trig));
+                            continue;
+                        }
                         _ => continue,
                     };
                     let mut ws = words(&base);
@@ -2257,13 +2334,14 @@ impl World {
                     let tail = vec![Field::Timer(NONE, 0, Timing(None)), Field::Short(0), Field::Short(0), Field::Real(0.0), Field::Word(0), Field::List(labels)];
                     out.push((own.0, agent_first(own, codes::class::SOUND, &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail })));
                 }
-                // A timer dialog: its timer, 0; then 0, its colors (as made), its default
-                // text (DEFAULTTIMERDIALOGTEXT, not the title set), and 1.  (Provisional: the
-                // colors and speed set.)
+                // A timer dialog: its timer, 0; then 0, its colors (as made), its title (as
+                // set, else DEFAULTTIMERDIALOGTEXT: read, Mafarazzo TD's "Next round in:"
+                // at 30 seconds), and 1.  (Provisional: the colors and speed set.)
                 Some(Obj::TimerDialog(d)) => {
                     let Some(own) = slot_of(id) else { continue };
                     let timer = slot_of(d.timer).map_or(NONE, rf);
-                    let tail = vec![Field::Word(0), Field::Word(0xfffc_d211), Field::Word(0xfffc_d211), Field::Text(self.localized("DEFAULTTIMERDIALOGTEXT")), Field::Real(1.0)];
+                    let title = d.title.clone().unwrap_or_else(|| self.localized("DEFAULTTIMERDIALOGTEXT"));
+                    let tail = vec![Field::Word(0), Field::Word(0xfffc_d211), Field::Word(0xfffc_d211), Field::Text(title), Field::Real(1.0)];
                     out.push((own.0, agent_first(own, codes::class::TIMER_DIALOG, &[]), Some(Second::Agent { own: vec![Field::Word(0), Field::Word(timer.0), Field::Word(timer.1), Field::Real(0.0)], handlers: game_handlers(self.game_object()), tail })));
                 }
                 // A rect (CScriptRect): its bounds, bottom, left, top, right.
@@ -2272,17 +2350,28 @@ impl World {
                     let tail = vec![Field::Real(r.min_y), Field::Real(r.min_x), Field::Real(r.max_y), Field::Real(r.max_x)];
                     out.push((own.0, agent_first(own, codes::class::RECT, &[]), Some(Second::Agent { own: vec![Field::Word(0)], handlers: game_handlers(self.game_object()), tail })));
                 }
-                // A group (CGroup, its class writing its whole record): its units, two
-                // references, -1, and three words (read: the quiet test map's empty
-                // groups; provisional: a group's units' entries, the references).
+                // A group (CGroup, `FUN_6f2464b0`, its class writing its whole record): its
+                // units; its last enumeration's filter (+0x38) and its last ForGroup's
+                // function's handler (+0x3c, `FUN_6f22ff30`); -1 (+0x40), the player its
+                // last enumeration took or -1, and its limit or -1 (+0x44, +0x48,
+                // `FUN_6f240890`; before any 0 and 0), and 0 (read: the quiet test map's
+                // empty groups, Mafarazzo TD's of a rect's and of a player's units).
                 Some(Obj::Group(g)) => {
                     let Some(own) = slot_of(id) else { continue };
                     let units = g.units.iter().filter_map(|&u| self.unit(u).and_then(|u| u.extra.object_slots[0].first().copied())).map(|s| vec![Field::Ref(rf(s))]).collect();
-                    out.push((own.0, agent_first(own, codes::class::GROUP, &[]), Some(Second::Whole(vec![Field::List(units), Field::Ref(NONE), Field::Ref(NONE), Field::Word(u32::MAX), Field::Word(0), Field::Word(0), Field::Word(0)]))));
+                    let filter = Some(g.filter).filter(|&f| f != 0).and_then(|f| slot_of(f)).map_or(NONE, rf);
+                    let handler = g.callback.and_then(|func| self.tags.handler_objects.iter().find(|(_, f)| **f == func)).map_or(NONE, |(&s, _)| rf(self.tagged(s)));
+                    let (player, limit) = g.enumerated.map_or((0, 0), |(p, l)| (p as u32, l as u32));
+                    out.push((own.0, agent_first(own, codes::class::GROUP, &[]), Some(Second::Whole(vec![Field::List(units), Field::Ref(filter), Field::Ref(handler), Field::Word(u32::MAX), Field::Word(player), Field::Word(limit), Field::Word(0)]))));
                 }
                 _ => {}
             }
         }
+        out.extend(self.region_records());
+        out.extend(self.condition_records());
+        out.extend(self.leaderboard_records());
+        out.extend(self.camera_setup_records().0);
+        out.extend(self.guard_post_records());
         out
     }
 
@@ -2664,8 +2753,8 @@ impl World {
                 eprintln!("  {k}: {e:?}");
             }
         }
-        // The camera's objects in the second table.
-        for (e, f, sec) in self.camera_records() {
+        // The camera's objects in the second table, and the camera setups' reals.
+        for (e, f, sec) in self.camera_records().into_iter().chain(self.camera_setup_records().1.into_iter().map(|(e, f)| (e, f, None))) {
             if let Some(o) = objects[1].iter_mut().find(|o| o.entry.tag == e.tag) {
                 o.first = f.to_bytes();
                 if let Some(Ok(b)) = sec.map(|sec| sec.to_bytes(e.kind)) {
@@ -2804,9 +2893,11 @@ impl World {
         let Some(&real) = props.get(2) else { return Vec::new() };
         let mut out = Vec::new();
         let hours = self.misc_f32("DayHours", 24.0);
-        let rate = hours / self.misc_f32("DayLength", 480.0) * self.time_of_day_scale;
-        let tod = self.time_of_day;
         let [rcm, _] = self.time_of_day_listeners;
+        // (No modifier while suspended, the time standing: its listeners check nothing,
+        // read, Mafarazzo TD's dusk listeners without a node.)
+        let rate = if rcm.is_some() { hours / self.misc_f32("DayLength", 480.0) * self.time_of_day_scale } else { 0.0 };
+        let tod = self.time_of_day;
         if let Some(r) = rcm.filter(|s| self.tags.live.contains_key(s)).map(|s| self.tagged(s)) {
             let made = self.made_abs(r.0).unwrap_or(0);
             let due = f32::from_bits(crate::efloat::add(made, 150f32.to_bits()));
@@ -2860,11 +2951,16 @@ impl World {
             ls.push((self.tagged(s), 0x8_0101 + op as u32, value, matches!(op, 3 | 4), reg));
         }
         let change = |s: Option<u32>| s.filter(|s| self.tags.live.contains_key(s)).map(|s| self.tagged(s));
+        // (The day change's thresholds in the engine's arithmetic, `FUN_6f283c80` by
+        // `FUN_6f06fa90` and `FUN_6f06fbb0`: read, dusk's 18.009998 in the quiet test
+        // map's and Mafarazzo TD's saves.)
+        let less = |a: f32| f32::from_bits(crate::efloat::sub(a.to_bits(), eps.to_bits()));
+        let more = |a: f32| f32::from_bits(crate::efloat::add(a.to_bits(), eps.to_bits()));
         if self.daytime {
-            ls.extend(change(self.tags.day_timer).map(|r| (r, 0x8_0263, dawn - eps, false, rf(game))));
-            ls.extend(change(self.tags.day_timer_2).map(|r| (r, 0x8_0263, dusk + eps, true, rf(game))));
+            ls.extend(change(self.tags.day_timer).map(|r| (r, 0x8_0263, less(dawn), false, rf(game))));
+            ls.extend(change(self.tags.day_timer_2).map(|r| (r, 0x8_0263, more(dusk), true, rf(game))));
         } else {
-            ls.extend(change(self.tags.day_timer).map(|r| (r, 0x8_0263, dawn + eps, true, rf(game))));
+            ls.extend(change(self.tags.day_timer).map(|r| (r, 0x8_0263, more(dawn), true, rf(game))));
         }
         ls.extend(change(self.time_of_day_listeners[1]).map(|r| (r, 0x8_0262, hours, true, rf(game))));
         ls.sort_by_key(|l| l.0 .1);
@@ -2893,19 +2989,21 @@ impl World {
         if props.len() != 5 {
             return Vec::new();
         }
-        // (Its modifier, and its newest listener.)
+        // (Its modifier and its newest listener, each in its own place: no modifier while
+        // the time of day is suspended, the time's rate 0 then; read, Mafarazzo TD's at
+        // 30 seconds, its rate 0 and its listener in the second place.)
         let modifier = self.time_of_day_listeners[0].filter(|s| self.tags.live.contains_key(s)).map(|s| self.tagged(s));
-        let listeners: Vec<(u32, u32)> = modifier.into_iter().chain(self.time_of_day_head()).collect();
-        let link = |k: usize| listeners.get(k).map_or(Link(NONE, 0), |&r| Link(rf(r), 0));
+        let listeners = [modifier, self.time_of_day_head()];
+        let link = |k: usize| listeners[k].map_or(Link(NONE, 0), |r| Link(rf(r), 0));
         let mut out = Vec::new();
         let hours = self.misc_f32("DayHours", 24.0);
-        let rate = hours / self.misc_f32("DayLength", 480.0) * self.time_of_day_scale;
+        let rate = if modifier.is_some() { hours / self.misc_f32("DayLength", 480.0) * self.time_of_day_scale } else { 0.0 };
         for k in 0..5 {
             let mut base = listed_property_base(&props, k, game);
             let f = match k {
                 2 => {
                     base.real = f32::from_bits(self.time_of_day_set.1);
-                    base.links = [0, 1].map(|j| listeners.get(j).map_or(Link(NONE, 0), |&r| Link(rf(r), 1)));
+                    base.links = listeners.map(|l| l.map_or(Link(NONE, 0), |r| Link(rf(r), 1)));
                     First::Real { base, values: [self.time_of_day_set.0, rate, 0.0, hours] }
                 }
                 3 => First::Real { base, values: [self.time_of_day_scale, 0.0, -f32::MAX, f32::MAX] },

@@ -364,8 +364,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetCameraEyePositionY => |w, _, _| real(camera_eye(w).1),
         GetCameraEyePositionZ => |w, _, _| real(camera_eye(w).2),
         CreateCameraSetup => |w, _, _| {
-            w.tags.take(codes::class::CAMERA_SETUP);
-            handle(w.handles.insert(Obj::CameraSetup(Box::default())))
+            let slot = w.tags.take(codes::class::CAMERA_SETUP);
+            let h = w.handles.insert(Obj::CameraSetup(Box::default()));
+            w.tags.handle_slots.insert(h, slot);
+            handle(h)
         },
         CameraSetupSetField => |w, _, a| {
             if let Some(Obj::CameraSetup(c)) = w.handles.get_mut(a.h(0)) { c.fields.insert(a.h(1) as i32, a.r(2)); c.durations.insert(a.h(1) as i32, a.r(3)); }

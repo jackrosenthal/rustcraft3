@@ -179,7 +179,9 @@ impl World {
         if order.as_ref().is_some_and(|o| o.state.kind == 7) {
             own |= 0x2000_0000;
         }
-        if !building {
+        // (Not for one whose pathing a script turned off: read, Mafarazzo TD's creeps
+        // after SetUnitPathing(false); provisional, that 0x40 is its pathing.)
+        if !building && !u.extra.no_pathing {
             own |= 0x40;
         }
         if invulnerable {
@@ -277,6 +279,13 @@ impl World {
         if (creep && !building) || computer {
             if let Some(a) = player_ai(u.owner) {
                 agents.push((rf(a), (made, 3), vec![0x1a0, 0x1a2]));
+            }
+        }
+        // Its guard post, after its player's AI (read: Mafarazzo TD's creeps).
+        if computer {
+            let post = self.unit_guard_post(u.owner, h);
+            if post != NONE {
+                agents.push((post, (made, 4), vec![0x1a0, 0x1a2]));
             }
         }
         // Buffs on it (an aura's on its bearer, made with it), and those its auras laid
@@ -589,7 +598,9 @@ impl World {
         fields.extend([w(kinds), w(targets), w(defense), w(u32::MAX), w(u32::MAX)]);
         fields.extend([Field::Ref(NONE), Field::Ref(NONE), Field::Ref(NONE)]);
         fields.extend([Field::Real(o.real("impactZ")), Field::Real(o.real("launchX")), Field::Real(o.real("launchY")), Field::Real(o.real("launchZ"))]);
-        fields.extend([Field::Byte(0), Field::Byte(st.walking as u8), w(0), w(0), w(0), w(0), Field::Ref(NONE), Field::Byte(0)]);
+        // (Its walking byte none for a walker without pathing: read, Mafarazzo TD's
+        // creeps; provisional.)
+        fields.extend([Field::Byte(0), Field::Byte((st.walking && !u.extra.no_pathing) as u8), w(0), w(0), w(0), w(0), Field::Ref(NONE), Field::Byte(0)]);
         fields.extend([w(tint), w(st.after_tint[0]), w(st.after_tint[1]), w(st.after_tint[2]), w(st.after_tint[3]), w(0), w(0), w(0)]);
         // (A spell immune unit's two words (+0x15c, +0x160: read, the granite golems' and a
         // red dragon's), its being built on another (isBuildOn, +0x60), and a flag word
@@ -1318,7 +1329,8 @@ impl World {
                     _ => None,
                 });
                 let to = to.map_or(NONE, rf);
-                own.extend([w(to.0), w(to.1), w(0), Field::Real(o.real("spd")), Field::Real(factor), w(0), w(0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), w(0)]);
+                // (Its speed as set, SetUnitMoveSpeed's: read, Mafarazzo TD's creeps'.)
+                own.extend([w(to.0), w(to.1), w(0), Field::Real(u.move_speed), Field::Real(factor), w(0), w(0), w(u32::MAX), w(u32::MAX), w(0), Field::Real(0.0), Field::Real(0.0), w(u32::MAX), w(u32::MAX), w(0), w(0)]);
                 vec![timer(), timer()]
             }
             // CAbilityInvulnerable: a word; an empty list and a word.
@@ -2427,13 +2439,17 @@ impl World {
                 let gold = matches!(u.action, crate::types::Action::Harvest { target } if self.is_gold_mine(target)) || (matches!(u.action, crate::types::Action::ReturnResources) && u.carry_gold > 0);
                 let wood = matches!(u.action, crate::types::Action::Harvest { target } if !self.is_gold_mine(target)) || (matches!(u.action, crate::types::Action::ReturnResources) && u.carry_lumber > 0);
                 let job = if gold { 0x5 } else if wood { 0xa } else { 0 };
-                let flags = if computer { 0x60 | job } else { 0 };
+                // (A computer's in its campaign mode, which gives its units guard posts,
+                // 0 and its guard post: read, Mafarazzo TD's creeps.)
+                let campaign = self.posts_new_units(u.owner);
+                let flags = if computer && !campaign { 0x60 | job } else { 0 };
+                let post = if computer { self.unit_guard_post(u.owner, h) } else { NONE };
                 // (A computer's workers' and structures': read, its acolytes', Necropolis's,
                 // and haunted mine's, its ghouls' at the trees, not its ghouls' at war.)
                 let town = u.is_building || job != 0 || self.objects.units.get(u.type_id).is_some_and(|o| o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case("peon")));
                 let site = if computer && town { self.tags.sites.iter().min_by(|a, c| (a.0 - u.x).hypot(a.1 - u.y).total_cmp(&(c.0 - u.x).hypot(c.1 - u.y))).map_or(NONE, |x| rf(x.2)) } else { NONE };
                 let w = Field::Word;
-                let own = vec![w(0), w(0), w(0), w(u32::MAX), w(u32::MAX), w(0), w(flags), w(u32::MAX), w(u32::MAX), w(0), w(site.0), w(site.1), w(0), w(0)];
+                let own = vec![w(0), w(0), w(0), w(u32::MAX), w(u32::MAX), w(0), w(flags), w(post.0), w(post.1), w(0), w(site.0), w(site.1), w(0), w(0)];
                 let handlers = Handlers { keyed: Vec::new(), fixed: Default::default(), events: vec![Vec::new(); 0x400] };
                 out.push((s, Second::Agent { own, handlers, tail: Vec::new() }));
             }
@@ -2877,6 +2893,14 @@ impl World {
                         add(x as i64, y as i64, self.tagged(s));
                     }
                 }
+            }
+        }
+        // The script's regions' (`World::region_records`), in each of their cells.
+        for id in self.handles.ids() {
+            let Some(crate::types::Obj::Region(g)) = self.handles.get(id) else { continue };
+            let Some([_, pmr]) = g.objects else { continue };
+            for (x, y) in self.region_pathing_cells(g) {
+                add(x as i64, y as i64, pmr);
             }
         }
         let mut out = Vec::with_capacity(w * h);

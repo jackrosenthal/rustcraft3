@@ -977,6 +977,8 @@ fn group_add(w: &mut World, group: u32, h: u32) {
 fn enum_units_in(w: &mut World, vm: &mut Vm, group: u32, filter: u32, limit: i32, spatial: bool, pred: impl Fn(&World, &Unit) -> bool) {
     if let Some(g) = w.group_mut(group) {
         g.units.clear();
+        g.filter = filter;
+        g.enumerated = Some((-1, limit));
     } else {
         return;
     }
@@ -1003,6 +1005,10 @@ fn enum_units_in(w: &mut World, vm: &mut Vm, group: u32, filter: u32, limit: i32
 fn for_group(w: &mut World, vm: &mut Vm, a: &[Value]) -> NativeResult {
     let Some(f) = a.code(1) else { return none() };
     w.tags.handler(f);
+    // (The group keeps its function's handler, `FUN_6f22ff30`.)
+    if let Some(g) = w.group_mut(a.h(0)) {
+        g.callback = Some(f);
+    }
     let units = w.group(a.h(0)).map(|g| g.units.clone()).unwrap_or_default();
     for u in units {
         if w.unit(u).is_none() {
@@ -1863,6 +1869,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GroupEnumUnitsOfPlayer => |w, vm, a| {
             let Some(p) = w.player_of(a.h(1)) else { return none() };
             enum_units(w, vm, a.h(0), a.h(2), -1, |_, u| u.owner == p);
+            // (The group keeps the player enumerated, `FUN_6f22f150`.)
+            if let Some(g) = w.group_mut(a.h(0)) {
+                g.enumerated = Some((p as i32, -1));
+            }
             none()
         },
         GroupEnumUnitsInRect => |w, vm, a| {

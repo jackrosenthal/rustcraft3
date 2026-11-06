@@ -7,6 +7,42 @@ use crate::Game;
 use crate::world::World;
 use crate::codes;
 
+/// An object modification file's custom objects' ids, in its order (a file without
+/// levels, as war3map.w3u: each modification its field, type, value, and end).
+fn custom_object_ids(data: &[u8]) -> Vec<[u8; 4]> {
+    let mut at = 4usize;
+    let word = |at: &mut usize| -> Option<u32> {
+        let w = u32::from_le_bytes(data.get(*at..*at + 4)?.try_into().ok()?);
+        *at += 4;
+        Some(w)
+    };
+    let mut ids = Vec::new();
+    for custom in [false, true] {
+        let Some(n) = word(&mut at) else { break };
+        for _ in 0..n {
+            let (Some(_), Some(new)) = (word(&mut at), word(&mut at)) else { return ids };
+            if custom {
+                ids.push(new.to_le_bytes());
+            }
+            let Some(mods) = word(&mut at) else { return ids };
+            for _ in 0..mods {
+                let (Some(_), Some(ty)) = (word(&mut at), word(&mut at)) else { return ids };
+                match ty {
+                    0..=2 => at += 4,
+                    _ => match data.get(at..).and_then(|d| d.iter().position(|&b| b == 0)) {
+                        Some(k) => at += k + 1,
+                        None => return ids,
+                    },
+                }
+                if word(&mut at).is_none() {
+                    return ids;
+                }
+            }
+        }
+    }
+    ids
+}
+
 impl World {
     /// The tagged object of a kind (its first), as references name it.
     pub(crate) fn first_of(&self, code: &[u8; 4]) -> Ref {
@@ -17,7 +53,9 @@ impl World {
     /// its three name tables (`FUN_6f1d6c60`, each name and id in the order made): the
     /// unit types' names from UnitUI.slk's rows (spaces dropped; provisional: the
     /// original has the rocket engine after the siege engine, and the sea elemental
-    /// after the revenant of the depths), none, and the orders' names; and two shorts.
+    /// after the revenant of the depths), then the map's own unit types as
+    /// "custom_" and their ids, in its war3map.w3u's order (read: Mafarazzo TD's 78);
+    /// none, and the orders' names; and two shorts.
     pub fn saved_game_part(&self) -> Vec<Field> {
         let mut units = Vec::new();
         if let Ok(text) = self.chain.read_string("Units\\UnitUI.slk") {
@@ -27,6 +65,9 @@ impl World {
                 let id4: [u8; 4] = id.as_bytes().try_into().unwrap_or([0; 4]);
                 units.push(vec![Field::Text(name.replace(' ', "")), Field::Word(u32::from_be_bytes(id4))]);
             }
+        }
+        for id in self.chain.read("war3map.w3u").ok().map(|d| custom_object_ids(&d)).unwrap_or_default() {
+            units.push(vec![Field::Text(format!("custom_{}", String::from_utf8_lossy(&id))), Field::Word(u32::from_be_bytes(id))]);
         }
         let orders = crate::orders::ORDERS.iter().map(|&(id, n)| vec![Field::Text(n.to_string()), Field::Word(id as u32)]).collect();
         vec![Field::Word(1), Field::Word(1), Field::Ref(self.first_of(codes::class::GAME_STATE)), Field::List(units), Field::List(Vec::new()), Field::List(orders), Field::Short(0), Field::Short(1)]
@@ -42,13 +83,17 @@ impl World {
     /// Provisional: the words read as constants, a start's user flag, the teams' lists.
     pub fn saved_game_2(&self, template: &[Field]) -> Vec<Field> {
         // A playing slot's (PLAYER_SLOT_STATE_PLAYING, 1: a computer's too, an empty
-        // slot's not; read: Forestwalk's empty third slot 0).
-        let user = |k: usize| self.players.iter().take(12).any(|p| p.start_location == k as i32 && p.slot_state == 1);
+        // slot's not; read: Forestwalk's empty third slot 0), or a fixed start's; and
+        // whether the map fixes its player's start (the w3i's players' flag).  (Read:
+        // Mafarazzo TD's twelve fixed starts, 1 and 1 each, its empty slots' too;
+        // provisional: which of the two the first follows.)
+        let fixed = |k: usize| self.fixed_start_players & 1 << k != 0;
+        let user = |k: usize| fixed(k) || self.players.iter().take(12).any(|p| p.start_location == k as i32 && p.slot_state == 1);
         let starts = (0..12)
             .map(|k| match self.start_locations.get(k) {
                 Some(s) if s.x != 0.0 || s.y != 0.0 || s.prio_count > 0 => {
                     let prios = (0..s.prio_count.max(0)).map(|i| s.prios.get(&i).copied().unwrap_or((0, 0))).map(|(slot, prio)| vec![Field::Word(slot as u32), Field::Word(prio as u32)]).collect();
-                    vec![Field::Real(s.x), Field::Real(s.y), Field::List(prios), Field::Word(user(k) as u32), Field::Word(0), Field::Word(u32::MAX), Field::Word(1), Field::Word(0)]
+                    vec![Field::Real(s.x), Field::Real(s.y), Field::List(prios), Field::Word(user(k) as u32), Field::Word(0), Field::Word(u32::MAX), Field::Word(1), Field::Word(fixed(k) as u32)]
                 }
                 _ => vec![Field::Real(0.0), Field::Real(0.0), Field::List(Vec::new()), Field::Word(0), Field::Word(0), Field::Word(u32::MAX), Field::Word(0), Field::Word(0)],
             })
@@ -84,7 +129,9 @@ impl World {
         vec![Field::List(Vec::new()), Field::Ref(self.first_of(codes::class::GAME_CACHE_MANAGER)), template.get(2).cloned().unwrap_or(Field::List((0..12).map(|_| vec![Field::Word(0)]).collect()))]
     }
 
-    /// The fog of war's part (CFogOfWarMap's, `FUN_6f250d00`): two bytes (1, 1), its
+    /// The fog of war's part (CFogOfWarMap's, `FUN_6f250d00`): two bytes, whether its
+    /// mask is on (+0x10, FogMaskEnable's, `FUN_6f24f9c0`) and whether its fog is
+    /// (+0x14, FogEnable's, `FUN_6f24f930`: read, Mafarazzo TD's both off), its
     /// size in cells, its rows' stride (a power of two) and that power, then four grids
     /// a short a cell, rows from the map's bottom (the stride's unused cells 0xffff in
     /// the first, 0 in the others): the players unexplored (a bit each; the neutral
@@ -125,7 +172,7 @@ impl World {
             }
         }
         let b = self.map_bounds;
-        let mut out = vec![Field::Byte(1), Field::Byte(1), Field::Word(w as u32), Field::Word(h as u32), Field::Word(stride as u32), Field::Word(shift)];
+        let mut out = vec![Field::Byte(u8::from(self.fog_mask_enabled)), Field::Byte(u8::from(self.fog_enabled)), Field::Word(w as u32), Field::Word(h as u32), Field::Word(stride as u32), Field::Word(shift)];
         for g in grids {
             out.push(Field::List(g.into_iter().map(|v| vec![Field::Short(v)]).collect()));
         }

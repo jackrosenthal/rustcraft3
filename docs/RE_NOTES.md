@@ -4068,6 +4068,98 @@ Formats the port made its own, to be replaced by the original's:
   wrap, fired late or not at all in the original after loading the port's save; it
   now reckons the node from the run's start (`World::timer_node`), and reads a
   chunked one's time left from the chunks left and the rest.
+- Mafarazzo TD's save at 30 seconds (`abtest/mafsv.w3x`, its own SaveGame; compared
+  object by object with `w3zdiff`), the kinds the port's save had left out, each read
+  in its class's save (vf14) and own (vf18) functions (`tools/saves/classmap.txt`):
+  - A region (CTriggerRegion, `+agr`, `FUN_6f05fea0`): no own fields and only the
+    agent base's handlers (`FUN_6f0562b0`, no lists of events 0xd0000 on), then the
+    lists of events 0x401900c8 and 0x401900c9 (its enter and leave registrations, each
+    with its event) and its pathing region (+0x20).  That region (`^pmr`, made with it)
+    is on the pathing map, owned by the region, of no kind, its bounds all -1, its
+    words the search mark, the count of its cells, and 0x10000000; RegionAddRect's
+    cells (a rect's from its least corner's cell to its greatest's, both in: a rect 32
+    wide two columns) each list it, newest first among the others there.
+  - A region's registration (CRegionEventReg, `+rev`, `FUN_6f27eb00`, own
+    `FUN_6f27f140`: five words): its region, its filter, a timer (CAgentTimer, +0x3c)
+    and the queue of units met (+0x50, `FUN_6f271ae0`: each a reference and a word),
+    its trigger on the list of event 0x80205 (enter) or 0x80206 (leave).  A unit's
+    move asks the filter, queues the unit, and starts the timer of no wait
+    (`FUN_6f277bd0`), which runs the queue (`FUN_6f2777c0`): between turns both empty.
+  - A trigger's condition (CTriggerCondition, `tcnd`, `FUN_6f299690`): its
+    expression's object (+0x24); its trigger lists it.
+  - A chat registration (CPlayerChatEventReg, `pcvt`, `FUN_6f27e820`, own
+    `FUN_6f27f190`): the player event's ten words (event 0x80260, its player) and
+    whether the text matches whole; the player event's filter and list, its text, and
+    its trigger on the lists of events 0x80210 and 0x80260; its player lists it on
+    both too.
+  - A leaderboard (CLeaderboardWar3, `+ldb`, `FUN_6f246530`): its frame's
+    (`FUN_6f3cb7a0`: its size from there, a short count of items, each
+    `FUN_6f3a6b00`'s label, value, whether its label, value, and icon show (+0x58 to
+    +0x60, a new one the board's +0x188 and +0x18c and no icon, `FUN_6f3aaa30`), its
+    player, and its label's and value's colors as ARGB (the player's,
+    `FUN_6f343df0`, where none was set: red 0xffff0303), and whether the frame shows),
+    its size by item count (the frame's +0x194, LeaderboardSetSizeByItemCount's,
+    `FUN_6f3ce9a0`), whether displayed (+0x28, `FUN_6f2499d0`), and its title.  Each
+    player it is shown to names it (CPlayerWar3 +0x2d4, the record's 139th and 140th
+    fields after the event lists).
+  - A camera setup (CCameraSetup, `+cst`, `FUN_6f246030`): its place (+0xa4, +0xa8)
+    and 0 (+0xac, CameraSetupSetDestPosition's, its duration elsewhere); its seventeen
+    reals in the second table (after the camera's, from 1096): the distance, the far
+    clip, the near clip (100 unset), the field of view, the roll, the rotation, the
+    angle of attack, and the height offset as set (`FUN_6f2477e0`, in degrees, a 0 as
+    -0), their eight durations, and the place's (the roll's and height offset's places,
+    both 0 here, and the durations' order provisional).
+  - A computer's guard post (CGuardPost, `AIgp`, own `FUN_6f9befe0`): a word, its place,
+    its unit type, its unit, 0, the units it has had, and the post made before it; its
+    player's AI names the newest (CCompAI's own, after its towns), the unit's AI
+    (`AI-U`) its own post (+0x1c) and its flags 0 (0x60 and its job only for a
+    computer out of its campaign mode, provisional), and the unit lists it among its
+    listeners on events 0xd01a0 and 0xd01a2, after its player's AI.
+  - The time of day suspended (CGameState +0x6c, its record's 26th field after the
+    event lists: SuspendTimeOfDay's bit 1, `FUN_6f28bb00`): its modifier gone, the
+    time's real's rate 0 and its first link none, its listeners on the time checking
+    nothing (no node).  The port's save had the rate 0.05 and no bit, so the original
+    ran the time on from it (night by 270 seconds).  The day change's thresholds are
+    the engine's arithmetic (`FUN_6f283c80` by `FUN_6f06fa90` and `FUN_6f06fbb0`:
+    dusk's 18.009998).
+  - The fog's two bytes are its mask's (+0x10, FogMaskEnable, `FUN_6f24f9c0`) and its
+    fog's (+0x14, FogEnable, `FUN_6f24f930`), both off here.
+  - A trigger's words: +0x58 its evaluations (an event's, counted before the enabled
+    flag is asked, `FUN_6f299c90`, and TriggerExecute's, `FUN_6f2979a0`; never
+    TriggerEvaluate's), +0x5c its executions, +0x60 those running, +0x74 its
+    conditions' last result (`FUN_6f296de0`: an event's and TriggerEvaluate's, not
+    TriggerExecute's), +0x78.  Its conditions are all evaluated, passing if all pass
+    (`FUN_6f296820` in mode 2, a condition without an expression failing).  Read:
+    WalkCenter evaluated once and executed none for the peasant made in its region;
+    triggers run by another's TriggerExecute 1, 1, 0, 0.
+  - A group (`FUN_6f2464b0`): after its units, its last enumeration's filter (+0x38)
+    and its last ForGroup's function's handler (+0x3c, `FUN_6f22ff30`), then +0x40
+    (-1), the player its last enumeration took or -1 (+0x44), its limit or -1 (+0x48,
+    `FUN_6f240890`; 0 and 0 before any), and 0.
+  - A timer dialog's string is its title as set.  A timer's handler without a
+    function numbers 0.  An execution kept within SaveGame names no action under way
+    (+0x2c), its actions listed.  A unit's speed in its move ability and position is
+    as SetUnitMoveSpeed set it; a script's move order names its unit's owner (its
+    third word); a unit whose pathing a script turned off lacks agent flag 0x40, its
+    walking byte, and its position's first flag, its position's first real 0.49
+    (provisional); a collision of none is one in its position.
+  - A player: its race preference (+0x25c: a map fixing its players' settings, w3i
+    flag 0x20, its race's bit alone; the neutral players 0x60), its start location
+    (+0x274, an empty slot of the map's its own) then its team (+0x278, none unless
+    playing: the port had written them the other way, Booty Bay's alike either way),
+    the players whose sight it shares (+0x2e0, `FUN_6f26b3d0`: 0x7ff for the map's
+    eleven allies), an empty slot's name none and its agent word 0.  A start location
+    whose player's start the w3i fixes is taken and fixed (`FUN_6f1dbec0`'s +0x18 and
+    +0x28, 1 and 1).  The game's unit name table follows the standard types with the
+    map's own as "custom_" and their ids, in its w3u's order.
+  The port writes all of these (`w3zsave/script.rs`), and loading an original's save
+  makes its leaderboards, timer dialogs, and camera setups again under their handles
+  (`Game::restore_boards`), the players shown each board too.  Not yet: the message
+  log (the game's third part's first list: each text shown), the local player's
+  interface's six `` `fcl `` and the creep camps' `+ccu` in the second table, the
+  game state's fifteen context stacks and free handles (tail 10 and 11), a walk
+  without pathing's cluster and path as the original keeps them, the slot table's
+  empty slots, the map setup's flags 0x300000.
 - A unit moving among others has its position cluster (`` `pcu ``) end in its
   separation's record (CPoSeparate, `FUN_6f16f9d0`: two reals and a word), its
   second flag set (read, the hero map's 18 dragons on the move).

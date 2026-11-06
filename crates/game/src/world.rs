@@ -739,6 +739,13 @@ pub struct World {
     /// The map is a melee map (its w3i flag 0x4).
     #[serde(default)]
     pub melee_map: bool,
+    /// The map fixes its players' settings (its w3i flag 0x20): their races not chosen.
+    #[serde(default)]
+    pub fixed_player_settings: bool,
+    /// The map's players whose start positions are fixed (the w3i's players' flag), a
+    /// bit each by number.
+    #[serde(default)]
+    pub fixed_start_players: u32,
     /// Saved games keep their variables and threads apart (see save.rs).
     #[serde(skip)]
     pub ai_vms: HashMap<u8, crate::ai::AiVm>,
@@ -1153,6 +1160,8 @@ impl World {
             ai: HashMap::default(),
             guard_posts: HashMap::default(),
             melee_map: false,
+            fixed_player_settings: false,
+            fixed_start_players: 0,
             ai_vms: HashMap::default(),
             ai_current: None,
             ai_difficulty: HashMap::default(),
@@ -1432,23 +1441,42 @@ impl World {
         }
     }
 
-    /// Evaluates a trigger's conditions; GetTriggerEvalCount counts the evaluations that
-    /// pass (measured: two passing and two failing read 2).
+    /// Evaluates a trigger's conditions, every one of them, passing if all pass
+    /// (`FUN_6f296820`, its mode 2: a condition without an expression fails), and keeps
+    /// the result (`FUN_6f296de0`, +0x74).  Evaluating counts nothing: an event counts an
+    /// evaluation as it fires (`World::count_fired`), TriggerExecute one with its
+    /// execution (`FUN_6f2979a0`).  (Measured: two passing and two failing evaluations
+    /// by ConditionalTriggerExecute read 2.)
     pub fn trigger_evaluate(&mut self, vm: &mut Vm, trig: u32) -> bool {
         let Some(conds) = self.trigger(trig).map(|t| t.conditions.clone()) else { return false };
+        let mut pass = true;
         for c in conds {
-            let expr = match self.handles.get(c) {
-                Some(Obj::TriggerCondition { expr }) => *expr,
+            let ok = match self.handles.get(c) {
+                Some(Obj::TriggerCondition { expr }) if matches!(self.handles.get(*expr), Some(Obj::BoolExpr(_))) => {
+                    let expr = *expr;
+                    self.eval_boolexpr(vm, expr)
+                }
+                Some(Obj::TriggerCondition { .. }) => false,
                 _ => continue,
             };
-            if !self.eval_boolexpr(vm, expr) {
-                return false;
-            }
+            pass &= ok;
         }
+        if let Some(t) = self.trigger_mut(trig) {
+            t.last_eval = pass;
+        }
+        pass
+    }
+
+    /// An event fired at a trigger counts an evaluation (`FUN_6f299c90`, its conditions
+    /// passing or not; read, Mafarazzo TD's WalkCenter at 30 seconds, evaluated once
+    /// for the peasant made inside its region, executed none).  (The original counts a
+    /// disabled trigger's too, before its test of the enabled flag, its registration
+    /// having asked its filter; the port asks no filter for a disabled trigger and
+    /// counts none: provisional.)
+    pub fn count_fired(&mut self, trig: u32) {
         if let Some(t) = self.trigger_mut(trig) {
             t.eval_count += 1;
         }
-        true
     }
 
     /// Runs a trigger's actions on a new thread that may sleep.
@@ -1607,6 +1635,7 @@ impl World {
         if !self.trigger(trig).is_some_and(|t| t.enabled) {
             return;
         }
+        self.count_fired(trig);
         let mut c = ctx;
         c.trigger = trig;
         let saved = std::mem::replace(&mut self.ctx, c.clone());
@@ -1842,6 +1871,7 @@ impl World {
             }
             let mut c = ctx.clone();
             c.trigger = trig;
+            self.count_fired(trig);
             let saved = std::mem::replace(&mut self.ctx, c.clone());
             let pass = self.trigger_evaluate(vm, trig);
             self.ctx = saved;
@@ -2814,6 +2844,7 @@ impl World {
         if !self.trigger(trig).is_some_and(|t| t.enabled) {
             return;
         }
+        self.count_fired(trig);
         let mut c = ctx;
         c.trigger = trig;
         let saved = std::mem::replace(&mut self.ctx, c.clone());

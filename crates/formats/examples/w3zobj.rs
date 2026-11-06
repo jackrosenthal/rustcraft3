@@ -367,6 +367,18 @@ fn main() {
         println!("cells' orders (ascending, descending): {orders:?}");
         return;
     }
+    // "cellsof <tag>": the pathing map's cells listing a region, each its column, row,
+    // and the region's place in the cell's list.
+    if a[2] == "cellsof" {
+        let t: u32 = a[3].parse().unwrap();
+        let m = s.objects.as_ref().unwrap();
+        let p = w3_formats::w3z::PathingMaps::parse(&m.data[0]).unwrap();
+        for (k, x) in p.proximity.iter().enumerate() {
+            let cells: Vec<String> = x.cells.iter().filter_map(|c| c.3.iter().position(|r| r.0 == t).map(|i| format!("({},{})#{i}/{} {:x}", c.0, c.1, c.3.len(), c.2))).collect();
+            println!("map {k}: {} cells: {}", cells.len(), cells.join(" "));
+        }
+        return;
+    }
     // "w3d": each destructable's record's fields that vary, a line each, tab-separated.
     if a[2] == "w3d" {
         for o in all.iter().filter(|o| code(o.entry.kind) == "+w3d") {

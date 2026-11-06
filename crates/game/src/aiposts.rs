@@ -23,6 +23,9 @@ pub struct GuardPost {
     pub unit: u32,
     /// Units assigned to the post so far.
     pub filled: i32,
+    /// Its engine object's slot and birth (`AIgp`), for a post a unit's making made.
+    #[serde(default)]
+    pub object: Option<(u32, u32)>,
 }
 
 impl World {
@@ -36,7 +39,7 @@ impl World {
         let exists = self.ai.get(&p).is_some_and(|s| s.posts.iter().any(|g| g.id == id && g.x == x && g.y == y && self.post_empty(g)));
         if !exists {
             if let Some(s) = self.ai.get_mut(&p) {
-                s.posts.push(GuardPost { id, x, y, unit: 0, filled: 0 });
+                s.posts.push(GuardPost { id, x, y, unit: 0, filled: 0, object: None });
             }
         }
     }
@@ -61,7 +64,7 @@ impl World {
             if st.posts.iter().any(|g| g.unit == h) {
                 continue;
             }
-            st.posts.push(GuardPost { id, x, y, unit: h, filled: 1 });
+            st.posts.push(GuardPost { id, x, y, unit: h, filled: 1, object: None });
             st.attack.units.retain(|&k| k != h);
             st.defense.units.retain(|&k| k != h);
         }
@@ -101,8 +104,9 @@ impl World {
         self.posts(p).iter().any(|g| g.id == id && g.x == x && g.y == y && self.post_empty(g))
     }
 
-    /// A new unit's own guard post at its place, an empty one there of its type taken.
-    pub(crate) fn post_unit(&mut self, p: u8, h: u32, id: Id, x: f32, y: f32) {
+    /// A new unit's own guard post at its place, an empty one there of its type taken
+    /// (else a new one, its object the one its making made).
+    pub(crate) fn post_unit(&mut self, p: u8, h: u32, id: Id, x: f32, y: f32, object: Option<(u32, u32)>) {
         let i = self.posts(p).iter().position(|g| g.id == id && g.x == x && g.y == y && self.post_empty(g));
         let posts = match self.ai.get_mut(&p) {
             Some(s) => &mut s.posts,
@@ -113,7 +117,7 @@ impl World {
                 posts[i].unit = h;
                 posts[i].filled += 1;
             }
-            None => posts.push(GuardPost { id, x, y, unit: h, filled: 1 }),
+            None => posts.push(GuardPost { id, x, y, unit: h, filled: 1, object }),
         }
     }
 

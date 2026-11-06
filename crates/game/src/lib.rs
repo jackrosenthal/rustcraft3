@@ -199,6 +199,8 @@ impl Game {
         world.version = version;
         world.editor_version = info.editor_version;
         world.melee_map = info.flags & 0x4 != 0;
+        world.fixed_player_settings = info.flags & 0x20 != 0;
+        world.fixed_start_players = info.players.iter().filter(|p| p.fixed_start && p.id < 32).fold(0, |m, p| m | 1 << p.id);
         // w3i flag 0x2000: the map has terrain fog.
         if info.flags & 0x2000 != 0 {
             let c = info.fog_color;

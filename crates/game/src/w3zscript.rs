@@ -532,6 +532,7 @@ impl Game {
         let blank = |entry| SavedObject { entry, first: Vec::new(), second: Vec::new() };
         let mut second: Vec<SavedObject> = crate::w3zsave::class_definitions().into_iter().map(|o| blank(o.entry)).collect();
         second.extend(w.camera_records().into_iter().map(|(e, _, _)| blank(e)));
+        second.extend(w.camera_setup_entries().into_iter().map(blank));
         let births = second.iter().map(|o| o.entry.birth + 1).max().unwrap_or(0);
         let objects = [w.saved_table().into_iter().map(blank).collect(), second];
         let time = w.time;
@@ -704,6 +705,7 @@ impl Game {
                     Some(Obj::Trigger(t)) => t.slots.first().map(|&s| tagged(s)),
                     Some(Obj::TriggerAction { slot, .. }) => Some(tagged(*slot)),
                     Some(Obj::Force(f)) => f.slots.first().map(|&s| tagged(s)),
+                    Some(Obj::Region(g)) => g.objects.map(|o| o[0]),
                     _ => w.tags.handle_ids.get(&id).copied().or_else(|| w.tags.handle_slots.get(&id).map(|&s| tagged(s))),
                 };
                 let word = u32::from(matches!(o, Some(Obj::Event(_) | Obj::Timer(_) | Obj::Location(..) | Obj::Sound(_))));
@@ -757,7 +759,9 @@ impl Game {
         rows.sort_by_key(|&(h, _)| w.handles.given_order(h));
         tail.push(Field::List(rows.iter().map(|&(h, r)| vec![Field::Ref(r.1.map_or(none, rf)), Field::Word(r.3.unwrap_or(0)), Field::Word(h)]).collect()));
         tail.push(Field::List(Vec::new()));
-        tail.extend([Field::Word(qum.0), Field::Word(qum.1), Field::Real(0.0), Field::Word(0)]);
+        // (Then the time of day's suspension, +0x6c: a bit for each who stopped it,
+        // SuspendTimeOfDay's 1, `FUN_6f28bb00`; read, Mafarazzo TD's at 30 seconds.)
+        tail.extend([Field::Word(qum.0), Field::Word(qum.1), Field::Real(0.0), Field::Word(u32::from(w.time_of_day_suspended))]);
         let now = w.tags.save_clock.unwrap_or(w.tags.clock);
         for (k, (period, event)) in [(0x3ecc_ccce_u32, 0x8_0269), (crate::motion::STEP, 0x8_026a)].into_iter().enumerate() {
             let mut due = crate::efloat::add(w.tags.game_timers_clock, period);

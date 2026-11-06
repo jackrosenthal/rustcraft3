@@ -1812,6 +1812,31 @@ const AGENTS: &[(&[u8; 4], &str, &str)] = &[
     // CTimerDialogWar3 (`FUN_6f246ad0`, own `FUN_6f2472c0`: three words and a real): a
     // word, two words (`FUN_6f3b6e90`, `FUN_6f3b6fc0`), a string, and a real.
     (codes::class::TIMER_DIALOG, "www f", "w ww z f"),
+    // CLeaderboardWar3 (`FUN_6f246530`, own `FUN_6f03edf0`: a word): its frame's
+    // (`FUN_6f3cb7a0`: its size, a short count of items, each `FUN_6f3a6b00`'s label
+    // and seven words, and whether shown), a word (+0x40, the frame's +0x194), a word
+    // (+0x28), and its title.
+    (codes::class::LEADERBOARD, "w", "w {z wwwwwww} w w w z"),
+    // CCameraSetup (`FUN_6f246030`, own `FUN_6f03edf0`): three reals (+0xa4 to +0xac).
+    (codes::class::CAMERA_SETUP, "w", "fff"),
+    // CTriggerRegion (`FUN_6f05fea0`, the agent base alone, no own fields): the lists
+    // of events 0x401900c8 and 0x401900c9 (its enter and leave registrations), and its
+    // pathing region (+0x20).
+    (codes::class::REGION, "!", "e e r"),
+    // CRegionEventReg (`FUN_6f27eb00`, own `FUN_6f27f140`: five words): its region
+    // (+0x34), its filter (+0x38), a timer (+0x3c, CAgentTimer), a counted list of a
+    // reference and a word (+0x50, `FUN_6f271ae0`), and events 0x80205's and 0x80206's
+    // lists.
+    (codes::class::REGION_EVENT, "wwwww", "r r t [rw] e e"),
+    // CTriggerCondition (`FUN_6f299690`, own `FUN_6f03edf0`): its filter (+0x24).
+    (codes::class::TRIGGER_CONDITION, "w", "r"),
+    // CPlayerChatEventReg (`FUN_6f27e820` on the player event's, own `FUN_6f27f190`:
+    // the player event's and a word): its text (+0x50), and events 0x80210's and
+    // 0x80260's lists.
+    (codes::class::PLAYER_CHAT_EVENT, "wwwwwwwwww w", "r [rw] z e e"),
+    // CGuardPost (`FUN_6f03eda0`, own `FUN_6f9befe0`): a word, two reals (+0x28, +0x30),
+    // and eight words.
+    (codes::ability::id::GUARD_POST, "w ff wwwwwwww", ""),
     // CCompAI (`FUN_6f9ca100`, own `FUN_6f9ca230`: words, reals, and counted lists):
     // two words, a counted list of a reference, a word, a reference, a word, and a
     // reference, a counted list of references, and eight timers.

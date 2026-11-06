@@ -676,6 +676,7 @@ impl Game {
         if let Some((_, v)) = game_reals.iter().find(|(k, _)| *k == 2) {
             (w.time_of_day, w.time_of_day_exact, w.time_of_day_clock) = (v[0], v[0] as f64, w.time as f64);
         }
+        self.restore_boards(s, &handles)?;
         // The map script's machine is the first: its globals as they were (its strings
         // by their text; a handle kept where the port holds an object of the kind the
         // save's handle table names, else none; its constants as the script makes them).
@@ -874,6 +875,96 @@ impl Game {
         let main_clock = s.objects.as_ref().map_or(0.0, |m| m.clocks[0].0);
         if let Err(e) = self.restore_ai_scripts(s, &scripts, main_clock, &made) {
             log::warn!("the AI scripts of the save: {e:#}");
+        }
+        Ok(())
+    }
+
+    /// An original's save's leaderboards, timer dialogs, and camera setups (made by the
+    /// script as it ran, which the map's start run again to load does not make again),
+    /// under the handles they had: a leaderboard's title, items (each its label, value,
+    /// style, player, and colors, a player's own color left the player's), size, and
+    /// whether displayed (`World::leaderboard_records`), and the players shown it (each
+    /// `+ply`'s +0x2d4); a timer dialog's timer, title, and speed; a camera setup's
+    /// place and values (its reals in the second table, `World::camera_setup_records`).
+    fn restore_boards(&mut self, s: &w3_formats::w3z::SaveGame, handles: &std::collections::HashMap<(u32, u32), u32>) -> anyhow::Result<()> {
+        use crate::types::{CameraSetup, Leaderboard, LeaderboardItem, Obj, TimerDialog};
+        use w3_formats::w3z::{Field, First, Second};
+        let all = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
+        let by: std::collections::HashMap<u32, &w3_formats::w3z::SavedObject> = all.iter().flatten().map(|o| (o.entry.tag, o)).collect();
+        let word = |f: Option<&Field>| match f {
+            Some(Field::Word(w)) => Some(*w),
+            _ => None,
+        };
+        let real = |f: Option<&Field>| match f {
+            Some(Field::Real(r)) => Some(*r),
+            _ => None,
+        };
+        let text = |f: Option<&Field>| match f {
+            Some(Field::Text(t)) => Some(t.clone()),
+            _ => None,
+        };
+        let w = &mut self.world;
+        let mut boards: std::collections::HashMap<(u32, u32), u32> = Default::default();
+        for o in all.iter().flatten() {
+            let Some(&jass) = handles.get(&(o.entry.tag, o.entry.birth)) else { continue };
+            let Ok(Second::Agent { own, tail, .. }) = o.second() else { continue };
+            match &o.entry.kind.to_be_bytes() {
+                crate::codes::class::LEADERBOARD => {
+                    let Some(Field::List(rows)) = tail.get(1) else { continue };
+                    let mut b = Leaderboard { label: text(tail.get(5)).unwrap_or_default(), size: word(tail.get(3)).unwrap_or(0) as usize, displayed: word(tail.get(4)) == Some(1), ..Leaderboard::default() };
+                    for r in rows {
+                        let player = word(r.get(5)).unwrap_or(0) as u8;
+                        let theirs = w.player_argb(player);
+                        let own_color = |c: u32| {
+                            let [a, r, g, bl] = c.to_be_bytes();
+                            (c != theirs).then_some([r, g, bl, a])
+                        };
+                        let flag = |k: usize| word(r.get(k)) == Some(1);
+                        b.items.push(LeaderboardItem { label: text(r.first()).unwrap_or_default(), value: word(r.get(1)).unwrap_or(0) as i32, style: [flag(2), flag(3), flag(4)], player, label_color: word(r.get(6)).and_then(own_color), value_color: word(r.get(7)).and_then(own_color) });
+                    }
+                    let h = w.handles.insert(Obj::Leaderboard(b));
+                    w.handles.alias(jass, h);
+                    w.tags.handle_slots.insert(h, o.entry.tag);
+                    boards.insert((o.entry.tag, o.entry.birth), h);
+                }
+                crate::codes::class::TIMER_DIALOG => {
+                    let timer = (word(own.get(1)).unwrap_or(u32::MAX), word(own.get(2)).unwrap_or(u32::MAX));
+                    let Some(&t) = handles.get(&timer) else { continue };
+                    let timer = w.handles.resolve(t);
+                    let d = TimerDialog { timer, title: text(tail.get(3)), speed: real(tail.get(4)).unwrap_or(1.0), ..TimerDialog::default() };
+                    let h = w.handles.insert(Obj::TimerDialog(d));
+                    w.handles.alias(jass, h);
+                    w.tags.handle_slots.insert(h, o.entry.tag);
+                }
+                crate::codes::class::CAMERA_SETUP => {
+                    let mut c = CameraSetup { x: real(tail.first()).unwrap_or(0.0), y: real(tail.get(1)).unwrap_or(0.0), ..CameraSetup::default() };
+                    if let Ok(First::Agent { refs, .. }) = o.first() {
+                        let reals: Vec<f32> = refs.iter().filter_map(|r| by.get(&r.0)).filter_map(|p| match p.first() {
+                            Ok(First::Real { values, .. }) => Some(values[0]),
+                            _ => None,
+                        }).collect();
+                        for (k, &f) in crate::w3zsave::CAMERA_SETUP_FIELDS.iter().enumerate() {
+                            if let Some(&v) = reals.get(k) {
+                                c.fields.insert(f, v);
+                            }
+                            if let Some(&v) = reals.get(8 + k) {
+                                c.durations.insert(f, v);
+                            }
+                        }
+                    }
+                    let h = w.handles.insert(Obj::CameraSetup(Box::new(c)));
+                    w.handles.alias(jass, h);
+                    w.tags.handle_slots.insert(h, o.entry.tag);
+                }
+                _ => {}
+            }
+        }
+        // The players shown each board.
+        for o in all.iter().flatten().filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::class::PLAYER) {
+            let Ok(Second::Agent { tail, .. }) = o.second() else { continue };
+            let (Some(slot), Some(birth)) = (word(tail.get(139)), word(tail.get(140))) else { continue };
+            let (Some(&b), Some(p)) = (boards.get(&(slot, birth)), w.tags.player_slots.iter().position(|&s| s == o.entry.tag)) else { continue };
+            w.player_leaderboards.insert(p as u8, b);
         }
         Ok(())
     }

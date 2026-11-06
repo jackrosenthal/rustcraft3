@@ -1534,6 +1534,10 @@ pub struct Trigger {
     pub actions: Vec<u32>,
     pub eval_count: i32,
     pub exec_count: i32,
+    /// Its conditions' last evaluation (CTriggerWar3 +0x74, `FUN_6f296de0`: an event's
+    /// and TriggerEvaluate's, not TriggerExecute's).
+    #[serde(default)]
+    pub last_eval: bool,
 }
 
 impl Default for Trigger {
@@ -1547,6 +1551,7 @@ impl Default for Trigger {
             actions: Vec::new(),
             eval_count: 0,
             exec_count: 0,
+            last_eval: false,
         }
     }
 }
@@ -1562,6 +1567,16 @@ pub enum BoolExpr {
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Group {
     pub units: Vec<u32>,
+    /// Its last enumeration's filter (a boolexpr's handle, 0 none), and that
+    /// enumeration's player (-1 none) and limit (-1 none), as CGroup keeps them
+    /// (`FUN_6f240890`: +0x38, +0x44, +0x48).
+    #[serde(default)]
+    pub filter: u32,
+    #[serde(default)]
+    pub enumerated: Option<(i32, i32)>,
+    /// Its last ForGroup's function (+0x3c, its handler).
+    #[serde(default)]
+    pub callback: Option<FuncId>,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -1600,6 +1615,10 @@ impl Rect {
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Region {
     pub cells: HashSet<(i32, i32)>,
+    /// Its engine objects' slots and births: itself (`+agr`, CTriggerRegion) and its
+    /// pathing region (`^pmr`).
+    #[serde(default)]
+    pub objects: Option<[(u32, u32); 2]>,
 }
 
 pub const REGION_CELL: f32 = 32.0;

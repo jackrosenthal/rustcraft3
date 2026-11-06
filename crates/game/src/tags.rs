@@ -28,6 +28,9 @@ pub enum TagEvent {
 /// While set, a new world records its tags' codes (the `tags` example sets it).
 pub static RECORD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// A handler's function when it has none (a timer started without a callback).
+pub const NO_FUNCTION: u32 = u32::MAX;
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Tags {
     /// The table's slots (given and given back).
@@ -136,7 +139,8 @@ pub struct Tags {
     #[serde(default)]
     pub player_slots: Vec<u32>,
     /// The handlers' objects (`hdlr`, CJassFunc): each slot's function (an action's
-    /// or filter's, made once a function, or a timer's own).
+    /// or filter's, made once a function, or a timer's own, `NO_FUNCTION` for one
+    /// started without).
     #[serde(default)]
     pub handler_objects: std::collections::BTreeMap<u32, u32>,
     /// Each function's number, as handlers save it: the count of functions given a
@@ -1250,7 +1254,7 @@ impl crate::world::World {
             }
         }
         if computer && self.posts_new_units(owner) && self.unit(h).is_some_and(|u| self.takes_post(h, u)) {
-            self.post_unit(owner, h, type_id, x, y);
+            self.post_unit(owner, h, type_id, x, y, guard.map(|k| (slots[k], births[k])));
         }
         // Its look at the ground falls due on the main clock, from the tick's first
         // reading (none before the game runs).

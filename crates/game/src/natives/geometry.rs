@@ -120,8 +120,8 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetLocationY => |w, _, a| real(w.location(a.h(0)).map_or(0.0, |l| l.1)),
         GetLocationZ => |w, _, a| real(w.location(a.h(0)).map_or(0.0, |(x, y)| w.ground_z(x, y))),
         CreateRegion => |w, _, _| {
-            w.tags.take_all(&[codes::class::REGION, codes::class::PATHING_REGION]);
-            handle(w.handles.insert(Obj::Region(Region::default())))
+            let objects = [w.tags.take_id(codes::class::REGION), w.tags.take_id(codes::class::PATHING_REGION)];
+            handle(w.handles.insert(Obj::Region(Region { objects: Some(objects), ..Region::default() })))
         },
         RemoveRegion => |w, _, a| { if w.region(a.h(0)).is_some() { w.handles.remove(a.h(0)); } none() },
         RegionAddRect => |w, _, a| {

@@ -658,6 +658,13 @@ pub struct World {
     #[serde(skip)]
     pathing_textures: HashMap<String, Option<w3_formats::blp::Image>>,
     pub ai: HashMap<u8, crate::ai::AiState>,
+    /// The guard posts of computer players whose AI runs no script yet (its own once one
+    /// starts).
+    #[serde(default)]
+    pub guard_posts: HashMap<u8, Vec<crate::aiposts::GuardPost>>,
+    /// The map is a melee map (its w3i flag 0x4).
+    #[serde(default)]
+    pub melee_map: bool,
     /// Saved games keep their variables and threads apart (see save.rs).
     #[serde(skip)]
     pub ai_vms: HashMap<u8, crate::ai::AiVm>,
@@ -1043,6 +1050,8 @@ impl World {
             missile_serial: 0,
             pathing_textures: HashMap::default(),
             ai: HashMap::default(),
+            guard_posts: HashMap::default(),
+            melee_map: false,
             ai_vms: HashMap::default(),
             ai_current: None,
             ai_difficulty: HashMap::default(),

@@ -63,6 +63,56 @@ impl World {
         }
     }
 
+    /// Whether a computer player's AI gives its new units guard posts of their own: in
+    /// its campaign mode, until a script's SetMeleeAI (common.ai's InitAI) leaves it
+    /// (`FUN_6f9c3660`, its flag 1 at +0x2d0; traced: Mafarazzo TD's computer, which runs
+    /// no script, a post for each creep as it is made, between its making's two orders;
+    /// measured: the setter `FUN_6f9caf10` never called there).  A melee map's AI is not
+    /// in it before its script starts (measured: Forestwalk's undead computer, its
+    /// starting units made before StartMeleeAI, their keepalive at turn 1 the original's
+    /// only with none; provisional: whether the map's melee flag is what decides).
+    pub(crate) fn posts_new_units(&self, p: u8) -> bool {
+        match self.ai.get(&p) {
+            Some(s) => !s.melee,
+            None => !self.melee_map,
+        }
+    }
+
+    /// Whether a unit keeps a guard post of its own: not a hero, structure, worker, or
+    /// summoned unit (as `post_campaign_units`).
+    pub(crate) fn takes_post(&self, h: u32, u: &Unit) -> bool {
+        !u.is_building && !u.is_hero && !self.is_summoned(h) && !self.objects.units.get(u.type_id).is_some_and(|o| o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case("peon")))
+    }
+
+    fn posts(&self, p: u8) -> &[GuardPost] {
+        match self.ai.get(&p) {
+            Some(s) => &s.posts,
+            None => self.guard_posts.get(&p).map_or(&[], |v| v.as_slice()),
+        }
+    }
+
+    /// Whether an empty guard post of a type is at a point (`FUN_6f9c2ee0` takes it
+    /// instead of making one).
+    pub(crate) fn empty_post_at(&self, p: u8, id: Id, x: f32, y: f32) -> bool {
+        self.posts(p).iter().any(|g| g.id == id && g.x == x && g.y == y && self.post_empty(g))
+    }
+
+    /// A new unit's own guard post at its place, an empty one there of its type taken.
+    pub(crate) fn post_unit(&mut self, p: u8, h: u32, id: Id, x: f32, y: f32) {
+        let i = self.posts(p).iter().position(|g| g.id == id && g.x == x && g.y == y && self.post_empty(g));
+        let posts = match self.ai.get_mut(&p) {
+            Some(s) => &mut s.posts,
+            None => self.guard_posts.entry(p).or_default(),
+        };
+        match i {
+            Some(i) => {
+                posts[i].unit = h;
+                posts[i].filled += 1;
+            }
+            None => posts.push(GuardPost { id, x, y, unit: h, filled: 1 }),
+        }
+    }
+
     /// A computer player's new unit takes an empty guard post of its type.
     pub(crate) fn ai_new_unit(&mut self, h: u32) {
         let Some(u) = self.unit(h) else { return };

@@ -83,6 +83,17 @@ original images.
   fires its registrations (`FUN_6f240350`, the timer's vf 0x10) before its callback
   (through its handler, `FUN_6f1f83e0`); the port runs the callback first
   (provisional: no capture has both).
+- A computer player's AI in its campaign mode (flag 1 at +0x2d0, until a script's
+  SetMeleeAI, which common.ai's InitAI calls) gives each unit it takes a guard post of
+  its own where it stands (`FUN_6f9c3660` → `FUN_6f9c72d0` → `FUN_6f9c3270` →
+  `FUN_6f9c2ee0`, an empty post of its type at that point taken instead; heroes,
+  structures, and others aside), its `AIgp` made between the unit's making's two
+  orders.  Measured on Mafarazzo TD, whose computer runs no script: a breakpoint on
+  `FUN_6f9c2ee0` stops for each creep, from `FUN_6f9c3660` through `FUN_6f9c72d0`,
+  and the flag's setter `FUN_6f9caf10` is never called; 180 posts at the first wave,
+  none freed by turn 323.  A melee map's computers take none before their scripts
+  start (Forestwalk's undead computer agrees only so; provisional: that the map's
+  melee flag is what decides).
 - Leaderboard items by index (`FUN_6f2af270`): none for an index below 0 or past the
   last, so that LeaderboardSetItemValue, Label, Style, LabelColor, and ValueColor do
   nothing then.  LeaderboardGetPlayerIndex (`FUN_6f20d880`) is -1 for a player without
@@ -4242,3 +4253,6 @@ in the first, computers in theirs, each slot's race, team, and color as the map 
 them (the original leaves a lobby whose slots disagree with the map's, reason 7).  The
 `tags` example replays such a game's actions against the original's keepalives; with
 `TAGS_MAPLOBBY=1` it builds the same lobby (the first user remote, the second local).
+Its turns run from when every player has loaded, one each 100 ms of real time; a
+backlog sent at once (as it did before) runs the game ahead of the clients' real-time
+clocks, on which a trigger's sleep ends (its CNetCommandResumeTriggerExec then sent).

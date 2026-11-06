@@ -368,6 +368,7 @@ impl World {
             // scripts never set it, take an archer and a dryad off their posts to
             // defend and train both again at once, 275 gold, where ours trained none).
             replacements: 3,
+            posts: self.guard_posts.remove(&player).unwrap_or_default(),
             ..Default::default()
         };
         self.ai.insert(player, state);

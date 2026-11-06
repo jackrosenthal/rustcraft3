@@ -918,6 +918,7 @@ impl crate::world::World {
         // read, Twisted Meadows' human computer's.)
         let mut ai_gold: Option<usize> = None;
         let mut ai_gold_run: Option<usize> = None;
+        let mut guard: Option<usize> = None;
         let mut ai_layout: &[&Code] = &crate::goldrun::WISP_GOLD_AI;
         let mut ai_mine = None;
         let mut ai_refs = None;
@@ -950,7 +951,14 @@ impl crate::world::World {
                 }
             }
             ai = Some(codes.len());
-            codes.extend([*codes::class::ORDER, *codes::class::TASK_A, *codes::class::TASK, *codes::class::TASK, *codes::class::TASK, *codes::class::TASK, *codes::class::TASK_A, *codes::class::ORDER, *codes::class::TASK]);
+            codes.extend([*codes::class::ORDER, *codes::class::TASK_A, *codes::class::TASK, *codes::class::TASK, *codes::class::TASK, *codes::class::TASK, *codes::class::TASK_A]);
+            // Then a guard post, for an AI in its campaign mode, at the unit's place,
+            // unless an empty one of its type is there (`FUN_6f9c72d0`, `FUN_6f9c2ee0`).
+            if computer && self.posts_new_units(owner) && self.unit(h).is_some_and(|u| self.takes_post(h, u)) && !self.empty_post_at(owner, type_id, x, y) {
+                guard = Some(codes.len());
+                codes.push(*codes::ability::id::GUARD_POST);
+            }
+            codes.extend([*codes::class::ORDER, *codes::class::TASK]);
             // (Its first order's last gives the wisp its harvest again, the one it
             // carries out.)
             if ai_gold.is_some() {
@@ -1205,9 +1213,14 @@ impl crate::world::World {
                     }
                 }
             }
+            // (The second order's two after the guard post.)
+            let at = |d: usize| a + d + usize::from(d >= 7 && guard.is_some());
             for d in [1, 6, 5, 4, 3, 2, 0, 8, 7].into_iter().filter(|_| ai_gold.is_none()) {
-                self.tags.doom(slots[a + d]);
+                self.tags.doom(slots[at(d)]);
             }
+        }
+        if computer && self.posts_new_units(owner) && self.unit(h).is_some_and(|u| self.takes_post(h, u)) {
+            self.post_unit(owner, h, type_id, x, y);
         }
         // Its look at the ground falls due on the main clock, from the tick's first
         // reading (none before the game runs).

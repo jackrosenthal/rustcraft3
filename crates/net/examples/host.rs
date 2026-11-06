@@ -128,6 +128,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             host.loaded();
             loading = true;
         }
+        // The turns run from when every player has loaded, one each 100 ms of real time
+        // (a backlog sent at once runs the game ahead of its clients' real-time clocks,
+        // which trigger sleeps keep).
+        if loading && host.all_loaded() && sent == 0 && Instant::now() > next_turn {
+            next_turn = Instant::now();
+        }
         if loading && host.all_loaded() && Instant::now() >= next_turn {
             sent += 1;
             for (pid, data) in &actions {

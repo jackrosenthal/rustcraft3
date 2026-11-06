@@ -1054,9 +1054,12 @@ impl crate::world::World {
             // (A computer's Tree of Life one too, its Entangle Gold Mine's: CAbilityEntangle's
             // vf 0xc8, a listener on event 0xd01aa, made as the ability is enabled on an
             // AI's unit, `FUN_6f40bb00`; read, Twisted Meadows' night elf computer's over
-            // LAN with the original, after its AI's objects.)
+            // LAN with the original, after its AI's objects.  And a computer's Moon Well
+            // its Replenish's, CAbilityManaBattery's vf 0xc8, from the making's hook
+            // `FUN_6f9b9230` through `FUN_6f67dff0`: read, the tag allocator's take and its
+            // backtrace, the night elf computer's first well begun at 17.788.)
             for c in &had {
-                if matches!(c, codes::ability::id::ARCH_MAGE_BLIZZARD | codes::ability::id::PIT_LORD_RAIN_OF_FIRE) || (computer && c == codes::ability::id::ENTANGLE) {
+                if matches!(c, codes::ability::id::ARCH_MAGE_BLIZZARD | codes::ability::id::PIT_LORD_RAIN_OF_FIRE) || (computer && matches!(c, codes::ability::id::ENTANGLE | codes::ability::id::MANA_BATTERY)) {
                     spell_pils.push((codes.len(), *c));
                     codes.push(*codes::class::IN_RANGE_LISTENER);
                 }

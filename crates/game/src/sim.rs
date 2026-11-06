@@ -4897,6 +4897,25 @@ impl World {
                 bu.extra.build_objects = objects;
                 bu.extra.build_by = by;
             }
+            // Begun, it lets go as the turn ends its own regeneration's modifier (the
+            // build's own taking its place), its spells' timers, and its abilities' AI
+            // listeners (read: Twisted Meadows' night elf computer's first Moon Well,
+            // begun at 17.788, its `` `rcm `` and Replenish's `` `rtl `` and `` `pil ``
+            // freed in turn 178; provisional: why, the abilities disabled as it builds).
+            let live = |w: &World, (s, n): (u32, u32)| w.tags.live.get(&s).is_some_and(|e| e.1 == n && &e.0 == codes::class::CONTINUOUS_MODIFIER);
+            let rcm = self.unit(b).and_then(|bu| bu.extra.object_slots[1].iter().copied().find(|&o| live(self, o))).map(|o| o.0);
+            let (timers, pils) = self.unit_mut(b).map(|bu| (std::mem::take(&mut bu.extra.spell_timers), std::mem::take(&mut bu.extra.spell_pils))).unwrap_or_default();
+            if let Some(s) = rcm {
+                self.tags.doom(s);
+                if let Some(bu) = self.unit_mut(b) {
+                    for g in bu.extra.object_slots.iter_mut() {
+                        g.retain(|o| o.0 != s);
+                    }
+                }
+            }
+            for s in timers.into_iter().chain(pils.into_iter().map(|p| p.0)) {
+                self.tags.doom(s);
+            }
         }
         if self.unit(h).is_none() {
             return;

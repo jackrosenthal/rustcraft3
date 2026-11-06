@@ -5926,6 +5926,18 @@ Formats the port made its own, to be replaced by the original's:
   which call's tree).  The keepalives agree to turn 178, from 155.  Next (turn 178):
   the original makes a `` `pil `` with the well's beginning, after the builder's order
   and before the structure's `pucs`, which the port does not.
+- A computer's Moon Well's Replenish makes its listener as the well is made, and a
+  structure begun lets go as the turn ends its regeneration's modifier, its spells'
+  timers, and those listeners.  Read (the tag allocator's take of a `` `pil `` with its
+  backtrace, 17.6 to 17.9): at 17.788015 `CAbilityManaBattery`'s vf 0xc8
+  (`FUN_6f05c020`) from `FUN_6f67dff0` (its abilities' AI) in the making's hook
+  `FUN_6f9b9230`, under `FUN_6f54d0f0` (the build); and in turn 178's frees, after
+  the build's `pucs`, the well's `` `rcm `` (its regeneration's, the build's own taking
+  its place), Replenish's `` `rtl ``, and that `` `pil ``.  The port now makes the
+  listener for a computer's well (`World::tag_unit`, as Entangle's) and frees the three
+  as a structure is begun (`World::build`, with its Build In Progress; provisional:
+  why, the abilities read as disabled while it builds).  The keepalives agree to turn
+  302, from 178.
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

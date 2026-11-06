@@ -278,20 +278,24 @@ impl ObjectTable {
                     if meta.data > 0 {
                         name = format!("{name}{}", (b'A' + (column as u8).saturating_sub(1)) as char);
                     }
-                    if meta.repeat > 0 && level > 0 {
+                    let profile_list = meta.index >= 0 && meta.slk.eq_ignore_ascii_case("Profile");
+                    if meta.repeat > 0 && level > 0 && !profile_list {
                         // Doodads' variation colors are vertR01 to vertR10.
                         name = if name.starts_with("vert") { format!("{name}{level:02}") } else { format!("{name}{level}") };
                     }
                     let key = name.to_ascii_lowercase();
-                    if meta.index >= 0 && meta.slk.eq_ignore_ascii_case("Profile") {
-                        // A single entry of a comma-separated profile list.
+                    if profile_list {
+                        // A single entry of a comma-separated profile list; one with
+                        // levels (an ability's Tip and Ubertip, an upgrade's Name) is its
+                        // level's, as the strings files list them a level each.
                         let mut items = obj.fields.get(&key).map(|v| split_list(v)).unwrap_or_default();
-                        let i = meta.index as usize;
+                        let i = meta.index as usize + if meta.repeat > 0 && level > 0 { level as usize - 1 } else { 0 };
                         if items.len() <= i {
                             items.resize(i + 1, String::new());
                         }
                         items[i] = value;
-                        obj.fields.insert(key, items.join(","));
+                        let quoted: Vec<String> = items.into_iter().map(|s| if s.contains(',') { format!("\"{s}\"") } else { s }).collect();
+                        obj.fields.insert(key, quoted.join(","));
                     } else {
                         obj.fields.insert(key, value);
                     }

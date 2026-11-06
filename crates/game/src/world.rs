@@ -310,10 +310,10 @@ pub struct World {
     /// An AI is giving the order under way (`World::start_gold_run`).
     #[serde(skip)]
     pub ai_ordering: bool,
-    /// Each town hall's tree for its AI's wood workers, with what it was judged among
-    /// (the live trees and structures), as `World::ai_town_tree` judged it.
+    /// Each town hall's eight places for its AI's wood workers' trees (each a cost and
+    /// tree, or none), as `World::ai_town_trees` judged them (CCompAI +0xac and +0x110).
     #[serde(skip)]
-    pub ai_tree_cache: std::collections::HashMap<u32, (u64, Option<u32>)>,
+    pub ai_tree_cache: std::collections::HashMap<u32, Vec<Option<(u32, u32)>>>,
     /// The computers' threads run after the tick's movement steps (`World::update_ai`).
     #[serde(skip)]
     pub ai_after_steps: bool,

@@ -1290,14 +1290,22 @@ impl World {
         best.map(|b| b.1)
     }
 
-    /// The tree a computer's town sends its wood workers to (`FUN_6f9c55d0`, each tree
-    /// about a drop-off judged by `FUN_6f9c5950`): the first of the cheapest by the
-    /// accelerator plan's cost from the drop-off, both lifted, 32 pops (read: Twisted
-    /// Meadows' human computer's oldest peasant sent to a tree 689 from its town hall
-    /// where one stood 680 away).  Provisional: the area enumerated.
-    pub(crate) fn ai_town_tree(&self, hall: u32, worker: u32) -> Option<u32> {
-        let (fx, fy) = self.widget_pos(hall)?;
-        let p = self.pathing.as_ref()?;
+    /// The trees a computer's town sends its wood workers to (`FUN_6f9c55d0`, each tree
+    /// about a drop-off judged by `FUN_6f9c5950`), by the accelerator plan's cost from
+    /// the drop-off, both lifted, 32 pops (read: Twisted Meadows' human computer's
+    /// oldest peasant sent to a tree 689 from its town hall where one stood 680 away).
+    /// Its AI keeps eight places (`kept`, as they were, those gone none): a tree not
+    /// among them takes the first empty place, else the first dearest when it costs less
+    /// (`FUN_6f9c60a0`, `FUN_6f9c7a20`); then each place in turn takes the first
+    /// cheapest after it, by a swap (`FUN_6f9c55d0`).  Provisional: the area
+    /// enumerated, and its order.
+    pub(crate) fn ai_town_trees(&self, hall: u32, worker: u32, kept: &[Option<(u32, u32)>]) -> Vec<Option<(u32, u32)>> {
+        let mut places: [Option<(u32, u32)>; 8] = [None; 8];
+        for (i, q) in kept.iter().take(8).enumerate() {
+            places[i] = *q;
+        }
+        let Some((fx, fy)) = self.widget_pos(hall) else { return places.to_vec() };
+        let Some(p) = self.pathing.as_ref() else { return places.to_vec() };
         let block = |x: f32, y: f32| (((y - p.origin[1]) / 256.0).floor() as i32, ((x - p.origin[0]) / 256.0).floor() as i32);
         let mut trees: Vec<(usize, u32, (i32, i32))> = self
             .destructable_order
@@ -1308,17 +1316,27 @@ impl World {
             .collect();
         trees.sort_by(|a, b| a.2.cmp(&b.2).then(b.0.cmp(&a.0)));
         let acc = |w: f32, o: f32| (w - o) / 64.0;
-        let mut best: Option<(u32, u32)> = None;
         for (_, d, _) in trees {
+            if places.iter().flatten().any(|q| q.1 == d) {
+                continue;
+            }
             let Some((x, y)) = self.widget_pos(d) else { continue };
             let Some(pyr) = self.accel_pyramid_lifting(Some(hall), &[d]) else { continue };
             let Some(cost) = crate::accelpath::plan_cost(&pyr, 0, (acc(fx, p.origin[0]), acc(fy, p.origin[1])), (acc(x, p.origin[0]), acc(y, p.origin[1])), 0x20) else { continue };
             log::trace!("town tree from {hall}: ({x}, {y}) cost {cost}");
-            if best.is_none_or(|(c, _)| cost < c) {
-                best = Some((cost, d));
+            let k = places.iter().position(|q| q.is_none()).unwrap_or_else(|| {
+                (1..8).fold(0, |k, i| if places[i].map_or(0, |q| q.0) > places[k].map_or(0, |q| q.0) { i } else { k })
+            });
+            if places[k].is_none_or(|q| cost < q.0) {
+                places[k] = Some((cost, d));
             }
         }
-        best.map(|b| b.1)
+        let cost = |q: Option<(u32, u32)>| q.map_or(u32::MAX, |q| q.0);
+        for i in 0..8 {
+            let k = (i + 1..8).fold(i, |k, j| if cost(places[j]) < cost(places[k]) { j } else { k });
+            places.swap(i, k);
+        }
+        places.to_vec()
     }
 
     /// Where a walker walks: a move order's point, or a gold run's structure's middle.

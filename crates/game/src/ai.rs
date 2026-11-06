@@ -81,6 +81,10 @@ pub const AI_WOOD: [&crate::tags::Code; 20] = [codes::class::ORDER, codes::class
 /// begun by an acolyte at its wake, and its altar in turn 45).
 pub const AI_BUILD: [&crate::tags::Code; 17] = [b"ord.", codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, b"tsk.", b"tsk.", codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_O, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 
+fn seven() -> usize {
+    7
+}
+
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct AiState {
     pub player: u8,
@@ -133,6 +137,10 @@ pub struct AiState {
     /// How many times a guard post is filled (SetReplacementCount; CCompAI +0x1d4).
     #[serde(default)]
     pub replacements: i32,
+    /// The town's tree its last wood worker was sent to, of its eight (CCompAI +0x150,
+    /// 7 as an AI starts, `FUN_6f9c7b20`; `World::ai_assign_harvest`).
+    #[serde(default = "seven")]
+    pub tree_next: usize,
     /// The enemy threatening the town (CCompAI +0x164; TownThreatened), whether an
     /// attack may be answered now (flag 2 of +0x2d0), and the 2 s check that reopens it.
     #[serde(default)]
@@ -368,6 +376,7 @@ impl World {
             // scripts never set it, take an archer and a dryad off their posts to
             // defend and train both again at once, 275 gold, where ours trained none).
             replacements: 3,
+            tree_next: 7,
             posts: self.guard_posts.remove(&player).unwrap_or_default(),
             ..Default::default()
         };
@@ -842,25 +851,22 @@ impl World {
         let (tx0, ty0) = self.town_pos(p, 0);
         let hall0 = self.unit_order.iter().copied().find(|&b| self.unit(b).is_some_and(|u| u.owner == p && u.is_building && !u.dead && (u.x - tx0).abs() < 1.0 && (u.y - ty0).abs() < 1.0));
         let wood_worker = workers.iter().copied().find(|&h| self.unit(h).is_some_and(|u| self.unit_class(u, "peon")));
-        // Wood workers go to their town's tree, the first of the cheapest to reach from
-        // its hall (`World::ai_town_tree`).
-        let town_tree = if requests.iter().any(|r| !r.0 && r.2 > 0) {
-            hall0.zip(wood_worker).and_then(|(hall, w)| {
-                // (Judged again only as the trees or structures change: the plan sees
-                // nothing else.)
-                let key = self.destructable_order.iter().filter(|&&d| self.is_tree_pub(d)).fold(0u64, |a, &d| a.wrapping_mul(31).wrapping_add(d as u64)) ^ self.unit_order.iter().filter(|&&b| self.unit(b).is_some_and(|u| u.is_building && !u.dead)).fold(7u64, |a, &b| a.wrapping_mul(37).wrapping_add(b as u64));
-                match self.ai_tree_cache.get(&hall) {
-                    Some(&(k, t)) if k == key && t.is_none_or(|t| self.can_harvest(w, t)) => t,
-                    _ => {
-                        let t = self.ai_town_tree(hall, w);
-                        self.ai_tree_cache.insert(hall, (key, t));
-                        t
-                    }
-                }
-            })
+        // Wood workers go to their town's trees, its eight cheapest to reach from its
+        // hall (`World::ai_town_trees`), each the next of them in turn.
+        let town_trees: Vec<Option<u32>> = if requests.iter().any(|r| !r.0 && r.2 > 0) {
+            hall0.zip(wood_worker).map(|(hall, w)| {
+                // (Kept while its eight live: those gone leave their places to be taken
+                // again, `FUN_6f9c7a20`.)
+                let kept: Vec<Option<(u32, u32)>> = self.ai_tree_cache.get(&hall).map(|t| t.iter().map(|&q| q.filter(|q| self.can_harvest(w, q.1))).collect()).unwrap_or_default();
+                let places = if kept.len() == 8 && kept.iter().all(|q| q.is_some()) { kept } else { self.ai_town_trees(hall, w, &kept) };
+                let trees = places.iter().map(|q| q.map(|q| q.1)).collect();
+                self.ai_tree_cache.insert(hall, places);
+                trees
+            }).unwrap_or_default()
         } else {
-            None
+            Vec::new()
         };
+        let town_tree = town_trees.iter().flatten().next().copied();
         let tree_near = |w: &World, h: u32| {
             if let Some(t) = town_tree.filter(|&t| w.can_harvest(h, t)) {
                 return Some(t);
@@ -943,7 +949,22 @@ impl World {
                     }
                     continue;
                 }
-                if let Some(t) = tree_near(self, h) {
+                // Each takes the town's next tree after the last one's (`FUN_6f9c6cf0`,
+                // `FUN_6f9c70a0`: its AI's +0x150 counted on, 8 taken back to 0), the
+                // nearest when it has none (read: Twisted Meadows' human computer's farm
+                // peasant, the second sent so, at 60.1, at its tree in the original's
+                // turn 637, past the first tree's time).
+                let next = self.ai.get(&p).map_or(7, |s| s.tree_next);
+                let turn = (1..=8).map(|i| (next + i) % 8).find(|&i| town_trees.get(i).is_some_and(|t| t.is_some()));
+                if let (Some(i), Some(st)) = (turn, self.ai.get_mut(&p)) {
+                    st.tree_next = i;
+                }
+                let tree = match turn {
+                    Some(i) => town_trees[i],
+                    None => tree_near(self, h),
+                };
+                log::debug!("wood worker {h}: the town's tree {turn:?}, {tree:?}, at {:.2}", self.time);
+                if let Some(t) = tree {
                     if let Some(c) = stop_at {
                         self.stop_walker_at(h, c);
                     }

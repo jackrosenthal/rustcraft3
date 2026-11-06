@@ -3646,7 +3646,7 @@ Formats the port made its own, to be replaced by the original's:
   and sorted), not the tree nearest the town (680 from the hall where the original's
   is 689).  The port takes the first of the cheapest by the accelerator plan from the
   hall (`World::ai_town_tree`; provisional: the area, and which of the eight a worker
-  gets); the keepalives agree to turn 32.
+  gets, read since: each the next in turn, below); the keepalives agree to turn 32.
 - A structure's blight dispel does not run while it is built (read: the human
   computer's farm, begun at 2.1, its `Abli`, `Xbli`, `` `pos `` and two `^pmr` kept
   past 3.3, where the port had let them go as a pre-placed town hall's go 1.2
@@ -4370,6 +4370,25 @@ Formats the port made its own, to be replaced by the original's:
   after a queued trip so, the keepalives part at turn 71).  A measurement would be
   the waypoint provider's answers for its walker (after `FUN_6f165ae0`, as for the
   wisps above) from 58.40 to 58.70, with its heading and place.
+- An AI's wood workers take its town's trees in turn: each sent to a tree
+  (`FUN_6f9c6cf0`, from `FUN_6f9c9470` as a worker its pass took for wood runs its
+  `+ord`, and `FUN_6f9c9610`; `FUN_6f9c96c0` too) gets the next of the AI's eight
+  places with a tree (`FUN_6f9c70a0`: CCompAI +0x150 counted on, 8 taken back to 0,
+  the empty passed over), +0x150 7 as the AI starts (`FUN_6f9c7b20`), so its first
+  wood worker has the cheapest; the nearest tree when there is none (`FUN_6f4153a0`).
+  The eight (+0xac, their costs +0x110) are kept while their trees live:
+  `FUN_6f9c55d0`, at each wood request (`FUN_6f9c7700`), enumerates the trees about
+  each drop-off only while a place is empty (`FUN_6f9c7a20` empties a dead tree's
+  place), a tree not among them taking the first empty place or, costing less, the
+  first dearest (`FUN_6f9c5950`, `FUN_6f9c60a0`), and sorts them each time, each
+  place swapped with the first cheapest after it.  Read: Twisted Meadows' human
+  computer's farm peasant, sent to wood at 60.1 (the second so sent), reaches its
+  tree (its walk's reach, the `REACH` objects) in turn 637 in the original; the port
+  had sent it to the first tree, 15 cells off, reached in turn 626, and now sends it
+  to the second, (192, 178), 21 off (with the walk out at 58.5 above given the
+  original's start, the objects agree through turn 630, from 625).  Open: the
+  original's reach is half a second later still; the port reaches that tree in turn
+  631.
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

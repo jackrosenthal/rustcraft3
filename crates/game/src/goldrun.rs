@@ -1301,13 +1301,15 @@ impl World {
         self.cheapest_tree(h, true)
     }
 
-    /// The tree a computer's wisp is sent to as it is made (its AI's first order, the
+    /// The tree a computer's wisp is sent to as it is made (its AI's first look at it,
+    /// `FUN_6f9cd390` and `FUN_6f9c96c0`: a wisp not flagged for gold goes to its town's
+    /// next tree, `FUN_6f9c70a0`, or with none to the nearest, `FUN_6f4153a0`; the
     /// harvest it carries out until its AI's first pass): the cheapest as `auto_tree`
     /// judges it, fog or none (read: Twisted Meadows' night elf computer's five wisps
     /// walking from 0.03 for trees at (156, 170), (160, 170), (148, 198), (160, 170),
     /// and (148, 198) in cells, each a cheapest of its own by the port's plans; for the
-    /// fourth a tie, the port's order's first being (156, 170); provisional: why the
-    /// original's AI sends them to wood).
+    /// fourth a tie, the port's order's first being (156, 170); provisional: the town's
+    /// places empty then, and `FUN_6f4153a0`'s cost as `auto_tree`'s).
     pub(crate) fn ai_setup_tree(&self, h: u32) -> Option<u32> {
         self.cheapest_tree(h, false)
     }

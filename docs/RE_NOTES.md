@@ -4688,15 +4688,19 @@ Formats the port made its own, to be replaced by the original's:
   seconds' 0x2dbc90f0 among them).  The port writes its saves' word so, the sum of
   the records it writes, the same on every computer of a game.  Its save of the quiet
   test map at 5 seconds carries the original's word (0xdb4ef280: every summed field of
-  every object agrees); eleven other test maps' (Forestwalk's from its start to 15
-  seconds among them) differ where their records do: the objects its saves leave out
-  (a walk's order, tasks, cluster, and path; a computer's captains) and the listeners
-  and modifiers about them, and on Forestwalk at 0.3 seconds 22 pathing regions' word
-  (+0x34: the port's 0x04000000 for four where the original's is 0, 0x010000ca for 18
-  where it is 0x01000000) and the blights' places (`Xbli`'s `` `pos `` and its regions'
-  bounds, 2 cells apart).  A restored original's save (Mafarazzo TD's at 30 seconds)
-  written again has a threshold listener's record of another class's length, its sum
-  not reckoned (0 written).
+  every object agrees).  Eleven other test maps' saves, the port's played from the
+  map's start (its playtest's two slots, where the original's of Forestwalk had three,
+  the third open; not the original's seed), differ where their records do: the
+  objects its saves leave out (a walk's order, tasks, cluster, and path; a computer's
+  captains), the listeners and modifiers about them, and the walkers' positions; and
+  on Forestwalk at 0.3 seconds 22 pathing regions' word (+0x34: the port's 0x04000000
+  for four where the original's is 0, 0x010000ca for 18 where it is 0x01000000), the
+  blights' places (`Xbli`'s `` `pos `` and its regions' bounds, 2 cells apart), the
+  dragon whelps' separations (CPoSeparate, which the port writes for none at rest),
+  and the Satyr Hellcallers' speed (10.999999 cells a second, the port's 10: an aura's
+  tenth more, provisional).  A restored original's save (Mafarazzo TD's at 30
+  seconds) written again has a threshold listener's record of another class's length
+  (slot 647, an agent's wrapper's), its sum not reckoned (0 written).
 - A unit's clustered position's flag word (CPoPosCl +0xd8, its record's third word
   after its eight reals): its type's orientInterp in bits 8 to 11 and formation in 12
   to 15, set as the unit is made from its type's data (`FUN_6f652620`, `FUN_6f653800`:

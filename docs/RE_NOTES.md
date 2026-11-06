@@ -185,6 +185,30 @@ original images.
   enemies.  Blizzard.j's GetPlayersAllies and GetPlayersEnemies make a force so:
   Mafarazzo TD's GetPlayersEnemies(Player(11)) is players 0 to 10 not empty, its
   GetPlayersAllies(Player(0)) the same.
+- A unit hurt runs from its attacker (CAbilityMove's damage hook, vf63
+  `FUN_6f5fa400`): one whose move is not disabled (`FUN_6f5fb040`), hurt for some
+  damage (its flag 2 not set) by a living attacker it sees (`FUN_6f66fdd0`) not allied
+  to it (`FUN_6f68bfa0`), runs if its owner's AI would have it flee (`FUN_6f607ba0`)
+  or if it has no order (`FUN_6f419fb0`) and no attack (+0x1e8), its attack disabled,
+  or no target taken (`FUN_6f49cf60`, the attack's own hook taking the attacker first
+  when it can).  The run (`FUN_6f5fc350`) is for a unit that may flee (canFlee,
+  `FUN_6f66efa0`), straight away from the attacker (along its facing were they at one
+  point): for a unit its owner's AI has taken (+0x5c flag 4, set as a computer's or a
+  neutral player's AI takes the unit, `FUN_6f9b9230`) the attacker's reach and 100
+  more (300 from an attacker without an attack, or for a Hero below 200 or a third of
+  its most) on a move order, then the order 0xd0006 queued after it (`FUN_6f693450`);
+  for others 300, on an attack order (a move order for a worker).  The order 0xd0006
+  runs as the unit's AI's look at it (`FUN_6f9bd6e0` → `FUN_6f9cd390`; a unit whose
+  owner has no AI just stops, `FUN_6f690b80`): a worker to its harvest, a captain's
+  unit to its captain (`FUN_6f9d8a90`), else a unit keeping a guard post more than 50
+  from it attack-moves back (`FUN_6f9c0b00`, ReturnGuardPosts' too) and is looked at
+  again after.  No timer: the AI looks as the run ends.  Traced on Mafarazzo TD
+  changed to make a Plague tower and an idle fort runner without a weapon (Player 11,
+  its post where it was made): the runner's first hit at turn 9 gives it a move order
+  and a walk; the tower's attack ends at 48; at 84 that walk's objects go with an
+  attack order and a new walk made (the run of 1100, the tower's reach 1000 and 100,
+  at its slowed speed held to 150, ending then); the tower attacks again from 119; at
+  139 that walk ends, and at 141 the runner is ordered off again.
 
 ## Rendering
 

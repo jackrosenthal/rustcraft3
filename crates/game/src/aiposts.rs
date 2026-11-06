@@ -10,6 +10,10 @@ use crate::types::*;
 use crate::world::World;
 use crate::codes;
 
+/// The order 0xd0006 (851974), an AI's look at its unit as the unit's orders run out
+/// (`FUN_6f693450` queues it; the unit's task for it is `FUN_6f9bd6e0`).
+pub const AI_IDLE_ORDER: i32 = 0xd0006;
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct GuardPost {
     pub id: Id,
@@ -155,6 +159,31 @@ impl World {
         let attack = crate::natives::basic::order_id("attack");
         for (h, x, y) in away {
             self.order_unit(h, attack, x, y, 0);
+        }
+    }
+
+    /// A computer's AI looks at its unit as its orders run out (the order 0xd0006,
+    /// `FUN_6f9bd6e0` → `FUN_6f9cd390`): a unit keeping a guard post more than 50 from
+    /// it attack-moves back and is looked at again after (`FUN_6f9c0b00`, the same as
+    /// ReturnGuardPosts', its move ability not disabled), in campaign mode or not.  So a
+    /// unit that ran from an attacker goes back to its post as its run ends (traced:
+    /// Mafarazzo TD's fort runner, run off from a Plague tower, ordered back to its
+    /// post).  Provisional: a worker's (its harvest or repair) and a captain's unit's
+    /// (its captain's, `FUN_6f9d8a90`) look are not the port's; a neutral player's
+    /// units take none here (their camps are `crate::guard`'s).
+    pub(crate) fn ai_unit_idle(&mut self, h: u32) {
+        let Some(u) = self.unit(h).filter(|u| !u.dead) else { return };
+        if u.owner >= PLAYER_NEUTRAL_AGGRESSIVE || self.buff_mods(h).4 {
+            return;
+        }
+        let Some((x, y)) = self.posts(u.owner).iter().find(|g| g.unit == h).map(|g| (g.x, g.y)) else { return };
+        if (u.x - x).hypot(u.y - y) <= 50.0 {
+            return;
+        }
+        let attack = crate::natives::basic::order_id("attack");
+        self.order_unit(h, attack, x, y, 0);
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.order_queue.push_back((AI_IDLE_ORDER, x, y, 0));
         }
     }
 

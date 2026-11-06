@@ -2479,8 +2479,10 @@ impl World {
             // An idle unit takes its next queued order.
             if matches!(u.action, Action::Idle) && !u.extra.order_queue.is_empty() {
                 let next = self.unit_mut(h).unwrap().extra.order_queue.pop_front();
-                if let Some((order, x, y, target)) = next {
-                    self.order_unit(h, order, x, y, target);
+                match next {
+                    Some((crate::aiposts::AI_IDLE_ORDER, ..)) => self.ai_unit_idle(h),
+                    Some((order, x, y, target)) => self.order_unit(h, order, x, y, target),
+                    None => {}
                 }
             }
             let Some(u) = self.unit(h) else { continue };
@@ -4648,10 +4650,21 @@ impl World {
     /// attacker the same way (measured: a Rifleman shooting a paused footman beside it
     /// turns on an archer that shoots it, at its next shot; one shooting an archer that
     /// shoots back keeps to it when a second archer joins in).
+    /// An idle unit without a weapon runs from an enemy that hurts it, of any player
+    /// (CAbilityMove's damage hook, `FUN_6f5fa400`: a unit without an order,
+    /// `FUN_6f419fb0`, and without an attack or with it disabled, `FUN_6f49cf60`; traced:
+    /// Mafarazzo TD's fort runner, made idle without a weapon by a script, struck by a
+    /// Plague tower, ordered at once to walk off and out of its reach).
     pub(crate) fn retaliate(&mut self, target: u32, source: u32, ordered: bool) {
         let Some(t) = self.unit(target) else { return };
         let idle = matches!(t.action, Action::Idle);
         let unordered = t.order.id == 0 && matches!(t.action, Action::Attack { target: c } if c != source && !self.attacking(c));
+        if idle && unit_weapons(self, t).is_empty() && !t.is_building && !t.paused {
+            if self.unit(source).is_some_and(|s| !s.dead && !is_ally(self, t.owner, s.owner)) {
+                self.flee_from(target, source);
+            }
+            return;
+        }
         if !(idle || unordered) || unit_weapons(self, t).is_empty() || t.is_building || t.paused {
             return;
         }
@@ -4667,29 +4680,7 @@ impl World {
             if flying { wants("air") } else if s.is_building { wants("structure") || wants("ground") } else { wants("ground") }
         });
         if !hits || self.unit_invulnerable(s) {
-            // A unit that may flee (UnitData canFlee) goes 300 straight away from it
-            // instead, a fighter attack-moving and a worker moving (measured: a footman
-            // struck by a gryphon rider it cannot hit, from 200 or 400 away, goes 291.6
-            // off on an attack order each time, and a peasant 284.5 on a move order,
-            // each stopping within 15.6875 of a point 300 off).  A creep moves off the
-            // attacker's reach and 100 more (measured: an ogre struck by an invulnerable
-            // footman, reach 90, goes 177 a time, and by a rifleman, 400, 485).
-            let (sx, sy, tx, ty) = (s.x, s.y, t.x, t.y);
-            let neutral = t.owner >= PLAYER_NEUTRAL_AGGRESSIVE;
-            let flees = self.objects.units.get(t.type_id).is_some_and(|o| o.int("canFlee") != 0);
-            if flees {
-                let worker = self.unit_class(t, "peon");
-                let reach = unit_weapons(self, s).iter().map(|(_, w)| w.range).fold(0.0, f32::max);
-                let away = if neutral { reach + 100.0 } else { 300.0 };
-                let d = (tx - sx).hypot(ty - sy).max(0.001);
-                let (fx, fy) = self.clamp_to_map(tx + (tx - sx) / d * away, ty + (ty - sy) / d * away);
-                let worker = worker || neutral;
-                let name = if worker { "move" } else { "attack" };
-                let u = self.unit_mut(target).unwrap();
-                u.action = if worker { Action::Move { x: fx, y: fy } } else { Action::AttackMove { x: fx, y: fy } };
-                u.order = Order { id: crate::natives::basic::order_id(name), target_x: fx, target_y: fy, target: 0 };
-                u.path.clear();
-            }
+            self.flee_from(target, source);
             return;
         }
         let (sx, sy) = (s.x, s.y);
@@ -4698,6 +4689,49 @@ impl World {
         if ordered {
             u.order = Order { id: crate::natives::basic::order_id("attack"), target_x: sx, target_y: sy, target: source };
         }
+    }
+
+    /// A unit runs from an enemy that hurt it instead of answering (`FUN_6f5fc350`), if
+    /// it may flee (UnitData canFlee), straight away from it (along its facing were they
+    /// at one point).  One its owner's AI has taken (a computer's or a neutral player's,
+    /// its flag 4 at +0x5c set as the AI takes it, `FUN_6f9b9230`) moves off the
+    /// attacker's reach and 100 more (300 from an attacker without a weapon, or for a Hero
+    /// below 200 or a third of its most), and then its AI looks at it again
+    /// (`FUN_6f693450` queues the order 0xd0006 after its move, `World::ai_unit_idle`); any
+    /// other goes 300, a fighter attack-moving and a worker moving.  Measured: a footman
+    /// struck by a gryphon rider it cannot hit, from 200 or 400 away, goes 291.6 off on
+    /// an attack order each time, and a peasant 284.5 on a move order, each stopping
+    /// within 15.6875 of a point 300 off; an ogre struck by an invulnerable footman,
+    /// reach 90, goes 177 a time, and by a rifleman, 400, 485.
+    pub(crate) fn flee_from(&mut self, target: u32, source: u32) {
+        let (Some(t), Some(s)) = (self.unit(target), self.unit(source)) else { return };
+        if !self.objects.units.get(t.type_id).is_some_and(|o| o.int("canFlee") != 0) {
+            return;
+        }
+        let (sx, sy, tx, ty) = (s.x, s.y, t.x, t.y);
+        let taken = self.ai_takes(t.owner);
+        let theirs = unit_weapons(self, s);
+        let low_hero = t.is_hero && t.extra.illusion.is_none() && (t.life < 200.0 || t.life < t.max_life / 3.0);
+        let away = if taken && !low_hero && !theirs.is_empty() { theirs.iter().map(|(_, w)| w.range).fold(0.0, f32::max) + 100.0 } else { 300.0 };
+        let d = (tx - sx).hypot(ty - sy);
+        let (nx, ny) = if d > 0.001 { ((tx - sx) / d, (ty - sy) / d) } else { (t.facing.to_radians().cos(), t.facing.to_radians().sin()) };
+        let (fx, fy) = self.clamp_to_map(tx + nx * away, ty + ny * away);
+        let walks = taken || self.unit_class(t, "peon");
+        let name = if walks { "move" } else { "attack" };
+        let u = self.unit_mut(target).unwrap();
+        u.action = if walks { Action::Move { x: fx, y: fy } } else { Action::AttackMove { x: fx, y: fy } };
+        u.order = Order { id: crate::natives::basic::order_id(name), target_x: fx, target_y: fy, target: 0 };
+        u.path.clear();
+        u.extra.order_queue.clear();
+        if taken {
+            u.extra.order_queue.push_back((crate::aiposts::AI_IDLE_ORDER, fx, fy, 0));
+        }
+    }
+
+    /// Whether a player's AI takes its units (`FUN_6f9b9230`: an AI player, +0x2d4): a
+    /// computer's, or a neutral player's.
+    pub(crate) fn ai_takes(&self, p: u8) -> bool {
+        p >= PLAYER_NEUTRAL_AGGRESSIVE || self.players.get(p as usize).is_some_and(|pl| pl.controller == map_control::COMPUTER)
     }
 
     /// Pushes overlapping units apart, flyers among flyers and the rest among

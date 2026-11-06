@@ -886,7 +886,13 @@ impl World {
         for (gold, _, n) in &requests {
             let can = |w: &World, h: u32| if *gold { mine.is_some_and(|m| w.can_harvest(h, m)) } else { tree_near(w, h).is_some() };
             let doing = |w: &World, h: u32| if *gold { on_gold(w, h) } else { on_wood(w, h) };
-            let mut pool: Vec<u32> = free.iter().copied().filter(|h| !taken.contains(h) && can(self, *h) && !(*gold && self.unit(*h).is_some_and(|u| u.extra.ai_wood_pass == Some(pass)))).collect();
+            // (A hidden one, as a worker in a gold mine, is not taken, nor counted unless
+            // already at the work: `FUN_6f9c7700` passes over a unit with its flag 1 at
+            // +0x20, which `FUN_6f688300` sets as the mine hides it, `FUN_6f5c74c0` and
+            // `FUN_6f69c5c0`; read, Twisted Meadows' human computer's farm peasant, sent
+            // to gold as its farm was done, in the mine at the pass at 55.2, no order.)
+            let hidden = |w: &World, h: u32| w.unit(h).is_some_and(|u| u.hidden) && !doing(w, h);
+            let mut pool: Vec<u32> = free.iter().copied().filter(|h| !taken.contains(h) && can(self, *h) && !hidden(self, *h) && !(*gold && self.unit(*h).is_some_and(|u| u.extra.ai_wood_pass == Some(pass)))).collect();
             pool.sort_by_key(|&h| !doing(self, h));
             for h in pool.into_iter().take((*n).max(0) as usize) {
                 taken.push(h);
@@ -904,14 +910,9 @@ impl World {
         // A walker it orders stops where its walk has carried it by the thread's time
         // (`World::stop_walker_at`).
         let stop_at = self.ai.get(&p).and_then(|s| self.clock_at_thread(s.clock));
-        // (One in a gold mine is taken but not ordered: read, Twisted Meadows' human
-        // computer's farm peasant, sent to gold as its farm was done, in the mine at the
-        // pass at 55.2, its wood request taking it, comes out with its gold; provisional:
-        // how the original's order, `FUN_6f6802f0`, comes to nothing.)
-        let in_mine = |w: &World, h: u32| w.unit(h).and_then(|u| u.extra.gold_run.as_ref()).is_some_and(|r| !r.lumber && matches!(r.phase, crate::goldrun::Phase::InMine(_)));
         if let Some(mine) = mine {
             for &h in &to_gold {
-                if !on_gold(self, h) && !in_mine(self, h) {
+                if !on_gold(self, h) {
                     if let Some(c) = stop_at {
                         self.stop_walker_at(h, c);
                     }
@@ -929,7 +930,7 @@ impl World {
         // after agreeing so and not with a wood order.)
         let home_with_gold = |w: &World, h: u32| w.ability_with_code(h, codes::ability::HARVEST).is_some() && w.unit(h).is_some_and(|u| u.carry_gold > 0 && u.extra.gold_run.as_ref().is_some_and(|r| r.kind == crate::goldrun::Kind::Return && matches!(r.phase, crate::goldrun::Phase::ToHall(_))));
         for &h in &to_wood {
-            if !on_wood(self, h) && !in_mine(self, h) {
+            if !on_wood(self, h) {
                 if let Some(m) = mine.filter(|_| home_with_gold(self, h)) {
                     if let Some(c) = stop_at {
                         self.stop_walker_at(h, c);

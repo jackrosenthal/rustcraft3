@@ -541,6 +541,7 @@ impl World {
         let mine = run.mine;
         let (dur, room) = self.mine_time_and_room(mine);
         run.tune(agent, dur.to_bits());
+        log::debug!("{h} at its mine at {:.6}: travel {:.6} bonus {:.6} factor {:.6}", f32::from_bits(agent), f32::from_bits(run.travel), f32::from_bits(run.bonus), f32::from_bits(run.factor));
         if self.unit(mine).is_some_and(|m| m.inside >= room) {
             run.phase = Phase::Waiting(self.tags.take(codes::class::UNIT_AI_REF));
             if let Some(m) = self.unit_mut(mine) {

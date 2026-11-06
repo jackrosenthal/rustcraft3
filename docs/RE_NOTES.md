@@ -3753,7 +3753,28 @@ Formats the port made its own, to be replaced by the original's:
   original's fourth wisp moves freely.  In Booty Bay's scripted start the provider is
   not called at all for the wisps' walks (none from 2.0 to 5.0), so those take
   another steering path.  Not yet modeled: the port re-searches at the re-order and
-  the keepalives differ from turn 3.
+  the keepalives differ from turn 4 (its first wisp in at 0.24).
+- The provider as read (`FUN_6f165c60`): the walker's next point (`FUN_6f167ce0`);
+  within 0.49 of it, the next, or at its way's last, `FUN_6f167290` (`FUN_6f167070`);
+  short of it, the cells a step toward it (`FUN_6f166140`, the point at most a cell
+  on, `FUN_6f168280`), and if those are taken the give-way settled (`FUN_6f168360`:
+  for a moving one there not waiting, the walker waits 4 steps, its +0xa8 set, when
+  no faster, of its group, or of another class, and else that one waits 20); one not
+  set waiting and not counting down (+0x94) goes to `FUN_6f167290`:
+  contact first (`FUN_6f166310`: the ring about its cell by its size class, side 3
+  to 6 from 1 to 3 cells below and left of it, `FUN_6f148790`, against its target's
+  region), answering 3, else the countdown.  The first wisp's 3 at 0.12, the mine's
+  middle its point, fits the cells toward that middle being the mine's own, its ring
+  on the mine (class 1 at (161, 188): x 159 to 162).  Its entry at 0.27 then fits a
+  turn from 0.229: three steps in place toward its node from 270 degrees (0.6 each,
+  counterclockwise), then from 0.12 toward the mine's bearing (3.868), clockwise
+  2.644 at 0.6 a step, on it at 0.24 (the last 0.244), entering the step after, as
+  the scripted wisp's.  The port's own-cell way (no turning first, from 270) would
+  enter at 0.18 by that rule.  Open: why its setup's search (0.0) gives it its node
+  while at 0.12 its point is the mine's middle (as if its re-order's search found
+  its start at the mine, as the port's does); a measurement would be its walker's
+  way, index, and heading at 0.03 to 0.27 (+0x40, +0x50, +0x74 as `FUN_6f167ce0`
+  reads them).
 - An entangled mine is no town site of its own: the original's save of a night elf
   start (`nel.w3x`) holds the map's four mines' four sites, the first naming the
   entangled mine (the mine it covers made at the map's start with that site).  The
@@ -4304,16 +4325,18 @@ Formats the port made its own, to be replaced by the original's:
   steps on the main clock from its end, the first at once, and frees its objects in
   the step after its last (`World::update_blight`).  Provisional: one made outright
   (Booty Bay's town halls) keeps the port's count, its first step an interval on.
-- An AI's harvest pass (`FUN_6f9c7700`) takes a worker inside a gold mine as any
-  other (provisional: its state, +0x194, its harvest's 5 inside too), but gives it no
-  order then: read,
-  Twisted Meadows' human computer's farm peasant, sent to gold as its farm was done,
-  in the mine at the pass at 55.2 with no wood worker counted, came out with its gold
-  and walked home (its return order in turn 557).  The port counts it and orders it
-  not (`World::ai_assign_harvest`).  Open: what makes the original's order
-  (`FUN_6f6802f0`, the `+ord` 0xd0006 through `FUN_6f680320` with its queue flag)
-  come to nothing there; a measurement would be a breakpoint on `FUN_6f9bd6e0` for
-  that peasant at 55.2.
+- An AI's harvest pass passes over a hidden worker: `FUN_6f9c7700` takes only a unit
+  whose +0x20 has its flag 1 clear, which `FUN_6f688300` sets as a unit is hidden
+  (the gold mine's let-in, `FUN_6f5c74c0`, hides its worker through `FUN_6f69c5c0`,
+  which also counts up its +0x198).  Such a worker is neither taken nor flagged, and
+  is counted at the work only as `FUN_6f9c7410` counts any (its state, +0x194, 5 or 6
+  and its AI unit's flag 4 or 8 from the last pass, hidden or not).  Read: Twisted
+  Meadows' human computer's farm peasant, sent to gold as its farm was done, in the
+  mine at the pass at 55.2, given no order (its return order in turn 557).  The port
+  had counted it against the wood request and ordered it not; it now leaves a hidden
+  worker out of a request's takes unless it counts as at that work
+  (`World::ai_assign_harvest`).  The keepalives agree to turn 602 either way (that
+  request takes no other worker there).
 - A worker the pass takes (`FUN_6f9c7700`: its AI unit's flag 1 for gold, 2 for wood,
   then `FUN_6f6802f0`, the `+ord` 0xd0006 run as `FUN_6f9bd6e0`'s look) that carries
   a load is sent home with it first whatever the request (`FUN_6f9c9470`: 0xd02b4
@@ -4325,11 +4348,28 @@ Formats the port made its own, to be replaced by the original's:
   at 57.2, taken for wood: the original's turns after agree with its walk home
   anew and no other worker re-sent (to turn 602), not with a wood order at once (to
   572).  The port marks it at the wood for that pass (`UnitExtra::ai_wood_pass`).  Next
-  (turn 603): a gold peasant walking from the hall to the mine since 58.5 arrives a
-  turn early in the original (its walk's last two objects, the ghosting's end and
-  the walk's target task, freed in turn 602, after the pass's frees, by the
-  keepalive's free-list top), the port's at turn 603's third step; not yet
-  explained (its speed is the round trip's tuning, `FUN_6f437ae0`).
+  (turn 603): a gold peasant (1879048362) walking from the hall to the mine since
+  58.5 arrives three steps early in the original.  The original's objects from turn
+  585 (frees and takes by turn) free its walk's last two (the ghosting's end and the
+  walk's target task) as turn 602's last, after the pass's frees, and its path and
+  cluster in turn 603: an arrival in turn 602's last step (60.175), where the port's
+  is turn 603's third (60.265), its path in turn 604.  Its speed is the port's (its
+  tuning at 55.258, as `FUN_6f437ae0` does it, a factor of 0.931474; tuned instead as
+  a queued worker goes in, tried, the keepalives part at turn 86).  Tried: the port's
+  peasant moving from its walk's first step (58.466), instead of turning in place
+  three steps from its heading on the hall (0.7655 to 2.5655, its window 60 degrees,
+  moving from 58.556), arrives in turn 602's last step, and the original's objects
+  then agree object for object through turn 625 (the next difference a lumber
+  worker's reach at 62.5); with a head start of two steps (one turn in place) it
+  arrives a step late; and without the turn at its walks out at 48.0 or 53.4 the
+  keepalives part at turns 502 and 553, so those turned in place.  At 58.5 alone the
+  original's walker starts as if facing its way (within the window of its first
+  point's bearing, 3.036), or three steps on.  Open: why; its walk home from 56.7
+  and its drop agree to the turn (the drop's objects in turn 585), and its trip
+  before was a queued one, but not every such walk starts so (tried: each walker out
+  after a queued trip so, the keepalives part at turn 71).  A measurement would be
+  the waypoint provider's answers for its walker (after `FUN_6f165ae0`, as for the
+  wisps above) from 58.40 to 58.70, with its heading and place.
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

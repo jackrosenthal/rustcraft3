@@ -15,10 +15,12 @@
 //! the host in the first, its computers' slots computers, each slot's team its player's
 //! force with custom forces, its color its player's, its race the map's with fixed player
 //! settings; the game's size the map's playable size (width and height then ignored).
+//! W3HOSTACTIONS=<file> plays the host's own actions: each line "turn hex", the actions
+//! (a turn's block, as the players' are carried) sent as the host's in that turn.
 
 use std::time::{Duration, Instant};
 
-use w3_net::host::{Event, Host, HostMap, TFT, VERSION};
+use w3_net::host::{Event, HOST_PID, Host, HostMap, TFT, VERSION};
 use w3_net::slot::{DOWNLOAD_UNKNOWN, layout, race, status};
 use w3_net::{Chat, GameInfo, GameStat, Slot, SlotTable};
 
@@ -95,6 +97,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut loading = false;
     let mut next_turn = Instant::now();
     let mut actions: Vec<(u8, Vec<u8>)> = Vec::new();
+    let mut own: std::collections::BTreeMap<u32, Vec<Vec<u8>>> = Default::default();
+    if let Ok(f) = std::env::var("W3HOSTACTIONS") {
+        for line in std::fs::read_to_string(f)?.lines() {
+            let mut w = line.split_whitespace();
+            let (Some(turn), Some(hex)) = (w.next().and_then(|t| t.parse::<u32>().ok()), w.next()) else { continue };
+            let bytes = (0..hex.len() / 2).filter_map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).ok()).collect();
+            own.entry(turn).or_default().push(bytes);
+        }
+    }
     let mut keepalives = std::collections::HashMap::new();
     // Turns sent, the first being 1 (as the keepalives count them).
     let mut sent = 0u32;
@@ -136,6 +147,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         if loading && host.all_loaded() && Instant::now() >= next_turn {
             sent += 1;
+            for data in own.remove(&sent).unwrap_or_default() {
+                actions.insert(0, (HOST_PID, data));
+            }
             for (pid, data) in &actions {
                 println!("turn {sent} carries {pid} {}", data.iter().map(|b| format!("{b:02x}")).collect::<String>());
             }

@@ -4476,3 +4476,5 @@ them (the original leaves a lobby whose slots disagree with the map's, reason 7)
 Its turns run from when every player has loaded, one each 100 ms of real time; a
 backlog sent at once (as it did before) runs the game ahead of the clients' real-time
 clocks, on which a trigger's sleep ends (its CNetCommandResumeTriggerExec then sent).
+With `W3HOSTACTIONS=<file>` (lines of "turn hex") it sends actions as its own player's,
+for the original to carry out as a player's.

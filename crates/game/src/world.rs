@@ -62,8 +62,6 @@ pub enum Request {
     /// A unit trained, or a hero revived or awakened: a ping in PingColor there for
     /// players who hear of it (FUN_6f3777b0 from CAbilityTrain vf209 and FUN_6f3f8350).
     UnitReady { unit: u32 },
-    /// A network game is saved now, on every computer, under this name.
-    NetSave(String),
     /// SetSoundPlayPosition: a playing sound moves to a point in it, in milliseconds.
     SoundOffset { sound: u32, ms: i32 },
     /// A sound's cone changed (SetSoundConeAngles, SetSoundConeOrientation).
@@ -178,6 +176,29 @@ pub struct Execution {
     /// The players whose TriggerSyncReady it waits on, by bit (+0x8c; none until a
     /// TriggerSyncStart: provisional, its constructor `FUN_6f295130` leaving it).
     pub waiting: u32,
+}
+
+/// A network game's save under way, as the original's net session keeps it: its
+/// save command (0x06, handled by `FUN_6f26f450` after the turn's message and its
+/// keepalive, `FUN_6f327040`) sets the session saving (`FUN_6f32c6a0`: state 5, +0x2dd
+/// the saver, +0x2e0 8000) and pauses the interface's game (`FUN_6f3719c0` for player
+/// 0xff, which pauses the trigger executions); the next 25 ms of turn time still runs
+/// (state 5 ticks once, then 6, whose turn time passes without ticks: `FUN_6f32d670`);
+/// each computer's 0x07 after its save marks its player done (`FUN_6f32c7b0`), and
+/// once every player of the session is, or 8000 ms of turns have come
+/// (`FUN_6f32e3f0`), the save is over (`FUN_6f328bd0`: state 4 again,
+/// CNetEventSaveComplete).  Meanwhile the players' pauses, orders, and cancels (actions
+/// 0x01, 0x10 to 0x15, 0x1d, 0x1e) are read and not carried out (`FUN_6f325e10`).
+/// Provisional: the interface's part at the end (its handler of CNetEventSaveComplete
+/// not read; the game goes on).
+#[derive(Clone, Debug, Default)]
+pub struct SaveWait {
+    /// The turn time left before it ends anyway, in milliseconds.
+    pub budget: u32,
+    /// The save's own turn: its first 25 ms are still to run.
+    pub first: bool,
+    /// The players whose computers have said their save is done, with its result.
+    pub done: Vec<(u8, u32)>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -571,6 +592,13 @@ pub struct World {
     pub net_paused: Option<u8>,
     #[serde(default)]
     pub pauses_used: [u8; 16],
+    /// A network game's save under way (`SaveWait`), and the saves each player has
+    /// made in this session of the game (`FUN_6f32d010`); neither is saved, being the
+    /// net session's.
+    #[serde(skip)]
+    pub net_save: Option<SaveWait>,
+    #[serde(skip)]
+    pub saves_made: [u8; 16],
     /// PauseGame: the script has paused the game (FUN_6f3719c0).
     #[serde(default)]
     pub script_paused: bool,
@@ -1108,6 +1136,8 @@ impl World {
             script_paused: false,
             net_paused: None,
             pauses_used: [0; 16],
+            net_save: None,
+            saves_made: [0; 16],
             save_copies: 0,
             local_text_tags: Vec::new(),
             lobby_teams: false,

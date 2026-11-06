@@ -15,8 +15,8 @@ pub struct SaveHead {
     pub stat: Vec<u8>,
     pub xoro: u32,
     pub sha1: [u8; 20],
-    /// A network game's name and its people (none for a game played alone).
-    pub network: Option<(String, u32)>,
+    /// A network game's description (none for a game played alone).
+    pub network: Option<crate::replay::NetworkHead>,
 }
 
 /// A register or a pushed value as saved (`FUN_6f91a6e0`): its type, the type given,
@@ -520,6 +520,32 @@ impl Game {
         s
     }
 
+    /// The game as a saved game in the original's format (`.w3z`, its recorded-game
+    /// container with the header the original's 1.27 writes; a Reign of Chaos game's
+    /// product as its replays'), and the port's own state (`port`) as its sidecar
+    /// (`save::sidecar`).  Its header from the game's record: the map's path and
+    /// checksums, and a network game's description (`Replay::network_head`), else a
+    /// game played alone's (the local player's name, the speed fast).
+    pub fn save_files(&self, port: Vec<u8>) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
+        use anyhow::Context;
+        let record = self.recorder.as_ref().map(|r| &r.replay);
+        let ms = record.and_then(|r| r.map_stat.clone()).context("the map's checksums are not known")?;
+        let expansion = record.is_none_or(|r| r.version != 0);
+        let network = record.and_then(|r| r.network_head());
+        let stat = match &network {
+            Some(n) => n.stat.clone(),
+            None => {
+                let host = self.world.players.get(self.world.local_player as usize).map_or_else(String::new, |p| p.name.clone());
+                w3_net::GameStat { settings: 2, map_width: ms.width, map_height: ms.height, map_xoro: ms.xoro, map_path: ms.path.clone(), host, map_sha1: ms.sha1 }.to_bytes()
+            }
+        };
+        let head = SaveHead { map: ms.path, stat, xoro: ms.xoro, sha1: ms.sha1, network };
+        let header = w3_formats::container::Header { product: if expansion { *b"PX3W" } else { *b"3RAW" }, version: 27, build: 6059, flags: 0, length_ms: 0 };
+        let w3z = self.write_save_fresh(&head).to_file(&header);
+        let side = crate::save::sidecar(&w3z, &port);
+        Ok((w3z, side))
+    }
+
     /// A save from the port's state alone, without a template: the header (`head`'s map
     /// and description, the slot table, the local player), the object manager (its
     /// tables, the main one's from the tags and the second the classes' definitions and
@@ -560,15 +586,16 @@ impl Game {
         let local = w.local_player;
         let skeleton = SaveGame {
             map: head.map.clone(),
-            // (A game played alone's "Local Game", 12, and 1; a network game's its name,
-            // its people, and 9: read, the original's save of a LAN game.)
-            info_name: head.network.as_ref().map_or_else(|| "Local Game".into(), |n| n.0.clone()),
+            // (A game played alone's "Local Game", 12, and 1; a network game's its name
+            // and words, and its slot table as it came: read, the original's save of a
+            // LAN game.)
+            info_name: head.network.as_ref().map_or_else(|| "Local Game".into(), |n| n.name.clone()),
             info_stat: head.stat.clone(),
-            info_words: head.network.as_ref().map_or([12, 1], |n| [n.1, 9]),
-            slots: w.saved_slot_table(),
+            info_words: head.network.as_ref().map_or([12, 1], |n| n.words),
+            slots: head.network.as_ref().and_then(|n| n.slots.clone()).unwrap_or_else(|| w.saved_slot_table()),
             map_xoro: head.xoro,
             map_sha1: head.sha1,
-            local_slot: w.players.iter().take(12).filter(|p| p.slot_state != crate::types::slot_state::EMPTY).position(|p| p.id == local).map_or(-1, |k| k as i32),
+            local_slot: head.network.as_ref().and_then(|n| n.local_slot).unwrap_or_else(|| w.players.iter().take(12).filter(|p| p.slot_state != crate::types::slot_state::EMPTY).position(|p| p.id == local).map_or(-1, |k| k as i32)),
             local_player: local as u32,
             player_name: w.players.get(local as usize).map_or_else(String::new, |p| p.name.clone()),
             preferences: [1, 1],
@@ -623,7 +650,7 @@ impl Game {
         let Ok(script) = self.saved_script_data(&ScriptData::default()).to_bytes() else { return s };
         let parts: Vec<(&'static str, Vec<Field>)> = vec![
             ("game", w.saved_game_part()),
-            ("map setup", self.saved_map_setup()),
+            ("map setup", self.saved_map_setup(head.network.as_ref())),
             ("fog", w.saved_fog(&[]).unwrap_or_default()),
             ("game 2", w.saved_game_2(&[])),
             ("game 3", w.saved_game_3(&[])),

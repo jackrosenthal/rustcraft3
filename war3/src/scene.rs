@@ -1315,26 +1315,6 @@ impl Scene {
                         self.write_save(&path);
                     }
                 }
-                // A network game's save, made on every computer at the same moment (a
-                // replay's saves are not made again).
-                // (As the original's format, the port's own state beside it, as a game
-                // played alone's.)
-                w3_game::world::Request::NetSave(name) if self.playback.is_none() => {
-                    let path = crate::data::multiplayer_save_dir().map(|d| d.join(format!("{name}.{}", crate::saveload::EXTENSION)));
-                    let files = self.game.as_ref().map(|g| g.save(&self.map_path)).map(|port| port.and_then(|p| self.save_files_of(p)));
-                    if let (Some(path), Some(files)) = (path, files) {
-                        let res = files.and_then(|(w3z, port)| {
-                            if let Some(d) = path.parent() {
-                                std::fs::create_dir_all(d)?;
-                            }
-                            std::fs::write(&path, w3z)?;
-                            std::fs::write(w3_game::save::sidecar_path(&path), port).map_err(Into::into)
-                        });
-                        if let Err(e) = res {
-                            log::error!("saving {}: {e:#}", path.display());
-                        }
-                    }
-                }
                 w3_game::world::Request::LoadGame(name) => {
                     self.load_requested = self.game.as_ref().and_then(|g| g.world.save_path(&name)).filter(|p| p.exists());
                 }
@@ -3252,7 +3232,8 @@ impl Scene {
     fn save_to(&mut self, path: &std::path::Path) {
         let Some(g) = self.game.as_mut() else { return };
         if g.world.network {
-            let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            // (The file's name with its extension, as the original's action carries it.)
+            let name = path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
             g.apply(w3_game::replay::Command::Save { name });
             if let Some(h) = self.hud.as_mut() {
                 h.save_panel = None;
@@ -4273,6 +4254,20 @@ impl Scene {
                 }
                 s.check(first + k as u32 + 1, keepalive as u64);
             }
+            // A network game's saves, each computer's copy made at the save's moment in
+            // its turn (`Game::after_keepalive`): kept in Save\\Multiplayer under the name
+            // the action gave, as the original's, the port's own state beside it.
+            for save in std::mem::take(&mut g.saves) {
+                let path = crate::data::multiplayer_save_dir().map(|d| d.join(&save.name));
+                let res = match (path.as_ref(), save.files) {
+                    (Some(path), Ok((w3z, port))) => path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|_| std::fs::write(path, w3z)).and_then(|_| std::fs::write(w3_game::save::sidecar_path(path), port)).map_err(|e| e.to_string()),
+                    (None, _) => Err("no saved games' folder".into()),
+                    (_, Err(e)) => Err(e),
+                };
+                if let Err(e) = res {
+                    log::error!("saving {}: {e}", save.name);
+                }
+            }
             let lost = s.lost;
             // The host waits on players who fall behind; a player waits on a silent host.
             self.net_waiting = (s.lagging(), s.host_silent());
@@ -4662,26 +4657,9 @@ impl Scene {
         self.save_files_of(port)
     }
 
-    /// As `save_files`, the port's own state given (a network game's, its triggers
-    /// having heard the save in its turn).
+    /// As `save_files`, the port's own state given (`Game::save_files`).
     fn save_files_of(&self, port: Vec<u8>) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
-        let g = self.game.as_ref().context("no game")?;
-        let ms = g.recorder.as_ref().and_then(|r| r.replay.map_stat.clone()).context("the map's checksums are not known")?;
-        let expansion = g.recorder.as_ref().is_none_or(|r| r.replay.version != 0);
-        let network = g.recorder.as_ref().and_then(|r| r.replay.network_head());
-        let stat = match &network {
-            Some((_, stat, _)) => stat.clone(),
-            None => {
-                let host = g.world.players.get(g.world.local_player as usize).map_or_else(String::new, |p| p.name.clone());
-                // (Its settings: the speed, fast, as a game played alone has it.)
-                w3_net::GameStat { settings: 2, map_width: ms.width, map_height: ms.height, map_xoro: ms.xoro, map_path: ms.path.clone(), host, map_sha1: ms.sha1 }.to_bytes()
-            }
-        };
-        let head = w3_game::w3zscript::SaveHead { map: ms.path, stat, xoro: ms.xoro, sha1: ms.sha1, network: network.map(|(name, _, people)| (name, people)) };
-        let header = w3_formats::container::Header { product: if expansion { *b"PX3W" } else { *b"3RAW" }, version: 27, build: 6059, flags: 0, length_ms: 0 };
-        let w3z = g.write_save_fresh(&head).to_file(&header);
-        let side = w3_game::save::sidecar(&w3z, &port);
-        Ok((w3z, side))
+        self.game.as_ref().context("no game")?.save_files(port)
     }
 
     /// The ground height the camera looks at: the terrain 500 units around the target

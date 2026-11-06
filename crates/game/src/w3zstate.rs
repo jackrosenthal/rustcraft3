@@ -254,8 +254,10 @@ impl Game {
     /// The map setup's part (CMapSetupWar3's, `FUN_6f2465b0`): the map's name and
     /// description, its scripts' xoro checksum (as a game is announced with), a byte
     /// (1), its path, and words and bytes the test maps all have (1, 1, 0x02008000, 0,
-    /// 0; 0, 0, 1, 2, 0, 2; provisional: not read).
-    pub fn saved_map_setup(&self) -> Vec<Field> {
+    /// 0; 0, 0, 1, 2, 0, 2; provisional: not read).  A network game's second and third
+    /// words are its game type and advanced options (its +0x34, and +0x38 less 0x80000;
+    /// read: the original's LAN save of Booty Bay, 9 and 0x648).
+    pub fn saved_map_setup(&self, network: Option<&crate::replay::NetworkHead>) -> Vec<Field> {
         let w = &self.world;
         let read = |n: &str| w.chain.read(n).ok();
         let (common, blizzard) = (read("Scripts\\common.j").unwrap_or_default(), read("Scripts\\Blizzard.j").unwrap_or_default());
@@ -267,8 +269,8 @@ impl Game {
             Field::Byte(1),
             Field::Text(w.map_path.clone()),
             Field::Word(1),
-            Field::Word(1),
-            Field::Word(0x0200_8000),
+            Field::Word(network.map_or(1, |n| n.game_type)),
+            Field::Word(network.map_or(0x0200_8000, |n| n.flags & !0x8_0000)),
             Field::Word(0),
             Field::Word(0),
             Field::Byte(0),
@@ -286,7 +288,7 @@ impl Game {
         for (name, f) in &mut g.parts {
             match *name {
                 "game" => *f = self.world.saved_game_part(),
-                "map setup" => *f = self.saved_map_setup(),
+                "map setup" => *f = self.saved_map_setup(None),
                 "game 2" => *f = self.world.saved_game_2(f),
                 "game 3" => *f = self.world.saved_game_3(f),
                 "references" => *f = self.world.saved_sites(),

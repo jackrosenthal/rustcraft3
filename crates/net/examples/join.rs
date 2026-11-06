@@ -4,6 +4,9 @@
 //! Prints what it hears.
 //!
 //! join <name> [seconds]
+//!
+//! W3JOINPORT: the game port to search and join from (6112 by default); W3JOINSAY: the
+//! greeting (a host example's game starts on "go").
 
 use std::time::{Duration, Instant};
 
@@ -15,7 +18,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     let a: Vec<String> = std::env::args().collect();
     let secs: u64 = a.get(2).map_or(Ok(60), |s| s.parse())?;
-    let mut browser = Browser::new(6112, TFT, VERSION)?;
+    let port: u16 = std::env::var("W3JOINPORT").ok().and_then(|p| p.parse().ok()).unwrap_or(6112);
+    let mut browser = Browser::new(port, TFT, VERSION)?;
     let end = Instant::now() + Duration::from_secs(secs);
     let (from, game) = loop {
         browser.poll();
@@ -27,8 +31,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         std::thread::sleep(Duration::from_millis(50));
     };
-    println!("joining {:?} at {from} (map {})", game.name, game.stat.map_path);
-    let mut client = Client::join(from, &game, &a[1], 6112)?;
+    println!("joining {:?} at {from} (map {}, type {:#x}, identifier {:08x})", game.name, game.stat.map_path, game.game_type, game.stat.map_xoro);
+    let mut client = Client::join(from, &game, &a[1], port)?;
     let mut greeted = false;
     let mut turned = false;
     while Instant::now() < end && client.alive() {
@@ -48,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Event::MapCheck { .. } => client.map_status(std::env::var("NOMAP").is_err()),
                 Event::Slots if !greeted && client.slots.slots.iter().any(|s| s.pid == client.pid && s.download == 100) => {
                     greeted = true;
-                    client.chat(Chat::Lobby("hello from w3-net".into()));
+                    client.chat(Chat::Lobby(std::env::var("W3JOINSAY").unwrap_or_else(|_| "hello from w3-net".into())));
                 }
                 Event::CountdownEnd => client.loaded(),
                 _ => {}

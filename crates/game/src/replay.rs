@@ -66,7 +66,8 @@ pub enum Command {
     /// Cancels one item of a structure's queue, by its place (0 the one in progress).
     CancelQueue { building: u32, slot: usize },
     /// Saves a network game on every computer at once, under this name (the game
-    /// menu's Save Game in a network game, kept in Save\\Multiplayer).
+    /// menu's Save Game in a network game, kept in Save\\Multiplayer): the file's
+    /// name with its extension, as the original's action carries it ("lansave.w3z").
     Save { name: String },
     /// A player pauses or resumes a network game (FUN_6f3719c0).
     Pause { player: u8, on: bool },
@@ -87,6 +88,9 @@ pub enum Command {
     /// A player's TriggerSyncReady in a trigger execution (action 0x63,
     /// CNetCommandTriggerSyncReady).
     TriggerSyncReady { player: u8, execution: (u32, u32) },
+    /// A computer's save of a network game is done (action 0x07, CNetCommandSaveDone):
+    /// its player and the save's result (1 written).
+    SaveDone { player: u8, result: u32 },
 }
 
 impl Command {
@@ -130,7 +134,8 @@ impl Command {
             | C::Trade { player, .. }
             | C::SelectionOrder { player, .. }
             | C::ResumeTrigger { player, .. }
-            | C::TriggerSyncReady { player, .. } => Some(*player),
+            | C::TriggerSyncReady { player, .. }
+            | C::SaveDone { player, .. } => Some(*player),
             _ => None,
         }
     }
@@ -212,11 +217,37 @@ pub struct Replay {
 /// record's select mode (3 with fixed player settings), and its slots as they were,
 /// their count the record's players' and start spots' (12 there, 2 for Booty Bay),
 /// fixed races with no selectable flag, and empty slots' download unknown (255).
+/// The game's description as GAMEINFO offered it (`stat`, coded: a joined game's its
+/// host's, with the host's name and the size it gave) and the slot table's start spots
+/// go into its saves.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct NetRecord {
     pub game_type: u32,
     pub layout: u8,
     pub slots: Vec<NetRecordSlot>,
+    #[serde(default)]
+    pub stat: Vec<u8>,
+    #[serde(default)]
+    pub start_spots: u8,
+}
+
+/// A network game's description as its saves carry it (`Replay::network_head`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct NetworkHead {
+    /// The game's name and its coded stat, as GAMEINFO carried them.
+    pub name: String,
+    pub stat: Vec<u8>,
+    /// The description's two words (`FUN_6f968cf0`'s +0xb0 and +0xb4, copied by
+    /// `FUN_6f96bef0`, which keeps the second only for a first of 1 to 16): GAMEINFO's
+    /// slots and game type.
+    pub words: [u32; 2],
+    /// The game type and the advanced options, as its map setup keeps them.
+    pub game_type: u32,
+    pub flags: u32,
+    /// The slot table as W3GS carried it, when it is known, and the local player's
+    /// slot in it.
+    pub slots: Option<Vec<u8>>,
+    pub local_slot: Option<i32>,
 }
 
 /// A slot of the slot table, as W3GS has it.
@@ -276,21 +307,43 @@ struct Setup {
 
 impl Replay {
     /// A network game's description as its saves carry it (read: the original's save
-    /// of a LAN game, its GAMEINFO's name, the stat with the lobby's options and the
-    /// host's name, and the people in it and game type 9): its name, stat, and people;
-    /// none for a game played alone.  Provisional: a game the port joined, the host's
-    /// name its own.
-    pub fn network_head(&self) -> Option<(String, Vec<u8>, u32)> {
+    /// of a LAN game on Booty Bay, its GAMEINFO's name and stat, the host's own, with
+    /// the lobby's options, the size the host gave, and the host's name, then the words
+    /// 2 and 9, its slots and game type; its map setup the type and options; and the
+    /// slot table as it came): none for a game played alone.  The game's record
+    /// (`NetRecord`) gives the stat, words, and table; without one, the stat is made
+    /// from the map's (the local player's name as the host's) and the words are the
+    /// people and 9 (provisional both).
+    pub fn network_head(&self) -> Option<NetworkHead> {
         let lobby = self.lobby.as_ref()?;
         if !lobby.iter().any(|s| matches!(s.fill, crate::SlotFill::Remote)) {
             return None;
         }
-        let host_slot = lobby.iter().find(|s| matches!(s.fill, crate::SlotFill::Local)).or(lobby.first());
-        let host = host_slot.map(|s| s.name.clone().unwrap_or_else(|| format!("Player {}", s.player + 1))).unwrap_or_default();
-        let ms = self.map_stat.clone().unwrap_or_else(|| MapStat { path: self.map.clone(), ..Default::default() });
-        let stat = w3_net::GameStat { settings: self.flags << 8 | 2, map_width: ms.width, map_height: ms.height, map_xoro: ms.xoro, map_path: ms.path.clone(), host, map_sha1: ms.sha1 }.to_bytes();
-        let people = lobby.iter().filter(|s| matches!(s.fill, crate::SlotFill::Local | crate::SlotFill::Remote)).count() as u32;
-        Some((self.game_name.clone().unwrap_or_else(|| self.map.clone()), stat, people.max(1)))
+        let name = self.game_name.clone().unwrap_or_else(|| self.map.clone());
+        let stat = match self.net.as_ref().filter(|n| !n.stat.is_empty()) {
+            Some(n) => n.stat.clone(),
+            None => {
+                let host_slot = lobby.iter().find(|s| matches!(s.fill, crate::SlotFill::Local)).or(lobby.first());
+                let host = host_slot.map(|s| s.name.clone().unwrap_or_else(|| format!("Player {}", s.player + 1))).unwrap_or_default();
+                let ms = self.map_stat.clone().unwrap_or_else(|| MapStat { path: self.map.clone(), ..Default::default() });
+                w3_net::GameStat { settings: self.flags << 8 | 2, map_width: ms.width, map_height: ms.height, map_xoro: ms.xoro, map_path: ms.path.clone(), host, map_sha1: ms.sha1 }.to_bytes()
+            }
+        };
+        let Some(n) = self.net.as_ref().filter(|n| !n.slots.is_empty()) else {
+            let people = lobby.iter().filter(|s| matches!(s.fill, crate::SlotFill::Local | crate::SlotFill::Remote)).count() as u32;
+            return Some(NetworkHead { name, stat, words: [people.max(1), 9], game_type: 9, flags: self.flags, slots: None, local_slot: None });
+        };
+        let table = w3_net::SlotTable {
+            slots: n.slots.iter().map(|s| w3_net::Slot { pid: s.pid, download: s.download, status: s.status, computer: s.computer, team: s.team, color: s.color, race: s.race, ai: s.ai, handicap: s.handicap }).collect(),
+            seed: self.seed,
+            layout: n.layout,
+            player_slots: if n.start_spots == 0 { n.slots.len() as u8 } else { n.start_spots },
+        };
+        let mut w = w3_net::wire::Writer::default();
+        table.write(&mut w);
+        // (The lobby's slots are the table's, in order.)
+        let local_slot = lobby.iter().position(|s| matches!(s.fill, crate::SlotFill::Local | crate::SlotFill::Observer(true))).map(|k| k as i32);
+        Some(NetworkHead { name, stat, words: [n.slots.len() as u32, n.game_type], game_type: n.game_type, flags: self.flags, slots: Some(w.0), local_slot })
     }
 
     /// The replay as the original's file (.w3g), as it writes them: its header and
@@ -602,10 +655,22 @@ mod tests {
             game_name: Some("w3-net host".into()),
             ..Default::default()
         };
-        let (name, stat, people) = r.network_head().expect("a network game");
-        assert_eq!((name.as_str(), people), ("w3-net host", 2));
-        let stat = w3_net::GameStat::parse(&stat).unwrap();
+        let head = r.network_head().expect("a network game");
+        assert_eq!((head.name.as_str(), head.words), ("w3-net host", [2, 9]));
+        let stat = w3_net::GameStat::parse(&head.stat).unwrap();
         assert_eq!((stat.settings, stat.host.as_str()), (0x64802, "Host"));
+        // With the game's record: its stat as offered (a joined game's host's name and
+        // size), its slots and type, and its slot table as the original's save of Booty
+        // Bay has it.
+        let offered = w3_net::GameStat { settings: 0x64802, map_width: 160, map_height: 72, map_xoro: 0x6ee78f13, map_path: "Maps\\(2)BootyBay.w3m".into(), host: "Host".into(), map_sha1: [0; 20] }.to_bytes();
+        let s = |pid: u8, team: u8| NetRecordSlot { pid, download: 100, status: 2, computer: false, team, color: team, race: 0x60, ai: 1, handicap: 100 };
+        r.lobby = Some(vec![slot(0, crate::SlotFill::Remote, Some("Host")), slot(1, crate::SlotFill::Local, Some("Jack"))]);
+        r.seed = 0x35000000;
+        r.net = Some(NetRecord { game_type: 9, layout: 0, slots: vec![s(1, 0), s(2, 1)], stat: offered.clone(), start_spots: 2 });
+        let head = r.network_head().unwrap();
+        assert_eq!((head.stat, head.words, head.game_type, head.flags), (offered, [2, 9], 9, 0x648));
+        assert_eq!(head.local_slot, Some(1));
+        assert_eq!(head.slots.unwrap(), [2, 1, 100, 2, 0, 0, 0, 0x60, 1, 100, 2, 100, 2, 0, 1, 1, 0x60, 1, 100, 0, 0, 0, 0x35, 0, 2]);
         r.lobby = Some(vec![slot(0, crate::SlotFill::Local, Some("Host")), slot(1, crate::SlotFill::Computer, None)]);
         assert!(r.network_head().is_none());
     }

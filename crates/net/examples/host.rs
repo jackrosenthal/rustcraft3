@@ -17,6 +17,20 @@
 //! settings; the game's size the map's playable size (width and height then ignored).
 //! W3HOSTACTIONS=<file> plays the host's own actions: each line "turn hex", the actions
 //! (a turn's block, as the players' are carried) sent as the host's in that turn.
+//!
+//! A turn carrying a player's save of the game (0x06) has the host say its own save is
+//! done in the next (0x07 with 1, as the port's computer does once its copy is made;
+//! W3HOSTNOSAVEDONE=1 leaves it out).  As the game starts, a "netgame" line gives the
+//! game as offered (its type, its name, coded description, and slot table in hex, and
+//! its people's ids and names), for the tags example's TAGS_NETGAME.
+//!
+//! W3HOSTLOAD=<save file> instead offers that saved network game to be loaded, as the
+//! port's LAN hosting does (`war3::lan`'s `host_saved`): a saved game (type 0x200) by the
+//! save's path in Save\Multiplayer and its objects' word as the identifier (each joiner
+//! compares its own copy's), its slot table the save's, the host ("Host") in the slot
+//! its name holds and the other people's slots open for them by name (a joiner is moved
+//! to the slot its name holds, or turned away); the map (still checked by MAPCHECK) the
+//! file given.
 
 use std::time::{Duration, Instant};
 
@@ -90,7 +104,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(r) = std::env::var("W3HOSTRACE").ok().and_then(|v| u8::from_str_radix(v.trim_start_matches("0x"), 16).ok()) {
         list[0].race = r;
     }
-    let slots = SlotTable { slots: list, seed: 0x35000000, layout, player_slots: total as u8 };
+    let mut slots = SlotTable { slots: list, seed: 0x35000000, layout, player_slots: total as u8 };
+    let mut info = info;
+    // W3HOSTLOAD: a saved game's slots, kept for its people by name.
+    let mut kept: Vec<String> = Vec::new();
+    if let Ok(file) = std::env::var("W3HOSTLOAD") {
+        let save = w3_formats::w3z::SaveGame::read(&std::fs::read(&file)?)?;
+        let names = save.player_names()?;
+        slots = SlotTable::read(&mut w3_net::wire::Reader::new(&save.slots))?;
+        kept = vec![String::new(); slots.slots.len()];
+        let mut users = 0;
+        for (k, s) in slots.slots.iter_mut().enumerate() {
+            if s.computer || s.status != status::OCCUPIED {
+                continue;
+            }
+            users += 1;
+            let name = names.get(s.color as usize).cloned().unwrap_or_default();
+            (s.pid, s.status, s.download) = if name == "Host" { (HOST_PID, status::OCCUPIED, 100) } else { (0, status::OPEN, DOWNLOAD_UNKNOWN) };
+            kept[k] = name;
+        }
+        let file_name = std::path::Path::new(&file).file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+        info.stat = GameStat { settings, map_width: 0, map_height: 0, map_xoro: save.objects_word, map_path: format!("Save\\Multiplayer\\{file_name}"), host: "Host".into(), map_sha1: [0; 20] };
+        info.game_type = 0x200;
+        info.slots_total = slots.slots.len() as u32;
+        info.player_slots = users;
+        println!("loading {file_name}: identifier {:08x}, people {:?}", save.objects_word, kept.iter().filter(|n| !n.is_empty()).collect::<Vec<_>>());
+    }
     let mut host = Host::new(port, info, HostMap { path: a[2].clone(), bytes, checksums }, slots, "Host".into())?;
     println!("offering on port {}", host.port());
     let mut countdown: Option<Instant> = None;
@@ -109,12 +148,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut keepalives = std::collections::HashMap::new();
     // Turns sent, the first being 1 (as the keepalives count them).
     let mut sent = 0u32;
+    let hex = |b: &[u8]| b.iter().map(|b| format!("{b:02x}")).collect::<String>();
     loop {
         for e in host.poll() {
             if !matches!(e, Event::Keepalive { .. } | Event::Actions { .. }) {
                 println!("{e:?}");
             }
             match e {
+                // A loaded game's joiner takes the slot its name holds: who holds the
+                // slots moves, their choices stay (as `war3::lan` seats them).
+                Event::Joined { pid, ref name } if !kept.is_empty() => {
+                    let mine = kept.iter().position(|n| !n.is_empty() && n.eq_ignore_ascii_case(name)).filter(|&k| host.slots.slots[k].status == status::OPEN || host.slots.slots[k].pid == pid);
+                    let at = host.slots.slots.iter().position(|s| s.pid == pid);
+                    match (mine, at) {
+                        (Some(k), Some(at)) if k != at => {
+                            let (to, from) = (host.slots.slots[k], host.slots.slots[at]);
+                            let s = &mut host.slots.slots[k];
+                            (s.pid, s.status, s.download) = (from.pid, from.status, from.download);
+                            let s = &mut host.slots.slots[at];
+                            (s.pid, s.status, s.download) = (to.pid, to.status, to.download);
+                            host.send_slots();
+                        }
+                        (Some(_), Some(_)) => {}
+                        _ => host.drop_player(pid, w3_net::packet::leave::LOBBY),
+                    }
+                }
                 Event::Keepalive { pid, checksum } => {
                     let n = keepalives.entry(pid).or_insert(0u32);
                     *n += 1;
@@ -138,6 +196,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             host.end_countdown();
             host.loaded();
             loading = true;
+            let mut table = w3_net::wire::Writer::default();
+            host.slots.write(&mut table);
+            let people: Vec<String> = host.players().iter().map(|(pid, name)| format!("{pid}:{}", hex(name.as_bytes()))).collect();
+            println!("netgame type {} name {} stat {} slots {} people {}", host.info.game_type, hex(host.info.name.as_bytes()), hex(&host.info.stat.to_bytes()), hex(&table.0), people.join(","));
         }
         // The turns run from when every player has loaded, one each 100 ms of real time
         // (a backlog sent at once runs the game ahead of its clients' real-time clocks,
@@ -151,7 +213,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 actions.insert(0, (HOST_PID, data));
             }
             for (pid, data) in &actions {
-                println!("turn {sent} carries {pid} {}", data.iter().map(|b| format!("{b:02x}")).collect::<String>());
+                println!("turn {sent} carries {pid} {}", hex(data));
+            }
+            // A save in this turn: the host's computer says its own is done in the next.
+            // (Each block read as far as its actions are known.)
+            let mut saves: Vec<String> = Vec::new();
+            for (_, d) in &actions {
+                let mut r = w3_net::wire::Reader::new(d);
+                while let (false, Ok(a)) = (r.is_empty(), w3_net::action::Action::read(&mut r)) {
+                    if let w3_net::action::Action::SaveGame(n) = a {
+                        saves.push(n);
+                    }
+                }
+            }
+            for name in &saves {
+                println!("turn {sent} saves {name:?}");
+            }
+            if !saves.is_empty() && std::env::var("W3HOSTNOSAVEDONE").is_err() {
+                let mut w = w3_net::wire::Writer::default();
+                w3_net::action::Action::SaveDone(1).write(&mut w);
+                own.entry(sent + 1).or_default().push(w.0);
             }
             host.send_turn(100, std::mem::take(&mut actions));
             next_turn += Duration::from_millis(100);

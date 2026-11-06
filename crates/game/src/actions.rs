@@ -232,8 +232,10 @@ impl Codec {
             // build them (62 measured).
             Command::ResumeTrigger { execution, count, .. } => acts.push(Action::ResumeTrigger { execution: ObjectId(execution.0, execution.1), count: *count }),
             Command::TriggerSyncReady { execution, .. } => acts.push(Action::TriggerSyncReady(ObjectId(execution.0, execution.1))),
-            // A network game saved under a name (measured: 06 and the name).
+            // A network game saved under a name (measured: 06 and the file's name), and a
+            // computer's save done (07 and its result, 1 for one written: measured).
             Command::Save { name } => acts.push(Action::SaveGame(name.clone())),
+            Command::SaveDone { result, .. } => acts.push(Action::SaveDone(*result)),
             // A pause (measured: 01 as the original's game ends) and its resume (02).
             Command::Pause { on, .. } => acts.push(if *on { Action::Pause } else { Action::Resume }),
             // An item moved: OrderTarget with flags 0x42, order moveslot (852002 and the
@@ -384,7 +386,7 @@ impl Codec {
                         Action::ResumeTrigger { execution, count } => out.push(Command::ResumeTrigger { player, execution: (execution.0, execution.1), count }),
                         Action::TriggerSyncReady(execution) => out.push(Command::TriggerSyncReady { player, execution: (execution.0, execution.1) }),
                         Action::SaveGame(name) => out.push(Command::Save { name }),
-                        Action::SaveDone(_) => {}
+                        Action::SaveDone(result) => out.push(Command::SaveDone { player, result }),
                         Action::Pause => out.push(Command::Pause { player, on: true }),
                         Action::Resume => out.push(Command::Pause { player, on: false }),
                         Action::BuildMenu => out.push(Command::Submenu { player, build: true }),
@@ -400,6 +402,34 @@ impl Codec {
         flush(&mut changed, &sel, &mut out);
         Ok(out)
     }
+}
+
+/// The commands a network game's save under way leaves undone (`world::SaveWait`):
+/// those of the actions `FUN_6f325e10` reads without carrying out then, a pause (0x01),
+/// the orders (0x10 to 0x15), and the cancels (0x1d, 0x1e).
+pub fn ignored_while_saving(c: &Command) -> bool {
+    use Command as C;
+    matches!(
+        c,
+        C::Pause { on: true, .. }
+            | C::SelectionOrder { .. }
+            | C::Build { .. }
+            | C::Train { .. }
+            | C::Research { .. }
+            | C::Upgrade { .. }
+            | C::CancelLast { .. }
+            | C::LearnSkill { .. }
+            | C::BuyItem { .. }
+            | C::HireUnit { .. }
+            | C::StartRevive { .. }
+            | C::Awaken { .. }
+            | C::UseItem { .. }
+            | C::UseItemAt { .. }
+            | C::MoveItem { .. }
+            | C::DropItemAt { .. }
+            | C::GiveItemTo { .. }
+            | C::CancelQueue { .. }
+    )
 }
 
 /// A stored unit as the original's record (`w3_formats::w3v::unit_record_len`): the one it

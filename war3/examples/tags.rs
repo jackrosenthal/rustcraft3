@@ -4,6 +4,83 @@
 //!
 //! tags <game dir> <map> <seed> <reference>
 use std::path::Path;
+
+fn unhex(s: &str) -> Vec<u8> {
+    (0..s.len() / 2).filter_map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).ok()).collect()
+}
+
+/// A network game as its host offered it, for its saves: its name, type, coded
+/// description, slot table, and people by player id.
+struct NetGame {
+    name: String,
+    game_type: u32,
+    stat: Vec<u8>,
+    table: w3_net::SlotTable,
+    people: Vec<(u8, String)>,
+}
+
+impl NetGame {
+    /// From the host example's "netgame" line (`crates/net/examples/host.rs`), its
+    /// strings and tables in hex.
+    fn from_log(log: &str) -> Option<NetGame> {
+        let line = log.lines().find(|l| l.starts_with("netgame "))?;
+        let w: Vec<&str> = line.split_whitespace().collect();
+        let field = |k: &str| w.iter().position(|&x| x == k).and_then(|i| w.get(i + 1)).copied();
+        let table = w3_net::SlotTable::read(&mut w3_net::wire::Reader::new(&unhex(field("slots")?))).ok()?;
+        let people = field("people")?.split(',').filter_map(|p| p.split_once(':')).filter_map(|(id, n)| Some((id.parse().ok()?, String::from_utf8_lossy(&unhex(n)).into_owned()))).collect();
+        Some(NetGame { name: String::from_utf8_lossy(&unhex(field("name")?)).into_owned(), game_type: field("type")?.parse().ok()?, stat: unhex(field("stat")?), table, people })
+    }
+
+    /// As the host example offers a game (its defaults, or W3HOSTMAP's lobby with
+    /// TAGS_MAPLOBBY) to the original as player 2, from the lobby the run plays: the
+    /// host "Host" in the first person's slot, "Jack" in the second's, computers with
+    /// the map, other slots open; races random and selectable, a fixed map's its own;
+    /// the map's path TAGS_MAPPATH (its file's from its Maps folder by default), its
+    /// size the map's playable one with TAGS_MAPLOBBY, else TAGS_MAPSIZE ("160,72").
+    fn offered(lobby: &[w3_game::LobbySlot], map_info: &w3_formats::map::MapInfo, map_file: &str, chain: &w3_mpq::Chain, seed: u32, flags: u32) -> anyhow::Result<NetGame> {
+        use w3_net::slot::{DOWNLOAD_UNKNOWN, layout, race, status};
+        let from_map = std::env::var("TAGS_MAPLOBBY").is_ok();
+        let fixed = from_map && map_info.flags & 0x20 != 0;
+        const RACES: [u8; 5] = [race::RANDOM, race::HUMAN, race::ORC, race::UNDEAD, race::NIGHT_ELF];
+        let slots = lobby
+            .iter()
+            .map(|s| {
+                let r = if fixed { RACES[(map_info.players.iter().find(|p| p.id as u8 == s.player).map_or(0, |p| p.race as usize)).min(4)] } else { race::RANDOM | race::SELECTABLE };
+                let (pid, download, st, computer, ai) = match s.fill {
+                    w3_game::SlotFill::Remote => (1, 100, status::OCCUPIED, false, 1),
+                    w3_game::SlotFill::Local => (2, 100, status::OCCUPIED, false, 1),
+                    w3_game::SlotFill::Computer => (0, 100, status::OCCUPIED, true, s.difficulty as u8),
+                    _ => (0, DOWNLOAD_UNKNOWN, status::OPEN, false, 1),
+                };
+                let r = match (computer, s.race) {
+                    (true, Some(k)) if !fixed => RACES[(k as usize).min(4)] | race::SELECTABLE,
+                    _ => r,
+                };
+                w3_net::Slot { pid, download, status: st, computer, team: s.team as u8, color: s.color as u8, race: r, ai, handicap: 100 }
+            })
+            .collect::<Vec<_>>();
+        let forces = from_map && map_info.flags & 0x40 != 0;
+        let layout = match (forces, fixed) {
+            (false, _) => layout::MELEE,
+            (true, true) => layout::FIXED_PLAYER_SETTINGS,
+            (true, false) => layout::CUSTOM_FORCES,
+        };
+        let table = w3_net::SlotTable { player_slots: slots.len() as u8, slots, seed, layout };
+        let bytes = std::fs::read(map_file)?;
+        let archive = w3_mpq::Archive::open(map_file)?;
+        let (common, blizzard) = (chain.read("Scripts\\common.j")?, chain.read("Scripts\\blizzard.j")?);
+        let checksums = w3_net::map::Checksums::compute(&bytes, &common, &blizzard, |n| archive.read(n).ok());
+        // (As `World::set_map_path` names it: from its Maps folder on.)
+        let parts: Vec<&str> = map_file.split(['/', '\\']).collect();
+        let from = parts.iter().rposition(|p| p.eq_ignore_ascii_case("Maps")).unwrap_or(parts.len().saturating_sub(1));
+        let map_path = std::env::var("TAGS_MAPPATH").unwrap_or_else(|_| parts[from..].join("\\"));
+        let size: Vec<u16> = std::env::var("TAGS_MAPSIZE").unwrap_or_else(|_| "160,72".into()).split(',').filter_map(|v| v.trim().parse().ok()).collect();
+        let (map_width, map_height) = if from_map { (map_info.playable_width as u16, map_info.playable_height as u16) } else { (size.first().copied().unwrap_or(160), size.get(1).copied().unwrap_or(72)) };
+        let stat = w3_net::GameStat { settings: flags << 8 | 2, map_width, map_height, map_xoro: checksums.xoro, map_path, host: "Host".into(), map_sha1: checksums.sha1 }.to_bytes();
+        Ok(NetGame { name: "w3-net host".into(), game_type: if from_map { 1 } else { 9 }, stat, table, people: vec![(1, "Host".into()), (2, "Jack".into())] })
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("error")).init();
     let a: Vec<String> = std::env::args().collect();
@@ -69,7 +146,56 @@ fn main() -> anyhow::Result<()> {
     // TAGS_FLAGS: the setup's advanced options in hex (war3::advanced: 0x648 by default;
     // 0x608 without Teams Together, as the host's W3HOSTSETTINGS=0x60802 has it).
     let flags = std::env::var("TAGS_FLAGS").ok().and_then(|v| u32::from_str_radix(v.trim_start_matches("0x"), 16).ok()).unwrap_or(war3::advanced::DEFAULT_FLAGS);
+    // TAGS_SAVEDIR=<dir>: the network game's saves its actions call for (0x06) are made
+    // as the port's client makes them, at the save's moment in its turn
+    // (`Game::after_keepalive`), into <dir> under the action's name, the port's own state
+    // beside each; the game described as its host offered it: TAGS_NETGAME names the
+    // host example's log, whose "netgame" line has it, else as the host example offers
+    // the map (`NetGame::offered`).  Its people's names go to their slots.
+    let save_dir = std::env::var("TAGS_SAVEDIR").ok();
+    let net_game = match (&save_dir, std::env::var("TAGS_NETGAME")) {
+        (None, _) => None,
+        (Some(_), Ok(log)) => Some(NetGame::from_log(&std::fs::read_to_string(&log)?).ok_or_else(|| anyhow::anyhow!("no netgame line in {log}"))?),
+        (Some(_), Err(_)) => Some(NetGame::offered(&lobby, &map_info, &a[2], &data.chain, seed, flags)?),
+    };
+    if let Some(n) = &net_game {
+        for (s, t) in lobby.iter_mut().zip(&n.table.slots) {
+            if let Some((_, name)) = n.people.iter().find(|p| p.0 == t.pid && t.pid != 0) {
+                s.name = Some(name.clone());
+            }
+        }
+    }
     g.start_lobby(&lobby, flags)?;
+    // TAGS_LOAD=<save>: the game is loaded from a network game's save as each computer of
+    // a LAN load loads its own copy (`war3::app`'s PlayNetSave): from the port's own
+    // state beside it (`save::port_state`), the game made afresh and its triggers told
+    // (EVENT_GAME_LOADED); else from the original's format over the map started with
+    // the lobby (`Game::restore_original`).  Its turns count from 1 again.
+    if let Ok(file) = std::env::var("TAGS_LOAD") {
+        match w3_game::save::port_state(Path::new(&file)) {
+            Some(bytes) => {
+                let local = g.world.local_player;
+                g = w3_game::Game::load_for(data.chain.clone(), data.version as i32, None, w3_game::Start::of(&lobby))?;
+                g.restore(w3_game::save::SaveGame::parse(&bytes)?)?;
+                g.world.set_map_path(&a[2]);
+                g.game_event(w3_game::event_ids::EVENT_GAME_LOADED);
+                g.world.local_player = local;
+                println!("loaded the port's own state of {file}");
+            }
+            None => {
+                g.restore_original(&w3_formats::w3z::SaveGame::read(&std::fs::read(&file)?)?)?;
+                println!("loaded {file} in the original's format");
+            }
+        }
+    }
+    if let (Some(n), Some(_)) = (&net_game, &save_dir) {
+        let stat = w3_net::GameStat::parse(&n.stat)?;
+        g.world.set_map_path(&stat.map_path);
+        let slots = n.table.slots.iter().map(|s| w3_game::replay::NetRecordSlot { pid: s.pid, download: s.download, status: s.status, computer: s.computer, team: s.team, color: s.color, race: s.race, ai: s.ai, handicap: s.handicap }).collect();
+        let net = w3_game::replay::NetRecord { game_type: n.game_type, layout: n.table.layout, slots, stat: n.stat.clone(), start_spots: n.table.player_slots };
+        let map_stat = w3_game::replay::MapStat { path: stat.map_path.clone(), width: stat.map_width, height: stat.map_height, xoro: stat.map_xoro, sha1: stat.map_sha1 };
+        g.recorder = Some(w3_game::replay::Recorder::new(w3_game::replay::Replay { map: a[2].clone(), lobby: Some(lobby.clone()), version: data.version as i32, flags, seed: n.table.seed, map_stat: Some(map_stat), game_name: Some(n.name.clone()), net: Some(net), ..Default::default() }));
+    }
     // TAGS_TURNS: how many turns of 0.1 seconds to play (one by default).
     let turns: usize = std::env::var("TAGS_TURNS").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
     // TAGS_FIRST: the first turn's length (the original's first turn runs what falls
@@ -107,6 +233,7 @@ fn main() -> anyhow::Result<()> {
     for k in 0..turns {
         let n = k as u32 + 1;
         let acts = played.get(&n).cloned().unwrap_or_default();
+        let saving = g.world.net_save.is_some();
         let dt = if k == 0 { first } else { 0.1 };
         if acts.is_empty() {
             g.world.net_turn(100);
@@ -122,6 +249,8 @@ fn main() -> anyhow::Result<()> {
         if std::env::var("TAGS_MODULE").is_ok_and(|v| v == "all") {
             println!("turn {n}: game module {:08x}", g.world.game_module());
         }
+        // A save under way counts the turn's time, before its keepalive.
+        g.save_turn(100);
         // TAGS_KEEPALIVE_ALL: each turn's keepalive against the original's after the first
         // that differs too.
         if let (Some(&want), true) = (keepalives.get(&n), first_off.is_some() && std::env::var("TAGS_KEEPALIVE_ALL").is_ok()) {
@@ -154,6 +283,28 @@ fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
+            }
+        }
+        // After the keepalive, the save the turn's actions called for, and the copy made.
+        g.after_keepalive();
+        if !saving && g.world.net_save.is_some() {
+            println!("turn {n}: a save begins at game time {} ms", g.world.game_ms);
+        }
+        if saving && g.world.net_save.is_none() {
+            println!("turn {n}: the save is over");
+        }
+        for save in std::mem::take(&mut g.saves) {
+            let Some(dir) = &save_dir else { continue };
+            match save.files {
+                Ok((w3z, port)) => {
+                    let path = Path::new(dir).join(&save.name);
+                    std::fs::create_dir_all(dir)?;
+                    std::fs::write(&path, &w3z)?;
+                    std::fs::write(w3_game::save::sidecar_path(&path), port)?;
+                    let word = w3_formats::w3z::SaveGame::read(&w3z).map_or(0, |s| s.objects_word);
+                    println!("turn {n}: saved {} (objects word {word:08x})", path.display());
+                }
+                Err(e) => println!("turn {n}: saving {}: {e}", save.name),
             }
         }
         if std::env::var("TAGS_DRAWS").is_ok() {

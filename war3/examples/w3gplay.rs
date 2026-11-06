@@ -64,7 +64,7 @@ fn main() -> anyhow::Result<()> {
         let map_stat = Some(w3_game::replay::MapStat { path: stat.map_path.clone(), width: stat.map_width, height: stat.map_height, xoro: stat.map_xoro, sha1: stat.map_sha1 });
         // The network game's setup as the record has it.
         let slots = replay.slots.iter().map(|s| w3_game::replay::NetRecordSlot { pid: s.pid, download: s.download, status: s.status, computer: s.computer, team: s.team, color: s.color, race: s.race, ai: s.ai, handicap: s.handicap }).collect();
-        let net = (replay.flags & 0x8000 != 0).then(|| w3_game::replay::NetRecord { game_type: replay.game_type, layout: replay.select_mode, slots });
+        let net = (replay.flags & 0x8000 != 0).then(|| w3_game::replay::NetRecord { game_type: replay.game_type, layout: replay.select_mode, slots, stat: replay.stat.clone(), start_spots: replay.start_spots });
         g.recorder = Some(w3_game::replay::Recorder::new(w3_game::replay::Replay { map: stat.map_path.clone(), lobby: Some(lobby.clone()), version: 1, flags, seed: replay.seed, map_stat, net, ..Default::default() }));
     }
     // A network game's turns play as the client plays them (`Game::play_turn`); each

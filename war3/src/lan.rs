@@ -704,11 +704,12 @@ impl Lan {
         s
     }
 
-    /// The game's setup as its replay's record copies it: the type offered and the slot
-    /// table as the game began.
-    fn record(game_type: u32, table: &w3_net::slot::SlotTable) -> w3_game::replay::NetRecord {
+    /// The game's setup as its replay's record copies it and its saves carry it: the
+    /// type and description offered (a joined game's as its host offered it) and the
+    /// slot table as the game began.
+    fn record(game_type: u32, stat: Vec<u8>, table: &w3_net::slot::SlotTable) -> w3_game::replay::NetRecord {
         let slots = table.slots.iter().map(|s| w3_game::replay::NetRecordSlot { pid: s.pid, download: s.download, status: s.status, computer: s.computer, team: s.team, color: s.color, race: s.race, ai: s.ai, handicap: s.handicap }).collect();
-        w3_game::replay::NetRecord { game_type, layout: table.layout, slots }
+        w3_game::replay::NetRecord { game_type, layout: table.layout, slots, stat, start_spots: table.player_slots }
     }
 
     /// Each person's id and player.
@@ -728,7 +729,7 @@ impl Lan {
         let mut h = self.host.take()?;
         h.end_countdown();
         let seed = h.slots.seed;
-        let record = Lan::record(h.info.game_type, &h.slots);
+        let record = Lan::record(h.info.game_type, h.info.stat.to_bytes(), &h.slots);
         let role = net::Role { link: net::Link::Host(h), players: self.players(), seed, game: self.setup.game.clone(), record };
         if self.setup.saved {
             let me = self.setup.slot_of(HOST_PID).map_or(0, |s| s.player);
@@ -743,7 +744,8 @@ impl Lan {
     fn client_start(&mut self) -> Option<Event> {
         let c = self.client.take()?;
         let seed = c.slots.seed;
-        let record = Lan::record(self.joined.as_ref().map_or(GAME_CUSTOM, |g| g.game_type), &c.slots);
+        let joined = self.joined.as_ref();
+        let record = Lan::record(joined.map_or(GAME_CUSTOM, |g| g.game_type), joined.map(|g| g.stat.to_bytes()).unwrap_or_default(), &c.slots);
         let role = net::Role { link: net::Link::Client(c), players: self.players(), seed, game: self.setup.game.clone(), record };
         if self.setup.saved {
             let me = self.setup.slot_of(self.me).map_or(0, |s| s.player);
@@ -1112,5 +1114,26 @@ mod tests {
         // The word the objects' sum, as the port reckons it over the save's records.
         let s = w3_formats::w3z::SaveGame::read(&bytes).expect("the save reads");
         assert_eq!(s.objects_sum().ok(), Some(0xc2aa_926c));
+    }
+
+    /// W3_PORT_LANSAVE: the port's copy of a network game's save (the tags example's
+    /// TAGS_SAVEDIR on Booty Bay, as Host and Jack, or nettest's NETTEST_NETSAVE): offered
+    /// from the port's own state beside it, its people's slots kept by name, and its
+    /// identifier the objects' word of the original's format, which its header carries
+    /// as the original's does.
+    #[test]
+    fn a_port_network_save_keeps_its_people_slots() {
+        let Some(file) = std::env::var_os("W3_PORT_LANSAVE") else { return };
+        let file = Path::new(&file);
+        let w3z = w3_formats::w3z::SaveGame::read(&std::fs::read(file).unwrap()).expect("the save reads");
+        assert_eq!(w3z.objects_sum().ok(), Some(w3z.objects_word));
+        assert_eq!(Lan::save_id(file), Some(w3z.objects_word));
+        let bytes = Lan::saved_copy(file).expect("the copy reads");
+        assert!(matches!(w3_game::save::Load::parse(&bytes), Ok(w3_game::save::Load::Port(_))));
+        let (setup, users, _) = Lan::copy_setup(&bytes).expect("its setup");
+        assert_eq!(users, 2);
+        let names = w3z.player_names().unwrap();
+        let people: Vec<(&str, Holder)> = setup.slots.iter().filter(|s| !s.name.is_empty()).map(|s| (s.name.as_str(), s.holder)).collect();
+        assert_eq!(people, names.iter().take(2).map(|n| (n.as_str(), Holder::Open)).collect::<Vec<_>>());
     }
 }

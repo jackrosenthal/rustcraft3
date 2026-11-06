@@ -121,11 +121,27 @@ fn main() -> anyhow::Result<()> {
     host.start_countdown();
     host.end_countdown();
     let players = vec![(HOST_PID, 0), (pid, 1)];
-    let mut hs = Session::new(Role { link: Link::Host(Box::new(host)), players: players.clone(), seed: 0, game: String::new() });
-    let mut cs = Session::new(Role { link: Link::Client(Box::new(client)), players, seed: 0, game: String::new() });
+    // The game as offered and its slot table as it began, for its saves' descriptions.
+    let slots = host.slots.slots.iter().map(|s| w3_game::replay::NetRecordSlot { pid: s.pid, download: s.download, status: s.status, computer: s.computer, team: s.team, color: s.color, race: s.race, ai: s.ai, handicap: s.handicap }).collect();
+    let record = w3_game::replay::NetRecord { game_type: host.info.game_type, layout: host.slots.layout, slots, stat: host.info.stat.to_bytes(), start_spots: host.slots.player_slots };
+    let map_stat = w3_game::replay::MapStat { path: a[2].clone(), width: 0, height: 0, xoro: host.info.stat.map_xoro, sha1: host.info.stat.map_sha1 };
+    let mut hs = Session::new(Role { link: Link::Host(Box::new(host)), players: players.clone(), seed: 0, game: "test".into(), record: record.clone() });
+    let mut cs = Session::new(Role { link: Link::Client(Box::new(client)), players, seed: 0, game: "test".into(), record: record.clone() });
 
     let mut gh = game(&data, 0)?;
     let mut gc = game(&data, 1)?;
+    // NETTEST_NETSAVE=<dir>: at a third the host saves the network game as its menu does
+    // (the save action, 06): each computer makes its own copy at the save's moment in
+    // its turn, into <dir>/host and <dir>/peer, and says so (07); the game waits on both.
+    // Their objects' words (each copy's identifier) must agree.  NETTEST_NETLOAD then has
+    // each side load its own copy at two thirds and go on, as a LAN load does.
+    let net_save = std::env::var("NETTEST_NETSAVE").ok();
+    if net_save.is_some() {
+        for (g, local) in [(&mut gh, 0u8), (&mut gc, 1u8)] {
+            g.recorder = Some(w3_game::replay::Recorder::new(w3_game::replay::Replay { map: a[2].clone(), lobby: Some(lobby(local)), version: data.version as i32, flags: war3::advanced::DEFAULT_FLAGS, seed: 0, map_stat: Some(map_stat.clone()), game_name: Some("test".into()), net: Some(record.clone()), ..Default::default() }));
+        }
+    }
+    let mut copies: Vec<(u8, std::path::PathBuf, u32)> = Vec::new();
     let dt = 1.0 / 60.0;
     let steps = (secs / dt) as usize;
     let units = |g: &w3_game::Game, p: u8| -> Vec<u32> { g.world.unit_order.iter().copied().filter(|&h| g.world.unit(h).is_some_and(|u| u.owner == p && !u.is_building)).collect() };
@@ -149,6 +165,22 @@ fn main() -> anyhow::Result<()> {
             gh = restored(&data, &bytes, 0)?;
             gc = restored(&data, &bytes, 1)?;
             println!("saved and loaded at frame {} ({} bytes)", hs.played, bytes.len());
+        }
+        if net_save.is_some() && step == steps / 3 {
+            gh.apply(w3_game::replay::Command::Save { name: "nettest.w3z".into() });
+        }
+        if std::env::var("NETTEST_NETLOAD").is_ok() && step == 2 * steps / 3 {
+            anyhow::ensure!(copies.len() == 2, "the copies were not both made");
+            for (p, path, _) in &copies {
+                let bytes = w3_game::save::port_state(path).ok_or_else(|| anyhow::anyhow!("no port state beside {}", path.display()))?;
+                let g = restored(&data, &bytes, *p)?;
+                if *p == 0 {
+                    gh = g;
+                } else {
+                    gc = g;
+                }
+            }
+            println!("both loaded their own copies at frame {}, game time {:.2}", hs.played, gh.world.time);
         }
         // NETTEST_PAUSE: at a third the host pauses, and at a half the player resumes.
         if std::env::var("NETTEST_PAUSE").is_ok() {
@@ -180,11 +212,30 @@ fn main() -> anyhow::Result<()> {
             let frames = s.due(dt);
             let first = s.played - frames.len() as u32;
             for (k, f) in frames.iter().enumerate() {
+                let saving = g.world.net_save.is_some();
                 g.play_frame(f);
                 s.check(first + k as u32 + 1, g.world.checksum());
+                if saving != g.world.net_save.is_some() {
+                    println!("player {p}: frame {}: a save {} at game time {:.3}", first + k as u32 + 1, if saving { "is over" } else { "begins" }, g.world.time);
+                }
+                for save in std::mem::take(&mut g.saves) {
+                    let (Some(dir), Ok((w3z, port))) = (net_save.as_ref(), save.files) else { anyhow::bail!("player {p}: no copy made of {}", save.name) };
+                    let dir = std::path::Path::new(dir).join(if p == 0 { "host" } else { "peer" });
+                    std::fs::create_dir_all(&dir)?;
+                    let path = dir.join(&save.name);
+                    std::fs::write(&path, &w3z)?;
+                    std::fs::write(w3_game::save::sidecar_path(&path), port)?;
+                    let word = w3_formats::w3z::SaveGame::read(&w3z)?.objects_word;
+                    println!("player {p}: saved {} (objects word {word:08x})", path.display());
+                    copies.push((p, path, word));
+                }
             }
         }
         std::thread::sleep(std::time::Duration::from_micros(500));
+    }
+    if net_save.is_some() {
+        let words: Vec<u32> = copies.iter().map(|c| c.2).collect();
+        println!("copies' identifiers {}", if words.len() == 2 && words[0] == words[1] { "agree" } else { "DIFFER" });
     }
     // The player catches up on the frames still on their way.
     for _ in 0..200 {

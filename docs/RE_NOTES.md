@@ -4829,9 +4829,10 @@ Formats the port made its own, to be replaced by the original's:
   table W3GS carries, and the local slot and player.  The port's network saves are
   written so (`Replay::network_head`), the port's own state beside them as a game
   played alone's; loading a network game takes everyone's port state, the same on
-  every computer (`save::port_state`), as before.  Provisional: a game the port
-  joined, its stat's host its own name; not yet loaded by the original (its LAN
-  load wants the other players to join it).
+  every computer (`save::port_state`), as before.  A game the port joined has the
+  stat its host offered (below); not yet loaded by the original (its LAN load wants
+  the other players to join it: the host example's W3HOSTLOAD now offers one as the
+  port's LAN hosting does, the original to join it).
 - Loading a network game over LAN, each computer loads its own copy, and a joiner's
   copy must be the host's game's: the original's join (CLocalMultiplayerLoad vf3)
   compares the game's announced identifier (GAMEINFO's map checksum) with its own
@@ -4893,6 +4894,69 @@ Formats the port made its own, to be replaced by the original's:
   tenth more, provisional).  A restored original's save (Mafarazzo TD's at 30
   seconds) written again has a threshold listener's record of another class's length
   (slot 647, an agent's wrapper's), its sum not reckoned (0 written).
+- A network game's save action (0x06, CNetCommandSave, its file's name: the
+  original's "lansave.w3z", the name typed with the extension) is read with its
+  turn's actions (`FUN_6f325e10`: the command kept at the net game's +0x1b48, +0x1b44
+  set) and carried out once the turn's message is handled (`FUN_6f327040`), after
+  the turn's keepalive (`FUN_6f32e3f0` -> `FUN_6f330830`): the net module is set back
+  first (`FUN_6f32f930`, NTempest::CSyncData's vf2 `FUN_6f32f5f0`: its sum and count
+  0), then the command's handler (`FUN_6f26f450`, registered for 6 at 0x6f2712e6 by
+  `FUN_6f271290`; 7's `FUN_6f26f430`).  It goes on while no save is under way and,
+  but in a game played alone (its provider 'LOOP' or 'NONE'), the saver has made none
+  (`FUN_6f32b800`: the player's +0x3c, which it adds one to after, `FUN_6f32d010`); it
+  sets the session saving (`FUN_6f32c6a0`, below), pauses the interface's game for
+  player 0xff (`FUN_6f3719c0`; `FUN_6f1e5040` pauses the trigger executions, `+tex`),
+  passes the name on (`FUN_6f284760`, event 0x80303), writes Save\Multiplayer\<name>
+  (`FUN_6f2bfc90`, `FUN_6f1e8630`) but in a replay, and sends 0x07 with the write's
+  result (`FUN_6f26c130`, CNetCommandSaveDone; the original's 07 carried 1).  So the
+  save holds the game after its turn's actions and before its turn's time: the
+  original's LAN save of Booty Bay has game time 58800 ms and its main clock 58.78091,
+  which is the port's engine clock at tick 11760, the end of turn 588 (its 06 then in
+  turn 589, whose keepalive's time is 58800; provisional until a capture shows the
+  turn).  The port does so (`Game::after_keepalive`, from `play_turn` and
+  `play_frame`): each computer makes its copy then (`Game::saves`, `Game::save_files`,
+  in a game being recorded), its client keeps it in Save\Multiplayer under the
+  action's name, the port's own state beside it, and says its save is done (0x07 with
+  1, `Command::SaveDone`).  Its interface's Save now sends the name with the extension.
+- A network game's save under way (the net session, `FUN_6f32c6a0`): +0x2dd the
+  saver, +0x2e0 8000, +0x2e4 set, and the session's state 5 (`FUN_6f32feb0`).  The
+  turn loop (`FUN_6f32d670`) runs turn time in chunks of 25 ms, each ticking the game
+  three, four, or five steps of 5 ms by the speed (`DAT_6fce54dc`) in state 4 or 5,
+  state 5 then becoming 6, in which the chunks pass without ticks: the save's turn has
+  its first 25 ms and then the game holds.  Each later turn's message takes its
+  milliseconds off +0x2e0 (`FUN_6f32e3f0`, after its actions, before its keepalive);
+  each 0x07 marks its player done (`FUN_6f32c7b0`: nothing while none is under way);
+  when every player of the session is, or +0x2e0 runs out (8000 ms of turns), the
+  save is over (`FUN_6f328bd0`: state 4 again, +0x2dd 0xff, CNetEventSaveComplete,
+  0x40090096, which the interface takes as its handler 5, registered at 0x6f367e14;
+  not read).  Meanwhile the turns' pauses, orders, and cancels (0x01, 0x10 to 0x15,
+  0x1d, 0x1e) are read without being carried out (`FUN_6f325e10`, its +0x2dd not
+  0xff).  The port keeps it so (`world::SaveWait`, `Game::save_turn`, `Game::advance`,
+  `actions::ignored_while_saving`; provisional: the interface's part at the end, the
+  game going on, and the 25 ms at the fast speed only).  Two of the port's
+  (`nettest`, NETTEST_NETSAVE) save at a third of a Booty Bay game: each makes its
+  copy, the same objects' word in both (0x43529444), both 07s come the next turn, and
+  the game goes on in step; with NETTEST_NETLOAD each loads its own copy and they go
+  on in step.
+- A network save's description (`FUN_6f968cf0`, the session's +0x13c, which
+  `FUN_6f96bef0` copies from its source: its words from +0x9c and +0xa0, the second
+  only for a first of 1 to 16): GAMEINFO's slots and game type (provisional: the
+  Booty Bay LAN save's 2 and 9 fit; Mafarazzo TD's would tell slots from people), and
+  its stat GAMEINFO's as the host offered it (the host's name, the size it gave:
+  160 by 72 there).  Its map setup's second and third words (`FUN_6f2465b0`: +0x34,
+  +0x38 less 0x80000) are the game type and advanced options (9 and 0x648 there; a game
+  played alone's 1 and 0x02008000).  The port takes them from the game's record
+  (`NetRecord`'s stat and start spots, the offered or joined GAMEINFO's) and writes its
+  slot table as W3GS carried it and its local slot by the lobby's order
+  (`Replay::network_head`).  The tags example's copy of the quiet Booty Bay game, saved
+  at turn 589 as the original's 06 came (TAGS_SAVEDIR), has the original's header but
+  the objects' word (the stat, words, slot table, local slot and name, game time);
+  its records differ where the port's saves still do (its word 0x45ab73e0, the
+  original's 0xc2aa926c), and further: the players' agents' own word (CPlayerWar3
+  +0x20, bit 2 set by `FUN_6f26a9f0` and `FUN_6f26aa20`) is 0 for Host and 2 for Jack in
+  Jack's copy, where the port writes 0 for the local player (not yet changed), and
+  the clocks, the original's 58.78091 and 36.015045 where the port writes the game
+  time.
 - A unit's clustered position's flag word (CPoPosCl +0xd8, its record's third word
   after its eight reals): its type's orientInterp in bits 8 to 11 and formation in 12
   to 15, set as the unit is made from its type's data (`FUN_6f652620`, `FUN_6f653800`:

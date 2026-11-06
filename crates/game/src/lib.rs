@@ -113,6 +113,19 @@ pub struct Game {
     sent_selection: Option<Vec<u32>>,
     /// Each player's selection as the actions played so far left it.
     codec: actions::Codec,
+    /// A network game's save its turn's actions called for, by a player under a name,
+    /// made after the turn's keepalive (`after_keepalive`); and the copies this
+    /// computer made, for the program to keep.
+    save_due: Option<(u8, String)>,
+    pub saves: Vec<NetSaveMade>,
+}
+
+/// A network game's save as this computer made it (`Game::after_keepalive`): its name
+/// as the action gave it, and the save in the original's format with the port's own
+/// state beside it (`Game::save_files`), or why they were not made.
+pub struct NetSaveMade {
+    pub name: String,
+    pub files: Result<(Vec<u8>, Vec<u8>), String>,
 }
 
 /// How a player slot is filled when the game starts.
@@ -292,7 +305,7 @@ impl Game {
                 pl.name = name;
             }
         }
-        Ok(Game { vm, world, info, recorder: None, locked: false, outbox: None, sent_selection: None, codec: Default::default() })
+        Ok(Game { vm, world, info, recorder: None, locked: false, outbox: None, sent_selection: None, codec: Default::default(), save_due: None, saves: Vec::new() })
     }
 
     /// Runs the map's `config` function, which declares players and start locations,
@@ -853,8 +866,22 @@ impl Game {
                 r.step(dt, None, checksum);
             }
         }
-        self.world.tick(&mut self.vm, dt);
+        self.advance(dt);
         self.send_net_out();
+    }
+
+    /// A step's time passes, but while a network game's save is under way
+    /// (`world::SaveWait`) only the first 25 ms of the save's own turn (state 5's one
+    /// tick, of five 5 ms steps at the fast speed, `DAT_6fce54dc`), and none after.
+    fn advance(&mut self, dt: f32) {
+        let mut dt = dt;
+        if let Some(w) = self.world.net_save.as_mut() {
+            if !std::mem::take(&mut w.first) {
+                return;
+            }
+            dt = dt.min(0.025);
+        }
+        self.world.tick(&mut self.vm, dt);
     }
 
     /// Plays one frame (of a replay or from a network game's host): its commands, then
@@ -865,13 +892,15 @@ impl Game {
             self.world.net_turns = true;
         }
         let out = self.play_commands(f);
+        self.save_turn(f.turn.as_ref().map_or((f.dt * 1000.0).round() as u16, |t| t.0));
+        self.after_keepalive();
         self.play_step(f);
         out
     }
 
     /// A network turn as the original plays it: its message hashed into the
     /// keepalive's net module, its actions carried out, the keepalive made (returned),
-    /// then its step.
+    /// a save it called for made, then its step.
     pub fn play_turn(&mut self, f: &replay::Frame) -> (Vec<(u8, replay::Outcome)>, u32) {
         if let Some((ms, blocks)) = &f.turn {
             if blocks.is_empty() {
@@ -881,9 +910,70 @@ impl Game {
             }
         }
         let out = self.play_commands(f);
+        self.save_turn(f.turn.as_ref().map_or((f.dt * 1000.0).round() as u16, |t| t.0));
         let keepalive = self.world.keepalive();
+        self.after_keepalive();
         self.play_step(f);
         (out, keepalive)
+    }
+
+    /// A turn's time counts against a network game's save under way, after its actions
+    /// and before its keepalive (`FUN_6f32e3f0`: +0x2e0 less the turn's milliseconds):
+    /// at 8000 ms of turns the save is over, whoever has not said theirs is done.
+    pub fn save_turn(&mut self, ms: u16) {
+        let Some(w) = self.world.net_save.as_mut() else { return };
+        if ms == 0 {
+            return;
+        }
+        w.budget = w.budget.saturating_sub(ms as u32);
+        if w.budget == 0 {
+            self.world.net_save = None;
+        }
+    }
+
+    /// What a turn's message does after its keepalive: the save its actions called for
+    /// (`FUN_6f327040`, the command kept at +0x1b48 until the message is handled).  The
+    /// net module is set back (`FUN_6f32f930`: CSyncData's sum and count, 0); then
+    /// (`FUN_6f26f450`), while no save is under way and the player has made none
+    /// (`FUN_6f32b800`, over LAN: its +0x3c), the save begins (`world::SaveWait`), the
+    /// triggers hear it (EVENT_GAME_SAVE), this computer's copy is made (`saves`,
+    /// in a game being recorded, whose record describes it), the player's saves count
+    /// one more, and this computer says its save is done (0x07 with 1 for a copy made,
+    /// `FUN_6f26c130`).
+    pub fn after_keepalive(&mut self) {
+        let Some((player, name)) = self.save_due.take() else { return };
+        self.world.net_sum = 0;
+        if self.world.net_save.is_some() || self.world.saves_made[player as usize % 16] > 0 {
+            return;
+        }
+        self.world.net_save = Some(world::SaveWait { budget: 8000, first: true, done: Vec::new() });
+        self.game_event(event_ids::EVENT_GAME_SAVE);
+        let mut result = 0;
+        if self.recorder.is_some() {
+            let files = self.recorder.as_ref().map(|r| r.replay.map.clone()).map_or_else(|| Err(anyhow::anyhow!("no record")), |map| self.save(&map)).and_then(|port| self.save_files(port)).map_err(|e| format!("{e:#}"));
+            result = files.is_ok() as u32;
+            self.saves.push(NetSaveMade { name, files });
+        }
+        self.world.saves_made[player as usize % 16] += 1;
+        let local = self.world.local_player;
+        if let Some(o) = self.outbox.as_mut() {
+            o.push(replay::Command::SaveDone { player: local, result });
+        }
+    }
+
+    /// A player's computer has said its save is done (`FUN_6f32c7b0`, nothing while no
+    /// save is under way): once every person in the game has, the save is over
+    /// (`FUN_6f328bd0`).
+    fn save_done(&mut self, player: u8, result: u32) {
+        let w = &self.world;
+        let people: Vec<u8> = w.players.iter().take(16).filter(|p| p.controller == types::map_control::USER && p.slot_state == types::slot_state::PLAYING).map(|p| p.id).collect();
+        let Some(s) = self.world.net_save.as_mut() else { return };
+        if !s.done.iter().any(|d| d.0 == player) {
+            s.done.push((player, result));
+        }
+        if people.iter().all(|p| s.done.iter().any(|d| d.0 == *p)) {
+            self.world.net_save = None;
+        }
     }
 
     /// A frame's step: its time passes.
@@ -896,7 +986,7 @@ impl Game {
         }
         // A paused game takes commands (a resume among them) but no time passes.
         if self.world.net_paused.is_none() {
-            self.world.tick(&mut self.vm, f.dt);
+            self.advance(f.dt);
         }
         self.send_net_out();
     }
@@ -918,6 +1008,11 @@ impl Game {
         let out = commands
             .into_iter()
             .map(|(p, c)| {
+                // While a network game's save is under way, pauses, orders, and cancels are
+                // not carried out (`world::SaveWait`).
+                if self.world.net_save.is_some() && actions::ignored_while_saving(&c) {
+                    return (p, replay::Outcome::Done);
+                }
                 log::debug!("player {p}: {c:?}");
                 let o = self.execute(p, c);
                 log::debug!("  answered {o:?}");
@@ -1151,10 +1246,13 @@ impl Game {
                 self.world.sync_ready(&mut self.vm, player, execution);
                 O::Done
             }
+            // A network game's save, made once the turn's message is handled.
             C::Save { name } => {
-                // The triggers hear the save first (EVENT_GAME_SAVE).
-                self.game_event(event_ids::EVENT_GAME_SAVE);
-                self.world.requests.push(world::Request::NetSave(name));
+                self.save_due = Some((player, name));
+                O::Done
+            }
+            C::SaveDone { result, .. } => {
+                self.save_done(player, result);
                 O::Done
             }
             C::CancelQueue { building, slot } => {

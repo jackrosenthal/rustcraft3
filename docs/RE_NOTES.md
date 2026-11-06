@@ -5765,7 +5765,33 @@ Formats the port made its own, to be replaced by the original's:
   keepalives agree to turn 640, from 632.  Next (turn 639's frees, the keepalives
   parting at 641): the reach's task goes where the original's does, its path and
   cluster right after it where the original's go after seven others (an older
-  order's tasks), not yet read why.
+  order's tasks), not yet read why.  Read since (each free at the tag allocator,
+  63.6 to 63.97): the task and the seven (26282 to 22424) go together at 63.833233
+  from the destroy list (`FUN_6f054190`, `FUN_6f145c70`), and the reach's path and
+  cluster only at the next step, 63.863117, from the cluster's own update
+  (`FUN_6f16c150`, `FUN_6f1699c0`, in its `CAgentTimer`), before another cluster's
+  (22457, 26378); the port frees the seven after the path.
+- A computer's structure whose training queue empties has its abilities enabled
+  again, and a Tree of Life's Entangle Gold Mine makes its listener anew.  Read (the
+  tag allocator's take of a `` `pil ``, 14.05 to 14.25, Twisted Meadows' night elf
+  computer's game): one at 14.1, after the trained wisp's ptcf, its backtrace
+  `CAbilityQueue` vf3, `FUN_6f40daa0` (its end, `FUN_6f406c40` with slot 0: the
+  queue shifted, and with nothing next `FUN_6f41de50`), `FUN_6f48c8c0` (the unit's
+  abilities' disable count +0x1b8 down, each ability's `FUN_6f40bb00`), and
+  `CAbilityEntangle`'s vf 0xc8 (`FUN_6f05c020`, a listener on event 0xd01aa), which
+  `FUN_6f40bb00` calls as an ability's count +0x3c reaches 0 on a unit with +0x5c's
+  4 (an AI's).  So the computer's Tree of Life's listener the port had called its
+  Eat Tree's is Entangle's, let go as it begins training (its abilities disabled;
+  provisional, `FUN_6f4076e0` not read) and made again as its queue empties
+  (`World::update_training`).  And the trained wisp's tree is its town's next
+  (`FUN_6f9c96c0`'s `FUN_6f9c70a0`), (150, 202) as the original's walk has it, where
+  the port had given it the cheapest as at the setup (`World::town_next_tree`).
+  The keepalives so agree to turn 152, from 142.  Next (turn 152): the original's
+  AI pass at 15.1 sends that wisp to its mine (a 19-object order, its old order's
+  objects freed), where the port's leaves it, a worker made since the pass before
+  last (12.1) not yet among those its passes take (`World::ai_assign_harvest`'s
+  joining, read on the human computer's peasants made in a pass's tick); not read
+  what the original's AI list takes.
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

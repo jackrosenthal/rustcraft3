@@ -3808,11 +3808,13 @@ impl World {
         if ai {
             let block = self.tags.take(codes::class::TASK_A);
             self.tags.issued.push(block);
-            // A computer's Tree of Life lets its Eat Tree's listener go as it begins
+            // A computer's Tree of Life lets its Entangle's listener go as it begins
             // training, between the two (read: Twisted Meadows' night elf computer's
-            // first wisp, over LAN with the original; provisional: why).
+            // first wisp, over LAN with the original; provisional: as its abilities are
+            // disabled while it trains, `FUN_6f4076e0`, not read; they are enabled again
+            // as its queue empties, `World::update_training`).
             let pils = self.unit_mut(h).map(|u| {
-                let (eat, keep): (Vec<_>, Vec<_>) = std::mem::take(&mut u.extra.spell_pils).into_iter().partition(|p| &p.1 == codes::ability::id::EAT_TREE);
+                let (eat, keep): (Vec<_>, Vec<_>) = std::mem::take(&mut u.extra.spell_pils).into_iter().partition(|p| &p.1 == codes::ability::id::ENTANGLE);
                 u.extra.spell_pils = keep;
                 eat
             });
@@ -4471,6 +4473,17 @@ impl World {
         // Sell, the maftw games: its execution and its actions' objects made first, the
         // ptcf freed after the execution).
         let ptcf = self.tags.take(codes::class::TRAINING_DONE);
+        // Its queue emptied, its abilities are enabled again (`FUN_6f406c40`'s
+        // `FUN_6f41de50`, `FUN_6f48c8c0`, `FUN_6f40bb00`), a computer's Entangle making
+        // its listener anew (its vf 0xc8; read, the tag allocator's take and its
+        // backtrace: Twisted Meadows' night elf computer's Tree of Life, its first wisp
+        // trained at 14.1, the `` `pil `` after the ptcf).
+        if self.ai.contains_key(&owner) && self.unit(h).is_some_and(|u| u.queue.is_empty()) && self.ability_with_code(h, codes::ability::ENTANGLE).is_some() {
+            let pil = self.tags.take(codes::class::IN_RANGE_LISTENER);
+            if let Some(u) = self.unit_mut(h) {
+                u.extra.spell_pils.push((pil, *codes::ability::id::ENTANGLE));
+            }
+        }
         // (The making's two tasks, doomed as it was made, after these.)
         let tasks: Vec<u32> = if new != 0 { (0..2).filter_map(|_| self.tags.doomed.pop()).collect() } else { Vec::new() };
         // An AI's unit's tasks and ptcf go last in the turn's frees, after the orders

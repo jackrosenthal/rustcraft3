@@ -1051,11 +1051,12 @@ impl crate::world::World {
             // `FUN_6f606140`: a listener on event 0xd01bf at its range; read under
             // winedbg, Plaguelands' Doom Guards' after their AI's objects, from the
             // making's hook `FUN_6f9b9230` for an owner with a player AI).
-            // (A computer's Tree of Life one too, its Eat Tree's, provisional: read, Twisted
-            // Meadows' night elf computer's over LAN with the original, after its AI's
-            // objects.)
+            // (A computer's Tree of Life one too, its Entangle Gold Mine's: CAbilityEntangle's
+            // vf 0xc8, a listener on event 0xd01aa, made as the ability is enabled on an
+            // AI's unit, `FUN_6f40bb00`; read, Twisted Meadows' night elf computer's over
+            // LAN with the original, after its AI's objects.)
             for c in &had {
-                if matches!(c, codes::ability::id::ARCH_MAGE_BLIZZARD | codes::ability::id::PIT_LORD_RAIN_OF_FIRE) || (computer && c == codes::ability::id::EAT_TREE) {
+                if matches!(c, codes::ability::id::ARCH_MAGE_BLIZZARD | codes::ability::id::PIT_LORD_RAIN_OF_FIRE) || (computer && c == codes::ability::id::ENTANGLE) {
                     spell_pils.push((codes.len(), *c));
                     codes.push(*codes::class::IN_RANGE_LISTENER);
                 }
@@ -1362,7 +1363,10 @@ impl crate::world::World {
         if let Some(r) = ai_gold_run {
             if let Some(mine) = ai_mine {
                 let wisp = self.ability_with_code(h, codes::ability::WISP_HARVEST).is_some();
-                let mine = if wisp { self.ai_setup_tree(h).unwrap_or(mine) } else { mine };
+                // (One made as the game runs, its town's next tree: read, Twisted Meadows'
+                // night elf computer's wisp trained at 14.1, its goal (150, 202).)
+                let next = if wisp && !self.tick_clocks.1.is_empty() { self.town_next_tree(owner) } else { None };
+                let mine = if wisp { next.or_else(|| self.ai_setup_tree(h)).unwrap_or(mine) } else { mine };
                 self.run_order_made = Some(slots[r..r + n].to_vec());
                 self.run_setup = true;
                 self.start_gold_run(h, mine, false);

@@ -1317,6 +1317,19 @@ impl World {
         self.cheapest_tree(h, false)
     }
 
+    /// The town's next tree for a computer's wisp made as the game runs (`FUN_6f9c96c0`'s
+    /// `FUN_6f9c70a0`: its AI's +0x150 counted on to the next place with a tree, as its
+    /// wood workers take them, `World::ai_town_trees`); none while its town has none.
+    pub(crate) fn town_next_tree(&mut self, p: u8) -> Option<u32> {
+        let (tx, ty) = self.town_pos_pub(p, 0);
+        let hall = self.unit_order.iter().copied().find(|&b| self.unit(b).is_some_and(|u| u.owner == p && u.is_building && !u.dead && (u.x - tx).abs() < 1.0 && (u.y - ty).abs() < 1.0))?;
+        let places = self.ai_tree_cache.get(&hall)?.clone();
+        let next = self.ai.get(&p)?.tree_next;
+        let i = (1..=8).map(|i| (next + i) % 8).find(|&i| places.get(i).is_some_and(|t| t.is_some()))?;
+        self.ai.get_mut(&p)?.tree_next = i;
+        places[i].map(|q| q.1)
+    }
+
     fn cheapest_tree(&self, h: u32, seen: bool) -> Option<u32> {
         let u = self.unit(h)?;
         let (fx, fy, owner) = (u.x, u.y, u.owner);

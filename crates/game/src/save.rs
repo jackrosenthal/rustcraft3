@@ -257,8 +257,8 @@ impl Game {
     /// units' slots), its players' upgrades researched, the computers' AI scripts and
     /// captains (`restore_ai_scripts`), the mines' gold, the structures being built, the
     /// queues at work, each unit's order, the triggers turned off, and the timer events'
-    /// timers.  The time played before (`World::played_before_ms`), as its saves and
-    /// score show it; the clocks start again from 0, all the rest counting from them.
+    /// timers.  The clocks go on from the save's (`World::carry_clocks_to`): its game
+    /// time, the engine's main clock, and the movement steps' agent queue.
     /// The units and the walks given again take their saved slots and births
     /// (`tags::RestorePlan`), and the allocator is then the save's, as the original's
     /// loaded game has its object table.
@@ -274,10 +274,27 @@ impl Game {
         let agent_clock = s.objects.as_ref().map_or(0.0, |m| m.clocks[1].0);
         let scripts = s.script_data()?;
         let w = &mut self.world;
-        w.played_before_ms = s.game_ms;
+        // (The clocks go on from the save's, as the original's loaded game's do.)
+        w.carry_clocks_to(s.game_ms);
         let origin = w.pathing.as_ref().map_or([0.0; 2], |p| p.origin);
+        // (The map's start's units go with their own objects, so the units made anew
+        // take their slots: read, Mafarazzo TD's flying peasants, made at its start at
+        // slots 1383 and 1406 in both games.  Their orders' objects stay, as others.)
         for h in w.unit_order.clone() {
+            let objects: Vec<u32> = w.unit(h).map(|u| {
+                let x = &u.extra;
+                let live = |&(s, b): &(u32, u32)| w.tags.live.get(&s).is_some_and(|e| e.1 == b);
+                let mut v: Vec<u32> = x.object_slots.iter().flatten().chain(&x.ai_slots).chain(&x.ensnare_pil).chain(&x.item_pil).filter(|o| live(o)).map(|o| o.0).collect();
+                v.extend(x.flyer_pil.iter().chain(&x.blight_slots).chain(&x.footprint_slots));
+                v.extend(x.detected_by.iter().map(|d| d.1).chain(x.mana_listeners.iter().map(|m| m.1)).chain(x.spell_pils.iter().map(|p| p.0)));
+                v
+            }).unwrap_or_default();
             remove_unit(w, h);
+            for s in objects {
+                if w.tags.live.contains_key(&s) {
+                    w.tags.release(s);
+                }
+            }
         }
         w.tags.free_doomed();
         // (The units made, by their objects as saved: each unit and the objects made
@@ -921,6 +938,97 @@ impl Game {
                 self.world.ordering_player = ordering;
             }
         }
+        // Each unit's place as saved, off the quarter-unit grid a unit is made on, and a
+        // walker's motion (its clustered position's, `` `pcu ``, at its saved slot: its
+        // place in cells, velocity, and heading, and its stamp, the main clock of its last
+        // step; read, Mafarazzo TD's creeps at 103.959236 cells where made at 103.953125).
+        {
+            use w3_formats::w3z::First;
+            let all = s.objects.as_ref().map(|m| m.objects()).transpose()?.unwrap_or_default();
+            let by: std::collections::HashMap<(u32, u32), &w3_formats::w3z::SavedObject> = all[0].iter().map(|o| ((o.entry.tag, o.entry.birth), o)).collect();
+            let w = &mut self.world;
+            for h in w.unit_order.clone() {
+                let Some(u) = w.unit_mut(h) else { continue };
+                // (A detector's looks go on by its in-range object's timer, each look its
+                // half second's on the agent queue (`World::detection_looks`, its clock
+                // counted from the start of the tick its object was made in): the clock
+                // set so its next falls at the timer's due, taken in the tick after it;
+                // read, Mafarazzo TD's flying peasants' due 54.0 as saved at 53.8, the
+                // loaded game's two detections at 55.0 after its keepalive there.)
+                if let Some(Ok(First::Interference { object, .. })) = u.extra.flyer_pil.and_then(|p| all[0].iter().find(|o| o.entry.tag == p && &o.entry.kind.to_be_bytes() == crate::codes::class::IN_RANGE_LISTENER)).map(|o| o.first()) {
+                    if let Some((due, ..)) = object.timings[0].0 {
+                        let due_ms = (due as f64 * 1000.0).round() as i64;
+                        u.extra.detect_clock = Some((s.game_ms as i64 - 100 - due_ms).rem_euclid(500) as f32);
+                        u.extra.detect_ahead = None;
+                    }
+                }
+                let Some(pcu) = u.extra.object_slots[0].get(1).copied() else { continue };
+                let Some(Ok(First::Cluster { base, values, words, last, .. })) = by.get(&pcu).filter(|o| &o.entry.kind.to_be_bytes() == crate::codes::class::UNIT_POSITION).map(|o| o.first()) else { continue };
+                (u.x, u.y) = (origin[0] + values[0] * crate::pathing::CELL, origin[1] + values[1] * crate::pathing::CELL);
+                // (Its facing as saved, in radians, for its records: read, Mafarazzo TD's
+                // towers' 4.7123885, made at 270 degrees.)
+                u.extra.made_facing = Some((u.facing, values[5]));
+                // (Its speed as set, SetUnitMoveSpeed's, in cells a second: one whose type
+                // does not move holds none.)
+                if values[4] < f32::MAX {
+                    u.move_speed = values[4] * crate::pathing::CELL;
+                }
+                // A walker sent to a point goes on with its walk (`World::walk_steps_inner`):
+                // its mover as saved, and its ways as its paths keep them, so it neither
+                // plans nor searches anew.  Its own path (`l^pa`, the position's last) its
+                // local way, from its local goal (first) to where the search set out, and
+                // the node it steers for by its index (read: each of Mafarazzo TD's creeps'
+                // at 0, its local goal), and its own coarse way and index (limit 400); its
+                // walk's cluster (`^clu`, the position's first words) its path's coarse
+                // way and index, the order's (limit 5000, read: 0 to 8 along).
+                if u.extra.player_walk && matches!(u.action, crate::types::Action::Move { .. }) {
+                    u.extra.mover = Some(crate::motion::Mover { x: values[0].to_bits(), y: values[1].to_bits(), vx: values[2].to_bits(), vy: values[3].to_bits(), heading: values[5].to_bits(), placed_at: base.real.to_bits() });
+                    let path_of = |r: (u32, u32)| match by.get(&r).map(|o| o.first()) {
+                        Some(Ok(First::Path { ways, .. })) => Some(ways),
+                        _ => None,
+                    };
+                    let coarse_of = |(a, index, ..): &(w3_formats::w3z::Array<[f32; 2]>, u32, u32, u16)| {
+                        (*index != u32::MAX && (*index as usize) < a.entries.len()).then(|| crate::accelpath::Coarse { points: a.entries.iter().map(|e| (e[0], e[1])).collect(), index: *index as usize, searched_at: 0 })
+                    };
+                    if let Some(ways) = path_of((last.0, last.1)) {
+                        let (local, index, ..) = &ways[0];
+                        if (*index as usize) < local.entries.len() {
+                            u.path = local.entries[..=*index as usize].iter().rev().map(|e| (origin[0] + e[0] * crate::pathing::CELL, origin[1] + e[1] * crate::pathing::CELL)).collect();
+                        }
+                        u.extra.move_coarse = coarse_of(&ways[1]);
+                    }
+                    if let Some(Ok(First::Cluster2 { refs, word: cluster_word, .. })) = by.get(&(words[0], words[1])).map(|o| o.first()) {
+                        u.extra.coarse = path_of((refs[2].0, refs[2].1)).and_then(|ways| coarse_of(&ways[1]));
+                        // (Its pathing off, SetUnitPathing's, where its cluster's word lacks
+                        // 0x20000: read, Mafarazzo TD's creeps', 0.  Provisional: a unit
+                        // not walking keeps the map's start's.)
+                        u.extra.no_pathing = cluster_word & 0x2_0000 == 0;
+                        // (Its place among the walks, which step and free their old paths
+                        // newest first: the load links each cluster at the list's head as
+                        // it comes in the table, so the highest slot's is the newest, all
+                        // older than any walk ordered after; read, four creeps' old
+                        // clusters freed in turn 5 of Mafarazzo TD's load, slot 3592's
+                        // last, born between the others.)
+                        u.extra.walk_serial = words[0];
+                    }
+                }
+            }
+        }
+        // Who is inside each watched region, as the units stand: the game goes on with
+        // them inside, no unit entering one it was in as it was saved (read: Mafarazzo
+        // TD's creeps inside their lanes' turning regions, which the original's load
+        // ordered on no further, its first tick's births five walks' and its turn 77's
+        // 16 walks fewer than the port's whose walkers entered them anew).
+        {
+            let w = &mut self.world;
+            let mut regions: Vec<u32> = w.region_inside.keys().copied().collect();
+            regions.sort_unstable();
+            for region in regions {
+                let Some(r) = w.region(region) else { continue };
+                let now: Vec<u32> = w.unit_order.iter().copied().filter(|&h| w.unit(h).is_some_and(|u| r.contains(u.x, u.y))).collect();
+                w.region_inside.insert(region, now);
+            }
+        }
         // The computers' AI scripts, as they were (their threads' sleeps on the main
         // clock).
         let main_clock = s.objects.as_ref().map_or(0.0, |m| m.clocks[0].0);
@@ -953,6 +1061,28 @@ impl Game {
             t.free = free.into_iter().rev().filter(|f| !t.live.contains_key(f)).collect();
             let saved: std::collections::HashMap<u32, (u32, u32)> = m.tables[0].iter().map(|e| (e.tag, (e.kind, e.birth))).collect();
             t.strangers = t.live.iter().filter(|(slot, (code, birth))| saved.get(slot) != Some(&(u32::from_be_bytes(*code), *birth))).map(|(&slot, _)| slot).collect();
+            // (The properties made again at their saved slots keep their saved stamps,
+            // the main clock as each was made: read, Mafarazzo TD's creeps' reals at
+            // 19.997644, made at 20 seconds, not the load's 53.783657.  Provisional: in
+            // the main clock's wrap of now.)
+            if let Ok(objects) = m.objects() {
+                use w3_formats::w3z::First;
+                for o in &objects[0] {
+                    if t.live.get(&o.entry.tag) != Some(&(o.entry.kind.to_be_bytes(), o.entry.birth)) {
+                        continue;
+                    }
+                    let stamp = match o.first() {
+                        Ok(First::Real { base, .. } | First::Flag { base, .. } | First::Cluster { base, .. }) => base.real,
+                        _ => continue,
+                    };
+                    if stamp == 0.0 {
+                        t.made_at.remove(&o.entry.tag);
+                    } else {
+                        t.made_at.insert(o.entry.tag, stamp.to_bits());
+                    }
+                    t.made_wraps.remove(&o.entry.tag);
+                }
+            }
         }
         self.loaded_objects();
         Ok(())

@@ -186,6 +186,14 @@ fn main() -> anyhow::Result<()> {
                 let s = w3_formats::w3z::SaveGame::read(&std::fs::read(&file)?)?;
                 g.restore_original(&s)?;
                 println!("loaded {file} in the original's format");
+                // TAGS_LOADSAVE=<file>: the restored game saved at once in the original's
+                // format (its header the loaded save's), to compare its records with the
+                // save it was restored from.
+                if let Ok(out) = std::env::var("TAGS_LOADSAVE") {
+                    let head = w3_game::w3zscript::SaveHead { map: s.map.clone(), stat: s.info_stat.clone(), xoro: s.map_xoro, sha1: s.map_sha1, network: None };
+                    let header = w3_formats::container::Header { product: *b"PX3W", version: 27, build: 6059, flags: 0, length_ms: 0 };
+                    std::fs::write(&out, g.write_save_fresh(&head).to_file(&header))?;
+                }
                 // TAGS_LOADLIVE: the restored game's live tags against the save's table: by
                 // kind, those alike (slot, kind, and birth), at the slot with another
                 // birth or kind, and only the port's or only the save's.
@@ -288,6 +296,12 @@ fn main() -> anyhow::Result<()> {
         if std::env::var("TAGS_MODULE").is_ok_and(|v| v == "all") {
             println!("turn {n}: game module {:08x}", g.world.game_module());
         }
+        // (The trace marks each keepalive as "S 1000+turn", with the next slot.)
+        if std::env::var("TAGS_TRACE").is_ok() {
+            g.world.tags.mark_step(1000 + n as usize);
+            let p = g.world.tags.presence();
+            g.world.tags.mark_step(p as usize);
+        }
         // A save under way counts the turn's time, before its keepalive.
         g.save_turn(100);
         // TAGS_KEEPALIVE_ALL: each turn's keepalive against the original's after the first
@@ -295,6 +309,13 @@ fn main() -> anyhow::Result<()> {
         if let (Some(&want), true) = (keepalives.get(&n), first_off.is_some() && std::env::var("TAGS_KEEPALIVE_ALL").is_ok()) {
             let ours = g.world.keepalive();
             println!("turn {n}: ours {ours:08x}, the original's {want:08x}{}", if ours == want { "" } else { " (differ)" });
+            // (TAGS_KEEPALIVE_ALL=parts: a differing one's inputs too, ours and the
+            // original's, the main generator's hash, born, and the next slot.)
+            if ours != want && std::env::var("TAGS_KEEPALIVE_ALL").is_ok_and(|v| v == "parts") {
+                let state = g.world.rng.state();
+                let h = w3_game::keepalive::byte_hash((state >> 32) as u32).wrapping_add(w3_game::keepalive::byte_hash(state as u32));
+                println!("  inputs {ours:08x} {want:08x} {h:x} {:x} {:x}", g.world.tags.born, g.world.tags.presence());
+            }
         }
         if let (Some(&want), None) = (keepalives.get(&n), first_off) {
             let ours = g.world.keepalive();
@@ -563,7 +584,8 @@ fn main() -> anyhow::Result<()> {
         std::fs::write(out, ours.join("\n") + "\n")?;
     }
     // TAGS_TRACE names a file for every tag given and freed, by turn: "A code slot",
-    // "F slot", "T".
+    // "F slot", "T", each movement step "S k", and each keepalive "S 1000+turn" and
+    // "S next-slot".
     if let Ok(out) = std::env::var("TAGS_TRACE") {
         let lines: Vec<String> = g.world.tags.trace.clone().unwrap_or_default().iter().map(|e| match e {
             w3_game::tags::TagEvent::Take(c, s) => format!("A {} {s:#x}", String::from_utf8_lossy(c)),

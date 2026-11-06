@@ -2522,9 +2522,9 @@ impl World {
     /// The object manager's header as saved (`FUN_6f15c9b0`): two words, two reals (25
     /// and 0.2), its update counter and that's parity, each table's births, four
     /// groups of a clock (a time, a word, its wrap 300, a word, a count), and "espi".
-    /// The two words, the counter, and the counts are the running game's (they differ
-    /// between saves of one moment); the original loads a save with them 0, the
-    /// counter 1024 (read: the quiet test map's save so changed, `w3zedit header0`).
+    /// The two words and the counts are the running game's (they differ between saves
+    /// of one moment); the original loads a save with them 0 (read: the quiet test
+    /// map's save so changed, `w3zedit header0`).  Provisional: the counts, written 0.
     pub fn saved_manager_header(&self, second_births: u32) -> Vec<u8> {
         let mut o = Vec::new();
         let mut word = |v: u32| o.extend(v.to_le_bytes());
@@ -2533,7 +2533,12 @@ impl World {
         word(0);
         word(25f32.to_bits());
         word(0.2f32.to_bits());
-        word(1024);
+        // (The movement steps' counter, the path manager's +0x538: 1024 at the start
+        // and one more as each step begins, `FUN_6f15aa80`, the game's first step at
+        // its clock 0 not counted; read, 2816 at Mafarazzo TD's 53.8 seconds, the port's
+        // 1793rd step done, and 3070 at its load's turn 77.  Provisional: which step
+        // goes uncounted.)
+        word(1024u32.wrapping_add((self.steps_total as u32).saturating_sub(1)));
         word(0);
         word(self.tags.born);
         word(second_births);

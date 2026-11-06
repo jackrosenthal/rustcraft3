@@ -123,7 +123,7 @@ impl World {
         let mut c = want.rotate_right(3) ^ h;
         c = c.rotate_right(3) ^ self.tags.born;
         c = c.rotate_right(3) ^ presence;
-        let m = c.rotate_right(3) ^ self.game_ms.wrapping_add(self.played_before_ms);
+        let m = c.rotate_right(3) ^ self.game_ms;
         let mut a = m.rotate_right(3) ^ 0x17ab;
         let mut modules = self.keepalive_modules.clone();
         modules.insert(0, 0);
@@ -148,10 +148,9 @@ impl World {
         modules.insert(3, self.rand_data.checksum());
         modules.insert(6, self.game_module());
         let m = modules.iter().rev().fold(0u32, |m, (_, &v)| (m ^ v).rotate_left(3));
-        // (The net time: a loaded original's save's game time comes back with it
-        // (`FUN_6f32a860` reading the net game's +0x1c70) while the port's clocks start
-        // again from 0.)
-        let t = self.game_ms.wrapping_add(self.played_before_ms);
+        // (The net time, the game's: a loaded original's save's comes back with it,
+        // `FUN_6f32a860` reading the net game's +0x1c70, as the game's clocks go on.)
+        let t = self.game_ms;
         let presence = self.tags.free.last().copied().unwrap_or(self.tags.slots);
         let state = self.rng.state();
         let h = byte_hash((state >> 32) as u32).wrapping_add(byte_hash(state as u32));

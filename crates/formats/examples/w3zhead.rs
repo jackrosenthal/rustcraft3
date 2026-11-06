@@ -43,6 +43,10 @@ fn main() {
     for (k, f) in m.free.iter().enumerate() {
         let slots: Vec<i64> = f.chunks(4).filter(|c| c.len() == 4).map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64).collect();
         println!("free list {k}: {} words, last {:?}", slots.len(), &slots[slots.len().saturating_sub(14)..]);
+        // W3ZHEAD_FREE=<file>: the main table's free list whole, a slot a line.
+        if let (0, Ok(out)) = (k, std::env::var("W3ZHEAD_FREE")) {
+            std::fs::write(out, slots.iter().map(|s| format!("{s}\n")).collect::<String>()).unwrap();
+        }
     }
     println!("data sections {:?}, bounds {:?}, {} bytes after", m.data.iter().map(|d| d.len()).collect::<Vec<_>>(), m.bounds, s.rest.len());
     // The record written back: whole, then from each part as read.

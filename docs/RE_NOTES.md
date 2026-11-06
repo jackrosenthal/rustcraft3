@@ -5135,7 +5135,8 @@ Formats the port made its own, to be replaced by the original's:
   slot the saved free list's third (6273 and 8477 taken by two objects made as it
   loads).  The port's load now takes the saved tech registrations
   (`SaveGame::player_techs`), seeds its generators afresh, and counts the save's
-  game time in the keepalive's time (`World::played_before_ms`).
+  game time in the keepalive's time (its game time, which goes on from the save's,
+  below).
 - The two objects the original makes as it loads (read: that loaded game saved again
   at its turns 77 and 246, births 19013 and 19014 at slots 6273 and 8477 in both) are
   threshold listeners (`` `rtl ``), one for each flying peasant (units 1383 and 1406):
@@ -5169,7 +5170,67 @@ Formats the port made its own, to be replaced by the original's:
   is the original's, the second born one off (or seven) and its next slot a saved
   detection record (6463) or a walk's order (6462) where the port's is 7879 (open:
   the port's clocks starting again from 0 where the original's run on, and the
-  restored walks' state).
+  restored walks' state; both since, below).
+- A loaded game goes on from its save (`Game::restore_original`), read against the
+  three LAN loads of the Mafarazzo TD save (`mafload`, `mafload2`, `mafload3`):
+  - Its clocks (`World::carry_clocks_to`): the game time the save's (53800, the
+    keepalive's time with it), the main clock the engine's sum of 5 ms ticks to its
+    tick (53.783657 at 10760; at the load's turn 77 61.379482, as the original saves
+    it there), and the movement steps planned to then.  The path manager's step
+    counter (+0x538, `FUN_6f15aa80`: 1024 at the start, one more as each step begins;
+    the manager header's fifth word, `FUN_6f15c9b0`) is 1024 and the steps but the
+    game's first, at its clock 0: 2816 at 53.8 seconds, 3070 at the load's turn 77,
+    as the port now writes (provisional: which step goes uncounted).  Not yet: the
+    agent queue's clock (the original's 53.853115 and 61.533245, the port's last
+    step's due 53.758354 and 61.378044), the four queues' counts, and the header's
+    first two words, which the port writes 0.
+  - Its walkers go on with their walks, neither planning nor searching anew: each
+    one's mover its clustered position's (`` `pcu ``: place in cells, velocity,
+    heading, and its stamp, its last step's main clock), its speed that position's
+    (SetUnitMoveSpeed's, Mafarazzo TD's creeps' random), its local way its own path's
+    (`l^pa`, the position's last reference: the cells from its local goal to where its
+    search set out and the index of the node it steers for, every creep's 0, its
+    local goal, as the port's straight way), its own coarse way and index that path's
+    second (limit 400), and its order's coarse way and index its walk's cluster's path
+    (the position's first words name the `^clu`, its third reference the `l^pa`: limit
+    5000, read 0 to 8 along).  Before, the creeps stood where they were saved, their
+    walks begun anew and held there.
+  - Who is inside each watched region is who stands there as it loads: no unit enters
+    one it was saved in (the port's 16 creeps entering their lanes' turning regions
+    anew at the first step, ordered on again, were 16 walks' objects more than the
+    original's by turn 77).
+  - Its walks' order (walkers step, and their old paths are freed, newest first): a
+    loaded walk's place its cluster's slot, highest newest, all older than any ordered
+    after (the load links each cluster at the list's head as the table gives them;
+    read: four creeps' old paths freed in the load's fifth turn, the original's last
+    the cluster at slot 3592, born between the others).
+  - A detector's looks go on by its in-range object's timer (`` `pil ``, its due on
+    the agent queue): its look clock set so the next falls at that due, in the tick
+    after it (the flying peasants' due 54.0 as saved at 53.8; the load's two
+    detections at 55.0 made after its keepalive there, not a tick before).
+  - The map's start's units go with their own objects, so the units made anew take
+    their slots: the flying peasants, made at the start at slots 1383 and 1406 in both
+    games, had been made anew at free slots, their in-range objects too.
+  - The properties made again keep their saved stamps (reals', flags', and
+    positions' base reals: the creeps' reals 19.997644, made at 20 seconds), the units
+    their saved facings in radians, and a walker its pathing as its cluster's word has
+    it (0x20000 on; the creeps' 0, SetUnitPathing's).  Saved at once after the load,
+    the port's records are then the save's for every real (917) and every standing
+    unit's position; the 180 walkers' positions (their speed scalar, the original's
+    6.2227297 where the port's velocity's length is 6.222687, two turning reals, and
+    flags), their clusters (two counters, `^clu`'s 81 and 81 where the port writes 0,
+    and its last real), their paths (the first word and word), and 13 pathing regions
+    still part, the fields the port's own save of the game parts on.
+  With these the port's keepalives agree with all three loads' through turn 44
+  (where they parted at turn 2), and the second's again from 46 through 82, its save
+  at turn 77 and the hold after among them.  Left: in the first and third, turns 45,
+  80, 94, 95, 111, 116, 120, 128, and 135 part one turn each (in the second 45, 83,
+  84, 96, 98, 101, 118, 119, 123, 131, and 138), the births the same and the next slot
+  another (provisional readings: at 45 and 80 a step's three orders at the tick's
+  last step, the original's next slot the second order's tenth object, as if its
+  last freed then; at 94 a re-order's objects between the look's detections in the
+  original's, the port's all before it); from about turn 144 on they part for good,
+  born one more (or seven fewer).
 - The positions' stamps (CPoPosCl's base real): a walker's is the main clock of its
   last step's tick (Mafarazzo TD's 180 walkers 53.753674 with the main clock at
   53.783657), as the port now writes.  The objects' word of that save still parts

@@ -452,11 +452,6 @@ pub struct World {
     /// The game time in whole milliseconds, each tick's added (the keepalive's `t`).
     #[serde(default)]
     pub game_ms: u32,
-    /// The time played before this game was loaded from a save of the original's (its
-    /// header's game time), which the port's clocks start again from 0 after: the game
-    /// time a save of it and the score show adds it.
-    #[serde(default)]
-    pub played_before_ms: u32,
     /// The keepalive's data modules, by index, as the game's data loaded
     /// (`datahash::modules`).
     #[serde(default)]
@@ -1092,7 +1087,6 @@ impl World {
             steps_free_until: None,
             net_sum: 0,
             game_ms: 0,
-            played_before_ms: 0,
             keepalive_modules: Default::default(),
             sync_selections: Vec::new(),
             step_base: 0,
@@ -2051,6 +2045,30 @@ impl World {
             crate::natives::units::remove_unit(self, h);
         }
     }
+
+    /// The game's clocks carried on to `ms` of game time, as a loaded save of the
+    /// original's goes on from its own (read: Mafarazzo TD's LAN load saved again at its
+    /// turn 77, game time 61400, its main clock 61.379482, the engine's sum of ticks
+    /// to then): the game's time, the engine's main clock at its tick, and the movement
+    /// steps all taken to then on the agent queue (their dues summed by the engine's
+    /// addition, the next due and count as the game's own would have them).
+    pub(crate) fn carry_clocks_to(&mut self, ms: u32) {
+        self.plan_steps(0, ms as i64);
+        self.step_clocks.clear();
+        self.step_agent.clear();
+        self.step_ticks.clear();
+        self.step_wraps.clear();
+        self.wrap_step = None;
+        self.game_ms = ms;
+        self.time_exact = ms as f64 / 1000.0;
+        self.time = self.time_exact as f32;
+        let first = (ms as i64 + 4).div_euclid(5);
+        let (c, w) = self.main_clock_at(first);
+        (self.tags.clock, self.tags.clock_wraps, self.clock_wraps) = (c, w, w);
+        self.tick_clocks = (first, vec![c]);
+        self.tick_wraps = vec![w];
+    }
+
 
     /// This tick's main clock ticks and movement steps.  The engine's main clock moves
     /// by 0.005s ticks; the movement steps are a timer every 0.03s on the agent queue,

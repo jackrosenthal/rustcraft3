@@ -86,7 +86,7 @@ impl ScoreData {
             rows,
             victory: w.player_results.get(&local) == Some(&0),
             local_race: w.players.get(local as usize).map_or(1, |p| p.race),
-            elapsed: w.time + w.played_before_ms as f32 / 1000.0,
+            elapsed: w.time,
             replay: !w.no_replay,
         }
     }

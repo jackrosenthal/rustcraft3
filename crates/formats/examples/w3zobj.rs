@@ -42,6 +42,16 @@ fn main() {
         }
         return;
     }
+    // "slot <n>...": the objects at those slots, each record decoded.
+    if a[2] == "slot" {
+        for n in a[3..].iter().filter_map(|n| n.parse::<u32>().ok()) {
+            for o in all.iter().filter(|o| o.entry.tag == n) {
+                println!("{} slot {} birth {}: {:?}", code(o.entry.kind), o.entry.tag, o.entry.birth, o.first());
+                println!("  second {:?}", o.second());
+            }
+        }
+        return;
+    }
     // "dests": each destructable's own fields, widget owner and type, and properties.
     if a[2] == "dests" {
         for o in all.iter().filter(|o| code(o.entry.kind) == "+w3d") {

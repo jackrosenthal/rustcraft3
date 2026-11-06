@@ -70,12 +70,16 @@ impl Button {
     }
 
     /// Disables the button and lists `id`'s requirements (at research level `level`)
-    /// when `owner` does not meet them all.
+    /// when `owner` does not meet them all; its tooltip then has no cost line (as the
+    /// original's show: an unmet Cutter Tower, Ice Tower, HSBC, or Upgrade to Cannon
+    /// Tower gives its title, the requirements, and its text; provisional: where the
+    /// tooltip drops the costs is not read).
     fn with_requirements(mut self, db: &w3_ui::FrameDb, w: &World, owner: u8, id: Id, level: u32) -> Button {
         if w.missing_requirements(owner, id, level).is_empty() {
             return self;
         }
         self.enabled = false;
+        self.costs = [0; 4];
         let mut text = db.string("REQUIRESTOOLTIP");
         for (r, amount) in w.requirements(id, level) {
             // A research requirement names its level.
@@ -399,10 +403,20 @@ impl Commands {
     /// Buttons for a unit owned by the local player.
     pub fn card(&self, db: &w3_ui::FrameDb, w: &World, h: u32, page: Page) -> Vec<Button> {
         let mut out = self.card_buttons(db, w, h, page);
-        // The current order's button is lit, Stop for an idle unit (as the original's
-        // card shows: Stop on an idle Mortar Team, Attack Ground on one shelling).
+        // The current order's button is lit, Stop for an idle unit that moves (as the
+        // original's card shows: Stop on an idle Mortar Team, Attack Ground on one
+        // shelling).  Stop is lit by Move's buttons (CAbilityMove::vf112 FUN_6f5fee80:
+        // with no order, not holding its place), never by Attack's (CAbilityAttack::vf112
+        // FUN_6f49c550 adds Stop unlit), so a tower's never is (the original's idle
+        // Arrow Tower lights none).
         if let Some(u) = w.unit(h) {
-            let current = if u.order.id != 0 { u.order.id } else { w3_game::natives::basic::order_id("stop") };
+            let mobile = !u.is_building && u.move_speed > 0.0;
+            let stop = w3_game::natives::basic::order_id("stop");
+            let current = match u.order.id {
+                0 if mobile => stop,
+                id if id == stop && !mobile => 0,
+                id => id,
+            };
             for b in &mut out {
                 let id = match b.action {
                     Action::Order { order, .. } if !order.is_empty() => w3_game::natives::basic::order_id(order),

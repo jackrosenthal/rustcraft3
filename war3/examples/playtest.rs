@@ -46,15 +46,16 @@ fn main() -> anyhow::Result<()> {
     } else {
         (a[2].clone(), None)
     };
-    // W3LOBBY="L1,C3" fills the slots in order: L the local player, C a computer, E
-    // empty, O the local player observing, each followed by its race (1 Human, 2 Orc, 3
-    // Undead, 4 Night Elf, none random).
+    // W3LOBBY="L1,C3" fills the slots in order: L the local player, R a human on another
+    // computer, C a computer, E empty, O the local player observing, each followed by its
+    // race (1 Human, 2 Orc, 3 Undead, 4 Night Elf, none random).
     let lobby: Option<Vec<w3_game::LobbySlot>> = std::env::var("W3LOBBY").ok().map(|v| {
         v.split(',')
             .enumerate()
             .map(|(i, s)| {
                 let fill = match s.chars().next() {
                     Some('L') => w3_game::SlotFill::Local,
+                    Some('R') => w3_game::SlotFill::Remote,
                     Some('C') => w3_game::SlotFill::Computer,
                     Some('O') => w3_game::SlotFill::Observer(true),
                     _ => w3_game::SlotFill::Empty,
@@ -309,6 +310,13 @@ fn main() -> anyhow::Result<()> {
                     None => eprintln!("{} {x} {y}: off the screen", a[i]),
                 }
                 i += 3;
+            }
+            // network: plays on as a network game's computer does (World::network).
+            "network" => {
+                if let Some(g) = scene.game.as_mut() {
+                    g.world.network = true;
+                }
+                i += 1;
             }
             // chatdialog: as in a network game, opens the chat dialog, to look at.
             "chatdialog" => {

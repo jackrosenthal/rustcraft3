@@ -313,6 +313,26 @@ original images.
   with their `ControlMouseOverHighlight`, `EscMenuButtonMouseOverHighlight` decorated
   through war3skins (`DecorateFileNames`), added; the original's defeat dialog capture
   shows it on Quit Campaign.
+- Command tooltips (CToolTipWar3, `FUN_6f3a1ef0`): the backdrop blends (its +0x30 set,
+  as BackdropBlendAll; so does CUnitTip's), ToolTipBackground (Human: 24,34,49 at alpha
+  195) showing the world through it (measured: the original's tooltips read 23,49,42
+  over grass and its unit tips 56,64,77 over the road); the middle text (+0x12c) is
+  0xff919090 gray.  A button whose requirements are unmet gives its title, the
+  requirements, and its text, with no cost line (captured from the original: an unmet
+  Cutter Tower, Ice Tower, HSBC, Lightning Tower, and Upgrade to Cannon Tower; a met
+  Poison or Arrow Tower shows its gold; provisional: where the costs are dropped is not
+  read).  The requirements read REQUIRESTOOLTIP ("|Cffffff00Requires:", unclosed) then
+  "\n - %s" per type (`FUN_6f343230`): a color code holds past line breaks until |r, so
+  the " - <type>" lines are yellow, and a line keeps its leading space.
+- A button lit as the current order's: CAbilityMove::vf112 (`FUN_6f5fee80`) adds Stop
+  lit while its unit has no order and does not hold its place; CAbilityAttack::vf112
+  (`FUN_6f49c550`) adds Stop unlit, Attack lit by its ability's flags 1 without 0x1000,
+  Attack Ground by both (provisional: the flags' meaning).  So an idle tower lights no
+  button (captured from the original's idle Arrow Tower) and an idle peasant lights Stop.
+- A game with two human players (Host and Jack, captured) has bj_isSinglePlayer false:
+  CustomDefeatDialogBJ's dialog holds Quit Campaign alone, the game is not paused, and
+  each defeated player is told "%s was defeated." (PLAYER_DEFEATED); Mafarazzo TD's
+  lives go on below 0 under the dialog.  The port plays it so (playtest W3LOBBY="R1,L1").
 
 ## Glue screens
 

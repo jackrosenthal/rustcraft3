@@ -268,10 +268,11 @@ impl UiRenderer {
                     let text = text.replace("|n", "\n").replace("|N", "\n");
                     let mut lines: Vec<String> = Vec::new();
                     for para in text.split('\n') {
+                        // A line's leading spaces stay; a break drops the space it falls at.
                         let mut cur = String::new();
-                        for word in para.split(' ') {
-                            let cand = if cur.is_empty() { word.to_string() } else { format!("{cur} {word}") };
-                            if !cur.is_empty() && max_w > 1.0 && self.measure(queue, fi, px, &cand) > max_w {
+                        for (k, word) in para.split(' ').enumerate() {
+                            let cand = if k == 0 { word.to_string() } else { format!("{cur} {word}") };
+                            if !cur.trim().is_empty() && max_w > 1.0 && self.measure(queue, fi, px, &cand) > max_w {
                                 lines.push(std::mem::take(&mut cur));
                                 cur = word.to_string();
                             } else {
@@ -302,6 +303,10 @@ impl UiRenderer {
                     let y_start = y;
                     for (base_color, ox, oy, is_shadow) in passes {
                     let mut y = y_start + oy;
+                    // A color code holds past line breaks until |r (as the original's
+                    // tooltips show: REQUIRESTOOLTIP's "|Cffffff00Requires:", unclosed,
+                    // colors the " - <type>" lines after it).
+                    let mut col = base_color;
                     for (li, line) in lines.iter().enumerate() {
                         let mut x = ox + match justify_h {
                             Justify::Start => rx0,
@@ -309,7 +314,6 @@ impl UiRenderer {
                             Justify::Middle => (rx0 + rx1 - widths[li]) / 2.0,
                         };
                         let baseline = y + ascent;
-                        let mut col = base_color;
                         let mut chars = line.chars().peekable();
                         while let Some(c) = chars.next() {
                             // |cAARRGGBB ... |r color codes.

@@ -876,6 +876,11 @@ impl Hud {
                 prop("BackdropCornerSize", vec![Arg::Num(0.01)]),
                 prop("BackdropBackgroundInsets", vec![Arg::Num(0.0019); 4]),
                 prop("BackdropEdgeFile", vec![s("ToolTipBorder")]),
+                // Its background blends (CToolTipWar3's and CUnitTip's backdrops set
+                // +0x30, FUN_6f3a1ef0): ToolTipBackground's alpha, 195, shows the world
+                // through it (measured from the original's tooltips over the grass and
+                // the road).
+                prop("BackdropBlendAll", vec![]),
             ],
             children: vec![],
         };
@@ -924,6 +929,11 @@ impl Hud {
                 prop("BackdropCornerSize", vec![Arg::Num(0.01)]),
                 prop("BackdropBackgroundInsets", vec![Arg::Num(0.0019); 4]),
                 prop("BackdropEdgeFile", vec![s("ToolTipBorder")]),
+                // Its background blends (CToolTipWar3's and CUnitTip's backdrops set
+                // +0x30, FUN_6f3a1ef0): ToolTipBackground's alpha, 195, shows the world
+                // through it (measured from the original's tooltips over the grass and
+                // the road).
+                prop("BackdropBlendAll", vec![]),
             ],
             children: vec![],
         };
@@ -952,7 +962,9 @@ impl Hud {
         }
         if !req_lines.is_empty() {
             y -= 0.005;
-            // The tooltip's middle text is gray (145, 144, 144, measured from the original).
+            // The tooltip's middle text is gray (145, 144, 144, measured from the original;
+            // CToolTipWar3's +0x12c text, 0xff919090, FUN_6f3a1ef0), but for its own colors:
+            // REQUIRESTOOLTIP's yellow holds over the requirements' lines.
             text(out, &req_lines.join("\n"), x0, y, desc_h, 0.21 + 0.005, [145.0 / 255.0, 144.0 / 255.0, 144.0 / 255.0, 1.0]);
             y -= req_lines.len() as f32 * line_h;
         }
@@ -1947,6 +1959,7 @@ impl Hud {
             let gold = [0xfe as f32 / 255.0, 0xd3 as f32 / 255.0, 0x12 as f32 / 255.0, 1.0];
             out.push(Draw::Text { font: font.clone(), size, rect: msg, text, color: gold, justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow });
         }
+        // (Each message ends its colors: a code holds past line breaks within one text.)
         // WorldFrameUnitMessage: 0.5 x 0.25 with its bottom center on the message frame's
         // top, 0.098125 left of center and 0.0005 up at offset (0, 0); offsets of 1 move
         // it to x 0.8 and y 0.452 (FUN_6f374d20).
@@ -1958,7 +1971,7 @@ impl Hud {
             let ax = ax0 + (root.x0 + 0.8 - ax0) * ox;
             let ay = ay0 + (root.y0 + 0.452 - ay0) * oy;
             let rect = w3_ui::Rect { x0: ax - 0.25, x1: ax + 0.25, y0: ay, y1: ay + 0.25 };
-            let text = self.unit_messages.iter().map(|m| m.text.replace("|n", "\n")).collect::<Vec<_>>().join("\n");
+            let text = self.unit_messages.iter().map(|m| format!("{}|r", m.text.replace("|n", "\n"))).collect::<Vec<_>>().join("\n");
             out.push(Draw::Text { font, size, rect, text, color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow });
         }
         // The chat message frame: from the screen's top down to 0.2 above its bottom,
@@ -1967,7 +1980,7 @@ impl Hud {
         if !self.chat_messages.is_empty() {
             let size = height("WorldFrameChatMessage");
             let rect = w3_ui::Rect { x0: root.x0 + 0.00625, x1: root.x1 - 0.02, y0: root.y0 + 0.2, y1: root.y1 };
-            let text = self.chat_messages.iter().map(|m| m.text.replace("|n", "\n")).collect::<Vec<_>>().join("\n");
+            let text = self.chat_messages.iter().map(|m| format!("{}|r", m.text.replace("|n", "\n"))).collect::<Vec<_>>().join("\n");
             out.push(Draw::Text { font: db.decorate("MasterFont"), size, rect, text, color: [1.0; 4], justify_h: w3_ui::Justify::Start, justify_v: w3_ui::Justify::End, shadow });
         }
     }

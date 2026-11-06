@@ -89,10 +89,12 @@ impl FrameDb {
         let text = text.replace("|n", "\n").replace("|N", "\n");
         let mut lines = Vec::new();
         for para in text.split('\n') {
+            // A line's leading spaces stay (REQUIRESTOOLTIP's "\n - %s" lines show
+            // indented in the original); a break drops the space it falls at.
             let mut cur = String::new();
-            for word in para.split(' ') {
-                let cand = if cur.is_empty() { word.to_string() } else { format!("{cur} {word}") };
-                if !cur.is_empty() && max_w > 0.0 && self.text_width(font, size, &cand) > max_w {
+            for (k, word) in para.split(' ').enumerate() {
+                let cand = if k == 0 { word.to_string() } else { format!("{cur} {word}") };
+                if !cur.trim().is_empty() && max_w > 0.0 && self.text_width(font, size, &cand) > max_w {
                     lines.push(std::mem::take(&mut cur));
                     cur = word.to_string();
                 } else {

@@ -16,7 +16,11 @@ fn main() -> anyhow::Result<()> {
         None => Path::new(&a[1]).join(stat.map_path.replace('\\', "/")).to_string_lossy().to_string(),
     };
     let map = std::sync::Arc::new(w3_mpq::Archive::open(&map_file)?);
+    let map_info = w3_formats::map::MapInfo::parse(&map.read("war3map.w3i")?)?;
     data.chain.mount(map, None, war3::data::PRIORITY_MAP);
+    // The map's rule set, as a game of it has (`war3::scene`): melee maps' (w3i flag
+    // 0x4) the melee one, others' the custom one.
+    data.select_data_set(if map_info.flags & 0x4 != 0 { war3::data::DataSet::Melee } else { war3::data::DataSet::Custom });
     // The slots as the record has them: its players by their ids, the host's on this
     // computer; races by their bits (human 1, orc 2, night elf 4, undead 8, random 0x20).
     // W3G_LOCAL: the player whose computer the game is played on (the host's by default).
@@ -46,7 +50,8 @@ fn main() -> anyhow::Result<()> {
             w3_game::LobbySlot { player: k as u8, fill, name, race, team: s.team as i32, color: s.color as i32, handicap: s.handicap as f32, difficulty: s.ai as i32 }
         })
         .collect();
-    let mut g = w3_game::Game::load_with_keys(data.chain.clone(), data.version as i32, None)?;
+    // Its computers' objects made as the map loads, as a network game's lobby starts it.
+    let mut g = w3_game::Game::load_for(data.chain.clone(), data.version as i32, None, w3_game::Start::of(&lobby))?;
     g.config()?;
     g.world.seed = replay.seed;
     // The settings word holds the advanced options eight bits up.

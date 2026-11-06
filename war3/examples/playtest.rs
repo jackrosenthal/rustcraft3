@@ -113,6 +113,7 @@ fn main() -> anyhow::Result<()> {
     // A handle, whole (handles pass 2^24, past what an f32 holds exactly).
     let hnd = |s: &str| s.parse::<u32>().unwrap();
     let mut a = a;
+    let mut flow_last: Vec<String> = Vec::new();
     while i < a.len() {
         scene.update_menu(&assets.frames, w as f32 / h as f32);
         scene.sync_hud(&assets.frames, w as f32 / h as f32);
@@ -1372,6 +1373,114 @@ fn main() -> anyhow::Result<()> {
                     eprintln!("gold {} lumber {}", p.get_state(1), p.get_state(2));
                 }
                 i += 1;
+            }
+            // ufields <type> <fields>: a unit type's fields (comma separated), as the
+            // game reads them.
+            "ufields" => {
+                if let Some(g) = &scene.game {
+                    let id = w3_game::objects::id_from_str(&a[i + 1]);
+                    if let Some(o) = g.world.objects.units.get(id) {
+                        let vals: Vec<String> = a[i + 2].split(',').map(|f| format!("{f}={}", o.str(f))).collect();
+                        eprintln!("ufields {} {}", a[i + 1], vals.join(" "));
+                    }
+                }
+                i += 3;
+            }
+            // leave <player>: the player leaves, as a network game's player does (its
+            // slot left, EVENT_PLAYER_LEAVE).
+            "leave" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let p = num(&a[i + 1]) as u8;
+                    g.world.players[p as usize].slot_state = w3_game::types::slot_state::LEFT;
+                    g.player_event(p, w3_game::event_ids::EVENT_PLAYER_LEAVE);
+                }
+                i += 2;
+            }
+            // afields <ability> <fields>: an ability's fields (comma separated).
+            "afields" => {
+                if let Some(g) = &scene.game {
+                    let id = w3_game::objects::id_from_str(&a[i + 1]);
+                    if let Some(o) = g.world.objects.abilities.get(id) {
+                        let vals: Vec<String> = a[i + 2].split(',').map(|f| format!("{f}={}", o.str(f))).collect();
+                        eprintln!("afields {} {}", a[i + 1], vals.join(" "));
+                    }
+                }
+                i += 3;
+            }
+            // setglobal <name> <integer>: sets a map script variable.
+            "setglobal" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let ok = g.vm.set_global(&a[i + 1], w3_jass::Value::Int(a[i + 2].parse().unwrap()));
+                    eprintln!("setglobal {} {ok}", a[i + 1]);
+                }
+                i += 3;
+            }
+            // killallby <player> <killer>: kills every living unit of a player by a unit's
+            // hand, the killer a handle or <type>:<owner> (the owner's first of the type).
+            "killallby" => {
+                if let Some(g) = scene.game.as_mut() {
+                    let p = num(&a[i + 1]) as u8;
+                    let killer = match a[i + 2].split_once(':') {
+                        Some((t, o)) => {
+                            let (id, o) = (w3_game::objects::id_from_str(t), o.parse::<u8>().unwrap());
+                            g.world.unit_order.iter().copied().find(|&h| g.world.unit(h).is_some_and(|u| u.type_id == id && u.owner == o && !u.dead)).unwrap_or(0)
+                        }
+                        None => a[i + 2].parse::<u32>().unwrap(),
+                    };
+                    let hs: Vec<u32> = g.world.unit_order.iter().copied().filter(|&h| g.world.unit(h).is_some_and(|u| u.owner == p && !u.dead)).collect();
+                    for h in hs {
+                        w3_game::natives::units::kill_unit(&mut g.world, &mut g.vm, h, killer);
+                    }
+                }
+                i += 3;
+            }
+            // flow <secs> <globals> <player>: waits, printing with the time whatever of
+            // the game's flow changed: the script's globals named (comma separated), the
+            // player's food used and living units, the leaderboards, the timer dialogs
+            // shown, the players' results, and the game's end.  (RUST_LOG=war3::scene=info
+            // also prints the messages shown.)
+            "flow" => {
+                let names: Vec<String> = a[i + 2].split(',').map(str::to_string).collect();
+                let watched = num(&a[i + 3]) as u8;
+                let snapshot = |scene: &war3::scene::Scene| -> Vec<String> {
+                    let Some(g) = scene.game.as_ref() else { return Vec::new() };
+                    let w = &g.world;
+                    let mut out: Vec<String> = names.iter().map(|n| format!("{n} = {:?}", g.vm.global(n))).collect();
+                    let alive = w.unit_order.iter().filter(|&&h| w.unit(h).is_some_and(|u| u.owner == watched && !u.dead)).count();
+                    out.push(format!("p{watched} food used {} alive {alive}", w.players[watched as usize].get_state(5)));
+                    let golds: Vec<String> = (0..12).filter(|&p| w.players[p].slot_state == 1).map(|p| format!("p{p} {}/{}", w.players[p].get_state(1), w.players[p].get_state(2))).collect();
+                    out.push(format!("gold/lumber {}", golds.join(" ")));
+                    let mut boards: Vec<(u32, String)> = w.handles.iter().filter_map(|(&h, o)| match o {
+                        w3_game::types::Obj::Leaderboard(b) => Some((h, format!("board {h} shown {} \"{}\" {:?}", b.displayed, b.label, b.items.iter().map(|it| format!("p{} {}={}", it.player, it.label, it.value)).collect::<Vec<_>>()))),
+                        w3_game::types::Obj::TimerDialog(d) if d.displayed => Some((h, format!("timer dialog {h} {:?}", d.title))),
+                        _ => None,
+                    }).collect();
+                    boards.sort();
+                    out.extend(boards.into_iter().map(|b| b.1));
+                    let mut results: Vec<_> = w.player_results.iter().collect();
+                    results.sort();
+                    out.push(format!("results {results:?} ended {}", scene.ended));
+                    out
+                };
+                // (Each flow goes on from where the last left off: the first prints all.)
+                let now = snapshot(&scene);
+                for l in now.iter().filter(|l| !flow_last.contains(l)) {
+                    eprintln!("flow t={:.2} {l}", scene.game.as_ref().map_or(0.0, |g| g.world.time));
+                }
+                let mut last = now;
+                let mut t = num(&a[i + 1]);
+                while t > 0.0 {
+                    scene.update(0.02);
+                    scene.sync_units(&device, &queue, &mut assets);
+                    t -= 0.02;
+                    let now = snapshot(&scene);
+                    for l in now.iter().filter(|l| !last.contains(l)) {
+                        eprintln!("flow t={:.2} {l}", scene.game.as_ref().map_or(0.0, |g| g.world.time));
+                    }
+                    last = now;
+                }
+                flow_last = last;
+                i += 4;
             }
             other => panic!("unknown command {other}"),
         }

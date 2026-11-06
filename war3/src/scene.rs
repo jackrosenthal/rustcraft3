@@ -1163,10 +1163,11 @@ impl Scene {
     fn apply_requests(&mut self) {
         let Some(g) = self.game.as_mut() else { return };
         let local = 1u32 << g.world.local_player;
+        let now = g.world.time;
         for r in std::mem::take(&mut g.world.requests) {
             match r {
                 w3_game::world::Request::DisplayText { players, x, y, text, duration } => {
-                    log::info!("[text] {text}");
+                    log::info!("[text] {now:.2} {text}");
                     if players & local != 0 {
                         if let Some(h) = self.hud.as_mut() {
                             h.unit_message(&text, x, y, duration);

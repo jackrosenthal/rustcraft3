@@ -862,6 +862,17 @@ pub(crate) fn remove_with_tasks(w: &mut World, vm: &mut Vm, h: u32, script: bool
             w.tags.doom(s);
         }
         w.tags.doom(t[0]);
+        // A consumed builder's order to build, what of it is left, after the first block,
+        // the last first (traced: Mafarazzo TD's wisp taken by its Tower of Vengence, its
+        // order's `tsk.`, three tasks, block, and `ord.`).
+        if w.unit(h).is_some_and(|u| u.extra.consumed) {
+            let order = w.unit_mut(h).map(|u| std::mem::take(&mut u.extra.build_order)).unwrap_or_default();
+            for &(s, b) in order.iter().rev() {
+                if live(w, (s, b)) {
+                    w.tags.doom(s);
+                }
+            }
+        }
         for s in w.take_attack_tasks(h) {
             w.tags.doom(s);
         }
@@ -901,7 +912,13 @@ pub(crate) fn remove_with_tasks(w: &mut World, vm: &mut Vm, h: u32, script: bool
         }
         let mut woke: Vec<u32> = listeners.into_iter().filter(|s| w.tags.live.contains_key(s)).collect();
         woke.sort_by_key(|s| w.tags.live.get(s).map_or(0, |e| e.1));
+        // Then the spells' timers made with it (not made anew as it woke), the newest
+        // first (traced: Mafarazzo TD's wisp an Ancient consumed, its Renew's and then
+        // its Detonate's `rtl, before its own listener).
+        let timers: Vec<u32> = w.unit(h).map(|u| u.extra.spell_timers.clone()).unwrap_or_default();
+        let made: Vec<u32> = abilities.iter().rev().map(|o| o.0).filter(|s| timers.contains(s) && !woke.contains(s)).collect();
         later.extend(woke);
+        later.extend(&made);
         let mods: Vec<u32> = objects[1].iter().filter(|&&o| live(w, o)).map(|o| o.0).collect();
         later.extend(mods.iter().filter(|&&s| code(w, s) == Some(*codes::class::CONTINUOUS_MODIFIER)));
         later.extend(mods.iter().filter(|&&s| code(w, s) != Some(*codes::class::CONTINUOUS_MODIFIER)));
@@ -911,9 +928,16 @@ pub(crate) fn remove_with_tasks(w: &mut World, vm: &mut Vm, h: u32, script: bool
         w.tags.timed.retain(|&(_, x)| !fading.contains(&x));
         later.extend(fading);
         later.push(t[2]);
-        later.extend(abilities.iter().rev().map(|o| o.0).filter(|s| !pils.contains(s) && !buffs.contains(s)));
+        later.extend(abilities.iter().rev().map(|o| o.0).filter(|s| !pils.contains(s) && !buffs.contains(s) && !made.contains(s)));
         later.extend([8, 7, 6, 5, 4, 9, 2, 3, 1, 0].iter().filter_map(|&k| objects[0].get(k).filter(|&&o| live(w, o)).map(|o| o.0)));
         later.push(t[1]);
+        // Then its detection's record, made as a detector first found it (traced: the
+        // same wisp's, found by its player's flying peasant as it was trained).
+        if let Some(&(_, d)) = w.unit(h).and_then(|u| u.extra.detected_by.first()) {
+            if code(w, d) == Some(*codes::class::DETECTION) && !w.tags.doomed.contains(&d) {
+                later.push(d);
+            }
+        }
         w.tags.removed.extend(later);
         // Its day change's object goes on the frame after (traced: the gold
         // mine's at 0.0002, after its own at 0.0001).

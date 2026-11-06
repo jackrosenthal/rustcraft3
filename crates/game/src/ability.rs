@@ -684,10 +684,12 @@ impl World {
     pub(crate) fn plan_detection_looks(&mut self, dt: f32) {
         self.looks_due = None;
         if self.unit_order.iter().any(|&h| self.aura_bearer(h)) {
+            self.looks_carried.clear();
             return;
         }
         let start = self.game_ms.wrapping_sub((dt as f64 * 1000.0).round() as u32) as f64;
-        let mut looks: Vec<(f64, u32, u32)> = self.detection_looks(dt).into_iter().map(|(h, birth, behind)| ((start - behind as f64) / 1000.0, birth, h)).collect();
+        let mut looks: Vec<(f64, u32, u32)> = std::mem::take(&mut self.looks_carried);
+        looks.extend(self.detection_looks(dt).into_iter().map(|(h, birth, behind)| ((start - behind as f64) / 1000.0, birth, h)));
         looks.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
         self.looks_due = Some(looks);
     }

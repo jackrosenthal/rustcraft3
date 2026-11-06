@@ -1148,12 +1148,14 @@ impl World {
     /// the timers due as that tick begins, as an upgrade order's do
     /// (`World::upgrade_structure_by`; measured: the Town Hall ordered at turn 21 of
     /// the maft game, the leaderboard trigger's objects at 2.0 made before they went,
-    /// its execution's slot the last freed as turn 22's keepalive was taken).
-    /// (Provisional: a builder that works on its structure's alone, as the engine gives
-    /// builders their build ability by race; others keep none.)
+    /// its execution's slot the last freed as turn 22's keepalive was taken).  A night
+    /// elf's wisp's so too (measured: the maft6 game's keepalives, which parted at its
+    /// Tower of Vengence's order till its build order made these; what is left of them
+    /// goes as an Ancient's consuming removes it, `natives::units::remove_with_tasks`).
+    /// (Provisional: an orc's and an undead builder's keep none.)
     pub(crate) fn player_build_objects(&mut self, h: u32) {
         let race = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map(|o| o.str("race").to_ascii_lowercase()).unwrap_or_default();
-        if matches!(race.as_str(), "orc" | "nightelf" | "undead") {
+        if matches!(race.as_str(), "orc" | "undead") {
             return;
         }
         let order: Vec<u32> = AI_BUILD.iter().map(|c| self.tags.take(c)).collect();
@@ -1162,7 +1164,11 @@ impl World {
         for k in [1, 13, 12, 11, 10, 9, 8] {
             self.tags.doom_at(at, order[k]);
         }
+        let births: Vec<(u32, u32)> = order.iter().map(|&s| (s, self.tags.live.get(&s).map_or(0, |e| e.1))).collect();
         if let Some(u) = self.unit_mut(h) {
+            if race == "nightelf" {
+                u.extra.build_order = births;
+            }
             u.extra.ai_order = order;
             u.extra.build_legacy = false;
             u.extra.mover = None;

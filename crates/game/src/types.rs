@@ -798,6 +798,11 @@ pub struct UnitExtra {
     /// tech tree and food then, and removed as the structure is done.
     #[serde(default)]
     pub consumed: bool,
+    /// A night elf player's builder's order to build (`World::player_build_objects`):
+    /// its objects with their births, what is left of them going with the builder an
+    /// Ancient consumes.
+    #[serde(default)]
+    pub build_order: Vec<(u32, u32)>,
     /// An AI's builder whose step walk stopped short of its site, going on as a
     /// player's builder does (`World::build`).
     #[serde(default)]
@@ -1164,6 +1169,7 @@ impl Default for UnitExtra {
             build_by: None,
             build_end: None,
             consumed: false,
+            build_order: Vec::new(),
             build_legacy: false,
             construct_walk: None,
             upgrading: None,

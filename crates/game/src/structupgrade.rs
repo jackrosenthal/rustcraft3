@@ -120,18 +120,20 @@ impl World {
             u.extra.day_ref = Some((s, birth));
             u.extra.sight_stamp = Some((at + 3.0) as f32);
         }
-        self.retype_splashes(h, from, to);
+        self.retype_splashes(h, from, to, at);
     }
 
     /// The attack's splash objects as its weapons become the new type's (`FUN_6f49cab0`
     /// from the change of type, after its sight's modifier): for each of its two weapons
     /// one made as its kind becomes a splashing one (artillery, msplash, mbounce, mline,
-    /// or aline; `FUN_6f4977e0`), kept while it stays one, let go at once as it becomes
-    /// another (its vf 0x5c, then its last reference).  (Measured: Mafarazzo TD's Arrow
-    /// Tower, a missile's, becoming the Cannon Tower, an artillery's, made one more
-    /// object as its upgrade began, turn 212 of the maft3 game; provisional: the
-    /// order, a let go one's.)
-    fn retype_splashes(&mut self, h: u32, from: Id, to: Id) {
+    /// or aline; `FUN_6f4977e0`), kept while it stays one, let go as it becomes another
+    /// (its vf 0x5c, then its last reference), freed with the order's objects after the
+    /// Upgrade ability's (measured: Mafarazzo TD's Arrow Tower, a missile's, becoming the
+    /// Cannon Tower, an artillery's, made one more object as its upgrade began, turn 212
+    /// of the maft3 game; the Fan Knifes Tower's bounce becoming the Assasin Tower's
+    /// missile freed its one in turn 1340 of the maftw game, after the Upgrade ability's
+    /// real and itself).
+    fn retype_splashes(&mut self, h: u32, from: Id, to: Id, at: f64) {
         let splash = |t: &str| matches!(t.trim(), "msplash" | "artillery" | "aline" | "mline" | "mbounce");
         let kinds = |id: Id| self.objects.units.get(id).map(|o| [o.str("weapTp1"), o.str("weapTp2")]).unwrap_or_default();
         let (was, now) = (kinds(from), kinds(to));
@@ -141,9 +143,9 @@ impl World {
         for k in 0..2 {
             match (splash(&was[k]), splash(&now[k])) {
                 (true, false) => {
-                    let at = splashes(self).get(held).copied();
-                    if let Some((s, _)) = at.and_then(|i| self.unit_mut(h).map(|u| u.extra.object_slots[2].remove(i))) {
-                        self.tags.release(s);
+                    let k_at = splashes(self).get(held).copied();
+                    if let Some((s, _)) = k_at.and_then(|i| self.unit_mut(h).map(|u| u.extra.object_slots[2].remove(i))) {
+                        self.tags.doom_at(at, s);
                     }
                 }
                 (false, true) => {

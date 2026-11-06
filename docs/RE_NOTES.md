@@ -4894,6 +4894,13 @@ Formats the port made its own, to be replaced by the original's:
   its footprint, as a walker is when nothing stands there (provisional: the rings'
   search for air units not read; the port had it at the structure's middle, inside
   it).
+- A detector's look due after a turn's last step is taken in that turn only if its
+  agent queue reaches it, as it is brought to the next main tick's clock; else it comes
+  with the next turn's, before its first step: traced, the maftw game's flying
+  peasant's look due 155.0, after turn 1551's last step (154.97177, its agent queue at
+  about 154.98 as the turn ends), its detection of the HSBC begun in that turn made as
+  turn 1552 began; the port had taken every look left at the turn's end
+  (`World::looks_carried`).
 - A flyer holds no walker back (provisional, as it takes no cells from the searches,
   `World::regions_taken`): the port's waypoint provider held a flying peasant behind a
   wisp beside it for good, its searches going straight on through it (Mafarazzo TD's
@@ -4972,9 +4979,20 @@ Formats the port made its own, to be replaced by the original's:
   or in production, `FUN_6f26b140`; its food) and lets it out.  So Mafarazzo TD's Tower
   of Vengence (e000, class Ancient, made from the Ancient Protector) takes its wisp.
   The port does so (`World::build`, `World::complete_construction`,
-  `natives::units::remove_with_tasks`).  Provisional: the removal's objects as
-  RemoveUnit's but for that task; not yet in the port: the order's tasks cleared, a
-  night elf player's build order making no objects here.
+  `natives::units::remove_with_tasks`).  Traced over LAN (the maftw game, Mafarazzo
+  TD's tree built by its host's player on a map without its start's waits): a night elf
+  player's build order makes the AI's build order's objects as a peasant's does, its
+  walk the engine's; begun, the Ancient frees none of them (its walk's path and cluster
+  go as the walk ends).  As it is done, the wisp's removal makes its block and four tasks
+  before the structure's five objects go, then frees (with the turn's releases) its
+  first block, what is left of the order to build (its `tsk.`, three tasks, block, and
+  `ord.`, the last first), its last block, tasks 0xd0144 and 0xd0178, its in-range
+  listener, its spells' timers (Renew's, then Detonate's: the newest first) and its own
+  listener, task 0xd0164, its abilities (the last first), its own objects, task 0xd015a,
+  and last its detection's record (`Cdet`, made as its player's flying peasant first
+  found it).  Its player's selection, holding it till the next selection action drops
+  it, hashes it as 0 meanwhile, its object gone (a member reads its object's slot and
+  birth; the port reads 0 for one whose object is no longer live).
 - A structure's upgrade (an order, flags 0x40, the new type's id as its order) goes to
   its Upgrade ability (`Aupg`, CAbilityUpgrade; its vf3, 0x6f5a5990, finds the order
   among the type's Upgrade list, vf200 0x6f582970 checks it, vf192 0x6f581060 the
@@ -5040,18 +5058,21 @@ Formats the port made its own, to be replaced by the original's:
   (`AOcr`), the Plague Tower becoming the Zombie Tower makes a Critical Strike's, and
   the Zombie Tower becoming the St George Bank frees its Critical Strike's and Slow
   Poison's and makes Pillage's (`Asal`), each before the rise's listener goes; it had
-  changed them as the upgrade began, their objects kept.  Provisional, not yet traced:
-  the objects' slots and order (a taken ability's own object freed first).
+  changed them as the upgrade began, their objects kept.  Traced (the maftw game): the
+  new ones' objects are made before the taken ones' are freed (the Assasin Tower's
+  `AOcr` made, then the Fan Knifes Tower's `Amgl` freed, then the rise's objects).
   The change of type remakes the attack's splash objects (`spla`) by its two
   weapons' new kinds (`FUN_6f49cab0`, after the sight's modifier): one made as a
   weapon's kind becomes a splashing one (artillery, msplash, mbounce, mline, or aline;
-  `FUN_6f4977e0`), kept while it stays one, let go at once as it becomes another (its
+  `FUN_6f4977e0`), kept while it stays one, let go as it becomes another (its
   vf 0x5c, then its last reference).  Measured: the maft game's Arrow Tower (a
   missile) becoming the Cannon Tower (an artillery) made one more object as the
   upgrade began, turn 212, born one past the port's and its slot the free list's
   last; with it the maft3 capture's keepalives agree for all 3273 turns
-  (`World::retype_splashes`).  Provisional: a let-go one's (the Fan Knifes Tower's
-  bounce becoming the Assasin Tower's missile).  A cancel (vf206,
+  (`World::retype_splashes`).  One let go is freed with the order's objects as the
+  next tick begins, after the Upgrade ability's real and itself (traced: the Fan Knifes
+  Tower's bounce becoming the Assasin Tower's missile, the maftw game's turn 1340).  A
+  cancel (vf206,
   0x6f5a73b0) gives back UpgradeRefundRate of the cost and the old type
   (`FUN_6f670950` with 0x102); not traced.
 - A built structure's Blight Growth (a human one's dispel, Abds: 64 every 0.08 to

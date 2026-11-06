@@ -398,6 +398,10 @@ pub struct World {
     /// they wait for the turn's end (`World::plan_detection_looks`).
     #[serde(skip)]
     pub looks_due: Option<Vec<(f64, u32, u32)>>,
+    /// The looks of the last turn its agent queue had not reached as it ended, taken
+    /// with the next turn's (`World::plan_detection_looks`).
+    #[serde(skip)]
+    pub looks_carried: Vec<(f64, u32, u32)>,
     /// The main clock a missile landing now lands at (`World::missiles_land`).
     #[serde(skip)]
     pub landing_clock: Option<f64>,
@@ -1046,6 +1050,7 @@ impl World {
             script_clock: None,
             after_steps: false,
             looks_due: None,
+            looks_carried: Vec::new(),
             landing_clock: None,
             steps_free_until: None,
             net_sum: 0,

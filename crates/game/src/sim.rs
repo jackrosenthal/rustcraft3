@@ -1996,8 +1996,16 @@ impl World {
             self.build_ends_to(end);
         }
         self.mine_payouts_to(vm, last);
-        // (Looks due after the last step; provisional: where among the rest.)
-        self.looks_before(None);
+        // Looks due after the last step that its agent queue reaches as the turn ends,
+        // as it is brought to the next main tick's clock (provisional: where among the
+        // rest); the others wait for the next turn's (read: the maftw game's flying
+        // peasant's look due 155.0, after turn 1551's last step at 154.97177 and past its
+        // agent queue's reach, its detection made as turn 1552 began).
+        let reach = self.tick_clocks.1.len().checked_sub(1).and_then(|i| self.tick_abs(i));
+        self.looks_before(reach);
+        if let Some(left) = self.looks_due.as_mut() {
+            self.looks_carried = std::mem::take(left);
+        }
         self.step_range = (1, n);
     }
 
@@ -3782,10 +3790,10 @@ impl World {
     /// replaces none of them): its abilities, the newest first (`FUN_6f48ca70`), each
     /// kept when in the new list (taken from it, the list's last put in its place) or
     /// made permanent (UnitMakeAbilityPermanent; the engine's own, kept too, are not
-    /// among the port's), else taken away with its objects at once (`FUN_6f6947e0`,
+    /// among the port's), else taken away (`FUN_6f6947e0`,
     /// `FUN_6f48e8a0`); then the list's others added in its order (`FUN_6f4725f0`),
-    /// each with its objects.  (Provisional: a taken ability's objects freed its own
-    /// first.)
+    /// each with its objects, the taken ones' objects freed after them.  (Provisional:
+    /// a taken ability's objects freed its own first.)
     pub(crate) fn replace_type_abilities(&mut self, h: u32, to: Id) {
         let Some(o) = self.objects.units.get(to) else { return };
         let mut list: Vec<Id> = o.list("abilList").iter().map(|s| crate::objects::id_from_str(s.trim())).filter(|a| a[0] != 0).collect();
@@ -3803,6 +3811,7 @@ impl World {
             }
         }
         let code = |w: &World, a: Id| w.objects.abilities.get(a).map(|o| crate::objects::id_from_str(o.str("code").trim()));
+        let mut taken: Vec<(u32, u32)> = Vec::new();
         for a in gone {
             let (Some(c), Some(type_id)) = (code(self, a), self.unit(h).map(|u| u.type_id)) else { continue };
             let n = self.ability_tags(type_id, &a).len().max(1);
@@ -3810,13 +3819,11 @@ impl World {
             let u = self.unit_mut(h).unwrap();
             u.abilities.retain(|x| x.0 != a);
             let slots: Vec<(u32, u32)> = at.map(|k| u.extra.object_slots[2].drain(k..(k + n).min(u.extra.object_slots[2].len())).collect()).unwrap_or_default();
-            for (s, _) in slots {
-                if let Some(u) = self.unit_mut(h) {
-                    u.extra.spell_timers.retain(|&t| t != s);
-                    u.extra.spell_owners.retain(|&(t, _)| t != s);
-                }
-                self.tags.release(s);
+            for &(s, _) in &slots {
+                u.extra.spell_timers.retain(|&t| t != s);
+                u.extra.spell_owners.retain(|&(t, _)| t != s);
             }
+            taken.extend(slots);
         }
         // (Its code once, as a unit's making has each.)
         for a in list {
@@ -3828,6 +3835,12 @@ impl World {
             if let Some(u) = self.unit_mut(h) {
                 u.abilities.push((a, 1));
             }
+        }
+        // The taken ones' objects go after the new ones are made (traced: the maftw
+        // game's Fan Knifes Tower becoming the Assasin Tower, its Critical Strike's
+        // object made, then its Moon Glaive's freed, then the rise's).
+        for (s, _) in taken {
+            self.tags.release(s);
         }
         if let Some(u) = self.unit_mut(h) {
             u.extra.books.clear();
@@ -4118,7 +4131,11 @@ impl World {
         u.extra.build_due = None;
         restart_anim(u, "stand");
         let objects = std::mem::take(&mut u.extra.build_objects);
-        if objects.len() == 5 {
+        // (With a builder it consumes, after that one's removal has made its tasks:
+        // traced, Mafarazzo TD's wisp's Tower of Vengence, the wisp's block and four
+        // tasks made, then these five freed, then the wisp's.)
+        let consumed: Vec<u32> = self.unit_order.iter().copied().filter(|&b| self.unit(b).is_some_and(|u| !u.dead && u.extra.consumed && matches!(u.action, Action::Construct { target } if target == h))).collect();
+        if objects.len() == 5 && consumed.is_empty() {
             for k in [3, 2, 4, 1, 0] {
                 self.tags.release(objects[k]);
             }
@@ -4136,9 +4153,13 @@ impl World {
         // Then the builder's build ability ends its work (Build In Progress's vf213,
         // `FUN_6f422c10`, calling its vf209 after `FUN_6f427e40`'s events): one the
         // structure consumed goes (`FUN_6f543eb0`, `FUN_6f694690(1, 0)`).
-        let consumed: Vec<u32> = self.unit_order.iter().copied().filter(|&b| self.unit(b).is_some_and(|u| !u.dead && u.extra.consumed && matches!(u.action, Action::Construct { target } if target == h))).collect();
-        for b in consumed {
+        for &b in &consumed {
             crate::natives::units::remove_with_tasks(self, vm, b, false);
+        }
+        if objects.len() == 5 && !consumed.is_empty() {
+            for k in [3, 2, 4, 1, 0] {
+                self.tags.release(objects[k]);
+            }
         }
     }
 

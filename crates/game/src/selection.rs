@@ -359,7 +359,10 @@ impl World {
     /// Player `p`'s selection as the game module hashes it.
     pub fn sync_selection_hash(&self, p: u8) -> u32 {
         let Some(s) = self.sync_selections.get(p as usize) else { return Selection::default().hash() };
-        let x = |m: &Member| m.oid.0 ^ m.oid.1;
+        // (One whose unit's object has gone, kept till the next dispatch drops it, reads
+        // as 0: traced, Mafarazzo TD's wisp consumed by its Tower of Vengence, its
+        // player's selection hashing as one unit of tag 0 till the next selection.)
+        let x = |m: &Member| if self.tags.live.get(&m.oid.0).is_some_and(|e| e.1 == m.oid.1) { m.oid.0 ^ m.oid.1 } else { 0 };
         let mut groups: [Vec<u32>; 10] = Default::default();
         for (g, src) in groups.iter_mut().zip(&s.groups) {
             *g = src.iter().map(x).collect();

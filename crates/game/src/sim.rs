@@ -5505,8 +5505,10 @@ impl World {
         self.fly_bullets(vm, at);
         // (What fell due before then is gone by then: read, that `Atrg` freed before the
         // third missile's objects are made.)
+        // (Not past a laid buff's end, which goes first, `World::update_buffs`.)
         let now = self.bullet_clock(at);
-        self.tags.free_timed(now);
+        let hold = self.laid_buff_end(self.bullet_clock(self.time_exact - self.tick_dt as f64), now);
+        self.tags.free_timed(hold.map_or(now, |e| now.min(e)));
         if self.unit(h).is_none_or(|u| u.dead) {
             return false;
         }

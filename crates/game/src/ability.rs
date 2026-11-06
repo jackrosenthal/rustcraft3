@@ -568,9 +568,11 @@ impl World {
         for e in expired_effects {
             self.remove_buff_effect(e);
         }
-        // (Destroyed the frame after its timer's end, before what fell due with it
+        // (Destroyed as its timer falls due, in that tick, before what fell due with it
         // started later: the fort runner's buffs, renewed by a missile's landing, before
-        // that missile's objects, its death timer started after.)
+        // that missile's objects, its death timer started after; read, the Plague
+        // Tower's missiles destroyed in the main tick of their landing's clock and 5 on,
+        // `FUN_6f6d4e30` from the agent queue, so its trace agrees to its end.)
         // (Put ahead of their equals the last first, so they go in order.)
         let mut ahead: Vec<(f64, u32)> = Vec::new();
         for (slot, birth, ends) in ended_slots {
@@ -578,7 +580,7 @@ impl World {
                 let m = self.tags.buff_modifiers.get(&slot).copied().filter(|m| self.tags.live.contains_key(m));
                 for s in m.into_iter().chain([slot]) {
                     match ends {
-                        Some(e) => ahead.push((e + crate::bullets::DESTROYED_AFTER, s)),
+                        Some(e) => ahead.push((e, s)),
                         None => self.tags.doom(s),
                     }
                 }

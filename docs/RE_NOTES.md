@@ -2132,7 +2132,19 @@ these are the findings behind them.
   main tick (0.005) after the due, the Plague Tower's first missile, landing about
   0.8994 and its `Atrg` let go then, has the `Atrg` freed in turn 10 and its objects
   in turn 60, and the second's `Atrg`, let go about 1.239, freed before the third
-  missile, sent at 1.255, made a new one (provisional: the frame a main tick).  What
+  missile, sent at 1.255, made a new one (provisional: the frame a main tick).  The
+  removal timer runs from the main clock of its landing's tick, and the missile goes
+  in the main tick that timer falls due in (`FUN_6f6d4e30` from the agent queue's
+  dispatch, 0x6f060d12), as does a buff laid by its landing, its timer started first
+  and so gone first.  Measured (breakpoints on vf18, `FUN_6f6d0c90`, and `FUN_6f6d4e30`,
+  mafq, 5.1 to 18.3 seconds): the Plague Tower's missiles landing at 5.424845,
+  12.603886, 13.193787, and on, each `FUN_6f6d4e30` at the landing and its
+  `FUN_6f6d0c90` with the 5, then `FUN_6f6d4e30` again from the queue in the main
+  tick reading 10.424252, 18.192947, and so on.  The port so frees an aimed
+  missile's objects as the main clock passes its landing's tick and 5, a laid buff's
+  as it passes its end, and a damage point frees nothing past a laid buff's end not
+  yet let go (`World::bullet_landed`, `World::update_buffs`, `World::swing_lands`);
+  with these the Plague Tower's trace agrees to its end, turn 200 (from 181).  What
   falls due after a turn's first damage point sending a missile waits for it, though
   the port's movement steps, which free what is due by their clocks, run before the
   units' damage points (read: the Arrow tower's first missile's objects, due 6.833,

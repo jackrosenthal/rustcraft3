@@ -34,6 +34,9 @@ pub struct Bullet {
     /// (`World::bullet_aimed`).
     #[serde(default)]
     pub due: Option<f64>,
+    /// Whether it was so aimed.
+    #[serde(default)]
+    pub aimed: bool,
 }
 
 /// A unit's CAbilityTarget: the ability and owner it counts the missiles of, its slot,
@@ -152,7 +155,7 @@ impl World {
         // sent after them, `World::points_before`.)
         let seen = self.unit(target).filter(|_| self.after_steps).map(|t| (t.x, t.y));
         log::trace!("bullet of {h} sent at {target} at {at:.6} (main clock {:.6}): from {:?} to {:?}, launch {:?}", self.bullet_clock(self.main_tick_time(at)), self.unit(h).map(|u| (u.x, u.y, u.facing)), self.unit(target).map(|t| (t.x, t.y, t.collision)), self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map(|o| (crate::objects::id_str(o.id), o.real("launchX"), o.real("launchY"), o.real("launchZ"))));
-        Bullet { slots, counted, at: self.main_tick_time(at), seen, missed: false, due: None }
+        Bullet { slots, counted, at: self.main_tick_time(at), seen, missed: false, due: None, aimed: false }
     }
 
     /// A bouncing missile marks each unit it is sent at, the first as it is sent and
@@ -265,7 +268,10 @@ impl World {
     pub(crate) fn bullet_landed(&mut self, mut b: Bullet, target: u32) {
         self.bullet_uncounted(&mut b, target);
         let wait = self.misc_f32("BulletDeathTime", 5.0).max(0.0) as f64;
-        let due = self.bullet_clock(b.at) + wait + DESTROYED_AFTER;
+        // (One aimed so goes as its timer falls due, in that tick, after a buff laid
+        // with its landing, `World::bullet_aimed`.)
+        let after = if b.aimed { 0.0 } else { DESTROYED_AFTER };
+        let due = self.bullet_clock(b.at) + wait + after;
         let s = b.slots;
         for k in [4, 2, 3, 1, 0] {
             self.tags.doom_at(due, s[k]);
@@ -348,6 +354,7 @@ impl World {
         let d = (aim.0 - start.0).hypot(aim.1 - start.1);
         let time = (d / s).clamp(0.0001, 60.0);
         b.due = Some(c0 + time);
+        b.aimed = true;
         b.seen = Some((aim.0 as f32, aim.1 as f32));
         log::trace!("bullet of {} aimed from {c0:.6}: R ({:.6}, {:.6}) V ({:.6}, {:.6}) time {time:.6} due {:.6}", m.source, r.0, r.1, v.0, v.1, c0 + time);
     }

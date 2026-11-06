@@ -758,7 +758,9 @@ impl World {
         // read, the creeps found at 21.5 seconds, a turn before the port's places after
         // its steps would have them; `World::looks_before`.)
         self.script_clock = clock;
-        let found: Vec<u32> = self.unit_order.iter().copied().filter(|&o| o != h && self.unit(o).is_some_and(|t| !t.dead && !t.extra.detected_by.iter().any(|d| d.0 == owner)) && self.place_now(o).zip(self.unit(o)).is_some_and(|((tx, ty), t)| (tx - x).hypot(ty - y) < range + t.collision.max(1.0))).collect();
+        // (Not one a script removed, gone with the moment: traced, the Sell trigger's
+        // n001, found by no look in the maftw games.)
+        let found: Vec<u32> = self.unit_order.iter().copied().filter(|&o| o != h && !self.pending_removals.contains(&o) && self.unit(o).is_some_and(|t| !t.dead && !t.extra.detected_by.iter().any(|d| d.0 == owner)) && self.place_now(o).zip(self.unit(o)).is_some_and(|((tx, ty), t)| (tx - x).hypot(ty - y) < range + t.collision.max(1.0))).collect();
         self.script_clock = None;
         // (Come in in the reverse of the order its search finds them, as an aura's,
         // `FUN_6f15f2a0`; one record a unit whoever's detectors find it, made by the

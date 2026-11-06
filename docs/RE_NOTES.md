@@ -5160,6 +5160,26 @@ Formats the port made its own, to be replaced by the original's:
   its footprint, as a walker is when nothing stands there (provisional: the rings'
   search for air units not read; the port had it at the structure's middle, inside
   it).
+- Mafarazzo TD's Sell (its trigger on a tower's training of n001: the tower's point
+  value in gold, ExplodeUnitBJ on the tower, RemoveUnit on n001), traced twice over LAN
+  (the maftw games, turns 2127 and 2128):
+  - The training's `rtl` and `rcm` and the trained unit's two tasks (the second first)
+    go with the turn's releases, the `ptcf` after what the finish's triggers let go
+    (their execution first); the port had freed them at once, before the trigger made
+    its objects (for an AI's unit, freed at once as before).  A trained unit its
+    finish's trigger removed takes an `ordt` still, freed last (provisional: why).
+  - KillUnit's nine tasks on a structure: its first, ninth, eighth, and seventh, the
+    structure's own listener, and its sixth go with the turn's releases; its fifth and
+    fourth in the tick its death (UnitData death, 2.34 for the Freeze Tower) falls in;
+    its third, the structure's abilities (the last first), its own objects (reals, path,
+    regions, position, itself), its second, and its detection's record as its body goes,
+    its death and StructureDecayTime on, exploded or not (the port had removed an
+    exploded structure at once).  Its footprint's three regions go as it dies, at once,
+    before the trigger's next action's objects; the port frees its ground then too.
+  - The dead tower and the removed n001 had left their owner's tech tree's present by
+    the next keepalive: a unit leaves it as it dies and as a script removes it, at once,
+    not as its body goes (`natives::units::leave_tech`).
+  - A detector's look finds no unit a script has removed (n001, found by none).
 - A detector's look due after a turn's last step is taken in that turn only if its
   agent queue reaches it, as it is brought to the next main tick's clock; else it comes
   with the next turn's, before its first step: traced, the maftw game's flying

@@ -3166,7 +3166,10 @@ impl World {
                 // seconds after it dies, a grunt, 1.75, after 91.80, a farm, 2.34, after
                 // 32.35, and a Flying Machine, 2.67, after 2.70).
                 let (death, decays) = self.objects.units.get(u.type_id).map_or((0.0, false), |o| (o.real("death"), o.int("deathType") & 2 != 0));
-                let decay = if u.extra.exploded {
+                // (An exploded structure too lies its death and StructureDecayTime: traced,
+                // Mafarazzo TD's Freeze Tower exploded by its Sell trigger, its body's
+                // objects freed 32.4 seconds on, its death 2.34.)
+                let decay = if u.extra.exploded && !u.is_building {
                     0.0
                 } else if u.is_building {
                     death + self.misc_f32("StructureDecayTime", 30.0)
@@ -3200,7 +3203,16 @@ impl World {
                         self.unit_mut(h).unwrap().hidden = true;
                     }
                 } else if t > decay && u.reincarnate.is_none() {
+                    self.body_objects_go(h);
                     crate::natives::units::remove_unit(self, h);
+                } else if t + dt > death && u.extra.kill_tasks.len() == 4 {
+                    // A structure KillUnit killed lets its kill's fifth and fourth task go
+                    // as its death has played, in the tick its due falls in (traced: the
+                    // Freeze Tower's, its death 2.34, in the 23rd turn after its kill's).
+                    let k = std::mem::take(&mut self.unit_mut(h).unwrap().extra.kill_tasks);
+                    self.tags.doom(k[3]);
+                    self.tags.doom(k[2]);
+                    self.unit_mut(h).unwrap().extra.kill_tasks = k[..2].to_vec();
                 }
                 continue;
             }
@@ -4158,6 +4170,32 @@ impl World {
         // tick's first movement step (`World::train_before_steps`).
     }
 
+    /// A structure KillUnit killed, as its body goes: the rest of its kill's tasks, its
+    /// abilities' objects (the last first), its own objects, and its detection's record,
+    /// in the order of a removal's (traced: Mafarazzo TD's Freeze Tower exploded by its
+    /// Sell trigger, its kill's third task, its abilities, its reals, path, regions,
+    /// position, itself, its kill's second task, its `Cdet`).
+    fn body_objects_go(&mut self, h: u32) {
+        let Some(u) = self.unit_mut(h) else { return };
+        let k = std::mem::take(&mut u.extra.kill_tasks);
+        if k.len() != 2 {
+            return;
+        }
+        let objects = u.extra.object_slots.clone();
+        let detection = u.extra.detected_by.first().map(|d| d.1);
+        let live = |w: &World, (s, b): (u32, u32)| w.tags.live.get(&s).is_some_and(|e| e.1 == b) && !w.tags.doomed.contains(&s);
+        let mut gone = vec![k[1]];
+        gone.extend(objects[2].iter().rev().copied().filter(|&o| live(self, o)).map(|o| o.0));
+        gone.extend([8, 7, 6, 5, 4, 9, 2, 3, 1, 0].iter().filter_map(|&j| objects[0].get(j).filter(|&&o| live(self, o)).map(|o| o.0)));
+        gone.push(k[0]);
+        if let Some(d) = detection.filter(|&d| self.tags.live.get(&d).is_some_and(|e| &e.0 == codes::class::DETECTION)) {
+            gone.push(d);
+        }
+        for s in gone {
+            self.tags.doom(s);
+        }
+    }
+
     /// A structure's construction done: its objects go at once (the rise's listener, its
     /// modifier, the life's modifier, the real, and Build In Progress; traced: Twisted
     /// Meadows' human computer's first farm), then its owner's tech and its events.
@@ -4353,31 +4391,40 @@ impl World {
         // Made finished from training: no longer in production (FUN_6f677870 with 4).
         self.tech_reg(owner, id).producing -= 1;
         self.tech_changed(owner);
-        // Then a ptcf, and freed at once, in order: the training's `rtl and `rcm, the
-        // two tasks of the unit's making (the second first), and the ptcf (traced).
+        // Then a ptcf, and freed with the turn's releases, in order: the training's `rtl
+        // and `rcm, the two tasks of the unit's making (the second first), and the ptcf
+        // after what its finish's triggers let go (traced; with a trigger, Mafarazzo TD's
+        // Sell, the maftw games: its execution and its actions' objects made first, the
+        // ptcf freed after the execution).
         let ptcf = self.tags.take(codes::class::TRAINING_DONE);
-        if let Some((rcm, rtl)) = self.unit_mut(h).and_then(|u| u.extra.training_tags.take()) {
-            self.tags.release(rtl);
-            self.tags.release(rcm);
-        }
+        // (The making's two tasks, doomed as it was made, after these.)
+        let tasks: Vec<u32> = if new != 0 { (0..2).filter_map(|_| self.tags.doomed.pop()).collect() } else { Vec::new() };
         // An AI's unit's tasks and ptcf go last in the turn's frees, after the orders
         // its AI gives it (read: Forestwalk's undead computer's acolyte made in turn
         // 152, its `rtl and `rcm freed at once, the two tasks and the ptcf after its
         // orders' objects at the turn's end).
         let late = self.ai.contains_key(&owner);
+        if let Some((rcm, rtl)) = self.unit_mut(h).and_then(|u| u.extra.training_tags.take()) {
+            if late {
+                self.tags.release(rtl);
+                self.tags.release(rcm);
+            } else {
+                self.tags.doom(rtl);
+                self.tags.doom(rcm);
+            }
+        }
         // (One its AI gave its harvest as it was made goes on at once, its tasks and
         // ptcf with the tick's orders before the steps: read, Twisted Meadows' human
         // computer's peasant trained as turn 152 began.)
         let given = self.unit(new).is_some_and(|u| u.extra.ai_harvesting);
         if new != 0 {
-            let tasks: Vec<u32> = (0..2).filter_map(|_| self.tags.doomed.pop()).collect();
             for t in tasks.into_iter().rev() {
                 if late && given {
                     self.tags.issued.push(t);
                 } else if late {
                     self.tags.later_now.push(t);
                 } else {
-                    self.tags.release(t);
+                    self.tags.doom(t);
                 }
             }
         }
@@ -4385,8 +4432,6 @@ impl World {
             self.tags.issued.push(ptcf);
         } else if late {
             self.tags.later_now.push(ptcf);
-        } else {
-            self.tags.release(ptcf);
         }
         self.requests.push(Request::Ack { unit: new, kind: "Ready" });
         self.requests.push(Request::UnitReady { unit: new });
@@ -4407,6 +4452,16 @@ impl World {
         }
         let ctx = EventCtx { target_unit: new, train_unit_type: crate::objects::id_to_int(id), ..Default::default() };
         self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_TRAIN_FINISH, EVENT_UNIT_TRAIN_FINISH, ctx);
+        if !late {
+            self.tags.doom(ptcf);
+        }
+        // One its finish's triggers removed takes an order still, freed last with the
+        // turn's releases (traced: the Sell trigger's n001, an `ordt` after its removal's
+        // tasks, in both maftw games; provisional: why).
+        if new != 0 && self.pending_removals.contains(&new) {
+            let o = self.tags.take(codes::class::ORDER_TASKS);
+            self.tags.removed.push(o);
+        }
     }
 
     /// Whether a structure of type `id` can be placed centered at (x, y).

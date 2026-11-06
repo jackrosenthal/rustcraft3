@@ -807,6 +807,15 @@ pub struct UnitExtra {
     /// Ancient consumes.
     #[serde(default)]
     pub build_order: Vec<(u32, u32)>,
+    /// A structure KillUnit killed: what is left of the kill's tasks, its second to
+    /// fifth (`natives::units` KillUnit), the fourth and fifth freed as its death has
+    /// played, the others with its body.
+    #[serde(default)]
+    pub kill_tasks: Vec<u32>,
+    /// It has left its owner's tech tree's present (or production) already: as it died
+    /// or a script removed it (`natives::units::leave_tech`).
+    #[serde(default)]
+    pub left_tech: bool,
     /// An AI's builder whose step walk stopped short of its site, going on as a
     /// player's builder does (`World::build`).
     #[serde(default)]
@@ -1175,6 +1184,8 @@ impl Default for UnitExtra {
             build_end: None,
             consumed: false,
             build_order: Vec::new(),
+            kill_tasks: Vec::new(),
+            left_tech: false,
             build_legacy: false,
             construct_walk: None,
             upgrading: None,

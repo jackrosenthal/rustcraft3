@@ -671,6 +671,19 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     u.anim_serial = u.anim_serial.wrapping_add(1);
     let (owner, type_id, hero) = (u.owner, u.type_id, u.is_hero);
     w.unit_mut(h).unwrap().death_time = w.time;
+    leave_tech(w, h);
+    // A structure's footprint goes as it dies, at once, its ground free (traced: the
+    // Freeze Tower exploded by Mafarazzo TD's Sell trigger, its three regions freed
+    // before the trigger's next action's objects, in the maftw games).
+    if let Some((footprint, cells, whole)) = w.unit_mut(h).filter(|u| u.is_building).map(|u| (std::mem::take(&mut u.extra.footprint_slots), std::mem::take(&mut u.pathing_cells), std::mem::take(&mut u.build_cells))) {
+        for s in footprint {
+            w.tags.release(s);
+        }
+        if let Some(p) = w.pathing.as_mut() {
+            p.stamp(&cells, -1);
+            p.stamp_no_build(&whole, -1);
+        }
+    }
     if let Some(k) = w.unit(killer).map(|k| k.owner) {
         w.score_killed(k, owner, type_id, hero);
     }
@@ -775,13 +788,7 @@ pub fn remove_unit(w: &mut World, h: u32) {
     // (One upgrading, begun as its new type, cancels that instead, `FUN_6f6744d0` by
     // its flag 8; provisional.)
     // (A builder an Ancient consumed has left it already, `FUN_6f5441e0`.)
-    if let Some((owner, type_id, upgrading)) = w.unit(h).filter(|u| u.constructing.is_none() && !u.extra.consumed).map(|u| (u.owner, u.type_id, u.extra.upgrading.is_some())) {
-        if upgrading {
-            w.tech_reg(owner, type_id).producing -= 1;
-        } else {
-            w.tech_reg(owner, type_id).present -= 1;
-        }
-    }
+    leave_tech(w, h);
     if w.unit(h).is_some() {
         // (Its agent kept for the references scripts still hold to its handle.)
         if let (Some(handle), Some(&agent)) = (w.handles.known_handle(h), w.unit(h).and_then(|u| u.extra.object_slots[0].first())) {
@@ -797,6 +804,24 @@ pub fn remove_unit(w: &mut World, h: u32) {
             if let Some(Obj::Group(g)) = w.handles.get_mut(id) {
                 g.units.retain(|u| *u != h);
             }
+        }
+    }
+}
+
+/// A unit leaving its owner's tech tree, once: from present, or from production when
+/// upgrading (none while being built, nor for a builder an Ancient consumed).  As it dies
+/// and as a script removes it, at once (measured: the maftw games' turn 2128, the
+/// exploded Freeze Tower and the removed n001 both no longer present as the keepalive
+/// after the Sell trigger was taken); else as it goes.
+pub(crate) fn leave_tech(w: &mut World, h: u32) {
+    if let Some((owner, type_id, upgrading)) = w.unit(h).filter(|u| u.constructing.is_none() && !u.extra.consumed && !u.extra.left_tech).map(|u| (u.owner, u.type_id, u.extra.upgrading.is_some())) {
+        if upgrading {
+            w.tech_reg(owner, type_id).producing -= 1;
+        } else {
+            w.tech_reg(owner, type_id).present -= 1;
+        }
+        if let Some(u) = w.unit_mut(h) {
+            u.extra.left_tech = true;
         }
     }
 }
@@ -947,6 +972,9 @@ pub(crate) fn remove_with_tasks(w: &mut World, vm: &mut Vm, h: u32, script: bool
                 w.tags.redoom_at(at, s);
             }
         }
+    }
+    if script {
+        leave_tech(w, h);
     }
     script_remove_unit(w, h);
     // Its food is gone at once: a player state event on it fires inside the
@@ -1335,12 +1363,33 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         // Each makes its tasks (measured by script: a creep's).
         KillUnit => |w, vm, a| {
-            if w.unit(a.h(0)).is_some_and(|u| !u.dead) {
-                w.tags.take(codes::class::TASK_A);
-                w.tags.take_n(codes::class::TASK, 7);
-                w.tags.take(codes::class::TASK_A);
+            let h = a.h(0);
+            let mut t = Vec::new();
+            if w.unit(h).is_some_and(|u| !u.dead) {
+                t.push(w.tags.take(codes::class::TASK_A));
+                t.extend((0..7).map(|_| w.tags.take(codes::class::TASK)));
+                t.push(w.tags.take(codes::class::TASK_A));
             }
-            kill_unit(w, vm, a.h(0), 0);
+            kill_unit(w, vm, h, 0);
+            // A structure's go with the turn's releases: its first and last, its eighth
+            // to seventh, its own listener, its sixth; its fifth and fourth as its death
+            // has played, the others with its body (traced twice: Mafarazzo TD's Freeze
+            // Tower exploded by the Sell trigger, the maftw games; `World::update_units`).
+            // (Provisional: a unit's, not read, keep the port's: none freed.)
+            if t.len() == 9 && w.unit(h).is_some_and(|u| u.is_building && u.dead) {
+                for k in [0, 8, 7, 6] {
+                    w.tags.doom(t[k]);
+                }
+                let listeners: Vec<(u32, u32)> = w.unit(h).map(|u| u.extra.object_slots[1].iter().copied().filter(|&(s, b)| w.tags.live.get(&s).is_some_and(|e| &e.0 == codes::class::THRESHOLD_LISTENER && e.1 == b)).collect()).unwrap_or_default();
+                for &(s, _) in &listeners {
+                    w.tags.doom(s);
+                }
+                w.tags.doom(t[5]);
+                if let Some(u) = w.unit_mut(h) {
+                    u.extra.object_slots[1].retain(|o| !listeners.contains(o));
+                    u.extra.kill_tasks = t[1..5].to_vec();
+                }
+            }
             none()
         },
         RemoveUnit => |w, vm, a| {

@@ -394,7 +394,7 @@ impl World {
 
     /// EVENT_UNIT_ACQUIRED_TARGET when a unit takes up a target of its own accord (once
     /// per target).
-    fn acquired(&mut self, h: u32, t: u32) {
+    pub(crate) fn acquired(&mut self, h: u32, t: u32) {
         let Some(u) = self.unit_mut(h) else { return };
         if u.extra.acquired == t {
             return;
@@ -2856,7 +2856,7 @@ impl World {
     /// The look's timer started again as it falls due (`FUN_6f493ff0`, before its
     /// search): `period` on, 1/2 without a target (DAT_6fd6bf40), 1 with one
     /// (DAT_6fd6bf44).  (Provisional: not a worker's.)
-    fn look_restarted(&mut self, h: u32, dt: f32, period: f32) {
+    pub(crate) fn look_restarted(&mut self, h: u32, dt: f32, period: f32) {
         if let Some(u) = self.unit_mut(h) {
             u.acquire_timer = u.acquire_timer.max(-dt) + period;
         }
@@ -2919,7 +2919,7 @@ impl World {
 
     /// `creeps`: whether Neutral Hostile's units may be taken up (an idle unit leaves
     /// them be).
-    fn find_target_ex(&self, h: u32, range: f32, creeps: bool) -> Option<u32> {
+    pub(crate) fn find_target_ex(&self, h: u32, range: f32, creeps: bool) -> Option<u32> {
         if self.profile.is_none() {
             return self.find_target_inner(h, range, creeps, None);
         }

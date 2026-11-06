@@ -734,6 +734,14 @@ pub struct UnitExtra {
     /// clock (`crate::tasks`).
     #[serde(default)]
     pub first_swing_at: Option<f64>,
+    /// A dead unit's death's tasks still on its stack, waiting for its corpse (its
+    /// removal, its corpse's two, 0xd0154, and its corpse's wait; `World::death_begun`).
+    #[serde(default)]
+    pub death_tasks: Vec<u32>,
+    /// A structure's look restarted by its target's death, taken as its turn ends
+    /// (`World::looks_after_deaths`).
+    #[serde(default)]
+    pub look_after_death: bool,
     /// What is left of its pause's order (`World::pause_objects`).
     #[serde(default)]
     pub pause_order: Vec<u32>,
@@ -1169,6 +1177,8 @@ impl Default for UnitExtra {
             look_timer: None,
             attack_tasks: Vec::new(),
             first_swing_at: None,
+            death_tasks: Vec::new(),
+            look_after_death: false,
             pause_order: Vec::new(),
             ai_idle_ord: None,
             wander_timer: None,

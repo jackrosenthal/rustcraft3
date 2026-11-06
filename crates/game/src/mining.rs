@@ -111,7 +111,10 @@ impl World {
     /// Bounty for killing a unit of a player that gives it (PLAYER_STATE_GIVES_BOUNTY):
     /// its UnitBalance bountyplus plus bountydice rolls of 1 to bountysides in gold, and
     /// the lumber columns' likewise, to the killer's owner if an enemy (FUN_6f66a670,
-    /// FUN_6f687490).  The killer's owner sees "+N" over the victim, in Bounty colors, or
+    /// FUN_6f687490).  The dice are drawn on the random data's streams, the lumber's on
+    /// 44 first (`FUN_6f69e5b0`), then the gold's on 0 (`FUN_6f687490`), each die a draw,
+    /// `r × sides >> 32` and one (`FUN_6f695c70`, `FUN_6f1ec180`), not on the main
+    /// generator.  The killer's owner sees "+N" over the victim, in Bounty colors, or
     /// LumberBounty's for lumber alone (FUN_6f66a6d0).
     pub fn grant_bounty(&mut self, victim: u32, killer: u32) {
         let (Some(v), Some(k)) = (self.unit(victim), self.unit(killer)) else { return };
@@ -122,17 +125,18 @@ impl World {
         let Some(o) = self.objects.units.get(vtype) else { return };
         let cols = [("bountyplus", "bountydice", "bountysides"), ("lumberbountyplus", "lumberbountydice", "lumberbountysides")];
         let fields: Vec<(i32, i32, i32)> = cols.iter().map(|(p, d, s)| (o.int(p), o.int(d), o.int(s))).collect();
-        let mut roll = |(plus, dice, sides): (i32, i32, i32)| -> i32 {
+        let mut roll = |stream: usize, (plus, dice, sides): (i32, i32, i32)| -> i32 {
             let mut v = plus;
             if dice > 0 && sides > 0 {
+                let r = &mut self.rand_data.streams[stream];
                 for _ in 0..dice {
-                    v += self.rng.int(1, sides);
+                    v += ((r.next_u32() as u64 * sides as u64) >> 32) as i32 + 1;
                 }
             }
             v.max(0)
         };
-        let gold = roll(fields[0]);
-        let lumber = roll(fields[1]);
+        let lumber = roll(crate::rng::stream::LUMBER_BOUNTY, fields[1]);
+        let gold = roll(crate::rng::stream::BOUNTY, fields[0]);
         if gold == 0 && lumber == 0 {
             return;
         }

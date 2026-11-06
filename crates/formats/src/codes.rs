@@ -1728,6 +1728,9 @@ pub mod class {
     pub const ALLIANCE_EVENT: &Code = b"alvt";
     /// `psvt`: A player state event.
     pub const PLAYER_STATE_EVENT: &Code = b"psvt";
+    /// `pudd`: A player's unit death event's data (CPlayerUnitDeathEventData), made as
+    /// the event fires (`FUN_6f260ab0`) and let go after its triggers.
+    pub const PLAYER_UNIT_DEATH_DATA: &Code = b"pudd";
     /// `psld`: A player state event's data (CPlayerStateLimitEventData), made as the
     /// event fires (CPlayerStateEventReg vf3 `FUN_6f27cd00`).
     pub const PLAYER_STATE_EVENT_DATA: &Code = b"psld";

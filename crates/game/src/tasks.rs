@@ -136,6 +136,125 @@ impl World {
 
     /// The tasks a unit's removal destroys after its own first (`FUN_6f673fe0`: a
     /// block made and destroyed, then the stack top first), as their slots.
+    /// A unit's death begun (`FUN_6f679bb0`), its objects as the original's: the
+    /// structures attacking it give it up (their tasks freed, the last first, and each
+    /// looks again `LOOK_AFTER_DROP` after `at`, the main clock), its AI's objects go,
+    /// its orders are cleared (`FUN_6f673610`: a block made and destroyed, its task
+    /// stack destroyed top first, then its order), its death's course is put on its
+    /// stack (`FUN_6f678280`: its removal 0xd015a, a corpse's two, 0xd0159 and 0xd0158,
+    /// 0xd0154, and the corpse's wait 0xd0155), then the death 0xd0153, 0xd0178, 0xd0144,
+    /// and a block, and run, the last put first: the block, 0xd0144, and 0xd0178 go.
+    /// Traced: the flyer game's creep killed by the Arrow Tower at turn 274 (the tower's
+    /// nine tasks, `uref`, `AI-U`, the block, its walk's seven, the block, 0xd0144,
+    /// 0xd0178; then, as 0xd0153 runs, its `` `rtl ``, its death trigger's `+tex` and
+    /// `pudd`, 0xd0153, and its walk's path and cluster, `World::death_ended`).
+    /// Provisional: a corpse's two for a type whose corpse decays (its flag 0x200, not
+    /// read), and a current order other than a walk's not freed.
+    pub(crate) fn death_begun(&mut self, h: u32, at: f64) -> Option<(u32, Vec<u32>)> {
+        let attackers: Vec<u32> = self.unit_order.iter().copied().filter(|&a| self.attacks_in_place(a) && self.unit(a).is_some_and(|u| u.extra.acquired == h && !u.extra.attack_tasks.is_empty())).collect();
+        for a in attackers {
+            self.attack_given_up(a, at);
+            let due = (at + LOOK_AFTER_DROP as f64) as f32;
+            let now = self.time_exact;
+            if let Some(u) = self.unit_mut(a) {
+                u.action = crate::types::Action::Idle;
+                // (A damage point still to come is called off, and the cooldown with it,
+                // `FUN_6f497e20`: its timers at +0x1ec and +0x1d8 stopped.)
+                if u.swing.take().is_some_and(|s| !s.done && !s.landed) {
+                    u.cooldown = 0.0;
+                }
+                u.extra.look_after_death = true;
+                if let Some(l) = u.extra.look_timer.as_mut() {
+                    l.1 = due;
+                }
+                u.acquire_timer = (due as f64 - now) as f32;
+            }
+        }
+        let live = |w: &World, s: u32, b: u32| w.tags.live.get(&s).is_some_and(|e| e.1 == b);
+        let ai = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.ai_slots)).unwrap_or_default();
+        for (s, b) in ai {
+            if live(self, s, b) {
+                self.tags.doom(s);
+            }
+        }
+        let block = self.tags.take(codes::class::TASK_A);
+        self.tags.doom(block);
+        // (Its walk's: the issue's tree, made at once, its births in a row.)
+        let order = self.unit_mut(h).map(|u| std::mem::take(&mut u.extra.order_tags)).unwrap_or_default();
+        let base = order.first().and_then(|&s| self.tags.live.get(&s)).filter(|e| &e.0 == codes::class::ORDER_TASKS).map(|e| e.1);
+        let mut path = Vec::new();
+        if let Some(b0) = base.filter(|_| order.len() >= 17) {
+            for k in [7, 6, 5, 4, 3, 2, 0] {
+                if live(self, order[k], b0 + k as u32) {
+                    self.tags.doom(order[k]);
+                }
+            }
+            let n = order.len();
+            for k in [n - 1, n - 2] {
+                if live(self, order[k], b0 + k as u32) {
+                    path.push(order[k]);
+                }
+            }
+        }
+        let decays = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|o| o.int("deathType") & 2 != 0);
+        let course = if decays { 5 } else { 3 };
+        let kept: Vec<u32> = (0..course).map(|_| self.tags.take(codes::class::TASK)).collect();
+        let die = self.tags.take(codes::class::TASK);
+        let run: Vec<u32> = [codes::class::TASK, codes::class::TASK, codes::class::TASK_A].iter().map(|c| self.tags.take(c)).collect();
+        for &s in run.iter().rev() {
+            self.tags.doom(s);
+        }
+        // The corpse's wait (0xd0155) ends as its death has played (its type's death
+        // time on), and goes with 0xd0154 (traced: the flyer game's creep, dead at
+        // 27.381405, the two freed in turn 304, 3 seconds on).
+        if kept.len() == 5 {
+            let played = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map_or(0.0, |o| o.real("death")) as f64;
+            for &s in [kept[4], kept[3]].iter() {
+                self.tags.doom_at(at + played, s);
+            }
+        }
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.death_tasks = kept[..kept.len().min(3)].to_vec();
+        }
+        Some((die, path))
+    }
+
+    /// A unit's death's 0xd0153 done (`World::death_begun`): it goes, then the walk's
+    /// path and cluster as the corpse's wait begins.
+    pub(crate) fn death_ended(&mut self, die: u32, path: Vec<u32>) {
+        self.tags.doom(die);
+        for s in path {
+            self.tags.doom(s);
+        }
+    }
+
+    /// The structures whose targets died this turn look again as it ends, after its
+    /// frees (`World::death_begun`; traced: the flyer game's Arrow Tower taking up its
+    /// next creep after its first's death's 28 objects were freed, its new tasks' last
+    /// block freed in that turn too).
+    pub(crate) fn looks_after_deaths(&mut self) {
+        let towers: Vec<u32> = self.unit_order.iter().copied().filter(|&a| self.unit(a).is_some_and(|u| u.extra.look_after_death)).collect();
+        for a in towers {
+            if let Some(u) = self.unit_mut(a) {
+                u.extra.look_after_death = false;
+            }
+            let Some(u) = self.unit(a).filter(|u| !u.dead && matches!(u.action, crate::types::Action::Idle)) else { continue };
+            let (range, creeps) = (u.acquire_range, u.owner == crate::types::PLAYER_NEUTRAL_AGGRESSIVE);
+            let found = self.find_target_ex(a, range, creeps);
+            match found {
+                Some(t) => {
+                    if let Some(u) = self.unit_mut(a) {
+                        u.action = crate::types::Action::Attack { target: t };
+                    }
+                    self.acquired(a, t);
+                    self.look_restarted(a, self.tick_dt, 0.5);
+                }
+                None => self.look_restarted(a, self.tick_dt, 0.5),
+            }
+        }
+        self.tags.free_doomed();
+    }
+
     pub(crate) fn take_attack_tasks(&mut self, h: u32) -> Vec<u32> {
         let Some(u) = self.unit_mut(h) else { return Vec::new() };
         u.extra.first_swing_at = None;

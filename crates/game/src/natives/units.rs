@@ -642,6 +642,13 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
         }
         return;
     }
+    // Its death's course begun, its objects as the original's (`World::death_begun`;
+    // provisional: not for a hero, an illusion, or one that bursts, and KillUnit's
+    // as that native makes them).
+    let course = (w.unit(h).is_some_and(|u| !u.dead && !u.is_hero && !u.extra.object_slots[0].is_empty()) && illusion.is_none() && !explodes && !w.script_kill).then(|| {
+        let at = w.landing_clock.unwrap_or_else(|| w.bullet_clock(w.time_exact));
+        w.death_begun(h, at)
+    }).flatten();
     if w.unit(h).is_some_and(|u| !u.dead) && killer != 0 && illusion.is_none() {
         w.grant_bounty(h, killer);
         w.grant_kill_xp(h, killer);
@@ -699,17 +706,36 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     // `FUN_6f67b8a0`), and a player state event on that fires then (Mafarazzo TD's round
     // ends on its creeps' food used 0 as the last creep dies, before its death's triggers).
     w.check_player_states(vm);
+    // (Its regeneration's listener goes with its death, `FUN_6f6744d0`; traced.)
+    if course.is_some() {
+        let listeners = w.unit_mut(h).map(|u| std::mem::take(&mut u.extra.object_slots[1])).unwrap_or_default();
+        for (s, b) in listeners {
+            if w.tags.live.get(&s).is_some_and(|e| e.1 == b) {
+                w.tags.doom(s);
+            }
+        }
+    }
     // The owner's death triggers go first, then the unit's (measured: triggers made in
-    // the order player A, unit B, player D, players E, unit F fire A D E B F).
+    // the order player A, unit B, player D, players E, unit F fire A D E B F).  The
+    // owner's event makes its data first (CPlayerUnitDeathEventData, `pudd`,
+    // `FUN_6f260ab0`), let go after its triggers' executions (traced).
+    let heard = w.events.iter().any(|&e| matches!(w.handles.get(e), Some(Obj::Event(r)) if matches!(r.kind, EventKind::PlayerUnit { player, event, .. } if player == owner && event == EVENT_PLAYER_UNIT_DEATH)));
+    let data = (course.is_some() && heard).then(|| w.tags.take(codes::class::PLAYER_UNIT_DEATH_DATA));
     w.fire(vm, EventCtx { event_id: EVENT_PLAYER_UNIT_DEATH, ..ctx.clone() }, |_, k| match k {
         EventKind::PlayerUnit { player, event, .. } => *player == owner && *event == EVENT_PLAYER_UNIT_DEATH,
         _ => false,
     });
+    if let Some(d) = data {
+        w.tags.doom(d);
+    }
     w.fire(vm, EventCtx { event_id: EVENT_UNIT_DEATH, ..ctx }, |_, k| match k {
         EventKind::Unit { unit, event } => *unit == h && *event == EVENT_UNIT_DEATH,
         EventKind::Death(widget) => *widget == h,
         _ => false,
     });
+    if let Some((die, path)) = course {
+        w.death_ended(die, path);
+    }
     // A fallen hero can be revived (EVENT_PLAYER_HERO_REVIVABLE).
     if w.unit(h).is_some_and(|u| u.is_hero && u.dead) && illusion.is_none() {
         w.queue_unit_event(h, EVENT_PLAYER_HERO_REVIVABLE, EVENT_UNIT_HERO_REVIVABLE, EventCtx { unit: h, ..Default::default() });
@@ -1370,7 +1396,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 t.extend((0..7).map(|_| w.tags.take(codes::class::TASK)));
                 t.push(w.tags.take(codes::class::TASK_A));
             }
+            // (Its tasks made here, the death's course not again, `World::death_begun`.)
+            w.script_kill = true;
             kill_unit(w, vm, h, 0);
+            w.script_kill = false;
             // A structure's go with the turn's releases: its first and last, its eighth
             // to seventh, its own listener, its sixth; its fifth and fourth as its death
             // has played, the others with its body (traced twice: Mafarazzo TD's Freeze

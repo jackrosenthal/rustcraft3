@@ -131,6 +131,10 @@ impl Default for RandData {
 
 /// Which of the 45 a purpose draws on, as the original's callers name them.
 pub mod stream {
+    /// A kill's gold bounty's dice (`FUN_6f687490`).
+    pub const BOUNTY: usize = 0;
+    /// A kill's lumber bounty's dice (`FUN_6f69e5b0`).
+    pub const LUMBER_BOUNTY: usize = 44;
     /// CAbilityAttack vf194 (FUN_6f4993b0): a new armed unit's first look for a target;
     /// an attack's dice (FUN_6f498960) and its missile's miss from below (FUN_6f6d48b0).
     pub const ATTACK: usize = 2;

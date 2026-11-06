@@ -162,6 +162,40 @@ original images.
   a rising in place change no cell: a unit risen inside a region does not enter it
   again (provisional: the rising places it where it lies, vf 0x180, read as keeping
   its cell).  IsUnitInRegion asks the place alone (`FUN_6f05f9d0`).
+- A unit's death's objects (`FUN_6f679bb0`, read against the flyer game's creep killed
+  by the Arrow Tower's eighth missile, its landing in the main tick 27.381405, turn
+  274, `abtest/mafb.*`): the structures attacking it give it up (their tasks
+  destroyed, the attack's first, then the rest top first, `FUN_6f49d280`; a damage
+  point still to come called off, and the cooldown with it, `FUN_6f497e20` stopping
+  the timers at +0x1ec and +0x1d8), its AI's `uref` and `AI-U` go, its orders are
+  cleared (`FUN_6f673610`: a block made and destroyed, its walk's task stack
+  destroyed top first, then its `ordt`), its death's course is put on its stack
+  (`FUN_6f678280`: the removal 0xd015a, a corpse's 0xd0159 and 0xd0158, 0xd0154, and
+  the corpse's wait 0xd0155; a burst's 0xd015a, 0xd0157, 0xd0154, and 0xd0156), then
+  0xd0153, 0xd0178, 0xd0144, and a block to state 4, and run, the last put first: the
+  block, 0xd0144, and 0xd0178 go; 0xd0153 (`FUN_6f69c210`) gives the bounty and runs
+  `FUN_6f6744d0`, its regeneration's `` `rtl `` going and its death events firing,
+  the owner's with its data (CPlayerUnitDeathEventData, `pudd`, `FUN_6f260ab0`, made
+  only when the event is listened for, let go after its triggers' `+tex`), then goes,
+  and its walk's path and cluster go as the corpse's wait begins.  All 28 go in that
+  order with the turn's releases; the tower, which looks again 0.01 after the death
+  (`FUN_6f49d000`), takes up its next creep after them, its tasks' last block freed in
+  that turn too, and sends its first missile at it 0.4 seconds on (turn 278).  The
+  corpse's wait ends as its death has played, its type's death time on (3, turn 304),
+  0xd0155 and 0xd0154 freed then.  The death's effect (`+EIP`, `` `pos ``, two
+  `^pmr`) is the second table's.  The port so makes them (`World::death_begun`,
+  `World::death_ended`, `World::looks_after_deaths`; provisional: the corpse's two by
+  a type whose corpse decays, its flag 0x200 not read; a current order other than a
+  walk's not cleared; a hero's, an illusion's, and a burst's left as before, and
+  KillUnit's own as that native makes them).  With these the flyer game's objects
+  agree to turn 311 (from 273; the second table's left out of the original's trace),
+  where the original frees four of the map's `pcvt`, the port none.  Open: its
+  keepalives part still at turn 275, its objects, births, and next slot the
+  original's, so in its generators or its tech trees, not read.
+- A kill's bounty is drawn on the random data's streams (`FUN_6f66a670`): the lumber's
+  dice on 44 (`FUN_6f69e5b0`), then the gold's on 0 (`FUN_6f687490`), each die a draw,
+  `r × sides >> 32` and one (`FUN_6f695c70`, `FUN_6f1ec180`), plus its bountyplus;
+  none without dice (the port had drawn on the main generator).
 - A unit's death events (EVENT_PLAYER_UNIT_DEATH, 0x80214 to the owner,
   `FUN_6f260ab0`; then EVENT_UNIT_DEATH, 0x80235 to the unit) come in `FUN_6f67b8a0`,
   from the death's 0xd0153 task after its bounty and its food given back

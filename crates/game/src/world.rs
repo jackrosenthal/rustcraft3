@@ -307,6 +307,9 @@ pub struct World {
     /// orders' objects) rather than as the next turn starts.
     #[serde(skip)]
     pub exec_at_tick_end: bool,
+    /// KillUnit's killing under way (its tasks its own, `World::death_begun`).
+    #[serde(skip)]
+    pub script_kill: bool,
     /// While a structure is begun at a movement step: that step's main and agent clocks
     /// (seconds since the game began), the moment its making counts from
     /// (`World::build_step_arrive`).
@@ -1049,6 +1052,7 @@ impl World {
             time_of_day: 0.0,
             daytime: false,
             exec_at_tick_end: false,
+            script_kill: false,
             making_clock: None,
             run_order_made: None,
             run_auto: false,
@@ -2359,6 +2363,7 @@ impl World {
         // within the same frame), after what fell due during it, by the main clock.
         let now = self.tick_abs(self.tick_clocks.1.len().saturating_sub(1)).unwrap_or(self.time_exact);
         self.tags.free_due(now);
+        self.looks_after_deaths();
         self.last_tick_payouts(vm);
         // A structure's watch falling due in the game's first tick begins after that
         // tick's releases (read: Twisted Meadows' night elf computer's, due 0.081, its

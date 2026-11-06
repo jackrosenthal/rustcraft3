@@ -75,6 +75,13 @@ original images.
   0.011 + buttons (0.003 apart), rounded up to 0.048 steps, at least 0.096; the
   message is centered in the extra space.
 - CTextFrame starts with white text and a black shadow.
+- Command card slots (`FUN_6f3aad50` placing each button with `FUN_6f3aa430`, the 4 by
+  3 grid at `+0x154`): a button whose Buttonpos slot is taken goes to the next free
+  slot after it, left to right and row by row, else the nearest free one before it;
+  with none free it is left out.  So towers made from one base type, which share its
+  Buttonpos, all show in a builder's menu (Mafarazzo TD's peasant: Poison, Ice, and
+  HSBC Towers all ask for 3,0).  A unit type without a Buttonpos (a sheep, nshe) asks
+  for 0,0 (provisional: the field's default).
 
 ## Glue screens
 

@@ -168,6 +168,26 @@ fn parse_pos(v: &[String]) -> Option<(u32, u32)> {
     Some((x, y))
 }
 
+/// Lays buttons on the 4 by 3 card in order, as the command bar does (FUN_6f3aad50
+/// placing each with FUN_6f3aa430): a button whose slot is taken goes to the next free
+/// slot after it, row by row, else the nearest free one before it; with none free, it
+/// is left out.  (Provisional: the order is the one the card lists them in; the
+/// original's is the order its abilities add them.)
+fn place_buttons(buttons: Vec<Button>) -> Vec<Button> {
+    let mut taken = [[false; 4]; 3];
+    let mut out = Vec::new();
+    for mut b in buttons {
+        let (x, y) = (b.x.min(3) as usize, b.y.min(2) as usize);
+        let start = y * 4 + x;
+        let free = (start..12).chain((0..start).rev()).find(|&s| !taken[s / 4][s % 4]);
+        let Some(s) = free else { continue };
+        taken[s / 4][s % 4] = true;
+        (b.x, b.y) = ((s % 4) as u32, (s / 4) as u32);
+        out.push(b);
+    }
+    out
+}
+
 impl Commands {
     /// The command buttons' strings, with the player's custom keys over them.
     pub fn load(chain: &w3_mpq::Chain, custom_keys: Option<&Profile>) -> Commands {
@@ -396,7 +416,10 @@ impl Commands {
             if !revive && (w.tech_hidden(u.owner, id) || !w.tech_allowed(u.owner, id, next)) {
                 return None;
             }
-            let (x, y) = parse_pos(&ob.list("Buttonpos"))?;
+            // One with no Buttonpos asks for the top left, the field's default
+            // (provisional; a map's Sell unit made from a sheep, which has none, shows
+            // in the original), and goes where `place_buttons` finds room.
+            let (x, y) = parse_pos(&ob.list("Buttonpos")).unwrap_or((0, 0));
             // Research shows the next level's tip, art, and cost.
             let (tip, uber, icon, costs) = if w.objects.upgrades.get(id).is_some() {
                 let level = w.players[u.owner as usize].tech_researched.get(&id).copied().unwrap_or(0) as u32;
@@ -421,7 +444,7 @@ impl Commands {
                 }
             }
             out.extend(self.command(db, "CmdCancel", Action::Cancel, true));
-            return out;
+            return place_buttons(out);
         }
         if page == Page::Learn {
             for b in o.list("heroAbilList") {
@@ -449,7 +472,7 @@ impl Commands {
                 out.push(b);
             }
             out.extend(self.command(db, "CmdCancel", Action::Cancel, true));
-            return out;
+            return place_buttons(out);
         }
         // A spell book's page: its spells in the order chosen from the top left, and
         // Cancel (CAbilitySpellBook::vf108, the slots at 0x6fce5dd0).
@@ -553,14 +576,8 @@ impl Commands {
         if !u.queue.is_empty() || u.revive.is_some() {
             out.extend(self.command(db, "CmdCancelTrain", Action::CancelTrain, true));
         }
-        // Later buttons with the same slot win, as the card fills in order.
-        let mut dedup: Vec<Button> = Vec::new();
-        for b in out {
-            dedup.retain(|x: &Button| (x.x, x.y) != (b.x, b.y));
-            dedup.push(b);
-        }
         let _ = id_str;
-        dedup
+        place_buttons(out)
     }
 }
 

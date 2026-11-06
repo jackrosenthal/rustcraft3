@@ -375,9 +375,22 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let Some(p) = w.player_of(a.h(1)) else { return none() };
             register_event(w, a.h(0), EventKind::Player { player: p, event: crate::event_ids::EVENT_PLAYER_ALLIANCE_CHANGED, alliance: a.h(2) as i32 })
         },
+        // Its listener goes on the state as it stands, a change after firing it
+        // (`FUN_6f27a5f0`, `World::check_player_states`).
         TriggerRegisterPlayerStateEvent => |w, _, a| {
             let Some(p) = w.player_of(a.h(1)) else { return none() };
-            register_event(w, a.h(0), EventKind::PlayerState { player: p, state: a.h(2) as i32, op: a.h(3) as i32, value: a.r(4) })
+            let state = a.h(2) as i32;
+            let r = register_event(w, a.h(0), EventKind::PlayerState { player: p, state, op: a.h(3) as i32, value: a.r(4) });
+            if let NativeResult::Return(Value::Handle(e)) = r {
+                use crate::types::player_state as ps;
+                if matches!(state, ps::RESOURCE_FOOD_USED | ps::RESOURCE_FOOD_CAP | ps::GOLD_UPKEEP_RATE | ps::LUMBER_UPKEEP_RATE) {
+                    w.update_food();
+                }
+                if let Some(v) = w.player_state_now(p, state) {
+                    w.player_state_seen.insert(e, v);
+                }
+            }
+            r
         },
         TriggerRegisterPlayerChatEvent => |w, _, a| {
             let Some(p) = w.player_of(a.h(1)) else { return none() };

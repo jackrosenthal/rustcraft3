@@ -571,6 +571,13 @@ pub fn create_unit_exact(w: &mut World, owner: u8, type_id: Id, x: f32, y: f32, 
     h
 }
 
+/// A unit a script made: a player state event on its food fires at once, as it is made
+/// (provisional: before its regions' events), and it enters the regions it stands in.
+fn script_created(w: &mut World, vm: &mut Vm, h: u32) {
+    w.check_player_states(vm);
+    w.unit_placed(vm, h);
+}
+
 /// Kills a unit and fires its death events.
 pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     w.set_asleep(h, false);
@@ -645,6 +652,10 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
         has_player: true,
         ..Default::default()
     };
+    // Its food is given back before its death events (`FUN_6f6744d0`, then its events by
+    // `FUN_6f67b8a0`), and a player state event on that fires then (Mafarazzo TD's round
+    // ends on its creeps' food used 0 as the last creep dies, before its death's triggers).
+    w.check_player_states(vm);
     // The owner's death triggers go first, then the unit's (measured: triggers made in
     // the order player A, unit B, player D, players E, unit F fire A D E B F).
     w.fire(vm, EventCtx { event_id: EVENT_PLAYER_UNIT_DEATH, ..ctx.clone() }, |_, k| match k {
@@ -1082,7 +1093,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         CreateUnit => |w, vm, a| {
             let Some(p) = w.player_of(a.h(0)) else { return none() };
             let h = create_unit(w, p, id_from_int(a.i(1)), a.r(2), a.r(3), a.r(4));
-            w.unit_placed(vm, h);
+            script_created(w, vm, h);
             handle(h)
         },
         CreateUnitByName => |w, vm, a| {
@@ -1092,7 +1103,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             match id {
                 Some(id) => {
                     let h = create_unit(w, p, id, a.r(2), a.r(3), a.r(4));
-                    w.unit_placed(vm, h);
+                    script_created(w, vm, h);
                     handle(h)
                 }
                 None => none(),
@@ -1102,7 +1113,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let Some(p) = w.player_of(a.h(0)) else { return none() };
             let (x, y) = w.location(a.h(2)).unwrap_or_default();
             let h = create_unit(w, p, id_from_int(a.i(1)), x, y, a.r(3));
-            w.unit_placed(vm, h);
+            script_created(w, vm, h);
             handle(h)
         },
         CreateUnitAtLocByName => |w, vm, a| {
@@ -1113,7 +1124,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             match id {
                 Some(id) => {
                     let h = create_unit(w, p, id, x, y, a.r(3));
-                    w.unit_placed(vm, h);
+                    script_created(w, vm, h);
                     handle(h)
                 }
                 None => none(),

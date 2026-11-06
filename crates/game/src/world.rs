@@ -751,9 +751,12 @@ pub struct World {
     /// Unit events raised where no VM is at hand, fired at the end of the tick: the
     /// unit, its player and unit event ids, and the context.
     pub queued_events: Vec<(u32, i32, i32, EventCtx)>,
-    /// Where each unit or player state event's comparison last stood.
+    /// Where each unit state event's comparison last stood.
     #[serde(default)]
     pub state_seen: HashMap<u32, bool>,
+    /// The value each player state event last saw (`World::check_player_states`).
+    #[serde(default)]
+    pub player_state_seen: HashMap<u32, i32>,
     /// Structures whose construction was cancelled, removed once their event fires.
     pub cancelled_constructions: Vec<u32>,
     /// The player's profile: campaign progress and saved game caches.
@@ -1124,6 +1127,7 @@ impl World {
             water_color: [255; 4],
             queued_events: Vec::new(),
             state_seen: HashMap::default(),
+            player_state_seen: HashMap::default(),
             cancelled_constructions: Vec::new(),
             persist: Default::default(),
             timed_removals: Vec::new(),
@@ -2582,10 +2586,11 @@ impl World {
         }
     }
 
-    /// Unit and player state events (TriggerRegisterUnitStateEvent,
-    /// TriggerRegisterPlayerStateEvent): each fires as its comparison becomes true, the
-    /// first look only noting where it stands.
+    /// Unit state events (TriggerRegisterUnitStateEvent): each fires as its comparison
+    /// becomes true, the first look only noting where it stands.  (Player state events
+    /// are `check_player_states`'.)
     fn check_state_events(&mut self, vm: &mut Vm) {
+        self.check_player_states(vm);
         let mut due = Vec::new();
         for &e in &self.events {
             let Some(Obj::Event(r)) = self.handles.get(e) else { continue };
@@ -2602,11 +2607,6 @@ impl World {
                     let ctx = EventCtx { unit, event_id: crate::event_ids::EVENT_UNIT_STATE_LIMIT, player: u.owner, has_player: true, ..Default::default() };
                     (compare(op, v, value), ctx)
                 }
-                EventKind::PlayerState { player, state, op, value } => {
-                    let Some(p) = self.players.get(player as usize) else { continue };
-                    let ctx = EventCtx { player, has_player: true, event_id: crate::event_ids::EVENT_PLAYER_STATE_LIMIT, ..Default::default() };
-                    (compare(op, p.get_state(state) as f32, value), ctx)
-                }
                 _ => continue,
             };
             let before = self.state_seen.insert(e, now);
@@ -2615,22 +2615,82 @@ impl World {
             }
         }
         for (trig, ctx) in due {
-            if !self.trigger(trig).is_some_and(|t| t.enabled) {
-                continue;
+            self.fire_state_event(vm, trig, ctx);
+        }
+    }
+
+    /// Player state events (TriggerRegisterPlayerStateEvent).  The original's
+    /// registration listens to the state's value (an IntegerListener, `FUN_6f056a60`),
+    /// which is told at once as the value is set, if it changed (`FUN_6f056ae0`,
+    /// `FUN_6f160e80`, `FUN_6f1610b0`); the registration (CPlayerStateEventReg,
+    /// `FUN_6f27cd00`) then compares the value now (`FUN_6f1fdf80`) and fires its trigger
+    /// if it passes.  So it fires on every change to a value its comparison passes, not
+    /// only as the comparison becomes true, inside whatever changed it, the newest
+    /// registration first (a listener is put first, `FUN_6f15e160`).  The port looks
+    /// where it changes a state (a unit's death, SetPlayerState, a unit made by script)
+    /// and at each tick's end for the rest: each registration whose state is not the
+    /// value it last saw (that at its registration first) fires if the comparison
+    /// passes.  (Which of two states fires first when both change at once is
+    /// provisional: the newest registration's.)
+    pub fn check_player_states(&mut self, vm: &mut Vm) {
+        use crate::types::player_state as ps;
+        let regs: Vec<(u32, u32, u8, i32, i32, f32)> = self
+            .events
+            .iter()
+            .rev()
+            .filter_map(|&e| match self.handles.get(e) {
+                Some(Obj::Event(EventReg { trigger, kind: EventKind::PlayerState { player, state, op, value } })) => Some((e, *trigger, *player, *state, *op, *value)),
+                _ => None,
+            })
+            .collect();
+        if regs.is_empty() {
+            return;
+        }
+        if regs.iter().any(|r| matches!(r.3, ps::RESOURCE_FOOD_USED | ps::RESOURCE_FOOD_CAP | ps::GOLD_UPKEEP_RATE | ps::LUMBER_UPKEEP_RATE)) {
+            self.update_food();
+        }
+        let mut due = Vec::new();
+        for (e, trig, player, state, op, value) in regs {
+            let Some(now) = self.player_state_now(player, state) else { continue };
+            let before = self.player_state_seen.insert(e, now);
+            if before.is_some_and(|b| b != now) && compare(op, now as f32, value) {
+                due.push((trig, EventCtx { player, has_player: true, state, event_id: crate::event_ids::EVENT_PLAYER_STATE_LIMIT, ..Default::default() }));
             }
-            let mut c = ctx;
-            c.trigger = trig;
-            let saved = std::mem::replace(&mut self.ctx, c.clone());
-            let pass = self.trigger_evaluate(vm, trig);
-            self.ctx = saved;
-            if pass {
-                // (An execution from an event queues its actions, `FUN_6f298250`, taking
-                // a count of the property module's; TriggerExecute's runs them at once and
-                // takes none: read, the Day trigger at the melee setup's 8:00, not the
-                // setup's own.)
-                self.tags.bump_prop(1, "texe");
-                self.trigger_execute(vm, trig, c);
-            }
+        }
+        for (trig, ctx) in due {
+            self.fire_state_event(vm, trig, ctx);
+        }
+    }
+
+    /// A player's state as GetPlayerState reads it (the upkeep rates its taxes), food as
+    /// last counted.
+    pub fn player_state_now(&self, player: u8, state: i32) -> Option<i32> {
+        use crate::types::player_state as ps;
+        self.players.get(player as usize)?;
+        Some(match state {
+            ps::GOLD_UPKEEP_RATE => self.upkeep_tax(player).0,
+            ps::LUMBER_UPKEEP_RATE => self.upkeep_tax(player).1,
+            s => self.players[player as usize].get_state(s),
+        })
+    }
+
+    /// Runs a state event's trigger, its conditions passing.
+    fn fire_state_event(&mut self, vm: &mut Vm, trig: u32, ctx: EventCtx) {
+        if !self.trigger(trig).is_some_and(|t| t.enabled) {
+            return;
+        }
+        let mut c = ctx;
+        c.trigger = trig;
+        let saved = std::mem::replace(&mut self.ctx, c.clone());
+        let pass = self.trigger_evaluate(vm, trig);
+        self.ctx = saved;
+        if pass {
+            // (An execution from an event queues its actions, `FUN_6f298250`, taking
+            // a count of the property module's; TriggerExecute's runs them at once and
+            // takes none: read, the Day trigger at the melee setup's 8:00, not the
+            // setup's own.)
+            self.tags.bump_prop(1, "texe");
+            self.trigger_execute(vm, trig, c);
         }
     }
 

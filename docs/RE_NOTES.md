@@ -159,6 +159,23 @@ original images.
   from the death's 0xd0153 task after its bounty and its food given back
   (`FUN_6f6744d0`), only for a unit that is not to rise: a fall to Reincarnation fires
   none.
+- Player state events (TriggerRegisterPlayerStateEvent, `6f2177d0`): the registration
+  (CPlayerStateEventReg, `FUN_6f27a5f0`) puts a listener (IntegerListener,
+  `FUN_6f056a60`) on the player's state (its integer at +0x40 + 0x10 times the state:
+  food made 4 at +0x80, food used 5 at +0x90).  Setting the integer (`FUN_6f056ae0`)
+  tells its listeners at once if the value changed (`FUN_6f160e80`, `FUN_6f1610b0`,
+  the newest listener first, as `FUN_6f15e160` puts each first; the flag listener's
+  `FUN_6f160a50`; `FUN_6f055950` delivers the event at once), and the registration
+  (`FUN_6f27cd00`) compares the value now (gold and lumber in tenths divided by ten;
+  the gathered states' limits taken in tenths) by its op (`FUN_6f1fdf80`: equal within
+  an epsilon) and fires its trigger if it passes (CPlayerEventReg's `FUN_6f27cba0`),
+  the state in the event's data (GetEventPlayerState).  So it fires on every change to
+  a value its comparison passes, not only as the comparison becomes true, inside the
+  code that changed it: a unit's food is given back in its death's 0xd0153 task
+  (`FUN_6f6744d0`: food made, then used) before its death events, so Mafarazzo TD's
+  End Round (Player 11's food used equal to 0) runs inside the KillUnit of the last
+  creep, before its death's triggers, and for a creep exploded at WalkEnd inside that
+  trigger, before Losing life (the region's next trigger) takes its life.
 
 ## Rendering
 

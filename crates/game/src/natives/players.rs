@@ -224,12 +224,15 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         // Gold and lumber stay within 0 and 1,000,000 (FUN_6f1e98e0 keeps them in tenths
         // up to 10,000,000, a negative amount reading as too many and so as none).
-        SetPlayerState => |w, _, a| {
+        // A player state event on it fires at once (`World::check_player_states`).
+        SetPlayerState => |w, vm, a| {
             let (s, mut v) = (a.h(1) as i32, a.i(2));
             if matches!(s, crate::types::player_state::RESOURCE_GOLD | crate::types::player_state::RESOURCE_LUMBER) && !(0..=1_000_000).contains(&v) {
                 v = if v < 0 { 0 } else { 1_000_000 };
             }
-            with_player(w, a, |p| { p.state.insert(s, v); })
+            let r = with_player(w, a, |p| { p.state.insert(s, v); });
+            w.check_player_states(vm);
+            r
         },
         // The upkeep rates are the upkeep level's taxes (measured: 30 at 55 food used).
         GetPlayerState => |w, _, a| {

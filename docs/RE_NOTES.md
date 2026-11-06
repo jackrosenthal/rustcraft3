@@ -1609,7 +1609,11 @@ these are the findings behind them.
   (`Cdet`, at its +0x130) is made by the first detector of any player to find it
   (`FUN_6f688990`), each player's count kept in it (`FUN_6f688940`; leaving, event
   0xd01b5, `FUN_6f43aca0` and `FUN_6f678150`, only counts down).  Mafarazzo's
-  peasants, collision 0, are found by none.
+  peasants, collision 0, are found by none.  Measured (a breakpoint on `FUN_6f688990`
+  from 0x6f4070f8, its ecx the unit found): at 0.5 seconds the Red peasant's look finds
+  h00Y, h00X, e000, h00Z, and h013 in that order, the towers where the script asked
+  for them (above), the reverse of the units' 256-unit blocks (`spatial_order`); the
+  port's look now finds the same in the same order.
 - The script's globals run before the map's destructables: Blizzard.j's first timer,
   then the engine's `+gam` `` `flg `` `` `flg `` `` `rel `` `` `rel `` `` `flg ``
   `` `rtl `` `+qum`, then the other globals.

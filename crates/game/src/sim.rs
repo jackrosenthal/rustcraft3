@@ -5038,17 +5038,22 @@ impl World {
     /// Whether a weapon's splashTargs take in a unit: its classes (ground, air,
     /// structure) and, when any is named, its allegiance to the attacker.
     fn splash_allows(&self, source: u32, targets: &str, t: &Unit) -> bool {
-        let flags: Vec<&str> = targets.split(',').map(|s| s.trim()).filter(|s| !s.is_empty() && *s != "_").collect();
+        let flags: Vec<String> = targets.split(',').map(crate::targets::flag_name).filter(|s| !s.is_empty() && s != "_").collect();
         if flags.is_empty() || t.dead || t.hidden {
             return false;
         }
-        let has = |f: &str| flags.contains(&f);
+        let has = |f: &str| flags.iter().any(|x| x == f);
         let air = self.objects.units.get(t.type_id).is_some_and(|o| o.str("movetp").eq_ignore_ascii_case("fly"));
         let class_ok = if t.is_building { has("structure") } else if air { has("air") } else { has("ground") };
         if !class_ok {
             return false;
         }
         let Some(owner) = self.unit(source).map(|s| s.owner) else { return true };
+        // notself names every owner, the source itself aside (0x1e000: player, ally,
+        // neutral, enemy; FUN_6f6a9350's table).
+        if has("notself") {
+            return t.handle != source;
+        }
         let named = ["enemy", "friend", "ally", "player", "neutral", "self"].iter().any(|f| has(f));
         if !named {
             return true;

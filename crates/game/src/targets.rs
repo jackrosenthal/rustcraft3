@@ -49,6 +49,13 @@ const FLAG_NAMES: [(&str, &str); 20] = [
     ("vulnerable", "vuln"),
 ];
 
+/// A target flag as named here: lower-cased, its other names (`FLAG_NAMES`) taken for
+/// it.
+pub(crate) fn flag_name(s: &str) -> String {
+    let s = s.trim().to_ascii_lowercase();
+    FLAG_NAMES.iter().find(|(other, _)| *other == s).map_or(s, |(_, name)| name.to_string())
+}
+
 impl World {
     /// Why `target` is not a valid target of ability `a` cast by `h`, as a command
     /// error key; None when it is.
@@ -61,8 +68,7 @@ impl World {
             .map(|o| o.level_str("targs", lvl))
             .unwrap_or_default()
             .split(',')
-            .map(|s| s.trim().to_ascii_lowercase())
-            .map(|s| FLAG_NAMES.iter().find(|(other, _)| *other == s).map_or(s, |(_, name)| name.to_string()))
+            .map(flag_name)
             .filter(|s| !s.is_empty() && s != "_" && s != "none")
             .collect();
         if flags.is_empty() {

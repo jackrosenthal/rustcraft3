@@ -873,11 +873,30 @@ these are the findings behind them.
   ability's 0xd0196, `CAbilityMove::vf3_6f5fda10`, `FUN_6f5fa7a0`), so a trigger then
   gives its order to a unit without one.  The port so tells its engine walkers' region
   changes in their steps (`World::step_regions`, `World::run_step_region_events`);
-  Mafarazzo TD over LAN agrees to turn 358 (from 308).  At turn 359 the original has
-  made one move order (19 objects) more: a creep (1879048311 in the port) walking to
-  WalkMid34's middle at y 1888, WalkMid3's edge, its y about 251.0 cells, leaves and
-  enters WalkMid3 every few steps from 35.34 seconds, each entry ordering it anew; when
-  the original's does is not yet known (its trace ends at turn 323).
+  Mafarazzo TD over LAN agrees to turn 358 (from 308).
+- A member's own path keeps its ways while the point it steers for stays in its goal's
+  accelerator cell: the steering (`FUN_6f16fbd0`, each member's step from
+  `FUN_6f16a790`) resets the path to a new point (`FUN_6f168bd0`, `FUN_6f168be0`,
+  `FUN_6f168b80`, `FUN_6f168740`: ways dropped, to be searched) only when the cluster's
+  key (`FUN_6f16afc0`, none for a point order) differs from the path's +0xa4, or when
+  `FUN_6f167e40` finds the point's cell (floored and halved) not the path's goal's
+  (+0x1c, +0x20) and both its spacings (+0x7c, +0x80) more than 9 steps old.  So a walk
+  ordered anew to the same point searches no more.  Read: Mafarazzo TD's creeps on
+  WalkMid3's and WalkMid1's edges, walking for WalkMid34's and WalkMid12's middles at y
+  1888 (WalkMid3's edge; y about 251.0 cells, the heading swinging 0.0044 either side),
+  leave and enter the region every few steps, each entry ordering them to the same
+  point; the port's searching anew, its last search spaced, stood seven steps and gave
+  one order fewer by turn 358.  The port keeps the way for a walk ordered to its own
+  path's goal's cell while its cluster went for its goal (`World::start_player_walk`;
+  provisional: searched anew from where it is, without budget or spacing), and the LAN
+  game agrees to turn 396.  Not yet in the port: a new point's cell within the
+  spacings, the old way kept until they pass.  At turn 397 the original's next free
+  slot is 2444 (the port's 9152, the objects made the same), the `l^pa` of one of two
+  walks ended or replaced at turn 395's last step (creeps entering WalkMid12 and
+  WalkMid34, the second arriving at its middle there), freed in the port at turn 396's
+  first step and
+  taken by that step's trigger's order; not yet known why (the original's trace ends
+  at turn 323).
 - SetUnitPathing (`jass_SetUnitPathing` at 0x6f215540) sets the unit's pathing types
   through its vf15c: off, its region's types (`FUN_6f05ac60`, +0x34 of its region)
   with 0; on, those of vf160 and vf164.  What its walks' searches and plans then mind

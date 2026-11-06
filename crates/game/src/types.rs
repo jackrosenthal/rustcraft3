@@ -579,6 +579,10 @@ pub struct UnitExtra {
     /// +0x7c): none once a search leaves its class's budget under 64 passes.
     #[serde(default)]
     pub search_at: Option<u64>,
+    /// A walk ordered anew to the cell its own path goes for keeps its ways
+    /// (`World::start_player_walk`).
+    #[serde(default)]
+    pub kept_way: bool,
     /// Steps it turns toward its goal before it is judged facing it, its walk's first
     /// search having found nothing nearer.
     #[serde(default)]
@@ -1045,6 +1049,7 @@ impl Default for UnitExtra {
             walk_research: false,
             stopped_between: false,
             search_at: None,
+            kept_way: false,
             face_hold: 0,
             cell_at: None,
             step_from: None,

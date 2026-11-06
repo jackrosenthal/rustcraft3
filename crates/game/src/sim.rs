@@ -789,15 +789,32 @@ impl World {
         let replaced = self.unit(h).filter(|u| u.extra.player_walk).map(|u| u.extra.order_tags.clone());
         let after = self.after_steps.then(|| self.unit(h).map_or(0, |u| u.extra.walk_serial));
         let slots = self.tags.player_move_issued(replaced.as_deref(), after);
+        // A walk ordered to the accelerator cell its own path already goes for keeps that
+        // path's ways: the steering resets them only for a new goal's cell
+        // (`FUN_6f16fbd0`, `FUN_6f167e40`: the path's goal, +0x1c and +0x20, against the
+        // cluster's point, each floored and halved), so it searches no more (read:
+        // Mafarazzo TD's creep on WalkMid3's edge, sent anew to WalkMid34's middle as it
+        // enters it again every few steps, walking on; the port's searching again, ten
+        // steps apart, stood seven steps and gave one order fewer by turn 358).
+        let origin = self.pathing.as_ref().map(|p| p.origin);
+        let same = replaced.is_some() && self.unit(h).zip(origin).is_some_and(|(u, o)| {
+            let Action::Move { x, y } = u.action else { return false };
+            let g = (((x - o[0]) / 64.0).floor(), ((y - o[1]) / 64.0).floor());
+            u.extra.coarse.as_ref().is_some_and(|c| c.index == 0) && u.extra.move_coarse.as_ref().is_some_and(|m| (m.points[0].0.floor(), m.points[0].1.floor()) == g)
+        });
         if let Some(u) = self.unit_mut(h) {
             u.extra.order_tags = slots;
             u.extra.walk_serial = serial;
             u.extra.player_walk = true;
             u.extra.mover = None;
             u.path.clear();
-            // Its cluster is new, its own path's ways dropped (`FUN_6f168740`).
+            u.extra.kept_way = same;
+            // Its cluster is new, its own path's ways dropped (`FUN_6f168740`) but for
+            // that.
             u.extra.coarse = None;
-            u.extra.move_coarse = None;
+            if !same {
+                u.extra.move_coarse = None;
+            }
             u.extra.plan_at[0] = None;
             u.extra.coarse_done = false;
         }
@@ -1333,6 +1350,20 @@ impl World {
             return;
         };
         let now = self.step_index + self.step_range.0 as u64;
+        // (The kept way, the port searching it anew from the walker's place without its
+        // budget or spacing; provisional: the original's own goes on as it was.)
+        let kept = self.unit_mut(h).is_some_and(|u| std::mem::take(&mut u.extra.kept_way));
+        if kept {
+            if let Some((way, end, _)) = self.local_path(h, goal) {
+                if let Some(u) = self.unit_mut(h) {
+                    u.path = way;
+                    u.extra.facing_goal = end == Some((i32::MIN, i32::MIN));
+                    u.extra.path_end_cell = end.filter(|&e| e != (i32::MIN, i32::MIN));
+                    u.repath_timer = f32::INFINITY;
+                }
+                return;
+            }
+        }
         let local = self.unit(h).is_some_and(|u| u.engine_walker()) && self.move_kind(h) != crate::pathing::Move::Fly;
         if local && self.unit(h).and_then(|u| u.extra.search_at).is_some_and(|t| now.wrapping_sub(t) < 10) {
             refuse(self);

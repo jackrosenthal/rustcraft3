@@ -46,6 +46,7 @@ pub mod shops;
 pub mod spellai;
 pub mod spells;
 pub mod stampede;
+pub mod structupgrade;
 pub mod volcano;
 pub mod w3zsave;
 pub mod unitspells;
@@ -1069,7 +1070,7 @@ impl Game {
             }
             C::Train { building, id } => res(self.world.train(building, id)),
             C::Research { building, id } => res(self.world.research_at(building, id)),
-            C::Upgrade { building, id } => res(self.world.upgrade_structure(building, id)),
+            C::Upgrade { building, id } => res(self.world.upgrade_structure_by(building, id, true)),
             C::CancelLast { building } => {
                 self.world.cancel_last(building);
                 O::Done

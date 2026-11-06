@@ -67,10 +67,12 @@ impl World {
             return p.tech_researched.get(&id).copied().unwrap_or(0);
         }
         let types = if equivalents { self.equivalent_types(id) } else { vec![id] };
+        // A structure upgrading counts as the type it was (provisional: the original's
+        // tech tree has the old type no longer present and the new not yet so).
         self.unit_order
             .iter()
             .filter_map(|&h| self.unit(h))
-            .filter(|u| u.owner == owner && !u.dead && u.constructing.is_none() && types.contains(&u.type_id))
+            .filter(|u| u.owner == owner && !u.dead && u.constructing.is_none() && types.contains(&u.extra.upgrading.as_ref().map_or(u.type_id, |g| g.from)))
             .count() as i32
     }
 

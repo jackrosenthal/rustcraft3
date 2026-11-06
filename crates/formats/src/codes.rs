@@ -457,6 +457,8 @@ pub mod ability {
         DREADLORD_INFERNO = "AUin";
         /// `AUls`: Crypt Lord - Locust Swarm.
         CRYPT_LORD_LOCUST_SWARM = "AUls";
+        /// `AUnP`: Upgrade In Progress (a structure's while it upgrades; the engine's).
+        UPGRADE_IN_PROGRESS = "AUnP";
         /// `AUsl`: Dreadlord - Sleep.
         DREADLORD_SLEEP = "AUsl";
         /// `AUts`: Crypt Lord - Spiked Carapace.

@@ -325,6 +325,25 @@ impl Unit {
     }
 }
 
+/// A structure's upgrade under way (`CAbilityUpgradeInProgress`, `AUnP`): the unit is
+/// of its new type from the start, the upgrade done on the main clock at the new
+/// type's build time on (`World::upgrade_structure`, `World::upgrades_to`).
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Upgrading {
+    /// The type it was and the type it becomes.
+    pub from: crate::objects::Id,
+    pub to: crate::objects::Id,
+    /// When it is done, on the main clock (seconds since the game began), and how long
+    /// it takes.
+    pub due: f32,
+    pub time: f32,
+    /// Its ability (`AUnP`) and that's real, then its rise's modifier and threshold
+    /// listener (`FUN_6f436b00`).
+    pub objects: Vec<u32>,
+    /// The gold and lumber paid.
+    pub paid: (i32, i32),
+}
+
 /// Unit settings scripts change.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct UnitExtra {
@@ -761,6 +780,9 @@ pub struct UnitExtra {
     /// steps till it is in range (`World::construct_step_arrive`).
     #[serde(default)]
     pub construct_walk: Option<([u32; 3], u8)>,
+    /// A structure upgrading into another type (`World::upgrade_structure`).
+    #[serde(default)]
+    pub upgrading: Option<Upgrading>,
     /// A structure's alarm's wait before it watches for enemies (`World::alarms`).
     #[serde(default)]
     pub alarm_wait: Option<f32>,
@@ -1114,6 +1136,7 @@ impl Default for UnitExtra {
             build_end: None,
             build_legacy: false,
             construct_walk: None,
+            upgrading: None,
             alarm_wait: None,
             order_tags: Vec::new(),
             gold_run: None,

@@ -1741,6 +1741,7 @@ impl World {
             self.ai_threads_to_tick(next);
             self.trainings_to(vm, next);
             self.constructions_to(vm, next);
+            self.upgrades_to(vm, next);
             self.mine_payouts_to(vm, next);
             // The paths of the walks ended in the last step go in this one, in the walkers'
             // order (`Tags::walk_ended`).
@@ -1829,6 +1830,7 @@ impl World {
         self.fire_mana_listeners(None);
         self.trainings_to(vm, None);
         self.constructions_to(vm, None);
+        self.upgrades_to(vm, None);
         // Build orders ending after the last step by the turn's last main tick end in
         // it (read: Forestwalk's undead computer's crypt begun at 1.979998, its order
         // ending at 2.979974 in turn 30, after its last step at 2.969974).
@@ -3257,7 +3259,7 @@ impl World {
     /// `train`, by a player's order or its AI's (`ai`).
     pub fn train_by(&mut self, h: u32, id: Id, ai: bool) -> Result<(), &'static str> {
         let Some(u) = self.unit(h) else { return Err("") };
-        if u.dead || u.constructing.is_some() || u.queue.len() >= 7 {
+        if u.dead || u.constructing.is_some() || u.extra.upgrading.is_some() || u.queue.len() >= 7 {
             return Err("");
         }
         let owner = u.owner;
@@ -3331,8 +3333,8 @@ impl World {
         Ok(())
     }
 
-    /// Changes a structure's type as an upgrade finishes, keeping its life and mana
-    /// fractions.
+    /// Changes a structure's type as an upgrade starts (`World::upgrade_structure_by`),
+    /// keeping its life and mana fractions.
     pub fn transform_unit(&mut self, h: u32, id: Id) {
         let Some(o) = self.objects.units.get(id) else { return };
         let (hp, mana) = (o.real("HP").max(1.0), o.real("manaN"));
@@ -3363,21 +3365,6 @@ impl World {
         self.update_food();
     }
 
-    /// Starts upgrading a structure into another type from its Upgrade list.
-    pub fn upgrade_structure(&mut self, h: u32, id: Id) -> Result<(), &'static str> {
-        let Some(u) = self.unit(h) else { return Err("") };
-        if u.dead || u.constructing.is_some() || !u.queue.is_empty() {
-            return Err("");
-        }
-        let owner = u.owner;
-        if !self.missing_requirements(owner, id, 1).is_empty() || !self.tech_allowed(owner, id, 1) {
-            return Err("");
-        }
-        self.spend(owner, id, false)?;
-        self.unit_mut(h).unwrap().queue.push(id);
-        Ok(())
-    }
-
     /// Starts researching an upgrade at a structure that offers it.
     pub fn research(&mut self, player: u8, id: Id) -> bool {
         let id_s = crate::objects::id_str(id);
@@ -3387,7 +3374,7 @@ impl World {
             return false;
         }
         let building = self.unit_order.iter().copied().find(|&h| {
-            self.unit(h).is_some_and(|u| u.owner == player && u.is_building && !u.dead && u.constructing.is_none() && u.queue.is_empty())
+            self.unit(h).is_some_and(|u| u.owner == player && u.is_building && !u.dead && u.constructing.is_none() && u.extra.upgrading.is_none() && u.queue.is_empty())
                 && self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|o| o.list("Researches").iter().any(|r| r.trim() == id_s))
         });
         let Some(b) = building else { return false };
@@ -3401,7 +3388,7 @@ impl World {
         let level = self.players[player as usize].tech_researched.get(&id).copied().unwrap_or(0);
         let queued = self.unit_order.iter().filter(|&&h| self.unit(h).is_some_and(|u| u.owner == player && u.queue.contains(&id))).count() as i32;
         let max = self.objects.upgrades.get(id).map_or(1, |o| o.int("maxlevel").max(1));
-        if level + queued >= max || u.queue.len() >= 7 || !self.missing_requirements(player, id, (level + queued + 1) as u32).is_empty() || !self.tech_allowed(player, id, (level + queued + 1) as u32) {
+        if level + queued >= max || u.queue.len() >= 7 || u.extra.upgrading.is_some() || !self.missing_requirements(player, id, (level + queued + 1) as u32).is_empty() || !self.tech_allowed(player, id, (level + queued + 1) as u32) {
             return Err("");
         }
         let (g, l) = self.upgrade_cost(id, level + queued);
@@ -3470,6 +3457,9 @@ impl World {
             self.queue_unit_event(hero, EVENT_PLAYER_HERO_REVIVE_CANCEL, EVENT_UNIT_HERO_REVIVE_CANCEL, EventCtx { unit: hero, ..Default::default() });
             return;
         }
+        if u.extra.upgrading.is_some() {
+            return self.cancel_upgrade(h);
+        }
         if u.constructing.is_some() {
             let id = u.type_id;
             // ConstructionRefundRate, less the share of life the structure lost while
@@ -3512,7 +3502,7 @@ impl World {
     /// [`World::cancel_last`] refunds.
     pub fn cancel_queue_at(&mut self, h: u32, slot: usize) {
         let Some(u) = self.unit(h) else { return };
-        if u.revive.is_some() || u.constructing.is_some() {
+        if u.revive.is_some() || u.constructing.is_some() || u.extra.upgrading.is_some() {
             return self.cancel_last(h);
         }
         let owner = u.owner;
@@ -3767,16 +3757,6 @@ impl World {
             u.extra.queue_tokens.remove(0);
         }
         u.queue_started = false;
-        // A structure upgrade (the building's Upgrade list) transforms it in place.
-        let from = u.type_id;
-        let id_s = crate::objects::id_str(id);
-        if self.objects.units.get(from).is_some_and(|o| o.list("Upgrade").iter().any(|x| x.trim() == id_s)) {
-            self.transform_unit(h, id);
-            let sound = format!("UpgradeComplete{}", self.race_label(owner));
-            self.requests.push(Request::Completed { unit: h, id, level: 1, sound });
-            self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_UPGRADE_FINISH, EVENT_UNIT_UPGRADE_FINISH, EventCtx::default());
-            return;
-        }
         let radius = self.objects.units.get(id).map_or(16.0, |o| o.real("collision"));
         // About the structure's footprint, facing east (`FUN_6f677870` given 0; read:
         // the acolyte's heading 0 in the save).

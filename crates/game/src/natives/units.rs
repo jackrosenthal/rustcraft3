@@ -753,8 +753,14 @@ pub fn remove_unit(w: &mut World, h: u32) {
     // (`FUN_6f23b030`; read: a save's Neutral Passive gold mines, six made, one removed
     // for the haunted mine, its hidden one added: six present; provisional: whether its
     // listeners hear of it).
-    if let Some((owner, type_id)) = w.unit(h).filter(|u| u.constructing.is_none()).map(|u| (u.owner, u.type_id)) {
-        w.tech_reg(owner, type_id).present -= 1;
+    // (One upgrading, begun as its new type, cancels that instead, `FUN_6f6744d0` by
+    // its flag 8; provisional.)
+    if let Some((owner, type_id, upgrading)) = w.unit(h).filter(|u| u.constructing.is_none()).map(|u| (u.owner, u.type_id, u.extra.upgrading.is_some())) {
+        if upgrading {
+            w.tech_reg(owner, type_id).producing -= 1;
+        } else {
+            w.tech_reg(owner, type_id).present -= 1;
+        }
     }
     if w.unit(h).is_some() {
         // (Its agent kept for the references scripts still hold to its handle.)
@@ -1611,11 +1617,16 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             let p = (a.i(1) as f32 / 100.0).clamp(0.0, 1.0);
             with_unit(w, a, |u| if u.constructing.is_some() { u.constructing = Some(u.build_time * (1.0 - p)); })
         },
+        // The structure's Upgrade In Progress takes it (`FUN_6f48f2d0`; provisional: its
+        // end as the main clock stands then, its rise not changed).
         UnitSetUpgradeProgress => |w, _, a| {
             let p = (a.i(1) as f32 / 100.0).clamp(0.0, 1.0);
-            let id = unit_arg(w, a, 0).and_then(|u| u.queue.first().copied());
-            let t = id.and_then(|id| w.objects.units.get(id)).map_or(0.0, |o| o.real("bldtm"));
-            with_unit(w, a, |u| u.queue_progress = t * p)
+            let at = w.actions_clock();
+            with_unit(w, a, |u| {
+                if let Some(g) = u.extra.upgrading.as_mut() {
+                    g.due = (at + (g.time * (1.0 - p)) as f64) as f32;
+                }
+            })
         },
         // Damage from a script: ATTACK_TYPE_NORMAL (0) is spell damage, the rest take the
         // attack type's bonus against the target's armor type.

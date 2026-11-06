@@ -229,6 +229,11 @@ impl World {
             let art = self.objects.units.get(u.type_id).map(|o| o.str("Art")).unwrap_or_default();
             return Some(Production { kind: ProductionKind::Constructing, icons: vec![art], progress: (1.0 - left / total).clamp(0.0, 1.0) });
         }
+        if let Some(g) = &u.extra.upgrading {
+            let art = self.objects.units.get(g.to).map(|o| o.str("Art")).unwrap_or_default();
+            let left = (g.due as f64 - self.time_exact) as f32;
+            return Some(Production { kind: ProductionKind::Upgrading, icons: vec![art], progress: (1.0 - left / g.time.max(0.01)).clamp(0.0, 1.0) });
+        }
         if let Some((hero, done, need)) = u.revive {
             let art = self.unit(hero).and_then(|hu| self.objects.units.get(hu.type_id)).map(|o| o.str("Art")).unwrap_or_default();
             return Some(Production { kind: ProductionKind::Reviving, icons: vec![art], progress: (done / need.max(0.01)).clamp(0.0, 1.0) });

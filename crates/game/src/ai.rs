@@ -650,11 +650,17 @@ impl World {
             // common.ai adds Keeps, Berserkers, and the like itself (measured: our
             // TownCount(HEAD_HUNTER) read 6 for three Headhunters, each counted again as
             // a Berserker, so Human02's Orcs trained none).
-            if u.type_id == id && (!done || u.constructing.is_none() && !u.queue.contains(&u.type_id)) {
+            // (A structure upgrading counts as the type it was, and as one of its new type
+            // in progress; provisional.)
+            let (type_id, upgrading_to) = u.extra.upgrading.as_ref().map_or((u.type_id, None), |g| (g.from, Some(g.to)));
+            if type_id == id && (!done || u.constructing.is_none() && !u.queue.contains(&type_id)) {
                 n += 1;
             }
             if !done {
                 n += u.queue.iter().filter(|q| **q == id).count() as i32;
+                if upgrading_to == Some(id) {
+                    n += 1;
+                }
                 // A hero being revived at an altar counts as being made, as units in
                 // training do (without it, StartUnit held back the hero's whole cost
                 // for the length of the revive, and an Undead computer built nothing
@@ -710,7 +716,7 @@ impl World {
         // Town hall tiers and other structure upgrades transform an existing structure.
         let id_s = crate::objects::id_str(id);
         let upgradable = self.ai_units(p).into_iter().find(|&h| {
-            self.unit(h).is_some_and(|u| u.is_building && u.constructing.is_none() && u.queue.is_empty())
+            self.unit(h).is_some_and(|u| u.is_building && u.constructing.is_none() && u.extra.upgrading.is_none() && u.queue.is_empty())
                 && self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).is_some_and(|bo| bo.list("Upgrade").iter().any(|x| x.trim() == id_s))
         });
         if let Some(b) = upgradable {

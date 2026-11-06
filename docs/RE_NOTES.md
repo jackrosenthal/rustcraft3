@@ -4411,6 +4411,49 @@ Formats the port made its own, to be replaced by the original's:
   provisional: when in the structure's end (here after its finish events, as the
   structure's event 0xd01da, `FUN_6f679d50`, follows them; the trace cannot tell);
   not yet in the port: the load and wood cases, the second mine.
+- A structure's upgrade (an order, flags 0x40, the new type's id as its order) goes to
+  its Upgrade ability (`Aupg`, CAbilityUpgrade; its vf3, 0x6f5a5990, finds the order
+  among the type's Upgrade list, vf200 0x6f582970 checks it, vf192 0x6f581060 the
+  cost), which makes an Upgrade In Progress (`AUnP`, CAbilityUpgradeInProgress,
+  `FUN_6f56c660`, made with its real), gives it to the unit (`FUN_6f48b4c0`), and
+  starts it (its vf212, 0x6f59cf30): the cost paid (`FUN_6f25b740`, `FUN_6f25b780`:
+  the new type's, the old's given back unless RelativeUpgradeCost reads as set), then
+  as UpgradeInProgressIdChange reads as set the unit's change of type at once
+  (`FUN_6f670950` with 0x101; else only its tech tree and looks would change then, the
+  type at the end), then the rise (`FUN_6f41b790`, `FUN_6f3f5950`: its modifier and
+  threshold listener, `FUN_6f436b00`, event 0xd01c4), then its events
+  (`FUN_6f67da80`, event 0x80242).  The change of type (`FUN_6f670950`) changes the
+  owner's tech tree (`FUN_6f6703b0`: with 1 the old type, added, taken from present,
+  `FUN_6f266f70` and `FUN_6f23b030`, and the new one begun, `FUN_6f26b140` and
+  `FUN_6f249cf0`), the unit's abilities, and its sight, a modifier over 3 seconds as a
+  change of day makes (`FUN_6f6708a0`, the unit's +0x110).  Measured under winedbg by
+  the main session (Mafarazzo TD's host player's Tower of Vengeance, e000, upgraded to
+  e001 at turn 21 and to e002 at turn 200, over LAN with the original): the change of
+  type from `FUN_6f670950` (its return 0x6f670a8a) with 0x101, e000 and e001, the unit
+  still e000 at its entry, and the tech tree's start of e001, both at 2.0000; the tech
+  tree's finish of e001 (`FUN_6f22f6a0` from `FUN_6f262f30`) at 17.0000; the same for
+  e002 at 19.8977 and 34.8977, the main clock as each turn's actions were carried out
+  (the port's last main tick of the turn before, 1.999998 and 19.897661) and the new
+  type's build time, 15, on.  Traced: the order makes `+ord`, `tskA`, `AUnP`, its
+  `` `rel ``, the sight's `` `rcm ``, and the rise's `` `rcm `` and `` `rtl ``; in the
+  next turn's first step, after the turn's timers due before (the leaderboard
+  trigger's objects at 2.0), go the `tskA`, what the change let go, and the `+ord`
+  (from e001 to e002, a type that upgrades to nothing, the Upgrade ability's real and
+  then itself; from e000 to e001 the abilities stayed, both types' lists the same);
+  the sight's modifier goes 3 seconds on (turns 51 and 230); the upgrade is done (vf205,
+  0x6f5a75f0, then `CAbilityInProgress`'s vf205, 0x6f427f10: the tech tree's finish,
+  then Upgrade In Progress taken away, `FUN_6f48e8a0`, then its events, `FUN_6f67d960`,
+  event 0x80244) with the rise's listener, its modifier, the real, and Upgrade In
+  Progress freed at once, in that order (turn 171), nothing made.  The port does so
+  (`World::upgrade_structure_by`, `World::upgrades_to`): the mafv2 game's keepalives
+  agree to turn 308 (the creep paths' known difference at 309), where they parted at 21.
+  Provisional: the data's reads (MiscGame.txt has UpgradeInProgressIdChange and
+  RelativeUpgradeCost 0, yet the first behaved as set; the port pays the new type's
+  whole cost), the objects of types whose ability lists differ, an order by script or
+  by an AI, the event's data agent, and what an upgrading unit counts as in the AI's
+  and the requirements' counts (the old type, as before).  A cancel (vf206,
+  0x6f5a73b0) gives back UpgradeRefundRate of the cost and the old type
+  (`FUN_6f670950` with 0x102); not traced.
 - A built structure's Blight Growth (a human one's dispel, Abds: 64 every 0.08 to
   768) waits while Build In Progress is on it (`CAbilityBlightGrowth`'s vf105 and
   vf106, read as an ability's coming and going, vf106 from `FUN_6f48e8a0` as Build

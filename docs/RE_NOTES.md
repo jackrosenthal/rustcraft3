@@ -4032,6 +4032,15 @@ Formats the port made its own, to be replaced by the original's:
   the original (its event's handle the next after its trigger's), nor now in the
   port; each unit's order (its record's fifteenth and sixteenth fields: `+ord`, or
   `ordt` with its point and target) is given again without its events.
+- A player's build order (a point order, flags 4, the structure's id as its order)
+  makes the AI's build order's objects (`ord.`, two blocks, …, `tskO`, a task, a
+  block, its walk's `^clg ^clu l^pa`), its `^clg` freed at once and its first block and
+  last six with the next turn's orders, but no last order as the AI's makes; the
+  structure is begun as an AI's peasant's is (its construct order, the rise anew, the
+  build order's leftovers).  Traced over LAN with the original: Mafarazzo TD's host
+  player's peasant sent to build an Arrow Tower at turn 31, begun at turn 182.
+  (Provisional: a builder that works on its structure's alone; a flyer's walk to its
+  site is not yet the engine's in the port, its begin six turns early.)
 - A construction is done (`CAbilityBuildInProgress`'s vf205, 0x6f427e40, from
   `FUN_6f424320` on its listener's event 0xd01c4) on the main clock at its build time
   from the step its rise began in: the step it was begun in, or for a builder still

@@ -1057,7 +1057,13 @@ impl Game {
                 self.formation(player, units);
                 O::Done
             }
-            C::Build { worker, id, x, y } => res(self.world.order_build(worker, id, x, y)),
+            C::Build { worker, id, x, y } => {
+                let r = self.world.order_build(worker, id, x, y);
+                if r.is_ok() {
+                    self.world.player_build_objects(worker);
+                }
+                res(r)
+            }
             C::Train { building, id } => res(self.world.train(building, id)),
             C::Research { building, id } => res(self.world.research_at(building, id)),
             C::Upgrade { building, id } => res(self.world.upgrade_structure(building, id)),

@@ -643,6 +643,7 @@ impl World {
         // 933.5 away.)
         let found: Vec<u32> = self.unit_order.iter().copied().filter(|&o| o != h && self.unit(o).is_some_and(|t| !t.dead && (t.x - x).hypot(t.y - y) <= range + t.collision && !t.extra.detected_by.iter().any(|d| d.0 == owner))).collect();
         for o in found {
+            log::trace!("{h} detects {o} ({:?})", self.unit(o).map(|t| (crate::objects::id_str(t.type_id), t.owner, t.x, t.y, t.hidden)));
             let s = self.tags.take(codes::class::DETECTION);
             if let Some(t) = self.unit_mut(o) {
                 t.extra.detected_by.push((owner, s));

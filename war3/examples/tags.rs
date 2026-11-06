@@ -171,12 +171,12 @@ fn main() -> anyhow::Result<()> {
             println!("distinct units near detectors: {}", all.len());
         }
         // TAGS_SPEEDS="<turn>,<player>": that player's living units then, in their order:
-        // handle, type, move speed, and place.
+        // handle, type, move speed, place, and object id.
         if let Some((t, p)) = std::env::var("TAGS_SPEEDS").ok().and_then(|v| v.split_once(',').and_then(|(t, p)| Some((t.parse::<u32>().ok()?, p.parse::<u8>().ok()?)))) {
             if t == n {
                 for &h in &g.world.unit_order {
                     if let Some(u) = g.world.unit(h).filter(|u| u.owner == p && !u.dead) {
-                        println!("speed {h} {} {:.4} at {:.3} {:.3}", w3_game::objects::id_str(u.type_id), u.move_speed, u.x, u.y);
+                        println!("speed {h} {} {:.4} at {:.3} {:.3} oid {} {}", w3_game::objects::id_str(u.type_id), u.move_speed, u.x, u.y, u.extra.oid.0, u.extra.oid.1);
                     }
                 }
             }

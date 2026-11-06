@@ -1077,6 +1077,31 @@ impl World {
         }
     }
 
+    /// The objects of a build order a player gives a worker: the AI's (`AI_BUILD`), its
+    /// `^clg` gone at once, and with the tick's orders its first block and the build's
+    /// last block and the five before it, but no last order made (traced: Mafarazzo TD's
+    /// peasant sent by its player over LAN to build an Arrow Tower, then begun as an
+    /// AI's peasant's).  (Provisional: a builder that works on its structure's alone, as
+    /// the engine gives builders their build ability by race; others keep none.)
+    pub(crate) fn player_build_objects(&mut self, h: u32) {
+        let race = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map(|o| o.str("race").to_ascii_lowercase()).unwrap_or_default();
+        if matches!(race.as_str(), "orc" | "nightelf" | "undead") {
+            return;
+        }
+        let order: Vec<u32> = AI_BUILD.iter().map(|c| self.tags.take(c)).collect();
+        self.tags.release(order[14]);
+        self.tags.issued.extend([1, 13, 12, 11, 10, 9, 8].map(|k| order[k]));
+        // (A flyer's walk is not yet the engine's: Mafarazzo TD's flying peasant keeps
+        // the older walk to its site.)
+        let fly = self.move_kind(h) == crate::pathing::Move::Fly;
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.ai_order = order;
+            u.extra.build_legacy = fly;
+            u.extra.mover = None;
+            u.extra.coarse = None;
+        }
+    }
+
     /// The summoning workers whose orders end by `now` on the main clock (the unit's
     /// event 0xd019d): an AI's build order then makes a task and lets go its objects,
     /// at the turn's end in the order traced: its `tsk.`, three tasks from the last, a

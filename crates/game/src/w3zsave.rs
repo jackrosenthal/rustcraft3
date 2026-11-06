@@ -1888,14 +1888,23 @@ impl World {
                 values[3] = f(m.vy);
                 values[5] = f(m.heading);
                 words = [c.0, c.1, 0];
-                reals[4] = f(m.vx).hypot(f(m.vy));
+                // (Its speed the gait's top, not its velocity's length, a little short of
+                // it as the engine holds it: read, all 646 moving positions of 37 of the
+                // original's saves, Mafarazzo TD's creeps' 6.2227297 with velocities
+                // 6.222687 long.)
+                reals[4] = values[4];
                 reals[6] = f(m.heading);
                 // (A lumber walker's 0, 0: read.)
                 flags = if lumber { [0, 0] } else { [1, 0] };
-                // (One whose pathing a script turned off: 0.49 and 0, 0; read, Mafarazzo
-                // TD's creeps; provisional.)
-                if u.extra.no_pathing {
+                // (A walk to a point's reach 0.49, its first real: read, Booty Bay's LAN
+                // save's two walkers and Mafarazzo TD's 180 creeps, with and without
+                // pathing.  One whose pathing a script turned off has its flags 0, 0;
+                // read, Mafarazzo TD's creeps; provisional.  Not yet: the first flag, set
+                // exactly while its seventh real is not its heading, 191 of those 646.)
+                if u.extra.gold_run.is_none() {
                     reals[0] = 0.49;
+                }
+                if u.extra.no_pathing {
                     flags = [0, 0];
                 }
             }

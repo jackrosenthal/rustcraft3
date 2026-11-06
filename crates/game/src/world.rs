@@ -1814,6 +1814,7 @@ impl World {
     pub(crate) fn run_step_region_events(&mut self, vm: &mut Vm) -> Vec<u32> {
         let doomed = self.tags.doomed.len();
         let after = std::mem::replace(&mut self.after_steps, true);
+        log::debug!("step triggers at {:.3}: {:?}", self.time, self.step_region_events.iter().map(|(e, q)| (*e, q.iter().map(|c| c.unit).collect::<Vec<_>>())).collect::<Vec<_>>());
         for (e, queue) in std::mem::take(&mut self.step_region_events) {
             for ctx in queue {
                 if self.unit(ctx.unit).is_some() {

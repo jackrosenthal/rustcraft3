@@ -5231,6 +5231,33 @@ Formats the port made its own, to be replaced by the original's:
   last freed then; at 94 a re-order's objects between the look's detections in the
   original's, the port's all before it); from about turn 144 on they part for good,
   born one more (or seven fewer).
+- Where the loads' one-turn parts fall (the port's steps' region triggers by
+  registration, `World::run_step_region_events`, against the keepalives): every
+  step whose orders come from three registrations at once agrees when it is not the
+  tick's last (the load's turns 5, 14, 57, 67, and 84), and parts when it is (45 and
+  80); two registrations at the tick's last step agree (101).  In both parting turns
+  the original's next slot is, among the port's frees, the second order's tenth
+  object (its tasks freed 13 down to 8), with the births the same: as though A's 15
+  and B's first 12 frees came before C took its objects, C's `+tex` then taking
+  that slot (provisional; not yet read in the original).  The lasting split begins
+  at the first creep to leak after the load (turn 144's tick: WalkEnd's trigger
+  exploding it, ExplodeUnitBJ, Losing life, and the leaderboard trigger on its death:
+  three `+tex`, the death's nine), born one more in the original's; the save game's
+  lasting split at turn 686 is its first leak too, born one more there with the same
+  next slot (one more object made and freed).
+- A walker's clustered position (`` `pcu ``, `FUN_6f16f890`: its words +0x9c and
+  +0xa0, +0xa4, eight reals, +0xd0, +0xd4, the flag word +0xd8, then its first flag
+  set when +0x4 or +0x8 is, its second when it has a separation, +0xac): in all 646
+  moving positions of 37 of the original's saves its fifth real is its top speed
+  (the fifth value), not its velocity's length, and its first flag is set exactly when
+  its seventh real is not its heading (191 of them, turning; their sixth and eighth
+  reals not yet named); a walk to a point's first real is 0.49 (Mafarazzo TD's 180
+  creeps, Booty Bay's LAN save's two walkers).  The port writes the first two so.
+  A creep's own path's local way keeps a second word near the path manager's step
+  counter when its search was made (2736 for one, its cluster's first counter 81 at
+  the save's 2816: of the 180 walkers' first counters 70 are 2817 less it and 24
+  one less than that, the rest's word 0; provisional, not yet
+  written).
 - The positions' stamps (CPoPosCl's base real): a walker's is the main clock of its
   last step's tick (Mafarazzo TD's 180 walkers 53.753674 with the main clock at
   53.783657), as the port now writes.  The objects' word of that save still parts

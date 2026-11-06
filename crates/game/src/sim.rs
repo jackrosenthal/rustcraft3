@@ -2997,10 +2997,14 @@ impl World {
     /// A worker's order to build a structure at a point, paid for at once (measured:
     /// the original takes a barracks' cost as IssueBuildOrder is called, and gives it
     /// all back at once when the peasant is stopped or killed on its way).
+    ///
+    /// A structure that uses food needs it free, as a unit trained does (Nofood; maps
+    /// limit structures so: Mafarazzo TD's HSBC uses the one food its Castle makes;
+    /// provisional: whether the start checks again).
     pub fn order_build(&mut self, h: u32, id: Id, x: f32, y: f32) -> Result<(), &'static str> {
         let Some(owner) = self.unit(h).map(|u| u.owner) else { return Err("") };
         self.settle_paid_build(h);
-        self.spend(owner, id, false)?;
+        self.spend(owner, id, true)?;
         if let Some(u) = self.unit_mut(h) {
             u.action = Action::Build { id, x, y };
             u.path.clear();

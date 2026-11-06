@@ -1343,6 +1343,10 @@ these are the findings behind them.
   Tower attacks what comes near, and Mafarazzo TD's 200s Missile Tank (acquire 1200)
   is not held to its Arrow Tower's 700.  The port re-reads it, and the model scale, as
   the upgrade finishes (provisional: whether a range a script set is kept).
+- A structure that uses food (fused) needs it free to be ordered built, as a unit
+  trained does (`Nofood`); custom maps limit structures so (Mafarazzo TD's HSBC uses
+  1 and its Castle makes 1: one HSBC a player).  Melee data has no such structure but
+  the neutral `nfgo`.  Provisional: whether the construction's start checks again.
 
 ## Where the port departs from the original
 

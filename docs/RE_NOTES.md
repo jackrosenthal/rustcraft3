@@ -46,6 +46,12 @@ original images.
 - `R2S` formats with 3 decimals; `S2I` is `atoi`.
 - Invalid-player defaults: `GetPlayerController` → 5, `GetPlayerRace` → 1.
 - `GetCameraMargin` reads `UI\MiscData.txt [CameraMargins]` × 128.
+- Leaderboard items by index (`FUN_6f2af270`): none for an index below 0 or past the
+  last, so that LeaderboardSetItemValue, Label, Style, LabelColor, and ValueColor do
+  nothing then.  LeaderboardGetPlayerIndex (`FUN_6f20d880`) is -1 for a player without
+  an item, a null one too: Blizzard.j's LeaderboardSetPlayerItemValueBJ for a killer's
+  owner when a unit dies unkilled (Mafarazzo TD's kill count on a creep exploded at the
+  end of its path) changes nothing.
 
 ## Rendering
 

@@ -35,6 +35,12 @@ fn leaderboard_ref(w: &World, h: u32) -> Option<&Leaderboard> {
     }
 }
 
+/// A leaderboard's item by index: none for one out of range, a negative one too (the -1
+/// LeaderboardGetPlayerIndex gives for a player without an item; `FUN_6f2af270`).
+fn leaderboard_item(w: &mut World, h: u32, i: i32) -> Option<&mut LeaderboardItem> {
+    leaderboard(w, h)?.items.get_mut(usize::try_from(i).ok()?)
+}
+
 fn multiboard(w: &mut World, h: u32) -> Option<&mut Multiboard> {
     match w.handles.get_mut(h) {
         Some(Obj::Multiboard(b)) => Some(b),
@@ -118,11 +124,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             }
             none()
         },
-        LeaderboardSetItemValue => |w, _, a| { let (i, v) = (a.i(1), a.i(2)); if let Some(it) = leaderboard(w, a.h(0)).and_then(|b| b.items.get_mut(i.max(0) as usize)) { it.value = v; } none() },
-        LeaderboardSetItemLabel => |w, _, a| { let (i, v) = (a.i(1), w.localized(&a.s(2))); if let Some(it) = leaderboard(w, a.h(0)).and_then(|b| b.items.get_mut(i.max(0) as usize)) { it.label = v; } none() },
-        LeaderboardSetItemStyle => |w, _, a| { let (i, s) = (a.i(1), [a.b(2), a.b(3), a.b(4)]); if let Some(it) = leaderboard(w, a.h(0)).and_then(|b| b.items.get_mut(i.max(0) as usize)) { it.style = s; } none() },
-        LeaderboardSetItemLabelColor => |w, _, a| { let (i, c) = (a.i(1), rgba(a, 2)); if let Some(it) = leaderboard(w, a.h(0)).and_then(|b| b.items.get_mut(i.max(0) as usize)) { it.label_color = Some(c); } none() },
-        LeaderboardSetItemValueColor => |w, _, a| { let (i, c) = (a.i(1), rgba(a, 2)); if let Some(it) = leaderboard(w, a.h(0)).and_then(|b| b.items.get_mut(i.max(0) as usize)) { it.value_color = Some(c); } none() },
+        LeaderboardSetItemValue => |w, _, a| { let (i, v) = (a.i(1), a.i(2)); if let Some(it) = leaderboard_item(w, a.h(0), i) { it.value = v; } none() },
+        LeaderboardSetItemLabel => |w, _, a| { let (i, v) = (a.i(1), w.localized(&a.s(2))); if let Some(it) = leaderboard_item(w, a.h(0), i) { it.label = v; } none() },
+        LeaderboardSetItemStyle => |w, _, a| { let (i, s) = (a.i(1), [a.b(2), a.b(3), a.b(4)]); if let Some(it) = leaderboard_item(w, a.h(0), i) { it.style = s; } none() },
+        LeaderboardSetItemLabelColor => |w, _, a| { let (i, c) = (a.i(1), rgba(a, 2)); if let Some(it) = leaderboard_item(w, a.h(0), i) { it.label_color = Some(c); } none() },
+        LeaderboardSetItemValueColor => |w, _, a| { let (i, c) = (a.i(1), rgba(a, 2)); if let Some(it) = leaderboard_item(w, a.h(0), i) { it.value_color = Some(c); } none() },
 
         CreateMultiboard => |w, _, _| {
             w.tags.take(codes::class::MULTIBOARD);

@@ -68,6 +68,10 @@ pub struct Player {
     pub controller: i32,
     pub slot_state: i32,
     pub start_location: i32,
+    /// ForcePlayerStartLocation set its start location: the game's placement leaves it
+    /// there (`FUN_6f1e0510`).
+    #[serde(default)]
+    pub start_forced: bool,
     pub team: i32,
     pub handicap: f32,
     pub handicap_xp: f32,
@@ -106,6 +110,7 @@ impl Player {
             controller: map_control::NONE,
             slot_state: slot_state::EMPTY,
             start_location: -1,
+            start_forced: false,
             // Each player on a team of its own unless set (measured: GetPlayerTeam is 1 for
             // Player(1) on a map whose script sets none).
             team: id as i32,

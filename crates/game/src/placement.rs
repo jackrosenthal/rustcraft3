@@ -13,14 +13,22 @@ const PRIO_LOW: i32 = 0;
 const PRIO_HIGH: i32 = 1;
 
 impl World {
-    /// The players who take a start location: users and computers in the game.
+    /// The players who take a start location: users and computers in the game, but those
+    /// whose location the map forced (ForcePlayerStartLocation), which keep it.
     fn placed_players(&self) -> Vec<u8> {
         (0..crate::types::PLAYER_NEUTRAL_AGGRESSIVE)
             .filter(|&p| {
                 let pl = &self.players[p as usize];
-                pl.slot_state == slot_state::PLAYING && matches!(pl.controller, map_control::USER | map_control::COMPUTER) && pl.get_state(crate::types::player_state::OBSERVER) == 0
+                pl.slot_state == slot_state::PLAYING && matches!(pl.controller, map_control::USER | map_control::COMPUTER) && pl.get_state(crate::types::player_state::OBSERVER) == 0 && !pl.start_forced
             })
             .collect()
+    }
+
+    /// The start locations the map forced for players: taken before any is placed
+    /// (read: Mafarazzo TD, each of its 12 players forced by its slots' setup, no
+    /// placement's draws before the original's first turn).
+    fn forced_locations(&self) -> Vec<i32> {
+        self.players.iter().take(crate::types::PLAYER_NEUTRAL_AGGRESSIVE as usize).filter(|p| p.start_forced).map(|p| p.start_location).collect()
     }
 
     /// The list shuffled as `FUN_6f1d1460` does: from the second entry on, each swapped
@@ -69,7 +77,7 @@ impl World {
     /// Each team in turn takes the first of the free start locations, shuffled for it,
     /// its members in order; one with too few left ends the placing.
     fn place_randomly(&mut self, players: &[u8]) {
-        let mut taken: Vec<i32> = Vec::new();
+        let mut taken: Vec<i32> = self.forced_locations();
         for (_, members) in self.teams_of(players) {
             let free = self.shuffled((0..self.start_locations.len() as i32).filter(|l| !taken.contains(l)).collect());
             if free.len() < members.len() {
@@ -91,7 +99,7 @@ impl World {
         let mut teams = self.teams_of(players);
         // The largest teams first.
         teams.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
-        let mut taken: Vec<i32> = Vec::new();
+        let mut taken: Vec<i32> = self.forced_locations();
         let mut placed: Vec<(u8, i32)> = Vec::new();
         for (_, members) in teams {
             let anchors = self.shuffled((0..self.start_locations.len() as i32).filter(|l| !taken.contains(l)).collect());

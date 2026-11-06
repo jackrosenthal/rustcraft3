@@ -290,6 +290,10 @@ pub struct World {
     /// SuspendTimeOfDay: the day's clock stands still.
     #[serde(default)]
     pub time_of_day_suspended: bool,
+    /// The game has begun (its script's main has run): the time of day's monitor and
+    /// listener are made when it is not suspended (`World::make_time_of_day_listeners`).
+    #[serde(default)]
+    pub time_of_day_ready: bool,
     /// The cheat flags (see `cheats::flag`).
     #[serde(default)]
     pub cheat_flags: u32,
@@ -906,6 +910,7 @@ impl World {
             time_of_day_set: (0.0, 0),
             time_of_day_listeners: [None; 2],
             time_of_day_suspended: false,
+            time_of_day_ready: false,
             cheat_flags: 0,
             network: false,
             steps: 0,
@@ -1391,6 +1396,7 @@ impl World {
             Outcome::Aborted(e) => log::warn!("thread aborted: {e}"),
         }
         self.ctx = saved;
+        self.destroy_dropped(vm);
         let outer = std::mem::take(&mut self.running_execution);
         self.run_pending(vm);
         self.running_execution = outer;
@@ -1406,7 +1412,30 @@ impl World {
             Outcome::Finished(_) => {}
         }
         self.ctx = saved;
+        self.destroy_dropped(vm);
         self.run_pending(vm);
+    }
+
+    /// Destroys the objects whose handles' last reference a script's store took
+    /// (`Vm::dropped`): the handle free at once, the object's agent released as an event
+    /// due at once (traced: Mafarazzo TD's first `bj_lastStartedTimer` freed after the
+    /// Timer trigger's timer dialog, before its execution).
+    fn destroy_dropped(&mut self, vm: &mut Vm) {
+        for h in std::mem::take(&mut vm.dropped) {
+            let handler = match self.handles.get(h) {
+                Some(Obj::Timer(t)) => t.handler,
+                Some(Obj::Group(_)) => None,
+                // (Blizzard.j's initializers make only timers and groups.)
+                _ => continue,
+            };
+            self.handles.release(h);
+            if let Some(s) = self.tags.handle_slots.remove(&h) {
+                self.tags.doom(s);
+            }
+            if let Some(s) = handler {
+                self.tags.doom(s);
+            }
+        }
     }
 
     fn run_pending(&mut self, vm: &mut Vm) {
@@ -2339,7 +2368,26 @@ impl World {
             // (Its triggers' event, EVENT_GAME_TIMER_EXPIRED: read, the original's save of
             // a timer event's trigger waiting, its context's event id 4.)
             let ctx = EventCtx { event_id: crate::event_ids::EVENT_GAME_TIMER_EXPIRED, ..ctx };
-            self.fire(vm, ctx, |_, k| matches!(k, EventKind::TimerExpire(t) if *t == timer));
+            let regs: Vec<u32> = self.events.iter().copied().filter(|&e| matches!(self.handles.get(e), Some(Obj::Event(r)) if matches!(r.kind, EventKind::TimerExpire(t) if t == timer))).collect();
+            for e in regs {
+                // A script's expiry registration (TriggerRegisterTimerExpireEvent) makes
+                // the event's data and gives it a handle, which it lets go as its trigger
+                // is done; the data goes at the turn's end, after the execution
+                // (CTimerExpireEventReg::vf3_6f27cfe0; traced: Mafarazzo TD's New_Round on
+                // its timer's expiry).  A timer event's (TriggerRegisterTimerEvent) makes
+                // none (traced: the same map's two).
+                let timer_event = self.tags.handle_ids.get(&e).and_then(|(s, _)| self.tags.live.get(s)).is_some_and(|c| &c.0 == codes::class::TIMER_EVENT);
+                let data = (!timer_event).then(|| (self.tags.take(codes::class::TIMER_EXPIRED_DATA), self.handles.insert(Obj::Opaque("timer expiry event data".into()))));
+                self.fire_registrations(vm, ctx.clone(), vec![e], true);
+                if let Some((d, h)) = data {
+                    self.handles.release(h);
+                    if self.exec_at_tick_end {
+                        self.tags.issued.push(d);
+                    } else {
+                        self.tags.doom(d);
+                    }
+                }
+            }
         }
     }
 
@@ -2554,6 +2602,7 @@ impl Host for World {
     /// handle then (read: a crypt the undead computer begins takes its handle after the
     /// force its trigger made first, in a save's handle table).
     fn call_native(&mut self, vm: &mut Vm, native: u32, args: &[Value]) -> NativeResult {
+        self.destroy_dropped(vm);
         let translated: Vec<Value>;
         let args = if args.iter().any(|v| matches!(v, Value::Handle(h) if self.handles.is_alias(*h))) {
             translated = args.iter().map(|v| match v {
@@ -2572,6 +2621,23 @@ impl Host for World {
 }
 
 impl World {
+    /// The time of day's monitor and listener, which its real links (`FUN_6f28bbf0`), in
+    /// a game begun with the time of day running and none made: with three counts of the
+    /// property module's before its modifier and one after its listener (`FUN_6f161800`
+    /// from `FUN_6f28bc9d`'s making of them; traced).  None while it is suspended (read:
+    /// Mafarazzo TD, its time of day suspended as its script's main runs, without them
+    /// at the original's first turn).
+    pub(crate) fn make_time_of_day_listeners(&mut self) {
+        if !self.time_of_day_ready || self.time_of_day_suspended || self.time_of_day_listeners[0].is_some() {
+            return;
+        }
+        self.tags.bump_prop(3, "setp");
+        let rcm = self.tags.take(codes::class::CONTINUOUS_MODIFIER);
+        let rtl = self.tags.take(codes::class::THRESHOLD_LISTENER);
+        self.time_of_day_listeners = [Some(rcm), Some(rtl)];
+        self.tags.bump_prop(1, "setq");
+    }
+
     /// A weather effect added at the first free place of the weather list, its id.
     pub fn add_weather(&mut self, w: crate::types::Weather) -> u32 {
         let i = self.weathers.iter().position(|s| s.is_none()).unwrap_or(self.weathers.len());

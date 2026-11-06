@@ -150,7 +150,15 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetPlayerSlotState => |w, _, a| int(player_arg(w, a, 0).map_or(0, |p| w.players[p as usize].slot_state)),
         GetPlayerStartLocation => |w, _, a| int(player_arg(w, a, 0).map_or(-1, |p| w.players[p as usize].start_location)),
         SetPlayerStartLocation => |w, _, a| { let s = a.i(1); with_player(w, a, |p| p.start_location = s) },
-        ForcePlayerStartLocation => |w, _, a| { let s = a.i(1); with_player(w, a, |p| p.start_location = s) },
+        // Forced, the location is the player's whatever the game's placement (`FUN_6f1e0510`:
+        // the location marked taken and forced, the player marked placed).
+        ForcePlayerStartLocation => |w, _, a| {
+            let s = a.i(1);
+            with_player(w, a, |p| {
+                p.start_location = s;
+                p.start_forced = true;
+            })
+        },
         SetPlayerTeam => |w, _, a| { let s = a.i(1); with_player(w, a, |p| p.team = s) },
         GetPlayerTeam => |w, _, a| int(player_arg(w, a, 0).map_or(0, |p| w.players[p as usize].team)),
         // Kept within 0.01 and 100 (measured: -1 and 0 read 0.01, 200 reads 100).  The

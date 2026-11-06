@@ -9,7 +9,11 @@ fn main() -> anyhow::Result<()> {
     let a: Vec<String> = std::env::args().collect();
     let data = war3::data::GameData::open(Path::new(&a[1]), false)?;
     let map = std::sync::Arc::new(w3_mpq::Archive::open(&a[2])?);
+    let map_info = w3_formats::map::MapInfo::parse(&map.read("war3map.w3i")?)?;
     data.chain.mount(map, None, war3::data::PRIORITY_MAP);
+    // The map's rule set, as a game of it has (`war3::scene`): melee maps' (w3i flag
+    // 0x4) the melee one, others' the custom one.
+    data.select_data_set(if map_info.flags & 0x4 != 0 { war3::data::DataSet::Melee } else { war3::data::DataSet::Custom });
     let seed = u32::from_str_radix(&a[3], 16)?;
     let reference: Vec<String> = std::fs::read_to_string(&a[4])?.lines().filter(|l| !l.starts_with('#')).map(|l| l.to_string()).collect();
     // TAGS_RACES="<race>,<race>": the two players' races (1 human to 4 night elf; empty
@@ -21,6 +25,38 @@ fn main() -> anyhow::Result<()> {
     // numbers them; level 0 easy, 1 normal, 2 insane).
     if let Some((r, l)) = std::env::var("TAGS_COMPUTER").ok().and_then(|v| v.split_once(',').map(|(r, l)| (r.parse::<i32>().ok(), l.parse::<i32>().ok()))) {
         lobby.push(w3_game::LobbySlot { player: 2, fill: w3_game::SlotFill::Computer, name: None, race: r, team: 2, color: 2, handicap: 100.0, difficulty: l.unwrap_or(1) });
+    }
+    // TAGS_MAPLOBBY: the lobby the host's W3HOSTMAP offers, from the map's own players:
+    // its first two users the host and the original, its other users' slots empty, its
+    // computers computers; each slot's team its player's force with custom forces, its
+    // color its player's, its race the map's with fixed player settings.
+    if std::env::var("TAGS_MAPLOBBY").is_ok() {
+        let fixed = map_info.flags & 0x20 != 0;
+        let forces = map_info.flags & 0x40 != 0;
+        let mut players: Vec<_> = map_info.players.iter().filter(|p| p.kind == 1 || p.kind == 2).collect();
+        players.sort_by_key(|p| p.id);
+        let mut users = 0;
+        lobby = players
+            .iter()
+            .enumerate()
+            .map(|(k, p)| {
+                let team = if forces { map_info.forces.iter().position(|f| f.players & (1 << p.id) != 0).unwrap_or(0) as i32 } else { k as i32 };
+                let race = if fixed { Some(p.race as i32) } else { races.get(users).copied().flatten() };
+                let fill = match p.kind {
+                    2 => w3_game::SlotFill::Computer,
+                    _ => {
+                        users += 1;
+                        match users {
+                            1 => w3_game::SlotFill::Remote,
+                            2 => w3_game::SlotFill::Local,
+                            _ => w3_game::SlotFill::Empty,
+                        }
+                    }
+                };
+                let name = matches!(fill, w3_game::SlotFill::Remote | w3_game::SlotFill::Local).then(|| format!("P{}", p.id));
+                w3_game::LobbySlot { player: p.id as u8, fill, name, race, team, color: p.id as i32, handicap: 100.0, difficulty: 1 }
+            })
+            .collect();
     }
     w3_game::tags::RECORD.store(true, std::sync::atomic::Ordering::Relaxed);
     // TAGS_DRAWS: print each of the main generator's draws as it is made, from the load.

@@ -113,7 +113,20 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         },
         SetTimeOfDayScale => |w, _, a| { w.time_of_day_scale = a.r(0); none() },
         GetTimeOfDayScale => |w, _, _| real(w.time_of_day_scale),
-        SuspendTimeOfDay => |w, _, a| { w.time_of_day_suspended = a.b(0); none() },
+        // Suspended, the time of day's listener goes; resumed in a game begun, it is made
+        // again (`FUN_6f28bb00`, `FUN_6f28bb80`; `World::make_time_of_day_listeners`).
+        SuspendTimeOfDay => |w, _, a| {
+            w.time_of_day_suspended = a.b(0);
+            if a.b(0) {
+                // (Provisional: the order the two go in.)
+                for s in std::mem::take(&mut w.time_of_day_listeners).into_iter().rev().flatten() {
+                    w.tags.release(s);
+                }
+            } else {
+                w.make_time_of_day_listeners();
+            }
+            none()
+        },
         VersionGet => |w, _, _| int(w.version),
         VersionCompatible => |w, _, a| boolean(a.h(0) as i32 <= w.version),
         VersionSupported => |w, _, a| boolean(a.h(0) as i32 <= w.version),

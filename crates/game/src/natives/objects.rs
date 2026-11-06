@@ -40,12 +40,14 @@ pub fn create_destructable(w: &mut World, id: Id, x: f32, y: f32, z: Option<f32>
     };
     let path_tex = o.str("pathTex");
     let h = w.handles.insert(Obj::Destructable(Box::new(d)));
-    // Its tags (read under Wine): itself, its position, five regions; one made dead
-    // only its position's two (read: Forestwalk's four trees placed dead, its pathing
-    // map listing none of their cells).
+    // Its tags (read under Wine): itself, its position, five regions; one made dead, or
+    // one without a pathing texture, only its position's two (read: Forestwalk's four
+    // trees placed dead, its pathing map listing none of their cells; Mafarazzo TD's two
+    // OTds, pathTex "_", at the original's first turn).
     let oid = w.tags.take_id(codes::class::DESTRUCTABLE);
     let mut slots = vec![w.tags.take(codes::class::POSITION)];
-    for _ in 0..if dead { 2 } else { 5 } {
+    let no_path = path_tex.is_empty() || path_tex == "_";
+    for _ in 0..if dead || no_path { 2 } else { 5 } {
         slots.push(w.tags.take(codes::class::PATHING_REGION));
     }
     if let Some(Obj::Destructable(d)) = w.handles.get_mut(h) {

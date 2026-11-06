@@ -446,6 +446,11 @@ pub struct Vm {
     /// The globals whose values their initializers set: a reference the original's
     /// handle table does not count (read: Blizzard.j's timers and groups made so, 1).
     pub init_set: BTreeSet<u32>,
+    /// Handles a store took the last reference of: a value its global's initializer set
+    /// (uncounted), overwritten with nothing else holding it, its count down to none
+    /// (read: Mafarazzo TD's StartTimerBJ, Blizzard.j's first `bj_lastStartedTimer`
+    /// freed).  The game destroys their objects.
+    pub dropped: Vec<u32>,
     initializing: bool,
     /// The contexts' places, shared with the game's other machines.
     pub places: Rc<RefCell<Places>>,
@@ -477,7 +482,7 @@ impl Vm {
         let vars = module.globals.iter().map(|_| Var::default()).collect();
         let places = Rc::new(RefCell::new(Places::default()));
         let main = Thread { place: places.borrow_mut().take(), ..Default::default() };
-        Vm { module, prog, vars, strings: Strings::default(), code_strings: Vec::new(), callbacks: vec![0], callback_index: HashMap::new(), main, op_limit: 300_000, leaked: Default::default(), leak_counts: Default::default(), init_set: Default::default(), initializing: false, places, snapshot_wanted: false, snapshot: None }
+        Vm { module, prog, vars, strings: Strings::default(), code_strings: Vec::new(), callbacks: vec![0], callback_index: HashMap::new(), main, op_limit: 300_000, leaked: Default::default(), leak_counts: Default::default(), init_set: Default::default(), dropped: Vec::new(), initializing: false, places, snapshot_wanted: false, snapshot: None }
     }
 
     /// Takes the places of another machine's (the map script's), its own the next.
@@ -838,12 +843,19 @@ impl Vm {
                     let r = t.regs[c];
                     let Some(v) = Self::var(&mut self.vars, t, res) else { fail!("no variable {}", name(&prog, i.arg)) };
                     let kind = if r.kind == ty::NULL { v.decl } else { r.kind };
+                    let old = if v.decl == ty::HANDLE { v.value } else { 0 };
                     Self::set_var(&mut self.strings, v, kind, r.value);
                     if res & LOCAL == 0 {
                         if self.initializing {
                             self.init_set.insert(res);
-                        } else {
-                            self.init_set.remove(&res);
+                        } else if self.init_set.remove(&res) && old != 0 && old != r.value {
+                            let mut held = self.leak_counts.contains_key(&old);
+                            let mut see = |h: u32| held |= h == old;
+                            self.vars.iter().for_each(|v| var_handles(v, &mut see));
+                            t.handles(&mut see);
+                            if !held {
+                                self.dropped.push(old);
+                            }
                         }
                     }
                 }

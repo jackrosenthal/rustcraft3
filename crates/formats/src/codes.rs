@@ -1706,6 +1706,8 @@ pub mod class {
     pub const PLAYER_EVENT: &Code = b"pevt";
     /// `tmet`: A timer's expiry event.
     pub const TIMER_EXPIRED_EVENT: &Code = b"tmet";
+    /// `wsed`: A timer's expiry event's data (CTimerExpireEventData).
+    pub const TIMER_EXPIRED_DATA: &Code = b"wsed";
     /// `tmvt`: A timer event (TriggerRegisterTimerEvent).
     pub const TIMER_EVENT: &Code = b"tmvt";
     /// `gfvt`: A game state event.

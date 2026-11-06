@@ -113,8 +113,9 @@ fn timer_start(w: &mut World, _: &mut Vm, a: &[Value]) -> NativeResult {
         t.running = true;
         t.callback = cb;
     }
-    // A timer takes a handler with its first function and keeps it.
-    if cb.is_some() && w.timer_mut(a.h(0)).is_some_and(|t| t.handler.is_none()) {
+    // A timer takes a handler the first time it starts, with a function or none, and
+    // keeps it (`FUN_6f249ca0`; traced: Mafarazzo TD's StartTimerBJ, its null callback).
+    if w.timer_mut(a.h(0)).is_some_and(|t| t.handler.is_none()) {
         let s = w.tags.take(codes::class::HANDLER);
         if let Some(f) = cb {
             w.tags.handler_objects.insert(s, f);

@@ -30,6 +30,25 @@ original images.
   `frie`/`friend` 0x6000 (player and ally), `nots`/`notself` 0x1e000 (player, ally,
   neutral, enemy), `tote`/`totem` and `ward` both 0x10, `_` 0xfdd1f00e; an unknown
   name logs `Unknown Target Flag`.  The editor writes the plural forms (`enemies`).
+- **A map's data set**: a map whose w3i flags lack melee (0x4) loads the Custom data
+  set, whatever its players (measured: Mafarazzo TD, flags 0xdc78, its keepalive's
+  data modules 4, 7, and 9 the Custom_V1 tables' at turn 1, the melee ones' not).
+- **Forced start locations** (ForcePlayerStartLocation, `FUN_6f1e0510`): the location
+  is marked taken and forced, its player placed; the game's placement
+  (`FUN_6f1e9fd0`) leaves both, placing only the others on the locations left (its
+  Teams Together pass clears the taken marks of locations not forced).  Mafarazzo TD,
+  every player forced by its slots' setup, draws nothing for the placement: the
+  original's 16 draws of the main generator before the first turn are other draws
+  (measured with a breakpoint on `FUN_6f1b7130`), where the port had drawn 20 more.
+- **Destructables without pathing** (a pathing texture empty or `_`): two pathing
+  regions as a dead one, not five (measured: Mafarazzo TD's two OTds, its keepalive's
+  births and presence agreeing at turn 1 only so).
+- **The time of day's listeners** (`` `rcm `` and `` `rtl ``, made as the setup ends):
+  only while the time of day runs.  SuspendTimeOfDay(true) frees them and sets its
+  bit (`FUN_6f28bb00`), (false) clears it and makes them again once no bit is left
+  (`FUN_6f28bb80`, `FUN_6f28bbf0`); a map that suspends it before the setup's end
+  (Mafarazzo TD's UseTimeOfDayBJ(false) in its map initialization) has none
+  (measured: its births 1430 at turn 1, not 1438).
 
 ## Scripts
 
@@ -46,6 +65,24 @@ original images.
 - `R2S` formats with 3 decimals; `S2I` is `atoi`.
 - Invalid-player defaults: `GetPlayerController` → 5, `GetPlayerRace` → 1.
 - `GetCameraMargin` reads `UI\MiscData.txt [CameraMargins]` × 128.
+- TimerStart (`FUN_6f249ca0`) gives a timer its handler (`hdlr`) the first time it
+  starts, with a function or none (traced: Mafarazzo TD's StartTimerBJ, its callback
+  null, the handler made before CreateTimerDialogBJ's `+tid`).
+- A global's value set by its initializer is no counted reference of its handle
+  (Blizzard.j's timers and groups, count 1 each, their objects' own); a store over it
+  still lets one go, so that a value nothing else holds is destroyed: StartTimerBJ's
+  `set bj_lastStartedTimer = t` frees Blizzard.j's first timer (traced: Mafarazzo TD
+  at 18 seconds, its `+tmr` freed after the Timer trigger's timer dialog and before
+  its execution, both at the turn's end).
+- A timer's expiry registration (TriggerRegisterTimerExpireEvent) makes the event's
+  data (`wsed`, CTimerExpireEventData) as the timer expires, gives it a handle while
+  its trigger fires, and lets the handle go after (CTimerExpireEventReg's vf3,
+  `FUN_6f27cfe0`: `FUN_6f282e30`, its vf 0x10, `FUN_6f283f40`); the data goes at the
+  turn's end after the execution (traced: Mafarazzo TD's New_Round at 20 seconds).  A
+  timer event's (TriggerRegisterTimerEvent, CTimerEventReg) makes none.  The timer
+  fires its registrations (`FUN_6f240350`, the timer's vf 0x10) before its callback
+  (through its handler, `FUN_6f1f83e0`); the port runs the callback first
+  (provisional: no capture has both).
 - Leaderboard items by index (`FUN_6f2af270`): none for an index below 0 or past the
   last, so that LeaderboardSetItemValue, Label, Style, LabelColor, and ValueColor do
   nothing then.  LeaderboardGetPlayerIndex (`FUN_6f20d880`) is -1 for a player without
@@ -4198,3 +4235,10 @@ Query it headlessly with the scripts in `tools/ghidra`:
 - `Vt <addr>`: for a function, the vtables pointing at it, with their neighbors.
 
 The output is on stdout, each line prefixed `INFO  <Script>.java> `.
+
+The LAN host example (`crates/net/examples/host.rs`) offers a two-slot melee lobby, or
+with `W3HOSTMAP=1` the map's own: its w3i players and forces, users open and the host
+in the first, computers in theirs, each slot's race, team, and color as the map sets
+them (the original leaves a lobby whose slots disagree with the map's, reason 7).  The
+`tags` example replays such a game's actions against the original's keepalives; with
+`TAGS_MAPLOBBY=1` it builds the same lobby (the first user remote, the second local).

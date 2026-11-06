@@ -4635,6 +4635,12 @@ Formats the port made its own, to be replaced by the original's:
   Progress freed at once, in that order (turn 171), nothing made.  The port does so
   (`World::upgrade_structure_by`, `World::upgrades_to`): the mafv2 game's keepalives
   agree to turn 308 (the creep paths' known difference at 309), where they parted at 21.
+  An upgrade (or a construction) due by a turn's first step's tick is done in that
+  step, as in the later ones, before the step's ended walks' paths go: traced, the
+  second upgrade (due 34.897661) freeing its four objects at the start of turn 350,
+  before a creep's old walk's four; the port did them at the turn's end, after them.
+  With it, and the walks' fixes, both upgrade captures (mafv2, mafv3) agree to turn
+  396, the plain game's known difference at 397.
   The order pays the new type's whole cost (measured: Red's gold pinged every 0.1 s,
   30150 to 24150 at 2.0 for Super Tower of Vengence's 6000; the setting reader
   `FUN_6f047710` called at 0x6f59cf82 returned 1 at both upgrades' starts).

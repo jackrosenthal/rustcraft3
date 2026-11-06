@@ -1674,6 +1674,12 @@ impl World {
             self.time_of_day_to(vm, Some(t));
             self.timed_frees_to(Some(t));
             self.ai_threads_to_tick(Some(t));
+            // Constructions and upgrades due by the first step's tick are done in it, as in
+            // the later steps, before its walks' ended paths go (traced: the Tower of
+            // Vengence's second upgrade, due 34.897661, its objects freed in turn 350
+            // before a creep's old walk's).
+            self.constructions_to(vm, Some(t));
+            self.upgrades_to(vm, Some(t));
             self.mine_payouts_to(vm, Some(t));
         }
         // The paths of the walks ended in the last step go in this one, in the walkers'

@@ -4447,9 +4447,12 @@ Formats the port made its own, to be replaced by the original's:
   Progress freed at once, in that order (turn 171), nothing made.  The port does so
   (`World::upgrade_structure_by`, `World::upgrades_to`): the mafv2 game's keepalives
   agree to turn 308 (the creep paths' known difference at 309), where they parted at 21.
-  Provisional: the data's reads (MiscGame.txt has UpgradeInProgressIdChange and
-  RelativeUpgradeCost 0, yet the first behaved as set; the port pays the new type's
-  whole cost), the objects of types whose ability lists differ, an order by script or
+  The order pays the new type's whole cost (measured: Red's gold pinged every 0.1 s,
+  30150 to 24150 at 2.0 for Super Tower of Vengence's 6000; the setting reader
+  `FUN_6f047710` called at 0x6f59cf82 returned 1 at both upgrades' starts).
+  Provisional: which setting that read is (MiscGame.txt has UpgradeInProgressIdChange
+  and RelativeUpgradeCost 0, yet the first behaved as set), the objects of types whose
+  ability lists differ, an order by script or
   by an AI, the event's data agent, and what an upgrading unit counts as in the AI's
   and the requirements' counts (the old type, as before).  A cancel (vf206,
   0x6f5a73b0) gives back UpgradeRefundRate of the cost and the old type

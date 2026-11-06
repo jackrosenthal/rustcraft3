@@ -47,9 +47,10 @@ impl World {
         if !self.missing_requirements(owner, id, 1).is_empty() || !self.tech_allowed(owner, id, 1) {
             return Err("");
         }
-        // (Provisional: the new type's whole cost, as the port has paid it; vf212 takes
-        // the old's back unless RelativeUpgradeCost reads as set, and the engine's read
-        // of UpgradeInProgressIdChange, 0 in MiscGame.txt, behaves as set below.)
+        // The new type's whole cost (measured: 6000 for Super Tower of Vengence, Red's
+        // gold 30150 to 24150 as the order was carried out; vf212 takes the old's back
+        // unless RelativeUpgradeCost reads as set, provisional, and the engine's read of
+        // UpgradeInProgressIdChange, 0 in MiscGame.txt, behaves as set below.)
         let (g, l, _) = self.cost(id);
         self.spend(owner, id, false)?;
         // On the main clock as the turn's actions are carried out (measured: the type

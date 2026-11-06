@@ -550,6 +550,10 @@ pub struct World {
     pub restart_disabled: bool,
     /// The saved game this game was loaded from (GetSaveBasicFilename).
     pub load_game_name: String,
+    /// Whether the regions were made again from an original's save as it loaded, so
+    /// that a cell's regions are taken oldest first (`World::step_regions`).
+    #[serde(default)]
+    pub regions_reloaded: bool,
     pub reserved_hero_buttons: i32,
     pub alt_minimap_icon: Option<String>,
     /// The ally color mode (option 0x38, Alt-A): 0 player colors, 1 ally colors on the
@@ -1131,6 +1135,7 @@ impl World {
             player_results: HashMap::default(),
             restart_disabled: false,
             load_game_name: String::new(),
+            regions_reloaded: false,
             reserved_hero_buttons: 0,
             alt_minimap_icon: None,
             // The allyFilter option's default (game.dll's option table), the minimap's
@@ -1758,14 +1763,20 @@ impl World {
     /// regions left told first, then those entered.  Each registration asks its filter
     /// at once and queues the event, its trigger run by a timer of no wait on the agent
     /// queue (`FUN_6f277bd0`, event 0x80275 to itself), so after the step, at its clock
-    /// (`World::run_step_region_events`).  The regions of a cell are taken oldest
-    /// first by their handles (read: Mafarazzo TD's creep entering WalkEnd, its two
-    /// triggers' regions made from the one rect, WalkEnd's trigger run before Losing
-    /// life's, made after it).
+    /// (`World::run_step_region_events`).  The regions of a cell are taken newest first,
+    /// as each is put at its cell's head as it is made (read: Mafarazzo TD's plain-map
+    /// creep entering WalkEnd at turn 681, its two triggers' regions made from the one
+    /// rect, Losing life's trigger run, made after WalkEnd's, then WalkEnd's, its kill
+    /// after its own execution), and oldest first after a load of an original's save
+    /// remade them (read: the creep leaking in the LAN load's turn 144, WalkEnd's run
+    /// first; `World::regions_reloaded`).
     pub(crate) fn step_regions(&mut self, vm: &mut Vm, h: u32) {
         let Some((x, y)) = self.unit(h).map(|u| (u.x, u.y)) else { return };
         let mut regions: Vec<u32> = self.region_inside.keys().copied().collect();
         regions.sort_unstable();
+        if !self.regions_reloaded {
+            regions.reverse();
+        }
         let mut changes: Vec<(u32, bool)> = Vec::new();
         for region in regions {
             let inside = self.region(region).is_some_and(|r| r.contains(x, y));

@@ -264,6 +264,7 @@ impl Game {
     /// loaded game has its object table.
     pub fn restore_original(&mut self, s: &w3_formats::w3z::SaveGame) -> anyhow::Result<()> {
         use crate::natives::units::{create_unit_exact, remove_unit};
+        self.world.regions_reloaded = true;
         let units = s.units()?;
         let handles: std::collections::HashMap<(u32, u32), u32> = s.handles()?.into_iter().map(|(r, h)| ((r.0, r.1), h)).collect();
         let players = s.player_states()?;

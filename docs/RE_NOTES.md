@@ -5329,7 +5329,14 @@ Formats the port made its own, to be replaced by the original's:
 - A creep KillUnit bursts (ExplodeUnitBJ, read at Mafarazzo TD's first creep to leak
   after the load, turn 144, and the second, 145): WalkEnd's trigger runs before
   Losing life's (the regions a step's walker enters taken oldest first, the two made
-  from one rect), and its kill's nine tasks are followed by its owner's death event's
+  from one rect).  In a game played from its start the order is the other way: the
+  regions newest first, as each is put at its cell's head as it is made (read: the
+  plain-map game's first creep to leak, turn 681: Losing life's execution, its
+  trigger run, then WalkEnd's and its kill, Losing life's execution freed first of
+  the burst's; `World::step_regions`, `World::regions_reloaded`; the plain-map
+  game's trace without the second table's objects now agrees to turn 695, from 680).
+  (Provisional: the load's order taken as the regions remade oldest last.)  Its
+  kill's nine tasks are followed by its owner's death event's
   data (`pudd`, the event listened for), the death trigger's execution, and Losing
   life's; then the death's effect (`+EIP`, `` `pos ``, two `^pmr`, the second
   table's).  0.0001 after the triggers all go together, in order: its AI's `uref`

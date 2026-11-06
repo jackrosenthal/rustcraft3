@@ -224,7 +224,10 @@ pub(crate) fn agent_place(w: &World, x: f32, y: f32, collision: f32) -> (f32, f3
 fn ground_place(w: &World, movetp: &str, collision: f32, x: f32, y: f32, room_about: bool, except: Option<u32>, mask: u32, fit_here: bool, rect: Option<(i32, i32, i32, i32)>) -> (f32, f32) {
     let kind = crate::pathing::Move::from_movetp(movetp);
     let radius = collision * 0.5;
-    if kind == crate::pathing::Move::Fly || radius <= 0.0 {
+    // (One of no collision keeps a cell of its own too: measured, Mafarazzo TD's 30
+    // creeps of collision 0 made on each spawn's point stand the first there and the
+    // others at the middles of the cells about it, ring by ring as below.)
+    if kind == crate::pathing::Move::Fly {
         return (x, y);
     }
     // One made too near another ground unit stands at the first pathing cell's middle
@@ -236,7 +239,7 @@ fn ground_place(w: &World, movetp: &str, collision: f32, x: f32, y: f32, room_ab
     // footmen, 16 and 31, made on one spot stand 2 cells apart, knights, 32, 3, and meat
     // wagons, 48, 4, the second each time at the ring's first cell; Human01's bandits
     // made 2 cells apart keep their places).
-    let others: Vec<(f32, f32, f32)> = w.unit_order.iter().filter(|&&o| Some(o) != except).filter_map(|&o| w.unit(o)).filter(|u| u.region_flags() & mask != 0).filter(|u| !u.dead && !u.hidden && !u.is_building && u.collision > 0.0 && (u.x - x).abs() < 1024.0 && (u.y - y).abs() < 1024.0).filter(|u| w.move_kind(u.handle) != crate::pathing::Move::Fly).map(|u| (u.x, u.y, u.collision)).collect();
+    let others: Vec<(f32, f32, f32)> = w.unit_order.iter().filter(|&&o| Some(o) != except).filter_map(|&o| w.unit(o)).filter(|u| u.region_flags() & mask != 0).filter(|u| !u.dead && !u.hidden && !u.is_building && (u.x - x).abs() < 1024.0 && (u.y - y).abs() < 1024.0).filter(|u| w.move_kind(u.handle) != crate::pathing::Move::Fly).map(|u| (u.x, u.y, u.collision)).collect();
     let p = w.pathing.as_ref().unwrap();
     let near: Vec<((i32, i32), i32)> = others.iter().map(|&(ox, oy, oc)| (p.cell_of(ox, oy), ((collision + oc) / crate::pathing::CELL).floor() as i32)).collect();
     let apart = |c: (i32, i32)| near.iter().all(|&(o, t)| (c.0 - o.0).abs().max((c.1 - o.1).abs()) > t);

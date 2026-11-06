@@ -1486,6 +1486,12 @@ these are the findings behind them.
   0.5, 1, 1.5, or more; `FUN_6f170080` with `FUN_6f149370`): sheep (16) made in the cell
   row next to unwalkable ground move up a row; Booty Bay's fifth pig stands at -5456,
   -4432.
+- A ground unit of collision 0 keeps a cell of its own as it is made, as one of any
+  size does: Mafarazzo TD's creeps (collision 0), 30 made at each spawn's point, stand
+  the first on it and each other at the middle of the next free cell about it, ring by
+  ring (each ring's bottom row from its second cell, its right column up, its top row
+  back, and its left column down to its corner; measured by pinging their places in
+  the original right after New_Round, all 180 the port's now).
 - The script's globals run before the map's destructables: Blizzard.j's first timer,
   then the engine's `+gam` `` `flg `` `` `flg `` `` `rel `` `` `rel `` `` `flg ``
   `` `rtl `` `+qum`, then the other globals.

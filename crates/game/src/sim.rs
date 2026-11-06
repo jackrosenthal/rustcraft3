@@ -1073,6 +1073,13 @@ impl World {
     /// fourth acolyte, made at (346.5, 483.5) and sent to its mine at (350, 516),
     /// heading straight for (349.5, 505.5) at 17.128).  A unit sent alone to a point
     /// steers so too (`World::cluster_goal`).  None while a plan is refused.
+    ///
+    /// A flyer's plans over the pyramid's last layer, its cells' no-fly flag (0x04,
+    /// `accel::LAYERS`), and it heads straight for each point, no local search between
+    /// (read: Mafarazzo TD's flying peasant sent to build at (-3392, 1536) from (0,
+    /// -3264), heading at 91.2 degrees for (191.5, 113.5), the way's ninth point from
+    /// the goal, where the straight line was at 125.2; each of its 219 pings, a tenth of
+    /// a second apart, the original's to 0.001).
     fn coarse_goal(&mut self, h: u32, goal: (f32, f32)) -> Option<(f32, f32)> {
         if self.cluster_walker(h) {
             return self.cluster_goal(h, goal);
@@ -1090,7 +1097,8 @@ impl World {
                 _ => 0,
             };
             let Some(pyr) = self.accel_pyramid_with(Some(target)) else { return Some(goal) };
-            let way = crate::accelpath::plan(&pyr, 0, pos, (acc(goal.0, origin[0]), acc(goal.1, origin[1])), 5000);
+            let layer = if self.move_kind(h) == crate::pathing::Move::Fly { 3 } else { 0 };
+            let way = crate::accelpath::plan(&pyr, layer, pos, (acc(goal.0, origin[0]), acc(goal.1, origin[1])), 5000);
             let index = crate::accelpath::next_target(&way.points, way.points.len() - 1, pos, 10.0);
             let now = self.step_index + self.step_range.0 as u64;
             log::debug!("coarse way of {h}: {:?}, target {index}", way.points);
@@ -1280,7 +1288,22 @@ impl World {
         }
         log::debug!("coarse target of {h} reached at step {k}: ({:.4}, {:.4}), reach {reach}", f32::from_bits(x), f32::from_bits(y));
         self.stop_walker_at(h, clock);
+        // The cluster keeps its way, picking its next point on it as the next step
+        // begins (`FUN_6f16c4f0`, `FUN_6f1697a0`: `accelpath::pick`, 10 on; read: the
+        // flying peasant, stopped a step 3.1 cells short of its first point, heading next
+        // for the way's eighth, (177.5, 129.5), not a new plan's (175.5, 129.5)).
+        // Provisional: a ground walk's planned anew there, as the port had it.
+        let keep = self.move_kind(h) == crate::pathing::Move::Fly;
         if let Some(u) = self.unit_mut(h) {
+            if keep {
+                if let Some(c) = u.extra.coarse.as_mut() {
+                    c.index = crate::accelpath::pick(&c.points, c.index, 10.0);
+                }
+                u.extra.mover = None;
+                u.path.clear();
+                u.extra.path_end_cell = None;
+                return true;
+            }
             u.extra.coarse = None;
             u.extra.mover = None;
             u.path.clear();
@@ -3740,6 +3763,23 @@ impl World {
         // Then its AI's builder takes its next order (provisional: by the structure's
         // event 0xd01da after its finish events, `FUN_6f67b630` and `FUN_6f679d50`).
         self.ai_builder_done(h);
+        self.player_builder_done(h);
+    }
+
+    /// A player's builder at its structure's end: its order to build, none queued
+    /// behind it (`World::player_build_objects`), ends, the rest of its objects freed
+    /// after the structure's, the last first (traced: Mafarazzo TD's flying peasant's
+    /// Arrow Tower, done a second after it was begun, its `Atrg`, `tskO`, two tasks,
+    /// `tskA`, and `ordt` then, over LAN with the original).
+    fn player_builder_done(&mut self, structure: u32) {
+        let builders: Vec<u32> = self.unit_order.iter().copied().filter(|&b| self.unit(b).is_some_and(|u| !u.dead && u.extra.ai_next_order.is_none() && matches!(u.action, Action::Construct { target } if target == structure) && matches!(u.extra.ai_order.len(), 6 | 7))).collect();
+        for b in builders {
+            let Some(u) = self.unit_mut(b) else { continue };
+            let old = std::mem::take(&mut u.extra.ai_order);
+            for s in old.into_iter().rev() {
+                self.tags.release(s);
+            }
+        }
     }
 
     /// The constructions due on the main clock by main tick `tick` (by the turn's last

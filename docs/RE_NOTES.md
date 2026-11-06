@@ -4426,8 +4426,29 @@ Formats the port made its own, to be replaced by the original's:
   structure is begun as an AI's peasant's is (its construct order, the rise anew, the
   build order's leftovers).  Traced over LAN with the original: Mafarazzo TD's host
   player's peasant sent to build an Arrow Tower at turn 31, begun at turn 182.
-  (Provisional: a builder that works on its structure's alone; a flyer's walk to its
-  site is not yet the engine's in the port, its begin six turns early.)
+  (Provisional: a builder that works on its structure's alone.)
+- A flyer's walk plans its coarse way over the accelerator's last layer (its cells'
+  no-fly flag, 0x04; structures and trees not in it) and heads straight for each point,
+  stopping a step at it, the cluster then picking its next point on the same way
+  (`FUN_6f16c4f0`, `FUN_6f1697a0`; summed legs, 10 on).  Measured (abtest/mafbp.w3x,
+  Mafarazzo TD with a trigger pinging Red's flying peasant's GetUnitX and GetUnitY each
+  tenth of a second, sent at turn 31 to build at (-3392, 1536) from (0, -3264)): it moves
+  from 3.09 at 400 a second along 91.2 degrees, for the way's ninth point from the goal,
+  (191.5, 113.5) in cells, where the straight line lies at 125.2; it stops a step 3.1
+  cells short of it, within StructureFollowRange as an AI's build walk does (above), and
+  heads for the way's eighth, (177.5, 129.5), not a new plan's (175.5, 129.5); and so on
+  through the seventh, sixth, fifth, fourth, and second (the third, 8.06 on, passed
+  over) to the site.
+  Its heading turns at once (its shown facing, GetUnitFacing, turns by its rate,
+  through 266, 235, 200.7, 154.8, 120.5, and 92.1 from 3.0 to 3.5 seconds; not yet in the
+  port).  The port's flyers' build walks so step with the engine's walkers; each of its
+  219 pings is the original's to 0.001, and the tower is begun at turn 182.
+- A player's builder's order to build, none queued behind it, ends with its
+  structure, the rest of its objects (`Atrg`, `tskO`, two tasks, `tskA`, `ordt`, the
+  last first) freed after the structure's own (traced over LAN: the flying peasant's
+  Arrow Tower, done at turn 192, a second after its begin).  The flying peasant's game
+  so agrees to turn 216, where the original makes six `Cdet` (detections, the creeps
+  made at 20.0 coming near; not yet read) that the port does not.
 - A construction is done (`CAbilityBuildInProgress`'s vf205, 0x6f427e40, from
   `FUN_6f424320` on its listener's event 0xd01c4) on the main clock at its build time
   from the step its rise began in: the step it was begun in, or for a builder still

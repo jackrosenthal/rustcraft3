@@ -1146,12 +1146,9 @@ impl World {
         let order: Vec<u32> = AI_BUILD.iter().map(|c| self.tags.take(c)).collect();
         self.tags.release(order[14]);
         self.tags.issued.extend([1, 13, 12, 11, 10, 9, 8].map(|k| order[k]));
-        // (A flyer's walk is not yet the engine's: Mafarazzo TD's flying peasant keeps
-        // the older walk to its site.)
-        let fly = self.move_kind(h) == crate::pathing::Move::Fly;
         if let Some(u) = self.unit_mut(h) {
             u.extra.ai_order = order;
-            u.extra.build_legacy = fly;
+            u.extra.build_legacy = false;
             u.extra.mover = None;
             u.extra.coarse = None;
         }

@@ -4301,13 +4301,21 @@ Formats the port made its own, to be replaced by the original's:
   the tree (`World::ai_setup_tree`; provisional, above): that wisp's tree is then the
   original's (160, 170), its heading at 0.12 4.4476, and its walk the original's
   step for step through its contact at 1.20 (blocked at 0.33 and 0.51, its searches
-  at 0.42 and 0.54 of seven and six points).  Next (turn 12): the wood wisp's old
-  path and cluster, its tree walk given up for the mine in the pass at 1.2, are
-  freed in the original before the builder's structure's objects in that turn, in
-  the port at the turn's end after them; and the third wisp's entry, in turn 13,
-  comes after that turn's fifteen frees from 26741 in the original, before them in
-  the port (its way's end reached, the port arriving it in the next tick's second
-  step, provisional).
+  at 0.42 and 0.54 of seven and six points).  Read with each object's step clock
+  (breaks at the tag allocator's take and free, 0x6f1cbf40 and 0x6f1cbff0, 1.05 to
+  1.35): the pass at 1.1 makes the wood wisp's new order at 1.099999 and frees its
+  old walk's path and cluster at 1.109999, the step after, as an ended walk's (the
+  port had them at the turn's end; now `World::start_gold_run` so frees a wisp's,
+  as it did a walker's home); the builder's structure is begun at 1.169999; the
+  builder's walk's path and cluster go at 1.199999; the night elf structures' three
+  blight dispels' objects (`Abli`, `Xbli`, `` `pos ``, two `^pmr` each, 960 at 64
+  every 0.08) at 1.200099, the tick after that step; and the third wisp, in contact
+  at 1.20, goes in at 1.229999, its order's tasks after and its path at 1.259999.
+  The keepalives agree to turn 13; next (turn 14): those dispels' objects, freed in
+  the port at turn 13's last step (`World::update_blight`'s release as the turn
+  goes, for one made outright).  Tried: each made outright at its last step on the
+  main clock (`Tags::doom_at`, its making plus 15 intervals), the keepalives part at
+  turn 10 (another made outright then freed early; not read which).
 - An entangled mine is no town site of its own: the original's save of a night elf
   start (`nel.w3x`) holds the map's four mines' four sites, the first naming the
   entangled mine (the mine it covers made at the map's start with that site).  The
@@ -5392,6 +5400,19 @@ Formats the port made its own, to be replaced by the original's:
   peasant's at 60.1 has its cluster's point; why the two clusters differ is not yet
   read.  The eight places' costs at 60.1 are 21, 21, 22, 24, 24, 24, 24, and 26; the
   port's fourth, (196, 178), costs 22 by its plan, the rest as the original's.
+  Read at the clusters' plans and picks (`FUN_6f169840` at 0.1 and 60.095,
+  `FUN_6f1697a0` the step after): at 0.1 the pass's six clusters plan in turn (four
+  to the mine, the wood worker's fifth, the builder's last), each picking the step
+  after; the wood clusters' fields at their picks alike (the tree's handle at +0x40,
+  the member's place at +0x54, +0x70 5.63 and 5.67).  The port's plan from the farm
+  peasant's place at 60.1 to its tree has the original's coarse points ((94.75,
+  89.75), (92.75, 91.75), (90.75, 92.75), (88.75, 93.75), ... in accelerator units)
+  and its point 10 on is the original's (189.5, 179.5); from the first wood worker's
+  at 0.1 its point 10 on would be (185.5, 179.5), where the original's member goes
+  for the tree.  Provisional: that cluster's plan refused at 0.1 by its budget (the
+  sixth plan of the tick), its point then the order's.  A measurement: at 0.1 and 60.1,
+  the return of `FUN_6f166c30` for each cluster's path (refused or planned), the
+  budget's used and limit, and the picked index (the cluster's path's +0x70, +0x78).
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

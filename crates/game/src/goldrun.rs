@@ -366,9 +366,12 @@ impl World {
             frees.extend((harvest_split(n)..n - 3).rev().map(|k| order[k]));
             self.tags.issued.extend(frees);
             // (One walking home, from a thread run before the tick's steps: as an ended
-            // walk's, in the next step, `World::ai_build_objects`.)
+            // walk's, in the next step, `World::ai_build_objects`.  A wisp's so too: read,
+            // Twisted Meadows' night elf computer's wood wisp sent to its mine in the pass
+            // at 1.1, its walk to its tree's path and cluster freed at 1.109999, the step
+            // after, each object's clock read at the tag allocator.)
             if let Some(o) = old {
-                if home.is_some() && !self.ai_after_steps {
+                if (home.is_some() || wisp) && !self.ai_after_steps {
                     let serial = self.unit(h).map_or(0, |u| u.extra.walk_serial);
                     self.tags.walk_ended([o[o.len() - 1], o[o.len() - 2]], serial);
                 } else {

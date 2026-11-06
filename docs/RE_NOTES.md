@@ -2269,9 +2269,12 @@ these are the findings behind them.
   `World::reach_tried`, `World::reaction_ended`, `World::reach_walk_step`).  Its look
   is an agent queue event among the movement steps by its due
   (`World::structure_events_before`).  Its tasks are a structure's ten; the last block
-  runs and the attack tries at once (`FUN_6f49e510`: for a unit whose move ability is
-  not disabled, event 0xd0196, not the 0.1 wait), and on a target out of reach both
-  go as the main tick ends.  Its reaction wait runs then: ReactionDelay (0.25) times
+  runs, and the attack task, for a unit whose move ability is not disabled, sends
+  event 0xd0196 through the unit (`FUN_6f49e510` → `FUN_6f0561f0`, message
+  0x40190065: the move ability's stop, `FUN_6f5fa7a0`) instead of starting the 0.1
+  wait (`FUN_6f49d130`), and, leaving the unit's flag 1 set, is done at once, near or
+  far; both go as the main tick ends.  (The attack's own 0xd0196, its try
+  `FUN_6f499310` → `FUN_6f495180`, comes from the move ability as a walk arrives.)  Its reaction wait runs then: ReactionDelay (0.25) times
   a real drawn on stream 9 (`FUN_6f49ea80`, `FUN_6f6936a0`), from the look's due.  As
   it ends (event 0xd01af) its task goes as that main tick ends, and its walk into
   range (`tskt` 0xd016f, its range 1500) begins with a walk's `^clg ^clu l^pa`, the
@@ -2287,12 +2290,32 @@ these are the findings behind them.
   0.717201), the walk begun at 48.026821 with the only main draw through 48.25 (a
   count of 7), its ends in the steps due 48.238579 and 48.658562, the eighth after
   each start, its looks due 48.248577 and 48.668560 taking the creep up again.  The
-  port's upgrade game now agrees to turn 498 (from 480), its trace to 497.  Not yet
-  read: the try's reach.  At 49.778515 the creep is 1559 off center to center, the
-  tower's collision 144 and the creep's 0, where the port's test (the in-place
-  structures', `World::reaches_walker`, range and both collisions) finds it in reach
-  of the 1500 weapon; the original's attack went at once as out of reach, and at
-  50.108501, 1485 off, again.
+  The attack goes at once at every take-up traced (turns 480 to 506), the creep at
+  last 1559, 1485, and about 1360 off center to center against the 1500 weapon, the
+  tower's collision 144; no stop at `FUN_6f495180`, at its reach test
+  `FUN_6f05b580` (from 0x6f4952e1), or at `FUN_6f49a240` from 49.7 to 50.13
+  seconds.  The upgrade games now agree to turn 507 (from 480), the trace to 506.
+- A structure's take-up's last block, run at once, goes as its main tick ends: freed
+  by the next step's timed frees, or with the turn's releases after the steps
+  (`World::free_as_tick_ends`; traced: the upgrade game's Arrow-kind tower's take-up
+  at turn 503, its block's slot the next step's region trigger's `+tex`; the second
+  flyer game's at turn 330, freed before the step's walk ends' objects; the flyer
+  game's after its creep's death as the turn ends, freed in that turn).  Its first
+  try (`FUN_6f49d130`'s timer, 0.1 after the look) is an agent queue event too, among
+  the steps by its due (`World::first_try`): on a target out of reach it gives up
+  there (`FUN_6f49d280`), its tasks freed as the main tick ends and its look again
+  0.01 on (traced: the second flyer game's Arrow Tower, its take-up at turn 330 given
+  up early in 331, the nine tasks' slots taken by the next step's order).  A look
+  due after the agent queue's reach in its tick comes in the next, before its first
+  step (traced: the upgrade game's take-up at turn 507's start, the port's at 506's
+  end).
+- A dead unit whose corpse decays (its type's deathType 2 or 3) has five tasks of its
+  death's course kept: 0xd0155 and 0xd0154 go as its death has played (its type's
+  death time), 0xd0158 DecayTime after that, its timer started then and so going
+  after a timer started before and due with it (traced: the second flyer game's
+  creep, killed at 27.381405 by the Arrow Tower, 0xd0158 freed in turn 324 after
+  the killing missile's objects, both due 32.381405).  (Provisional: 0xd0159 and the
+  removal, the bones' decay, not yet read.)
 - RemoveUnit (`jass_RemoveUnit`: the unit's vf 0x84, then `FUN_6f694690(1, 1)`) clears
   its orders (`FUN_6f673610`): its current order's tasks (`FUN_6f673e80`), then a block
   made and destroyed and its task stack destroyed top first (`FUN_6f673fe0`), then its

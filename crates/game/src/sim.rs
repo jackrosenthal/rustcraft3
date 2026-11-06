@@ -1791,6 +1791,10 @@ impl World {
         if let Some((_, due)) = self.step_abs(0) {
             self.structure_events_before(due);
             self.points_before(vm, Some(due));
+            // (What they let go as an earlier main tick ended goes before the step:
+            // traced, the second flyer game's Arrow Tower's take-up's block at turn 330,
+            // freed before the step's walk ends' objects.)
+            self.timed_frees_to(self.step_ticks.first().copied());
         }
         let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.steps_walker())).collect();
         // The game's first step (its clock 0) moves no one: the walks ordered as the map
@@ -2933,15 +2937,6 @@ impl World {
         self.find_target_ex(h, range, true)
     }
 
-    /// Whether a structure's weapons reach `t` at game time `at` (a walker by the
-    /// engine's steps, `World::reaches_walker`; else edge to edge).
-    pub(crate) fn reaches_now(&self, h: u32, t: u32, at: f64) -> bool {
-        let (Some(u), Some(tu)) = (self.unit(h), self.unit(t)) else { return false };
-        let bonus = self.upgrade_bonus(u.owner, u.type_id).range;
-        let d = (tu.x - u.x).hypot(tu.y - u.y) - u.collision - self.reach_radius(t);
-        unit_weapons(self, u).iter().any(|(_, wp)| can_target(self, wp, u, tu) && self.reaches_walker(h, t, wp.range + bonus, at).unwrap_or(d <= wp.range + bonus))
-    }
-
     /// The structures' idle looks and reaction waits falling due before `until` (an
     /// agent due, seconds since the game began), taken among the movement steps in the
     /// order they fall due: each is an event on the agent queue (the look's timer,
@@ -2953,7 +2948,9 @@ impl World {
     /// logic's (`World::update_units`).
     pub(crate) fn structure_events_before(&mut self, until: f64) {
         let dt = self.tick_dt;
-        let mut due: Vec<(f64, u32, bool)> = Vec::new();
+        // (0 a look, 1 a reaction's end, 2 a first try.)
+        let mut due: Vec<(f64, u32, u8)> = Vec::new();
+        let begun = self.time_exact - dt as f64 - 1e-6;
         for &h in &self.unit_order {
             if !self.attacks_in_place(h) {
                 continue;
@@ -2961,7 +2958,13 @@ impl World {
             let Some(u) = self.unit(h).filter(|u| !u.dead && !u.paused && u.constructing.is_none() && !u.extra.sleeping) else { continue };
             if let Some(crate::tasks::ReachWalk::React { due: d }) = u.extra.reach_walk {
                 if d < until {
-                    due.push((d, h, true));
+                    due.push((d, h, 1));
+                }
+                continue;
+            }
+            if let (Action::Attack { .. }, None, Some(f)) = (&u.action, u.swing.as_ref(), u.extra.first_swing_at) {
+                if f < until && f > begun {
+                    due.push((f, h, 2));
                 }
                 continue;
             }
@@ -2970,22 +2973,43 @@ impl World {
             }
             let Some((_, d, _)) = u.extra.look_timer else { continue };
             if (d as f64) < until {
-                due.push((d as f64, h, false));
+                due.push((d as f64, h, 0));
             }
         }
         due.sort_by(|a, b| a.0.total_cmp(&b.0));
-        for (d, h, react) in due {
-            if react {
-                self.reaction_ended(h, d);
-            } else {
-                self.structure_idle_look(h, dt);
+        for (d, h, kind) in due {
+            match kind {
+                1 => self.reaction_ended(h, d),
+                2 => self.first_try(h, d),
+                _ => self.structure_idle_look(h, dt),
             }
         }
+    }
+
+    /// A structure's first try on a target it took up, as it falls due among the steps
+    /// (`FUN_6f49d130`'s timer, `FUN_6f495180`): on one out of reach it gives up then
+    /// (`World::try_given_up`); else its attack begins with the units' logic.  Traced:
+    /// the second flyer game's Arrow Tower, its take-up at turn 330 given up early in
+    /// 331, its creep past its reach, the nine tasks' slots taken by the next step's.
+    fn first_try(&mut self, h: u32, at: f64) {
+        let Some((u, t)) = self.unit(h).zip(self.unit(h).and_then(|u| match u.action { Action::Attack { target } => self.unit(target).map(|t| (target, t)), _ => None })) else { return };
+        let (target, t) = t;
+        if t.dead {
+            return;
+        }
+        let Some((_, wp)) = weapon_for(self, u, t) else { return };
+        let reach = wp.range + self.upgrade_bonus(u.owner, u.type_id).range;
+        let d = (t.x - u.x).hypot(t.y - u.y) - u.collision - self.reach_radius(target);
+        if self.reaches_walker(h, target, reach, at).unwrap_or(d <= reach) {
+            return;
+        }
+        self.try_given_up(h, at);
     }
 
     /// An idle structure's look (as the units' logic's, `World::update_units`), its timer
     /// counted down for the tick first, as the units' logic will find it.
     fn structure_idle_look(&mut self, h: u32, dt: f32) {
+        let before = self.unit(h).and_then(|u| u.extra.look_timer).map(|l| l.1);
         if let Some(u) = self.unit_mut(h) {
             u.acquire_timer -= dt;
         }
@@ -3004,8 +3028,14 @@ impl World {
         } else {
             self.acquire_miss(h, dt);
         }
+        // (Its timer from its look's new due, as the units' logic will count it down; a
+        // look carried from the last tick, `World::update_units`, ran later than its due.)
+        let now = self.time_exact;
         if let Some(u) = self.unit_mut(h) {
-            u.acquire_timer += dt;
+            match u.extra.look_timer.map(|l| l.1).filter(|&d| Some(d) != before) {
+                Some(d) => u.acquire_timer = (d as f64 - now) as f32 + dt,
+                None => u.acquire_timer += dt,
+            }
         }
     }
 
@@ -3542,7 +3572,12 @@ impl World {
                     // An idle unit takes up what comes in reach at once (measured: idle
                     // footmen beside a target made attackable strike 0.505 seconds later,
                     // their damage point; ours, looking every ReactionDelay, at 0.581).
-                    if wp.is_some() && self.unit(h).is_some_and(|u| u.acquire_timer <= 0.0 && !u.extra.sleeping) {
+                    // (A structure's look falls due among the steps, the agent queue's
+                    // events, `World::structure_events_before`; one due after the queue's
+                    // reach this tick comes in the next, before its first step: traced, the
+                    // upgrade game's tower taking up a creep at turn 507's start.)
+                    let carried = matches!(action, Action::Idle) && !self.step_clocks.is_empty() && self.attacks_in_place(h) && self.unit(h).is_some_and(|u| u.extra.look_timer.is_some());
+                    if wp.is_some() && !carried && self.unit(h).is_some_and(|u| u.acquire_timer <= 0.0 && !u.extra.sleeping) {
                         let range = self.unit(h).map_or(0.0, |u| u.acquire_range);
                         let range = if matches!(action, Action::Hold) { wp.as_ref().map_or(0.0, |w| w.range) } else { range };
                         // A creep is left be unless it goes for the unit: only another creep

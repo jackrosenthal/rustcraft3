@@ -95,8 +95,10 @@ impl World {
         if tasks.is_empty() {
             let made: [(&crate::tags::Code, u32); 10] = [(codes::class::TASK_A, BLOCK), (codes::class::TASK, TASK_14B), (codes::class::TASK_POINT, MOVE_HOME), (codes::class::TASK_A, BLOCK), (codes::class::TASK, LOOK_AGAIN), (codes::class::TASK, BACKSWING), (codes::class::TASK_T, MOVE_TO), (codes::class::TASK, REACT), (codes::class::TASK_T, ATTACK), (codes::class::TASK_A, BLOCK)];
             tasks = made.iter().map(|&(c, e)| (self.tags.take(c), e)).collect();
-            // (The last block runs and goes at once; one that can move tries its attack
-            // at once, `World::reach_tried`.)
+            // (The last block runs and goes as the main tick ends, `World::free_as_tick_ends`;
+            // traced: the upgrade game's take-up at turn 503, its slot the next step's
+            // region trigger's `+tex`.  One that can move tries its attack at once,
+            // `World::reach_tried`.)
             let (top, _) = tasks.pop().unwrap();
             if self.moves_to_attack(h) {
                 if let Some(u) = self.unit_mut(h) {
@@ -105,7 +107,7 @@ impl World {
                 self.reach_tried(h, at, top);
                 return;
             }
-            self.tags.doom(top);
+            self.free_as_tick_ends(top, at);
         } else {
             self.pop_attack(&mut tasks);
             tasks.push((self.tags.take(codes::class::TASK_T), MOVE_TO));
@@ -117,26 +119,23 @@ impl World {
         }
     }
 
-    /// A structure that can move tries its attack at once on a target it took up at `at`
-    /// (event 0xd0196), its tasks' last block `top` run: on a target in reach the attack
-    /// begins then; on one out of reach the attack is done, and it and the block go,
-    /// and its reaction wait runs (task 0xd0163, `FUN_6f49ea80`: ReactionDelay
-    /// times a draw on stream 9, `FUN_6f6936a0`, from the agent queue's clock, event
-    /// 0xd01af).  Measured: the upgrade game's Mega Tower of Vengence taking up a creep
-    /// 1881 off at its look due 47.909035, its block and attack freed at once, its
-    /// reaction wait from 0x6f49a6b8, its end due 48.028042.  (Provisional: the attack
-    /// on one in reach.)  The block and the attack go as the main tick ends
-    /// (`World::free_as_tick_ends`).
+    /// A structure that can move takes up a target at `at`, its tasks' last block `top`
+    /// run: its attack task tells its move ability to stop (`FUN_6f49e510`: event 0xd0196
+    /// through the unit, `FUN_6f0561f0`, where one that cannot move waits 0.1 for its
+    /// try, `FUN_6f49d130`) and, leaving the unit's flag 1 set, is done at once, near or
+    /// far; it and the block go as the main tick ends (`World::free_as_tick_ends`), and
+    /// its reaction wait runs (task 0xd0163, `FUN_6f49ea80`: ReactionDelay times a draw
+    /// on stream 9, `FUN_6f6936a0`, from the agent queue's clock, event 0xd01af).  Its
+    /// try (`FUN_6f499310` → `FUN_6f495180`) comes only from its move ability's 0xd0196,
+    /// as a walk arrives.  Measured: the upgrade game's Mega Tower of Vengence taking up
+    /// a creep 1875 off at its look due 47.909035, its block and attack freed at once,
+    /// its reaction wait from 0x6f49a6b8, its end due 48.028042; at 49.778515 and
+    /// 50.108501, the creep 1559 and 1485 off center to center against its 1500 range,
+    /// its attack freed at once again, with no stop at `FUN_6f495180` or
+    /// `FUN_6f49a240` (49.7 to 50.13 seconds).
     fn reach_tried(&mut self, h: u32, at: f64, top: u32) {
         use crate::efloat as ef;
         let t = self.unit(h).map_or(0, |u| u.extra.acquired);
-        if self.reaches_now(h, t, at) {
-            self.tags.doom(top);
-            if let Some(u) = self.unit_mut(h) {
-                u.extra.first_swing_at = Some(at);
-            }
-            return;
-        }
         self.free_as_tick_ends(top, at);
         let attack = self.unit_mut(h).and_then(|u| if u.extra.attack_tasks.last().is_some_and(|t| t.1 == ATTACK) { u.extra.attack_tasks.pop() } else { None });
         if let Some((s, _)) = attack {
@@ -156,10 +155,12 @@ impl World {
     /// tick ends (traced: the upgrade game's tower's reaction task, its wait ending at
     /// 48.028042, freed after the region trigger's objects of the step after in the same
     /// main tick; ending at 48.864094, a main tick before the next step's, freed before
-    /// that step's trigger took its slot).
+    /// that step's trigger took its slot).  After the steps, with the turn's releases
+    /// (traced: the flyer game's Arrow Tower's take-up after its first creep's death,
+    /// as the turn ends, its block freed in that turn).
     fn free_as_tick_ends(&mut self, s: u32, at: f64) {
         let kept = ((at - self.clock_wraps as f64 * 300.0) as f32).to_bits();
-        match self.agent_tick(kept).and_then(|t| self.tick_main(t)) {
+        match self.agent_tick(kept).and_then(|t| self.tick_main(t)).filter(|_| !self.after_steps) {
             Some(c) => self.tags.doom_at(c, s),
             None => self.tags.doom(s),
         }
@@ -287,6 +288,36 @@ impl World {
         }
     }
 
+    /// A structure gives its target up at its try among the steps, at `at` on the agent
+    /// queue (`FUN_6f49d280`, `World::first_try`): as `attack_given_up`, its tasks freed
+    /// as the main tick ends (`World::free_as_tick_ends`), and its look again
+    /// `LOOK_AFTER_DROP` on, among the steps too.
+    pub(crate) fn try_given_up(&mut self, h: u32, at: f64) {
+        use crate::efloat as ef;
+        let Some(u) = self.unit_mut(h) else { return };
+        let mut tasks = std::mem::take(&mut u.extra.attack_tasks);
+        for e in [ATTACK, REACT, MOVE_TO] {
+            if tasks.last().is_some_and(|t| t.1 == e) {
+                let (s, _) = tasks.pop().unwrap();
+                self.free_as_tick_ends(s, at);
+            }
+        }
+        for &(s, _) in tasks.iter().rev() {
+            self.free_as_tick_ends(s, at);
+        }
+        let n = self.tags.start_timer("49d000");
+        let due = f32::from_bits(ef::add((at as f32).to_bits(), LOOK_AFTER_DROP.to_bits()));
+        let (now, dt) = (self.time_exact, self.tick_dt);
+        if let Some(u) = self.unit_mut(h) {
+            u.action = crate::types::Action::Idle;
+            u.extra.first_swing_at = None;
+            u.extra.acquired = 0;
+            // (As the units' logic, still to come this tick, will count it down.)
+            u.acquire_timer = (due as f64 - now) as f32 + dt;
+            u.extra.look_timer = Some((n, due, LOOK_AFTER_DROP));
+        }
+    }
+
     /// Whether a structure reaches a target walking by the engine's steps at game time
     /// `at` (`FUN_6f05b580` with its places carried on to the main clock then,
     /// `FUN_6f161040`: the range over 32 and both collisions over 32, squared, against
@@ -378,15 +409,24 @@ impl World {
         }
         // The corpse's wait (0xd0155) ends as its death has played (its type's death
         // time on), and goes with 0xd0154 (traced: the flyer game's creep, dead at
-        // 27.381405, the two freed in turn 304, 3 seconds on).
+        // 27.381405, the two freed in turn 304, 3 seconds on); then its flesh decays,
+        // 0xd0158 going DecayTime on (traced: the second flyer game's, freed in turn
+        // 324, 5 seconds on).  (Provisional: 0xd0159 and the removal kept, the bones'
+        // decay not yet read.)
+        let mut left = kept.len().min(3);
         if kept.len() == 5 {
             let played = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map_or(0.0, |o| o.real("death")) as f64;
             for &s in [kept[4], kept[3]].iter() {
                 self.tags.doom_at(at + played, s);
             }
+            // (Its timer started as the wait ends, it goes after those due with it that
+            // were started before: traced, after its killer's missile, removed BulletDeathTime
+            // after the landing that killed it.)
+            self.tags.doom_at(at + played + self.misc_f32("DecayTime", 2.0) as f64 + 1e-6, kept[2]);
+            left = 2;
         }
         if let Some(u) = self.unit_mut(h) {
-            u.extra.death_tasks = kept[..kept.len().min(3)].to_vec();
+            u.extra.death_tasks = kept[..left].to_vec();
         }
         Some((die, path))
     }

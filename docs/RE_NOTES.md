@@ -1571,6 +1571,10 @@ these are the findings behind them.
   0.5, 1, 1.5, or more; `FUN_6f170080` with `FUN_6f149370`): sheep (16) made in the cell
   row next to unwalkable ground move up a row; Booty Bay's fifth pig stands at -5456,
   -4432.
+- A structure without a pathing texture makes no footprint regions (three `^pmr` for
+  one with), and a type's `auto` ability that cannot autocast (no Orderon) makes no
+  order: Mafarazzo TD's Fantas, structures of collision 31 with `auto` Avul, made with
+  neither in the original's census at the game's start.
 - A ground unit of collision 0 keeps a cell of its own as it is made, as one of any
   size does: Mafarazzo TD's creeps (collision 0), 30 made at each spawn's point, stand
   the first on it and each other at the middle of the next free cell about it, ring by

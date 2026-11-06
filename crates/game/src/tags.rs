@@ -765,8 +765,12 @@ impl crate::world::World {
             codes.push(*codes::class::CONTINUOUS_MODIFIER);
         }
         let mods_end = codes.len();
-        let footprint = building.then_some(codes.len());
-        if building {
+        // A structure's footprint's three regions, none for one without a pathing
+        // texture (measured: Mafarazzo TD's Fantas, structures of collision 31 with
+        // none, made with none in the original's census, as such destructables are).
+        let tex = field("pathTex");
+        let footprint = (building && !tex.is_empty() && tex != "_").then_some(codes.len());
+        if footprint.is_some() {
             codes.extend([*codes::class::PATHING_REGION; 3]);
         }
 
@@ -866,7 +870,9 @@ impl crate::world::World {
         // (The type's auto names the ability by its code: nfsh's Anhe for its Anh2.)  It
         // is not turned on while its research is missing (FUN_6f48b230 with
         // FUN_6f48f500; measured: a Shaman's Bloodlust, which requires Rost, has none).
-        let auto_ability = list.iter().find(|id| ability(id) == Some(auto));
+        // (One that cannot autocast, without an order to turn it on, makes none: measured,
+        // Mafarazzo TD's Fantas, their auto Avul.)
+        let auto_ability = list.iter().find(|id| ability(id) == Some(auto)).filter(|id| self.objects.abilities.get(**id).is_some_and(|o| !o.str("Orderon").trim().is_empty()));
         if auto[0] != 0 && auto_ability.is_some_and(|a| self.ability_enabled(owner, *a)) {
             autocast = Some(codes.len());
             codes.push(*codes::class::ORDER);

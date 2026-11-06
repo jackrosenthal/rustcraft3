@@ -333,6 +333,10 @@ pub struct UnitExtra {
     /// Gold and lumber pillaged but not yet paid, being less than a step.
     #[serde(default)]
     pub pillaged: [f32; 2],
+    /// Pillage made ready by an attack on what it may pillage, until the unit's next
+    /// damage (CAbilitySalvage's flag 0x200).
+    #[serde(default)]
+    pub pillage_armed: bool,
     /// Seconds until a Kodo next digests what it has devoured.
     #[serde(default)]
     pub digest_in: f32,
@@ -897,6 +901,7 @@ impl Default for UnitExtra {
         UnitExtra {
             attr_bonus: [0.0; 3],
             pillaged: [0.0; 2],
+            pillage_armed: false,
             digest_in: 0.0,
             pulse_in: None,
             meld_active_since: None,

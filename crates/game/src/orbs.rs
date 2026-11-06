@@ -184,6 +184,24 @@ impl World {
         damage
     }
 
+    /// The attacker's Pillage, when its owner may use it.
+    fn pillage_ability(&self, attacker: u32) -> Option<(Id, i32)> {
+        let u = self.unit(attacker)?;
+        u.abilities.iter().copied().find(|&(a, _)| self.ability_code(a) == codes::ability::PILLAGE && self.ability_enabled(u.owner, a))
+    }
+
+    /// An attack's damage point makes Pillage ready when its target is one Pillage
+    /// takes, for the attacker's next damage (CAbilitySalvage vf77 `FUN_6f560c20`, from
+    /// `FUN_6f68f180` in the attack's `FUN_6f4946b0`, sets its flag 0x200).
+    pub(crate) fn pillage_ready(&mut self, attacker: u32, target: u32) {
+        let Some((a, _)) = self.pillage_ability(attacker) else { return };
+        if self.cast_target_error(attacker, a, target).is_none() {
+            if let Some(u) = self.unit_mut(attacker) {
+                u.extra.pillage_armed = true;
+            }
+        }
+    }
+
     /// Pillage: what its targets allow (Pillage's own: structures, enemy or neutral)
     /// pays its cost times DataA per share of life dealt, gathered until it makes a step
     /// of DataB, after the damage event (measured: a grunt's five hits of about 10 on a
@@ -191,13 +209,19 @@ impl World {
     /// hit's event the hits' before).  One whose targets a map widened pays on units
     /// too (Mafarazzo TD's banks, targets "enemies", on the runners: provisional, the
     /// same share of a unit's cost).
+    /// The damage hook (CAbilitySalvage vf92 `FUN_6f5431a0`) runs only when an attack
+    /// made Pillage ready (`pillage_ready`) and spends that, whatever it struck: of two
+    /// missiles in flight at once, the first to land pays and the second nothing.
+    /// `dealt` is the life the hit took: its damage, at most the life the target had,
+    /// so a killing hit pays for what was left of it (`FUN_6f69ca80`).
     pub(crate) fn pillage(&mut self, attacker: u32, target: u32, dealt: f32) {
+        let Some(u) = self.unit_mut(attacker).filter(|u| u.extra.pillage_armed) else { return };
+        u.extra.pillage_armed = false;
+        let owner = u.owner;
         let Some(t) = self.unit(target) else { return };
         let Some(o) = self.objects.units.get(t.type_id) else { return };
         let (cost_gold, cost_lumber, max_life) = (o.real("goldcost"), o.real("lumbercost"), t.max_life.max(1.0));
-        let Some(u) = self.unit(attacker) else { return };
-        let owner = u.owner;
-        let Some((a, lvl)) = u.abilities.iter().copied().find(|&(a, _)| self.ability_code(a) == codes::ability::PILLAGE && self.ability_enabled(owner, a)) else { return };
+        let Some((a, lvl)) = self.pillage_ability(attacker) else { return };
         if self.cast_target_error(attacker, a, target).is_some() {
             return;
         }

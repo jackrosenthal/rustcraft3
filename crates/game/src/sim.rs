@@ -115,12 +115,32 @@ fn weapon_n_read(w: &World, type_id: Id, n: usize) -> Option<Weapon> {
         let l = o.list(k);
         l.get(n - 1).or_else(|| l.first()).cloned().unwrap_or_default()
     };
+    // The attack takes its weapons' times and reach as CAbilityAttack `FUN_6f49cab0`
+    // reads them: the damage point and backswing at least 0.01, the cooldown at least
+    // 0.1 and at least the damage point and 0.02, the backswing ending 0.01 before the
+    // cooldown at the latest (at least 0.01 still), and the range no farther than the
+    // unit acquires (Mafarazzo TD's towers of cooldown 0.01 to 0.3 and damage point 0.3
+    // attack every 0.32 seconds, measured; its 200s Missile Tank, range 1500, acquire
+    // 1200, reaches 1200).
+    let add = |a: f32, b: f32| f32::from_bits(crate::efloat::add(a.to_bits(), b.to_bits()));
+    let sub = |a: f32, b: f32| f32::from_bits(crate::efloat::sub(a.to_bits(), b.to_bits()));
+    let damage_point = o.real(&f("dmgpt")).max(POINT_BEFORE_COOLDOWN);
+    let mut backswing = o.real(&f("backSw")).max(POINT_BEFORE_COOLDOWN);
+    let mut cooldown = o.real(&f("cool")).max(LEAST_COOLDOWN);
+    if cooldown < add(damage_point, COOLDOWN_AFTER_POINT) {
+        cooldown = add(damage_point, COOLDOWN_AFTER_POINT);
+    }
+    if cooldown < add(add(damage_point, backswing), POINT_BEFORE_COOLDOWN) {
+        backswing = sub(sub(cooldown, damage_point), POINT_BEFORE_COOLDOWN).max(POINT_BEFORE_COOLDOWN);
+    }
+    let (range, acquire) = (o.real(&f("rangeN")), o.real("acquire"));
+    let range = if range > acquire && (range - acquire).abs() >= 0.001 { acquire } else { range };
     Some(Weapon {
-        range: o.real(&f("rangeN")),
+        range,
         min_range: o.real("minRange"),
-        cooldown: o.real(&f("cool")),
-        damage_point: o.real(&f("dmgpt")),
-        backswing: o.real(&f("backSw")),
+        cooldown,
+        damage_point,
+        backswing,
         dice: o.int(&f("dice")),
         sides: o.int(&f("sides")),
         base: o.real(&f("dmgplus")),
@@ -149,6 +169,18 @@ fn weapon_n_read(w: &World, type_id: Id, n: usize) -> Option<Weapon> {
 /// Measured: a Watch Tower, cooldown 0.6, strikes every 0.60 seconds; ours, without
 /// this, every 0.62.
 pub(crate) const STEP_SLACK: f32 = 1e-4;
+
+/// The least time from an attack's damage point to its cooldown's end (0x6fcd53a4,
+/// `FUN_6f49d130`), and from its backswing's end to the cooldown's (`FUN_6f49d050`);
+/// also a weapon's least damage point and backswing (`FUN_6f49cab0`).
+const POINT_BEFORE_COOLDOWN: f32 = 0.01;
+/// The least cooldown left at an attack's damage point (0x6fcd53a8, `FUN_6f49d050`),
+/// and a weapon's least cooldown past its damage point (`FUN_6f49cab0`).
+const COOLDOWN_AFTER_POINT: f32 = 0.02;
+/// A weapon's least cooldown (0x6fcd53c4, `FUN_6f49cab0`).
+const LEAST_COOLDOWN: f32 = 0.1;
+/// A bound on a quick weapon's attacks in one step, should a step be long.
+const QUICK_SWINGS_PER_STEP: u32 = 1000;
 
 pub fn unit_weapons(w: &World, u: &Unit) -> Vec<(u8, Weapon)> {
     // A burrow shoots only with workers inside.
@@ -2342,6 +2374,9 @@ impl World {
         }
         let Some(t) = self.unit(target) else { return };
         let owner = t.owner;
+        // The attacker's damage hooks are given the damage, at most the life the target
+        // had: they run before the hit takes the life (`FUN_6f69ca80`, then CUnit vf74).
+        let took = dmg.min(t.life);
         self.wake(target);
         let linked_dead = self.take_life(target, dmg);
         let dead = self.unit(target).is_some_and(|t| t.life <= 0.405);
@@ -2382,7 +2417,7 @@ impl World {
         let ctx = EventCtx { unit: target, other_unit: source, damage: dmg, event_id: EVENT_UNIT_DAMAGED, player: owner, has_player: true, ..Default::default() };
         self.fire(vm, ctx, |_, k| matches!(k, EventKind::Unit { unit, event } if *unit == target && *event == EVENT_UNIT_DAMAGED));
         if attack_type != "spells" {
-            self.pillage(source, target, dmg);
+            self.pillage(source, target, took);
         }
         if dead {
             kill_unit(self, vm, target, source);
@@ -2403,7 +2438,7 @@ impl World {
     /// Advances every unit by `dt` seconds.
     pub fn update_units(&mut self, vm: &mut Vm, dt: f32) {
         let units = self.unit_order.clone();
-        for h in units {
+        'units: for h in units {
             let Some(u) = self.unit(h) else { continue };
             if u.dead {
                 // UnitSuspendDecay holds the corpse's clock.
@@ -2520,148 +2555,50 @@ impl World {
             }
             // Attack swing in progress.
             if let Some(mut s) = self.unit(h).and_then(|u| u.swing.clone()) {
+                let known = wp.is_some();
                 let wp = wp.clone().unwrap_or_default();
                 // A swing plays at the unit's attack speed (measured: a Blademaster of
                 // agility 32, speed 1.64, strikes 0.20 seconds after its swing begins, its
                 // damage point 0.33).
-                s.elapsed += dt * self.attack_speed(h);
-                if !s.done && s.elapsed >= wp.damage_point - STEP_SLACK && s.ground.is_some() {
-                    s.done = true;
-                    let (owner, tid) = self.unit(h).map_or((0, [0; 4]), |u| (u.owner, u.type_id));
-                    let ub = self.upgrade_bonus(owner, tid);
-                    let bonus = self.unit(h).map_or(0.0, |u| u.item_bonus.damage) + ub.damage;
-                    let dice = wp.dice + ub.dice;
-                    let raw = wp.base + (0..dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>() + self.primary_attribute(h) + bonus;
-                    if let Some(src) = self.unit(h).cloned() {
-                        let launch_z = self.objects.units.get(src.type_id).map_or(60.0, |o| o.real("launchZ"));
-                        self.missiles.push(Missile {
-                            id: 0,
-                            source: h,
-                            target: 0,
-                            model: wp.missile.clone(),
-                            x: src.x,
-                            y: src.y,
-                            z: self.ground_z(src.x, src.y) + launch_z,
-                            speed: wp.missile_speed.max(1.0),
-                            arc: wp.missile_arc,
-                            damage: raw,
-                            attack_type: wp.attack_type.clone(),
-                            start: (src.x, src.y),
-                            spell: None,
-                            impact: s.ground,
-                            weapon: Some(wp.clone()),
-                            bounces: 0,
-                            hit: Vec::new(),
-                            stampede: None,
-                            rock: None,
-                            reflected: false,
-                        });
-                    }
-                }
-                if !s.done && s.elapsed >= wp.damage_point - STEP_SLACK {
-                    s.done = true;
-                    let (owner, tid) = self.unit(h).map_or((0, [0; 4]), |u| (u.owner, u.type_id));
-                    let ub = self.upgrade_bonus(owner, tid);
-                    let bonus = self.unit(h).map_or(0.0, |u| u.item_bonus.damage) + ub.damage;
-                    let dice = wp.dice + ub.dice;
-                    let raw = wp.base + (0..dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>() + self.primary_attribute(h) + bonus;
-                    let raw = self.attack_modifiers(vm, h, s.target, raw);
-                    self.attack_passives(vm, h, s.target);
-                    self.club_swing(h);
-                    if self.unit(h).is_none_or(|u| u.dead) {
-                        continue;
-                    }
-                    if wp.weapon_type == "missile" || wp.weapon_type == "artillery" || wp.weapon_type.starts_with("msplash") || wp.weapon_type == "mbounce" || wp.weapon_type == "mline" {
-                        if let (Some(src), Some(_)) = (self.unit(h).cloned(), self.unit(s.target)) {
-                            // Lightning Attack: a weapon firing the ability's missile also
-                            // strikes with its lightning, DataA after for DataB.
-                            if let Some((a, lvl)) = self.ability_with_code(h, codes::ability::LIGHTNING_ATTACK) {
-                                let lvl = lvl.max(1) as u32;
-                                if self.profile_art(a, "Missileart").eq_ignore_ascii_case(&wp.missile) {
-                                    let (delay, life) = (self.data(a, "DataA", lvl), self.data(a, "DataB", lvl));
-                                    let codes = self.objects.abilities.get(a).map(|o| o.list("LightningEffect")).unwrap_or_default();
-                                    if let Some(code) = codes.first().map(|c| c.trim().to_string()).filter(|c| !c.is_empty()) {
-                                        self.timed_bolt(&code, h, s.target, delay, life.max(0.01));
-                                    }
-                                }
-                            }
-                            let launch_z = self.objects.units.get(src.type_id).map_or(60.0, |o| o.real("launchZ"));
-                            self.missiles.push(Missile {
-                                id: 0,
-                                source: h,
-                                target: s.target,
-                                model: wp.missile.clone(),
-                                x: src.x,
-                                y: src.y,
-                                z: self.ground_z(src.x, src.y) + launch_z,
-                                speed: wp.missile_speed.max(1.0),
-                                arc: wp.missile_arc,
-                                damage: raw,
-                                attack_type: wp.attack_type.clone(),
-                                start: (src.x, src.y),
-                                spell: None,
-                                // Artillery lands where the target stood when it fired.
-                                impact: (wp.weapon_type == "artillery" || wp.weapon_type == "aline").then(|| self.widget_pos(s.target)).flatten(),
-                                weapon: Some(wp.clone()),
-                                // targCount targets, and more with Moon Glaive (ratc).
-                                bounces: if wp.weapon_type == "mbounce" { wp.target_count - 1 + self.upgrade_bonus(src.owner, src.type_id).targets } else { 0 },
-                                hit: Vec::new(),
-                                stampede: None,
-                                rock: None,
-                                reflected: false,
-                            });
-                            // Barrage (Aroc): an attack on an air unit sends rockets at the
-                            // other air enemies within Area too, DataC in all, each with the
-                            // attack's damage (measured: a Siege Engine's every 2 seconds
-                            // strike three Gryphon Riders alike, 28 each, then 26 each).
-                            let barrage = self.ability_with_code(h, codes::ability::ROCKET_ATTACK).filter(|&(a, _)| self.ability_enabled(src.owner, a));
-                            if let Some((a, lvl)) = barrage.filter(|_| self.unit(s.target).is_some_and(|t| self.objects.units.get(t.type_id).is_some_and(|o| o.str("movetp").eq_ignore_ascii_case("fly")))) {
-                                let lvl = lvl.max(1) as u32;
-                                let (area, max) = (self.data(a, "Area", lvl), self.data(a, "DataC", lvl).max(1.0) as usize);
-                                let mut others: Vec<u32> = self.enemies_in(src.owner, src.x, src.y, area).into_iter().filter(|&t| t != s.target && self.unit(t).is_some_and(|tu| !tu.is_building && self.objects.units.get(tu.type_id).is_some_and(|o| o.str("movetp").eq_ignore_ascii_case("fly")))).collect();
-                                others.sort_by(|&p, &q| {
-                                    let d = |t: u32| self.unit(t).map_or(f32::MAX, |u| (u.x - src.x).hypot(u.y - src.y));
-                                    d(p).total_cmp(&d(q))
-                                });
-                                for t in others.into_iter().take(max.saturating_sub(1)) {
-                                    let mut m = self.missiles.last().cloned().unwrap();
-                                    m.target = t;
-                                    m.impact = None;
-                                    self.missiles.push(m);
-                                }
+                let speed = self.attack_speed(h);
+                s.elapsed += dt * speed;
+                // A swing whose backswing runs to its cooldown's end is paced by the
+                // cooldown: the damage point comes POINT_BEFORE_COOLDOWN before the
+                // cooldown's end at the latest (`FUN_6f49d130`), the cooldown has
+                // COOLDOWN_AFTER_POINT left at least then and the backswing ends
+                // POINT_BEFORE_COOLDOWN before it (`FUN_6f49d050`), and the cooldown's end
+                // starts the next attack at once (`FUN_6f49a4f0`), within the step if it
+                // falls there (measured: Mafarazzo TD's Plague Tower, cooldown 0.2 read as
+                // 0.32, attacks every 0.32 seconds).
+                let quick = known && (wp.cooldown - wp.damage_point - wp.backswing) / speed <= POINT_BEFORE_COOLDOWN + STEP_SLACK;
+                let point = if quick { wp.damage_point.min(wp.cooldown - POINT_BEFORE_COOLDOWN * speed) } else { wp.damage_point };
+                let mut swings = 0;
+                loop {
+                    if !s.done && s.elapsed >= point - STEP_SLACK {
+                        s.done = true;
+                        if !self.swing_lands(vm, h, &s, &wp) {
+                            continue 'units;
+                        }
+                        if quick {
+                            let past = (s.elapsed - point).max(0.0) / speed;
+                            if let Some(u) = self.unit_mut(h) {
+                                u.cooldown = u.cooldown.max(COOLDOWN_AFTER_POINT - past);
                             }
                         }
-                    } else {
-                        // Melee impacts sound by weapon (weapType1) and target armor
-                        // (UnitCombatSounds: MetalMediumSlice + Flesh).
-                        let weap = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map(|o| o.str("weapType1")).unwrap_or_default();
-                        let armor = self.unit(s.target).and_then(|t| self.objects.units.get(t.type_id)).map(|o| o.str("armor")).unwrap_or_default();
-                        if !weap.is_empty() && !weap.eq_ignore_ascii_case("_") {
-                            if let Some(t) = self.unit(s.target) {
-                                let (x, y) = (t.x, t.y);
-                                let z = self.ground_z(x, y);
-                                self.requests.push(Request::WorldSound { label: format!("{weap}{armor}"), x, y, z });
-                            }
-                        }
-                        let at = self.widget_pos(s.target).unwrap_or_default();
-                        // An instant ranged attack Defend deflects strikes its source.
-                        let deflected = if wp.weapon_type == "instant" { self.defend_deflects(s.target, h, &wp.attack_type) } else { None };
-                        if let Some(taken) = deflected {
-                            if taken > 0.0 {
-                                self.deal_damage(vm, h, s.target, raw * taken, &wp.attack_type);
-                            }
-                            self.deal_damage(vm, s.target, h, raw, &wp.attack_type);
-                        } else {
-                            self.attack_impact(vm, h, s.target, raw, &wp, at);
-                        }
                     }
+                    if !quick || !s.done || swings >= QUICK_SWINGS_PER_STEP {
+                        break;
+                    }
+                    let Some(next) = self.next_quick_swing(h, &s, speed, dt) else { break };
+                    s = next;
+                    swings += 1;
                 }
                 let Some(u) = self.unit_mut(h) else { continue };
                 // The backswing gives way to the next attack once the cooldown is up
                 // (measured: a level 6 Blademaster, agility 32, strikes every 1.08 seconds,
                 // its cooldown 1.77 / 1.64, though its damage point and backswing make
                 // 1.17).
-                if s.elapsed >= wp.damage_point + wp.backswing - STEP_SLACK || (s.done && u.cooldown <= STEP_SLACK) {
+                if (!quick && s.elapsed >= wp.damage_point + wp.backswing - STEP_SLACK) || (s.done && u.cooldown <= STEP_SLACK) {
                     u.swing = None;
                     set_anim(u, "stand");
                 } else {
@@ -4549,6 +4486,205 @@ impl World {
             Some("INT") => (u.int + b.int).floor(),
             _ => 0.0,
         }
+    }
+
+    /// A swing's damage point: an attack on the ground sends its missile at the point;
+    /// one on a unit strikes it or sends its missile.  False when the attacker is gone or
+    /// died of it.
+    fn swing_lands(&mut self, vm: &mut Vm, h: u32, s: &Swing, wp: &Weapon) -> bool {
+        if s.ground.is_some() {
+            let (owner, tid) = self.unit(h).map_or((0, [0; 4]), |u| (u.owner, u.type_id));
+            let ub = self.upgrade_bonus(owner, tid);
+            let bonus = self.unit(h).map_or(0.0, |u| u.item_bonus.damage) + ub.damage;
+            let dice = wp.dice + ub.dice;
+            let raw = wp.base + (0..dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>() + self.primary_attribute(h) + bonus;
+            if let Some(src) = self.unit(h).cloned() {
+                let launch_z = self.objects.units.get(src.type_id).map_or(60.0, |o| o.real("launchZ"));
+                self.missiles.push(Missile {
+                    id: 0,
+                    source: h,
+                    target: 0,
+                    model: wp.missile.clone(),
+                    x: src.x,
+                    y: src.y,
+                    z: self.ground_z(src.x, src.y) + launch_z,
+                    speed: wp.missile_speed.max(1.0),
+                    arc: wp.missile_arc,
+                    damage: raw,
+                    attack_type: wp.attack_type.clone(),
+                    start: (src.x, src.y),
+                    spell: None,
+                    impact: s.ground,
+                    weapon: Some(wp.clone()),
+                    bounces: 0,
+                    hit: Vec::new(),
+                    stampede: None,
+                    rock: None,
+                    reflected: false,
+                });
+            }
+            return true;
+        }
+        let (owner, tid) = self.unit(h).map_or((0, [0; 4]), |u| (u.owner, u.type_id));
+        let ub = self.upgrade_bonus(owner, tid);
+        let bonus = self.unit(h).map_or(0.0, |u| u.item_bonus.damage) + ub.damage;
+        let dice = wp.dice + ub.dice;
+        let raw = wp.base + (0..dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>() + self.primary_attribute(h) + bonus;
+        let raw = self.attack_modifiers(vm, h, s.target, raw);
+        self.attack_passives(vm, h, s.target);
+        self.club_swing(h);
+        if self.unit(h).is_none_or(|u| u.dead) {
+            return false;
+        }
+        self.pillage_ready(h, s.target);
+        if wp.weapon_type == "missile" || wp.weapon_type == "artillery" || wp.weapon_type.starts_with("msplash") || wp.weapon_type == "mbounce" || wp.weapon_type == "mline" {
+            if let (Some(src), Some(_)) = (self.unit(h).cloned(), self.unit(s.target)) {
+                // Lightning Attack: a weapon firing the ability's missile also
+                // strikes with its lightning, DataA after for DataB.
+                if let Some((a, lvl)) = self.ability_with_code(h, codes::ability::LIGHTNING_ATTACK) {
+                    let lvl = lvl.max(1) as u32;
+                    if self.profile_art(a, "Missileart").eq_ignore_ascii_case(&wp.missile) {
+                        let (delay, life) = (self.data(a, "DataA", lvl), self.data(a, "DataB", lvl));
+                        let codes = self.objects.abilities.get(a).map(|o| o.list("LightningEffect")).unwrap_or_default();
+                        if let Some(code) = codes.first().map(|c| c.trim().to_string()).filter(|c| !c.is_empty()) {
+                            self.timed_bolt(&code, h, s.target, delay, life.max(0.01));
+                        }
+                    }
+                }
+                let launch_z = self.objects.units.get(src.type_id).map_or(60.0, |o| o.real("launchZ"));
+                self.missiles.push(Missile {
+                    id: 0,
+                    source: h,
+                    target: s.target,
+                    model: wp.missile.clone(),
+                    x: src.x,
+                    y: src.y,
+                    z: self.ground_z(src.x, src.y) + launch_z,
+                    speed: wp.missile_speed.max(1.0),
+                    arc: wp.missile_arc,
+                    damage: raw,
+                    attack_type: wp.attack_type.clone(),
+                    start: (src.x, src.y),
+                    spell: None,
+                    // Artillery lands where the target stood when it fired.
+                    impact: (wp.weapon_type == "artillery" || wp.weapon_type == "aline").then(|| self.widget_pos(s.target)).flatten(),
+                    weapon: Some(wp.clone()),
+                    // targCount targets, and more with Moon Glaive (ratc).
+                    bounces: if wp.weapon_type == "mbounce" { wp.target_count - 1 + self.upgrade_bonus(src.owner, src.type_id).targets } else { 0 },
+                    hit: Vec::new(),
+                    stampede: None,
+                    rock: None,
+                    reflected: false,
+                });
+                // Barrage (Aroc): an attack on an air unit sends rockets at the
+                // other air enemies within Area too, DataC in all, each with the
+                // attack's damage (measured: a Siege Engine's every 2 seconds
+                // strike three Gryphon Riders alike, 28 each, then 26 each).
+                let barrage = self.ability_with_code(h, codes::ability::ROCKET_ATTACK).filter(|&(a, _)| self.ability_enabled(src.owner, a));
+                if let Some((a, lvl)) = barrage.filter(|_| self.unit(s.target).is_some_and(|t| self.objects.units.get(t.type_id).is_some_and(|o| o.str("movetp").eq_ignore_ascii_case("fly")))) {
+                    let lvl = lvl.max(1) as u32;
+                    let (area, max) = (self.data(a, "Area", lvl), self.data(a, "DataC", lvl).max(1.0) as usize);
+                    let mut others: Vec<u32> = self.enemies_in(src.owner, src.x, src.y, area).into_iter().filter(|&t| t != s.target && self.unit(t).is_some_and(|tu| !tu.is_building && self.objects.units.get(tu.type_id).is_some_and(|o| o.str("movetp").eq_ignore_ascii_case("fly")))).collect();
+                    others.sort_by(|&p, &q| {
+                        let d = |t: u32| self.unit(t).map_or(f32::MAX, |u| (u.x - src.x).hypot(u.y - src.y));
+                        d(p).total_cmp(&d(q))
+                    });
+                    for t in others.into_iter().take(max.saturating_sub(1)) {
+                        let mut m = self.missiles.last().cloned().unwrap();
+                        m.target = t;
+                        m.impact = None;
+                        self.missiles.push(m);
+                    }
+                }
+            }
+        } else {
+            // Melee impacts sound by weapon (weapType1) and target armor
+            // (UnitCombatSounds: MetalMediumSlice + Flesh).
+            let weap = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map(|o| o.str("weapType1")).unwrap_or_default();
+            let armor = self.unit(s.target).and_then(|t| self.objects.units.get(t.type_id)).map(|o| o.str("armor")).unwrap_or_default();
+            if !weap.is_empty() && !weap.eq_ignore_ascii_case("_") {
+                if let Some(t) = self.unit(s.target) {
+                    let (x, y) = (t.x, t.y);
+                    let z = self.ground_z(x, y);
+                    self.requests.push(Request::WorldSound { label: format!("{weap}{armor}"), x, y, z });
+                }
+            }
+            let at = self.widget_pos(s.target).unwrap_or_default();
+            // An instant ranged attack Defend deflects strikes its source.
+            let deflected = if wp.weapon_type == "instant" { self.defend_deflects(s.target, h, &wp.attack_type) } else { None };
+            if let Some(taken) = deflected {
+                if taken > 0.0 {
+                    self.deal_damage(vm, h, s.target, raw * taken, &wp.attack_type);
+                }
+                self.deal_damage(vm, s.target, h, raw, &wp.attack_type);
+            } else {
+                self.attack_impact(vm, h, s.target, raw, &wp, at);
+            }
+        }
+        true
+    }
+
+    /// A quick weapon's next attack, started as its cooldown runs out within the step
+    /// (the cooldown's end tries the attack again, `FUN_6f49a4f0` and `FUN_6f495180`),
+    /// what ran past the end carried into the new cooldown and swing.  None when the unit
+    /// would not strike its target again at once, left to the step's usual course: it
+    /// has to turn or close in, its target is gone, or it takes a better one.
+    fn next_quick_swing(&mut self, h: u32, s: &Swing, speed: f32, dt: f32) -> Option<Swing> {
+        let u = self.unit(h)?;
+        if u.cooldown > STEP_SLACK || u.extra.reaction > 0.0 {
+            return None;
+        }
+        // On a target it took up itself it looks again each second, as between swings
+        // (the look's timer runs on beside the attack's, `FUN_6f493ff0`).
+        let own = matches!(u.action, Action::Attack { target } if target == s.target) && s.ground.is_none() && u.extra.acquired == s.target;
+        if own && u.acquire_timer <= 0.0 && self.unit(s.target).is_some_and(|t| !t.dead) {
+            let (range, creeps) = (u.acquire_range, u.owner == PLAYER_NEUTRAL_AGGRESSIVE);
+            let better = self.find_target_ex(h, range, creeps).filter(|&t| t != s.target);
+            let u = self.unit_mut(h)?;
+            u.acquire_timer = u.acquire_timer.max(-dt) + 1.0;
+            if let Some(t) = better {
+                u.action = Action::Attack { target: t };
+                self.acquired(h, t);
+                return None;
+            }
+        }
+        let u = self.unit(h)?;
+        let half = 0.5f32.to_degrees();
+        let facing = |to: (f32, f32)| u.is_building || angle_diff(u.facing, angle_to((u.x, u.y), to)).abs() <= half;
+        let (wn, wp) = match (&u.action, s.ground) {
+            (Action::AttackGround { x, y }, Some(at)) if (*x, *y) == at => {
+                let (wn, wp) = unit_weapons(self, u).into_iter().find(|(_, w)| w.weapon_type == "artillery" || w.weapon_type == "aline")?;
+                if (at.0 - u.x).hypot(at.1 - u.y) - u.collision > wp.range || !facing(at) {
+                    return None;
+                }
+                (wn, wp)
+            }
+            (Action::Attack { target }, None) if *target == s.target => {
+                let t = self.unit(s.target).filter(|t| !t.dead)?;
+                if u.extra.acquired == s.target && self.cloaked(h) {
+                    return None;
+                }
+                let (wn, wp) = weapon_for(self, u, t)?;
+                let reach = wp.range + self.upgrade_bonus(u.owner, u.type_id).range;
+                if (t.x - u.x).hypot(t.y - u.y) - u.collision - self.reach_radius(s.target) > reach || !facing((t.x, t.y)) {
+                    return None;
+                }
+                (wn, wp)
+            }
+            _ => return None,
+        };
+        if wn != s.weapon {
+            return None;
+        }
+        let u = self.unit_mut(h).unwrap();
+        let carry = u.cooldown.min(0.0);
+        u.cooldown = wp.cooldown / speed + carry;
+        u.extra.cooldown_speed = Some(speed);
+        restart_anim(u, "attack");
+        if s.ground.is_none() {
+            self.queue_unit_event(s.target, EVENT_PLAYER_UNIT_ATTACKED, EVENT_UNIT_ATTACKED, EventCtx { other_unit: h, ..Default::default() });
+        }
+        Some(Swing { target: s.target, ground: s.ground, elapsed: -carry * speed, done: false, weapon: wn })
     }
 
     /// Moves into range of `target` and starts a swing when ready.

@@ -1557,6 +1557,37 @@ these are the findings behind them.
   Tower attacks what comes near, and Mafarazzo TD's 200s Missile Tank (acquire 1200)
   is not held to its Arrow Tower's 700.  The port re-reads it, and the model scale, as
   the upgrade finishes (provisional: whether a range a script set is kept).
+- An attack's times are its weapon's as the attack reads them (CAbilityAttack
+  `FUN_6f49cab0`, for each weapon whose record's word 14 is set: provisionally, each
+  weapon the unit has; the port reads every weapon so): the damage point and
+  backswing at least 0.01 (0x6fcd53a4); the cooldown at least 0.1 (0x6fcd53c4) and at
+  least the damage point and 0.02 (0x6fcd53a8); the backswing, if the damage point,
+  backswing, and 0.01 pass the cooldown, the cooldown less the damage point and 0.01
+  (at least 0.01); and the range no farther than the acquisition range (the attack's
+  +0x244, set from the same record just before), if past it by 0.001 or more.  So a
+  weapon's cooldown never falls below its damage point and 0.02: Mafarazzo TD's ten
+  towers of cooldown 0.2 down to 0.01 (and the three of 0.3), all of damage point
+  0.3, attack every 0.32 seconds (measured: its Plague Tower, cooldown 0.2, every
+  0.32), and its 100s and 200s Missile Tanks, ranges 1250 and 1500, reach 1100 and
+  1200, their acquisition ranges.  Melee data has none of these but backswings cut short (the
+  Watch Tower's 0.3 to 0.29, the Spirit Towers' 0.5 to 0.49, a few creeps') and the
+  Locust's 0 times.
+- The attack cycle runs on three timers of the attack: its cooldown (+0x1d8, event
+  0xd01b0), its damage point (+0x1ec, 0xd01b1), and its backswing (+0x200, 0xd01b2).
+  An attack starts only once the cooldown has run out (`FUN_6f495180`); it starts the
+  cooldown and the damage point together (`FUN_6f49d130`), the damage point at most
+  the cooldown less 0.01.  At the damage point (`FUN_6f49a5b0`, `FUN_6f4946b0` with
+  `FUN_6f49d050`) the cooldown, if it has less than 0.02 left, is made 0.02, and the
+  backswing (at least 0.01) is held to end 0.01 before the cooldown does.  The
+  cooldown's end (`FUN_6f49a4f0`) tries the attack again at once (`FUN_6f499310`,
+  `FUN_6f495180`: the target still valid, in reach, and in sight).  No attack starts
+  while a damage point is pending, and the animation limits nothing (`FUN_6f49c440`
+  restarts it with each attack).  With the times as read above the timers' limits
+  matter only to an attack sped up (each time over the attack's speed factor,
+  `FUN_6f498670`, between 0x6fd6bf70 and 0x6fd6bf6c), where the cooldown can come
+  within 0.02 of the damage point; the cooldown's other factor (+0x1c0, below 0) slows
+  only the cooldown.  A cancelled attack whose damage point is pending loses its
+  cooldown too (`FUN_6f497e20`).
 - A structure that uses food (fused) needs it free to be ordered built, as a unit
   trained does (`Nofood`); custom maps limit structures so (Mafarazzo TD's HSBC uses
   1 and its Castle makes 1: one HSBC a player).  Melee data has no such structure but
@@ -1568,7 +1599,19 @@ these are the findings behind them.
   to buildings, but a map may widen them (Mafarazzo TD's banks, A000, `enemies`, pay
   on the runners; their tooltips' "~4-5 dollars per hit" is the cost share on a
   13000-life runner made from hhdl, 240 gold: 400 / 13000 × 0.6 × 240).
-  Provisional: whether a killing hit counts its whole damage or the life it took.
+- Pillage counts the life a hit took, and pays once for each attack made ready.  The
+  damage (CUnit vf72 `FUN_6f69b380`) calls `FUN_6f69ca80` with the hit's final
+  damage before it takes the life (vf74 `FUN_6f670560`, after): that fires the
+  damaged event (`FUN_6f67b740`, 0x80234) and gives the attacker's damage hooks (vf92,
+  `FUN_6f66a350`) the damage, at most the target's life as it stood (vf75), when the
+  damage is an attack's (vf72's third argument, the damage's flag 0x100).  So a
+  killing hit pays, for what was left of the target: an HSBC's 501 on a 180-life
+  runner counts 180.  CAbilitySalvage's hook (`FUN_6f5431a0`) runs only while its
+  flag 0x200 is set and clears it first, whatever it struck; the flag is set at each
+  attack's damage point, when the attack's target passes the ability's targets
+  (vf77 `FUN_6f560c20`, called with the other class 0xb to 0x1a abilities by
+  `FUN_6f68f180` from the attack's `FUN_6f4946b0`).  Of two missiles in flight at
+  once, the first to land pays and the second nothing.
 - Moon Glaive (`Amgl`), Slow Poison (`Aspo`), and Pillage (`Asal`) are passive: their
   art is a passive button's (`PASBTN...`) and their buttons give no order.
 - A structure does not walk, whatever its speed, unless an uprooted ancient: a tower

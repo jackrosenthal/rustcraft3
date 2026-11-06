@@ -1795,6 +1795,18 @@ these are the findings behind them.
     Mafarazzo TD's LAN game so agrees for all 502 turns of its keepalives and its
     objects through turn 501 (the trace ends in 502), and the flyer game to turn 217
     (from 216; at 217 the original's tower takes up a creep).
+  - Each walker is carried on to the look's due, the agent queue's clock as its timer
+    falls due, not the main clock of the tick it falls in (`World::looks_before`).
+    Read: a plain Mafarazzo TD game traced from turn 569 (`abtest/mafa5.*`), where the
+    original made four `Cdet` at turn 576 and the port three, a fourth at turn 581:
+    a creep closing on the second flying peasant at 206.8 a second, 901.47 off it by
+    the main clock of the look's tick (57.496616) against its 901, 900.78 by the due
+    57.5.  So that game agrees for all 624 turns, the replay game for all 582, and
+    the old capture to turn 659 (each from 576).  Provisional: the next main tick's
+    clock fits as well; and the steps move their walkers by their ticks' main clocks
+    (`World::plan_steps`), which the agent queue's clock as events fall due would
+    not, so how `FUN_6f161040`'s clock (`DAT_6fd53a48` + 0x14 + 0x40, or + 0x68 + 0x40
+    by the position's +0x14 flag, `FUN_6f15c650`) is kept between them is not read.
 - The script's globals run before the map's destructables: Blizzard.j's first timer,
   then the engine's `+gam` `` `flg `` `` `flg `` `` `rel `` `` `rel `` `` `flg ``
   `` `rtl `` `+qum`, then the other globals.
@@ -2185,6 +2197,33 @@ these are the findings behind them.
   back makes a new cluster group, cluster, and path (`^clg`, `^clu`, `l^pa`, the
   `^clg` and the old path freed at once) as the tower's Slow Poison lands, which the
   port does not; what remakes it is not yet read.
+- The look's timer (event 0xd01c1, `CAbilityAttack::vf3_6f49a5f0` → `FUN_6f493ff0`)
+  starts itself again as it falls due, before its search: a second on with a target
+  held (`DAT_6fd6bf44`), else half a second (`DAT_6fd6bf40`).  So a structure's look
+  that takes up a target looks again half a second on, then each second, swinging
+  or not (the port's had waited for the swing to end).  Its search begins with the
+  target held (`FUN_6f493d20`: its score `FUN_6f49d680`, which gives the target held
+  in reach 0x1000000 over its in-reach 0x4000000), a find taking its place only by
+  a higher score, or an equal one and nearer (`FUN_6f493b20`), and none returned
+  when the best is the target held; the port so keeps its target unless a find of a
+  better rank (one going for the structure, a unit over a structure) comes
+  (`World::structure_look`; provisional: the score's other parts, the damage
+  factor's and the life's bands, are not the port's).  Measured (the flyer game,
+  `abtest/mafb.w3x`, `FUN_6f493ff0`'s entry, its return 0x6f49a7c2): the Arrow
+  Tower's looks at 21.662 (taking up a creep), 22.162 (its +0x20 flags 0x24084115,
+  the target held), and on; the original's went on with that creep (its missiles at
+  turns 228 and 235 with no new tasks), the port's had turned on a nearer one at 22.2.
+- An armed structure looks for a target as it is done: its look's timer started
+  0.01 on (`FUN_6f49d000`, `DAT_6fcd53a4`) from the agent queue's clock as the
+  construction's end falls due on the main clock (the clock of the first main tick
+  at or past the end), its making's wait forgotten (`World::look_when_built`).
+  Measured: the flyer game's Arrow Tower, done at 19.147955, its first look in the
+  main tick 19.157785 (its flags 0x84010), then 19.662701, 20.162617, and on each
+  half second, its dues so 19.162787 and on; the port's had kept its making's phase
+  and looked at 19.4, 19.9, and on, taking the creep up at turn 219, not 217.  Which
+  event starts it there (`FUN_6f49d000` is reached from 0xd0148 and 0xd0149 through
+  `FUN_6f49c3a0`, and from 0xd014f) is not read.  With these the flyer game agrees to
+  turn 274 (from 217).
 
 ## Where the port departs from the original
 

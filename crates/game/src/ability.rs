@@ -693,24 +693,21 @@ impl World {
     }
 
     /// Takes the looks due before `until` (seconds since the game began, an agent due),
-    /// or all those left.
+    /// or all those left, each walker carried on to the look's due, the agent queue's
+    /// clock as it falls due (`FUN_6f161040`; read: Mafarazzo TD's creep closing on the
+    /// second flying peasant at 206.8 a second, 901.47 off by the main clock of the
+    /// look's tick, 57.496616, against 901, found by the look due 57.5 in the original's,
+    /// in turn 576, the port's a look later).  Provisional: the main tick after the due
+    /// fits as well, and the steps move their walkers by their ticks' main clocks, which
+    /// the agent queue's would not; how the two are kept is not read.
     pub(crate) fn looks_before(&mut self, until: Option<f64>) {
         let Some(due) = self.looks_due.as_mut() else { return };
         let n = due.iter().take_while(|l| until.is_none_or(|u| l.0 < u)).count();
         let now: Vec<(f64, u32, u32)> = due.drain(..n).collect();
         for (at, _, h) in now {
-            let clock = self.main_tick_clock_abs(at);
-            self.detection_look(h, clock);
+            let clock = ((at - self.clock_wraps as f64 * 300.0) as f32).to_bits();
+            self.detection_look(h, Some(clock));
         }
-    }
-
-    /// The main clock of this tick's main tick in which an agent event due at `at`
-    /// (seconds since the game began) takes place: the last whose clock is short of it,
-    /// else the first (`World::agent_tick`).
-    fn main_tick_clock_abs(&self, at: f64) -> Option<u32> {
-        let n = self.tick_clocks.1.len();
-        let i = (0..n.saturating_sub(1)).rev().find(|&i| self.tick_abs(i).is_some_and(|c| c < at)).unwrap_or(0);
-        self.tick_clocks.1.get(i).copied()
     }
 
     /// Whether a unit bears one of the auras `update_auras` scans for.
@@ -731,9 +728,9 @@ impl World {
         // the type's held to at least 1, `DAT_6fd3c748`, from_int(1) by the initializer
         // at 0x6f001b80, `CUnit::vf91_6f6945a0`: read, Mafarazzo TD's creeps, of
         // collision 0, found as they come within 900 of Red's peasant.)
-        // (Each walker where its velocity takes it by the look's main tick's clock,
-        // `FUN_6f161040`: read, the creeps found at 21.5 seconds, a turn before the
-        // port's places after its steps would have them.)
+        // (Each walker where its velocity takes it by the look's due, `FUN_6f161040`:
+        // read, the creeps found at 21.5 seconds, a turn before the port's places after
+        // its steps would have them; `World::looks_before`.)
         self.script_clock = clock;
         let found: Vec<u32> = self.unit_order.iter().copied().filter(|&o| o != h && self.unit(o).is_some_and(|t| !t.dead && !t.extra.detected_by.iter().any(|d| d.0 == owner)) && self.place_now(o).zip(self.unit(o)).is_some_and(|((tx, ty), t)| (tx - x).hypot(ty - y) < range + t.collision.max(1.0))).collect();
         self.script_clock = None;

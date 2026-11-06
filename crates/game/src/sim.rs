@@ -386,7 +386,9 @@ impl World {
         if u.extra.acquired == t {
             return;
         }
+        let was = u.extra.acquired;
         u.extra.acquired = t;
+        log::trace!("{h} takes up {t} (was {was}) at {:.4}, its life {:?}", self.time, self.unit(t).map(|x| (x.life, x.dead)));
         // A structure's attack is its tasks (`crate::tasks`), from its look's time.
         if self.attacks_in_place(h) {
             let at = self.look_time(h);
@@ -2637,42 +2639,86 @@ impl World {
         if self.fog_passed.get() {
             return;
         }
+        self.look_restarted(h, dt, 0.5);
+    }
+
+    /// The look's timer started again as it falls due (`FUN_6f493ff0`, before its
+    /// search): `period` on, 1/2 without a target (DAT_6fd6bf40), 1 with one
+    /// (DAT_6fd6bf44).  (Provisional: not a worker's.)
+    fn look_restarted(&mut self, h: u32, dt: f32, period: f32) {
         if let Some(u) = self.unit_mut(h) {
-            u.acquire_timer = u.acquire_timer.max(-dt) + 0.5;
+            u.acquire_timer = u.acquire_timer.max(-dt) + period;
         }
-        // (The look's timer started again, `FUN_6f493ff0`; provisional: not a worker's.)
         if !self.unit(h).is_some_and(|u| self.unit_class(u, "peon")) {
             let n = self.tags.start_timer("493ff0");
             let now = self.time;
             if let Some(u) = self.unit_mut(h) {
-                // (Due half a second after the last look's due time, in the engine's
+                // (Due its period after the last look's due time, in the engine's
                 // arithmetic: the timer fired then.)
+                let next = |d: f32| f32::from_bits(crate::efloat::add(d.to_bits(), period.to_bits()));
                 let due = match u.extra.look_timer {
-                    Some((_, d, _)) if f32::from_bits(crate::efloat::add(d.to_bits(), 0.5f32.to_bits())) > now => f32::from_bits(crate::efloat::add(d.to_bits(), 0.5f32.to_bits())),
-                    _ => now + 0.5,
+                    Some((_, d, _)) if next(d) > now => next(d),
+                    _ => now + period,
                 };
-                u.extra.look_timer = Some((n, due, 0.5));
+                u.extra.look_timer = Some((n, due, period));
             }
         }
+    }
+
+    /// A structure attacking what it took up looks again as its look's timer falls due,
+    /// swinging or not (event 0xd01c1, `FUN_6f493ff0`: the timer started again a
+    /// second on, a target held, before the search, `FUN_6f493d20`, whose find it takes
+    /// up, `FUN_6f4943f0`).  Measured: the flyer game's Arrow Tower, its looks at 21.662
+    /// (taking up a creep), 22.162, and on; the port's had waited for its swings to end.
+    fn structure_look(&mut self, h: u32, dt: f32) {
+        if !self.attacks_in_place(h) {
+            return;
+        }
+        let Some(u) = self.unit(h) else { return };
+        let Action::Attack { target } = u.action else { return };
+        if u.extra.acquired != target || u.acquire_timer > 0.0 || u.extra.sleeping || unit_weapons(self, u).is_empty() || self.unit(target).is_none_or(|t| t.dead) {
+            return;
+        }
+        let (range, creeps) = (u.acquire_range, u.owner == PLAYER_NEUTRAL_AGGRESSIVE);
+        // (Its target held in reach scores its rank and more, `FUN_6f49d680`'s 0x1000000
+        // over its in-reach 0x4000000, and the search begins with it, a find taking its
+        // place only by a better score, `FUN_6f493b20`: so only one of a better kind, by
+        // the port's ranks, going for the structure or a unit over a structure.)
+        let rank = |w: &World, t: u32| w.unit(t).map(|tu| (!(matches!(tu.action, Action::Attack { target } if target == h) || tu.swing.as_ref().is_some_and(|s| s.target == h)), tu.is_building));
+        let held = self.unit_order.contains(&target) && self.find_target_among(h, range, creeps, Some(target));
+        let better = self.find_target_ex(h, range, creeps).filter(|&t| t != target && (!held || rank(self, t) < rank(self, target)));
+        log::trace!("{h} looks again at {:.4} (timer {:?}) on {target} (held {held}): better {better:?}", self.time, self.unit(h).map(|u| u.acquire_timer));
+        if let Some(t) = better {
+            if let Some(u) = self.unit_mut(h) {
+                u.action = Action::Attack { target: t };
+            }
+            self.acquired(h, t);
+        }
+        self.look_restarted(h, dt, 1.0);
     }
 
     fn find_target(&self, h: u32, range: f32) -> Option<u32> {
         self.find_target_ex(h, range, true)
     }
 
+    /// Whether the search would find `only` (`find_target_ex`'s tests on it alone).
+    fn find_target_among(&self, h: u32, range: f32, creeps: bool, only: Option<u32>) -> bool {
+        self.find_target_inner(h, range, creeps, only).is_some()
+    }
+
     /// `creeps`: whether Neutral Hostile's units may be taken up (an idle unit leaves
     /// them be).
     fn find_target_ex(&self, h: u32, range: f32, creeps: bool) -> Option<u32> {
         if self.profile.is_none() {
-            return self.find_target_inner(h, range, creeps);
+            return self.find_target_inner(h, range, creeps, None);
         }
         let t0 = std::time::Instant::now();
-        let r = self.find_target_inner(h, range, creeps);
+        let r = self.find_target_inner(h, range, creeps, None);
         self.prof_find.set(self.prof_find.get() + t0.elapsed().as_secs_f64());
         r
     }
 
-    fn find_target_inner(&self, h: u32, range: f32, creeps: bool) -> Option<u32> {
+    fn find_target_inner(&self, h: u32, range: f32, creeps: bool, only: Option<u32>) -> Option<u32> {
         // An invisible unit takes up no targets, nor one fading out (measured: a
         // Blademaster 0.5 seconds into Wind Walk's 0.6 transition leaves a footman shown
         // beside it be until ordered to attack).
@@ -2698,12 +2744,12 @@ impl World {
         let reach_bonus = self.upgrade_bonus(u.owner, u.type_id).range;
         // (An idle structure's look: its due, and the main clock of the last step before
         // it, this tick's or the last.)
-        let look: Option<(u32, f64)> = (in_place && matches!(u.action, Action::Idle | Action::Hold)).then_some(()).and(u.extra.look_timer).map(|l| {
+        let look: Option<(u32, f64)> = (in_place && matches!(u.action, Action::Idle | Action::Hold | Action::Attack { .. })).then_some(()).and(u.extra.look_timer).map(|l| {
             let due = l.1 as f64;
             let k = (0..self.step_clocks.len()).rev().find(|&k| self.step_abs(k).is_some_and(|(_, a)| a < due));
             (k.map_or(self.step_base, |k| self.step_clocks[k]), due)
         });
-        for t in near {
+        for t in near.into_iter().filter(|&t| only.is_none_or(|o| o == t)) {
             let Some(tu) = self.unit(t) else { continue };
             // Out of range first: the other tests cost more.  The range runs edge to
             // edge (measured: a footman, acquire 500, takes up a grunt 550 away center
@@ -3039,6 +3085,7 @@ impl World {
                 u.repath_timer -= dt;
                 u.acquire_timer -= dt;
             }
+            self.structure_look(h, dt);
             // Attack swing in progress.
             if let Some(mut s) = self.unit(h).and_then(|u| u.swing.clone()) {
                 let known = wp.is_some();
@@ -3197,6 +3244,13 @@ impl World {
                             }
                             self.acquired(h, t);
                             self.spell_ai(h, t, h);
+                            // A structure's look starts its timer again as it falls due,
+                            // before its search, so half a second on without a target then
+                            // (`FUN_6f493ff0`; measured: the flyer game's Arrow Tower taking
+                            // up a creep at its look at 21.662 and looking again at 22.162).
+                            if self.attacks_in_place(h) {
+                                self.look_restarted(h, dt, 0.5);
+                            }
                             // A creep that takes one up brings its idle friends within
                             // CreepCallForHelp with it (measured: a camp's three gnolls take
                             // up a ghoul walking in at the same moment, 220, 241, and 341
@@ -3261,7 +3315,8 @@ impl World {
                     // timer runs 1 with a target, DAT_6fd6bf44) and takes a better one
                     // between swings (measured: a footman striking a farm turns on an enemy
                     // footman made beside it at 3 seconds, its next strike at 4.72).
-                    let own = self.unit(h).is_some_and(|u| u.extra.acquired == target && u.swing.is_none() && u.acquire_timer <= 0.0 && wp.is_some());
+                    // (A structure's comes by its timer, `World::structure_look`.)
+                    let own = !self.attacks_in_place(h) && self.unit(h).is_some_and(|u| u.extra.acquired == target && u.swing.is_none() && u.acquire_timer <= 0.0 && wp.is_some());
                     if own {
                         let range = self.unit(h).map_or(0.0, |u| u.acquire_range);
                         let creeps = self.unit(h).is_some_and(|u| u.owner == PLAYER_NEUTRAL_AGGRESSIVE);
@@ -3929,6 +3984,7 @@ impl World {
     /// Meadows' human computer's first farm), then its owner's tech and its events.
     fn complete_construction(&mut self, vm: &mut Vm, h: u32) {
         let last = self.tick_clocks.1.len().checked_sub(1).and_then(|i| self.tick_abs(i));
+        self.look_when_built(h);
         let Some(u) = self.unit_mut(h) else { return };
         u.constructing = None;
         // Its Blight Growth begins its steps now (`World::update_blight`).
@@ -3957,6 +4013,35 @@ impl World {
         let consumed: Vec<u32> = self.unit_order.iter().copied().filter(|&b| self.unit(b).is_some_and(|u| !u.dead && u.extra.consumed && matches!(u.action, Action::Construct { target } if target == h))).collect();
         for b in consumed {
             crate::natives::units::remove_with_tasks(self, vm, b, false);
+        }
+    }
+
+    /// An armed structure looks for a target as it is done: its look's timer (event
+    /// 0xd01c1) started `LOOK_AFTER_DROP` on (`FUN_6f49d000`, its wait DAT_6fcd53a4)
+    /// from the agent queue's clock as the construction's end falls due on the main
+    /// clock, the clock of the first main tick at or past it, then every half second
+    /// from that due as it finds none, its wait at its making forgotten.  Measured
+    /// (Mafarazzo TD's flying peasant's Arrow Tower, `abtest/mafb.w3x`, its build done
+    /// 19.147955; breakpoints on `FUN_6f493ff0` from `CAbilityAttack::vf3_6f49a5f0`):
+    /// its looks in the main ticks 19.157785, 19.662701, 20.162617, and so on each
+    /// half second, its first look's due so 19.152787 and 0.01; the port's had kept its
+    /// making's phase, looking at 19.4, 19.9, and on.  (Which event starts it there is
+    /// not read.)
+    fn look_when_built(&mut self, h: u32) {
+        use crate::efloat as ef;
+        let Some(u) = self.unit(h) else { return };
+        let (Some(due), Some(_)) = (u.extra.build_due, u.extra.look_timer) else { return };
+        let n = self.tick_clocks.1.len();
+        let Some(c) = (0..n).filter_map(|i| self.tick_abs(i)).find(|&c| c >= due as f64 - 1e-7).or_else(|| n.checked_sub(1).and_then(|i| self.tick_abs(i))) else { return };
+        let first = f32::from_bits(ef::add((c as f32).to_bits(), crate::tasks::LOOK_AFTER_DROP.to_bits()));
+        // (Taken in the last main tick short of it, that tick's game time its look's.)
+        let i = (0..n).rev().find(|&i| self.tick_abs(i).is_some_and(|t| t < first as f64)).unwrap_or(0);
+        let at = (self.tick_clocks.0 + i as i64) as f64 * 0.005;
+        let wait = (at - self.time_exact) as f32 + self.tick_dt;
+        let k = self.tags.start_timer("49d000");
+        if let Some(u) = self.unit_mut(h) {
+            u.acquire_timer = wait;
+            u.extra.look_timer = Some((k, first, 0.5));
         }
     }
 
@@ -5262,8 +5347,9 @@ impl World {
             return None;
         }
         // On a target it took up itself it looks again each second, as between swings
-        // (the look's timer runs on beside the attack's, `FUN_6f493ff0`).
-        let own = matches!(u.action, Action::Attack { target } if target == s.target) && s.ground.is_none() && u.extra.acquired == s.target;
+        // (the look's timer runs on beside the attack's, `FUN_6f493ff0`).  A structure's
+        // comes by its timer whatever its swing (`World::structure_look`).
+        let own = matches!(u.action, Action::Attack { target } if target == s.target) && s.ground.is_none() && u.extra.acquired == s.target && !(u.is_building && !u.extra.uprooted);
         if own && u.acquire_timer <= 0.0 && self.unit(s.target).is_some_and(|t| !t.dead) {
             let (range, creeps) = (u.acquire_range, u.owner == PLAYER_NEUTRAL_AGGRESSIVE);
             let better = self.find_target_ex(h, range, creeps).filter(|&t| t != s.target);
@@ -5757,6 +5843,7 @@ impl World {
                             None => self.high_ground_miss(m.source, m.target),
                         };
                         self.landing_clock = bullet.as_ref().map(|b| self.bullet_clock(b.at));
+                        log::trace!("bullet of {} lands on {} at {:?} (main clock {:?})", m.source, m.target, bullet.as_ref().map(|b| b.at), self.landing_clock);
                         if missed {
                             self.show_miss(m.source);
                             let reduced = m.damage * self.misc_f32("MissDamageReduction", 0.5);

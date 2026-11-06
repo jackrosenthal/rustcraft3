@@ -1429,6 +1429,9 @@ pub struct Swing {
     pub done: bool,
     /// Weapon 1 or 2.
     pub weapon: u8,
+    /// Its damage point taken among the tick's movement steps (`World::points_before`).
+    #[serde(default)]
+    pub landed: bool,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

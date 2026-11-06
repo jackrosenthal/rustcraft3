@@ -144,7 +144,10 @@ impl World {
         if class == codes::class::MISSILE_BOUNCE {
             self.bounce_marked(target);
         }
-        let seen = self.unit(target).map(|t| (t.x, t.y));
+        // (One sent among the steps takes its target where it is first flown: as one
+        // sent after them, `World::points_before`.)
+        let seen = self.unit(target).filter(|_| self.after_steps).map(|t| (t.x, t.y));
+        log::trace!("bullet of {h} sent at {target} at {at:.6} (main clock {:.6}): from {:?} to {:?}", self.bullet_clock(self.main_tick_time(at)), self.unit(h).map(|u| (u.x, u.y)), self.unit(target).map(|t| (t.x, t.y, t.collision)));
         Bullet { slots, counted, at: self.main_tick_time(at), seen, missed: false }
     }
 
@@ -189,7 +192,7 @@ impl World {
         let mut first: Option<f64> = None;
         for &h in &self.unit_order {
             let Some(u) = self.unit(h) else { continue };
-            let Some(s) = u.swing.as_ref().filter(|s| !s.done) else { continue };
+            let Some(s) = u.swing.as_ref().filter(|s| !s.done && !s.landed) else { continue };
             let Some(wp) = crate::sim::weapon_of(self, u, s.weapon) else { continue };
             if matches!(wp.weapon_type.as_str(), "normal" | "instant" | "") {
                 continue;

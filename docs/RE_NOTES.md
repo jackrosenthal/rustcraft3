@@ -1576,8 +1576,12 @@ these are the findings behind them.
     those they schedule are counted from the dues set back, so a chain of events
     reads differently after (a chop cycle begun at 295.938477 over at 6.838403, not
     the 6.838409 of its sums set back at the end).  Read in a game past 300 seconds,
-    each step's two clocks.  Where the engine does it is not yet found (no 300.0 in
-    the clock's code; the dll's 300000 are waits).  The port sets its kept clocks back
+    each step's two clocks.  It is each dispatch queue's (`CSiDispatch`) limit, at its
+    +0x48 (`DAT_6fd3c7d8`, from_int(300) by the initializer at 0x6f001c40, given as
+    each is made, `FUN_6f156bd0` and kin): a queue moved on past it (`FUN_6f054050`,
+    `FUN_6f0540f0`, `FUN_6f054190`) runs its requests due by the limit, takes the
+    limit from each due left (`FUN_6f052170`, counting the times at +0x44), and goes
+    on from the rest.  The port sets its kept clocks back
     as the first step after begins (`World::plan_steps`, `World::wrap_clocks`), its
     step clocks there bit for bit the original's.
   - An event on the agent queue due after a step but in that step's main tick (the
@@ -2210,10 +2214,31 @@ these are the findings behind them.
   and `l^pa` at turn 127 after the strike's `Bssi` and `Bssd`, the `^clg`, the old
   `l^pa`, and the old `^clu` freed; the runner's first slow, at turn 9, found it
   standing at its post, in no cluster.  Provisional: a group's other members are not
-  read.  With these the Plague Tower's trace agrees to turn 138 (from 126); at turn
-  139 the original sends the tower's missile (its damage point at 13.804) before the
-  runner's walk ends at the tick's third step (13.859), where the port, its steps
-  first, has them the other way.
+  read.  With these the Plague Tower's trace agrees to turn 138 (from 126; to 140
+  with its damage points among the steps, below).
+- A structure's damage point falls among the tick's movement steps by its due.  It is
+  a timer on the agent queue (CAbilityAttack +0x1ec, event 0xd01b1 → `FUN_6f49a5b0` →
+  `FUN_6f4946b0`, started with the attack by `FUN_6f49d130`), as the steps are, and
+  each main tick moves the queues on in turn (the handler at 0x6f36aba0 →
+  `FUN_6f04c1a0`, by the tick's time at its event's +0x14): the agent queue
+  (`DAT_6fd3c82c` + 0x40), then the Ipse world's relation dispatch (`DAT_6fd53a48` +
+  0x14, its clock at + 0x54 the main clock), its behavior dispatch (+ 0xbc, its clock
+  at + 0xfc), and its maps' optimizer (+ 0x164), each running its requests due by
+  then in due order (`FUN_6f0522e0`, `FUN_6f052330`, the clock reading each one's due
+  as it runs; the local queues likewise, `FUN_6f04c0d0`).  Read: the Plague Tower's
+  damage point at 13.804, between the turn's first step (due 13.7999) and its second
+  (13.8299), its missile's objects made before its runner's walk ended in the third
+  (13.8599); the port's had come after the turn's steps.  The port so takes a
+  structure's damage point due before a step as that step begins, in due order, its
+  missile's target seen as it is first flown, after the steps (`World::points_before`;
+  provisional: only for a swing begun before the tick, not the other units', and the
+  missiles landing before it flown among the steps, `World::fly_bullets`, though the
+  port's flights are flown after them).  A projectile's flight is a request on the
+  behavior dispatch (`FUN_6f171870`: its due that queue's clock plus the flight's time,
+  `FUN_6f159d50`, `FUN_6f171cc0`), so it lands after the main tick's agent events.
+  With this the Plague Tower's trace agrees to turn 140; at turn 141 the original frees
+  the `Atrg` of the missile sent at 13.804 in that turn, the port, landing it at
+  14.0965 on the main clock, in the next.
 - A structure's look finds its candidates by the proximity map's radius search
   (`FUN_6f493d20` → `FUN_6f67e790` with case 10 → `FUN_6f059c10`, `FUN_6f05ce60`):
   the radius the least of its acquisition range and its weapon's (`FUN_6f498e50`)

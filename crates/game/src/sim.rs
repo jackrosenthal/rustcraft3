@@ -189,6 +189,19 @@ const QUICK_SWINGS_PER_STEP: u32 = 1000;
 /// it took up is timed from its look, `crate::tasks`).
 const SWING_START_IN_TICK: f32 = 0.015;
 
+/// Whether a swing is quick, and its damage point (in the swing's time, its unit's
+/// attack speed `speed`).  A swing whose backswing runs to its cooldown's end is paced
+/// by the cooldown: the damage point comes POINT_BEFORE_COOLDOWN before the cooldown's
+/// end at the latest (`FUN_6f49d130`), the cooldown has COOLDOWN_AFTER_POINT left at
+/// least then and the backswing ends POINT_BEFORE_COOLDOWN before it (`FUN_6f49d050`),
+/// and the cooldown's end starts the next attack at once (`FUN_6f49a4f0`), within the
+/// step if it falls there (measured: Mafarazzo TD's Plague Tower, cooldown 0.2 read as
+/// 0.32, attacks every 0.32 seconds).
+fn swing_point(wp: &Weapon, known: bool, speed: f32) -> (bool, f32) {
+    let quick = known && (wp.cooldown - wp.damage_point - wp.backswing) / speed <= POINT_BEFORE_COOLDOWN + STEP_SLACK;
+    (quick, if quick { wp.damage_point.min(wp.cooldown - POINT_BEFORE_COOLDOWN * speed) } else { wp.damage_point })
+}
+
 pub fn unit_weapons(w: &World, u: &Unit) -> Vec<(u8, Weapon)> {
     // A burrow shoots only with workers inside.
     if u.extra.cargo.is_empty() && w.ability_with_code(u.handle, codes::ability::CARGO_HOLD_BURROW).is_some() {
@@ -1706,8 +1719,12 @@ impl World {
         if self.wrap_step.is_some_and(|(k, _)| k == 0 && !self.step_clocks.is_empty()) {
             self.wrap_clocks(&mut []);
         }
-        // The detectors' looks due before the step (`World::plan_detection_looks`).
+        // The detectors' looks due before the step (`World::plan_detection_looks`), and
+        // the structures' damage points (`World::points_before`).
         self.looks_before(self.step_abs(0).map(|s| s.1));
+        if let Some((_, due)) = self.step_abs(0) {
+            self.points_before(vm, Some(due));
+        }
         let mut walkers: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| u.steps_walker())).collect();
         // The game's first step (its clock 0) moves no one: the walks ordered as the map
         // is set up are searched and steered from the next (read: the waypoint provider,
@@ -1867,6 +1884,9 @@ impl World {
             // in a turn's second step, before an order due after it).
             self.tags.mark_step(k);
             self.looks_before(self.step_abs(k).map(|s| s.1));
+            if let Some((_, due)) = self.step_abs(k) {
+                self.points_before(vm, Some(due));
+            }
             let now: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 == k).collect();
             let next = self.step_ticks.get(k).copied();
             // The payouts by a wanderer's main tick go ahead of its order (read: a night
@@ -3229,24 +3249,16 @@ impl World {
                 // damage point 0.33).
                 let speed = self.attack_speed(h);
                 s.elapsed += dt * speed;
-                // A swing whose backswing runs to its cooldown's end is paced by the
-                // cooldown: the damage point comes POINT_BEFORE_COOLDOWN before the
-                // cooldown's end at the latest (`FUN_6f49d130`), the cooldown has
-                // COOLDOWN_AFTER_POINT left at least then and the backswing ends
-                // POINT_BEFORE_COOLDOWN before it (`FUN_6f49d050`), and the cooldown's end
-                // starts the next attack at once (`FUN_6f49a4f0`), within the step if it
-                // falls there (measured: Mafarazzo TD's Plague Tower, cooldown 0.2 read as
-                // 0.32, attacks every 0.32 seconds).
-                let quick = known && (wp.cooldown - wp.damage_point - wp.backswing) / speed <= POINT_BEFORE_COOLDOWN + STEP_SLACK;
-                let point = if quick { wp.damage_point.min(wp.cooldown - POINT_BEFORE_COOLDOWN * speed) } else { wp.damage_point };
+                let (quick, point) = swing_point(&wp, known, speed);
                 let mut swings = 0;
                 loop {
-                    if !s.done && s.elapsed >= point - STEP_SLACK {
+                    // (One taken among the steps lands no more, `World::points_before`.)
+                    if !s.done && (s.landed || s.elapsed >= point - STEP_SLACK) {
                         s.done = true;
                         // (The damage point's moment: as far back in the tick as the
                         // swing has run past it.)
                         let at = self.time_exact - ((s.elapsed - point).max(0.0) / speed) as f64;
-                        if !self.swing_lands(vm, h, &s, &wp, at) {
+                        if !s.landed && !self.swing_lands(vm, h, &s, &wp, at) {
                             continue 'units;
                         }
                         if quick {
@@ -5323,6 +5335,54 @@ impl World {
         }
     }
 
+    /// The structures' damage points falling due before `until` (an agent due, seconds
+    /// since the game began; with none, all this tick's), taken among the movement steps
+    /// in the order they fall due: the damage point is a timer on the agent queue
+    /// (CAbilityAttack +0x1ec, event 0xd01b1 → `FUN_6f49a5b0` → `FUN_6f4946b0`, started
+    /// with the attack by `FUN_6f49d130`), as are the steps, and each main tick runs that
+    /// queue's events in turn (`FUN_6f04c1a0`, `FUN_6f054050`).  Read: Mafarazzo TD's
+    /// Plague Tower's missile, its damage point at 13.804, made after a turn's first step
+    /// and before the third (13.859), in which its runner's walk ended.  The rest are
+    /// the units' logic's (`World::update_units`).  Provisional: only a swing begun
+    /// before the tick; and the other units' and a walking ancient's are not yet so.
+    pub(crate) fn points_before(&mut self, vm: &mut Vm, until: Option<f64>) {
+        let dt = self.tick_dt;
+        let mut due: Vec<(f64, u32)> = Vec::new();
+        for &h in &self.unit_order {
+            if !self.attacks_in_place(h) || self.buff_mods(h).4 {
+                continue;
+            }
+            let Some(u) = self.unit(h).filter(|u| !u.dead && !u.paused && u.constructing.is_none()) else { continue };
+            let Some(s) = u.swing.as_ref().filter(|s| !s.done && !s.landed) else { continue };
+            let Some(wp) = weapon_numbered(self, u, s.weapon) else { continue };
+            // (As the units' logic will find it at the tick's end.)
+            let speed = self.attack_speed(h);
+            let (_, point) = swing_point(&wp, true, speed);
+            let elapsed = s.elapsed + dt * speed;
+            if elapsed < point - STEP_SLACK {
+                continue;
+            }
+            let at = self.time_exact - ((elapsed - point).max(0.0) / speed) as f64;
+            if until.is_none_or(|t| at < t) {
+                due.push((at, h));
+            }
+        }
+        due.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let landed = !due.is_empty();
+        for (at, h) in due {
+            let Some(u) = self.unit(h) else { continue };
+            let Some((s, wp)) = u.swing.clone().and_then(|s| weapon_numbered(self, u, s.weapon).map(|wp| (s, wp))) else { continue };
+            if let Some(s) = self.unit_mut(h).and_then(|u| u.swing.as_mut()) {
+                s.landed = true;
+            }
+            self.swing_lands(vm, h, &s, &wp, at);
+        }
+        // (What falls due after them waits for those left, `World::first_missile_point`.)
+        if landed {
+            self.steps_free_until = self.first_missile_point(dt);
+        }
+    }
+
     /// A swing's damage point: an attack on the ground sends its missile at the point;
     /// one on a unit strikes it or sends its missile.  False when the attacker is gone or
     /// died of it.
@@ -5556,7 +5616,7 @@ impl World {
         if s.ground.is_none() {
             self.queue_unit_event(s.target, EVENT_PLAYER_UNIT_ATTACKED, EVENT_UNIT_ATTACKED, EventCtx { other_unit: h, ..Default::default() });
         }
-        Some(Swing { target: s.target, ground: s.ground, elapsed: -carry * speed, done: false, weapon: wn })
+        Some(Swing { target: s.target, ground: s.ground, elapsed: -carry * speed, done: false, weapon: wn, landed: false })
     }
 
     /// Moves into range of `target` and starts a swing when ready.
@@ -5586,7 +5646,7 @@ impl World {
         if u.cooldown <= STEP_SLACK {
             u.cooldown = wp.cooldown / speed + u.cooldown.min(0.0);
             u.extra.cooldown_speed = Some(speed);
-            u.swing = Some(Swing { target: 0, ground: Some(at), elapsed: 0.0, done: false, weapon: wn });
+            u.swing = Some(Swing { target: 0, ground: Some(at), elapsed: 0.0, done: false, weapon: wn, landed: false });
             restart_anim(u, "attack");
         } else if u.anim == "walk" {
             set_anim(u, "stand");
@@ -5674,7 +5734,7 @@ impl World {
             };
             u.cooldown = wp.cooldown / speed - early;
             u.extra.cooldown_speed = Some(speed);
-            u.swing = Some(Swing { target, ground: None, elapsed: early * speed, done: false, weapon: wn });
+            u.swing = Some(Swing { target, ground: None, elapsed: early * speed, done: false, weapon: wn, landed: false });
             restart_anim(u, "attack");
             // The target is attacked (GetAttacker is the attacker).
             self.queue_unit_event(target, EVENT_PLAYER_UNIT_ATTACKED, EVENT_UNIT_ATTACKED, EventCtx { other_unit: h, ..Default::default() });
@@ -5884,26 +5944,49 @@ impl World {
     /// lands on reaching its edge (measured: an archer's arrow, at 900, strikes a footman
     /// 500 away 0.51 seconds after leaving, its 469 to the footman's collision of 31);
     /// it flies from the moment it was sent, its target taken to move evenly through
-    /// the tick (`World::bullet_flies`).
+    /// the tick (`World::bullet_flies`).  Among the steps (a damage point's,
+    /// `World::points_before`) only those landing by `t` are flown, each target where
+    /// its velocity takes it by then (`World::place_now`), the others left to be flown
+    /// after the steps.
     pub(crate) fn fly_bullets(&mut self, vm: &mut Vm, t: f64) {
         let end = self.time_exact;
+        let among = !self.after_steps;
+        let at = if among { self.main_tick_clock(t) } else { None };
+        let clock = std::mem::replace(&mut self.script_clock, at);
+        let mut places: Vec<Option<(f32, f32)>> = self.missiles.iter().map(|m| if among { self.place_now(m.target) } else { None }).collect();
+        self.script_clock = clock;
         let mut hits = Vec::new();
         let mut i = 0;
         while i < self.missiles.len() {
+            let place = places[i];
             let m = &mut self.missiles[i];
             let Some(b) = m.bullet.as_ref().filter(|_| m.stampede.is_none() && m.rock.is_none()) else {
                 i += 1;
                 continue;
             };
             let target = match self.handles.get(m.target) {
-                Some(Obj::Unit(u)) => Some((u.x, u.y, u.collision)),
+                Some(Obj::Unit(u)) => Some(place.map_or((u.x, u.y, u.collision), |p| (p.0, p.1, u.collision))),
                 _ if m.target == 0 => m.impact.map(|(x, y)| (x, y, 0.0)),
                 _ => None,
             };
+            if among {
+                if let Some((tx, ty, edge)) = target {
+                    let mut c = m.clone();
+                    if World::bullet_flies(&mut c, (tx, ty), edge, t).is_some() {
+                        self.missiles.swap_remove(i);
+                        places.swap_remove(i);
+                        hits.push(c);
+                        continue;
+                    }
+                }
+                i += 1;
+                continue;
+            }
             let Some((tx, ty, edge)) = target else {
                 // (Provisional: an attack's missile whose target is gone ends where it
                 // is, its objects as at a landing.)
                 let m = self.missiles.swap_remove(i);
+                places.swap_remove(i);
                 if let Some(mut b) = m.bullet {
                     b.at = t;
                     self.bullet_landed(b, m.target);
@@ -5917,6 +6000,7 @@ impl World {
             let to = (seen.0 + (tx - seen.0) * f, seen.1 + (ty - seen.1) * f);
             if World::bullet_flies(m, to, edge, t).is_some() {
                 hits.push(self.missiles.swap_remove(i));
+                places.swap_remove(i);
             } else {
                 i += 1;
             }

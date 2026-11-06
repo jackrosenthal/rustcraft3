@@ -3891,10 +3891,12 @@ impl World {
                     self.tags.doom(construct[k]);
                 }
                 // (The order its AI queued behind the build, the build order's last, is
-                // kept for the structure's end: `World::ai_builder_done`.)
+                // kept for the structure's end: `World::ai_builder_done`; a player's
+                // build order has none, `World::player_build_objects`.)
+                let next = Some(order[14]).filter(|s| self.tags.live.get(s).is_some_and(|e| &e.0 == codes::class::ORDER));
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.ai_order = construct[..n - 6].to_vec();
-                    u.extra.ai_next_order = Some(order[14]);
+                    u.extra.ai_next_order = next;
                 }
             }
         }

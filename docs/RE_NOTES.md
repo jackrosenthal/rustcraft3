@@ -1327,6 +1327,16 @@ these are the findings behind them.
   port takes "on the bearing" as within 0.2 after one turn (provisional).  With these
   the quiet game's replay agrees with the original's for all 15624 turns.
 
+## Units and structures
+
+- A structure's acquisition range lives with its attack (CUnit `+0x1e8`, the range at
+  its `+0x244`; GetUnitAcquireRange `FUN_6f2039a0`, SetUnitAcquireRange `FUN_6f214ea0`,
+  GetUnitDefaultAcquireRange reading the type's), so an upgrade into another type
+  acquires at the new type's range: a Scout Tower, weaponless, upgraded to a Guard
+  Tower attacks what comes near, and Mafarazzo TD's 200s Missile Tank (acquire 1200)
+  is not held to its Arrow Tower's 700.  The port re-reads it, and the model scale, as
+  the upgrade finishes (provisional: whether a range a script set is kept).
+
 ## Where the port departs from the original
 
 Formats the port made its own, to be replaced by the original's:

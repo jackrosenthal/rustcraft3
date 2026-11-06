@@ -3117,13 +3117,19 @@ impl World {
         Ok(())
     }
 
-    /// Changes a unit's type, keeping its life and mana fractions (structure upgrades,
-    /// morphs).
+    /// Changes a structure's type as an upgrade finishes, keeping its life and mana
+    /// fractions.
     pub fn transform_unit(&mut self, h: u32, id: Id) {
         let Some(o) = self.objects.units.get(id) else { return };
         let (hp, mana) = (o.real("HP").max(1.0), o.real("manaN"));
         let hp = self.handicap_life(self.unit(h).map_or(0, |u| u.owner), hp);
         let abilities: Vec<(Id, i32)> = o.list("abilList").iter().map(|s| (crate::objects::id_from_str(s.trim()), 1)).filter(|(a, _)| a[0] != 0).collect();
+        // It acquires at the new type's range, none without a weapon, as one made so
+        // (the original keeps the range with the unit's attack, CUnit+0x1e8's +0x244;
+        // a Scout Tower upgraded to a Guard Tower attacks what comes near; provisional:
+        // whether a range SetUnitAcquireRange gave is kept), and shows at its scale.
+        let acquire = if o.int("weapsOn") == 0 { 0.0 } else { o.real("acquire") };
+        let scale = o.real("modelScale").max(0.0001);
         let Some(u) = self.unit_mut(h) else { return };
         let lf = if u.max_life > 0.0 { u.life / u.max_life } else { 1.0 };
         let mf = if u.max_mana > 0.0 { u.mana / u.max_mana } else { 0.0 };
@@ -3132,6 +3138,8 @@ impl World {
         u.life = hp * lf;
         u.max_mana = mana;
         u.mana = mana * mf;
+        u.acquire_range = acquire;
+        u.scale = scale;
         // Abilities made permanent stay (UnitMakeAbilityPermanent).
         let kept: Vec<(Id, i32)> = u.abilities.iter().copied().filter(|(a, _)| u.extra.permanent.iter().any(|p| p.0 == *a && p.1 > 0) && !abilities.iter().any(|x| x.0 == *a)).collect();
         u.abilities = abilities;

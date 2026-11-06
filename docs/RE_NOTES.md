@@ -994,6 +994,13 @@ these are the findings behind them.
     the step does (above), and free theirs after: read, a creep arriving at WalkMid12's
     middle in the step it entered it (turn 349's second step, its trigger due in that
     tick), the new order's objects in the slots the old walk's tree then freed.
+    What a timer let go in that tick before the triggers ran is among those frees,
+    after the orders' makings and before their own frees (`World::after_step_events`).
+    Traced over LAN (maftr, turns 323 to 346): the peasant's build order's seven
+    objects, their release due 32.395412 as turn 325 began (the actions' clock), its
+    first step in that tick and a creep's region trigger due 32.399323 in it: the new
+    order's objects made, the seven freed, then the old order's; the port had held the
+    seven for the next step's tick.
   - In a later tick (a step within 0.0001 of its tick's end: in this game the steps
     from 34.56 to 34.71 seconds, as the main clock trails, before the steps move to
     the tick after), after them: read, two creeps arriving at WalkMid12's

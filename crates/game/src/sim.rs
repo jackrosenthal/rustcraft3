@@ -1918,6 +1918,12 @@ impl World {
         let (sooner, later): (Vec<_>, Vec<_>) = late.iter().copied().partition(|e| self.kept_abs(e.1) < self.kept_abs(at));
         let mut after = if sooner.is_empty() { Vec::new() } else { self.issue_after_step(&sooner, k) };
         after.extend(self.run_step_region_events(vm));
+        // What a timer let go in the tick before the triggers ran goes with the tick's
+        // frees, after their makings (traced: maftr's peasant's build order's seven
+        // objects, due 32.395412 as turn 325 began, its first step in that tick and a
+        // creep's region trigger due 32.399323 there: the trigger's new order made, the
+        // seven freed, then its old order's).
+        self.tags.free_timed(self.kept_abs(at));
         if !later.is_empty() {
             after.extend(self.issue_after_step(&later, k));
         }

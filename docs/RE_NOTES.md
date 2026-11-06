@@ -890,13 +890,20 @@ these are the findings behind them.
   path's goal's cell while its cluster went for its goal (`World::start_player_walk`;
   provisional: searched anew from where it is, without budget or spacing), and the LAN
   game agrees to turn 396.  Not yet in the port: a new point's cell within the
-  spacings, the old way kept until they pass.  At turn 397 the original's next free
-  slot is 2444 (the port's 9152, the objects made the same), the `l^pa` of one of two
-  walks ended or replaced at turn 395's last step (creeps entering WalkMid12 and
-  WalkMid34, the second arriving at its middle there), freed in the port at turn 396's
-  first step and
-  taken by that step's trigger's order; not yet known why (the original's trace ends
-  at turn 323).
+  spacings, the old way kept until they pass.
+- The movement step (`FUN_6f15aa80`) goes through the clusters from the head of their
+  list (+0x3b8, each by its +8), and a new cluster is linked at the head
+  (`FUN_6f16c880` on the list at +0x3b0, from the cluster's making), so the newest
+  steps first; an old cluster its member has left is freed as the walk reaches it
+  (`FUN_6f16c150`, above).  So the old paths waiting for a step go newest walk first
+  whatever the order their walks were replaced in (`Tags::free_step_paths`).  Read:
+  Mafarazzo TD's two creeps given new orders by their regions' triggers at turn 395's
+  last step (a fresh LAN capture, the original's objects traced from turn 391), the
+  first's old walk made at turn 345 and the second's at 346: the second's `l^pa` and
+  `^clu` were freed first at turn 396's first step, the port's in the orders' order
+  before (its next free slot at turn 397 the other walk's `l^pa`).  The LAN game so
+  agrees to turn 461 (from 396), the old capture likewise, and the upgrade game to 350
+  (from 308).
 - SetUnitPathing (`jass_SetUnitPathing` at 0x6f215540) sets the unit's pathing types
   through its vf15c: off, its region's types (`FUN_6f05ac60`, +0x34 of its region)
   with 0; on, those of vf160 and vf164.  What its walks' searches and plans then mind

@@ -459,8 +459,13 @@ impl Tags {
         std::mem::take(&mut self.step_paths)
     }
 
-    /// Frees a step's waiting paths at once.
-    pub fn free_step_paths(&mut self, paths: Vec<([u32; 2], u32)>) {
+    /// Frees a step's waiting paths at once, the newest walk's first: the step goes
+    /// through its clusters from the list's head, where each new one is linked
+    /// (`FUN_6f15aa80`'s walk of +0x3b8, `FUN_6f16c880`), and frees an old one as it
+    /// reaches it (read: Mafarazzo TD's two creeps given new orders at turn 395's last
+    /// step, the second's old walk, a turn newer, freed first).
+    pub fn free_step_paths(&mut self, mut paths: Vec<([u32; 2], u32)>) {
+        paths.sort_by_key(|&(_, s)| std::cmp::Reverse(s));
         for (p, _) in paths {
             for s in p {
                 self.release(s);

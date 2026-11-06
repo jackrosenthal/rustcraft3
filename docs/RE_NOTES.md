@@ -2171,7 +2171,23 @@ these are the findings behind them.
   units' damage points (read: the Arrow tower's first missile's objects, due 6.833,
   freed after the Cannon tower's missile sent at 6.815, and the Cannon's after the
   Ice tower's so; `World::first_missile_point`, which weighs the turn's laid buffs'
-  ends too).
+  ends too).  A removal falling due in a step's main tick, after the step, goes after
+  the step's region trigger's objects and before its end's frees (traced: the second
+  flyer game's Arrow Tower's missile, sent in turn 285, its five freed so in turn
+  338; `World::step_tick_frees`); the port's had waited for the next step, and that
+  game now agrees for all 341 turns of its keepalives and its trace (from 337).  A
+  structure's damage point is an agent queue event too: what an earlier main tick let
+  go is gone before it (traced: the upgrade game's take-up's block at turn 507, its
+  slot then the h00X's shell's).
+- A line artillery weapon (`aline`) sends a shell as an artillery does, to where its
+  target stood (CArtilleryLine, `B-Al`), not an instant blow: its objects `B-Al`
+  `` `pbh `` `^pmr` `^pmr`, then two more positions with their regions, `` `pcu ``
+  `^pmr` `^pmr` twice, then `>prj` (traced: the upgrade game's h00X, weapon 1 `aline`
+  at 2200, its first shell at turn 507, where the port had struck its target and the
+  one beside it dead at once).  (Provisional: what the two positions are and when
+  they go, its landing not yet traced; the port frees them with its removal.)  The
+  upgrade games now agree to turn 510 (from 507), the trace to the end of its window
+  (509).
 - An attack's swing begins as its cooldown runs out (`FUN_6f49a4f0`): read, the Arrow
   tower (cooldown 0.7, damage point 0.3, missile at 1800 to a target 384 away)
   sending one in turns 17, 24, 31, and so every seven, its objects freed 52 turns on.

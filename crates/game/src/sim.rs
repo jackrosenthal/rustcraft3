@@ -1866,6 +1866,7 @@ impl World {
         late.sort_by(|a, b| f32::from_bits(a.1).total_cmp(&f32::from_bits(b.1)));
         let trigger = self.region_trigger_due(0);
         let after = self.after_step_events(vm, &late, 0, trigger);
+        self.step_tick_frees(0);
         // Orders given at this step's tick free their objects after it, before its walk
         // ends' (read: a wanderer's order's eight, given before a turn's first step,
         // freed before the trees of two walks that arrived in it; Twisted Meadows' turn
@@ -1876,6 +1877,19 @@ impl World {
         self.tags.issued.extend(after);
         self.tags.flush_issued();
         self.later_region_triggers(vm, trigger);
+    }
+
+    /// The timed releases falling due in step `k`'s main tick go after its events, before
+    /// its end's frees: each is an event on the agent queue, run in the main tick that
+    /// reaches it (a missile's removal, `FUN_6f6d4e30` from 0x6f060d12).  Traced: the
+    /// second flyer game's Arrow Tower's missile, removed in turn 338 after the step's
+    /// region trigger's objects and before its walk ends' frees.
+    fn step_tick_frees(&mut self, k: usize) {
+        let Some(&t) = self.step_ticks.get(k) else { return };
+        let Ok(i) = usize::try_from(t - self.tick_clocks.0 + 1) else { return };
+        if let Some(c) = self.tick_abs(i) {
+            self.tags.free_timed(self.steps_free_until.map_or(c, |f| c.min(f)));
+        }
     }
 
     /// When a step's region events run their triggers (`World::step_regions`): each
@@ -2051,6 +2065,7 @@ impl World {
             due = rest;
             let trigger = self.region_trigger_due(k);
             let after = self.after_step_events(vm, &late, k, trigger);
+            self.step_tick_frees(k);
             self.tags.end_step();
             self.make_pending_pairs();
             self.tags.issued.extend(after);
@@ -5710,6 +5725,16 @@ impl World {
         let now = self.bullet_clock(at);
         let hold = self.laid_buff_end(self.bullet_clock(self.time_exact - self.tick_dt as f64), now);
         self.tags.free_timed(hold.map_or(now, |e| now.min(e)));
+        // (A structure's damage point is an event on the agent queue, `at` its due: what
+        // its main tick's start has let go is gone, as an earlier main tick ended,
+        // `World::free_as_tick_ends`; traced, the upgrade game's take-up's block at turn
+        // 507, its slot the h00X's shell's in a main tick after.)
+        if hold.is_none() && self.attacks_in_place(h) {
+            let kept = ((at - self.clock_wraps as f64 * 300.0) as f32).to_bits();
+            if let Some(c) = self.agent_tick(kept).and_then(|t| self.tick_main(t)) {
+                self.tags.free_timed(c);
+            }
+        }
         if self.unit(h).is_none_or(|u| u.dead) {
             return false;
         }
@@ -5761,7 +5786,11 @@ impl World {
             return false;
         }
         self.pillage_ready(h, s.target);
-        if wp.weapon_type == "missile" || wp.weapon_type == "artillery" || wp.weapon_type.starts_with("msplash") || wp.weapon_type == "mbounce" || wp.weapon_type == "mline" {
+        // (A line artillery's too: its shell, `B-Al`, CArtilleryLine, flies to where its
+        // target stood; traced, the upgrade game's h00X's first at turn 507, its shell's
+        // objects made at its damage point.)
+        let artillery = wp.weapon_type == "artillery" || wp.weapon_type == "aline";
+        if wp.weapon_type == "missile" || artillery || wp.weapon_type.starts_with("msplash") || wp.weapon_type == "mbounce" || wp.weapon_type == "mline" {
             if let (Some(src), Some(_)) = (self.unit(h).cloned(), self.unit(s.target)) {
                 // Lightning Attack: a weapon firing the ability's missile also
                 // strikes with its lightning, DataA after for DataB.
@@ -5832,7 +5861,7 @@ impl World {
                 self.missiles[main].bullet = Some(bullet);
                 // A structure's is aimed where it meets its target (`World::bullet_aimed`;
                 // provisional: the other units' still fly the port's way).
-                if wp.weapon_type != "artillery" && self.attacks_in_place(h) {
+                if !artillery && self.attacks_in_place(h) {
                     let mut m = self.missiles[main].clone();
                     self.bullet_aimed(&mut m, at);
                     self.missiles[main] = m;

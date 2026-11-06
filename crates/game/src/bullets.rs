@@ -37,6 +37,10 @@ pub struct Bullet {
     /// Whether it was so aimed.
     #[serde(default)]
     pub aimed: bool,
+    /// A line artillery's shell's two more positions, each with its two regions
+    /// (`` `pcu `` `^pmr` `^pmr`), made before its flight.
+    #[serde(default)]
+    pub line: Vec<u32>,
 }
 
 /// A unit's CAbilityTarget: the ability and owner it counts the missiles of, its slot,
@@ -134,7 +138,18 @@ impl World {
     /// the Plague Tower's missiles in flight at its target).
     pub(crate) fn bullet_sent(&mut self, h: u32, target: u32, class: &Code, ability: Option<Id>, at: f64) -> crate::bullets::Bullet {
         let mut slots = [0u32; 5];
+        let mut line = Vec::new();
         for (k, c) in [class, codes::class::PROJECTILE_POSITION, codes::class::PATHING_REGION, codes::class::PATHING_REGION, codes::class::PROJECTILE].into_iter().enumerate() {
+            // A line artillery's shell (CArtilleryLine) makes two more positions before
+            // its flight (traced: the upgrade game's h00X's first shell at turn 507, its
+            // `B-Al` `` `pbh `` `^pmr` `^pmr`, then `` `pcu `` `^pmr` `^pmr` twice, then
+            // `>prj`).  (Provisional: what they are and when they go, its landing not yet
+            // traced; taken as going with its removal, after its flight.)
+            if k == 4 && class == codes::class::ARTILLERY_LINE {
+                for _ in 0..2 {
+                    line.extend([codes::class::UNIT_POSITION, codes::class::PATHING_REGION, codes::class::PATHING_REGION].map(|c| self.tags.take(c)));
+                }
+            }
             slots[k] = self.tags.take(c);
         }
         let owner = self.unit(h).map_or(0, |u| u.owner);
@@ -155,7 +170,7 @@ impl World {
         // sent after them, `World::points_before`.)
         let seen = self.unit(target).filter(|_| self.after_steps).map(|t| (t.x, t.y));
         log::trace!("bullet of {h} sent at {target} at {at:.6} (main clock {:.6}): from {:?} to {:?}, launch {:?}", self.bullet_clock(self.main_tick_time(at)), self.unit(h).map(|u| (u.x, u.y, u.facing)), self.unit(target).map(|t| (t.x, t.y, t.collision)), self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map(|o| (crate::objects::id_str(o.id), o.real("launchX"), o.real("launchY"), o.real("launchZ"))));
-        Bullet { slots, counted, at: self.main_tick_time(at), seen, missed: false, due: None, aimed: false }
+        Bullet { slots, counted, at: self.main_tick_time(at), seen, missed: false, due: None, aimed: false, line }
     }
 
     /// A bouncing missile marks each unit it is sent at, the first as it is sent and
@@ -273,7 +288,11 @@ impl World {
         let after = if b.aimed { 0.0 } else { DESTROYED_AFTER };
         let due = self.bullet_clock(b.at) + wait + after;
         let s = b.slots;
-        for k in [4, 2, 3, 1, 0] {
+        self.tags.doom_at(due, s[4]);
+        for &l in b.line.iter().rev() {
+            self.tags.doom_at(due, l);
+        }
+        for k in [2, 3, 1, 0] {
             self.tags.doom_at(due, s[k]);
         }
     }

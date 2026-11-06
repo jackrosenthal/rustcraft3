@@ -4098,6 +4098,22 @@ Formats the port made its own, to be replaced by the original's:
   (`FUN_6f6802f0`, the `+ord` 0xd0006 through `FUN_6f680320` with its queue flag)
   come to nothing there; a measurement would be a breakpoint on `FUN_6f9bd6e0` for
   that peasant at 55.2.
+- A worker the pass takes (`FUN_6f9c7700`: its AI unit's flag 1 for gold, 2 for wood,
+  then `FUN_6f6802f0`, the `+ord` 0xd0006 run as `FUN_6f9bd6e0`'s look) that carries
+  a load is sent home with it first whatever the request (`FUN_6f9c9470`: 0xd02b4
+  while the harvest ability's +0x1c4 holds any), as the port's gold requests already
+  did one walking home (`goldrun::RETURN_AI`); its flag keeps it from the pass's
+  other requests (`FUN_6f9c7410` keeps only those flagged 4 or 8 from the last pass,
+  `FUN_6f9c7700` takes only those with neither 1 nor 2).  Read by the keepalives:
+  Twisted Meadows' human computer's farm peasant, walking home with gold at the pass
+  at 57.2, taken for wood: the original's turns after agree with its walk home
+  anew and no other worker re-sent (to turn 602), not with a wood order at once (to
+  572).  The port marks it at the wood for that pass (`UnitExtra::ai_wood_pass`).  Next
+  (turn 603): a gold peasant walking from the hall to the mine since 58.5 arrives a
+  turn early in the original (its walk's last two objects, the ghosting's end and
+  the walk's target task, freed in turn 602, after the pass's frees, by the
+  keepalive's free-list top), the port's at turn 603's third step; not yet
+  explained (its speed is the round trip's tuning, `FUN_6f437ae0`).
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

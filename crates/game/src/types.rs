@@ -770,6 +770,10 @@ pub struct UnitExtra {
     /// 851974, `FUN_6f693450`), run as the structure is done (`World::ai_builder_done`).
     #[serde(default)]
     pub ai_next_order: Option<u32>,
+    /// A worker its AI's harvest pass took for wood but sent home with its gold first:
+    /// that pass's ClearHarvestAI time (`World::ai_assign_harvest`).
+    #[serde(default)]
+    pub ai_wood_pass: Option<f64>,
     /// A computer's unit's walk to its captain's home as its AI takes it in
     /// (`World::recycle_guard_position`): its goal, while it walks.
     #[serde(default)]
@@ -1085,6 +1089,7 @@ impl Default for UnitExtra {
             made_at: None,
             ai_order: Vec::new(),
             ai_next_order: None,
+            ai_wood_pass: None,
             captain_walk: None,
             captain_order: Vec::new(),
             captain_uref: None,

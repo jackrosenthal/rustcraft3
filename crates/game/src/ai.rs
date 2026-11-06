@@ -801,6 +801,7 @@ impl World {
         let Some(st) = self.ai.get_mut(&p) else { return };
         let requests = st.harvest.clone();
         let since = st.harvest_passes.0;
+        let pass = st.harvest_passes.1;
         // Units at a guard post do not gather, nor those of a captain with somewhere to
         // go; without SetSlowChopping a captain's units standing at home are taken back
         // to gather and leave it (FUN_6f9c7700; measured: a melee computer's ghouls go
@@ -828,8 +829,11 @@ impl World {
         let busy = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Build { .. } | Action::Construct { .. } | Action::Attack { .. } | Action::Move { .. }) || u.extra.build_end.is_some());
         // (A wisp its making sent to gold is the AI's to send again: read, Twisted Meadows'
         // night elf computer's five in its first pass.)
-        let on_gold = |w: &World, h: u32| w.unit(h).is_some_and(|u| !u.extra.ai_harvesting && (matches!(u.action, Action::Harvest { target } if w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_gold > 0)));
-        let on_wood = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if !w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_lumber > 0));
+        // (One taken for wood and sent home with its gold first is at the wood for this
+        // pass, not the gold: its AI unit's flag 2, which keeps it from the pass's other
+        // requests, `FUN_6f9c7410` and `FUN_6f9c7700`.)
+        let on_gold = |w: &World, h: u32| w.unit(h).is_some_and(|u| !u.extra.ai_harvesting && u.extra.ai_wood_pass != Some(pass) && (matches!(u.action, Action::Harvest { target } if w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_gold > 0)));
+        let on_wood = |w: &World, h: u32| w.unit(h).is_some_and(|u| matches!(u.action, Action::Harvest { target } if !w.is_gold_mine(target)) || (matches!(u.action, Action::ReturnResources) && u.carry_lumber > 0) || u.extra.ai_wood_pass == Some(pass));
         // Each request in priority order takes workers that can do its work and are free,
         // those already at it first: an Undead's acolytes mine and its ghouls cut wood
         // (measured: the original's computer ghoul cuts wood from the start; ours, counted
@@ -882,7 +886,7 @@ impl World {
         for (gold, _, n) in &requests {
             let can = |w: &World, h: u32| if *gold { mine.is_some_and(|m| w.can_harvest(h, m)) } else { tree_near(w, h).is_some() };
             let doing = |w: &World, h: u32| if *gold { on_gold(w, h) } else { on_wood(w, h) };
-            let mut pool: Vec<u32> = free.iter().copied().filter(|h| !taken.contains(h) && can(self, *h)).collect();
+            let mut pool: Vec<u32> = free.iter().copied().filter(|h| !taken.contains(h) && can(self, *h) && !(*gold && self.unit(*h).is_some_and(|u| u.extra.ai_wood_pass == Some(pass)))).collect();
             pool.sort_by_key(|&h| !doing(self, h));
             for h in pool.into_iter().take((*n).max(0) as usize) {
                 taken.push(h);
@@ -918,8 +922,26 @@ impl World {
                 }
             }
         }
+        // (A peasant walking home with gold taken for wood is sent home again, as one
+        // taken for gold is: its AI's look at it, `FUN_6f9c9470`, orders one carrying a
+        // load home first, 0xd02b4 (`goldrun::RETURN_AI`); read by the keepalives:
+        // Twisted Meadows' human computer's farm peasant in the pass at 57.2, the turns
+        // after agreeing so and not with a wood order.)
+        let home_with_gold = |w: &World, h: u32| w.ability_with_code(h, codes::ability::HARVEST).is_some() && w.unit(h).is_some_and(|u| u.carry_gold > 0 && u.extra.gold_run.as_ref().is_some_and(|r| r.kind == crate::goldrun::Kind::Return && matches!(r.phase, crate::goldrun::Phase::ToHall(_))));
         for &h in &to_wood {
             if !on_wood(self, h) && !in_mine(self, h) {
+                if let Some(m) = mine.filter(|_| home_with_gold(self, h)) {
+                    if let Some(c) = stop_at {
+                        self.stop_walker_at(h, c);
+                    }
+                    self.ai_ordering = true;
+                    self.order_unit(h, harvest, 0.0, 0.0, m);
+                    self.ai_ordering = false;
+                    if let Some(u) = self.unit_mut(h) {
+                        u.extra.ai_wood_pass = Some(pass);
+                    }
+                    continue;
+                }
                 if let Some(t) = tree_near(self, h) {
                     if let Some(c) = stop_at {
                         self.stop_walker_at(h, c);

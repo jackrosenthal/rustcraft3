@@ -222,6 +222,23 @@ original images.
 
 - Cliff models: `Doodads\Terrain\<dir>\<dir><TL><TR><BR><BL><var>.mdx`, letters
   `'A' + layer - min` (`FUN_6f744560`).
+- A corner by a cliff or ramp shows its cliff type's ground tile in place of its own
+  (`FUN_6f75f0b0`, run over each changed region, `FUN_6f734f70`, `FUN_6f73f190`, keeps it
+  in the corner's texture byte's high nibble, 0xf for none, 0xe for its own;
+  `FUN_6f760b00` hands it to the tile layers, `FUN_6f73bf20`).  Of the four tiles about
+  the corner (its own, left, below, below left; offsets at `0x6fb85aa4`): with one
+  bearing a corner lettered R or S (`FUN_6f74b760`), the first of those that is not a
+  whole ramp (`FUN_6f7506d0`: R counts 1, S 2, a whole ramp more than 1) gives
+  `CliffTypes.slk` groundTile, its type that of the highest corner of it and of the
+  ramp-bearing tiles right, left, above, and below (`FUN_6f7443b0`, offsets at
+  `0x6fa9f490`, `0x6fb86bd0`), and with none the corner keeps its own; else the first
+  whose corners' levels differ (`FUN_6f74b950`, `FUN_6f74a670`) gives groundTile at the
+  tile's lowest level and upperTile above it (`FUN_6f7439f0`), its type the tile's first
+  corner's, else the nearest within two (`FUN_6f742a90`).  A tile the map lacks is added
+  after its own (`FUN_6f740650`); "_" shows none.  So Mafarazzo TD's raised White Marble
+  lanes edged with Ashenvale cliffs show grass (CAgr's Agrs) on both levels of each
+  cliff, not the marble's border cells.  (Left out: a corner with no cliff or ramp about
+  whose neighbors carry the record's flag 8, `FUN_6f74b9d0`.)
 - Day/night: first light of the DNC model; frame = time of day × sequence length;
   direction = light node rotation × −Z; colors are stored BGR.
 - `war3map.shd`: one byte per 32×32 cell, rows from the north edge.

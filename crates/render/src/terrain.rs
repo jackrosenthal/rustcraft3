@@ -84,6 +84,12 @@ struct GroundSource {
     offset: [f32; 2],
     textures: Vec<u8>,
     variations: Vec<u8>,
+    /// What each corner shows by a cliff or ramp in place of its own texture
+    /// (`cliff_ground`): a ground texture, `SHOWN_OWN`, or `SHOWN_NONE`.
+    shown: Vec<u8>,
+    /// The map's tilesets; the cliffs' ground tiles it lacks follow them, then the
+    /// blight, then the tilesets painted in later.
+    map_tilesets: usize,
     cliff_tiles: Vec<bool>,
     extended: Vec<bool>,
     blight_index: usize,
@@ -101,7 +107,6 @@ fn build_ground(src: &GroundSource, heights: &[f32], blight: &[bool]) -> (Vec<Ve
     let hat = |x: u32, y: u32| heights[idx(x, y)];
     let corner_tex = |x: u32, y: u32| -> usize {
         let i = idx(x, y);
-        // Tilesets painted in later come after the blight.
         let t = src.textures[i] as usize;
         // A blighted corner shows the blight only on buildable ground, out of the water,
         // and with no cliff tile about it (FUN_6f7376f0: Terrain.slk's buildable,
@@ -112,11 +117,16 @@ fn build_ground(src: &GroundSource, heights: &[f32], blight: &[bool]) -> (Vec<Ve
             .iter()
             .any(|&(tx, ty)| tx < w - 1 && ty < h - 1 && src.cliff_tiles[(ty * (w - 1) + tx) as usize]);
         if blight.get(i).copied().unwrap_or(false) && !src.water.get(i).copied().unwrap_or(false) && src.buildable.get(t).copied().unwrap_or(true) && !cliff_about {
-            src.blight_index
-        } else if t >= src.blight_index {
-            t + 1
-        } else {
-            t
+            return src.blight_index;
+        }
+        match src.shown.get(i).copied().unwrap_or(SHOWN_OWN) {
+            // Tilesets painted in later come after the cliffs' ground tiles and the
+            // blight.
+            SHOWN_OWN if t >= src.map_tilesets => t + src.blight_index + 1 - src.map_tilesets,
+            SHOWN_OWN => t,
+            // None sorts last and is not drawn.
+            SHOWN_NONE => usize::MAX,
+            shown => shown as usize,
         }
     };
     let normal_at = |x: u32, y: u32| -> [f32; 3] {
@@ -144,6 +154,9 @@ fn build_ground(src: &GroundSource, heights: &[f32], blight: &[bool]) -> (Vec<Ve
             texs.dedup();
             let corners = [(x, y + 1), (x + 1, y + 1), (x, y), (x + 1, y)];
             for (k, &t) in texs.iter().enumerate() {
+                if t >= src.extended.len() {
+                    continue;
+                }
                 let ext = src.extended.get(t).copied().unwrap_or(false);
                 let cell = if k == 0 {
                     full_variation(ext, src.variations[idx(x, y)])
@@ -209,6 +222,87 @@ fn full_variation(extended: bool, variation: u8) -> u32 {
     }
 }
 
+/// A corner shows its own ground texture (`GroundSource::shown`).
+const SHOWN_OWN: u8 = 0xfe;
+/// A corner shows nothing of its own: a cliff's upper tile of none.
+const SHOWN_NONE: u8 = 0xff;
+
+/// The ground tile each corner shows by a cliff or a ramp in place of its own, as the
+/// tile layers read it (FUN_6f75f0b0 keeps it in the corner's texture byte's high
+/// nibble, FUN_6f760b00 takes it for FUN_6f73bf20's layers).  Of the tiles about the
+/// corner (its own, left, below, and below left, the first found): with one bearing a
+/// ramp corner (lettered R or S, FUN_6f74b760), the first of those that is not a whole
+/// ramp (no more than one R, FUN_6f7506d0) gives its cliff type's groundTile, the type
+/// that of the highest corner of it and of the tiles right, left, above, and below it
+/// that bear ramp corners (FUN_6f7443b0), and with none the corner keeps its own;
+/// else the first whose corners' levels differ (FUN_6f74b950, FUN_6f74a670) gives the
+/// groundTile at its lowest level and the upperTile above it (FUN_6f7439f0), its type
+/// that of its first corner with one, else of the nearest such corner within two
+/// (FUN_6f742a90).  A tile of none ("_") shows nothing; one the map does not have is
+/// added after its own (FUN_6f740650), to `tiles`.  (Left out: a corner with no cliff
+/// or ramp about whose neighbors carry the record's flag 8, FUN_6f74b9d0, which shows
+/// its own cliff type's groundTile.)
+fn cliff_ground(terrain: &Terrain, letters: &[u8], cliff_slk: &Table, tiles: &mut Vec<[u8; 4]>) -> Vec<u8> {
+    let (w, h) = (terrain.width as i32, terrain.height as i32);
+    // Tiles are named by their lower left corner.
+    let tile_in = |x: i32, y: i32| x >= 0 && y >= 0 && x < w - 1 && y < h - 1;
+    let corners_of = |x: i32, y: i32| [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)];
+    let letter = |x: i32, y: i32| letters[(y * w + x) as usize];
+    let ramp_corners = |x: i32, y: i32| corners_of(x, y).iter().any(|&(cx, cy)| matches!(letter(cx, cy), b'R' | b'S'));
+    let whole_ramp = |x: i32, y: i32| corners_of(x, y).iter().map(|&(cx, cy)| match letter(cx, cy) { b'R' => 1, b'S' => 2, _ => 0 }).sum::<i32>() > 1;
+    let layer = |x: i32, y: i32| terrain.corner(x as u32, y as u32).layer_height;
+    let levels_differ = |x: i32, y: i32| corners_of(x, y).iter().any(|&(cx, cy)| layer(cx, cy) != layer(x, y));
+    let cliff_tex = |x: i32, y: i32| terrain.corner(x as u32, y as u32).cliff_texture;
+    let about = |x: i32, y: i32| [(x, y), (x - 1, y), (x, y - 1), (x - 1, y - 1)].into_iter().filter(|&(tx, ty)| tile_in(tx, ty));
+    // A cliff type's tile, as the map's ground tileset index.
+    let mut tile_of = |ct: u8, upper: bool| -> u8 {
+        let Some(id) = terrain.cliff_tilesets.get(ct as usize) else { return SHOWN_OWN };
+        let key = String::from_utf8_lossy(id).into_owned();
+        let Some(name) = cliff_slk.get(&key, if upper { "upperTile" } else { "groundTile" }).map(|v| v.as_str()) else { return SHOWN_OWN };
+        let Ok(tile) = <[u8; 4]>::try_from(name.trim().as_bytes()) else { return SHOWN_NONE };
+        match tiles.iter().position(|&t| t == tile) {
+            Some(i) => i as u8,
+            None => {
+                tiles.push(tile);
+                (tiles.len() - 1) as u8
+            }
+        }
+    };
+    let mut out = vec![SHOWN_OWN; (w * h) as usize];
+    for x in 0..w {
+        for y in 0..h {
+            let shown = if about(x, y).any(|(tx, ty)| ramp_corners(tx, ty)) {
+                match about(x, y).find(|&(tx, ty)| ramp_corners(tx, ty) && !whole_ramp(tx, ty)) {
+                    Some((tx, ty)) => {
+                        let mut best: Option<(u8, u8)> = None;
+                        for (nx, ny) in [(tx, ty), (tx + 1, ty), (tx - 1, ty), (tx, ty + 1), (tx, ty - 1)] {
+                            if !tile_in(nx, ny) || !ramp_corners(nx, ny) {
+                                continue;
+                            }
+                            for (cx, cy) in corners_of(nx, ny) {
+                                if best.is_none_or(|b| layer(cx, cy) > b.0) {
+                                    best = Some((layer(cx, cy), cliff_tex(cx, cy)));
+                                }
+                            }
+                        }
+                        best.map_or(SHOWN_OWN, |(_, ct)| tile_of(ct, false))
+                    }
+                    None => SHOWN_OWN,
+                }
+            } else if let Some((tx, ty)) = about(x, y).find(|&(tx, ty)| levels_differ(tx, ty)) {
+                let near = (tx - 2..=tx + 2).flat_map(|nx| (ty - 2..=ty + 2).map(move |ny| (nx, ny))).filter(|&(nx, ny)| nx >= 0 && ny >= 0 && nx < w && ny < h);
+                let ct = corners_of(tx, ty).into_iter().chain(near).map(|(cx, cy)| cliff_tex(cx, cy)).find(|&t| t != 15).unwrap_or(0);
+                let lowest = corners_of(tx, ty).iter().map(|&(cx, cy)| layer(cx, cy)).min().unwrap_or(0);
+                tile_of(ct, layer(x, y) != lowest)
+            } else {
+                SHOWN_OWN
+            };
+            out[(y * w + x) as usize] = shown;
+        }
+    }
+    out
+}
+
 impl TerrainRenderer {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -234,9 +328,12 @@ impl TerrainRenderer {
         let heights: Vec<f32> = terrain.corners.iter().zip(&letters).map(|(c, &l)| c.height() + if l == b'R' { 64.0 } else { 0.0 }).collect();
         let hat = |x: u32, y: u32| heights[(y.min(h - 1) * w + x.min(w - 1)) as usize];
 
+        // What corners show by cliffs and ramps, with the cliffs' ground tiles the map
+        // lacks after its own.
+        let mut tiles = terrain.ground_tilesets.clone();
+        let shown = cliff_ground(terrain, &letters, cliff_slk, &mut tiles);
         // Ground textures in tileset order; blight is drawn above all of them.
-        let mut ground: Vec<(Arc<Texture>, bool)> = terrain
-            .ground_tilesets
+        let mut ground: Vec<(Arc<Texture>, bool)> = tiles
             .iter()
             .map(|id| {
                 let key = String::from_utf8_lossy(id).into_owned();
@@ -325,6 +422,8 @@ impl TerrainRenderer {
             offset: terrain.offset,
             textures: terrain.corners.iter().map(|c| c.ground_texture).collect(),
             variations: terrain.corners.iter().map(|c| c.ground_variation).collect(),
+            shown,
+            map_tilesets: terrain.ground_tilesets.len(),
             cliff_tiles: (0..h - 1).flat_map(|y| (0..w - 1).map(move |x| (x, y))).map(|(x, y)| is_cliff(x, y)).collect(),
             extended: ground.iter().map(|g| g.1).collect(),
             blight_index,
@@ -753,9 +852,10 @@ impl TerrainRenderer {
         self.batches = batches;
     }
 
-    /// The tilesets the ground has textures for (the map's, then any painted in).
+    /// The tilesets the ground has textures for (the map's, then any painted in), not
+    /// counting the cliffs' ground tiles the map lacks.
     pub fn ground_texture_count(&self) -> usize {
-        self.ground.extended.len() - 1
+        self.ground.extended.len() - 1 - (self.ground.blight_index - self.ground.map_tilesets)
     }
 
     /// Repaints the ground (SetTerrainType): each corner's tileset and variation, with

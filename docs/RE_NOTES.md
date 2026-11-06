@@ -4110,6 +4110,33 @@ Formats the port made its own, to be replaced by the original's:
   12, from 3; next, the third wisp in comes a turn before the original's, in turn 12
   (where the one at (165.0, 188.44) turns the other way at 0.12, its heading held
   toward its tree, not the original's).
+- Why the wisps go to wood first: an AI's look at a unit (`FUN_6f9cd390`) takes a
+  wisp (its Awha) to `FUN_6f9c96c0`, which, its AI unit not flagged for gold (+0x28's
+  1 clear), orders it to harvest (0xd0003) the town's next tree in turn
+  (`FUN_6f9c70a0`, the AI's +0x150 counted on, the empty places passed over, eight
+  tries) or, the places all empty, the nearest (`FUN_6f4153a0`); flagged, to the
+  town's mine (0xd0032, +0x54, else +0x60).  The five wisps' trees, two of them
+  shared, fit the places being empty as they are made.  (A peon or peasant's look,
+  `FUN_6f9c9470`, goes to a tree only when flagged for wood, `FUN_6f9c6cf0`, which
+  counts the same +0x150 on each call.)
+- Read on to 1.4 (each walker's place, heading, and path at 0x6f16fd0a): the wisp
+  from (164.26, 185.57) is held at (163.7616, 185.4978) from 0.21 (answer 1 with its
+  point, then four steps answering 1 with the mine's middle as its wait, +0x94,
+  runs down), walks on from 0.36, and is in contact at 0.57 at (161.99, 185.50),
+  in turn 7 as the port's.  The one from (165.0, 188.44), walking north from 0.24
+  on its way round the north of the mine, at 0.33 at (165.3233, 189.1246) answers 1
+  with its way dropped (count 0, index -1: `FUN_6f167290`'s countdown, so blocked by
+  a standing region or a wall, not a mover), its searches refused at 0.36 and 0.39
+  (answer 2, ten steps not yet past its search at 0.12), and at 0.42 searches from
+  there along the diagonal south of it (seven points, through (163.5, 186.5) to
+  (161.5, 185.5)), turns, walks from 0.54, and is in contact at 1.20 at (161.7553,
+  185.6532).  The port's, never blocked there, walks on round the north.  Open:
+  what blocks it at 0.33 (no other walker is near; the Tree of Life's footprint is
+  166 to 173 by 190 to 197, its collision 144 a region from 165 by its cells' rule,
+  which would have held it at 0.30 too).  A measurement: at that step, inside
+  `FUN_6f166140` after its region collection (the switch's call), the collected
+  count (`DAT_6fd53a84` + 200) and the regions listed at +0xac, with their flags
+  (+0x34, +0x40) and the units they belong to.
 - An entangled mine is no town site of its own: the original's save of a night elf
   start (`nel.w3x`) holds the map's four mines' four sites, the first naming the
   entangled mine (the mine it covers made at the map's start with that site).  The
@@ -5074,6 +5101,17 @@ Formats the port made its own, to be replaced by the original's:
   original's start, the objects agree through turn 630, from 625).  Open: the
   original's reach is later still; the port's, walking from the hall since it no
   longer repairs (above), reaches that tree in turn 634.
+  Read since (each walker's place and path at 0x6f16fd0a from 60.1 to 63.8): the
+  original's farm peasant walks from the hall at 60.1452 as a cluster walker, its
+  path's goal first its cluster's point (189.5, 179.5), straight for it from
+  60.2951 (heading 5.8523), then from 62.99 the tree at (190, 174) (its walk to
+  reach it from 63.74).  That tree is the third of the port's eight places ((186,
+  174), (192, 178), (190, 174), ...), where the port's turn gives the second: so
+  the AI's +0x150 stands one further on in the original by 60.1, from a call of
+  `FUN_6f9c6cf0` the port does not make (its passes take a wood worker only at 0.2
+  and 60.2), or its places' order differs.  A measurement: a break at
+  `FUN_6f9c70a0`'s entry from 0.1 to 61.0, its ecx's +0x150 and the clock (and the
+  eight places, +0xac, with their costs, +0x110, at 60.1).
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

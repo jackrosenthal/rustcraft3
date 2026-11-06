@@ -2052,7 +2052,13 @@ impl World {
                 if o == h || seen.contains(&o) {
                     continue;
                 }
+                // (A flyer holds no other back, as it takes no cells from the searches,
+                // `regions_taken`; provisional: a flying walker had stood for good
+                // behind a wisp beside it, Mafarazzo TD's flying peasant sent past one.)
                 let Some(v) = self.unit(o).filter(|v| !v.dead && !v.hidden && !v.is_building && v.collision > 0.0 && v.region_flags() & mask != 0) else { continue };
+                if self.move_kind(o) == crate::pathing::Move::Fly {
+                    continue;
+                }
                 // A walker held after moving holds the cells of both its last places (read:
                 // a held sheep's region three cells wide, another's still on a row it had
                 // just left; a pig moving on steadily held only its place).

@@ -4721,6 +4721,10 @@ Formats the port made its own, to be replaced by the original's:
   its footprint, as a walker is when nothing stands there (provisional: the rings'
   search for air units not read; the port had it at the structure's middle, inside
   it).
+- A flyer holds no walker back (provisional, as it takes no cells from the searches,
+  `World::regions_taken`): the port's waypoint provider held a flying peasant behind a
+  wisp beside it for good, its searches going straight on through it (Mafarazzo TD's
+  peasant sent from its Town Hall past a wisp standing at the hall's middle).
 - A flyer's walk plans its coarse way over the accelerator's last layer (its cells'
   no-fly flag, 0x04; structures and trees not in it) and heads straight for each point,
   stopping a step at it, the cluster then picking its next point on the same way

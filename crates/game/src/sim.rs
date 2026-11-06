@@ -769,14 +769,37 @@ impl World {
     pub(crate) fn start_player_walk(&mut self, h: u32) {
         let serial = self.tags.born;
         let replaced = self.unit(h).filter(|u| u.extra.player_walk).map(|u| u.extra.order_tags.clone());
-        let slots = self.tags.player_move_issued(replaced.as_deref());
+        let after = self.after_steps.then(|| self.unit(h).map_or(0, |u| u.extra.walk_serial));
+        let slots = self.tags.player_move_issued(replaced.as_deref(), after);
         if let Some(u) = self.unit_mut(h) {
             u.extra.order_tags = slots;
             u.extra.walk_serial = serial;
             u.extra.player_walk = true;
             u.extra.mover = None;
             u.path.clear();
+            // Its cluster is new, its own path's ways dropped (`FUN_6f168740`).
+            u.extra.coarse = None;
+            u.extra.move_coarse = None;
+            u.extra.plan_at[0] = None;
+            u.extra.coarse_done = false;
         }
+    }
+
+    /// Where a script finds a unit (GetUnitX, GetUnitY, GetUnitLoc): a walker's place at
+    /// its last step carried on by its velocity to the main clock now (`FUN_6f161040`
+    /// on its position, `motion::Mover::at`; read: Mafarazzo TD's creeps pinged by a
+    /// timer at 21 seconds, each where its velocity would have taken it by 20.9975, the
+    /// main clock then, a third to a whole step past its last step's place).
+    pub fn place_now(&self, h: u32) -> Option<(f32, f32)> {
+        use crate::efloat as ef;
+        let u = self.unit(h)?;
+        let (Some(m), Some(clock), Some(p)) = (u.extra.mover, self.script_clock, self.pathing.as_ref()) else { return Some((u.x, u.y)) };
+        if m.vx & 0x7fff_ffff == 0 && m.vy & 0x7fff_ffff == 0 || !u.steps_walker() {
+            return Some((u.x, u.y));
+        }
+        let (x, y) = m.at(clock);
+        let world = |c: u32, o: f32| f32::from_bits(ef::add(ef::mul(c, crate::pathing::CELL.to_bits()), o.to_bits()));
+        Some((world(x, p.origin[0]), world(y, p.origin[1])))
     }
 
     pub fn widget_pos(&self, h: u32) -> Option<(f32, f32)> {
@@ -1005,7 +1028,7 @@ impl World {
             Some(r) => r,
             None => crate::lrpath::search_costing(&cells, start, end, class, if u.extra.local_paths || u.extra.captain_walk.is_some() { 32 } else { 700 }),
         };
-        log::debug!("search for {h} from {start:?} to {end:?}: {:?} refused {refused}", match &out { crate::lrpath::Outcome::Found(c) => format!("found {}", c.len()), crate::lrpath::Outcome::Nearest(c) => format!("nearest {:?}", c.last()), crate::lrpath::Outcome::Stay => "stay".into() });
+        log::debug!("search for {h} from {start:?} to {end:?}: {:?} refused {refused} cost {cost}", match &out { crate::lrpath::Outcome::Found(c) => format!("found {}", c.len()), crate::lrpath::Outcome::Nearest(c) => format!("nearest {:?}", c.last()), crate::lrpath::Outcome::Stay => "stay".into() });
         log::trace!("search for {h}: cells {:?}", match &out { crate::lrpath::Outcome::Found(c) | crate::lrpath::Outcome::Nearest(c) => c.clone(), crate::lrpath::Outcome::Stay => Vec::new() });
         // A search that met no refused cell sends the walker straight to its way's end
         // (`FUN_6f166e90`: the way's index set to its end, else to its first node).
@@ -1030,21 +1053,25 @@ impl World {
     /// (5000 pops, an order path's), its target the first point some 10 accelerator
     /// units on, or the mine itself when none is (read: Forestwalk's undead computer's
     /// fourth acolyte, made at (346.5, 483.5) and sent to its mine at (350, 516),
-    /// heading straight for (349.5, 505.5) at 17.128).
-    fn coarse_goal(&mut self, h: u32, goal: (f32, f32)) -> (f32, f32) {
-        if !self.unit(h).is_some_and(|u| u.ai_harvest_walk() || u.ai_build_walk()) {
-            return goal;
+    /// heading straight for (349.5, 505.5) at 17.128).  A unit sent alone to a point
+    /// steers so too (`World::cluster_goal`).  None while a plan is refused.
+    fn coarse_goal(&mut self, h: u32, goal: (f32, f32)) -> Option<(f32, f32)> {
+        if self.cluster_walker(h) {
+            return self.cluster_goal(h, goal);
         }
-        let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return goal };
+        if !self.unit(h).is_some_and(|u| u.ai_harvest_walk() || u.ai_build_walk()) {
+            return Some(goal);
+        }
+        let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return Some(goal) };
         let acc = |w: f32, o: f32| (w - o) / 64.0;
         if self.unit(h).is_some_and(|u| u.extra.coarse.is_none()) {
-            let Some(u) = self.unit(h) else { return goal };
+            let Some(u) = self.unit(h) else { return Some(goal) };
             let pos = (acc(u.x, origin[0]), acc(u.y, origin[1]));
             let target = match self.unit(h).map(|u| &u.action) {
                 Some(Action::Harvest { target }) => *target,
                 _ => 0,
             };
-            let Some(pyr) = self.accel_pyramid_with(Some(target)) else { return goal };
+            let Some(pyr) = self.accel_pyramid_with(Some(target)) else { return Some(goal) };
             let way = crate::accelpath::plan(&pyr, 0, pos, (acc(goal.0, origin[0]), acc(goal.1, origin[1])), 5000);
             let index = crate::accelpath::next_target(&way.points, way.points.len() - 1, pos, 10.0);
             let now = self.step_index + self.step_range.0 as u64;
@@ -1053,13 +1080,140 @@ impl World {
                 u.extra.coarse = Some(crate::accelpath::Coarse { points: way.points, index, searched_at: now });
             }
         }
-        match self.unit(h).and_then(|u| u.extra.coarse.as_ref()) {
+        Some(match self.unit(h).and_then(|u| u.extra.coarse.as_ref()) {
             Some(c) if c.index > 0 => {
                 let p = c.points[c.index];
                 (p.0 * 64.0 + origin[0], p.1 * 64.0 + origin[1])
             }
             _ => goal,
+        })
+    }
+
+    /// Whether it walks as a cluster of one (a move order's `^clu`, its path `l^pa`):
+    /// a unit sent alone to a point by a player's order or a script's.  Its path plans
+    /// over the accelerator (its +0x88 0x200000, set for every path,
+    /// `NIpse::CLrPath::vf3_6f166060`, but Neutral Passive's wanderers',
+    /// `FUN_6f5a6d40`).
+    pub(crate) fn cluster_walker(&self, h: u32) -> bool {
+        self.unit(h).is_some_and(|u| u.extra.player_walk && u.extra.group_walk.is_none() && matches!(u.action, Action::Move { .. }))
+    }
+
+    /// A walker's place now in cells: its mover's at the step's clock, else where it
+    /// stands.
+    fn cell_place(&self, h: u32) -> Option<(u32, u32)> {
+        use crate::efloat as ef;
+        let origin = self.pathing.as_ref()?.origin;
+        let u = self.unit(h)?;
+        let cell = |w: f32, o: f32| ef::div(ef::sub(w.to_bits(), o.to_bits()), crate::pathing::CELL.to_bits());
+        if let Some(m) = u.extra.mover {
+            let clock = self.step_clocks.get(self.step_range.0).copied().unwrap_or(self.last_step_clock);
+            return Some(m.at(clock));
         }
+        Some(match u.extra.cell_at {
+            Some((cx, cy, wx, wy)) if wx == u.x && wy == u.y => (cx, cy),
+            _ => (cell(u.x, origin[0]), cell(u.y, origin[1])),
+        })
+    }
+
+    /// The point a cluster walker heads for: its cluster's point on the order's coarse
+    /// way, and on its own path's way to that, the point its local search goes for.
+    ///
+    /// The cluster's path (`FUN_6f169840`: its accelerator pops limited to 5000) plans
+    /// as its walk begins (`FUN_6f16c150`, `FUN_6f16ce10`, `FUN_6f167120`,
+    /// `FUN_6f166c30`), from the member's place to the order's point, and picks its
+    /// point (`FUN_6f1697a0`, `FUN_6f165e30`: `accelpath::pick`, 10 on), the member's
+    /// target (`FUN_6f167d70`: the point times 2, in cells).  The member's own path
+    /// (its limit 400) then plans from its place to that target (`FUN_6f165ae0`,
+    /// `FUN_6f165b60`) and picks its own point the same way, which its local search
+    /// goes for (`FUN_6f165c60`, `FUN_6f167ce0`, `FUN_6f167d70`).  Each plan is spaced
+    /// (`FUN_6f168910`, kind 1: ten steps after one of 32 pops or more) and budgeted
+    /// (`crate::budget`: the cluster's by its 5000, the member's by its 400); refused,
+    /// the walker holds and asks again the next step.  Read: Mafarazzo TD's creeps,
+    /// sent each alone 2600 to 3600 down their lanes, walking straight for the cell
+    /// middles 10 to 16 accelerator units on (the first made at (-3872, 2528) bending
+    /// for (-3856, 1520)), their starts staggered by their local searches' budget.
+    fn cluster_goal(&mut self, h: u32, goal: (f32, f32)) -> Option<(f32, f32)> {
+        use crate::budget::Kind;
+        use crate::efloat as ef;
+        let origin = self.pathing.as_ref()?.origin;
+        let owner = self.unit(h)?.owner;
+        let now = self.step_index + self.step_range.0 as u64;
+        let at = self.cell_place(h)?;
+        let half = |c: u32| f32::from_bits(ef::mul(c, 0.5f32.to_bits()));
+        let pos = (half(at.0), half(at.1));
+        let to_acc = |w: f32, o: f32| half(ef::div(ef::sub(w.to_bits(), o.to_bits()), crate::pathing::CELL.to_bits()));
+        let world = |a: f32, o: f32| f32::from_bits(ef::add(ef::mul(ef::mul(a.to_bits(), 2.0f32.to_bits()), crate::pathing::CELL.to_bits()), o.to_bits()));
+        if self.unit(h).is_some_and(|u| u.extra.coarse.is_none()) {
+            let pyr = self.accel_pyramid_with(Some(0))?;
+            let way = self.budgeted_plan(h, owner, Kind::Order, now, &pyr, pos, (to_acc(goal.0, origin[0]), to_acc(goal.1, origin[1])), 5000)?;
+            let index = crate::accelpath::pick(&way.points, way.points.len() - 1, 10.0);
+            log::debug!("cluster way of {h}: {:?}, pops {}, target {index}", way.points, way.pops);
+            let u = self.unit_mut(h)?;
+            u.extra.coarse = Some(crate::accelpath::Coarse { points: way.points, index, searched_at: now });
+            u.extra.move_coarse = None;
+        }
+        let c = self.unit(h)?.extra.coarse.as_ref()?;
+        let (target, target_acc) = if c.index > 0 {
+            let p = c.points[c.index];
+            ((world(p.0, origin[0]), world(p.1, origin[1])), p)
+        } else {
+            (goal, (to_acc(goal.0, origin[0]), to_acc(goal.1, origin[1])))
+        };
+        if self.unit(h).is_some_and(|u| u.extra.move_coarse.is_none()) {
+            let pyr = self.accel_pyramid_with(Some(0))?;
+            let way = self.budgeted_plan(h, owner, Kind::Coarse, now, &pyr, pos, target_acc, 400)?;
+            let index = crate::accelpath::pick(&way.points, way.points.len() - 1, 10.0);
+            log::debug!("own way of {h}: {:?}, pops {}, target {index}", way.points, way.pops);
+            self.unit_mut(h)?.extra.move_coarse = Some(crate::accelpath::Coarse { points: way.points, index, searched_at: now });
+        }
+        let m = self.unit(h)?.extra.move_coarse.as_ref()?;
+        Some(if m.index > 0 {
+            let p = m.points[m.index];
+            (world(p.0, origin[0]), world(p.1, origin[1]))
+        } else {
+            target
+        })
+    }
+
+    /// A coarse plan as `FUN_6f166c30` makes it: spaced (`FUN_6f168910`, kind 1, the
+    /// path's +0x80: refused within ten steps of one that took 32 pops or more), then
+    /// budgeted (`crate::budget`, its pops added after); refused, none.
+    #[allow(clippy::too_many_arguments)]
+    fn budgeted_plan(&mut self, h: u32, owner: u8, kind: crate::budget::Kind, now: u64, pyr: &crate::accel::Pyramid, from: (f32, f32), to: (f32, f32), limit: u32) -> Option<crate::accelpath::Way> {
+        let slot = if kind == crate::budget::Kind::Order { 0 } else { 1 };
+        let last = self.unit(h)?.extra.plan_at[slot];
+        if last.is_some_and(|t| now.wrapping_sub(t) < 10) {
+            return None;
+        }
+        let mut b = std::mem::take(&mut self.budgets);
+        let ok = b.allow(owner, kind, now, h, |u| self.unit(u).is_some_and(|v| !v.dead && v.steps_walker()));
+        self.budgets = b;
+        if !ok {
+            log::trace!("plan of {h} ({kind:?}) refused at step {now}");
+            self.unit_mut(h)?.extra.plan_at[slot] = None;
+            return None;
+        }
+        let way = crate::accelpath::plan(pyr, 0, from, to, limit);
+        let spent = self.budgets.spend(owner, kind, now, way.pops);
+        log::trace!("plan of {h} ({kind:?}) at step {now}: {} pops, {spent} spent", way.pops);
+        self.unit_mut(h)?.extra.plan_at[slot] = (way.pops >= 32).then_some(now);
+        Some(way)
+    }
+
+    /// The point a walker's arrival is judged at: a cluster walker's cluster's point,
+    /// else its order's goal.
+    pub(crate) fn walk_target(&self, h: u32) -> Option<(f32, f32)> {
+        use crate::efloat as ef;
+        let goal = self.walk_goal(h)?;
+        if !self.cluster_walker(h) {
+            return Some(goal);
+        }
+        let origin = self.pathing.as_ref()?.origin;
+        let world = |a: f32, o: f32| f32::from_bits(ef::add(ef::mul(ef::mul(a.to_bits(), 2.0f32.to_bits()), crate::pathing::CELL.to_bits()), o.to_bits()));
+        Some(match self.unit(h)?.extra.coarse.as_ref() {
+            Some(c) if c.index > 0 => (world(c.points[c.index].0, origin[0]), world(c.points[c.index].1, origin[1])),
+            _ => goal,
+        })
     }
 
     /// A walker steering for its coarse way's point short of its order's target is
@@ -1118,30 +1272,45 @@ impl World {
     }
 
     fn path_to_inner(&mut self, h: u32, goal: (f32, f32)) {
-        let goal = self.coarse_goal(h, goal);
-        // A walker's local search waits ten steps after its last while its class's
+        // A walker's local search waits ten steps after its last while its owner's
         // budget is spent past 64 passes (`FUN_6f166e90`, `FUN_6f168910`: read, sheep
         // 1050122's search at step 0x54c took the budget to 66, and its tries at 0x553
-        // to 0x555 were refused, at 0x556 allowed); refused, its way stays dropped and
-        // it tries again the next step.
-        let now = self.step_index + self.step_range.0 as u64;
-        let local = self.unit(h).is_some_and(|u| u.engine_walker()) && self.move_kind(h) != crate::pathing::Move::Fly;
-        if local && self.unit(h).and_then(|u| u.extra.search_at).is_some_and(|t| now.wrapping_sub(t) < 10) {
-            if let Some(u) = self.unit_mut(h) {
+        // to 0x555 were refused, at 0x556 allowed), and while the budget is spent past
+        // its cap or others wait for it (`crate::budget`); refused, its way stays
+        // dropped and it tries again the next step.  So does one whose coarse plan is
+        // refused.
+        let refuse = |w: &mut Self| {
+            if let Some(u) = w.unit_mut(h) {
                 u.path.clear();
                 u.extra.path_end_cell = None;
                 u.extra.facing_goal = false;
                 u.extra.walk_research = true;
             }
+        };
+        let Some(goal) = self.coarse_goal(h, goal) else {
+            refuse(self);
+            return;
+        };
+        let now = self.step_index + self.step_range.0 as u64;
+        let local = self.unit(h).is_some_and(|u| u.engine_walker()) && self.move_kind(h) != crate::pathing::Move::Fly;
+        if local && self.unit(h).and_then(|u| u.extra.search_at).is_some_and(|t| now.wrapping_sub(t) < 10) {
+            refuse(self);
             return;
         }
-        if let Some((way, end, cost)) = self.local_path(h, goal) {
-            let window = (now + 1) / 2;
-            if self.search_budget.0 != window {
-                self.search_budget = (window, 0);
+        let owner = self.unit(h).map_or(0, |u| u.owner);
+        if local && self.pathing.is_some() {
+            let mut b = std::mem::take(&mut self.budgets);
+            let ok = b.allow(owner, crate::budget::Kind::Local, now, h, |u| self.unit(u).is_some_and(|v| !v.dead && v.steps_walker()));
+            self.budgets = b;
+            if !ok {
+                refuse(self);
+                return;
             }
-            self.search_budget.1 += cost;
-            let spaced = self.search_budget.1 >= 64;
+        }
+        if let Some((way, end, cost)) = self.local_path(h, goal) {
+            let spent = self.budgets.spend(owner, crate::budget::Kind::Local, now, cost);
+            log::trace!("local search of {h} at step {now}: {cost} pops, {spent} spent");
+            let spaced = spent >= 64;
             if let Some(u) = self.unit_mut(h) {
                 u.extra.search_at = spaced.then_some(now);
                 u.path = way;
@@ -1426,7 +1595,9 @@ impl World {
             if !self.tick_clocks.1.is_empty() {
                 self.blight_checks_to(self.tick_clocks.0 as f64 * 0.005);
             }
+            self.script_clock = self.tick_clocks.1.first().copied();
             self.timers_at_turn_start(vm);
+            self.script_clock = None;
             self.time_of_day_to(vm, Some(t));
             self.timed_frees_to(Some(t));
             self.ai_threads_to_tick(Some(t));
@@ -1674,7 +1845,8 @@ impl World {
         // home from the mine along row 265 never held by the idle peon whose region
         // covers 672, 264, nor drawing for a block; `Unit::region_mask`).
         let mask = u.region_mask();
-        let goal = self.walk_goal(h);
+        // (Its path's goal: a cluster walker's, its cluster's point.)
+        let goal = self.walk_target(h);
         let Some(u) = self.unit_mut(h) else { return false };
         // Within reach of the end of a way short of its goal, it is as one blocked: it
         // holds and then searches again (traced: a sheep at 0.42 from its way's end held
@@ -1870,6 +2042,41 @@ impl World {
             }
         }
         for (k, &clock) in clocks.iter().enumerate().take(until).skip(from).take(if done.is_some() { 0 } else { usize::MAX }) {
+            // A cluster walker stopped at its cluster's point: as this step begins the
+            // cluster, its member done, picks its next point (`FUN_6f16c4f0`,
+            // `FUN_6f16b120`, `FUN_6f1697a0`) and drops its member's ways (`FUN_6f16d6a0`),
+            // which plans and searches anew (read: Mafarazzo TD's creeps, each a step
+            // short at its cluster's points, stopped within 0.49 of them).
+            if self.unit(h).is_some_and(|u| u.extra.coarse_done) {
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.coarse_done = false;
+                    if let Some(c) = u.extra.coarse.as_mut() {
+                        c.index = crate::accelpath::pick(&c.points, c.index, 10.0);
+                    }
+                    u.extra.move_coarse = None;
+                    u.extra.walk_research = true;
+                }
+            }
+            // Its own path's way picks its next point once within 0.49 of its last (in
+            // accelerator units; `FUN_6f165f10`), and searches toward it at once.
+            if let Some(mc) = self.unit(h).and_then(|u| u.extra.move_coarse.as_ref()).filter(|c| c.index > 0 && self.cluster_walker(h)) {
+                let (x, y) = m.at(clock);
+                let p = mc.points[mc.index];
+                let half = |c: u32| ef::mul(c, 0.5f32.to_bits());
+                let (dx, dy) = (ef::sub(p.0.to_bits(), half(x)), ef::sub(p.1.to_bits(), half(y)));
+                if f32::from_bits(ef::add(ef::mul(dx, dx), ef::mul(dy, dy))) <= f32::from_bits(ef::mul(0.49f32.to_bits(), 0.49f32.to_bits())) {
+                    let index = crate::accelpath::pick(&mc.points, mc.index, 10.0);
+                    if let Some(u) = self.unit_mut(h) {
+                        if let Some(c) = u.extra.move_coarse.as_mut() {
+                            c.index = index;
+                        }
+                        u.extra.walk_research = true;
+                    }
+                }
+            }
+            // (A cluster walker's arrival, holds, and turns are toward its cluster's
+            // point, its own path's goal.)
+            let target = self.walk_target(h);
             // A dropped way is searched for again first; finding nothing nearer, the
             // walker only turns toward its goal in this step (traced: the first sheep
             // turned 4.2315 to 4.0887 in its search step at 5.37 and ended in turn 56).
@@ -1885,11 +2092,13 @@ impl World {
                 // Refused its search, it holds toward its goal (read: sheep 1050122,
                 // refused three steps, turned toward its goal meanwhile).
                 let waits = self.unit(h).is_some_and(|u| u.extra.facing_goal || u.extra.walk_research);
-                if let (true, Some(g)) = (waits, goal) {
+                if let (true, Some(g)) = (waits, self.walk_target(h)) {
                     m.hold(&gait, (cell(g.0, origin[0]), cell(g.1, origin[1])), clock);
                     continue;
                 }
             }
+            let goal_then = goal;
+            let goal = target;
             if let (true, Some(g)) = (self.unit(h).is_some_and(|u| u.extra.facing_goal && u.extra.face_hold > 0), goal) {
                 if let Some(u) = self.unit_mut(h) {
                     u.extra.face_hold -= 1;
@@ -1968,6 +2177,7 @@ impl World {
                 continue;
             }
             let (x, y) = m.at(clock);
+            let cluster = self.cluster_walker(h);
             let Some(u) = self.unit_mut(h) else { return true };
             u.x = f32::from_bits(ef::add(ef::mul(x, crate::pathing::CELL.to_bits()), origin[0].to_bits()));
             u.y = f32::from_bits(ef::add(ef::mul(y, crate::pathing::CELL.to_bits()), origin[1].to_bits()));
@@ -1976,7 +2186,13 @@ impl World {
                 continue;
             }
             let partial = u.extra.path_end_cell.take().is_some() && !goal_near;
-            match goal.filter(|_| partial) {
+            // A cluster walker at its cluster's point short of its order's goal stops
+            // there, its member done (`FUN_6f16e910`'s arrival, `FUN_6f16fbd0`).
+            if !partial && cluster && u.extra.coarse.as_ref().is_some_and(|c| c.index > 0) {
+                u.extra.coarse_done = true;
+                continue;
+            }
+            match goal_then.filter(|_| partial) {
                 Some(goal) => {
                     self.path_to(h, goal);
                 }
@@ -2052,11 +2268,17 @@ impl World {
                     u.extra.wander_at = Some(crate::efloat::add(at, next.to_bits()));
                 }
             }
+            self.budgets.leave(h);
             let Some(u) = self.unit_mut(h) else { return true };
             u.extra.mover = None;
             u.extra.step_from = None;
             u.extra.facing_goal = false;
             u.extra.captain_walk = None;
+            if u.extra.player_walk {
+                u.extra.coarse = None;
+                u.extra.move_coarse = None;
+                u.extra.coarse_done = false;
+            }
             u.path.clear();
             set_anim(u, "stand");
             return true;

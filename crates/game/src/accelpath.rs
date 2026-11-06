@@ -67,12 +67,14 @@ pub struct Coarse {
     pub searched_at: u64,
 }
 
-/// A coarse way: its points from the goal's (first) to the start's (last), and
-/// whether the goal was reached (else it ends at the node nearest it).
+/// A coarse way: its points from the goal's (first) to the start's (last), whether
+/// the goal was reached (else it ends at the node nearest it), and the search's pops,
+/// its cost to the budget (`FUN_6f166c30` adding the system's +0x9c).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Way {
     pub points: Vec<(f32, f32)>,
     pub found: bool,
+    pub pops: u32,
 }
 
 struct Search<'a> {
@@ -85,6 +87,8 @@ struct Search<'a> {
     goal_node: Option<usize>,
     best: usize,
     best_d: u32,
+    /// Its pops (+0x9c, `FUN_6f164230` clearing it): one more for the try a limit stops.
+    pops: u32,
 }
 
 impl Search<'_> {
@@ -267,12 +271,11 @@ impl Search<'_> {
     /// `FUN_6f163f50`: pops (at most `limit`, stale entries counting) until the goal's
     /// node comes off the heap.
     fn run(&mut self, limit: u32) -> Option<usize> {
-        let mut pops = 0;
         while self.heap.len() > 1 {
-            if pops >= limit {
+            self.pops += 1;
+            if self.pops > limit {
                 break;
             }
-            pops += 1;
             let (_, n, stamp) = self.heap.pop();
             if self.nodes[n].stamp != stamp {
                 continue;
@@ -308,7 +311,7 @@ pub fn plan_cost(pyr: &Pyramid, layer: usize, start: (f32, f32), goal: (f32, f32
         let (dx, dy) = ((a.0 - b.0).abs() * 2, (a.1 - b.1).abs() * 2);
         isqrt((dx * dx + dy * dy) as u32)
     };
-    let mut search = Search { pyr, layer, nodes: Vec::new(), keys: HashMap::new(), heap: Heap(vec![(0, 0, 0)]), goal: g, goal_node: None, best: 0, best_d: 0 };
+    let mut search = Search { pyr, layer, nodes: Vec::new(), keys: HashMap::new(), heap: Heap(vec![(0, 0, 0)]), goal: g, goal_node: None, best: 0, best_d: 0, pops: 0 };
     search.state(0, s.0, s.1)?;
     if s == g {
         return Some(0);
@@ -348,17 +351,17 @@ pub fn plan_cost(pyr: &Pyramid, layer: usize, start: (f32, f32), goal: (f32, f32
 pub fn plan(pyr: &Pyramid, layer: usize, start: (f32, f32), goal: (f32, f32), limit: u32) -> Way {
     let s = (start.0.floor() as i32, start.1.floor() as i32);
     let g = (goal.0.floor() as i32, goal.1.floor() as i32);
-    let mut search = Search { pyr, layer, nodes: Vec::new(), keys: HashMap::new(), heap: Heap(vec![(0, 0, 0)]), goal: g, goal_node: None, best: 0, best_d: 0 };
+    let mut search = Search { pyr, layer, nodes: Vec::new(), keys: HashMap::new(), heap: Heap(vec![(0, 0, 0)]), goal: g, goal_node: None, best: 0, best_d: 0, pops: 0 };
     if search.state(0, s.0, s.1).is_none() || s == g {
-        return Way { points: vec![goal], found: true };
+        return Way { points: vec![goal], found: true, pops: 0 };
     }
     let sn = search.lookup(0, s.0, s.1);
     if sn < 0 {
-        return Way { points: vec![goal], found: true };
+        return Way { points: vec![goal], found: true, pops: 0 };
     }
     let gn = search.lookup(0, g.0, g.1);
     if gn == sn {
-        return Way { points: vec![goal], found: true };
+        return Way { points: vec![goal], found: true, pops: 0 };
     }
     let sn = sn as usize;
     search.goal_node = (gn >= 0).then_some(gn as usize);
@@ -368,7 +371,7 @@ pub fn plan(pyr: &Pyramid, layer: usize, start: (f32, f32), goal: (f32, f32), li
     search.push(sn);
     let (end, end_point, found) = match search.run(limit) {
         Some(n) => (n, goal, true),
-        None if search.best == sn => return Way { points: vec![start], found: false },
+        None if search.best == sn => return Way { points: vec![start], found: false, pops: search.pops },
         None => {
             let b = &search.nodes[search.best];
             (search.best, (b.x as f32 + 0.5, b.y as f32 + 0.5), false)
@@ -385,7 +388,7 @@ pub fn plan(pyr: &Pyramid, layer: usize, start: (f32, f32), goal: (f32, f32), li
         *p = start;
     }
     points[0] = end_point;
-    Way { points, found }
+    Way { points, found, pops: search.pops }
 }
 
 /// The coarse way's next target for a walker at `at` (`FUN_6f167ae0`): from the point
@@ -403,9 +406,43 @@ pub fn next_target(points: &[(f32, f32)], index: usize, at: (f32, f32), reach: f
     0
 }
 
+/// The engine's pick of a path's next target on its coarse way (`FUN_6f167ae0`): from
+/// the point below `index` toward the goal (index 0), the first where the way's legs
+/// from `index`, summed (each the engine's root of its squares, `FUN_6f071480`), come to
+/// `reach` (10, `DAT_6fd54194`); none before the goal, the goal.
+pub fn pick(points: &[(f32, f32)], index: usize, reach: f32) -> usize {
+    use crate::efloat as ef;
+    let mut sum = 0u32;
+    let mut i = index.min(points.len().saturating_sub(1));
+    while i > 1 {
+        i -= 1;
+        let (a, b) = (points[i], points[i + 1]);
+        let (dx, dy) = (ef::sub(b.0.to_bits(), a.0.to_bits()), ef::sub(b.1.to_bits(), a.1.to_bits()));
+        sum = ef::add(sum, ef::sqrt(ef::add(ef::mul(dx, dx), ef::mul(dy, dy))));
+        if f32::from_bits(sum) >= reach {
+            return i;
+        }
+    }
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The pick sums the way's legs (read: Mafarazzo TD's creeps, their coarse ways
+    /// down x = 35.75 by 8 from 135.25, each first walking to 119.75).
+    #[test]
+    fn picks_by_the_way_walked() {
+        let way = [(35.5, 79.0), (35.75, 87.75), (35.75, 95.75), (35.75, 103.75), (35.75, 111.75), (35.75, 119.75), (35.75, 127.75), (35.75, 135.25)];
+        assert_eq!(pick(&way, 7, 10.0), 5);
+        assert_eq!(pick(&way, 5, 10.0), 3);
+        assert_eq!(pick(&way, 3, 10.0), 1);
+        assert_eq!(pick(&way, 1, 10.0), 0);
+        // A bend: two legs of 6 at right angles reach 10 where the straight line does not.
+        let bend = [(0.0, 0.0), (6.0, 6.0), (6.0, 0.0), (0.0, 0.0)];
+        assert_eq!(pick(&bend, 3, 10.0), 1);
+    }
 
     #[test]
     fn isqrt_is_the_engines() {

@@ -750,6 +750,91 @@ these are the findings behind them.
   11, 11, 1, and 1; the port so far walks members straight to their places, with one
   draw from the main generator as the walk begins standing in for the searches'
   (which keep the keepalives agreeing to 1725).
+- A script's point order (IssuePointOrder and kin) walks as a player's: the same
+  objects and the same walk.  Measured with Mafarazzo TD's script (`abtest/mafp.w3x`:
+  a timer pinging each creep's GetUnitX, GetUnitY, and GetUnitMoveSpeed at 21, 23, 25,
+  and 27 seconds): its 180 creeps, made at 20.0 and each sent alone 2600 to 3600 units
+  down its lane, walk straight for a cell's middle 10 to 16 accelerator units on (the
+  first, made at (-3872, 2528), bending for (-3856, 1520)), stop a step there, and go
+  on for the next, at exactly their speed on the main clock; they start in five
+  groups, 2 steps apart, the newest first.  The engine's way (read from game.dll):
+  - Every path plans over the accelerator first (+0x88's 0x200000, set by
+    `NIpse::CLrPath::vf3_6f166060`, its limits +0x84 0x19002bc: 700 local pops, 400
+    accelerator pops), but Neutral Passive's wanderers' (`FUN_6f5a6d40`:
+    `FUN_6f0594a0(this, 0)` and a local limit of 32).  A move's cluster (`^clu`) has
+    a path of its own (`l^pa`, `FUN_6f169840`: flagged 0x400000, its accelerator limit
+    5000, `FUN_6f1678f0`).  The cluster's step (`FUN_6f16c150`) plans it once
+    (`FUN_6f16ce10`, `FUN_6f167120`, `FUN_6f166c30`, `FUN_6f162cb0`) from its member's
+    place to the order's point, and picks its point (`FUN_6f1697a0`, `FUN_6f165e30`,
+    `FUN_6f167ae0`): from the point below its index toward the goal, the first where
+    the way's legs from the index, summed (each the engine's root of its squares),
+    reach 10 (`DAT_6fd54194`); none before the goal, the goal.  That point times 2
+    (cells, `FUN_6f167d70`) is the member's target.  Refused its plan, the cluster's
+    members do not step.
+  - The member's own path (the unit's `l^pa`, limit 400) plans from its place to that
+    target in its provider (`FUN_6f165ae0`, `FUN_6f165b60`) and picks its own point the
+    same way, its local search going for that (`FUN_6f165c60`, `FUN_6f167ce0`,
+    `FUN_6f166e90`); within 0.49 accelerator units of it (`FUN_6f165f10`) it picks
+    again and searches at once.  For the creeps it is always the target itself.
+  - Within 0.49 cells of the member's target, its heading within 0.2 of it, the
+    member is done and stops (`FUN_6f16fbd0`, `FUN_6f16e910`); as the next step begins
+    the cluster, its members done (`FUN_6f16c4f0`, `FUN_6f16b120`), picks its next
+    point and drops its members' ways (`FUN_6f16d6a0`), which plan and search anew:
+    the creeps' step lost at each point, stopped within 0.49 of it (one at (-3792,
+    1531.000) as it was pinged).  At the goal the walk ends.
+  - Each plan and search is spaced (`FUN_6f168910`: the path's +0x7c for its local
+    searches, +0x80 for its plans, ten steps, `DAT_6fa91c14`, after one that left its
+    budget at 64 pops or more, or for a plan, took 32 or more) and budgeted per owner
+    (`crate::budget`, below).  The creeps' searches, 21 to 35 pops each, fill the
+    budget of 1100 by the 41st: the rest are queued and served in turn as it is
+    renewed each other step, 47, 37, 42, and 13 of them; the 37 all those whose
+    clusters had planned by then, the clusters' plans (some 12 pops each) filling their
+    budget of 800 by the 66th at the first step and the 59th at the fifth, renewed
+    every fourth step (in the port's count, steps 667, 669, and 673: so renewed at
+    steps 1 + 4k, as the local budget at odd steps).
+  `World::cluster_goal` and `World::walk_steps` so walk a unit sent alone to a point
+  by a player or a script; each of the 720 pings is the original's to 0.001.  The
+  port's AI walks keep their own (`World::coarse_goal`: the straight distance, not
+  the legs, at 10; not budgeted); a group's members walk straight to their places.
+- The search budgets (NIpse's): for each player (a path's class, +0x88 bits 16 to 19,
+  the owner as `CUnit::vf107` and `FUN_6f698ce0` give it to `FUN_6f168a80`; Neutral
+  Passive's wanderers' class 15), four records of 0x1c bytes at `DAT_6fd53a90` + player
+  * 0x70, made by the static initializers at 0x6f003d20 (`FUN_6f1656d0`): +0 a pop
+  limit, +2 a period, +4 a cap, +8 the use, +0xc a countdown, +0x10 a queue's count,
+  +0x14 and +0x18 its head and tail (each path's +0x8c and +0x90 linking it).  The
+  four: 5000, 3, 800 (a plan by a path whose accelerator limit passes 400 and not
+  flagged 0x4000000: a cluster's); 2000, 2, 300 (one so flagged); 400, 2, 900 (one of
+  400 or under: a unit's own); 700, 1, 1100 (local searches, `DAT_6fd53ae4`).  Each
+  step (`FUN_6f167310` from `FUN_6f15aa80`) a record's countdown runs down, and at 0
+  its use is cleared and the countdown set to its period (`FUN_6f167fa0`), so it is
+  renewed every period + 1 steps.  A search asks first (`FUN_6f168310`): over the
+  cap it is refused and queued (`FUN_6f165ea0`); under it, allowed while none waits,
+  else only the queue's head is (taken off, `FUN_6f1686a0`), others queued behind
+  it.  Its pops are added after: a local search's the system's +0x6c, a plan's +0x9c
+  (cleared by `FUN_6f164230`, counting one more for the try a limit stops).
+  Provisional: the plans' records taken as renewed with the local one, at odd steps.
+- GetUnitX, GetUnitY, and GetUnitLoc read a walker's place at its last step carried
+  on by its velocity to the main clock then (above): the creeps pinged by a timer at
+  21 seconds, as the turn's timers go off before its first step, are where their
+  velocities take them by 20.9975 (`World::place_now`; the port reads so only while
+  a turn's timers go off, the main clock then its first tick's).
+- A region's rect (RegionAddRect, `FUN_6f05fcf0`) is taken in cells from the map's
+  corner, its corners over 32 (0xfd800000 added to their bits), each floored, the
+  ends one past the greatest's floor (`FUN_6f05ee40`): a rect ending on a cell's
+  edge takes the cell past it.  Read: Mafarazzo TD's creeps entering WalkMid3 (to y
+  1856) at 1888, the original's turn 304, the port's two turns later before.  Its
+  cells are a pathing map region's (`FUN_6f14d960`).
+- A walk ordered while one goes on, after the tick's steps (a region's trigger), frees
+  the old order's path (`l^pa`, `^clu`) at the next step, not with its tree: read, a
+  creep entering WalkMid3 in turn 304, its next order's objects and the old tree freed
+  in that turn and the old path in turn 305 (another in 306 and 307).  Open: a third,
+  entering WalkMid4 in turn 308, had its old path freed in that turn, after the
+  trigger's data; the port frees it in 309 (Mafarazzo's keepalives part there).
+- SetUnitPathing (`jass_SetUnitPathing` at 0x6f215540) sets the unit's pathing types
+  through its vf15c: off, its region's types (`FUN_6f05ac60`, +0x34 of its region)
+  with 0; on, those of vf160 and vf164.  What its walks' searches and plans then mind
+  is not yet read: the port's ignore it for the engine's walkers, and the creeps,
+  turned off as they set out, walk open lanes, where either reading gives their ways.
 - The data modules are the data store's slots (`FUN_6f06c180(0xd)` +0x10; the
   keepalive's `FUN_6f042dd0` folds each slot's vf0 from the last).  A table's slot
   (CWar3SlkDatabase) keeps `rol(hash, 3)` (`FUN_6f042d80`, `FUN_6f042da0`), the hash

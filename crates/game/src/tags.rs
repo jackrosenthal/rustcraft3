@@ -510,7 +510,12 @@ impl Tags {
     /// its objects) frees that order's rest and its path then too: after the new
     /// order's first block, the old order's tree, then the new order's other six, then
     /// the old path (read: two orders to walk given to a peon in one turn).
-    pub fn player_move_issued(&mut self, replaced: Option<&[u32]>) -> Vec<u32> {
+    ///
+    /// Given after the tick's steps (a script's, as a region's event runs), the old path
+    /// waits for the next step instead, as a walk's end's does (`walk_ended`, `serial`
+    /// the old walk's; read: Mafarazzo TD's creep entering WalkMid3, turned to its next
+    /// waypoint in turn 304, its old `l^pa` and `^clu` freed in turn 305).
+    pub fn player_move_issued(&mut self, replaced: Option<&[u32]>, after_steps: Option<u32>) -> Vec<u32> {
         const CODES: [&Code; 17] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK_O, codes::class::TASK, codes::class::TASK, codes::class::TASK, b"tsk.", codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
         let slots: Vec<u32> = CODES.iter().map(|c| self.take(c)).collect();
         self.release(slots[14]);
@@ -527,8 +532,13 @@ impl Tags {
         for k in [13, 12, 11, 10, 9, 8] {
             self.doom(slots[k]);
         }
-        for k in [16, 15] {
-            self.doom(old[k]);
+        match after_steps {
+            Some(serial) => self.walk_ended([old[16], old[15]], serial),
+            None => {
+                for k in [16, 15] {
+                    self.doom(old[k]);
+                }
+            }
         }
         slots
     }

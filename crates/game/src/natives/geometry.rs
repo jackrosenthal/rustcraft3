@@ -21,9 +21,14 @@ fn region_mut(w: &mut World, h: u32) -> Option<&mut Region> {
     }
 }
 
+/// The cells a rect gives a region: from its least corner's to its greatest corner's,
+/// both taken in, so a rect ending on a cell's edge takes the cell past it
+/// (`FUN_6f05fcf0`: the corners over 32 from the map's corner; `FUN_6f05ee40`: each
+/// floored, the ends 1 past the floor of the greatest; read: Mafarazzo TD's creeps
+/// entering WalkMid3, to 1856, as they cross 1888, two turns before the port's).
 fn rect_cells(r: &Rect) -> impl Iterator<Item = (i32, i32)> {
     let (x0, y0) = Region::cell(r.min_x, r.min_y);
-    let (x1, y1) = Region::cell(r.max_x - 0.001, r.max_y - 0.001);
+    let (x1, y1) = Region::cell(r.max_x, r.max_y);
     (y0..=y1).flat_map(move |y| (x0..=x1).map(move |x| (x, y)))
 }
 

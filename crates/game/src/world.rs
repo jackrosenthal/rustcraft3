@@ -383,17 +383,22 @@ pub struct World {
     /// The main clock at the last step before this tick's.
     #[serde(default)]
     pub last_step_clock: u32,
+    /// The tick's movement steps are done (its logic after them runs).
+    #[serde(skip)]
+    pub after_steps: bool,
+    /// The main clock scripts read walkers' places by, while it is known
+    /// (`World::place_now`): the turn's first main tick's as its timers go off.
+    #[serde(skip)]
+    pub script_clock: Option<u32>,
     /// Movement steps since the game began, and the first of this tick's (the engine's
     /// step count at DAT_6fd53a48 + 0x538 counts on from 1024).
     #[serde(default)]
     pub steps_total: u64,
     #[serde(skip)]
     pub step_index: u64,
-    /// The local searches' budget for the walkers' class (`DAT_6fd53ae4` + 15 * 0x70:
-    /// 1100 passes, renewed every other step, at odd steps): its two steps' window and
-    /// the passes searches have used in it.
+    /// The players' search budgets (`crate::budget`).
     #[serde(default)]
-    pub search_budget: (u64, u32),
+    pub budgets: crate::budget::Budgets,
     /// The net module's sum of the messages handled (`keepalive`).
     #[serde(default)]
     pub net_sum: u32,
@@ -988,7 +993,9 @@ impl World {
             last_step_clock: 0,
             steps_total: 0,
             step_index: 0,
-            search_budget: (0, 0),
+            budgets: Default::default(),
+            script_clock: None,
+            after_steps: false,
             net_sum: 0,
             game_ms: 0,
             played_before_ms: 0,
@@ -2168,6 +2175,7 @@ impl World {
     }
 
     fn tick_inner(&mut self, vm: &mut Vm, dt: f32) {
+        self.after_steps = false;
         self.tech_cache.borrow_mut().clear();
         crate::natives::units::finish_removals(self);
         self.settle_paid_builds();
@@ -2268,6 +2276,7 @@ impl World {
         self.step_range = (1, self.step_clocks.len());
         prof!(self, "update_wander", self.update_wander(false));
         self.step_walkers(vm);
+        self.after_steps = true;
         prof!(self, "computer_idle_workers", self.computer_idle_workers(dt));
         prof!(self, "update_guards", self.update_guards());
         prof!(self, "update_creep_sleep", self.update_creep_sleep(dt));

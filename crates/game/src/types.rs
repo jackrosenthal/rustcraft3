@@ -624,6 +624,18 @@ pub struct UnitExtra {
     /// Its walk's coarse way, while it steers by one (`crate::accelpath::Coarse`).
     #[serde(default)]
     pub coarse: Option<crate::accelpath::Coarse>,
+    /// A cluster walker's own path's coarse way, to its cluster's point
+    /// (`World::cluster_goal`).
+    #[serde(default)]
+    pub move_coarse: Option<crate::accelpath::Coarse>,
+    /// The steps of its cluster's and its own path's last coarse plans, while their
+    /// next are spaced (the paths' +0x80).
+    #[serde(default)]
+    pub plan_at: [Option<u64>; 2],
+    /// A cluster walker stopped at its cluster's point short of its goal: the cluster
+    /// picks its next as the next step begins.
+    #[serde(default)]
+    pub coarse_done: bool,
     /// Its walk by the original's movement steps (`motion`), while it walks.
     #[serde(default)]
     pub mover: Option<crate::motion::Mover>,
@@ -1004,6 +1016,9 @@ impl Default for UnitExtra {
             mover: None,
             facing_goal: false,
             coarse: None,
+            move_coarse: None,
+            plan_at: [None; 2],
+            coarse_done: false,
             walk_from: None,
             arrive_step: None,
             mana_listeners: Vec::new(),

@@ -1292,10 +1292,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
         GetWidgetY => |w, _, a| real(match w.handles.get(a.h(0)) {
             Some(Obj::Unit(u)) => u.y, Some(Obj::Destructable(d)) => d.y, Some(Obj::Item(i)) => i.y, _ => 0.0,
         }),
-        GetUnitX => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.x)),
-        GetUnitY => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.y)),
+        GetUnitX => |w, _, a| real(w.place_now(a.h(0)).map_or(0.0, |p| p.0)),
+        GetUnitY => |w, _, a| real(w.place_now(a.h(0)).map_or(0.0, |p| p.1)),
         GetUnitLoc => |w, _, a| {
-            let (x, y) = unit_arg(w, a, 0).map_or((0.0, 0.0), |u| (u.x, u.y));
+            let (x, y) = w.place_now(a.h(0)).unwrap_or((0.0, 0.0));
             handle(w.insert_location(x, y))
         },
         GetUnitFacing => |w, _, a| real(unit_arg(w, a, 0).map_or(0.0, |u| u.shown_facing.unwrap_or(u.facing))),

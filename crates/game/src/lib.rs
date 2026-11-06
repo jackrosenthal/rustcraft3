@@ -62,6 +62,7 @@ pub mod preload;
 pub mod spellbook;
 pub mod accel;
 pub mod accelpath;
+pub mod budget;
 pub use w3_formats::codes;
 pub mod datahash;
 pub mod efloat;

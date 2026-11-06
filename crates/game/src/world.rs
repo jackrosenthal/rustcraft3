@@ -2498,7 +2498,9 @@ impl World {
         let mut made = [0i32; PLAYER_COUNT];
         for &h in &self.unit_order {
             let Some(u) = self.unit(h) else { continue };
-            if u.dead {
+            // One reincarnating keeps its food and food made (the rising adds them
+            // and takes them away again, `FUN_6f50e870`).
+            if u.dead && u.reincarnate.is_none() {
                 continue;
             }
             if let Some(o) = self.objects.units.get(u.type_id) {

@@ -578,29 +578,32 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     // A unit set to explode (SetUnitExploded) or dying under Incinerate bursts, unless a
     // Hero (FUN_6f678280).
     let explodes = w.unit(h).is_some_and(|u| !u.is_hero && (u.explode_on_death || u.buffs.iter().any(|b| matches!(w.ability_code(b.ability).as_str(), codes::ability::FIRELORD_INCINERATE_ANIA | codes::ability::FIRELORD_INCINERATE_ANIC))));
+    // Reincarnation: the unit falls and rises again without dying, a hero or not (the
+    // creeps' Reincarnation, ACrn, is for units: its hook, `FUN_6f5197e0`, asks nothing
+    // of the unit's being a hero).  Starting, it forgets the unit's killer (`FUN_6f51fd50`
+    // clears it, `FUN_6f6989c0`), so that the fall pays no bounty, experience, or score
+    // (`FUN_6f69c210` asks the killer); it keeps its food (the rising adds it and takes
+    // it away again, `FUN_6f50e870`).  One set to explode rises too, as the hook runs on
+    // that path as well (provisional: whether the hook's checks pass then).  Its fall
+    // fires no death events (provisional), and it rises with its orders gone (the
+    // revival empties them, `FUN_6f695620`).
+    if w.unit(h).is_some_and(|u| !u.dead) && w.try_reincarnate(h) {
+        if let Some(u) = w.unit_mut(h) {
+            u.dead = true;
+            u.life = 0.0;
+            u.action = Action::Idle;
+            u.extra.order_queue.clear();
+            u.anim = "death".into();
+            u.anim_serial = u.anim_serial.wrapping_add(1);
+        }
+        return;
+    }
     if w.unit(h).is_some_and(|u| !u.dead) && killer != 0 && illusion.is_none() {
         w.grant_bounty(h, killer);
         w.grant_kill_xp(h, killer);
     }
     // The Phoenix falls into its egg instead of dying.
     if w.phoenix_egg(h) {
-        return;
-    }
-    // Reincarnation: the unit falls and rises again without dying, a hero or not (the
-    // creeps' Reincarnation, ACrn, is for units: its hook, `FUN_6f5197e0`, asks nothing
-    // of the unit's being a hero).  Its bounty and food go as they do at a death (the
-    // death's bounty, experience, and food, `FUN_6f69c210` and `FUN_6f6744d0`, come after
-    // the hook, `FUN_6f678280`, has started it).  One set to explode rises too, as the
-    // hook runs on that path as well (provisional: whether the hook's checks pass then).
-    // Its fall fires no death events, and it rises with no order (provisional, both).
-    if w.unit(h).is_some_and(|u| !u.dead) && w.try_reincarnate(h) {
-        if let Some(u) = w.unit_mut(h) {
-            u.dead = true;
-            u.life = 0.0;
-            u.action = Action::Idle;
-            u.anim = "death".into();
-            u.anim_serial = u.anim_serial.wrapping_add(1);
-        }
         return;
     }
     if w.unit(h).is_some_and(|u| !u.dead) {

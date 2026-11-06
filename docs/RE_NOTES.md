@@ -64,14 +64,20 @@ original images.
   (`FUN_6f678280`), where each ability's dying hook runs by priority (`FUN_6f48e3e0`,
   vf 0x280 and 0x284): Reincarnation's, ready (its cooldown done; the creeps' version
   `FUN_6f5197e0`, the hero's `FUN_6f519bf0`, neither asking whether the unit is a
-  hero), starts it (vf 0x3e8, `FUN_6f51fd50`).  The death goes on: its bounty,
-  experience, and score (`FUN_6f69c210`, event 0xd0153), then its food given back
-  (`FUN_6f6744d0`, the unit's food flag 0x200), whether it is to rise or not.  The
-  hook runs too on the path of a unit set to explode (after its explosion's art,
-  0xd0157); whether its checks (the unit's flags 0xc0000000, `FUN_6f50d710`,
-  `FUN_6f04e090`) then pass is not read.  Mafarazzo TD's bosses (levels 30 and 40, ACrn,
-  7 seconds, cooldown 240) fall, pay their bounty, give back their food (so that the
-  round's end, food used 0, comes as the last falls), and rise 7 seconds later.
+  hero), starts it (vf 0x3e8, `FUN_6f51fd50`), which first forgets the unit's killer
+  (`FUN_6f6989c0(0)`: its +0x250 and +0x254).  The death's own work is queued on the
+  unit (`FUN_6f691f20` puts a task on its list at +0x174): its bounty, experience, and
+  score (event 0xd0153, `FUN_6f69c210`, which asks the killer, so none for a fall to
+  rise from), and its food given back (`FUN_6f6744d0`, the unit's food flag 0x200).
+  The rising (CEffectReincarnation's `FUN_6f50e870`) revives the unit (`FUN_6f695620`,
+  which empties its task list and, with its flags 0x500, adds its food used and made)
+  and then takes the food used and made away again: the food is the unit's all along
+  (were it given back at the fall, each rising would leave the owner its food short;
+  read so, provisional where the queued work goes).  The hook runs too on the path of
+  a unit set to explode (after its explosion's art, 0xd0157); whether its checks (the
+  unit's flags 0xc0000000, `FUN_6f50d710`, `FUN_6f04e090`) then pass is not read.
+  Mafarazzo TD's bosses (levels 30 and 40, ACrn, 7 seconds, cooldown 240) fall
+  unpaid, keep their food (the round goes on), and rise 7 seconds later, idle.
 
 ## Rendering
 

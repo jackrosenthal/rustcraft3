@@ -1485,6 +1485,19 @@ these are the findings behind them.
   goal, as the port has it.  The member step (`FUN_6f16a790`) takes the unit's
   velocity (+0x80, +0x84 of its mover), steers (`FUN_6f16fbd0`), caps the speed at
   +0x88, and sets the member's flags 0x10000 and 0x20000 from the steering's answers.
+- A mover's heading (+0x8c) is its velocity's as the velocity is set (`FUN_6f1606e0`
+  with its flag → CPoPosCl vf20 `FUN_6f1711b0` → `FUN_6f160060`: the heading of
+  +0x80/+0x84, `FUN_6f1d4c80`, when the length squared is at least 4e-7,
+  DAT_6fcd5474), not the heading the steering turned it to; the steering takes the
+  velocity's heading again while it moves, so only a walker at rest turns from the
+  stored one.  Measured (Mafarazzo TD's plain map, its creep 0x6a05e48 at
+  `FUN_6f16fe20` each step from 41.695 to 42.145 seconds, with the arc cosine's
+  arguments in the step at 41.995): each heading the engine's arc cosine of its
+  velocity to the last digit, 0.001983 for one due east (its length's root a little
+  short), and the turn in place of its new walk at 42.025 from 6.277347, the last
+  velocity's heading (its third `FUN_6f1d4c80` there, from 0x6f1600f6), where the
+  port's had taken the bearing it steered by, 6.277749, 5.5e-5 over its 60 degree
+  window at its second turn, and walked a step late (`motion::Mover`).
 - Units hold each other back (read, not yet in the port): the waypoint provider
   (`FUN_6f165ae0`) answers 1 while the path's wait counter (+0x94) runs down, a step at
   a time, and the steering then only turns (`FUN_6f16fbd0`, its stop flag).  Each step

@@ -34,6 +34,9 @@ pub fn next_step(clock: u32) -> u32 {
 const TINY_ANGLE: u32 = 0x3456_bf95;
 /// A heading this near its way's counts as on it (0x6fcd53d4).
 const ON_HEADING: u32 = 0x3e4c_cccd;
+/// The least velocity length squared whose heading a walker takes (DAT_6fcd5474,
+/// 4e-7, `FUN_6f160060`).
+const HEADING_SPEED2: u32 = 0x34d6_bf95;
 /// Times under this count as none (0x6fcd539c).
 const TINY_TIME: u32 = 0x38d1_b717;
 const ZERO: u32 = 0;
@@ -183,6 +186,22 @@ impl Mover {
             let k = ef::mul(top, ef::recip(ef::sqrt(len2())));
             self.vx = ef::mul(self.vx, k);
             self.vy = ef::mul(self.vy, k);
+        }
+    }
+
+    /// Its heading taken again from its velocity as it is set (`FUN_6f1606e0` with its
+    /// flag, CPoPosCl vf20 `FUN_6f1711b0` → `FUN_6f160060`: the velocity's heading,
+    /// `FUN_6f1d4c80`, when its length squared is at least `HEADING_SPEED2`), so a walker
+    /// that stops keeps its last velocity's heading, not the one it steered by.
+    /// Measured: Mafarazzo TD's plain-map creep 0x6a05e48 (+0x8c) at each step from
+    /// 41.695 to 42.145 seconds, the velocity's heading by the engine's arc cosine to the
+    /// last digit (0.001983 for one due east, 5.037949 by 0), its walk's turn in place
+    /// at 42.025 from 6.277347, the heading of its velocity at 41.995 (the port's had
+    /// been the bearing it steered by, 6.277749, and its walk began a step late).
+    fn heading_from_velocity(&mut self) {
+        let l2 = ef::add(ef::mul(self.vx, self.vx), ef::mul(self.vy, self.vy));
+        if !lt(abs(l2), HEADING_SPEED2) {
+            self.heading = ef::heading(self.vx, self.vy, ef::sqrt(l2));
         }
     }
 
@@ -379,6 +398,7 @@ impl Mover {
         if lt(ZERO, speed) {
             let (s, c) = ef::sin_cos(heading);
             self.set_velocity_within(now, ef::mul(speed, c), ef::mul(speed, s), gait.top);
+            self.heading_from_velocity();
         } else {
             self.set_velocity(now, ZERO, ZERO);
         }

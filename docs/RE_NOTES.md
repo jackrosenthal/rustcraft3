@@ -795,7 +795,8 @@ these are the findings behind them.
   `World::cluster_goal` and `World::walk_steps` so walk a unit sent alone to a point
   by a player or a script; each of the 720 pings is the original's to 0.001.  The
   port's AI walks keep their own (`World::coarse_goal`: the straight distance, not
-  the legs, at 10; not budgeted); a group's members walk straight to their places.
+  the legs, at 10; not budgeted), but a unit's attack-move back to its guard post,
+  which walks so (below); a group's members walk straight to their places.
 - The search budgets (NIpse's): for each player (a path's class, +0x88 bits 16 to 19,
   the owner as `CUnit::vf107` and `FUN_6f698ce0` give it to `FUN_6f168a80`; Neutral
   Passive's wanderers' class 15), four records of 0x1c bytes at `DAT_6fd53a90` + player
@@ -2069,10 +2070,39 @@ these are the findings behind them.
   ends (traced: turn 84; at the post, turn 139, the walk back's tree, the look's task
   and `+ord`, its path).  With these Mafarazzo TD's Plague Tower trace agrees with the
   original's, slots and all, to turn 113 (but two frees of map objects at turn 110).
-  Open: the original's runner was out of the tower's reach at its look at 11.3057 and
-  within at 11.8057 (taken up in turn 119), the port's within at the first (turn 114);
-  and its walk back searched again in turn 127 (`^clg`, `^clu`, `l^pa`, the old path
-  freed), the port's not.
+- The walk back is a cluster's of one, as a script's walk to a point (above): its
+  order's `^clg`, `^clu`, and `l^pa` a move's, its cluster's coarse way planned over
+  the accelerator and its point picked 10 on, its own path's planned to that.  Read:
+  Mafarazzo TD's fort runner (`abtest/mafqp.w3x`, its place and facing pinged each
+  tenth of a second), walking back from (-3390.18, -124.73) at 8.4 seconds bent east
+  of the straight line to its post at (-3392, 960), heading 86 degrees to (-3345.20,
+  542.41) at 11.8, then 96; the port's went straight up x -3392.  The port so walks it
+  (`World::cluster_walker`), each ping the original's to 0.001 through 12.6 seconds.
+- A buff run out takes its speed's modifier off at its timer's moment, and a walker
+  walks at its new speed from its next step (`Buff::ends_at`; `World::move_speed_at`;
+  the position's top speed set by `SmartPosition::vf6_6f05c5c0` through
+  `FUN_6f15ff40`): read, the runner's Slow Poison running out at 10.44, its next two
+  steps before the 10.5 ping at its full 280 (the port's had waited for the turn's
+  buff count, a turn late).  Not yet in the port: a slow laid mid-turn takes the
+  speed at once, `FUN_6f15ff40` clamping the velocity (`FUN_6f15f7e0`) as it passes
+  the new top: the runner, struck at about 12.604, walked at 150 from then, the
+  port's at 280 to the turn's end.
+- A structure's look finds its candidates by the proximity map's radius search
+  (`FUN_6f493d20` → `FUN_6f67e790` with case 10 → `FUN_6f059c10`, `FUN_6f05ce60`):
+  the radius the least of its acquisition range and its weapon's (`FUN_6f498e50`)
+  plus its own collision (`FUN_6f05aa20`, the position's +0x90 times 32), each
+  candidate's place its position's +0x78 and +0x7c, as its last step set it, not
+  carried on, within that and its own collision; its reach after
+  (`FUN_6f4959f0`, `FUN_6f05b580`) carries both on.  Read: the Plague Tower's look
+  due 11.3057, the runner's place at its step at 11.279 1075.5 off against 1000, 72,
+  and 1 (carried on to 11.3057 it was 1068.2 off, in reach), so not taken up until
+  the look due 11.8057, in turn 119.  The port so judges a walker for an idle
+  structure's look (`World::find_target_inner`; provisional: by its place at the
+  step before the look carried back along its velocity, for units the old test), and
+  the Plague Tower's trace agrees to turn 126.  Open: at turn 127 the original's walk
+  back makes a new cluster group, cluster, and path (`^clg`, `^clu`, `l^pa`, the
+  `^clg` and the old path freed at once) as the tower's Slow Poison lands, which the
+  port does not; what remakes it is not yet read.
 
 ## Where the port departs from the original
 

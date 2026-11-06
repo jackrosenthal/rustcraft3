@@ -1136,9 +1136,11 @@ impl World {
     /// a unit sent alone to a point by a player's order or a script's.  Its path plans
     /// over the accelerator (its +0x88 0x200000, set for every path,
     /// `NIpse::CLrPath::vf3_6f166060`, but Neutral Passive's wanderers',
-    /// `FUN_6f5a6d40`).
+    /// `FUN_6f5a6d40`).  So does a computer's unit attack-moving back to its guard post
+    /// (`FUN_6f9c0b00`, its order's `^clg`, `^clu`, and `l^pa` a move's; read: Mafarazzo
+    /// TD's fort runner, its walk back bending east of the straight line to its post).
     pub(crate) fn cluster_walker(&self, h: u32) -> bool {
-        self.unit(h).is_some_and(|u| u.extra.player_walk && u.extra.group_walk.is_none() && matches!(u.action, Action::Move { .. }))
+        self.unit(h).is_some_and(|u| u.extra.player_walk && u.extra.group_walk.is_none() && (matches!(u.action, Action::Move { .. }) || matches!(u.action, Action::AttackMove { .. }) && u.extra.ai_idle_ord.is_some()))
     }
 
     /// A walker's place now in cells: its mover's at the step's clock, else where it
@@ -1449,6 +1451,15 @@ impl World {
     /// MaxUnitSpeed (MinBldgSpeed and MaxBldgSpeed for a structure), each held to 1 to
     /// 522 (FUN_6f5fc900, FUN_6f68b0e0).
     pub fn current_move_speed(&self, h: u32) -> f32 {
+        self.move_speed_at(h, None)
+    }
+
+    /// How fast a unit moves at main clock `at` (seconds since the game began): as
+    /// `current_move_speed`, without the buffs whose timers have run out by then
+    /// (`Buff::ends_at`), their speed's modifiers taken off as they run out, before the
+    /// turn's buffs are counted down (read: Mafarazzo TD's fort runner, its Slow Poison
+    /// ending at 10.44 seconds, walking at its full speed from the next step).
+    pub fn move_speed_at(&self, h: u32, at: Option<f64>) -> f32 {
         let Some(u) = self.unit(h) else { return 0.0 };
         if u.move_speed <= 0.0 {
             return 0.0;
@@ -1458,7 +1469,11 @@ impl World {
             return v;
         }
         let ub = self.upgrade_bonus(u.owner, u.type_id);
-        let speed = (u.move_speed + u.item_bonus.move_speed + ub.move_speed) * (1.0 + ub.move_pct) * self.buff_mods(h).0;
+        let factor = match at {
+            Some(t) => u.buffs.iter().filter(|b| b.move_factor != 0.0 && !b.ends_at.is_some_and(|e| e <= t)).fold(1.0f32, |m, b| m * (1.0 + b.move_factor)).max(0.0),
+            None => self.buff_mods(h).0,
+        };
+        let speed = (u.move_speed + u.item_bonus.move_speed + ub.move_speed) * (1.0 + ub.move_pct) * factor;
         const LIMITS: (f32, f32) = (1.0, 522.0);
         // An uprooted ancient keeps a structure's limits (measured: an Ancient of War
         // walks at its 40, where a unit's least is 150).
@@ -2131,7 +2146,9 @@ impl World {
         let o = self.objects.units.get(u.type_id);
         let turn = o.map_or(0.5, |o| o.real("turnRate"));
         let window = o.map_or(60.0, |o| o.real("propWin")).to_radians();
-        let gait = crate::motion::Gait { top: f(top), grow: f(top), turn: f(turn), window: f(window), reach: f(0.49) };
+        let mut gait = crate::motion::Gait { top: f(top), grow: f(top), turn: f(turn), window: f(window), reach: f(0.49) };
+        // (A buff run out within the tick changes its speed from the steps after.)
+        let ending = self.gold_run_speed(h).is_none() && u.buffs.iter().any(|b| b.move_factor != 0.0 && b.ends_at.is_some());
         let start = if self.step_clocks.is_empty() { self.last_step_clock } else { self.step_base };
         let (cx, cy) = match u.extra.cell_at {
             Some((cx, cy, wx, wy)) if wx == u.x && wy == u.y => (cx, cy),
@@ -2206,6 +2223,10 @@ impl World {
             }
         }
         for (k, &clock) in clocks.iter().enumerate().take(until).skip(from).take(if done.is_some() { 0 } else { usize::MAX }) {
+            if ending {
+                let top = f(self.move_speed_at(h, self.step_abs(k).map(|s| s.0)) / crate::pathing::CELL);
+                (gait.top, gait.grow) = (top, top);
+            }
             // A cluster walker stopped at its cluster's point: as this step begins the
             // cluster, its member done, picks its next point (`FUN_6f16c4f0`,
             // `FUN_6f16b120`, `FUN_6f1697a0`) and drops its member's ways (`FUN_6f16d6a0`),
@@ -2645,6 +2666,13 @@ impl World {
         }
         let in_place = self.attacks_in_place(h);
         let reach_bonus = self.upgrade_bonus(u.owner, u.type_id).range;
+        // (An idle structure's look: its due, and the main clock of the last step before
+        // it, this tick's or the last.)
+        let look: Option<(u32, f64)> = (in_place && matches!(u.action, Action::Idle | Action::Hold)).then_some(()).and(u.extra.look_timer).map(|l| {
+            let due = l.1 as f64;
+            let k = (0..self.step_clocks.len()).rev().find(|&k| self.step_abs(k).is_some_and(|(_, a)| a < due));
+            (k.map_or(self.step_base, |k| self.step_clocks[k]), due)
+        });
         for t in near {
             let Some(tu) = self.unit(t) else { continue };
             // Out of range first: the other tests cost more.  The range runs edge to
@@ -2671,10 +2699,29 @@ impl World {
             if tu.extra.sleeping || tu.buffs.iter().any(|b| b.sleep) {
                 continue;
             }
-            let d = (tu.x - u.x).hypot(tu.y - u.y) - edges;
+            let mut d = (tu.x - u.x).hypot(tu.y - u.y) - edges;
+            // A structure's look finds a walker by its place as last set, at the last
+            // step before the look (the search's test, `FUN_6f05ce60`: the position's
+            // +0x78 and +0x7c, not carried on, within the radius and the searcher's
+            // collision, `FUN_6f059c10`, `FUN_6f05aa20`, and the walker's, each at
+            // least 1), then by its reach with both carried on to the look's moment
+            // (`FUN_6f4959f0`, `World::reaches_walker`).  Read: the Plague Tower's look
+            // due 11.3057 not finding the fort runner, its place at its step at 11.279
+            // 1075.5 off against 1000, 72, and 1, though carried on to 11.3057 it was
+            // 1068.2 off; the look due 11.8057 took it up.
+            let walker = look.zip(tu.extra.mover.filter(|_| tu.steps_walker()));
+            if let Some(((clock, due), m)) = walker {
+                let (px, py) = m.at(clock);
+                let o = self.pathing.as_ref().map_or([0.0; 2], |p| p.origin);
+                let (px, py) = (f32::from_bits(px) * crate::pathing::CELL + o[0], f32::from_bits(py) * crate::pathing::CELL + o[1]);
+                d = (px - u.x).hypot(py - u.y) - u.collision.max(1.0) - self.reach_radius(t).max(1.0);
+                if !weapons.iter().any(|(_, wp)| can_target(self, wp, u, tu) && self.reaches_walker(h, t, wp.range + reach_bonus, due) != Some(false)) {
+                    continue;
+                }
+            }
             // One that cannot walk takes up only what it reaches (`FUN_6f4959f0`: the
             // weapon's range for a unit `FUN_6f66f030` finds no move for).
-            if in_place && !weapons.iter().any(|(_, wp)| can_target(self, wp, u, tu) && d <= wp.range + reach_bonus) {
+            if in_place && walker.is_none() && !weapons.iter().any(|(_, wp)| can_target(self, wp, u, tu) && d <= wp.range + reach_bonus) {
                 continue;
             }
             // Only what the owner can see (a cliff above, the fog) is acquired.

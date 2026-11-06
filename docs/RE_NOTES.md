@@ -2027,33 +2027,41 @@ these are the findings behind them.
   after its AI's objects (provisional: whether they end sooner).
 - A missile's flight (NIpse::CBhPoProjectile, `FUN_6f173450`) falls due at the
   distance to its goal across the ground over its speed (`FUN_6f1737d0`), at most 60
-  seconds (0x6fd3c7b0); one at a unit is aimed at the unit's place (homing, CBullet
-  vf49 `FUN_6f6d1e90`; `FUN_6f173690`: the target's position carried on to the
-  relation dispatch's clock, `FUN_6f161040`, `FUN_6f05bdd0`), the arrival its timer
-  (event 0xd019c, vf45).  Its due is a request on the behavior dispatch, that queue's
-  clock (`DAT_6fd53a48` + 0xfc, kept with the main clock) plus the flight's time
-  (`FUN_6f171870`, at least 0.0001), so it lands in the first main tick whose clock
-  reaches it, after that tick's agent events (vf18 `FUN_6f173cf0` from the dispatch,
-  0x6f054336).  Measured (the flyer game's Arrow Tower, breakpoints on `FUN_6f1739e0`,
-  `FUN_6f171870`, and vf18 from 21.9 to 22.6 seconds): sent at 22.062298 on the main
-  clock, its time 0.334218 (its velocity -38.855358, 40.672367 cells a second, its
-  1800), so due 22.396516, landing in the main tick 22.397242; not aimed anew as its
-  target walked (no `FUN_6f1739e0`; what calls vf17 `FUN_6f173dd0`, a signal `` `bpe ``,
-  is not read).  The damage point's clock 22.062298 is the main tick's before its
-  due, 22.062787, the look's due (21.662787) and 0.1 and 0.3 on; the port's look is
-  the game time of its main tick (21.660011), its damage point so 22.060011, its
-  flight from the main clock 22.052299, two ticks early.  Open: the aim.  From the
-  tower's place (86, 240 in cells) that time and heading reach (73.0138, 253.5936),
-  on the port's target's way (lateral 0.0001 cells) but 2.46 cells (0.3642 seconds)
-  ahead of its place at 22.062298, which a flight straight at it would take 0.368 to
-  reach; a true intercept from there takes 0.33669 (due a tick later than the
-  original's).  The launch puts the start at the attacker's place and launch offsets
-  turned by its facing (`FUN_6f68c4e0`; the Arrow Tower's 0, 0).  Read against the
-  Plague Tower's trace (its target fleeing at about 145 a second from about 0.95
-  seconds): its 14 missiles land as a chase at 1800 to the target's middle
-  (collision 0: within 16 of it).  The port flies its missiles so (a leading
-  intercept from the target's place at its sending and at each tick's end,
-  `World::bullet_flies`): the Arrow Tower's lands at 22.389273.
+  seconds (0x6fd3c7b0).  An attack's missile at a unit (CMissile's launch,
+  `FUN_6f6d3470`) is aimed where it meets its target: the target's place carried on
+  to the relation dispatch's clock (`FUN_6f05a970`: `FUN_6f161040`, `FUN_6f05bdd0`,
+  in world units) less the start, R, and its velocity, V (`FUN_6f05aaa0`), the
+  meeting the later root of (V·V - s²) t² + 2 R·V t + R·R (`FUN_6f9ac7f0`, a stable
+  quadratic), at the target's place and V t on (with no root, at its place), the
+  start the attacker's place and its launch offsets turned by its facing
+  (`FUN_6f68c4e0`).  It then flies straight to that point (`FUN_6f89d1b0` with no
+  unit, `FUN_6f173450`; not `FUN_6f173690`, the homing launch), not aimed anew.  Its
+  due is a request on the behavior dispatch, that queue's clock (`DAT_6fd53a48` +
+  0xfc, kept with the main clock) plus the flight's time (`FUN_6f171870`, at least
+  0.0001), so it lands in the first main tick whose clock reaches it, after that
+  tick's agent events (vf18 `FUN_6f173cf0` from the dispatch, 0x6f054336), wherever
+  its target is then.  Measured (the flyer game's Arrow Tower, 1800 a second;
+  breakpoints on `FUN_6f1739e0`, `FUN_6f171870`, `FUN_6f1737d0`, `FUN_6f173690`, and
+  vf18): sent at 22.062298 on the main clock, the delta -12.986168, 13.593445 cells
+  (its R -418.046631, 507.154297 and its V 7.448327, -215.923859 in the caller's
+  frame), its time 0.334218, so due 22.396516, landing in the main tick 22.397242;
+  no `FUN_6f173690` nor `FUN_6f1739e0` (what calls vf17 `FUN_6f173dd0`, a signal
+  `` `bpe ``, is not read).  The port so aims and lands a structure's missiles
+  (`World::bullet_aimed`, `World::fly_bullets`), its landing's main clock that first
+  tick's, its objects going 5 seconds and a tick on as before; the other units'
+  still fly its old way, a leading intercept from the target's place at its sending
+  and at each tick's end (`World::bullet_flies`; provisional).  With this the Plague
+  Tower's trace agrees to turn 181 (from 140), its 151 pings as before; at turn 182
+  the original frees a missile's objects (sent at 12.846) a turn before the port.
+  Open in the flyer game: the damage point's clock 22.062298 is the main tick's
+  before its due, 22.062787, the look's due (21.662787) and 0.1 and 0.3 on, where
+  the port's look is the game time of its main tick (21.660011), its damage point
+  so 22.060011 and its flight from 22.052299, two ticks early; and the original's R
+  is the port's target's place carried on 0.029998 seconds more (a step: x 0.00698,
+  y 0.20242 cells along its velocity), the port's creep walking a step behind
+  (provisional: its plan refused six steps by the port's budget, steps 667 to 672).
+  The port's two errors so far meet: it lands in the main tick 22.392242, a tick
+  before the original's.
 - A missile landed starts its removal timer (CBullet vf42, CMissile `FUN_6f6d0cf0`,
   CArtillery `FUN_6f6d0c70`, then `FUN_6f6d0c90`: MiscData's BulletDeathTime, 5, event
   0xd019f at +0x64), at whose end it destroys itself (vf3 `FUN_6f6d4e30`, vf23
@@ -2161,7 +2169,25 @@ these are the findings behind them.
   unit's owner), not yet the damage points'.
 - A structure does not walk, whatever its speed, unless an uprooted ancient: a tower
   made from the Ancient Protector (speed 40) without its Root (Mafarazzo TD's Towers of
-  Vengence) stays where it was built, taking up only what it reaches (above).
+  Vengence) stays where it was built.  But it takes up what comes within its
+  acquisition range, out of its weapons' reach: its move ability (+0x1ec,
+  `FUN_6f66f030` → `FUN_6f5fb040`) makes it one that can move to its look's radius
+  (`FUN_6f498e50`, from 0x6f498ec3) and to the reach test (`FUN_6f4959f0`, from
+  0x6f495ab4, which then skips the weapon's reach).  Measured (the upgrade game,
+  `abtest/mafv4.*`; breakpoints on the look, the take-up `FUN_6f4943f0`,
+  `FUN_6f66f030`, the reaction wait `FUN_6f49ea80`, and the give-up `FUN_6f49d280`,
+  47.85 to 48.75 seconds): the Mega Tower of Vengence (e002; acquisition 2000, its
+  weapons 1500 and 700) looks at 47.906887, takes up a creep about 1881 off edge to
+  edge, and starts its reaction wait at once (from 0x6f49a6b8); it looks again at
+  48.2467 and takes up another, with a reaction wait; no give-up.  The other towers
+  look each half second and take up none.  Its look's due is 0.01 and 26 half seconds
+  past 34.896887, its upgrade's end by the agent queue's clock (19.896887, as the
+  order was carried out, and the 15 of its build time), where the port times the
+  upgrade from the main clock (19.897661) and keeps its look's phase from before.
+  Not yet in the port: the take-up's tasks (the original's trace: the ten of a
+  structure's at turn 480, the attack's freed at once, the reaction's in turn 481,
+  the rest in 483) and the reaction wait's draw (stream 9) make the upgrade games
+  part at turn 481.
 - RemoveUnit (`jass_RemoveUnit`: the unit's vf 0x84, then `FUN_6f694690(1, 1)`) clears
   its orders (`FUN_6f673610`): its current order's tasks (`FUN_6f673e80`), then a block
   made and destroyed and its task stack destroyed top first (`FUN_6f673fe0`), then its

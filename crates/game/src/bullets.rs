@@ -30,6 +30,10 @@ pub struct Bullet {
     /// Whether it misses, shot from below (`World::high_ground_miss`).
     #[serde(default)]
     pub missed: bool,
+    /// The main clock its flight falls due at, aimed where it meets its target
+    /// (`World::bullet_aimed`).
+    #[serde(default)]
+    pub due: Option<f64>,
 }
 
 /// A unit's CAbilityTarget: the ability and owner it counts the missiles of, its slot,
@@ -148,7 +152,7 @@ impl World {
         // sent after them, `World::points_before`.)
         let seen = self.unit(target).filter(|_| self.after_steps).map(|t| (t.x, t.y));
         log::trace!("bullet of {h} sent at {target} at {at:.6} (main clock {:.6}): from {:?} to {:?}", self.bullet_clock(self.main_tick_time(at)), self.unit(h).map(|u| (u.x, u.y)), self.unit(target).map(|t| (t.x, t.y, t.collision)));
-        Bullet { slots, counted, at: self.main_tick_time(at), seen, missed: false }
+        Bullet { slots, counted, at: self.main_tick_time(at), seen, missed: false, due: None }
     }
 
     /// A bouncing missile marks each unit it is sent at, the first as it is sent and
@@ -301,12 +305,50 @@ impl World {
         self.fog_reveals.retain(|r| r.2 + DESTROYED_AFTER >= now - 1e-4);
     }
 
-    /// A missile's way on to `end` (game time): toward its target, at `to` then, at its
-    /// speed; it lands on reaching the target's edge.  The original's flight
-    /// (NIpse::CBhPoProjectile, `FUN_6f173450`) falls due at its distance over its
-    /// speed, aimed anew as its target moves (`FUN_6f1739e0`); here the target is taken
-    /// to move evenly from where it was last seen.  Returns the game time it lands, if
-    /// it does by then (its place then moved there), else moves it on.
+    /// A missile at a unit aimed where it meets it (CMissile's launch, `FUN_6f6d3470`):
+    /// the target's place carried on to the main clock then (`FUN_6f05a970`) and its
+    /// velocity (`FUN_6f05aaa0`), the meeting the later root of |R + V t| = s t
+    /// (`FUN_6f9ac7f0`), at its place then (or at its place, with none), the flight
+    /// straight there, not aimed anew (`FUN_6f173450`), due its distance across the
+    /// ground over its speed on (`FUN_6f1737d0`, `FUN_6f171870`).
+    pub(crate) fn bullet_aimed(&self, m: &mut crate::sim::Missile) {
+        let Some(b) = m.bullet.as_mut() else { return };
+        let Some(t) = self.unit(m.target) else { return };
+        let c0 = self.bullet_clock(b.at);
+        let clock = ((c0 - self.clock_wraps as f64 * 300.0) as f32).to_bits();
+        let origin = self.pathing.as_ref().map_or([0.0; 2], |p| p.origin);
+        let (place, v) = match t.extra.mover.filter(|mv| t.steps_walker() && (mv.vx & 0x7fff_ffff != 0 || mv.vy & 0x7fff_ffff != 0)) {
+            Some(mv) => {
+                let (x, y) = mv.at(clock);
+                let c = crate::pathing::CELL as f64;
+                ((f32::from_bits(x) as f64 * c + origin[0] as f64, f32::from_bits(y) as f64 * c + origin[1] as f64), (f32::from_bits(mv.vx) as f64 * c, f32::from_bits(mv.vy) as f64 * c))
+            }
+            None => ((t.x as f64, t.y as f64), (0.0, 0.0)),
+        };
+        let start = (m.start.0 as f64, m.start.1 as f64);
+        let r = (place.0 - start.0, place.1 - start.1);
+        let s = m.speed as f64;
+        let (qa, qb, qc) = (v.0 * v.0 + v.1 * v.1 - s * s, 2.0 * (r.0 * v.0 + r.1 * v.1), r.0 * r.0 + r.1 * r.1);
+        let disc = qb * qb - 4.0 * qa * qc;
+        let aim = if disc > 0.0 && qa != 0.0 {
+            let q = -0.5 * (qb + qb.signum() * disc.sqrt());
+            let tau = (q / qa).max(qc / q);
+            (place.0 + v.0 * tau, place.1 + v.1 * tau)
+        } else {
+            place
+        };
+        let d = (aim.0 - start.0).hypot(aim.1 - start.1);
+        let time = (d / s).clamp(0.0001, 60.0);
+        b.due = Some(c0 + time);
+        b.seen = Some((aim.0 as f32, aim.1 as f32));
+    }
+
+    /// A missile's way on to `end` (game time) as the port flies a unit's (a
+    /// structure's is aimed where it meets its target, `World::bullet_aimed`): toward
+    /// its target, at `to` then, at its speed; it lands on reaching the target's edge,
+    /// the target taken to move evenly from where it was last seen.  Returns the game
+    /// time it lands, if it does by then (its place then moved there), else moves it
+    /// on.
     pub(crate) fn bullet_flies(m: &mut crate::sim::Missile, to: (f32, f32), edge: f32, end: f64) -> Option<f64> {
         let b = m.bullet.as_mut()?;
         // (From its sending, its last landing for a bounce, or where it was last flown.)

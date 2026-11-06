@@ -5531,6 +5531,13 @@ impl World {
                 let mut bullet = self.bullet_sent(h, s.target, class, ability, at);
                 bullet.missed = self.high_ground_miss(h, s.target);
                 self.missiles[main].bullet = Some(bullet);
+                // A structure's is aimed where it meets its target (`World::bullet_aimed`;
+                // provisional: the other units' still fly the port's way).
+                if wp.weapon_type != "artillery" && self.attacks_in_place(h) {
+                    let mut m = self.missiles[main].clone();
+                    self.bullet_aimed(&mut m);
+                    self.missiles[main] = m;
+                }
             }
         } else {
             // Melee impacts sound by weapon (weapType1) and target armor
@@ -5971,6 +5978,9 @@ impl World {
         let clock = std::mem::replace(&mut self.script_clock, at);
         let mut places: Vec<Option<(f32, f32)>> = self.missiles.iter().map(|m| if among { self.place_now(m.target) } else { None }).collect();
         self.script_clock = clock;
+        // (The tick's main clocks, and the main clock's lead on the game's time.)
+        let ticks: Vec<f64> = (0..self.tick_clocks.1.len()).filter_map(|i| self.tick_abs(i)).collect();
+        let off = ticks.last().map_or(0.0, |c| c - end);
         let mut hits = Vec::new();
         let mut i = 0;
         while i < self.missiles.len() {
@@ -5985,6 +5995,26 @@ impl World {
                 _ if m.target == 0 => m.impact.map(|(x, y)| (x, y, 0.0)),
                 _ => None,
             };
+            // (One aimed where it meets its target lands as its flight falls due, in the
+            // first main tick at or past it, `World::bullet_aimed`.)
+            if let Some(due) = b.due.filter(|_| target.is_some()) {
+                let landing = ticks.iter().copied().find(|&c| c >= due - 1e-7);
+                match landing.map(|c| c - off) {
+                    Some(at) if at <= t + 1e-9 => {
+                        hits.push(self.missiles.swap_remove(i));
+                        places.swap_remove(i);
+                    }
+                    _ => {
+                        // (Shown on its way there.)
+                        let (sent, aim) = (b.at, b.seen.unwrap_or((m.x, m.y)));
+                        let f = if due - off > sent + 1e-9 { ((t - sent) / (due - off - sent)).clamp(0.0, 1.0) as f32 } else { 1.0 };
+                        m.x = m.start.0 + (aim.0 - m.start.0) * f;
+                        m.y = m.start.1 + (aim.1 - m.start.1) * f;
+                        i += 1;
+                    }
+                }
+                continue;
+            }
             if among {
                 if let Some((tx, ty, edge)) = target {
                     let mut c = m.clone();
@@ -6019,6 +6049,13 @@ impl World {
                 places.swap_remove(i);
             } else {
                 i += 1;
+            }
+        }
+        // (One aimed so is as of its landing's main tick, `World::bullet_aimed`.)
+        for m in hits.iter_mut() {
+            if let Some(b) = m.bullet.as_mut().filter(|b| b.due.is_some()) {
+                let due = b.due.unwrap_or(0.0);
+                b.at = ticks.iter().copied().find(|&c| c >= due - 1e-7).unwrap_or(due) - off + 2e-7;
             }
         }
         hits.sort_by(|p, q| p.bullet.as_ref().map_or(t, |b| b.at).total_cmp(&q.bullet.as_ref().map_or(t, |b| b.at)));
@@ -6089,7 +6126,15 @@ impl World {
                             Some(b) => b.missed,
                             None => self.high_ground_miss(m.source, m.target),
                         };
-                        self.landing_clock = bullet.as_ref().map(|b| self.bullet_clock(b.at));
+                        // (One aimed where it meets its target lands in the first main
+                        // tick its flight's due reaches, `World::bullet_aimed`.)
+                        self.landing_clock = bullet.as_ref().map(|b| match b.due {
+                            Some(d) => (0..self.tick_clocks.1.len()).filter_map(|i| self.tick_abs(i)).find(|&c| c >= d - 1e-7).map_or(self.bullet_clock(b.at), |c| c + 2e-7),
+                            None => self.bullet_clock(b.at),
+                        });
+                        if let Some(b) = bullet.as_mut() {
+                            b.due = None;
+                        }
                         log::trace!("bullet of {} lands on {} at {:?} (main clock {:?})", m.source, m.target, bullet.as_ref().map(|b| b.at), self.landing_clock);
                         if missed {
                             self.show_miss(m.source);

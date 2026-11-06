@@ -54,7 +54,7 @@ const FROST_PLACE: u32 = 0x29;
 /// due at once): provisionally a main tick on (read: Mafarazzo TD's Plague Tower's
 /// missiles, each landing a main tick or so before a turn's end, its `Atrg` and its
 /// objects 5 seconds on freed in the next turn).
-const DESTROYED_AFTER: f64 = 0.005;
+pub(crate) const DESTROYED_AFTER: f64 = 0.005;
 
 impl World {
     /// The class of the missile a unit's weapon sends at `target` now, and the ability
@@ -145,7 +145,7 @@ impl World {
             self.bounce_marked(target);
         }
         let seen = self.unit(target).map(|t| (t.x, t.y));
-        Bullet { slots, counted, at, seen, missed: false }
+        Bullet { slots, counted, at: self.main_tick_time(at), seen, missed: false }
     }
 
     /// A bouncing missile marks each unit it is sent at, the first as it is sent and
@@ -162,6 +162,62 @@ impl World {
         if let Some(u) = self.unit_mut(target) {
             u.extra.object_slots[2].insert(0, (slot, birth));
         }
+    }
+
+    /// The game time of the main tick an event due at game time `t` of this tick takes
+    /// place in, the last whose clock is short of it (`World::agent_tick`): a missile's
+    /// flight starts from the main clock then (read: the Plague Tower's first damage
+    /// point due at 0.6157 on the agent queue, its first attack 0.1 after its look due
+    /// 0.2157, the missile's due set from 0.614999, the main clock at its making).
+    pub(crate) fn main_tick_time(&self, t: f64) -> f64 {
+        let n = self.tick_clocks.1.len();
+        let end = self.tick_abs(n.saturating_sub(1)).unwrap_or(self.time_exact);
+        let off = end - self.time_exact;
+        let at = t + off;
+        let tick = (0..n).filter_map(|i| self.tick_abs(i)).filter(|&c| c < at - 1e-7).last();
+        tick.map_or(t, |c| c - off)
+    }
+
+    /// The main clock of this tick's first damage point to send a missile, if any: what
+    /// falls due after it is destroyed after the missile is made, though before a later
+    /// movement step, which the port runs before the units' logic (read: the test map's
+    /// Arrow tower's first missile's objects, due 6.833, freed after the Cannon tower's
+    /// missile sent at 6.815, and the Cannon's after the Ice tower's so; provisional:
+    /// only damage points are weighed so, not the logic's other makings).
+    pub(crate) fn first_missile_point(&self, dt: f32) -> Option<f64> {
+        let start = self.time_exact - dt as f64;
+        let mut first: Option<f64> = None;
+        for &h in &self.unit_order {
+            let Some(u) = self.unit(h) else { continue };
+            let Some(s) = u.swing.as_ref().filter(|s| !s.done) else { continue };
+            let Some(wp) = crate::sim::weapon_of(self, u, s.weapon) else { continue };
+            if matches!(wp.weapon_type.as_str(), "normal" | "instant" | "") {
+                continue;
+            }
+            let speed = self.attack_speed(h).max(0.01);
+            let t = start + ((wp.damage_point - s.elapsed).max(0.0) / speed) as f64;
+            if t <= self.time_exact + 1e-6 {
+                first = Some(first.map_or(t, |f| f.min(t)));
+            }
+        }
+        let first = first.map(|t| self.bullet_clock(t));
+        // So does a laid buff's end (`World::update_buffs`).
+        let end = self.bullet_clock(self.time_exact);
+        let begin = self.bullet_clock(start);
+        let ends = self.unit_order.iter().filter_map(|&h| self.unit(h)).flat_map(|u| u.buffs.iter().filter(|b| b.slot != 0).filter_map(|b| b.ends_at)).filter(|&e| e > begin - 1e-6 && e <= end + 1e-6).fold(None, |a: Option<f64>, e| Some(a.map_or(e, |a| a.min(e))));
+        match (first, ends) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
+    }
+
+    /// The main clock's reading (its single's bits) in the main tick an event due at
+    /// game time `t` of this tick takes place in (`World::main_tick_time`).
+    pub(crate) fn main_tick_clock(&self, t: f64) -> Option<u32> {
+        let n = self.tick_clocks.1.len();
+        let end = self.tick_abs(n.saturating_sub(1)).unwrap_or(self.time_exact);
+        let at = t + (end - self.time_exact);
+        (0..n).filter(|&i| self.tick_abs(i).is_some_and(|c| c < at - 1e-7)).last().map(|i| self.tick_clocks.1[i])
     }
 
     /// The main clock (seconds since the game began) at game time `t` of this tick.
@@ -202,6 +258,44 @@ impl World {
         for k in [4, 2, 3, 1, 0] {
             self.tags.doom_at(due, s[k]);
         }
+    }
+
+    /// A splash's landing at game time `at` shows its attacker to the players whose
+    /// units it hit (CMissileSplash vf47 `FUN_6f6d00e0`, `FUN_6f67feb0`, no test of
+    /// their sight): a fogged-attack reveal (`FUN_6f67fc70`) FogFlashTime long (the most
+    /// of it and the time given, none here), its own `+fgt` (`FUN_6f675460`) made with
+    /// its first, kept at the attacker's +0xf0, and its timer restarted by each later
+    /// one ending sooner (`FUN_6f244150`); it goes as its timer ends, its attacker gone
+    /// or not.  Traced: the test map's Cannon and Ice towers' first landings each made
+    /// one, freed 3 seconds after their last landings (the towers removed meanwhile);
+    /// none for the Arrow tower's, which sends no splash.  (Provisional: the players
+    /// taken as the struck unit's owner alone; at a damage point, `FUN_6f67fde0`, only
+    /// for a struck unit whose owner does not see its attacker, not yet made.)
+    pub(crate) fn splash_revealed(&mut self, attacker: u32, struck: u32, at: f64) {
+        let (Some(a), Some(t)) = (self.unit(attacker), self.unit(struck)) else { return };
+        if a.owner == t.owner {
+            return;
+        }
+        let end = self.bullet_clock(at) + self.misc_f32("FogFlashTime", 3.0) as f64;
+        match self.fog_reveals.iter().position(|r| r.0 == attacker) {
+            Some(i) => {
+                let (_, slot, due) = self.fog_reveals[i];
+                if end > due {
+                    self.fog_reveals[i].2 = end;
+                    self.tags.redoom_at(end + DESTROYED_AFTER, slot);
+                }
+            }
+            None => {
+                let slot = self.tags.take(codes::class::FOGGED_ATTACK_REVEAL);
+                self.fog_reveals.push((attacker, slot, end));
+                self.tags.doom_at(end + DESTROYED_AFTER, slot);
+            }
+        }
+    }
+
+    /// Reveals whose ends have passed, forgotten (their objects freed by their dues).
+    pub(crate) fn reveals_ended(&mut self, now: f64) {
+        self.fog_reveals.retain(|r| r.2 + DESTROYED_AFTER >= now - 1e-4);
     }
 
     /// A missile's way on to `end` (game time): toward its target, at `to` then, at its

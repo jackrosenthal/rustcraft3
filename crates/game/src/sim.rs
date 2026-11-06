@@ -185,7 +185,8 @@ const LEAST_COOLDOWN: f32 = 0.1;
 /// A bound on a quick weapon's attacks in one step, should a step be long.
 const QUICK_SWINGS_PER_STEP: u32 = 1000;
 /// How far into a tick a swing begins that its unit was ready for since an earlier one
-/// (provisional: three main ticks, `World::try_attack`).
+/// (provisional: three main ticks, `World::try_attack`; a structure's first on a target
+/// it took up is timed from its look, `crate::tasks`).
 const SWING_START_IN_TICK: f32 = 0.015;
 
 pub fn unit_weapons(w: &World, u: &Unit) -> Vec<(u8, Weapon)> {
@@ -238,6 +239,11 @@ pub fn weapon_for(w: &World, u: &Unit, t: &Unit) -> Option<(u8, Weapon)> {
     let allowed: Vec<(u8, Weapon)> = unit_weapons(w, u).into_iter().filter(|(_, wp)| can_target(w, wp, u, t)).collect();
     let d = (t.x - u.x).hypot(t.y - u.y) - u.collision - t.collision;
     allowed.iter().find(|(_, wp)| d <= wp.range).or(allowed.first()).cloned()
+}
+
+/// A unit's weapon by its number (`weapon_numbered`), for the other modules.
+pub(crate) fn weapon_of(w: &World, u: &Unit, n: u8) -> Option<Weapon> {
+    weapon_numbered(w, u, n)
 }
 
 /// The weapon a unit swings with.
@@ -381,7 +387,19 @@ impl World {
             return;
         }
         u.extra.acquired = t;
+        // A structure's attack is its tasks (`crate::tasks`), from its look's time.
+        if self.attacks_in_place(h) {
+            let at = self.look_time(h);
+            self.attack_taken_up(h, at);
+        }
         self.queue_unit_event(h, 0, EVENT_UNIT_ACQUIRED_TARGET, EventCtx { target_unit: t, ..Default::default() });
+    }
+
+    /// When a unit's look for a target this tick fell due: as far back from the tick's
+    /// end as its wait has run past it.
+    fn look_time(&self, h: u32) -> f64 {
+        let late = self.unit(h).map_or(0.0, |u| u.acquire_timer.clamp(-self.tick_dt, 0.0));
+        self.time_exact + late as f64
     }
 
     /// The issued-order events for an order (its kind by target) and their context:
@@ -2232,6 +2250,16 @@ impl World {
                 }
                 return false;
             }
+            // An AI's unit's walk with its look queued after looks at once
+            // (`World::ai_walk_ended`), and may walk on.
+            if self.unit(h).is_some_and(|u| u.extra.ai_idle_ord.is_some()) && self.ai_walk_ended(h) {
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.mover = None;
+                    u.extra.step_from = None;
+                    u.path.clear();
+                }
+                return false;
+            }
             // The order's objects go as its walk ends, at its step (traced).
             let moved = self.unit_mut(h).is_some_and(|u| std::mem::take(&mut u.extra.walk_moved));
             let gave_up = self.unit(h).is_some_and(|u| u.extra.facing_goal);
@@ -2469,6 +2497,8 @@ impl World {
         if weapons.is_empty() {
             return None;
         }
+        let in_place = self.attacks_in_place(h);
+        let reach_bonus = self.upgrade_bonus(u.owner, u.type_id).range;
         for t in near {
             let Some(tu) = self.unit(t) else { continue };
             // Out of range first: the other tests cost more.  The range runs edge to
@@ -2496,6 +2526,11 @@ impl World {
                 continue;
             }
             let d = (tu.x - u.x).hypot(tu.y - u.y) - edges;
+            // One that cannot walk takes up only what it reaches (`FUN_6f4959f0`: the
+            // weapon's range for a unit `FUN_6f66f030` finds no move for).
+            if in_place && !weapons.iter().any(|(_, wp)| can_target(self, wp, u, tu) && d <= wp.range + reach_bonus) {
+                continue;
+            }
             // Only what the owner can see (a cliff above, the fog) is acquired.
             if d <= range && self.fog_state(tu.x, tu.y, u.owner) != crate::fog::FOG_VISIBLE {
                 self.fog_passed.set(true);
@@ -2956,6 +2991,8 @@ impl World {
                 }
                 // A wanderer walks step by step with the others (`World::step_walkers`).
                 Action::Move { .. } if self.unit(h).is_some_and(|u| u.extra.local_paths || u.extra.player_walk) => {}
+                // So does an AI's unit walking back to its post (`World::ai_walk_ended`).
+                Action::AttackMove { .. } if self.unit(h).is_some_and(|u| u.extra.ai_idle_ord.is_some()) => {}
                 Action::Move { x, y } => {
                     if self.unit(h).is_some_and(|u| u.path.is_empty()) {
                         self.path_to(h, (x, y));
@@ -4932,7 +4969,19 @@ impl World {
                 }
                 let (wn, wp) = weapon_for(self, u, t)?;
                 let reach = wp.range + self.upgrade_bonus(u.owner, u.type_id).range;
-                if (t.x - u.x).hypot(t.y - u.y) - u.collision - self.reach_radius(s.target) > reach || !facing((t.x, t.y)) {
+                // (A structure's try judges a walker where it is then, and gives up one
+                // out of reach, `crate::tasks`.)
+                let at = self.time_exact + u.cooldown.min(0.0) as f64;
+                let engine = if u.is_building && !u.extra.uprooted { self.reaches_walker(h, s.target, reach, at) } else { None };
+                let out = engine.map_or_else(|| (t.x - u.x).hypot(t.y - u.y) - u.collision - self.reach_radius(s.target) > reach, |r| !r);
+                if out && u.is_building && !u.extra.uprooted && !u.extra.attack_tasks.is_empty() {
+                    self.attack_given_up(h, at);
+                    if let Some(u) = self.unit_mut(h) {
+                        u.action = Action::Idle;
+                    }
+                    return None;
+                }
+                if out || !facing((t.x, t.y)) {
                     return None;
                 }
                 (wn, wp)
@@ -5007,12 +5056,33 @@ impl World {
         let d = (t.x - u.x).hypot(t.y - u.y) - u.collision - self.reach_radius(target);
         let (tpos, upos) = ((t.x, t.y), (u.x, u.y));
         let ub = self.upgrade_bonus(u.owner, u.type_id);
-        if d > wp.range + ub.range {
-            // A structure does not walk, whatever its speed, unless an uprooted ancient:
-            // one acquiring past its reach stays (Mafarazzo TD's Towers of Vengence, made
-            // from the Ancient Protector, speed 40, without its Root, acquire at 1800 and
-            // 2000 and reach 1500; provisional: whether it keeps such a target).
+        // A structure's first attack on a target it took up waits its first try
+        // (`crate::tasks`).
+        let first = u.extra.first_swing_at;
+        if first.is_some_and(|s| s > self.time_exact + 1e-6) {
+            return;
+        }
+        // (Its try judges a walker where it is then.)
+        let engine = if u.is_building && !u.extra.uprooted && u.cooldown <= STEP_SLACK && !stationary {
+            let at = first.unwrap_or(self.time_exact + u.cooldown.min(0.0) as f64);
+            self.reaches_walker(h, target, wp.range + ub.range, at)
+        } else {
+            None
+        };
+        if engine.map_or(d > wp.range + ub.range, |r| !r) {
+            // A structure does not walk, whatever its speed, unless an uprooted ancient
+            // (Mafarazzo TD's Towers of Vengence, made from the Ancient Protector, speed
+            // 40, without its Root): it gives up a target it took up as its try finds it
+            // out of reach (`FUN_6f495180`; its look takes up none past it).
             if stationary || (u.is_building && !u.extra.uprooted) {
+                if !stationary && !u.extra.attack_tasks.is_empty() && u.cooldown <= STEP_SLACK {
+                    let at = first.unwrap_or(self.time_exact + u.cooldown.min(0.0) as f64);
+                    self.attack_given_up(h, at);
+                    if let Some(u) = self.unit_mut(h) {
+                        u.action = Action::Idle;
+                        set_anim(u, "stand");
+                    }
+                }
                 return;
             }
             if u.path.is_empty() || u.repath_timer <= 0.0 {
@@ -5022,6 +5092,7 @@ impl World {
             return;
         }
         let speed = self.attack_speed(h);
+        let now = self.time_exact;
         let u = self.unit_mut(h).unwrap();
         u.path.clear();
         // Units attack once facing within AttackHalfAngle radians of the target;
@@ -5033,13 +5104,17 @@ impl World {
         }
         if u.cooldown <= STEP_SLACK {
             // The swing begins as the cooldown runs out (`FUN_6f49a4f0`), or for one ready
-            // since an earlier tick three main ticks into this one (provisional; read:
-            // Mafarazzo TD's Plague Tower, taking up its target at its look due 0.216,
-            // its damage points 0.32 apart from between 0.611 and 0.616, its first
-            // missile landing 0.284 later in turn 9 and its objects destroyed in turn 10;
-            // a test map's Arrow tower, cooldown 0.7, its missiles' objects destroyed 51
-            // turns after the turns they were sent in, as they land 0.7 apart).
+            // since an earlier tick three main ticks into this one (provisional), or for
+            // a structure's first on a target it took up its first try's wait after its
+            // look (`crate::tasks`; read under winedbg: Mafarazzo TD's Plague Tower's
+            // attack start, `FUN_6f49d130`, at the main clock's 0.215 as it took up its
+            // target, then at 0.315, 0.635, 0.955, its missiles' dues from 0.614999).
             let early = if u.cooldown >= 0.0 { dt - SWING_START_IN_TICK } else { -u.cooldown };
+            // (A structure's first, at its first try, or as its cooldown runs out after.)
+            let early = match u.extra.first_swing_at.take() {
+                Some(s) => ((now - s) as f32).min(if u.cooldown < 0.0 { -u.cooldown } else { f32::MAX }).max(0.0),
+                None => early,
+            };
             u.cooldown = wp.cooldown / speed - early;
             u.extra.cooldown_speed = Some(speed);
             u.swing = Some(Swing { target, ground: None, elapsed: early * speed, done: false, weapon: wn });
@@ -5135,6 +5210,9 @@ impl World {
         u.extra.order_queue.clear();
         if taken {
             u.extra.order_queue.push_back((crate::aiposts::AI_IDLE_ORDER, fx, fy, 0));
+            if walks && self.pathing.is_some() && self.move_kind(target) == crate::pathing::Move::Foot {
+                self.flee_walk(target);
+            }
         }
     }
 
@@ -5206,6 +5284,8 @@ impl World {
         }
         self.update_stampede(vm, dt);
         let end = self.time_exact;
+        let clock = self.bullet_clock(end);
+        self.reveals_ended(clock);
         self.fly_bullets(vm, end);
         let mut hits = Vec::new();
         let mut i = 0;
@@ -5352,12 +5432,19 @@ impl World {
                             Some(b) => b.missed,
                             None => self.high_ground_miss(m.source, m.target),
                         };
+                        self.landing_clock = bullet.as_ref().map(|b| self.bullet_clock(b.at));
                         if missed {
                             self.show_miss(m.source);
                             let reduced = m.damage * self.misc_f32("MissDamageReduction", 0.5);
                             self.attack_impact_missed(vm, m.source, m.target, reduced, wp, at);
                         } else {
                             self.attack_impact(vm, m.source, m.target, m.damage, wp, at);
+                        }
+                        self.landing_clock = None;
+                        // A splash's landing shows its attacker (`World::splash_revealed`).
+                        let splash = matches!(wp.weapon_type.as_str(), "artillery" | "aline") || wp.weapon_type.starts_with("msplash");
+                        if let (true, Some(b)) = (splash, bullet.as_ref()) {
+                            self.splash_revealed(m.source, m.target, b.at);
                         }
                         // A bounce goes on to the nearest unit within Farea it may hit that it
                         // has not (AllowMultiBounce 0), losing damageLoss (CMissileBounce).

@@ -1664,6 +1664,8 @@ pub mod class {
     pub const SOUND: &Code = b"+snd";
     /// `+fgm`: A fog modifier.
     pub const FOG_MODIFIER: &Code = b"+fgm";
+    /// `+fgt`: A fogged attack's reveal of its attacker (`FUN_6f67fc70`; parent `+fgm`).
+    pub const FOGGED_ATTACK_REVEAL: &Code = b"+fgt";
     /// `+dlg`: A dialog.
     pub const DIALOG: &Code = b"+dlg";
     /// `+dlb`: A dialog's button.
@@ -1718,6 +1720,9 @@ pub mod class {
     pub const ALLIANCE_EVENT: &Code = b"alvt";
     /// `psvt`: A player state event.
     pub const PLAYER_STATE_EVENT: &Code = b"psvt";
+    /// `psld`: A player state event's data (CPlayerStateLimitEventData), made as the
+    /// event fires (CPlayerStateEventReg vf3 `FUN_6f27cd00`).
+    pub const PLAYER_STATE_EVENT_DATA: &Code = b"psld";
     /// `pcvt`: A player chat event.
     pub const PLAYER_CHAT_EVENT: &Code = b"pcvt";
     /// `usvt`: A unit state event.
@@ -1742,12 +1747,14 @@ pub mod class {
     pub const ORDER_TASKS: &Code = b"ordt";
     /// `task`: A task.
     pub const TASK: &Code = b"task";
-    /// `tskA`: A task of the kind `tskA` (provisional: an order's first and last).
+    /// `tskA`: A block (CTaskAction, `FUN_6f6927a0`): sets the unit's state as it runs.
     pub const TASK_A: &Code = b"tskA";
     /// `tskO`: A task of the kind `tskO` (provisional).
     pub const TASK_O: &Code = b"tskO";
-    /// `tskt`: A task of the kind `tskt` (provisional).
+    /// `tskt`: A task at a target (CTaskTarget, `FUN_6f6926b0`).
     pub const TASK_T: &Code = b"tskt";
+    /// `tsk.`: A task at a point (CTaskPoint, `FUN_6f692120`).
+    pub const TASK_POINT: &Code = b"tsk.";
     /// `ptcf`: Made as a trained unit is finished, and freed at once (provisional name).
     pub const TRAINING_DONE: &Code = b"ptcf";
     /// `AI-1`: A player's AI (CCompAI).

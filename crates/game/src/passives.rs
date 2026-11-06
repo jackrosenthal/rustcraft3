@@ -140,7 +140,12 @@ impl World {
             let stacking = STACKING_POISONS.iter().find(|p| p.0 == code).filter(|_| self.data(a, "DataD", l) as i32 & 7 != 0);
             if let Some(&(_, info, _)) = stacking {
                 let dot = self.poison_dot(a, l, info);
-                let known = self.unit_mut(target).and_then(|t| t.buffs.iter_mut().find(|b| &b.id == info && b.caster == h)).map(|b| b.remaining = dur).is_some();
+                // (Its timer restarted, its end from the landing.)
+                let ends = Some(self.landing_clock.unwrap_or_else(|| self.bullet_clock(self.time_exact)) + dur as f64);
+                let known = self.unit_mut(target).and_then(|t| t.buffs.iter_mut().find(|b| &b.id == info && b.caster == h)).map(|b| {
+                    b.remaining = dur;
+                    b.ends_at = ends;
+                }).is_some();
                 if !known {
                     self.apply_buff(target, Buff { id: *info, ability: a, level: l, caster: h, remaining: dur, ..Default::default() });
                 }
@@ -197,9 +202,11 @@ impl World {
         }
         // Slow Poison's DataB slows movement and DataC attacks; the poisons' the other way.
         let (move_factor, attack_factor) = if self.ability_code(a0) == codes::ability::SLOW_POISON { (-sum[1], -sum[2]) } else { (-sum[2], -sum[1]) };
+        let ends = t.buffs.iter().filter(|b| &b.id == info).filter_map(|b| b.ends_at).fold(None, |a: Option<f64>, e| Some(a.map_or(e, |a| a.max(e))));
         let shared = self.unit_mut(target).and_then(|t| t.buffs.iter_mut().find(|b| b.id == dot)).map(|b| {
             b.dps = sum[0];
             b.remaining = left;
+            b.ends_at = ends;
             b.move_factor = move_factor;
             b.attack_factor = attack_factor;
         });

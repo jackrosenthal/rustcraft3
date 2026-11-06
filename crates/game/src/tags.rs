@@ -329,6 +329,13 @@ impl Tags {
         self.timed.push((due, slot));
     }
 
+    /// Queues a slot's release at `due`, before those queued for the same time (its
+    /// timer started before theirs).
+    pub fn doom_at_first(&mut self, due: f64, slot: u32) {
+        let k = self.timed.iter().position(|&(t, _)| t >= due).unwrap_or(self.timed.len());
+        self.timed.insert(k, (due, slot));
+    }
+
     /// A timed free put off to `due`, the slot's earlier one dropped.
     pub fn redoom_at(&mut self, due: f64, slot: u32) {
         self.timed.retain(|&(_, s)| s != slot);
@@ -341,6 +348,11 @@ impl Tags {
     pub fn free_due(&mut self, now: f64) {
         self.free_timed(now);
         self.free_doomed();
+        // (A unit removed in the turn has its own go with the turn's releases: read,
+        // the test towers and runners removed by a timer's trigger.)
+        for s in std::mem::take(&mut self.removed) {
+            self.release(s);
+        }
         for s in std::mem::take(&mut self.later_now) {
             self.release(s);
         }

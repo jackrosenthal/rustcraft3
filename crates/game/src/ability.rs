@@ -406,11 +406,17 @@ impl World {
         }
         // Buff art attaches to the target (the buff's Targetart and Targetattach).
         let art = self.objects.buffs.get(b.id).map(|o| (o.list("Targetart").first().cloned().unwrap_or_default(), o.list("Targetattach").first().cloned().unwrap_or_default()));
-        let u = self.unit_mut(target).unwrap();
         // An effect without a buff type (a fountain's) is told apart by its ability; a
         // stacking poison's stack info by its caster.
         let per_caster = crate::passives::STACKING_POISONS.iter().any(|p| p.1 == &b.id);
+        // (Its timer's end from now: a missile's landing, or the tick's end.)
+        let ends = (b.remaining.is_finite() && b.remaining < 1.0e6 && b.aura_left.is_none()).then_some(b.remaining);
+        let clock = self.landing_clock.unwrap_or_else(|| self.bullet_clock(self.time_exact));
+        let u = self.unit_mut(target).unwrap();
         if let Some(existing) = u.buffs.iter_mut().find(|x| x.id == b.id && (b.id != [0; 4] || x.ability == b.ability) && (!per_caster || x.caster == b.caster)) {
+            if let Some(r) = ends.filter(|&r| r >= existing.remaining) {
+                existing.ends_at = Some(clock + r as f64);
+            }
             existing.remaining = existing.remaining.max(b.remaining);
             if b.aura_left.is_some() {
                 existing.aura_left = b.aura_left;
@@ -424,6 +430,7 @@ impl World {
             let slot = self.tags.take(&b.id);
             b.slot = slot;
             b.birth = self.tags.live.get(&slot).map_or(0, |e| e.1);
+            b.ends_at = ends.map(|r| clock + r as f64);
             // (Its timer's start, CBuff vf211; read: the aura scans' buffs at 0.5
             // seconds on the quiet test map.)
             let n = self.tags.start_timer("532b50");
@@ -479,6 +486,7 @@ impl World {
     pub fn update_buffs(&mut self, vm: &mut Vm, dt: f32) {
         let units = self.unit_order.clone();
         let mut expired_effects = Vec::new();
+        let mut ended_slots: Vec<(u32, u32, Option<f64>)> = Vec::new();
         let mut dots = Vec::new();
         let mut conversions = Vec::new();
         let mut released: Vec<(u32, u32, Id, bool)> = Vec::new();
@@ -531,6 +539,12 @@ impl World {
             for b in u.buffs.iter().filter(|b| b.remaining <= 0.0 && crate::passives::STACKING_POISONS.iter().any(|p| p.1 == &b.id)) {
                 stacks_ended.push((h, b.id, b.ability, b.level));
             }
+            // (Its object goes with it, the newest first: read, Mafarazzo TD's fort
+            // runner's Slow Poison `Bssd` and `Bssi` as they ran out, provisional for
+            // the rest.)
+            for b in u.buffs.iter().rev().filter(|b| b.remaining <= 0.0 && b.slot != 0) {
+                ended_slots.push((b.slot, b.birth, b.ends_at));
+            }
             u.buffs.retain(|b| {
                 if b.remaining <= 0.0 {
                     expired_effects.push(b.effect);
@@ -553,6 +567,25 @@ impl World {
         }
         for e in expired_effects {
             self.remove_buff_effect(e);
+        }
+        // (Destroyed the frame after its timer's end, before what fell due with it
+        // started later: the fort runner's buffs, renewed by a missile's landing, before
+        // that missile's objects, its death timer started after.)
+        // (Put ahead of their equals the last first, so they go in order.)
+        let mut ahead: Vec<(f64, u32)> = Vec::new();
+        for (slot, birth, ends) in ended_slots {
+            if self.tags.live.get(&slot).is_some_and(|e| e.1 == birth) {
+                let m = self.tags.buff_modifiers.get(&slot).copied().filter(|m| self.tags.live.contains_key(m));
+                for s in m.into_iter().chain([slot]) {
+                    match ends {
+                        Some(e) => ahead.push((e + crate::bullets::DESTROYED_AFTER, s)),
+                        None => self.tags.doom(s),
+                    }
+                }
+            }
+        }
+        for (due, s) in ahead.into_iter().rev() {
+            self.tags.doom_at_first(due, s);
         }
         // A stacking poison's stack info running out takes its part from the shared
         // strike, the last the strike itself (`World::poison_stacks`).
@@ -1028,7 +1061,11 @@ impl World {
         }
         let ctx = EventCtx { unit: target, other_unit: source, damage: dmg, event_id: EVENT_UNIT_DAMAGED, player: owner, has_player: true, ..Default::default() };
         self.fire(vm, ctx, |_, k| matches!(k, EventKind::Unit { unit, event } if *unit == target && *event == EVENT_UNIT_DAMAGED));
-        if !dead && source != target {
+        // (A touch of nothing, a poison's or a frost attack's before its damage, hurts
+        // for no damage: CAbilityMove's damage hook, `FUN_6f5fa400`, runs from none;
+        // read: Mafarazzo TD's fort runner, struck by a Slow Poison missile, its buffs
+        // made before its walk away.)
+        if !dead && source != target && dmg > 0.0 {
             if !self.ai_flees(target, source) {
                 self.retaliate(target, source, true);
             }

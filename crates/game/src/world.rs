@@ -216,6 +216,9 @@ pub struct World {
     /// time and sleep_time as counted.
     #[serde(default)]
     pub time_exact: f64,
+    /// The tick under way's length.
+    #[serde(default)]
+    pub tick_dt: f32,
     #[serde(default)]
     pub sleep_exact: f64,
     pub ctx: EventCtx,
@@ -386,6 +389,13 @@ pub struct World {
     /// The tick's movement steps are done (its logic after them runs).
     #[serde(skip)]
     pub after_steps: bool,
+    /// The main clock a missile landing now lands at (`World::missiles_land`).
+    #[serde(skip)]
+    pub landing_clock: Option<f64>,
+    /// The main clock of this tick's first damage point sending a missile, which the
+    /// steps' timed frees wait for (`World::first_missile_point`).
+    #[serde(skip)]
+    pub steps_free_until: Option<f64>,
     /// The main clock scripts read walkers' places by, while it is known
     /// (`World::place_now`): the turn's first main tick's as its timers go off.
     #[serde(skip)]
@@ -564,6 +574,10 @@ pub struct World {
     /// Attackers shown to their victims' owners for a moment (fog.rs).
     #[serde(default)]
     pub fog_flashes: Vec<crate::fog::FogFlash>,
+    /// Attackers' fogged-attack reveals as the original's objects (`+fgt`,
+    /// `World::splash_revealed`): the attacker, its slot, and its end on the main clock.
+    #[serde(default)]
+    pub fog_reveals: Vec<(u32, u32, f64)>,
     /// PlayModelCinematic.
     pub model_cinematic: Option<String>,
     /// Running terrain deformations (deform.rs).
@@ -943,6 +957,7 @@ impl World {
             enum_ctx: EnumCtx::default(),
             sleep_time: 0.0,
             time_exact: 0.0,
+            tick_dt: 0.0,
             sleep_exact: 0.0,
             sleepers: Vec::new(),
             sound_wait: 0,
@@ -1008,6 +1023,8 @@ impl World {
             budgets: Default::default(),
             script_clock: None,
             after_steps: false,
+            landing_clock: None,
+            steps_free_until: None,
             net_sum: 0,
             game_ms: 0,
             played_before_ms: 0,
@@ -1073,6 +1090,7 @@ impl World {
             next_formation: 1,
             fog_boundary: true,
             fog_flashes: Vec::new(),
+            fog_reveals: Vec::new(),
             model_cinematic: None,
             deformations: Vec::new(),
             deform_clock: 0,
@@ -2077,7 +2095,7 @@ impl World {
             None => n.saturating_sub(1),
         };
         if let Some(now) = self.tick_abs(i) {
-            self.tags.free_timed(now);
+            self.tags.free_timed(self.steps_free_until.map_or(now, |c| now.min(c)));
         }
     }
 
@@ -2235,7 +2253,9 @@ impl World {
         // Counted in f64 and read as f32: f32 adding 0.02s drifts, by seconds in an hour.
         self.time_exact = self.time_exact.max(self.time as f64) + dt as f64;
         self.time = self.time_exact as f32;
+        self.tick_dt = dt;
         self.game_ms = self.game_ms.wrapping_add(dt_ms);
+        self.steps_free_until = self.first_missile_point(dt);
         self.plan_mana_listeners(dt);
         self.camera.update(dt);
         // A camera following a unit keeps its target on it.
@@ -2684,6 +2704,9 @@ impl World {
             }
         }
         for (trig, ctx) in due {
+            // The registration makes its event's data first, kept by it (`FUN_6f276bb0`,
+            // `FUN_6f224310`; read: Mafarazzo TD's End_Round's, never freed).
+            self.tags.take(codes::class::PLAYER_STATE_EVENT_DATA);
             self.fire_state_event(vm, trig, ctx);
         }
     }
@@ -2787,6 +2810,10 @@ impl World {
         let mut made = [0i32; PLAYER_COUNT];
         for &h in &self.unit_order {
             let Some(u) = self.unit(h) else { continue };
+            // (One removed has given its food back already.)
+            if self.pending_removals.contains(&h) {
+                continue;
+            }
             // One reincarnating keeps its food and food made (the rising adds them
             // and takes them away again, `FUN_6f50e870`).
             if u.dead && u.reincarnate.is_none() {

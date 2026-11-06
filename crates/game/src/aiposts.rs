@@ -88,7 +88,7 @@ impl World {
         !u.is_building && !u.is_hero && !self.is_summoned(h) && !self.objects.units.get(u.type_id).is_some_and(|o| o.list("type").iter().any(|t| t.trim().eq_ignore_ascii_case("peon")))
     }
 
-    fn posts(&self, p: u8) -> &[GuardPost] {
+    pub(crate) fn posts(&self, p: u8) -> &[GuardPost] {
         match self.ai.get(&p) {
             Some(s) => &s.posts,
             None => self.guard_posts.get(&p).map_or(&[], |v| v.as_slice()),

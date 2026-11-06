@@ -316,6 +316,7 @@ impl Unit {
     pub fn steps_walker(&self) -> bool {
         !self.dead
             && (((self.extra.local_paths || self.extra.player_walk) && matches!(self.action, Action::Move { .. }))
+                || (self.extra.ai_idle_ord.is_some() && matches!(self.action, Action::AttackMove { .. }))
                 || (matches!(self.action, Action::Harvest { .. }) && self.extra.gold_run.as_ref().is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::ToMine | crate::goldrun::Phase::ToHall(_) | crate::goldrun::Phase::Reaching { .. })))
                 || self.ai_harvest_walk()
                 || self.ai_build_walk()
@@ -674,6 +675,21 @@ pub struct UnitExtra {
     pub attack_timer: Option<(u32, f32, f32)>,
     #[serde(default)]
     pub look_timer: Option<(u32, f32, f32)>,
+    /// A structure's tasks for the target it took up on its own (`crate::tasks`),
+    /// the bottom first: each slot with its task's event (0 for a block).
+    #[serde(default)]
+    pub attack_tasks: Vec<(u32, u32)>,
+    /// When the first attack on a target a structure took up may begin, on the main
+    /// clock (`crate::tasks`).
+    #[serde(default)]
+    pub first_swing_at: Option<f64>,
+    /// What is left of its pause's order (`World::pause_objects`).
+    #[serde(default)]
+    pub pause_order: Vec<u32>,
+    /// The `+ord` of the order 0xd0006 its AI queued after its walk, while it walks
+    /// (`World::flee_walk`).
+    #[serde(default)]
+    pub ai_idle_ord: Option<u32>,
     /// Its wander's timer (Awan's): its count, the game time it started, and its wait.
     #[serde(default)]
     pub wander_timer: Option<(u32, f32, f32)>,
@@ -1075,6 +1091,10 @@ impl Default for UnitExtra {
             day_rcm: None,
             attack_timer: None,
             look_timer: None,
+            attack_tasks: Vec::new(),
+            first_swing_at: None,
+            pause_order: Vec::new(),
+            ai_idle_ord: None,
             wander_timer: None,
             made_facing: None,
             day_ref: None,
@@ -1184,6 +1204,9 @@ pub struct Buff {
     /// Its slot's birth (another object may take the slot once it is let go).
     #[serde(default)]
     pub birth: u32,
+    /// A laid buff's end on the main clock, as last laid or renewed (its timer's).
+    #[serde(default)]
+    pub ends_at: Option<f64>,
     /// The player it shows its bearer to (its caster's owner), for those that do
     /// (Ensnare's, Web's, Faerie Fire's, ...: CBuffSharedVision's family).
     #[serde(default)]

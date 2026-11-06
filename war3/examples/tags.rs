@@ -267,6 +267,14 @@ fn main() -> anyhow::Result<()> {
                 println!("res {n} {} {}", st(w3_game::types::player_state::RESOURCE_GOLD), st(w3_game::types::player_state::RESOURCE_LUMBER));
             }
         }
+        // TAGS_TRACKP=player: each turn, the player's units' places, actions, orders,
+        // speeds (their own and now), and buffs.
+        if let Some(p) = std::env::var("TAGS_TRACKP").ok().and_then(|v| v.parse::<u8>().ok()) {
+            let w = &g.world;
+            for u in w.unit_order.iter().filter_map(|&h| w.unit(h)).filter(|u| u.owner == p) {
+                println!("track {n} {:#x} at ({:.3}, {:.3}) {:?} order {} speed {} now {} buffs {:?}", u.handle, u.x, u.y, u.action, u.order.id, u.move_speed, w.current_move_speed(u.handle), u.buffs.iter().map(|b| w3_game::objects::id_str(b.id)).collect::<Vec<_>>());
+            }
+        }
         // TAGS_UNITS=turn,player: at that turn, the player's units' actions and AI state.
         if let Some((t, p)) = std::env::var("TAGS_UNITS").ok().and_then(|v| v.split_once(',').and_then(|(a, b)| Some((a.parse::<u32>().ok()?, b.parse::<u8>().ok()?)))) {
             if t == n {

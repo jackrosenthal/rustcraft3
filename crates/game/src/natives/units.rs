@@ -1157,7 +1157,7 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
             kill_unit(w, vm, a.h(0), 0);
             none()
         },
-        RemoveUnit => |w, _, a| {
+        RemoveUnit => |w, vm, a| {
             // Its orders cleared, it restarts its animation's timer (`FUN_6f694690`,
             // `FUN_6f67df00`'s event to `FUN_6f69bf80`, `FUN_6f69c620`; traced: the gold
             // mine the undead melee setup removes; provisional for every unit removed).
@@ -1200,7 +1200,20 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 // (Those released already, as it fell asleep, are not freed again.)
                 let live = |w: &World, (s, b): (u32, u32)| w.tags.live.get(&s).is_some_and(|e| e.1 == b) && !w.tags.doomed.contains(&s);
                 let code = |w: &World, s: u32| w.tags.live.get(&s).map(|e| e.0);
-                for k in [0, 6, 5, 4] {
+                // A paused unit's pause order before them (its current order's tasks,
+                // `FUN_6f673e80`; read: Mafarazzo TD's test runners'), and its task stack
+                // after the first, top first (`FUN_6f673fe0` makes and destroys a block,
+                // then destroys the stack; read: the test towers' attack tasks, removed
+                // 4.5 seconds after they were made).
+                let paused = w.unit_mut(a.h(0)).map(|u| std::mem::take(&mut u.extra.pause_order)).unwrap_or_default();
+                for &s in paused.iter().rev() {
+                    w.tags.doom(s);
+                }
+                w.tags.doom(t[0]);
+                for s in w.take_attack_tasks(a.h(0)) {
+                    w.tags.doom(s);
+                }
+                for k in [6, 5, 4] {
                     w.tags.doom(t[k]);
                 }
                 // Then (read: Forestwalk's satyrs removed by MeleeClearExcessUnits) the
@@ -1224,6 +1237,15 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 later.extend(&pils);
                 later.extend(ai.iter().filter(|&&o| live(w, o)).map(|o| o.0));
                 later.extend(&buffs);
+                // Then the buffs laid on it since, the newest first, each its timer then
+                // itself (read: the Ice tower's runner's `Bfro`).
+                let laid: Vec<u32> = w.unit(a.h(0)).map(|u| u.buffs.iter().rev().filter(|b| b.slot != 0 && !buffs.contains(&b.slot) && w.tags.live.get(&b.slot).is_some_and(|e| e.1 == b.birth)).map(|b| b.slot).collect()).unwrap_or_default();
+                for s in laid {
+                    if let Some(&m) = w.tags.buff_modifiers.get(&s).filter(|m| w.tags.live.contains_key(m)) {
+                        later.push(m);
+                    }
+                    later.push(s);
+                }
                 let mut woke: Vec<u32> = listeners.into_iter().filter(|s| w.tags.live.contains_key(s)).collect();
                 woke.sort_by_key(|s| w.tags.live.get(s).map_or(0, |e| e.1));
                 later.extend(woke);
@@ -1250,6 +1272,10 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 }
             }
             script_remove_unit(w, a.h(0));
+            // Its food is gone at once: a player state event on it fires inside the
+            // removal (read: Mafarazzo TD's End_Round, food used equal to 0, its event's
+            // data made after the removal's tasks as the test runner goes).
+            w.check_player_states(vm);
             none()
         },
         ShowUnit => |w, _, a| { let v = a.b(1); with_unit(w, a, |u| u.hidden = !v) },
@@ -1413,7 +1439,11 @@ pub fn register(t: &mut HashMap<&'static str, NativeFn>) {
                 }
             })
         },
-        PauseUnit => |w, _, a| { let v = a.b(1); with_unit(w, a, |u| u.paused = v) },
+        PauseUnit => |w, _, a| {
+            let v = a.b(1);
+            w.pause_objects(a.h(0), v);
+            with_unit(w, a, |u| u.paused = v)
+        },
         IsUnitPaused => |w, _, a| boolean(unit_arg(w, a, 0).is_some_and(|u| u.paused)),
         SetUnitExploded => |w, _, a| { let v = a.b(1); with_unit(w, a, |u| u.explode_on_death = v) },
         SetUnitUserData => |w, _, a| { let v = a.i(1); with_unit(w, a, |u| u.user_data = v) },

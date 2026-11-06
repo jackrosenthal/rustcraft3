@@ -1829,19 +1829,68 @@ these are the findings behind them.
   main tick (0.005) after the due, the Plague Tower's first missile, landing about
   0.8994 and its `Atrg` let go then, has the `Atrg` freed in turn 10 and its objects
   in turn 60, and the second's `Atrg`, let go about 1.239, freed before the third
-  missile, sent at 1.255, made a new one (provisional: the frame a main tick; the port
-  frees such objects at the movement steps, before the units' damage points of the
-  same turn: the Arrow tower's first missile's objects, due 6.833, go before the
-  Cannon tower's missile sent at 6.815 where the original's go after).
+  missile, sent at 1.255, made a new one (provisional: the frame a main tick).  What
+  falls due after a turn's first damage point sending a missile waits for it, though
+  the port's movement steps, which free what is due by their clocks, run before the
+  units' damage points (read: the Arrow tower's first missile's objects, due 6.833,
+  freed after the Cannon tower's missile sent at 6.815, and the Cannon's after the
+  Ice tower's so; `World::first_missile_point`, which weighs the turn's laid buffs'
+  ends too).
 - An attack's swing begins as its cooldown runs out (`FUN_6f49a4f0`): read, the Arrow
   tower (cooldown 0.7, damage point 0.3, missile at 1800 to a target 384 away)
   sending one in turns 17, 24, 31, and so every seven, its objects freed 52 turns on.
-  A unit taking up a target begins its first swing provisionally three main ticks
-  (0.015) into the next turn: the Plague Tower's look due 0.216 in turn 3, its damage
-  points 0.32 apart from between 0.611 and 0.616 (its 14 attacks in turns 7 to 48, its
-  first missile landing in turn 9 and freed in turn 60); the Arrow, Cannon, and Ice
-  towers' first in the fourth turn after their looks' (to be measured: the attack
-  ability's start of its first attack, `FUN_6f49d130`, against the clock).
+  A structure's first on a target it took up begins 0.1 after the take-up (the attack
+  task, `FUN_6f49e510`, starts the cooldown at DAT_6fcd53c4 for a unit that cannot
+  move, `FUN_6f49d130(0.1, 0)`; one that can tries at once, event 0xd0196 to
+  `FUN_6f499310`).  Read under winedbg on Mafarazzo TD's Plague Tower: `FUN_6f49d130`
+  at the main clock's 0.215 (the take-up, its look due 0.2157 on the agent queue),
+  then 0.315, 0.635, 0.955, and so every 0.32; the missiles' dues (`FUN_6f171870`) set
+  at 0.614999, 0.935, 1.255 (each damage point's main tick, the agent's due 0.6157).
+  So a missile's flight starts from the main clock of the main tick its damage point
+  falls in (the last whose clock is short of the due, `World::main_tick_time`), the
+  attack's timers running on the agent queue's dues: the first missile lands at
+  0.8994, in turn 9, where one sent at 0.6157 would land in turn 10.  (For a unit
+  ready since an earlier turn the port's swing still starts three main ticks into
+  the turn, provisional.)
+- A structure's attack is a stack of tasks on the unit (CUnit +0x174, each task's
+  +0x24 the one below, `FUN_6f691e60`; run top first by `FUN_6f67df00`, each popped
+  and destroyed, `FUN_6f691260`, unless it waits by clearing the unit's flag 1).  The
+  take-up (`FUN_6f4943f0`, from the look `FUN_6f493ff0`) pushes them by the unit's
+  state (+0x194; a block, `tskA` `FUN_6f6927a0`, sets it as it runs, event 0xd0162):
+  for state 0 a block back to 0, task 0xd014b (`FUN_6f691f20`), the walk back to
+  where it stood (`tsk.` 0xd016c, `FUN_6f692120`), a block to 7, tasks 0xd0148 and
+  0xd016a, the walk into range (`tskt` 0xd016f, `FUN_6f6926b0`), task 0xd0163, the
+  attack (`tskt` 0xd0168), a block to 1 (other states push fewer: from 1 only the
+  tasks 0xd0148, 0xd016a and the two `tskt`).  The last block runs and goes at once;
+  the attack waits.  With a target already, the old attack, its task 0xd0163, and its
+  walk into range are popped (`FUN_6f497190`) and a new walk and attack pushed.  The
+  task codes from their makers: `task` `FUN_6f684af0`, `tskA` `FUN_6f684b00`, `tskg`
+  `FUN_6f684b10`, `tskO` `FUN_6f684b20`, `tk.2` `FUN_6f684b40`, `tsk.`
+  `FUN_6f684b50`, `tk.t` `FUN_6f684b60`, `tskR` `FUN_6f684b70`, `tkt2`
+  `FUN_6f684b80`, `tskt` `FUN_6f684b90`.  Traced: the Plague Tower's ten in turn 3
+  and again in turn 119, the test towers' each in their fourth turn.
+- A structure takes up only what it reaches: a candidate for a unit that cannot move
+  (`FUN_6f66f030`, no move ability or its move disabled) must be within its weapon's
+  range (`FUN_6f4959f0`), the search's radius the least of its acquisition range and
+  its longest weapon's (`FUN_6f498e50`); and it gives a target up as its try finds it
+  out of reach (`FUN_6f495180` → `FUN_6f49d280`; one that can move walks after it,
+  `FUN_6f49a240`).  The reach (`FUN_6f05b580`): the range over 32 (its exponent less
+  5) plus both units' position objects' +0x90 (their collisions over 32), squared,
+  against the squared distance between their places carried on to the main clock then
+  (its last argument set: `FUN_6f161040`, `FUN_6f05bdd0`), a thousandth over still
+  within.  The giving up pops the attack, its task 0xd0163 (not run), and its walk
+  into range (`FUN_6f497190`), then the rest run and go, top first: task 0xd016a
+  (`FUN_6f49e6b0`, which waits only for a backswing still under way), task 0xd0148
+  (`FUN_6f49ed20` → `FUN_6f49c3a0` → `FUN_6f49d000`: the look's timer restarted at
+  DAT_6fcd53a4, 0.01), the blocks and walk back and task 0xd014b (`FUN_6f498ff0`).
+  Traced: the Plague Tower's fourteenth try at 4.7957, the runner 33.54 cells off
+  against its 31.25 and 2.25 (the runner's last step had it 33.42 off), its nine tasks
+  freed in turn 48, and its next look due 4.8057, each half second on from there, the
+  one at 11.8057 taking the runner up again in turn 119.  Task 0xd0163 when it runs
+  (an attack done, as a target dies; `FUN_6f49ea80`) waits ReactionDelay times a
+  real drawn on stream 9 (`FUN_6f6936a0(9)`, event 0xd01af to `FUN_6f49b3d0`), not
+  yet modeled.  (Provisional: the port's tasks for structures only, the same take-up
+  for a unit that walks not made; a structure's tasks at its death not freed.)
 - An attack's damage is drawn at its damage point on the attack's own generator,
   stream 2 (`FUN_6f498960` → `FUN_6f695c70(out, 2, dice, sides, base)` →
   `FUN_6f1ec180`): up to 16 dice a draw each, `r × sides >> 32` and one, their sum with
@@ -1861,18 +1910,71 @@ these are the findings behind them.
   1649.3, 1298.6, 597.2, 246.5 at the half seconds) and the Ice and Cutter towers'
   first looks (turns 115 and 165) as the original's once the port drew so; it had
   drawn the dice and the miss on the main generator.
-- `+fgt` (parent `+fgm`, `FUN_6f675460`): a fogged attack's reveal of the attacker,
-  FogFlashTime long and FoggedAttackRevealRadius wide (`FUN_6f67fc70`), made at an
-  attack's damage point on a unit whose owner does not see the attacker
-  (`FUN_6f67fde0` from `FUN_6f4946b0`) and at a splash's landing for the players it
-  hit (`FUN_6f67feb0` from CMissileSplash vf47 `FUN_6f6d00e0`), an existing one
-  renewed.  Traced: the Cannon tower's first landing and the Ice tower's first (with
-  its `Bfro`), each freed 6 seconds on; none for the Arrow tower's.  The port makes
-  none yet.
+- `+fgt` (parent `+fgm`, `FUN_6f675460`): a fogged attack's reveal of the attacker
+  (`FUN_6f67fc70`, the attacker's +0xf0), FoggedAttackRevealRadius wide and as long as
+  the most of FogFlashTime and the time given: at an attack's damage point its weapon's
+  cooldown and 1 (`FUN_6f4988d0`, from `FUN_6f4946b0` by `FUN_6f67fde0`, only for a
+  struck unit whose owner does not see the attacker), at a splash's landing none (the
+  splash's players hit, `FUN_6f67feb0` from CMissileSplash vf47 `FUN_6f6d00e0`, with
+  no test of their sight).  An existing one is moved and its timer restarted when the
+  new time passes what it has left or the players are new (`FUN_6f244150`); it is
+  destroyed as its timer ends, its attacker gone or not.  Traced: the Cannon tower's
+  first landing (turn 74, freed in turn 134) and the Ice tower's (turn 123, with its
+  `Bfro`, freed in turn 183), each 3 seconds after its last landing, the towers removed
+  meanwhile; none for the Arrow tower's, which sends no splash.  The port makes the
+  splashes' (`World::splash_revealed`; provisional: the players taken as the struck
+  unit's owner), not yet the damage points'.
 - A structure does not walk, whatever its speed, unless an uprooted ancient: a tower
   made from the Ancient Protector (speed 40) without its Root (Mafarazzo TD's Towers of
-  Vengence) stays where it was built when it acquires past its reach (provisional:
-  whether it keeps a target out of reach or looks for one within it).
+  Vengence) stays where it was built, taking up only what it reaches (above).
+- RemoveUnit (`jass_RemoveUnit`: the unit's vf 0x84, then `FUN_6f694690(1, 1)`) clears
+  its orders (`FUN_6f673610`): its current order's tasks (`FUN_6f673e80`), then a block
+  made and destroyed and its task stack destroyed top first (`FUN_6f673fe0`), then its
+  orders; then it pushes tasks 0xd015a, 0xd0164, 0xd0156, 0xd0178, 0xd0144 and a block
+  and runs them.  Traced on the test map's towers and runners, removed 4.5 seconds
+  after they were made: the tower's first block, its attack's nine tasks, then the
+  removal's three last; the runner's pause order's six, then its own; then, all in the
+  turn of the removal, the units' own objects (the port had them in the next turn), a
+  buff laid on the runner since (the Ice tower's `Bfro`) after its AI's objects.  Its
+  food is given back at once: a player state event on food used fires inside the
+  removal, after its tasks (Mafarazzo TD's End_Round), its event data a `psld`
+  (CPlayerStateLimitEventData, made by the registration as its comparison passes,
+  CPlayerStateEventReg vf3 `FUN_6f27cd00` → `FUN_6f276bb0`, kept by it, `FUN_6f224310`;
+  traced: never freed).
+- PauseUnit (`jass_PauseUnit`) on an unpaused unit (`FUN_6f697770`: its flag 0x200000)
+  counts it paused (+0x54, `FUN_6f688d30`) and the first issues order 0xd0005
+  (`FUN_6f69bd80`, `FUN_6f680320`): an `ordt`, two blocks, seven tasks, and a block, the
+  second, the last, and the three tasks before it freed with the turn's releases, the
+  rest kept while it is paused (traced: the test runners, paused as made).  Its end
+  (`FUN_6f6977c0` → `FUN_6f678590`) is not read: the port frees the rest then.
+- A buff laid with its own object (CBuff) is destroyed the frame after its timer runs
+  out, before what fell due with it on a timer started later (traced: the fort
+  runner's Slow Poison `Bssd` and `Bssi`, renewed by the last missile's landing, freed
+  in turn 105 before that missile's objects, its removal timer started after; the port
+  keeps each laid buff's end, `Buff::ends_at`, from its landing).  (Provisional: for the
+  buffs other than the poisons' and the frost attacks', and a buff's end as its unit
+  dies.)
+- A computer's unit hurt with no order and no attack runs (above, CAbilityMove's
+  `FUN_6f5fa400`): a touch of nothing, as a poison's or a frost attack's before its
+  damage, is no hurt (the runner's buffs made before its walk away).  Its run is the
+  engine's walk (`World::flee_walk`): its move order's objects as a player's, the seven
+  it lets go at once destroyed on the frame after the missile's landing that made it
+  run (traced: the runner's first run's in turn 10, after the missile's `Atrg`; its
+  second's, from its post, in turn 141 itself), then the `+ord` of the order 0xd0006
+  queued after it
+  (`FUN_6f693450`) in the freed `^clg`'s slot.  As that walk ends, the look runs in its
+  step (`FUN_6f9bd6e0`, its `task` made): a unit keeping a guard post more than 50 off
+  attack-moves back (`FUN_6f9c0b00`): `ordt`, the `+ord` of its own look, a block, a
+  `tskO`, two tasks, a `tsk.`, four tasks, a block, `^clg` (freed at once), `^clu`, and
+  `l^pa`; then the walk's order's tree, the look's task and `+ord`, the new order's
+  last block and four tasks before it, the last first, and the old path go as the step
+  ends (traced: turn 84; at the post, turn 139, the walk back's tree, the look's task
+  and `+ord`, its path).  With these Mafarazzo TD's Plague Tower trace agrees with the
+  original's, slots and all, to turn 113 (but two frees of map objects at turn 110).
+  Open: the original's runner was out of the tower's reach at its look at 11.3057 and
+  within at 11.8057 (taken up in turn 119), the port's within at the first (turn 114);
+  and its walk back searched again in turn 127 (`^clg`, `^clu`, `l^pa`, the old path
+  freed), the port's not.
 
 ## Where the port departs from the original
 

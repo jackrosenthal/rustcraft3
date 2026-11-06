@@ -464,8 +464,11 @@ impl ObjectDb {
         }
     }
 
-    /// Applies the map's object modification files, if present.
+    /// Applies the map's object modification files, if present, their `TRIGSTR_n` text
+    /// from the map's war3map.wts (as the original shows a custom unit's name, tip, and
+    /// tooltip, and GetUnitName gives its name).
     pub fn apply_map(&mut self, chain: &Chain) {
+        let strings: HashMap<u32, String> = chain.read_string("war3map.wts").map(|s| w3_formats::map::parse_wts(&s).into_iter().collect()).unwrap_or_default();
         let files: [(&str, &mut ObjectTable, Option<bool>); 7] = [
             ("war3map.w3u", &mut self.units, Some(false)),
             ("war3map.w3t", &mut self.items, Some(false)),
@@ -477,7 +480,7 @@ impl ObjectDb {
         ];
         for (name, table, leveled) in files {
             if let Ok(data) = chain.read(name) {
-                if let Err(e) = table.apply_mods(&data, leveled) {
+                if let Err(e) = table.apply_mods_with(&data, leveled, Some(&strings)) {
                     log::warn!("{name}: {e}");
                 }
             }

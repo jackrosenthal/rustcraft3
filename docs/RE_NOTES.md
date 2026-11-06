@@ -17,6 +17,10 @@ original images.
   (`DAT_6fcd52f0`): 0 under `-classic` or for a RoC replay (`FUN_6f046800`), else 1.
 - **MPQ Huffman** (Storm `FUN_15015410` and helpers): weight tables at
   `0x150421b8`, 9 × 0x102 bytes; adaptive updates only for compression type 0.
+- **Map object strings**: a `war3map.w3u` (and kin) text value `TRIGSTR_n` is the map's
+  `war3map.wts` string n (`FUN_6f6ee6f0` parses the number), so a custom unit's name,
+  tip, and tooltip show as written (Mafarazzo TD's towers are named only so) and
+  GetUnitName gives them.
 
 ## Scripts
 

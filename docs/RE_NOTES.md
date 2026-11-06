@@ -1720,6 +1720,25 @@ these are the findings behind them.
   first missile landing in turn 9 and freed in turn 60); the Arrow, Cannon, and Ice
   towers' first in the fourth turn after their looks' (to be measured: the attack
   ability's start of its first attack, `FUN_6f49d130`, against the clock).
+- An attack's damage is drawn at its damage point on the attack's own generator,
+  stream 2 (`FUN_6f498960` → `FUN_6f695c70(out, 2, dice, sides, base)` →
+  `FUN_6f1ec180`): up to 16 dice a draw each, `r × sides >> 32` and one, their sum with
+  the dice and the base (more dice a single draw from a normal spread,
+  `FUN_6f1d12e0`; fewer than one die logs "Bogus request to roll 0 dice" and makes
+  the damage 0).  A missile's miss from below is drawn as it is sent, on stream 2 too
+  (`FUN_6f6d48b0` with its third argument set: from a missile's launch,
+  `FUN_6f6d3470`, when its info's +0x78 is set, as the damage point sets it for a
+  missile, a splash, a bounce, and a line; from an artillery's, `FUN_6f6d2530`, at a
+  unit): first the target's abilities' and the attacker's own misses
+  (`FUN_6f6d6cc0` → `FUN_6f48cae0`, `FUN_6f6cd570` → `FUN_6f48c690`, not read), then
+  a real under ChanceToMiss, then the attacker on a lower cliff level than its
+  target (one flying, `FUN_6f4995d0`, never).  So each attack moves stream 2 on, and
+  the next unit made draws its first look for a target from where it stands: read
+  with Mafarazzo TD's towers made one after another against paused runners, the St
+  George Bank's and the HSBC's hits (lives 2000, 1734.0, 1147.4, 866.7, 287.1; then
+  1649.3, 1298.6, 597.2, 246.5 at the half seconds) and the Ice and Cutter towers'
+  first looks (turns 115 and 165) as the original's once the port drew so; it had
+  drawn the dice and the miss on the main generator.
 - `+fgt` (parent `+fgm`, `FUN_6f675460`): a fogged attack's reveal of the attacker,
   FogFlashTime long and FoggedAttackRevealRadius wide (`FUN_6f67fc70`), made at an
   attack's damage point on a unit whose owner does not see the attacker

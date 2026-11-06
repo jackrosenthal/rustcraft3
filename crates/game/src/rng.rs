@@ -131,7 +131,8 @@ impl Default for RandData {
 
 /// Which of the 45 a purpose draws on, as the original's callers name them.
 pub mod stream {
-    /// CAbilityAttack vf194 (FUN_6f4993b0): a new armed unit's first look for a target.
+    /// CAbilityAttack vf194 (FUN_6f4993b0): a new armed unit's first look for a target;
+    /// an attack's dice (FUN_6f498960) and its missile's miss from below (FUN_6f6d48b0).
     pub const ATTACK: usize = 2;
     /// A structure's alarm (CAbilityAlarm vf32, FUN_6f41ae70): the wait before it starts
     /// watching for enemies (event 0xd01c1, FUN_6f436510).

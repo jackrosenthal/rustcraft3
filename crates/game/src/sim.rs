@@ -4528,7 +4528,7 @@ impl World {
             let ub = self.upgrade_bonus(owner, tid);
             let bonus = self.unit(h).map_or(0.0, |u| u.item_bonus.damage) + ub.damage;
             let dice = wp.dice + ub.dice;
-            let raw = wp.base + (0..dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>() + self.primary_attribute(h) + bonus;
+            let raw = wp.base + self.attack_dice(dice, wp.sides) + self.primary_attribute(h) + bonus;
             if let Some(src) = self.unit(h).cloned() {
                 let launch_z = self.objects.units.get(src.type_id).map_or(60.0, |o| o.real("launchZ"));
                 let (class, _) = self.bullet_class(h, 0, wp);
@@ -4563,7 +4563,7 @@ impl World {
         let ub = self.upgrade_bonus(owner, tid);
         let bonus = self.unit(h).map_or(0.0, |u| u.item_bonus.damage) + ub.damage;
         let dice = wp.dice + ub.dice;
-        let raw = wp.base + (0..dice.max(0)).map(|_| self.rng.int(1, wp.sides.max(1)) as f32).sum::<f32>() + self.primary_attribute(h) + bonus;
+        let raw = wp.base + self.attack_dice(dice, wp.sides) + self.primary_attribute(h) + bonus;
         let raw = self.attack_modifiers(vm, h, s.target, raw);
         self.attack_passives(vm, h, s.target);
         self.club_swing(h);
@@ -4637,7 +4637,8 @@ impl World {
                     }
                 }
                 let (class, ability) = self.bullet_class(h, s.target, wp);
-                let bullet = self.bullet_sent(h, s.target, class, ability, at);
+                let mut bullet = self.bullet_sent(h, s.target, class, ability, at);
+                bullet.missed = self.high_ground_miss(h, s.target);
                 self.missiles[main].bullet = Some(bullet);
             }
         } else {
@@ -5125,7 +5126,11 @@ impl World {
                         // Shot from below at a target on higher ground, it may miss
                         // (ChanceToMiss): the target takes nothing and any splash only
                         // MissDamageReduction of the damage (FUN_6f6d48b0, FUN_6f6d2530).
-                        if self.high_ground_miss(m.source, m.target) {
+                        let missed = match bullet.as_ref() {
+                            Some(b) => b.missed,
+                            None => self.high_ground_miss(m.source, m.target),
+                        };
+                        if missed {
                             self.show_miss(m.source);
                             let reduced = m.damage * self.misc_f32("MissDamageReduction", 0.5);
                             self.attack_impact_missed(vm, m.source, m.target, reduced, wp, at);
@@ -5171,15 +5176,29 @@ impl World {
 
     /// Whether a missile attack misses for its target standing on higher ground: a roll
     /// under ChanceToMiss, with the attacker on a lower cliff level than its target.
+    /// It is decided as the missile is sent, on the attack's own generator (stream 2:
+    /// `FUN_6f6d48b0` from the launch, `FUN_6f6d3470`, an artillery's `FUN_6f6d2530`).
+    /// (Provisional: the target's and the attacker's own misses first, Evasion's and
+    /// Curse's kin, `FUN_6f6d6cc0` and `FUN_6f6cd570`, are not read; the port's are
+    /// elsewhere.)
     fn high_ground_miss(&mut self, source: u32, target: u32) -> bool {
         let (Some(s), Some(t)) = (self.unit(source), self.unit(target)) else { return false };
         let ((sx, sy), (tx, ty)) = ((s.x, s.y), (t.x, t.y));
         let chance = self.misc_f32("ChanceToMiss", 0.25);
-        if self.rng.real(0.0, 1.0) >= chance {
+        if self.rand_data.streams[crate::rng::stream::ATTACK].real(0.0, 1.0) >= chance {
             return false;
         }
         let Some(th) = self.terrain_heights.as_ref() else { return false };
         th.level_at(sx, sy) < th.level_at(tx, ty)
+    }
+
+    /// An attack's dice (`FUN_6f498960`, `FUN_6f695c70`, `FUN_6f1ec180`), as its damage
+    /// point comes: on the attack's own generator (stream 2), each die a draw `r`, `r ×
+    /// sides >> 32`, and one.  (Provisional: more than 16 dice drawn so too, where the
+    /// original draws once from a normal spread, `FUN_6f1d12e0`.)
+    fn attack_dice(&mut self, dice: i32, sides: i32) -> f32 {
+        let r = &mut self.rand_data.streams[crate::rng::stream::ATTACK];
+        (0..dice.max(0)).map(|_| ((r.next_u32() as u64 * sides.max(0) as u64) >> 32) as f32 + 1.0).sum()
     }
 
     /// "miss" over an attacker whose attack missed, for whoever sees it (FUN_6f6d6350):

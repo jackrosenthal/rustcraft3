@@ -27,6 +27,9 @@ pub struct Bullet {
     pub at: f64,
     #[serde(default)]
     pub seen: Option<(f32, f32)>,
+    /// Whether it misses, shot from below (`World::high_ground_miss`).
+    #[serde(default)]
+    pub missed: bool,
 }
 
 /// A unit's CAbilityTarget: the ability and owner it counts the missiles of, its slot,
@@ -73,8 +76,8 @@ impl World {
     /// counted on nothing: `FUN_6f59e0b0`), and a missile's at a unit their targets
     /// allow (CMissileFrost, `Mfro`, vf84 `FUN_6f590440`).  (Provisional: Frost's own
     /// check of the target, `FUN_6f671e70`, is not read; the other kinds' hooks, an
-    /// orb's, an arrow's, a critical strike's, Barrage's, Lightning Attack's, are not
-    /// yet modelled: their weapons' own are taken.)
+    /// orb's, an arrow's, a critical strike's, Lightning Attack's, are not yet
+    /// modelled: their weapons' own are taken.)
     pub(crate) fn bullet_class(&self, h: u32, target: u32, wp: &Weapon) -> (&'static Code, Option<Id>) {
         let kind = wp.weapon_type.as_str();
         let splash = kind.starts_with("msplash");
@@ -142,7 +145,7 @@ impl World {
             self.bounce_marked(target);
         }
         let seen = self.unit(target).map(|t| (t.x, t.y));
-        Bullet { slots, counted, at, seen }
+        Bullet { slots, counted, at, seen, missed: false }
     }
 
     /// A bouncing missile marks each unit it is sent at, the first as it is sent and
@@ -202,12 +205,11 @@ impl World {
     }
 
     /// A missile's way on to `end` (game time): toward its target, at `to` then, at its
-    /// speed; it lands on reaching the target's edge.  The
-    /// original's flight (NIpse::CBhPoProjectile, `FUN_6f173450`) falls due at its
-    /// distance over its speed, aimed anew as its target moves (`FUN_6f1739e0`); here the
-    /// target is taken to move evenly through the tick from where it was last seen.
-    /// Returns the game time it lands, if it does this tick (its place then moved
-    /// there), else moves it on.
+    /// speed; it lands on reaching the target's edge.  The original's flight
+    /// (NIpse::CBhPoProjectile, `FUN_6f173450`) falls due at its distance over its
+    /// speed, aimed anew as its target moves (`FUN_6f1739e0`); here the target is taken
+    /// to move evenly from where it was last seen.  Returns the game time it lands, if
+    /// it does by then (its place then moved there), else moves it on.
     pub(crate) fn bullet_flies(m: &mut crate::sim::Missile, to: (f32, f32), edge: f32, end: f64) -> Option<f64> {
         let b = m.bullet.as_mut()?;
         // (From its sending, its last landing for a bounce, or where it was last flown.)

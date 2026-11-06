@@ -5317,15 +5317,23 @@ Formats the port made its own, to be replaced by the original's:
   original's, the port's all before it); from about turn 144 on they part for good,
   born one more (or seven fewer).
 - The loads' parts read in the original (its LAN load of the Mafarazzo TD save,
-  every tag take and free, `FUN_6f1cbf40` and `FUN_6f1cbff0`, while births are 20470
-  to 23870: its turns 44 to 145, `abtest/loadbirths.log`): every tick from 45 to 143
-  takes and frees the same kinds in the same order as the port's, only their slots
-  differing, so the one-turn parts (45, 80, 94, 95, 111, 116, 120, 128, 135, 143) are
-  not of the ticks' order but of the free list below its head: at keepalive 44 the
-  original's holds four slots the port's holds live (0x1ded, 0x1de1, 0x1ddb, 0x1ddc:
-  in the port the `^clu` and `l^pa` of a creep's walk ordered at turn 41's second step
-  as its last walk arrived there, and two tasks of the walk ordered at that turn's
-  last step after it), their objects let go before 44 (not yet read where).
+  every tag take and free, `FUN_6f1cbf40` and `FUN_6f1cbff0`, while births are 20370
+  to 23870: its turns 39 to 145, `abtest/loadbirths.log` and `loadbirths2.log`; the
+  breaks catch the second table's takes and frees too, told by the first table's
+  births and free list head standing): every tick from 41 to 145 takes and frees the
+  first table's objects of the same kinds in the same order as the port's, only
+  their slots differing, so the one-turn parts (45, 80, 94, 95, 111, 116, 120, 128,
+  135, 143) are not of the ticks' order but of the free list below its head.  At
+  keepalive 44 the original's holds four slots the port's holds live (0x1ded, 0x1de1,
+  0x1ddb, 0x1ddc), at 40 three (0x1dfc, 0x1de8, 0x1de9: the second of turn 37's two
+  orders' `task`, `^clu`, and `l^pa` in the port); the parting is older still (not
+  yet read).  One source found: the threads the map's start left asleep, which the
+  port's load kept with their executions' objects (the Initialization trigger's 20
+  seconds of sleeps: its `+tex` at slot 1376, where the save holds a walk's `^clu`,
+  so that walk's cluster was made elsewhere and its frees parted from turn 39); the
+  port's load now lets them go (`Game::restore_original`).  Saved slots the port's
+  start holds with other objects are then four: two timers, a handler, and a
+  modifier, over two leaked locations, a leaderboard, and a handler.
 - A creep KillUnit bursts (ExplodeUnitBJ, read at Mafarazzo TD's first creep to leak
   after the load, turn 144, and the second, 145): WalkEnd's trigger runs before
   Losing life's (the regions a step's walker enters taken oldest first, the two made
@@ -5348,12 +5356,10 @@ Formats the port made its own, to be replaced by the original's:
   detection's record 0.0001 later; its walk's path and cluster at the next step.  It
   leaves no body.  The port does so (`World::burst_begun`, `World::burst_end`): the
   two ticks then take and free as the original's, and the load's keepalives agree
-  again from 146 to 157.  Left in turn 145's tick, at its last main tick (68.175743):
-  the original frees eight of the Fantas trigger's eleven chat registrations
-  (`pcvt`, those of players 9 to 3 and 1, slots 1137 to 1144, in the order 1139,
-  1140, 1138, 1137, 1143, 1144, 1142, 1141; the free's return 0x6f1cbfd5 where the
-  others' is 0x6f1cbfeb), the port none; the flyer game's four `pcvt` at its turn 311
-  are likely the same (not yet read why).
+  again from 146 to 157.  (The eight frees of slots 0x471 to 0x478 at turn 145's last
+  main tick, 68.175743, are the second table's: the first table's head stands
+  through them, and a break on frees of 0x473 caught none then in another run of the
+  same game.)
 - A walker's clustered position (`` `pcu ``, `FUN_6f16f890`: its words +0x9c and
   +0xa0, +0xa4, eight reals, +0xd0, +0xd4, the flag word +0xd8, then its first flag
   set when +0x4 or +0x8 is, its second when it has a separation, +0xac): in all 646

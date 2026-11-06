@@ -278,6 +278,17 @@ impl Game {
         // (The clocks go on from the save's, as the original's loaded game's do.)
         w.carry_clocks_to(s.game_ms);
         let origin = w.pathing.as_ref().map_or([0.0; 2], |p| p.origin);
+        // (The threads the map's start left asleep go, with their executions' objects,
+        // the save's own asleep coming back below: read, Mafarazzo TD's Initialization
+        // trigger's `+tex` at slot 1376, which the port's start had kept for its 20
+        // seconds of sleeps where the save holds a walk's cluster, so that walk's cluster
+        // was made elsewhere and its frees parted from the original's at turn 39.)
+        for s in std::mem::take(&mut w.sleepers) {
+            if s.execution != 0 && w.tags.live.contains_key(&s.execution) {
+                w.tags.release(s.execution);
+            }
+        }
+        w.executions.clear();
         // (The map's start's units go with their own objects, so the units made anew
         // take their slots: read, Mafarazzo TD's flying peasants, made at its start at
         // slots 1383 and 1406 in both games.  Their orders' objects stay, as others.)

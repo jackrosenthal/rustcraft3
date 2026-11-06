@@ -186,6 +186,18 @@ impl Mover {
         }
     }
 
+    /// Its top speed lowered at a clock reading (`FUN_6f15ff40`): a velocity longer than
+    /// the new top is held to it as `set_velocity_within` holds one (`FUN_6f15f7e0` with
+    /// nothing added), its place moved on to then.  Whether it was.
+    pub fn lower_top(&mut self, now: u32, top: u32) -> bool {
+        let len = ef::sqrt(ef::add(ef::mul(self.vx, self.vx), ef::mul(self.vy, self.vy)));
+        if !lt(top, abs(len)) {
+            return false;
+        }
+        self.set_velocity_within(now, self.vx, self.vy, top);
+        true
+    }
+
     /// One step toward a waypoint at a clock reading (`FUN_6f16a790`, `FUN_6f16e910`,
     /// `FUN_6f170880`, `FUN_6f16fe20`).
     pub fn step(&mut self, gait: &Gait, to: (u32, u32), now: u32) -> Step {

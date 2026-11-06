@@ -2140,7 +2140,130 @@ impl World {
     /// (`motion`): toward each waypoint in turn, reached within 0.49 cells with its
     /// heading on it; at the end of a way short of the goal it searches again, and
     /// stops when nothing nearer is found.  Notes whether it stopped in the last step.
+    /// Its walk as the steps begin is kept for a slow landing among them, with whether
+    /// they only moved it on (`World::slowed_among_steps`).
     fn walk_steps(&mut self, h: u32) -> bool {
+        let tick = self.tick_clocks.0;
+        let step = self.step_range.0;
+        let walk = |u: &Unit| (u.path.len(), u.path.first().map(|p| (p.0.to_bits(), p.1.to_bits())), u.extra.coarse.as_ref().map(|c| c.index), u.extra.move_coarse.as_ref().map(|c| c.index), u.extra.walk_research, u.extra.coarse_done, u.extra.facing_goal, u.extra.face_hold, u.extra.walk_blocked, u.extra.walk_wait, u.extra.order_tags.len(), u.extra.walk_serial);
+        let before = self.unit(h).map(|u| (StepMark { tick, step, mover: u.extra.mover, place: (u.x, u.y, u.facing), cell_at: u.extra.cell_at, step_from: u.extra.step_from, plain: false }, walk(u)));
+        let stopped = self.walk_steps_inner(h);
+        if let (Some((mut mark, was)), Some(u)) = (before, self.unit_mut(h)) {
+            if u.extra.step_marks.first().is_some_and(|m| m.tick != tick) {
+                u.extra.step_marks.clear();
+            }
+            mark.plain = !stopped && mark.mover.is_some() && u.extra.mover.is_some() && walk(u) == was;
+            u.extra.step_marks.push(mark);
+        }
+        stopped
+    }
+
+    /// A walker slowed by a missile landing at `at` (the main clock, seconds since the
+    /// game began) among this tick's movement steps, which the port ran before the
+    /// landing.  The buff's slow (`FUN_6f63d510`) changes its move ability's factor
+    /// (`FUN_6f5fb7c0`): a walker slowed from unslowed leaves its cluster for one of
+    /// its own (`World::leaves_cluster`), then its position's top speed is set
+    /// (`FUN_6f6005d0`, `SmartPosition::vf6_6f05c5c0` → `FUN_6f15ff40`), its velocity
+    /// held to the new top at once, its place carried on to then (`Mover::lower_top`).
+    /// So its steps after the landing are walked again from there (when they only moved
+    /// it on; a landing after its last step holds its mover for the next).  Measured:
+    /// Mafarazzo TD's fort runner, the Slow Poison's buff landing in the main tick
+    /// 12.603886 (breakpoints on `FUN_6f15ff40` and `FUN_6f16c880` under the missile's
+    /// landing, `FUN_6f6d4e30` → `CMissileSlowPoison::vf51_6f6227b0` → ... →
+    /// `CBuffSlowPoisonStackInfo::vf213_6f6236e0` → `FUN_6f63d510`), its pings from then
+    /// at 150 a second, the port's at its 280 to the turn's end.
+    pub(crate) fn slowed_among_steps(&mut self, h: u32, at: f64, was_slowed: bool) {
+        let slowed = self.buff_mods(h).0 < 1.0 - 1e-6;
+        if !was_slowed && slowed {
+            self.leaves_cluster(h);
+        }
+        let Some(u) = self.unit(h).filter(|u| u.extra.mover.is_some() && u.steps_walker()) else { return };
+        // (By the main clock of the tick it lands in: read, the runner's pings each the
+        // original's to 0.001 so, 0.15 off by the port's landing's own moment.)
+        let n = self.tick_clocks.1.len();
+        let Some(i) = (0..n).filter(|&i| self.tick_abs(i).is_some_and(|c| c < at - 1e-7)).last() else { return };
+        let clock = self.tick_clocks.1[i];
+        let top = (self.gold_run_speed(h).unwrap_or_else(|| self.current_move_speed(h)) / crate::pathing::CELL).to_bits();
+        let tick = self.tick_clocks.0;
+        let after = u.extra.step_marks.iter().position(|m| m.tick == tick && self.step_abs(m.step).is_some_and(|(_, a)| a > at));
+        log::trace!("{h} slowed at {at:.6} (clock {:.6}), its top {:.4}: steps after {after:?} of {:?}", f32::from_bits(clock), f32::from_bits(top) * 32.0, u.extra.step_marks.iter().map(|m| (m.tick, m.step, m.plain)).collect::<Vec<_>>());
+        match after {
+            None => {
+                if let Some(u) = self.unit_mut(h) {
+                    if u.extra.mover.as_mut().is_some_and(|m| m.lower_top(clock, top)) {
+                        u.extra.placed_late = true;
+                    }
+                }
+            }
+            Some(i) if u.extra.step_marks[i..].iter().all(|m| m.plain) => {
+                let mark = u.extra.step_marks[i].clone();
+                let Some(mut m) = mark.mover else { return };
+                let held = m.lower_top(clock, top);
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.step_marks.truncate(i);
+                    u.extra.mover = Some(m);
+                    (u.x, u.y, u.facing) = mark.place;
+                    u.extra.cell_at = mark.cell_at;
+                    u.extra.step_from = mark.step_from;
+                    u.extra.placed_late = held;
+                }
+                let range = self.step_range;
+                self.step_range = (mark.step, self.step_clocks.len());
+                let stopped = self.walk_steps_inner(h);
+                self.step_range = range;
+                if stopped {
+                    if let Some(u) = self.unit_mut(h) {
+                        u.action = Action::Idle;
+                        u.order = Order::default();
+                    }
+                }
+            }
+            Some(_) => {}
+        }
+    }
+
+    /// A cluster walker slowed leaves its cluster for one of its own (`FUN_6f5fb7c0`, its
+    /// factor passing under 1, → `FUN_6f5fcd50` while its count at +0x80 is 0 →
+    /// `FUN_6f058bc0` → `FUN_6f16e7c0`, `FUN_6f1694f0`, `FUN_6f169550`): a cluster group
+    /// made with the member and the old one's goal (`^clg`), started as a walk's
+    /// (`FUN_6f16bcf0`: its cluster, `^clu`, linked at the list's head, `FUN_6f16bdb0`,
+    /// `FUN_6f14ef80`, `FUN_6f16c880`, and its path, `l^pa`), the group freed at once,
+    /// then the old path and the old cluster, left empty; its ways planned anew as its
+    /// next step begins, newest first.  Traced: Mafarazzo TD's fort runner walking back
+    /// at turn 127, `Bssi`, `Bssd`, then `^clg`, `^clu`, `l^pa`, the `^clg`, the old
+    /// `l^pa`, and the old `^clu` freed.  (Provisional: a group's other members, which
+    /// keep the old cluster, and one walking alone otherwise, are not read.)
+    fn leaves_cluster(&mut self, h: u32) {
+        if !self.cluster_walker(h) {
+            return;
+        }
+        let Some(u) = self.unit(h).filter(|u| u.extra.mover.is_some()) else { return };
+        let n = u.extra.order_tags.len();
+        let kind = |s: u32| self.tags.live.get(&s).map(|e| e.0);
+        if n < 2 || kind(u.extra.order_tags[n - 1]) != Some(*codes::class::PATH) || kind(u.extra.order_tags[n - 2]) != Some(*codes::class::CLUSTER) {
+            return;
+        }
+        let (path, cluster) = (u.extra.order_tags[n - 1], u.extra.order_tags[n - 2]);
+        let group = self.tags.take(codes::class::CLUSTER_GOAL);
+        let new_cluster = self.tags.take(codes::class::CLUSTER);
+        let new_path = self.tags.take(codes::class::PATH);
+        for s in [group, path, cluster] {
+            self.tags.release(s);
+        }
+        let serial = self.tags.born;
+        if let Some(u) = self.unit_mut(h) {
+            u.extra.order_tags[n - 2] = new_cluster;
+            u.extra.order_tags[n - 1] = new_path;
+            u.extra.walk_serial = serial;
+            u.extra.coarse = None;
+            u.extra.move_coarse = None;
+            u.extra.coarse_done = false;
+            u.extra.plan_at = [None; 2];
+            u.extra.walk_research = true;
+        }
+    }
+
+    fn walk_steps_inner(&mut self, h: u32) -> bool {
         use crate::efloat as ef;
         let Some(origin) = self.pathing.as_ref().map(|p| p.origin) else { return true };
         let f = |v: f32| v.to_bits();
@@ -2190,7 +2313,10 @@ impl World {
         let n = clocks.len();
         let (from, until) = self.step_range;
         let from = if self.unit(h).is_some_and(|u| u.extra.mover.is_none()) { from.max(self.unit_mut(h).and_then(|u| u.extra.walk_from.take()).unwrap_or(0)) } else { from };
-        if let Some(&c) = clocks.get(from.wrapping_sub(1)).filter(|_| from > 0) {
+        // (One whose velocity a slow held after the step before keeps its place as of
+        // then, `Mover::lower_top`.)
+        let late = from < until && self.unit_mut(h).is_some_and(|u| std::mem::take(&mut u.extra.placed_late));
+        if let Some(&c) = clocks.get(from.wrapping_sub(1)).filter(|_| from > 0 && !late) {
             // The step before was by the clock before it was set back (`World::wrap_clocks`).
             let back = self.step_wraps.get(from - 1).zip(self.step_wraps.get(from)).is_some_and(|(a, b)| a < b);
             m.placed_at = if back { ef::sub(c, crate::motion::WRAP) } else { c };
@@ -5970,7 +6096,12 @@ impl World {
         // Bladestorming, the hero's attacks strike for nothing (measured: a Blademaster's
         // hits show damage events of 0 while it spins).
         let raw = if self.unit(source).is_some_and(|u| u.buffs.iter().any(|b| self.ability_code(b.ability) == codes::ability::BLADE_MASTER_BLADESTORM)) { 0.0 } else { raw };
+        // (A slow it lays takes the walker's speed at once, `World::slowed_among_steps`.)
+        let before = (self.current_move_speed(target), self.buff_mods(target).0 < 1.0 - 1e-6);
         self.poison_on_hit(vm, source, target);
+        if let Some(at) = self.landing_clock.filter(|_| self.current_move_speed(target) < before.0) {
+            self.slowed_among_steps(target, at, before.1);
+        }
         if !artillery {
             self.deal_damage(vm, source, target, raw, &wp.attack_type);
         }

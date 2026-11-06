@@ -344,6 +344,20 @@ pub struct Upgrading {
     pub paid: (i32, i32),
 }
 
+/// A walker as one of a tick's movement steps began (`UnitExtra::step_marks`): the
+/// tick (its first main tick) and step, its mover and place, and whether the step only
+/// moved it on its way, nothing else of its walk changed.
+#[derive(Clone, Debug, Default)]
+pub struct StepMark {
+    pub tick: i64,
+    pub step: usize,
+    pub mover: Option<crate::motion::Mover>,
+    pub place: (f32, f32, f32),
+    pub cell_at: Option<(u32, u32, f32, f32)>,
+    pub step_from: Option<(f32, f32)>,
+    pub plain: bool,
+}
+
 /// Unit settings scripts change.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct UnitExtra {
@@ -659,6 +673,14 @@ pub struct UnitExtra {
     /// Its walk by the original's movement steps (`motion`), while it walks.
     #[serde(default)]
     pub mover: Option<crate::motion::Mover>,
+    /// Its velocity held to a lowered top after its last step (`Mover::lower_top`): its
+    /// mover's place is as of then, not as of that step's clock.
+    #[serde(default)]
+    pub placed_late: bool,
+    /// Its walk as each of this tick's movement steps began (`World::walk_steps`), for a
+    /// slow landing among them (`World::slowed_among_steps`).
+    #[serde(skip)]
+    pub step_marks: Vec<StepMark>,
     /// The creep sleep effect over a sleeping unit's head.
     #[serde(default)]
     pub sleep_effect: u32,
@@ -1057,6 +1079,8 @@ impl Default for UnitExtra {
             walk_serial: 0,
             yields_to: None,
             mover: None,
+            placed_late: false,
+            step_marks: Vec::new(),
             facing_goal: false,
             coarse: None,
             move_coarse: None,

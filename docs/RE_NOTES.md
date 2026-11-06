@@ -1802,11 +1802,13 @@ these are the findings behind them.
     a creep closing on the second flying peasant at 206.8 a second, 901.47 off it by
     the main clock of the look's tick (57.496616) against its 901, 900.78 by the due
     57.5.  So that game agrees for all 624 turns, the replay game for all 582, and
-    the old capture to turn 659 (each from 576).  Provisional: the next main tick's
-    clock fits as well; and the steps move their walkers by their ticks' main clocks
-    (`World::plan_steps`), which the agent queue's clock as events fall due would
-    not, so how `FUN_6f161040`'s clock (`DAT_6fd53a48` + 0x14 + 0x40, or + 0x68 + 0x40
-    by the position's +0x14 flag, `FUN_6f15c650`) is kept between them is not read.
+    the old capture to turn 659 (each from 576).  Not the next main tick's clock:
+    by that the flyer game's look at 22.0 found a creep more than the original's
+    nine (turn 221).  But the steps move their walkers by their ticks' main clocks
+    (`World::plan_steps`), and a slow's landing carries its walker on by the main
+    clock of its tick (below), so how `FUN_6f161040`'s clock (`DAT_6fd53a48` + 0x54,
+    or + 0xa8 by the position's +0x14 flag, `FUN_6f15c650`) is kept between these is
+    not read.
 - The script's globals run before the map's destructables: Blizzard.j's first timer,
   then the engine's `+gam` `` `flg `` `` `flg `` `` `rel `` `` `rel `` `` `flg ``
   `` `rtl `` `+qum`, then the other globals.
@@ -2177,10 +2179,41 @@ these are the findings behind them.
   the position's top speed set by `SmartPosition::vf6_6f05c5c0` through
   `FUN_6f15ff40`): read, the runner's Slow Poison running out at 10.44, its next two
   steps before the 10.5 ping at its full 280 (the port's had waited for the turn's
-  buff count, a turn late).  Not yet in the port: a slow laid mid-turn takes the
-  speed at once, `FUN_6f15ff40` clamping the velocity (`FUN_6f15f7e0`) as it passes
-  the new top: the runner, struck at about 12.604, walked at 150 from then, the
-  port's at 280 to the turn's end.
+  buff count, a turn late).
+- A slow laid by a missile takes the walker's speed at once.  The buff's slow
+  (`FUN_6f63d510`, from `CBuffSlowPoisonStackInfo::vf213_6f6236e0` for the stacking
+  poison's strike) changes its move ability's factor (`FUN_6f5fb7c0`, the change
+  added to +0x78), which then sets its position's top speed (`FUN_6f6005d0` →
+  `SmartPosition::vf6_6f05c5c0` → `FUN_6f15ff40`): a velocity past the new top is
+  held to it (`FUN_6f15f7e0` with nothing added: the place carried on to now,
+  `FUN_6f1603d0`, the velocity scaled, `FUN_6f1606e0` → `FUN_6f15fc70`), by the main
+  clock of the tick it lands in.  Measured (breakpoints on `FUN_6f15ff40` and
+  `FUN_6f16c880`, Mafarazzo TD's runner, `abtest/mafq.w3x`): both at 12.603886 under
+  the missile's landing (`FUN_6f6d4e30` → `FUN_6f6cd2a0` → `FUN_6f6cf940` →
+  `CMissileSlowPoison::vf51_6f6227b0` → ... → `FUN_6f63d510`, from the projectile's
+  `NIpse::CBhPoProjectile::vf18_6f173cf0`), the only such stops in 12.55 to 12.75.
+  The port lands its missiles after the tick's steps, so it walks a slowed walker's
+  steps after the landing again from there, when they only moved it on, and holds a
+  walker slowed after its last step for its next (`World::slowed_among_steps`,
+  `Mover::lower_top`, `UnitExtra::placed_late`).  Read: each of the runner's 151
+  pings (`abtest/mafqp.w3x`) the original's to 0.001 (from 126); held by the port's
+  landing's own moment, 12.60506, they were 0.15 off.
+- A walker slowed from unslowed (its factor under 1 from 1) leaves its cluster: with
+  its count at +0x80 0 (`FUN_6f5fcd50`, the count up with each such slow and down
+  with each end, `FUN_6f5fc0e0`), its position's member is taken from its cluster
+  into a new group of its own with the old one's goal (`FUN_6f058bc0` →
+  `FUN_6f16e7c0` → `FUN_6f1694f0` → `FUN_6f169550`: `FUN_6f16dd70`, `FUN_6f058430`,
+  `FUN_6f169620`, `FUN_6f16db30`), started as a walk's (`FUN_6f16bcf0`): its cluster
+  linked at the head (`FUN_6f16bdb0` → `FUN_6f14ef80` → `FUN_6f16c880`), the group
+  freed, then the old path and the old cluster, their ways planned anew as its next
+  step begins (`World::leaves_cluster`).  This is the walk back's new `^clg`, `^clu`,
+  and `l^pa` at turn 127 after the strike's `Bssi` and `Bssd`, the `^clg`, the old
+  `l^pa`, and the old `^clu` freed; the runner's first slow, at turn 9, found it
+  standing at its post, in no cluster.  Provisional: a group's other members are not
+  read.  With these the Plague Tower's trace agrees to turn 138 (from 126); at turn
+  139 the original sends the tower's missile (its damage point at 13.804) before the
+  runner's walk ends at the tick's third step (13.859), where the port, its steps
+  first, has them the other way.
 - A structure's look finds its candidates by the proximity map's radius search
   (`FUN_6f493d20` → `FUN_6f67e790` with case 10 → `FUN_6f059c10`, `FUN_6f05ce60`):
   the radius the least of its acquisition range and its weapon's (`FUN_6f498e50`)
@@ -2193,10 +2226,7 @@ these are the findings behind them.
   the look due 11.8057, in turn 119.  The port so judges a walker for an idle
   structure's look (`World::find_target_inner`; provisional: by its place at the
   step before the look carried back along its velocity, for units the old test), and
-  the Plague Tower's trace agrees to turn 126.  Open: at turn 127 the original's walk
-  back makes a new cluster group, cluster, and path (`^clg`, `^clu`, `l^pa`, the
-  `^clg` and the old path freed at once) as the tower's Slow Poison lands, which the
-  port does not; what remakes it is not yet read.
+  the Plague Tower's trace agrees to turn 126 (to 138 with the slow's cluster, above).
 - The look's timer (event 0xd01c1, `CAbilityAttack::vf3_6f49a5f0` → `FUN_6f493ff0`)
   starts itself again as it falls due, before its search: a second on with a target
   held (`DAT_6fd6bf44`), else half a second (`DAT_6fd6bf40`).  So a structure's look

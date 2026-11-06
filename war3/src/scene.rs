@@ -894,6 +894,7 @@ impl Scene {
                         seed,
                         map_stat: crate::replays::map_stat(&data, &map_path),
                         game_name: None,
+                        net: None,
                     }));
                 }
                 Some(g)
@@ -3322,6 +3323,7 @@ impl Scene {
             g.world.game_speed = speed as i32;
             if let Some(r) = g.recorder.as_mut() {
                 r.replay.game_name = Some(role.game.clone());
+                r.replay.net = Some(role.record.clone());
             }
         }
         self.net = Some(crate::net::Session::new(role));

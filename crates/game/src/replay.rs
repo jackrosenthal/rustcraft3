@@ -201,6 +201,36 @@ pub struct Replay {
     /// A network game's name, as its record has it.
     #[serde(default)]
     pub game_name: Option<String>,
+    /// A network game's setup, as its record copies it.
+    #[serde(default)]
+    pub net: Option<NetRecord>,
+}
+
+/// A network game's setup as the original's record copies it (read: its replay of a
+/// Mafarazzo TD game on LAN, against Booty Bay's): the game type its host offered (1
+/// for a custom map's, 9 for a Blizzard map's), the slot table's layout as the
+/// record's select mode (3 with fixed player settings), and its slots as they were,
+/// their count the record's players' and start spots' (12 there, 2 for Booty Bay),
+/// fixed races with no selectable flag, and empty slots' download unknown (255).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct NetRecord {
+    pub game_type: u32,
+    pub layout: u8,
+    pub slots: Vec<NetRecordSlot>,
+}
+
+/// A slot of the slot table, as W3GS has it.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+pub struct NetRecordSlot {
+    pub pid: u8,
+    pub download: u8,
+    pub status: u8,
+    pub computer: bool,
+    pub team: u8,
+    pub color: u8,
+    pub race: u8,
+    pub ai: u8,
+    pub handicap: u8,
 }
 
 /// The first bytes of replays this game recorded in its own format before it wrote the
@@ -290,14 +320,17 @@ impl Replay {
             Some(4) => 4,
             _ => 0x20,
         };
-        let slots = lobby
-            .iter()
-            .map(|s| {
-                let used = !matches!(s.fill, crate::SlotFill::Empty);
-                let computer = matches!(s.fill, crate::SlotFill::Computer);
-                w3g::Slot { pid: if used && !computer { s.player + 1 } else { 0 }, download: 100, status: if used { 2 } else { 0 }, computer, team: s.team as u8, color: s.color as u8, race: race(s.race), ai: s.difficulty as u8, handicap: s.handicap as u8 }
-            })
-            .collect::<Vec<_>>();
+        let slots = match &self.net {
+            Some(n) => n.slots.iter().map(|s| w3g::Slot { pid: s.pid, download: s.download, status: s.status, computer: s.computer, team: s.team, color: s.color, race: s.race, ai: s.ai, handicap: s.handicap }).collect(),
+            None => lobby
+                .iter()
+                .map(|s| {
+                    let used = !matches!(s.fill, crate::SlotFill::Empty);
+                    let computer = matches!(s.fill, crate::SlotFill::Computer);
+                    w3g::Slot { pid: if used && !computer { s.player + 1 } else { 0 }, download: 100, status: if used { 2 } else { 0 }, computer, team: s.team as u8, color: s.color as u8, race: race(s.race), ai: s.difficulty as u8, handicap: s.handicap as u8 }
+                })
+                .collect::<Vec<_>>(),
+        };
         let multiplayer = lobby.iter().any(|s| matches!(s.fill, crate::SlotFill::Remote));
         // The settings word holds the advanced options eight bits up and the speed (fast,
         // 2) below them, as the original's games are.
@@ -361,16 +394,24 @@ impl Replay {
             host,
             game_name: if multiplayer { self.game_name.clone().unwrap_or_else(|| self.map.clone()) } else { "Local Game".into() },
             stat,
-            // As the original writes them: a network game's players and game type 9, a
-            // game played alone 12 and 1.
-            player_count: if multiplayer { humans.max(1) as u32 } else { 12 },
-            game_type: if multiplayer { 9 } else { 1 },
+            // As the original writes them: a network game's its slot table's slots and
+            // its offered type (`NetRecord`), a game played alone 12 and 1.
+            player_count: match &self.net {
+                Some(n) => n.slots.len() as u32,
+                None if multiplayer => humans.max(1) as u32,
+                None => 12,
+            },
+            game_type: match &self.net {
+                Some(n) => n.game_type,
+                None if multiplayer => 9,
+                None => 1,
+            },
             language: 0,
             players,
             start_spots: slots.len() as u8,
             slots,
             seed: self.seed,
-            select_mode: 0,
+            select_mode: self.net.as_ref().map_or(0, |n| n.layout),
             records,
         };
         Ok(r.to_bytes())
@@ -390,7 +431,7 @@ impl Replay {
         flate2::read::ZlibDecoder::new(body).read_to_end(&mut json)?;
         if old {
             let r: Replay4 = postcard::from_bytes(&json)?;
-            return Ok(Replay { map: r.map, lobby: r.lobby, persist: r.persist, campaign: r.campaign, version: r.version, flags: r.flags, local_name: r.local_name, frames: r.frames, seed: 0, map_stat: None, game_name: None });
+            return Ok(Replay { map: r.map, lobby: r.lobby, persist: r.persist, campaign: r.campaign, version: r.version, flags: r.flags, local_name: r.local_name, frames: r.frames, seed: 0, map_stat: None, game_name: None, net: None });
         }
         Ok(postcard::from_bytes(&json)?)
     }
@@ -435,7 +476,7 @@ impl Replay {
         }
         let map_stat = Some(MapStat { path: stat.map_path.clone(), width: stat.map_width, height: stat.map_height, xoro: stat.map_xoro, sha1: stat.map_sha1 });
         let game_name = multiplayer.then(|| r.game_name.clone());
-        Ok(Replay { map: s.map, lobby: s.lobby, persist: s.persist, campaign: s.campaign, version: s.version, flags: s.flags, local_name: s.local_name, frames, seed: r.seed, map_stat, game_name })
+        Ok(Replay { map: s.map, lobby: s.lobby, persist: s.persist, campaign: s.campaign, version: s.version, flags: s.flags, local_name: s.local_name, frames, seed: r.seed, map_stat, game_name, net: None })
     }
 
     /// A game's setup from the original's record: its map as its description names it,

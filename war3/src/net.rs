@@ -174,6 +174,8 @@ pub struct Role {
     pub seed: u32,
     /// The game's name, as its replay's record keeps it.
     pub game: String,
+    /// The game's setup, as its replay's record copies it.
+    pub record: w3_game::replay::NetRecord,
 }
 
 impl std::fmt::Debug for Role {

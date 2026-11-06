@@ -700,6 +700,13 @@ impl Lan {
         s
     }
 
+    /// The game's setup as its replay's record copies it: the type offered and the slot
+    /// table as the game began.
+    fn record(game_type: u32, table: &w3_net::slot::SlotTable) -> w3_game::replay::NetRecord {
+        let slots = table.slots.iter().map(|s| w3_game::replay::NetRecordSlot { pid: s.pid, download: s.download, status: s.status, computer: s.computer, team: s.team, color: s.color, race: s.race, ai: s.ai, handicap: s.handicap }).collect();
+        w3_game::replay::NetRecord { game_type, layout: table.layout, slots }
+    }
+
     /// Each person's id and player.
     fn players(&self) -> Vec<(u8, u8)> {
         self.setup
@@ -717,7 +724,8 @@ impl Lan {
         let mut h = self.host.take()?;
         h.end_countdown();
         let seed = h.slots.seed;
-        let role = net::Role { link: net::Link::Host(h), players: self.players(), seed, game: self.setup.game.clone() };
+        let record = Lan::record(h.info.game_type, &h.slots);
+        let role = net::Role { link: net::Link::Host(h), players: self.players(), seed, game: self.setup.game.clone(), record };
         if self.setup.saved {
             let me = self.setup.slot_of(HOST_PID).map_or(0, |s| s.player);
             let (map, lobby) = self.start_setup();
@@ -731,7 +739,8 @@ impl Lan {
     fn client_start(&mut self) -> Option<Event> {
         let c = self.client.take()?;
         let seed = c.slots.seed;
-        let role = net::Role { link: net::Link::Client(c), players: self.players(), seed, game: self.setup.game.clone() };
+        let record = Lan::record(self.joined.as_ref().map_or(GAME_CUSTOM, |g| g.game_type), &c.slots);
+        let role = net::Role { link: net::Link::Client(c), players: self.players(), seed, game: self.setup.game.clone(), record };
         if self.setup.saved {
             let me = self.setup.slot_of(self.me).map_or(0, |s| s.player);
             let (map, lobby) = self.start_setup();

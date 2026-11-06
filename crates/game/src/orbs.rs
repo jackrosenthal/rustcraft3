@@ -184,17 +184,23 @@ impl World {
         damage
     }
 
-    /// Pillage: structures hit pay their cost times DataA per share of life dealt,
-    /// gathered until it makes a step of DataB, after the damage event (measured: a
-    /// grunt's five hits of about 10 on a 500-life farm pay 4 gold and 1 lumber, 0.82 and
-    /// 0.2 each, the gold read at each hit's event the hits' before).
+    /// Pillage: what its targets allow (Pillage's own: structures, enemy or neutral)
+    /// pays its cost times DataA per share of life dealt, gathered until it makes a step
+    /// of DataB, after the damage event (measured: a grunt's five hits of about 10 on a
+    /// 500-life farm pay 4 gold and 1 lumber, 0.82 and 0.2 each, the gold read at each
+    /// hit's event the hits' before).  One whose targets a map widened pays on units
+    /// too (Mafarazzo TD's banks, targets "enemies", on the runners: provisional, the
+    /// same share of a unit's cost).
     pub(crate) fn pillage(&mut self, attacker: u32, target: u32, dealt: f32) {
-        let Some(t) = self.unit(target).filter(|t| t.is_building) else { return };
+        let Some(t) = self.unit(target) else { return };
         let Some(o) = self.objects.units.get(t.type_id) else { return };
         let (cost_gold, cost_lumber, max_life) = (o.real("goldcost"), o.real("lumbercost"), t.max_life.max(1.0));
         let Some(u) = self.unit(attacker) else { return };
         let owner = u.owner;
         let Some((a, lvl)) = u.abilities.iter().copied().find(|&(a, _)| self.ability_code(a) == codes::ability::PILLAGE && self.ability_enabled(owner, a)) else { return };
+        if self.cast_target_error(attacker, a, target).is_some() {
+            return;
+        }
         let lvl = lvl.max(1) as u32;
         let share = dealt / max_life * self.data(a, "DataA", lvl);
         let step = self.data(a, "DataB", lvl).max(1.0);

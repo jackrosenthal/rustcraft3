@@ -21,6 +21,12 @@ original images.
   `war3map.wts` string n (`FUN_6f6ee6f0` parses the number), so a custom unit's name,
   tip, and tooltip show as written (Mafarazzo TD's towers are named only so) and
   GetUnitName gives them.
+- **Target flags** (`FUN_6f6a9350`, table of 51 name and bit pairs at `0x6fce61b8`,
+  compared ignoring case): each flag also goes by its first four letters, and some by
+  more names: `enem`/`enemies`/`enemy` 0x10000, `alli`/`allies`/`ally` 0x4000,
+  `frie`/`friend` 0x6000 (player and ally), `nots`/`notself` 0x1e000 (player, ally,
+  neutral, enemy), `tote`/`totem` and `ward` both 0x10, `_` 0xfdd1f00e; an unknown
+  name logs `Unknown Target Flag`.  The editor writes the plural forms (`enemies`).
 
 ## Scripts
 
@@ -1347,6 +1353,13 @@ these are the findings behind them.
   trained does (`Nofood`); custom maps limit structures so (Mafarazzo TD's HSBC uses
   1 and its Castle makes 1: one HSBC a player).  Melee data has no such structure but
   the neutral `nfgo`.  Provisional: whether the construction's start checks again.
+- Pillage (`Asal`, CAbilitySalvage) pays on what its level's targets allow: its own
+  data's `structure,enemy,neutral` keeps it to buildings, but a map may widen them
+  (Mafarazzo TD's banks, A000, `enemies`, are made to pay on the runners; their
+  tooltips' "~4-5 dollars per hit" is the cost share on a 13000-life runner made from
+  hhdl, 240 gold: 400 / 13000 × 0.6 × 240).  Provisional: that a unit pays the same
+  share of its gold and lumber cost as a structure, and of the whole damage when the
+  hit kills.
 
 ## Where the port departs from the original
 

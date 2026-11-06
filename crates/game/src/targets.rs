@@ -23,6 +23,32 @@ const CLASSES: [(&str, &str, &str); 9] = [
     ("item", "Targetitem", "Noitem"),
 ];
 
+/// A target flag's other names, as the original reads them (FUN_6f6a9350's table at
+/// 0x6fce61b8: each flag by its first four letters too, and the plurals the editor
+/// writes), with the name used here.
+const FLAG_NAMES: [(&str, &str); 20] = [
+    ("aliv", "alive"),
+    ("alli", "ally"),
+    ("allies", "ally"),
+    ("deco", "decoration"),
+    ("debr", "debris"),
+    ("enem", "enemy"),
+    ("enemies", "enemy"),
+    ("grou", "ground"),
+    ("frie", "friend"),
+    ("invulnerable", "invu"),
+    ("mech", "mechanical"),
+    ("neut", "neutral"),
+    ("nonh", "nonhero"),
+    ("nots", "notself"),
+    ("orga", "organic"),
+    ("play", "player"),
+    ("stru", "structure"),
+    ("tote", "ward"),
+    ("totem", "ward"),
+    ("vulnerable", "vuln"),
+];
+
 impl World {
     /// Why `target` is not a valid target of ability `a` cast by `h`, as a command
     /// error key; None when it is.
@@ -36,6 +62,7 @@ impl World {
             .unwrap_or_default()
             .split(',')
             .map(|s| s.trim().to_ascii_lowercase())
+            .map(|s| FLAG_NAMES.iter().find(|(other, _)| *other == s).map_or(s, |(_, name)| name.to_string()))
             .filter(|s| !s.is_empty() && s != "_" && s != "none")
             .collect();
         if flags.is_empty() {

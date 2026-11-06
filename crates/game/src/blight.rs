@@ -145,7 +145,7 @@ impl World {
             }
             let Some((a, lvl)) = self.ability_with_code(h, codes::ability::BLIGHT_GROWTH) else { continue };
             let Some(o) = self.objects.abilities.get(a) else { continue };
-            let area = o.level_real("Area", lvl);
+            let area = effect_area(o.level_real("Area", lvl));
             if u.extra.blight_radius >= area {
                 continue;
             }
@@ -155,14 +155,14 @@ impl World {
         // (The tick's last main tick, for a built structure's steps.)
         let last = self.tick_clocks.1.len().checked_sub(1).and_then(|i| self.tick_abs(i));
         for (h, x, y, step, interval, area, add) in grow {
-            // Step k falls due k intervals after the structure was made (traced: Booty
-            // Bay's town halls' dispels, 64 every 0.08 to 960, end 1.2 seconds in).
-            // A built structure's steps begin as it is done, its first at once and one
-            // each interval on, on the main clock (its effect's timer, `FUN_6f491250`
-            // and `FUN_6f490070`, the effect `Xbli`; read: Twisted Meadows' human
+            // A structure's steps begin as it is made outright or done, its first at
+            // once and one each interval on, on the main clock (the growth's vf57,
+            // `FUN_6f423610`, starting its effect's timer, `FUN_6f491250` and
+            // `FUN_6f490070`, the effect `Xbli`; read: Twisted Meadows' human
             // computer's first farm, done at 52.668034, its dispel's objects freed as
-            // turn 536 starts, 64 every 0.08 to 768).  (Provisional: the made one's
-            // first step an interval on, as the port has had it.)
+            // turn 536 starts, 64 every 0.08 to 768; its night elf computer's game's
+            // three town halls' and entangled mine's, steps at 0 and each 0.08 to 1.2
+            // and 0.88).  The timer below is for one without a start.
             let mut radius = None;
             if let Some(u) = self.unit_mut(h) {
                 u.extra.blight_timer += dt;
@@ -202,4 +202,13 @@ impl World {
             }
         }
     }
+}
+
+/// A blight effect's Area as it keeps it: rounded to the 128 grid, halves up
+/// (`FUN_6f4904e0`, by DAT_6fd723dc 64.0 and DAT_6fd723d8 128.0, set at 0x6f017bf0).  A
+/// large dispel's or growth's 960 is 1024, sixteen steps of 64 (read: Twisted Meadows'
+/// three town halls' effects, sixteen steps to 1.2); a small one's 768 stays 768.
+fn effect_area(area: f32) -> f32 {
+    let a = area + 64.0;
+    a - a % 128.0
 }

@@ -1283,6 +1283,11 @@ impl crate::world::World {
             // Blight growth's objects (Abli, Xbli, `pos, two ^pmr), released as its
             // dispel ends (`World::update_blight`).
             u.extra.blight_slots = blight.map(|b| slots[b..b + 5].to_vec()).unwrap_or_default();
+            // Its steps begin as it is made, by the main clock (`World::update_blight`; one
+            // built begins them again as it is done).
+            if blight.is_some() {
+                u.extra.blight_start = Some(base as f64);
+            }
             u.extra.footprint_slots = footprint.map(|f| slots[f..f + 3].to_vec()).unwrap_or_default();
             u.extra.flyer_pil = flyer.filter(|_| !sleeps).map(|k| slots[k]);
             u.extra.ai_slots = ai_refs.map(|k| vec![(slots[k], births[k]), (slots[k + 1], births[k + 1])]).unwrap_or_default();

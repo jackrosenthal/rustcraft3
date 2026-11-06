@@ -807,11 +807,6 @@ impl World {
         let e = crate::natives::units::create_unit_exact(self, owner, id, x, y, facing);
         if e != 0 {
             self.cover_mine(e, mine);
-            if instant {
-                if let Some(u) = self.unit_mut(e) {
-                    u.extra.blight_timer = 0.08;
-                }
-            }
             if !instant {
                 if let Some(u) = self.unit_mut(e) {
                     u.constructing = Some(u.build_time);

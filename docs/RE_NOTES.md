@@ -4342,6 +4342,27 @@ Formats the port made its own, to be replaced by the original's:
   goes, for one made outright).  Tried: each made outright at its last step on the
   main clock (`Tags::doom_at`, its making plus 15 intervals), the keepalives part at
   turn 10 (another made outright then freed early; not read which).
+- A blight effect keeps its Area rounded to the 128 grid, halves up, and begins its
+  steps as its structure is made outright, as one built does as it is done.
+  `FUN_6f4904e0` (CEffectBlight's setup, from the growth's vf32 and
+  CAbilityBlightPlacement's vf262) keeps the Area as (Area + 64) less its remainder
+  by 128 (DAT_6fd723dc 64.0 and DAT_6fd723d8 128.0, set by `FUN_6f070d80` at
+  0x6f017bf0 and 0x6f017c00), the point likewise (halves away from zero); each step
+  (`FUN_6f490070`) counts one more DataA and ends the effect (`FUN_6f04c410` with
+  `FUN_6f4901f0`) once the radius reaches that Area within 0.001.  The growth's vf57
+  (`FUN_6f40b7c0`) starts its timer through `FUN_6f423610` (`FUN_6f491250`, the
+  first step at once).  So a large dispel's or growth's 960 is 1024, sixteen steps
+  of 64, and a small one's 768 twelve.  Read (breaks at `FUN_6f490070` and
+  `FUN_6f491250`, Twisted Meadows' night elf computer's game): the four effects
+  begun at clock 0 from `FUN_6f423610`, a step there and one each 0.08 on, the
+  three town halls' (Abdl) to 1.2 and the entangled mine's (Abds) to 0.88; their
+  objects freed at 1.200099 and in turn 9.  The port had counted a structure made
+  outright on a turn's timer, its first step an interval on and to 960 (fifteen),
+  which comes to the same turn but frees its objects at the turn's end; it now
+  starts its steps on the main clock as it is made (`World::tag_unit`'s
+  `blight_start`) and keeps the rounded Area (`blight::effect_area`), its objects
+  freed in the step after its last as a built one's.  The keepalives so agree to
+  turn 142, from 13 (the entangled mine's, made outright too, by the same count).
 - An entangled mine is no town site of its own: the original's save of a night elf
   start (`nel.w3x`) holds the map's four mines' four sites, the first naming the
   entangled mine (the mine it covers made at the map's start with that site).  The
@@ -5375,8 +5396,8 @@ Formats the port made its own, to be replaced by the original's:
   that turn's first order: its twelfth step at 53.548 (the port had counted a turn's
   0.1 a time from the turn after, a turn late).  The port now counts a built one's
   steps on the main clock from its end, the first at once, and frees its objects in
-  the step after its last (`World::update_blight`).  Provisional: one made outright
-  (Booty Bay's town halls) keeps the port's count, its first step an interval on.
+  the step after its last (`World::update_blight`).  One made outright so too, from
+  its making (below).
 - An AI's harvest pass passes over a hidden worker: `FUN_6f9c7700` takes only a unit
   whose +0x20 has its flag 1 clear, which `FUN_6f688300` sets as a unit is hidden
   (the gold mine's let-in, `FUN_6f5c74c0`, hides its worker through `FUN_6f69c5c0`,

@@ -1582,6 +1582,17 @@ these are the findings behind them.
     1x on the hidden display, its replay panel showing the game's time).  A replay can
     also carry a recorded game's actions in another's record (`w3gsplice`), for tracing
     the original as it plays one back: no keepalives then, but its objects and steps.
+    A network game's record copies the game's setup: the game type its host offered
+    (1 for a custom map's, 9 for a Blizzard map's), its slot table's slots as they were
+    (empty slots' download 255, fixed player settings' races without the selectable
+    flag), their count as the players' count and start spots, and its layout as the
+    select mode (3 with fixed player settings); read on the original's replay of a
+    Mafarazzo TD LAN game (12 slots, type 1, mode 3) against Booty Bay's (2, 9, 0).
+    The port's (`replay::NetRecord`, from the host's or the joined game's slot table
+    and type) is now the original's record for record but the language word, and the
+    original's replay of that game plays on the port (`w3gplay`, which now loads a
+    custom map's rule set and its computers as a network game does) to turn 576, as
+    its LAN capture does.
   With these Booty Bay without actions (`docs/reference/bootybay_quiet_long_*`) agrees
   with the original's trace and keepalives for all 7300 turns compared, its replay
   (`docs/reference/bootybay_quiet_long.w3g`, `w3gplay`) to turn 9014, and the long

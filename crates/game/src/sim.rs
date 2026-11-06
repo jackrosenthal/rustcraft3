@@ -413,6 +413,18 @@ impl World {
     /// When a unit's look for a target this tick fell due: as far back from the tick's
     /// end as its wait has run past it.
     fn look_time(&self, h: u32) -> f64 {
+        // A structure's is its timer's due, from which its attack counts on, on the agent
+        // queue (read: the flyer game's Arrow Tower's look due 21.662787, its damage point
+        // 0.1 and 0.3 on, 22.062787, its missile sent by the main clock 22.062298;
+        // `World::bullet_aimed`).
+        if self.attacks_in_place(h) {
+            if let Some((_, due, _)) = self.unit(h).and_then(|u| u.extra.look_timer) {
+                let due = due as f64;
+                if due > self.time_exact - self.tick_dt as f64 - 1e-6 && due <= self.time_exact + 1e-6 {
+                    return due;
+                }
+            }
+        }
         let late = self.unit(h).map_or(0.0, |u| u.acquire_timer.clamp(-self.tick_dt, 0.0));
         self.time_exact + late as f64
     }
@@ -5535,7 +5547,7 @@ impl World {
                 // provisional: the other units' still fly the port's way).
                 if wp.weapon_type != "artillery" && self.attacks_in_place(h) {
                     let mut m = self.missiles[main].clone();
-                    self.bullet_aimed(&mut m);
+                    self.bullet_aimed(&mut m, at);
                     self.missiles[main] = m;
                 }
             }

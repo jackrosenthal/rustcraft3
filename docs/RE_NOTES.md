@@ -2073,15 +2073,21 @@ these are the findings behind them.
   and at each tick's end (`World::bullet_flies`; provisional).  With this the Plague
   Tower's trace agrees to turn 181 (from 140), its 151 pings as before; at turn 182
   the original frees a missile's objects (sent at 12.846) a turn before the port.
-  Open in the flyer game: the damage point's clock 22.062298 is the main tick's
-  before its due, 22.062787, the look's due (21.662787) and 0.1 and 0.3 on, where
-  the port's look is the game time of its main tick (21.660011), its damage point
-  so 22.060011 and its flight from 22.052299, two ticks early; and the original's R
-  is the port's target's place carried on 0.029998 seconds more (a step: x 0.00698,
-  y 0.20242 cells along its velocity), the port's creep walking a step behind
-  (provisional: its plan refused six steps by the port's budget, steps 667 to 672).
-  The port's two errors so far meet: it lands in the main tick 22.392242, a tick
-  before the original's.
+  A structure's damage point is counted from its look's due, as its attack's timers
+  on the agent queue are (the look's due, the first attack 0.1 on, the damage point
+  its damage point on), its missile sent by the main clock of the last main tick
+  short of it (`World::look_time`, `World::bullet_aimed`): the flyer game's look due
+  21.662787, its damage point 22.062787 (the port's 22.062786), sent by 22.062298, its
+  R and V the original's to the last digit, its time 0.334214, landing in the main
+  tick 22.397242.  (The port had counted from the game time of the look's main tick,
+  21.660011, its flight from 22.052299.)  The flyer game then parts at turn 274: the
+  Arrow Tower's eighth missile kills its creep (60 life, 8.25 a hit), whose death the
+  original follows with ten tasks (a block, eight tasks, a block), an effect made and
+  gone (`+EIP`, `` `pos ``, two `^pmr`, `pudd`), the bounty's `+tex`, 28 of its objects
+  freed, and the tower's take-up of the next creep; the port makes only the `+tex`,
+  and its tower's swing begun before the death sends a missile at the dead creep.
+  Neither the death's objects nor an attack ended by its target's death (the
+  reaction's wait, task 0xd0163, `FUN_6f49ea80`) is yet in the port.
 - A missile landed starts its removal timer (CBullet vf42, CMissile `FUN_6f6d0cf0`,
   CArtillery `FUN_6f6d0c70`, then `FUN_6f6d0c90`: MiscData's BulletDeathTime, 5, event
   0xd019f at +0x64), at whose end it destroys itself (vf3 `FUN_6f6d4e30`, vf23

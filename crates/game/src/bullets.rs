@@ -151,7 +151,7 @@ impl World {
         // (One sent among the steps takes its target where it is first flown: as one
         // sent after them, `World::points_before`.)
         let seen = self.unit(target).filter(|_| self.after_steps).map(|t| (t.x, t.y));
-        log::trace!("bullet of {h} sent at {target} at {at:.6} (main clock {:.6}): from {:?} to {:?}", self.bullet_clock(self.main_tick_time(at)), self.unit(h).map(|u| (u.x, u.y)), self.unit(target).map(|t| (t.x, t.y, t.collision)));
+        log::trace!("bullet of {h} sent at {target} at {at:.6} (main clock {:.6}): from {:?} to {:?}, launch {:?}", self.bullet_clock(self.main_tick_time(at)), self.unit(h).map(|u| (u.x, u.y, u.facing)), self.unit(target).map(|t| (t.x, t.y, t.collision)), self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map(|o| (crate::objects::id_str(o.id), o.real("launchX"), o.real("launchY"), o.real("launchZ"))));
         Bullet { slots, counted, at: self.main_tick_time(at), seen, missed: false, due: None }
     }
 
@@ -211,11 +211,16 @@ impl World {
         // So does a laid buff's end (`World::update_buffs`).
         let end = self.bullet_clock(self.time_exact);
         let begin = self.bullet_clock(start);
-        let ends = self.unit_order.iter().filter_map(|&h| self.unit(h)).flat_map(|u| u.buffs.iter().filter(|b| b.slot != 0).filter_map(|b| b.ends_at)).filter(|&e| e > begin - 1e-6 && e <= end + 1e-6).fold(None, |a: Option<f64>, e| Some(a.map_or(e, |a| a.min(e))));
+        let ends = self.laid_buff_end(begin, end);
         match (first, ends) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         }
+    }
+
+    /// The first end of a laid buff from main clock `begin` to `end`, if any.
+    pub(crate) fn laid_buff_end(&self, begin: f64, end: f64) -> Option<f64> {
+        self.unit_order.iter().filter_map(|&h| self.unit(h)).flat_map(|u| u.buffs.iter().filter(|b| b.slot != 0).filter_map(|b| b.ends_at)).filter(|&e| e > begin - 1e-6 && e <= end + 1e-6).fold(None, |a: Option<f64>, e| Some(a.map_or(e, |a| a.min(e))))
     }
 
     /// The main clock's reading (its single's bits) in the main tick an event due at
@@ -305,16 +310,19 @@ impl World {
         self.fog_reveals.retain(|r| r.2 + DESTROYED_AFTER >= now - 1e-4);
     }
 
-    /// A missile at a unit aimed where it meets it (CMissile's launch, `FUN_6f6d3470`):
-    /// the target's place carried on to the main clock then (`FUN_6f05a970`) and its
-    /// velocity (`FUN_6f05aaa0`), the meeting the later root of |R + V t| = s t
-    /// (`FUN_6f9ac7f0`), at its place then (or at its place, with none), the flight
-    /// straight there, not aimed anew (`FUN_6f173450`), due its distance across the
-    /// ground over its speed on (`FUN_6f1737d0`, `FUN_6f171870`).
-    pub(crate) fn bullet_aimed(&self, m: &mut crate::sim::Missile) {
+    /// A missile at a unit sent at `at` (its damage point's due) aimed where it meets it
+    /// (CMissile's launch, `FUN_6f6d3470`): the target's place carried on to the main
+    /// clock then (`FUN_6f05a970`) and its velocity (`FUN_6f05aaa0`), the meeting the
+    /// later root of |R + V t| = s t (`FUN_6f9ac7f0`), at its place then (or at its
+    /// place, with none), the flight straight there, not aimed anew (`FUN_6f173450`),
+    /// due its distance across the ground over its speed on (`FUN_6f1737d0`,
+    /// `FUN_6f171870`).
+    pub(crate) fn bullet_aimed(&self, m: &mut crate::sim::Missile, at: f64) {
         let Some(b) = m.bullet.as_mut() else { return };
         let Some(t) = self.unit(m.target) else { return };
-        let c0 = self.bullet_clock(b.at);
+        // (Sent at the damage point, an event on the agent queue due `at`, by the main
+        // clock then: that of the last main tick short of it.)
+        let c0 = (0..self.tick_clocks.1.len()).filter_map(|i| self.tick_abs(i)).filter(|&c| c < at - 1e-7).last().unwrap_or_else(|| self.bullet_clock(b.at));
         let clock = ((c0 - self.clock_wraps as f64 * 300.0) as f32).to_bits();
         let origin = self.pathing.as_ref().map_or([0.0; 2], |p| p.origin);
         let (place, v) = match t.extra.mover.filter(|mv| t.steps_walker() && (mv.vx & 0x7fff_ffff != 0 || mv.vy & 0x7fff_ffff != 0)) {
@@ -341,6 +349,7 @@ impl World {
         let time = (d / s).clamp(0.0001, 60.0);
         b.due = Some(c0 + time);
         b.seen = Some((aim.0 as f32, aim.1 as f32));
+        log::trace!("bullet of {} aimed from {c0:.6}: R ({:.6}, {:.6}) V ({:.6}, {:.6}) time {time:.6} due {:.6}", m.source, r.0, r.1, v.0, v.1, c0 + time);
     }
 
     /// A missile's way on to `end` (game time) as the port flies a unit's (a

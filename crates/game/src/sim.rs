@@ -1613,6 +1613,7 @@ impl World {
             if !self.tick_clocks.1.is_empty() {
                 self.blight_checks_to(self.tick_clocks.0 as f64 * 0.005);
             }
+            self.carried_region_triggers(vm);
             self.script_clock = self.tick_clocks.1.first().copied();
             self.timers_at_turn_start(vm);
             self.script_clock = None;
@@ -1640,6 +1641,7 @@ impl World {
         // The newest walk first (traced: sheep 1050120, given its order after 1050117,
         // held it back before it moved in a step; pig 1050123 likewise held 1050124).
         walkers.sort_by_key(|&h| std::cmp::Reverse(self.unit(h).map_or(0, |u| u.extra.walk_serial)));
+        let stepped = walkers.clone();
         // New orders have their ways found in this step, each as its walker's turn in
         // it comes, after the walkers before it have moved: one that moved first is a
         // mover to the search (read: Twisted Meadows' human computer's five peasants'
@@ -1689,11 +1691,15 @@ impl World {
             }
         }
         self.tags.free_step_paths(carried);
+        for h in stepped {
+            self.step_regions(vm, h);
+        }
         let tick = self.step_ticks.first().copied();
         self.ai_threads_at_tick(tick);
         let mut late: Vec<(usize, u32, u32)> = if tick.is_some() { self.agent_dues().into_iter().filter(|e| e.0 == 1 && self.agent_tick(e.1) == tick).collect() } else { Vec::new() };
         late.sort_by(|a, b| f32::from_bits(a.1).total_cmp(&f32::from_bits(b.1)));
-        let after = self.issue_after_step(&late, 0);
+        let trigger = self.region_trigger_due(0);
+        let after = self.after_step_events(vm, &late, 0, trigger);
         // Orders given at this step's tick free their objects after it, before its walk
         // ends' (read: a wanderer's order's eight, given before a turn's first step,
         // freed before the trees of two walks that arrived in it; Twisted Meadows' turn
@@ -1703,6 +1709,73 @@ impl World {
         self.make_pending_pairs();
         self.tags.issued.extend(after);
         self.tags.flush_issued();
+        self.later_region_triggers(vm, trigger);
+    }
+
+    /// When a step's region events run their triggers (`World::step_regions`): each
+    /// registration's timer is started with no wait, which the agent queue takes as
+    /// its least, 0.0001 (`CAgentTimer::vf2_6f060190`, `DAT_6fcd539c`), so it falls due
+    /// that much after the step's agent clock, in the main tick that reaches it.  The
+    /// due, and whether that tick is the step's.
+    fn region_trigger_due(&self, k: usize) -> Option<(u32, bool)> {
+        if self.step_region_events.is_empty() {
+            return None;
+        }
+        let due = crate::efloat::add(*self.step_agent.get(k)?, 0.0001f32.to_bits());
+        Some((due, self.agent_tick(due) == self.step_ticks.get(k).copied()))
+    }
+
+    /// The agent queue's events due after step `k` in its main tick, in time order: the
+    /// wanderers' orders (`World::issue_after_step`) and the region events' triggers
+    /// when they fall due there, their objects made before the tick's frees and theirs
+    /// freed after the step's walk ends' (returned).  Read: Mafarazzo TD's creep
+    /// arriving at WalkMid12's middle as it entered it at turn 349's second step, its
+    /// trigger due in that tick, the new order's objects made before the old walk's
+    /// tree was freed (the original's next free slot after the turn the next trigger's
+    /// `+tex`, this one's freed slot).
+    fn after_step_events(&mut self, vm: &mut Vm, late: &[(usize, u32, u32)], k: usize, trigger: Option<(u32, bool)>) -> Vec<u32> {
+        let Some((at, true)) = trigger else { return self.issue_after_step(late, k) };
+        let (sooner, later): (Vec<_>, Vec<_>) = late.iter().copied().partition(|e| self.kept_abs(e.1) < self.kept_abs(at));
+        let mut after = if sooner.is_empty() { Vec::new() } else { self.issue_after_step(&sooner, k) };
+        after.extend(self.run_step_region_events(vm));
+        if !later.is_empty() {
+            after.extend(self.issue_after_step(&later, k));
+        }
+        after
+    }
+
+    /// The region events' triggers falling due in a later main tick than their step's:
+    /// after its tick's frees (read: Mafarazzo TD's two creeps arriving at WalkMid12's
+    /// and WalkMid34's middles as they entered them at turn 346's last step, their
+    /// triggers due a tick on, their walks' trees freed before the orders took their
+    /// objects, the original's next free slot after the turn the second order's `+tex`,
+    /// the first's `^clg`); due after the turn's last tick, at the next turn's first
+    /// (`World::carried_region_triggers`).
+    fn later_region_triggers(&mut self, vm: &mut Vm, trigger: Option<(u32, bool)>) {
+        let Some((at, false)) = trigger else { return };
+        if self.agent_tick(at).is_none() {
+            return;
+        }
+        for s in self.run_step_region_events(vm) {
+            self.tags.release(s);
+        }
+    }
+
+    /// The triggers due after the last turn's last main tick, at this turn's first, before
+    /// its timers: what they release goes as that tick ends, after the turn's first step
+    /// when it is taken then (`Tags::flush_issued`).  Provisional: not yet seen.
+    fn carried_region_triggers(&mut self, vm: &mut Vm) {
+        if self.step_region_events.is_empty() {
+            return;
+        }
+        let freed = self.run_step_region_events(vm);
+        if self.step_ticks.first() == Some(&self.tick_clocks.0) {
+            self.tags.issued.extend(freed);
+        } else {
+            for s in freed {
+                self.tags.release(s);
+            }
+        }
     }
 
     /// The tick's movement steps after its first for wanderers, step by step, each
@@ -1751,6 +1824,7 @@ impl World {
         // The newest walk first (traced: sheep 1050120, given its order after 1050117,
         // held it back before it moved in a step; pig 1050123 likewise held 1050124).
         walkers.sort_by_key(|&h| std::cmp::Reverse(self.unit(h).map_or(0, |u| u.extra.walk_serial)));
+            let stepped = walkers.clone();
             // Its walk ends' objects wait for its end as a first step's do (traced: two
             // give-ups in a turn's second step make their new objects, then free all).
             self.tags.begin_step();
@@ -1797,15 +1871,20 @@ impl World {
             // wanderer's order's eight freed after a peon's path and before a give-up's
             // tree in the same step), then those of orders due after it in its tick.
             self.tags.free_step_paths(carried);
+            for h in stepped {
+                self.step_regions(vm, h);
+            }
             let tick = self.step_ticks.get(k).copied();
             self.ai_threads_at_tick(tick);
             let (late, rest): (Vec<_>, Vec<_>) = due.iter().copied().partition(|e| e.0 == k + 1 && self.agent_tick(e.1) == tick);
             due = rest;
-            let after = self.issue_after_step(&late, k);
+            let trigger = self.region_trigger_due(k);
+            let after = self.after_step_events(vm, &late, k, trigger);
             self.tags.end_step();
             self.make_pending_pairs();
             self.tags.issued.extend(after);
             self.tags.flush_issued();
+            self.later_region_triggers(vm, trigger);
         }
         self.wrap_clocks(&mut due);
         let rest: Vec<(usize, u32, u32)> = due.iter().copied().filter(|e| e.0 >= n.max(1)).collect();

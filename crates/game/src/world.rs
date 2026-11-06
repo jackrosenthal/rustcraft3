@@ -681,6 +681,11 @@ pub struct World {
     /// script has gone on.
     #[serde(default)]
     pub queued_region_events: Vec<(EventCtx, Vec<u32>)>,
+    /// Region events raised in the movement step under way, by registration in the
+    /// order each was first raised (`World::step_regions`); those due after a turn's
+    /// last main tick kept for the next turn's first.
+    #[serde(default)]
+    pub step_region_events: Vec<(u32, Vec<EventCtx>)>,
     /// Units RemoveUnit asked for, gone at the end of the moment.
     #[serde(default)]
     pub pending_removals: Vec<u32>,
@@ -1125,6 +1130,7 @@ impl World {
             region_inside: Default::default(),
             in_range: Default::default(),
             queued_region_events: Vec::new(),
+            step_region_events: Vec::new(),
             prof_cells: Default::default(),
             ai_walks: Default::default(),
             lightning_data: None,
@@ -1662,6 +1668,85 @@ impl World {
         }
     }
 
+    /// A walker's region events at a movement step: its cluster's step, before it
+    /// plans or moves its members, takes each member's place at the step's clock to its
+    /// cell (`FUN_6f16c150`, `FUN_6f16bc10`, CPoPosCl's vf 0x54 `FUN_6f16fa00`), the
+    /// regions left told first, then those entered.  Each registration asks its filter
+    /// at once and queues the event, its trigger run by a timer of no wait on the agent
+    /// queue (`FUN_6f277bd0`, event 0x80275 to itself), so after the step, at its clock
+    /// (`World::run_step_region_events`).  Provisional: the regions of a cell taken
+    /// newest first by their handles.
+    pub(crate) fn step_regions(&mut self, vm: &mut Vm, h: u32) {
+        let Some((x, y)) = self.unit(h).map(|u| (u.x, u.y)) else { return };
+        let mut regions: Vec<u32> = self.region_inside.keys().copied().collect();
+        regions.sort_unstable_by(|a, b| b.cmp(a));
+        let mut changes: Vec<(u32, bool)> = Vec::new();
+        for region in regions {
+            let inside = self.region(region).is_some_and(|r| r.contains(x, y));
+            let Some(list) = self.region_inside.get_mut(&region) else { continue };
+            let was = list.contains(&h);
+            if inside == was {
+                continue;
+            }
+            if inside {
+                list.push(h);
+            } else {
+                list.retain(|&u| u != h);
+            }
+            changes.push((region, inside));
+        }
+        changes.sort_by_key(|&(_, inside)| inside);
+        for (region, inside) in changes {
+            log::debug!("step region: {h} {} {region} at step {} clock {:.6}", if inside { "enters" } else { "leaves" }, self.step_index + self.step_range.0 as u64, f32::from_bits(self.step_clocks.get(self.step_range.0).copied().unwrap_or(0)));
+            let event_id = if inside { crate::event_ids::EVENT_GAME_ENTER_REGION } else { crate::event_ids::EVENT_GAME_LEAVE_REGION };
+            let regs: Vec<(u32, Option<u32>)> = self
+                .events
+                .iter()
+                .filter_map(|&e| match self.handles.get(e) {
+                    Some(Obj::Event(EventReg { kind: k @ EventKind::EnterRegion { region: r, .. }, .. })) if inside && *r == region => Some((e, event_filter(k))),
+                    Some(Obj::Event(EventReg { kind: k @ EventKind::LeaveRegion { region: r, .. }, .. })) if !inside && *r == region => Some((e, event_filter(k))),
+                    _ => None,
+                })
+                .collect();
+            for (e, filter) in regs {
+                if let Some(f) = filter.filter(|&f| f != 0) {
+                    let saved = self.enum_ctx;
+                    self.enum_ctx.filter_unit = h;
+                    let ok = self.eval_boolexpr(vm, f);
+                    self.enum_ctx = saved;
+                    if !ok {
+                        continue;
+                    }
+                }
+                let ctx = EventCtx { unit: h, region, event_id, ..Default::default() };
+                match self.step_region_events.iter_mut().find(|(r, _)| *r == e) {
+                    Some((_, q)) => q.push(ctx),
+                    None => self.step_region_events.push((e, vec![ctx])),
+                }
+            }
+        }
+    }
+
+    /// The step's region events, after it: each registration's timer in the order
+    /// started, its queued events in turn, those of units gone left out
+    /// (`FUN_6f2777c0`).  Orders given there are given between steps (their walks'
+    /// old paths going at the next, `Tags::player_move_issued`); what they release at
+    /// once goes as the step's tick ends, returned for then.
+    pub(crate) fn run_step_region_events(&mut self, vm: &mut Vm) -> Vec<u32> {
+        let doomed = self.tags.doomed.len();
+        let after = std::mem::replace(&mut self.after_steps, true);
+        for (e, queue) in std::mem::take(&mut self.step_region_events) {
+            for ctx in queue {
+                if self.unit(ctx.unit).is_some() {
+                    self.fire_registrations(vm, ctx, vec![e], false);
+                }
+            }
+        }
+        self.after_steps = after;
+        let n = self.tags.doomed.len();
+        self.tags.doomed.split_off(doomed.min(n))
+    }
+
     /// Starts keeping who is inside a region, if not yet kept.
     pub(crate) fn watch_region(&mut self, region: u32) {
         if self.region_inside.contains_key(&region) {
@@ -1676,7 +1761,8 @@ impl World {
     /// units now inside each watched region against those inside at the last; a region
     /// first watched takes those already inside without events.  Only moving counts
     /// (measured: units made inside enter; dying, being removed, or hidden there
-    /// leaves nothing, and shown again enters nothing).
+    /// leaves nothing, and shown again enters nothing).  The engine's walkers are told
+    /// in their steps (`World::step_regions`), so here only what else moved them.
     fn update_region_events(&mut self, vm: &mut Vm) {
         let mut regions: Vec<u32> = Vec::new();
         let mut ranges: Vec<(u32, u32, f32)> = Vec::new();

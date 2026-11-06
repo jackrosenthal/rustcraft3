@@ -824,12 +824,60 @@ these are the findings behind them.
   edge takes the cell past it.  Read: Mafarazzo TD's creeps entering WalkMid3 (to y
   1856) at 1888, the original's turn 304, the port's two turns later before.  Its
   cells are a pathing map region's (`FUN_6f14d960`).
-- A walk ordered while one goes on, after the tick's steps (a region's trigger), frees
+- A walk ordered while one goes on, between steps (a region's trigger, below), frees
   the old order's path (`l^pa`, `^clu`) at the next step, not with its tree: read, a
-  creep entering WalkMid3 in turn 304, its next order's objects and the old tree freed
-  in that turn and the old path in turn 305 (another in 306 and 307).  Open: a third,
-  entering WalkMid4 in turn 308, had its old path freed in that turn, after the
-  trigger's data; the port frees it in 309 (Mafarazzo's keepalives part there).
+  creep entering WalkMid3 at turn 304's last step, its next order's objects and the
+  old tree freed in that turn and the old path in turn 305 (another in 306 and 307);
+  one entering WalkMid4 at turn 308's second step, its old path freed in that turn
+  after the trigger's data, at the step after.  The old cluster, its member gone to
+  the new order's, is freed as the next step reaches it (`FUN_6f16c150`:
+  `FUN_6f16d1c0` finds no member, the cluster's vf 0x10 `FUN_6f1699c0` frees its
+  `l^pa`, then itself, `CPresenceTagged::vf4_6f1c5490`).
+- A region's enter and leave events come within the movement steps.  Each cluster's
+  step (`FUN_6f16c150`) first takes each member's place at the step's clock (its place
+  carried on by its velocity, `FUN_6f161040`), the members from the last, to its cell
+  (`FUN_6f16bc10`, CPoPosCl's vf 0x54 `FUN_6f16fa00`, above), before it plans or moves
+  them; separation's pushes (`FUN_6f1702f0`, `FUN_6f16ffa0`) and placings
+  (`FUN_6f170080`) do the same through `FUN_6f05c820`.  `cp&l` and `cp&e` reach the
+  region's agent (`CAgentBaseAbs::vf8_6f057590`, passing them to its vf 0x18,
+  `CTriggerRegion::vf6_6f05fe00`), which dispatches 0x401900c8 or 0x401900c9 to its
+  registrations at once (`FUN_6f05f7c0`, `FUN_6f05f810`; vf 0x14 `FUN_6f071dc0`,
+  `FUN_6f071e00`).  A registration (`CRegionEventReg::vf3_6f27cf20`, `FUN_6f277bd0`)
+  asks its filter then (+0x38's vf 0x78, the unit as the filter's), queues the event
+  (an `AURegionEvent` of the unit and enter or leave, its list at +0x54), and starts
+  its timer (+0x3c, `FUN_6f0608d0`) with no wait, event 0x80275 to itself, unless it is
+  already waiting.  A timer's wait under 0.0001 is taken as 0.0001
+  (`CAgentTimer::vf2_6f060190`, `DAT_6fcd539c`), so it falls due that much after the
+  step's agent clock; firing, the registration runs its queue in order
+  (`FUN_6f2777c0`: event 0x80205 to enter, 0x80206 to leave, each unit still there)
+  and empties it (`FUN_6f2764f0`).  Measured: Mafarazzo TD's 81 walk orders through
+  34.01 seconds (IssuePointOrderLoc, its clock and step count read in a LAN run) at
+  the clocks and in the order of the port's region entries so found.  Where that
+  falls with the step's tick's other events (traced through the keepalives' next free
+  slot, the turn's last free, with the objects made the same):
+  - In the step's own main tick, the triggers' orders make their objects before the
+    tick's frees (the step's walk ends' among them), as a wanderer's order due after
+    the step does (above), and free theirs after: read, a creep arriving at WalkMid12's
+    middle in the step it entered it (turn 349's second step, its trigger due in that
+    tick), the new order's objects in the slots the old walk's tree then freed.
+  - In a later tick (a step within 0.0001 of its tick's end: in this game the steps
+    from 34.56 to 34.71 seconds, as the main clock trails, before the steps move to
+    the tick after), after them: read, two creeps arriving at WalkMid12's
+    and WalkMid34's middles in the step they entered them (turn 346's last step), the
+    first order's `^clg` in the 17th slot past the two old trees' (the turn's last
+    free the second order's `+tex`, in that slot).
+  - Not yet seen: one due after the turn's last tick (the port runs it at the next
+    turn's first, before its timers).
+  An arrival in a step ends its order then (`FUN_6f16c390`, `FUN_6f16d4e0`,
+  `FUN_6f171340`: `cp&a` to the unit's agent, 0x40190065 dispatched, the move
+  ability's 0xd0196, `CAbilityMove::vf3_6f5fda10`, `FUN_6f5fa7a0`), so a trigger then
+  gives its order to a unit without one.  The port so tells its engine walkers' region
+  changes in their steps (`World::step_regions`, `World::run_step_region_events`);
+  Mafarazzo TD over LAN agrees to turn 358 (from 308).  At turn 359 the original has
+  made one move order (19 objects) more: a creep (1879048311 in the port) walking to
+  WalkMid34's middle at y 1888, WalkMid3's edge, its y about 251.0 cells, leaves and
+  enters WalkMid3 every few steps from 35.34 seconds, each entry ordering it anew; when
+  the original's does is not yet known (its trace ends at turn 323).
 - SetUnitPathing (`jass_SetUnitPathing` at 0x6f215540) sets the unit's pathing types
   through its vf15c: off, its region's types (`FUN_6f05ac60`, +0x34 of its region)
   with 0; on, those of vf160 and vf164.  What its walks' searches and plans then mind

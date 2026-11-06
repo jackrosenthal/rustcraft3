@@ -523,10 +523,12 @@ impl Tags {
     /// order's first block, the old order's tree, then the new order's other six, then
     /// the old path (read: two orders to walk given to a peon in one turn).
     ///
-    /// Given after the tick's steps (a script's, as a region's event runs), the old path
-    /// waits for the next step instead, as a walk's end's does (`walk_ended`, `serial`
-    /// the old walk's; read: Mafarazzo TD's creep entering WalkMid3, turned to its next
-    /// waypoint in turn 304, its old `l^pa` and `^clu` freed in turn 305).
+    /// Given after a step (a script's, as a region's event runs, `World::step_regions`)
+    /// or the tick's, the old path waits for the next step instead, as a walk's end's
+    /// does (`walk_ended`, `serial` the old walk's; read: Mafarazzo TD's creep entering
+    /// WalkMid3 at turn 304's last step, turned to its next waypoint, its old `l^pa` and
+    /// `^clu` freed in turn 305; one entering WalkMid4 at turn 308's second, its freed in
+    /// that turn).
     pub fn player_move_issued(&mut self, replaced: Option<&[u32]>, after_steps: Option<u32>) -> Vec<u32> {
         const CODES: [&Code; 17] = [codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK_O, codes::class::TASK, codes::class::TASK, codes::class::TASK, b"tsk.", codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
         let slots: Vec<u32> = CODES.iter().map(|c| self.take(c)).collect();

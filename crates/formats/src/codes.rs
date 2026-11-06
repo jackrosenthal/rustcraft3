@@ -1747,6 +1747,9 @@ pub mod class {
     pub const ORDER: &Code = b"+ord";
     /// `ordt`: An order's tasks (provisional name: first of an order's objects).
     pub const ORDER_TASKS: &Code = b"ordt";
+    /// `ord.`: An order at a point (provisional name: first of a build order's objects,
+    /// `FUN_6f9cb885`).
+    pub const ORDER_POINT: &Code = b"ord.";
     /// `task`: A task.
     pub const TASK: &Code = b"task";
     /// `tskA`: A block (CTaskAction, `FUN_6f6927a0`): sets the unit's state as it runs.

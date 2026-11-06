@@ -169,10 +169,17 @@ pub(crate) fn placed_clear(w: &World, h: u32, mask: u32) -> (f32, f32) {
 /// Forestwalk's undead computer's acolyte made at cells (346.5, 483.5), the
 /// necropolis at (354, 492) with its 16 by 16: the first ring's first cell; the port's
 /// rings about the structure's middle put it at (358.5, 487.5)).
+/// A flyer so too, at the first ring's first cell, nothing standing in its way there
+/// (provisional: the rings' search for air units not read; the port had it at the
+/// structure's middle).
 pub(crate) fn trained_place(w: &World, type_id: Id, x: f32, y: f32, rect: (i32, i32, i32, i32)) -> Option<(f32, f32)> {
     let o = w.objects.units.get(type_id)?;
-    w.pathing.as_ref()?;
+    let p = w.pathing.as_ref()?;
     let (movetp, collision) = (o.str("movetp"), o.real("collision"));
+    if crate::pathing::Move::from_movetp(&movetp) == crate::pathing::Move::Fly {
+        let (x0, y0, x1, y1) = rect;
+        return ring_order(2, y0 - 1, x0 - 1, y1 + 1, x1 + 1).into_iter().next().map(|c| p.center(c));
+    }
     Some(ground_place(w, &movetp, collision, x, y, true, None, 0x02, false, Some(rect)))
 }
 

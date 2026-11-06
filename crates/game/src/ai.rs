@@ -79,7 +79,7 @@ pub const AI_WOOD: [&crate::tags::Code; 20] = [codes::class::ORDER, codes::class
 /// blocks, three tasks, two `tsk.`, three tasks, a `tskO`, a task, a block, and its
 /// walk's cluster goal, cluster, and path; traced, Forestwalk's undead computer's crypt
 /// begun by an acolyte at its wake, and its altar in turn 45).
-pub const AI_BUILD: [&crate::tags::Code; 17] = [b"ord.", codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, b"tsk.", b"tsk.", codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_O, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
+pub const AI_BUILD: [&crate::tags::Code; 17] = [codes::class::ORDER_POINT, codes::class::TASK_A, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK, b"tsk.", b"tsk.", codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_O, codes::class::TASK, codes::class::TASK_A, codes::class::CLUSTER_GOAL, codes::class::CLUSTER, codes::class::PATH];
 
 fn seven() -> usize {
     7
@@ -1141,11 +1141,16 @@ impl World {
     }
 
     /// The objects of a build order a player gives a worker: the AI's (`AI_BUILD`), its
-    /// `^clg` gone at once, and with the tick's orders its first block and the build's
-    /// last block and the five before it, but no last order made (traced: Mafarazzo TD's
+    /// `^clg` gone at once, and in the next tick its first block and the build's last
+    /// block and the five before it, but no last order made (traced: Mafarazzo TD's
     /// peasant sent by its player over LAN to build an Arrow Tower, then begun as an
-    /// AI's peasant's).  (Provisional: a builder that works on its structure's alone, as
-    /// the engine gives builders their build ability by race; others keep none.)
+    /// AI's peasant's).  They go by the main clock as the order was carried out, after
+    /// the timers due as that tick begins, as an upgrade order's do
+    /// (`World::upgrade_structure_by`; measured: the Town Hall ordered at turn 21 of
+    /// the maft game, the leaderboard trigger's objects at 2.0 made before they went,
+    /// its execution's slot the last freed as turn 22's keepalive was taken).
+    /// (Provisional: a builder that works on its structure's alone, as the engine gives
+    /// builders their build ability by race; others keep none.)
     pub(crate) fn player_build_objects(&mut self, h: u32) {
         let race = self.unit(h).and_then(|u| self.objects.units.get(u.type_id)).map(|o| o.str("race").to_ascii_lowercase()).unwrap_or_default();
         if matches!(race.as_str(), "orc" | "nightelf" | "undead") {
@@ -1153,7 +1158,10 @@ impl World {
         }
         let order: Vec<u32> = AI_BUILD.iter().map(|c| self.tags.take(c)).collect();
         self.tags.release(order[14]);
-        self.tags.issued.extend([1, 13, 12, 11, 10, 9, 8].map(|k| order[k]));
+        let at = self.actions_clock();
+        for k in [1, 13, 12, 11, 10, 9, 8] {
+            self.tags.doom_at(at, order[k]);
+        }
         if let Some(u) = self.unit_mut(h) {
             u.extra.ai_order = order;
             u.extra.build_legacy = false;

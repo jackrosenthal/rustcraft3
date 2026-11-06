@@ -4425,10 +4425,14 @@ impl World {
             // human computer's farm begun at 2.1, over LAN with the original).  One not
             // touching the structure has a target task before its target and searches
             // (its cluster's goal freed at once), the rise made in its next step when in
-            // range (`construct_step_arrive`; traced: its farm begun at 17.578).
+            // range (`construct_step_arrive`; traced: its farm begun at 17.578).  A flyer
+            // needs only its reach as that step tests it (`FUN_6f41d1f0`; traced over LAN:
+            // Mafarazzo TD's flying peasant, its player's, 2.97 cells from its Cutter
+            // Tower's middle, clear of the ring of cells about it, the rise made anew at
+            // once; provisional: why, the air layer not holding the structure).
             let order = self.unit(h).filter(|u| !enters && u.extra.ai_order.len() == crate::ai::AI_BUILD.len()).map(|u| u.extra.ai_order.clone());
             if let Some(order) = order {
-                let touching = self.touches_footprint(h, b);
+                let touching = if self.move_kind(h) == crate::pathing::Move::Fly { self.construct_in_reach(h, b) } else { self.touches_footprint(h, b) };
                 let mut codes: Vec<&crate::tags::Code> = vec![codes::class::ORDER_TASKS, codes::class::TASK_A, codes::class::TASK, codes::class::TASK, codes::class::TASK_O, codes::ability::id::TARGET_CLASS, codes::class::TASK_O, codes::class::TASK, codes::class::TASK, codes::class::TASK, codes::class::TASK_O, codes::class::TASK_A];
                 if !touching {
                     codes.insert(5, codes::class::TASK_T);
@@ -4607,6 +4611,16 @@ impl World {
     /// its footprint, ordered at once to build on; its farm's at (171.5, 179.5), a cell
     /// clear above its footprint, ordered to reach it first; provisional: its cell its
     /// place rounded, read only so).
+    /// Whether a builder is within its repair's reach of a structure it builds
+    /// (`FUN_6f41d1f0`'s distance: the range over 32 and the two sizes, in cells, from
+    /// the structure's middle).
+    pub(crate) fn construct_in_reach(&self, h: u32, structure: u32) -> bool {
+        let (Some(u), Some(s)) = (self.unit(h), self.unit(structure)) else { return false };
+        let range = self.repair_ability(h).map_or(0.0, |(a, l)| self.ability_real(a, "Rng", l));
+        let r = ((range + u.collision + s.collision) / crate::pathing::CELL).max(0.49);
+        (u.x - s.x).hypot(u.y - s.y) / crate::pathing::CELL <= r
+    }
+
     pub(crate) fn touches_footprint(&self, h: u32, structure: u32) -> bool {
         let (Some(u), Some(s), Some(p)) = (self.unit(h), self.unit(structure), self.pathing.as_ref()) else { return false };
         let (off, size) = [(1, 3), (2, 4), (2, 5), (3, 6)][crate::lrpath::class_of(u.collision / crate::pathing::CELL) as usize];
@@ -4640,12 +4654,9 @@ impl World {
             _ => 0,
         };
         let serial = u.extra.walk_serial;
-        if let Some(s) = self.unit(target) {
-            let range = self.repair_ability(h).map_or(0.0, |(a, l)| self.ability_real(a, "Rng", l));
-            let r = ((range + u.collision + s.collision) / crate::pathing::CELL).max(0.49);
-            let d = (u.x - s.x).hypot(u.y - s.y) / crate::pathing::CELL;
-            if d > r && !self.touches_footprint(h, target) {
-                log::debug!("construct walk of {h}: {d:.3} cells from {target}, out of range {r:.3}");
+        if self.unit(target).is_some() {
+            if !self.construct_in_reach(h, target) && !self.touches_footprint(h, target) {
+                log::debug!("construct walk of {h}: out of reach of {target}");
             }
             let rise: Vec<u32> = [codes::class::CONTINUOUS_MODIFIER, codes::class::THRESHOLD_LISTENER, codes::class::CONTINUOUS_MODIFIER].iter().map(|c| self.tags.take(c)).collect();
             let stamp = self.step_ticks.get(self.step_range.0).and_then(|&t| self.tick_main(t));

@@ -1067,6 +1067,15 @@ impl Game {
                 let r = self.world.order_build(worker, id, x, y);
                 if r.is_ok() {
                     self.world.player_build_objects(worker);
+                } else if self.world.unit(worker).is_some() {
+                    // One refused makes its order and a block, both freed in the next
+                    // tick, the block first (traced over LAN: Mafarazzo TD's peasant
+                    // sent to build the HSBC without its Castle and St George Bank;
+                    // provisional: for every refusal).
+                    let order = self.world.tags.take(codes::class::ORDER_POINT);
+                    let block = self.world.tags.take(codes::class::TASK_A);
+                    self.world.tags.doom(block);
+                    self.world.tags.doom(order);
                 }
                 res(r)
             }

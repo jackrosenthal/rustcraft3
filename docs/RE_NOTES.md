@@ -4692,6 +4692,35 @@ Formats the port made its own, to be replaced by the original's:
   build order's leftovers).  Traced over LAN with the original: Mafarazzo TD's host
   player's peasant sent to build an Arrow Tower at turn 31, begun at turn 182.
   (Provisional: a builder that works on its structure's alone.)
+  The first block and last six go after the timers due as the next tick begins, as an
+  upgrade order's objects do: traced (the maft game, Mafarazzo TD's whole tech tree
+  built by its host's player), the Town Hall ordered at turn 21, the leaderboard
+  trigger's objects at 2.0 made in the freed `^clg`'s slot and those before it, then
+  the seven freed, then the trigger's execution (its slot the last free as turn 22's
+  keepalive was taken); the port had freed them as the tick began, with the orders
+  given there (`World::player_build_objects` now frees them by the main clock as the
+  order was carried out).  A build order refused (the HSBC without its Castle and St
+  George Bank, the selections of that game having missed) makes `ord.` and a block,
+  both freed in the next tick, the block first (provisional: for every refusal).
+  A flying builder begins its structure as one touching it whenever it is within its
+  repair's reach (`FUN_6f41d1f0`'s distance), the rise made anew at once, no target
+  task or search: the same game's flying peasant, 2.97 cells from its Cutter Tower's
+  middle, clear of the ring of cells about its own (which the ground peasant's test,
+  `FUN_6f166310`, reads), began it so.  (Provisional: why; the air layer does not hold
+  the structure.)  With these and the ids its selections name, both maft captures'
+  keepalives agree as far as taken, 2326 and 4129 turns, and the traced one's objects
+  all, slots and all.
+- Each client, as any unit changes its type (`FUN_6f670950`, for one without the
+  unit's +0x5c flag 0x100), rebuilds its own player's selection's subgroups and sends
+  0x1a, DispatchUnitRefreshSubGroup (`FUN_6f291f90(1)`, `FUN_6f6bd310`), then 0x19 for
+  its selected subgroup if it has one (`FUN_6f6bd280`).  So the original, Blue and
+  selecting nothing, sent a lone 0x1a two turns after each of the host's upgrades
+  that took (turns 144, 352, and 452 for those of 142, 350, and 450), and later under
+  the tracer's lag (329, 739, 911).  (Not yet in the port's own client.)
+- A unit a structure trains that flies is placed at the first ring's first cell about
+  its footprint, as a walker is when nothing stands there (provisional: the rings'
+  search for air units not read; the port had it at the structure's middle, inside
+  it).
 - A flyer's walk plans its coarse way over the accelerator's last layer (its cells'
   no-fly flag, 0x04; structures and trees not in it) and heads straight for each point,
   stopping a step at it, the cluster then picking its next point on the same way

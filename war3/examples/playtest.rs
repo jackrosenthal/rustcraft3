@@ -192,6 +192,18 @@ fn main() -> anyhow::Result<()> {
                 i += 3;
             }
             // owned <player>: the player's units, with handles, types, and what they do.
+            // speeds <player>: each of a player's living units' move speed and place.
+            "speeds" => {
+                if let Some(g) = scene.game.as_ref() {
+                    let p = num(&a[i + 1]) as u8;
+                    for &h in &g.world.unit_order {
+                        if let Some(u) = g.world.unit(h).filter(|u| u.owner == p && !u.dead) {
+                            eprintln!("speed {h} {} {:.4} at {:.2} {:.2} t {:.2}", w3_game::objects::id_str(u.type_id), u.move_speed, u.x, u.y, g.world.time);
+                        }
+                    }
+                }
+                i += 2;
+            }
             "owned" => {
                 if let Some(g) = scene.game.as_ref() {
                     let p = num(&a[i + 1]) as u8;

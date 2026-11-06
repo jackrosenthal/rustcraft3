@@ -1513,6 +1513,7 @@ impl World {
             self.timed_frees_to(next);
             self.ai_threads_to_tick(next);
             self.trainings_to(vm, next);
+            self.constructions_to(vm, next);
             self.mine_payouts_to(vm, next);
             // The paths of the walks ended in the last step go in this one, in the walkers'
             // order (`Tags::walk_ended`).
@@ -1600,6 +1601,7 @@ impl World {
         }
         self.fire_mana_listeners(None);
         self.trainings_to(vm, None);
+        self.constructions_to(vm, None);
         // Build orders ending after the last step by the turn's last main tick end in
         // it (read: Forestwalk's undead computer's crypt begun at 1.979998, its order
         // ending at 2.979974 in turn 30, after its last step at 2.969974).
@@ -3378,6 +3380,12 @@ impl World {
             // faster with more (powerbuild), each extra builder costing its share.
             let needs = self.unit(h).is_some_and(|u| u.extra.needs_builder);
             let speed = if needs { self.build_speed(h) } else { 1.0 };
+            if speed != 1.0 {
+                // (Its pace changed, it is done as its time runs out.)
+                if let Some(u) = self.unit_mut(h) {
+                    u.extra.build_due = None;
+                }
+            }
             if speed <= 0.0 {
                 return;
             }
@@ -3390,16 +3398,11 @@ impl World {
             let total = u.build_time.max(0.01);
             // Hit points rise with construction from 10% of maximum.
             u.life = (u.life + u.max_life * 0.9 * dt / total).min(u.max_life);
-            if left <= 0.0 {
-                u.constructing = None;
-                restart_anim(u, "stand");
-                let (owner, id) = (u.owner, u.type_id);
-                self.tech_built(owner, id);
-                let sound = format!("JobDoneSound{}", self.race_label(owner));
-                self.requests.push(Request::Completed { unit: h, id, level: 1, sound });
-                self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_CONSTRUCT_FINISH, EVENT_UNIT_CONSTRUCT_FINISH, EventCtx::default());
+            if left <= 0.0 && u.extra.build_due.is_none() {
+                self.complete_construction(vm, h);
             } else {
-                u.constructing = Some(left);
+                // (One due on the clock is done in the turn's steps, `constructions_to`.)
+                u.constructing = Some(left.max(f32::MIN_POSITIVE));
             }
             return;
         }
@@ -3433,6 +3436,42 @@ impl World {
         }
         // A unit trained (or an upgrade into one) goes on in its own pass, before the
         // tick's first movement step (`World::train_before_steps`).
+    }
+
+    /// A structure's construction done: its objects go at once (the rise's listener, its
+    /// modifier, the life's modifier, the real, and Build In Progress; traced: Twisted
+    /// Meadows' human computer's first farm), then its owner's tech and its events.
+    fn complete_construction(&mut self, vm: &mut Vm, h: u32) {
+        let Some(u) = self.unit_mut(h) else { return };
+        u.constructing = None;
+        u.extra.build_due = None;
+        restart_anim(u, "stand");
+        let objects = std::mem::take(&mut u.extra.build_objects);
+        if objects.len() == 5 {
+            for k in [3, 2, 4, 1, 0] {
+                self.tags.release(objects[k]);
+            }
+        }
+        let u = self.unit_mut(h).unwrap();
+        let (owner, id) = (u.owner, u.type_id);
+        self.tech_built(owner, id);
+        let sound = format!("JobDoneSound{}", self.race_label(owner));
+        self.requests.push(Request::Completed { unit: h, id, level: 1, sound });
+        self.fire_unit_pair(vm, h, EVENT_PLAYER_UNIT_CONSTRUCT_FINISH, EVENT_UNIT_CONSTRUCT_FINISH, EventCtx::default());
+    }
+
+    /// The constructions due on the main clock by main tick `tick` (by the turn's last
+    /// with none), done as their step begins.
+    pub(crate) fn constructions_to(&mut self, vm: &mut Vm, tick: Option<i64>) {
+        let at = match tick {
+            Some(t) => self.tick_main(t),
+            None => self.tick_clocks.1.len().checked_sub(1).and_then(|i| self.tick_abs(i)),
+        };
+        let Some(at) = at else { return };
+        let due: Vec<u32> = self.unit_order.iter().copied().filter(|&h| self.unit(h).is_some_and(|u| !u.dead && u.constructing.is_some() && u.extra.build_due.is_some_and(|d| d as f64 <= at + 1e-6))).collect();
+        for h in due {
+            self.complete_construction(vm, h);
+        }
     }
 
     /// The AI's trainings held for the steps (`World::update_training`) due by main tick
@@ -3752,9 +3791,19 @@ impl World {
         if let Some(s) = site {
             self.cover_mine(b, s);
         }
+        // Its construction is done on the main clock at the build time from the step its
+        // rise begins in: this one, or for a builder still walking to it the step it
+        // arrives in (`construct_step_arrive`; measured, `CAbilityBuildInProgress`'s vf205
+        // at 0x6f427e40: Twisted Meadows' human computer's altar, barracks, and second
+        // farm done at 62.130093, 81.837433, and 85.755417, their begins' steps and their
+        // build times on to 0.0001; its first farm, its builder arriving at 17.668, at
+        // 52.668034, after turn 527's first order, where taking a turn's 0.1 a time had it
+        // done a turn early).
+        let stamp = self.step_ticks.get(self.step_range.0).and_then(|&t| self.tick_main(t));
         if let Some(bu) = self.unit_mut(b) {
             let t = bu.build_time;
             bu.constructing = Some(t);
+            bu.extra.build_due = stamp.map(|s| f32::from_bits(crate::efloat::add((s as f32).to_bits(), t.to_bits())));
             bu.life = bu.max_life * 0.1;
             restart_anim(bu, "birth");
         }
@@ -4074,8 +4123,13 @@ impl World {
                 log::debug!("construct walk of {h}: {d:.3} cells from {target}, out of range {r:.3}");
             }
             let rise: Vec<u32> = [codes::class::CONTINUOUS_MODIFIER, codes::class::THRESHOLD_LISTENER, codes::class::CONTINUOUS_MODIFIER].iter().map(|c| self.tags.take(c)).collect();
+            let stamp = self.step_ticks.get(self.step_range.0).and_then(|&t| self.tick_main(t));
             if let Some(bu) = self.unit_mut(target).filter(|bu| bu.extra.build_objects.len() == 5) {
                 bu.extra.build_objects.splice(2..5, rise);
+                // Its rise begun anew, it is done its time left on from this step.
+                if let (Some(s), Some(left)) = (stamp, bu.constructing) {
+                    bu.extra.build_due = Some(f32::from_bits(crate::efloat::add((s as f32).to_bits(), left.to_bits())));
+                }
             }
         }
         self.tags.release(task);

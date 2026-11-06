@@ -703,6 +703,11 @@ pub struct UnitExtra {
     /// (`FUN_6f54d0f0`, `FUN_6f41b380`).
     #[serde(default)]
     pub build_objects: Vec<u32>,
+    /// When its construction is done on the main clock (its begin's step's and its build
+    /// time), while it goes up at its own pace (none once a builder's absence or help
+    /// changes that).
+    #[serde(default)]
+    pub build_due: Option<f32>,
     /// Its builder's build ability (its slot and birth), as construction began.
     #[serde(default)]
     pub build_by: Option<(u32, u32)>,
@@ -1051,6 +1056,7 @@ impl Default for UnitExtra {
             blight_rcm: None,
             no_life_rcm: false,
             build_objects: Vec::new(),
+            build_due: None,
             build_by: None,
             build_end: None,
             build_legacy: false,

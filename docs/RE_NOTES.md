@@ -3867,6 +3867,19 @@ Formats the port made its own, to be replaced by the original's:
   the original (its event's handle the next after its trigger's), nor now in the
   port; each unit's order (its record's fifteenth and sixteenth fields: `+ord`, or
   `ordt` with its point and target) is given again without its events.
+- A construction is done (`CAbilityBuildInProgress`'s vf205, 0x6f427e40, from
+  `FUN_6f424320` on its listener's event 0xd01c4) on the main clock at its build time
+  from the step its rise began in: the step it was begun in, or for a builder still
+  walking to it the step the builder arrives in (the rise's modifier and listener
+  made anew).  Measured under winedbg on Twisted Meadows' human computer: its altar,
+  barracks, and second farm done at 62.130093, 81.837433, and 85.755417, their
+  begins' steps and build times on to 0.0001, and its first farm, its peasant
+  arriving at 17.668, at 52.668034, in turn 527 after that turn's first order (the
+  port, taking a turn's 0.1 a time from its begin, had it done a turn early).  Its
+  objects go at once as it is done: the rise's listener, the rise's modifier, the
+  life's modifier, the real, and Build In Progress, in that order.  The AI's builder
+  then takes its next order at once (an order with targets, as a harvest's; not yet
+  in the port).
 - Work in progress in the original's saves: a structure being built has its Build
   In Progress (`ABnP`), its real (the ability's reference) its build time falling 1
   a second from its stamp on the agent clock; a queue at work (`Aque`) lists its

@@ -1162,6 +1162,10 @@ impl World {
         if matches!(race.as_str(), "orc" | "undead") {
             return;
         }
+        // Its walk is the newest, as an AI's (traced: maftr's peasant sent to build its
+        // Arrow Tower at turn 325, its cluster newer than a creep's of turn 313, begun in
+        // turn 349's third step before that creep's ended walk's path went).
+        let serial = self.tags.born;
         let order: Vec<u32> = AI_BUILD.iter().map(|c| self.tags.take(c)).collect();
         self.tags.release(order[14]);
         let at = self.actions_clock();
@@ -1175,6 +1179,7 @@ impl World {
             }
             u.extra.ai_order = order;
             u.extra.build_legacy = false;
+            u.extra.walk_serial = serial;
             u.extra.mover = None;
             u.extra.coarse = None;
         }

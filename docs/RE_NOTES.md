@@ -5434,6 +5434,13 @@ Formats the port made its own, to be replaced by the original's:
   Arrow Tower, done at turn 192, a second after its begin).  The flying peasant's game
   so agrees to turn 216, where the original makes six `Cdet` (detections, the creeps
   made at 20.0 coming near), now the port's too (a burrow detection's test, above).
+- A player's build order's walk is the newest as it is given, as an AI's: its cluster
+  is linked at the list's head, so the step reaches its builder before the older walks
+  (`World::player_build_objects`).  Traced over LAN (maftr, turns 348 to 374): the
+  peasant sent at turn 325 to build an Arrow Tower, begun in turn 349's third step,
+  its structure's and order's objects made before the path of a creep's walk of turn
+  313, ended in the step before, went; the port had kept the peasant's serial from its
+  last walk, older, and freed that path first.
 - Its builder's order's objects go as the next turn starts when the structure is done
   in its turn's last main tick (the first at or past its due): the builder's order
   ends in the next main tick (`World::player_builder_done`).  Measured over LAN with

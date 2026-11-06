@@ -1810,8 +1810,8 @@ impl World {
     /// unbounded), facing in radians, and collision in cells; its two regions; two
     /// words of -1 and one of 0; 0.8, its speed again (a structure's 0.75), its turn
     /// rate (a structure's 0.001), pi / 3, two zeros, its facing, and 0; its cells; a
-    /// flag word (not yet read: 0 written); and its path.  Its property's second head
-    /// is its newest in-range listener.
+    /// flag word (its type's look and formation, below); and its path.  Its property's
+    /// second head is its newest in-range listener.
     pub fn unit_position_records(&self, h: u32) -> Vec<(u32, First, Option<Second>)> {
         let mut out = Vec::new();
         let Some(u) = self.unit(h) else { return out };
@@ -1847,32 +1847,36 @@ impl World {
         let mut values = [cx, cy, 0.0, 0.0, cells_speed, facing, o.real("collision").max(1.0) / 32.0];
         let mut reals = [0.8, if moving { speed / 32.0 } else { 0.75 }, turn, 1.047_197_5, 0.0, 0.0, facing, 0.0];
         let mut words = [u32::MAX, u32::MAX, 0];
-        let mut more = [cx as u32, cy as u32, 0];
+        // Its flag word (+0xd8): its type's orientInterp in bits 8 to 11 and formation in
+        // 12 to 15 (`FUN_6f653800` from the type's data: CUnit vf50 `FUN_6f698c80`, then
+        // vf51 `FUN_6f698750`; read, every unit of the quiet test map's at 5 seconds and
+        // of Booty Bay's network save).  Provisional: bit 16 (`FUN_6f171060`) and bit 24
+        // (an attack's search, CAbilityAttack `FUN_6f49bc40` by `FUN_6f05c350`), not set.
+        let look = (o.int("orientInterp") as u32 & 0xff) << 8;
+        let flags_word = (o.int("formation") as u32 & 0xff) << 12 | look & 0xffff_0fff;
+        let more = [cx as u32, cy as u32, flags_word];
         let mut flags = [0, 0];
-        // A worker on a gold run: its speed by its run's factor, 0x4000, and its first
-        // real 2.0625 (6.0 on its way home); walking, its walk's cluster, its velocity,
+        // A worker on a gold run: its speed by its run's factor and its first real
+        // 2.0625 (6.0 on its way home); walking, its walk's cluster, its velocity,
         // and its heading (read: Forestwalk's peasants at 12 seconds; provisional, the
         // first real, the turn's last two).
-        // (On a lumber run, its first real 4.125 and 0x4000: read, Forestwalk's peasants
+        // (On a lumber run, its first real 4.125: read, Forestwalk's peasants
         // chopping and walking to their trees; walking home, 6.0 as with gold.)
         let lumber = u.extra.gold_run.as_ref().is_some_and(|r| r.lumber);
         if lumber {
             let home = u.extra.gold_run.as_ref().is_some_and(|r| matches!(r.phase, crate::goldrun::Phase::ToHall(_)));
             reals[0] = if home { 6.0 } else { 4.125 };
-            more[2] = 0x4000;
         }
         if let Some(r) = u.extra.gold_run.as_ref().filter(|r| !r.lumber) {
             let top = self.walk_speed_cells(h);
             values[4] = top;
             reals[1] = top;
             reals[0] = if matches!(r.phase, crate::goldrun::Phase::ToHall(_)) { 6.0 } else { 2.0625 };
-            more[2] = 0x4000;
         }
         // Walking (any walk: read too, peasants sent to a point), its walk's cluster,
-        // velocity, and heading, and 0x4000.
+        // velocity, and heading.
         {
             if let (Some((c, _, _)), Some(m)) = (self.saved_order(h).and_then(|o| o.walk), u.extra.mover.as_ref()) {
-                more[2] = 0x4000;
                 let f = f32::from_bits;
                 // (Stamped as it last moved: on the main clock.)
                 base.real = self.main_clock_now();

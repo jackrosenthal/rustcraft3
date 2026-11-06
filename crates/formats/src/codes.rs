@@ -1612,6 +1612,9 @@ pub mod class {
     pub const CLUSTER: &Code = b"^clu";
     /// `^clg`: A cluster's goal (provisional name).
     pub const CLUSTER_GOAL: &Code = b"^clg";
+    /// `^clp`: A cluster group (NIpse::CPrClusterGroup: its record, `FUN_6f16aec0`, a word
+    /// and three reals, as the saves' are).
+    pub const CLUSTER_GROUP: &Code = b"^clp";
     /// `+w3u`: A unit (CUnit).
     pub const UNIT: &Code = b"+w3u";
     /// `+w3d`: A destructable.

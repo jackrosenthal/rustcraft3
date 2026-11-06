@@ -538,6 +538,25 @@ fn main() {
         }
         return;
     }
+    // "sums": the objects' sum (`FUN_6f324930`) by the main table's kinds: each kind's
+    // objects, their part, and those whose first record is not read.
+    if a[2] == "sums" {
+        let mut by: std::collections::BTreeMap<String, (usize, u32, usize)> = Default::default();
+        for o in &objects[0] {
+            let e = by.entry(format!("{}/{}", code(o.entry.kind), code(o.entry.family))).or_default();
+            e.0 += 1;
+            match o.sum() {
+                Ok(v) => e.1 = e.1.wrapping_add(v),
+                Err(_) => e.2 += 1,
+            }
+        }
+        let total = by.values().fold(0u32, |s, e| s.wrapping_add(e.1));
+        println!("word {:08x} sum {total:08x}", s.objects_word);
+        for (k, (n, v, unread)) in by {
+            println!("{k}: {n} objects, {v:08x}{}", if unread > 0 { format!(", {unread} not read") } else { String::new() });
+        }
+        return;
+    }
     if a[2] == "census" {
         let mut by: std::collections::HashMap<String, (usize, usize)> = Default::default();
         for o in &all {

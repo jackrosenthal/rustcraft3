@@ -474,6 +474,15 @@ pub enum First {
     /// (`FUN_6f1690d0`: three words, six reals, a word each), then three words, four
     /// reals, five words, two reals, a word, and three references.
     Cluster2 { array: Array<([u32; 3], [f32; 6], u32)>, words: [u32; 3], reals: [f32; 4], more: [u32; 5], last_reals: [f32; 2], word: u32, refs: [Ref; 3] },
+    /// A cluster group (`^clp`, CPrClusterGroup's `FUN_6f16aec0`): a word and three reals.
+    ClusterGroup { word: u32, reals: [f32; 3] },
+    /// A missile's position (`` `pbh ``, CPoPosBh's `FUN_6f172550`): the position's record,
+    /// nine reals, a counted list of references, and an optional block.
+    ProjectilePos { base: PropertyBase, values: [f32; 7], refs: [Ref; 2], reals: [f32; 9], list: Vec<Ref>, timing: Timing },
+    /// A missile's flight (`>prj`, CBhPoProjectile's `FUN_6f173160`): a behavior's five
+    /// words and two optional blocks (`FUN_6f171c00`), eleven reals, four words, and two
+    /// reals.
+    Projectile { words: [u32; 5], timings: [Timing; 2], reals: [f32; 11], more: [u32; 4], last: [f32; 2] },
     /// An object whose first record is empty (`^ama`, CAcceleratorMap; `^pma`,
     /// CProximityMap).
     Empty,
@@ -568,6 +577,17 @@ impl SavedObject {
                 let (words3, reals4, more, last_reals, word) = (words(&mut r)?, reals(&mut r)?, words(&mut r)?, reals(&mut r)?, r.u32()?);
                 First::Cluster2 { array, words: words3, reals: reals4, more, last_reals, word, refs: [Ref::read(&mut r)?, Ref::read(&mut r)?, Ref::read(&mut r)?] }
             }
+            (codes::class::CLUSTER_GROUP, _) => First::ClusterGroup { word: r.u32()?, reals: reals(&mut r)? },
+            (codes::class::PROJECTILE_POSITION, _) => {
+                let base = PropertyBase::read(&mut r)?;
+                let (values, refs, reals9) = (reals(&mut r)?, [Ref::read(&mut r)?, Ref::read(&mut r)?], reals(&mut r)?);
+                let list = (0..r.u32()?).map(|_| Ref::read(&mut r)).collect::<Result<_, _>>()?;
+                First::ProjectilePos { base, values, refs, reals: reals9, list, timing: Timing::read(&mut r)? }
+            }
+            (codes::class::PROJECTILE, _) => {
+                let (words5, timings) = (words(&mut r)?, [Timing::read(&mut r)?, Timing::read(&mut r)?]);
+                First::Projectile { words: words5, timings, reals: reals(&mut r)?, more: words(&mut r)?, last: reals(&mut r)? }
+            }
             (codes::class::ACCELERATOR_GRID | codes::class::PATHING_MAP, _) => First::Empty,
             _ => return Ok(First::Raw(self.first.clone())),
         };
@@ -575,6 +595,152 @@ impl SavedObject {
             return Err(Error::Format("an object's first record longer than its class's fields"));
         }
         Ok(out)
+    }
+
+    /// Its part of the objects' sum (`FUN_6f324930`, the object's vf 0x3c): its tags and
+    /// the fields its class adds, each as `sum_word` takes it.  Every field it adds is
+    /// in its first record, so the sum is the save's own.
+    pub fn sum(&self) -> Result<u32, Error> {
+        let mut s = Sum(sum_word(self.entry.tag).wrapping_add(sum_word(self.entry.birth)));
+        match self.first()? {
+            // CPmRegion `FUN_6f14cc20`: its bounds and its word (+0x1c to +0x28, +0x34).
+            First::Region { word, bounds, .. } => {
+                s.words(&bounds).word(word);
+            }
+            // CPoFlag `FUN_6f152720`, CPoReal `FUN_6f153310`, CPoPos `FUN_6f152a50`: a
+            // property's (CRlProperty `FUN_6f153c90`: the relation's, its real and word)
+            // and each value.
+            First::Flag { base, value } => {
+                s.property(&base).word(value);
+            }
+            First::Real { base, values } => {
+                s.property(&base).reals(&values);
+            }
+            First::Pos { base, values, .. } => {
+                s.property(&base).reals(&values);
+            }
+            // A unit's position (CPoPosCl `FUN_6f16f0a0`): the position's, then all its own
+            // but its third word, its flags, and its reference, and its separation's three
+            // (CPoSeparate `FUN_6f159ef0`).
+            First::Cluster { base, values, words, reals, more, separate, .. } => {
+                s.property(&base).reals(&values).words(&words[..2]).reals(&reals).words(&more);
+                if let Some((a, b, w)) = separate {
+                    s.reals(&[a, b]).word(w);
+                }
+            }
+            // An agent's wrapper (CAgentBaseAbs), a class's definition (CRlAgentDef): the
+            // relation's alone (CPrRelation `FUN_6f15d960`).
+            First::Agent { object, .. } | First::AgentDef { object, .. } => {
+                s.relation(&object);
+            }
+            // The listeners and the modifier (`FUN_6f153240`, `FUN_6f1524f0`, `FUN_6f152860`,
+            // `FUN_6f153000`): the relation's and their first two fields (one, a flag's).
+            First::Threshold { object, real, word } | First::Interference { object, real, word, .. } => {
+                s.relation(&object).reals(&[real]).word(word);
+            }
+            First::FlagListener { object, word } => {
+                s.relation(&object).word(word);
+            }
+            First::Continuous { object, values } => {
+                s.relation(&object).reals(&values);
+            }
+            // A path (CLrPath `FUN_6f166510`): its six reals; each way's count, points, and
+            // first word, and its short; its first three words, its own word, and its real.
+            First::Path { reals, words, real, word, ways, .. } => {
+                s.reals(&reals);
+                for (a, w, _, short) in &ways {
+                    s.word(a.entries.len() as u32);
+                    for p in &a.entries {
+                        s.reals(p);
+                    }
+                    s.word(*w).word(*short as u32);
+                }
+                s.words(&words[..3]).word(word).reals(&[real]);
+            }
+            // A walking cluster (CPrCluster `FUN_6f153480`): each entry's two words, two
+            // reals, and last word, then its first two words, four reals, five words, two
+            // reals, and last word.
+            First::Cluster2 { array, words, reals, more, last_reals, word, .. } => {
+                for (w, r, last) in &array.entries {
+                    s.words(&w[..2]).reals(&r[..2]).word(*last);
+                }
+                s.words(&words[..2]).reals(&reals).words(&more).reals(&last_reals).word(word);
+            }
+            // A cluster group (CPrClusterGroup `FUN_6f153b20`): its word and reals.
+            First::ClusterGroup { word, reals } => {
+                s.word(word).reals(&reals);
+            }
+            // A missile's position (CPoPosBh `FUN_6f152cd0`): the position's and its nine
+            // reals.
+            First::ProjectilePos { base, values, reals, .. } => {
+                s.property(&base).reals(&values).reals(&reals);
+            }
+            // A missile's flight (CBhPoProjectile `FUN_6f152230`, past its tags): its third,
+            // fourth, and sixth to ninth reals, its eleventh, and its first word after them
+            // (+0x40, +0x44, +0x50 to +0x5c, +0x60, +0x64).
+            First::Projectile { reals, more, .. } => {
+                s.reals(&reals[2..4]).reals(&reals[5..9]).reals(&reals[10..]).word(more[0]);
+            }
+            // The pathing maps, the accelerator grids, the long-range system and its
+            // accelerator: their tags alone (CPresenceTagged `FUN_6f1c54e0`).
+            First::Accelerator { .. } | First::System { .. } | First::Empty => {}
+            First::Raw(_) => return Err(Error::Format("an object's first record not read, for the objects' sum")),
+        }
+        Ok(s.0)
+    }
+}
+
+/// A word as the objects' sum takes it (`FUN_6f1c54e0` and the classes' vf 0x3c): each
+/// of its four bytes `b` as `b * 0x7a2d ^ b`, added (so the order of the words does not
+/// matter).
+pub fn sum_word(v: u32) -> u32 {
+    v.to_le_bytes().iter().fold(0u32, |s, &b| s.wrapping_add((b as u32).wrapping_mul(0x7a2d) ^ b as u32))
+}
+
+/// The objects' sum as it grows.
+struct Sum(u32);
+
+impl Sum {
+    fn word(&mut self, v: u32) -> &mut Sum {
+        self.0 = self.0.wrapping_add(sum_word(v));
+        self
+    }
+
+    fn words(&mut self, v: &[u32]) -> &mut Sum {
+        v.iter().for_each(|&v| self.0 = self.0.wrapping_add(sum_word(v)));
+        self
+    }
+
+    fn reals(&mut self, v: &[f32]) -> &mut Sum {
+        v.iter().for_each(|v| self.0 = self.0.wrapping_add(sum_word(v.to_bits())));
+        self
+    }
+
+    /// A relation's (CPrRelation `FUN_6f15d960`): its real and its first word, the object
+    /// its first pair's second reference names (that's tags, twice: read so), and its
+    /// second word.
+    fn relation(&mut self, o: &ObjectBase) -> &mut Sum {
+        self.reals(&[o.real]).words(&o.words);
+        let r = o.links[0].3;
+        if r != Ref(u32::MAX, u32::MAX) {
+            self.words(&[r.0, r.1, r.0, r.1]);
+        }
+        self
+    }
+
+    /// A property's (CRlProperty `FUN_6f153c90`): the relation's, its real and its word.
+    fn property(&mut self, p: &PropertyBase) -> &mut Sum {
+        self.relation(&p.object).reals(&[p.real]).word(p.word)
+    }
+}
+
+impl SaveGame {
+    /// The objects' sum (`FUN_6f324930`, the word after the slot table): each live object
+    /// of the main table's (the second's are not summed).
+    pub fn objects_sum(&self) -> Result<u32, Error> {
+        let m = self.objects.as_ref().ok_or(Error::Format("no object manager read"))?;
+        let [main, _] = m.objects()?;
+        main.iter().try_fold(0u32, |s, o| Ok(s.wrapping_add(o.sum()?)))
     }
 }
 
@@ -2411,6 +2577,26 @@ impl First {
                 o.reals(last_reals);
                 o.u32(*word);
                 refs(&mut o, r);
+            }
+            First::ClusterGroup { word, reals } => {
+                o.u32(*word);
+                o.reals(reals);
+            }
+            First::ProjectilePos { base, values, refs: r, reals, list, timing } => {
+                base.write(&mut o);
+                o.reals(values);
+                refs(&mut o, r);
+                o.reals(reals);
+                o.u32(list.len() as u32);
+                refs(&mut o, list);
+                timing.write(&mut o);
+            }
+            First::Projectile { words, timings, reals, more, last } => {
+                o.words(words);
+                timings.iter().for_each(|t| t.write(&mut o));
+                o.reals(reals);
+                o.words(more);
+                o.reals(last);
             }
             First::Empty => {}
             First::Raw(b) => o.0.extend(b),

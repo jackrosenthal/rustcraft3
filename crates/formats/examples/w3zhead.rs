@@ -9,6 +9,11 @@ fn main() {
     }
     println!("slots {:02x?}", s.slots);
     println!("objects word {:08x} map xoro {:08x} sha1 {}", s.objects_word, s.map_xoro, s.map_sha1.iter().map(|b| format!("{b:02x}")).collect::<String>());
+    // The objects' sum over the records as read (the word's, when it is the original's).
+    match s.objects_sum() {
+        Ok(sum) => println!("objects' sum {sum:08x}{}", if sum == s.objects_word { ", the word" } else { "" }),
+        Err(e) => println!("objects' sum not reckoned: {e}"),
+    }
     println!("local slot {} player {} name {:?} preferences {:?}, game time {} ms", s.local_slot, s.local_player, s.player_name, s.preferences, s.game_ms);
     let Some(m) = &s.objects else {
         println!("no object manager read (not 1.27b's layout), {} bytes after", s.rest.len());

@@ -346,12 +346,15 @@ impl Lan {
     /// A save's identifier, as GAMEINFO carries it in place of the map's checksum: a
     /// save in the original's format its objects' word (`FUN_6f324930`'s sum, the same
     /// in every computer's copy; the original's join compares it with its own copy's,
-    /// CSaveGame +0x430), the port's own state its CRC.
-    fn save_id(bytes: &[u8]) -> u32 {
-        match w3_game::save::Load::parse(bytes) {
+    /// CSaveGame +0x430), whether or not the port's own state is beside it, so that the
+    /// original's computers and the port's load it together; a save in the port's format
+    /// alone its CRC.
+    fn save_id(file: &Path) -> Option<u32> {
+        let bytes = std::fs::read(file).ok()?;
+        Some(match w3_game::save::Load::parse(&bytes) {
             Ok(w3_game::save::Load::Original(s)) => s.objects_word,
-            _ => crc32fast::hash(bytes),
-        }
+            _ => crc32fast::hash(&bytes),
+        })
     }
 
     /// This computer's copy of a saved network game: the port's own state beside it, or
@@ -385,7 +388,8 @@ impl Lan {
         setup.game = game.to_string();
         setup.map = self.map_name(&map);
         let path = format!("Save\\Multiplayer\\{}", file.file_name().unwrap_or_default().to_string_lossy());
-        self.host_setup(&map, setup, &summary, expansion, GAME_SAVED, users, Some((path, Lan::save_id(&bytes))), chain)?;
+        let id = Lan::save_id(file).ok_or("SAVE_ERROR_BAD_SAVE")?;
+        self.host_setup(&map, setup, &summary, expansion, GAME_SAVED, users, Some((path, id)), chain)?;
         self.save = Some(bytes);
         Ok(())
     }
@@ -400,9 +404,9 @@ impl Lan {
         self.save = None;
         if saved {
             let file = Path::new(&game.stat.map_path.replace('\\', "/")).file_name().map(|f| f.to_owned()).unwrap_or_default();
-            let bytes = crate::data::multiplayer_save_dir().and_then(|d| Lan::saved_copy(&d.join(file)));
-            match bytes {
-                Some(b) if Lan::save_id(&b) == game.stat.map_xoro => self.save = Some(b),
+            let path = crate::data::multiplayer_save_dir().map(|d| d.join(file));
+            match path.as_deref().and_then(|p| Some((Lan::save_id(p)?, Lan::saved_copy(p)?))) {
+                Some((id, b)) if id == game.stat.map_xoro => self.save = Some(b),
                 _ => return Err("NETERROR_DIFFERENTSAVEFILE"),
             }
         }
@@ -1104,6 +1108,9 @@ mod tests {
         assert_eq!(users, 2);
         let people: Vec<(u8, &str, Holder)> = setup.slots.iter().map(|s| (s.player, s.name.as_str(), s.holder)).collect();
         assert_eq!(people, vec![(0, "Host", Holder::Open), (1, "Jack", Holder::Open)]);
-        assert_eq!(Lan::save_id(&bytes), 0xc2aa_926c);
+        assert_eq!(Lan::save_id(Path::new(&file)), Some(0xc2aa_926c));
+        // The word the objects' sum, as the port reckons it over the save's records.
+        let s = w3_formats::w3z::SaveGame::read(&bytes).expect("the save reads");
+        assert_eq!(s.objects_sum().ok(), Some(0xc2aa_926c));
     }
 }

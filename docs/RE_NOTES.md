@@ -4652,10 +4652,63 @@ Formats the port made its own, to be replaced by the original's:
   identifier that word, its slots from the save's slot table and names), each
   computer starting the map with the lobby's setup and then loading its copy
   (`restore_original`): two of the port's, as Host and Jack, loading the original's
-  Booty Bay save over LAN play 300 frames alike.  The port's own saves write 0 for
-  the sum, the same in every copy, so the original's peers can load those among
-  themselves; a game mixing the two cannot load until the port reckons the sum (its
-  classes' vf 0x3c, dozens of functions).
+  Booty Bay save over LAN play 300 frames alike.  The port's own saves now carry the
+  sum (below), and the port announces and checks a save in the original's format by
+  that word, its own state beside it or not, as the original does.
+- The objects' sum (`FUN_6f324930`, the "tempest checksum" of the debug dump
+  `FUN_6f328d70`; the save takes it through `FUN_6f32b1c0` in `FUN_6f1e8630`, before
+  the object manager's records): over the manager's main table (`DAT_6fd6860c`: its
+  entries at +0xc, eight bytes each, -2 and the object when live, their count at +0x1c;
+  the second table at +0x20, the negative tags', is not summed), each live object's vf
+  0x3c adds to it.  Each word it adds by its four bytes, `b * 0x7a2d ^ b` each, so the
+  order does not matter.  The table holds the engine's own objects, each a
+  CPresenceTagged (an agent of the game's by its wrapper, CAgentBaseAbs, the `+agl`
+  family), each class's vf 0x3c its base's then its own: CPresenceTagged
+  `FUN_6f1c54e0` its tag and birth (+0x14, +0x18), and no more for the pathing maps,
+  the accelerator grids, and the long-range system and its accelerator; CPrRelation
+  `FUN_6f15d960` (the wrappers, the classes' definitions) its real (+0x44), its two
+  words (+0x48, +0x4c), and the tags of the object at +0x30 (its first pair's second
+  reference), twice; CRlProperty `FUN_6f153c90` its real and word (+0x70, +0x74), then
+  CPoFlag `FUN_6f152720` its value, CPoReal `FUN_6f153310` its four, CPoPos
+  `FUN_6f152a50` its seven, CPoPosBh (`` `pbh ``) `FUN_6f152cd0` its nine reals more,
+  and CPoPosCl (`` `pcu ``) `FUN_6f16f0a0` all its own but its third word, its flags,
+  and its reference, with its separation's three (CPoSeparate `FUN_6f159ef0`); the
+  threshold, flag, and in-range listeners and the continuous modifier
+  (`FUN_6f153240`, `FUN_6f1524f0`, `FUN_6f152860`, `FUN_6f153000`) their one or two
+  own; CPmRegion `FUN_6f14cc20` its bounds and word; CLrPath `FUN_6f166510` its six
+  reals, each way's count, points, first word, and short, its first three words, and
+  its word and real; CPrCluster `FUN_6f153480` each entry's first two words, two
+  reals, and last word, and all its own but its third word and references;
+  CPrClusterGroup (`^clp`, its record `FUN_6f16aec0`: a word and three reals)
+  `FUN_6f153b20` those four; CBhPoProjectile (`>prj`, its record `FUN_6f173160`)
+  `FUN_6f152230` eight of its own.  Every field summed is one its first record holds
+  (vf 0x24), so the sum is the save's own: reckoned over its records
+  (`SaveGame::objects_sum`) it is the word of every save of the original's at hand (66
+  in its Save folder, Booty Bay's LAN save's 0xc2aa926c and Mafarazzo TD's at 30
+  seconds' 0x2dbc90f0 among them).  The port writes its saves' word so, the sum of
+  the records it writes, the same on every computer of a game.  Its save of the quiet
+  test map at 5 seconds carries the original's word (0xdb4ef280: every summed field of
+  every object agrees); eleven other test maps' (Forestwalk's from its start to 15
+  seconds among them) differ where their records do: the objects its saves leave out
+  (a walk's order, tasks, cluster, and path; a computer's captains) and the listeners
+  and modifiers about them, and on Forestwalk at 0.3 seconds 22 pathing regions' word
+  (+0x34: the port's 0x04000000 for four where the original's is 0, 0x010000ca for 18
+  where it is 0x01000000) and the blights' places (`Xbli`'s `` `pos `` and its regions'
+  bounds, 2 cells apart).  A restored original's save (Mafarazzo TD's at 30 seconds)
+  written again has a threshold listener's record of another class's length, its sum
+  not reckoned (0 written).
+- A unit's clustered position's flag word (CPoPosCl +0xd8, its record's third word
+  after its eight reals): its type's orientInterp in bits 8 to 11 and formation in 12
+  to 15, set as the unit is made from its type's data (`FUN_6f652620`, `FUN_6f653800`:
+  CUnit vf50 `FUN_6f698c80` to `FUN_6f171010`, then vf51 `FUN_6f698750` to
+  `FUN_6f171070`; a morph's, `FUN_6f6417c0`, the new type's, its data's words 0x7a and
+  0x7b); bit 16 by `FUN_6f171060` (cleared by `FUN_6f16f560`); and bit 24 by an
+  attack (CAbilityAttack through `FUN_6f05c350`: set by `FUN_6f49bc40` as it starts its
+  timer of event 0xd01bd with no target, cleared by `FUN_6f497310`, its vf41 and
+  vf63).  Read: every unit of the quiet test map's at 5 seconds and of Booty Bay's LAN
+  save the type's two alone, and on the every-unit map (`fwall`) player 0's units bit
+  24 besides.  The 0x4000 the port wrote for a walker was the peasant's formation; it
+  writes the type's two (provisional: bits 16 and 24 not set).
 - Continuing the original's saves (`Game::restore_original`): the port's compiled
   code is the original's word for word (map script and AI scripts), so each machine
   comes back as saved: its globals (strings by their text, a handle where the port

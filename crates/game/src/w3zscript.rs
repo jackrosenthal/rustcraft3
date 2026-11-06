@@ -502,10 +502,12 @@ impl Game {
     }
 
     /// A save made from `template` (the original's save of the same moment) with the
-    /// pieces the port makes in place of its own: the world's, and the script data.
+    /// pieces the port makes in place of its own: the world's, and the script data.  Its
+    /// objects' word is their sum as written (the template's while a record is not read).
     pub fn write_save(&self, template: &SaveGame) -> SaveGame {
         let game = self.world.game_object();
         let mut s = self.world.write_save(template, vec![(game.0, self.game_state_second())]);
+        s.objects_word = s.objects_sum().unwrap_or(s.objects_word);
         let (Ok(state), Ok(d)) = (s.state(), s.script_data()) else { return s };
         let mut state = self.saved_state(&state);
         let Ok(bytes) = self.saved_script_data(&d).to_bytes() else { return s };
@@ -524,8 +526,9 @@ impl Game {
     /// the camera's; its free lists, classes, clocks, the path queues as a game's start
     /// has them, the map's bounds and 522.6667), every object's records, and the game's
     /// state, its script data the map script's and the computers' AI scripts'
-    /// (`saved_script_data`).  Provisional: the objects' word (the Tempest checksum,
-    /// 0), the clocks' counts (0), the fog's third grid and the doodads' bytes (0).
+    /// (`saved_script_data`), and the objects' word, their sum (`FUN_6f324930`) over
+    /// the records written.  Provisional: the clocks' counts (0), the fog's third grid
+    /// and the doodads' bytes (0).
     pub fn write_save_fresh(&self, head: &SaveHead) -> SaveGame {
         use w3_formats::w3z::{GameState, ObjectManager, SavedObject};
         let w = &self.world;
@@ -614,6 +617,9 @@ impl Game {
                 }
             }
         }
+        // The objects' word, their sum over the records as written (0 while a record is
+        // not read).
+        s.objects_word = s.objects_sum().unwrap_or(0);
         let Ok(script) = self.saved_script_data(&ScriptData::default()).to_bytes() else { return s };
         let parts: Vec<(&'static str, Vec<Field>)> = vec![
             ("game", w.saved_game_part()),

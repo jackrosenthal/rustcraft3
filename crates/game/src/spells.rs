@@ -936,11 +936,17 @@ impl World {
         }
     }
 
-    /// Called as a hero dies: starts Reincarnation if it has it ready.
+    /// Called as a unit dies: starts Reincarnation (the Tauren Chieftain's or the
+    /// creeps', ACrn) if it has it ready.
     pub fn try_reincarnate(&mut self, h: u32) -> bool {
+        let ability = self.ability_with_code(h, codes::ability::CHIEFTAIN_REINCARNATION).or_else(|| self.ability_with_code(h, codes::ability::REINCARNATION_CREEP));
         // An Ankh of Reincarnation (AIrc) in the inventory: back after DataA with DataB
-        // life and DataC mana (-1 keeps it), the ankh spent.
-        if self.ability_with_code(h, codes::ability::CHIEFTAIN_REINCARNATION).is_none() {
+        // life and DataC mana (-1 keeps it), the ankh spent; a hero's alone
+        // (provisional).
+        if ability.is_none() {
+            if !self.unit(h).is_some_and(|u| u.is_hero) {
+                return false;
+            }
             let held = self.unit(h).map(|u| u.inventory.clone()).unwrap_or_default();
             for item in held {
                 let Some(t) = self.item(item).map(|i| i.type_id) else { continue };
@@ -954,7 +960,7 @@ impl World {
             }
             return false;
         }
-        let Some((a, lvl)) = self.ability_with_code(h, codes::ability::CHIEFTAIN_REINCARNATION) else { return false };
+        let Some((a, lvl)) = ability else { return false };
         if self.unit(h).is_some_and(|u| u.cooldowns.get(&a).copied().unwrap_or(0.0) > 0.0) {
             return false;
         }

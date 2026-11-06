@@ -2429,7 +2429,8 @@ impl World {
                 let t = self.time - u.death_time;
                 // Once its death has played (UnitData death) a corpse of a decaying kind
                 // (deathType 2 or 3) decays: EVENT_PLAYER_UNIT_DECAY (FUN_6f69c000).
-                if !u.extra.decaying && !u.extra.exploded && !u.hidden {
+                // (Not one reincarnating, which lies as it fell until it rises.)
+                if !u.extra.decaying && !u.extra.exploded && !u.hidden && u.reincarnate.is_none() {
                     let o = self.objects.units.get(u.type_id);
                     if o.is_some_and(|o| o.int("deathType") & 2 != 0) && t >= o.map_or(0.0, |o| o.real("death")) {
                         self.unit_mut(h).unwrap().extra.decaying = true;
@@ -2447,7 +2448,7 @@ impl World {
                     if t > gone && !u.hidden && u.reincarnate.is_none() {
                         self.unit_mut(h).unwrap().hidden = true;
                     }
-                } else if t > decay {
+                } else if t > decay && u.reincarnate.is_none() {
                     crate::natives::units::remove_unit(self, h);
                 }
                 continue;

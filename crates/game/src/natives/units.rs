@@ -586,8 +586,14 @@ pub fn kill_unit(w: &mut World, vm: &mut Vm, h: u32, killer: u32) {
     if w.phoenix_egg(h) {
         return;
     }
-    // Reincarnation: the hero falls and rises again without dying.
-    if w.unit(h).is_some_and(|u| !u.dead && u.is_hero) && w.try_reincarnate(h) {
+    // Reincarnation: the unit falls and rises again without dying, a hero or not (the
+    // creeps' Reincarnation, ACrn, is for units: its hook, `FUN_6f5197e0`, asks nothing
+    // of the unit's being a hero).  Its bounty and food go as they do at a death (the
+    // death's bounty, experience, and food, `FUN_6f69c210` and `FUN_6f6744d0`, come after
+    // the hook, `FUN_6f678280`, has started it).  One set to explode rises too, as the
+    // hook runs on that path as well (provisional: whether the hook's checks pass then).
+    // Its fall fires no death events, and it rises with no order (provisional, both).
+    if w.unit(h).is_some_and(|u| !u.dead) && w.try_reincarnate(h) {
         if let Some(u) = w.unit_mut(h) {
             u.dead = true;
             u.life = 0.0;

@@ -3944,6 +3944,26 @@ Formats the port made its own, to be replaced by the original's:
   its start at the mine, as the port's does); a measurement would be its walker's
   way, index, and heading at 0.03 to 0.27 (+0x40, +0x50, +0x74 as `FUN_6f167ce0`
   reads them).
+- Two readings fit the first wisp's setup node, tried on the port's search
+  (`lrpath`) with the other four wisps' regions held (each on x - 1 to x and y - 1 to
+  y of its cell): a search to the mine's middle as a point, with no target region
+  (`FUN_6f148100` given the path's +0xa4 empty; its nearest node), gives (161, 189)
+  first, its way going on above the mine to (156, 189), where the search to the
+  mine's region ends at once at the wisp's own cell; and the region's search whose
+  start never counts reached (above) gives (161, 189) too.  The point search gives the
+  wisp at (161, 186) its (161, 185) and the one at (163, 190) its (162, 190), as the
+  original's; for those at (164, 186) and (165, 188) neither gives the original's
+  first points with the regions so held.  Not yet told apart (provisional): the
+  path's +0xa4 is the steering's key (`FUN_6f168bd0`, from `FUN_6f16fbd0`), and the
+  setup's own gold order is given up at once for the AI's.  Two readings fit the 0.12
+  answer as well: the turn in place above, or a walker moving at once toward its node
+  (0.253 a step), within 0.49 of it at 0.12 at its way's last (`FUN_6f167070`'s 4, so
+  the contact test), then turning from that node's bearing to the mine's (2.777
+  counterclockwise), on it at 0.24 and in at 0.27; a walker moving at its first step
+  fits Twisted Meadows' human computer's walk out at 58.5 too (below).  A measurement
+  telling them apart: after the search in `FUN_6f166e90` (0x6f166fbe) at 0.03, the
+  path's +0xa4 and the way's count, and at 0x6f16fd0a the walker's place and heading
+  (*ebx, edi+0x8c) from 0.03 to 0.27.
 - An entangled mine is no town site of its own: the original's save of a night elf
   start (`nel.w3x`) holds the map's four mines' four sites, the first naming the
   entangled mine (the mine it covers made at the map's start with that site).  The
@@ -4712,6 +4732,42 @@ Formats the port made its own, to be replaced by the original's:
   after a queued trip so, the keepalives part at turn 71).  A measurement would be
   the waypoint provider's answers for its walker (after `FUN_6f165ae0`, as for the
   wisps above) from 58.40 to 58.70, with its heading and place.
+- That walk's provider answers, read (after `FUN_6f165ae0`, 0x6f16fd0a, 58.406 to
+  58.676; the point at [ebp-0xc], [ebp-0x8], in cells): the walkers and their order
+  are the port's one for one (two far units, the peasant walking home along row 188
+  for (171.5, 190.5), a third far one; a far unit's new walk first from 58.586, and
+  the mine's peasant out at 58.616 first from then, heading for (162.5, 184.5)).  The
+  peasant answers 3 at 58.406 with the hall's middle (178, 194), its contact
+  (`FUN_6f167290`, `FUN_6f166310`), is not asked at 58.436 (in reach, `FUN_6f16e910`,
+  its +0xd8 0x10000 from `FUN_6f171060`), and walks first from 58.466, as the port's.
+  But its point is (169.5, 185.5) from 58.466 to 58.646 and (161.5, 183.5) from
+  58.676, each answer 0, where the port's is (170.5, 187.5), its way along row 187 to
+  (161, 187).  As read: a search's way holds its points end first, the walker's place
+  last (`FUN_6f166e90`); one that met a refused cell (`FUN_6f1489a0`'s +0xd0, a
+  blocked cell or a region, as the hall's beside it) takes the first node after the
+  start's cell (`FUN_6f168870`, count less 2), one that met none its end (index 0);
+  and within 0.49 of its point it takes the farthest in a clear line (`FUN_6f167070`,
+  `FUN_6f165e60`).  A walker in the hall's contact (its class 1 ring, x - 2 to x + 1 and
+  y - 2 to y + 1, on the hall's 172 to 183 by 188 to 199: at its corner, x 171 or more
+  and y 187 or more) can have neither (169.5, 185.5) as its first node nor come within
+  0.49 of it in seven steps, so that point is the first node of a way searched from a
+  cell beside (169, 185), or the end of an unrefused way to a point there (a coarse
+  point, `FUN_6f167d70`).  The port's search from (170, 185), with the worker waiting
+  at the mine as the port holds it (its region on 160 to 161 by 184 to 185), gives
+  both points: (169, 185) first, refused, and its end (161, 183).  The timing fits too:
+  a walker about 1.5 off (169.5, 185.5) moving at once is within 0.49 of it at 58.676
+  and then 49 or 50 steps from within 0.49 of (161.5, 183.5), arriving at 60.145 or
+  60.175, in turn 602 as the objects have it; from the port's place (171.16, 187.43)
+  those points would bring it in at 60.29 or later.  Open: where the original's
+  walker is at 58.466 (if near (170.9, 185.5), out of the hall's contact) and whence
+  its way was searched; its walk home from 56.7 began where it had waited at the mine,
+  (161.93, 185.61) in the port, where its other trips home began at (161.5, 183.5).  A
+  measurement: at 0x6f16fd0a with edi 0x6a09578 from 56.6 to 58.7, the place (*ebx,
+  *(ebx+4)), the heading (edi+0x8c) and velocity (+0x80, +0x84), and its path's
+  (edi+0xa8) goal (+0x1c, +0x20), local way (count +0x50, index +0x74, the first six
+  points at +0x40), coarse way (+0x70, +0x78, four points at +0x60), flags (+0x88), and
+  target region (+0xa4); and after the search in `FUN_6f166e90` (0x6f166fbe) for that
+  walker over the same time, its start, goal, and way.
 - An AI's wood workers take its town's trees in turn: each sent to a tree
   (`FUN_6f9c6cf0`, from `FUN_6f9c9470` as a worker its pass took for wood runs its
   `+ord`, and `FUN_6f9c9610`; `FUN_6f9c96c0` too) gets the next of the AI's eight

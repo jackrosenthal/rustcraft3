@@ -1785,9 +1785,10 @@ these are the findings behind them.
   - The test takes the position where its velocity carries it by the look's moment
     (`FUN_6f161040`), not where its last step left it: at 21.5 the six within 901 so,
     where the places after the turn's steps had eight.
-  - The look's timer is on the agent queue, due each half second from the detector's
-    making (for Red's peasant made with the map, on the half second), so it comes
-    among the turn's movement steps by their agent dues: at 46.5 after the turn's
+  - The look's timer is due each half second from the detector's making (for Red's
+    peasant made with the map, on the half second), so it comes among the turn's
+    movement steps (on the relation dispatch, after the agent queue's events of its
+    main tick, below): at 46.5 after the turn's
     first step (due 46.49865), its region trigger's order and frees, and before the
     paths freed at the second (46.52865); at 47.0 before the first step's (47.00863).
     The port so takes the looks due in a turn among its steps
@@ -1799,8 +1800,9 @@ these are the findings behind them.
     Mafarazzo TD's LAN game so agrees for all 502 turns of its keepalives and its
     objects through turn 501 (the trace ends in 502), and the flyer game to turn 217
     (from 216; at 217 the original's tower takes up a creep).
-  - Each walker is carried on to the look's due, the agent queue's clock as its timer
-    falls due, not the main clock of the tick it falls in (`World::looks_before`).
+  - Each walker is carried on to the look's due, its queue's clock as its timer falls
+    due, not the main clock of the tick it falls in (`World::looks_before`; the queue
+    the relation dispatch, below).
     Read: a plain Mafarazzo TD game traced from turn 569 (`abtest/mafa5.*`), where the
     original made four `Cdet` at turn 576 and the port three, a fourth at turn 581:
     a creep closing on the second flying peasant at 206.8 a second, 901.47 off it by
@@ -1808,11 +1810,25 @@ these are the findings behind them.
     57.5.  So that game agrees for all 624 turns, the replay game for all 582, and
     the old capture to turn 659 (each from 576).  Not the next main tick's clock:
     by that the flyer game's look at 22.0 found a creep more than the original's
-    nine (turn 221).  But the steps move their walkers by their ticks' main clocks
-    (`World::plan_steps`), and a slow's landing carries its walker on by the main
-    clock of its tick (below), so how `FUN_6f161040`'s clock (`DAT_6fd53a48` + 0x54,
-    or + 0xa8 by the position's +0x14 flag, `FUN_6f15c650`) is kept between these is
-    not read.
+    nine (turn 221).
+  - `FUN_6f161040` (the time since a position was placed, `FUN_6f15c6c0` →
+    `FUN_6f15cea0`) reads the relation dispatch's clock, `DAT_6fd53a48` + 0x54, for
+    the game's positions (+ 0xa8, the local dispatch's, which runs with the frames,
+    for a position flagged 0x80000000 at its +0x14, `FUN_6f15c650`).  That queue is
+    moved on after the agent queue in each main tick (`FUN_6f04c1a0`), its clock
+    reading each request's due as it runs (`FUN_6f052380`): so during the agent
+    queue's events (the steps, a damage point) it reads the last main tick's clock,
+    during its own requests their dues, and after it the tick's.  The detector's look
+    is such a request: an in-range listener's (NIpse::CPoPoInterfLis vf8
+    `FUN_6f15ef40` → `FUN_6f15f210` → `FUN_6f15fa80` → `FUN_6f15f9b0` →
+    `FUN_6f15eac0`).  Measured (breakpoints on `FUN_6f15eac0` from 0x6f15fa34 and on
+    `FUN_6f15ff40`): the plain game's look at 57.5, its 41 tests with + 0x54 at
+    57.500000 exactly and + 0xa8 at 57.288067; the Slow Poison's landing in mafq's
+    behavior dispatch with + 0x54 at 12.603886, + 0xa8 at 12.674256.  So a look comes
+    after the agent queue's events of its main tick, the steps due in it among them:
+    the port takes one before a step only when it falls due by the main clock of the
+    step's tick (`World::looks_before`).  (No game here has a step and a look in one
+    main tick the other way round: all agree as before.)
 - The script's globals run before the map's destructables: Blizzard.j's first timer,
   then the engine's `+gam` `` `flg `` `` `flg `` `` `rel `` `` `rel `` `` `flg ``
   `` `rtl `` `+qum`, then the other globals.
@@ -2012,12 +2028,32 @@ these are the findings behind them.
 - A missile's flight (NIpse::CBhPoProjectile, `FUN_6f173450`) falls due at the
   distance to its goal across the ground over its speed (`FUN_6f1737d0`), at most 60
   seconds (0x6fd3c7b0); one at a unit is aimed at the unit's place (homing, CBullet
-  vf49 `FUN_6f6d1e90`) and aimed anew whenever that place moves (vf17
-  `FUN_6f173dd0`, `FUN_6f1739e0`), the arrival its timer (event 0xd019c, vf45).  The
-  launch puts the start at the attacker's place and launch offsets turned by its
-  facing (`FUN_6f68c4e0`).  Read against the Plague Tower's trace (its target
-  fleeing at about 145 a second from about 0.95 seconds): its 14 missiles land as a
-  chase at 1800 to the target's middle (collision 0: within 16 of it).
+  vf49 `FUN_6f6d1e90`; `FUN_6f173690`: the target's position carried on to the
+  relation dispatch's clock, `FUN_6f161040`, `FUN_6f05bdd0`), the arrival its timer
+  (event 0xd019c, vf45).  Its due is a request on the behavior dispatch, that queue's
+  clock (`DAT_6fd53a48` + 0xfc, kept with the main clock) plus the flight's time
+  (`FUN_6f171870`, at least 0.0001), so it lands in the first main tick whose clock
+  reaches it, after that tick's agent events (vf18 `FUN_6f173cf0` from the dispatch,
+  0x6f054336).  Measured (the flyer game's Arrow Tower, breakpoints on `FUN_6f1739e0`,
+  `FUN_6f171870`, and vf18 from 21.9 to 22.6 seconds): sent at 22.062298 on the main
+  clock, its time 0.334218 (its velocity -38.855358, 40.672367 cells a second, its
+  1800), so due 22.396516, landing in the main tick 22.397242; not aimed anew as its
+  target walked (no `FUN_6f1739e0`; what calls vf17 `FUN_6f173dd0`, a signal `` `bpe ``,
+  is not read).  The damage point's clock 22.062298 is the main tick's before its
+  due, 22.062787, the look's due (21.662787) and 0.1 and 0.3 on; the port's look is
+  the game time of its main tick (21.660011), its damage point so 22.060011, its
+  flight from the main clock 22.052299, two ticks early.  Open: the aim.  From the
+  tower's place (86, 240 in cells) that time and heading reach (73.0138, 253.5936),
+  on the port's target's way (lateral 0.0001 cells) but 2.46 cells (0.3642 seconds)
+  ahead of its place at 22.062298, which a flight straight at it would take 0.368 to
+  reach; a true intercept from there takes 0.33669 (due a tick later than the
+  original's).  The launch puts the start at the attacker's place and launch offsets
+  turned by its facing (`FUN_6f68c4e0`; the Arrow Tower's 0, 0).  Read against the
+  Plague Tower's trace (its target fleeing at about 145 a second from about 0.95
+  seconds): its 14 missiles land as a chase at 1800 to the target's middle
+  (collision 0: within 16 of it).  The port flies its missiles so (a leading
+  intercept from the target's place at its sending and at each tick's end,
+  `World::bullet_flies`): the Arrow Tower's lands at 22.389273.
 - A missile landed starts its removal timer (CBullet vf42, CMissile `FUN_6f6d0cf0`,
   CArtillery `FUN_6f6d0c70`, then `FUN_6f6d0c90`: MiscData's BulletDeathTime, 5, event
   0xd019f at +0x64), at whose end it destroys itself (vf3 `FUN_6f6d4e30`, vf23

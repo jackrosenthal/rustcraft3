@@ -694,17 +694,20 @@ impl World {
         self.looks_due = Some(looks);
     }
 
-    /// Takes the looks due before `until` (seconds since the game began, an agent due),
-    /// or all those left, each walker carried on to the look's due, the agent queue's
-    /// clock as it falls due (`FUN_6f161040`; read: Mafarazzo TD's creep closing on the
+    /// Takes the looks due by `until` (seconds since the game began, a main clock), or
+    /// all those left, each walker carried on to the look's due, its queue's clock as it
+    /// falls due (`FUN_6f161040`; read: Mafarazzo TD's creep closing on the
     /// second flying peasant at 206.8 a second, 901.47 off by the main clock of the
     /// look's tick, 57.496616, against 901, found by the look due 57.5 in the original's,
-    /// in turn 576, the port's a look later).  Provisional: the main tick after the due
-    /// fits as well, and the steps move their walkers by their ticks' main clocks, which
-    /// the agent queue's would not; how the two are kept is not read.
+    /// in turn 576, the port's a look later).  The look is a request on the relation
+    /// dispatch (an in-range listener's, NIpse::CPoPoInterfLis vf8 `FUN_6f15ef40`),
+    /// whose clock reads its due as it runs (read: 57.500000 at each of its tests), and
+    /// which runs after the agent queue's events in each main tick (`FUN_6f04c1a0`): so
+    /// `until` is the main clock of the step's tick, the look before the step when due
+    /// by it.
     pub(crate) fn looks_before(&mut self, until: Option<f64>) {
         let Some(due) = self.looks_due.as_mut() else { return };
-        let n = due.iter().take_while(|l| until.is_none_or(|u| l.0 < u)).count();
+        let n = due.iter().take_while(|l| until.is_none_or(|u| l.0 <= u)).count();
         let now: Vec<(f64, u32, u32)> = due.drain(..n).collect();
         for (at, _, h) in now {
             let clock = ((at - self.clock_wraps as f64 * 300.0) as f32).to_bits();

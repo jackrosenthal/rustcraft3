@@ -1721,7 +1721,7 @@ impl World {
         }
         // The detectors' looks due before the step (`World::plan_detection_looks`), and
         // the structures' damage points (`World::points_before`).
-        self.looks_before(self.step_abs(0).map(|s| s.1));
+        self.looks_before(self.step_abs(0).map(|s| s.0));
         if let Some((_, due)) = self.step_abs(0) {
             self.points_before(vm, Some(due));
         }
@@ -1883,7 +1883,7 @@ impl World {
             // The orders due before this step are given first (traced: a pig's walk ended
             // in a turn's second step, before an order due after it).
             self.tags.mark_step(k);
-            self.looks_before(self.step_abs(k).map(|s| s.1));
+            self.looks_before(self.step_abs(k).map(|s| s.0));
             if let Some((_, due)) = self.step_abs(k) {
                 self.points_before(vm, Some(due));
             }
